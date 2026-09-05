@@ -8,6 +8,7 @@ const ShipmentOrderVehicle = require('../models/ShipmentOrderVehicle');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 const { createNotification } = require('../services/notificationService');
+const { statusVocabulary, isValidStatus } = require('../utils/shipmentOrderStatuses');
 
 // The trial section for creating shipments natively, instead of on the external
 // UPL platform. Fully self-contained: nothing here reads or writes anything the
@@ -97,7 +98,14 @@ exports.listOrders = async (req, res) => {
   try {
     const { q, status, customer, supplier, source, branch, from, to, page = 1, limit = 25 } = req.query;
     const filter = {};
-    if (status) filter.status = status;
+    // ── الحالةُ قد تكون أكثرَ من واحدة ────────────────────────────────────
+    // البطاقاتُ فوق الجدول تُنتقى بالتراكم: «أرِني المتأخّرةَ وما في الطريق
+    // معًا». فتصل مفصولةً بفاصلة.
+    if (status) {
+      const keys = String(status).split(',').map((x) => x.trim()).filter(Boolean);
+      if (keys.length === 1) [filter.status] = keys;
+      else if (keys.length > 1) filter.status = { $in: keys };
+    }
     if (customer) filter.customer = customer;
     if (supplier) filter.supplier = supplier;
     if (branch) filter.branch = branch;
@@ -126,6 +134,9 @@ exports.listOrders = async (req, res) => {
       filter.$or = or;
     }
 
+    const statusFreeFilter = { ...filter };
+    delete statusFreeFilter.status;
+
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [orders, total, statusAgg, priceAgg] = await Promise.all([
       ShipmentOrder.find(filter)
@@ -138,7 +149,11 @@ exports.listOrders = async (req, res) => {
       ShipmentOrder.countDocuments(filter),
       // Header numbers respect the SAME filter as the table — a filtered list
       // with unfiltered totals reads as a bug.
-      ShipmentOrder.aggregate([{ $match: filter }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
+      // ── وأعدادُ البطاقات تحت **بقيّة** الفلاتر لا تحت الحالة ───────────
+      // من ضغط «متأخرة» يريد أن يرى كم «في الطريق» في المدّة نفسِها ليضمّها —
+      // وعدُّها تحت الحالة المختارة يُصفّر كلَّ بطاقةٍ سواها، فيبدو أنّ لا شيءَ
+      // هناك.
+      ShipmentOrder.aggregate([{ $match: statusFreeFilter }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
       ShipmentOrder.aggregate([{ $match: filter }, {
         $group: { _id: null, sell: { $sum: '$sellPrice' }, buy: { $sum: '$buyPrice' } },
       }]),
@@ -203,6 +218,11 @@ exports.createOrder = async (req, res) => {
     await resolveInlineVehicle(req, data);
     await applyVehicleSnapshot(data);
 
+    // والحالةُ تُقاس على المفردات الحيّة: المكتوبةُ في الشيفرة وما زاده القسم.
+    if (data.status && !(await isValidStatus(data.status))) {
+      return res.status(400).json({ message: `حالةٌ غير معروفة: ${data.status}` });
+    }
+
     data.agentName = fullName(req.user); // المندوب — stamped, never typed
     data.createdBy = req.user._id;
 
@@ -256,6 +276,10 @@ exports.updateOrder = async (req, res) => {
     // list, the Excel export and the بوليصة keep printing the OLD truck.
     if (data.vehicle && String(data.vehicle) !== String(order.vehicle)) {
       await applyVehicleSnapshot(data);
+    }
+
+    if (data.status && !(await isValidStatus(data.status))) {
+      return res.status(400).json({ message: `حالةٌ غير معروفة: ${data.status}` });
     }
 
     // Answers of since-deleted custom fields must survive an unrelated edit —
@@ -515,6 +539,12 @@ exports.updateCounter = async (req, res) => {
 exports.patchStatus = async (req, res) => {
   try {
     const { status } = req.body;
+    // ── ما كان `enum` يحرسه يُحرَس هنا ──────────────────────────────────────
+    // سقط `enum` من المخطَّط كي يقبلَ ما يزيده القسمُ من إعداداته، فصار الحارسُ
+    // المفرداتِ الحيّة. وبلا هذا السطر تُكتب أيُّ كلمةٍ حالةً.
+    if (!(await isValidStatus(status))) {
+      return res.status(400).json({ message: `حالةٌ غير معروفة: ${status}` });
+    }
     const order = await ShipmentOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Shipment order not found' });
     const from = order.status;
@@ -527,7 +557,7 @@ exports.patchStatus = async (req, res) => {
       by: req.user._id,
       byName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
     });
-    await order.save(); // save() so the enum validates the value
+    await order.save();
     emit('shipmentOrders:updated', { id: String(order._id) });
     // Tell whoever created the order its status moved — unless they moved it.
     if (order.createdBy && String(order.createdBy) !== String(req.user._id)) {
@@ -545,6 +575,21 @@ exports.patchStatus = async (req, res) => {
     res.json({ order });
   } catch (error) {
     res.status(400).json({ message: 'Invalid status' });
+  }
+};
+
+/**
+ * مفرداتُ الحالات — GET /statuses
+ *
+ * تقرؤها الشاشاتُ كلُّها: بطاقاتُ القائمة، والقائمةُ المنسدلة في نموذج الإنشاء،
+ * والتطبيق. فتُغيَّر التسميةُ في الإعدادات مرّةً وتتغيّر في كلّ موضعٍ معًا.
+ */
+exports.listStatuses = async (req, res) => {
+  try {
+    const all = String(req.query.all || '') === '1';
+    res.json({ statuses: await statusVocabulary({ includeInactive: all }) });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load shipment statuses' });
   }
 };
 
@@ -870,15 +915,15 @@ const SYSTEM_FIELDS = [
   { key: 'driverPhone', labelAr: 'جوال السائق', labelEn: 'Driver phone', group: 'shipment', inputType: 'text', order: 6 },
   { key: 'vehicleName', labelAr: 'السيارة / رقم اللوحة', labelEn: 'Vehicle / plate', group: 'shipment', inputType: 'text', order: 7 },
   // الأسعار والتوقيت
-  { key: 'pickupTime', labelAr: 'وقت الاستلام', labelEn: 'Pickup time', group: 'pricing_time', inputType: 'datetime', required: true, order: 1 },
-  { key: 'startTime', labelAr: 'وقت البداية', labelEn: 'Start time', group: 'pricing_time', inputType: 'datetime', order: 2 },
-  { key: 'arrivalTime', labelAr: 'وقت الوصول', labelEn: 'Arrival time', group: 'pricing_time', inputType: 'datetime', order: 3 },
+  // تواريخُ الشحنة باليوم — راجع `inputType` في models/ShipmentOrderField.
+  { key: 'pickupTime', labelAr: 'تاريخ الاستلام', labelEn: 'Pickup date', group: 'pricing_time', inputType: 'date', required: true, order: 1 },
+  { key: 'startTime', labelAr: 'تاريخ البداية', labelEn: 'Start date', group: 'pricing_time', inputType: 'date', order: 2 },
+  { key: 'arrivalTime', labelAr: 'تاريخ الوصول', labelEn: 'Arrival date', group: 'pricing_time', inputType: 'date', order: 3 },
   { key: 'sellPrice', labelAr: 'سعر البيع', labelEn: 'Sell price', group: 'pricing_time', inputType: 'number', required: true, order: 4 },
   { key: 'buyPrice', labelAr: 'سعر الشراء', labelEn: 'Buy price', group: 'pricing_time', inputType: 'number', order: 5 },
   // المدفوعات
   { key: 'driverRentType', labelAr: 'نوع تأجير السائق', labelEn: 'Driver rent type', group: 'payment', inputType: 'cards', options: opts(['راجعة', 'ذهاب فقط', 'ذهاب وعودة']), order: 1 },
   { key: 'paymentMethod', labelAr: 'طريقة الدفع', labelEn: 'Payment method', group: 'payment', inputType: 'cards', options: opts(['آجل', 'نقدي', 'تحويل بنكي']), order: 2 },
-  { key: 'driverRentPrice', labelAr: 'سعر تأجير السائق', labelEn: 'Driver rent price', group: 'payment', inputType: 'number', order: 3 },
   { key: 'branch', labelAr: 'الفرع', labelEn: 'Branch', group: 'payment', inputType: 'select', options: opts(['جدة', 'الرياض', 'الدمام', 'جازان']), order: 4 },
 ];
 
@@ -886,7 +931,19 @@ exports.ensureShipmentOrderDefaults = async () => {
   // Dropped by request — the addresses added typing, not information. Removing
   // them from the seed alone would leave the old rows; removing the rows alone
   // would let the seed resurrect them. Both, idempotently.
-  await ShipmentOrderField.deleteMany({ key: { $in: ['addressFrom', 'addressTo'] } });
+  // ــ ويُحذَف «سعر تأجير السائق» معهما ــــــــــــــــــــــــــــــــــــــ
+  // طُلب رفعُه: السائقُ لا يُؤجَّر بسعرٍ منفصلٍ في هذا القسم — الشراءُ من المورّد
+  // هو الرقم، وخانةٌ ثالثةٌ إلى جانبه تُملأ بالتخمين أو تُترك فارغةً في كلّ صفّ.
+  await ShipmentOrderField.deleteMany({ key: { $in: ['addressFrom', 'addressTo', 'driverRentPrice'] } });
+
+  // ── والمواعيدُ التي بُذرت بالساعة تُحوَّل إلى يوم ───────────────────────────
+  // بُذرت الثلاثةُ `datetime` قبل هذا التغيير، والبذرُ لا يمسّ صفًّا قائمًا —
+  // فتبقى الشاشةُ تسأل عن ساعةٍ إلى الأبد. وهذا تصحيحُ نوعِ سؤالٍ لا إلغاءُ
+  // تعديلٍ لأحد: التسميةُ والترتيبُ وما ضُبط يبقى كما هو.
+  await ShipmentOrderField.updateMany(
+    { key: { $in: ['pickupTime', 'startTime', 'arrivalTime'] }, inputType: 'datetime' },
+    { $set: { inputType: 'date' } },
+  );
 
   for (const f of SYSTEM_FIELDS) {
     // eslint-disable-next-line no-await-in-loop

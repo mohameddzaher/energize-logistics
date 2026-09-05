@@ -24,7 +24,7 @@ const fold = (x: string) => x.toLowerCase()
 const SYSTEM_KEYS = new Set([
   'fromCity', 'toCity', 'truckType', 'cargoType', 'truckLength', 'quantity',
   'pickupTime', 'startTime', 'arrivalTime', 'sellPrice', 'buyPrice',
-  'driverRentType', 'paymentMethod', 'driverRentPrice', 'branch', 'notes',
+  'driverRentType', 'paymentMethod', 'branch', 'notes',
 ]);
 
 interface Msg { who: 'bot' | 'user'; text: string }
@@ -106,7 +106,7 @@ export default function ChatCreatePage() {
     const f = s.field;
     const label = fieldLabel(f, lang as Lang);
     if (f.inputType === 'cards' || f.inputType === 'select') return ar ? `اختر ${label}:` : `Pick ${label}:`;
-    if (f.inputType === 'datetime') return ar ? `${label} — متى؟` : `${label} — when?`;
+    if (f.inputType === 'date' || f.inputType === 'datetime') return ar ? `${label} — متى؟` : `${label} — when?`;
     return ar ? `${label}؟` : `${label}?`;
   }, [ar, lang]);
 
@@ -213,10 +213,14 @@ export default function ChatCreatePage() {
       if (customerId) payload.customer = customerId;
       else if (answers.newCustomerName) payload.newCustomer = { name: answers.newCustomerName, phone: '' };
       if (vehicleId) payload.vehicle = vehicleId;
+      // اليومُ يُرسَل ظهرًا — «2026-09-05» وحدَه يُقرأ منتصفَ الليل بغرينتش
+      // فيصير في الرياض يومَ الرابع.
       ['pickupTime', 'startTime', 'arrivalTime'].forEach((k) => {
-        payload[k] = answers[k] ? new Date(answers[k]).toISOString() : null;
+        payload[k] = answers[k]
+          ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(String(answers[k])) ? `${answers[k]}T12:00:00` : answers[k]).toISOString()
+          : null;
       });
-      ['quantity', 'sellPrice', 'buyPrice', 'driverRentPrice'].forEach((k) => {
+      ['quantity', 'sellPrice', 'buyPrice'].forEach((k) => {
         if (payload[k] === '' || payload[k] === undefined) payload[k] = null;
         else if (payload[k] != null) payload[k] = Number(payload[k]);
       });
@@ -318,7 +322,8 @@ export default function ChatCreatePage() {
         if (v === undefined || v === '') return;
         const disp = ['select', 'cards'].includes(f.inputType)
           ? optionLabel(f.options.find((o) => o.key === v) || { key: v, ar: v, en: v }, lang as Lang)
-          : f.inputType === 'datetime' ? new Date(v).toLocaleString(ar ? 'ar-SA' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : String(v);
+          : f.inputType === 'date' ? new Date(`${v}T12:00:00`).toLocaleDateString(ar ? 'ar-SA' : 'en-GB', { dateStyle: 'medium' })
+            : f.inputType === 'datetime' ? new Date(v).toLocaleString(ar ? 'ar-SA' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : String(v);
         rows.push([fieldLabel(f, lang as Lang), disp]);
       });
       return (
@@ -369,12 +374,16 @@ export default function ChatCreatePage() {
         </div>
       );
     }
-    const inputType = f.inputType === 'number' ? 'number' : f.inputType === 'datetime' ? 'datetime-local' : 'text';
+    const inputType = f.inputType === 'number' ? 'number'
+      : f.inputType === 'date' ? 'date'
+        : f.inputType === 'datetime' ? 'datetime-local' : 'text';
     const sendTyped = () => {
       if (!draft.trim()) { if (!f.required) skip(f); return; }
-      const disp = f.inputType === 'datetime'
-        ? new Date(draft).toLocaleString(ar ? 'ar-SA' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' })
-        : draft;
+      const disp = f.inputType === 'date'
+        ? new Date(`${draft}T12:00:00`).toLocaleDateString(ar ? 'ar-SA' : 'en-GB', { dateStyle: 'medium' })
+        : f.inputType === 'datetime'
+          ? new Date(draft).toLocaleString(ar ? 'ar-SA' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' })
+          : draft;
       answerField(f, draft, disp);
     };
     return (

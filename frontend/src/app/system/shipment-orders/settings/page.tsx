@@ -12,7 +12,8 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
-import { canAdminOrders, ORDER_STATUSES, Lang } from '@/lib/shipmentOrders';
+import { canAdminOrders, vocabLabel, Lang } from '@/lib/shipmentOrders';
+import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { Spinner, PageHeader, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
 import ShipmentFormFields from '@/components/shipment-orders/FormFieldsManager';
 import ReferenceDataManager from '@/components/system/ReferenceDataManager';
@@ -30,6 +31,8 @@ export default function ShipmentOrdersSettingsPage() {
   const admin = canAdminOrders(user);
 
   const [tab, setTab] = useState<Tab>('form');
+  // تشمل المُطفأة: صفحةُ الضبط تُري ما أُخفي كي يُعاد.
+  const statusVocab = useOrderStatuses(true);
   const [counter, setCounter] = useState<{ next: number; start: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -162,29 +165,54 @@ export default function ShipmentOrdersSettingsPage() {
       )}
 
       {tab === 'statuses' && (
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
-            <ListChecks className="w-4 h-4 text-[#f37121]" /> {t('حالات الشحنة', 'Shipment statuses')}
-          </h3>
-          {/* ── لماذا لا تُعدَّل الحالات ────────────────────────────────────────
-              الحالةُ ليست تسميةً بل عقدٌ: التحليلاتُ تعدّ «وصلت»، والتنبيهاتُ
-              تُطلق عند «متأخرة»، والمنصّةُ الخارجيّة تتكلّم بهذه المفاتيح نفسِها.
-              فتُعرَض لتُقرأ، ولا تُحذف من شاشة. */}
-          <p className="text-sm text-slate-500 mb-4">
-            {t('هذه هي دورةُ الشحنة كما يقرؤها النظام والمنصّة الخارجيّة معًا — تُقرأ ولا تُعدَّل: التحليلات تعدّ عليها، والتنبيهات تُطلق منها.',
-               'This is the shipment lifecycle as both this system and the external platform read it — shown, not editable: analytics count on it and alerts fire from it.')}
+        <div className="space-y-4">
+          {/* ── ما يُملَك منها وما لا يُملَك ────────────────────────────────────
+              الحالةُ مفتاحٌ وتسمية. المفتاحُ عقدٌ: التحليلاتُ تعدّ على
+              `arrived`، والتنبيهاتُ تُطلق من `late`، وشرطُ المشتريات في
+              المحفظة يقف على `bond_received`، والمنصّةُ الخارجيّة تتكلّم بها.
+              فالعشرةُ مكتوبةٌ في الشيفرة ولا تُحذف.
+
+              والتسميةُ واللونُ والترتيبُ وأهي مُستعمَلةٌ اليوم — كلُّها هنا،
+              ويُزاد عليها. وما يُغيَّر يظهر في البطاقات وفي نموذج الإنشاء وفي
+              التطبيق في اللحظة نفسِها. */}
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+            <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
+              <ListChecks className="w-4 h-4 text-[#f37121]" /> {t('دورةُ الشحنة الآن', 'The lifecycle as it stands')}
+            </h3>
+            <p className="text-sm text-slate-500 mb-4">
+              {t('هذه هي الحالاتُ كما تظهر للفريق الآن. تُعدَّل تسميتُها ولونُها وترتيبُها — وتُخفى من الاستعمال أو يُزاد عليها — من الجدول أسفلَه. والمفاتيحُ العشرة الأساسيّة لا تُحذف: التحليلاتُ تعدّ عليها والتنبيهاتُ تُطلق منها والمنصّةُ الخارجيّة تتكلّم بها.',
+                 'These are the statuses as the team sees them now. Their label, colour and order are edited — and they can be hidden or added to — in the table below. The ten core keys are never deleted: analytics count on them, alerts fire from them, and the external platform speaks them.')}
+            </p>
+            <ol className="space-y-2">
+              {statusVocab.map((st, i) => (
+                <li key={st.key} className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${st.active ? 'border-slate-200 bg-slate-50' : 'border-dashed border-slate-200 bg-white opacity-60'}`}>
+                  <span className="w-6 h-6 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[11px] font-bold text-slate-500 shrink-0">{i + 1}</span>
+                  <span className="text-xs font-semibold rounded-full px-2.5 py-1 text-white" style={{ background: st.color }}>
+                    {vocabLabel(st, lang as Lang)}
+                  </span>
+                  {!st.active && <span className="text-[11px] text-slate-400">{t('غيرُ مستعملة', 'not in use')}</span>}
+                  {!st.isCore && <span className="text-[11px] text-[#f37121]">{t('مُضافة', 'added')}</span>}
+                  <code className="ms-auto text-[11px] text-slate-400">{st.key}</code>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+            <ReferenceDataManager module="shipment_orders" type="so_status" embedded />
+          </div>
+
+          {/* ── ولماذا لا يُغيَّر المفتاحُ نفسُه ────────────────────────────────
+              المخزَّنُ على الشحنة هو المفتاح. فتُعاد تسميةُ «وصلت» غدًا ولا
+              يتغيّر شيءٌ في السجلّات؛ أمّا تغييرُ المفتاح فيترك كلَّ شحنةٍ قديمةٍ
+              تشير إلى حالةٍ لا وجودَ لها. */}
+          <p className="text-[12px] text-slate-500 leading-relaxed">
+            {t('المخزَّن على الشحنة هو المفتاح لا الاسم — فتغييرُ التسمية آمنٌ على السجلّات كلِّها، مهما كثرت. وإخفاءُ حالةٍ يُخرجها من الشاشات ولا يمسّ شحنةً تحملها.',
+               'What a shipment stores is the key, not the label — renaming is safe across every record, however many. Hiding a status takes it off the screens without touching a shipment that carries it.')}
           </p>
-          <ol className="space-y-2">
-            {ORDER_STATUSES.map((s, i) => (
-              <li key={s.key} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <span className="w-6 h-6 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[11px] font-bold text-slate-500 shrink-0">{i + 1}</span>
-                <span className={`text-xs font-semibold rounded-full px-2.5 py-1 ${s.bg} ${s.text}`}>{ar ? s.ar : s.en}</span>
-                <code className="ms-auto text-[11px] text-slate-400">{s.key}</code>
-              </li>
-            ))}
-          </ol>
         </div>
       )}
+
     </div>
   );
 }

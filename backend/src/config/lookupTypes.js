@@ -177,6 +177,33 @@ const REGISTRY = [
   // ── قوائمُ طلبات الشحنات ──────────────────────────────────────────────────
   // القسمُ وسيطٌ: يشتري الحمولةَ من مورّدٍ ويبيعها لعميل. وهذه مفرداتُ عمله
   // اليوميّ — تُزاد وتُحذف من إعدادات القسم لا من نشرةٍ برمجيّة.
+  // ── حالاتُ الشحنة ─────────────────────────────────────────────────────────
+  // الحالةُ مفتاحٌ لا تسمية: التحليلاتُ تعدّ على `arrived`، والتنبيهاتُ تُطلق من
+  // `late`، والمنصّةُ الخارجيّة تتكلّم بهذه المفاتيح نفسِها. فالمفاتيحُ العشرةُ
+  // عقدٌ مكتوبٌ في الشيفرة (`utils/shipmentOrderStatuses`)، ولا تُحذَف من شاشة.
+  //
+  // والذي يُضبَط من هنا: **الاسمُ الظاهر، ولونُه، وترتيبُه، وأهو مُستعمَلٌ اليوم**
+  // — ومن احتاج حالةً حادية عشرةَ أضافها فتظهر في البطاقات وفي نموذج الإنشاء بلا
+  // نشرة. راجع `statusVocabulary` في `shipmentOrdersController`.
+  {
+    type: 'so_status',
+    module: 'shipment_orders',
+    nameEn: 'Shipment Statuses',
+    nameAr: 'حالات الشحنة',
+    roles: SO_ROLES,
+    seed: [
+      { key: 'requesting', nameEn: 'Requesting', nameAr: 'قيد الطلب', color: '#64748b', order: 1 },
+      { key: 'loading', nameEn: 'Loading', nameAr: 'جاري التحميل', color: '#d97706', order: 2 },
+      { key: 'uploaded', nameEn: 'Uploaded', nameAr: 'تم التحميل', color: '#ca8a04', order: 3 },
+      { key: 'on_way', nameEn: 'On Way', nameAr: 'في الطريق', color: '#2563eb', order: 4 },
+      { key: 'arrived', nameEn: 'Arrived', nameAr: 'وصلت', color: '#4f46e5', order: 5 },
+      { key: 'bond_sent', nameEn: 'Bond Sent', nameAr: 'أُرسل السند', color: '#0891b2', order: 6 },
+      { key: 'bond_received', nameEn: 'Bond Received', nameAr: 'استُلم السند', color: '#059669', order: 7 },
+      { key: 'late', nameEn: 'Late', nameAr: 'متأخرة', color: '#ea580c', order: 8 },
+      { key: 'invoiced', nameEn: 'Invoiced', nameAr: 'تمت الفوترة', color: '#7c3aed', order: 9 },
+      { key: 'cancelled', nameEn: 'Cancelled', nameAr: 'ملغاة', color: '#dc2626', order: 10 },
+    ],
+  },
   {
     type: 'so_branch',
     module: 'shipment_orders',

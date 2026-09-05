@@ -87,15 +87,14 @@ const shipmentOrderSchema = new mongoose.Schema(
 
     // Same lifecycle keys as the ops mirror, so the team reads one vocabulary
     // across both — but stored here, owned here.
-    status: {
-      type: String,
-      enum: [
-        'requesting', 'loading', 'uploaded', 'on_way', 'arrived',
-        'bond_sent', 'bond_received', 'late', 'invoiced', 'cancelled',
-      ],
-      default: 'requesting',
-      index: true,
-    },
+    //
+    // ── ولا `enum` هنا ────────────────────────────────────────────────────
+    // القسمُ يملك أن يزيد حالةً من إعداداته، و`enum` مكتوبةٌ في المخطَّط تجعل
+    // الحالةَ المُضافة تُرفَض عند الحفظ بعد أن ظهرت في الشاشة — فيبدو الإعدادُ
+    // كاذبًا. فالتحقّقُ في المتحكّم مقابل المفردات الحيّة
+    // (`utils/shipmentOrderStatuses`)، وهي التي تعرف المكتوبَ في الشيفرة
+    // والمُضافَ من الإعدادات معًا.
+    status: { type: String, default: 'requesting', trim: true, index: true },
     notes: { type: String, trim: true, default: '' },
 
     // ── المتابعةُ هنا تغييرُ حالةٍ لا مكالمة ────────────────────────────────

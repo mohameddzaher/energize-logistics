@@ -14,7 +14,7 @@ const _systemKeys = {
   'fromCity', 'toCity', 'addressFrom', 'addressTo', 'truckType', 'cargoType',
   'truckLength', 'quantity', 'driverName', 'driverPhone', 'vehicleName',
   'pickupTime', 'startTime', 'arrivalTime', 'sellPrice', 'buyPrice',
-  'driverRentType', 'paymentMethod', 'driverRentPrice', 'branch', 'notes',
+  'driverRentType', 'paymentMethod', 'branch', 'notes',
 };
 
 const _fixedKeys = {'customer', 'waybillNumber', 'status', 'agentName', 'vehicleName', 'driverName', 'driverPhone'};
@@ -37,12 +37,18 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   List<Map<String, dynamic>> _fields = [];
   List<Map<String, dynamic>> _customers = [];
   List<Map<String, dynamic>> _vehicles = [];
+  List<Map<String, dynamic>> _suppliers = [];
   bool _loading = true;
   String? _error;
   bool _saving = false;
 
   Map<String, dynamic>? _customer;
+  // ── المورّدُ أوّلًا، ثمّ شاحنتُه ────────────────────────────────────────────
+  // كما في الويب: يُعرَف المورّدُ أوّلًا ثمّ أيُّ شاحنةٍ من شاحناته — فتُقصَر
+  // القائمةُ على ما يخصّه بدل مئات اللوحات معًا.
+  Map<String, dynamic>? _supplier;
   Map<String, dynamic>? _vehicle;
+  bool _savingSupplier = false;
   bool _newCustomer = false;
   final _ncName = TextEditingController();
   final _ncPhone = TextEditingController();
@@ -71,12 +77,22 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         Api.instance.get('/api/shipment-orders/fields'),
         Api.instance.get('/api/shipment-orders/customers').catchError((_) => <String, dynamic>{}),
         Api.instance.get('/api/shipment-orders/vehicles').catchError((_) => <String, dynamic>{}),
+        Api.instance.get('/api/shipment-orders/suppliers').catchError((_) => <String, dynamic>{}),
       ]);
       if (!mounted) return;
       setState(() {
         _fields = List<Map<String, dynamic>>.from(results[0]['fields'] ?? []);
         _customers = List<Map<String, dynamic>>.from(results[1]['customers'] ?? []);
         _vehicles = List<Map<String, dynamic>>.from(results[2]['vehicles'] ?? []);
+        _suppliers = List<Map<String, dynamic>>.from(results[3]['suppliers'] ?? []);
+        // ── والاستلامُ والبدايةُ اليومَ حتى يُقال غيرُ ذلك ──────────────────
+        // الشحنةُ تُسجَّل ساعةَ تُحجَز، فيومُها هو اليوم في كلّ مرّةٍ تقريبًا.
+        if (!_editing) {
+          final t = DateTime.now();
+          final iso = '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
+          _form['pickupTime'] = iso;
+          _form['startTime'] = iso;
+        }
         if (_editing) {
           final o = widget.order!;
           for (final f in _fields) {
@@ -134,6 +150,14 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     setState(() {
       _vehicle = v;
       _newVehicle = false;
+      // اختيارُ الشاحنة يُسمّي مورّدَها من نفسِه — لا يُسأل عنه مرّتين.
+      final sup = v['supplier'];
+      final sid = sup is Map ? sup['_id'] : sup;
+      if (sid != null) {
+        for (final sp in _suppliers) {
+          if (sp['_id'] == sid) _supplier = sp;
+        }
+      }
       if ((v['defaultDriverName'] ?? '').toString().isNotEmpty) {
         _form['driverName'] = v['defaultDriverName'];
         _ctrls.remove('driverName');
@@ -191,6 +215,61 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     );
   }
 
+  /// مورّدٌ جديد يُسجَّل في لحظته — لا عند حفظ الشحنة.
+  ///
+  /// من أضافه ثمّ ترك النموذج يجب أن يجده في صفحة المورّدين، ويجده زميلُه.
+  Future<void> _addSupplier() async {
+    final nameC = TextEditingController();
+    final phoneC = TextEditingController();
+    var type = 'company';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => StatefulBuilder(builder: (c, setS) => AlertDialog(
+        title: Text(tr('مورّد جديد', 'New supplier')),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: nameC, autofocus: true, decoration: InputDecoration(labelText: tr('الاسم *', 'Name *'))),
+          const SizedBox(height: 8),
+          TextField(controller: phoneC, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: tr('الجوال', 'Phone'))),
+          const SizedBox(height: 10),
+          Row(children: [
+            for (final t in const [('company', 'شركة', 'Company'), ('freelancer', 'فريلانسر', 'Freelancer')])
+              Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: ChoiceChip(
+                  selected: type == t.$1,
+                  onSelected: (_) => setS(() => type = t.$1),
+                  label: Text(tr(t.$2, t.$3)),
+                ),
+              ),
+          ]),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save'))),
+        ],
+      )),
+    );
+    if (ok != true || nameC.text.trim().isEmpty) return;
+    setState(() => _savingSupplier = true);
+    try {
+      final d = await Api.instance.post('/api/shipment-orders/suppliers', {
+        'name': nameC.text.trim(), 'phone': phoneC.text.trim(), 'type': type,
+      });
+      final sup = Map<String, dynamic>.from(d['supplier'] ?? {});
+      if (!mounted) return;
+      setState(() {
+        _suppliers = [..._suppliers, sup];
+        _supplier = sup;
+        _vehicle = null;
+        _savingSupplier = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _savingSupplier = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   Future<void> _save() async {
     if (_saving) return;
     _missing.clear();
@@ -225,7 +304,11 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     }
     if (_vehicle != null) payload['vehicle'] = _vehicle!['_id'];
     if (_newVehicle && _nvPlate.text.trim().isNotEmpty) {
-      payload['newVehicle'] = {'plate': _nvPlate.text.trim(), 'name': _nvName.text.trim()};
+      payload['newVehicle'] = {
+        'plate': _nvPlate.text.trim(),
+        'name': _nvName.text.trim(),
+        'supplierId': _supplier?['_id'],
+      };
     }
     // القيم اليدوية للسائق تبقى إن لم تأتِ من شاحنة مسجلة.
     for (final k in ['driverName', 'driverPhone']) {
@@ -273,6 +356,36 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
           _form[k] = v;
           if (k == 'fromCity' || k == 'toCity') _applyRoutePrice();
         }),
+      );
+    }
+
+    // ── و«يوم» غيرُ «لحظة» ──────────────────────────────────────────────────
+    // مواعيدُ الشحنة تُكتب باليوم: أحدٌ لا يعرف أنّ الاستلام ٧:٤٢، ومن سُئل عن
+    // ساعةٍ كتب واحدةً ليمضي.
+    if (type == 'date') {
+      final current = (_form[k] ?? '').toString();
+      final dt = DateTime.tryParse(current)?.toLocal();
+      return OutlinedButton.icon(
+        style: OutlinedButton.styleFrom(
+          alignment: AlignmentDirectional.centerStart,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          side: BorderSide(color: miss ? T.danger : Colors.black12),
+        ),
+        onPressed: () async {
+          final d = await showDatePicker(
+            context: context,
+            initialDate: dt ?? DateTime.now(),
+            firstDate: DateTime.now().subtract(const Duration(days: 365)),
+            lastDate: DateTime.now().add(const Duration(days: 365)),
+          );
+          if (d == null || !mounted) return;
+          setState(() => _form[k] = '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}');
+        },
+        icon: Icon(Icons.event, size: 17, color: miss ? T.danger : T.navy),
+        label: Text(
+          dt == null ? (f['required'] == true ? '$label *' : label) : '$label: ${dt.day}/${dt.month}/${dt.year}',
+          style: TextStyle(fontSize: 13, color: miss ? T.danger : T.ink),
+        ),
       );
     }
 
@@ -370,18 +483,51 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                         Row(children: [
                           const Icon(Icons.local_shipping_outlined, size: 18, color: T.orange),
                           const SizedBox(width: 6),
-                          Text(tr('الشاحنة والسائق', 'Truck & driver'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                          Text(tr('المورّد والشاحنة', 'Supplier & truck'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                           const Spacer(),
                           TextButton(
                             onPressed: () => setState(() { _newVehicle = !_newVehicle; if (_newVehicle) _vehicle = null; }),
                             child: Text(_newVehicle ? tr('اختيار من السجل', 'Pick existing') : tr('+ شاحنة جديدة', '+ New'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
                           ),
                         ]),
+                        // ── المورّدُ أوّلًا ──────────────────────────────────
+                        Row(children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
+                              onPressed: () async {
+                                final sp = await _pickSheet<Map<String, dynamic>>(
+                                    tr('الموردين', 'suppliers'), _suppliers, (x) => (x['name'] ?? '').toString(),
+                                    sub: (x) => (x['phone'] ?? '').toString());
+                                if (sp != null) setState(() { _supplier = sp; _vehicle = null; });
+                              },
+                              icon: const Icon(Icons.storefront_outlined, size: 17),
+                              label: Text(_supplier == null ? tr('اختر المورّد…', 'Choose supplier…') : (_supplier!['name'] ?? '').toString(),
+                                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: tr('مورّد جديد', 'New supplier'),
+                            onPressed: _savingSupplier ? null : _addSupplier,
+                            icon: _savingSupplier
+                                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                                : const Icon(Icons.add_circle_outline, color: T.orange),
+                          ),
+                        ]),
+                        const SizedBox(height: 8),
                         if (!_newVehicle)
                           OutlinedButton.icon(
                             style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
                             onPressed: () async {
-                              final v = await _pickSheet<Map<String, dynamic>>(tr('الشاحنات', 'vehicles'), _vehicles, (v) => (v['plate'] ?? '').toString(),
+                              // شاحناتُ المورّد المختار وحدَها متى اختير.
+                              final pool = _supplier == null
+                                  ? _vehicles
+                                  : _vehicles.where((v) {
+                                      final sup = v['supplier'];
+                                      final sid = sup is Map ? sup['_id'] : sup;
+                                      return sid == _supplier!['_id'];
+                                    }).toList();
+                              final v = await _pickSheet<Map<String, dynamic>>(tr('الشاحنات', 'vehicles'), pool, (v) => (v['plate'] ?? '').toString(),
                                   sub: (v) => '${v['name'] ?? ''} ${v['defaultDriverName'] ?? ''}'.trim());
                               if (v != null) _applyVehicle(v);
                             },

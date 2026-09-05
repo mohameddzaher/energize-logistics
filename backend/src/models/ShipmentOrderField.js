@@ -28,9 +28,13 @@ const shipmentOrderFieldSchema = new mongoose.Schema(
 
     // 'cards' renders the options as tappable tiles — the phone-friendly answer
     // for short lists (truck types); 'select' for long ones (cities).
+    // ── و«يوم» غيرُ «لحظة» ──────────────────────────────────────────────────
+    // مواعيدُ الشحنة تُكتب باليوم لا بالساعة: أحدٌ لا يعرف أنّ الاستلام الساعةَ
+    // ٧:٤٢، ومن سُئل عن ساعةٍ كتب واحدةً ليمضي — فيصير في القاعدة رقمٌ دقيقُ
+    // الشكل كاذبُ المعنى. فـ`date` تسأل عن اليوم وحدَه.
     inputType: {
       type: String,
-      enum: ['select', 'cards', 'text', 'number', 'datetime', 'textarea'],
+      enum: ['select', 'cards', 'text', 'number', 'date', 'datetime', 'textarea'],
       default: 'text',
     },
     options: [{

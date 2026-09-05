@@ -16,9 +16,10 @@ import {
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
-  ShipmentOrder, OrderCustomer, ORDER_STATUSES, orderStatus, statusLabel,
-  fmtDT, money, canEditOrders, canAdminOrders, Lang,
+  ShipmentOrder, OrderCustomer, orderStatus, statusLabel,
+  fmtDT, money, canEditOrders, canAdminOrders, Lang, vocabLabel,
 } from '@/lib/shipmentOrders';
+import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import type { DispatchSheetRow } from '@/lib/dispatchSheetExcelParser';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 
@@ -79,7 +80,17 @@ export default function ShipmentOrdersPage() {
 
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  // ── الحالةُ تُنتقى بالتراكم ───────────────────────────────────────────────
+  // «أرِني المتأخّرةَ وما في الطريق معًا» سؤالٌ يُسأل كلَّ صباح، وقائمةٌ منسدلة
+  // تجيب عن واحدةٍ فقط. فالبطاقاتُ فوق الجدول هي الفلتر — كما في شاشة شحنات
+  // المنصّة، والفريقُ يعرفها.
+  const [statuses, setStatuses] = useState<string[]>([]);
+  const statusVocab = useOrderStatuses();
+  const statusFilter = statuses.join(',');
+  const toggleStatus = (k: string) => {
+    setStatuses((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
+    setPage(1);
+  };
   // ── الخاصّ بنا أم المنصّة؟ ────────────────────────────────────────────────
   // شحناتُ المنصّة تحمل رقمَ كشف تخريجٍ حقيقيًّا يُحاسَب عليه، وشحناتُنا —
   // تجريبيّةً اليوم — يسبق رقمَها حرف. ومن يقرأ تقريرًا يجب أن يعرف أهو عن
@@ -247,7 +258,6 @@ export default function ShipmentOrdersPage() {
 
   const inFlight = ['loading', 'uploaded', 'on_way'].reduce((s, k) => s + (stats?.byStatus[k] || 0), 0);
   const done = ['arrived', 'bond_sent', 'bond_received', 'invoiced'].reduce((s, k) => s + (stats?.byStatus[k] || 0), 0);
-  const margin = (stats?.sellTotal || 0) - (stats?.buyTotal || 0);
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -275,12 +285,46 @@ export default function ShipmentOrdersPage() {
 
       {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      {/* ── بطاقاتُ الحالات: هي الفلتر ─────────────────────────────────────
+          الرقمُ فوق الاسم يُقرأ من بعيد، والضغطُ ينتقي — وتنتقي أكثرَ من واحدة.
+          والأعدادُ محسوبةٌ تحت بقيّة الفلاتر لا تحت الحالة، فمن ضغط «متأخرة»
+          يظلّ يرى كم «في الطريق» ليضمّها. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+        <button type="button" onClick={() => { setStatuses([]); setPage(1); }}
+          className={`text-start rounded-xl p-3 border transition-all ${statuses.length === 0 ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'}`}>
+          <p className="text-xl font-bold tabular-nums">{total}</p>
+          <p className="text-[11px] mt-0.5">{ar ? 'كل الشحنات' : 'All shipments'}</p>
+        </button>
+        {statusVocab.map((s) => {
+          const on = statuses.includes(s.key);
+          return (
+            <button key={s.key} type="button" onClick={() => toggleStatus(s.key)}
+              className={`text-start rounded-xl p-3 border transition-all ${on ? 'text-white border-transparent ring-2 ring-offset-1' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'}`}
+              style={on ? { background: s.color, boxShadow: `0 0 0 2px ${s.color}` } : undefined}>
+              <p className="text-xl font-bold tabular-nums">{stats?.byStatus?.[s.key] ?? 0}</p>
+              <p className="text-[11px] mt-0.5 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: on ? '#fff' : s.color }} />
+                {vocabLabel(s, lang as Lang)}
+              </p>
+            </button>
+          );
+        })}
+      </div>
+      {statuses.length > 0 && (
+        <div className="text-xs text-slate-500">
+          {ar ? 'محدد' : 'Selected'}: {statuses.length} · {ar ? 'إجمالي' : 'total'} {total}
+          <button type="button" onClick={() => { setStatuses([]); setPage(1); }} className="ms-2 text-[#f37121] hover:underline">{ar ? 'مسح' : 'clear'}</button>
+        </div>
+      )}
+
+      {/* ── والباقي عددان لا خمسة ─────────────────────────────────────────
+          «إجمالي البيع» و«هامش الربح» كانا فوق شاشةٍ يفتحها فريقُ التشغيل كلَّ
+          يوم — رقمان ماليّان لا يُقرآن هنا ولا يُتصرَّف بهما، ومكانُهما صفحةُ
+          التحليلات. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <StatCard label={ar ? 'إجمالي الشحنات' : 'Total shipments'} value={total} accent="text-[#f37121]" />
         <StatCard label={ar ? 'قيد التنفيذ' : 'In flight'} value={inFlight} accent="text-blue-600" />
         <StatCard label={ar ? 'وصلت / مكتملة' : 'Arrived / done'} value={done} accent="text-emerald-600" />
-        <StatCard label={ar ? 'إجمالي البيع' : 'Sell total'} value={money(stats?.sellTotal)} accent="text-slate-900" />
-        <StatCard label={ar ? 'هامش الربح' : 'Margin'} value={money(margin)} accent={margin >= 0 ? 'text-emerald-600' : 'text-red-600'} />
       </div>
 
       <div className="flex flex-wrap gap-3 items-center">
@@ -304,12 +348,6 @@ export default function ShipmentOrdersPage() {
               {count != null && <span className="ms-1 text-slate-400 tabular-nums">{count}</span>}
             </button>
           ))}
-        </div>
-        <div className="w-44 grow sm:grow-0">
-          <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
-            <option value="">{ar ? 'كل الحالات' : 'All statuses'}</option>
-            {ORDER_STATUSES.map((s) => <option key={s.key} value={s.key}>{ar ? s.ar : s.en}</option>)}
-          </Select>
         </div>
         <div className="w-56 grow sm:grow-0">
           <Select value={customerFilter} onChange={(e) => { setCustomerFilter(e.target.value); setPage(1); }}>
@@ -360,6 +398,11 @@ export default function ShipmentOrdersPage() {
               </td></tr>
             ) : orders.map((o) => {
               const st = orderStatus(o.status);
+              // حالةٌ زادها القسمُ من إعداداته لا صفوفَ ألوانٍ لها في الشيفرة —
+              // فتُلوَّن بلونها المضبوط بدل أن تظهر شارةً بلا لون.
+              const sv = statusVocab.find((x) => x.key === o.status) || null;
+              const pillStyle = st ? undefined : (sv ? { background: `${sv.color}1a`, color: sv.color } : undefined);
+              const pillLabel = sv ? vocabLabel(sv, lang as Lang) : statusLabel(o.status, lang as Lang);
               return (
                 <tr key={o._id} className="border-b border-slate-200/70 hover:bg-slate-50">
                   <td className="px-3 py-3">
@@ -406,14 +449,15 @@ export default function ShipmentOrdersPage() {
                         فيها سجلُّ الانتقالات السابقة. */}
                     {editor ? (
                       <button type="button" onClick={() => openFollowUp(o)} disabled={busyId === o._id}
-                        className={`inline-flex items-center gap-1.5 text-xs font-medium rounded-full px-2.5 py-1.5 transition-opacity hover:opacity-80 ${st?.bg || 'bg-slate-100'} ${st?.text || 'text-slate-700'}`}
+                        className={`inline-flex items-center gap-1.5 text-xs font-medium rounded-full px-2.5 py-1.5 transition-opacity hover:opacity-80 ${st ? `${st.bg} ${st.text}` : 'bg-slate-100 text-slate-700'}`}
+                        style={pillStyle}
                         title={ar ? 'تسجيل متابعة' : 'Record a follow-up'}>
                         {busyId === o._id ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3 opacity-60" />}
-                        {statusLabel(o.status, lang as Lang)}
+                        {pillLabel}
                         {(o.statusLog || []).length ? <span className="opacity-60">· {(o.statusLog || []).length}</span> : null}
                       </button>
                     ) : (
-                      <span className={`text-xs font-medium rounded-full px-2.5 py-1 ${st?.bg} ${st?.text}`}>{statusLabel(o.status, lang as Lang)}</span>
+                      <span className={`text-xs font-medium rounded-full px-2.5 py-1 ${st ? `${st.bg} ${st.text}` : 'bg-slate-100 text-slate-700'}`} style={pillStyle}>{pillLabel}</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -479,13 +523,14 @@ export default function ShipmentOrdersPage() {
               <div>
                 <label className="block text-sm font-semibold text-slate-800 mb-2">{ar ? 'الحالة' : 'Status'}</label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {ORDER_STATUSES.map((s2) => {
+                  {statusVocab.map((s2) => {
                     const on = fu.status === s2.key;
                     return (
                       <button key={s2.key} type="button" onClick={() => setFu({ ...fu, status: s2.key })}
                         className={`text-xs font-semibold rounded-lg px-2.5 py-2 border transition-colors ${
-                          on ? `${s2.bg} ${s2.text} border-transparent ring-2 ring-[#f37121]` : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
-                        {ar ? s2.ar : s2.en}
+                          on ? 'text-white border-transparent ring-2 ring-[#f37121]' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}
+                        style={on ? { background: s2.color } : undefined}>
+                        {vocabLabel(s2, lang as Lang)}
                       </button>
                     );
                   })}

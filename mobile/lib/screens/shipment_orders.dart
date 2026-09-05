@@ -16,6 +16,8 @@ class ShipmentOrdersScreen extends StatefulWidget {
   State<ShipmentOrdersScreen> createState() => _ShipmentOrdersScreenState();
 }
 
+/// الحالاتُ الأساسيّة — تُرسَم بها الشاشةُ قبل أن يردّ الخادم، وتبقى إن تعذّر
+/// الاتّصال. والمضبوطُ من إعدادات القسم يحلّ محلَّها متى وصل.
 const _soStatuses = {
   'requesting': ('قيد الطلب', 'Requesting', T.inkFaint),
   'loading': ('جاري التحميل', 'Loading', T.warn),
@@ -29,18 +31,59 @@ const _soStatuses = {
   'cancelled': ('ملغاة', 'Cancelled', T.danger),
 };
 
+/// سجلُّ حالةٍ كما تعرضه الشاشة: مفتاحُها واسمُها ولونُها.
+typedef _Status = (String key, String ar, String en, Color color);
+
+Color _hex(String? v) {
+  final h = (v ?? '').replaceAll('#', '').trim();
+  if (h.length != 6) return T.inkFaint;
+  final n = int.tryParse(h, radix: 16);
+  return n == null ? T.inkFaint : Color(0xFF000000 | n);
+}
+
 class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
   String? _error;
   String _q = '';
-  String _status = '';
+  // ── والحالةُ تُنتقى بالتراكم ─────────────────────────────────────────────
+  // «أرِني المتأخّرةَ وما في الطريق معًا» — سؤالٌ يُسأل كلَّ صباح، وشريحةٌ
+  // واحدةٌ تجيب عن نصفه.
+  final Set<String> _statuses = {};
+  // مضبوطةٌ من إعدادات القسم؛ والقائمةُ المكتوبةُ أعلاه ريثما تصل.
+  List<_Status> _vocab = _soStatuses.entries
+      .map((e) => (e.key, e.value.$1, e.value.$2, e.value.$3))
+      .toList();
   late final void Function() _onLive;
+
+  _Status _statusOf(dynamic key) => _vocab.firstWhere(
+        (v) => v.$1 == key,
+        orElse: () => ('', '—', '—', T.inkFaint),
+      );
+
+  Future<void> _loadStatuses() async {
+    try {
+      final d = await Api.instance.get('/api/shipment-orders/statuses');
+      final rows = List<Map<String, dynamic>>.from(d['statuses'] ?? []);
+      if (!mounted || rows.isEmpty) return;
+      setState(() {
+        _vocab = rows
+            .map((r) => (
+                  (r['key'] ?? '').toString(),
+                  (r['ar'] ?? '').toString(),
+                  (r['en'] ?? '').toString(),
+                  _hex(r['color'] as String?),
+                ))
+            .toList();
+      });
+    } catch (_) {/* المكتوبةُ تكفي */}
+  }
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadStatuses();
     _onLive = () => _load();
     Live.instance.on('shipmentOrders:updated', _onLive);
   }
@@ -53,7 +96,8 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
 
   Future<void> _load() async {
     try {
-      final qs = _status.isEmpty ? '' : '&status=$_status';
+      // مفصولةً بفاصلة — الخادمُ يقرؤها `\$in`.
+      final qs = _statuses.isEmpty ? '' : '&status=${_statuses.join(',')}';
       final d = await Api.instance.get('/api/shipment-orders/orders?limit=100$qs');
       if (!mounted) return;
       setState(() { _rows = List<Map<String, dynamic>>.from(d['orders'] ?? []); _loading = false; _error = null; });
@@ -134,23 +178,45 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
-                        children: _soStatuses.entries.map((e) {
-                          final selected = _status == e.key;
-                          return Padding(
+                        children: [
+                          Padding(
                             padding: const EdgeInsets.only(left: 6),
                             child: FilterChip(
-                              selected: selected,
-                              onSelected: (_) { setState(() { _status = selected ? '' : e.key; _loading = true; }); _load(); },
-                              label: Text(tr(e.value.$1, e.value.$2)),
-                              labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: selected ? Colors.white : e.value.$3),
-                              selectedColor: e.value.$3,
-                              backgroundColor: e.value.$3.withValues(alpha: 0.1),
+                              selected: _statuses.isEmpty,
+                              onSelected: (_) { setState(() { _statuses.clear(); _loading = true; }); _load(); },
+                              label: Text(tr('الكل', 'All')),
+                              labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _statuses.isEmpty ? Colors.white : T.navy),
+                              selectedColor: T.navy,
+                              backgroundColor: T.navy.withValues(alpha: 0.1),
                               checkmarkColor: Colors.white,
                               side: BorderSide.none,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                             ),
-                          );
-                        }).toList(),
+                          ),
+                          ..._vocab.map((v) {
+                            final selected = _statuses.contains(v.$1);
+                            return Padding(
+                              padding: const EdgeInsets.only(left: 6),
+                              child: FilterChip(
+                                selected: selected,
+                                onSelected: (_) {
+                                  setState(() {
+                                    selected ? _statuses.remove(v.$1) : _statuses.add(v.$1);
+                                    _loading = true;
+                                  });
+                                  _load();
+                                },
+                                label: Text(tr(v.$2, v.$3)),
+                                labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: selected ? Colors.white : v.$4),
+                                selectedColor: v.$4,
+                                backgroundColor: v.$4.withValues(alpha: 0.1),
+                                checkmarkColor: Colors.white,
+                                side: BorderSide.none,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              ),
+                            );
+                          }),
+                        ],
                       ),
                     ),
                   ),
@@ -165,7 +231,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (c, i) {
                                 final r = filtered[i];
-                                final st = _soStatuses[r['status']] ?? ('—', '—', T.inkFaint);
+                                final st = _statusOf(r['status']);
                                 return FadeSlideIn(
                                   delayMs: (i * 15).clamp(0, 150),
                                   child: Pressable(
@@ -191,7 +257,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                                       catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
                                     },
                                     child: AppCard(
-                                    topAccent: st.$3,
+                                    topAccent: st.$4,
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                       Row(children: [
                                         // المرجعُ لا الرقمُ الخام: المنقولُ من المنصّة لا رقمَ بوليصةٍ
@@ -208,7 +274,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                                           child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.print_outlined, size: 19, color: T.navy)),
                                         ),
                                         const SizedBox(width: 6),
-                                        Chip2(tr(st.$1, st.$2), st.$3),
+                                        Chip2(tr(st.$2, st.$3), st.$4),
                                       ]),
                                       const SizedBox(height: 4),
                                       Text('${r['fromCity'] ?? '—'} ← ${r['toCity'] ?? '—'}${(r['customerName'] ?? '').toString().isNotEmpty ? ' · ${r['customerName']}' : ''}',
@@ -219,12 +285,12 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                                           Chip2(r['vehiclePlate'], T.navy, icon: Icons.local_shipping_outlined),
                                         const Spacer(),
                                         DropdownButton<String>(
-                                          value: _soStatuses.containsKey(r['status']) ? r['status'] : null,
+                                          value: _vocab.any((v) => v.$1 == r['status']) ? r['status'] as String : null,
                                           hint: Text(tr('الحالة', 'Status'), style: const TextStyle(fontSize: 12)),
                                           underline: const SizedBox.shrink(),
                                           style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: T.ink),
-                                          items: _soStatuses.entries
-                                              .map((e) => DropdownMenuItem(value: e.key, child: Text(tr(e.value.$1, e.value.$2))))
+                                          items: _vocab
+                                              .map((v) => DropdownMenuItem(value: v.$1, child: Text(tr(v.$2, v.$3))))
                                               .toList(),
                                           onChanged: (v) { if (v != null) _setStatus(r, v); },
                                         ),

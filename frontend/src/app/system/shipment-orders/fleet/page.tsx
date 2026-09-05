@@ -16,6 +16,7 @@ import {
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { OrderSupplier, OrderVehicle, FormField, optionLabel, canEditOrders, canAdminOrders, Lang } from '@/lib/shipmentOrders';
+import { ContactButtons } from '@/components/crm/CrmKit';
 
 const EMPTY_SUPPLIER = { name: '', type: 'company' as 'company' | 'freelancer', phone: '', email: '', notes: '' };
 const EMPTY_VEHICLE = { plate: '', name: '', truckType: '', supplier: '', defaultDriverName: '', defaultDriverPhone: '', notes: '' };
@@ -214,33 +215,59 @@ export default function FleetPage() {
         </div>
       )}
 
+      {/* ── والمورّدون جدولٌ لا بطاقات ────────────────────────────────────────
+          كانا سجلَّين في صفحةٍ واحدة، أحدُهما جدولٌ والآخرُ بطاقتان في الصفّ:
+          فيُقرأ الأوّلُ بالعين نزولًا ويُقرأ الثاني بالقفز بين المربّعات، ولا
+          يُفرَز ولا يُقارَن. والسجلُّ يُقرأ صفًّا صفًّا. */}
       {tab === 'suppliers' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {shownSuppliers.map((s) => (
-            <div key={s._id} className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${s.type === 'freelancer' ? 'bg-violet-500/15 text-violet-600' : 'bg-blue-500/15 text-blue-600'}`}>
-                    {s.type === 'freelancer' ? <UserIcon className="w-5 h-5" /> : <Building2 className="w-5 h-5" />}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="font-bold text-slate-900 truncate">{s.name}</p>
-                    <p className="text-xs text-slate-500">
-                      {s.type === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : (ar ? 'شركة' : 'Company')}
-                      {s.phone ? ` · ${s.phone}` : ''}
-                      {` · ${s.vehicleCount || 0} ${ar ? 'سيارة' : 'vehicles'}`}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {editor && <button type="button" onClick={() => { setEditingSup(s); setSupForm({ ...EMPTY_SUPPLIER, ...s }); setSupModal(true); }} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}><Pencil className="w-4 h-4" /></button>}
-                  {canAdminOrders(user) && <button type="button" onClick={() => removeSupplier(s)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={ar ? 'إزالة' : 'Remove'}><Trash2 className="w-4 h-4" /></button>}
-                </div>
-              </div>
-              {s.notes && <p className="mt-2 text-xs text-slate-500">{s.notes}</p>}
-            </div>
-          ))}
-          {suppliers.length === 0 && <p className="text-slate-500 py-10 text-center lg:col-span-2">{ar ? 'لا يوجد مورّدون بعد — أول سيارة مورّد في شحنة تُسجّل صاحبها هنا.' : 'No suppliers yet — the first supplier truck on a shipment registers them.'}</p>}
+        <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+          <table className="w-full text-sm">
+            <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
+              <th className={th}>{ar ? 'المورّد' : 'Supplier'}</th>
+              <th className={th}>{ar ? 'النوع' : 'Type'}</th>
+              <th className={th}>{ar ? 'الجوال' : 'Phone'}</th>
+              <th className={th}>{ar ? 'البريد' : 'Email'}</th>
+              <th className={th}>{ar ? 'سياراته' : 'Vehicles'}</th>
+              <th className={th}>{ar ? 'ملاحظات' : 'Notes'}</th>
+              <th className={th}>{ar ? 'إجراءات' : 'Actions'}</th>
+            </tr></thead>
+            <tbody>
+              {shownSuppliers.map((s) => (
+                <tr key={s._id} className="border-b border-slate-200/70 hover:bg-slate-50">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${s.type === 'freelancer' ? 'bg-violet-500/15 text-violet-600' : 'bg-blue-500/15 text-blue-600'}`}>
+                        {s.type === 'freelancer' ? <UserIcon className="w-4 h-4" /> : <Building2 className="w-4 h-4" />}
+                      </span>
+                      <span className="font-bold text-slate-900 truncate">{s.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    {s.type === 'freelancer'
+                      ? <SmallBadge bg="bg-violet-500/15" text="text-violet-700" label={ar ? 'فريلانسر' : 'Freelancer'} />
+                      : <SmallBadge bg="bg-blue-500/15" text="text-blue-700" label={ar ? 'شركة' : 'Company'} />}
+                  </td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
+                    {(s.phone || '').trim()
+                      ? <div className="flex items-center gap-2"><span className="font-mono text-[13px]">{s.phone}</span><ContactButtons phone={s.phone} size={15} /></div>
+                      : <span className="text-slate-300">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600 max-w-[220px] truncate" title={s.email || ''}>{s.email || '—'}</td>
+                  {/* عددُ سياراته: من له سيّارةٌ واحدةٌ ليس كمن له عشرون، والفرقُ
+                      يُقرأ من الرقم قبل أن يُفتَح أيُّ ملفّ. */}
+                  <td className="px-4 py-3 tabular-nums text-slate-700">{s.vehicleCount || 0}</td>
+                  <td className="px-4 py-3 text-slate-500 max-w-[260px] truncate" title={s.notes || ''}>{s.notes || '—'}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-1">
+                      {editor && <button type="button" onClick={() => { setEditingSup(s); setSupForm({ ...EMPTY_SUPPLIER, ...s }); setSupModal(true); }} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}><Pencil className="w-4 h-4" /></button>}
+                      {canAdminOrders(user) && <button type="button" onClick={() => removeSupplier(s)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={ar ? 'إزالة' : 'Remove'}><Trash2 className="w-4 h-4" /></button>}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {suppliers.length === 0 && <tr><td colSpan={7} className="text-center text-slate-500 py-12">{ar ? 'لا يوجد مورّدون بعد — أول سيارة مورّد في شحنة تُسجّل صاحبها هنا.' : 'No suppliers yet — the first supplier truck on a shipment registers them.'}</td></tr>}
+            </tbody>
+          </table>
         </div>
       )}
 

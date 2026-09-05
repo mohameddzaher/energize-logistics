@@ -26,6 +26,7 @@ const TYPE_LABELS: Record<FormField['inputType'], { ar: string; en: string }> = 
   cards: { ar: 'بطاقات اختيار', en: 'Cards' },
   text: { ar: 'خانة كتابة', en: 'Text' },
   number: { ar: 'رقم', en: 'Number' },
+  date: { ar: 'تاريخ', en: 'Date' },
   datetime: { ar: 'تاريخ ووقت', en: 'Date & time' },
   textarea: { ar: 'نص طويل', en: 'Long text' },
 };

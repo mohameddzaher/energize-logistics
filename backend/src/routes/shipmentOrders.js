@@ -24,6 +24,8 @@ router.delete('/orders/:id', authorize(...ADMIN_ROLES), so.deleteOrder);
 router.get('/analytics', so.getAnalytics);
 
 // عدّادُ البوالص — يُقرأ للجميع ويُقدَّم لمن يملك القسم.
+// مفرداتُ الحالات — تُقرأ للجميع، وتُضبَط من صفحة الإعدادات عبر /api/lookups.
+router.get('/statuses', so.listStatuses);
 router.get('/counter', so.getCounter);
 router.put('/counter', authorize(...ADMIN_ROLES), so.updateCounter);
 

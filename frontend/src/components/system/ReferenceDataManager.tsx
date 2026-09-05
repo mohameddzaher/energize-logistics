@@ -35,7 +35,18 @@ const EMPTY = { nameEn: '', nameAr: '', color: '#f37121', isActive: true };
  * قسمٍ بعينه حين يُمرَّر `module`. ونسخُها مرّتين يعني أن يُصلَح عيبٌ في إحداهما
  * ويبقى في الأخرى — وقوائمُ المرجع بالذات لا تحتمل شاشتين تختلفان.
  */
-export default function ReferenceDataManager({ module: onlyModule, embedded }: { module?: string; embedded?: boolean }) {
+export default function ReferenceDataManager({ module: onlyModule, type: onlyType, embedded }: {
+  module?: string;
+  /**
+   * قائمةٌ واحدةٌ بعينها.
+   *
+   * تبويبٌ في إعدادات قسمٍ عن شيءٍ واحد — «حالات الشحنة» مثلًا — لا يريد عمودَ
+   * اختيارِ القائمة بجانبه: القائمةُ معروفةٌ من عنوان التبويب، وعمودٌ فيه اسمٌ
+   * واحدٌ يسأل سؤالًا لا جواب له.
+   */
+  type?: string;
+  embedded?: boolean;
+}) {
   const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
@@ -58,12 +69,14 @@ export default function ReferenceDataManager({ module: onlyModule, embedded }: {
   const loadTypes = useCallback(async () => {
     try {
       const d = await api.get<{ types: LookupType[] }>('/api/lookups/types');
-      const all = (d.types || []).filter((t) => !onlyModule || t.module === onlyModule);
+      const all = (d.types || [])
+        .filter((t) => !onlyModule || t.module === onlyModule)
+        .filter((t) => !onlyType || t.type === onlyType);
       setTypes(all);
       if (all.length && !activeType) setActiveType(all[0].type);
     } catch {}
     setLoading(false);
-  }, [activeType, onlyModule]);
+  }, [activeType, onlyModule, onlyType]);
 
   const loadItems = useCallback(async (type: string) => {
     if (!type) return;
@@ -151,9 +164,10 @@ export default function ReferenceDataManager({ module: onlyModule, embedded }: {
         </PageHeader>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
+      {/* عمودُ الاختيار يسقط حين تكون القائمةُ واحدة: اسمُها في عنوان التبويب. */}
+      <div className={onlyType ? '' : 'grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6'}>
         {/* Left rail: lists grouped by module */}
-        <div className="space-y-4">
+        <div className={`space-y-4 ${onlyType ? 'hidden' : ''}`}>
           {Object.entries(grouped).map(([mod, list]) => (
             <div key={mod}>
               <p className="text-slate-500 text-xs font-semibold uppercase px-1 mb-1">{MODULE_LABELS[mod] ? (ar ? MODULE_LABELS[mod].ar : MODULE_LABELS[mod].en) : mod}</p>

@@ -21,8 +21,9 @@ import { Spinner, PageHeader, Select, SearchableSelect, PrimaryButton } from '@/
 import { ContactButtons } from '@/components/crm/CrmKit';
 import {
   FormField, OrderCustomer, OrderVehicle, OrderSupplier, GROUP_LABELS, fieldLabel, optionLabel,
-  ORDER_STATUSES, FIXED_KEYS, Lang, canEditOrders,
+  FIXED_KEYS, Lang, canEditOrders, vocabLabel,
 } from '@/lib/shipmentOrders';
+import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 
 // Labels are the form's wayfinding — near-black and readable, not a whisper.
 const labelCls = 'block text-sm font-semibold text-slate-800 mb-1.5';
@@ -34,20 +35,24 @@ const SYSTEM_KEYS = new Set([
   'fromCity', 'toCity', 'addressFrom', 'addressTo', 'truckType', 'cargoType',
   'truckLength', 'quantity', 'driverName', 'driverPhone', 'vehicleName',
   'pickupTime', 'startTime', 'arrivalTime', 'sellPrice', 'buyPrice',
-  'driverRentType', 'paymentMethod', 'driverRentPrice', 'branch', 'notes',
+  'driverRentType', 'paymentMethod', 'branch', 'notes',
 ]);
 
 const GROUP_ICONS: Record<FormField['group'], any> = {
   pickup_delivery: MapPin, shipment: Package, pricing_time: Clock3, payment: Wallet,
 };
 
-const toLocalInput = (v?: string | null) => {
+// ── مواعيدُ الشحنة يومٌ لا لحظة ───────────────────────────────────────────────
+// كانت الثلاثةُ تُسأل بالساعة والدقيقة، ولا أحدَ يعرف أنّ الاستلام ٧:٤٢ — فمن
+// سُئل كتب ساعةً ليمضي، فصار في القاعدة رقمٌ دقيقُ الشكل كاذبُ المعنى.
+const toDateInput = (v?: string | null) => {
   if (!v) return '';
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return '';
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
+const today = () => toDateInput(new Date().toISOString());
 
 function CreateShipmentInner() {
   const { user } = useAuth();
@@ -68,16 +73,28 @@ function CreateShipmentInner() {
   // red until it is filled — the user asked to SEE which fields block them.
   const [showErrors, setShowErrors] = useState(false);
 
-  const [form, setForm] = useState<Record<string, any>>({ status: 'requesting' });
+  const statusVocab = useOrderStatuses();
+  // ── والاستلامُ والبداية اليومَ حتى يُقال غيرُ ذلك ────────────────────────────
+  // الشحنةُ تُسجَّل ساعةَ تُحجَز، فيومُها هو اليوم في كلّ مرّةٍ تقريبًا. وخانةٌ
+  // فارغةٌ مطلوبةٌ تُوقف الحفظ لتُملأ بما كان يمكن أن يُملأ من نفسه.
+  const [form, setForm] = useState<Record<string, any>>({ status: 'requesting', pickupTime: today(), startTime: today() });
   const [customerId, setCustomerId] = useState('');
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ name: '', phone: '' });
+  const [customerBusy, setCustomerBusy] = useState(false);
 
-  // The truck: an existing one (ours or a supplier's), or a brand-new plate
-  // whose owner we name on the spot.
+  // ── المورّدُ أوّلًا، ثمّ شاحنتُه ──────────────────────────────────────────────
+  // كانت السيّارةُ تُختار من كلّ شاحنات المورّدين معًا — مئاتُ لوحاتٍ في قائمةٍ
+  // واحدة — ثمّ يُسأل عن مالكها في لوحةٍ فيها زرّان ومربّعا نصّ. والترتيبُ في
+  // الرأس عكسُه: يُعرف المورّدُ أوّلًا («وليد هيسمّي شاحنة») ثمّ أيُّ شاحنةٍ من
+  // شاحناته. فصار سؤالين متتاليين، والثاني مقصورٌ على جواب الأوّل.
+  const [supplierId, setSupplierId] = useState('');
   const [vehicleId, setVehicleId] = useState('');
-  const [newVehicleOpen, setNewVehicleOpen] = useState(false);
-  const [newVehicle, setNewVehicle] = useState({ plate: '', name: '', owner: 'supplier' as 'supplier' | 'newSupplier', supplierId: '', supplierName: '', supplierType: 'company' as 'company' | 'freelancer' });
+  // لوحةٌ لم تمرّ بنا: تُكتب هنا وتُسجَّل عند الحفظ على المورّد المختار.
+  const [newPlate, setNewPlate] = useState('');
+  const [addingSupplier, setAddingSupplier] = useState(false);
+  const [newSupplier, setNewSupplier] = useState({ name: '', phone: '', type: 'company' as 'company' | 'freelancer' });
+  const [supplierBusy, setSupplierBusy] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -100,13 +117,14 @@ function CreateShipmentInner() {
           if (o) {
             setForm({
               ...o,
-              pickupTime: toLocalInput(o.pickupTime),
-              startTime: toLocalInput(o.startTime),
-              arrivalTime: toLocalInput(o.arrivalTime),
+              pickupTime: toDateInput(o.pickupTime),
+              startTime: toDateInput(o.startTime),
+              arrivalTime: toDateInput(o.arrivalTime),
               ...(o.customFields || {}),
             });
             setCustomerId(typeof o.customer === 'object' ? o.customer?._id : (o.customer || ''));
             setVehicleId(typeof o.vehicle === 'object' ? o.vehicle?._id : (o.vehicle || ''));
+            setSupplierId(typeof o.supplier === 'object' ? (o.supplier?._id || '') : (o.supplier || ''));
           }
         }
       } catch (e: any) {
@@ -141,15 +159,59 @@ function CreateShipmentInner() {
   // answers. All still editable per shipment.
   const applyVehicle = (id: string) => {
     setVehicleId(id);
-    setNewVehicleOpen(false);
+    setNewPlate('');
     const v = vehicles.find((x) => x._id === id);
     if (!v) return;
+    // اختيارُ الشاحنة يُسمّي مورّدَها من نفسِه — لا يُسأل عنه مرّتين.
+    const sup = typeof v.supplier === 'object' && v.supplier ? v.supplier._id : (v.supplier || '');
+    if (sup) setSupplierId(String(sup));
     setForm((f) => ({
       ...f,
       driverName: f.driverName || v.defaultDriverName || '',
       driverPhone: f.driverPhone || v.defaultDriverPhone || '',
       truckType: f.truckType || v.truckType || '',
     }));
+  };
+
+  // والعميلُ الجديد كذلك — يُسجَّل حين يُكتب اسمُه لا حين تُحفَظ الشحنة، فيراه
+  // التحصيلُ وصفحةُ العملاء وزملاؤه في اللحظة نفسِها.
+  const saveCustomer = async () => {
+    const name = newCustomer.name.trim();
+    if (!name) { notify(ar ? 'اكتب اسم العميل.' : 'Name the customer.', 'error'); return; }
+    setCustomerBusy(true);
+    try {
+      const d = await api.post<{ customer: OrderCustomer }>('/api/shipment-orders/customers', {
+        name, phone: newCustomer.phone.trim(),
+      });
+      setCustomers((p) => [...p, d.customer].sort((a, b) => a.name.localeCompare(b.name, 'ar')));
+      setCustomerId(d.customer._id);
+      setNewCustomerOpen(false);
+      setNewCustomer({ name: '', phone: '' });
+      notify(ar ? `سُجِّل العميل «${d.customer.name}»` : `Customer “${d.customer.name}” registered`, 'success');
+    } catch (e: any) { notify(e?.message || (ar ? 'تعذّر الحفظ' : 'Could not save'), 'error'); }
+    setCustomerBusy(false);
+  };
+
+  // ── والمورّدُ الجديد يُسجَّل في لحظته ──────────────────────────────────────────
+  // لا عند حفظ الشحنة: من فتح النموذج وأضاف مورّدًا ثمّ تركه نصفَ ساعةٍ يجب أن
+  // يجده في صفحة المورّدين — ويجده زميلُه أيضًا. والتسجيلُ هنا يُطلق
+  // `shipmentOrders:fleet`، فتلتقطه كلُّ شاشةٍ مفتوحةٍ في القسم.
+  const saveSupplier = async () => {
+    const name = newSupplier.name.trim();
+    if (!name) { notify(ar ? 'اكتب اسم المورد.' : 'Name the supplier.', 'error'); return; }
+    setSupplierBusy(true);
+    try {
+      const d = await api.post<{ supplier: OrderSupplier }>('/api/shipment-orders/suppliers', {
+        name, phone: newSupplier.phone.trim(), type: newSupplier.type,
+      });
+      setSuppliers((p) => [...p, d.supplier].sort((a, b) => a.name.localeCompare(b.name, 'ar')));
+      setSupplierId(d.supplier._id);
+      setVehicleId('');
+      setAddingSupplier(false);
+      setNewSupplier({ name: '', phone: '', type: 'company' });
+      notify(ar ? `سُجِّل المورد «${d.supplier.name}» — تجده في صفحة المورّدين` : `Supplier “${d.supplier.name}” registered`, 'success');
+    } catch (e: any) { notify(e?.message || (ar ? 'تعذّر الحفظ' : 'Could not save'), 'error'); }
+    setSupplierBusy(false);
   };
 
   useEffect(() => {
@@ -169,15 +231,9 @@ function CreateShipmentInner() {
   }, [fields, form, customerId, newCustomer.name]);
 
   const save = async () => {
-    if (!vehicleId && newVehicle.plate.trim()) {
-      if (newVehicle.owner === 'supplier' && !newVehicle.supplierId) {
-        notify(ar ? 'اختر المورد صاحب السيارة الجديدة.' : 'Pick the new vehicle’s supplier.', 'error');
-        return;
-      }
-      if (newVehicle.owner === 'newSupplier' && !newVehicle.supplierName.trim()) {
-        notify(ar ? 'اكتب اسم المورد الجديد.' : 'Name the new supplier.', 'error');
-        return;
-      }
+    if (!vehicleId && newPlate.trim() && !supplierId) {
+      notify(ar ? 'اختر المورد صاحب اللوحة الجديدة.' : 'Pick the new plate’s supplier.', 'error');
+      return;
     }
     if (missingKeys.size) {
       setShowErrors(true);
@@ -203,21 +259,18 @@ function CreateShipmentInner() {
       else payload.newCustomer = { name: newCustomer.name.trim(), phone: newCustomer.phone.trim() };
 
       if (vehicleId) payload.vehicle = vehicleId;
-      else if (newVehicle.plate.trim()) {
-        payload.newVehicle = {
-          plate: newVehicle.plate.trim(),
-          name: newVehicle.name.trim(),
-          supplierId: newVehicle.owner === 'supplier' ? newVehicle.supplierId : null,
-          newSupplier: newVehicle.owner === 'newSupplier'
-            ? { name: newVehicle.supplierName.trim(), type: newVehicle.supplierType }
-            : null,
-        };
+      else if (newPlate.trim()) {
+        // اللوحةُ الجديدة تُسجَّل على المورّد المختار — والمورّدُ سُجِّل قبلها.
+        payload.newVehicle = { plate: newPlate.trim(), name: '', supplierId: supplierId || null, newSupplier: null };
       }
 
+      // ── اليومُ يُرسَل ظهرًا ────────────────────────────────────────────────
+      // «2026-09-05» وحدَه يُقرأ منتصفَ الليل بتوقيت غرينتش، فيصير في الرياض يومَ
+      // الرابع. والظهرُ آمنٌ في كلّ منطقةٍ زمنيّة.
       ['pickupTime', 'startTime', 'arrivalTime'].forEach((k) => {
-        payload[k] = form[k] ? new Date(form[k]).toISOString() : null;
+        payload[k] = form[k] ? new Date(`${form[k]}T12:00:00`).toISOString() : null;
       });
-      ['quantity', 'sellPrice', 'buyPrice', 'driverRentPrice'].forEach((k) => {
+      ['quantity', 'sellPrice', 'buyPrice'].forEach((k) => {
         if (payload[k] === '' || payload[k] === undefined) payload[k] = null;
         else if (payload[k] != null) payload[k] = Number(payload[k]);
       });
@@ -278,6 +331,8 @@ function CreateShipmentInner() {
         );
       case 'number':
         return <div key={f._id}>{lab}<input type="number" value={v} onChange={(e) => set(f.key, e.target.value)} className={bad ? inputMissCls : inputCls} /></div>;
+      case 'date':
+        return <div key={f._id}>{lab}<input type="date" value={v} onChange={(e) => set(f.key, e.target.value)} className={bad ? inputMissCls : inputCls} /></div>;
       case 'datetime':
         return <div key={f._id}>{lab}<input type="datetime-local" value={v} onChange={(e) => set(f.key, e.target.value)} className={bad ? inputMissCls : inputCls} /></div>;
       case 'textarea':
@@ -301,7 +356,7 @@ function CreateShipmentInner() {
   };
   const steps = [
     { id: SEC.customer, no: 1, title: ar ? 'العميل' : 'Customer', missing: missingKeys.has('customer') ? 1 : 0 },
-    { id: SEC.truck, no: 2, title: ar ? 'السيارة والسائق' : 'Truck & driver', missing: 0 },
+    { id: SEC.truck, no: 2, title: ar ? 'المورّد والسيارة' : 'Supplier & truck', missing: 0 },
     ...activeGroups.map((g, i) => ({
       id: SEC.group(g), no: i + 3,
       title: ar ? GROUP_LABELS[g].ar : GROUP_LABELS[g].en,
@@ -424,13 +479,18 @@ function CreateShipmentInner() {
                 className={(miss('customer') ? inputMissCls : inputCls) + ' flex-1'} />
               <input value={newCustomer.phone} onChange={(e) => setNewCustomer((c) => ({ ...c, phone: e.target.value }))}
                 placeholder={ar ? 'الجوال' : 'Phone'} className={inputCls + ' sm:w-44'} />
+              <PrimaryButton onClick={saveCustomer} disabled={customerBusy}>
+                {customerBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                {ar ? 'حفظ العميل' : 'Save customer'}
+              </PrimaryButton>
               <button type="button" onClick={() => { setNewCustomerOpen(false); setNewCustomer({ name: '', phone: '' }); }}
                 className="p-2.5 text-slate-400 hover:text-slate-700" aria-label="close"><X className="w-4 h-4" /></button>
             </div>
           )}
           {newCustomerOpen && (
             <p className="text-xs text-slate-500">
-              {ar ? 'يُسجَّل تلقائياً في صفحة العملاء، ويُحفَظ المسار والسعر في ملفه.' : 'Saved to the customers page automatically; the route + price land on their profile.'}
+              {ar ? 'يُسجَّل في صفحة العملاء فورًا — لا ينتظر حفظ الشحنة — ويُحفَظ المسار والسعر في ملفه عند الحفظ.'
+                  : 'Registered on the customers page at once — it does not wait for the shipment — and the route + price land on their profile on save.'}
             </p>
           )}
           {customer && (customer.routes || []).length > 0 && (
@@ -450,28 +510,81 @@ function CreateShipmentInner() {
         </div>
       ), { id: SEC.customer, missing: missingKeys.has('customer') ? 1 : 0 })}
 
-      {/* 2 ── السيارة والسائق — one row: pick the truck, driver fills itself */}
-      {sectionCard(Truck, 2, ar ? 'السيارة والسائق' : 'Truck & driver', (
+      {/* 2 ── المورّد والسيارة والسائق — three questions in order */}
+      {sectionCard(Truck, 2, ar ? 'المورّد والسيارة' : 'Supplier & truck', (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* ── المورّدُ أوّلًا ────────────────────────────────────────────
+                هو ما يُعرَف أوّلًا في الواقع: يُتّفق مع مورّدٍ ثمّ يُقال أيُّ
+                شاحنةٍ من شاحناته. */}
             <div>
-              <label className={labelCls}>{ar ? 'السيارة' : 'Vehicle'}</label>
-              <SearchableSelect value={vehicleId} onChange={applyVehicle} searchAfter={0}
-                placeholder={ar ? 'اكتب رقم اللوحة أو اسم السائق…' : 'Type plate or driver…'}
-                searchPlaceholder={ar ? 'ابحث باللوحة أو السائق أو المورد…' : 'Search plate, driver or supplier…'}
-                emptyLabel={ar ? 'غير موجودة؟ سجّلها من الرابط أدناه' : 'Not found? Register it below'}
-                options={vehicles.filter((v) => v.supplier).map((v) => ({
-                  // Our own fleet is deliberately absent here — it gets its own
-                  // section later; shipment trucks are the suppliers' for now.
-                  value: v._id,
-                  label: [v.plate, v.name].filter(Boolean).join(' — '),
-                  hint: [supplierOf(v), v.defaultDriverName].filter(Boolean).join(' · '),
+              <label className={labelCls}>{ar ? 'المورّد' : 'Supplier'}</label>
+              <SearchableSelect value={supplierId} onChange={(x) => { setSupplierId(x); setVehicleId(''); }} searchAfter={0}
+                placeholder={ar ? 'اختر المورّد — اكتب للبحث…' : 'Pick the supplier — type to search…'}
+                searchPlaceholder={ar ? 'اكتب اسم المورّد…' : 'Type supplier name…'}
+                emptyLabel={ar ? 'لا نتائج — سجّله من الزر' : 'No matches — register with the button'}
+                options={suppliers.map((sp) => ({
+                  value: sp._id, label: sp.name,
+                  hint: sp.type === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : (ar ? 'شركة' : 'Company'),
                 }))} />
-              <button type="button" onClick={() => { setNewVehicleOpen((o) => !o); setVehicleId(''); }}
+              <button type="button" onClick={() => setAddingSupplier((o) => !o)}
                 className="mt-1.5 text-xs font-semibold text-[#f37121] hover:underline">
-                {newVehicleOpen ? (ar ? 'إلغاء تسجيل السيارة الجديدة' : 'Cancel new vehicle') : (ar ? '+ سيارة جديدة (إن لم تكن في القائمة)' : '+ New vehicle (if not listed)')}
+                {addingSupplier ? (ar ? 'إلغاء' : 'Cancel') : (ar ? '+ مورّد جديد' : '+ New supplier')}
               </button>
             </div>
+
+            <div>
+              <label className={labelCls}>{ar ? 'السيارة' : 'Vehicle'}</label>
+              {/* شاحناتُ المورّد المختار وحدَها: قائمةٌ من ثلاثٍ يُختار منها،
+                  وقائمةٌ من ثلاثمئةٍ يُبحَث فيها. */}
+              <SearchableSelect value={vehicleId} onChange={applyVehicle} searchAfter={0}
+                placeholder={supplierId
+                  ? (ar ? 'اختر شاحنة المورّد…' : 'Pick the supplier’s truck…')
+                  : (ar ? 'اختر المورّد أوّلًا، أو ابحث في كل الشاحنات…' : 'Pick a supplier first, or search all trucks…')}
+                searchPlaceholder={ar ? 'ابحث باللوحة أو السائق…' : 'Search plate or driver…'}
+                emptyLabel={ar ? 'غير موجودة؟ اكتب اللوحة في الخانة المجاورة' : 'Not listed? Type the plate beside it'}
+                options={vehicles
+                  .filter((v) => v.supplier)
+                  .filter((v) => !supplierId || String(typeof v.supplier === 'object' && v.supplier ? v.supplier._id : v.supplier) === supplierId)
+                  .map((v) => ({
+                    value: v._id,
+                    label: [v.plate, v.name].filter(Boolean).join(' — '),
+                    hint: [supplierOf(v), v.defaultDriverName].filter(Boolean).join(' · '),
+                  }))} />
+              {/* ولوحةٌ لم تمرّ بنا تُكتب هنا — لا لوحةٌ تُفتح لها بأربع خانات. */}
+              <input value={newPlate} onChange={(e) => { setNewPlate(e.target.value); if (e.target.value.trim()) setVehicleId(''); }}
+                placeholder={ar ? 'أو اكتب لوحةً جديدة — تُسجَّل على المورّد' : 'Or type a new plate — registered to the supplier'}
+                className={`${inputCls} mt-2`} />
+            </div>
+          </div>
+
+          {addingSupplier && (
+            <div className="rounded-xl border border-[#f37121]/30 bg-[#f37121]/[0.04] p-4 space-y-3">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input value={newSupplier.name} onChange={(e) => setNewSupplier((v) => ({ ...v, name: e.target.value }))}
+                  placeholder={ar ? 'اسم المورّد *' : 'Supplier name *'} className={inputCls + ' flex-1'} />
+                <input value={newSupplier.phone} onChange={(e) => setNewSupplier((v) => ({ ...v, phone: e.target.value }))}
+                  placeholder={ar ? 'الجوال' : 'Phone'} className={inputCls + ' sm:w-44'} />
+                {([['company', ar ? 'شركة' : 'Company'], ['freelancer', ar ? 'فريلانسر' : 'Freelancer']] as const).map(([k, label]) => (
+                  <button key={k} type="button" onClick={() => setNewSupplier((v) => ({ ...v, type: k }))}
+                    className={`px-4 py-2 rounded-full border text-sm font-semibold shrink-0 ${newSupplier.type === k
+                      ? 'border-[#f37121] bg-[#f37121] text-white' : 'border-slate-300 bg-white text-slate-600'}`}>
+                    {label}
+                  </button>
+                ))}
+                <PrimaryButton onClick={saveSupplier} disabled={supplierBusy}>
+                  {supplierBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  {ar ? 'حفظ المورّد' : 'Save supplier'}
+                </PrimaryButton>
+              </div>
+              <p className="text-xs text-slate-500">
+                {ar ? 'يُسجَّل فورًا في صفحة المورّدين — لا ينتظر حفظ الشحنة، ويظهر عند زملائك في اللحظة نفسِها.'
+                    : 'Registered at once on the suppliers page — it does not wait for the shipment to save, and colleagues see it immediately.'}
+              </p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>{ar ? 'السائق' : 'Driver'}</label>
               <input value={form.driverName || ''} onChange={(e) => set('driverName', e.target.value)}
@@ -485,55 +598,6 @@ function CreateShipmentInner() {
               </div>
             </div>
           </div>
-
-          {newVehicleOpen && (
-            <div className="rounded-xl border border-[#f37121]/30 bg-[#f37121]/[0.04] p-4 space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className={labelCls}>{ar ? 'رقم اللوحة *' : 'Plate *'}</label>
-                  <input value={newVehicle.plate} onChange={(e) => setNewVehicle((v) => ({ ...v, plate: e.target.value }))} className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>{ar ? 'وصف السيارة (اختياري)' : 'Description (optional)'}</label>
-                  <input value={newVehicle.name} onChange={(e) => setNewVehicle((v) => ({ ...v, name: e.target.value }))}
-                    placeholder={ar ? 'مثال: مرسيدس بيضاء' : 'e.g. white Actros'} className={inputCls} />
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-semibold text-slate-800">{ar ? 'مالك السيارة:' : 'Owner:'}</span>
-                {([
-                  { k: 'supplier', label: ar ? 'مورد موجود' : 'Existing supplier' },
-                  { k: 'newSupplier', label: ar ? 'مورد جديد' : 'New supplier' },
-                ] as const).map((o) => (
-                  <button key={o.k} type="button" onClick={() => setNewVehicle((v) => ({ ...v, owner: o.k }))}
-                    className={`px-3.5 py-2 rounded-full border text-sm font-semibold transition-all ${newVehicle.owner === o.k
-                      ? 'border-[#f37121] bg-[#f37121] text-white shadow-sm' : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400'}`}>
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-              {newVehicle.owner === 'supplier' && (
-                <SearchableSelect value={newVehicle.supplierId} onChange={(x) => setNewVehicle((v) => ({ ...v, supplierId: x }))} searchAfter={0}
-                  placeholder={ar ? 'اختر المورد…' : 'Pick the supplier…'}
-                  searchPlaceholder={ar ? 'اكتب اسم المورد…' : 'Type supplier name…'}
-                  options={suppliers.map((sp) => ({ value: sp._id, label: sp.name, hint: sp.type === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : (ar ? 'شركة' : 'Company') }))} />
-              )}
-              {newVehicle.owner === 'newSupplier' && (
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <input value={newVehicle.supplierName} onChange={(e) => setNewVehicle((v) => ({ ...v, supplierName: e.target.value }))}
-                    placeholder={ar ? 'اسم المورد الجديد *' : 'New supplier name *'} className={inputCls + ' flex-1'} />
-                  {([['company', ar ? 'شركة' : 'Company'], ['freelancer', ar ? 'فريلانسر' : 'Freelancer']] as const).map(([k, label]) => (
-                    <button key={k} type="button" onClick={() => setNewVehicle((v) => ({ ...v, supplierType: k }))}
-                      className={`px-4 py-2 rounded-full border text-sm font-semibold ${newVehicle.supplierType === k
-                        ? 'border-[#f37121] bg-[#f37121] text-white' : 'border-slate-300 bg-white text-slate-600'}`}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <p className="text-xs text-slate-500">{ar ? 'تُسجَّل تلقائياً في صفحة المورّدين والمركبات عند حفظ الشحنة.' : 'Registers automatically on the fleet page when the shipment saves.'}</p>
-            </div>
-          )}
         </div>
       ), { id: SEC.truck })}
       </div>
@@ -558,7 +622,7 @@ function CreateShipmentInner() {
           <div>
             <label className={labelCls}>{ar ? 'الحالة' : 'Status'}</label>
             <Select value={form.status || 'requesting'} onChange={(e) => set('status', e.target.value)}>
-              {ORDER_STATUSES.map((s) => <option key={s.key} value={s.key}>{ar ? s.ar : s.en}</option>)}
+              {statusVocab.map((s) => <option key={s.key} value={s.key}>{vocabLabel(s, lang as Lang)}</option>)}
             </Select>
           </div>
           <div>

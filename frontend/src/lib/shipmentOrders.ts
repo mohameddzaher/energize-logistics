@@ -29,7 +29,8 @@ export interface FormField {
   labelAr: string;
   labelEn?: string;
   group: 'pickup_delivery' | 'shipment' | 'pricing_time' | 'payment';
-  inputType: 'select' | 'cards' | 'text' | 'number' | 'datetime' | 'textarea';
+  // 'date' لا 'datetime': مواعيدُ الشحنة يومٌ لا لحظة — راجع models/ShipmentOrderField.
+  inputType: 'select' | 'cards' | 'text' | 'number' | 'date' | 'datetime' | 'textarea';
   options: FormFieldOption[];
   required: boolean;
   order: number;
@@ -74,11 +75,35 @@ export const ORDER_STATUSES = [
   { key: 'cancelled', en: 'Cancelled', ar: 'ملغاة', bg: 'bg-red-100', text: 'text-red-700' },
 ] as const;
 
+// لونُ كلِّ حالةٍ رقمًا — البطاقاتُ تُلوَّن به مباشرةً، ولأنّ الحالةَ المُضافةَ
+// من الإعدادات تأتي بلونٍ رقميٍّ أيضًا فلا تحتاج الشاشةُ طريقين للتلوين.
+export const STATUS_HEX: Record<string, string> = {
+  requesting: '#64748b', loading: '#d97706', uploaded: '#ca8a04', on_way: '#2563eb',
+  arrived: '#4f46e5', bond_sent: '#0891b2', bond_received: '#059669',
+  late: '#ea580c', invoiced: '#7c3aed', cancelled: '#dc2626',
+};
+
 export const orderStatus = (k?: string) => ORDER_STATUSES.find((s) => s.key === k) || null;
 export const statusLabel = (k: string | undefined, lang: Lang) => {
   const s = orderStatus(k);
   return s ? (lang === 'ar' ? s.ar : s.en) : (k || '—');
 };
+
+// ── والتسميةُ تُضبَط من إعدادات القسم ─────────────────────────────────────────
+// المفاتيحُ أعلاه عقدٌ: التحليلاتُ تعدّ عليها والتنبيهاتُ تُطلق منها والمنصّةُ
+// الخارجيّة تتكلّم بها. أمّا الاسمُ الظاهرُ ولونُه وترتيبُه وأهو مُستعمَلٌ اليوم
+// فمن الإعدادات — ومن زاد حالةً حاديةَ عشرةَ ظهرت هنا معها.
+export interface StatusVocab {
+  key: string; ar: string; en: string; color: string; order: number; active: boolean; isCore: boolean;
+}
+
+// الأساسيّةُ كما هي في الشيفرة — تُعرَض حتى قبل أن يردّ الخادم، فلا تُرسَم
+// الشاشةُ فارغةً ثمّ تمتلئ.
+export const FALLBACK_STATUS_VOCAB: StatusVocab[] = ORDER_STATUSES.map((s, i) => ({
+  key: s.key, ar: s.ar, en: s.en, color: STATUS_HEX[s.key] || '#64748b', order: i, active: true, isCore: true,
+}));
+
+export const vocabLabel = (v: StatusVocab, lang: Lang) => (lang === 'ar' ? v.ar : v.en);
 
 export const GROUP_LABELS: Record<FormField['group'], { ar: string; en: string }> = {
   pickup_delivery: { ar: 'الاستلام والتسليم', en: 'Pickup & delivery' },

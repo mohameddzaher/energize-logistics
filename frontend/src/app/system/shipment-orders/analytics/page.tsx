@@ -13,7 +13,8 @@ import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import { syncUrl } from '@/lib/urlSync';
-import { ORDER_STATUSES, statusLabel, Lang } from '@/lib/shipmentOrders';
+import { statusLabel, vocabLabel, Lang } from '@/lib/shipmentOrders';
+import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { Spinner, PageHeader, StatCard, SearchInput } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
@@ -40,6 +41,8 @@ interface Data {
 function Inner() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
+  // الحالاتُ كما ضُبطت في إعدادات القسم — لا نسخةٌ ثانيةٌ تتخلّف عنها.
+  const statusVocab = useOrderStatuses();
   const t = (a: string, e: string) => (ar ? a : e);
   const { notify } = useDialog();
   const sp = useSearchParams();
@@ -138,7 +141,7 @@ function Inner() {
           <select value={status} onChange={(e) => setStatus(e.target.value)}
             className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
             <option value="">{t('كل الحالات', 'All statuses')}</option>
-            {ORDER_STATUSES.map((s) => <option key={s.key} value={s.key}>{ar ? s.ar : s.en}</option>)}
+            {statusVocab.map((s) => <option key={s.key} value={s.key}>{vocabLabel(s, lang as Lang)}</option>)}
           </select>
         </div>
         <div>

@@ -362,6 +362,12 @@
       "en": "Driver KPIs"
     },
     {
+      "key": "/system/fleet/health",
+      "section": "Fleet Management",
+      "ar": "حالة المركبات",
+      "en": "Vehicle Health"
+    },
+    {
       "key": "/system/fleet/vehicles",
       "section": "Fleet Management",
       "ar": "سياراتنا",

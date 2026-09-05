@@ -302,6 +302,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/fleet/dashboard', label: lang === 'ar' ? 'التحليلات' : 'Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/drivers', label: lang === 'ar' ? 'السائقون' : 'Drivers', icon: <UserSquare className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/driver-kpis', label: lang === 'ar' ? 'تقييم السائقين' : 'Driver KPIs', icon: <Target className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
+    // حالةُ المركبات بعد «سياراتنا» مباشرةً: الشاشتان عن الشاحنة نفسِها —
+    // إحداهما تقول ما هي، والأخرى كيف حالُها الآن.
+    { href: '/system/fleet/health', label: lang === 'ar' ? 'حالة المركبات' : 'Vehicle Health', icon: <Activity className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/vehicles', label: lang === 'ar' ? 'سياراتنا' : 'Our Vehicles', icon: <Car className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/vehicle-logs', label: lang === 'ar' ? 'سجلّات السيارات' : 'Vehicle Logs', icon: <ClipboardList className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/assign', label: lang === 'ar' ? 'توزيع المشرفين' : 'Assign Supervisors', icon: <UserCog className="w-5 h-5" />, roles: FLEET_ADMIN_ROLES, section: 'Fleet Management', restrict: true },

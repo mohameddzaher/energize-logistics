@@ -2612,3 +2612,151 @@ exports.deleteVehicleLog = async (req, res) => {
     res.status(500).json({ message: error.message || 'Failed to delete the entry' });
   }
 };
+
+// ══════════════════════════════════════════════════════════════════════════════
+// حالةُ المركبات — GET /api/fleet/health
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// ── ولماذا هنا وهي موجودةٌ في لوكيشن سوليوشن ────────────────────────────────
+// الشاحناتُ شاحناتُنا، ومَن يتابعها هو الأسطول. وأرقامُها الحيّة — ضغطُ الكاوتش
+// وحرارتُه وحرارةُ الماء والصيانةُ والتنبيهات — كانت في قسمٍ آخر لا يفتحه مشرفُ
+// الأسطول ولا يملكه أصلًا: يُتَّصل به بالهاتف ليُسأل «الشاحنةُ الفلانيّة سخنت؟».
+//
+// فما يخصّ شاحناتِنا يُعرَض في قسمها. والمصدرُ واحدٌ لا نسخة: تُقرأ من
+// `Ls2Vehicle` نفسِه في كلّ نداء، فما يُقرأ هنا هو ما يُقرأ هناك حرفًا بحرف.
+//
+// ── ولا يرى المشرفُ إلّا سياراته ───────────────────────────────────────────
+// `supervisorVehicleIds` هو نفسُه المستعمَل في بقيّة القسم: مشرفٌ على عشرِ
+// شاحناتٍ يفتح الشاشةَ فيجد عشرًا، لا سبعًا وخمسين يبحث بينها عن شاحناته.
+exports.getFleetHealth = async (req, res) => {
+  try {
+    const Ls2Alert = require('../models/Ls2Alert');
+
+    const vFilter = { isActive: { $ne: false } };
+    const scope = await supervisorVehicleIds(req);
+    if (scope) vFilter._id = { $in: scope };
+
+    const vehicles = await FleetVehicle.find(vFilter).sort({ plate: 1 }).limit(500).lean();
+
+    const [ls2, drivers, openAlerts] = await Promise.all([
+      Ls2Vehicle.find({})
+        .select([
+          'unitId plate name status lastMessageAt position moving speed',
+          'coolantC fuelPct odometerKm engineHours mainPowerV',
+          'tires tireCount maxTireTempC minTireTempC maxTirePressurePsi minTirePressurePsi tireFaults tiresCarriedOver',
+          'maintenanceStatus kmToService nextServiceName lastServiceKm',
+        ].join(' ')).lean(),
+      FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null } })
+        .select('name phone working vehicle').lean(),
+      // المفتوحةُ وحدَها: التنبيهُ المُغلَق عملٌ انتهى، وعرضُه يخلط ما يجب فعلُه
+      // اليومَ بما فُعل الأسبوعَ الماضي.
+      Ls2Alert.find({ status: 'open' })
+        .select('unitId type severity message firstSeenAt value threshold unit').lean(),
+    ]);
+
+    const liveByKey = new Map();
+    for (const lv of ls2) {
+      const k = vehiclePlateKey(lv);
+      if (k) liveByKey.set(k, lv);
+    }
+    const alertsByUnit = new Map();
+    for (const a of openAlerts) {
+      const arr = alertsByUnit.get(a.unitId) || [];
+      arr.push(a);
+      alertsByUnit.set(a.unitId, arr);
+    }
+    const driversByVehicle = new Map();
+    for (const d of drivers) {
+      const k = String(d.vehicle);
+      const arr = driversByVehicle.get(k) || [];
+      arr.push({ name: d.name, phone: d.phone, working: d.working });
+      driversByVehicle.set(k, arr);
+    }
+
+    // ── وحدُّ «باردٌ» ساعتان ─────────────────────────────────────────────────
+    // الجهازُ يرسل كلَّ دقائق. فسكوتُه ساعتين ليس هدوءًا بل انقطاع — وقراءةٌ
+    // عمرُها ساعتان تُعرَض «آخرُ ما وصل» لا «الآن»، وإلّا بُني قرارٌ على رقمٍ
+    // ميّت.
+    const STALE_MS = 2 * 3600 * 1000;
+    const now = Date.now();
+
+    const rows = vehicles.map((v) => {
+      const lv = liveByKey.get(plateKey(v.plate)) || null;
+      const alerts = lv ? (alertsByUnit.get(lv.unitId) || []) : [];
+      const lastAt = lv?.lastMessageAt ? new Date(lv.lastMessageAt).getTime() : 0;
+      const stale = !lastAt || now - lastAt > STALE_MS;
+      return {
+        _id: v._id,
+        plate: v.plate,
+        name: v.name || '',
+        trailerType: v.trailerType || '',
+        supervisorName: v.supervisorName || '',
+        drivers: driversByVehicle.get(String(v._id)) || [],
+        // ── الشاحنةُ بلا جهازٍ تُقال ولا تُخفى ──────────────────────────────
+        // إخفاؤها يجعل الشاشةَ تبدو تامّةً وهي ناقصة، فيُظنّ أنّ كلَّ شاحنةٍ
+        // مراقَبة. وهذه أوّلُ ما يُعمَل: يُركَّب لها جهاز.
+        tracked: !!lv,
+        stale,
+        lastMessageAt: lv?.lastMessageAt || null,
+        moving: lv?.moving ?? null,
+        speed: lv?.speed ?? null,
+        coolantC: lv?.coolantC ?? null,
+        fuelPct: lv?.fuelPct ?? null,
+        odometerKm: lv?.odometerKm ?? null,
+        engineHours: lv?.engineHours ?? null,
+        mainPowerV: lv?.mainPowerV ?? null,
+        tires: {
+          count: lv?.tireCount ?? 0,
+          maxTempC: lv?.maxTireTempC ?? null,
+          minTempC: lv?.minTireTempC ?? null,
+          maxPressurePsi: lv?.maxTirePressurePsi ?? null,
+          minPressurePsi: lv?.minTirePressurePsi ?? null,
+          faults: lv?.tireFaults ?? 0,
+          // قراءةٌ محمولةٌ من نبضةٍ سابقة — تُعرَض ولا يُبنى عليها إنذار.
+          carriedOver: !!lv?.tiresCarriedOver,
+          list: (lv?.tires || []).map((t) => ({
+            position: t.position || '', tempC: t.tempC ?? null, pressurePsi: t.pressurePsi ?? null, fault: !!t.fault,
+          })),
+        },
+        maintenance: lv ? {
+          status: lv.maintenanceStatus || 'ok',
+          kmToService: lv.kmToService ?? null,
+          nextServiceName: lv.nextServiceName || '',
+        } : null,
+        alerts: alerts.map((a) => ({
+          type: a.type, severity: a.severity, message: a.message, firstSeenAt: a.firstSeenAt,
+          value: a.value, threshold: a.threshold, unit: a.unit,
+        })),
+        alertCount: alerts.length,
+        unitId: lv?.unitId ?? null,
+      };
+    });
+
+    // ── الترتيب: ما يحتاج عملًا أوّلًا ────────────────────────────────────────
+    // الشاشةُ تُفتَح لتُقرأ من أعلاها، فالشاحنةُ التي عليها تنبيهٌ أو صيانةٌ
+    // متأخّرة تسبق التي لا شيءَ فيها. والترتيبُ بالحروف يجعل القراءةَ بحثًا.
+    const weight = (r) => (r.alerts.some((a) => a.severity === 'critical') ? 5 : r.alertCount ? 3 : 0)
+      + (r.maintenance?.status === 'overdue' ? 2 : r.maintenance?.status === 'due' ? 1 : 0)
+      + (r.tires.faults ? 2 : 0);
+    rows.sort((a, b) => weight(b) - weight(a) || String(a.plate).localeCompare(String(b.plate)));
+
+    res.json({
+      vehicles: rows,
+      totals: {
+        total: rows.length,
+        untracked: rows.filter((r) => !r.tracked).length,
+        stale: rows.filter((r) => r.tracked && r.stale).length,
+        alerts: rows.reduce((s, r) => s + r.alertCount, 0),
+        withAlerts: rows.filter((r) => r.alertCount).length,
+        critical: rows.filter((r) => r.alerts.some((a) => a.severity === 'critical')).length,
+        maintenanceOverdue: rows.filter((r) => r.maintenance?.status === 'overdue').length,
+        maintenanceDue: rows.filter((r) => r.maintenance?.status === 'due').length,
+        tireFaults: rows.filter((r) => r.tires.faults > 0).length,
+        moving: rows.filter((r) => r.moving).length,
+      },
+    });
+  } catch (error) {
+    console.error('getFleetHealth error:', error);
+    res.status(500).json({ message: 'تعذّر تحميل حالة المركبات' });
+  }
+};

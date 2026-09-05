@@ -42,6 +42,10 @@ router.get('/arrivals', fleet.getArrivals);
 router.get('/loads-analysis', fleet.getLoadsAnalysis);
 
 // Vehicles
+// ── حالةُ المركبات ────────────────────────────────────────────────────────
+// أرقامُ شاحناتنا الحيّة في قسمها: الكاوتشُ وحرارتُه وحرارةُ الماء والصيانةُ
+// والتنبيهات. تُقرأ من `Ls2Vehicle` نفسِه — مصدرٌ واحدٌ لا نسخة.
+router.get('/health', fleet.getFleetHealth);
 router.get('/vehicles', fleet.listVehicles);
 // تحليل سيارةٍ بعينها عبر فترة — محصورٌ بمشرفها (يُتحقَّق داخل المتحكّم).
 router.get('/vehicles/:id/analytics', fleet.getVehicleAnalytics);

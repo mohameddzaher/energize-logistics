@@ -10,6 +10,7 @@ import '../screens/fleet_shipments.dart';
 import '../screens/fleet_analytics.dart';
 import '../screens/fleet_settings.dart';
 import '../screens/fleet_vehicle_logs.dart';
+import '../screens/fleet_health.dart';
 import '../resource/resource.dart';
 import '../resource/configs.dart';
 import '../screens/contracts_dashboard.dart';
@@ -180,6 +181,9 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('السائقون', 'Drivers', Icons.badge_outlined, (c) => ResourceScreen(config: fleetDriversCfg), path: '/system/fleet/drivers'),
         AppPage('تقييم السائقين', 'Driver KPIs', Icons.speed_outlined, (c) => const FleetDriverKpisScreen(), path: '/system/fleet/driver-kpis'),
         AppPage('السيارات', 'Vehicles', Icons.local_shipping_outlined, (c) => ResourceScreen(config: fleetVehiclesCfg), path: '/system/fleet/vehicles'),
+        // حالةُ المركبات بعد «السيارات»: الشاشتان عن الشاحنة نفسِها — إحداهما
+        // تقول ما هي، والأخرى كيف حالُها الآن.
+        AppPage('حالة المركبات', 'Vehicle Health', Icons.monitor_heart_outlined, (c) => const FleetHealthScreen(), path: '/system/fleet/health'),
         AppPage('سجلّات السيارات', 'Vehicle Logs', Icons.assignment_outlined, (c) => const FleetVehicleLogsScreen(), path: '/system/fleet/vehicle-logs'),
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: fleetCustomersCfg), path: '/system/fleet/customers'),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'fleet'), path: '/system/fleet/my-tasks'),

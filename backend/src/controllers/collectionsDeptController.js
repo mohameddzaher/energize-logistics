@@ -1023,8 +1023,15 @@ exports.taxInvoices = async (req, res) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
 
-    // فلاترُ الدفتر — بمعاني الصفحة نفسِها لا بحقول الكشوف.
-    const f = { kind: { $ne: 'cash' } };
+    // ── والدفترُ كلُّه فواتير ────────────────────────────────────────────────
+    // كان يُستبعَد ما `kind` فيه «cash»، و`kind` صفةٌ استنتجناها من شكل كود
+    // الحساب (C…) لا شيءٌ في الورقة. فسقطت ثلاثُ فواتيرَ حقيقيّةٍ من ورقة
+    // «Daily Invoice Report» — لشركة تنشيط، مسلَّمةٌ وقيمتُها سبعةُ آلافٍ
+    // وسبعُمئة — من صفحة الفواتير، ولم تظهر في صفحة الكاش لأنّ تلك تقرأ
+    // الكشوف لا الفواتير. فلا تظهر في شاشةٍ أصلًا.
+    //
+    // وكلُّ صفٍّ في تلك الورقة فاتورة، فتُعرَض كلُّها.
+    const f = {};
     if (req.query.customer) f.partyName = flexSpaceRegex(String(req.query.customer));
     if (req.query.q) {
       const { exact, loose } = numberSearchRegex(String(req.query.q));
@@ -1290,7 +1297,7 @@ exports.invoiceFilterOptions = async (req, res) => {
     const [customers, branches] = await Promise.all([
       kind === 'cash'
         ? OperationsWorkflow.distinct('username', { ...base, username: { $nin: [null, ''] } })
-        : CollectionInvoice.distinct('partyName', { kind: { $ne: 'cash' }, partyName: { $nin: [null, ''] } }),
+        : CollectionInvoice.distinct('partyName', { partyName: { $nin: [null, ''] } }),
       OperationsWorkflow.distinct('payingBranch', { ...base, payingBranch: { $nin: [null, ''] } }),
     ]);
     res.json({ customers: customers.sort().slice(0, 2000), branches: branches.sort() });

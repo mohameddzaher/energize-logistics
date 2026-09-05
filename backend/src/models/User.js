@@ -20,10 +20,24 @@ const userSchema = new mongoose.Schema(
     lastName: { type: String, required: true, trim: true },
     role: {
       type: String,
-      // مصدرها الوحيد config/roles.js — كل قسم له مدير وموظف، والملف ده بيتحقق
-      // من القاعدة وقت التحميل. إضافة دور هناك بتوصل هنا لوحدها.
-      enum: require('../config/roles').ALL_ROLES,
       required: true,
+      // ── المفاتيحُ المكتوبة، وما صُنع من الشاشة ────────────────────────────
+      // مصدرُها الأوّل `config/roles.js`: لكلّ قسمٍ مديرٌ وموظّف، والملفُّ يتحقّق
+      // من القاعدة وقتَ التحميل. وإلى جانبها ما يصنعه صاحبُ النظام من صفحة
+      // الصلاحيّات (`models/CustomRole`).
+      //
+      // ولا تصلح `enum` هنا: تُبنى مرّةً عند التحميل، فالدورُ الذي يُصنَع بعد
+      // إقلاع الخادم يظهر في الشاشة ويُرفَض عند حفظ المستخدم — إعدادٌ يكذب على
+      // من ضبطه. فالتحقّقُ يسأل المصدرين معًا في كلّ حفظ.
+      validate: {
+        validator: async function roleExists(v) {
+          const { ALL_ROLES } = require('../config/roles');
+          if (ALL_ROLES.includes(v)) return true;
+          const { customRoleKeys } = require('../utils/permissions');
+          return (await customRoleKeys()).has(String(v));
+        },
+        message: (p) => `دورٌ غير معروف: ${p.value}`,
+      },
     },
     // Is this login one of OUR PEOPLE, or an outside partner (customer/supplier)?
     // Employees are the default and behave exactly as before. A partner account

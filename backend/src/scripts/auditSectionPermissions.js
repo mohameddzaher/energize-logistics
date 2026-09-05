@@ -59,7 +59,7 @@ async function login(e) {
       ...(C.LS2_STAFF_ROLES || []), ...(C.VEHICLE_STAFF_ROLES || []),
       ...(C.FINANCE_STAFF_ROLES || []), ...(C.STAFF_ROLES || []),
     ]);
-    const all = User.schema.path('role').enumValues.filter((r) => r !== 'super_admin' && r !== 'client');
+    const all = require('../config/roles').ALL_ROLES.filter((r) => r !== 'super_admin' && r !== 'client');
     const counts = await User.aggregate([{ $group: { _id: '$role', n: { $sum: 1 } } }]);
     const used = new Set(counts.filter((c) => c.n > 0).map((c) => c._id));
     const overridden = new Set((await RolePermission.find({}).select('role').lean()).map((d) => d.role));

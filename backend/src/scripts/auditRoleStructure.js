@@ -72,7 +72,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? G + '✓' + O : R + '✗ FAI
   ok('administration_staff هو السكرتارية (مقصود)', br.isSecretary({ role: 'administration_staff' }));
 
   console.log('\n── قاعدة البيانات ──');
-  const valid = new Set(User.schema.path('role').enumValues);
+  const valid = new Set(require('../config/roles').ALL_ROLES);
   const used = await User.distinct('role');
   const unknown = used.filter((r) => !valid.has(r));
   ok('كل أدوار المستخدمين معتمدة', unknown.length === 0, unknown.join(', ') || `${used.length} دور مستخدم فعلاً`);

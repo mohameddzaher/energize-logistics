@@ -30,7 +30,7 @@ import { SO_EDIT_ROLES as SO_ROLES } from '@/lib/shipmentOrders';
 import { FLEET_EDIT_ROLES as FLEET_ROLES, FLEET_ADMIN_ROLES } from '@/lib/fleet';
 import { LS2_SECTION_ROLES } from '@/lib/ls2';
 
-import { isManagedSection, canAccessSection } from '@/lib/sections';
+import { isManagedSection, canAccessSection, canAccessPage } from '@/lib/sections';
 import { ALL_ROLES } from '@/lib/roles';
 import { PERF_STAFF_ROLES } from '@/lib/performance';
 import { WALLET_ROLES, WALLET_DASHBOARD_ROLES } from '@/lib/wallet';
@@ -591,6 +591,11 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
 
   const filteredNav = navItems.filter((item) => {
     if (!user) return false;
+    // ── الصفحةُ قبل القسم ──────────────────────────────────────────────────
+    // طبقةٌ تحت مصفوفة الأقسام: قسمُ المركبات تسعَ عشرةَ صفحة، ومن مُنح القسمَ
+    // كان يأخذها كلَّها. فما أُغلق من صفحاته يُغلَق هنا مهما قال القسم — وما
+    // سكتت عنه الشاشةُ يتبع قسمَه (يحسبها الخادم، راجع effectivePages).
+    if (!canAccessPage(user.pageAccess, item.href)) return false;
     // Managed sections are governed by the super_admin permission matrix
     // (sectionKey → none/view/edit) instead of the static role list. This is
     // what makes granting/removing a section to a role take effect live.
@@ -626,6 +631,26 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     }
     return true;
   });
+
+  // ── وبابُ الصفحة يُغلَق على من يكتب مسارَها ──────────────────────────────
+  // إخفاءُ الرابط لا يمنع أحدًا: من يعرف المسارَ يكتبه في المتصفّح فتُفتَح
+  // الشاشة. والحارسُ الحقيقيُّ على البيانات هو القسمُ على الـ API — لكنّ شاشةً
+  // مُنع صاحبُها منها ثمّ فتحت له نصفَ محتواها إعدادٌ يكذب على من ضبطه.
+  //
+  // والمقارنةُ بالمسار الأطول المطابق: `/system/vehicles/registry/123` صفحةُ
+  // `registry`، و«لا صفحةَ في الفهرس تطابقه» تعني شاشةً خارج الشريط (تفصيلُ
+  // سجلّ) فتتبع أقربَ أصلٍ لها.
+  const pageBlocked = (() => {
+    if (!user || !user.pageAccess) return false;
+    const keys = Object.keys(user.pageAccess);
+    let best = '';
+    for (const k of keys) {
+      if (pathname === k || pathname.startsWith(`${k}/`)) {
+        if (k.length > best.length) best = k;
+      }
+    }
+    return !!best && user.pageAccess[best] === false;
+  })();
 
   // Group filtered nav items by section, preserving order
   const groupedNav = filteredNav.reduce((acc, item) => {
@@ -749,7 +774,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
           {sidebarOpen && (
             <div className="mb-3">
               <p className="text-white text-sm font-medium">{user.firstName} {user.lastName}</p>
-              <p className="text-slate-400 text-xs capitalize">{getRoleLabel(user.role, lang)}</p>
+              <p className="text-slate-400 text-xs capitalize">{user.roleLabel ? (lang === 'ar' ? user.roleLabel.ar : user.roleLabel.en) : getRoleLabel(user.role, lang)}</p>
             </div>
           )}
           <button type="button" onClick={handleLogout} className="flex items-center gap-2 text-slate-400 hover:text-red-600 transition-colors text-sm w-full">
@@ -834,7 +859,27 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
 
         {/* Page Content */}
         <main className="flex-1 p-4 md:p-6 overflow-x-auto min-w-0">
-          {children}
+          {pageBlocked ? (
+            <div className="max-w-lg mx-auto mt-16 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-4">
+                <Shield className="w-7 h-7" />
+              </div>
+              <p className="text-lg font-bold text-slate-900">
+                {lang === 'ar' ? 'هذه الصفحة ليست ضمن صلاحيّاتك' : 'This page is not part of your access'}
+              </p>
+              {/* ومن يُمنَع يُقال له بمن يتّصل — لا «غير مصرّح» وحدَها، فتلك
+                  تُقرأ عطلًا فيُعاد تحميلُ الصفحةِ مرّاتٍ ثمّ يُتّصل بالدعم. */}
+              <p className="text-sm text-slate-500 mt-2 leading-relaxed">
+                {lang === 'ar'
+                  ? 'صلاحيّاتُ الصفحات تُضبط من «الأدوار والصلاحيّات». إن كنت تحتاجها في عملك فاطلبها من صاحب النظام.'
+                  : 'Page access is set in Roles & Permissions. If you need this page for your work, ask the system owner for it.'}
+              </p>
+              <button type="button" onClick={() => router.push(user?.homePage || homeRouteForRole(user?.role))}
+                className="mt-5 px-4 py-2 rounded-lg bg-[#f37121] text-white text-sm font-semibold">
+                {lang === 'ar' ? 'العودة إلى صفحتي' : 'Back to my page'}
+              </button>
+            </div>
+          ) : children}
         </main>
       </div>
 
@@ -868,7 +913,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
               </nav>
               <div className="border-t border-slate-800 p-4">
                 <p className="text-white text-sm">{user.firstName} {user.lastName}</p>
-                <p className="text-slate-400 text-xs capitalize mb-3">{getRoleLabel(user.role, lang)}</p>
+                <p className="text-slate-400 text-xs capitalize mb-3">{user.roleLabel ? (lang === 'ar' ? user.roleLabel.ar : user.roleLabel.en) : getRoleLabel(user.role, lang)}</p>
                 <button type="button" onClick={handleLogout} className="flex items-center gap-2 text-slate-400 hover:text-red-600 text-sm">
                   <LogOut className="w-4 h-4" />
                   <span>{L.logout}</span>

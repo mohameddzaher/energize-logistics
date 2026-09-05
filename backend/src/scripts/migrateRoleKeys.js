@@ -99,7 +99,7 @@ const DRY = process.argv.includes('--dry');
     }
     // وكل دور موجود دلوقتي لازم يكون في الـ enum الجديد.
     const roles = await User.distinct('role');
-    const valid = new Set(User.schema.path('role').enumValues);
+    const valid = new Set(require('../config/roles').ALL_ROLES);
     const unknown = roles.filter((r) => !valid.has(r));
     if (unknown.length) {
       console.log(`\n✗ أدوار مش في القائمة المعتمدة: ${unknown.join(', ')}`);

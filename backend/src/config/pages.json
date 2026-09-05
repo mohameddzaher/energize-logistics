@@ -1,0 +1,1589 @@
+{
+  "generatedFrom": "frontend/src/app/system/layout.tsx",
+  "pages": [
+    {
+      "key": "/system/executive",
+      "section": "Main",
+      "ar": "النظرة التنفيذية",
+      "en": "Executive Overview"
+    },
+    {
+      "key": "/system/dashboard",
+      "section": "Main",
+      "ar": "لوحة التحكم",
+      "en": "Dashboard"
+    },
+    {
+      "key": "/system/credit-alerts",
+      "section": "Main",
+      "ar": "تنبيهات الائتمان",
+      "en": "Credit Alerts"
+    },
+    {
+      "key": "/system/operations",
+      "section": "Operations",
+      "ar": "التشغيل",
+      "en": "Operations"
+    },
+    {
+      "key": "/system/operations/payment-types",
+      "section": "Operations",
+      "ar": "أنواع الدفع",
+      "en": "Payment Types"
+    },
+    {
+      "key": "/system/operations/dispatch-sheets",
+      "section": "Operations",
+      "ar": "كشوف التخريج",
+      "en": "Dispatch Sheets"
+    },
+    {
+      "key": "/system/vendors",
+      "section": "Operations",
+      "ar": "الموردين",
+      "en": "Vendors"
+    },
+    {
+      "key": "/system/wallet",
+      "section": "Operations",
+      "ar": "المحفظة",
+      "en": "Wallet"
+    },
+    {
+      "key": "/system/wallet-dashboard",
+      "section": "Operations",
+      "ar": "لوحة المحفظة",
+      "en": "Wallet Dashboard"
+    },
+    {
+      "key": "/system/vehicle-analytics",
+      "section": "Operations",
+      "ar": "تحليلات المركبات",
+      "en": "Vehicle Analytics"
+    },
+    {
+      "key": "/system/vehicle-analytics/fuel",
+      "section": "Operations",
+      "ar": "تحليل الوقود",
+      "en": "Fuel Analysis"
+    },
+    {
+      "key": "/system/vehicle-analytics/tracking",
+      "section": "Operations",
+      "ar": "تتبع GPS",
+      "en": "GPS Tracking"
+    },
+    {
+      "key": "/system/vehicle-analytics/trips",
+      "section": "Operations",
+      "ar": "الرحلات",
+      "en": "Trips"
+    },
+    {
+      "key": "/system/vehicle-analytics/upload",
+      "section": "Operations",
+      "ar": "رفع البيانات",
+      "en": "Data Upload"
+    },
+    {
+      "key": "/system/operations/my-tasks",
+      "section": "Operations",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/operations/complaints",
+      "section": "Operations",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/operations/kpis",
+      "section": "Operations",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/collections-dept/dashboard",
+      "section": "Collections",
+      "ar": "لوحة التحصيل",
+      "en": "Collections Dashboard"
+    },
+    {
+      "key": "/system/collections-dept/invoices/tax",
+      "section": "Collections",
+      "ar": "الفواتير الضريبية",
+      "en": "Tax Invoices"
+    },
+    {
+      "key": "/system/collections-dept/invoices/cash",
+      "section": "Collections",
+      "ar": "فواتير الكاش",
+      "en": "Cash Invoices"
+    },
+    {
+      "key": "/system/collections-dept/aging",
+      "section": "Collections",
+      "ar": "أعمار الديون",
+      "en": "Aging"
+    },
+    {
+      "key": "/system/collections-dept/ledger",
+      "section": "Collections",
+      "ar": "دفتر الفواتير",
+      "en": "Invoice Ledger"
+    },
+    {
+      "key": "/system/collections-dept/plan",
+      "section": "Collections",
+      "ar": "الخطة اليومية",
+      "en": "Daily Plan"
+    },
+    {
+      "key": "/system/collections-dept/team",
+      "section": "Collections",
+      "ar": "الفريق",
+      "en": "The Team"
+    },
+    {
+      "key": "/system/collections-dept/links",
+      "section": "Collections",
+      "ar": "ربط الحسابات",
+      "en": "Account Linking"
+    },
+    {
+      "key": "/system/collections-dept/customers",
+      "section": "Collections",
+      "ar": "العملاء",
+      "en": "Customers"
+    },
+    {
+      "key": "/system/collections-dept/suppliers",
+      "section": "Collections",
+      "ar": "الموردين",
+      "en": "Suppliers"
+    },
+    {
+      "key": "/system/collections-dept/my-tasks",
+      "section": "Collections",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/collections-dept/complaints",
+      "section": "Collections",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/collections-dept/kpis",
+      "section": "Collections",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/collections-dept/settings",
+      "section": "Collections",
+      "ar": "إعدادات القسم",
+      "en": "Section Settings"
+    },
+    {
+      "key": "/system/ops",
+      "section": "Operations Platform",
+      "ar": "لوحة الأوبريشن",
+      "en": "Ops Dashboard"
+    },
+    {
+      "key": "/system/ops/shipments",
+      "section": "Operations Platform",
+      "ar": "الشحنات",
+      "en": "Shipments"
+    },
+    {
+      "key": "/system/ops/drivers",
+      "section": "Operations Platform",
+      "ar": "السائقون",
+      "en": "Drivers"
+    },
+    {
+      "key": "/system/ops/cars",
+      "section": "Operations Platform",
+      "ar": "المركبات",
+      "en": "Cars"
+    },
+    {
+      "key": "/system/ops/car-owners",
+      "section": "Operations Platform",
+      "ar": "أصحاب المركبات",
+      "en": "Car Owners"
+    },
+    {
+      "key": "/system/ops/users",
+      "section": "Operations Platform",
+      "ar": "العملاء",
+      "en": "Customers"
+    },
+    {
+      "key": "/system/ops/branches",
+      "section": "Operations Platform",
+      "ar": "الفروع",
+      "en": "Branches"
+    },
+    {
+      "key": "/system/ops/cities",
+      "section": "Operations Platform",
+      "ar": "المدن",
+      "en": "Cities"
+    },
+    {
+      "key": "/system/ops/countries",
+      "section": "Operations Platform",
+      "ar": "الدول",
+      "en": "Countries"
+    },
+    {
+      "key": "/system/ops/truck-types",
+      "section": "Operations Platform",
+      "ar": "أنواع الشاحنات",
+      "en": "Truck Types"
+    },
+    {
+      "key": "/system/ops/truck-sizes",
+      "section": "Operations Platform",
+      "ar": "أحجام الشاحنات",
+      "en": "Truck Sizes"
+    },
+    {
+      "key": "/system/ops/load-types",
+      "section": "Operations Platform",
+      "ar": "أنواع الحمولة",
+      "en": "Load Types"
+    },
+    {
+      "key": "/system/ops/car-brands",
+      "section": "Operations Platform",
+      "ar": "ماركات المركبات",
+      "en": "Car Brands"
+    },
+    {
+      "key": "/system/ops/car-colors",
+      "section": "Operations Platform",
+      "ar": "ألوان المركبات",
+      "en": "Car Colors"
+    },
+    {
+      "key": "/system/shipment-orders",
+      "section": "Shipment Orders",
+      "ar": "الشحنات",
+      "en": "Shipments"
+    },
+    {
+      "key": "/system/shipment-orders/chat",
+      "section": "Shipment Orders",
+      "ar": "مساعد الإنشاء",
+      "en": "Create Assistant"
+    },
+    {
+      "key": "/system/shipment-orders/customers",
+      "section": "Shipment Orders",
+      "ar": "العملاء",
+      "en": "Customers"
+    },
+    {
+      "key": "/system/shipment-orders/fleet",
+      "section": "Shipment Orders",
+      "ar": "الموردون والمركبات",
+      "en": "Suppliers & Vehicles"
+    },
+    {
+      "key": "/system/shipment-orders/analytics",
+      "section": "Shipment Orders",
+      "ar": "التحليلات",
+      "en": "Analytics"
+    },
+    {
+      "key": "/system/shipment-orders/settings",
+      "section": "Shipment Orders",
+      "ar": "إعدادات القسم",
+      "en": "Section Settings"
+    },
+    {
+      "key": "/system/shipment-orders/my-tasks",
+      "section": "Shipment Orders",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/shipment-orders/complaints",
+      "section": "Shipment Orders",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/shipment-orders/kpis",
+      "section": "Shipment Orders",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/fleet/board",
+      "section": "Fleet Management",
+      "ar": "اللوحة الرئيسية",
+      "en": "Fleet Board"
+    },
+    {
+      "key": "/system/fleet",
+      "section": "Fleet Management",
+      "ar": "الحمولات",
+      "en": "Shipments"
+    },
+    {
+      "key": "/system/fleet/arrivals",
+      "section": "Fleet Management",
+      "ar": "المتوقع للوصول",
+      "en": "Expected Arrivals"
+    },
+    {
+      "key": "/system/fleet/dashboard",
+      "section": "Fleet Management",
+      "ar": "التحليلات",
+      "en": "Analytics"
+    },
+    {
+      "key": "/system/fleet/drivers",
+      "section": "Fleet Management",
+      "ar": "السائقون",
+      "en": "Drivers"
+    },
+    {
+      "key": "/system/fleet/driver-kpis",
+      "section": "Fleet Management",
+      "ar": "تقييم السائقين",
+      "en": "Driver KPIs"
+    },
+    {
+      "key": "/system/fleet/vehicles",
+      "section": "Fleet Management",
+      "ar": "سياراتنا",
+      "en": "Our Vehicles"
+    },
+    {
+      "key": "/system/fleet/vehicle-logs",
+      "section": "Fleet Management",
+      "ar": "سجلّات السيارات",
+      "en": "Vehicle Logs"
+    },
+    {
+      "key": "/system/fleet/assign",
+      "section": "Fleet Management",
+      "ar": "توزيع المشرفين",
+      "en": "Assign Supervisors"
+    },
+    {
+      "key": "/system/fleet/settings",
+      "section": "Fleet Management",
+      "ar": "إعدادات القسم",
+      "en": "Fleet Settings"
+    },
+    {
+      "key": "/system/fleet/my-tasks",
+      "section": "Fleet Management",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/fleet/complaints",
+      "section": "Fleet Management",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/fleet/kpis",
+      "section": "Fleet Management",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/fleet/customers",
+      "section": "Fleet Management",
+      "ar": "العملاء",
+      "en": "Customers"
+    },
+    {
+      "key": "/system/customs",
+      "section": "Customs",
+      "ar": "التخليص الجمركي",
+      "en": "Customs Clearance"
+    },
+    {
+      "key": "/system/customs/analytics",
+      "section": "Customs",
+      "ar": "التحليلات",
+      "en": "Analytics"
+    },
+    {
+      "key": "/system/customs/customers",
+      "section": "Customs",
+      "ar": "العملاء",
+      "en": "Customers"
+    },
+    {
+      "key": "/system/customs/agents",
+      "section": "Customs",
+      "ar": "وكلاء الشحن",
+      "en": "Shipping Agents"
+    },
+    {
+      "key": "/system/customs/settings",
+      "section": "Customs",
+      "ar": "إعدادات القسم",
+      "en": "Section Settings"
+    },
+    {
+      "key": "/system/vehicles/registry/overview",
+      "section": "Vehicles",
+      "ar": "نظرة شاملة",
+      "en": "Overview"
+    },
+    {
+      "key": "/system/vehicles/registry",
+      "section": "Vehicles",
+      "ar": "سجل المركبات",
+      "en": "Vehicle Registry"
+    },
+    {
+      "key": "/system/vehicles/registry/expiring",
+      "section": "Vehicles",
+      "ar": "الانتهاءات والتجديد",
+      "en": "Expiries & Renewals"
+    },
+    {
+      "key": "/system/vehicles/registry/claims",
+      "section": "Vehicles",
+      "ar": "الحوادث والمطالبات",
+      "en": "Accidents & Claims"
+    },
+    {
+      "key": "/system/vehicles/registry/corporate",
+      "section": "Vehicles",
+      "ar": "وثائق تأمين الشركة",
+      "en": "Company Policies"
+    },
+    {
+      "key": "/system/vehicles/registry/records",
+      "section": "Vehicles",
+      "ar": "سجلّات القسم",
+      "en": "Registers"
+    },
+    {
+      "key": "/system/vehicles/registry/insurance/vehicles",
+      "section": "Vehicles",
+      "ar": "تأمين المركبات",
+      "en": "Vehicle Insurance"
+    },
+    {
+      "key": "/system/vehicles/registry/operating-cards",
+      "section": "Vehicles",
+      "ar": "بطاقات التشغيل",
+      "en": "Operating Cards"
+    },
+    {
+      "key": "/system/vehicles/driver-cards",
+      "section": "Vehicles",
+      "ar": "بطاقات السائقين",
+      "en": "Driver Cards"
+    },
+    {
+      "key": "/system/vehicles/registry/authorizations",
+      "section": "Vehicles",
+      "ar": "التفاويض",
+      "en": "Authorisations"
+    },
+    {
+      "key": "/system/vehicles/registry/fuel-cards",
+      "section": "Vehicles",
+      "ar": "بترو اب — شرائح الوقود",
+      "en": "Petro App Cards"
+    },
+    {
+      "key": "/system/vehicles/registry/gps",
+      "section": "Vehicles",
+      "ar": "أجهزة التتبّع GPS",
+      "en": "GPS Devices"
+    },
+    {
+      "key": "/system/vehicles/registry/licenses",
+      "section": "Vehicles",
+      "ar": "رخص السير",
+      "en": "Vehicle Licences"
+    },
+    {
+      "key": "/system/vehicles/registry/inspection",
+      "section": "Vehicles",
+      "ar": "الفحص الدوري",
+      "en": "Periodic Inspection"
+    },
+    {
+      "key": "/system/vehicles/registry/dashboard",
+      "section": "Vehicles",
+      "ar": "تحليلات المركبات",
+      "en": "Registry Analytics"
+    },
+    {
+      "key": "/system/vehicles/my-tasks",
+      "section": "Vehicles",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/vehicles/complaints",
+      "section": "Vehicles",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/vehicles/settings",
+      "section": "Vehicles",
+      "ar": "إعدادات القسم",
+      "en": "Section Settings"
+    },
+    {
+      "key": "/system/vehicles/kpis",
+      "section": "Vehicles",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/ls2",
+      "section": "Location Solutions",
+      "ar": "لوحة التتبّع",
+      "en": "Telemetry Dashboard"
+    },
+    {
+      "key": "/system/ls2/live",
+      "section": "Location Solutions",
+      "ar": "الأسطول المباشر",
+      "en": "Live Fleet"
+    },
+    {
+      "key": "/system/ls2/registry",
+      "section": "Location Solutions",
+      "ar": "سجل الأسطول",
+      "en": "Fleet Registry"
+    },
+    {
+      "key": "/system/ls2/drivers",
+      "section": "Location Solutions",
+      "ar": "السواقين",
+      "en": "Drivers"
+    },
+    {
+      "key": "/system/ls2/driver-performance",
+      "section": "Location Solutions",
+      "ar": "تقييم السواقين",
+      "en": "Driver Performance"
+    },
+    {
+      "key": "/system/ls2/tires",
+      "section": "Location Solutions",
+      "ar": "الكاوتش",
+      "en": "Tires"
+    },
+    {
+      "key": "/system/ls2/temperature",
+      "section": "Location Solutions",
+      "ar": "الحرارة",
+      "en": "Temperature"
+    },
+    {
+      "key": "/system/ls2/maintenance",
+      "section": "Location Solutions",
+      "ar": "الصيانة",
+      "en": "Maintenance"
+    },
+    {
+      "key": "/system/ls2/fleet-assets",
+      "section": "Location Solutions",
+      "ar": "السطحات والكاوتشات",
+      "en": "Fleet Assets"
+    },
+    {
+      "key": "/system/ls2/store",
+      "section": "Location Solutions",
+      "ar": "مخزن النقل الثقيل",
+      "en": "Store"
+    },
+    {
+      "key": "/system/ls2/repairs",
+      "section": "Location Solutions",
+      "ar": "الصيانة الاستثنائية",
+      "en": "Exceptional Repairs"
+    },
+    {
+      "key": "/system/ls2/alerts",
+      "section": "Location Solutions",
+      "ar": "التنبيهات",
+      "en": "Alerts"
+    },
+    {
+      "key": "/system/ls2/reports",
+      "section": "Location Solutions",
+      "ar": "التقارير",
+      "en": "Reports"
+    },
+    {
+      "key": "/system/workshop/store",
+      "section": "Workshop",
+      "ar": "المستودع",
+      "en": "Store"
+    },
+    {
+      "key": "/system/workshop",
+      "section": "Workshop",
+      "ar": "الورشة",
+      "en": "Workshop"
+    },
+    {
+      "key": "/system/workshop/purchases",
+      "section": "Workshop",
+      "ar": "المشتريات",
+      "en": "Purchases"
+    },
+    {
+      "key": "/system/workshop/dashboard",
+      "section": "Workshop",
+      "ar": "لوحة الورشة",
+      "en": "Workshop Dashboard"
+    },
+    {
+      "key": "/system/workshop/tasks",
+      "section": "Workshop",
+      "ar": "أوامر شغل المركبات",
+      "en": "Vehicle Work Orders"
+    },
+    {
+      "key": "/system/performance",
+      "section": "Performance",
+      "ar": "تقييم مديري الأقسام",
+      "en": "Evaluate Managers"
+    },
+    {
+      "key": "/system/performance/overview",
+      "section": "Performance",
+      "ar": "نظرة كل الأقسام",
+      "en": "All Departments"
+    },
+    {
+      "key": "/system/performance/requests",
+      "section": "Performance",
+      "ar": "طلبات تعديل التقييم",
+      "en": "Edit Requests"
+    },
+    {
+      "key": "/system/performance/settings",
+      "section": "Performance",
+      "ar": "إعداد المؤشرات",
+      "en": "Configure KPIs"
+    },
+    {
+      "key": "/system/marketing",
+      "section": "Marketing",
+      "ar": "لوحة التسويق",
+      "en": "Marketing Dashboard"
+    },
+    {
+      "key": "/system/marketing/campaigns",
+      "section": "Marketing",
+      "ar": "الحملات",
+      "en": "Campaigns"
+    },
+    {
+      "key": "/system/marketing/activities",
+      "section": "Marketing",
+      "ar": "سجل الأنشطة",
+      "en": "Activity Log"
+    },
+    {
+      "key": "/system/marketing/reports",
+      "section": "Marketing",
+      "ar": "التقارير الدورية",
+      "en": "Periodic Reports"
+    },
+    {
+      "key": "/system/marketing/my-tasks",
+      "section": "Marketing",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/marketing/complaints",
+      "section": "Marketing",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/marketing/kpis",
+      "section": "Marketing",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/bd",
+      "section": "Business Development",
+      "ar": "تطوير الأعمال",
+      "en": "Business Development"
+    },
+    {
+      "key": "/system/bd/opportunities",
+      "section": "Business Development",
+      "ar": "الفرص الاستراتيجية",
+      "en": "Opportunities"
+    },
+    {
+      "key": "/system/bd/partners",
+      "section": "Business Development",
+      "ar": "الشراكات",
+      "en": "Partners"
+    },
+    {
+      "key": "/system/bd/tenders",
+      "section": "Business Development",
+      "ar": "المناقصات",
+      "en": "Tenders"
+    },
+    {
+      "key": "/system/bd/my-tasks",
+      "section": "Business Development",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/bd/complaints",
+      "section": "Business Development",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/bd/kpis",
+      "section": "Business Development",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/administration",
+      "section": "Administration",
+      "ar": "لوحة المهام",
+      "en": "Task Board"
+    },
+    {
+      "key": "/system/administration/my-tasks",
+      "section": "Administration",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/administration/complaints",
+      "section": "Administration",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/administration/kpis",
+      "section": "Administration",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/business-review",
+      "section": "Business Review",
+      "ar": "اجتماعات المراجعة",
+      "en": "Review Meetings"
+    },
+    {
+      "key": "/system/business-review/my-actions",
+      "section": "Business Review",
+      "ar": "البنود المسندة إليّ",
+      "en": "My Actions"
+    },
+    {
+      "key": "/system/business-review/actions",
+      "section": "Business Review",
+      "ar": "سجل المتابعة",
+      "en": "Action Register"
+    },
+    {
+      "key": "/system/business-review/my-tasks",
+      "section": "Business Review",
+      "ar": "مهامي من الاجتماعات",
+      "en": "My Meeting Tasks"
+    },
+    {
+      "key": "/system/contracts",
+      "section": "Contracts",
+      "ar": "لوحة إدارة العقود",
+      "en": "Contracts Dashboard"
+    },
+    {
+      "key": "/system/contracts/vendors",
+      "section": "Contracts",
+      "ar": "سجل موردي 3PL",
+      "en": "Vendor Register"
+    },
+    {
+      "key": "/system/contracts/analysis",
+      "section": "Contracts",
+      "ar": "تحليل التشغيل",
+      "en": "Utilisation Analysis"
+    },
+    {
+      "key": "/system/contracts/prospects",
+      "section": "Contracts",
+      "ar": "تنشيط الموردين الجدد",
+      "en": "Prospect Outreach"
+    },
+    {
+      "key": "/system/contracts/agreements",
+      "section": "Contracts",
+      "ar": "عقود الأقسام",
+      "en": "Department Contracts"
+    },
+    {
+      "key": "/system/contracts/my-tasks",
+      "section": "Contracts",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/contracts/complaints",
+      "section": "Contracts",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/contracts/kpis",
+      "section": "Contracts",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/it",
+      "section": "Software & IT",
+      "ar": "لوحة تقنية المعلومات",
+      "en": "IT Dashboard"
+    },
+    {
+      "key": "/system/it/tickets",
+      "section": "Software & IT",
+      "ar": "التذاكر والمشكلات",
+      "en": "Tickets"
+    },
+    {
+      "key": "/system/it/recurring",
+      "section": "Software & IT",
+      "ar": "المشكلات المتكررة",
+      "en": "Recurring Problems"
+    },
+    {
+      "key": "/system/it/custody",
+      "section": "Software & IT",
+      "ar": "العهد والأجهزة",
+      "en": "IT Custody"
+    },
+    {
+      "key": "/system/it/stock",
+      "section": "Software & IT",
+      "ar": "المستودع",
+      "en": "IT Stock"
+    },
+    {
+      "key": "/system/it/systems",
+      "section": "Software & IT",
+      "ar": "الأنظمة والخدمات",
+      "en": "Systems & Services"
+    },
+    {
+      "key": "/system/it/emails",
+      "section": "Software & IT",
+      "ar": "بريد الشركة",
+      "en": "Company Email"
+    },
+    {
+      "key": "/system/it/my-tasks",
+      "section": "Software & IT",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/it/complaints",
+      "section": "Software & IT",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/it/kpis",
+      "section": "Software & IT",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/ls2/settings",
+      "section": "Location Solutions",
+      "ar": "الإعدادات",
+      "en": "Settings"
+    },
+    {
+      "key": "/system/ls2/kpis",
+      "section": "Location Solutions",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/ls2/my-tasks",
+      "section": "Location Solutions",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/ls2/complaints",
+      "section": "Location Solutions",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/b2c/dashboard",
+      "section": "B2C",
+      "ar": "لوحة B2C",
+      "en": "B2C Dashboard"
+    },
+    {
+      "key": "/system/b2c/reps-performance",
+      "section": "B2C",
+      "ar": "أداء المناديب",
+      "en": "Reps Performance"
+    },
+    {
+      "key": "/system/b2c/daily-entry",
+      "section": "B2C",
+      "ar": "إدخال يومي",
+      "en": "Daily Entry"
+    },
+    {
+      "key": "/system/b2c/reps",
+      "section": "B2C",
+      "ar": "مناديب المبيعات",
+      "en": "Sales Reps"
+    },
+    {
+      "key": "/system/b2c/projects",
+      "section": "B2C",
+      "ar": "المشاريع",
+      "en": "Projects"
+    },
+    {
+      "key": "/system/b2c/custody",
+      "section": "B2C",
+      "ar": "العهدة",
+      "en": "Custody"
+    },
+    {
+      "key": "/system/b2c/kpis",
+      "section": "B2C",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/b2c/my-tasks",
+      "section": "B2C",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/b2c/complaints",
+      "section": "B2C",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/remote/attendance",
+      "section": "Remote",
+      "ar": "الحضور والانصراف",
+      "en": "Attendance"
+    },
+    {
+      "key": "/system/remote/dashboard",
+      "section": "Remote",
+      "ar": "لوحتي",
+      "en": "My Dashboard"
+    },
+    {
+      "key": "/system/remote/leave",
+      "section": "Remote",
+      "ar": "الإجازات",
+      "en": "Leave"
+    },
+    {
+      "key": "/system/remote/chat",
+      "section": "Remote",
+      "ar": "الرسائل",
+      "en": "Messages"
+    },
+    {
+      "key": "/system/remote/tasks",
+      "section": "Remote",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/remote/report",
+      "section": "Remote",
+      "ar": "التقرير اليومي",
+      "en": "Daily Report"
+    },
+    {
+      "key": "/system/remote/announcements",
+      "section": "Remote",
+      "ar": "الإعلانات",
+      "en": "Announcements"
+    },
+    {
+      "key": "/system/remote/kpis",
+      "section": "Remote",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/remote/my-tasks",
+      "section": "Remote",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/remote/complaints",
+      "section": "Remote",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/hr/master",
+      "section": "HR",
+      "ar": "لوحة الموارد البشرية",
+      "en": "HR Dashboard"
+    },
+    {
+      "key": "/system/hr/master/expiring",
+      "section": "HR",
+      "ar": "انتهاءات المستندات",
+      "en": "Document Expiries"
+    },
+    {
+      "key": "/system/hr/master/iqama",
+      "section": "HR",
+      "ar": "الإقامات",
+      "en": "Iqamas"
+    },
+    {
+      "key": "/system/hr/master/passport",
+      "section": "HR",
+      "ar": "الجوازات",
+      "en": "Passports"
+    },
+    {
+      "key": "/system/hr/master/medicalInsurance",
+      "section": "HR",
+      "ar": "التأمين الطبي",
+      "en": "Medical Insurance"
+    },
+    {
+      "key": "/system/hr/master/healthCertificate",
+      "section": "HR",
+      "ar": "الشهادات الصحية",
+      "en": "Health Certificates"
+    },
+    {
+      "key": "/system/hr/master/driverCard",
+      "section": "HR",
+      "ar": "بطاقات السائقين",
+      "en": "Driver Cards"
+    },
+    {
+      "key": "/system/hr/master/drivingLicense",
+      "section": "HR",
+      "ar": "رخص القيادة",
+      "en": "Driving Licences"
+    },
+    {
+      "key": "/system/hr/master/socialInsurance",
+      "section": "HR",
+      "ar": "السجل والتأمينات الاجتماعية",
+      "en": "Register & Social Insurance"
+    },
+    {
+      "key": "/system/hr/master/banking",
+      "section": "HR",
+      "ar": "البيانات البنكية",
+      "en": "Banking"
+    },
+    {
+      "key": "/system/hr/employees",
+      "section": "HR",
+      "ar": "الموظفون",
+      "en": "Employees"
+    },
+    {
+      "key": "/system/hr/contracts",
+      "section": "HR",
+      "ar": "العقود",
+      "en": "Contracts"
+    },
+    {
+      "key": "/system/hr/leaves",
+      "section": "HR",
+      "ar": "طلبات الإجازات",
+      "en": "Leave Requests"
+    },
+    {
+      "key": "/system/hr/requests",
+      "section": "HR",
+      "ar": "طلبات الموظفين",
+      "en": "Employee Requests"
+    },
+    {
+      "key": "/system/hr/custody",
+      "section": "HR",
+      "ar": "العهد",
+      "en": "Custody"
+    },
+    {
+      "key": "/system/hr/stock",
+      "section": "HR",
+      "ar": "المستودع",
+      "en": "HR Store"
+    },
+    {
+      "key": "/system/hr/licenses",
+      "section": "HR",
+      "ar": "التراخيص والاشتراكات",
+      "en": "Licenses & Subscriptions"
+    },
+    {
+      "key": "/system/hr/leave-types",
+      "section": "HR",
+      "ar": "أنواع الإجازات",
+      "en": "Leave Types"
+    },
+    {
+      "key": "/system/hr/settings",
+      "section": "HR",
+      "ar": "إعدادات القسم",
+      "en": "HR Settings"
+    },
+    {
+      "key": "/system/hr/me",
+      "section": "Self Service",
+      "ar": "ملفي",
+      "en": "My Profile"
+    },
+    {
+      "key": "/system/hr/my-leaves",
+      "section": "Self Service",
+      "ar": "إجازاتي",
+      "en": "My Leaves"
+    },
+    {
+      "key": "/system/hr/my-requests",
+      "section": "Self Service",
+      "ar": "طلباتي",
+      "en": "My Requests"
+    },
+    {
+      "key": "/system/settings",
+      "section": "Self Service",
+      "ar": "الإعدادات",
+      "en": "Settings"
+    },
+    {
+      "key": "/system/crm/dashboard",
+      "section": "CRM",
+      "ar": "لوحة الـ CRM",
+      "en": "CRM Dashboard"
+    },
+    {
+      "key": "/system/crm/companies",
+      "section": "CRM",
+      "ar": "الشركات",
+      "en": "Companies"
+    },
+    {
+      "key": "/system/crm/vendors",
+      "section": "CRM",
+      "ar": "الموردين",
+      "en": "Vendors"
+    },
+    {
+      "key": "/system/crm/customer-kpis",
+      "section": "CRM",
+      "ar": "مؤشرات العملاء",
+      "en": "Customer KPIs"
+    },
+    {
+      "key": "/system/crm/vendor-kpis",
+      "section": "CRM",
+      "ar": "مؤشرات الموردين",
+      "en": "Vendor KPIs"
+    },
+    {
+      "key": "/system/crm/contacts",
+      "section": "CRM",
+      "ar": "جهات الاتصال",
+      "en": "Contacts"
+    },
+    {
+      "key": "/system/crm/deals",
+      "section": "CRM",
+      "ar": "الصفقات",
+      "en": "Deals"
+    },
+    {
+      "key": "/system/crm/tasks",
+      "section": "CRM",
+      "ar": "المهام",
+      "en": "Tasks"
+    },
+    {
+      "key": "/system/crm/calendar",
+      "section": "CRM",
+      "ar": "التقويم",
+      "en": "Calendar"
+    },
+    {
+      "key": "/system/crm/activities",
+      "section": "CRM",
+      "ar": "الأنشطة",
+      "en": "Activities"
+    },
+    {
+      "key": "/system/sales/dashboard",
+      "section": "Sales",
+      "ar": "لوحة المبيعات",
+      "en": "Sales Dashboard"
+    },
+    {
+      "key": "/system/sales/pipeline",
+      "section": "Sales",
+      "ar": "مسار البيع",
+      "en": "Pipeline"
+    },
+    {
+      "key": "/system/sales/targets",
+      "section": "Sales",
+      "ar": "الأهداف",
+      "en": "Targets"
+    },
+    {
+      "key": "/system/sales/performance",
+      "section": "Sales",
+      "ar": "الأداء",
+      "en": "Performance"
+    },
+    {
+      "key": "/system/accounting/dashboard",
+      "section": "Accounting",
+      "ar": "الحسابات",
+      "en": "Accounting"
+    },
+    {
+      "key": "/system/accounting/accounts",
+      "section": "Accounting",
+      "ar": "دليل الحسابات",
+      "en": "Chart of Accounts"
+    },
+    {
+      "key": "/system/accounting/journal",
+      "section": "Accounting",
+      "ar": "القيود اليومية",
+      "en": "Journal"
+    },
+    {
+      "key": "/system/accounting/trial-balance",
+      "section": "Accounting",
+      "ar": "ميزان المراجعة",
+      "en": "Trial Balance"
+    },
+    {
+      "key": "/system/accounting/profit-loss",
+      "section": "Accounting",
+      "ar": "الأرباح والخسائر",
+      "en": "Profit & Loss"
+    },
+    {
+      "key": "/system/accounting/receivables",
+      "section": "Accounting",
+      "ar": "الذمم المدينة",
+      "en": "Receivables"
+    },
+    {
+      "key": "/system/accounting/payables",
+      "section": "Accounting",
+      "ar": "الذمم الدائنة",
+      "en": "Payables"
+    },
+    {
+      "key": "/system/procurement/dashboard",
+      "section": "Procurement",
+      "ar": "المشتريات",
+      "en": "Procurement"
+    },
+    {
+      "key": "/system/procurement/requests",
+      "section": "Procurement",
+      "ar": "طلبات الشراء",
+      "en": "Purchase Requests"
+    },
+    {
+      "key": "/system/procurement/orders",
+      "section": "Procurement",
+      "ar": "أوامر الشراء",
+      "en": "Purchase Orders"
+    },
+    {
+      "key": "/system/procurement/bills",
+      "section": "Procurement",
+      "ar": "فواتير الموردين",
+      "en": "Vendor Bills"
+    },
+    {
+      "key": "/system/crm/my-tasks",
+      "section": "CRM",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/crm/complaints",
+      "section": "CRM",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/crm/kpis",
+      "section": "CRM",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/sales/my-tasks",
+      "section": "Sales",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/sales/complaints",
+      "section": "Sales",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/sales/kpis",
+      "section": "Sales",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/accounting/my-tasks",
+      "section": "Accounting",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/accounting/complaints",
+      "section": "Accounting",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/accounting/kpis",
+      "section": "Accounting",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/procurement/my-tasks",
+      "section": "Procurement",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/procurement/complaints",
+      "section": "Procurement",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/procurement/kpis",
+      "section": "Procurement",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/hr/my-tasks",
+      "section": "HR",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/hr/complaints",
+      "section": "HR",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/hr/kpis",
+      "section": "HR",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/ops/my-tasks",
+      "section": "Operations Platform",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/ops/complaints",
+      "section": "Operations Platform",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/ops/kpis",
+      "section": "Operations Platform",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/workshop/my-tasks",
+      "section": "Workshop",
+      "ar": "مهامي الإدارية",
+      "en": "My Admin Tasks"
+    },
+    {
+      "key": "/system/workshop/complaints",
+      "section": "Workshop",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/workshop/kpis",
+      "section": "Workshop",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/customs/my-tasks",
+      "section": "Customs",
+      "ar": "مهامي",
+      "en": "My Tasks"
+    },
+    {
+      "key": "/system/customs/complaints",
+      "section": "Customs",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/customs/kpis",
+      "section": "Customs",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/kpis",
+      "section": "Tools",
+      "ar": "مؤشرات الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/reports",
+      "section": "Tools",
+      "ar": "مركز التقارير",
+      "en": "Reports"
+    },
+    {
+      "key": "/system/assistant",
+      "section": "Tools",
+      "ar": "المساعد",
+      "en": "Assistant"
+    },
+    {
+      "key": "/system/branches",
+      "section": "Admin",
+      "ar": "الفروع",
+      "en": "Branches"
+    },
+    {
+      "key": "/system/expense-categories",
+      "section": "Admin",
+      "ar": "فئات المصروفات",
+      "en": "Expense Categories"
+    },
+    {
+      "key": "/system/settings/reference-data",
+      "section": "Admin",
+      "ar": "القوائم المرجعية",
+      "en": "Reference Data"
+    },
+    {
+      "key": "/system/users",
+      "section": "Admin",
+      "ar": "المستخدمين",
+      "en": "Users"
+    },
+    {
+      "key": "/system/permissions",
+      "section": "Admin",
+      "ar": "الأدوار والصلاحيات",
+      "en": "Roles & Permissions"
+    },
+    {
+      "key": "/system/audit",
+      "section": "Admin",
+      "ar": "سجل المراجعة",
+      "en": "Audit Log"
+    },
+    {
+      "key": "/system/complaints",
+      "section": "Admin",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/portal",
+      "section": "Portal",
+      "ar": "نظرة عامة",
+      "en": "Overview"
+    },
+    {
+      "key": "/system/portal/shipments",
+      "section": "Portal",
+      "ar": "شحناتي",
+      "en": "My Shipments"
+    },
+    {
+      "key": "/system/portal/customs",
+      "section": "Portal",
+      "ar": "معاملات التخليص",
+      "en": "Customs Files"
+    },
+    {
+      "key": "/system/portal/invoices",
+      "section": "Portal",
+      "ar": "فواتيري",
+      "en": "My Invoices"
+    },
+    {
+      "key": "/system/portal/payments",
+      "section": "Portal",
+      "ar": "مدفوعاتي",
+      "en": "My Payments"
+    }
+  ]
+}

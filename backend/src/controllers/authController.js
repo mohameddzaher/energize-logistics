@@ -138,8 +138,10 @@ exports.login = async (req, res) => {
     // Include effective section permissions so the sidebar renders correctly on
     // the first paint after login (without them, managed sections stay hidden
     // until a refresh re-fetches /api/auth/me).
-    const { effectivePermissions } = require('../utils/permissions');
+    const { effectivePermissions, effectivePages, homePageFor } = require('../utils/permissions');
     const permissions = await effectivePermissions(user.role);
+    const pageAccess = await effectivePages(user.role);
+    const homePage = await homePageFor(user.role);
 
     res.json({
       user: {
@@ -149,6 +151,9 @@ exports.login = async (req, res) => {
         lastName: user.lastName,
         role: user.role,
         permissions,
+        // أيُّ الشاشات تُفتَح — الشريطُ الجانبيُّ يقرؤها من أوّل رسمة.
+        pageAccess,
+        homePage,
         // Without this the HR self-service pages think the account is not
         // linked to an employee until the next /auth/me refresh.
         linkedEmployee: user.linkedEmployee || null,
@@ -358,16 +363,33 @@ exports.getMe = async (req, res) => {
       .populate('manager', 'firstName lastName email role')
       .populate('linkedEmployee', 'firstName lastName employeeNumber jobTitle');
 
-    // Effective per-section access (drives the sidebar + client-side edit gating).
-    const { effectivePermissions } = require('../utils/permissions');
+    // Effective per-section access (drives the sidebar + client-side edit gating),
+    // and per-page access beneath it — القسمُ يقول ماذا يُفعَل والصفحةُ تقول أين.
+    // راجع config/pages.js.
+    const { effectivePermissions, effectivePages, homePageFor } = require('../utils/permissions');
     const permissions = user ? await effectivePermissions(user.role) : {};
-    const out = user ? { ...user.toObject(), permissions } : user;
+    const pageAccess = user ? await effectivePages(user.role) : {};
+    const homePage = user ? await homePageFor(user.role) : '';
+    // ── واسمُ الدور المصنوع يأتي معه ──────────────────────────────────────────
+    // الشاشاتُ تترجم الدورَ من جدولٍ في الواجهة لا يعرف ما صُنع بعد بنائها، فكان
+    // «مراجع مالي» يُعرَض `financial reviewer` تحت اسم صاحبه في كلّ شاشة.
+    const roleLabel = user ? await customRoleLabel(user.role) : null;
+    const out = user ? { ...user.toObject(), permissions, pageAccess, homePage, ...(roleLabel ? { roleLabel } : {}) } : user;
 
     res.json({ user: out });
   } catch (error) {
     res.status(500).json({ message: 'Failed to retrieve user profile' });
   }
 };
+
+/** اسمُ الدور المصنوع بلغتيه، أو `null` إن كان دورًا معرَّفًا في الشيفرة. */
+async function customRoleLabel(role) {
+  try {
+    const CustomRole = require('../models/CustomRole');
+    const r = await CustomRole.findOne({ key: role, isActive: true }).select('nameAr nameEn').lean();
+    return r ? { ar: r.nameAr, en: r.nameEn } : null;
+  } catch (_) { return null; }
+}
 
 // ── Personal signatures ─────────────────────────────────────────────────────
 // Signatures are `select: false` (heavy base64), so we fetch them explicitly.

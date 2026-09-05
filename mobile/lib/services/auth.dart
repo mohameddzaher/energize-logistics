@@ -23,6 +23,20 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// action to a view-only user is offering a button that will 403.
   bool canEditSection(String section) => permissions[section] == 'edit';
 
+  /// ── وأيُّ صفحاتِ القسم ──────────────────────────────────────────────────
+  /// طبقةٌ تحت القسم: القسمُ يقول ماذا يُفعَل، والصفحةُ تقول أين. مفتاحُها مسارُ
+  /// الصفحة في الويب — تُضبط مرّةً من شاشةٍ واحدة فتسري على الاثنين.
+  ///
+  /// والمفتاحُ الغائبُ مسموح: الخادمُ يرسل الخريطةَ كاملةً، فغيابُه يعني نسخةً
+  /// من التطبيق أقدمَ من الصفحة — وإخفاءُ شاشةٍ لاختلاف إصدارٍ عطبٌ صامت.
+  Map<String, dynamic> get pageAccess =>
+      (user?['pageAccess'] as Map<String, dynamic>?) ?? const {};
+
+  bool canAccessPage(String? path) {
+    if (path == null || path.isEmpty) return true;
+    return pageAccess[path] != false;
+  }
+
   /// App start: if a refresh token survives in the keychain, restore the
   /// session silently (loadTokens + /me does the refresh dance if needed).
   Future<void> bootstrap() async {

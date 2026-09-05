@@ -41,7 +41,7 @@ const GREEN = '\x1b[32m'; const RED = '\x1b[31m'; const DIM = '\x1b[2m'; const O
     return links;
   };
 
-  const roles = User.schema.path('role').enumValues;
+  const roles = require('../config/roles').ALL_ROLES;
   const overrides = new Map((await RolePermission.find({}).lean())
     .map((d) => [d.role, d.sections ? Object.fromEntries(Object.entries(d.sections)) : {}]));
   const counts = Object.fromEntries((await User.aggregate([{ $group: { _id: '$role', n: { $sum: 1 } } }]))

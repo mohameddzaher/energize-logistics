@@ -83,7 +83,7 @@ const OTHER_SECTIONS = [
   ok('الاتنين ليهم أسماء عربي وإنجليزي',
     !!(R.LABELS_AR.vehicles_manager && R.LABELS_EN.vehicles_manager && R.LABELS_AR.vehicles_staff && R.LABELS_EN.vehicles_staff),
     `${R.LABELS_AR.vehicles_manager} / ${R.LABELS_AR.vehicles_staff}`);
-  ok('الدور مقبول في enum الموديل', User.schema.path('role').enumValues.includes('vehicles_manager'));
+  ok('الدور معرَّفٌ في config/roles', require('../config/roles').ALL_ROLES.includes('vehicles_manager'));
 
   // ═══ ٢) الحساب الحقيقي ═════════════════════════════════════════════════════
   console.log('\n── الحساب ──');

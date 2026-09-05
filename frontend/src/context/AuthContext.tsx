@@ -20,6 +20,15 @@ interface User {
   // (sectionKey → 'none' | 'view' | 'edit'). Drives sidebar visibility and
   // client-side edit gating. See lib/sections.ts.
   permissions?: Record<string, 'none' | 'view' | 'edit'>;
+  // ── وأيُّ الشاشات تُفتَح ────────────────────────────────────────────────────
+  // القسمُ يقول ماذا يُفعَل والصفحةُ تقول أين: مسارُ الصفحة ← مسموحةٌ أو لا.
+  // الصفحةُ الغائبةُ من الخريطة مسموحةٌ (الخادمُ يرسلها كاملةً؛ والغيابُ يعني
+  // نسخةً أقدمَ من الواجهة، فلا تُخفى شاشةٌ بسببه).
+  pageAccess?: Record<string, boolean>;
+  // أوّلُ شاشةٍ تُفتَح لصاحب هذا الدور، إن ضُبطت له واحدة.
+  homePage?: string;
+  // اسمُ الدور المصنوع بلغتيه — جدولُ الترجمة في الواجهة لا يعرف ما صُنع بعد بنائه.
+  roleLabel?: { ar: string; en: string } | null;
 }
 
 interface AuthContextType {

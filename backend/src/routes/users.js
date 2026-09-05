@@ -7,10 +7,12 @@ const authorize = require('../middleware/rbac');
 const validate = require('../middleware/validate');
 const User = require('../models/User');
 
-// The ONE source of truth for valid roles is the User schema enum. A second
-// hardcoded copy here silently rejected every role added after it was written
-// (the IT, marketing, BD and fleet roles all bounced with "Role is invalid").
-const VALID_ROLES = User.schema.path('role').enumValues;
+// ── مصدرُ الأدوار الصحيحة ────────────────────────────────────────────────────
+// كان `User.schema.path('role').enumValues` — وهي `enum` تُبنى مرّةً عند تحميل
+// الملفّ من `config/roles.js`. وقد سقطت تلك `enum` حين صار النظامُ يقبل أنواعًا
+// تُصنَع من الشاشة (راجع models/User)، فصار المصدرُ ملفَّ الأدوار مباشرةً — وهو
+// ما كانت تعنيه `enum` أصلًا.
+const { ALL_ROLE_DEFS, sectionOfRole, isManager } = require('../config/roles');
 
 /**
  * GET /api/users/roles — قائمةُ الأدوار التي يقبلها الخادم فعلًا.
@@ -25,17 +27,27 @@ const VALID_ROLES = User.schema.path('role').enumValues;
  * ومعها القسمُ ومَن يديره: الشاشة تحتاجهما لتقترح المدير المباشر عند اختيار
  * الدور، وحسابُهما هنا يجعل الاقتراح يتبع تعريف الأدوار وحده.
  */
-router.get('/roles', (req, res) => {
-  const R = require('../config/roles');
-  const roles = R.ALL_ROLE_DEFS
-    .filter((d) => VALID_ROLES.includes(d.key))
-    .map((d) => ({
-      key: d.key,
-      ar: d.ar,
-      en: d.en,
-      section: R.sectionOfRole(d.key) || '',
-      isManager: R.isManager(d.key),
+router.get('/roles', async (req, res) => {
+  const roles = ALL_ROLE_DEFS.map((d) => ({
+    key: d.key,
+    ar: d.ar,
+    en: d.en,
+    section: sectionOfRole(d.key) || '',
+    isManager: isManager(d.key),
+    custom: false,
+  }));
+
+  // ── وما صُنع من شاشة الصلاحيّات يُسنَد كغيره ──────────────────────────────
+  // نوعٌ يُصنَع ولا يظهر في قائمة إنشاء المستخدمين نوعٌ لا يمكن استعمالُه —
+  // يُضبط بابُه ثمّ لا يدخله أحد.
+  try {
+    const CustomRole = require('../models/CustomRole');
+    const custom = await CustomRole.find({ isActive: true }).sort({ createdAt: 1 }).lean();
+    custom.forEach((c) => roles.push({
+      key: c.key, ar: c.nameAr, en: c.nameEn, section: '', isManager: false, custom: true,
     }));
+  } catch (_) { /* الأنواعُ المصنوعة إضافةٌ لا شرط */ }
+
   res.json({ roles });
 });
 
@@ -52,7 +64,16 @@ router.post(
     body('password').isLength({ min: 8 }).withMessage('كلمة المرور 8 أحرف على الأقل | Password must be at least 8 characters'),
     body('firstName').notEmpty().trim(),
     body('lastName').notEmpty().trim(),
-    body('role').isIn(VALID_ROLES).withMessage('Role is invalid'),
+    // ── والدورُ يُقاس على المصدرين ────────────────────────────────────────
+    // `isIn` بقائمةٍ تُبنى مرّةً عند التحميل ترفض النوعَ المصنوعَ بعد إقلاع
+    // الخادم: يظهر في القائمة المنسدلة ويُرفَض عند الحفظ.
+    body('role').custom(async (v) => {
+      const { ALL_ROLES } = require('../config/roles');
+      if (ALL_ROLES.includes(v)) return true;
+      const { customRoleKeys } = require('../utils/permissions');
+      if ((await customRoleKeys()).has(String(v))) return true;
+      throw new Error('Role is invalid');
+    }),
   ],
   validate,
   userController.createUser

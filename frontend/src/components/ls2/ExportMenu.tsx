@@ -10,7 +10,9 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { FileSpreadsheet, ChevronDown } from 'lucide-react';
 import { exportMultiSheet, type ExportBlock } from '@/utils/exportExcel';
 
-export type ExportColumn = { header: string; key: string; transform?: (value: any, row: any) => any; width?: number };
+// `type` يقرّر نوعَ الخانة في إكسل نفسِه: `date` تكتب كائنَ تاريخٍ حقيقيًّا بدل
+// نصٍّ يبدو تاريخًا — راجع utils/exportExcel.
+export type ExportColumn = { header: string; key: string; transform?: (value: any, row: any) => any; width?: number; type?: 'text' | 'date' | 'number' };
 export interface ExportSheet {
   name: string;
   rows: Record<string, any>[];

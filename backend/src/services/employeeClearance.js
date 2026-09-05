@@ -18,6 +18,37 @@
  */
 const mongoose = require('mongoose');
 
+const fold = (x) => String(x || '')
+  .replace(/[أإآا]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+  .replace(/[^\u0600-\u06FFa-zA-Z0-9]/g, '').toLowerCase();
+
+/**
+ * مركباتُ السجلّ المقيَّدة باسم هذا الموظّف — بالإقامة أوّلًا ثمّ بالاسم المطويّ.
+ *
+ * ── ولماذا هذا السجلّ أيضًا ─────────────────────────────────────────────────
+ * التفاويضُ عندنا في موضعين: سجلُّ حركةٍ (`VehicleAuthorization`) وورقةٌ مثبتةٌ
+ * على المركبة نفسِها (`VehicleMaster.authorizedPerson`). والثانيةُ هي الحجّةُ
+ * عند المرور، وكان الفحصُ يقرأ الأولى وحدَها — فمن كان مفوَّضًا بالورقة ولم
+ * يُقيَّد في سجلّ الحركة تُنهى خدمتُه والمركبةُ باسمه.
+ *
+ * والإقامةُ أوثقُ من الاسم: الأسماءُ تتشابه وتُكتب بصيغ، والرقمُ لا.
+ */
+async function vehiclesHeldBy(employee, VehicleMaster) {
+  if (!VehicleMaster || !employee) return [];
+  const iqama = String(employee.iqamaNumber || employee.nationalId || '').trim();
+  const name = fold(`${employee.firstName || ''} ${employee.lastName || ''}`.trim() || employee.fullName || '');
+  const or = [];
+  if (iqama) or.push({ 'authorizedPerson.iqamaNumber': iqama });
+  if (!or.length && !name) return [];
+  const rows = await VehicleMaster.find(or.length ? { $or: or } : {})
+    .select('plateNumber authorizedPerson fuelCard.cardNumber ownerNameAr').lean();
+  if (rows.length || !name) return rows;
+  // لا مطابقةَ بالرقم — يُجرَّب الاسمُ مطويًّا، وهو أضعفُ فيُقرأ كتنبيهٍ لا أكثر.
+  const all = await VehicleMaster.find({ 'authorizedPerson.name': { $nin: ['', null] } })
+    .select('plateNumber authorizedPerson fuelCard.cardNumber ownerNameAr').lean();
+  return all.filter((v) => fold(v.authorizedPerson?.name) === name);
+}
+
 /** ماذا يحمل هذا الموظّف الآن؟ يُعيد بنودًا موصوفةً بالعربيّة والإنجليزيّة. */
 async function checkClearance(employeeId) {
   const id = new mongoose.Types.ObjectId(String(employeeId));
@@ -44,7 +75,40 @@ async function checkClearance(employeeId) {
       : null,
   ]);
 
+  // ── ومركباتُ السجلّ: التفويضُ الورقيُّ وشريحةُ الوقود ──────────────────────
+  const Employee = M('Employee');
+  const VehicleMaster = M('VehicleMaster');
+  let held = [];
+  try {
+    const emp = Employee ? await Employee.findById(id).select('firstName lastName fullName iqamaNumber nationalId').lean() : null;
+    held = await vehiclesHeldBy(emp, VehicleMaster);
+  } catch (_) { held = []; }
+
   const blockers = []; const warnings = [];
+
+  const paperAuths = held.filter((v) => v.authorizedPerson?.authorizationNumber || v.authorizedPerson?.expiryDate);
+  if (paperAuths.length) {
+    blockers.push({
+      kind: 'vehicle_authorization_paper', section: 'المركبات', sectionEn: 'Vehicles',
+      ar: `تفويض مثبت على مركبة (${paperAuths.length})`, en: `${paperAuths.length} authorisation(s) recorded on a vehicle`,
+      items: paperAuths.map((v) => [v.plateNumber, v.authorizedPerson?.authorizationNumber].filter(Boolean).join(' — ')),
+      actionAr: 'يُلغى التفويض من سجل المركبات — ومعه تعود شريحة بترو اب إلينا، فهي على مركبة الشركة أصلًا.',
+    });
+  }
+
+  // ── والشريحةُ تُنزَع ولو كانت المركبةُ مركبتَه ─────────────────────────────
+  // يشتري الموظّفُ سيّارتَه وتُركَّب له شريحةُ الشركة هديّةً — فالسيّارةُ سيّارتُه
+  // ولا تفويضَ لنا عليها، والشريحةُ شريحتُنا وتصرف من حسابنا. وإنهاءُ خدمته
+  // وهي عليه يعني أن يبقى يصرف بها بعد رحيله.
+  const chips = held.filter((v) => String(v.fuelCard?.cardNumber || '').trim());
+  if (chips.length) {
+    blockers.push({
+      kind: 'fuel_card', section: 'المركبات', sectionEn: 'Vehicles',
+      ar: `شريحة بترو اب في يده (${chips.length})`, en: `${chips.length} Petro App chip(s) still held`,
+      items: chips.map((v) => [v.plateNumber, v.fuelCard?.cardNumber].filter(Boolean).join(' — ')),
+      actionAr: 'تُنزَع الشريحة من صفحة «بترو اب» أو من سجل المركبات قبل الإنهاء — ولو كانت المركبة ملكه، فالشريحة شريحتنا وتصرف من حسابنا.',
+    });
+  }
 
   if (assets.length) {
     blockers.push({

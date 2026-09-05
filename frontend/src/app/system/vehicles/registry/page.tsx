@@ -10,13 +10,15 @@ import api from '@/lib/api';
 import { syncUrl } from '@/lib/urlSync';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import { VReg, statusColor, statusLabel, DOC_TYPES, fmtDate, money, daysText, canEditVehicles, canAdminVehicles } from '@/lib/vehicleRegistry';
+import { VReg, statusColor, statusLabel, fmtDate, canEditVehicles, canAdminVehicles } from '@/lib/vehicleRegistry';
+import { REGISTRY_COLUMNS, BASE_COLUMN_KEYS } from '@/lib/vehicleColumns';
+import { withHijri } from '@/utils/exportExcel';
 import { canEditSection } from '@/lib/sections';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
 import ManagedSelect from '@/components/system/ManagedSelect';
-import { Car, Plus, Edit, Trash2, BarChart3, CalendarClock, X, Save, ArrowRight } from 'lucide-react';
+import { Car, Plus, Edit, Trash2, BarChart3, CalendarClock, X, Save, ArrowRight, Columns3, Check } from 'lucide-react';
 
 const EDIT_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'];
 
@@ -44,6 +46,30 @@ function VehicleRegistryListInner() {
   const [q, setQ] = useState(sp?.get('q') || '');
   const [editing, setEditing] = useState<VReg | null>(null);
   const [showForm, setShowForm] = useState(false);
+  // ── الجدولُ يحمل كلَّ عمود، ويُعرَض منه ما يُختار ──────────────────────────
+  // طُلب أن تكون هذه الصفحة «العنصر الأساسيّ للقسم»: فيها كلُّ بيانٍ يخصّ
+  // المركبة. وسبعةٌ وأربعون عمودًا مفتوحةً دائمًا تجعل القراءةَ تمريرًا أفقيًّا
+  // بلا نهاية، فالأعمدةُ كلُّها موجودةٌ وتُفتَح بضغطة — والاختيارُ يبقى في
+  // المتصفّح، فلا يُعاد ضبطُه كلَّ صباح.
+  const [visibleCols, setVisibleCols] = useState<string[]>(BASE_COLUMN_KEYS);
+  const [colsOpen, setColsOpen] = useState(false);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('vreg:cols');
+      if (saved) { const a = JSON.parse(saved); if (Array.isArray(a) && a.length) setVisibleCols(a); }
+    } catch { /* تفضيلُ عرضٍ لا شرط */ }
+  }, []);
+  const toggleCol = (key: string) => setVisibleCols((prev) => {
+    const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+    try { localStorage.setItem('vreg:cols', JSON.stringify(next)); } catch { /* تفضيلٌ لا شرط */ }
+    return next;
+  });
+  const setColsAll = (on: boolean) => {
+    const next = on ? REGISTRY_COLUMNS.map((c) => c.key) : BASE_COLUMN_KEYS;
+    setVisibleCols(next);
+    try { localStorage.setItem('vreg:cols', JSON.stringify(next)); } catch { /* تفضيلٌ لا شرط */ }
+  };
+  const shownCols = useMemo(() => REGISTRY_COLUMNS.filter((c) => visibleCols.includes(c.key)), [visibleCols]);
 
   // كل فلاتر العنوان تُمرَّر كما هي إلى الخادم.
   //
@@ -115,39 +141,29 @@ function VehicleRegistryListInner() {
   // التي يبني منها الخادمُ حالاتِها، فلا يفترق مستندٌ ظهر في «الانتهاءات» عن
   // عمودٍ لا وجود له في الملفّ.
   // آخرُ ما يُطبَّق: فوق البحث والفلاتر، كما يفعل إكسل.
+  // الفلترُ يقرأ الخليّةَ بالتعبير نفسِه الذي تُرسَم به — راجع vehicleColumns.
+  const GETTERS = useMemo(
+    () => Object.fromEntries(REGISTRY_COLUMNS.map((c) => [c.key, c.get])) as Record<string, (v: VReg) => any>,
+    [],
+  );
   const shownRows = cf.apply(rows, GETTERS);
 
-  const cols: ExportColumn[] = [
-    { header: ar ? 'اللوحة' : 'Plate', key: 'plateNumber', width: 14 },
-    { header: ar ? 'رقم الهيكل' : 'Chassis', key: 'chassisNumber', width: 20 },
-    { header: ar ? 'القطاع' : 'Sector', key: 'sectorAr', width: 16 },
-    { header: ar ? 'الإدارة' : 'Department', key: 'departmentAr', width: 16 },
-    { header: ar ? 'المدينة' : 'City', key: 'cityAr', width: 12 },
-    { header: ar ? 'نوع التسجيل' : 'Registration type', key: 'registrationTypeAr', width: 14 },
-    { header: ar ? 'الماركة' : 'Brand', key: 'brandAr', width: 14 },
-    { header: ar ? 'الطراز' : 'Model', key: 'modelAr', width: 14 },
-    { header: ar ? 'سنة الصنع' : 'Year', key: 'modelYear', width: 10 },
-    { header: ar ? 'اللون' : 'Color', key: 'colorAr', width: 12 },
-    { header: ar ? 'المالك' : 'Owner', key: 'ownerNameAr', width: 26 },
-    { header: ar ? 'حالة التشغيل' : 'Service status', key: 'serviceStatusAr', width: 14 },
-    { header: ar ? 'المفوَّض' : 'Authorised holder', key: 'authorizedPerson.name', width: 22 },
-    { header: ar ? 'رقم التفويض' : 'Authorisation no.', key: 'authorizedPerson.authorizationNumber', width: 16 },
-    ...DOC_TYPES.map((d): ExportColumn => ({
-      header: ar ? `انتهاء ${d.ar}` : `${d.en} expiry`,
-      key: d.key,
-      transform: (_v, row: VReg) => fmtDate(d.datePath(row)),
-      width: 14,
+  // ── أعمدةُ التصدير هي أعمدةُ الجدول نفسُها ────────────────────────────────
+  // تعريفٌ واحدٌ في `lib/vehicleColumns` يخدم الاثنين، فلا يفترق ملفٌّ عن شاشة.
+  // و`withHijri` يُدخل عمودًا هجريًّا بعد كلّ تاريخٍ ميلاديّ تلقائيًّا — إلّا حيث
+  // يوجد هجريٌّ مكتوبٌ على الورقة أصلًا (رخصة السير والفحص).
+  const cols: ExportColumn[] = useMemo(() => withHijri(
+    REGISTRY_COLUMNS.map((c): ExportColumn => ({
+      header: ar ? c.ar : c.en,
+      key: c.key,
+      width: c.width,
+      type: c.type,
+      transform: (_v, row: any) => {
+        const val = c.get(row);
+        return val === null || val === undefined ? '' : val;
+      },
     })),
-    { header: ar ? 'رقم وثيقة التأمين' : 'Policy number', key: 'insurance.policyNumber', width: 18 },
-    { header: ar ? 'شركة التأمين' : 'Insurer', key: 'insurance.companyAr', width: 20 },
-    { header: ar ? 'قسط التأمين' : 'Premium (SAR)', key: 'insurance.premiumSar', transform: (v) => (v == null ? '' : money(v)), width: 14 },
-    { header: ar ? 'الحالة العامة' : 'Overall status', key: 'overallStatus', transform: (v) => statusLabel(v || 'valid', ar), width: 14 },
-    { header: ar ? 'المتبقّي' : 'Days left', key: 'overallDays', transform: (v) => daysText(v, ar), width: 18 },
-    // النقطة البنفسجية في الجدول لا تقول ما الناقص؛ الملفّ يتّسع لتفصيلها،
-    // وهو المقصود من تصديره أصلًا: قائمة عملٍ تُوزَّع لا صورةٌ للشاشة.
-    { header: ar ? 'نواقص لوجستي' : 'Logisti gaps', key: 'logistiGaps', transform: (v: string[]) => (v || []).join(' · '), width: 30 },
-    { header: ar ? 'ملاحظات' : 'Notes', key: 'notesAr', width: 30 },
-  ];
+  ), [ar]);
 
   const del = async (v: VReg) => {
     if (!(await confirm(ar ? `حذف المركبة ${v.plateNumber}؟` : `Delete ${v.plateNumber}?`))) return;
@@ -168,6 +184,32 @@ function VehicleRegistryListInner() {
         <div className="flex items-center gap-2">
           <Link href="/system/vehicles/registry/dashboard" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><BarChart3 className="w-4 h-4" /> {ar ? 'التحليلات' : 'Analytics'}</Link>
           <Link href="/system/vehicles/registry/expiring" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm"><CalendarClock className="w-4 h-4" /> {ar ? 'الانتهاءات والتجديد' : 'Expiries & Renewals'}</Link>
+          {/* ── اختيارُ الأعمدة ────────────────────────────────────────────
+              الجدولُ يحمل كلَّ عمودٍ في السجلّ؛ وهذا ما يُعرَض منه. */}
+          <div className="relative">
+            <button onClick={() => setColsOpen((o) => !o)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
+              <Columns3 className="w-4 h-4" /> {ar ? 'الأعمدة' : 'Columns'}
+              <span className="text-slate-400 tabular-nums">{shownCols.length}/{REGISTRY_COLUMNS.length}</span>
+            </button>
+            {colsOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setColsOpen(false)} />
+                <div className="absolute z-50 mt-1 end-0 w-80 max-h-[70vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg p-2">
+                  <div className="flex items-center gap-2 px-1 pb-2 border-b border-slate-100">
+                    <button onClick={() => setColsAll(true)} className="text-xs px-2 py-1 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100">{ar ? 'إظهار الكل' : 'Show all'}</button>
+                    <button onClick={() => setColsAll(false)} className="text-xs px-2 py-1 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100">{ar ? 'الأساسية فقط' : 'Essentials'}</button>
+                  </div>
+                  {REGISTRY_COLUMNS.map((c) => (
+                    <label key={c.key} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-[13px]">
+                      <input type="checkbox" className="w-4 h-4 accent-[#f37121]" checked={visibleCols.includes(c.key)} onChange={() => toggleCol(c.key)} />
+                      <span className="truncate">{ar ? c.ar : c.en}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           {canEdit && <button onClick={() => { setEditing(null); setShowForm(true); }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#e5651a] text-white text-sm"><Plus className="w-4 h-4" /> {ar ? 'إضافة' : 'Add'}</button>}
           <ExportMenu fileName="vehicle-registry" lang={lang as 'ar' | 'en'}
             options={[
@@ -204,11 +246,11 @@ function VehicleRegistryListInner() {
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300 text-xs">
               <tr>
-                {COL_DEFS.map(([key, arL, enL]) => (
-                  <th key={key} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
+                {shownCols.map((c) => (
+                  <th key={c.key} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
                     <span className="inline-flex items-center">
-                      {ar ? arL : enL}
-                      {cf.header(key, rows, GETTERS[key], ar, key === 'status' ? (v: any) => statusLabel(String(v || 'valid'), ar) : undefined)}
+                      {ar ? c.ar : c.en}
+                      {cf.header(c.key, rows, c.get, ar)}
                     </span>
                   </th>
                 ))}
@@ -218,29 +260,46 @@ function VehicleRegistryListInner() {
             <tbody className="divide-y divide-slate-100">
               {shownRows.map((v) => (
                 <tr key={v._id} className="hover:bg-slate-50">
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    <Link href={`/system/vehicles/registry/${v._id}`} className="text-[#f37121] hover:underline font-mono font-semibold">{v.plateNumber}</Link>
-                    {/* ── لا رقم بجانب اللوحة ──────────────────────────────────
-                        كان يُكتب «ناقص ١» و«ناقص ٢»، والرقم عددُ شروط منصّة لوجستي
-                        غير المستوفاة لا عددُ الخانات الفارغة. فيفتح الناظر مركبةً
-                        «ناقص ٢» فيجد خانةً واحدة ناقصة كالتي عليها «ناقص ١»،
-                        فيظنّ الرقم عبثًا — وهو ليس عبثًا، لكنّه يعدّ شيئًا غير
-                        الذي يُفهَم منه في هذا الموضع. النقطة وحدها تقول «هنا عمل»،
-                        وتفصيلُه في صفحة المركبة حيث يُقرأ شرطًا شرطًا. */}
-                    {!!v.logistiGaps?.length && (
-                      <span title={ar ? `ينقصها لمنصّة لوجستي: ${v.logistiGaps.join(' · ')}` : `Logisti gaps: ${v.logistiGaps.join(' · ')}`}
-                        className="ms-1.5 inline-block w-1.5 h-1.5 rounded-full bg-violet-500 align-middle" />
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{v.sectorAr || '—'}</td>
-                  <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{v.departmentAr || '—'}</td>
-                  <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{v.cityAr || '—'}</td>
-                  <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{v.registrationTypeAr || '—'}</td>
-                  <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{v.brandAr || '—'} {v.modelAr}</td>
-                  <td className="px-3 py-2 text-slate-500">{v.modelYear || '—'}</td>
-                  <td className="px-3 py-2 text-slate-500 max-w-[160px] truncate" title={v.ownerNameAr}>{v.ownerNameAr || '—'}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-xs">{v.insurance?.expiryDate ? <span style={{ color: statusColor(v.docStatuses?.insurance?.status || 'none') }}>{fmtDate(v.insurance.expiryDate)}</span> : <span className="text-slate-400">—</span>}</td>
-                  <td className="px-3 py-2"><span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: `${statusColor(v.overallStatus || 'valid')}1a`, color: statusColor(v.overallStatus || 'valid') }}>{statusLabel(v.overallStatus || 'valid', ar)}{v.overallDays != null && v.overallStatus !== 'valid' ? ` · ${daysText(v.overallDays, ar)}` : ''}</span></td>
+                  {shownCols.map((c) => {
+                    const val = c.get(v);
+                    const text = val === null || val === undefined || val === '' ? '' : String(val);
+                    // اللوحةُ تفتح المركبة: هي مفتاحُ الصفّ ومَن يقرأ الجدولَ
+                    // يبحث بها.
+                    if (c.key === 'plateNumber') {
+                      return (
+                        <td key={c.key} className="px-3 py-2 whitespace-nowrap">
+                          <Link href={`/system/vehicles/registry/${v._id}`} className="text-[#f37121] hover:underline font-mono font-semibold">{text || v.plateNumber}</Link>
+                          {/* النقطةُ تقول «هنا عمل»، وتفصيلُه في صفحة المركبة
+                              حيث يُقرأ شرطًا شرطًا. */}
+                          {!!v.logistiGaps?.length && (
+                            <span title={ar ? `ينقصها لمنصّة لوجستي: ${v.logistiGaps.join(' · ')}` : `Logisti gaps: ${v.logistiGaps.join(' · ')}`}
+                              className="ms-1.5 inline-block w-1.5 h-1.5 rounded-full bg-violet-500 align-middle" />
+                          )}
+                        </td>
+                      );
+                    }
+                    // تاريخُ التأمين يحمل لونَ حالته — هو أكثرُ ما يُنظَر إليه.
+                    if (c.key === 'insExpiry' && text) {
+                      return (
+                        <td key={c.key} className="px-3 py-2 whitespace-nowrap text-xs">
+                          <span style={{ color: statusColor(v.docStatuses?.insurance?.status || 'none') }}>{fmtDate(v.insurance?.expiryDate)}</span>
+                        </td>
+                      );
+                    }
+                    // الأيامُ المتبقية: السالبُ منتهٍ، والقريبُ يُنبَّه عليه.
+                    if (c.key.endsWith('Days') && text !== '') {
+                      const n = Number(val);
+                      const tone = n < 0 ? 'text-red-600 font-semibold' : n <= 30 ? 'text-amber-600 font-semibold' : 'text-slate-500';
+                      return <td key={c.key} className={`px-3 py-2 whitespace-nowrap tabular-nums ${tone}`}>{n}</td>;
+                    }
+                    return (
+                      <td key={c.key}
+                        className={`px-3 py-2 whitespace-nowrap max-w-[220px] truncate ${c.mono ? 'font-mono text-[12.5px] text-slate-700' : 'text-slate-600'}`}
+                        title={text}>
+                        {text || <span className="text-slate-300">—</span>}
+                      </td>
+                    );
+                  })}
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1">
                       {canEdit && <button onClick={() => { setEditing(v); setShowForm(true); }} className="p-1.5 rounded hover:bg-slate-100 text-slate-500"><Edit className="w-3.5 h-3.5" /></button>}
@@ -249,7 +308,7 @@ function VehicleRegistryListInner() {
                   </td>
                 </tr>
               ))}
-              {shownRows.length === 0 && <tr><td colSpan={11} className="px-3 py-10 text-center text-slate-500">{ar ? 'لا توجد مركبات مطابقة' : 'No matching vehicles'}</td></tr>}
+              {shownRows.length === 0 && <tr><td colSpan={shownCols.length + 1} className="px-3 py-10 text-center text-slate-500">{ar ? 'لا توجد مركبات مطابقة' : 'No matching vehicles'}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -338,6 +397,9 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
               رقمٌ تُجمَّع به المركباتُ في صفحة السجلّات وتُفلتَر به القوائم،
               ولم تكن له خانةٌ هنا — فيُقرأ في مكانٍ ولا يُصحَّح في أيّ مكان. */}
           <div><L>{ar ? 'السجل التجاري' : 'Commercial register'}</L><input className={inp} value={f.commercialRegistration || ''} onChange={(e) => set('commercialRegistration', e.target.value)} /></div>
+          {/* «حالة تم» عمودٌ في التقرير المطلوب وشرطٌ في منصّة لوجستي — كان
+              يُقرأ في الجدول ولا يُصحَّح في أيّ مكان. */}
+          <div><L>{ar ? 'حالة تم' : 'Tam status'}</L><input className={inp} value={f.tamStatusAr || ''} onChange={(e) => set('tamStatusAr', e.target.value)} /></div>
         </Card>
 
         <Card title={ar ? 'التأمين' : 'Insurance'}>
@@ -356,6 +418,11 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <div><L>{ar ? 'انتهاء رخصة السير' : 'Licence expiry'}</L><input type="date" className={inp} value={(f.vehicleLicense?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('vehicleLicense', 'expiryDate', e.target.value || null)} /></div>
           <div><L>{ar ? 'حالة الفحص' : 'Inspection status'}</L><ManagedSelect storeLabel type="vehicle_inspection_status" value={f.inspection?.statusAr || ''} onChange={(v) => setSub('inspection', 'statusAr', v)} /></div>
           <div><L>{ar ? 'انتهاء الفحص' : 'Inspection expiry'}</L><input type="date" className={inp} value={(f.inspection?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('inspection', 'expiryDate', e.target.value || null)} /></div>
+          {/* ── والهجريُّ المكتوبُ على الورقة يُكتب كما هو ────────────────────
+              لا يُحسَب: الورقةُ تحمل تاريخًا هجريًّا مطبوعًا، وهو الحجّة. وحسابُنا
+              قد يخالفه بيوم، فيُكتب ما على الورقة ويبقى المحسوبُ للتصدير. */}
+          <div><L>{ar ? 'انتهاء رخصة السير (هجري)' : 'Licence expiry (Hijri)'}</L><input className={inp} placeholder="1447/07/22" value={f.vehicleLicense?.expiryDateHijri || ''} onChange={(e) => setSub('vehicleLicense', 'expiryDateHijri', e.target.value)} /></div>
+          <div><L>{ar ? 'انتهاء الفحص (هجري)' : 'Inspection expiry (Hijri)'}</L><input className={inp} placeholder="1447/07/22" value={f.inspection?.expiryDateHijri || ''} onChange={(e) => setSub('inspection', 'expiryDateHijri', e.target.value)} /></div>
 
         </Card>
 
@@ -364,6 +431,23 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <div><L>{ar ? 'رقم شريحة الوقود' : 'Fuel card no.'}</L><input className={inp} value={f.fuelCard?.cardNumber || ''} onChange={(e) => setSub('fuelCard', 'cardNumber', e.target.value)} /></div>
           <div><L>{ar ? 'حالة الشريحة' : 'Card status'}</L><ManagedSelect storeLabel type="vehicle_fuel_card_status" value={f.fuelCard?.statusAr || ''} onChange={(v) => setSub('fuelCard', 'statusAr', v)} /></div>
           <div><L>{ar ? 'نوع الاستهلاك' : 'Consumption type'}</L><ManagedSelect storeLabel type="vehicle_consumption_type" value={f.fuelCard?.consumptionTypeAr || ''} onChange={(v) => setSub('fuelCard', 'consumptionTypeAr', v)} /></div>
+          {/* ── وما كان يُحرَّر في صفحة بترو اب وحدَها ────────────────────────
+              «حد الاستهلاك» و«اللوحة على الفاتورة» يُفتَحان هناك ولا أثرَ لهما
+              هنا، فمن فتح المركبةَ من سجلّها لم يجد ما يصحّحه. وهذه الصفحةُ هي
+              التي يُفتَح منها كلُّ شيء. */}
+          <div><L>{ar ? 'رقم اللوحة في فاتورة بترو اب' : 'Plate on Petro App invoice'}</L><input className={inp} value={f.fuelCard?.plateOnInvoiceAr || ''} onChange={(e) => setSub('fuelCard', 'plateOnInvoiceAr', e.target.value)} /></div>
+          <div><L>{ar ? 'حد الاستهلاك (ر.س)' : 'Consumption limit (SAR)'}</L><input type="number" className={inp} value={f.fuelCard?.limitSar ?? ''} onChange={(e) => setSub('fuelCard', 'limitSar', e.target.value ? Number(e.target.value) : null)} /></div>
+          {/* «مفتوح» علامةٌ لا رقم: صفرٌ يعني «ممنوع الصرف» وفراغٌ يعني «لا نعلم». */}
+          <div className="flex items-end pb-1">
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input type="checkbox" className="w-4 h-4 accent-[#f37121]"
+                checked={f.fuelCard?.limitStatus === 'open'}
+                onChange={(e) => setSub('fuelCard', 'limitStatus', e.target.checked ? 'open' : '')} />
+              {ar ? 'مفتوح — بلا سقف صرف' : 'Open — no spending ceiling'}
+            </label>
+          </div>
+          <div><L>{ar ? 'رقم جهاز GPS' : 'GPS device id'}</L><input className={inp} value={f.gps?.deviceId || ''} onChange={(e) => setSub('gps', 'deviceId', e.target.value)} /></div>
+          <div><L>{ar ? 'رقم الشريحة (SIM)' : 'SIM number'}</L><input className={inp} value={f.gps?.simNumber || ''} onChange={(e) => setSub('gps', 'simNumber', e.target.value)} /></div>
           <div><L>{ar ? 'شركة الـGPS' : 'GPS provider'}</L><ManagedSelect storeLabel type="vehicle_gps_provider" value={f.gps?.provider || ''} onChange={(v) => setSub('gps', 'provider', v)} /></div>
           <div><L>{ar ? 'جهاز GPS' : 'GPS device'}</L><ManagedSelect storeLabel type="vehicle_gps_device" value={f.gps?.deviceModel || ''} onChange={(v) => setSub('gps', 'deviceModel', v)} /></div>
           <div><L>{ar ? 'سريال GPS' : 'GPS serial'}</L><input className={inp} value={f.gps?.serialImei || ''} onChange={(e) => setSub('gps', 'serialImei', e.target.value)} /></div>
@@ -398,34 +482,8 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
 // `useSearchParams` يوجب حدَّ Suspense في موجِّه Next. كانت الصفحة تنجو صدفةً
 // لأن غلاف القسم يعود قبل المحتوى أثناء التوليد المسبق — وأيّ تعديلٍ في بوّابة
 // الدخول كان سيحوّلها إلى فشل بناءٍ صريح.
-// ── أعمدةُ الجدول وقارئُ كلٍّ منها ───────────────────────────────────────────
-// تعريفٌ واحدٌ للترويسة وللفلتر: عمودٌ يُضاف هنا يجد قمعَه بلا سطرٍ ثانٍ، ولا
-// يمكن أن يفلتر الفلترُ على غير ما تعرضه الخليّة.
-const COL_DEFS: [string, string, string][] = [
-  ['plate', 'اللوحة', 'Plate'],
-  ['sector', 'القطاع', 'Sector'],
-  ['department', 'الإدارة', 'Department'],
-  ['city', 'المدينة', 'City'],
-  ['regType', 'النوع', 'Type'],
-  ['brand', 'الماركة', 'Brand'],
-  ['year', 'السنة', 'Year'],
-  ['owner', 'المالك', 'Owner'],
-  ['insurance', 'التأمين', 'Insurance'],
-  ['status', 'الحالة', 'Status'],
-];
-const GETTERS: Record<string, (v: VReg) => any> = {
-  plate: (v) => v.plateNumber,
-  sector: (v) => v.sectorAr,
-  department: (v) => v.departmentAr,
-  city: (v) => v.cityAr,
-  regType: (v) => v.registrationTypeAr,
-  brand: (v) => [v.brandAr, v.modelAr].filter(Boolean).join(' '),
-  year: (v) => v.modelYear,
-  owner: (v) => v.ownerNameAr,
-  // التأمينُ يُفلتَر بتاريخه كما يُعرَض — لا بالكائن الذي تحته.
-  insurance: (v) => (v.insurance?.expiryDate ? fmtDate(v.insurance.expiryDate) : ''),
-  status: (v) => v.overallStatus || 'valid',   // النصُّ يُترجَم في القائمة بـ`format`
-};
+// أعمدةُ الجدول وقارئُ كلٍّ منها في `lib/vehicleColumns` — تعريفٌ واحدٌ يخدم
+// الجدولَ والفلترَ والتصدير، فلا يفترق ملفٌّ عن شاشة.
 
 export default function VehicleRegistryList() {
   return <Suspense fallback={<Spinner />}><VehicleRegistryListInner /></Suspense>;

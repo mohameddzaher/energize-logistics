@@ -57,7 +57,18 @@ export default function EmployeeProfilePage() {
   const [data, setData] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('overview');
-  const [vehicleData, setVehicleData] = useState<{ current: VehicleAuthorization | null; authorizations: VehicleAuthorization[]; accidents: VehicleAccident[] } | null>(null);
+  const [vehicleData, setVehicleData] = useState<{
+    current: VehicleAuthorization | null;
+    authorizations: VehicleAuthorization[];
+    accidents: VehicleAccident[];
+    // ما هو مقيَّدٌ عليه في سجلّ المركبات: التفويضُ الورقيُّ وشريحةُ بترو اب.
+    registry?: {
+      _id: string; plateNumber: string; ownerNameAr: string;
+      authorizationNumber: string; authStart: string | null; authExpiry: string | null;
+      fuelCardNumber: string; fuelCardStatusAr: string; consumptionTypeAr: string;
+      limitSar: number | null; limitStatus: string;
+    }[];
+  } | null>(null);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
 
   // Action modals
@@ -486,6 +497,59 @@ export default function EmployeeProfilePage() {
               </div>
             ) : <p className="text-slate-400 text-sm">{vtx.empNoCurrentVehicle}</p>}
           </div>
+
+          {/* ── ما هو مقيَّدٌ عليه في سجلّ المركبات ────────────────────────────
+              التفويضُ الورقيُّ المثبَّت على المركبة (وهو الحجّةُ عند المرور)،
+              وشريحةُ بترو اب.
+
+              والشريحةُ هي المقصودُ الأوّل هنا: قد يشتري الموظّفُ سيّارتَه فتُركَّب
+              له شريحةُ الشركة — فالسيّارةُ سيّارتُه ولا تفويضَ لنا عليها،
+              والشريحةُ شريحتُنا وتصرف من حسابنا. فإن لم تظهر في ملفّه لم يعرف
+              أحدٌ أنّها عنده، وبقي يصرف بها بعد رحيله. ولذلك تمنع إنهاءَ خدمته
+              حتّى تُنزَع. */}
+          {!!vehicleData?.registry?.length && (
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+              <h3 className="text-slate-900 font-semibold mb-4">
+                {lang === 'ar' ? 'مقيَّد عليه في سجل المركبات' : 'Held in the vehicle registry'}
+              </h3>
+              <div className="space-y-2.5">
+                {vehicleData.registry.map((r) => (
+                  <div key={r._id} className="rounded-xl border border-slate-200 px-4 py-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Link href={`/system/vehicles/registry/${r._id}`} className="font-mono font-bold text-slate-900 hover:text-[#f37121]">{r.plateNumber}</Link>
+                      {r.fuelCardNumber && (
+                        <span className="text-[11.5px] font-semibold rounded-full px-2 py-0.5 bg-amber-100 text-amber-700">
+                          {lang === 'ar' ? `شريحة بترو اب ${r.fuelCardNumber}` : `Petro App chip ${r.fuelCardNumber}`}
+                        </span>
+                      )}
+                      {r.authorizationNumber && (
+                        <span className="text-[11.5px] font-semibold rounded-full px-2 py-0.5 bg-blue-100 text-blue-700">
+                          {lang === 'ar' ? `تفويض ${r.authorizationNumber}` : `Auth ${r.authorizationNumber}`}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[12px] text-slate-500 mt-1">
+                      {[
+                        r.ownerNameAr && (lang === 'ar' ? `المالك: ${r.ownerNameAr}` : `Owner: ${r.ownerNameAr}`),
+                        r.authExpiry && (lang === 'ar' ? `ينتهي التفويض ${fmtDate(r.authExpiry)}` : `Auth ends ${fmtDate(r.authExpiry)}`),
+                        r.consumptionTypeAr,
+                        r.limitStatus === 'open'
+                          ? (lang === 'ar' ? 'بلا سقف صرف' : 'no spending ceiling')
+                          : (r.limitSar != null ? (lang === 'ar' ? `سقف ${r.limitSar}` : `limit ${r.limitSar}`) : ''),
+                      ].filter(Boolean).join(' · ') || '—'}
+                    </p>
+                    {r.fuelCardNumber && (
+                      <p className="text-[11.5px] text-amber-700 mt-1.5">
+                        {lang === 'ar'
+                          ? 'تُنزَع الشريحة من صفحة «بترو اب» قبل إنهاء الخدمة — ولو كانت المركبة ملكه.'
+                          : 'The chip must be removed on the Petro App page before termination — even if the vehicle is his own.'}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
             <h3 className="text-slate-900 font-semibold mb-4">{vtx.empAuthHistory}</h3>

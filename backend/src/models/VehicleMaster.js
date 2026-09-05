@@ -117,6 +117,20 @@ const vehicleMasterSchema = new mongoose.Schema({
     consumptionTypeCode: { type: String, default: '' },
     limitSar: { type: Number, default: null },
     limitStatus: { type: String, default: '' }, // open = بدون سقف
+    // ── سجلُّ الشريحة: رُكِّبت متى، ونُزعت متى، وبيد من ──────────────────────
+    // نزعُ الشريحة ليس تفريغَ خانة: هو شرطٌ في إخلاء طرف الموظّف، ويُسأل عنه
+    // بعد شهور — «الشريحة اتشالت امتى ومين شالها؟». وتفريغُ الخانة وحدَه يمحو
+    // السؤالَ والجواب معًا، ويترك «هل كانت عليها شريحةٌ أصلًا؟» بلا دليل.
+    history: [{
+      action: { type: String, enum: ['assigned', 'removed'], required: true },
+      cardNumber: { type: String, default: '' },
+      // مَن كانت الشريحةُ في يده وقتها — يُقرأ في ملفّه وفي إخلاء طرفه.
+      holderName: { type: String, default: '' },
+      holderIqama: { type: String, default: '' },
+      note: { type: String, default: '' },
+      at: { type: Date, default: Date.now },
+      byName: { type: String, default: '' },
+    }],
   },
 
   // GPS (الهيكل موجود، البيانات غالبًا فاضية)

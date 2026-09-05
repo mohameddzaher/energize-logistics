@@ -15,7 +15,70 @@ type ExportColumn = {
   key: string;
   transform?: (value: any, row: any) => any;
   width?: number;
+  /**
+   * نوعُ الخانة في إكسل نفسِه، لا شكلُها على الشاشة.
+   *
+   * ── ولماذا يلزم ────────────────────────────────────────────────────────────
+   * كان كلُّ تاريخٍ يُكتب نصًّا («05/09/2026»)، فيفتح المستقبِلُ الملفَّ فيجد
+   * نوعَ الخانة `General`: لا تُفرَز زمنيًّا، ولا يُطرَح منها تاريخٌ آخر، ولا
+   * يُبنى عليها جدولٌ محوريّ. وهو ما يُشتكى منه: «التاريخ طالع general».
+   *
+   * فمن يُعلن `type: 'date'` تُكتب خانتُه كائنَ تاريخٍ حقيقيًّا بتنسيق عرضٍ
+   * `dd/mm/yyyy`، ويبقى ما تحته رقمًا يفهمه إكسل.
+   */
+  type?: 'text' | 'date' | 'number';
 };
+
+// ── التاريخ الهجريّ ──────────────────────────────────────────────────────────
+// يُشتقّ من الميلاديّ ولا يُكتب بيدٍ: تقويمُ أمّ القرى موجودٌ في المتصفّح نفسِه
+// (`Intl`)، فلا مكتبةَ تُحمَّل ولا جدولَ تحويلٍ يُصان.
+const hijriFmt = (() => {
+  try {
+    return new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura-nu-latn', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    });
+  } catch { return null; }
+})();
+
+/** «1447/03/13 هـ» من تاريخٍ ميلاديّ — أو فراغٌ إن لم يكن تاريخًا. */
+export const toHijri = (v: any): string => {
+  if (v === null || v === undefined || v === '') return '';
+  const d = v instanceof Date ? v : new Date(v);
+  if (Number.isNaN(d.getTime())) return '';
+  if (!hijriFmt) return '';
+  // `Intl` يعطي «13/03/1447 هـ» — تُقلَب إلى سنة/شهر/يوم كي تُفرَز نصًّا صحيحًا.
+  const parts = hijriFmt.formatToParts(d);
+  const g = (t: string) => parts.find((x) => x.type === t)?.value || '';
+  const y = g('year').replace(/[^0-9]/g, '');
+  const m = g('month').replace(/[^0-9]/g, '');
+  const day = g('day').replace(/[^0-9]/g, '');
+  return y && m && day ? `${y}/${m}/${day} هـ` : '';
+};
+
+/**
+ * يُدخِل عمودَ «هجري» بعد كلّ عمودٍ ميلاديّ.
+ *
+ * طُلب أن يكون بجانب **كلّ** تاريخٍ في التصدير وتلقائيًّا. وكتابتُه عمودًا
+ * عمودًا تعني أن يُنسى مع أوّل عمودٍ يُضاف بعد اليوم، فيخرج ملفٌّ نصفُ تواريخه
+ * هجريّةٌ ونصفُها لا — وهو أسوأُ من غيابه كلِّه.
+ */
+export const withHijri = (columns: ExportColumn[], suffixAr = ' (هجري)'): ExportColumn[] =>
+  columns.flatMap((c, i) => {
+    if (c.type !== 'date') return [c];
+    // ── ولا يُضاف هجريٌّ حيث يوجد هجريّ ──────────────────────────────────────
+    // رخصةُ السير والفحص يحملان تاريخًا هجريًّا **مكتوبًا على الورقة نفسِها**،
+    // وهو في التقرير المطلوب عمودٌ إلى جوار الميلاديّ. فإضافةُ محسوبٍ ثالثٍ
+    // بجانبهما تعطي عمودين هجريَّين قد يختلفان بيومٍ — والمكتوبُ على الورقة هو
+    // الحجّة، لا حسابُنا.
+    const near = [columns[i - 1], columns[i + 1]].some((n) => n && /هجري|hijri/i.test(n.header));
+    if (near) return [c];
+    return [c, {
+      header: `${c.header}${suffixAr}`,
+      key: c.key,
+      width: c.width,
+      transform: (raw: any, row: any) => toHijri(c.transform ? c.transform(raw, row) : raw),
+    }];
+  });
 
 const HEADER_BG = 'FF0F172A';   // slate-900 — كحلي غامق
 const HEADER_BORDER = 'FF334155';
@@ -110,7 +173,21 @@ function addStyledSheet(
       cols.forEach((col, i) => {
         const raw = col.key.split('.').reduce((obj: any, k) => obj?.[k], row);
         const v = col.transform ? col.transform(raw, row) : (raw ?? '');
-        r.getCell(i + 1).value = (v ?? '') as any;
+        const cell = r.getCell(i + 1);
+        if (col.type === 'date' && v !== '' && v !== null && v !== undefined) {
+          // كائنُ تاريخٍ حقيقيٌّ وتنسيقُ عرض — لا نصٌّ يبدو تاريخًا.
+          const d = v instanceof Date ? v : new Date(v);
+          if (!Number.isNaN(d.getTime())) {
+            cell.value = d;
+            cell.numFmt = 'dd/mm/yyyy';
+            return;
+          }
+        }
+        if (col.type === 'number' && v !== '' && v !== null && v !== undefined) {
+          const n = typeof v === 'number' ? v : Number(v);
+          if (Number.isFinite(n)) { cell.value = n; return; }
+        }
+        cell.value = (v ?? '') as any;
       });
       r.height = 20;
       // الحواف والتظليل المتناوب: النطاقُ بعدد أعمدة الكتلة كي تبقى الخانات

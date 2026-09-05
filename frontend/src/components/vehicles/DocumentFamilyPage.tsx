@@ -118,8 +118,10 @@ const rootsOf = (fields: DocField[]) =>
   [...new Set(fields.map((f) => f.path.split('.')[0]).filter((r) => r))];
 
 /** أهذه المركبة مسجَّلٌ عليها شيءٌ من هذه العائلة أصلًا؟ */
-const hasDoc = (v: VReg, fields: DocField[]) =>
-  fields.some((f) => { const x = readPath(v, f.path); return x !== null && x !== undefined && x !== ''; });
+const filled = (x: any) => x !== null && x !== undefined && x !== '';
+const hasDoc = (v: VReg, fields: DocField[], keyField?: string) => (keyField
+  ? filled(readPath(v, keyField))
+  : fields.some((f) => filled(readPath(v, f.path))));
 
 /** قيمةُ الحقل كما تقبلها خانةُ الإدخال — التاريخ يُقتطع إلى `YYYY-MM-DD`. */
 const inputValue = (v: VReg | null, f: DocField) => {
@@ -143,7 +145,7 @@ const stateOf = (v: VReg, docKey: string) => {
 };
 
 function DocumentFamilyPageInner({
-  docKey, path, icon, titleAr, titleEn, subtitleAr, subtitleEn, columns, fileName, searchIn, chips, fields,
+  docKey, path, icon, titleAr, titleEn, subtitleAr, subtitleEn, columns, fileName, searchIn, chips, fields, keyField, rowAction,
 }: {
   /**
    * مفتاح المستند ذي تاريخ الانتهاء — أو `null` لعائلةٍ لا تنتهي.
@@ -177,6 +179,27 @@ function DocumentFamilyPageInner({
    * تعرف أين تكتب.
    */
   fields?: DocField[];
+  /**
+   * الحقلُ الذي **وجودُه** يعني أنّ المستند موجود.
+   *
+   * ── ولماذا لا يكفي «أيُّ حقلٍ مملوء» ────────────────────────────────────────
+   * كان «عليها مستند» يعني أن أيَّ حقلٍ من حقول العائلة غيرُ فارغ. وفي شرائح
+   * الوقود عشرُ مركباتٍ مكتوبٌ عندها **حالةُ الشريحة** ولا شريحةَ لها — فتُحسب
+   * «عليها شريحة»، فتختفي من قائمة الاختيار عند الإضافة. وهو ما اشتُكي منه
+   * بالحرف: يُبحَث عن مركبةٍ لا شريحةَ لها فلا تظهر، مع أنّ الفلترَ فوق الجدول
+   * يقول إنّها هناك.
+   *
+   * فالمستندُ يوجد بوجود ما يُعرَّف به: رقمُ الشريحة، رقمُ الوثيقة، رقمُ
+   * البطاقة. وما عداه صفةٌ له لا وجودٌ لـه.
+   */
+  keyField?: string;
+  /**
+   * زرٌّ إضافيٌّ في صفّ العائلة — لفعلٍ يُقيَّد لا لخانةٍ تُفرَّغ.
+   *
+   * «نزعُ الشريحة» مثالُه: هو شرطٌ في إخلاء طرف الموظّف، فلا يصحّ أن يكون مسحًا
+   * صامتًا لخانة. يُنادي نقطتَه الخاصّة التي تُقيّد مَن نزعها ومتى.
+   */
+  rowAction?: (v: VReg, reload: () => void) => React.ReactNode;
 }) {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -609,7 +632,7 @@ function DocumentFamilyPageInner({
                   </th>
                 ))}
                 {docKey && <th className="px-3 py-3 text-start font-bold whitespace-nowrap">{t('الحالة', 'State')}</th>}
-                {(renewable || editable) && <th className="px-3 py-3" />}
+                {(renewable || editable || rowAction) && <th className="px-3 py-3" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -646,9 +669,10 @@ function DocumentFamilyPageInner({
                         </span>
                       </td>
                     )}
-                    {(renewable || editable) && (
+                    {(renewable || editable || rowAction) && (
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1.5">
+                          {rowAction?.(v, load)}
                           {renewable && (
                             <button onClick={() => setRenewing(targetOf(v))}
                               className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11.5px] font-semibold hover:bg-emerald-100 whitespace-nowrap">
@@ -664,7 +688,7 @@ function DocumentFamilyPageInner({
                           )}
                           {/* المِمحاة لا سلّةُ المهملات: الأيقونةُ نفسها تقول إن
                               الممسوح بياناتٌ لا مركبة. */}
-                          {editable && hasDoc(v, fields!) && (
+                          {editable && hasDoc(v, fields!, keyField) && (
                             <button onClick={() => clearDoc(v)}
                               title={t('مسح بيانات هذا المستند', 'Clear this document')}
                               className="p-1.5 rounded-lg bg-red-50 text-red-700 border border-red-200 hover:bg-red-100">
@@ -701,7 +725,7 @@ function DocumentFamilyPageInner({
           onDone={() => { setBulk(null); setPicked(new Set()); load(); }} />
       )}
       {form && !!fields?.length && (
-        <DocFormModal vehicle={form.vehicle} fields={fields} famLabel={famLabel} ar={ar}
+        <DocFormModal vehicle={form.vehicle} fields={fields} keyField={keyField} famLabel={famLabel} ar={ar}
           canDelete={canDelete}
           onClose={() => setForm(null)}
           onDone={() => { setForm(null); load(); }} />
@@ -725,9 +749,10 @@ export default function DocumentFamilyPage(props: Parameters<typeof DocumentFami
 // يُسجَّل بعد على مركبةٍ قائمة**: مئةٌ وخمسَ عشرة مركبةً بلا رقم بطاقة تشغيل،
 // وطريقُ إدخالها كان يمرّ باستمارة السبعة والأربعين حقلًا. فالإنشاء هنا: اختر
 // المركبة — والقائمةُ تبدأ بمن لا مستندَ له — ثم املأ حقول العائلة وحدها.
-function DocFormModal({ vehicle, fields, famLabel, ar, canDelete, onClose, onDone }: {
+function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, onClose, onDone }: {
   vehicle: VReg | null;
   fields: DocField[];
+  keyField?: string;
   famLabel: string;
   ar: boolean;
   canDelete: boolean;
@@ -759,7 +784,7 @@ function DocFormModal({ vehicle, fields, famLabel, ar, canDelete, onClose, onDon
   // اختيارُ المركبة يُبحَث فيه باللوحة، فيُطوى كما تُطوى في كلّ بحثٍ آخر:
   // مَن ينسخ اللوحة بمسافتين كان لا يجد مركبتَه هنا فيسجّل المستند على غيرها.
   const candidates = useMemo(() => (pool || []).filter((v) => {
-    if (onlyMissing && hasDoc(v, fields)) return false;
+    if (onlyMissing && hasDoc(v, fields, keyField)) return false;
     return flexIncludes(pq, v.plateNumber, v.ownerNameAr, v.departmentAr, v.sectorAr);
   }).slice(0, 400), [pool, pq, onlyMissing, fields]);
 

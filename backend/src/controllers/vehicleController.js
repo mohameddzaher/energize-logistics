@@ -436,7 +436,52 @@ exports.getEmployeeHistory = async (req, res) => {
         .sort({ date: -1, createdAt: -1 }).lean(),
     ]);
     const current = authorizations.find((a) => a.status === 'active') || null;
-    res.json({ current, authorizations, accidents });
+
+    // ── وما هو مقيَّدٌ عليه في سجلّ المركبات ─────────────────────────────────
+    // التفاويضُ في موضعين: سجلُّ الحركة هذا، وورقةٌ مثبتةٌ على المركبة نفسِها في
+    // سجلّ المركبات. والثانيةُ هي الحجّةُ عند المرور — ولم تكن تظهر في ملفّه
+    // أصلًا.
+    //
+    // ومعها شريحةُ بترو اب. وهذه أهمُّها هنا: قد يشتري الموظّفُ سيّارتَه فتُركَّب
+    // له شريحةُ الشركة هديّةً — فلا تفويضَ لنا على السيّارة، والشريحةُ شريحتُنا
+    // وتصرف من حسابنا. فإن لم تظهر في ملفّه لم يعرف أحدٌ أنّها عنده، وبقي يصرف
+    // بها بعد رحيله. راجع services/employeeClearance — الشرطُ نفسُه هناك.
+    let registry = [];
+    try {
+      const { VehicleMaster } = require('../models/VehicleMaster');
+      const Employee = require('../models/Employee');
+      const emp = await Employee.findById(employeeId)
+        .select('firstName lastName iqamaNumber nationalId').lean();
+      const iqama = String(emp?.iqamaNumber || emp?.nationalId || '').trim();
+      const fold = (x) => String(x || '')
+        .replace(/[أإآا]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+        .replace(/[^\u0600-\u06FFa-zA-Z0-9]/g, '').toLowerCase();
+      const name = fold(`${emp?.firstName || ''} ${emp?.lastName || ''}`);
+      const pool = iqama
+        ? await VehicleMaster.find({ 'authorizedPerson.iqamaNumber': iqama })
+          .select('plateNumber ownerNameAr authorizedPerson fuelCard').lean()
+        : [];
+      const rows = pool.length || !name
+        ? pool
+        : (await VehicleMaster.find({ 'authorizedPerson.name': { $nin: ['', null] } })
+          .select('plateNumber ownerNameAr authorizedPerson fuelCard').lean())
+          .filter((v) => fold(v.authorizedPerson?.name) === name);
+      registry = rows.map((v) => ({
+        _id: v._id,
+        plateNumber: v.plateNumber,
+        ownerNameAr: v.ownerNameAr || '',
+        authorizationNumber: v.authorizedPerson?.authorizationNumber || '',
+        authStart: v.authorizedPerson?.startDate || null,
+        authExpiry: v.authorizedPerson?.expiryDate || null,
+        fuelCardNumber: v.fuelCard?.cardNumber || '',
+        fuelCardStatusAr: v.fuelCard?.statusAr || '',
+        consumptionTypeAr: v.fuelCard?.consumptionTypeAr || '',
+        limitSar: v.fuelCard?.limitSar ?? null,
+        limitStatus: v.fuelCard?.limitStatus || '',
+      }));
+    } catch (e) { registry = []; }
+
+    res.json({ current, authorizations, accidents, registry });
   } catch (error) {
     console.error('getEmployeeHistory error:', error);
     res.status(500).json({ message: 'Failed to load employee vehicle history' });

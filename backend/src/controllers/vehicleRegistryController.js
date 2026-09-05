@@ -749,6 +749,82 @@ exports.update = async (req, res) => {
   }
 };
 
+/**
+ * شريحةُ بترو اب: تركيبٌ ونزع — POST /:id/fuel-card
+ *
+ * ── ولماذا فعلٌ مستقلٌّ لا تعديلُ خانة ─────────────────────────────────────
+ * نزعُ الشريحة شرطٌ في إخلاء طرف الموظّف: لا تُنهى خدمتُه وهي في يده. وشرطٌ
+ * يُبنى على خانةٍ فارغة لا يُثبِت شيئًا — تُفرَّغ الخانةُ فيسقط الشرط، ولا يبقى
+ * بعد شهرين جوابٌ لسؤال «مَن نزعها ومتى؟».
+ *
+ * فالفعلُ يُقيَّد: ما رقمُها، وفي يد من كانت، ومتى، وبيد من. والقيدُ هو ما
+ * يُقرأ في ملفّ الموظّف وفي إخلاء طرفه.
+ *
+ * body: { action: 'assign'|'remove', cardNumber?, note? }
+ */
+exports.fuelCardAction = async (req, res) => {
+  try {
+    const v = await VehicleMaster.findById(req.params.id);
+    if (!v) return res.status(404).json({ message: 'المركبة غير موجودة' });
+
+    const action = String(req.body?.action || '').trim();
+    if (!['assign', 'remove'].includes(action)) {
+      return res.status(400).json({ message: 'الإجراء إمّا «تركيب» أو «نزع»' });
+    }
+    const byName = `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim();
+    const note = String(req.body?.note || '').trim().slice(0, 500);
+    v.fuelCard = v.fuelCard || {};
+
+    if (action === 'assign') {
+      const cardNumber = String(req.body?.cardNumber || '').trim();
+      if (!cardNumber) return res.status(400).json({ message: 'رقم الشريحة مطلوب' });
+      v.fuelCard.cardNumber = cardNumber;
+      if (req.body.plateOnInvoiceAr !== undefined) v.fuelCard.plateOnInvoiceAr = String(req.body.plateOnInvoiceAr || '').trim();
+      if (req.body.consumptionTypeAr !== undefined) v.fuelCard.consumptionTypeAr = String(req.body.consumptionTypeAr || '').trim();
+      if (req.body.statusAr !== undefined) v.fuelCard.statusAr = String(req.body.statusAr || '').trim();
+      if (req.body.limitSar !== undefined) v.fuelCard.limitSar = req.body.limitSar === '' || req.body.limitSar === null ? null : Number(req.body.limitSar);
+      v.fuelCard.history.push({
+        action: 'assigned', cardNumber, note, byName,
+        holderName: v.authorizedPerson?.name || '', holderIqama: v.authorizedPerson?.iqamaNumber || '',
+      });
+    } else {
+      const had = String(v.fuelCard.cardNumber || '').trim();
+      if (!had) return res.status(409).json({ message: 'لا شريحةَ على هذه المركبة أصلًا' });
+      v.fuelCard.history.push({
+        action: 'removed', cardNumber: had, note, byName,
+        holderName: v.authorizedPerson?.name || '', holderIqama: v.authorizedPerson?.iqamaNumber || '',
+      });
+      // ── ويُنزَع ما يخصّ الشريحةَ وحدَها ────────────────────────────────────
+      // اللوحةُ على الفاتورة وسقفُ الصرف صفتان لشريحةٍ لم تعد موجودة، فبقاؤهما
+      // يجعل المركبةَ تُقرأ «عليها شريحةٌ بلا رقم». ونوعُ الاستهلاك يبقى: هو
+      // صفةُ المركبة لا صفةُ الشريحة.
+      v.fuelCard.cardNumber = '';
+      v.fuelCard.plateOnInvoiceAr = '';
+      v.fuelCard.limitSar = null;
+      v.fuelCard.limitStatus = '';
+      v.fuelCard.statusAr = '';
+      v.fuelCard.statusCode = '';
+    }
+
+    await v.save();
+    emit('vreg:updated', {});
+    await logAudit({
+      user: req.user?._id, action: action === 'assign' ? 'assign_fuel_card' : 'remove_fuel_card',
+      entity: 'VehicleMaster', entityId: v._id, entityKey: v.plateNumber,
+      changes: { after: { cardNumber: v.fuelCard.cardNumber, note } }, ipAddress: req.ip,
+    }).catch(() => {});
+
+    res.json({
+      vehicle: v,
+      message: action === 'assign'
+        ? `رُكِّبت الشريحة على المركبة ${v.plateNumber}`
+        : `نُزعت الشريحة عن المركبة ${v.plateNumber}`,
+    });
+  } catch (e) {
+    return sendMongooseError(res, e, 'تعذّر تنفيذ الإجراء على الشريحة');
+  }
+};
+
 exports.remove = async (req, res) => {
   try {
     await VehicleMaster.findByIdAndDelete(req.params.id);

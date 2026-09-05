@@ -63,6 +63,9 @@ router.delete('/documents/:docId', authorize(...EDIT), c.deleteVehicleDocument);
 router.put('/:id', authorize(...EDIT), c.update);
 // التجديد: بيحدّث التاريخ وبيقيّد التجديد في سجل المركبة.
 router.post('/:id/renew', authorize(...EDIT), c.renew);
+// شريحةُ بترو اب: تركيبٌ ونزع، مقيَّدان بالسجلّ — ونزعُها شرطٌ في إخلاء طرف
+// الموظّف، فلا يصحّ أن يكون تفريغَ خانةٍ لا أثرَ له.
+router.post('/:id/fuel-card', authorize(...EDIT), c.fuelCardAction);
 router.delete('/:id', authorize(...ADMIN), c.remove);
 
 module.exports = router;

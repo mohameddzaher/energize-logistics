@@ -28,7 +28,7 @@ export type InvoiceKind = 'cash' | 'tax';
 
 interface CashRow {
   _id: string; reportNumber: string; customer: string; branch: string; payingBranch: string;
-  paymentDate: string | null; route: string; collectedAmount: number; collectionDate: string | null;
+  paymentDate: string | null; route: string; value: number; collectedAmount: number; collectionDate: string | null;
   /** الدفترُ يقول «محصَّل» ولا يعرف يومَه — يُقال كما هو لا «لم يُحصَّل». */
   collectedNoDate?: boolean;
   ageDays: number | null;
@@ -210,6 +210,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       { header: t('العميل', 'Customer'), key: 'customer', width: 30 },
       { header: t('تاريخ السداد', 'Paid on'), key: 'paymentDate', width: 14, transform: (v: any) => dt(v) },
       { header: t('الفرع المسدد', 'Paying branch'), key: 'payingBranch', width: 14 },
+      { header: t('قيمة الكشف', 'Report value'), key: 'value', width: 14 },
       { header: t('مبلغ التحصيل', 'Collected'), key: 'collectedAmount', width: 14 },
       { header: t('تاريخ التحصيل', 'Collected on'), key: 'collectionDate', width: 14,
         transform: (v: any, r: any) => (v ? dt(v) : (r?.collectedNoDate ? t('محصَّل — بلا تاريخ', 'Collected — no date') : '')) },
@@ -362,7 +363,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                 {(isCash
                   ? [t('رقم كشف التخريج', 'Report no.'), t('العميل', 'Customer'), t('المسار', 'Route'),
                     t('تاريخ السداد', 'Paid on'), t('الفرع المسدد', 'Paying branch'), t('العمر', 'Age'),
-                    t('مبلغ التحصيل', 'Collected'), t('تاريخ التحصيل', 'Collected on'), '']
+                    t('قيمة الكشف', 'Value'), t('مبلغ التحصيل', 'Collected'), t('تاريخ التحصيل', 'Collected on'), '']
                   : [t('رقم الفاتورة', 'Invoice no.'), t('العميل', 'Customer'), t('عدد الكشوفات', 'Reports'),
                     t('القيمة', 'Value'), t('تاريخ الفاتورة', 'Invoice date'), t('التسليم للعميل', 'To customer'),
                     t('العمر', 'Age'), t('تاريخ التحصيل', 'Collected on'), '']
@@ -380,6 +381,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                   <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{dt(r.paymentDate)}</td>
                   <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{r.payingBranch || '—'}</td>
                   <td className="px-3 py-2.5 whitespace-nowrap">{ageChip(r.ageDays)}</td>
+                  <td className="px-3 py-2.5 tabular-nums font-semibold text-slate-900">{r.value ? money(r.value) : '—'}</td>
                   <td className="px-3 py-2.5 tabular-nums font-semibold text-emerald-700">{r.collectedAmount ? money(r.collectedAmount) : '—'}</td>
                   <td className={`px-3 py-2.5 whitespace-nowrap ${r.collectionDate || r.collectedNoDate ? 'text-emerald-700' : 'text-red-500'}`}>
                     {r.collectionDate ? dt(r.collectionDate)

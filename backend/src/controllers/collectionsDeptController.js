@@ -928,11 +928,21 @@ function invoiceFilters(query, { ageField }) {
  */
 exports.cashInvoices = async (req, res) => {
   try {
+    // ── والكشفُ النقديُّ يُحصَّل سواءٌ عرفنا ما دفعناه فيه أم لا ────────────
+    //
+    // كان الشرطُ يقتضي فرعًا مسدِّدًا ومبلغَ سدادٍ أكبرَ من صفر. و«مبلغ السداد»
+    // ما دفعناه نحن للمورّد — لا ما على العميل. فاشتراطُه في صفحةِ تحصيلٍ يعني
+    // أنّ الكشفَ لا يُطالَب به حتى نكون قد سجّلنا شراءَه.
+    //
+    // والأثر: ألفٌ وثمانمئةٍ وأربعةٌ وثلاثون كشفًا نقديًّا في دفتر التحصيل،
+    // تعرض الصفحةُ منها **خمسة**. أي أنّ المحصِّل يفتح شاشتَه فلا يرى ما
+    // يُحصّله.
+    //
+    // فالشرطُ هو النوعُ وحدَه: كلُّ كشفٍ نقديٍّ قابلٌ للتحصيل، والمحصَّلُ منه
+    // يُعرَف بتاريخ تحصيله لا بغيابه من القائمة.
     const filter = {
       ...invoiceFilters(req.query, { ageField: 'paymentDate' }),
       paymentType: 'cash',
-      payingBranch: { $nin: [null, ''] },
-      paymentAmount: { $gt: 0 },
     };
 
     const page = Math.max(1, Number(req.query.page) || 1);
@@ -940,7 +950,7 @@ exports.cashInvoices = async (req, res) => {
 
     const [rows, total, totals] = await Promise.all([
       OperationsWorkflow.find(filter)
-        .select('reportNumber reportDate username payingBranch paymentDate collectedAmount collectionDate cashCollectionStatus branch fromLocation toLocation')
+        .select('reportNumber reportDate username payingBranch paymentDate collectedAmount collectionDate cashCollectionStatus branch fromLocation toLocation sellingValue')
         .sort({ paymentDate: -1, _id: -1 })
         .skip((page - 1) * limit).limit(limit).lean(),
       OperationsWorkflow.countDocuments(filter),
@@ -950,6 +960,7 @@ exports.cashInvoices = async (req, res) => {
           $group: {
             _id: null,
             collected: { $sum: { $ifNull: ['$collectedAmount', 0] } },
+            value: { $sum: { $ifNull: ['$sellingValue', 0] } },
             // ── والمحصَّلُ بلا تاريخٍ محصَّل ────────────────────────────────
             // دفترُ الكاش يقول عن تسعةٍ وتسعين كشفًا «Collected» ولا تاريخَ
             // لها فيه. فعدُّها غيرَ محصَّلةٍ لأنّ خانةَ التاريخ فارغةٌ يجعل
@@ -978,6 +989,11 @@ exports.cashInvoices = async (req, res) => {
         payingBranch: w.payingBranch || '',
         paymentDate: w.paymentDate,
         route: [w.fromLocation, w.toLocation].filter(Boolean).join(' — '),
+        // ── وما يُطالَب به يُعرَض بجانب ما قُبض ────────────────────────────
+        // كانت الصفحةُ تعرض «مبلغ التحصيل» وحدَه، وهو صفرٌ في ألفٍ وثلاثمئةٍ
+        // وسبعةٍ وثلاثين كشفًا لم يُكتب مبلغُها بعد. فيفتح المحصِّلُ شاشتَه
+        // فيرى أصفارًا ولا يعرف بكم يُطالِب.
+        value: r2(w.sellingValue),
         collectedAmount: r2(w.collectedAmount),
         collectionDate: w.collectionDate || null,
         // «محصَّل» في الدفتر وإن لم يُعرف يومُه — تقرؤها الشاشة فتقول ذلك
@@ -989,7 +1005,7 @@ exports.cashInvoices = async (req, res) => {
       page,
       limit,
       pages: Math.max(1, Math.ceil(total / limit)),
-      totals: { collected: r2(t.collected), collectedCount: t.collectedCount, pendingCount: total - t.collectedCount },
+      totals: { value: r2(t.value), collected: r2(t.collected), collectedCount: t.collectedCount, pendingCount: total - t.collectedCount },
     });
   } catch (e) {
     res.status(500).json({ message: 'تعذّر تحميل فواتير الكاش', error: e.message });

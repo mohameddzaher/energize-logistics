@@ -113,6 +113,56 @@ const contractProspectSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // ---- DeptContract -----------------------------------------------------------
+// ---- ContractCustomer -------------------------------------------------------
+//
+// ── ولماذا سجلٌّ للعملاء في قسم العقود ────────────────────────────────────────
+// القسمُ كان يعرف نصفَ عمله: سجلُّ المورّدين كاملٌ بعقودهم ووثائقهم وحصصهم، وأمّا
+// العملاءُ — الطرفُ الآخر من كلّ صفقة — فلا سجلَّ لهم إلّا صفوفًا في «عقود
+// الأقسام» يبحث عنها بالاسم. فسؤالٌ يُسأل كلَّ أسبوع، «فلانٌ عقدُه موقَّعٌ وإلى
+// متى؟»، لا جوابَ له إلّا في ورقة.
+//
+// والعميلُ موجودٌ في النظام في أكثرَ من مكان (العلاقات، التحصيل، الكشوف)، ولكلّ
+// موضعٍ سؤالُه. وسؤالُ العقود واحد: **أموقَّعٌ عقدُه، وبأيّ شروط، وإلى متى، وماذا
+// يشحن معنا فعلًا؟** فالسجلُّ هنا يجيب عن الأوّلَين ويقرأ الأخيرَين من مصدرهما —
+// لا يُنسخ رقمٌ يشيخ.
+//
+// والربطُ بالاسم المطويّ (`nameKey`) كما في المورّدين: الاسمُ يُكتب بأشكالٍ في
+// الشيتات، وهو ما يجعل الصفَّ الواحد واحدًا.
+const contractCustomerSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  nameKey: { type: String, required: true, unique: true, index: true },
+  sector: { type: String, default: '' },            // القطاع: مقاولات، أغذية…
+  customerType: { type: String, default: '' },      // ضريبي / كاش / آجل
+  contactPerson: { type: String, default: '' },
+  phone: { type: String, default: '' },
+  email: { type: String, default: '' },
+  headquarters: { type: String, default: '' },
+  energizeRep: { type: String, default: '' },       // مندوبُنا لديه
+  crNumber: { type: String, default: '' },
+  taxNumber: { type: String, default: '' },
+
+  // حالةُ العقد — توقيعان ووثائق، كما في المورّدين تمامًا. والتماثلُ مقصود: من
+  // يقرأ الشاشتين يقرأ الشيءَ نفسَه في الموضعين.
+  customerSideContract: { type: Boolean, default: false },
+  ourSideContract: { type: Boolean, default: false },
+  documentsReceived: { type: Boolean, default: false },
+  missingDocuments: { type: String, default: '' },
+  contractDate: { type: Date, default: null },
+  startDate: { type: Date, default: null },
+  endDate: { type: Date, default: null },
+  renewalPolicy: { type: String, default: 'تلقائي ما لم يصدر إشعار بعدم الرغبة' },
+  paymentTermDays: { type: Number, default: 30 },
+  pricingNotes: { type: String, default: '' },
+  operationalStatus: { type: String, default: '' }, // نشط / متوقف …
+  followUpNotes: { type: String, default: '' },
+  notes: { type: String, default: '' },
+  attachments: [attachmentSchema],
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  createdByName: { type: String, default: '' },
+}, { timestamps: true });
+
+contractCustomerSchema.index({ name: 1 });
+
 const deptContractSchema = new mongoose.Schema({
   department: { type: String, required: true },     // '3pl' | 'fleet' | 'b2c' | 'other'
   partyType: { type: String, enum: ['vendor', 'customer'], required: true },
@@ -140,5 +190,6 @@ module.exports = {
   ContractVendor: mongoose.models.ContractVendor || mongoose.model('ContractVendor', contractVendorSchema),
   VendorUtilisation: mongoose.models.VendorUtilisation || mongoose.model('VendorUtilisation', vendorUtilisationSchema),
   ContractProspect: mongoose.models.ContractProspect || mongoose.model('ContractProspect', contractProspectSchema),
+  ContractCustomer: mongoose.models.ContractCustomer || mongoose.model('ContractCustomer', contractCustomerSchema),
   DeptContract: mongoose.models.DeptContract || mongoose.model('DeptContract', deptContractSchema),
 };

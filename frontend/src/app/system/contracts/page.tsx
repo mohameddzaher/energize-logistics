@@ -11,7 +11,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import {
   FileSignature, Building2, Truck, AlertTriangle, Users, TrendingUp, MapPin,
-  ClipboardList, BarChart3, PhoneCall, ExternalLink,
+  ClipboardList, BarChart3, PhoneCall, ExternalLink, Handshake,
 } from 'lucide-react';
 import { Spinner, PageHeader, StatCard, ErrorNotice } from '@/components/hr/HRKit';
 import { canViewContracts, fmtN, monthLabel } from '@/lib/contracts';
@@ -28,6 +28,11 @@ interface Dash {
     topByFleet: { _id: string; name: string; fleetSize: number; energizeRep: string; headquarters: string }[];
   };
   prospects: { total: number; interested: number };
+  // العملاء — الطرفُ الآخر من كلّ صفقة، ويُقرأ مع المورّدين لا في شاشةٍ وحدَه.
+  customers?: {
+    total: number; signed: number; unsigned: number; missingDocs: number; expiring: number;
+    expiringList: { _id: string; name: string; endDate: string; energizeRep: string }[];
+  };
   deptContracts: { total: number; byDepartment: { department: string; count: number }[]; expiringSoon: number };
   utilisationMonths: { year: number; month: number; orders: number }[];
 }
@@ -111,6 +116,8 @@ export default function ContractsDashboardPage() {
         <StatCard label={ar ? 'قيد التوقيع / غير موقّع' : 'Pending / unsigned'} value={`${fmtN(v.pending)} / ${fmtN(v.unsigned)}`} accent="text-amber-600" />
         <StatCard label={ar ? 'الأسطول المتعاقد' : 'Contracted fleet'} value={fmtN(v.signedFleet)} accent="text-cyan-700" />
         <StatCard label={ar ? 'مستندات ناقصة' : 'Missing documents'} value={fmtN(v.missingDocs.length)} accent={v.missingDocs.length ? 'text-red-600' : 'text-slate-400'} />
+        <StatCard label={ar ? 'عملاء موقّعون' : 'Signed customers'}
+          value={`${fmtN(data.customers?.signed || 0)} / ${fmtN(data.customers?.total || 0)}`} accent="text-emerald-600" />
         <StatCard label={ar ? 'شركات قيد التنشيط' : 'Prospects'} value={`${fmtN(data.prospects.interested)} / ${fmtN(data.prospects.total)}`} accent="text-violet-600" />
         <StatCard label={ar ? 'عقود الأقسام الأخرى' : 'Dept contracts'} value={fmtN(data.deptContracts.total)} accent="text-blue-600" />
       </div>
@@ -119,6 +126,7 @@ export default function ContractsDashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { href: '/system/contracts/vendors', icon: <Building2 className="w-5 h-5" />, ar: 'سجل الموردين', en: 'Vendor register', hint: ar ? `${fmtN(v.total)} مورد` : `${fmtN(v.total)} vendors` },
+          { href: '/system/contracts/customers', icon: <Handshake className="w-5 h-5" />, ar: 'العملاء', en: 'Customers', hint: data.customers?.expiring ? (ar ? `${fmtN(data.customers.expiring)} عقدًا ينتهي أو انتهى` : `${fmtN(data.customers.expiring)} ending / ended`) : (ar ? `${fmtN(data.customers?.total || 0)} عميلًا` : `${fmtN(data.customers?.total || 0)} customers`) },
           { href: '/system/contracts/analysis', icon: <TrendingUp className="w-5 h-5" />, ar: 'تحليل التشغيل والترتيب', en: 'Utilisation & ranking', hint: lastUtil ? (ar ? `آخر شهر: ${monthLabel(`${lastUtil.year}-${String(lastUtil.month).padStart(2, '0')}`, ar)}` : `latest: ${lastUtil.year}-${lastUtil.month}`) : '—' },
           { href: '/system/contracts/prospects', icon: <PhoneCall className="w-5 h-5" />, ar: 'تنشيط الموردين الجدد', en: 'Prospect outreach', hint: ar ? `${fmtN(data.prospects.interested)} مهتم` : `${fmtN(data.prospects.interested)} interested` },
           { href: '/system/contracts/agreements', icon: <ClipboardList className="w-5 h-5" />, ar: 'عقود الأقسام', en: 'Department contracts', hint: ar ? `${fmtN(data.deptContracts.expiringSoon)} تنتهي خلال ٦٠ يومًا` : `${fmtN(data.deptContracts.expiringSoon)} expiring in 60d` },

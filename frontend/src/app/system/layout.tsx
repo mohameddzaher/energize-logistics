@@ -407,6 +407,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/business-review/my-tasks', label: lang === 'ar' ? 'مهامي من الاجتماعات' : 'My Meeting Tasks', icon: <ListTodo className="w-5 h-5" />, roles: [], section: 'Business Review' },
     { href: '/system/contracts', label: lang === 'ar' ? 'لوحة إدارة العقود' : 'Contracts Dashboard', icon: <FileSignature className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
     { href: '/system/contracts/vendors', label: lang === 'ar' ? 'سجل موردي 3PL' : 'Vendor Register', icon: <Building2 className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
+    // العملاءُ بعد المورّدين مباشرةً: الطرفان يُقرآن معًا، وسجلٌّ لأحدهما وحدَه
+    // كان نصفَ عملِ القسم.
+    { href: '/system/contracts/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Handshake className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
     { href: '/system/contracts/analysis', label: lang === 'ar' ? 'تحليل التشغيل' : 'Utilisation Analysis', icon: <BarChart3 className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
     { href: '/system/contracts/prospects', label: lang === 'ar' ? 'تنشيط الموردين الجدد' : 'Prospect Outreach', icon: <PhoneCall className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
     { href: '/system/contracts/agreements', label: lang === 'ar' ? 'عقود الأقسام' : 'Department Contracts', icon: <ScrollText className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },

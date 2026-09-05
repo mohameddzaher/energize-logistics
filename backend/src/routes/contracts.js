@@ -23,6 +23,17 @@ router.delete('/vendors/:id', E, ctrl.deleteVendor);
 router.post('/vendors/:id/attachments', E, ctrl.addVendorAttachment);
 router.delete('/vendors/:id/attachments/:attId', E, ctrl.removeVendorAttachment);
 
+// ── العملاء ─────────────────────────────────────────────────────────────────
+// الطرفُ الآخر من كلّ صفقة. «suggestions» قبل «/:id» وإلّا قُرئت معرّفًا.
+router.get('/customers/suggestions', ctrl.customerSuggestions);
+router.get('/customers', ctrl.listCustomers);
+router.post('/customers', E, ctrl.createCustomer);
+router.get('/customers/:id', ctrl.getCustomer);
+router.patch('/customers/:id', E, ctrl.updateCustomer);
+router.delete('/customers/:id', E, ctrl.deleteCustomer);
+router.post('/customers/:id/attachments', E, ctrl.addCustomerAttachment);
+router.delete('/customers/:id/attachments/:attId', E, ctrl.removeCustomerAttachment);
+
 router.get('/utilisation', ctrl.listUtilisation);
 router.post('/utilisation', E, ctrl.upsertUtilisation);
 router.delete('/utilisation/:id', E, ctrl.deleteUtilisation);

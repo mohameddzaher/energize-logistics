@@ -38,11 +38,14 @@ exports.getDashboard = async (req, res) => {
     const cached = cache.get('contracts:dashboard');
     if (cached) return res.json(cached);
 
-    const [vendors, prospects, deptContracts, utilMonths] = await Promise.all([
+    const [vendors, prospects, deptContracts, utilMonths, customers] = await Promise.all([
       ContractVendor.find().lean(),
       ContractProspect.find({ convertedVendor: null }).lean(),
       DeptContract.find().lean(),
       VendorUtilisation.aggregate([{ $group: { _id: { year: '$year', month: '$month' }, orders: { $sum: '$orders' } } }, { $sort: { '_id.year': 1, '_id.month': 1 } }]),
+      // العملاءُ يُقرآن مع المورّدين: الطرفان في لوحةٍ واحدة، لا سجلٌّ لأحدهما
+      // ولوحةٌ للآخر.
+      require('../models/ContractModels').ContractCustomer.find().select('-attachments').lean(),
     ]);
 
     const signed = vendors.filter((v) => vendorStatus(v) === 'signed');
@@ -80,6 +83,25 @@ exports.getDashboard = async (req, res) => {
         total: prospects.length,
         interested: prospects.filter((p) => p.isInterested === true).length,
       },
+      // ── والعملاء ────────────────────────────────────────────────────────
+      // ثلاثةُ أرقامٍ تُقرأ في ثانية: كم عميلًا، وكم منهم بلا عقدٍ موقَّع، وكم
+      // عقدًا يقارب انتهاءه. والأخيرُ هو العملُ: العقدُ يُجدَّد قبل أن ينتهي.
+      customers: (() => {
+        const signed = customers.filter((c) => c.customerSideContract && c.ourSideContract);
+        const soon = Date.now() + 60 * 86400000;
+        return {
+          total: customers.length,
+          signed: signed.length,
+          unsigned: customers.length - signed.length,
+          missingDocs: signed.filter((c) => !c.documentsReceived).length,
+          expiring: customers.filter((c) => c.endDate && new Date(c.endDate).getTime() < soon).length,
+          expiringList: customers
+            .filter((c) => c.endDate && new Date(c.endDate).getTime() < soon)
+            .sort((a, b) => new Date(a.endDate) - new Date(b.endDate))
+            .slice(0, 10)
+            .map((c) => ({ _id: c._id, name: c.name, endDate: c.endDate, energizeRep: c.energizeRep })),
+        };
+      })(),
       deptContracts: {
         total: deptContracts.length,
         byDepartment: ['3pl', 'fleet', 'b2c', 'other'].map((d) => ({ department: d, count: deptContracts.filter((c) => c.department === d).length })),
@@ -529,3 +551,255 @@ exports.deleteDeptContract = async (req, res) => {
     res.status(500).json({ message: e.message });
   }
 };
+
+// ══════════════════════════════════════════════════════════════════════════════
+// العملاء — الطرفُ الآخر من كلّ صفقة
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// ── وما الجديدُ فيه ──────────────────────────────────────────────────────────
+// القسمُ كان يعرف نصفَ عمله: المورّدون بعقودهم ووثائقهم وحصصهم في سجلٍّ كامل،
+// والعملاءُ بلا سجلٍّ إلّا صفوفًا في «عقود الأقسام» تُبحَث بالاسم. فسؤالُ كلّ
+// أسبوع — «فلانٌ عقدُه موقَّعٌ وإلى متى؟» — لا جوابَ له إلّا في ورقة.
+//
+// ── والربطُ بالباقي ─────────────────────────────────────────────────────────
+// الصفُّ هنا يحمل ما يخصّ العقدَ وحدَه؛ وما عداه يُقرأ من مصدره في كلّ نداء ولا
+// يُنسَخ:
+//   • ما يشحنه معنا فعلًا  ← كشوفُ التشغيل (عددًا وقيمةً وآخرَ شحنة)
+//   • ما بقي عليه          ← طرفُ التحصيل (مهلتُه المتّفق عليها ورصيدُه)
+//   • عقودُه المرفوعة       ← «عقود الأقسام» بنوع طرفٍ «عميل»
+// ورقمٌ منسوخٌ يشيخ في يومه، ورقمٌ مقروءٌ من مصدره لا يكذب أبدًا.
+const { ContractCustomer } = require('../models/ContractModels');
+
+const customerStatus = (c) => (c.customerSideContract && c.ourSideContract
+  ? 'signed'
+  : (c.customerSideContract || c.ourSideContract ? 'pending' : 'unsigned'));
+
+/** ينتهي خلال ستّين يومًا — العقدُ يُجدَّد قبل أن ينتهي لا بعده. */
+const EXPIRY_WINDOW_DAYS = 60;
+const expiryState = (endDate) => {
+  if (!endDate) return '';
+  const days = Math.floor((new Date(endDate).getTime() - Date.now()) / 86400000);
+  if (days < 0) return 'expired';
+  return days <= EXPIRY_WINDOW_DAYS ? 'due' : 'valid';
+};
+
+/**
+ * حجمُ العملاء من كشوف التشغيل — عددًا وقيمةً وآخرَ شحنة، مطويًّا بالاسم.
+ *
+ * تُحسَب مرّةً لكلّ العملاء لا لكلّ صفّ: ستُّمئةِ استعلامٍ لصفحةٍ واحدةٍ تجعلها
+ * تُفتَح في ثوانٍ ثمّ لا تُفتَح.
+ */
+async function customerVolume() {
+  return cache.wrap('contracts:customer-volume', 60000, async () => {
+    const OperationsWorkflow = require('../models/OperationsWorkflow');
+    const rows = await OperationsWorkflow.aggregate([
+      { $match: { applicationStatus: { $ne: 'cancelled' }, username: { $nin: [null, ''] } } },
+      {
+        $group: {
+          _id: '$username',
+          loads: { $sum: 1 },
+          value: { $sum: { $ifNull: ['$sellingValue', 0] } },
+          last: { $max: '$reportDate' },
+        },
+      },
+    ]);
+    const out = {};
+    for (const r of rows) {
+      const k = nameKey(r._id);
+      if (!k) continue;
+      if (!out[k]) out[k] = { loads: 0, value: 0, last: null, names: [] };
+      out[k].loads += r.loads;
+      out[k].value += r.value;
+      if (!out[k].last || (r.last && new Date(r.last) > new Date(out[k].last))) out[k].last = r.last;
+      out[k].names.push(r._id);
+    }
+    return out;
+  });
+}
+
+/** أطرافُ التحصيل من نوع «عميل» — المهلةُ المتّفق عليها ورصيدُ ما بقي. */
+async function collectionsByKey() {
+  return cache.wrap('contracts:customer-collections', 60000, async () => {
+    try {
+      const CollectionsParty = require('../models/CollectionsParty');
+      const rows = await CollectionsParty.find({ kind: 'customer' })
+        .select('name nameKey paymentTerms creditLimit collectionOfficer').lean();
+      const out = {};
+      for (const r of rows) out[nameKey(r.name)] = r;
+      return out;
+    } catch (_) { return {}; }
+  });
+}
+
+exports.listCustomers = async (req, res) => {
+  try {
+    const [customers, volume, coll, agreements] = await Promise.all([
+      ContractCustomer.find().select('-attachments').sort({ name: 1 }).lean(),
+      customerVolume(),
+      collectionsByKey(),
+      DeptContract.find({ partyType: 'customer' }).select('partyName status endDate').lean(),
+    ]);
+
+    const agreementsByKey = {};
+    for (const a of agreements) {
+      const k = nameKey(a.partyName);
+      (agreementsByKey[k] = agreementsByKey[k] || []).push(a);
+    }
+
+    res.json({
+      customers: customers.map((c) => {
+        const v = volume[c.nameKey] || null;
+        const p = coll[c.nameKey] || null;
+        return {
+          ...c,
+          status: customerStatus(c),
+          expiry: expiryState(c.endDate),
+          loads: v?.loads || 0,
+          value: Math.round((v?.value || 0) * 100) / 100,
+          lastLoad: v?.last || null,
+          collectionsTerms: p?.paymentTerms || '',
+          collectionOfficer: p?.collectionOfficer || '',
+          agreements: (agreementsByKey[c.nameKey] || []).length,
+        };
+      }),
+    });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
+/**
+ * عملاءُ يشحنون معنا ولا صفَّ لهم هنا — GET /customers/suggestions
+ *
+ * السجلُّ يبدأ فارغًا، وملؤه بالكتابة اليدويّة من ورقةٍ يعني أن يبقى ناقصًا إلى
+ * الأبد. والعملاءُ معروفون: هم مَن تحمل كشوفُنا أسماءهم. فتُعرَض أسماؤهم مرتّبةً
+ * بحجمهم — الأكبرُ أوّلًا، فهو مَن يُسأل عن عقده أوّلًا — ويُضاف من يُختار بضغطة.
+ */
+exports.customerSuggestions = async (req, res) => {
+  try {
+    const [existing, volume] = await Promise.all([
+      ContractCustomer.find().select('nameKey').lean(),
+      customerVolume(),
+    ]);
+    const have = new Set(existing.map((c) => c.nameKey));
+    const rows = Object.entries(volume)
+      .filter(([k]) => !have.has(k))
+      .map(([k, v]) => ({
+        nameKey: k,
+        // أطولُ الأسماء المكتوبة: الصيغُ المختصرةُ تسقط الشركةَ ونوعَها.
+        name: v.names.sort((a, b) => b.length - a.length)[0],
+        loads: v.loads,
+        value: Math.round(v.value * 100) / 100,
+        lastLoad: v.last,
+      }))
+      .sort((a, b) => b.loads - a.loads)
+      .slice(0, 200);
+    res.json({ suggestions: rows });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
+const CUSTOMER_FIELDS = [
+  'name', 'sector', 'customerType', 'contactPerson', 'phone', 'email', 'headquarters',
+  'energizeRep', 'crNumber', 'taxNumber',
+  'customerSideContract', 'ourSideContract', 'documentsReceived', 'missingDocuments',
+  'contractDate', 'startDate', 'endDate', 'renewalPolicy', 'paymentTermDays',
+  'pricingNotes', 'operationalStatus', 'followUpNotes', 'notes',
+];
+
+exports.createCustomer = async (req, res) => {
+  try {
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ message: 'اسم العميل مطلوب' });
+    const key = nameKey(name);
+    const exists = await ContractCustomer.findOne({ nameKey: key });
+    // الاسمُ المطويُّ هو الذي يمنع الصفَّ الثاني: «شركة الرياض» و«الرياض» صفٌّ
+    // واحدٌ في الواقع، وصفّان في سجلٍّ يقارن الحروف.
+    if (exists) return res.status(409).json({ message: `العميل مسجل بالفعل باسم «${exists.name}»` });
+    const doc = { nameKey: key, createdBy: req.user?._id, createdByName: actorName(req) };
+    for (const f of CUSTOMER_FIELDS) if (req.body[f] !== undefined) doc[f] = req.body[f];
+    const customer = await ContractCustomer.create(doc);
+    emit();
+    res.status(201).json({ customer });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
+exports.getCustomer = async (req, res) => {
+  try {
+    const customer = await ContractCustomer.findById(req.params.id).lean();
+    if (!customer) return res.status(404).json({ message: 'العميل غير موجود' });
+
+    const OperationsWorkflow = require('../models/OperationsWorkflow');
+    const [volume, coll, agreements] = await Promise.all([
+      customerVolume(),
+      collectionsByKey(),
+      DeptContract.find({ partyType: 'customer' }).lean(),
+    ]);
+
+    // شهورُه الاثنا عشر الأخيرة — العقدُ يُراجَع على منحنًى لا على رقمٍ واحد.
+    const since = new Date();
+    since.setMonth(since.getMonth() - 12);
+    const monthly = await OperationsWorkflow.aggregate([
+      { $match: { applicationStatus: { $ne: 'cancelled' }, reportDate: { $gte: since } } },
+      { $project: { username: 1, reportDate: 1, sellingValue: 1, fromLocation: 1, toLocation: 1 } },
+      {
+        $group: {
+          _id: { y: { $year: '$reportDate' }, m: { $month: '$reportDate' }, u: '$username' },
+          loads: { $sum: 1 },
+          value: { $sum: { $ifNull: ['$sellingValue', 0] } },
+        },
+      },
+      { $sort: { '_id.y': 1, '_id.m': 1 } },
+    ]);
+    const mine = monthly.filter((r) => nameKey(r._id.u) === customer.nameKey);
+    const byMonth = {};
+    for (const r of mine) {
+      const k = `${r._id.y}-${String(r._id.m).padStart(2, '0')}`;
+      byMonth[k] = byMonth[k] || { month: k, loads: 0, value: 0 };
+      byMonth[k].loads += r.loads;
+      byMonth[k].value += r.value;
+    }
+
+    res.json({
+      customer: { ...customer, status: customerStatus(customer), expiry: expiryState(customer.endDate) },
+      volume: volume[customer.nameKey] || { loads: 0, value: 0, last: null, names: [] },
+      collections: coll[customer.nameKey] || null,
+      agreements: agreements.filter((a) => nameKey(a.partyName) === customer.nameKey),
+      monthly: Object.values(byMonth).sort((a, b) => a.month.localeCompare(b.month)),
+    });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
+exports.updateCustomer = async (req, res) => {
+  try {
+    const customer = await ContractCustomer.findById(req.params.id);
+    if (!customer) return res.status(404).json({ message: 'العميل غير موجود' });
+    for (const f of CUSTOMER_FIELDS) if (req.body[f] !== undefined) customer[f] = req.body[f];
+    // تغييرُ الاسم يغيّر مفتاحَ الربط معه، وإلّا انقطع الصفُّ عن كشوفه.
+    if (req.body.name !== undefined) customer.nameKey = nameKey(req.body.name);
+    await customer.save();
+    emit();
+    res.json({ customer });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
+exports.deleteCustomer = async (req, res) => {
+  try {
+    const customer = await ContractCustomer.findByIdAndDelete(req.params.id);
+    if (!customer) return res.status(404).json({ message: 'العميل غير موجود' });
+    emit();
+    res.json({ message: 'حُذف العميل' });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
+exports.addCustomerAttachment = addAttachment(ContractCustomer, 'contracts');
+exports.removeCustomerAttachment = removeAttachment(ContractCustomer);

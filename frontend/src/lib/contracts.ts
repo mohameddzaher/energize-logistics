@@ -71,6 +71,63 @@ export interface DeptContract {
 
 export type Lang = 'en' | 'ar';
 
+// ── العملاء ─────────────────────────────────────────────────────────────────
+// الطرفُ الآخر من كلّ صفقة. الصفُّ يحمل ما يخصّ العقدَ وحدَه، وما عداه (حجمُه
+// معنا، وما بقي عليه، وعقودُه المرفوعة) يُقرأ من مصدره في كلّ نداء ولا يُنسَخ.
+export interface ContractCustomer {
+  _id: string;
+  name: string;
+  nameKey: string;
+  sector?: string;
+  customerType?: string;
+  contactPerson?: string;
+  phone?: string;
+  email?: string;
+  headquarters?: string;
+  energizeRep?: string;
+  crNumber?: string;
+  taxNumber?: string;
+  customerSideContract?: boolean;
+  ourSideContract?: boolean;
+  documentsReceived?: boolean;
+  missingDocuments?: string;
+  contractDate?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  renewalPolicy?: string;
+  paymentTermDays?: number | null;
+  pricingNotes?: string;
+  operationalStatus?: string;
+  followUpNotes?: string;
+  notes?: string;
+  attachments?: ContractAttachment[];
+  // محسوبةٌ عند القراءة
+  status?: 'signed' | 'pending' | 'unsigned';
+  expiry?: '' | 'valid' | 'due' | 'expired';
+  loads?: number;
+  value?: number;
+  lastLoad?: string | null;
+  collectionsTerms?: string;
+  collectionOfficer?: string;
+  agreements?: number;
+}
+
+// التسميةُ نفسُها المستعملة للمورّدين: من يقرأ الشاشتين يقرأ الشيءَ نفسَه.
+export const CUSTOMER_STATUS = {
+  signed: { ar: 'موقّع', en: 'Signed', cls: 'bg-emerald-100 text-emerald-700' },
+  pending: { ar: 'قيد التوقيع', en: 'Pending', cls: 'bg-amber-100 text-amber-700' },
+  unsigned: { ar: 'غير موقّع', en: 'Unsigned', cls: 'bg-slate-100 text-slate-600' },
+} as const;
+
+// ── والانتهاءُ ثلاثُ حالاتٍ لا خمس ────────────────────────────────────────────
+// العقدُ ساري، أو قارب على الانتهاء فيُجدَّد، أو انتهى. وهي القسمةُ نفسُها التي
+// استقرّت في وثائق المركبات — لا يُخترَع لها هنا شكلٌ آخر.
+export const EXPIRY_META = {
+  valid: { ar: 'ساري', en: 'Valid', cls: 'bg-slate-100 text-slate-600' },
+  due: { ar: 'قارب على الانتهاء', en: 'Due soon', cls: 'bg-amber-100 text-amber-700' },
+  expired: { ar: 'منتهٍ', en: 'Expired', cls: 'bg-red-100 text-red-700' },
+} as const;
+
 export const VENDOR_STATUS = {
   signed: { ar: 'موقّع', en: 'Signed', cls: 'bg-emerald-100 text-emerald-700' },
   pending: { ar: 'قيد التوقيع', en: 'Pending', cls: 'bg-amber-100 text-amber-700' },

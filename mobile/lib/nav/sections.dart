@@ -194,6 +194,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       pages: [
         AppPage('لوحة القسم', 'Dashboard', Icons.space_dashboard_outlined, (c) => const ContractsDashboardScreen(), path: '/system/contracts'),
         AppPage('سجل موردي 3PL', '3PL Vendors', Icons.business_outlined, (c) => ResourceScreen(config: contractsVendorsCfg), path: '/system/contracts/vendors'),
+        AppPage('العملاء', 'Customers', Icons.handshake_outlined, (c) => ResourceScreen(config: contractsCustomersCfg), path: '/system/contracts/customers'),
         AppPage('تحليل التشغيل', 'Utilisation', Icons.insights_outlined, (c) => const ContractsAnalysisScreen(), path: '/system/contracts/analysis'),
         AppPage('تنشيط الموردين', 'Prospects', Icons.phone_in_talk_outlined, (c) => const ContractsProspectsScreen(), path: '/system/contracts/prospects'),
         AppPage('عقود الأقسام', 'Dept Contracts', Icons.folder_copy_outlined, (c) => ResourceScreen(config: contractsAgreementsCfg), path: '/system/contracts/agreements'),

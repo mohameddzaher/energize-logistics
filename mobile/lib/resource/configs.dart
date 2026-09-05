@@ -189,6 +189,58 @@ final contractsVendorsCfg = ResourceConfig(
   ],
 );
 
+// ── عملاءُ العقود ────────────────────────────────────────────────────────────
+// الطرفُ الآخر من كلّ صفقة. الصفُّ يحمل ما يخصّ العقد، والأرقامُ التي تحته —
+// شحناتُه معنا وقيمتُها — تُقرأ من كشوف التشغيل ولا تُكتب هنا.
+final contractsCustomersCfg = ResourceConfig(
+  filterField: 'status',
+  arTitle: 'العملاء', enTitle: 'Customers', icon: Icons.handshake_outlined,
+  endpoint: '/api/contracts/customers', listKey: 'customers',
+  updateMethod: 'PATCH', liveEvent: 'contracts:updated',
+  searchFields: const ['name', 'energizeRep', 'contactPerson', 'phone', 'headquarters'],
+  titleOf: (r) => _s(r, 'name'),
+  subtitleOf: (r) => [_s(r, 'sector'), _s(r, 'headquarters'), _s(r, 'energizeRep')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    r['status'] == 'signed'
+        ? ('موقّع', T.success)
+        : r['status'] == 'pending'
+            ? ('قيد التوقيع', T.warn)
+            : ('غير موقّع', T.inkFaint),
+    if ((r['loads'] ?? 0) != 0) ('${_n(r['loads'])} شحنة', T.navy),
+    // ── والعقدُ يُجدَّد قبل أن ينتهي ────────────────────────────────────────
+    // «قارب على الانتهاء» تُقال قبل شهرين، فيبقى وقتٌ للتجديد. وبعد الانتهاء
+    // لا يبقى إلّا أن يُشحَن بلا عقد.
+    if (r['expiry'] == 'due') ('قارب على الانتهاء', T.warn),
+    if (r['expiry'] == 'expired') ('منتهٍ', T.danger),
+    if (r['status'] == 'signed' && r['documentsReceived'] != true) ('وثائق ناقصة', T.danger),
+  ],
+  fields: const [
+    FieldSpec('name', 'اسم العميل', 'Customer name', required: true),
+    FieldSpec('sector', 'القطاع', 'Sector'),
+    FieldSpec('customerType', 'نوع العميل', 'Type', type: FieldType.select, options: [
+      ('ضريبي', 'ضريبي', 'Tax'), ('كاش', 'كاش', 'Cash'), ('آجل', 'آجل', 'Credit'),
+    ]),
+    FieldSpec('contactPerson', 'جهة الاتصال', 'Contact person'),
+    FieldSpec('phone', 'رقم الجوال', 'Phone', type: FieldType.phone),
+    FieldSpec('email', 'البريد', 'Email'),
+    FieldSpec('headquarters', 'المقر', 'Headquarters'),
+    FieldSpec('energizeRep', 'مسؤول التنشيط لدينا', 'Our rep'),
+    FieldSpec('crNumber', 'السجل التجاري', 'CR number'),
+    FieldSpec('taxNumber', 'الرقم الضريبي', 'VAT number'),
+    FieldSpec('customerSideContract', 'وقّع العميل', 'Customer signed', type: FieldType.checkbox),
+    FieldSpec('ourSideContract', 'وقّعنا نحن', 'We signed', type: FieldType.checkbox),
+    FieldSpec('documentsReceived', 'الوثائق مستلمة', 'Documents received', type: FieldType.checkbox),
+    FieldSpec('missingDocuments', 'الوثائق الناقصة', 'Missing documents'),
+    FieldSpec('contractDate', 'تاريخ التوقيع', 'Signed on', type: FieldType.date),
+    FieldSpec('startDate', 'بداية العقد', 'Start date', type: FieldType.date),
+    FieldSpec('endDate', 'نهاية العقد', 'End date', type: FieldType.date),
+    FieldSpec('paymentTermDays', 'مهلة السداد (يوم)', 'Payment term (days)', type: FieldType.number),
+    FieldSpec('pricingNotes', 'ملاحظات التسعير', 'Pricing notes', type: FieldType.textarea),
+    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+  sortFields: const [('loads', 'الشحنات', 'Loads'), ('value', 'القيمة', 'Value')],
+);
+
 final contractsAgreementsCfg = ResourceConfig(
   filterField: 'status',
   arTitle: 'عقود الأقسام', enTitle: 'Department Contracts', icon: Icons.folder_copy_outlined,

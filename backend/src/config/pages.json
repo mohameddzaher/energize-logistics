@@ -830,6 +830,12 @@
       "en": "Vendor Register"
     },
     {
+      "key": "/system/contracts/customers",
+      "section": "Contracts",
+      "ar": "العملاء",
+      "en": "Customers"
+    },
+    {
       "key": "/system/contracts/analysis",
       "section": "Contracts",
       "ar": "تحليل التشغيل",

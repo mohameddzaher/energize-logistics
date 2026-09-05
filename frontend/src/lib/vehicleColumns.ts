@@ -29,17 +29,34 @@ export type VCol = {
 /**
  * اللوحةُ بصيغة منصّة «تم».
  *
- * الحروفُ ثلاثةُ مواضعَ دائمًا، فاللوحةُ ذاتُ الحرفين تترك الموضعَ الثالث
- * فارغًا — ومن هنا تأتي المسافتان بين الحروف والرقم. والملفُّ يُرفَع إلى المنصّة
- * ويُطابَق بالنصّ، فمسافةٌ ناقصةٌ تعني صفًّا لا يُطابِق شيئًا.
+ * ── ما يُصلَح وما لا يُمسّ ──────────────────────────────────────────────────
+ * الحروفُ ثلاثةُ مواضعَ دائمًا على المنصّة، فاللوحةُ ذاتُ الحرفين تترك الموضعَ
+ * الثالثَ فارغًا — ومن هنا تأتي المسافتان بين الحروف والرقم. واثنتا عشرةَ ومئتا
+ * لوحةٍ من ثلاثمئةٍ وستٍّ وثلاثين من هذا النوع، أي أنّ أغلبَ الملفّ كان يخرج
+ * بمسافةٍ واحدة.
+ *
+ * والذي **لا يُمسّ** ترتيبُ الحروف والرقم: في السجلّ لوحةٌ مكتوبةٌ بالرقم أوّلًا
+ * («1611 ب ق ب»)، وإعادةُ ترتيبها لتوافق البقيّة تغييرٌ للبيان لا تنسيقٌ له —
+ * وهذه لوحةٌ تُطابَق بالنصّ عند الرفع. فيُقرأ الترتيبُ من المكتوب ويُبقى كما هو،
+ * ولا يُضبَط إلّا الفراغ.
  */
 export const platformPlate = (v: Partial<VReg>): string => {
-  const letters = String((v as any).plateLettersAr || '').trim();
-  const digits = String((v as any).plateDigits || '').trim();
-  if (!letters || !digits) return String(v.plateNumber || '');
-  const parts = letters.split(/\s+/).filter(Boolean);
+  const raw = String(v.plateNumber || '').trim();
+  if (!raw) return '';
+  // الرقمُ مقطعٌ واحدٌ متّصل، وما عداه حروف — بترتيبهما كما كُتبا.
+  const digitsMatch = raw.match(/\d+/);
+  if (!digitsMatch) return raw;
+  const digits = digitsMatch[0];
+  const before = raw.slice(0, digitsMatch.index).trim();
+  const after = raw.slice((digitsMatch.index || 0) + digits.length).trim();
+  const lettersSide = before || after;
+  if (!lettersSide) return raw;
+  const parts = lettersSide.split(/\s+/).filter(Boolean);
+  // أكثرُ من ثلاثةٍ لا يُقصّ: لوحةٌ خارج القاعدة تُترك كما هي بدل أن يُبتَر منها.
+  if (parts.length > 3) return raw;
   while (parts.length < 3) parts.push('');
-  return `${parts.slice(0, 3).join(' ')} ${digits}`;
+  const padded = parts.join(' ');
+  return before ? `${padded} ${digits}` : `${digits} ${padded}`;
 };
 
 const d = (x: any) => (x ? String(x).slice(0, 10) : '');

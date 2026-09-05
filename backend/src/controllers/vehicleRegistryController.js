@@ -569,7 +569,10 @@ exports.list = async (req, res) => {
     // فكلُّ حقلٍ يُعرَض في عمودٍ من أعمدة صفحات المستندات موجودٌ هنا. وهي حقولٌ
     // نصّيةٌ قصيرة: الزيادة بضع مئات من البايتات للمركبة، والثمن الذي كانت
     // تدفعه الشاشة قبلها هو أن تكون فارغة.
-    const LIST_FIELDS = 'plateNumber plateLettersAr chassisNumber serialNumber sectorAr departmentAr cityAr'
+    // `plateDigits` مع `plateLettersAr`: منهما تُبنى اللوحةُ بصيغة منصّة «تم»
+    // في التصدير — الحروفُ ثلاثةُ مواضعَ دائمًا ثمّ الرقم. وبدونهما يخرج الملفُّ
+    // باللوحة كما كُتبت، فلا تُطابِق شيئًا عند الرفع.
+    const LIST_FIELDS = 'plateNumber plateLettersAr plateDigits chassisNumber serialNumber sectorAr departmentAr cityAr'
       + ' possessionStatusAr registrationTypeAr brandAr modelAr modelYear colorAr ownerNameAr commercialRegistration'
       + ' authorizedPerson logistiGaps serviceStatusAr serviceStatusCode tamStatusAr'
       + ' insurance.policyNumber insurance.companyAr insurance.coverageTypeAr insurance.expiryDate'

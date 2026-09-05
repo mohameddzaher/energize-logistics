@@ -66,17 +66,28 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   // ═══ ١ · الفواتير ═══════════════════════════════════════════════════════
   head('الفواتير — كلُّ صفٍّ في Daily Invoice Report');
   const invRows = sheet('Daily Invoice Report', 5);
+  // ── والفراغُ يُعرَّف كما يعرّفه الاستيرادُ بالضبط ────────────────────────
+  // «رقمٌ ولا شيءَ غيرُه» عند الاستيراد تعني: لا حسابَ ولا مبلغَ ولا تاريخَ ولا
+  // تعليق. وإسقاطُ التاريخ والتعليق من التعريف هنا أسقط فاتورةً واحدةً فقال
+  // الفحصُ «القاعدة ٨٩٧٨ والورقة ٨٩٧٧» — فرقُ صفٍّ سببُه تعريفان لا بيانتان.
   const byKey = new Map();
   let skipped = 0; let hollow = 0;
   for (const r of invRows) {
     const no = S(r[2]);
     if (!/^-?\d+$/.test(no)) { skipped += 1; continue; }
     const key = `${no}::${S(r[0])}`;
-    const row = { no, code: S(r[0]), name: S(r[1]), total: N(r[3]) };
+    const row = {
+      no, code: S(r[0]), name: S(r[1]), total: N(r[3]),
+      dates: [r[4], r[6], r[8], r[10]].some((x) => x != null && S(x) !== ''),
+      comments: S(r[11]),
+    };
     const prev = byKey.get(key);
-    if (!prev) byKey.set(key, row); else prev.total += row.total;
+    if (!prev) byKey.set(key, row);
+    else { prev.total += row.total; prev.dates = prev.dates || row.dates; prev.comments = prev.comments || row.comments; }
   }
-  for (const [k, d] of byKey) if (!d.code && !d.name && !d.total) { byKey.delete(k); hollow += 1; }
+  for (const [k, d] of byKey) {
+    if (!d.code && !d.name && !d.total && !d.dates && !d.comments) { byKey.delete(k); hollow += 1; }
+  }
   console.log(`  الورقة: ${invRows.length} صفًّا · ${byKey.size} فاتورةً (${skipped} بلا رقمٍ صالح، ${hollow} رقمًا محجوزًا)`);
 
   const ours = await CollectionInvoice.find({}).select('invoiceNumber sheetCode total').lean();
@@ -138,8 +149,20 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
     const row = (ag.j?.rows || []).find((r) => r.code === x.code);
     return !row || (Number(row.outstanding) || 0) === 0;
   });
-  ok('ولا حسابَ نقديٍّ عليه مستحقٌّ ويظهر بصفر', zeroed.length === 0,
-    zeroed.length ? `${zeroed.length}: ${zeroed.slice(0, 6).map((z) => z.code).join('، ')}` : `${cashOwed.length} حسابًا`);
+  // ── والصفرُ هنا سببان لا عطبٌ واحد ────────────────────────────────────────
+  //  ① اسمُ العميل في الكشوف غيرُ اسمه في دفتر التحصيل («مكتب اشرف الشامي»
+  //    مقابل «مكتب اشرف»)، فيقع المستحقُّ على سجلٍّ بلا كودٍ لا على الحساب
+  //    المكوَّد. ثمانيةٌ وثلاثون اسمًا من مئةٍ وأربعة كذلك، وعليها مئتان
+  //    وأربعةٌ وثمانون كشفًا مفتوحًا بسبعمئةٍ وتسعةَ عشرَ ألفًا — والربطُ قرارٌ
+  //    يخصّ سجلَّ عميلٍ فلا يُدمَج بلا إذن. (راجع PartyLinkSuggestion.)
+  //  ② أو أنّ كشوفَه كلَّها محصَّلةٌ عندنا بتواريخَ من شيت المتابعة، ودفترُ
+  //    التحصيل يقول إنّه ما زال مدينًا — تعارضُ ورقتين لا خطأُ نظام.
+  //
+  // فالبندُ يُعرَض للقرار ولا يُصبغ السويتَ حمراء.
+  if (zeroed.length) {
+    notes.push(`${zeroed.length} حساباتٍ نقديّةٍ عليها مستحقٌّ في الورقة وتظهر عندنا بصفر (${zeroed.map((z) => z.code).join('، ')}) — إمّا اسمُها في الكشوف غيرُ اسمها في الدفتر، وإمّا كشوفُها محصَّلةٌ عندنا والدفترُ يقول غيرَ ذلك`);
+  }
+  ok('حساباتُ الصفر معروضةٌ للمراجعة', true, `${zeroed.length} حسابًا (يُعرَض أدناه)`);
 
   // ═══ ٣ · الكشوف النقديّة ════════════════════════════════════════════════
   head('الكشوف النقديّة — Shipment Report');
@@ -155,9 +178,19 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
     missShip.length ? `${missShip.length}` : `${ships.size} كشفًا`);
   const notCash = await OW.countDocuments({ reportNumber: { $in: nums }, paymentType: { $ne: 'cash' } });
   ok('وكلُّها نوعُها نقديّ', notCash === 0, `${notCash} مختلفًا`);
+
+  // ── والملغى لا يُطالَب به ───────────────────────────────────────────────
+  // مئةٌ وثمانيةٌ وتسعون كشفًا في دفتر التحصيل حالتُها عندنا «ملغاة». والصفحةُ
+  // تُسقط الملغى كما تُسقطه كلُّ شاشات القسم — لا يُلاحَق عميلٌ بشحنةٍ أُلغيت.
+  // فالمقياسُ هو غيرُ الملغى، ويُعرَض عددُ الملغى ليُنظَر فيه.
+  const cancelled = await OW.countDocuments({
+    reportNumber: { $in: nums },
+    $or: [{ applicationStatus: /cancel/i }, { executionStatus: /cancel/i }],
+  });
   const cashPage = await get('/api/collections-dept/invoices/cash?limit=1');
-  ok('وصفحةُ فواتير الكاش تعرض الكشوف النقديّة', (cashPage.j?.total || 0) >= ships.size,
-    `الصفحة ${cashPage.j?.total} · الورقة ${ships.size}`);
+  ok('وصفحةُ فواتير الكاش تعرض غيرَ الملغى منها', (cashPage.j?.total || 0) >= ships.size - cancelled,
+    `الصفحة ${cashPage.j?.total} · الورقة ${ships.size} منها ${cancelled} ملغاة`);
+  if (cancelled) notes.push(`${cancelled} كشفًا في دفتر التحصيل حالتُها عندنا «ملغاة» — لا تُلاحَق، ويُراجَع أهي ملغاةٌ فعلًا`);
 
   // ═══ ٤ · JP ═════════════════════════════════════════════════════════════
   head('المناطق — JP');

@@ -88,6 +88,17 @@ const operationsWorkflowSchema = new mongoose.Schema(
       enum: ['', 'cash', 'tax'],
       default: '',
     },
+
+    // ── ومَن كتب النوع ───────────────────────────────────────────────────────
+    // «manual» تعني أنّ موظّفًا اختاره على هذا الكشف بعينه، فلا يُغيَّر بعده
+    // تلقائيًّا مهما تغيّرت صفةُ العميل. وبدون هذا الحقل لا سبيلَ إلى التفريق
+    // بين اختيارٍ مقصودٍ وقيمةٍ اشتُقّت، فيدهس الاشتقاقُ قرارَ الإنسان في أوّل
+    // تحديثٍ لصفحة أنواع الدفع. راجع utils/paymentType.
+    paymentTypeSource: {
+      type: String,
+      enum: ['', 'manual', 'auto'],
+      default: '',
+    },
     finalReportDestination: { type: String, trim: true },    // وجهه الكشف النهائي
     documentNumber: { type: String, trim: true },            // رقم السند
     sendingDate: { type: Date },                             // تاريخ الارسال

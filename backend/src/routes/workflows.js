@@ -37,6 +37,15 @@ router.get('/stats', authorize(...allWorkflowRoles), workflowController.getWorkf
 // قيم فلتر عمودٍ واحد — تُحسب في القاعدة. لا بدّ أن تسبق `/:id` وإلا قُرئت
 // «filters» على أنها معرّف سجلّ فردّ الخادم 404 على كل فتحةٍ للقائمة.
 router.get('/filters', authorize(...allWorkflowRoles), workflowController.filterOptions);
+
+// ── أنواعُ الدفع ────────────────────────────────────────────────────────────
+// صفةُ العميل تُقرأ لمن يفتح صفحةَ التشغيل، ولا تُكتب إلّا لمن يديرها: قلبُ
+// صفةِ عميلٍ يغيّر أين تُفوتَر كشوفُه كلُّها. ولا بدّ أن تسبق `/:id`.
+const paymentTypes = require('../controllers/paymentTypesController');
+const PT_WRITE = ['super_admin', 'admin', 'operations_manager', 'moderator', 'finance_manager', 'collections_manager'];
+router.get('/payment-types', authorize(...allWorkflowRoles), paymentTypes.list);
+router.put('/payment-types/:id', authorize(...PT_WRITE), paymentTypes.update);
+router.post('/payment-types/apply', authorize(...PT_WRITE), paymentTypes.applyAll);
 router.get('/', authorize(...allWorkflowRoles), workflowController.getWorkflows);
 
 // Bulk delete

@@ -213,6 +213,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/credit-alerts', label: L.creditAlerts, icon: <Shield className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'employee', 'moderator'], section: 'Main' },
     // Operations
     { href: '/system/operations', label: L.operations, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'collections_manager', 'collections_staff'], section: 'Operations' },
+    // صفةُ العميل تُقرأ لمن يفتح صفحةَ التشغيل ولا تُكتب إلّا لمن يديرها —
+    // والحاجزُ في الخادم، وهذه القائمةُ مَن يصل إلى النقطة أصلًا.
+    { href: '/system/operations/payment-types', label: lang === 'ar' ? 'أنواع الدفع' : 'Payment Types', icon: <Banknote className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'finance_manager', 'accountant', 'collections_manager', 'collections_staff'], section: 'Operations' },
     { href: '/system/operations/dispatch-sheets', label: L.dispatchSheets, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'], section: 'Operations' },
     { href: '/system/vendors', label: L.vendors, icon: <Store className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'operations_staff', 'procurement_manager', 'procurement_staff'], section: 'Operations' },
     // ── وقوائمُ العهدة من موضعٍ واحد ────────────────────────────────────────

@@ -414,6 +414,33 @@ exports.addTransaction = async (req, res) => {
           fields: { purchaseDeliveryStatementNumber: 'غير موجود' },
         });
       }
+      // ── ولا يُسدَّد قبل أن يُستلَم السند ──────────────────────────────────
+      //
+      // تسجيلُ المشتريات يكتب تاريخَ السداد على الكشف (راجع fillReportFromWallet)،
+      // وتاريخُ السداد لا يُكتب إلّا بعد أن تصير حالةُ الطلب «استُلم السند» —
+      // وهو الشرطُ نفسُه المطبَّق في شاشة سير عمل التشغيل منذ فُرض هناك.
+      //
+      // وبدونه هنا يُلتَفّ حول القاعدة من باب المحفظة: يُسجَّل الشراء فيُكتب
+      // تاريخُ السداد على كشفٍ لم يصل سندُه بعد. فالسدادُ إقرارٌ بخروج المال
+      // مقابل ورقةٍ في اليد، والورقةُ لم تُستلَم.
+      const appStatus = String(purchaseWorkflow.applicationStatus || '').trim();
+      if (appStatus !== 'bond_received') {
+        const known = {
+          requesting: 'قيد الطلب', loading: 'جارٍ التحميل', uploaded: 'تم التحميل',
+          on_way: 'في الطريق', arrived: 'وصلت', bond_sent: 'أُرسل السند',
+          late: 'متأخرة', invoiced: 'تمت الفوترة', cancelled: 'ملغاة',
+        };
+        return res.status(409).json({
+          code: 'BOND_NOT_RECEIVED',
+          message: `الكشف ${purchaseWorkflow.reportNumber} حالتُه «${known[appStatus] || appStatus || 'غير محدَّدة'}»،`
+            + ' ولا تُسجَّل مشترياتٌ إلّا بعد أن تصير «استُلم السند».'
+            + ' تسجيلُ الشراء يكتب تاريخَ السداد على الكشف، والسدادُ لا يسبق استلامَ السند.',
+          fields: { purchaseDeliveryStatementNumber: 'حالة الطلب' },
+          applicationStatus: appStatus || null,
+          reportNumber: purchaseWorkflow.reportNumber,
+        });
+      }
+
       const prior = await WalletTransaction.findOne({
         type: 'purchase',
         purchaseDeliveryStatementNumber: flexSpaceRegex(purchaseWorkflow.reportNumber),
@@ -728,6 +755,16 @@ exports.updateTransaction = async (req, res) => {
           fields: { purchaseDeliveryStatementNumber: 'غير موجود' },
         });
       }
+      // الشرطُ نفسُه على التعديل — وإلّا نُقل الشراءُ إلى كشفٍ لم يصل سندُه.
+      const st = String(wf.applicationStatus || '').trim();
+      if (st !== 'bond_received') {
+        return res.status(409).json({
+          code: 'BOND_NOT_RECEIVED',
+          message: `الكشف ${wf.reportNumber} لم تصر حالتُه «استُلم السند» بعد، فلا تُنقَل إليه مشتريات.`,
+          fields: { purchaseDeliveryStatementNumber: 'حالة الطلب' },
+        });
+      }
+
       const prior = await WalletTransaction.findOne({
         _id: { $ne: transaction._id },
         type: 'purchase',
@@ -1235,6 +1272,9 @@ exports.lookupByReport = async (req, res) => {
       sellingValue: workflow.sellingValue || 0,
       driverName: workflow.driverName || '',
       branch: workflow.branch || '',
+      // وحالةُ الطلب تُقال في البحث: الشرطُ يُعرَف قبل ملء الاستمارة لا بعدها.
+      applicationStatus: workflow.applicationStatus || '',
+      bondReceived: String(workflow.applicationStatus || '').trim() === 'bond_received',
       alreadyPurchased: priorPurchase ? {
         amount: priorPurchase.amount,
         date: priorPurchase.date,

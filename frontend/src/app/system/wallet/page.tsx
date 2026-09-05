@@ -203,6 +203,8 @@ export default function WalletPage() {
   const [purchaseReportFound, setPurchaseReportFound] = useState(false);
   /** شراءٌ سابقٌ على الكشف نفسِه — يُعرَف من البحث قبل ملء الاستمارة. */
   const [purchaseAlready, setPurchaseAlready] = useState<null | { amount: number; date: string; by: string; receipt: string }>(null);
+  /** حالةُ طلب الكشف — لا تُسجَّل مشترياتٌ قبل «استُلم السند». */
+  const [purchaseBond, setPurchaseBond] = useState<null | { ok: boolean; status: string }>(null);
   const [purchaseInvoiceAmount, setPurchaseInvoiceAmount] = useState<number | null>(null);
   // Expected dispatch-sheet values for the amount-match alert: purchaseValue
   // (سعر الشراء) for purchases, sellingValue (سعر البيع) for collections.
@@ -303,7 +305,10 @@ export default function WalletPage() {
     // فصار في الدفتر شراءٌ لكشفٍ لا وجودَ له. فالزرُّ لا يعمل حتى يُبحَث عن
     // الرقم ويظهر الكشف. والخادمُ يمنع أيضًا — الشاشةُ تُرشد وهو يمنع.
     : txType === 'purchase'
-      ? (!!txForm.amount && Number(txForm.amount) > 0 && purchaseReportFound && !purchaseAlready)
+      // ولا شراءَ قبل أن يُستلَم السند — الشرطُ نفسُه المطبَّق على تاريخ السداد
+      // في سير عمل التشغيل، لأنّ تسجيلَ الشراء هو ما يكتب ذلك التاريخ.
+      ? (!!txForm.amount && Number(txForm.amount) > 0 && purchaseReportFound
+         && !purchaseAlready && purchaseBond?.ok !== false)
       : (!!txForm.amount && Number(txForm.amount) > 0);
 
   /** يُضيف الكشفَ وسندَه زوجًا — ويُستدعى من الزرّ ومن مفتاح الإدخال معًا. */
@@ -527,6 +532,7 @@ export default function WalletPage() {
     setPurchaseReportMsg('');
     setPurchaseReportFound(false);
     setPurchaseAlready(null);
+    setPurchaseBond(null);
     setPurchaseInvoiceAmount(null);
     setExpectedPurchaseValue(null);
     try {
@@ -542,6 +548,7 @@ export default function WalletPage() {
       setExpectedPurchaseValue(data.purchaseValue != null ? Number(data.purchaseValue) : null);
       setPurchaseReportFound(true);
       setPurchaseAlready(data.alreadyPurchased || null);
+      setPurchaseBond({ ok: !!data.bondReceived, status: data.applicationStatus || '' });
       setPurchaseReportMsg(`${txx.purchasePrice}: ${(data.purchaseValue || 0).toLocaleString()}`);
     } catch (err: any) {
       setPurchaseReportFound(false);
@@ -707,6 +714,7 @@ export default function WalletPage() {
     setPurchaseReportMsg('');
     setPurchaseReportFound(false);
     setPurchaseAlready(null);
+    setPurchaseBond(null);
     setPurchaseInvoiceAmount(null);
     setExpectedPurchaseValue(null);
     setExpectedSellingValue(null);
@@ -1206,6 +1214,23 @@ export default function WalletPage() {
                           <Search className="w-4 h-4" />
                         </button>
                       </div>
+                      {purchaseBond && !purchaseBond.ok && (
+                        <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                          <p className="text-[12.5px] font-bold text-amber-900">
+                            {lang === 'ar' ? 'حالة الطلب لم تصر «استُلم السند» بعد' : 'The order is not at "bond received" yet'}
+                          </p>
+                          <p className="text-[11.5px] text-amber-800 mt-0.5">
+                            {lang === 'ar'
+                              ? `حالتُه الآن: ${({ requesting: 'قيد الطلب', loading: 'جارٍ التحميل', uploaded: 'تم التحميل', on_way: 'في الطريق', arrived: 'وصلت', bond_sent: 'أُرسل السند', late: 'متأخرة', invoiced: 'تمت الفوترة', cancelled: 'ملغاة' } as Record<string, string>)[purchaseBond.status] || purchaseBond.status || 'غير محدَّدة'}`
+                              : `Current status: ${purchaseBond.status || 'unknown'}`}
+                          </p>
+                          <p className="text-[11px] text-amber-700 mt-1">
+                            {lang === 'ar'
+                              ? 'تسجيلُ الشراء يكتب تاريخَ السداد على الكشف، والسدادُ لا يسبق استلامَ السند. غيِّر حالة الطلب أوّلًا من سير عمل التشغيل.'
+                              : 'Recording a purchase writes the payment date onto the report, and payment cannot precede the bond.'}
+                          </p>
+                        </div>
+                      )}
                       {purchaseAlready && (
                         <div className="mt-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
                           <p className="text-[12.5px] font-bold text-red-800">

@@ -1035,8 +1035,14 @@ export default function OperationsWorkflowPage() {
           </div>
         </div>
 
-        {/* Sum of purchase value for the filtered rows — finance-only */}
-        {canViewFinancials && (
+        {/* ── مجموعُ قيمة الشراء — لمن يملك الحقلَ نفسَه ────────────────────
+            كان الشرطُ `canViewFinancials`، وهو ملكيّةُ حقول **الفاتورة**. وقيمةُ
+            الشراء ليست منها: هي ما دفعناه للناقل، وحقلٌ من حقول التشغيل يملكه
+            مديرُ التشغيل وموظّفوه. فكان المديرُ يرى العمودَ في الجدول ولا يرى
+            مجموعَه فوقه.
+            فالشرطُ صار ملكيّةَ `purchaseValue` نفسِه — أدقُّ، ولا يفتح معه
+            عمودًا ماليًّا واحدًا. */}
+        {(role === 'super_admin' || has('purchaseValue')) && (
           <div className="flex items-center gap-3 px-5 py-3.5 rounded-xl border bg-emerald-500/10 border-emerald-500/30">
             <div className="p-2 rounded-lg bg-emerald-500/20">
               <FileSpreadsheet className="w-5 h-5 text-emerald-700" />

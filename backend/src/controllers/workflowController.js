@@ -200,6 +200,15 @@ function applyBillingRules(patch, current = {}) {
     ? patch.paymentType
     : current.paymentType;
 
+  // ── واختيارُ اليد يُختَم بأنّه اختيارُ يد ───────────────────────────────────
+  // صفحةُ «أنواع الدفع» تشتقّ النوعَ من صفة العميل، وتمرّ على الكشوف كلَّما
+  // تغيّرت. فما لم يُميَّز ما اختاره الموظّفُ على كشفٍ بعينه لدهسه الاشتقاقُ في
+  // أوّل مرور — والعميلُ الواحد يكون كاشًا في حمولةٍ وضريبيًّا في التالية،
+  // فالاختيارُ على الكشف هو الأصدق. راجع utils/paymentType.
+  if (Object.prototype.hasOwnProperty.call(patch, 'paymentType')) {
+    patch.paymentTypeSource = 'manual';
+  }
+
   const blocked = [];
   if (nextType === 'cash') {
     // ما يحاول المستخدمُ كتابتَه في عمودٍ مقفولٍ يُقال له إنّه لم يُكتب.

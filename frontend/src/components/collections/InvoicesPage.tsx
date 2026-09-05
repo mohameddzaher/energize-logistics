@@ -22,6 +22,7 @@ import { canEditCollections, money, dt } from '@/lib/collections';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, Select, Loader2 } from '@/components/hr/HRKit';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import ManagedSelect from '@/components/system/ManagedSelect';
 import { Banknote, Receipt, SlidersHorizontal, X, CheckCircle2, ChevronLeft, Truck } from 'lucide-react';
 
 export type InvoiceKind = 'cash' | 'tax';
@@ -29,6 +30,10 @@ export type InvoiceKind = 'cash' | 'tax';
 interface CashRow {
   _id: string; reportNumber: string; customer: string; branch: string; payingBranch: string;
   paymentDate: string | null; route: string; value: number; collectedAmount: number; collectionDate: string | null;
+  /** تاريخُ وصول الفاتورة إلى العميل — كالضريبيّ، ومنه تُعَدُّ المهلة. */
+  deliveryDate: string | null;
+  /** من أين وصل المال: تحصيلُ فرعٍ أو كاشٍ أو عميل — من إعدادات القسم. */
+  collectionDetail?: string;
   /** الدفترُ يقول «محصَّل» ولا يعرف يومَه — يُقال كما هو لا «لم يُحصَّل». */
   collectedNoDate?: boolean;
   ageDays: number | null;
@@ -85,10 +90,11 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   const [branch, setBranch] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [detail, setDetail] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [opts, setOpts] = useState<{ customers: string[]; branches: string[] }>({ customers: [], branches: [] });
 
-  const activeCount = [age, customer, branch, from, to].filter(Boolean).length;
+  const activeCount = [age, customer, branch, from, to, detail].filter(Boolean).length;
 
   // ── تسجيلُ التحصيل ────────────────────────────────────────────────────────
   const [collecting, setCollecting] = useState<{ label: string; invoiceNumber?: string; ids?: string[]; needAmount: boolean } | null>(null);
@@ -113,6 +119,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       if (age) p.set('age', age);
       if (customer) p.set('customer', customer);
       if (branch) p.set('branch', branch);
+      if (isCash && detail) p.set('detail', detail);
       if (from) p.set('from', from);
       if (to) p.set('to', to);
       const d = await api.get<any>(`/api/collections-dept/invoices/${kind}?${p.toString()}`);
@@ -130,7 +137,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, page, q, collected, age, customer, branch, from, to]);
+  }, [kind, page, q, collected, age, customer, branch, from, to, detail]);
 
   const first = useRef(true);
   useEffect(() => {
@@ -139,7 +146,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     return () => clearTimeout(id);
   }, [load]);
 
-  useEffect(() => { setPage(1); }, [q, collected, age, customer, branch, from, to]);
+  useEffect(() => { setPage(1); }, [q, collected, age, customer, branch, from, to, detail]);
 
   // التحصيلُ يُكتب على الكشف، فأيُّ تعديلٍ هناك يُحدِّث هنا في لحظته.
   useSocket('workflow:updated', useCallback(() => { load(true); }, [load]));
@@ -184,6 +191,22 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     setSaving(false);
   };
 
+  // ── تفصيلُ التحصيل يُحفَظ في مكانه ─────────────────────────────────────────
+  // صفةٌ لا حدث: لا تاريخَ لها ولا مبلغ، فلا تستحقّ نافذةً تُفتح وتُغلَق. تُختار
+  // من الصفّ فتُحفظ، ويبقى الصفُّ مكانه — والقائمةُ نفسُها من إعدادات القسم.
+  const [detailSaving, setDetailSaving] = useState<string | null>(null);
+  const saveDetail = async (row: CashRow, v: string) => {
+    setRows((prev) => prev.map((r: any) => (r._id === row._id ? { ...r, collectionDetail: v } : r)));
+    setDetailSaving(row._id);
+    try {
+      await api.put('/api/collections-dept/invoices/detail', { ids: [row._id], detail: v });
+    } catch (e: any) {
+      setRows((prev) => prev.map((r: any) => (r._id === row._id ? { ...r, collectionDetail: row.collectionDetail || '' } : r)));
+      notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error');
+    }
+    setDetailSaving(null);
+  };
+
   const saveCollect = async () => {
     if (!collectForm.collectionDate) { notify(t('تاريخ التحصيل مطلوب', 'Collection date required'), 'error'); return; }
     if (collecting?.needAmount && !String(collectForm.collectedAmount).trim()) {
@@ -212,6 +235,8 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       { header: t('الفرع المسدد', 'Paying branch'), key: 'payingBranch', width: 14 },
       { header: t('قيمة الكشف', 'Report value'), key: 'value', width: 14 },
       { header: t('مبلغ التحصيل', 'Collected'), key: 'collectedAmount', width: 14 },
+      { header: t('تاريخ التسليم للعميل', 'Delivered to customer'), key: 'deliveryDate', width: 16, transform: (v: any) => dt(v) },
+      { header: t('التفاصيل', 'Detail'), key: 'collectionDetail', width: 16 },
       { header: t('تاريخ التحصيل', 'Collected on'), key: 'collectionDate', width: 14,
         transform: (v: any, r: any) => (v ? dt(v) : (r?.collectedNoDate ? t('محصَّل — بلا تاريخ', 'Collected — no date') : '')) },
       { header: t('العمر (يوم)', 'Age (days)'), key: 'ageDays', width: 12 },
@@ -335,9 +360,15 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                 {opts.branches.map((b) => <option key={b} value={b}>{b}</option>)}
               </Select>
             </Field>
+            {isCash && (
+              <Field label={t('التفاصيل', 'Detail')}>
+                <ManagedSelect type="collections_detail" value={detail} onChange={setDetail}
+                  storeLabel noAdd placeholder={t('الكل', 'All')} />
+              </Field>
+            )}
             <div className="sm:col-span-2 lg:col-span-1 flex items-end">
               {(activeCount > 0) && (
-                <button type="button" onClick={() => { setAge(''); setCustomer(''); setBranch(''); setFrom(''); setTo(''); }}
+                <button type="button" onClick={() => { setAge(''); setCustomer(''); setBranch(''); setFrom(''); setTo(''); setDetail(''); }}
                   className="inline-flex items-center gap-1.5 px-3 py-2 text-slate-400 hover:text-red-600 text-sm">
                   <X className="w-4 h-4" />{t('إزالة الفلاتر', 'Clear filters')}
                 </button>
@@ -363,7 +394,8 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                 {(isCash
                   ? [t('رقم كشف التخريج', 'Report no.'), t('العميل', 'Customer'), t('المسار', 'Route'),
                     t('تاريخ السداد', 'Paid on'), t('الفرع المسدد', 'Paying branch'), t('العمر', 'Age'),
-                    t('قيمة الكشف', 'Value'), t('مبلغ التحصيل', 'Collected'), t('تاريخ التحصيل', 'Collected on'), '']
+                    t('قيمة الكشف', 'Value'), t('مبلغ التحصيل', 'Collected'), t('التسليم للعميل', 'To customer'),
+                    t('التفاصيل', 'Detail'), t('تاريخ التحصيل', 'Collected on'), '']
                   : [t('رقم الفاتورة', 'Invoice no.'), t('العميل', 'Customer'), t('عدد الكشوفات', 'Reports'),
                     t('القيمة', 'Value'), t('تاريخ الفاتورة', 'Invoice date'), t('التسليم للعميل', 'To customer'),
                     t('العمر', 'Age'), t('تاريخ التحصيل', 'Collected on'), '']
@@ -372,7 +404,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
             </thead>
             <tbody>
               {rows.length === 0 ? (
-                <tr><td colSpan={9} className="px-4 py-12 text-center text-slate-400">{t('لا نتائج', 'No results')}</td></tr>
+                <tr><td colSpan={isCash ? 11 : 9} className="px-4 py-12 text-center text-slate-400">{t('لا نتائج', 'No results')}</td></tr>
               ) : isCash ? (rows as CashRow[]).map((r) => (
                 <tr key={r._id} className="border-b border-slate-100 hover:bg-slate-50">
                   <td className="px-3 py-2.5 font-semibold text-slate-900 whitespace-nowrap">{r.reportNumber}</td>
@@ -383,6 +415,19 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                   <td className="px-3 py-2.5 whitespace-nowrap">{ageChip(r.ageDays)}</td>
                   <td className="px-3 py-2.5 tabular-nums font-semibold text-slate-900">{r.value ? money(r.value) : '—'}</td>
                   <td className="px-3 py-2.5 tabular-nums font-semibold text-emerald-700">{r.collectedAmount ? money(r.collectedAmount) : '—'}</td>
+                  <td className={`px-3 py-2.5 whitespace-nowrap ${r.deliveryDate ? 'text-slate-600' : 'text-slate-300'}`}>
+                    {r.deliveryDate ? dt(r.deliveryDate) : '—'}
+                  </td>
+                  <td className="px-3 py-2.5 whitespace-nowrap min-w-[150px]">
+                    {canEdit ? (
+                      <div className={detailSaving === r._id ? 'opacity-60 pointer-events-none' : ''}>
+                        <ManagedSelect type="collections_detail" value={r.collectionDetail || ''}
+                          onChange={(v) => saveDetail(r, v)} storeLabel noAdd
+                          placeholder={t('—', '—')}
+                          className="w-full px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-900 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                      </div>
+                    ) : (r.collectionDetail || '—')}
+                  </td>
                   <td className={`px-3 py-2.5 whitespace-nowrap ${r.collectionDate || r.collectedNoDate ? 'text-emerald-700' : 'text-red-500'}`}>
                     {r.collectionDate ? dt(r.collectionDate)
                       : r.collectedNoDate
@@ -392,12 +437,21 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                         : t('لم يُحصَّل', 'open')}
                   </td>
                   <td className="px-3 py-2.5 whitespace-nowrap">
-                    {canEdit && (
-                      <button type="button" onClick={() => openCollect(r)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#f37121]/10 text-[#f37121] text-xs font-semibold hover:bg-[#f37121]/20">
-                        <CheckCircle2 className="w-3.5 h-3.5" />{r.collectionDate ? t('تعديل', 'Edit') : t('تحصيل', 'Collect')}
-                      </button>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {canEdit && (
+                        <button type="button" onClick={() => openDeliver(r)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 text-xs font-semibold hover:bg-sky-100"
+                          title={t('يومُ استلام العميل للفاتورة — منه تُعَدُّ المهلة', 'When the customer received the invoice — the term starts here')}>
+                          <Truck className="w-3.5 h-3.5" />{r.deliveryDate ? t('تعديل التسليم', 'Edit delivery') : t('تسليم', 'Deliver')}
+                        </button>
+                      )}
+                      {canEdit && (
+                        <button type="button" onClick={() => openCollect(r)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#f37121]/10 text-[#f37121] text-xs font-semibold hover:bg-[#f37121]/20">
+                          <CheckCircle2 className="w-3.5 h-3.5" />{r.collectionDate ? t('تعديل', 'Edit') : t('تحصيل', 'Collect')}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               )) : (rows as TaxRow[]).map((r) => (

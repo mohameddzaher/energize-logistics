@@ -403,6 +403,15 @@ const REGISTRY = [
       { key: 'under_review', nameAr: 'تحت المراجعة', nameEn: 'Under review' },
       { key: 'legal', nameAr: 'إجراء قضائي', nameEn: 'Legal action' },
     ]],
+    // ── تفصيلُ التحصيل ─────────────────────────────────────────────────────
+    // «من أين وصلنا المال؟» سؤالٌ يُسأل عن كلّ كشفٍ نقديّ: قبضه الفرعُ، أو
+    // قُبض نقدًا في الطريق، أو ذهب المحصِّلُ إلى العميل فأخذه. وهي ثلاثةٌ اليوم
+    // وقد تصير أربعة — فمكانُها قائمةٌ تُدار لا ثلاثةُ أسطرٍ في الشيفرة.
+    ['collections_detail', 'تفاصيل التحصيل', 'Collection Details', [
+      { key: 'branch', nameAr: 'تحصيل فرع', nameEn: 'Branch collection' },
+      { key: 'cash', nameAr: 'تحصيل كاش', nameEn: 'Cash collection' },
+      { key: 'customer', nameAr: 'تحصيل عميل', nameEn: 'Customer collection' },
+    ]],
     ['collections_channel', 'وسيلة المتابعة', 'Follow-up Channels', [
       { key: 'call', nameAr: 'اتصال', nameEn: 'Call' },
       { key: 'whatsapp', nameAr: 'واتساب', nameEn: 'WhatsApp' },

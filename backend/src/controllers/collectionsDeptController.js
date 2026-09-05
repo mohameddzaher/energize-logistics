@@ -906,6 +906,9 @@ function invoiceFilters(query, { ageField }) {
   if (query.collected === 'yes') f.$and = [...(f.$and || []), { $or: [{ collectionDate: { $ne: null } }, { cashCollectionStatus: 'collected' }] }];
   else if (query.collected === 'no') f.$and = [...(f.$and || []), { collectionDate: null, cashCollectionStatus: { $ne: 'collected' } }];
 
+  // تفصيلُ التحصيل — «أرِني ما يحصّله الفرعُ وحدَه».
+  if (query.detail) f.collectionDetail = String(query.detail);
+
   const range = query.from || query.to ? dayRange(query.from, query.to) : null;
   if (range) f[ageField] = range;
   if (query.age && AGE_BANDS[query.age]) {
@@ -950,7 +953,7 @@ exports.cashInvoices = async (req, res) => {
 
     const [rows, total, totals] = await Promise.all([
       OperationsWorkflow.find(filter)
-        .select('reportNumber reportDate username payingBranch paymentDate collectedAmount collectionDate cashCollectionStatus branch fromLocation toLocation sellingValue')
+        .select('reportNumber reportDate username payingBranch paymentDate collectedAmount collectionDate cashCollectionStatus collectionDetail deliveryDate branch fromLocation toLocation sellingValue')
         .sort({ paymentDate: -1, _id: -1 })
         .skip((page - 1) * limit).limit(limit).lean(),
       OperationsWorkflow.countDocuments(filter),
@@ -999,6 +1002,12 @@ exports.cashInvoices = async (req, res) => {
         // «محصَّل» في الدفتر وإن لم يُعرف يومُه — تقرؤها الشاشة فتقول ذلك
         // صراحةً بدل «لم يُحصَّل».
         collectedNoDate: !w.collectionDate && w.cashCollectionStatus === 'collected',
+        // ── والنقديُّ يُسلَّم للعميل كالضريبيّ ──────────────────────────────
+        // الفاتورةُ النقديّة تُحمَل إلى العميل ويُوقَّع عليها كغيرها، ومن يومئذٍ
+        // يُطالَب. فكان زرُّ التسليم في صفحة الضريبيّ وحدَها، فيبقى نصفُ العمل
+        // بلا تاريخٍ في النظام.
+        deliveryDate: w.deliveryDate || null,
+        collectionDetail: w.collectionDetail || '',
         ageDays: w.paymentDate ? Math.floor((now - new Date(w.paymentDate).getTime()) / 86400000) : null,
       })),
       total,
@@ -1248,6 +1257,87 @@ exports.recordDelivery = async (req, res) => {
         : `سُجِّل التسليم للعميل على ${r.modifiedCount} كشفًا`,
     });
   } catch (e) { sendMongooseError(res, e, 'تعذّر تسجيل التسليم'); }
+};
+
+/**
+ * تفصيلُ التحصيل — PUT /invoices/detail
+ *
+ * من أين وصل المال: قبضه الفرعُ، أو قُبض نقدًا، أو أخذه المحصِّلُ من العميل.
+ * والقيمُ من `collections_detail` في إعدادات القسم — لا تُتحقَّق هنا مقابل
+ * قائمةٍ ثابتة، لأنّ القائمةَ تُعدَّل وهذا مقصودُها.
+ *
+ * ويُكتب بلا تاريخٍ ولا مبلغ: هو صفةُ الكشف لا حدثٌ فيه، فيُوضَع قبل التحصيل
+ * وبعده سواء.
+ */
+exports.setCollectionDetail = async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body.ids) ? req.body.ids.filter((x) => mongoose.isValidObjectId(x)) : [];
+    if (!ids.length) return res.status(400).json({ message: 'حدِّد كشفًا واحدًا على الأقل' });
+    const detail = String(req.body.detail || '').trim();
+
+    const r = await OperationsWorkflow.updateMany(
+      { _id: { $in: ids } },
+      { $set: { collectionDetail: detail, lastModifiedBy: req.user._id } },
+    );
+
+    cache.clear('wf:');
+    cache.clear(CACHE_PREFIX);
+    await logAudit({
+      user: req.user._id, action: 'set_collection_detail', entity: 'OperationsWorkflow',
+      entityId: ids.length === 1 ? ids[0] : null,
+      changes: { after: { collectionDetail: detail, count: r.modifiedCount } }, ipAddress: req.ip,
+    });
+    try { emitToAll('workflow:updated', { bulk: true, detail: true }); } catch (_) {}
+
+    res.json({ updated: r.modifiedCount || 0, message: detail ? 'حُفظ تفصيلُ التحصيل' : 'أُزيل تفصيلُ التحصيل' });
+  } catch (e) { sendMongooseError(res, e, 'تعذّر حفظ تفصيل التحصيل'); }
+};
+
+/**
+ * كشفٌ نقديٌّ واحد — PUT /invoices/cash/:id
+ *
+ * ── ولماذا يوجد ──────────────────────────────────────────────────────────
+ * التطبيقُ يحفظ صفَّ أيِّ قائمةٍ بـ PUT على `<endpoint>/<id>` — هكذا صُمّم
+ * `ResourceConfig`. وصفحةُ الكاش لم يكن لها هذا الطريق، فكان المحصِّلُ يكتب
+ * المبلغَ في الهاتف ويضغط «حفظ» فتذهب الكتابةُ إلى طريقٍ لا وجودَ له.
+ *
+ * والحقولُ الثلاثةُ هي عملُ المحصِّل كلُّه على الكشف: ما قبضه، ومتى، ومتى وصلت
+ * الفاتورةُ العميل، ومن أين وصل المال. وما لم يُرسَل لا يُمسّ — فالتطبيقُ قد
+ * يرسل حقلًا واحدًا.
+ */
+exports.updateCashInvoice = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ message: 'معرّفٌ غير صالح' });
+    const wf = await OperationsWorkflow.findById(req.params.id);
+    if (!wf) return res.status(404).json({ message: 'الكشف غير موجود' });
+
+    const $set = { lastModifiedBy: req.user._id };
+    const has = (k) => Object.prototype.hasOwnProperty.call(req.body, k);
+    if (has('collectedAmount')) $set.collectedAmount = Number(req.body.collectedAmount) || 0;
+    if (has('collectionDate')) $set.collectionDate = req.body.collectionDate ? new Date(req.body.collectionDate) : null;
+    if (has('deliveryDate')) $set.deliveryDate = req.body.deliveryDate ? new Date(req.body.deliveryDate) : null;
+    if (has('collectionDetail')) $set.collectionDetail = String(req.body.collectionDetail || '').trim();
+
+    await OperationsWorkflow.updateOne({ _id: wf._id }, { $set });
+    // والفاتورةُ في الدفتر تُحدَّث معه — الوجهان لا يتحرّك أحدُهما وحدَه.
+    if (wf.invoiceNumber && ($set.deliveryDate !== undefined || $set.collectionDate !== undefined)) {
+      await syncInvoiceLedger(wf.invoiceNumber, {
+        ...($set.deliveryDate !== undefined ? { deliveryDate: $set.deliveryDate } : {}),
+        ...($set.collectionDate !== undefined ? { collectionDate: $set.collectionDate } : {}),
+      });
+    }
+
+    cache.clear('wf:');
+    cache.clear(CACHE_PREFIX);
+    try { require('./collectionsLedgerController').invalidate(); } catch (_) {}
+    await logAudit({
+      user: req.user._id, action: 'update', entity: 'OperationsWorkflow', entityId: wf._id,
+      entityKey: wf.reportNumber, changes: { after: req.body }, ipAddress: req.ip,
+    });
+    try { emitToAll('workflow:updated', { id: String(wf._id) }); } catch (_) {}
+
+    res.json({ message: 'حُفظ' });
+  } catch (e) { sendMongooseError(res, e, 'تعذّر الحفظ'); }
 };
 
 exports.recordCollection = async (req, res) => {

@@ -1139,13 +1139,24 @@ final collectionsCashInvoicesCfg = ResourceConfig(
     if (r['ageDays'] != null) ('${r['ageDays']} يوم', _ageColor(r['ageDays'])),
     if (_s(r, 'collectionDate').isEmpty) ('لم يُحصَّل', T.danger)
     else ('${_n(r['collectedAmount'])} محصَّل', T.success),
+    // التسليمُ خطوةٌ قبل التحصيل — ومنه تُعَدُّ مهلةُ العميل.
+    if (_s(r, 'deliveryDate').isEmpty) ('لم تُسلَّم', T.warn) else ('سُلِّمت', T.info),
+    if (_s(r, 'collectionDetail').isNotEmpty) (_s(r, 'collectionDetail'), T.navy),
   ],
   // ── والتحصيلُ حاجتان: مبلغٌ وتاريخ ─────────────────────────────────────
   // النقديُّ يقبضه المحصِّلُ في يده فيكتب ما قبض — لا يُشتقّ من مبلغ السداد،
   // فذاك ما دُفع للمورّد وهذا ما قُبض من العميل.
-  fields: const [
-    FieldSpec('collectedAmount', 'مبلغ التحصيل', 'Collected amount', type: FieldType.number, required: true),
-    FieldSpec('collectionDate', 'تاريخ التحصيل', 'Collection date', type: FieldType.date, required: true),
+  fields: [
+    const FieldSpec('collectedAmount', 'مبلغ التحصيل', 'Collected amount', type: FieldType.number, required: true),
+    const FieldSpec('collectionDate', 'تاريخ التحصيل', 'Collection date', type: FieldType.date, required: true),
+    // ── والتسليمُ للعميل هنا كما هو في الشاشة ──────────────────────────────
+    // كان في صفحة الضريبيّ وحدَها، والنقديُّ يُحمَل إلى العميل مثلَه.
+    const FieldSpec('deliveryDate', 'تاريخ التسليم للعميل', 'Delivered to customer', type: FieldType.date),
+    // والقائمةُ من إعدادات القسم، ويُخزَّن نصُّها العربيّ لا معرّفُها.
+    FieldSpec('collectionDetail', 'التفاصيل', 'Detail', type: FieldType.lookup,
+        lookupEndpoint: '/api/lookups?type=collections_detail&active=true',
+        lookupListKey: 'items', lookupQuery: 'limit=200',
+        lookupLabel: (r) => _s(r, 'nameAr'), lookupValue: (r) => _s(r, 'nameAr')),
   ],
   sortFields: const [('ageDays', 'العمر', 'Age')],
 );

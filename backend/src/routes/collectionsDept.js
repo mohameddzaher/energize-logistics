@@ -57,6 +57,10 @@ router.get('/invoices/tax/:invoiceNumber', authorize(...READ_ROLES), ctrl.taxInv
 router.post('/invoices/collect', authorize(...EDIT_ROLES), ctrl.recordCollection);
 // التسليمُ خطوةٌ قبل التحصيل: منها تُعَدُّ المدّةُ المتّفق عليها.
 router.post('/invoices/deliver', authorize(...EDIT_ROLES), ctrl.recordDelivery);
+// وتفصيلُ التحصيل: من أين وصل المال — قائمةٌ تُدار من إعدادات القسم.
+router.put('/invoices/detail', authorize(...EDIT_ROLES), ctrl.setCollectionDetail);
+// وصفُّ الكاش يُحفَظ كما يحفظه التطبيق أيَّ صفّ: PUT على معرّفه.
+router.put('/invoices/cash/:id', authorize(...EDIT_ROLES), ctrl.updateCashInvoice);
 
 // ── دفترُ التحصيل ──────────────────────────────────────────────────────────
 // سجلُّ الحسابات بأعماره، ودفترُ الفواتير، والتنبيهاتُ والخطّةُ والتقييم.

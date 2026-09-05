@@ -26,9 +26,16 @@ class FieldSpec {
   final String? lookupListKey;    // 'companies'
   final String? lookupQuery;      // 'limit=200'
   final String Function(Map<String, dynamic>)? lookupLabel; // صف → نص للعرض
+  // ── ما الذي يُخزَّن من الصفّ المختار ──────────────────────────────────────
+  // الأصلُ أن يُخزَّن `_id`: الحقلُ علاقةٌ إلى سجلٍّ قائم. لكنّ القوائمَ المدارة
+  // (`/api/lookups`) تُخزَّن بنصِّها العربيّ لا بمعرّفها — تقرؤها التصديراتُ
+  // والفلاتر مباشرةً، ومعرّفُ Mongo لا يقول شيئًا لمن يفتح الملفّ. فيُمرَّر ما
+  // يُخزَّن صراحةً حين يختلف عن المعرّف.
+  final String Function(Map<String, dynamic>)? lookupValue;
   const FieldSpec(this.name, this.ar, this.en,
       {this.type = FieldType.text, this.required = false, this.options,
-       this.lookupEndpoint, this.lookupListKey, this.lookupQuery, this.lookupLabel});
+       this.lookupEndpoint, this.lookupListKey, this.lookupQuery, this.lookupLabel,
+       this.lookupValue});
 
   String get label => tr(ar, en);
 }
@@ -888,7 +895,7 @@ class _LookupPickerState extends State<_LookupPicker> {
                             itemCount: filtered.length,
                             itemBuilder: (c2, i) {
                               final r = filtered[i];
-                              final id = (r['_id'] ?? '').toString();
+                              final id = (f.lookupValue?.call(r) ?? r['_id'] ?? '').toString();
                               final on = id == widget.currentId;
                               return ListTile(
                                 leading: Icon(on ? Icons.radio_button_checked : Icons.radio_button_off,

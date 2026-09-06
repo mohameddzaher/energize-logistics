@@ -19,8 +19,11 @@ import {
 } from '@/components/hr/HRKit';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
+import SearchSelect from '@/components/system/SearchSelect';
+import { printTable } from '@/utils/printTable';
 import {
-  Users, Truck, Plus, Pencil, Trash2, Phone, Mail, ChevronLeft, SlidersHorizontal, X,
+  Users, Truck, Plus, Pencil, Trash2, Phone, Mail, ChevronLeft, SlidersHorizontal, X, Printer,
 } from 'lucide-react';
 
 const PAGE_SIZE = 100;
@@ -44,6 +47,9 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
   // شأنَ التحصيل. فالصفحةُ تبقى مفتوحةً وتسقط أعمدةُ المال وحدَها — إخفاؤها
   // كلِّها كان سيمنع بحثًا مشروعًا عن رقمِ مورّدٍ أو سجلِّه.
   const hideMoney = kind === 'supplier' && receivablesOnly(user);
+
+  // تحديدُ صفوفٍ للتصدير والطباعة.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const [rows, setRows] = useState<CollectionsParty[]>([]);
   const [total, setTotal] = useState(0);
@@ -149,30 +155,108 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
     } catch (e: any) { notify(e?.message || t('تعذّر الحذف', 'Could not delete'), 'error'); }
   };
 
-  const cols: ExportColumn[] = [
-    { header: t('الاسم', 'Name'), key: 'name', width: 32 },
-    { header: t('الجوال', 'Phone'), key: 'phone', width: 16 },
-    { header: t('مسؤول التواصل', 'Contact'), key: 'contactPerson', width: 20 },
+  // ── مصدرٌ واحدٌ للأعمدة ────────────────────────────────────────────────
+  // الشاشةُ والتصديرُ والطباعةُ تقرأ من هنا، فما يُرى هو ما يخرج.
+  type Col = ExportColumn & { align?: 'start' | 'end'; cell?: (r: any) => React.ReactNode };
+
+  const nameCell = (p: any) => (
+    <span className="font-semibold text-slate-900">
+      {p.name}
+      {p.isActive === false && <span className="ms-1.5 text-[10px] text-slate-400">({t('معطَّل', 'inactive')})</span>}
+      {/* الاسمُ الواحدُ كُتب بصيغتين في الكشوف — يُقال، لأنّ من يبحث عن الصيغة
+          الأخرى يظنّها طرفًا آخر. */}
+      {p.nameVariants && p.nameVariants.length > 1 && (
+        <span className="block text-[10px] text-slate-400 font-normal" title={p.nameVariants.join(' · ')}>
+          {t(`${p.nameVariants.length} صيغ للاسم مدمجة`, `${p.nameVariants.length} name spellings merged`)}
+        </span>
+      )}
+    </span>
+  );
+
+  const contactCell = (p: any) => (
+    <span className="text-slate-600" onClick={(e) => e.stopPropagation()}>
+      {p.phone ? (
+        <a href={`tel:${p.phone}`} className="inline-flex items-center gap-1 hover:text-[#f37121]">
+          <Phone className="w-3.5 h-3.5" />{p.phone}
+        </a>
+      ) : '—'}
+      {p.email ? (
+        <a href={`mailto:${p.email}`} className="ms-2 inline-flex items-center gap-1 hover:text-[#f37121]" title={p.email}>
+          <Mail className="w-3.5 h-3.5" />
+        </a>
+      ) : null}
+      {p.contactPerson ? <span className="text-xs text-slate-400 ms-1">· {p.contactPerson}</span> : null}
+    </span>
+  );
+
+  const allCols: Col[] = [
+    { header: t('الاسم', 'Name'), key: 'name', width: 32, cell: nameCell },
+    { header: t('التواصل', 'Contact'), key: 'phone', width: 22, cell: contactCell },
+    { header: t('مسؤول التواصل', 'Contact person'), key: 'contactPerson', width: 20 },
     { header: t('الكود', 'Code'), key: 'code', width: 14 },
     { header: t('موظف التحصيل', 'Officer'), key: 'collectionOfficer', width: 16 },
+    { header: t('المدينة', 'City'), key: 'city', width: 14 },
+    { header: t('الحالة', 'Status'), key: 'status', width: 14 },
+    ...(kind === 'customer' ? [{
+      header: t('نوع الدفع', 'Payment type'), key: 'paymentType', width: 14,
+      transform: (v: any) => paymentTypeLabel(v, ar),
+      // نوعُ الحساب — في أيّ دفترٍ يجلس، لا قاعدةٌ على شحناته.
+      cell: (p: any) => (p.paymentType ? (
+        <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${
+          p.paymentType === 'cash' ? 'bg-emerald-50 text-emerald-700' : 'bg-sky-50 text-sky-700'}`}>
+          {paymentTypeLabel(p.paymentType, ar)}
+        </span>
+      ) : <span className="text-slate-400">—</span>),
+    } as Col] : []),
     { header: t('التقييم', 'Grade'), key: 'grade', width: 10 },
-    { header: t('مهلة السداد', 'Credit days'), key: 'creditDays', width: 12 },
+    { header: t('مهلة السداد', 'Credit days'), key: 'creditDays', width: 12, align: 'end' },
     { header: t('السجل التجاري', 'CR'), key: 'commercialRegister', width: 16 },
     { header: t('الرقم الضريبي', 'Tax no.'), key: 'taxNumber', width: 18 },
-    ...(kind === 'supplier' ? [{ header: t('الآيبان', 'IBAN'), key: 'iban', width: 28 }] : []),
-    { header: t('المدينة', 'City'), key: 'city', width: 14 },
+    ...(kind === 'supplier' ? [{ header: t('الآيبان', 'IBAN'), key: 'iban', width: 28 } as Col] : []),
     { header: t('شروط السداد', 'Payment terms'), key: 'paymentTerms', width: 14 },
-    { header: t('الحالة', 'Status'), key: 'status', width: 14 },
-    ...(kind === 'customer' ? [{ header: t('نوع الحساب', 'Account type'), key: 'paymentType', width: 14, transform: (v: any) => paymentTypeLabel(v, ar) }] : []),
     // الملفُّ لا يخرج بما لا يُعرَض على الشاشة.
-    ...(hideMoney ? [] : [
-      { header: t('كشوف', 'Reports'), key: 'reports', width: 10 },
-      { header: W.totalLabel, key: 'total', width: 16 },
-      { header: W.settledLabel, key: 'settled', width: 16 },
-      { header: W.dueLabel, key: 'outstanding', width: 16 },
-    ]),
-    { header: t('آخر كشف', 'Last report'), key: 'lastReportAt', width: 14 },
+    ...(hideMoney ? [] : ([
+      { header: t('كشوف', 'Reports'), key: 'reports', width: 10, align: 'end',
+        cell: (p: any) => (
+          <span className="tabular-nums">
+            {money(p.reports)}
+            {p.openReports > 0 && <span className="text-[11px] text-red-500 ms-1">({money(p.openReports)})</span>}
+          </span>
+        ) },
+      { header: W.totalLabel, key: 'total', width: 16, align: 'end',
+        cell: (p: any) => <span className="tabular-nums text-slate-700">{money(p.total)}</span> },
+      { header: W.settledLabel, key: 'settled', width: 16, align: 'end',
+        cell: (p: any) => <span className="tabular-nums text-emerald-700">{money(p.settled)}</span> },
+      { header: W.dueLabel, key: 'outstanding', width: 16, align: 'end',
+        cell: (p: any) => <span className={`tabular-nums font-semibold ${p.outstanding > 0 ? 'text-red-600' : 'text-slate-400'}`}>{money(p.outstanding)}</span> },
+    ] as Col[])),
+    { header: t('آخر كشف', 'Last report'), key: 'lastReportAt', width: 14, transform: (v: any) => dt(v) },
   ];
+
+  const chooserCols: ChooserColumn[] = allCols.map((c, i) => ({ key: c.key, label: c.header, locked: i === 0 }));
+  const { visible, setVisible } = useVisibleColumns(`collections:parties:${kind}:cols`, chooserCols);
+  const visibleCols = allCols.filter((c) => visible.includes(c.key));
+
+  // التصديرُ والطباعةُ يتبعان ما على الشاشة: الأعمدةُ المختارة، والصفوفُ
+  // المحدَّدة إن حُدِّدت.
+  const selectedRows = shown.filter((r) => selected.has(r._id));
+  const printNow = () => {
+    const rowsToPrint = selected.size ? selectedRows : shown;
+    const ok = printTable({
+      title: W.title,
+      columns: visibleCols.map((c) => ({ header: c.header, key: c.key, transform: c.transform, align: c.align })),
+      rows: rowsToPrint as any,
+      ar,
+      meta: [
+        `${t('عدد الصفوف', 'Rows')}: ${rowsToPrint.length}`,
+        selected.size ? t('المحدَّد فقط', 'Selected only') : t('نتيجة الفلتر', 'Filtered result'),
+      ],
+    });
+    if (!ok) notify(t('المتصفّح منع فتح نافذة الطباعة — اسمح بالنوافذ المنبثقة.', 'The browser blocked the print window — allow pop-ups.'), 'error');
+  };
+
+  // التصديرُ يأخذ الأعمدةَ المختارة — راجع allCols و ColumnChooser.
+  const cols: ExportColumn[] = visibleCols;
 
   const Icon = kind === 'supplier' ? Truck : Users;
 
@@ -193,10 +277,21 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
         {/* ── نطاقان لا واحد ────────────────────────────────────────────────
             المعروضُ يخرج فورًا، والسجلُّ كلُّه يُجلب عند الضغط لا قبله — فلا
             يُحمَّل خمسةُ آلافِ صفٍّ لمن فتح الصفحة ولن يصدّر. */}
+        <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />
+        <button type="button" onClick={printNow}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 text-sm font-semibold"
+          title={t('طباعة أو حفظ PDF — بالأعمدة المختارة', 'Print or save as PDF — chosen columns')}>
+          <Printer className="w-4 h-4" />{t('طباعة PDF', 'Print PDF')}
+        </button>
         <ExportMenu
           fileName={`collections-${kind}s`}
           lang={ar ? 'ar' : 'en'}
           options={[
+            ...(selected.size ? [{
+              key: 'selected',
+              label: t(`المحدَّد (${selected.size})`, `Selected (${selected.size})`),
+              sheets: [{ name: W.title, rows: selectedRows, columns: cols }],
+            }] : []),
             { key: 'shown', label: t('المعروض', 'Shown'), sheets: [{ name: W.title, rows: shown, columns: cols }] },
             {
               key: 'all',
@@ -317,72 +412,46 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
-                {[t('الاسم', 'Name'), t('التواصل', 'Contact'), t('المدينة', 'City'), t('الحالة', 'Status'),
-                  ...(kind === 'customer' ? [t('نوع الدفع', 'Payment type')] : []),
-                  ...(hideMoney ? [] : [t('كشوف', 'Reports'), W.totalLabel, W.settledLabel, W.dueLabel]),
-                  t('آخر كشف', 'Last report'), ''].map((h, i) => (
-                  <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>
+                {/* تحديدُ صفحةٍ كاملةً بضغطة. */}
+                <th className="px-3 py-2.5 w-10">
+                  <input type="checkbox" className="accent-[#f37121]"
+                    checked={shown.length > 0 && shown.every((r) => selected.has(r._id))}
+                    onChange={(e) => setSelected(e.target.checked ? new Set(shown.map((r) => r._id)) : new Set())} />
+                </th>
+                {visibleCols.map((c) => (
+                  <th key={c.key} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{c.header}</th>
                 ))}
+                <th className="px-3 py-2.5" />
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={(hideMoney ? 6 : 10) + (kind === "customer" ? 1 : 0)} className="px-4 py-12"><Spinner /></td></tr>
+                <tr><td colSpan={visibleCols.length + 2} className="px-4 py-12"><Spinner /></td></tr>
               ) : shown.length === 0 ? (
-                <tr><td colSpan={(hideMoney ? 6 : 10) + (kind === "customer" ? 1 : 0)} className="px-4 py-12 text-center text-slate-400">{t('لا نتائج', 'No results')}</td></tr>
+                <tr><td colSpan={visibleCols.length + 2} className="px-4 py-12 text-center text-slate-400">{t('لا نتائج', 'No results')}</td></tr>
               ) : shown.map((p) => (
                 <tr
                   key={p._id}
-                  className={`border-b border-slate-100 hover:bg-slate-50 cursor-pointer ${p.isActive === false ? 'opacity-50' : ''}`}
+                  className={`border-b border-slate-100 hover:bg-slate-50 cursor-pointer ${p.isActive === false ? 'opacity-50' : ''} ${selected.has(p._id) ? 'bg-[#f37121]/5' : ''}`}
                   onClick={() => router.push(`/system/collections-dept/parties/${p._id}`)}
                 >
-                  <td className="px-3 py-2.5 font-semibold text-slate-900">
-                    {p.name}
-                    {p.isActive === false && <span className="ms-1.5 text-[10px] text-slate-400">({t('معطَّل', 'inactive')})</span>}
-                    {/* الاسمُ الواحدُ كُتب بصيغتين في الكشوف — يُقال، لأنّ من يبحث
-                        عن الصيغة الأخرى يظنّها طرفًا آخر. */}
-                    {p.nameVariants && p.nameVariants.length > 1 && (
-                      <span className="block text-[10px] text-slate-400" title={p.nameVariants.join(' · ')}>
-                        {t(`${p.nameVariants.length} صيغ للاسم مدمجة`, `${p.nameVariants.length} name spellings merged`)}
-                      </span>
-                    )}
+                  <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" className="accent-[#f37121]" checked={selected.has(p._id)}
+                      onChange={() => setSelected((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(p._id)) next.delete(p._id); else next.add(p._id);
+                        return next;
+                      })} />
                   </td>
-                  <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    {p.phone ? (
-                      <a href={`tel:${p.phone}`} className="inline-flex items-center gap-1 hover:text-[#f37121]">
-                        <Phone className="w-3.5 h-3.5" />{p.phone}
-                      </a>
-                    ) : '—'}
-                    {p.email ? (
-                      <a href={`mailto:${p.email}`} className="ms-2 inline-flex items-center gap-1 hover:text-[#f37121]" title={p.email}>
-                        <Mail className="w-3.5 h-3.5" />
-                      </a>
-                    ) : null}
-                    {p.contactPerson ? <span className="text-xs text-slate-400 ms-1">· {p.contactPerson}</span> : null}
-                  </td>
-                  <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{p.city || '—'}</td>
-                  <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{p.status || '—'}</td>
-                  {/* نوعُ الحساب — في أيّ دفترٍ يجلس، لا قاعدةٌ على شحناته. */}
-                  {kind === 'customer' && (
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      {p.paymentType ? (
-                        <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${
-                          p.paymentType === 'cash' ? 'bg-emerald-50 text-emerald-700' : 'bg-sky-50 text-sky-700'}`}>
-                          {paymentTypeLabel(p.paymentType, ar)}
+                  {visibleCols.map((c) => (
+                    <td key={c.key} className={`px-3 py-2.5 ${c.align === 'end' ? 'text-end' : ''} ${c.key === 'name' ? '' : 'whitespace-nowrap'}`}>
+                      {c.cell ? c.cell(p) : (
+                        <span className="text-slate-600">
+                          {(c.transform ? c.transform((p as any)[c.key], p) : (p as any)[c.key]) || '—'}
                         </span>
-                      ) : <span className="text-slate-400">—</span>}
+                      )}
                     </td>
-                  )}
-                  {!hideMoney && (
-                    <td className="px-3 py-2.5 tabular-nums">
-                      {money(p.reports)}
-                      {p.openReports > 0 && <span className="text-[11px] text-red-500 ms-1">({money(p.openReports)})</span>}
-                    </td>
-                  )}
-                  {!hideMoney && <td className="px-3 py-2.5 tabular-nums text-slate-700">{money(p.total)}</td>}
-                  {!hideMoney && <td className="px-3 py-2.5 tabular-nums text-emerald-700">{money(p.settled)}</td>}
-                  {!hideMoney && <td className={`px-3 py-2.5 tabular-nums font-semibold ${p.outstanding > 0 ? 'text-red-600' : 'text-slate-400'}`}>{money(p.outstanding)}</td>}
-                  <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{dt(p.lastReportAt)}</td>
+                  ))}
                   <td className="px-3 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
                       {canEdit && (

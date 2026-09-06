@@ -17,10 +17,15 @@ import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { money, dt, dueWords, type LedgerInvoice, type AgeBand } from '@/lib/collections';
-import { Search, FilterX, Loader2, ChevronLeft, ChevronRight, Link2 } from 'lucide-react';
+import { Search, FilterX, Loader2, ChevronLeft, ChevronRight, Link2, Printer } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import SearchSelect from '@/components/system/SearchSelect';
+import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
+import { printTable } from '@/utils/printTable';
 
 export default function LedgerInvoicesPage() {
   const { lang, isRTL } = useLanguage();
+  const router = useRouter();
   const ar = lang === 'ar';
   const L = exportScopeLabels(ar);
 
@@ -76,25 +81,75 @@ export default function LedgerInvoicesPage() {
   const active = !!(search || status || kind || officer || band || open || from || to);
   const clear = () => { setInput(''); setSearch(''); setStatus(''); setKind(''); setOfficer(''); setBand(''); setOpen(''); setFrom(''); setTo(''); setPage(1); };
 
-  const cols: ExportColumn[] = [
-    { header: ar ? 'رقم الفاتورة' : 'Invoice no', key: 'invoiceNumber', width: 16 },
+  // ── مصدرٌ واحدٌ للأعمدة ────────────────────────────────────────────────
+  // الشاشةُ والتصديرُ والطباعةُ تقرأ من هنا، فما يُرى هو ما يخرج.
+  type Col = ExportColumn & { align?: 'start' | 'end' | 'center'; cell?: (r: any) => React.ReactNode };
+
+  const allCols: Col[] = [
+    { header: ar ? 'رقم الفاتورة' : 'Invoice no', key: 'invoiceNumber', width: 16,
+      cell: (r) => (
+        <button type="button" onClick={() => router.push(`/system/collections-dept/invoices/tax/${encodeURIComponent(r.invoiceNumber)}`)}
+          className="font-mono text-[#f37121] hover:underline">{r.invoiceNumber}</button>
+      ) },
+    { header: ar ? 'العميل' : 'Customer', key: 'partyName', width: 38,
+      cell: (r) => (
+        <span className="text-slate-800" title={`${r.partyCode || ''} ${r.partyName || ''}`}>
+          <span className="text-[11px] text-slate-400 font-mono me-1">{r.partyCode}</span>{r.partyName || '—'}
+        </span>
+      ) },
     { header: ar ? 'الكود' : 'Code', key: 'partyCode', width: 14 },
-    { header: ar ? 'العميل' : 'Customer', key: 'partyName', width: 38 },
-    { header: ar ? 'المبلغ' : 'Amount', key: 'total', width: 16 },
-    { header: ar ? 'تاريخ الفاتورة' : 'Invoice date', key: 'invoiceDate', width: 14, transform: (v: any) => dt(v) },
-    { header: ar ? 'أيام حتى التسليم' : 'Days to delivery', key: 'daysInvoiceToDelivery', width: 16 },
-    { header: ar ? 'تاريخ التسليم للعميل' : 'Delivered to customer', key: 'deliveryDate', width: 14, transform: (v: any) => dt(v) },
-    { header: ar ? 'أيام حتى التحصيل' : 'Days to collection', key: 'daysDeliveryToCollection', width: 16 },
-    { header: ar ? 'تاريخ التحصيل' : 'Collection date', key: 'collectionDate', width: 14, transform: (v: any) => dt(v) },
-    { header: ar ? 'إجمالي الأيام' : 'Total days', key: 'daysTotal', width: 12 },
-    { header: ar ? 'العمر' : 'Age', key: 'ageDays', width: 10 },
+    { header: ar ? 'المبلغ' : 'Amount', key: 'total', width: 16, align: 'end',
+      cell: (r) => <span className="tabular-nums font-semibold text-slate-900">{money(r.total)}</span> },
+    { header: ar ? 'الفوترة' : 'Invoiced', key: 'invoiceDate', width: 14, transform: (v: any) => dt(v) },
+    { header: ar ? 'أيام حتى التسليم' : 'Days to delivery', key: 'daysInvoiceToDelivery', width: 16, align: 'center',
+      cell: (r) => <span className="text-xs tabular-nums text-slate-500">{r.daysInvoiceToDelivery ?? '—'}</span> },
+    { header: ar ? 'التسليم' : 'Delivered', key: 'deliveryDate', width: 14, transform: (v: any) => dt(v) },
+    { header: ar ? 'أيام حتى التحصيل' : 'Days to collection', key: 'daysDeliveryToCollection', width: 16, align: 'center',
+      cell: (r) => <span className="text-xs tabular-nums text-slate-500">{r.daysDeliveryToCollection ?? '—'}</span> },
+    { header: ar ? 'التحصيل' : 'Collected', key: 'collectionDate', width: 14, transform: (v: any) => dt(v) },
+    { header: ar ? 'إجمالي الأيام' : 'Total days', key: 'daysTotal', width: 12, align: 'center' },
+    { header: ar ? 'العمر' : 'Age', key: 'ageDays', width: 10, align: 'center',
+      cell: (r) => (r.ageDays == null ? <span className="text-slate-300">—</span> : (
+        <span className="text-xs text-slate-600">{r.ageDays}<span className="text-slate-400 ms-1">{r.band}</span></span>
+      )) },
     { header: ar ? 'الشريحة' : 'Band', key: 'band', width: 10 },
-    { header: ar ? 'مهلة السداد' : 'Terms', key: 'creditDays', width: 12 },
-    { header: ar ? 'تاريخ الاستحقاق' : 'Due date', key: 'dueDate', width: 14, transform: (v: any) => dt(v) },
-    { header: ar ? 'الحالة' : 'Status', key: 'status', width: 12 },
-    { header: ar ? 'كشوف التشغيل' : 'Reports', key: 'reportNumbers', width: 22, transform: (v: any) => (v || []).join(', ') },
+    { header: ar ? 'مهلة السداد' : 'Terms', key: 'creditDays', width: 12, align: 'end' },
+    { header: ar ? 'الاستحقاق' : 'Due', key: 'dueDate', width: 14, transform: (v: any) => dt(v),
+      cell: (r) => (
+        <span className={`text-xs ${r.overdue ? 'text-red-600 font-semibold' : 'text-slate-600'}`}>{dueWords(r.daysToDue, ar)}</span>
+      ) },
+    { header: ar ? 'الحالة' : 'Status', key: 'status', width: 12,
+      cell: (r) => (
+        <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${
+          r.status === 'Collected' ? 'bg-emerald-50 text-emerald-700'
+            : r.status === 'Delivered' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
+          {r.status || (ar ? 'مفتوحة' : 'Open')}
+        </span>
+      ) },
+    { header: ar ? 'كشوف التشغيل' : 'Reports', key: 'reportNumbers', width: 22,
+      transform: (v: any) => (v || []).join(', '),
+      cell: (r) => (r.reportNumbers?.length
+        ? <span className="inline-flex items-center gap-1 text-xs text-slate-500" title={r.reportNumbers.join(', ')}><Link2 className="w-3 h-3" />{r.reportNumbers.length}</span>
+        : <span className="text-xs text-slate-500">—</span>) },
     { header: ar ? 'ملاحظات' : 'Comments', key: 'comments', width: 32 },
   ];
+
+  const chooserCols: ChooserColumn[] = allCols.map((c, i) => ({ key: c.key, label: c.header, locked: i === 0 }));
+  const { visible, setVisible } = useVisibleColumns('collections:ledger:cols', chooserCols);
+  const visibleCols = allCols.filter((c) => visible.includes(c.key));
+
+  const printNow = () => {
+    printTable({
+      title: ar ? 'دفتر الفواتير' : 'Invoice ledger',
+      columns: visibleCols.map((c) => ({ header: c.header, key: c.key, transform: c.transform, align: c.align === 'center' ? 'start' : c.align })),
+      rows: rows as any,
+      ar,
+      meta: [`${ar ? 'عدد الصفوف' : 'Rows'}: ${rows.length}`, ar ? 'نتيجة الفلتر' : 'Filtered result'],
+    });
+  };
+
+  // التصديرُ يأخذ الأعمدةَ المختارة — راجع allCols و ColumnChooser.
+  const cols: ExportColumn[] = visibleCols;
 
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 className="w-6 h-6 animate-spin text-[#f37121]" /></div>;
   const th = 'px-3 py-3 text-start text-xs text-slate-300 font-semibold whitespace-nowrap';
@@ -143,11 +198,11 @@ export default function LedgerInvoicesPage() {
             <option value="tax">{ar ? 'ضريبي' : 'Tax'}</option>
             <option value="cash">{ar ? 'كاش' : 'Cash'}</option>
           </select>
-          <select title={ar ? 'موظف التحصيل' : 'Officer'} value={officer} onChange={(e) => { setOfficer(e.target.value); setPage(1); }}
-            className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">
-            <option value="">{ar ? 'موظف التحصيل' : 'Officer'}</option>
-            {opts.officers.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
+          <div className="w-48">
+            <SearchSelect ar={ar} value={officer} onChange={(v) => { setOfficer(v); setPage(1); }}
+              allLabel={ar ? 'كل موظفي التحصيل' : 'All officers'}
+              options={opts.officers.map((o: string) => ({ value: o, label: o }))} />
+          </div>
           <select title={ar ? 'الشريحة' : 'Band'} value={band} onChange={(e) => { setBand(e.target.value); setPage(1); }}
             className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">
             <option value="">{ar ? 'شريحة العمر' : 'Age band'}</option>
@@ -179,6 +234,12 @@ export default function LedgerInvoicesPage() {
               <FilterX className="w-4 h-4" />{ar ? 'مسح' : 'Clear'}
             </button>
           )}
+          <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />
+          <button type="button" onClick={printNow}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 text-sm font-semibold"
+            title={ar ? 'طباعة أو حفظ PDF — بالأعمدة المختارة' : 'Print or save as PDF — chosen columns'}>
+            <Printer className="w-4 h-4" />{ar ? 'طباعة PDF' : 'Print PDF'}
+          </button>
           <ExportMenu fileName={ar ? 'دفتر-الفواتير' : 'invoice-ledger'} lang={lang as 'ar' | 'en'}
             options={[
               { key: 'page', label: L.page, sheets: [{ name: ar ? 'الفواتير' : 'Invoices', rows, columns: cols }] },
@@ -198,55 +259,25 @@ export default function LedgerInvoicesPage() {
           <table className="w-full min-w-[1500px]">
             <thead>
               <tr className="table-head border-b border-slate-200">
-                <th className={th}>{ar ? 'رقم الفاتورة' : 'Invoice'}</th>
-                <th className={th}>{ar ? 'العميل' : 'Customer'}</th>
-                <th className={`${th} text-end`}>{ar ? 'المبلغ' : 'Amount'}</th>
-                <th className={th}>{ar ? 'الفوترة' : 'Invoiced'}</th>
-                <th className={`${th} text-center`} title={ar ? 'من الفوترة إلى التسليم — عملُنا' : 'Invoice → delivery (our side)'}>{ar ? '← أيام' : 'days →'}</th>
-                <th className={th}>{ar ? 'التسليم' : 'Delivered'}</th>
-                <th className={`${th} text-center`} title={ar ? 'من التسليم إلى التحصيل — مهلةُ العميل' : 'Delivery → collection (customer side)'}>{ar ? '← أيام' : 'days →'}</th>
-                <th className={th}>{ar ? 'التحصيل' : 'Collected'}</th>
-                <th className={`${th} text-center`}>{ar ? 'العمر' : 'Age'}</th>
-                <th className={th}>{ar ? 'الاستحقاق' : 'Due'}</th>
-                <th className={th}>{ar ? 'الحالة' : 'Status'}</th>
-                <th className={th}>{ar ? 'كشوف' : 'Reports'}</th>
+                {visibleCols.map((c) => (
+                  <th key={c.key} className={`${th}${c.align === 'end' ? ' text-end' : c.align === 'center' ? ' text-center' : ''}`}>{c.header}</th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {rows.length === 0 ? (
-                <tr><td colSpan={12} className="px-4 py-12 text-center text-slate-500 text-sm">{ar ? 'لا فواتير' : 'No invoices'}</td></tr>
+                <tr><td colSpan={visibleCols.length} className="px-4 py-12 text-center text-slate-500 text-sm">{ar ? 'لا فواتير' : 'No invoices'}</td></tr>
               ) : rows.map((r) => (
                 <tr key={r._id} className={`hover:bg-slate-50 ${r.overdue ? 'bg-red-50/40' : ''}`}>
-                  <td className="px-3 py-2.5 text-sm font-mono text-slate-900 whitespace-nowrap">{r.invoiceNumber}</td>
-                  <td className="px-3 py-2.5 text-sm text-slate-800 max-w-[260px] truncate" title={`${r.partyCode || ''} ${r.partyName || ''}`}>
-                    <span className="text-[11px] text-slate-400 font-mono me-1">{r.partyCode}</span>{r.partyName || '—'}
-                  </td>
-                  <td className="px-3 py-2.5 text-sm text-end tabular-nums font-semibold text-slate-900 whitespace-nowrap">{money(r.total)}</td>
-                  <td className="px-3 py-2.5 text-sm text-slate-600 whitespace-nowrap">{dt(r.invoiceDate)}</td>
-                  <td className="px-3 py-2.5 text-xs text-center tabular-nums text-slate-500">{r.daysInvoiceToDelivery ?? '—'}</td>
-                  <td className="px-3 py-2.5 text-sm text-slate-600 whitespace-nowrap">{dt(r.deliveryDate)}</td>
-                  <td className="px-3 py-2.5 text-xs text-center tabular-nums text-slate-500">{r.daysDeliveryToCollection ?? '—'}</td>
-                  <td className="px-3 py-2.5 text-sm text-slate-600 whitespace-nowrap">{dt(r.collectionDate)}</td>
-                  <td className="px-3 py-2.5 text-xs text-center whitespace-nowrap">
-                    {r.ageDays == null ? <span className="text-slate-300">—</span> : (
-                      <span className="text-slate-600">{r.ageDays}<span className="text-slate-400 ms-1">{r.band}</span></span>
-                    )}
-                  </td>
-                  <td className={`px-3 py-2.5 text-xs whitespace-nowrap ${r.overdue ? 'text-red-600 font-semibold' : 'text-slate-600'}`}>
-                    {dueWords(r.daysToDue, ar)}
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap">
-                    <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${
-                      r.status === 'Collected' ? 'bg-emerald-50 text-emerald-700'
-                        : r.status === 'Delivered' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
-                      {r.status || (ar ? 'مفتوحة' : 'Open')}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">
-                    {r.reportNumbers?.length
-                      ? <span className="inline-flex items-center gap-1" title={r.reportNumbers.join(', ')}><Link2 className="w-3 h-3" />{r.reportNumbers.length}</span>
-                      : '—'}
-                  </td>
+                  {visibleCols.map((c) => (
+                    <td key={c.key} className={`px-3 py-2.5 text-sm whitespace-nowrap ${c.align === 'end' ? 'text-end' : c.align === 'center' ? 'text-center' : ''} ${c.key === 'partyName' ? 'max-w-[260px] truncate' : ''}`}>
+                      {c.cell ? c.cell(r) : (
+                        <span className="text-slate-600">
+                          {(c.transform ? c.transform((r as any)[c.key], r) : (r as any)[c.key]) || '—'}
+                        </span>
+                      )}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>

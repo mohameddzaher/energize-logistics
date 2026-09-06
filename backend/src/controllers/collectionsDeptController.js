@@ -334,8 +334,60 @@ exports.getPartyProfile = async (req, res) => {
         .sort({ orderDate: -1 }).limit(50).lean(),
     ]);
 
+    // ── ومالُه عندنا في دفتر الفواتير لا في الكشوف ─────────────────────────
+    //
+    // كان الملفُّ يعرض كشوفَ التشغيل ويحسب منها ما له وما عليه. ودفترُ التحصيل
+    // يقول عن نفسه إنّ ستّةً في المئة فقط من فواتيره لها كشفٌ عندنا — فأربعةٌ
+    // وتسعون في المئة من مال العميل لم يكن يظهر في ملفّه أصلًا.
+    //
+    // فالفواتيرُ تُقرأ من الدفتر بالاسم المطويّ، ومعها ما حُصِّل منها وما بقي.
+    // وهو الرقمُ الذي يُطالَب به، والذي يُطبَع في كشف الحساب.
+    const CollectionInvoice = require('../models/CollectionInvoice');
+    const keys = new Set([party.nameKey || fold(party.name), ...names.map((n) => fold(n))]);
+    const ledgerAll = await CollectionInvoice.find({ partyName: { $nin: [null, ''] } })
+      .select('invoiceNumber partyName partyCode total invoiceDate deliveryDate collectionDate status kind')
+      .limit(40000).lean();
+    const ledger = ledgerAll
+      .filter((i) => keys.has(fold(i.partyName)))
+      .sort((x, y) => new Date(y.invoiceDate || 0) - new Date(x.invoiceDate || 0));
+
+    const isCollected = (i) => !!i.collectionDate || /collected/i.test(i.status || '');
+    const invoiced = ledger.reduce((a2, i) => a2 + (Number(i.total) || 0), 0);
+    const collectedSum = ledger.filter(isCollected).reduce((a2, i) => a2 + (Number(i.total) || 0), 0);
+    const openInvoices = ledger.filter((i) => !isCollected(i));
+    const now2 = Date.now();
+
     res.json({
       party: withStats(party, stats),
+      // ── المالُ كما يقوله الدفتر ────────────────────────────────────────
+      money: {
+        invoices: ledger.slice(0, 500).map((i) => ({
+          invoiceNumber: i.invoiceNumber,
+          partyCode: i.partyCode || '',
+          total: r2(i.total),
+          invoiceDate: i.invoiceDate || null,
+          deliveryDate: i.deliveryDate || null,
+          collectionDate: i.collectionDate || null,
+          collected: isCollected(i),
+          status: i.status || '',
+          // عمرُ ما لم يُحصَّل — وهو ما يُسأل عنه في المطالبة.
+          ageDays: !isCollected(i) && i.invoiceDate
+            ? Math.floor((now2 - new Date(i.invoiceDate).getTime()) / 86400000) : null,
+        })),
+        totals: {
+          count: ledger.length,
+          invoiced: r2(invoiced),
+          collected: r2(collectedSum),
+          outstanding: r2(invoiced - collectedSum),
+          openCount: openInvoices.length,
+          // أقدمُ فاتورةٍ لم تُحصَّل: عمرُ المديونيّة الحقيقيّ.
+          oldestOpenDays: openInvoices.reduce((mx, i) => {
+            if (!i.invoiceDate) return mx;
+            const d = Math.floor((now2 - new Date(i.invoiceDate).getTime()) / 86400000);
+            return d > mx ? d : mx;
+          }, 0),
+        },
+      },
       // شغلُه معنا من كلّ باب: أسطولُنا، وطلباتُ الشحنات، وكشوفُ التشغيل.
       work: {
         fleetLoads,

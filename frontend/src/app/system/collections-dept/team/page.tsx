@@ -17,6 +17,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import { canEditCollections, money, gradeTone, type OfficerStat, type AgingRow } from '@/lib/collections';
+import SearchSelect from '@/components/system/SearchSelect';
 import { Loader2, Users, Search, UserCog, Check, TrendingUp } from 'lucide-react';
 
 export default function CollectionsTeamPage() {
@@ -105,11 +106,11 @@ export default function CollectionsTeamPage() {
             className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm" />
           <input type="date" title={ar ? 'إلى' : 'To'} value={to} onChange={(e) => setTo(e.target.value)}
             className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm" />
-          <select title={ar ? 'موظف' : 'Officer'} value={officerFilter} onChange={(e) => setOfficerFilter(e.target.value)}
-            className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm bg-white">
-            <option value="">{ar ? 'كل الفريق' : 'Whole team'}</option>
-            {officers.map((o) => <option key={o} value={o}>{o}</option>)}
-          </select>
+          <div className="w-52">
+            <SearchSelect ar={ar} value={officerFilter} onChange={setOfficerFilter}
+              allLabel={ar ? 'كل الفريق' : 'Whole team'}
+              options={officers.map((o) => ({ value: o, label: o }))} />
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1100px]">

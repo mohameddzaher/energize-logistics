@@ -25,6 +25,7 @@ import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import { ColumnFilter, type ColumnFilterOption } from '@/components/ColumnFilter';
 import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
+import SearchSelect from '@/components/system/SearchSelect';
 import { printTable } from '@/utils/printTable';
 import { Banknote, Receipt, SlidersHorizontal, X, CheckCircle2, ChevronLeft, Truck, Printer } from 'lucide-react';
 
@@ -532,17 +533,18 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {/* منسدلاتٌ فيها بحث: قوائمُ العملاء مئات، واختيارُ اسمٍ منها
+                بالتمرير عملٌ لا داعيَ له — المستخدم يعرف الاسم، ينقصه أن
+                يكتبه. راجع SearchSelect. */}
             <Field label={t('العميل', 'Customer')}>
-              <Select value={customer} onChange={(e) => setCustomer(e.target.value)}>
-                <option value="">{t('جميع العملاء', 'All customers')}</option>
-                {opts.customers.map((c) => <option key={c} value={c}>{c}</option>)}
-              </Select>
+              <SearchSelect ar={ar} value={customer} onChange={setCustomer}
+                allLabel={t('جميع العملاء', 'All customers')}
+                options={opts.customers.map((c) => ({ value: c, label: c }))} />
             </Field>
             <Field label={t('الفرع المسدد', 'Paying branch')}>
-              <Select value={branch} onChange={(e) => setBranch(e.target.value)}>
-                <option value="">{t('جميع الفروع', 'All branches')}</option>
-                {opts.branches.map((b) => <option key={b} value={b}>{b}</option>)}
-              </Select>
+              <SearchSelect ar={ar} value={branch} onChange={setBranch}
+                allLabel={t('جميع الفروع', 'All branches')}
+                options={opts.branches.map((b) => ({ value: b, label: b }))} />
             </Field>
             {isCash && (
               <Field label={t('التفاصيل', 'Detail')}>

@@ -14,13 +14,14 @@ import api from '@/lib/api';
 import { kindWords, money, dt, paymentTypeLabel, type CollectionsParty } from '@/lib/collections';
 import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, Select, Loader2 } from '@/components/hr/HRKit';
 import ReportButton from '@/components/system/ReportButton';
+import { printTable } from '@/utils/printTable';
 import { useAuth } from '@/context/AuthContext';
 import { canEditCollections } from '@/lib/collections';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
-import { Users, Truck, ArrowRight, Phone, Building2, Plus, Trash2, CheckCircle2, MessageSquare } from 'lucide-react';
+import { Users, Truck, ArrowRight, Phone, Building2, Plus, Trash2, CheckCircle2, MessageSquare, Receipt, Printer } from 'lucide-react';
 
 interface Report {
   _id: string; reportNumber?: string; reportDate?: string;
@@ -38,8 +39,19 @@ interface FollowUp {
   collector?: { firstName?: string; lastName?: string } | null;
   report?: { reportNumber?: string } | null;
 }
+interface LedgerInvoice {
+  invoiceNumber: string; partyCode?: string; total: number;
+  invoiceDate: string | null; deliveryDate: string | null; collectionDate: string | null;
+  collected: boolean; status?: string; ageDays: number | null;
+}
+
 interface Profile {
   party: CollectionsParty;
+  /** مالُه كما يقوله دفترُ التحصيل — لا كما يُشتقُّ من الكشوف. */
+  money?: {
+    invoices: LedgerInvoice[];
+    totals: { count: number; invoiced: number; collected: number; outstanding: number; openCount: number; oldestOpenDays: number };
+  };
   work?: { fleetLoads: WorkRow[]; orders: WorkRow[]; counts: { reports: number; fleetLoads: number; orders: number } };
   reports: Report[];
   reportsTotal: number;
@@ -73,6 +85,9 @@ export default function PartyProfilePage() {
   const [stFrom, setStFrom] = useState(
     new Date(monthStart.getFullYear(), monthStart.getMonth(), 1).toISOString().slice(0, 10));
   const [stTo, setStTo] = useState(new Date().toISOString().slice(0, 10));
+
+  // قائمةُ الفواتير تبدأ على ما لم يُحصَّل: هو سببُ فتح الملفّ.
+  const [showPaidInvoices, setShowPaidInvoices] = useState(false);
 
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
   const [fuForm, setFuForm] = useState<Partial<FollowUp> | null>(null);
@@ -132,6 +147,30 @@ export default function PartyProfilePage() {
   // العمودُ الذي يحمل المال يختلف بالجهة، وكذلك الذي يقول إنّه أُغلق.
   const valueKey = kind === 'customer' ? 'sellingValue' : 'purchaseValue';
   const closedKey = kind === 'customer' ? 'collectionDate' : 'paymentDate';
+
+  const shownInvoices = (data.money?.invoices || []).filter((i) => showPaidInvoices || !i.collected);
+
+  /** طباعةُ فواتيره — المعروضةُ منها، بالأعمدة نفسِها. */
+  const printInvoices = () => {
+    const ok = printTable({
+      title: t(`فواتير ${data.party.name}`, `${data.party.name} — invoices`),
+      subtitle: t(
+        `المستحق: ${money(data.money?.totals.outstanding || 0)} · فواتير لم تُحصَّل: ${data.money?.totals.openCount || 0}`,
+        `Outstanding: ${money(data.money?.totals.outstanding || 0)} · open: ${data.money?.totals.openCount || 0}`),
+      columns: [
+        { header: t('رقم الفاتورة', 'Invoice'), key: 'invoiceNumber' },
+        { header: t('تاريخها', 'Date'), key: 'invoiceDate', transform: (v: any) => dt(v) },
+        { header: t('التسليم', 'Delivered'), key: 'deliveryDate', transform: (v: any) => dt(v) },
+        { header: t('القيمة', 'Value'), key: 'total', align: 'end', transform: (v: any) => money(v) },
+        { header: t('تاريخ التحصيل', 'Collected on'), key: 'collectionDate', transform: (v: any) => dt(v) },
+        { header: t('العمر (يوم)', 'Age (days)'), key: 'ageDays', align: 'end' },
+      ],
+      rows: shownInvoices as any,
+      ar,
+      meta: [showPaidInvoices ? t('كل الفواتير', 'All invoices') : t('غير المحصَّل فقط', 'Unpaid only')],
+    });
+    if (!ok) notify(t('المتصفّح منع فتح نافذة الطباعة — اسمح بالنوافذ المنبثقة.', 'The browser blocked the print window — allow pop-ups.'), 'error');
+  };
 
   const Stat = ({ label, value, accent }: { label: string; value: string; accent?: string }) => (
     <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm min-w-0">
@@ -323,6 +362,85 @@ export default function PartyProfilePage() {
 
       {/* ── متابعاتُ التحصيل ────────────────────────────────────────────────
           الوعدُ بالسداد بندٌ له موعدٌ يُسأل عنه، لا سطرٌ يُدفن في ملاحظة. */}
+      {/* ── فواتيرُه ومديونيّتُه ─────────────────────────────────────────────
+          كان الملفُّ يعرض كشوفَ التشغيل ويحسب منها ماله وما عليه. ودفترُ
+          التحصيل يقول إنّ ستّةً في المئة من فواتيره لها كشفٌ عندنا — فأربعةٌ
+          وتسعون في المئة من مال العميل لم تكن تظهر في ملفّه. وهذا هو المال. */}
+      {!!data.money && data.money.totals.count > 0 && (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+            <p className="text-[13px] font-bold text-slate-900 flex items-center gap-1.5">
+              <Receipt className="w-4 h-4 text-slate-400" />
+              {t(`الفواتير والمديونية (${data.money.totals.count})`, `Invoices & debt (${data.money.totals.count})`)}
+            </p>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setShowPaidInvoices((v) => !v)}
+                className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 text-xs font-medium">
+                {showPaidInvoices ? t('غير المحصَّل فقط', 'Unpaid only') : t('إظهار الكل', 'Show all')}
+              </button>
+              <button type="button" onClick={printInvoices}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 text-xs font-medium">
+                <Printer className="w-3.5 h-3.5" />{t('طباعة', 'Print')}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 border-b border-slate-100">
+            <Stat label={t('إجمالي ما فُوتِر', 'Invoiced')} value={money(data.money.totals.invoiced)} />
+            <Stat label={t('إجمالي ما حُصِّل', 'Collected')} value={money(data.money.totals.collected)} accent="text-emerald-600" />
+            <Stat label={t('المستحق علينا تحصيله', 'Outstanding')} value={money(data.money.totals.outstanding)}
+              accent={data.money.totals.outstanding > 0 ? 'text-red-600' : 'text-slate-400'} />
+            <Stat label={t('فواتير لم تُحصَّل', 'Open invoices')}
+              value={`${data.money.totals.openCount}${data.money.totals.oldestOpenDays ? ` · ${data.money.totals.oldestOpenDays}${t('ي', 'd')}` : ''}`}
+              accent={data.money.totals.openCount > 0 ? 'text-red-600' : 'text-slate-400'} />
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="table-head">
+                <tr>
+                  {[t('رقم الفاتورة', 'Invoice'), t('تاريخها', 'Date'), t('التسليم', 'Delivered'),
+                    t('القيمة', 'Value'), t('تاريخ التحصيل', 'Collected on'), t('العمر', 'Age')].map((h, i) => (
+                    <th key={i} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {shownInvoices.length === 0 ? (
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                    {t('لا فواتير غير محصَّلة', 'No unpaid invoices')}
+                  </td></tr>
+                ) : shownInvoices.map((i) => (
+                  <tr key={i.invoiceNumber} className={`border-b border-slate-100 hover:bg-slate-50 ${i.collected ? '' : 'bg-red-50/30'}`}>
+                    {/* ورقمُ الفاتورة بابُها. */}
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <button type="button"
+                        onClick={() => router.push(`/system/collections-dept/invoices/tax/${encodeURIComponent(i.invoiceNumber)}`)}
+                        className="font-semibold text-[#f37121] hover:underline">{i.invoiceNumber}</button>
+                    </td>
+                    <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{dt(i.invoiceDate)}</td>
+                    <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{dt(i.deliveryDate)}</td>
+                    <td className="px-3 py-2 tabular-nums font-semibold text-slate-900">{money(i.total)}</td>
+                    <td className={`px-3 py-2 whitespace-nowrap ${i.collected ? 'text-emerald-700' : 'text-red-500'}`}>
+                      {i.collected ? (i.collectionDate ? dt(i.collectionDate) : t('محصَّلة', 'collected')) : t('لم تُحصَّل', 'open')}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums text-slate-500 whitespace-nowrap">
+                      {i.ageDays == null ? '—' : `${i.ageDays} ${t('يوم', 'd')}`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {data.money.invoices.length < data.money.totals.count && (
+            <p className="px-4 py-2 text-[11px] text-slate-400 border-t border-slate-100">
+              {t(`تُعرض أحدث ${data.money.invoices.length} من ${data.money.totals.count} — والكشف الكامل في PDF كشف الحساب.`,
+                 `Showing the latest ${data.money.invoices.length} of ${data.money.totals.count} — the full list is in the statement PDF.`)}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
           <p className="text-[13px] font-bold text-slate-900 flex items-center gap-1.5">

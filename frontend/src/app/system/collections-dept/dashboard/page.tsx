@@ -13,6 +13,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import { money, dt } from '@/lib/collections';
+import SearchSelect from '@/components/system/SearchSelect';
 import { useAuth } from '@/context/AuthContext';
 import { Spinner, PageHeader, Field, Select } from '@/components/hr/HRKit';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
@@ -267,25 +268,22 @@ export default function CollectionsDashboardPage() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Field label={t('العميل', 'Customer')}>
-                <Select value={customer} onChange={(e) => setCustomer(e.target.value)}>
-                  <option value="">{t('جميع العملاء', 'All customers')}</option>
-                  {opts.customers.map((c) => <option key={c} value={c}>{c}</option>)}
-                </Select>
+                <SearchSelect ar={ar} value={customer} onChange={setCustomer}
+                allLabel={t('جميع العملاء', 'All customers')}
+                options={opts.customers.map((c) => ({ value: c, label: c }))} />
               </Field>
               {/* المورّدُ لمن يرى ما علينا — والخادمُ لا يُرسل أسماءهم لغيره. */}
               {opts.suppliers.length > 0 && (
                 <Field label={t('المورد', 'Supplier')}>
-                  <Select value={supplier} onChange={(e) => setSupplier(e.target.value)}>
-                    <option value="">{t('جميع الموردين', 'All suppliers')}</option>
-                    {opts.suppliers.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </Select>
+                  <SearchSelect ar={ar} value={supplier} onChange={setSupplier}
+                allLabel={t('جميع الموردين', 'All suppliers')}
+                options={opts.suppliers.map((c) => ({ value: c, label: c }))} />
                 </Field>
               )}
               <Field label={t('الفرع', 'Branch')}>
-                <Select value={branch} onChange={(e) => setBranch(e.target.value)}>
-                  <option value="">{t('جميع الفروع', 'All branches')}</option>
-                  {opts.branches.map((b) => <option key={b} value={b}>{b}</option>)}
-                </Select>
+                <SearchSelect ar={ar} value={branch} onChange={setBranch}
+                allLabel={t('جميع الفروع', 'All branches')}
+                options={opts.branches.map((b) => ({ value: b, label: b }))} />
               </Field>
             </div>
           </div>

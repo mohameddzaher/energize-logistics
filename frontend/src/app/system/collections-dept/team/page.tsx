@@ -12,6 +12,7 @@
  * أخرى وقد نسي ما قرأ.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
@@ -19,6 +20,7 @@ import { canEditCollections, money, gradeTone, type OfficerStat, type AgingRow }
 import { Loader2, Users, Search, UserCog, Check, TrendingUp } from 'lucide-react';
 
 export default function CollectionsTeamPage() {
+  const router = useRouter();
   const { lang, isRTL } = useLanguage();
   const { user } = useAuth();
   const ar = lang === 'ar';
@@ -31,6 +33,12 @@ export default function CollectionsTeamPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [officerFilter, setOfficerFilter] = useState('');
+
+  /** يفتح سجلَّ العملاء على حسابات موظّفٍ بعينه — أو على ما لا مسؤولَ له. */
+  // `hasCode` يُطابق ما تحسبه هذه اللوحة: أصحابُ أكواد الحسابات وحدَهم — وإلّا
+  // فُتح صفُّ «بلا مسؤول» على أربعمئةٍ وسبعةٍ وعشرين بدل اثنَي عشر.
+  const openAccounts = (officer?: string) =>
+    router.push(`/system/collections-dept/customers?officer=${encodeURIComponent(officer || 'none')}&hasCode=true`);
 
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [assignTo, setAssignTo] = useState('');
@@ -119,8 +127,20 @@ export default function CollectionsTeamPage() {
             <tbody className="divide-y divide-slate-200">
               {perf.map((r) => (
                 <tr key={r.officer || '_'} className="hover:bg-slate-50">
-                  <td className="px-3 py-2.5 text-sm font-medium text-slate-900">{r.officer || <span className="text-slate-400">{ar ? '(بلا مسؤول)' : '(unassigned)'}</span>}</td>
-                  <td className="px-3 py-2.5 text-sm text-end tabular-nums text-slate-700">{r.accounts}</td>
+                  {/* ── ورقمٌ في لوحةٍ يجب أن يفتح صفوفَه ────────────────────
+                      «(بلا مسؤول) ١٢ حسابًا» سطرٌ يُقرأ ولا يُسأل: أيُّ اثنَي
+                      عشرَ حسابًا؟ فالاسمُ والعددُ بابٌ إلى الحسابات نفسِها. */}
+                  <td className="px-3 py-2.5 text-sm font-medium">
+                    <button type="button" onClick={() => openAccounts(r.officer)}
+                      className="text-[#f37121] hover:underline font-medium text-start"
+                      title={ar ? 'افتح حسابات هذا الموظّف' : 'Open these accounts'}>
+                      {r.officer || (ar ? '(بلا مسؤول)' : '(unassigned)')}
+                    </button>
+                  </td>
+                  <td className="px-3 py-2.5 text-sm text-end tabular-nums">
+                    <button type="button" onClick={() => openAccounts(r.officer)}
+                      className="text-slate-700 hover:text-[#f37121] hover:underline tabular-nums">{r.accounts}</button>
+                  </td>
                   <td className="px-3 py-2.5 text-sm text-end tabular-nums text-emerald-700 font-semibold">{money(r.collectedAmount)}</td>
                   <td className="px-3 py-2.5 text-sm text-end tabular-nums text-slate-500">{r.collectedCount}</td>
                   <td className="px-3 py-2.5 text-sm text-end tabular-nums text-slate-900">{money(r.openAmount)}</td>

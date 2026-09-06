@@ -4,7 +4,7 @@
 // البنيةُ واحدة (اسمٌ، تواصلٌ، مستحقٌّ، ملفٌّ يُفتح) والفرقُ اتّجاهُ المال.
 // وصفحتان متطابقتان بملفّين تعنيان إصلاحَ كلّ عطلٍ مرّتين ثمّ نسيانَ إحداهما.
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -62,7 +62,18 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
   const [partyType, setPartyType] = useState('');
   const [active, setActive] = useState('');
   const [onlyDue, setOnlyDue] = useState(false);
-  const activeCount = [status, city, partyType, active].filter(Boolean).length + (onlyDue ? 1 : 0);
+
+  // ── ورقمٌ في لوحةٍ يجب أن يفتح صفوفَه ────────────────────────────────────
+  // لوحةُ تقييم الفريق تعرض «حسابات ٥٧» و«(بلا مسؤول) ١٢» ولا سبيلَ إلى ما
+  // تحتها. فتُقرأ الوجهةُ من الرابط هنا — `?assignedTo=<معرّف|none>` —
+  // فتُفتح الصفحةُ على تلك الحسابات بعينها لا على السجلّ كلِّه.
+  const searchParams = useSearchParams();
+  // اسمُ المسؤول كما تعرفه لوحةُ التقييم — أو «none» لمن لا مسؤولَ له.
+  const [assignedTo, setAssignedTo] = useState(searchParams?.get('officer') || '');
+  const [assignedLabel, setAssignedLabel] = useState(searchParams?.get('officer') || '');
+  // يقصر القائمةَ على أصحاب أكواد الحسابات، فيطابق ما تحسبه لوحةُ التقييم.
+  const [hasCode, setHasCode] = useState(searchParams?.get('hasCode') === 'true');
+  const activeCount = [status, city, partyType, active, assignedTo].filter(Boolean).length + (onlyDue ? 1 : 0);
 
   // ترتيبُ وصول الردود ليس ترتيبَ إرسالها: بحثٌ سريعٌ قد يسبق ردُّه ردَّ ما
   // قبله، فتُعرض نتيجةُ حرفٍ قديم فوق ما كتبه المستخدم.
@@ -78,6 +89,8 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
       if (city) p.set('city', city);
       if (partyType) p.set('partyType', partyType);
       if (active) p.set('active', active);
+      if (assignedTo) p.set('officer', assignedTo);
+      if (hasCode) p.set('hasCode', 'true');
       const d = await api.get<{ parties: CollectionsParty[]; total: number; pages: number }>(
         `/api/collections-dept/parties?${p.toString()}`,
       );
@@ -91,7 +104,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
       if (isCurrent(token)) setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, page, q, status, city, partyType, active]);
+  }, [kind, page, q, status, city, partyType, active, assignedTo, hasCode]);
 
   // البحثُ يُمهَل: نداءُ الخادم عند كلّ حرفٍ إسرافٌ على عنقودٍ مقيَّد.
   const first = useRef(true);
@@ -242,6 +255,23 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
           {t('فلاتر', 'Filters')}{activeCount ? ` (${activeCount})` : ''}
         </button>
       </div>
+
+      {/* ── ولا تُعرَض قائمةٌ مقصوصةٌ بلا أن تقول ─────────────────────────
+          من جاء من لوحة الفريق يرى حسابات موظّفٍ واحد. ولو لم تُعلن الشاشةُ
+          ذلك لظنّ أنّ هذا كلُّ ما في السجلّ. */}
+      {assignedTo && (
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#f37121]/10 text-[#f37121] text-sm font-semibold">
+            {assignedTo === 'none'
+              ? t('حسابات بلا مسؤول', 'Unassigned accounts')
+              : t(`حسابات ${assignedLabel || 'موظّف'}`, `${assignedLabel || 'officer'}'s accounts`)}
+            <button type="button" onClick={() => { setAssignedTo(''); setAssignedLabel(''); setHasCode(false); setPage(1); }}
+              title={t('عرض كل الحسابات', 'Show all accounts')}>
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </span>
+        </div>
+      )}
 
       {showFilters && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">

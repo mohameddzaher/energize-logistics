@@ -142,31 +142,6 @@ final bdDashSpec = DashSpec(
   ],
 );
 
-final workshopDashSpec = DashSpec(
-  arTitle: 'لوحة الورشة', enTitle: 'Workshop Dashboard',
-  endpoint: '/api/workshop/dashboard', liveEvent: 'maintenance:updated',
-  stats: const [
-    DashStat('إجمالي الطلبات', 'Total requests', 'kpis.totalRequests', Icons.build_outlined, T.navy),
-    DashStat('مفتوحة', 'Open', 'kpis.open', Icons.pending_actions_outlined, T.warn),
-    DashStat('قيد التنفيذ', 'In progress', 'kpis.inProgress', Icons.engineering_outlined, T.info),
-    DashStat('مكتملة', 'Completed', 'kpis.completed', Icons.check_circle_outline, T.success),
-    DashStat('متوسط المدة (د)', 'Avg minutes', 'kpis.avgDuration', Icons.timer_outlined, T.violet),
-    DashStat('مشتريات معلقة', 'Pending purchases', 'kpis.pendingPurchases', Icons.shopping_bag_outlined, T.orange),
-  ],
-  breakdowns: const [
-    DashBreakdown('حسب الحالة', 'By status', 'statusDistribution', idKey: 'status', labels: {
-      'open': ('مفتوحة', 'Open', T.warn),
-      'in_progress': ('قيد التنفيذ', 'In progress', T.info),
-      'completed': ('مكتملة', 'Completed', T.success),
-    }),
-  ],
-  lists: [
-    DashList('أكثر المركبات زيارة', 'Top vehicles', 'topVehicles', (r) => _s(r, '_id'),
-        subtitle: (r) => '${_n(r['visits'])} ${tr('زيارة', 'visits')}'),
-    DashList('مشتريات معلقة', 'Pending purchases', 'pendingPurchasesList', (r) => _s(r, 'itemName'),
-        subtitle: (r) => '${_n(r['quantity'])} × ${_s(r, 'vehicleNumber')}'),
-  ],
-);
 
 final fleetDashSpec = DashSpec(
   arTitle: 'لوحة الأسطول', enTitle: 'Fleet Dashboard',
@@ -356,14 +331,11 @@ const executiveDashSpec = DashSpec(
     DashStat('طلبات B2C', 'B2C orders', 'b2c.monthOrders', Icons.storefront_outlined, T.violet),
     DashStat('عدد تحصيلات اليوم', "Collections today", 'wallet.todayCollections', Icons.payments_outlined, T.success),
     DashStat('صافي المحفظة', 'Wallet net', 'wallet.monthNet', Icons.account_balance_outlined, T.info, money: true),
-    DashStat('مهام الورشة', 'Workshop tasks', 'workshop.openTasks', Icons.build_outlined, T.orange),
-    DashStat('صيانة مفتوحة', 'Open maintenance', 'workshop.openMaintenance', Icons.engineering_outlined, T.warn),
     DashStat('السائقون النشطون', 'Active drivers', 'roster.drivers', Icons.badge_outlined, T.cyan),
     DashStat('الفروع', 'Branches', 'roster.branches', Icons.store_outlined, T.navy),
     DashStat('مهام مستحقة اليوم', 'Tasks due today', 'tasks.dueToday', Icons.today_outlined, T.orange),
     DashStat('شكاوى مفتوحة', 'Open complaints', 'service.complaintsOpen', Icons.report_outlined, T.danger),
     DashStat('نزاعات مفتوحة', 'Open disputes', 'service.disputesOpen', Icons.gavel_outlined, T.danger),
-    DashStat('مشتريات معلقة', 'Pending purchases', 'workshop.pendingPurchases', Icons.shopping_bag_outlined, T.violet),
   ],
   lists: [
     DashList('أنشط السائقين', 'Top drivers', 'roster.topDrivers', _topDriverTitle, subtitle: _topDriverSub),

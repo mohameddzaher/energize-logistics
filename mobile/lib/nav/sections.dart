@@ -36,7 +36,6 @@ import '../screens/b2c_daily.dart';
 import '../screens/ops_platform.dart';
 import '../screens/ls2_fleet_assets.dart';
 import '../screens/admin_suite.dart';
-import '../screens/workshop_inventory.dart';
 import '../screens/accounting_suite.dart';
 import '../screens/sales_suite.dart';
 import '../screens/it_recurring.dart';
@@ -106,6 +105,23 @@ class AppSection {
 
 const _admins = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 
+/// ترتيبُ الأقسام في الشاشة — هو نفسُه في الموقع (SECTION_ORDER في layout.tsx).
+/// سلسلةُ العمل كما تجري: التشغيل، ثمّ الطلبات والمنصّة، ثمّ التحصيل، ثمّ
+/// الأسطول وتتبّعه، ثمّ ما يُسنِد ذلك كلَّه.
+const _sectionOrder = <String>[
+  'Operations',
+  'Shipment Orders',
+  'Operations Platform',
+  'Collections',
+  'Fleet Management',
+  'Location Solutions',
+  'HR',
+  'Vehicles',
+  'Customs',
+  'B2C',
+  'Software & IT',
+];
+
 List<AppSection> sectionsFor(AuthProvider auth) {
   final role = auth.role;
   bool allowed(AppSection s) {
@@ -121,7 +137,6 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [..._admins, 'employee', 'operations_manager', 'operations_staff', 'moderator'],
       pages: [
         AppPage('التشغيل', 'Operations', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen(), path: '/system/operations'),
-        AppPage('الموردون', 'Vendors', Icons.store_outlined, (c) => ResourceScreen(config: vendorsCfg), path: '/system/vendors'),
         AppPage('العهدة اليومية', 'Cash Wallet', Icons.account_balance_wallet_outlined, (c) => const CashWalletScreen(), path: '/system/wallet'),
         AppPage('لوحة المحفظة', 'Wallet Dashboard', Icons.pie_chart_outline, (c) => const WalletDashboardScreen(), path: '/system/wallet-dashboard'),
       ],
@@ -188,7 +203,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: fleetCustomersCfg), path: '/system/fleet/customers'),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'fleet'), path: '/system/fleet/my-tasks'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'fleet', complaints: true), path: '/system/fleet/complaints'),
-        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(), path: '/system/fleet/kpis'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Fleet Management'), path: '/system/fleet/kpis'),
         AppPage('الإعدادات', 'Settings', Icons.settings_outlined, (c) => const FleetSettingsScreen(), path: '/system/fleet/settings'),
       ],
     ),
@@ -204,7 +219,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('عقود الأقسام', 'Dept Contracts', Icons.folder_copy_outlined, (c) => ResourceScreen(config: contractsAgreementsCfg), path: '/system/contracts/agreements'),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'contracts'), path: '/system/contracts/my-tasks'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'contracts', complaints: true), path: '/system/contracts/complaints'),
-        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(), path: '/system/contracts/kpis'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Contracts'), path: '/system/contracts/kpis'),
       ],
     ),
     AppSection(
@@ -223,7 +238,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('مؤشرات الموردين', 'Vendor KPIs', Icons.insights_outlined, (c) => const CrmKpisScreen(kind: 'vendors'), path: '/system/crm/vendor-kpis'),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'crm'), path: '/system/crm/my-tasks'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'crm', complaints: true), path: '/system/crm/complaints'),
-        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(), path: '/system/crm/kpis'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'CRM'), path: '/system/crm/kpis'),
       ],
     ),
     AppSection(
@@ -236,7 +251,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('المناقصات', 'Tenders', Icons.gavel_outlined, (c) => ResourceScreen(config: bdTendersCfg), path: '/system/bd/tenders'),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'bd'), path: '/system/bd/my-tasks'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'bd', complaints: true), path: '/system/bd/complaints'),
-        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(), path: '/system/bd/kpis'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Business Development'), path: '/system/bd/kpis'),
       ],
     ),
     AppSection(
@@ -249,21 +264,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('التقرير الدوري', 'Reports', Icons.assessment_outlined, (c) => const MarketingReportScreen(), path: '/system/marketing/reports'),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'marketing'), path: '/system/marketing/my-tasks'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'marketing', complaints: true), path: '/system/marketing/complaints'),
-        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(), path: '/system/marketing/kpis'),
-      ],
-    ),
-    AppSection(
-      key: 'Workshop', arTitle: 'الورشة', enTitle: 'Workshop', icon: Icons.handyman_outlined,
-      roles: const [..._admins, 'workshop_manager', 'workshop_employee', 'procurement_staff'],
-      pages: [
-        AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: workshopDashSpec), path: '/system/workshop/dashboard'),
-        AppPage('مستودع الورشة', 'Store', Icons.inventory_outlined, (c) => const WorkshopInventoryScreen(), path: '/system/workshop/store'),
-        AppPage('طلبات الصيانة', 'Maintenance', Icons.build_circle_outlined, (c) => ResourceScreen(config: workshopMaintenanceCfg), path: '/system/workshop'),
-        AppPage('المشتريات', 'Purchases', Icons.shopping_cart_outlined, (c) => ResourceScreen(config: workshopPurchasesCfg), path: '/system/workshop/purchases'),
-        AppPage('أوامر شغل المركبات', 'Work Orders', Icons.assignment_outlined, (c) => ResourceScreen(config: workshopTasksCfg), path: '/system/workshop/tasks'),
-        AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'workshop'), path: '/system/workshop/my-tasks'),
-        AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'workshop', complaints: true), path: '/system/workshop/complaints'),
-        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(), path: '/system/workshop/kpis'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Marketing'), path: '/system/marketing/kpis'),
       ],
     ),
     AppSection(
@@ -280,12 +281,12 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('أنواع الإجازات', 'Leave Types', Icons.event_note_outlined, (c) => ResourceScreen(config: hrLeaveTypesCfg), path: '/system/hr/leave-types'),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'hr'), path: '/system/hr/my-tasks'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'hr', complaints: true), path: '/system/hr/complaints'),
-        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(), path: '/system/hr/kpis'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'HR'), path: '/system/hr/kpis'),
       ],
     ),
     AppSection(
       key: 'Location Solutions', arTitle: 'لوكيشن سوليوشن', enTitle: 'Location Solutions', icon: Icons.gps_fixed_outlined,
-      roles: const [..._admins, 'operations_manager', 'operations_staff', 'workshop_manager', 'moderator'],
+      roles: const [..._admins, 'operations_manager', 'operations_staff', 'moderator'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const Ls2DashboardScreen()),
         AppPage('المركبات والصيانة', 'Fleet & Maintenance', Icons.local_shipping_outlined, (c) => const Ls2VehiclesScreen(), path: '/system/ls2/maintenance'),
@@ -309,7 +310,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الأهداف', 'Targets', Icons.track_changes_outlined, (c) => ResourceScreen(config: salesTargetsCfg), path: '/system/sales/targets'),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'sales'), path: '/system/sales/my-tasks'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'sales', complaints: true), path: '/system/sales/complaints'),
-        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(), path: '/system/sales/kpis'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Sales'), path: '/system/sales/kpis'),
       ],
     ),
     AppSection(
@@ -325,20 +326,22 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('قائمة الدخل', 'Profit & Loss', Icons.trending_up_outlined, (c) => const ProfitLossScreen(), path: '/system/accounting/profit-loss'),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'accounting'), path: '/system/accounting/my-tasks'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'accounting', complaints: true), path: '/system/accounting/complaints'),
-        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(), path: '/system/accounting/kpis'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Accounting'), path: '/system/accounting/kpis'),
       ],
     ),
     AppSection(
       key: 'Procurement', arTitle: 'المشتريات', enTitle: 'Procurement', icon: Icons.shopping_bag_outlined,
       roles: const [..._admins, 'procurement_manager'],
       pages: [
+        // سجلُّ موردي المشتريات — كان مدرجًا في العمليات وليس من عملها.
+        AppPage('الموردون', 'Vendors', Icons.store_outlined, (c) => ResourceScreen(config: vendorsCfg), path: '/system/vendors'),
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: procurementDashSpec), path: '/system/procurement/dashboard'),
         AppPage('طلبات الشراء', 'Requests', Icons.request_quote_outlined, (c) => const ProcRequestsScreen(), path: '/system/procurement/requests'),
         AppPage('أوامر الشراء', 'Orders', Icons.shopping_cart_outlined, (c) => const ProcOrdersScreen(), path: '/system/procurement/orders'),
         AppPage('فواتير الموردين', 'Bills', Icons.receipt_long_outlined, (c) => const ProcBillsScreen(), path: '/system/procurement/bills'),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'procurement'), path: '/system/procurement/my-tasks'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'procurement', complaints: true), path: '/system/procurement/complaints'),
-        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(), path: '/system/procurement/kpis'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Procurement'), path: '/system/procurement/kpis'),
       ],
     ),
     AppSection(
@@ -371,7 +374,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('التخليص الجمركي', 'Clearances', Icons.directions_boat_outlined, (c) => ResourceScreen(config: customsCfg), path: '/system/customs'),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'customs'), path: '/system/customs/my-tasks'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'customs', complaints: true), path: '/system/customs/complaints'),
-        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(), path: '/system/customs/kpis'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Customs'), path: '/system/customs/kpis'),
       ],
     ),
     AppSection(
@@ -387,19 +390,19 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('مستودع الأجهزة', 'IT Stock', Icons.inventory_outlined, (c) => ResourceScreen(config: itStockCfg)),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'it'), path: '/system/it/my-tasks'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'it', complaints: true), path: '/system/it/complaints'),
-        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(), path: '/system/it/kpis'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Software & IT'), path: '/system/it/kpis'),
       ],
     ),
     AppSection(
       key: 'Operations Platform', arTitle: 'منصة العمليات', enTitle: 'Operations Platform', icon: Icons.hub_outlined,
-      roles: const [..._admins, 'moderator', 'employee', 'operations_manager', 'operations_staff', 'workshop_manager', 'workshop_employee', 'procurement_staff', 'hr_manager', 'hr_specialist'],
+      roles: const [..._admins, 'moderator', 'employee', 'operations_manager', 'operations_staff', 'procurement_staff', 'hr_manager', 'hr_specialist'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const OpsDashboardScreen()),
         for (final cfg in opsResources)
           AppPage(cfg.ar, cfg.en, cfg.icon, (c) => OpsResourceScreen(cfg: cfg)),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'ops'), path: '/system/ops/my-tasks'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'ops', complaints: true), path: '/system/ops/complaints'),
-        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(), path: '/system/ops/kpis'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Operations Platform'), path: '/system/ops/kpis'),
       ],
     ),
     AppSection(
@@ -437,7 +440,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الإدخال اليومي', 'Daily Entry', Icons.edit_calendar_outlined, (c) => const B2cDailyEntryScreen(), path: '/system/b2c/daily-entry'),
         AppPage('عهد المشاريع', 'Custody', Icons.account_balance_wallet_outlined, (c) => const B2cWalletScreen()),
         AppPage('مناديب المبيعات', 'Reps', Icons.sports_motorsports_outlined, (c) => ResourceScreen(config: b2cRepsCfg), path: '/system/b2c/reps'),
-        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(), path: '/system/b2c/kpis'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'B2C'), path: '/system/b2c/kpis'),
       ],
     ),
     AppSection(
@@ -463,7 +466,6 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('المستخدمون', 'Users', Icons.group_outlined, (c) => const AdminUsersScreen()),
         AppPage('الصلاحيات', 'Permissions', Icons.lock_person_outlined, (c) => const PermissionsScreen()),
         AppPage('الفروع', 'Branches', Icons.store_mall_directory_outlined, (c) => ResourceScreen(config: branchesCfg)),
-        AppPage('فئات المصروفات', 'Expense Categories', Icons.category_outlined, (c) => ResourceScreen(config: expenseCategoriesCfg)),
         AppPage('سجل التدقيق', 'Audit Log', Icons.fact_check_outlined, (c) => ResourceScreen(config: auditCfg)),
         AppPage('البيانات المرجعية', 'Reference Data', Icons.list_alt_outlined, (c) => const ReferenceDataScreen()),
       ],
@@ -485,7 +487,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
   // ── والصفحاتُ تُصفّى داخل القسم ───────────────────────────────────────────
   // القسمُ يُفتَح، ثمّ تُحذَف منه الصفحاتُ التي أُغلقت لهذا الدور — والقسمُ الذي
   // لم تبقَ فيه صفحةٌ يسقط كلُّه، فبطاقةٌ تُفتَح على فراغٍ أسوأُ من غيابها.
-  return all.where(allowed).map((s) {
+  final visible = all.where(allowed).map((s) {
     final pages = s.pages.where((p) => auth.canAccessPage(p.path)).toList();
     if (pages.length == s.pages.length) return s;
     return AppSection(
@@ -493,6 +495,20 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: s.roles, managed: s.managed, pages: pages,
     );
   }).where((s) => s.pages.isNotEmpty).toList();
+
+  // ── والترتيبُ يُقال، ولا يُترك لترتيب الكود ────────────────────────────
+  // كانت الأقسامُ تظهر بترتيب كتابتها في هذه القائمة، فترتيبُ الشاشة أثرٌ
+  // جانبيٌّ لترتيب الملفّ: يُضاف قسمٌ في مكانه الطبيعيّ فيقفز في الشاشة بلا
+  // أن يقصد أحد. وهو الترتيبُ نفسُه في الموقع — والتطبيقُ والموقعُ شيءٌ واحد.
+  visible.sort((a, b) {
+    final ia = _sectionOrder.indexOf(a.key);
+    final ib = _sectionOrder.indexOf(b.key);
+    if (ia == -1 && ib == -1) return 0;
+    if (ia == -1) return 1;                 // ما لم يُذكَر يأتي بعد المذكور
+    if (ib == -1) return -1;
+    return ia.compareTo(ib);
+  });
+  return visible;
 }
 
 /// Self-service — every signed-in EMPLOYEE, no gating. Partner (client) logins

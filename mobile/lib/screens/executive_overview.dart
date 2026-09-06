@@ -92,13 +92,6 @@ const _clusters = <_Cluster>[
     ('فواتير متأخرة', 'Overdue bills', 'overdueBillsCount', false),
     ('الإنفاق (الشهر)', 'Spend (MTD)', 'spendThisMonth', true),
   ]),
-  _Cluster('الورشة', 'Workshop', Icons.build_outlined, T.inkSoft, 'overview', 'workshop', [
-    ('صيانة مفتوحة', 'Open maintenance', 'openMaintenance', false),
-    ('مشتريات معلّقة', 'Pending purchases', 'pendingPurchases', false),
-    ('أصناف المخزون', 'Inventory items', 'inventoryItems', false),
-    ('مخزون منخفض', 'Low stock', 'lowStockItems', false),
-    ('نفد المخزون', 'Out of stock', 'outOfStockItems', false),
-  ]),
   _Cluster('B2C', 'B2C', Icons.storefront_outlined, T.violet, 'overview', 'b2c', [
     ('الطلبات (الشهر)', 'Orders (MTD)', 'monthOrders', false),
     ('المناديب', 'Reps', 'reps', false),

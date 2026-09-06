@@ -17,8 +17,6 @@ const roleLabels = {
   'operations_staff': ('عمليات', 'Operations'),
   'moderator': ('مشرف', 'Moderator'),
   'client': ('عميل', 'Client'),
-  'workshop_manager': ('مدير الورشة', 'Workshop Manager'),
-  'workshop_employee': ('فني ورشة', 'Workshop Employee'),
   'procurement_staff': ('مشتريات الورشة', 'Purchasing'),
   'b2c_manager': ('رئيس B2C', 'B2C Head'),
   'b2c_project_lead': ('مدير مشروع B2C', 'B2C PM'),

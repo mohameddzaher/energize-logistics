@@ -9,7 +9,13 @@ import 'performance_evaluations.dart';
 /// تقييم الأداء — the mobile twin of the web TeamBoard: the signed-in
 /// manager's team for the current period with each member's score and band.
 class TeamBoardScreen extends StatefulWidget {
-  const TeamBoardScreen({super.key});
+  /// قسمُ النظام الذي تخصّه هذه الشاشة.
+  ///
+  /// صفحاتُ التقييم واحدةٌ في كلّ قسم، وكانت لا ترسل ما يميّزها — فيرى مديرُ
+  /// النظام قائمةَ مديري الأقسام في كلّ صفحةٍ منها بدل فريق القسم. والخادمُ
+  /// يقرأ هذا فيردّ فريقَ ذلك القسم بعينه (راجع sectionScope في الخادم).
+  final String? section;
+  const TeamBoardScreen({super.key, this.section});
   @override
   State<TeamBoardScreen> createState() => _TeamBoardScreenState();
 }
@@ -27,7 +33,9 @@ class _TeamBoardScreenState extends State<TeamBoardScreen> {
 
   Future<void> _load() async {
     try {
-      final d = await Api.instance.get('/api/performance/team');
+      final sec = widget.section;
+      final d = await Api.instance.get(
+        '/api/performance/team${sec == null || sec.isEmpty ? '' : '?section=${Uri.encodeQueryComponent(sec)}'}');
       if (!mounted) return;
       setState(() { _d = Map<String, dynamic>.from(d); _loading = false; _error = null; });
     } catch (e) {

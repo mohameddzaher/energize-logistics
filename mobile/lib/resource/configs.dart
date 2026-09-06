@@ -496,45 +496,6 @@ final marketingCampaignsCfg = ResourceConfig(
 );
 
 // ── الورشة ───────────────────────────────────────────────────────────────────
-final workshopPurchasesCfg = ResourceConfig(
-  arTitle: 'المشتريات', enTitle: 'Purchases', icon: Icons.shopping_cart_outlined,
-  endpoint: '/api/workshop/purchases', listKey: 'purchases',
-  liveEvent: 'purchase:received',
-  canEdit: false, // التسجيل هو الاستلام — التعديل غير مفتوح في السيستم أصلًا
-  searchFields: const ['itemName', 'supplier', 'vehicleNumber', 'invoiceNumber'],
-  titleOf: (r) => _s(r, 'itemName'),
-  subtitleOf: (r) => [
-    if (_s(r, 'supplier').isNotEmpty) _s(r, 'supplier'),
-    if (_s(r, 'vehicleNumber').isNotEmpty) _s(r, 'vehicleNumber'),
-  ].join(' · '),
-  chipsOf: (r) => [
-    ('الكمية: ${r['quantity'] ?? 1}', T.navy),
-    if (r['cost'] != null) ('${r['cost']} ر.س', T.success),
-    switch (_s(r, 'status')) {
-      'received' => ('في المستودع', T.success),
-      'pending' => ('قيد الطلب', T.warn),
-      _ => (_s(r, 'status'), T.inkSoft),
-    },
-  ],
-  // استلام طلب شراء معلّق → يضيفه للمخزون (نفس زر «سجّل وأضف للمخزون» في الويب).
-  rowActions: (r) => [
-    if (_s(r, 'status') == 'pending')
-      ResourceAction(
-        icon: Icons.inventory_2_outlined, ar: 'استلام للمخزون', en: 'Receive to store', color: T.success,
-        confirmAr: 'تأكيد استلام «${_s(r, 'itemName')}» وإضافته للمخزون؟', confirmEn: 'Receive and add to store?',
-        request: (row) => ('PUT', '/api/workshop/purchases/${row['_id']}/receive', null),
-      ),
-  ],
-  fields: const [
-    FieldSpec('itemName', 'اسم الصنف', 'Item name', required: true),
-    FieldSpec('quantity', 'الكمية', 'Quantity', type: FieldType.number, required: true),
-    FieldSpec('supplier', 'المورد', 'Supplier'),
-    FieldSpec('cost', 'التكلفة', 'Cost', type: FieldType.number),
-    FieldSpec('invoiceNumber', 'رقم الفاتورة', 'Invoice no.'),
-    FieldSpec('vehicleNumber', 'رقم السيارة (إن وجدت)', 'Vehicle no.'),
-    FieldSpec('description', 'الوصف', 'Description', type: FieldType.textarea),
-  ],
-);
 
 // ── إدارة العلاقات: الصفقات والمهام والأنشطة ─────────────────────────────────
 final crmDealsCfg = ResourceConfig(
@@ -651,17 +612,6 @@ final branchesCfg = ResourceConfig(
   ],
 );
 
-final expenseCategoriesCfg = ResourceConfig(
-  arTitle: 'فئات المصروفات', enTitle: 'Expense Categories', icon: Icons.category_outlined,
-  endpoint: '/api/expense-categories', listKey: 'categories', liveEvent: 'expense:updated',
-  searchFields: const ['name', 'description'],
-  titleOf: (r) => _s(r, 'name'),
-  subtitleOf: (r) => _s(r, 'description'),
-  fields: const [
-    FieldSpec('name', 'اسم الفئة', 'Name', required: true),
-    FieldSpec('description', 'الوصف', 'Description', type: FieldType.textarea),
-  ],
-);
 
 // ── لوكيشن سوليوشن: الإصلاحات ────────────────────────────────────────────────
 final ls2RepairsCfg = ResourceConfig(
@@ -808,51 +758,6 @@ final customsCfg = ResourceConfig(
 );
 
 // ── الورشة: طلبات الصيانة ────────────────────────────────────────────────────
-final workshopMaintenanceCfg = ResourceConfig(
-  filterField: 'status',
-  arTitle: 'طلبات الصيانة', enTitle: 'Maintenance Requests', icon: Icons.build_circle_outlined,
-  endpoint: '/api/workshop/maintenance', listKey: 'requests',
-  liveEvent: 'maintenance:updated',
-  searchFields: const ['vehicleNumber', 'driverName', 'technicianName', 'status'],
-  titleOf: (r) => _s(r, 'vehicleNumber'),
-  subtitleOf: (r) => [_s(r, 'driverName'), _s(r, 'technicianName')].where((x) => x.isNotEmpty).join(' · '),
-  chipsOf: (r) => [
-    switch (_s(r, 'status')) {
-      'completed' => ('مكتملة', T.success),
-      'in_progress' => ('قيد الإصلاح', T.info),
-      _ => ('جديدة', T.warn),
-    },
-    if (_s(r, 'vehicleType').isNotEmpty) (_s(r, 'vehicleType'), T.navy),
-  ],
-  // بدء الإصلاح / إنهاء الطلب بضغطة (الوصف والفني يُكتبان من نموذج التعديل).
-  rowActions: (r) => [
-    if (_s(r, 'status') != 'completed')
-      ResourceAction(
-        icon: Icons.check_circle_outline, ar: 'إنهاء الطلب', en: 'Complete', color: T.success,
-        confirmAr: 'إنهاء طلب صيانة السيارة «${_s(r, 'vehicleNumber')}»؟', confirmEn: 'Complete this maintenance request?',
-        request: (row) => ('PUT', '/api/workshop/maintenance/${row['_id']}/complete', {
-          if (_s(row, 'workDescription').isNotEmpty) 'workDescription': _s(row, 'workDescription'),
-          if (_s(row, 'technicianName').isNotEmpty) 'technicianName': _s(row, 'technicianName'),
-        }),
-      ),
-    if (_s(r, 'status') == 'new' || _s(r, 'status').isEmpty)
-      ResourceAction(
-        icon: Icons.play_circle_outline, ar: 'بدء الإصلاح', en: 'Start', color: T.info,
-        request: (row) => ('PUT', '/api/workshop/maintenance/${row['_id']}', {'status': 'in_progress'}),
-      ),
-  ],
-  fields: [
-    const FieldSpec('vehicleNumber', 'رقم السيارة', 'Vehicle number', required: true),
-    const FieldSpec('vehicleType', 'نوع السيارة', 'Vehicle type'),
-    const FieldSpec('driverName', 'اسم السائق', 'Driver'),
-    const FieldSpec('technicianName', 'الفني المسؤول', 'Technician'),
-    const FieldSpec('status', 'الحالة', 'Status', type: FieldType.select, options: [
-      ('new', 'جديدة', 'New'), ('in_progress', 'قيد الإصلاح', 'In progress'), ('completed', 'مكتملة', 'Completed'),
-    ]),
-    const FieldSpec('workDescription', 'وصف العمل المنجز', 'Work done', type: FieldType.textarea),
-    const FieldSpec('notes', 'ملاحظات / الأعطال', 'Notes', type: FieldType.textarea),
-  ],
-);
 
 // ── تقنية المعلومات ──────────────────────────────────────────────────────────
 final itTicketsCfg = ResourceConfig(
@@ -1389,33 +1294,6 @@ final hrStockCfg = ResourceConfig(
 );
 
 // ── أوامر شغل المركبات — Workshop Work Orders ───────────────────────────────
-final workshopTasksCfg = ResourceConfig(
-  arTitle: 'أوامر شغل المركبات', enTitle: 'Vehicle Work Orders', icon: Icons.assignment_outlined,
-  endpoint: '/api/workshop/tasks', listKey: 'tasks', liveEvent: 'workshop:updated',
-  searchFields: const ['title', 'vehicleNumber', 'technicianName', 'serviceTypeName'],
-  titleOf: (r) => _s(r, 'title'),
-  subtitleOf: (r) => [_s(r, 'vehicleNumber'), _s(r, 'serviceTypeName'), _s(r, 'technicianName')].where((x) => x.isNotEmpty).join(' · '),
-  chipsOf: (r) => [
-    if (r['status'] == 'completed') ('مكتمل', T.success)
-    else if (r['status'] == 'in_progress') ('جاري', T.warn)
-    else if (r['status'] == 'pending') ('معلّق', T.inkFaint)
-    else if (_s(r, 'status').isNotEmpty) (_s(r, 'status'), T.info),
-    if (r['priority'] == 'high' || r['priority'] == 'urgent') ('عاجل', T.danger),
-    if (_s(r, 'branch').isNotEmpty) (_s(r, 'branch'), T.navy),
-  ],
-  fields: const [
-    FieldSpec('title', 'عنوان الأمر', 'Title', required: true),
-    FieldSpec('vehicleNumber', 'رقم المركبة', 'Vehicle #'),
-    FieldSpec('description', 'الوصف', 'Description', type: FieldType.textarea),
-    FieldSpec('priority', 'الأولوية', 'Priority', type: FieldType.select,
-        options: [('low', 'منخفضة', 'Low'), ('medium', 'متوسطة', 'Medium'), ('high', 'عالية', 'High'), ('urgent', 'عاجلة', 'Urgent')]),
-    FieldSpec('status', 'الحالة', 'Status', type: FieldType.select,
-        options: [('pending', 'معلّق', 'Pending'), ('in_progress', 'جاري', 'In progress'), ('completed', 'مكتمل', 'Completed')]),
-    FieldSpec('technicianName', 'الفني', 'Technician'),
-    FieldSpec('dueDate', 'تاريخ الاستحقاق', 'Due date', type: FieldType.date),
-    FieldSpec('completionNotes', 'ملاحظات الإنجاز', 'Completion notes', type: FieldType.textarea),
-  ],
-);
 
 // ── سجل التدقيق — Audit Log (قراءة فقط) ─────────────────────────────────────
 final auditCfg = ResourceConfig(

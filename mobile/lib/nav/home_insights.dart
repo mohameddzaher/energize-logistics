@@ -46,13 +46,6 @@ const _fleet = HomeInsight('نظرة الأسطول', 'Fleet snapshot', '/api/fl
   HomeKpi('حمولات الأسبوع', 'This week', 'shipmentsWeek', Icons.date_range_outlined, T.info),
 ]);
 
-const _workshop = HomeInsight('نظرة الورشة', 'Workshop snapshot', '/api/workshop/dashboard', 'maintenance:updated', [
-  HomeKpi('طلبات مفتوحة', 'Open', 'kpis.open', Icons.pending_actions_outlined, T.warn),
-  HomeKpi('قيد التنفيذ', 'In progress', 'kpis.inProgress', Icons.engineering_outlined, T.info),
-  HomeKpi('مكتملة', 'Completed', 'kpis.completed', Icons.check_circle_outline, T.success),
-  HomeKpi('مشتريات معلقة', 'Pending buys', 'kpis.pendingPurchases', Icons.shopping_bag_outlined, T.orange),
-]);
-
 const _crm = HomeInsight('نظرة العلاقات', 'CRM snapshot', '/api/crm/dashboard', 'crm:company', [
   HomeKpi('صفقات مفتوحة', 'Open deals', 'openDealsCount', Icons.work_outline, T.orange),
   HomeKpi('قيمة المسار', 'Pipeline', 'pipelineValue', Icons.timeline_outlined, T.violet, money: true),
@@ -113,7 +106,6 @@ const _executive = HomeInsight('النظرة التنفيذية', 'Executive sna
   HomeKpi('تشغيلات الشهر', 'Ops (month)', 'operations.thisMonth', Icons.workspaces_outline, T.navy),
   HomeKpi('طلبات B2C', 'B2C orders', 'b2c.monthOrders', Icons.storefront_outlined, T.violet),
   HomeKpi('تحصيلات اليوم', 'Today collect', 'wallet.todayCollections', Icons.payments_outlined, T.success, money: true),
-  HomeKpi('صيانة مفتوحة', 'Open maint.', 'workshop.openMaintenance', Icons.engineering_outlined, T.orange),
 ]);
 
 // دور → أفضل نظرة. تُرتَّب حسب أولوية الدور، ثم نرجع لصلاحية القسم.
@@ -125,9 +117,7 @@ const _roleInsight = <String, HomeInsight>{
   'operations_staff': _fleet,
   'fleet_manager': _fleet,
   'fleet_supervisor': _fleet,
-  'workshop_manager': _workshop,
-  'workshop_employee': _workshop,
-  'procurement_staff': _workshop,
+  'procurement_staff': _procurement,
   'crm_manager': _crm,
   'crm_team_lead': _crm,
   'crm_specialist': _crm,
@@ -153,7 +143,6 @@ const _roleInsight = <String, HomeInsight>{
 const _sectionInsight = <String, HomeInsight>{
   'Collections': _collections,
   'Fleet Management': _fleet,
-  'Workshop': _workshop,
   'CRM': _crm,
   'Sales': _sales,
   'B2C': _b2c,

@@ -1,6 +1,9 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
+import FilterPanel, { countActive, type FilterValues } from '@/components/system/FilterPanel';
+import { HR_DATE_FIELDS, HR_NUM_RANGES } from '@/lib/hrMaster';
+import { syncUrl } from '@/lib/urlSync';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -35,6 +38,16 @@ export default function HREmployeesPage() {
   // keystroke fires a request and a slow early one can land after a later one.
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(searchParams?.get('status') || '');
+  // ── وبقيّةُ الفلاتر ────────────────────────────────────────────────────────
+  // `listEmployees` كان يقرأ فلاتر الماستر كلَّها منذ اليوم الأوّل
+  // (`master._buildFilter`) — والشاشةُ لا ترسل منها إلّا الحالة. فالسؤالُ
+  // «أرِني الباكستانيّين في النقل الثقيل بجدّة» كان يُجاب عنه في القاعدة ولا
+  // سبيلَ إلى طرحه من هنا.
+  //
+  // واللوحةُ هي نفسُها لوحةَ الماستر ومصدرُ خياراتها هو نفسُه، فما يُفلتَر به
+  // هناك يُفلتَر به هنا بلا تعريفٍ ثانٍ يشيخ.
+  const [filters, setFilters] = useState<FilterValues>(() =>
+    Object.fromEntries([...(searchParams?.entries() || [])].filter(([k]) => k !== 'q' && k !== 'status')));
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
 
@@ -50,17 +63,28 @@ export default function HREmployeesPage() {
       const qs = new URLSearchParams();
       if (debouncedSearch.trim()) qs.set('q', debouncedSearch.trim());
       if (statusFilter) qs.set('status', statusFilter);
+      for (const [k, v] of Object.entries(filters)) if (v !== '' && v != null) qs.set(k, String(v));
       const d = await api.get<{ employees: Employee[] }>(`/api/hr/employees?${qs}`);
       if (!guard.isCurrent(mine)) return;
       setEmployees(d.employees || []);
     } catch {}
     if (guard.isCurrent(mine)) setLoading(false);
-  }, [debouncedSearch, statusFilter, guard]);
+  }, [debouncedSearch, statusFilter, JSON.stringify(filters), guard]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(t);
   }, [search]);
+
+  // ما تختاره يعيش في العنوان: يعمل الرجوعُ والتقدّم، ويبقى ما بنيتَه إن حُدِّثت
+  // الصفحة أو أُرسل الرابطُ لزميل.
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (search.trim()) p.set('q', search.trim());
+    if (statusFilter) p.set('status', statusFilter);
+    for (const [k, v] of Object.entries(filters)) if (v !== '' && v != null) p.set(k, String(v));
+    syncUrl('/system/hr/employees', p);
+  }, [search, statusFilter, JSON.stringify(filters)]);
 
   useEffect(() => { load(); }, [load]);
   useSocket('hr:employee', useCallback(() => load(), [load]));
@@ -91,7 +115,8 @@ export default function HREmployeesPage() {
   // زرُّ تصديرٍ واحد كان يكتب «الموظّفون» على ملفٍّ فيه ما طابق كلمة البحث
   // وحدَه. ولذلك «الكلّ» يعيد النداء مجرَّدًا من المعاملات، ولا يُعرَض أصلًا
   // حين لا فلتر — إذ يكون المعروضُ هو الكلَّ بعينه.
-  const hasActiveFilters = !!(debouncedSearch.trim() || statusFilter);
+  // «المعروض» و«الكل» يفترقان متى كان ثَمّ فلترٌ أصلًا — واللوحةُ الجديدة منه.
+  const hasActiveFilters = !!(debouncedSearch.trim() || statusFilter || countActive(filters));
   const fetchAllEmployees = async () => {
     const d = await api.get<{ employees: Employee[] }>('/api/hr/employees');
     return [{ name: 'Employees', rows: d.employees || [], columns: exportColumns }];
@@ -117,13 +142,27 @@ export default function HREmployeesPage() {
       {/* HRKit's Select is `w-full`, so as a bare flex child it claims the whole
           row and squeezes the search box. Every filter gets a fixed, shrink-0
           box and the search keeps the rest. */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-col sm:flex-row gap-3 sm:items-center">
         <div className="flex-1 min-w-[240px]"><SearchInput value={search} onChange={setSearch} placeholder={tx.searchPlaceholder} /></div>
         <div className="w-full sm:w-48 shrink-0">
           <Select aria-label={ar ? 'فلترة الحالة' : 'Filter by status'} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">{tx.allStatuses}</option>
             {Object.entries(EMPLOYMENT_STATUS).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
           </Select>
+        </div>
+        <div className="shrink-0">
+          <FilterPanel
+            optionsUrl="/api/hr/master/filters"
+            // الشاشةُ تعرض كلَّ السجلّات، فتُعَدُّ الخياراتُ على النطاق نفسِه —
+            // وإلّا قالت اللوحةُ «١٧٠» وفتح الجدولُ ١٨٢.
+            optionsParams={{ scope: 'all' }}
+            value={filters}
+            onChange={setFilters}
+            dateFields={HR_DATE_FIELDS}
+            numRanges={HR_NUM_RANGES}
+            resultCount={employees.length}
+            resultLabel={ar ? 'الموظفون المطابقون' : 'Matching employees'}
+          />
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -11,6 +11,8 @@ import { Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal, Field, T
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getHrContractsTranslations } from '@/lib/translations';
 import ContractsTabs from '@/components/hr/ContractsTabs';
+import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
+import { localFilterFields, applyLocalFilters, type LocalFieldDef } from '@/lib/localFilters';
 
 const EMPTY = { employee: '', type: 'fixed', startDate: '', endDate: '', durationMonths: 12, annualLeaveDays: 21, jobTitle: '', basicSalary: 0, allowances: 0, probationMonths: 3, notes: '',
   iqamaNumber: '', contractProfession: '', sponsorRegistration: '', contractNumber: '' };
@@ -28,6 +30,7 @@ export default function ContractsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [filters, setFilters] = useState<FilterValues>({});
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Contract | null>(null);
   const [form, setForm] = useState<any>(EMPTY);
@@ -129,7 +132,27 @@ export default function ContractsPage() {
     catch (e: any) { notify(e.message, 'error'); }
   };
 
-  const filtered = contracts.filter((c) => {
+  // ── فلاترُ العقود ─────────────────────────────────────────────────────────
+  // تُحسَب من الصفوف المحمّلة: الصفحةُ تُحمَّل كاملةً وتُفلتَر محلّيًّا، فنداءٌ
+  // إلى الخادم ليعدّ ما بين يديها يصنع فرصةً لأن يختلف العددُ عن الجدول.
+  const FILTER_DEFS: LocalFieldDef<Contract>[] = useMemo(() => [
+    { key: 'status', ar: 'حالة العقد', en: 'Status', groupAr: 'العقد', groupEn: 'Contract',
+      get: (c) => (c.status ? (CONTRACT_STATUS[c.status] ? (ar ? CONTRACT_STATUS[c.status].ar : CONTRACT_STATUS[c.status].en) : c.status) : '') },
+    { key: 'type', ar: 'نوع العقد', en: 'Type', groupAr: 'العقد', groupEn: 'Contract', get: (c) => c.type || '' },
+    { key: 'contractProfession', ar: 'المهنة في العقد', en: 'Profession', groupAr: 'العقد', groupEn: 'Contract', get: (c) => c.contractProfession || '' },
+    { key: 'annualLeaveDays', ar: 'أيام الإجازة', en: 'Annual leave', groupAr: 'العقد', groupEn: 'Contract', get: (c) => c.annualLeaveDays ?? '' },
+    { key: 'probationMonths', ar: 'شهور التجربة', en: 'Probation', groupAr: 'العقد', groupEn: 'Contract', get: (c) => c.probationMonths ?? '' },
+    { key: 'sponsorRegistration', ar: 'السجل التجاري', en: 'CR', groupAr: 'الجهة', groupEn: 'Sponsor', get: (c) => c.sponsorRegistration || '' },
+    { key: 'department', ar: 'القسم', en: 'Department', groupAr: 'الموظف', groupEn: 'Employee',
+      get: (c) => (typeof c.employee === 'object' ? c.employee?.department : '') || '' },
+    { key: 'jobTitle', ar: 'المسمى الوظيفي', en: 'Job title', groupAr: 'الموظف', groupEn: 'Employee',
+      get: (c) => c.jobTitle || (typeof c.employee === 'object' ? c.employee?.jobTitle : '') || '' },
+  ], [ar]);
+
+  const filterFields = useMemo(
+    () => localFilterFields(contracts, FILTER_DEFS, filters), [contracts, FILTER_DEFS, filters]);
+
+  const filtered = applyLocalFilters(contracts, FILTER_DEFS, filters).filter((c) => {
     if (!search.trim()) return true;
     const n = empName(c.employee).toLowerCase();
     const emp = typeof c.employee === 'object' ? c.employee : null;
@@ -185,13 +208,23 @@ export default function ContractsPage() {
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.newContract}</PrimaryButton>
       </PageHeader>
 
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-col sm:flex-row gap-3 sm:items-center">
         <div className="flex-1 min-w-[240px]"><SearchInput value={search} onChange={setSearch} placeholder={tx.searchPlaceholder} /></div>
         <div className="w-full sm:w-44 shrink-0">
           <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">{tx.allStatuses}</option>
             {Object.entries(CONTRACT_STATUS).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
           </Select>
+        </div>
+        <div className="shrink-0">
+          {/* الخياراتُ محسوبةٌ من الصفوف المعروضة — راجع lib/localFilters. */}
+          <FilterPanel
+            fields={filterFields}
+            value={filters}
+            onChange={setFilters}
+            resultCount={filtered.length}
+            resultLabel={ar ? 'العقود المطابقة' : 'Matching contracts'}
+          />
         </div>
       </div>
 

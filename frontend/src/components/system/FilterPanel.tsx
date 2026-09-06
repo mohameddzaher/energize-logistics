@@ -57,10 +57,22 @@ export const countActive = (v: FilterValues) =>
   Object.entries(v).filter(([, val]) => val !== '' && val != null).length;
 
 export default function FilterPanel({
-  optionsUrl, value, onChange, dateFields = [], numRanges = [], extra, extraLabels = {}, resultCount, resultLabel,
+  optionsUrl, optionsParams, fields: fieldsProp, value, onChange, dateFields = [], numRanges = [], extra, extraLabels = {}, resultCount, resultLabel,
 }: {
   /** اندبوينت يرجّع { filters: FilterFieldDef[], dateFields?: string[] } */
-  optionsUrl: string;
+  /**
+   * مصدرُ الخيارات من الخادم. ويُستغنى عنه بـ`fields` حين تكون البيانات
+   * محمّلةً في الشاشة أصلًا — صفحاتٌ صغيرةٌ تُحمَّل كاملةً ثمّ تُفلتَر محلّيًّا،
+   * فنداءٌ ثانٍ لحساب ما بين يديها عملٌ بلا فائدة.
+   */
+  optionsUrl?: string;
+  /** خياراتٌ محسوبةٌ في الشاشة — تُغني عن `optionsUrl`. */
+  fields?: FilterFieldDef[];
+  /**
+   * ثوابتُ تُرسَل مع كلّ نداءٍ للخيارات — نطاقُ الشاشة مثلًا.
+   * تُضاف إلى الفلاتر ولا تُعرَض شريحةً: هي حدُّ الشاشة لا اختيارُ المستخدم.
+   */
+  optionsParams?: Record<string, string>;
   value: FilterValues;
   onChange: (v: FilterValues) => void;
   /** حقول التاريخ التي تقبل مدى — بأسمائها المعروضة */
@@ -96,16 +108,26 @@ export default function FilterPanel({
   // القيم تُعاد قراءتها مع كل تغيير في الفلتر — وهذا بيت القصيد: بعد اختيار
   // «جدّة» يصير عدد كل جنسية هو عددها في جدّة، لا في الشركة كلها.
   useEffect(() => {
+    // خياراتٌ جاهزةٌ من الشاشة: لا نداءَ ولا انتظار.
+    if (fieldsProp) { setFields(fieldsProp); setLoading(false); return undefined; }
+    if (!optionsUrl) { setFields([]); setLoading(false); return undefined; }
     let dead = false;
     setLoading(true);
-    const qs = new URLSearchParams(
-      Object.entries(value).filter(([, v]) => v !== '' && v != null) as [string, string][]).toString();
+    // ── وثوابتُ الشاشة تُرسَل مع الفلاتر ──────────────────────────────────
+    // العددُ بجانب القيمة يجب أن يُحسب على **نطاق الشاشة نفسِه**. وشاشةُ
+    // الموظّفين تعرض كلَّ السجلّات (`scope=all`) بينما تَعُدُّ اللوحةُ مَن في
+    // الماستر وحدَهم — فتقول «١٧٠» ويفتح الجدولُ ١٨٢. والعددُ الذي يخالف ما
+    // بعده أسوأُ من غيابه: يُبنى عليه قرارٌ ثمّ يُكتشَف أنّه غير ما يُرى.
+    const qs = new URLSearchParams({
+      ...optionsParams,
+      ...Object.fromEntries(Object.entries(value).filter(([, v]) => v !== '' && v != null) as [string, string][]),
+    }).toString();
     api.get<{ filters: FilterFieldDef[] }>(`${optionsUrl}${qs ? `?${qs}` : ''}`)
       .then((r) => { if (!dead) setFields(r.filters || []); })
       .catch(() => { if (!dead) setFields([]); })
       .finally(() => { if (!dead) setLoading(false); });
     return () => { dead = true; };
-  }, [optionsUrl, JSON.stringify(value)]);
+  }, [optionsUrl, JSON.stringify(value), JSON.stringify(optionsParams), fieldsProp]);
 
   // موضع اللوحة: تحت الزرّ، محاذيةً له في اتجاه القراءة، ومزحوحةٌ داخل الشاشة
   // إن تجاوزت حافّتها. وتتبعه عند التمرير وتغيّر المقاس حتى لا تنفصل عنه.

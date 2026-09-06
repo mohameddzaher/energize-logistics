@@ -12,7 +12,10 @@ import { exportMultiSheet, type ExportBlock } from '@/utils/exportExcel';
 
 // `type` يقرّر نوعَ الخانة في إكسل نفسِه: `date` تكتب كائنَ تاريخٍ حقيقيًّا بدل
 // نصٍّ يبدو تاريخًا — راجع utils/exportExcel.
-export type ExportColumn = { header: string; key: string; transform?: (value: any, row: any) => any; width?: number; type?: 'text' | 'date' | 'number' };
+// `type` يقرّر نوعَ الخانة في إكسل نفسِه: `date` تكتب كائنَ تاريخٍ حقيقيًّا بدل
+// نصٍّ يبدو تاريخًا، و`hijri` تكتب التاريخَ نفسَه بتنسيقِ عرضٍ هجريّ — فيبقى
+// تاريخًا يُفرَز ويُحسَب. راجع utils/exportExcel.
+export type ExportColumn = { header: string; key: string; transform?: (value: any, row: any) => any; width?: number; type?: 'text' | 'date' | 'number' | 'hijri' };
 export interface ExportSheet {
   name: string;
   rows: Record<string, any>[];

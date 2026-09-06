@@ -26,34 +26,17 @@ type ExportColumn = {
    * فمن يُعلن `type: 'date'` تُكتب خانتُه كائنَ تاريخٍ حقيقيًّا بتنسيق عرضٍ
    * `dd/mm/yyyy`، ويبقى ما تحته رقمًا يفهمه إكسل.
    */
-  type?: 'text' | 'date' | 'number';
+  type?: 'text' | 'date' | 'number' | 'hijri';
 };
 
 // ── التاريخ الهجريّ ──────────────────────────────────────────────────────────
-// يُشتقّ من الميلاديّ ولا يُكتب بيدٍ: تقويمُ أمّ القرى موجودٌ في المتصفّح نفسِه
-// (`Intl`)، فلا مكتبةَ تُحمَّل ولا جدولَ تحويلٍ يُصان.
-const hijriFmt = (() => {
-  try {
-    return new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura-nu-latn', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-    });
-  } catch { return null; }
-})();
-
-/** «1447/03/13 هـ» من تاريخٍ ميلاديّ — أو فراغٌ إن لم يكن تاريخًا. */
-export const toHijri = (v: any): string => {
-  if (v === null || v === undefined || v === '') return '';
-  const d = v instanceof Date ? v : new Date(v);
-  if (Number.isNaN(d.getTime())) return '';
-  if (!hijriFmt) return '';
-  // `Intl` يعطي «13/03/1447 هـ» — تُقلَب إلى سنة/شهر/يوم كي تُفرَز نصًّا صحيحًا.
-  const parts = hijriFmt.formatToParts(d);
-  const g = (t: string) => parts.find((x) => x.type === t)?.value || '';
-  const y = g('year').replace(/[^0-9]/g, '');
-  const m = g('month').replace(/[^0-9]/g, '');
-  const day = g('day').replace(/[^0-9]/g, '');
-  return y && m && day ? `${y}/${m}/${day} هـ` : '';
-};
+// لا يُحوَّل هنا إلى نصّ: خانةُ إكسل لا تحمل إلّا تاريخًا واحدًا، والتقويمُ شكلُ
+// عرضه. فالعمودُ الهجريُّ يحمل التاريخَ نفسَه بتنسيق `B2` — يبقى تاريخًا يُفرَز
+// ويُحسَب، ويُعرَض هجريًّا. راجع `type: 'hijri'` أدناه.
+//
+// (وتحويلُ الهجريّ نصًّا موجودٌ في `lib/vehicleRegistry.toHijri` لعرض الشاشة —
+//  ونسخةٌ ثانيةٌ منه هنا كانت تفترق عنه في المنطقة الزمنيّة، فتُظهر يومًا آخر
+//  في الملفّ عن الشاشة.)
 
 /**
  * يُدخِل عمودَ «هجري» بعد كلّ عمودٍ ميلاديّ.
@@ -76,7 +59,9 @@ export const withHijri = (columns: ExportColumn[], suffixAr = ' (هجري)'): Ex
       header: `${c.header}${suffixAr}`,
       key: c.key,
       width: c.width,
-      transform: (raw: any, row: any) => toHijri(c.transform ? c.transform(raw, row) : raw),
+      // القيمةُ هي القيمةُ نفسُها — التقويمُ يُبدَّل في العرض لا في المحتوى.
+      type: 'hijri' as const,
+      transform: (raw: any, row: any) => (c.transform ? c.transform(raw, row) : raw),
     }];
   });
 
@@ -174,12 +159,18 @@ function addStyledSheet(
         const raw = col.key.split('.').reduce((obj: any, k) => obj?.[k], row);
         const v = col.transform ? col.transform(raw, row) : (raw ?? '');
         const cell = r.getCell(i + 1);
-        if (col.type === 'date' && v !== '' && v !== null && v !== undefined) {
+        if ((col.type === 'date' || col.type === 'hijri') && v !== '' && v !== null && v !== undefined) {
           // كائنُ تاريخٍ حقيقيٌّ وتنسيقُ عرض — لا نصٌّ يبدو تاريخًا.
           const d = v instanceof Date ? v : new Date(v);
           if (!Number.isNaN(d.getTime())) {
             cell.value = d;
-            cell.numFmt = 'dd/mm/yyyy';
+            // ── والهجريُّ عرضٌ لا قيمة ────────────────────────────────────────
+            // خانةُ إكسل لا تحمل إلّا تاريخًا واحدًا (رقمًا ميلاديًّا)، والتقويمُ
+            // شكلُ عرضه. فكتابةُ الهجريِّ نصًّا تجعل نوعَه General: لا يُفرَز
+            // زمنيًّا ولا يُطرَح منه تاريخ. وكتابتُه بالقيمة نفسِها وتنسيقِ
+            // `B2` تجعله تاريخًا حقيقيًّا يُعرَض هجريًّا — يُفرَز ويُفلتَر
+            // ويُحسَب، وهو المقصود.
+            cell.numFmt = col.type === 'hijri' ? '[$-060401]B2dd/mm/yyyy' : 'dd/mm/yyyy';
             return;
           }
         }

@@ -152,8 +152,8 @@ function VehicleRegistryListInner() {
   // تعريفٌ واحدٌ في `lib/vehicleColumns` يخدم الاثنين، فلا يفترق ملفٌّ عن شاشة.
   // و`withHijri` يُدخل عمودًا هجريًّا بعد كلّ تاريخٍ ميلاديّ تلقائيًّا — إلّا حيث
   // يوجد هجريٌّ مكتوبٌ على الورقة أصلًا (رخصة السير والفحص).
-  const cols: ExportColumn[] = useMemo(() => withHijri(
-    REGISTRY_COLUMNS.map((c): ExportColumn => ({
+  const toExport = useCallback((list: typeof REGISTRY_COLUMNS): ExportColumn[] => withHijri(
+    list.map((c): ExportColumn => ({
       header: ar ? c.ar : c.en,
       key: c.key,
       width: c.width,
@@ -164,6 +164,15 @@ function VehicleRegistryListInner() {
       },
     })),
   ), [ar]);
+
+  // ── «المعروض» يعني المعروض: صفوفًا وأعمدة ─────────────────────────────────
+  // الفلترُ يختار الصفوف، وزرُّ «الأعمدة» يختار الأعمدة. وتصديرُ سبعةٍ وأربعين
+  // عمودًا لمن ترك أربعةً على الشاشة يُخرج ملفًّا لا يشبه ما بين يديه — وذلك
+  // نصفُ عملٍ بعد نصفٍ: يُفلتَر على الشاشة ثمّ يُحذَف بالإيد في إكسل.
+  //
+  // و«الكل» يبقى الكلَّ: كلُّ صفٍّ وكلُّ عمود. اسمُه يقول ذلك.
+  const shownExportCols = useMemo(() => toExport(shownCols), [toExport, shownCols]);
+  const allExportCols = useMemo(() => toExport(REGISTRY_COLUMNS), [toExport]);
 
   const del = async (v: VReg) => {
     if (!(await confirm(ar ? `حذف المركبة ${v.plateNumber}؟` : `Delete ${v.plateNumber}?`))) return;
@@ -213,15 +222,21 @@ function VehicleRegistryListInner() {
           {canEdit && <button onClick={() => { setEditing(null); setShowForm(true); }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#e5651a] text-white text-sm"><Plus className="w-4 h-4" /> {ar ? 'إضافة' : 'Add'}</button>}
           <ExportMenu fileName="vehicle-registry" lang={lang as 'ar' | 'en'}
             options={[
-              { key: 'filtered', label: exportScopeLabels(ar).shown, sheets: [{ name: ar ? 'المركبات' : 'Vehicles', rows: shownRows as any[], columns: cols }] },
               {
-                key: 'all', label: exportScopeLabels(ar).all, hint: ar ? 'كل المركبات' : 'all vehicles',
+                key: 'filtered',
+                label: exportScopeLabels(ar).shown,
+                hint: ar ? `${shownRows.length} صفًّا · ${shownCols.length} عمودًا` : `${shownRows.length} rows · ${shownCols.length} cols`,
+                sheets: [{ name: ar ? 'المركبات' : 'Vehicles', rows: shownRows as any[], columns: shownExportCols }],
+              },
+              {
+                key: 'all', label: exportScopeLabels(ar).all,
+                hint: ar ? `كل المركبات · ${REGISTRY_COLUMNS.length} عمودًا` : `all vehicles · ${REGISTRY_COLUMNS.length} cols`,
                 // «الكل» لا يُبنى من الصفوف المحمّلة: هذه ثمرةُ الفلتر الحاليّ
                 // وسقفُها ٢٠٠٠ صف، فبناؤه منها يُخرج ملفًّا اسمُه «الكل» وفيه
                 // ما نجا من الفلتر وحده.
                 resolve: async () => {
                   const d = await api.get<{ vehicles: VReg[] }>('/api/vehicle-registry?limit=5000');
-                  return [{ name: ar ? 'المركبات' : 'Vehicles', rows: (d.vehicles || []) as any[], columns: cols }];
+                  return [{ name: ar ? 'المركبات' : 'Vehicles', rows: (d.vehicles || []) as any[], columns: allExportCols }];
                 },
               },
             ]} />

@@ -13,7 +13,7 @@
  */
 const CollectionsParty = require('../models/CollectionsParty');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
-const { derivePaymentType } = require('../utils/paymentType');
+const { derivePaymentTypeFor } = require('../utils/paymentType');
 const logAudit = require('../utils/auditLogger');
 const cache = require('../utils/ttlCache');
 const { flexSpaceRegex } = require('../utils/plateKey');
@@ -44,6 +44,11 @@ exports.list = async (req, res) => {
         cash: { $sum: { $cond: [{ $eq: ['$paymentType', 'cash'] }, 1, 0] } },
         tax: { $sum: { $cond: [{ $eq: ['$paymentType', 'tax'] }, 1, 0] } },
         manual: { $sum: { $cond: [{ $eq: ['$paymentTypeSource', 'manual'] }, 1, 0] } },
+        // ── والكشوفُ التي لا يمسّها التوحيد تُعَدُّ على حدة ──────────────────
+        // ما اختاره موظّفٌ بيده لا يُبدَّل أبدًا، فلا يصحّ أن يُعَدَّ «مخالفًا»
+        // ويُعرَض عددًا يُطلب إصلاحُه ثمّ لا يتحرّك.
+        cashAuto: { $sum: { $cond: [{ $and: [{ $eq: ['$paymentType', 'cash'] }, { $ne: ['$paymentTypeSource', 'manual'] }] }, 1, 0] } },
+        taxAuto: { $sum: { $cond: [{ $and: [{ $eq: ['$paymentType', 'tax'] }, { $ne: ['$paymentTypeSource', 'manual'] }] }, 1, 0] } },
         methodCash: { $sum: { $cond: [{ $regexMatch: { input: { $ifNull: ['$paymentMethod', ''] }, regex: /^cash$/i } }, 1, 0] } },
         value: { $sum: { $ifNull: ['$sellingValue', 0] } },
       } },
@@ -57,17 +62,26 @@ exports.list = async (req, res) => {
       else {
         prev.reports += c.reports; prev.cash += c.cash; prev.tax += c.tax;
         prev.manual += c.manual; prev.methodCash += c.methodCash; prev.value += c.value;
+        prev.cashAuto += c.cashAuto; prev.taxAuto += c.taxAuto;
       }
     }
 
     const rows = parties.map((p) => {
-      const c = byKey.get(p.nameKey || fold(p.name)) || { reports: 0, cash: 0, tax: 0, manual: 0, methodCash: 0, value: 0 };
+      const c = byKey.get(p.nameKey || fold(p.name))
+        || { reports: 0, cash: 0, tax: 0, manual: 0, methodCash: 0, value: 0, cashAuto: 0, taxAuto: 0 };
+      // ── «مخالف» = كشفٌ نوعُه غيرُ صفة عميله ─────────────────────────────────
+      // ويُقاس على صفة العميل وحدَها لا على قاعدة الاشتقاق: قاعدةُ «طريقةُ الدفع
+      // نقديّة» تصلح لملء الفارغ حيث لا دليل، ولا تصلح لنقض دليلٍ قائم — نوعُ
+      // الكشف المكتوب جاء من عمود «ض / غ ض» في شيت المتابعة، وهو قولٌ صريحٌ عن
+      // هذه الحمولة بعينها.
+      const conflicts = p.paymentType === 'cash' ? c.taxAuto : (p.paymentType === 'tax' ? c.cashAuto : 0);
       return {
         _id: p._id, name: p.name, code: p.code || '',
         paymentType: p.paymentType || '',
         officer: p.collectionOfficer || '', department: p.department || '',
         reports: c.reports, cashReports: c.cash, taxReports: c.tax,
         manualReports: c.manual, methodCashReports: c.methodCash,
+        conflicts,
         value: r2(c.value),
       };
     });
@@ -78,6 +92,8 @@ exports.list = async (req, res) => {
       tax: rows.filter((r) => r.paymentType === 'tax').length,
       none: rows.filter((r) => !r.paymentType).length,
       reports: rows.reduce((a, b) => a + b.reports, 0),
+      conflictCustomers: rows.filter((r) => r.conflicts > 0).length,
+      conflictReports: rows.reduce((a, b) => a + b.conflicts, 0),
     };
     res.json({ rows, totals });
   } catch (e) {
@@ -139,12 +155,12 @@ async function applyToCustomer(party, { onlyEmpty = true } = {}) {
   if (!mine.length) return { changed: 0, skippedManual: 0 };
 
   const rows = await OperationsWorkflow.find({ username: { $in: mine } })
-    .select('paymentType paymentTypeSource paymentMethod').lean();
+    .select('paymentType paymentTypeSource paymentMethod invoiceNumber tax netInvoice').lean();
 
   const ops = []; let skippedManual = 0; let remaining = 0;
   for (const w of rows) {
     if (String(w.paymentTypeSource || '') === 'manual') { skippedManual += 1; continue; }
-    const next = derivePaymentType(w.paymentMethod, party.paymentType);
+    const next = derivePaymentTypeFor(w, party.paymentType);
     if (next === (w.paymentType || '')) continue;
     // ── وما له نوعٌ يُعَدّ ولا يُبدَّل ما لم يُطلَب ──────────────────────────
     // قلبُ نوعِ كشفٍ قائمٍ يغيّر أين يُفوتَر وأين يُحصَّل. فيُملأ الفارغُ وحدَه،
@@ -160,6 +176,66 @@ async function applyToCustomer(party, { onlyEmpty = true } = {}) {
   }
   return { changed, skippedManual, remaining, reports: rows.length };
 }
+
+/**
+ * POST /api/workflows/payment-types/:id/unify — كشوفُ العميل تُوحَّد على صفته.
+ *
+ * ── ولماذا فعلٌ مستقلٌّ عن ملء الفراغ ───────────────────────────────────────
+ * ملءُ الفراغ استكمالٌ لا تغيير: لا دليلَ على الكشف فيُقرأ من صفة عميله، وتغلبه
+ * طريقةُ الدفع النقديّة إن قالتها المنصّة.
+ *
+ * أمّا الكشفُ الذي **له نوعٌ مكتوب** فذاك دليلٌ قائم: جاء من عمود «ض / غ ض» في
+ * شيت المتابعة، وهو قولُ التشغيل عن هذه الحمولة بعينها. فنقضُه قرارٌ يُتّخذ
+ * صراحةً على عميلٍ بعينه، لا أثرٌ جانبيّ.
+ *
+ * وقياسُه على **صفة العميل وحدَها** لا على قاعدة الاشتقاق: قاعدةُ «طريقةُ الدفع
+ * نقديّة» لو طُبِّقت هنا لقلبت ثمانيةَ آلافٍ وستَّمئةٍ وخمسةً وثمانين كشفًا
+ * لعملاءَ ضريبيّين كبار — وفيها ستُّمئةٍ وثمانٍ وثمانون تحمل أرقامَ فواتير
+ * صدرت بالفعل. و`payment_method` في المنصّة قيمتان لا غير: `cash` و`late` — أي
+ * أنّها **شروطُ السداد** لا نوعُ الفاتورة.
+ *
+ * وما اختاره موظّفٌ بيده لا يُمسّ هنا كذلك.
+ */
+exports.unifyCustomer = async (req, res) => {
+  try {
+    const party = await CollectionsParty.findById(req.params.id).select('name nameKey paymentType').lean();
+    if (!party) return res.status(404).json({ message: 'العميل غير موجود' });
+    const type = String(party.paymentType || '');
+    if (!['cash', 'tax'].includes(type)) {
+      return res.status(400).json({ message: 'لا صفةَ لهذا العميل — اختر «كاش» أو «ضريبي» أوّلًا' });
+    }
+
+    const key = party.nameKey || fold(party.name || '');
+    const names = await OperationsWorkflow.distinct('username', { username: { $nin: [null, ''] } });
+    const mine = names.filter((n) => fold(n) === key);
+    if (!mine.length) return res.json({ changed: 0, skippedManual: 0 });
+
+    const filter = {
+      username: { $in: mine },
+      paymentType: { $nin: ['', null, type] },
+      paymentTypeSource: { $ne: 'manual' },
+    };
+    const preview = req.body?.preview === true;
+    const willChange = await OperationsWorkflow.countDocuments(filter);
+    if (preview) return res.json({ preview: true, willChange, type });
+
+    const r = await OperationsWorkflow.updateMany(filter, {
+      $set: { paymentType: type, paymentTypeSource: 'auto', lastModifiedBy: req.user._id },
+    });
+    const changed = r.modifiedCount || 0;
+
+    logAudit({
+      user: req.user, action: 'unify_customer_payment_type', entity: 'CollectionsParty', entityId: party._id,
+      entityKey: party.name, changes: { after: { paymentType: type, changed } }, ipAddress: req.ip,
+    }).catch(() => {});
+    cache.clear('wf:'); cache.clear('colledger:');
+    try { require('../websocket/socketManager').emitToAll('workflow:updated', { bulk: true, paymentType: true }); } catch (_) {}
+
+    res.json({ changed, type, message: `وُحِّد ${changed} كشفًا على «${type === 'cash' ? 'كاش' : 'ضريبي'}»` });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر توحيد كشوف العميل', error: e.message });
+  }
+};
 
 /**
  * POST /api/workflows/payment-types/apply — تمرير القاعدة على الجميع.
@@ -180,7 +256,7 @@ exports.applyAll = async (req, res) => {
     }
 
     const rows = await OperationsWorkflow.find({})
-      .select('username paymentType paymentTypeSource paymentMethod').lean();
+      .select('username paymentType paymentTypeSource paymentMethod invoiceNumber tax netInvoice').lean();
 
     const ops = []; let skippedManual = 0; let unknown = 0;
     const moves = {};
@@ -189,7 +265,7 @@ exports.applyAll = async (req, res) => {
       const t = typeByKey.get(fold(w.username || ''));
       if (t === undefined) { unknown += 1; continue; }
       if (onlyEmpty && w.paymentType) continue;
-      const next = derivePaymentType(w.paymentMethod, t);
+      const next = derivePaymentTypeFor(w, t);
       const cur = w.paymentType || '';
       if (next === cur) continue;
       moves[`${cur || 'فارغ'} → ${next || 'فارغ'}`] = (moves[`${cur || 'فارغ'} → ${next || 'فارغ'}`] || 0) + 1;

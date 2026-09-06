@@ -4,7 +4,7 @@ const { startOfDay, endOfDay, DAY_MS: COMPANY_DAY_MS } = require('../utils/compa
 const { flexSpaceRegex } = require('../utils/plateKey');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll, emitPerRole } = require('../websocket/socketManager');
-const { derivePaymentType } = require('../utils/paymentType');
+const { derivePaymentTypeFor } = require('../utils/paymentType');
 const XLSX = require('xlsx');
 const cache = require('../utils/ttlCache');
 
@@ -210,7 +210,6 @@ function deriveInvoiceTotals(patch, current) {
 async function fillPaymentTypeFromCustomer(patch, current = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, 'paymentType')) return null;
   if (String(current.paymentTypeSource || '') === 'manual') return null;
-  if (String(current.paymentType || '').trim()) return null;
 
   const name = patch.username !== undefined ? patch.username : current.username;
   if (!name) return null;
@@ -220,9 +219,9 @@ async function fillPaymentTypeFromCustomer(patch, current = {}) {
     if (!key) return null;
     const party = await CollectionsParty.findOne({ kind: 'customer', nameKey: key })
       .select('paymentType').lean();
-    const method = patch.paymentMethod !== undefined ? patch.paymentMethod : current.paymentMethod;
-    const next = derivePaymentType(method, party?.paymentType);
-    if (!next) return null;
+    const merged = { ...current, ...patch };
+    const next = derivePaymentTypeFor(merged, party?.paymentType);
+    if (!next || next === String(current.paymentType || '')) return null;
     patch.paymentType = next;
     patch.paymentTypeSource = 'auto';
     // ── وعلامةٌ تقول إنّ هذا اشتقاقٌ لا اختيارُ يد ──────────────────────────

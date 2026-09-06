@@ -26,6 +26,8 @@ interface Row {
   officer: string; department: string;
   reports: number; cashReports: number; taxReports: number;
   manualReports: number; methodCashReports: number; value: number;
+  /** كشوفٌ نوعُها غيرُ صفة عميلها — تُعرَض لتُحلّ، ولا تُقلَب وحدَها. */
+  conflicts: number;
 }
 
 const WRITE_ROLES = ['super_admin', 'admin', 'operations_manager', 'moderator', 'finance_manager', 'collections_manager'];
@@ -39,18 +41,19 @@ export default function PaymentTypesPage() {
   const canWrite = WRITE_ROLES.includes(String((user as any)?.role || ''));
 
   const [rows, setRows] = useState<Row[]>([]);
-  const [totals, setTotals] = useState({ customers: 0, cash: 0, tax: 0, none: 0, reports: 0 });
+  const [totals, setTotals] = useState({ customers: 0, cash: 0, tax: 0, none: 0, reports: 0, conflictCustomers: 0, conflictReports: 0 });
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
-  const [filter, setFilter] = useState<'' | 'cash' | 'tax' | 'none'>('');
+  const [filter, setFilter] = useState<'' | 'cash' | 'tax' | 'none' | 'conflict'>('');
   const [saving, setSaving] = useState<string | null>(null);
+  const [unifying, setUnifying] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const d = await api.get<{ rows: Row[]; totals: typeof totals }>('/api/workflows/payment-types');
       setRows(d.rows || []);
-      setTotals(d.totals || { customers: 0, cash: 0, tax: 0, none: 0, reports: 0 });
+      setTotals(d.totals || { customers: 0, cash: 0, tax: 0, none: 0, reports: 0, conflictCustomers: 0, conflictReports: 0 });
     } catch (e: any) { notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error'); }
     setLoading(false);
   }, [notify, t]);
@@ -64,7 +67,8 @@ export default function PaymentTypesPage() {
   const shown = useMemo(() => {
     const needle = fold(q);
     return rows.filter((r) => {
-      if (filter === 'none' ? !!r.paymentType : filter && r.paymentType !== filter) return false;
+      if (filter === 'conflict') { if (!r.conflicts) return false; }
+      else if (filter === 'none' ? !!r.paymentType : filter && r.paymentType !== filter) return false;
       if (!needle) return true;
       return fold(r.name).includes(needle) || fold(r.code).includes(needle);
     });
@@ -111,6 +115,28 @@ export default function PaymentTypesPage() {
     setSaving(null);
   };
 
+  /**
+   * توحيدُ كشوف عميلٍ على صفته.
+   *
+   * نوعُ الكشف المكتوب جاء من عمود «ض / غ ض» في شيت المتابعة — وهو قولُ التشغيل
+   * عن تلك الحمولة. فنقضُه يُعرَض عددُه أوّلًا ثمّ يُطلَب.
+   */
+  const unify = async (row: Row) => {
+    if (!row.conflicts) return;
+    const to = row.paymentType === 'cash' ? t('كاش', 'cash') : t('ضريبي', 'tax');
+    if (!(await confirm(t(
+      `توحيد ${row.conflicts} كشفًا لـ«${row.name}» على «${to}»؟\n\nهذه كشوفٌ نوعُها مكتوبٌ من شيت المتابعة ويخالف صفة العميل. التوحيد يغيّر أين تُفوتَر وأين تُحصَّل، ولا يمسّ ما اختير باليد ولا ما صدرت له فاتورة.`,
+      `Unify ${row.conflicts} reports of “${row.name}” to ${to}?\n\nTheir type came from the follow-up sheet and differs from the customer. This changes where they are invoiced and collected. Hand-picked types and already-invoiced reports are untouched.`,
+    )))) return;
+    setUnifying(row._id);
+    try {
+      const r = await api.post<{ changed: number; message?: string }>(`/api/workflows/payment-types/${row._id}/unify`, {});
+      notify(r?.message || t(`وُحِّد ${r.changed} كشفًا`, `Unified ${r.changed} reports`), 'success');
+      load();
+    } catch (e: any) { notify(e?.message || t('تعذّر التوحيد', 'Could not unify'), 'error'); }
+    setUnifying(null);
+  };
+
   /** تمريرُ القاعدة على كلّ الكشوف بلا نوع — يُعرَض أثرُها قبل تنفيذها. */
   const applyAll = async () => {
     setApplying(true);
@@ -137,19 +163,17 @@ export default function PaymentTypesPage() {
     { header: t('العميل', 'Customer'), key: 'name', width: 36 },
     { header: t('نوع الدفع', 'Payment type'), key: 'paymentType', width: 14,
       transform: (v: any) => (v === 'cash' ? t('كاش', 'Cash') : v === 'tax' ? t('ضريبي', 'Tax') : t('بلا نوع', 'Not set')) },
-    { header: t('مسؤول التحصيل', 'Officer'), key: 'officer', width: 18 },
     { header: t('الإدارة', 'Department'), key: 'department', width: 16 },
     { header: t('عدد الكشوف', 'Reports'), key: 'reports', width: 12 },
     { header: t('منها كاش', 'Cash reports'), key: 'cashReports', width: 12 },
     { header: t('منها ضريبي', 'Tax reports'), key: 'taxReports', width: 12 },
-    { header: t('اختيرت باليد', 'Chosen by hand'), key: 'manualReports', width: 14 },
-    { header: t('طريقة دفعها كاش (من المنصّة)', 'Platform says cash'), key: 'methodCashReports', width: 22 },
+    { header: t('مخالف لصفته', 'Conflicting'), key: 'conflicts', width: 14 },
     { header: t('قيمة البيع', 'Selling value'), key: 'value', width: 16 },
   ];
 
   if (loading) return <Spinner />;
 
-  const Chip = ({ k, label, n, tone }: { k: '' | 'cash' | 'tax' | 'none'; label: string; n: number; tone: string }) => (
+  const Chip = ({ k, label, n, tone }: { k: '' | 'cash' | 'tax' | 'none' | 'conflict'; label: string; n: number; tone: string }) => (
     <button type="button" onClick={() => setFilter(filter === k ? '' : k)}
       className={`px-3 py-1.5 rounded-lg text-[12.5px] font-semibold border transition-colors ${
         filter === k ? 'bg-slate-900 text-white border-slate-900' : `bg-white ${tone} border-slate-200 hover:border-slate-400`}`}>
@@ -189,6 +213,16 @@ export default function PaymentTypesPage() {
         <Chip k="cash" label={t('كاش', 'Cash')} n={totals.cash} tone="text-emerald-700" />
         <Chip k="tax" label={t('ضريبي', 'Tax')} n={totals.tax} tone="text-sky-700" />
         <Chip k="none" label={t('بلا نوع', 'Not set')} n={totals.none} tone="text-amber-700" />
+        {/* ── والمخالفُ يُعرَض ليُحلّ ────────────────────────────────────────
+            كشوفٌ نوعُها غيرُ صفة عميلها. لا تُقلَب وحدَها: نوعُها المكتوب جاء من
+            عمود «ض / غ ض» في شيت المتابعة، وهو قولُ التشغيل عن تلك الحمولة
+            بعينها — نقضُه قرارٌ يُتّخذ لعميلٍ بعينه بعد أن يُرى عددُه. */}
+        {!!totals.conflictCustomers && (
+          <Chip k="conflict"
+            label={t(`مخالف لصفته · ${totals.conflictReports.toLocaleString()} كشفًا`,
+                     `Conflicting · ${totals.conflictReports.toLocaleString()} reports`)}
+            n={totals.conflictCustomers} tone="text-red-700" />
+        )}
         <span className="text-xs text-slate-400 ms-auto tabular-nums">
           {t(`${shown.length} من ${totals.customers} عميلًا · ${totals.reports.toLocaleString()} كشفًا`,
              `${shown.length} of ${totals.customers} customers`)}
@@ -205,8 +239,7 @@ export default function PaymentTypesPage() {
                 <th className="px-3 py-3 text-start font-bold whitespace-nowrap">{t('نوع الدفع', 'Payment type')}</th>
                 <th className="px-3 py-3 text-start font-bold whitespace-nowrap">{t('كشوفه', 'Reports')}</th>
                 <th className="px-3 py-3 text-start font-bold whitespace-nowrap">{t('منها كاش / ضريبي', 'cash / tax')}</th>
-                <th className="px-3 py-3 text-start font-bold whitespace-nowrap">{t('اختيرت باليد', 'By hand')}</th>
-                <th className="px-3 py-3 text-start font-bold whitespace-nowrap">{t('مسؤول التحصيل', 'Officer')}</th>
+                <th className="px-3 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -241,22 +274,28 @@ export default function PaymentTypesPage() {
                     <span className="text-emerald-700">{r.cashReports}</span>
                     <span className="text-slate-300 mx-1">/</span>
                     <span className="text-sky-700">{r.taxReports}</span>
-                    {r.methodCashReports > 0 && (
-                      <span className="ms-2 text-[11px] text-slate-400"
-                        title={t('كشوفٌ قالت المنصّةُ إنّ طريقة دفعها كاش — وهي الاستثناء الذي يغلب صفةَ العميل',
-                                 'Reports the platform marks as paid cash — the exception that overrides the customer type')}>
-                        {t(`المنصّة: ${r.methodCashReports} كاش`, `platform: ${r.methodCashReports} cash`)}
+                    {/* ── وما يخالف صفتَه يُقال هنا ────────────────────────
+                        عددُ كشوفه التي نوعُها غيرُ صفته — تُحلّ من زرّ «توحيد». */}
+                    {r.conflicts > 0 && (
+                      <span className="ms-2 text-[11px] font-semibold text-red-600"
+                        title={t('كشوفٌ نوعُها يخالف صفةَ هذا العميل', "Reports whose type differs from this customer's")}>
+                        {t(`مخالف: ${r.conflicts}`, `differs: ${r.conflicts}`)}
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2 tabular-nums text-slate-500">
-                    {r.manualReports || <span className="text-slate-300">—</span>}
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {canWrite && r.conflicts > 0 && (
+                      <button type="button" onClick={() => unify(r)} disabled={unifying === r._id}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 text-red-700 border border-red-200 text-[11.5px] font-semibold hover:bg-red-100 disabled:opacity-50">
+                        {unifying === r._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                        {t('توحيد', 'Unify')}
+                      </button>
+                    )}
                   </td>
-                  <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{r.officer || '—'}</td>
                 </tr>
               ))}
               {!shown.length && (
-                <tr><td colSpan={7} className="px-3 py-12 text-center text-slate-400">
+                <tr><td colSpan={5} className="px-3 py-12 text-center text-slate-400">
                   {t('لا عملاءَ مطابقين', 'No matching customers')}
                 </td></tr>
               )}

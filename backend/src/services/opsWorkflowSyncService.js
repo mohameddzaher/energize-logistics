@@ -12,7 +12,7 @@ const upl = require('./uplClient');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
 const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
-const { derivePaymentType } = require('../utils/paymentType');
+
 
 const SOURCE = 'ops_upl';
 let running = false;
@@ -148,7 +148,10 @@ async function upsertShipments(ships) {
 
   const ops = live.map((s) => {
     const { set, setOnInsert } = mapShipment(s);
-    const derived = derivePaymentType(s.payment_method, typeByCustomer[fold(s.user?.name || '')]);
+    // صفةُ العميل وحدَها — «طريقةُ الدفع» شروطُ سدادٍ لا نوعُ فاتورة، راجع
+    // utils/paymentType. والفاتورةُ الصادرة تغلبها، وذلك يُقاس على الصفّ نفسِه
+    // في خطّ التجميع أدناه.
+    const derived = typeByCustomer[fold(s.user?.name || '')] || '';
     return {
       updateOne: {
         filter: { externalSource: SOURCE, externalId: String(s.id) },
@@ -173,18 +176,38 @@ async function upsertShipments(ships) {
               // والمشتقُّ سابقًا يبقى كما هو: قلبُ نوعِ كشفٍ قديمٍ يغيّر أين
               // يُفوتَر وأين يُحصَّل، وذلك قرارٌ يُتّخذ من صفحة «أنواع الدفع»
               // بعددٍ معروضٍ قبله، لا أثرٌ جانبيٌّ لمزامنةٍ تجري كلَّ دقيقة.
+              // ── صفةُ العميل تحكم، وتعلوها فاتورةٌ صادرةٌ واختيارُ يد ────────
+              // كشفٌ يحمل رقمَ فاتورةٍ أو ضريبةً محسوبة فقد فُوتِر ضريبيًّا فعلًا،
+              // والورقةُ التي خرجت للعميل أقوى من صفةٍ عامّة.
               paymentType: derived ? {
                 $cond: [
-                  { $in: [{ $ifNull: ['$paymentType', ''] }, ['', null]] },
-                  derived,
+                  { $eq: [{ $ifNull: ['$paymentTypeSource', ''] }, 'manual'] },
                   { $ifNull: ['$paymentType', ''] },
+                  {
+                    $cond: [
+                      {
+                        $or: [
+                          { $gt: [{ $ifNull: ['$tax', 0] }, 0] },
+                          { $gt: [{ $ifNull: ['$netInvoice', 0] }, 0] },
+                          {
+                            $and: [
+                              { $ne: [{ $ifNull: ['$invoiceNumber', ''] }, ''] },
+                              { $not: [{ $regexMatch: { input: { $toString: { $ifNull: ['$invoiceNumber', ''] } }, regex: '^\\s*(no\\s*inv|بدون|لا\\s*يوجد|-|—|ىى)\\s*$', options: 'i' } }] },
+                            ],
+                          },
+                        ],
+                      },
+                      'tax',
+                      derived,
+                    ],
+                  },
                 ],
               } : { $ifNull: ['$paymentType', ''] },
               paymentTypeSource: derived ? {
                 $cond: [
-                  { $in: [{ $ifNull: ['$paymentType', ''] }, ['', null]] },
+                  { $eq: [{ $ifNull: ['$paymentTypeSource', ''] }, 'manual'] },
+                  'manual',
                   'auto',
-                  { $ifNull: ['$paymentTypeSource', ''] },
                 ],
               } : { $ifNull: ['$paymentTypeSource', ''] },
             },

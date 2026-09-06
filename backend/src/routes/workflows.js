@@ -46,6 +46,8 @@ const PT_WRITE = ['super_admin', 'admin', 'operations_manager', 'moderator', 'fi
 router.get('/payment-types', authorize(...allWorkflowRoles), paymentTypes.list);
 router.put('/payment-types/:id', authorize(...PT_WRITE), paymentTypes.update);
 router.post('/payment-types/apply', authorize(...PT_WRITE), paymentTypes.applyAll);
+// توحيدُ كشوف عميلٍ على صفته — نقضُ دليلٍ قائم، فيُطلَب صراحةً لعميلٍ بعينه.
+router.post('/payment-types/:id/unify', authorize(...PT_WRITE), paymentTypes.unifyCustomer);
 router.get('/', authorize(...allWorkflowRoles), workflowController.getWorkflows);
 
 // Bulk delete

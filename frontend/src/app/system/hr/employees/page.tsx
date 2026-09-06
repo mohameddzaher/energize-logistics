@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -37,16 +38,24 @@ export default function HREmployeesPage() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
 
+  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ──────────────────────────────────────
+  // نداءُ القائمة الكاملة يبدأ عند فتح الصفحة وهو الأبطأ (أربعُمئةِ موظّف)،
+  // ونداءُ البحث يبدأ بعده ويعود قبله. فتظهر نتيجةُ البحث ثمّ يهبط الردُّ
+  // الأوّلُ فوقها فتعود القائمةُ كاملةً — وهو ما يُرى: «بيظهر الناتج وبعدها
+  // على طول بيجيب كل الداتا تاني». راجع hooks/useLatestRequest.
+  const guard = useLatestRequest();
   const load = useCallback(async () => {
+    const mine = guard.begin();
     try {
       const qs = new URLSearchParams();
       if (debouncedSearch.trim()) qs.set('q', debouncedSearch.trim());
       if (statusFilter) qs.set('status', statusFilter);
       const d = await api.get<{ employees: Employee[] }>(`/api/hr/employees?${qs}`);
+      if (!guard.isCurrent(mine)) return;
       setEmployees(d.employees || []);
     } catch {}
-    setLoading(false);
-  }, [debouncedSearch, statusFilter]);
+    if (guard.isCurrent(mine)) setLoading(false);
+  }, [debouncedSearch, statusFilter, guard]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);

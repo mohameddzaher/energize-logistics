@@ -17,6 +17,7 @@ import { canEditSection } from '@/lib/sections';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import { Car, Plus, Edit, Trash2, BarChart3, CalendarClock, X, Save, ArrowRight, Columns3, Check } from 'lucide-react';
 
@@ -88,12 +89,20 @@ function VehicleRegistryListInner() {
     return p.toString();
   }, [q, JSON.stringify(filters)]);
 
+  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ──────────────────────────────────────
+  // ردُّ «كلّ المركبات» أبطأُ من ردّ البحث ويبدأ قبله، فيهبط فوقه فتعود القائمةُ
+  // كاملةً بعد أن ظهرت النتيجة. راجع hooks/useLatestRequest.
+  const guard = useLatestRequest();
   const load = useCallback(async () => {
+    const mine = guard.begin();
     try {
       const d = await api.get<{ vehicles: VReg[]; total: number }>(`/api/vehicle-registry?${qs}`);
+      if (!guard.isCurrent(mine)) return;
       setRows(d.vehicles || []); setTotal(d.total || 0);
-    } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setLoading(false); }
-  }, [qs, notify]);
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally {
+      if (guard.isCurrent(mine)) setLoading(false);
+    }
+  }, [qs, notify, guard]);
 
   useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t); }, [load]);
 

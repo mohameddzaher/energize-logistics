@@ -615,12 +615,22 @@ function buildWorkflowFilter(query, skipField, allowMoney = true) {
     // فإن كان المكتوبُ أرقامًا كلَّه جُرّب التطابقُ التامّ أوّلًا؛ ويبقى معه
     // البحثُ الجزئيّ في بقيّة الحقول كي لا يضيع مَن يبحث بجزءٍ من لوحة.
     const digitsOnly = /^\d+$/.test(search);
-    const rx = { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+    // صورُ الحروف العربيّة والأرقامُ العربيّة والمسافاتُ كلُّها تُطوى — راجع
+    // utils/arabicSearch. «ابراهيم» تجد «إبراهيم»، و«٢٥٨٥» تجد «2585».
+    const rx = require('../utils/arabicSearch').arabicSearchRegex(search);
+    // ── والعميلُ أوّلُ ما يُبحَث به ────────────────────────────────────────────
+    // كان البحثُ على أربعة حقولٍ لا اسمَ العميل فيها — وهو أكثرُ ما يُكتب في
+    // هذه الشاشة: «هاتلي كشوف فلان». فيُكتب الاسمُ فلا يظهر شيء، فيُظنّ أنّ
+    // الكشوف غير موجودة.
+    const SEARCH_FIELDS = [
+      'username', 'carOwner', 'carNumber', 'branch', 'payingBranch',
+      'driverName', 'driverPhone', 'userPhone', 'plateNumber',
+      'fromLocation', 'toLocation', 'finalReportDestination',
+      'truckType', 'truckSize', 'documentNumber', 'agentName', 'notes',
+    ];
     filter.$or = [
       digitsOnly ? { reportNumber: search } : { reportNumber: rx },
-      { carOwner: rx },
-      { carNumber: rx },
-      { branch: rx },
+      ...SEARCH_FIELDS.map((f) => ({ [f]: rx })),
       // والبحثُ برقم الفاتورة لمن يراها: مطابقتُه لمن لا يراها تؤكّد وجودَ
       // فاتورةٍ على صفٍّ بعينه — وهي القيمةُ المحجوبة نفسُها بصورةٍ أخرى.
       ...(allowMoney ? [digitsOnly ? { invoiceNumber: search } : { invoiceNumber: rx }] : []),

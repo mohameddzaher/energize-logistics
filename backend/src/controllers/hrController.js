@@ -133,11 +133,16 @@ exports.listEmployees = async (req, res) => {
     const filter = master._buildFilter({ scope: 'all', ...req.query });
     if (status) filter.employmentStatus = status;
     if (q && q.trim()) {
-      const rx = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      // صورُ الحروف العربيّة تُطوى: «ابراهيم» تجد «إبراهيم» و«حمزة» تجد «حمزه».
+      // وكان البحثُ حرفيًّا، فيقول الموظّفُ «الاسم غير موجود» وهو موجود.
+      const rx = require('../utils/arabicSearch').arabicSearchRegex(q);
       filter.$or = [
         { firstName: rx }, { lastName: rx }, { arabicName: rx },
         { iqamaNumber: rx }, { nationalId: rx }, { employeeNumber: rx },
-        { phone: rx }, { email: rx }, { jobTitle: rx },
+        { passportNumber: rx }, { phone: rx }, { email: rx },
+        { jobTitle: rx }, { iqamaProfession: rx }, { department: rx },
+        { nationality: rx }, { workLocation: rx }, { branchName: rx },
+        { licenseNumber: rx }, { driverCardNumber: rx }, { workCard: rx },
       ];
     }
     // List/table view needs ~20 of the 74 employee fields — projecting cuts the

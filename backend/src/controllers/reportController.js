@@ -50,8 +50,8 @@ const canOpenReports = (role) => !!role && !EXTERNAL_ROLES.includes(role);
  * وإدارةَ الأسطول ولوكيشن سوليوشن معًا، وكلُّ واحدٍ منهم يسأل عنها بحقّ.
  */
 const SUBJECT_SECTIONS = {
-  vehicle: ['Vehicles', 'Fleet Management', 'Location Solutions', 'Workshop'],
-  tire: ['Location Solutions', 'Workshop'],
+  vehicle: ['Vehicles', 'Fleet Management', 'Location Solutions'],
+  tire: ['Location Solutions'],
   driver: ['Fleet Management', 'Location Solutions'],
   customer: ['CRM', 'Collections', 'Sales'],
   vendor: ['CRM', 'Contracts', 'Procurement'],

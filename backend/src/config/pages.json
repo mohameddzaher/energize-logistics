@@ -32,14 +32,8 @@
       "en": "Payment Types"
     },
     {
-      "key": "/system/operations/dispatch-sheets",
-      "section": "Operations",
-      "ar": "كشوف التخريج",
-      "en": "Dispatch Sheets"
-    },
-    {
       "key": "/system/vendors",
-      "section": "Operations",
+      "section": "Procurement",
       "ar": "الموردين",
       "en": "Vendors"
     },
@@ -54,36 +48,6 @@
       "section": "Operations",
       "ar": "لوحة المحفظة",
       "en": "Wallet Dashboard"
-    },
-    {
-      "key": "/system/vehicle-analytics",
-      "section": "Operations",
-      "ar": "تحليلات المركبات",
-      "en": "Vehicle Analytics"
-    },
-    {
-      "key": "/system/vehicle-analytics/fuel",
-      "section": "Operations",
-      "ar": "تحليل الوقود",
-      "en": "Fuel Analysis"
-    },
-    {
-      "key": "/system/vehicle-analytics/tracking",
-      "section": "Operations",
-      "ar": "تتبع GPS",
-      "en": "GPS Tracking"
-    },
-    {
-      "key": "/system/vehicle-analytics/trips",
-      "section": "Operations",
-      "ar": "الرحلات",
-      "en": "Trips"
-    },
-    {
-      "key": "/system/vehicle-analytics/upload",
-      "section": "Operations",
-      "ar": "رفع البيانات",
-      "en": "Data Upload"
     },
     {
       "key": "/system/operations/my-tasks",
@@ -636,36 +600,6 @@
       "section": "Location Solutions",
       "ar": "التقارير",
       "en": "Reports"
-    },
-    {
-      "key": "/system/workshop/store",
-      "section": "Workshop",
-      "ar": "المستودع",
-      "en": "Store"
-    },
-    {
-      "key": "/system/workshop",
-      "section": "Workshop",
-      "ar": "الورشة",
-      "en": "Workshop"
-    },
-    {
-      "key": "/system/workshop/purchases",
-      "section": "Workshop",
-      "ar": "المشتريات",
-      "en": "Purchases"
-    },
-    {
-      "key": "/system/workshop/dashboard",
-      "section": "Workshop",
-      "ar": "لوحة الورشة",
-      "en": "Workshop Dashboard"
-    },
-    {
-      "key": "/system/workshop/tasks",
-      "section": "Workshop",
-      "ar": "أوامر شغل المركبات",
-      "en": "Vehicle Work Orders"
     },
     {
       "key": "/system/performance",
@@ -1472,24 +1406,6 @@
       "en": "KPIs"
     },
     {
-      "key": "/system/workshop/my-tasks",
-      "section": "Workshop",
-      "ar": "مهامي الإدارية",
-      "en": "My Admin Tasks"
-    },
-    {
-      "key": "/system/workshop/complaints",
-      "section": "Workshop",
-      "ar": "الشكاوى",
-      "en": "Complaints"
-    },
-    {
-      "key": "/system/workshop/kpis",
-      "section": "Workshop",
-      "ar": "تقييم الأداء",
-      "en": "KPIs"
-    },
-    {
       "key": "/system/customs/my-tasks",
       "section": "Customs",
       "ar": "مهامي",
@@ -1530,12 +1446,6 @@
       "section": "Admin",
       "ar": "الفروع",
       "en": "Branches"
-    },
-    {
-      "key": "/system/expense-categories",
-      "section": "Admin",
-      "ar": "فئات المصروفات",
-      "en": "Expense Categories"
     },
     {
       "key": "/system/settings/reference-data",

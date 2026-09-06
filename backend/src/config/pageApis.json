@@ -37,8 +37,7 @@
         "/api/analytics/super-overview",
         "/api/complaints",
         "/api/ops/dashboard",
-        "/api/workflows",
-        "/api/workshop/dashboard"
+        "/api/workflows"
       ],
       "wildcard": false
     },
@@ -68,10 +67,6 @@
       ],
       "wildcard": false
     },
-    "/system/operations/dispatch-sheets": {
-      "apis": [],
-      "wildcard": false
-    },
     "/system/vendors": {
       "apis": [
         "/api/vendors"
@@ -95,26 +90,6 @@
       "apis": [
         "/api/wallet/dashboard"
       ],
-      "wildcard": false
-    },
-    "/system/vehicle-analytics": {
-      "apis": [],
-      "wildcard": false
-    },
-    "/system/vehicle-analytics/fuel": {
-      "apis": [],
-      "wildcard": false
-    },
-    "/system/vehicle-analytics/tracking": {
-      "apis": [],
-      "wildcard": false
-    },
-    "/system/vehicle-analytics/trips": {
-      "apis": [],
-      "wildcard": false
-    },
-    "/system/vehicle-analytics/upload": {
-      "apis": [],
       "wildcard": false
     },
     "/system/operations/my-tasks": {
@@ -153,7 +128,8 @@
         "/api/collections-dept/invoices/deliver",
         "/api/collections-dept/invoices/detail",
         "/api/collections-dept/invoices/filters",
-        "/api/lookups/types"
+        "/api/lookups/types",
+        "/api/reports"
       ],
       "wildcard": false
     },
@@ -164,7 +140,8 @@
         "/api/collections-dept/invoices/deliver",
         "/api/collections-dept/invoices/detail",
         "/api/collections-dept/invoices/filters",
-        "/api/lookups/types"
+        "/api/lookups/types",
+        "/api/reports"
       ],
       "wildcard": false
     },
@@ -792,45 +769,6 @@
       ],
       "wildcard": false
     },
-    "/system/workshop/store": {
-      "apis": [
-        "/api/workshop/inventory",
-        "/api/workshop/inventory/issue-bulk",
-        "/api/workshop/inventory/issues",
-        "/api/workshop/inventory/search",
-        "/api/workshop/store"
-      ],
-      "wildcard": false
-    },
-    "/system/workshop": {
-      "apis": [
-        "/api/workshop/maintenance",
-        "/api/workshop/purchases",
-        "/api/workshop/technicians"
-      ],
-      "wildcard": false
-    },
-    "/system/workshop/purchases": {
-      "apis": [
-        "/api/workshop/purchases"
-      ],
-      "wildcard": false
-    },
-    "/system/workshop/dashboard": {
-      "apis": [
-        "/api/workshop/dashboard"
-      ],
-      "wildcard": false
-    },
-    "/system/workshop/tasks": {
-      "apis": [
-        "/api/ls2/service-types",
-        "/api/workshop/tasks",
-        "/api/workshop/technicians",
-        "/api/workshop/users"
-      ],
-      "wildcard": false
-    },
     "/system/performance": {
       "apis": [
         "/api/performance/team"
@@ -1363,6 +1301,7 @@
     "/system/hr/employees": {
       "apis": [
         "/api/hr/employees",
+        "/api/hr/master/filters",
         "/api/hr/options"
       ],
       "wildcard": false
@@ -1757,26 +1696,6 @@
       ],
       "wildcard": false
     },
-    "/system/workshop/my-tasks": {
-      "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
-      ],
-      "wildcard": false
-    },
-    "/system/workshop/complaints": {
-      "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
-      ],
-      "wildcard": false
-    },
-    "/system/workshop/kpis": {
-      "apis": [
-        "/api/performance/team"
-      ],
-      "wildcard": false
-    },
     "/system/customs/my-tasks": {
       "apis": [
         "/api/section-work",
@@ -1820,12 +1739,6 @@
     "/system/branches": {
       "apis": [
         "/api/branches"
-      ],
-      "wildcard": false
-    },
-    "/system/expense-categories": {
-      "apis": [
-        "/api/expense-categories"
       ],
       "wildcard": false
     },

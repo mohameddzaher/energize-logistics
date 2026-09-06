@@ -673,16 +673,15 @@ export default function Ls2FleetAssetsPage() {
         const freeTrailers = trailers.filter((x) => !x.currentPlate);
         return (
           <div className="space-y-4">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <p className="text-xs text-slate-500">
-                {ar
-                  ? 'هذا هو مستودع الورشة نفسه — سجل واحد مشترك: أي حركة هنا أو هناك تظهر في المكانين لحظيًا.'
-                  : 'This IS the workshop store — one shared registry: every movement shows in both places live.'}
-              </p>
-              <Link href="/system/workshop/store" className="inline-flex items-center gap-1 text-xs font-medium text-[#f37121] hover:underline">
-                <ExternalLink className="w-3.5 h-3.5" />{ar ? 'قطع الغيار في مستودع الورشة' : 'Spare parts in the workshop store'}
-              </Link>
-            </div>
+            {/* ── والمستودعُ صار واحدًا بلا شريك ──────────────────────────
+                كان هنا سطرٌ يقول «هذا هو مستودع الورشة نفسه» ورابطٌ إليه.
+                وقد أُزيل قسمُ الورشة — عملُه كلُّه هنا — فلم يبق ما يُحال
+                إليه، ورابطٌ إلى صفحةٍ محذوفةٍ أسوأُ من لا رابط. */}
+            <p className="text-xs text-slate-500">
+              {ar
+                ? 'مستودع واحد لكل ما نملك: أي حركة تظهر هنا لحظيًا.'
+                : 'One store for everything we own — every movement shows here live.'}
+            </p>
             {groups.map((g) => (
               <div key={g.key} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                 <div className={`flex items-center justify-between px-4 py-2.5 border-b ${g.cls}`}>

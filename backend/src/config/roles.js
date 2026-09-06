@@ -95,10 +95,6 @@ const SECTION_ROLES = [
     // اجتماعات الإدارة بالغلط — فالمفتاح `_lead` واللقب المعروض زي ما هو.
     staff: [{ key: 'b2c_project_lead', ar: 'مدير مشروع - أفراد', en: 'B2C Project Lead' }] },
 
-  { section: 'Workshop',
-    manager: { key: 'workshop_manager', ar: 'مدير الورشة', en: 'Workshop Manager' },
-    staff: [{ key: 'workshop_employee', ar: 'فني ورشة', en: 'Workshop Technician' }] },
-
   { section: 'Remote',
     manager: { key: 'remote_manager', ar: 'مدير العمل عن بُعد', en: 'Remote Work Manager' },
     staff: [{ key: 'remote_employee', ar: 'موظف عن بُعد', en: 'Remote Employee' }] },

@@ -93,7 +93,6 @@ export default function ExecutiveOverviewPage() {
   const ops = ov.operations || {};
   const b2c = ov.b2c || {};
   const wallet = ov.wallet || {};
-  const workshop = ov.workshop || {};
   const roster = ov.roster || {};
   const tasks = ov.tasks || {};
   const service = ov.service || {};
@@ -244,24 +243,16 @@ export default function ExecutiveOverviewPage() {
         </Kpis>
       </Section>
 
-      {/* ── WORKSHOP + TASKS/SERVICE ── */}
+      {/* ── TASKS/SERVICE ──
+          كان هنا لوحُ «الورشة» بجانبه. وقد أُزيل القسمُ من النظام — عملُه
+          كلُّه في لوكيشن سوليوشن — فأُزيل لوحُه معه: بطاقةٌ تُضغَط فتفتح صفحةً
+          محذوفةً أسوأُ من غيابها. */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <Section icon={<Wrench className="w-4 h-4" />} color="slate" title={t('Workshop', 'الورشة')} href="/system/workshop/dashboard" go={go} viewLabel={t('Open', 'فتح')} compact>
-          <Kpis compact>
-            <Kpi label={t('Open Maintenance', 'صيانة مفتوحة')} value={n(workshop.openMaintenance)} accent="text-amber-600" onClick={() => go('/system/workshop')} />
-            <Kpi label={t('Open Tasks', 'مهام مفتوحة')} value={n(workshop.openTasks)} accent="text-slate-800" onClick={() => go('/system/workshop/tasks')} />
-            <Kpi label={t('Pending Purchases', 'مشتريات معلّقة')} value={n(workshop.pendingPurchases)} accent="text-slate-800" onClick={() => go('/system/workshop/purchases')} />
-            <Kpi label={t('Inventory Items', 'أصناف المخزون')} value={n(workshop.inventoryItems)} accent="text-slate-800" onClick={() => go('/system/workshop/inventory')} />
-            <Kpi label={t('Low Stock', 'مخزون منخفض')} value={n(workshop.lowStockItems)} accent="text-orange-600" onClick={() => go('/system/workshop/inventory')} />
-            <Kpi label={t('Out of Stock', 'نفد المخزون')} value={n(workshop.outOfStockItems)} accent="text-red-600" onClick={() => go('/system/workshop/inventory')} />
-          </Kpis>
-        </Section>
-
         <Section icon={<ListTodo className="w-4 h-4" />} color="red" title={t('Tasks & Service', 'المهام والخدمة')} href="/system/tasks" go={go} viewLabel={t('Open', 'فتح')} compact>
           <Kpis compact>
             <Kpi label={t('Open Tasks', 'مهام مفتوحة')} value={n(tasks.open)} accent="text-slate-800" onClick={() => go('/system/tasks')} />
             <Kpi label={t('Due Today', 'مستحقة اليوم')} value={n(tasks.dueToday)} accent="text-amber-600" onClick={() => go('/system/tasks')} />
-            <Kpi label={t('Open Complaints', 'شكاوى مفتوحة')} value={n(service.complaintsOpen)} accent="text-red-600" onClick={() => go('/system/workshop/complaints')} />
+            <Kpi label={t('Open Complaints', 'شكاوى مفتوحة')} value={n(service.complaintsOpen)} accent="text-red-600" onClick={() => go('/system/complaints')} />
             <Kpi label={t('Open Disputes', 'نزاعات مفتوحة')} value={n(service.disputesOpen)} accent="text-red-600" onClick={() => go('/system/disputes')} />
           </Kpis>
         </Section>

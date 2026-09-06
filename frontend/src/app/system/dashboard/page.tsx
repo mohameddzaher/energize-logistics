@@ -109,7 +109,6 @@ export default function DashboardPage() {
   const [forecast, setForecast] = useState<any>(null);
   const [performance, setPerformance] = useState<any>(null);
   const [creditAlerts, setCreditAlerts] = useState<any>(null);
-  const [workshopSummary, setWorkshopSummary] = useState<any>(null);
   const [workflowsTotal, setWorkflowsTotal] = useState<number>(0);
   const [complaintsData, setComplaintsData] = useState<any>(null);
   const [superOverview, setSuperOverview] = useState<any>(null);
@@ -239,7 +238,6 @@ export default function DashboardPage() {
         );
       }
       if (user?.role === 'super_admin') {
-        fetches.push(safe('workshop', api.get('/api/workshop/dashboard'), setWorkshopSummary));
         fetches.push(safe('workflows', api.get<any>('/api/workflows?limit=1'), (d) => setWorkflowsTotal(d.total || 0)));
         fetches.push(safe('complaints', api.get<any>('/api/complaints?limit=1'), setComplaintsData));
       }
@@ -604,34 +602,6 @@ export default function DashboardPage() {
                   </p>
                 </Link>
 
-                {/* Workshop tasks */}
-                <Link href="/system/workshop/tasks" className="group bg-white border border-slate-200 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02] shadow-sm">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <Wrench className="w-5 h-5 text-blue-600" />
-                    <ArrowUpRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-blue-600" />
-                  </div>
-                  <p className="text-slate-500 text-[11px] font-medium">{lang === 'ar' ? 'مهام الورشة' : 'Workshop Tasks'}</p>
-                  <p className="text-slate-900 text-xl font-bold">{fmt(superOverview.workshop?.openTasks)}</p>
-                  <p className="text-slate-500 text-[10px] mt-1">
-                    {fmt(superOverview.workshop?.pendingPurchases)} {lang === 'ar' ? 'مشتريات معلقة' : 'pending purchases'}
-                  </p>
-                </Link>
-
-                {/* Inventory */}
-                <Link href="/system/workshop/inventory" className="group bg-white border border-slate-200 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02] shadow-sm">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <ShoppingCart className="w-5 h-5 text-amber-700" />
-                    <ArrowUpRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-amber-700" />
-                  </div>
-                  <p className="text-slate-500 text-[11px] font-medium">{lang === 'ar' ? 'المخزون' : 'Inventory'}</p>
-                  <p className="text-slate-900 text-xl font-bold">{fmt(superOverview.workshop?.inventoryItems)}</p>
-                  <p className={`text-[10px] mt-1 ${(superOverview.workshop?.lowStockItems || 0) > 0 ? 'text-amber-700' : 'text-slate-500'}`}>
-                    {fmt(superOverview.workshop?.lowStockItems)} {lang === 'ar' ? 'مخزون منخفض' : 'low stock'}
-                    {(superOverview.workshop?.outOfStockItems || 0) > 0 && (
-                      <span className="text-red-600 ms-2">· {fmt(superOverview.workshop?.outOfStockItems)} {lang === 'ar' ? 'نفد' : 'out'}</span>
-                    )}
-                  </p>
-                </Link>
 
                 {/* Tasks */}
                 <Link href="/system/tasks" className="group bg-white border border-slate-200 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02] shadow-sm">
@@ -802,13 +772,6 @@ export default function DashboardPage() {
               </div>
               <p className="text-slate-900 text-xl font-bold">{(superOverview.roster?.vendors || 0).toLocaleString()}</p>
             </Link>
-            <Link href="/system/workshop" className="group bg-white border border-slate-200 hover:border-blue-400/60 rounded-xl p-3.5 transition-all hover:scale-[1.02] shadow-sm">
-              <div className="flex items-center gap-2 mb-1">
-                <Wrench className="w-4 h-4 text-blue-600" />
-                <p className="text-slate-700 text-[11px] font-semibold">{lang === 'ar' ? 'صيانة مفتوحة' : 'Open Maintenance'}</p>
-              </div>
-              <p className="text-slate-900 text-xl font-bold">{(superOverview.workshop?.openMaintenance || 0).toLocaleString()}</p>
-            </Link>
             <Link href="/system/disputes" className="group bg-white border border-slate-200 hover:border-orange-400/60 rounded-xl p-3.5 transition-all hover:scale-[1.02] shadow-sm">
               <div className="flex items-center gap-2 mb-1">
                 <AlertTriangle className="w-4 h-4 text-orange-600" />
@@ -875,29 +838,6 @@ export default function DashboardPage() {
           {/* ── Super Admin Summary Sections ── */}
           {user?.role === 'super_admin' && (
             <>
-              {/* Workshop Summary */}
-              {workshopSummary && (
-                <div>
-                  <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
-                    <Wrench className="w-5 h-5 text-[#f37121]" />
-                    {txx.workshopSummary}
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <Link href="/system/workshop" className="hover:scale-[1.02] transition-transform">
-                      <StatCard title={txx.openMaintenance} value={workshopSummary.openMaintenance ?? workshopSummary.statusBreakdown?.open ?? 0} icon={Wrench} color="#f59e0b" />
-                    </Link>
-                    <Link href="/system/workshop" className="hover:scale-[1.02] transition-transform">
-                      <StatCard title={txx.inProgress} value={workshopSummary.inProgress ?? workshopSummary.statusBreakdown?.in_progress ?? 0} icon={Loader2} color="#6366f1" />
-                    </Link>
-                    <Link href="/system/workshop" className="hover:scale-[1.02] transition-transform">
-                      <StatCard title={txx.completed} value={workshopSummary.completed ?? workshopSummary.statusBreakdown?.completed ?? 0} icon={CheckCircle} color="#10b981" />
-                    </Link>
-                    <Link href="/system/workshop/purchases" className="hover:scale-[1.02] transition-transform">
-                      <StatCard title={txx.pendingPurchases} value={workshopSummary.pendingPurchases ?? 0} icon={ShoppingCart} color="#ef4444" />
-                    </Link>
-                  </div>
-                </div>
-              )}
 
               {/* Operations Summary */}
               <div>

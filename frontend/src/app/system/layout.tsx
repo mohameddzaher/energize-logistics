@@ -47,7 +47,7 @@ const REPORT_ROLES = [
   'operations_manager', 'operations_staff', 'fleet_manager', 'fleet_supervisor',
   'hr_manager', 'hr_specialist', 'finance_manager', 'accountant',
   'crm_manager', 'crm_team_lead', 'sales_manager', 'contracts_manager',
-  'customs_manager', 'workshop_manager', 'procurement_manager',
+  'customs_manager', 'procurement_manager',
   'bd_manager', 'marketing_manager', 'administration_staff',
 ];
 import { DialogProvider } from '@/components/system/DialogProvider';
@@ -216,18 +216,12 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // صفةُ العميل تُقرأ لمن يفتح صفحةَ التشغيل ولا تُكتب إلّا لمن يديرها —
     // والحاجزُ في الخادم، وهذه القائمةُ مَن يصل إلى النقطة أصلًا.
     { href: '/system/operations/payment-types', label: lang === 'ar' ? 'أنواع الدفع' : 'Payment Types', icon: <Banknote className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'finance_manager', 'accountant', 'collections_manager', 'collections_staff'], section: 'Operations' },
-    { href: '/system/operations/dispatch-sheets', label: L.dispatchSheets, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'], section: 'Operations' },
-    { href: '/system/vendors', label: L.vendors, icon: <Store className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'operations_staff', 'procurement_manager', 'procurement_staff'], section: 'Operations' },
+    { href: '/system/vendors', label: L.vendors, icon: <Store className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'operations_staff', 'procurement_manager', 'procurement_staff'], section: 'Procurement' },
     // ── وقوائمُ العهدة من موضعٍ واحد ────────────────────────────────────────
     // كانت مكتوبةً هنا بيدٍ وفي شرط محدِّد الفرع داخل الصفحة، فأُضيف المحاسبُ
     // في الخادم ونُسي في الاثنين: نقاطُه مفتوحةٌ ولا يجد الرابطَ أصلًا.
     { href: '/system/wallet', label: L.wallet, icon: <Wallet className="w-5 h-5" />, roles: WALLET_ROLES, section: 'Operations' },
     { href: '/system/wallet-dashboard', label: L.walletDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: WALLET_DASHBOARD_ROLES, section: 'Operations' },
-    { href: '/system/vehicle-analytics', label: L.vehicleAnalytics, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Operations' },
-    { href: '/system/vehicle-analytics/fuel', label: L.fuelAnalysis, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Operations' },
-    { href: '/system/vehicle-analytics/tracking', label: L.gpsTracking, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Operations' },
-    { href: '/system/vehicle-analytics/trips', label: L.trips, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Operations' },
-    { href: '/system/vehicle-analytics/upload', label: L.dataUpload, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Operations' },
     { href: '/system/operations/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'], section: 'Operations' },
     { href: '/system/operations/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'], section: 'Operations' },
     { href: '/system/operations/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator']), section: 'Operations', restrict: true },
@@ -368,11 +362,6 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // shop floor that services that fleet, and its store holds the very tires and
     // trailers the ls2 asset registry tracks. Keeping the two sections apart made
     // people hunt across the sidebar for one truck's story.
-    { href: '/system/workshop/store', label: lang === 'ar' ? 'المستودع' : 'Store', icon: <Boxes className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'workshop_employee', 'procurement_staff'], section: 'Workshop' },
-    { href: '/system/workshop', label: L.workshop, icon: <Wrench className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'workshop_employee'], section: 'Workshop' },
-    { href: '/system/workshop/purchases', label: L.workshopPurchases, icon: <ShoppingCart className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'procurement_staff'], section: 'Workshop' },
-    { href: '/system/workshop/dashboard', label: L.workshopDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'workshop_employee', 'procurement_staff'], section: 'Workshop' },
-    { href: '/system/workshop/tasks', label: lang === 'ar' ? 'أوامر شغل المركبات' : 'Vehicle Work Orders', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'workshop_employee'], section: 'Workshop' },
     // ---- Performance (KPI evaluation) ----
     { href: '/system/performance', label: lang === 'ar' ? 'تقييم مديري الأقسام' : 'Evaluate Managers', icon: <Target className="w-5 h-5" />, roles: ['super_admin'], section: 'Performance' },
     { href: '/system/performance/overview', label: lang === 'ar' ? 'نظرة كل الأقسام' : 'All Departments', icon: <Crown className="w-5 h-5" />, roles: ['super_admin'], section: 'Performance' },
@@ -430,10 +419,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/it/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ClipboardList className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/it/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/it/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(IT_ROLES), section: 'Software & IT', restrict: true },
-    { href: '/system/ls2/settings', label: lang === 'ar' ? 'الإعدادات' : 'Settings', icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'workshop_manager'], section: 'Location Solutions', restrict: true },
+    { href: '/system/ls2/settings', label: lang === 'ar' ? 'الإعدادات' : 'Settings', icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Location Solutions', restrict: true },
     { href: '/system/ls2/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(LS2_SECTION_ROLES), section: 'Location Solutions', restrict: true },
-    { href: '/system/ls2/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'workshop_manager'], section: 'Location Solutions' },
-    { href: '/system/ls2/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'workshop_manager'], section: 'Location Solutions' },
+    { href: '/system/ls2/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Location Solutions' },
+    { href: '/system/ls2/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Location Solutions' },
     // B2C
     { href: '/system/b2c/dashboard', label: L.b2cDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/reps-performance', label: L.b2cRepsPerformance, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
@@ -535,9 +524,6 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/ops/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
     { href: '/system/ops/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
     { href: '/system/ops/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(OPS_ROLES), section: 'Operations Platform', restrict: true },
-    { href: '/system/workshop/my-tasks', label: lang === 'ar' ? 'مهامي الإدارية' : 'My Admin Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'workshop_employee', 'procurement_staff'], section: 'Workshop' },
-    { href: '/system/workshop/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'workshop_employee', 'procurement_staff'], section: 'Workshop' },
-    { href: '/system/workshop/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'workshop_employee', 'procurement_staff']), section: 'Workshop', restrict: true },
     { href: '/system/customs/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     { href: '/system/customs/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     { href: '/system/customs/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer']), section: 'Customs', restrict: true },
@@ -550,7 +536,6 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
 
     // Admin (configuration & oversight — kept near the bottom)
     { href: '/system/branches', label: L.branches, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist'], section: 'Admin' },
-    { href: '/system/expense-categories', label: L.expenseCategories, icon: <Tags className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     // ── القوائمُ المرجعيّة: لكلٍّ قوائمُه ────────────────────────────────────
     // كانت مقصورةً على قائمةِ أدوارٍ مكتوبةٍ باليد — يُنسى منها مديرُ الأسطول
     // ومديرُ المركبات وهما يملكان قوائمَ فعلًا — ومن دخلها رأى قوائمَ الأقسام
@@ -560,7 +545,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/users', label: L.users, icon: <UserCog className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     { href: '/system/permissions', label: lang === 'ar' ? 'الأدوار والصلاحيات' : 'Roles & Permissions', icon: <ShieldCheck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     { href: '/system/audit', label: L.auditLog, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin'], section: 'Admin' },
-    { href: '/system/complaints', label: L.complaints, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'workshop_manager', 'operations_manager'], section: 'Admin' },
+    { href: '/system/complaints', label: L.complaints, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Admin' },
     // بوابة العميل / المورد. `portalService` gates a link on the partner ACTUALLY
     // having work of that kind — a customs-only customer never sees a shipments
     // tab, and a supplier never sees invoices. Links without it always show.
@@ -658,13 +643,45 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     return !!best && user.pageAccess[best] === false;
   })();
 
-  // Group filtered nav items by section, preserving order
+  // ── ترتيبُ الأقسام في الشريط يُقال، ولا يُترك للمصادفة ──────────────────
+  //
+  // كانت الأقسامُ تظهر بترتيب أوّلِ صفحةٍ منها في مصفوفة `nav` — فترتيبُ
+  // الشريط أثرٌ جانبيٌّ لترتيب الكود. فتُضاف صفحةٌ في مكانها الطبيعيّ من
+  // الملفّ فيقفز قسمُها كلُّه إلى أعلى الشريط بلا أن يقصد أحد.
+  //
+  // وهذا هو الترتيبُ المطلوب: سلسلةُ العمل كما تجري — من التشغيل إلى طلبات
+  // الشحنات إلى المنصّة، ثمّ التحصيل، ثمّ الأسطول وتتبّعه، ثمّ ما يُسنِد ذلك
+  // كلَّه. وما لم يُذكَر هنا يأتي بعده بترتيبه كما هو.
+  const SECTION_ORDER = [
+    'Operations',
+    'Shipment Orders',
+    'Operations Platform',
+    'Collections',
+    'Fleet Management',
+    'Location Solutions',
+    'HR',
+    'Vehicles',
+    'Customs',
+    'B2C',
+    'Software & IT',
+  ];
+
   const groupedNav = filteredNav.reduce((acc, item) => {
     const section = item.section || 'Other';
     if (!acc[section]) acc[section] = [];
     acc[section].push(item);
     return acc;
   }, {} as Record<string, NavItem[]>);
+
+  // المذكورُ بترتيبه، ثمّ الباقي كما ورد — فلا يختفي قسمٌ نُسي من القائمة.
+  const orderedNav: [string, NavItem[]][] = Object.entries(groupedNav).sort(([a], [b]) => {
+    const ia = SECTION_ORDER.indexOf(a);
+    const ib = SECTION_ORDER.indexOf(b);
+    if (ia === -1 && ib === -1) return 0;
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
 
   const handleLogout = async () => {
     await logout();
@@ -758,7 +775,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
 
         {/* Nav Items */}
         <nav className="flex-1 overflow-y-auto py-2 px-2 sidebar-scroll">
-          {Object.entries(groupedNav).map(([section, items]) => {
+          {orderedNav.map(([section, items]) => {
             // Icon-only mode: no section headers, all items always visible
             // (the accordion only makes sense when labels are showing).
             if (!sidebarOpen) {
@@ -913,7 +930,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
                 </button>
               </div>
               <nav className="flex-1 overflow-y-auto py-2 px-2 sidebar-scroll">
-                {Object.entries(groupedNav).map(([section, items]) =>
+                {orderedNav.map(([section, items]) =>
                   renderSection(section, items, () => setMobileMenuOpen(false))
                 )}
               </nav>

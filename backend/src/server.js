@@ -45,7 +45,6 @@ const driverRoutes = require('./routes/drivers');
 const expenseCategoryRoutes = require('./routes/expenseCategories');
 const walletRoutes = require('./routes/wallet');
 const adminRoutes = require('./routes/admin');
-const workshopRoutes = require('./routes/workshop');
 const complaintRoutes = require('./routes/complaints');
 const b2cRoutes = require('./routes/b2c');
 const remoteRoutes = require('./routes/remote');
@@ -237,7 +236,6 @@ app.use('/api/wallet', authenticate, sectionGate('Operations'), walletRoutes);
 // تلتقط إحداهما الأخرى.
 app.use('/api/collections-dept', authenticate, sectionGate('Collections'), collectionsDeptRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/workshop', authenticate, sectionGate('Workshop'), workshopRoutes);
 app.use('/api/complaints', complaintRoutes);
 app.use('/api/b2c', authenticate, sectionGate('B2C'), b2cRoutes);
 app.use('/api/remote', authenticate, sectionGate('Remote'), remoteRoutes);

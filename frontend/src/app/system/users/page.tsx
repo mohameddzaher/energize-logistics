@@ -575,8 +575,6 @@ export default function UsersPage() {
     super_admin: T.superAdmin, admin: T.admin, employee: T.employee,
     operations_manager: T.operationsManager, operations: T.operationsRole,
     moderator: T.moderator, client: T.clientRole,
-    workshop_manager: lang === 'ar' ? 'مدير الورشة' : 'Workshop Manager',
-    workshop_employee: lang === 'ar' ? 'موظف الورشة' : 'Workshop Employee',
     purchasing: lang === 'ar' ? 'المشتريات' : 'Purchasing',
     b2c_manager: lang === 'ar' ? 'مدير B2C' : 'B2C Manager',
     b2c_project_lead: lang === 'ar' ? 'مدير مشروع B2C' : 'B2C Project Lead',
@@ -1014,8 +1012,8 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* Branch assignment for operations and workshop roles */}
-      {['operations_staff', 'operations_manager', 'workshop_manager', 'workshop_employee', 'procurement_staff'].includes(formData.role) && (
+      {/* Branch assignment for operations roles */}
+      {['operations_staff', 'operations_manager', 'procurement_staff'].includes(formData.role) && (
         <div>
           <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.branch} *</label>
           <select

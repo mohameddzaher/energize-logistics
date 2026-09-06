@@ -129,14 +129,6 @@ const SECTIONS = [
     defaultRoles: ['admin', 'it_manager', 'b2c_manager', 'b2c_project_lead'],
   },
   {
-    key: 'Workshop',
-    apiPrefixes: ['/api/workshop'],
-    // مديرُ المشتريات مع موظّفه: كان الموظّفُ وحدَه في القائمة، فيفتح الورشةَ
-    // ومديرُه لا يفتحها. القوائمُ تُكتب قسمًا قسمًا فيُنسى المديرُ حيث ذُكر
-    // الموظّف — ولا يُكتشف إلّا بمقارنةِ الاثنين.
-    defaultRoles: ['workshop_manager', 'workshop_employee', 'procurement_staff', 'procurement_manager'],
-  },
-  {
     key: 'Remote',
     apiPrefixes: ['/api/remote'],
     defaultRoles: ['admin', 'it_manager', 'remote_manager', 'remote_employee'],
@@ -196,7 +188,6 @@ const SECTION_LABELS_AR = {
   'Business Review': 'مراجعة الأعمال',
   'Contracts': 'إدارة العقود',
   'B2C': 'قطاع الأفراد',
-  'Workshop': 'الورشة',
   'Remote': 'العمل عن بُعد',
   'HR': 'الموارد البشرية',
   'CRM': 'إدارة العلاقات',

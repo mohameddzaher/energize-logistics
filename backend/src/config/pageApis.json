@@ -155,7 +155,8 @@
     "/system/collections-dept/ledger": {
       "apis": [
         "/api/collections-dept/ledger/invoices",
-        "/api/collections-dept/ledger/invoices/filters"
+        "/api/collections-dept/ledger/invoices/filters",
+        "/api/reports"
       ],
       "wildcard": false
     },
@@ -185,14 +186,16 @@
     "/system/collections-dept/customers": {
       "apis": [
         "/api/collections-dept/parties",
-        "/api/lookups/types"
+        "/api/lookups/types",
+        "/api/reports"
       ],
       "wildcard": false
     },
     "/system/collections-dept/suppliers": {
       "apis": [
         "/api/collections-dept/parties",
-        "/api/lookups/types"
+        "/api/lookups/types",
+        "/api/reports"
       ],
       "wildcard": false
     },

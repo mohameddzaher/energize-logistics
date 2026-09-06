@@ -12,7 +12,7 @@ import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
-import { money, dt, receivablesOnly } from '@/lib/collections';
+import { money, dt } from '@/lib/collections';
 import { useAuth } from '@/context/AuthContext';
 import { Spinner, PageHeader, Field, Select } from '@/components/hr/HRKit';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
@@ -48,10 +48,18 @@ const AGE_BANDS: [string, string, string][] = [
 
 export default function CollectionsDashboardPage() {
   const { user } = useAuth();
-  // ── ما علينا والصافي ليسا شغلَ التحصيل ──────────────────────────────────
+  // ── ولوحةُ التحصيل «ما لنا» لا غير ──────────────────────────────────────
+  //
   // القسمُ يُحصِّل؛ ما ندفعه للموردين والصافيُ بينهما شأنُ الإدارة والمالية.
-  // ويُخفَيان بالدور لا بالقسم: مَن يفتح القسمَ من الإدارة يرى الوجهين.
-  const receivables = receivablesOnly(user);
+  //
+  // وكان الإخفاءُ بالدور: يُخفى عن دورَي القسم ويُعرَض لمن سواهما. وهذه شاشةُ
+  // التحصيل — تُفتَح أمام الفريق ويُشار إليها في الاجتماع، فالمعلومةُ التي
+  // أُخفيت عن الفريق تُقرأ من فوق كتف من فتحها من الإدارة.
+  //
+  // فاللوحةُ «ما لنا» للجميع. وما علينا لم يُحذف من النظام: صفحةُ الموردين
+  // قائمةٌ لمن يعمل عليها، ولوحةُ الحسابات تعرض الوجهين — كلٌّ في شاشته،
+  // ولذلك بقيت `receivablesOnly` بالدور حيث تصلح.
+  const receivables = true;
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);

@@ -87,10 +87,19 @@ function PeriodPicker({ period, onChange, lang, isRTL }: {
   );
 }
 
-export default function TeamBoard({ title, subtitle, department, showScopeToggle, children }: {
+export default function TeamBoard({ title, subtitle, department, section, showScopeToggle, children }: {
   title?: string;
   subtitle?: string;
   department?: string;
+  /**
+   * قسمُ النظام الذي تخصّه هذه الصفحة.
+   *
+   * صفحاتُ التقييم واحدةٌ في كلّ قسم، وكانت لا ترسل ما يميّزها — فيرى مديرُ
+   * النظام قائمةَ مديري الأقسام في كلّ صفحةٍ منها، ويرى مديرُ القسم فريقَه
+   * نفسَه في صفحة قسمٍ ليس قسمَه. والخادمُ يقرأ هذا فيردّ فريقَ ذلك القسم
+   * بعينه — راجع sectionScope.
+   */
+  section?: string;
   showScopeToggle?: boolean;
   children?: React.ReactNode;
 }) {
@@ -103,6 +112,9 @@ export default function TeamBoard({ title, subtitle, department, showScopeToggle
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<'all' | 'pending' | 'draft' | 'done'>('all');
+  // مبدّلُ النطاق للصفحة المركزيّة وحدَها: صفحةُ القسم نطاقُها قسمُها، فلو
+  // بقي المبدّلُ فيها لقال «كل الموظفين» ثمّ عرض فريقَ القسم، أو انقلب إلى
+  // «المديرين» فعادت الشاشةُ إلى ما كانت عليه من خلط.
   // Only full-access users get the toggle; everyone else is scoped by the API.
   const canToggleScope = !!showScopeToggle && isPerfFull(user?.role);
   const [scope, setScope] = useState<Scope>('managers');
@@ -112,10 +124,11 @@ export default function TeamBoard({ title, subtitle, department, showScopeToggle
       let url = `/api/performance/team?period=${periodKey(period)}`;
       if (canToggleScope) url += `&scope=${scope}`;
       if (department) url += `&department=${encodeURIComponent(department)}`;
+      if (section) url += `&section=${encodeURIComponent(section)}`;
       setData(await api.get<TeamResponse>(url));
     } catch { /* keep the last good view */ }
     setLoading(false);
-  }, [period, scope, canToggleScope, department]);
+  }, [period, scope, canToggleScope, department, section]);
   useEffect(() => { load(); }, [load]);
   useSocket('performance:updated', useCallback(() => load(), [load]));
 

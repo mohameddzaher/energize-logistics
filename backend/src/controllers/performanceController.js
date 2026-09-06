@@ -96,29 +96,84 @@ async function departmentManagers() {
 }
 
 /**
+ * ── نطاقُ قسمٍ بعينه: مَن يقيّمه مديرُ ذلك القسم ─────────────────────────
+ *
+ * صفحاتُ تقييم الأداء في الأقسام واحدةٌ في كلّ قسم. وكانت لا ترسل شيئًا يميّز
+ * القسمَ عن غيره، فيرى مديرُ القسم فريقَه نفسَه في كلّ صفحةٍ يفتحها، ويرى
+ * مديرُ النظام **قائمةَ مديري الأقسام** في كلّ صفحةٍ من صفحات الأقسام — فتظهر
+ * الشاشةُ وفيها مديرون مكانَ الموظفين، وفي كلّ قسمٍ الوجوهُ نفسُها.
+ *
+ * ولا يُعالَج بخريطةٍ من «القسم في النظام» إلى «القسم في الموارد البشرية»:
+ * التسميتان تصنيفان مختلفان أصلًا — أقسامُ النظام إنجليزيّةٌ (Operations،
+ * Collections) وأقسامُ الموظفين عربيّةٌ تصف العمل (التشغيل، النقل الثقيل،
+ * سعودة). وخريطةٌ تُكتب بالإيد بينهما تشيخ في أوّل قسمٍ يُضاف.
+ *
+ * فيُسأل التنظيمُ نفسُه: مَن مديرُ هذا القسم؟ ثمّ: مَن فريقُه؟ — وهو السؤالُ
+ * الذي يجيب عنه النظامُ للمدير حين يفتح صفحتَه. فمديرُ النظام حين يفتح قسمًا
+ * يرى ما يراه مديرُ ذلك القسم بالضبط، وهو المطلوب.
+ */
+async function sectionScope(sectionKey) {
+  const { rolesOfSection } = require('../config/roles');
+  const roles = rolesOfSection(sectionKey) || [];
+  const managerRole = roles.find((r) => /_manager$/.test(r));
+  if (!managerRole) return null;
+
+  const managers = await User.find({ role: managerRole, isActive: { $ne: false } }, { _id: 1 }).lean();
+  if (!managers.length) return { ors: [], managerIds: [] };
+
+  const managerIds = managers.map((m) => m._id);
+  const rows = await Employee.find({ user: { $in: managerIds } }).select('department').lean();
+  const departments = [...new Set(rows.map((r) => r.department).filter(Boolean))];
+
+  const ors = [{ directManager: { $in: managerIds } }];
+  if (departments.length) ors.push({ department: { $in: departments } });
+  return { ors, managerIds };
+}
+
+/**
  * scope: 'team' (default for managers) | 'managers' (default for super-admin)
  *        | 'all' (full-access only — the whole company)
- * department: optional narrowing, for the per-section KPI pages.
+ * department: optional narrowing by the HR department name.
+ * section: the system section whose KPI page this is — see sectionScope.
  */
-async function visibleEmployees(user, { scope, department } = {}) {
+async function visibleEmployees(user, { scope, department, section } = {}) {
   const base = { employmentStatus: { $ne: 'terminated' } };
   let list;
 
-  if (isFull(user.role)) {
-    const effective = scope || (canOverride(user.role) ? 'managers' : 'all');
-    list = effective === 'managers' ? await departmentManagers() : await Employee.find(base).lean();
-  } else {
-    const ors = [{ directManager: user._id }];
-    // A manager also covers their own department — most departments here don't
-    // maintain directManager on every row.
-    if (isManagerRole(user.role)) {
-      const me = await Employee.findOne({ user: user._id }).lean();
-      if (me?.department) ors.push({ department: me.department });
+  // ── صفحةُ قسمٍ بعينه ───────────────────────────────────────────────────
+  // تُقرأ بنطاق ذلك القسم أيًّا كان من يفتحها، ما دام يملك فتحَها — والصفحةُ
+  // محروسةٌ بمصفوفة الصلاحيّات أصلًا. فمديرُ النظام يرى فريقَ القسم لا قائمةَ
+  // المديرين، ومديرُ القسم يرى فريقَه كما كان.
+  if (section && !scope) {
+    const sc = await sectionScope(section);
+    if (sc) {
+      list = sc.ors.length ? await Employee.find({ ...base, $or: sc.ors }).lean() : [];
+      // ولا يُقيَّم المديرُ في صفحة قسمه: تقييمُ المديرين لمديرِ النظام في
+      // الصفحة المركزيّة، وإلّا قيَّم المديرُ نفسَه أو قيَّمه زميلُه.
+      const mgr = new Set(sc.managerIds.map(String));
+      list = list.filter((e) => !mgr.has(String(e.user || '')));
     }
-    list = await Employee.find({ ...base, $or: ors }).lean();
+  }
+
+  if (!list) {
+    if (isFull(user.role)) {
+      const effective = scope || (canOverride(user.role) ? 'managers' : 'all');
+      list = effective === 'managers' ? await departmentManagers() : await Employee.find(base).lean();
+    } else {
+      const ors = [{ directManager: user._id }];
+      // A manager also covers their own department — most departments here don't
+      // maintain directManager on every row.
+      if (isManagerRole(user.role)) {
+        const me = await Employee.findOne({ user: user._id }).lean();
+        if (me?.department) ors.push({ department: me.department });
+      }
+      list = await Employee.find({ ...base, $or: ors }).lean();
+    }
   }
 
   if (department) list = list.filter((e) => e.department === department);
+  // ولا تُقيَّم الحساباتُ التي وُلدت من إنشاء مستخدم: ليست سجلَّ موارد بشريّة.
+  list = list.filter((e) => e.isHrRecord !== false);
   // Never let anyone grade themselves.
   return list.filter((e) => String(e.user || '') !== String(user._id));
 }
@@ -278,7 +333,7 @@ exports.getTeam = async (req, res) => {
     const period = parsePeriod(req.query.period);
     const periodKey = periodKeyOf(period);
     const [employees, templates, settings] = await Promise.all([
-      visibleEmployees(req.user, { scope: req.query.scope, department: req.query.department }),
+      visibleEmployees(req.user, { scope: req.query.scope, department: req.query.department, section: req.query.section }),
       PerfTemplate.find({ active: true }).lean(),
       PerfSettings.getOrCreate(),
     ]);

@@ -24,7 +24,8 @@ const ASSIGN_COLUMNS = [
   { header: 'Drivers', key: 'drivers', transform: (v: any) => (v || []).map((d: any) => d.name).join(' + '), width: 26 },
 ];
 
-interface Supervisor { _id: string; firstName: string; lastName: string; email: string }
+// الدورُ يميّز مديرَ القسم من المشرف: نطاقُ الأوّل الأسطولُ كلُّه لا قائمةُ إسناد.
+interface Supervisor { _id: string; firstName: string; lastName: string; email: string; role?: string }
 const supName = (u: Supervisor) => `${u.firstName} ${u.lastName}`.trim() || u.email;
 
 export default function FleetAssignPage() {
@@ -61,11 +62,14 @@ export default function FleetAssignPage() {
   const filtered = useMemo(() => {
     let r = vehicles;
     if (ownerFilter === 'none') r = r.filter((v) => !v.supervisor);
-    else if (ownerFilter) r = r.filter((v) => v.supervisor === ownerFilter);
+    // اسمُ مديرِ القسم يعرض الأسطولَ كلَّه: نطاقُه هو، لا قائمةُ إسنادٍ له.
+    else if (ownerFilter && !supervisors.some((s) => s._id === ownerFilter && s.role === 'fleet_manager')) {
+      r = r.filter((v) => v.supervisor === ownerFilter);
+    }
     const s = foldAr(q.trim());
     if (s) r = r.filter((v) => [v.plate, v.name, v.supervisorName, ...(v.drivers || []).map((d) => d.name)].some((x) => foldAr(String(x || '')).includes(s)));
     return r;
-  }, [vehicles, ownerFilter, q]);
+  }, [vehicles, ownerFilter, q, supervisors]);
 
   const toggle = (id: string) => setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const allFilteredSelected = filtered.length > 0 && filtered.every((v) => selected.has(v._id));
@@ -107,6 +111,17 @@ export default function FleetAssignPage() {
   const counts = new Map<string, number>();
   vehicles.forEach((v) => { const k = v.supervisor || 'none'; counts.set(k, (counts.get(k) || 0) + 1); });
 
+  // ── ومديرُ القسم نطاقُه القسم كلُّه ─────────────────────────────────────
+  //
+  // كان العدُّ واحدًا للجميع: كم مركبةً تحمل اسمَك في خانة المشرف. ومديرُ
+  // الأسطول لا تُسنَد إليه مركباتٌ بالإفراد — يشرف على الأسطول كلِّه — فكان
+  // يظهر بصفرٍ بجانب مشرفَين لكلٍّ منهما تسعٌ وعشرون. والصفرُ يُقرأ «لا يعمل»
+  // لا «يشرف على الكلّ»، وهو أبعدُ ما يكون عن الحقيقة.
+  //
+  // فرقمُه هو الأسطول، وضغطُ اسمه يعرضه كلَّه لا يعرض فراغًا.
+  const isDeptManager = (s: Supervisor) => s.role === 'fleet_manager';
+  const scopeCount = (s: Supervisor) => (isDeptManager(s) ? vehicles.length : (counts.get(s._id) || 0));
+
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<UserCog className="w-5 h-5" />} title={ar ? 'توزيع السيارات على المشرفين' : 'Assign vehicles to supervisors'}
@@ -135,8 +150,16 @@ export default function FleetAssignPage() {
         </button>
         {supervisors.map((s) => (
           <button key={s._id} type="button" onClick={() => setOwnerFilter(ownerFilter === s._id ? '' : s._id)}
+            title={isDeptManager(s)
+              ? (ar ? 'مدير القسم — يشرف على الأسطول كلّه' : 'Department manager — the whole fleet')
+              : (ar ? 'المركبات المسندة إليه' : 'Vehicles assigned to them')}
             className={`px-2.5 py-1 rounded-full text-xs font-medium border ${ownerFilter === s._id ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-700 border-slate-200 hover:border-[#f37121]'}`}>
-            {supName(s)} <b className="tabular-nums">{counts.get(s._id) || 0}</b>
+            {supName(s)} <b className="tabular-nums">{scopeCount(s)}</b>
+            {isDeptManager(s) && (
+              <span className={`ms-1 text-[10px] font-normal ${ownerFilter === s._id ? 'text-white/80' : 'text-slate-400'}`}>
+                {ar ? '· المدير' : '· manager'}
+              </span>
+            )}
           </button>
         ))}
         <button type="button" onClick={() => setOwnerFilter(ownerFilter === 'none' ? '' : 'none')}

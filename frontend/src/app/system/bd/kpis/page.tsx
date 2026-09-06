@@ -7,5 +7,5 @@ import TeamBoard from '@/components/performance/TeamBoard';
 export default function Page() {
   const { lang } = useLanguage();
   const ar = lang === 'ar';
-  return <TeamBoard title={ar ? 'تقييم أداء — تطوير الأعمال' : 'Performance — Business Development'} />;
+  return <TeamBoard section="Business Development" title={ar ? 'تقييم أداء — تطوير الأعمال' : 'Performance — Business Development'} />;
 }

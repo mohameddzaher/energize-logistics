@@ -7,5 +7,5 @@ import TeamBoard from '@/components/performance/TeamBoard';
 export default function Page() {
   const { lang } = useLanguage();
   const ar = lang === 'ar';
-  return <TeamBoard title={ar ? 'تقييم أداء — العمل عن بُعد' : 'Performance — Remote'} />;
+  return <TeamBoard section="Remote" title={ar ? 'تقييم أداء — العمل عن بُعد' : 'Performance — Remote'} />;
 }

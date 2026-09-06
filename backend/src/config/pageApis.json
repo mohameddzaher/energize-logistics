@@ -1,0 +1,1902 @@
+{
+  "generatedFrom": "frontend/src/app/system/**/page.tsx (+ its local imports)",
+  "shell": [
+    "/api/auth",
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/auth/me",
+    "/api/lookups",
+    "/api/notifications",
+    "/api/notifications/read-all",
+    "/api/portal/me",
+    "/api/uploads"
+  ],
+  "pages": {
+    "/system/executive": {
+      "apis": [
+        "/api/analytics/dashboard",
+        "/api/analytics/super-overview",
+        "/api/crm/dashboard",
+        "/api/hr/dashboard",
+        "/api/ls2/dashboard",
+        "/api/procurement/dashboard",
+        "/api/sales/dashboard",
+        "/api/vehicles/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/dashboard": {
+      "apis": [
+        "/api/analytics/aging",
+        "/api/analytics/credit-alerts",
+        "/api/analytics/dashboard",
+        "/api/analytics/dso",
+        "/api/analytics/forecast",
+        "/api/analytics/performance",
+        "/api/analytics/risk",
+        "/api/analytics/super-overview",
+        "/api/complaints",
+        "/api/ops/dashboard",
+        "/api/workflows",
+        "/api/workshop/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/credit-alerts": {
+      "apis": [
+        "/api/analytics/credit-alerts"
+      ],
+      "wildcard": false
+    },
+    "/system/operations": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/ops/dashboard",
+        "/api/workflows",
+        "/api/workflows/bulk-delete",
+        "/api/workflows/bulk-update",
+        "/api/workflows/filters",
+        "/api/workflows/permissions",
+        "/api/workflows/stats"
+      ],
+      "wildcard": false
+    },
+    "/system/operations/payment-types": {
+      "apis": [
+        "/api/workflows/payment-types",
+        "/api/workflows/payment-types/apply"
+      ],
+      "wildcard": false
+    },
+    "/system/operations/dispatch-sheets": {
+      "apis": [],
+      "wildcard": false
+    },
+    "/system/vendors": {
+      "apis": [
+        "/api/vendors"
+      ],
+      "wildcard": false
+    },
+    "/system/wallet": {
+      "apis": [
+        "/api/branches",
+        "/api/users",
+        "/api/wallet/close-day",
+        "/api/wallet/daily",
+        "/api/wallet/lookup-report",
+        "/api/wallet/range",
+        "/api/wallet/reopen",
+        "/api/wallet/transactions"
+      ],
+      "wildcard": false
+    },
+    "/system/wallet-dashboard": {
+      "apis": [
+        "/api/wallet/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicle-analytics": {
+      "apis": [],
+      "wildcard": false
+    },
+    "/system/vehicle-analytics/fuel": {
+      "apis": [],
+      "wildcard": false
+    },
+    "/system/vehicle-analytics/tracking": {
+      "apis": [],
+      "wildcard": false
+    },
+    "/system/vehicle-analytics/trips": {
+      "apis": [],
+      "wildcard": false
+    },
+    "/system/vehicle-analytics/upload": {
+      "apis": [],
+      "wildcard": false
+    },
+    "/system/operations/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/operations/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/operations/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/collections-dept/dashboard": {
+      "apis": [
+        "/api/collections-dept/dashboard",
+        "/api/collections-dept/dashboard/filters",
+        "/api/collections-dept/ledger/alerts",
+        "/api/collections-dept/ledger/alerts/ack"
+      ],
+      "wildcard": false
+    },
+    "/system/collections-dept/invoices/tax": {
+      "apis": [
+        "/api/collections-dept/invoices",
+        "/api/collections-dept/invoices/collect",
+        "/api/collections-dept/invoices/deliver",
+        "/api/collections-dept/invoices/detail",
+        "/api/collections-dept/invoices/filters",
+        "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
+    "/system/collections-dept/invoices/cash": {
+      "apis": [
+        "/api/collections-dept/invoices",
+        "/api/collections-dept/invoices/collect",
+        "/api/collections-dept/invoices/deliver",
+        "/api/collections-dept/invoices/detail",
+        "/api/collections-dept/invoices/filters",
+        "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
+    "/system/collections-dept/aging": {
+      "apis": [
+        "/api/collections-dept/ledger/aging",
+        "/api/collections-dept/ledger/aging/filters"
+      ],
+      "wildcard": false
+    },
+    "/system/collections-dept/ledger": {
+      "apis": [
+        "/api/collections-dept/ledger/invoices",
+        "/api/collections-dept/ledger/invoices/filters"
+      ],
+      "wildcard": false
+    },
+    "/system/collections-dept/plan": {
+      "apis": [
+        "/api/collections-dept/ledger/aging",
+        "/api/collections-dept/ledger/tasks",
+        "/api/collections-dept/ledger/team"
+      ],
+      "wildcard": false
+    },
+    "/system/collections-dept/team": {
+      "apis": [
+        "/api/collections-dept/ledger/aging",
+        "/api/collections-dept/ledger/performance",
+        "/api/collections-dept/ledger/team",
+        "/api/collections-dept/ledger/team/assign"
+      ],
+      "wildcard": false
+    },
+    "/system/collections-dept/links": {
+      "apis": [
+        "/api/collections-dept/ledger/link-suggestions"
+      ],
+      "wildcard": false
+    },
+    "/system/collections-dept/customers": {
+      "apis": [
+        "/api/collections-dept/parties",
+        "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
+    "/system/collections-dept/suppliers": {
+      "apis": [
+        "/api/collections-dept/parties",
+        "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
+    "/system/collections-dept/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/collections-dept/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/collections-dept/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/collections-dept/settings": {
+      "apis": [
+        "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
+    "/system/ops": {
+      "apis": [
+        "/api/ops/branches",
+        "/api/ops/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/ops/shipments": {
+      "apis": [
+        "/api/ops/branches",
+        "/api/ops/dashboard",
+        "/api/ops/shipments",
+        "/api/ops/shipments/status",
+        "/api/ops/shipments/timeline"
+      ],
+      "wildcard": false
+    },
+    "/system/ops/drivers": {
+      "apis": [
+        "/api/ops"
+      ],
+      "wildcard": false
+    },
+    "/system/ops/cars": {
+      "apis": [
+        "/api/ops"
+      ],
+      "wildcard": false
+    },
+    "/system/ops/car-owners": {
+      "apis": [
+        "/api/ops"
+      ],
+      "wildcard": false
+    },
+    "/system/ops/users": {
+      "apis": [
+        "/api/ops"
+      ],
+      "wildcard": false
+    },
+    "/system/ops/branches": {
+      "apis": [
+        "/api/ops"
+      ],
+      "wildcard": false
+    },
+    "/system/ops/cities": {
+      "apis": [
+        "/api/ops"
+      ],
+      "wildcard": false
+    },
+    "/system/ops/countries": {
+      "apis": [
+        "/api/ops"
+      ],
+      "wildcard": false
+    },
+    "/system/ops/truck-types": {
+      "apis": [
+        "/api/ops"
+      ],
+      "wildcard": false
+    },
+    "/system/ops/truck-sizes": {
+      "apis": [
+        "/api/ops"
+      ],
+      "wildcard": false
+    },
+    "/system/ops/load-types": {
+      "apis": [
+        "/api/ops"
+      ],
+      "wildcard": false
+    },
+    "/system/ops/car-brands": {
+      "apis": [
+        "/api/ops"
+      ],
+      "wildcard": false
+    },
+    "/system/ops/car-colors": {
+      "apis": [
+        "/api/ops"
+      ],
+      "wildcard": false
+    },
+    "/system/shipment-orders": {
+      "apis": [
+        "/api/shipment-orders/customers",
+        "/api/shipment-orders/orders",
+        "/api/shipment-orders/statuses"
+      ],
+      "wildcard": false
+    },
+    "/system/shipment-orders/chat": {
+      "apis": [
+        "/api/shipment-orders/customers",
+        "/api/shipment-orders/fields",
+        "/api/shipment-orders/orders",
+        "/api/shipment-orders/vehicles"
+      ],
+      "wildcard": false
+    },
+    "/system/shipment-orders/customers": {
+      "apis": [
+        "/api/partners/account",
+        "/api/shipment-orders/customers",
+        "/api/shipment-orders/fields"
+      ],
+      "wildcard": false
+    },
+    "/system/shipment-orders/fleet": {
+      "apis": [
+        "/api/shipment-orders/fields",
+        "/api/shipment-orders/suppliers",
+        "/api/shipment-orders/vehicles"
+      ],
+      "wildcard": false
+    },
+    "/system/shipment-orders/analytics": {
+      "apis": [
+        "/api/shipment-orders/analytics",
+        "/api/shipment-orders/statuses"
+      ],
+      "wildcard": false
+    },
+    "/system/shipment-orders/settings": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/shipment-orders/counter",
+        "/api/shipment-orders/fields",
+        "/api/shipment-orders/statuses"
+      ],
+      "wildcard": false
+    },
+    "/system/shipment-orders/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/shipment-orders/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/shipment-orders/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/fleet/board": {
+      "apis": [
+        "/api/fleet/arrivals",
+        "/api/fleet/board"
+      ],
+      "wildcard": false
+    },
+    "/system/fleet": {
+      "apis": [
+        "/api/fleet/customers",
+        "/api/fleet/shipments"
+      ],
+      "wildcard": false
+    },
+    "/system/fleet/arrivals": {
+      "apis": [
+        "/api/fleet/arrivals"
+      ],
+      "wildcard": false
+    },
+    "/system/fleet/dashboard": {
+      "apis": [
+        "/api/fleet/analytics",
+        "/api/fleet/arrivals",
+        "/api/fleet/customers",
+        "/api/fleet/loads-analysis",
+        "/api/fleet/supervisors"
+      ],
+      "wildcard": false
+    },
+    "/system/fleet/drivers": {
+      "apis": [
+        "/api/fleet/drivers",
+        "/api/fleet/vehicles"
+      ],
+      "wildcard": false
+    },
+    "/system/fleet/driver-kpis": {
+      "apis": [
+        "/api/fleet/driver-kpis"
+      ],
+      "wildcard": false
+    },
+    "/system/fleet/health": {
+      "apis": [
+        "/api/fleet/arrivals",
+        "/api/fleet/health"
+      ],
+      "wildcard": false
+    },
+    "/system/fleet/vehicles": {
+      "apis": [
+        "/api/fleet/supervisors",
+        "/api/fleet/vehicles"
+      ],
+      "wildcard": false
+    },
+    "/system/fleet/vehicle-logs": {
+      "apis": [
+        "/api/fleet/vehicle-logs",
+        "/api/fleet/vehicle-logs/summary"
+      ],
+      "wildcard": false
+    },
+    "/system/fleet/assign": {
+      "apis": [
+        "/api/fleet/supervisors",
+        "/api/fleet/vehicles",
+        "/api/fleet/vehicles/assign-supervisor-bulk"
+      ],
+      "wildcard": false
+    },
+    "/system/fleet/settings": {
+      "apis": [
+        "/api/fleet/config",
+        "/api/fleet/vehicles",
+        "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
+    "/system/fleet/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/fleet/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/fleet/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/fleet/customers": {
+      "apis": [
+        "/api/fleet/customers",
+        "/api/fleet/customers/filters",
+        "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
+    "/system/customs": {
+      "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
+        "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
+    "/system/customs/analytics": {
+      "apis": [
+        "/api/customs-clearance/analytics",
+        "/api/customs-clearance/filters"
+      ],
+      "wildcard": false
+    },
+    "/system/customs/customers": {
+      "apis": [
+        "/api/customs-clearance/parties"
+      ],
+      "wildcard": false
+    },
+    "/system/customs/agents": {
+      "apis": [
+        "/api/customs-clearance/parties"
+      ],
+      "wildcard": false
+    },
+    "/system/customs/settings": {
+      "apis": [
+        "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/registry/overview": {
+      "apis": [
+        "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/overview"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/registry": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/vehicle-registry",
+        "/api/vehicle-registry/filters"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/registry/expiring": {
+      "apis": [
+        "/api/vehicle-registry",
+        "/api/vehicle-registry/expiring",
+        "/api/vehicle-registry/renew-bulk",
+        "/api/vehicle-registry/renew-shared"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/registry/claims": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/vehicle-registry/claims"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/registry/corporate": {
+      "apis": [
+        "/api/vehicle-registry/corporate-policies"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/registry/records": {
+      "apis": [
+        "/api/vehicle-registry/registers"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/registry/insurance/vehicles": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/vehicle-registry",
+        "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/renew-bulk",
+        "/api/vehicle-registry/renew-shared"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/registry/operating-cards": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/vehicle-registry",
+        "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/renew-bulk",
+        "/api/vehicle-registry/renew-shared"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/driver-cards": {
+      "apis": [
+        "/api/vehicle-registry/driver-cards",
+        "/api/vehicles/employees"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/registry/authorizations": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/vehicle-registry",
+        "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/renew-bulk",
+        "/api/vehicle-registry/renew-shared"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/registry/fuel-cards": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/vehicle-registry",
+        "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/renew-bulk",
+        "/api/vehicle-registry/renew-shared"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/registry/gps": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/vehicle-registry",
+        "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/renew-bulk",
+        "/api/vehicle-registry/renew-shared"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/registry/licenses": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/vehicle-registry",
+        "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/renew-bulk",
+        "/api/vehicle-registry/renew-shared"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/registry/inspection": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/vehicle-registry",
+        "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/renew-bulk",
+        "/api/vehicle-registry/renew-shared"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/registry/dashboard": {
+      "apis": [
+        "/api/vehicle-registry/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/settings": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/vehicle-registry/settings"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2": {
+      "apis": [
+        "/api/ls2/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/live": {
+      "apis": [
+        "/api/ls2/vehicles"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/registry": {
+      "apis": [
+        "/api/ls2/vehicles"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/drivers": {
+      "apis": [
+        "/api/ls2/drivers"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/driver-performance": {
+      "apis": [
+        "/api/ls2/drivers/performance"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/tires": {
+      "apis": [
+        "/api/ls2/vehicles"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/temperature": {
+      "apis": [
+        "/api/ls2/settings",
+        "/api/ls2/vehicles"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/maintenance": {
+      "apis": [
+        "/api/ls2/deferrals",
+        "/api/ls2/settings",
+        "/api/ls2/vehicles"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/fleet-assets": {
+      "apis": [
+        "/api/ls2/assets/events",
+        "/api/ls2/assets/flatbeds",
+        "/api/ls2/assets/import",
+        "/api/ls2/assets/overview",
+        "/api/ls2/assets/sensor-check",
+        "/api/ls2/assets/tires",
+        "/api/ls2/assets/trailers",
+        "/api/ls2/assets/vehicle"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/store": {
+      "apis": [
+        "/api/ls2/store",
+        "/api/ls2/store/bulk-movement",
+        "/api/ls2/store/dashboard",
+        "/api/ls2/store/movements",
+        "/api/ls2/vehicles"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/repairs": {
+      "apis": [
+        "/api/ls2/repairs",
+        "/api/ls2/vehicles"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/alerts": {
+      "apis": [
+        "/api/ls2/alerts"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/reports": {
+      "apis": [
+        "/api/ls2/reports/fleet",
+        "/api/ls2/reports/vehicle",
+        "/api/ls2/vehicles"
+      ],
+      "wildcard": false
+    },
+    "/system/workshop/store": {
+      "apis": [
+        "/api/workshop/inventory",
+        "/api/workshop/inventory/issue-bulk",
+        "/api/workshop/inventory/issues",
+        "/api/workshop/inventory/search",
+        "/api/workshop/store"
+      ],
+      "wildcard": false
+    },
+    "/system/workshop": {
+      "apis": [
+        "/api/workshop/maintenance",
+        "/api/workshop/purchases",
+        "/api/workshop/technicians"
+      ],
+      "wildcard": false
+    },
+    "/system/workshop/purchases": {
+      "apis": [
+        "/api/workshop/purchases"
+      ],
+      "wildcard": false
+    },
+    "/system/workshop/dashboard": {
+      "apis": [
+        "/api/workshop/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/workshop/tasks": {
+      "apis": [
+        "/api/ls2/service-types",
+        "/api/workshop/tasks",
+        "/api/workshop/technicians",
+        "/api/workshop/users"
+      ],
+      "wildcard": false
+    },
+    "/system/performance": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/performance/overview": {
+      "apis": [
+        "/api/performance/overview"
+      ],
+      "wildcard": false
+    },
+    "/system/performance/requests": {
+      "apis": [
+        "/api/performance/edit-requests",
+        "/api/performance/evaluations"
+      ],
+      "wildcard": false
+    },
+    "/system/performance/settings": {
+      "apis": [
+        "/api/performance/settings",
+        "/api/performance/templates"
+      ],
+      "wildcard": false
+    },
+    "/system/marketing": {
+      "apis": [
+        "/api/marketing/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/marketing/campaigns": {
+      "apis": [
+        "/api/marketing/campaigns"
+      ],
+      "wildcard": false
+    },
+    "/system/marketing/activities": {
+      "apis": [
+        "/api/marketing/activities",
+        "/api/marketing/campaigns"
+      ],
+      "wildcard": false
+    },
+    "/system/marketing/reports": {
+      "apis": [
+        "/api/marketing/report"
+      ],
+      "wildcard": false
+    },
+    "/system/marketing/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/marketing/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/marketing/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/bd": {
+      "apis": [
+        "/api/business-development/dashboard",
+        "/api/business-development/opportunities"
+      ],
+      "wildcard": false
+    },
+    "/system/bd/opportunities": {
+      "apis": [
+        "/api/business-development/opportunities",
+        "/api/crm/companies"
+      ],
+      "wildcard": false
+    },
+    "/system/bd/partners": {
+      "apis": [
+        "/api/business-development/partners"
+      ],
+      "wildcard": false
+    },
+    "/system/bd/tenders": {
+      "apis": [
+        "/api/business-development/opportunities",
+        "/api/business-development/tenders"
+      ],
+      "wildcard": false
+    },
+    "/system/bd/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/bd/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/bd/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/administration": {
+      "apis": [
+        "/api/admin-tasks",
+        "/api/admin-tasks/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/administration/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/administration/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/administration/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/business-review": {
+      "apis": [
+        "/api/business-review/dashboard",
+        "/api/business-review/meetings",
+        "/api/business-review/meta"
+      ],
+      "wildcard": false
+    },
+    "/system/business-review/my-actions": {
+      "apis": [
+        "/api/business-review/actions",
+        "/api/business-review/meta",
+        "/api/business-review/my-actions"
+      ],
+      "wildcard": false
+    },
+    "/system/business-review/actions": {
+      "apis": [
+        "/api/business-review/actions",
+        "/api/business-review/meta"
+      ],
+      "wildcard": false
+    },
+    "/system/business-review/my-tasks": {
+      "apis": [
+        "/api/business-review/assignments",
+        "/api/business-review/meta",
+        "/api/business-review/my-tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/contracts": {
+      "apis": [
+        "/api/contracts/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/contracts/vendors": {
+      "apis": [
+        "/api/contracts/vendors"
+      ],
+      "wildcard": false
+    },
+    "/system/contracts/customers": {
+      "apis": [
+        "/api/contracts/customers",
+        "/api/contracts/customers/suggestions"
+      ],
+      "wildcard": false
+    },
+    "/system/contracts/analysis": {
+      "apis": [
+        "/api/contracts/analysis",
+        "/api/contracts/dashboard",
+        "/api/contracts/utilisation",
+        "/api/contracts/vendors"
+      ],
+      "wildcard": false
+    },
+    "/system/contracts/prospects": {
+      "apis": [
+        "/api/contracts/prospects"
+      ],
+      "wildcard": false
+    },
+    "/system/contracts/agreements": {
+      "apis": [
+        "/api/contracts/agreements"
+      ],
+      "wildcard": false
+    },
+    "/system/contracts/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/contracts/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/contracts/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/it": {
+      "apis": [
+        "/api/it/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/it/tickets": {
+      "apis": [
+        "/api/it/assignees",
+        "/api/it/departments",
+        "/api/it/employees",
+        "/api/it/tickets"
+      ],
+      "wildcard": false
+    },
+    "/system/it/recurring": {
+      "apis": [
+        "/api/it/tickets/recurring"
+      ],
+      "wildcard": false
+    },
+    "/system/it/custody": {
+      "apis": [
+        "/api/it/custody",
+        "/api/it/custody/by-employee",
+        "/api/it/custody/handover",
+        "/api/it/employees",
+        "/api/it/stock"
+      ],
+      "wildcard": false
+    },
+    "/system/it/stock": {
+      "apis": [
+        "/api/it/employees",
+        "/api/it/stock"
+      ],
+      "wildcard": false
+    },
+    "/system/it/systems": {
+      "apis": [
+        "/api/it/systems"
+      ],
+      "wildcard": false
+    },
+    "/system/it/emails": {
+      "apis": [
+        "/api/it/emails",
+        "/api/it/emails/employees",
+        "/api/it/emails/export"
+      ],
+      "wildcard": false
+    },
+    "/system/it/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/it/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/it/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/settings": {
+      "apis": [
+        "/api/ls2/settings",
+        "/api/ls2/vehicles"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/dashboard": {
+      "apis": [
+        "/api/b2c/dashboard",
+        "/api/b2c/day-details",
+        "/api/b2c/evaluations",
+        "/api/b2c/months",
+        "/api/b2c/projects",
+        "/api/b2c/reps",
+        "/api/branches"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/reps-performance": {
+      "apis": [
+        "/api/b2c/cleanup",
+        "/api/b2c/daily-orders/bulk",
+        "/api/b2c/google-sheet/configs",
+        "/api/b2c/projects",
+        "/api/b2c/reps/bulk-resolve",
+        "/api/b2c/reps/reconcile",
+        "/api/b2c/uploads",
+        "/api/branches"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/daily-entry": {
+      "apis": [
+        "/api/b2c/daily-orders",
+        "/api/b2c/projects",
+        "/api/b2c/reps",
+        "/api/branches"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/reps": {
+      "apis": [
+        "/api/b2c/projects",
+        "/api/b2c/reps",
+        "/api/branches"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/projects": {
+      "apis": [
+        "/api/b2c/projects"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/custody": {
+      "apis": [
+        "/api/b2c-wallet",
+        "/api/b2c-wallet/managers",
+        "/api/b2c-wallet/me"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/remote/attendance": {
+      "apis": [
+        "/api/remote/attendance",
+        "/api/remote/attendance/today",
+        "/api/remote/attendance/toggle",
+        "/api/remote/employees"
+      ],
+      "wildcard": false
+    },
+    "/system/remote/dashboard": {
+      "apis": [
+        "/api/remote/dashboard",
+        "/api/remote/employees"
+      ],
+      "wildcard": false
+    },
+    "/system/remote/leave": {
+      "apis": [
+        "/api/remote/employees",
+        "/api/remote/leave"
+      ],
+      "wildcard": false
+    },
+    "/system/remote/chat": {
+      "apis": [
+        "/api/remote/chat",
+        "/api/remote/chat/threads"
+      ],
+      "wildcard": false
+    },
+    "/system/remote/tasks": {
+      "apis": [
+        "/api/remote/employees",
+        "/api/remote/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/remote/report": {
+      "apis": [
+        "/api/remote/employees",
+        "/api/remote/reports",
+        "/api/remote/reports/today"
+      ],
+      "wildcard": false
+    },
+    "/system/remote/announcements": {
+      "apis": [
+        "/api/remote/announcements"
+      ],
+      "wildcard": false
+    },
+    "/system/remote/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/remote/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/remote/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/master": {
+      "apis": [
+        "/api/hr/dashboard",
+        "/api/hr/master/filters",
+        "/api/hr/master/overview"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/master/expiring": {
+      "apis": [
+        "/api/hr/master/expiring",
+        "/api/hr/master/overview"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/master/iqama": {
+      "apis": [],
+      "wildcard": true
+    },
+    "/system/hr/master/passport": {
+      "apis": [],
+      "wildcard": true
+    },
+    "/system/hr/master/medicalInsurance": {
+      "apis": [],
+      "wildcard": true
+    },
+    "/system/hr/master/healthCertificate": {
+      "apis": [],
+      "wildcard": true
+    },
+    "/system/hr/master/driverCard": {
+      "apis": [],
+      "wildcard": true
+    },
+    "/system/hr/master/drivingLicense": {
+      "apis": [],
+      "wildcard": true
+    },
+    "/system/hr/master/socialInsurance": {
+      "apis": [],
+      "wildcard": true
+    },
+    "/system/hr/master/banking": {
+      "apis": [],
+      "wildcard": true
+    },
+    "/system/hr/employees": {
+      "apis": [
+        "/api/hr/employees",
+        "/api/hr/options"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/contracts": {
+      "apis": [
+        "/api/hr/contracts",
+        "/api/hr/employees"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/leaves": {
+      "apis": [
+        "/api/auth/signatures",
+        "/api/hr/employees/search",
+        "/api/hr/leave-types",
+        "/api/hr/leaves",
+        "/api/hr/leaves/backdated"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/requests": {
+      "apis": [
+        "/api/hr/requests"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/custody": {
+      "apis": [
+        "/api/hr/assets",
+        "/api/hr/employees"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/stock": {
+      "apis": [
+        "/api/hr/employees",
+        "/api/hr/stock"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/licenses": {
+      "apis": [
+        "/api/hr/licenses"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/leave-types": {
+      "apis": [
+        "/api/hr/leave-types"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/settings": {
+      "apis": [
+        "/api/hr/leave-types",
+        "/api/hr/settings",
+        "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/me": {
+      "apis": [
+        "/api/hr/me/profile"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/my-leaves": {
+      "apis": [
+        "/api/hr/leave-types",
+        "/api/hr/leaves",
+        "/api/hr/me/leaves",
+        "/api/hr/me/team",
+        "/api/hr/team/leaves"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/my-requests": {
+      "apis": [
+        "/api/hr/me/requests",
+        "/api/hr/requests"
+      ],
+      "wildcard": false
+    },
+    "/system/settings": {
+      "apis": [
+        "/api/analytics/risk/recalculate",
+        "/api/auth/change-password",
+        "/api/auth/signatures"
+      ],
+      "wildcard": false
+    },
+    "/system/crm/dashboard": {
+      "apis": [
+        "/api/crm/dashboard",
+        "/api/crm/options",
+        "/api/ops/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/crm/companies": {
+      "apis": [
+        "/api/crm/companies",
+        "/api/crm/customers-search",
+        "/api/crm/options",
+        "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
+    "/system/crm/vendors": {
+      "apis": [
+        "/api/crm-vendors",
+        "/api/crm-vendors/options",
+        "/api/partners/account"
+      ],
+      "wildcard": false
+    },
+    "/system/crm/customer-kpis": {
+      "apis": [
+        "/api/crm/kpis/customers"
+      ],
+      "wildcard": false
+    },
+    "/system/crm/vendor-kpis": {
+      "apis": [
+        "/api/crm/kpis/vendors"
+      ],
+      "wildcard": false
+    },
+    "/system/crm/contacts": {
+      "apis": [
+        "/api/crm/companies",
+        "/api/crm/contacts"
+      ],
+      "wildcard": false
+    },
+    "/system/crm/deals": {
+      "apis": [
+        "/api/crm/companies",
+        "/api/crm/deals",
+        "/api/crm/options"
+      ],
+      "wildcard": false
+    },
+    "/system/crm/tasks": {
+      "apis": [
+        "/api/crm/companies",
+        "/api/crm/options",
+        "/api/crm/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/crm/calendar": {
+      "apis": [
+        "/api/crm/calendar",
+        "/api/crm/options"
+      ],
+      "wildcard": false
+    },
+    "/system/crm/activities": {
+      "apis": [
+        "/api/crm/activities",
+        "/api/crm/companies",
+        "/api/crm/options"
+      ],
+      "wildcard": false
+    },
+    "/system/sales/dashboard": {
+      "apis": [
+        "/api/ops/dashboard",
+        "/api/sales/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/sales/pipeline": {
+      "apis": [
+        "/api/sales/pipeline"
+      ],
+      "wildcard": false
+    },
+    "/system/sales/targets": {
+      "apis": [
+        "/api/sales/options",
+        "/api/sales/targets"
+      ],
+      "wildcard": false
+    },
+    "/system/sales/performance": {
+      "apis": [
+        "/api/sales/performance"
+      ],
+      "wildcard": false
+    },
+    "/system/accounting/dashboard": {
+      "apis": [
+        "/api/accounting/dashboard",
+        "/api/accounting/sync",
+        "/api/ops/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/accounting/accounts": {
+      "apis": [
+        "/api/accounting/accounts",
+        "/api/accounting/ledger"
+      ],
+      "wildcard": false
+    },
+    "/system/accounting/journal": {
+      "apis": [
+        "/api/accounting/accounts",
+        "/api/accounting/journal",
+        "/api/accounting/sync"
+      ],
+      "wildcard": false
+    },
+    "/system/accounting/trial-balance": {
+      "apis": [
+        "/api/accounting/trial-balance"
+      ],
+      "wildcard": false
+    },
+    "/system/accounting/profit-loss": {
+      "apis": [
+        "/api/accounting/profit-loss"
+      ],
+      "wildcard": false
+    },
+    "/system/accounting/receivables": {
+      "apis": [
+        "/api/accounting/receivables"
+      ],
+      "wildcard": false
+    },
+    "/system/accounting/payables": {
+      "apis": [
+        "/api/accounting/payables"
+      ],
+      "wildcard": false
+    },
+    "/system/procurement/dashboard": {
+      "apis": [
+        "/api/ops/dashboard",
+        "/api/procurement/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/procurement/requests": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/procurement/options",
+        "/api/procurement/requests",
+        "/api/vendors"
+      ],
+      "wildcard": false
+    },
+    "/system/procurement/orders": {
+      "apis": [
+        "/api/procurement/bills",
+        "/api/procurement/options",
+        "/api/procurement/orders",
+        "/api/vendors"
+      ],
+      "wildcard": false
+    },
+    "/system/procurement/bills": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/procurement/bills",
+        "/api/procurement/options",
+        "/api/vendors"
+      ],
+      "wildcard": false
+    },
+    "/system/crm/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/crm/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/crm/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/sales/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/sales/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/sales/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/accounting/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/accounting/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/accounting/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/procurement/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/procurement/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/procurement/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/ops/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/ops/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/ops/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/workshop/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/workshop/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/workshop/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/customs/my-tasks": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/customs/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/customs/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/kpis": {
+      "apis": [
+        "/api/kpi/overview",
+        "/api/ops/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/reports": {
+      "apis": [
+        "/api/reports",
+        "/api/reports/subjects"
+      ],
+      "wildcard": false
+    },
+    "/system/assistant": {
+      "apis": [
+        "/api/assistant/query"
+      ],
+      "wildcard": false
+    },
+    "/system/branches": {
+      "apis": [
+        "/api/branches"
+      ],
+      "wildcard": false
+    },
+    "/system/expense-categories": {
+      "apis": [
+        "/api/expense-categories"
+      ],
+      "wildcard": false
+    },
+    "/system/settings/reference-data": {
+      "apis": [
+        "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
+    "/system/users": {
+      "apis": [
+        "/api/b2c/projects",
+        "/api/branches",
+        "/api/customers",
+        "/api/hr/employees-search",
+        "/api/partners",
+        "/api/users",
+        "/api/users/roles",
+        "/api/users/suggest-manager"
+      ],
+      "wildcard": false
+    },
+    "/system/permissions": {
+      "apis": [
+        "/api/admin/permissions",
+        "/api/admin/roles"
+      ],
+      "wildcard": false
+    },
+    "/system/audit": {
+      "apis": [
+        "/api/audit",
+        "/api/audit/options"
+      ],
+      "wildcard": false
+    },
+    "/system/complaints": {
+      "apis": [
+        "/api/complaints"
+      ],
+      "wildcard": false
+    },
+    "/system/portal": {
+      "apis": [
+        "/api/portal/overview"
+      ],
+      "wildcard": false
+    },
+    "/system/portal/shipments": {
+      "apis": [
+        "/api/portal/shipments"
+      ],
+      "wildcard": false
+    },
+    "/system/portal/customs": {
+      "apis": [
+        "/api/portal/customs"
+      ],
+      "wildcard": false
+    },
+    "/system/portal/invoices": {
+      "apis": [
+        "/api/analytics/portal/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/portal/payments": {
+      "apis": [
+        "/api/payments"
+      ],
+      "wildcard": false
+    }
+  }
+}

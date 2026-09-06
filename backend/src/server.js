@@ -190,6 +190,13 @@ app.use('/api/', async (req, res, next) => {
 
 app.use('/api/', generalLimiter);
 
+// ── حارسُ الصفحات ───────────────────────────────────────────────────────────
+// صلاحيّةُ الصفحة تحرس البيانات لا الشاشةَ وحدَها: إن كانت كلُّ الصفحات التي
+// تنادي هذه النقطة مغلقةً على هذا الدور، رُدَّت ٤٠٣. يُركَّب هنا — قبل حرّاس
+// الأقسام — لأنّه يشمل المسارات كلَّها، ويقرأ صاحبَ الطلب بنفسه بلا أن يردّ على
+// الأبواب العامّة. راجع middleware/pageGate.
+app.use('/api/', require('./middleware/pageGate'));
+
 // API Routes
 // Section-owned prefixes are wrapped with authenticate + sectionGate(<section>)
 // so the super_admin's dynamic role→section permissions are enforced on the API
@@ -219,7 +226,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/assistant', assistantRoutes);
-app.use('/api/workflows', workflowRoutes);
+app.use('/api/workflows', authenticate, sectionGate('Operations'), workflowRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/drivers', driverRoutes);

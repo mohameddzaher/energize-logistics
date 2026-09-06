@@ -87,6 +87,36 @@ const authenticate = async (req, res, next) => {
   }
 };
 
+/**
+ * مَن صاحبُ هذا الطلب — أو `null` بلا ردّ.
+ *
+ * ── ولماذا نسخةٌ لا تردّ ────────────────────────────────────────────────────
+ * `authenticate` حارس: يرفض ويردّ. وحارسُ الصفحات (`pageGate`) يُركَّب على
+ * `/api/` كلِّها — وفيها مساراتٌ عامّةٌ عمدًا (تسجيلُ الدخول، خطّافُ منصّة
+ * التشغيل، واجهةُ الأسطول العامّة). فلو استعمل الحارسَ لردَّ ٤٠١ على أبوابٍ
+ * مفتوحةٍ بقصد.
+ *
+ * فهذه تقرأ التوكن إن وُجد وتصمت إن لم يوجد، وتترك القبولَ والرفضَ لحارس
+ * المسار نفسِه. وتستعمل ذاكرةَ المستخدم نفسَها، فلا استعلامَ إضافيّ.
+ */
+const resolveUser = async (req) => {
+  if (req.user) return req.user;
+  try {
+    const header = req.headers.authorization || '';
+    const bearer = header.startsWith('Bearer ') ? header.slice(7) : null;
+    const token = req.cookies?.accessToken || bearer;
+    if (!token || isRevoked(token)) return null;
+    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+    const cacheKey = String(decoded.userId);
+    const cached = userCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) return cached.user;
+    const user = await User.findById(decoded.userId).lean();
+    if (user) userCache.set(cacheKey, { user, expires: Date.now() + USER_CACHE_TTL });
+    return user || null;
+  } catch (_) { return null; }
+};
+
 module.exports = authenticate;
 module.exports.invalidateUserCache = invalidateUserCache;
 module.exports.revokeAccessToken = revokeAccessToken;
+module.exports.resolveUser = resolveUser;

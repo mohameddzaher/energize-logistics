@@ -13,6 +13,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import { kindWords, money, dt, paymentTypeLabel, type CollectionsParty } from '@/lib/collections';
 import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, Select, Loader2 } from '@/components/hr/HRKit';
+import ReportButton from '@/components/system/ReportButton';
 import { useAuth } from '@/context/AuthContext';
 import { canEditCollections } from '@/lib/collections';
 import ExportMenu from '@/components/ls2/ExportMenu';
@@ -65,6 +66,14 @@ export default function PartyProfilePage() {
   // ── المتابعات ───────────────────────────────────────────────────────────
   // كانت صفحةً في قسمٍ زال، تُقيَّد على عميلٍ من ورك فلو ميّت. صارت هنا: على
   // الطرف نفسِه الذي تُقرأ أرقامُه أعلى الصفحة.
+  // ── مدى كشف الحساب ─────────────────────────────────────────────────────
+  // يبدأ على الشهر الجاري — وهو أكثرُ ما يُطلَب — ويُغيَّر بضغطتين لمن أراد
+  // شهرًا بعينه أو فترةً بين تاريخين.
+  const monthStart = new Date();
+  const [stFrom, setStFrom] = useState(
+    new Date(monthStart.getFullYear(), monthStart.getMonth(), 1).toISOString().slice(0, 10));
+  const [stTo, setStTo] = useState(new Date().toISOString().slice(0, 10));
+
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
   const [fuForm, setFuForm] = useState<Partial<FollowUp> | null>(null);
   const [fuSaving, setFuSaving] = useState(false);
@@ -170,6 +179,24 @@ export default function PartyProfilePage() {
         >
           <ArrowRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} /> {t('رجوع', 'Back')}
         </button>
+
+        {/* ── كشفُ حسابٍ يُطبَع ويُرسَل ────────────────────────────────────
+            المطالبةُ تُرسَل ورقةً: ما فُوتِر في الفترة، وما حُصّل منه، وما بقي،
+            ومعه ما دار من متابعاتٍ مع العميل. ويُبنى في الخادم لا في المتصفّح —
+            هناك الترويسةُ والخطوطُ مضبوطةٌ والعربيّةُ تُرسَم صحيحةً.
+            والمدى يُختار هنا: «اطبعه لي عن شهر ٨» سؤالٌ يُطرح كلَّ شهر. */}
+        {kind === 'customer' && (
+          <div className="flex items-center gap-1.5">
+            <input type="date" value={stFrom} onChange={(e) => setStFrom(e.target.value)}
+              title={t('من تاريخ', 'From')}
+              className="px-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 text-[13px]" />
+            <input type="date" value={stTo} onChange={(e) => setStTo(e.target.value)}
+              title={t('إلى تاريخ', 'To')}
+              className="px-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 text-[13px]" />
+            <ReportButton subject="customer" id={p.name} from={stFrom || undefined} to={stTo || undefined}
+              label={t('كشف حساب PDF', 'Statement PDF')} />
+          </div>
+        )}
         <ExportMenu
           fileName={`collections-${p.name}`}
           lang={ar ? 'ar' : 'en'}

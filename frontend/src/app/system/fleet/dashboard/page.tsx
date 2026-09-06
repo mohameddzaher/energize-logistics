@@ -1,7 +1,7 @@
 'use client';
 // لوحة تحليلات إدارة الأسطول — الدخل، تحقيق الأهداف لكل سيارة، ترتيب السواقين
 // والعملاء والمشرفين، الترند الشهري وتوزيع الحمولات — بفلاتر متعددة وتصدير Excel.
-import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -70,6 +70,14 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
   const [vehSort, setVehSort] = useState<'income' | 'trips' | 'achievedPct'>('income');
   // «وريني اللي مش محقّقة» — السؤالُ الذي يلي البطاقةَ مباشرةً، وكان بلا جواب.
   const [targetFilter, setTargetFilter] = useState<'all' | 'achieved' | 'below'>('all');
+  // ── والبطاقةُ تأخذُك إلى جوابها ──────────────────────────────────────────
+  // كانت تُصفّي جدولًا في آخر الصفحة ولا تُحرّك الشاشة، فيضغط المستخدمُ فلا
+  // يتغيّر أمامه شيءٌ ويظنّ الزرَّ معطَّلًا — والجوابُ تحته بشاشتين.
+  const vehTableRef = useRef<HTMLDivElement>(null);
+  const pickTarget = (k: 'achieved' | 'below') => {
+    setTargetFilter((f) => (f === k ? 'all' : k));
+    setTimeout(() => vehTableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+  };
   const [custTab, setCustTab] = useState<'all' | 'heavy' | 'branch'>('all');
 
   const toggle = (arr: string[], set: (v: string[]) => void, v: string) =>
@@ -222,11 +230,11 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
             {/* ── البطاقةُ سؤالٌ، فلتكن جوابًا ────────────────────────────────
                 «سبعُ سيّاراتٍ دون الهدف» رقمٌ يليه سؤالٌ واحد: أيُّها؟ وكانت
                 البطاقةُ تقف عند الرقم. صارت تُضغط فيُصفَّى الجدولُ عليها. */}
-            <button type="button" onClick={() => setTargetFilter((f) => (f === 'achieved' ? 'all' : 'achieved'))}
+            <button type="button" onClick={() => pickTarget('achieved')}
               className={`text-start rounded-xl transition-shadow ${targetFilter === 'achieved' ? 'ring-2 ring-emerald-500' : 'hover:shadow-md'}`}>
               <StatCard label={ar ? 'سيارات محقّقة الهدف' : 'On target'} value={`${data.totals.vehiclesAchieved} / ${data.totals.vehicleCount}`} accent="text-emerald-600" />
             </button>
-            <button type="button" onClick={() => setTargetFilter((f) => (f === 'below' ? 'all' : 'below'))}
+            <button type="button" onClick={() => pickTarget('below')}
               className={`text-start rounded-xl transition-shadow ${targetFilter === 'below' ? 'ring-2 ring-red-500' : 'hover:shadow-md'}`}>
               <StatCard label={ar ? 'سيارات دون الهدف' : 'Below target'} value={data.totals.vehiclesBelow} accent="text-red-600" />
             </button>
@@ -318,7 +326,20 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
               <div className="min-w-0">
-                <p className="font-bold text-slate-900">{ar ? 'أداء السيارات مقابل الهدف' : 'Vehicles vs target'}</p>
+                <p className="font-bold text-slate-900" >
+                  <span ref={vehTableRef as any} className="block h-0 -mt-20 pt-20" aria-hidden="true" />
+                  {ar ? 'أداء السيارات مقابل الهدف' : 'Vehicles vs target'}
+                  {/* من ضغط بطاقةَ «دون الهدف» يجب أن يرى أنّ الجدولَ اقتصر
+                      عليها، وإلّا قرأ جزءًا وحسبه الكلّ. */}
+                  {targetFilter !== 'all' && (
+                    <span className={`ms-2 text-xs font-semibold ${targetFilter === 'below' ? 'text-red-600' : 'text-emerald-600'}`}>
+                      · {targetFilter === 'below' ? (ar ? 'دون الهدف' : 'below target') : (ar ? 'محقّقة الهدف' : 'on target')} ({sortedVehicles.length})
+                      <button type="button" onClick={() => setTargetFilter('all')} className="ms-1.5 text-slate-400 hover:text-slate-700 font-normal underline">
+                        {ar ? 'عرض الكل' : 'show all'}
+                      </button>
+                    </span>
+                  )}
+                </p>
                 {/* المقياسُ يُقال مع الرقم: بغيره يُقرأ الرقمُ على غير وجهه. */}
                 <p className="text-[11.5px] text-slate-500 mt-0.5">
                   {data.totals.targetBasis === 'net'
@@ -344,11 +365,29 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="table-head">
-                  <tr>{[ar ? 'اللوحة' : 'Plate', ar ? 'التيدر' : 'Trailer', ar ? 'المشرف' : 'Supervisor', ar ? 'الحمولات' : 'Loads', ar ? 'شغّالة من' : 'Active from', ar ? 'المحقَّق' : 'Achieved', ar ? 'الهدف' : 'Target', ar ? 'الناقص' : 'Shortfall', ar ? 'التحقيق' : 'Attained'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
+                  <tr>{[ar ? 'الحالة' : 'Status', ar ? 'اللوحة' : 'Plate', ar ? 'التيدر' : 'Trailer', ar ? 'المشرف' : 'Supervisor', ar ? 'الحمولات' : 'Loads', ar ? 'شغّالة من' : 'Active from', ar ? 'المحقَّق' : 'Achieved', ar ? 'الهدف' : 'Target', ar ? 'الناقص' : 'Shortfall', ar ? 'التحقيق' : 'Attained'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {sortedVehicles.map((v) => (
-                    <tr key={v._id} className="hover:bg-slate-50">
+                    <tr key={v._id} className={`hover:bg-slate-50 ${v.achieved === false ? 'bg-red-50/40' : ''}`}>
+                      {/* ── والحالةُ تُقرأ بالنظر ────────────────────────────
+                          كانت تُستنتَج من لون نسبةِ التحقيق في آخر عمود: من
+                          يريد «أيُّ السيّارات دون الهدف؟» يمسح الجدولَ عمودًا
+                          بعمود ويقارن ألوانًا. فصارت كلمةً في أوّل الصفّ،
+                          والصفُّ المقصّر مظلَّلٌ كلُّه. */}
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {v.achieved == null ? (
+                          <span className="text-slate-300 text-xs">{ar ? 'بلا هدف' : 'no target'}</span>
+                        ) : v.achieved ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
+                            ✓ {ar ? 'محقّقة' : 'On target'}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-semibold">
+                            ✕ {ar ? 'دون الهدف' : 'Below'}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 font-mono font-semibold">
                         <Link href={`/system/fleet/vehicles/${v._id}${query ? `?${query}` : ''}`} className="text-[#f37121] hover:underline">{v.plate}</Link>
                       </td>
@@ -378,7 +417,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
                       </td>
                     </tr>
                   ))}
-                  {sortedVehicles.length === 0 && <tr><td colSpan={9} className="px-3 py-8 text-center text-slate-400">{ar ? 'لا توجد بيانات لهذه الفلاتر' : 'No data'}</td></tr>}
+                  {sortedVehicles.length === 0 && <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-400">{ar ? 'لا توجد بيانات لهذه الفلاتر' : 'No data'}</td></tr>}
                 </tbody>
               </table>
             </div>

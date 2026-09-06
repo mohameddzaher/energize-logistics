@@ -12,6 +12,7 @@ const upl = require('./uplClient');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
 const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
+const { derivePaymentTypeFor } = require('../utils/paymentType');
 
 
 const SOURCE = 'ops_upl';
@@ -148,10 +149,16 @@ async function upsertShipments(ships) {
 
   const ops = live.map((s) => {
     const { set, setOnInsert } = mapShipment(s);
-    // صفةُ العميل وحدَها — «طريقةُ الدفع» شروطُ سدادٍ لا نوعُ فاتورة، راجع
-    // utils/paymentType. والفاتورةُ الصادرة تغلبها، وذلك يُقاس على الصفّ نفسِه
-    // في خطّ التجميع أدناه.
-    const derived = typeByCustomer[fold(s.user?.name || '')] || '';
+    // ── النوعُ يُشتقّ بالقاعدة كاملةً ────────────────────────────────────────
+    // صفةُ العميل، وتنقضها طريقةُ الدفع النقديّة للكشوف الجديدة وحدَها، وتعلوهما
+    // فاتورةٌ صادرة. راجع utils/paymentType — والقياسُ على `reportDate` لأنّ
+    // القاعدة تسري من أوّل سبتمبر.
+    const custType = typeByCustomer[fold(s.user?.name || '')] || '';
+    const shipDate = s.pick_time ? new Date(s.pick_time) : (s.created_at ? new Date(s.created_at) : null);
+    const derived = derivePaymentTypeFor(
+      { reportDate: shipDate, paymentMethod: s.payment_method },
+      custType,
+    );
     return {
       updateOne: {
         filter: { externalSource: SOURCE, externalId: String(s.id) },

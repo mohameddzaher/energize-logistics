@@ -943,10 +943,24 @@ exports.cashInvoices = async (req, res) => {
     //
     // فالشرطُ هو النوعُ وحدَه: كلُّ كشفٍ نقديٍّ قابلٌ للتحصيل، والمحصَّلُ منه
     // يُعرَف بتاريخ تحصيله لا بغيابه من القائمة.
+    // ── ولا تصل الشاشةَ إلّا بعد مراجعة التشغيل ──────────────────────────────
+    // كان الشرطُ تاريخَ سدادٍ ونوعًا نقديًّا. وصار معهما **مراجعةُ التشغيل**:
+    // الكشفُ لا يُطالَب به العميلُ قبل أن يراجعه التشغيلُ ويقرّ أنّه تامّ.
+    //
+    // ويسري على الكشوف الجديدة وحدَها (راجع AUTO_RULE_FROM): عمودُ المراجعة
+    // فارغٌ في تسعةٍ وعشرين ألفَ كشفٍ سابق، فاشتراطُه عليها يُفرغ الشاشةَ من
+    // كلّ ما يعمل عليه القسمُ اليوم.
+    const { AUTO_RULE_FROM } = require('../utils/paymentType');
     const filter = {
       ...invoiceFilters(req.query, { ageField: 'paymentDate' }),
       paymentType: 'cash',
     };
+    filter.$and = [...(filter.$and || []), {
+      $or: [
+        { reportDate: { $lt: AUTO_RULE_FROM } },
+        { accountingReview: { $nin: ['', null] } },
+      ],
+    }];
 
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));

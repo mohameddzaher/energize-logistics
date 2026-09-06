@@ -4,7 +4,7 @@ const { startOfDay, endOfDay, DAY_MS: COMPANY_DAY_MS } = require('../utils/compa
 const { flexSpaceRegex } = require('../utils/plateKey');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll, emitPerRole } = require('../websocket/socketManager');
-const { derivePaymentTypeFor } = require('../utils/paymentType');
+const { derivePaymentTypeFor, hasTaxInvoice } = require('../utils/paymentType');
 const XLSX = require('xlsx');
 const cache = require('../utils/ttlCache');
 
@@ -231,6 +231,41 @@ async function fillPaymentTypeFromCustomer(patch, current = {}) {
     // عمود «اختيار يدويّ» وهو ليس منه.
     patch.__derivedPaymentType = true;
     return next;
+  } catch (_) { return null; }
+}
+
+/**
+ * رقمُ فاتورةٍ كُتب على كشفٍ يصنع قيدَه في دفتر الفواتير.
+ *
+ * ── ولماذا يلزم ────────────────────────────────────────────────────────────
+ * شاشةُ الفواتير الضريبيّة تقرأ الدفتر (`CollectionInvoice`) لا الكشوف: الفاتورةُ
+ * هي الوحدةُ وقد تضمّ كشوفًا. فرقمٌ يُكتب على كشفٍ اليوم لا يجد له قيدًا في
+ * الدفتر — فلا يظهر في التحصيل أصلًا، والشرطُ أن يصلها **فورًا** متى كُتب رقمُه.
+ *
+ * فيُنشأ القيدُ عند أوّل كتابةٍ ولا يُلمَس بعدها: ما بعده — تسليمٌ وتحصيلٌ وحالة —
+ * عملُ قسم التحصيل على الفاتورة نفسِها، ولا يجوز أن تدهسه كتابةٌ على كشف.
+ */
+async function ensureLedgerInvoice(workflow) {
+  try {
+    const no = String(workflow.invoiceNumber || '').trim();
+    if (!no || !hasTaxInvoice(workflow)) return null;
+    const CollectionInvoice = require('../models/CollectionInvoice');
+    const existing = await CollectionInvoice.findOne({ invoiceNumber: no }).select('_id').lean();
+    if (existing) return null;
+    await CollectionInvoice.create({
+      invoiceNumber: no,
+      kind: 'tax',
+      partyName: workflow.username || '',
+      invoiceDate: workflow.invoiceDate || workflow.paymentDate || workflow.reportDate || new Date(),
+      net: Number(workflow.netInvoice) || 0,
+      vat: Number(workflow.tax) || 0,
+      total: Number(workflow.totalInvoice) || 0,
+      // مصدرُ القيد يُقال: قيدٌ وُلد من كشفٍ غيرُ قيدٍ جاء من دفتر الشركة.
+      sheetCode: 'workflow',
+      status: '',
+    });
+    try { require('./collectionsLedgerController').invalidate(); } catch (_) {}
+    return no;
   } catch (_) { return null; }
 }
 
@@ -760,6 +795,7 @@ exports.createWorkflow = async (req, res) => {
     filteredBody.stage = 'draft';
 
     const workflow = await OperationsWorkflow.create(filteredBody);
+    if (filteredBody.invoiceNumber) await ensureLedgerInvoice(workflow);
 
     // ── ولا يُنسَخ الكشفُ إلى عميلٍ وفاتورة ──────────────────────────────
     // كان كلُّ كشفٍ يُنشئ خلفَه سجلَّ عميلٍ وفاتورةً في ورك فلو «العملاء
@@ -871,6 +907,8 @@ exports.updateWorkflow = async (req, res) => {
     const hadCollectionDate = !!workflow.collectionDate;
     Object.assign(workflow, filteredBody);
     await workflow.save();
+    // رقمُ فاتورةٍ كُتب الآن يصنع قيدَه، فتصل الشاشةَ الضريبيّة فورًا.
+    if (filteredBody.invoiceNumber !== undefined) await ensureLedgerInvoice(workflow);
 
     // ── وتاريخُ التحصيل لا يُنشئ دفعةً في مكانٍ آخر ──────────────────────
     // كان إثباتُ تاريخ التحصيل يقيّد `Payment` ويحدّث فاتورةً ورصيدَ عميل في

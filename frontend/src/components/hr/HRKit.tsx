@@ -13,7 +13,7 @@ export function Spinner() {
   );
 }
 
-export function PageHeader({ icon, title, subtitle, children }: { icon: ReactNode; title: string; subtitle?: string; children?: ReactNode }) {
+export function PageHeader({ icon, title, subtitle, children }: { icon: ReactNode; title: string; subtitle?: ReactNode; children?: ReactNode }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
       <div className="flex items-center gap-3">

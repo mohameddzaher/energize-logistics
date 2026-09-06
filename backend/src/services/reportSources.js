@@ -720,6 +720,27 @@ async function buildCustomerReport(id, query, lang) {
     ]);
     displayName = [...cRow, ...oRow, ...fRow].find((r) => nameKey(r.customerName) === key)?.customerName;
   }
+  // ── وعميلُ التحصيل عميل ──────────────────────────────────────────────────
+  // كان الاسمُ يُلتمَس في سجلّات العملاء والتخليصِ والشحن، وليس فيها عملاءُ
+  // التحصيل: اسمُهم مكتوبٌ على كشوف التشغيل وفي دفتر الفواتير وفي سجلّ أطراف
+  // التحصيل. فمن عليه مئاتُ الآلاف ولا شحنةَ له في هذه المجموعات كان تقريرُه
+  // يُردّ «لا موضوع بهذا الاسم» — ولا يُطبَع له كشفُ حساب.
+  if (!displayName) {
+    const CollectionsParty = require('../models/CollectionsParty');
+    const CollectionInvoice = require('../models/CollectionInvoice');
+    const OperationsWorkflow = require('../models/OperationsWorkflow');
+    const pRow = await CollectionsParty.findOne({ kind: 'customer', nameKey: key }).select('name').lean();
+    displayName = pRow?.name;
+    if (!displayName) {
+      // الاسمُ المطويُّ لا يُطابَق في القاعدة، فيُقرأ ما يحمل اسمًا ويُطوى هنا.
+      const [inv, wf] = await Promise.all([
+        CollectionInvoice.find({ partyName: { $nin: [null, ''] } }).select('partyName').limit(40000).lean(),
+        OperationsWorkflow.find({ username: { $nin: [null, ''] } }).select('username').limit(60000).lean(),
+      ]);
+      displayName = inv.find((r) => nameKey(r.partyName) === key)?.partyName
+        || wf.find((r) => nameKey(r.username) === key)?.username;
+    }
+  }
   if (!displayName) return null;
 
   const finIds = fin.map((c) => c._id);
@@ -874,6 +895,133 @@ async function buildCustomerReport(id, query, lang) {
       align: ['start', 'end', 'start', 'start'],
       rows: paymentsP.map((p) => [dt(p.paymentDate), money(p.amount), p.paymentMethod || '—', p.reference || '—']),
     });
+  }
+
+  // ── كشفُ حسابِ التحصيل ────────────────────────────────────────────────
+  //
+  // قسمُ التحصيل لا يعمل على `Invoice` و`Payment`؛ يعمل على دفتر الفواتير
+  // (`CollectionInvoice`) وعلى كشوف التشغيل نفسِها — فالكشفُ هو المستند
+  // وتاريخُ تحصيله عمودٌ فيه. فكانت الفقرةُ المالـيّةُ أعلاه تُطبَع فارغةً
+  // لعملاءَ عليهم مئاتُ الآلاف، لأنّها تسأل مجموعتين مهجورتين.
+  //
+  // وهذا هو كشفُ الحساب الذي يُطبَع ويُرسَل: ما فُوتِر في الفترة، وما حُصّل
+  // منه، وما بقي — ومعه ما دار من متابعاتٍ مع العميل، فالمطالبةُ تُسنَد بما
+  // قيل ومتى.
+  {
+    const CollectionInvoice = require('../models/CollectionInvoice');
+    const CollectionsParty = require('../models/CollectionsParty');
+    const CollectionsFollowUp = require('../models/CollectionsFollowUp');
+    const OperationsWorkflow = require('../models/OperationsWorkflow');
+
+    const party = await CollectionsParty.findOne({ kind: 'customer', nameKey: key }).select('_id name').lean();
+
+    // الفواتيرُ الضريبيّة من الدفتر — بالاسم المطويّ، فتلتقي صيغُ الاسم كلُّها.
+    const ledgerAll = await CollectionInvoice.find({ partyName: { $nin: [null, ''] } })
+      .select('invoiceNumber partyName total invoiceDate deliveryDate collectionDate status')
+      .limit(40000).lean();
+    const ledgerMine = ledgerAll.filter((i) => nameKey(i.partyName) === key);
+    const ledgerP = ledgerMine.filter((i) => inWin(i.invoiceDate));
+
+    // ── والصيغُ تُعرَف أوّلًا ثمّ تُسأل القاعدةُ بها ──────────────────────
+    // الطيُّ العربيُّ دالّةُ جافاسكربت لا تفهمها القاعدة، فلا يُطابَق الاسمُ
+    // المطويُّ في استعلام. وقراءةُ كشوفِ الفترة كلِّها ثمّ طيُّها في الذاكرة
+    // تحتاج حدًّا، والحدُّ يقطع صامتًا فينقص كشفُ الحساب بلا أن يقول.
+    //
+    // فتُقرأ الأسماءُ المتمايزة وحدَها — وهي مئات — وتُطوى هنا، ثمّ تُسأل
+    // القاعدةُ بالصيغ المطابقة نصًّا. فلا حدَّ ولا نقص.
+    const allNames = await OperationsWorkflow.distinct('username', { username: { $nin: [null, ''] } });
+    const myNames = allNames.filter((n) => nameKey(n) === key);
+    const cashP = myNames.length ? await OperationsWorkflow.find({
+      username: { $in: myNames }, paymentType: 'cash',
+      $or: [{ paymentDate: { $gte: from, $lte: to } }, { reportDate: { $gte: from, $lte: to } }],
+      executionStatus: { $ne: 'cancelled' },
+    }).select('reportNumber reportDate username paymentDate sellingValue collectedAmount collectionDate fromLocation toLocation')
+      .lean() : [];
+
+    const isCollected = (i) => !!i.collectionDate || /collected/i.test(i.status || '');
+    // المستحقُّ يُحسب على العمر كلِّه لا على الفترة: ما بقي على العميل باقٍ
+    // وإن فُوتِر قبل أوّل يومٍ في الكشف.
+    const invoicedAll = ledgerMine.reduce((a, i) => a + (Number(i.total) || 0), 0);
+    const collectedAll = ledgerMine.filter(isCollected).reduce((a, i) => a + (Number(i.total) || 0), 0);
+    const dueAll = invoicedAll - collectedAll;
+    const openInvoices = ledgerMine.filter((i) => !isCollected(i));
+
+    if (ledgerMine.length || cashP.length || party) {
+      blocks.push({ kind: 'section', text: t('كشف حساب التحصيل', 'Collections statement') });
+      blocks.push({
+        kind: 'stats',
+        items: [
+          { label: t('مفوتر في الفترة', 'Invoiced in period'), value: money(ledgerP.reduce((a, i) => a + (Number(i.total) || 0), 0)) },
+          { label: t('محصَّل في الفترة', 'Collected in period'), value: money(ledgerMine.filter((i) => inWin(i.collectionDate)).reduce((a, i) => a + (Number(i.total) || 0), 0)) },
+          { label: t('نقديّ في الفترة', 'Cash in period'), value: money(cashP.reduce((a, w) => a + (Number(w.collectedAmount) || 0), 0)) },
+          { label: t('إجمالي ما فُوتِر', 'Invoiced, all time'), value: money(invoicedAll) },
+          { label: t('إجمالي ما حُصِّل', 'Collected, all time'), value: money(collectedAll) },
+          { label: t('الرصيد المستحق', 'Outstanding'), value: money(dueAll), accent: true },
+        ],
+      });
+      if (dueAll > 0) {
+        blocks.push({
+          kind: 'note',
+          tone: 'danger',
+          text: `${t('المستحقُّ على العميل', 'Due from customer')}: ${money(dueAll)} — ${openInvoices.length} ${t('فاتورة لم تُحصَّل', 'invoices not collected')}`,
+        });
+      }
+    }
+
+    if (ledgerP.length) {
+      blocks.push({ kind: 'section', text: t('الفواتير الضريبية في الفترة', 'Tax invoices in period') });
+      blocks.push({
+        kind: 'table',
+        head: [t('رقم الفاتورة', 'Invoice'), t('تاريخها', 'Date'), t('التسليم للعميل', 'Delivered'), t('القيمة', 'Value'), t('تاريخ التحصيل', 'Collected on'), t('الحالة', 'Status')],
+        align: ['start', 'start', 'start', 'end', 'start', 'center'],
+        rows: ledgerP
+          .sort((a, b) => new Date(b.invoiceDate || 0) - new Date(a.invoiceDate || 0))
+          .map((i) => {
+            const done = isCollected(i);
+            return [String(i.invoiceNumber || '—'), dt(i.invoiceDate), dt(i.deliveryDate), money(i.total),
+              done ? (i.collectionDate ? dt(i.collectionDate) : t('محصَّلة — بلا تاريخ', 'Collected — no date')) : '—',
+              { t: done ? t('محصَّلة', 'Collected') : t('لم تُحصَّل', 'Open'), color: done ? undefined : '#dc2626' }];
+          }),
+      });
+    }
+
+    if (cashP.length) {
+      blocks.push({ kind: 'section', text: t('الكشوف النقدية في الفترة', 'Cash reports in period') });
+      blocks.push({
+        kind: 'table',
+        head: [t('رقم الكشف', 'Report'), t('تاريخ السداد', 'Paid on'), t('المسار', 'Route'), t('القيمة', 'Value'), t('المحصَّل', 'Collected'), t('تاريخ التحصيل', 'Collected on')],
+        align: ['start', 'start', 'start', 'end', 'end', 'start'],
+        rows: cashP
+          .sort((a, b) => new Date(b.paymentDate || b.reportDate || 0) - new Date(a.paymentDate || a.reportDate || 0))
+          .map((w) => [String(w.reportNumber || '—'), dt(w.paymentDate || w.reportDate),
+            [w.fromLocation, w.toLocation].filter(Boolean).join(' — ') || '—',
+            money(w.sellingValue), money(w.collectedAmount),
+            w.collectionDate ? dt(w.collectionDate) : { t: t('لم يُحصَّل', 'open'), color: '#dc2626' }]),
+      });
+    }
+
+    // ── والمتابعاتُ جزءٌ من الكشف ────────────────────────────────────────
+    // «كلّمناه يوم كذا فوعد بكذا» هو سندُ المطالبة. وطبعُ الأرقام بلا ما دار
+    // بيننا وبينه يجعل الكشفَ ورقةَ أرقامٍ لا ملفَّ مطالبة.
+    if (party) {
+      const fus = await CollectionsFollowUp.find({ party: party._id, date: { $gte: from, $lte: to } })
+        .populate('collector', 'firstName lastName')
+        .sort({ date: -1 }).limit(300).lean();
+      if (fus.length) {
+        blocks.push({ kind: 'section', text: t('المتابعات في الفترة', 'Follow-ups in period') });
+        blocks.push({
+          kind: 'table',
+          head: [t('التاريخ', 'Date'), t('النوع', 'Type'), t('المحصِّل', 'Collector'), t('محصَّل', 'Collected'), t('وعد بـ', 'Promised'), t('تاريخ الوعد', 'Promise date'), t('الملاحظات', 'Notes')],
+          align: ['start', 'start', 'start', 'end', 'end', 'start', 'start'],
+          rows: fus.map((f) => [dt(f.date), f.type || '—',
+            [f.collector?.firstName, f.collector?.lastName].filter(Boolean).join(' ') || '—',
+            f.amountCollected ? money(f.amountCollected) : '—',
+            f.promiseAmount ? money(f.promiseAmount) : '—',
+            f.promiseDate ? dt(f.promiseDate) : '—',
+            f.notes || '—']),
+        });
+      }
+    }
   }
 
   // Relationship.

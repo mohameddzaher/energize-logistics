@@ -884,6 +884,176 @@ function ageCondition(field, band) {
 }
 
 /** فلاترُ الصفحتين المشتركة: عميلٌ وفرعٌ ومدًى وحالةُ التحصيل وشريحةُ العمر. */
+/**
+ * أسماءُ عملاءِ صفحةٍ ← معرّفاتُ ملفّاتهم، باستعلامٍ واحد.
+ *
+ * الصفُّ يحمل اسمًا، وملفُّ العميل يُفتَح بمعرّفه. فلو تُرجم الاسمُ في الواجهة
+ * لكان لكلّ ضغطةٍ طلبٌ ثانٍ ولانتظر المستخدمُ مرّتين. ويُترجَم هنا لمئة صفٍّ
+ * دفعةً واحدة، بالاسم المطويّ فتلتقي صيغُ الاسم كلُّها على ملفٍّ واحد.
+ */
+async function partyIdsByName(names, kind = 'customer') {
+  const keys = [...new Set((names || []).filter(Boolean).map((n) => fold(n)))];
+  if (!keys.length) return new Map();
+  const rows = await CollectionsParty.find({ kind, nameKey: { $in: keys } }).select('_id nameKey').lean();
+  return new Map(rows.map((r) => [r.nameKey, String(r._id)]));
+}
+
+/** شروطُ دفتر الفواتير من استعلام الصفحة — يقرؤها الجدولُ وقائمةُ قيم الأعمدة. */
+function ledgerInvoiceMatch(query) {
+  const f = {};
+  if (query.customer) f.partyName = flexSpaceRegex(String(query.customer));
+  if (query.q) {
+    const { exact, loose } = numberSearchRegex(String(query.q));
+    const rx = exact || loose;
+    f.$or = [{ invoiceNumber: rx }, { partyName: exact ? rx : loose }, { partyCode: rx }];
+  }
+  if (query.collected === 'yes') f.$and = [...(f.$and || []), { $or: [{ collectionDate: { $ne: null } }, { status: /collected/i }] }];
+  else if (query.collected === 'no') f.$and = [...(f.$and || []), { collectionDate: null, status: { $not: /collected/i } }];
+  if (query.from || query.to) {
+    f.invoiceDate = {};
+    if (query.from) f.invoiceDate.$gte = new Date(query.from);
+    if (query.to) f.invoiceDate.$lte = new Date(`${query.to}T23:59:59.999Z`);
+  }
+  if (query.age) {
+    const c = ageCondition('invoiceDate', String(query.age));
+    if (c.invoiceDate) f.invoiceDate = { ...(f.invoiceDate || {}), ...c.invoiceDate };
+  }
+  return f;
+}
+
+/**
+ * فلاترُ الأعمدة على طريقة إكسل — لصفحتَي الفواتير.
+ *
+ * ── ولماذا في الخادم لا في المتصفّح ────────────────────────────────────────
+ * الجدولُ مُصفَّحٌ في الخادم: مئةُ صفٍّ في الصفحة من تسعة آلاف. فبناءُ قائمة
+ * القيم من الصفوف المحمَّلة يعرض قيمَ الصفحة الحاليّة وحدَها، والفلترةُ بها
+ * تفلتر مئةً وتترك الباقي. فالقيمُ تُحسب في القاعدة والفلترُ يُطبَّق فيها.
+ *
+ * وتصل القيمُ مكرَّرةً (`cf_x=a&cf_x=b`) لا مفصولةً بفاصلة، لأنّ القيم نفسَها
+ * قد تحوي فاصلةً — واسمُ عميلٍ فيه فاصلةٌ يصير عميلين.
+ */
+// ما يجوز الفلترةُ به في كلّ صفحة، ومن أيّ مجموعة يُقرأ.
+const COL_FIELDS = {
+  // الكاش: صفُّه كشفُ تشغيل.
+  cash: {
+    reportNumber: 'text', username: 'text', branch: 'text', payingBranch: 'text',
+    fromLocation: 'text', toLocation: 'text', collectionDetail: 'text',
+    paymentDate: 'date', collectionDate: 'date', deliveryDate: 'date',
+  },
+  // الضريبيّ: صفُّه فاتورةُ دفتر.
+  tax: {
+    invoiceNumber: 'text', partyName: 'text', partyCode: 'text', status: 'text',
+    invoiceDate: 'date', deliveryDate: 'date', collectionDate: 'date',
+  },
+};
+const RIYADH = 'Asia/Riyadh';
+
+/** «YYYY-MM-DD» بتوقيت الرياض ← مدى اليوم كلِّه بالـ UTC. */
+function riyadhDayRange(ymd) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || ''));
+  if (!m) return null;
+  // الرياض +03:00 ثابتةً بلا توقيتٍ صيفيّ.
+  const start = new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00.000+03:00`);
+  return { $gte: start, $lt: new Date(start.getTime() + 86400000) };
+}
+
+/** يقرأ `cf_<field>` من الاستعلام ويبني منها شرطَ مونجو. */
+function columnFilters(query, kind) {
+  const allowed = COL_FIELDS[kind] || {};
+  const and = [];
+  for (const [key, raw] of Object.entries(query || {})) {
+    if (!key.startsWith('cf_')) continue;
+    const field = key.slice(3);
+    const type = allowed[field];
+    if (!type) continue; // عمودٌ غيرُ مسموح: يُتجاهَل ولا يُوسَّع الفلتر
+    const values = (Array.isArray(raw) ? raw : [raw]).map((v) => String(v));
+    if (!values.length) continue;
+
+    if (type === 'date') {
+      // «(فارغ)» تُرسَل نصًّا فارغًا وتعني «لا تاريخ».
+      const or = [];
+      for (const v of values) {
+        if (!v) { or.push({ [field]: null }, { [field]: { $exists: false } }); continue; }
+        const r = riyadhDayRange(v);
+        if (r) or.push({ [field]: r });
+      }
+      if (or.length) and.push({ $or: or });
+    } else {
+      const or = [];
+      const plain = values.filter(Boolean);
+      if (values.some((v) => !v)) or.push({ [field]: null }, { [field]: '' }, { [field]: { $exists: false } });
+      if (plain.length) or.push({ [field]: { $in: plain } });
+      if (or.length) and.push({ $or: or });
+    }
+  }
+  return and;
+}
+
+/**
+ * قيمُ عمودٍ واحدٍ مع عدد صفوف كلِّ قيمة — محسوبةً على المجموعة المطابقة كلِّها.
+ *
+ * تُحسب تحت الفلاتر القائمة عدا فلترِ العمود نفسِه: فتحُ قائمة «العميل» بعد
+ * اختيار عميلٍ منها يجب أن يعرض العملاءَ كلَّهم لا المختارَ وحدَه، وإلّا لم
+ * يستطع أحدٌ إضافةَ عميلٍ ثانٍ إلى اختياره.
+ */
+exports.invoiceColumnOptions = async (req, res) => {
+  try {
+    const kind = req.params.kind === 'cash' ? 'cash' : 'tax';
+    const field = String(req.query.field || '');
+    const type = (COL_FIELDS[kind] || {})[field];
+    if (!type) return res.status(400).json({ message: 'عمود غير معروف' });
+
+    const q = String(req.query.q || '').trim();
+    const LIMIT = 200;
+
+    // الفلاتر القائمةُ دون فلترِ هذا العمود.
+    const others = { ...req.query };
+    delete others[`cf_${field}`];
+
+    let match;
+    let Model;
+    if (kind === 'cash') {
+      const { AUTO_RULE_FROM } = require('../utils/paymentType');
+      match = { ...invoiceFilters(others, { ageField: 'paymentDate' }), paymentType: 'cash' };
+      match.$and = [
+        ...(match.$and || []),
+        { $or: [{ reportDate: { $lt: AUTO_RULE_FROM } }, { accountingReview: { $nin: ['', null] } }] },
+        ...columnFilters(others, kind),
+      ];
+      Model = OperationsWorkflow;
+    } else {
+      const CollectionInvoice = require('../models/CollectionInvoice');
+      match = ledgerInvoiceMatch(others);
+      match.$and = [...(match.$and || []), ...columnFilters(others, kind)];
+      Model = CollectionInvoice;
+    }
+    if (!match.$and.length) delete match.$and;
+
+    const groupId = type === 'date'
+      ? { $cond: [{ $ifNull: [`$${field}`, false] },
+        { $dateToString: { date: `$${field}`, format: '%Y-%m-%d', timezone: RIYADH } }, ''] }
+      : { $ifNull: [`$${field}`, ''] };
+
+    const pipeline = [{ $match: match }, { $group: { _id: groupId, count: { $sum: 1 } } }];
+    if (q) {
+      // البحثُ داخل القائمة يجري على القيمة بعد التجميع، فيشمل التواريخَ
+      // المصوغةَ كما تُعرض.
+      pipeline.push({ $match: { _id: { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } } });
+    }
+    pipeline.push({ $sort: type === 'date' ? { _id: -1 } : { count: -1, _id: 1 } });
+    pipeline.push({ $limit: LIMIT + 1 });
+
+    const rows = await Model.aggregate(pipeline).allowDiskUse(true);
+    const truncated = rows.length > LIMIT;
+    res.json({
+      values: rows.slice(0, LIMIT).map((r) => ({ value: String(r._id ?? ''), count: r.count })),
+      truncated,
+    });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر تحميل قيم العمود', error: e.message });
+  }
+};
+
 function invoiceFilters(query, { ageField }) {
   const f = { ...NOT_CANCELLED };
   if (query.customer) f.username = flexSpaceRegex(String(query.customer));
@@ -960,7 +1130,7 @@ exports.cashInvoices = async (req, res) => {
         { reportDate: { $lt: AUTO_RULE_FROM } },
         { accountingReview: { $nin: ['', null] } },
       ],
-    }];
+    }, ...columnFilters(req.query, 'cash')];
 
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
@@ -997,11 +1167,13 @@ exports.cashInvoices = async (req, res) => {
 
     const now = Date.now();
     const t = totals[0] || { collected: 0, collectedCount: 0 };
+    const partyIds = await partyIdsByName(rows.map((w) => w.username));
     res.json({
       invoices: rows.map((w) => ({
         _id: w._id,
         reportNumber: w.reportNumber,
         customer: w.username || '',
+        partyId: partyIds.get(fold(w.username || '')) || '',
         branch: w.branch || '',
         payingBranch: w.payingBranch || '',
         paymentDate: w.paymentDate,
@@ -1070,24 +1242,10 @@ exports.taxInvoices = async (req, res) => {
     // الكشوف لا الفواتير. فلا تظهر في شاشةٍ أصلًا.
     //
     // وكلُّ صفٍّ في تلك الورقة فاتورة، فتُعرَض كلُّها.
-    const f = {};
-    if (req.query.customer) f.partyName = flexSpaceRegex(String(req.query.customer));
-    if (req.query.q) {
-      const { exact, loose } = numberSearchRegex(String(req.query.q));
-      const rx = exact || loose;
-      f.$or = [{ invoiceNumber: rx }, { partyName: exact ? rx : loose }, { partyCode: rx }];
-    }
-    if (req.query.collected === 'yes') f.$and = [...(f.$and || []), { $or: [{ collectionDate: { $ne: null } }, { status: /collected/i }] }];
-    else if (req.query.collected === 'no') f.$and = [...(f.$and || []), { collectionDate: null, status: { $not: /collected/i } }];
-    if (req.query.from || req.query.to) {
-      f.invoiceDate = {};
-      if (req.query.from) f.invoiceDate.$gte = new Date(req.query.from);
-      if (req.query.to) f.invoiceDate.$lte = new Date(`${req.query.to}T23:59:59.999Z`);
-    }
-    if (req.query.age) {
-      const c = ageCondition('invoiceDate', String(req.query.age));
-      if (c.invoiceDate) f.invoiceDate = { ...(f.invoiceDate || {}), ...c.invoiceDate };
-    }
+    const f = ledgerInvoiceMatch(req.query);
+    // فلاترُ الأعمدة تُضاف فوق ما سبق — راجع columnFilters.
+    const cf = columnFilters(req.query, 'tax');
+    if (cf.length) f.$and = [...(f.$and || []), ...cf];
 
     const [rows, total, totalsAgg] = await Promise.all([
       CollectionInvoice.find(f).sort({ invoiceDate: -1, _id: -1 })
@@ -1120,6 +1278,7 @@ exports.taxInvoices = async (req, res) => {
 
     const t = totalsAgg[0] || { value: 0, invoices: 0, fullyCollected: 0 };
     const now = Date.now();
+    const partyIds = await partyIdsByName(rows.map((r) => r.partyName));
 
     res.json({
       invoices: rows.map((i) => {
@@ -1131,6 +1290,7 @@ exports.taxInvoices = async (req, res) => {
         return {
           invoiceNumber: i.invoiceNumber,
           customer: i.partyName || '',
+          partyId: partyIds.get(fold(i.partyName || '')) || '',
           partyCode: i.partyCode || '',
           value: r2(i.total),
           // الصافي والضريبة يُشتقّان من الإجمالي حين لا يذكرهما الدفتر.
@@ -1159,30 +1319,74 @@ exports.taxInvoices = async (req, res) => {
   }
 };
 
-/** تفصيلُ فاتورةٍ ضريبيّة: كشوفُها كلُّها بأرقامها. */
+/**
+ * تفصيلُ فاتورة: الفاتورةُ أوّلًا، وكشوفُها إن وُجدت.
+ *
+ * ── وكانت الصفحةُ تُقلب فتبيضّ ────────────────────────────────────────────
+ * كانت هذه الدالّةُ تبحث في كشوف التشغيل عن الرقم، فإن لم تجد قالت «لا كشوف
+ * بهذا الرقم» وردّت 404. وقائمةُ الفواتير التي جاء منها الضغطُ تُقرأ من
+ * الدفتر لا من الكشوف — والدفترُ يقول عن نفسه إنّ ستّةً في المئة فقط من
+ * فواتيره لها كشوفٌ عندنا. فأربعةٌ وتسعون في المئة من الضغطاتِ كانت تنتهي
+ * إلى صفحةٍ بيضاء.
+ *
+ * والترتيبُ الصحيح هو ترتيبُ النموذج نفسِه: الفاتورةُ مستندٌ قائمٌ بذاته،
+ * والكشفُ يُنسَب إليها حين يوجد. فتُقرأ الفاتورةُ من الدفتر، وتُلحَق بها
+ * كشوفُها إن كانت، وتُعرض بلا كشوفٍ إن لم تكن — وذلك حالُها الطبيعيّ لا خطأ.
+ *
+ * ولا يُردُّ 404 إلّا حين لا يكون للرقم أثرٌ في الدفتر ولا في الكشوف.
+ */
 exports.taxInvoiceDetail = async (req, res) => {
   try {
     const number = String(req.params.invoiceNumber || '').trim();
     if (!number) return res.status(400).json({ message: 'رقم الفاتورة مطلوب' });
 
-    const rows = await OperationsWorkflow.find({ invoiceNumber: number, ...NOT_CANCELLED })
-      .select('reportNumber reportDate username branch payingBranch fromLocation toLocation carNumber carOwner sellingValue netInvoice tax totalInvoice invoiceDate deliveryDate sendingDate documentNumber collectedAmount collectionDate accountingReview')
-      .sort({ reportDate: 1 }).lean();
+    const CollectionInvoice = require('../models/CollectionInvoice');
+    const [ledger, rows] = await Promise.all([
+      CollectionInvoice.findOne({ invoiceNumber: number }).lean(),
+      OperationsWorkflow.find({ invoiceNumber: number, ...NOT_CANCELLED })
+        .select('reportNumber reportDate username branch payingBranch fromLocation toLocation carNumber carOwner sellingValue netInvoice tax totalInvoice invoiceDate deliveryDate sendingDate documentNumber collectedAmount collectionDate accountingReview paymentType')
+        .sort({ reportDate: 1 }).lean(),
+    ]);
 
-    if (!rows.length) return res.status(404).json({ message: 'لا كشوف بهذا الرقم' });
+    if (!ledger && !rows.length) return res.status(404).json({ message: 'لا فاتورة بهذا الرقم' });
+
+    // ── واسمُ العميل يصير بابًا ──────────────────────────────────────────
+    // الفاتورةُ تحمل اسمًا، وملفُّ العميل يُفتَح بمعرّفه. فيُترجَم الاسمُ هنا
+    // مرّةً بالاسم المطويّ — لا في الواجهة بطلبٍ ثانٍ لكلِّ ضغطة.
+    const customerName = ledger?.partyName || rows[0]?.username || '';
+    const partyDoc = customerName
+      ? await CollectionsParty.findOne({ kind: 'customer', nameKey: fold(customerName) }).select('_id').lean()
+      : null;
 
     const sum = (k) => r2(rows.reduce((a, r) => a + (Number(r[k]) || 0), 0));
+    // ── والمالُ يُقرأ من الدفتر متى نطق ──────────────────────────────────
+    // الدفترُ هو ما يعمل عليه المحاسب. فإن ذكر الإجماليَّ فهو الإجماليّ،
+    // ويُشتقُّ منه الصافي والضريبة. وإن سكت — فاتورةٌ وُلدت من كشفٍ عندنا —
+    // جُمعت من كشوفها.
+    const fromLedger = ledger && Number(ledger.total) > 0;
+    const value = fromLedger ? r2(ledger.total) : sum('totalInvoice');
+    const net = fromLedger ? r2(ledger.total / 1.15) : sum('netInvoice');
+    const vat = fromLedger ? r2(ledger.total - ledger.total / 1.15) : sum('tax');
+
     res.json({
       invoiceNumber: number,
-      customer: rows[0].username || '',
-      invoiceDate: rows.find((r) => r.invoiceDate)?.invoiceDate || null,
-      deliveryDate: rows.find((r) => r.deliveryDate)?.deliveryDate || null,
+      kind: ledger?.kind || (rows[0]?.paymentType === 'cash' ? 'cash' : 'tax'),
+      customer: customerName,
+      partyId: partyDoc?._id ? String(partyDoc._id) : '',
+      partyCode: ledger?.partyCode || '',
+      invoiceDate: ledger?.invoiceDate || rows.find((r) => r.invoiceDate)?.invoiceDate || null,
+      deliveryDate: ledger?.deliveryDate || rows.find((r) => r.deliveryDate)?.deliveryDate || null,
+      collectionDate: ledger?.collectionDate || null,
+      status: ledger?.status || '',
+      comments: ledger?.comments || '',
+      // من أين جاءت الفاتورة: من دفتر الشركة أم وُلدت من كشفٍ عندنا.
+      inLedger: !!ledger,
       reports: rows,
       totals: {
         reports: rows.length,
-        net: sum('netInvoice'),
-        vat: sum('tax'),
-        value: sum('totalInvoice'),
+        net,
+        vat,
+        value,
         collectedReports: rows.filter((r) => r.collectionDate).length,
       },
     });

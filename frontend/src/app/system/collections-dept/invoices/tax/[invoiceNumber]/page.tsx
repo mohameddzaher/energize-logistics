@@ -24,8 +24,9 @@ interface Row {
   collectedAmount?: number; collectionDate?: string; accountingReview?: string;
 }
 interface Detail {
-  invoiceNumber: string; customer: string;
-  invoiceDate: string | null; deliveryDate: string | null;
+  invoiceNumber: string; customer: string; partyId?: string; partyCode?: string;
+  kind?: 'tax' | 'cash'; inLedger?: boolean; status?: string; comments?: string;
+  invoiceDate: string | null; deliveryDate: string | null; collectionDate?: string | null;
   reports: Row[];
   totals: { reports: number; net: number; vat: number; value: number; collectedReports: number };
 }
@@ -41,20 +42,45 @@ export default function TaxInvoiceDetailPage() {
 
   const [data, setData] = useState<Detail | null>(null);
   const [loading, setLoading] = useState(true);
+  // ── والخطأُ يُكتب على الصفحة ────────────────────────────────────────────
+  // كانت الصفحةُ ترتدُّ `null` عند الفشل، فيرى المستخدمُ بياضًا لا يُخبره
+  // بشيء: أفشِل التحميل؟ أم لا فاتورةَ أصلًا؟ فالخطأُ يُحفظ ويُعرَض.
+  const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     if (!invoiceNumber) return;
     setLoading(true);
     try {
       setData(await api.get<Detail>(`/api/collections-dept/invoices/tax/${encodeURIComponent(invoiceNumber)}`));
-    } catch (e: any) { notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error'); }
+      setError('');
+    } catch (e: any) { setError(e?.message || t('تعذّر التحميل', 'Could not load')); }
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceNumber]);
   useEffect(() => { load(); }, [load]);
 
+  const backToList = () => router.push('/system/collections-dept/invoices/tax');
+
   if (loading && !data) return <Spinner />;
-  if (!data) return null;
+  if (!data) return (
+    <div className="max-w-lg mx-auto mt-16 bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm" dir={isRTL ? 'rtl' : 'ltr'}>
+      <Receipt className="w-10 h-10 mx-auto text-slate-300" />
+      <p className="mt-3 text-base font-bold text-slate-900">
+        {t(`الفاتورة ${invoiceNumber}`, `Invoice ${invoiceNumber}`)}
+      </p>
+      <p className="mt-1.5 text-sm text-slate-500">{error || t('تعذّر التحميل', 'Could not load')}</p>
+      <div className="mt-5 flex items-center justify-center gap-2">
+        <button type="button" onClick={load}
+          className="px-4 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 hover:text-slate-900 text-sm">
+          {t('إعادة المحاولة', 'Retry')}
+        </button>
+        <button type="button" onClick={backToList}
+          className="px-4 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium">
+          {t('رجوع للفواتير', 'Back to invoices')}
+        </button>
+      </div>
+    </div>
+  );
 
   const Stat = ({ label, value, accent }: { label: string; value: string; accent?: string }) => (
     <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm min-w-0">
@@ -84,9 +110,23 @@ export default function TaxInvoiceDetailPage() {
       <PageHeader
         icon={<Receipt className="w-6 h-6 text-[#f37121]" />}
         title={t(`فاتورة ${data.invoiceNumber}`, `Invoice ${data.invoiceNumber}`)}
-        subtitle={[data.customer, data.invoiceDate ? dt(data.invoiceDate) : ''].filter(Boolean).join(' · ')}
+        subtitle={
+          <span className="inline-flex flex-wrap items-center gap-1.5">
+            {/* واسمُ العميل بابُ ملفّه — إن عُرف له ملفّ. */}
+            {data.partyId ? (
+              <button type="button" onClick={() => router.push(`/system/collections-dept/parties/${data.partyId}`)}
+                className="font-medium text-[#f37121] hover:underline">{data.customer}</button>
+            ) : <span>{data.customer}</span>}
+            {data.invoiceDate && <span className="text-slate-400">· {dt(data.invoiceDate)}</span>}
+            {data.kind === 'cash' && (
+              <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[11px] font-semibold">
+                {t('نقديّة', 'Cash')}
+              </span>
+            )}
+          </span>
+        }
       >
-        <button type="button" onClick={() => router.push('/system/collections-dept/invoices/tax')}
+        <button type="button" onClick={backToList}
           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 text-sm">
           <ArrowRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} />{t('رجوع', 'Back')}
         </button>
@@ -122,9 +162,26 @@ export default function TaxInvoiceDetailPage() {
               </tr>
             </thead>
             <tbody>
+              {/* ── ولا كشوفَ حالٌ طبيعيّة ────────────────────────────────
+                  أكثرُ فواتير الدفتر أقدمُ من النظام، فلا كشوفَ لها عندنا.
+                  تُقال الحالُ ولا تُترك الصفحةُ فارغةً كأنّ شيئًا فُقد. */}
+              {!data.reports.length && (
+                <tr>
+                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-slate-500">
+                    {data.inLedger
+                      ? t('فاتورةٌ من دفتر التحصيل، لا كشوفَ تشغيلٍ مرتبطةً بها.',
+                          'A ledger invoice with no linked operations reports.')
+                      : t('لا كشوفَ تحت هذه الفاتورة.', 'No reports under this invoice.')}
+                  </td>
+                </tr>
+              )}
               {data.reports.map((r) => (
                 <tr key={r._id} className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="px-3 py-2 font-medium text-slate-900 whitespace-nowrap">{r.reportNumber || '—'}</td>
+                  {/* ورقمُ الكشف بابُ الكشف. */}
+                  <td className="px-3 py-2 font-medium whitespace-nowrap">
+                    <button type="button" onClick={() => router.push(`/system/operations/${r._id}`)}
+                      className="text-[#f37121] hover:underline font-medium">{r.reportNumber || '—'}</button>
+                  </td>
                   <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{dt(r.reportDate)}</td>
                   <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{[r.fromLocation, r.toLocation].filter(Boolean).join(' — ') || '—'}</td>
                   <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{r.branch || '—'}</td>

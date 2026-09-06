@@ -249,6 +249,19 @@ if [[ -n "$(git status --porcelain)" ]]; then
 fi
 good "working tree clean at $(git rev-parse --short HEAD)"
 
+# ── The generated maps must match the code they were generated from ──────────
+# The page catalogue and the page→API map are read from the frontend. A nav
+# entry or an api call added without regenerating them means a page nobody can
+# grant, or an endpoint guarded by a stale list — and neither shows on a screen.
+# Both go stale silently, which is why they are checked here and not remembered.
+for gen in genPageCatalog genPageApis; do
+  if ! out="$(node "$ROOT/backend/src/scripts/$gen.js" --check 2>&1)"; then
+    bad "$gen is stale — $out"
+    exit 1
+  fi
+done
+good "generated page maps are current"
+
 # Syntax-check every file being shipped. A parse error would otherwise be found
 # by pm2, after the old code is already gone.
 if ! find backend/src -name '*.js' -print0 | xargs -0 -n40 node --check >/dev/null 2>&1; then

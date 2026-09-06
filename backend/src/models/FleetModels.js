@@ -43,6 +43,10 @@ const fleetDriverSchema = new mongoose.Schema({
   // picking him on a shipment for another truck — just moves this pointer;
   // the shipment events keep the story.
   vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetVehicle', default: null, index: true },
+  // هدفُه الشهريُّ إن خُصَّ بواحد — وإلّا فافتراضيُّ القسم.
+  // `null` تعني «استعمل الافتراضيّ»، و`0` تعني «لا هدفَ له» وهما مختلفان.
+  monthlyLoadsTarget: { type: Number, default: null },
+  monthlyKmTarget: { type: Number, default: null },
   notes: { type: String, trim: true, default: '' },
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
@@ -205,6 +209,12 @@ const fleetConfigSchema = new mongoose.Schema({
   key: { type: String, default: 'fleet', unique: true },
   fridayBonusAmount: { type: Number, default: 50 },      // ريال يُضاف لمصروف السائق يوم الجمعة
   defaultMonthlyTarget: { type: Number, default: 27000 }, // الهدف الشهري الافتراضي للسيارة
+  // ── وهدفُ السائق حمولاتٌ ومسافة ──────────────────────────────────────────
+  // السيّارةُ تُقاس بالدخل؛ والسائقُ لا يملك السعر — يملك أن يشيل ويمشي. فما
+  // يُسأل عنه: كم حمولةً شال، وكم قطع. والافتراضيُّ هنا ولكلّ سائقٍ أن يُخصَّ
+  // بهدفٍ يخالفه (FleetDriver.monthlyLoadsTarget / monthlyKmTarget).
+  defaultDriverMonthlyLoads: { type: Number, default: 8 },
+  defaultDriverMonthlyKm: { type: Number, default: 8000 },
 
   // ── الهدفُ يُقاس بماذا؟ ───────────────────────────────────────────────────
   // «ثلاثون ألفًا شهريًّا» جملةٌ ناقصة ما لم يُقل: ثلاثون ألفَ **دخلٍ** أم

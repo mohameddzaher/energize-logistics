@@ -616,7 +616,9 @@ exports.addFollowUp = async (req, res) => {
 
 // ── Drivers ─────────────────────────────────────────────────────────────────
 
-const DRIVER_EDITABLE = ['name', 'phone', 'iqama', 'working', 'onSponsorship', 'nationality', 'vehicle', 'notes', 'isActive', 'offReason', 'offNote'];
+// `monthlyLoadsTarget` و`monthlyKmTarget`: هدفُ سائقٍ بعينه — و`null` تعني
+// «استعمل افتراضيَّ القسم»، وهي غيرُ `0` التي تعني «لا هدفَ له».
+const DRIVER_EDITABLE = ['name', 'phone', 'iqama', 'working', 'onSponsorship', 'nationality', 'vehicle', 'notes', 'isActive', 'offReason', 'offNote', 'monthlyLoadsTarget', 'monthlyKmTarget'];
 
 exports.listDrivers = async (req, res) => {
   try {
@@ -1350,7 +1352,7 @@ exports.assignVehicleSupervisorBulk = async (req, res) => {
 exports.getConfig = async (req, res) => {
   try {
     const cfg = await getFleetConfig();
-    res.json({ config: { fridayBonusAmount: cfg.fridayBonusAmount, defaultMonthlyTarget: cfg.defaultMonthlyTarget, targetBasis: cfg.targetBasis } });
+    res.json({ config: { fridayBonusAmount: cfg.fridayBonusAmount, defaultMonthlyTarget: cfg.defaultMonthlyTarget, targetBasis: cfg.targetBasis, defaultDriverMonthlyLoads: cfg.defaultDriverMonthlyLoads, defaultDriverMonthlyKm: cfg.defaultDriverMonthlyKm } });
   } catch (e) {
     res.status(500).json({ message: 'Failed to load fleet settings' });
   }
@@ -1361,12 +1363,15 @@ exports.updateConfig = async (req, res) => {
     const cfg = await getFleetConfig();
     if (req.body.fridayBonusAmount != null) cfg.fridayBonusAmount = Number(req.body.fridayBonusAmount) || 0;
     if (req.body.defaultMonthlyTarget != null) cfg.defaultMonthlyTarget = Number(req.body.defaultMonthlyTarget) || 0;
+    // هدفُ السائق: حمولاتٌ ومسافةٌ في الشهر — الافتراضيُّ لمن لم يُخَصَّ بهدف.
+    if (req.body.defaultDriverMonthlyLoads != null) cfg.defaultDriverMonthlyLoads = Number(req.body.defaultDriverMonthlyLoads) || 0;
+    if (req.body.defaultDriverMonthlyKm != null) cfg.defaultDriverMonthlyKm = Number(req.body.defaultDriverMonthlyKm) || 0;
     // «ثلاثون ألفًا» جملةٌ ناقصةٌ ما لم يُقل: دخلًا أم بعد مصروف السائق؟
     if (req.body.targetBasis === 'gross' || req.body.targetBasis === 'net') cfg.targetBasis = req.body.targetBasis;
     cfg.updatedBy = req.user._id;
     await cfg.save();
     emit('fleet:updated', {});
-    res.json({ config: { fridayBonusAmount: cfg.fridayBonusAmount, defaultMonthlyTarget: cfg.defaultMonthlyTarget, targetBasis: cfg.targetBasis } });
+    res.json({ config: { fridayBonusAmount: cfg.fridayBonusAmount, defaultMonthlyTarget: cfg.defaultMonthlyTarget, targetBasis: cfg.targetBasis, defaultDriverMonthlyLoads: cfg.defaultDriverMonthlyLoads, defaultDriverMonthlyKm: cfg.defaultDriverMonthlyKm } });
   } catch (e) {
     res.status(500).json({ message: 'Failed to save fleet settings' });
   }
@@ -1698,6 +1703,141 @@ const DRIVER_KPI_BANDS = [
 const DONE_STATUSES = ['arrived', 'bond_sent', 'bond_received', 'invoiced'];
 const FOLLOWUP_TARGET_HOURS = 3; // the section's follow-up cadence
 
+/**
+ * كم قطع كلُّ سائقٍ من الكيلومترات في الفترة — من عدّاد المركبة نفسِه.
+ *
+ * ── ولماذا العدّادُ لا تقديرُ المسار ───────────────────────────────────────
+ * الحمولةُ تُكتب بمدينةٍ إلى مدينة، ولا جدولَ مسافاتٍ بين المدن عندنا. وتقديرُ
+ * المسافة من اسمَي مدينتين رقمٌ نخترعه ثمّ نحاسب به الناس.
+ *
+ * ولوكيشن سوليوشن تقرأ عدّادَ كلّ مركبةٍ كلَّ يوم (`Ls2OdometerDaily`)، وهي
+ * ثمانٍ وخمسون مركبةً كلُّها مطابَقةٌ بلوحاتها لمركبات الأسطول. فالمسافةُ
+ * مقروءةٌ من العدّاد لا محسوبةٌ بالظنّ.
+ *
+ * ── وكيف تُنسَب كيلومتراتُ المركبة إلى سائق ────────────────────────────────
+ * المركبةُ تمشي، والسائقُ هو مَن كان عليها. ويُعرَف ذلك من بابين:
+ *
+ *   • الحمولةُ تسمّي سائقَها صراحةً، فأيّامُها له — وإن كان معه سائقٌ ثانٍ
+ *     تقاسما المسافةَ كما يتقاسمان بقيّةَ أرقام الحمولة.
+ *   • وما بقي من الأيّام للمقعد: السائقُ المسنَد إلى المركبة اليوم هو مَن
+ *     يقودها، وهذا هو نظامُ المقاعد الذي يعمل به القسم.
+ *
+ * وسجلُّ الحمولات حديثُ العهد — خمسٌ وعشرون حمولةً حتى اليوم — بينما مشى
+ * الأسطولُ في سبتمبر وحدَه مئتَي ألفِ كيلومترٍ وثمانيةَ آلاف. فالاقتصارُ على
+ * الحمولات ينسب تسعةً في المئة ويُظهر السائقين كلَّهم وكأنّهم لم يتحرّكوا.
+ * ولذلك يُقرأ المقعدُ حيث تسكت الحمولة، ويُقال في الشاشة كم جاء من كلٍّ.
+ *
+ * وما لا حمولةَ له ولا مقعد لا يُنسَب إلى أحد.
+ */
+async function driverKmInPeriod(shipments, drivers, start, end) {
+  // مفتاحُ السائق هو مفتاحُ التجميع نفسُه في `bump`: المعرّفُ إن وُجد، وإلّا اسمُه.
+  const byDriver = new Map();
+  const fromLoads = new Map();
+  const add = (map, key, km) => map.set(key, (map.get(key) || 0) + km);
+  const empty = { byDriver, fromLoads, attributed: 0, unattributed: 0 };
+
+  const Ls2Vehicle = require('../models/Ls2Vehicle');
+  const Ls2OdometerDaily = require('../models/Ls2OdometerDaily');
+
+  // اللوحاتُ تُكتب بمسافاتٍ مختلفة في السجلّين، فتُطبَّع قبل المطابقة.
+  const norm = (v) => String(v || '').replace(/\s+/g, '').toUpperCase();
+  const ls2 = await Ls2Vehicle.find({}).select('unitId plate').lean();
+  const unitOfPlate = new Map();
+  const plateOfUnit = new Map();
+  for (const v of ls2) {
+    if (v.unitId == null) continue;
+    unitOfPlate.set(norm(v.plate), v.unitId);
+    plateOfUnit.set(v.unitId, norm(v.plate));
+  }
+  if (!unitOfPlate.size) return empty;
+
+  const day = (d) => {
+    const x = new Date(d);
+    return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  };
+  // يومٌ قبل البداية: كيلومتراتُ أوّل يومٍ فرقٌ عن اليوم الذي قبله.
+  const fromDay = day(new Date(start.getTime() - 86400000));
+  const endDay = day(new Date(end.getTime() - 1));
+
+  const rows = await Ls2OdometerDaily.find({ date: { $gte: fromDay, $lte: endDay } })
+    .select('unitId date odometerKm').sort({ unitId: 1, date: 1 }).lean();
+  if (!rows.length) return empty;
+
+  // وحدة → أيّامُها، ومن فروق العدّاد كيلومتراتُ كلّ يوم.
+  const byUnit = new Map();
+  for (const r of rows) {
+    if (!byUnit.has(r.unitId)) byUnit.set(r.unitId, []);
+    byUnit.get(r.unitId).push(r);
+  }
+  const kmPerDay = new Map();                  // `plate|day` → كيلومترات ذلك اليوم
+  for (const [unit, list] of byUnit) {
+    const plate = plateOfUnit.get(unit);
+    if (!plate) continue;
+    for (let i = 1; i < list.length; i += 1) {
+      // العدّادُ لا ينقص؛ وأيُّ نقصٍ بدلُ عدّادٍ أو قراءةٌ خاطئة، فيُهمَل.
+      // وقفزةٌ فوق ثلاثة آلافِ كيلومترٍ في يومٍ ليست سفرًا بل خللُ قراءة.
+      const d = list[i].odometerKm - list[i - 1].odometerKm;
+      if (d > 0 && d < 3000) kmPerDay.set(`${plate}|${list[i].date}`, d);
+    }
+  }
+
+  // مَن على مقعد كلّ مركبة اليوم.
+  const seatOf = new Map();                    // plate → [مفتاحُ سائق]
+  for (const d of drivers) {
+    const plate = norm(d.vehicle && d.vehicle.plate);
+    if (!plate) continue;
+    if (!seatOf.has(plate)) seatOf.set(plate, []);
+    seatOf.get(plate).push(String(d._id));
+  }
+
+  // أيّامُ الحمولات: مَن كان على المركبة في ذلك اليوم صراحةً.
+  const loadDayDrivers = new Map();            // `plate|day` → [مفتاحُ سائق]
+  const byPlate = new Map();
+  for (const sh of shipments) {
+    const p = norm(sh.vehiclePlate);
+    if (!p) continue;
+    if (!byPlate.has(p)) byPlate.set(p, []);
+    byPlate.get(p).push(sh);
+  }
+  for (const [plate, list] of byPlate) {
+    list.sort((a, b) => new Date(a.loadDate || a.createdAt) - new Date(b.loadDate || b.createdAt));
+    for (let i = 0; i < list.length; i += 1) {
+      const sh = list[i];
+      const keys = [];
+      keys.push(sh.driver ? String(sh.driver) : `name:${sh.driverName || '—'}`);
+      if (sh.secondDriver || sh.secondDriverName) {
+        keys.push(sh.secondDriver ? String(sh.secondDriver) : `name:${sh.secondDriverName || '—'}`);
+      }
+      const from = day(sh.loadDate || sh.createdAt);
+      const next = list[i + 1];
+      // آخرُ يومٍ لهذه الحمولة: اليومُ الذي قبل الحمولة التالية على المركبة،
+      // وإلّا نهايةُ الفترة.
+      const until = next
+        ? day(new Date(new Date(next.loadDate || next.createdAt).getTime() - 86400000))
+        : endDay;
+      for (let d = new Date(`${from}T00:00:00Z`); day(d) <= until && day(d) <= endDay; d = new Date(d.getTime() + 86400000)) {
+        loadDayDrivers.set(`${plate}|${day(d)}`, keys);
+      }
+    }
+  }
+
+  let attributed = 0;
+  let unattributed = 0;
+  for (const [key, km] of kmPerDay) {
+    const owners = loadDayDrivers.get(key);
+    const viaLoad = !!owners;
+    const list = owners || seatOf.get(key.split('|')[0]) || [];
+    if (!list.length) { unattributed += km; continue; }
+    const share = km / list.length;
+    for (const k of list) {
+      add(byDriver, k, share);
+      if (viaLoad) add(fromLoads, k, share);
+    }
+    attributed += km;
+  }
+  return { byDriver, fromLoads, attributed: Math.round(attributed), unattributed: Math.round(unattributed) };
+}
+
 exports.getDriverKpis = async (req, res) => {
   try {
     const scope = await supervisorVehicleIds(req);
@@ -1740,6 +1880,12 @@ exports.getDriverKpis = async (req, res) => {
       followUpCount.set(k, (followUpCount.get(k) || 0) + 1);
     }
 
+    // المسافةُ تُقرأ من عدّاد المركبة وتُنسَب بالحمولة ثمّ بالمقعد — راجع
+    // driverKmInPeriod.
+    const kmInfo = await driverKmInPeriod(shipments, drivers, start, end);
+    const kmOf = (id, name) => kmInfo.byDriver.get(id ? String(id) : `name:${name || '—'}`) || 0;
+    const kmFromLoadsOf = (id, name) => kmInfo.fromLoads.get(id ? String(id) : `name:${name || '—'}`) || 0;
+
     // Aggregate per driver. A load with a second driver counts for BOTH of them —
     // they shared the wheel, so they share the credit and the on-time record.
     const agg = new Map();
@@ -1752,6 +1898,7 @@ exports.getDriverKpis = async (req, res) => {
           done: 0, late: 0, cancelled: 0, inFlight: 0,
           followUpsDone: 0, followUpsExpected: 0,
           shared: 0, lastTrip: null, firstTrip: null,
+          km: 0,
         });
       }
       const a = agg.get(key);
@@ -1788,6 +1935,12 @@ exports.getDriverKpis = async (req, res) => {
       if (hasSecond) bump(s.secondDriver, s.secondDriverName, s, true);
     }
 
+    // المسافةُ محسوبةٌ للسائق كاملةً (بالحمولة وبالمقعد)، فتُوضَع على صفّه.
+    for (const [key, a] of agg) {
+      a.km = kmInfo.byDriver.get(key) || 0;
+      a.kmFromLoads = kmInfo.fromLoads.get(key) || 0;
+    }
+
     // Benchmarks: a driver is scored against the fleet's own best, not an
     // invented number — "top of your peers" is the only fair target here.
     const rows = [...agg.values()];
@@ -1797,6 +1950,29 @@ exports.getDriverKpis = async (req, res) => {
     const dById = new Map(drivers.map((d) => [String(d._id), d]));
     const clamp01 = (n) => Math.max(0, Math.min(1, Number(n) || 0));
     const r0 = (n) => Math.round(Number(n) || 0);
+
+    // هدفُ السائق: ما خُصَّ به، وإلّا افتراضيُّ القسم. و`0` تعني «لا هدفَ له»
+    // وهي غيرُ `null` التي تعني «استعمل الافتراضيّ».
+    const defLoads = Number(cfg.defaultDriverMonthlyLoads) || 0;
+    const defKm = Number(cfg.defaultDriverMonthlyKm) || 0;
+    const targetLoadsOf = (d) => (d && d.monthlyLoadsTarget != null ? Number(d.monthlyLoadsTarget) : defLoads);
+    const targetKmOf = (d) => (d && d.monthlyKmTarget != null ? Number(d.monthlyKmTarget) : defKm);
+    const targetPctOf = (d, a, months) => {
+      const tl = targetLoadsOf(d) * months;
+      const tk = targetKmOf(d) * months;
+      const parts = [];
+      if (tl > 0) parts.push(clamp01(a.trips / tl));
+      if (tk > 0) parts.push(clamp01(a.km / tk));
+      if (!parts.length) return null;                 // لا هدفَ له، فلا تحقيق
+      return r0((parts.reduce((x, y) => x + y, 0) / parts.length) * 100);
+    };
+    // «حقّق» تعني بلغ هدفيه معًا — لا أحدَهما.
+    const achievedOf = (d, a, months) => {
+      const tl = targetLoadsOf(d) * months;
+      const tk = targetKmOf(d) * months;
+      if (tl <= 0 && tk <= 0) return null;
+      return (tl <= 0 || a.trips >= tl) && (tk <= 0 || a.km >= tk);
+    };
 
     const items = rows.map((a) => {
       const d = a._id ? dById.get(a._id) : null;
@@ -1824,6 +2000,22 @@ exports.getDriverKpis = async (req, res) => {
         onSponsorship: d ? d.onSponsorship !== false : null,
         vehicle: d?.vehicle ? { _id: String(d.vehicle._id), plate: d.vehicle.plate, name: d.vehicle.name } : null,
         trips: a.trips, sharedTrips: a.shared,
+        // ── وهدفُ السائق حمولاتٌ ومسافة ──────────────────────────────────
+        // السيّارةُ تُقاس بالدخل، والسائقُ لا يملك السعر: يملك أن يشيل ويمشي.
+        // فالهدفُ ما يملكه. والتحقيقُ متوسّطُ النسبتين — من شال حمولاته كلَّها
+        // وقطع نصفَ المسافة لم يحقّق، ومن قطع المسافة بحمولةٍ واحدةٍ لم يحقّق.
+        km: r0(a.km),
+        // كم منها جاء من حمولةٍ مسمّاة، والباقي من مقعده على المركبة.
+        kmFromLoads: r0(a.kmFromLoads || 0),
+        kmPerMonth: Math.round((a.km / monthsInRange) * 10) / 10,
+        targetLoads: r0(targetLoadsOf(d) * monthsInRange),
+        targetKm: r0(targetKmOf(d) * monthsInRange),
+        loadsPct: targetLoadsOf(d) > 0 ? r0((a.trips / (targetLoadsOf(d) * monthsInRange)) * 100) : null,
+        kmPct: targetKmOf(d) > 0 ? r0((a.km / (targetKmOf(d) * monthsInRange)) * 100) : null,
+        shortfallLoads: Math.max(0, r0(targetLoadsOf(d) * monthsInRange - a.trips)),
+        shortfallKm: Math.max(0, r0(targetKmOf(d) * monthsInRange - a.km)),
+        targetPct: targetPctOf(d, a, monthsInRange),
+        achieved: achievedOf(d, a, monthsInRange),
         income: r0(a.income), fullRent: r0(a.fullRent), expense: r0(a.expense),
         net: r0(a.income - a.expense),
         avgTripIncome: a.trips ? r0(a.income / a.trips) : 0,
@@ -1850,6 +2042,21 @@ exports.getDriverKpis = async (req, res) => {
         onSponsorship: d.onSponsorship !== false,
         vehicle: d.vehicle ? { _id: String(d.vehicle._id), plate: d.vehicle.plate, name: d.vehicle.name } : null,
         trips: 0, sharedTrips: 0, income: 0, fullRent: 0, expense: 0, net: 0, avgTripIncome: 0, tripsPerMonth: 0,
+        // ── ومَن لم يشتغل «دون الهدف» لا «بلا هدف» ────────────────────────
+        // كان الصفُّ يُبنى هنا بالإيد بلا خانات الهدف، فيُقرأ التحقيقُ فارغًا
+        // ويُعَدُّ صاحبُه في «بلا هدف». وهو أوّلُ من يُسأل عنه: عليه هدفٌ ولم
+        // يقطع منه شيئًا.
+        // لا حمولةَ له، ولكنّ مركبتَه مشت وهو عليها — فالمسافةُ تُحسب.
+        km: r0(kmOf(d._id, d.name)), kmFromLoads: 0,
+        kmPerMonth: Math.round((kmOf(d._id, d.name) / monthsInRange) * 10) / 10,
+        targetLoads: r0(targetLoadsOf(d) * monthsInRange),
+        targetKm: r0(targetKmOf(d) * monthsInRange),
+        loadsPct: targetLoadsOf(d) > 0 ? 0 : null,
+        kmPct: targetKmOf(d) > 0 ? r0((kmOf(d._id, d.name) / (targetKmOf(d) * monthsInRange)) * 100) : null,
+        shortfallLoads: r0(targetLoadsOf(d) * monthsInRange),
+        shortfallKm: Math.max(0, r0(targetKmOf(d) * monthsInRange - kmOf(d._id, d.name))),
+        targetPct: targetPctOf(d, { trips: 0, km: kmOf(d._id, d.name) }, monthsInRange),
+        achieved: achievedOf(d, { trips: 0, km: kmOf(d._id, d.name) }, monthsInRange),
         done: 0, late: 0, cancelled: 0, inFlight: 0,
         onTimeRate: null, completionRate: 100, followUpRate: null, followUpsDone: 0, followUpsExpected: 0,
         firstTrip: null, lastTrip: null,
@@ -1875,6 +2082,17 @@ exports.getDriverKpis = async (req, res) => {
         totalExpense: items.reduce((s, i) => s + i.expense, 0),
         averageScore: active.length ? Math.round(active.reduce((s, i) => s + i.score, 0) / active.length) : 0,
         lateTrips: items.reduce((s, i) => s + i.late, 0),
+        // ── ومَن حقّق ومَن لم يحقّق، عددًا ────────────────────────────────
+        // السؤالُ الأوّل في الشاشة، وكان جوابُه يُعَدُّ بالعين صفًّا صفًّا.
+        totalKm: items.reduce((s, i) => s + (i.km || 0), 0),
+        // كم من كيلومترات الأسطول وجد صاحبَه، وكم بقي بلا نسبة.
+        kmAttributed: kmInfo.attributed,
+        kmUnattributed: kmInfo.unattributed,
+        driversAchieved: items.filter((i) => i.achieved === true).length,
+        driversBelow: items.filter((i) => i.achieved === false).length,
+        driversNoTarget: items.filter((i) => i.achieved == null).length,
+        defaultDriverMonthlyLoads: Number(cfg.defaultDriverMonthlyLoads) || 0,
+        defaultDriverMonthlyKm: Number(cfg.defaultDriverMonthlyKm) || 0,
       },
       items,
     };

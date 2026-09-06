@@ -38,6 +38,19 @@ interface DriverKpi {
   score: number; band: string; bandAr: string; bandEn: string; bandColor: string;
   breakdown: ScoreBreakdownItem[];
   noActivity?: boolean;
+  // ── هدفُ السائق: حمولاتٌ ومسافة ──────────────────────────────────────────
+  // السيّارةُ تُقاس بالدخل، والسائقُ لا يملك السعر: يملك أن يشيل ويمشي.
+  km: number;
+  /** كم من مسافته جاء من حمولةٍ تسمّيه، والباقي من مقعده على المركبة. */
+  kmFromLoads?: number;
+  targetLoads?: number;
+  targetKm?: number;
+  loadsPct?: number | null;
+  kmPct?: number | null;
+  shortfallLoads?: number;
+  shortfallKm?: number;
+  targetPct?: number | null;
+  achieved?: boolean | null;
 }
 
 interface Payload {
@@ -48,6 +61,9 @@ interface Payload {
     drivers: number; activeDrivers: number; idleDrivers: number;
     totalTrips: number; totalIncome: number; totalExpense: number;
     averageScore: number; lateTrips: number;
+    totalKm: number; kmAttributed: number; kmUnattributed: number;
+    driversAchieved: number; driversBelow: number; driversNoTarget: number;
+    defaultDriverMonthlyLoads: number; defaultDriverMonthlyKm: number;
   };
   items: DriverKpi[];
 }
@@ -66,6 +82,8 @@ export default function FleetDriverKpisPage() {
   const [period, setPeriod] = useState<Period>({ preset: 'this_month', from: '', to: '', day: '' });
   const [q, setQ] = useState('');
   const [showIdle, setShowIdle] = useState(true);
+  // «أرِني مَن لم يحقّق» — تُضغط البطاقةُ فيقتصر الجدولُ عليهم.
+  const [targetFilter, setTargetFilter] = useState<'all' | 'achieved' | 'below'>('all');
   const [open, setOpen] = useState<string | null>(null);
 
   const periodQS = useMemo(() => new URLSearchParams(periodParams(period)).toString(), [period]);
@@ -82,10 +100,11 @@ export default function FleetDriverKpisPage() {
   const items = useMemo(() => {
     let list = data?.items || [];
     if (!showIdle) list = list.filter((d) => d.trips > 0);
+    if (targetFilter !== 'all') list = list.filter((d) => (targetFilter === 'achieved' ? d.achieved === true : d.achieved === false));
     const s = q.trim().toLowerCase();
     if (s) list = list.filter((d) => `${d.name} ${d.vehicle?.plate || ''} ${d.phone}`.toLowerCase().includes(s));
     return list;
-  }, [data, q, showIdle]);
+  }, [data, q, showIdle, targetFilter]);
 
   const allowed = user && (FLEET_ROLES.includes(user.role) || user.permissions?.['Fleet Management'] === 'view' || user.permissions?.['Fleet Management'] === 'edit');
   if (!allowed) return <div className="text-slate-500 p-8">{tx('Not authorized', 'غير مصرّح')}</div>;
@@ -93,6 +112,12 @@ export default function FleetDriverKpisPage() {
 
   const exportColumns: ExportColumn[] = [
     { header: tx('Driver', 'السائق'), key: 'name', width: 26 },
+    { header: tx('On target', 'حقّق الهدف'), key: 'achieved', width: 12,
+      transform: (v: any) => (v == null ? '' : v ? tx('Yes', 'نعم') : tx('No', 'لا')) },
+    { header: tx('Attainment %', 'نسبة التحقيق'), key: 'targetPct', width: 12 },
+    { header: tx('Distance (km)', 'المسافة (كم)'), key: 'km', width: 14 },
+    { header: tx('Target km', 'هدف المسافة'), key: 'targetKm', width: 14 },
+    { header: tx('Target loads', 'هدف الحمولات'), key: 'targetLoads', width: 14 },
     { header: tx('Score', 'التقييم'), key: 'score', width: 10 },
     { header: tx('Band', 'التصنيف'), key: ar ? 'bandAr' : 'bandEn', width: 14 },
     { header: tx('Loads', 'الحمولات'), key: 'trips', width: 10 },
@@ -150,7 +175,26 @@ export default function FleetDriverKpisPage() {
             <KpiTile label={tx('Loads', 'الحمولات')} value={data.summary.totalTrips.toLocaleString()} icon={<Target className="w-4 h-4" />} />
             <KpiTile label={tx('Income', 'الدخل')} value={data.summary.totalIncome.toLocaleString()} accent="#16a34a" sub={`${tx('expenses', 'مصروفات')}: ${data.summary.totalExpense.toLocaleString()}`} />
             <KpiTile label={tx('Late loads', 'حمولات متأخرة')} value={data.summary.lateTrips} accent="#ef4444" icon={<AlertTriangle className="w-4 h-4" />} />
+            {/* المسافةُ مقروءةٌ من عدّادات المركبات، لا مقدَّرةٌ من أسماء المدن. */}
+            <KpiTile label={tx('Distance driven', 'المسافة المقطوعة')} value={`${(data.summary.totalKm || 0).toLocaleString()} ${tx('km', 'كم')}`} accent="#6366f1" />
+            {/* ── ومَن حقّق ومَن لم يحقّق: بطاقتان تُضغطان فتُصفّيان الجدول ── */}
+            <button type="button" onClick={() => setTargetFilter((f) => (f === 'achieved' ? 'all' : 'achieved'))}
+              className={`text-start rounded-xl transition-shadow ${targetFilter === 'achieved' ? 'ring-2 ring-emerald-500' : 'hover:shadow-md'}`}>
+              <KpiTile label={tx('On target', 'حقّقوا الهدف')} value={data.summary.driversAchieved} accent="#16a34a" />
+            </button>
+            <button type="button" onClick={() => setTargetFilter((f) => (f === 'below' ? 'all' : 'below'))}
+              className={`text-start rounded-xl transition-shadow ${targetFilter === 'below' ? 'ring-2 ring-red-500' : 'hover:shadow-md'}`}>
+              <KpiTile label={tx('Below target', 'دون الهدف')} value={data.summary.driversBelow} accent="#ef4444" />
+            </button>
           </div>
+
+          {/* الهدفُ يُقال صراحةً: من يقرأ «دون الهدف» يسأل «الهدف كام؟». */}
+          <p className="text-[12px] text-slate-500">
+            {tx(
+              `Target per driver per month: ${data.summary.defaultDriverMonthlyLoads} loads and ${(data.summary.defaultDriverMonthlyKm || 0).toLocaleString()} km — set in fleet settings, and overridable per driver. Distance is read from each truck's odometer.`,
+              `الهدف الشهري لكل سائق: ${data.summary.defaultDriverMonthlyLoads} حمولة و${(data.summary.defaultDriverMonthlyKm || 0).toLocaleString()} كم — يُضبط من إعدادات الأسطول، ويمكن تخصيصه لسائق بعينه. والمسافة مقروءة من عدّاد كل مركبة.`,
+            )}
+          </p>
 
           <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-wrap items-center gap-4">
             <BandLegend bands={data.bands} lang={ar ? 'ar' : 'en'} />
@@ -186,7 +230,9 @@ export default function FleetDriverKpisPage() {
                 <th className="px-3 py-2 w-8" />
                 <th className="px-3 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('Driver', 'السائق')}</th>
                 <th className="px-3 py-2 text-start text-[11px] text-slate-300 uppercase w-52">{tx('Score', 'التقييم')}</th>
+                <th className="px-3 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('Target', 'الهدف')}</th>
                 <th className="px-3 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('Loads', 'الحمولات')}</th>
+                <th className="px-3 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('Distance', 'المسافة')}</th>
                 <th className="px-3 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('Income', 'الدخل')}</th>
                 <th className="px-3 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('On time', 'في الموعد')}</th>
                 <th className="px-3 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('Follow-up', 'المتابعة')}</th>
@@ -213,9 +259,32 @@ export default function FleetDriverKpisPage() {
                         <ScoreBadge score={d.score} band={ar ? d.bandAr : d.bandEn} color={d.bandColor} size="sm" />
                         <div className="mt-1"><ScoreBar value={d.score} color={d.bandColor} height={4} /></div>
                       </td>
-                      <td className="px-3 py-2 text-sm text-slate-700 tabular-nums">
+                      {/* ── حقّق أو لم يحقّق، بكلمة ─────────────────────────
+                          «مين حقّق ومين لأ» سؤالُ الشاشة الأوّل، وكان جوابُه
+                          يُستنتَج بمقارنة أعمدةٍ في الرأس. */}
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {d.achieved == null ? (
+                          <span className="text-slate-300 text-xs">{tx('no target', 'بلا هدف')}</span>
+                        ) : d.achieved ? (
+                          <span className="inline-flex px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
+                            ✓ {tx('On target', 'حقّق')}
+                          </span>
+                        ) : (
+                          <span className="inline-flex px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-semibold">
+                            ✕ {d.targetPct ?? 0}%
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-sm text-slate-700 tabular-nums whitespace-nowrap">
                         {d.trips}
+                        {!!d.targetLoads && <span className="text-slate-400">/{d.targetLoads}</span>}
                         {d.sharedTrips > 0 && <span className="text-[10px] text-slate-400 ms-1">({d.sharedTrips} {tx('shared', 'مشتركة')})</span>}
+                      </td>
+                      {/* المسافةُ من عدّاد المركبة — لا تقديرَ من أسماء المدن. */}
+                      <td className="px-3 py-2 text-sm text-slate-700 tabular-nums whitespace-nowrap">
+                        {(d.km || 0).toLocaleString()}
+                        {!!d.targetKm && <span className="text-slate-400">/{d.targetKm.toLocaleString()}</span>}
+                        <span className="block text-[10px] text-slate-400">{tx('km', 'كم')}</span>
                       </td>
                       <td className="px-3 py-2 text-sm text-slate-700 tabular-nums">{d.income.toLocaleString()}</td>
                       <td className="px-3 py-2 text-sm tabular-nums">
@@ -240,7 +309,7 @@ export default function FleetDriverKpisPage() {
                     </tr>
                     {isOpen && (
                       <tr className="bg-slate-50/70">
-                        <td colSpan={10} className="px-5 py-4 space-y-4">
+                        <td colSpan={12} className="px-5 py-4 space-y-4">
                           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
                             <Mini label={tx('Delivered', 'وصلت')} value={d.done} />
                             <Mini label={tx('Late', 'متأخرة')} value={d.late} />
@@ -263,7 +332,7 @@ export default function FleetDriverKpisPage() {
                 );
               })}
               {!items.length && (
-                <tr><td colSpan={10} className="px-4 py-10 text-center text-slate-400 text-sm">{tx('No drivers', 'لا يوجد سائقون')}</td></tr>
+                <tr><td colSpan={12} className="px-4 py-10 text-center text-slate-400 text-sm">{tx('No drivers', 'لا يوجد سائقون')}</td></tr>
               )}
             </tbody>
           </table>

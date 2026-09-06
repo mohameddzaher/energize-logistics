@@ -346,7 +346,17 @@ class _FleetDriverKpisScreenState extends State<FleetDriverKpisScreen> {
             const SizedBox(height: 10),
             Wrap(spacing: 6, runSpacing: 6, children: [
               _bandChip(r),
-              Chip2('${tr('حمولات', 'Loads')}: ${_num(r['trips'])}', T.navy),
+              // ── وهدفُ السائق حمولاتٌ ومسافة ────────────────────────────
+              // السيّارةُ تُقاس بالدخل، والسائقُ لا يملك السعر: يملك أن يشيل
+              // ويمشي. والمسافةُ مقروءةٌ من عدّاد المركبة نفسِه.
+              if (r['achieved'] != null)
+                Chip2(
+                  r['achieved'] == true
+                      ? tr('حقّق الهدف', 'On target')
+                      : '${tr('دون الهدف', 'Below target')} ${_num(r['targetPct'])}%',
+                  r['achieved'] == true ? T.success : T.danger),
+              Chip2('${tr('حمولات', 'Loads')}: ${_num(r['trips'])}${r['targetLoads'] != null ? '/${_num(r['targetLoads'])}' : ''}', T.navy),
+              Chip2('${tr('المسافة', 'Distance')}: ${_num(r['km'])}${r['targetKm'] != null ? '/${_num(r['targetKm'])}' : ''} ${tr('كم', 'km')}', T.violet),
               Chip2('${tr('وصلت', 'Delivered')}: ${_num(r['done'])}', T.success),
               Chip2('${tr('متأخرة', 'Late')}: ${_num(r['late'])}', T.danger),
               Chip2('${tr('ملغاة', 'Cancelled')}: ${_num(r['cancelled'])}', T.inkFaint),
@@ -390,6 +400,17 @@ class _FleetDriverKpisScreenState extends State<FleetDriverKpisScreen> {
                       Expanded(child: StatCard(label: tr('متوسط التقييم', 'Avg score'), value: _n(_summary['averageScore']), color: T.info, icon: Icons.speed_outlined)),
                       const SizedBox(width: 8),
                       Expanded(child: StatCard(label: tr('حمولات متأخرة', 'Late loads'), value: _n(_summary['lateTrips']), color: T.danger, icon: Icons.schedule_outlined)),
+                    ]),
+                  ),
+                  // مَن حقّق ومَن لم يحقّق — السؤالُ الأوّل في هذه الشاشة.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+                    child: Row(children: [
+                      Expanded(child: StatCard(label: tr('حقّقوا الهدف', 'On target'), value: _n(_summary['driversAchieved']), color: T.success, icon: Icons.verified_outlined)),
+                      const SizedBox(width: 8),
+                      Expanded(child: StatCard(label: tr('دون الهدف', 'Below target'), value: _n(_summary['driversBelow']), color: T.danger, icon: Icons.trending_down_outlined)),
+                      const SizedBox(width: 8),
+                      Expanded(child: StatCard(label: tr('المسافة (كم)', 'Distance (km)'), value: _n(_summary['totalKm']), color: T.violet, icon: Icons.route_outlined)),
                     ]),
                   ),
                   Padding(

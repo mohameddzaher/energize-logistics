@@ -24,6 +24,8 @@ export default function FleetSettingsPage() {
   const [savingCfg, setSavingCfg] = useState(false);
   const [fridayBonusAmount, setFridayBonusAmount] = useState(50);
   const [defaultMonthlyTarget, setDefaultMonthlyTarget] = useState(27000);
+  const [defaultDriverMonthlyLoads, setDefaultDriverMonthlyLoads] = useState(8);
+  const [defaultDriverMonthlyKm, setDefaultDriverMonthlyKm] = useState(8000);
   // «ثلاثون ألفًا شهريًّا» جملةٌ ناقصةٌ ما لم يُقل: دخلًا كما هو، أم بعد مصروف
   // السائق؟ والفرقُ آلافٌ في السيّارة الواحدة.
   const [targetBasis, setTargetBasis] = useState<'gross' | 'net'>('gross');
@@ -34,11 +36,13 @@ export default function FleetSettingsPage() {
   const load = useCallback(async () => {
     try {
       const [cfg, v] = await Promise.all([
-        api.get<{ config: { fridayBonusAmount: number; defaultMonthlyTarget: number; targetBasis?: 'gross' | 'net' } }>('/api/fleet/config'),
+        api.get<{ config: { fridayBonusAmount: number; defaultMonthlyTarget: number; targetBasis?: 'gross' | 'net'; defaultDriverMonthlyLoads?: number; defaultDriverMonthlyKm?: number } }>('/api/fleet/config'),
         api.get<{ vehicles: { _id: string; plate: string; name?: string; monthlyTarget?: number }[] }>('/api/fleet/vehicles'),
       ]);
       setFridayBonusAmount(cfg.config.fridayBonusAmount);
       setDefaultMonthlyTarget(cfg.config.defaultMonthlyTarget);
+      if (cfg.config.defaultDriverMonthlyLoads != null) setDefaultDriverMonthlyLoads(cfg.config.defaultDriverMonthlyLoads);
+      if (cfg.config.defaultDriverMonthlyKm != null) setDefaultDriverMonthlyKm(cfg.config.defaultDriverMonthlyKm);
       setTargetBasis(cfg.config.targetBasis === 'net' ? 'net' : 'gross');
       setVehicles(v.vehicles || []);
       setTargets(Object.fromEntries((v.vehicles || []).map((x) => [x._id, String(x.monthlyTarget ?? cfg.config.defaultMonthlyTarget)])));
@@ -51,7 +55,7 @@ export default function FleetSettingsPage() {
   const saveCfg = async () => {
     setSavingCfg(true);
     try {
-      await api.put('/api/fleet/config', { fridayBonusAmount: Number(fridayBonusAmount) || 0, defaultMonthlyTarget: Number(defaultMonthlyTarget) || 0, targetBasis });
+      await api.put('/api/fleet/config', { fridayBonusAmount: Number(fridayBonusAmount) || 0, defaultMonthlyTarget: Number(defaultMonthlyTarget) || 0, targetBasis, defaultDriverMonthlyLoads: Number(defaultDriverMonthlyLoads) || 0, defaultDriverMonthlyKm: Number(defaultDriverMonthlyKm) || 0 });
       notify(ar ? 'تم حفظ الإعدادات' : 'Settings saved', 'success');
     } catch (e: any) { notify(e.message, 'error'); }
     setSavingCfg(false);
@@ -127,6 +131,21 @@ export default function FleetSettingsPage() {
           <div>
             <label className="block text-sm font-semibold text-slate-800 mb-1.5">{ar ? 'الهدف الشهري الافتراضي للسيارة' : 'Default vehicle monthly target'}</label>
             <input type="number" min={0} value={defaultMonthlyTarget} onChange={(e) => setDefaultMonthlyTarget(Number(e.target.value))} className={inputCls} />
+          </div>
+
+          {/* ── وهدفُ السائق حمولاتٌ ومسافة ────────────────────────────────
+              السيّارةُ تُقاس بالدخل، والسائقُ لا يملك السعر: يملك أن يشيل
+              ويمشي. فيُقاس بما يملكه. والمسافةُ مقروءةٌ من عدّاد المركبة في
+              لوكيشن سوليوشن، لا مقدَّرةٌ من أسماء المدن. */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-800 mb-1.5">{ar ? 'هدف السائق — حمولات في الشهر' : 'Driver target — loads per month'}</label>
+            <input type="number" min={0} value={defaultDriverMonthlyLoads} onChange={(e) => setDefaultDriverMonthlyLoads(Number(e.target.value))} className={inputCls} />
+            <p className="text-[11px] text-slate-500 mt-1">{ar ? 'يمكن تخصيص هدف مختلف لسائق بعينه من صفحة السائقين.' : 'A single driver can be given a different target on the drivers page.'}</p>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-800 mb-1.5">{ar ? 'هدف السائق — كيلومترات في الشهر' : 'Driver target — km per month'}</label>
+            <input type="number" min={0} value={defaultDriverMonthlyKm} onChange={(e) => setDefaultDriverMonthlyKm(Number(e.target.value))} className={inputCls} />
+            <p className="text-[11px] text-slate-500 mt-1">{ar ? 'المسافة تُقرأ من عدّاد المركبة نفسه (لوكيشن سوليوشن)، وتُنسب للسائق بحمولته أو بمقعده على المركبة.' : 'Distance is read from the truck\u2019s own odometer and attributed by load, or by the driver\u2019s seat on the truck.'}</p>
           </div>
           <div className="sm:col-span-2">
             {/* ── يُقاس الهدفُ بماذا؟ ────────────────────────────────────────

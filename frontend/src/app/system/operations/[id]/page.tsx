@@ -351,9 +351,19 @@ export default function WorkflowDetailPage() {
   }
 
   if (!workflow) {
+    // ── ورابطٌ قديمٌ ليس كشفًا مفقودًا ──────────────────────────────────────
+    // هذا المسار يبتلع كلَّ ما بعد `/system/operations/`، فرابطٌ محفوظٌ لصفحةٍ
+    // أُزيلت (كشوف التخريج مثلًا) يصل إلى هنا فيُقال له «الكشف غير موجود» —
+    // وهو لم يطلب كشفًا. ومعرّفُ الكشف أربعٌ وعشرون خانةً ستّ عشريّة، فما ليس
+    // كذلك ليس رقمَ كشفٍ أصلًا، ويُقال له الصوابُ: هذه الصفحة أُزيلت.
+    const looksLikeId = /^[0-9a-f]{24}$/i.test(String(id || ''));
     return (
       <div className="text-center py-20">
-        <p className="text-slate-500">{error || T.workflowNotFound}</p>
+        <p className="text-slate-500">
+          {looksLikeId
+            ? (error || T.workflowNotFound)
+            : (lang === 'ar' ? 'هذه الصفحة لم تعد موجودة.' : 'This page no longer exists.')}
+        </p>
         <button type="button" onClick={() => router.push('/system/operations')} className="text-[#f37121] mt-2 text-sm hover:underline">{T.goBack}</button>
       </div>
     );

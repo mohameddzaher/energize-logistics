@@ -70,11 +70,19 @@ export default function PaymentTypesPage() {
     });
   }, [rows, q, filter]);
 
+  /**
+   * صفةُ العميل تُحفَظ، وتسري على كشوفه.
+   *
+   * ── وخطوتان لا واحدة ──────────────────────────────────────────────────────
+   * الكشوفُ بلا نوعٍ تُملأ فورًا — تلك ليست تغييرًا بل استكمال. أمّا الكشوفُ
+   * التي لها نوعٌ مخالفٌ فتُعَدُّ ويُسأل عنها: قلبُها يغيّر أين تُفوتَر وأين
+   * تُحصَّل، وذلك قرارٌ يُرى عددُه قبل اتّخاذه لا أثرٌ جانبيٌّ لاختيارٍ في قائمة.
+   */
   const setType = async (row: Row, paymentType: '' | 'cash' | 'tax') => {
     if (paymentType === row.paymentType) return;
     setSaving(row._id);
     try {
-      const r = await api.put<{ changed: number; skippedManual: number }>(
+      const r = await api.put<{ changed: number; skippedManual: number; remaining: number }>(
         `/api/workflows/payment-types/${row._id}`, { paymentType, onlyEmpty: true },
       );
       setRows((prev) => prev.map((x) => (x._id === row._id ? { ...x, paymentType } : x)));
@@ -84,6 +92,20 @@ export default function PaymentTypesPage() {
           : t('حُفظ', 'Saved'),
         'success',
       );
+
+      if (r.remaining > 0) {
+        const goAll = await confirm(t(
+          `ولهذا العميل ${r.remaining} كشفًا بنوعٍ مخالفٍ لصفته الجديدة. أحوّلها كلَّها؟\n\nالتحويل يغيّر أين تُفوتَر هذه الكشوف وأين تُحصَّل — وما اختاره موظّفٌ بيده لا يُمسّ على كلّ حال.`,
+          `${r.remaining} of this customer's reports carry a different type. Convert them all?\n\nThis changes where those reports are invoiced and collected. Types chosen by hand are never touched.`,
+        ));
+        if (goAll) {
+          const all = await api.put<{ changed: number; skippedManual: number }>(
+            `/api/workflows/payment-types/${row._id}`, { paymentType, onlyEmpty: false },
+          );
+          notify(t(`حُوِّل ${all.changed} كشفًا${all.skippedManual ? ` · وتُرك ${all.skippedManual} باختيارٍ يدويّ` : ''}`,
+                   `Converted ${all.changed} reports${all.skippedManual ? ` · ${all.skippedManual} left as hand-picked` : ''}`), 'success');
+        }
+      }
       load();
     } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
     setSaving(null);

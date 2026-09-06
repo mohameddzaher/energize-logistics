@@ -141,12 +141,16 @@ async function applyToCustomer(party, { onlyEmpty = true } = {}) {
   const rows = await OperationsWorkflow.find({ username: { $in: mine } })
     .select('paymentType paymentTypeSource paymentMethod').lean();
 
-  const ops = []; let skippedManual = 0;
+  const ops = []; let skippedManual = 0; let remaining = 0;
   for (const w of rows) {
     if (String(w.paymentTypeSource || '') === 'manual') { skippedManual += 1; continue; }
-    if (onlyEmpty && w.paymentType) continue;
     const next = derivePaymentType(w.paymentMethod, party.paymentType);
     if (next === (w.paymentType || '')) continue;
+    // ── وما له نوعٌ يُعَدّ ولا يُبدَّل ما لم يُطلَب ──────────────────────────
+    // قلبُ نوعِ كشفٍ قائمٍ يغيّر أين يُفوتَر وأين يُحصَّل. فيُملأ الفارغُ وحدَه،
+    // ويُقال كم كشفًا بقي مختلفًا — ليكون التحويلُ قرارًا يُرى عددُه لا أثرًا
+    // جانبيًّا لتغيير صفةٍ في صفحة.
+    if (onlyEmpty && w.paymentType) { remaining += 1; continue; }
     ops.push({ updateOne: { filter: { _id: w._id }, update: { $set: { paymentType: next, paymentTypeSource: 'auto' } } } });
   }
   let changed = 0;
@@ -154,7 +158,7 @@ async function applyToCustomer(party, { onlyEmpty = true } = {}) {
     const r = await OperationsWorkflow.bulkWrite(ops.slice(i, i + 500), { ordered: false });
     changed += r.modifiedCount || 0;
   }
-  return { changed, skippedManual, reports: rows.length };
+  return { changed, skippedManual, remaining, reports: rows.length };
 }
 
 /**

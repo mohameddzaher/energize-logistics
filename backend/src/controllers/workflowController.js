@@ -4,6 +4,7 @@ const { startOfDay, endOfDay, DAY_MS: COMPANY_DAY_MS } = require('../utils/compa
 const { flexSpaceRegex } = require('../utils/plateKey');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll, emitPerRole } = require('../websocket/socketManager');
+const { derivePaymentType } = require('../utils/paymentType');
 const XLSX = require('xlsx');
 const cache = require('../utils/ttlCache');
 
@@ -195,6 +196,45 @@ function deriveInvoiceTotals(patch, current) {
  *
  * تُرجِع الحقولَ التي أُسقطت باسمها — فالمرفوضُ يُقال ولا يُبتلع.
  */
+/**
+ * يملأ نوعَ الدفع من ملفّ العميل قبل تطبيق القواعد.
+ *
+ * ── لماذا هنا أيضًا وهو في المزامنة ─────────────────────────────────────────
+ * المزامنةُ تملؤه للكشوف الآتية من المنصّة. وكشفٌ يُنشأ عندنا بيد موظّف، أو
+ * كشفٌ قديمٌ يُكتب له تاريخُ سدادٍ اليوم، لا يمرّ عليها — فيبقى بلا نوع، ولا
+ * يظهر في شاشة تحصيلٍ لا كاشًا ولا ضريبيًّا. وهذه اللحظةُ — لحظةَ كتابة تاريخ
+ * السداد — هي التي يُسأل بعدها «فين الكشف؟».
+ *
+ * ولا يُبدَّل نوعٌ مكتوب: يُملأ الفارغُ وحدَه، ولا يُمسّ اختيارُ اليد أبدًا.
+ */
+async function fillPaymentTypeFromCustomer(patch, current = {}) {
+  if (Object.prototype.hasOwnProperty.call(patch, 'paymentType')) return null;
+  if (String(current.paymentTypeSource || '') === 'manual') return null;
+  if (String(current.paymentType || '').trim()) return null;
+
+  const name = patch.username !== undefined ? patch.username : current.username;
+  if (!name) return null;
+  try {
+    const CollectionsParty = require('../models/CollectionsParty');
+    const key = CollectionsParty.fold(name);
+    if (!key) return null;
+    const party = await CollectionsParty.findOne({ kind: 'customer', nameKey: key })
+      .select('paymentType').lean();
+    const method = patch.paymentMethod !== undefined ? patch.paymentMethod : current.paymentMethod;
+    const next = derivePaymentType(method, party?.paymentType);
+    if (!next) return null;
+    patch.paymentType = next;
+    patch.paymentTypeSource = 'auto';
+    // ── وعلامةٌ تقول إنّ هذا اشتقاقٌ لا اختيارُ يد ──────────────────────────
+    // `applyBillingRules` تختم كلَّ `paymentType` في التعديل بأنّه «يدويّ»، وهو
+    // صوابٌ لما يكتبه الموظّف وخطأٌ لما نشتقّه نحن: المختومُ يدويًّا لا تمسّه
+    // صفحةُ «أنواع الدفع» أبدًا، فيتجمّد الكشفُ على نوعٍ لم يختره أحد ويُعدّ في
+    // عمود «اختيار يدويّ» وهو ليس منه.
+    patch.__derivedPaymentType = true;
+    return next;
+  } catch (_) { return null; }
+}
+
 function applyBillingRules(patch, current = {}) {
   const nextType = Object.prototype.hasOwnProperty.call(patch, 'paymentType')
     ? patch.paymentType
@@ -206,8 +246,10 @@ function applyBillingRules(patch, current = {}) {
   // أوّل مرور — والعميلُ الواحد يكون كاشًا في حمولةٍ وضريبيًّا في التالية،
   // فالاختيارُ على الكشف هو الأصدق. راجع utils/paymentType.
   if (Object.prototype.hasOwnProperty.call(patch, 'paymentType')) {
-    patch.paymentTypeSource = 'manual';
+    // إلّا ما اشتققناه نحن قبل قليل — راجع fillPaymentTypeFromCustomer.
+    if (!patch.__derivedPaymentType) patch.paymentTypeSource = 'manual';
   }
+  delete patch.__derivedPaymentType;
 
   const blocked = [];
   if (nextType === 'cash') {
@@ -712,6 +754,7 @@ exports.createWorkflow = async (req, res) => {
   try {
     const filteredBody = filterFieldsByRole(req.body, req.user.role);
     // نوعُ الدفع يقرّر شكلَ الكشف من لحظة إنشائه، لا بعد أوّل تعديل.
+    await fillPaymentTypeFromCustomer(filteredBody, {});
     applyBillingRules(filteredBody, {});
     filteredBody.createdBy = req.user._id;
     filteredBody.lastModifiedBy = req.user._id;
@@ -812,6 +855,7 @@ exports.updateWorkflow = async (req, res) => {
     const sentKeys = Object.keys(filteredBody);
     // نوعُ الدفع يُملأ من ملفّ العميل قبل تطبيق القواعد، فيُقفل الكشفُ النقديُّ
     // في الحفظة نفسِها التي سُجّل فيها سدادُه — لا في تعديلٍ ثانٍ.
+    await fillPaymentTypeFromCustomer(filteredBody, workflow.toObject());
     const billing = applyBillingRules(filteredBody, workflow.toObject());
     if (billing.blocked.length && sentKeys.every((k) => billing.blocked.includes(k))) {
       return res.status(400).json({
@@ -1103,6 +1147,9 @@ exports.bulkUpdate = async (req, res) => {
         continue;
       }
       const rowPatch = { ...patch };
+      // ونوعُ الدفع يُملأ لكلّ صفٍّ من ملفّ عميله — والدفعةُ الواحدة تضمّ
+      // عملاءَ شتّى، فقاعدةٌ واحدةٌ للجميع تكتب فاتورةً على عميل كاش.
+      await fillPaymentTypeFromCustomer(rowPatch, r);
       const own = applyBillingRules(rowPatch, r);
       if (own.blocked.length && !Object.keys(own.patch).length) {
         skipped.push({ reportNumber: r.reportNumber, reason: 'كشف نقديّ — لا فاتورة له' });

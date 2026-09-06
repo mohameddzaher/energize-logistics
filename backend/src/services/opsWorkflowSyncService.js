@@ -12,6 +12,7 @@ const upl = require('./uplClient');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
 const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
+const { derivePaymentType } = require('../utils/paymentType');
 
 const SOURCE = 'ops_upl';
 let running = false;
@@ -106,13 +107,48 @@ function mapShipment(s) {
 // Upsert a batch of shipments into OperationsWorkflow (used by both the full sync
 // and the live poll). Soft-deleted shipments (deleted_at set) are removed instead.
 // Refreshes only the UPL-derived columns; manual columns are $setOnInsert-only.
+/**
+ * صفةُ كلّ عميلٍ من صفحة «أنواع الدفع» — مفتاحُ الاسم المطويّ ← cash | tax.
+ *
+ * تُقرأ مرّةً لكلّ دفعةٍ لا مرّةً لكلّ شحنة، وتُحفَظ تحت بادئة `wf:` — وهي التي
+ * تُمسَح حين يُغيَّر نوعُ عميلٍ من تلك الصفحة، فتسري الصفةُ الجديدة على أوّل
+ * مزامنةٍ بعدها بلا انتظار.
+ */
+async function customerTypeMap() {
+  return cache.wrap('wf:paymentTypeByCustomer', 60000, async () => {
+    const CollectionsParty = require('../models/CollectionsParty');
+    const rows = await CollectionsParty.find({ kind: 'customer', paymentType: { $in: ['cash', 'tax'] } })
+      .select('name nameKey paymentType').lean();
+    const out = {};
+    for (const p of rows) {
+      const k = p.nameKey || CollectionsParty.fold(p.name || '');
+      if (k) out[k] = p.paymentType;
+    }
+    return out;
+  });
+}
+
 async function upsertShipments(ships) {
   if (!ships || !ships.length) return { created: 0, updated: 0, removed: 0 };
   const live = ships.filter((s) => s && s.id && !s.deleted_at);
   const deletedIds = ships.filter((s) => s && s.id && s.deleted_at).map((s) => String(s.id));
 
+  // ── ونوعُ الدفع يُكتب مع الكشف لا بعده بأسبوع ─────────────────────────────
+  // كانت المزامنةُ لا تمسّ `paymentType` أصلًا، فيولد الكشفُ بلا نوعٍ ويبقى
+  // فارغًا حتى يفتح أحدٌ صفحةَ «أنواع الدفع» ويضغط زرًّا. وأثرُه أنّ أربعةَ
+  // آلافٍ وستَّمئةٍ وأربعةً وأربعين كشفًا لها تاريخُ سدادٍ ولا نوعَ لها — أي
+  // أنّها مستحقّةٌ للتحصيل ولا تظهر في شاشةِ تحصيلٍ أصلًا، لا في الكاش ولا في
+  // الضريبيّ.
+  //
+  // فصار يُشتقّ في المزامنة نفسِها: صفةُ العميل، وتغلبها طريقةُ الدفع النقديّة
+  // إن قالتها المنصّةُ عن هذه الحمولة (وهو الاستثناءُ الوحيد). راجع
+  // utils/paymentType.
+  const typeByCustomer = await customerTypeMap();
+  const { fold } = require('../models/CollectionsParty');
+
   const ops = live.map((s) => {
     const { set, setOnInsert } = mapShipment(s);
+    const derived = derivePaymentType(s.payment_method, typeByCustomer[fold(s.user?.name || '')]);
     return {
       updateOne: {
         filter: { externalSource: SOURCE, externalId: String(s.id) },
@@ -132,6 +168,25 @@ async function upsertShipments(ships) {
                   set.sellingValue,
                 ],
               },
+              // ── ولا يُبدَّل نوعٌ مكتوبٌ أصلًا ────────────────────────────
+              // يُملأ الفارغُ وحدَه. واختيارُ اليد لا يُمسّ أبدًا (`manual`)،
+              // والمشتقُّ سابقًا يبقى كما هو: قلبُ نوعِ كشفٍ قديمٍ يغيّر أين
+              // يُفوتَر وأين يُحصَّل، وذلك قرارٌ يُتّخذ من صفحة «أنواع الدفع»
+              // بعددٍ معروضٍ قبله، لا أثرٌ جانبيٌّ لمزامنةٍ تجري كلَّ دقيقة.
+              paymentType: derived ? {
+                $cond: [
+                  { $in: [{ $ifNull: ['$paymentType', ''] }, ['', null]] },
+                  derived,
+                  { $ifNull: ['$paymentType', ''] },
+                ],
+              } : { $ifNull: ['$paymentType', ''] },
+              paymentTypeSource: derived ? {
+                $cond: [
+                  { $in: [{ $ifNull: ['$paymentType', ''] }, ['', null]] },
+                  'auto',
+                  { $ifNull: ['$paymentTypeSource', ''] },
+                ],
+              } : { $ifNull: ['$paymentTypeSource', ''] },
             },
           },
           { $set: Object.fromEntries(Object.entries(setOnInsert).map(([k, v]) => [k, { $ifNull: [`$${k}`, v] }])) },

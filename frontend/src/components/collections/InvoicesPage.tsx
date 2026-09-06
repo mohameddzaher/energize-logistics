@@ -23,12 +23,18 @@ import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInpu
 import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import ManagedSelect from '@/components/system/ManagedSelect';
-import { Banknote, Receipt, SlidersHorizontal, X, CheckCircle2, ChevronLeft, Truck } from 'lucide-react';
+import { ColumnFilter, type ColumnFilterOption } from '@/components/ColumnFilter';
+import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
+import { printTable } from '@/utils/printTable';
+import { Banknote, Receipt, SlidersHorizontal, X, CheckCircle2, ChevronLeft, Truck, Printer } from 'lucide-react';
+
+const EMPTY_SET: Set<string> = new Set();
+const EMPTY_OPTIONS: ColumnFilterOption[] = [];
 
 export type InvoiceKind = 'cash' | 'tax';
 
 interface CashRow {
-  _id: string; reportNumber: string; customer: string; branch: string; payingBranch: string;
+  _id: string; reportNumber: string; customer: string; partyId?: string; branch: string; payingBranch: string;
   paymentDate: string | null; route: string; value: number; collectedAmount: number; collectionDate: string | null;
   /** تاريخُ وصول الفاتورة إلى العميل — كالضريبيّ، ومنه تُعَدُّ المهلة. */
   deliveryDate: string | null;
@@ -39,7 +45,7 @@ interface CashRow {
   ageDays: number | null;
 }
 interface TaxRow {
-  invoiceNumber: string; customer: string; value: number; net: number; vat: number;
+  invoiceNumber: string; customer: string; partyId?: string; value: number; net: number; vat: number;
   invoiceDate: string | null; deliveryDate: string | null; branch: string; payingBranch: string;
   reports: number; collectedReports: number; fullyCollected: boolean;
   collectionDate: string | null; ageDays: number | null;
@@ -94,7 +100,21 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   const [showFilters, setShowFilters] = useState(false);
   const [opts, setOpts] = useState<{ customers: string[]; branches: string[] }>({ customers: [], branches: [] });
 
-  const activeCount = [age, customer, branch, from, to, detail].filter(Boolean).length;
+  // ── تحديدُ صفوف ───────────────────────────────────────────────────────
+  // «اختر فواتيرَ بعينها ثمّ صدّرها أو اطبعها» — فالتحديدُ بمفتاح الصفّ:
+  // رقمُ الفاتورة في الضريبيّ، ومعرّفُ الكشف في النقديّ.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const rowKey = (r: any) => (isCash ? String(r._id) : String(r.invoiceNumber));
+
+  // ── فلاترُ الأعمدة على طريقة إكسل ──────────────────────────────────────
+  // تُرسَل إلى الخادم فيفلتر بها المجموعةَ كلَّها — لا مئةَ صفٍّ معروضة.
+  const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
+  const [colOptions, setColOptions] = useState<Record<string, { values: ColumnFilterOption[]; truncated: boolean }>>({});
+  const [colLoading, setColLoading] = useState<Record<string, boolean>>({});
+  const optionsSeq = useRef<Record<string, number>>({});
+  const colCount = Object.keys(colFilters).length;
+
+  const activeCount = [age, customer, branch, from, to, detail].filter(Boolean).length + colCount;
 
   // ── تسجيلُ التحصيل ────────────────────────────────────────────────────────
   const [collecting, setCollecting] = useState<{ label: string; invoiceNumber?: string; ids?: string[]; needAmount: boolean } | null>(null);
@@ -109,19 +129,38 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
 
   const guard = useLatestRequest();
 
+  /**
+   * كلُّ ما يفهمه الخادمُ من فلترةٍ في مكانٍ واحد.
+   *
+   * يقرؤه الجدولُ وقوائمُ قيم الأعمدة والتصديرُ معًا، فلا يفلتر أحدُها على
+   * شرطٍ ويعرض الآخرُ نتيجةَ شرطٍ غيره. وقيمُ العمود تُرسَل مكرَّرةً
+   * (`cf_x=a&cf_x=b`) لا مفصولةً بفاصلة — فقد تحوي القيمةُ نفسُها فاصلةً،
+   * واسمُ عميلٍ فيه فاصلةٌ يصير عميلين.
+   */
+  const queryParams = useCallback(() => {
+    const p = new URLSearchParams();
+    if (q.trim()) p.set('q', q.trim());
+    if (collected) p.set('collected', collected);
+    if (age) p.set('age', age);
+    if (customer) p.set('customer', customer);
+    if (branch) p.set('branch', branch);
+    if (isCash && detail) p.set('detail', detail);
+    if (from) p.set('from', from);
+    if (to) p.set('to', to);
+    for (const [field, vals] of Object.entries(colFilters)) {
+      for (const v of vals) p.append(`cf_${field}`, v);
+    }
+    return p;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, collected, age, customer, branch, from, to, detail, isCash, colFilters]);
+
   const load = useCallback(async (background = false) => {
     const mine = guard.begin();
     if (!background) setRefreshing(true);
     try {
-      const p = new URLSearchParams({ page: String(page), limit: '100' });
-      if (q.trim()) p.set('q', q.trim());
-      if (collected) p.set('collected', collected);
-      if (age) p.set('age', age);
-      if (customer) p.set('customer', customer);
-      if (branch) p.set('branch', branch);
-      if (isCash && detail) p.set('detail', detail);
-      if (from) p.set('from', from);
-      if (to) p.set('to', to);
+      const p = queryParams();
+      p.set('page', String(page));
+      p.set('limit', '100');
       const d = await api.get<any>(`/api/collections-dept/invoices/${kind}?${p.toString()}`);
       if (!guard.isCurrent(mine)) return;
       setRows(d.invoices || []);
@@ -137,7 +176,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, page, q, collected, age, customer, branch, from, to, detail]);
+  }, [kind, page, queryParams]);
 
   const first = useRef(true);
   useEffect(() => {
@@ -146,7 +185,10 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     return () => clearTimeout(id);
   }, [load]);
 
-  useEffect(() => { setPage(1); }, [q, collected, age, customer, branch, from, to, detail]);
+  useEffect(() => { setPage(1); }, [q, collected, age, customer, branch, from, to, detail, colFilters]);
+  // التحديدُ لا يعبر فلترًا: صفٌّ اختير ثمّ خرج من النتيجة يبقى محدَّدًا خفيةً
+  // فيُصدَّر ما لا يُرى.
+  useEffect(() => { setSelected(new Set()); }, [q, collected, age, customer, branch, from, to, detail, colFilters, page]);
 
   // التحصيلُ يُكتب على الكشف، فأيُّ تعديلٍ هناك يُحدِّث هنا في لحظته.
   useSocket('workflow:updated', useCallback(() => { load(true); }, [load]));
@@ -227,30 +269,157 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     setSaving(false);
   };
 
-  const cols: ExportColumn[] = isCash
+  /** قيمُ عمودٍ من الخادم — تحت الفلاتر القائمة عدا فلترِ العمود نفسِه. */
+  const fetchColOptions = useCallback(async (field: string, search = '') => {
+    const seq = (optionsSeq.current[field] || 0) + 1;
+    optionsSeq.current[field] = seq;
+    setColLoading((p) => ({ ...p, [field]: true }));
+    try {
+      const p2 = queryParams();
+      p2.delete(`cf_${field}`);
+      p2.set('field', field);
+      // بحثُ القائمة اسمُه `search`، وبحثُ الصفحة يبقى `q` — فلا يفلتر أحدُهما
+      // بالآخر.
+      if (search.trim()) p2.set('search', search.trim());
+      const d = await api.get<{ values: ColumnFilterOption[]; truncated: boolean }>(
+        `/api/collections-dept/invoices/${kind}/column-options?${p2.toString()}`);
+      // ترتيبُ وصول الردود ليس ترتيبَ إرسالها: آخرُ طلبٍ وحدَه يُقبل.
+      if (optionsSeq.current[field] !== seq) return;
+      setColOptions((p3) => ({ ...p3, [field]: d }));
+    } catch { /* تُترك القائمةُ كما هي */ }
+    finally { if (optionsSeq.current[field] === seq) setColLoading((p3) => ({ ...p3, [field]: false })); }
+  }, [kind, queryParams]);
+
+  const setColFilter = (field: string, set: Set<string>) => {
+    setColFilters((prev) => {
+      const next = { ...prev };
+      if (set.size) next[field] = set; else delete next[field];
+      return next;
+    });
+  };
+  const clearColFilters = () => setColFilters({});
+
+  // ── مصدرٌ واحدٌ للأعمدة ────────────────────────────────────────────────
+  // الشاشةُ والتصديرُ والطباعةُ تقرأ من هنا، فما يُرى هو ما يخرج. و`filter`
+  // اسمُ الحقل في القاعدة حين يقبل العمودُ فلترَ إكسل.
+  type Col = ExportColumn & {
+    filter?: string;
+    align?: 'start' | 'end' | 'center';
+    cell?: (r: any) => React.ReactNode;
+  };
+  const allCols: Col[] = isCash
     ? [
-      { header: t('رقم كشف التخريج', 'Report no.'), key: 'reportNumber', width: 18 },
-      { header: t('العميل', 'Customer'), key: 'customer', width: 30 },
-      { header: t('تاريخ السداد', 'Paid on'), key: 'paymentDate', width: 14, transform: (v: any) => dt(v) },
-      { header: t('الفرع المسدد', 'Paying branch'), key: 'payingBranch', width: 14 },
-      { header: t('قيمة الكشف', 'Report value'), key: 'value', width: 14 },
-      { header: t('مبلغ التحصيل', 'Collected'), key: 'collectedAmount', width: 14 },
-      { header: t('تاريخ التسليم للعميل', 'Delivered to customer'), key: 'deliveryDate', width: 16, transform: (v: any) => dt(v) },
-      { header: t('التفاصيل', 'Detail'), key: 'collectionDetail', width: 16 },
-      { header: t('تاريخ التحصيل', 'Collected on'), key: 'collectionDate', width: 14,
-        transform: (v: any, r: any) => (v ? dt(v) : (r?.collectedNoDate ? t('محصَّل — بلا تاريخ', 'Collected — no date') : '')) },
-      { header: t('العمر (يوم)', 'Age (days)'), key: 'ageDays', width: 12 },
+      { header: t('رقم كشف التخريج', 'Report no.'), key: 'reportNumber', width: 18, filter: 'reportNumber',
+        cell: (r) => (
+          <button type="button" onClick={(e) => { e.stopPropagation(); router.push(`/system/operations/${r._id}`); }}
+            className="font-semibold text-[#f37121] hover:underline">{r.reportNumber || '—'}</button>
+        ) },
+      { header: t('العميل', 'Customer'), key: 'customer', width: 30, filter: 'username', cell: (r) => customerCell(r) },
+      { header: t('المسار', 'Route'), key: 'route', width: 24 },
+      { header: t('تاريخ السداد', 'Paid on'), key: 'paymentDate', width: 14, type: 'date', filter: 'paymentDate', transform: (v: any) => dt(v) },
+      { header: t('الفرع المسدد', 'Paying branch'), key: 'payingBranch', width: 14, filter: 'payingBranch' },
+      { header: t('العمر (يوم)', 'Age (days)'), key: 'ageDays', width: 12, align: 'end', cell: (r) => ageChip(r.ageDays) },
+      { header: t('قيمة الكشف', 'Value'), key: 'value', width: 14, type: 'number', align: 'end',
+        cell: (r) => <span className="tabular-nums font-semibold text-slate-900">{r.value ? money(r.value) : '—'}</span> },
+      { header: t('مبلغ التحصيل', 'Collected'), key: 'collectedAmount', width: 14, type: 'number', align: 'end',
+        cell: (r) => <span className="tabular-nums font-semibold text-emerald-700">{r.collectedAmount ? money(r.collectedAmount) : '—'}</span> },
+      { header: t('التسليم للعميل', 'To customer'), key: 'deliveryDate', width: 16, type: 'date', filter: 'deliveryDate',
+        transform: (v: any) => dt(v),
+        cell: (r) => <span className={r.deliveryDate ? 'text-slate-600' : 'text-slate-300'}>{r.deliveryDate ? dt(r.deliveryDate) : '—'}</span> },
+      { header: t('التفاصيل', 'Detail'), key: 'collectionDetail', width: 16, filter: 'collectionDetail', cell: (r) => detailCell(r) },
+      { header: t('تاريخ التحصيل', 'Collected on'), key: 'collectionDate', width: 14, type: 'date', filter: 'collectionDate',
+        transform: (v: any, r: any) => (v ? dt(v) : (r?.collectedNoDate ? t('محصَّل — بلا تاريخ', 'Collected — no date') : '')),
+        cell: (r) => collectedCell(r) },
     ]
     : [
-      { header: t('رقم الفاتورة', 'Invoice no.'), key: 'invoiceNumber', width: 18 },
-      { header: t('العميل', 'Customer'), key: 'customer', width: 30 },
-      { header: t('القيمة', 'Value'), key: 'value', width: 16 },
-      { header: t('عدد الكشوفات', 'Reports'), key: 'reports', width: 12 },
-      { header: t('تاريخ الفاتورة', 'Invoice date'), key: 'invoiceDate', width: 14, transform: (v: any) => dt(v) },
-      { header: t('تاريخ التسليم للعميل', 'Delivered to customer'), key: 'deliveryDate', width: 14, transform: (v: any) => dt(v) },
-      { header: t('تاريخ التحصيل', 'Collected on'), key: 'collectionDate', width: 14, transform: (v: any) => dt(v) },
-      { header: t('العمر (يوم)', 'Age (days)'), key: 'ageDays', width: 12 },
+      { header: t('رقم الفاتورة', 'Invoice no.'), key: 'invoiceNumber', width: 18, filter: 'invoiceNumber',
+        cell: (r) => (
+          <button type="button" onClick={(e) => { e.stopPropagation(); openInvoice(r.invoiceNumber); }}
+            className="font-semibold text-[#f37121] hover:underline">{r.invoiceNumber}</button>
+        ) },
+      { header: t('العميل', 'Customer'), key: 'customer', width: 30, filter: 'partyName', cell: (r) => customerCell(r) },
+      { header: t('كود الحساب', 'Account code'), key: 'partyCode', width: 14, filter: 'partyCode' },
+      { header: t('عدد الكشوفات', 'Reports'), key: 'reports', width: 12, align: 'end', cell: (r) => reportsCell(r) },
+      { header: t('القيمة', 'Value'), key: 'value', width: 16, type: 'number', align: 'end',
+        cell: (r) => <span className="tabular-nums font-semibold text-slate-900">{money(r.value)}</span> },
+      { header: t('تاريخ الفاتورة', 'Invoice date'), key: 'invoiceDate', width: 14, type: 'date', filter: 'invoiceDate', transform: (v: any) => dt(v) },
+      { header: t('التسليم للعميل', 'To customer'), key: 'deliveryDate', width: 14, type: 'date', filter: 'deliveryDate', transform: (v: any) => dt(v) },
+      { header: t('العمر (يوم)', 'Age (days)'), key: 'ageDays', width: 12, align: 'end', cell: (r) => ageChip(r.ageDays) },
+      { header: t('تاريخ التحصيل', 'Collected on'), key: 'collectionDate', width: 14, type: 'date', filter: 'collectionDate',
+        transform: (v: any) => dt(v),
+        cell: (r) => (
+          <span className={r.fullyCollected ? 'text-emerald-700' : 'text-red-500'}>
+            {r.fullyCollected ? dt(r.collectionDate) : t('لم تُحصَّل', 'open')}
+          </span>
+        ) },
+      { header: t('الحالة', 'Status'), key: 'status', width: 14, filter: 'status' },
     ];
+
+  const chooserCols: ChooserColumn[] = allCols.map((c, i) => ({ key: c.key, label: c.header, locked: i === 0 }));
+  const { visible, setVisible } = useVisibleColumns(`collections:invoices:${kind}:cols`, chooserCols);
+  const cols = allCols.filter((c) => visible.includes(c.key));
+
+  const openInvoice = (no: string) =>
+    router.push(`/system/collections-dept/invoices/tax/${encodeURIComponent(no)}`);
+
+  // ── واسمُ العميل بابُ ملفّه ────────────────────────────────────────────
+  // الخادمُ يترجم الاسمَ إلى معرّفِ ملفٍّ مع الصفّ. ومن لا ملفَّ له يُعرَض
+  // اسمُه نصًّا — لا زرًّا يَعِد بصفحةٍ لا تُفتَح.
+  const customerCell = (r: any) => (r.partyId ? (
+    <button type="button" onClick={(e) => { e.stopPropagation(); router.push(`/system/collections-dept/parties/${r.partyId}`); }}
+      className="text-[#f37121] hover:underline text-start">{r.customer || '—'}</button>
+  ) : <span className="text-slate-700">{r.customer || '—'}</span>);
+
+  const reportsCell = (r: any) => (r.reports > 0 ? (
+    <span className="tabular-nums text-slate-600">
+      {r.reports}
+      {r.reports > r.collectedReports && r.collectedReports > 0 && (
+        <span className="text-[11px] text-amber-600 ms-1">({r.collectedReports} {t('محصَّل', 'collected')})</span>
+      )}
+    </span>
+  ) : <span className="text-[11px] text-slate-400">{t('لا كشوف', 'no reports')}</span>);
+
+  const collectedCell = (r: any) => (
+    <span className={r.collectionDate || r.collectedNoDate ? 'text-emerald-700' : 'text-red-500'}>
+      {r.collectionDate ? dt(r.collectionDate)
+        : r.collectedNoDate
+          ? <span title={t('دفترُ التحصيل يقول إنّها حُصّلت ولا يذكر اليوم', 'The collections book says collected but not when')}>
+              {t('محصَّل — بلا تاريخ', 'Collected — no date')}
+            </span>
+          : t('لم يُحصَّل', 'open')}
+    </span>
+  );
+
+  const detailCell = (r: any) => (canEdit ? (
+    <div className={detailSaving === r._id ? 'opacity-60 pointer-events-none' : ''} onClick={(e) => e.stopPropagation()}>
+      <ManagedSelect type="collections_detail" value={r.collectionDetail || ''}
+        onChange={(v) => saveDetail(r, v)} storeLabel noAdd placeholder={t('—', '—')}
+        className="w-full px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-900 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+    </div>
+  ) : <span>{r.collectionDetail || '—'}</span>);
+
+  // ── التصديرُ والطباعةُ يتبعان ما على الشاشة ────────────────────────────
+  // الأعمدةُ المختارة، والصفوفُ المحدَّدة إن حُدِّدت — وإلّا صفوفُ الفلتر كما
+  // هي. وعدّادُ النطاق يقول العددَ صراحةً، فلا يظنّ أحدٌ أنّه أخذ ما لم يأخذ.
+  const selectedRows = rows.filter((r) => selected.has(rowKey(r)));
+  const exportRows = selected.size ? selectedRows : rows;
+  const printNow = () => {
+    const ok = printTable({
+      title,
+      subtitle: [customer, branch].filter(Boolean).join(' · ') || undefined,
+      columns: cols.map((c) => ({ header: c.header, key: c.key, transform: c.transform, align: c.align })),
+      rows: exportRows as any,
+      ar,
+      meta: [
+        `${t('عدد الصفوف', 'Rows')}: ${exportRows.length}`,
+        selected.size ? t('المحدَّد فقط', 'Selected only') : t('نتيجة الفلتر', 'Filtered result'),
+        from || to ? `${t('المدى', 'Range')}: ${from || '…'} → ${to || '…'}` : '',
+        collected === 'yes' ? t('المحصَّل', 'Collected') : collected === 'no' ? t('غير المحصَّل', 'Not collected') : '',
+      ].filter(Boolean),
+    });
+    if (!ok) notify(t('المتصفّح منع فتح نافذة الطباعة — اسمح بالنوافذ المنبثقة لهذا الموقع.',
+      'The browser blocked the print window — allow pop-ups for this site.'), 'error');
+  };
 
   const Stat = ({ label, value, accent }: { label: string; value: string | number; accent?: string }) => (
     <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm min-w-0">
@@ -280,10 +449,25 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
           ? t('كشوفٌ نقديّة اكتمل سدادُها — تُحصَّل في يومها', 'Cash reports already paid out — collect same-day')
           : t('الفاتورةُ هي الوحدة، وقد تضمّ أكثر من كشف', 'The invoice is the unit — it may cover several reports')}
       >
+        <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />
+        <button type="button" onClick={printNow}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 text-sm font-semibold"
+          title={t('طباعة أو حفظ PDF — بالأعمدة المختارة', 'Print or save as PDF — chosen columns')}>
+          <Printer className="w-4 h-4" />{t('طباعة PDF', 'Print PDF')}
+        </button>
         <ExportMenu
           fileName={`collections-${kind}-invoices`}
           lang={ar ? 'ar' : 'en'}
-          options={[{ key: 'shown', label: t('المعروض', 'Shown'), sheets: [{ name: title, rows: rows as any, columns: cols }] }]}
+          options={[
+            // النطاقُ يُسمّى بما فيه: من صدّر وهو يظنّ أنّه أخذ الكلَّ بينما أخذ
+            // المحدَّد يخرج بملفٍّ خاطئٍ صامت.
+            ...(selected.size ? [{
+              key: 'selected',
+              label: t(`المحدَّد (${selected.size})`, `Selected (${selected.size})`),
+              sheets: [{ name: title, rows: selectedRows as any, columns: cols }],
+            }] : []),
+            { key: 'shown', label: t('المعروض بعد الفلتر', 'Shown (filtered)'), sheets: [{ name: title, rows: rows as any, columns: cols }] },
+          ]}
         />
       </PageHeader>
 
@@ -385,124 +569,122 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
         </div>
       )}
 
+      {(selected.size > 0 || colCount > 0) && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          {selected.size > 0 && (
+            <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#f37121]/10 text-[#f37121] font-semibold">
+              {t(`محدَّد: ${selected.size}`, `${selected.size} selected`)}
+              <button type="button" onClick={() => setSelected(new Set())} title={t('إلغاء التحديد', 'Clear selection')}>
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </span>
+          )}
+          {colCount > 0 && (
+            <button type="button" onClick={clearColFilters}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:text-slate-900 text-xs font-medium">
+              <X className="w-3.5 h-3.5" />{t(`مسح فلاتر الأعمدة (${colCount})`, `Clear column filters (${colCount})`)}
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="relative bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         {refreshing && <div className="refresh-bar" aria-hidden="true" />}
         <div aria-busy={refreshing} className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
-                {(isCash
-                  ? [t('رقم كشف التخريج', 'Report no.'), t('العميل', 'Customer'), t('المسار', 'Route'),
-                    t('تاريخ السداد', 'Paid on'), t('الفرع المسدد', 'Paying branch'), t('العمر', 'Age'),
-                    t('قيمة الكشف', 'Value'), t('مبلغ التحصيل', 'Collected'), t('التسليم للعميل', 'To customer'),
-                    t('التفاصيل', 'Detail'), t('تاريخ التحصيل', 'Collected on'), '']
-                  : [t('رقم الفاتورة', 'Invoice no.'), t('العميل', 'Customer'), t('عدد الكشوفات', 'Reports'),
-                    t('القيمة', 'Value'), t('تاريخ الفاتورة', 'Invoice date'), t('التسليم للعميل', 'To customer'),
-                    t('العمر', 'Age'), t('تاريخ التحصيل', 'Collected on'), '']
-                ).map((h, i) => <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>)}
+                {/* تحديدُ صفحةٍ كاملةً بضغطةٍ واحدة. */}
+                <th className="px-3 py-2.5 w-10">
+                  <input type="checkbox" className="accent-[#f37121]"
+                    checked={rows.length > 0 && rows.every((r) => selected.has(rowKey(r)))}
+                    onChange={(e) => setSelected(e.target.checked ? new Set(rows.map(rowKey)) : new Set())} />
+                </th>
+                {cols.map((c) => (
+                  <th key={c.key} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
+                    <span className="inline-flex items-center">
+                      {c.header}
+                      {c.filter && (
+                        <ColumnFilter
+                          field={c.filter}
+                          selected={colFilters[c.filter] || EMPTY_SET}
+                          onChange={(set) => setColFilter(c.filter as string, set)}
+                          onOpen={() => fetchColOptions(c.filter as string)}
+                          options={colOptions[c.filter]?.values || EMPTY_OPTIONS}
+                          truncated={!!colOptions[c.filter]?.truncated}
+                          loading={!!colLoading[c.filter]}
+                          onQuery={(query) => fetchColOptions(c.filter as string, query)}
+                          lang={ar ? 'ar' : 'en'}
+                          format={c.type === 'date' ? (v: any) => {
+                            // الخادمُ يجمّع التواريخ بيوم الرياض ويردّها «YYYY-MM-DD».
+                            // إعادةُ تفسيرها بمنطقة المتصفّح تُنقص يومًا لمن هو غربَ
+                            // غرينتش، فتُعرض كما هي.
+                            const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''));
+                            return m ? `${m[3]}/${m[2]}/${m[1]}` : String(v || '');
+                          } : undefined}
+                        />
+                      )}
+                    </span>
+                  </th>
+                ))}
+                <th className="px-3 py-2.5" />
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
-                <tr><td colSpan={isCash ? 11 : 9} className="px-4 py-12 text-center text-slate-400">{t('لا نتائج', 'No results')}</td></tr>
-              ) : isCash ? (rows as CashRow[]).map((r) => (
-                <tr key={r._id} className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="px-3 py-2.5 font-semibold text-slate-900 whitespace-nowrap">{r.reportNumber}</td>
-                  <td className="px-3 py-2.5 text-slate-700">{r.customer || '—'}</td>
-                  <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.route || '—'}</td>
-                  <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{dt(r.paymentDate)}</td>
-                  <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{r.payingBranch || '—'}</td>
-                  <td className="px-3 py-2.5 whitespace-nowrap">{ageChip(r.ageDays)}</td>
-                  <td className="px-3 py-2.5 tabular-nums font-semibold text-slate-900">{r.value ? money(r.value) : '—'}</td>
-                  <td className="px-3 py-2.5 tabular-nums font-semibold text-emerald-700">{r.collectedAmount ? money(r.collectedAmount) : '—'}</td>
-                  <td className={`px-3 py-2.5 whitespace-nowrap ${r.deliveryDate ? 'text-slate-600' : 'text-slate-300'}`}>
-                    {r.deliveryDate ? dt(r.deliveryDate) : '—'}
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap min-w-[150px]">
-                    {canEdit ? (
-                      <div className={detailSaving === r._id ? 'opacity-60 pointer-events-none' : ''}>
-                        <ManagedSelect type="collections_detail" value={r.collectionDetail || ''}
-                          onChange={(v) => saveDetail(r, v)} storeLabel noAdd
-                          placeholder={t('—', '—')}
-                          className="w-full px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-900 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
-                      </div>
-                    ) : (r.collectionDetail || '—')}
-                  </td>
-                  <td className={`px-3 py-2.5 whitespace-nowrap ${r.collectionDate || r.collectedNoDate ? 'text-emerald-700' : 'text-red-500'}`}>
-                    {r.collectionDate ? dt(r.collectionDate)
-                      : r.collectedNoDate
-                        ? <span title={t('دفترُ التحصيل يقول إنّها حُصّلت ولا يذكر اليوم', 'The collections book says collected but not when')}>
-                            {t('محصَّل — بلا تاريخ', 'Collected — no date')}
+                <tr><td colSpan={cols.length + 2} className="px-4 py-12 text-center text-slate-400">
+                  {colCount ? t('لا نتائج للفلتر المحدد', 'No rows match the filters') : t('لا نتائج', 'No results')}
+                </td></tr>
+              ) : rows.map((r: any) => {
+                const k = rowKey(r);
+                const on = selected.has(k);
+                return (
+                  <tr key={k}
+                    className={`border-b border-slate-100 ${on ? 'bg-[#f37121]/5' : 'hover:bg-slate-50'}`}>
+                    <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" className="accent-[#f37121]" checked={on}
+                        onChange={() => setSelected((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(k)) next.delete(k); else next.add(k);
+                          return next;
+                        })} />
+                    </td>
+                    {cols.map((c) => (
+                      <td key={c.key} className={`px-3 py-2.5 ${c.align === 'end' ? 'text-end' : ''} ${c.key === 'route' || c.key === 'customer' ? '' : 'whitespace-nowrap'} ${c.key === 'collectionDetail' ? 'min-w-[150px]' : ''}`}>
+                        {c.cell ? c.cell(r) : (
+                          <span className="text-slate-600">
+                            {(c.transform ? c.transform(r[c.key], r) : r[c.key]) || '—'}
                           </span>
-                        : t('لم يُحصَّل', 'open')}
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap">
-                    <div className="flex items-center gap-1">
-                      {canEdit && (
-                        <button type="button" onClick={() => openDeliver(r)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 text-xs font-semibold hover:bg-sky-100"
-                          title={t('يومُ استلام العميل للفاتورة — منه تُعَدُّ المهلة', 'When the customer received the invoice — the term starts here')}>
-                          <Truck className="w-3.5 h-3.5" />{r.deliveryDate ? t('تعديل التسليم', 'Edit delivery') : t('تسليم', 'Deliver')}
-                        </button>
-                      )}
-                      {canEdit && (
-                        <button type="button" onClick={() => openCollect(r)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#f37121]/10 text-[#f37121] text-xs font-semibold hover:bg-[#f37121]/20">
-                          <CheckCircle2 className="w-3.5 h-3.5" />{r.collectionDate ? t('تعديل', 'Edit') : t('تحصيل', 'Collect')}
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              )) : (rows as TaxRow[]).map((r) => (
-                <tr key={r.invoiceNumber} className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer"
-                  onClick={() => router.push(`/system/collections-dept/invoices/tax/${encodeURIComponent(r.invoiceNumber)}`)}>
-                  <td className="px-3 py-2.5 font-semibold text-slate-900 whitespace-nowrap">{r.invoiceNumber}</td>
-                  <td className="px-3 py-2.5 text-slate-700">{r.customer || '—'}</td>
-                  {/* عددُ الكشوفات: الفاتورةُ الواحدة قد تضمّ أكثرَ من كشف. */}
-                  <td className="px-3 py-2.5 tabular-nums text-slate-600">
-                    {/* ── وفاتورةٌ بلا كشفٍ عندنا ليست فاتورةً ناقصة ──────────
-                        دفترُ التحصيل فيه فواتيرُ سنواتٍ سابقةٍ لا كشوفَ لها في
-                        النظام أصلًا — أربعةٌ وتسعون في المئة منها. فيُقال «لا
-                        كشوف» لا «صفر»، فالصفرُ يُقرأ نقصًا وليس به. */}
-                    {r.reports > 0 ? (
-                      <>
-                        {r.reports}
-                        {r.reports > r.collectedReports && r.collectedReports > 0 && (
-                          <span className="text-[11px] text-amber-600 ms-1">({r.collectedReports} {t('محصَّل', 'collected')})</span>
                         )}
-                      </>
-                    ) : (
-                      <span className="text-[11px] text-slate-400">{t('لا كشوف', 'no reports')}</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5 tabular-nums font-semibold text-slate-900">{money(r.value)}</td>
-                  <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{dt(r.invoiceDate)}</td>
-                  <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{dt(r.deliveryDate)}</td>
-                  <td className="px-3 py-2.5 whitespace-nowrap">{ageChip(r.ageDays)}</td>
-                  <td className={`px-3 py-2.5 whitespace-nowrap ${r.fullyCollected ? 'text-emerald-700' : 'text-red-500'}`}>
-                    {r.fullyCollected ? dt(r.collectionDate) : t('لم تُحصَّل', 'open')}
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-1">
-                      {canEdit && (
-                        <button type="button" onClick={() => openDeliver(r)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 text-xs font-semibold hover:bg-sky-100"
-                          title={t('تاريخُ وصول الفاتورة إلى العميل — منه تُعَدُّ المدّة', 'When the invoice reached the customer — the term starts here')}>
-                          <Truck className="w-3.5 h-3.5" />{r.deliveryDate ? t('تعديل التسليم', 'Edit delivery') : t('تسليم', 'Deliver')}
-                        </button>
-                      )}
-                      {canEdit && (
-                        <button type="button" onClick={() => openCollect(r)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#f37121]/10 text-[#f37121] text-xs font-semibold hover:bg-[#f37121]/20">
-                          <CheckCircle2 className="w-3.5 h-3.5" />{r.fullyCollected ? t('تعديل', 'Edit') : t('تحصيل', 'Collect')}
-                        </button>
-                      )}
-                      <ChevronLeft className={`w-4 h-4 text-slate-300 ${isRTL ? '' : 'rotate-180'}`} />
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                      </td>
+                    ))}
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        {canEdit && (
+                          <button type="button" onClick={() => openDeliver(r)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 text-xs font-semibold hover:bg-sky-100"
+                            title={t('يومُ استلام العميل للفاتورة — منه تُعَدُّ المهلة', 'When the customer received the invoice — the term starts here')}>
+                            <Truck className="w-3.5 h-3.5" />{r.deliveryDate ? t('تعديل التسليم', 'Edit delivery') : t('تسليم', 'Deliver')}
+                          </button>
+                        )}
+                        {canEdit && (
+                          <button type="button" onClick={() => openCollect(r)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#f37121]/10 text-[#f37121] text-xs font-semibold hover:bg-[#f37121]/20">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            {(isCash ? r.collectionDate : r.fullyCollected) ? t('تعديل', 'Edit') : t('تحصيل', 'Collect')}
+                          </button>
+                        )}
+                        {!isCash && (
+                          <button type="button" onClick={() => openInvoice(r.invoiceNumber)}
+                            title={t('فتح الفاتورة', 'Open invoice')} className="p-1 text-slate-300 hover:text-[#f37121]">
+                            <ChevronLeft className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -14,7 +14,7 @@ const mongoose = require('mongoose');
   console.log(r.body.values?.slice(0, 4));
 
   console.log('\n── بحثٌ داخل القائمة: «ابازا» ──');
-  r = await run(c.invoiceColumnOptions, { field: 'partyName', q: 'ابازا' }, { kind: 'tax' });
+  r = await run(c.invoiceColumnOptions, { field: 'partyName', search: 'ابازا' }, { kind: 'tax' });
   console.log(r.code, r.body.values);
 
   console.log('\n── تاريخُ الفاتورة (تواريخ) ──');

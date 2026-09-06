@@ -1473,10 +1473,6 @@ const SECTION_REPORTS = [
     controller: () => require('../controllers/procurementController'), handler: 'getDashboard',
   },
   {
-    key: 'workshop', ar: 'الورشة', en: 'Workshop',
-    controller: () => require('../controllers/workshopController'), handler: 'getWorkshopDashboard',
-  },
-  {
     key: 'marketing', ar: 'التسويق', en: 'Marketing',
     controller: () => require('../controllers/marketingController'), handler: 'getDashboard',
   },

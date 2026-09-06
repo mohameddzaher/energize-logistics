@@ -79,7 +79,7 @@ const SECTIONS = [
   {
     key: 'Location Solutions',
     apiPrefixes: ['/api/ls2'],
-    defaultRoles: ['admin', 'it_manager', 'operations_manager', 'operations_staff', 'workshop_manager', 'moderator'],
+    defaultRoles: ['admin', 'it_manager', 'operations_manager', 'operations_staff', 'moderator'],
   },
   {
     key: 'Marketing',

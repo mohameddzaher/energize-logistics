@@ -57,6 +57,8 @@ export default function SectionWork({ section, kind }: { section: string; kind: 
   const [editing, setEditing] = useState<Row | null>(null);
   const [form, setForm] = useState<Row>({});
   const [saving, setSaving] = useState(false);
+  // «تفاصيل أكثر» مطويّةٌ عند الإضافة، مفتوحةٌ عند التعديل: من يعدّل يريد ما فيه.
+  const [more, setMore] = useState(false);
   const [err, setErr] = useState('');
 
   const load = useCallback(async () => {
@@ -70,12 +72,14 @@ export default function SectionWork({ section, kind }: { section: string; kind: 
   }, [section, cfg.ep, statusFilter]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { api.get<{ users: Assignee[] }>(`/api/section-work/assignees`).then((d) => setAssignees(d.users || [])).catch(() => {}); }, []);
+  // القائمةُ لهذا القسم وحدَه — راجع assignees في الخادم.
+  useEffect(() => { api.get<{ users: Assignee[] }>(`/api/section-work/assignees?section=${encodeURIComponent(section)}`).then((d) => setAssignees(d.users || [])).catch(() => {}); }, [section]);
   useSocket('section:work', useCallback(() => load(), [load]));
 
   const openCreate = () => {
     setEditing(null);
     setForm({ [cfg.titleField]: '', description: '', priority: 'medium', status: cfg.statuses[0], dueDate: '', resolution: '', assignedTo: '' });
+    setMore(false);
     setErr(''); setShowForm(true);
   };
   const openEdit = (row: Row) => {
@@ -85,6 +89,8 @@ export default function SectionWork({ section, kind }: { section: string; kind: 
       status: row.status || cfg.statuses[0], dueDate: row.dueDate ? String(row.dueDate).slice(0, 10) : '',
       resolution: row.resolution || '', assignedTo: row.assignedTo?._id || row.assignedTo || '',
     });
+    // التعديلُ يُفتَح على كلّ شيء: من يعدّل يقصد حقلًا بعينه، وطيُّه يخفيه عنه.
+    setMore(true);
     setErr(''); setShowForm(true);
   };
 
@@ -168,21 +174,55 @@ export default function SectionWork({ section, kind }: { section: string; kind: 
           <PrimaryButton onClick={save} disabled={saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {t('Save', 'حفظ')}</PrimaryButton>
         </>}>
         {err && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2">{err}</div>}
+
+        {/* ── ما يلزم لتسجيل مهمّةٍ سطران ──────────────────────────────────
+            كانت النافذةُ تفتح على ستّة حقولٍ لكلّ مهمّة: العنوانُ والوصفُ
+            والحالةُ والأولويّةُ والمُسنَدُ إليه وتاريخُ الاستحقاق. وأربعةٌ
+            منها لها جوابٌ صحيحٌ في تسعٍ من كلّ عشر: جديدةٌ، متوسّطةُ
+            الأولويّة، لي أنا، بلا موعد. فكان من يريد كتابةَ سطرٍ يملأ نموذجًا.
+            فالظاهرُ ما يُكتب حقًّا، والباقي تحت «تفاصيل أكثر» لمن يحتاجه. */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label={ar ? cfg.titleLabel.ar : cfg.titleLabel.en} span2><TextInput value={form[cfg.titleField] || ''} onChange={(e) => setForm({ ...form, [cfg.titleField]: e.target.value })} /></Field>
-          <Field label={t('Description', 'الوصف')} span2><TextArea rows={3} value={form.description || ''} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
-          <Field label={t('Status', 'الحالة')}><Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-            {cfg.statuses.map((s) => <option key={s} value={s}>{ar ? STATUS[s].ar : STATUS[s].en}</option>)}
-          </Select></Field>
-          <Field label={t('Priority', 'الأولوية')}><Select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-            {Object.keys(PRIORITY).map((p) => <option key={p} value={p}>{ar ? PRIORITY[p].ar : PRIORITY[p].en}</option>)}
-          </Select></Field>
-          <Field label={t('Assign to', 'إسناد إلى')}><Select value={form.assignedTo || ''} onChange={(e) => setForm({ ...form, assignedTo: e.target.value })}>
-            <option value="">{t('Me', 'أنا')}</option>
-            {assignees.map((a) => <option key={a._id} value={a._id}>{personName(a)}{a.role ? ` (${a.role})` : ''}</option>)}
-          </Select></Field>
-          {kind === 'tasks' && <Field label={t('Due date', 'تاريخ الاستحقاق')}><TextInput type="date" value={form.dueDate || ''} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></Field>}
-          {cfg.hasResolution && <Field label={t('Resolution', 'الحل')} span2><TextArea rows={2} value={form.resolution || ''} onChange={(e) => setForm({ ...form, resolution: e.target.value })} /></Field>}
+          <Field label={ar ? cfg.titleLabel.ar : cfg.titleLabel.en} span2>
+            <TextInput autoFocus value={form[cfg.titleField] || ''}
+              placeholder={t('What needs doing?', 'ما المطلوب عمله؟')}
+              onChange={(e) => setForm({ ...form, [cfg.titleField]: e.target.value })} />
+          </Field>
+
+          <Field label={t('Assign to', 'إسناد إلى')}>
+            <Select value={form.assignedTo || ''} onChange={(e) => setForm({ ...form, assignedTo: e.target.value })}>
+              <option value="">{t('Me', 'أنا')}</option>
+              {assignees.map((a) => <option key={a._id} value={a._id}>{personName(a)}</option>)}
+            </Select>
+          </Field>
+          {kind === 'tasks' && (
+            <Field label={t('Due date', 'تاريخ الاستحقاق')}>
+              <TextInput type="date" value={form.dueDate || ''} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
+            </Field>
+          )}
+
+          {!more && (
+            <div className="sm:col-span-2">
+              <button type="button" onClick={() => setMore(true)}
+                className="text-[13px] text-[#f37121] hover:underline font-medium">
+                {t('More details', 'تفاصيل أكثر')}
+              </button>
+            </div>
+          )}
+
+          {more && <>
+            <Field label={t('Description', 'الوصف')} span2>
+              <TextArea rows={3} value={form.description || ''} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            </Field>
+            <Field label={t('Status', 'الحالة')}><Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+              {cfg.statuses.map((s) => <option key={s} value={s}>{ar ? STATUS[s].ar : STATUS[s].en}</option>)}
+            </Select></Field>
+            <Field label={t('Priority', 'الأولوية')}><Select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
+              {Object.keys(PRIORITY).map((p) => <option key={p} value={p}>{ar ? PRIORITY[p].ar : PRIORITY[p].en}</option>)}
+            </Select></Field>
+            {cfg.hasResolution && <Field label={t('Resolution', 'الحل')} span2>
+              <TextArea rows={2} value={form.resolution || ''} onChange={(e) => setForm({ ...form, resolution: e.target.value })} />
+            </Field>}
+          </>}
         </div>
       </Modal>
     </div>

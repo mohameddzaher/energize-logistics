@@ -37,11 +37,29 @@ const broadcastWork = (section, modelName) => {
 // خاصة بيها — دي منتدى بين مديري الأقسام، و«مهامي» عندها معناها بنود الاجتماعات
 // اللي بتتقرا من مجموعة تانية خالص.
 const SECTIONS = [
-  'crm', 'sales', 'accounting', 'procurement', 'hr', 'ops', 'workshop', 'customs',
+  'crm', 'sales', 'accounting', 'procurement', 'hr', 'ops', 'customs',
   'marketing', 'bd', 'it', 'fleet', 'contracts', 'vehicles',
   'operations', 'shipment-orders', 'ls2', 'administration', 'b2c', 'remote',
   'collections',
 ];
+
+/**
+ * سلاسلُ هذه الشاشة ← مفاتيحُ الأقسام في مصفوفة الصلاحيّات.
+ *
+ * هنا الأقسامُ سلاسلُ صغيرةٌ في المسار (`ls2`، `fleet`)، وهناك مفاتيحُ
+ * معروضةٌ (`Location Solutions`، `Fleet Management`). وهما اسمان لشيءٍ واحد،
+ * فتُربَط الترجمةُ صراحةً — والمقارنةُ بلا ترجمةٍ تفشل صامتةً فتُقرأ «لا قسم»
+ * وتُفتَح القائمةُ للجميع، وهو عكسُ المقصود بالضبط.
+ */
+const SECTION_KEY_OF = {
+  crm: 'CRM', sales: 'Sales', accounting: 'Accounting', procurement: 'Procurement',
+  hr: 'HR', ops: 'Operations Platform', customs: 'Customs', marketing: 'Marketing',
+  bd: 'Business Development', it: 'Software & IT', fleet: 'Fleet Management',
+  contracts: 'Contracts', vehicles: 'Vehicles', operations: 'Operations',
+  'shipment-orders': 'Shipment Orders', ls2: 'Location Solutions',
+  administration: 'Administration', b2c: 'B2C', remote: 'Remote',
+  collections: 'Collections',
+};
 
 const isSuper = (u) => u && u.role === 'super_admin';
 const sameId = (a, b) => a && b && String(a) === String(b);
@@ -145,6 +163,18 @@ const tasks = makeHandlers(SectionTask, 'title', ['title', 'description', 'statu
 const complaints = makeHandlers(SectionComplaint, 'subject', ['subject', 'description', 'status', 'priority', 'resolution', 'assignedTo']);
 
 // People a task/complaint can be assigned to (active internal staff).
+/**
+ * مَن يصحّ إسنادُ مهمّةٍ إليه في هذا القسم.
+ *
+ * ── ولا تُسنَد مهمّةٌ إلى من لا يفتح القسم ────────────────────────────────
+ * كانت القائمةُ كلَّ من في الشركة — مئتَي اسمٍ في منسدلةٍ واحدة. وأثرُ ذلك
+ * أمران: أنّ اختيارَ زميلٍ صار بحثًا في كومة، وأنّ المهمّةَ قد تُسنَد إلى من
+ * لا يملك فتحَ القسم أصلًا — فتصل إليه مهمّةٌ في شاشةٍ لا يستطيع فتحها.
+ *
+ * فتُقرأ من مصفوفة الصلاحيّات نفسِها التي يحرس بها الخادمُ القسم: مَن له
+ * «عرض» أو «تعديل» فيه فهو من فريقه هنا. وأيُّ تغييرٍ في المصفوفة ينعكس في
+ * القائمة في اللحظة نفسِها بلا سطرٍ يُضاف هنا.
+ */
 async function assignees(req, res) {
   try {
     const users = await User.find({ isActive: true, role: { $ne: 'client' } })
@@ -152,7 +182,25 @@ async function assignees(req, res) {
       .sort({ firstName: 1 })
       .limit(500)
       .lean();
-    res.json({ users });
+
+    const sectionKey = SECTION_KEY_OF[String(req.query.section || '')];
+    if (!sectionKey) return res.json({ users });
+
+    const { getOverride } = require('../utils/permissions');
+    const { FULL_ACCESS_ROLES } = require('../config/constants');
+    const { defaultAccess } = require('../config/sections');
+
+    // الأدوارُ تُسأل مرّةً لا مرّةً لكلّ مستخدم: عشراتُ الأدوار ومئاتُ الناس.
+    const roles = [...new Set(users.map((u) => u.role))];
+    const allowed = new Set();
+    await Promise.all(roles.map(async (role) => {
+      if (FULL_ACCESS_ROLES.includes(role)) { allowed.add(role); return; }
+      const override = await getOverride(role, sectionKey);
+      const access = override == null ? defaultAccess(role, sectionKey) : override;
+      if (access === 'view' || access === 'edit') allowed.add(role);
+    }));
+
+    res.json({ users: users.filter((u) => allowed.has(u.role)) });
   } catch (e) {
     res.status(500).json({ message: 'Failed to load assignees' });
   }

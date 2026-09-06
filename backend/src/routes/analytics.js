@@ -28,7 +28,7 @@ const receivables = require('../services/receivablesService');
 router.use(authenticate);
 
 // Executive Dashboard Summary
-router.get('/dashboard', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'employee', 'moderator', 'workshop_manager', 'workshop_employee', 'procurement_staff', 'collections_manager', 'collections_staff', 'finance_manager', 'accountant'), async (req, res) => {
+router.get('/dashboard', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'employee', 'moderator', 'procurement_staff', 'collections_manager', 'collections_staff', 'finance_manager', 'accountant'), async (req, res) => {
   try {
     // authorize() ran at the route, so the data is the same for every permitted
     // viewer (per filter set) — cache briefly to absorb concurrent loads.

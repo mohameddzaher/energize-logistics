@@ -63,8 +63,6 @@ module.exports = {
     EMPLOYEE: 'employee',
     OPERATIONS_MANAGER: 'operations_manager',
     CLIENT: 'client',
-    WORKSHOP_MANAGER: 'workshop_manager',
-    WORKSHOP_EMPLOYEE: 'workshop_employee',
     PURCHASING: 'procurement_staff',
     REMOTE_EMPLOYEE: 'remote_employee',
     REMOTE_MANAGER: 'remote_manager',
@@ -153,7 +151,7 @@ module.exports = {
   // through to UPL).
   OPS_PLATFORM_STAFF_ROLES: [
     'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_staff',
-    'workshop_manager', 'workshop_employee', 'procurement_staff',
+    'procurement_staff',
     'hr_manager', 'hr_specialist',
     'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent',
     'finance_manager', 'accountant',
@@ -167,16 +165,16 @@ module.exports = {
   // Roles that can access the Location Solutions section (قسم لوكيشن سوليوشن): the
   // live Wialon GPS/telemetry mirror (sensors, tires, engine temp, maintenance
   // alerts). READ is broad across the fleet/ops/workshop side; the admin tier
-  // (super_admin, admin, operations_manager, workshop_manager) can acknowledge
+  // (super_admin, admin, operations_manager) can acknowledge
   // alerts, mark vehicles serviced and tune the alert thresholds.
   LS2_STAFF_ROLES: [
     'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_staff',
-    'workshop_manager', 'workshop_employee', 'procurement_staff',
+    'procurement_staff',
   ],
-  LS2_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'workshop_manager'],
+  LS2_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'],
   // Core roles that see the section in their sidebar (others can still reach the
   // data via direct link / embeds but it isn't pinned to their nav).
-  LS2_SECTION_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'workshop_manager', 'moderator'],
+  LS2_SECTION_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator'],
 
   // Roles that can access the Vehicles & Authorizations section (المركبات
   // والتفاويض): super admin + HR + Accounting. Delete ops are further limited to

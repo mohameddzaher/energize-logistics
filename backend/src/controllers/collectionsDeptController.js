@@ -228,7 +228,20 @@ exports.listParties = async (req, res) => {
     if (q) {
       const rx = flexSpaceRegex(q);
       filter.$or = [
-        { name: rx }, { nameKey: rx }, { phone: rx }, { email: rx },
+        { name: rx }, { nameKey: rx },
+        // ── والاسمُ الرسميُّ في الدفتر لقبٌ عندنا، فيجب أن يُبحَث فيه ──────
+        //
+        // سجلُّ الأطراف بُني من أسماء كشوف التشغيل («مكتب عابر الحديثه»)،
+        // والاسمُ الرسميُّ في ورقة التحصيل («شركة عابر الحديثة للنقليات
+        // ( شخص واحد )») محفوظٌ لقبًا. ومَن ينسخ الاسمَ من الورقة ويبحث به
+        // يُقال له «لا نتائج» — والحسابُ موجودٌ ومسؤولُه معروف.
+        //
+        // وصفحةُ أعمار الديون كانت تبحث في الألقاب أصلًا؛ هذه وحدَها لم تكن.
+        { aliases: rx }, { aliasKeys: rx },
+        // وكودُ الحساب هو ما يُنسَخ من الورقة كذلك.
+        { code: rx },
+        { collectionOfficer: rx },
+        { phone: rx }, { email: rx },
         { contactPerson: rx }, { contactPhone: rx },
         { commercialRegister: rx }, { taxNumber: rx }, { iban: rx }, { city: rx },
       ];

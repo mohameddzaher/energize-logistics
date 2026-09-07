@@ -141,27 +141,68 @@ async function cashAgingByParty(parties) {
     const k = p.nameKey || fold(p.name || '');
     if (k) byKey.set(k, String(p._id));
   }
-  // الكشوفُ النقديّةُ غيرُ المحصَّلة قليلة (مئاتٌ لا آلاف)، فتُقرأ وتُجمَّع هنا:
-  // الطيُّ العربيُّ لا يُكتب في القاعدة، فالمطابقةُ في العقدة أصدقُ من `$in`
-  // على أسماءٍ خامّةٍ تختلف بهمزةٍ أو مسافة.
-  const rows = await OperationsWorkflow.find({
-    paymentType: 'cash',
-    collectionDate: null,
-    cashCollectionStatus: { $ne: 'collected' },
-    username: { $nin: [null, ''] },
-  }).select('username sellingValue reportDate paymentDate').lean();
+  if (!byKey.size) return new Map();
 
   const today = startOfToday();
+
+  // ── والجمعُ في القاعدة لا في العقدة ──────────────────────────────────────
+  //
+  // كانت الكشوفُ النقديّةُ غيرُ المحصَّلة تُقرأ كلُّها ثمّ تُجمَّع هنا، على
+  // أنّها «مئاتٌ لا آلاف». وهي على الإنتاج **ثلاثةُ آلافٍ وثلاثمئة**.
+  //
+  // وقِيس الأمرُ فبان أين الزمن: الخادمُ يجدها في تسعَ عشرةَ مِلّي ثانية
+  // بالفهرس، ثمّ يستغرق نقلُها إلى العقدة **خمسَ ثوانٍ ونصفًا**. فالبطءُ ليس
+  // في البحث بل في حمل ثلاثة آلاف مستندٍ عبر الشبكة لتُجمَع سطرًا سطرًا.
+  // والتجميعُ في القاعدة يردّ مئةً وعشرين مجموعةً في أقلَّ من ثانية.
+  //
+  // وهو الدرسُ نفسُه المكتوب في `agingByParty` تحت هذا مباشرةً — لم يكن قد
+  // طُبّق على الوجه النقديّ.
+  //
+  // والطيُّ العربيُّ يبقى في العقدة: لا يُكتب في القاعدة، والأسماءُ المجمَّعةُ
+  // مئاتٌ لا آلاف، فطيُّها هنا رخيص.
+  //
+  // ── والعمرُ يُعَدُّ بالأيّام لا بقسمة المللي ────────────────────────────
+  // كان يُحسب `floor((اليوم − التاريخ) / ٨٦٤٠٠٠٠٠)`. وتواريخُ كشوف التشغيل
+  // تحمل وقتًا (التاسعة صباحًا)، و«اليوم» منتصفُ ليلٍ — فالقسمةُ تُسقط يومًا
+  // من عمر كلّ كشفٍ نقديّ: كشفُ ٢٦ أغسطس يُقرأ اليومَ ١١ يومًا وهو ١٢.
+  //
+  // وأثرُه أنّ الدَّينَ يبدو أحدثَ ممّا هو، فيقع في شريحةٍ أصغر — وهو الرقمُ
+  // الذي تُبنى عليه المطالبة. ودفترُ الفواتير يَعُدّ بـ`$dateDiff` من أوّل
+  // يوم، فكان الوجهان يختلفان في قاعدة العدّ نفسِها. صارا واحدًا.
+  const rows = await OperationsWorkflow.aggregate([
+    { $match: {
+      paymentType: 'cash',
+      collectionDate: null,
+      cashCollectionStatus: { $ne: 'collected' },
+      username: { $nin: [null, ''] },
+    } },
+    { $addFields: { _base: { $ifNull: ['$reportDate', '$paymentDate'] } } },
+    { $addFields: {
+      _days: { $cond: [{ $eq: ['$_base', null] }, null, { $dateDiff: { startDate: '$_base', endDate: today, unit: 'day' } }] },
+    } },
+    { $addFields: {
+      _band: { $switch: { branches: [
+        { case: { $eq: ['$_days', null] }, then: 'noDate' },
+        { case: { $gte: ['$_days', 365] }, then: '1Y+' },
+        { case: { $gte: ['$_days', 120] }, then: '120+' },
+        { case: { $gte: ['$_days', 90] }, then: '90+' },
+        { case: { $gte: ['$_days', 60] }, then: '60+' },
+        { case: { $gte: ['$_days', 45] }, then: '60-' },
+        { case: { $gte: ['$_days', 30] }, then: '45-' },
+        { case: { $gte: ['$_days', 15] }, then: '30-' },
+      ], default: '15-' } },
+    } },
+    { $group: {
+      _id: { name: '$username', band: '$_band' },
+      amount: { $sum: { $ifNull: ['$sellingValue', 0] } },
+      n: { $sum: 1 },
+    } },
+  ]).allowDiskUse(true);
+
   const out = new Map();
-  for (const w of rows) {
-    const id = byKey.get(fold(w.username || ''));
+  for (const r of rows) {
+    const id = byKey.get(fold(r._id.name || ''));
     if (!id) continue;
-    const base = w.reportDate || w.paymentDate || null;
-    const days = base ? Math.floor((today - new Date(base)) / 86400000) : null;
-    const band = days === null ? 'noDate'
-      : days >= 365 ? '1Y+' : days >= 120 ? '120+' : days >= 90 ? '90+'
-        : days >= 60 ? '60+' : days >= 45 ? '60-' : days >= 30 ? '45-'
-          : days >= 15 ? '30-' : '15-';
     if (!out.has(id)) {
       out.set(id, {
         outstanding: 0, count: 0,
@@ -170,9 +211,9 @@ async function cashAgingByParty(parties) {
       });
     }
     const e = out.get(id);
-    const v = Number(w.sellingValue) || 0;
-    e.outstanding += v; e.count += 1;
-    e.bands[band] += v; e.counts[band] += 1;
+    const band = r._id.band;
+    e.outstanding += r.amount; e.count += r.n;
+    if (band in e.bands) { e.bands[band] += r.amount; e.counts[band] += r.n; }
   }
   return out;
 }
@@ -813,3 +854,6 @@ exports.decideLink = async (req, res) => {
 module.exports.BANDS = BANDS;
 module.exports._internals = { partyFilter, invoiceFilter, agingByParty, decorate, bandOf, startOfToday, OPEN, receivablesOnly };
 module.exports.invalidate = () => cache.clear(CACHE_PREFIX);
+
+// تُصدَّر للاختبار وحدَه: مقارنةُ التجميع الجديد بالحساب القديم.
+module.exports.__cashAgingByParty = cashAgingByParty;

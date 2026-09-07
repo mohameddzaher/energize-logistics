@@ -204,6 +204,14 @@ const operationsWorkflowSchema = new mongoose.Schema(
 // صفحتا الفواتير تُبنيان على هذين: الكاشُ بنوع الدفع، والضريبيُّ برقم
 // الفاتورة الذي يجمع أكثرَ من كشفٍ تحت صفٍّ واحد.
 operationsWorkflowSchema.index({ paymentType: 1, paymentDate: -1 });
+// ── والنقديُّ غيرُ المحصَّل يُسأل عنه في كلّ فتحةِ شاشة ────────────────────
+// صفحةُ أعمار الديون تسأل: أيُّ الكشوف النقديّة لم تُحصَّل بعد؟ ولم يكن لهذا
+// السؤال فهرسٌ — الفهرسُ الوحيد على النوع وتاريخِ السداد، والسؤالُ على النوع
+// وتاريخِ التحصيل وحالتِه. فكان يُمسَح ثلاثةُ آلافٍ وثلاثمئة كشفٍ في خمس
+// ثوانٍ ونصف، في كلّ بحثٍ يكتبه المستخدم.
+operationsWorkflowSchema.index({ paymentType: 1, collectionDate: 1, cashCollectionStatus: 1 });
+// والبحثُ بالاسم يبدأ من الاسم: صفحاتُ التحصيل تُجمّع الكشوفَ بصاحبها.
+operationsWorkflowSchema.index({ username: 1, paymentType: 1 });
 operationsWorkflowSchema.index({ invoiceNumber: 1, invoiceDate: -1 });
 
 operationsWorkflowSchema.index(

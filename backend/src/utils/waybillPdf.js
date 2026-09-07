@@ -197,9 +197,28 @@ async function renderWaybillsPdf(rows) {
   // صفحةٍ مستعمَلةٍ قد لا يُطلَق ثانيةً — والشبكةُ ساكنةٌ أصلًا — فينتظر حتى
   // تنقضي المهلة. وهذا هو المسارُ نفسُه المجرَّبُ للبوليصة الواحدة، لا مسارٌ
   // ثانٍ يُخالفه في شيء.
-  for (const row of rows) {
-    // eslint-disable-next-line no-await-in-loop
-    const one = await renderWaybillPdf(row);
+  // ── وتُرسَم بالتوازي بقدرٍ محدود ──────────────────────────────────────
+  // الواحدةُ نحوَ أربع ثوانٍ (صفحةٌ تُفتَح وخطٌّ يُحمَّل وترسيمٌ)، فثلاثون
+  // واحدةً تباعًا دقيقتان — وnginx يقطع الطلبَ قبلها. وأربعُ صفحاتٍ معًا في
+  // متصفّحٍ واحدٍ تختصر الزمنَ إلى الرُّبع دون أن تُثقل الخادم.
+  //
+  // والترتيبُ محفوظٌ رغم التوازي: النتائجُ تُوضَع في مواضعها بالفهرس ثمّ تُدمَج
+  // بالترتيب — الملفُّ يُقرأ بالترتيب الذي عُلّم به.
+  const CONCURRENCY = 4;
+  const out = new Array(rows.length);
+  let next = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = next; next += 1;
+      if (i >= rows.length) return;
+      // eslint-disable-next-line no-await-in-loop
+      out[i] = await renderWaybillPdf(rows[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, rows.length) }, worker));
+
+  for (const one of out) {
+    if (!one) continue;
     // eslint-disable-next-line no-await-in-loop
     const doc = await PDFDocument.load(one);
     // eslint-disable-next-line no-await-in-loop

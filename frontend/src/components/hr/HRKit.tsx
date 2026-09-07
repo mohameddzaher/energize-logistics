@@ -1,7 +1,8 @@
 'use client';
 // Small shared UI kit for the HR section so every page stays consistent and
 // short. Pure presentation — all data/logic lives in the pages themselves.
-import { ReactNode, useState, useRef, useEffect, useMemo } from 'react';
+import { ReactNode, useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, X, Download, Loader2, ChevronDown, Check as CheckIcon, AlertTriangle, RefreshCw } from 'lucide-react';
 
@@ -220,7 +221,14 @@ export function SearchableSelect({
   }, [open]);
 
   useEffect(() => {
-    const onDown = (e: MouseEvent) => { if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false); };
+    // اللوحُ يُرسَم في جسم الصفحة، فالضغطُ داخله ليس داخلَ الصندوق — ولولا
+    // استثناؤه لأُغلقت القائمةُ قبل أن يُسجَّل الاختيار.
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (boxRef.current?.contains(t)) return;
+      if (t?.closest?.('[data-searchable-select]')) return;
+      setOpen(false);
+    };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, []);
@@ -239,6 +247,28 @@ export function SearchableSelect({
     if (e.key === 'Enter') { e.preventDefault(); if (filtered[active]) pick(filtered[active].value); }
   };
 
+  // موضعُ اللوح — يُحسَب من موضع الزرّ لأنّه يُرسَم في جسم الصفحة.
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const r = boxRef.current?.getBoundingClientRect();
+      if (!r) return;
+      // ولو ضاق ما تحته فُتح فوقه: قائمةٌ تخرج من أسفل الشاشة لا تُقرأ.
+      const below = window.innerHeight - r.bottom;
+      const H = 280;
+      const top = below < H && r.top > below ? Math.max(8, r.top - H - 4) : r.bottom + 4;
+      setPos({ top, left: r.left, width: r.width });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open]);
+
   return (
     <div className="relative" ref={boxRef}>
       <button
@@ -251,8 +281,16 @@ export function SearchableSelect({
         <ChevronDown className={`w-4 h-4 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      {open && (
-        <div className="absolute z-50 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-xl overflow-hidden">
+      {/* ── واللوحُ يُرسَم فوق الصفحة لا داخل الجدول ────────────────────────
+          كان `absolute` داخل الصفّ. والجدولُ ملفوفٌ بـ`overflow-x-auto` — وهو
+          سياقُ قصٍّ — فتُقصّ القائمةُ عند حافّة الجدول وتبدو محشورةً فيه، وما
+          تجاوز الحافّةَ لا يُرى أصلًا. فتُرسَم في جسم الصفحة بموضعٍ ثابتٍ
+          محسوبٍ من موضع الزرّ، فلا يقصّها شيء. */}
+      {open && typeof document !== 'undefined' && createPortal(
+        <div
+          data-searchable-select
+          style={{ top: pos.top, left: pos.left, width: pos.width }}
+          className="fixed z-[80] rounded-lg border border-slate-200 bg-white shadow-xl overflow-hidden">
           {showSearch && (
             <div className="relative border-b border-slate-100">
               <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -293,8 +331,7 @@ export function SearchableSelect({
               </button>
             ))}
           </div>
-        </div>
-      )}
+        </div>, document.body)}
     </div>
   );
 }

@@ -6,12 +6,60 @@ let io;
 
 const { isAllowedOrigin } = require('../config/cors');
 
+/**
+ * ── والحدثُ يعبر بين العمّال ──────────────────────────────────────────────
+ *
+ * الإنتاجُ يعمل بعاملَين في وضع العنقود (pm2 cluster). و socket.io يبثّ داخل
+ * العملية التي يعيش فيها وحدَها: يُعدَّل سائقٌ على العامل الأوّل فيصل الحدثُ
+ * إلى المتّصلين به، ولا يصل إلى من اتّصل بالثاني أبدًا. فيبدو النظامُ حيًّا
+ * لنصف المستخدمين وميّتًا للنصف الآخر — وهو تفسيرُ «ليه لازم أعمل ريفريش؟».
+ * والأمرُ يشمل كلَّ شاشةٍ حيّة في النظام لا شاشةَ السائقين وحدَها.
+ *
+ * ولا يُضاف Redis لهذا: العنقودُ عندنا يدعم `watch`، وهو ما تعتمد عليه
+ * `ttlCache` أصلًا في إبطال المخزن بين العمّال. فالمحوّلُ الرسميُّ لمونجو يفعل
+ * الشيءَ نفسَه — مجموعةٌ محدودةُ الحجم وتيّارُ تغييرٍ عليها — بلا بنيةٍ جديدة.
+ *
+ * وإن تعذّر التركيبُ لأيّ سبب، يبقى البثُّ داخل العامل كما كان: نصفُ حيٍّ خيرٌ
+ * من خادمٍ لا يقوم.
+ */
+const ADAPTER_COLL = 'socketevents';
+async function attachClusterAdapter(server) {
+  try {
+    const mongoose = require('mongoose');
+    if (mongoose.connection?.readyState !== 1) return false;
+    const db = mongoose.connection.db;
+
+    // مجموعةٌ محدودةُ الحجم: الأحداثُ تُكتب وتُقرأ ثمّ لا تُحفَظ. تُنشأ مرّةً،
+    // ووجودُها مسبقًا ليس خطأً.
+    try {
+      await db.createCollection(ADAPTER_COLL, { capped: true, size: 1e6 });
+    } catch (e) {
+      if (e && e.codeName !== 'NamespaceExists') throw e;
+    }
+
+    const { createAdapter } = require('@socket.io/mongo-adapter');
+    server.adapter(createAdapter(db.collection(ADAPTER_COLL), {
+      addCreatedAtField: true,
+    }));
+    return true;
+  } catch (e) {
+    console.error('socket cluster adapter unavailable — events stay per-worker:', e.message);
+    return false;
+  }
+}
+
 const initializeSocket = (server) => {
   io = new Server(server, {
     cors: {
       origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
       credentials: true,
     },
+  });
+
+  // يُركَّب بعد الإنشاء ولا يُنتظَر: الخادمُ يقوم فورًا، والمحوّلُ يلتحق بعد
+  // أن يتّصل مونجو.
+  attachClusterAdapter(io).then((ok) => {
+    if (ok) console.log('socket.io: cluster adapter attached (mongo)');
   });
 
   io.use((socket, next) => {

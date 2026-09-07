@@ -624,7 +624,21 @@ exports.listDrivers = async (req, res) => {
   try {
     const dFilter = { isActive: { $ne: false } };
     const scope = await supervisorVehicleIds(req);
-    if (scope) dFilter.vehicle = { $in: scope };
+    // ── والسائقُ بلا سيّارةٍ لا يخرج من قائمة مشرفه ──────────────────────
+    //
+    // كان النطاقُ `vehicle: { $in: مركباتُ المشرف }`. والسائقُ الذي لا سيّارةَ
+    // له لا يطابق ذلك بحال — فما إن يُنزله المشرفُ من شاحنته حتّى يختفي من
+    // قائمته كلَّها، ولا يستطيع إعادتَه إلى أيّ شاحنةٍ لأنّه لم يعد يراه.
+    // وقِيس على الإنتاج: المشرفُ يرى ثلاثين سائقًا، وبلا سيّارةٍ **صفرًا**.
+    //
+    // ومَن لا سيّارةَ له هو بالضبط مَن يُبحَث عنه عند الإسناد — فهو المخزون.
+    if (scope) {
+      dFilter.$or = [
+        { vehicle: { $in: scope } },
+        { vehicle: null },
+        { vehicle: { $exists: false } },
+      ];
+    }
     const drivers = await FleetDriver.find(dFilter)
       .populate('vehicle', 'plate trailerType gpsType')
       .sort({ name: 1 })

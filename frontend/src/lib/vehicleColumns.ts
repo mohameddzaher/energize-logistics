@@ -16,11 +16,20 @@ export type VCol = {
   key: string;
   ar: string;
   en: string;
-  /** القيمةُ كما تُعرَض وكما تُصدَّر — واحدةٌ لا اثنتان. */
+  /** القيمةُ كما تُعرَض على الشاشة ويُفلتَر بها. */
   get: (v: VReg) => any;
+  /**
+   * قيمةُ التصدير حين تخالف قيمةَ العرض.
+   *
+   * والعمودُ الهجريُّ هو الحال الوحيدة: الشاشةُ تعرض تاريخًا هجريًّا مقروءًا،
+   * وإكسل يحتاج التاريخَ الميلاديَّ نفسَه ليكتبه خانةَ تاريخٍ حقيقيّة ثمّ
+   * يعرضه بالتقويم الهجريّ (`type: 'hijri'`). ولو صُدِّر النصُّ الهجريّ لصار
+   * نوعُ الخانة General: لا يُفرَز زمنيًّا ولا يُطرَح منه تاريخ.
+   */
+  raw?: (v: VReg) => any;
   width?: number;
   /** نوعُ الخانة في إكسل: `date` تُكتب كائنَ تاريخٍ حقيقيًّا لا نصًّا. */
-  type?: 'text' | 'date' | 'number';
+  type?: 'text' | 'date' | 'number' | 'hijri';
   /** أعمدةٌ تظهر في الجدول افتراضيًّا. البقيّةُ تُفتَح من زرّ «الأعمدة». */
   base?: boolean;
   mono?: boolean;
@@ -60,6 +69,38 @@ export const platformPlate = (v: Partial<VReg>): string => {
 };
 
 const d = (x: any) => (x ? String(x).slice(0, 10) : '');
+
+/**
+ * التاريخُ الهجريُّ (أمُّ القرى) المقابلُ لتاريخٍ ميلاديّ — للعرض على الشاشة.
+ *
+ * ── ولماذا يُحسَب ولا يُقرأ ────────────────────────────────────────────────
+ * كان عمودا «رخصة السير هجري» و«الفحص هجري» يقرآن حقلًا مخزَّنًا بحجّة أنّ
+ * المكتوبَ على الورقة هو الحجّة. والحقلُ فارغٌ في **الستّ والثلاثين وثلاثمئة
+ * مركبةً كلِّها** — لم يُلتقَط قطّ. فكان العمودان يخرجان فارغَين في كلّ تصدير،
+ * ويمنع وجودُهما إضافةَ العمود المحسوب بجانب الميلاديّ (راجع `withHijri`).
+ * فلا مكتوبٌ ولا محسوب.
+ *
+ * والتحويلُ إلى أمّ القرى قطعيٌّ لا اجتهادَ فيه، والمتصفّحُ يعرفه. فيُحسَب من
+ * التاريخ الميلاديّ الموجود.
+ */
+export const hijriOf = (x: any): string => {
+  if (!x) return '';
+  const dt = new Date(x);
+  if (Number.isNaN(dt.getTime())) return '';
+  try {
+    // ── والترتيبُ يُركَّب ولا يُترك للُّغة ────────────────────────────────
+    // `format` بلغةٍ إنجليزيّة يُخرج «03/25/1448» — شهرٌ فيومٌ فسنة. وبجانبه
+    // في الجدول تواريخُ ميلاديّةٌ بترتيب يوم/شهر/سنة، فيُقرأ الهجريُّ مقلوبًا
+    // ولا شيءَ يُنبّه: كلاهما رقمان وسنة. فتُؤخَذ الأجزاءُ وتُركَّب صراحةً.
+    const parts = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura-nu-latn', {
+      year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC',
+    }).formatToParts(dt);
+    const pick = (t: string) => parts.find((x) => x.type === t)?.value || '';
+    const [dd, mm, yy] = [pick('day'), pick('month'), pick('year')];
+    if (!dd || !mm || !yy) return '';
+    return `${dd.padStart(2, '0')}/${mm.padStart(2, '0')}/${yy}`;
+  } catch { return ''; }
+};
 
 /** الأيامُ المتبقية على تاريخٍ — سالبةٌ للمنتهي، وفارغةٌ حين لا تاريخ. */
 export const daysLeft = (x: any): number | '' => {
@@ -131,14 +172,18 @@ export const REGISTRY_COLUMNS: VCol[] = [
   { key: 'operatingCardDays', ar: 'الايام المتبقية علي انتهاء بطاقة التشغيل', en: 'Days to operating card expiry', get: (v) => daysLeft(v.operatingCard?.expiryDate), width: 16, type: 'number' },
 
   // ── رخصة السير ─────────────────────────────────────────────────────────────
-  // الهجريُّ المخزَّن يسبق الميلاديّ كما في التقرير المطلوب — وهو المكتوبُ على
-  // الورقة نفسِها، فيُعرَض كما كُتب لا محسوبًا.
-  { key: 'licenseHijri', ar: 'تاريخ انتهاء رخصة السير هجري', en: 'Licence expiry (Hijri)', get: (v) => v.vehicleLicense?.expiryDateHijri, width: 20 },
+  // الهجريُّ يسبق الميلاديّ كما في التقرير المطلوب. ويُقرأ المكتوبُ على الورقة
+  // إن وُجد، وإلّا حُسب من الميلاديّ — راجع hijriOf.
+  { key: 'licenseHijri', ar: 'تاريخ انتهاء رخصة السير هجري', en: 'Licence expiry (Hijri)', width: 20, type: 'hijri',
+    get: (v) => v.vehicleLicense?.expiryDateHijri || hijriOf(v.vehicleLicense?.expiryDate),
+    raw: (v) => d(v.vehicleLicense?.expiryDate) },
   { key: 'licenseExpiry', ar: 'تاريخ انتهاء رخصة السير ميلادي', en: 'Licence expiry', get: (v) => d(v.vehicleLicense?.expiryDate), width: 20, type: 'date' },
   { key: 'licenseDays', ar: 'الايام المتبقية علي انتهاء رخصة السير', en: 'Days to licence expiry', get: (v) => daysLeft(v.vehicleLicense?.expiryDate), width: 16, type: 'number' },
 
   // ── الفحص الدوري ───────────────────────────────────────────────────────────
-  { key: 'inspectionHijri', ar: 'تاريخ انتهاء الفحص هجري', en: 'Inspection expiry (Hijri)', get: (v) => v.inspection?.expiryDateHijri, width: 20 },
+  { key: 'inspectionHijri', ar: 'تاريخ انتهاء الفحص هجري', en: 'Inspection expiry (Hijri)', width: 20, type: 'hijri',
+    get: (v) => v.inspection?.expiryDateHijri || hijriOf(v.inspection?.expiryDate),
+    raw: (v) => d(v.inspection?.expiryDate) },
   { key: 'inspectionExpiry', ar: 'تاريخ انتهاء الفحص ميلادي', en: 'Inspection expiry', get: (v) => d(v.inspection?.expiryDate), width: 20, type: 'date' },
   { key: 'inspectionDays', ar: 'الايام المتبقية علي انتهاء الفحص', en: 'Days to inspection expiry', get: (v) => daysLeft(v.inspection?.expiryDate), width: 16, type: 'number' },
 

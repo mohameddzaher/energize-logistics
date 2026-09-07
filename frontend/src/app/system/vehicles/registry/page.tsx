@@ -168,7 +168,9 @@ function VehicleRegistryListInner() {
       width: c.width,
       type: c.type,
       transform: (_v, row: any) => {
-        const val = c.get(row);
+        // العمودُ الهجريُّ يُصدَّر بتاريخه الميلاديّ ليصير خانةَ تاريخٍ حقيقيّة
+        // تُعرَض هجريًّا — لا نصًّا هجريًّا نوعُه General. راجع VCol.raw.
+        const val = c.raw ? c.raw(row) : c.get(row);
         return val === null || val === undefined ? '' : val;
       },
     })),

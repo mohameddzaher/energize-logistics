@@ -35,7 +35,7 @@ const COL_DEFS: [string, string, string][] = [
 const GETTERS: Record<string, (r: any) => any> = {
   plate: (r) => r.vehiclePlate || r.incidentSubjectAr,
   date: (r) => fmtDate(r.accidentDate),
-  fault: (r) => `${r.faultPercent ?? 0}%`,
+  fault: (r) => (r.faultPercent == null ? '' : `${r.faultPercent}%`),
   insurer: (r) => r.claim?.insurerAr,
   estimated: (r) => (r.claim?.estimatedAmountSar ? money(r.claim.estimatedAmountSar) : ''),
   recovery: (r) => (r.claim?.expectedRecoverySar ? money(r.claim.expectedRecoverySar) : ''),
@@ -80,7 +80,8 @@ function ClaimsInner() {
     { header: t('رقم الحادث', 'Accident no.'), key: 'accidentNumber', width: 18 },
     { header: t('اللوحة', 'Plate'), key: 'vehiclePlate', width: 16 },
     { header: t('التاريخ', 'Date'), key: 'accidentDate', transform: (v) => fmtDate(v), width: 14 },
-    { header: t('نسبة الخطأ %', 'Fault %'), key: 'faultPercent', width: 12 },
+    // الفارغُ يخرج فارغًا: صفرُ الخطأ نتيجةٌ، وغيابُه ليس صفرًا.
+    { header: t('نسبة الخطأ %', 'Fault %'), key: 'faultPercent', width: 12, transform: (v: any) => (v == null ? '' : v) },
     { header: t('شركة التأمين', 'Insurer'), key: 'claim', transform: (v: any) => v?.insurerAr || '', width: 20 },
     { header: t('المبلغ المقدَّر', 'Estimated'), key: 'claim', transform: (v: any) => v?.estimatedAmountSar ?? '', width: 16 },
     { header: t('متوقع استرداده', 'Expected recovery'), key: 'claim', transform: (v: any) => v?.expectedRecoverySar ?? '', width: 18 },
@@ -186,11 +187,20 @@ function ClaimsInner() {
                       {r.accidentNumber && <p className="text-[10px] text-slate-400">{r.accidentNumber}</p>}
                     </td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{fmtDate(r.accidentDate)}</td>
+                    {/* ── و«صفر بالمئة» نتيجةٌ لا فراغ ────────────────────────
+                        كانت الخانةُ الفارغة تُعرَض «0%»، وصفرُ الخطأ نتيجةٌ
+                        حقيقيّة: الحادثُ ليس علينا. فمن لم تُقيَّم مطالبتُه بعد
+                        كان يُقرأ كأنّه بُرِّئ — والفرقُ بينهما مالٌ يُدفَع أو
+                        لا يُدفَع. فما لم يُكتب يبقى شرطةً كبقيّة الأعمدة. */}
                     <td className="px-3 py-2.5">
-                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                        (r.faultPercent || 0) >= 50 ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                        {r.faultPercent ?? 0}%
-                      </span>
+                      {r.faultPercent == null ? (
+                        <span className="text-slate-300">—</span>
+                      ) : (
+                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                          r.faultPercent >= 50 ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                          {r.faultPercent}%
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 text-slate-600 text-[12px]">{r.claim?.insurerAr || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-800 font-semibold whitespace-nowrap">{r.claim?.estimatedAmountSar ? money(r.claim.estimatedAmountSar) : '—'}</td>

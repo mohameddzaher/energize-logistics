@@ -204,7 +204,7 @@ async function renderWaybillsPdf(rows) {
   //
   // والترتيبُ محفوظٌ رغم التوازي: النتائجُ تُوضَع في مواضعها بالفهرس ثمّ تُدمَج
   // بالترتيب — الملفُّ يُقرأ بالترتيب الذي عُلّم به.
-  const CONCURRENCY = 4;
+  const CONCURRENCY = 6;
   const out = new Array(rows.length);
   let next = 0;
   const worker = async () => {

@@ -322,6 +322,7 @@
       "apis": [
         "/api/shipment-orders/customers",
         "/api/shipment-orders/orders",
+        "/api/shipment-orders/orders/waybills.pdf",
         "/api/shipment-orders/statuses"
       ],
       "wildcard": false
@@ -397,7 +398,8 @@
     "/system/fleet": {
       "apis": [
         "/api/fleet/customers",
-        "/api/fleet/shipments"
+        "/api/fleet/shipments",
+        "/api/fleet/shipments/waybills.pdf"
       ],
       "wildcard": false
     },

@@ -1313,7 +1313,6 @@ export default function OperationsWorkflowPage() {
                       // الشحنة لا صفةُ الطرف. يكتبه مَن يعرف ما اتُّفق عليه في
                       // هذه الحمولة، ويبقى مكتوبًا على الكشف فيُعرَف بعد سنةٍ
                       // أيُّها كان نقدًا وأيُّها فاتورة.
-                      const isCash = String(wf.paymentType || '') === 'cash';
                       const paymentTypeCell = () => (
                         <td className="px-3 py-2.5 text-sm whitespace-nowrap min-w-[120px]" onClick={cellClick('paymentType')}
                           title={!owns('paymentType') ? noPermMsg
@@ -1341,17 +1340,7 @@ export default function OperationsWorkflowPage() {
                       // عميلُ الكاش يدفع في يده: لا سندَ ولا فاتورةَ ولا ضريبة.
                       // فالأعمدةُ تُقرأ صفرًا وتُقفَل — والقفلُ يقول سببَه لا
                       // مجرّدَ أنّه قفل، وإلّا حُسب عطلًا.
-                      const cashLockMsg = lang === 'ar'
-                        ? 'كشف نقديّ: لا فاتورة له ولا سند — العميل يدفع كاش.'
-                        : 'Cash report: no invoice, no voucher — the customer pays cash.';
-                      const lockedCell = (value: React.ReactNode) => (
-                        <td className="px-3 py-2.5 text-sm whitespace-nowrap bg-slate-50/70"
-                          onClick={(e) => e.stopPropagation()} title={cashLockMsg}>
-                          <span className="text-slate-400 tabular-nums">{value}</span>
-                        </td>
-                      );
-
-                      // Operations review is a one-click checkbox (checklist), not text.
+                                            // Operations review is a one-click checkbox (checklist), not text.
                       const operationsReviewCell = () => (
                         <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           <input
@@ -1410,18 +1399,18 @@ export default function OperationsWorkflowPage() {
                         {paymentTypeCell()}
                         {/* ما بعده يُقفَل على الكشف النقديّ — والقفلُ يقول سببَه
                             عند المرور عليه، فلا يُقرأ عطلًا. */}
-                        {isCash ? lockedCell('0') : lookupCell('finalReportDestination', 'workflow_final_destination', 'text-purple-700')}
-                        {isCash ? lockedCell('0') : textCell('documentNumber', 'text-purple-700')}
-                        {isCash ? lockedCell('—') : dateCell('sendingDate', 'text-purple-700')}
-                        {isCash ? lockedCell('—') : dateCell('branchDeliveryDate', 'text-purple-700')}
+                        {lookupCell('finalReportDestination', 'workflow_final_destination', 'text-purple-700')}
+                        {textCell('documentNumber', 'text-purple-700')}
+                        {dateCell('sendingDate', 'text-purple-700')}
+                        {dateCell('branchDeliveryDate', 'text-purple-700')}
                         {canViewFinancials && accountingReviewCell()}
                         {/* Collections — financial, finance/owner roles only */}
-                        {canViewFinancials && (isCash ? lockedCell('0') : textCell('invoiceNumber', 'text-green-700'))}
-                        {canViewFinancials && (isCash ? lockedCell('0') : numCell('netInvoice', 'text-green-700'))}
-                        {canViewFinancials && (isCash ? lockedCell('0') : numCell('tax', 'text-green-700'))}
-                        {canViewFinancials && (isCash ? lockedCell('0') : numCell('totalInvoice', 'text-green-700'))}
-                        {canViewFinancials && (isCash ? lockedCell('—') : dateCell('invoiceDate', 'text-green-700'))}
-                        {isCash ? lockedCell('—') : dateCell('deliveryDate', 'text-green-700')}
+                        {canViewFinancials && textCell('invoiceNumber', 'text-green-700')}
+                        {canViewFinancials && numCell('netInvoice', 'text-green-700')}
+                        {canViewFinancials && numCell('tax', 'text-green-700')}
+                        {canViewFinancials && numCell('totalInvoice', 'text-green-700')}
+                        {canViewFinancials && dateCell('invoiceDate', 'text-green-700')}
+                        {dateCell('deliveryDate', 'text-green-700')}
                         {canViewFinancials && numCell('collectedAmount', 'text-green-700')}
                         {canViewFinancials && dateCell('collectionDate', 'text-green-700')}
                       </>);

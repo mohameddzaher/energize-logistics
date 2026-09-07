@@ -23,7 +23,7 @@ import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/componen
 import SearchSelect from '@/components/system/SearchSelect';
 import { printTable } from '@/utils/printTable';
 import {
-  Users, Truck, Plus, Pencil, Trash2, Phone, Mail, ChevronLeft, SlidersHorizontal, X, Printer,
+  Users, Truck, Plus, Pencil, Trash2, Phone, Mail, ChevronLeft, SlidersHorizontal, X, Printer, CheckCircle2,
 } from 'lucide-react';
 
 const PAGE_SIZE = 100;
@@ -48,8 +48,40 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
   // كلِّها كان سيمنع بحثًا مشروعًا عن رقمِ مورّدٍ أو سجلِّه.
   const hideMoney = kind === 'supplier' && receivablesOnly(user);
 
-  // تحديدُ صفوفٍ للتصدير والطباعة.
+  // تحديدُ صفوفٍ للتصدير والطباعة والإسناد.
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // ── ومسؤولُ التحصيل يُختار لا يُكتب ──────────────────────────────────────
+  // كان يُكتب بالإيد في كلّ حساب، فيصير «Hossam» و«hossam» و«حسام» ثلاثةَ
+  // موظّفين في التقارير — واللوحةُ تُجمّع على النصّ حرفًا بحرف. فتُقرأ الأسماءُ
+  // القائمة وتُعرَض قائمةً، مع إبقاء الكتابة لمن يُدخل موظّفًا جديدًا.
+  const [officers, setOfficers] = useState<string[]>([]);
+  useEffect(() => {
+    if (kind !== 'customer') return;
+    api.get<{ officers: string[] }>('/api/collections-dept/ledger/invoices/filters')
+      .then((d) => setOfficers(d.officers || [])).catch(() => {});
+  }, [kind]);
+
+  // ── وإسنادُ حساباتٍ دفعةً واحدة ─────────────────────────────────────────
+  // «افتح حسابات ياسر، علّم على عشرةٍ منها، اجعلها لحسام» — عملُ المدير بعد
+  // قراءة لوحة التقييم، وكان يقتضي فتحَ كلّ حسابٍ وتعديلَه وحدَه.
+  const [assignTo, setAssignTo] = useState('');
+  const [assigning, setAssigning] = useState(false);
+  const assignSelected = async () => {
+    if (!selected.size) return;
+    setAssigning(true);
+    try {
+      const r = await api.put<{ updated: number }>('/api/collections-dept/ledger/team/assign', {
+        parties: [...selected], officer: assignTo,
+      });
+      notify(t(`أُسند ${r.updated} حسابًا إلى ${assignTo || '(بلا مسؤول)'}`,
+        `${r.updated} accounts assigned to ${assignTo || '(unassigned)'}`));
+      setSelected(new Set());
+      setAssignTo('');
+      load();
+    } catch (e: any) { notify(e?.message || t('تعذّر الإسناد', 'Could not assign'), 'error'); }
+    setAssigning(false);
+  };
 
   const [rows, setRows] = useState<CollectionsParty[]>([]);
   const [total, setTotal] = useState(0);
@@ -407,6 +439,34 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
         </div>
       )}
 
+      {/* ── ما هو محدَّد، وماذا يُفعَل به ──────────────────────────────────
+          «افتح حسابات ياسر، علّم على عشرةٍ منها، اجعلها لحسام» — يُقرأ التقييم
+          ويُتصرَّف في الشاشة نفسِها، لا بفتح كلّ حسابٍ على حدة. */}
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 bg-white border border-[#f37121]/30 rounded-xl p-3 shadow-sm">
+          <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#f37121]/10 text-[#f37121] text-sm font-semibold">
+            {t(`محدَّد: ${selected.size}`, `${selected.size} selected`)}
+            <button type="button" onClick={() => setSelected(new Set())} title={t('إلغاء التحديد', 'Clear selection')}>
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </span>
+          {canEdit && kind === 'customer' && (
+            <>
+              <span className="text-sm text-slate-500">{t('إسناد إلى', 'Assign to')}</span>
+              <div className="w-56">
+                <SearchSelect ar={ar} value={assignTo} onChange={setAssignTo}
+                  allLabel={t('(بلا مسؤول)', '(unassigned)')}
+                  options={officers.map((o) => ({ value: o, label: o }))} />
+              </div>
+              <PrimaryButton onClick={assignSelected} disabled={assigning}>
+                {assigning ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                {t('إسناد', 'Assign')}
+              </PrimaryButton>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -547,7 +607,10 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
           {kind === 'customer' && (
             <Card title={t('دفتر التحصيل', 'Collections ledger')}>
               <Field label={t('موظف التحصيل', 'Collection officer')}>
-                <TextInput value={editing?.collectionOfficer || ''} onChange={(e) => setEditing((p) => ({ ...p, collectionOfficer: e.target.value }))} />
+                <SearchSelect ar={ar} value={editing?.collectionOfficer || ''}
+                  onChange={(v) => setEditing((p) => ({ ...p, collectionOfficer: v }))}
+                  allLabel={t('(بلا مسؤول)', '(unassigned)')}
+                  options={officers.map((o) => ({ value: o, label: o }))} />
               </Field>
               <Field label={t('التقييم', 'Grade')}>
                 <TextInput value={editing?.grade || ''} onChange={(e) => setEditing((p) => ({ ...p, grade: e.target.value }))} placeholder="A1 · B2 · C3" />

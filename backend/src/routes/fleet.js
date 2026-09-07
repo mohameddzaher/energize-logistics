@@ -23,6 +23,8 @@ router.post('/vehicles/assign-supervisor-bulk', authorize(...ADMIN_ROLES), fleet
 router.get('/shipments', fleet.listShipments);
 router.post('/shipments', authorize(...EDIT_ROLES), fleet.createShipment);
 router.get('/shipments/:id/waybill.pdf', fleet.getWaybillPdf); // البوليصة PDF — نفس ملف الويب
+// بوالصُ عدّةِ شحناتٍ في ملفٍّ واحد — بدل ترسيمِ كلِّ واحدةٍ في المتصفّح.
+router.post('/shipments/waybills.pdf', fleet.getWaybillsPdf);
 router.get('/shipments/:id', fleet.getShipment); // details + the full event log
 router.put('/shipments/:id', authorize(...EDIT_ROLES), fleet.updateShipment);
 router.patch('/shipments/:id/status', authorize(...EDIT_ROLES), fleet.patchStatus);

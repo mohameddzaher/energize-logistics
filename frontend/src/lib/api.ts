@@ -214,6 +214,26 @@ class ApiClient {
     return res.blob();
   }
 
+  // نظيرُ `getBlob` لطلبٍ يحمل جسمًا: البوالصُ الجماعيّةُ تُطلَب بقائمة
+  // معرّفاتٍ وتردّ ملفًّا واحدًا.
+  async postBlob(endpoint: string, data: unknown, retried = false): Promise<Blob> {
+    const res = await fetch(`${this.baseUrl}${endpoint}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data ?? {}),
+    });
+    if (res.status === 401 && !retried) {
+      if (await this.refreshToken()) return this.postBlob(endpoint, data, true);
+      throw new Error('Authentication required');
+    }
+    if (!res.ok) {
+      const msg = await res.json().catch(() => ({ message: 'Request failed' }));
+      throw new Error(msg.message || 'Request failed');
+    }
+    return res.blob();
+  }
+
   post<T>(endpoint: string, data?: unknown, options?: FetchOptions): Promise<T> {
     return this.request<T>(endpoint, {
       ...options,

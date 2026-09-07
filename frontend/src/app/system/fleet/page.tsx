@@ -188,22 +188,26 @@ function FleetShipmentsInner() {
     setDownloadingId(null);
   };
 
-  // Ticked rows → one ZIP, each file named بوليصة-رقم-عميل-تاريخ.
+  // ── والبوالصُ الكثيرةُ تُطلَب مرّةً وتُبنى في الخادم ──────────────────────
+  //
+  // كانت تُرسَم في المتصفّح واحدةً واحدة بـ`html2canvas`: يُركَّب الجدولُ في
+  // الصفحة ويُرسَّم بمقياسٍ عالٍ ثمّ يُنزَع، مرّةً لكلّ كشف. والترسيمُ على
+  // الخيط الرئيسيّ، فثلاثون كشفًا تعني ثلاثين تجمّدًا تبدو كإعادة تحميلٍ
+  // متكرّرة.
+  //
+  // والخادمُ يرسم البوليصةَ الواحدة أصلًا بالملفّ نفسِه (زرُّ الصفّ يناديه).
+  // فصار الجماعيُّ نداءً واحدًا يردّ **ملفًّا واحدًا** فيه صفحةٌ لكلّ بوليصة.
   const downloadPicked = async () => {
     const rows = shipments.filter((s) => picked.has(s._id));
     if (!rows.length) return;
     setBulkBusy(true);
+    setBulkProgress(ar ? `يجهّز ${rows.length}…` : `preparing ${rows.length}…`);
     try {
+      const blob = await api.postBlob('/api/fleet/shipments/waybills.pdf', { ids: rows.map((s) => s._id) });
       const gen = await import('@/lib/dispatchSheetGenerator');
-      const nameOf = new Map(rows.map((s) => [String(s.waybillNumber), waybillFileName(s)]));
-      const { blob, fileName } = await gen.generateDispatchSheetsZip({
-        rows: rows.map(toSheetRow),
-        fileNameOf: (r) => nameOf.get(r.dispatchNumber) || `بوليصة-${r.dispatchNumber}`,
-        onProgress: (p) => setBulkProgress(`${p.current}/${p.total}`),
-      });
-      gen.triggerDownload(blob, fileName.replace('كشوف-التخريج', 'بوليصات-الشحن'));
+      gen.triggerDownload(blob, `بوليصات-الشحن-${rows.length}.pdf`);
       setPicked(new Set());
-    } catch (e: any) { notify(e?.message || 'ZIP failed', 'error'); }
+    } catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
     setBulkBusy(false);
     setBulkProgress('');
   };

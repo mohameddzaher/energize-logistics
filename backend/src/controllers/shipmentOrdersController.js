@@ -94,6 +94,35 @@ async function applyVehicleSnapshot(data) {
   if (!data.driverPhone && veh.defaultDriverPhone) data.driverPhone = veh.defaultDriverPhone;
 }
 
+/**
+ * بوليصاتُ عدّةِ طلباتٍ في ملفٍّ واحد — POST { ids: [...] }.
+ *
+ * كان التحميلُ الجماعيُّ يرسم كلَّ بوليصةٍ في المتصفّح، فتتجمّد الشاشةُ مرّةً
+ * لكلّ كشف. صار نداءً واحدًا يردّ ملفًّا واحدًا — راجع renderWaybillsPdf.
+ */
+exports.getWaybillsPdf = async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(Boolean) : [];
+    if (!ids.length) return res.status(400).json({ message: 'اختر طلبًا واحدًا على الأقلّ' });
+    if (ids.length > 100) return res.status(400).json({ message: 'الحدُّ الأقصى مئةُ بوليصةٍ في المرّة' });
+
+    const { renderWaybillsPdf, rowFromOrder } = require('../utils/waybillPdf');
+    const ShipmentOrder = require('../models/ShipmentOrder');
+    const orders = await ShipmentOrder.find({ _id: { $in: ids } }).lean();
+    if (!orders.length) return res.status(404).json({ message: 'لا طلبات' });
+
+    const order = new Map(ids.map((id, i) => [String(id), i]));
+    orders.sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0));
+
+    const pdf = await renderWaybillsPdf(orders.map(rowFromOrder));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="waybills-${orders.length}.pdf"`);
+    res.send(pdf);
+  } catch (error) {
+    res.status(500).json({ message: 'تعذّر إصدارُ البوالص', error: error.message });
+  }
+};
+
 exports.listOrders = async (req, res) => {
   try {
     const { q, status, customer, supplier, source, branch, from, to, page = 1, limit = 25 } = req.query;

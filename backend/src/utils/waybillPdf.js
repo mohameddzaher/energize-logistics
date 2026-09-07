@@ -174,4 +174,55 @@ async function renderWaybillPdf(row) {
   }
 }
 
-module.exports = { renderWaybillPdf, rowFromShipment, buildDispatchSheetHTML };
+/**
+ * بوليصاتٌ كثيرةٌ في ملفٍّ واحد.
+ *
+ * ── ولماذا في الخادم لا في المتصفّح ───────────────────────────────────────
+ * كان التحميلُ الجماعيُّ يرسم كلَّ بوليصةٍ في المتصفّح بـ`html2canvas`: يُركَّب
+ * الجدولُ في الصفحة، ويُرسَّم بمقياس ١٫٥ (نحو ١٦٠٠×٢٢٤٤)، ثمّ يُنزَع — مرّةً
+ * لكلّ كشف. والترسيمُ يجري على الخيط الرئيسيّ، فالشاشةُ تتجمّد. ثلاثون كشفًا
+ * تعني ثلاثين تجمّدًا متتاليةً تبدو كإعادة تحميلٍ متكرّرة.
+ *
+ * والخادمُ يرسمها أصلًا للبوليصة الواحدة (نفسُ الملفّ حرفًا بحرف — راجع
+ * `renderWaybillPdf`). فالجماعيُّ نداءٌ واحدٌ يردّ ملفًّا واحدًا: لا تجمّدَ،
+ * ولا ثلاثون تنزيلًا، وملفٌّ واحدٌ يُطبَع دفعةً واحدة.
+ *
+ * وصفحةُ المتصفّح تُفتَح مرّةً لكلّ الصفوف لا مرّةً لكلّ صفّ — وهو الفارقُ
+ * الأكبرُ في الزمن.
+ */
+async function renderWaybillsPdf(rows) {
+  const merged = await PDFDocument.create();
+  // ── وكلُّ بوليصةٍ تُرسَم كما تُرسَم وحدَها ────────────────────────────────
+  // صفحةٌ جديدةٌ لكلّ صفٍّ لا صفحةٌ واحدةٌ يُعاد ملؤها: `networkidle0` على
+  // صفحةٍ مستعمَلةٍ قد لا يُطلَق ثانيةً — والشبكةُ ساكنةٌ أصلًا — فينتظر حتى
+  // تنقضي المهلة. وهذا هو المسارُ نفسُه المجرَّبُ للبوليصة الواحدة، لا مسارٌ
+  // ثانٍ يُخالفه في شيء.
+  for (const row of rows) {
+    // eslint-disable-next-line no-await-in-loop
+    const one = await renderWaybillPdf(row);
+    // eslint-disable-next-line no-await-in-loop
+    const doc = await PDFDocument.load(one);
+    // eslint-disable-next-line no-await-in-loop
+    const [copied] = await merged.copyPages(doc, [0]);
+    merged.addPage(copied);
+  }
+  return Buffer.from(await merged.save());
+}
+
+/** صفُّ بوليصةٍ من طلب شحنة — نفسُ شكل `rowFromShipment`. */
+function rowFromOrder(o) {
+  const d = o.pickupTime || o.startTime || o.createdAt || new Date();
+  const dt = new Date(d);
+  return {
+    rentalType: o.driverRentType || '', carBrand: '', carColor: '',
+    carType: o.truckType || '', plateNumber: o.vehiclePlate || o.vehicleName || '',
+    driverAdvance: o.driverRentPrice != null ? String(o.driverRentPrice) : '',
+    driverPhone: o.driverPhone || '', driverIqama: '', driverNationality: '',
+    driverName: o.driverName || '', customerName: o.customerName || '', branch: o.branch || '',
+    toLocation: o.toCity || '', fromLocation: o.fromCity || '',
+    date: `${dt.getDate()}/${dt.getMonth() + 1}/${dt.getFullYear()}`,
+    dispatchNumber: String(o.reference || o.waybillNumber || ''),
+  };
+}
+
+module.exports = { renderWaybillPdf, renderWaybillsPdf, rowFromShipment, rowFromOrder, buildDispatchSheetHTML };

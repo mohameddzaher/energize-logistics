@@ -188,21 +188,27 @@ export default function ShipmentOrdersPage() {
     setDownloadingId(null);
   };
 
+  // ── والبوالصُ الكثيرةُ تُطلَب مرّةً وتُبنى في الخادم ──────────────────────
+  //
+  // كانت تُرسَم في المتصفّح واحدةً واحدة بـ`html2canvas`: يُركَّب الجدولُ في
+  // الصفحة ويُرسَّم بمقياسٍ عالٍ ثمّ يُنزَع، مرّةً لكلّ كشف. والترسيمُ على
+  // الخيط الرئيسيّ، فثلاثون كشفًا تعني ثلاثين تجمّدًا تبدو كإعادة تحميلٍ
+  // متكرّرة.
+  //
+  // والخادمُ يرسم البوليصةَ الواحدة أصلًا بالملفّ نفسِه حرفًا بحرف. فصار
+  // الجماعيُّ نداءً واحدًا يردّ **ملفًّا واحدًا** فيه صفحةٌ لكلّ بوليصة: لا
+  // تجمّد، ولا ثلاثون ملفًّا يُفكّ ضغطُها، ويُطبَع دفعةً واحدة.
   const downloadPicked = async () => {
     const rows = orders.filter((o) => picked.has(o._id));
     if (!rows.length) return;
     setBulkBusy(true);
+    setBulkProgress(ar ? `يجهّز ${rows.length}…` : `preparing ${rows.length}…`);
     try {
+      const blob = await api.postBlob('/api/shipment-orders/orders/waybills.pdf', { ids: rows.map((o) => o._id) });
       const gen = await import('@/lib/dispatchSheetGenerator');
-      const nameOf = new Map(rows.map((o) => [String((o as any).reference || o.waybillNumber), waybillFileName(o)]));
-      const { blob, fileName } = await gen.generateDispatchSheetsZip({
-        rows: rows.map(toSheetRow),
-        fileNameOf: (r) => nameOf.get(r.dispatchNumber) || `بوليصة-${r.dispatchNumber}`,
-        onProgress: (p) => setBulkProgress(`${p.current}/${p.total}`),
-      });
-      gen.triggerDownload(blob, fileName.replace('كشوف-التخريج', 'بوليصات-الشحن'));
+      gen.triggerDownload(blob, `بوليصات-الشحن-${rows.length}.pdf`);
       setPicked(new Set());
-    } catch (e: any) { notify(e?.message || 'ZIP failed', 'error'); }
+    } catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
     setBulkBusy(false);
     setBulkProgress('');
   };

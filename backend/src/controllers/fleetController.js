@@ -529,6 +529,48 @@ exports.getShipment = async (req, res) => {
 
 // البوليصة كـ PDF — نفس الملف بالظبط اللي بيطلع من الويب (Puppeteer + نفس القالب
 // + نفس الترويسة) عشان الموبايل والسايت يطبعوا نفس البوليصة.
+/**
+ * بوليصاتُ عدّةِ شحناتٍ في ملفٍّ واحد — POST { ids: [...] }.
+ * راجع renderWaybillsPdf: نداءٌ واحدٌ بدل ثلاثين ترسيمًا في المتصفّح.
+ */
+exports.getWaybillsPdf = async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(Boolean) : [];
+    if (!ids.length) return res.status(400).json({ message: 'اختر شحنةً واحدةً على الأقلّ' });
+    // حدٌّ أعلى: كلُّ بوليصةٍ ترسيمٌ في متصفّحٍ بلا واجهة، ومئتان تعني دقائق.
+    if (ids.length > 100) return res.status(400).json({ message: 'الحدُّ الأقصى مئةُ بوليصةٍ في المرّة' });
+
+    const { renderWaybillsPdf, rowFromShipment } = require('../utils/waybillPdf');
+    const shipments = await FleetShipment.find({ _id: { $in: ids } })
+      .populate('vehicle', 'plate trailerType gpsType brand color')
+      .populate('driver secondDriver', 'name phone iqama nationality')
+      .lean();
+    if (!shipments.length) return res.status(404).json({ message: 'لا شحنات' });
+
+    // يُحفَظ ترتيبُ الاختيار: الملفُّ يُقرأ بالترتيب الذي عُلّم به.
+    const order = new Map(ids.map((id, i) => [String(id), i]));
+    shipments.sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0));
+
+    for (const s of shipments) {
+      if (s.driver && typeof s.driver === 'object') {
+        if (!s.driverIqama) s.driverIqama = s.driver.iqama || '';
+        if (!s.driverNationality) s.driverNationality = s.driver.nationality || '';
+        if (!s.driverPhone) s.driverPhone = s.driver.phone || '';
+      }
+      if (s.vehicle && typeof s.vehicle === 'object') {
+        if (!s.vehicleBrand) s.vehicleBrand = s.vehicle.brand || '';
+        if (!s.vehicleColor) s.vehicleColor = s.vehicle.color || '';
+      }
+    }
+    const pdf = await renderWaybillsPdf(shipments.map(rowFromShipment));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="waybills-${shipments.length}.pdf"`);
+    res.send(pdf);
+  } catch (error) {
+    res.status(500).json({ message: 'تعذّر إصدارُ البوالص', error: error.message });
+  }
+};
+
 exports.getWaybillPdf = async (req, res) => {
   try {
     const { renderWaybillPdf, rowFromShipment } = require('../utils/waybillPdf');

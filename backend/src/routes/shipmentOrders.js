@@ -14,6 +14,9 @@ router.use(authenticate);
 // Orders
 router.get('/orders', so.listOrders);
 router.get('/orders/:id', so.getOrder); // the edit form loads ONE order directly
+// بوالصُ عدّةِ طلباتٍ في ملفٍّ واحد — تُسجَّل قبل `/orders/:id` لا بعده حتى لا
+// يبتلعَها المسارُ ذو المتغيّر.
+router.post('/orders/waybills.pdf', so.getWaybillsPdf);
 router.post('/orders', authorize(...EDIT_ROLES), so.createOrder);
 router.put('/orders/:id', authorize(...EDIT_ROLES), so.updateOrder);
 router.patch('/orders/:id/status', authorize(...EDIT_ROLES), so.patchStatus); // inline from the list

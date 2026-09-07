@@ -26,6 +26,18 @@ const ADAPTER_COLL = 'socketevents';
 async function attachClusterAdapter(server) {
   try {
     const mongoose = require('mongoose');
+    // ── ويُنتظَر اتّصالُ مونجو ولا يُستسلَم عنده ─────────────────────────
+    // الخادمُ يفتح المقبسَ قبل أن يتّصل مونجو، فالانصرافُ عند أوّل نظرةٍ يعني
+    // ألّا يُركَّب المحوّلُ أبدًا — وهو ما حدث: نُشر التغييرُ ولم تُنشأ
+    // المجموعةُ أصلًا.
+    if (mongoose.connection?.readyState !== 1) {
+      await new Promise((resolve) => {
+        const done = () => resolve();
+        mongoose.connection.once('connected', done);
+        mongoose.connection.once('open', done);
+        setTimeout(done, 30000);                     // لا يُنتظَر إلى الأبد
+      });
+    }
     if (mongoose.connection?.readyState !== 1) return false;
     const db = mongoose.connection.db;
 

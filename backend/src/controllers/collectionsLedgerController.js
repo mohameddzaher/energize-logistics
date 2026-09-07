@@ -24,6 +24,8 @@ const CollectionTask = require('../models/CollectionTask');
 const CreditAlertAck = require('../models/CreditAlertAck');
 const PartyLinkSuggestion = require('../models/PartyLinkSuggestion');
 const cache = require('../utils/ttlCache');
+// يطوي فروقَ الرسم العربيّ والفراغات — هو نفسُه المستعمَل في صفحات الفواتير.
+const { flexSpaceRegex } = require('../utils/plateKey');
 
 const CACHE_PREFIX = 'colledger:';
 const DAY = 86400000;
@@ -103,7 +105,12 @@ function partyFilter(q = {}) {
   if (kind) f.paymentType = { $in: list(kind) };
   if (creditDays) f.creditDays = { $in: list(creditDays).map(Number).filter(Number.isFinite) };
   if (search) {
-    const rx = { $regex: String(search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+    // ── والبحثُ يطوي فروقَ الرسم كما في بقيّة النظام ──────────────────────
+    // كان تعبيرًا نصّيًّا مهروبًا لا غير: مَن كتب «روابى» بالألف المقصورة أو
+    // «شركه» بالهاء لا يجد شيئًا — والاسمُ نفسُه مخزَّنٌ بالياء والتاء
+    // المربوطة. قِيس: «روابي التسويق» تردّ حسابًا، وبأشباه الحروف **صفرًا**.
+    // و`flexSpaceRegex` هي التي تبحث بها صفحاتُ الفواتير والعملاء أصلًا.
+    const rx = flexSpaceRegex(String(search));
     f.$or = [{ name: rx }, { code: rx }, { collectionOfficer: rx }, { aliases: rx }];
   }
   return f;
@@ -371,7 +378,8 @@ function invoiceFilter(q = {}) {
     if (to) f[field].$lte = new Date(`${to}T23:59:59.999Z`);
   }
   if (search) {
-    const rx = { $regex: String(search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+    // يطوي فروقَ الرسم العربيّ — راجع partyFilter أعلاه.
+    const rx = flexSpaceRegex(String(search));
     f.$or = [{ invoiceNumber: rx }, { partyName: rx }, { partyCode: rx }, { comments: rx }];
   }
   return f;

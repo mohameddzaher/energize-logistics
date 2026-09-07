@@ -185,6 +185,8 @@
     },
     "/system/collections-dept/customers": {
       "apis": [
+        "/api/collections-dept/ledger/invoices/filters",
+        "/api/collections-dept/ledger/team/assign",
         "/api/collections-dept/parties",
         "/api/lookups/types",
         "/api/reports"
@@ -193,6 +195,8 @@
     },
     "/system/collections-dept/suppliers": {
       "apis": [
+        "/api/collections-dept/ledger/invoices/filters",
+        "/api/collections-dept/ledger/team/assign",
         "/api/collections-dept/parties",
         "/api/lookups/types",
         "/api/reports"

@@ -104,15 +104,41 @@ export function earliestStartDate(t?: LeaveType | null): string {
 
 export interface LeaveBalance { entitlement: number; daysElapsed: number; accrued: number; taken: number; available: number; }
 
+export type LeaveStage = 'manager' | 'hr' | 'finance' | 'executive';
+
+export interface LeaveDecision { by?: any; at?: string; decision?: string; note?: string }
+
+export interface LeaveThreadEntry {
+  kind: 'question' | 'reply';
+  stage?: string; by?: any; byName?: string; text?: string;
+  attachment?: string; attachmentName?: string; at?: string;
+}
+
+/**
+ * محطّاتُ السلسلة بترتيبها — تُرسم منها الشريطةُ في كلّ صفحة، فلا يُعاد
+ * ترتيبُها في أربعة أماكن ثمّ يختلف اثنان منها.
+ */
+export const LEAVE_STAGES: { key: LeaveStage; ar: string; en: string; decision: keyof LeaveRequest }[] = [
+  { key: 'manager', ar: 'المدير المباشر', en: 'Direct Manager', decision: 'managerDecision' },
+  { key: 'hr', ar: 'الموارد البشرية', en: 'HR', decision: 'hrDecision' },
+  { key: 'finance', ar: 'الحسابات', en: 'Finance', decision: 'financeDecision' },
+  { key: 'executive', ar: 'الإدارة العليا', en: 'Executive', decision: 'executiveDecision' },
+];
+
 export interface LeaveRequest {
   _id: string;
   employee: any; requester: any; manager?: any;
   leaveType: any; leaveTypeCode?: string;
   startDate: string; endDate: string; days: number; reason?: string;
-  status: 'pending_manager' | 'pending_hr' | 'approved' | 'rejected' | 'cancelled';
-  currentStage: 'manager' | 'hr' | 'done';
-  managerDecision?: { by?: any; at?: string; decision?: string; note?: string };
-  hrDecision?: { by?: any; at?: string; decision?: string; note?: string };
+  status: 'pending_manager' | 'pending_hr' | 'pending_finance' | 'pending_executive'
+        | 'info_requested' | 'approved' | 'rejected' | 'cancelled';
+  currentStage: 'manager' | 'hr' | 'finance' | 'executive' | 'employee' | 'done';
+  managerDecision?: LeaveDecision;
+  hrDecision?: LeaveDecision;
+  financeDecision?: LeaveDecision;
+  executiveDecision?: LeaveDecision;
+  // حوارُ الطلب: سؤالُ محطّةٍ وردُّ صاحبه. مرتَّبٌ بالأقدم.
+  thread?: LeaveThreadEntry[];
   balanceSnapshot?: { accrued?: number; requested?: number; remainingAfter?: number };
   createdAt?: string;
   // مرفقاتُ الطلب وقراريه — يقرأها المراجعُ قبل أن يبتّ، وتبقى في ملفّ الموظّف.
@@ -210,6 +236,10 @@ export const auditActionLabel = (key: string, lang: Lang) =>
 export const LEAVE_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {
   pending_manager: { bg: 'bg-amber-500/20', text: 'text-amber-700', en: 'With Manager', ar: 'عند المدير' },
   pending_hr: { bg: 'bg-blue-500/20', text: 'text-blue-700', en: 'With HR', ar: 'عند الموارد البشرية' },
+  pending_finance: { bg: 'bg-violet-500/20', text: 'text-violet-700', en: 'With Finance', ar: 'عند الحسابات' },
+  pending_executive: { bg: 'bg-indigo-500/20', text: 'text-indigo-700', en: 'With Executive', ar: 'عند الإدارة العليا' },
+  // ليست رفضًا: الطلبُ عاد إلى صاحبه ليردّ أو يعدّل.
+  info_requested: { bg: 'bg-orange-500/20', text: 'text-orange-700', en: 'Needs your reply', ar: 'بانتظار ردّك' },
   approved: { bg: 'bg-green-500/20', text: 'text-green-700', en: 'Approved', ar: 'مقبولة' },
   rejected: { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Rejected', ar: 'مرفوضة' },
   cancelled: { bg: 'bg-gray-500/20', text: 'text-gray-600', en: 'Cancelled', ar: 'ملغاة' },

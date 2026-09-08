@@ -17,6 +17,7 @@ const { saveEmployeeFile, deleteStoredFile } = require('../utils/fileStore');
 const { createNotification } = require('../services/notificationService');
 const { emitToUser, emitToAll } = require('../websocket/socketManager');
 const { computeBalance, leaveDays } = require('../utils/leaveBalance');
+const chain = require('../utils/leaveChain');
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
 const HR_STAFF_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist'];
@@ -77,6 +78,18 @@ const notifyHR = async ({ title, message, relatedEntity, relatedEntityId, event 
     )
   );
   if (event) ids.forEach((rid) => { try { emitToUser(String(rid), event, { id: String(relatedEntityId || '') }); } catch (e) {} });
+};
+
+/**
+ * إخطارُ أصحاب محطّةٍ في سلسلة الإجازات — الحساباتُ أو الإدارةُ العليا.
+ * ولولاه لَوصل الطلبُ إلى محطّةٍ لا يعلم أحدٌ فيها أنّه وصل، فيقف حتّى يُسأل عنه.
+ */
+const notifyRoles = async (roles, { title, message, relatedEntity, relatedEntityId, event }) => {
+  if (!roles || !roles.length) return;
+  const users = await User.find({ role: { $in: roles }, isActive: true }).select('_id').lean();
+  await Promise.all(users.map((u) =>
+    createNotification({ recipient: u._id, type: 'system_alert', title, message, relatedEntity, relatedEntityId }).catch(() => {})));
+  if (event) users.forEach((u) => { try { emitToUser(String(u._id), event, { id: String(relatedEntityId || '') }); } catch (e) {} });
 };
 
 const notifyUser = async (userId, { title, message, relatedEntity, relatedEntityId, event }) => {
@@ -963,7 +976,40 @@ const populateLeave = (q) => q
   .populate('manager', 'firstName lastName')
   .populate('leaveType', 'nameEn nameAr code color affectsBalance')
   .populate('managerDecision.by', 'firstName lastName')
-  .populate('hrDecision.by', 'firstName lastName');
+  .populate('hrDecision.by', 'firstName lastName')
+  .populate('financeDecision.by', 'firstName lastName')
+  .populate('executiveDecision.by', 'firstName lastName');
+
+/**
+ * صندوقُ الوارد: الطلباتُ الواقفةُ على هذا المستخدم الآن.
+ *
+ * المديرُ المباشرُ يرى طلبات فريقه فقط، والمواردُ والحساباتُ والإدارةُ ترى ما
+ * وصل محطّتَها. والاستعلامُ واحدٌ (`inboxFilter`) لا حلقةٌ تقرأ ثمّ تُصفّي.
+ *
+ * ويصحبُ كلَّ طلبٍ `myStage`: المحطّةُ التي يملكها القارئُ فيه — تبني منها
+ * الواجهةُ أزرارَها بدل أن تُخمّن الدورَ من جديد.
+ */
+exports.listLeaveInbox = async (req, res) => {
+  try {
+    const leaves = await populateLeave(LeaveRequest.find(chain.inboxFilter(req.user)))
+      .select(NO_SIG).sort({ createdAt: 1 }).limit(500).lean();
+    res.json({
+      leaves: leaves.map((l) => ({ ...l, myStage: l.currentStage })),
+      stages: chain.stagesFor(req.user),
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load leave inbox' });
+  }
+};
+
+/** كم طلبًا ينتظرني — للشارة في القائمة. لا يُحمَّل الطلبُ نفسُه. */
+exports.leaveInboxCount = async (req, res) => {
+  try {
+    res.json({ count: await LeaveRequest.countDocuments(chain.inboxFilter(req.user)) });
+  } catch (error) {
+    res.json({ count: 0 });
+  }
+};
 
 exports.listLeaves = async (req, res) => {
   try {
@@ -1260,15 +1306,19 @@ exports.createBackdatedLeave = async (req, res) => {
 exports.decideLeave = async (req, res) => {
   try {
     const { decision, note, signatureId } = req.body;
-    if (!['approved', 'rejected'].includes(decision)) return res.status(400).json({ message: 'decision must be approved or rejected' });
+    // «info» = طلبُ إيضاحٍ من صاحب الطلب، وهو ليس رفضًا — راجع leaveChain.
+    if (!['approved', 'rejected', 'info'].includes(decision)) {
+      return res.status(400).json({ message: 'decision must be approved, rejected or info' });
+    }
+    if (decision === 'info' && !String(note || '').trim()) {
+      return res.status(400).json({ message: 'اكتب سؤالك أو ما تريد تعديله' });
+    }
     const leave = await LeaveRequest.findById(req.params.id);
     if (!leave) return res.status(404).json({ message: 'Leave request not found' });
     if (['approved', 'rejected', 'cancelled'].includes(leave.status)) {
       return res.status(400).json({ message: 'This request has already been finalised' });
     }
 
-    const staff = hrStaffReq(req);
-    const isManager = String(leave.manager || '') === String(req.user._id);
 
     // Optional: the approver signs. Resolve the chosen signature (by id) from
     // their own signatures and snapshot it onto this decision.
@@ -1284,31 +1334,75 @@ exports.decideLeave = async (req, res) => {
     catch (e) { return res.status(400).json({ message: e.message }); }
     const stamp = { by: req.user._id, at: new Date(), decision, note: note || '', signature, attachments: decisionFiles };
 
-    if (staff) {
-      // HR decision is final regardless of current stage.
-      leave.hrDecision = stamp;
-      leave.status = decision === 'approved' ? 'approved' : 'rejected';
-      leave.currentStage = 'done';
-    } else if (isManager && leave.currentStage === 'manager') {
-      leave.managerDecision = stamp;
-      if (decision === 'rejected') {
-        leave.status = 'rejected';
-        leave.currentStage = 'done';
-      } else {
-        leave.status = 'pending_hr';
-        leave.currentStage = 'hr';
-      }
-    } else {
+    // ── البتُّ يجري في المحطّة القائمة وحدَها ───────────────────────────
+    //
+    // كان قرارُ الموارد البشريّة نهائيًّا في أيّ محطّةٍ كانت — فتُوافِق فيصير
+    // الطلبُ موافَقًا عليه دون أن تراه الحساباتُ ولا الإدارة. والسلسلةُ الآن
+    // أربعُ محطّات، وكلٌّ يبتّ في محطّته حين تصل إليه. راجع utils/leaveChain.
+    const stage = leave.currentStage;
+
+    if (stage === 'employee') {
+      return res.status(400).json({ message: 'الطلب عند صاحبه للردّ على استفسار' });
+    }
+    if (!chain.STAGES.includes(stage)) {
+      return res.status(400).json({ message: 'هذا الطلب ليس في محطّة قرار' });
+    }
+    if (!chain.canActAt(stage, req.user, leave)) {
       return res.status(403).json({ message: 'You cannot act on this request at its current stage' });
+    }
+
+    leave[chain.DECISION_FIELD[stage]] = stamp;
+
+    if (decision === 'rejected') {
+      leave.status = 'rejected';
+      leave.currentStage = 'done';
+    } else if (decision === 'info') {
+      // ── سؤالٌ لا رفض ──────────────────────────────────────────────────
+      // يعود الطلبُ إلى صاحبه ليردّ أو يعدّل أو يرفع مستندًا.
+      leave[chain.DECISION_FIELD[stage]] = undefined;      // لم يُبتَّ بعد
+      leave.thread.push({
+        kind: 'question', stage, by: req.user._id,
+        byName: [req.user.firstName, req.user.lastName].filter(Boolean).join(' '),
+        text: note || '',
+      });
+      chain.askEmployee(leave);
+    } else {
+      chain.advance(leave, stage);
     }
     await leave.save();
 
-    // Notify the requester of the outcome / progress, and HR when it reaches them.
-    if (leave.status === 'pending_hr') {
-      await notifyHR({ title: 'Leave awaiting HR', message: `A leave request advanced to HR review.`, relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave' });
-      await notifyUser(leave.requester, { title: 'Leave approved by manager', message: 'Your leave was approved by your manager and is now with HR.', relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave' });
+    // ── الإخطار: صاحبُ الطلب دائمًا، وأصحابُ المحطّة التالية ──────────────
+    //
+    // وكان الموافِقُ في محطّةٍ وسطى يُخبِر صاحبَ الطلب بأنّها «اعتُمدت» — وهي
+    // لم تُعتمَد بعد، بل انتقلت. فيُخطِّط الرجلُ سفرَه على موافقةٍ ناقصة.
+    // فالرسالةُ الآن تقول أين وقف الطلبُ لا أنّه انتهى.
+    const STAGE_AR = { manager: 'المدير المباشر', hr: 'الموارد البشرية', finance: 'الإدارة المالية', executive: 'الإدارة العليا' };
+    const ref = { relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave' };
+    const period = `${leave.startDate} → ${leave.endDate}`;
+
+    if (leave.status === 'info_requested') {
+      await notifyUser(leave.requester, {
+        title: 'مطلوب إيضاح على طلب الإجازة',
+        message: `${STAGE_AR[stage] || 'أحد المراجعين'} طلب إيضاحًا: ${note || ''}`.trim(),
+        ...ref,
+      });
+    } else if (leave.status === 'approved') {
+      await notifyUser(leave.requester, { title: 'اعتُمدت إجازتك', message: `إجازتك (${period}) اعتُمدت بعد موافقة المحطّات الأربع.`, ...ref });
+      await notifyHR({ title: 'إجازة اعتُمدت', message: `اكتملت سلسلةُ الموافقات على إجازة (${period}).`, ...ref });
+    } else if (leave.status === 'rejected') {
+      await notifyUser(leave.requester, { title: 'رُفض طلب الإجازة', message: `رفضت ${STAGE_AR[stage] || ''} طلبك (${period}). ${note || ''}`.trim(), ...ref });
     } else {
-      await notifyUser(leave.requester, { title: decision === 'approved' ? 'Leave approved' : 'Leave rejected', message: `Your leave (${leave.startDate} → ${leave.endDate}) was ${decision}.`, relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave' });
+      // انتقل إلى المحطّة التالية: يُخطَر صاحبُه بموضعه، ويُخطَر أهلُ المحطّة.
+      const next = leave.currentStage;
+      await notifyUser(leave.requester, {
+        title: 'تقدّم طلب الإجازة',
+        message: `وافقت ${STAGE_AR[stage] || ''} على طلبك (${period}) — وهو الآن عند ${STAGE_AR[next] || ''}.`,
+        ...ref,
+      });
+      if (next === 'hr') await notifyHR({ title: 'إجازة تنتظر الموارد البشرية', message: `طلب إجازة (${period}) وصل محطّتكم.`, ...ref });
+      else if (next === 'finance') await notifyRoles(chain.FINANCE_ROLES, { title: 'إجازة تنتظر الإدارة المالية', message: `طلب إجازة (${period}) وصل محطّتكم — راجعوا مستحقّاته وسُلَفه.`, ...ref });
+      else if (next === 'executive') await notifyRoles(chain.EXEC_ROLES, { title: 'إجازة تنتظر الإدارة العليا', message: `طلب إجازة (${period}) وصل المحطّة الأخيرة.`, ...ref });
+      else if (next === 'manager' && leave.manager) await notifyUser(leave.manager, { title: 'إجازة تنتظر موافقتك', message: `طلب إجازة (${period}) من أحد فريقك.`, ...ref });
     }
     if (leave.manager) { try { emitToUser(String(leave.manager), 'hr:leave', { id: String(leave._id) }); } catch (e) {} }
 
@@ -1320,12 +1414,80 @@ exports.decideLeave = async (req, res) => {
   }
 };
 
+/**
+ * ردُّ صاحب الطلب على استفسار — POST /leaves/:id/reply { text, attachment }
+ *
+ * ── والسلسلةُ تبدأ من أوّلها ──────────────────────────────────────────────
+ * الطلبُ الذي وافق عليه المديرُ أمسَ لم يعد هو الطلبَ نفسَه بعد أن عُدِّل أو
+ * أُضيف إليه مستند. فتُمحى الموافقاتُ ويعود من المدير المباشر — وهو ما طُلب
+ * بالنصّ: «يرجع الطلب من تاني عند المدير المباشر كأنه جديد».
+ *
+ * والسؤالُ والردُّ يبقيان في سجلّ الطلب، فيُقرأ بعد شهرٍ لماذا تأخّر وبم أُجيب.
+ */
+exports.replyToLeave = async (req, res) => {
+  try {
+    const leave = await LeaveRequest.findById(req.params.id);
+    if (!leave) return res.status(404).json({ message: 'Leave request not found' });
+    if (String(leave.requester) !== String(req.user._id)) {
+      return res.status(403).json({ message: 'Not your request' });
+    }
+    if (leave.status !== 'info_requested') {
+      return res.status(400).json({ message: 'لا يوجد استفسار مفتوح على هذا الطلب' });
+    }
+    const text = String(req.body.text || '').trim();
+    if (!text) return res.status(400).json({ message: 'اكتب ردّك' });
+
+    // المرفقُ يُكتب على القرص لا داخل المستند. فصندوقُ الوارد يقرأ عشرات
+    // الطلبات دفعةً واحدة، وقاعدةُ البيانات مخنوقةُ الإنتاجيّة أصلًا — إيصالٌ
+    // بصيغة base64 داخل المستند يجعل قراءةَ القائمة تسحب ميغابايتات.
+    let stored = null;
+    if (req.body.attachment) {
+      try { stored = saveEmployeeFile(req.body.attachment, req.body.attachmentName || ''); }
+      catch (e) { return res.status(400).json({ message: e.message }); }
+    }
+
+    leave.thread.push({
+      kind: 'reply',
+      by: req.user._id,
+      byName: [req.user.firstName, req.user.lastName].filter(Boolean).join(' '),
+      text,
+      attachment: stored ? stored.fileUrl : '',
+      attachmentName: stored ? (stored.fileName || String(req.body.attachmentName || '')) : '',
+    });
+
+    chain.restart(leave);
+    await leave.save();
+
+    if (leave.manager) {
+      try { emitToUser(String(leave.manager), 'hr:leave', { id: String(leave._id) }); } catch (e) { /* */ }
+      await notifyUser(leave.manager, {
+        title: 'طلب إجازة عاد بعد الردّ',
+        message: 'ردّ الموظّف على الاستفسار — الطلب ينتظر موافقتك من جديد.',
+        relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave',
+      });
+    } else {
+      await notifyHR({
+        title: 'طلب إجازة عاد بعد الردّ',
+        message: 'ردّ الموظّف على الاستفسار.',
+        relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave',
+      });
+    }
+
+    const populated = await populateLeave(LeaveRequest.findById(leave._id)).lean();
+    res.json({ leave: populated });
+  } catch (error) {
+    console.error('replyToLeave error:', error);
+    res.status(500).json({ message: 'Failed to reply' });
+  }
+};
+
 exports.cancelMyLeave = async (req, res) => {
   try {
     const leave = await LeaveRequest.findById(req.params.id);
     if (!leave) return res.status(404).json({ message: 'Leave request not found' });
     if (String(leave.requester) !== String(req.user._id)) return res.status(403).json({ message: 'Not your request' });
-    if (!['pending_manager', 'pending_hr'].includes(leave.status)) return res.status(400).json({ message: 'Only pending requests can be cancelled' });
+    // كلُّ ما لم يُبَتّ فيه نهائيًّا يجوز لصاحبه سحبُه — بما فيه ما عاد إليه بسؤال.
+    if (!['pending_manager', 'pending_hr', 'pending_finance', 'pending_executive', 'info_requested'].includes(leave.status)) return res.status(400).json({ message: 'Only pending requests can be cancelled' });
     leave.status = 'cancelled';
     leave.currentStage = 'done';
     await leave.save();

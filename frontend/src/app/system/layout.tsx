@@ -472,6 +472,11 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Self Service (HR pages every employee sees)
     { href: '/system/hr/me', label: L.hrMyProfile, icon: <Briefcase className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, visible: (u: any) => isInternal(u?.role), section: 'Self Service' },
     { href: '/system/hr/my-leaves', label: L.hrMyLeaves, icon: <CalendarDays className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, visible: (u: any) => isInternal(u?.role), section: 'Self Service' },
+    // موافقاتُ الإجازات — تحت الخدمة الذاتيّة لا تحت الموارد البشريّة عمدًا:
+    // مديرُ الأسطول ومديرُ العمليّات يوقّعان على إجازات فريقهما ولا يملكان
+    // قسمَ الموارد البشريّة. والصفحةُ نفسُها لا تُري من لا محطّةَ له شيئًا،
+    // فالخادمُ يبني القائمةَ من محطّات القارئ لا من دوره في القائمة هنا.
+    { href: '/system/hr/leave-approvals', label: lang === 'ar' ? 'موافقات الإجازات' : 'Leave Approvals', icon: <CalendarCheck className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, visible: (u: any) => isInternal(u?.role), section: 'Self Service' },
     { href: '/system/hr/my-requests', label: L.hrMyRequests, icon: <ClipboardList className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, visible: (u: any) => isInternal(u?.role), section: 'Self Service' },
     // الإعداداتُ الشخصيّة: كلمةُ المرور والتوقيع واللغة. كانت في «الأدوات»
     // ومقصورةً على ثمانية أدوار، فلم يجدها من يحتاجها.

@@ -5,8 +5,9 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { CalendarCheck, Check, X, FileDown, PenTool, CalendarPlus, History } from 'lucide-react';
+import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History } from 'lucide-react';
 import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, fmtDate, leaveTypeLabel } from '@/lib/hr';
+import { LeaveChainBar, LeaveThread } from '@/components/hr/LeaveChain';
 import { Spinner, PageHeader, SearchInput, Badge, Modal, TextArea, PrimaryButton, SearchableSelect, Loader2 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getHrLeavesTranslations } from '@/lib/translations';
@@ -98,8 +99,13 @@ export default function HRLeavesPage() {
 
   const openReview = (l: LeaveRequest) => { setReview(l); setNote(''); setSignWith(''); setFiles([]); };
 
-  const decide = async (decision: 'approved' | 'rejected') => {
+  const decide = async (decision: 'approved' | 'rejected' | 'info') => {
     if (!review) return;
+    // «استفسار» بلا نصٍّ يصل الموظّفَ سؤالًا فارغًا، فلا يدري بمَ يردّ.
+    if (decision === 'info' && !note.trim()) {
+      notify(ar ? 'اكتب استفسارك حتى يعرف الموظّف بمَ يردّ.' : 'Write your question so the employee knows what to answer.', 'error');
+      return;
+    }
     setBusy(true);
     try {
       await api.patch(`/api/hr/leaves/${review._id}/decision`, {
@@ -125,7 +131,13 @@ export default function HRLeavesPage() {
     if (!search.trim()) return true;
     return empName(l.employee).toLowerCase().includes(search.toLowerCase()) || userName(l.requester).toLowerCase().includes(search.toLowerCase());
   });
-  const pendingCount = leaves.filter((l) => l.status === 'pending_manager' || l.status === 'pending_hr').length;
+  // معلَّقٌ = واقفٌ عند إحدى المحطّات الأربع، أو مرتدٌّ إلى صاحبه للردّ.
+  // كان الحسابُ محطّتين فقط، فما بلغ الحساباتِ أو الإدارةَ لم يُعدّ معلَّقًا وسقط
+  // من العدّاد — يبدو منتهيًا وهو واقف.
+  const OPEN = ['pending_manager', 'pending_hr', 'pending_finance', 'pending_executive', 'info_requested'];
+  const pendingCount = leaves.filter((l) => OPEN.includes(l.status)).length;
+  // ولا يبتّ من هنا إلا في محطّةٍ قائمة؛ الخادمُ يتحقّق أنّها محطّةُ القارئ.
+  const actionable = (l: LeaveRequest | null) => !!l && ['pending_manager', 'pending_hr', 'pending_finance', 'pending_executive'].includes(l.status);
 
   const exportColumns: ExportColumn[] = [
     { header: 'Employee', key: 'employee', transform: (v: any) => empName(v), width: 22 },
@@ -305,12 +317,15 @@ export default function HRLeavesPage() {
       </div>
 
       <Modal open={!!review} onClose={() => setReview(null)} title={tx.reviewTitle}
-        footer={review && (review.status === 'pending_manager' || review.status === 'pending_hr') ? <>
+        footer={actionable(review) ? <div className="flex flex-wrap items-center justify-end gap-2">
           <button type="button" onClick={() => decide('rejected')} disabled={busy} className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-600 rounded-lg text-sm font-medium hover:bg-red-500/30 disabled:opacity-50"><X className="w-4 h-4" /> {tx.reject}</button>
+          <button type="button" onClick={() => decide('info')} disabled={busy} className="flex items-center gap-2 px-4 py-2 bg-orange-500/20 text-orange-700 rounded-lg text-sm font-medium hover:bg-orange-500/30 disabled:opacity-50"><HelpCircle className="w-4 h-4" /> {ar ? 'استفسار / طلب تعديل' : 'Ask / request change'}</button>
           <PrimaryButton onClick={() => decide('approved')} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {tx.approve}</PrimaryButton>
-        </> : undefined}>
+        </div> : undefined}>
         {review && (
           <div className="space-y-3 text-sm">
+            {/* أين وقف الطلبُ ومَن وقّع — قبل أيّ حقلٍ آخر. */}
+            <LeaveChainBar leave={review} lang={ar ? 'ar' : 'en'} />
             <Row k={tx.fieldEmployee} v={empName(review.employee, lang)} />
             <Row k={tx.fieldRequester} v={userName(review.requester)} />
             <Row k={tx.fieldType} v={leaveTypeLabel(review.leaveType, lang)} />
@@ -338,12 +353,12 @@ export default function HRLeavesPage() {
                 <AttachmentList items={(review as any).attachments} />
               </div>
             )}
-            {review.managerDecision?.decision && <p className="text-xs text-slate-500">{tx.managerDecision}: {review.managerDecision.decision} {review.managerDecision.note ? `— ${review.managerDecision.note}` : ''}</p>}
-            {(review.status === 'pending_manager' || review.status === 'pending_hr') && (
+            <LeaveThread leave={review} lang={ar ? 'ar' : 'en'} />
+            {actionable(review) && (
               <div className="border-t border-slate-200 pt-3 space-y-3">
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">
-                    {ar ? 'ملاحظتك على القرار (اختياري)' : 'Your note on this decision (optional)'}
+                    {ar ? 'ملاحظتك على القرار — مطلوبة مع الاستفسار' : 'Your note — required when asking a question'}
                   </label>
                   <TextArea rows={2} value={note} onChange={(e) => setNote(e.target.value)}
                     placeholder={ar ? 'تُحفظ مع موافقتك أو رفضك ويقرؤها الموظّف' : 'saved with your approval or rejection'} />

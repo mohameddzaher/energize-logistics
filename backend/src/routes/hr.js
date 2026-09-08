@@ -42,6 +42,10 @@ router.get('/me/team', hr.getMyTeam);
 router.get('/me/leaves', hr.listMyLeaves);
 router.post('/me/leaves', hr.createMyLeave);
 router.patch('/me/leaves/:id/cancel', hr.cancelMyLeave);
+// ردُّ صاحب الطلب على استفسارٍ من أيّ محطّة — يعيد السلسلة من أوّلها.
+// موضعُه هنا لا في القسم الموظَّفيّ: الرادُّ هو الموظّف نفسُه، والحارس في
+// المتحكّم يتحقّق أنّه صاحبُ الطلب. راجع replyToLeave.
+router.post('/me/leaves/:id/reply', hr.replyToLeave);
 // التعديل والحذف ما دام الطلب لم يمسَّه أحد — الحارس في المتحكّم لا هنا.
 router.put('/me/leaves/:id', hr.updateMyLeave);
 router.delete('/me/leaves/:id', hr.deleteMyLeave);
@@ -50,6 +54,12 @@ router.post('/me/requests', hr.createMyRequest);
 router.put('/me/requests/:id', hr.updateMyRequest);
 router.delete('/me/requests/:id', hr.deleteMyRequest);
 router.get('/team/leaves', hr.listTeamLeaves);
+
+// صندوقُ وارد الموافقات — كلُّ مَن يملك محطّةً في السلسلة يقرأ منه ما ينتظره.
+// بلا `authorize`: المتحكّمُ نفسُه يبني الاستعلامَ من محطّات القارئ، فمَن لا
+// محطّةَ له لا يرى شيئًا أصلًا. راجع utils/leaveChain.inboxFilter.
+router.get('/leaves/inbox', hr.listLeaveInbox);
+router.get('/leaves/inbox/count', hr.leaveInboxCount);
 
 // Leave types: anyone can read the active list (for the request dropdown);
 // only staff can mutate.

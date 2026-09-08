@@ -5,12 +5,13 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { CalendarDays, Plus, Check, X, XCircle, AlertTriangle, ShieldCheck, Pencil, Trash2 } from 'lucide-react';
+import { CalendarDays, Plus, Check, X, XCircle, AlertTriangle, ShieldCheck, Pencil, Trash2, HelpCircle, Eye, Send } from 'lucide-react';
 import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, fmtDate, leaveTypeLabel, today, earliestStartDate, daysUntil } from '@/lib/hr';
 import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, TextInput, Select, TextArea, Tabs, StatCard, Loader2 } from '@/components/hr/HRKit';
 import { getHrMyLeavesTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import FilePicker, { AttachmentList, type PickedFile } from '@/components/system/FilePicker';
+import { LeaveChainBar, LeaveThread } from '@/components/hr/LeaveChain';
 
 export default function MyLeavesPage() {
   const { confirm, notify } = useDialog();
@@ -77,6 +78,9 @@ export default function MyLeavesPage() {
   const [editing, setEditing] = useState<LeaveRequest | null>(null);
   const editable = (l: LeaveRequest) =>
     ['pending_manager', 'pending_hr'].includes(l.status) && !l.managerDecision?.at && !l.hrDecision?.at;
+  // الإلغاءُ متاحٌ ما دام الطلبُ لم يُغلَق — في أيّ محطّةٍ كان، أو مرتدًّا للردّ.
+  const cancellable = (l: LeaveRequest) =>
+    ['pending_manager', 'pending_hr', 'pending_finance', 'pending_executive', 'info_requested'].includes(l.status);
 
   const openEdit = (l: LeaveRequest) => {
     setEditing(l);
@@ -127,6 +131,33 @@ export default function MyLeavesPage() {
   const cancel = async (l: LeaveRequest) => {
     if (!(await confirm(tx.cancelRequestConfirm))) return;
     try { await api.patch(`/api/hr/me/leaves/${l._id}/cancel`, {}); load(); } catch (e: any) { notify(e.message, 'error'); }
+  };
+
+  // ── الردُّ على استفسار ────────────────────────────────────────────────────
+  // محطّةٌ سألت بدل أن ترفض، فعاد الطلبُ إلى صاحبه. وردُّه يُعيد السلسلةَ من
+  // أوّلها — لأنّ الطلبَ بعد الردّ لم يعد الطلبَ الذي وافق عليه المدير.
+  const [answering, setAnswering] = useState<LeaveRequest | null>(null);
+  const [answer, setAnswer] = useState('');
+  const [answerFiles, setAnswerFiles] = useState<PickedFile[]>([]);
+  const [detail, setDetail] = useState<LeaveRequest | null>(null);
+
+  const lastQuestion = (l: LeaveRequest) =>
+    [...(l.thread || [])].reverse().find((t) => t.kind === 'question') || null;
+
+  const sendReply = async () => {
+    if (!answering || !answer.trim()) return;
+    setBusy(true);
+    try {
+      const f = answerFiles[0];
+      await api.post(`/api/hr/me/leaves/${answering._id}/reply`, {
+        text: answer.trim(),
+        attachment: f?.dataUrl, attachmentName: f?.fileName,
+      });
+      setAnswering(null); setAnswer(''); setAnswerFiles([]);
+      notify(ar ? 'أُرسل ردّك — عاد الطلبُ إلى مديرك المباشر.' : 'Your reply was sent — the request went back to your direct manager.', 'success');
+      load();
+    } catch (e: any) { notify(e.message, 'error'); }
+    setBusy(false);
   };
 
   const decide = async (decision: 'approved' | 'rejected') => {
@@ -205,7 +236,14 @@ export default function MyLeavesPage() {
                   <Tr key={l._id}>
                     <Td className="text-slate-900">{leaveTypeLabel(l.leaveType, lang)}</Td>
                     <Td>{fmtDate(l.startDate)}</Td><Td>{fmtDate(l.endDate)}</Td><Td>{l.days}</Td>
-                    <Td><Badge style={LEAVE_STATUS[l.status]} lang={lang} /></Td>
+                    <Td>
+                      <Badge style={LEAVE_STATUS[l.status]} lang={lang} />
+                      {l.status === 'info_requested' && lastQuestion(l) && (
+                        <p className="mt-1 max-w-xs truncate text-[11px] text-orange-700" title={lastQuestion(l)?.text}>
+                          {lastQuestion(l)?.text}
+                        </p>
+                      )}
+                    </Td>
                     <Td end>
                       <div className="flex items-center justify-end gap-1">
                         {editable(l) && (
@@ -214,7 +252,14 @@ export default function MyLeavesPage() {
                             <button type="button" onClick={() => removeLeave(l)} className="text-slate-400 hover:text-red-600" title={ar ? 'حذف' : 'Delete'}><Trash2 className="w-4 h-4" /></button>
                           </>
                         )}
-                        {(l.status === 'pending_manager' || l.status === 'pending_hr') && (
+                        {l.status === 'info_requested' && (
+                          <button type="button" onClick={() => { setAnswering(l); setAnswer(''); setAnswerFiles([]); }}
+                            className="flex items-center gap-1 rounded-lg bg-orange-500/20 px-2 py-1 text-[11px] font-semibold text-orange-700 hover:bg-orange-500/30">
+                            <HelpCircle className="w-3.5 h-3.5" />{ar ? 'الردّ على الاستفسار' : 'Reply'}
+                          </button>
+                        )}
+                        <button type="button" onClick={() => setDetail(l)} className="text-slate-400 hover:text-[#f37121]" title={ar ? 'مسار الطلب' : 'Request trail'}><Eye className="w-4 h-4" /></button>
+                        {cancellable(l) && (
                           <button type="button" onClick={() => cancel(l)} className="text-slate-500 hover:text-red-600" title={tx.cancel}><XCircle className="w-4 h-4" /></button>
                         )}
                       </div>
@@ -350,6 +395,49 @@ export default function MyLeavesPage() {
           </Field>
           {balance && <p className="text-xs text-slate-500">{`${tx.availableBalancePrefix} ${balance.available} ${tx.daysWord}`}</p>}
         </div>
+      </Modal>
+
+      {/* الردُّ على استفسار — نصٌّ ومرفقٌ واحد، ثمّ تعود السلسلةُ من أوّلها. */}
+      <Modal open={!!answering} onClose={() => setAnswering(null)}
+        title={ar ? 'الردّ على الاستفسار' : 'Reply to the question'}
+        footer={<>
+          <button type="button" onClick={() => setAnswering(null)} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-900">{tx.cancel}</button>
+          <PrimaryButton onClick={sendReply} disabled={busy || !answer.trim()}>
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}{ar ? 'إرسال الردّ' : 'Send reply'}
+          </PrimaryButton>
+        </>}>
+        {answering && (
+          <div className="space-y-3">
+            <LeaveThread leave={answering} lang={ar ? 'ar' : 'en'} />
+            <Field label={ar ? 'ردّك' : 'Your reply'}>
+              <TextArea rows={4} value={answer} onChange={(e) => setAnswer(e.target.value)}
+                placeholder={ar ? 'اكتب ردّك أو ما عدّلته…' : 'Write your reply or what you changed…'} />
+            </Field>
+            <Field label={ar ? 'مرفق (إيصال، تقرير…) — اختياري' : 'Attachment (receipt, report…) — optional'}>
+              <FilePicker files={answerFiles} onChange={setAnswerFiles} max={1} />
+            </Field>
+            <p className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+              {ar ? 'بعد الإرسال يبدأ الطلبُ دورتَه من المدير المباشر مرّةً أخرى — لأنّ ما وافقوا عليه قد تغيّر.'
+                  : 'After sending, the request starts again from your direct manager — because what they approved has changed.'}
+            </p>
+          </div>
+        )}
+      </Modal>
+
+      {/* مسارُ الطلب — أين وقف ومن قال ماذا. */}
+      <Modal open={!!detail} onClose={() => setDetail(null)} wide title={ar ? 'مسار الطلب' : 'Request trail'}>
+        {detail && (
+          <div className="space-y-3 text-sm">
+            <p className="text-slate-700">
+              {leaveTypeLabel(detail.leaveType, lang)} · {fmtDate(detail.startDate)} → {fmtDate(detail.endDate)} · {detail.days} {tx.dayShort}
+            </p>
+            <LeaveChainBar leave={detail} lang={ar ? 'ar' : 'en'} />
+            <LeaveThread leave={detail} lang={ar ? 'ar' : 'en'} />
+            {!(detail.thread || []).length && (
+              <p className="text-xs text-slate-500">{ar ? 'لا مراسلات على هذا الطلب.' : 'No conversation on this request.'}</p>
+            )}
+          </div>
+        )}
       </Modal>
 
       {/* Team review modal */}

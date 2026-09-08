@@ -1142,6 +1142,12 @@
       "en": "My Leaves"
     },
     {
+      "key": "/system/hr/leave-approvals",
+      "section": "Self Service",
+      "ar": "موافقات الإجازات",
+      "en": "Leave Approvals"
+    },
+    {
       "key": "/system/hr/my-requests",
       "section": "Self Service",
       "ar": "طلباتي",

@@ -1396,6 +1396,13 @@
       ],
       "wildcard": false
     },
+    "/system/hr/leave-approvals": {
+      "apis": [
+        "/api/hr/leaves",
+        "/api/hr/leaves/inbox"
+      ],
+      "wildcard": false
+    },
     "/system/hr/my-requests": {
       "apis": [
         "/api/hr/me/requests",

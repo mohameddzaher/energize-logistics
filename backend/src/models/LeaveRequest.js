@@ -62,15 +62,48 @@ const leaveRequestSchema = new mongoose.Schema(
     recordedByName: { type: String, default: '' },
     recordedAt: { type: Date },
 
+    // ── سلسلةُ الموافقات أربعُ محطّات ────────────────────────────────────
+    //
+    // المديرُ المباشر ← الموارد البشريّة ← الحسابات ← الإدارة العليا. وكانت
+    // محطّتين، فما يخصّ المالَ (سلفةٌ على الموظّف، أو مستحقّاتٌ قبل السفر) لم
+    // يكن يمرّ على الحسابات أصلًا، والإدارةُ العليا تعلم بالسفر بعد وقوعه.
+    //
+    // و«طلبُ إيضاح» ليس رفضًا: قد تقول الحساباتُ «عليه مبلغٌ يُسدَّد أوّلًا»
+    // فيردّ الموظّفُ أو يعدّل طلبَه. وحين يردّ تعود السلسلةُ من أوّلها —
+    // لأنّ الطلبَ الذي وافق عليه المديرُ لم يعد هو الطلبَ نفسَه.
     status: {
       type: String,
-      enum: ['pending_manager', 'pending_hr', 'approved', 'rejected', 'cancelled'],
+      enum: [
+        'pending_manager', 'pending_hr', 'pending_finance', 'pending_executive',
+        'info_requested', 'approved', 'rejected', 'cancelled',
+      ],
       default: 'pending_manager',
     },
-    currentStage: { type: String, enum: ['manager', 'hr', 'done'], default: 'manager' },
+    currentStage: {
+      type: String,
+      enum: ['manager', 'hr', 'finance', 'executive', 'employee', 'done'],
+      default: 'manager',
+    },
 
     managerDecision: decisionSchema,
     hrDecision: decisionSchema,
+    financeDecision: decisionSchema,
+    executiveDecision: decisionSchema,
+
+    // ── ما دار بين الطالب والمراجعين ────────────────────────────────────
+    // سؤالٌ يُطرح وردٌّ يُكتب — يبقيان على الطلب فيُقرأ بعد شهرٍ لماذا تأخّر
+    // وبم أُجيب. ولا يُمحى شيءٌ منهما.
+    thread: [{
+      at: { type: Date, default: Date.now },
+      kind: { type: String, enum: ['question', 'reply'], required: true },
+      stage: { type: String, default: '' },        // مَن سأل: hr / finance / …
+      by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      byName: { type: String, default: '' },
+      text: { type: String, trim: true, default: '' },
+      // مرفقٌ يرسله الموظّف مع ردّه (base64) — إيصالُ سدادٍ مثلًا.
+      attachment: { type: String, default: '' },
+      attachmentName: { type: String, default: '' },
+    }],
 
     // The requester's signature (base64 PNG) applied at submission time.
     employeeSignature: { type: String, default: '' },

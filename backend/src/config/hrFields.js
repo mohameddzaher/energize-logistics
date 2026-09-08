@@ -75,6 +75,8 @@ const GROUPS = [
       { key: 'systemStatus', ar: 'داخل النظام', en: 'In system', type: 'text', groupable: true },
       { key: 'hireDate', ar: 'تاريخ التعيين', en: 'Hire date', type: 'date' },
       { key: 'isOutsideKingdom', ar: 'خارج المملكة', en: 'Outside kingdom', type: 'bool', groupable: true },
+      // النوعُ بجانب المهنة في كلّ شاشة: على الكفالة أم عملٌ حرّ.
+      { key: 'employmentType', ar: 'النوع', en: 'Engagement type', type: 'text', groupable: true, lookup: 'hr_employment_type' },
       { key: 'isFreelancer', ar: 'عمل حر', en: 'Freelancer', type: 'bool', groupable: true },
     ],
   },

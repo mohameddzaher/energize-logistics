@@ -137,6 +137,14 @@ const employeeSchema = new mongoose.Schema(
     branchName: { type: String, trim: true, default: '', index: true },
     isOutsideKingdom: { type: Boolean, default: false, index: true },
     isFreelancer: { type: Boolean, default: false, index: true },
+    // ── نوعُ الارتباط: على كفالتنا أم عملٌ حرّ ────────────────────────────
+    //
+    // كان `isFreelancer` منطقيًّا (نعم/لا). والمنطقيُّ لا يحتمل نوعًا ثالثًا
+    // يظهر غدًا (منتدَب، متعاقد مع مورّد…)، ولا يُدار من إعدادات القسم.
+    // فصار الحقلُ مفتاحَ قائمةٍ تُدار من «القوائم المنسدلة»، ويبقى
+    // `isFreelancer` مرآةً له لأنّ عليه تقوم عدّاداتٌ قائمة — تُكتب الاثنتان
+    // معًا فلا يفترقان. راجع utils/employmentType.
+    employmentType: { type: String, trim: true, default: '', index: true },
     iqamaIssueDate: { type: Date, default: null },
     iqamaExpiryHijri: { type: String, trim: true, default: '' },
     contractOccupation: { type: String, trim: true, default: '' },

@@ -713,6 +713,25 @@ exports.updateFields = async (req, res) => {
       return res.status(400).json({ message: rejected.length ? `حقول غير معروفة: ${rejected.join(', ')}` : 'لم تُرسل أي حقول' });
     }
 
+    // ── وتغييرُ النوع يجرّ معه بياناتِ العقد ────────────────────────────
+    //
+    // مَن ليس على كفالتنا فلا عقدَ بيننا وبينه، فبياناتُ عقده «غير مطلوبة» لا
+    // «ناقصة». والقاعدةُ تُطبَّق هنا في الخادم لا في الشاشة، فيستوي فيها من
+    // غيّر النوعَ من الماستر ومن غيّره من ملفّ الموظّف — والعكسُ كذلك: من
+    // نُقل إلى الكفالة تعود بياناتُ عقده مطلوبةً كغيره.
+    if (Object.prototype.hasOwnProperty.call(applied, 'employmentType')) {
+      const { applyEmploymentType } = require('../utils/employmentType');
+      const set = applyEmploymentType(applied.employmentType);
+      emp.isFreelancer = set.isFreelancer;
+      for (const [key, val] of Object.entries(set)) {
+        if (!key.startsWith('fieldStatus.')) continue;
+        const sk = key.slice('fieldStatus.'.length);
+        if (val) emp.fieldStatus.set(sk, val);
+        else emp.fieldStatus.delete(sk);
+      }
+      applied.isFreelancer = emp.isFreelancer;
+    }
+
     // «غير مطلوب» قرار إداري — لو المستخدم بيعلّم حقل كده بنسجّلها صراحةً.
     for (const [k, code] of Object.entries(req.body.markStatus || {})) {
       if (!H.getField(k)) continue;

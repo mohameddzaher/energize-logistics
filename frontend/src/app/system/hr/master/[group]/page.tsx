@@ -232,6 +232,21 @@ function GroupInner() {
         })}
       </div>
 
+      {/* ── وإن جاء من رقم الشريط يُقال له لماذا الجدولُ مقصوص ──────────────
+          الضغطُ على «٢٣٢» في الشريط يفتح هذه الصفحة على تلك الصفوف وحدَها.
+          وبغير سطرٍ يقول ذلك يظنُّ القارئُ أنّ هذا كلُّ ما في المجموعة. */}
+      {state === 'attention' && (
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5">
+          <p className="text-[13px] font-semibold text-rose-800">
+            {ar ? 'المعروض: المنتهي والقريب من الانتهاء فقط' : 'Showing expired and nearing expiry only'}
+          </p>
+          <button type="button" onClick={() => setState('')}
+            className="text-[12px] font-medium text-rose-700 hover:text-rose-900 underline">
+            {ar ? 'عرض الكل' : 'Show all'}
+          </button>
+        </div>
+      )}
+
       {/* حالات التاريخ لو المجموعة مستند */}
       {g.document && d.summary.states && (
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2.5">

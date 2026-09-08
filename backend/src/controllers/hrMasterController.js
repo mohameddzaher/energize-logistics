@@ -624,7 +624,13 @@ exports.records = async (req, res) => {
 
     if (field && wantStatus) rows = rows.filter((r) => r.statuses[field] === wantStatus);
     else if (wantStatus) rows = rows.filter((r) => g.fields.some((f) => r.statuses[f.key] === wantStatus));
-    if (wantState) rows = rows.filter((r) => r.state === wantState);
+    // ── و«يحتاج انتباهًا» حالةٌ تُطلَب باسمها ──────────────────────────────
+    // الشريطُ يعرض رقمَ المنتهي والحرج والقريب مجموعةً (`needsAttention`).
+    // وبغير قيمةٍ تجمعها لا يستطيع الضغطُ على الرقم أن يفتح صفوفَه بعينها —
+    // فيقرأ المستخدم رقمًا ويفتح جدولًا فيه غيرُه، وهو أصلُ الشكوى.
+    const ATTENTION = ['expired', 'critical', 'warning'];
+    if (wantState === 'attention') rows = rows.filter((r) => ATTENTION.includes(r.state));
+    else if (wantState) rows = rows.filter((r) => r.state === wantState);
     if (withinDays !== null && g.document) {
       rows = rows.filter((r) => r.daysRemaining != null && r.daysRemaining <= withinDays
         && (includeExpired || r.daysRemaining >= 0));
@@ -896,7 +902,9 @@ exports.expiring = async (req, res) => {
         const st = H.stateOf(e[g.expiryField], stCode === 'filled' ? '' : stCode, ALERT);
         if (st.state === 'not_applicable' || st.state === 'missing') continue;
         if (!includeExpired && st.state === 'expired') continue;
-        if (wantState && st.state !== wantState) continue;
+        // «يحتاج انتباهًا» تجمع الثلاثَ حالات — راجع records.
+        if (wantState === 'attention') { if (!['expired', 'critical', 'warning'].includes(st.state)) continue; }
+        else if (wantState && st.state !== wantState) continue;
         if (withinDays !== null && st.days > withinDays) continue;
         rows.push({
           employeeId: e._id, employeeNumber: e.employeeNumber,

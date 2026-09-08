@@ -67,6 +67,10 @@ export const STATE_META: Record<string, { ar: string; en: string; color: string;
   expired: { ar: 'منتهي', en: 'Expired', color: '#dc2626', bg: 'bg-red-100 text-red-700' },
   missing: { ar: 'بدون تاريخ', en: 'No date', color: '#94a3b8', bg: 'bg-slate-100 text-slate-600' },
   not_applicable: { ar: 'لا ينطبق', en: 'Not applicable', color: '#64748b', bg: 'bg-slate-100 text-slate-500' },
+  // ── حالةٌ تجمع الثلاثَ التي تستدعي عملًا ────────────────────────────────
+  // الرقمُ في الشريط هو المنتهي والحرج والقريب مجموعةً. وبغير قيمةٍ تجمعها لا
+  // يفتح الضغطُ على الرقم صفوفَه بعينها — فيُقرأ رقمٌ ويُفتَح جدولٌ فيه غيرُه.
+  attention: { ar: 'يحتاج انتباهًا', en: 'Needs attention', color: '#dc2626', bg: 'bg-rose-100 text-rose-700' },
 };
 export const statusLabel = (c: string, ar: boolean) => (STATUS_META[c] ? (ar ? STATUS_META[c].ar : STATUS_META[c].en) : c);
 export const stateLabel = (c: string, ar: boolean) => (STATE_META[c] ? (ar ? STATE_META[c].ar : STATE_META[c].en) : c);

@@ -665,6 +665,115 @@ exports.records = async (req, res) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  الماستر — صفٌّ واحدٌ لكلّ موظّف، فيه كلُّ شيء
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * GET /master/grid?page=&limit=&sort=&dir=&…الفلاتر نفسُها
+ *
+ * ── لماذا صفحةٌ واحدةٌ تجمع كلَّ المجموعات ────────────────────────────────
+ * صفحاتُ القسم مقسَّمةٌ بحسب المستند: إقاماتٌ، وجوازات، وعقود… وهو التقسيمُ
+ * الصحيح للعمل اليوميّ. لكنّ السؤالَ «أرِني هذا الموظّف كلَّه» — أو «صدّر لي
+ * الملفّ كلَّه بأعمدةٍ أختارها» — لا تجيب عنه أيُّ واحدةٍ منها، ويُجاب عنه
+ * اليوم بفتح ثلاثَ عشرةَ شاشةً ولصقِ نتائجها في إكسل.
+ *
+ * ── والصفحاتُ مرقَّمة ─────────────────────────────────────────────────────
+ * العنقودُ يسلّم نحوَ ٩٥ كيلوبايت في الثانية، فأربعُمئةِ موظّفٍ بكلّ حقولهم
+ * أحدَ عشرَ ثانية. خمسون صفًّا في الصفحة تُنقَل في أقلَّ من نصف ثانية —
+ * والتصديرُ يجلبها صفحةً صفحةً حين يُطلَب، لا في كلّ فتحة.
+ */
+exports.grid = async (req, res) => {
+  try {
+    const ck = `hrm:grid:${JSON.stringify(req.query || {})}`;
+    const cached = cache.get(ck);
+    if (cached !== undefined) return res.json(cached);
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 50));
+
+    const allFields = [...new Set(H.GROUPS.flatMap((g) => g.fields.map((f) => f.key)))];
+    const select = [...new Set([
+      'employeeNumber', 'arabicName', 'firstName', 'lastName', 'employmentStatus',
+      'department', 'branchName', 'project', 'fieldStatus', 'employmentType', 'isFreelancer',
+      ...allFields, ...DATE_FILTERABLE,
+    ])].join(' ');
+
+    // الفلترةُ والترتيبُ في القاعدة؛ ومدى التواريخ المشتقُّ يُطبَّق بعدها كما
+    // في بقيّة الشاشات (راجع findEmployees).
+    const filter = buildFilter(req.query);
+    const pred = dateRangePred(req.query);
+    const sortKey = String(req.query.sort || 'employeeNumber');
+    const dir = req.query.dir === 'desc' ? -1 : 1;
+
+    let rows; let total;
+    if (pred) {
+      // شرطٌ لا يُعبَّر عنه في القاعدة: تُقرأ المطابقةُ ثمّ تُقصّ.
+      const all = await Employee.find(filter).select(select).sort({ [sortKey]: dir }).lean();
+      const kept = all.filter(pred);
+      total = kept.length;
+      rows = kept.slice((page - 1) * limit, page * limit);
+    } else {
+      [rows, total] = await Promise.all([
+        Employee.find(filter).select(select).sort({ [sortKey]: dir })
+          .skip((page - 1) * limit).limit(limit).lean(),
+        Employee.countDocuments(filter),
+      ]);
+    }
+
+    // عددُ العهد لكلّ موظّفٍ في الصفحة — استعلامٌ واحدٌ لا واحدٌ لكلّ صفّ.
+    const Asset = require('../models/Asset');
+    const ids = rows.map((r) => r._id);
+    const custody = new Map();
+    if (ids.length) {
+      const agg = await Asset.aggregate([
+        { $match: { employee: { $in: ids }, status: 'assigned' } },
+        { $group: { _id: '$employee', n: { $sum: 1 } } },
+      ]);
+      agg.forEach((a) => custody.set(String(a._id), a.n));
+    }
+
+    const out = rows.map((e) => {
+      const row = {
+        _id: e._id,
+        employeeNumber: e.employeeNumber,
+        name: e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim(),
+        employmentStatus: e.employmentStatus,
+        custodyCount: custody.get(String(e._id)) || 0,
+        values: {},
+        statuses: {},
+      };
+      for (const k of allFields) {
+        const v = H.valueOf(e, k);
+        // الفارغُ لا يُرسَل: أربعةٌ وخمسون مفتاحًا لكلّ صفٍّ أكثرُها فارغ،
+        // ونقلُها يضاعف الحمولةَ على وصلةٍ تسلّم ٩٥ ك.ب/ث.
+        if (v !== null && v !== undefined && v !== '') row.values[k] = v;
+        const st = statusOf(e, k);
+        // و«مملوء» هي الحالُ الغالبة، فتُفهَم بالسكوت وتُرسَل ما سواها.
+        if (st !== 'filled') row.statuses[k] = st;
+      }
+      return row;
+    });
+
+    const body = {
+      rows: out,
+      total,
+      page,
+      limit,
+      pages: Math.max(1, Math.ceil(total / limit)),
+      // تعريفُ الأعمدة يُرسَل مع البيانات: الشاشةُ لا تعيد كتابته، وأيُّ حقلٍ
+      // يُضاف في `config/hrFields` يظهر هنا بلا تعديلٍ في الواجهة.
+      columns: H.GROUPS.flatMap((g) => g.fields.map((f) => ({
+        key: f.key, ar: f.ar, en: f.en, type: f.type, group: g.key, groupAr: g.ar, groupEn: g.en,
+      }))),
+    };
+    cache.set(ck, body, 30000);
+    res.json(body);
+  } catch (e) {
+    console.error('hr grid', e);
+    res.status(500).json({ message: 'تعذّر تحميل ماستر الموارد البشرية' });
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  ملء البيانات الناقصة — من أي مكان
 // ═══════════════════════════════════════════════════════════════════════════
 /**

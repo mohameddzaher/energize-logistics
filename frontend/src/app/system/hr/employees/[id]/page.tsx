@@ -285,7 +285,15 @@ export default function EmployeeProfilePage() {
     { key: 'documents', label: ar ? 'الملفات' : 'Files', badge: data.documents?.length || undefined },
     { key: 'leaves', label: tx.tabLeaves, badge: data.leaves.length || undefined },
     { key: 'custody', label: tx.tabCustody, badge: assignedAssets.length || undefined },
-    { key: 'vehicles', label: vtx.empVehicleTab, badge: (vehicleData?.authorizations.length || 0) || undefined },
+    // ── والشارةُ تعدّ كلَّ ما يخصّه في المركبات ──────────────────────────
+    // كانت تعدّ التفاويضَ وحدَها، فمن رُكّبت له شريحةُ بترو اب على سيّارته
+    // الخاصّة بلا تفويضٍ يظهر بلا شارة — فتبدو التبويبةُ فارغةً ولا تُفتَح،
+    // وتبقى الشريحةُ تصرف من حسابنا ولا يعلم بها أحد.
+    { key: 'vehicles',
+      label: vtx.empVehicleTab,
+      badge: ((vehicleData?.authorizations.length || 0)
+        + (vehicleData?.registry?.length || 0)
+        + (vehicleData?.accidents?.length || 0)) || undefined },
     { key: 'contracts', label: tx.tabContracts, badge: data.contracts.length || undefined },
     { key: 'requests', label: tx.tabRequests, badge: data.requests.length || undefined },
     ...(staff ? [{ key: 'history', label: ar ? 'السجل' : 'History', badge: undefined }] : []),

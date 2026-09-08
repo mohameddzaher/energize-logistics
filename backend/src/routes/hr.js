@@ -25,6 +25,9 @@ router.get('/master/field-config', authorize(...STAFF), hrm.fieldConfig);
 // الفلاتر المتاحة وقيمها بأعدادها — محسوبة على ما تبقّى بعد بقيّة الفلاتر
 router.get('/master/filters', authorize(...STAFF), hrm.filterOptions);
 router.get('/master/expiring', authorize(...STAFF), hrm.expiring);
+// الماستر: صفٌّ واحدٌ لكلّ موظّف بكلّ الأعمدة — يُسجَّل قبل `records/:group`
+// لأنّه أخصُّ منه في الشكل ولا يتداخلان.
+router.get('/master/grid', authorize(...STAFF), hrm.grid);
 router.get('/master/records/:group', authorize(...STAFF), hrm.records);
 router.patch('/master/employees/:id/fields', authorize(...STAFF), hrm.updateFields);
 // التجديد — فرديًّا وجماعيًّا. `renew-bulk` قبل أي مسار فيه معرّف حتى لا يُقرأ

@@ -1016,6 +1016,12 @@
       "en": "HR Dashboard"
     },
     {
+      "key": "/system/hr/master/grid",
+      "section": "HR",
+      "ar": "ماستر الموارد البشرية",
+      "en": "HR Master"
+    },
+    {
       "key": "/system/hr/master/expiring",
       "section": "HR",
       "ar": "انتهاءات المستندات",

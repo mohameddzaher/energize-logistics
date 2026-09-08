@@ -1268,6 +1268,14 @@
       ],
       "wildcard": false
     },
+    "/system/hr/master/grid": {
+      "apis": [
+        "/api/hr/master/grid",
+        "/api/hr/master/overview",
+        "/api/reports"
+      ],
+      "wildcard": false
+    },
     "/system/hr/master/expiring": {
       "apis": [
         "/api/hr/master/expiring",

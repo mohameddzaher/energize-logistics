@@ -2144,6 +2144,24 @@ exports.updateClaim = async (req, res) => {
     if (!doc || doc.isActive === false) return res.status(404).json({ message: 'الحادث غير موجود' });
     const oldKey = doc.vehiclePlateKey;
     applyClaim(doc, req.body);
+
+    // ── وردُّ التأمين يُضاف ولا يُكتَب فوق سابقه ──────────────────────────
+    // شركةُ التأمين تردّ مرّاتٍ على المطالبة الواحدة، وتاريخُ المفاوضة هو ما
+    // يُحتَجّ به عند الخلاف. فما يصل هنا يُلحَق بالسجلّ ولا يمحو شيئًا.
+    const reply = req.body.newInsurerReply;
+    if (reply && String(reply.text || '').trim()) {
+      doc.insurerReplies.push({
+        at: reply.at ? new Date(reply.at) : new Date(),
+        text: String(reply.text).trim(),
+        amountSar: reply.amountSar == null || reply.amountSar === '' ? null : Number(reply.amountSar),
+        by: req.user?._id,
+        byName: [req.user?.firstName, req.user?.lastName].filter(Boolean).join(' '),
+      });
+      // وآخرُ ردٍّ هو تاريخُ آخرِ تحديثٍ من الشركة — يُقرأ في «المتوقّفة».
+      doc.claim = doc.claim || {};
+      doc.claim.lastInsurerUpdateDate = new Date();
+    }
+
     await doc.save();
     await syncAccidentCount(oldKey);
     if (doc.vehiclePlateKey !== oldKey) await syncAccidentCount(doc.vehiclePlateKey);

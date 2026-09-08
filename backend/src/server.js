@@ -146,6 +146,8 @@ app.use(csrfGuard);
 // /api/uploads so the frontend's /api/* proxy forwards it (same-origin). Placed
 // BEFORE the rate limiter so viewing files doesn't consume the API quota.
 // Filenames are random and unguessable; the app is internal (behind login).
+// أخطاءُ المتصفّح تصل إلينا بلا تسجيل دخول — راجع routes/clientErrors.
+app.use('/api/client-errors', require('./routes/clientErrors'));
 app.use('/api/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Logging

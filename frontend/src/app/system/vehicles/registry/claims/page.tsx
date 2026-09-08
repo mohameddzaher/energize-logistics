@@ -39,7 +39,11 @@ const GETTERS: Record<string, (r: any) => any> = {
   insurer: (r) => r.claim?.insurerAr,
   estimated: (r) => (r.claim?.estimatedAmountSar ? money(r.claim.estimatedAmountSar) : ''),
   recovery: (r) => (r.claim?.expectedRecoverySar ? money(r.claim.expectedRecoverySar) : ''),
-  status: (r) => r.statusAr || (r.statusCode === 'closed' ? 'مقفولة' : 'قيد المتابعة'),
+  // ── والحالةُ خبرٌ واحد ────────────────────────────────────────────────
+  // كان يُقرأ `statusAr` أوّلًا وهو نصٌّ حرٌّ جاء مع الاستيراد، فيُقفل
+  // المستخدمُ المطالبةَ ويبقى العمودُ يقول «wait». الكودُ هو الخبر، والنصُّ
+  // يُشتقُّ منه ويُعرَض بلغة الشاشة — فلا يختلط عربيٌّ بإنجليزيّ.
+  status: (r) => (r.statusCode === 'closed' ? 'مقفولة' : 'قيد المتابعة'),
   lastReply: (r) => fmtDate(r.claim?.lastInsurerUpdateDate),
   notes: (r) => r.claim?.notesAr,
 };
@@ -85,7 +89,8 @@ function ClaimsInner() {
     { header: t('شركة التأمين', 'Insurer'), key: 'claim', transform: (v: any) => v?.insurerAr || '', width: 20 },
     { header: t('المبلغ المقدَّر', 'Estimated'), key: 'claim', transform: (v: any) => v?.estimatedAmountSar ?? '', width: 16 },
     { header: t('متوقع استرداده', 'Expected recovery'), key: 'claim', transform: (v: any) => v?.expectedRecoverySar ?? '', width: 18 },
-    { header: t('الحالة', 'Status'), key: 'statusAr', width: 14 },
+    { header: t('الحالة', 'Status'), key: 'statusCode', width: 14,
+      transform: (v: any) => (v === 'closed' ? t('مقفولة', 'Closed') : t('قيد المتابعة', 'Pending')) },
     { header: t('الطرف الآخر', 'Counterparty'), key: 'counterpartyNameAr', width: 24 },
     { header: t('تم الإبلاغ عبر', 'Reported via'), key: 'reportedViaAr', width: 14 },
     { header: t('الملاحظات', 'Notes'), key: 'claim', transform: (v: any) => v?.notesAr || '', width: 46 },
@@ -208,7 +213,7 @@ function ClaimsInner() {
                     <td className="px-3 py-2.5">
                       <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
                         r.statusCode === 'closed' ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-700'}`}>
-                        {r.statusAr || (r.statusCode === 'closed' ? t('مقفولة', 'Closed') : t('قيد المتابعة', 'Pending'))}
+                        {r.statusCode === 'closed' ? t('مقفولة', 'Closed') : t('قيد المتابعة', 'Pending')}
                       </span>
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
@@ -293,7 +298,8 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
     faultPercent: claim?.faultPercent ?? '',
     reportedViaAr: claim?.reportedViaAr || '',
     statusCode: claim?.statusCode || 'pending',
-    statusAr: claim?.statusAr || '',
+    newReplyText: '',
+    newReplyAmount: '',
     insurerAr: claim?.claim?.insurerAr || '',
     claimNumber: claim?.claim?.claimNumber || '',
     estimatedAmountSar: claim?.claim?.estimatedAmountSar ?? '',
@@ -323,7 +329,12 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
         faultPercent: num(f.faultPercent),
         reportedViaAr: f.reportedViaAr.trim(),
         statusCode: f.statusCode,
-        statusAr: f.statusAr.trim() || (f.statusCode === 'closed' ? 'مقفولة' : 'قيد المتابعة'),
+        // النصُّ لا يُخزَّن: يُشتقُّ من الكود عند العرض بلغة الشاشة.
+        statusAr: '',
+        // الردُّ الجديد يُلحَق بالسجلّ في الخادم — راجع updateClaim.
+        ...(f.newReplyText.trim()
+          ? { newInsurerReply: { text: f.newReplyText.trim(), amountSar: f.newReplyAmount || null } }
+          : {}),
         claim: {
           insurerAr: f.insurerAr.trim(),
           claimNumber: f.claimNumber.trim(),
@@ -375,6 +386,53 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
                 <option value="pending">{t('قيد المتابعة', 'Pending')}</option>
                 <option value="closed">{t('مقفولة', 'Closed')}</option>
               </select></div>
+          </div>
+
+          {/* ── ردودُ شركة التأمين: سجلٌّ يُضاف إليه ولا يُمحى ──────────────
+              الشركةُ تردّ مرّاتٍ على المطالبة الواحدة — تطلب مستندًا، ثمّ
+              تقدّر، ثمّ تعرض مبلغًا. وكتابةُ الردّ فوق سابقه تمحو تاريخَ
+              المفاوضة، وهو ما يُحتَجّ به عند الخلاف. والأحدثُ أوّلًا. */}
+          <div className="rounded-xl border border-slate-200 p-3">
+            <p className="text-[12.5px] font-bold text-slate-800 mb-2">
+              {t('ردود شركة التأمين', 'Insurer replies')}
+              {!!(claim?.insurerReplies?.length) && (
+                <span className="ms-1.5 px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-[11px] font-bold">
+                  {claim!.insurerReplies!.length}
+                </span>
+              )}
+            </p>
+
+            {!!(claim?.insurerReplies?.length) && (
+              <ul className="mb-3 space-y-1.5 max-h-48 overflow-y-auto">
+                {[...claim!.insurerReplies!]
+                  .sort((a2, b2) => new Date(b2.at).getTime() - new Date(a2.at).getTime())
+                  .map((rep, i) => (
+                    <li key={i} className="rounded-lg bg-slate-50 border border-slate-200 px-2.5 py-1.5">
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                        <span>{fmtDate(rep.at)}{rep.byName ? ` · ${rep.byName}` : ''}</span>
+                        {rep.amountSar != null && (
+                          <span className="font-bold text-slate-800 tabular-nums">{Number(rep.amountSar).toLocaleString()}</span>
+                        )}
+                      </div>
+                      <p className="text-[13px] text-slate-800 mt-0.5 whitespace-pre-wrap">{rep.text}</p>
+                    </li>
+                  ))}
+              </ul>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="sm:col-span-2">
+                <label className={lbl}>{t('إضافة رد جديد', 'Add a reply')}</label>
+                <textarea rows={2} value={f.newReplyText}
+                  onChange={(e) => set('newReplyText', e.target.value)}
+                  placeholder={t('ماذا ردّت الشركة؟', 'What did the insurer say?')} className={inp} />
+              </div>
+              <div>
+                <label className={lbl}>{t('المبلغ (اختياري)', 'Amount (optional)')}</label>
+                <input type="number" value={f.newReplyAmount}
+                  onChange={(e) => set('newReplyAmount', e.target.value)} className={inp} />
+              </div>
+            </div>
           </div>
 
           <div className="rounded-xl border border-slate-200 p-3">

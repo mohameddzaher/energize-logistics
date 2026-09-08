@@ -52,6 +52,24 @@ const vehicleClaimSchema = new mongoose.Schema({
     recoveryGapSar: { type: Number, default: null },
   },
 
+  // ── وردودُ شركة التأمين كثيرة، لا واحد ────────────────────────────────
+  //
+  // كان الردُّ خانةَ ملاحظاتٍ واحدة (`claim.notesAr`) يُكتَب فوقها في كلّ
+  // مرّة. وشركةُ التأمين تردّ مرّاتٍ على المطالبة الواحدة: تطلب مستندًا، ثمّ
+  // تقدّر، ثمّ تعرض مبلغًا. فكتابةُ الردّ الجديد فوق القديم تمحو تاريخَ
+  // المفاوضة — وهو ما يُحتَجّ به عند الخلاف.
+  //
+  // فصارت سجلًّا يُضاف إليه ولا يُمحى، ويُقرأ الأحدثُ أوّلًا.
+  insurerReplies: [{
+    at: { type: Date, default: Date.now },
+    text: { type: String, trim: true, default: '' },
+    amountSar: { type: Number, default: null },
+    by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    byName: { type: String, trim: true, default: '' },
+  }],
+
+  // نصُّ الحالة — لم يعد يُخزَّن ولا يُقرأ: الحالةُ تُشتقُّ من `statusCode`
+  // وتُعرَض بلغة الشاشة. أُبقي الحقلُ لبيانات قديمة ولا يُكتَب فيه.
   statusAr: { type: String, default: '' },
   statusCode: { type: String, default: '', index: true }, // pending / closed / …
 

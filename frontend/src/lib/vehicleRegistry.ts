@@ -156,7 +156,26 @@ export const STATUS_META: Record<string, { ar: string; en: string; color: string
   warning: { ar: 'قريب الانتهاء', en: 'Expiring soon', color: '#ca8a04', bg: 'bg-amber-100', text: 'text-amber-700' },
   valid: { ar: 'ساري', en: 'Valid', color: '#16a34a', bg: 'bg-emerald-100', text: 'text-emerald-700' },
   none: { ar: 'غير مسجّل', en: 'None', color: '#94a3b8', bg: 'bg-slate-100', text: 'text-slate-500' },
+  // ── والحالتان اللتان كانتا تُسقطان الشاشة ────────────────────────────────
+  // الخادمُ يبعث سبعَ حالاتٍ (`stateOf` في config/vehicleDocuments) وكان هذا
+  // الجدولُ يعرف خمسًا. فالمركبةُ التي بطاقةُ تشغيلها «غير مطلوبة» — وهي أربعٌ
+  // وسبعون مركبةً من ثلاثٍ وثلاثين وثلاثِ مئة — تُقرأ حالتُها `undefined` ثمّ
+  // يُقرأ منها اللونُ، فتسقط الصفحةُ كلُّها بـ «حدث خطأ في هذه الشاشة». ولم يكن
+  // العطبُ في المركبة ولا في بياناتها: مفتاحٌ ناقصٌ في جدولٍ هنا.
+  not_required: { ar: 'غير مطلوب', en: 'Not required', color: '#64748b', bg: 'bg-slate-100', text: 'text-slate-500' },
+  upcoming: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#0ea5e9', bg: 'bg-sky-100', text: 'text-sky-800' },
 };
+
+/**
+ * الحالةُ ← عرضُها، ولا تعود فارغةً أبدًا.
+ *
+ * وإكمالُ الجدول أعلاه وحدَه لا يكفي: حالةٌ ثامنةٌ تُضاف في الخادم غدًا تُعيد
+ * العطبَ نفسَه. فالقراءةُ تمرّ من هنا، وما لا يُعرَف يُعرض رماديًّا باسمه —
+ * سطرٌ غريبُ التسمية أهونُ من شاشةٍ لا تفتح.
+ */
+export const statusMeta = (s?: string | null) =>
+  STATUS_META[s || 'none'] || { ...STATUS_META.none, ar: String(s || '—'), en: String(s || '—') };
+
 
 export const statusLabel = (s: string, ar: boolean) => (STATUS_META[s] ? (ar ? STATUS_META[s].ar : STATUS_META[s].en) : s);
 export const statusColor = (s: string) => STATUS_META[s]?.color || '#94a3b8';
@@ -277,6 +296,10 @@ export const STATE_META: Record<string, { ar: string; en: string; color: string;
   missing: { ar: 'مطلوب — بلا تاريخ', en: 'Needed — no date', color: '#94a3b8', bg: 'bg-slate-100 text-slate-600' },
   not_applicable: { ar: 'غير مطلوب', en: 'Not applicable', color: '#64748b', bg: 'bg-slate-100 text-slate-500' },
 };
+
+/** توأمُ `statusMeta` لجدول الحالات — لا يعود فارغًا مهما كان المفتاح. */
+export const stateMeta = (s?: string | null) =>
+  STATE_META[s || 'valid'] || { ...STATE_META.not_applicable, ar: String(s || '—'), en: String(s || '—') };
 
 /** الحالةُ كما تُعرَض وتُفلتَر: ثلاثٌ لا خمس. */
 export const publicState = (s: string): string =>

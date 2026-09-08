@@ -18,7 +18,7 @@ import {
   ChevronLeft, Settings, CalendarClock, TriangleAlert,
 } from 'lucide-react';
 import FilterPanel, { countActive, type FilterValues } from '@/components/system/FilterPanel';
-import {
+import { stateMeta,
   getOverview, STATE_META, stateLabel, money, fmtDate, daysText,
   type VehicleOverview, type DocCard, type Breakdown,
 } from '@/lib/vehicleRegistry';
@@ -176,7 +176,7 @@ function VehiclesOverviewInner() {
           <h2 className="text-sm font-bold text-slate-800">{t('وثائق التأمين على مستوى الشركة', 'Company-level policies')}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {d.corporate.map((p) => {
-              const m = STATE_META[p.state] || STATE_META.valid;
+              const m = stateMeta(p.state);
               return (
                 <button key={p._id} onClick={() => router.push('/system/vehicles/registry/corporate')}
                   className="text-start bg-white border rounded-xl p-4 shadow-sm hover:border-[#f37121] transition-colors"
@@ -341,7 +341,7 @@ function DocumentCard({ doc, ar, t, onOpen, onList }: {
       {/* الحالات المحسوبة */}
       <div className="grid grid-cols-3 gap-1.5">
         {rows.map((r) => {
-          const m = STATE_META[r.key];
+          const m = stateMeta(r.key);
           return (
             <button key={r.key} onClick={() => onOpen({ doc: doc.key, state: r.key, includeExpired: 1 })}
               className="rounded-lg border border-slate-100 py-2 hover:border-slate-300 transition-colors">

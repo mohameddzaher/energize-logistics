@@ -13,7 +13,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { CalendarClock } from 'lucide-react';
-import { getHrExpiring, STATE_META, stateLabel, fmtDate, daysText } from '@/lib/hrMaster';
+import { stateMeta, getHrExpiring, STATE_META, stateLabel, fmtDate, daysText } from '@/lib/hrMaster';
 import MasterNav from '@/components/hr/MasterNav';
 
 const QUICK = [7, 15, 30, 60, 90, 180];
@@ -118,7 +118,7 @@ function ExpiringInner() {
         {(['expired', 'critical', 'warning', 'valid'] as const).map((k) => (
           <button key={k} onClick={() => setState(state === k ? '' : k)}
             className={`text-start bg-white border rounded-xl p-3 shadow-sm ${state === k ? 'border-[#f37121] ring-1 ring-[#f37121]/30' : 'border-slate-200 hover:border-slate-300'}`}>
-            <p className="text-2xl font-extrabold leading-none" style={{ color: STATE_META[k].color }}>{d?.summary?.[k] ?? 0}</p>
+            <p className="text-2xl font-extrabold leading-none" style={{ color: stateMeta(k).color }}>{d?.summary?.[k] ?? 0}</p>
             <p className="text-[11.5px] text-slate-600 mt-1.5 font-medium">{stateLabel(k, ar)}</p>
           </button>
         ))}
@@ -140,7 +140,7 @@ function ExpiringInner() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((r: any) => {
-                const m = STATE_META[r.state] || STATE_META.valid;
+                const m = stateMeta(r.state);
                 return (
                   <tr key={`${r.employeeId}-${r.docKey}`} className="hover:bg-slate-50 text-center">
                     <td className="px-3 py-2.5 whitespace-nowrap text-slate-700 text-[13px] tabular-nums">{r.employeeNumber || '—'}</td>

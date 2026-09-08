@@ -27,7 +27,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Modal, Field, TextInput, Select, SearchableSelect, type SearchOption } from '@/components/hr/HRKit';
 import { Check, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
-import {
+import { statusMeta,
   getHrRecords, updateEmployeeFields, toDateInput, statusLabel, STATUS_META,
   type FieldDef, type RecordRow,
 } from '@/lib/hrMaster';
@@ -46,7 +46,7 @@ type Mark = 'keep' | 'clear' | 'required' | 'not_required';
 
 function StatusChip({ code, ar }: { code?: string; ar: boolean }) {
   if (!code) return null;
-  const m = STATUS_META[code];
+  const m = statusMeta(code);
   return (
     <span className={`px-1.5 py-0.5 rounded text-[10.5px] font-semibold ${m ? m.bg : 'bg-slate-100 text-slate-600'}`}>
       {statusLabel(code, ar)}

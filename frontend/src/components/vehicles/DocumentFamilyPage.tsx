@@ -23,7 +23,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { syncUrl } from '@/lib/urlSync';
-import { docNeed } from '@/lib/vehicleRegistry';
+import { stateMeta, docNeed } from '@/lib/vehicleRegistry';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -400,7 +400,7 @@ function DocumentFamilyPageInner({
     for (const c of columns) o[c.key] = c.get(v) ?? '';
     if (docKey) {
       const st = stateOf(v, docKey);
-      o.__state = ar ? (STATE_META[st.state]?.ar || st.state) : (STATE_META[st.state]?.en || st.state);
+      o.__state = ar ? stateMeta(st.state).ar : stateMeta(st.state).en;
       o.__days = st.days ?? '';
     }
     return o;
@@ -638,7 +638,7 @@ function DocumentFamilyPageInner({
             <tbody className="divide-y divide-slate-100">
               {shownRows.map((v: VReg) => {
                 const st = docKey ? stateOf(v, docKey) : null;
-                const meta = st ? (STATE_META[st.state] || STATE_META.valid) : null;
+                const meta = st ? stateMeta(st.state) : null;
                 return (
                   <tr key={v._id} className={`hover:bg-slate-50 ${picked.has(v._id) ? 'bg-orange-50/60' : ''}`}>
                     {renewable && (

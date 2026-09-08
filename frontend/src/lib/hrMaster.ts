@@ -72,6 +72,15 @@ export const STATE_META: Record<string, { ar: string; en: string; color: string;
   // يفتح الضغطُ على الرقم صفوفَه بعينها — فيُقرأ رقمٌ ويُفتَح جدولٌ فيه غيرُه.
   attention: { ar: 'يحتاج انتباهًا', en: 'Needs attention', color: '#dc2626', bg: 'bg-rose-100 text-rose-700' },
 };
+/**
+ * الحالةُ ← عرضُها، ولا تعود فارغةً. راجع توأمَها في `lib/vehicleRegistry`:
+ * قراءةُ لونٍ من مفتاحٍ ناقصٍ تُسقط الشاشةَ كلَّها لا الخانةَ وحدَها.
+ */
+export const statusMeta = (c?: string | null) =>
+  STATUS_META[c || 'none'] || { ...STATUS_META.none, ar: String(c || '—'), en: String(c || '—') };
+export const stateMeta = (c?: string | null) =>
+  STATE_META[c || 'valid'] || { ...STATE_META.not_applicable, ar: String(c || '—'), en: String(c || '—') };
+
 export const statusLabel = (c: string, ar: boolean) => (STATUS_META[c] ? (ar ? STATUS_META[c].ar : STATUS_META[c].en) : c);
 export const stateLabel = (c: string, ar: boolean) => (STATE_META[c] ? (ar ? STATE_META[c].ar : STATE_META[c].en) : c);
 

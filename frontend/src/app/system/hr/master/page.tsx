@@ -15,7 +15,7 @@ import {
   Users, CalendarClock, ChevronLeft, TriangleAlert, ClipboardList, Search, BarChart3,
 } from 'lucide-react';
 import FilterPanel, { countActive, type FilterValues } from '@/components/system/FilterPanel';
-import {
+import { stateMeta, statusMeta,
   getHrOverview, STATUS_META, STATE_META, statusLabel, stateLabel, HR_DATE_FIELDS, HR_NUM_RANGES,
   type HrOverview, type GroupCard, type FieldCard, type AnalyticBlock,
 } from '@/lib/hrMaster';
@@ -314,7 +314,7 @@ function DocGroupCard({ g, ar, t, onOpen }: { g: GroupCard; ar: boolean; t: any;
         {(['expired', 'critical', 'warning', 'valid'] as const).map((k) => (
           <button key={k} onClick={() => onOpen(g.key, { state: k })}
             className="rounded-lg border border-slate-100 py-2 hover:border-slate-300 transition-colors">
-            <p className="text-lg font-extrabold leading-none" style={{ color: STATE_META[k].color }}>{s[k]}</p>
+            <p className="text-lg font-extrabold leading-none" style={{ color: stateMeta(k).color }}>{s[k]}</p>
             <p className="text-[9.5px] text-slate-500 mt-1 leading-tight px-0.5">{stateLabel(k, ar)}</p>
           </button>
         ))}
@@ -360,7 +360,7 @@ function FieldRow({ f, g, ar, t, onOpen }: { f: FieldCard; g: GroupCard; ar: boo
   const c = f.counts;
   const chip = (code: string, n: number) => n > 0 && (
     <button key={code} onClick={() => onOpen(g.key, { field: f.key, status: code })}
-      className={`px-1.5 py-0.5 rounded text-[10.5px] font-semibold ${STATUS_META[code]?.bg || 'bg-slate-100 text-slate-600'} hover:opacity-80`}>
+      className={`px-1.5 py-0.5 rounded text-[10.5px] font-semibold ${statusMeta(code).bg} hover:opacity-80`}>
       {statusLabel(code, ar)} {n}
     </button>
   );

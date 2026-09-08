@@ -16,7 +16,7 @@ import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/l
 import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
 import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
 import { Boxes } from 'lucide-react';
-import { getRegisters, fmtDate, daysText, money, STATE_META, stateLabel } from '@/lib/vehicleRegistry';
+import { stateMeta, getRegisters, fmtDate, daysText, money, STATE_META, stateLabel } from '@/lib/vehicleRegistry';
 
 const TABS = ['owners', 'authorizedPersons', 'gpsProviders', 'gpsDevices', 'gpsUnits', 'fuelCards'] as const;
 type Tab = typeof TABS[number];
@@ -206,7 +206,7 @@ export default function Page() {
             <tbody className="divide-y divide-slate-100">
               {shownRows.map((x: any, i: number) => {
                 if (tab === 'gpsUnits') {
-                  const m = STATE_META[x.state] || STATE_META.valid;
+                  const m = stateMeta(x.state);
                   return (
                     <tr key={i} className="hover:bg-slate-50 text-center">
                       <td className="px-3 py-2.5 font-mono text-[12.5px] text-slate-900 whitespace-nowrap">{x.value}</td>

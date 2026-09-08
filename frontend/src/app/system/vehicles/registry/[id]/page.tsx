@@ -31,7 +31,7 @@ import { RenewModal, type RenewTarget } from '@/components/vehicles/RenewModals'
 import VehicleDocuments from '@/components/vehicles/VehicleDocuments';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import {
-  VReg, statusColor, statusLabel, STATUS_META, DOC_TYPES, fmtDate, money, daysText, canEditVehicles, toHijri,
+  VReg, statusColor, statusLabel, STATUS_META, statusMeta, DOC_TYPES, fmtDate, money, daysText, canEditVehicles, toHijri,
 } from '@/lib/vehicleRegistry';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -84,7 +84,7 @@ export default function VehicleRegistryDetail() {
   /** تاريخُ مستندٍ بحالته وأيامه — نفس ما تعرضه صفحة العائلة، من نفس المصدر. */
   const DateRow = ({ label, date, docKey }: { label: string; date?: string | null; docKey: string }) => {
     const st = v.docStatuses?.[docKey];
-    const meta = STATUS_META[st?.status || 'none'];
+    const meta = statusMeta(st?.status);
     if (!date) return <Row label={label}>{val(null)}</Row>;
     return (
       <Row label={label}>
@@ -185,7 +185,7 @@ export default function VehicleRegistryDetail() {
 
   // أسوأُ حالةِ مستندٍ على المركبة — هي عنوانُ حالتها في الترويسة.
   const worst = v.overallStatus || 'none';
-  const worstMeta = STATUS_META[worst] || STATUS_META.none;
+  const worstMeta = statusMeta(worst);
   const outOfService = !!v.serviceStatusAr && !/في الخدمة|مستخدم/.test(v.serviceStatusAr);
 
   return (
@@ -238,7 +238,7 @@ export default function VehicleRegistryDetail() {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
         {DOC_TYPES.map((d) => {
           const st = v.docStatuses?.[d.key];
-          const meta = STATUS_META[st?.status || 'none'];
+          const meta = statusMeta(st?.status);
           const date = d.datePath(v);
           return (
             <div key={d.key} className="group rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden hover:border-slate-300 hover:shadow transition-all">

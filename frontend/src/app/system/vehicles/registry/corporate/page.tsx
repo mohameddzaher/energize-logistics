@@ -13,7 +13,7 @@ import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import SelectionBar from '@/components/ls2/SelectionBar';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ShieldCheck, RefreshCw, X, Check, ArrowRight, Pencil, Plus, Users, Trash2, Search } from 'lucide-react';
-import {
+import { stateMeta,
   getCorporatePolicies, renewCorporatePolicy, createCorporatePolicy, updateCorporatePolicy,
   deleteCorporatePolicy, setPolicyDriver, canEditVehicles, canAdminVehicles,
   STATE_META, stateLabel, money, fmtDate, daysText,
@@ -97,7 +97,7 @@ export default function CorporatePoliciesPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {rows.map((p) => {
-          const m = STATE_META[p.state] || STATE_META.valid;
+          const m = stateMeta(p.state);
           return (
             <div key={p._id} className={`bg-white border rounded-xl p-5 shadow-sm ${picked.has(p._id) ? 'ring-2 ring-[#f37121]/50' : ''}`}
               style={{ borderColor: p.state === 'valid' ? '#e2e8f0' : m.color }}>

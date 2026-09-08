@@ -24,7 +24,7 @@ import { useAuth } from '@/context/AuthContext';
 import SelectionBar from '@/components/ls2/SelectionBar';
 import { RenewModal, BulkRenewModal } from '@/components/vehicles/RenewModals';
 import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
-import {
+import { stateMeta,
   getExpiring, canEditVehicles, STATE_META, stateLabel, publicState, fmtDate, daysText,
   type ExpiringRow,
 } from '@/lib/vehicleRegistry';
@@ -245,7 +245,7 @@ function ExpiringInner() {
       {/* ملخّص — بيتحسب على نفس الصفوف المعروضة */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5">
         {STATES.map((k) => {
-          const m = STATE_META[k];
+          const m = stateMeta(k);
           return (
             <button key={k} onClick={() => setState(state === k ? '' : k)}
               className={`text-start bg-white border rounded-xl p-3 shadow-sm transition-colors ${state === k ? 'border-[#f37121] ring-1 ring-[#f37121]/30' : 'border-slate-200 hover:border-slate-300'}`}>
@@ -302,7 +302,7 @@ function ExpiringInner() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {shownRows.map((r: any) => {
-                const m = STATE_META[r.state] || STATE_META.valid;
+                const m = stateMeta(r.state);
                 return (
                   <tr key={`${r.vehicleId}-${r.docKey}`}
                     className={picked.has(rowKey(r)) ? 'bg-orange-50/70 text-center' : 'hover:bg-slate-50 text-center'}>

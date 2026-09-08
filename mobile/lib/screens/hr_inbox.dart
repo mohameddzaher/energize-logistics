@@ -4,6 +4,7 @@ import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
+import '../ui/leave_chain.dart';
 import '../ui/widgets.dart';
 
 /// HR — طلبات الإجازات (قرارات الموارد البشرية) وطلبات الموظفين (الرد وتغيير
@@ -16,13 +17,6 @@ class HrLeavesScreen extends StatefulWidget {
   State<HrLeavesScreen> createState() => _HrLeavesScreenState();
 }
 
-const _leaveStatuses = {
-  'pending_manager': ('عند المدير', 'With manager', T.warn),
-  'pending_hr': ('عند الموارد البشرية', 'With HR', T.info),
-  'approved': ('مقبولة', 'Approved', T.success),
-  'rejected': ('مرفوضة', 'Rejected', T.danger),
-  'cancelled': ('ملغاة', 'Cancelled', T.inkFaint),
-};
 
 class _HrLeavesScreenState extends State<HrLeavesScreen> {
   List<Map<String, dynamic>> _rows = [];
@@ -321,7 +315,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
-                        children: _leaveStatuses.entries.map((e) {
+                        children: leaveStatusMeta.entries.map((e) {
                           final selected = _status == e.key;
                           return Padding(
                             padding: const EdgeInsets.only(left: 6),
@@ -352,14 +346,14 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (c, i) {
                                 final l = _rows[i];
-                                final st = _leaveStatuses[l['status']] ?? ('—', '—', T.inkFaint);
+                                final st = leaveStatusOf(l['status']);
                                 final emp = l['employee'] is Map
                                     ? ((l['employee']['arabicName'] ?? '').toString().isNotEmpty
                                         ? l['employee']['arabicName']
                                         : '${l['employee']['firstName'] ?? ''} ${l['employee']['lastName'] ?? ''}'.trim())
                                     : (l['requester'] is Map ? '${l['requester']['firstName'] ?? ''} ${l['requester']['lastName'] ?? ''}'.trim() : '—');
                                 final type = l['leaveType'] is Map ? (l['leaveType']['nameAr'] ?? l['leaveType']['nameEn'] ?? '') : '';
-                                final actionable = l['status'] == 'pending_hr';
+                                final actionable = l['status'] == 'pending_hr';  // محطّةُ الموارد وحدَها من هنا
                                 return FadeSlideIn(
                                   delayMs: (i * 15).clamp(0, 150),
                                   child: AppCard(
@@ -372,6 +366,8 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                                       const SizedBox(height: 4),
                                       Text('$type · ${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
                                           style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+                                      const SizedBox(height: 6),
+                                      LeaveChainBar(leave: l),
                                       if ((l['reason'] ?? '').toString().isNotEmpty)
                                         Text(l['reason'], style: const TextStyle(fontSize: 12, color: T.inkFaint)),
                                       if (actionable) ...[

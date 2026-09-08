@@ -8,6 +8,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../services/live.dart';
 import '../ui/file_upload.dart';
+import '../ui/leave_chain.dart';
 
 /// إجازاتي — the self-service leave page: balance cards, request history and
 /// a new-request sheet. Same endpoints the web uses (/api/hr/me/leaves).
@@ -16,14 +17,6 @@ class MyLeavesScreen extends StatefulWidget {
   @override
   State<MyLeavesScreen> createState() => _MyLeavesScreenState();
 }
-
-const _leaveStatus = {
-  'pending_manager': ('عند المدير', 'With manager', Color(0xFFD97706)),
-  'pending_hr': ('عند الموارد البشرية', 'With HR', Color(0xFF2563EB)),
-  'approved': ('مقبولة', 'Approved', Color(0xFF059669)),
-  'rejected': ('مرفوضة', 'Rejected', Color(0xFFDC2626)),
-  'cancelled': ('ملغاة', 'Cancelled', Color(0xFF64748B)),
-};
 
 class _MyLeavesScreenState extends State<MyLeavesScreen> {
   List<Map<String, dynamic>> _leaves = [];
@@ -75,6 +68,80 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
     );
   }
 
+  /// الردُّ على استفسارِ محطّةٍ — نصٌّ ومرفقٌ واحد.
+  ///
+  /// وبإرساله تبدأ السلسلةُ من المدير المباشر من جديد وتُمحى الموافقاتُ
+  /// السابقة: الطلبُ بعد الردّ لم يعد الطلبَ الذي وافقوا عليه.
+  Future<void> _reply(Map<String, dynamic> l) async {
+    final text = TextEditingController();
+    PickedFile? file;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => StatefulBuilder(builder: (c, setSt) => AlertDialog(
+        title: Text(tr('الردّ على الاستفسار', 'Reply to the question')),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            LeaveThread(leave: l),
+            TextField(
+              controller: text,
+              minLines: 3,
+              maxLines: 5,
+              onChanged: (_) => setSt(() {}),
+              decoration: InputDecoration(
+                labelText: tr('ردّك', 'Your reply'),
+                hintText: tr('اكتب ردّك أو ما عدّلته…', 'Write your reply or what you changed…'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton.icon(
+                onPressed: () async {
+                  final f = await pickFileAsDataUrl();
+                  if (f != null) setSt(() => file = f);
+                },
+                icon: const Icon(Icons.attach_file_rounded, size: 16),
+                label: Text(file == null
+                    ? tr('إرفاق ملفّ (إيصال، تقرير…)', 'Attach a file (receipt, report…)')
+                    : file!.fileName),
+              ),
+            ),
+            Text(
+              tr('بعد الإرسال يبدأ الطلبُ دورتَه من المدير المباشر مرّةً أخرى.',
+                 'After sending, the request starts again from your direct manager.'),
+              style: const TextStyle(fontSize: 11.5, color: T.inkFaint),
+            ),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEA580C)),
+            onPressed: text.text.trim().isEmpty ? null : () => Navigator.pop(c, true),
+            child: Text(tr('إرسال الردّ', 'Send reply')),
+          ),
+        ],
+      )),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.post('/api/hr/me/leaves/${l['_id']}/reply', {
+        'text': text.text.trim(),
+        if (file != null) 'attachment': file!.dataUrl,
+        if (file != null) 'attachmentName': file!.fileName,
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(tr('أُرسل ردّك — عاد الطلبُ إلى مديرك المباشر.',
+                           'Your reply was sent — the request went back to your direct manager.')),
+        ));
+      }
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   String _d(String? v) {
     final d = v != null ? DateTime.tryParse(v) : null;
     return d == null ? '—' : '${d.day}/${d.month}/${d.year}';
@@ -119,9 +186,9 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
                         ),
                       ..._leaves.asMap().entries.map((e) {
                         final l = e.value;
-                        final st = _leaveStatus[l['status']] ?? ('—', '—', T.inkFaint);
+                        final st = leaveStatusOf(l['status']);
                         final type = l['leaveType'] is Map ? (l['leaveType']['nameAr'] ?? l['leaveType']['nameEn'] ?? '') : '';
-                        final canCancel = l['status'] == 'pending_manager' || l['status'] == 'pending_hr';
+                        final canCancel = leaveIsOpen(l['status']);
                         return FadeSlideIn(
                           delayMs: (e.key * 20).clamp(0, 200),
                           child: Padding(
@@ -169,6 +236,26 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
                                       ),
                                     ]),
                                   )),
+                                  const SizedBox(height: 8),
+                                  LeaveChainBar(leave: l),
+                                  const SizedBox(height: 8),
+                                  LeaveThread(leave: l),
+                                  // ── محطّةٌ سألت بدل أن ترفض ────────────────
+                                  // الطلبُ عاد إلى صاحبه ليردّ أو يرفع سندًا،
+                                  // وبردّه يبدأ من المدير المباشر من جديد.
+                                  if (l['status'] == 'info_requested')
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: FilledButton.icon(
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: const Color(0xFFEA580C),
+                                          minimumSize: const Size.fromHeight(42),
+                                        ),
+                                        onPressed: () => _reply(l),
+                                        icon: const Icon(Icons.reply_rounded, size: 18),
+                                        label: Text(tr('الردّ على الاستفسار', 'Reply to the question')),
+                                      ),
+                                    ),
                                   if (canCancel)
                                     Align(
                                       alignment: AlignmentDirectional.centerStart,

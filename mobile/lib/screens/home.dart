@@ -9,6 +9,7 @@ import '../services/live.dart';
 import '../services/notifications.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
+import '../ui/leave_chain.dart';
 import '../ui/widgets.dart';
 import 'my_profile.dart';
 import 'admin_suite.dart' show NotificationsScreen;
@@ -99,18 +100,20 @@ class _HomeScreenState extends State<HomeScreen> {
       final results = await Future.wait([
         Api.instance.get('/api/hr/me/team').catchError((_) => {}),
         Api.instance.get('/api/hr/me/leaves').catchError((_) => {}),
-        Api.instance.get('/api/hr/team/leaves').catchError((_) => {}),
+        // صندوقُ الوارد لا طلباتِ الفريق: المديرُ والمواردُ والحساباتُ
+        // والإدارةُ كلٌّ يرى ما وصل محطّتَه.
+        Api.instance.get('/api/hr/leaves/inbox').catchError((_) => {}),
         if (_canSeeBoard(auth)) Api.instance.get('/api/admin-tasks').catchError((_) => {}),
       ]);
       if (!mounted) return;
       final leaves = List<Map<String, dynamic>>.from(results[1]['leaves'] ?? []);
-      final teamLeaves = List<Map<String, dynamic>>.from(results[2]['leaves'] ?? []);
+      final inbox = List<Map<String, dynamic>>.from(results[2]['leaves'] ?? []);
       final tasks = results.length > 3 ? List<Map<String, dynamic>>.from(results[3]['tasks'] ?? []) : <Map<String, dynamic>>[];
       setState(() {
         _hasTeam = results[0]['hasTeam'] == true;
-        _myLeaves = leaves.where((l) => l['status'] == 'pending_manager' || l['status'] == 'pending_hr').length;
+        _myLeaves = leaves.where((l) => leaveIsOpen(l['status'])).length;
         _leaveAvailable = ((results[1]['balance']?['available']) ?? 0).toDouble();
-        _pendingApprovals = teamLeaves.where((l) => l['status'] == 'pending_manager').length;
+        _pendingApprovals = inbox.where((l) => leaveIsActionable(l['status'])).length;
         _openTasks = tasks.where((t) => t['status'] != 'done').length;
         _statsLoading = false;
       });

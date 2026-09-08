@@ -8,10 +8,17 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../services/live.dart';
 import '../ui/file_upload.dart';
+import '../ui/leave_chain.dart';
 
-/// موافقات فريقي — leave requests from the manager's direct reports awaiting
-/// their decision. Approve / reject with an optional note, same endpoint the
-/// web review dialog calls.
+/// موافقات الإجازات — ما ينتظر قرارَ هذا المستخدم الآن.
+///
+/// كانت تقرأ `/api/hr/team/leaves`: طلباتِ المرؤوسين وحدَها، فلا يرى مديرُ
+/// الموارد ولا الحساباتُ ولا الإدارةُ العليا على الهاتف ما وصل محطّتَها.
+/// وصارت تقرأ صندوقَ الوارد، والخادمُ يبني القائمةَ من محطّات القارئ نفسِه
+/// (`utils/leaveChain.inboxFilter`) — فلا تُعرَض أزرارٌ تُردّ ٤٠٣.
+///
+/// وثالثُ الأزرار «استفسار» لا رفض: يعود الطلبُ إلى صاحبه ليردّ أو يعدّل، ثمّ
+/// يبدأ من المدير المباشر من جديد.
 class ApprovalsScreen extends StatefulWidget {
   const ApprovalsScreen({super.key});
   @override
@@ -40,7 +47,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
 
   Future<void> _load() async {
     try {
-      final d = await Api.instance.get('/api/hr/team/leaves');
+      final d = await Api.instance.get('/api/hr/leaves/inbox');
       if (!mounted) return;
       setState(() {
         _leaves = List<Map<String, dynamic>>.from(d['leaves'] ?? []);
@@ -60,8 +67,15 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => StatefulBuilder(builder: (c, setSt) => AlertDialog(
-        title: Text(decision == 'approved' ? tr('اعتماد الطلب', 'Approve request') : tr('رفض الطلب', 'Reject request')),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        title: Text(switch (decision) {
+          'approved' => tr('اعتماد الطلب', 'Approve request'),
+          'info' => tr('استفسار / طلب تعديل', 'Ask / request change'),
+          _ => tr('رفض الطلب', 'Reject request'),
+        }),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          LeaveChainBar(leave: l),
+          const SizedBox(height: 10),
+          LeaveThread(leave: l),
           // سندُ الطلب يُقرأ قبل البتّ فيه.
           if ((l['attachments'] as List? ?? const []).isNotEmpty) ...[
             Text(tr('مرفقات الموظّف', 'Employee attachments'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
@@ -83,7 +97,18 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
           ],
           TextField(
             controller: note,
-            decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)', 'Note (optional)')),
+            maxLines: 3,
+            minLines: 2,
+            onChanged: (_) => setSt(() {}),
+            decoration: InputDecoration(
+              labelText: decision == 'approved'
+                  ? tr('ملاحظة (اختياري)', 'Note (optional)')
+                  : tr('اكتب السبب — مطلوب', 'Write the reason — required'),
+              hintText: decision == 'info'
+                  ? tr('مثال: عليه سلفة ٥٠٠ ريال تُسدَّد قبل السفر — أرفق الإيصال.', 'e.g. settle the 500 SAR advance first — attach the receipt.')
+                  : null,
+              hintMaxLines: 2,
+            ),
           ),
           const SizedBox(height: 8),
           Align(
@@ -105,15 +130,26 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
               onPressed: () => setSt(() => files.removeAt(e.key)),
             ),
           ])),
-        ]),
+        ])),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: decision == 'approved' ? const Color(0xFF059669) : const Color(0xFFDC2626),
+              backgroundColor: switch (decision) {
+                'approved' => const Color(0xFF059669),
+                'info' => const Color(0xFFEA580C),
+                _ => const Color(0xFFDC2626),
+              },
             ),
-            onPressed: () => Navigator.pop(c, true),
-            child: Text(decision == 'approved' ? tr('اعتماد', 'Approve') : tr('رفض', 'Reject')),
+            // الرفضُ بلا سببٍ والاستفسارُ بلا سؤالٍ يصلان الموظّفَ فارغَين.
+            onPressed: decision != 'approved' && note.text.trim().isEmpty
+                ? null
+                : () => Navigator.pop(c, true),
+            child: Text(switch (decision) {
+              'approved' => tr('اعتماد', 'Approve'),
+              'info' => tr('إرسال الاستفسار', 'Send question'),
+              _ => tr('رفض', 'Reject'),
+            }),
           ),
         ],
       )),
@@ -138,11 +174,13 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final pending = _leaves.where((l) => l['status'] == 'pending_manager').toList();
-    final past = _leaves.where((l) => l['status'] != 'pending_manager').toList();
+    // صندوقُ الوارد لا يحمل إلا ما ينتظر قرارًا، فكلُّه قابلٌ للبتّ. وكانت
+    // القسمةُ على `pending_manager` وحدَها — فما بلغ الموارد أو الحسابات سقط.
+    final pending = _leaves.where((l) => leaveIsActionable(l['status'])).toList();
+    final past = _leaves.where((l) => !leaveIsActionable(l['status'])).toList();
 
     return AppScaffold(
-      title: Text(tr('موافقات فريقي', 'Team Approvals')),
+      title: Text(tr('موافقات الإجازات', 'Leave Approvals')),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 96), SizedBox(height: 10), Shimmer(height: 96), SizedBox(height: 10), Shimmer(height: 96),
@@ -154,7 +192,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                   child: (pending.isEmpty && past.isEmpty)
                       ? ListView(children: [
                           const SizedBox(height: 80),
-                          EmptyState(icon: Icons.verified_outlined, title: tr('لا توجد طلبات منتظرة لقرارك', 'Nothing awaiting your decision')),
+                          EmptyState(icon: Icons.verified_outlined, title: tr('لا شيء ينتظر قرارك', 'Nothing awaits your decision')),
                         ])
                       : ListView(
                           padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
@@ -177,14 +215,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
         ? '${l['employee']['firstName'] ?? ''} ${l['employee']['lastName'] ?? ''}'.trim()
         : (l['requester'] is Map ? '${l['requester']['firstName'] ?? ''} ${l['requester']['lastName'] ?? ''}'.trim() : '—');
     final type = l['leaveType'] is Map ? (l['leaveType']['nameAr'] ?? l['leaveType']['nameEn'] ?? '') : '';
-    final st = l['status'];
-    final (String, String, Color) badge = st == 'approved'
-        ? ('معتمدة', 'Approved', T.success)
-        : st == 'rejected'
-            ? ('مرفوضة', 'Rejected', T.danger)
-            : st == 'pending_hr'
-                ? ('عند الموارد البشرية', 'With HR', T.info)
-                : ('—', '—', T.inkFaint);
+    final badge = leaveStatusOf(l['status']);
     return FadeSlideIn(
       delayMs: (i * 20).clamp(0, 200),
       child: Padding(
@@ -196,7 +227,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
             children: [
               Row(children: [
                 Expanded(child: Text(emp, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
-                if (!actionable) Chip2(tr(badge.$1, badge.$2), badge.$3),
+                Chip2(tr(badge.$1, badge.$2), badge.$3),
               ]),
               const SizedBox(height: 4),
               Text('$type · ${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
@@ -206,6 +237,8 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(l['reason'], style: const TextStyle(fontSize: 12, color: T.inkFaint)),
                 ),
+              const SizedBox(height: 8),
+              LeaveChainBar(leave: l),
               if (actionable) ...[
                 const SizedBox(height: 12),
                 Row(children: [
@@ -227,6 +260,21 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                     ),
                   ),
                 ]),
+                const SizedBox(height: 8),
+                // ما ينقصه إيضاحٌ لا يُرفَض: يعود إلى صاحبه بسؤال.
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFEA580C),
+                      side: const BorderSide(color: Color(0xFFFED7AA)),
+                      minimumSize: const Size.fromHeight(42),
+                    ),
+                    onPressed: () => _decide(l, 'info'),
+                    icon: const Icon(Icons.help_outline_rounded, size: 18),
+                    label: Text(tr('استفسار / طلب تعديل', 'Ask / request change')),
+                  ),
+                ),
               ],
             ],
           ),

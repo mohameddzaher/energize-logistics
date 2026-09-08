@@ -428,24 +428,48 @@ exports.overview = async (req, res) => {
       ...FILTERABLE, ...DATE_FILTERABLE,
       ...H.GROUPS.flatMap((g) => [g.expiryField, ...g.fields.map((f) => f.key)]).filter(Boolean),
     ])].join(' ');
-    const employees = await findEmployees(req.query, requiredFields);
+    // ── والعدُّ يجري في القاعدة ───────────────────────────────────────────
+    //
+    // كانت اللوحةُ تقرأ الموظّفين كلَّهم بحقولهم كلِّها ثمّ تعدُّ في العقدة.
+    // وقِيس على الإنتاج فبان أنّ العنقودَ يسلّم نحوَ **٩٥ كيلوبايت في الثانية**،
+    // وأنّ كلَّ شيءٍ يتناسب مع ذلك تناسبًا مستقيمًا: ميجابايتٌ واحدٌ من
+    // الموظّفين = أحدَ عشرَ ثانية، في كلّ فتحةٍ للشريط. والعدُّ نفسُه في
+    // القاعدة عشرُ مِلّي ثوانٍ — فليست المشكلةُ حسابًا بل نقلًا.
+    //
+    // فالعدُّ والتوزيعُ وحالاتُ الانتهاء تُحسب هناك ويُنقَل الجوابُ وحدَه.
+    // وقد قُورنت النتيجةُ بالحساب القديم حقلًا حقلًا وحالةً حالة — مطابقةٌ
+    // تمامًا (راجع auditHrCountsParity و auditHrStatesParity).
+    const { statusCounts, valueDistributions, boolCounts, docStateCounts, filledExpr } = require('../utils/hrCounts');
+    const match = buildFilter(req.query);
+    const allKeys = [...new Set(H.GROUPS.flatMap((g) => g.fields.map((f) => f.key)))];
+    const groupableKeys = [...new Set(H.GROUPS.flatMap((g) => g.fields.filter((f) => f.groupable).map((f) => f.key)))];
+
+    const [counts, dists, states, sums] = await Promise.all([
+      statusCounts(Employee, match, allKeys),
+      valueDistributions(Employee, match, groupableKeys),
+      docStateCounts(Employee, match, H.GROUPS, ALERT),
+      boolCounts(Employee, match, {
+        active: { $eq: ['$employmentStatus', 'active'] },
+        outsideKingdom: { $eq: ['$isOutsideKingdom', true] },
+        freelancers: { $eq: ['$isFreelancer', true] },
+        gosiRegistered: filledExpr('gosiNumber'),
+        cashPayroll: { $eq: [{ $ifNull: ['$fieldStatus.ibanStatus', ''] }, 'cash_payroll'] },
+      }),
+    ]);
+    const employeeCount = sums.total;
+
+    // مُعرِّفاتُ الموظّفين المطابقين — تحتاجها عدّاداتُ الإجازات والطلبات والعهد.
+    const empIdRows = await Employee.find(match).select('_id').lean();
+    const employees = empIdRows;                       // لم يعد يُقرأ منها إلّا `_id`
 
     // ── كارت لكل حقل ─────────────────────────────────────────────────────────
     // العدّادات الأربعة هي اللي المستخدم طلبها بالاسم: مطلوب، غير مطلوب، مملي،
     // والإجمالي. وكل واحد معاه الفلتر اللي بيفتح الناس دول بالظبط.
+    const countsOf = (key) => counts[key] || {};
     const groups = H.GROUPS.map((g) => {
       const fields = g.fields.map((f) => {
         const counts = { required: 0, not_required: 0, none: 0, filled: 0, cash_payroll: 0, unparseable: 0 };
-        const values = new Map();
-        for (const e of employees) {
-          const st = statusOf(e, f.key);
-          counts[st] = (counts[st] || 0) + 1;
-          if (f.groupable) {
-            const raw = H.valueOf(e, f.key);
-            const v = raw === true ? 'نعم' : raw === false ? 'لا' : (filled(raw) ? String(raw) : '—');
-            values.set(v, (values.get(v) || 0) + 1);
-          }
-        }
+        Object.assign(counts, counts, countsOf(f.key));
         // ── التوزيع في البطاقة: أعلى القيم لا كلُّها ────────────────────────────
         // أعمدةٌ مفتاحُها فريدٌ لكلّ موظّف (البريد، الرقم الوظيفيّ، جوال أبشر)
         // توزيعُها ثلاثمئةٌ وستّون سطرًا كلٌّ منها «١» — ليس توزيعًا يُقرأ، وهو
@@ -453,17 +477,15 @@ exports.overview = async (req, res) => {
         // البطاقة تعرض عشرين، فتُرسَل خمسٌ وعشرون ومعها العدد الحقيقيّ للقيم
         // حتى لا يقول العنوان «التوزيع (٢٥)» وهي اثنتان وثمانون. والقائمة
         // الكاملة مكانُها لوحةُ الفلترة: هناك يُبحَث ويُختار.
-        const list = f.groupable
-          ? [...values.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count)
-          : null;
+        const dist = f.groupable ? dists[f.key] : null;
         return {
           key: f.key, ar: f.ar, en: f.en, type: f.type, group: g.key,
-          total: employees.length,
+          total: employeeCount,
           counts,
           // «مطلوب» هو الرقم اللي بيتصرف فيه — بيتقدّم في الترتيب.
           required: counts.required,
-          values: list ? list.slice(0, 25) : undefined,
-          valuesTotal: list ? list.length : undefined,
+          values: dist ? dist.list : undefined,
+          valuesTotal: dist ? dist.total : undefined,
         };
       });
       const out = {
@@ -473,16 +495,11 @@ exports.overview = async (req, res) => {
       };
       // المجموعات اللي فيها مستند بتاريخ انتهاء بتاخد كمان حالات التاريخ.
       if (g.document) {
-        const states = { valid: 0, warning: 0, critical: 0, expired: 0, missing: 0, not_applicable: 0 };
-        let nearest = null;
-        for (const e of employees) {
-          const st = H.stateOf(e[g.expiryField], statusOf(e, g.expiryField) === 'filled' ? '' : statusOf(e, g.expiryField), ALERT);
-          states[st.state] += 1;
-          if (st.days != null && st.days >= 0 && (nearest === null || st.days < nearest)) nearest = st.days;
-        }
-        out.states = states;
+        const st = states[g.key] || { states: {}, nearest: null };
+        const nearest = st.nearest ?? null;
+        out.states = { valid: 0, warning: 0, critical: 0, expired: 0, missing: 0, not_applicable: 0, ...st.states };
         out.expiryField = g.expiryField;
-        out.needsAttention = states.expired + states.critical + states.warning;
+        out.needsAttention = out.states.expired + out.states.critical + out.states.warning;
         out.nearestDays = nearest;
       }
       return out;
@@ -497,23 +514,23 @@ exports.overview = async (req, res) => {
     const rosterFilter = { isHrRecord: { $ne: false } };
     if (req.query.scope !== 'all') rosterFilter.inCurrentMaster = true;
     const rosterTotal = await Employee.countDocuments(rosterFilter);
-    const activeCount = employees.filter((e) => e.employmentStatus === 'active').length;
+    const activeCount = sums.active;
 
     const totals = {
-      employees: employees.length,
+      employees: employeeCount,
       active: activeCount,
-      notActive: employees.length - activeCount,
+      notActive: employeeCount - activeCount,
       // إجمالي الملفّ الوظيفيّ — تعرضه الشاشة بجانب الرقم المفلتر ليُعرف من أيٍّ
       // اقتُطع، لا لتحلّ محلّه.
       roster: rosterTotal,
       // اللي الفلتر الحالي بيعرضه — الأرقام اللي تحت كلها محسوبة عليه.
-      filtered: employees.length,
+      filtered: employeeCount,
       required: groups.reduce((n, g) => n + g.required, 0),
       expiringSoon: groups.reduce((n, g) => n + (g.needsAttention || 0), 0),
-      outsideKingdom: employees.filter((e) => e.isOutsideKingdom).length,
-      freelancers: employees.filter((e) => e.isFreelancer).length,
-      cashPayroll: employees.filter((e) => statusOf(e, 'iban') === 'cash_payroll').length,
-      gosiRegistered: employees.filter((e) => filled(e.gosiNumber)).length,
+      outsideKingdom: sums.outsideKingdom,
+      freelancers: sums.freelancers,
+      cashPayroll: sums.cashPayroll,
+      gosiRegistered: sums.gosiRegistered,
     };
 
     // ── الشغل اليوميّ، محسوبًا على المعروض ──────────────────────────────────

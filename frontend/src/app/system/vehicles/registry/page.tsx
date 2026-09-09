@@ -359,14 +359,57 @@ const inp = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm';
 const L = ({ children }: { children: React.ReactNode }) => <label className="block text-xs font-semibold text-slate-600 mb-1">{children}</label>;
 // بطاقةُ قسم: عنوانٌ واضحٌ وإطارٌ يحدّ ما يخصّه — بدل خطٍّ رفيعٍ يفصل ستّةً
 // وثلاثين خانةً مسكوبةً في شبكةٍ واحدة.
-const Card = ({ title, children }: { title: string; children: React.ReactNode }) => (
+const Card = ({ title, extra, children }: { title: string; extra?: React.ReactNode; children: React.ReactNode }) => (
   <section className="rounded-xl border border-slate-200 bg-slate-50/40">
-    <header className="px-4 py-2.5 border-b border-slate-200 bg-white rounded-t-xl">
+    <header className="px-4 py-2.5 border-b border-slate-200 bg-white rounded-t-xl flex items-center justify-between gap-3 flex-wrap">
       <p className="text-[13px] font-bold text-slate-800">{title}</p>
+      {extra}
     </header>
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4">{children}</div>
   </section>
 );
+
+/**
+ * ── «مطلوبٌ منّا هذا المستند؟» يُسأل عند الإدخال لا يُستنتَج ─────────────────
+ *
+ * ليست كلُّ مركبةٍ في السجلّ مركبتَنا: منها ما هو لموظّفٍ لا نركّب له إلّا
+ * شريحةَ تتبّع. فتأمينُها وبطاقةُ تشغيلها وفحصُها ليست نقصًا عندنا — ولا نملك
+ * أوراقَها أصلًا.
+ *
+ * وكان الصمتُ يُقرأ نقصًا: مركبةٌ بلا تاريخِ فحصٍ ولا وضعٍ مسجَّل تُعَدّ «مطلوب
+ * — ناقص»، فتُظهر شريحةُ العمل ثلاثةً وتسعين صفًّا أكثرُها لا عملَ فيه. فيُفلتَر
+ * على «مطلوب» ويخرج في آخره «غير مطلوب» — والقائمةُ التي لا يُوثَق بها لا
+ * تُفتَح.
+ *
+ * فالسؤالُ يُطرَح هنا صراحةً، والجوابُ يُكتب في `statusCode` — وهو حقلٌ قائمٌ
+ * من قبلُ يعرفه الخادمُ وصفحاتُ العائلات (`docNeed` و`stateOf`)، فلا شيءَ جديدٌ
+ * يُخترَع: ما ينقص كان أن يُسأل عنه أحد.
+ *
+ * ولا يُكتب شيءٌ إلّا بضغطة: العدمُ اليوم يعني «مطلوب» ضمنًا، فلو كتبناها من
+ * أنفسنا عند كلّ حفظٍ لغيّرنا ثلاث مئة صفٍّ بلا أن يطلب ذلك أحد.
+ */
+const ReqToggle = ({ label, code, onChange, ar }: { label: string; code: string; onChange: (v: string) => void; ar: boolean }) => {
+  const off = code === 'not_required' || code === 'not_in_use';
+  // وضعٌ ثالثٌ محفوظ (لدى البنك، لدى الجبر…) لا يُداس عليه بزرَّين.
+  const other = !!code && !off && code !== 'required' && code !== 'none';
+  const pill = (on: boolean, tone: string) =>
+    `px-2 py-[3px] rounded-md text-[11px] font-semibold border transition ${
+      on ? tone : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600'}`;
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-[11px] text-slate-500">{label}</span>
+      <button type="button" onClick={() => onChange('required')}
+        className={pill(!off && !other, 'bg-emerald-50 border-emerald-300 text-emerald-700')}>
+        {ar ? 'مطلوب' : 'Required'}
+      </button>
+      <button type="button" onClick={() => onChange('not_required')}
+        className={pill(off, 'bg-slate-200 border-slate-300 text-slate-700')}>
+        {ar ? 'غير مطلوب' : 'Not required'}
+      </button>
+      {other && <span className="text-[10.5px] text-blue-600">{ar ? 'وضعٌ مسجَّل' : 'recorded state'}</span>}
+    </div>
+  );
+};
 
 function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onClose: () => void; onSaved: () => void }) {
   const { lang } = useLanguage();
@@ -428,7 +471,9 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <div><L>{ar ? 'حالة تم' : 'Tam status'}</L><input className={inp} value={f.tamStatusAr || ''} onChange={(e) => set('tamStatusAr', e.target.value)} /></div>
         </Card>
 
-        <Card title={ar ? 'التأمين' : 'Insurance'}>
+        <Card title={ar ? 'التأمين' : 'Insurance'}
+          extra={<ReqToggle ar={ar} label={ar ? 'هل نطلبه؟' : 'Do we need it?'}
+            code={f.insurance?.statusCode || ''} onChange={(v) => setSub('insurance', 'statusCode', v)} />}>
           <div><L>{ar ? 'شركة التأمين' : 'Insurer'}</L><ManagedSelect storeLabel type="vehicle_insurance_company" value={f.insurance?.companyAr || ''} onChange={(v) => setSub('insurance', 'companyAr', v)} /></div>
           <div><L>{ar ? 'نوع التغطية' : 'Coverage type'}</L><ManagedSelect storeLabel type="vehicle_coverage_type" value={f.insurance?.coverageTypeAr || ''} onChange={(v) => setSub('insurance', 'coverageTypeAr', v)} /></div>
           <div><L>{ar ? 'رقم الوثيقة' : 'Policy no.'}</L><input className={inp} value={f.insurance?.policyNumber || ''} onChange={(e) => setSub('insurance', 'policyNumber', e.target.value)} /></div>
@@ -439,6 +484,16 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
         </Card>
 
         <Card title={ar ? 'المستندات' : 'Documents'}>
+          {/* ثلاثةُ مستنداتٍ في بطاقةٍ واحدة، ولكلٍّ صفحتُه وشريحةُ عمله — فلا
+              يكفيها سؤالٌ واحدٌ في الترويسة. */}
+          <div className="md:col-span-2 flex flex-wrap items-center gap-x-5 gap-y-2 -mt-1 mb-1">
+            <ReqToggle ar={ar} label={ar ? 'بطاقة التشغيل' : 'Operating card'}
+              code={f.operatingCard?.statusCode || ''} onChange={(v) => setSub('operatingCard', 'statusCode', v)} />
+            <ReqToggle ar={ar} label={ar ? 'رخصة السير' : 'Licence'}
+              code={f.vehicleLicense?.statusCode || ''} onChange={(v) => setSub('vehicleLicense', 'statusCode', v)} />
+            <ReqToggle ar={ar} label={ar ? 'الفحص الدوري' : 'Inspection'}
+              code={f.inspection?.statusCode || ''} onChange={(v) => setSub('inspection', 'statusCode', v)} />
+          </div>
           <div><L>{ar ? 'رقم بطاقة التشغيل' : 'Operating card no.'}</L><input className={inp} value={f.operatingCard?.cardNumber || ''} onChange={(e) => setSub('operatingCard', 'cardNumber', e.target.value)} /></div>
           <div><L>{ar ? 'انتهاء بطاقة التشغيل' : 'Operating card expiry'}</L><input type="date" className={inp} value={(f.operatingCard?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('operatingCard', 'expiryDate', e.target.value || null)} /></div>
           <div><L>{ar ? 'انتهاء رخصة السير' : 'Licence expiry'}</L><input type="date" className={inp} value={(f.vehicleLicense?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('vehicleLicense', 'expiryDate', e.target.value || null)} /></div>
@@ -452,7 +507,9 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
 
         </Card>
 
-        <Card title={ar ? 'الوقود والتتبّع' : 'Fuel & tracking'}>
+        <Card title={ar ? 'الوقود والتتبّع' : 'Fuel & tracking'}
+          extra={<ReqToggle ar={ar} label={ar ? 'اشتراك التتبّع' : 'Tracking subscription'}
+            code={f.gps?.statusCode || ''} onChange={(v) => setSub('gps', 'statusCode', v)} />}>
           <div><L>{ar ? 'مزوّد شريحة الوقود' : 'Fuel provider'}</L><ManagedSelect storeLabel type="vehicle_fuel_provider" value={f.fuelCard?.provider || ''} onChange={(v) => setSub('fuelCard', 'provider', v)} /></div>
           <div><L>{ar ? 'رقم شريحة الوقود' : 'Fuel card no.'}</L><input className={inp} value={f.fuelCard?.cardNumber || ''} onChange={(e) => setSub('fuelCard', 'cardNumber', e.target.value)} /></div>
           <div><L>{ar ? 'حالة الشريحة' : 'Card status'}</L><ManagedSelect storeLabel type="vehicle_fuel_card_status" value={f.fuelCard?.statusAr || ''} onChange={(v) => setSub('fuelCard', 'statusAr', v)} /></div>
@@ -482,7 +539,9 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
 
         </Card>
 
-        <Card title={ar ? 'التفويض بالقيادة' : 'Driving authorisation'}>
+        <Card title={ar ? 'التفويض بالقيادة' : 'Driving authorisation'}
+          extra={<ReqToggle ar={ar} label={ar ? 'هل نطلبه؟' : 'Do we need it?'}
+            code={f.authorizedPerson?.statusCode || ''} onChange={(v) => setSub('authorizedPerson', 'statusCode', v)} />}>
           <div><L>{ar ? 'اسم المفوَّض' : 'Authorised person'}</L><input className={inp} value={f.authorizedPerson?.name || ''} onChange={(e) => setSub('authorizedPerson', 'name', e.target.value)} /></div>
           <div><L>{ar ? 'الوظيفة' : 'Job title'}</L><ManagedSelect storeLabel type="vehicle_job_title" value={f.authorizedPerson?.jobTitleAr || ''} onChange={(v) => setSub('authorizedPerson', 'jobTitleAr', v)} /></div>
           <div><L>{ar ? 'رقم الإقامة' : 'Iqama number'}</L><input className={inp} value={f.authorizedPerson?.iqamaNumber || ''} onChange={(e) => setSub('authorizedPerson', 'iqamaNumber', e.target.value)} /></div>

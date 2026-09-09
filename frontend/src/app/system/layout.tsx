@@ -51,6 +51,7 @@ const REPORT_ROLES = [
   'bd_manager', 'marketing_manager', 'administration_staff',
 ];
 import { DialogProvider } from '@/components/system/DialogProvider';
+import DateFieldLocale from '@/components/system/DateFieldLocale';
 // Sidebar visibility for the new sections. Managed sections are additionally
 // gated by the per-role permission matrix (canAccessSection).
 const MARKETING_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'moderator', 'bd_manager'];
@@ -763,6 +764,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
 
   return (
     <DialogProvider>
+    {/* صيغةُ خانات التاريخ واحدةٌ عند كلّ الناس — راجع رأس الملفّ. */}
+    <DateFieldLocale />
     <div className="min-h-screen bg-slate-100 flex" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* Desktop Sidebar */}
       <aside className={`hidden lg:flex flex-col ${sidebarOpen ? 'w-64' : 'w-20'} bg-slate-900 ${isRTL ? 'border-l' : 'border-r'} border-slate-800 transition-all duration-300 fixed h-full z-40 ${isRTL ? 'right-0' : 'left-0'}`}>

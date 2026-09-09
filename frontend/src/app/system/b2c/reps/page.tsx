@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useLanguage } from '@/context/LanguageContext';
 import { getB2CTranslations, getB2cRepsTranslations } from '@/lib/translations';
@@ -12,6 +12,7 @@ import B2CRepProfileModal from '@/components/system/B2CRepProfileModal';
 
 interface Project { _id: string; name: string; code?: string; color?: string }
 interface Branch { _id: string; name: string; city?: string }
+interface Supervisor { _id: string; name: string; reps: number }
 
 interface Rep {
   _id: string;
@@ -26,11 +27,12 @@ interface Rep {
   dailyTarget: number;
   expectedWorkingDays: number;
   isActive: boolean;
+  supervisor?: { _id: string; firstName?: string; lastName?: string } | string | null;
 }
 
 const DEFAULT_FORM = {
   repId: '', arabicName: '', englishName: '', phone: '',
-  joiningDate: '', project: '', branch: '',
+  joiningDate: '', project: '', branch: '', supervisor: '',
   monthlyTarget: 400, dailyTarget: 15, expectedWorkingDays: 26,
   notes: '', isActive: true,
 };
@@ -43,6 +45,10 @@ export default function B2CRepsPage() {
   const [reps, setReps] = useState<Rep[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  // مشرفو المندوبين — تُقرأ من الحسابات التي لها مندوبون بالفعل، ويُضاف إليها
+  // كلُّ من يصلح أن يكون مشرفًا. راجع `b2cDutyController.supervisors`.
+  const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
+  const [staff, setStaff] = useState<{ _id: string; firstName?: string; lastName?: string; role?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterProject, setFilterProject] = useState('');
   const [filterBranch, setFilterBranch] = useState('');
@@ -82,6 +88,24 @@ export default function B2CRepsPage() {
   useSocket('b2c:rep:updated', fetchReps);
   useSocket('b2c:rep:deleted', fetchReps);
 
+  // مَن يصلح مشرفًا: حساباتُ قسم الأفراد. والقائمةُ تُجلب مرّةً لا مع كلّ فتح.
+  useEffect(() => {
+    api.get<any>('/api/b2c/duty/supervisors').then((d) => setSupervisors(d.supervisors || [])).catch(() => {});
+    api.get<any>('/api/users?limit=500').then((d) => setStaff(
+      (d.users || []).filter((u: any) => ['b2c_manager', 'b2c_project_lead'].includes(u.role)),
+    )).catch(() => {});
+  }, []);
+
+  const supervisorOptions = useMemo(() => {
+    const byId = new Map<string, { _id: string; name: string; reps: number }>();
+    supervisors.forEach((s) => byId.set(String(s._id), { _id: String(s._id), name: s.name, reps: s.reps }));
+    staff.forEach((u) => {
+      const id = String(u._id);
+      if (!byId.has(id)) byId.set(id, { _id: id, name: `${u.firstName || ''} ${u.lastName || ''}`.trim() || '—', reps: 0 });
+    });
+    return [...byId.values()].sort((a, b) => b.reps - a.reps);
+  }, [supervisors, staff]);
+
   const openCreate = () => { setEditing(null); setForm(DEFAULT_FORM); setError(''); setShowModal(true); };
   const openEdit = (r: Rep) => {
     setEditing(r);
@@ -90,6 +114,7 @@ export default function B2CRepsPage() {
       phone: r.phone || '',
       joiningDate: r.joiningDate ? r.joiningDate.slice(0, 10) : '',
       project: r.project?._id || '', branch: r.branch?._id || '',
+      supervisor: (typeof r.supervisor === 'object' ? r.supervisor?._id : r.supervisor) || '',
       monthlyTarget: r.monthlyTarget, dailyTarget: r.dailyTarget,
       expectedWorkingDays: r.expectedWorkingDays,
       notes: '', isActive: r.isActive,
@@ -150,6 +175,14 @@ export default function B2CRepsPage() {
           {row.project.name}
         </span>
       ) : <span className="text-slate-500">—</span>,
+    },
+    {
+      key: 'supervisor', label: lang === 'ar' ? 'المشرف' : 'Supervisor',
+      render: (_: any, row: Rep) => {
+        const sup = typeof row.supervisor === 'object' ? row.supervisor : null;
+        if (!sup) return <span className="text-amber-600 text-xs font-semibold">{lang === 'ar' ? 'بلا مشرف' : 'Unassigned'}</span>;
+        return <span className="text-slate-700 text-sm">{`${sup.firstName || ''} ${sup.lastName || ''}`.trim() || '—'}</span>;
+      },
     },
     {
       key: 'branch', label: T.branch,
@@ -297,6 +330,23 @@ export default function B2CRepsPage() {
                         className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
                         <option value="">{T.selectBranch}</option>
                         {branches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
+                      </select>
+                    </div>
+                    {/* ── المشرفُ المسؤول ────────────────────────────────────
+                        الفرعُ يقول أين يعمل، ولا يقول مَن يقف عليه صباحًا.
+                        ومَن يُذكَر هنا يرى هذا المندوبَ في شاشة تفقّد بداية
+                        الدوام — ومَن لا مشرفَ له لا يظهر لأحد فلا يُفقَّد. */}
+                    <div>
+                      <label className="block text-slate-700 text-sm font-medium mb-1.5">
+                        {lang === 'ar' ? 'المشرف المسؤول' : 'Supervisor'}
+                      </label>
+                      <select aria-label="Supervisor" value={form.supervisor}
+                        onChange={(e) => setForm({ ...form, supervisor: e.target.value })}
+                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-sm">
+                        <option value="">{lang === 'ar' ? 'بلا مشرف' : 'Unassigned'}</option>
+                        {supervisorOptions.map((u) => (
+                          <option key={u._id} value={u._id}>{u.name}{u.reps ? ` (${u.reps})` : ''}</option>
+                        ))}
                       </select>
                     </div>
                   </div>

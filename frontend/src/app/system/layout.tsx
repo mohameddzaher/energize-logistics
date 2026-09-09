@@ -20,6 +20,7 @@ import {
   CalendarClock, TriangleAlert,
   FileSignature, PhoneCall, UserCheck, Fuel, ClipboardCheck,
   Receipt, Banknote, Layers, Link2,
+  Camera,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
@@ -428,6 +429,12 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/b2c/dashboard', label: L.b2cDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/reps-performance', label: L.b2cRepsPerformance, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/daily-entry', label: L.b2cDailyEntry, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
+    // ── تفقّد بداية الدوام ─────────────────────────────────────────────
+    // شاشتان: واحدةٌ يقف عليها المشرفُ كلَّ صباح، وواحدةٌ تقرأ منها الإدارة.
+    // وكلتاهما مفتوحتان لأدوار القسم — والذي يحكم مَن يرى أيَّ مندوبٍ هو
+    // `B2CRep.supervisor` في الخادم لا هذه القائمة.
+    { href: '/system/b2c/duty/start', label: lang === 'ar' ? 'تفقّد بداية الدوام' : 'Duty Start Check', icon: <Camera className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
+    { href: '/system/b2c/duty', label: lang === 'ar' ? 'سجلّ التفقّد والتحليل' : 'Duty Register', icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/reps', label: L.b2cReps, icon: <Award className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/projects', label: L.b2cProjects, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/custody', label: lang === 'ar' ? 'العهدة' : 'Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },

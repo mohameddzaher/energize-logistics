@@ -459,6 +459,25 @@ const REGISTRY = [
     roles: ['collections_manager', 'collections_staff', 'finance_manager'],
     storeLabel: true, seed,
   })),
+
+  // ── قسمُ الأفراد: تفقُّد بداية الدوام ─────────────────────────────────────
+  // حالةُ المركبة تُقال من قائمةٍ لا تُكتب حرًّا: «سليمة» و«سليم» و«تمام» ثلاثةُ
+  // نصوصٍ لشيءٍ واحد، فيصير التحليلُ ثلاثةَ أعمدةٍ لحالةٍ واحدة.
+  {
+    type: 'b2c_vehicle_condition',
+    module: 'b2c',
+    nameEn: 'Rider Vehicle Condition',
+    nameAr: 'حالة مركبة المندوب',
+    roles: ['b2c_manager', 'b2c_project_lead'],
+    storeLabel: true,
+    seed: [
+      { key: 'good', nameAr: 'سليمة', nameEn: 'Good', color: '#16a34a' },
+      { key: 'minor', nameAr: 'خدوش بسيطة', nameEn: 'Minor scratches', color: '#f59e0b' },
+      { key: 'damaged', nameAr: 'بها تلف', nameEn: 'Damaged', color: '#dc2626' },
+      { key: 'unfit', nameAr: 'غير صالحة للعمل', nameEn: 'Unfit for work', color: '#7f1d1d' },
+    ],
+  },
+
 ];
 
 const byType = (type) => REGISTRY.find((r) => r.type === type) || null;

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const b2cController = require('../controllers/b2cController');
+const duty = require('../controllers/b2cDutyController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 
@@ -33,6 +34,21 @@ router.get('/diagnose-sheet', authorize(...READ), b2cController.diagnoseSheetPar
 router.get('/diagnose-sheet/:id', authorize(...READ), b2cController.diagnoseSheetParse);
 router.put('/reps/:id', authorize(...WRITE), b2cController.updateRep);
 router.delete('/reps/:id', authorize(...WRITE), b2cController.deleteRep);
+
+// ── تفقُّد بداية الدوام ──────────────────────────────────────────────────────
+// الحارسُ هنا يفتح الشاشةَ فحسب؛ ومَن يرى أيَّ مندوبٍ ومَن يكتب فيه محسومٌ في
+// المتحكّم من `B2CRep.supervisor` لا من الدور. فمديرُ مشروعٍ بلا مندوبين
+// مُسنَدين يفتح الشاشةَ ولا يجد أحدًا — وهو الصواب.
+router.get('/duty/my-reps', authorize(...READ), duty.myReps);
+router.post('/duty', authorize(...READ), duty.submit);
+// المسارات الثابتة قبل `/:id` حتى لا تُقرأ «analytics» معرّفًا.
+router.get('/duty/analytics', authorize(...READ), duty.analytics);
+router.get('/duty/missing', authorize(...READ), duty.missing);
+router.get('/duty/supervisors', authorize(...READ), duty.supervisors);
+router.post('/duty/assign', authorize(...WRITE), duty.assign);
+router.get('/duty', authorize(...READ), duty.list);
+router.get('/duty/:id', authorize(...READ), duty.getOne);
+router.patch('/duty/:id/review', authorize(...READ), duty.review);
 
 // Daily orders
 router.get('/daily-orders', authorize(...READ), b2cController.getDailyOrders);

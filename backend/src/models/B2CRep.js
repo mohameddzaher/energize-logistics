@@ -9,6 +9,17 @@ const b2cRepSchema = new mongoose.Schema(
     joiningDate: { type: Date },
     project: { type: mongoose.Schema.Types.ObjectId, ref: 'B2CProject' },
     branch: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
+    /**
+     * المشرفُ المسؤول عن هذا المندوب.
+     *
+     * الفرعُ يقول أين يعمل، ولا يقول مَن يقف عليه صباحًا. وفرعٌ واحدٌ فيه
+     * مشرفان وثلاثون مندوبًا — فلولا هذا الحقلُ لفتح كلُّ مشرفٍ قائمةَ الفرع
+     * كلِّه وبحث فيها عن رجاله، أو تفقّد رجالَ غيره.
+     *
+     * وهو صلةٌ إداريّةٌ لا صلاحيّة: مَن يُذكَر هنا يرى هؤلاء في شاشة التفقّد،
+     * ومَن لا مندوبَ له لا يرى شيئًا. راجع `controllers/b2cDutyController`.
+     */
+    supervisor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
     monthlyTarget: { type: Number, default: 400 },
     dailyTarget: { type: Number, default: 15 },
     expectedWorkingDays: { type: Number, default: 26 },
@@ -24,5 +35,6 @@ b2cRepSchema.index({ repId: 1, project: 1 }, { unique: false, sparse: true });
 b2cRepSchema.index({ englishName: 1 });
 b2cRepSchema.index({ project: 1, isActive: 1 });
 b2cRepSchema.index({ branch: 1, isActive: 1 });
+b2cRepSchema.index({ supervisor: 1, isActive: 1 });
 
 module.exports = mongoose.model('B2CRep', b2cRepSchema);

@@ -914,6 +914,18 @@
       "en": "Daily Entry"
     },
     {
+      "key": "/system/b2c/duty/start",
+      "section": "B2C",
+      "ar": "تفقّد بداية الدوام",
+      "en": "Duty Start Check"
+    },
+    {
+      "key": "/system/b2c/duty",
+      "section": "B2C",
+      "ar": "سجلّ التفقّد والتحليل",
+      "en": "Duty Register"
+    },
+    {
       "key": "/system/b2c/reps",
       "section": "B2C",
       "ar": "مناديب المبيعات",

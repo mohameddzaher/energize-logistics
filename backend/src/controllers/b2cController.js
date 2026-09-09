@@ -148,6 +148,7 @@ exports.getReps = async (req, res) => {
     const reps = await B2CRep.find(filter)
       .populate('project', 'name code color monthlyTarget dailyTarget expectedWorkingDays')
       .populate('branch', 'name code city')
+      .populate('supervisor', 'firstName lastName role')
       .sort({ englishName: 1 })
       .lean();
     const payload = { reps };
@@ -160,7 +161,7 @@ exports.getReps = async (req, res) => {
 
 exports.createRep = async (req, res) => {
   try {
-    const { repId, arabicName, englishName, phone, joiningDate, project, branch, monthlyTarget, dailyTarget, expectedWorkingDays, notes } = req.body;
+    const { repId, arabicName, englishName, phone, joiningDate, project, branch, supervisor, monthlyTarget, dailyTarget, expectedWorkingDays, notes } = req.body;
 
     if (!englishName) return res.status(400).json({ message: 'English name is required' });
 
@@ -170,6 +171,8 @@ exports.createRep = async (req, res) => {
       joiningDate: joiningDate || undefined,
       project: project || undefined,
       branch: branch || undefined,
+      // المشرفُ المسؤول — يقرّر مَن يرى هذا المندوبَ في شاشة تفقّد بداية الدوام.
+      supervisor: supervisor || undefined,
       monthlyTarget: monthlyTarget || 400,
       dailyTarget: dailyTarget || 15,
       expectedWorkingDays: expectedWorkingDays || 26,
@@ -180,7 +183,8 @@ exports.createRep = async (req, res) => {
     await logAudit({ user: req.user._id, action: 'create_b2c_rep', entity: 'B2CRep', entityId: rep._id, changes: { after: { englishName, repId } }, ipAddress: req.ip });
     try { emitToAll('b2c:rep:created', { rep }); } catch (e) {}
 
-    const populated = await B2CRep.findById(rep._id).populate('project', 'name code').populate('branch', 'name code city');
+    const populated = await B2CRep.findById(rep._id).populate('project', 'name code')
+      .populate('branch', 'name code city').populate('supervisor', 'firstName lastName role');
     cache.clear('b2c:');
     res.status(201).json({ rep: populated });
   } catch (error) {
@@ -190,10 +194,16 @@ exports.createRep = async (req, res) => {
 
 exports.updateRep = async (req, res) => {
   try {
-    const updates = req.body;
+    const updates = { ...req.body };
+    // «بلا مشرف» يصل نصًّا فارغًا من القائمة، و`''` لا يُحوَّل إلى مُعرِّف —
+    // فيُردّ الحفظُ كلُّه بخطأ صبّ. والفراغُ هنا فعلٌ مقصود: يُكتب `null`.
+    for (const k of ['supervisor', 'project', 'branch']) {
+      if (updates[k] === '') updates[k] = null;
+    }
     const rep = await B2CRep.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true })
       .populate('project', 'name code')
-      .populate('branch', 'name code city');
+      .populate('branch', 'name code city')
+      .populate('supervisor', 'firstName lastName role');
     if (!rep) return res.status(404).json({ message: 'Rep not found' });
 
     await logAudit({ user: req.user._id, action: 'update_b2c_rep', entity: 'B2CRep', entityId: rep._id, ipAddress: req.ip });

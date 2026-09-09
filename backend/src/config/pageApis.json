@@ -1147,11 +1147,30 @@
       ],
       "wildcard": false
     },
+    "/system/b2c/duty/start": {
+      "apis": [
+        "/api/b2c/duty",
+        "/api/b2c/duty/my-reps",
+        "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/duty": {
+      "apis": [
+        "/api/b2c/duty",
+        "/api/b2c/duty/analytics",
+        "/api/b2c/duty/missing",
+        "/api/b2c/duty/supervisors"
+      ],
+      "wildcard": false
+    },
     "/system/b2c/reps": {
       "apis": [
+        "/api/b2c/duty/supervisors",
         "/api/b2c/projects",
         "/api/b2c/reps",
-        "/api/branches"
+        "/api/branches",
+        "/api/users"
       ],
       "wildcard": false
     },

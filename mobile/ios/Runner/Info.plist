@@ -73,5 +73,10 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- تفقّد بداية الدوام في قسم الأفراد: الصورة تُلتقط من الكاميرا ولا تُرفع
+	     من المعرض، فلا يُطلب إذنُ الصور أصلًا. وبغير هذا المفتاح يسقط التطبيق
+	     على iOS لحظةَ فتح الكاميرا لا عند رفض الإذن. -->
+	<key>NSCameraUsageDescription</key>
+	<string>يُستخدم التصوير لتوثيق حالة مركبة المندوب عند بداية الدوام.</string>
 </dict>
 </plist>

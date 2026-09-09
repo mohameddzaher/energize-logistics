@@ -11,7 +11,24 @@ const { emitToAll } = require('../websocket/socketManager');
 // ومفتاح الأرقام يقيّد حادثة الدراجة على التريلا. التفصيل في utils/plateKey.
 const { registryPlateKey: plateKey, flexSpaceRegex } = require('../utils/plateKey');
 
-const emit = (event, payload = {}) => { try { emitToAll(event, payload); } catch (e) {} cache.clear('vreg:'); };
+/**
+ * كلُّ تعديلٍ في القسم يبثّ ويُبطل الذاكرة — والتقريرُ منها.
+ *
+ * تقريرُ المركبة يُخزَّن ساعةً كاملةً حين تكون الفترةُ مغلقة، وذلك صحيحٌ لأرقام
+ * الفترة وحدَها؛ لكنّ التقرير يحمل معها حالةَ المستندات **اليوم**: تأمينٌ ساري
+ * ورخصةٌ تنتهي بعد كذا. فمن جدّد الوثيقةَ ثمّ طبع وجد الورقةَ القديمة ساعةً،
+ * وهي ورقةٌ تُرسَل إلى جهةٍ خارجيّة.
+ *
+ * فيُمسَح تقريرُ المركبات مع كلّ كتابةٍ في القسم — إحدى عشرة عمليّةً كلُّها تمرّ
+ * من هنا — ويبقى التخزينُ نافعًا لمن يفتح التقريرَ نفسَه مرّتين بلا تعديلٍ
+ * بينهما. راجع `utils/ttlCache`: الإبطالُ يعبر إلى العامل الآخر أيضًا.
+ */
+const emit = (event, payload = {}) => {
+  try { emitToAll(event, payload); } catch (e) {}
+  cache.clear('vreg:');
+  cache.clear('reports:doc:vehicle:');
+  cache.clear('reports:opts:vehicle:');
+};
 
 // المستندات ذات تاريخ الانتهاء — المفتاح ← مسار التاريخ + الاسم.
 // تعريف واحد للمستندات — config/vehicleDocuments.js. كان فيه نسخة تانية هنا

@@ -224,7 +224,7 @@ async function buildVehicleReport(id, query, lang) {
     blocks.push({ kind: 'section', text: t('مستندات المركبة', 'Vehicle documents') });
     blocks.push({
       kind: 'table',
-      columns: [
+      head: [
         t('المستند', 'Document'), t('الرقم', 'Number'), t('تاريخ الانتهاء', 'Expiry'),
         t('الحالة', 'State'), t('المتبقّي', 'Remaining'), t('الوضع الإداري', 'Admin status'),
       ],
@@ -286,7 +286,7 @@ async function buildVehicleReport(id, query, lang) {
       blocks.push({ kind: 'section', text: t('سجلّ التجديدات', 'Renewals') });
       blocks.push({
         kind: 'table',
-        columns: [t('المستند', 'Document'), t('التاريخ', 'Done at'), t('الانتهاء السابق', 'Previous expiry'), t('الانتهاء الجديد', 'New expiry'), t('التكلفة', 'Cost'), t('نفّذه', 'By')],
+        head: [t('المستند', 'Document'), t('التاريخ', 'Done at'), t('الانتهاء السابق', 'Previous expiry'), t('الانتهاء الجديد', 'New expiry'), t('التكلفة', 'Cost'), t('نفّذه', 'By')],
         rows: renewals.map((r) => {
           const d = VDOC.getDoc(r.document);
           return [
@@ -309,7 +309,7 @@ async function buildVehicleReport(id, query, lang) {
     blocks.push({ kind: 'section', text: t('الحوادث والمطالبات', 'Accidents & claims') });
     blocks.push({
       kind: 'table',
-      columns: [t('رقم المطالبة', 'Claim'), t('التاريخ', 'Date'), t('الطرف الآخر', 'Counterparty'), t('نسبة الخطأ', 'Fault %'), t('طريقة الإبلاغ', 'Reported via')],
+      head: [t('رقم المطالبة', 'Claim'), t('التاريخ', 'Date'), t('الطرف الآخر', 'Counterparty'), t('نسبة الخطأ', 'Fault %'), t('طريقة الإبلاغ', 'Reported via')],
       rows: claims.map((c) => [
         c.claimId || '—',
         c.accidentDate ? dt(c.accidentDate) : '—',
@@ -333,7 +333,7 @@ async function buildVehicleReport(id, query, lang) {
         blocks.push({ kind: 'section', text: t('سجلّ التفاويض', 'Authorisation history') });
         blocks.push({
           kind: 'table',
-          columns: [t('الموظّف', 'Employee'), t('من', 'From'), t('إلى', 'To'), t('رقم الوثيقة', 'Document'), t('الحالة', 'Status')],
+          head: [t('الموظّف', 'Employee'), t('من', 'From'), t('إلى', 'To'), t('رقم الوثيقة', 'Document'), t('الحالة', 'Status')],
           rows: auths.map((a) => [
             [a.employee?.firstName, a.employee?.lastName].filter(Boolean).join(' ') || '—',
             a.startDate || '—',

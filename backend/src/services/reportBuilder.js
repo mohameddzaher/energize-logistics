@@ -129,8 +129,20 @@ function blockHtml(b, rtl) {
       if (!b.rows?.length) return b.emptyText ? blockHtml({ kind: 'note', text: b.emptyText }, rtl) : '';
       const al = (i) => (b.align?.[i] === 'end' ? (rtl ? 'left' : 'right') : b.align?.[i] === 'center' ? 'center' : startAlign);
       const cols = b.widths ? `<colgroup>${b.widths.map((w) => `<col style="width:${w}">`).join('')}</colgroup>` : '';
+      // ── ورؤوسُ الجدول لا تُسقط الملفَّ كلَّه ──────────────────────────────
+      // أربعُ كتلٍ في تقرير المركبة كُتبت `columns` بدل `head`، فكان
+      // `b.head.map` يرمي وتُردّ كلُّ محاولةِ طباعةٍ لأيّ مركبة بـ«تعذّر إصدار
+      // التقرير» — ثلاثُ مئةٍ وخمسٌ وثلاثون مركبة، لا واحدة.
+      //
+      // والاسمان يُقبلان الآن، وغيابُهما معًا يعني جدولًا بلا ترويسة لا ملفًّا
+      // لا يُفتَح: صفحةٌ ناقصةُ العناوين تُقرأ ويُبلَّغ عنها، وملفٌّ ساقطٌ لا
+      // يقول شيئًا.
+      const head = Array.isArray(b.head) ? b.head : Array.isArray(b.columns) ? b.columns : null;
+      const thead = head
+        ? `<thead><tr>${head.map((h, i) => `<th style="text-align:${al(i)}">${esc(h)}</th>`).join('')}</tr></thead>`
+        : '';
       return `<table class="blk data">${cols}
-        <thead><tr>${b.head.map((h, i) => `<th style="text-align:${al(i)}">${esc(h)}</th>`).join('')}</tr></thead>
+        ${thead}
         <tbody>${b.rows.map((r, ri) => `<tr class="${ri % 2 ? 'alt' : ''}">${r.map((c, i) => {
           const cell = (c && typeof c === 'object') ? c : { t: c };
           const style = `text-align:${al(i)};${cell.color ? `color:${cell.color};font-weight:600` : ''}`;

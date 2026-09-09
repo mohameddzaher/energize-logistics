@@ -131,20 +131,29 @@ exports.getReport = async (req, res) => {
     const id = decodeURIComponent(req.params.id || '');
     if (!id) return res.status(400).json({ message: 'Report subject id is required' });
 
-    // The same report is very often asked for twice in a row — preview, then
-    // PDF; or a manager and their director opening it minutes apart. A closed
-    // period can be cached hard because nothing behind it can change; a window
-    // that includes today is cached briefly so it still moves with the day.
+    // ── التخزينُ يخدم الضغطتين المتتاليتين، لا أكثر ────────────────────────
+    //
+    // التقريرُ الواحد يُطلَب مرّتين في الغالب: معاينةٌ ثمّ PDF. فدقيقةٌ تكفي
+    // لذلك تمامًا.
+    //
+    // وكان المغلقُ منها يُخزَّن ساعةً بحجّة أنّ «الفترة المغلقة لا يتغيّر ما
+    // خلفها» — وهي حجّةٌ صحيحةٌ لأرقام الفترة وحدَها. لكنّ تقارير الملفّات —
+    // مركبةٌ أو موظّفٌ أو سائق — تحمل مع الأرقام **حالتَها اليوم**: تأمينٌ ساري،
+    // ورخصةٌ تنتهي بعد كذا، وتفويضٌ قائم. فمن جدّد وثيقةً ثمّ طبع وجد الورقةَ
+    // القديمة ساعةً كاملة — وهي ورقةٌ تُرسَل إلى جهةٍ خارجيّة وتُبنى عليها
+    // قرارات.
+    //
+    // ومع هذا يُمسَح تقريرُ المركبة صراحةً عند أيّ كتابةٍ في قسمها
+    // (`vehicleRegistryController.emit`)، فالدقيقةُ حدٌّ أعلى لا انتظارٌ فعليّ.
     const { resolvePeriod } = require('../services/reportSources');
-    const { toKey } = resolvePeriod(req.query);
-    const closed = toKey < new Date().toISOString().slice(0, 10);
+    resolvePeriod(req.query);
     const docScope = subject.userScoped ? String(req.user._id) : 'all';
     const docKey = `reports:doc:${subject.key}:${docScope}:${id}:${req.query.from || ''}:${req.query.to || ''}:${lang}`;
     const cached = cache.get(docKey);
     let built = cached;
     if (built === undefined) {
       built = await subject.build(id, req.query, lang, req.user);
-      if (built) cache.set(docKey, built, closed ? 60 * 60 * 1000 : 3 * 60 * 1000);
+      if (built) cache.set(docKey, built, 60 * 1000);
     }
     if (!built) {
       return res.status(404).json({ message: lang === 'en' ? 'Nothing found to report on' : 'لا توجد بيانات لإصدار هذا التقرير' });

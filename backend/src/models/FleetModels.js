@@ -31,6 +31,13 @@ const fleetDriverSchema = new mongoose.Schema({
   phone: { type: String, trim: true, default: '' },
   iqama: { type: String, trim: true, default: '' },
   nationality: { type: String, trim: true, default: '' }, // الجنسية — للبوليصة
+  /**
+   * الإيبان — يُكتب في ملفّ السائق مرّةً ويُقرأ منه في كلّ صرف.
+   *
+   * وكان يُكتب في كلّ كشفٍ مصروفٍ بيده، فيُخطئ رقمٌ واحدٌ فيذهب المالُ إلى
+   * حسابٍ آخر. ومصدرُه ملفُّ الرجل لا سطرُ الحمولة.
+   */
+  iban: { type: String, trim: true, default: '' },
   // حالة السائق: does he work at the moment (sick / on leave ⇒ false)?
   working: { type: Boolean, default: true },
   // WHY he is off — مرضية / إجازة / أخرى — so the dashboard can answer "who is
@@ -123,6 +130,16 @@ const fleetShipmentSchema = new mongoose.Schema({
   driverAdvance: { type: String, trim: true, default: '' }, // legacy — يُقرأ للبوليصات القديمة فقط
   // بونص يوم الجمعة: عند تفعيله يُضاف مبلغ ثابت (FleetConfig.fridayBonusAmount) لمصروف السائق.
   fridayBonus: { type: Boolean, default: false },
+  /**
+   * ── سدادُ مصروف السائق ────────────────────────────────────────────────
+   * الحساباتُ تعلّم الصفَّ حين تحوّل المبلغ. وهو الحقلُ الذي يفصل «مستحقٌّ
+   * ولم يُصرَف» عن «صُرِف» — وبغيره تُقرأ صفحةُ المصاريف مطالبةً واحدةً لا
+   * فرقَ فيها بين ما دُفع وما لم يُدفَع، فيُدفَع الشيءُ مرّتين أو لا يُدفَع.
+   */
+  driverExpensePaid: { type: Boolean, default: false, index: true },
+  driverExpensePaidAt: { type: Date, default: null },
+  driverExpensePaidBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  driverExpensePaidByName: { type: String, trim: true, default: '' },
   branch: { type: String, trim: true, default: '' },        // الفرع — من فروع الشركة
   // سائق ثانٍ — for loads that must arrive fast, two drivers share the wheel.
   secondDriver: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetDriver', default: null },

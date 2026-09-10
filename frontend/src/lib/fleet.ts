@@ -43,6 +43,8 @@ export interface FleetDriver {
   name: string;
   phone?: string;
   iqama?: string;
+  /** الإيبان — يُكتب في ملفّ السائق وتقرؤه صفحةُ مصاريف السوّاق. */
+  iban?: string;
   nationality?: string;
   working: boolean;       // حالة السائق: يعمل أم لا
   offReason?: '' | 'sick' | 'leave' | 'other'; // سبب التوقف — مرضية/إجازة/أخرى

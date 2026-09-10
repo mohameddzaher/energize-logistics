@@ -17,7 +17,7 @@ import {
 import ExportMenu from '@/components/ls2/ExportMenu';
 import { FleetDriver, FleetVehicle, foldAr, canEditFleet, canAdminFleet } from '@/lib/fleet';
 
-const EMPTY = { name: '', phone: '', iqama: '', nationality: '', working: true, onSponsorship: true, vehicle: '', notes: '' };
+const EMPTY = { name: '', phone: '', iqama: '', iban: '', nationality: '', working: true, onSponsorship: true, vehicle: '', notes: '' };
 
 // The list endpoint populates `vehicle` — but after an edit it can transiently
 // be a bare id, so both shapes are handled.
@@ -28,6 +28,7 @@ const DRIVER_COLUMNS = [
   { header: 'Driver', key: 'name', width: 24 },
   { header: 'Phone', key: 'phone', width: 16 },
   { header: 'Iqama', key: 'iqama', width: 16 },
+  { header: 'IBAN', key: 'iban', width: 30 },
   { header: 'Nationality', key: 'nationality', width: 14 },
   { header: 'Vehicle', key: 'vehicle', transform: (v: any) => (v && typeof v === 'object' ? v.plate : ''), width: 16 },
   { header: 'Working', key: 'working', transform: (v: any) => (v ? 'Yes' : 'No'), width: 10 },
@@ -135,7 +136,7 @@ export default function FleetDriversPage() {
   const openEdit = (d: FleetDriver) => {
     setEditing(d);
     setForm({
-      name: d.name, phone: d.phone || '', iqama: d.iqama || '', nationality: d.nationality || '',
+      name: d.name, phone: d.phone || '', iqama: d.iqama || '', iban: d.iban || '', nationality: d.nationality || '',
       working: !!d.working, onSponsorship: !!d.onSponsorship,
       vehicle: vehId(d), notes: d.notes || '',
     });
@@ -318,6 +319,14 @@ export default function FleetDriversPage() {
           <Field label={ar ? 'الاسم *' : 'Name *'} span2><TextInput value={form.name} onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))} /></Field>
           <Field label={ar ? 'الجوال' : 'Phone'}><TextInput value={form.phone} onChange={(e) => setForm((f: any) => ({ ...f, phone: e.target.value }))} /></Field>
           <Field label={ar ? 'رقم الإقامة' : 'Iqama'}><TextInput value={form.iqama} onChange={(e) => setForm((f: any) => ({ ...f, iqama: e.target.value }))} /></Field>
+          {/* ── الإيبان يُكتب هنا مرّةً ─────────────────────────────────────
+              مصاريفُ السوّاق تُحوَّل إليه، وصفحتُها تقرؤه من هنا لا من سطر
+              الحمولة — يُكتب مرّةً ويُصحَّح مرّةً، بدل أن يُنسَخ في كلّ كشف
+              فيُخطئ رقمٌ واحدٌ فيذهب المالُ إلى حسابٍ آخر. */}
+          <Field label={ar ? 'رقم الإيبان (لتحويل المصاريف)' : 'IBAN (for expense transfers)'}>
+            <TextInput value={form.iban} dir="ltr" placeholder="SA00 0000 0000 0000 0000 0000"
+              onChange={(e) => setForm((f: any) => ({ ...f, iban: e.target.value.toUpperCase() }))} />
+          </Field>
           <Field label={ar ? 'الجنسية' : 'Nationality'}><TextInput value={form.nationality} onChange={(e) => setForm((f: any) => ({ ...f, nationality: e.target.value }))} /></Field>
           <Field label={ar ? 'الحالة' : 'Status'}>
             <Select value={form.working ? 'yes' : 'no'} onChange={(e) => setForm((f: any) => ({ ...f, working: e.target.value === 'yes' }))}>

@@ -320,6 +320,12 @@
       "en": "Drivers"
     },
     {
+      "key": "/system/fleet/driver-expenses",
+      "section": "Fleet Management",
+      "ar": "مصاريف السوّاق",
+      "en": "Driver Expenses"
+    },
+    {
       "key": "/system/fleet/driver-kpis",
       "section": "Fleet Management",
       "ar": "تقييم السائقين",

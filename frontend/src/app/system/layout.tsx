@@ -297,6 +297,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // كانتا بابين لبيتٍ واحد باسمين متشابهين لا يُفرَّق بينهما.
     { href: '/system/fleet/dashboard', label: lang === 'ar' ? 'التحليلات' : 'Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/drivers', label: lang === 'ar' ? 'السائقون' : 'Drivers', icon: <UserSquare className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
+    // ── مصاريف السوّاق ────────────────────────────────────────────────────
+    // تُقرأ من أدوار القسم، وتعليمُ السداد وحدَه مقصورٌ على الحسابات — الحارس
+    // في المسار لا في القائمة (راجع EXPENSE_PAY_ROLES في routes/fleet).
+    { href: '/system/fleet/driver-expenses', label: lang === 'ar' ? 'مصاريف السوّاق' : 'Driver Expenses', icon: <Wallet className="w-5 h-5" />, roles: [...FLEET_ROLES, 'finance_manager', 'accountant'], section: 'Fleet Management' },
     { href: '/system/fleet/driver-kpis', label: lang === 'ar' ? 'تقييم السائقين' : 'Driver KPIs', icon: <Target className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     // حالةُ المركبات بعد «سياراتنا» مباشرةً: الشاشتان عن الشاحنة نفسِها —
     // إحداهما تقول ما هي، والأخرى كيف حالُها الآن.

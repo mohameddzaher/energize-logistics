@@ -1,3 +1,5 @@
+const mongoose = require('mongoose');
+const { sendMongooseError } = require('../utils/mongooseError');
 const { FleetVehicle, FleetDriver, FleetCustomer, FleetShipment, FleetEvent, FleetConfig } = require('../models/FleetModels');
 const { startOfDay, endOfDay } = require('../utils/companyDay');
 const { emitToAll } = require('../websocket/socketManager');
@@ -678,7 +680,8 @@ exports.addFollowUp = async (req, res) => {
 
 // `monthlyLoadsTarget` و`monthlyKmTarget`: هدفُ سائقٍ بعينه — و`null` تعني
 // «استعمل افتراضيَّ القسم»، وهي غيرُ `0` التي تعني «لا هدفَ له».
-const DRIVER_EDITABLE = ['name', 'phone', 'iqama', 'working', 'onSponsorship', 'nationality', 'vehicle', 'notes', 'isActive', 'offReason', 'offNote', 'monthlyLoadsTarget', 'monthlyKmTarget'];
+// `iban` معه: مصاريفُ السوّاق تُحوَّل إليه، ومصدرُه ملفُّ الرجل لا سطرُ الحمولة.
+const DRIVER_EDITABLE = ['name', 'phone', 'iqama', 'iban', 'working', 'onSponsorship', 'nationality', 'vehicle', 'notes', 'isActive', 'offReason', 'offNote', 'monthlyLoadsTarget', 'monthlyKmTarget'];
 
 exports.listDrivers = async (req, res) => {
   try {
@@ -3050,5 +3053,136 @@ exports.getFleetHealth = async (req, res) => {
   } catch (error) {
     console.error('getFleetHealth error:', error);
     res.status(500).json({ message: 'تعذّر تحميل حالة المركبات' });
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  مصاريف السوّاق — ما يُستحقّ للرجل على كلّ حمولة، وهل صُرِف
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * الصفحةُ تجيب عن سؤالٍ واحدٍ للحسابات: مَن نحوّل له اليوم وكم؟
+ *
+ * ولا تُنشئ بياناتٍ جديدة: المبلغُ هو `driverExpense` الذي كُتب وقت إنشاء
+ * الحمولة — وبونصُ الجمعة مضافٌ فيه أصلًا وقتَها (راجع `createShipment`)، فهو
+ * «المصروف الفعلي» لا تقديرًا يُعاد حسابُه هنا. وإعادةُ حسابه كانت ستجعل الرقمَ
+ * يتغيّر إن غُيِّرت قيمةُ البونص في الإعدادات بعد شهر — ورقمٌ صُرِف لا يُعاد
+ * حسابُه.
+ *
+ * والإيبانُ يُقرأ من ملفّ السائق لا من سطر الحمولة: يُكتب مرّةً ويُصحَّح مرّةً.
+ * وإيبانُ الأوّلِ وحدَه يُعرض حين يكون سائقان — هو المستلم، والثاني اسمٌ يُذكَر.
+ */
+exports.getDriverExpenses = async (req, res) => {
+  try {
+    const q = req.query || {};
+    const match = { driverExpense: { $gt: 0 } };
+
+    // يومٌ أو مدًى أو شهر — والقياسُ بتاريخ التحميل لا بلحظة إنشاء الصفّ.
+    const monthRange = (mk) => {
+      const [y, m] = String(mk).split('-').map(Number);
+      if (!y || !m) return null;
+      return [new Date(Date.UTC(y, m - 1, 1)), new Date(Date.UTC(y, m, 1))];
+    };
+    let from = null; let to = null;
+    if (q.month && monthRange(q.month)) [from, to] = monthRange(q.month);
+    else {
+      if (q.from) from = new Date(`${q.from}T00:00:00.000Z`);
+      if (q.to) { to = new Date(`${q.to}T00:00:00.000Z`); to.setUTCDate(to.getUTCDate() + 1); }
+    }
+    if (from || to) {
+      match.loadDate = {};
+      if (from) match.loadDate.$gte = from;
+      if (to) match.loadDate.$lt = to;
+    }
+    if (q.paid === '1') match.driverExpensePaid = true;
+    if (q.paid === '0') match.driverExpensePaid = { $ne: true };
+    if (q.driver && mongoose.isValidObjectId(q.driver)) match.driver = new mongoose.Types.ObjectId(String(q.driver));
+    if (q.search) {
+      const rx = require('../utils/arabicSearch').arabicSearchRegex(String(q.search));
+      const asNum = Number(q.search);
+      match.$or = [
+        { driverName: rx }, { vehiclePlate: rx }, { secondDriverName: rx },
+        ...(Number.isFinite(asNum) ? [{ waybillNumber: asNum }] : []),
+      ];
+    }
+    // المشرفُ يقرأ الكلَّ الآن (راجع supervisorVehicleIds)، والقيدُ يبقى معرَّفًا
+    // من مكانٍ واحدٍ فلو رُدّت السياسةُ رُدَّت هنا معها.
+    const scope = await supervisorVehicleIds(req);
+    if (scope) match.vehicle = { $in: scope };
+
+    // الإيبانُ يُضَمّ في القاعدة لا في Node: ألفُ صفٍّ × نداءٌ لكلّ سائقٍ كان
+    // سيعني ألفَ استعلامٍ على وصلةٍ محدودة الإنتاجيّة.
+    const rows = await FleetShipment.aggregate([
+      { $match: match },
+      { $sort: { loadDate: -1, waybillNumber: -1 } },
+      { $limit: 5000 },
+      { $lookup: { from: 'fleetdrivers', localField: 'driver', foreignField: '_id', as: '_d' } },
+      { $project: {
+        waybillNumber: 1, vehiclePlate: 1, loadDate: 1, driverExpense: 1,
+        driverName: 1, secondDriverName: 1, fridayBonus: 1,
+        fromCity: 1, toCity: 1, supervisorName: 1, status: 1,
+        driverExpensePaid: 1, driverExpensePaidAt: 1, driverExpensePaidByName: 1,
+        driverIban: { $ifNull: [{ $first: '$_d.iban' }, ''] },
+        driverPhone: { $ifNull: [{ $first: '$_d.phone' }, '$driverPhone'] },
+      } },
+    ]).allowDiskUse(true);
+
+    // البطاقاتُ تُحسب على المطابق كلِّه لا على الصفحة — وهي سببُ وجودها.
+    const [sum] = await FleetShipment.aggregate([
+      { $match: match },
+      { $group: {
+        _id: null,
+        loads: { $sum: 1 },
+        total: { $sum: '$driverExpense' },
+        paid: { $sum: { $cond: ['$driverExpensePaid', '$driverExpense', 0] } },
+        unpaid: { $sum: { $cond: ['$driverExpensePaid', 0, '$driverExpense'] } },
+        paidLoads: { $sum: { $cond: ['$driverExpensePaid', 1, 0] } },
+        fridays: { $sum: { $cond: ['$fridayBonus', 1, 0] } },
+        drivers: { $addToSet: '$driver' },
+      } },
+      { $project: { loads: 1, total: 1, paid: 1, unpaid: 1, paidLoads: 1, fridays: 1, driverCount: { $size: '$drivers' } } },
+    ]);
+
+    res.json({
+      rows,
+      summary: sum || { loads: 0, total: 0, paid: 0, unpaid: 0, paidLoads: 0, fridays: 0, driverCount: 0 },
+      capped: rows.length >= 5000,
+    });
+  } catch (e) {
+    console.error('getDriverExpenses', e);
+    res.status(500).json({ message: 'تعذّر تحميل مصاريف السوّاق' });
+  }
+};
+
+/**
+ * تعليمُ الصرف — فعلُ الحسابات.
+ *
+ * يقبل صفًّا أو صفوفًا: الحساباتُ تحوّل دفعةً واحدةً لعشرين سائقًا، فتعليمُها
+ * صفًّا صفًّا عشرون نداءً وعشرون فرصةً لأن يُنسى واحد.
+ */
+exports.setDriverExpensePaid = async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body.ids) ? req.body.ids : [req.params.id])
+      .filter((x) => mongoose.isValidObjectId(x));
+    if (!ids.length) return res.status(400).json({ message: 'لا صفوفَ محدَّدة' });
+    const paid = req.body.paid !== false;
+    const me = await User.findById(req.user._id).select('firstName lastName').lean();
+    const $set = paid
+      ? {
+        driverExpensePaid: true,
+        driverExpensePaidAt: new Date(),
+        driverExpensePaidBy: req.user._id,
+        driverExpensePaidByName: [me?.firstName, me?.lastName].filter(Boolean).join(' '),
+      }
+      // ورفعُ العلامة يمحو أثرَها: «سُدِّد بواسطة فلان» تحت صفٍّ غيرِ مسدَّد كذب.
+      : { driverExpensePaid: false, driverExpensePaidAt: null, driverExpensePaidBy: null, driverExpensePaidByName: '' };
+    const r = await FleetShipment.updateMany({ _id: { $in: ids } }, { $set });
+    await logAudit({
+      user: req.user._id, action: paid ? 'pay_driver_expense' : 'unpay_driver_expense',
+      entity: 'FleetShipment', changes: { after: { count: ids.length } }, ipAddress: req.ip,
+    });
+    emit('fleet:driverExpense', {});
+    res.json({ updated: r.modifiedCount ?? 0, paid });
+  } catch (e) {
+    return sendMongooseError(res, e, 'تعذّر حفظ حالة السداد');
   }
 };

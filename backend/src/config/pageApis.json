@@ -426,6 +426,13 @@
       ],
       "wildcard": false
     },
+    "/system/fleet/driver-expenses": {
+      "apis": [
+        "/api/fleet/driver-expenses",
+        "/api/fleet/driver-expenses/paid"
+      ],
+      "wildcard": false
+    },
     "/system/fleet/driver-kpis": {
       "apis": [
         "/api/fleet/driver-kpis"

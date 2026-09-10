@@ -124,7 +124,7 @@ exports.getClearances = async (req, res) => {
     // في المعاملة الواحدة، والقائمةُ لا تعرض منها شيئًا. تُحمَّل عند فتح
     // المعاملة فقط. يقلّل النقل بشكل كبير على Atlas المُقيَّد.
     let list = await cache.wrap(ck, 30000, () => CustomsClearance.find(filter)
-      .select('-documents -attachments -containers').sort({ createdAt: -1 }).lean());
+      .select('-documents -attachments -containers -paymentStages').sort({ createdAt: -1 }).lean());
 
     // ── والبحثُ بأيّ اسمٍ أو أيّ رقم ─────────────────────────────────────────
     // كان يقرأ ستّةَ حقول. والورقةُ التي في اليد قد تحمل رقمَ البيان أو رقمَ
@@ -628,7 +628,7 @@ exports.getPartyProfile = async (req, res) => {
     const field = party.kind === 'agent' ? 'agentParty' : 'customerParty';
 
     const deals = await CustomsClearance.find({ [field]: party._id })
-      .select('-documents -attachments -containers').sort({ createdAt: -1 }).lean();
+      .select('-documents -attachments -containers -paymentStages').sort({ createdAt: -1 }).lean();
 
     const live = deals.filter((d) => !d.cancelled);
     const sum = (f) => Math.round(live.reduce((t, d) => t + (Number(f(d)) || 0), 0));
@@ -682,3 +682,226 @@ exports.getPartyProfile = async (req, res) => {
     res.status(500).json({ message: 'تعذّر تحميل الملفّ' });
   }
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  مراحلُ السداد — إدخالٌ بتاريخه ومرفقه، يتكرّر
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * المرحلةُ التي لا تُقفَل المعاملةُ بدونها. مفتاحُها يُقرأ في الشيفرة، واسمُها
+ * يُعدَّل من إعدادات القسم — راجع `customs_payment_stage` في lookupTypes.
+ */
+const REQUIRED_STAGE_KEY = 'transportInvoice';
+
+/** المراحلُ المسموحة كما هي في إعدادات القسم الآن. */
+const allowedStages = async () => {
+  const Lookup = require('../models/Lookup');
+  const rows = await Lookup.find({ type: 'customs_payment_stage', deleted: { $ne: true } })
+    .sort({ order: 1 }).lean();
+  return rows;
+};
+
+/**
+ * إضافةُ إدخالِ مرحلة — تاريخٌ ومرفقٌ وربّما مبلغ.
+ *
+ * والمرفقُ يُكتب في مكانين: في الإدخال ليُقرأ في موضعه من المرحلة، وفي
+ * `attachments` ليُوجَد مع بقيّة ورق المعاملة حيث يبحث عنه من لا يعرف من أيّ
+ * مرحلةٍ جاء. وهو ملفٌّ واحدٌ على القرص، مذكورٌ مرّتين — لا نسختان.
+ */
+exports.addPaymentStage = async (req, res) => {
+  try {
+    const clearance = await CustomsClearance.findById(req.params.id);
+    if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
+
+    const stages = await allowedStages();
+    const key = String(req.body.key || '').trim();
+    const def = stages.find((s) => s.key === key);
+    if (!def) return res.status(400).json({ message: 'مرحلة غير معروفة — أضِفها من إعدادات القسم' });
+    if ((clearance.paymentStages || []).length >= 60) {
+      return res.status(400).json({ message: 'بلغت المعاملةُ حدَّ إدخالات المراحل' });
+    }
+
+    const date = String(req.body.date || '').trim();
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ message: 'التاريخ غير صالح' });
+    }
+
+    let stored = null;
+    if (req.body.dataUrl) {
+      try { stored = saveUploadFile(req.body.dataUrl, 'customs', req.body.fileName || ''); }
+      catch (e) { return res.status(400).json({ message: e.message }); }
+    }
+    if (!date && !stored) {
+      return res.status(400).json({ message: 'اختر تاريخًا أو ارفع ملفًّا — الإدخال الفارغ لا يُسجَّل' });
+    }
+
+    const who = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.name || '';
+    const entry = {
+      key,
+      label: def.nameAr || def.nameEn || key,
+      date,
+      amount: req.body.amount != null && req.body.amount !== '' ? Number(req.body.amount) : null,
+      note: String(req.body.note || '').trim().slice(0, 500),
+      ...(stored || {}),
+      addedBy: req.user._id,
+      addedByName: who,
+      addedAt: new Date(),
+    };
+    clearance.paymentStages.push(entry);
+
+    if (stored) {
+      clearance.attachments.push({
+        ...stored,
+        title: entry.label,
+        stage: '',   // مرحلةُ السداد ليست من `STAGES` (دورةُ الإجراءات) فتبقى عامّة
+        uploadedBy: req.user._id,
+        uploadedByName: who,
+        uploadedAt: new Date(),
+      });
+    }
+
+    clearance.lastModifiedBy = req.user._id;
+    await clearance.save();
+    await logAudit({
+      user: req.user._id, action: 'add_customs_payment_stage', entity: 'CustomsClearance',
+      entityId: clearance._id,
+      changes: { after: { refNumber: clearance.refNumber, stage: entry.label, date, file: entry.fileName || '' } },
+      ipAddress: req.ip,
+    });
+    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
+    cache.clear('customs:');
+    res.status(201).json({ clearance });
+  } catch (error) {
+    return sendMongooseError(res, error, 'تعذّر إضافة المرحلة');
+  }
+};
+
+/** تعديلُ إدخالٍ قائم — تاريخُه أو مبلغُه أو ملاحظتُه. */
+exports.updatePaymentStage = async (req, res) => {
+  try {
+    const clearance = await CustomsClearance.findById(req.params.id);
+    if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
+    const entry = clearance.paymentStages.id(req.params.entryId);
+    if (!entry) return res.status(404).json({ message: 'الإدخال غير موجود' });
+
+    if (req.body.date !== undefined) {
+      const d = String(req.body.date || '').trim();
+      if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) return res.status(400).json({ message: 'التاريخ غير صالح' });
+      entry.date = d;
+    }
+    if (req.body.amount !== undefined) {
+      entry.amount = req.body.amount === '' || req.body.amount == null ? null : Number(req.body.amount);
+    }
+    if (req.body.note !== undefined) entry.note = String(req.body.note).trim().slice(0, 500);
+
+    // ملفٌّ جديدٌ يحلُّ محلَّ القديم، والقديمُ يُمحى من القرص لا يبقى يتيمًا.
+    if (req.body.dataUrl) {
+      let stored;
+      try { stored = saveUploadFile(req.body.dataUrl, 'customs', req.body.fileName || ''); }
+      catch (e) { return res.status(400).json({ message: e.message }); }
+      const old = entry.fileUrl;
+      Object.assign(entry, stored);
+      clearance.attachments.push({
+        ...stored,
+        title: entry.label,
+        stage: '',
+        uploadedBy: req.user._id,
+        uploadedByName: [req.user.firstName, req.user.lastName].filter(Boolean).join(' '),
+        uploadedAt: new Date(),
+      });
+      if (old) {
+        // لا يُمحى من القرص إن كان مذكورًا في مرفقاتٍ أخرى — الذكرُ مرّتان
+        // لملفٍّ واحد، ومحوُه يُفرِغ السطرَ الآخر أيضًا.
+        const stillUsed = clearance.attachments.some((a) => a.fileUrl === old)
+          || clearance.paymentStages.some((p) => String(p._id) !== String(entry._id) && p.fileUrl === old);
+        if (!stillUsed) { try { deleteStoredFile(old); } catch (e) { /* */ } }
+      }
+    }
+
+    clearance.lastModifiedBy = req.user._id;
+    await clearance.save();
+    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
+    cache.clear('customs:');
+    res.json({ clearance });
+  } catch (error) {
+    return sendMongooseError(res, error, 'تعذّر تعديل المرحلة');
+  }
+};
+
+/** حذفُ إدخال. ورقتُه تبقى في مرفقات المعاملة — الورقةُ وقعت ولا تُنكَر. */
+exports.deletePaymentStage = async (req, res) => {
+  try {
+    const clearance = await CustomsClearance.findById(req.params.id);
+    if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
+    const entry = clearance.paymentStages.id(req.params.entryId);
+    if (!entry) return res.status(404).json({ message: 'الإدخال غير موجود' });
+    const label = entry.label;
+    entry.deleteOne();
+    clearance.lastModifiedBy = req.user._id;
+    await clearance.save();
+    await logAudit({
+      user: req.user._id, action: 'delete_customs_payment_stage', entity: 'CustomsClearance',
+      entityId: clearance._id, changes: { before: { stage: label } }, ipAddress: req.ip,
+    });
+    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
+    cache.clear('customs:');
+    res.json({ clearance });
+  } catch (error) {
+    return sendMongooseError(res, error, 'تعذّر حذف المرحلة');
+  }
+};
+
+/**
+ * إقفالُ المعاملة — ومعه الشرطُ الذي طُلب صراحةً.
+ *
+ * لا تُقفَل قبل أن تكون «فاتورة النقل» لها **تاريخٌ ومرفق** معًا. والإقفالُ
+ * يُخرج المعاملةَ من قوائم المتابعة، فإقفالُها بلا فاتورةِ نقلٍ يُخرجها وفيها
+ * مالٌ لم يُطالَب به — ولا يُكتشَف ذلك إلّا عند الجرد.
+ *
+ * والسببُ يُقال صريحًا: «ارفع فاتورة النقل واختر تاريخها» لا «غير مسموح».
+ */
+exports.completeClearance = async (req, res) => {
+  try {
+    const clearance = await CustomsClearance.findById(req.params.id);
+    if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
+
+    const reopen = req.body.completed === false;
+    if (reopen) {
+      clearance.isCompleted = false;
+      clearance.completedAt = null;
+      clearance.completedBy = null;
+      clearance.completedByName = '';
+    } else {
+      const stages = await allowedStages();
+      const def = stages.find((s) => s.key === REQUIRED_STAGE_KEY);
+      const name = def?.nameAr || 'فاتورة النقل';
+      const ok = (clearance.paymentStages || []).some(
+        (p) => p.key === REQUIRED_STAGE_KEY && String(p.date || '').trim() && String(p.fileUrl || '').trim(),
+      );
+      if (!ok) {
+        return res.status(400).json({
+          message: `لا تُقفَل المعاملة قبل «${name}»: أضِفها بتاريخٍ ومرفقٍ معًا ثمّ أعِد المحاولة.`,
+          missingStage: REQUIRED_STAGE_KEY,
+        });
+      }
+      clearance.isCompleted = true;
+      clearance.completedAt = new Date();
+      clearance.completedBy = req.user._id;
+      clearance.completedByName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.name || '';
+    }
+
+    clearance.lastModifiedBy = req.user._id;
+    await clearance.save();
+    await logAudit({
+      user: req.user._id, action: reopen ? 'reopen_customs_clearance' : 'complete_customs_clearance',
+      entity: 'CustomsClearance', entityId: clearance._id,
+      changes: { after: { refNumber: clearance.refNumber } }, ipAddress: req.ip,
+    });
+    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
+    cache.clear('customs:');
+    res.json({ clearance });
+  } catch (error) {
+    return sendMongooseError(res, error, 'تعذّر إقفال المعاملة');
+  }
+};
+
+module.exports.REQUIRED_STAGE_KEY = REQUIRED_STAGE_KEY;

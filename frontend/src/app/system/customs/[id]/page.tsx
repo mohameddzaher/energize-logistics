@@ -7,12 +7,13 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { canEditSection } from '@/lib/sections';
-import { ArrowLeft, ArrowRight, Check, Loader2, Ship, Copy, Mail, Ban, RotateCcw, ChevronRight, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Loader2, Ship, Copy, Mail, Ban, RotateCcw, ChevronRight, Plus, Trash2, Lock, Unlock } from 'lucide-react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import ExportMenu, { type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import { getCustomsTranslations, getCustomsIdExtraTranslations } from '@/lib/translations';
 import ClearanceAttachments from '@/components/customs/ClearanceAttachments';
+import PaymentStages from '@/components/customs/PaymentStages';
 
 const STAGE_ORDER = [
   'papers_received', 'declaration_paid', 'do_requested', 'do_linked', 'port_fees_paid',
@@ -31,6 +32,7 @@ export default function CustomsDetailPage() {
   const txx = getCustomsIdExtraTranslations(lang);
 
   const [c, setC] = useState<any>(null);
+  const [closing, setClosing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState('');
@@ -114,16 +116,8 @@ export default function CustomsDetailPage() {
   const ar = lang === 'ar';
 
   // --- master-spreadsheet field groups -------------------------------------
-  const STAGE_DATE_FIELDS: [string, string, string][] = [
-    ['doInvoiceEmailed', 'ميل فاتورة إذن التسليم', 'DO invoice emailed'],
-    ['doInvoicePaid', 'سداد فاتورة إذن التسليم', 'DO invoice paid'],
-    ['doLinkEmailed', 'ميل ربط إذن التسليم', 'DO link emailed'],
-    ['dutyPaid', 'سداد الرسوم الجمركية', 'Customs duty paid'],
-    ['portFeesPaid', 'سداد الموانى', 'Port fees paid'],
-    ['unloadingFeesPaid', 'سداد التفريغ', 'Unloading fees paid'],
-    ['containersReturned', 'الإرجاع', 'Containers returned'],
-    ['returnInvoiceDate', 'فاتورة الإرجاع', 'Return invoice'],
-  ];
+  // (قائمةُ مراحل السداد كانت هنا مكتوبةً بثمانيةِ أسطر. صارت تُقرأ من إعدادات
+  //  القسم — راجع `components/customs/PaymentStages`.)
   // ── التكاليف: مبالغُ تُدفع للغير وتُمرَّر على العميل كما هي ──────────────
   // مجموعُها هو «اجمالى المصروفات» في الماستر حرفًا بحرف — لا يُزاد عليه بندٌ
   // من بنود الهامش ولا يُنقص منه، وإلّا اختلف رقمُ الشاشة عن رقم المحاسبة.
@@ -231,6 +225,18 @@ export default function CustomsDetailPage() {
   };
 
   const tick = (v: any) => (v ? (ar ? 'نعم' : 'Yes') : (ar ? 'لا' : 'No'));
+
+  // الإقفالُ من الترويسة. والسببُ يُعرَض كما جاء من الخادم — «أضِف فاتورة النقل
+  // بتاريخٍ ومرفق» لا «غير مسموح».
+  const closeTransaction = async (value: boolean) => {
+    setClosing(true);
+    try {
+      const d = await api.patch<any>(`/api/customs-clearance/${params?.id}/complete`, { completed: value });
+      setC(d.clearance);
+      notify(value ? (ar ? 'أُقفلت المعاملة' : 'Closed') : (ar ? 'أُعيد فتحُ المعاملة' : 'Reopened'), 'success');
+    } catch (e: any) { notify(e?.message || (ar ? 'تعذّر الإقفال' : 'Failed'), 'error'); }
+    setClosing(false);
+  };
   const checklistCols: ExportColumn[] = [
     { header: ar ? 'المستند' : 'Item', key: 'label', width: 34 },
     { header: ar ? 'متوفر' : 'Present', key: 'done', width: 12 },
@@ -256,17 +262,27 @@ export default function CustomsDetailPage() {
     ],
   };
 
+  // ── والملفُّ يقرأ ما تقرؤه الشاشة ────────────────────────────────────────
+  // كان يُبنى من `stageDates` الثمانيةِ القديمة. فلمّا صارت المراحلُ قائمةً
+  // تتكرّر ولها مرفقات، بقي الملفُّ يطبع الثمانيةَ وحدَها بلا مرفقٍ ولا دفعةٍ
+  // ثانية — ورقةٌ تُرسَل خارج النظام وتقول أقلَّ ممّا حدث.
   const milestonesSheet: ExportSheet = {
     name: ar ? 'مراحل السداد' : 'Payments',
     columns: [
       { header: ar ? 'البند' : 'Milestone', key: 'label', width: 32 },
-      { header: ar ? 'تم' : 'Done', key: 'done', width: 10 },
       { header: ar ? 'التاريخ' : 'Date', key: 'date', width: 16 },
+      { header: ar ? 'المبلغ' : 'Amount', key: 'amount', width: 14 },
+      { header: ar ? 'المرفق' : 'File', key: 'file', width: 30 },
+      { header: ar ? 'ملاحظة' : 'Note', key: 'note', width: 26 },
+      { header: ar ? 'أضافه' : 'Added by', key: 'by', width: 20 },
     ],
-    rows: STAGE_DATE_FIELDS.map(([key, arLabel, enLabel]) => ({
-      label: ar ? arLabel : enLabel,
-      done: tick(c.stageDone?.[key]),
-      date: c.stageDates?.[key] || '—',
+    rows: ((c.paymentStages || []) as any[]).map((e) => ({
+      label: e.label || e.key,
+      date: e.date || '—',
+      amount: e.amount != null ? Number(e.amount).toLocaleString() : '',
+      file: e.fileName || (ar ? 'بلا مرفق' : 'no file'),
+      note: e.note || '',
+      by: e.addedByName || '',
     })),
   };
 
@@ -341,7 +357,14 @@ export default function CustomsDetailPage() {
           <Link href="/system/customs" className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"><Back className="w-4 h-4" /></Link>
           <div className="w-10 h-10 rounded-lg bg-[#f37121]/20 flex items-center justify-center"><Ship className="w-5 h-5 text-[#f37121]" /></div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">{c.refNumber}</h1>
+            <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
+              {c.refNumber}
+              {c.isCompleted && (
+                <span className="rounded-md bg-green-100 px-2 py-0.5 text-[11px] font-bold text-green-700">
+                  {ar ? 'مقفولة' : 'Closed'}
+                </span>
+              )}
+            </h1>
             <p className="text-slate-500 text-sm">{c.branch === 'dammam' ? T.dammam : T.jeddah} · {c.cancelled ? T.cancelled : (T.stages[c.stage] || c.stage)}</p>
           </div>
         </div>
@@ -349,6 +372,26 @@ export default function CustomsDetailPage() {
           {saving && <span className="text-slate-400 text-xs flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /></span>}
           <ExportMenu fileName={`customs-${c.refNumber || c.blNumber || c._id}`} lang={lang as 'ar' | 'en'}
             options={[{ key: 'full', label: ar ? 'ملف المعاملة كاملًا' : 'The whole clearance', sheets: exportSheets }]} />
+          {/* ── إنهاءُ المعاملة من الترويسة ───────────────────────────────
+              وهو نفسُه الموجود أسفلَ مراحل السداد — طُلب في الموضعين، ولأنّ
+              مَن أنهى العملَ يكون في أعلى الصفحة لا في آخرها. والشرطُ يحرسه
+              الخادمُ لا الزرّ: «فاتورة النقل» بتاريخٍ ومرفق. */}
+          {canEdit && !c.cancelled && (
+            c.isCompleted
+              ? (
+                <button type="button" onClick={() => closeTransaction(false)} disabled={closing}
+                  className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:text-[#f37121]">
+                  <Unlock className="w-4 h-4" /> {ar ? 'إعادة الفتح' : 'Reopen'}
+                </button>
+              )
+              : (
+                <button type="button" onClick={() => closeTransaction(true)} disabled={closing}
+                  className="flex items-center gap-1.5 rounded-lg bg-[#f37121] px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-[#e06010] disabled:opacity-60">
+                  {closing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+                  {ar ? 'إنهاء المعاملة' : 'Close transaction'}
+                </button>
+              )
+          )}
           {canEdit && (
             c.cancelled
               ? <button type="button" onClick={() => patch({ cancelled: false })} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-500/15 text-green-600 text-sm font-medium hover:bg-green-500/25 transition-colors"><RotateCcw className="w-4 h-4" /> {T.reactivate}</button>
@@ -511,26 +554,20 @@ export default function CustomsDetailPage() {
           </div>
         </Card>
 
-        {/* Payment milestones */}
+        {/* ── مراحلُ السداد ─────────────────────────────────────────────
+            كانت ثمانيةَ صفوفٍ مكتوبةً في الشيفرة: تاريخٌ واحدٌ لكلٍّ وبلا مرفق
+            ولا تتكرّر. صارت قائمةً تُدار من إعدادات القسم، ولكلّ إدخالٍ تاريخُه
+            ومرفقُه — راجع `components/customs/PaymentStages`. */}
         <Card title={ar ? 'مراحل السداد' : 'Payment milestones'}>
-          <p className="text-slate-500 text-xs mb-3">
-            {ar ? 'علّم على المرحلة عند إتمامها، وأضف التاريخ إن كان معروفاً.' : 'Tick a milestone when done; add the date if known.'}
-          </p>
-          <div className="space-y-2">
-            {STAGE_DATE_FIELDS.map(([key, arLabel, enLabel]) => (
-              <div key={key} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <button type="button" disabled={!canEdit} onClick={() => patch({ stageDone: { [key]: !c.stageDone?.[key] } })}
-                  className={`w-5 h-5 shrink-0 rounded-md border flex items-center justify-center transition-colors ${c.stageDone?.[key] ? 'bg-green-500 border-green-500 text-white' : 'bg-white border-slate-300'} ${canEdit ? '' : 'cursor-default'}`}
-                  aria-label={ar ? arLabel : enLabel}>
-                  {c.stageDone?.[key] && <Check className="w-3.5 h-3.5" />}
-                </button>
-                <span className="flex-1 text-sm text-slate-700 truncate">{ar ? arLabel : enLabel}</span>
-                <input type="date" disabled={!canEdit} value={c.stageDates?.[key] || ''}
-                  onChange={(e) => patch({ stageDates: { [key]: e.target.value }, stageDone: e.target.value ? { [key]: true } : {} })}
-                  className="w-[9.5rem] px-2 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 disabled:opacity-60 [color-scheme:light]" />
-              </div>
-            ))}
-          </div>
+          <PaymentStages
+            clearanceId={String(c._id)}
+            entries={(c as any).paymentStages || []}
+            completed={(c as any).isCompleted}
+            completedByName={(c as any).completedByName}
+            completedAt={(c as any).completedAt}
+            canEdit={canEdit}
+            ar={ar}
+            onChanged={(cl) => setC(cl)} />
         </Card>
 
         {/* Costs */}

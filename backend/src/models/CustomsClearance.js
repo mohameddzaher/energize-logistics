@@ -102,7 +102,59 @@ const customsClearanceSchema = new mongoose.Schema(
     // يُشتقُّ الموعدُ متى عُرف تاريخُ التفريغ.
     returnFreeDays: { type: Number, default: 0 },
 
+    /**
+     * ── مراحلُ السداد: قائمةٌ تتكرّر، لا ثمانيَ خانة ──────────────────────
+     *
+     * كانت `stageDates`/`stageDone` أدناه ثمانيَ مفتاحٍ مكتوبةً في المخطَّط:
+     * مرحلةً واحدةً لكلٍّ، بتاريخٍ واحدٍ وبلا مرفق. وثلاثةُ أشياءَ لم تكن ممكنة:
+     *
+     *   · مرحلةٌ تاسعة — «فاتورة النقل» — تحتاج نشرةً جديدة لتوجد.
+     *   · ورقةُ السداد نفسُها. فيُكتب «سُدِّد ٣/٨» ولا إيصال، فإن سُئل بعد شهرٍ
+     *     لم يوجد إلّا تاريخٌ لا يُثبِت شيئًا.
+     *   · وأن تتكرّر المرحلة. والرسومُ تُسدَّد على دفعتين، والإرجاعُ يقع مرّتين
+     *     لحاويتين — فيُكتب الثاني فوق الأوّل ويضيع.
+     *
+     * فصارت قائمةً: كلُّ إدخالٍ مرحلةٌ بتاريخها ومرفقها، وتُضاف المرحلةُ نفسُها
+     * مرّاتٍ. والقائمةُ التي تُختار منها تُدار من إعدادات القسم
+     * (`customs_payment_stage`)، والاسمُ يُلقَط في `label` فلا يتغيّر ما مضى
+     * إن أُعيدت التسميةُ لاحقًا.
+     *
+     * و`stageDates`/`stageDone` تبقيان: صفوفُ الاستيراد القديمة فيها، ومحوُها
+     * محوٌ للتاريخ. تُنقَل مرّةً بـ`scripts/migrateCustomsStages.js` وتبقى
+     * مقروءةً لا مكتوبة.
+     */
+    paymentStages: [
+      {
+        key: { type: String, trim: true, default: '' },     // مفتاحُ المرحلة من القائمة
+        label: { type: String, trim: true, default: '' },   // لقطةُ الاسم وقتَ الإضافة
+        date: { type: String, default: '' },                // YYYY-MM-DD
+        amount: { type: Number, default: null },            // المبلغُ إن سُجِّل
+        note: { type: String, trim: true, default: '' },
+        // المرفقُ يُكتب هنا وفي `attachments` معًا: هنا ليُقرأ في موضعه من
+        // المرحلة، وهناك ليُوجَد مع بقيّة ورق المعاملة في مكانٍ واحد.
+        fileUrl: { type: String, default: '' },
+        fileName: { type: String, trim: true, default: '' },
+        mimeType: { type: String, trim: true, default: '' },
+        size: { type: Number, default: 0 },
+        addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        addedByName: { type: String, default: '' },
+        addedAt: { type: Date, default: Date.now },
+      },
+    ],
+
+    /**
+     * ── إقفالُ المعاملة ──────────────────────────────────────────────────
+     * فعلٌ صريحٌ لا حالةٌ تُستنتَج. ولا يُقفَل قبل أن تكون «فاتورة النقل» لها
+     * تاريخٌ ومرفق — راجع `completeClearance`: المعاملةُ تُقفَل فتخرج من قوائم
+     * المتابعة، فإن أُقفلت بلا فاتورةِ نقلٍ خرجت وفيها مالٌ لم يُطالَب به.
+     */
+    isCompleted: { type: Boolean, default: false, index: true },
+    completedAt: { type: Date, default: null },
+    completedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    completedByName: { type: String, trim: true, default: '' },
+
     // Payment / milestone dates (YYYY-MM-DD strings, '' when unknown)
+    // مقروءةٌ لا مكتوبة — راجع `paymentStages` أعلاه.
     stageDates: {
       doInvoiceEmailed: { type: String, default: '' },   // ميل فاتورة اذن التسليم
       doInvoicePaid: { type: String, default: '' },      // سداد فاتورة اذن التسليم

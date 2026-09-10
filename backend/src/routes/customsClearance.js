@@ -27,6 +27,15 @@ router.put('/:id', authorize(...EDIT_ROLES), ctrl.updateClearance);
 router.delete('/:id', authorize('super_admin', 'admin', 'customs_manager'), ctrl.deleteClearance);
 
 // مرفقات المعاملة — ورقُ كلِّ مرحلة يُرفَع مع المعاملة نفسِها.
+// ── مراحلُ السداد ──────────────────────────────────────────────────────────
+// إدخالٌ لكلّ مرّة: المرحلةُ نفسُها تُضاف مرّاتٍ (الرسومُ على دفعتين، الإرجاعُ
+// لحاويتين). والقائمةُ التي تُختار منها من إعدادات القسم.
+router.post('/:id/payment-stages', authorize(...EDIT_ROLES), ctrl.addPaymentStage);
+router.put('/:id/payment-stages/:entryId', authorize(...EDIT_ROLES), ctrl.updatePaymentStage);
+router.delete('/:id/payment-stages/:entryId', authorize(...EDIT_ROLES), ctrl.deletePaymentStage);
+// الإقفال — لا يمرّ قبل «فاتورة النقل» بتاريخٍ ومرفق. راجع completeClearance.
+router.patch('/:id/complete', authorize(...EDIT_ROLES), ctrl.completeClearance);
+
 router.post('/:id/attachments', authorize(...EDIT_ROLES), ctrl.addAttachments);
 router.put('/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.updateAttachment);
 router.delete('/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.deleteAttachment);

@@ -393,6 +393,25 @@ const REGISTRY = [
       { key: 'egypt', nameAr: 'مصر', nameEn: 'Egypt' },
       { key: 'germany', nameAr: 'ألمانيا', nameEn: 'Germany' },
     ]],
+    // ── مراحلُ السداد ────────────────────────────────────────────────────
+    // كانت ثمانيَ خانةٍ مكتوبةً في المخطَّط، فمن أراد مرحلةً تاسعة انتظر نشرةً
+    // جديدة. صارت قائمةً تُدار من إعدادات القسم: تُضاف المرحلةُ وتُسمّى ويُعاد
+    // ترتيبُها، ويظهر ذلك في كلّ معاملة.
+    //
+    // و`transportInvoice` مرحلةٌ لها حكمٌ خاصّ: لا تُقفَل معاملةٌ قبل أن يكون
+    // لها تاريخٌ ومرفق (راجع `completeClearance`). فمفتاحُها يُقرأ في الشيفرة،
+    // ولذلك تبقى موجودةً ولو أُعيدت تسميتُها — والاسمُ وحدَه هو ما يُعدَّل.
+    ['customs_payment_stage', 'مراحل السداد', 'Payment Stages', [
+      { key: 'doInvoiceEmailed', nameAr: 'ميل فاتورة إذن التسليم', nameEn: 'DO invoice emailed' },
+      { key: 'doInvoicePaid', nameAr: 'سداد فاتورة إذن التسليم', nameEn: 'DO invoice paid' },
+      { key: 'doLinkEmailed', nameAr: 'ميل ربط إذن التسليم', nameEn: 'DO link emailed' },
+      { key: 'dutyPaid', nameAr: 'سداد الرسوم الجمركية', nameEn: 'Customs duty paid' },
+      { key: 'portFeesPaid', nameAr: 'سداد الموانى', nameEn: 'Port fees paid' },
+      { key: 'unloadingFeesPaid', nameAr: 'سداد التفريغ', nameEn: 'Unloading paid' },
+      { key: 'containersReturned', nameAr: 'الإرجاع', nameEn: 'Containers returned' },
+      { key: 'returnInvoiceDate', nameAr: 'فاتورة الإرجاع', nameEn: 'Return invoice' },
+      { key: 'transportInvoice', nameAr: 'فاتورة النقل', nameEn: 'Transport invoice' },
+    ]],
     ['customs_city', 'مدن التخليص', 'Customs Cities', [
       { key: 'jeddah', nameAr: 'جدة', nameEn: 'Jeddah' },
       { key: 'dammam', nameAr: 'الدمام', nameEn: 'Dammam' },

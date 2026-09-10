@@ -24,6 +24,7 @@ interface Clearance {
   branch: 'jeddah' | 'dammam';
   stage: string;
   cancelled: boolean;
+  isCompleted?: boolean;
   blNumber?: string;
   customerName?: string;
   shippingAgent?: string;
@@ -222,7 +223,7 @@ export default function CustomsPage() {
     { header: ar ? 'حالة الإرجاع' : 'Return state', key: '_returnState', width: 16 },
     { header: ar ? 'حالة الفاتورة' : 'Invoice status', key: 'billing.invoiceStatus', width: 16, transform: (v) => v || '—' },
     { header: ar ? 'رقم فاتورتنا' : 'Our invoice no.', key: 'billing.ourInvoiceNumber', width: 16, transform: (v) => v || '—' },
-    { header: T.stage, key: 'stage', width: 20, transform: (v, r) => (r.cancelled ? T.cancelled : T.stages[v] || v) },
+    { header: T.stage, key: 'stage', width: 20, transform: (v, r) => (r.cancelled ? T.cancelled : r.isCompleted ? (lang === 'ar' ? 'مقفولة' : 'Closed') : T.stages[v] || v) },
   ];
   // المعاملات كلّها تصل دفعةً واحدة وفلاتر السنة والشهر وحالة الفاتورة والبحث
   // تعمل في المتصفّح؛ فمن صدّر وهو على فلتر شهرٍ واحد كان يحمل ملفًّا يسمّيه سجلَّ السنة.
@@ -389,8 +390,14 @@ export default function CustomsPage() {
                       : <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-600">{ar ? 'غير مفوتر' : 'Not invoiced'}</span>}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${stageBadge(c.stage, c.cancelled)}`}>
-                      {c.cancelled ? T.cancelled : T.stages[c.stage] || c.stage}
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      c.isCompleted && !c.cancelled ? 'bg-green-500/20 text-green-700' : stageBadge(c.stage, c.cancelled)}`}>
+                      {/* «مقفولة» تسبق المرحلة: المعاملةُ المقفولة خرجت من
+                          دورة الإجراءات، فعرضُ مرحلتها الأخيرة يُقرأ عملًا
+                          ما زال جاريًا. */}
+                      {c.cancelled ? T.cancelled
+                        : c.isCompleted ? (lang === 'ar' ? 'مقفولة' : 'Closed')
+                        : T.stages[c.stage] || c.stage}
                     </span>
                   </td>
                   {canDelete && (

@@ -361,9 +361,25 @@ export default function OperationsWorkflowPage() {
 
   // Fetch full-dataset aggregates (for the summary cards) whenever the server
   // filters change. Reflects all matching rows, not just the loaded page.
+  // ── والبطاقاتُ تحتاج الحارسَ أكثرَ من الجدول ─────────────────────────────
+  //
+  // الجدولُ كان محروسًا (`guard` أعلاه) والبطاقاتُ بلا حارس. وهي أحقُّ به:
+  // أثقلُ استعلامٍ في الشاشة هو **بلا فلتر** — جمعٌ على خمسةٍ وثلاثين ألف صفّ —
+  // وهو الذي يُطلق عند أوّل فتحٍ للصفحة. فمن فتح الصفحةَ ثمّ فلتر بسرعة وصله
+  // ردُّ المفلتَر أوّلًا (صفوفُه قليلة) ثمّ وصل ردُّ ما قبل الفلتر فكتب فوقه.
+  //
+  // فتقول البطاقةُ «مجموع قيمة الشراء (حسب الفلتر) = ٦١ مليونًا» وهو مجموعُ
+  // الجدول كلِّه، والصحيحُ أربعةُ ملايين. ورقمٌ ماليٌّ مكتوبٌ عليه «حسب الفلتر»
+  // وهو غيرُ مفلتَرٍ أسوأُ من غياب البطاقة: يُقرأ ويُبنى عليه.
+  //
+  // وحارسُه مستقلٌّ عن حارس الجدول: مشترَكٌ واحدٌ يُبطل كلُّ نداءٍ فيه نداءَ
+  // الآخر، فيُسقِط أحدُهما ردَّ صاحبه.
+  const statsGuard = useLatestRequest();
   const fetchStats = useCallback(async () => {
+    const mine = statsGuard.begin();
     try {
       const data = await api.get<any>(`/api/workflows/stats?${buildParams().toString()}`);
+      if (!statsGuard.isCurrent(mine)) return;   // سبقَه أحدثُ منه — يُهمَل
       setStats({
         total: data.total || 0,
         pendingInvoices: data.pendingInvoices || 0,
@@ -371,7 +387,7 @@ export default function OperationsWorkflowPage() {
         byStage: data.byStage || {},
       });
     } catch { /* non-critical */ }
-  }, [buildParams]);
+  }, [buildParams, statsGuard]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
   // قيم عمودٍ واحد عند فتح قائمته. الطلب يحمل الفلاتر النشطة كلَّها فيُرجع الخادم

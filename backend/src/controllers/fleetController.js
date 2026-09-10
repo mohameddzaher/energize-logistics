@@ -16,11 +16,29 @@ const { nameKey } = require('../utils/nameKey');
 // Live GPS → "السيارة داخل نطاق جدة الآن" (and: reached its trip's destination).
 const { cityForPoint, sameCity } = require('../utils/saCities');
 
-// A fleet_supervisor sees HIS trucks only — everywhere in the section. The
-// manager assigns vehicles to supervisors; every read funnels through this.
-// Returns null for every other role (no restriction).
-const supervisorVehicleIds = async (req) => {
+/**
+ * ── المشرفُ يملك سياراتَه ويرى سيارات غيره ────────────────────────────────
+ *
+ * كان المشرفُ لا يرى إلّا سياراتَه: قائمةً ولوحةً وتحليلًا وسجلًّا. وطُلب قلبُ
+ * ذلك صراحةً — «خلّي المشرفين يشوفوا سيارات بعض عادي، بس كل واحد له سياراته».
+ *
+ * فالفرقُ الذي يبقى هو الملكيّةُ لا الحجب: `FleetVehicle.supervisor` كما هو،
+ * ويُعرَض في عمودٍ فيُعرَف صاحبُ كلِّ سيارة، ويبقى الإسنادُ بيد مدير الأسطول.
+ * والذي سقط هو أن تُخفى بياناتُ زميلِه عنه — وإخفاؤها كان يكلّف أكثرَ ممّا
+ * يحمي: مشرفٌ يغطّي زميلَه في يوم إجازته لا يرى ما يغطّيه.
+ *
+ * والكتابةُ لم تُفتَح معها: `forWrite` يُبقي التقييدَ حيث يكون التقييدُ حارسًا
+ * لا حجابًا — لا يكتب أحدٌ سجلَّ سيارةِ غيره. وهو موضعان فقط
+ * (`createVehicleLog` و`updateVehicleLog`).
+ *
+ * والسياسةُ في رايةٍ واحدة: مَن أراد ردَّها يومًا يقلب سطرًا لا خمسةَ عشرَ
+ * موضعًا.
+ */
+const SUPERVISORS_SEE_EACH_OTHER = true;
+
+const supervisorVehicleIds = async (req, { forWrite = false } = {}) => {
   if (req.user.role !== 'fleet_supervisor') return null;
+  if (!forWrite && SUPERVISORS_SEE_EACH_OTHER) return null;   // لا حجبَ على القراءة
   const vs = await FleetVehicle.find({ supervisor: req.user._id }).select('_id').lean();
   return vs.map((v) => v._id);
 };
@@ -2777,7 +2795,7 @@ exports.createVehicleLog = async (req, res) => {
     const vehicle = await resolveVehicle(req.body.vehicle);
     if (!vehicle) return res.status(400).json({ message: 'اختر السيارة' });
 
-    const scope = await supervisorVehicleIds(req);
+    const scope = await supervisorVehicleIds(req, { forWrite: true });
     if (scope && !scope.some((id) => String(id) === String(vehicle._id))) {
       return res.status(403).json({ message: 'Not your vehicle' });
     }
@@ -2839,7 +2857,7 @@ exports.updateVehicleLog = async (req, res) => {
     const doc = await FleetVehicleLog.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: 'Entry not found' });
 
-    const scope = await supervisorVehicleIds(req);
+    const scope = await supervisorVehicleIds(req, { forWrite: true });
     if (scope && !scope.some((id) => String(id) === String(doc.vehicle))) {
       return res.status(403).json({ message: 'Not your vehicle' });
     }

@@ -124,6 +124,25 @@ export default function WalletPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(getTodayStr());
+  /**
+   * ── يومٌ أو فترةٌ أو شهر ─────────────────────────────────────────────────
+   *
+   * المحفظةُ يوميّةٌ في أصلها: رصيدٌ يُفتَح ويُقفَل، وحركاتٌ تُضاف إلى يومها.
+   * وكان ذلك كلَّ ما تعرضه الشاشة — فمن أراد «كم صُرف هذا الشهر؟» صدّر إكسل
+   * وجمع فيه، والرقمُ موجودٌ في النظام.
+   *
+   * فأُضيف عرضان للقراءة: فترةٌ بين تاريخين، وشهرٌ بعينه. وهما للقراءة وحدَها
+   * عن قصد — لا تُضاف حركةٌ إلى «فترة» ولا يُقفَل «شهر»: الحركةُ تخصّ يومًا،
+   * والإقفالُ فعلُ يوم. فأزرارُ الكتابة تختفي فيهما بدل أن تُعرَض ثمّ تُردّ.
+   */
+  const [mode, setMode] = useState<'day' | 'range' | 'month'>('day');
+  const [rangeFrom, setRangeFrom] = useState(getTodayStr());
+  const [rangeTo, setRangeTo] = useState(getTodayStr());
+  const [monthKey, setMonthKey] = useState(() => getTodayStr().slice(0, 7));
+  const [rangeSummary, setRangeSummary] = useState<null | {
+    totalCollections: number; totalExpenses: number; totalPurchases: number;
+    days: number; openingFirst: number; closingLast: number;
+  }>(null);
 
   // Super admin: branch & user selectors
   const [allBranches, setAllBranches] = useState<{ _id: string; name: string }[]>([]);
@@ -254,11 +273,37 @@ export default function WalletPage() {
     }
     if (showSpinner) setLoading(true);
     try {
-      let url = `/api/wallet/daily?date=${selectedDate}`;
-      if (canSelectBranch && selectedBranch) url += `&branchId=${selectedBranch}`;
-      const data = await api.get<any>(url);
-      setWallet(data.wallet);
-      setTransactions(data.transactions || []);
+      if (mode === 'day') {
+        let url = `/api/wallet/daily?date=${selectedDate}`;
+        if (canSelectBranch && selectedBranch) url += `&branchId=${selectedBranch}`;
+        const data = await api.get<any>(url);
+        setWallet(data.wallet);
+        setTransactions(data.transactions || []);
+        setRangeSummary(null);
+      } else {
+        const [from, to] = mode === 'month'
+          ? [`${monthKey}-01`, `${monthKey}-${String(new Date(Number(monthKey.slice(0, 4)), Number(monthKey.slice(5, 7)), 0).getDate()).padStart(2, '0')}`]
+          : [rangeFrom, rangeTo];
+        const p = new URLSearchParams({ dateFrom: from, dateTo: to });
+        if (canSelectBranch && selectedBranch) p.set('branchId', selectedBranch);
+        const data = await api.get<any>(`/api/wallet/range?${p.toString()}`);
+        const days: any[] = data.wallets || [];
+        setTransactions(data.transactions || []);
+        // ── والرصيدُ لا يُجمَع ─────────────────────────────────────────────
+        // مجموعُ أرصدةِ الإقفال اليوميّة رقمٌ لا معنى له: إقفالُ أمسِ هو
+        // افتتاحُ اليوم، فجمعُهما يعدّ المالَ نفسَه مرّتين وثلاثًا. ورصيدُ
+        // الفترة افتتاحُ أوّلِ يومٍ فيها وإقفالُ آخرِه.
+        setRangeSummary({
+          totalCollections: days.reduce((a, w) => a + (w.totalCollections || 0), 0),
+          totalExpenses: days.reduce((a, w) => a + (w.totalExpenses || 0), 0),
+          totalPurchases: days.reduce((a, w) => a + (w.totalPurchases || 0), 0),
+          days: days.length,
+          openingFirst: days.length ? (days[0].openingBalance || 0) : 0,
+          closingLast: days.length ? (days[days.length - 1].closingBalance || 0) : 0,
+        });
+        // لا محفظةَ يومٍ في هذا العرض، فتُخفى بطاقاتُ اليوم وأزرارُ الكتابة.
+        setWallet(null);
+      }
       // Clear any stale error banner on successful load
       setActionError('');
     } catch (err: any) {
@@ -271,7 +316,7 @@ export default function WalletPage() {
       }
     }
     setLoading(false);
-  }, [selectedDate, canSelectBranch, selectedBranch, lang]);
+  }, [selectedDate, canSelectBranch, selectedBranch, lang, mode, rangeFrom, rangeTo, monthKey]);
 
   // Wait for auth before fetching
   useEffect(() => {
@@ -691,12 +736,25 @@ export default function WalletPage() {
     const d = await api.get<any>(`/api/wallet/range?${params.toString()}`);
     return oneSheet(scope.all, (d.wallets || []) as Record<string, any>[], (d.transactions || []) as Record<string, any>[]);
   };
+  // ── والحدُّ المعروض هو الحدُّ المصدَّر ───────────────────────────────────
+  // كان التصديرُ خيارَين: يومٌ واحدٌ أو الدفترُ كلُّه. فمن نظر إلى شهرٍ على
+  // الشاشة ثمّ صدّر لم يجد شهرَه في القائمة — يصدّر الكلَّ ويحذف باليد.
+  const shownLabel = mode === 'day' ? selectedDate
+    : mode === 'month' ? monthKey : `${rangeFrom} → ${rangeTo}`;
+
   const exportOptions = [
-    {
-      key: 'day',
-      label: `${scope.shown} — ${selectedDate}`,
-      sheets: oneSheet(selectedDate, (wallet ? [wallet] : []) as Record<string, any>[], transactions as unknown as Record<string, any>[]),
-    },
+    mode === 'day'
+      ? {
+        key: 'day',
+        label: `${scope.shown} — ${selectedDate}`,
+        sheets: oneSheet(selectedDate, (wallet ? [wallet] : []) as Record<string, any>[], transactions as unknown as Record<string, any>[]),
+      }
+      : {
+        key: 'shown',
+        label: `${scope.shown} — ${shownLabel}`,
+        // ما على الشاشة محمَّلٌ بالفعل، فلا يُطلَب من الخادم مرّةً ثانية.
+        sheets: oneSheet(shownLabel, [] as Record<string, any>[], transactions as unknown as Record<string, any>[]),
+      },
     {
       key: 'all',
       label: scope.all,
@@ -731,7 +789,11 @@ export default function WalletPage() {
     );
   }
 
-  if (!wallet && !canSelectBranch) {
+  // ── و«لا محفظة» ليست «لا فرع» في عرض الفترة ──────────────────────────────
+  // عرضُ الفترة والشهر لا محفظةَ يومٍ له أصلًا (`setWallet(null)`)، فلو بقي هذا
+  // الشرطُ على حاله لَخرج موظّفُ الفرع — وهو أكثرُ من يستعمل الشاشة — إلى صفحة
+  // «لم يُعيَّن لك فرع» لمجرّد أنّه اختار «شهر».
+  if (mode === 'day' && !wallet && !canSelectBranch) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
         <div className="text-center">
@@ -773,11 +835,50 @@ export default function WalletPage() {
                   يظهر في سطرها — «نعرف مين الموظّف» تبقى، والرصيدُ يصير واحدًا. */}
             </>
           )}
-          <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
-            className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label={txx.selectDate} />
-          <button type="button" onClick={() => setSelectedDate(getTodayStr())}
-            className="px-3 py-2 rounded-lg bg-slate-100 text-[#f37121] text-sm font-medium hover:bg-slate-200 transition-colors">{L.today}</button>
-          <ExportMenu fileName={`Wallet_${branchNameForFile}_${selectedDate}`}
+          {/* ── يومٌ أو فترةٌ أو شهر ─────────────────────────────────────── */}
+          <div className="flex rounded-lg border border-slate-200 bg-white p-0.5">
+            {([
+              ['day', lang === 'ar' ? 'يوم' : 'Day'],
+              ['range', lang === 'ar' ? 'فترة' : 'Period'],
+              ['month', lang === 'ar' ? 'شهر' : 'Month'],
+            ] as const).map(([k, lbl]) => (
+              <button key={k} type="button" onClick={() => setMode(k)}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  mode === k ? 'bg-[#f37121] text-white' : 'text-slate-600 hover:text-slate-900'}`}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+
+          {mode === 'day' && (
+            <>
+              <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
+                className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label={txx.selectDate} />
+              <button type="button" onClick={() => setSelectedDate(getTodayStr())}
+                className="px-3 py-2 rounded-lg bg-slate-100 text-[#f37121] text-sm font-medium hover:bg-slate-200 transition-colors">{L.today}</button>
+            </>
+          )}
+
+          {mode === 'range' && (
+            <>
+              <input type="date" value={rangeFrom} max={rangeTo} onChange={(e) => setRangeFrom(e.target.value)}
+                className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light]" aria-label={lang === 'ar' ? 'من' : 'From'} />
+              <span className="text-slate-400 text-sm">→</span>
+              <input type="date" value={rangeTo} min={rangeFrom} onChange={(e) => setRangeTo(e.target.value)}
+                className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light]" aria-label={lang === 'ar' ? 'إلى' : 'To'} />
+              <button type="button" onClick={() => { const t = getTodayStr(); setRangeFrom(t.slice(0, 8) + '01'); setRangeTo(t); }}
+                className="px-3 py-2 rounded-lg bg-slate-100 text-[#f37121] text-sm font-medium hover:bg-slate-200">
+                {lang === 'ar' ? 'هذا الشهر' : 'This month'}
+              </button>
+            </>
+          )}
+
+          {mode === 'month' && (
+            <input type="month" value={monthKey} onChange={(e) => setMonthKey(e.target.value)}
+              className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light]"
+              aria-label={lang === 'ar' ? 'الشهر' : 'Month'} />
+          )}
+          <ExportMenu fileName={`Wallet_${branchNameForFile}_${shownLabel.replace(/[^0-9A-Za-z-]/g, '_')}`}
             lang={lang === 'ar' ? 'ar' : 'en'} options={exportOptions} />
         </div>
       </div>
@@ -793,7 +894,7 @@ export default function WalletPage() {
         </div>
       )}
 
-      {!wallet && canSelectBranch && (
+      {mode === 'day' && !wallet && canSelectBranch && (
         <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm">
           <Wallet className="w-10 h-10 text-slate-600 mx-auto mb-3" />
           <p className="text-slate-500">{L.selectBranchUser}</p>
@@ -878,6 +979,21 @@ export default function WalletPage() {
               <Unlock className="w-4 h-4" /> {L.reopenDay}
             </button>
           )}
+        </div>
+      )}
+
+      {/* ── بطاقاتُ الفترة ────────────────────────────────────────────────
+          تُعرض في عرضَي الفترة والشهر مكانَ بطاقات اليوم. والافتتاحُ والإقفال
+          طرفان لا مجموع — راجع تعليقَ `setRangeSummary`. */}
+      {rangeSummary && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <RangeCard label={lang === 'ar' ? 'عدد الأيام' : 'Days'} value={rangeSummary.days} />
+          <RangeCard label={lang === 'ar' ? 'عدد الحركات' : 'Transactions'} value={transactions.length} />
+          <RangeCard label={lang === 'ar' ? 'إجمالي التحصيل' : 'Collections'} value={rangeSummary.totalCollections} money tone="text-emerald-700" />
+          <RangeCard label={lang === 'ar' ? 'إجمالي المصروفات' : 'Expenses'} value={rangeSummary.totalExpenses} money tone="text-red-600" />
+          <RangeCard label={lang === 'ar' ? 'إجمالي المشتريات' : 'Purchases'} value={rangeSummary.totalPurchases} money tone="text-violet-700" />
+          <RangeCard label={lang === 'ar' ? 'رصيد أول يوم ← آخر يوم' : 'Opening → closing'}
+            value={`${rangeSummary.openingFirst.toLocaleString()} ← ${rangeSummary.closingLast.toLocaleString()}`} tone="text-slate-800" />
         </div>
       )}
 
@@ -1585,3 +1701,13 @@ export default function WalletPage() {
     </div>
   );
 }
+
+/** بطاقةُ رقمٍ في عرض الفترة — راجع `rangeSummary`. */
+const RangeCard = ({ label, value, money, tone }: { label: string; value: number | string; money?: boolean; tone?: string }) => (
+  <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+    <p className={`text-lg font-extrabold ${tone || 'text-slate-900'}`}>
+      {money && typeof value === 'number' ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : value}
+    </p>
+    <p className="mt-0.5 text-[11px] text-slate-500">{label}</p>
+  </div>
+);

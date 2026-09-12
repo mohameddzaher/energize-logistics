@@ -35,7 +35,14 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
   List<Map<String, dynamic>> _transactions = [];
   bool _loading = true;
   String? _error;
-  DateTime _date = DateTime.now();
+  /// ── أوّلُ يومٍ للدفتر — مرآةُ `config/walletStart.js` في الخادم ─────────────
+  ///
+  /// الخادمُ هو المانعُ فعلًا: يردّ كلَّ قراءةٍ وكتابةٍ قبل هذا اليوم. وهذه
+  /// النسخةُ لا تمنع شيئًا — وظيفتُها ألّا يُعرَض على المستخدم تاريخٌ سيُرفَض
+  /// اختيارُه، فيكتشف المنعَ بعد الضغط بدل أن يقرأه قبله.
+  static final DateTime walletStart = DateTime(2026, 9, 1);
+
+  DateTime _date = DateTime.now().isBefore(walletStart) ? walletStart : DateTime.now();
   late final void Function() _onLive;
 
   String get _dateKey => '${_date.year}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}';
@@ -255,7 +262,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: () async {
-                            final v = await showDatePicker(context: context, initialDate: _date, firstDate: DateTime(2024), lastDate: DateTime.now());
+                            final v = await showDatePicker(context: context, initialDate: _date, firstDate: walletStart, lastDate: DateTime.now());
                             if (v != null) { setState(() { _date = v; _loading = true; }); _load(); }
                           },
                           icon: const Icon(Icons.event, size: 17),

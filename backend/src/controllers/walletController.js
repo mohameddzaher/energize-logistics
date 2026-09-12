@@ -5,6 +5,7 @@ const Vendor = require('../models/Vendor');
 const Driver = require('../models/Driver');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
+const { WALLET_START_DATE, isBeforeWalletStart, walletStartMessage } = require('../config/walletStart');
 
 // Helper: get YYYY-MM-DD string
 const toDateStr = (d) => {
@@ -14,6 +15,21 @@ const toDateStr = (d) => {
 
 // Helper: risk flags
 const EXPENSE_THRESHOLD = 10000;
+
+/**
+ * بابُ الماضي مغلق — راجع config/walletStart.
+ *
+ * ويُوضَع على القراءة كما على الكتابة: فتحُ شاشةِ يومٍ سابقٍ وحدَه كان يُنشئ
+ * يوميّةً في القاعدة (`getOrCreateWallet`)، فمجرَّدُ النظر إلى الماضي يخلقه —
+ * ثمّ يظهر في تقارير الفروع يومًا برصيدٍ افتتاحيٍّ صفر.
+ *
+ * يُعيد `true` إن رُدَّ الطلبُ، فينتهي المتحكّمُ عنده.
+ */
+const denyBeforeStart = (res, date) => {
+  if (!isBeforeWalletStart(date)) return false;
+  res.status(400).json({ message: walletStartMessage(), walletStartDate: WALLET_START_DATE });
+  return true;
+};
 
 const checkRiskFlags = (transaction) => {
   const flags = [];
@@ -219,6 +235,7 @@ const cascadeBalances = async (branchId, fromDate, newClosingBalance) => {
 exports.getDailyWallet = async (req, res) => {
   try {
     const date = req.query.date || toDateStr();
+    if (denyBeforeStart(res, date)) return;
 
     // ── يُختار الفرعُ لا الموظّف ────────────────────────────────────────────
     // المحفظةُ للفرع، فالسؤالُ «أيُّ فرع» لا «أيُّ موظّف». و`userId` يبقى
@@ -287,6 +304,7 @@ exports.addTransaction = async (req, res) => {
     }
 
     const txDate = date || toDateStr();
+    if (denyBeforeStart(res, txDate)) return;
 
     // ── استلامُ الفواتير الضريبيّة: كشوفٌ لا مبلغ ────────────────────────────
     // القيدُ يقول «استلمتُ كشوفَ هذه الفواتير بيدي» — لا مالَ دخل ولا خرج،
@@ -649,6 +667,9 @@ exports.deleteTransaction = async (req, res) => {
 
     const wallet = await DailyWallet.findById(transaction.wallet);
     if (!mayTouchWallet(req, wallet)) return denyWallet(res);
+    // ولا تُمَسّ حركةٌ سابقةٌ للبداية ولو بقيت واحدةٌ في القاعدة: تعديلُها
+    // يُعيد حساب سلسلةِ أرصدةٍ انتهت، وحذفُها يُحرّك رصيدَ أوّلِ سبتمبر المُقَرّ.
+    if (denyBeforeStart(res, transaction.date)) return;
     const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(req.user.role);
 
     if (wallet && wallet.isClosed && !isManager) {
@@ -710,6 +731,9 @@ exports.updateTransaction = async (req, res) => {
 
     const wallet = await DailyWallet.findById(transaction.wallet);
     if (!mayTouchWallet(req, wallet)) return denyWallet(res);
+    // ولا تُمَسّ حركةٌ سابقةٌ للبداية ولو بقيت واحدةٌ في القاعدة: تعديلُها
+    // يُعيد حساب سلسلةِ أرصدةٍ انتهت، وحذفُها يُحرّك رصيدَ أوّلِ سبتمبر المُقَرّ.
+    if (denyBeforeStart(res, transaction.date)) return;
     const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(req.user.role);
 
     if (wallet && wallet.isClosed && !isManager) {
@@ -863,6 +887,7 @@ exports.closeDay = async (req, res) => {
   try {
     const { date, actualCash, differenceReason, differenceNotes } = req.body;
     const txDate = date || toDateStr();
+    if (denyBeforeStart(res, txDate)) return;
 
     // يُقفَل يومُ الفرع لا يومُ الشخص: النقدُ نقدُ الفرع، وإقفالُه إقرارٌ عنه.
     const closeBranch = req.body.branchId || req.body.branch || req.user.branch;
@@ -941,6 +966,7 @@ exports.reopenDay = async (req, res) => {
     if (!wallet) return res.status(404).json({ message: 'Wallet not found' });
     // إعادة فتح يومٍ أُقفل قرارٌ إداريّ — لم يكن عليه أيّ فحصٍ إطلاقًا.
     if (!MANAGER_ROLES.includes(req.user.role)) return denyWallet(res);
+    if (denyBeforeStart(res, wallet.date)) return;
 
     wallet.isClosed = false;
     wallet.closedAt = null;

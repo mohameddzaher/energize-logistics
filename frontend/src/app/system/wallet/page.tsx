@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
-import { canPickWalletBranch } from '@/lib/wallet';
+import { canPickWalletBranch, WALLET_START_DATE } from '@/lib/wallet';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -98,6 +98,9 @@ const getTodayStr = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+/** اليومُ، ولا يسبق بدايةَ الدفتر — الخادمُ يردّ ما قبلها فلا تُطلَب أصلًا. */
+const startOfBook = (d: string) => (d < WALLET_START_DATE ? WALLET_START_DATE : d);
+
 export default function WalletPage() {
   const { confirm } = useDialog();
   const { user } = useAuth();
@@ -123,7 +126,7 @@ export default function WalletPage() {
   const [wallet, setWallet] = useState<DailyWallet | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(getTodayStr());
+  const [selectedDate, setSelectedDate] = useState(() => startOfBook(getTodayStr()));
   /**
    * ── يومٌ أو فترةٌ أو شهر ─────────────────────────────────────────────────
    *
@@ -136,7 +139,9 @@ export default function WalletPage() {
    * والإقفالُ فعلُ يوم. فأزرارُ الكتابة تختفي فيهما بدل أن تُعرَض ثمّ تُردّ.
    */
   const [mode, setMode] = useState<'day' | 'range' | 'month'>('day');
-  const [rangeFrom, setRangeFrom] = useState(getTodayStr());
+  // ولو فُتحت الشاشةُ قبل بداية الدفتر (ساعةُ جهازٍ مضبوطةٌ على الماضي) لبدأ
+  // العرضُ على تاريخٍ يردّه الخادم — فالحدُّ يُطبَّق على أوّل قيمةٍ أيضًا.
+  const [rangeFrom, setRangeFrom] = useState(() => startOfBook(getTodayStr()));
   const [rangeTo, setRangeTo] = useState(getTodayStr());
   const [monthKey, setMonthKey] = useState(() => getTodayStr().slice(0, 7));
   const [rangeSummary, setRangeSummary] = useState<null | {
@@ -852,21 +857,30 @@ export default function WalletPage() {
 
           {mode === 'day' && (
             <>
-              <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
+              {/* ── ولا يُعرَض ما سيُرفَض ────────────────────────────────
+                  الدفترُ يبدأ في `WALLET_START_DATE`، والخادمُ يردّ كلَّ نداءٍ
+                  قبله. ولو بقي المنتقي مفتوحًا على الماضي لاختير أغسطسُ ثمّ
+                  رُدّ الطلبُ بخطأٍ أحمر — منعٌ يُكتشَف بعد الضغط بدل أن يُقرأ
+                  قبله. */}
+              <input type="date" value={selectedDate} min={WALLET_START_DATE} onChange={(e) => setSelectedDate(e.target.value)}
+                title={lang === 'ar' ? `دفتر العهدة يبدأ ${WALLET_START_DATE}` : `The wallet starts ${WALLET_START_DATE}`}
                 className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label={txx.selectDate} />
-              <button type="button" onClick={() => setSelectedDate(getTodayStr())}
+              <button type="button" onClick={() => setSelectedDate(startOfBook(getTodayStr()))}
                 className="px-3 py-2 rounded-lg bg-slate-100 text-[#f37121] text-sm font-medium hover:bg-slate-200 transition-colors">{L.today}</button>
             </>
           )}
 
           {mode === 'range' && (
             <>
-              <input type="date" value={rangeFrom} max={rangeTo} onChange={(e) => setRangeFrom(e.target.value)}
+              <input type="date" value={rangeFrom} max={rangeTo} min={WALLET_START_DATE} onChange={(e) => setRangeFrom(e.target.value)}
                 className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light]" aria-label={lang === 'ar' ? 'من' : 'From'} />
               <span className="text-slate-400 text-sm">→</span>
-              <input type="date" value={rangeTo} min={rangeFrom} onChange={(e) => setRangeTo(e.target.value)}
+              <input type="date" value={rangeTo} min={rangeFrom > WALLET_START_DATE ? rangeFrom : WALLET_START_DATE} onChange={(e) => setRangeTo(e.target.value)}
                 className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light]" aria-label={lang === 'ar' ? 'إلى' : 'To'} />
-              <button type="button" onClick={() => { const t = getTodayStr(); setRangeFrom(t.slice(0, 8) + '01'); setRangeTo(t); }}
+              <button type="button" onClick={() => {
+                const t = getTodayStr();
+                setRangeFrom(startOfBook(t.slice(0, 8) + '01')); setRangeTo(t);
+              }}
                 className="px-3 py-2 rounded-lg bg-slate-100 text-[#f37121] text-sm font-medium hover:bg-slate-200">
                 {lang === 'ar' ? 'هذا الشهر' : 'This month'}
               </button>
@@ -874,7 +888,7 @@ export default function WalletPage() {
           )}
 
           {mode === 'month' && (
-            <input type="month" value={monthKey} onChange={(e) => setMonthKey(e.target.value)}
+            <input type="month" value={monthKey} min={WALLET_START_DATE.slice(0, 7)} onChange={(e) => setMonthKey(e.target.value)}
               className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light]"
               aria-label={lang === 'ar' ? 'الشهر' : 'Month'} />
           )}
@@ -982,9 +996,17 @@ export default function WalletPage() {
         </div>
       )}
 
+      </>)}
+
       {/* ── بطاقاتُ الفترة ────────────────────────────────────────────────
           تُعرض في عرضَي الفترة والشهر مكانَ بطاقات اليوم. والافتتاحُ والإقفال
-          طرفان لا مجموع — راجع تعليقَ `setRangeSummary`. */}
+          طرفان لا مجموع — راجع تعليقَ `setRangeSummary`.
+
+          ── ولماذا هي خارج كتلة `wallet` ───────────────────────────────────
+          كانت داخلها، ومعها جدولُ الحركات كلُّه. وعرضُ الفترة والشهر لا محفظةَ
+          يومٍ له أصلًا (`setWallet(null)` في `fetchWallet`) — فكان الضغطُ على
+          «فترة» أو «شهر» يمحو محتوى الصفحة كلَّه: لا بطاقاتٍ ولا جدولَ حركات
+          ولا شيء، وتبقى الترويسةُ وحدها فوق بياضٍ فيبدو أنّ الشاشة عطبت. */}
       {rangeSummary && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <RangeCard label={lang === 'ar' ? 'عدد الأيام' : 'Days'} value={rangeSummary.days} />
@@ -1009,6 +1031,14 @@ export default function WalletPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
+                {/* ── واليومُ عمودٌ حين لا يكون اليومُ هو الشاشة ────────────
+                    في عرض اليوم التاريخُ في الترويسة، فعمودٌ يكرّره في كلّ
+                    سطرٍ زيادةٌ. وفي عرض الشهر تُسرَد حركاتُ ثلاثين يومًا في
+                    جدولٍ واحد — وبلا هذا العمود لا يُعرَف أيُّ حركةٍ من أيّ
+                    يوم، فيصير الجدولُ قائمةً لا تُراجَع. */}
+                {mode !== 'day' && (
+                  <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{lang === 'ar' ? 'اليوم' : 'Day'}</th>
+                )}
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.type}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.amount}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.details}</th>
@@ -1032,12 +1062,15 @@ export default function WalletPage() {
             </thead>
             <tbody>
               {transactions.length === 0 ? (
-                <tr><td colSpan={16} className="text-center text-slate-800 py-12">{L.noTransactions}</td></tr>
+                <tr><td colSpan={mode === 'day' ? 16 : 17} className="text-center text-slate-800 py-12">{L.noTransactions}</td></tr>
               ) : transactions.map((tx) => {
                 const cfg = TYPE_CONFIG[tx.type];
                 const Icon = cfg.icon;
                 return (
                   <tr key={tx._id} className={`border-b border-slate-200/70 hover:bg-slate-100 transition-colors ${tx.isFlagged ? 'bg-red-500/5' : ''}`}>
+                    {mode !== 'day' && (
+                      <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap font-medium">{(tx as any).date || '—'}</td>
+                    )}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div className={`p-1 rounded ${cfg.bg}`}><Icon className={`w-3.5 h-3.5 ${cfg.color}`} /></div>
@@ -1096,7 +1129,10 @@ export default function WalletPage() {
                         : '—'}
                     </td>
                     <td className="px-4 py-3 text-end">
-                      {!isReadOnly && (!wallet.isClosed || isManager) && (
+                      {/* عرضا الفترة والشهر للقراءة وحدَها: الحركةُ تخصّ
+                          يومًا، فلا تُعدَّل ولا تُحذف من شاشةٍ لا يومَ لها —
+                          و`wallet` فارغةٌ فيهما فلا تُقرأ حالتُها أصلًا. */}
+                      {wallet && !isReadOnly && (!wallet.isClosed || isManager) && (
                         <div className="flex items-center justify-end gap-1">
                           <button type="button" onClick={() => openEditTx(tx)}
                             className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title={L.edit}>
@@ -1117,6 +1153,9 @@ export default function WalletPage() {
         </div>
       </div>
 
+      {/* النوافذُ كلُّها أفعالٌ على يومٍ بعينه — إضافةٌ وتعديلٌ وإقفال. ولا
+          يُفعَل شيءٌ من ذلك بـ«شهر»، فتبقى مشروطةً بوجود محفظةِ اليوم. */}
+      {wallet && (<>
       {/* ─── NEW TRANSACTION MODAL ────────────────────────────── */}
       <AnimatePresence>
         {showTxModal && (

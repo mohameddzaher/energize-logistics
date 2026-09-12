@@ -58,6 +58,14 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
     const moves = r2((w.totalCollections || 0) - (w.totalExpenses || 0) - (w.totalPurchases || 0));
     const closing = r2(opening + moves);
     // الفرقُ المعدود ينتقل كما هو — هو واقعةٌ لا نتيجةُ حساب.
+    //
+    // ── والإشارةُ تتبع اصطلاحَ الخادم لا اصطلاحَ الحساب هنا ──────────────────
+    // `delta` هنا «المعدود ناقص الختامي»، أمّا `cashDifference` المخزَّن فهو
+    // **الختامي ناقص المعدود** — هكذا يكتبه `closeDay` وهكذا تقرؤه الشاشة:
+    // موجبٌ عجزٌ وسالبٌ زيادة. وكان هذا السطرُ يكتب `delta` كما هو، فينقلب
+    // معنى كلِّ يومٍ يمرّ عليه السكربت: يومٌ زائدٌ ثمانيةَ آلافٍ يُقرأ ناقصًا
+    // ثمانيةَ آلاف، في الشاشة وفي تقرير الفروق. والفرعُ الذي يمرّ عليه السكربت
+    // يصير وحدَه مقلوبًا بين الفروع، فلا يُقارَن بغيره.
     const delta = w.actualCash == null ? null : r2(w.actualCash - (w.closingBalance || 0));
     const newActual = delta == null ? null : r2(closing + delta);
 
@@ -68,7 +76,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
     if (!DRY) {
       w.openingBalance = opening;
       w.closingBalance = closing;
-      if (newActual != null) { w.actualCash = newActual; w.cashDifference = delta; }
+      if (newActual != null) { w.actualCash = newActual; w.cashDifference = r2(closing - newActual); }
       await w.save();
     }
     opening = closing;

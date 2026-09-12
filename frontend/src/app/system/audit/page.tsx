@@ -25,9 +25,14 @@ interface AuditLog {
   changes?: Record<string, any> | null;
   ipAddress?: string;
   createdAt: string;
+  /** القسمُ يحسبه الخادم من الكيان — خريطةٌ واحدة يقرؤها الفلترُ والعمود. */
+  section?: string;
 }
 
-interface AuditActor { _id: string; firstName: string; lastName: string; email: string; role?: string }
+interface AuditActor { _id: string; firstName: string; lastName: string; email: string; role?: string; branch?: string }
+interface AuditSection { key: string; ar: string; en: string; count: number }
+interface AuditEntityOpt { key: string; section: string; count: number }
+interface AuditBranch { _id: string; name: string }
 
 // ---- Readable rendering helpers --------------------------------------------
 // Arabic labels for the verbs and entities that actually occur, so a row reads
@@ -39,13 +44,27 @@ const ACTION_AR: Record<string, string> = {
   transfer: 'نقل', assign: 'إسناد', revoke: 'إلغاء', import: 'استيراد', export: 'تصدير',
   wallet_transaction: 'حركة محفظة', lock: 'قفل', unlock: 'فتح',
 };
+// ── وكلُّ كيانٍ يقع فعلًا في السجلّ له اسمٌ عربيّ ────────────────────────────
+// كانت الخريطةُ تغطّي ثلثَ الكيانات، فتُقرأ القائمةُ نصفَها عربيًّا ونصفَها
+// `OperationsWorkflow` و`CollectionsParty` — خليطٌ يجعل القارئ يظنّ الصنفين
+// شيئين مختلفين في طبيعتهما لا في الترجمة وحدها.
 const ENTITY_AR: Record<string, string> = {
   User: 'مستخدم', Customer: 'عميل', Invoice: 'فاتورة', Payment: 'دفعة', Dispute: 'نزاع',
   Branch: 'فرع', Vendor: 'مورد', Employee: 'موظف', Contract: 'عقد', Asset: 'عهدة',
   ShipmentOrder: 'طلب شحن', FleetShipment: 'حمولة أسطول', FleetDriver: 'سائق أسطول', FleetVehicle: 'سيارة أسطول',
   MaintenanceRequest: 'طلب صيانة', InventoryItem: 'صنف مستودع', WorkshopPurchaseRequest: 'طلب شراء ورشة',
-  WalletTransaction: 'حركة محفظة', CustomsClearance: 'تخليص جمركي', B2CProject: 'مشروع B2C',
+  WalletTransaction: 'حركة عهدة', CustomsClearance: 'تخليص جمركي', B2CProject: 'مشروع B2C',
   CompanyLicense: 'ترخيص شركة', VehicleAuthorization: 'تفويض مركبة', VehicleAccident: 'حادث مركبة',
+  DailyWallet: 'يومية عهدة', OperationsWorkflow: 'عملية تشغيل',
+  CollectionsParty: 'طرف تحصيل', CollectionsFollowUp: 'متابعة تحصيل',
+  VehicleMaster: 'مركبة', VehicleInsurancePolicy: 'وثيقة تأمين', VehicleRegistryConfig: 'إعدادات سجل المركبات',
+  DriverCard: 'بطاقة سائق', CompanyEmail: 'بريد شركة', RolePermission: 'صلاحيات دور',
+  CustomRole: 'دور مخصص', Lookup: 'قائمة منسدلة', System: 'النظام',
+  B2C: 'B2C', B2CRep: 'مندوب B2C', B2CDutyCheck: 'فحص مباشرة B2C', B2CWalletEntry: 'قيد عهدة B2C',
+  Ls2StoreMovement: 'حركة مستودع', WorkshopTask: 'مهمة ورشة', Ls2Asset: 'أصل مستودع',
+  FleetVehicleLog: 'سجل سيارة أسطول', FleetDriverExpense: 'مصروف سائق',
+  CrmVendor: 'مورد نقل', JournalEntry: 'قيد محاسبي', PartnerAccount: 'حساب شريك',
+  LeaveRequest: 'طلب إجازة',
 };
 const actionLabel = (a: string, ar: boolean) => {
   if (!ar) return a.replace(/_/g, ' ');
@@ -54,6 +73,8 @@ const actionLabel = (a: string, ar: boolean) => {
   return ACTION_AR[verb] ? `${ACTION_AR[verb]} ${rest.join(' ')}`.trim() : a.replace(/_/g, ' ');
 };
 const entityLabel = (e: string, ar: boolean) => (ar && ENTITY_AR[e]) || e;
+
+
 
 const isDiffShape = (c: any) => c && typeof c === 'object' && ('before' in c || 'after' in c);
 const scalar = (v: any) => (v == null ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v));
@@ -107,13 +128,51 @@ export default function AuditPage() {
   const [dateTo, setDateTo] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [actors, setActors] = useState<AuditActor[]>([]);
-  const [entities, setEntities] = useState<string[]>([]);
+  const [entities, setEntities] = useState<AuditEntityOpt[]>([]);
+  // ── القسمُ أوّلًا، والكيانُ تفصيلٌ داخله ──────────────────────────────────
+  // القائمةُ كانت خمسةً وثلاثين اسمَ نموذجٍ برمجيّ مسرودةً بلا ترتيب، وأربعةٌ
+  // منها تبدو للقارئ «B2C» مكرَّرةً أربعَ مرّات. والسؤالُ المقصودُ «أيُّ قسم؟»
+  // لا «أيُّ نموذج؟».
+  const [sectionFilter, setSectionFilter] = useState('');
+  const [sections, setSections] = useState<AuditSection[]>([]);
+  // والفرعُ يُقرأ من فاعل القيد — راجع تعليقَ `branch` في auditController.
+  const [branchFilter, setBranchFilter] = useState('');
+  const [branches, setBranches] = useState<AuditBranch[]>([]);
+  // ── يومٌ واحد، أو مدّة ────────────────────────────────────────────────────
+  // «ماذا جرى يوم كذا؟» أكثرُ ما يُسأل، وكان يقتضي كتابةَ التاريخ نفسِه في
+  // خانتين. ومن كتبه في واحدةٍ حصل على كلِّ شيءٍ منذ ذلك اليوم وهو يظنّ أنّه
+  // فلتر يومًا.
+  const [dateMode, setDateMode] = useState<'day' | 'range'>('day');
+  const [day, setDay] = useState('');
 
   useEffect(() => {
-    api.get<{ entities: string[]; users: AuditActor[] }>('/api/audit/options')
-      .then((d) => { setEntities(d.entities || []); setActors(d.users || []); })
+    api.get<{ entities: AuditEntityOpt[]; sections: AuditSection[]; users: AuditActor[]; branches: AuditBranch[] }>('/api/audit/options')
+      .then((d) => {
+        setEntities(d.entities || []);
+        setSections(d.sections || []);
+        setActors(d.users || []);
+        setBranches(d.branches || []);
+      })
       .catch(() => { /* filters degrade to free entry */ });
   }, []);
+
+  /**
+   * اسمُ القسم — من القائمة التي يرسلها الخادم لا من خريطةٍ ثانيةٍ هنا.
+   * خريطتان تفترقان عند أوّل قسمٍ يُضاف، فيُقرأ الصفُّ في العمود باسمٍ ويُفلتَر
+   * في القائمة باسمٍ آخر. ولأنّها من الحالة، يُعاد الرسمُ حين تصل.
+   */
+  const sectionLabel = (key?: string) => {
+    const m = sections.find((x) => x.key === key);
+    return m ? (ar ? m.ar : m.en) : (ar ? 'أخرى' : 'Other');
+  };
+
+  /** كياناتُ القسم المختار وحدَها — واختيارُ قسمٍ يُسقط كيانًا لا ينتمي إليه. */
+  const entityOptions = sectionFilter
+    ? entities.filter((e) => e.section === sectionFilter)
+    : entities;
+  useEffect(() => {
+    if (entityFilter && !entityOptions.some((e) => e.key === entityFilter)) setEntityFilter('');
+  }, [sectionFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchLogs = useCallback(async (page = 1) => {
     try {
@@ -122,10 +181,16 @@ export default function AuditPage() {
       params.set('page', page.toString());
       params.set('limit', '25');
       if (entityFilter) params.set('entity', entityFilter);
+      else if (sectionFilter) params.set('section', sectionFilter);
       if (userFilter) params.set('user', userFilter);
+      if (branchFilter) params.set('branch', branchFilter);
       if (actionSearch.trim()) params.set('action', actionSearch.trim());
-      if (dateFrom) params.set('dateFrom', dateFrom);
-      if (dateTo) params.set('dateTo', dateTo);
+      // اليومُ الواحد يُرسَل حدًّا واحدًا، والخادمُ يجعله يومًا بطرفيه — فلا
+      // يُكتب التاريخُ مرّتين ولا يُنسى أحدُ الطرفين.
+      if (dateMode === 'day') { if (day) params.set('date', day); } else {
+        if (dateFrom) params.set('dateFrom', dateFrom);
+        if (dateTo) params.set('dateTo', dateTo);
+      }
 
       const data = await api.get<any>(`/api/audit?${params.toString()}`);
       setLogs(data.logs || data.auditLogs || data || []);
@@ -144,7 +209,7 @@ export default function AuditPage() {
     } finally {
       setLoading(false);
     }
-  }, [entityFilter, userFilter, actionSearch, dateFrom, dateTo]);
+  }, [entityFilter, sectionFilter, userFilter, branchFilter, actionSearch, dateMode, day, dateFrom, dateTo]);
 
   useEffect(() => {
     setLoading(true);
@@ -159,13 +224,30 @@ export default function AuditPage() {
 
   const clearFilters = () => {
     setEntityFilter('');
+    setSectionFilter('');
     setUserFilter('');
+    setBranchFilter('');
     setActionSearch('');
+    setDay('');
     setDateFrom('');
     setDateTo('');
   };
 
-  const hasActiveFilters = !!(entityFilter || userFilter || actionSearch || dateFrom || dateTo);
+  const hasActiveFilters = !!(entityFilter || sectionFilter || userFilter || branchFilter
+    || actionSearch || (dateMode === 'day' ? day : (dateFrom || dateTo)));
+
+  /** اليومُ بصيغة `YYYY-MM-DD` محلّيًّا — لا `toISOString` التي تقفز يومًا بالتوقيت. */
+  const dayStr = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  /** اختصاراتُ ما يُسأل عنه فعلًا — أكثرُه «اليوم» و«أمس». */
+  const setQuickDay = (offset: number) => {
+    const d = new Date(); d.setDate(d.getDate() - offset);
+    setDateMode('day'); setDay(dayStr(d));
+  };
+  const setQuickRange = (days: number) => {
+    const to = new Date(); const from = new Date(); from.setDate(from.getDate() - (days - 1));
+    setDateMode('range'); setDateFrom(dayStr(from)); setDateTo(dayStr(to));
+  };
 
   const exportColumns: ExportColumn[] = [
     { header: T.date, key: 'createdAt', transform: fmt.datetime, width: 22 },
@@ -184,10 +266,16 @@ export default function AuditPage() {
     const params = new URLSearchParams({ page: '1', limit: '100000' });
     if (withFilters) {
       if (entityFilter) params.set('entity', entityFilter);
+      else if (sectionFilter) params.set('section', sectionFilter);
       if (userFilter) params.set('user', userFilter);
+      if (branchFilter) params.set('branch', branchFilter);
       if (actionSearch.trim()) params.set('action', actionSearch.trim());
-      if (dateFrom) params.set('dateFrom', dateFrom);
-      if (dateTo) params.set('dateTo', dateTo);
+      // اليومُ الواحد يُرسَل حدًّا واحدًا، والخادمُ يجعله يومًا بطرفيه — فلا
+      // يُكتب التاريخُ مرّتين ولا يُنسى أحدُ الطرفين.
+      if (dateMode === 'day') { if (day) params.set('date', day); } else {
+        if (dateFrom) params.set('dateFrom', dateFrom);
+        if (dateTo) params.set('dateTo', dateTo);
+      }
     }
     const data = await api.get<any>(`/api/audit?${params.toString()}`);
     return [{ name: T.title, rows: data.logs || data.auditLogs || [], columns: exportColumns }];
@@ -389,7 +477,10 @@ export default function AuditPage() {
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              {/* ── الصفُّ الأوّل: مَن، ومن أيّ فرع، وفي أيّ قسم ────────────
+                  الترتيبُ مقصود: هذه هي الأسئلةُ الثلاثةُ التي يُفتَح السجلّ
+                  من أجلها. والكيانُ والفعلُ تفصيلٌ يأتي بعدها لمن أراده. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Person — the whole point: one user's own history */}
                 <div>
                   <label className="block text-slate-600 text-xs font-medium mb-1.5">{ar ? 'الشخص' : 'Person'}</label>
@@ -405,16 +496,69 @@ export default function AuditPage() {
                   />
                 </div>
 
+                {/* ── الفرع ────────────────────────────────────────────────
+                    القيدُ لا يحمل فرعًا، ولا ينبغي: الفعلُ قد يقع على شيءٍ لا
+                    فرعَ له. لكنّ **فاعلَه** له فرع، وهو المقصود بالسؤال. */}
+                <div>
+                  <label className="block text-slate-600 text-xs font-medium mb-1.5">{ar ? 'الفرع' : 'Branch'}</label>
+                  <SearchableSelect
+                    value={branchFilter}
+                    onChange={setBranchFilter}
+                    placeholder={ar ? 'كل الفروع' : 'All branches'}
+                    options={[
+                      { value: '', label: ar ? 'كل الفروع' : 'All branches' },
+                      ...branches.map((b) => ({ value: b._id, label: b.name })),
+                    ]}
+                  />
+                  <p className="mt-1 text-[10.5px] text-slate-400">
+                    {ar ? 'فرعُ مَن قام بالفعل' : 'the branch of whoever acted'}
+                  </p>
+                </div>
+
+                {/* ── القسم ────────────────────────────────────────────────
+                    ومعه عددُ قيوده: قائمةٌ بلا أعداد تُقرأ كلُّها سواء، فيُفتَح
+                    قسمٌ فيه أربعةُ قيودٍ بحثًا عمّا وقع في قسمٍ فيه أربعةُ آلاف. */}
+                <div>
+                  <label className="block text-slate-600 text-xs font-medium mb-1.5">{ar ? 'القسم' : 'Section'}</label>
+                  <SearchableSelect
+                    value={sectionFilter}
+                    onChange={setSectionFilter}
+                    placeholder={ar ? 'كل الأقسام' : 'All sections'}
+                    options={[
+                      { value: '', label: ar ? 'كل الأقسام' : 'All sections' },
+                      ...sections.map((sec) => ({
+                        value: sec.key,
+                        label: ar ? sec.ar : sec.en,
+                        hint: `${sec.count.toLocaleString()}`,
+                      })),
+                    ]}
+                  />
+                </div>
+              </div>
+
+              {/* ── الصفُّ الثاني: التفصيل داخل القسم ───────────────────────── */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Entity Type — the entities that actually occur in the log */}
                 <div>
-                  <label className="block text-slate-600 text-xs font-medium mb-1.5">{T.entity}</label>
+                  <label className="block text-slate-600 text-xs font-medium mb-1.5">
+                    {T.entity}
+                    {sectionFilter && (
+                      <span className="font-normal text-slate-400">
+                        {' '}— {ar ? 'داخل القسم المختار' : 'within the chosen section'}
+                      </span>
+                    )}
+                  </label>
                   <SearchableSelect
                     value={entityFilter}
                     onChange={setEntityFilter}
                     placeholder={ar ? 'كل الأنواع' : 'All entities'}
                     options={[
                       { value: '', label: ar ? 'كل الأنواع' : 'All entities' },
-                      ...entities.map((e) => ({ value: e, label: entityLabel(e, ar), hint: ar ? e : undefined })),
+                      ...entityOptions.map((e) => ({
+                        value: e.key,
+                        label: entityLabel(e.key, ar),
+                        hint: `${e.count.toLocaleString()}`,
+                      })),
                     ]}
                   />
                 </div>
@@ -433,33 +577,65 @@ export default function AuditPage() {
                     />
                   </div>
                 </div>
+              </div>
 
-                {/* Date From */}
-                <div>
-                  <label className="block text-slate-500 text-xs font-medium mb-1.5">{T.from}</label>
-                  <div className="relative">
-                    <Calendar className="w-3.5 h-3.5 absolute start-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                    <input
-                      type="date"
-                      value={dateFrom}
-                      onChange={(e) => setDateFrom(e.target.value)}
-                      className="w-full ps-9 pe-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
-                    />
+              {/* ── الزمن: يومٌ بعينه، أو مدّة ─────────────────────────────── */}
+              <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-slate-600 text-xs font-medium">{ar ? 'الزمن' : 'When'}</span>
+                  <div className="flex rounded-lg border border-slate-200 bg-white p-0.5">
+                    {([
+                      ['day', ar ? 'يوم بعينه' : 'A single day'],
+                      ['range', ar ? 'فترة' : 'A period'],
+                    ] as const).map(([k, lbl]) => (
+                      <button key={k} type="button" onClick={() => setDateMode(k)}
+                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                          dateMode === k ? 'bg-[#f37121] text-white' : 'text-slate-600 hover:text-slate-900'}`}>
+                        {lbl}
+                      </button>
+                    ))}
                   </div>
+
+                  {dateMode === 'day' ? (
+                    <div className="relative">
+                      <Calendar className="w-3.5 h-3.5 absolute start-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                      <input type="date" value={day} onChange={(e) => setDay(e.target.value)}
+                        aria-label={ar ? 'اليوم' : 'Day'}
+                        className="ps-9 pe-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]" />
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <div className="relative">
+                        <Calendar className="w-3.5 h-3.5 absolute start-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <input type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)}
+                          aria-label={T.from}
+                          className="ps-9 pe-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]" />
+                      </div>
+                      <span className="text-slate-400 text-sm">→</span>
+                      <div className="relative">
+                        <Calendar className="w-3.5 h-3.5 absolute start-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)}
+                          aria-label={T.to}
+                          className="ps-9 pe-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]" />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* Date To */}
-                <div>
-                  <label className="block text-slate-500 text-xs font-medium mb-1.5">{T.to}</label>
-                  <div className="relative">
-                    <Calendar className="w-3.5 h-3.5 absolute start-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                    <input
-                      type="date"
-                      value={dateTo}
-                      onChange={(e) => setDateTo(e.target.value)}
-                      className="w-full ps-9 pe-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
-                    />
-                  </div>
+                {/* اختصاراتُ ما يُسأل عنه فعلًا — «اليوم» و«أمس» أكثرُه. */}
+                <div className="flex flex-wrap gap-1.5">
+                  {([
+                    [ar ? 'اليوم' : 'Today', () => setQuickDay(0)],
+                    [ar ? 'أمس' : 'Yesterday', () => setQuickDay(1)],
+                    [ar ? 'آخر ٧ أيام' : 'Last 7 days', () => setQuickRange(7)],
+                    [ar ? 'آخر ٣٠ يومًا' : 'Last 30 days', () => setQuickRange(30)],
+                    [ar ? 'كل الوقت' : 'All time', () => { setDay(''); setDateFrom(''); setDateTo(''); }],
+                  ] as [string, () => void][]).map(([lbl, fn]) => (
+                    <button key={lbl} type="button" onClick={fn}
+                      className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-slate-600 text-[11.5px] font-medium hover:border-[#f37121] hover:text-[#f37121] transition-colors">
+                      {lbl}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -477,6 +653,9 @@ export default function AuditPage() {
                 <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.date}</th>
                 <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.user}</th>
                 <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.action}</th>
+                {/* القسمُ عمودٌ لا فلترٌ فقط: من يقرأ صفًّا يحتاج أن يعرف أين
+                    وقع قبل أن يعرف على أيّ نموذجٍ وقع. */}
+                <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{ar ? 'القسم' : 'Section'}</th>
                 <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.entity}</th>
                 <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.details}</th>
               </tr>
@@ -484,7 +663,7 @@ export default function AuditPage() {
             <tbody className="divide-y divide-slate-200">
               {logs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-800 text-sm">
+                  <td colSpan={7} className="px-4 py-8 text-center text-slate-800 text-sm">
                     {T.noLogs}
                   </td>
                 </tr>
@@ -539,6 +718,14 @@ export default function AuditPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm">
+                        {/* الضغطُ يفلتر على القسم — كما يفعل الاسمُ مع الشخص. */}
+                        <button type="button"
+                          onClick={(e) => { e.stopPropagation(); setSectionFilter(log.section || ''); setEntityFilter(''); setShowFilters(true); }}
+                          className="text-xs font-medium text-slate-600 hover:text-[#f37121] hover:underline text-start whitespace-nowrap">
+                          {sectionLabel(log.section)}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3 text-sm">
                         <span className={`font-medium text-xs ${getEntityColor(log.entity)}`}>
                           {entityLabel(log.entity, ar)}
                         </span>
@@ -557,7 +744,7 @@ export default function AuditPage() {
                     <AnimatePresence>
                       {expandedRow === log._id && hasChangeDetails(log) && (
                         <tr>
-                          <td colSpan={6}>
+                          <td colSpan={7}>
                             <motion.div
                               initial={{ height: 0, opacity: 0 }}
                               animate={{ height: 'auto', opacity: 1 }}

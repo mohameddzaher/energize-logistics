@@ -5,7 +5,10 @@ const Vendor = require('../models/Vendor');
 const Driver = require('../models/Driver');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
-const { WALLET_START_DATE, isBeforeWalletStart, walletStartMessage } = require('../config/walletStart');
+const {
+  WALLET_START_DATE, isBeforeWalletStart, isAfterToday, todayStr,
+  walletStartMessage, walletFutureMessage,
+} = require('../config/walletStart');
 
 // Helper: get YYYY-MM-DD string
 const toDateStr = (d) => {
@@ -17,18 +20,26 @@ const toDateStr = (d) => {
 const EXPENSE_THRESHOLD = 10000;
 
 /**
- * بابُ الماضي مغلق — راجع config/walletStart.
+ * الدفترُ نافذةٌ لها طرفان — راجع config/walletStart.
  *
- * ويُوضَع على القراءة كما على الكتابة: فتحُ شاشةِ يومٍ سابقٍ وحدَه كان يُنشئ
- * يوميّةً في القاعدة (`getOrCreateWallet`)، فمجرَّدُ النظر إلى الماضي يخلقه —
- * ثمّ يظهر في تقارير الفروع يومًا برصيدٍ افتتاحيٍّ صفر.
+ * ويُوضَع الحدُّ على القراءة كما على الكتابة: فتحُ شاشةِ يومٍ وحدَه يُنشئ
+ * يوميّةً في القاعدة (`getOrCreateWallet`)، فمجرَّدُ النظر إلى يومٍ يخلقه.
+ * إلى الوراء كان ذلك يُعيد أيّامًا حُذفت عمدًا، وإلى الأمام يخلق أيّامًا لم
+ * تأتِ — ثلاثُ يوميّاتٍ فارغةٍ في المستقبل وُجدت في الدفتر هكذا، إحداها بعد
+ * ثمانيةَ عشرَ يومًا من اليوم الذي فُتحت فيه.
  *
  * يُعيد `true` إن رُدَّ الطلبُ، فينتهي المتحكّمُ عنده.
  */
-const denyBeforeStart = (res, date) => {
-  if (!isBeforeWalletStart(date)) return false;
-  res.status(400).json({ message: walletStartMessage(), walletStartDate: WALLET_START_DATE });
-  return true;
+const denyOutsideBook = (res, date) => {
+  if (isBeforeWalletStart(date)) {
+    res.status(400).json({ message: walletStartMessage(), walletStartDate: WALLET_START_DATE });
+    return true;
+  }
+  if (isAfterToday(date)) {
+    res.status(400).json({ message: walletFutureMessage(), walletLastDate: todayStr() });
+    return true;
+  }
+  return false;
 };
 
 const checkRiskFlags = (transaction) => {
@@ -235,7 +246,7 @@ const cascadeBalances = async (branchId, fromDate, newClosingBalance) => {
 exports.getDailyWallet = async (req, res) => {
   try {
     const date = req.query.date || toDateStr();
-    if (denyBeforeStart(res, date)) return;
+    if (denyOutsideBook(res, date)) return;
 
     // ── يُختار الفرعُ لا الموظّف ────────────────────────────────────────────
     // المحفظةُ للفرع، فالسؤالُ «أيُّ فرع» لا «أيُّ موظّف». و`userId` يبقى
@@ -304,7 +315,7 @@ exports.addTransaction = async (req, res) => {
     }
 
     const txDate = date || toDateStr();
-    if (denyBeforeStart(res, txDate)) return;
+    if (denyOutsideBook(res, txDate)) return;
 
     // ── استلامُ الفواتير الضريبيّة: كشوفٌ لا مبلغ ────────────────────────────
     // القيدُ يقول «استلمتُ كشوفَ هذه الفواتير بيدي» — لا مالَ دخل ولا خرج،
@@ -669,7 +680,7 @@ exports.deleteTransaction = async (req, res) => {
     if (!mayTouchWallet(req, wallet)) return denyWallet(res);
     // ولا تُمَسّ حركةٌ سابقةٌ للبداية ولو بقيت واحدةٌ في القاعدة: تعديلُها
     // يُعيد حساب سلسلةِ أرصدةٍ انتهت، وحذفُها يُحرّك رصيدَ أوّلِ سبتمبر المُقَرّ.
-    if (denyBeforeStart(res, transaction.date)) return;
+    if (denyOutsideBook(res, transaction.date)) return;
     const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(req.user.role);
 
     if (wallet && wallet.isClosed && !isManager) {
@@ -733,7 +744,7 @@ exports.updateTransaction = async (req, res) => {
     if (!mayTouchWallet(req, wallet)) return denyWallet(res);
     // ولا تُمَسّ حركةٌ سابقةٌ للبداية ولو بقيت واحدةٌ في القاعدة: تعديلُها
     // يُعيد حساب سلسلةِ أرصدةٍ انتهت، وحذفُها يُحرّك رصيدَ أوّلِ سبتمبر المُقَرّ.
-    if (denyBeforeStart(res, transaction.date)) return;
+    if (denyOutsideBook(res, transaction.date)) return;
     const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(req.user.role);
 
     if (wallet && wallet.isClosed && !isManager) {
@@ -887,7 +898,7 @@ exports.closeDay = async (req, res) => {
   try {
     const { date, actualCash, differenceReason, differenceNotes } = req.body;
     const txDate = date || toDateStr();
-    if (denyBeforeStart(res, txDate)) return;
+    if (denyOutsideBook(res, txDate)) return;
 
     // يُقفَل يومُ الفرع لا يومُ الشخص: النقدُ نقدُ الفرع، وإقفالُه إقرارٌ عنه.
     const closeBranch = req.body.branchId || req.body.branch || req.user.branch;
@@ -966,7 +977,7 @@ exports.reopenDay = async (req, res) => {
     if (!wallet) return res.status(404).json({ message: 'Wallet not found' });
     // إعادة فتح يومٍ أُقفل قرارٌ إداريّ — لم يكن عليه أيّ فحصٍ إطلاقًا.
     if (!MANAGER_ROLES.includes(req.user.role)) return denyWallet(res);
-    if (denyBeforeStart(res, wallet.date)) return;
+    if (denyOutsideBook(res, wallet.date)) return;
 
     wallet.isClosed = false;
     wallet.closedAt = null;
@@ -1391,7 +1402,18 @@ exports.getUserWalletRange = async (req, res) => {
       return res.status(403).json({ message: 'لا تملك صلاحية عرض محفظة فرعٍ آخر.' });
     }
 
-    const filter = { branch: repBranch, date: { $gte: dateFrom, $lte: dateTo } };
+    // ── ولا تُعَدُّ أيّامٌ لم تأتِ بعد ───────────────────────────────────────
+    //
+    // إقفالُ اليوم يجهّز يوميّةَ الغد بالرصيد المنقول، وهو صحيحٌ في ذاته. لكنّ
+    // عرضَ الشهر يعدّ اليوميّات، فيقول «١٣ يومًا» في الثاني عشر من الشهر —
+    // ورقمٌ يناقض التقويمَ على الشاشة يجعل كلَّ رقمٍ بجانبه موضعَ شكّ. وكذلك
+    // «رصيد آخر يوم» كان يُقرأ من يوميّةٍ في المستقبل لا من آخر يومٍ عُمل فيه.
+    //
+    // والحدُّ هنا لا في الفلتر وحدَه: التصديرُ «الكلّ» يسأل عن 2100-12-31،
+    // فبغيره يخرج الملفُّ بأيّامٍ لم تقع.
+    const from = isBeforeWalletStart(dateFrom) ? WALLET_START_DATE : dateFrom;
+    const to = isAfterToday(dateTo) ? todayStr() : dateTo;
+    const filter = { branch: repBranch, date: { $gte: from, $lte: to } };
     const wallets = await DailyWallet.find(filter)
       .populate('user', 'firstName lastName')
       .populate('branch', 'name')
@@ -1417,7 +1439,11 @@ exports.getUserWalletRange = async (req, res) => {
       closingBalance: acc.closingBalance + (w.closingBalance || 0),
     }), { totalCollections: 0, totalExpenses: 0, totalPurchases: 0, closingBalance: 0 });
 
-    res.json({ wallets, transactions, summary, dateFrom, dateTo });
+    // ويُعاد المدى المستعمَلُ فعلًا لا المطلوب: الشاشةُ تكتب «سبتمبر» في
+    // العنوان وتعرض ما وقع منه، فلو أعادت ما طُلب لقالت إنّها تعرض الشهر كلَّه.
+    res.json({
+      wallets, transactions, summary, dateFrom: from, dateTo: to, requestedFrom: dateFrom, requestedTo: dateTo,
+    });
   } catch (error) {
     console.error('getUserWalletRange error:', error);
     res.status(500).json({ message: error.message || 'Failed to load wallet range' });

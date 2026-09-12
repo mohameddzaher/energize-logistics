@@ -286,8 +286,13 @@ export default function WalletPage() {
         setTransactions(data.transactions || []);
         setRangeSummary(null);
       } else {
+        // ── والشهرُ الجاري ينتهي اليوم، لا في آخر أيّامه ───────────────────
+        // «سبتمبر» في الثاني عشر منه يعني ما وقع من سبتمبر، لا ثلاثين يومًا
+        // ثمانيةَ عشرَ منها لم تأتِ. والخادمُ يحدّ المدى كذلك — لكنّ الحدَّ هنا
+        // يجعل ما يُطلَب مطابقًا لما يُعرَض من أوّل نداء.
+        const monthEnd = `${monthKey}-${String(new Date(Number(monthKey.slice(0, 4)), Number(monthKey.slice(5, 7)), 0).getDate()).padStart(2, '0')}`;
         const [from, to] = mode === 'month'
-          ? [`${monthKey}-01`, `${monthKey}-${String(new Date(Number(monthKey.slice(0, 4)), Number(monthKey.slice(5, 7)), 0).getDate()).padStart(2, '0')}`]
+          ? [`${monthKey}-01`, monthEnd > getTodayStr() ? getTodayStr() : monthEnd]
           : [rangeFrom, rangeTo];
         const p = new URLSearchParams({ dateFrom: from, dateTo: to });
         if (canSelectBranch && selectedBranch) p.set('branchId', selectedBranch);
@@ -862,7 +867,7 @@ export default function WalletPage() {
                   قبله. ولو بقي المنتقي مفتوحًا على الماضي لاختير أغسطسُ ثمّ
                   رُدّ الطلبُ بخطأٍ أحمر — منعٌ يُكتشَف بعد الضغط بدل أن يُقرأ
                   قبله. */}
-              <input type="date" value={selectedDate} min={WALLET_START_DATE} onChange={(e) => setSelectedDate(e.target.value)}
+              <input type="date" value={selectedDate} min={WALLET_START_DATE} max={getTodayStr()} onChange={(e) => setSelectedDate(e.target.value)}
                 title={lang === 'ar' ? `دفتر العهدة يبدأ ${WALLET_START_DATE}` : `The wallet starts ${WALLET_START_DATE}`}
                 className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label={txx.selectDate} />
               <button type="button" onClick={() => setSelectedDate(startOfBook(getTodayStr()))}
@@ -872,10 +877,10 @@ export default function WalletPage() {
 
           {mode === 'range' && (
             <>
-              <input type="date" value={rangeFrom} max={rangeTo} min={WALLET_START_DATE} onChange={(e) => setRangeFrom(e.target.value)}
+              <input type="date" value={rangeFrom} max={rangeTo || getTodayStr()} min={WALLET_START_DATE} onChange={(e) => setRangeFrom(e.target.value)}
                 className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light]" aria-label={lang === 'ar' ? 'من' : 'From'} />
               <span className="text-slate-400 text-sm">→</span>
-              <input type="date" value={rangeTo} min={rangeFrom > WALLET_START_DATE ? rangeFrom : WALLET_START_DATE} onChange={(e) => setRangeTo(e.target.value)}
+              <input type="date" value={rangeTo} max={getTodayStr()} min={rangeFrom > WALLET_START_DATE ? rangeFrom : WALLET_START_DATE} onChange={(e) => setRangeTo(e.target.value)}
                 className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light]" aria-label={lang === 'ar' ? 'إلى' : 'To'} />
               <button type="button" onClick={() => {
                 const t = getTodayStr();
@@ -888,7 +893,7 @@ export default function WalletPage() {
           )}
 
           {mode === 'month' && (
-            <input type="month" value={monthKey} min={WALLET_START_DATE.slice(0, 7)} onChange={(e) => setMonthKey(e.target.value)}
+            <input type="month" value={monthKey} min={WALLET_START_DATE.slice(0, 7)} max={getTodayStr().slice(0, 7)} onChange={(e) => setMonthKey(e.target.value)}
               className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light]"
               aria-label={lang === 'ar' ? 'الشهر' : 'Month'} />
           )}

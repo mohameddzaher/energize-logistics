@@ -26,7 +26,40 @@ const WALLET_START_DATE = '2026-09-01';
 /** التواريخُ نصوصُ `YYYY-MM-DD`، فمقارنتُها النصّيّة هي مقارنتُها الزمنيّة. */
 const isBeforeWalletStart = (date) => !!date && String(date) < WALLET_START_DATE;
 
+/** اليومُ بصيغة `YYYY-MM-DD` بتوقيت الخادم — لا `toISOString` التي تقفز يومًا. */
+const todayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/**
+ * ── وللدفتر آخِرٌ كما له أوّل ────────────────────────────────────────────────
+ *
+ * أُغلق بابُ الماضي وتُرك بابُ المستقبل مفتوحًا، وهو العطبُ نفسُه من الجهة
+ * الأخرى: `getOrCreateWallet` تُنشئ اليوميّةَ لمجرّد طلبها، فمن فتح الشاشة
+ * واختار تاريخًا بعد أسبوعين خلق يومًا لم يأتِ بعد — يوميّةٌ فارغةٌ برصيدٍ
+ * منقول، تقعد في الدفتر بلا صاحب.
+ *
+ * وأثرُها ليس صفًّا زائدًا وحده: كارتُ «عدد الأيام» في عرض الشهر يعدّ اليوميّات،
+ * فيقول «١٣ يومًا» في الثاني عشر من الشهر. ورقمٌ يناقض التقويمَ على الشاشة
+ * يجعل كلَّ رقمٍ بجانبه موضعَ شكّ.
+ *
+ * والعملُ اليوميُّ لا يحتاج الغد: النقدُ يُعَدّ ويُقفَل في يومه. فمن أراد
+ * تسجيلَ شيءٍ غدًا يسجّله غدًا.
+ */
+const isAfterToday = (date) => !!date && String(date) > todayStr();
+
 const walletStartMessage = () =>
   `بدايةُ دفتر العهدة ${WALLET_START_DATE} — لا يُقرأ ولا يُكتب شيءٌ قبل هذا التاريخ.`;
 
-module.exports = { WALLET_START_DATE, isBeforeWalletStart, walletStartMessage };
+const walletFutureMessage = () =>
+  `لا يُفتَح يومٌ لم يأتِ بعد — آخرُ يومٍ في الدفتر هو اليوم (${todayStr()}).`;
+
+module.exports = {
+  WALLET_START_DATE,
+  isBeforeWalletStart,
+  isAfterToday,
+  todayStr,
+  walletStartMessage,
+  walletFutureMessage,
+};

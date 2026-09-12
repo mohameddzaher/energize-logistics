@@ -123,7 +123,7 @@ exports.getDashboard = async (req, res) => {
     const statusCounts = { moving: 0, idle: 0, stopped: 0, offline: 0 };
     for (const v of vehicles) statusCounts[v.status] = (statusCounts[v.status] || 0) + 1;
 
-    // Alert breakdowns
+    // Alert breakdowns 
     const bySeverity = { critical: 0, warning: 0, info: 0 };
     const byType = {};
     for (const a of openAlerts) {

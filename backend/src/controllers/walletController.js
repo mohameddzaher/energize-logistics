@@ -197,6 +197,27 @@ async function fillReportFromWallet({ workflow, amount, date, branchId, document
   return patch;
 }
 
+/**
+ * ── الفرقُ النقديُّ مشتَقٌّ، فيُعاد اشتقاقُه كلّما تغيّر أحدُ طرفيه ──────────
+ *
+ * `cashDifference` ليس رقمًا مستقلًّا: هو **الختاميُّ ناقص المعدود**. وكان
+ * يُكتب مرّةً عند الإقفال ثمّ لا يُمَسّ، بينما يتغيّر الختاميُّ بعده — حركةٌ
+ * تُضاف أو تُعدَّل أو تُحذف، أو تصحيحٌ في يومٍ سابق يتدحرج على الأيّام التالية.
+ * فيبقى في الخانة فرقُ أمسِ منسوبًا إلى ختاميِّ اليوم.
+ *
+ * وأثرُه أربعةَ عشرَ يومًا في ثلاثة فروع: يومٌ فيه عجزٌ حقيقيٌّ مقدارُه عشرون
+ * ألفًا يُقرأ «صفر»، ويومٌ عُدَّ وفُتح له تنبيهٌ يُقرأ بفرقٍ أقلَّ ممّا هو عليه
+ * بألفٍ وأربعمئة. ومراجعةُ النقد كلُّها تُبنى على هذه الخانة.
+ *
+ * والذي لم يُعَدّ لا يُمَسّ: `actualCash == null` تعني «لم يعدّه أحد»، فلا فرقَ
+ * له أصلًا — لا صفرٌ ولا غيرُه.
+ */
+const r2c = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const syncCashCount = (wallet) => {
+  if (wallet.actualCash == null) { wallet.cashDifference = null; return; }
+  wallet.cashDifference = r2c((wallet.closingBalance || 0) - wallet.actualCash);
+};
+
 const recalcWallet = async (walletId) => {
   const txns = await WalletTransaction.find({ wallet: walletId }).select('type amount').lean();
   let totalCollections = 0;
@@ -218,6 +239,8 @@ const recalcWallet = async (walletId) => {
   wallet.totalExpenses = totalExpenses;
   wallet.totalPurchases = totalPurchases;
   wallet.closingBalance = wallet.openingBalance + totalCollections - totalExpenses - totalPurchases;
+  // الختاميُّ تغيّر، فالفرقُ المنسوبُ إليه يُعاد اشتقاقُه — وإلّا بقي فرقُ أمس.
+  syncCashCount(wallet);
   await wallet.save();
 
   // Cascade: update opening balance of all future days for this user
@@ -240,6 +263,8 @@ const cascadeBalances = async (branchId, fromDate, newClosingBalance) => {
     if (day.openingBalance !== prevClosing) {
       day.openingBalance = prevClosing;
       day.closingBalance = prevClosing + day.totalCollections - day.totalExpenses - day.totalPurchases;
+      // والتدحرجُ يغيّر ختاميَّ كلِّ يومٍ يمرّ عليه، فيلزمه ما يلزم الأوّل.
+      syncCashCount(day);
       await day.save();
     }
     prevClosing = day.closingBalance;
@@ -918,15 +943,27 @@ exports.closeDay = async (req, res) => {
     wallet.closedAt = new Date();
     wallet.closedBy = req.user._id;
 
-    const cashAmount = (actualCash !== undefined && actualCash !== null) ? Number(actualCash) : wallet.closingBalance;
-    wallet.actualCash = cashAmount;
-    wallet.cashDifference = wallet.closingBalance - cashAmount;
-    if (actualCash !== undefined && actualCash !== null) {
+    // ── ومَن لم يعدّ النقدَ لا يُكتب له عدٌّ ──────────────────────────────────
+    //
+    // كان الإقفالُ بلا عدٍّ يكتب `actualCash = closingBalance` و`فرق = 0`،
+    // فيصير «لم يعدّه أحد» و«عُدَّ فطابق الدفترَ تمامًا» شيئًا واحدًا في
+    // البيانات لا يُفرَّق بينهما. وهما نقيضان: الأوّل لا يقول شيئًا عن النقد،
+    // والثاني إقرارٌ بأنّه صحيح.
+    //
+    // وأثرُ الخلط ليس نظريًّا: يوم ١٠ سبتمبر في الرياض أُقفل بلا عدّ — سجلُّ
+    // المراجعة يحفظ الطلبَ بلا `actualCash` أصلًا — ثمّ تحرّك ختاميُّه، فصار في
+    // الخانة عدٌّ لم يقع وفرقٌ يُقرأ صفرًا وهو ألفان ومئتان.
+    //
+    // فالفراغُ يبقى فراغًا: `null` تعني «لم يُعَدّ»، وكلُّ شاشةٍ تقرؤها كذلك.
+    const counted = actualCash !== undefined && actualCash !== null && actualCash !== '';
+    wallet.actualCash = counted ? Number(actualCash) : null;
+    syncCashCount(wallet);
+    if (counted) {
       wallet.differenceReason = differenceReason || '';
       wallet.differenceNotes = differenceNotes || '';
 
       // Flag large cash differences
-      if (Math.abs(wallet.cashDifference) > 100) {
+      if (Math.abs(wallet.cashDifference || 0) > 100) {
         // Create risk alert for large differences
         await logAudit({
           user: req.user._id, action: 'cash_difference_alert', entity: 'DailyWallet',

@@ -11,7 +11,20 @@ const toDateStr = () => {
 
 /**
  * Auto-close all open wallets for the current day.
- * Sets actualCash = closingBalance (system-calculated) since no manual count was performed.
+ *
+ * ── ولا يُكتب عدٌّ لم يقع ────────────────────────────────────────────────────
+ * كان يكتب `actualCash = closingBalance` و`cashDifference = 0` بحجّة أنّ
+ * «النظامَ حسبها». وهذا يقول في البيانات إنّ النقدَ عُدَّ فطابق الدفترَ تمامًا،
+ * والحقيقةُ أنّ أحدًا لم يعدّه — والفرقُ بين الأمرين هو كلُّ ما تقوم عليه
+ * مراجعةُ النقد.
+ *
+ * وأثرُه لم يكن نظريًّا: يومٌ أُقفل تلقائيًّا ثمّ تحرّك ختاميُّه (حركةٌ تُضاف،
+ * أو تصحيحٌ يتدحرج من يومٍ سابق) يبقى «معدودُه» على الرقم القديم و«فرقُه» صفرًا
+ * — اثنا عشرَ يومًا في ثلاثة فروع كانت كذلك، أحدُها فرقُه الحقيقيّ عشرون ألفًا
+ * وثلاثُ مئةٍ وثمانٍ وعشرون وهو يُقرأ صفرًا.
+ *
+ * فالخانةُ تبقى فارغة: `null` تعني «لم يُعَدّ»، وكلُّ شاشةٍ تقرؤها كذلك.
+ * و`autoClosedNote` هي التي تقول لماذا أُقفل بلا عدّ.
  */
 const autoCloseOpenWallets = async () => {
   const today = toDateStr();
@@ -31,8 +44,8 @@ const autoCloseOpenWallets = async () => {
       wallet.isClosed = true;
       wallet.closedAt = new Date();
       // No closedBy since this is a system action (leave it null)
-      wallet.actualCash = wallet.closingBalance;
-      wallet.cashDifference = 0;
+      wallet.actualCash = null;
+      wallet.cashDifference = null;
       wallet.autoClosedNote = 'Auto-closed by system at end of day';
       await wallet.save();
 
@@ -48,7 +61,8 @@ const autoCloseOpenWallets = async () => {
           after: {
             date: today,
             closingBalance: wallet.closingBalance,
-            actualCash: wallet.closingBalance,
+            // لا `actualCash`: لم يُعَدّ، والقيدُ يقول ما جرى لا ما لم يجرِ.
+            counted: false,
             autoClosedNote: 'Auto-closed by system at end of day',
           },
         },

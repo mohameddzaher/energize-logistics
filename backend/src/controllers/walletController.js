@@ -1342,7 +1342,7 @@ exports.lookupByReport = async (req, res) => {
     const priorPurchase = await WalletTransaction.findOne({
       type: 'purchase',
       purchaseDeliveryStatementNumber: flexSpaceRegex(workflow.reportNumber),
-    }).populate('user', 'firstName lastName').lean();
+    }).populate('user', 'firstName lastName').populate('branch', 'name').lean();
 
     const base = {
       reportNumber: workflow.reportNumber,
@@ -1358,6 +1358,15 @@ exports.lookupByReport = async (req, res) => {
         date: priorPurchase.date,
         by: priorPurchase.user ? `${priorPurchase.user.firstName || ''} ${priorPurchase.user.lastName || ''}`.trim() : '',
         receipt: priorPurchase.purchaseReceiptNumber || '',
+        // ── ومن عهدةِ أيِّ فرعٍ دُفع ────────────────────────────────────────
+        // الدفعُ من عهدة فرعٍ غير فرع الكشف هو الغالب لا الاستثناء: ثلاثمئةٍ
+        // وتسعٌ وأربعون عمليةً من خمسمئةٍ واثنتين وخمسين — شاحناتُ النقل الثقيل
+        // تدفع كشوفَ جدّة والدمام، وجدّةُ تدفع كشوفَ ينبع ورابغ وجازان.
+        //
+        // فاسمُ مَن دفع وحدَه لا يكفي: موظّفُ سدير يقرأ «وائل مصطفى» فلا يعرف
+        // أنّ الكشف دُفع من عهدة الرياض أصلًا، فيظنّ المنعَ عطبًا في حسابه.
+        // واسمُ العهدة هو ما يجعل الجوابَ مفهومًا ويجعل المراجعةَ ممكنة.
+        branch: priorPurchase.branch?.name || '',
       } : null,
     };
 

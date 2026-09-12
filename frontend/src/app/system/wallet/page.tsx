@@ -251,7 +251,7 @@ export default function WalletPage() {
   const [purchaseReportMsg, setPurchaseReportMsg] = useState('');
   const [purchaseReportFound, setPurchaseReportFound] = useState(false);
   /** شراءٌ سابقٌ على الكشف نفسِه — يُعرَف من البحث قبل ملء الاستمارة. */
-  const [purchaseAlready, setPurchaseAlready] = useState<null | { amount: number; date: string; by: string; receipt: string }>(null);
+  const [purchaseAlready, setPurchaseAlready] = useState<null | { amount: number; date: string; by: string; receipt: string; branch?: string }>(null);
   /** حالةُ طلب الكشف — لا تُسجَّل مشترياتٌ قبل «استُلم السند». */
   const [purchaseBond, setPurchaseBond] = useState<null | { ok: boolean; status: string }>(null);
   const [purchaseInvoiceAmount, setPurchaseInvoiceAmount] = useState<number | null>(null);
@@ -417,8 +417,16 @@ export default function WalletPage() {
     if (txType === 'purchase') {
       if (!purchaseReportFound) return t('ابحث عن رقم كشف التخريج أوّلًا — الزرّ لا يعمل حتى يظهر الكشف', 'Search for the dispatch report first — the button stays off until it is found');
       if (purchaseAlready) {
-        return t(`هذا الكشف مسجَّلٌ شراؤه من قبل${purchaseAlready.by ? ` بواسطة ${purchaseAlready.by}` : ''} — لا يُشترى مرّتين`,
-          `This report was already purchased${purchaseAlready.by ? ` by ${purchaseAlready.by}` : ''} — it cannot be paid twice`);
+        // ── والعهدةُ التي دُفع منها أهمُّ من اسم الدافع ─────────────────────
+        // الدفعُ من عهدة فرعٍ غير فرع الكشف هو الغالب — ثلثا العمليّات. فمن
+        // يقرأ اسمًا وحدَه لا يعرف أين ذهب المال، ومن يقرأ «من عهدة الرياض»
+        // يعرف أين يسأل.
+        const where = purchaseAlready.branch ? t(` من عهدة ${purchaseAlready.branch}`, ` from the ${purchaseAlready.branch} wallet`) : '';
+        const who = purchaseAlready.by ? t(` بواسطة ${purchaseAlready.by}`, ` by ${purchaseAlready.by}`) : '';
+        const when = purchaseAlready.date ? t(` يوم ${purchaseAlready.date}`, ` on ${purchaseAlready.date}`) : '';
+        return t(
+          `هذا الكشف مدفوعٌ بالفعل: ${Number(purchaseAlready.amount || 0).toLocaleString()} ريال${where}${who}${when}. لا يُدفَع الكشف مرّتين — راجعه مع الفرع الذي دفعه إن كان هناك خطأ.`,
+          `This report is already paid: ${Number(purchaseAlready.amount || 0).toLocaleString()} SAR${where}${who}${when}. A report is not paid twice — take it up with the branch that paid it if this is wrong.`);
       }
       if (purchaseBond && !purchaseBond.ok) {
         const AR: Record<string, string> = {
@@ -1468,12 +1476,16 @@ export default function WalletPage() {
                           <p className="text-[12.5px] font-bold text-red-800">
                             {lang === 'ar' ? 'هذا الكشف سُجِّلت له مشترياتٌ من قبل' : 'This report already has a purchase'}
                           </p>
+                          {/* والعهدةُ التي دُفع منها: ثلثا المشتريات تُدفَع من عهدة
+                              فرعٍ غير فرع الكشف، فاسمُ الدافع وحدَه لا يقول أين ذهب المال. */}
                           <p className="text-[11.5px] text-red-700 mt-0.5">
                             {lang === 'ar'
                               ? `${purchaseAlready.amount.toLocaleString()} ريال بتاريخ ${purchaseAlready.date}`
+                                + `${purchaseAlready.branch ? ` — من عهدة ${purchaseAlready.branch}` : ''}`
                                 + `${purchaseAlready.by ? ` — بواسطة ${purchaseAlready.by}` : ''}`
                                 + `${purchaseAlready.receipt ? ` — سند ${purchaseAlready.receipt}` : ''}`
                               : `${purchaseAlready.amount.toLocaleString()} SAR on ${purchaseAlready.date}`
+                                + `${purchaseAlready.branch ? ` — from the ${purchaseAlready.branch} wallet` : ''}`
                                 + `${purchaseAlready.by ? ` by ${purchaseAlready.by}` : ''}`}
                           </p>
                           <p className="text-[11px] text-red-600 mt-1">

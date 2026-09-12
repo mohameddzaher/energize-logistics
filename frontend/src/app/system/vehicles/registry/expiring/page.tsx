@@ -24,7 +24,7 @@ import { useAuth } from '@/context/AuthContext';
 import SelectionBar from '@/components/ls2/SelectionBar';
 import { RenewModal, BulkRenewModal } from '@/components/vehicles/RenewModals';
 import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
-import { LEAD } from '@/components/vehicles/stickyLead';
+import { LEAD, LEAD_2, useLeadOffset } from '@/components/vehicles/stickyLead';
 import { stateMeta,
   getExpiring, canEditVehicles, STATE_META, stateLabel, publicState, fmtDate, daysText,
   type ExpiringRow,
@@ -70,6 +70,8 @@ function ExpiringInner() {
   const [d, setD] = useState<Awaited<ReturnType<typeof getExpiring>> | null>(null);
   const { user } = useAuth();
   const canEdit = canEditVehicles(user);
+  // عرضُ عمود الإجراءات يُقاس لتقف اللوحةُ بجانبه — راجع components/vehicles/stickyLead.
+  const lead = useLeadOffset();
   // تجديد أكتر من مستند بنفس التاريخ. المفتاح مركّب (مركبة+مستند) لأن نفس
   // المركبة ممكن يكون عندها أكتر من مستند بينتهي — واحد يتجدّد والتاني لأ.
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -280,7 +282,7 @@ function ExpiringInner() {
               <tr>
                 {/* الاختيارُ والتجديدُ فعلٌ واحدٌ على الصفّ — فهما في عمودٍ
                     واحدٍ أوّلَ الجدول وثابتٍ فيه. راجع components/vehicles/stickyLead. */}
-                <th className={`${LEAD} bg-slate-900 px-3 py-3 text-start font-bold whitespace-nowrap`}>
+                <th ref={lead.ref} className={`${LEAD} bg-slate-900 px-3 py-3 text-start font-bold whitespace-nowrap`}>
                   <span className="inline-flex items-center gap-2">
                     {canEdit && (
                       <input type="checkbox" className="accent-[#f37121]"
@@ -295,8 +297,11 @@ function ExpiringInner() {
                     {t('إجراءات', 'Actions')}
                   </span>
                 </th>
-                {COL_DEFS.map(([key, arL, enL]) => (
-                  <th key={key} className="px-3 py-3 text-center font-bold whitespace-nowrap">
+                {COL_DEFS.map(([key, arL, enL], i) => (
+                  // اللوحةُ أوّلُ الأعمدة وتُثبَّت مع الإجراءات — هويّةُ الصفّ.
+                  <th key={key}
+                    className={`px-3 py-3 text-center font-bold whitespace-nowrap ${i === 0 ? `${LEAD_2} bg-slate-900` : ''}`}
+                    style={i === 0 ? { insetInlineStart: lead.offset } : undefined}>
                     <span className="inline-flex items-center">
                       {t(arL, enL)}
                       {cf.header(key, rows, GETTERS[key], ar,
@@ -329,7 +334,8 @@ function ExpiringInner() {
                         </button>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5">
+                    <td className={`${LEAD_2} px-3 py-2.5 ${picked.has(rowKey(r)) ? 'bg-orange-50' : 'bg-white'} group-hover:bg-slate-50`}
+                      style={{ insetInlineStart: lead.offset }}>
                       <button onClick={() => router.push(`/system/vehicles/registry/${r.vehicleId}`)}
                         className="font-semibold text-slate-800 hover:text-[#f37121]">{r.plateNumber}</button>
                     </td>

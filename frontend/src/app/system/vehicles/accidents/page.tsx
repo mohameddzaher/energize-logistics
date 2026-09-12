@@ -7,7 +7,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { AlertTriangle, Edit, Trash2, Check, Plus } from 'lucide-react';
-import { LEAD } from '@/components/vehicles/stickyLead';
+import { LEAD, LEAD_2, useLeadOffset } from '@/components/vehicles/stickyLead';
 import {
   VehicleAccident, Vehicle, ACCIDENT_SEVERITY, ACCIDENT_STATUS, FAULT_PARTY, isVehicleStaff, isVehicleAdmin,
   faultPartyLabel, empRefName, plateOf, getVehiclesText, fmtDate, today,
@@ -32,6 +32,8 @@ export default function VehicleAccidentsPage() {
   const sp = useSearchParams();
   const [accidents, setAccidents] = useState<VehicleAccident[]>([]);
   const cf = useColumnFilters<VehicleAccident>();
+  // عرضُ عمود الإجراءات يُقاس لتقف اللوحةُ بجانبه — راجع components/vehicles/stickyLead.
+  const lead = useLeadOffset();
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(sp?.get('status') || '');
@@ -183,13 +185,19 @@ export default function VehicleAccidentsPage() {
                 الذي تُرسم به الخليّة. راجع components/vehicles/useColumnFilters. */}
             <tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
               {/* الإجراءاتُ أوّلًا وثابتة — راجع components/vehicles/stickyLead. */}
-              <th className={`${LEAD} bg-slate-900 text-start font-semibold px-4 py-3`}>{tx.actions}</th>
+              <th ref={lead.ref} className={`${LEAD} bg-slate-900 text-start font-semibold px-4 py-3`}>{tx.actions}</th>
+              {/* ── واللوحةُ قبل التاريخ في الجدول ─────────────────────────
+                  كانت ثانيةً بعد التاريخ، ولتثبيتها بجانب الإجراءات لا بدّ أن
+                  تجاورها — وإلّا انزلق التاريخُ تحتها فاختفى. وترتيبُ الملفّ
+                  المصدَّر لا يتغيّر: له قائمةُ أعمدته (`exportColumns`). */}
               {([
-                ['date', tx.date], ['plate', tx.plateNumber], ['employee', tx.employee],
+                ['plate', tx.plateNumber], ['date', tx.date], ['employee', tx.employee],
                 ['description', tx.description], ['fault', tx.faultParty],
                 ['severity', tx.severity], ['status', tx.status],
-              ] as [string, string][]).map(([key, label]) => (
-                <th key={key} className="text-start font-semibold px-4 py-3">
+              ] as [string, string][]).map(([key, label], i) => (
+                <th key={key}
+                  className={`text-start font-semibold px-4 py-3 ${i === 0 ? `${LEAD_2} bg-slate-900` : ''}`}
+                  style={i === 0 ? { insetInlineStart: lead.offset } : undefined}>
                   <span className="inline-flex items-center">
                     {label}
                     {cf.header(key, accidents, GETTERS[key], ar)}
@@ -211,8 +219,10 @@ export default function VehicleAccidentsPage() {
                     )}
                   </div>
                 </td>
+                <td className={`${LEAD_2} px-4 py-3 text-slate-900 font-bold cursor-pointer hover:text-[#f37121] bg-white group-hover:bg-slate-100`}
+                  style={{ insetInlineStart: lead.offset }}
+                  onClick={() => router.push(`/system/vehicles/${typeof a.vehicle === 'object' ? (a.vehicle as any)?._id : a.vehicle}`)}>{plateOf(a.vehicle)}</td>
                 <td className="px-4 py-3 text-slate-700">{fmtDate(a.date)}</td>
-                <td className="px-4 py-3 text-slate-900 font-bold cursor-pointer hover:text-[#f37121]" onClick={() => router.push(`/system/vehicles/${typeof a.vehicle === 'object' ? (a.vehicle as any)?._id : a.vehicle}`)}>{plateOf(a.vehicle)}</td>
                 <td className="px-4 py-3 text-slate-700">{empRefName(a.employee, lang)}</td>
                 <td className="px-4 py-3 text-slate-700 max-w-xs truncate" title={a.description}>{a.description}</td>
                 <td className="px-4 py-3 text-slate-700">{faultPartyLabel(a.faultParty, lang)}</td>

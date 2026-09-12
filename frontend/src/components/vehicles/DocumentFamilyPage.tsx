@@ -32,7 +32,7 @@ import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar'
 import { RenewModal, BulkRenewModal, SharedPolicyRenewModal, type RenewTarget } from '@/components/vehicles/RenewModals';
 import { ColumnFilter } from '@/components/ColumnFilter';
 import { ReqToggle } from '@/components/vehicles/ReqToggle';
-import { LEAD } from '@/components/vehicles/stickyLead';
+import { LEAD, LEAD_2, useLeadOffset } from '@/components/vehicles/stickyLead';
 import { ArrowRight, RefreshCw, Plus, Pencil, Eraser, Trash2, X, Save, Search } from 'lucide-react';
 
 /** مجموعةٌ فارغةٌ ثابتة — لئلّا تُبنى واحدةٌ جديدة في كلّ رسمةٍ فتُعاد اللوحة. */
@@ -221,6 +221,9 @@ function DocumentFamilyPageInner({
   const renewable = !!doc && canEdit;
   /** أثَمّ ما يُفعَل بالصفّ أصلًا؟ فإن لم يكن، لا عمودَ إجراءاتٍ فارغًا يُرسَم. */
   const hasRowActions = editable || !!rowAction;
+  // عرضُ عمود الإجراءات يُقاس لتقف اللوحةُ بجانبه — راجع components/vehicles/stickyLead.
+  const lead = useLeadOffset();
+  const hasLead = renewable || hasRowActions;
 
   const [rows, setRows] = useState<VReg[]>([]);
   const [total, setTotal] = useState(0);
@@ -622,8 +625,8 @@ function DocumentFamilyPageInner({
                     وهو مسارٌ يُقطَع لكلّ صفّ، ويُخطئ فيه الصفَّ من انزلق سطرًا
                     أثناء التمرير. فصار أوّلَ ما يُقرأ، وثابتًا لا يجري مع
                     التمرير — ومعه مربّعُ الاختيار، فهما فعلٌ واحدٌ على الصفّ. */}
-                {(renewable || hasRowActions) && (
-                  <th className={`${LEAD} bg-slate-900 px-3 py-3 text-start font-bold whitespace-nowrap`}>
+                {hasLead && (
+                  <th ref={lead.ref} className={`${LEAD} bg-slate-900 px-3 py-3 text-start font-bold whitespace-nowrap`}>
                     <span className="inline-flex items-center gap-2">
                       {renewable && (
                         <input type="checkbox" checked={allShownPicked} onChange={toggleAll}
@@ -633,8 +636,11 @@ function DocumentFamilyPageInner({
                     </span>
                   </th>
                 )}
-                {columns.map((c) => (
-                  <th key={c.key} className="px-3 py-3 text-start font-bold whitespace-nowrap">
+                {columns.map((c, i) => (
+                  // أوّلُ عمودٍ هو اللوحة — هويّةُ الصفّ، فتُثبَّت مع الإجراءات.
+                  <th key={c.key}
+                    className={`px-3 py-3 text-start font-bold whitespace-nowrap ${i === 0 ? `${LEAD_2} bg-slate-900` : ''}`}
+                    style={i === 0 ? { insetInlineStart: hasLead ? lead.offset : 0 } : undefined}>
                     <span className="inline-flex items-center gap-1">
                       {ar ? c.ar : c.en}
                       <ColumnFilter
@@ -657,7 +663,7 @@ function DocumentFamilyPageInner({
                 const on = picked.has(v._id);
                 return (
                   <tr key={v._id} className={`group hover:bg-slate-50 ${on ? 'bg-orange-50/60' : ''}`}>
-                    {(renewable || hasRowActions) && (
+                    {hasLead && (
                       <td className={`${LEAD} px-3 py-2 ${on ? 'bg-orange-50' : 'bg-white'} group-hover:bg-slate-50`}>
                         <div className="flex items-center gap-1.5">
                           {renewable && (
@@ -697,7 +703,11 @@ function DocumentFamilyPageInner({
                       const text = val === null || val === undefined || val === '' ? '—' : String(val);
                       return (
                         <td key={c.key}
-                          className={`px-3 py-2 whitespace-nowrap ${c.mono ? 'font-mono text-[12.5px]' : 'text-[13px]'} ${i === 0 ? 'font-semibold text-slate-900' : 'text-slate-700'}`}
+                          className={`px-3 py-2 whitespace-nowrap ${c.mono ? 'font-mono text-[12.5px]' : 'text-[13px]'} `
+                            + (i === 0
+                              ? `font-semibold text-slate-900 ${LEAD_2} ${on ? 'bg-orange-50' : 'bg-white'} group-hover:bg-slate-50`
+                              : 'text-slate-700')}
+                          style={i === 0 ? { insetInlineStart: hasLead ? lead.offset : 0 } : undefined}
                           {...(c.mono ? { dir: 'ltr' } : {})}>
                           {i === 0
                             ? <Link href={`/system/vehicles/registry/${v._id}`} className="text-[#f37121] hover:underline">{text}</Link>

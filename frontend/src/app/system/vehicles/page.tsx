@@ -7,7 +7,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Truck, Plus, Edit, Trash2, Check } from 'lucide-react';
-import { LEAD } from '@/components/vehicles/stickyLead';
+import { LEAD, LEAD_2, useLeadOffset } from '@/components/vehicles/stickyLead';
 import {
   Vehicle, VEHICLE_TYPES, VEHICLE_STATUS, isVehicleStaff, isVehicleAdmin,
   vehicleTypeLabel, empRefName, getVehiclesText, fmtDate,
@@ -38,6 +38,8 @@ export default function VehiclesPage() {
   const sp = useSearchParams();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const cf = useColumnFilters<any>();
+  // عرضُ عمود الإجراءات يُقاس لتقف اللوحةُ بجانبه — راجع components/vehicles/stickyLead.
+  const lead = useLeadOffset();
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(sp?.get('branch') || '');
   const [typeFilter, setTypeFilter] = useState(sp?.get('type') || '');
@@ -169,13 +171,16 @@ export default function VehiclesPage() {
           <thead>
             <tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
               {/* الإجراءاتُ أوّلًا وثابتة — راجع components/vehicles/stickyLead. */}
-              <th className={`${LEAD} bg-slate-900 text-start font-semibold px-4 py-3`}>{tx.actions}</th>
+              <th ref={lead.ref} className={`${LEAD} bg-slate-900 text-start font-semibold px-4 py-3`}>{tx.actions}</th>
               {/* الترويسةُ تحمل قمعَ كلِّ عمود — راجع components/vehicles/useColumnFilters. */}
               {([
                 ['plate', tx.plateNumber], ['type', tx.type], ['makeModel', `${tx.make}/${tx.model}`],
                 ['authorizedTo', tx.authorizedTo], ['department', tx.department], ['status', tx.status],
-              ] as [string, string][]).map(([key, label]) => (
-                <th key={key} className="text-start font-semibold px-4 py-3">
+              ] as [string, string][]).map(([key, label], i) => (
+                // اللوحةُ تُثبَّت مع الإجراءات — هويّةُ الصفّ تبقى ظاهرة.
+                <th key={key}
+                  className={`text-start font-semibold px-4 py-3 ${i === 0 ? `${LEAD_2} bg-slate-900` : ''}`}
+                  style={i === 0 ? { insetInlineStart: lead.offset } : undefined}>
                   <span className="inline-flex items-center">
                     {label}
                     {cf.header(key, vehicles, GETTERS[key], ar)}
@@ -197,7 +202,8 @@ export default function VehiclesPage() {
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-3 text-slate-900 font-bold">{v.plateNumber}</td>
+                <td className={`${LEAD_2} px-4 py-3 text-slate-900 font-bold bg-white group-hover:bg-slate-100`}
+                  style={{ insetInlineStart: lead.offset }}>{v.plateNumber}</td>
                 <td className="px-4 py-3 text-slate-700">{vehicleTypeLabel(v.type, lang)}</td>
                 <td className="px-4 py-3 text-slate-700">{[v.make, v.model].filter(Boolean).join(' ') || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">

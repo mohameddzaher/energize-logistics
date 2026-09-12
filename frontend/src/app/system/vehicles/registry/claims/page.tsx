@@ -12,7 +12,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { TriangleAlert, Search, ArrowRight, Clock, Plus, Pencil, Trash2, X } from 'lucide-react';
-import { LEAD, LEAD_CELL } from '@/components/vehicles/stickyLead';
+import { LEAD, LEAD_CELL, LEAD_2, useLeadOffset } from '@/components/vehicles/stickyLead';
 import { useAuth } from '@/context/AuthContext';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
@@ -58,6 +58,8 @@ function ClaimsInner() {
   const { notify, confirm } = useDialog();
   const { user } = useAuth();
   const canEdit = canEditVehicles(user);
+  // عرضُ عمود الإجراءات يُقاس لتقف اللوحةُ بجانبه — راجع components/vehicles/stickyLead.
+  const lead = useLeadOffset();
   const canDelete = canAdminVehicles(user);
   // null = مقفول · {} = حادث جديد · سجل = تعديل
   const [form, setForm] = useState<any | null>(null);
@@ -168,12 +170,15 @@ function ClaimsInner() {
               <tr>
                 {/* الإجراءاتُ أوّلًا وثابتة — راجع components/vehicles/stickyLead. */}
                 {canEdit && (
-                  <th className={`${LEAD} bg-slate-900 px-3 py-3 text-center font-bold whitespace-nowrap`}>
+                  <th ref={lead.ref} className={`${LEAD} bg-slate-900 px-3 py-3 text-center font-bold whitespace-nowrap`}>
                     {t('إجراءات', 'Actions')}
                   </th>
                 )}
-                {COL_DEFS.map(([key, arL, enL]) => (
-                  <th key={key} className="px-3 py-3 text-center font-bold whitespace-nowrap">
+                {COL_DEFS.map(([key, arL, enL], i) => (
+                  // اللوحةُ أوّلُ الأعمدة وتُثبَّت مع الإجراءات — هويّةُ الصفّ.
+                  <th key={key}
+                    className={`px-3 py-3 text-center font-bold whitespace-nowrap ${i === 0 ? `${LEAD_2} bg-slate-900` : ''}`}
+                    style={i === 0 ? { insetInlineStart: canEdit ? lead.offset : 0 } : undefined}>
                     <span className="inline-flex items-center">
                       {t(arL, enL)}
                       {cf.header(key, allRows, GETTERS[key], ar)}
@@ -213,7 +218,8 @@ function ClaimsInner() {
                         </div>
                       </td>
                     )}
-                    <td className="px-3 py-2.5">
+                    <td className={`${LEAD_2} px-3 py-2.5 bg-white group-hover:bg-slate-50`}
+                      style={{ insetInlineStart: canEdit ? lead.offset : 0 }}>
                       {r.vehicle
                         ? <button onClick={() => router.push(`/system/vehicles/registry/${r.vehicle}`)}
                             className="font-semibold text-slate-800 hover:text-[#f37121]">{r.vehiclePlate || r.incidentSubjectAr}</button>

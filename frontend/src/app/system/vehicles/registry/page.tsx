@@ -22,7 +22,7 @@ import ManagedSelect from '@/components/system/ManagedSelect';
 // السؤالُ نفسُه يُطرَح هنا وفي استمارة كلّ صفحةِ عائلة، فتعريفُه واحد — راجع
 // components/vehicles/ReqToggle.
 import { ReqToggle } from '@/components/vehicles/ReqToggle';
-import { LEAD, LEAD_CELL } from '@/components/vehicles/stickyLead';
+import { LEAD, LEAD_CELL, LEAD_2, useLeadOffset } from '@/components/vehicles/stickyLead';
 import { Car, Plus, Edit, Trash2, BarChart3, CalendarClock, X, Save, ArrowRight, Columns3, Check } from 'lucide-react';
 
 const EDIT_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'];
@@ -76,6 +76,21 @@ function VehicleRegistryListInner() {
     try { localStorage.setItem('vreg:cols', JSON.stringify(next)); } catch { /* تفضيلٌ لا شرط */ }
   };
   const shownCols = useMemo(() => REGISTRY_COLUMNS.filter((c) => visibleCols.includes(c.key)), [visibleCols]);
+
+  // ── اللوحةُ أوّلَ الجدول، وترتيبُ التصدير لا يُمَسّ ────────────────────────
+  //
+  // ترتيبُ `REGISTRY_COLUMNS` هو ترتيبُ التقرير المطلوب حرفيًّا — الملفُّ يُفتَح
+  // إلى جانب ملفّاتٍ سابقةٍ ويُقارَن عمودًا بعمود، فلا يُعاد ترتيبُه. واللوحةُ
+  // فيه في الموضع السابع.
+  //
+  // لكنّ الشاشة ليست الملفّ: هنا يُمرَّر عرضًا بين سبعةٍ وأربعين عمودًا، واللوحةُ
+  // هي هويّةُ الصفّ التي بدونها لا يُعرَف أيُّ تاريخٍ لأيّ مركبة. وتثبيتُها في
+  // موضعها السابع كان يعني أن تنزلق تحتها الأعمدةُ الستّةُ التي قبلها فتختفي.
+  // فتُرسَم أوّلًا في الجدول وحدَه، ويبقى الملفُّ على ترتيبه.
+  const plateCol = useMemo(() => shownCols.find((c) => c.key === 'plateNumber') || null, [shownCols]);
+  const restCols = useMemo(() => shownCols.filter((c) => c.key !== 'plateNumber'), [shownCols]);
+  const lead = useLeadOffset();
+  const hasLead = canEdit || canDelete;
 
   // كل فلاتر العنوان تُمرَّر كما هي إلى الخادم.
   //
@@ -282,12 +297,22 @@ function VehicleRegistryListInner() {
                     والحذف خلفَها كلِّها: من أراد تعديلَ صفٍّ يراه أمامه لزمه
                     أن يمرّر عرضًا إلى آخر الجدول ثم يعود — لكلّ صفّ. وهي
                     رحلةٌ يُخطَأ فيها الصفُّ عند أوّل انزلاقٍ سطرًا. */}
-                {(canEdit || canDelete) && (
-                  <th className={`${LEAD} bg-slate-900 px-3 py-2.5 text-start font-semibold whitespace-nowrap`}>
+                {hasLead && (
+                  <th ref={lead.ref} className={`${LEAD} bg-slate-900 px-3 py-2.5 text-start font-semibold whitespace-nowrap`}>
                     {ar ? 'إجراءات' : 'Actions'}
                   </th>
                 )}
-                {shownCols.map((c) => (
+                {/* واللوحةُ بجانبها — هويّةُ الصفّ تبقى ظاهرةً مهما مُرِّر. */}
+                {plateCol && (
+                  <th className={`${LEAD_2} bg-slate-900 px-3 py-2.5 text-start font-semibold whitespace-nowrap`}
+                    style={{ insetInlineStart: hasLead ? lead.offset : 0 }}>
+                    <span className="inline-flex items-center">
+                      {ar ? plateCol.ar : plateCol.en}
+                      {cf.header(plateCol.key, rows, plateCol.get, ar)}
+                    </span>
+                  </th>
+                )}
+                {restCols.map((c) => (
                   <th key={c.key} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
                     <span className="inline-flex items-center">
                       {ar ? c.ar : c.en}
@@ -300,7 +325,7 @@ function VehicleRegistryListInner() {
             <tbody className="divide-y divide-slate-100">
               {shownRows.map((v) => (
                 <tr key={v._id} className="group hover:bg-slate-50">
-                  {(canEdit || canDelete) && (
+                  {hasLead && (
                     <td className={`${LEAD_CELL} px-3 py-2`}>
                       <div className="flex items-center gap-1">
                         {canEdit && <button onClick={() => { setEditing(v); setShowForm(true); }} className="p-1.5 rounded hover:bg-slate-100 text-slate-500"><Edit className="w-3.5 h-3.5" /></button>}
@@ -308,24 +333,25 @@ function VehicleRegistryListInner() {
                       </div>
                     </td>
                   )}
-                  {shownCols.map((c) => {
+                  {/* اللوحةُ تفتح المركبة: هي مفتاحُ الصفّ ومَن يقرأ الجدولَ يبحث بها. */}
+                  {plateCol && (() => {
+                    const text = String(plateCol.get(v) ?? '') || v.plateNumber;
+                    return (
+                      <td className={`${LEAD_2} px-3 py-2 whitespace-nowrap bg-white group-hover:bg-slate-50`}
+                        style={{ insetInlineStart: hasLead ? lead.offset : 0 }}>
+                        <Link href={`/system/vehicles/registry/${v._id}`} className="text-[#f37121] hover:underline font-mono font-semibold">{text}</Link>
+                        {/* النقطةُ تقول «هنا عمل»، وتفصيلُه في صفحة المركبة
+                            حيث يُقرأ شرطًا شرطًا. */}
+                        {!!v.logistiGaps?.length && (
+                          <span title={ar ? `ينقصها لمنصّة لوجستي: ${v.logistiGaps.join(' · ')}` : `Logisti gaps: ${v.logistiGaps.join(' · ')}`}
+                            className="ms-1.5 inline-block w-1.5 h-1.5 rounded-full bg-violet-500 align-middle" />
+                        )}
+                      </td>
+                    );
+                  })()}
+                  {restCols.map((c) => {
                     const val = c.get(v);
                     const text = val === null || val === undefined || val === '' ? '' : String(val);
-                    // اللوحةُ تفتح المركبة: هي مفتاحُ الصفّ ومَن يقرأ الجدولَ
-                    // يبحث بها.
-                    if (c.key === 'plateNumber') {
-                      return (
-                        <td key={c.key} className="px-3 py-2 whitespace-nowrap">
-                          <Link href={`/system/vehicles/registry/${v._id}`} className="text-[#f37121] hover:underline font-mono font-semibold">{text || v.plateNumber}</Link>
-                          {/* النقطةُ تقول «هنا عمل»، وتفصيلُه في صفحة المركبة
-                              حيث يُقرأ شرطًا شرطًا. */}
-                          {!!v.logistiGaps?.length && (
-                            <span title={ar ? `ينقصها لمنصّة لوجستي: ${v.logistiGaps.join(' · ')}` : `Logisti gaps: ${v.logistiGaps.join(' · ')}`}
-                              className="ms-1.5 inline-block w-1.5 h-1.5 rounded-full bg-violet-500 align-middle" />
-                          )}
-                        </td>
-                      );
-                    }
                     // تاريخُ التأمين يحمل لونَ حالته — هو أكثرُ ما يُنظَر إليه.
                     if (c.key === 'insExpiry' && text) {
                       return (
@@ -350,7 +376,7 @@ function VehicleRegistryListInner() {
                   })}
                 </tr>
               ))}
-              {shownRows.length === 0 && <tr><td colSpan={shownCols.length + 1} className="px-3 py-10 text-center text-slate-500">{ar ? 'لا توجد مركبات مطابقة' : 'No matching vehicles'}</td></tr>}
+              {shownRows.length === 0 && <tr><td colSpan={shownCols.length + (hasLead ? 1 : 0)} className="px-3 py-10 text-center text-slate-500">{ar ? 'لا توجد مركبات مطابقة' : 'No matching vehicles'}</td></tr>}
             </tbody>
           </table>
         </div>

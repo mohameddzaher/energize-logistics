@@ -678,6 +678,22 @@ export default function WalletPage() {
         // Auto-fill from the dispatch sheet (still editable if wrong).
         purchaseDriverName: data.driverName || f.purchaseDriverName,
         purchaseBranch: data.branch || f.purchaseBranch,
+        // ── والمبلغُ منها أيضًا ────────────────────────────────────────────
+        //
+        // خاناتُ هذه النافذة مرتَّبةٌ والمبلغُ أوّلُها، وخانةُ البحث عن الكشف
+        // تحته. فمن يسجّل شراءً يبدأ من الأسفل: يبحث بالكشف، فتظهر بياناتُه،
+        // فيكتب رقم السند — ويبقى المبلغُ فوق فارغًا، لأنّه مرّ عليه قبل أن
+        // يعرف الكشفَ أصلًا. ثمّ يصل إلى زرٍّ لا يُضغط ولا يقول شيئًا، فيُقرأ
+        // «الصلاحية ناقصة».
+        //
+        // وقيمةُ الشراء معلومةٌ في الكشف نفسِه — كانت تُعرَض سطرًا تحت الخانة
+        // («سعر الشراء: 1,000») ولا تُكتب فيها. فتُملأ كما يُملأ السائقُ والفرع
+        // من المصدر نفسِه، وتبقى قابلةً للتعديل إن اختلف المدفوع.
+        //
+        // ولا يُكتب فوق ما كُتب بيد: من أدخل مبلغًا قبل البحث قصده.
+        amount: (f.amount && String(f.amount).trim() !== '')
+          ? f.amount
+          : (data.purchaseValue != null && Number(data.purchaseValue) > 0 ? String(data.purchaseValue) : f.amount),
       }));
       setPurchaseInvoiceAmount(data.sellingValue || null);
       setExpectedPurchaseValue(data.purchaseValue != null ? Number(data.purchaseValue) : null);

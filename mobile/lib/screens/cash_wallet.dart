@@ -262,7 +262,10 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: () async {
-                            final v = await showDatePicker(context: context, initialDate: _date, firstDate: walletStart, lastDate: DateTime.now());
+                            // والغدُ داخلٌ: العملُ يتجاوز منتصفَ الليل، فقيدُ الواحدة صباحًا قيدُ
+                            // الغد بالتقويم لا بالعمل. وما بعده يردّه الخادم.
+                            final v = await showDatePicker(context: context, initialDate: _date,
+                                firstDate: walletStart, lastDate: DateTime.now().add(const Duration(days: 1)));
                             if (v != null) { setState(() { _date = v; _loading = true; }); _load(); }
                           },
                           icon: const Icon(Icons.event, size: 17),

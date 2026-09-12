@@ -22,7 +22,7 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 
 const APPLY = process.argv.includes('--apply');
-const { todayStr } = require('../config/walletStart');
+const { lastWritableDay } = require('../config/walletStart');
 
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 60000 });
@@ -30,10 +30,12 @@ const { todayStr } = require('../config/walletStart');
   const WalletTransaction = require('../models/WalletTransaction');
   require('../models/Branch');
 
-  const T = todayStr();
+  // ويومُ الغدِ ليس هدفًا: إقفالُ اليوم يجهّزه بالرصيد المنقول، والقيدُ بعد
+  // منتصف الليل يقع فيه بحقّ. الهدفُ ما بعده — أيّامٌ لا عملَ فيها بحال.
+  const T = lastWritableDay();
   const future = await DailyWallet.find({ date: { $gt: T } }).populate('branch', 'name').sort({ date: 1 });
-  console.log(`\n  اليوم ${T}${APPLY ? '' : '   — تجربة، بلا حذف —'}\n`);
-  if (!future.length) { console.log('  لا يوميّاتٍ في المستقبل.\n'); await mongoose.disconnect(); return; }
+  console.log(`\n  آخرُ يومٍ مسموح ${T}${APPLY ? '' : '   — تجربة، بلا حذف —'}\n`);
+  if (!future.length) { console.log('  لا يوميّاتٍ أبعدَ من الغد.\n'); await mongoose.disconnect(); return; }
 
   const empty = [];
   const kept = [];

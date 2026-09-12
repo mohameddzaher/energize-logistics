@@ -6,7 +6,7 @@ const Driver = require('../models/Driver');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
 const {
-  WALLET_START_DATE, isBeforeWalletStart, isAfterToday, todayStr,
+  WALLET_START_DATE, isBeforeWalletStart, isBeyondBook, todayStr, lastWritableDay,
   walletStartMessage, walletFutureMessage,
 } = require('../config/walletStart');
 
@@ -26,7 +26,8 @@ const EXPENSE_THRESHOLD = 10000;
  * يوميّةً في القاعدة (`getOrCreateWallet`)، فمجرَّدُ النظر إلى يومٍ يخلقه.
  * إلى الوراء كان ذلك يُعيد أيّامًا حُذفت عمدًا، وإلى الأمام يخلق أيّامًا لم
  * تأتِ — ثلاثُ يوميّاتٍ فارغةٍ في المستقبل وُجدت في الدفتر هكذا، إحداها بعد
- * ثمانيةَ عشرَ يومًا من اليوم الذي فُتحت فيه.
+ * ثمانيةَ عشرَ يومًا من اليوم الذي فُتحت فيه. والغدُ داخلٌ في الحدّ لأنّ العملَ
+ * يتجاوز منتصفَ الليل — راجع config/walletStart.
  *
  * يُعيد `true` إن رُدَّ الطلبُ، فينتهي المتحكّمُ عنده.
  */
@@ -35,8 +36,8 @@ const denyOutsideBook = (res, date) => {
     res.status(400).json({ message: walletStartMessage(), walletStartDate: WALLET_START_DATE });
     return true;
   }
-  if (isAfterToday(date)) {
-    res.status(400).json({ message: walletFutureMessage(), walletLastDate: todayStr() });
+  if (isBeyondBook(date)) {
+    res.status(400).json({ message: walletFutureMessage(), walletLastDate: lastWritableDay() });
     return true;
   }
   return false;
@@ -1412,7 +1413,7 @@ exports.getUserWalletRange = async (req, res) => {
     // والحدُّ هنا لا في الفلتر وحدَه: التصديرُ «الكلّ» يسأل عن 2100-12-31،
     // فبغيره يخرج الملفُّ بأيّامٍ لم تقع.
     const from = isBeforeWalletStart(dateFrom) ? WALLET_START_DATE : dateFrom;
-    const to = isAfterToday(dateTo) ? todayStr() : dateTo;
+    const to = isBeyondBook(dateTo) ? lastWritableDay() : dateTo;
     const filter = { branch: repBranch, date: { $gte: from, $lte: to } };
     const wallets = await DailyWallet.find(filter)
       .populate('user', 'firstName lastName')
@@ -1432,7 +1433,28 @@ exports.getUserWalletRange = async (req, res) => {
 
     const transactions = await enrichTransactionsWithOpsData(rawTransactions);
 
-    const summary = wallets.reduce((acc, w) => ({
+    // ── ويومُ الغدِ الفارغ ليس يومَ عمل ───────────────────────────────────────
+    //
+    // إقفالُ اليوم يجهّز يوميّةَ الغد بالرصيد المنقول — صفٌّ ينتظر، لا يومٌ جرى
+    // فيه شيء. وكارتُ «عدد الأيام» يعدّ اليوميّات، فيقول «١٢ يومًا» في الثاني
+    // عشر وليس في الدفتر إلّا أحدَ عشرَ يومًا فيها عمل. ورقمٌ يناقض التقويمَ
+    // على الشاشة يجعل كلَّ رقمٍ بجانبه موضعَ شكّ.
+    //
+    // فيُسقَط الصفُّ المنتظر: ما بعد اليوم، بلا حركةٍ ولا مبلغٍ ولا إقفال.
+    // ومتى كُتب فيه شيءٌ فعلًا — وهو مسموح، القيدُ بعد منتصف الليل قيدُ الغد —
+    // عاد يومًا كسائر الأيّام في العدّ وفي الرصيد.
+    //
+    // والحركةُ تُقرأ من الحركات المحمَّلة لا من مجاميع اليوميّة: قيدُ «استلام
+    // فاتورة ضريبيّة» لا مبلغَ له، فيومٌ ليس فيه غيرُه مجاميعُه أصفار — وهو
+    // يومُ عملٍ بلا شكّ.
+    const T = todayStr();
+    const datesWithWork = new Set(rawTransactions.map((t) => String(t.date)));
+    const shownWallets = wallets.filter((w) => w.date <= T
+      || w.isClosed
+      || datesWithWork.has(String(w.date))
+      || (w.totalCollections || 0) + (w.totalExpenses || 0) + (w.totalPurchases || 0) !== 0);
+
+    const summary = shownWallets.reduce((acc, w) => ({
       totalCollections: acc.totalCollections + (w.totalCollections || 0),
       totalExpenses: acc.totalExpenses + (w.totalExpenses || 0),
       totalPurchases: acc.totalPurchases + (w.totalPurchases || 0),
@@ -1442,7 +1464,13 @@ exports.getUserWalletRange = async (req, res) => {
     // ويُعاد المدى المستعمَلُ فعلًا لا المطلوب: الشاشةُ تكتب «سبتمبر» في
     // العنوان وتعرض ما وقع منه، فلو أعادت ما طُلب لقالت إنّها تعرض الشهر كلَّه.
     res.json({
-      wallets, transactions, summary, dateFrom: from, dateTo: to, requestedFrom: dateFrom, requestedTo: dateTo,
+      wallets: shownWallets,
+      transactions,
+      summary,
+      dateFrom: from,
+      dateTo: to,
+      requestedFrom: dateFrom,
+      requestedTo: dateTo,
     });
   } catch (error) {
     console.error('getUserWalletRange error:', error);

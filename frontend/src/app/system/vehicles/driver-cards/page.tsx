@@ -15,6 +15,7 @@ import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInpu
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
 import { IdCard, Plus, Pencil, Trash2, RotateCcw, Phone } from 'lucide-react';
+import { LEAD, LEAD_CELL } from '@/components/vehicles/stickyLead';
 import { flexNormalize } from '@/lib/flexMatch';
 
 interface Card {
@@ -259,6 +260,12 @@ export default function DriverCardsPage() {
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
+                {/* الإجراءاتُ أوّلًا وثابتة — راجع components/vehicles/stickyLead. */}
+                {canEdit && (
+                  <th className={`${LEAD} bg-slate-900 px-3 py-2.5 text-start font-semibold whitespace-nowrap`}>
+                    {t('إجراءات', 'Actions')}
+                  </th>
+                )}
                 {COL_DEFS.map(([key, arL, enL]) => (
                   <th key={key} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
                     <span className="inline-flex items-center">
@@ -270,16 +277,23 @@ export default function DriverCardsPage() {
                     </span>
                   </th>
                 ))}
-                <th className="px-3 py-2.5" />
               </tr>
             </thead>
             <tbody>
               {shownRows.length === 0 ? (
-                <tr><td colSpan={13} className="px-4 py-12 text-center text-slate-400">{t('لا نتائج', 'No results')}</td></tr>
+                <tr><td colSpan={COL_DEFS.length + (canEdit ? 1 : 0)} className="px-4 py-12 text-center text-slate-400">{t('لا نتائج', 'No results')}</td></tr>
               ) : shownRows.map((c) => {
                 const st = STATE[c.state] || STATE.unknown;
                 return (
-                  <tr key={c._id} className="border-b border-slate-100 hover:bg-slate-50">
+                  <tr key={c._id} className="group border-b border-slate-100 hover:bg-slate-50">
+                    {canEdit && (
+                      <td className={`${LEAD_CELL} px-3 py-2.5 whitespace-nowrap`}>
+                        <div className="flex items-center gap-1">
+                          <button type="button" onClick={() => setEditing(c)} className="p-1 text-slate-400 hover:text-[#f37121]" title={t('تعديل', 'Edit')}><Pencil className="w-3.5 h-3.5" /></button>
+                          <button type="button" onClick={() => remove(c)} className="p-1 text-slate-400 hover:text-red-600" title={t('حذف', 'Delete')}><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
+                      </td>
+                    )}
                     <td className="px-3 py-2.5 font-semibold text-slate-900 max-w-[220px] truncate" title={c.name}>{c.name || '—'}</td>
                     <td className="px-3 py-2.5 font-mono text-slate-600 whitespace-nowrap">{c.idNumber}</td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
@@ -327,14 +341,6 @@ export default function DriverCardsPage() {
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
                       {c.employee ? (c.employee.employeeNumber || c.employee.arabicName || '✓')
                         : <span className="text-amber-600 text-xs">{t('غير مربوط', 'unlinked')}</span>}
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      {canEdit && (
-                        <div className="flex items-center gap-1">
-                          <button type="button" onClick={() => setEditing(c)} className="p-1 text-slate-400 hover:text-[#f37121]" title={t('تعديل', 'Edit')}><Pencil className="w-3.5 h-3.5" /></button>
-                          <button type="button" onClick={() => remove(c)} className="p-1 text-slate-400 hover:text-red-600" title={t('حذف', 'Delete')}><Trash2 className="w-3.5 h-3.5" /></button>
-                        </div>
-                      )}
                     </td>
                   </tr>
                 );

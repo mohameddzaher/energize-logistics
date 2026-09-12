@@ -301,6 +301,20 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
                       _row(tr('الحد', 'Limit'), v['fuelCard']?['limitStatus'] == 'open' ? tr('بدون سقف', 'Open') : (v['fuelCard']?['limitSar'] != null ? money(v['fuelCard']['limitSar']) : '—')),
                     ]),
                     const SizedBox(height: 10),
+                    // ── والتتبّعُ قسمٌ قائمٌ بذاته ────────────────────────────
+                    // الوقودُ حسابُ صرفٍ لا ينتهي، والتتبّعُ اشتراكٌ له تاريخُ
+                    // انتهاءٍ وتنبيهٌ وتجديد. وكان غائبًا عن هذه الشاشة كلِّها،
+                    // فمن فتح المركبةَ ليعرف أعليها جهازٌ وبأيّ سريال لم يجد.
+                    _section(tr('التتبّع — GPS', 'Tracking — GPS'), [
+                      _row(tr('جهاز GPS', 'GPS device'), v['gps']?['deviceModel']),
+                      // حالةُ الجهاز غيرُ حالة الاشتراك: جهازٌ مسروق قد يكون
+                      // اشتراكه ساريًا، واشتراكٌ منتهٍ لا يعني أن الجهاز نُزع.
+                      _row(tr('حالة جهاز GPS', 'Device status'), v['gps']?['deviceStatusAr']),
+                      _row(tr('شركة الـGPS', 'GPS provider'), v['gps']?['provider']),
+                      _row(tr('سريال GPS', 'GPS serial'), v['gps']?['serialImei']),
+                      _row(tr('انتهاء اشتراك GPS', 'Subscription expiry'), fmtDate(v['gps']?['expiryDate'])),
+                    ]),
+                    const SizedBox(height: 10),
                     _section(tr('المستندات', 'Documents'), [
                       _row(tr('بطاقة التشغيل', 'Operating card'), v['operatingCard']?['cardNumber']),
                       _row(tr('انتهاء بطاقة التشغيل', 'Op. card expiry'), fmtDate(v['operatingCard']?['expiryDate'])),

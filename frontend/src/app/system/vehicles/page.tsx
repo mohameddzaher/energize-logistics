@@ -7,6 +7,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Truck, Plus, Edit, Trash2, Check } from 'lucide-react';
+import { LEAD } from '@/components/vehicles/stickyLead';
 import {
   Vehicle, VEHICLE_TYPES, VEHICLE_STATUS, isVehicleStaff, isVehicleAdmin,
   vehicleTypeLabel, empRefName, getVehiclesText, fmtDate,
@@ -167,6 +168,8 @@ export default function VehiclesPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
+              {/* الإجراءاتُ أوّلًا وثابتة — راجع components/vehicles/stickyLead. */}
+              <th className={`${LEAD} bg-slate-900 text-start font-semibold px-4 py-3`}>{tx.actions}</th>
               {/* الترويسةُ تحمل قمعَ كلِّ عمود — راجع components/vehicles/useColumnFilters. */}
               {([
                 ['plate', tx.plateNumber], ['type', tx.type], ['makeModel', `${tx.make}/${tx.model}`],
@@ -179,14 +182,21 @@ export default function VehiclesPage() {
                   </span>
                 </th>
               ))}
-              <th className="text-end font-semibold px-4 py-3">{tx.actions}</th>
             </tr>
           </thead>
           <tbody>
             {shownRows.length === 0 ? (
               <tr><td colSpan={7} className="text-center text-slate-800 py-12">{tx.noVehicles}</td></tr>
             ) : shownRows.map((v) => (
-              <tr key={v._id} className="border-b border-slate-200/70 hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => router.push(`/system/vehicles/${v._id}`)}>
+              <tr key={v._id} className="group border-b border-slate-200/70 hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => router.push(`/system/vehicles/${v._id}`)}>
+                <td className={`${LEAD} px-4 py-3 bg-white group-hover:bg-slate-100`} onClick={(ev) => ev.stopPropagation()}>
+                  <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => openEdit(v)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.edit}><Edit className="w-4 h-4" /></button>
+                    {isVehicleAdmin(user) && (
+                      <button type="button" onClick={() => remove(v)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.delete}><Trash2 className="w-4 h-4" /></button>
+                    )}
+                  </div>
+                </td>
                 <td className="px-4 py-3 text-slate-900 font-bold">{v.plateNumber}</td>
                 <td className="px-4 py-3 text-slate-700">{vehicleTypeLabel(v.type, lang)}</td>
                 <td className="px-4 py-3 text-slate-700">{[v.make, v.model].filter(Boolean).join(' ') || '—'}</td>
@@ -197,14 +207,6 @@ export default function VehiclesPage() {
                 </td>
                 <td className="px-4 py-3 text-slate-700">{v.department || '—'}</td>
                 <td className="px-4 py-3"><Badge style={VEHICLE_STATUS[v.status]} lang={lang} /></td>
-                <td className="px-4 py-3" onClick={(ev) => ev.stopPropagation()}>
-                  <div className="flex items-center justify-end gap-1">
-                    <button type="button" onClick={() => openEdit(v)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.edit}><Edit className="w-4 h-4" /></button>
-                    {isVehicleAdmin(user) && (
-                      <button type="button" onClick={() => remove(v)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.delete}><Trash2 className="w-4 h-4" /></button>
-                    )}
-                  </div>
-                </td>
               </tr>
             ))}
           </tbody>

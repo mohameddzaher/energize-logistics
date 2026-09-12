@@ -118,7 +118,82 @@ class DocFamily {
   });
 }
 
+/// ── «مطلوبٌ منّا هذا المستند؟» — زرّان لا قائمة ───────────────────────────────
+///
+/// ليست كلُّ مركبةٍ في السجلّ مركبتَنا: منها ما هو لموظّفٍ لا نركّب له إلّا
+/// شريحةَ تتبّع، فتأمينُها وبطاقةُ تشغيلها ليست نقصًا عندنا. وكان الصمتُ يُقرأ
+/// نقصًا، فتُظهر شريحةُ العمل عشراتِ الصفوف أكثرُها لا عملَ فيه.
+///
+/// توأمُ `components/vehicles/ReqToggle` على الموقع، ويكتب الحقلَ نفسَه
+/// (`<root>.statusCode`) — فما يُعلَّم من التطبيق يُقرأ في الموقع وفي النظرة
+/// الشاملة، ولا نسخةَ ثانية من الحقيقة.
+class _ReqToggle extends StatelessWidget {
+  final String label, code;
+  final ValueChanged<String> onChanged;
+  const _ReqToggle({required this.label, required this.code, required this.onChanged});
+
+  /// أوضاعٌ مسجَّلةٌ تعني «غير مطلوب» — كما يقرؤها الخادم.
+  static bool _off(String c) => c == 'not_required' || c == 'not_in_use';
+
+  /// وضعٌ ثالثٌ محفوظ («لدى البنك»، «نشط») لا يُداس عليه بزرَّين: سجّله
+  /// الاستيرادُ أو مستخدمٌ قبلنا، وليس «مطلوب» ولا «غير مطلوب».
+  static bool _other(String c) => c.isNotEmpty && !_off(c) && c != 'required' && c != 'none';
+
+  @override
+  Widget build(BuildContext context) {
+    final off = _off(code);
+    final other = _other(code);
+    Widget pill(String text, bool on, Color tone, VoidCallback tap) => InkWell(
+          onTap: tap,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: on ? tone.withValues(alpha: 0.12) : Colors.white,
+              border: Border.all(color: on ? tone : const Color(0xFFE2E8F0)),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(text,
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: on ? tone : T.inkFaint)),
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          pill(tr('مطلوب', 'Required'), !off && !other, T.success, () => onChanged('required')),
+          pill(tr('غير مطلوب', 'Not required'), off, T.ink, () => onChanged('not_required')),
+          if (other)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(tr('وضعٌ مسجَّل', 'recorded state'),
+                  style: const TextStyle(fontSize: 11, color: T.info)),
+            ),
+        ]),
+        const SizedBox(height: 6),
+        Text(
+          tr('«غير مطلوب» ليست نقصًا: تخرج المركبة من قائمة العمل وتظهر رماديّةً هنا وفي سجلّ المركبات.',
+              '«Not required» is not a gap: the vehicle leaves the work list and shows greyed out here and in the registry.'),
+          style: const TextStyle(fontSize: 11, color: T.inkFaint, height: 1.4),
+        ),
+      ]),
+    );
+  }
+}
+
 String _s(dynamic v) => (v == null) ? '' : v.toString();
+
+/// ماركةُ المركبة وطرازُها وموديلها في سطرٍ واحد تحت اللوحة — توأمُ الأعمدة
+/// الثلاثة التي تتكرّر في كلّ صفحةِ عائلةٍ على الموقع (`commonColumns`).
+String _identity(Map v) =>
+    [_s(v['brandAr']), _s(v['modelAr']), _s(v['modelYear'])].where((x) => x.isNotEmpty).join(' · ');
 Map _sub(Map v, String k) => (v[k] is Map) ? v[k] as Map : const {};
 /// قراءةُ مسارٍ منقوط — المسار نصٌّ لا يُعرَف إلا وقت التشغيل.
 dynamic _readPath(Map v, String path) {
@@ -403,6 +478,19 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     final target = v;
     final vals = <String, dynamic>{};
     final ctrls = <String, TextEditingController>{};
+    // ── «مطلوبٌ منّا هذا المستند على هذه المركبة؟» ────────────────────────────
+    //
+    // كان يُسأل في استمارة سجل المركبات وحدَها — وهي شاشةٌ لا يفتحها مَن يراجع
+    // الفحصَ الدوريّ: يرى مقطورةً «مطلوب — ناقص» وهي لا تُفحص أصلًا، فيلزمه أن
+    // يخرج من الشاشة إلى شاشةٍ أخرى ليصحّح ما رآه هنا. فصار السؤال حيث يُعدَّل
+    // المستند، على الموقع وفي التطبيق معًا.
+    //
+    // والكائنُ الذي تعيش فيه العائلة هو موضعُ الجواب: `inspection.statusCode`
+    // لشاشة الفحص و`gps.statusCode` لشاشة التتبّع — وهو الحقلُ نفسُه الذي يكتبه
+    // السجلّ ويقرؤه الخادم، فلا نسخةَ ثانية من الحقيقة.
+    final statusPath = '${_rootsOf(fields).first}.statusCode';
+    final initialNeed = _s(_readPath(target, statusPath));
+    var need = initialNeed;
     // القوائمُ المنسدلة تُجلب قبل فتح الورقة: جلبُها داخل `build` يعيد النداء
     // مع كلّ إعادة رسم، وهو ما يجعل خانةً واحدةً تنادي الخادم عشراتِ المرّات.
     final lookups = <String, List<String>>{};
@@ -447,6 +535,14 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
               Text(tr(widget.family.arTitle, widget.family.enTitle),
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
               Text(_s(target['plateNumber']), style: const TextStyle(fontSize: 12.5, color: T.inkFaint)),
+              const SizedBox(height: 12),
+              // السؤالُ قبل الخانات لا بعدها: جوابُه «غير مطلوب» يجعل ما تحته
+              // بلا معنى، ومن أجاب به لا يُنتظَر منه أن يملأ تاريخًا.
+              _ReqToggle(
+                label: tr('هل هذا المستند مطلوبٌ على هذه المركبة؟', 'Is this document required on this vehicle?'),
+                code: need,
+                onChanged: (x) => setSheet(() => need = x),
+              ),
               const SizedBox(height: 12),
               ...fields.map((f) {
                 if (f.kind == 'flag') {
@@ -518,7 +614,11 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     for (final ctl in ctrls.values) { ctl.dispose(); }
     if (ok != true) return;
     try {
-      await Api.instance.put('/api/vehicle-registry/${target['_id']}', _buildPatch(fields, vals));
+      final patch = _buildPatch(fields, vals);
+      // ولا يُكتب شيءٌ إلّا بضغطة: العدمُ اليوم يعني «مطلوب» ضمنًا، فكتابتُه من
+      // أنفسنا عند كلّ حفظٍ تغيّر صفوفًا لم يقصدها أحد.
+      if (need != initialNeed) _writePath(patch, statusPath, need);
+      await Api.instance.put('/api/vehicle-registry/${target['_id']}', patch);
       await _load();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم الحفظ', 'Saved'))));
     } catch (e) {
@@ -980,6 +1080,17 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                                       if (st != null)
                                         Chip2(st['days'] == null ? statusLabel(s) : daysText(st['days']), statusColor(s)),
                                     ]),
+                                    // ── ومَن هذه المركبة، لا رقمُها وحده ──────────────────────
+                                    // اللوحةُ تقول أيُّ صفٍّ هذا ولا تقول أيُّ مركبةٍ هي، ومن
+                                    // يراجع الفحصَ أو التأمين يسأل عن الشاحنة: «الهينو موديل
+                                    // ٢٠١٩» لا «٧٤٥٢ ب ن ا». وهي ثلاثةُ حقولٍ تصل مع الصفّ
+                                    // أصلًا — نفسُها التي صارت أعمدةً ثابتةً في الموقع.
+                                    if (_identity(v).isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 2),
+                                        child: Text(_identity(v),
+                                            style: const TextStyle(fontSize: 11.5, color: T.inkFaint, fontWeight: FontWeight.w600)),
+                                      ),
                                     const SizedBox(height: 6),
                                     ...f.fields.map((fl) {
                                       final val = fl.get(v);
@@ -1210,7 +1321,15 @@ final vehicleFuelCardFamily = DocFamily(
   chips: [
     const DocChip('', 'الكل', 'All', T.navy),
     DocChip('has', 'لها شريحة', 'Has a chip', T.success, (v) => _s(_sub(v, 'fuelCard')['cardNumber']).isNotEmpty),
-    DocChip('none', 'بلا شريحة', 'No chip', T.danger, (v) => _s(_sub(v, 'fuelCard')['cardNumber']).isEmpty),
+    // ── و«بلا شريحة» قائمةُ عملٍ لا جَرْد ─────────────────────────────────────
+    // المركبةُ التي عُلِّمت «غير مطلوب» لا شريحةَ لها ولا عملَ عليها: ليست
+    // مركبتَنا، أو لا تصرف من حسابنا. وعدُّها في «بلا شريحة» يضخّم الرقمَ
+    // بصفوفٍ لا يُفتَح منها شيء.
+    DocChip('none', 'بلا شريحة — مطلوبة', 'No chip — needed', T.danger,
+        (v) => _s(_sub(v, 'fuelCard')['cardNumber']).isEmpty
+            && !_ReqToggle._off(_s(_sub(v, 'fuelCard')['statusCode']))),
+    DocChip('notReq', 'غير مطلوبة', 'Not required', T.inkFaint,
+        (v) => _ReqToggle._off(_s(_sub(v, 'fuelCard')['statusCode']))),
     DocChip('open', 'بلا سقف استهلاك', 'No ceiling', T.orange, (v) => _sub(v, 'fuelCard')['limitStatus'] == 'open'),
     DocChip('noInvoicePlate', 'بلا لوحة على الفاتورة', 'No plate on invoice', T.violet,
         (v) => _s(_sub(v, 'fuelCard')['cardNumber']).isNotEmpty && _s(_sub(v, 'fuelCard')['plateOnInvoiceAr']).isEmpty),
@@ -1266,8 +1385,12 @@ final vehicleInspectionFamily = DocFamily(
   docKey: 'inspection',
   arTitle: 'الفحص الدوري', enTitle: 'Periodic Inspection',
   icon: Icons.fact_check_outlined,
+  // ── ولا سطرَ «حالة الفحص» ──────────────────────────────────────────────────
+  // كان نصًّا يُقرأ «ناجح» أو «غير مطلوب»، وشارةُ الحالة أعلى البطاقة تقول
+  // الشيء نفسَه بأحدثَ منه: محسوبةً من تاريخ الانتهاء اليومَ لا مكتوبةً في آخر
+  // استيراد. وسطران يقولان شيئًا واحدًا ويفترقان بعد أوّل تجديد يجعلان القارئ
+  // يسأل أيَّهما يصدّق. والحقلُ نفسُه باقٍ يُكتب في الاستمارة.
   fields: [
-    DocField('حالة الفحص', 'Inspection status', (v) => _s(_sub(v, 'inspection')['statusAr'])),
     DocField('تاريخ انتهاء الفحص (ميلادي)', 'Inspection expiry (Gregorian)', (v) => fmtDate(_sub(v, 'inspection')['expiryDate'])),
     DocField('تاريخ انتهاء الفحص (هجري)', 'Inspection expiry (Hijri)', (v) => _s(_sub(v, 'inspection')['expiryDateHijri']), mono: true),
   ],

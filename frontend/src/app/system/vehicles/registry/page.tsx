@@ -19,9 +19,14 @@ import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/l
 import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import ManagedSelect from '@/components/system/ManagedSelect';
+// السؤالُ نفسُه يُطرَح هنا وفي استمارة كلّ صفحةِ عائلة، فتعريفُه واحد — راجع
+// components/vehicles/ReqToggle.
+import { ReqToggle } from '@/components/vehicles/ReqToggle';
+import { LEAD, LEAD_CELL } from '@/components/vehicles/stickyLead';
 import { Car, Plus, Edit, Trash2, BarChart3, CalendarClock, X, Save, ArrowRight, Columns3, Check } from 'lucide-react';
 
 const EDIT_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'];
+
 
 function VehicleRegistryListInner() {
   const { lang, isRTL } = useLanguage();
@@ -272,6 +277,16 @@ function VehicleRegistryListInner() {
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300 text-xs">
               <tr>
+                {/* ── الإجراءاتُ أوّلًا وثابتة ─────────────────────────────────
+                    الجدولُ يحمل سبعةً وأربعين عمودًا، وكانت أزرارُ التعديل
+                    والحذف خلفَها كلِّها: من أراد تعديلَ صفٍّ يراه أمامه لزمه
+                    أن يمرّر عرضًا إلى آخر الجدول ثم يعود — لكلّ صفّ. وهي
+                    رحلةٌ يُخطَأ فيها الصفُّ عند أوّل انزلاقٍ سطرًا. */}
+                {(canEdit || canDelete) && (
+                  <th className={`${LEAD} bg-slate-900 px-3 py-2.5 text-start font-semibold whitespace-nowrap`}>
+                    {ar ? 'إجراءات' : 'Actions'}
+                  </th>
+                )}
                 {shownCols.map((c) => (
                   <th key={c.key} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
                     <span className="inline-flex items-center">
@@ -280,12 +295,19 @@ function VehicleRegistryListInner() {
                     </span>
                   </th>
                 ))}
-                <th className="px-3 py-2.5" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {shownRows.map((v) => (
-                <tr key={v._id} className="hover:bg-slate-50">
+                <tr key={v._id} className="group hover:bg-slate-50">
+                  {(canEdit || canDelete) && (
+                    <td className={`${LEAD_CELL} px-3 py-2`}>
+                      <div className="flex items-center gap-1">
+                        {canEdit && <button onClick={() => { setEditing(v); setShowForm(true); }} className="p-1.5 rounded hover:bg-slate-100 text-slate-500"><Edit className="w-3.5 h-3.5" /></button>}
+                        {canDelete && <button onClick={() => del(v)} className="p-1.5 rounded hover:bg-red-50 text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>}
+                      </div>
+                    </td>
+                  )}
                   {shownCols.map((c) => {
                     const val = c.get(v);
                     const text = val === null || val === undefined || val === '' ? '' : String(val);
@@ -326,12 +348,6 @@ function VehicleRegistryListInner() {
                       </td>
                     );
                   })}
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-1">
-                      {canEdit && <button onClick={() => { setEditing(v); setShowForm(true); }} className="p-1.5 rounded hover:bg-slate-100 text-slate-500"><Edit className="w-3.5 h-3.5" /></button>}
-                      {canDelete && <button onClick={() => del(v)} className="p-1.5 rounded hover:bg-red-50 text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>}
-                    </div>
-                  </td>
                 </tr>
               ))}
               {shownRows.length === 0 && <tr><td colSpan={shownCols.length + 1} className="px-3 py-10 text-center text-slate-500">{ar ? 'لا توجد مركبات مطابقة' : 'No matching vehicles'}</td></tr>}
@@ -368,48 +384,6 @@ const Card = ({ title, extra, children }: { title: string; extra?: React.ReactNo
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4">{children}</div>
   </section>
 );
-
-/**
- * ── «مطلوبٌ منّا هذا المستند؟» يُسأل عند الإدخال لا يُستنتَج ─────────────────
- *
- * ليست كلُّ مركبةٍ في السجلّ مركبتَنا: منها ما هو لموظّفٍ لا نركّب له إلّا
- * شريحةَ تتبّع. فتأمينُها وبطاقةُ تشغيلها وفحصُها ليست نقصًا عندنا — ولا نملك
- * أوراقَها أصلًا.
- *
- * وكان الصمتُ يُقرأ نقصًا: مركبةٌ بلا تاريخِ فحصٍ ولا وضعٍ مسجَّل تُعَدّ «مطلوب
- * — ناقص»، فتُظهر شريحةُ العمل ثلاثةً وتسعين صفًّا أكثرُها لا عملَ فيه. فيُفلتَر
- * على «مطلوب» ويخرج في آخره «غير مطلوب» — والقائمةُ التي لا يُوثَق بها لا
- * تُفتَح.
- *
- * فالسؤالُ يُطرَح هنا صراحةً، والجوابُ يُكتب في `statusCode` — وهو حقلٌ قائمٌ
- * من قبلُ يعرفه الخادمُ وصفحاتُ العائلات (`docNeed` و`stateOf`)، فلا شيءَ جديدٌ
- * يُخترَع: ما ينقص كان أن يُسأل عنه أحد.
- *
- * ولا يُكتب شيءٌ إلّا بضغطة: العدمُ اليوم يعني «مطلوب» ضمنًا، فلو كتبناها من
- * أنفسنا عند كلّ حفظٍ لغيّرنا ثلاث مئة صفٍّ بلا أن يطلب ذلك أحد.
- */
-const ReqToggle = ({ label, code, onChange, ar }: { label: string; code: string; onChange: (v: string) => void; ar: boolean }) => {
-  const off = code === 'not_required' || code === 'not_in_use';
-  // وضعٌ ثالثٌ محفوظ (لدى البنك، لدى الجبر…) لا يُداس عليه بزرَّين.
-  const other = !!code && !off && code !== 'required' && code !== 'none';
-  const pill = (on: boolean, tone: string) =>
-    `px-2 py-[3px] rounded-md text-[11px] font-semibold border transition ${
-      on ? tone : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600'}`;
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-[11px] text-slate-500">{label}</span>
-      <button type="button" onClick={() => onChange('required')}
-        className={pill(!off && !other, 'bg-emerald-50 border-emerald-300 text-emerald-700')}>
-        {ar ? 'مطلوب' : 'Required'}
-      </button>
-      <button type="button" onClick={() => onChange('not_required')}
-        className={pill(off, 'bg-slate-200 border-slate-300 text-slate-700')}>
-        {ar ? 'غير مطلوب' : 'Not required'}
-      </button>
-      {other && <span className="text-[10.5px] text-blue-600">{ar ? 'وضعٌ مسجَّل' : 'recorded state'}</span>}
-    </div>
-  );
-};
 
 function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onClose: () => void; onSaved: () => void }) {
   const { lang } = useLanguage();
@@ -507,9 +481,18 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
 
         </Card>
 
-        <Card title={ar ? 'الوقود والتتبّع' : 'Fuel & tracking'}
-          extra={<ReqToggle ar={ar} label={ar ? 'اشتراك التتبّع' : 'Tracking subscription'}
-            code={f.gps?.statusCode || ''} onChange={(v) => setSub('gps', 'statusCode', v)} />}>
+        {/* ── الوقودُ شيءٌ والتتبّعُ شيءٌ آخر ─────────────────────────────────
+            كانا بطاقةً واحدةً عنوانُها «الوقود والتتبّع»، وفوقها سؤالٌ واحدٌ
+            عن «اشتراك التتبّع». فمن أراد أن يقول «هذه المركبة لا شريحةَ وقودٍ
+            مطلوبةٌ عليها» لم يجد أين يقولها، ومن ضغط «غير مطلوب» ظنّ أنه
+            علّم الاثنين — وهو يعلّم التتبّعَ وحده.
+            وهما ليسا قريبَين أصلًا: شريحةُ بترو اب حسابُ صرفٍ لا تنتهي ولا
+            تُجدَّد، واشتراكُ التتبّع مستندٌ له تاريخُ انتهاءٍ وتنبيهٌ وتجديد
+            وصفحةٌ مستقلّة. ولكلٍّ صفحتُه في القسم منذ البداية — فبقاؤهما
+            مدموجَين هنا وحدَه كان يخالف ما تعرضه بقيّةُ الشاشات. */}
+        <Card title={ar ? 'شريحة الوقود — بترو اب' : 'Fuel card — Petro App'}
+          extra={<ReqToggle ar={ar} label={ar ? 'شريحة الوقود' : 'Fuel card'}
+            code={f.fuelCard?.statusCode || ''} onChange={(v) => setSub('fuelCard', 'statusCode', v)} />}>
           <div><L>{ar ? 'مزوّد شريحة الوقود' : 'Fuel provider'}</L><ManagedSelect storeLabel type="vehicle_fuel_provider" value={f.fuelCard?.provider || ''} onChange={(v) => setSub('fuelCard', 'provider', v)} /></div>
           <div><L>{ar ? 'رقم شريحة الوقود' : 'Fuel card no.'}</L><input className={inp} value={f.fuelCard?.cardNumber || ''} onChange={(e) => setSub('fuelCard', 'cardNumber', e.target.value)} /></div>
           <div><L>{ar ? 'حالة الشريحة' : 'Card status'}</L><ManagedSelect storeLabel type="vehicle_fuel_card_status" value={f.fuelCard?.statusAr || ''} onChange={(v) => setSub('fuelCard', 'statusAr', v)} /></div>
@@ -529,14 +512,20 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
               {ar ? 'مفتوح — بلا سقف صرف' : 'Open — no spending ceiling'}
             </label>
           </div>
+        </Card>
+
+        <Card title={ar ? 'التتبّع — GPS' : 'Tracking — GPS'}
+          extra={<ReqToggle ar={ar} label={ar ? 'اشتراك التتبّع' : 'Tracking subscription'}
+            code={f.gps?.statusCode || ''} onChange={(v) => setSub('gps', 'statusCode', v)} />}>
           <div><L>{ar ? 'رقم جهاز GPS' : 'GPS device id'}</L><input className={inp} value={f.gps?.deviceId || ''} onChange={(e) => setSub('gps', 'deviceId', e.target.value)} /></div>
           <div><L>{ar ? 'رقم الشريحة (SIM)' : 'SIM number'}</L><input className={inp} value={f.gps?.simNumber || ''} onChange={(e) => setSub('gps', 'simNumber', e.target.value)} /></div>
           <div><L>{ar ? 'شركة الـGPS' : 'GPS provider'}</L><ManagedSelect storeLabel type="vehicle_gps_provider" value={f.gps?.provider || ''} onChange={(v) => setSub('gps', 'provider', v)} /></div>
           <div><L>{ar ? 'جهاز GPS' : 'GPS device'}</L><ManagedSelect storeLabel type="vehicle_gps_device" value={f.gps?.deviceModel || ''} onChange={(v) => setSub('gps', 'deviceModel', v)} /></div>
           <div><L>{ar ? 'سريال GPS' : 'GPS serial'}</L><input className={inp} value={f.gps?.serialImei || ''} onChange={(e) => setSub('gps', 'serialImei', e.target.value)} /></div>
+          {/* حالةُ الجهاز غيرُ حالة الاشتراك: جهازٌ مسروق قد يكون اشتراكه ساريًا،
+              واشتراكٌ منتهٍ لا يعني أن الجهاز نُزع. */}
           <div><L>{ar ? 'حالة جهاز GPS' : 'GPS device status'}</L><ManagedSelect storeLabel type="vehicle_gps_device_status" value={f.gps?.deviceStatusAr || ''} onChange={(v) => setSub('gps', 'deviceStatusAr', v)} /></div>
           <div><L>{ar ? 'انتهاء اشتراك GPS' : 'GPS expiry'}</L><input type="date" className={inp} value={(f.gps?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('gps', 'expiryDate', e.target.value || null)} /></div>
-
         </Card>
 
         <Card title={ar ? 'التفويض بالقيادة' : 'Driving authorisation'}

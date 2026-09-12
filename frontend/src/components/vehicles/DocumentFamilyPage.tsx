@@ -31,10 +31,13 @@ import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel'
 import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
 import { RenewModal, BulkRenewModal, SharedPolicyRenewModal, type RenewTarget } from '@/components/vehicles/RenewModals';
 import { ColumnFilter } from '@/components/ColumnFilter';
+import { ReqToggle } from '@/components/vehicles/ReqToggle';
+import { LEAD } from '@/components/vehicles/stickyLead';
 import { ArrowRight, RefreshCw, Plus, Pencil, Eraser, Trash2, X, Save, Search } from 'lucide-react';
 
 /** مجموعةٌ فارغةٌ ثابتة — لئلّا تُبنى واحدةٌ جديدة في كلّ رسمةٍ فتُعاد اللوحة. */
 const EMPTY_SET: Set<string> = new Set();
+
 import { VReg, DOC_TYPES, daysText, STATE_META, publicState, canEditVehicles, canAdminVehicles, isSharedPaper } from '@/lib/vehicleRegistry';
 import { flexIncludes } from '@/lib/flexMatch';
 import ManagedSelect from '@/components/system/ManagedSelect';
@@ -216,6 +219,8 @@ function DocumentFamilyPageInner({
 
   const doc = docKey ? DOC_TYPES.find((d) => d.key === docKey) : undefined;
   const renewable = !!doc && canEdit;
+  /** أثَمّ ما يُفعَل بالصفّ أصلًا؟ فإن لم يكن، لا عمودَ إجراءاتٍ فارغًا يُرسَم. */
+  const hasRowActions = editable || !!rowAction;
 
   const [rows, setRows] = useState<VReg[]>([]);
   const [total, setTotal] = useState(0);
@@ -611,10 +616,21 @@ function DocumentFamilyPageInner({
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[12.5px]">
               <tr>
-                {renewable && (
-                  <th className="px-3 py-3 w-8">
-                    <input type="checkbox" checked={allShownPicked} onChange={toggleAll}
-                      title={t('اختيار كل المعروض', 'Select all shown')} className="accent-[#f37121]" />
+                {/* ── عمودُ الإجراءات أوّلًا وثابتًا ──────────────────────────
+                    كان آخرَ عمودٍ في جدولٍ يتجاوز عرضَ الشاشة، فمن أراد تعديلَ
+                    صفٍّ يراه أمامه لزمه أن يمرّر عرضًا إلى آخر الجدول ثم يعود.
+                    وهو مسارٌ يُقطَع لكلّ صفّ، ويُخطئ فيه الصفَّ من انزلق سطرًا
+                    أثناء التمرير. فصار أوّلَ ما يُقرأ، وثابتًا لا يجري مع
+                    التمرير — ومعه مربّعُ الاختيار، فهما فعلٌ واحدٌ على الصفّ. */}
+                {(renewable || hasRowActions) && (
+                  <th className={`${LEAD} bg-slate-900 px-3 py-3 text-start font-bold whitespace-nowrap`}>
+                    <span className="inline-flex items-center gap-2">
+                      {renewable && (
+                        <input type="checkbox" checked={allShownPicked} onChange={toggleAll}
+                          title={t('اختيار كل المعروض', 'Select all shown')} className="accent-[#f37121]" />
+                      )}
+                      {hasRowActions && t('إجراءات', 'Actions')}
+                    </span>
                   </th>
                 )}
                 {columns.map((c) => (
@@ -632,46 +648,24 @@ function DocumentFamilyPageInner({
                   </th>
                 ))}
                 {docKey && <th className="px-3 py-3 text-start font-bold whitespace-nowrap">{t('الحالة', 'State')}</th>}
-                {(renewable || editable || rowAction) && <th className="px-3 py-3" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {shownRows.map((v: VReg) => {
                 const st = docKey ? stateOf(v, docKey) : null;
                 const meta = st ? stateMeta(st.state) : null;
+                const on = picked.has(v._id);
                 return (
-                  <tr key={v._id} className={`hover:bg-slate-50 ${picked.has(v._id) ? 'bg-orange-50/60' : ''}`}>
-                    {renewable && (
-                      <td className="px-3 py-2">
-                        <input type="checkbox" checked={picked.has(v._id)} className="accent-[#f37121]"
-                          onChange={() => setPicked((p) => {
-                            const n = new Set(p); if (n.has(v._id)) n.delete(v._id); else n.add(v._id); return n;
-                          })} />
-                      </td>
-                    )}
-                    {columns.map((c, i) => {
-                      const val = c.get(v);
-                      const text = val === null || val === undefined || val === '' ? '—' : String(val);
-                      return (
-                        <td key={c.key}
-                          className={`px-3 py-2 whitespace-nowrap ${c.mono ? 'font-mono text-[12.5px]' : 'text-[13px]'} ${i === 0 ? 'font-semibold text-slate-900' : 'text-slate-700'}`}
-                          {...(c.mono ? { dir: 'ltr' } : {})}>
-                          {i === 0
-                            ? <Link href={`/system/vehicles/registry/${v._id}`} className="text-[#f37121] hover:underline">{text}</Link>
-                            : text}
-                        </td>
-                      );
-                    })}
-                    {st && meta && (
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span className={`px-2 py-0.5 rounded-full text-[11.5px] font-semibold ${meta.bg}`}>
-                          {st.days == null ? (ar ? meta.ar : meta.en) : daysText(st.days, ar)}
-                        </span>
-                      </td>
-                    )}
-                    {(renewable || editable || rowAction) && (
-                      <td className="px-3 py-2">
+                  <tr key={v._id} className={`group hover:bg-slate-50 ${on ? 'bg-orange-50/60' : ''}`}>
+                    {(renewable || hasRowActions) && (
+                      <td className={`${LEAD} px-3 py-2 ${on ? 'bg-orange-50' : 'bg-white'} group-hover:bg-slate-50`}>
                         <div className="flex items-center gap-1.5">
+                          {renewable && (
+                            <input type="checkbox" checked={on} className="accent-[#f37121]"
+                              onChange={() => setPicked((p) => {
+                                const n = new Set(p); if (n.has(v._id)) n.delete(v._id); else n.add(v._id); return n;
+                              })} />
+                          )}
                           {rowAction?.(v, load)}
                           {renewable && (
                             <button onClick={() => setRenewing(targetOf(v))}
@@ -698,11 +692,31 @@ function DocumentFamilyPageInner({
                         </div>
                       </td>
                     )}
+                    {columns.map((c, i) => {
+                      const val = c.get(v);
+                      const text = val === null || val === undefined || val === '' ? '—' : String(val);
+                      return (
+                        <td key={c.key}
+                          className={`px-3 py-2 whitespace-nowrap ${c.mono ? 'font-mono text-[12.5px]' : 'text-[13px]'} ${i === 0 ? 'font-semibold text-slate-900' : 'text-slate-700'}`}
+                          {...(c.mono ? { dir: 'ltr' } : {})}>
+                          {i === 0
+                            ? <Link href={`/system/vehicles/registry/${v._id}`} className="text-[#f37121] hover:underline">{text}</Link>
+                            : text}
+                        </td>
+                      );
+                    })}
+                    {st && meta && (
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span className={`px-2 py-0.5 rounded-full text-[11.5px] font-semibold ${meta.bg}`}>
+                          {st.days == null ? (ar ? meta.ar : meta.en) : daysText(st.days, ar)}
+                        </span>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
               {!f.shown.length && (
-                <tr><td colSpan={columns.length + 3} className="px-3 py-12 text-center text-slate-500">
+                <tr><td colSpan={columns.length + 2} className="px-3 py-12 text-center text-slate-500">
                   {t('لا نتائج مطابقة', 'No matching rows')}
                 </td></tr>
               )}
@@ -768,6 +782,23 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, onCl
     () => Object.fromEntries(fields.map((f) => [f.path, inputValue(vehicle, f)])));
   const [saving, setSaving] = useState(false);
 
+  // ── «مطلوبٌ منّا هذا المستند على هذه المركبة؟» ─────────────────────────────
+  //
+  // كان يُسأل في استمارة سجل المركبات وحدَها. ومَن يراجع الفحصَ الدوريّ يفتح
+  // صفحة الفحص لا صفحةَ السجلّ: يرى مقطورةً «مطلوب — ناقص» وهي لا تُفحص أصلًا،
+  // فيلزمه أن يخرج من الشاشة إلى شاشةٍ أخرى ليصحّح ما رآه هنا. فصار السؤال حيث
+  // يُعدَّل المستند.
+  //
+  // والكائنُ الذي تعيش فيه العائلة هو موضعُ الجواب: `inspection.statusCode`
+  // لصفحة الفحص، و`gps.statusCode` لصفحة التتبّع — وهو الحقلُ نفسُه الذي يكتبه
+  // السجلّ ويقرؤه الخادم، فلا نسخةَ ثانية من الحقيقة.
+  const statusPath = `${rootsOf(fields)[0] || ''}.statusCode`;
+  const initialNeed = String((target ? readPath(target, statusPath) : '') || '');
+  const [need, setNeed] = useState(initialNeed);
+  // ولا يُكتب شيءٌ إلّا بضغطة: العدمُ اليوم يعني «مطلوب» ضمنًا، فكتابتُه من
+  // أنفسنا عند كلّ حفظٍ تغيّر صفوفًا لم يقصدها أحد.
+  const needTouched = need !== initialNeed;
+
   // ── قائمةُ الاختيار تُجلب غيرَ مفلترة ──────────────────────────────────────
   // فلترُ الشاشة سؤالٌ عن **المعروض**، لا حدٌّ لما يجوز تسجيلُه: من يفلتر على
   // «المنتهي» ثم يضغط «إضافة» لا يقصد أن يُمنع من مركبةٍ سارية.
@@ -792,13 +823,16 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, onCl
   const pick = (v: VReg) => {
     setTarget(v);
     setVals(Object.fromEntries(fields.map((f) => [f.path, inputValue(v, f)])));
+    setNeed(String(readPath(v, statusPath) || ''));
   };
 
   const save = async () => {
     if (!target) { notify(t('اختر المركبة أوّلًا', 'Pick a vehicle first'), 'error'); return; }
     setSaving(true);
     try {
-      await api.put(`/api/vehicle-registry/${target._id}`, buildPatch(fields, vals));
+      const patch = buildPatch(fields, vals);
+      if (needTouched) writePath(patch, statusPath, need);
+      await api.put(`/api/vehicle-registry/${target._id}`, patch);
       notify(t('تم الحفظ', 'Saved'), 'success');
       onDone();
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setSaving(false); }
@@ -897,6 +931,18 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, onCl
                    'This vehicle already has data for this document — saving will replace it.')}
               </p>
             )}
+            {/* السؤالُ قبل الخانات لا بعدها: جوابُه «غير مطلوب» يجعل ما تحته
+                بلا معنى، ومن أجاب به لا يُنتظَر منه أن يملأ تاريخًا. */}
+            <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+              <ReqToggle ar={ar}
+                label={t(`هل «${famLabel}» مطلوبٌ على هذه المركبة؟`, `Is «${famLabel}» required on this vehicle?`)}
+                code={need} onChange={setNeed} />
+              <p className="mt-1.5 text-[11px] text-slate-500 leading-relaxed">
+                {t('«غير مطلوب» ليست نقصًا: تخرج المركبة من قائمة العمل وتظهر رماديّةً هنا وفي سجلّ المركبات وفي النظرة الشاملة.',
+                   '«Not required» is not a gap: the vehicle leaves the work list and shows greyed out here, in the vehicle registry and in the overview.')}
+              </p>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {fields.map((fl) => (
                 <div key={fl.path} className={fl.wide ? 'md:col-span-2' : ''}>
@@ -986,11 +1032,24 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, onCl
   );
 }
 
-/** أعمدةٌ تتكرّر في كل عائلة: اللوحة أوّلًا، ثم ما يُعرَف به موضعُ المركبة. */
+/**
+ * أعمدةٌ تتكرّر في كل عائلة: اللوحة أوّلًا، ثم ما يُعرَف به موضعُ المركبة،
+ * ثم ما تُعرَف به المركبةُ نفسُها.
+ *
+ * ── ولماذا الماركةُ والطرازُ والموديل هنا لا في كلّ صفحةٍ على حدة ───────────
+ * اللوحةُ تقول أيُّ صفٍّ هذا، ولا تقول أيُّ مركبةٍ هي. ومن يراجع الفحصَ أو
+ * التأمين يسأل عن الشاحنة لا عن رقمها: «الهينو موديل ٢٠١٩» لا «٧٤٥٢ ب ن ا».
+ * وكان الجوابُ يقتضي فتحَ صفحة المركبة أو العودةَ إلى السجلّ العامّ من كلّ
+ * صفحةٍ من السبع. وهي ثلاثةُ حقولٍ نصّيّةٍ قصيرةٍ تصل مع الصفّ أصلًا، فلا
+ * نداءَ ثانٍ ولا عمودَ يُملأ مرّتين.
+ */
 export const commonColumns = (): DocColumn[] => [
   { key: 'plateNumber', ar: 'رقم اللوحة', en: 'Plate', get: (v) => v.plateNumber, width: 16 },
   { key: 'sectorAr', ar: 'القطاع', en: 'Sector', get: (v) => v.sectorAr, width: 16 },
   { key: 'departmentAr', ar: 'الإدارة', en: 'Department', get: (v) => v.departmentAr, width: 18 },
   { key: 'cityAr', ar: 'المدينة', en: 'City', get: (v) => v.cityAr, width: 14 },
   { key: 'ownerNameAr', ar: 'المالك', en: 'Owner', get: (v) => v.ownerNameAr, width: 26 },
+  { key: 'brandAr', ar: 'ماركة المركبة', en: 'Brand', get: (v) => v.brandAr, width: 14 },
+  { key: 'modelAr', ar: 'طراز المركبة', en: 'Model', get: (v) => v.modelAr, width: 14 },
+  { key: 'modelYear', ar: 'الموديل', en: 'Year', get: (v) => v.modelYear, width: 10 },
 ];

@@ -7,6 +7,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { AlertTriangle, Edit, Trash2, Check, Plus } from 'lucide-react';
+import { LEAD } from '@/components/vehicles/stickyLead';
 import {
   VehicleAccident, Vehicle, ACCIDENT_SEVERITY, ACCIDENT_STATUS, FAULT_PARTY, isVehicleStaff, isVehicleAdmin,
   faultPartyLabel, empRefName, plateOf, getVehiclesText, fmtDate, today,
@@ -181,6 +182,8 @@ export default function VehicleAccidentsPage() {
             {/* الترويسةُ تحمل قمعَ كلِّ عمود — القيمةُ تُقرأ بالتعبير نفسِه
                 الذي تُرسم به الخليّة. راجع components/vehicles/useColumnFilters. */}
             <tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
+              {/* الإجراءاتُ أوّلًا وثابتة — راجع components/vehicles/stickyLead. */}
+              <th className={`${LEAD} bg-slate-900 text-start font-semibold px-4 py-3`}>{tx.actions}</th>
               {([
                 ['date', tx.date], ['plate', tx.plateNumber], ['employee', tx.employee],
                 ['description', tx.description], ['fault', tx.faultParty],
@@ -193,14 +196,21 @@ export default function VehicleAccidentsPage() {
                   </span>
                 </th>
               ))}
-              <th className="text-end font-semibold px-4 py-3">{tx.actions}</th>
             </tr>
           </thead>
           <tbody>
             {shownRows.length === 0 ? (
               <tr><td colSpan={8} className="text-center text-slate-800 py-12">{tx.noAccidents}</td></tr>
             ) : shownRows.map((a) => (
-              <tr key={a._id} className="border-b border-slate-200/70 hover:bg-slate-100">
+              <tr key={a._id} className="group border-b border-slate-200/70 hover:bg-slate-100">
+                <td className={`${LEAD} px-4 py-3 bg-white group-hover:bg-slate-100`}>
+                  <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => openEdit(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.edit}><Edit className="w-4 h-4" /></button>
+                    {isVehicleAdmin(user) && (
+                      <button type="button" onClick={() => remove(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.delete}><Trash2 className="w-4 h-4" /></button>
+                    )}
+                  </div>
+                </td>
                 <td className="px-4 py-3 text-slate-700">{fmtDate(a.date)}</td>
                 <td className="px-4 py-3 text-slate-900 font-bold cursor-pointer hover:text-[#f37121]" onClick={() => router.push(`/system/vehicles/${typeof a.vehicle === 'object' ? (a.vehicle as any)?._id : a.vehicle}`)}>{plateOf(a.vehicle)}</td>
                 <td className="px-4 py-3 text-slate-700">{empRefName(a.employee, lang)}</td>
@@ -208,14 +218,6 @@ export default function VehicleAccidentsPage() {
                 <td className="px-4 py-3 text-slate-700">{faultPartyLabel(a.faultParty, lang)}</td>
                 <td className="px-4 py-3"><Badge style={ACCIDENT_SEVERITY[a.severity || 'minor']} lang={lang} /></td>
                 <td className="px-4 py-3"><Badge style={ACCIDENT_STATUS[a.status || 'reported']} lang={lang} /></td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-1">
-                    <button type="button" onClick={() => openEdit(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.edit}><Edit className="w-4 h-4" /></button>
-                    {isVehicleAdmin(user) && (
-                      <button type="button" onClick={() => remove(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.delete}><Trash2 className="w-4 h-4" /></button>
-                    )}
-                  </div>
-                </td>
               </tr>
             ))}
           </tbody>

@@ -24,6 +24,7 @@ import { useAuth } from '@/context/AuthContext';
 import SelectionBar from '@/components/ls2/SelectionBar';
 import { RenewModal, BulkRenewModal } from '@/components/vehicles/RenewModals';
 import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
+import { LEAD } from '@/components/vehicles/stickyLead';
 import { stateMeta,
   getExpiring, canEditVehicles, STATE_META, stateLabel, publicState, fmtDate, daysText,
   type ExpiringRow,
@@ -277,18 +278,23 @@ function ExpiringInner() {
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
               <tr>
-                {canEdit && (
-                  <th className="px-3 py-3 w-9">
-                    <input type="checkbox" className="accent-[#f37121]"
-                      title={t('اختيار كل المعروض', 'Select all shown')}
-                      checked={rows.length > 0 && rows.every((x) => picked.has(rowKey(x)))}
-                      onChange={(e) => setPicked((p) => {
-                        const n = new Set(p);
-                        rows.forEach((x) => (e.target.checked ? n.add(rowKey(x)) : n.delete(rowKey(x))));
-                        return n;
-                      })} />
-                  </th>
-                )}
+                {/* الاختيارُ والتجديدُ فعلٌ واحدٌ على الصفّ — فهما في عمودٍ
+                    واحدٍ أوّلَ الجدول وثابتٍ فيه. راجع components/vehicles/stickyLead. */}
+                <th className={`${LEAD} bg-slate-900 px-3 py-3 text-start font-bold whitespace-nowrap`}>
+                  <span className="inline-flex items-center gap-2">
+                    {canEdit && (
+                      <input type="checkbox" className="accent-[#f37121]"
+                        title={t('اختيار كل المعروض', 'Select all shown')}
+                        checked={rows.length > 0 && rows.every((x) => picked.has(rowKey(x)))}
+                        onChange={(e) => setPicked((p) => {
+                          const n = new Set(p);
+                          rows.forEach((x) => (e.target.checked ? n.add(rowKey(x)) : n.delete(rowKey(x))));
+                          return n;
+                        })} />
+                    )}
+                    {t('إجراءات', 'Actions')}
+                  </span>
+                </th>
                 {COL_DEFS.map(([key, arL, enL]) => (
                   <th key={key} className="px-3 py-3 text-center font-bold whitespace-nowrap">
                     <span className="inline-flex items-center">
@@ -298,25 +304,31 @@ function ExpiringInner() {
                     </span>
                   </th>
                 ))}
-                <th className="px-3 py-3" /></tr>
+              </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {shownRows.map((r: any) => {
                 const m = stateMeta(r.state);
                 return (
                   <tr key={`${r.vehicleId}-${r.docKey}`}
-                    className={picked.has(rowKey(r)) ? 'bg-orange-50/70 text-center' : 'hover:bg-slate-50 text-center'}>
-                    {canEdit && (
-                      <td className="px-3 py-2.5">
-                        <input type="checkbox" className="accent-[#f37121]"
-                          checked={picked.has(rowKey(r))}
-                          onChange={() => setPicked((p) => {
-                            const n = new Set(p); const k = rowKey(r);
-                            if (n.has(k)) n.delete(k); else n.add(k);
-                            return n;
-                          })} />
-                      </td>
-                    )}
+                    className={`group text-center ${picked.has(rowKey(r)) ? 'bg-orange-50/70' : 'hover:bg-slate-50'}`}>
+                    <td className={`${LEAD} px-3 py-2.5 ${picked.has(rowKey(r)) ? 'bg-orange-50' : 'bg-white'} group-hover:bg-slate-50`}>
+                      <div className="flex items-center gap-1.5">
+                        {canEdit && (
+                          <input type="checkbox" className="accent-[#f37121]"
+                            checked={picked.has(rowKey(r))}
+                            onChange={() => setPicked((p) => {
+                              const n = new Set(p); const k = rowKey(r);
+                              if (n.has(k)) n.delete(k); else n.add(k);
+                              return n;
+                            })} />
+                        )}
+                        <button onClick={() => setRenewing(r)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold whitespace-nowrap">
+                          <RefreshCw className="w-3.5 h-3.5" />{t('تجديد', 'Renew')}
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-3 py-2.5">
                       <button onClick={() => router.push(`/system/vehicles/registry/${r.vehicleId}`)}
                         className="font-semibold text-slate-800 hover:text-[#f37121]">{r.plateNumber}</button>
@@ -339,17 +351,11 @@ function ExpiringInner() {
                     </td>
                     <td className="px-3 py-2.5 text-slate-500 text-[12px]">{r.sectorAr || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-500 text-[12px] max-w-[220px] truncate">{r.ownerNameAr || '—'}</td>
-                    <td className="px-3 py-2.5">
-                      <button onClick={() => setRenewing(r)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold">
-                        <RefreshCw className="w-3.5 h-3.5" />{t('تجديد', 'Renew')}
-                      </button>
-                    </td>
                   </tr>
                 );
               })}
               {!rows.length && (
-                <tr><td colSpan={canEdit ? 10 : 9} className="px-3 py-12 text-center text-slate-500">
+                <tr><td colSpan={COL_DEFS.length + 1} className="px-3 py-12 text-center text-slate-500">
                   {t('لا شيء ينتهي خلال هذه المدة', 'Nothing expires in this window')}
                 </td></tr>
               )}

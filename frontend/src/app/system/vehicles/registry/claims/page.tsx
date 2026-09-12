@@ -12,6 +12,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { TriangleAlert, Search, ArrowRight, Clock, Plus, Pencil, Trash2, X } from 'lucide-react';
+import { LEAD, LEAD_CELL } from '@/components/vehicles/stickyLead';
 import { useAuth } from '@/context/AuthContext';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
@@ -165,6 +166,12 @@ function ClaimsInner() {
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
               <tr>
+                {/* الإجراءاتُ أوّلًا وثابتة — راجع components/vehicles/stickyLead. */}
+                {canEdit && (
+                  <th className={`${LEAD} bg-slate-900 px-3 py-3 text-center font-bold whitespace-nowrap`}>
+                    {t('إجراءات', 'Actions')}
+                  </th>
+                )}
                 {COL_DEFS.map(([key, arL, enL]) => (
                   <th key={key} className="px-3 py-3 text-center font-bold whitespace-nowrap">
                     <span className="inline-flex items-center">
@@ -173,7 +180,6 @@ function ClaimsInner() {
                     </span>
                   </th>
                 ))}
-                {canEdit && <th className="px-3 py-3 text-center font-bold whitespace-nowrap">{t('إجراءات', 'Actions')}</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -183,7 +189,30 @@ function ClaimsInner() {
                   ? Math.floor((Date.now() - new Date(r.claim.lastInsurerUpdateDate).getTime()) / 86400000) : null;
                 const stale = r.statusCode !== 'closed' && staleDays != null && staleDays > 30;
                 return (
-                  <tr key={r._id} className="hover:bg-slate-50 text-center align-middle">
+                  <tr key={r._id} className="group hover:bg-slate-50 text-center align-middle">
+                    {canEdit && (
+                      <td className={`${LEAD_CELL} px-3 py-2.5 whitespace-nowrap`}>
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => setForm(r)} title={t('تعديل', 'Edit')}
+                            className="p-1.5 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100">
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          {canDelete && (
+                            <button title={t('حذف', 'Delete')}
+                              onClick={async () => {
+                                if (!(await confirm(t(
+                                  `حذف الحادث ${r.accidentNumber || r.claimId || ''}؟ هيتشال من القوايم والتقارير.`,
+                                  `Delete accident ${r.accidentNumber || r.claimId || ''}?`)))) return;
+                                try { await deleteClaim(r._id); notify(t('اتشال', 'Deleted'), 'success'); load(); }
+                                catch (e: any) { notify(e?.message || 'Failed', 'error'); }
+                              }}
+                              className="p-1.5 rounded-md text-slate-500 hover:text-rose-600 hover:bg-rose-50">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
                     <td className="px-3 py-2.5">
                       {r.vehicle
                         ? <button onClick={() => router.push(`/system/vehicles/registry/${r.vehicle}`)}
@@ -233,33 +262,10 @@ function ClaimsInner() {
                         ? <span className="line-clamp-2 leading-snug" title={r.claim.notesAr}>{r.claim.notesAr}</span>
                         : <span className="text-slate-300">—</span>}
                     </td>
-                    {canEdit && (
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-1">
-                          <button onClick={() => setForm(r)} title={t('تعديل', 'Edit')}
-                            className="p-1.5 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100">
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          {canDelete && (
-                            <button title={t('حذف', 'Delete')}
-                              onClick={async () => {
-                                if (!(await confirm(t(
-                                  `حذف الحادث ${r.accidentNumber || r.claimId || ''}؟ هيتشال من القوايم والتقارير.`,
-                                  `Delete accident ${r.accidentNumber || r.claimId || ''}?`)))) return;
-                                try { await deleteClaim(r._id); notify(t('اتشال', 'Deleted'), 'success'); load(); }
-                                catch (e: any) { notify(e?.message || 'Failed', 'error'); }
-                              }}
-                              className="p-1.5 rounded-md text-slate-500 hover:text-rose-600 hover:bg-rose-50">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    )}
                   </tr>
                 );
               })}
-              {!rows.length && <tr><td colSpan={canEdit ? 10 : 9} className="px-3 py-12 text-center text-slate-500">{t('لا توجد حوادث', 'No claims')}</td></tr>}
+              {!rows.length && <tr><td colSpan={COL_DEFS.length + (canEdit ? 1 : 0)} className="px-3 py-12 text-center text-slate-500">{t('لا توجد حوادث', 'No claims')}</td></tr>}
             </tbody>
           </table>
         </div>

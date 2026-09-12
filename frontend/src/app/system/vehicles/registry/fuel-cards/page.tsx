@@ -11,6 +11,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { canEditVehicles } from '@/lib/vehicleRegistry';
 import { useAuth } from '@/context/AuthContext';
 import DocumentFamilyPage, { commonColumns, type DocColumn, type DocField } from '@/components/vehicles/DocumentFamilyPage';
+import { isNotRequiredCode } from '@/components/vehicles/ReqToggle';
 import { type Chip } from '@/components/ls2/FilterBar';
 import { useLanguage } from '@/context/LanguageContext';
 import { money, type VReg } from '@/lib/vehicleRegistry';
@@ -79,7 +80,15 @@ export default function Page() {
   const CHIPS: Chip[] = [
     { key: '', label: t('الكل', 'All') },
     { key: 'has', label: t('لها شريحة', 'Has a chip'), tone: 'green', test: (v: VReg) => !!v.fuelCard?.cardNumber },
-    { key: 'none', label: t('بلا شريحة', 'No chip'), tone: 'red', test: (v: VReg) => !v.fuelCard?.cardNumber },
+    // ── و«بلا شريحة» قائمةُ عملٍ لا جَرْدٌ ─────────────────────────────────
+    // المركبةُ التي عُلِّمت «غير مطلوب» لا شريحةَ لها ولا عملَ عليها: ليست
+    // مركبتَنا، أو لا تصرف من حسابنا. وعدُّها في «بلا شريحة» يضخّم الرقمَ
+    // بصفوفٍ لا يُفتَح منها شيء — وهي نفسُها العلّة التي جاءت من أجلها
+    // «مطلوب / غير مطلوب» في بقيّة العائلات.
+    { key: 'none', label: t('بلا شريحة — مطلوبة', 'No chip — needed'), tone: 'red',
+      test: (v: VReg) => !v.fuelCard?.cardNumber && !isNotRequiredCode(v.fuelCard?.statusCode) },
+    { key: 'notReq', label: t('غير مطلوبة', 'Not required'), tone: 'slate',
+      test: (v: VReg) => isNotRequiredCode(v.fuelCard?.statusCode) },
     { key: 'open', label: t('بلا سقف استهلاك', 'No spending ceiling'), tone: 'amber', test: (v: VReg) => v.fuelCard?.limitStatus === 'open' },
     { key: 'noInvoicePlate', label: t('بلا لوحة على الفاتورة', 'No plate on invoice'), tone: 'violet', test: (v: VReg) => !!v.fuelCard?.cardNumber && !v.fuelCard?.plateOnInvoiceAr },
   ];

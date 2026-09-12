@@ -6,8 +6,8 @@ const Driver = require('../models/Driver');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
 const {
-  WALLET_START_DATE, isBeforeWalletStart, isBeyondBook, todayStr, lastWritableDay,
-  walletStartMessage, walletFutureMessage,
+  WALLET_START_DATE, isBeforeWalletStart, isBeyondBook, mayWorkOutsideBook,
+  todayStr, lastWritableDay, walletStartMessage, walletFutureMessage,
 } = require('../config/walletStart');
 
 // Helper: get YYYY-MM-DD string
@@ -31,7 +31,10 @@ const EXPENSE_THRESHOLD = 10000;
  *
  * يُعيد `true` إن رُدَّ الطلبُ، فينتهي المتحكّمُ عنده.
  */
-const denyOutsideBook = (res, date) => {
+const denyOutsideBook = (res, date, user) => {
+  // مديرُ النظام يمرّ: الحدّان حمايةٌ من الخطأ اليوميّ لا قاعدةٌ محاسبيّة،
+  // ويبقى بعدهما تصحيحٌ حقيقيّ يحتاج بابًا — راجع config/walletStart.
+  if (mayWorkOutsideBook(user)) return false;
   if (isBeforeWalletStart(date)) {
     res.status(400).json({ message: walletStartMessage(), walletStartDate: WALLET_START_DATE });
     return true;
@@ -247,7 +250,7 @@ const cascadeBalances = async (branchId, fromDate, newClosingBalance) => {
 exports.getDailyWallet = async (req, res) => {
   try {
     const date = req.query.date || toDateStr();
-    if (denyOutsideBook(res, date)) return;
+    if (denyOutsideBook(res, date, req.user)) return;
 
     // ── يُختار الفرعُ لا الموظّف ────────────────────────────────────────────
     // المحفظةُ للفرع، فالسؤالُ «أيُّ فرع» لا «أيُّ موظّف». و`userId` يبقى
@@ -316,7 +319,7 @@ exports.addTransaction = async (req, res) => {
     }
 
     const txDate = date || toDateStr();
-    if (denyOutsideBook(res, txDate)) return;
+    if (denyOutsideBook(res, txDate, req.user)) return;
 
     // ── استلامُ الفواتير الضريبيّة: كشوفٌ لا مبلغ ────────────────────────────
     // القيدُ يقول «استلمتُ كشوفَ هذه الفواتير بيدي» — لا مالَ دخل ولا خرج،
@@ -681,7 +684,7 @@ exports.deleteTransaction = async (req, res) => {
     if (!mayTouchWallet(req, wallet)) return denyWallet(res);
     // ولا تُمَسّ حركةٌ سابقةٌ للبداية ولو بقيت واحدةٌ في القاعدة: تعديلُها
     // يُعيد حساب سلسلةِ أرصدةٍ انتهت، وحذفُها يُحرّك رصيدَ أوّلِ سبتمبر المُقَرّ.
-    if (denyOutsideBook(res, transaction.date)) return;
+    if (denyOutsideBook(res, transaction.date, req.user)) return;
     const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(req.user.role);
 
     if (wallet && wallet.isClosed && !isManager) {
@@ -745,7 +748,7 @@ exports.updateTransaction = async (req, res) => {
     if (!mayTouchWallet(req, wallet)) return denyWallet(res);
     // ولا تُمَسّ حركةٌ سابقةٌ للبداية ولو بقيت واحدةٌ في القاعدة: تعديلُها
     // يُعيد حساب سلسلةِ أرصدةٍ انتهت، وحذفُها يُحرّك رصيدَ أوّلِ سبتمبر المُقَرّ.
-    if (denyOutsideBook(res, transaction.date)) return;
+    if (denyOutsideBook(res, transaction.date, req.user)) return;
     const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(req.user.role);
 
     if (wallet && wallet.isClosed && !isManager) {
@@ -899,7 +902,7 @@ exports.closeDay = async (req, res) => {
   try {
     const { date, actualCash, differenceReason, differenceNotes } = req.body;
     const txDate = date || toDateStr();
-    if (denyOutsideBook(res, txDate)) return;
+    if (denyOutsideBook(res, txDate, req.user)) return;
 
     // يُقفَل يومُ الفرع لا يومُ الشخص: النقدُ نقدُ الفرع، وإقفالُه إقرارٌ عنه.
     const closeBranch = req.body.branchId || req.body.branch || req.user.branch;
@@ -978,7 +981,7 @@ exports.reopenDay = async (req, res) => {
     if (!wallet) return res.status(404).json({ message: 'Wallet not found' });
     // إعادة فتح يومٍ أُقفل قرارٌ إداريّ — لم يكن عليه أيّ فحصٍ إطلاقًا.
     if (!MANAGER_ROLES.includes(req.user.role)) return denyWallet(res);
-    if (denyOutsideBook(res, wallet.date)) return;
+    if (denyOutsideBook(res, wallet.date, req.user)) return;
 
     wallet.isClosed = false;
     wallet.closedAt = null;
@@ -1412,8 +1415,11 @@ exports.getUserWalletRange = async (req, res) => {
     //
     // والحدُّ هنا لا في الفلتر وحدَه: التصديرُ «الكلّ» يسأل عن 2100-12-31،
     // فبغيره يخرج الملفُّ بأيّامٍ لم تقع.
-    const from = isBeforeWalletStart(dateFrom) ? WALLET_START_DATE : dateFrom;
-    const to = isBeyondBook(dateTo) ? lastWritableDay() : dateTo;
+    // ومديرُ النظام يقرأ ما خارج النافذة كما يكتب فيه — وإلّا كتب يومًا ثمّ
+    // لم يجده في العرض الذي كتبه من أجله.
+    const free = mayWorkOutsideBook(req.user);
+    const from = (!free && isBeforeWalletStart(dateFrom)) ? WALLET_START_DATE : dateFrom;
+    const to = (!free && isBeyondBook(dateTo)) ? lastWritableDay() : dateTo;
     const filter = { branch: repBranch, date: { $gte: from, $lte: to } };
     const wallets = await DailyWallet.find(filter)
       .populate('user', 'firstName lastName')

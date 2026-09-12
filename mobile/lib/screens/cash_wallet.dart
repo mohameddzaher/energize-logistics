@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/auth.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
@@ -264,8 +266,16 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
                           onPressed: () async {
                             // والغدُ داخلٌ: العملُ يتجاوز منتصفَ الليل، فقيدُ الواحدة صباحًا قيدُ
                             // الغد بالتقويم لا بالعمل. وما بعده يردّه الخادم.
-                            final v = await showDatePicker(context: context, initialDate: _date,
-                                firstDate: walletStart, lastDate: DateTime.now().add(const Duration(days: 1)));
+                            //
+                            // ومديرُ النظام وحدَه بلا حدّ: الحدّان حمايةٌ من الخطأ اليوميّ لا
+                            // قاعدةٌ محاسبيّة، ويبقى بعدهما تصحيحٌ حقيقيّ يحتاج بابًا —
+                            // راجع backend/src/config/walletStart.js.
+                            final free = context.read<AuthProvider>().role == 'super_admin';
+                            final v = await showDatePicker(
+                                context: context,
+                                initialDate: _date,
+                                firstDate: free ? DateTime(2020) : walletStart,
+                                lastDate: free ? DateTime(2100) : DateTime.now().add(const Duration(days: 1)));
                             if (v != null) { setState(() { _date = v; _loading = true; }); _load(); }
                           },
                           icon: const Icon(Icons.event, size: 17),

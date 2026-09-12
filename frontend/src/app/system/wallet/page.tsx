@@ -393,6 +393,51 @@ export default function WalletPage() {
          && !purchaseAlready && purchaseBond?.ok !== false)
       : (!!txForm.amount && Number(txForm.amount) > 0);
 
+  /**
+   * ── ولماذا لا يعمل الزرّ؟ يُقال عند الزرّ نفسِه ─────────────────────────────
+   *
+   * الشروطُ صحيحةٌ كلُّها، والرسائلُ التي تشرحها موجودةٌ — لكنّها عند خانة
+   * البحث في أعلى النافذة، والزرُّ في أسفلها بعد عشر خانات. فمن بحث عن الكشف
+   * ثمّ نزل يملأ المبلغَ ورقمَ السند يصل إلى زرٍّ باهتٍ لا يُضغط ولا يقول
+   * شيئًا — فيُقرأ «الصلاحية ناقصة» أو «النظام معطّل»، وهو في الحقيقة كشفٌ لم
+   * يُستلَم سندُه بعد.
+   *
+   * وحالةُ الكشف ليست ثابتة: `applicationStatus` مرآةٌ لمنصّة التشغيل تُكتب في
+   * كلّ مزامنة، فالكشفُ الذي مُنع اليومَ قد يُقبَل بعد ساعة. ومن لا يعرف السببَ
+   * لا يعرف أنّه ينتظر شيئًا بعينه — فيعيد المحاولة بلا فهم، أو يظنّ العطبَ في
+   * حسابه.
+   *
+   * فالسببُ يُقال حيث يُكتشَف المنع: تحت الزرّ، بنصِّ حالةِ الطلب الحاليّة.
+   */
+  const blockReason: string | null = canSubmitTx ? null : (() => {
+    const t = (a: string, e: string) => (lang === 'ar' ? a : e);
+    if (txType === 'tax_invoice') {
+      return t('اكتب رقم كشف تخريج واحدًا على الأقل', 'Enter at least one dispatch report number');
+    }
+    if (txType === 'purchase') {
+      if (!purchaseReportFound) return t('ابحث عن رقم كشف التخريج أوّلًا — الزرّ لا يعمل حتى يظهر الكشف', 'Search for the dispatch report first — the button stays off until it is found');
+      if (purchaseAlready) {
+        return t(`هذا الكشف مسجَّلٌ شراؤه من قبل${purchaseAlready.by ? ` بواسطة ${purchaseAlready.by}` : ''} — لا يُشترى مرّتين`,
+          `This report was already purchased${purchaseAlready.by ? ` by ${purchaseAlready.by}` : ''} — it cannot be paid twice`);
+      }
+      if (purchaseBond && !purchaseBond.ok) {
+        const AR: Record<string, string> = {
+          requesting: 'قيد الطلب', loading: 'جارٍ التحميل', uploaded: 'تم التحميل', on_way: 'في الطريق',
+          arrived: 'وصلت', bond_sent: 'أُرسل السند', late: 'متأخرة', invoiced: 'تمت الفوترة', cancelled: 'ملغاة',
+        };
+        const st = purchaseBond.status
+          ? (lang === 'ar' ? (AR[purchaseBond.status] || purchaseBond.status) : purchaseBond.status)
+          : t('غير محدَّدة', 'unknown');
+        return t(`لا يُسجَّل الشراء قبل أن يُستلَم السند. حالةُ الطلب الآن: «${st}» — راجعها في منصّة التشغيل، وتُفتَح الشاشةُ متى صارت «استُلم السند».`,
+          `A purchase cannot be recorded before the bond is received. The order is currently "${st}" — check it on the operations platform; this opens once it reads "bond received".`);
+      }
+      if (!txForm.amount || Number(txForm.amount) <= 0) return t('اكتب مبلغ الشراء', 'Enter the purchase amount');
+      return null;
+    }
+    if (!txForm.amount || Number(txForm.amount) <= 0) return t('اكتب المبلغ', 'Enter the amount');
+    return null;
+  })();
+
   /** يُضيف الكشفَ وسندَه زوجًا — ويُستدعى من الزرّ ومن مفتاح الإدخال معًا. */
   const addReceivedReport = () => {
     const n = String(txForm.receivedDocNumber || '').trim();
@@ -1520,6 +1565,17 @@ export default function WalletPage() {
                     {txError}
                   </div>
                 )}
+                {/* ── سببُ تعطُّل الزرّ عند الزرّ ─────────────────────────────
+                    الرسائلُ التي تشرح المنع عند خانة البحث في أعلى النافذة،
+                    والزرُّ هنا بعد عشر خانات. فمن نزل يملأ المبلغَ ورقمَ السند
+                    وصل إلى زرٍّ باهتٍ لا يقول شيئًا — فقرأه «صلاحية ناقصة».
+                    راجع `blockReason`. */}
+                {blockReason && !submitting && (
+                  <div className="mb-3 flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-300">
+                    <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                    <p className="text-amber-900 text-[12.5px] leading-relaxed">{blockReason}</p>
+                  </div>
+                )}
                 <div className="flex justify-end gap-3">
                   <button type="button" onClick={() => setShowTxModal(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{L.cancel}</button>
                   {/* ── ولا يُعطَّل الحفظُ بمبلغٍ لا يُطلَب ────────────────────
@@ -1527,7 +1583,8 @@ export default function WalletPage() {
                       الاستلام بلا مبلغ — فكان الزرُّ مطفأً أبدًا ولا سبيلَ إلى
                       حفظه. يُختبَر ما يطلبه كلُّ نوعٍ لا ما يطلبه أكثرُها. */}
                   <button type="button" onClick={handleAddTransaction} disabled={submitting || !canSubmitTx}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50">
+                    title={blockReason || undefined}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                     {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                     {txType === 'tax_invoice'
                       ? (lang === 'ar' ? 'تسجيل الاستلام' : 'Record receipt')

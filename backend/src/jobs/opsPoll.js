@@ -52,6 +52,23 @@ let movingRunning = false;
  */
 const MOVING = ['requesting', 'loading', 'uploaded', 'on_way', 'arrived', 'bond_sent', 'late', 'invoiced'];
 
+/**
+ * والدورةُ الثقيلةُ على عاملٍ واحد.
+ *
+ * البرودكشن عاملان في وضع العنقود، وكلُّ ما في هذا الملفّ يعمل في كليهما — فلو
+ * تُرك هذا الاستطلاعُ على حاله لقُرئت عشرون صفحةً من منصّة غيرِنا في الدقيقة
+ * بدل عشر، وتسابق العاملان على سؤال الصفوف المغادرة نفسِها. والنتيجةُ واحدة،
+ * والثمنُ مضاعفٌ على خادمٍ ليس لنا.
+ *
+ * فيُشترَط العاملُ الأوّل. و`NODE_APP_INSTANCE` يضعه pm2 ويثبت للبديل حين
+ * يُعاد تشغيلُ العامل، فلا تسقط الدورةُ بموته. وحين لا يكون هناك عنقودٌ أصلًا
+ * (تشغيلٌ مفردٌ، أو محلّيًّا) فالقيمةُ غائبةٌ ويعمل كما هو.
+ */
+const isPollWorker = () => {
+  const i = process.env.NODE_APP_INSTANCE;
+  return i === undefined || i === '' || i === '0';
+};
+
 async function pollShipments() {
   try {
     // أحدثُ مئةٍ **أُنشئت** — لا أكثر. (`sort` مُهمَلٌ في المنصّة؛ راجع رأسَ
@@ -198,11 +215,12 @@ function startOpsPoll() {
   const movingMs = Math.max(20000, parseInt(process.env.UPL_MOVING_INTERVAL_MS || '60000', 10));
   fastTimer = setInterval(() => { pollShipments().catch(() => {}); }, fastMs);
   statsTimer = setInterval(() => { pollStats().catch(() => {}); }, statsMs);
-  movingTimer = setInterval(() => { pollMovingShipments().catch(() => {}); }, movingMs);
+  if (isPollWorker()) movingTimer = setInterval(() => { pollMovingShipments().catch(() => {}); }, movingMs);
   // Warm the caches shortly after boot.
   setTimeout(() => { pollShipments().catch(() => {}); pollStats().catch(() => {}); }, 4000);
-  setTimeout(() => { pollMovingShipments().catch(() => {}); }, 12000);
-  console.log(`[opsPoll] live polling started — new shipments every ${fastMs}ms, moving statuses every ${movingMs}ms, stats every ${statsMs}ms`);
+  if (isPollWorker()) setTimeout(() => { pollMovingShipments().catch(() => {}); }, 12000);
+  const moving = isPollWorker() ? `every ${movingMs}ms` : 'on worker 0 only';
+  console.log(`[opsPoll] live polling started — new shipments every ${fastMs}ms, moving statuses ${moving}, stats every ${statsMs}ms`);
 }
 
 module.exports = {

@@ -148,7 +148,7 @@ const stateOf = (v: VReg, docKey: string) => {
 };
 
 function DocumentFamilyPageInner({
-  docKey, path, icon, titleAr, titleEn, subtitleAr, subtitleEn, columns, fileName, searchIn, chips, fields, keyField, rowAction,
+  docKey, path, icon, titleAr, titleEn, subtitleAr, subtitleEn, columns, fileName, searchIn, chips, fields, keyField, rowAction, hideClear,
 }: {
   /**
    * مفتاح المستند ذي تاريخ الانتهاء — أو `null` لعائلةٍ لا تنتهي.
@@ -203,6 +203,18 @@ function DocumentFamilyPageInner({
    * صامتًا لخانة. يُنادي نقطتَه الخاصّة التي تُقيّد مَن نزعها ومتى.
    */
   rowAction?: (v: VReg, reload: () => void) => React.ReactNode;
+  /**
+   * ── صفحةٌ لها فعلُها الخاصّ لا تعرض «مسح البيانات» ────────────────────────
+   *
+   * زرُّ المسح يفرّغ خانات المستند على المركبة — وهو المقصودُ في بطاقة تشغيلٍ
+   * كُتب رقمُها خطأً. أمّا في التفاويض فليس هو المقصود أبدًا: إلغاءُ التفويض
+   * فعلٌ له طرفان (ورقةُ المركبة وإسنادُ الموظّف)، والمسحُ يمسّ الأوّل ويترك
+   * الثاني — فيظنّ الضاغطُ أنّه ألغى ولم يُلغِ.
+   *
+   * ومَن رأى زرًّا اسمُه «مسح البيانات» وليس أمامَه غيرُه ضغطه: أحدَ عشرَ سطرًا
+   * في القاعدة أُلغيت هكذا فبقي أصحابُها مفوَّضين في ملفّاتهم.
+   */
+  hideClear?: boolean;
 }) {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -688,7 +700,7 @@ function DocumentFamilyPageInner({
                           )}
                           {/* المِمحاة لا سلّةُ المهملات: الأيقونةُ نفسها تقول إن
                               الممسوح بياناتٌ لا مركبة. */}
-                          {editable && hasDoc(v, fields!, keyField) && (
+                          {editable && !hideClear && hasDoc(v, fields!, keyField) && (
                             <button onClick={() => clearDoc(v)}
                               title={t('مسح بيانات هذا المستند', 'Clear this document')}
                               className="p-1.5 rounded-lg bg-red-50 text-red-700 border border-red-200 hover:bg-red-100">

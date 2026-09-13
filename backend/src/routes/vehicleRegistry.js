@@ -66,6 +66,8 @@ router.post('/:id/renew', authorize(...EDIT), c.renew);
 // شريحةُ بترو اب: تركيبٌ ونزع، مقيَّدان بالسجلّ — ونزعُها شرطٌ في إخلاء طرف
 // الموظّف، فلا يصحّ أن يكون تفريغَ خانةٍ لا أثرَ له.
 router.post('/:id/fuel-card', authorize(...EDIT), c.fuelCardAction);
+// التفويضُ يُلغى ويُسنَد بفعلٍ واحدٍ يُغلق السجلَّين — راجع authorizationAction.
+router.post('/:id/authorization', authorize(...EDIT), c.authorizationAction);
 router.delete('/:id', authorize(...ADMIN), c.remove);
 
 module.exports = router;

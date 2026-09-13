@@ -5,9 +5,13 @@
 // بلا رقمِ إقامته ولا رقمِ تفويضه ولا مدّته — وهذه هي الورقة كلُّها. وانتهاء
 // التفويض ليس خانةً فارغة: السائق حينئذٍ يقود بلا صفة، فتُقيَّد المخالفة على
 // الشركة وتُنازِع شركةُ التأمين في التغطية عند أوّل حادث.
-import { UserCheck } from 'lucide-react';
+import { UserCheck, UserMinus, UserPlus } from 'lucide-react';
+import api from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
+import { useDialog } from '@/components/system/DialogProvider';
 import DocumentFamilyPage, { commonColumns, type DocColumn, type DocField } from '@/components/vehicles/DocumentFamilyPage';
-import { fmtDate } from '@/lib/vehicleRegistry';
+import { fmtDate, canEditVehicles, type VReg } from '@/lib/vehicleRegistry';
 
 const COLUMNS: DocColumn[] = [
   ...commonColumns(),
@@ -45,9 +49,60 @@ const FIELDS: DocField[] = [
 ];
 
 export default function Page() {
+  const ar = useLanguage().lang === 'ar';
+  const t = (a: string, e: string) => (ar ? a : e);
+  const { user } = useAuth();
+  const { confirm, notify } = useDialog();
+  const canEdit = canEditVehicles(user);
+
+  // ── إلغاءُ التفويض فعلٌ له طرفان ──────────────────────────────────────────
+  //
+  // كان المسؤولُ يفتح المركبةَ ويمسح اسمَ الموظّف ظنًّا أنّه ألغى التفويض. وهو
+  // لا يُلغي: التفويضُ مسجَّلٌ في سجلَّين — ورقةٌ على المركبة، وإسنادٌ يربطها
+  // بالموظّف يقرؤه ملفُّه في الموارد البشريّة. فالمسحُ يفرّغ الورقةَ ويترك
+  // الإسنادَ، فيبقى الرجلُ «مفوَّضٌ على سيّارة» في ملفّه وليس كذلك — وهو شرطٌ
+  // في إخلاء طرفه، فلا يُخلى طرفُه حتى يُكتشَف الأمرُ بيد.
+  //
+  // فصار للفعل زرُّه باسمه، ويُغلق السجلَّين معًا في نداءٍ واحد.
+  const revoke = async (v: VReg, reload: () => void) => {
+    const who = v.authorizedPerson?.name || '';
+    if (!(await confirm({
+      title: t('إلغاء التفويض', 'Revoke authorisation'),
+      tone: 'danger',
+      confirmLabel: t('إلغاء التفويض', 'Revoke'),
+      message: t(
+        `سيُلغى تفويضُ ${who ? `«${who}»` : 'المفوَّض'} على المركبة ${v.plateNumber}. المركبةُ تبقى في السجلّ كما هي — الذي يزول هو التفويضُ وحدَه، ويختفي من ملفّ الموظّف في الموارد البشريّة.`,
+        `The authorisation of ${who ? `"${who}"` : 'the holder'} on vehicle ${v.plateNumber} will be revoked. The vehicle stays in the registry — only the authorisation goes, and it disappears from the employee's HR file.`),
+    }))) return;
+    try {
+      const r = await api.post<{ message: string }>(`/api/vehicle-registry/${v._id}/authorization`, { action: 'revoke' });
+      notify(r?.message || t('أُلغي التفويض', 'Revoked'), 'success');
+      reload();
+    } catch (e: any) { notify(e?.message || t('تعذّر الإلغاء', 'Could not revoke'), 'error'); }
+  };
+
   return (
     <DocumentFamilyPage
       docKey="authorization"
+      // ── ولا زرَّ «مسح البيانات» هنا ────────────────────────────────────────
+      // هو الذي أوقع في الخطأ: اسمُه يقول إنّه يمسح، والمستخدمُ يريد أن يُلغي،
+      // فيضغطه ويمضي. والفعلُ الصحيح له زرُّه أدناه.
+      hideClear
+      rowAction={(v, reload) => {
+        if (!canEdit) return null;
+        return v.authorizedPerson?.name ? (
+          <button key="revoke" onClick={() => revoke(v, reload)}
+            title={t('إلغاء التفويض عن هذا الموظّف — المركبة تبقى', 'Revoke this employee\u2019s authorisation — the vehicle stays')}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-red-50 text-red-700 border border-red-200 text-[11.5px] font-semibold hover:bg-red-100 whitespace-nowrap">
+            <UserMinus className="w-3.5 h-3.5" />{t('إلغاء التفويض', 'Revoke')}
+          </button>
+        ) : (
+          <span key="none" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-50 text-slate-500 border border-slate-200 text-[11.5px] font-semibold whitespace-nowrap"
+            title={t('لا مفوَّضَ على هذه المركبة — يُفوَّض من زرّ التعديل', 'Nobody is authorised on this vehicle — use edit to authorise')}>
+            <UserPlus className="w-3.5 h-3.5" />{t('بلا تفويض', 'Unassigned')}
+          </span>
+        );
+      }}
       path="/system/vehicles/registry/authorizations"
       icon={<UserCheck className="w-5 h-5" />}
       titleAr="التفاويض" titleEn="Driving Authorisations"

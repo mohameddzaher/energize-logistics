@@ -481,8 +481,12 @@ exports.addTransaction = async (req, res) => {
       // وبدونه هنا يُلتَفّ حول القاعدة من باب المحفظة: يُسجَّل الشراء فيُكتب
       // تاريخُ السداد على كشفٍ لم يصل سندُه بعد. فالسدادُ إقرارٌ بخروج المال
       // مقابل ورقةٍ في اليد، والورقةُ لم تُستلَم.
-      const appStatus = String(purchaseWorkflow.applicationStatus || '').trim();
-      if (appStatus !== 'bond_received') {
+      // ── وقبل المنع تُسأل المنصّةُ نفسُها ──────────────────────────────────
+      // المرآةُ قد تكون متأخّرةً عن المنصّة (راجع utils/bondStatus)، والموظّف
+      // الذي غيّرها هناك للتوّ لا ينتظر مزامنةً حتّى يشتري.
+      const { isBondReceived } = require('../utils/bondStatus');
+      if (!(await isBondReceived(purchaseWorkflow))) {
+        const appStatus = String(purchaseWorkflow.applicationStatus || '').trim();
         const known = {
           requesting: 'قيد الطلب', loading: 'جارٍ التحميل', uploaded: 'تم التحميل',
           on_way: 'في الطريق', arrived: 'وصلت', bond_sent: 'أُرسل السند',
@@ -820,8 +824,9 @@ exports.updateTransaction = async (req, res) => {
         });
       }
       // الشرطُ نفسُه على التعديل — وإلّا نُقل الشراءُ إلى كشفٍ لم يصل سندُه.
-      const st = String(wf.applicationStatus || '').trim();
-      if (st !== 'bond_received') {
+      // ويُسأل عن الحالة الحيّة قبل المنع كما في التسجيل.
+      const { isBondReceived } = require('../utils/bondStatus');
+      if (!(await isBondReceived(wf))) {
         return res.status(409).json({
           code: 'BOND_NOT_RECEIVED',
           message: `الكشف ${wf.reportNumber} لم تصر حالتُه «استُلم السند» بعد، فلا تُنقَل إليه مشتريات.`,

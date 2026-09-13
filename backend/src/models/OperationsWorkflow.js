@@ -197,6 +197,11 @@ const operationsWorkflowSchema = new mongoose.Schema(
     externalSource: { type: String, trim: true },
     externalId: { type: String, trim: true },
     lastSyncedAt: { type: Date },
+    // ── وختمُ المنصّة، لا ختمُنا ───────────────────────────────────────────
+    // `lastSyncedAt` متى قرأنا، وهذا متى تغيّر هناك. والاستطلاعُ الدوريُّ يقارن
+    // به فيكتب ما تبدّل وحدَه بدل تسعِمئةِ صفٍّ في كلّ دورة. يُحفَظ كما ورد
+    // نصًّا — قيمةُ مقارنةٍ لا تاريخٌ يُحسب به. راجع jobs/opsPoll.
+    externalUpdatedAt: { type: String, trim: true },
   },
   { timestamps: true }
 );

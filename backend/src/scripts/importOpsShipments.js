@@ -61,7 +61,8 @@ const mapShipment = (x) => ({ ...mapCore(x), createdAt: date(x.created_at) || ne
   let quietPages = 0;
   for (;;) {
     // eslint-disable-next-line no-await-in-loop
-    const r = await upl.get('/admin/shipments', { query: { limit: 100, page, 'sort[updated_at]': 'desc' } });
+    // (`sort` مُهمَلٌ في المنصّة — تردّ دائمًا بترتيب الإنشاء؛ راجع jobs/opsPoll.)
+    const r = await upl.get('/admin/shipments', { query: { limit: 100, page } });
     const d = (r && r.data) || {};
     const items = d.items || [];
     total = d.meta ? d.meta.totalItems : total;

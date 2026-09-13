@@ -33,7 +33,9 @@ async function fetchAllShipments() {
   const limit = 100; // UPL page cap
   let page = 1;
   for (let i = 0; i < 1000; i++) {
-    const out = await upl.get('/admin/shipments', { query: { page, limit, 'sort[updated_at]': 'desc' } });
+    // المسحُ كاملٌ صفحةً صفحة، فالترتيبُ لا يعنيه. (و`sort` مُهمَلٌ في المنصّة
+    // على أيّ حال — تردّ دائمًا بترتيب الإنشاء؛ راجع jobs/opsPoll.)
+    const out = await upl.get('/admin/shipments', { query: { page, limit } });
     const items = (out.data && out.data.items) || [];
     all.push(...items);
     const meta = out.data && out.data.meta;
@@ -87,6 +89,7 @@ function mapShipment(s) {
     ownerPhone: s.car?.owner?.owner_phone || '',
     externalSource: SOURCE,
     externalId: String(s.id),
+    externalUpdatedAt: s.updated_at ? String(s.updated_at) : '',
     lastSyncedAt: new Date(),
   };
   const setOnInsert = {

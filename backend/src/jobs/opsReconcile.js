@@ -32,7 +32,8 @@ async function sweepPlatform() {
   let page = 1; let total = null; let seen = 0;
   for (;;) {
     // eslint-disable-next-line no-await-in-loop
-    const out = await upl.get('/admin/shipments', { query: { limit: 100, page, 'sort[updated_at]': 'desc' } });
+    // (`sort` مُهمَلٌ في المنصّة — تردّ دائمًا بترتيب الإنشاء؛ راجع jobs/opsPoll.)
+    const out = await upl.get('/admin/shipments', { query: { limit: 100, page } });
     const items = (out.data && out.data.items) || [];
     const meta = (out.data && out.data.meta) || {};
     if (total === null) total = meta.total ?? null;

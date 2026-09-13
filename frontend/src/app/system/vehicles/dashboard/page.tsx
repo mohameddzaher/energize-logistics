@@ -94,7 +94,18 @@ export default function VehiclesDashboardPage() {
         <Link href="/system/vehicles/accidents"><StatCard label={tx.estimatedCostTotal} value={fmtSAR(t.estimatedAccidentCost)} accent="text-amber-700" /></Link>
         <Link href="/system/vehicles/accidents"><StatCard label={tx.actualCostTotal} value={fmtSAR(t.actualAccidentCost)} accent="text-red-600" /></Link>
         <Link href="/system/vehicles?status=authorized"><StatCard label={tx.activeAuthorizations} value={t.activeAuthorizations} accent="text-green-600" /></Link>
-        <StatCard label={tx.expiringAuthorizations} value={t.expiringAuthorizations} accent={t.expiredAuthorizations > 0 ? 'text-red-600' : 'text-amber-700'} />
+        {/* ── الكارتُ يفتح ما تحته، وما تحته على الصفحة نفسِها ──────────────
+            قائمةُ التفاويض المنتهية مرسومةٌ في أسفل اللوحة. فلا يُذهَب بها إلى
+            صفحةٍ أخرى تُعيد حسابَها من سجلٍّ آخرَ فتعطي رقمًا مختلفًا — يُنزَل
+            إليها حيث هي. وحين لا يكون تحته شيء (صفر) يبقى رقمًا لا زرًّا. */}
+        {t.expiringAuthorizations > 0 ? (
+          <button type="button" onClick={() => document.getElementById('expiring-auths')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className="text-start rounded-xl transition hover:opacity-80">
+            <StatCard label={tx.expiringAuthorizations} value={t.expiringAuthorizations} accent={t.expiredAuthorizations > 0 ? 'text-red-600' : 'text-amber-700'} />
+          </button>
+        ) : (
+          <StatCard label={tx.expiringAuthorizations} value={t.expiringAuthorizations} accent="text-amber-700" />
+        )}
       </div>
 
       {/* By Type / By Status (now clickable) */}
@@ -165,7 +176,7 @@ export default function VehiclesDashboardPage() {
 
       {/* Authorization document expiry alert feed */}
       {data.expiringAuthorizations.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        <div id="expiring-auths" className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm scroll-mt-24">
           <h3 className="text-slate-900 font-semibold mb-1 flex items-center gap-2">
             <Clock className="w-4 h-4 text-amber-600" /> {tx.expiringAuthorizations}
           </h3>

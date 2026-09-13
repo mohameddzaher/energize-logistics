@@ -205,9 +205,14 @@ function VehiclesOverviewInner() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <Big label={t('إجمالي الحوادث', 'Total')} value={d.claims.total} accent="#0f172a" onClick={() => router.push('/system/vehicles/registry/claims')} />
           <Big label={t('مطالبات مفتوحة', 'Open claims')} value={d.claims.open} accent="#f59e0b" onClick={() => router.push('/system/vehicles/registry/claims?status=pending')} />
-          <Big label={t('الخطأ علينا', 'Our fault')} value={d.claims.ourFault} accent="#dc2626" />
-          <Big label={t('المبلغ المقدَّر (ر.س)', 'Estimated (SAR)')} value={money(d.claims.estimatedSar)} accent="#0ea5e9" />
-          <Big label={t('متوقع استرداده (ر.س)', 'Expected recovery')} value={money(d.claims.expectedRecoverySar)} accent="#16a34a" />
+          <Big label={t('الخطأ علينا', 'Our fault')} value={d.claims.ourFault} accent="#dc2626"
+            onClick={() => router.push('/system/vehicles/registry/claims?fault=ours')} />
+          {/* والمبلغان ليسا قائمةَ صفوف — تُفتَح عليهما صفحةُ الحوادث كاملةً
+              لأنّهما مجموعُها، لا شريحةٌ منها. */}
+          <Big label={t('المبلغ المقدَّر (ر.س)', 'Estimated (SAR)')} value={money(d.claims.estimatedSar)} accent="#0ea5e9"
+            onClick={() => router.push('/system/vehicles/registry/claims')} />
+          <Big label={t('متوقع استرداده (ر.س)', 'Expected recovery')} value={money(d.claims.expectedRecoverySar)} accent="#16a34a"
+            onClick={() => router.push('/system/vehicles/registry/claims')} />
         </div>
       </section>
 

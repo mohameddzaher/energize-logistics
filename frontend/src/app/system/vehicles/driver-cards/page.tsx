@@ -19,6 +19,8 @@ import { LEAD, LEAD_CELL } from '@/components/vehicles/stickyLead';
 import { flexNormalize } from '@/lib/flexMatch';
 
 interface Card {
+  /** يُشتقّ في الخادم: رقمٌ حقيقيٌّ في الخانة — لا كلمةٌ ولا فراغ. */
+  hasCard?: boolean;
   _id: string; idNumber: string; name?: string; dateOfBirth?: string; absherPhone?: string;
   logisticRegister?: string; cardNumber?: string; cardType?: string; expiryDate?: string;
   notes?: string; isActive?: boolean; daysLeft: number | null; state: string;
@@ -105,6 +107,8 @@ export default function DriverCardsPage() {
   const [fType, setFType] = useState('');
   const [fFid, setFFid] = useState('');
   const [editing, setEditing] = useState<Partial<Card> | null>(null);
+  // «له بطاقة / بلا بطاقة» — يُشتقّ في الخادم ويُفلتَر به هنا كبقيّة الشرائح.
+  const [fHas, setFHas] = useState<'' | 'yes' | 'no'>('');
   const [saving, setSaving] = useState(false);
   const [emps, setEmps] = useState<any[]>([]);
   const cf = useColumnFilters<Card>();
@@ -131,6 +135,9 @@ export default function DriverCardsPage() {
     const n = fold(q);
     return cards.filter((c) => {
       if (fState && c.state !== fState) return false;
+      // «له بطاقة» يُشتقّ في الخادم من رقمها — راجع hasCard في listDriverCards.
+      if (fHas === 'yes' && !c.hasCard) return false;
+      if (fHas === 'no' && c.hasCard) return false;
       if (fReg && (c.logisticRegister || '') !== fReg) return false;
       if (fType && (c.cardType || '') !== fType) return false;
       if (fFid && (c.fidelity?.status || '') !== fFid) return false;
@@ -140,12 +147,12 @@ export default function DriverCardsPage() {
         c.employee?.employeeNumber, c.employee?.arabicName,
         ...(c.authorizations || []).map((a) => a.plateNumber)].some((v) => fold(v).includes(n));
     });
-  }, [cards, q, fState, fReg, fType, fFid]);
+  }, [cards, q, fState, fReg, fType, fFid, fHas]);
 
   // آخرُ ما يُطبَّق: فوق البحث والشرائح، كما يفعل إكسل.
   const shownRows = cf.apply(shown, GETTERS);
 
-  const activeF = [fState, fReg, fType, fFid].filter(Boolean).length;
+  const activeF = [fState, fReg, fType, fFid, fHas].filter(Boolean).length;
 
   const save = async () => {
     if (!editing?.idNumber?.trim()) { notify(t('رقم الهوية مطلوب', 'ID number required'), 'error'); return; }
@@ -204,7 +211,16 @@ export default function DriverCardsPage() {
 
       {/* البطاقاتُ تُفلتِر بالضغط: الرقمُ الذي يُقرأ هو الذي يُفتح. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <Stat label={t('إجمالي البطاقات', 'Total cards')} value={totals.total || 0} onClick={() => { setFState(''); setFFid(''); }} on={!fState && !fFid} />
+        {/* ── سائقون لا بطاقات ────────────────────────────────────────────
+            الرقمُ الأوّل كان «إجمالي البطاقات ٥٩» وفي السجلّ سبعٌ وخمسون بطاقة:
+            اثنان من التسعة والخمسين لم تُستخرج بطاقتُهما. والسؤالُ المطروح «كم
+            سائقًا عندنا وكم منهم يحمل بطاقة»، فصار الرقمُ يقوله. */}
+        <Stat label={t('إجمالي السائقين', 'Total drivers')} value={totals.drivers ?? totals.total ?? 0}
+          onClick={() => { setFState(''); setFFid(''); setFHas(''); }} on={!fState && !fFid && !fHas} />
+        <Stat label={t('لهم بطاقة', 'With a card')} value={totals.withCard || 0} accent="text-emerald-600"
+          onClick={() => { setFHas('yes'); setFState(''); }} on={fHas === 'yes'} />
+        <Stat label={t('بلا بطاقة — مطلوبة', 'No card — needed')} value={totals.withoutCard || 0} accent="text-red-600"
+          onClick={() => { setFHas('no'); setFState(''); }} on={fHas === 'no'} />
         <Stat label={t('منتهية', 'Expired')} value={totals.expired || 0} accent="text-red-600" onClick={() => setFState('expired')} on={fState === 'expired'} />
         <Stat label={t('تنتهي خلال ٣٠ يوم', 'Within 30 days')} value={totals.critical || 0} accent="text-orange-600" onClick={() => setFState('critical')} on={fState === 'critical'} />
         <Stat label={t('تنتهي خلال ٦٠ يوم', 'Within 60 days')} value={totals.warning || 0} accent="text-amber-600" onClick={() => setFState('warning')} on={fState === 'warning'} />
@@ -300,7 +316,13 @@ export default function DriverCardsPage() {
                       {c.absherPhone ? <a href={`tel:${c.absherPhone}`} className="inline-flex items-center gap-1 hover:text-[#f37121]"><Phone className="w-3.5 h-3.5" />{c.absherPhone}</a> : '—'}
                     </td>
                     <td className="px-3 py-2.5 font-mono text-slate-600 whitespace-nowrap">{c.logisticRegister || '—'}</td>
-                    <td className="px-3 py-2.5 font-mono text-slate-700 whitespace-nowrap">{c.cardNumber || '—'}</td>
+                    {/* الفراغُ يقول «مطلوبة» — الحالُ تُشتقّ ولا تُكتب كلمةً في
+                        خانة رقم. راجع hasCard. */}
+                    <td className="px-3 py-2.5 font-mono text-slate-700 whitespace-nowrap">
+                      {c.hasCard
+                        ? c.cardNumber
+                        : <span className="font-sans px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[11px] font-semibold">{t('مطلوبة — لم تُستخرج', 'Needed — not issued')}</span>}
+                    </td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{c.cardType || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{c.expiryDate || '—'}</td>
                     <td className="px-3 py-2.5 tabular-nums text-slate-700">{c.daysLeft === null ? '—' : c.daysLeft}</td>
@@ -372,8 +394,20 @@ export default function DriverCardsPage() {
             <TextInput value={editing?.absherPhone || ''} onChange={(e) => setEditing((p) => ({ ...p, absherPhone: e.target.value }))} /></Field>
           <Field label={t('السجل اللوجستي', 'Logistic register')}>
             <TextInput value={editing?.logisticRegister || ''} onChange={(e) => setEditing((p) => ({ ...p, logisticRegister: e.target.value }))} /></Field>
+          {/* ── ولا تُكتب كلمةٌ في خانة رقم ──────────────────────────────────
+              كان من لا بطاقةَ له يُكتب في خانة رقمه «مطلوب». فتُقرأ الخانةُ
+              رقمًا فتجد كلمة، ويُعَدّ الصفُّ بطاقةً وهو ليس بطاقة. والحالُ
+              تُشتقّ من الفراغ: اتركها فارغةً يظهر «مطلوبة» في الجدول وحدَه. */}
           <Field label={t('رقم البطاقة', 'Card number')}>
-            <TextInput value={editing?.cardNumber || ''} onChange={(e) => setEditing((p) => ({ ...p, cardNumber: e.target.value }))} /></Field>
+            <TextInput value={editing?.cardNumber || ''}
+              placeholder={t('اتركه فارغًا إن لم تُستخرج بعد', 'Leave empty if not issued yet')}
+              onChange={(e) => setEditing((p) => ({ ...p, cardNumber: e.target.value }))} />
+            {!String(editing?.cardNumber || '').trim() && (
+              <p className="mt-1 text-[11.5px] text-red-700">
+                {t('بلا رقم ⇒ تُقرأ «مطلوبة — لم تُستخرج» في الجدول', 'No number ⇒ shows as "needed — not issued"')}
+              </p>
+            )}
+          </Field>
           <Field label={t('نوع البطاقة', 'Card type')}>
             <TextInput value={editing?.cardType || ''} onChange={(e) => setEditing((p) => ({ ...p, cardType: e.target.value }))} /></Field>
           <Field label={t('تاريخ الانتهاء', 'Expiry date')}>

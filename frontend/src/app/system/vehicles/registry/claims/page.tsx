@@ -4,7 +4,7 @@
 // ⚠️ الصفحة دي غير «حوادث التفاويض» في نفس القسم. تلك بتسجّل الحادث من ناحية
 // التشغيل (أي سائق، بأي تفويض). دي بتتابع **المطالبة**: نسبة الخطأ، رقم نجم،
 // شركة التأمين، المقدَّر، والمتوقع استرداده.
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -68,6 +68,12 @@ function ClaimsInner() {
   // «الحوادث والمطالبات» يفتح مطالباتِ هذه المركبة لا السجلَّ كلَّه.
   const [q, setQ] = useState(sp?.get('q') || '');
   const [status, setStatus] = useState(sp?.get('status') || '');
+  // «نايمة»: مفتوحةٌ ومضى ثلاثون يومًا بلا ردٍّ من التأمين — تُحسب في الصفّ
+  // نفسِه الذي يرسمها الجدول، فلا تُطلب من الخادم مرّةً أخرى.
+  const [stale, setStale] = useState(sp?.get('stale') === '1');
+  // «الخطأ علينا» يأتي من كارتٍ في النظرة الشاملة، فيُقرأ من الرابط: الضغطُ
+  // هناك يجب أن يفتح الصفوفَ نفسَها التي عُدَّت هناك.
+  const [fault, setFault] = useState(sp?.get('fault') || '');
   const [d, setD] = useState<Awaited<ReturnType<typeof getClaims>> | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -81,8 +87,23 @@ function ClaimsInner() {
 
   const cf = useColumnFilters<any>();
   const allRows = d?.claims || [];
+  // ومعيارُ «النايمة» هو معيارُ الخادم حرفًا بحرف (statusCode !== 'closed' وآخرُ
+  // ردٍّ مضى عليه ثلاثون يومًا): لو اختلفا لأعطى الكارتُ رقمًا والجدولُ تحته
+  // عددًا آخر، وهو أسوأُ من كارتٍ لا يُضغَط.
+  const staleRows = useMemo(() => {
+    const cutoff = Date.now() - 30 * 864e5;
+    let out = allRows;
+    if (stale) {
+      out = out.filter((r: any) => r.statusCode !== 'closed'
+        && r.claim?.lastInsurerUpdateDate
+        && new Date(r.claim.lastInsurerUpdateDate).getTime() < cutoff);
+    }
+    // ونصفُ الخطأ علينا: هو حدُّ الخادم نفسُه (>= 50%) لا «أكثر من النصف».
+    if (fault === 'ours') out = out.filter((r: any) => (r.faultPercent || 0) >= 50);
+    return out;
+  }, [allRows, stale, fault]);
   // آخرُ ما يُطبَّق: فوق البحث وفلتر الحالة.
-  const rows = cf.apply(allRows, GETTERS);
+  const rows = cf.apply(staleRows, GETTERS);
   const cols: ExportColumn[] = [
     { header: t('رقم الحادث', 'Accident no.'), key: 'accidentNumber', width: 18 },
     { header: t('اللوحة', 'Plate'), key: 'vehiclePlate', width: 16 },
@@ -101,7 +122,7 @@ function ClaimsInner() {
 
   // البحث والحالة يُنفَّذان على الخادم، فالمصفوفة التي في اليد نتائجُ الفلتر لا
   // سجلّ المطالبات؛ ومن غير نداءٍ ثانٍ بلا معاملات لا يوجد «كلّ» أصلًا.
-  const hasActiveFilters = !!(q.trim() || status);
+  const hasActiveFilters = !!(q.trim() || status || stale || fault);
   const fetchAllForExport = async () => {
     const all = await getClaims();
     return [{ name: t('الحوادث', 'Claims'), rows: all.claims || [], columns: cols }];
@@ -138,13 +159,17 @@ function ClaimsInner() {
       </PageHeader>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <Stat label={t('إجمالي الحوادث', 'Total')} value={d?.totals.total ?? 0} c="#0f172a" />
-        <Stat label={t('مفتوحة', 'Open')} value={d?.totals.open ?? 0} c="#f59e0b" />
+        <Stat label={t('إجمالي الحوادث', 'Total')} value={d?.totals.total ?? 0} c="#0f172a"
+          onClick={() => { setStatus(''); setStale(false); }} on={!status && !stale} />
+        <Stat label={t('مفتوحة', 'Open')} value={d?.totals.open ?? 0} c="#f59e0b"
+          onClick={() => { setStatus('pending'); setStale(false); }} on={status === 'pending' && !stale} />
+        {/* كارتُ مبلغٍ لا قائمةَ صفوفٍ تحته — يبقى رقمًا يُقرأ. */}
         <Stat label={t('المبلغ المقدَّر (ر.س)', 'Estimated (SAR)')} value={money(d?.totals.estimatedSar)} c="#0ea5e9" />
         <Stat label={t('متوقع استرداده (ر.س)', 'Expected recovery')} value={money(d?.totals.expectedRecoverySar)} c="#16a34a" />
         <Stat label={t('الفجوة (ر.س)', 'Gap (SAR)')} value={money(d?.totals.gapSar)} c="#dc2626" />
         {/* «نايمة» = مفتوحة وعدّى عليها ٣٠ يوم من غير أي رد من التأمين. */}
-        <Stat label={t('بدون رد من التأمين +٣٠ يوم', 'No insurer reply 30d+')} value={d?.totals.stale ?? 0} c="#ea580c" />
+        <Stat label={t('بدون رد من التأمين +٣٠ يوم', 'No insurer reply 30d+')} value={d?.totals.stale ?? 0} c="#ea580c"
+          onClick={() => { setStale((v) => !v); setStatus(''); }} on={stale} />
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm flex flex-wrap items-center gap-2">
@@ -159,6 +184,20 @@ function ClaimsInner() {
           <option value="pending">{t('قيد المتابعة', 'Pending')}</option>
           <option value="closed">{t('مقفولة', 'Closed')}</option>
         </select>
+        {/* فلترٌ جاء من كارتٍ أو من رابط يُرفَع من حيث يُقرأ — وإلّا بقي الجدولُ
+            منقوصًا بلا سببٍ ظاهرٍ في شريط الفلاتر. */}
+        {fault === 'ours' && (
+          <button onClick={() => setFault('')}
+            className="px-2.5 py-2 rounded-lg border border-[#f37121] text-[#d95f13] bg-orange-50 text-sm font-semibold">
+            {t('الخطأ علينا ✕', 'Our fault ✕')}
+          </button>
+        )}
+        {stale && (
+          <button onClick={() => setStale(false)}
+            className="px-2.5 py-2 rounded-lg border border-[#f37121] text-[#d95f13] bg-orange-50 text-sm font-semibold">
+            {t('بدون رد +٣٠ يوم ✕', 'No reply 30d+ ✕')}
+          </button>
+        )}
         <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
         <span className="text-xs text-slate-400 ms-auto">{rows.length} {t('حادث', 'claims')}</span>
       </div>
@@ -282,12 +321,34 @@ function ClaimsInner() {
   );
 }
 
-function Stat({ label, value, c }: { label: string; value: any; c: string }) {
-  return (
-    <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm">
+/**
+ * ── الرقمُ الذي يُقرأ هو الذي يُفتح ─────────────────────────────────────────
+ *
+ * الكروتُ كانت أرقامًا صمّاء: تقرأ «مفتوحة ١٧» ولا سبيلَ إلى السبعةَ عشرَ إلّا
+ * أن تفتح القائمةَ وتفلتر بيدك — وأنت تنظر إلى الرقم الذي يعنيها. فمن ضغط ولم
+ * يحدث شيء ظنّ الشاشةَ معطَّلة.
+ *
+ * وما لا يُفتَح منها لا يبقى مضلّلًا: كارتُ مبلغٍ (المقدَّر، الفجوة) ليس قائمةَ
+ * صفوف — يبقى بلا مؤشّرِ ضغطٍ ولا حركة، فيُقرأ رقمًا كما هو.
+ */
+function Stat({ label, value, c, onClick, on }: {
+  label: string; value: any; c: string; onClick?: () => void; on?: boolean;
+}) {
+  const body = (
+    <>
       <p className="text-2xl font-extrabold leading-none" style={{ color: c }}>{value}</p>
       <p className="text-[11px] text-slate-500 mt-1.5 leading-tight">{label}</p>
-    </div>
+    </>
+  );
+  if (!onClick) {
+    return <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm">{body}</div>;
+  }
+  return (
+    <button type="button" onClick={onClick}
+      className={`text-start bg-white border rounded-xl p-3.5 shadow-sm transition hover:border-[#f37121] hover:shadow
+        ${on ? 'border-[#f37121] ring-1 ring-[#f37121]/30' : 'border-slate-200'}`}>
+      {body}
+    </button>
   );
 }
 

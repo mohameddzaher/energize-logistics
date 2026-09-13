@@ -3,6 +3,8 @@ const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const User = require('../models/User');
 const Employee = require('../models/Employee');
 const Contract = require('../models/Contract');
+// «حالة العقد» على الموظّف صورةٌ من عقده تُحدَّث كلّما تغيّر — راجع utils/contractStatus.
+const { syncEmployeeContractStatus } = require('../utils/contractStatus');
 const LeaveType = require('../models/LeaveType');
 const LeaveRequest = require('../models/LeaveRequest');
 const HRRequest = require('../models/HRRequest');
@@ -583,6 +585,8 @@ exports.renewContract = async (req, res) => {
       renewedBy: req.user._id,
     });
 
+    // التجديدُ يُنشئ عقدًا ساريًا ويُخرج القديم — والحالةُ في ملفّ الموظّف تتبعه.
+    await syncEmployeeContractStatus(old.employee);
     bustEmployeeCaches();
     await logAudit({
       user: req.user._id, action: 'renew_contract', entity: 'Contract', entityId: fresh._id,
@@ -641,7 +645,7 @@ exports.terminateEmployee = async (req, res) => {
     // فالإنهاءُ يكتبها بنفسه. وما أرسلته الشاشةُ يُقدَّم — قائمةُ
     // `hr_contract_status` قد تحمل صيغةً أدقَّ لهذه الحالة — وإلّا فالنصُّ
     // المعتمَد في الملفّ منذ أوّل استيراد.
-    employee.contractStatusText = String(req.body.contractStatus || '').trim() || 'تم انهاء العقد';
+    employee.contractStatusText = String(req.body.contractStatus || '').trim() || 'مفسوخ';
     await employee.save();
 
     // Terminate the active contract too so both records agree.
@@ -649,6 +653,9 @@ exports.terminateEmployee = async (req, res) => {
       { employee: employee._id, status: 'active' },
       { $set: { status: 'terminated', terminatedAt: when, terminationReason: reason, custodyReturned: true } }
     );
+    // وبعدها تُقرأ الحالةُ من العقد نفسِه — فإن كان له عقدٌ فهو الحَكَم، وما
+    // كُتب أعلاه لا يبقى إلّا لمن لا عقدَ له في النظام.
+    if (!String(req.body.contractStatus || '').trim()) await syncEmployeeContractStatus(employee._id);
 
     bustEmployeeCaches();
     await logAudit({ user: req.user._id, action: 'terminate_employee', entity: 'Employee', entityId: employee._id, changes: { after: { reason, date: when, contractStatus: employee.contractStatusText } }, ipAddress: req.ip });
@@ -846,6 +853,7 @@ exports.createContract = async (req, res) => {
       await Contract.updateMany({ employee, status: 'active' }, { $set: { status: 'expired' } });
     }
     const contract = await Contract.create({ ...req.body, createdBy: req.user._id });
+    await syncEmployeeContractStatus(employee);
     await notifyHR({ title: 'Contract created', message: `Contract for employee ${employee}`, relatedEntity: 'Contract', relatedEntityId: contract._id, event: 'hr:contract' });
     res.status(201).json({ contract });
   } catch (error) {
@@ -866,6 +874,7 @@ exports.updateContract = async (req, res) => {
       'contractNumber'];
     for (const f of fields) if (req.body[f] !== undefined) contract[f] = req.body[f];
     await contract.save();
+    await syncEmployeeContractStatus(contract.employee);
     try { emitToUser(String(req.user._id), 'hr:contract', { id: String(contract._id) }); } catch (e) {}
     res.json({ contract });
   } catch (error) {
@@ -904,6 +913,9 @@ exports.terminateContract = async (req, res) => {
     await Employee.findByIdAndUpdate(contract.employee, {
       employmentStatus: 'terminated', terminatedAt: new Date(), terminationReason: req.body.reason || '',
     });
+    // و«حالة العقد» تُشتقّ من العقد نفسِه — لا تُكتب هنا بلفظٍ ثانٍ يفترق عمّا
+    // تعرضه صفحة العقود. راجع utils/contractStatus.
+    await syncEmployeeContractStatus(contract.employee);
     const emp = await Employee.findById(contract.employee).select('user').lean();
     await notifyHR({ title: 'Contract terminated', message: `Contract ${contract._id} terminated`, relatedEntity: 'Contract', relatedEntityId: contract._id, event: 'hr:contract' });
     try { emitToUser(String(req.user._id), 'hr:employee', { id: String(contract.employee) }); } catch (e) {}
@@ -921,6 +933,8 @@ exports.deleteContract = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const contract = await Contract.findByIdAndDelete(req.params.id);
     if (!contract) return res.status(404).json({ message: 'Contract not found' });
+    // حُذف عقدٌ فقد تتغيّر الحالةُ الحاكمة — تُعاد القراءة ممّا بقي.
+    await syncEmployeeContractStatus(contract.employee);
     try { emitToUser(String(req.user._id), 'hr:contract', { id: String(contract._id) }); } catch (e) {}
     res.json({ message: 'Contract deleted' });
   } catch (error) {

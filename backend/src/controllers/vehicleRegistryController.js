@@ -2686,9 +2686,33 @@ exports.listDriverCards = async (req, res) => {
     if (q.state) cards = cards.filter((c) => c.state === q.state);
 
     const count = (s) => cards.filter((c) => c.state === s).length;
+    // ── والبطاقةُ تُعرَف برقمها، والفراغُ يعني «مطلوبة» ────────────────────────
+    //
+    // في السجلّ تسعةٌ وخمسون سائقًا وسبعٌ وخمسون بطاقة: اثنان لم تُستخرج
+    // بطاقتُهما بعد. وكان ذلك مكتوبًا في خانة الرقم نصًّا — كلمةُ «مطلوب» في
+    // موضع الرقم. فتُقرأ الخانةُ رقمًا فتجد كلمة، ويُعَدّ الصفُّ بطاقةً وهو
+    // ليس بطاقة، ويصير «إجمالي البطاقات ٥٩» وهي سبعٌ وخمسون.
+    //
+    // والحالُ تُشتقّ ولا تُكتب: خانةٌ فارغةٌ تعني «لم تُستخرج». فلا كلمةَ تُكتب
+    // بألف صيغة («مطلوب» و«مطلوبة» و«بدون»)، ولا رقمَ مخترَعٌ يُقرأ رقمًا.
+    const NO_CARD = /^\s*(?:مطلوب(?:ة)?|بدون|لا\s*يوجد|غير\s*مستخرجة?|-|—|n\/?a|none)\s*$/i;
+    const hasCard = (c) => {
+      const n = String(c.cardNumber || '').trim();
+      return !!n && !NO_CARD.test(n);
+    };
+    cards = cards.map((c) => ({ ...c, hasCard: hasCard(c) }));
+    // وتُفلتَر بعد الاشتقاق كما تُفلتَر الشريحة.
+    if (q.has === 'yes') cards = cards.filter((c) => c.hasCard);
+    if (q.has === 'no') cards = cards.filter((c) => !c.hasCard);
+
     res.json({
       cards,
       totals: {
+        // الرقمُ الأوّل سائقون لا بطاقات — هو ما يُسأل عنه: كم سائقًا عندنا،
+        // وكم منهم يحمل بطاقةً تخوّله القيادة.
+        drivers: cards.length,
+        withCard: cards.filter((c) => c.hasCard).length,
+        withoutCard: cards.filter((c) => !c.hasCard).length,
         total: cards.length,
         expired: count('expired'),
         critical: count('critical'),

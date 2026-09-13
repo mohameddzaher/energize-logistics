@@ -191,12 +191,16 @@ const REGISTRY = [
     nameAr: 'حالة العقد',
     roles: ['hr_manager', 'hr_specialist'],
     storeLabel: true,
-    // المفاتيحُ بالنصّ العربيّ كما هو مخزَّنٌ في الملفّ منذ أوّل استيراد —
-    // فالقائمةُ تُطابِق المكتوبَ ولا تُنشئ صيغةً خامسة.
+    // ── وبألفاظ صفحة العقود لا بألفاظ ملفّ الاستيراد ────────────────────────
+    // الحالةُ مكتوبةٌ على العقد نفسِه (`Contract.status`) وتقرؤها صفحةُ العقود
+    // «ساري · منتهي · مفسوخ». وكان الاستيرادُ يكتب في ملفّ الموظّف «تم انهاء
+    // العقد» و«غير ساري» — المعنى واحدٌ واللفظُ لفظان، فلا يُفلتَر عليهما معًا
+    // ولا يُعَدّان واحدًا. وُحِّدت على ألفاظ صفحة العقود لأنّ العقدَ هو المستند.
+    // راجع utils/contractStatus.
     seed: [
       { key: 'active', nameEn: 'Active', nameAr: 'ساري' },
-      { key: 'ended', nameEn: 'Contract ended', nameAr: 'تم انهاء العقد' },
-      { key: 'inactive', nameEn: 'Not active', nameAr: 'غير ساري' },
+      { key: 'terminated', nameEn: 'Terminated', nameAr: 'مفسوخ' },
+      { key: 'expired', nameEn: 'Expired', nameAr: 'منتهي' },
       { key: 'none', nameEn: 'None', nameAr: 'لا يوجد' },
     ],
   },

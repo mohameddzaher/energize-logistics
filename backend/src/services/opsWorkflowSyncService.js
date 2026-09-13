@@ -226,6 +226,43 @@ async function upsertShipments(ships) {
     };
   });
 
+  // ── والعميلُ الجديد يدخل قسمَ التحصيل بكوده ────────────────────────────────
+  //
+  // كان سجلُّ أطراف التحصيل يُملأ بسكربتٍ يُشغَّل باليد، فمن أنشأت له العمليّاتُ
+  // كشفًا اليومَ لا يظهر في القسم حتّى يتذكّر أحدٌ تشغيلَه. والقسمُ يعمل بالكود:
+  // به تُنسَب الفاتورة، وبه يُطابَق الدفتر، وبه تُقرأ المديونيّة — فالعميلُ بلا
+  // كودٍ عميلٌ يُشحَن له ولا يُحصَّل منه.
+  //
+  // فيُنشأ مع أوّل كشف. ونوعُه يُشتقّ بالقاعدة نفسِها التي تُشتقّ بها صفةُ
+  // الكشف أعلاه، لا بقاعدةٍ ثانيةٍ تفترق عنها.
+  const { ensureCollectionsParty } = require('../utils/ensureCollectionsParty');
+  const seenNames = new Map();
+  for (const s of live) {
+    const nm = String(s.user?.name || '').trim();
+    if (!nm || seenNames.has(fold(nm))) continue;
+    const custType = typeByCustomer[fold(nm)] || '';
+    const shipDate = s.pick_time ? new Date(s.pick_time) : (s.created_at ? new Date(s.created_at) : null);
+    seenNames.set(fold(nm), {
+      name: nm,
+      paymentType: custType || derivePaymentTypeFor({ reportDate: shipDate, paymentMethod: s.payment_method }, '') || '',
+    });
+  }
+  let newParties = 0;
+  for (const { name, paymentType } of seenNames.values()) {
+    try {
+      const before = await require('../models/CollectionsParty')
+        .countDocuments({ kind: 'customer', nameKey: require('../models/CollectionsParty').fold(name) });
+      if (before) continue;
+      const p = await ensureCollectionsParty(name, { paymentType, source: 'operations_workflow' });
+      if (p) newParties += 1;
+    } catch (e) {
+      // عميلٌ لم يُنشأ لا يوقف مزامنةَ الشحنات: الكشفُ يدخل، والطرفُ يُنشأ في
+      // المزامنة التالية أو بيد القسم.
+      console.error('[ops-sync] تعذّر إنشاء طرف التحصيل:', name, e.message);
+    }
+  }
+  if (newParties) console.log(`[ops-sync] عملاءُ جددٌ دخلوا قسمَ التحصيل بأكوادهم: ${newParties}`);
+
   let created = 0; let updated = 0; let removed = 0;
   const CHUNK = 500;
   for (let i = 0; i < ops.length; i += CHUNK) {

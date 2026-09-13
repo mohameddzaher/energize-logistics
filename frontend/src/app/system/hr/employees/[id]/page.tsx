@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
+import ManagedSelect from '@/components/system/ManagedSelect';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -763,6 +764,9 @@ function RenewModal({ open, employeeId, ar, onClose, onDone }: { open: boolean; 
 function TerminateModal({ open, employeeId, ar, onClose, onDone }: { open: boolean; employeeId: string; ar: boolean; onClose: () => void; onDone: () => void }) {
   const { notify } = useDialog();
   const [reason, setReason] = useState('');
+  const [contractStatus, setContractStatus] = useState('');
+  // ملاحظةٌ حرّةٌ إلى جانب السبب المختار — التفصيلُ الذي لا تسعه قائمة.
+  const [note, setNote] = useState('');
   const [date, setDate] = useState('');
   const [saving, setSaving] = useState(false);
   // ── ما يحمله قبل أن يُكتب سببٌ وتاريخ ────────────────────────────────────
@@ -777,7 +781,7 @@ function TerminateModal({ open, employeeId, ar, onClose, onDone }: { open: boole
   const [checking, setChecking] = useState(false);
   useEffect(() => {
     if (!open) return;
-    setReason(''); setDate(''); setClearance(null); setChecking(true);
+    setReason(''); setDate(''); setContractStatus(''); setNote(''); setClearance(null); setChecking(true);
     api.get<any>(`/api/hr/employees/${employeeId}/clearance`)
       .then(setClearance).catch(() => setClearance(null))
       .finally(() => setChecking(false));
@@ -785,7 +789,14 @@ function TerminateModal({ open, employeeId, ar, onClose, onDone }: { open: boole
   const blocked = !!clearance && !clearance.clear;
   const save = async () => {
     setSaving(true);
-    try { await api.post(`/api/hr/employees/${employeeId}/terminate`, { reason, date: date || undefined }); onDone(); onClose(); }
+    try {
+      await api.post(`/api/hr/employees/${employeeId}/terminate`, {
+        reason: [reason, note.trim()].filter(Boolean).join(' — '),
+        date: date || undefined,
+        contractStatus: contractStatus || undefined,
+      });
+      onDone(); onClose();
+    }
     catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
@@ -828,7 +839,29 @@ function TerminateModal({ open, employeeId, ar, onClose, onDone }: { open: boole
       )}
       <p className="text-slate-500 text-sm">{ar ? 'سيتم تحديث الحالة إلى "منتهي" وإنهاء العقد الساري.' : 'Status becomes “terminated” and the active contract is ended.'}</p>
       <Field label={ar ? 'تاريخ الإنهاء' : 'Date'}><TextInput type="date" value={date} onChange={(ev) => setDate(ev.target.value)} /></Field>
-      <Field label={ar ? 'السبب' : 'Reason'}><TextArea rows={2} value={reason} onChange={(ev) => setReason(ev.target.value)} /></Field>
+      {/* ── السببُ قائمةٌ لا نصٌّ حرّ ──────────────────────────────────────────
+          «استقالة» و«استقاله» و«قدّم استقالته» ثلاثةُ أسبابٍ في التقرير لشيءٍ
+          واحد، فلا يُعَدّ سببٌ ولا يُقارَن شهرٌ بشهر. والقائمةُ تُدار من إعدادات
+          القسم، ومن نقصه سببٌ يزيده من مكانه هذا فيراه كلُّ من بعده — فلا يضطرّ
+          أحدٌ إلى كتابته حرًّا لأنّه غيرُ موجود. */}
+      <Field label={ar ? 'السبب' : 'Reason'}>
+        <ManagedSelect storeLabel type="hr_termination_reason" value={reason}
+          onChange={(v) => setReason(v)}
+          placeholder={ar ? 'اختر السبب…' : 'Select a reason…'} />
+      </Field>
+      {/* ── وحالةُ العقد تُحدَّد هنا ────────────────────────────────────────
+          هي عمودٌ يُقرأ في قائمة «ليس على رأس العمل» ليُعرَف أمفسوخٌ عقدُه أم
+          ساري. وكان لا يكتبه أحدٌ عند الإنهاء، فيبقى فارغًا. يُقترَح «تم انهاء
+          العقد» ويُترك للمستخدم أن يغيّره. */}
+      <Field label={ar ? 'حالة العقد بعد الإنهاء' : 'Contract status after ending'}>
+        <ManagedSelect storeLabel type="hr_contract_status" value={contractStatus}
+          onChange={(v) => setContractStatus(v)}
+          placeholder={ar ? 'تم انهاء العقد (الافتراضي)' : 'Contract ended (default)'} />
+      </Field>
+      <Field label={ar ? 'ملاحظة (اختياري)' : 'Note (optional)'}>
+        <TextArea rows={2} value={note} onChange={(ev) => setNote(ev.target.value)}
+          placeholder={ar ? 'تفصيلٌ لا تسعه القائمة' : 'Detail the list cannot hold'} />
+      </Field>
     </Modal>
   );
 }

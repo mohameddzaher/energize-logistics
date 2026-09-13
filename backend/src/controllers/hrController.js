@@ -631,6 +631,17 @@ exports.terminateEmployee = async (req, res) => {
     employee.employmentStatus = 'terminated';
     employee.terminatedAt = when;
     employee.terminationReason = reason;
+    // ── وحالةُ العقد تُكتب هنا، لا تُترك لمن يفتح الملفّ بعد شهر ─────────────
+    //
+    // «حالة العقد» عمودٌ يُقرأ ليُعرَف موقفُ الموظّف، وكان يُملأ من ملفّ
+    // الاستيراد وحدَه. فمن أُنهيت خدمتُه من الشاشة بقي عمودُه فارغًا: أربعةٌ
+    // وأربعون من واحدٍ وستّين ليسوا على رأس العمل بلا حالةِ عقدٍ مكتوبة. ومن
+    // يفتح قائمةَ «ليس على رأس العمل» لا يعرف أمفسوخٌ عقدُه أم ساري.
+    //
+    // فالإنهاءُ يكتبها بنفسه. وما أرسلته الشاشةُ يُقدَّم — قائمةُ
+    // `hr_contract_status` قد تحمل صيغةً أدقَّ لهذه الحالة — وإلّا فالنصُّ
+    // المعتمَد في الملفّ منذ أوّل استيراد.
+    employee.contractStatusText = String(req.body.contractStatus || '').trim() || 'تم انهاء العقد';
     await employee.save();
 
     // Terminate the active contract too so both records agree.
@@ -640,7 +651,7 @@ exports.terminateEmployee = async (req, res) => {
     );
 
     bustEmployeeCaches();
-    await logAudit({ user: req.user._id, action: 'terminate_employee', entity: 'Employee', entityId: employee._id, changes: { after: { reason, date: when } }, ipAddress: req.ip });
+    await logAudit({ user: req.user._id, action: 'terminate_employee', entity: 'Employee', entityId: employee._id, changes: { after: { reason, date: when, contractStatus: employee.contractStatusText } }, ipAddress: req.ip });
     await notifyHR({ title: 'Employee terminated', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
     try { emitToUser(String(req.user._id), 'hr:contract', { id: String(employee._id) }); } catch (e) {}
     if (employee.user) await notifyUser(employee.user, { title: 'Contract ended', message: 'Your employment has been terminated.', relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });

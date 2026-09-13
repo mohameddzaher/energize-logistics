@@ -38,6 +38,31 @@ import { HrGroupFormModal, HrGroupClearModal } from '@/components/hr/HrGroupModa
 
 const QUICK = [30, 60, 90, 180];
 
+/**
+ * ── مَن ليس على رأس العمل: لماذا؟ ───────────────────────────────────────────
+ *
+ * الضغطُ على «ليس على رأس العمل» يفتح الأسماءَ ولا يقول عن أحدهم شيئًا: أمُنهيةٌ
+ * خدمتُه أم في إجازة، وعقدُه مفسوخٌ أم ساري. وهو أوّلُ ما يُسأل عن كلّ اسمٍ في
+ * تلك القائمة — فيُقرأ كلُّ صفٍّ بفتح ملفّ صاحبه، واحدًا واحدًا.
+ *
+ * فيظهر العمودان في هذه القائمة وحدَها. وهما اثنان لا واحد عن قصد:
+ *
+ *   حالةُ التوظيف   قرارُنا نحن، ومعلومٌ دائمًا — منهيّةٌ خدمتُه أم في إجازة.
+ *   حالةُ العقد     نصُّ ورقة العقد كما كُتب في ملفّ الموارد البشريّة.
+ *
+ * وهما يفترقان كثيرًا: من واحدٍ وستّين ليسوا على رأس العمل، سبعةٌ وخمسون
+ * منهيّةٌ خدمتُهم وأربعةٌ في إجازة — بينما أربعةٌ وأربعون منهم لا حالةَ عقدٍ
+ * مكتوبةٌ لهم أصلًا. فعمودُ العقد وحدَه كان سيُقرأ فارغًا في أكثر الصفوف، وعمودُ
+ * التوظيف وحدَه لا يقول ما على الورقة.
+ */
+const EMPLOYMENT_META: Record<string, { ar: string; en: string; cls: string }> = {
+  terminated: { ar: 'أُنهيت خدمته', en: 'Terminated', cls: 'bg-red-100 text-red-700' },
+  on_leave: { ar: 'في إجازة', en: 'On leave', cls: 'bg-amber-100 text-amber-700' },
+  suspended: { ar: 'موقوف', en: 'Suspended', cls: 'bg-orange-100 text-orange-700' },
+  active: { ar: 'على رأس العمل', en: 'Active', cls: 'bg-emerald-100 text-emerald-700' },
+};
+const employmentMeta = (v?: string) => EMPLOYMENT_META[v || ''] || { ar: v || '—', en: v || '—', cls: 'bg-slate-100 text-slate-600' };
+
 function GroupInner() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -67,6 +92,8 @@ function GroupInner() {
   // ألا يكون هناك فلتر أصلًا.
   const CTRL = ['field', 'status', 'state', 'withinDays', 'sort', 'dir', 'includeExpired', 'q'];
   // ملاحظة: `employment` ليست من CTRL — فهي فلتر يظهر في اللوحة كبقيّة الفلاتر.
+  // العمودان لا يظهران إلّا في قائمة «ليس على رأس العمل»، ولا في مجموعة العقود
+  // (فيها حالةُ العقد عمودًا أصلًا) — راجع EMPLOYMENT_META.
   const [filters, setFilters] = useState<FilterValues>(() =>
     Object.fromEntries([...(sp?.entries() || [])].filter(([k]) => !CTRL.includes(k))));
   const [d, setD] = useState<Awaited<ReturnType<typeof getHrRecords>> | null>(null);
@@ -74,6 +101,7 @@ function GroupInner() {
   // ── التحديد والتجديد ───────────────────────────────────────────────────────
   // المجموعات ذات تاريخ الانتهاء وحدها تقبل التجديد؛ «البيانات البنكية» لا
   // تنتهي فلا معنى لزرّ تجديد فيها.
+  const showWhyInactive = (filters as any).employment === 'inactive' && group !== 'contract';
   const renewable = RENEWABLE_GROUPS.has(group);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState(false);
@@ -134,6 +162,19 @@ function GroupInner() {
     { header: t('الاسم', 'Name'), key: 'name', width: 30 },
     { header: t('رقم الهوية', 'ID number'), key: 'iqamaNumber', width: 16 },
     { header: t('القسم', 'Department'), key: 'department', width: 18 },
+    // والملفُّ يحمل ما تحمله الشاشة: من صدّر قائمةَ «ليس على رأس العمل» ليقرأها
+    // في اجتماعٍ لا يجدها بلا سببها.
+    ...(showWhyInactive ? [
+      {
+        header: t('حالة التوظيف', 'Employment'), key: 'employmentStatus', width: 16,
+        transform: (v: any) => { const m = employmentMeta(v); return ar ? m.ar : m.en; },
+      },
+      {
+        header: t('حالة العقد', 'Contract status'), key: 'values', width: 20,
+        transform: (_v: any, row: any) => String(row.values?.contractStatusText || '').trim()
+          || (ar ? 'غير مسجَّلة' : 'not recorded'),
+      },
+    ] as ExportColumn[] : []),
     ...g.fields.map((f) => ({
       header: ar ? f.ar : f.en, key: 'values',
       transform: (v: any, row: any) => {
@@ -332,6 +373,13 @@ function GroupInner() {
                   </button>
                 </th>
                 <th className="px-3 py-3 text-center font-bold whitespace-nowrap">{t('القسم', 'Department')}</th>
+                {/* لماذا ليس على رأس العمل — عمودان لا واحد. راجع EMPLOYMENT_META. */}
+                {showWhyInactive && (
+                  <>
+                    <th className="px-3 py-3 text-center font-bold whitespace-nowrap">{t('حالة التوظيف', 'Employment')}</th>
+                    <th className="px-3 py-3 text-center font-bold whitespace-nowrap">{t('حالة العقد', 'Contract status')}</th>
+                  </>
+                )}
                 {g.fields.map((f) => (
                   <th key={f.key} className="px-3 py-3 text-center font-bold whitespace-nowrap">
                     <button onClick={() => toggleSort(f.key)} className="inline-flex items-center gap-1 hover:text-white">
@@ -351,13 +399,13 @@ function GroupInner() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((r) => (
-                <Row key={r._id} r={r} fields={g.fields} isDoc={g.document} ar={ar} t={t}
+                <Row key={r._id} r={r} fields={g.fields} isDoc={g.document} ar={ar} t={t} showWhyInactive={showWhyInactive}
                   canEdit={canEdit} onSaved={load} notify={notify} router={router}
                   renewable={renewable} picked={picked} setPicked={setPicked} onRenew={setRenewing}
                   onEdit={(x: RecordRow) => setForm({ mode: 'edit', row: x })} onClear={setClearing} />
               ))}
               {!rows.length && (
-                <tr><td colSpan={4 + g.fields.length + (g.document ? 1 : 0) + (renewable && canEdit ? 1 : 0) + (canEdit ? 1 : 0)} className="px-3 py-12 text-center text-slate-500">
+                <tr><td colSpan={4 + (showWhyInactive ? 2 : 0) + g.fields.length + (g.document ? 1 : 0) + (renewable && canEdit ? 1 : 0) + (canEdit ? 1 : 0)} className="px-3 py-12 text-center text-slate-500">
                   {t('لا نتائج بالفلاتر دي', 'Nothing matches these filters')}
                 </td></tr>
               )}
@@ -406,7 +454,7 @@ function GroupInner() {
 
 // ── صف موظف: كل خانة قابلة للتعديل في مكانها ─────────────────────────────────
 function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router,
-  renewable, picked, setPicked, onRenew, onEdit, onClear }: any) {
+  renewable, picked, setPicked, onRenew, onEdit, onClear, showWhyInactive }: any) {
   const m = r.state ? stateMeta(r.state) : null;
   const sel = renewable && canEdit;
   return (
@@ -430,6 +478,24 @@ function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router,
       {/* رقم الهوية — أكتر حاجة بيتسيرش بيها، فليها عمودها في كل جدول */}
       <td className="px-3 py-2.5 whitespace-nowrap text-slate-700 text-[13px] tabular-nums">{r.iqamaNumber || '—'}</td>
       <td className="px-3 py-2.5 text-slate-700 text-[13px] whitespace-nowrap">{r.department || '—'}</td>
+      {showWhyInactive && (() => {
+        const em = employmentMeta(r.employmentStatus);
+        // نصُّ ورقة العقد كما كُتب في الملفّ — وأربعةٌ وأربعون من واحدٍ وستّين
+        // لا نصَّ لهم، فيُقال «غير مسجَّلة» لا تُترك شرطةً تُقرأ «لا عقد له».
+        const cs = String(r.values?.contractStatusText || '').trim();
+        return (
+          <>
+            <td className="px-3 py-2.5 whitespace-nowrap">
+              <span className={`px-2 py-0.5 rounded-full text-[11.5px] font-semibold ${em.cls}`}>{ar ? em.ar : em.en}</span>
+            </td>
+            <td className="px-3 py-2.5 whitespace-nowrap text-[13px]">
+              {cs
+                ? <span className={`font-semibold ${/انهاء|إنهاء|فسخ|غير ساري|منته/.test(cs) ? 'text-red-700' : 'text-slate-700'}`}>{cs}</span>
+                : <span className="text-slate-400 text-[12px]">{t('غير مسجَّلة', 'not recorded')}</span>}
+            </td>
+          </>
+        );
+      })()}
       {fields.map((f: FieldDef) => (
         <td key={f.key} className="px-3 py-2.5">
           <Cell r={r} f={f} ar={ar} t={t} canEdit={canEdit} onSaved={onSaved} notify={notify} />

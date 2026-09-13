@@ -2804,12 +2804,15 @@ exports.authorizationAction = async (req, res) => {
     // `VehicleAuthorization` تشير إلى `Vehicle` لا إلى `VehicleMaster`، وليس
     // بينهما مفتاحٌ مشترك إلّا رقمُ اللوحة. ويُطابَق بالمفتاح المطويّ لا بالنصّ:
     // اللوحةُ تُكتب بمسافتين هنا وبواحدةٍ هناك.
+    // و`samePlate` لا `plateKey`: السجلّان يكتبان اللوحة الواحدة معكوسةً
+    // («أ ص ي 5034» هنا و«5034 أ ص ي» هناك)، فيُرتَّب الحرفُ ألفبائيًّا ويُفصَل
+    // عن الرقم — راجع تعليقَ `samePlate` أعلاه.
     const Vehicle = require('../models/Vehicle');
-    const key = registryPlateKey(v.plateNumber);
+    const key = samePlate(v.plateNumber);
     let linkedIds = [];
     if (key) {
       const all = await Vehicle.find({}).select('plateNumber').lean();
-      linkedIds = all.filter((x) => registryPlateKey(x.plateNumber) === key).map((x) => x._id);
+      linkedIds = all.filter((x) => samePlate(x.plateNumber) === key).map((x) => x._id);
     }
 
     if (action === 'revoke') {

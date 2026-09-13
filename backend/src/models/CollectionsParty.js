@@ -117,6 +117,39 @@ const collectionsPartySchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true, index: true },
   // مِن أين جاء السجلّ أوّلَ مرّة — كشوفُ التشغيل أم أحدُ السجلّات القائمة.
   // يُقرأ حين يُسأل «ومن أضاف هذا؟» بعد شهر.
+  // ── لقطةُ دفتر التحصيل كما كتبها المحاسب ──────────────────────────────────
+  //
+  // أعمارُ الدين في ورقة `Aging` ليست محسوبةً من فواتيرنا: هي ما أقرّه قسمُ
+  // الحسابات في الملفّ، وعليه يُطالِب القسمُ العميلَ ويُراجَع. وأرقامُنا
+  // المشتقّة من الفواتير تقاربها ولا تطابقها — ستّةٌ في المئة من فواتير الدفتر
+  // لها كشوفٌ عندنا، فالباقي لا نعرف عنه إلّا ما في الورقة.
+  //
+  // فتُحفظ كما هي، مفصولةً في `ledger` حتى لا تختلط بما نحسبه نحن: من أراد رقمَ
+  // المحاسب وجده، ومن أراد رقمَنا وجده، ولا يُقرأ أحدُهما مكانَ الآخر.
+  ledger: {
+    outstanding: { type: Number, default: 0 },      // Total Outstanding
+    total60to1y: { type: Number, default: 0 },      // Total 60+ to 1Y
+    total30to1y: { type: Number, default: 0 },      // Total 30+ to 1Y
+    y1plus: { type: Number, default: 0 },           // 1 Year +
+    d120: { type: Number, default: 0 },
+    d90: { type: Number, default: 0 },
+    d60: { type: Number, default: 0 },
+    d60minus: { type: Number, default: 0 },
+    d45: { type: Number, default: 0 },
+    d30: { type: Number, default: 0 },
+    d15: { type: Number, default: 0 },
+    // ورقةُ النقديّ عمودان لا عشرة: ما مضى عليه أكثرُ من خمسةَ عشرَ يومًا وما دونها.
+    d15plus: { type: Number, default: 0 },
+    d15minus: { type: Number, default: 0 },
+    contracts: { type: String, trim: true, default: '' },
+    reconciliation: { type: String, trim: true, default: '' },
+    reconciliationDate: { type: Date, default: null },
+    comments: { type: String, trim: true, default: '' },
+    // من أيّ ملفٍّ ومتى — فالرقمُ الذي يُطالَب به يُعرَف عمرُه.
+    sourceFile: { type: String, trim: true, default: '' },
+    importedAt: { type: Date, default: null },
+  },
+
   source: { type: String, trim: true, default: '' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });

@@ -613,7 +613,8 @@
         "/api/vehicle-registry",
         "/api/vehicle-registry/filters",
         "/api/vehicle-registry/renew-bulk",
-        "/api/vehicle-registry/renew-shared"
+        "/api/vehicle-registry/renew-shared",
+        "/api/vehicles/employees"
       ],
       "wildcard": false
     },

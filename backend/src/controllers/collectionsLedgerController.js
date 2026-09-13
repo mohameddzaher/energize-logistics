@@ -720,25 +720,35 @@ exports.performance = async (req, res) => {
     if (to) range.$lte = new Date(`${to}T23:59:59.999Z`);
     const hasRange = !!(from || to);
 
-    const partyQ = { kind: 'customer', code: { $gt: '' } };
+    // ── ويُجمَع بالرابط لا بالكود المكتوب في الورقة ─────────────────────────
+    //
+    // `partyCode` نسخةٌ من الكود كما كتبته ورقةُ الفواتير، و`party` هو الرابطُ
+    // الذي استقرّ عليه الاستيراد بعد مطابقة الاسم. وهما يفترقان: ورقةُ الأعمار
+    // وورقةُ الفواتير تختلفان في كود عشرة عملاء، وثمانيةٌ وثمانون عميلًا عرفتهم
+    // الفواتيرُ ولم تعرفهم ورقةُ الأعمار فلا كودَ لهم أصلًا.
+    //
+    // فكان الجمعُ بالكود يُسقط ٤٣٣ فاتورةً فيها ٢٫٣٩ مليونًا محصَّلةً و٦١٠ آلافٍ
+    // مفتوحة — تخرج من حساب كلِّ موظّفٍ وكأنّها لم تكن. والرابطُ يَعرف صاحبَها.
+    const partyQ = { kind: 'customer' };
     if (officer) partyQ.collectionOfficer = { $in: Array.isArray(officer) ? officer : [officer] };
     const parties = await CollectionsParty.find(partyQ).select('code collectionOfficer creditDays').lean();
-    const officerOf = new Map(parties.map((p) => [p.code, p.collectionOfficer || '']));
-    const cdOf = new Map(parties.map((p) => [p.code, p.creditDays || 0]));
-    const codes = parties.map((p) => p.code);
+    const officerOf = new Map(parties.map((p) => [String(p._id), p.collectionOfficer || '']));
+    const cdOf = new Map(parties.map((p) => [String(p._id), p.creditDays || 0]));
+    const ids = parties.map((p) => p._id);
     const today = startOfToday();
 
     // ── والمجاميعُ تُحسب في القاعدة ─────────────────────────────────────────
     // كانت تسعةُ آلاف فاتورةٍ تُنقَل إلى العقدة لتُجمَع هناك: خمسَ عشرةَ ثانيةً
     // على الإنتاج، تكفي لأن تبدو الصفحةُ معطَّلة. والمجموعُ عملُ القاعدة.
-    const collectedMatch = { partyCode: { $in: codes }, status: 'Collected' };
+    // والأرقامُ المحجوزةُ في التسلسل ليست عملَ أحد — راجع models/CollectionInvoice.unused.
+    const collectedMatch = { party: { $in: ids }, status: 'Collected', unused: { $ne: true } };
     if (hasRange) collectedMatch.collectionDate = range;
     const [collected, open] = await Promise.all([
       CollectionInvoice.aggregate([
         { $match: collectedMatch },
         { $addFields: { _base: { $ifNull: ['$deliveryDate', '$invoiceDate'] } } },
         { $group: {
-          _id: '$partyCode', n: { $sum: 1 }, amount: { $sum: '$total' },
+          _id: '$party', n: { $sum: 1 }, amount: { $sum: '$total' },
           // متوسّطُ أيّام التحصيل يُحسب هنا أيضًا: ما لا تاريخَ له يُهمَل ولا
           // يُحسب صفرًا — الصفرُ يجرّ المتوسّطَ إلى أسفلَ بلا سبب.
           days: { $avg: { $cond: [
@@ -748,19 +758,21 @@ exports.performance = async (req, res) => {
         } },
       ]),
       CollectionInvoice.aggregate([
-        { $match: { ...OPEN, partyCode: { $in: codes } } },
-        { $group: { _id: '$partyCode', n: { $sum: 1 }, amount: { $sum: '$total' },
-          overdue: { $push: { d: '$deliveryDate', t: '$total' } } } },
+        { $match: { ...OPEN, party: { $in: ids }, unused: { $ne: true } } },
+        { $group: { _id: '$party', n: { $sum: 1 }, amount: { $sum: '$total' },
+          // ولا يُقاس الاستحقاقُ بتاريخ التسليم وحدَه: فاتورةٌ لم تُسلَّم بعدُ لها
+          // تاريخُ إصدارٍ على أيّ حال، وإسقاطُها تُخفي دَينًا قائمًا.
+          overdue: { $push: { d: { $ifNull: ['$deliveryDate', '$invoiceDate'] }, t: '$total' } } } },
       ]),
     ]);
 
     const stats = new Map();
-    const of = (code) => {
-      const k = officerOf.get(code) || '';
-      if (!stats.has(k)) stats.set(k, { officer: k, accounts: 0, collectedCount: 0, collectedAmount: 0, openCount: 0, openAmount: 0, overdueCount: 0, overdueAmount: 0, _dayNum: 0, _dayDen: 0 });
+    const of = (id) => {
+      const k = officerOf.get(String(id)) || '';
+      if (!stats.has(k)) stats.set(k, { officer: k, accounts: 0, collectedCount: 0, collectedAmount: 0, openCount: 0, openAmount: 0, overdueCount: 0, overdueAmount: 0, withinTermsAmount: 0, agedOver60Amount: 0, _dayNum: 0, _dayDen: 0 });
       return stats.get(k);
     };
-    for (const p of parties) of(p.code).accounts += 1;
+    for (const p of parties) of(p._id).accounts += 1;
     for (const c of collected) {
       const e = of(c._id);
       e.collectedCount += c.n; e.collectedAmount += c.amount;
@@ -769,22 +781,51 @@ exports.performance = async (req, res) => {
     for (const o of open) {
       const e = of(o._id);
       e.openCount += o.n; e.openAmount += o.amount;
-      const cd = cdOf.get(o._id) || 0;
-      if (!cd) continue;
+      // ── وصفرُ الأيّام ليس «بلا أجل» ────────────────────────────────────────
+      // كان `if (!cd) continue` يُخرج كلَّ حسابٍ أجلُه صفر — أي نقدًا عند
+      // التسليم — من حساب المتأخّر. فأشدُّ الشروط صرامةً كان أقلَّها تأخّرًا في
+      // الشاشة، وهو مقلوبٌ تمامًا.
+      const cd = cdOf.get(String(o._id)) || 0;
       for (const x of o.overdue) {
         if (!x.d) continue;
-        if (new Date(new Date(x.d).getTime() + cd * DAY) < today) { e.overdueCount += 1; e.overdueAmount += x.t; }
+        const due = new Date(new Date(x.d).getTime() + cd * DAY);
+        if (due >= today) { e.withinTermsAmount += x.t; continue; }
+        e.overdueCount += 1; e.overdueAmount += x.t;
+        // وما جاوز الستّين يومًا بعد أجله دَينٌ يوشك أن يصير خسارة، لا تأخّرًا.
+        if (due < new Date(today.getTime() - 60 * DAY)) e.agedOver60Amount += x.t;
       }
     }
 
     const rows = [...stats.values()].map((e) => {
       const avg = e._dayDen ? Math.round(e._dayNum / e._dayDen) : null;
       delete e._dayNum; delete e._dayDen;
-      // ── نسبةُ التحصيل: ما حُصِّل من مجموع ما حُصِّل وما بقي ─────────────
-      // لا «من الإجمالي» وحدَه: موظّفٌ حساباتُه صغيرةٌ يبدو ضعيفًا وهو حصّل
-      // كلَّ ما لديه.
-      const denom = e.collectedAmount + e.openAmount;
-      return { ...e, avgDaysToCollect: avg, collectionRate: denom > 0 ? (e.collectedAmount / denom) * 100 : null };
+      // ── نسبةُ التحصيل: ما حُصِّل ممّا **حان موعدُه** ──────────────────────
+      //
+      // كانت `المحصَّل ÷ (المحصَّل + المفتوح)`، وفيها خطآن جعلا الرقمَ يقلب
+      // الترتيب رأسًا على عقب:
+      //
+      //   ① البسطُ تاريخٌ كامل والمقامُ لحظةٌ واحدة. المحصَّلُ يجمع كلَّ ما
+      //     حُصِّل منذ ٢٠٢٢ (ما لم تُحدَّد فترة، وهو الوضعُ الافتراضيّ للشاشة)،
+      //     والمفتوحُ رصيدُ اليوم. فمن طال عهدُه أو كبرت حساباتُه ارتفعت نسبتُه
+      //     من تلقاء نفسها: ٦٣ مليونًا محصَّلةً عبر أربع سنواتٍ مقابل ٤٫٦
+      //     ملايينَ قائمةً اليومَ تعطي ٩٣٪ مهما كان حالُ المحفظة.
+      //
+      //   ② والمقامُ يحسب على الموظّف مالًا **لم يحن موعدُه بعد**. فاتورةٌ
+      //     سُلِّمت أمسِ بأجل ستّين يومًا ليست تقصيرًا، وعدُّها تقصيرًا يعاقب من
+      //     يفوتر أكثر.
+      //
+      // فصارت: ما حُصِّل ÷ (ما حُصِّل + ما تأخّر عن أجله). الطرفان ممّا استُحقّ
+      // فعلًا، والمالُ الذي في مهلته خارج الحساب لأنّه ليس دَينًا متعثّرًا.
+      const due = e.collectedAmount + e.overdueAmount;
+      // وسلامةُ المحفظة سؤالٌ آخرُ يُقرأ بجانبه: كم ممّا في يده لم يتأخّر بعد.
+      // موظّفٌ يحصّل كثيرًا ومحفظتُه متكلّسةٌ ليس كمن يحصّل أقلَّ ودفترُه نظيف.
+      return {
+        ...e,
+        avgDaysToCollect: avg,
+        collectionRate: due > 0 ? (e.collectedAmount / due) * 100 : null,
+        withinTermsRate: e.openAmount > 0 ? (e.withinTermsAmount / e.openAmount) * 100 : null,
+        agedOver60Rate: e.overdueAmount > 0 ? (e.agedOver60Amount / e.overdueAmount) * 100 : null,
+      };
     }).sort((a, b) => b.collectedAmount - a.collectedAmount);
 
     const taskQ = {};
@@ -802,8 +843,10 @@ exports.performance = async (req, res) => {
     const totals = rows.reduce((a, r) => ({
       accounts: a.accounts + r.accounts, collectedAmount: a.collectedAmount + r.collectedAmount,
       openAmount: a.openAmount + r.openAmount, overdueAmount: a.overdueAmount + r.overdueAmount,
+      withinTermsAmount: a.withinTermsAmount + r.withinTermsAmount,
+      agedOver60Amount: a.agedOver60Amount + r.agedOver60Amount,
       collectedCount: a.collectedCount + r.collectedCount, openCount: a.openCount + r.openCount,
-    }), { accounts: 0, collectedAmount: 0, openAmount: 0, overdueAmount: 0, collectedCount: 0, openCount: 0 });
+    }), { accounts: 0, collectedAmount: 0, openAmount: 0, overdueAmount: 0, withinTermsAmount: 0, agedOver60Amount: 0, collectedCount: 0, openCount: 0 });
 
     const out = { rows, totals, range: { from: from || null, to: to || null } };
     cache.set(cacheKey, out, TTL);

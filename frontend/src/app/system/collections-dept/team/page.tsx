@@ -36,10 +36,11 @@ export default function CollectionsTeamPage() {
   const [officerFilter, setOfficerFilter] = useState('');
 
   /** يفتح سجلَّ العملاء على حسابات موظّفٍ بعينه — أو على ما لا مسؤولَ له. */
-  // `hasCode` يُطابق ما تحسبه هذه اللوحة: أصحابُ أكواد الحسابات وحدَهم — وإلّا
-  // فُتح صفُّ «بلا مسؤول» على أربعمئةٍ وسبعةٍ وعشرين بدل اثنَي عشر.
+  // وكان هنا `hasCode=true` ليطابق لوحةً كانت تعُدّ أصحابَ الأكواد وحدَهم. ولم
+  // تعد كذلك: الجمعُ صار بالرابط لا بالكود، فصفُّ «بلا مسؤول» يشمل كلَّ من لا
+  // مسؤولَ له — ومنهم من لا كودَ له. ولو بقي القيدُ لفُتح الصفُّ على بعض عدده.
   const openAccounts = (officer?: string) =>
-    router.push(`/system/collections-dept/customers?officer=${encodeURIComponent(officer || 'none')}&hasCode=true`);
+    router.push(`/system/collections-dept/customers?officer=${encodeURIComponent(officer || 'none')}`);
 
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [assignTo, setAssignTo] = useState('');
@@ -113,7 +114,7 @@ export default function CollectionsTeamPage() {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1100px]">
+          <table className="w-full min-w-[1320px]">
             <thead><tr className="table-head border-b border-slate-200">
               <th className={th}>{ar ? 'الموظف' : 'Officer'}</th>
               <th className={`${th} text-end`}>{ar ? 'حسابات' : 'Accounts'}</th>
@@ -121,7 +122,19 @@ export default function CollectionsTeamPage() {
               <th className={`${th} text-end`}>{ar ? 'عدد المحصَّل' : 'Invoices'}</th>
               <th className={`${th} text-end`}>{ar ? 'باقٍ' : 'Outstanding'}</th>
               <th className={`${th} text-end`}>{ar ? 'متأخر' : 'Past due'}</th>
-              <th className={`${th} text-end`}>{ar ? 'نسبة التحصيل' : 'Collection rate'}</th>
+              <th className={`${th} text-end`} title={ar ? 'ما حُصِّل ÷ (ما حُصِّل + ما تأخّر عن أجله). المال الذي لم يحن موعدُه خارج الحساب.' : 'Collected ÷ (collected + past due). Money still within terms is excluded.'}>
+                {ar ? 'نسبة التحصيل' : 'Collection rate'}
+              </th>
+              {/* ── الرقمان اللذان يقولان حالَ المحفظة ────────────────────────
+                  «نسبة التحصيل» تقيس ما دخل، وهي وحدَها تُجمِّل: مَن يحصّل
+                  كثيرًا ويترك القديمَ يتقادم يبدو ممتازًا. فبجانبها كم من
+                  المفتوح ما زال في مهلته، وكم من المتأخّر جاوز الستّين يومًا. */}
+              <th className={`${th} text-end`} title={ar ? 'كم من الرصيد المفتوح لم يحن موعدُ سداده بعد — كلّما ارتفع كانت المحفظة أنظف' : 'Share of the open book still within terms'}>
+                {ar ? 'في المهلة' : 'Within terms'}
+              </th>
+              <th className={`${th} text-end`} title={ar ? 'كم من المتأخّر جاوز ٦٠ يومًا بعد أجله — كلّما ارتفع كان الدَّين أقربَ إلى التعثّر' : 'Share of past-due money more than 60 days late'}>
+                {ar ? 'متقادم ٦٠ي+' : 'Aged 60d+'}
+              </th>
               <th className={`${th} text-end`}>{ar ? 'متوسط أيام التحصيل' : 'Avg days'}</th>
               <th className={`${th} text-end`}>{ar ? 'المهام' : 'Tasks'}</th>
             </tr></thead>
@@ -150,6 +163,20 @@ export default function CollectionsTeamPage() {
                     {r.collectionRate == null ? <span className="text-slate-300">—</span> : (
                       <span className={r.collectionRate >= 80 ? 'text-emerald-600 font-semibold' : r.collectionRate >= 50 ? 'text-amber-600' : 'text-red-600'}>
                         {Math.round(r.collectionRate)}%
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 text-sm text-end tabular-nums">
+                    {r.withinTermsRate == null ? <span className="text-slate-300">—</span> : (
+                      <span className={r.withinTermsRate >= 60 ? 'text-emerald-600 font-semibold' : r.withinTermsRate >= 35 ? 'text-amber-600' : 'text-red-600'}>
+                        {Math.round(r.withinTermsRate)}%
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 text-sm text-end tabular-nums">
+                    {r.agedOver60Rate == null ? <span className="text-slate-300">—</span> : (
+                      <span className={r.agedOver60Rate <= 20 ? 'text-emerald-600' : r.agedOver60Rate <= 40 ? 'text-amber-600 font-semibold' : 'text-red-600 font-semibold'}>
+                        {Math.round(r.agedOver60Rate)}%
                       </span>
                     )}
                   </td>

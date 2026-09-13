@@ -207,8 +207,12 @@ export interface OfficerStat {
   openAmount: number;
   overdueCount: number;
   overdueAmount: number;
+  withinTermsAmount: number;
+  agedOver60Amount: number;
   avgDaysToCollect: number | null;
   collectionRate: number | null;
+  withinTermsRate: number | null;
+  agedOver60Rate: number | null;
   tasks?: number;
   tasksDone?: number;
   tasksCollected?: number;

@@ -92,3 +92,6 @@ backend/_*.js
 
 # Local Netlify folder
 .netlify
+
+# Netlify edge-runtime lockfile written by a local `netlify build`
+frontend/deno.lock

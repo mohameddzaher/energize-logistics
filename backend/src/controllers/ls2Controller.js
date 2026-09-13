@@ -239,7 +239,7 @@ exports.getMileage = async (req, res) => {
       movedVehicles: items.filter((r) => r.km > 0).length,
       items,
     });
-  } catch (error) {
+  } catch (error) { 
     fail(res, error, 'Failed to load mileage');
   }
 };

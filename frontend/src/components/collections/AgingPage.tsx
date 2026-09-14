@@ -15,6 +15,7 @@
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
@@ -108,6 +109,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
 
   const L = exportScopeLabels(ar);
   const ageBands = useMemo(() => bands.filter((b) => b.key !== 'noDate'), [bands]);
+  const cf = useColumnFilters<any>();
   const hasNoDate = (totals.bands?.noDate || 0) !== 0;
 
   const sortBy = (k: string) => {
@@ -134,19 +136,52 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
     { header: ar ? 'منها نقدي' : 'of which cash', key: 'cashOutstanding', width: 16 },
     ...ageBands.map((b) => ({ header: b.label, key: `band_${b.key}`, width: 14 })),
   ];
-  const exportRows = rows.map((r) => ({
-    ...r,
-    ...Object.fromEntries(ageBands.map((b) => [`band_${b.key}`, r.bands?.[b.key] || 0])),
-  }));
-
   if (loading) {
     return <div className="flex items-center justify-center py-24"><Loader2 className="w-6 h-6 animate-spin text-[#f37121]" /></div>;
   }
 
   const th = 'px-3 py-3 text-start text-xs text-slate-300 font-semibold whitespace-nowrap';
+
+  // ── قمعُ إكسل على كلّ عمود ───────────────────────────────────────────────
+  // القيمةُ التي يُفلتَر عليها هي النصُّ الذي تُظهره الخليّة — «٦٠ يومًا» لا
+  // «60»، و«—» يظهر «(فارغ)» — فما يُختار من القائمة هو ما يُقرأ في الصفّ.
+  const G: Record<string, (r: any) => any> = {
+    code: (r) => r.code,
+    name: (r) => r.name,
+    collectionOfficer: (r) => r.collectionOfficer,
+    hoLocation: (r) => r.hoLocation,
+    grade: (r) => r.grade,
+    department: (r) => r.department,
+    salesManagers: (r) => (r.salesManagers || []).join(' / '),
+    creditDays: (r) => (r.creditDays ? (ar ? `${r.creditDays} يومًا` : `${r.creditDays}d`) : ''),
+    creditLimit: (r) => (r.creditLimit ? money(r.creditLimit) : ''),
+    // «المديونية» تُعرض دائمًا ولو صفرًا — فلا تُفرَّغ.
+    limitUsedPct: (r) => (r.limitUsedPct == null ? '' : `${Math.round(r.limitUsedPct)}%`),
+    outstanding: (r) => money(r.outstanding),
+    ...Object.fromEntries(ageBands.map((b) => [`band:${b.key}`,
+      (r: any) => ((r.bands || {})[b.key] ? money(r.bands[b.key]) : '')])),
+  };
+  const shown = cf.apply(rows, G);
+
+  // التصديرُ «المعروض» يتبع فلاتر الأعمدة كما يتبع البحثَ والشريحة.
+  const exportRows = shown.map((r) => ({
+    ...r,
+    ...Object.fromEntries(ageBands.map((b) => [`band_${b.key}`, r.bands?.[b.key] || 0])),
+  }));
+
   const sortable = (k: string, label: string) => (
-    <th className={`${th} cursor-pointer select-none hover:text-white`} onClick={() => sortBy(k)}>
-      {label}{sort === k ? (dir === 'desc' ? ' ↓' : ' ↑') : ''}
+    <th className={`${th} whitespace-nowrap`}>
+      <span className="inline-flex items-center gap-1">
+        <button type="button" onClick={() => sortBy(k)} className="cursor-pointer select-none hover:text-white">
+          {label}{sort === k ? (dir === 'desc' ? ' ↓' : ' ↑') : ''}
+        </button>
+        {cf.header(k, rows, G[k], ar)}
+      </span>
+    </th>
+  );
+  const plain = (k: string, label: string, end?: boolean) => (
+    <th className={`${th}${end ? ' text-end' : ''}`}>
+      <span className="inline-flex items-center gap-1">{label}{cf.header(k, rows, G[k], ar)}</span>
     </th>
   );
 
@@ -232,6 +267,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
               الصفحةُ مرقَّمةٌ على الخادم، فتصديرُ «المعروض» يعني الصفحةَ وحدَها
               — تُسمّى باسمها كي لا يظنّ أحدٌ أنّه صدّر الكلّ. و«كلُّ النتائج»
               يجلبها من الخادم بالفلتر نفسِه. */}
+          <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
           <ExportMenu
             fileName={ar ? 'أعمار-الديون' : 'aging'} lang={lang as 'ar' | 'en'}
             options={[
@@ -260,24 +296,28 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
               <tr className="table-head border-b border-slate-200">
                 {sortable('code', ar ? 'الكود' : 'Code')}
                 {sortable('name', ar ? 'الحساب' : 'Account')}
-                <th className={th}>{ar ? 'موظف التحصيل' : 'Officer'}</th>
-                <th className={th}>{ar ? 'الفرع' : 'Location'}</th>
-                <th className={th}>{ar ? 'التقييم' : 'Grade'}</th>
-                <th className={th}>{ar ? 'القسم' : 'Dept'}</th>
-                <th className={th}>{ar ? 'المبيعات' : 'Sales'}</th>
+                {plain('collectionOfficer', ar ? 'موظف التحصيل' : 'Officer')}
+                {plain('hoLocation', ar ? 'الفرع' : 'Location')}
+                {plain('grade', ar ? 'التقييم' : 'Grade')}
+                {plain('department', ar ? 'القسم' : 'Dept')}
+                {plain('salesManagers', ar ? 'المبيعات' : 'Sales')}
                 {sortable('creditDays', ar ? 'مهلة السداد' : 'Terms')}
                 {sortable('creditLimit', ar ? 'الحد' : 'Limit')}
                 {sortable('limitUsedPct', ar ? 'المستهلك' : 'Used')}
                 {sortable('outstanding', ar ? 'المديونية' : 'Outstanding')}
-                {ageBands.map((b) => <th key={b.key} className={`${th} text-end`}>{b.label}</th>)}
+                {ageBands.map((b) => (
+                  <th key={b.key} className={`${th} text-end`}>
+                    <span className="inline-flex items-center gap-1">{b.label}{cf.header(`band:${b.key}`, rows, G[`band:${b.key}`], ar)}</span>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {rows.length === 0 ? (
+              {shown.length === 0 ? (
                 <tr><td colSpan={11 + ageBands.length} className="px-4 py-12 text-center text-slate-500 text-sm">
-                  {active ? (ar ? 'لا نتائج للفلتر المحدد' : 'No rows match the filters') : (ar ? 'لا حسابات' : 'No accounts')}
+                  {active || cf.count ? (ar ? 'لا نتائج للفلتر المحدد' : 'No rows match the filters') : (ar ? 'لا حسابات' : 'No accounts')}
                 </td></tr>
-              ) : rows.map((r) => (
+              ) : shown.map((r) => (
                 <tr key={r._id} className="hover:bg-slate-50 cursor-pointer"
                   onClick={() => router.push(`/system/collections-dept/parties/${r._id}`)}>
                   <td className="px-3 py-2.5 text-sm font-mono text-slate-600 whitespace-nowrap">{r.code || '—'}</td>

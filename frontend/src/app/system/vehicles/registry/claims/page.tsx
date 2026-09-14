@@ -15,7 +15,7 @@ import { TriangleAlert, Search, ArrowRight, Clock, Plus, Pencil, Trash2, X } fro
 import { LEAD, LEAD_CELL, LEAD_2, useLeadOffset } from '@/components/vehicles/stickyLead';
 import { useAuth } from '@/context/AuthContext';
 import ManagedSelect from '@/components/system/ManagedSelect';
-import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import {
   getClaims, money, fmtDate, canEditVehicles, canAdminVehicles,
   createClaim, updateClaim, deleteClaim,

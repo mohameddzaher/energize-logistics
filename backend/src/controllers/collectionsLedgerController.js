@@ -405,6 +405,48 @@ function decorate(v, today, creditDaysOf) {
   };
 }
 
+/**
+ * كشوفُ التشغيل تحت كلّ فاتورة — تُقرأ لحظةَ القراءة لا من نسخةٍ محفوظة.
+ *
+ * ── لماذا لا تُقرأ من `reportNumbers` المحفوظة ─────────────────────────────
+ * الحقلُ موجودٌ ويُملأ عند الاستيراد، لكنّ كشوفَ التشغيل تصل كلَّ دقيقةٍ من
+ * منصّةِ التشغيل: كشفٌ يُكتب عليه رقمُ فاتورةٍ اليومَ لا تعرفه نسخةٌ كُتبت في
+ * آخر استيراد. فتُشتقّ هنا من الكشوف نفسِها، فلا يظهر عمودُ «كشوف التشغيل»
+ * متأخّرًا عمّا في ملفّ الكشف.
+ *
+ * والفاتورةُ تجمع كشوفًا: من ٥٥٨ فاتورةً لها كشوف، ٣٥٨ تحتها ثلاثةٌ فأكثر.
+ * والباقي بلا كشوفٍ عندنا بحقّ — أكثرُ دفتر التحصيل أقدمُ من نظام التشغيل.
+ */
+async function attachReportNumbers(rows) {
+  const { invoiceNumberKey } = require('../utils/invoiceNumberKey');
+  const OperationsWorkflow = require('../models/OperationsWorkflow');
+  const keys = new Map();   // مفتاحٌ مطويّ → أرقامُ الفواتير كما كُتبت
+  for (const r of rows) {
+    const k = invoiceNumberKey(r.invoiceNumber);
+    if (k) keys.set(k, true);
+  }
+  if (!keys.size) return rows;
+  // الاستعلامُ بالأرقام كما كُتبت (فهرسٌ عليها)، والمطابقةُ بعده بالمفتاح
+  // المطويّ — فلا يفوت رقمٌ كُتب بصفرٍ بادئٍ في أحد السجلَّين.
+  const raw = rows.map((r) => String(r.invoiceNumber || '')).filter(Boolean);
+  const sheets = await OperationsWorkflow.find({ invoiceNumber: { $in: raw } })
+    .select('reportNumber invoiceNumber').lean();
+  const byKey = new Map();
+  for (const w of sheets) {
+    const k = invoiceNumberKey(w.invoiceNumber);
+    const rn = String(w.reportNumber || '').trim();
+    if (!k || !rn) continue;
+    if (!byKey.has(k)) byKey.set(k, new Set());
+    byKey.get(k).add(rn);
+  }
+  for (const r of rows) {
+    const k = invoiceNumberKey(r.invoiceNumber);
+    const hit = k && byKey.get(k);
+    if (hit) r.reportNumbers = [...hit].sort();
+  }
+  return rows;
+}
+
 // GET /api/collections-dept/ledger/invoices
 exports.invoices = async (req, res) => {
   try {
@@ -433,7 +475,8 @@ exports.invoices = async (req, res) => {
       const all = await CollectionInvoice.find(filter).select('-__v').lean();
       const dec = all.map((v) => decorate(v, today, creditDaysOf)).filter((v) => v.band === band);
       const sum = dec.reduce((s, v) => s + v.total, 0);
-      return res.json({ rows: dec.slice((p - 1) * l, p * l), total: dec.length, page: p, pages: Math.ceil(dec.length / l), sum, bands: BANDS });
+      const slice = await attachReportNumbers(dec.slice((p - 1) * l, p * l));
+      return res.json({ rows: slice, total: dec.length, page: p, pages: Math.ceil(dec.length / l), sum, bands: BANDS });
     }
 
     const [rows, total, agg] = await Promise.all([
@@ -442,7 +485,7 @@ exports.invoices = async (req, res) => {
       CollectionInvoice.aggregate([{ $match: filter }, { $group: { _id: null, sum: { $sum: '$total' } } }]),
     ]);
     res.json({
-      rows: rows.map((v) => decorate(v, today, creditDaysOf)),
+      rows: await attachReportNumbers(rows.map((v) => decorate(v, today, creditDaysOf))),
       total, page: p, pages: Math.ceil(total / l), sum: agg[0]?.sum || 0, bands: BANDS,
     });
   } catch (e) {

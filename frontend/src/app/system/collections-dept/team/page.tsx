@@ -18,6 +18,7 @@ import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import { canEditCollections, money, gradeTone, type OfficerStat, type AgingRow } from '@/lib/collections';
 import SearchSelect from '@/components/system/SearchSelect';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { Loader2, Users, Search, UserCog, Check, TrendingUp } from 'lucide-react';
 
 export default function CollectionsTeamPage() {
@@ -73,6 +74,30 @@ export default function CollectionsTeamPage() {
 
   const officers = useMemo(() => [...new Set(team.map((t) => t.officer).filter(Boolean))].sort(), [team]);
 
+  // ── قمعُ إكسل على أعمدة التقييم ─────────────────────────────────────────
+  // القيمُ هي نصُّ الخليّة نفسِه: «٦٠٪» لا 60.34، و«—» يُقرأ «(فارغ)».
+  const cf = useColumnFilters<OfficerStat>();
+  const pct = (v: number | null) => (v == null ? '' : `${Math.round(v)}%`);
+  const PG: Record<string, (r: OfficerStat) => any> = {
+    officer: (r) => r.officer || (ar ? '(بلا مسؤول)' : '(unassigned)'),
+    accounts: (r) => r.accounts,
+    collectedAmount: (r) => money(r.collectedAmount),
+    collectedCount: (r) => r.collectedCount,
+    openAmount: (r) => money(r.openAmount),
+    overdueAmount: (r) => money(r.overdueAmount),
+    collectionRate: (r) => pct(r.collectionRate),
+    withinTermsRate: (r) => pct(r.withinTermsRate),
+    agedOver60Rate: (r) => pct(r.agedOver60Rate),
+    avgDaysToCollect: (r) => (r.avgDaysToCollect ?? ''),
+    tasks: (r) => `${r.tasksDone || 0}/${r.tasks || 0}`,
+  };
+  const perfShown = cf.apply(perf, PG);
+  const TH = (k: string, label: string, end?: boolean, title?: string) => (
+    <th className={`${th}${end ? ' text-end' : ''}`} title={title}>
+      <span className="inline-flex items-center gap-1">{label}{cf.header(k, perf, PG[k], ar)}</span>
+    </th>
+  );
+
   const assign = async () => {
     if (!sel.size) return;
     setSaving(true); setMsg('');
@@ -107,6 +132,7 @@ export default function CollectionsTeamPage() {
             className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm" />
           <input type="date" title={ar ? 'إلى' : 'To'} value={to} onChange={(e) => setTo(e.target.value)}
             className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm" />
+          <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
           <div className="w-52">
             <SearchSelect ar={ar} value={officerFilter} onChange={setOfficerFilter}
               allLabel={ar ? 'كل الفريق' : 'Whole team'}
@@ -116,30 +142,30 @@ export default function CollectionsTeamPage() {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1320px]">
             <thead><tr className="table-head border-b border-slate-200">
-              <th className={th}>{ar ? 'الموظف' : 'Officer'}</th>
-              <th className={`${th} text-end`}>{ar ? 'حسابات' : 'Accounts'}</th>
-              <th className={`${th} text-end`}>{ar ? 'محصَّل' : 'Collected'}</th>
-              <th className={`${th} text-end`}>{ar ? 'عدد المحصَّل' : 'Invoices'}</th>
-              <th className={`${th} text-end`}>{ar ? 'باقٍ' : 'Outstanding'}</th>
-              <th className={`${th} text-end`}>{ar ? 'متأخر' : 'Past due'}</th>
-              <th className={`${th} text-end`} title={ar ? 'ما حُصِّل ÷ (ما حُصِّل + ما تأخّر عن أجله). المال الذي لم يحن موعدُه خارج الحساب.' : 'Collected ÷ (collected + past due). Money still within terms is excluded.'}>
-                {ar ? 'نسبة التحصيل' : 'Collection rate'}
-              </th>
+              {TH('officer', ar ? 'الموظف' : 'Officer')}
+              {TH('accounts', ar ? 'حسابات' : 'Accounts', true)}
+              {TH('collectedAmount', ar ? 'محصَّل' : 'Collected', true)}
+              {TH('collectedCount', ar ? 'عدد المحصَّل' : 'Invoices', true)}
+              {TH('openAmount', ar ? 'باقٍ' : 'Outstanding', true)}
+              {TH('overdueAmount', ar ? 'متأخر' : 'Past due', true)}
+              {TH('collectionRate', ar ? 'نسبة التحصيل' : 'Collection rate', true,
+                ar ? 'ما حُصِّل ÷ (ما حُصِّل + ما تأخّر عن أجله). المال الذي لم يحن موعدُه خارج الحساب.'
+                   : 'Collected ÷ (collected + past due). Money still within terms is excluded.')}
               {/* ── الرقمان اللذان يقولان حالَ المحفظة ────────────────────────
                   «نسبة التحصيل» تقيس ما دخل، وهي وحدَها تُجمِّل: مَن يحصّل
                   كثيرًا ويترك القديمَ يتقادم يبدو ممتازًا. فبجانبها كم من
                   المفتوح ما زال في مهلته، وكم من المتأخّر جاوز الستّين يومًا. */}
-              <th className={`${th} text-end`} title={ar ? 'كم من الرصيد المفتوح لم يحن موعدُ سداده بعد — كلّما ارتفع كانت المحفظة أنظف' : 'Share of the open book still within terms'}>
-                {ar ? 'في المهلة' : 'Within terms'}
-              </th>
-              <th className={`${th} text-end`} title={ar ? 'كم من المتأخّر جاوز ٦٠ يومًا بعد أجله — كلّما ارتفع كان الدَّين أقربَ إلى التعثّر' : 'Share of past-due money more than 60 days late'}>
-                {ar ? 'متقادم ٦٠ي+' : 'Aged 60d+'}
-              </th>
-              <th className={`${th} text-end`}>{ar ? 'متوسط أيام التحصيل' : 'Avg days'}</th>
-              <th className={`${th} text-end`}>{ar ? 'المهام' : 'Tasks'}</th>
+              {TH('withinTermsRate', ar ? 'في المهلة' : 'Within terms', true,
+                ar ? 'كم من الرصيد المفتوح لم يحن موعدُ سداده بعد — كلّما ارتفع كانت المحفظة أنظف'
+                   : 'Share of the open book still within terms')}
+              {TH('agedOver60Rate', ar ? 'متقادم ٦٠ي+' : 'Aged 60d+', true,
+                ar ? 'كم من المتأخّر جاوز ٦٠ يومًا بعد أجله — كلّما ارتفع كان الدَّين أقربَ إلى التعثّر'
+                   : 'Share of past-due money more than 60 days late')}
+              {TH('avgDaysToCollect', ar ? 'متوسط أيام التحصيل' : 'Avg days', true)}
+              {TH('tasks', ar ? 'المهام' : 'Tasks', true)}
             </tr></thead>
             <tbody className="divide-y divide-slate-200">
-              {perf.map((r) => (
+              {perfShown.map((r) => (
                 <tr key={r.officer || '_'} className="hover:bg-slate-50">
                   {/* ── ورقمٌ في لوحةٍ يجب أن يفتح صفوفَه ────────────────────
                       «(بلا مسؤول) ١٢ حسابًا» سطرٌ يُقرأ ولا يُسأل: أيُّ اثنَي

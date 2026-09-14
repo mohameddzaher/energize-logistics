@@ -16,7 +16,7 @@ import { withHijri } from '@/utils/exportExcel';
 import { canEditSection } from '@/lib/sections';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
-import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import ManagedSelect from '@/components/system/ManagedSelect';
 // السؤالُ نفسُه يُطرَح هنا وفي استمارة كلّ صفحةِ عائلة، فتعريفُه واحد — راجع
@@ -45,7 +45,7 @@ function VehicleRegistryListInner() {
   const [rows, setRows] = useState<VReg[]>([]);
   // ── فلترُ العمود على طريقة إكسل ───────────────────────────────────────────
   // القيمةُ تُقرأ بالتعبير نفسِه الذي تُرسم به الخليّة، فما يُفلتَر عليه هو ما
-  // يُقرأ على الشاشة حرفًا بحرف. راجع components/vehicles/useColumnFilters.
+  // يُقرأ على الشاشة حرفًا بحرف. راجع components/useColumnFilters.
   const cf = useColumnFilters<VReg>();
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);

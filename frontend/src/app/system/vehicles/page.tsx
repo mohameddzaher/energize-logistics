@@ -17,7 +17,7 @@ import {
   TextInput, Select, TextArea, Loader2,
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
-import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 
 const EMPTY = {
   plateNumber: '', type: 'car', make: '', model: '', year: '', color: '',
@@ -172,7 +172,7 @@ export default function VehiclesPage() {
             <tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
               {/* الإجراءاتُ أوّلًا وثابتة — راجع components/vehicles/stickyLead. */}
               <th ref={lead.ref} className={`${LEAD} bg-slate-900 text-start font-semibold px-4 py-3`}>{tx.actions}</th>
-              {/* الترويسةُ تحمل قمعَ كلِّ عمود — راجع components/vehicles/useColumnFilters. */}
+              {/* الترويسةُ تحمل قمعَ كلِّ عمود — راجع components/useColumnFilters. */}
               {([
                 ['plate', tx.plateNumber], ['type', tx.type], ['makeModel', `${tx.make}/${tx.model}`],
                 ['authorizedTo', tx.authorizedTo], ['department', tx.department], ['status', tx.status],

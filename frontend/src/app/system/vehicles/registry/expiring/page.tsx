@@ -23,7 +23,7 @@ import { CalendarClock, RefreshCw, ArrowRight, Settings, BellOff } from 'lucide-
 import { useAuth } from '@/context/AuthContext';
 import SelectionBar from '@/components/ls2/SelectionBar';
 import { RenewModal, BulkRenewModal } from '@/components/vehicles/RenewModals';
-import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { LEAD, LEAD_2, useLeadOffset } from '@/components/vehicles/stickyLead';
 import { stateMeta,
   getExpiring, canEditVehicles, STATE_META, stateLabel, publicState, fmtDate, daysText,

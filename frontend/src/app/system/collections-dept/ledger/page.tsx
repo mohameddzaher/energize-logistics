@@ -22,6 +22,7 @@ import { useRouter } from 'next/navigation';
 import SearchSelect from '@/components/system/SearchSelect';
 import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
 import { printTable } from '@/utils/printTable';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 
 export default function LedgerInvoicesPage() {
   const { lang, isRTL } = useLanguage();
@@ -36,6 +37,12 @@ export default function LedgerInvoicesPage() {
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
   const [page, setPage] = useState(1);
+  // ── وفلترُ الأعمدة يرى ما حُمِّل ─────────────────────────────────────────
+  // الدفترُ يُحمَّل صفحةً صفحة (عشرةُ آلافٍ وثمانمئةٍ وثمانٍ وثمانون فاتورة)،
+  // وقمعُ العمود لا يعرف إلّا ما بين يديه. فخمسون صفًّا تجعل القائمةَ تعرض
+  // خمسين قيمةً ويظنّها القارئُ كلَّ القيم. ولذلك صار عددُ الصفوف اختيارًا
+  // ظاهرًا، ومكتوبٌ تحت الفلاتر على كم صفًّا تعمل.
+  const [size, setSize] = useState(200);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -69,12 +76,12 @@ export default function LedgerInvoicesPage() {
   const load = useCallback(async () => {
     setBusy(true);
     try {
-      const p = params(); p.append('page', String(page)); p.append('limit', '50');
+      const p = params(); p.append('page', String(page)); p.append('limit', String(size));
       const d = await api.get<any>(`/api/collections-dept/ledger/invoices?${p.toString()}`);
       setRows(d.rows || []); setTotal(d.total || 0); setPages(d.pages || 1); setSum(d.sum || 0); setBands(d.bands || []);
     } catch { /* keep last known */ }
     finally { setBusy(false); setLoading(false); }
-  }, [params, page]);
+  }, [params, page, size]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.get<any>('/api/collections-dept/ledger/invoices/filters').then(setOpts).catch(() => {}); }, []);
 
@@ -134,6 +141,14 @@ export default function LedgerInvoicesPage() {
     { header: ar ? 'ملاحظات' : 'Comments', key: 'comments', width: 32 },
   ];
 
+  // ── القيمةُ التي يُفلتَر عليها هي القيمةُ التي تُقرأ ──────────────────────
+  // تُشتقّ من تعريف العمود نفسِه: `transform` إن وُجدت، وإلّا الحقلُ الخام. فلا
+  // تفترق قائمةُ القمع عمّا في الخليّة، ولا تُكتب مرّتين فتفترقا لاحقًا.
+  const cf = useColumnFilters<LedgerInvoice>();
+  const getters = Object.fromEntries(allCols.map((c) => [c.key,
+    (r: any) => (c.transform ? c.transform(r[c.key], r) : r[c.key])]));
+  const shown = cf.apply(rows, getters);
+
   const chooserCols: ChooserColumn[] = allCols.map((c, i) => ({ key: c.key, label: c.header, locked: i === 0 }));
   const { visible, setVisible } = useVisibleColumns('collections:ledger:cols', chooserCols);
   const visibleCols = allCols.filter((c) => visible.includes(c.key));
@@ -142,9 +157,9 @@ export default function LedgerInvoicesPage() {
     printTable({
       title: ar ? 'دفتر الفواتير' : 'Invoice ledger',
       columns: visibleCols.map((c) => ({ header: c.header, key: c.key, transform: c.transform, align: c.align === 'center' ? 'start' : c.align })),
-      rows: rows as any,
+      rows: shown as any,
       ar,
-      meta: [`${ar ? 'عدد الصفوف' : 'Rows'}: ${rows.length}`, ar ? 'نتيجة الفلتر' : 'Filtered result'],
+      meta: [`${ar ? 'عدد الصفوف' : 'Rows'}: ${shown.length}`, ar ? 'نتيجة الفلتر' : 'Filtered result'],
     });
   };
 
@@ -234,6 +249,14 @@ export default function LedgerInvoicesPage() {
               <FilterX className="w-4 h-4" />{ar ? 'مسح' : 'Clear'}
             </button>
           )}
+          <select title={ar ? 'عدد الصفوف المحمَّلة' : 'Rows loaded'} value={size}
+            onChange={(e) => { setSize(Number(e.target.value)); setPage(1); }}
+            className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">
+            {[50, 200, 1000, 5000].map((n) => (
+              <option key={n} value={n}>{ar ? `${n} صفًّا` : `${n} rows`}</option>
+            ))}
+          </select>
+          <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
           <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />
           <button type="button" onClick={printNow}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 text-sm font-semibold"
@@ -242,7 +265,7 @@ export default function LedgerInvoicesPage() {
           </button>
           <ExportMenu fileName={ar ? 'دفتر-الفواتير' : 'invoice-ledger'} lang={lang as 'ar' | 'en'}
             options={[
-              { key: 'page', label: L.page, sheets: [{ name: ar ? 'الفواتير' : 'Invoices', rows, columns: cols }] },
+              { key: 'page', label: L.page, sheets: [{ name: ar ? 'الفواتير' : 'Invoices', rows: shown, columns: cols }] },
               { key: 'matching', label: L.matching, hint: String(total),
                 resolve: async () => {
                   const p = params(); p.append('page', '1'); p.append('limit', '5000');
@@ -259,15 +282,22 @@ export default function LedgerInvoicesPage() {
           <table className="w-full min-w-[1500px]">
             <thead>
               <tr className="table-head border-b border-slate-200">
+                {/* قمعُ الفلتر يقرأ `rows` — المعروضَ قبل فلاتر الأعمدة — فتبقى
+                    بقيّةُ القيم في القائمة بعد اختيار واحدة، كما في إكسل. */}
                 {visibleCols.map((c) => (
-                  <th key={c.key} className={`${th}${c.align === 'end' ? ' text-end' : c.align === 'center' ? ' text-center' : ''}`}>{c.header}</th>
+                  <th key={c.key} className={`${th}${c.align === 'end' ? ' text-end' : c.align === 'center' ? ' text-center' : ''}`}>
+                    <span className="inline-flex items-center gap-1">
+                      {c.header}
+                      {cf.header(c.key, rows, getters[c.key], ar)}
+                    </span>
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {rows.length === 0 ? (
+              {shown.length === 0 ? (
                 <tr><td colSpan={visibleCols.length} className="px-4 py-12 text-center text-slate-500 text-sm">{ar ? 'لا فواتير' : 'No invoices'}</td></tr>
-              ) : rows.map((r) => (
+              ) : shown.map((r) => (
                 <tr key={r._id} className={`hover:bg-slate-50 ${r.overdue ? 'bg-red-50/40' : ''}`}>
                   {visibleCols.map((c) => (
                     <td key={c.key} className={`px-3 py-2.5 text-sm whitespace-nowrap ${c.align === 'end' ? 'text-end' : c.align === 'center' ? 'text-center' : ''} ${c.key === 'partyName' ? 'max-w-[260px] truncate' : ''}`}>
@@ -285,7 +315,16 @@ export default function LedgerInvoicesPage() {
         </div>
         {pages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 text-sm">
-            <span className="text-slate-500">{ar ? `صفحة ${page} من ${pages} · ${total} فاتورة` : `Page ${page} of ${pages} · ${total} invoices`}</span>
+            <span className="text-slate-500">
+              {ar ? `صفحة ${page} من ${pages} · ${total} فاتورة`
+                  : `Page ${page} of ${pages} · ${total} invoices`}
+              {cf.count > 0 && (
+                <span className="text-[#f37121] ms-2">
+                  {ar ? `· فلاتر الأعمدة تعمل على ${rows.length} صفًّا محمَّلًا، ظهر منها ${shown.length}`
+                      : `· column filters work on the ${rows.length} loaded rows, ${shown.length} shown`}
+                </span>
+              )}
+            </span>
             <div className="flex gap-1">
               <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} title={ar ? 'السابق' : 'Previous'}
                 className="p-1.5 rounded-lg border border-slate-300 disabled:opacity-40 hover:border-[#f37121]"><ChevronRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} /></button>

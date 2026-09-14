@@ -12,6 +12,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import { kindWords, money, dt, paymentTypeLabel, type CollectionsParty } from '@/lib/collections';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, Select, Loader2 } from '@/components/hr/HRKit';
 import ReportButton from '@/components/system/ReportButton';
 import { printTable } from '@/utils/printTable';
@@ -148,7 +149,32 @@ export default function PartyProfilePage() {
   const valueKey = kind === 'customer' ? 'sellingValue' : 'purchaseValue';
   const closedKey = kind === 'customer' ? 'collectionDate' : 'paymentDate';
 
-  const shownInvoices = (data.money?.invoices || []).filter((i) => showPaidInvoices || !i.collected);
+  // ── قمعُ إكسل على جدولَي الملفّ ────────────────────────────────────────
+  // لكلِّ جدولٍ قمعُه: فلترُ الفواتير لا يفلتر الكشوفَ ولا العكس. والقيمُ هي
+  // نصوصُ الخلايا كما تُقرأ — «لم تُحصَّل» لا `false`.
+  const invCf = useColumnFilters<any>();
+  const repCf = useColumnFilters<any>();
+  const invBase = (data.money?.invoices || []).filter((i) => showPaidInvoices || !i.collected);
+  const IG: Record<string, (i: any) => any> = {
+    invoiceNumber: (i) => i.invoiceNumber,
+    invoiceDate: (i) => dt(i.invoiceDate),
+    deliveryDate: (i) => dt(i.deliveryDate),
+    total: (i) => money(i.total),
+    collectedOn: (i) => (i.collected ? (i.collectionDate ? dt(i.collectionDate) : t('محصَّلة', 'collected')) : t('لم تُحصَّل', 'open')),
+    age: (i) => (i.ageDays == null ? '' : String(i.ageDays)),
+  };
+  const shownInvoices = invCf.apply(invBase, IG);
+  const RG: Record<string, (r: any) => any> = {
+    reportNumber: (r) => r.reportNumber,
+    reportDate: (r) => dt(r.reportDate),
+    route: (r) => [r.fromLocation, r.toLocation].filter(Boolean).join(' — '),
+    branch: (r) => r.branch,
+    value: (r) => money(r[valueKey]),
+    invoiceNumber: (r) => r.invoiceNumber,
+    closed: (r) => (r[closedKey] ? dt(r[closedKey]) : t('لم يُغلق', 'open')),
+    executionStatus: (r) => r.executionStatus,
+  };
+  const repShown = repCf.apply(data.reports || [], RG);
 
   /** طباعةُ فواتيره — المعروضةُ منها، بالأعمدة نفسِها. */
   const printInvoices = () => {
@@ -374,6 +400,7 @@ export default function PartyProfilePage() {
               {t(`الفواتير والمديونية (${data.money.totals.count})`, `Invoices & debt (${data.money.totals.count})`)}
             </p>
             <div className="flex items-center gap-2">
+              <ClearColumnFilters count={invCf.count} onClear={invCf.clear} ar={ar} />
               <button type="button" onClick={() => setShowPaidInvoices((v) => !v)}
                 className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 text-xs font-medium">
                 {showPaidInvoices ? t('غير المحصَّل فقط', 'Unpaid only') : t('إظهار الكل', 'Show all')}
@@ -399,9 +426,12 @@ export default function PartyProfilePage() {
             <table className="w-full text-sm">
               <thead className="table-head">
                 <tr>
-                  {[t('رقم الفاتورة', 'Invoice'), t('تاريخها', 'Date'), t('التسليم', 'Delivered'),
-                    t('القيمة', 'Value'), t('تاريخ التحصيل', 'Collected on'), t('العمر', 'Age')].map((h, i) => (
-                    <th key={i} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>
+                  {[['invoiceNumber', t('رقم الفاتورة', 'Invoice')], ['invoiceDate', t('تاريخها', 'Date')],
+                    ['deliveryDate', t('التسليم', 'Delivered')], ['total', t('القيمة', 'Value')],
+                    ['collectedOn', t('تاريخ التحصيل', 'Collected on')], ['age', t('العمر', 'Age')]].map(([k, h]) => (
+                    <th key={k} className="px-3 py-2 text-start font-semibold whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1">{h}{invCf.header(k, invBase, IG[k], ar)}</span>
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -535,25 +565,31 @@ export default function PartyProfilePage() {
           <p className="text-[13px] font-bold text-slate-900">
             {t(`الكشوف (${money(data.reportsTotal)})`, `Reports (${money(data.reportsTotal)})`)}
           </p>
-          <p className="text-[11px] text-slate-400">{t('الملغاة مستثناة', 'Cancelled excluded')}</p>
+          <div className="flex items-center gap-2">
+            <ClearColumnFilters count={repCf.count} onClear={repCf.clear} ar={ar} />
+            <p className="text-[11px] text-slate-400">{t('الملغاة مستثناة', 'Cancelled excluded')}</p>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
-                {[t('رقم الكشف', 'Report'), t('التاريخ', 'Date'), t('المسار', 'Route'), t('الفرع', 'Branch'),
-                  kind === 'customer' ? t('قيمة البيع', 'Selling') : t('قيمة الشراء', 'Purchase'),
-                  t('رقم الفاتورة', 'Invoice'),
-                  kind === 'customer' ? t('تاريخ التحصيل', 'Collected') : t('تاريخ السداد', 'Paid'),
-                  t('الحالة', 'Status')].map((h, i) => (
-                  <th key={i} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>
+                {[['reportNumber', t('رقم الكشف', 'Report')], ['reportDate', t('التاريخ', 'Date')],
+                  ['route', t('المسار', 'Route')], ['branch', t('الفرع', 'Branch')],
+                  ['value', kind === 'customer' ? t('قيمة البيع', 'Selling') : t('قيمة الشراء', 'Purchase')],
+                  ['invoiceNumber', t('رقم الفاتورة', 'Invoice')],
+                  ['closed', kind === 'customer' ? t('تاريخ التحصيل', 'Collected') : t('تاريخ السداد', 'Paid')],
+                  ['executionStatus', t('الحالة', 'Status')]].map(([k, h]) => (
+                  <th key={k} className="px-3 py-2 text-start font-semibold whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1">{h}{repCf.header(k, data.reports, RG[k], ar)}</span>
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {data.reports.length === 0 ? (
+              {repShown.length === 0 ? (
                 <tr><td colSpan={8} className="px-3 py-10 text-center text-slate-400">{t('لا كشوف', 'No reports')}</td></tr>
-              ) : data.reports.map((r) => {
+              ) : repShown.map((r) => {
                 const closed = (r as any)[closedKey];
                 return (
                   <tr key={r._id} className="border-b border-slate-100 hover:bg-slate-50">

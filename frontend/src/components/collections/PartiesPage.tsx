@@ -20,6 +20,7 @@ import {
 import ManagedSelect from '@/components/system/ManagedSelect';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import SearchSelect from '@/components/system/SearchSelect';
 import { printTable } from '@/utils/printTable';
 import {
@@ -156,14 +157,11 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
   // يعيد صفّين هو ما يجعل الشاشة تظهر فارغةً بلا سبب.
   useEffect(() => { setPage(1); }, [q, status, city, partyType, active]);
 
-  const shown = useMemo(() => (onlyDue ? rows.filter((r) => (r.outstanding || 0) > 0) : rows), [rows, onlyDue]);
-
-  const totals = useMemo(() => shown.reduce((a, r) => ({
-    reports: a.reports + (r.reports || 0),
-    total: a.total + (r.total || 0),
-    settled: a.settled + (r.settled || 0),
-    outstanding: a.outstanding + (r.outstanding || 0),
-  }), { reports: 0, total: 0, settled: 0, outstanding: 0 }), [shown]);
+  // ── وفلاتُر الأعمدة آخرُ ما يُطبَّق ──────────────────────────────────────
+  // بعد البحث وشريحةِ «عليه مستحقّ» وكلِّ شيء — كما يفعل إكسل. و`base` هي ما
+  // يقرؤه القمعُ ليبني قائمتَه، فتبقى بقيّةُ القيم معروضةً بعد اختيار واحدة.
+  const cf = useColumnFilters<CollectionsParty>();
+  const base = useMemo(() => (onlyDue ? rows.filter((r) => (r.outstanding || 0) > 0) : rows), [rows, onlyDue]);
 
   const save = async () => {
     if (!editing?.name?.trim()) { notify(t('الاسم مطلوب', 'Name required'), 'error'); return; }
@@ -265,6 +263,19 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
     { header: t('آخر كشف', 'Last report'), key: 'lastReportAt', width: 14, transform: (v: any) => dt(v) },
   ];
 
+  const getters = Object.fromEntries(allCols.map((c) => [c.key,
+    (r: any) => (c.transform ? c.transform(r[c.key], r) : r[c.key])]));
+  const shown = cf.apply(base, getters);
+
+  // والمجاميعُ تتبع ما بقي على الشاشة بعد القمع: مجموعٌ لصفوفٍ لا تُرى مجموعٌ
+  // يُقرأ على أنّه مجموعُ المعروض وليس هو.
+  const totals = useMemo(() => shown.reduce((a, r) => ({
+    reports: a.reports + (r.reports || 0),
+    total: a.total + (r.total || 0),
+    settled: a.settled + (r.settled || 0),
+    outstanding: a.outstanding + (r.outstanding || 0),
+  }), { reports: 0, total: 0, settled: 0, outstanding: 0 }), [shown]);
+
   const chooserCols: ChooserColumn[] = allCols.map((c, i) => ({ key: c.key, label: c.header, locked: i === 0 }));
   const { visible, setVisible } = useVisibleColumns(`collections:parties:${kind}:cols`, chooserCols);
   const visibleCols = allCols.filter((c) => visible.includes(c.key));
@@ -309,6 +320,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
         {/* ── نطاقان لا واحد ────────────────────────────────────────────────
             المعروضُ يخرج فورًا، والسجلُّ كلُّه يُجلب عند الضغط لا قبله — فلا
             يُحمَّل خمسةُ آلافِ صفٍّ لمن فتح الصفحة ولن يصدّر. */}
+        <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
         <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />
         <button type="button" onClick={printNow}
           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 text-sm font-semibold"
@@ -479,7 +491,12 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
                     onChange={(e) => setSelected(e.target.checked ? new Set(shown.map((r) => r._id)) : new Set())} />
                 </th>
                 {visibleCols.map((c) => (
-                  <th key={c.key} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{c.header}</th>
+                  <th key={c.key} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1">
+                      {c.header}
+                      {cf.header(c.key, base, getters[c.key], ar)}
+                    </span>
+                  </th>
                 ))}
                 <th className="px-3 py-2.5" />
               </tr>

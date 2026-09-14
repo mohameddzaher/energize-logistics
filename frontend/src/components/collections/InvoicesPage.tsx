@@ -25,6 +25,7 @@ import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import { ColumnFilter, type ColumnFilterOption } from '@/components/ColumnFilter';
 import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import SearchSelect from '@/components/system/SearchSelect';
 import { printTable } from '@/utils/printTable';
 import { Banknote, Receipt, SlidersHorizontal, X, CheckCircle2, ChevronLeft, Truck, Printer } from 'lucide-react';
@@ -356,6 +357,16 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       { header: t('الحالة', 'Status'), key: 'status', width: 14, filter: 'status' },
     ];
 
+  // ── وكلُّ عمودٍ يُفلتَر، بأحد فلترين ─────────────────────────────────────
+  // الأعمدةُ التي تُقابل حقلًا في القاعدة (`c.filter`) تُفلتَر من الخادم، فتقرأ
+  // كلَّ القيم لا قيمَ الصفحة. وما ليس له حقلٌ — عددُ الكشوف، والعمر، والمبلغ،
+  // والمسار — محسوبٌ لا مخزَّن، فلا يُسأل عنه الخادم: يُفلتَر هنا على المعروض.
+  // وكلاهما يظهر قمعًا واحدًا في رأس العمود، فلا يعرف القارئُ أيُّهما.
+  const cf = useColumnFilters<any>();
+  const localGetters = Object.fromEntries(allCols.filter((c) => !c.filter).map((c) => [c.key,
+    (r: any) => (c.transform ? c.transform(r[c.key], r) : r[c.key])]));
+  const shown = cf.apply(rows, localGetters);
+
   const chooserCols: ChooserColumn[] = allCols.map((c, i) => ({ key: c.key, label: c.header, locked: i === 0 }));
   const { visible, setVisible } = useVisibleColumns(`collections:invoices:${kind}:cols`, chooserCols);
   const cols = allCols.filter((c) => visible.includes(c.key));
@@ -450,6 +461,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
           ? t('كشوفٌ نقديّة اكتمل سدادُها — تُحصَّل في يومها', 'Cash reports already paid out — collect same-day')
           : t('الفاتورةُ هي الوحدة، وقد تضمّ أكثر من كشف', 'The invoice is the unit — it may cover several reports')}
       >
+        <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
         <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />
         <button type="button" onClick={printNow}
           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 text-sm font-semibold"
@@ -599,13 +611,15 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                 {/* تحديدُ صفحةٍ كاملةً بضغطةٍ واحدة. */}
                 <th className="px-3 py-2.5 w-10">
                   <input type="checkbox" className="accent-[#f37121]"
-                    checked={rows.length > 0 && rows.every((r) => selected.has(rowKey(r)))}
-                    onChange={(e) => setSelected(e.target.checked ? new Set(rows.map(rowKey)) : new Set())} />
+                    checked={shown.length > 0 && shown.every((r) => selected.has(rowKey(r)))}
+                    onChange={(e) => setSelected(e.target.checked ? new Set(shown.map(rowKey)) : new Set())} />
                 </th>
                 {cols.map((c) => (
                   <th key={c.key} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
                     <span className="inline-flex items-center">
                       {c.header}
+                      {/* لا حقلَ في القاعدة → قمعٌ محلّيٌّ على المعروض. */}
+                      {!c.filter && cf.header(c.key, rows, localGetters[c.key], ar)}
                       {c.filter && (
                         <ColumnFilter
                           field={c.filter}
@@ -633,11 +647,11 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 ? (
+              {shown.length === 0 ? (
                 <tr><td colSpan={cols.length + 2} className="px-4 py-12 text-center text-slate-400">
-                  {colCount ? t('لا نتائج للفلتر المحدد', 'No rows match the filters') : t('لا نتائج', 'No results')}
+                  {colCount || cf.count ? t('لا نتائج للفلتر المحدد', 'No rows match the filters') : t('لا نتائج', 'No results')}
                 </td></tr>
-              ) : rows.map((r: any) => {
+              ) : shown.map((r: any) => {
                 const k = rowKey(r);
                 const on = selected.has(k);
                 return (

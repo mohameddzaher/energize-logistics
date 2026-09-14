@@ -14,7 +14,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
-import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { Boxes } from 'lucide-react';
 import { stateMeta, getRegisters, fmtDate, daysText, money, STATE_META, stateLabel } from '@/lib/vehicleRegistry';
 

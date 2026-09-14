@@ -13,7 +13,7 @@ import api from '@/lib/api';
 import { canEditSection } from '@/lib/sections';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, SearchableSelect, Loader2 } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
-import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { IdCard, Plus, Pencil, Trash2, RotateCcw, Phone } from 'lucide-react';
 import { LEAD, LEAD_CELL } from '@/components/vehicles/stickyLead';
 import { flexNormalize } from '@/lib/flexMatch';

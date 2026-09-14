@@ -186,8 +186,13 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   // ═══ ٣ · خطّةُ الزيارات ═════════════════════════════════════════════════
   // JP: 0 Code … والأيّامُ أعمدةٌ متكرّرةٌ بعد العمود العاشر. تُقرأ كما تُقرأ
   // الورقة: لكلّ عميلٍ عمودٌ لكلّ يوم.
-  const jpRows = body('JP', 6).filter((r) => S(r[0]) && accounts.has(S(r[0])));
-  console.log(`  ③ صفوفُ خطّة JP    ${jpRows.length}`);
+  // ── وخطّةُ الزيارات تُقرأ لتُكتب، لا لتُعَدّ ─────────────────────────────
+  // كان هنا عدٌّ يُطبَع ثمّ يُنسى، والمسحُ أدناه يمحو `CollectionTask` — فكانت
+  // كلُّ إعادةِ استيرادٍ تمحو تاريخَ الزيارات ولا تُعيده. راجع utils/journeyPlan.
+  const { parseJourneyPlan } = require('../utils/journeyPlan');
+  const jp = parseJourneyPlan(raw('JP'));
+  const jpCollected = jp.tasks.reduce((a, t) => a + (t.collected || 0), 0);
+  console.log(`  ③ خطّةُ الزيارات   ${jp.tasks.length} مهمّةً في ${new Set(jp.tasks.map((t) => t.date)).size} يومًا  (محصَّلٌ فيها ${jpCollected.toLocaleString('en-US', { maximumFractionDigits: 2 })})`);
 
   if (!APPLY) {
     console.log('\n  لم يُكتب شيء. أضف --apply للتنفيذ.\n');
@@ -384,6 +389,62 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   }
   console.log(`  ✔ فواتير كُتبت: ${wrote}`);
 
+  // ═══ ٧ب · خطّةُ الزيارات تعود ═══════════════════════════════════════════
+  // المفتاحُ (عميل × يوم × نوعُ الطلب) كما في فهرس النموذج.
+  const jpByCode = new Map();
+  for (const p of await CollectionsParty.find({ kind: 'customer' }).select('code name nameKey aliasKeys').lean()) {
+    if (p.code) jpByCode.set(String(p.code).trim(), p);
+  }
+  const taskOps = jp.tasks.map((t) => {
+    const party = jpByCode.get(t.partyCode) || byName2.get(fold(t.partyName || '')) || null;
+    return {
+      updateOne: {
+        filter: { party: party ? party._id : null, date: t.date, requestType: t.requestType },
+        update: { $set: { ...t, party: party ? party._id : null, source: 'collections_workbook' } },
+        upsert: true,
+      },
+    };
+  });
+  let taskWrote = 0;
+  for (let i = 0; i < taskOps.length; i += 500) {
+    const r = await CollectionTask.bulkWrite(taskOps.slice(i, i + 500), { ordered: false });
+    taskWrote += (r.upsertedCount || 0) + (r.modifiedCount || 0);
+  }
+  console.log(`  ✔ مهامُّ زيارةٍ كُتبت: ${taskWrote}`);
+
+  // ═══ ٧ج · وكشوفُ التشغيل تعود تحت فواتيرها ══════════════════════════════
+  // الورقةُ لا تعرف كشوفَنا، فتُكتب `reportNumbers` فارغةً فوق ما كان. تُعاد
+  // من كشوف التشغيل نفسِها — راجع scripts/linkInvoiceReports.
+  const { invoiceNumberKey } = require('../utils/invoiceNumberKey');
+  const OperationsWorkflow = require('../models/OperationsWorkflow');
+  const invByKey = new Map();
+  for (const i of await CollectionInvoice.find({ unused: { $ne: true } }).select('invoiceNumber').lean()) {
+    const k = invoiceNumberKey(i.invoiceNumber);
+    if (!k) continue;
+    if (!invByKey.has(k)) invByKey.set(k, []);
+    invByKey.get(k).push(i._id);
+  }
+  const wantRn = new Map();
+  for (const w of await OperationsWorkflow.find({ invoiceNumber: { $nin: [null, ''] } }).select('reportNumber invoiceNumber').lean()) {
+    const k = invoiceNumberKey(w.invoiceNumber);
+    const rn = S(w.reportNumber);
+    if (!k || !rn) continue;
+    for (const id of (invByKey.get(k) || [])) {
+      const key = String(id);
+      if (!wantRn.has(key)) wantRn.set(key, new Set());
+      wantRn.get(key).add(rn);
+    }
+  }
+  const rnOps = [...wantRn].map(([id, set]) => ({
+    updateOne: { filter: { _id: new mongoose.Types.ObjectId(id) }, update: { $set: { reportNumbers: [...set].sort() } } },
+  }));
+  let rnWrote = 0;
+  for (let i = 0; i < rnOps.length; i += 1000) {
+    const r = await CollectionInvoice.bulkWrite(rnOps.slice(i, i + 1000), { ordered: false });
+    rnWrote += r.modifiedCount || 0;
+  }
+  console.log(`  ✔ فواتيرُ رُبطت بكشوفها: ${rnWrote} (بمجموع ${[...wantRn.values()].reduce((a, s) => a + s.size, 0)} كشفًا)`);
+
   // ═══ ٨ · التحقّق — لا صفَّ ضاع ═════════════════════════════════════════
   const dbTax = await CollectionInvoice.countDocuments({ kind: 'tax' });
   const dbCash = await CollectionInvoice.countDocuments({ kind: 'cash' });
@@ -405,6 +466,8 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   const realOrphans = await CollectionInvoice.countDocuments({ party: null, unused: { $ne: true } });
   console.log(`  ${dbUnused === nUnused ? '✔' : '✘'} ${'أرقامٌ محجوزةٌ بلا فاتورة'.padEnd(26)} الورقة ${String(nUnused).padStart(7)}  القاعدة ${String(dbUnused).padStart(7)}`);
   console.log(`  ${realOrphans ? '⚠' : '✔'} فواتيرُ حقيقيّةٌ بلا حسابٍ مربوط: ${realOrphans}`);
+  const dbTasks = await CollectionTask.countDocuments({});
+  line('مهامُّ الزيارات', jp.tasks.length, dbTasks);
   console.log(`  (وبلا حسابٍ إجمالًا ${orphan} — منها ${dbUnused} أرقامٌ محجوزة)`);
   console.log('');
   await mongoose.disconnect();

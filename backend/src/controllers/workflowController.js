@@ -6,6 +6,8 @@ const logAudit = require('../utils/auditLogger');
 const { emitToAll, emitPerRole } = require('../websocket/socketManager');
 const { derivePaymentTypeFor, hasTaxInvoice } = require('../utils/paymentType');
 const XLSX = require('xlsx');
+const fs = require('fs');
+const path = require('path');
 const cache = require('../utils/ttlCache');
 
 // Field-level permission groups
@@ -1327,32 +1329,35 @@ exports.bulkDelete = async (req, res) => {
 /**
  * تصديرُ سير عمل التشغيل — يُبنى الملفُّ في الخادم ويُنزَّل جاهزًا.
  *
- * ── لماذا لا يُبنى في المتصفّح ──────────────────────────────────────────────
- * كانت الشاشةُ تطلب الجدولَ كلَّه (`limit=100000`) ثمّ تبني المصنَّفَ بنفسها.
- * وخمسةٌ وثلاثون ألفَ صفٍّ من هذه الأعمدة سبعةٌ وثلاثون ميغابايتًا من JSON:
- * يُسلسِلها الخادمُ في ردٍّ واحدٍ فيتوقّف العاملُ عن خدمة غيره وهو يفعل، ثمّ
- * تعبر الشبكةَ، ثمّ يفكّها المتصفّحُ ويبني منها مصنَّفًا في الخيط نفسِه الذي
- * يرسم الصفحة — فتتجمّد الشاشةُ دقائق.
+ * ── أين يذهب الوقتُ حقًّا ───────────────────────────────────────────────────
+ * كانت الشاشةُ تطلب الجدولَ كلَّه (`limit=100000`) ثمّ تبني المصنَّفَ بنفسها،
+ * فتتجمّد دقائق. ونقلُ البناءِ إلى هنا أزال التجمُّدَ ووفّر نحوَ الرُّبع — ولم
+ * يحلَّ المشكلة، لأنّ الخانقَ ليس البناءَ ولا القاعدة:
  *
- * والقاعدةُ ليست هي البطيئة: الفرزُ على فهرس `createdAt` واثنتان وأربعون
- * ميلي‌ثانيةً لخمسةٍ وثلاثين ألفَ صفّ. البطءُ كلُّه في نقل الصفوف وبنائها هناك.
+ *   الفرزُ داخلَ القاعدة على فهرس `createdAt`: ٤٢ ميلي‌ثانيةً لخمسةٍ وثلاثين ألفًا.
+ *   وزمنُ ping من الخادم إلى العنقود: ٩ ميلي‌ثانية.
+ *   ومعدّلُ النقل الفعليّ: **٠٫١ ميغابايت في الثانية**، ثابتًا مهما كبرت الدفعة.
  *
- * فيُبنى هنا: تُقرأ الحقولُ المطلوبةُ وحدَها، ويُكتب ملفٌّ مضغوطٌ حجمُه أجزاءٌ
- * من ذلك، ويُرسَل تنزيلًا. ولا يعبر المتصفّحَ إلّا الملفُّ نفسُه.
+ * ذاك سقفُ عنقودٍ مشترَك (Atlas shared tier — و`hostInfo` ممنوعٌ عليه، وهي
+ * علامتُه). فقراءةُ ما يلزم هذا الملفَّ تستغرق دقائقَ أيًّا كان الكودُ الذي
+ * يقرؤها. ولا يُصلحه إلّا ترقيةُ العنقود.
+ *
+ * ── فما دام السقفُ قائمًا: يُبنى مرّةً ويُخدَم مرارًا ────────────────────────
+ * «الجدولُ كلُّه بلا فلتر» طلبٌ واحدٌ لا يختلف من سائلٍ إلى آخر، ومحتواه يتغيّر
+ * ببطء. فيُبنى الملفُّ ويُحفَظ على القرص، ويُخدَم من هناك في لحظة. ومَن طلبه وهو
+ * قديمٌ أخذ القديمَ فورًا وبُني الجديدُ خلفَه لمن يأتي بعده — انتظارُ خمسِ دقائقَ
+ * أسوأُ من ملفٍّ عمرُه ساعة، وعمرُه مكتوبٌ في ترويسة الردّ على أيّ حال.
+ *
+ * والمفلتَرُ لا يُخزَّن: شرطُه يختلف بين طلبٍ وآخر، وهو أصغرُ بكثير.
  *
  * ── والملفُّ هو ما على الشاشة ───────────────────────────────────────────────
  * الأعمدةُ وترجماتُها هي التي تعرضها صفحةُ سير العمل حرفًا بحرف، لا مجموعةٌ
  * ثانيةٌ تفترق عنها. و`scope=all` وحدَها تتجاوز الفلترَ — وهي خيارٌ يسمّي نفسَه
  * في القائمة، فلا يخرج الملفُّ أوسعَ ممّا طُلب.
  */
-exports.exportWorkflows = async (req, res) => {
-  try {
+async function buildWorkflowWorkbook(filter, money) {
+  {
     const { SHIPMENT_STATUS_AR } = require('../config/constants');
-    // «الكلّ» يتجاوز الفلتر؛ وما عداه يقرأ شرطَ الجدول نفسَه — بما فيه فلاتر
-    // الأعمدة والبحث — فلا يدّعي الملفُّ أنّه نسخةٌ ممّا يُرى وهو غيرُه.
-    const filter = String(req.query.scope || '') === 'all'
-      ? {}
-      : buildWorkflowFilter(req.query, undefined, canSeeMoney(req.user.role));
 
     const PAYMENT_AR = { cash: 'كاش', late: 'آجل' };
     const STAGE_AR = {
@@ -1404,7 +1409,7 @@ exports.exportWorkflows = async (req, res) => {
 
     // الملفُّ يُفتح خارج النظام حيث لا حارس، فما لا يُعرض على الشاشة لا يخرج
     // فيه — وإلّا كان الحجبُ زينةً يلتفّ عليها زرُّ تصدير.
-    const cols = canSeeMoney(req.user.role) ? COLUMNS : COLUMNS.filter(([, , tag]) => tag !== 'money');
+    const cols = money ? COLUMNS : COLUMNS.filter(([, , tag]) => tag !== 'money');
     const headers = cols.map(([h]) => h);
 
     // ولا تُقرأ حقولٌ لا عمودَ لها: كان الاستعلامُ يجلب المستندَ كاملًا بما فيه
@@ -1438,17 +1443,83 @@ exports.exportWorkflows = async (req, res) => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'العمليات');
     // `compression` يصغّر الملفَّ إلى نحو خُمسه — وهو فرقُ ثوانٍ على الشبكة.
-    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', compression: true });
+    return { buf: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', compression: true }), rows: aoa.length - 1 };
+  }
+}
 
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=operations-${new Date().toISOString().split('T')[0]}.xlsx`);
-    res.setHeader('Content-Length', String(buf.length));
-    res.send(buf);
+// ── مخزنُ «الجدول كلّه» على القرص ───────────────────────────────────────────
+// على القرص لا في ذاكرة العامل: البرودكشن عاملان، وذاكرةٌ لكلٍّ منهما تعني
+// بناءَين ونسختين. والقرصُ مشترَكٌ بينهما.
+const EXPORT_DIR = path.join(__dirname, '..', '..', 'uploads', 'exports');
+const ALL_TTL_MS = 60 * 60 * 1000;
+const allFile = (money) => path.join(EXPORT_DIR, `operations-all${money ? '' : '-nomoney'}.xlsx`);
+let buildingAll = false;
+
+async function refreshAllExport(money) {
+  if (buildingAll) return;
+  buildingAll = true;
+  try {
+    const { buf, rows } = await buildWorkflowWorkbook({}, money);
+    fs.mkdirSync(EXPORT_DIR, { recursive: true });
+    // يُكتب إلى اسمٍ مؤقّتٍ ثمّ يُنقَل: من يقرأ أثناء الكتابة يقرأ ملفًّا كاملًا
+    // قديمًا لا ملفًّا نصفَه جديدٌ ونصفُه قديم.
+    const tmp = `${allFile(money)}.tmp`;
+    fs.writeFileSync(tmp, buf);
+    fs.renameSync(tmp, allFile(money));
+    console.log(`[workflowExport] بُني ملفُّ الجدول كلِّه: ${rows} صفًّا · ${(buf.length / 1048576).toFixed(1)}MB`);
+  } catch (e) {
+    console.error('[workflowExport] تعذّر البناء:', e.message);
+  } finally {
+    buildingAll = false;
+  }
+}
+
+exports.exportWorkflows = async (req, res) => {
+  try {
+    const money = canSeeMoney(req.user.role);
+    const wantsAll = String(req.query.scope || '') === 'all';
+    const name = `operations-${new Date().toISOString().split('T')[0]}.xlsx`;
+    const head = (len, ageMs) => {
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename=${name}`);
+      res.setHeader('Content-Length', String(len));
+      // عمرُ الملفّ مُعلَنٌ لا مخفيّ: من أخذ نسخةً عمرُها ساعةٌ يستطيع أن يعرف.
+      if (ageMs != null) res.setHeader('X-Export-Age-Seconds', String(Math.round(ageMs / 1000)));
+    };
+
+    if (wantsAll) {
+      const f = allFile(money);
+      let stat = null;
+      try { stat = fs.statSync(f); } catch (e) { /* لم يُبنَ بعد */ }
+      if (stat) {
+        const age = Date.now() - stat.mtimeMs;
+        // القديمُ يُسلَّم الآن ويُجدَّد خلفَه: الانتظارُ أسوأُ من ساعةٍ من العمر.
+        if (age > ALL_TTL_MS) refreshAllExport(money).catch(() => {});
+        head(stat.size, age);
+        return fs.createReadStream(f).pipe(res);
+      }
+      // أوّلُ مرّة: يُبنى الآن ويُحفَظ، فلا ينتظره أحدٌ بعدها.
+      const { buf } = await buildWorkflowWorkbook({}, money);
+      try {
+        fs.mkdirSync(EXPORT_DIR, { recursive: true });
+        fs.writeFileSync(allFile(money), buf);
+      } catch (e) { /* تعذّر الحفظ لا يمنع التسليم */ }
+      head(buf.length, 0);
+      return res.send(buf);
+    }
+
+    // المفلتَرُ يُبنى لحظتَه — شرطُه يخصّ سائلَه.
+    const filter = buildWorkflowFilter(req.query, undefined, money);
+    const { buf } = await buildWorkflowWorkbook(filter, money);
+    head(buf.length, 0);
+    return res.send(buf);
   } catch (error) {
     console.error('Export workflows error:', error);
-    res.status(500).json({ message: 'Failed to export workflows' });
+    return res.status(500).json({ message: 'Failed to export workflows' });
   }
 };
+
+exports.refreshAllExport = refreshAllExport;
 
 // POST /api/workflows/bulk-import
 exports.bulkImport = async (req, res) => {

@@ -363,6 +363,25 @@ export function Tabs({ tabs, active, onChange }: { tabs: { key: string; label: s
  * نصفُ رقمٍ أسوأُ من رقمٍ ملفوف. وخطُّه يصغر قليلًا على الجوّال ويكبر على
  * الشاشة، و`tabular-nums` تجعل الأرقامَ متساويةَ العرض فتصطفّ البطاقاتُ رأسيًّا.
  */
+/**
+ * Pick — يجعل بطاقةَ رقمٍ زرًّا يفتح ما تحته، ويُعلِم أنّه المختار.
+ *
+ * ── لماذا غلافٌ لا خاصّيّةٌ في `StatCard` ──────────────────────────────────
+ * البطاقةُ نفسُها تُستعمل في عشراتِ الشاشات، وأكثرُها لا شريحةَ تحته تُفتَح:
+ * «عدد التصنيفات» عددُ قيمٍ لا عددُ صفوف. فلو صارت كلُّ بطاقةٍ زرًّا لظنّ
+ * القارئُ أنّ كلَّ رقمٍ يُفتَح، ثمّ ضغط فلم يحدث شيءٌ فظنّ الشاشةَ معطَّلة.
+ *
+ * فالغلافُ يُوضَع على ما له تحته شيءٌ وحدَه، ويبقى ما عداه رقمًا يُقرأ.
+ */
+export function Pick({ on, onClick, children }: { on?: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" onClick={onClick}
+      className={`text-start rounded-xl transition min-w-0 ${on ? 'ring-2 ring-[#f37121] ring-offset-1' : 'hover:opacity-80'}`}>
+      {children}
+    </button>
+  );
+}
+
 export function StatCard({ label, value, accent }: { label: string; value: ReactNode; accent?: string }) {
   return (
     <div className="min-w-0 bg-white border border-slate-200 rounded-xl p-4 shadow-sm">

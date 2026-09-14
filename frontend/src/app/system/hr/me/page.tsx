@@ -10,7 +10,7 @@ import {
   empName, userName, fmtDate, leaveTypeLabel, expiryBadge,
   EMPLOYMENT_STATUS, LEAVE_STATUS, assetTypeLabel,
 } from '@/lib/hr';
-import { Spinner, PageHeader, Badge, SmallBadge, Tabs, StatCard } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, Badge, SmallBadge, Tabs, StatCard, Pick } from '@/components/hr/HRKit';
 import { getHrMeTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
@@ -105,9 +105,15 @@ export default function MyProfilePage() {
 
       {b && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {/* ── ثلاثةٌ من الأربعة أرقامٌ لا صفوفَ تحتها ────────────────────
+              الرصيدُ السنويُّ بندُ سياسةٍ، والمستحقُّ حتى تاريخه حسابُ مدّة،
+              والمتاحُ فرقُ الاثنين. أمّا «المستهلك» فهو إجازاتٌ وقعت — ولها
+              قائمةٌ أسفلَ الصفحة، فهو وحدَه يُفتَح عليها. */}
           <StatCard label={tx.annual} value={`${b.entitlement} ${tx.dayUnit}`} />
           <StatCard label={tx.accrued} value={`${b.accrued} ${tx.dayUnit}`} accent="text-blue-600" />
-          <StatCard label={tx.taken} value={`${b.taken} ${tx.dayUnit}`} accent="text-amber-700" />
+          <Pick onClick={() => { setTab('leaves'); setTimeout(() => document.getElementById('me-leave-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); }}>
+            <StatCard label={tx.taken} value={`${b.taken} ${tx.dayUnit}`} accent="text-amber-700" />
+          </Pick>
           <StatCard label={tx.available} value={`${b.available} ${tx.dayUnit}`} accent={b.available < 0 ? 'text-red-600' : 'text-green-600'} />
         </div>
       )}
@@ -131,7 +137,7 @@ export default function MyProfilePage() {
               <ExportMenu fileName="my-leaves" lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} options={leaveExportOptions} />
             </div>
           )}
-          <div className="overflow-x-auto">
+          <div id="me-leave-list" className="overflow-x-auto scroll-mt-24">
           {data.leaves.length === 0 ? <p className="text-center text-slate-500 py-10">{tx.noLeaves}</p> : (
             <table className="w-full text-sm">
               <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300"><th className="text-start px-4 py-3 font-semibold">{tx.colType}</th><th className="text-start px-4 py-3 font-semibold">{tx.colFrom}</th><th className="text-start px-4 py-3 font-semibold">{tx.colTo}</th><th className="text-start px-4 py-3 font-semibold">{tx.colDays}</th><th className="text-start px-4 py-3 font-semibold">{tx.colStatus}</th></tr></thead>

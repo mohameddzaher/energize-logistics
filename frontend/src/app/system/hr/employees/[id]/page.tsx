@@ -19,7 +19,7 @@ import {
   RENEWAL_TYPES, DOCUMENT_CATEGORIES, renewalTypeLabel, docCategoryLabel, auditActionLabel,
 } from '@/lib/hr';
 import {
-  Spinner, Badge, SmallBadge, Tabs, StatCard, Modal, Field, TextInput, Select, TextArea, PrimaryButton, Loader2,
+  Spinner, Badge, SmallBadge, Tabs, StatCard, Pick, Modal, Field, TextInput, Select, TextArea, PrimaryButton, Loader2,
 } from '@/components/hr/HRKit';
 import ReportButton from '@/components/system/ReportButton';
 import ExportMenu, { exportScopeLabels, type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
@@ -391,9 +391,15 @@ export default function EmployeeProfilePage() {
       {/* Leave balance stats */}
       {b && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {/* ── ثلاثةٌ من الأربعة أرقامٌ لا صفوفَ تحتها ────────────────────
+              الرصيدُ السنويُّ بندُ سياسةٍ، والمستحقُّ حتى تاريخه حسابُ مدّة،
+              والمتاحُ فرقُ الاثنين. أمّا «المستهلك» فإجازاتٌ وقعت، ولها لسانٌ
+              في الصفحة — فهو وحدَه يفتحه. */}
           <StatCard label={tx.annualEntitlement} value={`${b.entitlement} ${tx.dayUnit}`} />
           <StatCard label={tx.accruedToDate} value={`${b.accrued} ${tx.dayUnit}`} accent="text-blue-600" />
-          <StatCard label={tx.taken} value={`${b.taken} ${tx.dayUnit}`} accent="text-amber-700" />
+          <Pick onClick={() => setTab('leaves')}>
+            <StatCard label={tx.taken} value={`${b.taken} ${tx.dayUnit}`} accent="text-amber-700" />
+          </Pick>
           <StatCard label={tx.available} value={`${b.available} ${tx.dayUnit}`} accent={b.available < 0 ? 'text-red-600' : 'text-green-600'} />
         </div>
       )}

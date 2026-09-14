@@ -8,7 +8,7 @@ import api from '@/lib/api';
 import { ScrollText, Plus, Edit, Trash2, Check, Building2 } from 'lucide-react';
 import { isHRStaff, fmtDate, daysUntil, expiryBadge } from '@/lib/hr';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
-import { Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, SmallBadge, Modal, Field, TextInput, Select, TextArea, Loader2 } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Pick, SmallBadge, Modal, Field, TextInput, Select, TextArea, Loader2 } from '@/components/hr/HRKit';
 import { getHrLicensesTranslations } from '@/lib/translations';
 
 interface License {
@@ -54,6 +54,10 @@ export default function LicensesPage() {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
+  // ── والرقمُ الذي يُقرأ يجب أن يُفتح ──────────────────────────────────────
+  // «منتهية ٣» سطرٌ يُقرأ ولا يُسأل: أيُّ ثلاث؟ فالكارتُ يفلتر الجدولَ تحته
+  // على حالة الصلاحية، ويُضغَط ثانيةً فيُرفَع الفلتر.
+  const [stateFilter, setStateFilter] = useState<'' | 'expired' | 'soon' | 'valid'>('');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<License | null>(null);
   const [form, setForm] = useState<any>(EMPTY);
@@ -94,12 +98,18 @@ export default function LicensesPage() {
   const filtered = useMemo(() => licenses.filter((l) => {
     if (categoryFilter && l.category !== categoryFilter) return false;
     if (locationFilter && l.location !== locationFilter) return false;
+    if (stateFilter) {
+      // الحدُّ نفسُه الذي تُعَدّ به البطاقاتُ أعلاه — لا حدٌّ ثانٍ يفترق عنه.
+      const d = daysUntil(l.expiryDate);
+      const st = d === null ? 'valid' : d < 0 ? 'expired' : d <= 60 ? 'soon' : 'valid';
+      if (st !== stateFilter) return false;
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       if (!`${l.name} ${l.category} ${l.location || ''} ${l.duration || ''}`.toLowerCase().includes(q)) return false;
     }
     return true;
-  }), [licenses, categoryFilter, locationFilter, search]);
+  }), [licenses, categoryFilter, locationFilter, search, stateFilter]);
 
   // Mini-dashboard stats (computed from the full set, not the filtered view).
   const stats = useMemo(() => {
@@ -150,10 +160,21 @@ export default function LicensesPage() {
 
       {/* Mini dashboard cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <StatCard label={tx.cardTotal} value={stats.total} />
-        <StatCard label={tx.cardExpiringSoon} value={stats.soon} accent="text-amber-700" />
-        <StatCard label={tx.cardExpired} value={stats.expired} accent="text-red-600" />
-        <StatCard label={tx.cardValid} value={stats.valid} accent="text-green-600" />
+        {/* ثلاثةٌ تفلتر وثلاثةٌ لا: «الإجمالي» يرفع الفلتر، والحالاتُ تفلتر
+            عليها. و«التصنيفات» و«المواقع» عددُ قيمٍ لا عددُ صفوف — لا شريحةَ
+            تحتهما تُفتَح، فتبقيان رقمين يُقرآن. */}
+        <Pick on={!stateFilter} onClick={() => setStateFilter('')}>
+          <StatCard label={tx.cardTotal} value={stats.total} />
+        </Pick>
+        <Pick on={stateFilter === 'soon'} onClick={() => setStateFilter((v) => (v === 'soon' ? '' : 'soon'))}>
+          <StatCard label={tx.cardExpiringSoon} value={stats.soon} accent="text-amber-700" />
+        </Pick>
+        <Pick on={stateFilter === 'expired'} onClick={() => setStateFilter((v) => (v === 'expired' ? '' : 'expired'))}>
+          <StatCard label={tx.cardExpired} value={stats.expired} accent="text-red-600" />
+        </Pick>
+        <Pick on={stateFilter === 'valid'} onClick={() => setStateFilter((v) => (v === 'valid' ? '' : 'valid'))}>
+          <StatCard label={tx.cardValid} value={stats.valid} accent="text-green-600" />
+        </Pick>
         <StatCard label={tx.cardCategories} value={stats.categories} />
         <StatCard label={tx.cardLocations} value={stats.locations} />
       </div>

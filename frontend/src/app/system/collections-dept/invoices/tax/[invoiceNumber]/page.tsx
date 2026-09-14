@@ -11,6 +11,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import { money, dt } from '@/lib/collections';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import { Receipt, ArrowRight } from 'lucide-react';
@@ -60,6 +61,27 @@ export default function TaxInvoiceDetailPage() {
   useEffect(() => { load(); }, [load]);
 
   const backToList = () => router.push('/system/collections-dept/invoices/tax');
+
+  // ── قمعُ إكسل على كشوف هذه الفاتورة ─────────────────────────────────────
+  // الفاتورةُ الواحدةُ قد تجمع أحدًا وعشرين كشفًا، فالفلترُ هنا ليس ترفًا.
+  // والقيمُ نصوصُ الخلايا كما تُقرأ — لا القيمَ الخام.
+  const cf = useColumnFilters<any>();
+  const RG: Record<string, (r: any) => any> = {
+    reportNumber: (r) => r.reportNumber,
+    reportDate: (r) => dt(r.reportDate),
+    route: (r) => [r.fromLocation, r.toLocation].filter(Boolean).join(' — '),
+    branch: (r) => r.branch,
+    carNumber: (r) => r.carNumber,
+    netInvoice: (r) => money(r.netInvoice),
+    tax: (r) => money(r.tax),
+    totalInvoice: (r) => money(r.totalInvoice),
+    deliveryDate: (r) => dt(r.deliveryDate),
+    collectionDate: (r) => (r.collectionDate ? dt(r.collectionDate) : t('لم يُحصَّل', 'open')),
+  };
+  const shown = cf.apply(data?.reports || [], RG);
+  const totals = shown.reduce((a: any, r: any) => ({
+    net: a.net + (r.netInvoice || 0), vat: a.vat + (r.tax || 0), value: a.value + (r.totalInvoice || 0),
+  }), { net: 0, vat: 0, value: 0 });
 
   if (loading && !data) return <Spinner />;
   if (!data) return (
@@ -147,17 +169,22 @@ export default function TaxInvoiceDetailPage() {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="px-4 py-3 border-b border-slate-100">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
           <p className="text-[13px] font-bold text-slate-900">{t('كشوف هذه الفاتورة', 'Reports under this invoice')}</p>
+          <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
-                {[t('رقم الكشف', 'Report'), t('التاريخ', 'Date'), t('المسار', 'Route'), t('الفرع', 'Branch'),
-                  t('السيارة', 'Vehicle'), t('الصافي', 'Net'), t('الضريبة', 'VAT'), t('الإجمالي', 'Total'),
-                  t('تاريخ التسليم', 'Delivered'), t('تاريخ التحصيل', 'Collected')].map((h, i) => (
-                  <th key={i} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>
+                {[['reportNumber', t('رقم الكشف', 'Report')], ['reportDate', t('التاريخ', 'Date')],
+                  ['route', t('المسار', 'Route')], ['branch', t('الفرع', 'Branch')],
+                  ['carNumber', t('السيارة', 'Vehicle')], ['netInvoice', t('الصافي', 'Net')],
+                  ['tax', t('الضريبة', 'VAT')], ['totalInvoice', t('الإجمالي', 'Total')],
+                  ['deliveryDate', t('تاريخ التسليم', 'Delivered')], ['collectionDate', t('تاريخ التحصيل', 'Collected')]].map(([k, h]) => (
+                  <th key={k} className="px-3 py-2 text-start font-semibold whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1">{h}{cf.header(k, data.reports, RG[k], ar)}</span>
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -165,7 +192,7 @@ export default function TaxInvoiceDetailPage() {
               {/* ── ولا كشوفَ حالٌ طبيعيّة ────────────────────────────────
                   أكثرُ فواتير الدفتر أقدمُ من النظام، فلا كشوفَ لها عندنا.
                   تُقال الحالُ ولا تُترك الصفحةُ فارغةً كأنّ شيئًا فُقد. */}
-              {!data.reports.length && (
+              {!shown.length && (
                 <tr>
                   <td colSpan={10} className="px-4 py-8 text-center text-sm text-slate-500">
                     {data.inLedger
@@ -175,7 +202,7 @@ export default function TaxInvoiceDetailPage() {
                   </td>
                 </tr>
               )}
-              {data.reports.map((r) => (
+              {shown.map((r) => (
                 <tr key={r._id} className="border-b border-slate-100 hover:bg-slate-50">
                   {/* ورقمُ الكشف بابُ الكشف. */}
                   <td className="px-3 py-2 font-medium whitespace-nowrap">
@@ -199,9 +226,11 @@ export default function TaxInvoiceDetailPage() {
             <tfoot>
               <tr className="bg-slate-50 font-bold text-slate-900">
                 <td className="px-3 py-2.5" colSpan={5}>{t('الإجمالي', 'Total')}</td>
-                <td className="px-3 py-2.5 tabular-nums">{money(data.totals.net)}</td>
-                <td className="px-3 py-2.5 tabular-nums">{money(data.totals.vat)}</td>
-                <td className="px-3 py-2.5 tabular-nums">{money(data.totals.value)}</td>
+                {/* ويتبع المجموعُ ما بقي بعد القمع: مجموعٌ لصفوفٍ لا تُرى يُقرأ
+                    على أنّه مجموعُ المعروض وليس هو. */}
+                <td className="px-3 py-2.5 tabular-nums">{money(totals.net)}</td>
+                <td className="px-3 py-2.5 tabular-nums">{money(totals.vat)}</td>
+                <td className="px-3 py-2.5 tabular-nums">{money(totals.value)}</td>
                 <td className="px-3 py-2.5" colSpan={2} />
               </tr>
             </tfoot>

@@ -9,7 +9,7 @@ import { Boxes, Plus, Edit, Trash2, Check, Info, UserPlus } from 'lucide-react';
 import { isHRStaff, Asset, Employee, empName, today } from '@/lib/hr';
 import { useAssetVocab } from '@/hooks/useAssetVocab';
 import {
-  Spinner, PageHeader, SearchInput, PrimaryButton, StatCard,
+  Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Pick,
   Modal, Field, TextInput, TextArea, Select, SearchableSelect, Loader2,
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -154,9 +154,17 @@ export default function HRStockPage() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* «الوحدات» و«القيمة» مجموعان لا شريحةَ تحتهما تُفتَح — يبقيان رقمين
+            يُقرآن. و«الأصناف» و«التالف» صفوفٌ تُفتَح. */}
         <StatCard label={tx.statUnits} value={totalUnits} accent="text-[#f37121]" />
-        <StatCard label={tx.statLines} value={items.length} accent="text-slate-900" />
-        <StatCard label={tx.statDamaged} value={damaged} accent={damaged ? 'text-red-600' : 'text-green-600'} />
+        <Pick on={!typeFilter && !conditionFilter && !search}
+          onClick={() => { setTypeFilter(''); setConditionFilter(''); setSearch(''); }}>
+          <StatCard label={tx.statLines} value={items.length} accent="text-slate-900" />
+        </Pick>
+        <Pick on={conditionFilter === 'damaged'}
+          onClick={() => setConditionFilter((v) => (v === 'damaged' ? '' : 'damaged'))}>
+          <StatCard label={tx.statDamaged} value={damaged} accent={damaged ? 'text-red-600' : 'text-green-600'} />
+        </Pick>
         <StatCard label={tx.statValue} value={totalValue.toLocaleString()} accent="text-slate-900" />
       </div>
 

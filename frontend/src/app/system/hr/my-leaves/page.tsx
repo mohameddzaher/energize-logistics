@@ -7,7 +7,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { CalendarDays, Plus, Check, X, XCircle, AlertTriangle, ShieldCheck, Pencil, Trash2, HelpCircle, Eye, Send } from 'lucide-react';
 import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, fmtDate, leaveTypeLabel, today, earliestStartDate, daysUntil } from '@/lib/hr';
-import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, TextInput, Select, TextArea, Tabs, StatCard, Loader2 } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, TextInput, Select, TextArea, Tabs, StatCard, Pick, Loader2 } from '@/components/hr/HRKit';
 import { getHrMyLeavesTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import FilePicker, { AttachmentList, type PickedFile } from '@/components/system/FilePicker';
@@ -211,9 +211,15 @@ export default function MyLeavesPage() {
 
       {balance && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {/* ── ثلاثةٌ من الأربعة أرقامٌ لا صفوفَ تحتها ────────────────────
+              الرصيدُ السنويُّ بندُ سياسةٍ، والمستحقُّ حتى تاريخه حسابُ مدّة،
+              والمتاحُ فرقُ الاثنين. أمّا «المستهلك» فهو إجازاتٌ وقعت — ولها
+              قائمةٌ أسفلَ الصفحة، فهو وحدَه يُفتَح عليها. */}
           <StatCard label={tx.annual} value={`${balance.entitlement} ${tx.dayShort}`} />
           <StatCard label={tx.accrued} value={`${balance.accrued} ${tx.dayShort}`} accent="text-blue-600" />
-          <StatCard label={tx.taken} value={`${balance.taken} ${tx.dayShort}`} accent="text-amber-700" />
+          <Pick onClick={() => document.getElementById('my-leave-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+            <StatCard label={tx.taken} value={`${balance.taken} ${tx.dayShort}`} accent="text-amber-700" />
+          </Pick>
           <StatCard label={tx.available} value={`${balance.available} ${tx.dayShort}`} accent={balance.available < 0 ? 'text-red-600' : 'text-green-600'} />
         </div>
       )}
@@ -221,7 +227,7 @@ export default function MyLeavesPage() {
       {hasTeam && <Tabs tabs={tabs} active={tab} onChange={setTab} />}
 
       {tab === 'mine' && (
-        <div className="space-y-3">
+        <div id="my-leave-list" className="space-y-3 scroll-mt-24">
         {leaves.length > 0 && (
           <div className="flex justify-end">
             <ExportMenu fileName="my-leaves" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={mineExportOptions} />

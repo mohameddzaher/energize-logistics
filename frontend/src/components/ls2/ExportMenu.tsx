@@ -39,6 +39,14 @@ export interface ExportOption {
    * (مثلاً كلمات المرور) فما ينفعش تتحمّل مع كل فتح للصفحة.
    */
   resolve?: () => Promise<ExportSheet[]>;
+  /**
+   * بديلٌ عنهما معًا لما الملفَّ يبنيه الخادمُ ويُنزَّل جاهزًا.
+   *
+   * جدولٌ كبيرٌ يُبنى في المتصفّح ثمنُه مرّتان: يعبر الشبكةَ صفوفًا خامًا (عشراتُ
+   * الميغابايتات من JSON)، ثمّ يُبنى المصنَّفُ في الخيط الذي يرسم الصفحة فتتجمّد.
+   * فمن كان جدولُه بالآلاف يبنيه في الخادم ويردُّ ملفًّا — ولا يعبر هنا إلّا هو.
+   */
+  download?: () => Promise<void>;
   disabled?: boolean;
   /** يتعرض جنب الاسم بدل عدّاد الصفوف لما العدد مش معروف قبل الجلب. */
   hint?: string;
@@ -84,6 +92,13 @@ export default function ExportMenu({ fileName, options, lang = 'en', className =
   }, [openMenu]);
 
   const run = async (opt: ExportOption) => {
+    if (opt.download) {
+      setBusyKey(opt.key);
+      try { await opt.download(); }
+      catch (e: any) { notify(e?.message || (ar ? 'تعذّر تجهيز الملف' : 'Could not prepare the file'), 'error'); }
+      setBusyKey(null); setOpenMenu(false);
+      return;
+    }
     let sheets = opt.sheets;
     if (opt.resolve) {
       setBusyKey(opt.key);

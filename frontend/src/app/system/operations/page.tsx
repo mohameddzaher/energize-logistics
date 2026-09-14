@@ -701,21 +701,36 @@ export default function OperationsWorkflowPage() {
     accountingReview: w.accountingReview ? (lang === 'ar' ? 'تمّت' : 'Done') : '',
   });
 
-  /** يجلب نطاقًا كاملًا من الخادم ويعيده شيتًا واحدًا جاهزًا للتصدير. */
-  const exportSheets = async (scope: 'page' | 'filtered' | 'all') => {
-    let data: Workflow[] = workflows;
-    if (scope !== 'page') {
-      const p = scope === 'all' ? new URLSearchParams() : buildParams();
-      p.set('page', '1');
-      p.set('limit', '100000');
-      const d = await api.get<{ workflows: Workflow[] }>(`/api/workflows?${p.toString()}`);
-      data = d.workflows || [];
-    }
-    return [{
-      name: lang === 'ar' ? 'الطلبات' : 'Workflows',
-      rows: data.map(exportRow) as unknown as Record<string, any>[],
-      columns: canViewFinancials ? EXPORT_COLUMNS : EXPORT_COLUMNS.filter((c) => !MONEY_EXPORT_KEYS.has(c.key)),
-    }];
+  /** الصفحةُ المعروضةُ وحدَها — صفوفُها في اليد، فتُبنى هنا في لحظة. */
+  const exportSheets = async () => [{
+    name: lang === 'ar' ? 'الطلبات' : 'Workflows',
+    rows: workflows.map(exportRow) as unknown as Record<string, any>[],
+    columns: canViewFinancials ? EXPORT_COLUMNS : EXPORT_COLUMNS.filter((c) => !MONEY_EXPORT_KEYS.has(c.key)),
+  }];
+
+  /**
+   * ── والجدولُ الكبيرُ يُبنى في الخادم ──────────────────────────────────────
+   * كان «الجدول كلّه» يطلب خمسةً وثلاثين ألفَ صفٍّ صفوفًا خامًا — سبعةً وثلاثين
+   * ميغابايتًا من JSON — ثمّ يبني المصنَّفَ في الخيط الذي يرسم الصفحة، فتتجمّد
+   * الشاشةُ حتى يفرغ. والقاعدةُ ليست البطيئة: الفرزُ على فهرسه اثنتان وأربعون
+   * ميلي‌ثانية.
+   *
+   * فصار الخادمُ يبنيه ويردُّ ملفًّا مضغوطًا، ولا يعبر المتصفّحَ إلّا الملفُّ
+   * نفسُه. والأعمدةُ والترجماتُ هناك هي هذه حرفًا بحرف، والحجبُ بالدور مطبَّقٌ
+   * في الخادم أيضًا — فلا يخرج في الملفّ مالٌ لا يُعرض على الشاشة.
+   */
+  const downloadServerFile = async (scope: 'filtered' | 'all') => {
+    const p = scope === 'all' ? new URLSearchParams() : buildParams();
+    p.delete('page'); p.delete('limit');
+    if (scope === 'all') p.set('scope', 'all');
+    const blob = await api.getBlob(`/api/workflows/export?${p.toString()}`);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `operations-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    // يُترك للمتصفّح ما يكفي لبدء الحفظ قبل سحب العنوان من تحته.
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   };
 
   const formatDate = (d: string) => d ? new Date(d).toLocaleDateString('en-GB') : '-';
@@ -921,9 +936,9 @@ export default function OperationsWorkflowPage() {
             variant="subtle"
             label={T.exportExcel}
             options={[
-              { key: 'page', label: lang === 'ar' ? `الصفحة المعروضة (${workflows.length})` : `Current page (${workflows.length})`, resolve: () => exportSheets('page') },
-              { key: 'filtered', label: lang === 'ar' ? `كلّ ما طابق الفلتر (${total})` : `Everything matching the filter (${total})`, resolve: () => exportSheets('filtered') },
-              { key: 'all', label: lang === 'ar' ? 'الجدول كلّه (بلا فلتر)' : 'The whole table (no filter)', resolve: () => exportSheets('all') },
+              { key: 'page', label: lang === 'ar' ? `الصفحة المعروضة (${workflows.length})` : `Current page (${workflows.length})`, resolve: () => exportSheets() },
+              { key: 'filtered', label: lang === 'ar' ? `كلّ ما طابق الفلتر (${total})` : `Everything matching the filter (${total})`, download: () => downloadServerFile('filtered') },
+              { key: 'all', label: lang === 'ar' ? 'الجدول كلّه (بلا فلتر)' : 'The whole table (no filter)', download: () => downloadServerFile('all') },
             ]} />
           {canCreate && (
             <>

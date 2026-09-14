@@ -1324,95 +1324,125 @@ exports.bulkDelete = async (req, res) => {
 };
 
 // GET /api/workflows/export
+/**
+ * تصديرُ سير عمل التشغيل — يُبنى الملفُّ في الخادم ويُنزَّل جاهزًا.
+ *
+ * ── لماذا لا يُبنى في المتصفّح ──────────────────────────────────────────────
+ * كانت الشاشةُ تطلب الجدولَ كلَّه (`limit=100000`) ثمّ تبني المصنَّفَ بنفسها.
+ * وخمسةٌ وثلاثون ألفَ صفٍّ من هذه الأعمدة سبعةٌ وثلاثون ميغابايتًا من JSON:
+ * يُسلسِلها الخادمُ في ردٍّ واحدٍ فيتوقّف العاملُ عن خدمة غيره وهو يفعل، ثمّ
+ * تعبر الشبكةَ، ثمّ يفكّها المتصفّحُ ويبني منها مصنَّفًا في الخيط نفسِه الذي
+ * يرسم الصفحة — فتتجمّد الشاشةُ دقائق.
+ *
+ * والقاعدةُ ليست هي البطيئة: الفرزُ على فهرس `createdAt` واثنتان وأربعون
+ * ميلي‌ثانيةً لخمسةٍ وثلاثين ألفَ صفّ. البطءُ كلُّه في نقل الصفوف وبنائها هناك.
+ *
+ * فيُبنى هنا: تُقرأ الحقولُ المطلوبةُ وحدَها، ويُكتب ملفٌّ مضغوطٌ حجمُه أجزاءٌ
+ * من ذلك، ويُرسَل تنزيلًا. ولا يعبر المتصفّحَ إلّا الملفُّ نفسُه.
+ *
+ * ── والملفُّ هو ما على الشاشة ───────────────────────────────────────────────
+ * الأعمدةُ وترجماتُها هي التي تعرضها صفحةُ سير العمل حرفًا بحرف، لا مجموعةٌ
+ * ثانيةٌ تفترق عنها. و`scope=all` وحدَها تتجاوز الفلترَ — وهي خيارٌ يسمّي نفسَه
+ * في القائمة، فلا يخرج الملفُّ أوسعَ ممّا طُلب.
+ */
 exports.exportWorkflows = async (req, res) => {
   try {
-    // التصدير يقرأ الشرط نفسه الذي يقرأه الجدول — بما فيه فلاتر الأعمدة والبحث.
-    // كان يتجاهلها فيُنزّل الجدول كلّه بينما الشاشة تعرض المُفلتَر، فيظنّ المستخدم
-    // أن الملف نسخةٌ ممّا يراه.
-    const filter = buildWorkflowFilter(req.query, undefined, canSeeMoney(req.user.role));
+    const { SHIPMENT_STATUS_AR } = require('../config/constants');
+    // «الكلّ» يتجاوز الفلتر؛ وما عداه يقرأ شرطَ الجدول نفسَه — بما فيه فلاتر
+    // الأعمدة والبحث — فلا يدّعي الملفُّ أنّه نسخةٌ ممّا يُرى وهو غيرُه.
+    const filter = String(req.query.scope || '') === 'all'
+      ? {}
+      : buildWorkflowFilter(req.query, undefined, canSeeMoney(req.user.role));
 
-    // Use lean() + select only needed fields for speed — no populate needed
-    const workflows = await OperationsWorkflow.find(filter)
-      .select('-lockedBy -lockedByName -lockedAt -lastModifiedBy -__v')
-      .sort({ createdAt: -1 })
-      .lean();
+    const PAYMENT_AR = { cash: 'كاش', late: 'آجل' };
+    const STAGE_AR = {
+      draft: 'مسودة', submitted_to_ops: 'مرسل للتشغيل', ops_completed: 'تم التشغيل',
+      submitted_to_collections: 'مرسل للتحصيل', completed: 'مكتمل',
+    };
+    const d = (v) => (v ? new Date(v).toLocaleDateString('en-GB') : '');
+    const st = (v) => SHIPMENT_STATUS_AR[v] || v || '';
+    const yes = (v) => (v ? 'تمّت' : '');
 
-    const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-US') : '';
-    const stageLabels = { draft: 'مسودة', submitted_to_ops: 'مرسل للتشغيل', ops_completed: 'تم التشغيل', submitted_to_collections: 'مرسل للتحصيل', completed: 'مكتمل' };
-
-    // ── عمودٌ واحدٌ في سطرٍ واحد ─────────────────────────────────────────
-    // كانت العناوينُ مصفوفةً والقيمُ مصفوفةً أخرى تُقرأ بالترتيب. فحذفُ عمودٍ
-    // يعني عدَّ المواضع في القائمتين، وأيُّ خطأٍ في العدّ يضع قيمةَ عمودٍ
-    // تحت عنوان جاره صامتًا. ولمّا صار الملفُّ يختلف باختلاف الدور لم يعد
-    // ذلك يُحتمل.
+    // العمودُ وقارئُه في سطرٍ واحد، والعلامةُ الثالثةُ تعني «مالٌ لا يراه الجميع».
     const COLUMNS = [
-      ['رقم الكشف', (w) => w.reportNumber || ''],
-      ['تاريخ الكشف', (w) => formatDate(w.reportDate)],
+      ['رقم الطلب', (w) => w.reportNumber || ''],
+      ['تاريخ الطلب', (w) => d(w.reportDate)],
       ['من', (w) => w.fromLocation || ''],
-      ['الي', (w) => w.toLocation || ''],
+      ['إلى', (w) => w.toLocation || ''],
       ['الفرع', (w) => w.branch || ''],
-      ['مالك السياره', (w) => w.carOwner || ''],
-      ['رقم السياره', (w) => w.carNumber || ''],
-      ['نوع المالك', (w) => w.ownerType || ''],
-      ['حاله التنفيذ', (w) => w.executionStatus || ''],
-      ['حاله الابلكيشن', (w) => w.applicationStatus || ''],
-      ['طريقه الدفع', (w) => w.paymentMethod || ''],
-      ['اسم المستخدم', (w) => w.username || ''],
-      ['هاتف المستخدم', (w) => w.userPhone || ''],
-      ['ض / غ ض', (w) => w.taxIndicator || ''],
-      ['قيمه الشراء', (w) => w.purchaseValue || 0],
-      ['قيمه البيع', (w) => w.sellingValue || 0],
-      ['وقت التحميل', (w) => w.loadingTime || ''],
-      ['نوع تأجير السائق', (w) => w.driverRentalType || ''],
-      ['رقم المرجع', (w) => w.reference || ''],
-      ['اسم السائق', (w) => w.driverName || ''],
-      ['هاتف السائق', (w) => w.driverPhone || ''],
-      ['اسم السيارة', (w) => w.carName || ''],
-      ['رقم اللوحة', (w) => w.plateNumber || ''],
+      ['مالك السيارة', (w) => w.carOwner || ''],
+      ['رقم السيارة', (w) => w.carNumber || ''],
+      ['نوع الملكية', (w) => w.ownerType || ''],
+      ['حالة التنفيذ', (w) => st(w.executionStatus)],
+      ['حالة الطلب', (w) => st(w.applicationStatus)],
+      ['طريقة الدفع', (w) => PAYMENT_AR[w.paymentMethod] || w.paymentMethod || ''],
+      ['العميل', (w) => w.username || ''],
+      ['هاتف العميل', (w) => w.userPhone || ''],
+      ['قيمة الشراء', (w) => w.purchaseValue || 0, 'money'],
+      ['قيمة البيع', (w) => w.sellingValue || 0, 'money'],
+      ['السائق', (w) => w.driverName || ''],
       ['نوع الشاحنة', (w) => w.truckType || ''],
       ['حجم الشاحنة', (w) => w.truckSize || ''],
-      ['نوع الحمولة', (w) => w.loadType || ''],
-      ['الكمية', (w) => w.quantity || ''],
-      ['قيمة البضائع', (w) => w.goodsValue || 0],
-      ['اسم المندوب', (w) => w.representativeName || ''],
-      ['اسم الدولة', (w) => w.country || ''],
-      ['مراجعه التشغيل', (w) => w.operationsReview || ''],
-      ['تاريخ السداد', (w) => formatDate(w.paymentDate)],
-      ['الفرع المسدد', (w) => w.payingBranch || ''],
-      ['وجهه الكشف النهائي', (w) => w.finalReportDestination || ''],
-      ['رقم السند', (w) => w.documentNumber || ''],
-      ['تاريخ الارسال', (w) => formatDate(w.sendingDate)],
-      ['تاريخ التسليم للفرع', (w) => formatDate(w.branchDeliveryDate)],
-      ['تاريخ التسليم', (w) => formatDate(w.deliveryDate)],
-      ['مراجعه الحسابات', (w) => w.accountingReview || '', 'accountingReview'],
-      ['رقم الفاتوره', (w) => w.invoiceNumber || '', 'invoiceNumber'],
-      ['صافي الفاتوره', (w) => w.netInvoice || 0, 'netInvoice'],
-      ['ضريبه', (w) => w.tax || 0, 'tax'],
-      ['اجمالى الفاتوره', (w) => w.totalInvoice || 0, 'totalInvoice'],
-      ['تاريخ الفاتوره', (w) => formatDate(w.invoiceDate), 'invoiceDate'],
-      ['ملاحظات الفاتوره', (w) => w.invoiceNotes || '', 'invoiceNotes'],
-      ['تاريخ التحصيل', (w) => formatDate(w.collectionDate), 'collectionDate'],
-      ['المرحلة', (w) => stageLabels[w.stage] || w.stage],
-      ['تاريخ الإنشاء', (w) => new Date(w.createdAt).toLocaleDateString('en-US')],
+      ['المندوب', (w) => w.representativeName || ''],
+      ['مراجعة العمليات', (w) => yes(w.operationsReview)],
+      ['تاريخ السداد', (w) => d(w.paymentDate)],
+      ['فرع السداد', (w) => w.payingBranch || ''],
+      ['وجهة الكشف النهائية', (w) => w.finalReportDestination || ''],
+      ['رقم المستند', (w) => w.documentNumber || ''],
+      ['تاريخ الإرسال', (w) => d(w.sendingDate)],
+      ['تاريخ التسليم للفرع', (w) => d(w.branchDeliveryDate)],
+      ['تاريخ التسليم للعميل', (w) => d(w.deliveryDate)],
+      ['مراجعة المحاسبة', (w) => yes(w.accountingReview), 'money'],
+      ['رقم الفاتورة', (w) => w.invoiceNumber || '', 'money'],
+      ['صافي الفاتورة', (w) => w.netInvoice || 0, 'money'],
+      ['الضريبة', (w) => w.tax || 0, 'money'],
+      ['إجمالي الفاتورة', (w) => w.totalInvoice || 0, 'money'],
+      ['تاريخ الفاتورة', (w) => d(w.invoiceDate), 'money'],
+      ['تاريخ التحصيل', (w) => d(w.collectionDate), 'money'],
+      ['المرحلة', (w) => STAGE_AR[w.stage] || w.stage || ''],
     ];
 
     // الملفُّ يُفتح خارج النظام حيث لا حارس، فما لا يُعرض على الشاشة لا يخرج
     // فيه — وإلّا كان الحجبُ زينةً يلتفّ عليها زرُّ تصدير.
-    const money = canSeeMoney(req.user.role);
-    const cols = COLUMNS.filter(([, , field]) => money || !field);
-
+    const cols = canSeeMoney(req.user.role) ? COLUMNS : COLUMNS.filter(([, , tag]) => tag !== 'money');
     const headers = cols.map(([h]) => h);
-    const rows = workflows.map((w) => cols.map(([, get]) => get(w)));
 
-    const aoa = [headers, ...rows];
+    // ولا تُقرأ حقولٌ لا عمودَ لها: كان الاستعلامُ يجلب المستندَ كاملًا بما فيه
+    // ملاحظاتٌ حرّةٌ طويلةٌ لا تدخل الملفّ أصلًا.
+    const FIELDS = [
+      'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch', 'carOwner',
+      'carNumber', 'ownerType', 'executionStatus', 'applicationStatus', 'paymentMethod',
+      'username', 'userPhone', 'purchaseValue', 'sellingValue', 'driverName', 'truckType',
+      'truckSize', 'representativeName', 'operationsReview', 'paymentDate', 'payingBranch',
+      'finalReportDestination', 'documentNumber', 'sendingDate', 'branchDeliveryDate',
+      'deliveryDate', 'accountingReview', 'invoiceNumber', 'netInvoice', 'tax',
+      'totalInvoice', 'invoiceDate', 'collectionDate', 'stage',
+    ].join(' ');
+
+    // ── والصفوفُ تُقرأ تدفّقًا لا دفعةً واحدة ──────────────────────────────
+    // خمسةٌ وثلاثون ألفَ مستندٍ في مصفوفةٍ واحدةٍ ذروةُ ذاكرةٍ بلا داعٍ على
+    // عاملٍ يخدم غيرَه في الوقت نفسِه. تُقرأ صفًّا صفًّا وتُحوَّل فورًا إلى
+    // سطرِ الملفّ، فلا يبقى في الذاكرة إلّا ما سيُكتب.
+    const aoa = [headers];
+    // ودفعةٌ كبيرةٌ لا مئةُ صفٍّ في كلّ رحلة: الافتراضيُّ مئةٌ وواحد، أي نحوَ
+    // ثلاثِمئةٍ وخمسين رحلةً إلى القاعدة لجدولٍ بهذا الحجم — وثمنُ الرحلة ذهابًا
+    // وإيابًا هو الغالبُ هنا لا قراءةُ القرص.
+    const cursor = OperationsWorkflow.find(filter).select(FIELDS)
+      .sort({ createdAt: -1 }).lean().cursor({ batchSize: 5000 });
+    for (let w = await cursor.next(); w != null; w = await cursor.next()) {
+      aoa.push(cols.map(([, get]) => get(w)));
+    }
+
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = headers.map((h) => ({ wch: Math.max(h.length + 4, 14) }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'العمليات');
-    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    // `compression` يصغّر الملفَّ إلى نحو خُمسه — وهو فرقُ ثوانٍ على الشبكة.
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', compression: true });
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=operations-${new Date().toISOString().split('T')[0]}.xlsx`);
+    res.setHeader('Content-Length', String(buf.length));
     res.send(buf);
   } catch (error) {
     console.error('Export workflows error:', error);

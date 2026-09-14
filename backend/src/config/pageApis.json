@@ -54,6 +54,7 @@
         "/api/workflows",
         "/api/workflows/bulk-delete",
         "/api/workflows/bulk-update",
+        "/api/workflows/export",
         "/api/workflows/filters",
         "/api/workflows/permissions",
         "/api/workflows/stats"

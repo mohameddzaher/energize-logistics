@@ -35,11 +35,15 @@ const QUICK = [7, 15, 30, 60, 90, 180];
 // أعمدةُ جدول الانتهاءات وقارئُ كلٍّ منها — تعريفٌ واحدٌ للترويسة وللقمع.
 const COL_DEFS: [string, string, string][] = [
   ['plate', 'اللوحة', 'Plate'],
-  ['vehicle', 'المركبة', 'Vehicle'],
-  // ── والموديلُ عمودٌ بذاته لا ذيلٌ في «المركبة» ────────────────────────────
-  // سنةُ الصنع تفصل شاحنتين بالماركة والطراز نفسِهما، وعليها يُبنى القرار:
-  // مركبةٌ موديلَ ٢٠١٢ انتهت استمارتُها ليست كموديلِ ٢٠٢٤ انتهت استمارتُه.
-  // وفي عمودٍ مستقلٍّ يُفلتَر عليه ويُرتَّب، ويخرج رقمًا في ملفّ إكسل.
+  // ── ثلاثةُ أعمدةٍ لا خانةٌ واحدةٌ مجموعة ──────────────────────────────────
+  // كانت «المركبة» تجمع الماركةَ والطرازَ في نصٍّ واحد، والموديلُ غائبًا. ومن
+  // أراد «أرِني كيا وحدَها» لم يجد في القمع ماركةً يختارها بل «كيا كرنفال»
+  // و«كيا سيراتو» و«كيا بيجاس» — قيمًا مركّبةً لا تُجمَع.
+  //
+  // فصارت كما هي في بطاقات التشغيل حرفًا بحرف: ماركةٌ وطرازٌ وموديل، بالعناوين
+  // نفسِها. والشاشتان تُقرآن بالعين نفسِها، ويُنقَل الفلترُ بينهما بلا ترجمة.
+  ['brandAr', 'ماركة المركبة', 'Brand'],
+  ['modelAr', 'طراز المركبة', 'Model'],
   ['modelYear', 'الموديل', 'Year'],
   ['doc', 'المستند', 'Document'],
   ['expiry', 'ينتهي في', 'Expires'],
@@ -112,7 +116,8 @@ function ExpiringInner() {
 
   const GETTERS = useMemo<Record<string, (r: any) => any>>(() => ({
     plate: (r) => r.plateNumber,
-    vehicle: (r) => [r.brandAr, r.modelAr].filter(Boolean).join(' '),
+    brandAr: (r) => r.brandAr,
+    modelAr: (r) => r.modelAr,
     modelYear: (r) => (r.modelYear || ''),
     doc: (r) => (ar ? r.docAr : r.docEn),
     expiry: (r) => fmtDate(r.expiryDate),
@@ -146,8 +151,8 @@ function ExpiringInner() {
     { header: t('الأيام المتبقية', 'Days left'), key: 'daysRemaining', width: 12 },
     { header: t('الحالة', 'State'), key: 'state', transform: (v) => stateLabel(v, ar), width: 16 },
     { header: t('القطاع', 'Sector'), key: 'sectorAr', width: 16 },
-    { header: t('الماركة', 'Brand'), key: 'brandAr', width: 16 },
-    { header: t('الطراز', 'Model'), key: 'modelAr', width: 16 },
+    { header: t('ماركة المركبة', 'Brand'), key: 'brandAr', width: 14 },
+    { header: t('طراز المركبة', 'Model'), key: 'modelAr', width: 14 },
     { header: t('الموديل', 'Year'), key: 'modelYear', width: 10 },
     { header: t('المالك', 'Owner'), key: 'ownerNameAr', width: 26 },
     { header: t('المرجع', 'Reference'), key: 'reference', width: 22 },
@@ -346,7 +351,8 @@ function ExpiringInner() {
                       <button onClick={() => router.push(`/system/vehicles/registry/${r.vehicleId}`)}
                         className="font-semibold text-slate-800 hover:text-[#f37121]">{r.plateNumber}</button>
                     </td>
-                    <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{[r.brandAr, r.modelAr].filter(Boolean).join(' ') || '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{r.brandAr || '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{r.modelAr || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap tabular-nums">{r.modelYear || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-600">
                       <span className="inline-flex items-center gap-1 justify-center">

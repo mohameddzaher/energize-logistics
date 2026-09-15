@@ -268,7 +268,8 @@ export default function PartyProfilePage() {
           options={[{
             key: 'shown',
             label: t('كشوف هذه الصفحة', 'Reports on this page'),
-            sheets: [{ name: t('الكشوف', 'Reports'), rows: data.reports, columns: reportCols }],
+            // بعد قمع الأعمدة لا قبله — راجع repShown.
+            sheets: [{ name: t('الكشوف', 'Reports'), rows: repShown, columns: reportCols }],
           }]}
         />
       </PageHeader>

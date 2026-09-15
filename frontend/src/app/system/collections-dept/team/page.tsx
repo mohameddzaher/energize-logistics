@@ -18,6 +18,7 @@ import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import { canEditCollections, money, gradeTone, type OfficerStat, type AgingRow } from '@/lib/collections';
 import SearchSelect from '@/components/system/SearchSelect';
+import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { Loader2, Users, Search, UserCog, Check, TrendingUp } from 'lucide-react';
 
@@ -92,6 +93,28 @@ export default function CollectionsTeamPage() {
     tasks: (r) => `${r.tasksDone || 0}/${r.tasks || 0}`,
   };
   const perfShown = cf.apply(perf, PG);
+  // ── وما يُقرأ على الشاشة يخرج في الملفّ ─────────────────────────────────
+  // لم يكن لهذه اللوحة تصديرٌ أصلًا، فعمودا «في المهلة» و«متقادم ٦٠ي+» —
+  // وهما اللذان يقولان حالَ المحفظة — لا يخرجان منها. والأعمدةُ هنا هي أعمدةُ
+  // الجدول بالترتيب نفسِه وبالقيم نفسِها التي تُقرأ في خلاياه.
+  const perfCols: ExportColumn[] = [
+    { header: ar ? 'الموظف' : 'Officer', key: 'officer', transform: (v: any) => v || (ar ? '(بلا مسؤول)' : '(unassigned)'), width: 18 },
+    { header: ar ? 'حسابات' : 'Accounts', key: 'accounts', width: 10 },
+    { header: ar ? 'محصَّل' : 'Collected', key: 'collectedAmount', width: 16 },
+    { header: ar ? 'عدد المحصَّل' : 'Invoices', key: 'collectedCount', width: 12 },
+    { header: ar ? 'باقٍ' : 'Outstanding', key: 'openAmount', width: 16 },
+    { header: ar ? 'متأخر' : 'Past due', key: 'overdueAmount', width: 16 },
+    { header: ar ? 'منه متقادم ٦٠ي+' : 'of which aged 60d+', key: 'agedOver60Amount', width: 18 },
+    { header: ar ? 'في المهلة' : 'Within terms (amount)', key: 'withinTermsAmount', width: 18 },
+    // النسبُ تخرج أرقامًا لا نصوصًا: «٦٠٪» نصٌّ لا يُجمَع ولا يُرتَّب في إكسل.
+    { header: ar ? 'نسبة التحصيل %' : 'Collection rate %', key: 'collectionRate', transform: (v: any) => (v == null ? '' : Math.round(v)), width: 16 },
+    { header: ar ? 'في المهلة %' : 'Within terms %', key: 'withinTermsRate', transform: (v: any) => (v == null ? '' : Math.round(v)), width: 14 },
+    { header: ar ? 'متقادم ٦٠ي+ %' : 'Aged 60d+ %', key: 'agedOver60Rate', transform: (v: any) => (v == null ? '' : Math.round(v)), width: 14 },
+    { header: ar ? 'متوسط أيام التحصيل' : 'Avg days to collect', key: 'avgDaysToCollect', width: 18 },
+    { header: ar ? 'مهام منجزة' : 'Tasks done', key: 'tasksDone', width: 12 },
+    { header: ar ? 'إجمالي المهام' : 'Tasks total', key: 'tasks', width: 12 },
+  ];
+
   const TH = (k: string, label: string, end?: boolean, title?: string) => (
     <th className={`${th}${end ? ' text-end' : ''}`} title={title}>
       <span className="inline-flex items-center gap-1">{label}{cf.header(k, perf, PG[k], ar)}</span>
@@ -133,6 +156,13 @@ export default function CollectionsTeamPage() {
           <input type="date" title={ar ? 'إلى' : 'To'} value={to} onChange={(e) => setTo(e.target.value)}
             className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm" />
           <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
+          <ExportMenu fileName={ar ? 'تقييم-الفريق' : 'team-performance'} lang={ar ? 'ar' : 'en'}
+            options={[{
+              key: 'shown',
+              label: ar ? 'تصدير المعروض (بعد الفلتر)' : 'Export shown (filtered)',
+              // المعروضُ بعد قمع الأعمدة — راجع perfShown.
+              sheets: [{ name: ar ? 'تقييم الفريق' : 'Team', rows: perfShown as unknown as Record<string, any>[], columns: perfCols }],
+            }]} />
           <div className="w-52">
             <SearchSelect ar={ar} value={officerFilter} onChange={setOfficerFilter}
               allLabel={ar ? 'كل الفريق' : 'Whole team'}

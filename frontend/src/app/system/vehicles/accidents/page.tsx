@@ -133,12 +133,6 @@ export default function VehicleAccidentsPage() {
     const d = await api.get<{ accidents: VehicleAccident[] }>('/api/vehicles/accidents');
     return [{ name: 'Accidents', rows: (d.accidents || []) as unknown as Record<string, any>[], columns: exportColumns }];
   };
-  const scope = exportScopeLabels(ar);
-  const exportOptions = [
-    { key: 'shown', label: scope.shown, sheets: [{ name: 'Accidents', rows: accidents as unknown as Record<string, any>[], columns: exportColumns }] },
-    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
-  ];
-
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   // قارئُ كلِّ عمود — التعبيرُ نفسُه الذي تُرسم به الخليّة، فلا يفلتر الفلترُ
   // على غير ما يُقرأ.
@@ -153,6 +147,13 @@ export default function VehicleAccidentsPage() {
   };
   // آخرُ ما يُطبَّق.
   const shownRows = cf.apply(accidents, GETTERS);
+
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    // «المعروض» بعد فلاتر الأعمدة لا قبلها — راجع shownRows.
+    { key: 'shown', label: scope.shown, sheets: [{ name: 'Accidents', rows: shownRows as unknown as Record<string, any>[], columns: exportColumns }] },
+    ...(hasActiveFilters || cf.count ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
+  ];
 
   if (loading) return <Spinner />;
 

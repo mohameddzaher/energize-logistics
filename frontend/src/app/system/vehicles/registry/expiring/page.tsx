@@ -162,14 +162,17 @@ function ExpiringInner() {
   // المدة والمستند والحالة تُطبَّق على الخادم، والبحث و«المتوقّف تنبيهه» في الذاكرة؛
   // فالصفوف التي في اليد شريحةٌ من شريحة. «الكلّ» يعيد النداء بلا نافذةٍ زمنيّة،
   // وإلّا كان مَن فتح الشاشة على ستّين يومًا يصدّر ملفًّا يظنّه سجلّ الانتهاءات كلَّه.
-  const hasActiveFilters = !!(needle || mutedOnly || doc || state || within !== '' || !includeExpired);
+  const hasActiveFilters = !!(needle || mutedOnly || doc || state || within !== '' || !includeExpired || cf.count);
   const fetchAllForExport = async () => {
     const res = await getExpiring({ withinDays: undefined, includeExpired: '1' });
     return [{ name: t('الانتهاءات', 'Expiries'), rows: (res.rows || []) as unknown as Record<string, any>[], columns: cols }];
   };
   const scope = exportScopeLabels(ar);
   const exportOptions = [
-    { key: 'shown', label: scope.shown, sheets: [{ name: t('الانتهاءات', 'Expiries'), rows: rows as unknown as Record<string, any>[], columns: cols }] },
+    // ── و«المعروض» هو المعروضُ بعد فلاتر الأعمدة ────────────────────────
+    // كان يصدّر `rows` — ما قبل القمع — فمن فلتر على ماركةٍ وصدّر «المعروض»
+    // أخذ الجدولَ كلَّه وهو يظنّه شريحتَه.
+    { key: 'shown', label: scope.shown, sheets: [{ name: t('الانتهاءات', 'Expiries'), rows: shownRows as unknown as Record<string, any>[], columns: cols }] },
     ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
   ];
 

@@ -176,7 +176,15 @@ export default function DriverCardsPage() {
     { header: t('الاسم', 'Name'), key: 'name', width: 28 },
     { header: t('جوال أبشر', 'Absher phone'), key: 'absherPhone', width: 14 },
     { header: t('السجل اللوجستي', 'Logistic register'), key: 'logisticRegister', width: 16 },
-    { header: t('رقم البطاقة', 'Card number'), key: 'cardNumber', width: 16 },
+    // ── والملفُّ يقول ما تقوله الخليّة ──────────────────────────────────
+    // على الشاشة يظهر مكانَ الرقم الغائب وسمٌ أحمرُ «مطلوبة — لم تُستخرج».
+    // وفي الملفّ كانت الخانةُ تخرج فارغةً وحدَها، فيُقرأ الفراغُ سهوًا في
+    // الإدخال لا سائقًا بلا بطاقة — وهو بالضبط ما بُنيت الصفحةُ لتقوله.
+    { header: t('رقم البطاقة', 'Card number'), key: 'cardNumber', width: 16,
+      transform: (v: any, row: any) => (row?.hasCard ? v : t('مطلوبة — لم تُستخرج', 'Needed — not issued')) },
+    // وعمودٌ يُجمَع ويُفلتَر عليه في إكسل، لا وسمٌ يُقرأ بالعين فقط.
+    { header: t('له بطاقة', 'Has card'), key: 'hasCard',
+      transform: (v: any) => (v ? t('نعم', 'Yes') : t('لا', 'No')), width: 10 },
     { header: t('نوع البطاقة', 'Card type'), key: 'cardType', width: 12 },
     { header: t('تاريخ الانتهاء', 'Expiry'), key: 'expiryDate', width: 14 },
     { header: t('الأيام المتبقية', 'Days left'), key: 'daysLeft', width: 12 },

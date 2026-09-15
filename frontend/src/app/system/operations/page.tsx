@@ -211,10 +211,12 @@ export default function OperationsWorkflowPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [showPendingOnly, setShowPendingOnly] = useState(false);
-  // ── كشوفٌ فُوتِرت ونُسي رقمُ فاتورتها ──────────────────────────────────────
-  // خانةُ رقم الفاتورة تُكتب هنا بيدٍ ولا تأتي من منصّة التشغيل. وما بقي فارغًا
-  // منها وعلى كشفه مبالغُ فوترةٍ نقصٌ صريح: بالرقم يعرف قسمُ التحصيل كشوفَ
-  // الفاتورة، وبدونه تقول الفاتورةُ «لا كشوف» وهي تحملها.
+  // ── كشوفٌ فُوتِرت ضريبيًّا ونُسي رقمُ فاتورتها ─────────────────────────────
+  // خانةُ رقم الفاتورة تُكتب هنا بيدٍ ولا تأتي من منصّة التشغيل. والضريبةُ هي
+  // التي تفصل: الكشفُ النقديُّ تكتب له القاعدةُ صافيًا وإجماليًّا من مبلغ سداده
+  // وتترك رقمَ الفاتورة فارغًا عمدًا — فليست له فاتورة. أمّا ما عليه ضريبةٌ
+  // فقد فُوتِر ضريبيًّا، والرقمُ الفارغُ فيه نقصٌ يُسَدّ: به يعرف قسمُ التحصيل
+  // كشوفَ الفاتورة، وبدونه تقول الفاتورةُ «لا كشوف» وهي تحملها.
   const [invoiceGapOnly, setInvoiceGapOnly] = useState(false);
   const [invoiceGapCount, setInvoiceGapCount] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -1071,7 +1073,7 @@ export default function OperationsWorkflowPage() {
                 {lang === 'ar' ? 'بلا رقم فاتورة' : 'Missing invoice no.'}
               </span>
               <span className="text-[10px] text-rose-700/60 leading-tight">
-                {lang === 'ar' ? 'عليه مبالغ فوترة والرقم فارغ' : 'has invoice amounts, number blank'}
+                {lang === 'ar' ? 'عليه ضريبة والرقم فارغ' : 'has VAT, number blank'}
               </span>
             </div>
             {invoiceGapOnly && (

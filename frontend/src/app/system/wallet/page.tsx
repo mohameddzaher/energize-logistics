@@ -771,7 +771,8 @@ export default function WalletPage() {
     if (tx.expenseCategory) parts.push(`${L.category}: ${tx.expenseCategory.name}`);
     if (tx.itemName) parts.push(tx.itemName);
     if (tx.purchaseDriverName) parts.push(`${L.driver}: ${tx.purchaseDriverName}`);
-    if (tx.purchaseReceiptNumber) parts.push(`${L.receipt}: ${tx.purchaseReceiptNumber}`);
+    // ورقمُ السند لا يُعاد هنا: صار له عمودُه بجانب كشفه في الجدول وفي الملفّ،
+    // وتكرارُه داخل «التفاصيل» يجعله يُقرأ مرّتين ويُفلتَر عليه في موضعين.
     if (tx.type === 'tax_invoice') {
       const nums = (tx.receivedReportNumbers?.length ? tx.receivedReportNumbers : [tx.receivedDocNumber]).filter(Boolean);
       if (nums.length) parts.push(nums.join(' , '));

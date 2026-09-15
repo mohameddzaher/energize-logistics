@@ -153,7 +153,8 @@ export default function TaxInvoiceDetailPage() {
           <ArrowRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} />{t('رجوع', 'Back')}
         </button>
         <ExportMenu fileName={`invoice-${data.invoiceNumber}`} lang={ar ? 'ar' : 'en'}
-          options={[{ key: 'shown', label: t('كشوف الفاتورة', 'Invoice reports'), sheets: [{ name: t('الكشوف', 'Reports'), rows: data.reports as any, columns: cols }] }]} />
+          // بعد قمع الأعمدة لا قبله — راجع shown.
+          options={[{ key: 'shown', label: t('كشوف الفاتورة', 'Invoice reports'), sheets: [{ name: t('الكشوف', 'Reports'), rows: shown as any, columns: cols }] }]} />
       </PageHeader>
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">

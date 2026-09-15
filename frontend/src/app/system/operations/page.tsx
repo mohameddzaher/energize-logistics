@@ -235,15 +235,13 @@ export default function OperationsWorkflowPage() {
     'reference', 'representativeName', 'stage',
   ]);
   const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
-  const [showBulkReview, setShowBulkReview] = useState(false);
   // ── تسجيلُ سدادٍ لدفعةٍ واحدة ─────────────────────────────────────────────
   // السنداتُ تصل دفعةً بتاريخٍ واحدٍ وفرعٍ واحد، وكان يُفتح كلُّ صفٍّ ليُكتب
   // فيه التاريخُ نفسُه — مئةُ فرصةِ خطأٍ لعملٍ واحد.
   const [showBulkPay, setShowBulkPay] = useState(false);
-  const [bulkPay, setBulkPay] = useState({ paymentDate: '', payingBranch: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '' });
+  const [bulkPay, setBulkPay] = useState({ paymentDate: '', payingBranch: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '', operationsReview: '' });
   const [bulkPaying, setBulkPaying] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ message: string; skipped: { reportNumber: string; reason: string }[] } | null>(null);
-  const [bulkReviewText, setBulkReviewText] = useState('تم');
   // فلاتر الأعمدة على طريقة إكسل: اسم العمود ← مجموعة القيم الخام المسموح بها.
   // تُرسَل إلى الخادم فيفلتر بها الجدولَ كلَّه، ولا تُطبَّق في المتصفح.
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
@@ -631,21 +629,16 @@ export default function OperationsWorkflowPage() {
     }
   };
 
-  const handleBulkReview = async () => {
-    try {
-      await Promise.all(Array.from(selectedIds).map(id =>
-        api.put(`/api/workflows/${id}`, { operationsReview: bulkReviewText })
-      ));
-      setSelectedIds(new Set());
-      setShowBulkReview(false);
-      fetchWorkflows(true);
-    } catch (err: any) { setError(err.message); }
-  };
-
   const handleBulkPay = async () => {
     // ما لم يُملأ لا يُرسَل: حقلٌ فارغٌ في الدفعة يعني «لا تلمس هذا العمود»،
     // لا «امسح ما فيه» — ومسحُ مئةِ صفٍّ بالخطأ أسوأ من عدم كتابتها.
-    const fields = Object.fromEntries(Object.entries(bulkPay).filter(([, v]) => String(v || '').trim()));
+    const fields: Record<string, any> = Object.fromEntries(
+      Object.entries(bulkPay).filter(([, v]) => String(v || '').trim()));
+    // ── و«إزالة العلامة» فراغٌ مقصود ────────────────────────────────────
+    // القاعدةُ أعلاه تُسقط الفارغَ لأنّه يعني «لا تلمس هذا العمود». ورفعُ
+    // علامة المراجعة فراغٌ **مطلوب**، فيُمرَّر صراحةً بقيمةٍ خاصّةٍ لا تلتبس
+    // بالخانة التي لم تُملأ.
+    if (bulkPay.operationsReview === 'clear') fields.operationsReview = '';
     if (!Object.keys(fields).length) return;
     setBulkPaying(true); setBulkResult(null);
     try {
@@ -654,7 +647,7 @@ export default function OperationsWorkflowPage() {
       setBulkResult({ message: r.message, skipped: r.skipped || [] });
       if (!(r.skipped || []).length) {
         setShowBulkPay(false); setSelectedIds(new Set());
-        setBulkPay({ paymentDate: '', payingBranch: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '' });
+        setBulkPay({ paymentDate: '', payingBranch: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '', operationsReview: '' });
       }
       fetchWorkflows(true);
     } catch (err: any) { setBulkResult({ message: err.message, skipped: [] }); }
@@ -877,6 +870,25 @@ export default function OperationsWorkflowPage() {
                       <DateField ar={lang === 'ar'} label={lang === 'ar' ? 'تاريخ التسليم للفرع' : 'Delivered to branch'}
                         value={bulkPay.branchDeliveryDate} onChange={(v) => setBulkPay((p) => ({ ...p, branchDeliveryDate: v }))} />
                     </div>
+                    {/* ── ومراجعةُ التشغيل علامةٌ لا نصّ ──────────────────────
+                        الصفُّ الواحد يضعها بضغطةٍ تكتب «تم» أو تمسحها، والتصديرُ
+                        يقرؤها نعمًا أو لا. وكان زرُّ الدفعة صندوقَ نصٍّ حرًّا
+                        يكتب في العمود ما شاء — «راجعه أحمد» تُقرأ «تمّت» في
+                        الملفّ وفي الجدول. فصارت قائمةً بخيارين كالصفّ الواحد.
+                        و«إزالة العلامة» ليست فراغًا مُهمَلًا — راجع handleBulkPay. */}
+                    {canEditOperationsReview && (
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">{T.thOpsReview}</label>
+                        <select value={bulkPay.operationsReview}
+                          onChange={(e) => setBulkPay((p) => ({ ...p, operationsReview: e.target.value }))}
+                          title={T.thOpsReview}
+                          className="w-full px-2 py-2 rounded-lg border border-slate-300 text-sm bg-white">
+                          <option value="">{lang === 'ar' ? '— لا تُغيَّر —' : '— leave unchanged —'}</option>
+                          <option value="تم">{lang === 'ar' ? 'تمّت المراجعة' : 'Reviewed'}</option>
+                          <option value="clear">{lang === 'ar' ? 'إزالة العلامة' : 'Clear the mark'}</option>
+                        </select>
+                      </div>
+                    )}
                     {/* ── وتسليمُ العميل لا يُملأ جماعةً من هنا ────────────────
                         منه تبدأ مهلةُ السداد لكلّ عميلٍ بمدّته، فهو واقعةٌ
                         تُسجَّل لفاتورةٍ بعينها يوم تصل صاحبَها — يكتبها قسمُ
@@ -901,36 +913,6 @@ export default function OperationsWorkflowPage() {
                     <button type="button" onClick={() => { setShowBulkPay(false); setBulkResult(null); }}
                       className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs transition-colors">
                       {lang === 'ar' ? 'إغلاق' : 'Close'}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          {/* مراجعةُ التشغيل جماعيًّا — لمن يملك الكتابةَ في عمودها، وهو
-              الشرطُ نفسُه المطبَّقُ على الخانة في الصفّ الواحد. */}
-          {canEditOperationsReview && selectedIds.size > 0 && (
-            <div className="relative">
-              <button type="button" onClick={() => setShowBulkReview(prev => !prev)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium transition-colors">
-                <CheckSquare className="w-4 h-4" /> {lang === 'ar' ? 'مراجعة' : 'Review'} ({selectedIds.size})
-              </button>
-              {showBulkReview && (
-                <div className="absolute top-full mt-2 end-0 bg-slate-50 border border-slate-200 rounded-lg shadow-xl z-50 p-3 min-w-[220px]">
-                  <label className="block text-xs text-slate-500 mb-1">{lang === 'ar' ? 'نص المراجعة:' : 'Review text:'}</label>
-                  <input
-                    type="text"
-                    value={bulkReviewText}
-                    onChange={(e) => setBulkReviewText(e.target.value)}
-                    placeholder={lang === 'ar' ? 'نص المراجعة' : 'Review text'}
-                    title={lang === 'ar' ? 'نص المراجعة' : 'Review text'}
-                    className="w-full px-2 py-1.5 rounded bg-white border border-slate-300 text-slate-900 text-sm focus:outline-none focus:ring-1 focus:ring-[#f37121] mb-2"
-                  />
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={handleBulkReview} className="flex-1 px-3 py-1.5 rounded bg-yellow-600 hover:bg-yellow-700 text-white text-xs font-medium transition-colors">
-                      {lang === 'ar' ? 'تأكيد' : 'Confirm'}
-                    </button>
-                    <button type="button" onClick={() => setShowBulkReview(false)} className="px-3 py-1.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs transition-colors">
-                      {lang === 'ar' ? 'إلغاء' : 'Cancel'}
                     </button>
                   </div>
                 </div>

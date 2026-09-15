@@ -36,6 +36,11 @@ const QUICK = [7, 15, 30, 60, 90, 180];
 const COL_DEFS: [string, string, string][] = [
   ['plate', 'اللوحة', 'Plate'],
   ['vehicle', 'المركبة', 'Vehicle'],
+  // ── والموديلُ عمودٌ بذاته لا ذيلٌ في «المركبة» ────────────────────────────
+  // سنةُ الصنع تفصل شاحنتين بالماركة والطراز نفسِهما، وعليها يُبنى القرار:
+  // مركبةٌ موديلَ ٢٠١٢ انتهت استمارتُها ليست كموديلِ ٢٠٢٤ انتهت استمارتُه.
+  // وفي عمودٍ مستقلٍّ يُفلتَر عليه ويُرتَّب، ويخرج رقمًا في ملفّ إكسل.
+  ['modelYear', 'الموديل', 'Year'],
   ['doc', 'المستند', 'Document'],
   ['expiry', 'ينتهي في', 'Expires'],
   ['left', 'المتبقي', 'Left'],
@@ -101,13 +106,14 @@ function ExpiringInner() {
   const rows = useMemo(() => all.filter((r: any) => {
     if (mutedOnly && r.alertEnabled !== false) return false;
     if (!needle) return true;
-    return [r.plateNumber, r.brandAr, r.modelAr, r.sectorAr, r.ownerNameAr, r.docAr, r.docEn, r.reference]
+    return [r.plateNumber, r.brandAr, r.modelAr, r.modelYear, r.sectorAr, r.ownerNameAr, r.docAr, r.docEn, r.reference]
       .some((v) => String(v || '').toLowerCase().includes(needle));
   }), [all, mutedOnly, needle]);
 
   const GETTERS = useMemo<Record<string, (r: any) => any>>(() => ({
     plate: (r) => r.plateNumber,
     vehicle: (r) => [r.brandAr, r.modelAr].filter(Boolean).join(' '),
+    modelYear: (r) => (r.modelYear || ''),
     doc: (r) => (ar ? r.docAr : r.docEn),
     expiry: (r) => fmtDate(r.expiryDate),
     left: (r) => daysText(r.daysRemaining, ar),
@@ -142,6 +148,7 @@ function ExpiringInner() {
     { header: t('القطاع', 'Sector'), key: 'sectorAr', width: 16 },
     { header: t('الماركة', 'Brand'), key: 'brandAr', width: 16 },
     { header: t('الطراز', 'Model'), key: 'modelAr', width: 16 },
+    { header: t('الموديل', 'Year'), key: 'modelYear', width: 10 },
     { header: t('المالك', 'Owner'), key: 'ownerNameAr', width: 26 },
     { header: t('المرجع', 'Reference'), key: 'reference', width: 22 },
     { header: t('التنبيه مفعّل', 'Alert on'), key: 'alertEnabled', transform: (v) => (v === false ? t('لا', 'No') : t('نعم', 'Yes')), width: 12 },
@@ -340,6 +347,7 @@ function ExpiringInner() {
                         className="font-semibold text-slate-800 hover:text-[#f37121]">{r.plateNumber}</button>
                     </td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{[r.brandAr, r.modelAr].filter(Boolean).join(' ') || '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap tabular-nums">{r.modelYear || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-600">
                       <span className="inline-flex items-center gap-1 justify-center">
                         {ar ? r.docAr : r.docEn}

@@ -788,6 +788,9 @@ export default function WalletPage() {
     { header: `${L.amount} (SAR)`, key: 'amount', transform: (v: any, row: any) => (row?.type === 'tax_invoice' ? (ar ? 'خارج الرصيد' : 'off-balance') : fmt.money(v)), width: 15 },
     { header: L.details, key: '_details', transform: (_v: any, row: any) => detailsText(row), width: 40 },
     { header: L.deliveryStatementNumber, key: 'deliveryStatementNumber', transform: (v: any, row: any) => dash(v || row?.purchaseDeliveryStatementNumber), width: 20 },
+    // ورقمُ السند بجانب كشفه في الملفّ كما هو بجانبه على الشاشة: السؤالُ
+    // «أيُّ سندٍ لأيّ كشف؟» يُقرأ في خانتين متجاورتين لا في طرفَي الصفّ.
+    { header: L.receipt, key: 'purchaseReceiptNumber', transform: (v: any) => dash(v), width: 15 },
     { header: L.branch, key: 'purchaseBranch', transform: (v: any, row: any) => dash(v || row?.operationDetails?.branch), width: 16 },
     opDetail('client'),
     opDetail('from'),
@@ -811,7 +814,6 @@ export default function WalletPage() {
     { header: L.driver, key: 'driver', transform: (v: any, row: any) => v?.name || row?.driverName || row?.purchaseDriverName || '', width: 18 },
     { header: L.category, key: 'expenseCategory', transform: (v: any) => v?.name || '', width: 18 },
     { header: L.itemDescription, key: 'itemName', transform: (v: any, row: any) => v || row?.description || '', width: 22 },
-    { header: L.receipt, key: 'purchaseReceiptNumber', width: 15 },
     { header: ar ? 'مرجع' : 'Reference', key: 'reference', width: 15 },
     { header: ar ? 'مُعلَّمة' : 'Flagged', key: 'isFlagged', transform: fmt.yesNo, width: 10 },
   ];
@@ -1144,6 +1146,13 @@ export default function WalletPage() {
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.amount}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.details}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.deliveryStatementNumber}</th>
+                {/* ── ورقمُ السند عمودٌ بجانب كشفه ──────────────────────────
+                    كان مدفونًا في عمود «التفاصيل» مع سائقٍ ووصفٍ وعميل، فمن
+                    أراد أن يعرف أيَّ سندٍ كُتب لأيّ كشفِ تخريجٍ قرأ فقرةً في
+                    كلّ صفّ وجمعها بعينه. وهو رقمٌ يُطابَق كما تُطابَق الأرقام —
+                    فله عمودُه بجانب الكشف الذي يخصّه، ويُفرَز ويُفلتَر ويخرج
+                    خانةً مستقلّةً في ملفّ إكسل. */}
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.receipt}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.branch}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.client}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.from}</th>
@@ -1163,7 +1172,7 @@ export default function WalletPage() {
             </thead>
             <tbody>
               {transactions.length === 0 ? (
-                <tr><td colSpan={mode === 'day' ? 16 : 17} className="text-center text-slate-800 py-12">{L.noTransactions}</td></tr>
+                <tr><td colSpan={mode === 'day' ? 17 : 18} className="text-center text-slate-800 py-12">{L.noTransactions}</td></tr>
               ) : transactions.map((tx) => {
                 const cfg = TYPE_CONFIG[tx.type];
                 const Icon = cfg.icon;
@@ -1197,7 +1206,6 @@ export default function WalletPage() {
                       {tx.expenseCategory && <div>{L.category}: {tx.expenseCategory.name}</div>}
                       {tx.itemName && <div>{tx.itemName}</div>}
                       {tx.purchaseDriverName && <div>{L.driver}: {tx.purchaseDriverName}</div>}
-                      {tx.purchaseReceiptNumber && <div>{L.receipt}: {tx.purchaseReceiptNumber}</div>}
                       {/* الكشوفُ المستلَمة في هذا القيد — وهي كلُّ محتواه. */}
                       {tx.type === 'tax_invoice' && (
                         <div className="flex flex-wrap gap-1">
@@ -1209,6 +1217,12 @@ export default function WalletPage() {
                     </td>
                     {/* Delivery Statement # — its own column */}
                     <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{tx.deliveryStatementNumber || tx.purchaseDeliveryStatementNumber || '—'}</td>
+                    {/* رقم السند — عمودُه. راجع الترويسة. */}
+                    <td className="px-4 py-3 text-xs whitespace-nowrap font-mono">
+                      {tx.purchaseReceiptNumber
+                        ? <span className="text-slate-800">{tx.purchaseReceiptNumber}</span>
+                        : <span className="text-slate-300">—</span>}
+                    </td>
                     {/* Branch — show typed branch first, fall back to workflow branch */}
                     <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{tx.purchaseBranch || tx.operationDetails?.branch || '—'}</td>
                     {/* Operation Details — each in its own column */}

@@ -205,6 +205,59 @@ export const toHijri = (d?: string | null): string => {
   } catch { return ''; }
 };
 
+/**
+ * hijriParts — «04/04/1448 هـ» → { y, m, d }. ويقبل ما يكتبه الناس:
+ * «1448-04-04» و«4/4/1448» و«١٤٤٨/٠٤/٠٤» بالأرقام العربيّة.
+ */
+export function hijriParts(text?: string | null): { y: number; m: number; d: number } | null {
+  if (!text) return null;
+  // الأرقامُ العربيّة تُردّ إلى لاتينيّة قبل أيّ قراءة.
+  const t = String(text).replace(/[\u0660-\u0669]/g, (c) => String(c.charCodeAt(0) - 0x0660))
+    .replace(/[\u06f0-\u06f9]/g, (c) => String(c.charCodeAt(0) - 0x06f0))
+    .replace(/هـ|AH|H/gi, '').trim();
+  const n = t.split(/[^\d]+/).filter(Boolean).map(Number);
+  if (n.length < 3) return null;
+  // السنةُ هي الطرفُ الرباعيّ: «1448-04-04» و«04/04/1448» كلاهما مفهوم.
+  const [a, b, c] = n;
+  const y = a > 1000 ? a : c;
+  const d = a > 1000 ? c : a;
+  const m = b;
+  if (!y || !m || !d || m > 12 || d > 30) return null;
+  return { y, m, d };
+}
+
+/**
+ * fromHijri — هجريٌّ → ميلاديّ `YYYY-MM-DD`.
+ *
+ * ── لماذا بحثٌ لا معادلة ────────────────────────────────────────────────────
+ * تقويمُ أمّ القرى ليس حسابيًّا بحتًا: أطوالُ شهوره مقرَّرةٌ في جداولَ رسميّة،
+ * وأيُّ معادلةٍ تقريبيّةٍ تخطئ يومًا أو يومين في بعض السنين. والمتصفّحُ يحمل
+ * الجدولَ الصحيح في `Intl` — لكنّه يُخرج ولا يُدخل.
+ *
+ * فيُقلَب `toHijri` عليه: يُقدَّر اليومُ الميلاديّ تقريبًا ثمّ يُمشى حولَه حتّى
+ * يُطابق ما نريد. وميزتُه أنّ الذهابَ والإياب يتّفقان دائمًا — فما يُكتب هجريًّا
+ * ثمّ يُعرَض هجريًّا يعود كما كُتب حرفًا بحرف، وهو الشرطُ الذي يهمّ القارئ.
+ */
+export function fromHijri(text?: string | null): string {
+  const p = hijriParts(text);
+  if (!p) return '';
+  const want = `${String(p.d).padStart(2, '0')}/${String(p.m).padStart(2, '0')}/${p.y}`;
+  // نقطةُ البدء: السنةُ الهجريّة ٣٥٤٫٣٦٧ يومًا، والأولى تبدأ ١٦ يوليو ٦٢٢م.
+  const approx = Date.UTC(622, 6, 16) + Math.round(((p.y - 1) * 354.367 + (p.m - 1) * 29.53 + (p.d - 1)) * 86400000);
+  for (let step = 0; step <= 40; step += 1) {
+    for (const dir of step === 0 ? [0] : [step, -step]) {
+      const cand = new Date(approx + dir * 86400000);
+      const got = toHijri(cand.toISOString().slice(0, 10)).replace(/\s*هـ\s*$/, '').trim();
+      if (got === want) return cand.toISOString().slice(0, 10);
+    }
+  }
+  return '';
+}
+
+/** الهجريُّ بلا لاحقة «هـ» — للكتابة في خانةِ إدخال. */
+export const toHijriPlain = (d?: string | null): string =>
+  toHijri(d).replace(/\s*هـ\s*$/, '').trim();
+
 export const money = (n: unknown) => (Number(n) || 0).toLocaleString('en-US');
 export const fmtDate = (d?: string | null) => (d ? new Date(d).toISOString().slice(0, 10) : '—');
 // نص واضح للمدة المتبقية على الانتهاء.
@@ -288,10 +341,12 @@ export const STATE_META: Record<string, { ar: string; en: string; color: string;
   expired: { ar: 'منتهي', en: 'Expired', color: '#dc2626', bg: 'bg-red-100 text-red-700' },
   due: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#f59e0b', bg: 'bg-amber-100 text-amber-700' },
   valid: { ar: 'ساري', en: 'Valid', color: '#16a34a', bg: 'bg-emerald-100 text-emerald-700' },
-  // درجاتُ الإلحاح — اسمٌ واحدٌ ولونٌ مختلف
-  critical: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#ea580c', bg: 'bg-orange-100 text-orange-700' },
-  warning: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#f59e0b', bg: 'bg-amber-100 text-amber-700' },
-  upcoming: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#0ea5e9', bg: 'bg-sky-100 text-sky-800' },
+  // ── ودرجاتُ الإلحاح أسماءٌ لا ألوان ──────────────────────────────────────
+  // «حرجٌ» عملُ اليوم، و«قريبٌ» تجهيزُ الشهر القادم — فلا يُسمَّيان باسمٍ واحد.
+  // وعتباتُها تُضبَط لكلّ مستندٍ من إعدادات القسم. راجع config/vehicleDocuments.
+  critical: { ar: 'حرج', en: 'Critical', color: '#ea580c', bg: 'bg-orange-100 text-orange-700' },
+  warning: { ar: 'تحذير', en: 'Warning', color: '#f59e0b', bg: 'bg-amber-100 text-amber-700' },
+  upcoming: { ar: 'قريب', en: 'Upcoming', color: '#0ea5e9', bg: 'bg-sky-100 text-sky-800' },
   // ولا تاريخَ أصلًا: عملٌ ينتظر لا حالةُ مستند
   missing: { ar: 'مطلوب — بلا تاريخ', en: 'Needed — no date', color: '#94a3b8', bg: 'bg-slate-100 text-slate-600' },
   not_applicable: { ar: 'غير مطلوب', en: 'Not applicable', color: '#64748b', bg: 'bg-slate-100 text-slate-500' },
@@ -301,9 +356,15 @@ export const STATE_META: Record<string, { ar: string; en: string; color: string;
 export const stateMeta = (s?: string | null) =>
   STATE_META[s || 'valid'] || { ...STATE_META.not_applicable, ar: String(s || '—'), en: String(s || '—') };
 
-/** الحالةُ كما تُعرَض وتُفلتَر: ثلاثٌ لا خمس. */
-export const publicState = (s: string): string =>
-  (['critical', 'warning', 'upcoming'].includes(s) ? 'due' : s);
+/**
+ * الحالةُ كما تُعرَض — وهي الآن هي نفسُها بلا طيّ.
+ * وتبقى الدالّةُ لأنّ المواضعَ كثيرةٌ تنادي بها، ولأنّ `due` يبقى سؤالًا
+ * مفهومًا: «كلُّ ما يحتاج عملًا ولم ينتهِ» = مجموعُ الدرجات الثلاث (isDue).
+ */
+export const publicState = (s: string): string => s;
+
+/** أهي من درجات «قارب على الانتهاء» الثلاث؟ */
+export const isDue = (s: string): boolean => ['critical', 'warning', 'upcoming'].includes(s);
 
 export const stateLabel = (s: string, ar: boolean) => (STATE_META[s] ? (ar ? STATE_META[s].ar : STATE_META[s].en) : s);
 

@@ -11,7 +11,7 @@ import { fmtDate, toHijri } from '@/lib/vehicleRegistry';
 
 const COLUMNS: DocColumn[] = [
   ...commonColumns(),
-  { key: 'expiryDate', ar: 'انتهاء رخصة السير (ميلادي)', en: 'Licence expiry (Gregorian)', get: (v) => fmtDate(v.vehicleLicense?.expiryDate), width: 18 },
+  { key: 'expiryDate', ar: 'انتهاء رخصة السير', en: 'Licence expiry', get: (v) => fmtDate(v.vehicleLicense?.expiryDate), width: 18 },
   // يُشتقّ من الميلاديّ لا يُكتب: عمودٌ يُملأ مرّتين يفترق عند أوّل تجديد.
   { key: 'expiryDateHijri', ar: 'انتهاء رخصة السير (هجري)', en: 'Licence expiry (Hijri)', mono: true, get: (v) => toHijri(v.vehicleLicense?.expiryDate), width: 18 },
 ];
@@ -19,7 +19,7 @@ const COLUMNS: DocColumn[] = [
 // التاريخان يُكتبان معًا لا أحدُهما: الرخصة في اليد هجريّة، والنظام يحسب
 // بالميلاديّ. من أدخل واحدًا وترك الآخر أعاد الخلافَ الذي جاء العمودان لرفعه.
 const FIELDS: DocField[] = [
-  { path: 'vehicleLicense.expiryDate', ar: 'انتهاء رخصة السير (ميلادي)', en: 'Licence expiry (Gregorian)', kind: 'date' },
+  { path: 'vehicleLicense.expiryDate', ar: 'انتهاء رخصة السير', en: 'Licence expiry', kind: 'date' },
 ];
 
 export default function Page() {

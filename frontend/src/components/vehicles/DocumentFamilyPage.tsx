@@ -38,7 +38,7 @@ import { ArrowRight, RefreshCw, Plus, Pencil, Eraser, Trash2, X, Save, Search } 
 /** مجموعةٌ فارغةٌ ثابتة — لئلّا تُبنى واحدةٌ جديدة في كلّ رسمةٍ فتُعاد اللوحة. */
 const EMPTY_SET: Set<string> = new Set();
 
-import { VReg, DOC_TYPES, daysText, STATE_META, publicState, canEditVehicles, canAdminVehicles, isSharedPaper } from '@/lib/vehicleRegistry';
+import { VReg, DOC_TYPES, daysText, STATE_META, publicState, canEditVehicles, canAdminVehicles, isSharedPaper, toHijriPlain, fromHijri } from '@/lib/vehicleRegistry';
 import { flexIncludes } from '@/lib/flexMatch';
 import ManagedSelect from '@/components/system/ManagedSelect';
 
@@ -337,12 +337,20 @@ function DocumentFamilyPageInner({
       tone: 'red',
       test: (v: VReg) => stateOf(v, docKey).state === 'expired',
     },
+    // ── ثلاثُ شرائحَ بدل واحدة ─────────────────────────────────────────────
+    // «حرج» عملُ اليوم و«تحذير» عملُ الأسبوع و«قريب» تجهيزٌ للشهر القادم.
+    // وعتبةُ كلٍّ بالأيّام تُضبَط لهذا المستند من إعدادات القسم.
     {
-      // الدرجاتُ الثلاثُ في شريحةٍ واحدة — راجع publicState في lib/vehicleRegistry.
-      key: 'due',
-      label: t('قارب على الانتهاء', 'Due soon'),
-      tone: 'amber',
-      test: (v: VReg) => publicState(stateOf(v, docKey).state) === 'due',
+      key: 'critical', label: t('حرج', 'Critical'), tone: 'orange',
+      test: (v: VReg) => stateOf(v, docKey).state === 'critical',
+    },
+    {
+      key: 'warning', label: t('تحذير', 'Warning'), tone: 'amber',
+      test: (v: VReg) => stateOf(v, docKey).state === 'warning',
+    },
+    {
+      key: 'upcoming', label: t('قريب', 'Upcoming'), tone: 'sky',
+      test: (v: VReg) => stateOf(v, docKey).state === 'upcoming',
     },
     { key: 'valid', label: t('ساري', 'Valid'), tone: 'green', test: (v: VReg) => stateOf(v, docKey).state === 'valid' },
     {
@@ -985,12 +993,19 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, onCl
                           onChange={(v) => setVals((p) => ({ ...p, [fl.path]: v }))}
                           placeholder={t('اختر…', 'Select…')} />
                       ) : (
-                        <input
-                          type={fl.kind === 'date' ? 'date' : fl.kind === 'number' ? 'number' : 'text'}
-                          value={vals[fl.path] ?? ''}
-                          onChange={(e) => setVals((p) => ({ ...p, [fl.path]: e.target.value }))}
-                          className={`${inp} ${fl.mono ? 'font-mono' : ''}`}
-                          {...(fl.mono ? { dir: 'ltr' } : {})} />
+                        fl.kind === 'date' ? (
+                          <HijriGregorianField
+                            value={vals[fl.path] ?? ''}
+                            onChange={(v) => setVals((p) => ({ ...p, [fl.path]: v }))}
+                            ar={ar} inp={inp} />
+                        ) : (
+                          <input
+                            type={fl.kind === 'number' ? 'number' : 'text'}
+                            value={vals[fl.path] ?? ''}
+                            onChange={(e) => setVals((p) => ({ ...p, [fl.path]: e.target.value }))}
+                            className={`${inp} ${fl.mono ? 'font-mono' : ''}`}
+                            {...(fl.mono ? { dir: 'ltr' } : {})} />
+                        )
                       )}
                     </>
                   )}
@@ -1065,6 +1080,56 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, onCl
  * صفحةٍ من السبع. وهي ثلاثةُ حقولٍ نصّيّةٍ قصيرةٍ تصل مع الصفّ أصلًا، فلا
  * نداءَ ثانٍ ولا عمودَ يُملأ مرّتين.
  */
+/**
+ * HijriGregorianField — خانتان لتاريخٍ واحد: هجريّةٌ وميلاديّة، كلٌّ تُسمِع الأخرى.
+ *
+ * ── لماذا اثنتان ───────────────────────────────────────────────────────────
+ * أوراقُ المرور والفحص تُصدَر بالهجريّ، والموظّفُ يقرأ الورقةَ التي في يده.
+ * وكانت الخانةُ ميلاديّةً وحدَها، فيحوّل بيده أو بهاتفه ثمّ يكتب — وكلُّ تحويلٍ
+ * بيدٍ خطأٌ ينتظر. والعرضُ في الجداول كان بالتقويمين معًا أصلًا، فليكن الإدخالُ
+ * كذلك.
+ *
+ * والمحفوظُ واحدٌ لا اثنان: الميلاديُّ هو ما يُخزَّن ويُحسَب به العمر، والهجريُّ
+ * مشتقٌّ منه — راجع toHijri/fromHijri في lib/vehicleRegistry. فلا يفترقان أبدًا
+ * كما يفترق عمودان يُملآن باليد.
+ *
+ * ويُكتب في أيِّهما شاء: ما يُكتب هجريًّا يصير ميلاديًّا في اللحظة، والعكس.
+ * وما دام الهجريُّ ناقصًا (يكتب أوّلَ رقمين) لا يُمحى الميلاديُّ من تحته —
+ * تُترَك الخانةُ كما هي حتى يكتمل ما يُقرأ.
+ */
+function HijriGregorianField({ value, onChange, ar, inp }: {
+  value: string; onChange: (v: string) => void; ar: boolean; inp: string;
+}) {
+  const [hijri, setHijri] = useState(() => toHijriPlain(value));
+  // التاريخُ قد يتغيّر من خارج الخانة (فتحُ صفٍّ آخر، أو زرُّ تجديد) — فالهجريُّ
+  // يتبعه ما دام المستخدمُ لا يكتب فيه الآن.
+  const [typing, setTyping] = useState(false);
+  useEffect(() => { if (!typing) setHijri(toHijriPlain(value)); }, [value, typing]);
+
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <div>
+        <input type="date" value={value || ''} onChange={(e) => onChange(e.target.value)} className={inp} />
+        <p className="text-[10px] text-slate-400 mt-0.5">{ar ? 'ميلادي' : 'Gregorian'}</p>
+      </div>
+      <div>
+        <input
+          type="text" dir="ltr" inputMode="numeric" placeholder="1448/04/04"
+          value={hijri}
+          onFocus={() => setTyping(true)}
+          onBlur={() => setTyping(false)}
+          onChange={(e) => {
+            setHijri(e.target.value);
+            const g = fromHijri(e.target.value);
+            if (g) onChange(g);
+          }}
+          className={`${inp} font-mono`} />
+        <p className="text-[10px] text-slate-400 mt-0.5">{ar ? 'هجري — يُسمِع الميلاديّ' : 'Hijri — fills the Gregorian'}</p>
+      </div>
+    </div>
+  );
+}
+
 export const commonColumns = (): DocColumn[] => [
   { key: 'plateNumber', ar: 'رقم اللوحة', en: 'Plate', get: (v) => v.plateNumber, width: 16 },
   { key: 'sectorAr', ar: 'القطاع', en: 'Sector', get: (v) => v.sectorAr, width: 16 },

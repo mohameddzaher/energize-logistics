@@ -52,10 +52,11 @@ const COL_DEFS: [string, string, string][] = [
   ['sector', 'القطاع', 'Sector'],
   ['owner', 'المالك', 'Owner'],
 ];
-// ── ثلاثُ حالاتٍ لا خمس ─────────────────────────────────────────────────────
-// «على الرادار» و«ينتهي قريبًا جدًا» و«قارب على الانتهاء» شيءٌ واحدٌ بثلاث
-// درجاتٍ من الإلحاح، واللونُ وحدَه يفرّقها. راجع publicState.
-const STATES = ['expired', 'due', 'valid'] as const;
+// ── والدرجاتُ الثلاثُ تُختار كلٌّ على حدة ───────────────────────────────────
+// «حرج» عملُ اليوم، و«تحذير» عملُ الأسبوع، و«قريب» تجهيزٌ للشهر القادم. وكانت
+// تُطوى في «قارب على الانتهاء» فلا يجد من يريد الحرجَ وحدَه ما يختاره.
+// وعتباتُها بالأيّام تُضبَط لكلّ مستندٍ من إعدادات القسم.
+const STATES = ['expired', 'critical', 'warning', 'upcoming', 'valid'] as const;
 
 function ExpiringInner() {
   const { lang, isRTL } = useLanguage();
@@ -132,8 +133,7 @@ function ExpiringInner() {
   const summary = useMemo(() => {
     const s: Record<string, number> = { total: rows.length };
     for (const k of STATES) s[k] = 0;
-    // تُجمع الدرجاتُ الثلاثُ في «قارب على الانتهاء» — وإلّا عرضت الشاشةُ
-    // أصفارًا في شرائحَ لا وجودَ لها في الصفوف.
+    // كلُّ درجةٍ تُعَدّ باسمها — والشريحةُ التي لا صفَّ لها تعرض صفرًا صادقًا.
     for (const r of rows) { const k = publicState(r.state); s[k] = (s[k] || 0) + 1; }
     return s;
   }, [rows]);

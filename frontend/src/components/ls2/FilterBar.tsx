@@ -28,7 +28,7 @@ export type Chip = {
   /** الشرط. لو مش موجود، الشريحة دي «الكل». */
   test?: (row: any) => boolean;
   /** لون التمييز — بيتاخد من نفس لوحة القسم. */
-  tone?: 'slate' | 'green' | 'amber' | 'blue' | 'violet' | 'red' | 'sky';
+  tone?: 'slate' | 'green' | 'amber' | 'blue' | 'violet' | 'red' | 'sky' | 'orange';
 };
 
 const TONES: Record<string, { on: string; off: string; dot: string }> = {
@@ -39,6 +39,9 @@ const TONES: Record<string, { on: string; off: string; dot: string }> = {
   violet: { on: 'bg-violet-600 text-white border-violet-600', off: 'bg-white text-violet-800 border-violet-200', dot: 'bg-violet-500' },
   red: { on: 'bg-rose-600 text-white border-rose-600', off: 'bg-white text-rose-800 border-rose-200', dot: 'bg-rose-500' },
   sky: { on: 'bg-sky-600 text-white border-sky-600', off: 'bg-white text-sky-800 border-sky-200', dot: 'bg-sky-500' },
+  // برتقاليٌّ بين الكهرمانيّ والورديّ: «حرج» أشدُّ من «تحذير» وأخفُّ من «منتهٍ»،
+  // وثلاثتُها تُقرأ متجاورةً في شريطٍ واحد فيجب أن تتدرّج بالعين لا أن تتشابه.
+  orange: { on: 'bg-orange-600 text-white border-orange-600', off: 'bg-white text-orange-800 border-orange-200', dot: 'bg-orange-500' },
 };
 
 /**

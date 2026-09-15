@@ -143,19 +143,32 @@ const STATE_LABELS = {
   expired: { ar: 'منتهي', en: 'Expired', color: '#dc2626' },
   due: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#f59e0b' },
   valid: { ar: 'ساري', en: 'Valid', color: '#16a34a' },
-  // ودرجاتُ الإلحاح تحت «قارب على الانتهاء» — للّون لا للتسمية
-  critical: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#ea580c' },
-  warning: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#f59e0b' },
-  upcoming: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#0ea5e9' },
+  // ── ودرجاتُ الإلحاح صارت أسماءً لا ألوانًا ───────────────────────────────
+  // كانت الثلاثُ تُسمّى «قارب على الانتهاء» ويفرّقها اللونُ وحدَه، على أنّ
+  // القارئ يحتاج خبرًا واحدًا. وليس كذلك: «حرجٌ» يُعمَل عليه اليومَ و«قريبٌ»
+  // يُجهَّز له في الشهر القادم، والعملان مختلفان. واللونُ وحدَه لا يُفلتَر عليه
+  // ولا يخرج في ملفّ إكسل — فمن أراد الحرجَ وحدَه لم يجد ما يختاره.
+  //
+  // وعتباتُها تُضبَط لكلّ مستندٍ من إعدادات القسم (soon/warn/critical).
+  critical: { ar: 'حرج', en: 'Critical', color: '#ea580c' },
+  warning: { ar: 'تحذير', en: 'Warning', color: '#f59e0b' },
+  upcoming: { ar: 'قريب', en: 'Upcoming', color: '#0ea5e9' },
   // ولا تاريخَ أصلًا: هذه ليست حالةَ مستندٍ بل عملٌ ينتظر
   missing: { ar: 'مطلوب — بلا تاريخ', en: 'Needed — no date', color: '#94a3b8' },
   not_applicable: { ar: 'غير مطلوب', en: 'Not applicable', color: '#64748b' },
 };
 
-/** الحالةُ كما تُعرَض: ثلاثٌ لا خمس. */
-const publicState = (state) => (
-  ['critical', 'warning', 'upcoming'].includes(state) ? 'due' : state
-);
+/**
+ * الحالةُ كما تُعرَض — وهي الآن هي الحالةُ نفسُها.
+ *
+ * كانت تطوي «حرج» و«تحذير» و«قريب» في «قارب على الانتهاء». وبقيت الدالّةُ
+ * لأنّ عشراتِ المواضع تنادي بها، ولأنّ `due` يبقى مفهومًا يُسأل به: مَن أراد
+ * «كلَّ ما لم ينتهِ بعدُ ويحتاج عملًا» فهو مجموعُ الثلاث. راجع isDue.
+ */
+const publicState = (state) => state;
+
+/** أهي من درجات «قارب على الانتهاء» الثلاث؟ */
+const isDue = (state) => ['critical', 'warning', 'upcoming'].includes(state);
 
 const DAY = 86400000;
 /** الأيام المتبقية من النهاردة (سالب = منتهي). null لو مفيش تاريخ. */
@@ -262,6 +275,7 @@ const isGap = (code) => !!code && code !== 'not_required' && code !== '';
 
 module.exports = {
   publicState,
+  isDue,
   DOCUMENTS, DOC_KEYS, getDoc, STATUS_LABELS, statusLabel, STATE_LABELS,
   daysLeft, stateOf, SENTINEL_MAP, mapSentinel, isGap,
   AR_SENTINEL_MAP, mapSentinelAr, foldAr: _foldAr,

@@ -101,7 +101,9 @@ export default function Page() {
     ? [
       { key: '', label: t('الكل', 'All') },
       { key: 'expired', label: t('اشتراكه منتهٍ', 'Subscription expired'), tone: 'red', test: (x: any) => x.state === 'expired' },
-      { key: 'due', label: t('قارب على الانتهاء', 'Due soon'), tone: 'amber', test: (x: any) => ['critical', 'warning', 'upcoming'].includes(x.state) },
+      { key: 'critical', label: t('حرج', 'Critical'), tone: 'orange', test: (x: any) => x.state === 'critical' },
+      { key: 'warning', label: t('تحذير', 'Warning'), tone: 'amber', test: (x: any) => x.state === 'warning' },
+      { key: 'upcoming', label: t('قريب', 'Upcoming'), tone: 'sky', test: (x: any) => x.state === 'upcoming' },
       { key: 'valid', label: t('ساري', 'Valid'), tone: 'green', test: (x: any) => x.state === 'valid' },
       { key: 'stolen', label: t('الجهاز مسروق', 'Device stolen'), tone: 'violet', test: (x: any) => /مسروق/.test(x.deviceStatusAr || '') },
     ]

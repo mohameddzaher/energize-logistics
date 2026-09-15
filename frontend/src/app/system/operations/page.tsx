@@ -211,14 +211,6 @@ export default function OperationsWorkflowPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [showPendingOnly, setShowPendingOnly] = useState(false);
-  // ── كشوفٌ فُوتِرت ضريبيًّا ونُسي رقمُ فاتورتها ─────────────────────────────
-  // خانةُ رقم الفاتورة تُكتب هنا بيدٍ ولا تأتي من منصّة التشغيل. والضريبةُ هي
-  // التي تفصل: الكشفُ النقديُّ تكتب له القاعدةُ صافيًا وإجماليًّا من مبلغ سداده
-  // وتترك رقمَ الفاتورة فارغًا عمدًا — فليست له فاتورة. أمّا ما عليه ضريبةٌ
-  // فقد فُوتِر ضريبيًّا، والرقمُ الفارغُ فيه نقصٌ يُسَدّ: به يعرف قسمُ التحصيل
-  // كشوفَ الفاتورة، وبدونه تقول الفاتورةُ «لا كشوف» وهي تحملها.
-  const [invoiceGapOnly, setInvoiceGapOnly] = useState(false);
-  const [invoiceGapCount, setInvoiceGapCount] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Workflow>>({});
   // الصفُّ كما كان قبل التعديل — يُقارَن به عند الحفظ فلا يُرسَل إلّا ما تغيّر.
@@ -312,12 +304,11 @@ export default function OperationsWorkflowPage() {
     if (dateFrom) params.append('dateFrom', dateFrom);
     if (dateTo) params.append('dateTo', dateTo);
     if (showPendingOnly) params.append('pendingOnly', 'true');
-    if (invoiceGapOnly) params.append('invoiceGap', 'true');
     for (const [field, vals] of Object.entries(colFilters)) {
       vals.forEach((v) => params.append(`cf_${field}`, v));
     }
     return params;
-  }, [stageFilter, search, dateFrom, dateTo, showPendingOnly, invoiceGapOnly, colFilters]);
+  }, [stageFilter, search, dateFrom, dateTo, showPendingOnly, colFilters]);
 
   // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ────────────────────────────────────
   //
@@ -429,14 +420,7 @@ export default function OperationsWorkflowPage() {
 
   // اختيارُ الصفوف يُلغى مع كل تغيّر في الفلاتر أو الصفحة: الصفوف المؤشَّرة لم تعد
   // معروضة، وحذفٌ جماعيّ يقع على صفوفٍ لا يراها المستخدم.
-  // العددُ يُسأل عن الجدول كلِّه لا عن الشريحة المعروضة: هو نقصٌ قائمٌ يُسَدّ،
-  // لا خاصّيّةٌ لما يفلتره الناظرُ الآن.
-  useEffect(() => {
-    api.get<{ total: number }>('/api/workflows?invoiceGap=true&limit=1')
-      .then((d) => setInvoiceGapCount(d.total || 0)).catch(() => {});
-  }, []);
-
-  useEffect(() => { setSelectedIds(new Set()); }, [stageFilter, search, page, dateFrom, dateTo, showPendingOnly, invoiceGapOnly, colFilters]);
+  useEffect(() => { setSelectedIds(new Set()); }, [stageFilter, search, page, dateFrom, dateTo, showPendingOnly, colFilters]);
 
   const setColFilter = (field: string, set: Set<string>) => {
     // الفلترة تُغيّر عدد الصفحات كلّه، والبقاءُ على الصفحة السابعة بعد فلترٍ نتيجته
@@ -456,11 +440,11 @@ export default function OperationsWorkflowPage() {
   // في نتيجةٍ مفلترةٍ أو في صفحةٍ غير الأولى يكون كذبًا: صفٌّ لا يطابق الشرطَ
   // يظهر بين ما يطابقه. فيُترك للتحديث أن يأتي به إن كان يخصّ العرض.
   const handleCreated = useCallback((wf: Workflow) => {
-    const filtered = !!search || !!dateFrom || !!dateTo || showPendingOnly || invoiceGapOnly || Object.keys(colFilters).length > 0;
+    const filtered = !!search || !!dateFrom || !!dateTo || showPendingOnly || Object.keys(colFilters).length > 0;
     setTotal((t) => t + 1);
     if (filtered || page !== 1) return;
     setWorkflows((p) => [wf, ...p]);
-  }, [search, dateFrom, dateTo, showPendingOnly, invoiceGapOnly, colFilters, page]);
+  }, [search, dateFrom, dateTo, showPendingOnly, colFilters, page]);
   const handleUpdated = useCallback((wf: Workflow) => { setWorkflows((p) => p.map((w) => w._id === wf._id ? wf : w)); }, []);
   const handleDeleted = useCallback((d: { _id: string }) => {
     setWorkflows((p) => p.filter((w) => w._id !== d._id));
@@ -1052,37 +1036,6 @@ export default function OperationsWorkflowPage() {
             </span>
           )}
         </button>
-
-        {/* فُوتِر ونُسي رقمُ فاتورته — يُضغَط فيُعرَض */}
-        {invoiceGapCount > 0 && (
-          <button
-            type="button"
-            onClick={() => { setInvoiceGapOnly((v) => !v); setPage(1); }}
-            className={`flex items-center gap-3 px-5 py-3.5 rounded-xl border transition-all duration-200 ${
-              invoiceGapOnly
-                ? 'bg-rose-500/20 border-rose-500/60 ring-2 ring-rose-500/30'
-                : 'bg-rose-500/10 border-rose-500/30 hover:bg-rose-500/15 hover:border-rose-500/50'
-            }`}
-          >
-            <div className={`p-2 rounded-lg ${invoiceGapOnly ? 'bg-rose-500/30' : 'bg-rose-500/20'}`}>
-              <Receipt className="w-5 h-5 text-rose-700" />
-            </div>
-            <div className="flex flex-col items-start">
-              <span className="text-2xl font-bold text-rose-700">{invoiceGapCount.toLocaleString()}</span>
-              <span className="text-xs text-rose-700/80">
-                {lang === 'ar' ? 'بلا رقم فاتورة' : 'Missing invoice no.'}
-              </span>
-              <span className="text-[10px] text-rose-700/60 leading-tight">
-                {lang === 'ar' ? 'عليه ضريبة والرقم فارغ' : 'has VAT, number blank'}
-              </span>
-            </div>
-            {invoiceGapOnly && (
-              <span className="ms-2 px-2 py-0.5 rounded text-[10px] font-medium bg-rose-500/30 text-rose-700">
-                {lang === 'ar' ? 'مُفعّل' : 'ACTIVE'}
-              </span>
-            )}
-          </button>
-        )}
 
         {/* Filtered row count — live with the active filters */}
         <div className="flex items-center gap-3 px-5 py-3.5 rounded-xl border bg-blue-500/10 border-blue-500/30">

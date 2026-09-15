@@ -760,25 +760,29 @@ export default function WalletPage() {
   // «التفاصيل» على الشاشة سطورٌ مركَّبة في خانةٍ واحدة، فتُكتب كما تُعرض —
   // ومعها أعمدتُها المفردة، لأنّ الملفَّ يُفلتَر ويُجمَع والسطرُ المركَّب لا
   // يُفلتَر عليه.
-  const detailsText = (tx: any) => {
-    const parts: string[] = [];
-    if (tx.type === 'collection' && tx.collectionSource === 'company') parts.push(L.fromCompany);
-    if (tx.description) parts.push(tx.description);
-    if (tx.customer) parts.push(`${tx.customer.companyName} (${tx.customer.customerNumber})`);
-    if (tx.invoice) parts.push(`${txx.invoiceShort}: ${tx.invoice.invoiceNumber}`);
-    if (tx.vendor || tx.vendorName) parts.push(`${L.vendor}: ${tx.vendor?.name || tx.vendorName}`);
-
-    if (tx.expenseCategory) parts.push(`${L.category}: ${tx.expenseCategory.name}`);
-    if (tx.itemName) parts.push(tx.itemName);
-    // والسائقُ لا يُعاد هنا: صار له عمودُه في الجدول وفي الملفّ — راجع driverOf.
-    // ورقمُ السند لا يُعاد هنا: صار له عمودُه بجانب كشفه في الجدول وفي الملفّ،
-    // وتكرارُه داخل «التفاصيل» يجعله يُقرأ مرّتين ويُفلتَر عليه في موضعين.
-    if (tx.type === 'tax_invoice') {
-      const nums = (tx.receivedReportNumbers?.length ? tx.receivedReportNumbers : [tx.receivedDocNumber]).filter(Boolean);
-      if (nums.length) parts.push(nums.join(' , '));
-    }
-    return parts.join(' | ');
-  };
+  /**
+   * ── ولا عمودَ اسمُه «التفاصيل» ─────────────────────────────────────────────
+   *
+   * كان عمودًا واحدًا يجمع ثمانيةَ مصادرَ في فقرةٍ مفصولةٍ بخطوط: وصفٌ وعميلٌ
+   * وفاتورةٌ ومورّدٌ وبندُ مصروفٍ واسمُ صنفٍ وسائقٌ ورقمُ سند. وقيسَ عليه فبان
+   * أنّه لا يعمل:
+   *
+   *   ٨٢١ صفًّا من ٩٤٠ — الخانةُ فيها فارغةٌ تمامًا (٨٧٪).
+   *   وسبعُمئةٍ وتسعةٌ وتسعون منها مشترياتٌ، تفاصيلُها فارغةٌ عن آخرها — لأنّ
+   *   المشترياتِ تكتب بياناتها في أعمدتها: كشفٌ وسندٌ وسائقٌ وفرع.
+   *   وأربعةٌ من مصادره الثمانية لم يُكتب فيها صفٌّ واحدٌ قطّ: الفاتورةُ
+   *   المربوطة، والمورّدُ، واسمُ المورّد، وبندُ المصروف — بقايا تصميمٍ أقدمَ
+   *   كانت المحفظةُ فيه تسجّل مصروفاتٍ بمورّدين وبنود.
+   *
+   * وما بقي فيه شيئان مختلفان حُشرا في خانة: سطرٌ يقول ما هذا القيدُ («تحويل من
+   * الدمام إلى الرياض»، «كهرباء شهر أغسطس») — وهو `description` في التحصيل
+   * و`itemName` في المصروف، وهما شيءٌ واحدٌ للقارئ — واسمُ عميلٍ مربوط.
+   *
+   * فصارا عمودين يُفلتَر عليهما ويُجمَع تحتهما، و«من الشركة» وسمًا على نوع
+   * القيد لأنّه صفتُه لا تفصيلٌ فيه.
+   */
+  const statementOf = (tx: any) => tx?.description || tx?.itemName || '';
+  const customerOf = (tx: any) => (tx?.customer ? `${tx.customer.companyName} (${tx.customer.customerNumber})` : '');
 
   // ── ومصدرُ اسمِ السائق واحدٌ يُقرأ في ثلاثة مواضع ────────────────────────
   // للسائق ثلاثةُ مواضعَ في القيد: سجلٌّ مربوطٌ (`driver`)، واسمٌ حرٌّ كُتب في
@@ -794,7 +798,11 @@ export default function WalletPage() {
     // قيدُ الفاتورة الضريبيّة لا يمسّ الرصيد، والرقمُ فيه صفرٌ لا مبلغ —
     // فيُكتب كما يُقرأ على الشاشة لا كصفرٍ يُجمَع مع المال.
     { header: `${L.amount} (SAR)`, key: 'amount', transform: (v: any, row: any) => (row?.type === 'tax_invoice' ? (ar ? 'خارج الرصيد' : 'off-balance') : fmt.money(v)), width: 15 },
-    { header: L.details, key: '_details', transform: (_v: any, row: any) => detailsText(row), width: 40 },
+    { header: ar ? 'البيان' : 'Statement', key: '_statement', transform: (_v: any, row: any) => dash(statementOf(row)), width: 34 },
+    { header: ar ? 'العميل' : 'Customer', key: '_customer', transform: (_v: any, row: any) => dash(customerOf(row)), width: 26 },
+    // و«من الشركة» خانةُ نعم/لا تُجمَع، لا كلمةٌ داخل نصّ.
+    { header: ar ? 'من الشركة' : 'From company', key: 'collectionSource',
+      transform: (v: any) => (v === 'company' ? (ar ? 'نعم' : 'Yes') : ''), width: 12 },
     { header: L.deliveryStatementNumber, key: 'deliveryStatementNumber', transform: (v: any, row: any) => dash(v || row?.purchaseDeliveryStatementNumber), width: 20 },
     // ورقمُ السند بجانب كشفه في الملفّ كما هو بجانبه على الشاشة: السؤالُ
     // «أيُّ سندٍ لأيّ كشف؟» يُقرأ في خانتين متجاورتين لا في طرفَي الصفّ.
@@ -813,16 +821,14 @@ export default function WalletPage() {
     // مَن سجّلها: المحفظةُ للفرع يعمل عليها أكثرُ من موظّف، فالملفُّ بلا اسمِ
     // الفاعل يقول ماذا جرى ولا يقول من فعل.
     { header: ar ? 'سجّلها' : 'Recorded by', key: 'user', transform: (v: any) => (v ? `${v.firstName || ''} ${v.lastName || ''}`.trim() : ''), width: 20 },
-    // وما لا تسعه الشاشةُ عرضًا يسعه الملفّ — تفكيكُ «التفاصيل» إلى أعمدةٍ
-    // يُفلتَر عليها ويُجمَع.
-    { header: ar ? 'العميل (سجلّ)' : 'Customer (record)', key: 'customer', transform: (v: any) => (v ? `${v.companyName} (${v.customerNumber})` : ''), width: 25 },
-    { header: ar ? 'رقم الفاتورة' : 'Invoice #', key: 'invoice', transform: (v: any) => v?.invoiceNumber || '', width: 15 },
-    { header: ar ? 'قيمة الفاتورة (SAR)' : 'Invoice Amount (SAR)', key: 'invoice', transform: (v: any) => (v?.amount != null ? fmt.money(v.amount) : ''), width: 18 },
-    { header: ar ? 'رصيد الفاتورة (SAR)' : 'Invoice Balance (SAR)', key: 'invoice', transform: (v: any) => (v?.balance != null ? fmt.money(v.balance) : ''), width: 18 },
+    // ── وما لا يُكتب لا يُصدَّر ────────────────────────────────────────────
+    // كانت هنا ثمانيةُ أعمدةٍ تفكّ «التفاصيل». وقد رُفع منها ما لم يُكتب فيه
+    // صفٌّ واحدٌ قطّ في تسعِمئةٍ وأربعين قيدًا: المورّدُ، وبندُ المصروف، ورقمُ
+    // الفاتورة المربوطة وقيمتُها ورصيدُها. عمودٌ فارغٌ في كلّ صفٍّ لا يُقرأ —
+    // يُزاح ما بعده ويُطوَّل الملفُّ ويُسأل عنه كلَّ مرّة.
+    //
+    // والعميلُ و«البيان» صارا عمودين في الأعلى بجانب ما يخصّهما، فلا يُعادان.
     { header: ar ? 'كشوف الفاتورة الضريبيّة' : 'Received reports', key: 'receivedReportNumbers', transform: (v: any, row: any) => ((v?.length ? v : [row?.receivedDocNumber]).filter(Boolean).join(' , ')), width: 24 },
-    { header: L.vendor, key: 'vendor', transform: (v: any, row: any) => v?.name || row?.vendorName || '', width: 18 },
-    { header: L.category, key: 'expenseCategory', transform: (v: any) => v?.name || '', width: 18 },
-    { header: L.itemDescription, key: 'itemName', transform: (v: any, row: any) => v || row?.description || '', width: 22 },
     { header: ar ? 'مرجع' : 'Reference', key: 'reference', width: 15 },
     { header: ar ? 'مُعلَّمة' : 'Flagged', key: 'isFlagged', transform: fmt.yesNo, width: 10 },
   ];
@@ -1153,7 +1159,8 @@ export default function WalletPage() {
                 )}
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.type}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.amount}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.details}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'البيان' : 'Statement'}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'العميل' : 'Customer'}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.deliveryStatementNumber}</th>
                 {/* ── ورقمُ السند عمودٌ بجانب كشفه ──────────────────────────
                     كان مدفونًا في عمود «التفاصيل» مع سائقٍ ووصفٍ وعميل، فمن
@@ -1187,7 +1194,7 @@ export default function WalletPage() {
             </thead>
             <tbody>
               {transactions.length === 0 ? (
-                <tr><td colSpan={mode === 'day' ? 18 : 19} className="text-center text-slate-800 py-12">{L.noTransactions}</td></tr>
+                <tr><td colSpan={mode === 'day' ? 19 : 20} className="text-center text-slate-800 py-12">{L.noTransactions}</td></tr>
               ) : transactions.map((tx) => {
                 const cfg = TYPE_CONFIG[tx.type];
                 const Icon = cfg.icon;
@@ -1200,6 +1207,10 @@ export default function WalletPage() {
                       <div className="flex items-center gap-2">
                         <div className={`p-1 rounded ${cfg.bg}`}><Icon className={`w-3.5 h-3.5 ${cfg.color}`} /></div>
                         <span className={`text-xs font-medium capitalize ${cfg.color}`}>{typeLabel(tx.type)}</span>
+                        {/* «من الشركة» صفةُ التحصيل لا تفصيلٌ فيه — فهي وسمٌ عليه. */}
+                        {tx.type === 'collection' && tx.collectionSource === 'company' && (
+                          <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] font-semibold whitespace-nowrap">{L.fromCompany}</span>
+                        )}
                         {tx.isFlagged && <span title={tx.flagReason}><AlertTriangle className="w-3.5 h-3.5 text-red-600" /></span>}
                       </div>
                     </td>
@@ -1211,15 +1222,10 @@ export default function WalletPage() {
                           : tx.amount.toLocaleString()}
                       </span>
                     </td>
+                    {/* البيان — سطرٌ يقول ما هذا القيد. وكشوفُ الفاتورة الضريبيّة
+                        وسومٌ تحته: هي كلُّ محتوى ذلك القيد، ولا نصَّ له غيرها. */}
                     <td className="px-4 py-3 text-slate-700 text-xs">
-                      {tx.type === 'collection' && tx.collectionSource === 'company' && <div className="text-blue-600">{L.fromCompany}</div>}
-                      {tx.description && <div>{tx.description}</div>}
-                      {tx.customer && <div>{tx.customer.companyName} ({tx.customer.customerNumber})</div>}
-                      {tx.invoice && <div className="text-slate-700">{txx.invoiceShort}: {tx.invoice.invoiceNumber}</div>}
-                      {(tx.vendor || tx.vendorName) && <div>{L.vendor}: {tx.vendor?.name || tx.vendorName}</div>}
-                      {tx.expenseCategory && <div>{L.category}: {tx.expenseCategory.name}</div>}
-                      {tx.itemName && <div>{tx.itemName}</div>}
-                      {/* الكشوفُ المستلَمة في هذا القيد — وهي كلُّ محتواه. */}
+                      {statementOf(tx) ? <div>{statementOf(tx)}</div> : null}
                       {tx.type === 'tax_invoice' && (
                         <div className="flex flex-wrap gap-1">
                           {(tx.receivedReportNumbers?.length ? tx.receivedReportNumbers : [tx.receivedDocNumber]).filter((n): n is string => !!n).map((n) => (
@@ -1227,6 +1233,11 @@ export default function WalletPage() {
                           ))}
                         </div>
                       )}
+                      {!statementOf(tx) && tx.type !== 'tax_invoice' && <span className="text-slate-300">—</span>}
+                    </td>
+                    {/* العميل — عمودُه. راجع customerOf. */}
+                    <td className="px-4 py-3 text-slate-700 text-xs">
+                      {customerOf(tx) || <span className="text-slate-300">—</span>}
                     </td>
                     {/* Delivery Statement # — its own column */}
                     <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{tx.deliveryStatementNumber || tx.purchaseDeliveryStatementNumber || '—'}</td>

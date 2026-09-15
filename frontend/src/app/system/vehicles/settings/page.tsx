@@ -27,6 +27,9 @@ const DOCS: { key: string; ar: string; en: string }[] = [
   { key: 'inspection', ar: 'الفحص الدوري', en: 'Inspection' },
   { key: 'authorization', ar: 'التفويض بالقيادة', en: 'Driving authorisation' },
   { key: 'gps', ar: 'اشتراك التتبّع', en: 'GPS subscription' },
+  // بطاقةُ السائق ورقةٌ على إنسانٍ لا على مركبة، لكنّ انتهاءها يوقف العملَ كما
+  // يوقفه انتهاءُ استمارة — فعتباتُها تُضبَط من هنا كغيرها.
+  { key: 'driverCard', ar: 'بطاقة السائق', en: 'Driver card' },
   { key: 'corporatePolicy', ar: 'وثائق الشركة', en: 'Corporate policies' },
 ];
 

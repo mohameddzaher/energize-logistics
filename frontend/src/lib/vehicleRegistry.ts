@@ -87,6 +87,12 @@ export const DOC_TYPES = [
   // في ردّ الخادم ولا يجد عمودًا ولا كارتًا يعرضه.
   { key: 'authorization', ar: 'التفويض', en: 'Authorisation', datePath: (v: VReg) => v.authorizedPerson?.expiryDate,
     numberAr: 'رقم التفويض', numberEn: 'Authorisation number', numberOf: (v: VReg) => v.authorizedPerson?.authorizationNumber || '' },
+  // ── وبطاقةُ السائق سابعُها ────────────────────────────────────────────────
+  // لا تُقرأ من صفّ مركبة (`datePath` تعود فارغةً دائمًا) لأنّها ليست ورقةً على
+  // مركبة. ومكانُها هنا ليجد صفُّها في شاشة الانتهاءات عمودًا وكارتًا يعرضه —
+  // الخادمُ يرسله، وإغفالُه هنا كان يعني أن يصل ولا يُعرَض.
+  { key: 'driverCard', ar: 'بطاقة السائق', en: 'Driver card', datePath: () => undefined,
+    numberAr: 'رقم بطاقة السائق', numberEn: 'Driver card number', numberOf: () => '' },
 ] as const;
 
 /** اسمُ رقمِ المستند، أو null للمستند الذي لا رقم مستقلَّ له. */

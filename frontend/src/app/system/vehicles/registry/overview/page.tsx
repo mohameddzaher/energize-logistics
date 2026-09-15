@@ -16,7 +16,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import {
   Car, ShieldCheck, CreditCard, FileText, Wrench, Satellite, KeyRound,
-  ChevronLeft, Settings, CalendarClock, TriangleAlert,
+  ChevronLeft, Settings, CalendarClock, TriangleAlert, IdCard,
 } from 'lucide-react';
 import FilterPanel, { countActive, type FilterValues } from '@/components/system/FilterPanel';
 import { stateMeta,
@@ -27,6 +27,9 @@ import { stateMeta,
 const DOC_ICON: Record<string, any> = {
   insurance: ShieldCheck, operatingCard: CreditCard, vehicleLicense: FileText,
   inspection: Wrench, gps: Satellite, authorization: KeyRound,
+  // بطاقةُ السائق سابعُ الكروت — ورقةٌ على إنسانٍ لا على مركبة، وانتهاؤها
+  // يوقف العملَ كما يوقفه انتهاءُ استمارة. راجع overview في الخادم.
+  driverCard: IdCard,
 };
 
 function VehiclesOverviewInner() {
@@ -244,63 +247,14 @@ function VehiclesOverviewInner() {
         </section>
       )}
 
-      {/* النواقص — بندًا بندًا وبسببه. «لا يوجد» و«مطلوب» و«لدى البنك» ثلاثة
-          أوضاع مختلفة: الأول نقص، والثاني عملٌ مطلوب، والثالث ليس نقصًا أصلًا. */}
-      {!!d.missingBreakdown?.length && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-bold text-slate-800">
-            {t(`نواقص البيانات — ${d.totals.withMissing} مركبة · ${d.totals.missingItems} بندًا`,
-               `Missing data — ${d.totals.withMissing} vehicles · ${d.totals.missingItems} items`)}
-          </h2>
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
-            {d.missingBreakdown.map((g) => (
-              <button key={`${g.item}|${g.reason}`} onClick={() => openList(g.filter)}
-                className="w-full text-start px-4 py-2.5 flex items-center gap-3 hover:bg-violet-50/60 transition">
-                <span className="w-11 shrink-0 text-center px-1.5 py-0.5 rounded-lg bg-violet-100 text-violet-800 text-[12.5px] font-bold tabular-nums">
-                  {g.count}
-                </span>
-                <span className="flex-1 text-[13px] text-slate-900 font-medium">{g.item}</span>
-                <span className={`px-2 py-0.5 rounded-full text-[11.5px] font-semibold ${
-                  g.reason === 'required' ? 'bg-rose-100 text-rose-700'
-                    : g.reason === 'none' ? 'bg-amber-100 text-amber-800'
-                    : 'bg-slate-100 text-slate-700'}`}>
-                  {ar ? g.reasonAr : g.reasonEn}
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
+      {/* ── وما كان تحت هذا الموضع رُفع ───────────────────────────────────
+          كانت الصفحةُ تُكمِل بثلاثة جداولَ طويلة: «نواقص البيانات» بندًا بندًا،
+          و«نواقص منصّة لوجستي»، و«تفصيل كل عمود» — عشراتُ الصفوف تُمرَّر بالإصبع
+          تحت لوحةٍ يُفترَض أن تُقرأ في نظرة. وكلُّها موجودةٌ حيث تُعمَل: النواقصُ
+          في سجلّ المركبات بفلترها، والأعمدةُ في صفحاتها.
 
-      {/* نواقص منصّة لوجستي — شرطًا شرطًا، والضغط يفتح المركبات التي ينقصها */}
-      {!!d.logistiGaps?.length && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-bold text-slate-800">
-            {t(`نواقص منصّة لوجستي — ${d.totals.withLogistiGaps} مركبة · ${d.totals.logistiGapItems} بندًا`,
-               `Logisti platform gaps — ${d.totals.withLogistiGaps} vehicles · ${d.totals.logistiGapItems} items`)}
-          </h2>
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
-            {d.logistiGaps.map((g) => (
-              <button key={g.value} onClick={() => openList(g.filter)}
-                className="w-full text-start px-4 py-2.5 flex items-center gap-3 hover:bg-violet-50/60 transition">
-                <span className="w-11 shrink-0 text-center px-1.5 py-0.5 rounded-lg bg-violet-100 text-violet-800 text-[12.5px] font-bold tabular-nums">
-                  {g.count}
-                </span>
-                <span className="flex-1 text-[13px] text-slate-800">{g.value}</span>
-                <span className="text-[11.5px] text-slate-500">{t('اعرض المركبات', 'Show vehicles')}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ⑤ كارت لكل عمود */}
-      <section className="space-y-2">
-        <h2 className="text-sm font-bold text-slate-800">{t('تفصيل كل عمود', 'Every column, broken down')}</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {d.breakdowns.map((b) => <BreakdownCard key={b.key} b={b} ar={ar} t={t} onPick={openList} />)}
-        </div>
-      </section>
+          والنظرةُ الشاملة تجيب سؤالًا واحدًا: ما حالُ الأسطول اليوم، وما الذي
+          يحتاج عملًا. */}
     </div>
   );
 }
@@ -327,13 +281,18 @@ function DocumentCard({ doc, ar, t, onOpen, onList }: {
 }) {
   const Icon = DOC_ICON[doc.key] || FileText;
   const s = doc.states;
-  // ثلاثُ حالاتٍ لا أربع: «ينتهي قريبًا جدًا» و«قارب على الانتهاء» و«على
-  // الرادار» شيءٌ واحدٌ بثلاث درجاتٍ من الإلحاح — راجع publicState.
+  // ── والدرجاتُ الثلاثُ كلٌّ بسطرها ────────────────────────────────────────
+  // كانت تُجمَع في «قارب على الانتهاء» واحد، فيقرأ المديرُ رقمًا لا يقول له
+  // أيَعمل اليومَ أم الشهرَ القادم. وعتبةُ كلٍّ تُضبَط لهذا المستند من إعدادات
+  // القسم، فالسطرُ يتبعها ولا يحتاج أحدٌ أن يعرف رقمها ليقرأه.
+  // والصفرُ لا يُعرَض: سطرٌ يقول «حرج ٠» يشغل العينَ بلا خبر.
   const rows: { key: string; n: number }[] = [
     { key: 'expired', n: s.expired || 0 },
-    { key: 'due', n: (s.critical || 0) + (s.warning || 0) + ((s as any).upcoming || 0) },
+    { key: 'critical', n: s.critical || 0 },
+    { key: 'warning', n: s.warning || 0 },
+    { key: 'upcoming', n: (s as any).upcoming || 0 },
     { key: 'valid', n: s.valid || 0 },
-  ];
+  ].filter((r) => r.n > 0 || r.key === 'valid');
   // الحالات المسجَّلة تُطوى إلى رقمين: ما ينقصنا تاريخه، وما لا يلزم أصلًا.
   // «غير مطلوب» قرارٌ إداريّ لا نقصٌ — خلطه بالنقص يجعل قائمة العمل تكذب.
   const notRequired = s.not_applicable ?? 0;

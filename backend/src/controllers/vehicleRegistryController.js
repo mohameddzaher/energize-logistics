@@ -1319,7 +1319,14 @@ exports.overview = async (req, res) => {
     const [vehicles, cfg, allClaims, policies] = await Promise.all([
       VehicleMaster.find(filter).select(AGG_FIELDS).lean(),
       getConfig(),
-      VehicleClaim.find({ isActive: true }).select('vehiclePlateKey plateNumber status cost isActive date').lean(),
+      // ── والحقولُ المطلوبةُ هي التي تُقرأ، لا أسماءٌ قريبةٌ منها ────────────
+      // كان الاختيارُ `status cost date` — وليس في النموذج حقلٌ بهذه الأسماء.
+      // فعادت كلُّ مطالبةٍ بلا `statusCode` ولا `claim` ولا `faultPercent`،
+      // و`undefined !== 'closed'` صادقٌ دائمًا: صارت كلُّ مطالبةٍ «مفتوحة».
+      // فقالت اللوحةُ ٢٥ مفتوحةً وفتحت على سبع، والمبالغُ أصفارٌ لأنّ `claim`
+      // لم يُقرأ أصلًا. تُطلَب الآن بأسمائها في النموذج.
+      VehicleClaim.find({ isActive: true })
+        .select('vehiclePlateKey vehiclePlate statusCode faultPercent accidentDate claim isActive').lean(),
       CorporatePolicy.find({ isActive: true }).lean(),
     ]);
 
@@ -1390,7 +1397,7 @@ exports.overview = async (req, res) => {
 
     // بطاقة لكل مستند: الحالات المحسوبة + الحالات الإدارية (مطلوب/غير مطلوب/لا يوجد).
     const documents = DOC_TYPES.map((dt) => {
-      const states = { valid: 0, warning: 0, critical: 0, expired: 0, missing: 0, not_applicable: 0 };
+      const states = { valid: 0, warning: 0, critical: 0, upcoming: 0, expired: 0, missing: 0, not_applicable: 0 };
       const statuses = {};
       let nearest = null;
       for (const v of vehicles) {
@@ -1412,6 +1419,35 @@ exports.overview = async (req, res) => {
         nearestDays: nearest,
       };
     });
+
+    // ── وبطاقةُ السائق كارتٌ سابع ──────────────────────────────────────────
+    // اللوحةُ تعرض ستّةَ كروتٍ لأوراق المركبة، وبطاقةُ السائق ليست منها — فغابت
+    // عن اللوحة كما غابت عن شاشة الانتهاءات، وسبعٌ وخمسون بطاقةً منها أربعٌ
+    // تنتهي خلال أيّام لا يراها من يفتح النظرة الشاملة.
+    //
+    // ولا تُعرَض حين تُفلتَر اللوحةُ بشيءٍ يخصّ المركبات (قطاعٌ أو مالك): السائقُ
+    // لا ينتمي إلى قطاعِ مركبة، فكارتٌ يبقى ثابتًا بينما الباقي يتحرّك يُقرأ
+    // خطأً على أنّه تابعٌ للفلتر. راجع buildExpiryRows.
+    if (!filtered) {
+      const DriverCard = require('../models/DriverCard');
+      const cards = await DriverCard.find({ isActive: { $ne: false } }).select('expiryDate cardNumber').lean();
+      const dcStates = { valid: 0, warning: 0, critical: 0, upcoming: 0, expired: 0, missing: 0, not_applicable: 0 };
+      let dcNearest = null;
+      for (const c of cards) {
+        // بلا تاريخٍ فهي «مطلوبة» — عملٌ ينتظر، وهو ما تعنيه `missing` هنا.
+        const st = VDOC.stateOf(c.expiryDate || null, '', cfg.alerts?.driverCard);
+        dcStates[st.state] += 1;
+        if (st.days != null && st.days >= 0 && (dcNearest === null || st.days < dcNearest)) dcNearest = st.days;
+      }
+      documents.push({
+        key: 'driverCard', ar: 'بطاقة السائق', en: 'Driver card', icon: 'driverCard',
+        alert: cfg.alerts?.driverCard || {},
+        states: dcStates,
+        statuses: [],
+        needsAttention: dcStates.expired + dcStates.critical + dcStates.warning,
+        nearestDays: dcNearest,
+      });
+    }
 
     // أرقام فوق.
     const totals = {
@@ -1539,8 +1575,57 @@ async function buildExpiryRows(query = {}) {
       });
     }
   }
+
+  // ── وبطاقةُ السائق مستندٌ ينتهي كغيره ────────────────────────────────────
+  //
+  // هي ليست ورقةً على مركبة بل على إنسان، ولذلك عاشت في صفحةٍ وحدَها وغابت عن
+  // شاشة الانتهاءات وعن اللوحة. وغيابُها ليس تنظيمًا: بطاقةٌ منتهيةٌ توقف
+  // سائقًا كما توقفه استمارةٌ منتهية، ومن يفتح «ما ينتهي خلال ثلاثين يومًا»
+  // يريد كلَّ ما سيوقفه — لا ما يوقف مركباتِه وحدَها.
+  //
+  // فتدخل صفًّا كبقيّة الصفوف: لها تاريخٌ وحالةٌ وأيّامٌ متبقّية، وعتباتُها
+  // تُضبَط من إعدادات القسم باسمِ `driverCard` كما تُضبَط عتباتُ الاستمارة.
+  // ولا لوحةَ لها — فمكانُ اللوحة اسمُ صاحبها، وهو هويّةُ الصفّ هنا.
+  //
+  // ولا تُفلتَر بفلتر المركبات (قطاعٌ أو مالكٌ أو مدينة): السائقُ ليس مركبةً،
+  // فلو فُلتِرت اللوحةُ على قطاعٍ سقطت البطاقاتُ كلُّها — والسقوطُ في صمتٍ أسوأ
+  // من الظهور. فتظهر حين لا يُفلتَر بشيءٍ يخصّ المركبات.
+  const vehicleFiltered = ['sector', 'owner', 'city', 'department', 'q']
+    .some((k) => String(query[k] || '').trim() !== '');
+  if (!vehicleFiltered) {
+    const DriverCard = require('../models/DriverCard');
+    const cards = await DriverCard.find({ isActive: { $ne: false } })
+      .select('name idNumber cardNumber cardType expiryDate logisticRegister').lean();
+    for (const c of cards) {
+      // بلا رقمِ بطاقةٍ فهي «مطلوبة» لا «منتهية» — عملٌ ينتظر، وله عمودُه في
+      // صفحة بطاقات السائقين. ولا تدخل شاشةَ الانتهاءات بلا تاريخٍ تنتهي فيه.
+      if (!c.expiryDate) continue;
+      const st = VDOC.stateOf(c.expiryDate, '', cfg.alerts?.driverCard);
+      rows.push({
+        vehicleId: null, driverCardId: String(c._id),
+        plateNumber: String(c.name || c.idNumber || ''),
+        brandAr: '', modelAr: '', modelYear: null,
+        sectorAr: String(c.logisticRegister || ''), ownerNameAr: String(c.name || ''),
+        docKey: 'driverCard', docAr: 'بطاقة السائق', docEn: 'Driver card',
+        expiryDate: c.expiryDate, daysRemaining: st.days, state: st.state, statusCode: '',
+        alertEnabled: cfg.alerts?.driverCard?.enabled !== false,
+        reference: String(c.cardNumber || ''),
+        company: String(c.cardType || ''),
+        holder: String(c.name || ''),
+      });
+    }
+  }
   return rows;
 }
+
+/**
+ * مستنداتُ شاشة الانتهاءات — وثائقُ المركبة وبطاقةُ السائق معها.
+ *
+ * `DOC_TYPES` تصف أوراقَ المركبة، وبطاقةُ السائق ورقةٌ على إنسان. وهما يلتقيان
+ * في سؤالٍ واحد: «ما الذي ينتهي فيوقف العمل؟» — فيلتقيان في هذه القائمة وحدَها،
+ * ولا تُخلَط بطاقةُ السائق بأوراق المركبة في مكانٍ آخر.
+ */
+const EXPIRY_DOCS = [...DOC_TYPES, { key: 'driverCard', ar: 'بطاقة السائق', en: 'Driver card' }];
 
 exports.expiring = async (req, res) => {
   try {
@@ -1588,8 +1673,12 @@ exports.expiring = async (req, res) => {
     const body = {
       rows: rows.slice(0, CAP),
       summary,
-      byDoc: DOC_TYPES.map((d) => ({ key: d.key, ar: d.ar, en: d.en, count: byDoc[d.key] || 0 })),
-      withinDays, docs: DOC_TYPES.map((d) => ({ key: d.key, ar: d.ar, en: d.en })),
+      // ── وبطاقةُ السائق سابعُ الأعمدة فوق الجدول ───────────────────────
+      // `DOC_TYPES` وثائقُ المركبة وحدَها، وبطاقةُ السائق ليست منها — لكنّها
+      // تنتهي وتُعرَض هنا كغيرها، فتُعَدّ في الشريط الذي يُقرأ فوق الجدول.
+      // ولو تُركت لظهرت صفوفُها في القائمة ولا عمودَ يقول كم هي.
+      byDoc: EXPIRY_DOCS.map((d) => ({ key: d.key, ar: d.ar, en: d.en, count: byDoc[d.key] || 0 })),
+      withinDays, docs: EXPIRY_DOCS.map((d) => ({ key: d.key, ar: d.ar, en: d.en })),
     };
     if (rows.length > CAP) { body.truncated = true; body.limit = CAP; body.matched = rows.length; }
     res.json(body);

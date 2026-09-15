@@ -767,10 +767,10 @@ export default function WalletPage() {
     if (tx.customer) parts.push(`${tx.customer.companyName} (${tx.customer.customerNumber})`);
     if (tx.invoice) parts.push(`${txx.invoiceShort}: ${tx.invoice.invoiceNumber}`);
     if (tx.vendor || tx.vendorName) parts.push(`${L.vendor}: ${tx.vendor?.name || tx.vendorName}`);
-    if (tx.driver || tx.driverName) parts.push(`${L.driver}: ${tx.driver?.name || tx.driverName}`);
+
     if (tx.expenseCategory) parts.push(`${L.category}: ${tx.expenseCategory.name}`);
     if (tx.itemName) parts.push(tx.itemName);
-    if (tx.purchaseDriverName) parts.push(`${L.driver}: ${tx.purchaseDriverName}`);
+    // والسائقُ لا يُعاد هنا: صار له عمودُه في الجدول وفي الملفّ — راجع driverOf.
     // ورقمُ السند لا يُعاد هنا: صار له عمودُه بجانب كشفه في الجدول وفي الملفّ،
     // وتكرارُه داخل «التفاصيل» يجعله يُقرأ مرّتين ويُفلتَر عليه في موضعين.
     if (tx.type === 'tax_invoice') {
@@ -779,6 +779,13 @@ export default function WalletPage() {
     }
     return parts.join(' | ');
   };
+
+  // ── ومصدرُ اسمِ السائق واحدٌ يُقرأ في ثلاثة مواضع ────────────────────────
+  // للسائق ثلاثةُ مواضعَ في القيد: سجلٌّ مربوطٌ (`driver`)، واسمٌ حرٌّ كُتب في
+  // مصروف (`driverName`)، واسمٌ يُكتب في نموذج المشتريات (`purchaseDriverName`).
+  // وهي واحدٌ للقارئ: «مَن السائق؟». فتُقرأ بدالّةٍ واحدةٍ يستعملها العمودُ
+  // والملفُّ والطباعة — ولو قُرئت في كلّ موضعٍ بسلسلةٍ خاصّة لافترقت.
+  const driverOf = (tx: any) => tx?.driver?.name || tx?.driverName || tx?.purchaseDriverName || '';
 
   const txColumns = [
     { header: ar ? 'التاريخ' : 'Date', key: 'date', transform: fmt.date, width: 12 },
@@ -792,6 +799,8 @@ export default function WalletPage() {
     // ورقمُ السند بجانب كشفه في الملفّ كما هو بجانبه على الشاشة: السؤالُ
     // «أيُّ سندٍ لأيّ كشف؟» يُقرأ في خانتين متجاورتين لا في طرفَي الصفّ.
     { header: L.receipt, key: 'purchaseReceiptNumber', transform: (v: any) => dash(v), width: 15 },
+    // السائقُ بجانب سنده وكشفه في الملفّ كما هو بجانبهما على الشاشة.
+    { header: L.driver, key: 'driver', transform: (_v: any, row: any) => dash(driverOf(row)), width: 18 },
     { header: L.branch, key: 'purchaseBranch', transform: (v: any, row: any) => dash(v || row?.operationDetails?.branch), width: 16 },
     opDetail('client'),
     opDetail('from'),
@@ -812,7 +821,6 @@ export default function WalletPage() {
     { header: ar ? 'رصيد الفاتورة (SAR)' : 'Invoice Balance (SAR)', key: 'invoice', transform: (v: any) => (v?.balance != null ? fmt.money(v.balance) : ''), width: 18 },
     { header: ar ? 'كشوف الفاتورة الضريبيّة' : 'Received reports', key: 'receivedReportNumbers', transform: (v: any, row: any) => ((v?.length ? v : [row?.receivedDocNumber]).filter(Boolean).join(' , ')), width: 24 },
     { header: L.vendor, key: 'vendor', transform: (v: any, row: any) => v?.name || row?.vendorName || '', width: 18 },
-    { header: L.driver, key: 'driver', transform: (v: any, row: any) => v?.name || row?.driverName || row?.purchaseDriverName || '', width: 18 },
     { header: L.category, key: 'expenseCategory', transform: (v: any) => v?.name || '', width: 18 },
     { header: L.itemDescription, key: 'itemName', transform: (v: any, row: any) => v || row?.description || '', width: 22 },
     { header: ar ? 'مرجع' : 'Reference', key: 'reference', width: 15 },
@@ -1154,6 +1162,12 @@ export default function WalletPage() {
                     فله عمودُه بجانب الكشف الذي يخصّه، ويُفرَز ويُفلتَر ويخرج
                     خانةً مستقلّةً في ملفّ إكسل. */}
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.receipt}</th>
+                {/* ── والسائقُ عمودٌ كما صار رقمُ السند ────────────────────────
+                    كان مدفونًا في «التفاصيل» بين وصفٍ ومورّدٍ وبندِ مصروف، فمن
+                    أراد أن يعرف ماذا صُرف على سائقٍ بعينه قرأ فقرةً في كلّ صفّ.
+                    وهو اسمٌ يُفلتَر عليه ويُجمَع تحته — فله عمودُه، وخانتُه في
+                    الملفّ إلى جانب ما يخصّه لا في طرف الصفّ. */}
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.driver}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.branch}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.client}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.from}</th>
@@ -1173,7 +1187,7 @@ export default function WalletPage() {
             </thead>
             <tbody>
               {transactions.length === 0 ? (
-                <tr><td colSpan={mode === 'day' ? 17 : 18} className="text-center text-slate-800 py-12">{L.noTransactions}</td></tr>
+                <tr><td colSpan={mode === 'day' ? 18 : 19} className="text-center text-slate-800 py-12">{L.noTransactions}</td></tr>
               ) : transactions.map((tx) => {
                 const cfg = TYPE_CONFIG[tx.type];
                 const Icon = cfg.icon;
@@ -1203,10 +1217,8 @@ export default function WalletPage() {
                       {tx.customer && <div>{tx.customer.companyName} ({tx.customer.customerNumber})</div>}
                       {tx.invoice && <div className="text-slate-700">{txx.invoiceShort}: {tx.invoice.invoiceNumber}</div>}
                       {(tx.vendor || tx.vendorName) && <div>{L.vendor}: {tx.vendor?.name || tx.vendorName}</div>}
-                      {(tx.driver || tx.driverName) && <div>{L.driver}: {tx.driver?.name || tx.driverName}</div>}
                       {tx.expenseCategory && <div>{L.category}: {tx.expenseCategory.name}</div>}
                       {tx.itemName && <div>{tx.itemName}</div>}
-                      {tx.purchaseDriverName && <div>{L.driver}: {tx.purchaseDriverName}</div>}
                       {/* الكشوفُ المستلَمة في هذا القيد — وهي كلُّ محتواه. */}
                       {tx.type === 'tax_invoice' && (
                         <div className="flex flex-wrap gap-1">
@@ -1222,6 +1234,12 @@ export default function WalletPage() {
                     <td className="px-4 py-3 text-xs whitespace-nowrap font-mono">
                       {tx.purchaseReceiptNumber
                         ? <span className="text-slate-800">{tx.purchaseReceiptNumber}</span>
+                        : <span className="text-slate-300">—</span>}
+                    </td>
+                    {/* السائق — عمودُه. راجع driverOf. */}
+                    <td className="px-4 py-3 text-xs whitespace-nowrap">
+                      {driverOf(tx)
+                        ? <span className="text-slate-700">{driverOf(tx)}</span>
                         : <span className="text-slate-300">—</span>}
                     </td>
                     {/* Branch — show typed branch first, fall back to workflow branch */}

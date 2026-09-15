@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { money, statusColor, statusLabel, docLabel, DOC_TYPES, CHART_COLORS } from '@/lib/vehicleRegistry';
@@ -50,10 +51,18 @@ export default function VehicleRegistryDashboard() {
     return p.toString();
   }, [q, sectors, regTypes, expiringDoc, expiringWithin]);
 
+  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ───────────────────────────────────
+  // تُكتب المدّةُ فتنطلق طلبتان: واحدةٌ بالمدّة القديمة وأخرى بالجديدة. والأكبرُ
+  // ردًّا أبطأُ وصولًا، فيصل بعد الأصغر ويكتب فوقه — فيرى الكاتبُ نتيجتَه ثوانيَ
+  // ثمّ تعود الشاشةُ إلى ما قبل الفلتر وهو لم يمسّ شيئًا. راجع hooks/useLatestRequest.
+  const guard = useLatestRequest();
   const load = useCallback(async () => {
-    try { setData(await api.get<Dash>(`/api/vehicle-registry/dashboard${qs ? `?${qs}` : ''}`)); }
-    catch { /* keep */ } finally { setLoading(false); }
-  }, [qs]);
+    const mine = guard.begin();
+    try {
+      const res = await api.get<Dash>(`/api/vehicle-registry/dashboard${qs ? `?${qs}` : ''}`);
+      if (guard.isCurrent(mine)) setData(res);
+    } catch { /* keep */ } finally { if (guard.isCurrent(mine)) setLoading(false); }
+  }, [qs, guard]);
 
   useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t); }, [load]);
   useSocket('vreg:updated', useCallback(() => load(), [load]));

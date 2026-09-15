@@ -21,6 +21,7 @@ import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { syncUrl } from '@/lib/urlSync';
 import { stateMeta, docNeed } from '@/lib/vehicleRegistry';
@@ -291,15 +292,24 @@ function DocumentFamilyPageInner({
     return p.toString();
   }, [q, JSON.stringify(filters)]);
 
+  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ───────────────────────────────────
+  // البحثُ والشريحةُ والصفحةُ تُفلتَر على الخادم، فيُطلَق أكثرُ من طلبٍ في
+  // اللحظة نفسِها. والأوسعُ ردًّا أبطأُ وصولًا فيصل أخيرًا ويكتب فوق الأضيق —
+  // فيبدو الفلترُ وقد «فُكّ» بعد ثوانٍ بلا أن يمسَّ المستخدمُ شيئًا. ستُّ
+  // شاشاتٍ تمرّ من هنا. راجع hooks/useLatestRequest.
+  const guard = useLatestRequest();
   const load = useCallback(async () => {
+    const mine = guard.begin();
     try {
       const d = await api.get<{ vehicles: VReg[]; total: number }>(`/api/vehicle-registry?${qs}`);
+      if (!guard.isCurrent(mine)) return;
       setRows(d.vehicles || []); setTotal(d.total || 0);
       // الاختيارُ الذي خرج من النتيجة لا يبقى محفوظًا في الخفاء: من يفلتر ثم
       // يضغط «تجديد جماعي» لا يقصد مركباتٍ لم تعد أمامه.
       setPicked((prev) => new Set([...prev].filter((id) => (d.vehicles || []).some((v) => v._id === id))));
-    } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setLoading(false); }
-  }, [qs, notify]);
+    } catch (e: any) { if (guard.isCurrent(mine)) notify(e?.message || 'Failed', 'error'); }
+    finally { if (guard.isCurrent(mine)) setLoading(false); }
+  }, [qs, notify, guard]);
 
   useEffect(() => { const h = setTimeout(load, 200); return () => clearTimeout(h); }, [load]);
   useSocket('vreg:updated', useCallback(() => load(), [load]));

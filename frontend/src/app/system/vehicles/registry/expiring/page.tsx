@@ -16,6 +16,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -90,15 +91,23 @@ function ExpiringInner() {
   const [loading, setLoading] = useState(true);
   const [renewing, setRenewing] = useState<ExpiringRow | null>(null);
 
+  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ───────────────────────────────────
+  // تُكتب المدّةُ فتنطلق طلبتان: واحدةٌ بالمدّة القديمة وأخرى بالجديدة. والأكبرُ
+  // ردًّا أبطأُ وصولًا، فيصل بعد الأصغر ويكتب فوقه — فيرى الكاتبُ نتيجتَه ثوانيَ
+  // ثمّ تعود الشاشةُ إلى ما قبل الفلتر وهو لم يمسّ شيئًا. راجع hooks/useLatestRequest.
+  const guard = useLatestRequest();
   const load = useCallback(async () => {
+    const mine = guard.begin();
     try {
-      setD(await getExpiring({
+      const res = await getExpiring({
         withinDays: within === '' ? undefined : within,
         doc, state, includeExpired: includeExpired ? '1' : '0',
-      }));
-    } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
-    setLoading(false);
-  }, [within, doc, state, includeExpired, notify]);
+      });
+      if (!guard.isCurrent(mine)) return;
+      setD(res);
+    } catch (e: any) { if (guard.isCurrent(mine)) notify(e?.message || 'Failed', 'error'); }
+    if (guard.isCurrent(mine)) setLoading(false);
+  }, [within, doc, state, includeExpired, notify, guard]);
 
   useEffect(() => { const h = setTimeout(load, 250); return () => clearTimeout(h); }, [load]);
   useSocket('vreg:updated', useCallback(() => { load(); }, [load]));

@@ -11,6 +11,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import {
@@ -46,13 +47,23 @@ function VehiclesOverviewInner() {
     Object.fromEntries([...(sp?.entries() || [])]));
   const [refreshing, setRefreshing] = useState(false);
 
+  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ───────────────────────────────────
+  // تُكتب المدّةُ فتنطلق طلبتان: واحدةٌ بالمدّة القديمة وأخرى بالجديدة. والأكبرُ
+  // ردًّا أبطأُ وصولًا، فيصل بعد الأصغر ويكتب فوقه — فيرى الكاتبُ نتيجتَه ثوانيَ
+  // ثمّ تعود الشاشةُ إلى ما قبل الفلتر وهو لم يمسّ شيئًا. راجع hooks/useLatestRequest.
+  const guard = useLatestRequest();
   const load = useCallback(async () => {
+    const mine = guard.begin();
     setRefreshing(true);
-    try { setD(await getOverview(filters as Record<string, string>)); }
-    catch (e: any) { notify(e?.message || 'Failed', 'error'); }
+    try {
+      const res = await getOverview(filters as Record<string, string>);
+      if (!guard.isCurrent(mine)) return;
+      setD(res);
+    } catch (e: any) { if (guard.isCurrent(mine)) notify(e?.message || 'Failed', 'error'); }
+    if (!guard.isCurrent(mine)) return;
     setLoading(false);
     setRefreshing(false);
-  }, [JSON.stringify(filters), notify]);
+  }, [JSON.stringify(filters), notify, guard]);
   useEffect(() => { load(); }, [load]);
 
   // `replace` لا `push`: كل ضغطةِ قيمةٍ لا تستحقّ خطوةً في تاريخ المتصفّح.

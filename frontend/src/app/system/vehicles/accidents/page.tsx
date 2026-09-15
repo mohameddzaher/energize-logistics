@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { AlertTriangle, Edit, Trash2, Check, Plus } from 'lucide-react';
 import { LEAD, LEAD_2, useLeadOffset } from '@/components/vehicles/stickyLead';
@@ -48,16 +49,23 @@ export default function VehicleAccidentsPage() {
   const [form, setForm] = useState<any>(null);
   const [saving, setSaving] = useState(false);
 
+  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ───────────────────────────────────
+  // البحثُ والحالةُ يُفلتَران على الخادم، فتنطلق طلبتان في اللحظة نفسِها.
+  // والأوسعُ ردًّا أبطأُ وصولًا، فيصل بعد الأضيق ويكتب فوقه — فيبدو الفلترُ
+  // وقد «فُكّ» وحدَه. راجع hooks/useLatestRequest.
+  const guard = useLatestRequest();
   const load = useCallback(async () => {
+    const mine = guard.begin();
     try {
       const qs = new URLSearchParams();
       if (search.trim()) qs.set('q', search.trim());
       if (statusFilter) qs.set('status', statusFilter);
       const d = await api.get<{ accidents: VehicleAccident[] }>(`/api/vehicles/accidents?${qs}`);
+      if (!guard.isCurrent(mine)) return;
       setAccidents(d.accidents || []);
     } catch {}
-    setLoading(false);
-  }, [search, statusFilter]);
+    if (guard.isCurrent(mine)) setLoading(false);
+  }, [search, statusFilter, guard]);
 
   useEffect(() => { load(); }, [load]);
   useSocket('vehicle:accident', useCallback(() => load(), [load]));

@@ -130,7 +130,12 @@ exports.submit = async (req, res) => {
 
     // بدءُ الدوام يحتاج الصورَ الثلاث: المندوب والدبّاب والبوكس. وما حُفظ
     // صباحًا يُحسب — التصحيحُ لا يُلزم بإعادة التقاط ما التُقط.
-    if (outcome === 'started') {
+    // الواجهةُ القديمة (قبل التقسيم) لا ترسل `kind` — تُقبَل منها صورةٌ واحدة
+    // حتّى تُحدَّث، فلا يُحبَس المشرفون بين نشر الخادم ونشر الموقع/التطبيق.
+    const legacyClient = photos.length > 0 && photos.every((p) => !p?.kind);
+    if (outcome === 'started' && legacyClient) {
+      // تكفي الصورةُ المرسلة.
+    } else if (outcome === 'started') {
       const prior = await B2CDutyCheck.findOne({ rep: repId, dateKey }).select('photos.kind').lean();
       const have = new Set([
         ...(prior?.photos || []).map((p) => p.kind || 'vehicle'),

@@ -1558,6 +1558,7 @@ async function buildExpiryRows(query = {}) {
       const statusCode = getPath(v, dt.statusPath) || '';
       const st = VDOC.stateOf(expiry, statusCode, cfg.alerts?.[dt.key]);
       rows.push({
+        rowId: `v:${v._id}:${dt.key}`,
         vehicleId: v._id, plateNumber: v.plateNumber, brandAr: v.brandAr, modelAr: v.modelAr,
         sectorAr: v.sectorAr, ownerNameAr: v.ownerNameAr, modelYear: v.modelYear,
         docKey: dt.key, docAr: dt.ar, docEn: dt.en,
@@ -1602,16 +1603,25 @@ async function buildExpiryRows(query = {}) {
       if (!c.expiryDate) continue;
       const st = VDOC.stateOf(c.expiryDate, '', cfg.alerts?.driverCard);
       rows.push({
+        // ── ولا تُحشَر بيانات السائق في خانات المركبة ──────────────────────
+        // كُتب اسمُ السائق أوّلَ مرّةٍ في `plateNumber` ليملأ عمودَ اللوحة، فقرأ
+        // من ينظر «اللوحة: محمد طاهر». والعمودُ يقول ما اسمُه يقول، وإلّا لم
+        // يعد يُقرأ. فتبقى خاناتُ المركبة فارغةً — لأنّه لا مركبةَ هنا — ويُقرأ
+        // اسمُ صاحبه من `holder`، وهو العمودُ نفسُه الذي يحمل اسمَ المفوَّض.
+        //
+        // و`rowId` هويّةُ الصفّ: كانت الشاشةُ تركّبها من `vehicleId` وهو `null`
+        // في كلّ بطاقة، فصار للسبعِ والخمسين مفتاحٌ واحد — تُرسم واحدةٌ منها
+        // ويُختار غيرُ ما يُضغَط.
+        rowId: `dc:${c._id}`,
         vehicleId: null, driverCardId: String(c._id),
-        plateNumber: String(c.name || c.idNumber || ''),
-        brandAr: '', modelAr: '', modelYear: null,
-        sectorAr: String(c.logisticRegister || ''), ownerNameAr: String(c.name || ''),
+        plateNumber: '', brandAr: '', modelAr: '', modelYear: null,
+        sectorAr: '', ownerNameAr: '',
         docKey: 'driverCard', docAr: 'بطاقة السائق', docEn: 'Driver card',
         expiryDate: c.expiryDate, daysRemaining: st.days, state: st.state, statusCode: '',
         alertEnabled: cfg.alerts?.driverCard?.enabled !== false,
         reference: String(c.cardNumber || ''),
         company: String(c.cardType || ''),
-        holder: String(c.name || ''),
+        holder: String(c.name || c.idNumber || ''),
       });
     }
   }

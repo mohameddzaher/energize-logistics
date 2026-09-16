@@ -36,6 +36,12 @@ const QUICK = [7, 15, 30, 60, 90, 180];
 // أعمدةُ جدول الانتهاءات وقارئُ كلٍّ منها — تعريفٌ واحدٌ للترويسة وللقمع.
 const COL_DEFS: [string, string, string][] = [
   ['plate', 'اللوحة', 'Plate'],
+  // ── واسمُ صاحب المستند عمودٌ صريح بجانب اللوحة ──────────────────────────
+  // مستندان من السبعة مقرونان بإنسانٍ لا بمركبة: التفويضُ باسم المفوَّض،
+  // وبطاقةُ السائق باسم صاحبها. وكان اسمُ السائق يُكتب في خانة اللوحة ليملأ
+  // عمودًا — فيُقرأ «اللوحة: محمد طاهر»، وهو كذبٌ على القارئ. فله عمودُه،
+  // ويبقى عمودُ اللوحة للّوحات وحدَها.
+  ['holder', 'صاحب المستند', 'Holder'],
   // ── ثلاثةُ أعمدةٍ لا خانةٌ واحدةٌ مجموعة ──────────────────────────────────
   // كانت «المركبة» تجمع الماركةَ والطرازَ في نصٍّ واحد، والموديلُ غائبًا. ومن
   // أراد «أرِني كيا وحدَها» لم يجد في القمع ماركةً يختارها بل «كيا كرنفال»
@@ -87,7 +93,11 @@ function ExpiringInner() {
   // المركبة ممكن يكون عندها أكتر من مستند بينتهي — واحد يتجدّد والتاني لأ.
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState(false);
-  const rowKey = (r: any) => `${r.vehicleId}:${r.docKey}`;
+  // ── هويّةُ الصفّ يرسلها الخادم ──────────────────────────────────────────
+  // كانت تُركَّب من `vehicleId` و`docKey`. وبطاقةُ السائق لا مركبةَ لها، فصار
+  // للسبعِ والخمسين بطاقةً مفتاحٌ واحدٌ هو `null:driverCard`: تُرسم واحدةٌ
+  // وتُهمَل البقيّة، ويقع الاختيارُ على غير ما يُضغَط. و`rowId` فريدٌ لكلّ صفّ.
+  const rowKey = (r: any) => String(r.rowId || `${r.vehicleId}:${r.docKey}`);
   const [loading, setLoading] = useState(true);
   const [renewing, setRenewing] = useState<ExpiringRow | null>(null);
 
@@ -120,7 +130,7 @@ function ExpiringInner() {
   const rows = useMemo(() => all.filter((r: any) => {
     if (mutedOnly && r.alertEnabled !== false) return false;
     if (!needle) return true;
-    return [r.plateNumber, r.brandAr, r.modelAr, r.modelYear, r.sectorAr, r.ownerNameAr, r.docAr, r.docEn, r.reference]
+    return [r.plateNumber, r.holder, r.brandAr, r.modelAr, r.modelYear, r.sectorAr, r.ownerNameAr, r.docAr, r.docEn, r.reference]
       .some((v) => String(v || '').toLowerCase().includes(needle));
   }), [all, mutedOnly, needle]);
 
@@ -129,6 +139,7 @@ function ExpiringInner() {
     brandAr: (r) => r.brandAr,
     modelAr: (r) => r.modelAr,
     modelYear: (r) => (r.modelYear || ''),
+    holder: (r) => (r.holder || ''),
     doc: (r) => (ar ? r.docAr : r.docEn),
     expiry: (r) => fmtDate(r.expiryDate),
     left: (r) => daysText(r.daysRemaining, ar),
@@ -155,6 +166,7 @@ function ExpiringInner() {
 
   const cols: ExportColumn[] = [
     { header: t('اللوحة', 'Plate'), key: 'plateNumber', width: 16 },
+    { header: t('صاحب المستند', 'Holder'), key: 'holder', width: 24 },
     { header: t('المستند', 'Document'), key: 'docAr', width: 18 },
     { header: t('ينتهي في', 'Expires'), key: 'expiryDate', transform: (v) => fmtDate(v), width: 14 },
     { header: t('الأيام المتبقية', 'Days left'), key: 'daysRemaining', width: 12 },
@@ -236,7 +248,7 @@ function ExpiringInner() {
 
         <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
           <input value={q} onChange={(e) => setQ(e.target.value)}
-            placeholder={t('لوحة · مالك · قطاع · ماركة…', 'Plate · owner · sector · brand…')}
+            placeholder={t('لوحة · اسم · مالك · قطاع · ماركة…', 'Plate · name · owner · sector · brand…')}
             className="px-3 py-2 rounded-lg border border-slate-200 text-sm w-64 max-w-full" />
           <select value={doc} onChange={(e) => setDoc(e.target.value)}
             className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white">
@@ -339,7 +351,7 @@ function ExpiringInner() {
               {shownRows.map((r: any) => {
                 const m = stateMeta(r.state);
                 return (
-                  <tr key={`${r.vehicleId}-${r.docKey}`}
+                  <tr key={rowKey(r)}
                     className={`group text-center ${picked.has(rowKey(r)) ? 'bg-orange-50/70' : 'hover:bg-slate-50'}`}>
                     <td className={`${LEAD} px-3 py-2.5 ${picked.has(rowKey(r)) ? 'bg-orange-50' : 'bg-white'} group-hover:bg-slate-50`}>
                       <div className="flex items-center gap-1.5">
@@ -360,8 +372,16 @@ function ExpiringInner() {
                     </td>
                     <td className={`${LEAD_2} px-3 py-2.5 ${picked.has(rowKey(r)) ? 'bg-orange-50' : 'bg-white'} group-hover:bg-slate-50`}
                       style={{ insetInlineStart: lead.offset }}>
-                      <button onClick={() => router.push(`/system/vehicles/registry/${r.vehicleId}`)}
-                        className="font-semibold text-slate-800 hover:text-[#f37121]">{r.plateNumber}</button>
+                      {r.vehicleId
+                        ? (
+                          <button onClick={() => router.push(`/system/vehicles/registry/${r.vehicleId}`)}
+                            className="font-semibold text-slate-800 hover:text-[#f37121]">{r.plateNumber}</button>
+                        )
+                        // بطاقةُ السائق لا مركبةَ لها — فلا لوحةَ ولا ملفَّ مركبةٍ يُفتَح.
+                        : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap max-w-[220px] truncate" title={r.holder || ''}>
+                      {r.holder || <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{r.brandAr || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{r.modelAr || '—'}</td>

@@ -898,7 +898,19 @@ exports.sellCustody = async (req, res) => {
 
 exports.handoverCustody = async (req, res) => {
   try {
-    const { employee, items, date, condition, notes, retire } = req.body;
+    // ── ومصيرُ الصنف ثلاثةُ طرقٍ لا اثنان ──────────────────────────────────
+    // كان الموظّفُ يسلّم فيعود الصنفُ إلى الرفّ أو يُسجَّل تالفًا. وثالثةٌ تقع
+    // فعلًا: يشتريه ويدفع ثمنَه للحسابات. وكانت تُسجَّل «مسلَّمًا» فيبقى في
+    // عداد ما نملك وقد خرج منه.
+    //
+    // فـ`outcome` يقول أيَّ الثلاثة: `stock` (الافتراضيُّ، وهو ما كان)، أو
+    // `faulty` (وهو `retire` القديم، ويبقى مقبولًا كي لا تنكسر نداءاتٌ قائمة)،
+    // أو `sold`. والبيعُ يكتب ما يكتبه بيعُ الصنف المفرد — راجع sellCustody —
+    // فلا يفترق سجلٌّ عن سجلّ.
+    const {
+      employee, items, date, condition, notes, retire, outcome, price,
+    } = req.body;
+    const fate = outcome || (retire ? 'faulty' : 'stock');
     if (!employee) return res.status(400).json({ message: 'Employee is required' });
     if (!Array.isArray(items) || !items.length) {
       return res.status(400).json({ message: 'Select at least one item that was handed back' });
@@ -916,16 +928,30 @@ exports.handoverCustody = async (req, res) => {
         item.returnedCondition = condition;
         item.condition = condition;
       }
-      if (retire) {
+      if (fate === 'faulty') {
         item.status = 'returned';
+      } else if (fate === 'sold') {
+        // المشتري هو المسلِّمُ نفسُه: هذا بابُ «سلّم عهدتَه»، ومن يشتري ما في
+        // يده هو صاحبُها. ولا يبقى في عهدة أحدٍ ولا على الرفّ.
+        item.status = 'sold';
+        item.soldTo = employee;
+        item.soldToName = '';
+        item.soldDate = date || today();
+        item.soldPrice = Number(price) || 0;
+        item.employee = null;
+        item.holderKind = '';
+        item.holderName = '';
+        item.assignedDate = undefined;
       } else {
         item.status = 'in_stock';
         item.employee = null;
         item.assignedDate = undefined;
       }
+      if (notes) item.notes = notes;
       await item.save();
-      await logEvent(req, item, retire ? 'retired' : 'returned', {
+      await logEvent(req, item, fate === 'faulty' ? 'retired' : fate === 'sold' ? 'sold' : 'returned', {
         fromEmployee: employee, date, condition, notes,
+        ...(fate === 'sold' ? { toEmployee: employee, price: item.soldPrice } : {}),
       });
       emitCustody({ type: 'custody', id: String(item._id) });
     }
@@ -935,7 +961,7 @@ exports.handoverCustody = async (req, res) => {
       .lean();
 
     emit('hr:employee', { id: String(employee) });
-    res.json({ returned: held.length, outstanding });
+    res.json({ returned: held.length, outcome: fate, outstanding });
   } catch (error) {
     res.status(500).json({ message: 'Failed to record the handover' });
   }

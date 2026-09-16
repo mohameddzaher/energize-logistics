@@ -111,7 +111,11 @@ export default function ItCustodyPage() {
   const [handoverEmployee, setHandoverEmployee] = useState('');
   const [handoverHeld, setHandoverHeld] = useState<CustodyItem[]>([]);
   const [handoverPicked, setHandoverPicked] = useState<string[]>([]);
-  const [handoverForm, setHandoverForm] = useState({ date: '', condition: 'good', notes: '', retire: false });
+  // `outcome`: إلى المخزون · تالف · مُباع للموظّف نفسِه. راجع handoverCustody.
+  const [handoverForm, setHandoverForm] = useState<{
+    date: string; condition: string; notes: string; retire: boolean;
+    outcome: 'stock' | 'faulty' | 'sold'; price: number;
+  }>({ date: '', condition: 'good', notes: '', retire: false, outcome: 'stock', price: 0 });
   const [handoverLoading, setHandoverLoading] = useState(false);
 
   // اللوحة تفتح هذه الصفحة على كارت أو زر بعينه، فتصل الحالة الأولية من الرابط.
@@ -299,15 +303,23 @@ export default function ItCustodyPage() {
   // Handover desk — picking the employee loads exactly what they still hold.
   const openHandover = () => {
     setHandoverOpen(true); setHandoverEmployee(''); setHandoverHeld([]); setHandoverPicked([]);
-    setHandoverForm({ date: today(), condition: 'good', notes: '', retire: false });
+    setHandoverForm({ date: today(), condition: 'good', notes: '', retire: false, outcome: 'stock', price: 0 });
   };
   const pickHandoverEmployee = async (id: string) => {
     setHandoverEmployee(id); setHandoverPicked([]); setHandoverHeld([]);
+    setHandoverForm((f) => ({ ...f, outcome: 'stock', price: 0 }));
     if (!id) return;
     setHandoverLoading(true);
     try {
       const d = await api.get<{ assigned: CustodyItem[] }>(`/api/it/custody/by-employee/${id}`);
-      setHandoverHeld(d.assigned || []);
+      const held = d.assigned || [];
+      setHandoverHeld(held);
+      // ── و«سلّم عهدتَه كاملةً» هو الحالُ الغالب ────────────────────────────
+      // مَن يفتح هذا الباب يفتحه لأنّ موظّفًا أنهى خدمتَه أو نُقل، فيسلّم ما
+      // معه كلَّه. وكان يُعلَّم صنفًا صنفًا — عشرون ضغطةً لعشرين صنفًا — ثمّ
+      // يُنسى واحدٌ فيبقى على الموظّف ويمنع إخلاءَ طرفه.
+      // فتُعلَّم كلُّها، ومن استلم بعضَها يرفع علامةَ ما لم يستلم.
+      setHandoverPicked(held.map((i) => i._id));
     } catch {}
     setHandoverLoading(false);
   };
@@ -321,9 +333,13 @@ export default function ItCustodyPage() {
         employee: handoverEmployee, items: handoverPicked, ...handoverForm,
       });
       // Say plainly what is still on them — that is the whole point of the screen.
+      // والفعلُ يُسمّى باسمه: «استُلم» غيرُ «بيع»، ومن باع يريد أن يقرأ أنّه باع.
+      const verb = handoverForm.outcome === 'sold' ? (ar ? 'بيع' : 'sold')
+        : handoverForm.outcome === 'faulty' ? (ar ? 'سُجّل كتالف' : 'recorded faulty')
+        : (ar ? 'استلام' : 'handed back');
       notify(ar
-        ? `تم تسجيل استلام ${d.returned} صنف. المتبقي بعهدة الموظف: ${d.outstanding.length} صنف.`
-        : `Recorded ${d.returned} item(s) as handed back. Still outstanding: ${d.outstanding.length}.`);
+        ? `تم ${verb} ${d.returned} صنف. المتبقي بعهدة الموظف: ${d.outstanding.length} صنف.`
+        : `${d.returned} item(s) ${verb}. Still outstanding: ${d.outstanding.length}.`);
       setHandoverOpen(false); refresh();
     } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
@@ -892,7 +908,9 @@ export default function ItCustodyPage() {
           <button type="button" onClick={() => setHandoverOpen(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
           <PrimaryButton onClick={doHandover} disabled={saving || !handoverPicked.length}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-            {ar ? `تأكيد استلام ${handoverPicked.length}` : `Confirm ${handoverPicked.length} item(s)`}
+            {handoverForm.outcome === 'sold'
+              ? (ar ? `تأكيد بيع ${handoverPicked.length}` : `Confirm sale of ${handoverPicked.length}`)
+              : (ar ? `تأكيد استلام ${handoverPicked.length}` : `Confirm ${handoverPicked.length} item(s)`)}
           </PrimaryButton>
         </>}>
         <div className="space-y-4">
@@ -963,11 +981,35 @@ export default function ItCustodyPage() {
               <Field label={ar ? 'ملاحظات' : 'Notes'} span2>
                 <TextArea rows={2} value={handoverForm.notes} onChange={(e) => setHandoverForm({ ...handoverForm, notes: e.target.value })} />
               </Field>
-              <label className="sm:col-span-2 flex items-center gap-2 text-sm text-slate-700">
-                <input type="checkbox" checked={handoverForm.retire} onChange={(e) => setHandoverForm({ ...handoverForm, retire: e.target.checked })}
-                  className="w-4 h-4 accent-[#f37121]" />
-                {ar ? 'تسجيلها كتالفة بدل إعادتها للمستودع' : 'Record as faulty instead of returning to the store'}
-              </label>
+              {/* ── ومصيرُ ما استُلم ثلاثةٌ لا اثنان ────────────────────────
+                  كانت خانةَ اختيارٍ واحدة: «تالفة» أو إلى المستودع. والثالثةُ
+                  تقع فعلًا — الموظّفُ يشتري ما في يده ويدفع ثمنَه — وكانت
+                  تُسجَّل «مسلَّمةً» فتبقى في عداد ما نملك وقد خرجت منه. */}
+              <div className="sm:col-span-2">
+                <p className="text-xs font-semibold text-slate-600 mb-1.5">{ar ? 'مصير ما استُلم' : 'What happens to them'}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {([
+                    { k: 'stock', ar: 'يعود للمستودع', en: 'Back to store' },
+                    { k: 'faulty', ar: 'تالف', en: 'Faulty' },
+                    { k: 'sold', ar: 'اشتراه الموظف', en: 'Bought by the employee' },
+                  ] as const).map((o) => (
+                    <button key={o.k} type="button"
+                      onClick={() => setHandoverForm({ ...handoverForm, outcome: o.k, retire: o.k === 'faulty' })}
+                      className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                        handoverForm.outcome === o.k
+                          ? 'border-[#f37121] bg-[#f37121]/10 text-[#f37121]'
+                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}>
+                      {ar ? o.ar : o.en}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {handoverForm.outcome === 'sold' && (
+                <Field label={ar ? 'الثمن المدفوع للحسابات (للصنف الواحد)' : 'Price paid to accounting (per item)'} span2>
+                  <TextInput type="number" min={0} value={String(handoverForm.price)}
+                    onChange={(e) => setHandoverForm({ ...handoverForm, price: Number(e.target.value) })} />
+                </Field>
+              )}
             </div>
           )}
         </div>

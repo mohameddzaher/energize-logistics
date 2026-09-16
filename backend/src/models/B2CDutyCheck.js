@@ -31,6 +31,10 @@ const photoSchema = new mongoose.Schema(
     size: { type: Number },
     // ما تقوله الصورةُ عن نفسها: التقاطٌ حيٌّ أم غيرُه. راجع رأس الملفّ.
     captureSource: { type: String, enum: ['camera', 'unknown'], default: 'camera' },
+    // ما في الصورة: المندوبُ نفسُه، أم الدبّاب، أم البوكس. ثلاثُ صورٍ منفصلة
+    // لكلّ خروج — ليُعرَض في التقارير «الدبّابات وحدها» أو «البوكسات وحدها».
+    // والصورُ القديمة قبل هذا التقسيم كانت كلُّها للمركبة.
+    kind: { type: String, enum: ['rep', 'vehicle', 'box'], default: 'vehicle', index: true },
     takenAt: { type: Date, default: Date.now },
   },
   { _id: true }

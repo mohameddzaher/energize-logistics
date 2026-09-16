@@ -14,17 +14,24 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import Link from 'next/link';
 import {
-  CheckCircle2, Clock, UserX, Ban, Camera, Loader2, MapPin, ShieldAlert, ClipboardList,
+  CheckCircle2, Clock, UserX, Ban, Camera, Loader2, MapPin, ShieldAlert, ClipboardList, User, Bike, Package,
 } from 'lucide-react';
 import LiveCamera, { type Shot } from '@/components/b2c/LiveCamera';
-import ManagedSelect from '@/components/system/ManagedSelect';
+
+type PhotoKind = 'rep' | 'vehicle' | 'box';
+type KindShot = Shot & { kind: PhotoKind };
+const PHOTO_KINDS: { key: PhotoKind; ar: string; en: string; Icon: any }[] = [
+  { key: 'rep', ar: 'صورة المندوب', en: 'Rider photo', Icon: User },
+  { key: 'vehicle', ar: 'صورة الدبّاب', en: 'Bike photo', Icon: Bike },
+  { key: 'box', ar: 'صورة البوكس', en: 'Box photo', Icon: Package },
+];
 
 type Outcome = 'started' | 'absent' | 'blocked';
 
 interface Check {
   _id: string; outcome: Outcome; checkedAt?: string; conditionAr?: string;
   hasDamage?: boolean; damageNotes?: string; notes?: string; vehicleType?: string;
-  vehiclePlate?: string; photos?: { fileUrl: string }[];
+  vehiclePlate?: string; photos?: { fileUrl: string; kind?: PhotoKind }[];
 }
 interface Rep {
   _id: string; englishName: string; arabicName?: string; repId?: string; phone?: string;
@@ -69,8 +76,8 @@ export default function DutyStartPage() {
             {t('تفقّد بداية الدوام', 'Duty start check')}
           </h1>
           <p className="mt-0.5 text-xs text-slate-500">
-            {t('لا يخرج المندوب إلا بعد تصوير مركبته — الصورة تُلتقط الآن ولا تُرفع من الجهاز.',
-               'A rider only goes out after his vehicle is photographed — captured live, never uploaded.')}
+            {t('لا يخرج المندوب إلا بثلاث صور: المندوب والدبّاب والبوكس — تُلتقط الآن ولا تُرفع من الجهاز.',
+               'A rider only goes out after three photos: rider, bike and box — captured live, never uploaded.')}
           </p>
         </div>
         <Link href="/system/b2c/duty"
@@ -156,10 +163,8 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
   const { notify } = useDialog();
   const t = (a: string, e: string) => (ar ? a : e);
   const [outcome, setOutcome] = useState<Outcome>(rep.check?.outcome || 'started');
-  const [shots, setShots] = useState<Shot[]>([]);
-  const [condition, setCondition] = useState(rep.check?.conditionAr || '');
-  const [hasDamage, setHasDamage] = useState(!!rep.check?.hasDamage);
-  const [damageNotes, setDamageNotes] = useState(rep.check?.damageNotes || '');
+  const [shots, setShots] = useState<KindShot[]>([]);
+  const [kind, setKind] = useState<PhotoKind>('rep');
   const [vehicleType, setVehicleType] = useState(rep.check?.vehicleType || 'motorcycle');
   const [plate, setPlate] = useState(rep.check?.vehiclePlate || '');
   const [notes, setNotes] = useState(rep.check?.notes || '');
@@ -178,14 +183,18 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
 
   const needsPhoto = outcome === 'started';
   const already = (rep.check?.photos || []).length;
-  const canSave = !needsPhoto || shots.length > 0 || already > 0;
+  // كلُّ نوعٍ له صورتُه: المحفوظُ سابقًا يُحسب، والجديدُ يُضاف إليه.
+  const countOf = (k: PhotoKind) => shots.filter((s) => s.kind === k).length
+    + (rep.check?.photos || []).filter((p) => (p.kind || 'vehicle') === k).length;
+  const lacking = PHOTO_KINDS.filter((k) => !countOf(k.key));
+  const canSave = !needsPhoto || !lacking.length;
 
   const save = async () => {
     setSaving(true);
     try {
       await api.post('/api/b2c/duty', {
         rep: rep._id, outcome, vehicleType, vehiclePlate: plate,
-        conditionAr: condition, hasDamage, damageNotes, notes,
+        notes,
         photos: shots, location: loc || undefined,
       });
       onSaved();
@@ -214,8 +223,33 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
 
         {needsPhoto ? (
           <>
-            <LiveCamera ar={ar} shots={shots} onShot={(s) => setShots((p) => [...p, s])}
-              onRemove={(i) => setShots((p) => p.filter((_, x) => x !== i))} disabled={saving} />
+            <div className="mb-2 grid grid-cols-3 gap-2">
+              {PHOTO_KINDS.map((k) => {
+                const n = countOf(k.key);
+                const on = kind === k.key;
+                return (
+                  <button key={k.key} type="button" onClick={() => setKind(k.key)}
+                    className={`relative rounded-lg border px-2 py-2 text-[11.5px] font-semibold ${on ? 'border-[#f37121] bg-orange-50 text-[#f37121]' : 'border-slate-200 bg-white text-slate-600'}`}>
+                    <k.Icon className="mx-auto mb-1 h-4 w-4" />{ar ? k.ar : k.en}
+                    {n > 0 && <CheckCircle2 className="absolute top-1 end-1 h-3.5 w-3.5 text-emerald-600" />}
+                  </button>
+                );
+              })}
+            </div>
+            <LiveCamera ar={ar} max={2}
+              label={t(`التقاط ${PHOTO_KINDS.find((k) => k.key === kind)!.ar}`, `Capture ${PHOTO_KINDS.find((k) => k.key === kind)!.en}`)}
+              shots={shots.filter((s) => s.kind === kind)}
+              onShot={(s) => {
+                setShots((p) => [...p, { ...s, kind }]);
+                // بعد الالتقاط ينتقل إلى أوّل نوعٍ لم يُصوَّر بعد.
+                const next = PHOTO_KINDS.find((k) => k.key !== kind && !countOf(k.key));
+                if (next) setKind(next.key);
+              }}
+              onRemove={(i) => setShots((p) => {
+                const mine = p.filter((s) => s.kind === kind);
+                const target = mine[i];
+                return p.filter((s) => s !== target);
+              })} disabled={saving} />
             {!!already && (
               <p className="mt-1 text-[11px] text-slate-500">
                 {t(`محفوظ سابقًا: ${already} صورة — الجديدة تُضاف ولا تستبدلها.`,
@@ -240,19 +274,7 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
           <Field label={t('اللوحة', 'Plate')}>
             <input className={inp} value={plate} onChange={(e) => setPlate(e.target.value)} />
           </Field>
-          <Field label={t('حالة المركبة', 'Condition')} span2>
-            <ManagedSelect storeLabel type="b2c_vehicle_condition" value={condition} onChange={setCondition} />
-          </Field>
         </div>
-
-        <label className="mt-3 flex items-center gap-2 text-[12.5px] text-slate-700">
-          <input type="checkbox" className="h-4 w-4 accent-red-600" checked={hasDamage} onChange={(e) => setHasDamage(e.target.checked)} />
-          {t('بها تلف يستحقّ المتابعة', 'Has damage worth following up')}
-        </label>
-        {hasDamage && (
-          <textarea className={`${inp} mt-2`} rows={2} placeholder={t('صف التلف…', 'Describe the damage…')}
-            value={damageNotes} onChange={(e) => setDamageNotes(e.target.value)} />
-        )}
         <textarea className={`${inp} mt-2`} rows={2} placeholder={t('ملاحظات (اختياري)', 'Notes (optional)')}
           value={notes} onChange={(e) => setNotes(e.target.value)} />
 
@@ -271,7 +293,7 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
           </button>
         </div>
         {!canSave && (
-          <p className="mt-1 text-end text-[11px] text-red-600">{t('التقط صورة المركبة أولًا', 'Capture the vehicle photo first')}</p>
+          <p className="mt-1 text-end text-[11px] text-red-600">{t(`ناقص: ${lacking.map((k) => k.ar).join('، ')}`, `Missing: ${lacking.map((k) => k.en).join(', ')}`)}</p>
         )}
       </div>
     </div>

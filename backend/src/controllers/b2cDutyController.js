@@ -40,6 +40,10 @@ const partsOf = (key) => {
 };
 const validKey = (k) => /^\d{4}-\d{2}-\d{2}$/.test(String(k || ''));
 
+/** أنواعُ صور الخروج — كلُّ خروجٍ يحتاجها الثلاثة. */
+const PHOTO_KINDS = ['rep', 'vehicle', 'box'];
+const PHOTO_KIND_AR = { rep: 'صورة المندوب', vehicle: 'صورة الدبّاب', box: 'صورة البوكس' };
+
 const populate = (q) => q
   .populate('rep', 'englishName arabicName repId phone')
   .populate('supervisor', 'firstName lastName email role')
@@ -121,21 +125,36 @@ exports.submit = async (req, res) => {
     const own = await assertOwnsRep(req, repId);
     if (own.error) return res.status(own.error).json({ message: own.message });
 
-    if (outcome === 'started' && !photos.length) {
-      return res.status(400).json({ message: 'لا بدّ من صورة المركبة لتسجيل بدء الدوام' });
-    }
-
     const dateKey = validKey(req.body.date) && canSeeAll(req.user) ? req.body.date : dayKeyOf();
     const { year, month, day, date } = partsOf(dateKey);
 
-    for (const p of photos.slice(0, 4)) {
+    // بدءُ الدوام يحتاج الصورَ الثلاث: المندوب والدبّاب والبوكس. وما حُفظ
+    // صباحًا يُحسب — التصحيحُ لا يُلزم بإعادة التقاط ما التُقط.
+    if (outcome === 'started') {
+      const prior = await B2CDutyCheck.findOne({ rep: repId, dateKey }).select('photos.kind').lean();
+      const have = new Set([
+        ...(prior?.photos || []).map((p) => p.kind || 'vehicle'),
+        ...photos.map((p) => p?.kind).filter((k) => PHOTO_KINDS.includes(k)),
+      ]);
+      const lacking = PHOTO_KINDS.filter((k) => !have.has(k));
+      if (lacking.length) {
+        return res.status(400).json({ message: `لا بدّ من ${lacking.map((k) => PHOTO_KIND_AR[k]).join(' و')} لتسجيل بدء الدوام` });
+      }
+    }
+
+    for (const p of photos.slice(0, 6)) {
       const src = String(p?.dataUrl || '');
       if (!src.startsWith('data:image/')) {
         return res.status(400).json({ message: 'الصورة يجب أن تُلتقَط من الكاميرا' });
       }
       try {
         const f = saveUploadFile(src, 'b2c-duty', p.fileName || 'duty.jpg');
-        saved.push({ ...f, captureSource: p.captureSource === 'camera' ? 'camera' : 'unknown', takenAt: new Date() });
+        saved.push({
+          ...f,
+          captureSource: p.captureSource === 'camera' ? 'camera' : 'unknown',
+          kind: PHOTO_KINDS.includes(p.kind) ? p.kind : 'vehicle',
+          takenAt: new Date(),
+        });
       } catch (err) { return res.status(400).json({ message: err.message }); }
     }
 
@@ -232,6 +251,7 @@ const listFilter = (req) => {
   if (q.flagged === '1') and.push({ 'review.verdict': 'flagged' });
   if (q.unreviewed === '1') and.push({ $or: [{ 'review.verdict': '' }, { 'review.verdict': { $exists: false } }] });
   if (q.withPhoto === '1') and.push({ 'photos.0': { $exists: true } });
+  if (PHOTO_KINDS.includes(q.photoKind)) and.push({ 'photos.kind': q.photoKind });
   return and.length === 1 ? and[0] : { $and: and };
 };
 
@@ -338,6 +358,9 @@ exports.analytics = async (req, res) => {
           blocked: { $sum: { $cond: [{ $eq: ['$outcome', 'blocked'] }, 1, 0] } },
           damaged: { $sum: { $cond: ['$hasDamage', 1, 0] } },
           withPhoto: { $sum: { $cond: [{ $gt: [{ $size: { $ifNull: ['$photos', []] } }, 0] }, 1, 0] } },
+          ...Object.fromEntries(PHOTO_KINDS.map((k) => [`photo_${k}`, {
+            $sum: { $size: { $filter: { input: { $ifNull: ['$photos', []] }, as: 'p', cond: { $eq: ['$$p.kind', k] } } } },
+          }])),
           flagged: { $sum: { $cond: [{ $eq: ['$review.verdict', 'flagged'] }, 1, 0] } },
           reviewed: { $sum: { $cond: [{ $in: ['$review.verdict', ['ok', 'flagged']] }, 1, 0] } },
         } },
@@ -438,6 +461,7 @@ exports.analytics = async (req, res) => {
         blocked: t.blocked || 0,
         damaged: t.damaged || 0,
         withPhoto: t.withPhoto || 0,
+        photosByKind: Object.fromEntries(PHOTO_KINDS.map((k) => [k, t[`photo_${k}`] || 0])),
         flagged: t.flagged || 0,
         reviewed: t.reviewed || 0,
         expected: totalExpected,

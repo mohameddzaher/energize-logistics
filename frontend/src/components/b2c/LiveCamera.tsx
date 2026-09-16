@@ -23,8 +23,10 @@ import { Camera, RefreshCw, X, AlertTriangle, SwitchCamera } from 'lucide-react'
 export interface Shot { dataUrl: string; fileName: string; captureSource: 'camera' }
 
 export default function LiveCamera({
-  onShot, disabled, ar, max = 3, shots, onRemove,
+  onShot, disabled, ar, max = 3, shots, onRemove, label,
 }: {
+  /** نصُّ زرّ الالتقاط — يقول ماذا يُصوَّر الآن. */
+  label?: string;
   onShot: (s: Shot) => void;
   onRemove: (i: number) => void;
   shots: Shot[];
@@ -132,7 +134,7 @@ export default function LiveCamera({
         <Camera className="h-4 w-4" />
         {shots.length >= max
           ? (ar ? `الحدّ ${max} صور` : `Limit ${max} photos`)
-          : (ar ? 'التقاط صورة المركبة' : 'Capture the vehicle')}
+          : (label || (ar ? 'التقاط صورة المركبة' : 'Capture the vehicle'))}
       </button>
 
       {!!shots.length && (

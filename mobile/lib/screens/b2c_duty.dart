@@ -25,6 +25,13 @@ const _outcomes = <String, (String, String, IconData, Color)>{
   'blocked': ('مُنع من الخروج', 'Blocked', Icons.block, T.danger),
 };
 
+/// صورُ الخروج الثلاث — كلُّ واحدةٍ تُلتقَط وحدَها وتُوسَم بنوعها.
+const _kinds = <String, (String, String, IconData)>{
+  'rep': ('صورة المندوب', 'Rider photo', Icons.person_outline),
+  'vehicle': ('صورة الدبّاب', 'Bike photo', Icons.two_wheeler),
+  'box': ('صورة البوكس', 'Box photo', Icons.inventory_2_outlined),
+};
+
 class _B2cDutyScreenState extends State<B2cDutyScreen> {
   List<Map<String, dynamic>> _reps = [];
   int _done = 0;
@@ -206,15 +213,17 @@ class _CheckSheet extends StatefulWidget {
 
 class _CheckSheetState extends State<_CheckSheet> {
   String _outcome = 'started';
-  final _shots = <LiveShot>[];
-  final _condition = TextEditingController();
-  final _damage = TextEditingController();
+  final _shots = <(String, LiveShot)>[];
   final _notes = TextEditingController();
   final _plate = TextEditingController();
   String _vehicle = 'motorcycle';
-  bool _hasDamage = false;
   bool _saving = false;
-  List<String> _conditions = const [];
+
+  int _countOf(String kind) =>
+      _shots.where((s) => s.$1 == kind).length +
+      ((widget.rep['check'] as Map?)?['photos'] as List? ?? const [])
+          .where((p) => '${(p as Map)['kind'] ?? 'vehicle'}' == kind).length;
+  List<String> get _lacking => _kinds.keys.where((k) => _countOf(k) == 0).toList();
 
   @override
   void initState() {
@@ -222,38 +231,30 @@ class _CheckSheetState extends State<_CheckSheet> {
     final c = widget.rep['check'] as Map<String, dynamic>?;
     if (c != null) {
       _outcome = '${c['outcome'] ?? 'started'}';
-      _condition.text = '${c['conditionAr'] ?? ''}';
-      _damage.text = '${c['damageNotes'] ?? ''}';
       _notes.text = '${c['notes'] ?? ''}';
       _plate.text = '${c['vehiclePlate'] ?? ''}';
       _vehicle = '${c['vehicleType'] ?? 'motorcycle'}';
-      _hasDamage = c['hasDamage'] == true;
     }
-    // قائمةُ الحالة تُدار من إعدادات القسم — تُقرأ ولا تُكتب هنا.
-    Api.instance.get('/api/lookups?type=b2c_vehicle_condition').then((d) {
-      if (!mounted) return;
-      setState(() => _conditions = List<Map<String, dynamic>>.from(d['items'] ?? [])
-          .map((e) => '${e['nameAr'] ?? e['nameEn'] ?? ''}').where((x) => x.isNotEmpty).toList());
-    }).catchError((_) {});
   }
 
   @override
   void dispose() {
-    _condition.dispose(); _damage.dispose(); _notes.dispose(); _plate.dispose();
+    _notes.dispose(); _plate.dispose();
     super.dispose();
   }
 
-  Future<void> _shoot() async {
+  Future<void> _shoot(String kind) async {
     final s = await captureLivePhoto();
-    if (s != null && mounted) setState(() => _shots.add(s));
+    if (s != null && mounted) setState(() => _shots.add((kind, s)));
   }
 
   Future<void> _save() async {
-    final already = ((widget.rep['check'] as Map?)?['photos'] as List? ?? const []).length;
-    if (_outcome == 'started' && _shots.isEmpty && already == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(tr('التقط صورة المركبة أولًا', 'Capture the vehicle photo first'))),
-      );
+    final lacking = _lacking;
+    if (_outcome == 'started' && lacking.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr(
+        'ناقص: ${lacking.map((k) => _kinds[k]!.$1).join('، ')}',
+        'Missing: ${lacking.map((k) => _kinds[k]!.$2).join(', ')}',
+      ))));
       return;
     }
     setState(() => _saving = true);
@@ -263,12 +264,9 @@ class _CheckSheetState extends State<_CheckSheet> {
         'outcome': _outcome,
         'vehicleType': _vehicle,
         'vehiclePlate': _plate.text.trim(),
-        'conditionAr': _condition.text.trim(),
-        'hasDamage': _hasDamage,
-        'damageNotes': _damage.text.trim(),
         'notes': _notes.text.trim(),
         'photos': _shots.map((s) => {
-          'dataUrl': s.dataUrl, 'fileName': s.fileName, 'captureSource': 'camera',
+          'dataUrl': s.$2.dataUrl, 'fileName': s.$2.fileName, 'captureSource': 'camera', 'kind': s.$1,
         }).toList(),
       });
       if (mounted) Navigator.pop(context, true);
@@ -328,34 +326,44 @@ class _CheckSheetState extends State<_CheckSheet> {
           const SizedBox(height: 14),
 
           if (_outcome == 'started') ...[
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(backgroundColor: T.orange, minimumSize: const Size.fromHeight(46)),
-                onPressed: _saving || _shots.length >= 3 ? null : _shoot,
-                icon: const Icon(Icons.photo_camera_rounded, size: 19),
-                label: Text(_shots.length >= 3
-                    ? tr('الحدّ ٣ صور', 'Limit 3 photos')
-                    : tr('التقاط صورة المركبة', 'Capture the vehicle')),
-              ),
-            ),
-            if (_shots.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Wrap(spacing: 8, runSpacing: 8, children: _shots.asMap().entries.map((e) => Stack(children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(9),
-                  child: Image.memory(
-                    Uri.parse(e.value.dataUrl).data!.contentAsBytes(),
-                    width: 74, height: 74, fit: BoxFit.cover,
+            ..._kinds.entries.map((k) {
+              final mine = _shots.asMap().entries.where((e) => e.value.$1 == k.key).toList();
+              final n = _countOf(k.key);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: n > 0 ? T.success : T.orange,
+                        minimumSize: const Size.fromHeight(44),
+                      ),
+                      onPressed: _saving || mine.length >= 2 ? null : () => _shoot(k.key),
+                      icon: Icon(n > 0 ? Icons.check_circle : k.value.$3, size: 19),
+                      label: Text(tr('التقاط ${k.value.$1}', 'Capture ${k.value.$2}')),
+                    ),
                   ),
-                ),
-                Positioned(top: -6, right: -6, child: IconButton(
-                  visualDensity: VisualDensity.compact,
-                  icon: const Icon(Icons.cancel, size: 19, color: T.danger),
-                  onPressed: () => setState(() => _shots.removeAt(e.key)),
-                )),
-              ])).toList()),
-            ],
+                  if (mine.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Wrap(spacing: 8, runSpacing: 8, children: mine.map((e) => Stack(children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(9),
+                        child: Image.memory(
+                          Uri.parse(e.value.$2.dataUrl).data!.contentAsBytes(),
+                          width: 74, height: 74, fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(top: -6, right: -6, child: IconButton(
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.cancel, size: 19, color: T.danger),
+                        onPressed: () => setState(() => _shots.removeAt(e.key)),
+                      )),
+                    ])).toList()),
+                  ],
+                ]),
+              );
+            }),
             if (already > 0)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
@@ -393,27 +401,6 @@ class _CheckSheetState extends State<_CheckSheet> {
             )),
           ]),
           const SizedBox(height: 8),
-          if (_conditions.isEmpty)
-            TextField(controller: _condition, decoration: InputDecoration(labelText: tr('حالة المركبة', 'Condition')))
-          else
-            DropdownButtonFormField<String>(
-              initialValue: _conditions.contains(_condition.text) ? _condition.text : null,
-              decoration: InputDecoration(labelText: tr('حالة المركبة', 'Condition')),
-              items: _conditions.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-              onChanged: (v) => setState(() => _condition.text = v ?? ''),
-            ),
-          const SizedBox(height: 4),
-          CheckboxListTile(
-            contentPadding: EdgeInsets.zero,
-            controlAffinity: ListTileControlAffinity.leading,
-            value: _hasDamage,
-            onChanged: (v) => setState(() => _hasDamage = v ?? false),
-            title: Text(tr('بها تلف يستحقّ المتابعة', 'Has damage worth following up'),
-                style: const TextStyle(fontSize: 12.5)),
-          ),
-          if (_hasDamage)
-            TextField(controller: _damage, minLines: 2, maxLines: 3,
-                decoration: InputDecoration(labelText: tr('صف التلف', 'Describe the damage'))),
           const SizedBox(height: 8),
           TextField(controller: _notes, minLines: 2, maxLines: 3,
               decoration: InputDecoration(labelText: tr('ملاحظات (اختياري)', 'Notes (optional)'))),

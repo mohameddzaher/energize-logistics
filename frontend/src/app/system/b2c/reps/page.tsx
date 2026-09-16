@@ -63,6 +63,14 @@ export default function B2CRepsPage() {
   // Profile drilldown
   const [selectedRepId, setSelectedRepId] = useState<string | null>(null);
 
+  // تحديدُ عدّة مندوبين لإسنادهم إلى مشرفٍ دفعةً واحدة.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [bulkSup, setBulkSup] = useState('');
+  const [assigning, setAssigning] = useState(false);
+  const togglePick = (id: string) => setPicked((prev) => {
+    const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n;
+  });
+
   const fetchReps = useCallback(async () => {
     try {
       const params = new URLSearchParams();
@@ -71,6 +79,9 @@ export default function B2CRepsPage() {
       if (search) params.set('search', search);
       const data = await api.get<any>(`/api/b2c/reps?${params.toString()}`);
       setReps(data.reps || []);
+      // ما لم يعد ظاهرًا بعد الفلترة لا يبقى محدَّدًا — لا يُسنَد ما لا يُرى.
+      const ids = new Set((data.reps || []).map((r: Rep) => r._id));
+      setPicked((prev) => new Set([...prev].filter((id) => ids.has(id))));
     } catch {} finally { setLoading(false); }
   }, [filterProject, filterBranch, search]);
 
@@ -105,6 +116,24 @@ export default function B2CRepsPage() {
     });
     return [...byId.values()].sort((a, b) => b.reps - a.reps);
   }, [supervisors, staff]);
+
+  const assignPicked = async () => {
+    if (!picked.size || !bulkSup) return;
+    setAssigning(true);
+    try {
+      const supervisor = bulkSup === '__none' ? null : bulkSup;
+      const r = await api.post<any>('/api/b2c/duty/assign', { reps: [...picked], supervisor });
+      const name = supervisorOptions.find((u) => u._id === bulkSup)?.name;
+      notify(lang === 'ar'
+        ? (supervisor ? `أُسند ${r.updated ?? picked.size} مندوب إلى ${name}` : `أُزيل المشرف عن ${r.updated ?? picked.size} مندوب`)
+        : `Updated ${r.updated ?? picked.size} reps`, 'success');
+      setPicked(new Set()); setBulkSup('');
+      fetchReps();
+      api.get<any>('/api/b2c/duty/supervisors').then((d) => setSupervisors(d.supervisors || [])).catch(() => {});
+    } catch (e: any) {
+      notify(e?.message || (lang === 'ar' ? 'تعذّر الإسناد' : 'Assign failed'), 'error');
+    } finally { setAssigning(false); }
+  };
 
   const openCreate = () => { setEditing(null); setForm(DEFAULT_FORM); setError(''); setShowModal(true); };
   const openEdit = (r: Rep) => {
@@ -157,6 +186,14 @@ export default function B2CRepsPage() {
   };
 
   const columns = [
+    {
+      key: '_pick', label: '',
+      render: (_: any, row: Rep) => (
+        <input type="checkbox" aria-label="select" checked={picked.has(row._id)}
+          onClick={(e) => e.stopPropagation()} onChange={() => togglePick(row._id)}
+          className="w-4 h-4 accent-[#f37121] cursor-pointer" />
+      ),
+    },
     {
       key: 'englishName', label: T.englishName,
       render: (_: any, row: Rep) => (
@@ -248,6 +285,37 @@ export default function B2CRepsPage() {
           {branches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
         </select>
       </div>
+
+      {/* إسنادٌ جماعيّ */}
+      {!loading && reps.length > 0 && (
+        <div className={`rounded-xl border p-3 flex flex-wrap items-center gap-3 text-sm ${picked.size ? 'bg-orange-50 border-orange-200' : 'bg-white border-slate-200'}`}>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" className="w-4 h-4 accent-[#f37121]"
+              checked={picked.size > 0 && picked.size === reps.length}
+              ref={(el) => { if (el) el.indeterminate = picked.size > 0 && picked.size < reps.length; }}
+              onChange={() => setPicked(picked.size === reps.length ? new Set() : new Set(reps.map((r) => r._id)))} />
+            <span className="text-slate-700">{lang === 'ar' ? `تحديد الكل (${reps.length})` : `Select all (${reps.length})`}</span>
+          </label>
+          {picked.size > 0 && (
+            <>
+              <span className="font-semibold text-slate-900">{lang === 'ar' ? `${picked.size} محدَّد` : `${picked.size} selected`}</span>
+              <select aria-label="Assign supervisor" value={bulkSup} onChange={(e) => setBulkSup(e.target.value)}
+                className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
+                <option value="">{lang === 'ar' ? '— اختر المشرف —' : '— choose supervisor —'}</option>
+                {supervisorOptions.map((u) => <option key={u._id} value={u._id}>{u.name} ({u.reps})</option>)}
+                <option value="__none">{lang === 'ar' ? 'إزالة المشرف' : 'Remove supervisor'}</option>
+              </select>
+              <button type="button" disabled={!bulkSup || assigning} onClick={assignPicked}
+                className="px-4 py-1.5 bg-[#f37121] hover:bg-[#e0611a] disabled:opacity-50 text-white rounded-lg font-medium">
+                {assigning ? '…' : (lang === 'ar' ? 'إسناد إلى المشرف' : 'Assign')}
+              </button>
+              <button type="button" onClick={() => setPicked(new Set())} className="text-slate-500 hover:text-slate-900">
+                {lang === 'ar' ? 'إلغاء التحديد' : 'Clear'}
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Table */}
       {loading ? (

@@ -35,10 +35,19 @@ interface Row {
   branch?: { name?: string }; project?: { name?: string };
   conditionAr?: string; hasDamage?: boolean; damageNotes?: string; notes?: string;
   vehicleType?: string; vehiclePlate?: string;
-  photos?: { fileUrl: string; takenAt?: string }[];
+  photos?: { fileUrl: string; takenAt?: string; kind?: PhotoKind }[];
   location?: { lat?: number; lng?: number; accuracy?: number };
   review?: { verdict?: string; note?: string; at?: string; by?: { firstName?: string; lastName?: string } };
 }
+
+type PhotoKind = 'rep' | 'vehicle' | 'box';
+const KINDS: { key: PhotoKind; ar: string; en: string }[] = [
+  { key: 'rep', ar: 'المندوب', en: 'Rider' },
+  { key: 'vehicle', ar: 'الدبّاب', en: 'Bike' },
+  { key: 'box', ar: 'البوكس', en: 'Box' },
+];
+const kindOf = (p: { kind?: PhotoKind }) => p.kind || 'vehicle';
+const countKind = (r: Row, k: PhotoKind) => (r.photos || []).filter((p) => kindOf(p) === k).length;
 
 const OUT: Record<string, { ar: string; en: string; cls: string }> = {
   started: { ar: 'بدأ الدوام', en: 'Started', cls: 'bg-emerald-100 text-emerald-700' },
@@ -56,7 +65,8 @@ export default function DutyRegisterPage() {
   const [to, setTo] = useState(todayKey());
   const [supervisor, setSupervisor] = useState('');
   const [outcome, setOutcome] = useState('');
-  const [damage, setDamage] = useState(false);
+  // نوعُ الصورة: يحصر السجلَّ فيمن له صورةٌ من هذا النوع، ويحصر المعرضَ فيه.
+  const [photoKind, setPhotoKind] = useState<'' | PhotoKind>('');
 
   const [rows, setRows] = useState<Row[]>([]);
   const [sups, setSups] = useState<{ _id: string; name: string; reps: number }[]>([]);
@@ -69,9 +79,9 @@ export default function DutyRegisterPage() {
     const p = new URLSearchParams({ from, to, limit: '500' });
     if (supervisor) p.set('supervisor', supervisor);
     if (outcome) p.set('outcome', outcome);
-    if (damage) p.set('damage', '1');
+    if (photoKind) p.set('photoKind', photoKind);
     return p.toString();
-  }, [from, to, supervisor, outcome, damage]);
+  }, [from, to, supervisor, outcome, photoKind]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -91,8 +101,10 @@ export default function DutyRegisterPage() {
   useSocket('b2c:duty', useCallback(() => load(), [load]));
 
   const photos = useMemo(
-    () => rows.flatMap((r) => (r.photos || []).map((p) => ({ ...p, row: r }))),
-    [rows],
+    () => rows.flatMap((r) => (r.photos || [])
+      .filter((p) => !photoKind || kindOf(p) === photoKind)
+      .map((p) => ({ ...p, row: r }))),
+    [rows, photoKind],
   );
 
   const cols: ExportColumn[] = [
@@ -100,11 +112,12 @@ export default function DutyRegisterPage() {
     { header: t('المندوب', 'Rider'), key: 'rep', transform: (v: any) => v?.englishName || '' },
     { header: t('المشرف', 'Supervisor'), key: 'supervisorName' },
     { header: t('الحالة', 'Outcome'), key: 'outcome', transform: (v: any) => (ar ? OUT[v]?.ar : OUT[v]?.en) || v },
-    { header: t('حالة المركبة', 'Condition'), key: 'conditionAr' },
-    { header: t('تلف', 'Damage'), key: 'hasDamage', transform: (v: any) => (v ? t('نعم', 'Yes') : '') },
-    { header: t('ملاحظة التلف', 'Damage note'), key: 'damageNotes' },
     { header: t('الفرع', 'Branch'), key: 'branch', transform: (v: any) => v?.name || '' },
-    { header: t('عدد الصور', 'Photos'), key: 'photos', transform: (v: any) => (v || []).length },
+    ...KINDS.map((k) => ({
+      header: t(`صورة ${k.ar}`, `${k.en} photo`), key: 'photos',
+      transform: (v: any) => ((v || []).filter((p: any) => kindOf(p) === k.key).map((p: any) => p.fileUrl).join('\n')),
+    })),
+    { header: t('ملاحظات', 'Notes'), key: 'notes' },
     { header: t('وقت التفقّد', 'Checked at'), key: 'checkedAt', transform: (v: any) => (v ? new Date(v).toLocaleString('en-GB') : '') },
   ];
 
@@ -119,7 +132,7 @@ export default function DutyRegisterPage() {
             {t('تفقّد بداية الدوام', 'Duty start register')}
           </h1>
           <p className="mt-0.5 text-xs text-slate-500">
-            {t('مَن أخرج مَن، ومتى، وبأيّ حال كانت مركبته.', 'Who sent whom out, when, and in what condition.')}
+            {t('مَن أخرج مَن، ومتى — بصورة المندوب والدبّاب والبوكس.', 'Who sent whom out, and when — with rider, bike and box photos.')}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -152,11 +165,13 @@ export default function DutyRegisterPage() {
             {Object.entries(OUT).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
           </select>
         </F>
-        <label className="flex items-center gap-1.5 pb-2 text-xs font-semibold text-slate-600">
-          <input type="checkbox" className="h-4 w-4 accent-red-600" checked={damage} onChange={(e) => setDamage(e.target.checked)} />
-          {t('بها تلف فقط', 'Damaged only')}
-        </label>
-        <button type="button" onClick={() => { const d = todayKey(); setFrom(d); setTo(d); setSupervisor(''); setOutcome(''); setDamage(false); }}
+        <F label={t('نوع الصورة', 'Photo type')}>
+          <select className={inp} value={photoKind} onChange={(e) => setPhotoKind(e.target.value as any)}>
+            <option value="">{t('كل الصور', 'All photos')}</option>
+            {KINDS.map((k) => <option key={k.key} value={k.key}>{t(`${k.ar} فقط`, `${k.en} only`)}</option>)}
+          </select>
+        </F>
+        <button type="button" onClick={() => { const d = todayKey(); setFrom(d); setTo(d); setSupervisor(''); setOutcome(''); setPhotoKind(''); }}
           className="pb-2 text-xs font-semibold text-slate-400 hover:text-[#f37121]">{t('اليوم', 'Today')}</button>
       </div>
 
@@ -168,7 +183,8 @@ export default function DutyRegisterPage() {
         <K label={t('بدأ الدوام', 'Started')} value={T.started ?? 0} tone="text-emerald-600" Icon={CheckCircle2} />
         <K label={t('لم يحضر', 'Absent')} value={T.absent ?? 0} Icon={UserX} />
         <K label={t('مُنع من الخروج', 'Blocked')} value={T.blocked ?? 0} tone="text-red-600" Icon={Ban} />
-        <K label={t('مركبات بها تلف', 'Damaged')} value={T.damaged ?? 0} tone="text-orange-600" Icon={AlertTriangle} />
+        <K label={t('صور المندوب / الدبّاب / البوكس', 'Rider / bike / box photos')}
+          value={`${T.photosByKind?.rep ?? 0} / ${T.photosByKind?.vehicle ?? 0} / ${T.photosByKind?.box ?? 0}`} tone="text-slate-700" Icon={Camera} />
         <K label={t('بانتظار مراجعتك', 'Unreviewed')} value={(T.checks || 0) - (T.reviewed || 0)} Icon={Flag} />
       </div>
 
@@ -194,7 +210,7 @@ export default function DutyRegisterPage() {
             <thead className="bg-slate-900 text-slate-300">
               <tr>
                 {[t('اليوم', 'Day'), t('المندوب', 'Rider'), t('المشرف', 'Supervisor'), t('الحالة', 'Outcome'),
-                  t('المركبة', 'Vehicle'), t('صور', 'Photos'), t('الوقت', 'Time'), t('المراجعة', 'Review')].map((h) => (
+                  ...KINDS.map((k) => t(k.ar, k.en)), t('الوقت', 'Time'), t('المراجعة', 'Review')].map((h) => (
                   <th key={h} className="px-3 py-2.5 text-start font-semibold">{h}</th>
                 ))}
               </tr>
@@ -206,11 +222,15 @@ export default function DutyRegisterPage() {
                   <td className="px-3 py-2 text-[13px] font-semibold text-slate-900">{ar ? (r.rep?.arabicName || r.rep?.englishName) : r.rep?.englishName}</td>
                   <td className="px-3 py-2 text-xs text-slate-600">{r.supervisorName || '—'}</td>
                   <td className="px-3 py-2"><span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${OUT[r.outcome]?.cls}`}>{ar ? OUT[r.outcome]?.ar : OUT[r.outcome]?.en}</span></td>
-                  <td className="px-3 py-2 text-xs text-slate-600">
-                    {r.conditionAr || '—'}
-                    {r.hasDamage && <AlertTriangle className="ms-1 inline h-3.5 w-3.5 text-orange-500" />}
-                  </td>
-                  <td className="px-3 py-2 text-xs tabular-nums text-slate-500">{(r.photos || []).length}</td>
+                  {KINDS.map((k) => {
+                    const n = countKind(r, k.key);
+                    return (
+                      <td key={k.key} className="px-3 py-2 text-xs">
+                        {n ? <span className="font-semibold text-emerald-600">✓{n > 1 ? ` ${n}` : ''}</span>
+                          : r.outcome === 'started' ? <span className="font-semibold text-red-500">✗</span> : <span className="text-slate-300">—</span>}
+                      </td>
+                    );
+                  })}
                   <td className="px-3 py-2 text-xs tabular-nums text-slate-500">{r.checkedAt ? new Date(r.checkedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
                   <td className="px-3 py-2">
                     {r.review?.verdict === 'flagged' ? <span className="rounded bg-red-100 px-1.5 py-0.5 text-[11px] font-semibold text-red-700">{t('عليها ملاحظة', 'Flagged')}</span>
@@ -219,7 +239,7 @@ export default function DutyRegisterPage() {
                   </td>
                 </tr>
               ))}
-              {!rows.length && <tr><td colSpan={8} className="px-3 py-10 text-center text-slate-500">{t('لا صفوف في هذا المدى', 'Nothing in this range')}</td></tr>}
+              {!rows.length && <tr><td colSpan={10} className="px-3 py-10 text-center text-slate-500">{t('لا صفوف في هذا المدى', 'Nothing in this range')}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -231,7 +251,10 @@ export default function DutyRegisterPage() {
             <button key={i} type="button" onClick={() => setOpen(p.row)} className="group text-start">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={p.fileUrl} alt="" className="aspect-square w-full rounded-lg border border-slate-200 object-cover group-hover:border-[#f37121]" />
-              <p className="mt-1 truncate text-[11px] font-semibold text-slate-700">{p.row.rep?.englishName}</p>
+              <p className="mt-1 truncate text-[11px] font-semibold text-slate-700">
+                <span className="me-1 rounded bg-slate-100 px-1 text-[10px] text-slate-500">{t(KINDS.find((k) => k.key === kindOf(p))!.ar, KINDS.find((k) => k.key === kindOf(p))!.en)}</span>
+                {p.row.rep?.englishName}
+              </p>
               <p className="truncate text-[10.5px] text-slate-400">{p.row.dateKey} · {p.row.supervisorName}</p>
             </button>
           ))}
@@ -268,7 +291,7 @@ export default function DutyRegisterPage() {
             <table className="w-full text-sm">
               <thead className="bg-slate-100 text-slate-600">
                 <tr>{[t('المشرف', 'Supervisor'), t('مندوبوه', 'Riders'), t('المطلوب', 'Due'), t('نُفِّذ', 'Done'),
-                     t('الالتزام', 'Compliance'), t('مُنع', 'Blocked'), t('تلف', 'Damage'), t('ملاحظات', 'Flags'), t('متوسط الساعة', 'Avg hour')].map((h) => (
+                     t('الالتزام', 'Compliance'), t('مُنع', 'Blocked'), t('ملاحظات', 'Flags'), t('متوسط الساعة', 'Avg hour')].map((h) => (
                   <th key={h} className="px-3 py-2 text-start text-[11.5px] font-semibold">{h}</th>))}</tr>
               </thead>
               <tbody>
@@ -284,7 +307,6 @@ export default function DutyRegisterPage() {
                       </span>
                     </td>
                     <td className="px-3 py-2 tabular-nums text-red-600">{s.blocked || ''}</td>
-                    <td className="px-3 py-2 tabular-nums text-orange-600">{s.damaged || ''}</td>
                     <td className="px-3 py-2 tabular-nums text-slate-600">{s.flagged || ''}</td>
                     <td className="px-3 py-2 tabular-nums text-slate-500">{s.avgHour != null ? `${s.avgHour}` : '—'}</td>
                   </tr>
@@ -294,17 +316,11 @@ export default function DutyRegisterPage() {
           </Panel>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <Panel title={t('حالة المركبات', 'Vehicle condition')}>
-              {(an.byCondition || []).map((c: any) => (
-                <Bar key={c._id} label={c._id} value={c.count} max={Math.max(...(an.byCondition || []).map((x: any) => x.count), 1)} />
+            <Panel title={t('الصور حسب النوع', 'Photos by type')}>
+              {KINDS.map((k) => (
+                <Bar key={k.key} label={t(`صورة ${k.ar}`, `${k.en} photo`)} value={T.photosByKind?.[k.key] ?? 0}
+                  max={Math.max(...KINDS.map((x) => T.photosByKind?.[x.key] ?? 0), 1)} />
               ))}
-              {!(an.byCondition || []).length && <Empty t={t} />}
-            </Panel>
-            <Panel title={t('الأكثر تكرارًا للتلف', 'Most damaged riders')} hint={t('الرجل لا اليوم', 'the rider, not the day')}>
-              {(an.topDamage || []).map((c: any) => (
-                <Bar key={c._id} label={c.name} value={c.times} max={Math.max(...(an.topDamage || []).map((x: any) => x.times), 1)} tone="bg-orange-500" />
-              ))}
-              {!(an.topDamage || []).length && <Empty t={t} />}
             </Panel>
             <Panel title={t('حسب الفرع', 'By branch')}>
               {(an.byBranch || []).map((c: any) => (
@@ -390,9 +406,12 @@ function DetailModal({ row, ar, onClose, onSaved }: { row: Row; ar: boolean; onC
         {!!(row.photos || []).length && (
           <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
             {(row.photos || []).map((p, i) => (
-              <a key={i} href={p.fileUrl} target="_blank" rel="noreferrer">
+              <a key={i} href={p.fileUrl} target="_blank" rel="noreferrer" className="block">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={p.fileUrl} alt="" className="aspect-square w-full rounded-lg border border-slate-200 object-cover hover:opacity-90" />
+                <span className="mt-0.5 block text-center text-[10.5px] font-semibold text-slate-500">
+                  {t(`صورة ${KINDS.find((k) => k.key === kindOf(p))!.ar}`, `${KINDS.find((k) => k.key === kindOf(p))!.en} photo`)}
+                </span>
               </a>
             ))}
           </div>
@@ -400,7 +419,6 @@ function DetailModal({ row, ar, onClose, onSaved }: { row: Row; ar: boolean; onC
 
         <dl className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[12.5px]">
           <Row k={t('المركبة', 'Vehicle')} v={[row.vehicleType, row.vehiclePlate].filter(Boolean).join(' · ')} />
-          <Row k={t('الحالة', 'Condition')} v={row.conditionAr} />
           <Row k={t('وقت التفقّد', 'Checked at')} v={row.checkedAt ? new Date(row.checkedAt).toLocaleString('en-GB') : ''} />
           <Row k={t('الفرع', 'Branch')} v={row.branch?.name} />
           {row.hasDamage && <Row k={t('التلف', 'Damage')} v={row.damageNotes || t('نعم', 'Yes')} danger />}

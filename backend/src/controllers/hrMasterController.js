@@ -15,7 +15,23 @@ const cache = require('../utils/ttlCache');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
 
-const emit = () => { try { emitToAll('hr:master', {}); } catch (e) {} cache.clear('hrm:'); };
+/**
+ * ── والتعديلُ من الماستر يصل بقيّةَ القسم ──────────────────────────────────
+ *
+ * كان يبثّ `hr:master` وحدَه، وهو ما تسمعه شاشاتُ الماستر. وشاشاتُ الموظّفين
+ * والعقود والتراخيص تسمع `hr:employee` — فمَن عدّل إقامةً من الماستر بقيت
+ * قائمةُ الموظّفين على القديم حتى يُحدِّثها بيده. والعكسُ كان مصلَحًا:
+ * `bustEmployeeCaches` في hrController تبثّ الاثنين.
+ *
+ * فيبثّ الاثنين هنا كذلك، وتُمسَح ذاكراتُ القسم الثلاث لا ذاكرةُ الماستر
+ * وحدَها — وإلّا عادت اللوحةُ بأرقامٍ من قبل التعديل لدقيقةٍ كاملة.
+ */
+const emit = () => {
+  try { emitToAll('hr:master', {}); } catch (e) {}
+  try { emitToAll('hr:employee', {}); } catch (e) {}
+  cache.clear('hrm:');
+  try { cache.clear('hr:employees:'); cache.clear('dash:hr:'); } catch (e) {}
+};
 const filled = (v) => !(v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length));
 const rx = (s) => new RegExp(String(s).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 

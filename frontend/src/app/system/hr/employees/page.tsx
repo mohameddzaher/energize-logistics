@@ -87,7 +87,12 @@ export default function HREmployeesPage() {
   }, [search, statusFilter, JSON.stringify(filters)]);
 
   useEffect(() => { load(); }, [load]);
+  // ── وما يُعدَّل في الماستر يصل هنا ──────────────────────────────────────
+  // شاشاتُ الماستر تكتب في الحقول نفسِها التي تعرضها هذه الشاشة، وتبثّ
+  // `hr:master`. وبلا هذا السطر تبقى هذه على أرقامها حتى يُحدِّثها أحدٌ بيده —
+  // فيُقرأ رقمان مختلفان للشيء نفسِه في شاشتين مفتوحتين.
   useSocket('hr:employee', useCallback(() => load(), [load]));
+  useSocket('hr:master', useCallback(() => load(), [load]));
 
   const openCreate = () => { setEditing(null); setShowModal(true); };
   const openEdit = (e: Employee) => { setEditing(e); setShowModal(true); };

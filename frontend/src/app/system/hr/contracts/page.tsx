@@ -46,7 +46,12 @@ export default function ContractsPage() {
   }, [statusFilter]);
 
   useEffect(() => { load(); }, [load]);
+  // ── وما يُعدَّل في الماستر يصل هنا ──────────────────────────────────────
+  // شاشاتُ الماستر تكتب في الحقول نفسِها التي تعرضها هذه الشاشة، وتبثّ
+  // `hr:master`. وبلا هذا السطر تبقى هذه على أرقامها حتى يُحدِّثها أحدٌ بيده —
+  // فيُقرأ رقمان مختلفان للشيء نفسِه في شاشتين مفتوحتين.
   useSocket('hr:contract', useCallback(() => load(), [load]));
+  useSocket('hr:master', useCallback(() => load(), [load]));
   useEffect(() => { api.get<{ employees: Employee[] }>('/api/hr/employees').then((d) => setEmployees(d.employees || [])).catch(() => {}); }, []);
 
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));

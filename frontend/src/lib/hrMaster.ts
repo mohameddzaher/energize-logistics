@@ -102,6 +102,48 @@ export const toDateInput = (v?: string | Date | null) => {
   const d = new Date(v);
   return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
 };
+/**
+ * ── حقولُ الانتهاء، وما يُسمّى به عمودُ مدّتها ─────────────────────────────
+ *
+ * خمسةُ أعمدةٍ في الماستر عنوانُها «تاريخ الانتهاء» نفسُه — تفرّقها المجموعةُ
+ * التي تعيش فيها لا اسمُها. فعمودُ المدّة لا يصحّ أن يرث ذلك الغموض: «المدة
+ * بالأيام» خمسَ مرّاتٍ في قائمة الأعمدة لا تُختار منها واحدة.
+ *
+ * فلكلّ انتهاءٍ اسمُ مدّته صريحًا، ومنها يُعرَف أيُّ التواريخ انتهاءٌ أصلًا —
+ * تاريخُ الميلاد والتعيين وبدايةِ العقد تواريخُ لا تنتهي، ولا مدّةَ تُعَدّ عليها.
+ */
+export const EXPIRY_FIELDS: Record<string, { ar: string; en: string }> = {
+  iqamaExpiry: { ar: 'المدة بالأيام — الإقامة', en: 'Days left — Iqama' },
+  passportExpiry: { ar: 'المدة بالأيام — الجواز', en: 'Days left — Passport' },
+  contractEndDate: { ar: 'المدة بالأيام — العقد', en: 'Days left — Contract' },
+  workPermitExpiry: { ar: 'المدة بالأيام — رخصة العمل', en: 'Days left — Work permit' },
+  insuranceExpiry: { ar: 'المدة بالأيام — التأمين', en: 'Days left — Insurance' },
+  healthCertExpiry: { ar: 'المدة بالأيام — الشهادة الصحية', en: 'Days left — Health certificate' },
+  driverCardExpiry: { ar: 'المدة بالأيام — بطاقة السائق', en: 'Days left — Driver card' },
+  licenseExpiry: { ar: 'المدة بالأيام — رخصة القيادة', en: 'Days left — Driving licence' },
+};
+
+export const isExpiryField = (key: string): boolean => Object.hasOwn(EXPIRY_FIELDS, key);
+
+/** اسمُ عمود المدّة لهذا الانتهاء. */
+export const daysColLabel = (key: string, ar: boolean): string => {
+  const m = EXPIRY_FIELDS[key];
+  return m ? (ar ? m.ar : m.en) : (ar ? 'المدة بالأيام' : 'Days left');
+};
+
+/**
+ * الأيّامُ حتى التاريخ — سالبٌ لما مضى، و`null` لما لا تاريخَ له.
+ * تُحسَب عند القراءة لا تُخزَّن: رقمٌ يُخزَّن يصدق يومَ كُتب ويكذب في اليوم التالي.
+ */
+export const daysUntil = (d?: string | Date | null): number | null => {
+  if (!d) return null;
+  const x = new Date(d);
+  if (Number.isNaN(x.getTime())) return null;
+  const a = new Date(x); a.setHours(0, 0, 0, 0);
+  const b = new Date(); b.setHours(0, 0, 0, 0);
+  return Math.round((a.getTime() - b.getTime()) / 86400000);
+};
+
 export const daysText = (n: number | null | undefined, ar: boolean) => {
   if (n === null || n === undefined) return '—';
   if (n < 0) return ar ? `متأخر ${Math.abs(n)} يوم` : `${Math.abs(n)}d overdue`;

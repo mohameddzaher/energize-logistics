@@ -26,7 +26,8 @@ import { Search, Check, X, Pencil, ArrowUpDown, RefreshCw, ArrowRight, Plus, Tra
 import { stateMeta, statusMeta,
   getHrRecords, updateEmployeeFields, renewHrDocument, renewHrBulk, RENEWABLE_GROUPS,
   STATUS_META, STATE_META, statusLabel, stateLabel,
-  fmtDate, toDateInput, daysText, type RecordRow, type FieldDef,
+  fmtDate, toDateInput, daysText, isExpiryField, daysColLabel, daysUntil,
+  type RecordRow, type FieldDef,
 } from '@/lib/hrMaster';
 import SelectionBar from '@/components/ls2/SelectionBar';
 import { canEditSection } from '@/lib/sections';
@@ -175,16 +176,24 @@ function GroupInner() {
           || (ar ? 'غير مسجَّلة' : 'not recorded'),
       },
     ] as ExportColumn[] : []),
-    ...g.fields.map((f) => ({
-      header: ar ? f.ar : f.en, key: 'values',
-      transform: (v: any, row: any) => {
-        const raw = row.values?.[f.key];
-        const st = row.statuses?.[f.key];
-        if (st === 'required') return ar ? 'مطلوب' : 'Required';
-        if (st === 'not_required') return ar ? 'غير مطلوب' : 'Not required';
-        return f.type === 'date' ? fmtDate(raw) : (raw ?? '');
-      }, width: 18,
-    })),
+    ...g.fields.flatMap((f) => [
+      {
+        header: ar ? f.ar : f.en, key: 'values',
+        transform: (v: any, row: any) => {
+          const raw = row.values?.[f.key];
+          const st = row.statuses?.[f.key];
+          if (st === 'required') return ar ? 'مطلوب' : 'Required';
+          if (st === 'not_required') return ar ? 'غير مطلوب' : 'Not required';
+          return f.type === 'date' ? fmtDate(raw) : (raw ?? '');
+        },
+        width: 18,
+      },
+      // والملفُّ يحمل ما تحمله الشاشة — رقمًا يُرتَّب ويُجمَع لا نصًّا.
+      ...(isExpiryField(f.key) ? [{
+        header: daysColLabel(f.key, ar), key: 'values', width: 16,
+        transform: (_v: any, row: any) => { const n = daysUntil(row.values?.[f.key]); return n === null ? '' : n; },
+      }] : []),
+    ] as ExportColumn[]),
   ];
 
   // كلُّ فلاتر هذه الشاشة تُطبَّق على الخادم — البحث ولوحة الفلاتر والحالة
@@ -380,13 +389,22 @@ function GroupInner() {
                     <th className="px-3 py-3 text-center font-bold whitespace-nowrap">{t('حالة العقد', 'Contract status')}</th>
                   </>
                 )}
-                {g.fields.map((f) => (
+                {/* ── والمدّةُ بالأيّام تلي انتهاءَها ────────────────────────
+                    التاريخُ يقول متى، والمدّةُ تقول كم بقي — وهو السؤالُ الذي
+                    يُفتَح الجدولُ لأجله. تقع بعد عمودِ انتهائها مباشرةً فتُقرآن
+                    معًا، ولها اسمٌ صريحٌ لأنّ عناوينَ الانتهاء متشابهة. */}
+                {g.fields.flatMap((f) => [
                   <th key={f.key} className="px-3 py-3 text-center font-bold whitespace-nowrap">
                     <button onClick={() => toggleSort(f.key)} className="inline-flex items-center gap-1 hover:text-white">
                       {ar ? f.ar : f.en}<ArrowUpDown className="w-3 h-3 opacity-60" />
                     </button>
-                  </th>
-                ))}
+                  </th>,
+                  ...(isExpiryField(f.key) ? [
+                    <th key={`${f.key}__days`} className="px-3 py-3 text-center font-bold whitespace-nowrap">
+                      {daysColLabel(f.key, ar)}
+                    </th>,
+                  ] : []),
+                ])}
                 {g.document && (
                   <th className="px-3 py-3 text-center font-bold whitespace-nowrap">
                     <button onClick={() => toggleSort('daysRemaining')} className="inline-flex items-center gap-1 hover:text-white">
@@ -405,7 +423,7 @@ function GroupInner() {
                   onEdit={(x: RecordRow) => setForm({ mode: 'edit', row: x })} onClear={setClearing} />
               ))}
               {!rows.length && (
-                <tr><td colSpan={4 + (showWhyInactive ? 2 : 0) + g.fields.length + (g.document ? 1 : 0) + (renewable && canEdit ? 1 : 0) + (canEdit ? 1 : 0)} className="px-3 py-12 text-center text-slate-500">
+                <tr><td colSpan={4 + (showWhyInactive ? 2 : 0) + g.fields.length + g.fields.filter((f) => isExpiryField(f.key)).length + (g.document ? 1 : 0) + (renewable && canEdit ? 1 : 0) + (canEdit ? 1 : 0)} className="px-3 py-12 text-center text-slate-500">
                   {t('لا نتائج بالفلاتر دي', 'Nothing matches these filters')}
                 </td></tr>
               )}
@@ -496,11 +514,22 @@ function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router,
           </>
         );
       })()}
-      {fields.map((f: FieldDef) => (
+      {fields.flatMap((f: FieldDef) => [
         <td key={f.key} className="px-3 py-2.5">
           <Cell r={r} f={f} ar={ar} t={t} canEdit={canEdit} onSaved={onSaved} notify={notify} />
-        </td>
-      ))}
+        </td>,
+        // المدّةُ تُحسَب عند القراءة — راجع daysUntil. و«بلا تاريخ» تبقى فارغةً
+        // لا صفرًا: الصفرُ يعني «ينتهي اليوم» وهو خبرٌ آخر.
+        ...(isExpiryField(f.key) ? [(() => {
+          const n = daysUntil(r.values?.[f.key]);
+          return (
+            <td key={`${f.key}__days`} className="px-3 py-2.5 whitespace-nowrap text-[13px] tabular-nums font-semibold"
+              style={{ color: n == null ? undefined : n < 0 ? '#dc2626' : n <= 30 ? '#ea580c' : n <= 90 ? '#f59e0b' : '#16a34a' }}>
+              {n == null ? <span className="text-slate-300">—</span> : n}
+            </td>
+          );
+        })()] : []),
+      ])}
       {isDoc && (
         <td className="px-3 py-2.5 whitespace-nowrap font-bold" style={{ color: m?.color }}>
           {r.daysRemaining == null ? <span className="text-slate-500">—</span> : daysText(r.daysRemaining, ar)}

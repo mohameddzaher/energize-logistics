@@ -72,7 +72,12 @@ export default function LicensesPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  // ── وما يُعدَّل في الماستر يصل هنا ──────────────────────────────────────
+  // شاشاتُ الماستر تكتب في الحقول نفسِها التي تعرضها هذه الشاشة، وتبثّ
+  // `hr:master`. وبلا هذا السطر تبقى هذه على أرقامها حتى يُحدِّثها أحدٌ بيده —
+  // فيُقرأ رقمان مختلفان للشيء نفسِه في شاشتين مفتوحتين.
   useSocket('hr:license', useCallback(() => load(), [load]));
+  useSocket('hr:master', useCallback(() => load(), [load]));
 
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
   const openCreate = () => { setEditing(null); setForm(EMPTY); setShowModal(true); };

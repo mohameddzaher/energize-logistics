@@ -23,9 +23,10 @@ import MasterNav from '@/components/hr/MasterNav';
 import { Spinner, PageHeader, SearchInput } from '@/components/hr/HRKit';
 import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
 import { ColumnFilter, type ColumnFilterOption } from '@/components/ColumnFilter';
-import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { printTable } from '@/utils/printTable';
 import { gregorianToHijri } from '@/lib/hijri';
+import { isExpiryField, daysColLabel, daysUntil } from '@/lib/hrMaster';
 import { LayoutGrid, Printer, ChevronLeft, ChevronRight } from 'lucide-react';
 
 type Col = { key: string; ar: string; en: string; type: string; group: string; groupAr: string; groupEn: string };
@@ -91,19 +92,40 @@ export default function HrMasterGridPage() {
 
   // ── الأعمدة: كلُّ حقلٍ، وبجانب كلّ تاريخٍ هجريُّه ──────────────────────
   const allCols = useMemo(() => {
-    const base: { key: string; label: string; type: string; hijriOf?: string }[] = [
+    const base: { key: string; label: string; type: string; hijriOf?: string; daysOf?: string }[] = [
       { key: 'employeeNumber', label: t('الرقم الوظيفي', 'Employee no.'), type: 'text' },
       { key: 'name', label: t('الموظف', 'Employee'), type: 'text' },
     ];
+    // ── والعمودُ المثبَّتُ لا يُعرَض مرّةً ثانيةً في القائمة ──────────────────
+    // الرقمُ الوظيفيُّ والاسمُ مثبَّتان أعلاه، ويعودان في أعمدة الخادم باسمَي
+    // `employeeNumber` و`arabicName` — فيظهران مرّتين في قائمة الاختيار،
+    // ويُعلَّم عليهما فيتكرّران في الجدول وفي الملفّ.
+    const PINNED = new Set(['employeeNumber', 'arabicName', 'name']);
     for (const c of cols) {
+      if (PINNED.has(c.key)) continue;
       base.push({ key: c.key, label: ar ? c.ar : c.en, type: c.type });
       if (c.type === 'date') {
         base.push({ key: `${c.key}__hijri`, label: `${ar ? c.ar : c.en} ${t('(هجري)', '(Hijri)')}`, type: 'hijri', hijriOf: c.key });
+        // ── والمدّةُ بالأيّام تلي انتهاءَها ───────────────────────────────────
+        // التاريخُ يقول متى، والمدّةُ تقول كم بقي — وهي السؤالُ الذي يُفتَح
+        // الجدولُ لأجله. وتقع بعد عمودِ انتهائها مباشرةً فتُقرأ معه، ولها اسمٌ
+        // صريحٌ لأنّ خمسةَ أعمدةٍ هنا عنوانُها «تاريخ الانتهاء» نفسُه.
+        if (isExpiryField(c.key)) {
+          base.push({ key: `${c.key}__days`, label: daysColLabel(c.key, ar), type: 'number', daysOf: c.key });
+        }
       }
     }
     base.push({ key: 'custodyCount', label: t('عدد العهد', 'Custody items'), type: 'number' });
     return base;
   }, [cols, ar]);
+
+  const scope = exportScopeLabels(ar);
+  // «الكلّ» نداءٌ ثانٍ مجرَّدٌ من البحث وفلاتر الأعمدة والترقيم — وإلّا كان
+  // الاسمان لملفٍّ واحدٍ ناقص.
+  const fetchAllForExport = async () => {
+    const d = await api.get<any>('/api/hr/master/grid?limit=100000');
+    return [{ name: t('الماستر', 'Master'), rows: (d.rows || []) as any, columns: exportCols }];
+  };
 
   const chooserCols: ChooserColumn[] = allCols.map((c, i) => ({ key: c.key, label: c.label, locked: i < 2 }));
   const { visible, setVisible } = useVisibleColumns('hr:master:grid:cols', chooserCols);
@@ -114,6 +136,9 @@ export default function HrMasterGridPage() {
     if (c.key === 'name') return r.name || '—';
     if (c.key === 'custodyCount') return r.custodyCount || 0;
     if (c.hijriOf) return gregorianToHijri(r.values[c.hijriOf]) || '';
+    // الأيّامُ تُحسَب عند القراءة — راجع daysUntil. والفارغُ يبقى فارغًا لا صفرًا:
+    // «بلا تاريخ» غيرُ «ينتهي اليوم».
+    if (c.daysOf) { const n = daysUntil(r.values[c.daysOf] as any); return n === null ? '' : n; }
     const v = r.values[c.key];
     if (v === true) return t('نعم', 'Yes');
     if (v === false) return t('لا', 'No');
@@ -165,8 +190,15 @@ export default function HrMasterGridPage() {
           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 text-sm font-semibold">
           <Printer className="w-4 h-4" />{t('طباعة PDF', 'Print PDF')}
         </button>
+        {/* ── نطاقان: ما بعد الفلتر، والماستر كلُّه ────────────────────────
+            البحثُ وفلاتر الأعمدة تُطبَّق على الخادم والصفحةُ مرقَّمة، فما في
+            اليد صفحةٌ من شريحة. وكان الخيارُ واحدًا اسمُه «المعروض» — فمن أراد
+            الكشفَ كاملًا لم يجد إليه سبيلًا إلّا رفعَ الفلاتر وتقليبَ الصفحات. */}
         <ExportMenu fileName="hr-master" lang={ar ? 'ar' : 'en'}
-          options={[{ key: 'shown', label: t('المعروض', 'Shown'), sheets: [{ name: t('الماستر', 'Master'), rows: rows as any, columns: exportCols }] }]} />
+          options={[
+            { key: 'shown', label: scope.shown, sheets: [{ name: t('الماستر', 'Master'), rows: rows as any, columns: exportCols }] },
+            { key: 'all', label: scope.all, resolve: fetchAllForExport },
+          ]} />
       </PageHeader>
 
       <div className="flex flex-wrap items-center gap-2">

@@ -6,7 +6,7 @@
 // نفس العدّ تفترقان عند أول تعديل — فيقرأ المستخدم رقمين لشيء واحد ولا يعود
 // يثق في أيّهما. الحساب في الخادم، والعرض هنا، والشاشتان تقرآن من الاثنين.
 import { CUSTODY_BUCKETS, CUSTODY_STATUSES, CUSTODY_STATE_KEYS, custodyStatusLabel, Lang } from '@/lib/it';
-import { Laptop, Keyboard, Smartphone, Monitor, Package, UserCheck, Boxes, AlertOctagon } from 'lucide-react';
+import { Laptop, Keyboard, Smartphone, Monitor, Package, UserCheck, Boxes, AlertOctagon, BadgeDollarSign } from 'lucide-react';
 
 export interface BucketCount { key: string; count: number }
 
@@ -22,6 +22,8 @@ const STATE_ICON: Record<string, React.ElementType> = {
   assigned: UserCheck,
   in_stock: Boxes,
   returned: AlertOctagon,
+  // خرج من ملكنا ببيع — لا في عهدةٍ ولا على الرفّ. راجع CUSTODY_STATUSES.
+  sold: BadgeDollarSign,
 };
 
 // لون لكل زر حالة. الحالة المختارة تُملأ، وغير المختارة تبقى هادئة — الفرق
@@ -30,6 +32,7 @@ const STATE_TONE: Record<string, { on: string; dot: string }> = {
   assigned: { on: 'border-amber-400 bg-amber-50 text-amber-800 ring-1 ring-amber-300', dot: 'text-amber-600' },
   in_stock: { on: 'border-blue-400 bg-blue-50 text-blue-800 ring-1 ring-blue-300', dot: 'text-blue-600' },
   returned: { on: 'border-red-400 bg-red-50 text-red-800 ring-1 ring-red-300', dot: 'text-red-600' },
+  sold: { on: 'border-violet-400 bg-violet-50 text-violet-800 ring-1 ring-violet-300', dot: 'text-violet-600' },
 };
 
 export function CustodyCards({
@@ -80,13 +83,13 @@ export function CustodyCards({
 export function CustodyStateButtons({
   byStatus, active, onPick, lang,
 }: {
-  byStatus: { assigned: number; in_stock: number; returned: number };
+  byStatus: Record<string, number>;
   active: string;
   onPick: (key: string) => void;
   lang: Lang;
 }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       {CUSTODY_STATE_KEYS.map((k) => {
         const Icon = STATE_ICON[k];
         const on = active === k;

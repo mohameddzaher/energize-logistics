@@ -75,6 +75,13 @@ export interface CustodyItem {
   location?: string;
   returnedTo?: UserRef | string | null;
   createdBy?: UserRef | string | null;
+  // ── وما بيع يقول لمن وبكم ومتى ─────────────────────────────────────────
+  // `soldTo` موظّفٌ مربوط، و`soldToName` اسمٌ حرٌّ لمشترٍ من خارج الشركة —
+  // أحدُهما لا كلاهما. راجع sellCustody في الخادم.
+  soldTo?: EmployeeRef | string | null;
+  soldToName?: string;
+  soldDate?: string;
+  soldPrice?: number;
 }
 
 // A stock item is the same Asset document as a custody item — it just has no
@@ -87,7 +94,7 @@ export type StockItem = CustodyItem;
 // كله والجدول تحته مفلتر.
 export interface CustodyCounts {
   buckets: { key: string; nameAr: string; nameEn: string; count: number }[];
-  byStatus: { assigned: number; in_stock: number; returned: number };
+  byStatus: { assigned: number; in_stock: number; returned: number; sold?: number };
   /** تفصيل دلو «أخرى» بعد بقية الفلاتر. */
   otherKinds: CountRow[];
   conditions: CountRow[];
@@ -313,10 +320,16 @@ export const CUSTODY_STATUSES: Record<string, Style> = {
   assigned: { en: 'Assigned', ar: 'بعهدة الموظف', bg: 'bg-amber-500/20', text: 'text-amber-700' },
   in_stock: { en: 'In Stock', ar: 'المستودع', bg: 'bg-blue-500/20', text: 'text-blue-700' },
   returned: { en: 'Faulty', ar: 'تالف', bg: 'bg-red-500/20', text: 'text-red-700' },
+  // ── والمُباعُ خرج من ملكنا ──────────────────────────────────────────────
+  // الموظّفُ يشتري أحيانًا ما في عهدته ويدفع ثمنَه للحسابات. وكان ذلك يُسجَّل
+  // «مسلَّمًا» — فيبقى في عداد ما نملك وقد خرج منه — أو يُحذف صفُّه فلا يُعرف
+  // أين ذهب ولا بكم. فله حالتُه: لا في عهدةِ أحدٍ ولا على الرفّ، وصفُّه يقول
+  // لمن بيع وبكم ومتى.
+  sold: { en: 'Sold', ar: 'مُباع', bg: 'bg-violet-500/20', text: 'text-violet-700' },
 };
 
-// الأزرار الثلاثة العريضة أعلى صفحة العهد، بالترتيب الذي تُقرأ به.
-export const CUSTODY_STATE_KEYS = ['assigned', 'in_stock', 'returned'] as const;
+// الأزرار الأربعة العريضة أعلى صفحة العهد، بالترتيب الذي تُقرأ به.
+export const CUSTODY_STATE_KEYS = ['assigned', 'in_stock', 'returned', 'sold'] as const;
 
 export const SYSTEM_TYPES: Record<string, Style> = {
   erp: { en: 'ERP', ar: 'نظام ERP', bg: 'bg-orange-500/15', text: 'text-orange-700' },

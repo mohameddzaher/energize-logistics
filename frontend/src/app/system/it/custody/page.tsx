@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { Laptop, Plus, Edit, Undo2, Trash2, Check, Boxes, ArrowLeftRight, AlertTriangle, History, ClipboardCheck } from 'lucide-react';
+import { Laptop, Plus, Edit, Undo2, Trash2, Check, Boxes, ArrowLeftRight, AlertTriangle, History, ClipboardCheck, BadgeDollarSign } from 'lucide-react';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   Spinner, PageHeader, SearchInput, PrimaryButton, SmallBadge,
@@ -39,6 +39,8 @@ const ACTION_LABEL: Record<string, { en: string; ar: string }> = {
   // هنا لأن في السجل حركاتٍ قديمة كُتبت بها، وحذفُ الاسم يجعلها تُقرأ رمزاً.
   retired: { en: 'Recorded faulty', ar: 'سُجّل كتالف' },
   updated: { en: 'Details updated', ar: 'عُدّلت بياناته' },
+  // البيعُ حدثٌ بذاته: بلا سطرٍ له يظهر في السجلّ بمفتاحه الخامّ «sold».
+  sold: { en: 'Sold', ar: 'بيع' },
 };
 
 export default function ItCustodyPage() {
@@ -90,6 +92,12 @@ export default function ItCustodyPage() {
   // «تالف» — إجراء واحد بعد أن كان زرَّين: «الإبلاغ عن تالف» الذي يكتب بلاغاً
   // ويترك الصنف بعهدة الموظف، و«التحويل إلى تالف» الذي ينقل الحالة بلا سبب ولا
   // خصم. المدمَج يفعل الاثنين.
+  // ── بيعُ صنفٍ من العهدة ────────────────────────────────────────────────
+  // الموظّفُ يشتري ما في عهدته ويدفع ثمنَه للحسابات. والمشتري إمّا موظّفٌ من
+  // القائمة وإمّا اسمٌ حرٌّ لمن هو خارج الشركة — أحدُهما لا كلاهما، والخادمُ
+  // يردّ إن لم يُذكر واحدٌ منهما. راجع sellCustody.
+  const [selling, setSelling] = useState<CustodyItem | null>(null);
+  const [sellForm, setSellForm] = useState({ employee: '', buyerName: '', price: 0, date: '', notes: '' });
   const [faulty, setFaulty] = useState<CustodyItem | null>(null);
   const [faultyForm, setFaultyForm] = useState<{ kind: 'damaged' | 'lost'; notes: string; cost: number; date: string }>({ kind: 'damaged', notes: '', cost: 0, date: '' });
 
@@ -246,6 +254,27 @@ export default function ItCustodyPage() {
     setSaving(true);
     try { await api.post(`/api/it/custody/${transferring._id}/transfer`, transferForm); setTransferring(null); refresh(); }
     catch (e: any) { notify(e.message, 'error'); }
+    setSaving(false);
+  };
+
+  const openSell = (a: CustodyItem) => {
+    setSelling(a);
+    // والمشتري الافتراضيُّ هو حائزُه: أكثرُ البيع يقع لمن الصنفُ في يده أصلًا.
+    const holder = typeof a.employee === 'object' && a.employee ? String((a.employee as any)._id || '') : '';
+    setSellForm({ employee: holder, buyerName: '', price: a.value || 0, date: today(), notes: '' });
+  };
+  const doSell = async () => {
+    if (!selling || (!sellForm.employee && !sellForm.buyerName.trim())) return;
+    setSaving(true);
+    try {
+      await api.post(`/api/it/custody/${selling._id}/sell`, {
+        ...sellForm,
+        // لا يُرسَل الاثنان: مَن اختار موظّفًا فالاسمُ الحرُّ لغوٌ، والعكس.
+        employee: sellForm.employee || undefined,
+        buyerName: sellForm.employee ? undefined : sellForm.buyerName.trim(),
+      });
+      setSelling(null); refresh();
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 
@@ -457,7 +486,10 @@ export default function ItCustodyPage() {
                   <SmallBadge
                     bg={CUSTODY_STATUSES[a.status]?.bg || 'bg-slate-500/15'}
                     text={CUSTODY_STATUSES[a.status]?.text || 'text-slate-700'}
-                    label={a.status === 'returned' ? `${custodyStatusLabel(a.status, lang)} ${fmtDate(a.returnedDate)}` : custodyStatusLabel(a.status, lang)}
+                    label={a.status === 'returned' ? `${custodyStatusLabel(a.status, lang)} ${fmtDate(a.returnedDate)}`
+                      // المُباعُ يقول ثمنَه في الوسم: «مُباع» وحدَها تترك السؤال قائمًا.
+                      : a.status === 'sold' ? `${custodyStatusLabel(a.status, lang)}${a.soldPrice ? ` · ${a.soldPrice.toLocaleString()}` : ''}`
+                      : custodyStatusLabel(a.status, lang)}
                   />
                 </td>
                 <td className="px-4 py-3">
@@ -469,8 +501,13 @@ export default function ItCustodyPage() {
                     {/* «تالف»: زر واحد بالاسم الذي يحمله زر الفلتر نفسه. ما دام
                         الصنف لم يُسجَّل تالفاً بعد — سواء بعهدة موظف أو على الرف
                         — فهذا هو طريقه إلى ذلك. */}
-                    {a.status !== 'returned' && (
+                    {a.status !== 'returned' && a.status !== 'sold' && (
                       <button type="button" onClick={() => openFaulty(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={ar ? 'تالف' : 'Faulty'}><AlertTriangle className="w-4 h-4" /></button>
+                    )}
+                    {/* البيع: ما دام الصنفُ في ملكنا — بعهدةٍ أو على الرفّ —
+                        فهذا طريقُه إلى الخروج ببيع. والمُباعُ لا يُباع مرّتين. */}
+                    {a.status !== 'sold' && (
+                      <button type="button" onClick={() => openSell(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-violet-600 hover:bg-slate-100" title={ar ? 'بيع للموظف' : 'Sell'}><BadgeDollarSign className="w-4 h-4" /></button>
                     )}
                     <button type="button" onClick={() => openHistory(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'سجل الحركة' : 'Movement history'}><History className="w-4 h-4" /></button>
                     <button type="button" onClick={() => openEdit(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}><Edit className="w-4 h-4" /></button>
@@ -669,6 +706,73 @@ export default function ItCustodyPage() {
       </Modal>
       {/* Transfer — the device goes straight to the next person, so both sides
           of the handover are recorded on one event. */}
+      {/* ── بيعُ صنفٍ من العهدة ──────────────────────────────────────────────
+          الموظّفُ يشتري ما في يده ويدفع ثمنَه للحسابات. وكان ذلك يُسجَّل
+          «مسلَّمًا» — فيبقى في عداد ما نملك وقد خرج منه — أو يُحذف صفُّه فلا
+          يُعرف أين ذهب ولا بكم. فله حالتُه، وصفُّه يبقى يقول لمن ومتى وبكم.
+
+          والمشتري أحدُ اثنين لا كلاهما: موظّفٌ من القائمة، أو اسمٌ حرٌّ لمن هو
+          خارج الشركة. واختيارُ موظّفٍ يُعطّل خانةَ الاسم الحرّ كي لا يُكتب
+          اسمانِ لمشترٍ واحد. */}
+      <Modal open={!!selling} onClose={() => setSelling(null)} title={ar ? 'بيع الصنف' : 'Sell item'}
+        footer={<>
+          <button type="button" onClick={() => setSelling(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+          <PrimaryButton onClick={doSell} disabled={saving || (!sellForm.employee && !sellForm.buyerName.trim())}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{ar ? 'تأكيد البيع' : 'Confirm sale'}
+          </PrimaryButton>
+        </>}>
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">
+            <span className="font-semibold text-slate-900">{selling?.name}</span>
+            {selling?.serialNumber ? <span className="text-slate-400 font-mono text-xs"> · {selling.serialNumber}</span> : null}
+            {selling?.employee ? <span className="text-slate-500"> — {ar ? 'بعهدة' : 'held by'} {empName(selling.employee, lang)}</span> : null}
+          </p>
+          <Field label={ar ? 'المشتري (موظف)' : 'Buyer (employee)'}>
+            <SearchableSelect
+              value={sellForm.employee}
+              onChange={(v) => setSellForm({ ...sellForm, employee: v, buyerName: v ? '' : sellForm.buyerName })}
+              placeholder={ar ? 'اختر الموظف' : 'Select an employee'}
+              searchPlaceholder={ar ? 'ابحث بالاسم أو الرقم الوظيفي أو الإقامة…' : 'Search by name, number or iqama…'}
+              emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
+              options={employees.map((e) => ({
+                value: e._id,
+                label: empName(e, lang),
+                hint: [e.employeeNumber, e.department, e.iqamaNumber].filter(Boolean).join(' · '),
+              }))} />
+          </Field>
+          <Field label={ar ? 'أو مشترٍ من خارج الشركة' : 'Or an outside buyer'}>
+            <input type="text" value={sellForm.buyerName} disabled={!!sellForm.employee}
+              onChange={(e) => setSellForm({ ...sellForm, buyerName: e.target.value })}
+              placeholder={ar ? 'اسم المشتري' : 'Buyer name'}
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm disabled:bg-slate-50 disabled:text-slate-400" />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={ar ? 'الثمن المدفوع للحسابات' : 'Price paid to accounting'}>
+              <input type="number" min={0} value={sellForm.price}
+                onChange={(e) => setSellForm({ ...sellForm, price: Number(e.target.value) })}
+                title={ar ? 'الثمن' : 'Price'}
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+            </Field>
+            <Field label={ar ? 'تاريخ البيع' : 'Sale date'}>
+              <input type="date" value={sellForm.date}
+                onChange={(e) => setSellForm({ ...sellForm, date: e.target.value })}
+                title={ar ? 'تاريخ البيع' : 'Sale date'}
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+            </Field>
+          </div>
+          <Field label={ar ? 'ملاحظات' : 'Notes'}>
+            <input type="text" value={sellForm.notes}
+              onChange={(e) => setSellForm({ ...sellForm, notes: e.target.value })}
+              placeholder={ar ? 'رقم سند القبض مثلًا' : 'Receipt number, for example'}
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+          </Field>
+          <p className="text-[11px] text-slate-500 bg-slate-50 rounded-lg px-3 py-2 leading-relaxed">
+            {ar ? 'بعد البيع يخرج الصنف من العهدة ومن المخزون معًا، ويبقى صفّه في السجل يقول لمن بيع وبكم ومتى.'
+                : 'Once sold, the item leaves both custody and stock, and its row stays in the register recording who bought it, for how much, and when.'}
+          </p>
+        </div>
+      </Modal>
+
       <Modal open={!!transferring} onClose={() => setTransferring(null)} title={ar ? 'نقل العهدة لموظف آخر' : 'Transfer to another employee'}
         footer={<>
           <button type="button" onClick={() => setTransferring(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>

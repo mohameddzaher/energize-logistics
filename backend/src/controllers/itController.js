@@ -585,7 +585,9 @@ exports.listCustody = async (req, res) => {
     }));
 
     // أزرار الحالة الثلاثة: كل الفلاتر عدا الحالة.
-    const byStatus = { assigned: 0, in_stock: 0, returned: 0 };
+    // «مُباع» يُعَدّ كغيره: زرُّ الفلتر فوق الجدول يقرأ هذا العدّاد، وبلا مفتاحٍ
+    // له يبقى الزرُّ على صفرٍ أبدًا مهما بيع — راجع CUSTODY_STATE_KEYS.
+    const byStatus = { assigned: 0, in_stock: 0, returned: 0, sold: 0 };
     rows.forEach((a) => {
       if (byCat(a) && byCondition(a) && bySearch(a) && byStatus[a.status] !== undefined) byStatus[a.status] += 1;
     });

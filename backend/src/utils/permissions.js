@@ -143,7 +143,35 @@ const sectionForPath = (path) => {
   return null;
 };
 
+/**
+ * hasSuperAdminPowers — مديرُ النظام، أو دورٌ مُنح صلاحيّاتِه كاملةً.
+ *
+ * ── ولماذا يُقرأ من المصفوفة لا من قائمة ────────────────────────────────────
+ * بعضُ الأفعال لا يملكها إلّا مديرُ النظام: إعادةُ فتح يومٍ أُقفل في المحفظة،
+ * وتعديلُ قيدٍ مسجَّلٍ أو حذفُه. وصاحبُ النظام يمنح أحيانًا دورًا كلَّ شيءٍ من
+ * شاشة الصلاحيّات — «تعديل» على كلّ قسم — ويقصد به أن يكون كمدير النظام.
+ *
+ * فالتعريفُ: `super_admin`، أو دورٌ حفظت له المصفوفةُ «تعديل» على **كلّ** قسمٍ
+ * صراحةً. والكلمةُ «صراحةً» مقصودة:
+ *   • لا تُحسَب الافتراضيّات: دورٌ لم يُفتَح له بابُ الصلاحيّات قطّ لا يصير
+ *     مديرًا للنظام لأنّ افتراضاتِ الشيفرة سخيّة.
+ *   • ولا `FULL_ACCESS_ROLES`: أدوارُ تقنية المعلومات تتجاوز حارسَ الأقسام لأنّها
+ *     تصون النظام، لا لأنّ لها أن تعيد كتابةَ دفترٍ ماليّ.
+ *   • وقسمٌ يُضاف غدًا ولم يُمنَح بعدُ يُسقط الدورَ من هذه الدائرة حتى يُمنَحه —
+ *     والأمانُ في هذا الاتّجاه، لا في عكسه.
+ *
+ * والذاكرةُ هي ذاكرةُ الصلاحيّات نفسُها، وإبطالُها عند الحفظ يعبر إلى العاملين:
+ * من يُسحب منه قسمٌ يفقد هذه الصلاحيّة في الحال.
+ */
+const hasSuperAdminPowers = async (role) => {
+  if (role === 'super_admin') return true;
+  if (!role) return false;
+  const overrides = await getOverrides(role);
+  return SECTION_KEYS.length > 0
+    && SECTION_KEYS.every((k) => overrides[k] === 'edit');
+};
+
 module.exports = {
   invalidate, getOverride, effectivePermissions, effectivePages, homePageFor,
-  sectionForPath, getOverrides, isCustomRole, customRoleKeys,
+  sectionForPath, getOverrides, isCustomRole, customRoleKeys, hasSuperAdminPowers,
 };

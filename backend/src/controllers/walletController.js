@@ -708,12 +708,17 @@ exports.addTransaction = async (req, res) => {
  *
  * والإضافةُ تبقى لأهلها — من لا يستطيع أن يسجّل حركةً لا محفظةَ له أصلًا.
  */
-const maySettle = (user) => user && user.role === 'super_admin';
+// مديرُ النظام أو دورٌ مُنح صلاحيّاتِه كاملةً — راجع utils/permissions.hasSuperAdminPowers.
+const maySettle = async (user) => {
+  if (!user) return false;
+  const { hasSuperAdminPowers } = require('../utils/permissions');
+  return hasSuperAdminPowers(user.role);
+};
 const denySettle = (res, what) => res.status(403).json({
   code: 'SUPER_ADMIN_ONLY',
   message: what === 'reopen'
-    ? 'إعادةُ فتح يومٍ أُقفل لمدير النظام وحدَه.'
-    : 'تعديلُ حركةٍ مسجَّلةٍ أو حذفُها لمدير النظام وحدَه — والتسجيلُ الجديد متاحٌ كما هو.',
+    ? 'إعادةُ فتح يومٍ أُقفل لمدير النظام ومن له صلاحيّاتُه كاملةً.'
+    : 'تعديلُ حركةٍ مسجَّلةٍ أو حذفُها لمدير النظام ومن له صلاحيّاتُه كاملةً — والتسجيلُ الجديد متاحٌ كما هو.',
 });
 
 const MANAGER_ROLES = ['super_admin', 'admin', 'operations_manager'];
@@ -730,7 +735,7 @@ exports.deleteTransaction = async (req, res) => {
     if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
 
     const wallet = await DailyWallet.findById(transaction.wallet);
-    if (!maySettle(req.user)) return denySettle(res, 'edit');
+    if (!(await maySettle(req.user))) return denySettle(res, 'edit');
     if (!mayTouchWallet(req, wallet)) return denyWallet(res);
     // ولا تُمَسّ حركةٌ سابقةٌ للبداية ولو بقيت واحدةٌ في القاعدة: تعديلُها
     // يُعيد حساب سلسلةِ أرصدةٍ انتهت، وحذفُها يُحرّك رصيدَ أوّلِ سبتمبر المُقَرّ.
@@ -795,7 +800,7 @@ exports.updateTransaction = async (req, res) => {
     if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
 
     const wallet = await DailyWallet.findById(transaction.wallet);
-    if (!maySettle(req.user)) return denySettle(res, 'edit');
+    if (!(await maySettle(req.user))) return denySettle(res, 'edit');
     if (!mayTouchWallet(req, wallet)) return denyWallet(res);
     // ولا تُمَسّ حركةٌ سابقةٌ للبداية ولو بقيت واحدةٌ في القاعدة: تعديلُها
     // يُعيد حساب سلسلةِ أرصدةٍ انتهت، وحذفُها يُحرّك رصيدَ أوّلِ سبتمبر المُقَرّ.
@@ -1044,7 +1049,7 @@ exports.reopenDay = async (req, res) => {
     const wallet = await DailyWallet.findById(walletId);
     if (!wallet) return res.status(404).json({ message: 'Wallet not found' });
     // إعادةُ فتح يومٍ أُقفل لمدير النظام وحدَه — راجع maySettle.
-    if (!maySettle(req.user)) return denySettle(res, 'reopen');
+    if (!(await maySettle(req.user))) return denySettle(res, 'reopen');
     if (denyOutsideBook(res, wallet.date, req.user)) return;
 
     wallet.isClosed = false;

@@ -8,6 +8,11 @@
 import { useState, useEffect } from 'react';
 import { X, Check } from 'lucide-react';
 import { useDialog } from '@/components/system/DialogProvider';
+// ── والتجديدُ يُكتب بالهجريّ كما يُكتب بالميلاديّ ───────────────────────────
+// الاستمارةُ والفحصُ والتفويضُ تصدر بتواريخَ هجريّة، ومن يجدّد يقرأ التاريخَ
+// الجديدَ من الورقة التي في يده. فخانةُ التجديد خانتان تُسمِع كلٌّ منهما الأخرى،
+// كما في نموذج التعديل. راجع HijriGregorianField.
+import HijriGregorianField from '@/components/vehicles/HijriGregorianField';
 import { renewDocument, renewBulk, renewSharedPolicy, fmtDate, docNumberLabel, docStartLabel } from '@/lib/vehicleRegistry';
 
 /** أقلّ ما تحتاجه النافذة لتجدّد مستندًا — تكتفي به الصفوف على اختلاف مصادرها.
@@ -95,14 +100,14 @@ export function RenewModal({ row, ar, onClose, onDone }: {
                 {startLabel} *
                 {row.startDate && <span className="font-normal text-slate-400"> ({t('الحاليّ', 'current')}: {fmtDate(row.startDate)})</span>}
               </label>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={inp} max={newExpiry || undefined} autoFocus />
+              <HijriGregorianField value={startDate} onChange={setStartDate} ar={ar} inp={inp} max={newExpiry || undefined} autoFocus />
             </div>
           )}
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">
               {startLabel ? t('تاريخ النهاية الجديد', 'New end date') : t('تاريخ الانتهاء الجديد', 'New expiry')} *
             </label>
-            <input type="date" value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)} className={inp}
+            <HijriGregorianField value={newExpiry} onChange={setNewExpiry} ar={ar} inp={inp}
               min={startLabel && startDate ? startDate : undefined} autoFocus={!startLabel} />
           </div>
           {/* ── الرقم الجديد، للمستند الذي يخرج من التجديد برقمٍ آخر ────────
@@ -227,7 +232,7 @@ export function BulkRenewModal({ rows, ar, onClose, onDone }: {
           </div>
           <div>
             <label className={lbl}>{t('تاريخ الانتهاء الجديد', 'New expiry date')} *</label>
-            <input type="date" min={today} value={when} onChange={(e) => setWhen(e.target.value)} className={inp} autoFocus />
+            <HijriGregorianField value={when} onChange={setWhen} ar={ar} inp={inp} min={today} autoFocus />
             {past && <p className="text-[11.5px] text-rose-700 font-semibold mt-1">
               {t('التاريخ في الماضي — راجعه', 'That date is in the past')}</p>}
           </div>
@@ -377,7 +382,7 @@ export function SharedPolicyRenewModal({ docKey, groups, ar, onClose, onDone }: 
           )}
           <div>
             <label className={lbl}>{t('تاريخ الانتهاء الجديد', 'New expiry date')} *</label>
-            <input type="date" min={today} value={when} onChange={(e) => setWhen(e.target.value)} className={inp} />
+            <HijriGregorianField value={when} onChange={setWhen} ar={ar} inp={inp} min={today} />
             {past && <p className="text-[11.5px] text-rose-700 font-semibold mt-1">
               {t('التاريخ في الماضي — راجعه', 'That date is in the past')}</p>}
           </div>

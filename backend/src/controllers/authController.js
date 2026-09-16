@@ -142,6 +142,8 @@ exports.login = async (req, res) => {
     const permissions = await effectivePermissions(user.role);
     const pageAccess = await effectivePages(user.role);
     const homePage = await homePageFor(user.role);
+    const { hasSuperAdminPowers } = require('../utils/permissions');
+    const superAdminPowers = await hasSuperAdminPowers(user.role);
 
     res.json({
       user: {
@@ -154,6 +156,7 @@ exports.login = async (req, res) => {
         // أيُّ الشاشات تُفتَح — الشريطُ الجانبيُّ يقرؤها من أوّل رسمة.
         pageAccess,
         homePage,
+        superAdminPowers,
         // Without this the HR self-service pages think the account is not
         // linked to an employee until the next /auth/me refresh.
         linkedEmployee: user.linkedEmployee || null,
@@ -374,7 +377,11 @@ exports.getMe = async (req, res) => {
     // الشاشاتُ تترجم الدورَ من جدولٍ في الواجهة لا يعرف ما صُنع بعد بنائها، فكان
     // «مراجع مالي» يُعرَض `financial reviewer` تحت اسم صاحبه في كلّ شاشة.
     const roleLabel = user ? await customRoleLabel(user.role) : null;
-    const out = user ? { ...user.toObject(), permissions, pageAccess, homePage, ...(roleLabel ? { roleLabel } : {}) } : user;
+    // والواجهةُ تُخفي أفعالَ مدير النظام عمّن لا يملكها — وتحتاج أن تعرف أنّ دورًا
+    // مصنوعًا أو ممنوحًا كلَّ شيءٍ يملكها. الحارسُ الحقيقيُّ في الخادم على أيّ حال.
+    const { hasSuperAdminPowers } = require('../utils/permissions');
+    const superAdminPowers = user ? await hasSuperAdminPowers(user.role) : false;
+    const out = user ? { ...user.toObject(), permissions, pageAccess, homePage, superAdminPowers, ...(roleLabel ? { roleLabel } : {}) } : user;
 
     res.json({ user: out });
   } catch (error) {

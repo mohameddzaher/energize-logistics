@@ -131,7 +131,9 @@ export default function WalletPage() {
    * المنتقيات فقط، فلا تُعرَض له شاشةٌ تمنعه ممّا يملكه.
    */
   const freeDates = user?.role === 'super_admin';
-  const isSuperAdmin = user?.role === 'super_admin';
+  // مديرُ النظام أو دورٌ مُنح صلاحيّاتِه كاملةً من شاشة الصلاحيّات — يرسلها
+  // الخادمُ في `superAdminPowers`. وهي التي تُظهر زرَّ فتح اليوم وأزرارَ التعديل.
+  const isSuperAdmin = user?.role === 'super_admin' || !!(user as any)?.superAdminPowers;
   const isOpsManager = user?.role === 'operations_manager';
   // ── ومَن لا يُقفَل على فرعٍ يختار الفرعَ الذي ينظر فيه ────────────────────
   // كان الشرطُ «سوبر أدمن أو مدير عمليات» — قائمةٌ موجبةٌ تُنسى كلَّما دخل

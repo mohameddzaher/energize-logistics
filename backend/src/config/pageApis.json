@@ -1160,8 +1160,7 @@
     "/system/b2c/duty/start": {
       "apis": [
         "/api/b2c/duty",
-        "/api/b2c/duty/my-reps",
-        "/api/lookups/types"
+        "/api/b2c/duty/my-reps"
       ],
       "wildcard": false
     },
@@ -1176,6 +1175,7 @@
     },
     "/system/b2c/reps": {
       "apis": [
+        "/api/b2c/duty/assign",
         "/api/b2c/duty/supervisors",
         "/api/b2c/projects",
         "/api/b2c/reps",

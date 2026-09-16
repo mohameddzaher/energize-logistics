@@ -344,6 +344,33 @@ const REGISTRY = [
     roles: ['it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'],
     seed: assetDefaults.CONDITION_SEED,
   },
+  // ── وباقاتُ خطوط الجوّال قائمةٌ تُدار ──────────────────────────────────────
+  // اسمُ الباقة يُكتب كما هو في عقد المزوّد («Business Ctrl Plus 200»)، وكتابتُه
+  // حرًّا في كلّ خطٍّ تعني تسعةً وسبعين تهجئةً لبضع باقات — ثمّ لا يُعرف كم خطًّا
+  // على كلّ باقة. فهي قائمةٌ يُختار منها، ويزيدها المزوّدُ حين يزيد.
+  {
+    type: 'telecom_package',
+    module: 'hr',
+    nameEn: 'Mobile line packages',
+    nameAr: 'باقات خطوط الجوّال',
+    roles: ['hr_manager', 'hr_specialist', 'it_manager', 'it_specialist'],
+    seed: [
+      { key: 'Business Ctrl Plus 200', nameEn: 'Business Ctrl Plus 200', nameAr: 'Business Ctrl Plus 200' },
+      { key: 'Business Ctrl Plus 400', nameEn: 'Business Ctrl Plus 400', nameAr: 'Business Ctrl Plus 400' },
+    ],
+  },
+  {
+    type: 'telecom_provider',
+    module: 'hr',
+    nameEn: 'Mobile providers',
+    nameAr: 'مزوّدو خدمة الجوّال',
+    roles: ['hr_manager', 'hr_specialist', 'it_manager', 'it_specialist'],
+    seed: [
+      { key: 'mobily', nameEn: 'Mobily', nameAr: 'موبايلي' },
+      { key: 'stc', nameEn: 'STC', nameAr: 'STC' },
+      { key: 'zain', nameEn: 'Zain', nameAr: 'زين' },
+    ],
+  },
   // ── الفرعُ المسدِّد ─────────────────────────────────────────────────────────
   // كان حقلًا حرًّا يُكتب بالبد، فدخلت فيه «جد» و«جدهخ» بجانب «جده» — وهي أخطاءُ
   // كتابةٍ تُفرِّق صفوفًا هي فرعٌ واحد، فيقول التقريرُ تسعةَ فروعٍ ولدينا سبعة.

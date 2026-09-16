@@ -7,6 +7,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Laptop, Plus, Edit, Undo2, Trash2, Check, Boxes, ArrowLeftRight, AlertTriangle, History, ClipboardCheck, BadgeDollarSign } from 'lucide-react';
+import ManagedSelect from '@/components/system/ManagedSelect';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   Spinner, PageHeader, SearchInput, PrimaryButton, SmallBadge,
@@ -372,6 +373,13 @@ export default function ItCustodyPage() {
     { header: 'Value (per unit)', key: 'value', width: 14 },
     { header: 'Assigned', key: 'assignedDate', width: 14 },
     { header: 'Status', key: 'status', transform: (v: any) => custodyStatusLabel(v, 'en'), width: 12 },
+    // تفاصيلُ خطّ الجوّال — فارغةٌ لغيره، وهي كلُّ ما يُسأل عنه فيه.
+    { header: ar ? 'الباقة' : 'Package', key: 'telecom', transform: (v: any) => v?.package || '', width: 22 },
+    { header: ar ? 'المزوّد' : 'Provider', key: 'telecom', transform: (v: any) => v?.provider || '', width: 12 },
+    { header: ar ? 'الرقم التسلسلي للشريحة' : 'SIM serial', key: 'telecom', transform: (v: any) => v?.iccid || '', width: 24 },
+    { header: ar ? 'مدة العقد (شهر)' : 'Contract months', key: 'telecom', transform: (v: any) => (v?.contractMonths ?? ''), width: 14 },
+    { header: ar ? 'انتهاء العقد' : 'Contract expiry', key: 'telecom', transform: (v: any) => v?.expiryDate || '', width: 14 },
+    { header: ar ? 'المفوَّض لدى المزوّد' : 'Authorised with provider', key: 'telecom', transform: (v: any) => v?.authorizedName || '', width: 26 },
     { header: 'Returned', key: 'returnedDate', width: 14 },
   ];
   // الفلترة كلّها على الخادم بلا ترقيم، فما في الذاكرة هو نتيجة الفلتر كاملةً —
@@ -649,6 +657,50 @@ export default function ItCustodyPage() {
               <Field label={ar ? 'القيمة للقطعة الواحدة' : 'Value per single unit'}>
                 <TextInput type="number" value={form.value ?? 0} onChange={(e) => set('value', Number(e.target.value))} />
               </Field>
+              {/* ── وخطُّ الجوّال يُوصَف بغير ما يُوصَف به الحاسوب ─────────────
+                  لا ماركةَ له ولا طرازَ ولا مواصفات؛ له باقةٌ وعقدٌ بمدّةٍ
+                  وتاريخِ انتهاء، ورقمٌ تسلسليٌّ للشريحة (ICCID).
+
+                  وأهمُّها **المفوَّض**: الاسمُ المسجَّلُ لدى المزوّد على الخطّ،
+                  وهو غيرُ من الخطُّ في يده في اثنين وعشرين خطًّا من تسعةٍ
+                  وتسعين. ومن يراجع المزوّدَ يحتاج المفوَّضَ لا المستخدم —
+                  فبلا هذه الخانة تُفتَح المراجعةُ باسمٍ لا يعرفه المزوّد.
+
+                  والباقةُ قائمةٌ تُدار من المرجعيّات لا نصٌّ حرّ: تسعةٌ وسبعون
+                  خطًّا تُكتب باقاتُها بيدٍ تعني تسعًا وسبعين تهجئةً لباقتين. */}
+              {form.type === 'sim' && (
+                <>
+                  <Field label={ar ? 'الباقة' : 'Package'}>
+                    <ManagedSelect storeLabel type="telecom_package"
+                      value={form.telecom?.package || ''}
+                      onChange={(v: string) => set('telecom', { ...(form.telecom || {}), package: v })}
+                      placeholder={ar ? 'اختر الباقة…' : 'Select a package…'} />
+                  </Field>
+                  <Field label={ar ? 'المزوّد' : 'Provider'}>
+                    <ManagedSelect storeLabel type="telecom_provider"
+                      value={form.telecom?.provider || ''}
+                      onChange={(v: string) => set('telecom', { ...(form.telecom || {}), provider: v })}
+                      placeholder={ar ? 'اختر المزوّد…' : 'Select a provider…'} />
+                  </Field>
+                  <Field label={ar ? 'الرقم التسلسلي للشريحة' : 'SIM serial (ICCID)'} span2>
+                    <TextInput value={form.telecom?.iccid || ''}
+                      onChange={(e) => set('telecom', { ...(form.telecom || {}), iccid: e.target.value })} />
+                  </Field>
+                  <Field label={ar ? 'مدة العقد (شهر)' : 'Contract (months)'}>
+                    <TextInput type="number" min={0} value={form.telecom?.contractMonths ?? ''}
+                      onChange={(e) => set('telecom', { ...(form.telecom || {}), contractMonths: e.target.value === '' ? null : Number(e.target.value) })} />
+                  </Field>
+                  <Field label={ar ? 'تاريخ انتهاء العقد' : 'Contract expiry'}>
+                    <TextInput type="date" value={form.telecom?.expiryDate || ''}
+                      onChange={(e) => set('telecom', { ...(form.telecom || {}), expiryDate: e.target.value })} />
+                  </Field>
+                  <Field label={ar ? 'اسم المفوَّض لدى المزوّد' : 'Authorised with the provider'} span2>
+                    <TextInput value={form.telecom?.authorizedName || ''}
+                      onChange={(e) => set('telecom', { ...(form.telecom || {}), authorizedName: e.target.value })}
+                      placeholder={ar ? 'قد يختلف عن المستخدم الحالي' : 'May differ from the current user'} />
+                  </Field>
+                </>
+              )}
               <Field label={ar ? 'المواصفات' : 'Specs'} span2>
                 <TextInput value={form.specs || ''} onChange={(e) => set('specs', e.target.value)} placeholder={ar ? 'مثال: i7 / 16GB / 512GB SSD' : 'e.g. i7 / 16GB / 512GB SSD'} />
               </Field>

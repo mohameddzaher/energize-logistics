@@ -121,6 +121,9 @@ const CUSTODY_EDITABLE = [
   'value', 'assignedDate', 'notes', 'category', 'specs', 'quantity',
   // ومَن بيده الجهازُ حين لا يكون موظّفًا — يُكتب اسمُه نصًّا.
   'holderName', 'holderKind',
+  // وتفاصيلُ خطّ الجوّال — راجع models/Asset.telecom. تُقبَل كاملةً لا حقلًا
+  // حقلًا: هي كائنٌ واحدٌ يُحرَّر في نموذجٍ واحد.
+  'telecom',
 ];
 
 // Stock items have no employee and no assignedDate — they gain both the moment

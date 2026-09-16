@@ -1050,7 +1050,8 @@
         "/api/it/custody/by-employee",
         "/api/it/custody/handover",
         "/api/it/employees",
-        "/api/it/stock"
+        "/api/it/stock",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },

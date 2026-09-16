@@ -76,6 +76,27 @@ const assetSchema = new mongoose.Schema(
     // Row identity from an imported register (see scripts/importItCustody.js).
     // Only set by importers — it is what makes a re-run update instead of
     // duplicate. Sparse, so the hundreds of hand-entered assets stay unaffected.
+    // ── وخطُّ الجوّال ورقةٌ لها تفاصيلُها ──────────────────────────────────
+    //
+    // الخطُّ عهدةٌ كالحاسوب، لكنّه لا يوصَف بماركةٍ وطرازٍ وحالة. له رقمٌ
+    // تسلسليٌّ للشريحة، وباقةٌ، وعقدٌ بمدّةٍ وتاريخِ انتهاء — وأهمُّها **المفوَّض**:
+    // الاسمُ المسجَّلُ لدى مزوّد الخدمة على هذا الخطّ، وهو غيرُ من الخطُّ في يده.
+    // عشرون خطًّا من تسعةٍ وسبعين يفترق فيها الاثنان، ومن يراجع مع المزوّد
+    // يحتاج المفوَّضَ لا المستخدم.
+    //
+    // ورقمُ الخطّ نفسُه يبقى في `serialNumber` حيث كُتب لأربعةٍ وستّين خطًّا
+    // مسجَّلًا قبل هذا — ولا يُنقَل لئلّا يصير للرقم موضعان.
+    telecom: {
+      iccid: { type: String, trim: true, default: '' },        // الرقم التسلسلي للشريحة
+      package: { type: String, trim: true, default: '' },      // الباقة — قائمةٌ تُدار من المرجعيّات
+      contractMonths: { type: Number, default: null },         // المدة بالأشهر
+      expiryDate: { type: String, default: '' },               // YYYY-MM-DD
+      // المفوَّضُ لدى المزوّد: موظّفٌ مربوطٌ إن عُرف، واسمٌ كما كُتب على أيّ حال.
+      authorizedEmployee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
+      authorizedName: { type: String, trim: true, default: '' },
+      provider: { type: String, trim: true, default: '' },     // موبايلي / stc / زين
+    },
+
     importKey: { type: String, trim: true },
   },
   { timestamps: true }

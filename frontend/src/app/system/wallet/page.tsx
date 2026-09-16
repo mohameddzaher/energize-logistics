@@ -1105,7 +1105,11 @@ export default function WalletPage() {
               <Lock className="w-4 h-4" /> {L.closeDay}
             </button>
           )}
-          {wallet.isClosed && isManager && (
+          {/* ── وإعادةُ الفتح لمدير النظام وحدَه ────────────────────────────
+              يومٌ أُقفل صار رقمًا في دفترٍ مُقَرّ: فتحُه يُعيد كتابةَ رصيدِه ورصيدِ
+              كلِّ يومٍ بعده. وكان الزرُّ لثلاثة أدوار، فصار لمن يُسأل عن الدفتر.
+              راجع maySettle في الخادم — وهو الحارسُ، وهذا إخفاءٌ لا يُغني عنه. */}
+          {wallet.isClosed && isSuperAdmin && (
             <button type="button" onClick={handleReopenDay}
               className="flex items-center gap-2 px-4 py-2 bg-yellow-500/20 text-yellow-700 rounded-lg text-sm font-medium hover:bg-yellow-500/30 transition-colors border border-yellow-500/30 ms-auto">
               <Unlock className="w-4 h-4" /> {L.reopenDay}
@@ -1277,7 +1281,12 @@ export default function WalletPage() {
                       {/* عرضا الفترة والشهر للقراءة وحدَها: الحركةُ تخصّ
                           يومًا، فلا تُعدَّل ولا تُحذف من شاشةٍ لا يومَ لها —
                           و`wallet` فارغةٌ فيهما فلا تُقرأ حالتُها أصلًا. */}
-                      {wallet && !isReadOnly && (!wallet.isClosed || isManager) && (
+                      {/* ── وتصحيحُ حركةٍ سُجِّلت لمدير النظام وحدَه ──────────
+                          التسجيلُ عملُ اليوم يفعله من يمسك الصندوق؛ وتغييرُ ما
+                          سُجِّل إعادةُ كتابةٍ تحرّك رصيدَ اليوم وكلَّ يومٍ بعده
+                          وتُعيد حسابَ فروق العدّ على أيّامٍ أُقفلت. راجع
+                          maySettle — والخادمُ يردّ على أيّ حال. */}
+                      {wallet && isSuperAdmin && (
                         <div className="flex items-center justify-end gap-1">
                           <button type="button" onClick={() => openEditTx(tx)}
                             className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title={L.edit}>

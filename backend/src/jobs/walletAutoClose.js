@@ -28,10 +28,18 @@ const toDateStr = () => {
  */
 const autoCloseOpenWallets = async () => {
   const today = toDateStr();
-  console.log(`[Auto-Close] Running wallet auto-close for date: ${today}`);
+  console.log(`[Auto-Close] Running wallet auto-close — closing every open day before ${today}`);
 
   try {
-    const openWallets = await DailyWallet.find({ date: today, isClosed: false });
+    // ── يُقفَل ما مضى، لا يومُ العمل الجاري ────────────────────────────────
+    //
+    // كان يُقفَل **اليوم** في الحادية عشرة وتسعٍ وخمسين — فمن سجّل حركةً في
+    // الدقيقة الأخيرة وجد دفترَه مقفولًا وهو ما زال في يومه. والإقفالُ يقع عند
+    // منتصف الليل: عندها ينتهي اليومُ فيُقفَل، ولا تُقتطع منه دقيقة.
+    //
+    // وكلُّ يومٍ مضى لا الأمسِ وحدَه: خادمٌ توقّف ليلةً يترك يومًا مفتوحًا إلى
+    // الأبد، وهذه الكنسةُ تُغلقه في أوّل ليلةٍ تالية بدل أن يبقى معلَّقًا.
+    const openWallets = await DailyWallet.find({ date: { $lt: today }, isClosed: false });
 
     if (openWallets.length === 0) {
       console.log('[Auto-Close] No open wallets found. Nothing to close.');
@@ -59,7 +67,7 @@ const autoCloseOpenWallets = async () => {
         entityId: wallet._id,
         changes: {
           after: {
-            date: today,
+            date: wallet.date,
             closingBalance: wallet.closingBalance,
             // لا `actualCash`: لم يُعَدّ، والقيدُ يقول ما جرى لا ما لم يجرِ.
             counted: false,
@@ -88,17 +96,20 @@ const autoCloseOpenWallets = async () => {
 };
 
 /**
- * Schedule the auto-close job to run at 11:59 PM every day.
+ * Schedule the auto-close job for one minute past midnight, Riyadh time.
+ *
+ * ولماذا بعد منتصف الليل بدقيقةٍ لا قبله بدقيقة: الإقفالُ يقع **بعد** أن ينتهي
+ * اليوم، فلا يُحرَم من يعمل في آخر دقيقةٍ من تسجيل حركته. والدقيقةُ فرقُ أمانٍ
+ * كي لا يقع التشغيلُ على الثانية فيقرأ تاريخَ الأمس.
  */
 const startWalletAutoCloseJob = () => {
-  // Run at 23:59 every day
-  cron.schedule('59 23 * * *', async () => {
+  cron.schedule('1 0 * * *', async () => {
     await autoCloseOpenWallets();
   }, {
     timezone: 'Asia/Riyadh', // Saudi Arabia timezone
   });
 
-  console.log('[Auto-Close] Wallet auto-close job scheduled for 23:59 daily (Asia/Riyadh).');
+  console.log('[Auto-Close] Wallet auto-close job scheduled for 00:01 daily (Asia/Riyadh).');
 };
 
 module.exports = { startWalletAutoCloseJob, autoCloseOpenWallets };

@@ -26,9 +26,7 @@ const roleLabels = {
   'hr_manager': ('مدير الموارد البشرية', 'HR Manager'),
   'hr_specialist': ('أخصائي موارد بشرية', 'HR Specialist'),
   'crm_manager': ('مدير علاقات العملاء', 'CRM Manager'),
-  'crm_team_lead': ('قائد فريق CRM', 'CRM Team Lead'),
   'crm_specialist': ('أخصائي CRM', 'CRM Specialist'),
-  'crm_agent': ('موظف CRM', 'CRM Agent'),
   'cfo': ('المدير المالي', 'CFO'),
   'accounting_manager': ('مدير الحسابات', 'Accounting Manager'),
   'accountant': ('محاسب', 'Accountant'),
@@ -49,9 +47,41 @@ const roleLabels = {
   'contracts_manager': ('مدير العقود', 'Contracts Manager'),
   'collections_manager': ('مدير التحصيل', 'Collections Manager'),
   'collections_staff': ('موظف التحصيل', 'Collections Officer'),
+  'ops_platform_manager': ('مدير منصة التشغيل', 'Ops Platform Manager'),
+  'ops_platform_staff': ('موظف منصة التشغيل', 'Ops Platform Staff'),
+  'shipment_orders_manager': ('مدير طلبات الشحنات', 'Shipment Orders Manager'),
+  'shipment_orders_staff': ('موظف طلبات الشحنات', 'Shipment Orders Staff'),
+  'vehicles_manager': ('مدير المركبات', 'Vehicles Manager'),
+  'vehicles_staff': ('موظف المركبات', 'Vehicles Staff'),
+  'location_manager': ('مدير لوكيشن سوليوشن', 'Location Solutions Manager'),
+  'location_staff': ('موظف لوكيشن سوليوشن', 'Location Solutions Staff'),
+  'administration_manager': ('مدير الشؤون الإدارية', 'Administration Manager'),
+  'contracts_staff': ('موظف العقود', 'Contracts Staff'),
 };
 
+/// الأدوارُ كما يقبلها الخادم (/api/users/roles) — تشمل كلَّ دورٍ جديدٍ وكلَّ نوع
+/// مستخدمٍ صُنع من شاشة الصلاحيّات. كانت القائمةُ أعلاه وحدَها مصدرَ الاختيار،
+/// فنقصها أحدَ عشر دورًا وبقي فيها دوران أُدمجا من زمن — فلا يُنشأ من الهاتف
+/// مستخدمٌ للمركبات أو للوكيشن سوليوشن، ويُرفض من يُختار له دورٌ قديم. والقائمةُ
+/// الثابتة احتياطٌ حين لا يصل الخادم.
+List<(String, String, String)> serverRoles = [];
+
+Future<void> loadServerRoles() async {
+  try {
+    final d = await Api.instance.get('/api/users/roles');
+    serverRoles = List<Map<String, dynamic>>.from(d['roles'] ?? [])
+        .map((r) => ('${r['key']}', '${r['ar'] ?? r['key']}', '${r['en'] ?? r['key']}'))
+        .toList();
+  } catch (_) {/* تبقى القائمة الثابتة */}
+}
+
+/// مفاتيحُ الأدوار للاختيار: من الخادم إن وصل، وإلّا من القائمة الثابتة.
+List<String> roleKeys() => serverRoles.isNotEmpty ? serverRoles.map((r) => r.$1).toList() : roleLabels.keys.toList();
+
 String roleLabel(dynamic r) {
+  for (final s in serverRoles) {
+    if (s.$1 == r) return tr(s.$2, s.$3);
+  }
   final e = roleLabels[r];
   return e == null ? (r ?? '—').toString() : tr(e.$1, e.$2);
 }
@@ -73,7 +103,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   String _role = '';
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() { super.initState(); loadServerRoles().then((_) { if (mounted) setState(() {}); }); _load(); }
 
   Future<void> _load() async {
     try {
@@ -116,10 +146,10 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                 const SizedBox(height: 10),
               ],
               DropdownButtonFormField<String>(
-                initialValue: roleLabels.containsKey(role) ? role : null,
+                initialValue: roleKeys().contains(role) ? role : null,
                 isExpanded: true,
                 decoration: InputDecoration(labelText: tr('الدور', 'Role')),
-                items: roleLabels.keys.where((r) => r != 'super_admin').map((r) => DropdownMenuItem(value: r, child: Text(roleLabel(r), overflow: TextOverflow.ellipsis))).toList(),
+                items: roleKeys().where((r) => r != 'super_admin').map((r) => DropdownMenuItem(value: r, child: Text(roleLabel(r), overflow: TextOverflow.ellipsis))).toList(),
                 onChanged: (v) => setS(() => role = v ?? role),
               ),
               if (u != null)
@@ -265,7 +295,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                         decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
                         items: [
                           DropdownMenuItem(value: '', child: Text(tr('كل الأدوار', 'All roles'))),
-                          ...roleLabels.keys.map((r) => DropdownMenuItem(value: r, child: Text(roleLabel(r), overflow: TextOverflow.ellipsis))),
+                          ...roleKeys().map((r) => DropdownMenuItem(value: r, child: Text(roleLabel(r), overflow: TextOverflow.ellipsis))),
                         ],
                         onChanged: (v) { setState(() { _role = v ?? ''; _loading = true; }); _load(); },
                       ),
@@ -344,7 +374,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   String _role = '';
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() { super.initState(); loadServerRoles().then((_) { if (mounted) setState(() {}); }); _load(); }
 
   Future<void> _load() async {
     try {
@@ -443,7 +473,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _unreadOnly = false;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() { super.initState(); loadServerRoles().then((_) { if (mounted) setState(() {}); }); _load(); }
 
   Future<void> _load() async {
     try {

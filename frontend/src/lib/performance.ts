@@ -28,7 +28,7 @@ export const PERF_STAFF_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator',
   ...MANAGER_ROLES,
   // موظّفون يشاركون في التقييم بحكم عملهم لا بحكم إدارتهم.
-  'hr_specialist', 'crm_team_lead', 'b2c_project_lead',
+  'hr_specialist', 'crm_team_lead', 'b2c_project_lead', 'cfo',
 ];
 // Full visibility across every department.
 export const PERF_FULL_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];

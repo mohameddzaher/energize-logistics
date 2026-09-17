@@ -671,6 +671,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   // الشحنات إلى المنصّة، ثمّ التحصيل، ثمّ الأسطول وتتبّعه، ثمّ ما يُسنِد ذلك
   // كلَّه. وما لم يُذكَر هنا يأتي بعده بترتيبه كما هو.
   const SECTION_ORDER = [
+    // «الرئيسية» أوّلًا دائمًا: لم تكن في القائمة فنزلت تحت الأقسام كلِّها،
+    // فبدت لمدير النظام كأنّها اختفت.
+    'Main',
     'Operations',
     'Shipment Orders',
     'Operations Platform',

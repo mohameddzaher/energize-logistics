@@ -35,7 +35,7 @@ const SECTIONS = [
     // المحاسبةُ والتحصيل معهم: العهدةُ قيدٌ ماليٌّ يُراجَع ويُقفَل، وحارسُ
     // القسم يقف قبل قائمة المسار — فبقاؤهم خارجَه يردّهم ٤٠٣ ولو فُتحت لهم
     // النقطةُ نفسُها.
-    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'procurement_manager', 'procurement_staff', 'finance_manager', 'accountant', 'collections_manager', 'collections_staff'],
+    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'procurement_manager', 'procurement_staff', 'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff'],
   },
   {
     // قسمُ التحصيل — العملاءُ الذين نحصّل منهم والموردون الذين نسدّد لهم.
@@ -45,7 +45,7 @@ const SECTIONS = [
     // المقطع فلا تتداخلان — لكن التسميةَ الصريحة تمنع الالتباس عند القراءة.
     key: 'Collections',
     apiPrefixes: ['/api/collections-dept'],
-    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'finance_manager'],
+    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'cfo', 'accounting_manager'],
   },
   {
     key: 'Operations Platform',
@@ -74,7 +74,7 @@ const SECTIONS = [
   {
     key: 'Vehicles',
     apiPrefixes: ['/api/vehicles'],
-    defaultRoles: ['admin', 'it_manager', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'],
+    defaultRoles: ['admin', 'it_manager', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'],
   },
   {
     key: 'Location Solutions',
@@ -158,7 +158,7 @@ const SECTIONS = [
     // محفوظةٌ لأدوار المحاسبين؛ الاسمُ المعروض وحدَه تغيّر.
     key: 'Accounting',
     apiPrefixes: ['/api/accounting', '/api/finance'],
-    defaultRoles: ['admin', 'it_manager', 'finance_manager', 'accountant'],
+    defaultRoles: ['admin', 'it_manager', 'cfo', 'accounting_manager', 'accountant'],
   },
   {
     key: 'Procurement',

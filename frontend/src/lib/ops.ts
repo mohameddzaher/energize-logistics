@@ -22,7 +22,7 @@ export const OPS_STAFF_ROLES = [
   'workshop_manager', 'workshop_employee', 'procurement_staff',
   'hr_manager', 'hr_specialist',
   'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent',
-  'finance_manager', 'accountant',
+  'cfo', 'accounting_manager', 'accountant',
   'sales_manager', 'sales_rep',
   'procurement_manager',
   'customs_manager', 'customs_officer',

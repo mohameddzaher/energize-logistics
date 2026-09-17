@@ -51,7 +51,7 @@ router.get('/health', fleet.getFleetHealth);
 // ── مصاريف السوّاق ─────────────────────────────────────────────────────────
 // القراءةُ لكلّ من يفتح القسم؛ وتعليمُ السداد فعلٌ ماليٌّ فيقتصر على الحسابات
 // والإدارة — مشرفُ الأسطول يرى المستحقَّ ولا يقرّر أنّه صُرِف.
-const EXPENSE_PAY_ROLES = ['super_admin', 'admin', 'it_manager', 'finance_manager', 'accountant', 'fleet_manager', 'operations_manager'];
+const EXPENSE_PAY_ROLES = ['super_admin', 'admin', 'it_manager', 'cfo', 'accounting_manager', 'accountant', 'fleet_manager', 'operations_manager'];
 router.get('/driver-expenses', fleet.getDriverExpenses);
 router.patch('/driver-expenses/paid', authorize(...EXPENSE_PAY_ROLES), fleet.setDriverExpensePaid);
 

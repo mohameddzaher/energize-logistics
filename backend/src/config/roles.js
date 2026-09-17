@@ -23,6 +23,12 @@ const GLOBAL_ROLES = [
   { key: 'super_admin', ar: 'مدير النظام', en: 'System Administrator' },
   { key: 'admin', ar: 'الإدارة العليا', en: 'Executive Management' },
   { key: 'moderator', ar: 'مشرف عام', en: 'General Supervisor' },
+  // ── المدير الماليّ فوق القسم لا فيه ─────────────────────────────────────────
+  // مديرُ الحسابات يدير «الإدارة الماليّة» يومًا بيوم، والمدير الماليّ (CFO) فوقه
+  // يرى مالَ الشركة كلَّه ويجلس مع الإدارة. ومفتاحُه `cfo` لا `*_manager`: تلك
+  // اللاحقةُ لمديري الأقسام، وهو ليس مديرَ قسمٍ واحد. يُعدّ مديرًا في مراجعة
+  // الأعمال من `EXTRA_MANAGER_ROLES`، وقسمُه الماليّ من `sections.defaultRoles`.
+  { key: 'cfo', ar: 'المدير المالي', en: 'Chief Financial Officer' },
   { key: 'employee', ar: 'موظف', en: 'Employee' },
   // شريك خارجي (عميل أو مورد) — له البوابة، مش أقسام الشركة.
   { key: 'client', ar: 'شريك خارجي', en: 'External Partner' },
@@ -126,7 +132,7 @@ const SECTION_ROLES = [
     staff: [{ key: 'sales_rep', ar: 'مندوب مبيعات', en: 'Sales Representative' }] },
 
   { section: 'Accounting',
-    manager: { key: 'finance_manager', ar: 'المدير المالي', en: 'Finance Manager' },
+    manager: { key: 'accounting_manager', ar: 'مدير الحسابات', en: 'Accounting Manager' },
     staff: [{ key: 'accountant', ar: 'محاسب', en: 'Accountant' }] },
 
   { section: 'Procurement',
@@ -174,6 +180,9 @@ const RENAMED = {
   administrator: 'administration_staff',
   b2c_head: 'b2c_manager',
   b2c_project_manager: 'b2c_project_lead',
+  // «المدير المالي» كان مديرَ قسم الحسابات؛ صار المديرَ الماليَّ فوقه (cfo)، وللقسم
+  // مديرُه: مدير الحسابات (accounting_manager).
+  finance_manager: 'cfo',
   // ألقابُ CRM الثلاثة صارت دورًا واحدًا.
   crm_team_lead: 'crm_specialist',
   crm_agent: 'crm_specialist',

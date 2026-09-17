@@ -30,7 +30,7 @@ const authorize = require('../middleware/rbac');
 // حارسٌ يذكر دورًا لا وجود له لا يفتح لأحد — يبدو أوسعَ ممّا هو. وقد حمل هذا
 // السطرُ اسمين ميّتين مرّتين: `collections_manager`/`collector` قبل أن يصيرا
 // `customers_finance_*`، ثمّ هذين بعد أن حُذف قسمُ العملاء والمالية.
-router.use(authorize('super_admin', 'admin', 'finance_manager', 'accountant',
+router.use(authorize('super_admin', 'admin', 'cfo', 'accounting_manager', 'accountant',
   'collections_manager', 'collections_staff'));
 
 // Query patterns and their handlers

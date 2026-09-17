@@ -16,7 +16,7 @@ const BASE_WRITE_ROLES = ['super_admin', 'admin'];
 
 const FLEET_ROLES = ['fleet_manager', 'operations_manager', 'operations_staff'];
 const SO_ROLES = ['shipment_orders_manager', 'shipment_orders_staff', 'operations_manager', 'operations_staff'];
-const VEHICLE_ROLES = ['vehicles_manager', 'vehicles_staff', 'hr_manager', 'finance_manager'];
+const VEHICLE_ROLES = ['vehicles_manager', 'vehicles_staff', 'hr_manager', 'cfo', 'accounting_manager'];
 
 /**
  * قوائم قسم المركبات: كلُّ حقلٍ ذي اختياراتٍ ثابتة صار قائمةً تُدار من إعدادات
@@ -383,7 +383,7 @@ const REGISTRY = [
     module: 'operations',
     nameEn: 'Paying Branches',
     nameAr: 'الفروع المسدِّدة',
-    roles: ['operations_manager', 'operations_staff', 'moderator', 'finance_manager', 'accountant'],
+    roles: ['operations_manager', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant'],
     storeLabel: true,
     seed: [
       { key: 'jeddah', nameEn: 'Jeddah', nameAr: 'جده' },
@@ -404,7 +404,7 @@ const REGISTRY = [
     module: 'operations',
     nameEn: 'Final Report Destinations',
     nameAr: 'وجهات الكشف النهائية',
-    roles: ['operations_manager', 'operations_staff', 'moderator', 'finance_manager', 'accountant'],
+    roles: ['operations_manager', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant'],
     storeLabel: true,
     seed: [
       { key: 'jeddah', nameEn: 'Jeddah', nameAr: 'جده' },
@@ -532,7 +532,7 @@ const REGISTRY = [
     ]],
   ].map(([type, nameAr, nameEn, seed]) => ({
     type, module: 'collections', nameAr, nameEn,
-    roles: ['collections_manager', 'collections_staff', 'finance_manager'],
+    roles: ['collections_manager', 'collections_staff', 'cfo', 'accounting_manager'],
     storeLabel: true, seed,
   })),
 

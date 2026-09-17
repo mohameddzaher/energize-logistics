@@ -8,7 +8,7 @@ const authorize = require('../middleware/rbac');
 // أدوار القسم نفسه أول حاجة: القسم مفتوح **بالكامل بكل أكشناته** لمين اتفتح له.
 // كانوا ناقصين من القوايم دي، فمدير المركبات كان بيشوف قسمه ومش قادر يعدّل فيه.
 const EDIT = ['super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
-  'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'];
+  'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
 const ADMIN = ['super_admin', 'admin', 'vehicles_manager', 'hr_manager'];
 
 router.get('/dashboard', c.dashboard);

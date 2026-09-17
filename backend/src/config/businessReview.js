@@ -95,7 +95,7 @@ const SECRETARY_ROLES = ['administration_manager', 'administration_staff'];
 // اللي كان هنا وطلع غلط: `operations_staff` (كان اسمه `operations`) كان بيتحسب
 // مدير وهو موظف، و`b2c_project_manager` كان بينتهي بـ `_manager` فكان بيتحسب
 // مدير كمان. الاتنين اتظبطوا من الأساس بدل ما يتعالجوا باستثناءات هنا.
-const EXTRA_MANAGER_ROLES = ['moderator'];
+const EXTRA_MANAGER_ROLES = ['moderator', 'cfo'];
 
 /** Is this role a department head who belongs in the room? */
 const isManagerRole = (role) => {

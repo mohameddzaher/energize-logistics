@@ -30,7 +30,7 @@ interface Row {
   conflicts: number;
 }
 
-const WRITE_ROLES = ['super_admin', 'admin', 'operations_manager', 'moderator', 'finance_manager', 'collections_manager'];
+const WRITE_ROLES = ['super_admin', 'admin', 'operations_manager', 'moderator', 'cfo', 'accounting_manager', 'collections_manager'];
 
 export default function PaymentTypesPage() {
   const { user } = useAuth();

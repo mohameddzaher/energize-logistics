@@ -10,12 +10,12 @@ export const SECTION = 'Collections';
 export const COLLECTIONS_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
   'collections_manager', 'collections_staff',
-  'operations_manager', 'finance_manager', 'accountant',
+  'operations_manager', 'cfo', 'accounting_manager', 'accountant',
 ];
 
 export const COLLECTIONS_EDIT_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
-  'collections_manager', 'collections_staff', 'finance_manager',
+  'collections_manager', 'collections_staff', 'cfo', 'accounting_manager',
 ];
 
 // إعداداتُ القسم وحذفُ الأطراف لمديره: تعطيلُ طرفٍ يُخفي دَينًا من كلّ تقرير.

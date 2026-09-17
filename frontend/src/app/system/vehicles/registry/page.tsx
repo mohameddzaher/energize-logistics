@@ -25,7 +25,7 @@ import { ReqToggle } from '@/components/vehicles/ReqToggle';
 import { LEAD, LEAD_CELL, LEAD_2, useLeadOffset } from '@/components/vehicles/stickyLead';
 import { Car, Plus, Edit, Trash2, BarChart3, CalendarClock, X, Save, ArrowRight, Columns3, Check } from 'lucide-react';
 
-const EDIT_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'];
+const EDIT_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
 
 
 function VehicleRegistryListInner() {

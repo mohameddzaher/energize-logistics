@@ -24,6 +24,11 @@ export const GLOBAL_ROLES: RoleDef[] = [
     "en": "General Supervisor"
   },
   {
+    "key": "cfo",
+    "ar": "المدير المالي",
+    "en": "Chief Financial Officer"
+  },
+  {
     "key": "employee",
     "ar": "موظف",
     "en": "Employee"
@@ -315,9 +320,9 @@ export const SECTION_ROLES: SectionRoles[] = [
   {
     "section": "Accounting",
     "manager": {
-      "key": "finance_manager",
-      "ar": "المدير المالي",
-      "en": "Finance Manager"
+      "key": "accounting_manager",
+      "ar": "مدير الحسابات",
+      "en": "Accounting Manager"
     },
     "staff": [
       {

@@ -443,7 +443,7 @@ export const getDocumentTypes = () =>
 // صاحب القسم يفتح صفحة الحوادث ويلاقيها للقراءة بس. القوايم المتفرّقة دي بتفضل
 // تفرق مع بعضها كل ما دور جديد يتضاف.
 const EDIT_ROLES = ['super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
-  'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'];
+  'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
 const ADMIN_ROLES = ['super_admin', 'admin', 'vehicles_manager', 'hr_manager'];
 
 /** يقدر ينشئ ويعدّل (مركبات، تجديدات، حوادث). */

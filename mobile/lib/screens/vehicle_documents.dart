@@ -347,7 +347,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
   // ثلاث قوائم متفرّقة كانت تفترق عند أوّل دورٍ جديد، فمديرُ المركبات يرى قسمه
   // ولا يقدر يعدّل فيه من الجوّال وحده.
   static const _editRoles = {'super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
-    'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'};
+    'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'};
   static const _adminRoles = {'super_admin', 'admin', 'vehicles_manager', 'hr_manager'};
 
   /// نزعُ شريحة بترو اب — فعلٌ يُقيَّد باسم من نزعها وتاريخه.

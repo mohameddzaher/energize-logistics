@@ -15,7 +15,7 @@
 export const WALLET_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
   'operations_manager', 'operations_staff', 'moderator',
-  'finance_manager', 'accountant',
+  'cfo', 'accounting_manager', 'accountant',
   'collections_manager', 'collections_staff',
 ];
 
@@ -23,7 +23,7 @@ export const WALLET_ROLES = [
 export const WALLET_DASHBOARD_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
   'operations_manager', 'moderator',
-  'finance_manager', 'accountant',
+  'cfo', 'accounting_manager', 'accountant',
 ];
 
 /**

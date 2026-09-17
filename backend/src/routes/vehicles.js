@@ -10,7 +10,7 @@ const authorize = require('../middleware/rbac');
 // أدوار القسم نفسه لازم تكون هنا — من غيرها مدير المركبات بيشوف التفاويض
 // ومش قادر يعمل فيها حاجة، وهو صاحب القسم.
 const STAFF = ['super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
-  'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'];
+  'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
 
 router.use(authenticate);
 

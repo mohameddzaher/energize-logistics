@@ -110,7 +110,8 @@ const _executive = HomeInsight('النظرة التنفيذية', 'Executive sna
 // دور → أفضل نظرة. تُرتَّب حسب أولوية الدور، ثم نرجع لصلاحية القسم.
 const _roleInsight = <String, HomeInsight>{
   'super_admin': _executive,
-  'finance_manager': _finance,
+  'cfo': _finance,
+  'accounting_manager': _finance,
   'accountant': _finance,
   'operations_manager': _fleet,
   'operations_staff': _fleet,

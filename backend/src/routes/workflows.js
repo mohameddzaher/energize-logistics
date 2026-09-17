@@ -8,7 +8,7 @@ const validate = require('../middleware/validate');
 
 router.use(authenticate);
 
-// All workflow-related roles. Finance/collections staff (finance_manager,
+// All workflow-related roles. Finance/collections staff (cfo, accounting_manager,
 // accountant) are included so they can open the operations page, see the
 // financial columns, and tick the accounting-review checkbox.
 //
@@ -26,7 +26,7 @@ router.use(authenticate);
 const allWorkflowRoles = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
   'employee', 'operations_manager', 'operations_staff',
-  'moderator', 'finance_manager', 'accountant',
+  'moderator', 'cfo', 'accounting_manager', 'accountant',
   'collections_manager', 'collections_staff',
 ];
 
@@ -42,7 +42,7 @@ router.get('/filters', authorize(...allWorkflowRoles), workflowController.filter
 // صفةُ العميل تُقرأ لمن يفتح صفحةَ التشغيل، ولا تُكتب إلّا لمن يديرها: قلبُ
 // صفةِ عميلٍ يغيّر أين تُفوتَر كشوفُه كلُّها. ولا بدّ أن تسبق `/:id`.
 const paymentTypes = require('../controllers/paymentTypesController');
-const PT_WRITE = ['super_admin', 'admin', 'operations_manager', 'moderator', 'finance_manager', 'collections_manager'];
+const PT_WRITE = ['super_admin', 'admin', 'operations_manager', 'moderator', 'cfo', 'accounting_manager', 'collections_manager'];
 router.get('/payment-types', authorize(...allWorkflowRoles), paymentTypes.list);
 router.put('/payment-types/:id', authorize(...PT_WRITE), paymentTypes.update);
 router.post('/payment-types/apply', authorize(...PT_WRITE), paymentTypes.applyAll);

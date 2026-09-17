@@ -72,7 +72,8 @@ module.exports = {
     CRM_TEAM_LEAD: 'crm_team_lead',
     CRM_SPECIALIST: 'crm_specialist',
     CRM_AGENT: 'crm_agent',
-    FINANCE_MANAGER: 'finance_manager',
+    FINANCE_MANAGER: 'cfo',
+    ACCOUNTING_MANAGER: 'accounting_manager',
     ACCOUNTANT: 'accountant',
     SALES_MANAGER: 'sales_manager',
     SALES_REP: 'sales_rep',
@@ -120,7 +121,7 @@ module.exports = {
   ADMINISTRATION_STAFF_ROLES: ['super_admin', 'admin', 'administration_staff', 'bd_manager', 'it_manager', 'it_specialist'],
   IT_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist'],
   IT_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager'],
-  FINANCE_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'finance_manager', 'accountant'],
+  FINANCE_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant'],
   // Roles that can access the Sales section (+ the operations team — they need
   // visibility across CRM/Sales for the 3PL workflow).
   SALES_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'],
@@ -154,7 +155,7 @@ module.exports = {
     'procurement_staff',
     'hr_manager', 'hr_specialist',
     'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent',
-    'finance_manager', 'accountant',
+    'cfo', 'accounting_manager', 'accountant',
     'sales_manager', 'sales_rep',
     'procurement_manager',
     'customs_manager', 'customs_officer',
@@ -178,9 +179,9 @@ module.exports = {
 
   // Roles that can access the Vehicles & Authorizations section (المركبات
   // والتفاويض): super admin + HR + Accounting. Delete ops are further limited to
-  // the admin tier (super_admin, admin, hr_manager, finance_manager).
-  VEHICLE_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'],
-  VEHICLE_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'finance_manager'],
+  // the admin tier (super_admin, admin, hr_manager, cfo, accounting_manager).
+  VEHICLE_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'],
+  VEHICLE_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'cfo', 'accounting_manager'],
 
   // Pages inside the Remote (work-from-home) section. A remote_employee is
   // granted a subset of these via User.remoteAccess; remote_manager and

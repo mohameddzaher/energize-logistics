@@ -44,7 +44,7 @@ interface Summary {
   paidLoads: number; fridays: number; driverCount: number;
 }
 
-const PAY_ROLES = ['super_admin', 'admin', 'it_manager', 'finance_manager', 'accountant', 'fleet_manager', 'operations_manager'];
+const PAY_ROLES = ['super_admin', 'admin', 'it_manager', 'cfo', 'accounting_manager', 'accountant', 'fleet_manager', 'operations_manager'];
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const money = (n?: number) => (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
 const dt = (d?: string) => (d ? new Date(d).toLocaleDateString('en-GB') : '—');

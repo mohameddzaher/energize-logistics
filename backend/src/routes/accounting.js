@@ -4,7 +4,7 @@ const acc = require('../controllers/accountingController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 
-const STAFF = ['super_admin', 'admin', 'finance_manager', 'accountant'];
+const STAFF = ['super_admin', 'admin', 'cfo', 'accounting_manager', 'accountant'];
 
 router.use(authenticate);
 router.use(authorize(...STAFF));

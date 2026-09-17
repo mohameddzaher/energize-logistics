@@ -11,7 +11,7 @@ router.use(authenticate);
 const READ_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
   'collections_manager', 'collections_staff',
-  'operations_manager', 'finance_manager', 'accountant',
+  'operations_manager', 'cfo', 'accounting_manager', 'accountant',
 ];
 // ومَن يكتب: القسمُ صاحبُ عمله، والمالُ يشاركه فيه.
 //
@@ -26,7 +26,7 @@ const READ_ROLES = [
 // (انظر `deleteParty`)، فالذي يُمحى فعلًا صفٌّ بلا تاريخ. فالقائمةُ واحدة.
 const EDIT_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
-  'collections_manager', 'collections_staff', 'finance_manager',
+  'collections_manager', 'collections_staff', 'cfo', 'accounting_manager',
 ];
 
 router.get('/dashboard', authorize(...READ_ROLES), ctrl.dashboard);

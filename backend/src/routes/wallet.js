@@ -13,7 +13,7 @@ const validate = require('../middleware/validate');
 const walletRoles = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
   'operations_manager', 'operations_staff',
-  'finance_manager', 'accountant',
+  'cfo', 'accounting_manager', 'accountant',
 ];
 const walletReadRoles = [...walletRoles, 'moderator', 'collections_manager', 'collections_staff'];
 const managerRoles = ['super_admin', 'admin', 'operations_manager'];
@@ -25,7 +25,7 @@ const managerRoles = ['super_admin', 'admin', 'operations_manager'];
 //
 // والمحاسبةُ لا تُربَط بفرع: حسابُها ليس في فرعٍ بعينه — الخمسةُ كلُّهم بلا
 // فرعٍ على حساباتهم، وذلك صوابٌ لا نقص.
-const overviewRoles = [...managerRoles, 'finance_manager', 'accountant', 'it_manager', 'it_specialist'];
+const overviewRoles = [...managerRoles, 'cfo', 'accounting_manager', 'accountant', 'it_manager', 'it_specialist'];
 
 router.use(authenticate);
 

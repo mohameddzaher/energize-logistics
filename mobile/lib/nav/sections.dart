@@ -147,7 +147,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     // عملٌ يومي زائد.
     AppSection(
       key: 'Collections', arTitle: 'التحصيل', enTitle: 'Collections', icon: Icons.request_quote_outlined,
-      roles: const [..._admins, 'collections_manager', 'collections_staff', 'operations_manager', 'finance_manager', 'accountant'],
+      roles: const [..._admins, 'collections_manager', 'collections_staff', 'operations_manager', 'cfo', 'accounting_manager', 'accountant'],
       pages: [
         AppPage('لوحة التحصيل', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: collectionsDashSpec), path: '/system/collections-dept/dashboard'),
         // الفواتيرُ قبل السجلّات: منها يعمل القسم.
@@ -317,7 +317,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       // الإدارة المالية — حلّت محلّ صفحات المحاسبة. والمفتاحُ `Accounting` باقٍ كي
       // لا تُهاجَر صلاحيّاتٌ محفوظة؛ الاسمُ والصفحاتُ وحدَها تغيّرت.
       key: 'Accounting', arTitle: 'الإدارة المالية', enTitle: 'Finance Management', icon: Icons.account_balance_outlined,
-      roles: const [..._admins, 'finance_manager', 'accountant'],
+      roles: const [..._admins, 'cfo', 'accounting_manager', 'accountant'],
       pages: [
         AppPage('لوحة الإدارة المالية', 'Finance Overview', Icons.dashboard_outlined, (c) => const FinanceOverviewScreen(), path: '/system/finance'),
         AppPage('ماليات التشغيل', 'Operations Finance', Icons.assignment_outlined, (c) => const FinanceDeptScreen(dept: 'operations', arTitle: 'ماليات التشغيل', enTitle: 'Operations Finance'), path: '/system/finance/operations'),
@@ -351,7 +351,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Vehicles', arTitle: 'المركبات والتفويضات', enTitle: 'Vehicles & Authorizations', icon: Icons.directions_car_outlined,
-      roles: const [..._admins, 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'],
+      roles: const [..._admins, 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'],
       pages: [
         AppPage('تحليلات المركبات', 'Registry Analytics', Icons.insights_outlined, (c) => const VehicleRegistryDashboardScreen(), path: '/system/vehicles/registry/dashboard'),
         AppPage('سجل المركبات', 'Vehicle Registry', Icons.directions_car_outlined, (c) => const VehicleRegistryListScreen(), path: '/system/vehicles/registry'),

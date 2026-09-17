@@ -322,6 +322,9 @@ export interface VehicleOverview {
 export interface ExpiringRow {
   vehicleId: string; plateNumber: string; brandAr: string; modelAr: string; sectorAr: string;
   ownerNameAr: string; modelYear: number | null;
+  chassisNumber?: string; serialNumber?: string; registrationTypeAr?: string; colorAr?: string;
+  /** المفوَّضُ على المركبة، أو صاحبُ بطاقة السائق في صفّها. */
+  holder?: string; driverCardNumber?: string;
   docKey: string; docAr: string; docEn: string;
   expiryDate: string | null; daysRemaining: number | null; state: string; statusCode: string;
   reference?: string; company?: string;

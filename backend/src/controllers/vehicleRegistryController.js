@@ -407,7 +407,7 @@ const DOC_PATHS = [...new Set(VDOC.DOCUMENTS.flatMap((d) => [
 
 /** ما تحتاجه شاشاتُ التجميع: تصنيفُ المركبة، وحالةُ كلّ مستند وتاريخُه. */
 const AGG_FIELDS = [...new Set([
-  'plateNumber', 'plateKey', 'sectorAr', 'sectorCode', 'registrationTypeAr',
+  'plateNumber', 'plateKey', 'chassisNumber', 'serialNumber', 'sectorAr', 'sectorCode', 'registrationTypeAr',
   'departmentAr', 'cityAr', 'possessionStatusAr', 'serviceStatusAr', 'serviceStatusCode',
   'brandAr', 'modelAr', 'modelYear', 'colorAr', 'ownerNameAr', 'commercialRegistration',
   'tamStatusAr', 'accidentCount', 'missingItems', 'logistiGaps', 'insurancePolicy',
@@ -1547,11 +1547,23 @@ exports.overview = async (req, res) => {
 // الدالة دي بقت المصدر الوحيد، والشاشتين بيبنوا منها. لو المستقبل عايز يفرّق
 // بينهم، بيفرّق في **الفلتر** مش في **الحساب**.
 async function buildExpiryRows(query = {}) {
-  const [vehicles, cfg] = await Promise.all([
+  const DriverCard = require('../models/DriverCard');
+  const [vehicles, cfg, cards] = await Promise.all([
     VehicleMaster.find(buildFilter(query)).select(AGG_FIELDS).lean(),
     getConfig(),
+    DriverCard.find({ isActive: { $ne: false } })
+      .select('name idNumber cardNumber cardType expiryDate logisticRegister').lean(),
   ]);
+  // ── السائقُ وبطاقتُه على كلّ صفِّ مركبة ─────────────────────────────────
+  // كان «صاحبُ المستند» يُملأ للتفويض وحدَه، فخرج العمودُ فارغًا في تأمين
+  // المركبة واستمارتها وفحصها — وهي أكثرُ الصفوف. والسؤالُ عنها كلِّها واحد:
+  // مَن يقود هذه المركبة، وبطاقتُه كم؟ فيُقرأ المفوَّضُ ويُربط ببطاقته برقم الإقامة.
+  const cardById = new Map(cards.map((c) => [String(c.idNumber || '').trim(), c]));
   const rows = [];
+  const cardOf = (v) => {
+    const iq = String(v.authorizedPerson?.iqamaNumber || '').trim();
+    return iq ? cardById.get(iq) : null;
+  };
   for (const v of vehicles) {
     for (const dt of DOC_TYPES) {
       const expiry = getPath(v, dt.path);
@@ -1560,6 +1572,8 @@ async function buildExpiryRows(query = {}) {
       rows.push({
         rowId: `v:${v._id}:${dt.key}`,
         vehicleId: v._id, plateNumber: v.plateNumber, brandAr: v.brandAr, modelAr: v.modelAr,
+        chassisNumber: v.chassisNumber || '', serialNumber: v.serialNumber || '',
+        registrationTypeAr: v.registrationTypeAr || '', colorAr: v.colorAr || '',
         sectorAr: v.sectorAr, ownerNameAr: v.ownerNameAr, modelYear: v.modelYear,
         docKey: dt.key, docAr: dt.ar, docEn: dt.en,
         expiryDate: expiry, daysRemaining: st.days, state: st.state, statusCode,
@@ -1570,9 +1584,9 @@ async function buildExpiryRows(query = {}) {
         // به — ولا يُجدَّد تفويضٌ لا يُعرَف رقمه.
         reference: dt.numberPath ? String(getPath(v, dt.numberPath) || '') : '',
         company: dt.key === 'insurance' ? v.insurance?.companyAr : dt.key === 'gps' ? v.gps?.provider : '',
-        // اسم المفوَّض: التفويض وحده من بين المستندات مقرونٌ بشخص، و«تفويضٌ
-        // ينتهي بعد أسبوع» سؤالٌ ناقصٌ ما لم يُقَل تفويضُ مَن.
-        holder: dt.key === 'authorization' ? String(v.authorizedPerson?.name || '') : '',
+        // المفوَّضُ على المركبة — لكلّ مستنداتها لا للتفويض وحدَه (راجع أعلاه).
+        holder: String(v.authorizedPerson?.name || ''),
+        driverCardNumber: String(cardOf(v)?.cardNumber || ''),
       });
     }
   }
@@ -1594,9 +1608,6 @@ async function buildExpiryRows(query = {}) {
   const vehicleFiltered = ['sector', 'owner', 'city', 'department', 'q']
     .some((k) => String(query[k] || '').trim() !== '');
   if (!vehicleFiltered) {
-    const DriverCard = require('../models/DriverCard');
-    const cards = await DriverCard.find({ isActive: { $ne: false } })
-      .select('name idNumber cardNumber cardType expiryDate logisticRegister').lean();
     for (const c of cards) {
       // بلا رقمِ بطاقةٍ فهي «مطلوبة» لا «منتهية» — عملٌ ينتظر، وله عمودُه في
       // صفحة بطاقات السائقين. ولا تدخل شاشةَ الانتهاءات بلا تاريخٍ تنتهي فيه.
@@ -1615,7 +1626,9 @@ async function buildExpiryRows(query = {}) {
         rowId: `dc:${c._id}`,
         vehicleId: null, driverCardId: String(c._id),
         plateNumber: '', brandAr: '', modelAr: '', modelYear: null,
+        chassisNumber: '', serialNumber: '', registrationTypeAr: '', colorAr: '',
         sectorAr: '', ownerNameAr: '',
+        driverCardNumber: String(c.cardNumber || ''),
         docKey: 'driverCard', docAr: 'بطاقة السائق', docEn: 'Driver card',
         expiryDate: c.expiryDate, daysRemaining: st.days, state: st.state, statusCode: '',
         alertEnabled: cfg.alerts?.driverCard?.enabled !== false,

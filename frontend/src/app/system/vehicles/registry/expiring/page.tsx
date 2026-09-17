@@ -35,23 +35,24 @@ const QUICK = [7, 15, 30, 60, 90, 180];
 
 // أعمدةُ جدول الانتهاءات وقارئُ كلٍّ منها — تعريفٌ واحدٌ للترويسة وللقمع.
 const COL_DEFS: [string, string, string][] = [
-  ['plate', 'اللوحة', 'Plate'],
-  // ── واسمُ صاحب المستند عمودٌ صريح بجانب اللوحة ──────────────────────────
-  // مستندان من السبعة مقرونان بإنسانٍ لا بمركبة: التفويضُ باسم المفوَّض،
-  // وبطاقةُ السائق باسم صاحبها. وكان اسمُ السائق يُكتب في خانة اللوحة ليملأ
-  // عمودًا — فيُقرأ «اللوحة: محمد طاهر»، وهو كذبٌ على القارئ. فله عمودُه،
-  // ويبقى عمودُ اللوحة للّوحات وحدَها.
-  ['holder', 'صاحب المستند', 'Holder'],
-  // ── ثلاثةُ أعمدةٍ لا خانةٌ واحدةٌ مجموعة ──────────────────────────────────
-  // كانت «المركبة» تجمع الماركةَ والطرازَ في نصٍّ واحد، والموديلُ غائبًا. ومن
-  // أراد «أرِني كيا وحدَها» لم يجد في القمع ماركةً يختارها بل «كيا كرنفال»
-  // و«كيا سيراتو» و«كيا بيجاس» — قيمًا مركّبةً لا تُجمَع.
-  //
-  // فصارت كما هي في بطاقات التشغيل حرفًا بحرف: ماركةٌ وطرازٌ وموديل، بالعناوين
-  // نفسِها. والشاشتان تُقرآن بالعين نفسِها، ويُنقَل الفلترُ بينهما بلا ترجمة.
+  // ── هويّةُ المركبة بالترتيب المعتمد في صفحات القسم كلِّها ─────────────────
+  // اللوحة، الهيكل، التسلسلي، نوع التسجيل، الماركة، الطراز، الموديل، اللون —
+  // بالعناوين نفسِها التي في السجلّ وبطاقات التشغيل، فيُنقَل الفلترُ بينها بلا
+  // ترجمة ويُقارَن ملفُّ إكسل بآخرَ عمودًا بعمود.
+  ['plate', 'رقم اللوحة', 'Plate'],
+  ['chassisNumber', 'رقم الهيكل', 'Chassis'],
+  ['serialNumber', 'الرقم التسلسلي', 'Serial'],
+  ['registrationTypeAr', 'نوع التسجيل', 'Registration type'],
   ['brandAr', 'ماركة المركبة', 'Brand'],
   ['modelAr', 'طراز المركبة', 'Model'],
   ['modelYear', 'الموديل', 'Year'],
+  ['colorAr', 'اللون', 'Colour'],
+  // ── والسائقُ لا «صاحبُ المستند» ─────────────────────────────────────────
+  // كان يُملأ للتفويض وحدَه فخرج فارغًا في أغلب الصفوف. صار المفوَّضَ على
+  // المركبة في كلّ مستنداتها، وصاحبَ البطاقة في صفّ بطاقة السائق — وبجانبه
+  // رقمُ بطاقته.
+  ['holder', 'السائق', 'Driver'],
+  ['driverCardNumber', 'رقم البطاقة', 'Driver card no.'],
   ['doc', 'المستند', 'Document'],
   ['expiry', 'ينتهي في', 'Expires'],
   ['left', 'المتبقي', 'Left'],
@@ -130,12 +131,17 @@ function ExpiringInner() {
   const rows = useMemo(() => all.filter((r: any) => {
     if (mutedOnly && r.alertEnabled !== false) return false;
     if (!needle) return true;
-    return [r.plateNumber, r.holder, r.brandAr, r.modelAr, r.modelYear, r.sectorAr, r.ownerNameAr, r.docAr, r.docEn, r.reference]
+    return [r.plateNumber, r.chassisNumber, r.serialNumber, r.driverCardNumber, r.holder, r.brandAr, r.modelAr, r.modelYear, r.sectorAr, r.ownerNameAr, r.docAr, r.docEn, r.reference]
       .some((v) => String(v || '').toLowerCase().includes(needle));
   }), [all, mutedOnly, needle]);
 
   const GETTERS = useMemo<Record<string, (r: any) => any>>(() => ({
     plate: (r) => r.plateNumber,
+    chassisNumber: (r) => r.chassisNumber || '',
+    serialNumber: (r) => r.serialNumber || '',
+    registrationTypeAr: (r) => r.registrationTypeAr || '',
+    colorAr: (r) => r.colorAr || '',
+    driverCardNumber: (r) => r.driverCardNumber || '',
     brandAr: (r) => r.brandAr,
     modelAr: (r) => r.modelAr,
     modelYear: (r) => (r.modelYear || ''),
@@ -165,20 +171,26 @@ function ExpiringInner() {
   const mutedCount = useMemo(() => all.filter((r: any) => r.alertEnabled === false).length, [all]);
 
   const cols: ExportColumn[] = [
-    { header: t('اللوحة', 'Plate'), key: 'plateNumber', width: 16 },
-    { header: t('صاحب المستند', 'Holder'), key: 'holder', width: 24 },
+    { header: t('رقم اللوحة', 'Plate'), key: 'plateNumber', width: 16 },
+    { header: t('رقم الهيكل', 'Chassis'), key: 'chassisNumber', width: 22 },
+    { header: t('الرقم التسلسلي', 'Serial'), key: 'serialNumber', width: 16 },
+    { header: t('نوع التسجيل', 'Registration type'), key: 'registrationTypeAr', width: 14 },
+    { header: t('ماركة المركبة', 'Brand'), key: 'brandAr', width: 14 },
+    { header: t('طراز المركبة', 'Model'), key: 'modelAr', width: 14 },
+    { header: t('الموديل', 'Year'), key: 'modelYear', width: 10 },
+    { header: t('اللون', 'Colour'), key: 'colorAr', width: 10 },
+    { header: t('السائق', 'Driver'), key: 'holder', width: 24 },
+    { header: t('رقم البطاقة', 'Driver card no.'), key: 'driverCardNumber', width: 16 },
     { header: t('المستند', 'Document'), key: 'docAr', width: 18 },
     { header: t('ينتهي في', 'Expires'), key: 'expiryDate', transform: (v) => fmtDate(v), width: 14 },
     { header: t('الأيام المتبقية', 'Days left'), key: 'daysRemaining', width: 12 },
     { header: t('الحالة', 'State'), key: 'state', transform: (v) => stateLabel(v, ar), width: 16 },
     { header: t('القطاع', 'Sector'), key: 'sectorAr', width: 16 },
-    { header: t('ماركة المركبة', 'Brand'), key: 'brandAr', width: 14 },
-    { header: t('طراز المركبة', 'Model'), key: 'modelAr', width: 14 },
-    { header: t('الموديل', 'Year'), key: 'modelYear', width: 10 },
     { header: t('المالك', 'Owner'), key: 'ownerNameAr', width: 26 },
     { header: t('المرجع', 'Reference'), key: 'reference', width: 22 },
     { header: t('التنبيه مفعّل', 'Alert on'), key: 'alertEnabled', transform: (v) => (v === false ? t('لا', 'No') : t('نعم', 'Yes')), width: 12 },
   ];
+
 
   // المدة والمستند والحالة تُطبَّق على الخادم، والبحث و«المتوقّف تنبيهه» في الذاكرة؛
   // فالصفوف التي في اليد شريحةٌ من شريحة. «الكلّ» يعيد النداء بلا نافذةٍ زمنيّة،
@@ -380,12 +392,17 @@ function ExpiringInner() {
                         // بطاقةُ السائق لا مركبةَ لها — فلا لوحةَ ولا ملفَّ مركبةٍ يُفتَح.
                         : <span className="text-slate-300">—</span>}
                     </td>
-                    <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap max-w-[220px] truncate" title={r.holder || ''}>
-                      {r.holder || <span className="text-slate-300">—</span>}
-                    </td>
+                    <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap font-mono text-[12px]" dir="ltr">{r.chassisNumber || '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap font-mono text-[12px]" dir="ltr">{r.serialNumber || '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{r.registrationTypeAr || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{r.brandAr || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{r.modelAr || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap tabular-nums">{r.modelYear || '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{r.colorAr || '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap max-w-[220px] truncate" title={r.holder || ''}>
+                      {r.holder || <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap font-mono text-[12px]" dir="ltr">{r.driverCardNumber || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-600">
                       <span className="inline-flex items-center gap-1 justify-center">
                         {ar ? r.docAr : r.docEn}

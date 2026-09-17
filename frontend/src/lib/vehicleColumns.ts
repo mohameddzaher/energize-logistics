@@ -128,9 +128,9 @@ export const REGISTRY_COLUMNS: VCol[] = [
   { key: 'serialNumber', ar: 'الرقم التسلسلي', en: 'Serial', get: (v) => v.serialNumber, width: 18, base: true, mono: true },
   { key: 'registrationTypeAr', ar: 'نوع التسجيل', en: 'Registration type', get: (v) => v.registrationTypeAr, width: 14, base: true },
   { key: 'brandAr', ar: 'ماركة المركبة', en: 'Brand', get: (v) => v.brandAr, width: 14, base: true },
-  { key: 'modelAr', ar: 'طراز المركبة', en: 'Model', get: (v) => v.modelAr, width: 14 },
+  { key: 'modelAr', ar: 'طراز المركبة', en: 'Model', get: (v) => v.modelAr, width: 14, base: true },
   { key: 'modelYear', ar: 'الموديل', en: 'Year', get: (v) => v.modelYear, width: 10, type: 'number', base: true },
-  { key: 'colorAr', ar: 'اللون', en: 'Colour', get: (v) => v.colorAr, width: 12 },
+  { key: 'colorAr', ar: 'اللون', en: 'Colour', get: (v) => v.colorAr, width: 12, base: true },
 
   // ── التفويض ────────────────────────────────────────────────────────────────
   { key: 'authName', ar: 'اسم المفوض', en: 'Authorised person', get: (v) => v.authorizedPerson?.name, width: 24, base: true },

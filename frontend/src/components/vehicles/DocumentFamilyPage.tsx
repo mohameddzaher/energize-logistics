@@ -1092,12 +1092,17 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, onCl
  * نداءَ ثانٍ ولا عمودَ يُملأ مرّتين.
  */
 export const commonColumns = (): DocColumn[] => [
+  // هويّةُ المركبة بالترتيب المعتمد في صفحات القسم — راجع lib/vehicleColumns.
   { key: 'plateNumber', ar: 'رقم اللوحة', en: 'Plate', get: (v) => v.plateNumber, width: 16 },
+  { key: 'chassisNumber', ar: 'رقم الهيكل', en: 'Chassis', get: (v) => v.chassisNumber, width: 22, mono: true },
+  { key: 'serialNumber', ar: 'الرقم التسلسلي', en: 'Serial', get: (v) => v.serialNumber, width: 16, mono: true },
+  { key: 'registrationTypeAr', ar: 'نوع التسجيل', en: 'Registration type', get: (v) => v.registrationTypeAr, width: 14 },
+  { key: 'brandAr', ar: 'ماركة المركبة', en: 'Brand', get: (v) => v.brandAr, width: 14 },
+  { key: 'modelAr', ar: 'طراز المركبة', en: 'Model', get: (v) => v.modelAr, width: 14 },
+  { key: 'modelYear', ar: 'الموديل', en: 'Year', get: (v) => v.modelYear, width: 10 },
+  { key: 'colorAr', ar: 'اللون', en: 'Colour', get: (v) => v.colorAr, width: 10 },
   { key: 'sectorAr', ar: 'القطاع', en: 'Sector', get: (v) => v.sectorAr, width: 16 },
   { key: 'departmentAr', ar: 'الإدارة', en: 'Department', get: (v) => v.departmentAr, width: 18 },
   { key: 'cityAr', ar: 'المدينة', en: 'City', get: (v) => v.cityAr, width: 14 },
   { key: 'ownerNameAr', ar: 'المالك', en: 'Owner', get: (v) => v.ownerNameAr, width: 26 },
-  { key: 'brandAr', ar: 'ماركة المركبة', en: 'Brand', get: (v) => v.brandAr, width: 14 },
-  { key: 'modelAr', ar: 'طراز المركبة', en: 'Model', get: (v) => v.modelAr, width: 14 },
-  { key: 'modelYear', ar: 'الموديل', en: 'Year', get: (v) => v.modelYear, width: 10 },
 ];

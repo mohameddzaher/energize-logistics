@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
-import { homeRouteForRole } from '@/lib/roleRoutes';
+import { homeRouteForRole, landingFor } from '@/lib/roleRoutes';
 import { OPS_SECTION_ROLES as OPS_ROLES } from '@/lib/ops';
 import { isBrParticipant, isBrRunner } from '@/lib/businessReview';
 import { SO_EDIT_ROLES as SO_ROLES } from '@/lib/shipmentOrders';
@@ -920,7 +920,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
                   ? 'صلاحيّاتُ الصفحات تُضبط من «الأدوار والصلاحيّات». إن كنت تحتاجها في عملك فاطلبها من صاحب النظام.'
                   : 'Page access is set in Roles & Permissions. If you need this page for your work, ask the system owner for it.'}
               </p>
-              <button type="button" onClick={() => router.push(user?.homePage || homeRouteForRole(user?.role))}
+              <button type="button" onClick={() => router.push(landingFor(user))}
                 className="mt-5 px-4 py-2 rounded-lg bg-[#f37121] text-white text-sm font-semibold">
                 {lang === 'ar' ? 'العودة إلى صفحتي' : 'Back to my page'}
               </button>

@@ -24,6 +24,11 @@ const hrSelfServiceExempt = (req) => {
   const p = req.path || '';
   if (p.startsWith('/me') || p.startsWith('/team')) return true;
   if (req.method === 'GET' && p === '/leave-types') return true;
+  // صندوقُ موافقات الإجازات وعدّادُه، والإجازةُ الواحدة (لملفّ PDF): المتحكّمُ
+  // يبني الاستعلامَ من محطّات القارئ ويتحقّق من صاحب الطلب. كانت خارج هذه
+  // القائمة، فمديرُ قسمٍ حُفظ له HR «لا شيء» لم يرَ طلبات فريقه أصلًا.
+  if (req.method === 'GET' && /^\/leaves\/inbox(\/count)?$/.test(p)) return true;
+  if (req.method === 'GET' && /^\/leaves\/[0-9a-f]{24}$/i.test(p)) return true;
   if (/^\/leaves\/[^/]+\/decision$/.test(p)) return true;
   if (/^\/requests\/[^/]+\/reply$/.test(p)) return true;
   if (req.method === 'GET' && /^\/employees\/[^/]+$/.test(p)) return true;

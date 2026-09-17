@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'api.dart';
+import 'live.dart';
 
 /// Session state: who is signed in, their role and section permissions —
 /// the same `user` object /api/auth/me returns to the web.
@@ -41,6 +42,11 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// session silently (loadTokens + /me does the refresh dance if needed).
   Future<void> bootstrap() async {
     WidgetsBinding.instance.addObserver(this);
+    // ── وتغييرُ الصلاحيّات يصل فورًا لا عند العودة للتطبيق ──────────────────
+    // الموقعُ يعيد قراءةَ المستخدم لحظةَ حفظ الصلاحيّات؛ والتطبيقُ كان ينتظر
+    // أن يُغلَق ويُفتَح. فيُسمَع الحدثُ نفسُه.
+    Live.instance.on('permissions:updated', _onPermissionsChanged);
+    Live.instance.on('permissions:roles', _onPermissionsChanged);
     await Api.instance.loadTokens();
     if (await Api.instance.hasSession) {
       try {
@@ -60,6 +66,8 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) refreshUser();
   }
+
+  void _onPermissionsChanged() => refreshUser();
 
   Future<void> refreshUser() async {
     if (user == null) return;

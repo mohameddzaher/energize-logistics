@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { FaFacebook, FaInstagram, FaLinkedin, FaYoutube } from "react-icons/fa";
 import { FaXTwitter } from "react-icons/fa6";
 import { useAuth } from "@/context/AuthContext";
-import { homeRouteForRole } from "@/lib/roleRoutes";
+import { landingFor } from "@/lib/roleRoutes";
 
 export default function Header() {
   const [open, setOpen] = useState(false);
@@ -29,7 +29,7 @@ export default function Header() {
   const handlePortalClick = () => {
     setOpen(false);
     if (isAuthenticated) {
-      router.push(homeRouteForRole(user?.role));
+      router.push(landingFor(user));
     } else {
       router.push('/login');
     }

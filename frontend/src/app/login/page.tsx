@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { motion } from 'framer-motion';
 import { LogIn, Eye, EyeOff, AlertCircle, Shield } from 'lucide-react';
 import Link from 'next/link';
-import { homeRouteForRole } from '@/lib/roleRoutes';
+import { landingFor } from '@/lib/roleRoutes';
 
 function LoginForm() {
   const [email, setEmail] = useState('');
@@ -20,7 +20,7 @@ function LoginForm() {
 
   useEffect(() => {
     if (isAuthenticated && user) {
-      router.push(returnTo || homeRouteForRole(user.role));
+      router.push(returnTo || landingFor(user));
     }
   }, [isAuthenticated, user, router, returnTo]);
 
@@ -33,7 +33,7 @@ function LoginForm() {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const loggedInUser = await login(email, password);
-        router.push(returnTo || homeRouteForRole(loggedInUser.role));
+        router.push(returnTo || landingFor(loggedInUser));
         return;
       } catch (err: any) {
         const isTimeout = err.message?.includes('timed out') || err.message?.includes('aborted');

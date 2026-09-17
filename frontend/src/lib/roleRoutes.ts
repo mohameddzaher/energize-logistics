@@ -54,3 +54,11 @@ export const ROLE_HOME_ROUTES: Record<string, string> = {
 
 export const homeRouteForRole = (role?: string | null) =>
   (role && ROLE_HOME_ROUTES[role]) || '/system/dashboard';
+
+/**
+ * أوّلُ صفحةٍ يفتحها المستخدم: صفحةُ الدخول المضبوطة لدوره من شاشة الصلاحيّات،
+ * وإلّا الافتراضيُّ المكتوب هنا. كانت تُحفَظ ولا تُقرأ عند الدخول، فيدخل الجميعُ
+ * على الصفحة القديمة وكأنّ الإعدادَ لم يُحفَظ.
+ */
+export const landingFor = (u?: { role?: string | null; homePage?: string | null } | null) =>
+  (u?.homePage && u.homePage.startsWith('/system') ? u.homePage : homeRouteForRole(u?.role));

@@ -64,8 +64,11 @@ export default function CorporatePoliciesPage() {
     { header: t('تاريخ الانتهاء', 'Expiry'), key: 'expiryDate', transform: (v: any) => fmtDate(v), width: 14 },
     { header: t('المتبقي (يوم)', 'Days left'), key: 'daysRemaining', width: 12 },
     { header: t('الحالة', 'State'), key: 'state', transform: (v: any) => stateLabel(v, ar), width: 16 },
-    { header: t('القسط للفرد سنويًّا', 'Per person / yr'), key: 'premiumPerPersonSar', transform: (v: any) => (v == null ? '' : money(v)), width: 16 },
-    { header: t('عدد المشمولين', 'Covered'), key: 'drivers', transform: (v: any) => (v ? v.coveredCount : ''), width: 12 },
+    { header: t('تغطّي', 'Covers'), key: 'coverageSubject', transform: (_: any, r: any) => SUBJECTS.find((x) => x.key === subjectOf(r))?.ar || '', width: 12 },
+    { header: t('القسط لكل سائق سنويًّا', 'Per driver / yr'), key: 'premiumPerPersonSar', transform: (v: any) => (v == null ? '' : money(v)), width: 16 },
+    { header: t('القسط لكل سيارة', 'Per vehicle'), key: 'premiumPerVehicleSar', transform: (v: any) => (v == null ? '' : money(v)), width: 14 },
+    { header: t('عدد السيارات', 'Vehicles'), key: 'vehicleCount', transform: (v: any) => (v == null ? '' : v), width: 10 },
+    { header: t('السائقون المشمولون', 'Drivers covered'), key: 'drivers', transform: (v: any) => (v ? v.coveredCount : ''), width: 12 },
     { header: t('القسط الإجمالي', 'Total premium'), key: '_total', transform: (_: any, r: any) => money(r.computedPremiumSar ?? r.premiumSar ?? 0), width: 16 },
     { header: t('المشمولون', 'Covered names'), key: 'drivers', transform: (v: any) => (v ? v.covered.map((d: any) => d.name || d.idNumber).join(' · ') : ''), width: 60 },
     { header: t('مطلوب ضمُّهم', 'To be added'), key: 'drivers', transform: (v: any) => (v ? v.pending.map((d: any) => d.name || d.idNumber).join(' · ') : ''), width: 30 },
@@ -130,17 +133,29 @@ export default function CorporatePoliciesPage() {
                     مشتقٌّ من عدد المشمولين — يزيد بمن يدخل وينقص بمن يخرج. أمّا
                     إجماليٌّ مكتوبٌ يدًا فيصدق يومَ كُتب ويكذب في اليوم التالي. */}
                 <Fact
-                  label={p.premiumPerPersonSar != null
-                    ? t('القسط للفرد سنويًّا (ر.س)', 'Premium per person / yr')
-                    : t('القسط (ر.س)', 'Premium (SAR)')}
-                  value={p.premiumPerPersonSar != null ? money(p.premiumPerPersonSar)
+                  label={subjectOf(p) === 'drivers' && p.premiumPerPersonSar != null
+                    ? t('القسط لكل سائق سنويًّا (ر.س)', 'Premium per driver / yr')
+                    : subjectOf(p) === 'vehicles' && p.premiumPerVehicleSar != null
+                      ? t('القسط لكل سيارة (ر.س)', 'Premium per vehicle')
+                      : t('القسط الإجمالي (ر.س)', 'Total premium (SAR)')}
+                  value={subjectOf(p) === 'drivers' && p.premiumPerPersonSar != null ? money(p.premiumPerPersonSar)
+                    : subjectOf(p) === 'vehicles' && p.premiumPerVehicleSar != null ? money(p.premiumPerVehicleSar)
                     : (p.premiumSar ? money(p.premiumSar) : '—')} />
+                <Fact label={t('تغطّي', 'Covers')}
+                  value={`${ar ? SUBJECTS.find((x) => x.key === subjectOf(p))!.ar : SUBJECTS.find((x) => x.key === subjectOf(p))!.en}${
+                    subjectOf(p) === 'vehicles' && p.vehicleCount != null ? ` (${p.vehicleCount})` : ''}`} />
               </div>
 
-              {p.premiumPerPersonSar != null && (
+              {subjectOf(p) === 'drivers' && p.premiumPerPersonSar != null && (
                 <p className="mt-2 text-[11.5px] text-slate-500">
-                  {t(`الإجمالي: ${money(p.computedPremiumSar ?? 0)} ر.س — ${p.drivers?.coveredCount ?? 0} مشمولًا × ${money(p.premiumPerPersonSar)}`,
-                     `Total ${money(p.computedPremiumSar ?? 0)} SAR — ${p.drivers?.coveredCount ?? 0} covered × ${money(p.premiumPerPersonSar)}`)}
+                  {t(`الإجمالي: ${money(p.computedPremiumSar ?? 0)} ر.س — ${p.drivers?.coveredCount ?? 0} سائق × ${money(p.premiumPerPersonSar)}`,
+                     `Total ${money(p.computedPremiumSar ?? 0)} SAR — ${p.drivers?.coveredCount ?? 0} drivers × ${money(p.premiumPerPersonSar)}`)}
+                </p>
+              )}
+              {subjectOf(p) === 'vehicles' && p.computedPremiumSar != null && (
+                <p className="mt-2 text-[11.5px] text-slate-500">
+                  {t(`الإجمالي: ${money(p.computedPremiumSar)} ر.س — ${p.vehicleCount} سيارة × ${money(p.premiumPerVehicleSar)}`,
+                     `Total ${money(p.computedPremiumSar)} SAR — ${p.vehicleCount} vehicles × ${money(p.premiumPerVehicleSar)}`)}
                 </p>
               )}
 
@@ -149,7 +164,7 @@ export default function CorporatePoliciesPage() {
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-[11px] text-slate-500 inline-flex items-center gap-1.5">
                       <Users className="w-3.5 h-3.5 text-[#f37121]" />
-                      {t('المشمولون بالوثيقة', 'People covered')}:
+                      {t('السائقون المشمولون', 'Drivers covered')}:
                       <b className="text-slate-800">{p.drivers?.coveredCount ?? 0}</b>
                       {!!p.drivers?.pending?.length && (
                         <span className="text-red-600 font-semibold">
@@ -437,15 +452,19 @@ function PolicyForm({ p, ar, t, onClose, onDone, notify }: any) {
     // ── القسطُ: للرأس أو مقطوعًا، لا الاثنان ────────────────────────────────
     // وثيقةٌ تُشترى بالرأس يُكتب سعرُ رأسها ويُحسب إجماليُّها؛ وكتابةُ الاثنين
     // تجعل الشاشةَ تعرض رقمين لا يُعرف أيُّهما الصحيح.
-    perHead: p?.premiumPerPersonSar != null,
+    subject: (p?.coverageSubject || (p?.coversDrivers ? 'drivers' : 'other')) as Subject,
     premiumPerPersonSar: p?.premiumPerPersonSar ?? '',
+    premiumPerVehicleSar: p?.premiumPerVehicleSar ?? '',
+    vehicleCount: p?.vehicleCount ?? '',
     premiumSar: p?.premiumSar ?? '',
-    coversDrivers: !!p?.coversDrivers,
     statusAr: p?.statusAr || '',
     notesAr: p?.notesAr || '',
   });
   const set = (k: string, v: any) => setF((x) => ({ ...x, [k]: v }));
   const [busy, setBusy] = useState(false);
+  const num = (v: any) => (v === '' || v == null ? null : Number(v));
+  const vehTotal = f.premiumPerVehicleSar !== '' && f.vehicleCount !== ''
+    ? Math.round(Number(f.premiumPerVehicleSar) * Number(f.vehicleCount) * 100) / 100 : null;
 
   const save = async () => {
     if (!f.scopeAr.trim()) { notify(t('اكتب اسم الوثيقة', 'Enter the policy name'), 'error'); return; }
@@ -454,9 +473,15 @@ function PolicyForm({ p, ar, t, onClose, onDone, notify }: any) {
       const body: any = {
         scopeAr: f.scopeAr.trim(), policyholderAr: f.policyholderAr.trim(), companyAr: f.companyAr.trim(),
         policyNumbers: f.policyNumbers, startDate: f.startDate || null, expiryDate: f.expiryDate || null,
-        statusAr: f.statusAr.trim(), notesAr: f.notesAr.trim(), coversDrivers: f.coversDrivers,
-        premiumPerPersonSar: f.perHead ? (f.premiumPerPersonSar === '' ? null : Number(f.premiumPerPersonSar)) : null,
-        premiumSar: f.perHead ? null : (f.premiumSar === '' ? null : Number(f.premiumSar)),
+        statusAr: f.statusAr.trim(), notesAr: f.notesAr.trim(),
+        coverageSubject: f.subject,
+        premiumPerPersonSar: f.subject === 'drivers' ? num(f.premiumPerPersonSar) : null,
+        premiumPerVehicleSar: f.subject === 'vehicles' ? num(f.premiumPerVehicleSar) : null,
+        vehicleCount: f.subject === 'vehicles' ? num(f.vehicleCount) : null,
+        // السائقون يُحسب إجماليُّهم من القائمة؛ والسيّاراتُ من السعر × العدد إن
+        // كُتبا، وإلّا فالإجماليُّ المكتوب.
+        premiumSar: f.subject === 'drivers' ? null
+          : f.subject === 'vehicles' && vehTotal != null ? vehTotal : num(f.premiumSar),
       };
       if (isNew) await createCorporatePolicy(body); else await updateCorporatePolicy(p._id, body);
       notify(t(isNew ? 'أُضيفت الوثيقة' : 'حُفظت', isNew ? 'Policy added' : 'Saved'), 'success');
@@ -489,32 +514,50 @@ function PolicyForm({ p, ar, t, onClose, onDone, notify }: any) {
             <input type="date" value={f.expiryDate} onChange={(e) => set('expiryDate', e.target.value)} className={inp} /></div>
 
           <div className="sm:col-span-2 rounded-xl border border-slate-200 p-3">
-            <label className="flex items-center gap-2 text-[13px] font-semibold text-slate-800 cursor-pointer">
-              <input type="checkbox" className="accent-[#f37121]" checked={f.perHead}
-                onChange={(e) => set('perHead', e.target.checked)} />
-              {t('القسط يُحسب لكل فرد', 'Premium is priced per person')}
-            </label>
-            <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-              {t('وثيقةٌ كخيانة الأمانة تُسعَّر لكلّ سائقٍ سنويًّا، فيُكتب سعرُ الفرد ويُحسب الإجماليُّ من عدد المشمولين — يزيد بمن يدخل وينقص بمن يخرج.',
-                 'A policy like fidelity is priced per driver per year: enter the per-head rate and the total follows the number covered.')}
+            <label className={lbl}>{t('الوثيقة تغطّي', 'This policy covers')}</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {SUBJECTS.map((x) => (
+                <button key={x.key} type="button" onClick={() => set('subject', x.key)}
+                  className={`px-2 py-2 rounded-lg border text-[12.5px] font-semibold ${f.subject === x.key
+                    ? 'border-[#f37121] bg-orange-50 text-[#f37121]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                  {ar ? x.ar : x.en}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+              {ar ? SUBJECTS.find((x) => x.key === f.subject)!.hintAr : SUBJECTS.find((x) => x.key === f.subject)!.hintEn}
             </p>
             <div className="grid grid-cols-2 gap-3 mt-3">
-              {f.perHead ? (
-                <div><label className={lbl}>{t('القسط للفرد سنويًّا (ر.س)', 'Per person / year (SAR)')}</label>
+              {f.subject === 'drivers' && (
+                <div><label className={lbl}>{t('القسط لكل سائق سنويًّا (ر.س)', 'Per driver / year (SAR)')}</label>
                   <input type="number" step="0.01" value={f.premiumPerPersonSar}
                     onChange={(e) => set('premiumPerPersonSar', e.target.value)} className={inp} /></div>
-              ) : (
-                <div><label className={lbl}>{t('القسط الإجمالي (ر.س)', 'Total premium (SAR)')}</label>
-                  <input type="number" step="0.01" value={f.premiumSar}
-                    onChange={(e) => set('premiumSar', e.target.value)} className={inp} /></div>
               )}
-              <div className="flex items-end">
-                <label className="flex items-center gap-2 text-[12.5px] text-slate-700 cursor-pointer pb-2">
-                  <input type="checkbox" className="accent-[#f37121]" checked={f.coversDrivers}
-                    onChange={(e) => set('coversDrivers', e.target.checked)} />
-                  {t('تغطّي سائقين بأسمائهم', 'Covers named drivers')}
-                </label>
-              </div>
+              {f.subject === 'vehicles' && (
+                <>
+                  <div><label className={lbl}>{t('القسط لكل سيارة (ر.س)', 'Per vehicle (SAR)')}</label>
+                    <input type="number" step="0.01" value={f.premiumPerVehicleSar}
+                      onChange={(e) => set('premiumPerVehicleSar', e.target.value)} className={inp} /></div>
+                  <div><label className={lbl}>{t('عدد السيارات', 'Number of vehicles')}</label>
+                    <input type="number" step="1" min="0" value={f.vehicleCount}
+                      onChange={(e) => set('vehicleCount', e.target.value)} className={inp} /></div>
+                </>
+              )}
+              {f.subject !== 'drivers' && (
+                <div className={f.subject === 'vehicles' ? 'col-span-2' : ''}>
+                  <label className={lbl}>{t('القسط الإجمالي (ر.س)', 'Total premium (SAR)')}</label>
+                  {f.subject === 'vehicles' && vehTotal != null ? (
+                    <p className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-800">
+                      {money(vehTotal)} <span className="text-[11px] font-normal text-slate-500">
+                        {t(`= ${f.vehicleCount} سيارة × ${money(Number(f.premiumPerVehicleSar))}`, `= ${f.vehicleCount} × ${money(Number(f.premiumPerVehicleSar))}`)}
+                      </span>
+                    </p>
+                  ) : (
+                    <input type="number" step="0.01" value={f.premiumSar}
+                      onChange={(e) => set('premiumSar', e.target.value)} className={inp} />
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -582,7 +625,7 @@ function DriverRoster({ p, ar, t, onClose, onChanged, notify, canEdit }: any) {
       <div className="bg-white rounded-2xl w-full max-w-2xl my-4 max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200">
           <div>
-            <h3 className="font-bold text-slate-900">{t('المشمولون بالوثيقة', 'People covered')}</h3>
+            <h3 className="font-bold text-slate-900">{t('السائقون المشمولون', 'Drivers covered')}</h3>
             <p className="text-[12px] text-slate-500">{p.scopeAr}</p>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-900"><X className="w-5 h-5" /></button>
@@ -597,7 +640,7 @@ function DriverRoster({ p, ar, t, onClose, onChanged, notify, canEdit }: any) {
           </div>
           {p.premiumPerPersonSar != null && (
             <p className="text-[11.5px] text-slate-500 mt-2">
-              {t(`القسط للفرد ${money(p.premiumPerPersonSar)} ر.س سنويًّا — الإجمالي الآن ${money((p.premiumPerPersonSar || 0) * covered.length)} ر.س`,
+              {t(`القسط لكل سائق ${money(p.premiumPerPersonSar)} ر.س سنويًّا — الإجمالي الآن ${money((p.premiumPerPersonSar || 0) * covered.length)} ر.س`,
                  `${money(p.premiumPerPersonSar)} SAR per person — total now ${money((p.premiumPerPersonSar || 0) * covered.length)} SAR`)}
             </p>
           )}
@@ -633,3 +676,18 @@ function DriverRoster({ p, ar, t, onClose, onChanged, notify, canEdit }: any) {
     </div>
   );
 }
+
+type Subject = 'drivers' | 'vehicles' | 'goods' | 'other';
+const SUBJECTS: { key: Subject; ar: string; en: string; hintAr: string; hintEn: string }[] = [
+  { key: 'vehicles', ar: 'السيارات', en: 'Vehicles',
+    hintAr: 'يُحسب القسط لكل سيارة: اكتب سعر السيارة وعددها ويُحسب الإجمالي — أو اكتب الإجمالي مباشرةً.',
+    hintEn: 'Priced per vehicle: enter the rate and the count, or the total directly.' },
+  { key: 'goods', ar: 'البضائع', en: 'Goods',
+    hintAr: 'تأمين على البضائع المنقولة — قسط إجمالي واحد.', hintEn: 'Cargo cover — one total premium.' },
+  { key: 'drivers', ar: 'السائقين', en: 'Drivers',
+    hintAr: 'مثل خيانة الأمانة: القسط لكل سائق، والإجمالي من عدد السائقين المشمولين بأسمائهم — يزيد بمن يدخل وينقص بمن يخرج.',
+    hintEn: 'Like fidelity: priced per named driver; the total follows the number covered.' },
+  { key: 'other', ar: 'أخرى', en: 'Other',
+    hintAr: 'قسط إجمالي واحد.', hintEn: 'One total premium.' },
+];
+const subjectOf = (p: any): Subject => p?.coverageSubject || (p?.coversDrivers ? 'drivers' : 'other');

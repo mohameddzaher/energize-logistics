@@ -309,6 +309,15 @@ const corporatePolicySchema = new mongoose.Schema({
   // يعني سجلَّين يفترقان عند أوّل إضافة. هذا العَلَم يقول للشاشة فقط: اعرض
   // لهذه الوثيقة لوحةَ السائقين المشمولين، والإضافةُ والحذفُ يكتبان في البطاقة.
   coversDrivers: { type: Boolean, default: false },
+
+  // ── وما تغطّيه الوثيقة، وبه يُحسب قسطُها ─────────────────────────────────
+  // لكلّ وثيقةٍ موضوع، والتسعيرُ يتبعه: السائقون بالرأس (خيانة الأمانة)،
+  // والسيّاراتُ بالسيّارة (عقد الجبر)، والبضائعُ مبلغًا مقطوعًا. كان الخيارُ
+  // «بالفرد أو مقطوعًا» فقط، فظهرت وثيقةُ السيّارات والبضائع وكأنّ السؤالَ فيهما
+  // عن أفراد.
+  coverageSubject: { type: String, enum: ['drivers', 'vehicles', 'goods', 'other', ''], default: '' },
+  premiumPerVehicleSar: { type: Number, default: null },
+  vehicleCount: { type: Number, default: null },
   notesAr2: { type: String, default: '' },
   statusAr: { type: String, default: '' },
   statusCode: { type: String, default: '' },

@@ -2365,6 +2365,13 @@ exports.listCorporatePolicies = async (req, res) => {
       policies: rows.map((p) => {
         const st = VDOC.stateOf(p.expiryDate, '', cfg.alerts?.corporatePolicy);
         const out = { ...p, state: st.state, daysRemaining: st.days };
+        // الوثائقُ القديمة بلا موضوعٍ مكتوب: يُستنتج من تسعيرها.
+        if (!out.coverageSubject) out.coverageSubject = p.coversDrivers ? 'drivers' : 'other';
+        if (out.coverageSubject === 'vehicles') {
+          out.computedPremiumSar = p.premiumPerVehicleSar != null && p.vehicleCount != null
+            ? Math.round(p.premiumPerVehicleSar * p.vehicleCount * 100) / 100
+            : null;
+        }
         if (p.coversDrivers) {
           const covered = cards.filter((c) => c.fidelity?.status === 'covered');
           const pending = cards.filter((c) => c.fidelity?.status === 'required');
@@ -2394,7 +2401,9 @@ exports.listCorporatePolicies = async (req, res) => {
 
 /** الحقولُ التي تُكتب على وثيقة الشركة — لا يُكتب غيرُها من الشاشة. */
 const CORP_FIELDS = ['scopeAr', 'policyholderAr', 'policyNumbers', 'companyAr', 'startDate',
-  'expiryDate', 'premiumSar', 'premiumPerPersonSar', 'statusAr', 'notesAr', 'coversDrivers'];
+  'expiryDate', 'premiumSar', 'premiumPerPersonSar', 'statusAr', 'notesAr', 'coversDrivers',
+  'coverageSubject', 'premiumPerVehicleSar', 'vehicleCount'];
+const SUBJECTS = ['drivers', 'vehicles', 'goods', 'other'];
 
 /**
  * إنشاءُ وثيقةِ شركةٍ وتعديلُها — كانت الصفحةُ تعرض ولا تكتب إلّا التجديد،
@@ -2409,11 +2418,20 @@ const pickCorp = (body) => {
         : String(body[k] || '').split(/[,،\n]/).map((x) => x.trim()).filter(Boolean);
     } else if (k === 'expiryDate' || k === 'startDate') {
       out[k] = body[k] ? new Date(body[k]) : null;
-    } else if (k === 'premiumSar' || k === 'premiumPerPersonSar') {
+    } else if (k === 'coverageSubject') {
+      out[k] = SUBJECTS.includes(body[k]) ? body[k] : '';
+    } else if (['premiumSar', 'premiumPerPersonSar', 'premiumPerVehicleSar', 'vehicleCount'].includes(k)) {
       out[k] = body[k] === '' || body[k] === null ? null : Number(body[k]);
     } else if (k === 'coversDrivers') {
       out[k] = !!body[k];
     } else out[k] = String(body[k] ?? '').trim();
+  }
+  // الموضوعُ يحسم الباقي: لا تبقى قائمةُ سائقين على وثيقة بضائع، ولا سعرُ رأسٍ
+  // على وثيقة سيّارات يُحسب منه إجماليٌّ لا معنى له.
+  if (out.coverageSubject) {
+    out.coversDrivers = out.coverageSubject === 'drivers';
+    if (out.coverageSubject !== 'drivers') out.premiumPerPersonSar = null;
+    if (out.coverageSubject !== 'vehicles') { out.premiumPerVehicleSar = null; out.vehicleCount = null; }
   }
   return out;
 };

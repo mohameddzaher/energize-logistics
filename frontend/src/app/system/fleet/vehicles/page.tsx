@@ -227,7 +227,7 @@ export default function FleetVehiclesPage() {
                     شاحنةً صيانتُها متأخّرة تُحمَّل اليوم وتقف في الطريق غدًا. */}
                 <td className="px-4 py-3 whitespace-nowrap">
                   {!v.maintenance ? <span className="text-slate-300">—</span> : (
-                    <Link href={`/system/ls2/vehicles?q=${encodeURIComponent(v.plate)}`}
+                    <Link href={v.maintenance.unitId != null ? `/system/ls2/${v.maintenance.unitId}` : `/system/ls2/fleet-assets?tab=tires&q=${encodeURIComponent(v.plate)}`}
                       className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg font-semibold hover:opacity-80 ${
                         v.maintenance.status === 'overdue' ? 'bg-red-50 text-red-700'
                           : v.maintenance.status === 'due' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}

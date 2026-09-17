@@ -76,12 +76,36 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     return digits.isNotEmpty ? digits : west.trim().toUpperCase();
   }
 
-  Future<void> _post(String path, Map<String, dynamic> body, String okMsg, {Future<bool> Function(Map<String, dynamic>)? onDisplaced}) async {
+  Future<void> _post(String path, Map<String, dynamic> body, String okMsg, {Future<bool> Function(Map<String, dynamic>)? onDisplaced, Map<String, dynamic>? tire}) async {
     try {
       await Api.instance.post(path, body);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(okMsg)));
       _load();
     } on ApiException catch (e) {
+      // ── «الموقع لا يجوز أن يبقى فارغًا» ─────────────────────────────────
+      // الخادمُ يقول أيَّ موقعٍ بقي فارغًا في سلسلة البدائل: الموقع الذي أخلته
+      // الفردة نفسُها، أو موقعُ فردةٍ سُحبت من عربيةٍ أخرى (كانت عليه X).
+      // فنسأل عن فردةٍ له ونعيد الطلب بالسلسلة أطول بخطوة — حتى تأتي فردةٌ من
+      // المستودع. والقاعدةُ واحدةٌ في الخادم، لا نسخةٌ ثانيةٌ منها هنا.
+      if (e.status == 400 && tire != null && e.message.contains('لا يجوز أن يبقى فارغًا')) {
+        final m = RegExp(r'كانت عليه (\S+)').firstMatch(e.message);
+        final all = _l(_d?['tires']);
+        final source = m == null
+            ? tire
+            : all.firstWhere((x) => (x['serial'] ?? '').toString() == m.group(1), orElse: () => tire);
+        final chain = [
+          ...[body['replacementTireId'], body['secondReplacementTireId']].where((x) => x != null).map((x) => x.toString()),
+          ...((body['chain'] as List?) ?? const []).map((x) => x.toString()),
+        ];
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+        }
+        final picked = await _pickReplacement(source, alsoExclude: [(tire['_id'] ?? '').toString(), ...chain]);
+        if (picked != null && picked.isNotEmpty) {
+          await _post(path, {...body, 'chain': [...((body['chain'] as List?) ?? const []), picked['_id']]}, okMsg, onDisplaced: onDisplaced, tire: tire);
+        }
+        return;
+      }
       // «الموقع مشغول» — نسأل عن مصير القاطن ثم نعيد الطلب نفسه + displacedTo.
       if (e.status == 400 && onDisplaced != null && e.message.contains('مشغول')) {
         final retry = await onDisplaced(body);
@@ -227,6 +251,11 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                                           if ((t['type'] ?? '').toString().isNotEmpty) Chip2('${t['type']} ${t['size'] ?? ''}'.trim(), T.inkFaint),
                                           if (t['sensor'] == 'yes') Chip2(tr('حساس', 'Sensor'), T.cyan, icon: Icons.sensors),
                                         ]),
+                                        // المكانُ الآن بكلمات — كعمود «المكان الآن» في الموقع.
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 5),
+                                          child: Text(_placeOf(t), style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: st.$3)),
+                                        ),
                                         // إجراء سريع: تركيب الفردة المتاحة على شاحنة مباشرة.
                                         if (t['status'] == 'spare' || t['status'] == 'in_repair') ...[
                                           const SizedBox(height: 6),
@@ -375,7 +404,8 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                     return FadeSlideIn(
                       delayMs: (i * 10).clamp(0, 120),
                       child: Pressable(
-                        onTap: plate.isEmpty ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => Ls2VehicleAssetsScreen(plate: plate))),
+                        // التيدرُ يُفتح على كاوتشاته هو — وأمام كلّ فردةٍ إجراءاتُها.
+                        onTap: () => _trailerTires(t),
                         child: AppCard(
                           topAccent: st.$3,
                           child: Row(children: [
@@ -561,7 +591,6 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     final percent = TextEditingController();
     final reason = TextEditingController();
     Map<String, dynamic>? replacement;
-    Map<String, dynamic>? secondReplacement;
     bool swap = false;
     final mounted = t['status'] == 'mounted' && (t['plate'] ?? '').toString().isNotEmpty;
     final ok = await showModalBottomSheet<bool>(
@@ -633,7 +662,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                       dense: true,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                       value: swap,
-                      onChanged: (v) => setS(() { swap = v ?? false; if (swap) secondReplacement = null; }),
+                      onChanged: (v) => setS(() => swap = v ?? false),
                       title: Text(
                         tr('تبديل متبادل: هذه الفردة تُركَّب مكان ${replacement!['serial']} على المركبة ${replacement!['plate']} (بدل نزولها).',
                            "Two-way swap: this tire takes ${replacement!['serial']}'s slot on truck ${replacement!['plate']}."),
@@ -641,28 +670,15 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                       ),
                     ),
                   ),
-                  // بدون تبديل: اختر فردة تملأ مكان البديلة على عربيتها (مخزن أو عربية ثالثة).
-                  if (!swap) ...[
-                    const SizedBox(height: 8),
-                    Text(tr('يملأ مكان ${replacement!['serial']} على ${replacement!['plate']} (اختياري):', "Fills ${replacement!['serial']}'s slot on ${replacement!['plate']} (optional):"),
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 5),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 44)),
-                      onPressed: () async {
-                        final r = await _pickReplacement(t,
-                            alsoExclude: [(replacement!['_id'] ?? '').toString()],
-                            excludePlateKey: (replacement!['plateKey'] ?? replacement!['plate'] ?? '').toString());
-                        if (r != null) setS(() => secondReplacement = r.isEmpty ? null : r);
-                      },
-                      icon: const Icon(Icons.add_circle_outline, size: 16),
-                      label: Text(
-                        secondReplacement == null ? tr('— دون —', '— none —') : '${secondReplacement!['serial']}${secondReplacement!['status'] == 'mounted' ? ' · ${tr('من', 'from')} ${secondReplacement!['plate']}' : ' · ${tr('مخزن', 'store')}'}',
-                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
-                      ),
+                  // بدون تبديل: البديلةُ أخلت موقعًا على عربيتها، وسيُطلب ملؤه بعد الضغط
+                  // على «فك» — إلزاميًّا، حتى تأتي فردةٌ من المستودع.
+                  if (!swap)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(tr('بعد التنفيذ سيُطلب منك فردةٌ تملأ مكان ${replacement!['serial']} على ${replacement!['plate']} — إلزامي.',
+                          "You'll then be asked for a tire to fill ${replacement!['serial']}'s slot on ${replacement!['plate']} — required."),
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: T.warn)),
                     ),
-                    Text(tr('من المخزن أو من عربية ثالثة.', 'From store, or a third truck.'), style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
-                  ],
                 ],
               ],
               const SizedBox(height: 14),
@@ -688,8 +704,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
       if (!doSwap && destination == 'store' && percent.text.trim().isNotEmpty) 'conditionPercent': num.tryParse(percent.text),
       if (reason.text.trim().isNotEmpty) 'reason': reason.text.trim(),
       if (replacement != null) 'replacementTireId': replacement!['_id'],
-      if (!doSwap && secondReplacement != null) 'secondReplacementTireId': secondReplacement!['_id'],
-    }, doSwap ? tr('تم التبديل', 'Swapped') : tr('تم الفك', 'Dismounted'));
+    }, doSwap ? tr('تم التبديل', 'Swapped') : tr('تم الفك', 'Dismounted'), tire: t);
   }
 
   // منتقي لوحة شاحنة من اللوحات المتاحة (بحث سريع).
@@ -736,7 +751,101 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
 
   // منتقي فردة: المخزن + المركّبة على أي مركبة (بما فيها نفس المركبة = الاستبن)،
   // مع استثناء فردات محددة. الترتيب: مخزن ← نفس المركبة ← مركبات أخرى.
-  Future<Map<String, dynamic>?> _pickReplacement(Map<String, dynamic> source, {List<String> alsoExclude = const [], String? excludePlateKey}) {
+  /// كاوتشاتُ تيدرٍ واحد: ما يحمل رقمَه وهو مركَّب، وما رُكِّب في قسم التيدر على
+  /// العربية التي تجرّه ولم يُكتب عليه رقمُ تيدر (سجلّاتٌ قديمة).
+  Future<void> _trailerTires(Map<String, dynamic> trailer) async {
+    final no = (trailer['trailerNumber'] ?? '').toString();
+    final key = (trailer['currentPlateKey'] ?? '').toString();
+    final list = _l(_d?['tires']).where((x) => x['status'] == 'mounted' && (
+      (x['trailerNumber'] ?? '').toString() == no
+      || ((x['trailerNumber'] ?? '').toString().isEmpty && key.isNotEmpty
+          && (x['plateKey'] ?? '').toString() == key && RegExp('تيدر|تريلة').hasMatch((x['section'] ?? '').toString()))
+    )).toList()
+      ..sort((a, b) => ((a['positionNumber'] as num?) ?? 99).compareTo((b['positionNumber'] as num?) ?? 99));
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.of(c).size.height * 0.75,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+              child: Text('${tr('كاوتشات التيدر', 'Trailer tires')} $no', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                '${(trailer['currentPlate'] ?? '').toString().isNotEmpty ? '${tr('على', 'on')} ${trailer['currentPlate']}' : tr('غير مركّب', 'unhitched')} · ${list.length} ${tr('فردة', 'tires')}',
+                style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: list.isEmpty
+                  ? EmptyState(icon: Icons.circle_outlined, title: tr('لا كاوتشات مسجّلة على هذا التيدر', 'No tires on this trailer'))
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+                      itemCount: list.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (_, i) {
+                        final t = list[i];
+                        return Pressable(
+                          onTap: () { Navigator.pop(c); _tireSheet(t); },
+                          child: AppCard(
+                            child: Row(children: [
+                              Expanded(
+                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  Text('${t['serial'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+                                  Text([t['positionLabel'], t['section']].where((x) => (x ?? '').toString().isNotEmpty).join(' · '),
+                                      style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                                ]),
+                              ),
+                              if (t['conditionPercent'] != null) Chip2('${t['conditionPercent']}%', T.orange),
+                              const Icon(Icons.chevron_left_rounded, color: T.inkFaint),
+                            ]),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// أين الفردة الآن — مركّبةٌ على أيّ جزء، أو في أيّ ركنٍ من المستودع، أو خارج العهدة.
+  String _placeOf(Map<String, dynamic> t) {
+    final k = tireStateKey(t);
+    final section = (t['section'] ?? '').toString();
+    if (k == 'mounted') {
+      final trailerNo = (t['trailerNumber'] ?? '').toString();
+      String plate = (t['plate'] ?? '').toString();
+      if (plate.isEmpty && trailerNo.isNotEmpty) {
+        final tr0 = _l(_d?['trailers']).firstWhere((x) => (x['trailerNumber'] ?? '').toString() == trailerNo, orElse: () => <String, dynamic>{});
+        plate = (tr0['currentPlate'] ?? '').toString();
+      }
+      final where = (t['isSpare'] == true || section.contains('استبن'))
+          ? tr('الاستبن', 'the spare slot')
+          : (RegExp('تيدر|تريلة').hasMatch(section) && trailerNo.isNotEmpty)
+              ? tr('التيدر $trailerNo', 'trailer $trailerNo')
+              : (section.isNotEmpty ? section : tr('العربية', 'the vehicle'));
+      return '${tr('مركّبة — على', 'Mounted — on')} $where${plate.isNotEmpty ? ' · $plate' : ''}';
+    }
+    const place = {
+      'new': ('في المستودع — جديدة', 'In store — new'),
+      'used': ('في المستودع — مستعملة', 'In store — used'),
+      'under_renewal': ('في المستودع — تحت التجديد', 'In store — under renewal'),
+      'at_factory': ('في مصنع التجديد', 'At the retreading factory'),
+      'scrap': ('في المستودع — سكراب', 'In store — scrap'),
+      'damaged': ('تالفة — خارج العهدة', 'Damaged — written off'),
+      'sold': ('مباعة — خارج العهدة', 'Sold — written off'),
+    };
+    final v = place[k] ?? place['used']!;
+    return tr(v.$1, v.$2);
+  }
+
+  Future<Map<String, dynamic>?> _pickReplacement(Map<String, dynamic> source, {List<String> alsoExclude = const []}) {
     final all = _l(_d?['tires']);
     final excludeIds = {(source['_id'] ?? '').toString(), ...alsoExclude};
     final srcKey = (source['plateKey'] ?? source['plate'] ?? '').toString();
@@ -922,7 +1031,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
       'toPlate': plate.text.trim(),
       if (position.text.trim().isNotEmpty) 'positionNumber': num.tryParse(position.text),
     };
-    await _post('/api/ls2/assets/tires/${t['_id']}/move', body, tr('تم التركيب', 'Mounted'), onDisplaced: (b) async {
+    await _post('/api/ls2/assets/tires/${t['_id']}/move', body, tr('تم التركيب', 'Mounted'), tire: t, onDisplaced: (b) async {
       final fate = await showDialog<String>(
         context: context,
         builder: (c) => SimpleDialog(
@@ -952,7 +1061,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
       num? pct;
       if (fate == 'store') pct = await _askPercent();
       await _post('/api/ls2/assets/tires/${t['_id']}/move',
-          {...b, 'displacedTo': fate, if (pct != null) 'displacedConditionPercent': pct}, tr('تم التركيب', 'Mounted'));
+          {...b, 'displacedTo': fate, if (pct != null) 'displacedConditionPercent': pct}, tr('تم التركيب', 'Mounted'), tire: t);
       return true;
     });
   }

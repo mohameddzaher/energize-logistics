@@ -372,6 +372,64 @@ async function mountSpareTire(req, tireId, slot, when, reason) {
   return r;
 }
 
+/** موقعُ استبن: الموقع الوحيد المسموح أن يبقى فارغًا — العربية تمشي من غيره. */
+const isSpareSlot = (slot) => !!slot && (slot.isSpare || /استبن/.test(String(slot.section || '')));
+const slotOf = (t) => ({
+  plate: t.plate, plateKey: t.plateKey, positionNumber: t.positionNumber,
+  positionLabel: t.positionLabel, section: t.section, isSpare: t.isSpare,
+});
+
+/**
+ * ── سلسلةُ البدائل: لا يبقى موقعٌ فارغ ─────────────────────────────────────
+ *
+ * فردةٌ تنزل أو تُنقل من عربية تُخلي موقعًا، وتُركَّب مكانها بديلة. فإن جاءت
+ * البديلةُ من المستودع انتهى الأمر. وإن سُحبت من عربيةٍ أخرى فقد أخلت هي
+ * موقعًا هناك، وهو كذلك لا يبقى فارغًا — فتلزم بديلةٌ ثالثة، وهكذا حتى تأتي
+ * فردةٌ من المستودع أو يكون الموقعُ الأخير استبنًا.
+ *
+ * كانت البديلةُ الأولى إلزاميّةً والثانية اختياريّة، فتُسحب فردةٌ من عربيةٍ
+ * لتسدّ عربيةً وتمشي الأولى ناقصة — والنظامُ يوافق.
+ *
+ * وتُفحَص السلسلةُ كلُّها **قبل** أيّ كتابة: كان كلُّ نصفٍ يُنفَّذ ثمّ يُفحص
+ * التالي، فيقع خطأٌ في الثالث بعد أن تحرّكت اثنتان.
+ *
+ * يعيد `{ error }` أو `{ steps }` — كلُّ خطوةٍ فردةٌ والموقعُ الذي تُركَّب فيه.
+ */
+async function planReplacementChain({ movedTire, vacated, chainIds, excludeIds = [] }) {
+  const steps = [];
+  const used = new Set([String(movedTire._id), ...excludeIds.map(String)]);
+  let pending = vacated && !isSpareSlot(vacated) ? vacated : null;
+  let slot = vacated;
+  for (const id of chainIds) {
+    if (!slot) return { error: 'لا يوجد موقعٌ أُخلي لتُركَّب فيه هذه الفردة' };
+    if (used.has(String(id))) return { error: 'الفردة نفسها مختارة مرّتين في سلسلة البدائل' };
+    used.add(String(id));
+    const r = await Ls2TireAsset.findById(id).lean();
+    if (!r) return { error: 'الفردة البديلة غير موجودة' };
+    if (!['spare', 'mounted'].includes(r.status)) {
+      return { error: `الفردة البديلة ${r.serial} ليست متاحة للتركيب — حالتها الحالية لا تسمح بذلك` };
+    }
+    steps.push({ id: String(r._id), serial: r.serial, slot });
+    if (r.status === 'mounted' && r.plateKey) {
+      slot = slotOf(r);
+      pending = isSpareSlot(slot) ? null : { ...slot, serial: r.serial };
+    } else {
+      slot = null;
+      pending = null;
+    }
+  }
+  if (pending) {
+    return {
+      error: `الموقع «${pending.positionLabel || pending.positionNumber}» على ${pending.plate} `
+        + (pending.serial ? `(كانت عليه ${pending.serial}) ` : '')
+        + 'لا يجوز أن يبقى فارغًا — اختر فردةً تُركَّب مكانها: من المستودع، أو من عربيةٍ أخرى ثمّ املأ مكانها هي أيضًا.',
+      code: 'REPLACEMENT_REQUIRED',
+      vacating: { plate: pending.plate, positionNumber: pending.positionNumber, positionLabel: pending.positionLabel, section: pending.section },
+    };
+  }
+  return { steps };
+}
+
 exports.moveTire = async (req, res) => {
   try {
     const tire = await Ls2TireAsset.findById(req.params.id);
@@ -389,26 +447,27 @@ exports.moveTire = async (req, res) => {
       return res.status(400).json({ message: 'الفردة البديلة هي نفسها الفردة المُنزَلة' });
     }
 
-    // ── قاعدة الشغل: الموقع ما بيفضلش فاضي ────────────────────────────────────
-    // فردة ما بتنزلش من على عربية إلا لما حاجة تتركب مكانها أو تتبدّل بيها.
-    // العربية بتمشي على ١٤ فردة؛ سلوت فاضي يا إما شغل ما اتسجّلش يا إما عربية
-    // نزلت الطريق ناقصة. الاتنين لازم يبانوا وقت الحركة نفسها، مش في جرد بعد
-    // شهر — ساعتها محدش فاكر الفردة راحت فين ولا مين نزّلها.
-    //
-    // مسموح من غير بديل في حالة واحدة بس: الاستبن. الاستبن مش موقع شغّال —
-    // العربية بتمشي من غيره فعلاً، وأول ما يتركّب في مكان فردة فقعت، مكانه
-    // بيفضل فاضي لحد ما يتشتري واحد جديد. منع ده كان هيمنع تسجيل الواقع.
-    const spareSlot = vacated && (vacated.isSpare || /استبن/.test(String(vacated.section || '')));
-    if (vacated && !toPlate && !replacementTireId && !spareSlot) {
-      return res.status(400).json({
-        code: 'REPLACEMENT_REQUIRED',
-        message: `الموقع «${vacated.positionLabel || vacated.positionNumber}» على ${vacated.plate} `
-          + 'لا يجوز أن يبقى فارغًا — اختر الفردة اللي هتتركب مكانها، أو اعمل تبديل مع فردة تانية.',
-        vacating: {
-          plate: vacated.plate, positionNumber: vacated.positionNumber,
-          positionLabel: vacated.positionLabel, section: vacated.section,
-        },
-      });
+    // ── قاعدة الشغل: الموقع ما بيفضلش فاضي — ولا في آخر السلسلة ──────────────
+    // راجع planReplacementChain. والتبديلُ المتبادل (`swap`) يملأ الموقعين
+    // بنفسه، فلا سلسلةَ له.
+    const chainIds = [replacementTireId, secondReplacementTireId, ...(Array.isArray(req.body.chain) ? req.body.chain : [])]
+      .filter(Boolean).map(String);
+    let plan = { steps: [] };
+    if (destination !== 'swap') {
+      // الفردةُ الساكنةُ في الموقع الهدف لها مصيرُها في `displacedTo`، فلا
+      // تُسحَب بديلةً في العملية نفسها — ذاك تبديلٌ، وله خيارُه.
+      const exclude = [];
+      if (toPlate && positionNumber != null) {
+        const occ = await Ls2TireAsset.findOne({ plateKey: plateKey(toPlate), positionNumber, status: 'mounted', _id: { $ne: tire._id } }).select('_id').lean();
+        if (occ) exclude.push(occ._id);
+      }
+      // النقلُ داخل موقعه نفسه لا يُخلي شيئًا.
+      const sameSlot = vacated && toPlate && plateKey(toPlate) === vacated.plateKey
+        && String(positionNumber) === String(vacated.positionNumber);
+      plan = await planReplacementChain({ movedTire: tire, vacated: sameSlot ? null : vacated, chainIds, excludeIds: exclude });
+      if (plan.error) {
+        return res.status(400).json({ code: plan.code, message: plan.error, vacating: plan.vacating });
+      }
     }
 
     const when = date ? new Date(date) : new Date();
@@ -534,38 +593,20 @@ exports.moveTire = async (req, res) => {
         notes: [notes, toStatus === 'spare' && conditionPercent != null && conditionPercent !== '' ? `الحالة ${conditionPercent}%` : ''].filter(Boolean).join(' — '),
       });
     }
-    // النصف الثاني من التبديل: بديل يُركَّب في الموقع الذي أُخلي — من المخزن أو
-    // مسحوب من عربية أخرى (يُنقل تلقائيًا). نلتقط موقع البديلة قبل تحريكها حتى
-    // نتمكن من ملء مكانها بفردة ثالثة.
-    let replacement = null;
-    let backfillSlot = null; // موقع البديلة على عربيتها (يُملأ بالفردة الثالثة)
-    if (replacementTireId && vacated) {
-      const yPeek = await Ls2TireAsset.findById(replacementTireId).lean();
-      if (yPeek && yPeek.status === 'mounted' && yPeek.plateKey) {
-        backfillSlot = { plate: yPeek.plate, plateKey: yPeek.plateKey, positionNumber: yPeek.positionNumber, positionLabel: yPeek.positionLabel, section: yPeek.section, isSpare: yPeek.isSpare };
-      }
+    // ── تنفيذُ السلسلة: كلُّ فردةٍ في الموقع الذي أخلته سابقتُها ───────────────
+    // المواقعُ حُسبت في التخطيط قبل أيّ حركة، فلا يقرأ تنفيذٌ موقعًا غيّره ما قبله.
+    const placed = [];
+    for (const step of plan.steps) {
       try {
-        replacement = await mountSpareTire(req, replacementTireId, vacated, when, reason);
+        placed.push(await mountSpareTire(req, step.id, step.slot, when, reason));
       } catch (err) {
-        // الفردة الأساسية تحركت بنجاح — بلّغ عن البديل فقط بدل إفشال كل العملية.
-        return res.status(400).json({ message: err.message, tire, partial: true });
+        return res.status(400).json({ message: err.message, tire, placed, partial: true });
       }
     }
-    // النصف الثالث (اختياري ومرن): فردة تملأ مكان البديلة على عربيتها — من المخزن
-    // أو من عربية ثالثة. للحالات الكثيرة في الورشة (سلسلة تبديل).
-    let secondReplacement = null;
-    if (secondReplacementTireId && backfillSlot) {
-      if ([String(tire._id), String(replacementTireId)].includes(String(secondReplacementTireId))) {
-        return res.status(400).json({ message: 'الفردة التي تملأ المكان يجب أن تكون مختلفة عن الفردتين السابقتين', tire, replacement, partial: true });
-      }
-      try {
-        secondReplacement = await mountSpareTire(req, secondReplacementTireId, backfillSlot, when, reason);
-      } catch (err) {
-        return res.status(400).json({ message: err.message, tire, replacement, partial: true });
-      }
-    }
+    const replacement = placed[0] || null;
+    const secondReplacement = placed[1] || null;
     await clearSensorNotice(from.key, toPlate ? plateKey(toPlate) : null);
-    res.json({ tire, replacement, secondReplacement });
+    res.json({ tire, replacement, secondReplacement, chain: placed });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
@@ -1208,15 +1249,23 @@ exports.getTireProfile = async (req, res) => {
       ageDays: Math.max(0, Math.round((now - new Date(events[0]?.date || tire.createdAt)) / 86400000)),
     };
 
+    // ── رقمُ الوحدة لكلّ لوحة: صفحةُ العربية عنوانُها `/system/ls2/<unitId>` ──
+    // كانت الروابطُ تفتح `/system/ls2/vehicles?q=<اللوحة>` — صفحةٌ لا وجود لها،
+    // فيقرأ الضاغطُ «لا توجد بيانات» ويظنّ العربيةَ غيرَ مسجّلة.
+    await vehicleByKey('');
+    const unitOf = (key) => (key ? vehicleKeyCache.map.get(key)?.unitId ?? null : null);
     res.json({
       tire: {
         ...tire,
+        unitId: unitOf(tire.plateKey),
+        trailerOnUnitId: unitOf(currentTrailer?.currentPlateKey),
         state: tireState(tire),
         // العربية التي تجرّ التيدر الآن — تُذكر مع «أين هي الآن».
         trailerOnPlate: currentTrailer?.currentPlate || null,
       },
       stints: stints.slice().reverse().map((s) => ({
         ...s,
+        unitId: unitOf(s.plateKey),
         trailerOnPlate: s.trailerNumber ? (trailerBy.get(String(s.trailerNumber))?.currentPlate || null) : null,
       })),                                    // الأحدث أوّلًا
       events: events.slice().reverse(),
@@ -1228,3 +1277,4 @@ exports.getTireProfile = async (req, res) => {
     res.status(500).json({ message: e.message });
   }
 };
+exports._planReplacementChain = planReplacementChain;

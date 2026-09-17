@@ -19,7 +19,7 @@ export interface FleetVehicle {
   // إثراء حي وقت الاختيار: أين هي الآن، وماذا تحمل بالفعل، وهل وصلت وجهتها.
   live?: { city: string | null; status?: string | null; lastMessageAt?: string | null } | null;
   /** حالة الصيانة من لوكيشن سوليوشن — تُقرأ مع الموقع لأنّ القرار يحتاجهما معًا. */
-  maintenance?: { status: 'ok' | 'due' | 'overdue'; kmToService: number | null; nextServiceName: string } | null;
+  maintenance?: { status: 'ok' | 'due' | 'overdue'; kmToService: number | null; nextServiceName: string; unitId?: number | null } | null;
   trip?: { waybillNumber: number; status: string; fromCity: string; toCity: string; expectedArrival: string | null } | null;
   atDestination?: boolean;
 }
@@ -262,7 +262,7 @@ export interface FleetVehicleAnalytics {
   tech?: {
     ls2: {
       plate: string; maintenanceStatus: 'ok' | 'due' | 'overdue';
-      kmToService: number | null; nextServiceName: string; nextServiceKm: number | null;
+      kmToService: number | null; nextServiceName: string; nextServiceKm: number | null; unitId?: number | null;
       odometerKm: number | null; lastMessageAt: string | null;
     } | null;
     mountedTires: number;

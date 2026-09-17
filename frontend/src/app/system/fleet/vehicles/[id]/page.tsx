@@ -191,7 +191,7 @@ function VehicleAnalyticsInner() {
               <Wrench className="w-4 h-4 text-slate-400" />
               {ar ? 'الحالة الفنّية — لوكيشن سوليوشن والمخزن' : 'Technical state — Location Solutions & store'}
             </p>
-            <Link href={`/system/ls2/vehicles?q=${encodeURIComponent(d.vehicle.plate)}`}
+            <Link href={d.tech.ls2?.unitId != null ? `/system/ls2/${d.tech.ls2.unitId}` : `/system/ls2/fleet-assets?tab=tires&q=${encodeURIComponent(d.vehicle.plate)}`}
               className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:underline">
               <ExternalLink className="w-3.5 h-3.5" /> {ar ? 'فتحها في لوكيشن سوليوشن' : 'Open in Location Solutions'}
             </Link>

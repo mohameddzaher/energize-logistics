@@ -793,7 +793,7 @@ exports.listVehicles = async (req, res) => {
       // حالةُ الصيانة تُقرأ مع الموقع في النداء نفسه: قرارُ «أيّ شاحنةٍ
       // نُحمّل عليها» يحتاج الاثنين معًا — والشاحنةُ التي صيانتُها متأخّرة
       // تُشحن اليوم وتقف في الطريق غدًا.
-      Ls2Vehicle.find({}).select('plate name position status lastMessageAt maintenanceStatus kmToService nextServiceName').lean(),
+      Ls2Vehicle.find({}).select('plate name unitId position status lastMessageAt maintenanceStatus kmToService nextServiceName').lean(),
       FleetShipment.find({ vehicle: { $in: vehicles.map((v) => v._id) }, status: { $in: PICKER_BUSY } })
         .sort({ createdAt: -1 })
         .select('vehicle status fromCity toCity expectedArrival waybillNumber')
@@ -823,6 +823,8 @@ exports.listVehicles = async (req, res) => {
             status: lv.maintenanceStatus || 'ok',
             kmToService: lv.kmToService ?? null,
             nextServiceName: lv.nextServiceName || '',
+            // صفحةُ العربية في لوكيشن سوليوشن عنوانُها رقمُ الوحدة.
+            unitId: lv.unitId ?? null,
           } : null,
           trip: trip && {
             waybillNumber: trip.waybillNumber, status: trip.status,
@@ -2393,7 +2395,7 @@ exports.getVehicleAnalytics = async (req, res) => {
 
       const [ls2v, tires, services, repairs, issued] = await Promise.all([
         Ls2Vehicle.findOne({ $or: [{ plateKey: vKey }, { plate: plateRx }] })
-          .select('plate name maintenanceStatus kmToService nextServiceName nextServiceKm odometerKm lastMessageAt status services').lean().catch(() => null),
+          .select('plate name unitId maintenanceStatus kmToService nextServiceName nextServiceKm odometerKm lastMessageAt status services').lean().catch(() => null),
         Ls2TireAsset.countDocuments({ plateKey: vKey, status: 'mounted' }).catch(() => 0),
         Ls2ServiceLog.find({ plate: plateRx }).sort({ createdAt: -1 }).limit(10)
           .select('plate createdAt items note byName odometerKm').lean().catch(() => []),
@@ -2411,6 +2413,7 @@ exports.getVehicleAnalytics = async (req, res) => {
       tech = {
         ls2: ls2v ? {
           plate: ls2v.plate,
+          unitId: ls2v.unitId ?? null,
           maintenanceStatus: ls2v.maintenanceStatus || 'ok',
           kmToService: ls2v.kmToService,
           nextServiceName: ls2v.nextServiceName || '',

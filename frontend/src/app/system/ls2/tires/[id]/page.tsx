@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 
 interface Stint {
-  plate: string | null; plateKey: string | null; position: string;
+  plate: string | null; plateKey: string | null; position: string; unitId?: number | null;
   trailerNumber?: string | null; trailerOnPlate?: string | null;
   from: string; to: string | null; endReason: string | null;
   odoStart: number | null; odoEnd: number | null;
@@ -40,7 +40,7 @@ interface Stint {
 interface Ev { _id: string; action: string; date: string; fromPlate: string | null; toPlate: string | null; fromPosition: string; toPosition: string; reason: string; notes: string; performedByName: string; odometerKm: number | null }
 interface WhileOn { kind: 'repair' | 'service'; date: string; plate: string; title: string; detail: string; cost?: number | null; by: string }
 interface Profile {
-  tire: { _id: string; serial: string; tireNumber: string; type: string; size: string; sensor: string; status: string; condition: string; conditionPercent: number | null; plate: string | null; positionLabel: string; section: string; trailerNumber: string | null; trailerOnPlate: string | null; isSpare: boolean; notes: string; createdAt: string };
+  tire: { _id: string; serial: string; tireNumber: string; type: string; size: string; sensor: string; status: string; condition: string; conditionPercent: number | null; plate: string | null; positionLabel: string; section: string; trailerNumber: string | null; trailerOnPlate: string | null; unitId?: number | null; trailerOnUnitId?: number | null; isSpare: boolean; notes: string; createdAt: string };
   stints: Stint[]; events: Ev[]; whileOn: WhileOn[];
   totals: { stints: number; vehicles: number; km: number; days: number; mountedDays: number; repairs: number; services: number; ageDays: number; preSystem: boolean };
 }
@@ -54,6 +54,14 @@ const END_AR: Record<string, string> = {
   removed: 'نزلت', transferred: 'نُقلت', to_repair: 'ذهبت للتجديد',
   scrapped: 'سكراب', damaged: 'تلفت', sold: 'بيعت', retired: 'خرجت',
 };
+
+/**
+ * رابطُ العربية: صفحتُها بعنوان رقم الوحدة. وعربيةٌ خارج نظام التتبّع لا صفحةَ
+ * لها، فيُفتح لها جدولُ كاوتشاتها في أصول الأسطول بدل صفحةٍ فارغة.
+ */
+const vehicleHref = (unitId: number | null | undefined, plate: string) => (unitId != null
+  ? `/system/ls2/${unitId}`
+  : `/system/ls2/fleet-assets?tab=tires&q=${encodeURIComponent(plate)}`);
 
 const num = (n: number | null | undefined) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
 const day = (d?: string | null) => (d ? new Date(d).toISOString().slice(0, 10) : '—');
@@ -181,7 +189,7 @@ export default function TireProfilePage() {
           <p className="text-[13.5px] text-slate-800">
             {t('مركَّبة على', 'Mounted on')}{' '}
             {ti.plate
-              ? <Link href={`/system/ls2/vehicles?q=${encodeURIComponent(ti.plate)}`} className="font-mono font-bold text-[#f37121] hover:underline">{ti.plate}</Link>
+              ? <Link href={vehicleHref(ti.unitId, ti.plate)} className="font-mono font-bold text-[#f37121] hover:underline">{ti.plate}</Link>
               : <span className="font-mono font-bold">{ti.trailerNumber ? `${t('تيدر', 'trailer')} ${ti.trailerNumber}` : '—'}</span>}
             {/* ── والتيدر يُجرّ بعربية ────────────────────────────────────────
                 فردةُ التيدر تمشي معه لا مع العربية، فلوحةُ العربية فارغةٌ
@@ -190,7 +198,7 @@ export default function TireProfilePage() {
             {!ti.plate && ti.trailerOnPlate && (
               <>
                 <span className="text-slate-500"> — {t('والتيدر على العربية', 'and the trailer is on')} </span>
-                <Link href={`/system/ls2/vehicles?q=${encodeURIComponent(ti.trailerOnPlate)}`} className="font-mono font-bold text-[#f37121] hover:underline">{ti.trailerOnPlate}</Link>
+                <Link href={vehicleHref(ti.trailerOnUnitId, ti.trailerOnPlate)} className="font-mono font-bold text-[#f37121] hover:underline">{ti.trailerOnPlate}</Link>
               </>
             )}
             {!ti.plate && !ti.trailerOnPlate && ti.trailerNumber && (
@@ -227,7 +235,7 @@ export default function TireProfilePage() {
                 <tr key={i} className={`hover:bg-orange-50/40 ${s.current ? 'bg-emerald-50/50' : ''}`}>
                   <td className="px-3 py-2.5 whitespace-nowrap">
                     {s.plate
-                      ? <Link href={`/system/ls2/vehicles?q=${encodeURIComponent(s.plate)}`} className="font-mono font-bold text-slate-900 hover:text-[#f37121]">{s.plate}</Link>
+                      ? <Link href={vehicleHref(s.unitId, s.plate)} className="font-mono font-bold text-slate-900 hover:text-[#f37121]">{s.plate}</Link>
                       : s.trailerNumber
                         ? (
                           <span className="font-mono font-bold text-slate-900">

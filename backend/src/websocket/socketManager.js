@@ -153,9 +153,25 @@ const financeTouch = (event) => {
   }, 1500);
 };
 
+// ── والنظرةُ التنفيذيّة تسمع كلَّ قسم ─────────────────────────────────────
+// هي الشركةُ كلُّها في شاشة، فكلُّ حدثٍ في أيّ قسمٍ يعنيها — إلّا الإشعاراتِ
+// والمحادثاتِ وأحداثَ الكتابة، فلا رقمَ فيها. وتُجمَع الأحداثُ خمسَ ثوانٍ: مزامنةُ
+// المنصّة وحدها تبثّ عشراتٍ في الدقيقة.
+const EXEC_IGNORE = /^(notification|chat|remote:chat|typing|presence|user:|executive:|finance:changed|permissions:)/;
+let execTimer = null;
+const executiveTouch = (event) => {
+  if (EXEC_IGNORE.test(String(event || '')) || execTimer) return;
+  execTimer = setTimeout(() => {
+    execTimer = null;
+    try { require('../utils/ttlCache').clear('exec:'); } catch (e) { /* يكفي انتهاءُ المهلة */ }
+    if (io) io.emit('executive:changed', { at: Date.now(), event });
+  }, 5000);
+};
+
 const emitToAll = (event, data) => {
   if (io) io.emit(event, data);
   financeTouch(event);
+  executiveTouch(event);
 };
 
 /**
@@ -176,6 +192,7 @@ const emitToAll = (event, data) => {
  */
 const emitPerRole = (event, buildPayload) => {
   financeTouch(event);
+  executiveTouch(event);
   if (!io) return;
   const cache = new Map();
   for (const socket of io.sockets.sockets.values()) {
@@ -188,6 +205,7 @@ const emitPerRole = (event, buildPayload) => {
 const emitToUser = (userId, event, data) => {
   if (io) io.to(`user:${userId}`).emit(event, data);
   financeTouch(event);
+  executiveTouch(event);
 };
 
 const emitToDashboard = (role, event, data) => {

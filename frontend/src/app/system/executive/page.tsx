@@ -36,6 +36,17 @@ const kMoney = (v: any) => {
   return String(Math.round(x));
 };
 
+interface ExecKpi { ar: string; en: string; value: number | null; format: 'number' | 'money' | 'pct'; tone?: 'good' | 'bad' | 'warn' | 'auto'; href?: string; trend?: number | null; suffix?: string }
+interface ExecSection { key: string; ar: string; en: string; color: string; href: string; kpis: ExecKpi[]; chart?: { kind: 'bar' | 'pie'; ar: string; data: { name: string; value: number }[] } }
+
+const TONE: Record<string, string> = { good: 'text-emerald-600', bad: 'text-red-600', warn: 'text-amber-600' };
+const SECTION_ICON: Record<string, React.ReactNode> = {
+  finance: <DollarSign className="w-4 h-4" />, operations: <Truck className="w-4 h-4" />, collections: <Wallet className="w-4 h-4" />,
+  fleet: <Truck className="w-4 h-4" />, ls2: <Gauge className="w-4 h-4" />, vehicles: <Car className="w-4 h-4" />,
+  hr: <Users className="w-4 h-4" />, customs: <Package className="w-4 h-4" />, b2c: <Building2 className="w-4 h-4" />,
+  commercial: <TrendingUp className="w-4 h-4" />,
+};
+
 export default function ExecutiveOverviewPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
@@ -43,73 +54,53 @@ export default function ExecutiveOverviewPage() {
   const ar = lang === 'ar';
   const t = (en: string, a: string) => (ar ? a : en);
 
-  const [d, setD] = useState<AnyObj>({});
+  const [sections, setSections] = useState<ExecSection[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const debounce = useRef<any>(null);
 
+  // ── نقطةٌ واحدةٌ على الخادم ─────────────────────────────────────────────
+  // كانت الصفحةُ تنادي ثماني لوحات، أوّلُها تقرأ جداولَ قسمٍ زال فتعرض أصفارًا،
+  // وتُفتح بطاقاتُها على صفحاتٍ حُذفت. صار الخادمُ يجمع كلَّ قسمٍ من مصدره الحيّ
+  // (راجع backend executiveController)، وكلُّ رابطٍ هنا صفحةٌ موجودة.
   const load = useCallback(async () => {
     setRefreshing(true);
-    // Each section pulls from its OWN dashboard endpoint (server-side cached).
-    const jobs: { key: string; url: string }[] = [
-      { key: 'finance', url: '/api/analytics/dashboard' },
-      { key: 'overview', url: '/api/analytics/super-overview' },
-      { key: 'ls2', url: '/api/ls2/dashboard' },
-      { key: 'hr', url: '/api/hr/dashboard' },
-      { key: 'vehicles', url: '/api/vehicles/dashboard' },
-      { key: 'crm', url: '/api/crm/dashboard' },
-      { key: 'sales', url: '/api/sales/dashboard' },
-      { key: 'procurement', url: '/api/procurement/dashboard' },
-    ];
-    const results = await Promise.allSettled(jobs.map((j) => api.get<AnyObj>(j.url)));
-    const next: AnyObj = {};
-    results.forEach((r, i) => { next[jobs[i].key] = r.status === 'fulfilled' ? r.value : null; });
-    setD(next);
-    setUpdatedAt(Date.now());
+    try {
+      const res = await api.get<{ sections: ExecSection[]; generatedAt: string }>('/api/analytics/executive');
+      setSections(res.sections || []);
+      setUpdatedAt(Date.now());
+    } catch { /* keep last */ }
     setLoading(false);
     setRefreshing(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  // Live: debounced refetch on the busiest section events + a slow safety poll.
+  // ── لحظيّ ─────────────────────────────────────────────────────────────────
+  // الخادمُ يبثّ `executive:changed` بعد أيّ حدثٍ في أيّ قسم (مجمَّعًا خمسَ
+  // ثوانٍ)، و`finance:changed` بعد أيّ حركةٍ ماليّة. ومهلةُ الدقيقة احتياط.
   const kick = useCallback(() => {
     if (debounce.current) clearTimeout(debounce.current);
-    debounce.current = setTimeout(() => load(), 1500);
+    debounce.current = setTimeout(() => load(), 800);
   }, [load]);
-  useSocket('ls2:updated', kick);
-  useSocket('ops:stats', kick);
-  useSocket('payment:logged', kick);
-  useSocket('invoice:created', kick);
-  useSocket('workflow:bulkImported', kick);
-  useEffect(() => { const id = setInterval(() => load(), 45000); return () => clearInterval(id); }, [load]);
+  useSocket('executive:changed', kick);
+  useSocket('finance:changed', kick);
+  useEffect(() => { const id = setInterval(() => load(), 60000); return () => clearInterval(id); }, [load]);
 
   if (!EXEC_ROLES.includes(user?.role || '')) return <div className="text-slate-500 p-8">{t('You do not have access to this page', 'لا تملك صلاحية لهذه الصفحة')}</div>;
   if (loading) return <Spinner />;
 
-  const fin = d.finance || {};
-  const ov = d.overview || {};
-  const ops = ov.operations || {};
-  const b2c = ov.b2c || {};
-  const wallet = ov.wallet || {};
-  const roster = ov.roster || {};
-  const tasks = ov.tasks || {};
-  const service = ov.service || {};
-  const ls2 = d.ls2 || {};
-  const hr = (d.hr || {}).summary || {};
-  const hrByStatus = (d.hr || {}).byStatus || [];
-  const veh = (d.vehicles || {}).totals || {};
-  const vehByStatus = (d.vehicles || {}).byStatus || {};
-  const crm = d.crm || {};
-  const sales = d.sales || {};
-  const proc = d.procurement || {};
-
   const go = (href: string) => router.push(href);
+  const show = (k: ExecKpi) => {
+    if (k.value == null) return '—';
+    const v = k.format === 'money' ? kMoney(k.value) : k.format === 'pct' ? `${Math.round(k.value * 10) / 10}%` : n(k.value);
+    return `${v}${k.suffix || ''}`;
+  };
+  const toneOf = (k: ExecKpi) => (k.tone === 'auto' ? ((k.value ?? 0) < 0 ? 'text-red-600' : 'text-emerald-600') : (k.value ?? 0) < 0 ? 'text-red-600' : (TONE[k.tone || ''] || 'text-slate-800'));
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-[#f37121]/20 flex items-center justify-center text-[#f37121]"><LayoutDashboard className="w-5 h-5" /></div>
@@ -124,141 +115,20 @@ export default function ExecutiveOverviewPage() {
         </div>
       </div>
 
-      {/* ── FINANCE ── */}
-      <Section icon={<DollarSign className="w-4 h-4" />} color="emerald" title={t('Finance & Collections', 'المالية والتحصيل')} href="/system/invoices" go={go} viewLabel={t('Open', 'فتح')}>
-        <Kpis>
-          <Kpi label={t('Outstanding', 'المستحقات')} value={money(fin.totalOutstanding)} accent="text-emerald-600" onClick={() => go('/system/invoices')} />
-          <Kpi label={t('Collected (MTD)', 'المحصّل (الشهر)')} value={money(fin.monthlyCollected)} accent="text-emerald-600" onClick={() => go('/system/payments')} />
-          <Kpi label={t('Collection Rate', 'نسبة التحصيل')} value={fin.collectionRate != null ? `${fin.collectionRate}%` : '—'} accent="text-slate-800" onClick={() => go('/system/payments')} />
-          <Kpi label={t('DSO (days)', 'مدة التحصيل')} value={fin.dso != null ? n(fin.dso) : '—'} accent="text-slate-800" />
-          <Kpi label={t('Overdue Invoices', 'فواتير متأخرة')} value={n(fin.overdueCount)} accent="text-red-600" onClick={() => go('/system/overdue')} />
-          <Kpi label={t('Active Customers', 'عملاء نشطين')} value={n(fin.customerCount)} accent="text-slate-800" onClick={() => go('/system/customers')} />
-        </Kpis>
-      </Section>
-
-      {/* ── OPERATIONS ── */}
-      <Section icon={<Truck className="w-4 h-4" />} color="orange" title={t('Operations', 'العمليات')} href="/system/ops" go={go} viewLabel={t('Open', 'فتح')}
-        chart={<StageBar data={Object.entries(ops.byStage || {}).map(([k, v]) => ({ name: k, value: Number(v) }))} color="#f37121" />}>
-        <Kpis>
-          <Kpi label={t('Total Shipments', 'إجمالي الشحنات')} value={n(ops.total)} accent="text-[#f37121]" onClick={() => go('/system/ops/shipments')} />
-          <Kpi label={t('This Month', 'هذا الشهر')} value={n(ops.thisMonth)} accent="text-slate-800" trend={ops.trendPct} onClick={() => go('/system/ops')} />
-          <Kpi label={t('Last Month', 'الشهر الماضي')} value={n(ops.lastMonth)} accent="text-slate-500" />
-          <Kpi label={t('Drivers', 'السائقون')} value={n(roster.drivers)} accent="text-blue-600" onClick={() => go('/system/ops/drivers')} />
-          <Kpi label={t('Branches', 'الفروع')} value={n(roster.branches)} accent="text-slate-800" />
-          {/* roster.vendors counts the procurement Vendor collection — link to
-              THAT list, not CRM's separate 3PL register (different numbers). */}
-          <Kpi label={t('Vendors', 'الموردين')} value={n(roster.vendors)} accent="text-violet-600" onClick={() => go('/system/vendors')} />
-        </Kpis>
-      </Section>
-
-      {/* ── LOCATION SOLUTIONS ── */}
-      <Section icon={<Gauge className="w-4 h-4" />} color="blue" title={t('Location Solutions (Fleet Telemetry)', 'لوكيشن سوليوشن (تتبّع الأسطول)')} href="/system/ls2" go={go} viewLabel={t('Open', 'فتح')}
-        chart={<MiniPie data={Object.entries(ls2.fleet?.statusCounts || {}).map(([k, v]) => ({ name: k, value: Number(v) }))} colors={{ moving: '#10b981', idle: '#f59e0b', stopped: '#94a3b8', offline: '#ef4444' }} />}>
-        <Kpis>
-          <Kpi label={t('Fleet Online', 'الأسطول متصل')} value={`${n(ls2.fleet?.online)} / ${n(ls2.fleet?.total)}`} accent="text-blue-600" onClick={() => go('/system/ls2/live')} />
-          <Kpi label={t('Moving', 'تتحرك')} value={n(ls2.fleet?.statusCounts?.moving)} accent="text-emerald-600" onClick={() => go('/system/ls2/live?status=moving')} />
-          <Kpi label={t('Critical Alerts', 'تنبيهات حرِجة')} value={n(ls2.alerts?.bySeverity?.critical)} accent="text-red-600" onClick={() => go('/system/ls2/alerts?severity=critical')} />
-          <Kpi label={t('Service Due', 'صيانة قريبة')} value={n(ls2.maintenance?.dueCount)} accent="text-amber-600" onClick={() => go('/system/ls2/maintenance?filter=due')} />
-          <Kpi label={t('Service Overdue', 'صيانة متأخرة')} value={n(ls2.maintenance?.overdueCount)} accent="text-red-600" onClick={() => go('/system/ls2/maintenance?filter=overdue')} />
-          <Kpi label={t('Hot Tires', 'كاوتش ساخن')} value={n(ls2.temperature?.hotTires)} accent="text-orange-600" onClick={() => go('/system/ls2/temperature')} />
-        </Kpis>
-      </Section>
-
-      {/* ── B2C ── */}
-      <Section icon={<TrendingUp className="w-4 h-4" />} color="violet" title={t('B2C', 'B2C')} href="/system/b2c/dashboard" go={go} viewLabel={t('Open', 'فتح')}>
-        <Kpis>
-          <Kpi label={t('Orders (MTD)', 'الطلبات (الشهر)')} value={n(b2c.monthOrders)} accent="text-violet-600" trend={b2c.trendPct} onClick={() => go('/system/b2c/dashboard')} />
-          <Kpi label={t('Reps', 'المناديب')} value={n(b2c.reps)} accent="text-slate-800" onClick={() => go('/system/b2c/reps')} />
-          <Kpi label={t('Projects', 'المشاريع')} value={n(b2c.projects)} accent="text-slate-800" onClick={() => go('/system/b2c/projects')} />
-          <Kpi label={t('Working Days', 'أيام العمل')} value={n(b2c.monthWorkingDays)} accent="text-slate-800" />
-          {/* These two are the COLLECTORS' daily wallet (WalletTransaction /
-              DailyWallet) — not the B2C عهدة ledger. Labeling them "custody"
-              and linking to /b2c/custody showed the owner a different page
-              with different numbers. */}
-          <Kpi label={t('Collections Wallet In (MTD)', 'محفظة التحصيل — داخل (الشهر)')} value={money(wallet.monthInflow)} accent="text-emerald-600" onClick={() => go('/system/wallet-dashboard')} />
-          <Kpi label={t('Collections Wallet Net (MTD)', 'محفظة التحصيل — صافي (الشهر)')} value={money(wallet.monthNet)} accent="text-slate-800" onClick={() => go('/system/wallet-dashboard')} />
-        </Kpis>
-      </Section>
-
-      {/* ── HR ── */}
-      <Section icon={<Users className="w-4 h-4" />} color="cyan" title={t('Human Resources', 'الموارد البشرية')} href="/system/hr/master" go={go} viewLabel={t('Open', 'فتح')}
-        chart={<MiniPie data={(hrByStatus || []).map((s: AnyObj) => ({ name: s.status, value: Number(s.count) }))} colors={{ active: '#10b981', on_leave: '#f59e0b', suspended: '#f97316', terminated: '#ef4444' }} />}>
-        <Kpis>
-          <Kpi label={t('Employees', 'الموظفون')} value={n(hr.totalEmployees)} accent="text-cyan-600" onClick={() => go('/system/hr/employees')} />
-          <Kpi label={t('Active', 'نشط')} value={n(hr.activeEmployees)} accent="text-emerald-600" onClick={() => go('/system/hr/employees')} />
-          <Kpi label={t('Pending Leaves', 'إجازات معلّقة')} value={n(hr.pendingLeaves)} accent="text-amber-600" onClick={() => go('/system/hr/leaves')} />
-          <Kpi label={t('Open Requests', 'طلبات مفتوحة')} value={n(hr.openRequests)} accent="text-amber-600" onClick={() => go('/system/hr/requests')} />
-          <Kpi label={t('Expiring Docs (60d)', 'وثائق تنتهي (60ي)')} value={n(hr.expiringDocsCount)} accent="text-orange-600" onClick={() => go('/system/hr/employees')} />
-          <Kpi label={t('Expired Docs', 'وثائق منتهية')} value={n(hr.expiredDocsCount)} accent="text-red-600" onClick={() => go('/system/hr/employees')} />
-        </Kpis>
-      </Section>
-
-      {/* ── VEHICLES & AUTHORIZATIONS ── */}
-      <Section icon={<Car className="w-4 h-4" />} color="amber" title={t('Vehicles & Authorizations', 'المركبات والتفاويض')} href="/system/vehicles/dashboard" go={go} viewLabel={t('Open', 'فتح')}
-        chart={<MiniPie data={Object.entries(vehByStatus || {}).map(([k, v]) => ({ name: k, value: Number(v) }))} colors={{ authorized: '#10b981', parked: '#94a3b8', available: '#3b82f6', maintenance: '#f59e0b', out_of_service: '#ef4444' }} />}>
-        <Kpis>
-          <Kpi label={t('Total Vehicles', 'إجمالي المركبات')} value={n(veh.vehicles)} accent="text-amber-600" onClick={() => go('/system/vehicles')} />
-          <Kpi label={t('Authorized', 'مفوّضة')} value={n(veh.authorized)} accent="text-emerald-600" onClick={() => go('/system/vehicles')} />
-          <Kpi label={t('Active Authorizations', 'تفاويض نشطة')} value={n(veh.activeAuthorizations)} accent="text-slate-800" onClick={() => go('/system/vehicles')} />
-          <Kpi label={t('Expiring Auths (30d)', 'تفاويض تنتهي (30ي)')} value={n(veh.expiringAuthorizations)} accent="text-orange-600" onClick={() => go('/system/vehicles')} />
-          <Kpi label={t('Open Accidents', 'حوادث مفتوحة')} value={n(veh.openAccidents)} accent="text-red-600" onClick={() => go('/system/vehicles/accidents')} />
-          <Kpi label={t('Accident Cost (est.)', 'تكلفة الحوادث (تقديري)')} value={money(veh.estimatedAccidentCost)} accent="text-slate-800" onClick={() => go('/system/vehicles/accidents')} />
-        </Kpis>
-      </Section>
-
-      {/* ── CRM ── */}
-      <Section icon={<Building2 className="w-4 h-4" />} color="indigo" title={t('CRM', 'إدارة العملاء')} href="/system/crm/dashboard" go={go} viewLabel={t('Open', 'فتح')}
-        chart={<StageBar data={Object.entries(crm.dealsByStage || {}).map(([k, v]: [string, any]) => ({ name: k, value: Number(v?.count ?? v) }))} color="#6366f1" />}>
-        <Kpis>
-          <Kpi label={t('Companies', 'الشركات')} value={n(crm.companiesTotal)} accent="text-indigo-600" onClick={() => go('/system/crm/companies')} />
-          <Kpi label={t('Contacts', 'جهات الاتصال')} value={n(crm.contactsTotal)} accent="text-slate-800" onClick={() => go('/system/crm/contacts')} />
-          <Kpi label={t('Open Deals', 'صفقات مفتوحة')} value={n(crm.openDealsCount)} accent="text-slate-800" onClick={() => go('/system/crm/deals')} />
-          <Kpi label={t('Pipeline Value', 'قيمة الصفقات')} value={money(crm.pipelineValue)} accent="text-emerald-600" onClick={() => go('/system/crm/deals')} />
-          <Kpi label={t('Win Rate', 'نسبة الفوز')} value={crm.winRate != null ? `${crm.winRate}%` : '—'} accent="text-slate-800" />
-          <Kpi label={t('Overdue Tasks', 'مهام متأخرة')} value={n(crm.overdueTasks)} accent="text-red-600" onClick={() => go('/system/crm/tasks')} />
-        </Kpis>
-      </Section>
-
-      {/* ── SALES ── */}
-      <Section icon={<TrendingUp className="w-4 h-4" />} color="green" title={t('Sales', 'المبيعات')} href="/system/sales/dashboard" go={go} viewLabel={t('Open', 'فتح')}>
-        <Kpis>
-          <Kpi label={t('Won (MTD)', 'مكتسبة (الشهر)')} value={money(sales.wonValue)} accent="text-green-600" onClick={() => go('/system/sales/dashboard')} />
-          <Kpi label={t('Target', 'الهدف')} value={money(sales.teamTarget)} accent="text-slate-800" onClick={() => go('/system/sales/targets')} />
-          <Kpi label={t('Attainment', 'التحقيق')} value={sales.attainment != null ? `${Math.round(sales.attainment)}%` : '—'} accent="text-slate-800" onClick={() => go('/system/sales/performance')} />
-          <Kpi label={t('Win Rate', 'نسبة الفوز')} value={sales.winRate != null ? `${Math.round(sales.winRate)}%` : '—'} accent="text-slate-800" />
-          <Kpi label={t('Open Pipeline', 'قيد التفاوض')} value={money(sales.openValue)} accent="text-slate-800" onClick={() => go('/system/sales/pipeline')} />
-          <Kpi label={t('Avg Deal', 'متوسط الصفقة')} value={money(sales.avgDealSize)} accent="text-slate-800" />
-        </Kpis>
-      </Section>
-
-      {/* ── PROCUREMENT ── */}
-      <Section icon={<ShoppingCart className="w-4 h-4" />} color="rose" title={t('Procurement', 'المشتريات')} href="/system/procurement/dashboard" go={go} viewLabel={t('Open', 'فتح')}>
-        <Kpis>
-          <Kpi label={t('PRs Pending', 'طلبات شراء معلّقة')} value={n(proc.prPending)} accent="text-amber-600" onClick={() => go('/system/procurement/requests')} />
-          <Kpi label={t('Open POs', 'أوامر شراء مفتوحة')} value={n(proc.openPOs)} accent="text-slate-800" onClick={() => go('/system/procurement/orders')} />
-          <Kpi label={t('Open PO Value', 'قيمة الأوامر')} value={money(proc.openPOValue)} accent="text-slate-800" onClick={() => go('/system/procurement/orders')} />
-          <Kpi label={t('Unpaid Bills', 'فواتير غير مدفوعة')} value={money(proc.unpaidBills)} accent="text-red-600" onClick={() => go('/system/procurement/bills')} />
-          <Kpi label={t('Overdue Bills', 'فواتير متأخرة')} value={n(proc.overdueBillsCount)} accent="text-red-600" onClick={() => go('/system/procurement/bills')} />
-          <Kpi label={t('Spend (MTD)', 'الإنفاق (الشهر)')} value={money(proc.spendThisMonth)} accent="text-slate-800" />
-        </Kpis>
-      </Section>
-
-      {/* ── TASKS/SERVICE ──
-          كان هنا لوحُ «الورشة» بجانبه. وقد أُزيل القسمُ من النظام — عملُه
-          كلُّه في لوكيشن سوليوشن — فأُزيل لوحُه معه: بطاقةٌ تُضغَط فتفتح صفحةً
-          محذوفةً أسوأُ من غيابها. */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <Section icon={<ListTodo className="w-4 h-4" />} color="red" title={t('Tasks & Service', 'المهام والخدمة')} href="/system/tasks" go={go} viewLabel={t('Open', 'فتح')} compact>
-          <Kpis compact>
-            <Kpi label={t('Open Tasks', 'مهام مفتوحة')} value={n(tasks.open)} accent="text-slate-800" onClick={() => go('/system/tasks')} />
-            <Kpi label={t('Due Today', 'مستحقة اليوم')} value={n(tasks.dueToday)} accent="text-amber-600" onClick={() => go('/system/tasks')} />
-            <Kpi label={t('Open Complaints', 'شكاوى مفتوحة')} value={n(service.complaintsOpen)} accent="text-red-600" onClick={() => go('/system/complaints')} />
-            <Kpi label={t('Open Disputes', 'نزاعات مفتوحة')} value={n(service.disputesOpen)} accent="text-red-600" onClick={() => go('/system/disputes')} />
+      {sections.map((s) => (
+        <Section key={s.key} icon={SECTION_ICON[s.key] || <Activity className="w-4 h-4" />} color={s.color} title={ar ? s.ar : s.en} href={s.href} go={go} viewLabel={t('Open', 'فتح')}
+          chart={s.chart && s.chart.data.length ? (s.chart.kind === 'pie'
+            ? <MiniPie data={s.chart.data} colors={{ moving: '#10b981', idle: '#f59e0b', stopped: '#94a3b8', offline: '#ef4444' }} />
+            : <StageBar data={s.chart.data} color="#f37121" />) : undefined}>
+          <Kpis>
+            {s.kpis.map((k, i) => (
+              <Kpi key={i} label={ar ? k.ar : k.en} value={show(k)} accent={toneOf(k)} trend={k.trend} onClick={k.href ? () => go(k.href!) : undefined} />
+            ))}
           </Kpis>
         </Section>
-      </div>
+      ))}
 
-      {updatedAt && <p className="text-center text-xs text-slate-400">{t('Updated', 'آخر تحديث')} {new Date(updatedAt).toLocaleTimeString(ar ? 'ar-EG' : 'en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>}
+      {updatedAt && <p className="text-center text-[11px] text-slate-400">{t('Updated', 'آخر تحديث')} {new Date(updatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>}
     </div>
   );
 }

@@ -95,6 +95,9 @@ router.get('/overdue', authorize('super_admin', 'admin', 'it_manager', 'it_speci
 const SUPER_OVERVIEW_TTL = 30 * 1000;
 let superOverviewCache = { at: 0, key: '', data: null };
 
+// النظرةُ التنفيذيّة — نقطةٌ واحدة تجمع الأقسامَ من مصادرها الحيّة. راجع executiveController.
+router.get('/executive', authorize('super_admin', 'admin'), require('../controllers/executiveController').overview);
+
 router.get('/super-overview', authorize('super_admin', 'admin'), async (req, res) => {
   try {
     const now = Date.now();

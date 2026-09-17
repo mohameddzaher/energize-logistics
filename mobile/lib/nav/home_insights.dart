@@ -21,11 +21,10 @@ class HomeInsight {
 }
 
 // ── نظرات جاهزة لكل مجال ─────────────────────────────────────────────────────
-const _finance = HomeInsight('نظرة مالية', 'Finance snapshot', '/api/analytics/dashboard', 'invoice:updated', [
-  HomeKpi('المستحق', 'Outstanding', 'totalOutstanding', Icons.account_balance_wallet_outlined, T.danger, money: true),
-  HomeKpi('تحصيل الشهر', 'Collected', 'monthlyCollected', Icons.trending_up_rounded, T.success, money: true),
-  HomeKpi('فواتير متأخرة', 'Overdue', 'overdueCount', Icons.warning_amber_outlined, T.orange),
-  HomeKpi('نسبة التحصيل %', 'Collection %', 'collectionRate', Icons.percent_rounded, T.violet),
+const _finance = HomeInsight('الإدارة المالية', 'Finance snapshot', '/api/finance/overview', 'finance:changed', [
+  HomeKpi('قيمة البيع (الشهر)', 'Selling (month)', 'headline.selling', Icons.trending_up_rounded, T.navy, money: true),
+  HomeKpi('المستحق على العملاء', 'Receivable', 'headline.receivable', Icons.request_quote_outlined, T.warn, money: true),
+  HomeKpi('المحصَّل هذا الشهر', 'Collected (month)', 'headline.collected', Icons.payments_outlined, T.success, money: true),
 ]);
 
 // ما لنا وما علينا — أوّلُ ما يُسأل عنه في التحصيل.
@@ -102,10 +101,10 @@ const _customs = HomeInsight('نظرة التخليص', 'Customs snapshot', '/ap
   HomeKpi('صافي الربح', 'Net profit', 'totals.netProfit', Icons.trending_up_rounded, T.orange, money: true),
 ]);
 
-const _executive = HomeInsight('النظرة التنفيذية', 'Executive snapshot', '/api/analytics/super-overview', '', [
-  HomeKpi('تشغيلات الشهر', 'Ops (month)', 'operations.thisMonth', Icons.workspaces_outline, T.navy),
-  HomeKpi('طلبات B2C', 'B2C orders', 'b2c.monthOrders', Icons.storefront_outlined, T.violet),
-  HomeKpi('تحصيلات اليوم', 'Today collect', 'wallet.todayCollections', Icons.payments_outlined, T.success, money: true),
+const _executive = HomeInsight('النظرة التنفيذية', 'Executive snapshot', '/api/analytics/executive', 'executive:changed', [
+  HomeKpi('كشوف الشهر', 'Sheets (month)', 'headline.sheetsMonth', Icons.workspaces_outline, T.navy),
+  HomeKpi('المستحق على العملاء', 'Receivable', 'headline.receivable', Icons.request_quote_outlined, T.warn, money: true),
+  HomeKpi('المحصَّل هذا الشهر', 'Collected (month)', 'headline.collectedMonth', Icons.payments_outlined, T.success, money: true),
 ]);
 
 // دور → أفضل نظرة. تُرتَّب حسب أولوية الدور، ثم نرجع لصلاحية القسم.

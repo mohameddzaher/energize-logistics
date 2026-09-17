@@ -203,7 +203,6 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Page + /api/analytics/super-overview admit super_admin/admin ONLY — offering
     // the link to the IT roles was a guaranteed dead-end screen.
     { href: '/system/executive', label: lang === 'ar' ? 'النظرة التنفيذية' : 'Executive Overview', icon: <Crown className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Main' },
-    { href: '/system/dashboard', label: L.dashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'], section: 'Main' },
     // ── و«المتأخرات» أُزيلت ────────────────────────────────────────────────
     // صفحةٌ من قسم «العملاء والمالية» الذي حُذف. بقيت في القائمة الرئيسيّة
     // تقرأ `Invoice` و`Customer` — وكلتاهما فارغتان — ثمّ تغيّر شكلُ نقطتها

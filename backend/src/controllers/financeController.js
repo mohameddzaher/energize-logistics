@@ -744,8 +744,11 @@ exports.overview = async (req, res) => {
     const p = periodOf(req.query);
     const keys = Object.keys(DEPARTMENTS);
     const built = await Promise.all(keys.map((k) => buildDept(k, p, req.user).catch((e) => { console.error('finance overview', k, e.message); return null; })));
+    const cardOf = (k, c) => (built[keys.indexOf(k)]?.cards || []).find((x) => x.key === c)?.value ?? null;
     res.json({
       period: { from: p.from, to: p.to },
+      // قراءةٌ مسطّحة لبطاقات الشاشة الرئيسية في التطبيق (HomeInsight).
+      headline: { selling: cardOf('operations', 'selling'), receivable: cardOf('collections', 'ledgerOutstanding'), collected: cardOf('collections', 'collectedPeriod') },
       departments: keys.map((k, i) => ({
         key: k, ar: DEPARTMENTS[k].ar, en: DEPARTMENTS[k].en, ok: !!built[i],
         cards: (built[i]?.cards || []).filter((c) => HEADLINE[k].includes(c.key)),
@@ -758,3 +761,6 @@ exports.overview = async (req, res) => {
 };
 
 exports.DEPARTMENTS = DEPARTMENTS;
+exports.buildDept = buildDept;
+exports.periodOf = periodOf;
+exports.callController = callController;

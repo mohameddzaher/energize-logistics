@@ -7138,7 +7138,6 @@ export function getCustomsTranslations(lang: Lang) {
 export const NAV_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   '/system/customs': 'customsClearance',
   '/system/customs/guide': 'customsGuide',
-  '/system/dashboard': 'dashboard',
   '/system/overdue': 'overdue',
   '/system/credit-alerts': 'creditAlerts',
   '/system/customers': 'customers',

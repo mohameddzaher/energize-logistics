@@ -86,7 +86,7 @@ export default function SystemError({ error, reset }: { error: Error & { digest?
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium">
           <RefreshCw className="w-4 h-4" />إعادة المحاولة
         </button>
-        <button type="button" onClick={() => { window.location.href = '/system/dashboard'; }}
+        <button type="button" onClick={() => { window.location.href = '/system'; }}
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm">
           <ArrowRight className="w-4 h-4" />الرئيسية
         </button>

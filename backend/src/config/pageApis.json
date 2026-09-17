@@ -14,30 +14,7 @@
   "pages": {
     "/system/executive": {
       "apis": [
-        "/api/analytics/dashboard",
-        "/api/analytics/super-overview",
-        "/api/crm/dashboard",
-        "/api/hr/dashboard",
-        "/api/ls2/dashboard",
-        "/api/procurement/dashboard",
-        "/api/sales/dashboard",
-        "/api/vehicles/dashboard"
-      ],
-      "wildcard": false
-    },
-    "/system/dashboard": {
-      "apis": [
-        "/api/analytics/aging",
-        "/api/analytics/credit-alerts",
-        "/api/analytics/dashboard",
-        "/api/analytics/dso",
-        "/api/analytics/forecast",
-        "/api/analytics/performance",
-        "/api/analytics/risk",
-        "/api/analytics/super-overview",
-        "/api/complaints",
-        "/api/ops/dashboard",
-        "/api/workflows"
+        "/api/analytics/executive"
       ],
       "wildcard": false
     },

@@ -243,21 +243,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "key": "b2c_project_lead",
         "ar": "مدير مشروع - أفراد",
         "en": "B2C Project Lead"
-      }
-    ]
-  },
-  {
-    "section": "Workshop",
-    "manager": {
-      "key": "workshop_manager",
-      "ar": "مدير الورشة",
-      "en": "Workshop Manager"
-    },
-    "staff": [
+      },
       {
-        "key": "workshop_employee",
-        "ar": "فني ورشة",
-        "en": "Workshop Technician"
+        "key": "b2c_rep_supervisor",
+        "ar": "مشرف مناديب",
+        "en": "B2C Rep Supervisor",
+        "distinct": "يرى مناديبه ويسجّل تفقّدهم فقط — لا يوزّع المناديب ولا يعدّلهم"
       }
     ]
   },

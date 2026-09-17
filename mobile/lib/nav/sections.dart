@@ -442,7 +442,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         // تفقُّد بداية الدوام — أوّلُ ما يُفتَح صباحًا، فيُوضَع قبل ما دونه.
         // والمشرفُ يفتحه واقفًا في المحطّة لا خلف مكتب، فالهاتفُ موضعُه الأصليّ.
         AppPage('تفقّد بداية الدوام', 'Duty Start Check', Icons.photo_camera_outlined, (c) => const B2cDutyScreen(), path: '/system/b2c/duty/start'),
-        AppPage('عهد المشاريع', 'Custody', Icons.account_balance_wallet_outlined, (c) => const B2cWalletScreen()),
+        AppPage('عهد المشاريع', 'Custody', Icons.account_balance_wallet_outlined, (c) => const B2cWalletScreen(), path: '/system/b2c/custody'),
         AppPage('مناديب المبيعات', 'Reps', Icons.sports_motorsports_outlined, (c) => ResourceScreen(config: b2cRepsCfg), path: '/system/b2c/reps'),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'B2C'), path: '/system/b2c/kpis'),
       ],

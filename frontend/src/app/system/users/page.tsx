@@ -578,6 +578,7 @@ export default function UsersPage() {
     purchasing: lang === 'ar' ? 'المشتريات' : 'Purchasing',
     b2c_manager: lang === 'ar' ? 'مدير B2C' : 'B2C Manager',
     b2c_project_lead: lang === 'ar' ? 'مدير مشروع B2C' : 'B2C Project Lead',
+    b2c_rep_supervisor: lang === 'ar' ? 'مشرف مناديب' : 'B2C Rep Supervisor',
     remote_employee: lang === 'ar' ? 'موظف عن بُعد' : 'Remote Employee',
     remote_manager: lang === 'ar' ? 'مدير العمل عن بُعد' : 'Remote Manager',
     hr_manager: lang === 'ar' ? 'مدير الموارد البشرية' : 'HR Manager',

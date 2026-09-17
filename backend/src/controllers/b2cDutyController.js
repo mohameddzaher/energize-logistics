@@ -23,6 +23,8 @@ const logAudit = require('../utils/auditLogger');
 const { createNotification } = require('../services/notificationService');
 const { emitToAll } = require('../websocket/socketManager');
 
+/** مَن يصلح أن يُسنَد إليه مندوب. */
+const SUPERVISOR_ROLES = ['b2c_rep_supervisor', 'b2c_project_lead', 'b2c_manager'];
 const FULL_VIEW_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager'];
 const canSeeAll = (u) => FULL_VIEW_ROLES.includes(u?.role || '');
 
@@ -510,18 +512,33 @@ exports.missing = async (req, res) => {
 /** المشرفون الذين لهم مندوبون — تُبنى منهم قوائمُ الفلترة والإسناد. */
 exports.supervisors = async (req, res) => {
   try {
-    const rows = await B2CRep.aggregate([
-      { $match: { isActive: { $ne: false }, supervisor: { $ne: null } } },
-      { $group: { _id: '$supervisor', reps: { $sum: 1 } } },
-      { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'u' } },
-      { $project: {
-        reps: 1,
-        firstName: { $first: '$u.firstName' }, lastName: { $first: '$u.lastName' },
-        role: { $first: '$u.role' },
-      } },
-      { $sort: { reps: -1 } },
+    // المرشَّحون للإشراف: كلُّ حسابٍ نشطٍ بدورٍ من أدوار القسم — لا مَن له
+    // مندوبون فقط. كانت القائمةُ تُكمَّل في الواجهة من `/api/users`، وتلك لا
+    // يفتحها مديرُ المشروع، فكان لا يرى إلّا المشرفين الذين أُسند إليهم سابقًا.
+    const [counts, users] = await Promise.all([
+      B2CRep.aggregate([
+        { $match: { isActive: { $ne: false }, supervisor: { $ne: null } } },
+        { $group: { _id: '$supervisor', reps: { $sum: 1 } } },
+      ]),
+      User.find({ role: { $in: SUPERVISOR_ROLES }, isActive: { $ne: false } })
+        .select('firstName lastName role').lean(),
     ]);
-    res.json({ supervisors: rows.map((r) => ({ ...r, name: [r.firstName, r.lastName].filter(Boolean).join(' ') || '—' })) });
+    const repsBy = new Map(counts.map((c) => [String(c._id), c.reps]));
+    const byId = new Map(users.map((u) => [String(u._id), u]));
+    // مَن له مندوبون وتغيّر دورُه يبقى ظاهرًا حتّى تُنقل مناديبه.
+    const missing = counts.map((c) => String(c._id)).filter((id) => !byId.has(id));
+    if (missing.length) {
+      (await User.find({ _id: { $in: missing } }).select('firstName lastName role').lean())
+        .forEach((u) => byId.set(String(u._id), u));
+    }
+    const ORDER = { b2c_rep_supervisor: 0, b2c_project_lead: 1, b2c_manager: 2 };
+    const supervisors = [...byId.values()].map((u) => ({
+      _id: u._id,
+      name: [u.firstName, u.lastName].filter(Boolean).join(' ') || '—',
+      role: u.role,
+      reps: repsBy.get(String(u._id)) || 0,
+    })).sort((a, b) => (ORDER[a.role] ?? 9) - (ORDER[b.role] ?? 9) || b.reps - a.reps || a.name.localeCompare(b.name));
+    res.json({ supervisors });
   } catch (e) { res.status(500).json({ message: 'تعذّر التحميل' }); }
 };
 
@@ -533,6 +550,12 @@ exports.assign = async (req, res) => {
     const sup = req.body.supervisor;
     // فراغٌ يعني «بلا مشرف» — وهو فعلٌ مقصودٌ لا خطأ إدخال.
     if (sup && !mongoose.isValidObjectId(sup)) return res.status(400).json({ message: 'مشرف غير صالح' });
+    if (sup) {
+      const su = await User.findById(sup).select('role isActive').lean();
+      if (!su || su.isActive === false || !SUPERVISOR_ROLES.includes(su.role)) {
+        return res.status(400).json({ message: 'هذا الحساب ليس مشرف مناديب ولا مدير مشروع' });
+      }
+    }
     const r = await B2CRep.updateMany({ _id: { $in: ids } }, { $set: { supervisor: sup || null } });
     await logAudit({
       user: req.user._id, action: 'assign_b2c_supervisor', entity: 'B2CRep',

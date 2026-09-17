@@ -5,6 +5,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { getB2CTranslations, getB2cRepsTranslations } from '@/lib/translations';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Edit, Trash2, X, Users as UsersIcon, RefreshCw, Search, Award } from 'lucide-react';
 import DataTable from '@/components/system/DataTable';
@@ -12,7 +13,7 @@ import B2CRepProfileModal from '@/components/system/B2CRepProfileModal';
 
 interface Project { _id: string; name: string; code?: string; color?: string }
 interface Branch { _id: string; name: string; city?: string }
-interface Supervisor { _id: string; name: string; reps: number }
+interface Supervisor { _id: string; name: string; reps: number; role?: string }
 
 interface Rep {
   _id: string;
@@ -41,6 +42,9 @@ export default function B2CRepsPage() {
   const { confirm, notify } = useDialog();
   const { lang } = useLanguage();
   const T = getB2CTranslations(lang);
+  // مشرفُ المناديب لا يوزّع ولا يعدّل — والخادمُ يردّه أيضًا (middleware/b2cGuards).
+  const { user } = useAuth();
+  const canManage = user?.role !== 'b2c_rep_supervisor';
   const tx = getB2cRepsTranslations(lang);
   const [reps, setReps] = useState<Rep[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -48,7 +52,6 @@ export default function B2CRepsPage() {
   // مشرفو المندوبين — تُقرأ من الحسابات التي لها مندوبون بالفعل، ويُضاف إليها
   // كلُّ من يصلح أن يكون مشرفًا. راجع `b2cDutyController.supervisors`.
   const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
-  const [staff, setStaff] = useState<{ _id: string; firstName?: string; lastName?: string; role?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterProject, setFilterProject] = useState('');
   const [filterBranch, setFilterBranch] = useState('');
@@ -102,20 +105,21 @@ export default function B2CRepsPage() {
   // مَن يصلح مشرفًا: حساباتُ قسم الأفراد. والقائمةُ تُجلب مرّةً لا مع كلّ فتح.
   useEffect(() => {
     api.get<any>('/api/b2c/duty/supervisors').then((d) => setSupervisors(d.supervisors || [])).catch(() => {});
-    api.get<any>('/api/users?limit=500').then((d) => setStaff(
-      (d.users || []).filter((u: any) => ['b2c_manager', 'b2c_project_lead'].includes(u.role)),
-    )).catch(() => {});
   }, []);
 
-  const supervisorOptions = useMemo(() => {
-    const byId = new Map<string, { _id: string; name: string; reps: number }>();
-    supervisors.forEach((s) => byId.set(String(s._id), { _id: String(s._id), name: s.name, reps: s.reps }));
-    staff.forEach((u) => {
-      const id = String(u._id);
-      if (!byId.has(id)) byId.set(id, { _id: id, name: `${u.firstName || ''} ${u.lastName || ''}`.trim() || '—', reps: 0 });
-    });
-    return [...byId.values()].sort((a, b) => b.reps - a.reps);
-  }, [supervisors, staff]);
+  // المرشَّحون كلُّهم من الخادم: مشرفو المناديب ومديرو المشاريع ومدير القطاع.
+  // كانت تُكمَّل من `/api/users` — ومديرُ المشروع لا يفتحها، فلم يكن يرى إلّا
+  // من أُسند إليه مندوبٌ قبلًا.
+  const ROLE_TAG: Record<string, [string, string]> = {
+    b2c_rep_supervisor: ['مشرف مناديب', 'Rep supervisor'],
+    b2c_project_lead: ['مدير مشروع', 'Project lead'],
+    b2c_manager: ['مدير القطاع', 'B2C manager'],
+  };
+  const supervisorOptions = useMemo(() => supervisors.map((s) => {
+    const tag = s.role ? ROLE_TAG[s.role] : null;
+    return { _id: String(s._id), reps: s.reps, name: tag ? `${s.name} — ${lang === 'ar' ? tag[0] : tag[1]}` : s.name };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [supervisors, lang]);
 
   const assignPicked = async () => {
     if (!picked.size || !bulkSup) return;
@@ -186,14 +190,14 @@ export default function B2CRepsPage() {
   };
 
   const columns = [
-    {
+    ...(!canManage ? [] : [{
       key: '_pick', label: '',
       render: (_: any, row: Rep) => (
         <input type="checkbox" aria-label="select" checked={picked.has(row._id)}
           onClick={(e) => e.stopPropagation()} onChange={() => togglePick(row._id)}
           className="w-4 h-4 accent-[#f37121] cursor-pointer" />
       ),
-    },
+    }]),
     {
       key: 'englishName', label: T.englishName,
       render: (_: any, row: Rep) => (
@@ -260,9 +264,9 @@ export default function B2CRepsPage() {
           <button type="button" onClick={fetchReps} className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100" title={tx.refresh}>
             <RefreshCw className="w-4 h-4" />
           </button>
-          <button type="button" onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-[#f37121] hover:bg-[#e0611a] text-white rounded-lg text-sm font-medium">
+          {canManage && <button type="button" onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-[#f37121] hover:bg-[#e0611a] text-white rounded-lg text-sm font-medium">
             <Plus className="w-4 h-4" /> {T.addRep}
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -287,7 +291,7 @@ export default function B2CRepsPage() {
       </div>
 
       {/* إسنادٌ جماعيّ */}
-      {!loading && reps.length > 0 && (
+      {canManage && !loading && reps.length > 0 && (
         <div className={`rounded-xl border p-3 flex flex-wrap items-center gap-3 text-sm ${picked.size ? 'bg-orange-50 border-orange-200' : 'bg-white border-slate-200'}`}>
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <input type="checkbox" className="w-4 h-4 accent-[#f37121]"
@@ -328,7 +332,7 @@ export default function B2CRepsPage() {
           data={reps}
           searchable={false}
           emptyMessage={tx.noReps}
-          actions={(row: Rep) => (
+          actions={!canManage ? undefined : (row: Rep) => (
             <div className="flex items-center gap-1">
               <button type="button" onClick={() => openEdit(row)} className="p-1.5 text-slate-500 hover:text-slate-900 rounded hover:bg-slate-100" title={T.edit}>
                 <Edit className="w-4 h-4" />

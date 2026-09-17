@@ -20,6 +20,7 @@ const roleLabels = {
   'procurement_staff': ('مشتريات الورشة', 'Purchasing'),
   'b2c_manager': ('رئيس B2C', 'B2C Head'),
   'b2c_project_lead': ('مدير مشروع B2C', 'B2C PM'),
+  'b2c_rep_supervisor': ('مشرف مناديب', 'Rep Supervisor'),
   'remote_employee': ('موظف عن بُعد', 'Remote Employee'),
   'remote_manager': ('مدير العمل عن بُعد', 'Remote Manager'),
   'hr_manager': ('مدير الموارد البشرية', 'HR Manager'),

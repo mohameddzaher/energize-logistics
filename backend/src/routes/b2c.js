@@ -4,6 +4,7 @@ const b2cController = require('../controllers/b2cController');
 const duty = require('../controllers/b2cDutyController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
+const { denyRepSupervisor: noSup } = require('../middleware/b2cGuards');
 
 // PUBLIC webhook for Google Apps Script — no JWT auth (Apps Script can't carry one).
 // Authentication is via the shared `secret` in the body or `X-Sync-Secret` header.
@@ -14,47 +15,49 @@ router.use(authenticate);
 
 // Project managers currently have the same access as heads.
 const READ = ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead'];
+// مشرفُ المناديب: شاشتا التفقّد فقط، ومناديبُه هو (يحسمه المتحكّم).
+const DUTY = [...READ, 'b2c_rep_supervisor'];
 const WRITE = ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead'];
 const ADMIN_WRITE = ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead'];
 
 // Projects
 router.get('/projects', authorize(...READ), b2cController.getProjects);
-router.post('/projects', authorize(...ADMIN_WRITE), b2cController.createProject);
-router.put('/projects/:id', authorize(...ADMIN_WRITE), b2cController.updateProject);
-router.delete('/projects/:id', authorize(...ADMIN_WRITE), b2cController.deleteProject);
+router.post('/projects', noSup, authorize(...ADMIN_WRITE), b2cController.createProject);
+router.put('/projects/:id', noSup, authorize(...ADMIN_WRITE), b2cController.updateProject);
+router.delete('/projects/:id', noSup, authorize(...ADMIN_WRITE), b2cController.deleteProject);
 
 // Reps
 router.get('/reps', authorize(...READ), b2cController.getReps);
-router.post('/reps', authorize(...WRITE), b2cController.createRep);
-router.post('/reps/bulk-resolve', authorize(...WRITE), b2cController.bulkResolveReps);
-router.post('/reps/reconcile', authorize(...ADMIN_WRITE), b2cController.reconcileReps);
+router.post('/reps', noSup, authorize(...WRITE), b2cController.createRep);
+router.post('/reps/bulk-resolve', noSup, authorize(...WRITE), b2cController.bulkResolveReps);
+router.post('/reps/reconcile', noSup, authorize(...ADMIN_WRITE), b2cController.reconcileReps);
 router.get('/reps/diagnose', authorize(...READ), b2cController.diagnoseReps);
 router.get('/system-diagnostic', authorize(...READ), b2cController.getSystemDiagnostic);
 router.get('/diagnose-sheet', authorize(...READ), b2cController.diagnoseSheetParse);
 router.get('/diagnose-sheet/:id', authorize(...READ), b2cController.diagnoseSheetParse);
-router.put('/reps/:id', authorize(...WRITE), b2cController.updateRep);
-router.delete('/reps/:id', authorize(...WRITE), b2cController.deleteRep);
+router.put('/reps/:id', noSup, authorize(...WRITE), b2cController.updateRep);
+router.delete('/reps/:id', noSup, authorize(...WRITE), b2cController.deleteRep);
 
 // ── تفقُّد بداية الدوام ──────────────────────────────────────────────────────
 // الحارسُ هنا يفتح الشاشةَ فحسب؛ ومَن يرى أيَّ مندوبٍ ومَن يكتب فيه محسومٌ في
 // المتحكّم من `B2CRep.supervisor` لا من الدور. فمديرُ مشروعٍ بلا مندوبين
 // مُسنَدين يفتح الشاشةَ ولا يجد أحدًا — وهو الصواب.
-router.get('/duty/my-reps', authorize(...READ), duty.myReps);
-router.post('/duty', authorize(...READ), duty.submit);
+router.get('/duty/my-reps', authorize(...DUTY), duty.myReps);
+router.post('/duty', authorize(...DUTY), duty.submit);
 // المسارات الثابتة قبل `/:id` حتى لا تُقرأ «analytics» معرّفًا.
-router.get('/duty/analytics', authorize(...READ), duty.analytics);
-router.get('/duty/missing', authorize(...READ), duty.missing);
-router.get('/duty/supervisors', authorize(...READ), duty.supervisors);
-router.post('/duty/assign', authorize(...WRITE), duty.assign);
-router.get('/duty', authorize(...READ), duty.list);
-router.get('/duty/:id', authorize(...READ), duty.getOne);
+router.get('/duty/analytics', authorize(...DUTY), duty.analytics);
+router.get('/duty/missing', authorize(...DUTY), duty.missing);
+router.get('/duty/supervisors', authorize(...DUTY), duty.supervisors);
+router.post('/duty/assign', noSup, authorize(...WRITE), duty.assign);
+router.get('/duty', authorize(...DUTY), duty.list);
+router.get('/duty/:id', authorize(...DUTY), duty.getOne);
 router.patch('/duty/:id/review', authorize(...READ), duty.review);
 
 // Daily orders
 router.get('/daily-orders', authorize(...READ), b2cController.getDailyOrders);
-router.post('/daily-orders', authorize(...WRITE), b2cController.upsertDailyOrder);
-router.post('/daily-orders/bulk', authorize(...WRITE), b2cController.bulkUpsertDailyOrders);
-router.delete('/daily-orders/:id', authorize(...WRITE), b2cController.deleteDailyOrder);
+router.post('/daily-orders', noSup, authorize(...WRITE), b2cController.upsertDailyOrder);
+router.post('/daily-orders/bulk', noSup, authorize(...WRITE), b2cController.bulkUpsertDailyOrders);
+router.delete('/daily-orders/:id', noSup, authorize(...WRITE), b2cController.deleteDailyOrder);
 
 // Dashboard / analytics
 router.get('/dashboard', authorize(...READ), b2cController.getDashboardSummary);
@@ -65,15 +68,15 @@ router.get('/day-details', authorize(...READ), b2cController.getDayDetails);
 router.get('/uploads', authorize(...READ), b2cController.getUploadHistory);
 
 // Cleanup — destructive; only super_admin and b2c_head can wipe data
-router.post('/cleanup', authorize(...ADMIN_WRITE), b2cController.cleanupB2CData);
-router.post('/cleanup-fake-reps', authorize(...ADMIN_WRITE), b2cController.cleanupFakeReps);
+router.post('/cleanup', noSup, authorize(...ADMIN_WRITE), b2cController.cleanupB2CData);
+router.post('/cleanup-fake-reps', noSup, authorize(...ADMIN_WRITE), b2cController.cleanupFakeReps);
 
 // Google Sheet sync — list, CRUD, per-config sync trigger and setup script.
 router.get('/google-sheet/configs', authorize(...READ), b2cController.getSheetConfigs);
-router.post('/google-sheet/configs', authorize(...ADMIN_WRITE), b2cController.createSheetConfig);
-router.put('/google-sheet/configs/:id', authorize(...ADMIN_WRITE), b2cController.updateSheetConfig);
-router.delete('/google-sheet/configs/:id', authorize(...ADMIN_WRITE), b2cController.deleteSheetConfig);
-router.post('/google-sheet/configs/:id/sync-now', authorize(...ADMIN_WRITE), b2cController.syncSheetNow);
+router.post('/google-sheet/configs', noSup, authorize(...ADMIN_WRITE), b2cController.createSheetConfig);
+router.put('/google-sheet/configs/:id', noSup, authorize(...ADMIN_WRITE), b2cController.updateSheetConfig);
+router.delete('/google-sheet/configs/:id', noSup, authorize(...ADMIN_WRITE), b2cController.deleteSheetConfig);
+router.post('/google-sheet/configs/:id/sync-now', noSup, authorize(...ADMIN_WRITE), b2cController.syncSheetNow);
 router.get('/google-sheet/configs/:id/setup-script', authorize(...ADMIN_WRITE), b2cController.getSheetSetupScript);
 
 module.exports = router;

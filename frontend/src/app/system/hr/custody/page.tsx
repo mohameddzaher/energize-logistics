@@ -12,7 +12,7 @@ import { Spinner, PageHeader, SearchInput, PrimaryButton, SmallBadge, Modal, Fie
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getHrCustodyTranslations } from '@/lib/translations';
 
-const EMPTY = { employee: '', name: '', type: 'laptop', serialNumber: '', brand: '', model: '', condition: 'good', value: 0, assignedDate: '', notes: '' };
+const EMPTY = { employee: '', name: '', type: '', serialNumber: '', brand: '', model: '', condition: 'good', value: 0, assignedDate: '', notes: '' };
 
 // Items handed out by the Software & IT section (devices, SIMs, peripherals)
 // show here in full — HR needs to know who holds what and since when — but IT
@@ -184,7 +184,7 @@ export default function CustodyPage() {
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? tx.editCustody : tx.addCustody}
         footer={<>
           <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{tx.cancel}</button>
-          <PrimaryButton onClick={save} disabled={saving || !form.employee || !form.name.trim()}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{tx.save}</PrimaryButton>
+          <PrimaryButton onClick={save} disabled={saving || !form.employee || !form.name.trim() || !form.type}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{tx.save}</PrimaryButton>
         </>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label={tx.fieldEmployee} span2>
@@ -203,7 +203,7 @@ export default function CustodyPage() {
             />
           </Field>
           <Field label={tx.fieldItemName}><TextInput value={form.name} onChange={(e) => set('name', e.target.value)} placeholder={tx.itemNamePlaceholder} /></Field>
-          <Field label={tx.fieldType}><Select value={form.type} onChange={(e) => set('type', e.target.value)}>{types.map((t) => <option key={t.key} value={t.key}>{ar ? t.ar : t.en}</option>)}</Select></Field>
+          <Field label={tx.fieldType}><Select value={form.type} onChange={(e) => set('type', e.target.value)}><option value="">{ar ? '— اختر النوع —' : '— choose type —'}</option>{types.map((t) => <option key={t.key} value={t.key}>{ar ? t.ar : t.en}</option>)}</Select></Field>
           <Field label={tx.fieldSerial}><TextInput value={form.serialNumber} onChange={(e) => set('serialNumber', e.target.value)} /></Field>
           <Field label={tx.fieldBrand}><TextInput value={form.brand} onChange={(e) => set('brand', e.target.value)} /></Field>
           <Field label={tx.fieldModel}><TextInput value={form.model} onChange={(e) => set('model', e.target.value)} /></Field>

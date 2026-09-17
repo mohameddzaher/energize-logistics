@@ -149,7 +149,10 @@ const IT_CUSTODY_TYPES = BUCKETS
 
 // استعلام يُستثنى منه ما لا يخص القسم. يُستخدم في كل قراءة للأصول حتى تتطابق
 // أعداد الكروت مع أعداد الجداول — كارت يعدّ صفوفاً لا يظهرها الجدول هو خطأ.
-const NOT_EXCLUDED = { type: { $nin: EXCLUDED_TYPES } };
+// وما سلّمه قسمٌ آخر لا يُعدّ عهدةَ تقنيةٍ ولو حمل نوعًا تقنيًّا — الموارد البشريّة
+// وخطوطُ الاتصال تُعلَّم بقسمها (`issuedBySection`).
+const OTHER_SECTIONS = ['hr', 'telecom'];
+const NOT_EXCLUDED = { type: { $nin: EXCLUDED_TYPES }, issuedBySection: { $nin: OTHER_SECTIONS } };
 
 const EMP_FIELDS = 'firstName lastName arabicName iqamaNumber employeeNumber department';
 
@@ -546,7 +549,7 @@ exports.listCustody = async (req, res) => {
     // العدّ والصفوف من نفس المطابِقات بالحرف.
     // `scope=all` يضم المستودع، لأن زر «المستودع» وكارت كل فئة يعدّان المخزون
     // أيضاً: عدٌّ ينقصه ثلث السجل ليس إجمالياً.
-    const base = { type: { $in: IT_CUSTODY_TYPES } };
+    const base = { type: { $in: IT_CUSTODY_TYPES }, issuedBySection: { $nin: OTHER_SECTIONS } };
     if (scope !== 'all') base.status = { $ne: 'in_stock' };
     if (employee) base.employee = employee;
 

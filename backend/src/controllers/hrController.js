@@ -1769,7 +1769,16 @@ exports.createAsset = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
     if (!req.body.employee || !req.body.name) return res.status(400).json({ message: 'Employee and name are required' });
-    const asset = await Asset.create({ ...req.body, createdBy: req.user._id });
+    // ── عهدةُ الموارد البشريّة تُعلَّم بقسمها ───────────────────────────────
+    // كانت تُحفظ بلا قسم، والنموذجُ يبدأ بنوع «حاسب محمول» — فسُجّلت شريحةٌ
+    // باسم «SIM CARD» ونوعِ حاسب، فظهرت في عهد تقنية المعلومات (التي تُفرز
+    // بالنوع). فالشريحةُ تُعرف من اسمها إن لم يُختر نوعُها، وتُحفظ في قسم
+    // الاتصالات كخطوط موبايلي المستوردة، وغيرُها في قسم الموارد البشريّة.
+    const data = { ...req.body };
+    if (data.type !== 'sim' && /\bsim\b|شريح|خط (جوال|موبايل)/i.test(String(data.name || ''))) data.type = 'sim';
+    data.issuedBySection = data.type === 'sim' ? 'telecom' : 'hr';
+    if (data.type === 'sim' && !data.category) data.category = 'TELECOM';
+    const asset = await Asset.create({ ...data, createdBy: req.user._id });
     await notifyHR({ title: 'Custody assigned', message: `${asset.name}`, relatedEntity: 'Asset', relatedEntityId: asset._id, event: 'hr:asset' });
     const emp = await Employee.findById(asset.employee).select('user').lean();
     if (emp?.user) await notifyUser(emp.user, { title: 'New custody item', message: `${asset.name} was assigned to you.`, relatedEntity: 'Asset', relatedEntityId: asset._id, event: 'hr:asset' });

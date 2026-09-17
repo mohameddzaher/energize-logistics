@@ -574,6 +574,9 @@ exports.getWorkflows = async (req, res) => {
       OperationsWorkflow.countDocuments(filter),
     ]);
 
+    // الكشوفُ التي دفعتها المحفظة: خانةُ «مبلغ السداد» فيها تُعرض مقفولة.
+    const walletPaid = await require('../utils/walletPayment').walletPaidMap(workflows.map((w) => w.reportNumber));
+    for (const w of workflows) if (walletPaid.has(String(w.reportNumber || '').trim())) w.paidFromWallet = true;
     res.json({
       workflows: stripMoneyFor(req.user.role, workflows),
       total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)),
@@ -924,6 +927,14 @@ exports.updateWorkflow = async (req, res) => {
 
     const filteredBody = filterFieldsByRole(req.body, req.user.role);
 
+    // ── مبلغُ السداد من المحفظة لا يُكتب هنا ─────────────────────────────────
+    // كشفٌ له مشترياتٌ في المحفظة: مبلغُه ما كتبه موظّفُ العهدة. وكان فتحُ
+    // الكشف وحفظُه والخانةُ فارغة يمسحه (راجع utils/walletPayment).
+    if (Object.prototype.hasOwnProperty.call(filteredBody, 'paymentAmount')) {
+      const walletAmount = await require('../utils/walletPayment').walletPurchaseAmount(workflow.reportNumber);
+      if (walletAmount != null) filteredBody.paymentAmount = walletAmount;
+    }
+
     // ما لا يملكه الطالبُ يُقال له، لا يُبتلع. وإلّا ظنّ أنّه حفظ.
     const rejected = filteredBody.__rejected || [];
     if (rejected.length && !Object.keys(filteredBody).length) {
@@ -1251,6 +1262,10 @@ exports.bulkUpdate = async (req, res) => {
     // ضريبتَه من صافيه. وتطبيقُ قاعدةٍ واحدةٍ على الجميع كان سيكتب فاتورةً
     // على عميلِ كاش.
     const skipped = []; const perRow = [];
+    // مبلغُ السداد لكشفٍ دفعته المحفظةُ يبقى مبلغَها — راجع utils/walletPayment.
+    const walletPaid = Object.prototype.hasOwnProperty.call(patch, 'paymentAmount')
+      ? await require('../utils/walletPayment').walletPaidMap(rows.map((r) => r.reportNumber))
+      : new Map();
     for (const r of rows) {
       // الصفُّ الذي يحرّره غيرُك لا يُكتب فوقه في دفعةٍ لا يراها.
       if (isLocked(r, req.user._id)) {
@@ -1262,6 +1277,7 @@ exports.bulkUpdate = async (req, res) => {
         continue;
       }
       const rowPatch = { ...patch };
+      if (walletPaid.has(String(r.reportNumber || '').trim())) rowPatch.paymentAmount = walletPaid.get(String(r.reportNumber || '').trim());
       // ونوعُ الدفع يُملأ لكلّ صفٍّ من ملفّ عميله — والدفعةُ الواحدة تضمّ
       // عملاءَ شتّى، فقاعدةٌ واحدةٌ للجميع تكتب فاتورةً على عميل كاش.
       await fillPaymentTypeFromCustomer(rowPatch, r);

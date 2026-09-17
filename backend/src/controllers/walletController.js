@@ -603,6 +603,8 @@ exports.addTransaction = async (req, res) => {
         // فرعُ العهدة التي خرج منها المال — لا فرعُ الحساب الذي سجّله.
         branchId: wallet.branch || transaction.branch || req.user.branch,
       });
+      // والمبلغُ يُكتب ولو كانت الخانةُ مملوءة — المحفظةُ هي المرجع.
+      try { await require('../utils/walletPayment').syncSheetPayment(purchaseWorkflow.reportNumber); } catch (e) { console.error('wallet→sheet payment sync (create):', e.message); }
     }
     // ── وكلُّ كشفٍ مستلَمٍ يُختَم، لا الأوّلُ منها ─────────────────────────
     // لا مبلغَ في هذا القيد، فيُؤخذ لكلّ كشفٍ **سعرُ شرائه هو** — وهو المطلوب:
@@ -769,6 +771,13 @@ exports.deleteTransaction = async (req, res) => {
 
     await WalletTransaction.findByIdAndDelete(req.params.id);
 
+    // حُذف الشراءُ فلا سدادَ على الكشف — إلّا مبلغًا كُتب بيدٍ غيرَ مبلغه.
+    if (transaction.type === 'purchase' && transaction.purchaseDeliveryStatementNumber) {
+      try {
+        await require('../utils/walletPayment').syncSheetPayment(transaction.purchaseDeliveryStatementNumber, { previousAmount: transaction.amount });
+      } catch (e) { console.error('wallet→sheet payment sync (delete):', e.message); }
+    }
+
     if (wallet) {
       const updatedWallet = await recalcWallet(wallet._id);
       try { emitToAll('wallet:transaction', { wallet: updatedWallet }); } catch (e) { console.error('walletController silent catch:', e.message); }
@@ -798,6 +807,9 @@ exports.updateTransaction = async (req, res) => {
   try {
     const transaction = await WalletTransaction.findById(req.params.id);
     if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
+    // ما كان على القيد قبل التعديل — يُصحَّح به كشفُه القديم إن نُقل إلى غيره.
+    const priorSheetNumber = transaction.purchaseDeliveryStatementNumber;
+    const priorAmount = transaction.amount;
 
     const wallet = await DailyWallet.findById(transaction.wallet);
     if (!(await maySettle(req.user))) return denySettle(res, 'edit');
@@ -915,6 +927,19 @@ exports.updateTransaction = async (req, res) => {
     transaction.flagReason = transaction.isFlagged ? riskFlags.join('; ') : undefined;
 
     await transaction.save();
+
+    // ── ومبلغُ السداد على الكشف يتبع المحفظة ──────────────────────────────
+    // عُدِّل المبلغ فيتبعه الكشف، ونُقل القيدُ إلى كشفٍ آخر فيُمسح عن القديم
+    // ويُكتب على الجديد. راجع utils/walletPayment.
+    if (transaction.type === 'purchase') {
+      try {
+        const { syncSheetPayment } = require('../utils/walletPayment');
+        await syncSheetPayment(transaction.purchaseDeliveryStatementNumber);
+        if (priorSheetNumber && String(priorSheetNumber).trim() !== String(transaction.purchaseDeliveryStatementNumber || '').trim()) {
+          await syncSheetPayment(priorSheetNumber, { previousAmount: priorAmount });
+        }
+      } catch (e) { console.error('wallet→sheet payment sync (update):', e.message); }
+    }
 
     // ─── APPLY NEW FINANCIAL EFFECTS ──────────────────────
     if (transaction.type === 'expense' && transaction.vendor) {

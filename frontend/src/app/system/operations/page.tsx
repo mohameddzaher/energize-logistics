@@ -1288,11 +1288,14 @@ export default function OperationsWorkflowPage() {
                         </td>
                       );
                       const numCell = (field: keyof Workflow, color = 'text-slate-700') => {
-                        const isSystemPulled = (systemPulledFields.has(field as string) && wf.reportNumber) || !owns(field);
+                        // مبلغُ السداد لكشفٍ دفعته المحفظة هو ما كتبه موظّفُ العهدة — يُعدَّل
+                        // من قيد المحفظة لا من هنا (والخادمُ يفرض ذلك أيضًا).
+                        const fromWallet = field === 'paymentAmount' && !!(wf as any).paidFromWallet;
+                        const isSystemPulled = (systemPulledFields.has(field as string) && wf.reportNumber) || !owns(field) || fromWallet;
                         return (
                           <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isSystemPulled ? (e) => e.stopPropagation() : cellClick(field)}
-                            title={!owns(field) ? noPermMsg : isSystemPulled ? 'البيانات المسحوبة من النظام لا تُعدّل' : undefined}>
-                            {isEditing && !isSystemPulled ? <input type="number" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value ? Number(e.target.value) : ''}))} /> : <span className={`${spanCls(field, color)}${isSystemPulled && wf.reportNumber ? ' opacity-60' : ''}`}>{formatMoney((wf as any)[field])}</span>}
+                            title={!owns(field) ? noPermMsg : fromWallet ? 'من المحفظة — يُعدَّل من قيد المشتريات في المحفظة' : isSystemPulled ? 'البيانات المسحوبة من النظام لا تُعدّل' : undefined}>
+                            {isEditing && !isSystemPulled ? <input type="number" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value ? Number(e.target.value) : ''}))} /> : <span className={`${spanCls(field, color)}${isSystemPulled && wf.reportNumber && !fromWallet ? ' opacity-60' : ''}`}>{formatMoney((wf as any)[field])}{fromWallet && <span className="ms-1 text-[10px] font-semibold text-emerald-600">{lang === 'ar' ? 'محفظة' : 'wallet'}</span>}</span>}
                           </td>
                         );
                       };

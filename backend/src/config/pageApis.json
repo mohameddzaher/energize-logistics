@@ -1769,13 +1769,6 @@
       ],
       "wildcard": false
     },
-    "/system/kpis": {
-      "apis": [
-        "/api/kpi/overview",
-        "/api/ops/dashboard"
-      ],
-      "wildcard": false
-    },
     "/system/reports": {
       "apis": [
         "/api/reports",

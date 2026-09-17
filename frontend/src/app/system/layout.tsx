@@ -548,7 +548,6 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
 
     // Tools
     // The exec KPI board admits KPI_ROLES (lib/finance.ts) — mirror it exactly.
-    { href: '/system/kpis', label: L.kpis, icon: <Gauge className="w-5 h-5" />, roles: ['super_admin', 'admin', 'moderator'], section: 'Tools' },
     { href: '/system/reports', label: lang === 'ar' ? 'مركز التقارير' : 'Reports', icon: <FileBarChart className="w-5 h-5" />, roles: REPORT_ROLES, section: 'Tools' },
     { href: '/system/assistant', label: L.assistant, icon: <Bot className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee'], section: 'Tools' },
 

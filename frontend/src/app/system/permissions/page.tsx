@@ -30,7 +30,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import {
-  ShieldCheck, Check, Eye, Ban, Save, Loader2, Crown, ChevronDown, ChevronLeft,
+  ShieldCheck, Check, Eye, Ban, Save, Loader2, ChevronDown, ChevronLeft,
   UserPlus, Trash2, Search, X, Home, Layers,
 } from 'lucide-react';
 import { getPermissionsTranslations, getSectionLabel } from '@/lib/translations';
@@ -239,11 +239,6 @@ export default function PermissionsPage() {
           </PrimaryButton>
         )}
       </PageHeader>
-
-      <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl px-4 py-3 flex items-start gap-2">
-        <Crown className="w-4 h-4 shrink-0 mt-0.5" />
-        <span>{tx.superAdminNote}</span>
-      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5 items-start">
         {/* ── الأدوار ──────────────────────────────────────────────────────── */}

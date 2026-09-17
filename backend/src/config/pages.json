@@ -1454,12 +1454,6 @@
       "en": "KPIs"
     },
     {
-      "key": "/system/kpis",
-      "section": "Tools",
-      "ar": "مؤشرات الأداء",
-      "en": "KPIs"
-    },
-    {
       "key": "/system/reports",
       "section": "Tools",
       "ar": "مركز التقارير",

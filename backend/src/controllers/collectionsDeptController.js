@@ -357,11 +357,20 @@ exports.getPartyProfile = async (req, res) => {
     // وهو الرقمُ الذي يُطالَب به، والذي يُطبَع في كشف الحساب.
     const CollectionInvoice = require('../models/CollectionInvoice');
     const keys = new Set([party.nameKey || fold(party.name), ...names.map((n) => fold(n))]);
-    const ledgerAll = await CollectionInvoice.find({ partyName: { $nin: [null, ''] } })
-      .select('invoiceNumber partyName partyCode total invoiceDate deliveryDate collectionDate status kind')
-      .limit(40000).lean();
+    // الأسماءُ المتمايزة أوّلًا ثمّ الفواتيرُ بالصيغ المطابقة — لا أربعون ألف
+    // فاتورةٍ تُنقل لتُطوى في الذاكرة (كانت تأخذ نصفَ دقيقة على القاعدة).
+    const nameCacheKey = `${CACHE_PREFIX}invoice-party-names`;
+    let invNames = cache.get(nameCacheKey);
+    if (invNames === undefined) {
+      invNames = (await CollectionInvoice.distinct('partyName')).filter(Boolean);
+      cache.set(nameCacheKey, invNames, 5 * 60 * 1000);
+    }
+    const myInvNames = invNames.filter((n) => keys.has(fold(n)));
+    const ledgerAll = await CollectionInvoice.find({ $or: [
+      { party: party._id },
+      ...(myInvNames.length ? [{ partyName: { $in: myInvNames } }] : []),
+    ] }).select('invoiceNumber partyName partyCode total invoiceDate deliveryDate collectionDate status kind').lean();
     const ledger = ledgerAll
-      .filter((i) => keys.has(fold(i.partyName)))
       .sort((x, y) => new Date(y.invoiceDate || 0) - new Date(x.invoiceDate || 0));
 
     const isCollected = (i) => !!i.collectionDate || /collected/i.test(i.status || '');

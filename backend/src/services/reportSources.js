@@ -643,6 +643,114 @@ async function buildDriverReport(id, query, lang) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Reuses the portal's identity resolution, so a customer report and what that
 // customer sees when they log in are computed from exactly the same join.
+
+// ── الحسابُ الماليّ للطرف من دفاتر التشغيل والتحصيل ──────────────────────────
+//
+// كان تقريرُ العميل يقرأ المالَ من `Invoice`/`Payment` — جدولا قسمٍ حُذف وهما
+// فارغان — فيخرج «المفوتر ٠ · المحصّل ٠» لعميلٍ عليه مئاتُ الآلاف. والمالُ
+// الحقيقيُّ في ثلاثة مواضع: كشوفُ التشغيل (قيمةُ البيع وتاريخُ التحصيل، أو قيمةُ
+// الشراء وتاريخُ السداد للمورد)، ودفترُ فواتير التحصيل، ولقطةُ الأعمار في ملفّ
+// الطرف. والتعريفاتُ نفسُها التي في `collectionsDeptController` — لا ثانية.
+//
+// والأسماءُ تُقرأ بـ`distinct` لا صفًّا صفًّا: كان البحثُ عن اسمٍ يقرأ مئةَ ألف
+// كشفٍ ليطويها في الذاكرة، فيستغرق التقريرُ دقيقةً ونصفًا على قاعدةٍ مُقيَّدة النقل.
+const PARTY_FIELD = { customer: 'username', supplier: 'carOwner' };
+const PARTY_VALUE = { customer: 'sellingValue', supplier: 'purchaseValue' };
+const PARTY_CLOSED = { customer: 'collectionDate', supplier: 'paymentDate' };
+const SHEET_NOT_CANCELLED = { executionStatus: { $nin: ['ملغي', 'ملغى', 'ملغاة', 'cancelled', 'canceled', 'Cancelled'] } };
+
+async function distinctNames(model, field) {
+  const cache = require('../utils/ttlCache');
+  const k = `reports:names:${model.modelName}:${field}`;
+  let v = cache.get(k);
+  if (v === undefined) {
+    v = (await model.distinct(field)).filter(Boolean);
+    cache.set(k, v, 5 * 60 * 1000);
+  }
+  return v;
+}
+
+async function partyFinanceBlocks(kind, key, displayName, from, to, t) {
+  const CollectionsParty = require('../models/CollectionsParty');
+  const OperationsWorkflow = require('../models/OperationsWorkflow');
+  const CollectionInvoice = require('../models/CollectionInvoice');
+  const { fold } = CollectionsParty;
+  const fk = fold(displayName || '');
+  const same = (n) => nameKey(n) === key || (!!fk && fold(n) === fk);
+  const field = PARTY_FIELD[kind];
+  const valueF = PARTY_VALUE[kind];
+  const closedF = PARTY_CLOSED[kind];
+
+  const sheetNames = (await distinctNames(OperationsWorkflow, field)).filter(same);
+  const parties = await CollectionsParty.find({ kind, $or: [{ nameKey: fk }, ...(sheetNames.length ? [{ name: { $in: sheetNames } }] : [])] })
+    .select('name code creditLimit creditDays collectionOfficer ledger').lean();
+  const invNames = kind === 'customer' ? (await distinctNames(CollectionInvoice, 'partyName')).filter(same) : [];
+
+  const inPeriod = { $or: [{ reportDate: { $gte: from, $lte: to } }, { reportDate: null, createdAt: { $gte: from, $lte: to } }] };
+  const [sheets, openAll, invoices] = await Promise.all([
+    sheetNames.length
+      ? OperationsWorkflow.find({ [field]: { $in: sheetNames }, ...SHEET_NOT_CANCELLED, ...inPeriod })
+        .select(`${valueF} ${closedF} paymentType`).lean()
+      : [],
+    // المتبقّي اليوم لا يُحصر في الفترة: دَينٌ من العام الماضي دَينٌ اليوم.
+    sheetNames.length
+      ? OperationsWorkflow.aggregate([
+        { $match: { [field]: { $in: sheetNames }, ...SHEET_NOT_CANCELLED, [closedF]: null } },
+        { $group: { _id: null, value: { $sum: { $ifNull: [`$${valueF}`, 0] } }, n: { $sum: 1 } } },
+      ])
+      : [],
+    kind === 'customer' && (parties.length || invNames.length)
+      ? CollectionInvoice.find({
+        $or: [
+          ...(parties.length ? [{ party: { $in: parties.map((x) => x._id) } }] : []),
+          ...(invNames.length ? [{ partyName: { $in: invNames } }] : []),
+        ],
+        invoiceDate: { $gte: from, $lte: to },
+      }).select('total status kind').lean()
+      : [],
+  ]);
+  if (!sheets.length && !openAll.length && !invoices.length && !parties.length) return { blocks: [], found: false };
+
+  const sum = (rows, f) => rows.reduce((a, r) => a + (Number(r[f]) || 0), 0);
+  const value = sum(sheets, valueF);
+  const closed = sum(sheets.filter((r) => r[closedF]), valueF);
+  const openNow = openAll[0] || { value: 0, n: 0 };
+  const invTotal = sum(invoices, 'total');
+  const invCollected = sum(invoices.filter((i) => String(i.status).toLowerCase() === 'collected'), 'total');
+  const party = parties[0];
+  const isCust = kind === 'customer';
+
+  const blocks = [];
+  blocks.push({ kind: 'section', text: isCust ? t('الحساب المالي — التحصيل', 'Financial account — collections') : t('الحساب المالي — المستحق للمورد', 'Financial account — payable') });
+  blocks.push({
+    kind: 'stats',
+    items: [
+      { label: t('كشوف الفترة', 'Sheets in period'), value: num(sheets.length) },
+      { label: isCust ? t('قيمة البيع', 'Selling value') : t('قيمة الشراء', 'Purchase value'), value: money(value), accent: true },
+      { label: isCust ? t('المحصَّل منها', 'Collected') : t('المسدَّد منها', 'Paid'), value: money(closed) },
+      { label: t('المتبقي منها', 'Still open'), value: money(value - closed) },
+      { label: isCust ? t('المستحق عليه اليوم (كل الفترات)', 'Owed today (all periods)') : t('المستحق له اليوم (كل الفترات)', 'Owed to them today (all periods)'), value: money(openNow.value) },
+      ...(isCust ? [
+        { label: t('فواتير الفترة', 'Invoices in period'), value: `${num(invoices.length)} · ${money(invTotal)}` },
+        { label: t('فواتير محصَّلة', 'Invoices collected'), value: money(invCollected) },
+      ] : []),
+    ],
+  });
+  if (party) {
+    blocks.push({
+      kind: 'kv',
+      items: [
+        [t('كود الحساب', 'Account code'), party.code || null],
+        [t('حد الائتمان', 'Credit limit'), party.creditLimit ? money(party.creditLimit) : null],
+        [t('مدة الائتمان', 'Credit days'), party.creditDays ? `${party.creditDays} ${t('يوم', 'days')}` : null],
+        [t('موظف التحصيل', 'Collector'), party.collectionOfficer || null],
+        [t('رصيد دفتر الأعمار', 'Aging ledger balance'), party.ledger?.outstanding != null ? money(party.ledger.outstanding) : null],
+      ],
+    });
+  }
+  return { blocks, found: true, value, closed, openNow: openNow.value, invTotal, invCollected };
+}
+
 async function customerOptions(q) {
   const { REGISTERS } = require('../config/partnerRegisters');
   const partners = require('../controllers/partnerController');
@@ -713,18 +821,14 @@ async function buildCustomerReport(id, query, lang) {
   // itself rather than pretending they don't exist.
   let displayName = fin[0]?.companyName || fc[0]?.name || co[0]?.name;
   if (!displayName) {
-    const [cRow, oRow, fRow] = await Promise.all([
-      CustomsClearance.find({ customerName: { $nin: [null, ''] } }).select('customerName').limit(20000).lean(),
-      ShipmentOrder.find({ customerName: { $nin: [null, ''] } }).select('customerName').limit(20000).lean(),
-      FleetShipment.find({ customerName: { $nin: [null, ''] } }).select('customerName').limit(20000).lean(),
+    const { FleetShipment: FS } = require('../models/FleetModels');
+    const [cN, oN, fN] = await Promise.all([
+      distinctNames(CustomsClearance, 'customerName'),
+      distinctNames(ShipmentOrder, 'customerName'),
+      distinctNames(FS, 'customerName'),
     ]);
-    displayName = [...cRow, ...oRow, ...fRow].find((r) => nameKey(r.customerName) === key)?.customerName;
+    displayName = [...cN, ...oN, ...fN].find((n) => nameKey(n) === key);
   }
-  // ── وعميلُ التحصيل عميل ──────────────────────────────────────────────────
-  // كان الاسمُ يُلتمَس في سجلّات العملاء والتخليصِ والشحن، وليس فيها عملاءُ
-  // التحصيل: اسمُهم مكتوبٌ على كشوف التشغيل وفي دفتر الفواتير وفي سجلّ أطراف
-  // التحصيل. فمن عليه مئاتُ الآلاف ولا شحنةَ له في هذه المجموعات كان تقريرُه
-  // يُردّ «لا موضوع بهذا الاسم» — ولا يُطبَع له كشفُ حساب.
   if (!displayName) {
     const CollectionsParty = require('../models/CollectionsParty');
     const CollectionInvoice = require('../models/CollectionInvoice');
@@ -732,13 +836,11 @@ async function buildCustomerReport(id, query, lang) {
     const pRow = await CollectionsParty.findOne({ kind: 'customer', nameKey: key }).select('name').lean();
     displayName = pRow?.name;
     if (!displayName) {
-      // الاسمُ المطويُّ لا يُطابَق في القاعدة، فيُقرأ ما يحمل اسمًا ويُطوى هنا.
       const [inv, wf] = await Promise.all([
-        CollectionInvoice.find({ partyName: { $nin: [null, ''] } }).select('partyName').limit(40000).lean(),
-        OperationsWorkflow.find({ username: { $nin: [null, ''] } }).select('username').limit(60000).lean(),
+        distinctNames(CollectionInvoice, 'partyName'),
+        distinctNames(OperationsWorkflow, 'username'),
       ]);
-      displayName = inv.find((r) => nameKey(r.partyName) === key)?.partyName
-        || wf.find((r) => nameKey(r.username) === key)?.username;
+      displayName = inv.find((n) => nameKey(n) === key) || wf.find((n) => nameKey(n) === key);
     }
   }
   if (!displayName) return null;
@@ -746,6 +848,15 @@ async function buildCustomerReport(id, query, lang) {
   const finIds = fin.map((c) => c._id);
   const fcIds = fc.map((c) => c._id);
 
+  // الأسماءُ المكتوبة لهذا العميل في كلّ مجموعة تُعرَف من قائمة أسمائها المميّزة،
+  // فيُسأل عنها بالتطابق في القاعدة بدل قراءة كلّ شحنات الفترة وطيِّها هنا —
+  // كانت طلباتُ الشحن وحدها تنقل ثلاثة آلاف صفٍّ في عشر ثوانٍ لتُبقي خمسة.
+  const { FleetShipment: FS2 } = require('../models/FleetModels');
+  const [fleetNames, orderNames, customsNames] = await Promise.all([
+    distinctNames(FS2, 'customerName'),
+    distinctNames(ShipmentOrder, 'customerName'),
+    distinctNames(CustomsClearance, 'customerName'),
+  ]).then((lists) => lists.map((l) => l.filter((n) => nameKey(n) === key)));
   const [invoices, payments, fleetAll, ordersAll, customsAll, deals, activities] = await Promise.all([
     finIds.length ? Invoice.find({ customer: { $in: finIds } }).sort({ invoiceDate: -1 }).lean() : [],
     finIds.length ? Payment.find({ customer: { $in: finIds } }).sort({ paymentDate: -1 }).lean() : [],
@@ -754,15 +865,15 @@ async function buildCustomerReport(id, query, lang) {
     // memory — but over the period's rows, not the whole history.
     FleetShipment.find({
       $and: [
-        { $or: [{ customer: { $in: fcIds } }, { customerName: { $nin: [null, ''] } }] },
+        { $or: [{ customer: { $in: fcIds } }, { customerName: { $in: fleetNames } }] },
         { $or: [{ loadDate: { $gte: from, $lte: to } }, { createdAt: { $gte: from, $lte: to } }] },
       ],
     }).select('waybillNumber customer customerName vehiclePlate driverName fromCity toCity price status loadDate createdAt').limit(3000).lean(),
-    ShipmentOrder.find({ customerName: { $nin: [null, ''] }, createdAt: { $gte: from, $lte: to } })
+    ShipmentOrder.find({ customerName: { $in: orderNames }, createdAt: { $gte: from, $lte: to } })
       .select('waybillNumber customerName fromCity toCity sellPrice status driverName vehicleName createdAt').limit(3000).lean(),
     CustomsClearance.find({
       $and: [
-        { $or: [{ customer: { $in: finIds } }, { customerName: { $nin: [null, ''] } }] },
+        { $or: [{ customer: { $in: finIds } }, { customerName: { $in: customsNames } }] },
         { createdAt: { $gte: from, $lte: to } },
       ],
     }).select('refNumber customer customerName blNumber declarationNumber port stage cancelled containerCount totalWeight invoiceValue currency costs createdAt').limit(3000).lean(),
@@ -802,6 +913,7 @@ async function buildCustomerReport(id, query, lang) {
     ],
   });
 
+  const fin$ = await partyFinanceBlocks('customer', key, displayName, from, to, t);
   // Headline numbers for the period.
   const spend = fleetP.reduce((s, x) => s + (Number(x.price) || 0), 0) + ordersP.reduce((s, x) => s + (Number(x.sellPrice) || 0), 0);
   const outstanding = invoices.reduce((s, i) => s + (Number(i.balance) || 0), 0);
@@ -815,10 +927,11 @@ async function buildCustomerReport(id, query, lang) {
       { label: t('معاملات التخليص', 'Customs files'), value: num(customsP.length) },
       { label: t('الحاويات', 'Containers'), value: num(customsP.reduce((s, c) => s + (Number(c.containerCount) || 0), 0)) },
       { label: t('قيمة الشحنات', 'Shipment value'), value: money(spend) },
-      { label: t('المفوتر', 'Invoiced'), value: money(invoicesP.reduce((s, i) => s + (Number(i.amount) || 0), 0)) },
-      { label: t('المحصّل', 'Collected'), value: money(paymentsP.reduce((s, p) => s + (Number(p.amount) || 0), 0)) },
+      { label: t('المفوتر', 'Invoiced'), value: money(invoicesP.reduce((s, i) => s + (Number(i.amount) || 0), 0) + (fin$.invTotal || 0) || (fin$.value || 0)) },
+      { label: t('المحصّل', 'Collected'), value: money(paymentsP.reduce((s, p) => s + (Number(p.amount) || 0), 0) + (fin$.invCollected || fin$.closed || 0)) },
     ],
   });
+  // لا تُضاف فقرةُ «الحساب المالي» هنا: كشفُ حساب التحصيل أدناه يحملها كاملة.
   if (outstanding > 0) {
     blocks.push({
       kind: 'note',
@@ -913,13 +1026,20 @@ async function buildCustomerReport(id, query, lang) {
     const CollectionsFollowUp = require('../models/CollectionsFollowUp');
     const OperationsWorkflow = require('../models/OperationsWorkflow');
 
-    const party = await CollectionsParty.findOne({ kind: 'customer', nameKey: key }).select('_id name').lean();
+    // مفتاحُ ملفّ التحصيل مطويٌّ بطيّه هو (بلا مسافات)، ومفتاحُ التقرير يُبقيها —
+    // فيُسأل بالاثنين، وإلّا ضاع كلُّ عميلٍ في اسمه مسافة.
+    const party = await CollectionsParty.findOne({ kind: 'customer', nameKey: { $in: [key, CollectionsParty.fold(displayName || '')] } }).select('_id name').lean();
 
     // الفواتيرُ الضريبيّة من الدفتر — بالاسم المطويّ، فتلتقي صيغُ الاسم كلُّها.
-    const ledgerAll = await CollectionInvoice.find({ partyName: { $nin: [null, ''] } })
-      .select('invoiceNumber partyName total invoiceDate deliveryDate collectionDate status')
-      .limit(40000).lean();
-    const ledgerMine = ledgerAll.filter((i) => nameKey(i.partyName) === key);
+    // الصيغُ المطابقة من الأسماء المتمايزة، ثمّ الفواتيرُ بها — كانت تُقرأ
+    // أربعون ألف فاتورةٍ لتُطوى هنا، فيستغرق التقريرُ نصفَ دقيقة.
+    const ledgerNames = (await distinctNames(CollectionInvoice, 'partyName')).filter((n) => nameKey(n) === key);
+    const ledgerMine = ledgerNames.length || party
+      ? await CollectionInvoice.find({ $or: [
+        ...(ledgerNames.length ? [{ partyName: { $in: ledgerNames } }] : []),
+        ...(party ? [{ party: party._id }] : []),
+      ] }).select('invoiceNumber partyName total invoiceDate deliveryDate collectionDate status').lean()
+      : [];
     const ledgerP = ledgerMine.filter((i) => inWin(i.invoiceDate));
 
     // ── والصيغُ تُعرَف أوّلًا ثمّ تُسأل القاعدةُ بها ──────────────────────
@@ -929,7 +1049,7 @@ async function buildCustomerReport(id, query, lang) {
     //
     // فتُقرأ الأسماءُ المتمايزة وحدَها — وهي مئات — وتُطوى هنا، ثمّ تُسأل
     // القاعدةُ بالصيغ المطابقة نصًّا. فلا حدَّ ولا نقص.
-    const allNames = await OperationsWorkflow.distinct('username', { username: { $nin: [null, ''] } });
+    const allNames = await distinctNames(OperationsWorkflow, 'username');
     const myNames = allNames.filter((n) => nameKey(n) === key);
     const cashP = myNames.length ? await OperationsWorkflow.find({
       username: { $in: myNames }, paymentType: 'cash',
@@ -1071,6 +1191,14 @@ async function vendorOptions(q) {
     if (!k) continue;
     if (!byKey.has(k)) byKey.set(k, { id: k, name: v.name, detail: [v.vendorType, v.headquarters].filter(Boolean).join(' · ') });
   }
+  // موردو التحصيل (مُلّاكُ الشاحنات في الكشوف) لهم حسابٌ ماليٌّ حقيقيّ، وكثيرٌ
+  // منهم ليس في سجلّ العقود — فيُعرَضون في الاختيار كذلك.
+  const CollectionsParty = require('../models/CollectionsParty');
+  const sup = await CollectionsParty.find({ kind: 'supplier', ...(q ? { name: nameRegex(q) } : {}) }).select('name code').lean();
+  for (const v of sup) {
+    const k = nameKey(v.name);
+    if (k && !byKey.has(k)) byKey.set(k, { id: k, name: v.name, detail: [v.code, 'التحصيل'].filter(Boolean).join(' · ') });
+  }
   return [...byKey.values()].sort((a, b) => String(a.name).localeCompare(String(b.name), 'ar'));
 }
 
@@ -1091,8 +1219,14 @@ async function buildVendorReport(id, query, lang) {
   ]);
   const v = crmAll.find((x) => nameKey(x.name) === key) || null;
   const cv = cvAll.find((x) => (x.nameKey || nameKey(x.name)) === key) || null;
-  const displayName = v?.name || cv?.name;
+  let displayName = v?.name || cv?.name;
+  // الموردُ في دفاتر التحصيل وكشوف التشغيل موردٌ وإن لم يكن في سجلّ العقود.
+  if (!displayName) {
+    const OperationsWorkflow = require('../models/OperationsWorkflow');
+    displayName = (await distinctNames(OperationsWorkflow, 'carOwner')).find((n) => nameKey(n) === key);
+  }
   if (!displayName) return null;
+  const fin$ = await partyFinanceBlocks('supplier', key, displayName, from, to, t);
 
   const mySupplierIds = suppliers.filter((s) => nameKey(s.name) === key).map((s) => s._id);
   const orders = mySupplierIds.length
@@ -1141,6 +1275,7 @@ async function buildVendorReport(id, query, lang) {
   }
 
   // Volume — the real ledger.
+  blocks.push(...fin$.blocks);
   blocks.push({ kind: 'section', text: t('التشغيل في الفترة', 'Volume in the period') });
   blocks.push({
     kind: 'stats',

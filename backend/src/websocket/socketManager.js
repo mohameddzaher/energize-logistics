@@ -138,8 +138,24 @@ const getIO = () => {
   return io;
 };
 
+// ── والإدارةُ الماليّة تسمع كلَّ مالٍ يتحرّك ────────────────────────────────
+// صفحاتُها تجمع مالَ الأقسام كلِّها، فأيُّ بثٍّ ماليٍّ في أيّ قسمٍ يمسح مخزنَها
+// ويُعلمها لتعيد القراءة. والمسحُ والإعلامُ يُجمَعان في نافذةٍ قصيرة: حفظُ كشفٍ
+// واحدٍ يبثّ ثلاثة أحداث، ولا معنى لثلاث قراءاتٍ متتالية.
+const FINANCE_EVENTS = /^(wallet:|workflow:|collections:|fleet:|shipmentOrders:|customs:|b2c:wallet|marketing:|bd:|hr:(contract|employee|asset|master)|it:|vreg:|vehicle:|ls2:(store|repair)|procurement:|performance:|accounting:)/;
+let financeTimer = null;
+const financeTouch = (event) => {
+  if (!FINANCE_EVENTS.test(String(event || '')) || financeTimer) return;
+  financeTimer = setTimeout(() => {
+    financeTimer = null;
+    try { require('../utils/ttlCache').clear('finance:'); } catch (e) { /* يكفي انتهاءُ المهلة */ }
+    if (io) io.emit('finance:changed', { at: Date.now(), event });
+  }, 1500);
+};
+
 const emitToAll = (event, data) => {
   if (io) io.emit(event, data);
+  financeTouch(event);
 };
 
 /**
@@ -159,6 +175,7 @@ const emitToAll = (event, data) => {
  * وعددُ المتّصلين عشراتٌ لا آلاف، فالكلفةُ لا تُذكر.
  */
 const emitPerRole = (event, buildPayload) => {
+  financeTouch(event);
   if (!io) return;
   const cache = new Map();
   for (const socket of io.sockets.sockets.values()) {
@@ -170,6 +187,7 @@ const emitPerRole = (event, buildPayload) => {
 
 const emitToUser = (userId, event, data) => {
   if (io) io.to(`user:${userId}`).emit(event, data);
+  financeTouch(event);
 };
 
 const emitToDashboard = (role, event, data) => {

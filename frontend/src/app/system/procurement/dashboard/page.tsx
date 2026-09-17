@@ -61,7 +61,7 @@ export default function ProcurementDashboardPage() {
         <Link href="/system/procurement/bills">
           <StatCard label={ar ? `الإنفاق هذا الشهر (${data.spendThisMonthCount} فاتورة)` : `Spend This Month (${data.spendThisMonthCount} bills)`} value={money(data.spendThisMonth)} accent="text-purple-600" />
         </Link>
-        <Link href="/system/accounting/payables">
+        <Link href="/system/procurement/bills">
           <StatCard label={ar ? 'إجمالي الذمم الدائنة' : 'Accounts Payable'} value={money(data.unpaidBills)} accent="text-orange-600" />
         </Link>
         <Link href="/system/procurement/bills?status=unpaid">

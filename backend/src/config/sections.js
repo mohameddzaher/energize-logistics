@@ -154,8 +154,10 @@ const SECTIONS = [
     defaultRoles: ['admin', 'it_manager', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'],
   },
   {
+    // «الإدارة الماليّة». المفتاحُ الداخليّ بقي `Accounting` كي لا تُهاجَر صلاحيّاتٌ
+    // محفوظةٌ لأدوار المحاسبين؛ الاسمُ المعروض وحدَه تغيّر.
     key: 'Accounting',
-    apiPrefixes: ['/api/accounting'],
+    apiPrefixes: ['/api/accounting', '/api/finance'],
     defaultRoles: ['admin', 'it_manager', 'finance_manager', 'accountant'],
   },
   {
@@ -192,7 +194,7 @@ const SECTION_LABELS_AR = {
   'HR': 'الموارد البشرية',
   'CRM': 'إدارة العلاقات',
   'Sales': 'المبيعات',
-  'Accounting': 'المحاسبة',
+  'Accounting': 'الإدارة المالية',
   'Procurement': 'المشتريات',
   'Executive': 'الإدارة العليا',
 };

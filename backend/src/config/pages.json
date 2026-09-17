@@ -1262,46 +1262,64 @@
       "en": "Performance"
     },
     {
-      "key": "/system/accounting/dashboard",
+      "key": "/system/finance",
       "section": "Accounting",
-      "ar": "الحسابات",
-      "en": "Accounting"
+      "ar": "لوحة الإدارة المالية",
+      "en": "Finance Overview"
     },
     {
-      "key": "/system/accounting/accounts",
+      "key": "/system/finance/operations",
       "section": "Accounting",
-      "ar": "دليل الحسابات",
-      "en": "Chart of Accounts"
+      "ar": "ماليات التشغيل",
+      "en": "Operations Finance"
     },
     {
-      "key": "/system/accounting/journal",
+      "key": "/system/finance/fleet",
       "section": "Accounting",
-      "ar": "القيود اليومية",
-      "en": "Journal"
+      "ar": "ماليات إدارة الأسطول",
+      "en": "Fleet Finance"
     },
     {
-      "key": "/system/accounting/trial-balance",
+      "key": "/system/finance/customs",
       "section": "Accounting",
-      "ar": "ميزان المراجعة",
-      "en": "Trial Balance"
+      "ar": "ماليات التخليص الجمركي",
+      "en": "Customs Finance"
     },
     {
-      "key": "/system/accounting/profit-loss",
+      "key": "/system/finance/light-transport",
       "section": "Accounting",
-      "ar": "الأرباح والخسائر",
-      "en": "Profit & Loss"
+      "ar": "ماليات النقل الخفيف",
+      "en": "Light Transport Finance"
     },
     {
-      "key": "/system/accounting/receivables",
+      "key": "/system/finance/marketing",
       "section": "Accounting",
-      "ar": "الذمم المدينة",
-      "en": "Receivables"
+      "ar": "ماليات التسويق والتطوير",
+      "en": "Marketing & BD Finance"
     },
     {
-      "key": "/system/accounting/payables",
+      "key": "/system/finance/hr",
       "section": "Accounting",
-      "ar": "الذمم الدائنة",
-      "en": "Payables"
+      "ar": "ماليات الموارد البشرية",
+      "en": "HR Finance"
+    },
+    {
+      "key": "/system/finance/it",
+      "section": "Accounting",
+      "ar": "ماليات تقنية المعلومات",
+      "en": "IT Finance"
+    },
+    {
+      "key": "/system/finance/collections",
+      "section": "Accounting",
+      "ar": "ماليات التحصيل",
+      "en": "Collections Finance"
+    },
+    {
+      "key": "/system/finance/vehicles",
+      "section": "Accounting",
+      "ar": "ماليات المركبات",
+      "en": "Vehicles Finance"
     },
     {
       "key": "/system/procurement/dashboard",

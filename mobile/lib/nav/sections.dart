@@ -37,7 +37,7 @@ import '../screens/b2c_duty.dart';
 import '../screens/ops_platform.dart';
 import '../screens/ls2_fleet_assets.dart';
 import '../screens/admin_suite.dart';
-import '../screens/accounting_suite.dart';
+import '../screens/finance.dart';
 import '../screens/sales_suite.dart';
 import '../screens/it_recurring.dart';
 import '../screens/executive_overview.dart';
@@ -50,7 +50,6 @@ import '../screens/my_profile.dart';
 import '../screens/customs_guide.dart';
 import '../screens/cash_wallet.dart';
 import '../screens/wallet_dashboard.dart';
-import '../screens/accounting_reports.dart';
 import '../screens/performance_overview.dart';
 import '../screens/reference_data.dart';
 import '../screens/vehicle_documents.dart';
@@ -315,16 +314,21 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       ],
     ),
     AppSection(
-      key: 'Accounting', arTitle: 'الحسابات', enTitle: 'Accounting', icon: Icons.account_balance_outlined,
+      // الإدارة المالية — حلّت محلّ صفحات المحاسبة. والمفتاحُ `Accounting` باقٍ كي
+      // لا تُهاجَر صلاحيّاتٌ محفوظة؛ الاسمُ والصفحاتُ وحدَها تغيّرت.
+      key: 'Accounting', arTitle: 'الإدارة المالية', enTitle: 'Finance Management', icon: Icons.account_balance_outlined,
       roles: const [..._admins, 'finance_manager', 'accountant'],
       pages: [
-        AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: accountingDashSpec), path: '/system/accounting/dashboard'),
-        AppPage('شجرة الحسابات', 'Accounts', Icons.account_tree_outlined, (c) => const AccountsScreen(), path: '/system/accounting/accounts'),
-        AppPage('دفتر اليومية', 'Journal', Icons.menu_book_outlined, (c) => const JournalScreen(), path: '/system/accounting/journal'),
-        AppPage('المدينون', 'Receivables', Icons.call_received_outlined, (c) => const AgingReportScreen(endpoint: '/api/accounting/receivables', arTitle: 'المدينون', enTitle: 'Receivables', partyKey: 'customer', docKey: 'invoice', partyIsCompany: true), path: '/system/accounting/receivables'),
-        AppPage('الدائنون', 'Payables', Icons.call_made_outlined, (c) => const AgingReportScreen(endpoint: '/api/accounting/payables', arTitle: 'الدائنون', enTitle: 'Payables', partyKey: 'vendor', docKey: 'bill'), path: '/system/accounting/payables'),
-        AppPage('ميزان المراجعة', 'Trial Balance', Icons.balance_outlined, (c) => const TrialBalanceScreen(), path: '/system/accounting/trial-balance'),
-        AppPage('قائمة الدخل', 'Profit & Loss', Icons.trending_up_outlined, (c) => const ProfitLossScreen(), path: '/system/accounting/profit-loss'),
+        AppPage('لوحة الإدارة المالية', 'Finance Overview', Icons.dashboard_outlined, (c) => const FinanceOverviewScreen(), path: '/system/finance'),
+        AppPage('ماليات التشغيل', 'Operations Finance', Icons.assignment_outlined, (c) => const FinanceDeptScreen(dept: 'operations', arTitle: 'ماليات التشغيل', enTitle: 'Operations Finance'), path: '/system/finance/operations'),
+        AppPage('ماليات إدارة الأسطول', 'Fleet Finance', Icons.local_shipping_outlined, (c) => const FinanceDeptScreen(dept: 'fleet', arTitle: 'ماليات إدارة الأسطول', enTitle: 'Fleet Finance'), path: '/system/finance/fleet'),
+        AppPage('ماليات التخليص الجمركي', 'Customs Finance', Icons.directions_boat_outlined, (c) => const FinanceDeptScreen(dept: 'customs', arTitle: 'ماليات التخليص الجمركي', enTitle: 'Customs Finance'), path: '/system/finance/customs'),
+        AppPage('ماليات النقل الخفيف', 'Light Transport Finance', Icons.two_wheeler, (c) => const FinanceDeptScreen(dept: 'light', arTitle: 'ماليات النقل الخفيف', enTitle: 'Light Transport Finance'), path: '/system/finance/light-transport'),
+        AppPage('ماليات التسويق والتطوير', 'Marketing & BD Finance', Icons.campaign_outlined, (c) => const FinanceDeptScreen(dept: 'marketing', arTitle: 'ماليات التسويق والتطوير', enTitle: 'Marketing & BD Finance'), path: '/system/finance/marketing'),
+        AppPage('ماليات الموارد البشرية', 'HR Finance', Icons.badge_outlined, (c) => const FinanceDeptScreen(dept: 'hr', arTitle: 'ماليات الموارد البشرية', enTitle: 'HR Finance'), path: '/system/finance/hr'),
+        AppPage('ماليات تقنية المعلومات', 'IT Finance', Icons.computer_outlined, (c) => const FinanceDeptScreen(dept: 'it', arTitle: 'ماليات تقنية المعلومات', enTitle: 'IT Finance'), path: '/system/finance/it'),
+        AppPage('ماليات التحصيل', 'Collections Finance', Icons.request_quote_outlined, (c) => const FinanceDeptScreen(dept: 'collections', arTitle: 'ماليات التحصيل', enTitle: 'Collections Finance'), path: '/system/finance/collections'),
+        AppPage('ماليات المركبات', 'Vehicles Finance', Icons.directions_car_outlined, (c) => const FinanceDeptScreen(dept: 'vehicles', arTitle: 'ماليات المركبات', enTitle: 'Vehicles Finance'), path: '/system/finance/vehicles'),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'accounting'), path: '/system/accounting/my-tasks'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'accounting', complaints: true), path: '/system/accounting/complaints'),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Accounting'), path: '/system/accounting/kpis'),

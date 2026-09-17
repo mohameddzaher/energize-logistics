@@ -1548,50 +1548,64 @@
       ],
       "wildcard": false
     },
-    "/system/accounting/dashboard": {
+    "/system/finance": {
       "apis": [
-        "/api/accounting/dashboard",
-        "/api/accounting/sync",
-        "/api/ops/dashboard"
+        "/api/finance/departments",
+        "/api/finance/overview"
       ],
       "wildcard": false
     },
-    "/system/accounting/accounts": {
+    "/system/finance/operations": {
       "apis": [
-        "/api/accounting/accounts",
-        "/api/accounting/ledger"
+        "/api/finance/departments"
       ],
       "wildcard": false
     },
-    "/system/accounting/journal": {
+    "/system/finance/fleet": {
       "apis": [
-        "/api/accounting/accounts",
-        "/api/accounting/journal",
-        "/api/accounting/sync"
+        "/api/finance/departments"
       ],
       "wildcard": false
     },
-    "/system/accounting/trial-balance": {
+    "/system/finance/customs": {
       "apis": [
-        "/api/accounting/trial-balance"
+        "/api/finance/departments"
       ],
       "wildcard": false
     },
-    "/system/accounting/profit-loss": {
+    "/system/finance/light-transport": {
       "apis": [
-        "/api/accounting/profit-loss"
+        "/api/finance/departments"
       ],
       "wildcard": false
     },
-    "/system/accounting/receivables": {
+    "/system/finance/marketing": {
       "apis": [
-        "/api/accounting/receivables"
+        "/api/finance/departments"
       ],
       "wildcard": false
     },
-    "/system/accounting/payables": {
+    "/system/finance/hr": {
       "apis": [
-        "/api/accounting/payables"
+        "/api/finance/departments"
+      ],
+      "wildcard": false
+    },
+    "/system/finance/it": {
+      "apis": [
+        "/api/finance/departments"
+      ],
+      "wildcard": false
+    },
+    "/system/finance/collections": {
+      "apis": [
+        "/api/finance/departments"
+      ],
+      "wildcard": false
+    },
+    "/system/finance/vehicles": {
+      "apis": [
+        "/api/finance/departments"
       ],
       "wildcard": false
     },

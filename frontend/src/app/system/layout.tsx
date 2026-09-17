@@ -13,7 +13,7 @@ import {
   Briefcase, TrendingUp, ListTodo, Building2, Wallet,
   Store, Truck, Tags, Languages, Wrench, Hammer, ShoppingCart, MessageSquare, Package,
   Target, Award, CalendarDays, Clock, Megaphone, CalendarCheck,
-  Calculator, Scale, BookOpen, Gauge, Ship, ScrollText,
+  Calculator, Scale, BookOpen, Gauge, Ship, ScrollText, Landmark,
   Activity, Car, UserSquare, IdCard, MapPin, Globe, Boxes, Ruler, Palette, ShieldCheck, PackageSearch, SlidersHorizontal,
   Thermometer, Satellite, Crown, Container, FileBarChart,
   Compass, Handshake, Gavel, MonitorCog, LifeBuoy, Laptop, Server, RefreshCw, Inbox, LayoutGrid, Mail,
@@ -510,13 +510,20 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/sales/targets', label: L.salesTargets, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },
     { href: '/system/sales/performance', label: L.salesPerformance, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },
     // Accounting
-    { href: '/system/accounting/dashboard', label: L.accountingDashboard, icon: <Calculator className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
-    { href: '/system/accounting/accounts', label: L.chartOfAccounts, icon: <BookOpen className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
-    { href: '/system/accounting/journal', label: L.journal, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
-    { href: '/system/accounting/trial-balance', label: L.trialBalance, icon: <Scale className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
-    { href: '/system/accounting/profit-loss', label: L.profitLoss, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
-    { href: '/system/accounting/receivables', label: L.receivables, icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
-    { href: '/system/accounting/payables', label: L.payables, icon: <CreditCard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    // ── الإدارة الماليّة ────────────────────────────────────────────────────
+    // حلّت محلّ صفحات المحاسبة (دليل الحسابات، القيود، ميزان المراجعة) التي كانت
+    // تُملأ بمزامنةٍ يدويّة فتبقى ناقصة. مالُ كلّ قسمٍ يُقرأ من القسم نفسِه.
+    // والمفتاحُ `Accounting` باقٍ كي لا تُهاجَر صلاحيّاتٌ محفوظة — الاسمُ وحدَه تغيّر.
+    { href: '/system/finance', label: lang === 'ar' ? 'لوحة الإدارة المالية' : 'Finance Overview', icon: <Landmark className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    { href: '/system/finance/operations', label: lang === 'ar' ? 'ماليات التشغيل' : 'Operations Finance', icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    { href: '/system/finance/fleet', label: lang === 'ar' ? 'ماليات إدارة الأسطول' : 'Fleet Finance', icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    { href: '/system/finance/customs', label: lang === 'ar' ? 'ماليات التخليص الجمركي' : 'Customs Finance', icon: <Ship className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    { href: '/system/finance/light-transport', label: lang === 'ar' ? 'ماليات النقل الخفيف' : 'Light Transport Finance', icon: <Award className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    { href: '/system/finance/marketing', label: lang === 'ar' ? 'ماليات التسويق والتطوير' : 'Marketing & BD Finance', icon: <Megaphone className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    { href: '/system/finance/hr', label: lang === 'ar' ? 'ماليات الموارد البشرية' : 'HR Finance', icon: <UserCog className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    { href: '/system/finance/it', label: lang === 'ar' ? 'ماليات تقنية المعلومات' : 'IT Finance', icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    { href: '/system/finance/collections', label: lang === 'ar' ? 'ماليات التحصيل' : 'Collections Finance', icon: <CreditCard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    { href: '/system/finance/vehicles', label: lang === 'ar' ? 'ماليات المركبات' : 'Vehicles Finance', icon: <Car className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
     // Procurement
     { href: '/system/procurement/dashboard', label: L.procurementDashboard, icon: <ShoppingCart className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'procurement_manager', 'procurement_staff'], section: 'Procurement' },
     { href: '/system/procurement/requests', label: L.purchaseRequests, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'procurement_manager', 'procurement_staff'], section: 'Procurement' },

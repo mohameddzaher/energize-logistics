@@ -351,15 +351,22 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
     ? await B2CDailyOrder.find({
         rep: { $in: repIds },
         dateKey: { $in: dateKeys },
-      }).select('rep dateKey').lean()
+      }).select('rep dateKey source').lean()
     : [];
   const existingSet = new Set(existingDocs.map((d) => `${d.rep}:${d.dateKey}`));
+  // ── وما أُدخل في النظام يدويًّا لا يدهسه الشيت ──────────────────────────
+  // يومُ مندوبٍ كتبه مشرفٌ في النظام (source ≠ excel) هو الأحدثُ والأصدق:
+  // كان وضعُ «الاستبدال» يكتب رقمَ الشيت فوقه ويختمه «excel» — فيضيع التصحيحُ
+  // في أوّل مزامنة، ثمّ يُحذف إن غاب من الشيت. النظامُ هو المرجع بعد الإدخال.
+  const manualSet = new Set(existingDocs.filter((d) => d.source && d.source !== 'excel').map((d) => `${d.rep}:${d.dateKey}`));
+  let keptManual = 0;
 
   const ops = [];
   for (const e of entries) {
     const pairKey = `${e.rep}:${e.dateKey}`;
     const exists = existingSet.has(pairKey);
     if (exists && effectiveMode === 'merge_new_only') { skipped++; continue; }
+    if (manualSet.has(pairKey)) { keptManual++; skipped++; continue; }
     const computedWorked = e.orders !== null && e.orders > 0;
     ops.push({
       updateOne: {
@@ -460,7 +467,7 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
   );
 
   try { emitToAll('b2c:sheet:synced', { configId: String(config._id), stats }); } catch (_) {}
-  console.log(`[B2C google-sheet sync ${config._id}] OK in ${stats.durationMs}ms — inserted=${inserted} updated=${updated} skipped=${skipped} pruned=${pruned} created_reps=${actuallyCreated}`);
+  console.log(`[B2C google-sheet sync ${config._id}] OK in ${stats.durationMs}ms — inserted=${inserted} updated=${updated} skipped=${skipped} keptManual=${keptManual} pruned=${pruned} created_reps=${actuallyCreated}`);
 
   return stats;
 }

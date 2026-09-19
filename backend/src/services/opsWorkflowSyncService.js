@@ -254,7 +254,8 @@ async function upsertShipments(ships) {
   for (const { name, paymentType } of seenNames.values()) {
     try {
       const before = await require('../models/CollectionsParty')
-        .countDocuments({ kind: 'customer', nameKey: require('../models/CollectionsParty').fold(name) });
+        // طرفٌ قائمٌ **بكود** لا يُعاد إليه؛ أمّا القائمُ بلا كود فيُمرَّر ليأخذه.
+        .countDocuments({ kind: 'customer', code: { $gt: '' }, $or: [{ nameKey: require('../models/CollectionsParty').fold(name) }, { aliasKeys: require('../models/CollectionsParty').fold(name) }] });
       if (before) continue;
       const p = await ensureCollectionsParty(name, { paymentType, source: 'operations_workflow' });
       if (p) newParties += 1;

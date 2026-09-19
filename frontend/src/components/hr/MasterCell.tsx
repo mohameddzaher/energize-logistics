@@ -37,6 +37,8 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
   const [val, setVal] = useState('');
   const [free, setFree] = useState(false);
   const [busy, setBusy] = useState(false);
+  // حالةُ الخانة تُختار مع قيمتها: «غير مطلوب» لمن لا يحتاج المستند، إلخ.
+  const [mark, setMark] = useState('');
   const opts = (choices?.[f.key] || []).filter((o) => !(f.cashPayroll && o.value.toLowerCase() === CASH));
 
   const start = () => {
@@ -44,6 +46,7 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
     // التاريخ غير المقروء («مطلوب» مكتوبةً في خانة تاريخ) يُفتح فارغًا ليُصحَّح.
     const v = f.type === 'date' ? toDateInput(raw) : String(raw ?? '');
     setVal(v);
+    setMark('');
     setFree(!!f.choice && !!v && v.toLowerCase() !== CASH && !opts.some((o) => o.value === v));
     setEditing(true);
   };
@@ -51,7 +54,7 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
   const save = async (value = val) => {
     setBusy(true);
     try {
-      await updateEmployeeFields(id, { [f.key]: value });
+      await updateEmployeeFields(id, { [f.key]: value }, mark ? { [f.key]: mark } : undefined);
       notify(t('تم الحفظ', 'Saved'), 'success');
       setEditing(false);
       onSaved();
@@ -76,6 +79,15 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
             onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
             className={`${box} text-center`} />
         )}
+        <select value={mark} onChange={(e) => setMark(e.target.value)} title={t('حالة الخانة', 'Field status')}
+          className="px-1 py-1 rounded border border-slate-200 bg-slate-50 text-[11px] text-slate-600">
+          <option value="">{t('الحالة', 'Status')}</option>
+          <option value="required">{t('مطلوب', 'Required')}</option>
+          <option value="not_required">{t('غير مطلوب', 'Not required')}</option>
+          <option value="none">{t('لا يوجد', 'None')}</option>
+          <option value="inactive">{t('غير نشط', 'Inactive')}</option>
+          <option value="clear">{t('بلا علامة', 'Clear')}</option>
+        </select>
         <button type="button" onClick={() => save()} disabled={busy} className="p-1 rounded bg-emerald-50 text-emerald-700"><Check className="w-3.5 h-3.5" /></button>
         <button type="button" onClick={() => setEditing(false)} className="p-1 rounded text-slate-600 hover:text-slate-900"><X className="w-3.5 h-3.5" /></button>
       </span>

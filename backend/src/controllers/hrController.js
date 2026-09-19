@@ -271,6 +271,22 @@ exports.getEmployee = async (req, res) => {
   }
 };
 
+// ── حالةُ الحقل تُختار من الاستمارة ──────────────────────────────────────────
+// «مطلوب» / «غير مطلوب» / «لا يوجد» / «غير نشط» قراراتٌ على الخانة الفارغة؛
+// و`clear` يرفع العلامة فتُقرأ الحالةُ من القيمة. راجع EmployeeFormModal.
+const MARKS = new Set(['required', 'not_required', 'none', 'inactive', 'cash_payroll']);
+function applyMarks(employee, marks) {
+  if (!marks || typeof marks !== 'object') return;
+  const H = require('../config/hrFields');
+  if (!employee.fieldStatus || typeof employee.fieldStatus.set !== 'function') employee.fieldStatus = new Map();
+  for (const [k, code] of Object.entries(marks)) {
+    if (!H.getField(k)) continue;
+    const sk = H.statusKeyOf(k);
+    if (code === 'clear' || code === '') employee.fieldStatus.delete(sk);
+    else if (MARKS.has(code)) employee.fieldStatus.set(sk, code);
+  }
+}
+
 exports.createEmployee = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
@@ -280,7 +296,10 @@ exports.createEmployee = async (req, res) => {
     // اختياريًّا — ويُقال له «Failed to create employee» بلا سبب.
     const body = { ...stripEmpty(req.body, Employee.schema), createdBy: req.user._id };
     delete body.user; // linking is done from the Users screen, not here
-    const employee = await Employee.create(body);
+    delete body.markStatus;
+    const employee = new Employee(body);
+    applyMarks(employee, req.body.markStatus);
+    await employee.save();
     bustEmployeeCaches();
     await logAudit({ user: req.user._id, action: 'create_employee', entity: 'Employee', entityId: employee._id, changes: { after: { name: fullName(employee) } }, ipAddress: req.ip });
     try { emitToUser(String(req.user._id), 'hr:employee', { id: String(employee._id) }); } catch (e) {}
@@ -342,6 +361,7 @@ exports.updateEmployee = async (req, res) => {
       }
       employee[f] = next;
     }
+    applyMarks(employee, req.body.markStatus);
     await employee.save();
     // بطاقةُ السائق تُكتب في سجلّ المركبات (المرجع) إن عُدِّلت هنا — راجع utils/driverCardSync.
     if (['driverCardNumber', 'driverCardExpiry', 'driverCardType'].some((k) => req.body[k] !== undefined)) {

@@ -420,7 +420,8 @@ exports.getVendorKpis = async (req, res) => {
       ShipmentOrderSupplier.find({}).select('name type phone email isActive').lean(),
       ShipmentOrder.find({ createdAt: { $gte: prevFrom, $lte: to } })
         .select('supplier customerName sellPrice buyPrice status createdAt fromCity toCity driverName vehicleName').lean(),
-      VendorUtilisation.find({}).select('nameKey vendorName year month orders fleetSize expectedMonthlyCapacity hasContract vendorType isExternal').lean(),
+      // من الكشوف الفعليّة لا من ورقة الاستخدام — راجع utils/liveVendorUtilisation.
+      require('../utils/liveVendorUtilisation').liveUtilisationRows(),
       ContractVendor.find({}).select('nameKey name fleetSize monthlyCapacity vendorSideContract ourSideContract documentsReceived contractDate destinations headquarters energizeRep vendorType').lean(),
     ]);
 

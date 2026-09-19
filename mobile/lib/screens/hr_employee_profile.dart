@@ -703,19 +703,126 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
     ('nationality', 'الجنسية', 'Nationality'),
   ];
 
+  // ── المستندات: قيمةٌ، أو حالةٌ تقول لماذا لا قيمة — كاستمارة الموقع ────────
+  // الموظّفُ الجديد تُعلَّم مستنداتُه الفارغةُ «مطلوبة» في الخادم، ومن لا يحتاج
+  // مستندًا يختار «غير مطلوب». وحقولُ الاختيار قائمةٌ من القيم المستعملة
+  // (/api/hr/master/choices)، وللبنك «راتب نقدي».
+  static const _docs = [
+    ('passportNumber', 'رقم الجواز', 'Passport no.', false),
+    ('passportExpiry', 'انتهاء الجواز', 'Passport expiry', true),
+    ('iqamaExpiry', 'انتهاء الإقامة', 'Iqama expiry', true),
+    ('insuranceCompany', 'شركة التأمين', 'Insurer', false),
+    ('insuranceExpiry', 'انتهاء التأمين', 'Insurance expiry', true),
+    ('licenseType', 'نوع الرخصة', 'Licence type', false),
+    ('licenseExpiry', 'انتهاء الرخصة', 'Licence expiry', true),
+    ('driverCardNumber', 'رقم بطاقة السائق', 'Driver card no.', false),
+    ('driverCardExpiry', 'انتهاء بطاقة السائق', 'Driver card expiry', true),
+  ];
+  static const _choiceKeys = {'insuranceCompany', 'licenseType', 'bank', 'socialInsuranceStatus'};
+  static const _statusOpts = [
+    ('', 'الحالة: تلقائي', 'Status: auto'), ('required', 'مطلوب', 'Required'),
+    ('not_required', 'غير مطلوب', 'Not required'), ('none', 'لا يوجد', 'None'), ('inactive', 'غير نشط', 'Inactive'),
+  ];
+  late final Map<String, TextEditingController> _d;
+  final Map<String, String> _marks = {};
+  final Map<String, String> _pick = {};
+  Map<String, List<String>> _choices = {};
+
   @override
   void initState() {
     super.initState();
     _c = {for (final f in _fields) f.$1: TextEditingController(text: (widget.employee?[f.$1] ?? '').toString())};
     _status = (widget.employee?['employmentStatus'] ?? 'active').toString();
+    String asText(dynamic v) {
+      final t = (v ?? '').toString();
+      return RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(t) ? t.substring(0, 10) : t;
+    }
+    _d = {for (final f in _docs) f.$1: TextEditingController(text: asText(widget.employee?[f.$1]))};
+    for (final k in ['bank', 'socialInsuranceStatus', 'insuranceCompany', 'licenseType']) {
+      _pick[k] = (widget.employee?[k] ?? '').toString();
+    }
+    final fs = Map<String, dynamic>.from(widget.employee?['fieldStatus'] ?? {});
+    for (final f in _docs) {
+      final v = (fs['${f.$1}Status'] ?? '').toString();
+      if (v.isNotEmpty && v != 'filled') _marks[f.$1] = v;
+    }
+    Api.instance.get('/api/hr/master/choices').then((d) {
+      final raw = Map<String, dynamic>.from(d['choices'] ?? {});
+      if (!mounted) return;
+      setState(() => _choices = {
+        for (final e in raw.entries) e.key: List<Map<String, dynamic>>.from(e.value).map((x) => '${x['value']}').toList(),
+      });
+    }).catchError((_) {});
+  }
+
+  Widget _choiceField(String k, String ar, String en) {
+    final opts = [...(_choices[k] ?? const <String>[])]..removeWhere((x) => k == 'bank' && x.toLowerCase() == 'cash');
+    final cur = _pick[k] ?? '';
+    final items = <DropdownMenuItem<String>>[
+      DropdownMenuItem(value: '', child: Text(tr('— اختر —', '— choose —'))),
+      if (k == 'bank') DropdownMenuItem(value: 'cash', child: Text(tr('راتب نقدي', 'Cash payroll'))),
+      ...opts.map((o) => DropdownMenuItem(value: o, child: Text(o, overflow: TextOverflow.ellipsis))),
+      if (cur.isNotEmpty && cur.toLowerCase() != 'cash' && !opts.contains(cur)) DropdownMenuItem(value: cur, child: Text(cur)),
+    ];
+    return DropdownButtonFormField<String>(
+      initialValue: k == 'bank' && cur.toLowerCase() == 'cash' ? 'cash' : cur,
+      isExpanded: true,
+      menuMaxHeight: 360,
+      decoration: InputDecoration(labelText: tr(ar, en)),
+      items: items,
+      onChanged: (v) => setState(() => _pick[k] = v ?? ''),
+    );
+  }
+
+  Widget _docField((String, String, String, bool) f) {
+    final k = f.$1;
+    final value = _choiceKeys.contains(k)
+        ? _choiceField(k, f.$2, f.$3)
+        : TextField(
+            controller: _d[k],
+            readOnly: f.$4,
+            decoration: InputDecoration(
+              labelText: tr(f.$2, f.$3),
+              suffixIcon: f.$4 ? const Icon(Icons.calendar_today_outlined, size: 18) : null,
+            ),
+            onTap: f.$4 ? () async {
+              final now = DateTime.now();
+              final init = DateTime.tryParse(_d[k]!.text) ?? now;
+              final picked = await showDatePicker(context: context, initialDate: init, firstDate: DateTime(1990), lastDate: DateTime(now.year + 20));
+              if (picked != null) setState(() => _d[k]!.text = picked.toIso8601String().substring(0, 10));
+            } : null,
+          );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Expanded(flex: 3, child: value),
+        const SizedBox(width: 8),
+        Expanded(flex: 2, child: DropdownButtonFormField<String>(
+          initialValue: _marks[k] ?? '',
+          isExpanded: true,
+          decoration: const InputDecoration(isDense: true),
+          style: const TextStyle(fontSize: 12, color: T.inkSoft),
+          items: _statusOpts.map((o) => DropdownMenuItem(value: o.$1, child: Text(tr(o.$2, o.$3)))).toList(),
+          onChanged: (v) => setState(() { if ((v ?? '').isEmpty) { _marks.remove(k); } else { _marks[k] = v!; } }),
+        )),
+      ]),
+    );
   }
 
   Future<void> _save() async {
     setState(() => _busy = true);
     try {
-      final body = {
+      final isNew = widget.employee == null;
+      final body = <String, dynamic>{
         for (final f in _fields) f.$1: _c[f.$1]!.text.trim(),
         'employmentStatus': _status,
+        for (final f in _docs) if (!_choiceKeys.contains(f.$1)) f.$1: _d[f.$1]!.text.trim(),
+        for (final e in _pick.entries) e.key: e.value,
+        // «تلقائي» على ملفٍّ قائم يرفع العلامة؛ وعلى جديدٍ لا يُرسَل فيعمل الافتراض.
+        'markStatus': {
+          for (final f in _docs)
+            if (_marks[f.$1] != null) f.$1: _marks[f.$1]! else if (!isNew) f.$1: 'clear',
+        },
       };
       if (widget.employee == null) {
         await Api.instance.post('/api/hr/employees', body);
@@ -749,6 +856,12 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
                   padding: const EdgeInsets.only(bottom: 10),
                   child: TextField(controller: _c[f.$1], decoration: InputDecoration(labelText: tr(f.$2, f.$3))),
                 )),
+            const SizedBox(height: 6),
+            Text(tr('المستندات والبنك', 'Documents & bank'), style: const TextStyle(fontWeight: FontWeight.w800, color: T.orange)),
+            const SizedBox(height: 8),
+            ..._docs.map(_docField),
+            Padding(padding: const EdgeInsets.only(bottom: 10), child: _choiceField('bank', 'البنك', 'Bank')),
+            Padding(padding: const EdgeInsets.only(bottom: 10), child: _choiceField('socialInsuranceStatus', 'التأمينات الاجتماعية', 'Social insurance')),
             DropdownButtonFormField<String>(
               initialValue: _status,
               decoration: InputDecoration(labelText: tr('حالة الموظف', 'Status')),

@@ -937,6 +937,15 @@ exports.decideLink = async (req, res) => {
     }
     sug.decision = decision; sug.decidedBy = req.user._id; sug.decidedAt = new Date(); sug.decidedHow = 'manual';
     await sug.save();
+    // «حسابٌ مستقلّ» لعميلٍ من التشغيل بلا كود ⇒ يأخذ كودَه الآن بنوع حمولاته،
+    // فلا يبقى خارج الأعمار بعد أن قيل إنّه عميلٌ جديد. راجع classifyCodelessParty.
+    if (decision === 'separate' && sug.candidate) {
+      const cand = await CollectionsParty.findById(sug.candidate).lean();
+      if (cand && !cand.code && cand.isActive !== false) {
+        const { classifyCodelessParty } = require('../utils/ensureCollectionsParty');
+        try { await classifyCodelessParty(cand, { apply: true }); } catch (_) { /* */ }
+      }
+    }
     exports.invalidate();
     res.json({ ok: true, suggestion: sug });
   } catch (e) {

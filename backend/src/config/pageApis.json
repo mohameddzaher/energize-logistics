@@ -1326,6 +1326,7 @@
     "/system/hr/employees": {
       "apis": [
         "/api/hr/employees",
+        "/api/hr/master/choices",
         "/api/hr/master/filters",
         "/api/hr/options"
       ],

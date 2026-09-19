@@ -236,6 +236,35 @@ employeeSchema.pre('save', async function fillBranchName(next) {
   next();
 });
 
+// ── موظّفٌ جديد: مستنداتُه الفارغةُ «مطلوبة» حتّى يُقال غيرُ ذلك ────────────
+// كانت الخانةُ الفارغةُ عند من أُضيف في النظام تُقرأ «لا يوجد»، فلا يدخل عدّادَ
+// «المطلوب» ولا شاشاتِ الانتهاء — و«مطلوب» لم يكن يكتبها إلّا الاستيراد. فيُعلَّم
+// كلُّ حقلٍ من حقول المستندات فارغٍ بلا حالة «مطلوبًا» عند الإنشاء، ومن لا
+// يحتاجه يختار «غير مطلوب» من الاستمارة أو الماستر.
+//
+// ولا يُعلَّم ما لا ينطبق أصلًا: السعوديّ لا إقامةَ له ولا رخصةَ عمل، والتاريخُ
+// الهجريُّ مشتقٌّ لا يُكتب. وحساباتُ الدخول التلقائيّة ليست موظّفين.
+employeeSchema.pre('save', function defaultRequiredDocs(next) {
+  try {
+    if (!this.isNew || this.isHrRecord === false) return next();
+    const H = require('../config/hrFields');
+    const saudi = this.idType === 'national_id';
+    const skipGroups = new Set(saudi ? ['iqama', 'workPermit'] : []);
+    if (!this.fieldStatus || typeof this.fieldStatus.set !== 'function') this.fieldStatus = new Map();
+    const empty = (v) => v === null || v === undefined || v === '' || (v instanceof Date && isNaN(v));
+    for (const g of H.DOCUMENT_GROUPS) {
+      if (skipGroups.has(g.key)) continue;
+      for (const f of g.fields) {
+        if (/Hijri$/.test(f.key)) continue;
+        const sk = H.statusKeyOf(f.key);
+        if (this.fieldStatus.get(sk)) continue;
+        if (empty(H.valueOf(this, f.key))) this.fieldStatus.set(sk, 'required');
+      }
+    }
+  } catch (_) { /* لا يُفشل الإنشاء */ }
+  next();
+});
+
 employeeSchema.pre('save', function clearSatisfiedStatuses(next) {
   if (!this.fieldStatus || typeof this.fieldStatus.forEach !== 'function') return next();
   const filled = (v) => !(v === null || v === undefined || v === '' || (v instanceof Date && isNaN(v)));

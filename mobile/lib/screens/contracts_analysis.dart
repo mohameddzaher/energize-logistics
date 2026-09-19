@@ -57,7 +57,9 @@ class _ContractsAnalysisScreenState extends State<ContractsAnalysisScreen> {
     }
   }
 
-  // إدخال بيانات شهر لمورد (POST /api/contracts/utilisation) — نفس مدخل الويب.
+  // الأرقامُ من الكشوف الفعليّة الآن (utils/liveVendorUtilisation في الخادم)، فرُفع
+  // زرُّ الإدخال كما رُفع من الموقع. تبقى الدالّةُ لا يناديها شيء.
+  // ignore: unused_element
   Future<void> _enterMonth() async {
     final now = DateTime.now();
     final vendorName = TextEditingController();
@@ -154,11 +156,6 @@ class _ContractsAnalysisScreenState extends State<ContractsAnalysisScreen> {
 
     return AppScaffold(
       title: Text(tr('تحليل التشغيل', 'Utilisation Analysis')),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _enterMonth,
-        icon: const Icon(Icons.add_chart_outlined),
-        label: Text(tr('إدخال شهر', 'Enter month')),
-      ),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 92), SizedBox(height: 10), Shimmer(height: 160), SizedBox(height: 10), Shimmer(height: 240),

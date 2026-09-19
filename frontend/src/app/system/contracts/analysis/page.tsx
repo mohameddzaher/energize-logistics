@@ -260,11 +260,12 @@ export default function ContractsAnalysisPage() {
               },
             ]} />
         )}
-        {canEdit && (
-          <PrimaryButton onClick={() => setShowEntry(true)}>
-            <span className="inline-flex items-center gap-1.5"><Plus className="w-4 h-4" />{ar ? 'إدخال أرقام شهر' : 'Enter month data'}</span>
-          </PrimaryButton>
-        )}
+        {/* الأرقامُ من الكشوف الفعليّة لا من إدخال شهرٍ بيد — راجع
+            utils/liveVendorUtilisation. فزرُّ «إدخال أرقام شهر» رُفع: رقمٌ يُكتب
+            هنا لا يُقرأ في شيء، وبقاؤه يوهم أنّه يُحسب. */}
+        <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold">
+          <span className="w-2 h-2 rounded-full bg-emerald-500" />{ar ? 'مباشر من كشوف التشغيل' : 'Live from operations'}
+        </span>
       </PageHeader>
 
       {error && <ErrorNotice error={error} onRetry={() => { setLoading(true); load(); }} lang={lang} />}

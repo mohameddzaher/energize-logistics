@@ -1214,7 +1214,8 @@ async function buildVendorReport(id, query, lang) {
   const [crmAll, cvAll, utilisation, suppliers] = await Promise.all([
     CrmVendor.find({}).lean(),
     ContractVendor.find({}).lean(),
-    VendorUtilisation.find({ nameKey: key }).sort({ year: 1, month: 1 }).lean(),
+    // من الكشوف الفعليّة — راجع utils/liveVendorUtilisation.
+    require('../utils/liveVendorUtilisation').liveUtilisationRows({ nameKey: key }),
     ShipmentOrderSupplier.find({}).select('name').lean(),
   ]);
   const v = crmAll.find((x) => nameKey(x.name) === key) || null;

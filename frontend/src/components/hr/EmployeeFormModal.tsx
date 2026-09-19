@@ -38,6 +38,51 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+// ── حقولُ المستندات: قيمةٌ، أو حالةٌ تقول لماذا لا قيمة ─────────────────────────
+// الموظّفُ الجديد تُعلَّم مستنداتُه الفارغةُ «مطلوبة» في الخادم؛ ومن لا يحتاج
+// مستندًا يختار هنا «غير مطلوب» أو «لا يوجد». والفارغُ «تلقائي» يترك الحالة كما
+// هي. خارج الاستمارة عمدًا — مكوّنٌ يُعرَّف داخلها يُعاد إنشاؤه مع كلّ حرف.
+const DOC_STATUS_FIELDS = new Set([
+  'iqamaExpiry', 'iqamaProfession', 'passportNumber', 'passportExpiry', 'qiwaContractNumber', 'workPermitExpiry',
+  'insuranceCompany', 'insuranceExpiry', 'licenseType', 'licenseExpiry', 'driverCardNumber', 'driverCardExpiry',
+]);
+const STATUS_OPTS: [string, string, string][] = [
+  ['', 'الحالة: تلقائي', 'Status: auto'], ['required', 'مطلوب', 'Required'],
+  ['not_required', 'غير مطلوب', 'Not required'], ['none', 'لا يوجد', 'None'], ['inactive', 'غير نشط', 'Inactive'],
+];
+type ChoiceMap = Record<string, { value: string; count: number }[]>;
+
+function DocInput({ k, label, type = 'text', form, set, mark, setMark, choices, cash, ar }: {
+  k: string; label: string; type?: string; form: any; set: (k: string, v: any) => void;
+  mark: string; setMark: (k: string, v: string) => void; choices?: ChoiceMap; cash?: boolean; ar: boolean;
+}) {
+  const opts = choices?.[k];
+  const val = form[k] ?? '';
+  const known = !opts || !val || String(val).toLowerCase() === 'cash' || opts.some((o) => o.value === val);
+  return (
+    <Field label={label}>
+      <div className="space-y-1">
+        {opts && known ? (
+          <Select value={val} onChange={(e) => set(k, e.target.value === '__other' ? ' ' : e.target.value)}>
+            <option value="">{ar ? '— اختر —' : '— choose —'}</option>
+            {cash && <option value="cash">{ar ? 'راتب نقدي' : 'Cash payroll'}</option>}
+            {opts.filter((o) => !(cash && o.value.toLowerCase() === 'cash')).map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
+            <option value="__other">{ar ? 'أخرى… (اكتب)' : 'Other… (type)'}</option>
+          </Select>
+        ) : (
+          <TextInput type={type} value={type === 'date' ? (val || '') : String(val).trimStart()} onChange={(e) => set(k, e.target.value)} />
+        )}
+        {DOC_STATUS_FIELDS.has(k) && (
+          <select value={mark} onChange={(e) => setMark(k, e.target.value)}
+            className="w-full px-2 py-1 rounded-md border border-slate-200 bg-slate-50 text-[11.5px] text-slate-600">
+            {STATUS_OPTS.map(([v, a, e]) => <option key={v} value={v}>{ar ? a : e}</option>)}
+          </select>
+        )}
+      </div>
+    </Field>
+  );
+}
+
 export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
   open: boolean;
   employee: Employee | null;        // null = create
@@ -54,6 +99,14 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
   const [managers, setManagers] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
+  // حالةُ كلّ حقلِ مستندٍ — تُقرأ من الملفّ وتُرسَل مع الحفظ (markStatus).
+  const [marks, setMarks] = useState<Record<string, string>>({});
+  const setMark = useCallback((k: string, v: string) => setMarks((m) => ({ ...m, [k]: v })), []);
+  const [choices, setChoices] = useState<ChoiceMap>({});
+  useEffect(() => {
+    if (!open) return;
+    api.get<{ choices: ChoiceMap }>('/api/hr/master/choices').then((d) => setChoices(d.choices || {})).catch(() => {});
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -79,14 +132,20 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
    */
   useEffect(() => {
     if (!open) return;
-    if (!employee) { setForm(EMPTY_EMPLOYEE); return; }
+    if (!employee) { setForm(EMPTY_EMPLOYEE); setMarks({}); return; }
 
-    const seed = (src: any) => setForm({
+    const seed = (src: any) => {
+      const fs = src.fieldStatus || {};
+      const m: Record<string, string> = {};
+      for (const k of DOC_STATUS_FIELDS) { const v = fs[`${k}Status`]; if (v && v !== 'filled') m[k] = v; }
+      setMarks(m);
+      setForm({
       ...EMPTY_EMPLOYEE, ...src,
       branch: (typeof src.branch === 'object' ? src.branch?._id : src.branch) || '',
       branches: (src.branches || []).map((b: any) => (typeof b === 'object' ? b?._id : b)).filter(Boolean),
       directManager: (typeof src.directManager === 'object' ? src.directManager?._id : src.directManager) || '',
-    });
+      });
+    };
 
     // ما وصل يُعرَض فورًا حتى لا تُفتح نافذةٌ فارغة، ثمّ يحلّ محلَّه الكاملُ.
     seed(employee);
@@ -108,8 +167,15 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
     setSaving(true);
     try {
       let saved: any;
-      if (employee) saved = await api.put(`/api/hr/employees/${employee._id}`, form);
-      else saved = await api.post('/api/hr/employees', form);
+      // «تلقائي» على ملفٍّ قائم يرفع العلامة؛ وعلى جديدٍ لا يُرسَل فيعمل الافتراض.
+      const markStatus: Record<string, string> = {};
+      for (const k of DOC_STATUS_FIELDS) {
+        if (marks[k]) markStatus[k] = marks[k];
+        else if (employee) markStatus[k] = 'clear';
+      }
+      const body = { ...form, markStatus };
+      if (employee) saved = await api.put(`/api/hr/employees/${employee._id}`, body);
+      else saved = await api.post('/api/hr/employees', body);
       onSaved(saved?.employee);
       onClose();
     } catch (e: any) {
@@ -119,7 +185,7 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
       notify(e.message, 'error');
     }
     setSaving(false);
-  }, [form, employee, onSaved, onClose]);
+  }, [form, marks, employee, onSaved, onClose]);
 
   return (
     <Modal open={open} onClose={onClose} wide
@@ -153,19 +219,19 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         ) : (
           <>
             <Field label={tx.iqamaNumber}><TextInput value={form.iqamaNumber} onChange={(e) => set('iqamaNumber', e.target.value)} /></Field>
-            <Field label={tx.iqamaExpiry}><TextInput type="date" value={form.iqamaExpiry || ''} onChange={(e) => set('iqamaExpiry', e.target.value)} /></Field>
+            <DocInput k="iqamaExpiry" label={tx.iqamaExpiry} type="date" form={form} set={set} mark={marks['iqamaExpiry'] || ''} setMark={setMark} choices={choices} ar={ar} />
           </>
         )}
-        <Field label={tx.passportNumber}><TextInput value={form.passportNumber} onChange={(e) => set('passportNumber', e.target.value)} /></Field>
-        <Field label={tx.passportExpiry}><TextInput type="date" value={form.passportExpiry || ''} onChange={(e) => set('passportExpiry', e.target.value)} /></Field>
+        <DocInput k="passportNumber" label={tx.passportNumber} form={form} set={set} mark={marks['passportNumber'] || ''} setMark={setMark} choices={choices} ar={ar} />
+        <DocInput k="passportExpiry" label={tx.passportExpiry} type="date" form={form} set={set} mark={marks['passportExpiry'] || ''} setMark={setMark} choices={choices} ar={ar} />
       </Section>
 
       <Section title={tx.sectionGovernment}>
-        <Field label={tx.qiwaContractNumber}><TextInput value={form.qiwaContractNumber} onChange={(e) => set('qiwaContractNumber', e.target.value)} /></Field>
+        <DocInput k="qiwaContractNumber" label={tx.qiwaContractNumber} form={form} set={set} mark={marks['qiwaContractNumber'] || ''} setMark={setMark} choices={choices} ar={ar} />
         <Field label={tx.gosiNumber}><TextInput value={form.gosiNumber} onChange={(e) => set('gosiNumber', e.target.value)} /></Field>
         <Field label={tx.absherStatus}><TextInput value={form.absherStatus} onChange={(e) => set('absherStatus', e.target.value)} /></Field>
         <Field label={tx.sponsorName}><TextInput value={form.sponsorName} onChange={(e) => set('sponsorName', e.target.value)} /></Field>
-        <Field label={tx.workPermitExpiry}><TextInput type="date" value={form.workPermitExpiry || ''} onChange={(e) => set('workPermitExpiry', e.target.value)} /></Field>
+        <DocInput k="workPermitExpiry" label={tx.workPermitExpiry} type="date" form={form} set={set} mark={marks['workPermitExpiry'] || ''} setMark={setMark} choices={choices} ar={ar} />
       </Section>
 
       <Section title={tx.sectionJob}>
@@ -219,28 +285,28 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
 
       <Section title={vtx.sectionBankingDocs}>
         <Field label={vtx.iban}><TextInput value={form.iban} onChange={(e) => set('iban', e.target.value)} /></Field>
-        <Field label={vtx.bank}><TextInput value={form.bank} onChange={(e) => set('bank', e.target.value)} /></Field>
+        <DocInput k="bank" label={vtx.bank} cash form={form} set={set} mark={marks['bank'] || ''} setMark={setMark} choices={choices} ar={ar} />
         <Field label={vtx.project2}><TextInput value={form.project} onChange={(e) => set('project', e.target.value)} /></Field>
         <Field label={vtx.registerNumber}><TextInput value={form.registerNumber} onChange={(e) => set('registerNumber', e.target.value)} /></Field>
         <Field label={vtx.absherNumber}><TextInput value={form.absherNumber} onChange={(e) => set('absherNumber', e.target.value)} /></Field>
-        <Field label={vtx.iqamaProfession}><TextInput value={form.iqamaProfession} onChange={(e) => set('iqamaProfession', e.target.value)} /></Field>
+        <DocInput k="iqamaProfession" label={vtx.iqamaProfession} form={form} set={set} mark={marks['iqamaProfession'] || ''} setMark={setMark} choices={choices} ar={ar} />
         <Field label={vtx.penaltyClause}><TextInput type="number" value={form.penaltyClause} onChange={(e) => set('penaltyClause', Number(e.target.value))} /></Field>
         <Field label={vtx.classification}><TextInput value={form.classification} onChange={(e) => set('classification', e.target.value)} /></Field>
         <Field label={vtx.fileStatus}><TextInput value={form.fileStatus} onChange={(e) => set('fileStatus', e.target.value)} /></Field>
-        <Field label={vtx.insuranceCompany}><TextInput value={form.insuranceCompany} onChange={(e) => set('insuranceCompany', e.target.value)} /></Field>
-        <Field label={vtx.insuranceExpiry}><TextInput type="date" value={form.insuranceExpiry || ''} onChange={(e) => set('insuranceExpiry', e.target.value)} /></Field>
-        <Field label={vtx.socialInsuranceStatus}><TextInput value={form.socialInsuranceStatus} onChange={(e) => set('socialInsuranceStatus', e.target.value)} /></Field>
+        <DocInput k="insuranceCompany" label={vtx.insuranceCompany} form={form} set={set} mark={marks['insuranceCompany'] || ''} setMark={setMark} choices={choices} ar={ar} />
+        <DocInput k="insuranceExpiry" label={vtx.insuranceExpiry} type="date" form={form} set={set} mark={marks['insuranceExpiry'] || ''} setMark={setMark} choices={choices} ar={ar} />
+        <DocInput k="socialInsuranceStatus" label={vtx.socialInsuranceStatus} form={form} set={set} mark={marks['socialInsuranceStatus'] || ''} setMark={setMark} choices={choices} ar={ar} />
         <Field label={vtx.visaExpiry}><TextInput type="date" value={form.visaExpiry || ''} onChange={(e) => set('visaExpiry', e.target.value)} /></Field>
       </Section>
 
       <Section title={vtx.sectionDriving}>
         <Field label={vtx.vehiclePlate}><TextInput value={form.vehiclePlate} onChange={(e) => set('vehiclePlate', e.target.value)} /></Field>
         <Field label={vtx.licenseNumber}><TextInput value={form.licenseNumber} onChange={(e) => set('licenseNumber', e.target.value)} /></Field>
-        <Field label={vtx.licenseType}><TextInput value={form.licenseType} onChange={(e) => set('licenseType', e.target.value)} /></Field>
-        <Field label={vtx.licenseExpiry}><TextInput type="date" value={form.licenseExpiry || ''} onChange={(e) => set('licenseExpiry', e.target.value)} /></Field>
-        <Field label={vtx.driverCardNumber}><TextInput value={form.driverCardNumber} onChange={(e) => set('driverCardNumber', e.target.value)} /></Field>
+        <DocInput k="licenseType" label={vtx.licenseType} form={form} set={set} mark={marks['licenseType'] || ''} setMark={setMark} choices={choices} ar={ar} />
+        <DocInput k="licenseExpiry" label={vtx.licenseExpiry} type="date" form={form} set={set} mark={marks['licenseExpiry'] || ''} setMark={setMark} choices={choices} ar={ar} />
+        <DocInput k="driverCardNumber" label={vtx.driverCardNumber} form={form} set={set} mark={marks['driverCardNumber'] || ''} setMark={setMark} choices={choices} ar={ar} />
         <Field label={vtx.driverCardType}><TextInput value={form.driverCardType} onChange={(e) => set('driverCardType', e.target.value)} /></Field>
-        <Field label={vtx.driverCardExpiry}><TextInput type="date" value={form.driverCardExpiry || ''} onChange={(e) => set('driverCardExpiry', e.target.value)} /></Field>
+        <DocInput k="driverCardExpiry" label={vtx.driverCardExpiry} type="date" form={form} set={set} mark={marks['driverCardExpiry'] || ''} setMark={setMark} choices={choices} ar={ar} />
       </Section>
       {employee && fmtDate(employee.createdAt) !== '—' && <p className="text-xs text-slate-500">{tx.added}: {fmtDate(employee.createdAt)}</p>}
     </Modal>

@@ -37,7 +37,11 @@ const partyLinkSuggestionSchema = new mongoose.Schema({
   party: { type: mongoose.Schema.Types.ObjectId, ref: 'CollectionsParty' },
 }, { timestamps: true });
 
-partyLinkSuggestionSchema.index({ code: 1 }, { unique: true });
+// اقتراحٌ واحدٌ لكلّ (حساب، مرشَّح) — لا لكلّ حساب: الحسابُ الواحد قد يُكتب
+// في التشغيل بأكثر من اسم («خالد الظافر» و«شركة خالد الظافر»)، وكان الفهرسُ
+// على الكود وحدَه يُسقط الثاني من الطابور فيبقى بلا كودٍ ولا سؤال.
+partyLinkSuggestionSchema.index({ code: 1, candidate: 1 }, { unique: true });
+partyLinkSuggestionSchema.index({ code: 1 });
 
 module.exports = mongoose.models.PartyLinkSuggestion
   || mongoose.model('PartyLinkSuggestion', partyLinkSuggestionSchema);

@@ -23,6 +23,7 @@ import '../screens/section_work.dart';
 import '../screens/team_board.dart';
 import '../screens/remote_attendance.dart';
 import '../screens/hr_inbox.dart';
+import '../screens/party_links.dart';
 import '../screens/ls2_alerts.dart';
 import '../screens/shipment_orders.dart';
 import '../screens/it_custody.dart';
@@ -158,6 +159,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('دفتر الفواتير', 'Invoice Ledger', Icons.menu_book_outlined, (c) => ResourceScreen(config: collectionsLedgerCfg), path: '/system/collections-dept/ledger'),
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: collectionsCustomersCfg), path: '/system/collections-dept/customers'),
         AppPage('الموردون', 'Suppliers', Icons.local_shipping_outlined, (c) => ResourceScreen(config: collectionsSuppliersCfg), path: '/system/collections-dept/suppliers'),
+        AppPage('ربط الحسابات', 'Account links', Icons.link, (c) => const PartyLinksScreen(), path: '/system/collections-dept/links'),
         AppPage('سير عمل التشغيل', 'Operations Workflow', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen(), path: '/system/operations'),
         AppPage('القوائم المرجعية', 'Reference Data', Icons.tune_rounded, (c) => const ReferenceDataScreen(), path: '/system/collections-dept/settings'),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'collections'), path: '/system/collections-dept/my-tasks'),

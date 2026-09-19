@@ -15,6 +15,9 @@ const emit = () => {
 // everything non-letter drops. The same vendor is spelled 3+ ways across the
 // source sheets; this is what makes them one row.
 const nameKey = (s) => String(s || '')
+  // «چ ڤ گ پ» تكتبها منصّةُ التشغيل أحيانًا مكان «ج ف ك ب»: «اللوچستية» و«اللوجستية»
+  // مورّدٌ واحد، وكانا صفّين في التحليل.
+  .replace(/چ/g, 'ج').replace(/ڤ/g, 'ف').replace(/گ/g, 'ك').replace(/پ/g, 'ب')
   .replace(/[أإآا]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي')
   .replace(/\bال/g, '')
   .replace(/[^؀-ۿa-zA-Z0-9]/g, '')
@@ -42,7 +45,11 @@ exports.getDashboard = async (req, res) => {
       ContractVendor.find().lean(),
       ContractProspect.find({ convertedVendor: null }).lean(),
       DeptContract.find().lean(),
-      VendorUtilisation.aggregate([{ $group: { _id: { year: '$year', month: '$month' }, orders: { $sum: '$orders' } } }, { $sort: { '_id.year': 1, '_id.month': 1 } }]),
+      require('../utils/liveVendorUtilisation').liveUtilisationRows().then((rows) => {
+        const m = new Map();
+        for (const r of rows) { const k = `${r.year}-${r.month}`; m.set(k, { _id: { year: r.year, month: r.month }, orders: (m.get(k)?.orders || 0) + r.orders }); }
+        return [...m.values()].sort((a, b) => (a._id.year - b._id.year) || (a._id.month - b._id.month));
+      }),
       // العملاءُ يُقرآن مع المورّدين: الطرفان في لوحةٍ واحدة، لا سجلٌّ لأحدهما
       // ولوحةٌ للآخر.
       require('../models/ContractModels').ContractCustomer.find().select('-attachments').lean(),
@@ -163,7 +170,7 @@ exports.getVendor = async (req, res) => {
   try {
     const vendor = await ContractVendor.findById(req.params.id).lean();
     if (!vendor) return res.status(404).json({ message: 'المورد غير موجود' });
-    const utilisation = await VendorUtilisation.find({ nameKey: vendor.nameKey }).sort({ year: 1, month: 1 }).lean();
+    const utilisation = await require('../utils/liveVendorUtilisation').liveUtilisationRows({ nameKey: vendor.nameKey });
     res.json({ vendor: { ...vendor, status: vendorStatus(vendor) }, utilisation });
   } catch (e) {
     res.status(500).json({ message: e.message });
@@ -317,7 +324,8 @@ exports.getAnalysis = async (req, res) => {
     if (cached) return res.json(cached);
 
     const lo = from.year * 100 + from.month, hi = to.year * 100 + to.month;
-    const all = await VendorUtilisation.find().lean();
+    // من الكشوف الفعليّة — راجع utils/liveVendorUtilisation.
+    const all = await require('../utils/liveVendorUtilisation').liveUtilisationRows();
     const rows = all.filter((r) => { const k = r.year * 100 + r.month; return k >= lo && k <= hi; });
     const months = [...new Set(rows.map((r) => `${r.year}-${String(r.month).padStart(2, '0')}`))].sort();
 

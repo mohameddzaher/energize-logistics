@@ -897,6 +897,12 @@ exports.createWorkflow = async (req, res) => {
 
     const workflow = await OperationsWorkflow.create(filteredBody);
     if (filteredBody.invoiceNumber) await ensureLedgerInvoice(workflow);
+    // كشفٌ يُنشأ في النظام لعميلٍ جديد يُدخله قسمَ التحصيل بكوده بنوع حمولته —
+    // كما تفعل مزامنةُ المنصّة. راجع ensureCollectionsParty.
+    if (workflow.username) {
+      const { ensureCollectionsParty } = require('../utils/ensureCollectionsParty');
+      ensureCollectionsParty(workflow.username, { paymentType: workflow.paymentType, source: 'operations_workflow' }).catch(() => {});
+    }
 
     // ── ولا يُنسَخ الكشفُ إلى عميلٍ وفاتورة ──────────────────────────────
     // كان كلُّ كشفٍ يُنشئ خلفَه سجلَّ عميلٍ وفاتورةً في ورك فلو «العملاء
@@ -1018,6 +1024,10 @@ exports.updateWorkflow = async (req, res) => {
     await workflow.save();
     // رقمُ فاتورةٍ كُتب الآن يصنع قيدَه، فتصل الشاشةَ الضريبيّة فورًا.
     if (filteredBody.invoiceNumber !== undefined) await ensureLedgerInvoice(workflow);
+    if (filteredBody.username !== undefined || filteredBody.paymentType !== undefined) {
+      const { ensureCollectionsParty } = require('../utils/ensureCollectionsParty');
+      if (workflow.username) ensureCollectionsParty(workflow.username, { paymentType: workflow.paymentType, source: 'operations_workflow' }).catch(() => {});
+    }
 
     // ── وتاريخُ التحصيل لا يُنشئ دفعةً في مكانٍ آخر ──────────────────────
     // كان إثباتُ تاريخ التحصيل يقيّد `Payment` ويحدّث فاتورةً ورصيدَ عميل في

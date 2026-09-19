@@ -18,6 +18,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGri
 import SearchableManagedSelect from '@/components/system/SearchableManagedSelect';
 import PortalAccountCard from '@/components/system/PortalAccountCard';
 import ReportButton from '@/components/system/ReportButton';
+import ScrollX from '@/components/system/ScrollX';
 
 type Agg = { key: string; trips: number; income: number };
 type Profile = {
@@ -282,7 +283,7 @@ export default function FleetCustomerProfilePage() {
       {/* سجل الرحلات الكامل */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-100"><p className="font-bold text-slate-900">{ar ? 'سجل الرحلات الكامل' : 'Full trip history'} ({data.shipments.length})</p></div>
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>{[ar ? 'البوليصة' : 'Waybill', ar ? 'المسار' : 'Route', ar ? 'اللوحة' : 'Plate', ar ? 'السائق' : 'Driver', ar ? 'النوع' : 'Load', ar ? 'السعر' : 'Price', ar ? 'التاريخ' : 'Date', ar ? 'الحالة' : 'Status'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
@@ -303,7 +304,7 @@ export default function FleetCustomerProfilePage() {
               {data.shipments.length === 0 && <tr><td colSpan={8} className="px-3 py-8 text-center text-slate-400">{ar ? 'لا توجد رحلات لهذا العميل' : 'No trips'}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

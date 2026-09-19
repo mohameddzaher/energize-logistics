@@ -21,6 +21,7 @@ import {
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { EmployeeFormModal } from '@/components/hr/EmployeeFormModal';
 import { getHrEmployeesTranslations } from '@/lib/translations';
+import ScrollX from '@/components/system/ScrollX';
 
 export default function HREmployeesPage() {
   const { confirm, notify } = useDialog();
@@ -174,7 +175,7 @@ export default function HREmployeesPage() {
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
@@ -211,7 +212,7 @@ export default function HREmployeesPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       <EmployeeFormModal open={showModal} employee={editing} onClose={() => setShowModal(false)} onSaved={() => load()} />
     </div>

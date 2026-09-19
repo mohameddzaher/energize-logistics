@@ -16,6 +16,7 @@ import {
 } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import { FleetDriver, FleetVehicle, foldAr, canEditFleet, canAdminFleet } from '@/lib/fleet';
+import ScrollX from '@/components/system/ScrollX';
 
 const EMPTY = { name: '', phone: '', iqama: '', iban: '', nationality: '', working: true, onSponsorship: true, vehicle: '', notes: '' };
 
@@ -223,7 +224,7 @@ export default function FleetDriversPage() {
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className={th}>{ar ? 'الاسم' : 'Name'}</th>
@@ -305,7 +306,7 @@ export default function FleetDriversPage() {
             )}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       <Modal open={showModal} onClose={() => setShowModal(false)}
         title={editing ? (ar ? 'تعديل سائق' : 'Edit driver') : (ar ? 'إضافة سائق' : 'Add driver')}

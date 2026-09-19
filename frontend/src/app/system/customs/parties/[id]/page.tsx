@@ -12,6 +12,7 @@ import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 import { Users, Ship, Mail, Phone, MapPin, FileText, ArrowRight } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 const money = (n?: number) => (Number(n) || 0).toLocaleString('en-US');
 const dt = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
@@ -158,7 +159,7 @@ export default function CustomsPartyProfile() {
           <ExportMenu fileName={`customs-${p.name}`} lang={ar ? 'ar' : 'en'}
             options={[{ key: 'all', label: t('كل المعاملات', 'All deals'), sheets: [{ name: t('معاملات', 'Deals'), rows: d.deals, columns: dealCols }] }]} />
         </div>
-        <div className="overflow-x-auto max-h-[32rem]">
+        <ScrollX className="max-h-[32rem]">
           <table className="w-full text-sm">
             <thead className="table-head sticky top-0">
               <tr>
@@ -187,7 +188,7 @@ export default function CustomsPartyProfile() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

@@ -18,6 +18,7 @@ import {
 } from '@/components/crm/CrmKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import ManagedSelect from '@/components/system/ManagedSelect';
+import ScrollX from '@/components/system/ScrollX';
 
 const EMPTY = {
   name: '', arabicName: '', status: 'lead', type: 'customer', rating: 0, score: 0,
@@ -182,7 +183,7 @@ export default function CrmCompaniesPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 border-b border-slate-200 text-start">
@@ -220,7 +221,7 @@ export default function CrmCompaniesPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       {/* Create/Edit modal */}
       <Modal open={showModal} onClose={() => setShowModal(false)} wide title={editing ? T.edit : T.addCompany}

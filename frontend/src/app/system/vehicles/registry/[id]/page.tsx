@@ -38,6 +38,7 @@ import {
   Car, ArrowRight, Satellite, IdCard, ShieldCheck, Fuel, FileText, ClipboardCheck,
   AlertTriangle, History, Building2, ChevronLeft, ExternalLink, RefreshCcw,
 } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 /** لونُ عائلةٍ حين لا يكون لها مستندٌ بحالة — للهوية والملكية. */
 const NEUTRAL = '#64748b';
@@ -414,7 +415,7 @@ export default function VehicleRegistryDetail() {
               <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-[11.5px] font-bold">{v.renewals.length}</span>
             </p>
           </div>
-          <div className="overflow-x-auto">
+          <ScrollX>
             <table className="w-full text-[13px]">
               <thead className="bg-slate-100 text-slate-600 text-[11.5px] uppercase tracking-wide">
                 <tr>{[t('المستند', 'Document'), t('الانتهاء السابق', 'Previous expiry'), t('الانتهاء الجديد', 'New expiry'), t('الرقم السابق', 'Previous no.'), t('الرقم الجديد', 'New no.'), t('التكلفة', 'Cost'), t('بواسطة', 'By'), t('التاريخ', 'Date')]
@@ -435,7 +436,7 @@ export default function VehicleRegistryDetail() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollX>
         </div>
       )}
 

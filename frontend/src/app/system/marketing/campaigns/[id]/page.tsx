@@ -18,6 +18,7 @@ import {
   campaignName, personName, num, money, pct,
   type Lang, type Campaign, type Activity, type CampaignStatus, type Platform, type Objective,
 } from '@/lib/marketing';
+import ScrollX from '@/components/system/ScrollX';
 
 type Draft = Partial<Campaign>;
 
@@ -311,7 +312,7 @@ export default function MarketingCampaignPage() {
             {ar ? 'سجل الأنشطة الكامل' : 'Full activity log'}
           </button>
         </div>
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300">
               <tr>
@@ -347,7 +348,7 @@ export default function MarketingCampaignPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

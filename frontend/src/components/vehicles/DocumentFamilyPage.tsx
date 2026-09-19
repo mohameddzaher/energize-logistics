@@ -43,6 +43,7 @@ import { VReg, DOC_TYPES, daysText, STATE_META, publicState, canEditVehicles, ca
 import { flexIncludes } from '@/lib/flexMatch';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import HijriGregorianField from '@/components/vehicles/HijriGregorianField';
+import ScrollX from '@/components/system/ScrollX';
 
 /** عمودٌ واحد: كيف يُقرأ من المركبة، وكيف يُسمّى، وكيف يُرسَم. */
 export type DocColumn = {
@@ -646,7 +647,7 @@ function DocumentFamilyPageInner({
         shown={shownRows.length} total={rows.length} ar={ar} />
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[12.5px]">
               <tr>
@@ -763,7 +764,7 @@ function DocumentFamilyPageInner({
               )}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {renewing && (

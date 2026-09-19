@@ -8,6 +8,7 @@ import { CalendarDays, Clock, Plane, Hourglass, RefreshCw } from 'lucide-react';
 import { isRemoteStaff, fmtDuration } from '@/lib/remote';
 import { getRemoteDashboardTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import ScrollX from '@/components/system/ScrollX';
 
 interface PerEmployee { userId: string; name: string; daysWorked: number; totalMinutes: number; leaveDays: number }
 interface DashData {
@@ -117,7 +118,7 @@ export default function RemoteDashboardPage() {
           </div>
 
           {staff && data && data.perEmployee.length > 0 && (
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden overflow-x-auto shadow-sm">
+            <ScrollX className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
               <div className="px-4 py-3 border-b border-slate-200"><h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{tx.perEmployeeBreakdown}</h2></div>
               <table className="w-full text-sm">
                 <thead className="bg-slate-900 text-slate-300 text-xs uppercase">
@@ -139,7 +140,7 @@ export default function RemoteDashboardPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollX>
           )}
         </>
       )}

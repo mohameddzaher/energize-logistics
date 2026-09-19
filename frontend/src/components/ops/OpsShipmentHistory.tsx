@@ -12,6 +12,8 @@ import { Modal, Select } from '@/components/hr/HRKit';
 import {
   SHIPMENT_STATUSES, statusStyle, locName, fmtDateTime, fmtMoney, fmtNum, timelineMeta, opsText, type Paginated,
 } from '@/lib/ops';
+import { readLastSeen, writeLastSeen } from '@/lib/lastSeen';
+import ScrollX from '@/components/system/ScrollX';
 
 type Row = Record<string, any>;
 const driverName = (s: Row, lang: 'en' | 'ar') => locName(s?.driver?.admin?.name, lang) || locName(s?.driver?.name, lang) || '—';
@@ -30,7 +32,8 @@ export default function OpsShipmentHistory({ filterKey, filterValue }: { filterK
   const { lang } = useLanguage();
   const tx = opsText(lang);
 
-  const [counts, setCounts] = useState<Record<string, number>>({});
+  // آخرُ أعدادٍ رآها المتصفّح لهذا السائق/العميل تظهر فورًا — راجع lib/lastSeen.
+  const [counts, setCounts] = useState<Record<string, number>>(() => readLastSeen<Record<string, number>>(`ops:hist:${filterKey}=${filterValue}`) || {});
   const [ships, setShips] = useState<Row[]>([]);
   const [meta, setMeta] = useState<Paginated<unknown>['meta'] | null>(null);
   const [page, setPage] = useState(1);
@@ -53,6 +56,7 @@ export default function OpsShipmentHistory({ filterKey, filterValue }: { filterK
       const c: Record<string, number> = { all: totalRes.meta?.totalItems || 0 };
       SHIPMENT_STATUSES.forEach((s, i) => { c[s.key] = statusRes[i].meta?.totalItems || 0; });
       setCounts(c);
+      writeLastSeen(`ops:hist:${base}`, c);
     } catch { /* keep */ }
   }, [base]);
 
@@ -130,7 +134,7 @@ export default function OpsShipmentHistory({ filterKey, filterValue }: { filterK
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 text-slate-300">
@@ -156,7 +160,7 @@ export default function OpsShipmentHistory({ filterKey, filterValue }: { filterK
             })}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-sm text-slate-600">

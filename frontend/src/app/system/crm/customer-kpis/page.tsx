@@ -18,6 +18,7 @@ import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { ScoreBadge, ScoreBar, ScoreBreakdown, BandLegend, KpiTile, FlagPill, type ScoreBand, type ScoreBreakdownItem } from '@/components/system/Scorecard';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
+import ScrollX from '@/components/system/ScrollX';
 
 interface Flag { key: string; ar: string; en: string }
 interface CustomerKpi {
@@ -188,7 +189,7 @@ export default function CrmCustomerKpisPage() {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full min-w-[1000px]">
             <thead>
               <tr className="bg-slate-900">
@@ -297,7 +298,7 @@ export default function CrmCustomerKpisPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

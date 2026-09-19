@@ -13,6 +13,7 @@ import {
 import { Spinner, PageHeader, Badge, SmallBadge, Tabs, StatCard, Pick } from '@/components/hr/HRKit';
 import { getHrMeTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import ScrollX from '@/components/system/ScrollX';
 
 interface Me { employee: Employee | null; contracts: Contract[]; activeContract: Contract | null; balance: LeaveBalance | null; leaves: LeaveRequest[]; assets: Asset[]; }
 
@@ -137,7 +138,7 @@ export default function MyProfilePage() {
               <ExportMenu fileName="my-leaves" lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} options={leaveExportOptions} />
             </div>
           )}
-          <div id="me-leave-list" className="overflow-x-auto scroll-mt-24">
+          <ScrollX id="me-leave-list" className="scroll-mt-24">
           {data.leaves.length === 0 ? <p className="text-center text-slate-500 py-10">{tx.noLeaves}</p> : (
             <table className="w-full text-sm">
               <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300"><th className="text-start px-4 py-3 font-semibold">{tx.colType}</th><th className="text-start px-4 py-3 font-semibold">{tx.colFrom}</th><th className="text-start px-4 py-3 font-semibold">{tx.colTo}</th><th className="text-start px-4 py-3 font-semibold">{tx.colDays}</th><th className="text-start px-4 py-3 font-semibold">{tx.colStatus}</th></tr></thead>
@@ -146,7 +147,7 @@ export default function MyProfilePage() {
               ))}</tbody>
             </table>
           )}
-          </div>
+          </ScrollX>
         </div>
       )}
 
@@ -157,7 +158,7 @@ export default function MyProfilePage() {
               <ExportMenu fileName="my-custody" lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} options={custodyExportOptions} />
             </div>
           )}
-          <div className="overflow-x-auto">
+          <ScrollX>
           {data.assets.length === 0 ? <p className="text-center text-slate-500 py-10">{tx.noCustody}</p> : (
             <table className="w-full text-sm">
               <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300"><th className="text-start px-4 py-3 font-semibold">{tx.colItem}</th><th className="text-start px-4 py-3 font-semibold">{tx.colType}</th><th className="text-start px-4 py-3 font-semibold">{tx.colSerial}</th><th className="text-start px-4 py-3 font-semibold">{tx.colStatus}</th></tr></thead>
@@ -166,7 +167,7 @@ export default function MyProfilePage() {
               ))}</tbody>
             </table>
           )}
-          </div>
+          </ScrollX>
         </div>
       )}
     </div>

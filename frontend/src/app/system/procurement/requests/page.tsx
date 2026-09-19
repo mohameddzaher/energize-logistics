@@ -15,6 +15,7 @@ import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/l
 import ManagedSelect from '@/components/system/ManagedSelect';
 import VendorSelect from '@/components/system/VendorSelect';
 import { getProcurementRequestsTranslations } from '@/lib/translations';
+import ScrollX from '@/components/system/ScrollX';
 
 const emptyItem = () => ({ description: '', quantity: 1, unitPrice: 0 });
 const EMPTY = { title: '', category: '', department: '', priority: 'medium', justification: '', neededBy: '', notes: '', items: [emptyItem()] };
@@ -128,7 +129,7 @@ export default function PurchaseRequestsPage() {
         </select>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-start text-slate-300">
             <th className="px-4 py-3">#</th><th className="px-4 py-3">{tx.colTitle}</th>
@@ -159,7 +160,7 @@ export default function PurchaseRequestsPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       {/* Create / edit */}
       <Modal open={showModal} onClose={() => setShowModal(false)} wide title={editing ? tx.editRequest : tx.newPurchaseRequest}

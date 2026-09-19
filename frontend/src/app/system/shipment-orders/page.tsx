@@ -22,6 +22,7 @@ import {
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import type { DispatchSheetRow } from '@/lib/dispatchSheetExcelParser';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
+import ScrollX from '@/components/system/ScrollX';
 
 const fmtDate = (v?: string | null) => {
   if (!v) return '';
@@ -370,7 +371,7 @@ export default function ShipmentOrdersPage() {
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className="px-3 py-3">
@@ -492,7 +493,7 @@ export default function ShipmentOrdersPage() {
             })}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       {total > 25 && (
         <div className="flex items-center justify-end gap-2 text-sm">

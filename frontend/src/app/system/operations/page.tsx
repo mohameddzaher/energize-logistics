@@ -19,6 +19,7 @@ import {
   Lock, Unlock, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, AlertCircle,
   CheckSquare, Check, Receipt,
 } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 interface Workflow {
   _id: string;
@@ -1094,7 +1095,7 @@ export default function OperationsWorkflowPage() {
             العمل. أسوأُ ما يقع حين يُضغط صفٌّ أثناء التحديث أن يُعاد رسمُه —
             وذلك أهونُ ألفَ مرّةٍ من شاشةٍ لا تستجيب. فالشريطُ وحدَه يقول
             «جارٍ»، والجدولُ يبقى حيًّا. */}
-        <div aria-busy={searching} className="overflow-x-auto">
+        <ScrollX aria-busy={searching}>
           <table className="w-full min-w-[3200px]">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
@@ -1447,7 +1448,7 @@ export default function OperationsWorkflowPage() {
               })}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
 
         {/* التصفّح كلّه في الخادم — بما في ذلك حالة الفلترة. الصفحة الواحدة خمسون
             صفًّا مهما بلغ عدد المطابق، فلا يُرسم في التبويب جدولٌ بعشرات الآلاف من

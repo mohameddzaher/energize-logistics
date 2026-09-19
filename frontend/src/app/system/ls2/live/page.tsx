@@ -13,6 +13,7 @@ import RangePicker from '@/components/ls2/RangePicker';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import TireSensorCell from '@/components/ls2/TireSensorCell';
 import { ls2Text, isLs2Staff, statusStyle, tireTempColor, coolantColor, fmtKm, fmtNum, timeAgo, osmLink, thisMonthToDate, type Lang, type Vehicle, type DateRange } from '@/lib/ls2';
+import ScrollX from '@/components/system/ScrollX';
 
 const STATUSES = ['moving', 'idle', 'stopped', 'offline'];
 
@@ -117,7 +118,7 @@ export default function Ls2LivePage() {
       </p>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -182,7 +183,7 @@ export default function Ls2LivePage() {
               {filtered.length === 0 && <tr><td colSpan={13} className="text-center text-slate-700 py-10">{t.noData}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

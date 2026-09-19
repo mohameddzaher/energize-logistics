@@ -30,6 +30,7 @@ import {
   ContractCustomer, CUSTOMER_STATUS, EXPIRY_META,
   canViewContracts, canEditContracts, fmtN, fmtD, foldAr,
 } from '@/lib/contracts';
+import ScrollX from '@/components/system/ScrollX';
 
 const emptyForm = {
   name: '', sector: '', customerType: '', contactPerson: '', phone: '', email: '',
@@ -228,7 +229,7 @@ export default function ContractCustomersPage() {
           placeholder={t('ابحث بالاسم أو جهة الاتصال أو المندوب…', 'Name, contact or rep…')} />
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className={th}>{t('العميل', 'Customer')}</th>
@@ -314,7 +315,7 @@ export default function ContractCustomersPage() {
             )}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       {/* ── الاقتراحات ─────────────────────────────────────────────────────── */}
       <Modal open={suggestOpen} onClose={() => setSuggestOpen(false)}

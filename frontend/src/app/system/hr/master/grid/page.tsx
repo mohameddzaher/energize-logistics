@@ -38,6 +38,7 @@ import { printTable } from '@/utils/printTable';
 import { gregorianToHijri } from '@/lib/hijri';
 import { isExpiryField, daysColLabel, daysUntil } from '@/lib/hrMaster';
 import { LayoutGrid, Printer, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 type Col = { key: string; ar: string; en: string; type: string; group: string; groupAr: string; groupEn: string; choice?: boolean; cashPayroll?: boolean };
 type Row = {
@@ -239,7 +240,7 @@ export default function HrMasterGridPage() {
 
       <div className="relative bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         {busy && <div className="refresh-bar" aria-hidden="true" />}
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
@@ -306,7 +307,7 @@ export default function HrMasterGridPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
 
         {pages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-sm">

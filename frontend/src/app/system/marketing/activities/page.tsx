@@ -20,6 +20,7 @@ import {
   thisMonthToDate, toIso, num,
   type Lang, type DateRange, type Activity, type ActivityMetrics, type Campaign, type Platform, type ActivityType,
 } from '@/lib/marketing';
+import ScrollX from '@/components/system/ScrollX';
 
 type Draft = Omit<Partial<Activity>, 'campaign' | 'metrics'> & { campaign?: string | null; metrics: ActivityMetrics };
 
@@ -186,7 +187,7 @@ export default function MarketingActivitiesPage() {
         <div className="px-4 py-2.5 border-b border-slate-200 text-xs text-slate-500 text-start">
           {ar ? `${items.length} نشاط في هذه الفترة` : `${items.length} activities in this period`}
         </div>
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300">
               <tr>
@@ -233,7 +234,7 @@ export default function MarketingActivitiesPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       <Modal

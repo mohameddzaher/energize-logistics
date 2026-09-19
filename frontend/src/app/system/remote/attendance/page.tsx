@@ -8,6 +8,7 @@ import { Clock, LogIn, LogOut, CheckCircle2, RefreshCw } from 'lucide-react';
 import { isRemoteStaff, fmtDuration, fmtTime } from '@/lib/remote';
 import { getRemoteAttendanceTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import ScrollX from '@/components/system/ScrollX';
 
 interface AttRecord {
   _id: string;
@@ -206,7 +207,7 @@ function StaffAttendance({ ar, isRTL }: { ar: boolean; isRTL: boolean }) {
       ) : records.length === 0 ? (
         <p className="text-slate-500 text-center py-10">{tx.noRecords}</p>
       ) : (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden overflow-x-auto shadow-sm">
+        <ScrollX className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300 text-xs uppercase">
               <tr>
@@ -235,7 +236,7 @@ function StaffAttendance({ ar, isRTL }: { ar: boolean; isRTL: boolean }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       )}
     </div>
   );

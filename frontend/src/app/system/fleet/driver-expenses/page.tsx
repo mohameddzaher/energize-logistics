@@ -19,6 +19,7 @@ import {
   Wallet, CheckCircle2, Clock, Users, Loader2, Search, CalendarDays, BadgeCheck, Coins,
 } from 'lucide-react';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import ScrollX from '@/components/system/ScrollX';
 
 interface Row {
   _id: string;
@@ -247,7 +248,7 @@ export default function DriverExpensesPage() {
       {loading ? (
         <div className="py-10 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-slate-400" /></div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <ScrollX className="rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300">
               <tr>
@@ -324,7 +325,7 @@ export default function DriverExpensesPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       )}
     </div>
   );

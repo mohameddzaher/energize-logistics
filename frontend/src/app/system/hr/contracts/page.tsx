@@ -14,6 +14,7 @@ import { getHrContractsTranslations } from '@/lib/translations';
 import ContractsTabs from '@/components/hr/ContractsTabs';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
 import { localFilterFields, applyLocalFilters, type LocalFieldDef } from '@/lib/localFilters';
+import ScrollX from '@/components/system/ScrollX';
 
 const EMPTY = { employee: '', type: 'fixed', startDate: '', endDate: '', durationMonths: 12, annualLeaveDays: 21, jobTitle: '', basicSalary: 0, allowances: 0, probationMonths: 3, notes: '',
   iqamaNumber: '', contractProfession: '', sponsorRegistration: '', contractNumber: '' };
@@ -238,7 +239,7 @@ export default function ContractsPage() {
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colActions}</th>
@@ -293,7 +294,7 @@ export default function ContractsPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
       <p className="text-xs text-slate-500">{tx.custodyNote}</p>
 
       <Modal open={showModal} onClose={() => setShowModal(false)}

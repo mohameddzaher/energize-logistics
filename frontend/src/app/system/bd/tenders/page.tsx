@@ -18,6 +18,7 @@ import {
   labelOf, optionsOf, bdTitle, bdName, userName, money, fmtDate, toDateInput,
   daysUntil, deadlineBadge, listToText, textToList,
 } from '@/lib/bd';
+import ScrollX from '@/components/system/ScrollX';
 
 const byDeadline = (list: BdTender[]) => [...list].sort((a, b) => {
   const A = a.submissionDeadline || '9999-12-31';
@@ -200,7 +201,7 @@ export default function BdTendersPage() {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300">
               <tr>
@@ -258,7 +259,7 @@ export default function BdTendersPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} wide

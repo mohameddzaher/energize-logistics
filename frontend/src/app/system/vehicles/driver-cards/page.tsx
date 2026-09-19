@@ -17,6 +17,7 @@ import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilt
 import { IdCard, Plus, Pencil, Trash2, RotateCcw, Phone } from 'lucide-react';
 import { LEAD, LEAD_CELL } from '@/components/vehicles/stickyLead';
 import { flexNormalize } from '@/lib/flexMatch';
+import ScrollX from '@/components/system/ScrollX';
 
 interface Card {
   /** يُشتقّ في الخادم: رقمٌ حقيقيٌّ في الخانة — لا كلمةٌ ولا فراغ. */
@@ -280,7 +281,7 @@ export default function DriverCardsPage() {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
@@ -377,7 +378,7 @@ export default function DriverCardsPage() {
               })}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       <Modal open={!!editing} onClose={() => setEditing(null)}

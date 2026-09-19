@@ -17,6 +17,7 @@ import { SearchableSelect } from '@/components/hr/HRKit';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
 import { SlidersHorizontal } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 interface Clearance {
   _id: string;
@@ -343,7 +344,7 @@ export default function CustomsPage() {
       )}
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm min-w-[1160px]">
             <thead>
               <tr className="bg-slate-900">
@@ -411,7 +412,7 @@ export default function CustomsPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {/* Create modal */}

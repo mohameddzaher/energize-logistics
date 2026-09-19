@@ -16,6 +16,7 @@ import {
 } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import { FleetVehicle, TRAILER_TYPES, GPS_TYPES, foldAr, canEditFleet, canAdminFleet } from '@/lib/fleet';
+import ScrollX from '@/components/system/ScrollX';
 
 // أعمدة تصدير السيارات — الشاشة تصدّر مرّتين (الكل، والمعروض بعد الفلتر)،
 // فالتعريف واحدٌ كي لا يفترق الملفان.
@@ -199,7 +200,7 @@ export default function FleetVehiclesPage() {
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className={th}>{ar ? 'اللوحة' : 'Plate'}</th>
@@ -295,7 +296,7 @@ export default function FleetVehiclesPage() {
             )}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       {/* تعيين المشرف: هذه السيارة مسؤول عنها مَن؟ */}
       <Modal open={!!assigning} onClose={() => setAssigning(null)}

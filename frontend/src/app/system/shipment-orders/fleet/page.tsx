@@ -17,6 +17,7 @@ import {
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { OrderSupplier, OrderVehicle, FormField, optionLabel, canEditOrders, canAdminOrders, Lang } from '@/lib/shipmentOrders';
 import { ContactButtons } from '@/components/crm/CrmKit';
+import ScrollX from '@/components/system/ScrollX';
 
 const EMPTY_SUPPLIER = { name: '', type: 'company' as 'company' | 'freelancer', phone: '', email: '', notes: '' };
 const EMPTY_VEHICLE = { plate: '', name: '', truckType: '', supplier: '', defaultDriverName: '', defaultDriverPhone: '', notes: '' };
@@ -179,7 +180,7 @@ export default function FleetPage() {
       </div>
 
       {tab === 'vehicles' && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+        <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
           <table className="w-full text-sm">
             <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
               <th className={th}>{ar ? 'اللوحة' : 'Plate'}</th>
@@ -212,7 +213,7 @@ export default function FleetPage() {
               {vehicles.length === 0 && <tr><td colSpan={6} className="text-center text-slate-500 py-12">{ar ? 'لا توجد سيارات بعد — أول شحنة بسيارة جديدة تُسجّلها هنا تلقائياً.' : 'No vehicles yet — the first shipment with a new truck registers it here.'}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       )}
 
       {/* ── والمورّدون جدولٌ لا بطاقات ────────────────────────────────────────
@@ -220,7 +221,7 @@ export default function FleetPage() {
           فيُقرأ الأوّلُ بالعين نزولًا ويُقرأ الثاني بالقفز بين المربّعات، ولا
           يُفرَز ولا يُقارَن. والسجلُّ يُقرأ صفًّا صفًّا. */}
       {tab === 'suppliers' && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+        <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
           <table className="w-full text-sm">
             <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
               <th className={th}>{ar ? 'المورّد' : 'Supplier'}</th>
@@ -268,7 +269,7 @@ export default function FleetPage() {
               {suppliers.length === 0 && <tr><td colSpan={7} className="text-center text-slate-500 py-12">{ar ? 'لا يوجد مورّدون بعد — أول سيارة مورّد في شحنة تُسجّل صاحبها هنا.' : 'No suppliers yet — the first supplier truck on a shipment registers them.'}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       )}
 
       {/* Supplier modal */}

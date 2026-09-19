@@ -12,6 +12,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { Truck, Package, Search, MapPin } from 'lucide-react';
 import { statusText, statusColor, money, fmtDate, type Lang, type PortalService } from '@/lib/portal';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import ScrollX from '@/components/system/ScrollX';
 
 type TripType = 'heavy' | 'orders' | 'vendor';
 
@@ -171,7 +172,7 @@ function ShipmentsInner() {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full min-w-[820px]">
             <thead>
               <tr className="bg-slate-900">
@@ -211,7 +212,7 @@ function ShipmentsInner() {
               )}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

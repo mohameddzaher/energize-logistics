@@ -21,6 +21,7 @@ import DeferralActionModal, { type DeferralLike } from '@/components/ls2/Deferra
 import DeferralCard from '@/components/ls2/DeferralCard';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { exportMultiSheet } from '@/utils/exportExcel';
+import ScrollX from '@/components/system/ScrollX';
 
 const FILTERS = ['all', 'due', 'overdue'];
 
@@ -407,7 +408,7 @@ export default function Ls2MaintenancePage() {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -501,7 +502,7 @@ export default function Ls2MaintenancePage() {
               {rows.length === 0 && <tr><td colSpan={7} className="text-center text-slate-700 py-10">{t.noData}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {dueSoonOpen && <DueSoonModal items={items} ar={lang === 'ar'} onClose={() => setDueSoonOpen(false)} />}

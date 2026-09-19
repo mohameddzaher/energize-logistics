@@ -16,6 +16,7 @@ import { exportMultiSheet, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
 import { getWalletTranslations, getWalletExtraTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels } from '@/components/ls2/ExportMenu';
+import ScrollX from '@/components/system/ScrollX';
 
 interface DailyWallet {
   _id: string;
@@ -1151,7 +1152,7 @@ export default function WalletPage() {
             {L.transactions} ({transactions.length})
           </h3>
         </div>
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
@@ -1306,7 +1307,7 @@ export default function WalletPage() {
               })}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {/* النوافذُ كلُّها أفعالٌ على يومٍ بعينه — إضافةٌ وتعديلٌ وإقفال. ولا

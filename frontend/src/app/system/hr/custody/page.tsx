@@ -12,6 +12,7 @@ import { useAssetVocab } from '@/hooks/useAssetVocab';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, SmallBadge, Modal, Field, TextInput, Select, SearchableSelect, TextArea, Loader2 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getHrCustodyTranslations } from '@/lib/translations';
+import ScrollX from '@/components/system/ScrollX';
 
 const EMPTY = { employee: '', name: '', type: '', serialNumber: '', brand: '', model: '', condition: 'good', value: 0, assignedDate: '', notes: '' };
 
@@ -145,7 +146,7 @@ export default function CustodyPage() {
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colActions}</th>
@@ -189,7 +190,7 @@ export default function CustodyPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? tx.editCustody : tx.addCustody}
         footer={<>

@@ -15,6 +15,7 @@ import { isHRStaff } from '@/lib/hr';
 import { Spinner, PageHeader, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
 import ReferenceDataManager from '@/components/system/ReferenceDataManager';
 import { Settings, CalendarDays, BellRing, Tags, ExternalLink } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 interface LeaveType { _id: string; nameAr: string; nameEn: string; affectsBalance?: boolean; paid?: boolean; active?: boolean; requiresAdvanceNotice?: boolean; minAdvanceDays?: number }
 
@@ -92,7 +93,7 @@ export default function HrSettingsPage() {
             {t('إدارة الأنواع', 'Manage types')} <ExternalLink className="w-3.5 h-3.5" />
           </Link>
         </div>
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm min-w-[520px]">
             <thead><tr className="table-head">
               {[t('النوع', 'Type'), t('تُخصَم من الرصيد', 'Deducts balance'), t('مدفوعة', 'Paid'), t('إخطار مسبق', 'Advance notice'), t('نشط', 'Active')].map((h) => (
@@ -118,7 +119,7 @@ export default function HrSettingsPage() {
               {!types.length && <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400">{t('لا أنواع بعد', 'No types yet')}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {/* ── عتبات التنبيه ───────────────────────────────────────────────────

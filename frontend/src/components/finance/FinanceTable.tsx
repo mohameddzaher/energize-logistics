@@ -12,6 +12,7 @@ import { ArrowUpDown, Search, ExternalLink } from 'lucide-react';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { fmtFin, type FinTable } from '@/lib/financeDept';
+import ScrollX from '@/components/system/ScrollX';
 
 const fold = (v: any) => String(v ?? '').replace(/[أإآ]/g, 'ا').replace(/[ةه]/g, 'ه').replace(/[ىي]/g, 'ي').toLowerCase();
 const PAGE = 100;
@@ -78,7 +79,7 @@ export default function FinanceTable({ table, ar, fileName }: { table: FinTable;
             ]} />
         </div>
       </div>
-      <div className="overflow-x-auto">
+      <ScrollX>
         <table className="w-full text-[13px]">
           <thead>
             <tr className="bg-slate-900 text-slate-300 text-[11.5px]">
@@ -131,7 +132,7 @@ export default function FinanceTable({ table, ar, fileName }: { table: FinTable;
             </tfoot>
           )}
         </table>
-      </div>
+      </ScrollX>
       {shown.length > limit && (
         <button type="button" onClick={() => setLimit((l) => l + PAGE * 3)}
           className="w-full py-2 text-[12.5px] font-semibold text-[#f37121] hover:bg-orange-50 border-t border-slate-100">

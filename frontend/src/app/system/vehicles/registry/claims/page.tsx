@@ -21,6 +21,7 @@ import {
   getClaims, money, fmtDate, canEditVehicles, canAdminVehicles,
   createClaim, updateClaim, deleteClaim,
 } from '@/lib/vehicleRegistry';
+import ScrollX from '@/components/system/ScrollX';
 
 // أعمدةُ جدول الحوادث وقارئُ كلٍّ منها — تعريفٌ واحدٌ للترويسة وللقمع.
 const COL_DEFS: [string, string, string][] = [
@@ -213,7 +214,7 @@ function ClaimsInner() {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
               <tr>
@@ -323,7 +324,7 @@ function ClaimsInner() {
               {!rows.length && <tr><td colSpan={COL_DEFS.length + (canEdit ? 1 : 0)} className="px-3 py-12 text-center text-slate-500">{t('لا توجد حوادث', 'No claims')}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {form && <ClaimForm claim={form} ar={ar} onClose={() => setForm(null)} onSaved={() => { setForm(null); load(); }} />}

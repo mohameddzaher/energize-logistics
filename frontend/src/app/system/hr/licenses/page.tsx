@@ -11,6 +11,7 @@ import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/l
 import { Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Pick, SmallBadge, Modal, Field, TextInput, Select, TextArea, Loader2 } from '@/components/hr/HRKit';
 import { getHrLicensesTranslations } from '@/lib/translations';
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
+import ScrollX from '@/components/system/ScrollX';
 
 interface License {
   _id: string;
@@ -205,7 +206,7 @@ export default function LicensesPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.thActions}</th>
@@ -241,7 +242,7 @@ export default function LicensesPage() {
             })}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? tx.editLicense : tx.newLicense}
         footer={<>

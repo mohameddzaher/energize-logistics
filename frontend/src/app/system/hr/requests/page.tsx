@@ -12,6 +12,7 @@ import { isHRStaff, HRRequest, REQUEST_STATUS, categoryLabel, userName, fmtDateT
 import { Spinner, PageHeader, SearchInput, Badge, Modal, TextInput, Select, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
 import { getHrRequestsTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import ScrollX from '@/components/system/ScrollX';
 
 const idOf = (e: any) => (e?.idType === 'national_id' ? (e?.nationalId || e?.iqamaNumber) : (e?.iqamaNumber || e?.nationalId)) || '—';
 const BG = 'bg-white group-hover:bg-slate-100';
@@ -109,7 +110,7 @@ export default function HRRequestsPage() {
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الرقم الوظيفي' : 'Emp. no.'}</th>
@@ -136,7 +137,7 @@ export default function HRRequestsPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       <Modal open={!!open} onClose={() => setOpen(null)} wide title={open?.subject || ''}
         footer={<div className="flex items-center gap-2 w-full">

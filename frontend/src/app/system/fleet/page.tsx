@@ -24,6 +24,7 @@ import {
   fmtDT, fmtD, hoursSince, canEditFleet, canAdminFleet, shipmentVehicleId, Lang,
 } from '@/lib/fleet';
 import type { DispatchSheetRow } from '@/lib/dispatchSheetExcelParser';
+import ScrollX from '@/components/system/ScrollX';
 
 // One shipment → one بوليصة sheet row. Untracked sheet fields stay blank.
 const toSheetRow = (s: FleetShipment): DispatchSheetRow => ({
@@ -314,7 +315,7 @@ function FleetShipmentsInner() {
       <PeriodFilter value={period} onChange={setPeriod} lang={ar ? 'ar' : 'en'} />
       <PeriodBanner period={resolvedPeriod} lang={ar ? 'ar' : 'en'} count={total} />
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className="px-3 py-3">
@@ -432,7 +433,7 @@ function FleetShipmentsInner() {
             })}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       {total > 25 && (
         <div className="flex items-center justify-end gap-2 text-sm">

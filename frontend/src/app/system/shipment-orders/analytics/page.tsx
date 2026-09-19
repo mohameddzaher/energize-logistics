@@ -21,6 +21,7 @@ import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from 'recharts';
 import { TrendingUp, AlertTriangle, RotateCcw } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 const ORANGE = '#f37121';
 const money = (n?: number) => (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
@@ -247,7 +248,7 @@ function Inner() {
           </div>
         )}
 
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm min-w-[760px]">
             <thead className="table-head">
               <tr>{[t('البند', 'Item'), t('شحنات', 'Orders'), t('البيع', 'Sell'), t('الشراء', 'Buy'), t('الفرق', 'Spread'), t('الهامش', 'Margin'), t('متوسط الفرق', 'Avg spread')]
@@ -268,7 +269,7 @@ function Inner() {
               {!rows.length && <tr><td colSpan={7} className="px-3 py-10 text-center text-slate-400">{t('لا بيانات ضمن هذه الفلاتر', 'No data for these filters')}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {/* ── الشحنات الخاسرة ─────────────────────────────────────────────────
@@ -280,7 +281,7 @@ function Inner() {
             <p className="font-bold text-red-800">{t('شحنات بيعُها أقلُّ من شرائها', 'Orders sold below cost')}</p>
             <span className="ms-auto text-xs text-red-600">{d.losing.length}</span>
           </div>
-          <div className="overflow-x-auto">
+          <ScrollX>
             <table className="w-full text-sm min-w-[720px]">
               <thead className="table-head">
                 <tr>{[t('البوليصة', 'Waybill'), t('العميل', 'Customer'), t('المورّد', 'Supplier'), t('من', 'From'), t('إلى', 'To'), t('البيع', 'Sell'), t('الشراء', 'Buy'), t('الفرق', 'Spread')]
@@ -303,7 +304,7 @@ function Inner() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollX>
         </div>
       )}
     </div>

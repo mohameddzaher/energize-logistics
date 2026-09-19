@@ -20,6 +20,7 @@ import VehicleMonthLog, { thisMonth } from '@/components/fleet/VehicleMonthLog';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { ClipboardList, Lock, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 interface Row {
   _id: string; plate: string; name?: string; trailerType?: string; supervisorName?: string;
@@ -188,7 +189,7 @@ function VehicleLogsInner() {
 
       {loading ? <Spinner /> : (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
+          <ScrollX>
             <table className="w-full text-sm min-w-[900px]">
               <thead>
                 <tr className="bg-slate-900">
@@ -239,7 +240,7 @@ function VehicleLogsInner() {
                 </tfoot>
               )}
             </table>
-          </div>
+          </ScrollX>
         </div>
       )}
 

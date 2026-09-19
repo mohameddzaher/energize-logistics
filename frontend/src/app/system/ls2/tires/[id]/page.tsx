@@ -27,6 +27,7 @@ import {
   CircleDot, ArrowRight, Truck, Wrench, Gauge, CalendarDays, User, History,
   MapPin, AlertTriangle,
 } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 interface Stint {
   plate: string | null; plateKey: string | null; position: string; unitId?: number | null;
@@ -224,7 +225,7 @@ export default function TireProfilePage() {
           </p>
           <span className="text-[11.5px] text-slate-500">{t('الكيلومترات من عدّاد العربية عند التركيب والنزول', 'Km from the vehicle odometer at mount and dismount')}</span>
         </div>
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-[13px]">
             <thead className="bg-slate-100 text-slate-600 text-[11.5px]">
               <tr>{[t('العربية', 'Vehicle'), t('الموضع', 'Position'), t('من', 'From'), t('إلى', 'To'), t('المدّة', 'Duration'), t('الكيلومترات', 'Km'), t('العدّاد', 'Odometer'), t('السائق', 'Driver'), t('الخروج', 'End')]
@@ -267,7 +268,7 @@ export default function TireProfilePage() {
               {!d.stints.length && <tr><td colSpan={9} className="text-center text-slate-400 py-10">{t('لم تُركَّب على عربيةٍ بعد', 'Never mounted yet')}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
         {(d.totals.preSystem || d.stints.some((s) => s.km == null && !s.preSystem)) && (
           <div className="px-4 py-2.5 text-[11.5px] text-slate-500 border-t border-slate-100 bg-slate-50 space-y-1">
             {d.totals.preSystem && (
@@ -293,7 +294,7 @@ export default function TireProfilePage() {
             <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-[11.5px] font-bold">{d.whileOn.length}</span>
           </p>
         </div>
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-[13px]">
             <thead className="bg-slate-100 text-slate-600 text-[11.5px]">
               <tr>{[t('التاريخ', 'Date'), t('النوع', 'Kind'), t('العربية', 'Vehicle'), t('البند', 'Item'), t('التفصيل', 'Detail'), t('بواسطة', 'By')]
@@ -317,7 +318,7 @@ export default function TireProfilePage() {
               {!d.whileOn.length && <tr><td colSpan={6} className="text-center text-slate-400 py-10">{t('لا صيانة ولا إصلاح جرى والفردة مركَّبة', 'Nothing happened while it was mounted')}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {/* ── السجلّ الخام ────────────────────────────────────────────────── */}
@@ -328,7 +329,7 @@ export default function TireProfilePage() {
             <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-[11.5px] font-bold">{d.events.length}</span>
           </p>
         </div>
-        <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+        <ScrollX className="max-h-[420px] overflow-y-auto">
           <table className="w-full text-[13px]">
             <thead className="bg-slate-100 text-slate-600 text-[11.5px] sticky top-0">
               <tr>{[t('التاريخ', 'Date'), t('الحركة', 'Action'), t('من', 'From'), t('إلى', 'To'), t('العدّاد', 'Odometer'), t('السبب', 'Reason'), t('بواسطة', 'By')]
@@ -349,7 +350,7 @@ export default function TireProfilePage() {
               {!d.events.length && <tr><td colSpan={7} className="text-center text-slate-400 py-10">{t('لا سجلّ حركة', 'No movement log')}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

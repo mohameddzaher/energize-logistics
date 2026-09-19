@@ -23,6 +23,7 @@ import {
   Users, TrendingUp, Image as ImageIcon, Clock, MapPin, Loader2,
 } from 'lucide-react';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import ScrollX from '@/components/system/ScrollX';
 
 const todayKey = () => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -205,7 +206,7 @@ export default function DutyRegisterPage() {
       {loading && <div className="py-8 text-center text-sm text-slate-500"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>}
 
       {!loading && tab === 'log' && (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <ScrollX className="rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300">
               <tr>
@@ -242,7 +243,7 @@ export default function DutyRegisterPage() {
               {!rows.length && <tr><td colSpan={10} className="px-3 py-10 text-center text-slate-500">{t('لا صفوف في هذا المدى', 'Nothing in this range')}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       )}
 
       {!loading && tab === 'gallery' && (

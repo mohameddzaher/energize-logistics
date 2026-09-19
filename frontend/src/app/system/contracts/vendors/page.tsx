@@ -19,6 +19,7 @@ import {
   ContractVendor, VENDOR_STATUS, canViewContracts, canEditContracts, fmtN, fmtD, foldAr,
 } from '@/lib/contracts';
 import { useDialog } from '@/components/system/DialogProvider';
+import ScrollX from '@/components/system/ScrollX';
 
 const emptyForm = {
   name: '', energizeRep: '', operationsRep: '', vendorType: '', contactPerson: '', phone: '',
@@ -181,7 +182,7 @@ function VendorsPageInner() {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -233,7 +234,7 @@ function VendorsPageInner() {
               {filtered.length === 0 && <tr><td colSpan={10} className="text-center text-slate-400 py-10">{ar ? 'لا توجد نتائج مطابقة' : 'No matches'}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {/* Add / edit */}

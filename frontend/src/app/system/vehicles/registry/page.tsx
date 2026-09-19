@@ -24,6 +24,7 @@ import ManagedSelect from '@/components/system/ManagedSelect';
 import { ReqToggle } from '@/components/vehicles/ReqToggle';
 import { LEAD, LEAD_CELL, LEAD_2, useLeadOffset } from '@/components/vehicles/stickyLead';
 import { Car, Plus, Edit, Trash2, BarChart3, CalendarClock, X, Save, ArrowRight, Columns3, Check } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 const EDIT_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
 
@@ -288,7 +289,7 @@ function VehicleRegistryListInner() {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300 text-xs">
               <tr>
@@ -379,7 +380,7 @@ function VehicleRegistryListInner() {
               {shownRows.length === 0 && <tr><td colSpan={shownCols.length + (hasLead ? 1 : 0)} className="px-3 py-10 text-center text-slate-500">{ar ? 'لا توجد مركبات مطابقة' : 'No matching vehicles'}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {showForm && <VehicleForm vehicle={editing} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load(); }} />}

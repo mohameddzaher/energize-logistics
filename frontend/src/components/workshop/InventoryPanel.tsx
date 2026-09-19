@@ -14,6 +14,7 @@ import {
 import { exportToExcel, fmt } from '@/utils/exportExcel';
 import { getWorkshopInventoryTranslations } from '@/lib/translations';
 import { useDialog } from '@/components/system/DialogProvider';
+import ScrollX from '@/components/system/ScrollX';
 
 interface IssueRow {
   _id: string;
@@ -447,7 +448,7 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
           <p>{tx.noItems}</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
@@ -592,7 +593,7 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       )}
 
       {/* Pagination */}
@@ -632,7 +633,7 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
               <p>{lang === 'ar' ? 'لا يوجد صرف مسجّل بعد. استخدم زر «صرف» على أي صنف في المخزون.' : 'Nothing issued yet. Use the “Issue” button on any stock line.'}</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <ScrollX>
               <table className="w-full text-sm">
                 <thead><tr className="bg-slate-900 border-b border-slate-200">
                   {[
@@ -678,7 +679,7 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollX>
           )}
 
           {issuesTotal > 20 && (

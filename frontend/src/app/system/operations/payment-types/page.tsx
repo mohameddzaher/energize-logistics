@@ -20,6 +20,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { Spinner, PageHeader, SearchInput } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { Banknote, Receipt, HelpCircle, Wand2, Loader2 } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 interface Row {
   _id: string; name: string; code: string; paymentType: '' | 'cash' | 'tax';
@@ -230,7 +231,7 @@ export default function PaymentTypesPage() {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[12.5px]">
               <tr>
@@ -301,7 +302,7 @@ export default function PaymentTypesPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       <p className="text-[12px] text-slate-400 flex items-start gap-1.5 leading-relaxed">

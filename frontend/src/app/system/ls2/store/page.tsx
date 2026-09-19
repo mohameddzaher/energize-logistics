@@ -12,6 +12,7 @@ import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
 import { Boxes, Plus, ArrowDownToLine, ArrowUpFromLine, Edit, Trash2, X, Save, History, Search, Undo2 } from 'lucide-react';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { isLs2Staff, isLs2Admin, type Lang } from '@/lib/ls2';
+import ScrollX from '@/components/system/ScrollX';
 
 type Item = { _id: string; code?: string; name: string; category?: string; categoryAr?: string; groupAr?: string; quantity: number; unit: string; unitPrice: number; minQuantity?: number; compatibleModels?: string[]; notes?: string; status: 'ok' | 'low' | 'out'; value: number };
 type Cat = { key: string; ar: string; count: number };
@@ -186,7 +187,7 @@ export default function Ls2StorePage() {
       {showLog && <MovementsLog movements={movements} ar={ar} canEdit={!!canEdit} plates={plates} onChanged={() => { loadLog(); load(); }} />}
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300 text-xs">
               <tr>
@@ -245,7 +246,7 @@ export default function Ls2StorePage() {
               {shown.length === 0 && <tr><td colSpan={8} className="px-3 py-10 text-center text-slate-400">{ar ? 'لا توجد أصناف مطابقة' : 'No items'}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {/* شريط الإجراء الجماعي — ثابت أسفل الشاشة، يظهر فور اختيار أول صنف.
@@ -297,7 +298,7 @@ function MovementsLog({ movements, ar, canEdit, plates, onChanged }: {
         <span>{ar ? 'سجل الحركات' : 'Movement log'} ({movements.length})</span>
         {canEdit && <span className="text-[11px] font-normal text-slate-400">{ar ? 'الحركة المسجّلة لا تُعدَّل — الغلط يتصحّح بتراجع مسجَّل باسمك' : 'A recorded movement is never edited — mistakes are reversed, on the record'}</span>}
       </div>
-      <div className="overflow-x-auto max-h-96 overflow-y-auto">
+      <ScrollX className="max-h-96 overflow-y-auto">
         <table className="w-full text-sm">
           <thead className="bg-slate-100 text-slate-500 text-xs sticky top-0"><tr>{head.map((h, i) => <th key={i} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr></thead>
           <tbody className="divide-y divide-slate-100">
@@ -331,7 +332,7 @@ function MovementsLog({ movements, ar, canEdit, plates, onChanged }: {
             {movements.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-slate-400">{ar ? 'لا حركات بعد' : 'No movements'}</td></tr>}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
       {undoing && <ReverseModal m={undoing} ar={ar} onClose={() => setUndoing(null)} onDone={() => { setUndoing(null); onChanged(); }} />}
     </div>
   );

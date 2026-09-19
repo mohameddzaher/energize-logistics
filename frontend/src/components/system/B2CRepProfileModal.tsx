@@ -10,6 +10,7 @@ import {
 import api from '@/lib/api';
 import { getB2CTranslations } from '@/lib/translations';
 import type { Lang } from '@/context/LanguageContext';
+import ScrollX from '@/components/system/ScrollX';
 
 const MONTH_NAMES_AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 const MONTH_NAMES_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -291,7 +292,7 @@ function ProfileBody({ data, lang, T, monthNames }: any) {
       )}
 
       {/* Months table */}
-      <div className="bg-slate-100 rounded-lg overflow-x-auto">
+      <ScrollX className="bg-slate-100 rounded-lg">
         <table className="w-full min-w-[700px]">
           <thead>
             <tr className="bg-slate-900 text-slate-300 text-xs uppercase">
@@ -334,7 +335,7 @@ function ProfileBody({ data, lang, T, monthNames }: any) {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
     </div>
   );
 }

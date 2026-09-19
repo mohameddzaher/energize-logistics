@@ -18,6 +18,7 @@ import { Spinner, ErrorNotice, SmallBadge, Modal, Field, TextInput, TextArea, Pr
 import ExportMenu, { type ExportSheet } from '@/components/ls2/ExportMenu';
 import { ContractVendor, UtilisationRow, VENDOR_STATUS, MONTH_AR, canViewContracts, canEditContracts, fmtN, fmtD, pct } from '@/lib/contracts';
 import { useDialog } from '@/components/system/DialogProvider';
+import ScrollX from '@/components/system/ScrollX';
 
 const readFileAsDataUrl = (f: File) => new Promise<string>((resolve, reject) => {
   const r = new FileReader();
@@ -56,7 +57,7 @@ function ProfileTable({ t, ar }: { t: any; ar: boolean }) {
         <Table2 className="w-4 h-4 text-cyan-700" />{profileTableTitle(t.type, ar)}
         <span className="text-[11px] text-slate-400 font-normal ms-auto">{rows.length} {ar ? 'صف' : 'rows'}</span>
       </div>
-      <div className="overflow-x-auto max-h-72 overflow-y-auto">
+      <ScrollX className="max-h-72 overflow-y-auto">
         <table className="w-full text-xs">
           <thead className="sticky top-0">
             <tr className="bg-slate-50 text-slate-500">
@@ -78,7 +79,7 @@ function ProfileTable({ t, ar }: { t: any; ar: boolean }) {
             )}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
     </div>
   );
 }
@@ -351,7 +352,7 @@ export default function VendorProfilePage() {
             {utilisation.length === 0
               ? <div className="text-xs text-slate-400 py-6 text-center">{ar ? 'لا توجد بيانات تشغيل بعد لهذا المورد.' : 'No utilisation data yet.'}</div>
               : (
-                <div className="overflow-x-auto">
+                <ScrollX>
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="table-head">
@@ -379,7 +380,7 @@ export default function VendorProfilePage() {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </ScrollX>
               )}
           </div>
         </div>

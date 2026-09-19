@@ -19,6 +19,7 @@ import { canViewFleet, FLEET_STATUSES, TRAILER_TYPES } from '@/lib/fleet';
 import { BarChart3, TrendingUp, RotateCcw, Search, Star, CalendarClock, PackageSearch } from 'lucide-react';
 import LoadsAnalysis from '@/components/fleet/LoadsAnalysis';
 import { syncUrl } from '@/lib/urlSync';
+import ScrollX from '@/components/system/ScrollX';
 
 type Cust = { _id: string | null; name: string; customerType: string; rating: number; trips: number; income: number };
 type Analytics = {
@@ -362,7 +363,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
                 ))}
               </div>
             </div>
-            <div className="overflow-x-auto">
+            <ScrollX>
               <table className="w-full text-sm">
                 <thead className="table-head">
                   <tr>{[ar ? 'الحالة' : 'Status', ar ? 'اللوحة' : 'Plate', ar ? 'التيدر' : 'Trailer', ar ? 'المشرف' : 'Supervisor', ar ? 'الحمولات' : 'Loads', ar ? 'شغّالة من' : 'Active from', ar ? 'المحقَّق' : 'Achieved', ar ? 'الهدف' : 'Target', ar ? 'الناقص' : 'Shortfall', ar ? 'التحقيق' : 'Attained'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
@@ -420,7 +421,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
                   {sortedVehicles.length === 0 && <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-400">{ar ? 'لا توجد بيانات لهذه الفلاتر' : 'No data'}</td></tr>}
                 </tbody>
               </table>
-            </div>
+            </ScrollX>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -459,7 +460,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
                 <button onClick={() => setCustTab('branch')} className={chip(custTab === 'branch')}>{ar ? 'فروع' : 'Branch'}</button>
               </div>
             </div>
-            <div className="overflow-x-auto">
+            <ScrollX>
               <table className="w-full text-sm">
                 <thead className="table-head">
                   <tr>{[ar ? 'العميل' : 'Customer', ar ? 'النوع' : 'Type', ar ? 'التقييم' : 'Rating', ar ? 'الرحلات' : 'Trips', ar ? 'الدخل' : 'Income'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold">{h}</th>)}</tr>
@@ -477,7 +478,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
                   {custRows.length === 0 && <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400">{ar ? 'لا يوجد عملاء' : 'No customers'}</td></tr>}
                 </tbody>
               </table>
-            </div>
+            </ScrollX>
           </div>
         </>
       )}

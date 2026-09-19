@@ -29,6 +29,7 @@ import RegisterServiceModal from '@/components/ls2/RegisterServiceModal';
 import VehicleServiceRecord from '@/components/ls2/VehicleServiceRecord';
 import VehicleAssets from '@/components/ls2/VehicleAssets';
 import TireSensorCell from '@/components/ls2/TireSensorCell';
+import ScrollX from '@/components/system/ScrollX';
 
 interface Detail { vehicle: Vehicle; alerts: Alert[]; serviceLog: any[] }
 
@@ -477,7 +478,7 @@ export default function Ls2VehicleDetailPage() {
         {actLoading && !activity ? <Spinner /> : !activity || (!activity.trips.length) ? (
           <p className="text-slate-400 text-sm py-6 text-center">{lang === 'ar' ? 'لا توجد رحلات في هذه الفترة' : 'No trips in this period'}</p>
         ) : (
-          <div className="overflow-x-auto max-h-[420px] overflow-y-auto rounded-lg border border-slate-100">
+          <ScrollX className="max-h-[420px] overflow-y-auto rounded-lg border border-slate-100">
             {tab === 'trips' ? (
               <table className="w-full text-xs">
                 <thead className="sticky top-0"><tr className="bg-slate-900 text-slate-300">
@@ -517,7 +518,7 @@ export default function Ls2VehicleDetailPage() {
                 </tbody>
               </table>
             )}
-          </div>
+          </ScrollX>
         )}
       </div>
 

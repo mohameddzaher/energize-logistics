@@ -16,6 +16,7 @@ import { CalendarClock } from 'lucide-react';
 import { stateMeta, getHrExpiring, STATE_META, stateLabel, fmtDate, daysText } from '@/lib/hrMaster';
 import MasterNav from '@/components/hr/MasterNav';
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
+import ScrollX from '@/components/system/ScrollX';
 
 const QUICK = [7, 15, 30, 60, 90, 180];
 
@@ -132,7 +133,7 @@ function ExpiringInner() {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
               <tr>{[t('الرقم الوظيفي', 'Emp. no.'), t('الموظف', 'Employee'), t('رقم الهوية', 'ID number'),
@@ -173,7 +174,7 @@ function ExpiringInner() {
               )}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

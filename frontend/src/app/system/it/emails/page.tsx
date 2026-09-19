@@ -24,6 +24,7 @@ import {
   deleteCompanyEmail, revealCompanyEmailPassword, exportCompanyEmailsWithPasswords,
   type CompanyEmail, type EmailEmployee,
 } from '@/lib/it';
+import ScrollX from '@/components/system/ScrollX';
 
 export default function CompanyEmailsPage() {
   const { lang, isRTL } = useLanguage();
@@ -163,7 +164,7 @@ export default function CompanyEmailsPage() {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
               <tr>{[t('الاسم', 'Name'), t('البريد', 'Email'), t('الموظف', 'Employee'), t('كلمة المرور', 'Password'), ''].map((h, i) => (
@@ -180,7 +181,7 @@ export default function CompanyEmailsPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {(adding || editing) && (

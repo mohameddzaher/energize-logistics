@@ -18,6 +18,7 @@ import {
   canViewMarketing, REPORT_PERIODS, periodLabel, thisMonthToDate, num, money, pct,
   type Lang, type DateRange, type Report, type ReportPeriod,
 } from '@/lib/marketing';
+import ScrollX from '@/components/system/ScrollX';
 
 export default function MarketingReportsPage() {
   const { user } = useAuth();
@@ -137,7 +138,7 @@ export default function MarketingReportsPage() {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300">
               <tr>
@@ -185,7 +186,7 @@ export default function MarketingReportsPage() {
               </tfoot>
             )}
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

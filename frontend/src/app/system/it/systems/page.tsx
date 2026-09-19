@@ -16,6 +16,7 @@ import {
   systemTypeLabel, systemStatusLabel, environmentLabel, costPeriodLabel,
   optionsOf, fmtDate, fmtMoney, daysUntil, renewalTone,
 } from '@/lib/it';
+import ScrollX from '@/components/system/ScrollX';
 
 const EMPTY = {
   name: '', nameAr: '', type: 'saas', status: 'operational', vendor: '', url: '',
@@ -158,7 +159,7 @@ export default function ItSystemsPage() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+      <ScrollX className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className="text-start font-semibold px-4 py-3">{ar ? 'النظام' : 'System'}</th>
@@ -219,7 +220,7 @@ export default function ItSystemsPage() {
             })}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} wide
         title={editing ? (ar ? 'تعديل النظام' : 'Edit system') : (ar ? 'نظام جديد' : 'New system')}

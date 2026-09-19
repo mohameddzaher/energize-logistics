@@ -21,6 +21,7 @@ import {
   canConfigurePerf, bandStyle, pct, periodLabel, periodKey, currentPeriod,
   type Lang, type Period, type Settings, type Band,
 } from '@/lib/performance';
+import ScrollX from '@/components/system/ScrollX';
 
 interface DeptRow {
   department: string; headcount: number; evaluated: number; coverage: number;
@@ -187,7 +188,7 @@ export default function PerformanceOverviewPage() {
           <p className="text-sm font-semibold text-slate-800">{ar ? 'تفصيل الأقسام' : 'Department breakdown'}</p>
           <ExportMenu fileName={`performance-overview-${periodKey(period)}`} lang={ar ? 'ar' : 'en'} variant="primary" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
         </div>
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -230,7 +231,7 @@ export default function PerformanceOverviewPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

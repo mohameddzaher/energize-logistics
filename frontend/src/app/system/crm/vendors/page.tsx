@@ -13,6 +13,7 @@ import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, TextArea, 
 import PortalAccountCard from '@/components/system/PortalAccountCard';
 import ReportButton from '@/components/system/ReportButton';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import ScrollX from '@/components/system/ScrollX';
 
 type Vendor = Record<string, any>;
 interface Options { energizeReps: string[]; followUpStatuses: string[]; vendorTypes: string[]; headOffices: string[] }
@@ -178,7 +179,7 @@ export default function CrmVendorsPage() {
         {anyFilter && <button type="button" onClick={clearAll} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm whitespace-nowrap"><X className="w-4 h-4" /> {t('Reset', 'مسح')}</button>}
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 text-slate-300">
@@ -212,7 +213,7 @@ export default function CrmVendorsPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       {/* detail */}
       <Modal open={!!detail} onClose={() => setDetail(null)} wide title={detail?.name || ''}>

@@ -16,6 +16,7 @@ import {
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ContractProspect, canViewContracts, canEditContracts, fmtN, fmtD, foldAr } from '@/lib/contracts';
 import { useDialog } from '@/components/system/DialogProvider';
+import ScrollX from '@/components/system/ScrollX';
 
 const emptyForm = { companyName: '', contactPerson: '', phone: '', headquarters: '', destinations: '', vehicleType: '', interestStatus: '', contactDate: '', assignedTo: '', notes: '' };
 
@@ -181,7 +182,7 @@ export default function ProspectsPage() {
       <div className="max-w-md"><SearchInput value={q} onChange={setQ} placeholder={ar ? 'ابحث بالاسم أو المقر أو الجوال…' : 'Search…'} /></div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -232,7 +233,7 @@ export default function ProspectsPage() {
               {filtered.length === 0 && <tr><td colSpan={8} className="text-center text-slate-400 py-10">{ar ? 'لا توجد شركات مطابقة' : 'No matches'}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       <Modal open={showForm} onClose={() => setShowForm(false)} title={editing ? (ar ? 'تعديل شركة' : 'Edit prospect') : (ar ? 'إضافة شركة للتنشيط' : 'Add prospect')} wide

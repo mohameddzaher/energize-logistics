@@ -16,6 +16,7 @@ import api from '@/lib/api';
 import { Spinner, PageHeader, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
 import ReferenceDataManager from '@/components/system/ReferenceDataManager';
 import { Settings, Tags, BellRing, Save } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 type Tab = 'lists' | 'alerts';
 
@@ -109,7 +110,7 @@ export default function VehiclesSettingsPage() {
             {t('«قارب على الانتهاء» تبدأ من عتبة «قريب». و«تحذير» و«حرج» تغيّران اللون وحدَه كلّما اقترب الموعد — أصفر ثمّ برتقاليّ. كلُّها بالأيّام قبل الانتهاء.',
                '“Due soon” starts at the soon threshold. Warning and critical only deepen the colour as the date nears. All in days before expiry.')}
           </p>
-          <div className="overflow-x-auto">
+          <ScrollX>
             <table className="w-full text-sm">
               <thead className="table-head">
                 <tr>
@@ -144,7 +145,7 @@ export default function VehiclesSettingsPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </ScrollX>
           {canEdit && (
             <div className="flex justify-end mt-4">
               <PrimaryButton onClick={save} disabled={saving}>

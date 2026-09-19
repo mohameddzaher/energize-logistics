@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 import B2CRepProfileModal from '@/components/system/B2CRepProfileModal';
 import ExportMenu, { exportScopeLabels, type ExportColumn, type ExportOption, type ExportSheet } from '@/components/ls2/ExportMenu';
+import ScrollX from '@/components/system/ScrollX';
 
 interface Project { _id: string; name: string; color?: string }
 interface Branch { _id: string; name: string; city?: string }
@@ -675,7 +676,7 @@ export default function B2CDashboard() {
                     <button onClick={() => setShowBelow(false)} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
                   </div>
                   {/* التفاصيل أولًا: أين تتركّز المشكلة */}
-                  <div className="overflow-auto">
+                  <ScrollX className="overflow-auto">
                   {branchRows.length > 0 && (
                     <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 space-y-3">
                       <div>
@@ -727,7 +728,7 @@ export default function B2CDashboard() {
                         {below.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">{arL ? 'لا يوجد مناديب دون الهدف 🎉' : 'None below target 🎉'}</td></tr>}
                       </tbody>
                     </table>
-                  </div>
+                  </ScrollX>
                 </div>
               </div>
             );
@@ -910,7 +911,7 @@ export default function B2CDashboard() {
             <div className="px-4 py-3 border-b border-slate-200">
               <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{T.byRep}</h3>
             </div>
-            <div className="overflow-x-auto">
+            <ScrollX>
               <table className="w-full min-w-[800px]">
                 <thead>
                   <tr className="bg-slate-900 text-slate-300 text-xs uppercase">
@@ -951,7 +952,7 @@ export default function B2CDashboard() {
                   )}
                 </tbody>
               </table>
-            </div>
+            </ScrollX>
           </div>
         </>
       ) : activeTab === 'evaluation' ? (
@@ -1077,7 +1078,7 @@ function EvaluationsView({ evaluations, T, lang, onRepClick }: any) {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full min-w-[800px]">
             <thead>
               <tr className="bg-slate-900 text-slate-300 text-xs uppercase">
@@ -1121,7 +1122,7 @@ function EvaluationsView({ evaluations, T, lang, onRepClick }: any) {
               )}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );
@@ -1661,7 +1662,7 @@ function DayDetailsModal({ date, project, branch, onClose, onRepClick, lang, T }
                 )}
 
                 {/* Reps table — includes source-row tracking for upload diagnostics */}
-                <div className="bg-slate-100 rounded-lg overflow-x-auto">
+                <ScrollX className="bg-slate-100 rounded-lg">
                   <table className="w-full min-w-[700px]">
                     <thead>
                       <tr className="bg-slate-900 text-slate-300 text-xs uppercase">
@@ -1712,7 +1713,7 @@ function DayDetailsModal({ date, project, branch, onClose, onRepClick, lang, T }
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ScrollX>
               </div>
             )}
           </div>

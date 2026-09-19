@@ -57,19 +57,24 @@ function broadcast(resource, action, payload = {}) {
 
 // Combined operations dashboard: header stats, full report stats, and the
 // charts/maps/tables payload — fetched in parallel, partial failures tolerated.
-exports.getDashboard = async (req, res) => {
-  try {
-    const lang = langOf(req);
-    const key = `ops:dash:${lang || ''}:${req.query.date_from || ''}:${req.query.date_to || ''}:${req.query.branches || ''}`;
-    const hit = cache.get(key);
-    if (hit) return res.json(hit);
+/**
+ * ── أرقامُ اللوحة فورًا، ثمّ تُحدَّث ───────────────────────────────────────
+ * المنصّةُ خارجيّةٌ وندائاتُها الثلاثة تأخذ ثوانيَ، وكانت كلُّ فتحةٍ للصفحة —
+ * وكلُّ تحديثٍ حيّ — تنتظرها، فتعرض البطاقاتُ «—» ثمّ تمتلئ، ومرّةً بعد مرّة.
+ * فيُحفَظ آخرُ جوابٍ سليمٍ لكلّ فلتر (`lastGood`) ويُعاد فورًا، ويُجدَّد في
+ * الخلفيّة إن كان أقدمَ من CACHE_TTL. ونداءٌ واحدٌ جارٍ لكلّ مفتاح لا أكثر،
+ * ومزامنةُ الإحصاءات (jobs/opsPoll) تُسخِّن الفلترَ الافتراضيّ كلَّ دورة.
+ */
+const lastGood = new Map();          // key → { payload, at }
+const inflight = new Map();          // key → Promise
+const dashKey = (lang, q) => `ops:dash:${lang || ''}:${q.date_from || ''}:${q.date_to || ''}:${q.branches || ''}`;
 
-    const query = {
-      date_from: req.query.date_from,
-      date_to: endOfDay(req.query.date_to),
-      branches: req.query.branches,
-    };
-    // ── محاولةٌ ثانية قبل الاستسلام ──────────────────────────────────────────
+async function fetchDashboard(lang, q) {
+  const key = dashKey(lang, q);
+  if (inflight.has(key)) return inflight.get(key);
+  const run = (async () => {
+    const query = { date_from: q.date_from, date_to: endOfDay(q.date_to), branches: q.branches };
+    // ── محاولةٌ ثانية قبل الاستسلام ──────────────────────────────────────
     // المنصّة خارجيّة وشبكتُها تتعثّر، والفشلة الواحدة العابرة كانت تكفي.
     const once = () => Promise.allSettled([
       upl.get('/admins/operation-app-home', { lang }),
@@ -83,19 +88,40 @@ exports.getDashboard = async (req, res) => {
       const second = (await once()).map(pick);
       home = home || second[0]; stats = stats || second[1]; charts = charts || second[2];
     }
-
-    const payload = { home, stats, charts };
-
-    // ── ولا يُخزَّن الفراغ ────────────────────────────────────────────────────
-    // كان الردّ الفارغ يُخزَّن كأنّه جواب، فتعرض البطاقات أصفارًا ويعيدها كلُّ
-    // تحديثٍ حتى تنتهي مدّة التخزين — والمستخدم يقرأ الصفر حقيقةً: «لا شحنات».
-    // وصفرٌ كاذب أسوأ من خطأٍ صريح، لأنّه يُبنى عليه قرار.
+    // ── ولا يُخزَّن الفراغ ────────────────────────────────────────────────
+    // الردُّ الفارغ ليس جوابًا: يبقى آخرُ سليمٍ مكانه، وإلّا قرأ المستخدمُ
+    // صفرًا كاذبًا («لا شحنات») يُبنى عليه قرار.
     if (home || stats) {
+      const payload = { home, stats, charts, fetchedAt: new Date().toISOString() };
+      lastGood.set(key, { payload, at: Date.now() });
       cache.set(key, payload, CACHE_TTL);
-      return res.json(payload);
+      return payload;
     }
-    // ولا يُخفى الفشل: العلامة تجعل الشاشة تعرض «—» وزرّ إعادة المحاولة بدل صفر.
-    res.status(200).json({ ...payload, upstreamUnavailable: true });
+    return null;
+  })().finally(() => inflight.delete(key));
+  inflight.set(key, run);
+  return run;
+}
+exports.fetchDashboard = fetchDashboard;
+
+exports.getDashboard = async (req, res) => {
+  try {
+    const lang = langOf(req);
+    const q = { date_from: req.query.date_from, date_to: req.query.date_to, branches: req.query.branches };
+    const key = dashKey(lang, q);
+    const hit = cache.get(key);
+    if (hit) return res.json(hit);
+
+    const prev = lastGood.get(key);
+    if (prev) {
+      // القديمُ يُعرض الآن، والجديدُ يصل بعد لحظةٍ عبر `ops:stats`/إعادة القراءة.
+      fetchDashboard(lang, q).catch(() => {});
+      return res.json({ ...prev.payload, stale: true });
+    }
+    const payload = await fetchDashboard(lang, q);
+    if (payload) return res.json(payload);
+    // ولا يُخفى الفشل: العلامة تجعل الشاشة تُبقي آخرَ أرقامها وتقول إنّها لم تُؤكَّد.
+    res.status(200).json({ home: null, stats: null, charts: null, upstreamUnavailable: true });
   } catch (error) {
     fail(res, error, 'Failed to load operations dashboard');
   }

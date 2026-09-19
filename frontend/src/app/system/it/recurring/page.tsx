@@ -13,6 +13,7 @@ import {
   canViewIt, RecurringGroup, Ticket, TICKET_CATEGORIES, TICKET_STATUSES,
   categoryLabel, ticketStatusLabel, optionsOf, fmtDate, fmtDuration,
 } from '@/lib/it';
+import ScrollX from '@/components/system/ScrollX';
 
 export default function RecurringPage() {
   const { user } = useAuth();
@@ -102,7 +103,7 @@ export default function RecurringPage() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+      <ScrollX className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className="w-8 px-4 py-3" />
@@ -172,7 +173,7 @@ export default function RecurringPage() {
             })}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
     </div>
   );
 }

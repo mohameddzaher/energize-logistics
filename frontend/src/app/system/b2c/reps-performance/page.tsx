@@ -11,6 +11,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { useAuth } from '@/context/AuthContext';
 import { parseRepsExcel, buildBulkPayload, buildDiagnosticReport, type ExcelParseResult } from '@/lib/b2cExcelParser';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import ScrollX from '@/components/system/ScrollX';
 
 interface Project { _id: string; name: string; code?: string; color?: string }
 interface Branch { _id: string; name: string; city?: string }
@@ -1297,7 +1298,7 @@ export default function RepsPerformancePage() {
         {uploads.length === 0 ? (
           <p className="text-slate-500 text-sm text-center py-6">{T.noUploadsYet}</p>
         ) : (
-          <div className="overflow-x-auto -mx-6 px-6">
+          <ScrollX className="-mx-6 px-6">
             <table className="w-full min-w-[700px]">
               <thead>
                 <tr className="bg-slate-900 text-slate-300 text-xs uppercase border-b border-slate-200">
@@ -1324,7 +1325,7 @@ export default function RepsPerformancePage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollX>
         )}
       </div>
 

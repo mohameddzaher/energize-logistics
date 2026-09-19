@@ -3,11 +3,12 @@
 // UPL field-ops system. Counts + status breakdown + monthly revenue + latest
 // shipments + leaderboards, all fed by /api/ops/dashboard and kept current by
 // the `ops:stats` / `ops:shipments:changed` socket events.
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { readLastSeen, writeLastSeen } from '@/lib/lastSeen';
 import api from '@/lib/api';
 import {
   Truck, Users, Car, UserSquare, Building2, Activity, TrendingUp, Award, ArrowRight, RefreshCw, X,
@@ -47,8 +48,9 @@ export default function OpsDashboardPage() {
   const { lang, isRTL } = useLanguage();
   const router = useRouter();
   const tx = opsText(lang);
-  const [d, setD] = useState<Dash | null>(null);
-  const [loading, setLoading] = useState(true);
+  // آخرُ لوحةٍ رآها المتصفّح تظهر فورًا ثمّ تُستبدل — راجع lib/lastSeen.
+  const [d, setD] = useState<Dash | null>(() => readLastSeen<Dash>(`ops:dash:${lang}|||`));
+  const [loading, setLoading] = useState(() => !readLastSeen(`ops:dash:${lang}|||`));
   // No date filter by default → the dashboard shows the true full totals (matching
   // the Shipments page). The backend makes any picked `date_to` inclusive of that
   // whole day, so ranges/presets count correctly.
@@ -65,13 +67,25 @@ export default function OpsDashboardPage() {
       if (dateFrom) qs.set('date_from', dateFrom);
       if (dateTo) qs.set('date_to', dateTo);
       if (branchFilter) qs.set('branches', branchFilter);
-      const res = await api.get<Dash>(`/api/ops/dashboard?${qs.toString()}`);
-      setD(res);
+      const ck = `ops:dash:${lang}|${dateFrom}|${dateTo}|${branchFilter}`;
+      const res = await api.get<Dash & { upstreamUnavailable?: boolean; stale?: boolean }>(`/api/ops/dashboard?${qs.toString()}`);
+      // ردٌّ فارغٌ من منصّةٍ متعثّرة لا يمسح ما يُعرض.
+      if (!res?.upstreamUnavailable && (res?.stats || res?.home)) { setD(res); writeLastSeen(ck, res); }
+      // وردٌّ «قديم» يُسأل بعده مرّةً واحدة — لا حلقةٌ إن تعثّرت المنصّة.
+      if (res?.stale && !retried.current) { retried.current = true; setTimeout(() => { loadRef.current?.(); }, 2500); } else if (!res?.stale) retried.current = false;
     } catch { /* keep previous */ }
     setLoading(false);
   }, [lang, dateFrom, dateTo, branchFilter]);
 
-  useEffect(() => { load(); }, [load]);
+  const loadRef = useRef<(() => void) | null>(null);
+  const retried = useRef(false);
+  loadRef.current = load;
+  useEffect(() => {
+    const seen = readLastSeen<Dash>(`ops:dash:${lang}|${dateFrom}|${dateTo}|${branchFilter}`);
+    if (seen) setD(seen);
+    load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [load]);
   // Live: poll-driven stats push + shipment changes.
   // Ignore the unfiltered live stats push while a date filter is active.
   useSocket('ops:stats', useCallback((stats: any) => { if (!dateFrom && !dateTo && !branchFilter) setD((p) => ({ ...(p || {}), stats })); }, [dateFrom, dateTo, branchFilter]));

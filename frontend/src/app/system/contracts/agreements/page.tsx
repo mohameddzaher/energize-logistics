@@ -15,6 +15,7 @@ import {
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { DeptContract, DEPT_LABELS, DEPT_CONTRACT_STATUS, canViewContracts, canEditContracts, fmtN, fmtD, foldAr } from '@/lib/contracts';
 import { useDialog } from '@/components/system/DialogProvider';
+import ScrollX from '@/components/system/ScrollX';
 
 const readFileAsDataUrl = (f: File) => new Promise<string>((resolve, reject) => {
   const r = new FileReader();
@@ -202,7 +203,7 @@ export default function AgreementsPage() {
       <div className="max-w-md"><SearchInput value={q} onChange={setQ} placeholder={ar ? 'ابحث بالاسم أو الموضوع…' : 'Search…'} /></div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -254,7 +255,7 @@ export default function AgreementsPage() {
               {filtered.length === 0 && <tr><td colSpan={9} className="text-center text-slate-400 py-10">{ar ? 'لا توجد عقود بعد في هذا القسم — أضف أول عقد.' : 'No contracts yet.'}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {/* Add / edit */}

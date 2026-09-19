@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { ChevronUp, ChevronDown, Search } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 interface Column {
   key: string;
@@ -96,7 +97,7 @@ export default function DataTable({ columns, data, searchable, searchPlaceholder
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm bg-white -mx-4 sm:mx-0 px-4 sm:px-0">
+      <ScrollX className="rounded-xl border border-slate-200 shadow-sm bg-white -mx-4 sm:mx-0 px-4 sm:px-0">
         <table className="w-full min-w-[800px]">
           <thead>
             <tr className="bg-slate-900">
@@ -142,7 +143,7 @@ export default function DataTable({ columns, data, searchable, searchPlaceholder
             )}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
     </div>
   );
 }

@@ -30,6 +30,7 @@ import { stateMeta,
   getExpiring, canEditVehicles, STATE_META, stateLabel, publicState, fmtDate, daysText,
   type ExpiringRow,
 } from '@/lib/vehicleRegistry';
+import ScrollX from '@/components/system/ScrollX';
 
 const QUICK = [7, 15, 30, 60, 90, 180];
 
@@ -324,7 +325,7 @@ function ExpiringInner() {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
               <tr>
@@ -430,7 +431,7 @@ function ExpiringInner() {
               )}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {/* شريط الإجراء الجماعي — ثابت أسفل الشاشة، يظهر فور اختيار أول مستند.

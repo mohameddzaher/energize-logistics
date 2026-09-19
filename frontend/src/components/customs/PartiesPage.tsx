@@ -13,6 +13,7 @@ import { canEditSection } from '@/lib/sections';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, Loader2 } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { Users, Ship, Plus, Pencil, Trash2, Mail, Phone, ChevronLeft } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 export type PartyKind = 'customer' | 'agent';
 
@@ -137,7 +138,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
         placeholder={t('بحث بالاسم أو البريد أو الجوال أو السجل التجاري أو الرقم الضريبي…', 'name, email, phone, CR, tax number…')} />
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
@@ -188,7 +189,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
               })}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       <Modal open={!!editing} onClose={() => setEditing(null)}

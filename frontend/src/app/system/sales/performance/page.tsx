@@ -9,6 +9,7 @@ import { isSalesStaff, money, pct, thisPeriod } from '@/lib/finance';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { getSalesPerformanceTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import ScrollX from '@/components/system/ScrollX';
 
 export default function SalesPerformancePage() {
   const { user } = useAuth();
@@ -51,7 +52,7 @@ export default function SalesPerformancePage() {
         <ExportMenu fileName={`sales-performance-${period}`} lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
       </PageHeader>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-start text-slate-300">
             <th className="px-4 py-3">{tx.colRep}</th>
@@ -77,7 +78,7 @@ export default function SalesPerformancePage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
     </div>
   );
 }

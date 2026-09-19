@@ -25,6 +25,7 @@ import {
   canViewFleet, money, shipmentCustomerId, type Lang,
 } from '@/lib/fleet';
 import { Car, ArrowLeft, Route, Users, Target, PackageSearch, Wrench, ExternalLink } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 const ORANGE = '#f37121';
 
@@ -289,7 +290,7 @@ function VehicleAnalyticsInner() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className={cardCls}>
           <div className="px-4 py-3 bg-slate-50 border-b border-slate-100"><p className="font-bold text-slate-900 text-sm">{ar ? 'المسارات التي سارتها' : 'Routes travelled'}</p></div>
-          <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
+          <ScrollX className="max-h-[360px] overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="table-head sticky top-0"><tr>
                 {[ar ? 'المسار' : 'Route', ar ? 'الرحلات' : 'Trips', ar ? 'الدخل' : 'Income', ar ? 'المصروف' : 'Expense'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold">{h}</th>)}
@@ -306,12 +307,12 @@ function VehicleAnalyticsInner() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollX>
         </div>
 
         <div className={cardCls}>
           <div className="px-4 py-3 bg-slate-50 border-b border-slate-100"><p className="font-bold text-slate-900 text-sm">{ar ? 'العملاء الذين نقلت لهم' : 'Customers served'}</p></div>
-          <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
+          <ScrollX className="max-h-[360px] overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="table-head sticky top-0"><tr>
                 {[ar ? 'العميل' : 'Customer', ar ? 'الرحلات' : 'Trips', ar ? 'الدخل' : 'Income', ar ? 'المصروف' : 'Expense'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold">{h}</th>)}
@@ -328,7 +329,7 @@ function VehicleAnalyticsInner() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollX>
         </div>
       </div>
 
@@ -338,7 +339,7 @@ function VehicleAnalyticsInner() {
           <span className="text-xs text-slate-500">({d.shipments.length})</span>
           {d.truncated && <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">{ar ? 'المعروض مقتطع — المجاميع أعلاه كاملة' : 'Rows truncated — totals above are complete'}</span>}
         </div>
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
               {[ar ? 'البوليصة' : 'Waybill', ar ? 'التاريخ' : 'Date', ar ? 'العميل' : 'Customer', ar ? 'المسار' : 'Route',
@@ -373,7 +374,7 @@ function VehicleAnalyticsInner() {
               })}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

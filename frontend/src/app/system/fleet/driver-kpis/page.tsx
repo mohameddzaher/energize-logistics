@@ -21,6 +21,7 @@ import { ScoreBadge, ScoreBar, ScoreBreakdown, BandLegend, KpiTile, type ScoreBa
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import PeriodFilter, { PeriodBanner, periodParams, type Period } from '@/components/fleet/PeriodFilter';
 import ReportButton from '@/components/system/ReportButton';
+import ScrollX from '@/components/system/ScrollX';
 
 interface DriverKpi {
   _id: string | null;
@@ -223,7 +224,7 @@ export default function FleetDriverKpisPage() {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full min-w-[900px]">
             <thead>
               <tr className="bg-slate-900">
@@ -336,7 +337,7 @@ export default function FleetDriverKpisPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

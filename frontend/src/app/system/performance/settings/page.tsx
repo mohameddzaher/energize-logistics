@@ -20,6 +20,7 @@ import ExportMenu, { exportScopeLabels, type ExportColumn, type ExportSheet } fr
 import {
   canConfigurePerf, bandStyle, type Band, type Tier, type Template, type Criterion, type Settings,
 } from '@/lib/performance';
+import ScrollX from '@/components/system/ScrollX';
 
 const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-[#f37121]';
 const labelCls = 'block text-xs font-medium text-slate-500 mb-1';
@@ -453,7 +454,7 @@ export default function PerformanceSettingsPage() {
           <p className="text-sm text-slate-500">
             {ar ? 'النسبة المئوية = الدرجة المرجّحة × ٢٠. الشرائح دي بتحدد التقدير والبونص.' : 'Percentage = weighted score × 20. These bands drive the rating and the bonus.'}
           </p>
-          <div className="overflow-x-auto">
+          <ScrollX>
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -480,7 +481,7 @@ export default function PerformanceSettingsPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollX>
           <div>
             <label className={labelCls}>{ar ? 'حد الاستحقاق للبونص (%)' : 'Bonus eligibility threshold (%)'}</label>
             <input type="number" value={settings.eligibilityThreshold}

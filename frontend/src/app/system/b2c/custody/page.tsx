@@ -13,6 +13,7 @@ import { Wallet, Plus, ArrowDownCircle, ArrowUpCircle, Edit, Trash2, Check, Load
 import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, TextArea, Select, StatCard } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn, type ExportOption } from '@/components/ls2/ExportMenu';
 import { canEditSection } from '@/lib/sections';
+import ScrollX from '@/components/system/ScrollX';
 
 const MANAGER_ROLES = ['super_admin', 'admin', 'b2c_manager'];
 type Entry = Record<string, any>;
@@ -246,7 +247,7 @@ export default function B2CCustodyPage() {
             </div>
           )}
 
-          <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+          <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
             <div className="px-4 py-3 border-b border-slate-200">
               <h3 className="text-sm font-semibold text-slate-900">{t('History', 'السجل')} {isManager && selectedManager ? `· ${personName(selectedManager)}` : ''}</h3>
             </div>
@@ -283,7 +284,7 @@ export default function B2CCustodyPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollX>
         </>
       )}
 

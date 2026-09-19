@@ -26,6 +26,7 @@ import {
   repairCategoryLabel, fmtNum, fmtKm, fmtDate, fmtDateTime, fmtDuration, thisMonthToDate,
   type Lang, type DateRange, type Vehicle, type VehicleFuel, type FleetReport, type FleetReportRow, type VehicleReport,
 } from '@/lib/ls2';
+import ScrollX from '@/components/system/ScrollX';
 
 type SortKey = 'plate' | 'driver' | 'km' | 'avgKmPerDay' | 'engineHoursPeriod' | 'odometerKm' | 'kmPerL' | 'kmToService' | 'alertsTotal';
 type MaintFilter = 'all' | 'due' | 'overdue';
@@ -220,7 +221,7 @@ export default function Ls2ReportsPage() {
           </div>
 
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
+            <ScrollX>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -299,7 +300,7 @@ export default function Ls2ReportsPage() {
                   {rows.length === 0 && <tr><td colSpan={12} className="text-center text-slate-500 py-10">{t.noData}</td></tr>}
                 </tbody>
               </table>
-            </div>
+            </ScrollX>
           </div>
         </>
       )}

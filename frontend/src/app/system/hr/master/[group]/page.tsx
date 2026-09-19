@@ -39,6 +39,7 @@ import { HR_DATE_FIELDS, HR_NUM_RANGES } from '@/lib/hrMaster';
 import MasterNav from '@/components/hr/MasterNav';
 import ContractsTabs from '@/components/hr/ContractsTabs';
 import { HrGroupFormModal, HrGroupClearModal } from '@/components/hr/HrGroupModals';
+import ScrollX from '@/components/system/ScrollX';
 
 const QUICK = [30, 60, 90, 180];
 
@@ -362,7 +363,7 @@ function GroupInner() {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
               <tr>
@@ -441,7 +442,7 @@ function GroupInner() {
               )}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {renewable && canEdit && (

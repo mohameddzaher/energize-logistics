@@ -9,6 +9,7 @@ import { isHRStaff, LeaveType } from '@/lib/hr';
 import { Spinner, PageHeader, PrimaryButton, SmallBadge, Modal, Field, TextInput, Select, Loader2 } from '@/components/hr/HRKit';
 import { getHrLeaveTypesTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import ScrollX from '@/components/system/ScrollX';
 
 const EMPTY = { code: '', nameEn: '', nameAr: '', paid: true, affectsBalance: true, color: '#f37121', active: true, requiresAdvanceNotice: true, minAdvanceDays: 30 };
 
@@ -74,7 +75,7 @@ export default function LeaveTypesPage() {
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.addType}</PrimaryButton>
       </PageHeader>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className="text-start font-semibold px-4 py-3">{tx.colName}</th>
@@ -108,7 +109,7 @@ export default function LeaveTypesPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? tx.editLeaveType : tx.newLeaveType}
         footer={<>

@@ -12,6 +12,7 @@ import { Bell, RefreshCw, Check } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ls2Text, isLs2Staff, severityStyle, alertTypeLabel, alertMessage, timeAgo, ALERT_TYPE_LABELS, type Lang, type Alert } from '@/lib/ls2';
+import ScrollX from '@/components/system/ScrollX';
 
 export default function Ls2AlertsPage() {
   const { notify } = useDialog();
@@ -107,7 +108,7 @@ export default function Ls2AlertsPage() {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -140,7 +141,7 @@ export default function Ls2AlertsPage() {
               {items.length === 0 && <tr><td colSpan={6} className="text-center text-slate-700 py-10">{t.noData}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

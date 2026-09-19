@@ -10,6 +10,7 @@ import { CircleDot, Container, History, ExternalLink } from 'lucide-react';
 import api from '@/lib/api';
 import { fmtDateTime, plateDigitsKey, type Lang } from '@/lib/ls2';
 import VehicleAssetSheet from './VehicleAssetSheet';
+import ScrollX from '@/components/system/ScrollX';
 
 interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; sensor: 'yes' | 'no' | 'unknown'; positionNumber: number | null; positionLabel: string; section: string; isSpare?: boolean }
 interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; reason: string; notes: string; performedByName: string }
@@ -73,7 +74,7 @@ export default function VehicleAssets({ plate, lang }: { plate?: string | null; 
 
       {/* Mounted tires */}
       {data.tires.length > 0 && (
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-xs">
             <thead>
               <tr className="text-slate-400 border-b border-slate-100">
@@ -104,7 +105,7 @@ export default function VehicleAssets({ plate, lang }: { plate?: string | null; 
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       )}
 
       {/* Movement history (collapsed by default) */}

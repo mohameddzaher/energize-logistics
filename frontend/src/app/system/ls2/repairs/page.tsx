@@ -18,6 +18,7 @@ import {
   ls2Text, isLs2Staff, isLs2Admin, fmtKm, REPAIR_CATEGORIES, REPAIR_SEVERITIES, REPAIR_STATUSES,
   repairCategoryLabel, type Lang, type Repair, type Vehicle,
 } from '@/lib/ls2';
+import ScrollX from '@/components/system/ScrollX';
 
 export default function Ls2RepairsPage() {
   const { confirm, notify } = useDialog();
@@ -140,7 +141,7 @@ export default function Ls2RepairsPage() {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -194,7 +195,7 @@ export default function Ls2RepairsPage() {
               {rows.length === 0 && <tr><td colSpan={admin ? 10 : 9} className="text-center text-slate-500 py-10">{t.noRepairs}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {/* Pick the truck first — searchable; 57 trucks is too many to scroll */}

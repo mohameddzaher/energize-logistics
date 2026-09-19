@@ -18,6 +18,7 @@ import {
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
+import ScrollX from '@/components/system/ScrollX';
 
 const EMPTY = {
   plateNumber: '', type: 'car', make: '', model: '', year: '', color: '',
@@ -166,7 +167,7 @@ export default function VehiclesPage() {
         <div className="flex"><ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} /></div>
       )}
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
@@ -217,7 +218,7 @@ export default function VehiclesPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} wide
         title={editing ? tx.editVehicle : tx.addVehicle}

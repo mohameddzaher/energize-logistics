@@ -16,6 +16,7 @@ import { X, CircleDot, Wrench, Boxes, CalendarCheck, Search } from 'lucide-react
 import api from '@/lib/api';
 import { fmtDateTime } from '@/lib/ls2';
 import TireActions, { type TireActionHandlers } from './TireActions';
+import ScrollX from '@/components/system/ScrollX';
 
 type Tire = {
   _id: string; serial: string; tireNumber: string; type: string; size: string;
@@ -137,7 +138,7 @@ export default function VehicleAssetSheet({ plate, ar, onClose, admin = false, b
                       </span>
                     ))}
                   </div>
-                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <ScrollX className="rounded-xl border border-slate-200">
                     <table className="w-full text-sm">
                       <thead className="bg-slate-900 text-slate-200 text-[12.5px]">
                         <tr>{[t('الموقع', 'Pos.'), t('السيريال', 'Serial'), t('نمرة الإطار', 'Tag no.'), t('النوع', 'Brand'),
@@ -175,7 +176,7 @@ export default function VehicleAssetSheet({ plate, ar, onClose, admin = false, b
                         })}
                       </tbody>
                     </table>
-                  </div>
+                  </ScrollX>
                 </div>
               )
           )}

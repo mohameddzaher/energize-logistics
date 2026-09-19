@@ -17,6 +17,7 @@ import {
   platformLabel, objectiveLabel, statusLabel, statusStyle, campaignName, personName,
   num, money, pct, type Lang, type Campaign, type CampaignStatus, type Platform, type Objective,
 } from '@/lib/marketing';
+import ScrollX from '@/components/system/ScrollX';
 
 type Draft = Partial<Campaign> & { owner?: string | null };
 
@@ -166,7 +167,7 @@ export default function MarketingCampaignsPage() {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300">
               <tr>
@@ -212,7 +213,7 @@ export default function MarketingCampaignsPage() {
               })}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       <Modal

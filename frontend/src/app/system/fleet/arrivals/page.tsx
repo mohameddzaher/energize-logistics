@@ -23,6 +23,7 @@ import {
   hoursSince, canViewFleet, money, shipmentVehicleId, type Lang,
 } from '@/lib/fleet';
 import { CalendarClock, MapPin, Truck, CircleSlash } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 function ArrivalsInner() {
   const { user } = useAuth();
@@ -213,7 +214,7 @@ function ArrivalsInner() {
           <p className="font-bold text-slate-900">{ar ? 'العربيات المتوقع وصولها' : 'Trucks arriving'}</p>
           <span className="text-xs text-slate-500">({d?.arriving.length || 0})</span>
         </div>
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead>{shipHead}</thead>
             <tbody>
@@ -222,7 +223,7 @@ function ArrivalsInner() {
                 : d!.arriving.map(shipmentRow)}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {/* بلا موعدٍ متوقَّع: سائرةٌ فعلًا لكنها لا تدخل أيّ نافذةٍ زمنية، وإخفاؤها
@@ -236,9 +237,9 @@ function ArrivalsInner() {
                   : 'These never fall inside a period until an expected arrival is recorded.'}
             </p>
           </div>
-          <div className="overflow-x-auto">
+          <ScrollX>
             <table className="w-full text-sm"><thead>{shipHead}</thead><tbody>{d!.noEta.map(shipmentRow)}</tbody></table>
-          </div>
+          </ScrollX>
         </div>
       )}
 
@@ -251,7 +252,7 @@ function ArrivalsInner() {
             {ar ? 'ليست عليها حمولة نشطة، ولا متجهة إلى أي مكان' : 'No active load, going nowhere'}
           </span>
         </div>
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
               {[ar ? 'اللوحة' : 'Plate', ar ? 'نوع التيدر' : 'Trailer', 'GPS', ar ? 'السائقون' : 'Drivers',
@@ -292,7 +293,7 @@ function ArrivalsInner() {
                 ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

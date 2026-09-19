@@ -19,6 +19,7 @@ import {
   labelOf, optionsOf, bdName, userName, fmtDate, toDateInput,
   listToText, textToList,
 } from '@/lib/bd';
+import ScrollX from '@/components/system/ScrollX';
 
 const EMPTY = {
   name: '', nameAr: '', type: 'carrier', status: 'prospect',
@@ -163,7 +164,7 @@ export default function BdPartnersPage() {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300">
               <tr>
@@ -222,7 +223,7 @@ export default function BdPartnersPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} wide

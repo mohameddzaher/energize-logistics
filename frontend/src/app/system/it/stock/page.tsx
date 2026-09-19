@@ -17,6 +17,7 @@ import {
   OTHER_BUCKET_TYPES, bucketOf, deriveAssetName,
   empName, fmtMoney, today, unitsOf,
 } from '@/lib/it';
+import ScrollX from '@/components/system/ScrollX';
 
 // لا `name` ولا `model` ولا `location`: الاسم يُشتق من النوع والماركة،
 // والحقلان الآخران كانا يُتركان فارغين فيصيران عمودين فارغين في كل تقرير.
@@ -210,7 +211,7 @@ export default function ItStockPage() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+      <ScrollX className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className="text-start font-semibold px-4 py-3">{ar ? 'الجهاز' : 'Item'}</th>
@@ -250,7 +251,7 @@ export default function ItStockPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} wide
         title={editing ? (ar ? 'تعديل صنف المستودع' : 'Edit stock item') : (ar ? 'إضافة صنف للمستودع' : 'Add item to stock')}

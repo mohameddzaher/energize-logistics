@@ -12,6 +12,7 @@ import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { canAdminFleet } from '@/lib/fleet';
 import { Settings, Save, Target, CalendarClock, ListChecks, Truck } from 'lucide-react';
 import ReferenceDataManager from '@/components/system/ReferenceDataManager';
+import ScrollX from '@/components/system/ScrollX';
 
 export default function FleetSettingsPage() {
   const { lang, isRTL } = useLanguage();
@@ -196,7 +197,7 @@ export default function FleetSettingsPage() {
       {/* أهداف السيارات */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2"><Target className="w-4 h-4 text-[#f37121]" /> <p className="font-bold text-slate-900">{ar ? 'الهدف الشهري لكل سيارة' : 'Monthly target per vehicle'}</p></div>
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="table-head"><tr>
               <th className="px-4 py-2 text-start font-semibold">{ar ? 'اللوحة' : 'Plate'}</th>
@@ -215,7 +216,7 @@ export default function FleetSettingsPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import api from '@/lib/api';
 import { ArrowLeft, Upload, Plus, Loader2, FileSpreadsheet, Trash2, CheckCircle2 } from 'lucide-react';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import * as XLSX from 'xlsx';
+import ScrollX from '@/components/system/ScrollX';
 
 // ── Field Definitions ──
 interface FieldDef {
@@ -427,7 +428,7 @@ export default function NewOperationsPage() {
                 <span className="text-slate-500 text-xs">{T.showingKeyColumns} &middot; {T.allFieldsImported.replace('{count}', String(APP_FIELDS.length))}</span>
               </div>
 
-              <div className="overflow-x-auto">
+              <ScrollX>
                 <table className="w-full min-w-[900px]">
                   <thead>
                     <tr className="bg-slate-900 border-b border-slate-200">
@@ -462,7 +463,7 @@ export default function NewOperationsPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ScrollX>
 
               <div className="flex items-center justify-end gap-3 px-4 py-3 border-t border-slate-200">
                 <button type="button" onClick={() => { setImportRows([]); setFileName(''); setUnmappedHeaders([]); }} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm hover:bg-slate-200 transition-colors">

@@ -13,6 +13,7 @@ import { fmt } from '@/utils/exportExcel';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useLanguage } from '@/context/LanguageContext';
 import { getWalletDashboardTranslations, getWalletDashboardBranchIdExtraTranslations } from '@/lib/translations';
+import ScrollX from '@/components/system/ScrollX';
 
 interface WalletSummary {
   _id: string;
@@ -313,7 +314,7 @@ export default function BranchWalletDashboardPage() {
               <Users className="w-4 h-4 text-[#f37121]" /> {T.individualWallets}
             </h3>
           </div>
-          <div className="overflow-x-auto">
+          <ScrollX>
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-900 border-b border-slate-200">
@@ -360,7 +361,7 @@ export default function BranchWalletDashboardPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollX>
         </div>
       )}
 
@@ -387,7 +388,7 @@ export default function BranchWalletDashboardPage() {
             <Receipt className="w-4 h-4 text-[#f37121]" /> {T.transactionLog} ({filteredTx.length})
           </h3>
         </div>
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
@@ -451,7 +452,7 @@ export default function BranchWalletDashboardPage() {
               })}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

@@ -29,6 +29,7 @@ import {
   attendanceLabel, attendanceColor, ATTENDANCE, OPEN_STATUSES,
 } from '@/lib/businessReview';
 import { openReportPdf } from '@/lib/reports';
+import ScrollX from '@/components/system/ScrollX';
 
 // «السجل الشامل» comes FIRST: open a meeting and you see the whole story — who
 // came and when that was recorded, what was said, what was decided, who owes
@@ -491,7 +492,7 @@ function RecordTab({ meeting, meta, actions, lang, onPrint, printing }: any) {
             ))}
           </div>
         </div>
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-[11px]">
@@ -530,7 +531,7 @@ function RecordTab({ meeting, meta, actions, lang, onPrint, printing }: any) {
               )}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {/* ③ Agenda + minutes, side by side — what we meant to discuss, and what we did */}

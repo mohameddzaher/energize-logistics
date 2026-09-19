@@ -13,6 +13,7 @@ import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
 import { ls2Text, isLs2Staff, tireTempColor, type Lang, type Vehicle, type Tire } from '@/lib/ls2';
+import ScrollX from '@/components/system/ScrollX';
 
 export default function Ls2TiresPage() {
   const { user } = useAuth();
@@ -94,7 +95,7 @@ export default function Ls2TiresPage() {
         shown={rows.length} total={items.length} ar={ar} />
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -129,7 +130,7 @@ export default function Ls2TiresPage() {
               {rows.length === 0 && <tr><td colSpan={7} className="text-center text-slate-700 py-10">{t.noData}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

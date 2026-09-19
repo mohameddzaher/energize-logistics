@@ -15,6 +15,7 @@ import { getHrLeavesTranslations } from '@/lib/translations';
 import { downloadLeaveSheet } from '@/lib/leavePdf';
 import type { Signature } from '@/components/SignatureManager';
 import FilePicker, { AttachmentList, type PickedFile } from '@/components/system/FilePicker';
+import ScrollX from '@/components/system/ScrollX';
 
 const idOf = (e: any) => (e?.idType === 'national_id' ? (e?.nationalId || e?.iqamaNumber) : (e?.iqamaNumber || e?.nationalId)) || '—';
 const BG = 'bg-white group-hover:bg-slate-100';
@@ -269,7 +270,7 @@ export default function HRLeavesPage() {
         </select>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>PDF</th>
@@ -324,7 +325,7 @@ export default function HRLeavesPage() {
             })}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       <Modal open={!!review} onClose={() => setReview(null)} title={tx.reviewTitle}
         footer={actionable(review) ? <div className="flex flex-wrap items-center justify-end gap-2">

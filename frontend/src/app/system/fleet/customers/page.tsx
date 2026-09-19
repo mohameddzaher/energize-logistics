@@ -26,6 +26,7 @@ import ExportMenu from '@/components/ls2/ExportMenu';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
 import SearchableManagedSelect from '@/components/system/SearchableManagedSelect';
 import { FleetCustomer, canEditFleet, canAdminFleet } from '@/lib/fleet';
+import ScrollX from '@/components/system/ScrollX';
 
 const PAY_AR: Record<string, string> = { tax: 'ضريبي', cash: 'كاش' };
 const PAY_EN: Record<string, string> = { tax: 'Tax invoice', cash: 'Cash' };
@@ -229,7 +230,7 @@ export default function FleetCustomersPage() {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-[13px]">
             <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
               <tr>
@@ -292,7 +293,7 @@ export default function FleetCustomersPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
 
         {pages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 bg-slate-50 text-sm">

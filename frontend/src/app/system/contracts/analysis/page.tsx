@@ -21,6 +21,7 @@ import {
   CATEGORY_LABELS, CategoryKey, MONTH_AR, canViewContracts, canEditContracts,
   fmtN, pct, monthLabel, ContractVendor,
 } from '@/lib/contracts';
+import ScrollX from '@/components/system/ScrollX';
 
 interface Analysis {
   window: { months: string[] };
@@ -339,7 +340,7 @@ export default function ContractsAnalysisPage() {
             <div className="px-4 py-3 border-b border-slate-100 font-bold text-sm text-slate-800 flex items-center gap-1.5">
               <Package className="w-4 h-4 text-cyan-700" />{ar ? `أعلى الموردين تشغيلًا خلال الفترة (أول ${Math.min(20, data.topVendors.length)})` : 'Top vendors'}
             </div>
-            <div className="overflow-x-auto">
+            <ScrollX>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -364,7 +365,7 @@ export default function ContractsAnalysisPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollX>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

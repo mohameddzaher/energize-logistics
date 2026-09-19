@@ -26,6 +26,7 @@ import {
 } from '@/lib/fleet';
 import { Wallet, Coins, PackageSearch } from 'lucide-react';
 import { syncUrl } from '@/lib/urlSync';
+import ScrollX from '@/components/system/ScrollX';
 
 const ORANGE = '#f37121';
 
@@ -151,7 +152,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
   const groupTable = (title: string, nameHead: string, rows: { _id?: string | null; name?: string; plate?: string; loads: number; income: number; driverExpense: number }[], href?: (r: any) => string | null) => (
     <div className={cardCls}>
       <div className="px-4 py-3 bg-slate-50 border-b border-slate-100"><p className="font-bold text-slate-900 text-sm">{title}</p></div>
-      <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
+      <ScrollX className="max-h-[360px] overflow-y-auto">
         <table className="w-full text-sm">
           <thead className="table-head sticky top-0">
             <tr>{[nameHead, ar ? 'الحمولات' : 'Loads', ar ? 'الدخل' : 'Income', ar ? 'المصروف' : 'Expense'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold">{h}</th>)}</tr>
@@ -172,7 +173,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
             })}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
     </div>
   );
 
@@ -275,7 +276,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
               <p className="font-bold text-amber-900">{ar ? 'مصروف السائقين — ما يُسلَّم لكل سائق عن هذه الفترة' : 'Driver expenses — what each driver is owed'}</p>
               <span className="ms-auto text-sm font-bold text-amber-900 tabular-nums">{money(d.totals.driverExpense)}</span>
             </div>
-            <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+            <ScrollX className="max-h-[420px] overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="table-head sticky top-0">
                   <tr>{[ar ? 'السائق' : 'Driver', ar ? 'عدد الحمولات' : 'Loads', ar ? 'الدخل المُحقَّق' : 'Income', ar ? 'المصروف المستحق' : 'Expense owed'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold">{h}</th>)}</tr>
@@ -292,7 +293,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollX>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -312,7 +313,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
                 </span>
               )}
             </div>
-            <div className="overflow-x-auto">
+            <ScrollX>
               <table className="w-full text-sm">
                 <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
                   {[ar ? 'البوليصة' : 'Waybill', ar ? 'التاريخ' : 'Date', ar ? 'العميل' : 'Customer', ar ? 'المشرف' : 'Supervisor',
@@ -356,7 +357,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
                   })}
                 </tbody>
               </table>
-            </div>
+            </ScrollX>
           </div>
         </>
       )}

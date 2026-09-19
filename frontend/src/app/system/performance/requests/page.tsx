@@ -17,6 +17,7 @@ import {
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { canConfigurePerf, pct, type Lang } from '@/lib/performance';
+import ScrollX from '@/components/system/ScrollX';
 
 interface RequestRow {
   _id: string;
@@ -195,7 +196,7 @@ export default function PerformanceRequestsPage() {
         <div className="space-y-2">
           <h2 className="text-sm font-semibold text-slate-800">{ar ? 'قرارات سابقة' : 'Recent decisions'}</h2>
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
+            <ScrollX>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -230,7 +231,7 @@ export default function PerformanceRequestsPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollX>
           </div>
         </div>
       )}

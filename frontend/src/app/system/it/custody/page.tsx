@@ -20,6 +20,7 @@ import {
   custodyStatusLabel, deriveAssetName, empName, fmtDate, fmtMoney, today, idOf,
 } from '@/lib/it';
 import { CustodyCards, CustodyStateButtons } from '@/components/it/CustodyOverview';
+import ScrollX from '@/components/system/ScrollX';
 
 // لا `name` ولا `model`: الاسم يُشتق في الخادم من النوع والماركة، والموديل
 // أُسقط لأنه كان يُترك فارغاً في أغلب الصفوف.
@@ -474,7 +475,7 @@ export default function ItCustodyPage() {
         <StatCard label={ar ? 'قيمة المعروض' : 'Value shown'} value={fmtMoney(counts?.value ?? 0)} accent="text-[#f37121]" />
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+      <ScrollX className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className="text-start font-semibold px-4 py-3">{ar ? 'الموظف' : 'Employee'}</th>
@@ -542,7 +543,7 @@ export default function ItCustodyPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} wide
         title={editing ? (ar ? 'تعديل العهدة' : 'Edit custody item') : (ar ? 'تسليم عهدة' : 'Assign custody item')}

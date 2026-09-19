@@ -18,6 +18,7 @@ import {
   fmtDuration, today, idOf, listItDepartments, listItAssignees, userName,
 } from '@/lib/it';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
+import ScrollX from '@/components/system/ScrollX';
 
 // لا `requesterName` ولا `device`: مقدّم البلاغ هو الموظف المختار نفسه، والجهاز
 // يعرّفه تصنيف البلاغ أعلاه — والحقلان الحرّان كانا يكرّران ما هو معروف أصلاً.
@@ -192,7 +193,7 @@ export default function ItTicketsPage() {
         <DateRangeFilter ar={ar} from={from} to={to} onFrom={setFrom} onTo={setTo} />
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+      <ScrollX className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className="text-start font-semibold px-4 py-3">{ar ? 'رقم البلاغ' : 'Ticket #'}</th>
@@ -244,7 +245,7 @@ export default function ItTicketsPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} wide
         title={editing ? (ar ? 'تعديل البلاغ' : 'Edit ticket') : (ar ? 'بلاغ جديد' : 'New ticket')}

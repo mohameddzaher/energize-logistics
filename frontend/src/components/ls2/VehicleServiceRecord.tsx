@@ -16,6 +16,7 @@ import {
   ls2Text, fmtNum, fmtKm, fmtDate, REPAIR_SEVERITIES, REPAIR_STATUSES, repairCategoryLabel, checklistLabel,
   type Lang, type ServiceLog, type Deferral, type Repair,
 } from '@/lib/ls2';
+import ScrollX from '@/components/system/ScrollX';
 
 export default function VehicleServiceRecord({
   unitId, plate, currentOdo, lang, isRTL, admin,
@@ -74,7 +75,7 @@ export default function VehicleServiceRecord({
         {history.length === 0 ? (
           <p className="text-sm text-slate-400 py-8 text-center">{ar ? 'لا توجد صيانات مسجّلة عندنا لهذه المركبة بعد.' : 'No services logged here for this vehicle yet.'}</p>
         ) : (
-          <div className="overflow-x-auto">
+          <ScrollX>
             <table className="w-full text-xs">
               <thead><tr className="bg-slate-900 text-slate-300">
                 <th className="text-start font-semibold px-4 py-2.5">{ar ? 'الخدمة' : 'Service'}</th>
@@ -118,7 +119,7 @@ export default function VehicleServiceRecord({
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollX>
         )}
       </div>
 
@@ -137,7 +138,7 @@ export default function VehicleServiceRecord({
         {repairs.length === 0 ? (
           <p className="text-sm text-slate-400 py-8 text-center">{t.noRepairs}</p>
         ) : (
-          <div className="overflow-x-auto">
+          <ScrollX>
             <table className="w-full text-xs">
               <thead><tr className="bg-slate-900 text-slate-300">
                 <th className="text-start font-semibold px-4 py-2.5">{t.repairTitle}</th>
@@ -172,7 +173,7 @@ export default function VehicleServiceRecord({
                 })}
               </tbody>
             </table>
-          </div>
+          </ScrollX>
         )}
       </div>
 

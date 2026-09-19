@@ -15,6 +15,7 @@ import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from 'recharts';
 import { BarChart3, RotateCcw, TrendingUp, TrendingDown } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 const money = (n?: number) => Math.round(Number(n) || 0).toLocaleString('en-US');
 const pct = (n?: number) => `${Math.round((Number(n) || 0) * 1000) / 10}%`;
@@ -195,7 +196,7 @@ export default function CustomsAnalyticsPage() {
             </ResponsiveContainer>
           </div>
         )}
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>{[t('البند', 'Item'), t('معاملات', 'Deals'), t('حاويات', 'Containers'), t('الإيراد', 'Revenue'),
@@ -218,7 +219,7 @@ export default function CustomsAnalyticsPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {/* ── الصفقاتُ بأسمائها ────────────────────────────────────────────────
@@ -238,7 +239,7 @@ export default function CustomsAnalyticsPage() {
             {sec.rows.length === 0 ? (
               <p className="px-4 py-8 text-center text-slate-400 text-sm">{t('لا شيء', 'None')}</p>
             ) : (
-              <div className="overflow-x-auto max-h-72">
+              <ScrollX className="max-h-72">
                 <table className="w-full text-sm">
                   <tbody>
                     {sec.rows.map((r: any, i: number) => (
@@ -250,7 +251,7 @@ export default function CustomsAnalyticsPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ScrollX>
             )}
           </div>
         ))}

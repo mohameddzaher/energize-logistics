@@ -11,6 +11,7 @@ import { HRRequest, REQUEST_STATUS, REQUEST_CATEGORIES, categoryLabel, userName,
 import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, TextInput, Select, TextArea, Loader2 } from '@/components/hr/HRKit';
 import { getHrMyRequestsTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import ScrollX from '@/components/system/ScrollX';
 
 export default function MyRequestsPage() {
   const { notify, confirm } = useDialog();
@@ -101,7 +102,7 @@ export default function MyRequestsPage() {
         <PrimaryButton onClick={() => setShowForm(true)}><Plus className="w-4 h-4" /> {tx.newRequest}</PrimaryButton>
       </PageHeader>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className="text-start font-semibold px-4 py-3">{tx.colCategory}</th>
@@ -130,7 +131,7 @@ export default function MyRequestsPage() {
               ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       {/* New request */}
       <Modal open={showForm} onClose={() => { setShowForm(false); setEditing(null); }}

@@ -6,6 +6,7 @@
 // of the printed file, it is the same document drawn twice. Add a block kind on
 // the server and it must be added here too; that is the only coupling.
 import { ReactNode } from 'react';
+import ScrollX from '@/components/system/ScrollX';
 
 export type ReportBlock =
   | { kind: 'title'; text: string; sub?: string }
@@ -89,7 +90,7 @@ function Block({ b }: { b: ReportBlock }) {
       }
       const al = (i: number) => (b.align?.[i] === 'end' ? 'text-end' : b.align?.[i] === 'center' ? 'text-center' : 'text-start');
       return (
-        <div className="overflow-x-auto mb-2">
+        <ScrollX className="mb-2">
           <table className="w-full border-collapse text-[11px]">
             <thead>
               <tr>
@@ -114,7 +115,7 @@ function Block({ b }: { b: ReportBlock }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       );
     }
 

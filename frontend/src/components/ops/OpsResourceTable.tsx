@@ -19,6 +19,7 @@ import {
   ResourceCfg, Col, FieldDef, Paginated, opsText, locName, statusStyle, fmtDateTime, fmtMoney, fmtNum,
   isOpsAdmin,
 } from '@/lib/ops';
+import ScrollX from '@/components/system/ScrollX';
 
 const LIMIT = 25;
 
@@ -237,7 +238,7 @@ export default function OpsResourceTable({ cfg }: { cfg: ResourceCfg }) {
         {loading && <span className="text-xs text-slate-400 flex items-center gap-1"><span className="w-3 h-3 border-2 border-slate-300 border-t-[#f37121] rounded-full animate-spin" /></span>}
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 text-slate-300">
@@ -262,7 +263,7 @@ export default function OpsResourceTable({ cfg }: { cfg: ResourceCfg }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       {/* pagination */}
       {totalPages > 1 && (

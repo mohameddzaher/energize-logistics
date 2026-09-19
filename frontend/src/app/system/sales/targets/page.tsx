@@ -10,6 +10,7 @@ import { isSalesStaff, isSalesAdmin, SalesTarget, money, userName, thisPeriod } 
 import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, Select } from '@/components/hr/HRKit';
 import { getSalesTargetsTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import ScrollX from '@/components/system/ScrollX';
 
 const EMPTY = { rep: '', period: thisPeriod(), amountTarget: 0, dealsTarget: 0, notes: '' };
 
@@ -83,7 +84,7 @@ export default function SalesTargetsPage() {
         {canEdit && <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.setTarget}</PrimaryButton>}
       </PageHeader>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-start text-slate-300">
             <th className="px-4 py-3">{tx.rep}</th>
@@ -107,7 +108,7 @@ export default function SalesTargetsPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? tx.editTarget : tx.newTarget}
         footer={<><button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm">{tx.cancel}</button>

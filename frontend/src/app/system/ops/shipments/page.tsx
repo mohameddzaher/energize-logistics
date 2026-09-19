@@ -4,12 +4,13 @@
 // important unique id), the full status workflow, and a comprehensive detail
 // view that surfaces ALL the nested data UPL returns (driver, vehicle, owner,
 // customer, delegate, pricing, timeline). Live via `ops:shipments:changed`.
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { readLastSeen, writeLastSeen } from '@/lib/lastSeen';
 import api from '@/lib/api';
 import { Truck, MapPin, RefreshCw, ChevronLeft, ChevronRight, Check, Loader2, Clock, X } from 'lucide-react';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, Select, TextInput } from '@/components/hr/HRKit';
@@ -18,6 +19,7 @@ import {
   SHIPMENT_STATUSES, PAYMENT_METHODS, statusStyle, locName, fmtDateTime, fmtMoney, fmtNum,
   timelineMeta, isOpsStaff, isOpsAdmin, opsText, type Paginated,
 } from '@/lib/ops';
+import ScrollX from '@/components/system/ScrollX';
 
 const LIMIT = 25;
 type Row = Record<string, any>;
@@ -44,6 +46,9 @@ const driverName = (s: Row, lang: 'en' | 'ar') => locName(s?.driver?.admin?.name
 const driverPhone = (s: Row) => s?.driver?.admin?.phone || s?.driver?.phone || '';
 const carOwnerName = (s: Row, lang: 'en' | 'ar') => s?.car?.owner?.owner_name || locName(s?.car?.owner?.owner?.name, lang) || '—';
 
+// نبضةٌ مكانَ الرقم في أوّل تحميلٍ فقط — لا «—» تُقرأ «لا شيء».
+const CountSkeleton = () => <span className="inline-block h-6 w-12 rounded-md bg-slate-200 animate-pulse align-middle" />;
+
 export default function OpsShipmentsPage() {
   const { notify } = useDialog();
   const { user } = useAuth();
@@ -66,8 +71,13 @@ export default function OpsShipmentsPage() {
   const [dateTo, setDateTo] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
   const [branches, setBranches] = useState<Row[]>([]);
-  const [counts, setCounts] = useState<Record<string, number>>({});
-  const [countsState, setCountsState] = useState<'loading' | 'ok' | 'error'>('loading');
+  // ── الأرقامُ فورًا ────────────────────────────────────────────────────────
+  // تُقرأ آخرُ أرقامٍ رآها هذا المتصفّح لهذا الفلتر فتظهر لحظةَ الفتح، ثمّ يحلّ
+  // الجديدُ محلَّها. ولا تُمسح أبدًا إلى «—» أثناء التحديث: كانت كلُّ حركةٍ حيّة
+  // تُفرغ البطاقاتِ ثمّ تملؤها، فتومض الأرقامُ مرّةً بعد مرّة.
+  const countsKey = (b: string, f: string, t: string) => `ops:counts:${b}|${f}|${t}`;
+  const [counts, setCounts] = useState<Record<string, number>>(() => readLastSeen<Record<string, number>>(countsKey('', '', '')) || {});
+  const [countsState, setCountsState] = useState<'loading' | 'ok' | 'error'>(() => (readLastSeen(countsKey('', '', '')) ? 'ok' : 'loading'));
 
   const [detail, setDetail] = useState<Row | null>(null);
   const [timeline, setTimeline] = useState<any[] | null>(null);
@@ -107,8 +117,10 @@ export default function OpsShipmentsPage() {
 
   useEffect(() => { load(); }, [load]);
   // Quick status counts strip — scoped to the active branch/date filters, live.
+  const staleRetry = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retriedCounts = useRef(false);
   const loadCounts = useCallback(async () => {
-    setCountsState('loading');
+    const ck = countsKey(branchFilter, dateFrom, dateTo);
     try {
       const qs = new URLSearchParams({ lang });
       if (branchFilter) qs.set('branches', branchFilter);
@@ -121,24 +133,45 @@ export default function OpsShipmentsPage() {
         : (dash?.home?.stats?.length ? dash.home.stats : (dash?.stats?.statusesShipmentsChart || []));
       const map: Record<string, number> = {};
       src.forEach((s: any) => { map[s.status] = Number(s.count); });
-      setCounts(map);
+      if (Object.keys(map).length) {
+        setCounts(map);
+        writeLastSeen(ck, map);
+      }
+      // الخادمُ ردَّ بآخر أرقامٍ عنده وهو يجلب الأحدث — يُسأل ثانيةً بعد لحظة.
+      if (dash?.stale && !retriedCounts.current) {
+        retriedCounts.current = true;
+        if (staleRetry.current) clearTimeout(staleRetry.current);
+        staleRetry.current = setTimeout(() => { loadCounts(); }, 2500);
+      } else if (!dash?.stale) retriedCounts.current = false;
       // ── والصفر لا يُعرَض إلّا حين يكون جوابًا ──────────────────────────────
       // البطاقات تُجلب من منصّة التشغيل الخارجيّة، وكان فشلُ النداء يُبتلع
       // صامتًا فتبقى الأعداد أصفارًا — والمستخدم يقرأ الصفر حقيقةً: «لا شحنات
       // اليوم». وصفرٌ كاذب يُبنى عليه قرار، فصار الفشل يُعلن ويُعاد.
       setCountsState(dash?.upstreamUnavailable || !Object.keys(map).length ? 'error' : 'ok');
     } catch { setCountsState('error'); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang, branchFilter, dateFrom, dateTo]);
-  useEffect(() => { loadCounts(); }, [loadCounts]);
+  useEffect(() => {
+    // فلترٌ جديد: أرقامُه الأخيرةُ فورًا إن رآها المتصفّحُ قبلُ، ثمّ الجديد.
+    const seen = readLastSeen<Record<string, number>>(countsKey(branchFilter, dateFrom, dateTo));
+    if (seen) { setCounts(seen); setCountsState('ok'); } else { setCountsState('loading'); }
+    loadCounts();
+    return () => { if (staleRetry.current) clearTimeout(staleRetry.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadCounts]);
 
   useSocket('ops:shipments:changed', useCallback(() => { load(); loadCounts(); }, [load, loadCounts]));
   useSocket('ops:stats', useCallback((stats: any) => {
     if (branchFilter || dateFrom || dateTo) return; // keep the scoped counts when filtered
     const map: Record<string, number> = {};
     (stats?.statusesShipmentsChart || []).forEach((s: any) => { map[s.status] = Number(s.count); });
-    if (Object.keys(map).length) setCounts((p) => ({ ...p, ...map }));
+    if (Object.keys(map).length) {
+      setCounts((p) => { const n = { ...p, ...map }; writeLastSeen(countsKey('', '', ''), n); return n; });
+      setCountsState('ok');
+    }
   }, [branchFilter, dateFrom, dateTo]));
 
+  const hasCounts = Object.keys(counts).length > 0;
   const toggleStatus = (k: string) => setStatuses((p) => p.includes(k) ? p.filter((x) => x !== k) : [...p, k]);
 
   const openDetail = async (row: Row) => {
@@ -252,7 +285,7 @@ export default function OpsShipmentsPage() {
       {countsState === 'error' && (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-800">
           <span>{lang === 'ar'
-            ? 'تعذّر جلب أعداد الحالات من منصّة التشغيل — الأرقام أدناه غير مؤكّدة.'
+            ? (hasCounts ? 'تعذّر تحديث الأعداد من منصّة التشغيل — المعروض آخرُ أرقامٍ وصلت.' : 'تعذّر جلب أعداد الحالات من منصّة التشغيل.')
             : 'Could not fetch status counts from the operations platform — the numbers below are not confirmed.'}</span>
           <button type="button" onClick={loadCounts} className="shrink-0 px-2.5 py-1 rounded-lg bg-white border border-amber-300 font-semibold hover:bg-amber-100">
             {lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}
@@ -262,7 +295,7 @@ export default function OpsShipmentsPage() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
         <button type="button" onClick={() => setStatuses([])}
           className={`text-start rounded-xl p-3 border transition-all ${statuses.length === 0 ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'}`}>
-          <p className="text-xl font-bold">{countsState === 'ok' ? fmtNum(counts.all ?? Object.values(counts).reduce((a, b) => a + b, 0)) : '—'}</p>
+          <p className="text-xl font-bold">{hasCounts ? fmtNum(counts.all ?? Object.values(counts).reduce((a, b) => a + b, 0)) : countsState === 'loading' ? <CountSkeleton /> : '—'}</p>
           <p className="text-[11px] mt-0.5">{tx.all}</p>
         </button>
         {SHIPMENT_STATUSES.map((s) => {
@@ -270,7 +303,7 @@ export default function OpsShipmentsPage() {
           return (
             <button key={s.key} type="button" onClick={() => toggleStatus(s.key)}
               className={`text-start rounded-xl p-3 border transition-all ${on ? `${s.bg} ${s.text} border-current ring-2 ring-offset-1 ring-current` : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'}`}>
-              <p className="text-xl font-bold">{countsState === 'ok' ? fmtNum(counts[s.key] ?? 0) : '—'}</p>
+              <p className="text-xl font-bold">{hasCounts ? fmtNum(counts[s.key] ?? 0) : countsState === 'loading' ? <CountSkeleton /> : '—'}</p>
               <p className="text-[11px] mt-0.5 flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />{lang === 'ar' ? s.ar : s.en}</p>
             </button>
           );
@@ -310,7 +343,7 @@ export default function OpsShipmentsPage() {
         {(dateFrom || dateTo || branchFilter) && <button type="button" onClick={() => { setDateFrom(''); setDateTo(''); setBranchFilter(''); }} className="flex items-center gap-1 px-2.5 py-2 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 text-xs whitespace-nowrap"><X className="w-3.5 h-3.5" /> {lang === 'ar' ? 'مسح' : 'Clear'}</button>}
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 text-slate-300">
@@ -340,7 +373,7 @@ export default function OpsShipmentsPage() {
             })}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-sm text-slate-600">

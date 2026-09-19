@@ -26,6 +26,7 @@ import { Spinner, PageHeader, SearchInput, StatCard, ErrorNotice, SmallBadge } f
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { severityStyle, maintStyle, ALERT_TYPE_LABELS } from '@/lib/ls2';
 import { canViewFleet, foldAr } from '@/lib/fleet';
+import ScrollX from '@/components/system/ScrollX';
 
 interface TireRow { position: string; tempC: number | null; pressurePsi: number | null; fault: boolean }
 interface AlertRow { type: string; severity: string; message: string; firstSeenAt: string; value: number | null; threshold: number | null; unit: string }
@@ -165,7 +166,7 @@ export default function FleetHealthPage() {
         <SearchInput value={q} onChange={setQ} placeholder={t('ابحث باللوحة أو السائق أو المشرف…', 'Plate, driver or supervisor…')} />
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className={th}>{t('الشاحنة', 'Truck')}</th>
@@ -324,7 +325,7 @@ export default function FleetHealthPage() {
             )}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       {/* ── ومن أين تأتي الأرقام ────────────────────────────────────────────
           يُقال صراحةً: القراءةُ من جهاز الشاحنة، والتنبيهُ يصنعه محرّكُ لوكيشن

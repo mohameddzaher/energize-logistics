@@ -17,6 +17,7 @@ import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar'
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { Boxes } from 'lucide-react';
 import { stateMeta, getRegisters, fmtDate, daysText, money, STATE_META, stateLabel } from '@/lib/vehicleRegistry';
+import ScrollX from '@/components/system/ScrollX';
 
 const TABS = ['owners', 'authorizedPersons', 'gpsProviders', 'gpsDevices', 'gpsUnits', 'fuelCards'] as const;
 type Tab = typeof TABS[number];
@@ -190,7 +191,7 @@ export default function Page() {
       </FilterBar>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
               {/* الترويسةُ وقارئُ العمود من تعريفٍ واحد — راجع COL_DEFS أدناه. */}
@@ -269,7 +270,7 @@ export default function Page() {
               )}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

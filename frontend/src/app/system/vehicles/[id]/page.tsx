@@ -16,6 +16,7 @@ import {
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { Spinner, Badge, SmallBadge, Tabs, Modal, Field, TextInput, TextArea, Select, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
 import { EmployeePicker } from '@/components/vehicles/EmployeePicker';
+import ScrollX from '@/components/system/ScrollX';
 
 interface Detail { vehicle: Vehicle | null; authorizations: VehicleAuthorization[]; accidents: VehicleAccident[]; }
 type Action = 'authorize' | 'transfer' | 'revoke' | 'accident' | null;
@@ -247,7 +248,7 @@ export default function VehicleDetailPage() {
       )}
 
       {tab === 'accidents' && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+        <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
           {data.accidents.length === 0 ? <p className="text-slate-400 text-sm text-center py-12">{tx.noAccidents}</p> : (
             <table className="w-full text-sm">
               <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
@@ -270,7 +271,7 @@ export default function VehicleDetailPage() {
               ))}</tbody>
             </table>
           )}
-        </div>
+        </ScrollX>
       )}
 
       {/* Action modal */}

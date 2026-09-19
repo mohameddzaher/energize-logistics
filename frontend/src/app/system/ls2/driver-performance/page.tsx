@@ -22,6 +22,7 @@ import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ScoreBadge, ScoreBar, ScoreBreakdown, BandLegend, KpiTile, type ScoreBand, type ScoreBreakdownItem } from '@/components/system/Scorecard';
 import { isLs2Staff, thisMonthToDate, type Lang, type DateRange } from '@/lib/ls2';
 import ReportButton from '@/components/system/ReportButton';
+import ScrollX from '@/components/system/ScrollX';
 
 interface DriverScore {
   driver: string;
@@ -318,7 +319,7 @@ export default function Ls2DriverPerformancePage() {
                               {!!det?.trips?.length && (
                                 <div>
                                   <p className="text-slate-700 text-xs font-semibold mb-1.5">{tx('Recent trips', 'أحدث الرحلات')}</p>
-                                  <div className="overflow-x-auto">
+                                  <ScrollX>
                                     <table className="w-full min-w-[560px] text-[11px]">
                                       <thead>
                                         <tr className="text-slate-400">
@@ -341,7 +342,7 @@ export default function Ls2DriverPerformancePage() {
                                         ))}
                                       </tbody>
                                     </table>
-                                  </div>
+                                  </ScrollX>
                                 </div>
                               )}
                             </div>

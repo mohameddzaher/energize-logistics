@@ -15,6 +15,7 @@ import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
 import { ls2Text, isLs2Staff, fmtNum, thisMonthToDate, type Lang, type DateRange } from '@/lib/ls2';
 import { downloadDriverReport } from '@/lib/driverReport';
+import ScrollX from '@/components/system/ScrollX';
 
 interface DriverRow {
   driver: string;
@@ -116,7 +117,7 @@ export default function Ls2DriversPage() {
         shown={filtered.length} total={items.length} ar={ar} />
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -174,7 +175,7 @@ export default function Ls2DriversPage() {
               {filtered.length === 0 && <tr><td colSpan={6} className="text-center text-slate-700 py-10">{t.noData}</td></tr>}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

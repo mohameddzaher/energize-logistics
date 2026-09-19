@@ -19,6 +19,7 @@ import {
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
+import ScrollX from '@/components/system/ScrollX';
 
 export default function VehicleAccidentsPage() {
   const { confirm, notify } = useDialog();
@@ -187,7 +188,7 @@ export default function VehicleAccidentsPage() {
         <div className="flex"><ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} /></div>
       )}
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+      <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead>
             {/* الترويسةُ تحمل قمعَ كلِّ عمود — القيمةُ تُقرأ بالتعبير نفسِه
@@ -241,7 +242,7 @@ export default function VehicleAccidentsPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       <Modal open={!!editing || creating} onClose={closeForm} wide
         title={creating ? (ar ? 'تسجيل حادث' : 'Report accident') : tx.editAccident}

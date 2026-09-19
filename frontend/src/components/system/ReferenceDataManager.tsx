@@ -12,6 +12,7 @@ import { Tags, Plus, Edit, Trash2, Check } from 'lucide-react';
 import { Spinner, PageHeader, PrimaryButton, SmallBadge, Modal, Field, TextInput, Select, Loader2 } from '@/components/hr/HRKit';
 import { getSettingsReferenceDataTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import ScrollX from '@/components/system/ScrollX';
 
 interface LookupType { type: string; module: string; nameEn: string; nameAr: string; canManage: boolean }
 interface LookupItem { _id: string; type: string; key: string; nameEn: string; nameAr: string; color?: string; isActive: boolean; isSystem: boolean }
@@ -184,7 +185,7 @@ export default function ReferenceDataManager({ module: onlyModule, type: onlyTyp
         </div>
 
         {/* Right: items table */}
-        <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto min-h-[200px] shadow-sm">
+        <ScrollX className="bg-white border border-slate-200 rounded-xl min-h-[200px] shadow-sm">
           {listLoading ? (
             <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-[#f37121]" /></div>
           ) : (
@@ -221,7 +222,7 @@ export default function ReferenceDataManager({ module: onlyModule, type: onlyTyp
               </tbody>
             </table>
           )}
-        </div>
+        </ScrollX>
       </div>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? tx.editItem : tx.newItem}

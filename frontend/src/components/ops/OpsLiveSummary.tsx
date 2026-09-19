@@ -4,13 +4,14 @@
 // with a click-through to the full Operations Platform. Updates in real time via
 // the `ops:stats` / `ops:shipments:changed` socket events and renders nothing if
 // the current user has no ops read access (graceful degrade).
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Activity, Truck, Users, Car, ArrowRight } from 'lucide-react';
 import { statusStyle, fmtNum, locName, opsText } from '@/lib/ops';
+import { readLastSeen, writeLastSeen } from '@/lib/lastSeen';
 
 interface Dash {
   home?: { stats?: { status: string; count: string; label: string }[] } | null;
@@ -21,11 +22,16 @@ export default function OpsLiveSummary({ title }: { title?: string }) {
   const { lang, isRTL } = useLanguage();
   const router = useRouter();
   const tx = opsText(lang);
-  const [d, setD] = useState<Dash | null>(null);
+  // آخرُ ما رآه المتصفّح يظهر فورًا ثمّ يُستبدل — راجع lib/lastSeen.
+  const [d, setD] = useState<Dash | null>(() => readLastSeen<Dash>(`ops:dash:${lang}|||`));
+  const retried = useRef(false);
 
   const load = useCallback(async () => {
-    try { setD(await api.get<Dash>(`/api/ops/dashboard?lang=${lang}`)); }
-    catch { /* keep last known data if the API hiccups */ }
+    try {
+      const res = await api.get<Dash & { upstreamUnavailable?: boolean; stale?: boolean }>(`/api/ops/dashboard?lang=${lang}`);
+      if (!res?.upstreamUnavailable && (res?.stats || res?.home)) { setD(res); writeLastSeen(`ops:dash:${lang}|||`, res); }
+      if (res?.stale && !retried.current) { retried.current = true; setTimeout(() => { load(); }, 2500); } else if (!res?.stale) retried.current = false;
+    } catch { /* keep last known data if the API hiccups */ }
   }, [lang]);
 
   useEffect(() => { load(); }, [load]);

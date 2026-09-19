@@ -191,6 +191,13 @@ async function pollMovingShipments() {
 }
 
 async function pollStats() {
+  // تسخينُ لوحة المنصّة بلا فلتر (بالعربيّة والإنجليزيّة): أوّلُ من يفتح الصفحة
+  // يجد أرقامَها جاهزة — راجع getDashboard في opsController.
+  try {
+    const { fetchDashboard } = require('../controllers/opsController');
+    fetchDashboard('ar', {}).catch(() => {});
+    fetchDashboard('en', {}).catch(() => {});
+  } catch (_) { /* */ }
   try {
     const out = await upl.get('/admin/reports/stats');
     const sig = JSON.stringify(out.data || {});

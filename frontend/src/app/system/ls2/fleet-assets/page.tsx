@@ -33,6 +33,7 @@ import SearchSelect from '@/components/ls2/SearchSelect';
 import VehicleAssetSheet from '@/components/ls2/VehicleAssetSheet';
 import TireActions, { type TireActionHandlers } from '@/components/ls2/TireActions';
 import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
+import ScrollX from '@/components/system/ScrollX';
 
 // ---- Types mirroring /api/ls2/assets ---------------------------------------
 interface Flatbed { _id: string; numbering: number | null; plate: string; plateKey: string; batch: string; brand: string; currentTrailerNumber: string | null; notes: string; tireCount: number; unitId: number | null; driver: string; odometerKm: number | null }
@@ -489,7 +490,7 @@ export default function Ls2FleetAssetsPage() {
           placeholder={ar ? 'لوحة · دفعة · سائق · تيدر…' : 'Plate · batch · driver · trailer…'}
           shown={fFlatbeds.length} total={flatbeds.length} ar={ar} />
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
+          <ScrollX>
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -543,7 +544,7 @@ export default function Ls2FleetAssetsPage() {
                 {fFlatbeds.length === 0 && <tr><td colSpan={8} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
               </tbody>
             </table>
-          </div>
+          </ScrollX>
         </div>
         </div>
       )}
@@ -562,7 +563,7 @@ export default function Ls2FleetAssetsPage() {
             </button>
           )}
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
+            <ScrollX>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -605,7 +606,7 @@ export default function Ls2FleetAssetsPage() {
                   {fTrailers.length === 0 && <tr><td colSpan={5} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
                 </tbody>
               </table>
-            </div>
+            </ScrollX>
           </div>
         </div>
       )}
@@ -643,7 +644,7 @@ export default function Ls2FleetAssetsPage() {
             </button>
           )}
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
+            <ScrollX>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -707,7 +708,7 @@ export default function Ls2FleetAssetsPage() {
                   {fTires.length === 0 && <tr><td colSpan={12} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
                 </tbody>
               </table>
-            </div>
+            </ScrollX>
           </div>
         </div>
       )}
@@ -748,7 +749,7 @@ export default function Ls2FleetAssetsPage() {
                 {g.items.length === 0
                   ? <div className="text-center text-xs text-slate-300 py-4">{ar ? 'لا يوجد' : 'None'}</div>
                   : (
-                    <div className="overflow-x-auto">
+                    <ScrollX>
                       <table className="w-full text-sm">
                         <tbody>
                           {g.items.map((ti) => (
@@ -780,7 +781,7 @@ export default function Ls2FleetAssetsPage() {
                           ))}
                         </tbody>
                       </table>
-                    </div>
+                    </ScrollX>
                   )}
               </div>
             ))}
@@ -805,7 +806,7 @@ export default function Ls2FleetAssetsPage() {
       {/* ---- History --------------------------------------------------------- */}
       {tab === 'history' && (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
+          <ScrollX>
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -837,7 +838,7 @@ export default function Ls2FleetAssetsPage() {
                 {fEvents.length === 0 && <tr><td colSpan={7} className="text-center text-slate-400 py-10">{ar ? 'لا توجد حركات بعد' : 'No movements yet'}</td></tr>}
               </tbody>
             </table>
-          </div>
+          </ScrollX>
         </div>
       )}
 
@@ -850,7 +851,7 @@ export default function Ls2FleetAssetsPage() {
               : 'Registered sensor flags (workshop sheet) vs what Wialon actually reports. Wialon numbers tires by axle, the workshop by 1–14, so we compare counts and show both layouts.'}
           </p>
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
+            <ScrollX>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -916,7 +917,7 @@ export default function Ls2FleetAssetsPage() {
                   {fSensors.length === 0 && <tr><td colSpan={7} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
                 </tbody>
               </table>
-            </div>
+            </ScrollX>
           </div>
         </div>
       )}
@@ -1080,7 +1081,7 @@ function TrailerTiresModal({ trailer, tires, ar, busy, admin, actions, placeOf, 
           ? (ar ? `مركّب على العربية ${trailer.currentPlate} · ${list.length} فردة` : `Hitched to ${trailer.currentPlate} · ${list.length} tires`)
           : (ar ? `غير مركّب على عربية · ${list.length} فردة` : `Unhitched · ${list.length} tires`)}
       </p>
-      <div className="overflow-x-auto border border-slate-200 rounded-xl">
+      <ScrollX className="border border-slate-200 rounded-xl">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 text-slate-300 text-xs">
@@ -1106,7 +1107,7 @@ function TrailerTiresModal({ trailer, tires, ar, busy, admin, actions, placeOf, 
             {!list.length && <tr><td colSpan={5} className="text-center text-slate-400 py-8">{ar ? 'لا كاوتشات مسجّلة على هذا التيدر' : 'No tires registered on this trailer'}</td></tr>}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
     </Modal>
   );
 }

@@ -19,6 +19,7 @@ import {
   labelOf, optionsOf, bdName, userName, companyName, money, fmtDate, toDateInput,
   listToText, textToList,
 } from '@/lib/bd';
+import ScrollX from '@/components/system/ScrollX';
 
 const EMPTY = {
   name: '', nameAr: '', type: 'new_market', stage: 'identified', priority: 'medium',
@@ -184,7 +185,7 @@ export default function BdOpportunitiesPage() {
 
       {/* Table */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300">
               <tr>
@@ -240,7 +241,7 @@ export default function BdOpportunitiesPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} wide

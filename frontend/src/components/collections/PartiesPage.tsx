@@ -26,6 +26,7 @@ import { printTable } from '@/utils/printTable';
 import {
   Users, Truck, Plus, Pencil, Trash2, Phone, Mail, ChevronLeft, SlidersHorizontal, X, Printer, CheckCircle2,
 } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 const PAGE_SIZE = 100;
 
@@ -480,7 +481,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
       )}
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
@@ -548,7 +549,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
 
         {pages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-sm">

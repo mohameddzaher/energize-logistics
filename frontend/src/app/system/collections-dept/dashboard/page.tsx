@@ -24,6 +24,7 @@ import {
   LineChart, Line,
 } from 'recharts';
 import { Wallet, Users, Truck, TrendingDown, ChevronLeft, SlidersHorizontal, X } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 interface Side {
   reports: number; total: number; settled: number; outstanding: number;
@@ -154,7 +155,7 @@ export default function CollectionsDashboardPage() {
   ];
 
   const TopTable = ({ rows, kind }: { rows: Side['top']; kind: 'customer' | 'supplier' }) => (
-    <div className="overflow-x-auto">
+    <ScrollX>
       <table className="w-full text-sm">
         <thead className="table-head">
           <tr>
@@ -180,7 +181,7 @@ export default function CollectionsDashboardPage() {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollX>
   );
 
   return (
@@ -411,7 +412,7 @@ export default function CollectionsDashboardPage() {
         title={t('بالفرع', 'By branch')}
         right={<span className="text-[11px] text-slate-400 inline-flex items-center gap-1"><TrendingDown className="w-3.5 h-3.5" />{t('غير المُقفَل', 'Open only')}</span>}
       >
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
@@ -437,7 +438,7 @@ export default function CollectionsDashboardPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </Panel>
     </div>
   );

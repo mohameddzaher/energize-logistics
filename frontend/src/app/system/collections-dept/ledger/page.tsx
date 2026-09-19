@@ -23,6 +23,7 @@ import SearchSelect from '@/components/system/SearchSelect';
 import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
 import { printTable } from '@/utils/printTable';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
+import ScrollX from '@/components/system/ScrollX';
 
 export default function LedgerInvoicesPage() {
   const { lang, isRTL } = useLanguage();
@@ -278,7 +279,7 @@ export default function LedgerInvoicesPage() {
 
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         {busy && <div className="refresh-bar" aria-hidden="true" />}
-        <div className="overflow-x-auto" aria-busy={busy}>
+        <ScrollX aria-busy={busy}>
           <table className="w-full min-w-[1500px]">
             <thead>
               <tr className="table-head border-b border-slate-200">
@@ -312,7 +313,7 @@ export default function LedgerInvoicesPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
         {pages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 text-sm">
             <span className="text-slate-500">

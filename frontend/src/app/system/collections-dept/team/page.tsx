@@ -21,6 +21,7 @@ import SearchSelect from '@/components/system/SearchSelect';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { Loader2, Users, Search, UserCog, Check, TrendingUp } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 export default function CollectionsTeamPage() {
   const router = useRouter();
@@ -169,7 +170,7 @@ export default function CollectionsTeamPage() {
               options={officers.map((o) => ({ value: o, label: o }))} />
           </div>
         </div>
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full min-w-[1320px]">
             <thead><tr className="table-head border-b border-slate-200">
               {TH('officer', ar ? 'الموظف' : 'Officer')}
@@ -242,7 +243,7 @@ export default function CollectionsTeamPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </div>
 
       {/* ── الإسناد ────────────────────────────────────────────────────────── */}
@@ -274,7 +275,7 @@ export default function CollectionsTeamPage() {
             )}
           </div>
           {msg && <p className="px-4 py-2 text-xs text-emerald-700 bg-emerald-50 border-b border-emerald-100">{msg}</p>}
-          <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
+          <ScrollX className="max-h-[480px] overflow-y-auto">
             <table className="w-full min-w-[900px]">
               <thead className="sticky top-0"><tr className="table-head border-b border-slate-200">
                 <th className={`${th} w-10`}>
@@ -306,7 +307,7 @@ export default function CollectionsTeamPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollX>
         </div>
       )}
     </div>

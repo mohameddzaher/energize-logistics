@@ -29,6 +29,7 @@ import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilt
 import SearchSelect from '@/components/system/SearchSelect';
 import { printTable } from '@/utils/printTable';
 import { Banknote, Receipt, SlidersHorizontal, X, CheckCircle2, ChevronLeft, Truck, Printer } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 const EMPTY_SET: Set<string> = new Set();
 const EMPTY_OPTIONS: ColumnFilterOption[] = [];
@@ -604,7 +605,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
 
       <div className="relative bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         {refreshing && <div className="refresh-bar" aria-hidden="true" />}
-        <div aria-busy={refreshing} className="overflow-x-auto">
+        <ScrollX aria-busy={refreshing}>
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
@@ -703,7 +704,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
               })}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
 
         {pages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-sm">

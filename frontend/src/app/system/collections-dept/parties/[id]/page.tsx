@@ -23,6 +23,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
 import { Users, Truck, ArrowRight, Phone, Building2, Plus, Trash2, CheckCircle2, MessageSquare, Receipt, Printer } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 interface Report {
   _id: string; reportNumber?: string; reportDate?: string;
@@ -423,7 +424,7 @@ export default function PartyProfilePage() {
               accent={data.money.totals.openCount > 0 ? 'text-red-600' : 'text-slate-400'} />
           </div>
 
-          <div className="overflow-x-auto">
+          <ScrollX>
             <table className="w-full text-sm">
               <thead className="table-head">
                 <tr>
@@ -462,7 +463,7 @@ export default function PartyProfilePage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollX>
           {data.money.invoices.length < data.money.totals.count && (
             <p className="px-4 py-2 text-[11px] text-slate-400 border-t border-slate-100">
               {t(`تُعرض أحدث ${data.money.invoices.length} من ${data.money.totals.count} — والكشف الكامل في PDF كشف الحساب.`,
@@ -571,7 +572,7 @@ export default function PartyProfilePage() {
             <p className="text-[11px] text-slate-400">{t('الملغاة مستثناة', 'Cancelled excluded')}</p>
           </div>
         </div>
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
@@ -613,7 +614,7 @@ export default function PartyProfilePage() {
               })}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
         {data.pages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-sm">
             <span className="text-slate-500">{t(`صفحة ${data.page} من ${data.pages}`, `Page ${data.page} of ${data.pages}`)}</span>
@@ -699,7 +700,7 @@ function WorkPanel({ title, rows, cols }: {
       <div className="px-4 py-3 border-b border-slate-100">
         <p className="text-[13px] font-bold text-slate-900">{title} <span className="text-slate-400 font-normal">({rows.length})</span></p>
       </div>
-      <div className="overflow-x-auto">
+      <ScrollX>
         <table className="w-full text-sm">
           <thead className="table-head">
             <tr>{cols.map(([h]) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
@@ -718,7 +719,7 @@ function WorkPanel({ title, rows, cols }: {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
     </div>
   );
 }

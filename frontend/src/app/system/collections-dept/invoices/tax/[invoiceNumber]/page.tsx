@@ -15,6 +15,7 @@ import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilt
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import { Receipt, ArrowRight } from 'lucide-react';
+import ScrollX from '@/components/system/ScrollX';
 
 interface Row {
   _id: string; reportNumber?: string; reportDate?: string; username?: string;
@@ -174,7 +175,7 @@ export default function TaxInvoiceDetailPage() {
           <p className="text-[13px] font-bold text-slate-900">{t('كشوف هذه الفاتورة', 'Reports under this invoice')}</p>
           <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
         </div>
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
@@ -236,7 +237,7 @@ export default function TaxInvoiceDetailPage() {
               </tr>
             </tfoot>
           </table>
-        </div>
+        </ScrollX>
       </div>
     </div>
   );

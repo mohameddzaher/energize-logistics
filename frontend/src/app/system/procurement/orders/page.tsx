@@ -146,7 +146,7 @@ export default function PurchaseOrdersPage() {
                 <td className="px-4 py-3 text-slate-800 font-mono text-xs">{po.poNumber}</td>
                 <td className="px-4 py-3 text-slate-900">{vendorName(po.vendor)}</td>
                 <td className="px-4 py-3 text-end text-slate-800">{money(po.total, po.currency)}<div className="text-slate-700 text-xs">{tx.vatShort} {money(po.vatAmount, '')}</div></td>
-                <td className="px-4 py-3"><Badge style={PO_STATUS_STYLE[po.status]} lang={lang} /></td>
+                <td className="px-4 py-3 whitespace-nowrap"><Badge style={PO_STATUS_STYLE[po.status]} lang={lang} /></td>
                 <td className="px-4 py-3 text-slate-800">{fmtDate(po.expectedDate)}</td>
                 <td className="px-4 py-3"><div className="flex items-center justify-end gap-2">
                   {['draft', 'sent', 'partially_received'].includes(po.status) && <button type="button" title={tx.receive} onClick={() => receive(po)} className="text-green-600 hover:text-green-700"><PackageCheck className="w-4 h-4" /></button>}

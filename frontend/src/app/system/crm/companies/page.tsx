@@ -205,7 +205,7 @@ export default function CrmCompaniesPage() {
                   <button onClick={() => router.push(`/system/crm/companies/${c._id}`)} className="text-slate-900 font-medium hover:text-[#f37121]">{companyName(c, lang)}</button>
                   {c.city && <div className="text-slate-700 text-xs">{c.city}</div>}
                 </td>
-                <td className="px-4 py-3"><Badge style={COMPANY_STATUS_STYLE[c.status]} lang={lang} /></td>
+                <td className="px-4 py-3 whitespace-nowrap"><Badge style={COMPANY_STATUS_STYLE[c.status]} lang={lang} /></td>
                 <td className="px-4 py-3"><StarRating value={c.rating || 0} size={14} onChange={(v) => rate(c, v)} /></td>
                 <td className="px-4 py-3 text-slate-700">{optLabel(opts?.INDUSTRIES, c.industry, lang)}</td>
                 <td className="px-4 py-3 text-slate-700">{userName(c.owner)}</td>

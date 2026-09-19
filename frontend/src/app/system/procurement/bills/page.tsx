@@ -146,7 +146,7 @@ export default function VendorBillsPage() {
                 <td className="px-4 py-3 text-end text-slate-800">{money(b.total)}</td>
                 <td className="px-4 py-3 text-end text-red-600">{money(b.balance)}</td>
                 <td className="px-4 py-3 text-slate-800">{fmtDate(b.dueDate)}</td>
-                <td className="px-4 py-3"><Badge style={BILL_STATUS_STYLE[b.status]} lang={lang} /></td>
+                <td className="px-4 py-3 whitespace-nowrap"><Badge style={BILL_STATUS_STYLE[b.status]} lang={lang} /></td>
                 <td className="px-4 py-3"><div className="flex items-center justify-end gap-2">
                   {b.status !== 'paid' && <button type="button" title={tx.pay} onClick={() => openPay(b)} className="text-green-600 hover:text-green-700"><DollarSign className="w-4 h-4" /></button>}
                   <button type="button" title={ar ? 'تعديل' : 'Edit'} onClick={() => openEdit(b)} className="text-slate-400 hover:text-[#f37121]"><Pencil className="w-4 h-4" /></button>

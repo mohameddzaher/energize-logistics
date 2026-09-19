@@ -289,7 +289,7 @@ export default function ContractsPage() {
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.annualLeaveText || `${c.annualLeaveDays} ${tx.daysShort}`}</td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.probationText || (c.probationMonths ? `${c.probationMonths} ${ar ? 'شهر' : 'mo'}` : '—')}</td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.sponsorRegistration || '—'}</td>
-                <td className="px-4 py-3"><Badge style={CONTRACT_STATUS[c.status]} lang={lang} /></td>
+                <td className="px-4 py-3 whitespace-nowrap"><Badge style={CONTRACT_STATUS[c.status]} lang={lang} /></td>
               </tr>
             ))}
           </tbody>

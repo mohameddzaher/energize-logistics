@@ -213,7 +213,7 @@ export default function VehiclesPage() {
                     : <span className="text-slate-700">{tx.notAuthorizedYet}</span>}
                 </td>
                 <td className="px-4 py-3 text-slate-700">{v.department || '—'}</td>
-                <td className="px-4 py-3"><Badge style={VEHICLE_STATUS[v.status]} lang={lang} /></td>
+                <td className="px-4 py-3 whitespace-nowrap"><Badge style={VEHICLE_STATUS[v.status]} lang={lang} /></td>
               </tr>
             ))}
           </tbody>

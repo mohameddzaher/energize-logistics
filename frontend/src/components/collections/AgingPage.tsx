@@ -21,7 +21,7 @@ import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
-  money, gradeTone, limitTone, receivablesOnly,
+  money, gradeTone, limitTone, receivablesOnly, bandLabel,
   type AgingRow, type AgeBand,
 } from '@/lib/collections';
 import {
@@ -135,7 +135,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
     // النقديُّ لا يُحسب أصلًا، فيظهر الحسابُ النقديُّ بصفرٍ وعليه عشراتُ الآلاف.
     { header: ar ? 'منها ضريبي' : 'of which tax', key: 'taxOutstanding', width: 16 },
     { header: ar ? 'منها نقدي' : 'of which cash', key: 'cashOutstanding', width: 16 },
-    ...ageBands.map((b) => ({ header: b.label, key: `band_${b.key}`, width: 14 })),
+    ...ageBands.map((b) => ({ header: bandLabel(b.key, ar), key: `band_${b.key}`, width: 14 })),
   ];
   if (loading) {
     return <div className="flex items-center justify-center py-24"><Loader2 className="w-6 h-6 animate-spin text-[#f37121]" /></div>;
@@ -215,7 +215,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
           {ageBands.map((b) => (
             <button key={b.key} type="button" onClick={() => { setBand(band === b.key ? '' : b.key); setPage(1); }}
               className={`px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${band === b.key ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-[#f37121]/40'}`}>
-              <span className="opacity-70">{b.label}</span> · {money(totals.bands?.[b.key])}
+              <span className="opacity-70">{bandLabel(b.key, ar)}</span> · {money(totals.bands?.[b.key])}
             </button>
           ))}
           {/* ما لا تاريخَ له يُعرَض ولا يُخفى: مالٌ في السجلّ لا شريحةَ عمرٍ له. */}
@@ -308,7 +308,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
                 {sortable('outstanding', ar ? 'المديونية' : 'Outstanding')}
                 {ageBands.map((b) => (
                   <th key={b.key} className={`${th} text-end`}>
-                    <span className="inline-flex items-center gap-1">{b.label}{cf.header(`band:${b.key}`, rows, G[`band:${b.key}`], ar)}</span>
+                    <span className="inline-flex items-center gap-1 whitespace-nowrap">{bandLabel(b.key, ar)}{cf.header(`band:${b.key}`, rows, G[`band:${b.key}`], ar)}</span>
                   </th>
                 ))}
               </tr>

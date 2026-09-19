@@ -207,7 +207,7 @@ export default function HREmployeesPage() {
                 <td {...pin.td(3, 'px-4 py-3 text-slate-700 whitespace-nowrap', 'bg-white group-hover:bg-slate-100')}>{e.idType === 'national_id' ? (e.nationalId || '—') : (e.iqamaNumber || '—')}</td>
                 <td className="px-4 py-3 text-slate-700">{e.jobTitle || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{e.nationality || '—'}</td>
-                <td className="px-4 py-3"><Badge style={EMPLOYMENT_STATUS[e.employmentStatus || 'active']} lang={lang} /></td>
+                <td className="px-4 py-3 whitespace-nowrap"><Badge style={EMPLOYMENT_STATUS[e.employmentStatus || 'active']} lang={lang} /></td>
               </tr>
             ))}
           </tbody>

@@ -246,3 +246,27 @@ export const dueWords = (d: number | null | undefined, ar: boolean) => {
   if (d === 0) return ar ? 'تستحقّ اليوم' : 'due today';
   return ar ? `بعد ${d} يومًا` : `in ${d}d`;
 };
+
+/**
+ * اسمُ شريحة العمر بالكلام — لا برمز الدفتر.
+ *
+ * رموزُ الدفتر «15-» و«60+» تعني «حتى ١٥» و«من ٦٠»، لكنّها تُقرأ في العربيّة
+ * معكوسةً («-15»)، وتلتصق بالرقم قبلها فيصير العمرُ «8» والشريحةُ «15-» معًا
+ * «-815». فتُعرض بالكلام، والمفتاحُ يبقى هو هو في الفلاتر والخادم.
+ */
+const BAND_LABELS: Record<string, [string, string]> = {
+  '15-': ['حتى 15 يومًا', 'Up to 15 days'],
+  '30-': ['15 – 30 يومًا', '15 – 30 days'],
+  '45-': ['30 – 45 يومًا', '30 – 45 days'],
+  '60-': ['45 – 60 يومًا', '45 – 60 days'],
+  '60+': ['60 – 90 يومًا', '60 – 90 days'],
+  '90+': ['90 – 120 يومًا', '90 – 120 days'],
+  '120+': ['120 يومًا – سنة', '120 days – 1 year'],
+  '1Y+': ['أكثر من سنة', 'Over a year'],
+  noDate: ['بلا تاريخ', 'No date'],
+};
+export const bandLabel = (key: string | null | undefined, ar: boolean) => {
+  if (!key) return '';
+  const l = BAND_LABELS[key];
+  return l ? (ar ? l[0] : l[1]) : key;
+};

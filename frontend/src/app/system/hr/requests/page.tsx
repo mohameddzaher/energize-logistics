@@ -131,7 +131,7 @@ export default function HRRequestsPage() {
                 <td {...pin.td(2, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{idOf((r as any).employee)}</td>
                 <td className="px-4 py-3 text-slate-700">{categoryLabel(r.category, lang)}</td>
                 <td className="px-4 py-3 text-slate-700">{r.subject}</td>
-                <td className="px-4 py-3"><Badge style={REQUEST_STATUS[r.status]} lang={lang} /></td>
+                <td className="px-4 py-3 whitespace-nowrap"><Badge style={REQUEST_STATUS[r.status]} lang={lang} /></td>
                 <td className="px-4 py-3 text-slate-800 text-xs">{fmtDateTime(r.updatedAt)}</td>
               </tr>
             ))}

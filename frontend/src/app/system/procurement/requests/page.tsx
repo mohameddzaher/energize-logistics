@@ -144,8 +144,8 @@ export default function PurchaseRequestsPage() {
                 <td className="px-4 py-3 text-slate-900">{pr.title}<div className="text-slate-700 text-xs">{pr.department || ''}</div></td>
                 <td className="px-4 py-3 text-slate-700">{userName(pr.requester)}</td>
                 <td className="px-4 py-3 text-end text-slate-800">{money(pr.totalEstimate)}</td>
-                <td className="px-4 py-3"><Badge style={PRIORITY_STYLE[pr.priority]} lang={lang} /></td>
-                <td className="px-4 py-3"><Badge style={PR_STATUS_STYLE[pr.status]} lang={lang} /></td>
+                <td className="px-4 py-3 whitespace-nowrap"><Badge style={PRIORITY_STYLE[pr.priority]} lang={lang} /></td>
+                <td className="px-4 py-3 whitespace-nowrap"><Badge style={PR_STATUS_STYLE[pr.status]} lang={lang} /></td>
                 <td className="px-4 py-3"><div className="flex items-center justify-end gap-2">
                   {pr.status === 'draft' && <button type="button" title={tx.actionSubmit} onClick={() => submitPR(pr)} className="text-amber-700 hover:text-amber-700"><Send className="w-4 h-4" /></button>}
                   {pr.status === 'pending_approval' && canApprove && <>

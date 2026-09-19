@@ -16,7 +16,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
-import { money, dt, dueWords, type LedgerInvoice, type AgeBand } from '@/lib/collections';
+import { money, dt, dueWords, bandLabel, type LedgerInvoice, type AgeBand } from '@/lib/collections';
 import { Search, FilterX, Loader2, ChevronLeft, ChevronRight, Link2, Printer } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import SearchSelect from '@/components/system/SearchSelect';
@@ -118,9 +118,9 @@ export default function LedgerInvoicesPage() {
     { header: ar ? 'إجمالي الأيام' : 'Total days', key: 'daysTotal', width: 12, align: 'center' },
     { header: ar ? 'العمر' : 'Age', key: 'ageDays', width: 10, align: 'center',
       cell: (r) => (r.ageDays == null ? <span className="text-slate-300">—</span> : (
-        <span className="text-xs text-slate-600">{r.ageDays}<span className="text-slate-400 ms-1">{r.band}</span></span>
+        <span className="text-xs text-slate-600 tabular-nums"><bdi>{r.ageDays}</bdi> {ar ? 'يوم' : 'd'}</span>
       )) },
-    { header: ar ? 'الشريحة' : 'Band', key: 'band', width: 10 },
+    { header: ar ? 'الشريحة' : 'Band', key: 'band', width: 14, cell: (r) => <span className="text-xs text-slate-600 whitespace-nowrap">{bandLabel(r.band, ar) || '—'}</span>, transform: (v: any) => bandLabel(v, ar) },
     { header: ar ? 'مهلة السداد' : 'Terms', key: 'creditDays', width: 12, align: 'end' },
     { header: ar ? 'الاستحقاق' : 'Due', key: 'dueDate', width: 14, transform: (v: any) => dt(v),
       cell: (r) => (
@@ -222,7 +222,7 @@ export default function LedgerInvoicesPage() {
           <select title={ar ? 'الشريحة' : 'Band'} value={band} onChange={(e) => { setBand(e.target.value); setPage(1); }}
             className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">
             <option value="">{ar ? 'شريحة العمر' : 'Age band'}</option>
-            {bands.map((b) => <option key={b.key} value={b.key}>{b.label}</option>)}
+            {bands.map((b) => <option key={b.key} value={b.key}>{bandLabel(b.key, ar)}</option>)}
           </select>
           <select title={ar ? 'محصَّلة؟' : 'Collected?'} value={open} onChange={(e) => { setOpen(e.target.value); setPage(1); }}
             className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">

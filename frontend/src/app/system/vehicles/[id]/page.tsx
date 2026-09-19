@@ -265,8 +265,8 @@ export default function VehicleDetailPage() {
                   <td className="px-4 py-3 text-slate-900">{empRefName(a.employee, lang)}</td>
                   <td className="px-4 py-3 text-slate-700 max-w-xs truncate" title={a.description}>{a.description}</td>
                   <td className="px-4 py-3 text-slate-700">{faultPartyLabel(a.faultParty, lang)}</td>
-                  <td className="px-4 py-3"><Badge style={ACCIDENT_SEVERITY[a.severity || 'minor']} lang={lang} /></td>
-                  <td className="px-4 py-3"><Badge style={ACCIDENT_STATUS[a.status || 'reported']} lang={lang} /></td>
+                  <td className="px-4 py-3 whitespace-nowrap"><Badge style={ACCIDENT_SEVERITY[a.severity || 'minor']} lang={lang} /></td>
+                  <td className="px-4 py-3 whitespace-nowrap"><Badge style={ACCIDENT_STATUS[a.status || 'reported']} lang={lang} /></td>
                 </tr>
               ))}</tbody>
             </table>

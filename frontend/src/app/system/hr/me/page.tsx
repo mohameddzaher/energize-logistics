@@ -143,7 +143,7 @@ export default function MyProfilePage() {
             <table className="w-full text-sm">
               <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300"><th className="text-start px-4 py-3 font-semibold">{tx.colType}</th><th className="text-start px-4 py-3 font-semibold">{tx.colFrom}</th><th className="text-start px-4 py-3 font-semibold">{tx.colTo}</th><th className="text-start px-4 py-3 font-semibold">{tx.colDays}</th><th className="text-start px-4 py-3 font-semibold">{tx.colStatus}</th></tr></thead>
               <tbody>{data.leaves.map((l) => (
-                <tr key={l._id} className="border-b border-slate-200/70"><td className="px-4 py-3 text-slate-900">{leaveTypeLabel(l.leaveType, lang)}</td><td className="px-4 py-3 text-slate-700">{fmtDate(l.startDate)}</td><td className="px-4 py-3 text-slate-700">{fmtDate(l.endDate)}</td><td className="px-4 py-3 text-slate-700">{l.days}</td><td className="px-4 py-3"><Badge style={LEAVE_STATUS[l.status]} lang={lang} /></td></tr>
+                <tr key={l._id} className="border-b border-slate-200/70"><td className="px-4 py-3 text-slate-900">{leaveTypeLabel(l.leaveType, lang)}</td><td className="px-4 py-3 text-slate-700">{fmtDate(l.startDate)}</td><td className="px-4 py-3 text-slate-700">{fmtDate(l.endDate)}</td><td className="px-4 py-3 text-slate-700">{l.days}</td><td className="px-4 py-3 whitespace-nowrap"><Badge style={LEAVE_STATUS[l.status]} lang={lang} /></td></tr>
               ))}</tbody>
             </table>
           )}

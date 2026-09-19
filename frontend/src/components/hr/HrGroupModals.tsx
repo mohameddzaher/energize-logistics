@@ -42,7 +42,7 @@ const asInput = (f: FieldDef, v: any) => {
 };
 
 /** ماذا يفعل المستخدم بعَلَم الحالة — «كما هي» هو الأصل فلا يُرسَل شيء. */
-type Mark = 'keep' | 'clear' | 'required' | 'not_required';
+type Mark = 'keep' | 'clear' | 'required' | 'not_required' | 'inactive';
 
 function StatusChip({ code, ar }: { code?: string; ar: boolean }) {
   if (!code) return null;
@@ -226,6 +226,7 @@ export function HrGroupFormModal({ open, mode, group, groupLabel, fields, row, a
                   <option value="keep">{t('الحالة: كما هي', 'Status: unchanged')}</option>
                   <option value="required">{t('علّمه: مطلوب', 'Mark: required')}</option>
                   <option value="not_required">{t('علّمه: غير مطلوب', 'Mark: not required')}</option>
+                  <option value="inactive">{t('علّمه: غير نشط', 'Mark: inactive')}</option>
                   <option value="clear">{t('ارفع العلامة (بحسب القيمة)', 'Clear the flag (derive from value)')}</option>
                 </Select>
               </div>

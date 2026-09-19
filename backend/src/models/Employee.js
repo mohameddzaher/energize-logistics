@@ -222,12 +222,27 @@ employeeSchema.pre('save', function mirrorNationalId(next) {
   next();
 });
 
+// ── اسمُ الفرع نصًّا يُملأ من الفرع المختار ─────────────────────────────────
+// الماستر يفلتر ويجمع بـ`branchName` (نصُّ ملفّ الاستيراد)، واستمارةُ الموظّف
+// تختار `branch` معرّفًا ولا تكتب النصّ — فمن أُضيف في النظام يقع تحت «—».
+employeeSchema.pre('save', async function fillBranchName(next) {
+  try {
+    if (this.branch && !String(this.branchName || '').trim()
+      && (this.isNew || this.isModified('branch'))) {
+      const b = await mongoose.model('Branch').findById(this.branch).select('name').lean();
+      if (b?.name) this.branchName = b.name;
+    }
+  } catch (_) { /* لا يُفشل الحفظ */ }
+  next();
+});
+
 employeeSchema.pre('save', function clearSatisfiedStatuses(next) {
   if (!this.fieldStatus || typeof this.fieldStatus.forEach !== 'function') return next();
   const filled = (v) => !(v === null || v === undefined || v === '' || (v instanceof Date && isNaN(v)));
   for (const [statusKey, code] of [...this.fieldStatus.entries()]) {
-    // «غير مطلوب» قرار إداري — مش بيتشال لمجرد إن حد كتب حاجة.
-    if (code !== 'required') continue;
+    // «غير مطلوب» قرار إداري — مش بيتشال لمجرد إن حد كتب حاجة. أمّا «غير نشط»
+    // فحالُ الخانة لا قرار: كتابةُ شركة تأمينٍ من جديد تعني أنّه صار نشطًا.
+    if (code !== 'required' && code !== 'inactive') continue;
     const fieldKey = statusKey.replace(/Status$/, '');
     if (filled(this.get(fieldKey))) this.fieldStatus.delete(statusKey);
   }

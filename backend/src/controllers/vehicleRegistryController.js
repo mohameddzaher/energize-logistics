@@ -718,6 +718,8 @@ const badInput = async (e, res) => {
 exports.create = async (req, res) => {
   try {
     const v = await VehicleMaster.create({ ...req.body, isActive: true });
+    // مفتاحُ اللوحة يُشتقّ في الحفظ (models/VehicleMaster) — فتُعدّ حوادثُها المسجَّلة.
+    await syncAccidentCount(v.plateKey);
     emit('vreg:updated', {});
     res.status(201).json({ vehicle: v });
   } catch (e) {
@@ -761,6 +763,7 @@ exports.update = async (req, res) => {
     if (!Object.keys($set).length) return res.status(400).json({ message: 'لا حقول للتعديل' });
     const v = await VehicleMaster.findByIdAndUpdate(req.params.id, { $set }, { new: true, runValidators: true });
     if (!v) return res.status(404).json({ message: 'Vehicle not found' });
+    if ($set.plateNumber) await syncAccidentCount(v.plateKey);
     emit('vreg:updated', {});
     res.json({ vehicle: v });
   } catch (e) {

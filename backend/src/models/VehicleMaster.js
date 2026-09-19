@@ -334,6 +334,79 @@ const corporatePolicySchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
 
+// ── ما يُشتقّ من المركبة يُشتقّ عند كلّ حفظ — لا في الاستيراد وحده ─────────────
+// `plateKey` و`missingItems` كانا لا يُكتبان إلّا في سكربتات الاستيراد: فمركبةٌ
+// أُضيفت في النظام بلا مفتاح لوحة — لا تُربَط بحوادثها ولا بتقاريرها — ومستندٌ
+// اكتمل في النظام يبقى «ناقصًا» في اللوحة إلى الأبد، وما عُلِّم «مطلوبًا» بعد
+// الاستيراد لا يُعَدّ. الشيتُ بدايةٌ فقط؛ والحالُ يُقرأ ممّا في السجلّ الآن.
+//
+// النواقصُ تُعاد لكلّ مستندٍ مؤرَّخ (config/vehicleDocuments): تاريخٌ موجود ⇒
+// ليس ناقصًا، وإلّا فسببُ غيابه إن كان نقصًا. أمّا بندا شريحة الوقود والسجلّ
+// التجاري فلا حالةَ لهما في السجلّ، فيبقيان كما جاءا حتى تُملأ قيمتُهما.
+function deriveVehicle(v) {
+  const { registryPlateKey } = require('../utils/plateKey');
+  const VDOC = require('../config/vehicleDocuments');
+  const get = (path) => path.split('.').reduce((o, k) => (o == null ? o : o[k]), v);
+  const out = {};
+  const key = registryPlateKey(v.plateNumber) || '';
+  if (key && key !== v.plateKey) out.plateKey = key;
+
+  const prev = (v.missingItems || []).map((m) => ({ item: m.item, docKey: m.docKey, reason: m.reason }));
+  // بالأسماء نفسِها التي كتبها الاستيراد، وإلّا انقسم فلترُ «البند» على اسمين.
+  const LABELS = { insurance: 'التأمين', operatingCard: 'بطاقة التشغيل', vehicleLicense: 'رخصة السير',
+    inspection: 'الفحص الدوري', gps: 'اشتراك GPS', authorization: 'التفويض' };
+  const labelOf = (docKey) => LABELS[docKey] || (prev.find((m) => m.docKey === docKey) || {}).item
+    || (VDOC.getDoc(docKey) || {}).ar || docKey;
+  const next = [];
+  for (const d of VDOC.DOCUMENTS) {
+    if (!d.path || !d.statusPath) continue;
+    if (get(d.path)) continue;
+    const code = get(d.statusPath) || '';
+    if (VDOC.isGap(code)) next.push({ item: labelOf(d.key), docKey: d.key, reason: code });
+  }
+  const dated = new Set(VDOC.DOCUMENTS.filter((d) => d.path && d.statusPath).map((d) => d.key));
+  for (const m of prev) {
+    if (dated.has(m.docKey)) continue;
+    if (m.item === 'شريحة الوقود' && get('fuelCard.cardNumber')) continue;
+    if (m.item === 'السجل التجاري' && v.commercialRegistration) continue;
+    next.push(m);
+  }
+  const sig = (a) => JSON.stringify(a.map((m) => [m.item, m.docKey, m.reason]));
+  if (sig(next) !== sig(prev)) out.missingItems = next;
+
+  // ── ونواقصُ منصّة لوجستي: الشرطُ الذي استوفاه النظامُ يسقط ────────────────
+  // القائمةُ جاءت من ملفّ المنصّة، وكانت تبقى بعد أن يُجدَّد الفحصُ أو التأمينُ
+  // هنا. ما يُقرأ من السجلّ يُفحَص الآن؛ وشرطُ الملكيّة لا يُقرأ فيبقى كما هو.
+  const now = Date.now();
+  const valid = (path) => { const d = get(path); return !!d && new Date(d).getTime() > now; };
+  const MET = {
+    'فحص دوري ساري المفعول': () => valid('inspection.expiryDate'),
+    'تأمين المركبة ساري المفعول': () => valid('insurance.expiryDate'),
+    'رخصة سير المركبة سارية المفعول': () => valid('vehicleLicense.expiryDate'),
+    'يوجد جهاز ملاحة للتتبع والتوجيه': () => !!(get('gps.deviceId') || /نشط|active/i.test(String(get('gps.deviceStatusAr') || '')) && !/غير/.test(String(get('gps.deviceStatusAr') || ''))),
+    'نوع اللوحة: نقل عام': () => /نقل\s*عام/.test(String(v.registrationTypeAr || '')),
+  };
+  const gaps = (v.logistiGaps || []).filter((g) => !(MET[g] && MET[g]()));
+  if (gaps.length !== (v.logistiGaps || []).length) out.logistiGaps = gaps;
+  return out;
+}
+vehicleMasterSchema.pre('save', function (next) {
+  try { Object.assign(this, deriveVehicle(this)); } catch (_) { /* لا يُفشل الحفظ */ }
+  next();
+});
+// التعديلُ من الشاشة يمرّ بـ findByIdAndUpdate — لا يمرّ بـ pre('save').
+vehicleMasterSchema.post('findOneAndUpdate', async function (doc) {
+  if (!doc) return;
+  try {
+    const set = deriveVehicle(doc.toObject ? doc.toObject() : doc);
+    if (Object.keys(set).length) {
+      await doc.constructor.updateOne({ _id: doc._id }, { $set: set });
+      Object.assign(doc, set);
+    }
+  } catch (_) { /* */ }
+});
+vehicleMasterSchema.statics.deriveVehicle = deriveVehicle;
+
 module.exports = {
   VehicleMaster: mongoose.models.VehicleMaster || mongoose.model('VehicleMaster', vehicleMasterSchema),
   VehicleRegistryConfig: mongoose.models.VehicleRegistryConfig || mongoose.model('VehicleRegistryConfig', vehicleRegistryConfigSchema),

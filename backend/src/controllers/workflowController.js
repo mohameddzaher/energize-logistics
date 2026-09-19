@@ -297,11 +297,30 @@ async function ensureLedgerInvoice(workflow) {
     const no = String(workflow.invoiceNumber || '').trim();
     if (!no || !hasTaxInvoice(workflow)) return null;
     const CollectionInvoice = require('../models/CollectionInvoice');
-    const existing = await CollectionInvoice.findOne({ invoiceNumber: no }).select('_id').lean();
-    if (existing) return null;
+    // ── والقيدُ منسوبٌ إلى طرفه ────────────────────────────────────────────
+    // الأعمارُ والتنبيهاتُ وأداءُ المحصّلين تربط الفاتورةَ بطرفها بالمعرّف
+    // والكود (`party` / `partyCode`). وكان القيدُ المولودُ من كشفٍ يحمل الاسمَ
+    // وحده — ولا يملأ الطرفَ إلّا سكربتُ الاستيراد — فكلُّ فاتورةٍ كُتبت في
+    // النظام بعد الاستيراد غائبةٌ عن المديونيّة. والطرفُ يُنشأ إن لم يوجد.
+    let party = null;
+    try {
+      const { ensureCollectionsParty } = require('../utils/ensureCollectionsParty');
+      party = await ensureCollectionsParty(workflow.username, { paymentType: 'tax', source: 'operations_workflow' });
+    } catch (_) { /* */ }
+    const existing = await CollectionInvoice.findOne({ invoiceNumber: no }).select('_id party').lean();
+    if (existing) {
+      // قيدٌ قائمٌ لا يُلمَس — إلّا طرفًا ناقصًا يُكمَّل ولا يُبدَّل.
+      if (!existing.party && party?._id) {
+        await CollectionInvoice.updateOne({ _id: existing._id, party: null }, { $set: { party: party._id, partyCode: party.code || '' } });
+        try { require('./collectionsLedgerController').invalidate(); } catch (_) {}
+      }
+      return null;
+    }
     await CollectionInvoice.create({
       invoiceNumber: no,
       kind: 'tax',
+      party: party?._id || undefined,
+      partyCode: party?.code || '',
       partyName: workflow.username || '',
       invoiceDate: workflow.invoiceDate || workflow.paymentDate || workflow.reportDate || new Date(),
       net: Number(workflow.netInvoice) || 0,
@@ -1308,6 +1327,13 @@ exports.bulkUpdate = async (req, res) => {
       })), { ordered: false });
       updated = results.modifiedCount || 0;
       cache.clear('wf:');
+      // رقمُ فاتورةٍ كُتب جماعيًّا يصنع قيدَه في الدفتر كما يصنعه التعديلُ
+      // المفرد — وإلّا غابت هذه الفواتيرُ عن التحصيل كلِّه. راجع ensureLedgerInvoice.
+      if (perRow.some((t) => Object.prototype.hasOwnProperty.call(t.patch, 'invoiceNumber'))) {
+        const touched = perRow.filter((t) => Object.prototype.hasOwnProperty.call(t.patch, 'invoiceNumber')).map((t) => t._id);
+        const fresh = await OperationsWorkflow.find({ _id: { $in: touched } }).lean();
+        for (const w of fresh) await ensureLedgerInvoice(w);
+      }
       try { emitToAll('workflow:bulkImported', { bulkUpdate: true, updated }); } catch (e) {}
       logAudit({
         user: req.user, action: 'bulk_update', entity: 'OperationsWorkflow',

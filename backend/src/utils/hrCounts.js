@@ -80,7 +80,7 @@ async function statusCounts(Employee, match, keys) {
 
   // مجموعةٌ واحدةٌ تجمع الكلَّ: لكلّ حقلٍ عدّادٌ لكلّ حالة.
   const group = { _id: null };
-  const STATES = ['required', 'not_required', 'filled', 'none', 'cash_payroll', 'unparseable'];
+  const STATES = ['required', 'not_required', 'filled', 'none', 'cash_payroll', 'inactive', 'unparseable'];
   for (const k of keys) {
     const safe = k.replace(/\./g, '__');
     for (const s of STATES) {

@@ -90,7 +90,7 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
       </button>
     );
   }
-  if (st === 'not_required' || st === 'none' || st === 'cash_payroll') {
+  if (st === 'not_required' || st === 'none' || st === 'cash_payroll' || st === 'inactive') {
     return (
       <button type="button" onClick={start} disabled={!canEdit}
         className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${statusMeta(st).bg} ${canEdit ? 'hover:ring-1 hover:ring-slate-400' : ''}`}

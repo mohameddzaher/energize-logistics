@@ -327,6 +327,30 @@ customsClearanceSchema.pre('save', function (next) {
   next();
 });
 
+/**
+ * الشهرُ والسنة يُملآن لكلّ معاملة — لا لمستورَدات الماستر وحدها.
+ *
+ * كانا عمودين من شيت الماستر لا يملؤهما شيءٌ في النظام، والتحليلاتُ والتقريرُ
+ * الماليّ وفلاترُ السنة والشهر كلُّها تقرأ بهما — فكلُّ معاملةٍ أُنشئت هنا
+ * بعد الاستيراد غائبةٌ عنها. فالفارغُ يُملأ من أوّل تاريخٍ معروف: استلامُ
+ * الورق، ثمّ البيان، ثمّ الإنشاء (بتوقيت الرياض). وما كُتب بيدٍ لا يُمسّ.
+ */
+function periodFrom(doc) {
+  const s = String(doc.papersReceivedDate || doc.declarationDate || '').slice(0, 10);
+  let d = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T12:00:00Z`) : null;
+  if (!d || isNaN(d)) d = new Date((doc.createdAt ? new Date(doc.createdAt).getTime() : Date.now()) + 3 * 3600000);
+  return { periodYear: d.getUTCFullYear(), periodMonth: d.getUTCMonth() + 1 };
+}
+customsClearanceSchema.pre('save', function (next) {
+  if (!this.periodYear || !this.periodMonth) {
+    const p = periodFrom(this);
+    if (!this.periodYear) this.periodYear = p.periodYear;
+    if (!this.periodMonth) this.periodMonth = p.periodMonth;
+  }
+  next();
+});
+customsClearanceSchema.statics.periodFrom = periodFrom;
+
 // Auto reference number: CC-00001, CC-00002, ...
 customsClearanceSchema.pre('save', async function (next) {
   if (this.isNew && !this.refNumber) {

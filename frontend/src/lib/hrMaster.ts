@@ -4,7 +4,7 @@
 // و«غير مطلوب» مش نقص أصلاً. خلطهم بيحوّل قايمة الشغل لأرقام مالهاش معنى.
 import api from '@/lib/api';
 
-export type StatusCode = 'required' | 'not_required' | 'none' | 'filled' | 'cash_payroll' | 'unparseable';
+export type StatusCode = 'required' | 'not_required' | 'none' | 'filled' | 'cash_payroll' | 'inactive' | 'unparseable';
 export type DocState = 'valid' | 'warning' | 'critical' | 'expired' | 'missing' | 'not_applicable';
 
 export interface FieldDef { key: string; ar: string; en: string; type: 'text' | 'date' | 'bool'; groupable?: boolean }
@@ -58,6 +58,7 @@ export const STATUS_META: Record<string, { ar: string; en: string; color: string
   none: { ar: 'لا يوجد', en: 'None', color: '#94a3b8', bg: 'bg-slate-100 text-slate-500' },
   filled: { ar: 'مملي', en: 'Filled', color: '#16a34a', bg: 'bg-emerald-100 text-emerald-700' },
   cash_payroll: { ar: 'راتب نقدي', en: 'Cash payroll', color: '#8b5cf6', bg: 'bg-violet-100 text-violet-700' },
+  inactive: { ar: 'غير نشط', en: 'Inactive', color: '#b45309', bg: 'bg-amber-100 text-amber-800' },
   unparseable: { ar: 'تاريخ غير مقروء', en: 'Unreadable', color: '#f59e0b', bg: 'bg-amber-100 text-amber-700' },
 };
 export const STATE_META: Record<string, { ar: string; en: string; color: string; bg: string }> = {

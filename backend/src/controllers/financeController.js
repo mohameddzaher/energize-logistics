@@ -543,7 +543,8 @@ async function hr() {
   const Asset = require('../models/Asset');
   require('../models/Branch');
   const [employees, contracts, hrAssets] = await Promise.all([
-    Employee.find({ employmentStatus: { $ne: 'terminated' } })
+    // حساباتُ الدخول التلقائيّة ليست موظّفين (isHrRecord:false) — لا رواتبَ لها.
+    Employee.find({ employmentStatus: { $ne: 'terminated' }, isHrRecord: { $ne: false } })
       .select('firstName lastName arabicName employeeNumber department jobTitle branch branchName basicSalary allowances employmentStatus')
       .populate('branch', 'name').lean(),
     Contract.find({ status: 'active' }).select('employee basicSalary allowances endDate type').lean(),

@@ -488,7 +488,7 @@ exports.overview = async (req, res) => {
     const countsOf = (key) => counts[key] || {};
     const groups = H.GROUPS.map((g) => {
       const fields = g.fields.map((f) => {
-        const counts = { required: 0, not_required: 0, none: 0, filled: 0, cash_payroll: 0, unparseable: 0 };
+        const counts = { required: 0, not_required: 0, none: 0, filled: 0, cash_payroll: 0, inactive: 0, unparseable: 0 };
         Object.assign(counts, counts, countsOf(f.key));
         // ── التوزيع في البطاقة: أعلى القيم لا كلُّها ────────────────────────────
         // أعمدةٌ مفتاحُها فريدٌ لكلّ موظّف (البريد، الرقم الوظيفيّ، جوال أبشر)
@@ -532,7 +532,8 @@ exports.overview = async (req, res) => {
     // نصفها يجيب عن سؤالك ونصفها يجيب عن سؤالٍ آخر، ولا شيء يقول أيّهما أيّ.
     // إجمالي الملفّ يبقى متاحًا: يُرفَع الفلتر فيظهر.
     const rosterFilter = { isHrRecord: { $ne: false } };
-    if (req.query.scope !== 'all') rosterFilter.inCurrentMaster = true;
+    // لا تقييدَ بملفّ الاستيراد — راجع buildFilter.
+    if (req.query.scope === 'master') rosterFilter.inCurrentMaster = true;
     const rosterTotal = await Employee.countDocuments(rosterFilter);
     const activeCount = sums.active;
 
@@ -872,7 +873,7 @@ exports.updateFields = async (req, res) => {
     for (const [k, code] of Object.entries(req.body.markStatus || {})) {
       if (!H.getField(k)) continue;
       if (code === 'clear') emp.fieldStatus.delete(H.statusKeyOf(k));
-      else if (['required', 'not_required', 'none'].includes(code)) emp.fieldStatus.set(H.statusKeyOf(k), code);
+      else if (['required', 'not_required', 'none', 'inactive'].includes(code)) emp.fieldStatus.set(H.statusKeyOf(k), code);
     }
 
     await emp.save();   // pre-save بيشيل «مطلوب» عن أي حقل اتملى

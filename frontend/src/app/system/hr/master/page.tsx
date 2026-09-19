@@ -373,6 +373,7 @@ function FieldRow({ f, g, ar, t, onOpen }: { f: FieldCard; g: GroupCard; ar: boo
           {chip('required', c.required)}
           {chip('not_required', c.not_required)}
           {chip('cash_payroll', c.cash_payroll)}
+          {chip('inactive', c.inactive)}
           {chip('filled', c.filled)}
           {chip('none', c.none)}
         </div>

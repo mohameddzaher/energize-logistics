@@ -221,6 +221,8 @@ const STATUS_LABELS = {
   required: { ar: 'مطلوب', en: 'Required', color: '#dc2626' },
   not_required: { ar: 'غير مطلوب', en: 'Not required', color: '#64748b' },
   none: { ar: 'لا يوجد', en: 'None', color: '#94a3b8' },
+  // حالٌ للخانة لا قيمةٌ فيها — كانت «غير نشط» تُكتب اسمًا لشركة التأمين.
+  inactive: { ar: 'غير نشط', en: 'Inactive', color: '#b45309' },
   cash_payroll: { ar: 'راتب نقدي', en: 'Cash payroll', color: '#8b5cf6' },
   unparseable: { ar: 'تاريخ غير مقروء', en: 'Unreadable date', color: '#f59e0b' },
   filled: { ar: 'مملي', en: 'Filled', color: '#16a34a' },

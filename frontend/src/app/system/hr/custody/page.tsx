@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
+import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import { Package, Plus, Edit, Undo2, Trash2, Check, Eye, Lock } from 'lucide-react';
 import { isHRStaff, Asset, Employee, empName, fmtDate, today } from '@/lib/hr';
 import { useAssetVocab } from '@/hooks/useAssetVocab';
@@ -24,7 +25,12 @@ const isItOwned = (a: Asset) => a.issuedBySection === 'it';
 const isLocked = (a: Asset) => isItOwned(a) && a.type !== 'sim';
 const userName = (u: any) => (u && typeof u === 'object' ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '');
 
+const idOf = (e: any) => (e?.idType === 'national_id' ? (e?.nationalId || e?.iqamaNumber) : (e?.iqamaNumber || e?.nationalId)) || '—';
+const BG = 'bg-white group-hover:bg-slate-100';
+
 export default function CustodyPage() {
+  // الإجراءات، الرقم الوظيفيّ، الاسم، الهويّة — ثابتةٌ على اليمين.
+  const pin = usePinnedColumns(4);
   const { confirm, notify, prompt } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
@@ -142,29 +148,24 @@ export default function CustodyPage() {
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-            <th className="text-start font-semibold px-4 py-3">{tx.colEmployee}</th>
+            <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colActions}</th>
+            <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الرقم الوظيفي' : 'Emp. no.'}</th>
+            <th {...pin.th(2, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colEmployee}</th>
+            <th {...pin.th(3, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الهوية / الإقامة' : 'ID / Iqama'}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colItem}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colType}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colSerial}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colCondition}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colStatus}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colSource}</th>
-            <th className="text-end font-semibold px-4 py-3">{tx.colActions}</th>
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={8} className="text-center text-slate-800 py-12">{tx.empty}</td></tr>
+              <tr><td colSpan={10} className="text-center text-slate-800 py-12">{tx.empty}</td></tr>
             ) : filtered.map((a) => (
-              <tr key={a._id} className="border-b border-slate-200/70 hover:bg-slate-100">
-                <td className="px-4 py-3 text-slate-900 font-medium">{empName(a.employee, lang)}</td>
-                <td className="px-4 py-3 text-slate-700">{a.name}{a.brand ? <span className="text-slate-700"> · {a.brand} {a.model}</span> : ''}</td>
-                <td className="px-4 py-3 text-slate-700">{typeLabel(a.type, lang)}</td>
-                <td className="px-4 py-3 text-slate-700">{a.serialNumber || '—'}</td>
-                <td className="px-4 py-3 text-slate-700">{a.condition ? conditionLabel(a.condition, lang) : '—'}</td>
-                <td className="px-4 py-3">{a.status === 'assigned' ? <SmallBadge bg="bg-amber-500/20" text="text-amber-700" label={tx.badgeAssigned} /> : <SmallBadge bg="bg-green-500/20" text="text-green-600" label={`${tx.badgeReturned} ${fmtDate(a.returnedDate)}`} />}</td>
-                <td className="px-4 py-3">{isItOwned(a) ? <SmallBadge bg="bg-sky-500/20" text="text-sky-700" label={tx.sourceIt} /> : <SmallBadge bg="bg-slate-500/20" text="text-slate-700" label={tx.sourceHr} />}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-1">
+              <tr key={a._id} className="group border-b border-slate-200/70 hover:bg-slate-100">
+                <td {...pin.td(0, 'px-4 py-3', BG)}>
+                  <div className="flex items-center gap-1">
                     <button type="button" onClick={() => setDetails(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.actionDetails}><Eye className="w-4 h-4" /></button>
                     {isLocked(a) ? (
                       <span className="p-1.5 text-slate-400" title={tx.readOnlyIt}><Lock className="w-4 h-4" /></span>
@@ -175,6 +176,15 @@ export default function CustodyPage() {
                     </>)}
                   </div>
                 </td>
+                <td {...pin.td(1, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{(a.employee as any)?.employeeNumber || '—'}</td>
+                <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-medium whitespace-nowrap', BG)}>{empName(a.employee, lang)}</td>
+                <td {...pin.td(3, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{idOf(a.employee)}</td>
+                <td className="px-4 py-3 text-slate-700">{a.name}{a.brand ? <span className="text-slate-700"> · {a.brand} {a.model}</span> : ''}</td>
+                <td className="px-4 py-3 text-slate-700">{typeLabel(a.type, lang)}</td>
+                <td className="px-4 py-3 text-slate-700">{a.serialNumber || '—'}</td>
+                <td className="px-4 py-3 text-slate-700">{a.condition ? conditionLabel(a.condition, lang) : '—'}</td>
+                <td className="px-4 py-3">{a.status === 'assigned' ? <SmallBadge bg="bg-amber-500/20" text="text-amber-700" label={tx.badgeAssigned} /> : <SmallBadge bg="bg-green-500/20" text="text-green-600" label={`${tx.badgeReturned} ${fmtDate(a.returnedDate)}`} />}</td>
+                <td className="px-4 py-3">{isItOwned(a) ? <SmallBadge bg="bg-sky-500/20" text="text-sky-700" label={tx.sourceIt} /> : <SmallBadge bg="bg-slate-500/20" text="text-slate-700" label={tx.sourceHr} />}</td>
               </tr>
             ))}
           </tbody>

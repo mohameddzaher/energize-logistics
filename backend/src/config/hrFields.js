@@ -101,7 +101,7 @@ const GROUPS = [
       // ليست قيمةً بل قرارٌ إداريّ يُكتب عَلَمَ حالةٍ («غير مطلوب») — انظر تحت.
       // وقابليّتُها للفلترة هي بيت القصيد: «مَن ليس نشطًا في التأمينات؟» سؤالٌ
       // يُسأل شهريًّا وكان جوابه يُعَدّ باليد من ملفٍّ خارج النظام.
-      { key: 'socialInsuranceStatus', ar: 'حالة التأمينات', en: 'Insurance status', type: 'text', groupable: true },
+      { key: 'socialInsuranceStatus', ar: 'حالة التأمينات', en: 'Insurance status', type: 'text', groupable: true, choice: true },
       // الرقم التأمينيّ فريدٌ لكلّ موظّف، فلا يُعلَّم `groupable`: توزيعُه
       // ثلاثمئةٌ وستّون سطرًا كلٌّ منها «١» — قائمةٌ لا تُقرأ ولا يُفلتَر بها.
       { key: 'gosiNumber', ar: 'الرقم التأميني', en: 'GOSI number', type: 'text' },
@@ -111,7 +111,9 @@ const GROUPS = [
     key: 'banking', ar: 'البيانات البنكية', en: 'Banking', icon: 'bank',
     fields: [
       { key: 'iban', ar: 'الآيبان', en: 'IBAN', type: 'text' },
-      { key: 'bank', ar: 'البنك', en: 'Bank', type: 'text', groupable: true },
+      // قائمةٌ لا نصٌّ حرّ، ومعها «راتب نقدي»: مَن يُصرف له نقدًا لا بنكَ له، وهو
+      // قرارٌ إداريّ يُكتب علامةً (cash_payroll) لا اسمَ بنكٍ مخترَع.
+      { key: 'bank', ar: 'البنك', en: 'Bank', type: 'text', groupable: true, choice: true, cashPayroll: true },
     ],
   },
   {
@@ -167,8 +169,8 @@ const GROUPS = [
     key: 'medicalInsurance', ar: 'التأمين الطبي', en: 'Medical insurance', icon: 'heart', document: true,
     expiryField: 'insuranceExpiry',
     fields: [
-      { key: 'insuranceCompany', ar: 'شركة التأمين', en: 'Insurer', type: 'text', groupable: true },
-      { key: 'insuranceClass', ar: 'فئة التأمين', en: 'Class', type: 'text', groupable: true },
+      { key: 'insuranceCompany', ar: 'شركة التأمين', en: 'Insurer', type: 'text', groupable: true, choice: true },
+      { key: 'insuranceClass', ar: 'فئة التأمين', en: 'Class', type: 'text', groupable: true, choice: true },
       { key: 'insuranceExpiry', ar: 'تاريخ الانتهاء', en: 'Expiry', type: 'date' },
     ],
   },
@@ -193,7 +195,7 @@ const GROUPS = [
     key: 'drivingLicense', ar: 'رخص القيادة', en: 'Driving licences', icon: 'license', document: true,
     expiryField: 'licenseExpiry',
     fields: [
-      { key: 'licenseType', ar: 'نوع الرخصة', en: 'Licence type', type: 'text', groupable: true },
+      { key: 'licenseType', ar: 'نوع الرخصة', en: 'Licence type', type: 'text', groupable: true, choice: true },
       { key: 'licenseExpiry', ar: 'تاريخ الانتهاء', en: 'Expiry', type: 'date' },
     ],
   },

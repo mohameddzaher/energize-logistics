@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
+import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History } from 'lucide-react';
 import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, fmtDate, leaveTypeLabel } from '@/lib/hr';
 import { LeaveChainBar, LeaveThread } from '@/components/hr/LeaveChain';
@@ -15,7 +16,12 @@ import { downloadLeaveSheet } from '@/lib/leavePdf';
 import type { Signature } from '@/components/SignatureManager';
 import FilePicker, { AttachmentList, type PickedFile } from '@/components/system/FilePicker';
 
+const idOf = (e: any) => (e?.idType === 'national_id' ? (e?.nationalId || e?.iqamaNumber) : (e?.iqamaNumber || e?.nationalId)) || '—';
+const BG = 'bg-white group-hover:bg-slate-100';
+
 export default function HRLeavesPage() {
+  // الإجراءات، الرقم الوظيفيّ، الاسم، الهويّة — ثابتةٌ على اليمين.
+  const pin = usePinnedColumns(4);
   const { notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
@@ -266,7 +272,10 @@ export default function HRLeavesPage() {
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-            <th className="text-start font-semibold px-4 py-3">{tx.colEmployee}</th>
+            <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>PDF</th>
+            <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الرقم الوظيفي' : 'Emp. no.'}</th>
+            <th {...pin.th(2, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colEmployee}</th>
+            <th {...pin.th(3, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الهوية / الإقامة' : 'ID / Iqama'}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colType}</th>
             {/* ── ومن/إلى عمودان لا عمود ────────────────────────────────────
                 «١٤/٠٩ → ١٩/٠٩» في خانةٍ واحدة يُقرأ سطرًا واحدًا، ولا يُفرَز
@@ -277,16 +286,22 @@ export default function HRLeavesPage() {
             <th className="text-start font-semibold px-4 py-3">{tx.colDays}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colBalance}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colStatus}</th>
-            <th className="text-end font-semibold px-4 py-3"></th>
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={8} className="text-center text-slate-800 py-12">{tx.noRequests}</td></tr>
+              <tr><td colSpan={10} className="text-center text-slate-800 py-12">{tx.noRequests}</td></tr>
             ) : filtered.map((l) => {
               const over = l.balanceSnapshot && typeof l.balanceSnapshot.remainingAfter === 'number' && l.balanceSnapshot.remainingAfter < 0;
               return (
-                <tr key={l._id} className="border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => openReview(l)}>
-                  <td className="px-4 py-3 text-slate-900 font-medium">{empName(l.employee, lang)}</td>
+                <tr key={l._id} className="group border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => openReview(l)}>
+                  <td {...pin.td(0, 'px-4 py-3', BG)}>
+                    <button type="button" title={t('Download PDF', 'تحميل PDF')} onClick={(e) => { e.stopPropagation(); downloadPdf(l._id); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-slate-600 text-xs">
+                      {pdfBusy === l._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} PDF
+                    </button>
+                  </td>
+                  <td {...pin.td(1, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{(l.employee as any)?.employeeNumber || '—'}</td>
+                  <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-medium whitespace-nowrap', BG)}>{empName(l.employee, lang)}</td>
+                  <td {...pin.td(3, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{idOf(l.employee)}</td>
                   <td className="px-4 py-3 text-slate-700">{leaveTypeLabel(l.leaveType, lang)}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{fmtDate(l.startDate)}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{fmtDate(l.endDate)}</td>
@@ -303,11 +318,6 @@ export default function HRLeavesPage() {
                         </span>
                       )}
                     </div>
-                  </td>
-                  <td className="px-4 py-3 text-end">
-                    <button type="button" title={t('Download PDF', 'تحميل PDF')} onClick={(e) => { e.stopPropagation(); downloadPdf(l._id); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-slate-600 text-xs">
-                      {pdfBusy === l._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} PDF
-                    </button>
                   </td>
                 </tr>
               );

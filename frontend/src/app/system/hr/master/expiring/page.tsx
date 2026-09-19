@@ -15,10 +15,13 @@ import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/l
 import { CalendarClock } from 'lucide-react';
 import { stateMeta, getHrExpiring, STATE_META, stateLabel, fmtDate, daysText } from '@/lib/hrMaster';
 import MasterNav from '@/components/hr/MasterNav';
+import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 
 const QUICK = [7, 15, 30, 60, 90, 180];
 
 function ExpiringInner() {
+  // الرقم الوظيفيّ والاسم والهويّة ثابتةٌ على اليمين — راجع usePinnedColumns.
+  const pin = usePinnedColumns(3);
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
@@ -135,21 +138,21 @@ function ExpiringInner() {
               <tr>{[t('الرقم الوظيفي', 'Emp. no.'), t('الموظف', 'Employee'), t('رقم الهوية', 'ID number'),
                 t('المستند', 'Document'), t('ينتهي في', 'Expires'),
                 t('المتبقي', 'Left'), t('الحالة', 'State'), t('القسم', 'Department')].map((h, i) => (
-                <th key={i} className="px-3 py-3 text-center font-bold whitespace-nowrap">{h}</th>
+                <th key={i} {...(i < 3 ? pin.th(i, 'px-3 py-3 text-center font-bold whitespace-nowrap') : { className: 'px-3 py-3 text-center font-bold whitespace-nowrap' })}>{h}</th>
               ))}</tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((r: any) => {
                 const m = stateMeta(r.state);
                 return (
-                  <tr key={`${r.employeeId}-${r.docKey}`} className="hover:bg-slate-50 text-center">
-                    <td className="px-3 py-2.5 whitespace-nowrap text-slate-700 text-[13px] tabular-nums">{r.employeeNumber || '—'}</td>
-                    <td className="px-3 py-2.5">
+                  <tr key={`${r.employeeId}-${r.docKey}`} className="group hover:bg-slate-50 text-center">
+                    <td {...pin.td(0, 'px-3 py-2.5 whitespace-nowrap text-slate-700 text-[13px] tabular-nums')}>{r.employeeNumber || '—'}</td>
+                    <td {...pin.td(1, 'px-3 py-2.5')}>
                       <button onClick={() => router.push(`/system/hr/employees/${r.employeeId}`)}
                         className="font-semibold text-slate-900 hover:text-[#f37121] text-[13.5px] whitespace-nowrap">{r.name}</button>
                     </td>
                     {/* رقم الهوية — ده اللي القسم بيسيرش بيه */}
-                    <td className="px-3 py-2.5 whitespace-nowrap text-slate-700 text-[13px] tabular-nums">{r.iqamaNumber || '—'}</td>
+                    <td {...pin.td(2, 'px-3 py-2.5 whitespace-nowrap text-slate-700 text-[13px] tabular-nums')}>{r.iqamaNumber || '—'}</td>
                     <td className="px-3 py-2.5">
                       <button onClick={() => router.push(`/system/hr/master/${r.docKey}`)}
                         className="text-slate-800 hover:text-[#f37121] text-[13px] whitespace-nowrap font-medium">{ar ? r.docAr : r.docEn}</button>
@@ -164,7 +167,7 @@ function ExpiringInner() {
                 );
               })}
               {!rows.length && (
-                <tr><td colSpan={6} className="px-3 py-12 text-center text-slate-400">
+                <tr><td colSpan={8} className="px-3 py-12 text-center text-slate-400">
                   {t('لا شيء ينتهي خلال هذه المدة', 'Nothing expires in this window')}
                 </td></tr>
               )}

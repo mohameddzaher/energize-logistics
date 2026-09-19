@@ -10,6 +10,7 @@ import { isHRStaff, fmtDate, daysUntil, expiryBadge } from '@/lib/hr';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Pick, SmallBadge, Modal, Field, TextInput, Select, TextArea, Loader2 } from '@/components/hr/HRKit';
 import { getHrLicensesTranslations } from '@/lib/translations';
+import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 
 interface License {
   _id: string;
@@ -42,6 +43,8 @@ const LOCATION_SUGGESTIONS = ['جدة', 'عقلة الصقور'];
 const EMPTY = { category: '', name: '', duration: '', expiryDate: '', location: '', notes: '' };
 
 export default function LicensesPage() {
+  // الإجراءات والاسم ثابتان على اليمين — كبقيّة جداول القسم.
+  const pin = usePinnedColumns(2);
   const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
@@ -205,13 +208,13 @@ export default function LicensesPage() {
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
+            <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.thActions}</th>
+            <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.thName}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.thCategory}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.thName}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.thDuration}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.thExpiry}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.thLocation}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.thDaysLeft}</th>
-            <th className="text-end font-semibold px-4 py-3">{tx.thActions}</th>
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
@@ -220,19 +223,19 @@ export default function LicensesPage() {
               const b = expiryBadge(l.expiryDate, lang);
               const d = daysUntil(l.expiryDate);
               return (
-                <tr key={l._id} className="border-b border-slate-200/70 hover:bg-slate-100">
-                  <td className="px-4 py-3 text-slate-800">{l.category}</td>
-                  <td className="px-4 py-3 text-slate-900 font-medium">{l.name}</td>
-                  <td className="px-4 py-3 text-slate-700">{l.duration || '—'}</td>
-                  <td className="px-4 py-3 text-slate-700">{fmtDate(l.expiryDate)}</td>
-                  <td className="px-4 py-3 text-slate-700">{l.location || '—'}</td>
-                  <td className="px-4 py-3">{d === null ? <span className="text-slate-700">—</span> : b && <SmallBadge bg={b.bg} text={b.text} label={d < 0 ? tx.expiredLabel : `${d} ${tx.dayUnit}`} />}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
+                <tr key={l._id} className="group border-b border-slate-200/70 hover:bg-slate-100">
+                  <td {...pin.td(0, 'px-4 py-3', 'bg-white group-hover:bg-slate-100')}>
+                    <div className="flex items-center gap-1">
                       <button type="button" onClick={() => openEdit(l)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.actionEdit}><Edit className="w-4 h-4" /></button>
                       <button type="button" onClick={() => remove(l)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.actionDelete}><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </td>
+                  <td {...pin.td(1, 'px-4 py-3 text-slate-900 font-medium', 'bg-white group-hover:bg-slate-100')}>{l.name}</td>
+                  <td className="px-4 py-3 text-slate-800">{l.category}</td>
+                  <td className="px-4 py-3 text-slate-700">{l.duration || '—'}</td>
+                  <td className="px-4 py-3 text-slate-700">{fmtDate(l.expiryDate)}</td>
+                  <td className="px-4 py-3 text-slate-700">{l.location || '—'}</td>
+                  <td className="px-4 py-3">{d === null ? <span className="text-slate-700">—</span> : b && <SmallBadge bg={b.bg} text={b.text} label={d < 0 ? tx.expiredLabel : `${d} ${tx.dayUnit}`} />}</td>
                 </tr>
               );
             })}

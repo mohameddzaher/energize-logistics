@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../ui/filter_sheet.dart';
 import '../services/lang.dart';
+import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import 'hr_employee_profile.dart';
 import '../ui/theme.dart';
@@ -38,10 +39,20 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
   void initState() {
     super.initState();
     _load();
+    // تعديلُ الماستر أو ملفّ الموظّف أو بطاقةِ السائق من المركبات يصل هنا فورًا.
+    Live.instance.on('hr:master', _onLive);
+    Live.instance.on('hr:employee', _onLive);
   }
 
+  void _onLive() => _load();
+
   @override
-  void dispose() { _debounce?.cancel(); super.dispose(); }
+  void dispose() {
+    _debounce?.cancel();
+    Live.instance.off('hr:master', _onLive);
+    Live.instance.off('hr:employee', _onLive);
+    super.dispose();
+  }
 
   Future<void> _load() async {
     try {

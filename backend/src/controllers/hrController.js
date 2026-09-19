@@ -343,6 +343,10 @@ exports.updateEmployee = async (req, res) => {
       employee[f] = next;
     }
     await employee.save();
+    // بطاقةُ السائق تُكتب في سجلّ المركبات (المرجع) إن عُدِّلت هنا — راجع utils/driverCardSync.
+    if (['driverCardNumber', 'driverCardExpiry', 'driverCardType'].some((k) => req.body[k] !== undefined)) {
+      try { await require('../utils/driverCardSync').pushEmployeeToCard(employee, { userId: req.user?._id, emit: false }); } catch (e) { console.error('HR profile → driver card:', e.message); }
+    }
     bustEmployeeCaches();
     if (Object.keys(after).length) {
       await logAudit({ user: req.user._id, action: 'update_employee', entity: 'Employee', entityId: employee._id, changes: { before, after }, ipAddress: req.ip });
@@ -457,6 +461,9 @@ exports.renewDocument = async (req, res) => {
     if (map.expiry && newExpiry) employee[map.expiry] = newExpiry;
     if (map.number && documentNumber) employee[map.number] = documentNumber;
     await employee.save();
+    if (docType === 'driverCard') {
+      try { await require('../utils/driverCardSync').pushEmployeeToCard(employee, { userId: req.user?._id, emit: false }); } catch (e) { console.error('HR renew → driver card:', e.message); }
+    }
 
     const renewal = await EmployeeRenewal.create({
       employee: employee._id, docType,
@@ -831,7 +838,7 @@ exports.listContracts = async (req, res) => {
     if (req.query.employee) filter.employee = req.query.employee;
     if (req.query.status) filter.status = req.query.status;
     const contracts = await Contract.find(filter)
-      .populate({ path: 'employee', select: 'firstName lastName arabicName iqamaNumber employeeNumber jobTitle' })
+      .populate({ path: 'employee', select: 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber jobTitle' })
       .sort({ createdAt: -1 })
       .limit(2000)
       .lean();
@@ -996,7 +1003,7 @@ exports.deleteLeaveType = async (req, res) => {
 // ── Leave requests ───────────────────────────────────────────────────────────
 const NO_SIG = '-employeeSignature -managerDecision.signature -hrDecision.signature';
 const populateLeave = (q) => q
-  .populate('employee', 'firstName lastName arabicName iqamaNumber employeeNumber')
+  .populate('employee', 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber')
   .populate('requester', 'firstName lastName email')
   .populate('manager', 'firstName lastName')
   .populate('leaveType', 'nameEn nameAr code color affectsBalance')
@@ -1615,7 +1622,7 @@ exports.deleteMyLeave = async (req, res) => {
 // ── HR requests (general) ────────────────────────────────────────────────────
 const populateRequest = (q) => q
   .populate('requester', 'firstName lastName email')
-  .populate('employee', 'firstName lastName iqamaNumber employeeNumber')
+  .populate('employee', 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber')
   .populate('assignedTo', 'firstName lastName')
   .populate('thread.sender', 'firstName lastName role');
 
@@ -1754,7 +1761,7 @@ exports.listAssets = async (req, res) => {
     if (req.query.employee) filter.employee = req.query.employee;
     if (req.query.status && req.query.status !== 'in_stock') filter.status = req.query.status;
     const assets = await Asset.find(filter)
-      .populate('employee', 'firstName lastName arabicName iqamaNumber employeeNumber')
+      .populate('employee', 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber')
       .populate('assignedBy', 'firstName lastName')
       .sort({ createdAt: -1 })
       .limit(2000)

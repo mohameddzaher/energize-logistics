@@ -1276,6 +1276,8 @@
     },
     "/system/hr/master/grid": {
       "apis": [
+        "/api/hr/master/choices",
+        "/api/hr/master/employees",
         "/api/hr/master/grid",
         "/api/hr/master/overview",
         "/api/reports"

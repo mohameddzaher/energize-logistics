@@ -22,6 +22,7 @@ router.use(authenticate);
 // يقرأ الملفّ الوظيفيّ كاملًا بطلبٍ واحد.
 router.get('/master/overview', authorize(...STAFF), hrm.overview);
 router.get('/master/field-config', authorize(...STAFF), hrm.fieldConfig);
+router.get('/master/choices', authorize(...STAFF), hrm.choices);
 // الفلاتر المتاحة وقيمها بأعدادها — محسوبة على ما تبقّى بعد بقيّة الفلاتر
 router.get('/master/filters', authorize(...STAFF), hrm.filterOptions);
 router.get('/master/expiring', authorize(...STAFF), hrm.expiring);

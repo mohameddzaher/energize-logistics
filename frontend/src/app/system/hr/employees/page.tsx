@@ -10,6 +10,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
+import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import { Users, Plus, Edit, Trash2 } from 'lucide-react';
 import {
   isHRStaff, Employee, EMPLOYMENT_STATUS, empName,
@@ -28,6 +29,8 @@ export default function HREmployeesPage() {
   const ar = lang === 'ar';
   const tx = getHrEmployeesTranslations(lang);
   const router = useRouter();
+  // الإجراءات، الرقم الوظيفيّ، الاسم، الهويّة — ثابتةٌ على اليمين.
+  const pin = usePinnedColumns(4);
   const searchParams = useSearchParams();
   const staff = isHRStaff(user);
 
@@ -175,35 +178,35 @@ export default function HREmployeesPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-              <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.thName}</th>
-              <th className="text-start font-semibold px-4 py-3">{tx.thEmpNumber}</th>
+              <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.thActions}</th>
+              <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.thEmpNumber}</th>
+              <th {...pin.th(2, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.thName}</th>
+              <th {...pin.th(3, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.thIqamaId}</th>
               <th className="text-start font-semibold px-4 py-3">{tx.thJobTitle}</th>
-              <th className="text-start font-semibold px-4 py-3">{tx.thIqamaId}</th>
               <th className="text-start font-semibold px-4 py-3">{tx.thNationality}</th>
               <th className="text-start font-semibold px-4 py-3">{tx.thStatus}</th>
-              <th className="text-end font-semibold px-4 py-3">{tx.thActions}</th>
             </tr>
           </thead>
           <tbody>
             {employees.length === 0 ? (
               <tr><td colSpan={7} className="text-center text-slate-800 py-12">{tx.noEmployees}</td></tr>
             ) : employees.map((e) => (
-              <tr key={e._id} className="border-b border-slate-200/70 hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => router.push(`/system/hr/employees/${e._id}`)}>
-                {/* سطر واحد — الإيميل كان تحت الاسم فبيطوّل الصف من غير داعي */}
-                <td className="px-4 py-3 text-slate-900 font-semibold whitespace-nowrap">{empName(e, lang)}</td>
-                <td className="px-4 py-3 text-slate-700">{e.employeeNumber || '—'}</td>
-                <td className="px-4 py-3 text-slate-700">{e.jobTitle || '—'}</td>
-                <td className="px-4 py-3 text-slate-700">{e.idType === 'national_id' ? (e.nationalId || '—') : (e.iqamaNumber || '—')}</td>
-                <td className="px-4 py-3 text-slate-700">{e.nationality || '—'}</td>
-                <td className="px-4 py-3"><Badge style={EMPLOYMENT_STATUS[e.employmentStatus || 'active']} lang={lang} /></td>
-                <td className="px-4 py-3" onClick={(ev) => ev.stopPropagation()}>
-                  <div className="flex items-center justify-end gap-1">
+              <tr key={e._id} className="group border-b border-slate-200/70 hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => router.push(`/system/hr/employees/${e._id}`)}>
+                <td {...pin.td(0, 'px-4 py-3', 'bg-white group-hover:bg-slate-100')} onClick={(ev) => ev.stopPropagation()}>
+                  <div className="flex items-center gap-1">
                     <button type="button" onClick={() => openEdit(e)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.edit}><Edit className="w-4 h-4" /></button>
                     {(user?.role === 'super_admin' || user?.role === 'hr_manager') && (
                       <button type="button" onClick={() => remove(e)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.delete}><Trash2 className="w-4 h-4" /></button>
                     )}
                   </div>
                 </td>
+                <td {...pin.td(1, 'px-4 py-3 text-slate-700 whitespace-nowrap', 'bg-white group-hover:bg-slate-100')}>{e.employeeNumber || '—'}</td>
+                {/* سطر واحد — الإيميل كان تحت الاسم فبيطوّل الصف من غير داعي */}
+                <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-semibold whitespace-nowrap', 'bg-white group-hover:bg-slate-100')}>{empName(e, lang)}</td>
+                <td {...pin.td(3, 'px-4 py-3 text-slate-700 whitespace-nowrap', 'bg-white group-hover:bg-slate-100')}>{e.idType === 'national_id' ? (e.nationalId || '—') : (e.iqamaNumber || '—')}</td>
+                <td className="px-4 py-3 text-slate-700">{e.jobTitle || '—'}</td>
+                <td className="px-4 py-3 text-slate-700">{e.nationality || '—'}</td>
+                <td className="px-4 py-3"><Badge style={EMPLOYMENT_STATUS[e.employmentStatus || 'active']} lang={lang} /></td>
               </tr>
             ))}
           </tbody>

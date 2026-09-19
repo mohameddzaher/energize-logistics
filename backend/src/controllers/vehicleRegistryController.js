@@ -2886,6 +2886,8 @@ exports.createDriverCard = async (req, res) => {
     if (dup) return res.status(409).json({ message: 'توجد بطاقةٌ بهذا الرقم' });
     data.createdBy = req.user._id;
     const card = await DriverCard.create(data);
+    // والبطاقةُ تصل ملفَّ صاحبها في الموارد البشريّة — راجع utils/driverCardSync.
+    try { await require('../utils/driverCardSync').pushCardToEmployee(card); } catch (e) { console.error('driver card → HR:', e.message); }
     emit('vreg:updated', {});
     res.status(201).json({ card });
   } catch (e) { res.status(500).json({ message: e.message || 'تعذّر الحفظ' }); }
@@ -2898,17 +2900,10 @@ exports.updateDriverCard = async (req, res) => {
     const card = await DriverCard.findByIdAndUpdate(req.params.id, { $set: data }, { new: true, runValidators: true });
     if (!card) return res.status(404).json({ message: 'غير موجودة' });
     // ولقطةُ البطاقة على ملفّ الموظّف تُحدَّث معها: تقرؤها شاشاتُ الموارد
-    // البشريّة، وتركُها يجعل الرقمين مختلفين لشيءٍ واحد.
-    if (card.employee) {
-      const Employee = require('../models/Employee');
-      await Employee.updateOne({ _id: card.employee }, {
-        $set: {
-          driverCardNumber: card.cardNumber || '',
-          driverCardType: card.cardType || '',
-          driverCardExpiry: card.expiryDate || '',
-        },
-      });
-    }
+    // البشريّة، وتركُها يجعل الرقمين مختلفين لشيءٍ واحد. وكانت تُحدَّث فقط إن
+    // كانت البطاقةُ مربوطةً بالمعرّف — وأغلبُها مربوطٌ برقم الهويّة، فجُدِّدت
+    // بطاقاتٌ في المركبات وبقيت «منتهيةً» في الموارد البشريّة.
+    try { await require('../utils/driverCardSync').pushCardToEmployee(card); } catch (e) { console.error('driver card → HR:', e.message); }
     emit('vreg:updated', {});
     res.json({ card });
   } catch (e) { res.status(500).json({ message: e.message || 'تعذّر الحفظ' }); }
@@ -2918,6 +2913,7 @@ exports.deleteDriverCard = async (req, res) => {
   try {
     const card = await DriverCard.findByIdAndDelete(req.params.id);
     if (!card) return res.status(404).json({ message: 'غير موجودة' });
+    try { await require('../utils/driverCardSync').clearEmployeeCard(card); } catch (e) { console.error('driver card delete → HR:', e.message); }
     emit('vreg:updated', {});
     res.json({ deleted: true });
   } catch (e) { res.status(500).json({ message: e.message || 'تعذّر الحذف' }); }

@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
+import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import FilePicker, { AttachmentList, type PickedFile } from '@/components/system/FilePicker';
 import { MessageSquare, Send, Link2 } from 'lucide-react';
 import { isHRStaff, HRRequest, REQUEST_STATUS, categoryLabel, userName, fmtDateTime } from '@/lib/hr';
@@ -12,7 +13,12 @@ import { Spinner, PageHeader, SearchInput, Badge, Modal, TextInput, Select, Prim
 import { getHrRequestsTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
+const idOf = (e: any) => (e?.idType === 'national_id' ? (e?.nationalId || e?.iqamaNumber) : (e?.iqamaNumber || e?.nationalId)) || '—';
+const BG = 'bg-white group-hover:bg-slate-100';
+
 export default function HRRequestsPage() {
+  // الإجراءات، الرقم الوظيفيّ، الاسم، الهويّة — ثابتةٌ على اليمين.
+  const pin = usePinnedColumns(3);
   const { notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
@@ -106,7 +112,9 @@ export default function HRRequestsPage() {
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-            <th className="text-start font-semibold px-4 py-3">{tx.colEmployee}</th>
+            <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الرقم الوظيفي' : 'Emp. no.'}</th>
+            <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colEmployee}</th>
+            <th {...pin.th(2, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الهوية / الإقامة' : 'ID / Iqama'}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colCategory}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colSubject}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colStatus}</th>
@@ -114,10 +122,12 @@ export default function HRRequestsPage() {
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={5} className="text-center text-slate-800 py-12">{tx.noRequests}</td></tr>
+              <tr><td colSpan={7} className="text-center text-slate-800 py-12">{tx.noRequests}</td></tr>
             ) : filtered.map((r) => (
-              <tr key={r._id} className="border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => setOpen(r)}>
-                <td className="px-4 py-3 text-slate-900 font-medium">{userName(r.requester)} {!r.readByHR && <span className="ms-1 inline-block w-2 h-2 rounded-full bg-[#f37121]" />}</td>
+              <tr key={r._id} className="group border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => setOpen(r)}>
+                <td {...pin.td(0, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{(r as any).employee?.employeeNumber || '—'}</td>
+                <td {...pin.td(1, 'px-4 py-3 text-slate-900 font-medium whitespace-nowrap', BG)}>{userName(r.requester)} {!r.readByHR && <span className="ms-1 inline-block w-2 h-2 rounded-full bg-[#f37121]" />}</td>
+                <td {...pin.td(2, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{idOf((r as any).employee)}</td>
                 <td className="px-4 py-3 text-slate-700">{categoryLabel(r.category, lang)}</td>
                 <td className="px-4 py-3 text-slate-700">{r.subject}</td>
                 <td className="px-4 py-3"><Badge style={REQUEST_STATUS[r.status]} lang={lang} /></td>

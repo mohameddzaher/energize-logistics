@@ -14,6 +14,7 @@ import {
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getHrStockTranslations } from '@/lib/translations';
+import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 
 const EMPTY = {
   name: '', type: 'tool', serialNumber: '', brand: '', model: '', specs: '',
@@ -24,6 +25,8 @@ const EMPTY = {
 const unitsOf = (a: Asset & { quantity?: number }) => (a.quantity && a.quantity > 0 ? a.quantity : 1);
 
 export default function HRStockPage() {
+  // الإجراءات والاسم ثابتان على اليمين — كبقيّة جداول القسم.
+  const pin = usePinnedColumns(2);
   const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
@@ -187,20 +190,29 @@ export default function HRStockPage() {
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-            <th className="text-start font-semibold px-4 py-3">{tx.colItem}</th>
+            <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colActions}</th>
+            <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colItem}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colType}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colSerial}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colCondition}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colQty}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colLocation}</th>
-            <th className="text-end font-semibold px-4 py-3">{tx.colActions}</th>
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr><td colSpan={7} className="text-center text-slate-500 py-12">{tx.empty}</td></tr>
             ) : filtered.map((a) => (
-              <tr key={a._id} className="border-b border-slate-200/70 hover:bg-slate-50">
-                <td className="px-4 py-3 text-slate-900 font-medium">
+              <tr key={a._id} className="group border-b border-slate-200/70 hover:bg-slate-50">
+                <td {...pin.td(0, 'px-4 py-3', 'bg-white group-hover:bg-slate-50')}>
+                  <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => openAssign(a)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-xs font-semibold" title={tx.assignToEmployee}>
+                      <UserPlus className="w-3.5 h-3.5" /> {tx.assign}
+                    </button>
+                    <button type="button" onClick={() => openEdit(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.actionEdit}><Edit className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => remove(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.actionDelete}><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                </td>
+                <td {...pin.td(1, 'px-4 py-3 text-slate-900 font-medium', 'bg-white group-hover:bg-slate-50')}>
                   {a.name}
                   {(a.brand || a.model) && <div className="text-xs text-slate-500">{[a.brand, a.model].filter(Boolean).join(' ')}</div>}
                 </td>
@@ -209,15 +221,6 @@ export default function HRStockPage() {
                 <td className="px-4 py-3 text-slate-700">{a.condition ? conditionLabel(a.condition, lang) : '—'}</td>
                 <td className="px-4 py-3 text-slate-900 font-semibold">{unitsOf(a)}</td>
                 <td className="px-4 py-3 text-slate-700">{(a as any).location || '—'}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-1">
-                    <button type="button" onClick={() => openAssign(a)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-xs font-semibold" title={tx.assignToEmployee}>
-                      <UserPlus className="w-3.5 h-3.5" /> {tx.assign}
-                    </button>
-                    <button type="button" onClick={() => openEdit(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.actionEdit}><Edit className="w-4 h-4" /></button>
-                    <button type="button" onClick={() => remove(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.actionDelete}><Trash2 className="w-4 h-4" /></button>
-                  </div>
-                </td>
               </tr>
             ))}
           </tbody>

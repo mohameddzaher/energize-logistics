@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
+import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import { FileText, Plus, Edit, Ban, Check, Trash2, RefreshCw } from 'lucide-react';
 import { isHRStaff, Contract, Employee, CONTRACT_STATUS, empName, fmtDate, today } from '@/lib/hr';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal, Field, TextInput, Select, SearchableSelect, TextArea, Loader2 } from '@/components/hr/HRKit';
@@ -17,6 +18,8 @@ import { localFilterFields, applyLocalFilters, type LocalFieldDef } from '@/lib/
 const EMPTY = { employee: '', type: 'fixed', startDate: '', endDate: '', durationMonths: 12, annualLeaveDays: 21, jobTitle: '', basicSalary: 0, allowances: 0, probationMonths: 3, notes: '',
   iqamaNumber: '', contractProfession: '', sponsorRegistration: '', contractNumber: '' };
 
+const BG = 'bg-white group-hover:bg-slate-100';
+
 export default function ContractsPage() {
   const { notify, prompt, confirm } = useDialog();
   const { user } = useAuth();
@@ -25,6 +28,8 @@ export default function ContractsPage() {
   const tx = getHrContractsTranslations(lang);
   const staff = isHRStaff(user);
 
+  // الإجراءات، الرقم الوظيفيّ، الاسم، الهويّة — ثابتةٌ على اليمين.
+  const pin = usePinnedColumns(4);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -236,8 +241,10 @@ export default function ContractsPage() {
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.colEmployee}</th>
-            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'الهوية' : 'ID number'}</th>
+            <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colActions}</th>
+            <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الرقم الوظيفي' : 'Emp. no.'}</th>
+            <th {...pin.th(2, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colEmployee}</th>
+            <th {...pin.th(3, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الهوية' : 'ID number'}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'رقم العقد' : 'Contract no.'}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'المهنة في العقد' : 'Contract profession'}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.colType}</th>
@@ -247,27 +254,14 @@ export default function ContractsPage() {
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'فترة التجربة' : 'Probation'}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'السجل' : 'CR number'}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.colStatus}</th>
-            <th className="text-end font-semibold px-4 py-3 whitespace-nowrap">{tx.colActions}</th>
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={12} className="text-center text-slate-800 py-12">{tx.noContracts}</td></tr>
+              <tr><td colSpan={13} className="text-center text-slate-800 py-12">{tx.noContracts}</td></tr>
             ) : filtered.map((c) => (
-              <tr key={c._id} className="border-b border-slate-200/70 hover:bg-slate-100">
-                <td className="px-4 py-3 text-slate-900 font-medium">{empName(c.employee, lang) || c.employeeNameAr || '—'}</td>
-                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.iqamaNumber || '—'}</td>
-                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.contractNumber || '—'}</td>
-                <td className="px-4 py-3 text-slate-700">{c.contractProfession || c.jobTitle || '—'}</td>
-                <td className="px-4 py-3 text-slate-700">{c.type === 'unlimited' ? tx.typeUnlimited : tx.typeFixed}</td>
-                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{fmtDate(c.startDate)}</td>
-                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.endDate ? fmtDate(c.endDate) : '—'}</td>
-                {/* «غير مطلوب» حالةٌ سليمة لا صفرٌ ناقص — تُكتب كما هي. */}
-                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.annualLeaveText || `${c.annualLeaveDays} ${tx.daysShort}`}</td>
-                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.probationText || (c.probationMonths ? `${c.probationMonths} ${ar ? 'شهر' : 'mo'}` : '—')}</td>
-                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.sponsorRegistration || '—'}</td>
-                <td className="px-4 py-3"><Badge style={CONTRACT_STATUS[c.status]} lang={lang} /></td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-1">
+              <tr key={c._id} className="group border-b border-slate-200/70 hover:bg-slate-100">
+                <td {...pin.td(0, 'px-4 py-3', BG)}>
+                  <div className="flex items-center gap-1">
                     <button type="button" onClick={() => openEdit(c)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.editTooltip}><Edit className="w-4 h-4" /></button>
                     {/* ── التجديدُ فعلٌ مستقلٌّ عن التعديل ────────────────────
                         كان العقدُ يُجدَّد بتعديل تاريخِ نهايته يدويًّا: لا أثرَ
@@ -282,6 +276,19 @@ export default function ContractsPage() {
                     <button type="button" onClick={() => remove(c)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-slate-100" title={ar ? 'حذف العقد' : 'Delete contract'}><Trash2 className="w-4 h-4" /></button>
                   </div>
                 </td>
+                <td {...pin.td(1, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{(c.employee as any)?.employeeNumber || '—'}</td>
+                <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-medium whitespace-nowrap', BG)}>{empName(c.employee, lang) || c.employeeNameAr || '—'}</td>
+                <td {...pin.td(3, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{c.iqamaNumber || (c.employee as any)?.iqamaNumber || (c.employee as any)?.nationalId || '—'}</td>
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.contractNumber || '—'}</td>
+                <td className="px-4 py-3 text-slate-700">{c.contractProfession || c.jobTitle || '—'}</td>
+                <td className="px-4 py-3 text-slate-700">{c.type === 'unlimited' ? tx.typeUnlimited : tx.typeFixed}</td>
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{fmtDate(c.startDate)}</td>
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.endDate ? fmtDate(c.endDate) : '—'}</td>
+                {/* «غير مطلوب» حالةٌ سليمة لا صفرٌ ناقص — تُكتب كما هي. */}
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.annualLeaveText || `${c.annualLeaveDays} ${tx.daysShort}`}</td>
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.probationText || (c.probationMonths ? `${c.probationMonths} ${ar ? 'شهر' : 'mo'}` : '—')}</td>
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.sponsorRegistration || '—'}</td>
+                <td className="px-4 py-3"><Badge style={CONTRACT_STATUS[c.status]} lang={lang} /></td>
               </tr>
             ))}
           </tbody>

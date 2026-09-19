@@ -21,6 +21,9 @@ import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import MasterCell, { type Choices } from '@/components/hr/MasterCell';
+import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
+import api from '@/lib/api';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { Search, Check, X, Pencil, ArrowUpDown, RefreshCw, ArrowRight, Plus, Trash2 } from 'lucide-react';
 import { stateMeta, statusMeta,
@@ -77,6 +80,10 @@ function GroupInner() {
 
   const canEdit = ['super_admin', 'admin', 'hr_manager', 'hr_specialist'].includes((user as any)?.role)
     || canEditSection((user as any)?.permissions, 'HR');
+  // الأعمدةُ الثابتة على اليمين: التحديد والإجراءات (لمن يعدّل)، ثمّ الرقم
+  // الوظيفيّ والاسم والهويّة — راجع usePinnedColumns.
+  const lead = (RENEWABLE_GROUPS.has(group) && canEdit ? 1 : 0) + (canEdit ? 1 : 0);
+  const pin = usePinnedColumns(lead + 3);
 
   const [q, setQ] = useState('');
   const [field, setField] = useState(sp?.get('field') || '');
@@ -127,6 +134,11 @@ function GroupInner() {
 
   useEffect(() => { const h = setTimeout(load, 250); return () => clearTimeout(h); }, [load]);
   useSocket('hr:master', useCallback(() => { load(); }, [load]));
+  // قوائمُ حقول الاختيار (نوع الرخصة، البنك، حالة التأمين…) — راجع MasterCell.
+  const [choices, setChoices] = useState<Choices>({});
+  const loadChoices = useCallback(() => { api.get<{ choices: Choices }>('/api/hr/master/choices').then((d) => setChoices(d.choices || {})).catch(() => {}); }, []);
+  useEffect(() => { loadChoices(); }, [loadChoices]);
+  useSocket('hr:master', loadChoices);
 
   // ── ما تختاره هنا يعيش في عنوان الصفحة ─────────────────────────────────────
   // كان الفلتر يُقرأ من العنوان مرّةً عند الفتح ثم ينفصل عنه: ترفع شرطًا أو
@@ -355,7 +367,7 @@ function GroupInner() {
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
               <tr>
                 {renewable && canEdit && (
-                  <th className="px-3 py-3 w-9">
+                  <th {...pin.th(0, 'px-3 py-3 w-9')}>
                     <input type="checkbox" className="accent-[#f37121]"
                       title={t('اختيار كل المعروض', 'Select all shown')}
                       checked={rows.length > 0 && rows.every((x) => picked.has(x._id))}
@@ -366,17 +378,18 @@ function GroupInner() {
                       })} />
                   </th>
                 )}
-                <th className="px-3 py-3 text-center font-bold whitespace-nowrap">
+                {canEdit && <th {...pin.th(lead - 1, 'px-3 py-3 text-center font-bold whitespace-nowrap')}>{t('إجراءات', 'Actions')}</th>}
+                <th {...pin.th(lead, 'px-3 py-3 text-center font-bold whitespace-nowrap')}>
                   <button onClick={() => toggleSort('employeeNumber')} className="inline-flex items-center gap-1 hover:text-white">
                     {t('الرقم الوظيفي', 'Emp. no.')}<ArrowUpDown className="w-3 h-3 opacity-60" />
                   </button>
                 </th>
-                <th className="px-3 py-3 text-center font-bold whitespace-nowrap">
+                <th {...pin.th(lead + 1, 'px-3 py-3 text-center font-bold whitespace-nowrap')}>
                   <button onClick={() => toggleSort('name')} className="inline-flex items-center gap-1 hover:text-white">
                     {t('الموظف', 'Employee')}<ArrowUpDown className="w-3 h-3 opacity-60" />
                   </button>
                 </th>
-                <th className="px-3 py-3 text-center font-bold whitespace-nowrap">
+                <th {...pin.th(lead + 2, 'px-3 py-3 text-center font-bold whitespace-nowrap')}>
                   <button onClick={() => toggleSort('iqamaNumber')} className="inline-flex items-center gap-1 hover:text-white">
                     {t('رقم الهوية', 'ID number')}<ArrowUpDown className="w-3 h-3 opacity-60" />
                   </button>
@@ -412,13 +425,12 @@ function GroupInner() {
                     </button>
                   </th>
                 )}
-                {canEdit && <th className="px-3 py-3 text-center font-bold whitespace-nowrap">{t('إجراءات', 'Actions')}</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((r) => (
                 <Row key={r._id} r={r} fields={g.fields} isDoc={g.document} ar={ar} t={t} showWhyInactive={showWhyInactive}
-                  canEdit={canEdit} onSaved={load} notify={notify} router={router}
+                  canEdit={canEdit} onSaved={load} notify={notify} router={router} choices={choices} pin={pin} lead={lead}
                   renewable={renewable} picked={picked} setPicked={setPicked} onRenew={setRenewing}
                   onEdit={(x: RecordRow) => setForm({ mode: 'edit', row: x })} onClear={setClearing} />
               ))}
@@ -471,14 +483,17 @@ function GroupInner() {
 }
 
 // ── صف موظف: كل خانة قابلة للتعديل في مكانها ─────────────────────────────────
-function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router,
+function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router, choices, pin, lead,
   renewable, picked, setPicked, onRenew, onEdit, onClear, showWhyInactive }: any) {
   const m = r.state ? stateMeta(r.state) : null;
   const sel = renewable && canEdit;
+  const on = sel && picked.has(r._id);
+  // الخليّةُ الثابتة تحمل لونَ صفّها — وإلّا بدت بيضاءَ في صفٍّ محدَّد.
+  const bg = on ? 'bg-orange-50' : 'bg-white group-hover:bg-slate-50';
   return (
-    <tr className={sel && picked.has(r._id) ? 'bg-orange-50/70 text-center align-middle' : 'hover:bg-slate-50 text-center align-middle'}>
+    <tr className={on ? 'group bg-orange-50/70 text-center align-middle' : 'group hover:bg-slate-50 text-center align-middle'}>
       {sel && (
-        <td className="px-3 py-2.5">
+        <td {...pin.td(0, 'px-3 py-2.5', bg)}>
           <input type="checkbox" className="accent-[#f37121]"
             checked={picked.has(r._id)}
             onChange={() => setPicked((p: Set<string>) => {
@@ -488,13 +503,35 @@ function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router,
             })} />
         </td>
       )}
-      <td className="px-3 py-2.5 whitespace-nowrap text-slate-700 text-[13px] tabular-nums">{r.employeeNumber || '—'}</td>
-      <td className="px-3 py-2.5">
+      {/* الأفعال الثلاثة في عمودٍ واحد. التجديد يبقى أوّلها في المستندات لأنّه
+          أكثرها تكرارًا، والتفريغ آخرها وحده بلونٍ يقول إنّه لا يُشبه ما قبله. */}
+      {canEdit && (
+        <td {...pin.td(lead - 1, 'px-3 py-2.5', bg)}>
+          <div className="inline-flex items-center gap-1">
+            {sel && (
+              <button onClick={() => onRenew(r)} title={t('تجديد', 'Renew')}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold">
+                <RefreshCw className="w-3.5 h-3.5" />{t('تجديد', 'Renew')}
+              </button>
+            )}
+            <button onClick={() => onEdit(r)} title={t('تعديل بيانات المجموعة', 'Edit this group’s data')}
+              className="p-1.5 rounded-md text-slate-600 hover:text-[#f37121] hover:bg-slate-100">
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => onClear(r)} title={t('تفريغ بيانات المجموعة', 'Clear this group’s data')}
+              className="p-1.5 rounded-md text-slate-600 hover:text-red-600 hover:bg-red-50">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </td>
+      )}
+      <td {...pin.td(lead, 'px-3 py-2.5 whitespace-nowrap text-slate-700 text-[13px] tabular-nums', bg)}>{r.employeeNumber || '—'}</td>
+      <td {...pin.td(lead + 1, 'px-3 py-2.5', bg)}>
         <button onClick={() => router.push(`/system/hr/employees/${r._id}`)}
           className="font-semibold text-slate-900 hover:text-[#f37121] text-[13.5px] whitespace-nowrap">{r.name}</button>
       </td>
       {/* رقم الهوية — أكتر حاجة بيتسيرش بيها، فليها عمودها في كل جدول */}
-      <td className="px-3 py-2.5 whitespace-nowrap text-slate-700 text-[13px] tabular-nums">{r.iqamaNumber || '—'}</td>
+      <td {...pin.td(lead + 2, 'px-3 py-2.5 whitespace-nowrap text-slate-700 text-[13px] tabular-nums', bg)}>{r.iqamaNumber || '—'}</td>
       <td className="px-3 py-2.5 text-slate-700 text-[13px] whitespace-nowrap">{r.department || '—'}</td>
       {showWhyInactive && (() => {
         const em = employmentMeta(r.employmentStatus);
@@ -516,7 +553,8 @@ function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router,
       })()}
       {fields.flatMap((f: FieldDef) => [
         <td key={f.key} className="px-3 py-2.5">
-          <Cell r={r} f={f} ar={ar} t={t} canEdit={canEdit} onSaved={onSaved} notify={notify} />
+          <MasterCell id={r._id} f={f} raw={r.values[f.key]} st={r.statuses[f.key]} choices={choices}
+            ar={ar} canEdit={canEdit} onSaved={onSaved} notify={notify} />
         </td>,
         // المدّةُ تُحسَب عند القراءة — راجع daysUntil. و«بلا تاريخ» تبقى فارغةً
         // لا صفرًا: الصفرُ يعني «ينتهي اليوم» وهو خبرٌ آخر.
@@ -535,100 +573,9 @@ function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router,
           {r.daysRemaining == null ? <span className="text-slate-500">—</span> : daysText(r.daysRemaining, ar)}
         </td>
       )}
-      {/* الأفعال الثلاثة في عمودٍ واحد. التجديد يبقى أوّلها في المستندات لأنّه
-          أكثرها تكرارًا، والتفريغ آخرها وحده بلونٍ يقول إنّه لا يُشبه ما قبله. */}
-      {canEdit && (
-        <td className="px-3 py-2.5">
-          <div className="inline-flex items-center gap-1">
-            {sel && (
-              <button onClick={() => onRenew(r)} title={t('تجديد', 'Renew')}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold">
-                <RefreshCw className="w-3.5 h-3.5" />{t('تجديد', 'Renew')}
-              </button>
-            )}
-            <button onClick={() => onEdit(r)} title={t('تعديل بيانات المجموعة', 'Edit this group’s data')}
-              className="p-1.5 rounded-md text-slate-600 hover:text-[#f37121] hover:bg-slate-100">
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => onClear(r)} title={t('تفريغ بيانات المجموعة', 'Clear this group’s data')}
-              className="p-1.5 rounded-md text-slate-600 hover:text-red-600 hover:bg-red-50">
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </td>
-      )}
     </tr>
   );
 }
-
-/** خانة واحدة — بتعرض القيمة، أو «مطلوب» بلون واضح، والضغط بيفتحها للكتابة. */
-function Cell({ r, f, ar, t, canEdit, onSaved, notify }: any) {
-  const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState('');
-  const [busy, setBusy] = useState(false);
-  const st = r.statuses[f.key];
-  const raw = r.values[f.key];
-
-  const start = () => {
-    if (!canEdit) return;
-    // التاريخ غير المقروء («مطلوب» مكتوبةً في خانة تاريخ) كان يرمي استثناءً هنا
-    // فيُسقِط الجدول كلَّه بدل أن تُفتَح الخانة فارغةً لتُصحَّح.
-    setVal(f.type === 'date' ? toDateInput(raw) : (raw ?? ''));
-    setEditing(true);
-  };
-
-  const save = async () => {
-    setBusy(true);
-    try {
-      await updateEmployeeFields(r._id, { [f.key]: val });
-      notify(ar ? 'تم الحفظ' : 'Saved', 'success');
-      setEditing(false);
-      onSaved();
-    } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setBusy(false); }
-  };
-
-  if (editing) {
-    return (
-      <span className="inline-flex items-center gap-1">
-        <input type={f.type === 'date' ? 'date' : 'text'} value={val} autoFocus
-          onChange={(e) => setVal(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
-          className="w-32 px-2 py-1 rounded border border-[#f37121] text-[12px] text-center" />
-        <button onClick={save} disabled={busy} className="p-1 rounded bg-emerald-50 text-emerald-700"><Check className="w-3.5 h-3.5" /></button>
-        <button onClick={() => setEditing(false)} className="p-1 rounded text-slate-600 hover:text-slate-900"><X className="w-3.5 h-3.5" /></button>
-      </span>
-    );
-  }
-
-  // «مطلوب» بلون واضح — دي مش قيمة فاضية، دي شغل مطلوب.
-  if (st === 'required') {
-    return (
-      <button onClick={start} disabled={!canEdit}
-        className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[11px] font-semibold hover:bg-red-200 disabled:hover:bg-red-100">
-        {t('مطلوب', 'Required')}
-      </button>
-    );
-  }
-  // «غير مطلوب» برضه بيتفتح للكتابة — الملف بيقول إنها ما بتنطبقش، لكن لو
-  // الواقع اتغيّر (الموظف طلّع الرخصة) لازم تتكتب من نفس المكان من غير ما حد
-  // يخرج من الجدول.
-  if (st === 'not_required' || st === 'none' || st === 'cash_payroll') {
-    return (
-      <button onClick={start} disabled={!canEdit}
-        className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${statusMeta(st).bg} ${canEdit ? 'hover:ring-1 hover:ring-slate-400' : ''}`}
-        title={canEdit ? (ar ? 'اضغط للكتابة' : 'Click to fill') : ''}>
-        {statusLabel(st, ar)}
-      </button>
-    );
-  }
-  return (
-    <button onClick={start} disabled={!canEdit}
-      className="text-[13px] text-slate-900 hover:text-[#f37121] disabled:hover:text-slate-900 whitespace-nowrap">
-      {f.type === 'date' ? fmtDate(raw) : (raw || '—')}
-    </button>
-  );
-}
-
 
 // ── تجديد مستند واحد ─────────────────────────────────────────────────────────
 //

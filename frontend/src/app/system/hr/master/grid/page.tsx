@@ -11,11 +11,21 @@
  * ── وكلُّ تاريخٍ بوجهين ──────────────────────────────────────────────────
  * بجانب كلّ تاريخٍ ميلاديٍّ عمودٌ هجريٌّ يُحسَب — والمحفوظُ ميلاديٌّ وحدَه،
  * فلا يفترق الوجهان. راجع lib/hijri.
+ *
+ * ── ويُعدَّل في مكانه ───────────────────────────────────────────────────────
+ * كلُّ خانةٍ من حقول الموظّف تُفتح بالضغط (MasterCell — الخانةُ نفسُها في صفحات
+ * المجموعات)، والحفظُ يبثّ `hr:master` و`hr:employee` فتتحدّث بقيّةُ القسم. أمّا
+ * الهجريُّ والأيّامُ وعددُ العهد فمشتقّةٌ لا تُكتب. وفتحُ الملفّ صار زرًّا في عمود
+ * الإجراءات — الضغطُ على الصفّ كلِّه كان يسرق الضغطةَ من الخانة.
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
+import { useAuth } from '@/context/AuthContext';
+import { canEditSection } from '@/lib/sections';
+import MasterCell, { type Choices } from '@/components/hr/MasterCell';
+import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
@@ -27,9 +37,9 @@ import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/l
 import { printTable } from '@/utils/printTable';
 import { gregorianToHijri } from '@/lib/hijri';
 import { isExpiryField, daysColLabel, daysUntil } from '@/lib/hrMaster';
-import { LayoutGrid, Printer, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutGrid, Printer, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 
-type Col = { key: string; ar: string; en: string; type: string; group: string; groupAr: string; groupEn: string };
+type Col = { key: string; ar: string; en: string; type: string; group: string; groupAr: string; groupEn: string; choice?: boolean; cashPayroll?: boolean };
 type Row = {
   _id: string; employeeNumber: string; name: string; employmentStatus: string;
   custodyCount: number; values: Record<string, any>; statuses: Record<string, string>;
@@ -42,8 +52,15 @@ export default function HrMasterGridPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
-  const router = useRouter();
   const { notify } = useDialog();
+  const { user } = useAuth();
+  const canEdit = ['super_admin', 'admin', 'hr_manager', 'hr_specialist'].includes((user as any)?.role)
+    || canEditSection((user as any)?.permissions, 'HR');
+  // الإجراءات، الرقم الوظيفيّ، الاسم، الهويّة — ثابتةٌ على اليمين.
+  const pin = usePinnedColumns(4);
+  const [choices, setChoices] = useState<Choices>({});
+  const loadChoices = useCallback(() => { api.get<{ choices: Choices }>('/api/hr/master/choices').then((d) => setChoices(d.choices || {})).catch(() => {}); }, []);
+  useEffect(() => { loadChoices(); }, [loadChoices]);
 
   const [rows, setRows] = useState<Row[]>([]);
   const [cols, setCols] = useState<Col[]>([]);
@@ -88,19 +105,21 @@ export default function HrMasterGridPage() {
   }, [load]);
   useEffect(() => { setPage(1); }, [q, colFilters]);
   // كلُّ تعديلٍ في أيّ شاشةٍ في القسم يصل هنا — والعكس. راجع hr:master.
-  useSocket('hr:master', useCallback(() => load(), [load]));
+  useSocket('hr:master', useCallback(() => { load(); loadChoices(); }, [load, loadChoices]));
+  useSocket('hr:employee', useCallback(() => load(), [load]));
 
   // ── الأعمدة: كلُّ حقلٍ، وبجانب كلّ تاريخٍ هجريُّه ──────────────────────
   const allCols = useMemo(() => {
     const base: { key: string; label: string; type: string; hijriOf?: string; daysOf?: string }[] = [
       { key: 'employeeNumber', label: t('الرقم الوظيفي', 'Employee no.'), type: 'text' },
       { key: 'name', label: t('الموظف', 'Employee'), type: 'text' },
+      { key: 'iqamaNumber', label: t('رقم الهوية / الإقامة', 'ID / Iqama no.'), type: 'text' },
     ];
     // ── والعمودُ المثبَّتُ لا يُعرَض مرّةً ثانيةً في القائمة ──────────────────
     // الرقمُ الوظيفيُّ والاسمُ مثبَّتان أعلاه، ويعودان في أعمدة الخادم باسمَي
     // `employeeNumber` و`arabicName` — فيظهران مرّتين في قائمة الاختيار،
     // ويُعلَّم عليهما فيتكرّران في الجدول وفي الملفّ.
-    const PINNED = new Set(['employeeNumber', 'arabicName', 'name']);
+    const PINNED = new Set(['employeeNumber', 'arabicName', 'name', 'iqamaNumber']);
     for (const c of cols) {
       if (PINNED.has(c.key)) continue;
       base.push({ key: c.key, label: ar ? c.ar : c.en, type: c.type });
@@ -127,14 +146,18 @@ export default function HrMasterGridPage() {
     return [{ name: t('الماستر', 'Master'), rows: (d.rows || []) as any, columns: exportCols }];
   };
 
-  const chooserCols: ChooserColumn[] = allCols.map((c, i) => ({ key: c.key, label: c.label, locked: i < 2 }));
+  const chooserCols: ChooserColumn[] = allCols.map((c, i) => ({ key: c.key, label: c.label, locked: i < 3 }));
   const { visible, setVisible } = useVisibleColumns('hr:master:grid:cols', chooserCols);
-  const shown = allCols.filter((c) => visible.includes(c.key));
+  // الثلاثةُ الأولى ثابتةٌ دائمًا — حتّى لو حُفظ اختيارٌ قديمٌ قبل تثبيت الهويّة.
+  const shown = allCols.filter((c, i) => i < 3 || visible.includes(c.key));
+  // الحقلُ الذي يُعدَّل: عمودٌ من أعمدة الخادم، لا مشتقٌّ (هجريّ، أيّام، عهد).
+  const colMap = useMemo(() => new Map(cols.map((c) => [c.key, c])), [cols]);
 
   const cellOf = (r: Row, c: typeof allCols[number]) => {
     if (c.key === 'employeeNumber') return r.employeeNumber || '—';
     if (c.key === 'name') return r.name || '—';
     if (c.key === 'custodyCount') return r.custodyCount || 0;
+    if (c.key === 'iqamaNumber') return r.values.iqamaNumber || r.values.nationalId || '';
     if (c.hijriOf) return gregorianToHijri(r.values[c.hijriOf]) || '';
     // الأيّامُ تُحسَب عند القراءة — راجع daysUntil. والفارغُ يبقى فارغًا لا صفرًا:
     // «بلا تاريخ» غيرُ «ينتهي اليوم».
@@ -220,8 +243,9 @@ export default function HrMasterGridPage() {
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
-                {shown.map((c) => (
-                  <th key={c.key} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
+                <th {...pin.th(0, 'px-3 py-2.5 text-center font-semibold whitespace-nowrap')}>{t('إجراءات', 'Actions')}</th>
+                {shown.map((c, i) => (
+                  <th key={c.key} {...(i < 3 ? pin.th(i + 1, 'px-3 py-2.5 text-start font-semibold whitespace-nowrap') : { className: 'px-3 py-2.5 text-start font-semibold whitespace-nowrap' })}>
                     <span className="inline-flex items-center">
                       {c.label}
                       <ColumnFilter
@@ -242,15 +266,38 @@ export default function HrMasterGridPage() {
             </thead>
             <tbody>
               {rows.length === 0 ? (
-                <tr><td colSpan={shown.length} className="px-4 py-12 text-center text-slate-400">{t('لا نتائج', 'No results')}</td></tr>
+                <tr><td colSpan={shown.length + 1} className="px-4 py-12 text-center text-slate-400">{t('لا نتائج', 'No results')}</td></tr>
               ) : rows.map((r) => (
-                <tr key={r._id} className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer"
-                  onClick={() => router.push(`/system/hr/employees/${r._id}`)}>
-                  {shown.map((c) => {
+                <tr key={r._id} className="group border-b border-slate-100 hover:bg-slate-50">
+                  <td {...pin.td(0, 'px-3 py-2 text-center')}>
+                    <Link href={`/system/hr/employees/${r._id}`} title={t('فتح ملف الموظف', 'Open profile')}
+                      className="inline-flex p-1.5 rounded-md text-slate-600 hover:text-[#f37121] hover:bg-slate-100">
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </Link>
+                  </td>
+                  {shown.map((c, i) => {
                     const st = r.statuses[c.hijriOf || c.key];
+                    const field = colMap.get(c.key);
+                    const tone = st === 'required' ? 'bg-red-50/60 text-red-700' : st === 'not_required' ? 'text-slate-300' : 'text-slate-700';
+                    const cls = `px-3 py-2 whitespace-nowrap ${i < 3 ? '' : tone}`;
+                    const props = i < 3 ? pin.td(i + 1, cls) : { className: cls };
+                    if (c.key === 'name') {
+                      return (
+                        <td key={c.key} {...props}>
+                          <Link href={`/system/hr/employees/${r._id}`} className="font-semibold text-slate-900 hover:text-[#f37121]">{r.name || '—'}</Link>
+                        </td>
+                      );
+                    }
+                    if (field && canEdit) {
+                      return (
+                        <td key={c.key} {...props}>
+                          <MasterCell id={r._id} f={field} raw={r.values[c.key]} st={st} choices={choices}
+                            ar={ar} canEdit={canEdit} onSaved={load} notify={notify} compact />
+                        </td>
+                      );
+                    }
                     return (
-                      <td key={c.key}
-                        className={`px-3 py-2 whitespace-nowrap ${st === 'required' ? 'bg-red-50/60 text-red-700' : st === 'not_required' ? 'text-slate-300' : 'text-slate-700'}`}>
+                      <td key={c.key} {...props}>
                         {st === 'not_required' ? '—' : (String(cellOf(r, c) ?? '') || <span className="text-slate-300">—</span>)}
                       </td>
                     );

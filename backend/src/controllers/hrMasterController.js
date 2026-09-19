@@ -91,10 +91,14 @@ const asBool = (v) => {
 function buildFilter(q) {
   // سجلات حسابات الدخول التلقائية مش موظفين — بتخرج من كل عدّاد وكل قايمة هنا.
   const f = { isHrRecord: { $ne: false } };
-  // النطاق الافتراضي = **الملف الوظيفي الحالي** (٣٧٨ صف الماستر). اللي خرج قبل
-  // كده سجله محفوظ كتاريخ ومش بيتعدّ مع الموظفين، وإلا «عدد الموظفين» بيبقى
-  // رقم مالوش معنى. `scope=all` بيرجّع كل حاجة بالتاريخ.
-  if (q.scope !== 'all') f.inCurrentMaster = true;
+  // ── الماستر يشمل كلَّ موظّف ─────────────────────────────────────────────
+  // كان النطاقُ الافتراضيّ «مَن في ملفّ الماستر المستورَد» (`inCurrentMaster`)،
+  // وهي علامةٌ يضعها الاستيرادُ وحدَه. فكلُّ موظّفٍ أُضيف من صفحة الموظّفين بعد
+  // الاستيراد كان يظهر هناك ويغيب هنا — لا يُعدّ ولا يُوجد بالبحث باسمه ولا
+  // بإقامته. والماستر هو الصورةُ الشاملة للقسم، فيقرأ ما تقرؤه صفحةُ الموظّفين
+  // بالضبط، وحالةُ التوظيف (على رأس العمل / منتهي) فلترٌ لا نطاق.
+  // `scope=master` يُبقي القراءةَ القديمة لمن يحتاجها.
+  if (q.scope === 'master') f.inCurrentMaster = true;
   // حالة التوظيف تُقرأ من `employment`. كان اسمها `status`، وهو الاسم نفسه الذي
   // تستعمله صفحة المجموعة لحالة الخانة (مطلوب/غير مطلوب) — فكان «جدة + على رأس
   // العمل» يصل إلى الجدول فيُقرأ «حالة خانة اسمها active» فيُرجع صفرًا. الاسم
@@ -785,6 +789,7 @@ exports.grid = async (req, res) => {
       // يُضاف في `config/hrFields` يظهر هنا بلا تعديلٍ في الواجهة.
       columns: H.GROUPS.flatMap((g) => g.fields.map((f) => ({
         key: f.key, ar: f.ar, en: f.en, type: f.type, group: g.key, groupAr: g.ar, groupEn: g.en,
+        choice: !!f.choice, cashPayroll: !!f.cashPayroll,
       }))),
     };
     cache.set(ck, body, 30000);
@@ -872,6 +877,12 @@ exports.updateFields = async (req, res) => {
 
     await emp.save();   // pre-save بيشيل «مطلوب» عن أي حقل اتملى
 
+    // ── وبطاقةُ السائق تُكتب في سجلّ المركبات ─────────────────────────────
+    // السجلُّ هناك هو المرجع؛ ما يُعدَّل هنا يُكتب فيه ثمّ تعود لقطتُه منه.
+    if (['driverCardNumber', 'driverCardExpiry', 'driverCardType'].some((k) => k in applied)) {
+      try { await require('../utils/driverCardSync').pushEmployeeToCard(emp, { userId: req.user?._id, emit: false }); } catch (e) { console.error('HR → driver card:', e.message); }
+    }
+
     logAudit({
       user: req.user, action: 'update_employee_fields', entity: 'Employee', entityId: emp._id,
       changes: { after: applied }, ipAddress: req.ip,
@@ -952,6 +963,35 @@ exports.expiring = async (req, res) => {
 };
 
 /** تعريف المجموعات والحقول — الواجهة بتبني منه الصفحات والفلاتر. */
+/**
+ * GET /master/choices — قيمُ كلّ حقلِ اختيارٍ كما هي مستعمَلةٌ في الملفّ.
+ *
+ * نوعُ الرخصة والبنك وحالةُ التأمين كانت نصًّا حرًّا، فكُتب البنكُ الواحد
+ * بخمس صيغ («الراجحي»، «مصرف الراجحي»، «Al Rajhi»…) وصار الفلترُ خمسَ قيمٍ لشيءٍ
+ * واحد. القائمةُ تُبنى من القيم الموجودة فعلًا (فلا تخترع مفرداتٍ لا يعرفها
+ * أحد)، وتُرتَّب بالأكثر استعمالًا، ويبقى للكاتب أن يضيف قيمةً جديدة.
+ */
+exports.choices = async (req, res) => {
+  try {
+    const body = await cache.wrap('hrm:choices', 60000, async () => {
+      const fields = H.ALL_FIELDS.filter((f) => f.choice);
+      const rows = await Employee.find({ isHrRecord: { $ne: false } }).select(fields.map((f) => f.key).join(' ')).lean();
+      const out = {};
+      for (const f of fields) {
+        const counts = new Map();
+        for (const r of rows) {
+          const v = String(r[f.key] ?? '').trim();
+          if (!v || /^(مطلوب|غير مطلوب|لا يوجد|لايوجد|-|—)$/.test(v)) continue;
+          counts.set(v, (counts.get(v) || 0) + 1);
+        }
+        out[f.key] = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([value, count]) => ({ value, count }));
+      }
+      return { choices: out };
+    });
+    res.json(body);
+  } catch (e) { res.status(500).json({ message: 'تعذّر تحميل القوائم' }); }
+};
+
 exports.fieldConfig = (req, res) => {
   res.json({
     groups: H.GROUPS.map((g) => ({
@@ -1011,6 +1051,10 @@ exports.renew = async (req, res) => {
     const docNum = String(req.body.documentNumber ?? '').trim();
     if (map.number && docNum) emp[map.number] = docNum;
     await emp.save();
+    // تجديدُ بطاقة السائق من الموارد البشريّة يُكتب في سجلّ المركبات كذلك.
+    if (resolved?.key === 'driverCard' || /driverCard/.test(String(resolved?.expiry || ''))) {
+      try { await require('../utils/driverCardSync').pushEmployeeToCard(emp, { userId: req.user?._id, emit: false }); } catch (e) { console.error('HR renew → driver card:', e.message); }
+    }
 
     const renewal = await EmployeeRenewal.create({
       employee: emp._id, docType: key,
@@ -1079,6 +1123,9 @@ exports.renewBulk = async (req, res) => {
       p.emp[p.map.expiry] = p.newExpiry;
       if (p.map.number && p.documentNumber) p.emp[p.map.number] = p.documentNumber;
       await p.emp.save();
+      if (/driverCard/.test(JSON.stringify(p.resolved || p.map || {}))) {
+        try { await require('../utils/driverCardSync').pushEmployeeToCard(p.emp, { userId: req.user?._id, emit: false }); } catch (e) { console.error('HR bulk renew → driver card:', e.message); }
+      }
       history.push({
         employee: p.emp._id, docType: p.key,
         previousExpiry, newExpiry: p.newExpiry, documentNumber: p.documentNumber,

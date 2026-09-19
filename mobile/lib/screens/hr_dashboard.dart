@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
@@ -22,6 +23,18 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
   void initState() {
     super.initState();
     _load();
+    // تعديلُ الماستر أو ملفّ الموظّف أو بطاقةِ السائق من المركبات يصل هنا فورًا.
+    Live.instance.on('hr:master', _onLive);
+    Live.instance.on('hr:employee', _onLive);
+  }
+
+  void _onLive() => _load();
+
+  @override
+  void dispose() {
+    Live.instance.off('hr:master', _onLive);
+    Live.instance.off('hr:employee', _onLive);
+    super.dispose();
   }
 
   Future<void> _load() async {

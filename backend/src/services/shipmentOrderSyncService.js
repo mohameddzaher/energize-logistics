@@ -94,6 +94,30 @@ async function upsertPlatformShipments(items) {
   if (!Array.isArray(items) || !items.length) return { created: 0, updated: 0 };
   const ShipmentOrder = require('../models/ShipmentOrder');
   const mapped = items.map(mapShipment).filter((m) => m.externalId);
+  // ── اسمُ العميل المعتمَد لا الوارد ──────────────────────────────────────
+  // حمولةٌ قديمةٌ تحمل صيغةَ الاسم قبل تصحيحه تعيد القديمَ فوق الصحيح. فيُردّ
+  // كلُّ اسمٍ إلى اسم طرف التحصيل المعتمَد بصيغه البديلة — راجع
+  // utils/renameOpsCustomer و opsWorkflowSyncService.
+  try {
+    const CollectionsParty = require('../models/CollectionsParty');
+    const { fold } = CollectionsParty;
+    const cache = require('../utils/ttlCache');
+    const canon = await cache.wrap('so:canonicalCustomerName', 60000, async () => {
+      const rows = await CollectionsParty.find({ kind: 'customer', isActive: { $ne: false } })
+        .select('name nameKey aliasKeys').lean();
+      const out = {};
+      for (const p of rows) {
+        const nm = String(p.name || '').trim();
+        if (!nm) continue;
+        for (const k of [p.nameKey || fold(nm), ...(p.aliasKeys || [])]) if (k && !out[k]) out[k] = nm;
+      }
+      return out;
+    });
+    for (const m2 of mapped) {
+      const c = canon[fold(m2.customerName || '')];
+      if (c) m2.customerName = c;
+    }
+  } catch (_) { /* الاسمُ كما ورد */ }
   if (!mapped.length) return { created: 0, updated: 0 };
 
   const ids = mapped.map((m) => m.externalId);

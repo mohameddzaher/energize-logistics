@@ -16,10 +16,17 @@
  *     دورةُ المزامنة الشاملة (المزامنةُ تكتب الاسمَ من المنصّة في كلّ مرور،
  *     فالقيمتان تتّفقان على كلّ حال).
  *
- * ولا يُمسّ اسمُ الفاتورة المحفوظ في الدفتر (`CollectionInvoice.partyName`):
- * هو لقطةٌ لما كُتب على الورقة يومَ صدرت، والربطُ الحقيقيّ بالمعرّف والكود.
+ * ── وكلُّ مكانٍ يُكتب فيه اسمُ العميل ────────────────────────────────────────
+ * الاسمُ مكتوبٌ نصًّا في أكثر من سجلّ: كشوفُ التشغيل، وطلباتُ الشحنات، وحمولاتُ
+ * الأسطول، وأطرافُ التخليص ومعاملاتُها، واسمُ الطرف على فاتورة الدفتر. وتصحيحٌ
+ * في موضعٍ دون البقيّة يجعل العميلَ الواحد صفَّين في شاشةٍ وصفًّا في أخرى.
+ * فيُصحَّح في كلّها بنداءٍ واحد.
+ *
+ * واسمُ الطرف على الفاتورة يُصحَّح كذلك: هو اسمُ صاحبها لا نصُّ الورقة، والورقةُ
+ * محفوظةٌ بمرفقها ورقمها.
  */
 const fold = (v) => require('../models/CollectionsParty').fold(v);
+const S = (v) => String(v ?? '').trim();
 
 async function renameOpsCustomer(oldName, newName) {
   const from = String(oldName || '').trim();
@@ -40,8 +47,10 @@ async function renameOpsCustomer(oldName, newName) {
     kind: 'customer', isActive: { $ne: false }, $or: [{ nameKey: newKey }, { aliasKeys: newKey }],
   });
 
-  if (current && target && String(current._id) !== String(target._id)) {
-    // الاسمُ الجديد لطرفٍ قائم: يُضاف القديمُ صيغةً له، ويُعطَّل المكرَّر.
+  const sameCode = current && target && S(current.code) && S(current.code) === S(target.code);
+  if (current && target && String(current._id) !== String(target._id) && (!S(current.code) || sameCode)) {
+    // الاسمُ الجديد لطرفٍ قائم، والقديمُ **بلا كودٍ خاصّ**: يُضاف اسمُه صيغةً
+    // للحساب ويُعطَّل المكرَّر — فلا يبقى سجلّان لعميلٍ واحد.
     await CollectionsParty.updateOne({ _id: target._id }, {
       $addToSet: { aliases: from, aliasKeys: oldKey },
     });
@@ -50,6 +59,18 @@ async function renameOpsCustomer(oldName, newName) {
     });
     out.party = String(target._id);
     out.merged = true;
+  } else if (current && target && String(current._id) !== String(target._id)) {
+    // ── وحسابٌ له كودُه لا يُدمَج في آخر ──────────────────────────────────
+    // الشركةُ الواحدة قد تحمل حسابين: نقديًّا (Cxxxx) وضريبيًّا (1104xxxx)،
+    // لكلٍّ رصيدُه ومهلتُه وفواتيرُه. ودمجُهما لاتّفاق الاسم يُخفي حسابًا
+    // بفواتيره — وقد وقع: سبعةٌ وثلاثون حسابًا وألفٌ وأربعَ عشرةَ فاتورة.
+    // فيُصحَّح اسمُه ويبقى حسابًا قائمًا بكوده، والقديمُ صيغةٌ له.
+    await CollectionsParty.updateOne({ _id: current._id }, {
+      $set: { name: to, nameKey: newKey },
+      $addToSet: { aliases: from, aliasKeys: oldKey },
+    });
+    out.party = String(current._id);
+    out.keptSeparate = S(current.code);
   } else if (current) {
     await CollectionsParty.updateOne({ _id: current._id }, {
       $set: { name: to, nameKey: newKey },
@@ -61,9 +82,51 @@ async function renameOpsCustomer(oldName, newName) {
     out.party = String(target._id);
   }
 
-  // الكشوفُ المحفوظة بالاسم القديم — تُكتب بالجديد الآن لا بعد دورة مزامنة.
-  const r = await OperationsWorkflow.updateMany({ username: from }, { $set: { username: to } });
-  out.sheets = r.modifiedCount || 0;
+  // ── كلُّ صيغِ الاسم لا الحرفيّةَ وحدَها ────────────────────────────────────
+  // الكشوفُ تحمل الاسمَ كما كُتب يومَها: «شركه شحن» و«شركة شحن». والمطابقةُ
+  // الحرفيّة تترك الباقي — أربعةُ آلافٍ منها بقيت في أوّل تشغيل.
+  const variantsOf = async (coll, field) => {
+    const names = await coll.distinct(field);
+    return (names || []).filter((n) => n && fold(n) === oldKey && n !== to);
+  };
+
+  const wfNames = await variantsOf(OperationsWorkflow, 'username');
+  if (wfNames.length) {
+    const r = await OperationsWorkflow.updateMany({ username: { $in: wfNames } }, { $set: { username: to } });
+    out.sheets = r.modifiedCount || 0;
+  }
+
+  // بقيّةُ المواضع — كلٌّ باسم حقله.
+  const also = [
+    ['ShipmentOrder', 'customerName', 'shipmentOrders'],
+    ['FleetModels', 'customerName', 'fleetShipments', 'FleetShipment'],
+    ['CustomsParty', 'name', 'customsParties'],
+    ['CustomsClearance', 'customerName', 'customsClearances'],
+  ];
+  for (const [modelName, field, key, exportName] of also) {
+    try {
+      const Model = require(`../models/${modelName}`);
+      const M = Model[exportName || modelName] || Model;
+      if (!M || typeof M.distinct !== 'function') continue;
+      const names = (await M.distinct(field)).filter((n) => n && fold(n) === oldKey && n !== to);
+      if (!names.length) continue;
+      const r = await M.updateMany({ [field]: { $in: names } }, { $set: { [field]: to } });
+      out[key] = r.modifiedCount || 0;
+    } catch (_) { /* سجلٌّ غيرُ موجودٍ في هذه النسخة */ }
+  }
+
+  // واسمُ الطرف على فواتير الدفتر — لمن ربطُه بهذا الطرف أو باسمه القديم.
+  try {
+    const CollectionInvoice = require('../models/CollectionInvoice');
+    const names = (await CollectionInvoice.distinct('partyName')).filter((n) => n && fold(n) === oldKey && n !== to);
+    const or = [];
+    if (names.length) or.push({ partyName: { $in: names } });
+    if (out.party) or.push({ party: out.party });
+    if (or.length) {
+      const r = await CollectionInvoice.updateMany({ $or: or }, { $set: { partyName: to } });
+      out.invoices = r.modifiedCount || 0;
+    }
+  } catch (_) { /* */ }
 
   try {
     const cache = require('./ttlCache');

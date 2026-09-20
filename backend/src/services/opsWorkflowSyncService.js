@@ -118,6 +118,35 @@ function mapShipment(s) {
  * تُمسَح حين يُغيَّر نوعُ عميلٍ من تلك الصفحة، فتسري الصفةُ الجديدة على أوّل
  * مزامنةٍ بعدها بلا انتظار.
  */
+/**
+ * ── والاسمُ الوارد يُردّ إلى اسمِ العميل المعتمَد ──────────────────────────
+ *
+ * اسمُ العميل يُصحَّح في المنصّة (أو من شاشة العملاء عندنا)، ويبقى في حمولاتٍ
+ * قديمةٍ بصيغته الأولى — فتأتي المزامنةُ بالقديم وتكتبه فوق الصحيح. وقد وقع:
+ * أربعةُ آلافٍ وثلاثُمئةٍ وستّةٌ وتسعون كشفًا عادت إلى أسمائها القديمة بعد
+ * مطابقة الأسماء.
+ *
+ * فكلُّ اسمٍ يمرّ على أسماء أطراف التحصيل وصيغِها البديلة (`aliasKeys` — وفيها
+ * الاسمُ القديم لكلّ من أُعيدت تسميتُه، راجع utils/renameOpsCustomer): إن عُرف
+ * كُتب الاسمُ المعتمَد، وإلّا بقي كما جاء. فالتصحيحُ يثبت ولا يُدهَس، وصيغُ
+ * الاسم الواحد تجتمع على صفٍّ واحدٍ في كلّ شاشة.
+ */
+async function canonicalNameMap() {
+  return cache.wrap('wf:canonicalCustomerName', 60000, async () => {
+    const CollectionsParty = require('../models/CollectionsParty');
+    const rows = await CollectionsParty.find({ kind: 'customer', isActive: { $ne: false } })
+      .select('name nameKey aliasKeys').lean();
+    const out = {};
+    for (const p of rows) {
+      const name = String(p.name || '').trim();
+      if (!name) continue;
+      const keys = [p.nameKey || CollectionsParty.fold(name), ...(p.aliasKeys || [])];
+      for (const k of keys) if (k && !out[k]) out[k] = name;
+    }
+    return out;
+  });
+}
+
 async function customerTypeMap() {
   return cache.wrap('wf:paymentTypeByCustomer', 60000, async () => {
     const CollectionsParty = require('../models/CollectionsParty');
@@ -148,10 +177,14 @@ async function upsertShipments(ships) {
   // إن قالتها المنصّةُ عن هذه الحمولة (وهو الاستثناءُ الوحيد). راجع
   // utils/paymentType.
   const typeByCustomer = await customerTypeMap();
+  const canonicalName = await canonicalNameMap();
   const { fold } = require('../models/CollectionsParty');
 
   const ops = live.map((s) => {
     const { set, setOnInsert } = mapShipment(s);
+    // الاسمُ المعتمَد لا الوارد — راجع canonicalNameMap.
+    const canon = canonicalName[fold(set.username || '')];
+    if (canon) set.username = canon;
     // ── النوعُ يُشتقّ بالقاعدة كاملةً ────────────────────────────────────────
     // صفةُ العميل، وتنقضها طريقةُ الدفع النقديّة للكشوف الجديدة وحدَها، وتعلوهما
     // فاتورةٌ صادرة. راجع utils/paymentType — والقياسُ على `reportDate` لأنّ

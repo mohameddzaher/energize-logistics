@@ -43,8 +43,17 @@ const partsOf = (key) => {
 const validKey = (k) => /^\d{4}-\d{2}-\d{2}$/.test(String(k || ''));
 
 /** أنواعُ صور الخروج — كلُّ خروجٍ يحتاجها الثلاثة. */
-const PHOTO_KINDS = ['rep', 'vehicle', 'box'];
-const PHOTO_KIND_AR = { rep: 'صورة المندوب', vehicle: 'صورة الدبّاب', box: 'صورة البوكس' };
+// ── ثلاثٌ تُطلَب، ورابعةٌ ليوم الخميس ──────────────────────────────────────
+// صورُ المندوب والدبّاب والبوكس شرطُ بدء الدوام — بها تُقارَن المركبةُ إن رجعت
+// مكسورة. و«المحتوى الإعلاني» غيرُها: لقطةٌ للملصق على الدبّاب تُطلَب أسبوعيًّا
+// يوم الخميس، فليست شرطًا لبدء الدوام ولا تُقبَل في غير يومها — وإلّا صارت
+// «صورةَ أيّ يوم» ولا يُعرف أسبوعُها. وتتكرّر: الملصقُ أكثرُ من وجه.
+const REQUIRED_PHOTO_KINDS = ['rep', 'vehicle', 'box'];
+const AD_KIND = 'ad';
+const PHOTO_KINDS = [...REQUIRED_PHOTO_KINDS, AD_KIND];
+const PHOTO_KIND_AR = { rep: 'صورة المندوب', vehicle: 'صورة الدبّاب', box: 'صورة البوكس', ad: 'المحتوى الإعلاني' };
+/** الخميس = ٤ (الأحد صفر). يُقرأ من مفتاح اليوم نفسِه لا من ساعة الخادم. */
+const isThursday = (dateKey) => new Date(`${dateKey}T12:00:00Z`).getUTCDay() === 4;
 
 const populate = (q) => q
   .populate('rep', 'englishName arabicName repId phone')
@@ -143,13 +152,19 @@ exports.submit = async (req, res) => {
         ...(prior?.photos || []).map((p) => p.kind || 'vehicle'),
         ...photos.map((p) => p?.kind).filter((k) => PHOTO_KINDS.includes(k)),
       ]);
-      const lacking = PHOTO_KINDS.filter((k) => !have.has(k));
+      const lacking = REQUIRED_PHOTO_KINDS.filter((k) => !have.has(k));
       if (lacking.length) {
         return res.status(400).json({ message: `لا بدّ من ${lacking.map((k) => PHOTO_KIND_AR[k]).join(' و')} لتسجيل بدء الدوام` });
       }
     }
 
-    for (const p of photos.slice(0, 6)) {
+    // صورةُ المحتوى الإعلانيّ لا تُقبَل في غير الخميس — يُقال ولا تُحفَظ صامتة.
+    if (photos.some((p) => p?.kind === AD_KIND) && !isThursday(dateKey)) {
+      return res.status(400).json({ message: 'صور المحتوى الإعلاني تُضاف يوم الخميس فقط' });
+    }
+
+    // الثلاثُ المطلوبة، ومعها ما يُضاف من صور المحتوى — فحدُّها أوسع.
+    for (const p of photos.slice(0, 12)) {
       const src = String(p?.dataUrl || '');
       if (!src.startsWith('data:image/')) {
         return res.status(400).json({ message: 'الصورة يجب أن تُلتقَط من الكاميرا' });

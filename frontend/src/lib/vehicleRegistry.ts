@@ -325,6 +325,8 @@ export interface ExpiringRow {
   chassisNumber?: string; serialNumber?: string; registrationTypeAr?: string; colorAr?: string;
   /** المفوَّضُ على المركبة، أو صاحبُ بطاقة السائق في صفّها. */
   holder?: string; driverCardNumber?: string;
+  /** صفُّ بطاقة سائق: لا مركبةَ له، ويُجدَّد بمعرّف البطاقة. */
+  driverCardId?: string;
   docKey: string; docAr: string; docEn: string;
   expiryDate: string | null; daysRemaining: number | null; state: string; statusCode: string;
   reference?: string; company?: string;
@@ -401,6 +403,8 @@ export const getExpiring = (q: Record<string, string | number | undefined> = {})
  */
 export const renewDocument = (vehicleId: string, body: {
   document: string; newExpiry: string; documentNumber?: string;
+  // بطاقةُ السائق تُجدَّد بمعرّفها — لا مركبةَ لها تُنسَب إليها.
+  driverCardId?: string; startDate?: string;
   cost?: number | null; reference?: string; note?: string;
 }) => api.post<{ vehicle: VReg }>(`/api/vehicle-registry/${vehicleId}/renew`, body);
 
@@ -463,7 +467,7 @@ export const deleteClaim = (id: string) => api.delete(`/api/vehicle-registry/cla
 // والرقم هنا **سطريّ لا مشترك**: بطاقةُ كل مركبة تخرج برقمها هي، ورقمٌ واحد
 // يُكتب على مئةٍ منها يجعل المئة نسخةً من ورقة واحدة.
 export const renewBulk = (body: {
-  items: { vehicle: string; document: string; documentNumber?: string }[];
+  items: { vehicle: string; document: string; documentNumber?: string; driverCardId?: string }[];
   newExpiry: string; reference?: string; note?: string;
 }) => api.post<{ renewed: any[]; summary: { count: number; vehicles: number } }>(
   '/api/vehicle-registry/renew-bulk', body);

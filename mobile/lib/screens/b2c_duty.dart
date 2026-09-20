@@ -32,6 +32,12 @@ const _kinds = <String, (String, String, IconData)>{
   'box': ('صورة البوكس', 'Box photo', Icons.inventory_2_outlined),
 };
 
+/// ورابعةٌ ليوم الخميس: لقطةُ الملصق الإعلانيّ على الدبّاب. ليست شرطًا لبدء
+/// الدوام، وتقبل أكثرَ من صورة، ولا تظهر في غير يومها — والخادمُ يردّها كذلك.
+const _adKind = 'ad';
+const _adMeta = ('المحتوى الإعلاني', 'Ad content', Icons.campaign_outlined);
+bool get _isThursday => DateTime.now().weekday == DateTime.thursday;
+
 class _B2cDutyScreenState extends State<B2cDutyScreen> {
   List<Map<String, dynamic>> _reps = [];
   int _done = 0;
@@ -224,6 +230,9 @@ class _CheckSheetState extends State<_CheckSheet> {
       ((widget.rep['check'] as Map?)?['photos'] as List? ?? const [])
           .where((p) => '${(p as Map)['kind'] ?? 'vehicle'}' == kind).length;
   List<String> get _lacking => _kinds.keys.where((k) => _countOf(k) == 0).toList();
+  /// الأنواعُ المعروضة اليوم: الثلاثةُ دائمًا، والإعلانيُّ يوم الخميس.
+  Map<String, (String, String, IconData)> get _shownKinds =>
+      _isThursday ? {..._kinds, _adKind: _adMeta} : _kinds;
 
   @override
   void initState() {
@@ -326,7 +335,7 @@ class _CheckSheetState extends State<_CheckSheet> {
           const SizedBox(height: 14),
 
           if (_outcome == 'started') ...[
-            ..._kinds.entries.map((k) {
+            ..._shownKinds.entries.map((k) {
               final mine = _shots.asMap().entries.where((e) => e.value.$1 == k.key).toList();
               final n = _countOf(k.key);
               return Padding(
@@ -339,7 +348,7 @@ class _CheckSheetState extends State<_CheckSheet> {
                         backgroundColor: n > 0 ? T.success : T.orange,
                         minimumSize: const Size.fromHeight(44),
                       ),
-                      onPressed: _saving || mine.length >= 2 ? null : () => _shoot(k.key),
+                      onPressed: _saving || mine.length >= (k.key == _adKind ? 6 : 2) ? null : () => _shoot(k.key),
                       icon: Icon(n > 0 ? Icons.check_circle : k.value.$3, size: 19),
                       label: Text(tr('التقاط ${k.value.$1}', 'Capture ${k.value.$2}')),
                     ),

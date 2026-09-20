@@ -65,6 +65,13 @@ export default function VehiclesSettingsPage() {
     setAlerts((p) => ({ ...(p || {}), [k]: { ...((p || {})[k] || {} as AlertCfg), [field]: v } }));
 
   const save = async () => {
+    // الخادمُ يردّ المخالف برسالته؛ ويُقال هنا قبل النداء ليُصحَّح في مكانه.
+    const bad = Object.entries(alerts || {}).filter(([, c]: any) => c?.enabled !== false
+      && (Number(c.criticalDays) > Number(c.warnDays) || Number(c.warnDays) > Number(c.soonDays)));
+    if (bad.length) {
+      notify(t('راجع العتبات المعلَّمة بالأحمر: حرج ≤ تحذير ≤ قريب', 'Fix the rows in red: critical ≤ warning ≤ soon'), 'error');
+      return;
+    }
     setSaving(true);
     try {
       await api.put('/api/vehicle-registry/settings', { alerts });
@@ -110,6 +117,14 @@ export default function VehiclesSettingsPage() {
             {t('«قارب على الانتهاء» تبدأ من عتبة «قريب». و«تحذير» و«حرج» تغيّران اللون وحدَه كلّما اقترب الموعد — أصفر ثمّ برتقاليّ. كلُّها بالأيّام قبل الانتهاء.',
                '“Due soon” starts at the soon threshold. Warning and critical only deepen the colour as the date nears. All in days before expiry.')}
           </p>
+          {/* ── والقاعدةُ تُكتب قبل الحفظ لا بعده ────────────────────────────
+              كان ما يخالفها يُقَصّ في الخادم بلا خبر، فيقرأ صاحبُه رقمَه ولم
+              يتغيّر ويقول «الإعدادات لا تعمل». فالقاعدةُ معروضة، والصفُّ
+              المخالف يُعلَّم، والحفظُ يقف حتى يُصحَّح. */}
+          <p className="text-[12px] text-slate-600 mb-3 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+            {t('القاعدة: حرج ≤ تحذير ≤ قريب. مثال: حرج ٧، تحذير ٣٠، قريب ٩٠.',
+               'Rule: critical ≤ warning ≤ soon. Example: 7, 30, 90.')}
+          </p>
           <ScrollX>
             <table className="w-full text-sm">
               <thead className="table-head">
@@ -129,9 +144,13 @@ export default function VehiclesSettingsPage() {
                       value={(c as any)[field] ?? ''} onChange={(e) => setDoc(d.key, field, Number(e.target.value) || 0)}
                       className="w-20 px-2 py-1.5 rounded-lg border border-slate-200 text-sm text-center disabled:bg-slate-50 disabled:text-slate-400" />
                   );
+                  const bad = !!c.enabled && (Number(c.criticalDays) > Number(c.warnDays) || Number(c.warnDays) > Number(c.soonDays));
                   return (
-                    <tr key={d.key} className="border-b border-slate-100">
-                      <td className="px-3 py-2.5 font-semibold text-slate-800">{t(d.ar, d.en)}</td>
+                    <tr key={d.key} className={`border-b border-slate-100 ${bad ? 'bg-red-50' : ''}`}>
+                      <td className="px-3 py-2.5 font-semibold text-slate-800">
+                        {t(d.ar, d.en)}
+                        {bad && <span className="block text-[11px] font-normal text-red-600">{t('حرج ≤ تحذير ≤ قريب', 'critical ≤ warning ≤ soon')}</span>}
+                      </td>
                       <td className="px-3 py-2.5 text-center">
                         <input type="checkbox" checked={!!c.enabled} disabled={!canEdit}
                           onChange={(e) => setDoc(d.key, 'enabled', e.target.checked)}

@@ -15,16 +15,24 @@ import api from '@/lib/api';
 import Link from 'next/link';
 import {
   CheckCircle2, Clock, UserX, Ban, Camera, Loader2, MapPin, ShieldAlert, ClipboardList, User, Bike, Package,
+  Megaphone,
 } from 'lucide-react';
 import LiveCamera, { type Shot } from '@/components/b2c/LiveCamera';
 
-type PhotoKind = 'rep' | 'vehicle' | 'box';
+// ── ثلاثٌ تُطلَب، ورابعةٌ يومَ الخميس ────────────────────────────────────────
+// صورُ المندوب والدبّاب والبوكس شرطُ بدء الدوام. و«المحتوى الإعلاني» لقطةُ
+// الملصق على الدبّاب: تُطلَب أسبوعيًّا يوم الخميس، فلا تظهر في غيره ولا تمنع
+// بدءَ الدوام، وتقبل أكثرَ من صورة. والخادمُ يردّها في غير يومها كذلك.
+type PhotoKind = 'rep' | 'vehicle' | 'box' | 'ad';
 type KindShot = Shot & { kind: PhotoKind };
-const PHOTO_KINDS: { key: PhotoKind; ar: string; en: string; Icon: any }[] = [
+const REQUIRED_KINDS: { key: PhotoKind; ar: string; en: string; Icon: any }[] = [
   { key: 'rep', ar: 'صورة المندوب', en: 'Rider photo', Icon: User },
   { key: 'vehicle', ar: 'صورة الدبّاب', en: 'Bike photo', Icon: Bike },
   { key: 'box', ar: 'صورة البوكس', en: 'Box photo', Icon: Package },
 ];
+const AD_KIND = { key: 'ad' as PhotoKind, ar: 'المحتوى الإعلاني', en: 'Ad content', Icon: Megaphone };
+/** الخميس = ٤ (الأحد صفر) — بتوقيت الجهاز، وهو يومُ المشرف. */
+const isThursday = (d = new Date()) => d.getDay() === 4;
 
 type Outcome = 'started' | 'absent' | 'blocked';
 
@@ -186,7 +194,10 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
   // كلُّ نوعٍ له صورتُه: المحفوظُ سابقًا يُحسب، والجديدُ يُضاف إليه.
   const countOf = (k: PhotoKind) => shots.filter((s) => s.kind === k).length
     + (rep.check?.photos || []).filter((p) => (p.kind || 'vehicle') === k).length;
-  const lacking = PHOTO_KINDS.filter((k) => !countOf(k.key));
+  const adDay = isThursday();
+  const PHOTO_KINDS = adDay ? [...REQUIRED_KINDS, AD_KIND] : REQUIRED_KINDS;
+  // المطلوبُ للحفظ هو الثلاثةُ وحدَها — والإعلانيّ زيادةٌ لا شرط.
+  const lacking = REQUIRED_KINDS.filter((k) => !countOf(k.key));
   const canSave = !needsPhoto || !lacking.length;
 
   const save = async () => {
@@ -223,7 +234,7 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
 
         {needsPhoto ? (
           <>
-            <div className="mb-2 grid grid-cols-3 gap-2">
+            <div className={`mb-2 grid gap-2 ${adDay ? 'grid-cols-4' : 'grid-cols-3'}`}>
               {PHOTO_KINDS.map((k) => {
                 const n = countOf(k.key);
                 const on = kind === k.key;
@@ -236,13 +247,20 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
                 );
               })}
             </div>
-            <LiveCamera ar={ar} max={2}
+            {kind === 'ad' && (
+              <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-[11.5px] text-amber-800">
+                {t('صور المحتوى الإعلاني متاحة اليوم (الخميس) فقط، ويمكن إضافة أكثر من صورة.',
+                   'Ad-content photos are available today (Thursday) only, and you may add more than one.')}
+              </p>
+            )}
+            <LiveCamera ar={ar} max={kind === 'ad' ? 6 : 2}
               label={t(`التقاط ${PHOTO_KINDS.find((k) => k.key === kind)!.ar}`, `Capture ${PHOTO_KINDS.find((k) => k.key === kind)!.en}`)}
               shots={shots.filter((s) => s.kind === kind)}
               onShot={(s) => {
                 setShots((p) => [...p, { ...s, kind }]);
                 // بعد الالتقاط ينتقل إلى أوّل نوعٍ لم يُصوَّر بعد.
-                const next = PHOTO_KINDS.find((k) => k.key !== kind && !countOf(k.key));
+                // الإعلانيُّ يتكرّر، فلا يُقفَز عنه بعد أوّل لقطة.
+                const next = kind === 'ad' ? null : REQUIRED_KINDS.find((k) => k.key !== kind && !countOf(k.key));
                 if (next) setKind(next.key);
               }}
               onRemove={(i) => setShots((p) => {

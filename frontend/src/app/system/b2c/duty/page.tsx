@@ -41,11 +41,15 @@ interface Row {
   review?: { verdict?: string; note?: string; at?: string; by?: { firstName?: string; lastName?: string } };
 }
 
-type PhotoKind = 'rep' | 'vehicle' | 'box';
+// «المحتوى الإعلاني» صورةُ الخميس — تُقرأ هنا كنوعٍ رابع: عمودٌ في الجدول
+// وخيارٌ في الفلتر وشريطٌ في التحليل، فيُسأل «أرِني المحتوى الإعلانيّ لكلّ
+// دبّاب» فيُجاب. راجع b2cDutyController.
+type PhotoKind = 'rep' | 'vehicle' | 'box' | 'ad';
 const KINDS: { key: PhotoKind; ar: string; en: string }[] = [
   { key: 'rep', ar: 'المندوب', en: 'Rider' },
   { key: 'vehicle', ar: 'الدبّاب', en: 'Bike' },
   { key: 'box', ar: 'البوكس', en: 'Box' },
+  { key: 'ad', ar: 'المحتوى الإعلاني', en: 'Ad content' },
 ];
 const kindOf = (p: { kind?: PhotoKind }) => p.kind || 'vehicle';
 const countKind = (r: Row, k: PhotoKind) => (r.photos || []).filter((p) => kindOf(p) === k).length;
@@ -186,6 +190,8 @@ export default function DutyRegisterPage() {
         <K label={t('مُنع من الخروج', 'Blocked')} value={T.blocked ?? 0} tone="text-red-600" Icon={Ban} />
         <K label={t('صور المندوب / الدبّاب / البوكس', 'Rider / bike / box photos')}
           value={`${T.photosByKind?.rep ?? 0} / ${T.photosByKind?.vehicle ?? 0} / ${T.photosByKind?.box ?? 0}`} tone="text-slate-700" Icon={Camera} />
+        <K label={t('صور المحتوى الإعلاني', 'Ad-content photos')}
+          value={`${T.photosByKind?.ad ?? 0}`} tone="text-violet-700" Icon={Camera} />
         <K label={t('بانتظار مراجعتك', 'Unreviewed')} value={(T.checks || 0) - (T.reviewed || 0)} Icon={Flag} />
       </div>
 

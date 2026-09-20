@@ -1031,14 +1031,22 @@ exports.updateSettings = async (req, res) => {
       // يغيّر عتبةً أخرى فيعود الأفق ٩٠ بلا أن يمسّه أحد.
       const soonRaw = Number(a.soonDays);
       const soon = Number.isFinite(soonRaw) ? Math.max(0, Math.min(3650, soonRaw)) : 90;
+      // ── والقصُّ الصامت يُقرأ «لم يُحفَظ» ──────────────────────────────────
+      // القاعدةُ صحيحة: الحرجُ داخل التنبيه والرادارُ أوسعُ منه. وكان ما يخالفها
+      // يُقَصّ بلا خبر: يكتب المستخدمُ «حرج ٣٠» و«تنبيه ٢٠» فيُحفَظ الحرجُ ٢٠،
+      // فيفتح الشاشةَ فيجد رقمَه لم يتغيّر — ويقول «الإعداداتُ لا تعمل».
+      // فيُردّ الطلبُ بالسبب، ويصحّحه صاحبُه.
+      const label = (VDOC.getDoc(k) || {}).ar || k;
+      if (crit > warn) { problems.push(`${label}: الحرج (${crit}) لا يتجاوز التنبيه (${warn})`); continue; }
+      if (Number.isFinite(soonRaw) && soon < warn) { problems.push(`${label}: «على الرادار» (${soon}) لا يقلّ عن التنبيه (${warn})`); continue; }
       clean[k] = {
         enabled: a.enabled !== false,
         warnDays: warn,
-        criticalDays: Math.min(crit, warn),   // الحرج جوّه التنبيه دايمًا
-        soonDays: Math.max(soon, warn),       // والرادار أوسع من التنبيه دايمًا
+        criticalDays: crit,
+        soonDays: Math.max(soon, warn),
       };
     }
-    if (problems.length) return res.status(400).json({ message: `قيم غير صحيحة في: ${problems.join(', ')}` });
+    if (problems.length) return res.status(400).json({ message: problems.join(' · ') });
 
     const cfg = await VehicleRegistryConfig.findOneAndUpdate(
       { key: 'vehicle-registry' },
@@ -1785,8 +1793,49 @@ const applyRenewal = (v, doc, when, src = {}, byName = '') => {
   return { previous, entry };
 };
 
+/**
+ * تجديدُ بطاقة سائق — POST /:id/renew بـ`document: 'driverCard'`.
+ *
+ * ── لماذا هنا ───────────────────────────────────────────────────────────────
+ * شاشةُ الانتهاءات تعرض بطاقاتِ السائقين مع مستندات المركبات في جدولٍ واحد
+ * (فهي تنتهي كما تنتهي)، وزرُّ التجديد فيها واحد. وكانت البطاقةُ ترتدّ برسالة
+ * «نوع المستند غير معروف»: البطاقةُ ليست من مستندات المركبة الستّة، ولا مركبةَ
+ * لها أصلًا (`vehicleId: null`) فالمسارُ نفسُه كان لا يُصاب.
+ *
+ * فتُجدَّد هنا: التاريخُ الجديد ورقمُها إن تغيّر، ثمّ تعود لقطتُها إلى ملفّ
+ * صاحبها في الموارد البشريّة — راجع utils/driverCardSync.
+ */
+async function renewDriverCard(req, res) {
+  const DriverCard = require('../models/DriverCard');
+  const id = String(req.body.driverCardId || req.body.cardId || req.params.id || '').trim();
+  const card = await DriverCard.findById(id).catch(() => null);
+  if (!card) return res.status(404).json({ message: 'بطاقة السائق غير موجودة' });
+  const newExpiry = req.body.newExpiry ? new Date(req.body.newExpiry) : null;
+  if (!newExpiry || isNaN(newExpiry)) return res.status(400).json({ message: 'أدخل تاريخ الانتهاء الجديد' });
+  if (newExpiry < new Date(new Date().setHours(0, 0, 0, 0))) {
+    return res.status(400).json({ message: 'تاريخ الانتهاء الجديد في الماضي — راجع التاريخ' });
+  }
+  const previous = card.expiryDate;
+  const previousNumber = card.cardNumber;
+  card.expiryDate = newExpiry;
+  const num = String(req.body.documentNumber || '').trim();
+  if (num) card.cardNumber = num;
+  if (req.body.startDate) card.issueDate = new Date(req.body.startDate);
+  card.lastModifiedBy = req.user?._id;
+  await card.save();
+  try { await require('../utils/driverCardSync').pushCardToEmployee(card); } catch (e) { console.error('driver card renew → HR:', e.message); }
+  logAudit({
+    user: req.user, action: 'renew_driver_card', entity: 'DriverCard', entityId: card._id,
+    changes: { before: { expiryDate: previous, cardNumber: previousNumber }, after: { expiryDate: newExpiry, cardNumber: card.cardNumber } },
+    ipAddress: req.ip,
+  }).catch(() => {});
+  emit('vreg:updated', {});
+  return res.json({ driverCard: card.toObject() });
+}
+
 exports.renew = async (req, res) => {
   try {
+    if (String(req.body.document || '') === 'driverCard') return renewDriverCard(req, res);
     const doc = VDOC.getDoc(req.body.document);
     if (!doc) return res.status(400).json({ message: 'نوع المستند غير معروف' });
     const newExpiry = req.body.newExpiry ? new Date(req.body.newExpiry) : null;
@@ -1930,8 +1979,23 @@ exports.renewBulk = async (req, res) => {
     const errors = [];
     const prepared = [];
 
+    // ── وبطاقاتُ السائقين تُجدَّد معها ─────────────────────────────────────
+    // شاشةُ الانتهاءات تجمعها مع مستندات المركبات في جدولٍ واحد، فيُحدَّد منها
+    // ومن غيرها ويُضغَط «تجديد». وكانت الدفعةُ كلُّها تُرَدّ بسببها.
+    const DriverCard = require('../models/DriverCard');
+    const cardRows = [];
+
     // ① التحقق على الكل قبل أي حفظ
     for (const [i, row] of items.entries()) {
+      if (String(row.document || '') === 'driverCard') {
+        const when0 = row.newExpiry ? new Date(row.newExpiry) : shared;
+        if (!when0 || isNaN(when0)) { errors.push({ line: i + 1, message: 'أدخل تاريخ الانتهاء الجديد' }); continue; }
+        if (when0 < today) { errors.push({ line: i + 1, message: 'تاريخ الانتهاء الجديد في الماضي — راجع التاريخ' }); continue; }
+        const card = await DriverCard.findById(row.driverCardId || row.vehicle).catch(() => null);
+        if (!card) { errors.push({ line: i + 1, message: 'بطاقة السائق غير موجودة' }); continue; }
+        cardRows.push({ card, when: when0, row });
+        continue;
+      }
       const doc = VDOC.getDoc(row.document);
       if (!doc) { errors.push({ line: i + 1, message: `نوع المستند «${row.document}» غير معروف` }); continue; }
       const when = row.newExpiry ? new Date(row.newExpiry) : shared;
@@ -1965,6 +2029,21 @@ exports.renewBulk = async (req, res) => {
         vehicle: v._id, plate: v.plateNumber, document: doc.key,
         previousExpiry: previous, newExpiry: when,
         previousNumber: entry.previousNumber, newNumber: entry.newNumber,
+      });
+    }
+    // والبطاقاتُ معها، وكلٌّ منها تعود إلى ملفّ صاحبها في الموارد البشريّة.
+    for (const { card, when, row } of cardRows) {
+      const previous = card.expiryDate;
+      card.expiryDate = when;
+      const num = String(row.documentNumber || '').trim();
+      if (num) card.cardNumber = num;
+      card.lastModifiedBy = req.user?._id;
+      await card.save();
+      try { await require('../utils/driverCardSync').pushCardToEmployee(card); } catch (e) { console.error('driver card bulk → HR:', e.message); }
+      done.push({
+        vehicle: null, driverCard: card._id, plate: card.name || '', document: 'driverCard',
+        previousExpiry: previous, newExpiry: when,
+        previousNumber: undefined, newNumber: num || undefined,
       });
     }
 

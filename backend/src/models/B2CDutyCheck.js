@@ -34,7 +34,9 @@ const photoSchema = new mongoose.Schema(
     // ما في الصورة: المندوبُ نفسُه، أم الدبّاب، أم البوكس. ثلاثُ صورٍ منفصلة
     // لكلّ خروج — ليُعرَض في التقارير «الدبّابات وحدها» أو «البوكسات وحدها».
     // والصورُ القديمة قبل هذا التقسيم كانت كلُّها للمركبة.
-    kind: { type: String, enum: ['rep', 'vehicle', 'box'], default: 'vehicle', index: true },
+    // 'ad' — المحتوى الإعلانيّ: لقطةُ الملصق على الدبّاب، تُضاف يوم الخميس
+    // وحدَه وتتكرّر. راجع b2cDutyController.
+    kind: { type: String, enum: ['rep', 'vehicle', 'box', 'ad'], default: 'vehicle', index: true },
     takenAt: { type: Date, default: Date.now },
   },
   { _id: true }

@@ -20,6 +20,8 @@ import { renewDocument, renewBulk, renewSharedPolicy, fmtDate, docNumberLabel, d
  *  فالشكل المشترك هنا هو ما يمنع كل شاشة من فرض تسميتها على النافذة. */
 export type RenewTarget = {
   vehicleId: string;
+  /** بطاقةُ السائق لا مركبةَ لها: تُجدَّد بمعرّفها هي. راجع renewDriverCard. */
+  driverCardId?: string;
   plateNumber: string;
   docKey: string;
   docAr?: string;
@@ -65,8 +67,10 @@ export function RenewModal({ row, ar, onClose, onDone }: {
     if (!newExpiry) { notify(ar ? 'اختر تاريخ الانتهاء الجديد' : 'Pick the new expiry', 'error'); return; }
     setBusy(true);
     try {
-      await renewDocument(row.vehicleId, {
+      // بطاقةُ السائق لا مركبةَ لها، فالمسارُ يمضي بمعرّفها هي.
+      await renewDocument(row.vehicleId || row.driverCardId || '', {
         document: row.docKey, newExpiry,
+        ...(row.driverCardId ? { driverCardId: row.driverCardId } : {}),
         ...(startLabel && startDate ? { startDate } : {}),
         documentNumber: documentNumber.trim(),
         cost: cost === '' ? null : Number(cost),
@@ -195,6 +199,8 @@ export function BulkRenewModal({ rows, ar, onClose, onDone }: {
       const r = await renewBulk({
         items: rows.map((x, i) => ({
           vehicle: x.vehicleId, document: x.docKey,
+          // بطاقةُ السائق لا مركبةَ لها: تُرسَل بمعرّفها.
+          ...(x.driverCardId ? { driverCardId: x.driverCardId } : {}),
           documentNumber: (numbers[`${x.vehicleId}:${x.docKey}:${i}`] || '').trim(),
         })),
         newExpiry: when, reference: reference.trim(), note: note.trim(),

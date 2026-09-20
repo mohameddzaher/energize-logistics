@@ -8,12 +8,13 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { canEditSection } from '@/lib/sections';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Ship, Plus, Search, X, Check, Trash2, Loader2, ScrollText, Container, BarChart3 } from 'lucide-react';
+import { Ship, Plus, Search, X, Check, Trash2, Loader2, ScrollText, Container, BarChart3, MessageSquarePlus } from 'lucide-react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { getCustomsTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
-import { SearchableSelect } from '@/components/hr/HRKit';
+import { SearchableSelect, Modal } from '@/components/hr/HRKit';
+import ClearanceNotes from '@/components/customs/ClearanceNotes';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
 import { SlidersHorizontal } from 'lucide-react';
@@ -45,6 +46,11 @@ interface Clearance {
   stageDates?: Record<string, string>;
   revenue?: { totalInvoiced?: number; clearanceFee?: number; profit?: number };
   billing?: { invoiceStatus?: string; ourInvoiceNumber?: string };
+  // آخرُ ملاحظةٍ فقط تصل مع الجدول — والسجلُّ داخل المعاملة.
+  lastNote?: { text: string; byName?: string; at?: string } | null;
+  notesCount?: number;
+  notesLog?: any[];
+  notes?: string;
 }
 
 const MONTH_LABELS: [string, string][] = [
@@ -84,6 +90,8 @@ export default function CustomsPage() {
   const T = getCustomsTranslations(lang);
 
   const [list, setList] = useState<Clearance[]>([]);
+  // المعاملةُ التي تُكتب لها ملاحظةٌ من الجدول — راجع ClearanceNotes.
+  const [noteFor, setNoteFor] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<any>({ ...EMPTY });
@@ -358,12 +366,13 @@ export default function CustomsPage() {
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'الإرجاع' : 'Return'}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'حالة الفاتورة' : 'Invoice status'}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.stage}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'ملاحظات' : 'Notes'}</th>
                 {canDelete && <th className="text-end text-slate-300 font-semibold px-4 py-3">{T.actions}</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {filtered.length === 0 ? (
-                <tr><td colSpan={canDelete ? 11 : 10} className="text-center text-slate-800 py-12">{T.noClearances}</td></tr>
+                <tr><td colSpan={canDelete ? 12 : 11} className="text-center text-slate-800 py-12">{T.noClearances}</td></tr>
               ) : filtered.map((c) => (
                 <tr key={c._id} onClick={() => router.push(`/system/customs/${c._id}`)}
                   className="bg-white hover:bg-slate-50 transition-colors cursor-pointer">
@@ -400,6 +409,27 @@ export default function CustomsPage() {
                         : c.isCompleted ? (lang === 'ar' ? 'مقفولة' : 'Closed')
                         : T.stages[c.stage] || c.stage}
                     </span>
+                  </td>
+                  {/* ── الملاحظةُ الأخيرة، وتُكتب من هنا ─────────────────────
+                      عمودٌ يقول آخرَ ما قيل عن المعاملة بلا فتحها، وزرٌّ يكتب
+                      ملاحظةً جديدة في مكانها. والسجلُّ كلُّه داخل المعاملة. */}
+                  <td className="px-4 py-3 max-w-[280px]" onClick={(e) => e.stopPropagation()}>
+                    <button type="button" onClick={() => setNoteFor(c)} disabled={!canEdit}
+                      title={canEdit ? (ar ? 'اضغط لإضافة ملاحظة' : 'Click to add a note') : ''}
+                      className="w-full text-start group/note disabled:cursor-default">
+                      {c.lastNote?.text ? (
+                        <>
+                          <span className="block truncate text-[13px] text-slate-700 group-hover/note:text-[#f37121]">{c.lastNote.text}</span>
+                          <span className="block text-[11px] text-slate-400 truncate">
+                            {c.lastNote.byName || ''}{(c.notesCount || 0) > 1 ? ` · ${ar ? `${c.notesCount} ملاحظات` : `${c.notesCount} notes`}` : ''}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[12px] text-slate-400 group-hover/note:text-[#f37121]">
+                          <MessageSquarePlus className="w-3.5 h-3.5" />{ar ? 'أضف ملاحظة' : 'Add note'}
+                        </span>
+                      )}
+                    </button>
                   </td>
                   {canDelete && (
                     <td className="px-4 py-3 text-end">
@@ -507,6 +537,19 @@ export default function CustomsPage() {
         }
         :global(.cc-filter:focus) { outline: none; box-shadow: 0 0 0 2px rgba(243,113,33,0.4); }
       `}</style>
+
+      {/* ملاحظةٌ تُكتب من الجدول — نفسُ سجلّ المعاملة، لا خانةٌ ثانية. */}
+      <Modal open={!!noteFor} onClose={() => setNoteFor(null)}
+        title={`${ar ? 'ملاحظات' : 'Notes'} · ${noteFor?.refNumber || ''}`}>
+        {noteFor && (
+          <ClearanceNotes compact clearance={noteFor} canEdit={canEdit} ar={ar} notify={notify}
+            onChanged={async () => {
+              const d = await api.get<any>(`/api/customs-clearance/${noteFor._id}`).catch(() => null);
+              if (d?.clearance) setNoteFor(d.clearance);
+              fetchList();
+            }} />
+        )}
+      </Modal>
     </div>
   );
 }

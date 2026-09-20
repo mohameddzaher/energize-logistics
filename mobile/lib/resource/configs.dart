@@ -708,6 +708,8 @@ final customsCfg = ResourceConfig(
   subtitleOf: (r) => [
     if (_s(r, 'blNumber').isNotEmpty) 'BL: ${_s(r, 'blNumber')}',
     if (_s(r, 'exporterCompany').isNotEmpty) _s(r, 'exporterCompany'),
+    // آخرُ ملاحظةٍ كُتبت على المعاملة — كعمود «ملاحظات» في الموقع.
+    if ((r['lastNote'] is Map) && '${r['lastNote']['text'] ?? ''}'.isNotEmpty) '📝 ${r['lastNote']['text']}',
   ].join(' · '),
   chipsOf: (r) => [
     switch (_s(r, 'stage')) {
@@ -1307,4 +1309,94 @@ final auditCfg = ResourceConfig(
     if (_s(r, 'action').isNotEmpty) (_s(r, 'action'), _s(r, 'action') == 'delete' ? T.danger : T.info),
   ],
   fields: const [],
+);
+
+
+// ── أطرافُ التخليص: عملاءُ ووكلاءُ شحنٍ وناقلون ───────────────────────────────
+// سجلٌّ واحدٌ بثلاثة أدوار (CustomsParty.kind) — البنيةُ واحدةٌ والفرقُ الدور،
+// فالإعدادُ واحدٌ يُستنسَخ بالدور لا ثلاثةُ إعداداتٍ تفترق عند أوّل تعديل.
+ResourceConfig _customsPartyCfg(String kind, String ar, String en, IconData icon) => ResourceConfig(
+      arTitle: ar, enTitle: en, icon: icon,
+      endpoint: '/api/customs-clearance/parties', listKey: 'parties', listQuery: 'kind=$kind',
+      updateMethod: 'PUT', liveEvent: 'customs:updated',
+      searchFields: const ['name', 'email', 'phone', 'contactPerson', 'city', 'commercialRegister', 'taxNumber'],
+      titleOf: (r) => _s(r, 'name'),
+      subtitleOf: (r) => [_s(r, 'contactPerson'), _s(r, 'phone'), _s(r, 'city')].where((x) => x.isNotEmpty).join(' · '),
+      chipsOf: (r) => [
+        if (r['deals'] != null) ('${r['deals']} معاملة', T.navy),
+        if ((r['revenue'] ?? 0) != 0) ('${r['revenue']}', T.success),
+        if (r['isActive'] == false) ('معطَّل', T.inkFaint),
+      ],
+      fields: [
+        FieldSpec('name', 'الاسم', 'Name', required: true),
+        // الدورُ يُرسَل مع الإنشاء، وإلّا أُنشئ عميلًا مهما كانت الصفحة.
+        FieldSpec('kind', 'الدور', 'Role', type: FieldType.select, options: [(kind, ar, en)]),
+        const FieldSpec('contactPerson', 'مسؤول التواصل', 'Contact person'),
+        const FieldSpec('phone', 'الجوال', 'Phone'),
+        const FieldSpec('email', 'البريد', 'Email'),
+        const FieldSpec('city', 'المدينة', 'City'),
+        const FieldSpec('commercialRegister', 'السجل التجاري', 'CR number'),
+        const FieldSpec('taxNumber', 'الرقم الضريبي', 'Tax number'),
+        const FieldSpec('address', 'العنوان', 'Address'),
+        const FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+      ],
+    );
+
+final customsCustomersCfg = _customsPartyCfg('customer', 'عملاء التخليص', 'Customs Customers', Icons.people_outline);
+final customsAgentsCfg = _customsPartyCfg('agent', 'وكلاء الشحن', 'Shipping Agents', Icons.directions_boat_outlined);
+final customsCarriersCfg = _customsPartyCfg('carrier', 'الناقلون', 'Carriers', Icons.local_shipping_outlined);
+
+/// اسمُ الطرف ومعه دورُه — «الاسم» وحدَه لا يقول أهو عميلٌ أم ناقل.
+String _partyLabel(Map<String, dynamic> r) {
+  final kind = switch (_s(r, 'kind')) { 'agent' => 'وكيل شحن', 'carrier' => 'ناقل', _ => 'عميل' };
+  return '${_s(r, 'name')} — $kind';
+}
+
+// ── عقودُ التخليص ────────────────────────────────────────────────────────────
+// عقدُنا مع عميلٍ أو وكيلٍ أو ناقل. ومرفقُ العقد يُرفع من الموقع — الهاتفُ
+// يقرأ العقدَ ويُنشئه ويعدّله، والورقةُ تُرفَع حيث تُمسح.
+final customsContractsCfg = ResourceConfig(
+  arTitle: 'عقود التخليص', enTitle: 'Customs Contracts', icon: Icons.assignment_outlined,
+  endpoint: '/api/customs-clearance/contracts', listKey: 'contracts',
+  updateMethod: 'PUT', liveEvent: 'customs:contract',
+  searchFields: const ['title', 'partyName', 'contractNumber', 'scope'],
+  titleOf: (r) => _s(r, 'title'),
+  subtitleOf: (r) => [_s(r, 'partyName'), if (_s(r, 'contractNumber').isNotEmpty) '#${_s(r, 'contractNumber')}'].join(' · '),
+  chipsOf: (r) => [
+    switch (_s(r, 'state').isNotEmpty ? _s(r, 'state') : _s(r, 'status')) {
+      'active' => ('ساري', T.success),
+      'expired' => ('منتهٍ', T.danger),
+      'terminated' => ('مفسوخ', T.warn),
+      _ => ('مسودّة', T.inkSoft),
+    },
+    switch (_s(r, 'partyKind')) {
+      'agent' => ('وكيل شحن', T.info),
+      'carrier' => ('ناقل', T.violet),
+      _ => ('عميل', T.navy),
+    },
+    if ((r['attachments'] is List) && (r['attachments'] as List).isNotEmpty)
+      ('${(r['attachments'] as List).length} مرفق', T.cyan),
+  ],
+  fields: const [
+    FieldSpec('title', 'اسم العقد', 'Contract name', required: true),
+    FieldSpec('party', 'الطرف', 'Party', required: true, type: FieldType.lookup,
+        lookupEndpoint: '/api/customs-clearance/parties', lookupListKey: 'parties',
+        lookupQuery: 'kind=all',
+        lookupLabel: _partyLabel),
+    FieldSpec('contractNumber', 'رقم العقد', 'Contract no.'),
+    FieldSpec('startDate', 'يبدأ', 'Starts', type: FieldType.date),
+    FieldSpec('endDate', 'ينتهي', 'Ends', type: FieldType.date),
+    FieldSpec('value', 'القيمة', 'Value', type: FieldType.number),
+    FieldSpec('valueBasis', 'أساس القيمة', 'Value basis', type: FieldType.select, options: [
+      ('', '—', '—'), ('total', 'إجمالي العقد', 'Total'), ('per_container', 'للحاوية', 'Per container'),
+      ('per_month', 'شهريًّا', 'Per month'), ('per_shipment', 'للشحنة', 'Per shipment'),
+    ]),
+    FieldSpec('paymentTermDays', 'مهلة السداد (يوم)', 'Payment terms (days)', type: FieldType.number),
+    FieldSpec('status', 'الحالة', 'State', type: FieldType.select, options: [
+      ('active', 'ساري', 'Active'), ('draft', 'مسودّة', 'Draft'),
+      ('expired', 'منتهٍ', 'Expired'), ('terminated', 'مفسوخ', 'Terminated'),
+    ]),
+    FieldSpec('scope', 'ما يغطّيه العقد', 'Scope'),
+    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
 );

@@ -404,6 +404,18 @@
       "en": "Shipping Agents"
     },
     {
+      "key": "/system/customs/carriers",
+      "section": "Customs",
+      "ar": "الناقلون",
+      "en": "Carriers"
+    },
+    {
+      "key": "/system/customs/contracts",
+      "section": "Customs",
+      "ar": "العقود",
+      "en": "Contracts"
+    },
+    {
       "key": "/system/customs/settings",
       "section": "Customs",
       "ar": "إعدادات القسم",

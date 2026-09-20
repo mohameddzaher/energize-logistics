@@ -40,6 +40,10 @@ const customsClearanceSchema = new mongoose.Schema(
     // المعاملاتُ ويُفتح البروفايل، فلا يُفرِّق صيغتا كتابةٍ طرفًا واحدًا.
     customerParty: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomsParty', index: true },
     agentParty: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomsParty', index: true }, // optional link
+    // الناقلُ الذي نقل الحاوية من الميناء — سجلٌّ كالعميل والوكيل، والاسمُ
+    // يبقى نصًّا لما أُدخل قبل السجلّ.
+    carrierParty: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomsParty', index: true },
+    carrierName: { type: String, trim: true, default: '' },
     shippingAgent: { type: String, trim: true },
     shippingAgentEmail: { type: String, trim: true, lowercase: true },
 
@@ -258,6 +262,19 @@ const customsClearanceSchema = new mongoose.Schema(
     ],
 
     notes: { type: String },
+
+    // ── والملاحظةُ سطرٌ يُضاف لا خانةٌ تُدهَس ────────────────────────────────
+    // كانت `notes` خانةً واحدة: من كتب ملاحظةً اليوم محا ملاحظةَ أمس، ولا يُعرف
+    // مَن كتب ولا متى. فصار لكلّ ملاحظةٍ سطرُها بصاحبها ووقتها، وآخرُها هو ما
+    // يظهر في عمود الجدول. و`notes` تبقى لما كُتب قبل اليوم.
+    notesLog: [
+      {
+        text: { type: String, trim: true, required: true },
+        by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        byName: { type: String, default: '' },
+        at: { type: Date, default: Date.now },
+      },
+    ],
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     lastModifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

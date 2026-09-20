@@ -509,6 +509,19 @@
       ],
       "wildcard": false
     },
+    "/system/customs/carriers": {
+      "apis": [
+        "/api/customs-clearance/parties"
+      ],
+      "wildcard": false
+    },
+    "/system/customs/contracts": {
+      "apis": [
+        "/api/customs-clearance/contracts",
+        "/api/customs-clearance/parties"
+      ],
+      "wildcard": false
+    },
     "/system/customs/settings": {
       "apis": [
         "/api/lookups/types"

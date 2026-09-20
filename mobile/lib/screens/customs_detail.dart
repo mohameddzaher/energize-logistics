@@ -53,11 +53,6 @@ const _documentItems = [
   ('saber', 'شهادة سابر', 'Saber certificate'),
 ];
 
-const _agentPaperItems = [
-  ('blStamped', 'البوليصة بختم التخليص + رقم المستورد', 'BL stamped + importer no.'),
-  ('customerAuthorization', 'تفويض العميل للشركة', 'Customer authorization'),
-  ('companyAuthorization', 'تفويض الشركة للمندوب', 'Company authorization'),
-];
 
 /// بنود المصروفات — مبالغُ تُدفع للغير وتُمرَّر على العميل كما هي. الترتيب
 /// والمحتوى مطابقان لـCOST_KEYS في الخادم؛ نقصانُ بندٍ هنا يجعل إجماليَّ
@@ -73,8 +68,8 @@ const _costItems = [
   ('appointmentBooking', 'حجز الموعد', 'Appointment booking'),
   ('storage', 'تخزين', 'Storage'),
   ('yardFees', 'أجور الساحة', 'Yard fees'),
-  ('exitPermit', 'تصريح الخروج', 'Exit permit'),
-  ('demurrage', 'أرضيات', 'Demurrage'),
+  // «الأرضيات» و«تصريح الخروج» بندٌ واحد — جُمع ما كان في الأوّل إلى الثاني.
+  ('exitPermit', 'تصريح الخروج (الأرضيات)', 'Exit permit (demurrage)'),
   ('extension', 'تمديد', 'Extension'),
   ('consolidator', 'الدامج', 'Consolidator'),
   ('commissions', 'عمولات', 'Commissions'),
@@ -96,6 +91,7 @@ Map<String, dynamic> _m(dynamic v) => v is Map ? Map<String, dynamic>.from(v) : 
 
 class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
   Map<String, dynamic>? _c;
+  final TextEditingController _note = TextEditingController();
   bool _loading = true;
   String? _error;
   bool _saving = false;
@@ -143,6 +139,29 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     }
   }
 
+  /// ملاحظةٌ جديدة — تُضاف إلى السجلّ ولا تمحو ما قبلها.
+  Future<void> _addNote() async {
+    final text = _note.text.trim();
+    if (text.isEmpty) return;
+    setState(() => _saving = true);
+    try {
+      await Api.instance.post('/api/customs-clearance/${widget.clearanceId}/notes', {'text': text});
+      _note.clear();
+      await _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('أُضيفت الملاحظة', 'Note added'))));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+    if (mounted) setState(() => _saving = false);
+  }
+
+  String _when(dynamic v) {
+    final d = DateTime.tryParse('${v ?? ''}');
+    if (d == null) return '';
+    final l = d.toLocal();
+    return '${l.day.toString().padLeft(2, '0')}/${l.month.toString().padLeft(2, '0')}/${l.year} ${l.hour.toString().padLeft(2, '0')}:${l.minute.toString().padLeft(2, '0')}';
+  }
+
   num _nz(Map<String, dynamic> m, String k) {
     final v = m[k];
     return v is num ? v : num.tryParse(v?.toString() ?? '') ?? 0;
@@ -161,7 +180,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     final stageDates = _m(c['stageDates']);
     final costs = _m(c['costs']);
     final documents = _m(c['documents']);
-    final agentPapers = _m(c['agentPapers']);
+    final notes = List<Map<String, dynamic>>.from(c['notesLog'] ?? const []);
     final revenue = _m(c['revenue']);
     final attachments = List<Map<String, dynamic>>.from(
         (c['attachments'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
@@ -296,21 +315,66 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // ── أوراق الوكيل ──
+                    // (رُفعت «أوراق الوكيل» بطلب القسم — تتكرّر مع المستندات أعلاه.)
+                    // ── الملاحظات ──
                     FadeSlideIn(
                       delayMs: 105,
                       child: AppCard(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(tr('أوراق الوكيل', 'Agent papers'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                          Row(children: [
+                            Text(tr('الملاحظات', 'Notes'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                            const Spacer(),
+                            if (notes.isNotEmpty) Text('${notes.length}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                          ]),
                           const SizedBox(height: 6),
-                          ..._agentPaperItems.map((it) => CheckboxListTile(
-                                contentPadding: EdgeInsets.zero,
-                                dense: true,
-                                controlAffinity: ListTileControlAffinity.leading,
-                                value: agentPapers[it.$1] == true,
-                                onChanged: _saving ? null : (v) => _patch({'agentPapers': {it.$1: v}}, tr('تم التحديث', 'Updated')),
-                                title: Text(tr(it.$2, it.$3), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
-                              )),
+                          // سطرٌ يُضاف لا خانةٌ تُدهَس: لكلّ ملاحظةٍ صاحبُها ووقتُها،
+                          // وأحدثُها هي التي تظهر في الجدول. راجع notesLog في الخادم.
+                          Row(children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _note,
+                                minLines: 1,
+                                maxLines: 3,
+                                decoration: InputDecoration(hintText: tr('اكتب ملاحظة…', 'Write a note…'), isDense: true),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton(
+                              onPressed: _saving ? null : _addNote,
+                              child: Text(tr('إضافة', 'Add')),
+                            ),
+                          ]),
+                          const SizedBox(height: 8),
+                          if (notes.isEmpty && '${c['notes'] ?? ''}'.isEmpty)
+                            Text(tr('لا ملاحظات بعد', 'No notes yet'), style: const TextStyle(fontSize: 12, color: T.inkFaint))
+                          else
+                            ...notes.reversed.map((nt) => Container(
+                                  width: double.infinity,
+                                  margin: const EdgeInsets.only(bottom: 6),
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(color: T.canvas, borderRadius: BorderRadius.circular(10)),
+                                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    Text('${nt['text'] ?? ''}', style: const TextStyle(fontSize: 12.5)),
+                                    const SizedBox(height: 3),
+                                    Text('${nt['byName'] ?? ''} · ${_when(nt['at'])}',
+                                        style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                                  ]),
+                                )),
+                          if ('${c['notes'] ?? ''}'.isNotEmpty)
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: T.line),
+                              ),
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text('${c['notes'] ?? ''}', style: const TextStyle(fontSize: 12)),
+                                const SizedBox(height: 3),
+                                Text(tr('ملاحظة قديمة (قبل سجلّ الملاحظات)', 'Older note (before the notes log)'),
+                                    style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                              ]),
+                            ),
                         ]),
                       ),
                     ),

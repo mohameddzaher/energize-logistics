@@ -7,12 +7,13 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { canEditSection } from '@/lib/sections';
-import { ArrowLeft, ArrowRight, Check, Loader2, Ship, Copy, Mail, Ban, RotateCcw, ChevronRight, Plus, Trash2, Lock, Unlock } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Loader2, Ship, FileText, Ban, RotateCcw, ChevronRight, Plus, Trash2, Lock, Unlock } from 'lucide-react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import ExportMenu, { type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import { getCustomsTranslations, getCustomsIdExtraTranslations } from '@/lib/translations';
 import ClearanceAttachments from '@/components/customs/ClearanceAttachments';
+import ClearanceNotes from '@/components/customs/ClearanceNotes';
 import PaymentStages from '@/components/customs/PaymentStages';
 
 const STAGE_ORDER = [
@@ -35,7 +36,6 @@ export default function CustomsDetailPage() {
   const [closing, setClosing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [copied, setCopied] = useState('');
 
   const canDelete = ['super_admin', 'admin', 'customs_manager'].includes(user?.role || '');
 
@@ -87,12 +87,6 @@ export default function CustomsDetailPage() {
     setSaving(false);
   };
 
-  const copy = (key: string, text: string) => {
-    navigator.clipboard?.writeText(text);
-    setCopied(key);
-    setTimeout(() => setCopied(''), 1400);
-  };
-
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
@@ -103,15 +97,7 @@ export default function CustomsDetailPage() {
   if (!c) return null;
 
   const currentIdx = STAGE_ORDER.indexOf(c.stage);
-  const bl = c.blNumber || '';
-  const emails = {
-    doInvoiceRequest: { subject: `BL ${bl}`, body: 'Dear,\nGreetings,\n\nKindly find attached file & issue DO invoice.' },
-    linkDoRequest: { subject: `BL ${bl}`, body: 'Dear,\nGreetings,\n\nKindly find attached files & link DO.' },
-    etaEnquiry: { subject: 'ETA enquiry', body: `Dear,\nGreetings,\n\nKindly Provide ETA for the following BL/s:\n1- ${bl}` },
-  };
-  const mailto = (s: string, b: string) =>
-    `mailto:${c.shippingAgentEmail || ''}?subject=${encodeURIComponent(s)}&body=${encodeURIComponent(b)}`;
-
+  const doneCount = STAGE_ORDER.filter((k) => ((c as any).stagesDone || []).includes(k)).length;
   const Back = isRTL ? ArrowRight : ArrowLeft;
   const ar = lang === 'ar';
 
@@ -132,8 +118,9 @@ export default function CustomsDetailPage() {
     ['appointmentBooking', 'حجز الموعد', 'Appointment booking'],
     ['storage', 'تخزين', 'Storage'],
     ['yardFees', 'أجور الساحة', 'Yard fees'],
-    ['exitPermit', 'تصريح الخروج', 'Exit permit'],
-    ['demurrage', 'أرضيات', 'Demurrage'],
+    // «الأرضيات» و«تصريح الخروج» بندٌ واحد في الواقع — قالها القسم، وجُمع ما
+    // كان في الأوّل إلى الثاني (scripts/mergeDemurrageIntoExitPermit).
+    ['exitPermit', 'تصريح الخروج (الأرضيات)', 'Exit permit (demurrage)'],
     ['extension', 'تمديد', 'Extension'],
     ['consolidator', 'الدامج', 'Consolidator'],
     ['commissions', 'عمولات', 'Commissions'],
@@ -409,16 +396,31 @@ export default function CustomsDetailPage() {
         </div>
       </div>
 
-      {/* Stage pipeline (dark card on the light page) */}
-      <div className="relative overflow-hidden rounded-xl bg-slate-900 border border-slate-800 p-5 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-white font-semibold">{T.progress}</h3>
-          {canEdit && currentIdx < STAGE_ORDER.length - 1 && !c.cancelled && (
-            <button type="button" onClick={() => patch({ stage: STAGE_ORDER[currentIdx + 1] })}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#f37121] text-white text-xs font-medium hover:bg-[#e06010] transition-colors">
-              {T.advanceStage} <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          )}
+      {/* ── مراحلُ التخليص ───────────────────────────────────────────────
+          كانت بطاقةً سوداءَ وسط صفحةٍ فاتحة، والمرحلةُ المنجَزةُ فيها رماديّةٌ
+          كغيرها. صارت فاتحةً كبقيّة الصفحة: المنجَزُ أخضرُ بعلامته، والحاليّةُ
+          برتقاليّةٌ بحلقةٍ حولها، وما لم يبدأ رماديٌّ هادئ — ومعها شريطُ تقدّمٍ
+          يقول «كم أُنجز من كم» قبل قراءة المربّعات. */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h3 className="text-[14px] font-bold text-slate-900 flex items-center gap-2">
+            <span className="w-7 h-7 rounded-lg bg-[#f37121]/10 text-[#f37121] flex items-center justify-center"><Ship className="w-4 h-4" /></span>
+            {T.progress}
+          </h3>
+          <div className="flex items-center gap-3">
+            <span className="text-[12px] text-slate-500 tabular-nums">
+              {doneCount}/{STAGE_ORDER.length} · {Math.round((doneCount / STAGE_ORDER.length) * 100)}%
+            </span>
+            {canEdit && currentIdx < STAGE_ORDER.length - 1 && !c.cancelled && (
+              <button type="button" onClick={() => patch({ stage: STAGE_ORDER[currentIdx + 1] })}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#f37121] text-white text-xs font-semibold hover:bg-[#e06010] transition-colors">
+                {T.advanceStage} <ChevronRight className={`w-3.5 h-3.5 ${isRTL ? 'rotate-180' : ''}`} />
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="h-2 rounded-full bg-slate-100 overflow-hidden mb-4">
+          <div className="h-full rounded-full bg-emerald-500 transition-all duration-500" style={{ width: `${(doneCount / STAGE_ORDER.length) * 100}%` }} />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           {/* ── كلُّ مرحلةٍ تُعلَّم وحدَها ────────────────────────────────────
@@ -439,52 +441,56 @@ export default function CustomsDetailPage() {
             };
             return (
               <button key={s} type="button" disabled={!canEdit} onClick={toggle}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-start transition-colors ${canEdit ? 'cursor-pointer' : 'cursor-default'} ${
-                  cur ? 'bg-[#f37121] text-white' : done ? 'bg-slate-800 text-slate-200 hover:bg-slate-700' : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800'
+                title={canEdit ? (ar ? 'اضغط للتعليم أو إلغائه' : 'Click to tick or untick') : ''}
+                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-start border transition-all ${canEdit ? 'cursor-pointer' : 'cursor-default'} ${
+                  cur
+                    ? 'border-[#f37121] bg-[#f37121]/10 text-[#b4471a] ring-1 ring-[#f37121]/40 font-semibold'
+                    : done
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                      : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white'
                 }`}>
-                <span className={`w-5 h-5 shrink-0 rounded-full flex items-center justify-center text-[10px] font-bold ${cur ? 'bg-white/20' : done ? 'bg-green-500/30 text-green-300' : 'bg-slate-700 text-slate-400'}`}>
-                  {done ? <Check className="w-3 h-3" /> : i + 1}
+                <span className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold ${
+                  done ? 'bg-emerald-500 text-white' : cur ? 'bg-[#f37121] text-white' : 'bg-white border border-slate-200 text-slate-400'
+                }`}>
+                  {done ? <Check className="w-3.5 h-3.5" /> : i + 1}
                 </span>
                 <span className="truncate">{T.stages[s]}</span>
+                {cur && !done && <span className="ms-auto text-[10px] font-bold text-[#f37121]">{ar ? 'الآن' : 'now'}</span>}
               </button>
             );
           })}
         </div>
-      </div>
+      </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Transaction data */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4">{T.transactionData}</h3>
+        {/* ── البيانُ والمواعيدُ أوّلًا ───────────────────────────────────────
+            طُلب تبديلُ موضعِ البطاقتين: ما يُتابَع يوميًّا (البيانُ ومواعيدُه)
+            في الصدر، وبياناتُ المعاملة الثابتة تحتَه. */}
+        <Card className="lg:col-span-2" icon={<FileText className="w-4 h-4" />}
+          title={ar ? 'بيانات البيان والمواعيد' : 'Declaration & scheduling'}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldInput label={T.blNumber} value={c.blNumber} onSave={(v) => patch({ blNumber: v })} disabled={!canEdit} />
-            <FieldInput label={T.customerName} value={c.customerName} onSave={(v) => patch({ customerName: v })} disabled={!canEdit} />
-            <FieldInput label={T.invoiceNumber} value={c.invoiceNumber} onSave={(v) => patch({ invoiceNumber: v })} disabled={!canEdit} />
-            <FieldInput label={T.invoiceDate} type="date" value={c.invoiceDate ? String(c.invoiceDate).slice(0, 10) : ''} onSave={(v) => patch({ invoiceDate: v || null })} disabled={!canEdit} />
-            <FieldInput label={T.port} value={c.port} onSave={(v) => patch({ port: v })} disabled={!canEdit} />
-            <FieldSelect label={T.invoiceType} value={c.invoiceType || ''} options={[['', '—'], ['C&F', 'C&F'], ['CIF', 'CIF'], ['FOB', 'FOB']]} onSave={(v) => patch({ invoiceType: v })} disabled={!canEdit} />
-            <FieldInput label={T.containerCount} type="number" value={c.containerCount} onSave={(v) => patch({ containerCount: Number(v) || 0 })} disabled={!canEdit} />
-            <FieldInput label={T.totalWeight} type="number" value={c.totalWeight} onSave={(v) => patch({ totalWeight: Number(v) || 0 })} disabled={!canEdit} />
-            <FieldInput label={T.invoiceValue} type="number" value={c.invoiceValue} onSave={(v) => patch({ invoiceValue: Number(v) || 0 })} disabled={!canEdit} />
-            <FieldInput label={T.currency} value={c.currency} onSave={(v) => patch({ currency: v })} disabled={!canEdit} />
-            <FieldInput label={T.exporterCompany} value={c.exporterCompany} onSave={(v) => patch({ exporterCompany: v })} disabled={!canEdit} />
-            <FieldInput label={T.countryOfOrigin} value={c.countryOfOrigin} onSave={(v) => patch({ countryOfOrigin: v })} disabled={!canEdit} />
-            <FieldInput label={T.hsCode} value={c.hsCode} onSave={(v) => patch({ hsCode: v })} disabled={!canEdit} />
-            <FieldInput label={T.saberNumber} value={c.saberNumber} onSave={(v) => patch({ saberNumber: v })} disabled={!canEdit} />
-            <FieldInput label={T.assignedTo} value={c.assignedTo} onSave={(v) => patch({ assignedTo: v })} disabled={!canEdit} />
-            <FieldSelect label={T.branch} value={c.branch} options={[['jeddah', T.jeddah], ['dammam', T.dammam]]} onSave={(v) => patch({ branch: v })} disabled={!canEdit} />
-            <FieldInput label={T.shippingAgent} value={c.shippingAgent} onSave={(v) => patch({ shippingAgent: v })} disabled={!canEdit} />
-            <FieldInput label={T.shippingAgentEmail} value={c.shippingAgentEmail} onSave={(v) => patch({ shippingAgentEmail: v })} disabled={!canEdit} />
+          <FieldInput label={ar ? 'رقم البيان' : 'Declaration no.'} value={c.declarationNumber} onSave={(v) => patch({ declarationNumber: v })} disabled={!canEdit} />
+          <FieldInput label={ar ? 'تاريخ البيان' : 'Declaration date'} type="date" value={c.declarationDate} onSave={(v) => patch({ declarationDate: v })} disabled={!canEdit} />
+          <FieldInput label={ar ? 'تاريخ استلام الورق' : 'Papers received'} type="date" value={c.papersReceivedDate} onSave={(v) => patch({ papersReceivedDate: v })} disabled={!canEdit} />
+          <FieldInput label={ar ? 'موعد التفريغ' : 'Unloading appointment'} value={c.unloadingAppointment} onSave={(v) => patch({ unloadingAppointment: v })} disabled={!canEdit} />
+          <FieldInput label={ar ? 'مكان التفريغ' : 'Unloading location'} value={c.unloadingLocation} onSave={(v) => patch({ unloadingLocation: v })} disabled={!canEdit} />
+          <FieldInput label={ar ? 'رقم إذن التسليم' : 'DO number'} value={c.doNumber} onSave={(v) => patch({ doNumber: v })} disabled={!canEdit} />
+          <FieldInput label={ar ? 'رقم تصريح الخروج' : 'Exit permit no.'} value={c.exitPermitNumber} onSave={(v) => patch({ exitPermitNumber: v })} disabled={!canEdit} />
+          <FieldInput label={ar ? 'أيّام السماح للإرجاع' : 'Return free days'} type="number" value={c.returnFreeDays ?? 0} onSave={(v) => patch({ returnFreeDays: Number(v) || 0 })} disabled={!canEdit} />
+          <FieldInput label={ar ? 'آخر موعد إرجاع' : 'Return deadline'} type="date" value={c.returnDeadline} onSave={(v) => patch({ returnDeadline: v })} disabled={!canEdit} />
+          <FieldInput label={ar ? 'المدينة' : 'City'} value={c.city} onSave={(v) => patch({ city: v })} disabled={!canEdit} />
+          <FieldSelect label={ar ? 'الشهر' : 'Month'} value={String(c.periodMonth || '')} disabled={!canEdit}
+            options={[['', '—'], ...Array.from({ length: 12 }, (_, i) => [String(i + 1), MONTH_LABELS[i][ar ? 0 : 1]] as [string, string])]}
+            onSave={(v) => patch({ periodMonth: v ? Number(v) : null })} />
+          <FieldInput label={ar ? 'السنة' : 'Year'} type="number" value={c.periodYear} onSave={(v) => patch({ periodYear: v ? Number(v) : null })} disabled={!canEdit} />
           </div>
-          <div className="mt-4">
-            <FieldInput label={T.notes} value={c.notes} onSave={(v) => patch({ notes: v })} disabled={!canEdit} />
-          </div>
-        </div>
+        </Card>
 
-        {/* Side column: checklists + emails */}
+        {/* ── العمودُ الجانبيّ: المستنداتُ ثمّ الملاحظات ──────────────────────
+            رُفعت «أوراق الوكيل» و«نماذج الإيميل» بطلب القسم: الأولى تتكرّر مع
+            مستندات المعاملة، والثانية نصوصٌ جاهزةٌ لم تعد تُستعمل. */}
         <div className="space-y-6">
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-            <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{T.documentsChecklist}</h3>
+          <Card icon={<Check className="w-4 h-4" />} title={T.documentsChecklist}>
             <div className="space-y-1">
               <Toggle label={T.docBl} on={c.documents?.bl} onToggle={(v) => patch({ documents: { bl: v } })} disabled={!canEdit} />
               <Toggle label={T.docCommercialInvoice} on={c.documents?.commercialInvoice} onToggle={(v) => patch({ documents: { commercialInvoice: v } })} disabled={!canEdit} />
@@ -492,41 +498,37 @@ export default function CustomsDetailPage() {
               <Toggle label={T.docPackingList} on={c.documents?.packingList} onToggle={(v) => patch({ documents: { packingList: v } })} disabled={!canEdit} />
               <Toggle label={T.docSaber} on={c.documents?.saber} onToggle={(v) => patch({ documents: { saber: v } })} disabled={!canEdit} />
             </div>
-          </div>
+          </Card>
 
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-            <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{T.agentPapersChecklist}</h3>
-            <div className="space-y-1">
-              <Toggle label={T.paperBlStamped} on={c.agentPapers?.blStamped} onToggle={(v) => patch({ agentPapers: { blStamped: v } })} disabled={!canEdit} />
-              <Toggle label={T.paperCustomerAuth} on={c.agentPapers?.customerAuthorization} onToggle={(v) => patch({ agentPapers: { customerAuthorization: v } })} disabled={!canEdit} />
-              <Toggle label={T.paperCompanyAuth} on={c.agentPapers?.companyAuthorization} onToggle={(v) => patch({ agentPapers: { companyAuthorization: v } })} disabled={!canEdit} />
-            </div>
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-            <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{T.emailTemplates}</h3>
-            <div className="space-y-3">
-              {([['doInvoiceRequest', T.doInvoiceRequest], ['linkDoRequest', T.linkDoRequest], ['etaEnquiry', T.etaEnquiry]] as const).map(([key, label]) => {
-                const e = emails[key];
-                const full = `${txx.subjectLabel} ${e.subject}\n\n${e.body}`;
-                return (
-                  <div key={key} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-slate-900 text-sm font-medium mb-1">{label}</p>
-                    <pre className="text-slate-600 text-xs whitespace-pre-wrap font-sans mb-2">{e.body}</pre>
-                    <div className="flex items-center gap-2">
-                      <button type="button" onClick={() => copy(key, full)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs transition-colors">
-                        <Copy className="w-3.5 h-3.5" /> {copied === key ? T.copied : T.copyText}
-                      </button>
-                      <a href={mailto(e.subject, e.body)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#f37121] text-white text-xs hover:bg-[#e06010] transition-colors">
-                        <Mail className="w-3.5 h-3.5" /> {T.openEmail}
-                      </a>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <ClearanceNotes clearance={c} canEdit={canEdit} ar={ar} onChanged={fetchOne} notify={notify} />
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="lg:col-span-3" icon={<Ship className="w-4 h-4" />} title={T.transactionData}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <FieldInput label={T.blNumber} value={c.blNumber} onSave={(v) => patch({ blNumber: v })} disabled={!canEdit} />
+          <FieldInput label={T.customerName} value={c.customerName} onSave={(v) => patch({ customerName: v })} disabled={!canEdit} />
+          <FieldInput label={T.invoiceNumber} value={c.invoiceNumber} onSave={(v) => patch({ invoiceNumber: v })} disabled={!canEdit} />
+          <FieldInput label={T.invoiceDate} type="date" value={c.invoiceDate ? String(c.invoiceDate).slice(0, 10) : ''} onSave={(v) => patch({ invoiceDate: v || null })} disabled={!canEdit} />
+          <FieldInput label={T.port} value={c.port} onSave={(v) => patch({ port: v })} disabled={!canEdit} />
+          <FieldSelect label={T.invoiceType} value={c.invoiceType || ''} options={[['', '—'], ['C&F', 'C&F'], ['CIF', 'CIF'], ['FOB', 'FOB']]} onSave={(v) => patch({ invoiceType: v })} disabled={!canEdit} />
+          <FieldInput label={T.containerCount} type="number" value={c.containerCount} onSave={(v) => patch({ containerCount: Number(v) || 0 })} disabled={!canEdit} />
+          <FieldInput label={T.totalWeight} type="number" value={c.totalWeight} onSave={(v) => patch({ totalWeight: Number(v) || 0 })} disabled={!canEdit} />
+          <FieldInput label={T.invoiceValue} type="number" value={c.invoiceValue} onSave={(v) => patch({ invoiceValue: Number(v) || 0 })} disabled={!canEdit} />
+          <FieldInput label={T.currency} value={c.currency} onSave={(v) => patch({ currency: v })} disabled={!canEdit} />
+          <FieldInput label={T.exporterCompany} value={c.exporterCompany} onSave={(v) => patch({ exporterCompany: v })} disabled={!canEdit} />
+          <FieldInput label={T.countryOfOrigin} value={c.countryOfOrigin} onSave={(v) => patch({ countryOfOrigin: v })} disabled={!canEdit} />
+          <FieldInput label={T.hsCode} value={c.hsCode} onSave={(v) => patch({ hsCode: v })} disabled={!canEdit} />
+          <FieldInput label={T.saberNumber} value={c.saberNumber} onSave={(v) => patch({ saberNumber: v })} disabled={!canEdit} />
+          <FieldInput label={T.assignedTo} value={c.assignedTo} onSave={(v) => patch({ assignedTo: v })} disabled={!canEdit} />
+          <FieldSelect label={T.branch} value={c.branch} options={[['jeddah', T.jeddah], ['dammam', T.dammam]]} onSave={(v) => patch({ branch: v })} disabled={!canEdit} />
+          <FieldInput label={T.shippingAgent} value={c.shippingAgent} onSave={(v) => patch({ shippingAgent: v })} disabled={!canEdit} />
+          <FieldInput label={T.shippingAgentEmail} value={c.shippingAgentEmail} onSave={(v) => patch({ shippingAgentEmail: v })} disabled={!canEdit} />
+          {/* الناقلُ — سجلٌّ كالعميل والوكيل، وله صفحتُه وملفُّه. */}
+          <FieldInput label={ar ? 'الناقل' : 'Carrier'} value={c.carrierName} onSave={(v) => patch({ carrierName: v })} disabled={!canEdit} />
+          </div>
+        </Card>
       </div>
 
       {/* ------------------------------------------------------------------ */}
@@ -535,24 +537,6 @@ export default function CustomsDetailPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Declaration & scheduling */}
-        <Card title={ar ? 'بيانات البيان والمواعيد' : 'Declaration & scheduling'}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldInput label={ar ? 'رقم البيان' : 'Declaration no.'} value={c.declarationNumber} onSave={(v) => patch({ declarationNumber: v })} disabled={!canEdit} />
-            <FieldInput label={ar ? 'تاريخ البيان' : 'Declaration date'} type="date" value={c.declarationDate} onSave={(v) => patch({ declarationDate: v })} disabled={!canEdit} />
-            <FieldInput label={ar ? 'تاريخ استلام الورق' : 'Papers received'} type="date" value={c.papersReceivedDate} onSave={(v) => patch({ papersReceivedDate: v })} disabled={!canEdit} />
-            <FieldInput label={ar ? 'موعد التفريغ' : 'Unloading appointment'} value={c.unloadingAppointment} onSave={(v) => patch({ unloadingAppointment: v })} disabled={!canEdit} />
-            <FieldInput label={ar ? 'مكان التفريغ' : 'Unloading location'} value={c.unloadingLocation} onSave={(v) => patch({ unloadingLocation: v })} disabled={!canEdit} />
-            <FieldInput label={ar ? 'رقم إذن التسليم' : 'DO number'} value={c.doNumber} onSave={(v) => patch({ doNumber: v })} disabled={!canEdit} />
-            <FieldInput label={ar ? 'رقم تصريح الخروج' : 'Exit permit no.'} value={c.exitPermitNumber} onSave={(v) => patch({ exitPermitNumber: v })} disabled={!canEdit} />
-            <FieldInput label={ar ? 'أيّام السماح للإرجاع' : 'Return free days'} type="number" value={c.returnFreeDays ?? 0} onSave={(v) => patch({ returnFreeDays: Number(v) || 0 })} disabled={!canEdit} />
-            <FieldInput label={ar ? 'آخر موعد إرجاع' : 'Return deadline'} type="date" value={c.returnDeadline} onSave={(v) => patch({ returnDeadline: v })} disabled={!canEdit} />
-            <FieldInput label={ar ? 'المدينة' : 'City'} value={c.city} onSave={(v) => patch({ city: v })} disabled={!canEdit} />
-            <FieldSelect label={ar ? 'الشهر' : 'Month'} value={String(c.periodMonth || '')} disabled={!canEdit}
-              options={[['', '—'], ...Array.from({ length: 12 }, (_, i) => [String(i + 1), MONTH_LABELS[i][ar ? 0 : 1]] as [string, string])]}
-              onSave={(v) => patch({ periodMonth: v ? Number(v) : null })} />
-            <FieldInput label={ar ? 'السنة' : 'Year'} type="number" value={c.periodYear} onSave={(v) => patch({ periodYear: v ? Number(v) : null })} disabled={!canEdit} />
-          </div>
-        </Card>
 
         {/* ── مراحلُ السداد ─────────────────────────────────────────────
             كانت ثمانيةَ صفوفٍ مكتوبةً في الشيفرة: تاريخٌ واحدٌ لكلٍّ وبلا مرفق
@@ -639,12 +623,26 @@ const MONTH_LABELS: [string, string][] = [
   ['سبتمبر', 'September'], ['أكتوبر', 'October'], ['نوفمبر', 'November'], ['ديسمبر', 'December'],
 ];
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+/**
+ * بطاقةُ الصفحة — ترويسةٌ فاتحةٌ بأيقونةٍ وخطٍّ تحتها.
+ *
+ * كانت كلُّ ترويسةٍ مستطيلًا أسودَ داخل بطاقةٍ بيضاء: ستُّ لطخاتٍ سوداءَ في
+ * صفحةٍ فاتحة، تُثقل الشاشةَ ولا تدلّ على شيء. راجع /system theme.
+ */
+function Card({ title, icon, right, children, className = '' }: {
+  title: string; icon?: React.ReactNode; right?: React.ReactNode; children: React.ReactNode; className?: string;
+}) {
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-      <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4">{title}</h3>
-      {children}
-    </div>
+    <section className={`bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden ${className}`}>
+      <header className="flex items-center justify-between gap-2 px-5 py-3.5 border-b border-slate-100">
+        <h3 className="text-[14px] font-bold text-slate-900 flex items-center gap-2">
+          {icon && <span className="w-7 h-7 rounded-lg bg-[#f37121]/10 text-[#f37121] flex items-center justify-center">{icon}</span>}
+          {title}
+        </h3>
+        {right}
+      </header>
+      <div className="p-5">{children}</div>
+    </section>
   );
 }
 

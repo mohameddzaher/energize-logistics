@@ -20,6 +20,14 @@ router.post('/parties', authorize(...EDIT_ROLES), ctrl.createParty);
 router.get('/parties/:id', ctrl.getPartyProfile);
 router.put('/parties/:id', authorize(...EDIT_ROLES), ctrl.updateParty);
 router.delete('/parties/:id', authorize('super_admin', 'admin', 'customs_manager'), ctrl.deleteParty);
+// ── العقود: قبل `/:id` كذلك ────────────────────────────────────────────────
+router.get('/contracts', ctrl.listContracts);
+router.post('/contracts', authorize(...EDIT_ROLES), ctrl.createContract);
+router.put('/contracts/:id', authorize(...EDIT_ROLES), ctrl.updateContract);
+router.delete('/contracts/:id', authorize('super_admin', 'admin', 'customs_manager'), ctrl.deleteContract);
+router.post('/contracts/:id/files', authorize(...EDIT_ROLES), ctrl.addContractFiles);
+router.delete('/contracts/:id/files/:attId', authorize(...EDIT_ROLES), ctrl.deleteContractFile);
+
 router.get('/:id', ctrl.getClearance);
 
 router.post('/', authorize(...EDIT_ROLES), ctrl.createClearance);
@@ -35,6 +43,10 @@ router.put('/:id/payment-stages/:entryId', authorize(...EDIT_ROLES), ctrl.update
 router.delete('/:id/payment-stages/:entryId', authorize(...EDIT_ROLES), ctrl.deletePaymentStage);
 // الإقفال — لا يمرّ قبل «فاتورة النقل» بتاريخٍ ومرفق. راجع completeClearance.
 router.patch('/:id/complete', authorize(...EDIT_ROLES), ctrl.completeClearance);
+
+// ملاحظاتُ المعاملة — تُضاف من الجدول ومن داخل المعاملة، وآخرُها يُعرض.
+router.post('/:id/notes', authorize(...EDIT_ROLES), ctrl.addNote);
+router.delete('/:id/notes/:noteId', authorize(...EDIT_ROLES), ctrl.deleteNote);
 
 router.post('/:id/attachments', authorize(...EDIT_ROLES), ctrl.addAttachments);
 router.put('/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.updateAttachment);

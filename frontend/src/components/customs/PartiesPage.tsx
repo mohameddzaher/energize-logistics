@@ -12,10 +12,17 @@ import api from '@/lib/api';
 import { canEditSection } from '@/lib/sections';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, Loader2 } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
-import { Users, Ship, Plus, Pencil, Trash2, Mail, Phone, ChevronLeft } from 'lucide-react';
+import { Users, Ship, Truck, Plus, Pencil, Trash2, Mail, Phone, ChevronLeft } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
 
-export type PartyKind = 'customer' | 'agent';
+// ثلاثةُ أدوارٍ بالبنية نفسِها: صاحبُ البضاعة، ومخلِّصُها، وناقلُها.
+export type PartyKind = 'customer' | 'agent' | 'carrier';
+
+const KIND_META: Record<PartyKind, { ar: string; en: string; oneAr: string; oneEn: string; newAr: string; newEn: string }> = {
+  customer: { ar: 'عملاء التخليص', en: 'Customs customers', oneAr: 'عملاء', oneEn: 'Customers', newAr: 'عميل جديد', newEn: 'New customer' },
+  agent: { ar: 'وكلاء الشحن', en: 'Shipping agents', oneAr: 'وكلاء', oneEn: 'Agents', newAr: 'وكيل جديد', newEn: 'New agent' },
+  carrier: { ar: 'الناقلون', en: 'Carriers', oneAr: 'ناقلون', oneEn: 'Carriers', newAr: 'ناقل جديد', newEn: 'New carrier' },
+};
 
 export interface Party {
   _id: string; kind: PartyKind; name: string; email?: string; phone?: string;
@@ -94,7 +101,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
 
   const cols: ExportColumn[] = [
     { header: t('الاسم', 'Name'), key: 'name', width: 28 },
-    ...(kind === 'agent' ? [{ header: t('البريد', 'Email'), key: 'email', width: 26 }] : []),
+    ...(kind !== 'customer' ? [{ header: t('البريد', 'Email'), key: 'email', width: 26 }] : []),
     { header: t('الجوال', 'Phone'), key: 'phone', width: 16 },
     { header: t('معاملات', 'Deals'), key: 'deals', width: 10 },
     { header: t('حاويات', 'Containers'), key: 'containers', width: 10 },
@@ -103,8 +110,9 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
   ];
 
   if (loading) return <Spinner />;
-  const Icon = kind === 'agent' ? Ship : Users;
-  const title = kind === 'agent' ? t('وكلاء الشحن', 'Shipping agents') : t('عملاء التخليص', 'Customs customers');
+  const Icon = kind === 'agent' ? Ship : kind === 'carrier' ? Truck : Users;
+  const meta = KIND_META[kind];
+  const title = t(meta.ar, meta.en);
 
   const Stat = ({ label, value, accent }: { label: string; value: string | number; accent?: string }) => (
     <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm">
@@ -121,13 +129,13 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
           options={[{ key: 'shown', label: t('المعروض', 'Shown'), sheets: [{ name: title, rows: shown, columns: cols }] }]} />
         {canEdit && (
           <PrimaryButton onClick={() => setEditing({ name: '', kind })}>
-            <Plus className="w-4 h-4" /> {kind === 'agent' ? t('وكيل جديد', 'New agent') : t('عميل جديد', 'New customer')}
+            <Plus className="w-4 h-4" /> {t(meta.newAr, meta.newEn)}
           </PrimaryButton>
         )}
       </PageHeader>
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <Stat label={kind === 'agent' ? t('وكلاء', 'Agents') : t('عملاء', 'Customers')} value={shown.length} />
+        <Stat label={t(meta.oneAr, meta.oneEn)} value={shown.length} />
         <Stat label={t('معاملات', 'Deals')} value={money(totals.deals)} />
         <Stat label={t('حاويات', 'Containers')} value={money(totals.containers)} />
         <Stat label={t('الإيراد', 'Revenue')} value={money(totals.revenue)} accent="text-emerald-600" />
@@ -142,7 +150,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
-                {[t('الاسم', 'Name'), ...(kind === 'agent' ? [t('البريد', 'Email')] : []), t('التواصل', 'Contact'),
+                {[t('الاسم', 'Name'), ...(kind !== 'customer' ? [t('البريد', 'Email')] : []), t('التواصل', 'Contact'),
                   t('معاملات', 'Deals'), t('حاويات', 'Containers'), t('الإيراد', 'Revenue'), t('الربح', 'Profit'),
                   t('الهامش', 'Margin'), t('آخر معاملة', 'Last deal'), ''].map((h, i) => (
                   <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>
@@ -161,7 +169,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
                       {p.name}
                       {p.isActive === false && <span className="ms-1.5 text-[10px] text-slate-400">({t('معطَّل', 'inactive')})</span>}
                     </td>
-                    {kind === 'agent' && (
+                    {kind !== 'customer' && (
                       <td className="px-3 py-2.5 text-slate-600">
                         {p.email ? <a href={`mailto:${p.email}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 hover:text-[#f37121]"><Mail className="w-3.5 h-3.5" />{p.email}</a>
                           : <span className="text-red-400 text-xs">{t('بلا بريد', 'no email')}</span>}
@@ -193,7 +201,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
       </div>
 
       <Modal open={!!editing} onClose={() => setEditing(null)}
-        title={editing?._id ? t('تعديل', 'Edit') : (kind === 'agent' ? t('وكيل جديد', 'New agent') : t('عميل جديد', 'New customer'))}
+        title={editing?._id ? t('تعديل', 'Edit') : t(meta.newAr, meta.newEn)}
         footer={<>
           <button type="button" onClick={() => setEditing(null)} className="px-4 py-2 text-slate-500 text-sm">{t('إلغاء', 'Cancel')}</button>
           <PrimaryButton onClick={save} disabled={saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}{t('حفظ', 'Save')}</PrimaryButton>

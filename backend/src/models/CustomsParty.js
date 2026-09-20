@@ -16,7 +16,11 @@
 const mongoose = require('mongoose');
 
 const customsPartySchema = new mongoose.Schema({
-  kind: { type: String, enum: ['customer', 'agent'], required: true, index: true },
+  // ── والناقلُ طرفٌ ثالث ─────────────────────────────────────────────────────
+  // العميلُ صاحبُ البضاعة، والوكيلُ يخلّصها في الميناء، والناقلُ ينقلها منه إلى
+  // الساحة أو إلى العميل. كان يُكتب اسمُه نصًّا في المعاملة فلا يُعرف كم نقل لنا
+  // ولا بأيّ عقد. والبنيةُ واحدة، فالفرقُ دورٌ في `kind` لا مجموعةٌ ثالثة.
+  kind: { type: String, enum: ['customer', 'agent', 'carrier'], required: true, index: true },
   name: { type: String, required: true, trim: true, index: true },
   // الاسمُ مطويًّا: يُطابَق به فلا يصير «الفا سوليوشنز» و«ألفا سوليوشنز» طرفين.
   nameKey: { type: String, index: true },

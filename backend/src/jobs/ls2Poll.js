@@ -217,6 +217,7 @@ async function tick() {
 
     const vehicleOps = [];
     const alertOps = [];
+    const openedNow = [];
     const odoOps = [];
     let newCritical = 0;
     let totalActive = 0;
@@ -368,12 +369,15 @@ async function tick() {
           } } } });
         } else {
           if (c.severity === 'critical') newCritical += 1;
-          alertOps.push({ insertOne: { document: {
+          const doc = {
             unitId: tel.unitId, plate: tel.plate, driver: tel.driver,
             type: c.type, key: c.key, severity: c.severity, status: 'open', message: c.message,
             value: c.value, threshold: c.threshold, unit: c.unit, context: { ...ctx, ...(c.context || {}) },
             firstSeenAt: now, lastSeenAt: now,
-          } } });
+          };
+          alertOps.push({ insertOne: { document: doc } });
+          // التنبيهُ الجديد يصل مَن يتصرّف فيه — راجع services/ls2Notify.
+          openedNow.push(doc);
         }
       }
       // Resolve open alerts no longer tripping.
@@ -387,6 +391,11 @@ async function tick() {
     if (vehicleOps.length) await Ls2Vehicle.bulkWrite(vehicleOps, { ordered: false });
     if (driverOps.length) await Ls2DriverAssignment.bulkWrite(driverOps, { ordered: false });
     if (alertOps.length) await Ls2Alert.bulkWrite(alertOps, { ordered: false });
+    // الإشعارُ بعد الكتابة لا قبلها، ولا يُفشل الدورةَ إن تعثّر.
+    if (openedNow.length) {
+      try { await require('../services/ls2Notify').notifyNewAlerts(openedNow); }
+      catch (e) { console.error('[ls2] notify alerts', e.message); }
+    }
     if (odoOps.length) await Ls2OdometerDaily.bulkWrite(odoOps, { ordered: false });
 
     // Broadcast ONLY when the tick actually wrote something. Emitting every 20s

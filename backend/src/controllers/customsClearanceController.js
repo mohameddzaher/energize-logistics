@@ -123,8 +123,19 @@ exports.getClearances = async (req, res) => {
     // نستبعد الحقول الثقيلة من القائمة — المرفقاتُ وحدَها قد تبلغ أربعين سطرًا
     // في المعاملة الواحدة، والقائمةُ لا تعرض منها شيئًا. تُحمَّل عند فتح
     // المعاملة فقط. يقلّل النقل بشكل كبير على Atlas المُقيَّد.
-    let list = await cache.wrap(ck, 30000, () => CustomsClearance.find(filter)
-      .select('-documents -attachments -containers -paymentStages').sort({ createdAt: -1 }).lean());
+    let list = await cache.wrap(ck, 30000, async () => {
+      const rows = await CustomsClearance.find(filter)
+        .select('-documents -attachments -containers -paymentStages').sort({ createdAt: -1 }).lean();
+      // ── آخرُ ملاحظةٍ فقط تُرسَل ──────────────────────────────────────────
+      // الجدولُ يعرض الأخيرةَ لا السجلَّ كلَّه، ونقلُ عشر ملاحظاتٍ لكلّ صفٍّ
+      // على وصلةٍ مقيَّدة نقلٌ لا يُعرَض. والسجلُّ يُقرأ في المعاملة.
+      return rows.map((r) => {
+        const log = r.notesLog || [];
+        const last = log.length ? log[log.length - 1] : null;
+        const { notesLog, ...rest } = r;
+        return { ...rest, lastNote: last ? { text: last.text, byName: last.byName, at: last.at } : null, notesCount: log.length };
+      });
+    });
 
     // ── والبحثُ بأيّ اسمٍ أو أيّ رقم ─────────────────────────────────────────
     // كان يقرأ ستّةَ حقول. والورقةُ التي في اليد قد تحمل رقمَ البيان أو رقمَ
@@ -137,7 +148,7 @@ exports.getClearances = async (req, res) => {
       list = list.filter((c) => [
         c.refNumber, c.blNumber, c.customerName, c.shippingAgent, c.invoiceNumber, c.port,
         c.declarationNumber, c.doNumber, c.exitPermitNumber, c.saberNumber, c.hsCode,
-        c.exporterCompany, c.countryOfOrigin, c.city, c.legacySerial, c.notes,
+        c.exporterCompany, c.countryOfOrigin, c.city, c.legacySerial, c.notes, c.lastNote?.text, c.carrierName,
         c.billing && c.billing.ourInvoiceNumber, c.unloadingLocation, c.assignedTo,
       ].some(has));
     }
@@ -514,6 +525,7 @@ exports.deleteAttachment = async (req, res) => {
 //  أطرافُ التخليص — العملاءُ ووكلاءُ الشحن
 // ═══════════════════════════════════════════════════════════════════════════
 const CustomsParty = require('../models/CustomsParty');
+const CustomsContract = require('../models/CustomsContract');
 const { fold: foldName } = require('../models/CustomsParty');
 
 /** بحثٌ لا يبالي بالمسافات ولا بفروق الرسم العربيّ — كما في بقيّة النظام. */
@@ -525,10 +537,17 @@ const partyRx = (s) => {
   return new RegExp(parts.join('\\s*'), 'i');
 };
 
+// ── ثلاثةُ أدوار، وحقلٌ في المعاملة لكلٍّ ──────────────────────────────────
+// العميلُ صاحبُ البضاعة، والوكيلُ يخلّصها، والناقلُ ينقلها. راجع CustomsParty.
+const PARTY_KINDS = ['customer', 'agent', 'carrier'];
+const partyField = (kind) => (kind === 'agent' ? 'agentParty' : kind === 'carrier' ? 'carrierParty' : 'customerParty');
+
 exports.listParties = async (req, res) => {
   try {
-    const kind = req.query.kind === 'agent' ? 'agent' : 'customer';
-    const filter = { kind };
+    // `kind=all` — الأطرافُ كلُّها بأدوارها، لاختيار صاحب العقد من قائمةٍ واحدة.
+    const all = req.query.kind === 'all';
+    const kind = PARTY_KINDS.includes(req.query.kind) ? req.query.kind : 'customer';
+    const filter = all ? {} : { kind };
     if (req.query.active !== 'all') filter.isActive = { $ne: false };
     const q = String(req.query.q || '').trim();
     if (q) {
@@ -541,7 +560,8 @@ exports.listParties = async (req, res) => {
 
     // مع كلّ طرفٍ حجمُه: القائمةُ بلا أرقامٍ أسماءٌ لا تُقارَن.
     const ids = parties.map((p) => p._id);
-    const field = kind === 'agent' ? 'agentParty' : 'customerParty';
+    if (all) return res.json({ parties });          // القائمةُ للاختيار، بلا أرقامٍ تُحسب
+    const field = partyField(kind);
     const agg = await CustomsClearance.aggregate([
       { $match: { [field]: { $in: ids }, cancelled: { $ne: true } } },
       { $group: {
@@ -568,7 +588,7 @@ exports.listParties = async (req, res) => {
 
 exports.createParty = async (req, res) => {
   try {
-    const kind = req.body.kind === 'agent' ? 'agent' : 'customer';
+    const kind = PARTY_KINDS.includes(req.body.kind) ? req.body.kind : 'customer';
     const name = String(req.body.name || '').trim();
     if (!name) return res.status(400).json({ message: 'الاسم مطلوب' });
     const exists = await CustomsParty.findOne({ kind, nameKey: foldName(name) }).lean();
@@ -625,7 +645,7 @@ exports.getPartyProfile = async (req, res) => {
   try {
     const party = await CustomsParty.findById(req.params.id).lean();
     if (!party) return res.status(404).json({ message: 'غير موجود' });
-    const field = party.kind === 'agent' ? 'agentParty' : 'customerParty';
+    const field = partyField(party.kind);
 
     const deals = await CustomsClearance.find({ [field]: party._id })
       .select('-documents -attachments -containers -paymentStages').sort({ createdAt: -1 }).lean();
@@ -674,7 +694,9 @@ exports.getPartyProfile = async (req, res) => {
         .map((b) => ({ ...b, revenue: Math.round(b.revenue), profit: Math.round(b.profit) })),
       byStage: tally((d) => d.stage),
       byPort: tally((d) => d.port),
-      byCounterparty: tally((d) => (party.kind === 'agent' ? d.customerName : d.shippingAgent)),
+      byCounterparty: tally((d) => (party.kind === 'customer' ? d.shippingAgent : d.customerName)),
+      // عقودُنا معه — تُقرأ في ملفّه لا في شاشةٍ أخرى. راجع CustomsContract.
+      contracts: await CustomsContract.find({ party: party._id }).sort({ createdAt: -1 }).lean(),
       deals,
     });
   } catch (e) {
@@ -905,3 +927,176 @@ exports.completeClearance = async (req, res) => {
 };
 
 module.exports.REQUIRED_STAGE_KEY = REQUIRED_STAGE_KEY;
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  الملاحظات — سطرٌ يُضاف، وآخرُه يُقرأ في الجدول
+// ═══════════════════════════════════════════════════════════════════════════
+const touchCustoms = (id) => {
+  try { cache.clear('customs:'); } catch (_) { /* */ }
+  try { emitToAll('customs:updated', { id: String(id || '') }); } catch (_) { /* */ }
+};
+
+exports.addNote = async (req, res) => {
+  try {
+    const text = String(req.body.text || '').trim().slice(0, 2000);
+    if (!text) return res.status(400).json({ message: 'اكتب الملاحظة' });
+    const clearance = await CustomsClearance.findById(req.params.id);
+    if (!clearance) return res.status(404).json({ message: 'المعاملة غير موجودة' });
+    const note = {
+      text,
+      by: req.user._id,
+      byName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.name || '',
+      at: new Date(),
+    };
+    clearance.notesLog.push(note);
+    clearance.lastModifiedBy = req.user._id;
+    await clearance.save();
+    await logAudit({ user: req.user._id, action: 'customs_note', entity: 'CustomsClearance', entityId: clearance._id, changes: { after: { note: text } }, ipAddress: req.ip });
+    touchCustoms(clearance._id);
+    res.status(201).json({ note, notesLog: clearance.notesLog });
+  } catch (e) { sendMongooseError(res, e, 'تعذّرت إضافة الملاحظة'); }
+};
+
+exports.deleteNote = async (req, res) => {
+  try {
+    const clearance = await CustomsClearance.findById(req.params.id);
+    if (!clearance) return res.status(404).json({ message: 'المعاملة غير موجودة' });
+    const note = clearance.notesLog.id(req.params.noteId);
+    if (!note) return res.status(404).json({ message: 'الملاحظة غير موجودة' });
+    // ملاحظةُ غيرِك لا تُحذف إلّا للمدير: هي أثرٌ لصاحبها.
+    const boss = ['super_admin', 'admin', 'customs_manager'].includes(req.user.role);
+    if (!boss && String(note.by || '') !== String(req.user._id)) {
+      return res.status(403).json({ message: 'لا تُحذف ملاحظةُ غيرك' });
+    }
+    note.deleteOne();
+    await clearance.save();
+    touchCustoms(clearance._id);
+    res.json({ notesLog: clearance.notesLog });
+  } catch (e) { sendMongooseError(res, e, 'تعذّر حذف الملاحظة'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  العقود — عقدُنا مع عميلٍ أو وكيلٍ أو ناقل
+// ═══════════════════════════════════════════════════════════════════════════
+const CONTRACT_FIELDS = ['title', 'contractNumber', 'startDate', 'endDate', 'value', 'valueBasis',
+  'paymentTermDays', 'autoRenew', 'status', 'scope', 'notes'];
+
+/** العقدُ المنتهي يُقرأ منتهيًا وإن كُتب «ساري»: التاريخُ أصدقُ من الخانة. */
+const withState = (c) => {
+  const end = c.endDate ? new Date(c.endDate) : null;
+  const expired = !!end && end.getTime() < Date.now();
+  const daysLeft = end ? Math.ceil((end.getTime() - Date.now()) / 86400000) : null;
+  return { ...c, expired, daysLeft, state: c.status === 'terminated' ? 'terminated' : expired ? 'expired' : c.status };
+};
+
+exports.listContracts = async (req, res) => {
+  try {
+    const filter = {};
+    if (PARTY_KINDS.includes(req.query.kind)) filter.partyKind = req.query.kind;
+    if (req.query.party) filter.party = req.query.party;
+    if (req.query.status) filter.status = req.query.status;
+    const q = String(req.query.q || '').trim();
+    if (q) {
+      const rx = partyRx(q);
+      filter.$or = [{ title: rx }, { contractNumber: rx }, { partyName: rx }, { scope: rx }];
+    }
+    const rows = await CustomsContract.find(filter).sort({ createdAt: -1 }).lean();
+    res.json({ contracts: rows.map(withState) });
+  } catch (e) {
+    console.error('listContracts error:', e);
+    res.status(500).json({ message: 'تعذّر تحميل العقود' });
+  }
+};
+
+exports.createContract = async (req, res) => {
+  try {
+    const party = await CustomsParty.findById(req.body.party).lean();
+    if (!party) return res.status(400).json({ message: 'اختر الطرف' });
+    if (!String(req.body.title || '').trim()) return res.status(400).json({ message: 'اسم العقد مطلوب' });
+    const body = stripEmpty(req.body, CustomsContract.schema);
+    const doc = await CustomsContract.create({
+      ...Object.fromEntries(CONTRACT_FIELDS.map((f) => [f, body[f]]).filter(([, v]) => v !== undefined)),
+      party: party._id,
+      partyKind: party.kind,
+      partyName: party.name,
+      createdBy: req.user._id,
+      createdByName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
+    });
+    await logAudit({ user: req.user._id, action: 'create_customs_contract', entity: 'CustomsContract', entityId: doc._id, changes: { after: { title: doc.title, party: party.name } }, ipAddress: req.ip });
+    try { emitToAll('customs:contract', { id: String(doc._id) }); } catch (_) { /* */ }
+    res.status(201).json({ contract: withState(doc.toObject()) });
+  } catch (e) { sendMongooseError(res, e, 'تعذّر حفظ العقد'); }
+};
+
+exports.updateContract = async (req, res) => {
+  try {
+    const doc = await CustomsContract.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'العقد غير موجود' });
+    if (req.body.party && String(req.body.party) !== String(doc.party)) {
+      const party = await CustomsParty.findById(req.body.party).lean();
+      if (!party) return res.status(400).json({ message: 'الطرف غير موجود' });
+      doc.party = party._id; doc.partyKind = party.kind; doc.partyName = party.name;
+    }
+    for (const f of CONTRACT_FIELDS) if (req.body[f] !== undefined) doc[f] = req.body[f] === '' ? (doc.schema.path(f)?.instance === 'Number' ? null : '') : req.body[f];
+    doc.lastModifiedBy = req.user._id;
+    await doc.save();
+    try { emitToAll('customs:contract', { id: String(doc._id) }); } catch (_) { /* */ }
+    res.json({ contract: withState(doc.toObject()) });
+  } catch (e) { sendMongooseError(res, e, 'تعذّر حفظ العقد'); }
+};
+
+exports.deleteContract = async (req, res) => {
+  try {
+    const doc = await CustomsContract.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'العقد غير موجود' });
+    // الورقُ يُحذف مع صفّه، وإلّا بقي ملفٌّ لا يشير إليه شيء.
+    for (const a of doc.attachments || []) { try { deleteStoredFile(a.fileUrl); } catch (_) { /* */ } }
+    await doc.deleteOne();
+    await logAudit({ user: req.user._id, action: 'delete_customs_contract', entity: 'CustomsContract', entityId: doc._id, changes: { before: { title: doc.title, party: doc.partyName } }, ipAddress: req.ip });
+    try { emitToAll('customs:contract', { id: String(doc._id) }); } catch (_) { /* */ }
+    res.json({ ok: true });
+  } catch (e) { sendMongooseError(res, e, 'تعذّر حذف العقد'); }
+};
+
+exports.addContractFiles = async (req, res) => {
+  try {
+    const doc = await CustomsContract.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'العقد غير موجود' });
+    const incoming = Array.isArray(req.body.files) ? req.body.files : [req.body];
+    const added = [];
+    for (const f of incoming) {
+      if (!f || !f.dataUrl) continue;
+      let stored;
+      try { stored = saveUploadFile(f.dataUrl, 'customs', f.fileName || ''); }
+      catch (e) { return res.status(400).json({ message: e.message }); }
+      const att = {
+        ...stored,
+        title: String(f.title || '').trim().slice(0, 200),
+        uploadedBy: req.user._id,
+        uploadedByName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
+        uploadedAt: new Date(),
+      };
+      doc.attachments.push(att);
+      added.push(att);
+    }
+    if (!added.length) return res.status(400).json({ message: 'لا ملفات' });
+    await doc.save();
+    try { emitToAll('customs:contract', { id: String(doc._id) }); } catch (_) { /* */ }
+    res.status(201).json({ contract: withState(doc.toObject()) });
+  } catch (e) { sendMongooseError(res, e, 'تعذّر رفع الملف'); }
+};
+
+exports.deleteContractFile = async (req, res) => {
+  try {
+    const doc = await CustomsContract.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'العقد غير موجود' });
+    const att = doc.attachments.id(req.params.attId);
+    if (!att) return res.status(404).json({ message: 'الملف غير موجود' });
+    try { deleteStoredFile(att.fileUrl); } catch (_) { /* */ }
+    att.deleteOne();
+    await doc.save();
+    try { emitToAll('customs:contract', { id: String(doc._id) }); } catch (_) { /* */ }
+    res.json({ contract: withState(doc.toObject()) });
+  } catch (e) { sendMongooseError(res, e, 'تعذّر حذف الملف'); }
+};

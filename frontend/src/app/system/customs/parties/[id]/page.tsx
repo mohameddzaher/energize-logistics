@@ -13,6 +13,9 @@ import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 import { Users, Ship, Mail, Phone, MapPin, FileText, ArrowRight } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
+import CustomsContracts from '@/components/customs/CustomsContracts';
+import { useAuth } from '@/context/AuthContext';
+import { canEditSection } from '@/lib/sections';
 
 const money = (n?: number) => (Number(n) || 0).toLocaleString('en-US');
 const dt = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
@@ -25,6 +28,9 @@ export default function CustomsPartyProfile() {
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
   const { notify } = useDialog();
+  const { user } = useAuth();
+  const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer']
+    .includes((user as any)?.role || '') || canEditSection((user as any)?.permissions, 'Customs');
 
   const [d, setD] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -190,6 +196,9 @@ export default function CustomsPartyProfile() {
           </table>
         </ScrollX>
       </div>
+
+      {/* عقودُنا معه — تُقرأ في ملفّه، والمصدرُ صفحةُ العقود نفسُها. */}
+      <CustomsContracts ar={ar} canEdit={canEdit} party={{ _id: p._id, name: p.name, kind: p.kind }} notify={notify} embedded />
     </div>
   );
 }

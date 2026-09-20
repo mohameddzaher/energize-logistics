@@ -73,6 +73,13 @@ const operationsWorkflowSchema = new mongoose.Schema(
     // GROUP 3: Manual Moderator Columns (Moderator) — 7 fields
     // ══════════════════════════════════════════════════════════
     paymentDate: { type: Date },                             // تاريخ السداد
+    // ── ومَن كتب تاريخ السداد ──────────────────────────────────────────────
+    // «مسؤول البيانات»: آخرُ مَن كتب تاريخَ السداد على هذا الكشف أو عدّله. وهو
+    // غيرُ مَن أنشأ الكشف وغيرُ مَن سجّل المشتريات في العهدة اليوميّة — يُسأل
+    // عن رقمٍ في هذا العمود فيُعرف صاحبُه بلا فتح سجلّ التعديلات.
+    paymentDateBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    paymentDateByName: { type: String, trim: true, default: '' },
+    paymentDateAt: { type: Date, default: null },
     payingBranch: { type: String, trim: true },              // الفرع المسدد
 
     // ── ما دُفع للمورّد، وبأيّ صفةٍ يُفوتَر العميل ────────────────────────

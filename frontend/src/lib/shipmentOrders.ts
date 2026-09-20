@@ -22,7 +22,12 @@ export interface OrderCustomer {
   };
 }
 
-export interface FormFieldOption { key: string; ar: string; en: string }
+export interface FormFieldOption {
+  key: string; ar: string; en: string;
+  /** ما يترتّب على الخيار: «نوع تأجير السائق» يقرّر طريقةَ الدفع. */
+  paymentMethod?: string;
+}
+
 export interface FormField {
   _id: string;
   key: string;

@@ -34,7 +34,7 @@ const TYPE_LABELS: Record<FormField['inputType'], { ar: string; en: string }> = 
 const EMPTY = {
   labelAr: '', labelEn: '', group: 'shipment' as FormField['group'],
   inputType: 'text' as FormField['inputType'],
-  options: [] as { key: string; ar: string; en: string }[],
+  options: [] as { key: string; ar: string; en: string; paymentMethod?: string }[],
   required: false,
 };
 
@@ -46,6 +46,8 @@ export default function ShipmentFormFields({ embedded = false }: { embedded?: bo
   const admin = canAdminOrders(user);
 
   const [fields, setFields] = useState<FormField[]>([]);
+  // خيارات «طريقة الدفع» كما هي في تعريفها — لتُربَط بها أنواعُ التأجير.
+  const payOptions = (fields.find((f) => f.key === 'paymentMethod')?.options || []) as any[];
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -234,10 +236,16 @@ export default function ShipmentFormFields({ embedded = false }: { embedded?: bo
 
         {hasOptions && (
           <div className="mt-4">
+            {form.key === 'driverRentType' && (
+              <p className="mb-2 text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                {ar ? 'طريقة الدفع تتبع هذا الاختيار في شاشة إنشاء الشحنة — اختر لكلّ نوعٍ ما يترتّب عليه.'
+                    : 'Payment method follows this choice on the create form — set what each type implies.'}
+              </p>
+            )}
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold text-slate-600">{ar ? 'الخيارات' : 'Options'}</p>
               <button type="button"
-                onClick={() => setForm((f: any) => ({ ...f, options: [...f.options, { key: '', ar: '', en: '' }] }))}
+                onClick={() => setForm((f: any) => ({ ...f, options: [...f.options, { key: '', ar: '', en: '', paymentMethod: '' }] }))}
                 className="text-xs text-[#f37121] hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> {ar ? 'إضافة خيار' : 'Add option'}</button>
             </div>
             <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -245,6 +253,19 @@ export default function ShipmentFormFields({ embedded = false }: { embedded?: bo
                 <div key={i} className="flex items-center gap-2">
                   <TextInput value={o.ar} onChange={(e) => setForm((f: any) => ({ ...f, options: f.options.map((x: any, k: number) => (k === i ? { ...x, ar: e.target.value } : x)) }))} placeholder={ar ? 'عربي' : 'Arabic'} />
                   <TextInput value={o.en} onChange={(e) => setForm((f: any) => ({ ...f, options: f.options.map((x: any, k: number) => (k === i ? { ...x, en: e.target.value } : x)) }))} placeholder="English" />
+                  {/* ── وما يترتّب على الخيار ─────────────────────────────────
+                      «نوع تأجير السائق» يقرّر طريقةَ الدفع: راجعةٌ ⇒ آجل،
+                      وقدامٌ ⇒ كاش. فأيُّ نوعٍ يُضاف هنا يُقال معه ما يترتّب
+                      عليه، وإلّا بقيت الشحنةُ بلا طريقةِ دفع. */}
+                  {form.key === 'driverRentType' && (
+                    <select value={o.paymentMethod || ''}
+                      onChange={(e) => setForm((f: any) => ({ ...f, options: f.options.map((x: any, k: number) => (k === i ? { ...x, paymentMethod: e.target.value } : x)) }))}
+                      className="px-2 py-2 rounded-lg border border-slate-200 text-sm shrink-0 w-32"
+                      title={ar ? 'طريقة الدفع المترتّبة' : 'Resulting payment method'}>
+                      <option value="">{ar ? 'طريقة الدفع…' : 'Payment…'}</option>
+                      {payOptions.map((p2) => <option key={p2.key} value={p2.key}>{ar ? (p2.ar || p2.key) : (p2.en || p2.key)}</option>)}
+                    </select>
+                  )}
                   <button type="button" onClick={() => setForm((f: any) => ({ ...f, options: f.options.filter((_: any, k: number) => k !== i) }))}
                     className="p-2 text-slate-400 hover:text-red-600 shrink-0" aria-label="remove"><X className="w-4 h-4" /></button>
                 </div>

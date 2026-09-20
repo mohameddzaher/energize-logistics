@@ -86,6 +86,8 @@ export default function ShipmentOrdersPage() {
   // تجيب عن واحدةٍ فقط. فالبطاقاتُ فوق الجدول هي الفلتر — كما في شاشة شحنات
   // المنصّة، والفريقُ يعرفها.
   const [statuses, setStatuses] = useState<string[]>([]);
+  // ملاحظةُ الرحلة: الكلّ · لها ملاحظة · بلا ملاحظة.
+  const [noteFilter, setNoteFilter] = useState('');
   const statusVocab = useOrderStatuses();
   const statusFilter = statuses.join(',');
   const toggleStatus = (k: string) => {
@@ -129,6 +131,7 @@ export default function ShipmentOrdersPage() {
     const t = setTimeout(() => { setDebounced(search); setPage(1); }, 300);
     return () => clearTimeout(t);
   }, [search]);
+  useEffect(() => { setPage(1); }, [noteFilter]);
 
   // لا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث — راجع hooks/useLatestRequest.
   const guard = useLatestRequest();
@@ -142,6 +145,7 @@ export default function ShipmentOrdersPage() {
       if (customerFilter) qs.set('customer', customerFilter);
       if (fromDate) qs.set('from', fromDate);
       if (toDate) qs.set('to', toDate);
+      if (noteFilter) qs.set('note', noteFilter);
       const d = await api.get<{ orders: ShipmentOrder[]; total: number; stats: any }>(`/api/shipment-orders/orders?${qs}`);
       if (!guard.isCurrent(mine)) return;
       setOrders(d.orders || []);
@@ -237,6 +241,7 @@ export default function ShipmentOrdersPage() {
     { header: 'Margin', key: 'margin', width: 10, transform: (_v: any, r: any) => ((Number(r?.sellPrice) || 0) - (Number(r?.buyPrice) || 0)) },
     { header: 'Status', key: 'status', transform: (v: any) => statusLabel(v, 'en'), width: 14 },
     { header: 'Agent', key: 'agentName', width: 16 },
+    { header: 'Note', key: 'notes', width: 30 },
   ];
   // الترقيم على الخادم بخمسةٍ وعشرين صفًّا: فلترةُ مئتَي شحنة ثم التصدير كانت
   // تُخرج الصفحة الظاهرة وحدها بلا أيّ إنذار، فصار كلُّ نطاقٍ يُجلَب من الخادم بحدّه.
@@ -249,6 +254,7 @@ export default function ShipmentOrdersPage() {
       if (customerFilter) qs.set('customer', customerFilter);
       if (fromDate) qs.set('from', fromDate);
       if (toDate) qs.set('to', toDate);
+      if (noteFilter) qs.set('note', noteFilter);
     }
     const d = await api.get<{ orders: ShipmentOrder[]; total: number }>(`/api/shipment-orders/orders?${qs}`);
     return [{ name: 'Orders', rows: d.orders || [], columns: exportColumns }];
@@ -342,6 +348,21 @@ export default function ShipmentOrdersPage() {
         {/* ── مصدرُ الشحنة ─────────────────────────────────────────────────
             أزرارٌ لا قائمةٌ منسدلة: هذا سؤالٌ يُسأل في كلّ جلسة، وكلُّ زرٍّ
             يحمل عددَه تحت بقيّة الفلاتر — فيُعرف الحجمُ قبل الضغط. */}
+        {/* ── وفلترُ الملاحظة ──────────────────────────────────────────────
+            «أرِني ما كُتبت عليه ملاحظة» سؤالٌ يُسأل قبل الطباعة: البوليصةُ
+            تحمل الملاحظة، فيُراجَع ما سيُطبَع فيها. */}
+        <div className="inline-flex rounded-lg bg-slate-100 p-1 gap-1 shrink-0">
+          {([
+            ['', ar ? 'الكل' : 'All'],
+            ['yes', ar ? 'لها ملاحظة' : 'With note'],
+            ['no', ar ? 'بلا ملاحظة' : 'No note'],
+          ] as [string, string][]).map(([k, label]) => (
+            <button key={k || 'all-note'} type="button" onClick={() => setNoteFilter(k)}
+              className={`px-3 py-1.5 rounded-md text-[13px] font-semibold transition-colors ${noteFilter === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="inline-flex rounded-lg bg-slate-100 p-1 gap-1 shrink-0">
           {([
             ['', ar ? 'الكل' : 'All', stats?.bySource?.total],
@@ -395,12 +416,13 @@ export default function ShipmentOrdersPage() {
               ar ? 'وقت الاستلام' : 'Pickup',
               ar ? 'بيع / شراء' : 'Sell / buy',
               ar ? 'الحالة' : 'Status',
+              ar ? 'ملاحظة' : 'Note',
               ar ? 'إجراءات' : 'Actions',
             ].map((h, i) => <th key={i} className="text-start font-semibold px-4 py-3 whitespace-nowrap">{h}</th>)}
           </tr></thead>
           <tbody>
             {orders.length === 0 ? (
-              <tr><td colSpan={12} className="text-center text-slate-500 py-14">
+              <tr><td colSpan={13} className="text-center text-slate-500 py-14">
                 {ar ? 'لا توجد شحنات بعد — ابدأ من زر «إنشاء شحنة».' : 'No shipments yet — start with “Create shipment”.'}
               </td></tr>
             ) : orders.map((o) => {
@@ -466,6 +488,14 @@ export default function ShipmentOrdersPage() {
                     ) : (
                       <span className={`text-xs font-medium rounded-full px-2.5 py-1 ${st ? `${st.bg} ${st.text}` : 'bg-slate-100 text-slate-700'}`} style={pillStyle}>{pillLabel}</span>
                     )}
+                  </td>
+                  {/* ── ملاحظةُ الرحلة ───────────────────────────────────────
+                      تُكتب مع المدن وتُطبَع في البوليصة، فتُقرأ هنا بلا فتح
+                      الحمولة — ويُفلتَر بها أعلى الجدول. */}
+                  <td className="px-4 py-3 max-w-[220px]">
+                    {(o.notes || '').trim()
+                      ? <span className="block truncate text-[13px] text-slate-700" title={o.notes}>{o.notes}</span>
+                      : <span className="text-slate-300">—</span>}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">

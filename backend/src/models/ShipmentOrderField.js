@@ -41,6 +41,12 @@ const shipmentOrderFieldSchema = new mongoose.Schema(
       key: { type: String, trim: true },
       ar: { type: String, trim: true },
       en: { type: String, trim: true },
+      // ── وما يترتّب على الخيار ────────────────────────────────────────────
+      // «نوع تأجير السائق» يقرّر طريقةَ الدفع: راجعةٌ ⇒ آجل، وقدامٌ ⇒ كاش.
+      // وكانت الطريقةُ تُختار بيدٍ إلى جانبه، فيُختار ما يناقضه. فصار الخيارُ
+      // يحمل ما يترتّب عليه، ويُضبَط لأيّ خيارٍ جديدٍ من إعدادات القسم —
+      // فالقاعدةُ تبقى بيد القسم ولا تُدفَن في الشيفرة.
+      paymentMethod: { type: String, trim: true, default: '' },
     }],
 
     required: { type: Boolean, default: false },

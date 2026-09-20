@@ -995,6 +995,19 @@ exports.updateWorkflow = async (req, res) => {
       }
     }
 
+    // ── ومَن كتب التاريخَ يُكتب معه ────────────────────────────────────────
+    // يُسجَّل عند أوّل كتابةٍ وعند كلّ تعديلٍ للتاريخ — فالعمودُ يقول «آخرُ مَن
+    // مسّ السداد» لا «أوّلُ من كتبه». راجع paymentDateBy في النموذج.
+    if (Object.prototype.hasOwnProperty.call(filteredBody, 'paymentDate')) {
+      const nextDate = filteredBody.paymentDate ? String(filteredBody.paymentDate) : '';
+      const prevDate = workflow.paymentDate ? new Date(workflow.paymentDate).toISOString().slice(0, 10) : '';
+      if (nextDate.slice(0, 10) !== prevDate) {
+        filteredBody.paymentDateBy = req.user._id;
+        filteredBody.paymentDateByName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
+        filteredBody.paymentDateAt = new Date();
+      }
+    }
+
     // ── وقواعدُ الفوترة تُطبَّق هنا ────────────────────────────────────────
     // كشفٌ نقديٌّ لا يُفوتَر، وصافي الفاتورة يشتقّ ضريبتَه وإجماليَّها. والشرطُ
     // على الخادم لا على الشاشة: أيُّ نافذةٍ أخرى (تحديثٌ جماعيّ، تطبيق، نداءٌ
@@ -1307,6 +1320,12 @@ exports.bulkUpdate = async (req, res) => {
         continue;
       }
       const rowPatch = { ...patch };
+      // ومَن كتب تاريخ السداد يُكتب معه في الدفعة كما في التعديل المفرد.
+      if (Object.prototype.hasOwnProperty.call(patch, 'paymentDate') && patch.paymentDate) {
+        rowPatch.paymentDateBy = req.user._id;
+        rowPatch.paymentDateByName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
+        rowPatch.paymentDateAt = new Date();
+      }
       if (walletPaid.has(String(r.reportNumber || '').trim())) rowPatch.paymentAmount = walletPaid.get(String(r.reportNumber || '').trim());
       // ونوعُ الدفع يُملأ لكلّ صفٍّ من ملفّ عميله — والدفعةُ الواحدة تضمّ
       // عملاءَ شتّى، فقاعدةٌ واحدةٌ للجميع تكتب فاتورةً على عميل كاش.

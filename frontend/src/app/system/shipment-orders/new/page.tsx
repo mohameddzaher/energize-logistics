@@ -64,6 +64,10 @@ function CreateShipmentInner() {
   const { notify } = useDialog();
 
   const [fields, setFields] = useState<FormField[]>([]);
+  // خيارٌ يُضاف من القائمة نفسِها — راجع saveOption.
+  const [addingFor, setAddingFor] = useState('');
+  const [newOption, setNewOption] = useState('');
+  const [optionBusy, setOptionBusy] = useState(false);
   const [customers, setCustomers] = useState<OrderCustomer[]>([]);
   const [vehicles, setVehicles] = useState<OrderVehicle[]>([]);
   const [suppliers, setSuppliers] = useState<OrderSupplier[]>([]);
@@ -139,6 +143,19 @@ function CreateShipmentInner() {
 
   const customer = useMemo(() => customers.find((c) => c._id === customerId) || null, [customers, customerId]);
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  // ── طريقةُ الدفع تتبع نوعَ التأجير ولا تُختار ────────────────────────────
+  // «راجعة» تعني حسابًا آجلًا، و«قدام» تعني أنّ السائق يقبض عند التسليم. وكانا
+  // خيارين مستقلّين فيُختار ما يناقض الآخر. فصار الخيارُ يحمل ما يترتّب عليه
+  // (`option.paymentMethod` — يُضبَط من إعدادات القسم لأيّ نوعٍ يُضاف)، وخانةُ
+  // طريقة الدفع تُعرَض مقروءةً لا تُختار.
+  const rentOption = (fields.find((f) => f.key === 'driverRentType')?.options || [])
+    .find((o) => o.key === form.driverRentType);
+  const derivedPay = rentOption?.paymentMethod || '';
+  useEffect(() => {
+    if (derivedPay && form.paymentMethod !== derivedPay) set('paymentMethod', derivedPay);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [derivedPay]);
 
   const applyCustomer = (id: string) => {
     setCustomerId(id);
@@ -290,11 +307,45 @@ function CreateShipmentInner() {
 
   const miss = (k: string) => showErrors && missingKeys.has(k);
 
+  // خيارٌ جديد في قائمةٍ — يُحفَظ في تعريف الحقل ويُختار فورًا.
+  const saveOption = async (f: FormField) => {
+    const ar2 = newOption.trim();
+    if (!ar2) return;
+    setOptionBusy(true);
+    try {
+      const d = await api.post<{ field: FormField }>(`/api/shipment-orders/fields/${f._id}/options`, { ar: ar2 });
+      setFields((prev) => prev.map((x) => (x._id === f._id ? d.field : x)));
+      set(f.key, ar2);
+      setAddingFor('');
+      setNewOption('');
+    } catch (e: any) { notify(e?.message || (ar ? 'تعذّرت الإضافة' : 'Could not add'), 'error'); }
+    setOptionBusy(false);
+  };
+  // الرقمُ المحليّ: ما بعد +966 — يُعرَض ويُكتب، والمخزَّنُ كاملٌ دائمًا.
+  const localPhone = String(form.driverPhone || '').replace(/\D/g, '').replace(/^966/, '').slice(0, 9);
+
   const renderField = (f: FormField) => {
     const label = fieldLabel(f, lang as Lang);
     const v = form[f.key] ?? '';
     const bad = miss(f.key);
     const lab = <label className={bad ? labelMissCls : labelCls}>{label}{f.required && <span className="text-red-500"> *</span>}</label>;
+    // ── طريقةُ الدفع تُقرأ ولا تُختار ──────────────────────────────────────
+    // تتبع «نوع تأجير السائق»: راجعةٌ ⇒ آجل، وقدامٌ ⇒ كاش. فتُعرَض بما ترتّب
+    // ومعها سببُه، ولا تُترك خانةً يُختار فيها ما يناقض النوع.
+    if (f.key === 'paymentMethod') {
+      const opt = (f.options || []).find((o) => o.key === v);
+      return (
+        <div key={f._id}>
+          {lab}
+          <div className={`${inputCls} flex items-center justify-between bg-slate-50`}>
+            <span className={v ? 'font-semibold text-slate-800' : 'text-slate-400'}>
+              {opt ? optionLabel(opt, lang as Lang) : (ar ? 'تُحدَّد من نوع تأجير السائق' : 'Set by the rental type')}
+            </span>
+            {v && <span className="text-[11px] text-slate-400">{ar ? 'تلقائي' : 'automatic'}</span>}
+          </div>
+        </div>
+      );
+    }
     switch (f.inputType) {
       case 'cards':
         return (
@@ -327,6 +378,30 @@ function CreateShipmentInner() {
                 emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
                 options={f.options.map((o) => ({ value: o.key, label: optionLabel(o, lang as Lang) }))} />
             </div>
+            {/* ── وما ليس في القائمة يُضاف من مكانه ──────────────────────────
+                مدينةٌ أو نوعُ حمولةٍ جديد كان يوقف الاستمارة: يخرج المستخدم إلى
+                إعدادات القسم فيفقد ما كتبه. والمضافُ هنا يُكتب في الإعدادات
+                نفسِها ويظهر عند الجميع في اللحظة نفسِها (`so:fields`). */}
+            {addingFor === f._id ? (
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <input autoFocus value={newOption} onChange={(e) => setNewOption(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveOption(f); if (e.key === 'Escape') setAddingFor(''); }}
+                  placeholder={ar ? `${label} الجديد…` : `New ${label}…`}
+                  className={`${inputCls} flex-1`} />
+                <button type="button" onClick={() => saveOption(f)} disabled={optionBusy}
+                  className="px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-semibold disabled:opacity-50">
+                  {optionBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : (ar ? 'إضافة' : 'Add')}
+                </button>
+                <button type="button" onClick={() => setAddingFor('')} className="px-2 py-2 text-slate-400 hover:text-slate-700 text-sm">
+                  {ar ? 'إلغاء' : 'Cancel'}
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => { setAddingFor(f._id); setNewOption(''); }}
+                className="mt-1 text-[12px] font-semibold text-[#f37121] hover:underline">
+                + {ar ? `إضافة ${label}` : `Add ${label}`}
+              </button>
+            )}
           </div>
         );
       case 'number':
@@ -592,10 +667,29 @@ function CreateShipmentInner() {
             </div>
             <div>
               <label className={labelCls}>{ar ? 'جوال السائق' : 'Driver phone'}</label>
+              {/* ── والرقمُ سعوديٌّ من تسع خانات ─────────────────────────────
+                  المفتاحُ مكتوبٌ ثابتًا ولا يُكتب، والخاناتُ تسعٌ لا أكثر
+                  (5xxxxxxxx). كان يُكتب حرًّا فيدخل بمفتاحٍ مرّة وبدونه مرّة،
+                  وبأرقامٍ ناقصة — فلا يُتَّصل به ولا يُطابَق. */}
               <div className="flex items-center gap-2">
-                <input value={form.driverPhone || ''} onChange={(e) => set('driverPhone', e.target.value)} className={`${inputCls} flex-1`} />
+                <div className={`${inputCls} flex-1 flex items-center gap-2 p-0 overflow-hidden`}>
+                  <span className="px-2.5 py-2 bg-slate-100 text-slate-600 text-sm font-semibold shrink-0" dir="ltr">+966</span>
+                  <input value={localPhone} inputMode="numeric" dir="ltr" maxLength={9}
+                    placeholder="5XXXXXXXX"
+                    onChange={(e) => {
+                      // يُقبل الرقمُ وحدَه، ويُسقَط الصفرُ الأوّل ومفتاحُ الدولة إن لُصقا.
+                      let v = e.target.value.replace(/\D/g, '');
+                      if (v.startsWith('966')) v = v.slice(3);
+                      if (v.startsWith('0')) v = v.slice(1);
+                      set('driverPhone', v ? `+966${v.slice(0, 9)}` : '');
+                    }}
+                    className="flex-1 min-w-0 px-2 py-2 text-sm outline-none bg-transparent" />
+                </div>
                 {(form.driverPhone || '').trim() && <ContactButtons phone={form.driverPhone} />}
               </div>
+              {localPhone && localPhone.length !== 9 && (
+                <p className="mt-1 text-[11.5px] text-red-600">{ar ? 'الرقم تسع خانات بعد +966' : 'Nine digits after +966'}</p>
+              )}
             </div>
           </div>
         </div>
@@ -611,14 +705,30 @@ function CreateShipmentInner() {
         return (
           <div key={g}>
             {sectionCard(GROUP_ICONS[g], i + 3, ar ? GROUP_LABELS[g].ar : GROUP_LABELS[g].en, (
-              <div className={cols}>{gf.map(renderField)}</div>
+              <div className={cols}>
+                {gf.map(renderField)}
+                {/* ── ملاحظةُ الرحلة مع مدنها ────────────────────────────────
+                    مكانُها حيث تُكتب: «التحميل من البوابة الثانية» تُقال مع
+                    العنوان لا في آخر الاستمارة. وتُطبَع في البوليصة إن كُتبت،
+                    وتظهر عمودًا في الجدول ويُفلتَر بها. */}
+                {g === 'pickup_delivery' && (
+                  <div className="col-span-full">
+                    <label className={labelCls}>{ar ? 'ملاحظة الرحلة' : 'Trip note'}</label>
+                    <input value={form.notes || ''} onChange={(e) => set('notes', e.target.value)}
+                      placeholder={ar ? 'تظهر في كشف التخريج (البوليصة) إن كُتبت' : 'Printed on the waybill when written'}
+                      className={inputCls} />
+                  </div>
+                )}
+              </div>
             ), { id: SEC.group(g), missing: missingIn(g) })}
           </div>
         );
       })}
 
-      {sectionCard(Check, activeGroups.length + 3, ar ? 'الحالة والملاحظات' : 'Status & notes', (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* الملاحظاتُ رُفعت من هنا إلى بطاقة «من/إلى»: هي ملاحظةُ الرحلة، وتُطبَع
+          في البوليصة. راجع notes في بطاقة المدن. */}
+      {sectionCard(Check, activeGroups.length + 3, ar ? 'الحالة' : 'Status', (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className={labelCls}>{ar ? 'الحالة' : 'Status'}</label>
             <Select value={form.status || 'requesting'} onChange={(e) => set('status', e.target.value)}>
@@ -628,10 +738,6 @@ function CreateShipmentInner() {
           <div>
             <label className={labelCls}>{ar ? 'المندوب' : 'Agent'}</label>
             <input value={`${user?.firstName || ''} ${user?.lastName || ''}`.trim()} readOnly disabled className={inputCls + ' opacity-70'} />
-          </div>
-          <div>
-            <label className={labelCls}>{ar ? 'ملاحظات' : 'Notes'}</label>
-            <input value={form.notes || ''} onChange={(e) => set('notes', e.target.value)} className={inputCls} />
           </div>
         </div>
       ), { id: SEC.status })}

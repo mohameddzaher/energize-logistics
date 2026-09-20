@@ -99,7 +99,7 @@ function buildDispatchSheetHTML(row) {
       <div class="row"><span class="ar-label">اسم السائق</span><span class="value">${valOrBlank(row.driverName)}</span><span class="en-label">Driver Name</span></div>
       <div class="row"><span class="ar-label">الجنسية</span><span class="value">${valOrBlank(row.driverNationality)}</span><span class="en-label">Nationality</span></div>
       <div class="row"><span class="ar-label">رقم الإقامة</span><span class="value">${valOrBlank(row.driverIqama)}</span><span class="en-label">Iqama No.</span></div>
-      <div class="row"><span class="ar-label">جوال السائق</span><span class="value">${valOrBlank(row.driverPhone)}</span><span class="en-label">Driver Phone</span></div>
+      <div class="row"><span class="ar-label">جوال السائق</span><span class="value" dir="ltr">${valOrBlank(row.driverPhone)}</span><span class="en-label">Driver Phone</span></div>
       <div class="row"><span class="ar-label">مصروف السائق</span><span class="value">${valOrBlank(row.driverAdvance)}</span><span class="en-label">Driver Expense</span></div>
     </div>
     <div class="section">
@@ -111,7 +111,12 @@ function buildDispatchSheetHTML(row) {
     <div class="section fare-section">
       <div class="section-head"><span class="ar">الأجرة</span><span class="en">Fare</span></div>
       <div class="fare-row"><span class="ar-label">إيجار</span><span class="value">${valOrBlank(row.rentalType)}</span><span class="en-label">Rental</span></div>
+      ${row.sellPrice ? `<div class="fare-row"><span class="ar-label">قيمة النقل</span><span class="value">${esc(row.sellPrice)}</span><span class="en-label">Freight</span></div>` : ''}
     </div>
+    ${row.notes ? `<div class="section">
+      <div class="section-head"><span class="ar">ملاحظات</span><span class="en">Notes</span></div>
+      <div class="row" style="grid-template-columns: 1fr;"><span class="value" style="text-align:start">${esc(row.notes)}</span></div>
+    </div>` : ''}
     <div class="stamp-wrap"><img src="${esc(stampSrc)}" alt="" /></div>
   </div>
 </div>
@@ -228,11 +233,29 @@ async function renderWaybillsPdf(rows) {
   return Buffer.from(await merged.save());
 }
 
-/** صفُّ بوليصةٍ من طلب شحنة — نفسُ شكل `rowFromShipment`. */
-function rowFromOrder(o) {
+/**
+ * صفُّ بوليصةٍ من طلب شحنة — نفسُ شكل `rowFromShipment`.
+ *
+ * ── وسعرُ البيع يُطبَع للنقديّ وحدَه ────────────────────────────────────────
+ * «قدام» تعني أنّ السائق يقبض من العميل عند التسليم، فالبوليصةُ هي ورقتُه:
+ * تُطبَع فيها قيمةُ النقل ليعرف ما يقبض. و«راجعة» تعني أنّ الحساب بيننا وبين
+ * العميل لاحقًا — فلا سعرَ بيعٍ ولا شراءٍ في ورقةٍ تخرج مع السائق.
+ * والقاعدةُ تُقرأ من خيار «نوع تأجير السائق» نفسِه (paymentMethod عليه)، لا
+ * من كلمةٍ مكتوبةٍ في الشيفرة — فأيُّ نوعٍ يُضاف في الإعدادات يعمل بلا تعديل.
+ */
+function rowFromOrder(o, opts = {}) {
   const d = o.pickupTime || o.startTime || o.createdAt || new Date();
   const dt = new Date(d);
+  // النقديُّ يُعرَف من طريقة الدفع أو من نوع التأجير — والمصدران يكتبان
+  // مفاتيحَ مختلفة (منصّةٌ بالإنجليزيّة وشاشتُنا بالعربيّة).
+  const CASH = ['cash', 'نقدي', 'كاش'];
+  const FRONT = ['front', 'ذهاب فقط', 'قدام'];
+  const cash = opts.cashRental !== undefined
+    ? !!opts.cashRental
+    : CASH.includes(String(o.paymentMethod || '').trim()) || FRONT.includes(String(o.driverRentType || '').trim());
   return {
+    notes: o.notes || '',
+    sellPrice: cash && o.sellPrice != null && o.sellPrice !== '' ? String(o.sellPrice) : '',
     rentalType: o.driverRentType || '', carBrand: '', carColor: '',
     carType: o.truckType || '', plateNumber: o.vehiclePlate || o.vehicleName || '',
     driverAdvance: o.driverRentPrice != null ? String(o.driverRentPrice) : '',

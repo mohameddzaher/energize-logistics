@@ -114,7 +114,7 @@ exports.getWaybillsPdf = async (req, res) => {
     const order = new Map(ids.map((id, i) => [String(id), i]));
     orders.sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0));
 
-    const pdf = await renderWaybillsPdf(orders.map(rowFromOrder));
+    const pdf = await renderWaybillsPdf(orders.map((o) => rowFromOrder(o)));
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="waybills-${orders.length}.pdf"`);
     res.send(pdf);
@@ -143,6 +143,10 @@ exports.listOrders = async (req, res) => {
     // تجريبيّةً اليوم — تحمل رقمًا يسبقه حرف. والفصلُ بينهما ليس ترتيبًا: من
     // يقرأ تقريرًا يجب أن يعرف أهو عن عملٍ جرى أم عن تجربة.
     if (source === 'system' || source === 'platform') filter.source = source;
+    // ملاحظةُ الرحلة: «أرِني ما كُتبت عليه ملاحظة» — تُطبَع في البوليصة فتُراجَع.
+    const note = String(req.query.note || '').trim();
+    if (note === 'yes') filter.notes = { $nin: ['', null] };
+    else if (note === 'no') filter.$or = [{ notes: '' }, { notes: null }, { notes: { $exists: false } }];
     if (from || to) {
       filter.createdAt = {};
       if (from) filter.createdAt.$gte = startOfDay(from);
@@ -1025,5 +1029,44 @@ exports.ensureShipmentOrderDefaults = async () => {
         notes: 'عميل تجريبي',
       },
     ]);
+  }
+};
+
+
+/**
+ * خيارٌ جديد يُضاف من شاشة إنشاء الشحنة — POST /fields/:id/options
+ *
+ * ── لماذا من هناك ───────────────────────────────────────────────────────────
+ * مدينةٌ ليست في القائمة توقف إنشاءَ الشحنة: يخرج المستخدم إلى إعدادات القسم،
+ * ويفقد ما كتبه. والإضافةُ من مكانها تُبقيه في عمله — والخيارُ يُكتب في نفس
+ * تعريف الحقل، فيظهر في الإعدادات ولكلّ من يفتح الشاشة (`so:fields`).
+ *
+ * ولا يُنشئ حقلًا ولا يحذف خيارًا: إضافةٌ فقط، ولمن يملك إنشاءَ الشحنات.
+ */
+exports.addFieldOption = async (req, res) => {
+  try {
+    const ShipmentOrderField = require('../models/ShipmentOrderField');
+    const field = await ShipmentOrderField.findById(req.params.id);
+    if (!field || field.deleted) return res.status(404).json({ message: 'الحقل غير موجود' });
+    if (!['select', 'cards'].includes(field.inputType)) {
+      return res.status(400).json({ message: 'هذا الحقل ليس قائمةَ اختيار' });
+    }
+    const ar = String(req.body.ar || req.body.label || '').trim();
+    if (!ar) return res.status(400).json({ message: 'اكتب الاسم' });
+    const key = String(req.body.key || ar).trim();
+    const exists = (field.options || []).some((o) => String(o.key).trim() === key
+      || String(o.ar || '').trim() === ar);
+    if (exists) return res.status(409).json({ message: 'موجود في القائمة', field });
+    field.options.push({
+      key, ar, en: String(req.body.en || '').trim(),
+      paymentMethod: String(req.body.paymentMethod || '').trim(),
+    });
+    await field.save();
+    try { require('../websocket/socketManager').emitToAll('so:fields', { id: String(field._id) }); } catch (_) { /* */ }
+    try { require('../utils/ttlCache').clear('so:'); } catch (_) { /* */ }
+    res.status(201).json({ field });
+  } catch (e) {
+    console.error('addFieldOption', e);
+    res.status(500).json({ message: 'تعذّرت الإضافة' });
   }
 };

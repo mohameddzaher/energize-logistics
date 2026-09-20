@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
@@ -340,6 +341,24 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     );
     final type = (f['inputType'] ?? 'text').toString();
 
+    // ── طريقةُ الدفع تُقرأ ولا تُختار ────────────────────────────────────────
+    // تتبع «نوع تأجير السائق»: راجعةٌ ⇒ آجل، وقدامٌ ⇒ كاش — والقاعدةُ على
+    // الخيار نفسِه في إعدادات القسم (`option.paymentMethod`).
+    if (k == 'paymentMethod') {
+      final options = List<Map<String, dynamic>>.from(f['options'] ?? []);
+      final cur = (_form[k] ?? '').toString();
+      final opt = options.firstWhere((o) => o['key'] == cur, orElse: () => const {});
+      return InputDecorator(
+        decoration: deco,
+        child: Text(
+          opt.isEmpty ? tr('تُحدَّد من نوع تأجير السائق', 'Set by the rental type')
+              : tr('${opt['ar'] ?? opt['key']}', '${opt['en'] ?? opt['ar'] ?? opt['key']}'),
+          style: TextStyle(fontWeight: opt.isEmpty ? FontWeight.w400 : FontWeight.w700,
+              color: opt.isEmpty ? T.inkFaint : T.ink),
+        ),
+      );
+    }
+
     if (type == 'select' || type == 'cards') {
       final options = List<Map<String, dynamic>>.from(f['options'] ?? []);
       final current = (_form[k] ?? '').toString();
@@ -355,6 +374,12 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         onChanged: (v) => setState(() {
           _form[k] = v;
           if (k == 'fromCity' || k == 'toCity') _applyRoutePrice();
+          // نوعُ التأجير يكتب طريقةَ الدفع معه.
+          if (k == 'driverRentType') {
+            final opt = options.firstWhere((o) => o['key'] == v, orElse: () => const {});
+            final pay = (opt['paymentMethod'] ?? '').toString();
+            if (pay.isNotEmpty) _form['paymentMethod'] = pay;
+          }
         }),
       );
     }
@@ -551,11 +576,25 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                           ),
                           const SizedBox(width: 8),
                           Expanded(
+                            // الرقمُ سعوديٌّ من تسع خانات، والمفتاحُ ثابتٌ لا يُكتب.
                             child: TextField(
                               controller: _ctrl('driverPhone'),
-                              keyboardType: TextInputType.phone,
-                              onChanged: (v) => setState(() => _form['driverPhone'] = v),
-                              decoration: InputDecoration(labelText: tr('هاتف السائق', 'Driver phone')),
+                              keyboardType: TextInputType.number,
+                              maxLength: 9,
+                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                              onChanged: (v) => setState(() {
+                                var d = v.replaceAll(RegExp(r'\D'), '');
+                                if (d.startsWith('966')) d = d.substring(3);
+                                if (d.startsWith('0')) d = d.substring(1);
+                                if (d.length > 9) d = d.substring(0, 9);
+                                _form['driverPhone'] = d.isEmpty ? '' : '+966$d';
+                              }),
+                              decoration: InputDecoration(
+                                labelText: tr('هاتف السائق', 'Driver phone'),
+                                prefixText: '+966 ',
+                                counterText: '',
+                                hintText: '5XXXXXXXX',
+                              ),
                             ),
                           ),
                           // اتصال/واتساب على رقم السائق مباشرة.

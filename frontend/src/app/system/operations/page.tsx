@@ -55,6 +55,9 @@ interface Workflow {
   country: string;
   operationsReview: string;
   paymentDate: string;
+  /** آخرُ مَن كتب تاريخ السداد أو عدّله — يُكتب في الخادم. */
+  paymentDateByName?: string;
+  paymentDateAt?: string;
   payingBranch: string;
   finalReportDestination: string;
   documentNumber: string;
@@ -127,6 +130,7 @@ const EXPORT_COLUMNS = [
   { header: 'المندوب', key: 'representativeName', width: 18 },
   { header: 'مراجعة العمليات', key: 'operationsReview', width: 14 },
   { header: 'تاريخ السداد', key: 'paymentDate', width: 12 },
+  { header: 'مسؤول البيانات', key: 'paymentDateByName', width: 18 },
   { header: 'فرع السداد', key: 'payingBranch', width: 14 },
   { header: 'وجهة الكشف النهائية', key: 'finalReportDestination', width: 18 },
   { header: 'رقم المستند', key: 'documentNumber', width: 14 },
@@ -682,6 +686,7 @@ export default function OperationsWorkflowPage() {
     ...w,
     reportDate: formatDate(w.reportDate),
     paymentDate: formatDate(w.paymentDate),
+    paymentDateByName: w.paymentDateByName || '',
     sendingDate: formatDate(w.sendingDate),
     branchDeliveryDate: formatDate(w.branchDeliveryDate),
     deliveryDate: formatDate(w.deliveryDate),
@@ -1136,6 +1141,12 @@ export default function OperationsWorkflowPage() {
                 {ColHead('operationsReview', T.thOpsReview, 'text-yellow-400')}
                 {/* Manual Moderator */}
                 {ColHead('paymentDate', T.thPaymentDate, 'text-purple-300')}
+                {/* ── ومَن كتب التاريخ ─────────────────────────────────────
+                    «مسؤول البيانات»: آخرُ مَن سجّل تاريخ السداد أو عدّله. يُسأل
+                    عن صفٍّ فيُعرف صاحبُه بلا فتح سجلّ التعديلات — وهو غيرُ مَن
+                    سجّل المشتريات في العهدة اليوميّة. يُكتب في الخادم ولا يُعدَّل
+                    بيدٍ هنا (راجع paymentDateBy). */}
+                {ColHead('paymentDateByName' as any, lang === 'ar' ? 'مسؤول البيانات' : 'Data owner', 'text-purple-300')}
                 {ColHead('payingBranch', T.thPayingBranch, 'text-purple-300')}
                 {/* ما دُفع للمورّد، وبأيّ صفةٍ يُفوتَر العميل. والنوعُ هو ما
                     يقرّر شكلَ بقيّة الصفّ: نقديٌّ لا يُفوتَر، وضريبيٌّ يُفوتَر. */}
@@ -1411,6 +1422,10 @@ export default function OperationsWorkflowPage() {
                         {operationsReviewCell()}
                         {/* Manual Moderator */}
                         {dateCell('paymentDate', 'text-purple-700')}
+                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={(e) => e.stopPropagation()}
+                          title={(wf as any).paymentDateAt ? new Date((wf as any).paymentDateAt).toLocaleString('en-GB') : undefined}>
+                          <span className="text-purple-700">{(wf as any).paymentDateByName || '-'}</span>
+                        </td>
                         {lookupCell('payingBranch', 'workflow_paying_branch', 'text-purple-700')}
                         {numCell('paymentAmount', 'text-purple-700')}
                         {paymentTypeCell()}

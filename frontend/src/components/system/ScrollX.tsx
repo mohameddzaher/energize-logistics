@@ -10,6 +10,11 @@
  *
  * ولا يظهر إلّا إن كان الجدولُ أعرضَ من مكانه؛ فالجدولُ الذي يتّسع لا يُثقَل بشيء.
  *
+ * ── ولا يظهر على الهاتف واللوحيّ ──────────────────────────────────────────
+ * على الشاشة الصغيرة يُمرَّر الجدولُ بالإصبع مباشرةً، فالشريطُ لا يزيد شيئًا —
+ * بل يأخذ من عرضٍ ضيّقٍ أصلًا، ويلتقط سحبةَ الإصبع فوقه فلا يتحرّك المحتوى.
+ * فيظهر من عرض الحاسوب المحمول (١٢٨٠ بكسل، شاشة ١٣ بوصة) فصاعدًا.
+ *
  * ── ولماذا «يطفو» ولا يلتصق ────────────────────────────────────────────────
  * `position: sticky` لا يعمل هنا: بطاقاتُ الجداول `overflow-hidden` و<main>
  * `overflow-x-auto`، وكلاهما يصير حاويةَ تمريرٍ لا تتحرّك فيلتصق الشريطُ بها لا
@@ -38,6 +43,17 @@ export default function ScrollX({ className = '', children, ...rest }: HTMLAttri
   const [float, setFloat] = useState<{ top: number; left: number; width: number } | null>(null);
   const top = useRef<HTMLDivElement>(null);
   const [thumb, setThumb] = useState({ size: 100, pos: 0 });   // بالنسبة المئويّة من المسار
+  // شاشةُ حاسوبٍ محمولٍ فأكبر. يُقاس بالاستعلام لا بحدثِ تغييرِ الحجم وحدَه،
+  // فيصحّ عند أوّل رسمٍ وعند تدوير اللوحيّ.
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(min-width: 1280px)');
+    const on = () => setWide(mq.matches);
+    on();
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
   const [over, setOver] = useState(false);
   const [edge, setEdge] = useState({ left: false, right: false });
 
@@ -68,6 +84,9 @@ export default function ScrollX({ className = '', children, ...rest }: HTMLAttri
     if (el.firstElementChild) ro.observe(el.firstElementChild);
     return () => ro.disconnect();
   }, [measure]);
+
+  // لا شريطَ إلّا حين يكون الجدولُ أعرضَ من مكانه **والشاشةُ حاسوب**.
+  const show = over && wide;
 
   // الطفو: رأسُ الجدول فوق حافّة الشاشة وجسمُه ما زال ظاهرًا.
   useEffect(() => {
@@ -145,7 +164,7 @@ export default function ScrollX({ className = '', children, ...rest }: HTMLAttri
     };
     tr.addEventListener('wheel', onWheel, { passive: false });
     return () => tr.removeEventListener('wheel', onWheel);
-  }, [over]);
+  }, [show]);
 
   const jump = (dir: 1 | -1) => {
     const el = main.current;
@@ -157,8 +176,8 @@ export default function ScrollX({ className = '', children, ...rest }: HTMLAttri
 
   return (
     <div ref={wrap} className="relative">
-      {over && float && <div className="h-[33px]" aria-hidden="true" />}
-      {over && (
+      {show && float && <div className="h-[33px]" aria-hidden="true" />}
+      {show && (
         <div style={float ? { position: 'fixed', top: float.top, left: float.left, width: float.width } : undefined}
           className={`z-40 flex items-center gap-1.5 px-2 py-1 bg-slate-50/95 backdrop-blur border-b border-slate-200 ${float ? 'shadow-md rounded-b-lg' : ''}`}>
           <button type="button" className={btn} disabled={!edge.right} onClick={() => jump(1)} aria-label="Scroll right">

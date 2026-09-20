@@ -177,7 +177,27 @@ exports.update = async (req, res) => {
   if (cfg.readOnly) return res.status(405).json({ message: `${req.params.resource} is read-only` });
   try {
     const opts = cfg.form ? { form: req.body } : { body: req.body };
+    // ── اسمُ العميل قبل التعديل ───────────────────────────────────────────
+    // يُقرأ قبل الكتابة لا بعدها: بعدها لا سبيلَ لمعرفة ما كان، والقديمُ هو
+    // مفتاحُ ما كُتب به في التحصيل والكشوف. راجع utils/renameOpsCustomer.
+    let before = '';
+    if (req.params.resource === 'users' && String(req.body?.name || '').trim()) {
+      try {
+        const cur = await upl.get(`${cfg.path}/${encodeURIComponent(req.params.id)}`, { lang: langOf(req) });
+        const d = cur?.data ?? cur;
+        before = String(d?.name ?? d?.data?.name ?? '').trim();
+      } catch (_) { /* التعديلُ لا يقف على قراءةٍ تعثّرت */ }
+    }
     const out = await upl.patch(`${cfg.path}/${encodeURIComponent(req.params.id)}`, { ...opts, lang: langOf(req) });
+    // ── والتحصيلُ يسمع لما يحدث في التشغيل ───────────────────────────────
+    // اسمٌ صُحِّح هناك يتبعه الطرفُ هنا، والقديمُ يبقى صيغةً له فلا ينقسم دَينُه.
+    if (before) {
+      try {
+        const { renameOpsCustomer } = require('../utils/renameOpsCustomer');
+        const r = await renameOpsCustomer(before, String(req.body.name).trim());
+        if (r) console.log(`[ops] عميلٌ أُعيدت تسميتُه: «${r.from}» ← «${r.to}» · كشوف: ${r.sheets}${r.merged ? ' · دُمج مع طرفٍ قائم' : ''}`);
+      } catch (e) { console.error('[ops] rename → collections:', e.message); }
+    }
     broadcast(req.params.resource, 'updated', { id: req.params.id });
     res.json(out.data ?? out);
   } catch (error) {

@@ -254,19 +254,25 @@ function startOpsPoll() {
   }
   const fastMs = Math.max(3000, parseInt(process.env.UPL_POLL_INTERVAL_MS || '6000', 10));
   const statsMs = Math.max(10000, parseInt(process.env.UPL_STATS_INTERVAL_MS || '30000', 10));
-  // ── والمهلةُ تتبع زمنَ الدورة ─────────────────────────────────────────────
-  // صارت الدِلاءُ تُقرأ معًا، فالدورةُ ثوانٍ معدودةٌ لا خمسَ عشرةَ — فلا معنى
-  // لانتظار دقيقةٍ بينها. وحالةٌ تتغيّر في المنصّة تصل عندنا في خمسَ عشرةَ
-  // ثانيةً على الأكثر. وتراكبُ الدورات ممنوعٌ بـ`movingRunning`، فلا تتزاحم
-  // إن تعثّرت شبكةُ المنصّة.
-  const movingMs = Math.max(8000, parseInt(process.env.UPL_MOVING_INTERVAL_MS || '15000', 10));
+  // ── والمهلةُ تُقاس من نهاية الدورة لا من بدايتها ───────────────────────────
+  // المهلةُ الثابتة تقيس من لحظة الإطلاق، فإن طالت الدورةُ (شبكةُ المنصّة
+  // تتعثّر) تراكبت الدوراتُ أو ضاعت — و`movingRunning` يسقط الزائدَ فيصير
+  // التأخّرُ ضعفَ المهلة دون أن يُعلَم. والصحيحُ سلسلةٌ: تُشغَّل الدورة، فإذا
+  // انتهت انتُظرت فجوةٌ قصيرةٌ ثمّ تُشغَّل التالية. فالمنصّةُ لا تُسأل دورتين
+  // في آن، والتأخّرُ محسوبٌ دائمًا: زمنُ الدورة (نحوَ ثماني ثوانٍ لثمانمئة
+  // شحنة) زائدَ الفجوة.
+  const movingGapMs = Math.max(2000, parseInt(process.env.UPL_MOVING_INTERVAL_MS || '5000', 10));
   fastTimer = setInterval(() => { pollShipments().catch(() => {}); }, fastMs);
   statsTimer = setInterval(() => { pollStats().catch(() => {}); }, statsMs);
-  if (isPollWorker()) movingTimer = setInterval(() => { pollMovingShipments().catch(() => {}); }, movingMs);
+  const movingLoop = () => {
+    pollMovingShipments()
+      .catch(() => {})
+      .finally(() => { movingTimer = setTimeout(movingLoop, movingGapMs); });
+  };
   // Warm the caches shortly after boot.
   setTimeout(() => { pollShipments().catch(() => {}); pollStats().catch(() => {}); }, 4000);
-  if (isPollWorker()) setTimeout(() => { pollMovingShipments().catch(() => {}); }, 12000);
-  const moving = isPollWorker() ? `every ${movingMs}ms` : 'on worker 0 only';
+  if (isPollWorker()) movingTimer = setTimeout(movingLoop, 12000);
+  const moving = isPollWorker() ? `${movingGapMs}ms after each cycle` : 'on worker 0 only';
   console.log(`[opsPoll] live polling started — new shipments every ${fastMs}ms, moving statuses ${moving}, stats every ${statsMs}ms`);
 }
 

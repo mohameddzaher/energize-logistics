@@ -288,6 +288,12 @@ exports.webhook = async (req, res) => {
     pollStats().catch(() => {});
     pollShipments().catch(() => {});
   } catch (e) {}
+  // ── والشحنةُ المذكورةُ تُقرأ بعينها ──────────────────────────────────────
+  // الدفعُ يحمل رقمَها، فلا يُنتظَر أن تلتقطها دورةُ الاستطلاع: تُقرأ ويُكتب
+  // صفُّها في اللحظة. وبهذا يصير الوصولُ فوريًّا حقًّا — وهو ما يحتاجه
+  // التشغيل. (يُفعَّل بأن يُضبط UPL_WEBHOOK_SECRET ويُعطى للمنصّة.)
+  const hit = ids && ids.length ? ids : (id ? [id] : []);
+  if (resource === 'shipments' && hit.length) mirrorShipments(hit);
   res.json({ ok: true });
 };
 

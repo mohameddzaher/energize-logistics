@@ -199,6 +199,171 @@ router.get('/alerts', async (req, res) => {
   }
 });
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  توزيعُ المشرفين — مَن يشرف على أيّ شاحنة
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * ── لماذا في هذه الواجهة ───────────────────────────────────────────────────
+ * شاشةُ «توزيع السيارات على المشرفين» تُقرأ بالعين مرّةً كلَّ حين، والأسئلةُ
+ * التي تُبنى عليها يوميّة: أيُّ شاحنةٍ بلا مشرف؟ ومَن حمل أكثرَ من طاقته؟
+ * ومتى تحرّكت شاحنةٌ من مشرفٍ إلى آخر؟ وكلُّها أسئلةٌ تُسأل في وقتها لا حين
+ * يفتح أحدٌ الشاشة — فتُقرأ من هنا وتُبنى عليها التنبيهات.
+ *
+ * ── وحدُّها القراءة ────────────────────────────────────────────────────────
+ * الإسنادُ قرارُ مدير القسم: يُقرأ من هنا ولا يُكتب. ومَن يوزّع يدخل بصلاحيّته.
+ */
+
+const FleetModels = require('../models/FleetModels');
+const FleetVehicle = FleetModels.FleetVehicle;
+const FleetDriver = FleetModels.FleetDriver;
+const User = require('../models/User');
+
+const fullName = (u) => `${u?.firstName || ''} ${u?.lastName || ''}`.trim() || u?.email || '';
+
+/** يقرأ المركباتِ وسائقيها والمشرفين مرّةً واحدة — وتُشتقّ منها كلُّ الردود. */
+async function assignmentSnapshot() {
+  const [vehicles, drivers, sups] = await Promise.all([
+    FleetVehicle.find({ isActive: { $ne: false } }).sort({ plate: 1 })
+      .select('plate name trailerType gpsType brand color supervisor supervisorName notes monthlyTarget updatedAt').lean(),
+    FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null } })
+      .select('name phone working offReason vehicle').lean(),
+    User.find({ role: { $in: ['fleet_supervisor', 'fleet_manager'] }, isActive: { $ne: false } })
+      .select('firstName lastName email phone role').lean(),
+  ]);
+
+  const byVehicle = new Map();
+  for (const d of drivers) {
+    const k = String(d.vehicle);
+    if (!byVehicle.has(k)) byVehicle.set(k, []);
+    byVehicle.get(k).push({
+      name: d.name, phone: d.phone || null,
+      working: d.working !== false,
+      offReason: d.working === false ? (d.offReason || null) : null,
+    });
+  }
+
+  const supById = new Map(sups.map((u) => [String(u._id), u]));
+  const rows = vehicles.map((v) => {
+    const sid = v.supervisor ? String(v.supervisor) : null;
+    const u = sid ? supById.get(sid) : null;
+    return {
+      plate: v.plate,
+      name: v.name || null,
+      trailerType: v.trailerType || null,
+      gpsType: v.gpsType || null,
+      brand: v.brand || null,
+      color: v.color || null,
+      monthlyTarget: v.monthlyTarget ?? null,
+      notes: v.notes || null,
+      // ── والمشرفُ اسمٌ ومعرّفٌ وبريدٌ وهاتف ──────────────────────────────
+      // مَن يبني تنبيهًا يحتاج إلى مَن يُرسِله إليه، لا إلى اسمٍ يبحث عنه.
+      supervisor: u ? {
+        id: String(u._id), name: fullName(u), email: u.email || null,
+        phone: u.phone || null, role: u.role,
+      } : null,
+      // الاسمُ المحفوظُ على المركبة — يبقى وإن حُذف المستخدم.
+      supervisorName: v.supervisorName || null,
+      unassigned: !sid,
+      drivers: byVehicle.get(String(v._id)) || [],
+      updatedAt: v.updatedAt || null,
+    };
+  });
+
+  // ── ومديرُ القسم نطاقُه الأسطولُ كلُّه ────────────────────────────────────
+  // لا تُسنَد إليه مركباتٌ بالإفراد، فعدُّ ما يحمل اسمَه صفرٌ — ويُقرأ الصفرُ
+  // «لا يعمل» وهو أبعدُ ما يكون عن الحقيقة. فيُقال نطاقُه صراحةً.
+  const counts = new Map();
+  for (const r of rows) {
+    const k = r.supervisor ? r.supervisor.id : 'none';
+    counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  const supervisors = sups.map((u) => {
+    const id = String(u._id);
+    const isManager = u.role === 'fleet_manager';
+    return {
+      id,
+      name: fullName(u),
+      email: u.email || null,
+      phone: u.phone || null,
+      role: u.role,
+      isDepartmentManager: isManager,
+      scope: isManager ? 'whole_fleet' : 'assigned_vehicles',
+      vehicleCount: isManager ? rows.length : (counts.get(id) || 0),
+      plates: isManager
+        ? rows.map((r) => r.plate)
+        : rows.filter((r) => r.supervisor && r.supervisor.id === id).map((r) => r.plate),
+    };
+  }).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+
+  return {
+    summary: {
+      vehicles: rows.length,
+      supervisors: supervisors.filter((s) => !s.isDepartmentManager).length,
+      departmentManagers: supervisors.filter((s) => s.isDepartmentManager).length,
+      assigned: rows.filter((r) => !r.unassigned).length,
+      unassigned: counts.get('none') || 0,
+      vehiclesWithoutDriver: rows.filter((r) => r.drivers.length === 0).length,
+    },
+    supervisors,
+    vehicles: rows,
+  };
+}
+
+/**
+ * GET /supervisor-assignment — الشاشةُ كلُّها في ردٍّ واحد.
+ *
+ * `?unassignedOnly=true` تختصر الردَّ على ما لا مشرفَ له — وهو أكثرُ ما تُبنى
+ * عليه التنبيهات: شاحنةٌ تعمل ولا أحدَ مسؤولٌ عنها.
+ * `?supervisor=<id|name>` تقصره على مشرفٍ بعينه.
+ */
+router.get('/supervisor-assignment', async (req, res) => {
+  try {
+    const hit = cache.get('fleetapi:assign');
+    const snap = hit || await assignmentSnapshot();
+    if (!hit) cache.set('fleetapi:assign', snap, 15000);
+
+    let vehicles = snap.vehicles;
+    if (String(req.query.unassignedOnly || '') === 'true') vehicles = vehicles.filter((v) => v.unassigned);
+    const who = String(req.query.supervisor || '').trim();
+    if (who) {
+      const k = who.toLowerCase();
+      vehicles = vehicles.filter((v) => v.supervisor
+        && (v.supervisor.id === who
+          || v.supervisor.name.toLowerCase().includes(k)
+          || String(v.supervisor.email || '').toLowerCase() === k));
+    }
+
+    res.json({
+      generatedAt: new Date().toISOString(),
+      summary: snap.summary,
+      supervisors: snap.supervisors,
+      count: vehicles.length,
+      vehicles,
+    });
+  } catch (e) {
+    console.error('[fleet-api] supervisor-assignment', e);
+    res.status(500).json({ message: 'تعذّر جلب توزيع المشرفين' });
+  }
+});
+
+/** GET /supervisors — المشرفون وأعدادُ مركباتهم ولوحاتُها، بلا تفاصيل المركبات. */
+router.get('/supervisors', async (req, res) => {
+  try {
+    const hit = cache.get('fleetapi:assign');
+    const snap = hit || await assignmentSnapshot();
+    if (!hit) cache.set('fleetapi:assign', snap, 15000);
+    res.json({
+      generatedAt: new Date().toISOString(),
+      summary: snap.summary,
+      count: snap.supervisors.length,
+      supervisors: snap.supervisors,
+    });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر جلب المشرفين' });
+  }
+});
+
 /** GET /health — للأتمتة أن تتحقّق من المفتاح وحياة النبض قبل أن تعتمد عليه. */
 router.get('/health', async (req, res) => {
   const newest = await Ls2Vehicle.findOne({}).sort({ lastMessageAt: -1 }).select('lastMessageAt').lean();

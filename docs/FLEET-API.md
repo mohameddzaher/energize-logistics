@@ -183,6 +183,125 @@ Filters: `?plate=` and `?type=` (comma-separated for more than one type).
 > our screen to reach your automation without you editing code. If you have a rule we do
 > not model, compute it from `tyres.readings` yourself.
 
+### `GET /supervisor-assignment`
+Who supervises which truck — everything the **Assign Supervisors** screen shows, in one
+response: the split, every supervisor, and every vehicle with its supervisor and drivers.
+
+```json
+{
+  "generatedAt": "2026-09-22T07:10:00.000Z",
+  "summary": {
+    "vehicles": 58,
+    "supervisors": 2,
+    "departmentManagers": 1,
+    "assigned": 58,
+    "unassigned": 0,
+    "vehiclesWithoutDriver": 0
+  },
+  "supervisors": [
+    {
+      "id": "6a6deeba86cf450407a2579c",
+      "name": "Ahmed Abdelhamid",
+      "email": "ahmed.a@energize.com",
+      "phone": null,
+      "role": "fleet_manager",
+      "isDepartmentManager": true,
+      "scope": "whole_fleet",
+      "vehicleCount": 58,
+      "plates": ["1080 RXA", "1081 RXA"]
+    }
+  ],
+  "count": 58,
+  "vehicles": [
+    {
+      "plate": "1080 RXA",
+      "name": null,
+      "trailerType": "سطحة",
+      "gpsType": "LS",
+      "brand": null,
+      "color": null,
+      "monthlyTarget": 27000,
+      "notes": "من لوكيشن سوليوشن",
+      "supervisor": {
+        "id": "6a65d6e2dabd326d52a15dcd",
+        "name": "Hazem Alaa",
+        "email": "hazem.alaa@energize-logistics.com",
+        "phone": null,
+        "role": "fleet_supervisor"
+      },
+      "supervisorName": "Hazem Alaa",
+      "unassigned": false,
+      "drivers": [
+        { "name": "محمد علي", "phone": "0551234567", "working": true, "offReason": null }
+      ],
+      "updatedAt": "2026-09-14T08:02:11.000Z"
+    }
+  ]
+}
+```
+
+Filters:
+
+| Query | Meaning |
+|---|---|
+| `?unassignedOnly=true` | Only trucks with no supervisor — the usual thing to alert on. |
+| `?supervisor=<id>` | One supervisor's trucks. The id from `supervisors[].id`. |
+| `?supervisor=<name or email>` | Same, matched on name (partial) or email (exact). |
+
+**Two things worth knowing before you build a rule on this:**
+
+- **`scope` is not decoration.** A `fleet_manager` supervises the whole fleet; no truck
+  carries his id, so counting trucks by supervisor gives him zero. `scope: "whole_fleet"`
+  and `vehicleCount` already account for that — use them, don't count yourself.
+- **`supervisor` is `null` but `supervisorName` may not be.** The name is stored on the
+  truck, so it survives a deleted user. Decide "unassigned" from the `unassigned` flag.
+
+### `GET /supervisors`
+The same supervisors and their plates, without the vehicle detail — lighter when all you
+need is the split.
+
+```json
+{
+  "generatedAt": "2026-09-22T07:10:00.000Z",
+  "summary": { "vehicles": 58, "assigned": 58, "unassigned": 0 },
+  "count": 3,
+  "supervisors": [
+    { "id": "…", "name": "Hazem Alaa", "role": "fleet_supervisor",
+      "isDepartmentManager": false, "scope": "assigned_vehicles",
+      "vehicleCount": 29, "plates": ["…"] }
+  ]
+}
+```
+
+#### Recipes
+
+**A truck is working with nobody responsible for it** — run every hour:
+
+```bash
+curl -s -H "x-api-key: $KEY" \
+  "https://api.energize-logistics.com/api/fleet-api/supervisor-assignment?unassignedOnly=true" \
+  | jq -r 'select(.count > 0) | "\(.count) trucks with no supervisor: \(.vehicles | map(.plate) | join(", "))"'
+```
+
+**The split changed** — keep the last response, compare `vehicles[].supervisor.id` by plate,
+and report the moves:
+
+```bash
+# today.json vs yesterday.json
+jq -s '
+  (.[0].vehicles | map({key: .plate, value: .supervisorName}) | from_entries) as $old
+  | .[1].vehicles[] | select($old[.plate] != .supervisorName)
+  | "\(.plate): \($old[.plate] // "—") → \(.supervisorName // "—")"
+' yesterday.json today.json
+```
+
+**A supervisor is carrying too much** — `supervisors[] | select(.isDepartmentManager | not) | select(.vehicleCount > 35)`.
+
+**A truck has no driver** — `summary.vehiclesWithoutDriver`, or
+`vehicles[] | select(.drivers | length == 0)`.
+
+---
+
 ---
 
 ## Limits
@@ -191,6 +310,7 @@ Filters: `?plate=` and `?type=` (comma-separated for more than one type).
 |---|---|
 | **Read-only** | No writes, ever. Automation watches and alerts; anyone changing data signs in as a person with their own permissions. |
 | **10-second cache** | Two calls within a second return the same payload. The poll runs every 20s, so calling more often than that gains nothing. |
+| **Assignment cache** | `/supervisor-assignment` and `/supervisors` are cached 15s. The split changes when a manager changes it, not on a timer — once an hour is plenty. |
 | **Recommended rate** | Once per minute. |
 | **Alerts** | Up to 500 per response. |
 | **Encoding** | UTF-8. Plates may contain Arabic — always `encodeURIComponent` them in query strings. |

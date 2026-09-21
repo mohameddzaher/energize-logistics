@@ -59,7 +59,12 @@ const fold = (v) => String(v || '')
 
   const plan = { change: [], already: [], notFound: [], ambiguous: [], targetExists: [] };
   for (const p of pairs) {
-    if (p.same) { plan.already.push(p); continue; }
+    // ── و«الفرقُ في الرسم» فرقٌ يُنفَّذ ───────────────────────────────────
+    // كان سطرٌ طرفاه يتّفقان بعد الطيّ («متال العالميه» ← «متال العالمية»)
+    // يُعدُّ «صحيحًا أصلًا» فلا يُكتب شيء — وأحدَ عشرَ سطرًا بقيت المنصّةُ
+    // فيها على الرسم القديم، فمَن نسخ الاسمَ الصحيح من الشيت وبحث به هناك
+    // لم يجد عميلَه. فما اتّفق نصُّه يُتخطّى، لا ما اتّفق طيُّه.
+    if (p.from === p.to) { plan.already.push(p); continue; }
     const hits = byKey.get(fold(p.from)) || [];
     if (!hits.length) {
       // ربّما سُمِّي بالاسم الصحيح من قبل
@@ -119,5 +124,49 @@ const fold = (v) => String(v || '')
     }
   }
   console.log(`\nتمّ: ${ok} · تعذّر: ${failed.length}`);
+
+  // ── و«صحيحٌ أصلًا» يعني في المنصّة وحدَها ──────────────────────────────────
+  // سطرٌ سُمّي في المنصّة بالاسم الصحيح قبلنا يُعدّ منتهيًا، وسجلُّنا قد يكون
+  // بقي على الرسم القديم («موسسه قصور البنيان» عندنا و«مؤسسة قصور البنيان»
+  // هناك). والطيُّ يجمعهما فلا ينقسم الدَّين — لكنّ الشاشتين تقولان شيئين،
+  // والقارئُ يظنّ نفسه أمام عميلين. فيُكتب الاسمُ عندنا بلا مساسٍ بالمنصّة.
+  const CollectionsParty = require('../models/CollectionsParty');
+  let synced = 0;
+  for (const p of plan.already) {
+    if (p.from === p.to) continue;
+    const stale = await CollectionsParty.findOne({ kind: 'customer', name: p.from }).select('_id').lean();
+    if (!stale) continue;
+    const r = await renameOpsCustomer(p.from, p.to);
+    synced += 1;
+    console.log(`↺ «${p.from}» ← «${p.to}» (سجلُّنا فقط)${r ? ` · كشوف: ${r.sheets}` : ''}`);
+  }
+  if (synced) console.log(`ووُفِّق سجلُّنا مع المنصّة في ${synced} اسمًا.`);
+
+  // ── والاسمُ القديم لقبٌ للعميل مهما كان طريقُه ─────────────────────────────
+  // اللقبُ يُضاف حين يمرّ التعديلُ بـ`renameOpsCustomer`؛ وبعضُ الأسطر لم تمرّ
+  // به أصلًا (كان اسمُه في المنصّة صحيحًا قبلنا، أو غُيّر من شاشةٍ أخرى). فبقي
+  // اثنا عشرَ اسمًا قديمًا لا يجد صاحبَه أحدٌ إذا بحث به — وهو الاسمُ الذي في
+  // الأذهان والأوراق. فيُضمن اللقبُ لكلّ سطرٍ في الشيت.
+  let tagged = 0;
+  for (const p of [...plan.change, ...plan.already, ...plan.targetExists, ...plan.ambiguous]) {
+    if (p.from === p.to) continue;
+    const key = CollectionsParty.fold(p.from);
+    // ── واللقبُ يُوضَع على الحسابين كليهما ──────────────────────────────────
+    // للشركة الواحدة حسابٌ نقديٌّ وآخرُ ضريبيّ باسمٍ واحد، وكلاهما قائمٌ عن
+    // قصد. فوضعُ اللقب على أوّلِ ما يُصادَف يجعل البحثَ بالاسم القديم يقع على
+    // أحدهما دون الآخر — والسائلُ لا يعرف أيُّهما رُقّم.
+    const owners = await CollectionsParty.find({
+      kind: 'customer', isActive: { $ne: false }, nameKey: CollectionsParty.fold(p.to),
+    }).select('_id aliasKeys').lean();
+    const need = owners.filter((o) => !(o.aliasKeys || []).includes(key));
+    if (!need.length) continue;
+    await CollectionsParty.updateMany(
+      { _id: { $in: need.map((o) => o._id) } },
+      { $addToSet: { aliases: p.from, aliasKeys: key } },
+    );
+    tagged += 1;
+    console.log(`+ لقبٌ: «${p.from}» ← «${p.to}»`);
+  }
+  if (tagged) console.log(`وأُضيف ${tagged} اسمًا قديمًا لقبًا — فيجدهم البحث.`);
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -31,7 +31,13 @@ const S = (v) => String(v ?? '').trim();
 async function renameOpsCustomer(oldName, newName) {
   const from = String(oldName || '').trim();
   const to = String(newName || '').trim();
-  if (!from || !to || fold(from) === fold(to)) return null;
+  // ── وتصحيحُ الرسم تصحيحٌ ──────────────────────────────────────────────────
+  // كان الشرطُ يقارن الاسمين **بعد الطيّ**، والطيُّ يسوّي بين «العالميه»
+  // و«العالمية» و«مؤسسه» و«مؤسسة». فأحدَ عشرَ سطرًا من شيت المطابقة لم يُنفَّذ
+  // أصلًا: قُرئ «لا فرق» وهو فرقٌ يراه القارئُ في الشاشة، وتبحث عنه المنصّةُ
+  // حرفيًّا فلا تجده. وما دام النصُّ مختلفًا فهناك ما يُكتب — والطيُّ إنّما
+  // يقرّر هل هو العميلُ نفسُه (فلا دمجَ ولا حسابٌ ثانٍ) لا هل يُكتب.
+  if (!from || !to || from === to) return null;
 
   const CollectionsParty = require('../models/CollectionsParty');
   const OperationsWorkflow = require('../models/OperationsWorkflow');
@@ -52,6 +58,9 @@ async function renameOpsCustomer(oldName, newName) {
     // الاسمُ الجديد لطرفٍ قائم، والقديمُ **بلا كودٍ خاصّ**: يُضاف اسمُه صيغةً
     // للحساب ويُعطَّل المكرَّر — فلا يبقى سجلّان لعميلٍ واحد.
     await CollectionsParty.updateOne({ _id: target._id }, {
+      // والاسمُ المُعتمَد يُكتب بحرفه: قد يكون القائمُ مكتوبًا «العالميه»
+      // والمطلوبُ «العالمية» — الطيُّ يسوّي بينهما، والقارئُ لا.
+      ...(target.name !== to ? { $set: { name: to, nameKey: newKey } } : {}),
       $addToSet: { aliases: from, aliasKeys: oldKey },
     });
     await CollectionsParty.updateOne({ _id: current._id }, {
@@ -85,9 +94,14 @@ async function renameOpsCustomer(oldName, newName) {
   // ── كلُّ صيغِ الاسم لا الحرفيّةَ وحدَها ────────────────────────────────────
   // الكشوفُ تحمل الاسمَ كما كُتب يومَها: «شركه شحن» و«شركة شحن». والمطابقةُ
   // الحرفيّة تترك الباقي — أربعةُ آلافٍ منها بقيت في أوّل تشغيل.
+  //
+  // والصيغُ تُجمَع من طرفَي التعديل: القديمِ والجديد. فمَن كُتب له «العالميه»
+  // ومَن كُتب له «العالمية» كلاهما هذا العميل، وتركُ أحدهما يجعله صفَّين في
+  // شاشةٍ تجمع بالنصّ — والمقصودُ حرفٌ واحدٌ مُعتمَد.
+  const KEYS = new Set([oldKey, newKey]);
   const variantsOf = async (coll, field) => {
     const names = await coll.distinct(field);
-    return (names || []).filter((n) => n && fold(n) === oldKey && n !== to);
+    return (names || []).filter((n) => n && KEYS.has(fold(n)) && n !== to);
   };
 
   const wfNames = await variantsOf(OperationsWorkflow, 'username');
@@ -108,7 +122,7 @@ async function renameOpsCustomer(oldName, newName) {
       const Model = require(`../models/${modelName}`);
       const M = Model[exportName || modelName] || Model;
       if (!M || typeof M.distinct !== 'function') continue;
-      const names = (await M.distinct(field)).filter((n) => n && fold(n) === oldKey && n !== to);
+      const names = (await M.distinct(field)).filter((n) => n && KEYS.has(fold(n)) && n !== to);
       if (!names.length) continue;
       const r = await M.updateMany({ [field]: { $in: names } }, { $set: { [field]: to } });
       out[key] = r.modifiedCount || 0;
@@ -118,7 +132,7 @@ async function renameOpsCustomer(oldName, newName) {
   // واسمُ الطرف على فواتير الدفتر — لمن ربطُه بهذا الطرف أو باسمه القديم.
   try {
     const CollectionInvoice = require('../models/CollectionInvoice');
-    const names = (await CollectionInvoice.distinct('partyName')).filter((n) => n && fold(n) === oldKey && n !== to);
+    const names = (await CollectionInvoice.distinct('partyName')).filter((n) => n && KEYS.has(fold(n)) && n !== to);
     const or = [];
     if (names.length) or.push({ partyName: { $in: names } });
     if (out.party) or.push({ party: out.party });

@@ -513,6 +513,7 @@
         "/api/customs-clearance",
         "/api/customs-clearance/contracts",
         "/api/customs-clearance/parties",
+        "/api/customs-clearance/upcoming-alerts",
         "/api/lookups/types"
       ],
       "wildcard": false
@@ -551,6 +552,7 @@
     },
     "/system/customs/settings": {
       "apis": [
+        "/api/customs-clearance/settings",
         "/api/lookups/types"
       ],
       "wildcard": false
@@ -1622,6 +1624,8 @@
     },
     "/system/finance/customs": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/payment-requests",
         "/api/finance/departments"
       ],
       "wildcard": false

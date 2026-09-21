@@ -5,6 +5,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/file_upload.dart';
 
 /// الإدارة المالية — مالُ كلّ قسمٍ في موضعٍ واحد، من الحمولة نفسِها التي
 /// تعرضها صفحاتُ الموقع (/api/finance). فلا يختلف رقمٌ بين الهاتف والموقع.
@@ -265,6 +266,13 @@ class _FinanceDeptScreenState extends State<FinanceDeptScreen> {
                       child: ListView(
                         padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
                         children: [
+                          // ── طلباتُ صرف التخليص ───────────────────────────
+                          // ما طلب قسمُ التخليص دفعَه — يُقرَّر فيه من الهاتف
+                          // كما يُقرَّر من الموقع، بالعقد نفسِه.
+                          if (widget.dept == 'customs') ...[
+                            const _CustomsPaymentRequests(),
+                            const SizedBox(height: 12),
+                          ],
                           Wrap(spacing: 8, runSpacing: 8, children: cards.map((c) {
                             final w = (MediaQuery.of(context).size.width - 28 - 8) / 2;
                             return SizedBox(
@@ -357,6 +365,169 @@ class _FinTableCard extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// طلباتُ صرف التخليص — المعلَّقةُ أوّلًا، وثلاثةُ أجوبةٍ لكلّ طلب.
+class _CustomsPaymentRequests extends StatefulWidget {
+  const _CustomsPaymentRequests();
+  @override
+  State<_CustomsPaymentRequests> createState() => _CustomsPaymentRequestsState();
+}
+
+class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
+  List<Map<String, dynamic>> _rows = const [];
+  Map<String, dynamic> _counts = const {};
+  bool _loading = true;
+  String _tab = 'pending';
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    try {
+      final d = await Api.instance.get('/api/customs-clearance/payment-requests?status=$_tab');
+      if (!mounted) return;
+      setState(() {
+        _rows = List<Map<String, dynamic>>.from(d['requests'] ?? const []);
+        _counts = Map<String, dynamic>.from(d['counts'] ?? const {});
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _decide(Map<String, dynamic> r, String decision) async {
+    final noteCtrl = TextEditingController();
+    PickedFile? proof;
+    final go = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => StatefulBuilder(builder: (c, setSheet) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              decision == 'paid' ? tr('تأكيد الدفع', 'Confirm payment')
+                  : decision == 'returned' ? tr('إرجاع الطلب', 'Return the request')
+                      : tr('رفض الطلب', 'Reject the request'),
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            const SizedBox(height: 4),
+            Text('${r['refNumber'] ?? ''} · ${r['label'] ?? r['key'] ?? ''}',
+                style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: noteCtrl,
+              maxLines: 2,
+              decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)', 'Note (optional)')),
+            ),
+            if (decision == 'paid') ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final f = await pickFileAsDataUrl();
+                  if (f != null) setSheet(() => proof = f);
+                },
+                icon: const Icon(Icons.attach_file, size: 18),
+                label: Text(proof == null
+                    ? tr('إرفاق إثبات الدفع (اختياري)', 'Attach proof (optional)')
+                    : proof!.fileName),
+              ),
+            ],
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('تأكيد', 'Confirm'))),
+            ),
+          ]),
+        ),
+      )),
+    );
+    if (go != true) return;
+    try {
+      await Api.instance.patch(
+        '/api/customs-clearance/${r['clearanceId']}/payment-stages/${r['entryId']}/decision',
+        {
+          'decision': decision,
+          'note': noteCtrl.text.trim(),
+          if (proof != null) 'files': [{'dataUrl': proof!.dataUrl, 'fileName': proof!.fileName}],
+        },
+      );
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(tr('طلبات صرف التخليص', 'Customs payment requests'),
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
+          Chip2('${_counts['pending'] ?? 0}', T.warn),
+        ]),
+        const SizedBox(height: 2),
+        Text(tr('ما طلب قسمُ التخليص دفعَه — بمرفقه', 'What customs asked to be paid — with its file'),
+            style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+        const SizedBox(height: 8),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            for (final t in const [('pending', 'بانتظار الدفع', 'Awaiting'), ('paid', 'مدفوعة', 'Paid'), ('returned', 'مُعادة', 'Returned'), ('rejected', 'مرفوضة', 'Rejected')])
+              Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: FilterChip(
+                  selected: _tab == t.$1,
+                  onSelected: (_) { setState(() { _tab = t.$1; _loading = true; }); _load(); },
+                  label: Text(tr(t.$2, t.$3)),
+                  labelStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _tab == t.$1 ? Colors.white : T.inkSoft),
+                  selectedColor: T.navy,
+                  side: BorderSide.none,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                ),
+              ),
+          ]),
+        ),
+        const SizedBox(height: 6),
+        if (_loading)
+          const Padding(padding: EdgeInsets.all(14), child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
+        else if (_rows.isEmpty)
+          Padding(padding: const EdgeInsets.all(14), child: Center(child: Text(tr('لا طلبات', 'Nothing here'), style: const TextStyle(fontSize: 12, color: T.inkFaint))))
+        else
+          ..._rows.take(40).map((r) => Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: T.inkFaint.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(12)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800))),
+                  Text('${r['refNumber'] ?? ''}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                ]),
+                const SizedBox(height: 2),
+                Text('${r['label'] ?? r['key'] ?? ''} · ${r['amount'] ?? '—'}${r['note'] != null && '${r['note']}'.isNotEmpty ? ' · ${r['note']}' : ''}',
+                    style: const TextStyle(fontSize: 11.5)),
+                if ('${r['decisionNote'] ?? ''}'.isNotEmpty)
+                  Text('${r['decisionNote']}', style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+                const SizedBox(height: 6),
+                Row(children: [
+                  if ('${r['fileUrl'] ?? ''}'.isNotEmpty)
+                    Text(tr('مرفق ✓', 'file ✓'), style: const TextStyle(fontSize: 11, color: T.success, fontWeight: FontWeight.w700))
+                  else
+                    Text(tr('بلا مرفق', 'no file'), style: const TextStyle(fontSize: 11, color: T.warn)),
+                  const Spacer(),
+                  IconButton(tooltip: tr('تم الدفع', 'Paid'), icon: const Icon(Icons.check, size: 18, color: T.success), onPressed: () => _decide(r, 'paid')),
+                  IconButton(tooltip: tr('إرجاع', 'Return'), icon: const Icon(Icons.undo, size: 18, color: T.info), onPressed: () => _decide(r, 'returned')),
+                  IconButton(tooltip: tr('رفض', 'Reject'), icon: const Icon(Icons.block, size: 18, color: T.danger), onPressed: () => _decide(r, 'rejected')),
+                ]),
+              ]),
+            ),
+          )),
+      ]),
     );
   }
 }

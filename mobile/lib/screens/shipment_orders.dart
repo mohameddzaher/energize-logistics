@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
+import '../ui/file_upload.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
@@ -106,9 +107,31 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     }
   }
 
+  /// حالاتٌ لا تُقال بلا ورقة — نظيرُ `REQUIRE_FILE` في الخادم.
+  static const _needsFile = {'bond_sent'};
+
   Future<void> _setStatus(Map<String, dynamic> o, String v) async {
+    // ── و«أُرسل السند» تُثبِت السند ────────────────────────────────────────
+    // الخادمُ يرفض النقلةَ بلا مرفق (وهو الحارس)، وهنا يُفتَح المنتقي قبل
+    // الإرسال: أن يُطلَب الملفُّ أفضلُ من أن يُردَّ الطلبُ بخطأ.
+    Map<String, dynamic> extra = const {};
+    if (_needsFile.contains(v) && v != (o['status'] ?? '')) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(tr('اختر صورة السند أو ملفه', 'Pick the bond file')),
+          duration: const Duration(seconds: 2),
+        ));
+      }
+      final f = await pickFileAsDataUrl();
+      if (f == null) return;
+      if (f.sizeBytes > 20 * 1024 * 1024) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('الملف أكبر من ٢٠ ميجابايت', 'File over 20MB'))));
+        return;
+      }
+      extra = {'dataUrl': f.dataUrl, 'fileName': f.fileName};
+    }
     try {
-      await Api.instance.patch('/api/shipment-orders/orders/${o['_id']}/status', {'status': v});
+      await Api.instance.patch('/api/shipment-orders/orders/${o['_id']}/status', {'status': v, ...extra});
       _load();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));

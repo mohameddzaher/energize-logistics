@@ -77,6 +77,11 @@ Every vehicle with its latest snapshot. Add `?plate=<plate>` to narrow to one.
       "name": "Truck 12",
       "unitId": 401234,
       "driver": "Driver name",
+      "driverPhone": "0551234567",
+      "driverPhoneSource": "driver_name",
+      "crew": [
+        { "name": "Driver name", "phone": "0551234567", "working": true }
+      ],
 
       "online": true,
       "status": "moving",
@@ -148,6 +153,19 @@ Every vehicle with its latest snapshot. Add `?plate=<plate>` to narrow to one.
 | `profile.*` | Static vehicle data — VIN, brand, model year, type. |
 
 Any field can be `null` when the vehicle has not reported it.
+
+---
+
+> **`driverPhone` and `crew`.** The tracker reports the driver's *name*; the number comes
+> from our own fleet-driver register. `driverPhoneSource` says how it was matched:
+> `driver_name` (the reported driver is in the register with a number) or
+> `vehicle_single_driver` (the name was not recognised, but the truck has exactly one
+> registered driver). **When a truck has two drivers and the reported name is not
+> recognised, `driverPhone` is `null` on purpose** — telling you the wrong driver's number
+> is worse than telling you none. `crew` always lists the truck's registered drivers so you
+> can decide for yourself.
+>
+> A driver whose number has not been entered in our register comes back `null`.
 
 ---
 

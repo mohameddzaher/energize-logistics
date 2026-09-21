@@ -33,12 +33,24 @@ const ageSec = (d) => (d ? Math.round((Date.now() - new Date(d).getTime()) / 100
  * الصيانة، ومستوى التنبيه، والوقود المستهلك، وبيانات المركبة الثابتة. والواجهةُ
  * التي تُعطي بعضَ ما على الشاشة تُقرأ كلَّها، فيُبنى عليها ما لا تحتمله.
  */
-const shape = (v, tires) => ({
+const shape = (v, tires, crew) => ({
   // ── الهوية ──
   plate: v.plate || null,
   name: v.name || null,
   unitId: v.unitId,
   driver: v.driver || null,
+  // ── ورقمُه مع اسمه ────────────────────────────────────────────────────────
+  // الاسمُ يقول مَن هو، والرقمُ يقول كيف يُبلَّغ. وأتمتةٌ تُنبِّه على حرارة
+  // إطارٍ ثمّ لا تملك رقمَ السائق تُنبِّه إلى الهواء — فيُبحَث عن الرقم بيدٍ
+  // في شاشةٍ أخرى بينما الشاحنةُ تسير.
+  //
+  // ومصدرُه سجلُّ سائقي الأسطول (FleetDriver)، ونظامُ التتبّع لا يعرفه. راجع
+  // `crewIndex`: يُطابَق باسم السائق الذي يبلّغه الجهاز، فإن لم يُعرَف الاسمُ
+  // أُخذ رقمُ سائق الشاحنة إن كان واحدًا لا أكثر — ولا يُخمَّن بين اثنين.
+  driverPhone: crew ? crew.phone : null,
+  driverPhoneSource: crew ? crew.source : null,
+  // وطاقمُ الشاحنة كما هو مسجَّلٌ عندنا — لمن أراد الثانيَ أو أراد أن يختار.
+  crew: crew ? crew.list : [],
 
   // ── حياة القراءة ──
   online: v.online ?? null,
@@ -125,6 +137,69 @@ const shape = (v, tires) => ({
   } : null,
 });
 
+/**
+ * فهرسُ سائقي الأسطول: مفتاحُ اللوحة ← طاقمُها، واسمٌ مطويّ ← رقمُه.
+ *
+ * يُبنى مرّةً لكلّ نداءٍ لا استعلامًا لكلّ مركبة، ويُحفَظ دقيقةً: الأرقامُ
+ * تتغيّر حين يُكتب رقمٌ في ملفّ سائق، لا كلَّ عشرين ثانية.
+ */
+async function crewIndex() {
+  const hit = cache.get('fleetapi:crew');
+  if (hit) return hit;
+
+  const FleetModels = require('../models/FleetModels');
+  const { plateKey } = require('../utils/plateKey');
+  const { flexNormalize } = require('../utils/plateKey');
+  const [vehicles, drivers] = await Promise.all([
+    FleetModels.FleetVehicle.find({ isActive: { $ne: false } }).select('plate').lean(),
+    FleetModels.FleetDriver.find({ isActive: { $ne: false } }).select('name phone vehicle working').lean(),
+  ]);
+
+  const plateOf = new Map(vehicles.map((v) => [String(v._id), plateKey(v.plate)]));
+  const byPlate = new Map();   // مفتاحُ اللوحة ← [{name, phone, working}]
+  const byName = new Map();    // الاسمُ المطويّ ← رقمُه
+  for (const d of drivers) {
+    const person = {
+      name: d.name,
+      phone: String(d.phone || '').trim() || null,
+      working: d.working !== false,
+    };
+    const k = d.vehicle ? plateOf.get(String(d.vehicle)) : null;
+    if (k) {
+      if (!byPlate.has(k)) byPlate.set(k, []);
+      byPlate.get(k).push(person);
+    }
+    const n = flexNormalize(d.name);
+    if (n && person.phone && !byName.has(n)) byName.set(n, person.phone);
+  }
+
+  const out = { byPlate, byName };
+  cache.set('fleetapi:crew', out, 60000);
+  return out;
+}
+
+/** رقمُ سائقٍ بعينه — بالاسم أوّلًا، ثمّ بالشاحنة إن كان سائقُها واحدًا. */
+function crewFor(v, index) {
+  const { plateKey, flexNormalize } = require('../utils/plateKey');
+  const key = plateKey(v.plate);
+  const list = (index.byPlate.get(key) || []).map((p) => ({ ...p }));
+  const reported = flexNormalize(v.driver || '');
+
+  let phone = null;
+  let source = null;
+  if (reported) {
+    const onTruck = list.find((p) => flexNormalize(p.name) === reported && p.phone);
+    if (onTruck) { phone = onTruck.phone; source = 'driver_name'; }
+    else if (index.byName.has(reported)) { phone = index.byName.get(reported); source = 'driver_name'; }
+  }
+  // ── ولا يُخمَّن بين اثنين ────────────────────────────────────────────────
+  // للشاحنة سائقان أحيانًا؛ وإرسالُ رقمِ أحدهما على أنّه «سائقُها» يُبلَّغ به
+  // مَن ليس على الطريق. فإن لم يُعرَف الاسمُ ولها سائقان تُترَك فارغةً
+  // و`crew` أمام القارئ يختار منها.
+  if (!phone && list.length === 1 && list[0].phone) { phone = list[0].phone; source = 'vehicle_single_driver'; }
+  return { phone, source, list };
+}
+
 /** GET /vehicles — كلّ المركبات بلقطتها الأخيرة. */
 router.get('/vehicles', async (req, res) => {
   try {
@@ -134,7 +209,7 @@ router.get('/vehicles', async (req, res) => {
 
     const filter = {};
     if (req.query.plate) filter.plate = String(req.query.plate).trim();
-    const vehicles = await Ls2Vehicle.find(filter).lean();
+    const [vehicles, crew] = await Promise.all([Ls2Vehicle.find(filter).lean(), crewIndex()]);
 
     // سجلّ الإطارات لكلّ اللوحات دفعةً واحدة — لا استعلامًا لكلّ مركبة.
     const assets = await Ls2TireAsset.find({ status: { $in: ['mounted', 'spare'] } })
@@ -152,7 +227,13 @@ router.get('/vehicles', async (req, res) => {
     const body = {
       generatedAt: new Date().toISOString(),
       count: vehicles.length,
-      vehicles: vehicles.map((v) => shape(v, byPlate.get(v.plateKey || ''))),
+      // ── ومفتاحُ اللوحة يُشتقّ ولا يُقرأ ──────────────────────────────
+      // كان يُقرأ `v.plateKey` من سجلّ التتبّع — وهو حقلٌ لا وجود له فيه
+      // إطلاقًا (صفرٌ من ثمانٍ وخمسين). فكان `tyres.registered` يخرج `null`
+      // في كلّ مركبةٍ منذ أن كُتبت الواجهة: سجلُّ الإطارات الذي وُعد به
+      // المستهلك لم يصله قطّ، ولا خطأَ يُقال. فيُشتقّ من اللوحة كما يُشتقّ
+      // في بقيّة النظام (utils/plateKey).
+      vehicles: vehicles.map((v) => shape(v, byPlate.get(require('../utils/plateKey').plateKey(v.plate) || ''), crewFor(v, crew))),
     };
     cache.set(key, body, 10000);
     res.json(body);
@@ -167,7 +248,17 @@ router.get('/vehicles/:plate', async (req, res) => {
   try {
     const v = await Ls2Vehicle.findOne({ plate: String(req.params.plate).trim() }).lean();
     if (!v) return res.status(404).json({ message: 'المركبة غير موجودة' });
-    res.json({ generatedAt: new Date().toISOString(), vehicle: shape(v) });
+    const { plateKey } = require('../utils/plateKey');
+    const [assets, crew] = await Promise.all([
+      Ls2TireAsset.find({ plateKey: plateKey(v.plate), status: { $in: ['mounted', 'spare'] } }).select('status sensor').lean(),
+      crewIndex(),
+    ]);
+    const tires = assets.length ? {
+      mounted: assets.filter((a) => a.status === 'mounted').length,
+      spare: assets.filter((a) => a.status !== 'mounted').length,
+      withSensor: assets.filter((a) => a.sensor === 'yes').length,
+    } : null;
+    res.json({ generatedAt: new Date().toISOString(), vehicle: shape(v, tires, crewFor(v, crew)) });
   } catch (e) {
     res.status(500).json({ message: 'تعذّر جلب المركبة' });
   }

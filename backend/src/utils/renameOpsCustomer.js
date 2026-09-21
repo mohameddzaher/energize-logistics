@@ -144,7 +144,8 @@ async function renameOpsCustomer(oldName, newName) {
 
   try {
     const cache = require('./ttlCache');
-    cache.clear('wf:'); cache.clear('collections:'); cache.clear('coll:');
+    // `wfparty:` خريطتا الاسمِ المعتمَد ونوعِ العميل — تتبعان الأطرافَ لا الكشوف.
+    cache.clear('wf:'); cache.clear('wfparty:'); cache.clear('collections:'); cache.clear('coll:');
   } catch (_) { /* */ }
   try { require('../controllers/collectionsLedgerController').invalidate(); } catch (_) { /* */ }
   try {

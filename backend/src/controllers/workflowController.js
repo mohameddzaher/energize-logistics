@@ -1267,6 +1267,89 @@ exports.deleteWorkflow = async (req, res) => {
   }
 };
 
+// PATCH /api/workflows/:id/application-status
+/**
+ * حالةُ الطلب تُغيَّر من جدول سير العمل — وتُكتب في المنصّة لا عندنا.
+ *
+ * ── العلّة ──────────────────────────────────────────────────────────────────
+ * `applicationStatus` عمودٌ مرآةٌ: المنصّةُ تكتبه وتُعيد كتابته في كلّ مزامنة.
+ * فلو كُتب عندنا وحدَه مُسح بعد دقائق بلا أثر — وهذا بالضبط ما كان يقع لمن
+ * يعدّله من الجدول: يتغيّر أمام عينه ثمّ يعود.
+ *
+ * فالكتابةُ تذهب إلى مصدرها: `PATCH /admin/shipments/status` في المنصّة، ثمّ
+ * تُقرأ الشحنةُ منها ويُكتب صفُّنا بما استقرّ هناك ويُبَثّ. فالشاشتان — جدولُ
+ * سير العمل وصفحةُ الطلبات — تريان الشيءَ نفسَه في اللحظة نفسِها، والمنصّةُ
+ * معهما. وكشفٌ ليس من المنصّة لا حالةَ طلبٍ له تُغيَّر من هنا.
+ */
+const UPL_STATUSES = [
+  'requesting', 'loading', 'uploaded', 'on_way', 'arrived',
+  'bond_sent', 'bond_received', 'late', 'invoiced', 'cancelled',
+];
+
+exports.updateApplicationStatus = async (req, res) => {
+  try {
+    const status = String(req.body?.status || '').trim();
+    if (!UPL_STATUSES.includes(status)) {
+      return res.status(400).json({ message: `حالةٌ غير معروفة: ${status || '(فارغة)'}` });
+    }
+    // ومَن يملك عمودَ الحالة في الجدول هو مَن يملك تغييرَها — الخريطةُ نفسُها.
+    const allowed = ROLE_FIELD_ACCESS[req.user.role] || [];
+    if (!allowed.includes('applicationStatus')) {
+      return res.status(403).json({ message: 'صلاحيّتك لا تسمح بتغيير حالة الطلب.' });
+    }
+
+    const workflow = await OperationsWorkflow.findById(req.params.id)
+      .select('externalSource externalId applicationStatus reportNumber lockedBy lockedByName lockedAt');
+    if (!workflow) return res.status(404).json({ message: 'Workflow not found' });
+    if (isLocked(workflow, req.user._id)) {
+      return res.status(423).json({ message: `الكشف مفتوحٌ لدى ${workflow.lockedByName || 'مستخدمٍ آخر'}` });
+    }
+    if (workflow.externalSource !== 'ops_upl' || !workflow.externalId) {
+      return res.status(400).json({
+        message: 'هذا الكشف ليس من منصّة التشغيل — لا حالةَ طلبٍ له تُغيَّر.',
+      });
+    }
+    if (String(workflow.applicationStatus || '') === status) {
+      return res.json({ _id: workflow._id, applicationStatus: status, unchanged: true });
+    }
+
+    const before = String(workflow.applicationStatus || '');
+    const upl = require('../services/uplClient');
+    await upl.patch('/admin/shipments/status', {
+      body: { status, ids: [String(workflow.externalId)] },
+    });
+
+    // ما استقرّ في المنصّة هو ما يُعرض — لا ما طلبناه.
+    const { syncShipmentsById } = require('../services/opsWorkflowSyncService');
+    const out = await syncShipmentsById([String(workflow.externalId)]);
+    const row = (out.rows || [])[0] || null;
+
+    try { cache.clear('ops:'); } catch (e) { /* */ }
+    bustFilterCache();
+    try {
+      emitToAll('ops:shipments:changed', {
+        resource: 'shipments', action: 'status', ids: [String(workflow.externalId)], status, at: Date.now(),
+      });
+    } catch (e) { /* */ }
+
+    await logAudit({
+      user: req.user._id,
+      action: 'update_workflow',
+      entity: 'OperationsWorkflow',
+      entityId: workflow._id,
+      changes: { before: { applicationStatus: before }, after: { applicationStatus: row?.applicationStatus || status } },
+      ipAddress: req.ip,
+    });
+
+    // والردُّ يُحجَب كما تُحجَب القائمة: هو نسخةُ الصفّ التي تحلّ محلَّ القديمة.
+    res.json(row ? stripMoneyFor(req.user.role, row) : { _id: workflow._id, applicationStatus: status });
+  } catch (error) {
+    const status = error.status && error.status >= 400 && error.status < 600 ? error.status : 500;
+    if (status >= 500) console.error('updateApplicationStatus:', error.message);
+    res.status(status).json({ message: error.message || 'تعذّر تغيير حالة الطلب في منصّة التشغيل' });
+  }
+};
+
 // POST /api/workflows/bulk-delete
 /**
  * تحديثٌ جماعيّ — حقلٌ واحدٌ على كشوفٍ كثيرة.

@@ -200,6 +200,8 @@ exports.update = async (req, res) => {
     }
     broadcast(req.params.resource, 'updated', { id: req.params.id });
     res.json(out.data ?? out);
+    // وتعديلُ شحنةٍ مفردةٍ يتبعه صفُّها عندنا كما يتبع تغييرَ الحالة.
+    if (req.params.resource === 'shipments') mirrorShipments([req.params.id]);
   } catch (error) {
     fail(res, error, `Failed to update ${req.params.resource}`);
   }
@@ -234,15 +236,39 @@ exports.restore = async (req, res) => {
 // ---- Shipment-specific extras --------------------------------------------
 
 // Bulk/inline status change: body { status, ids: [...], status_log_details? }
+/**
+ * ── وما كُتب في المنصّة يُقرأ عندنا في النداء نفسِه ─────────────────────────
+ *
+ * كانت الحالةُ تُكتب في المنصّة ثمّ يُبَثّ الخبرُ وينتهي الأمر: صفُّ سير العمل
+ * عندنا يبقى على حالته القديمة حتى يمرّ عليه الاستطلاع. فمن غيّر الحالة من
+ * شاشتنا يفتح جدولَ سير العمل فيجدها لم تتغيّر — فيظنّ أنّ الضغطة ضاعت.
+ *
+ * فتُقرأ الشحنةُ من المنصّة بعد الكتابة مباشرةً ويُكتب صفُّها ويُبَثّ (راجع
+ * services/opsWorkflowSyncService · syncShipmentsById). والردُّ لا ينتظر ذلك:
+ * الكتابةُ نجحت، والمرآةُ تلحق في أجزاء من الثانية.
+ */
 exports.updateShipmentStatus = async (req, res) => {
   try {
     const out = await upl.patch('/admin/shipments/status', { body: req.body, lang: langOf(req) });
     broadcast('shipments', 'status', { ids: req.body?.ids, status: req.body?.status });
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [req.body?.ids].filter(Boolean);
     res.json(out.data ?? out);
+    mirrorShipments(ids);
   } catch (error) {
     fail(res, error, 'Failed to update shipment status');
   }
 };
+
+/** يُنادى بعد كلّ كتابةٍ على شحنة — لا يُنتظَر ولا يرمي. */
+function mirrorShipments(ids) {
+  if (!ids || !ids.length) return;
+  setImmediate(() => {
+    require('../services/opsWorkflowSyncService')
+      .syncShipmentsById(ids)
+      .catch((e) => console.error('[ops] mirror after write:', e.message));
+  });
+}
+exports.mirrorShipments = mirrorShipments;
 
 // ---- Inbound webhook (genuinely-instant push, if UPL is configured to call us)
 // Unauthenticated by design (UPL can't carry our cookie) but gated by a shared

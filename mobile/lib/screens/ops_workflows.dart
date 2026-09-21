@@ -24,6 +24,22 @@ const _wfStages = {
 
 const _wfStageOrder = ['draft', 'submitted_to_ops', 'ops_completed', 'submitted_to_collections', 'completed'];
 
+/// حالاتُ الطلب في منصّة التشغيل — نفسُ قائمة الويب (lib/ops.ts) ونفسُ ألوان
+/// شاشة المنصّة (screens/ops_platform.dart)، فالحالةُ الواحدة تُقرأ لونًا
+/// واحدًا في الشاشتين.
+const _appStatuses = {
+  'requesting': ('قيد الطلب', 'Requesting', T.inkFaint),
+  'loading': ('جاري التحميل', 'Loading', T.warn),
+  'uploaded': ('تم التحميل', 'Uploaded', Color(0xFFCA8A04)),
+  'on_way': ('في الطريق', 'On Way', T.info),
+  'arrived': ('وصلت', 'Arrived', Color(0xFF4F46E5)),
+  'bond_sent': ('أُرسل السند', 'Bond Sent', T.cyan),
+  'bond_received': ('استُلم السند', 'Bond Received', T.success),
+  'late': ('متأخرة', 'Late', Color(0xFFEA580C)),
+  'invoiced': ('تمت الفوترة', 'Invoiced', T.violet),
+  'cancelled': ('ملغاة', 'Cancelled', T.danger),
+};
+
 String _money(dynamic v) {
   final n = (v is num) ? v : num.tryParse(v?.toString() ?? '') ?? 0;
   return n.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
@@ -53,6 +69,8 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     Live.instance.on('workflow:stageChanged', _onLive);
     Live.instance.on('workflow:created', _onLive);
     Live.instance.on('workflow:updated', _onLive);
+    // المزامنةُ الحيّة مع منصّة التشغيل تبثّ هذا عند كلّ تغيُّرِ حالة.
+    Live.instance.on('workflow:bulkImported', _onLive);
   }
 
   @override
@@ -60,6 +78,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     Live.instance.off('workflow:stageChanged', _onLive);
     Live.instance.off('workflow:created', _onLive);
     Live.instance.off('workflow:updated', _onLive);
+    Live.instance.off('workflow:bulkImported', _onLive);
     super.dispose();
   }
 
@@ -103,6 +122,48 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     try {
       await Api.instance.put('/api/workflows/${w['_id']}/stage', {'stage': next});
       _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  /// حالةُ الطلب تُغيَّر من هنا وتُكتب في منصّة التشغيل — نفسُ عقد الويب:
+  /// PATCH /api/workflows/:id/application-status. والخادمُ يكتب هناك أوّلًا
+  /// ثمّ يعيد صفَّنا بما استقرّ في المنصّة، فلا تتغيّر الحالةُ ثمّ تعود.
+  Future<void> _changeAppStatus(Map<String, dynamic> w) async {
+    if ((w['externalSource'] ?? '') != 'ops_upl') {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('كشفٌ ليس من منصّة التشغيل', 'Not a platform shipment'))));
+      return;
+    }
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => SafeArea(
+        child: ListView(shrinkWrap: true, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
+            child: Align(alignment: AlignmentDirectional.centerStart, child: Text(tr('تغيير حالة الطلب', 'Change application status'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800))),
+          ),
+          for (final e in _appStatuses.entries)
+            ListTile(
+              leading: Container(width: 12, height: 12, decoration: BoxDecoration(color: e.value.$3, shape: BoxShape.circle)),
+              title: Text(tr(e.value.$1, e.value.$2), style: const TextStyle(fontSize: 14)),
+              trailing: w['applicationStatus'] == e.key ? const Icon(Icons.check, color: T.navy) : null,
+              onTap: () => Navigator.pop(c, e.key),
+            ),
+          const SizedBox(height: 6),
+        ]),
+      ),
+    );
+    if (picked == null || picked == w['applicationStatus']) return;
+    try {
+      final row = await Api.instance.patch('/api/workflows/${w['_id']}/application-status', {'status': picked});
+      if (!mounted) return;
+      setState(() {
+        final i = _rows.indexWhere((r) => r['_id'] == w['_id']);
+        if (i >= 0) _rows[i] = {..._rows[i], ...Map<String, dynamic>.from(row is Map ? row : {'applicationStatus': picked})};
+      });
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
@@ -216,6 +277,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                               itemBuilder: (c, i) {
                                 final w = _rows[i];
                                 final st = _wfStages[w['stage']] ?? ('—', '—', T.inkFaint);
+                                final appSt = _appStatuses[w['applicationStatus']] ?? ('—', '—', T.inkFaint);
                                 final canAdvance = _wfStageOrder.indexOf((w['stage'] ?? 'draft').toString()) < _wfStageOrder.length - 1;
                                 return FadeSlideIn(
                                   delayMs: (i * 12).clamp(0, 120),
@@ -234,6 +296,18 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                                         const SizedBox(height: 6),
                                         Row(children: [
                                           if ((w['plateNumber'] ?? '').toString().isNotEmpty) Chip2(w['plateNumber'], T.navy, icon: Icons.local_shipping_outlined),
+                                          // حالةُ الطلب تُضغط فتُغيَّر — في المنصّة وعندنا معًا.
+                                          if ((w['applicationStatus'] ?? '').toString().isNotEmpty) ...[
+                                            const SizedBox(width: 6),
+                                            Pressable(
+                                              onTap: () => _changeAppStatus(w),
+                                              child: Chip2(
+                                                tr(appSt.$1, appSt.$2),
+                                                appSt.$3,
+                                                icon: Icons.unfold_more,
+                                              ),
+                                            ),
+                                          ],
                                           const Spacer(),
                                           if (canAdvance)
                                             TextButton.icon(

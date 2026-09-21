@@ -35,6 +35,26 @@
  */
 const upl = require('../services/uplClient');
 const { emitToAll } = require('../websocket/socketManager');
+const cache = require('../utils/ttlCache');
+
+/**
+ * ── ولا يُبَثُّ تغييرٌ فوق ذاكرةٍ تحمل ما قبله ───────────────────────────────
+ *
+ * قراءاتُ `/api/ops/*` تُخزَّن ثماني ثوانٍ (opsController · CACHE_TTL) ليشترك
+ * المستخدمون المتزامنون في نداءٍ واحدٍ إلى منصّةٍ ليست لنا. وكان الاستطلاع يكشف
+ * تغيُّرَ الحالة فيبثُّ `ops:shipments:changed` **ولا يمسّ تلك الذاكرة**.
+ *
+ * فتُعيد الشاشةُ القراءةَ في المِلّي ثانية التالية للبثّ — فتقع على صفحةٍ
+ * مخزّنةٍ قبل ثوانٍ فيها **الحالةُ القديمة**، وتعرضها. ولا شيءَ يوقظها بعد ذلك:
+ * الخبرُ قد بُثّ ومضى. فتبقى الشاشةُ على القديم حتى يقع تغييرٌ آخر — وعندها
+ * تعرض تغييرَ المرّة السابقة. وهو ما يراه المستخدم بالضبط: «تحسّه متأخّرًا
+ * بخطوة؛ لو غيّرها مرّةً لا تتغيّر، ولو غيّرها ثانيةً ظهر التغييرُ الأوّل».
+ *
+ * فالإبطالُ يسبق البثّ دائمًا. و`cache.clear` يعبر إلى العامل الآخر أيضًا
+ * (ختمٌ في `cachestamps` — راجع utils/ttlCache)، وإلّا خدم العاملُ الثاني
+ * القديمَ وحدَه.
+ */
+const invalidateOps = () => { try { cache.clear('ops:'); } catch (_) { /* الذاكرةُ تحسينٌ لا شرط */ } };
 
 let fastTimer = null;
 let statsTimer = null;
@@ -81,6 +101,7 @@ async function pollShipments() {
       const firstRun = lastShipSig === null;
       lastShipSig = sig;
       if (!firstRun) {
+        invalidateOps();
         emitToAll('ops:shipments:changed', { resource: 'shipments', action: 'sync', at: Date.now() });
         // Keep the internal Operations workflow rows live too (within ~seconds).
         try {
@@ -120,17 +141,25 @@ async function pollMovingShipments() {
   movingRunning = true;
   try {
     const { upsertShipments } = require('../services/opsWorkflowSyncService');
-    const items = [];
-    const seen = new Set();
-    for (const status of MOVING) {
+    // ── والدِلاءُ تُقرأ معًا لا واحدًا بعد واحد ──────────────────────────────
+    // عشرةُ دِلاءٍ في طابورٍ واحدٍ تستغرق الدورةُ فيها نحوَ خمسَ عشرةَ ثانية،
+    // وهي وحدَها كانت تفرض مهلةً طويلةً بينها. وهي مستقلّةٌ تمامًا — لا دلوَ
+    // ينتظر جوابَ غيره — فتُقرأ في آنٍ واحد: الدورةُ بزمن أبطأِ دلوٍ لا
+    // بمجموعها، فتصير ثوانيَ معدودة وتُعاد كلَّ خمسَ عشرةَ ثانية.
+    const buckets = await Promise.all(MOVING.map(async (status) => {
+      const rows = [];
       for (let page = 1; page <= 50; page++) {
         const out = await upl.get('/admin/shipments', { query: { limit: 100, page, status } });
         const batch = (out.data && out.data.items) || [];
-        for (const s of batch) { items.push(s); seen.add(String(s.id)); }
+        rows.push(...batch);
         const meta = out.data && out.data.meta;
         if (!meta || !meta.hasNextPage) break;
       }
-    }
+      return rows;
+    }));
+    const items = [];
+    const seen = new Set();
+    for (const rows of buckets) for (const s of rows) { items.push(s); seen.add(String(s.id)); }
     // دلوٌ فارغٌ تمامًا يعني نداءً فشل لا أسطولًا استقرّ — فلا يُبنى عليه حكمُ
     // «خرج من الحركة»، وإلّا سُئل عن الأسطول كلِّه مرّةً واحدة.
     if (!items.length) return { skipped: 'empty' };
@@ -177,8 +206,17 @@ async function pollMovingShipments() {
     const movedOn = resolved.filter((s) => String(s.status || '') !== statusById.get(String(s.id)));
     const changed = touched.length + movedOn.length;
     if (changed) {
-      emitToAll('workflow:bulkImported', { source: 'ops_upl', live: true, moving: true });
-      emitToAll('ops:shipments:changed', { resource: 'shipments', action: 'moving', at: Date.now() });
+      invalidateOps();
+      // ── والحالةُ تُرسَل مع الخبر لا يُسأل عنها ──────────────────────────
+      // الشاشةُ تقدر أن تُلوّن الصفَّ من الخبر نفسِه بلا نداءٍ ثانٍ، فتتغيّر
+      // الحالةُ أمام العين في اللحظة التي يصل فيها الخبر.
+      const statuses = [...touched, ...movedOn]
+        .filter((s) => String(s.status || '') !== statusById.get(String(s.id)))
+        .map((s) => ({ id: String(s.id), status: String(s.status || '') }));
+      emitToAll('workflow:bulkImported', { source: 'ops_upl', live: true, moving: true, statuses });
+      emitToAll('ops:shipments:changed', {
+        resource: 'shipments', action: 'moving', statuses, at: Date.now(),
+      });
     }
     return {
       scanned: items.length, touched: touched.length, left: left.length, resolved: resolved.length, changed,
@@ -216,10 +254,12 @@ function startOpsPoll() {
   }
   const fastMs = Math.max(3000, parseInt(process.env.UPL_POLL_INTERVAL_MS || '6000', 10));
   const statsMs = Math.max(10000, parseInt(process.env.UPL_STATS_INTERVAL_MS || '30000', 10));
-  // الدورةُ المستقرّةُ نحوَ خمسَ عشرةَ ثانيةً (عشرُ صفحاتٍ وكتابةُ ما تبدّل
-  // وحدَه)، فدقيقةٌ بينها مريحة. وتراكبُ الدورات ممنوعٌ بـ`movingRunning` على
-  // أيّ حال، فالمهلةُ هنا للراحة لا للسلامة.
-  const movingMs = Math.max(20000, parseInt(process.env.UPL_MOVING_INTERVAL_MS || '60000', 10));
+  // ── والمهلةُ تتبع زمنَ الدورة ─────────────────────────────────────────────
+  // صارت الدِلاءُ تُقرأ معًا، فالدورةُ ثوانٍ معدودةٌ لا خمسَ عشرةَ — فلا معنى
+  // لانتظار دقيقةٍ بينها. وحالةٌ تتغيّر في المنصّة تصل عندنا في خمسَ عشرةَ
+  // ثانيةً على الأكثر. وتراكبُ الدورات ممنوعٌ بـ`movingRunning`، فلا تتزاحم
+  // إن تعثّرت شبكةُ المنصّة.
+  const movingMs = Math.max(8000, parseInt(process.env.UPL_MOVING_INTERVAL_MS || '15000', 10));
   fastTimer = setInterval(() => { pollShipments().catch(() => {}); }, fastMs);
   statsTimer = setInterval(() => { pollStats().catch(() => {}); }, statsMs);
   if (isPollWorker()) movingTimer = setInterval(() => { pollMovingShipments().catch(() => {}); }, movingMs);

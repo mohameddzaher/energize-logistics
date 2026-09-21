@@ -86,6 +86,9 @@ router.post(
 // Update (field-level permissions handled in controller)
 router.put('/:id', authorize(...allWorkflowRoles), workflowController.updateWorkflow);
 
+// حالةُ الطلب — تُكتب في منصّة التشغيل ثمّ تعود إلينا (راجع الدالّة).
+router.patch('/:id/application-status', authorize(...allWorkflowRoles), workflowController.updateApplicationStatus);
+
 // Stage transitions
 router.put(
   '/:id/stage',

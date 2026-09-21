@@ -608,6 +608,25 @@ export default function OperationsWorkflowPage() {
   };
 
   // Operations review is a one-click checklist toggle (تم / not) — no row edit.
+  // ── حالةُ الطلب تُغيَّر من هنا، وتُكتب هناك ───────────────────────────────
+  // العمودُ مرآةُ منصّة التشغيل: الكتابةُ تذهب إليها أوّلًا (الخادم يتكفّل)،
+  // ثمّ يعود صفُّنا بما استقرّ هناك — فلا تتغيّر الخانةُ أمام العين ثمّ تعود
+  // في أوّل مزامنة. ولذلك لا تفاؤلَ في العرض هنا: تُنتظَر المنصّة.
+  const [statusSaving, setStatusSaving] = useState<string | null>(null);
+  const changeApplicationStatus = async (wf: Workflow, status: string) => {
+    if (!status || status === wf.applicationStatus) return;
+    setStatusSaving(wf._id);
+    try {
+      const row = await api.patch<any>(`/api/workflows/${wf._id}/application-status`, { status });
+      setWorkflows((p) => p.map((w) => w._id === wf._id
+        ? { ...w, ...(row && row._id ? row : { applicationStatus: status }) } : w));
+    } catch (err: any) {
+      setError(err.message);
+      fetchWorkflows(true);
+    }
+    setStatusSaving(null);
+  };
+
   const toggleOperationsReview = async (wf: Workflow) => {
     const next = wf.operationsReview ? '' : 'تم';
     // Optimistic update so the tick feels instant.
@@ -1283,6 +1302,41 @@ export default function OperationsWorkflowPage() {
                           </td>
                         );
                       };
+                      // ── وحالةُ الطلب قائمةٌ لا خانةَ كتابة ──────────────────
+                      // هي حالةُ الشحنة في منصّة التشغيل، وقيمُها معروفةٌ
+                      // محصورة. وكتابتُها نصًّا كانت تعني شيئين كلاهما خطأ:
+                      // قيمةٌ لا تعرفها المنصّة، أو تعديلٌ يُمسح في أوّل
+                      // مزامنة. فتُختار من قائمةٍ، وتُكتب في المنصّة نفسِها
+                      // (راجع changeApplicationStatus) فتراها الشاشتان معًا.
+                      const statusCell = () => {
+                        const fromPlatform = (wf as any).externalSource === 'ops_upl';
+                        const canSet = owns('applicationStatus') && fromPlatform && !locked;
+                        const busy = statusSaving === wf._id;
+                        const st = SHIPMENT_STATUSES.find((s) => s.key === wf.applicationStatus);
+                        return (
+                          <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={(e) => e.stopPropagation()}
+                            title={!owns('applicationStatus') ? noPermMsg
+                              : !fromPlatform ? (lang === 'ar' ? 'كشفٌ ليس من منصّة التشغيل' : 'Not a platform shipment')
+                                : (lang === 'ar' ? 'يُكتب في منصّة التشغيل مباشرة' : 'Writes straight to the operations platform')}>
+                            {canSet ? (
+                              <select
+                                aria-label={T.thApplication}
+                                disabled={busy}
+                                value={wf.applicationStatus || ''}
+                                onChange={(e) => changeApplicationStatus(wf, e.target.value)}
+                                className={`rounded-lg border px-2 py-1 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#f37121]/40 disabled:opacity-50 ${st ? `${st.bg} ${st.text} border-transparent` : 'bg-white text-slate-700 border-slate-300'}`}
+                              >
+                                {!wf.applicationStatus && <option value="">-</option>}
+                                {SHIPMENT_STATUSES.map((s) => (
+                                  <option key={s.key} value={s.key}>{lang === 'ar' ? s.ar : s.en}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="text-slate-700">{wf.applicationStatus ? trStatus(wf.applicationStatus) : '-'}</span>
+                            )}
+                          </td>
+                        );
+                      };
                       // ── الفرعُ المسدِّد يُختار ولا يُكتب ───────────────────
                       // كان حقلًا حرًّا، فدخلت فيه «جد» و«جدهخ» بجانب «جده»:
                       // فرعٌ واحدٌ في ثلاثة صفوفٍ في كلّ تقرير. والقائمةُ تُدار
@@ -1407,7 +1461,7 @@ export default function OperationsWorkflowPage() {
                         {textCell('carNumber')}
                         {textCell('ownerType')}
                         {transCell('executionStatus', trStatus)}
-                        {transCell('applicationStatus', trStatus)}
+                        {statusCell()}
                         {transCell('paymentMethod', trPayment)}
                         {textCell('username')}
                         {textCell('userPhone')}

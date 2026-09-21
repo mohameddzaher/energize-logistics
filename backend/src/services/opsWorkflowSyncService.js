@@ -131,8 +131,19 @@ function mapShipment(s) {
  * كُتب الاسمُ المعتمَد، وإلّا بقي كما جاء. فالتصحيحُ يثبت ولا يُدهَس، وصيغُ
  * الاسم الواحد تجتمع على صفٍّ واحدٍ في كلّ شاشة.
  */
+/**
+ * ── وخريطتا العملاء لا تُمسحان مع فلاتر الجدول ──────────────────────────────
+ * كانتا تحت بادئة `wf:` — وهي البادئةُ التي تُمسَح عند **كلّ** كتابةٍ على كشف،
+ * وفي آخر هذه الدالّة نفسِها. فكلُّ مزامنةٍ كانت تُبطل خريطتَي نفسِها، وتُقرأ
+ * في التي تليها من القاعدة من جديد: قُيس ذلك — ٢٫٣ ثانيةٍ للأسماء و١٫٢ للأنواع،
+ * أي أربعُ ثوانٍ لمزامنةِ **شحنةٍ واحدة**، وهي ثوانٍ ينتظرها مَن غيّر الحالة.
+ *
+ * وهما لا تتبعان الكشوفَ أصلًا بل أطرافَ التحصيل، فلهما بادئتُهما: تُمسَح حين
+ * يُعاد تسميةُ عميلٍ أو يُغيَّر نوعُه (renameOpsCustomer · paymentTypesController)
+ * لا حين تُكتب خانةٌ في كشف.
+ */
 async function canonicalNameMap() {
-  return cache.wrap('wf:canonicalCustomerName', 60000, async () => {
+  return cache.wrap('wfparty:canonicalCustomerName', 60000, async () => {
     const CollectionsParty = require('../models/CollectionsParty');
     const rows = await CollectionsParty.find({ kind: 'customer', isActive: { $ne: false } })
       .select('name nameKey aliasKeys').lean();
@@ -148,7 +159,7 @@ async function canonicalNameMap() {
 }
 
 async function customerTypeMap() {
-  return cache.wrap('wf:paymentTypeByCustomer', 60000, async () => {
+  return cache.wrap('wfparty:paymentTypeByCustomer', 60000, async () => {
     const CollectionsParty = require('../models/CollectionsParty');
     const rows = await CollectionsParty.find({ kind: 'customer', paymentType: { $in: ['cash', 'tax'] } })
       .select('name nameKey paymentType').lean();
@@ -283,15 +294,29 @@ async function upsertShipments(ships) {
       paymentType: custType || derivePaymentTypeFor({ reportDate: shipDate, paymentMethod: s.payment_method }, '') || '',
     });
   }
+  // ── ولا يُسأل عن العميل نفسِه في كلّ دورة ──────────────────────────────
+  // العميلُ بلا كودٍ كان يُصنَّف من جديد في كلّ مزامنة — وهي قراءاتٌ وكتابةٌ
+  // تكلّف نحوَ ثانيةٍ ونصفٍ لكلّ اسم، تتكرّر كلَّ خمسَ عشرةَ ثانيةً بلا جديد
+  // (التصنيفُ لا يتغيّر من تلقائه). فمَن سُئل عنه يُسجَّل عشرَ دقائق.
+  //
+  // والذاكرةُ لا تُخفي عميلًا جديدًا: اسمٌ لم يُسأل عنه قطُّ ليس فيها.
+  const ASKED_TTL = 10 * 60 * 1000;
   let newParties = 0;
   for (const { name, paymentType } of seenNames.values()) {
+    const askedKey = `wfparty:ensured:${fold(name)}`;
+    if (cache.get(askedKey)) continue;
     try {
-      const before = await require('../models/CollectionsParty')
+      const CP = require('../models/CollectionsParty');
+      const before = await CP
         // طرفٌ قائمٌ **بكود** لا يُعاد إليه؛ أمّا القائمُ بلا كود فيُمرَّر ليأخذه.
-        .countDocuments({ kind: 'customer', code: { $gt: '' }, $or: [{ nameKey: require('../models/CollectionsParty').fold(name) }, { aliasKeys: require('../models/CollectionsParty').fold(name) }] });
-      if (before) continue;
+        .countDocuments({ kind: 'customer', code: { $gt: '' }, $or: [{ nameKey: CP.fold(name) }, { aliasKeys: CP.fold(name) }] });
+      if (before) { cache.set(askedKey, 1, ASKED_TTL); continue; }
       const p = await ensureCollectionsParty(name, { paymentType, source: 'operations_workflow' });
-      if (p) newParties += 1;
+      cache.set(askedKey, 1, ASKED_TTL);
+      // ── ويُعَدُّ الجديدُ وحدَه ──────────────────────────────────────────
+      // كان يُعَدُّ كلُّ ما رجعت به الدالّة — وهي ترجع القائمَ كما ترجع
+      // المُنشأ. فكان السجلُّ يقول «عميلٌ جديد» في كلّ دورةٍ عن عميلٍ قديم.
+      if (p && p.createdAt && Date.now() - new Date(p.createdAt).getTime() < 60000) newParties += 1;
     } catch (e) {
       // عميلٌ لم يُنشأ لا يوقف مزامنةَ الشحنات: الكشفُ يدخل، والطرفُ يُنشأ في
       // المزامنة التالية أو بيد القسم.
@@ -315,6 +340,60 @@ async function upsertShipments(ships) {
   // إبطالها يفلتر المستخدم على قائمةٍ تسبق آخر مزامنة فلا يرى الكشوف الجديدة.
   if (created || updated || removed) { try { cache.clear('wf:'); } catch (e) {} }
   return { created, updated, removed };
+}
+
+/**
+ * ── وما كتبناه نحن لا يُنتظَر فيه دورُ الاستطلاع ────────────────────────────
+ *
+ * حين تُغيَّر حالةُ شحنةٍ من شاشاتنا نحن (صفحة الطلبات أو جدول سير العمل)،
+ * كانت الكتابةُ تذهب إلى المنصّة وحدَها، ويبقى صفُّنا على حالته القديمة حتى
+ * يمرّ الاستطلاعُ عليه. فيرى مَن غيّرها بيده أنّ شيئًا لم يحدث — فيغيّرها
+ * ثانيةً. والمنصّةُ هي المرجع، لكنّ ما كتبناه إليها نعرفه لحظةَ كتابته: فتُقرأ
+ * الشحنةُ منها بعد الكتابة مباشرةً ويُكتب صفُّها عندنا ويُبَثّ.
+ *
+ * وتُقرأ من المنصّة ولا يُفترَض جوابُها: قد تردّ الحالةَ مختلفةً (قيدٌ في
+ * تسلسل الحالات عندهم)، والصحيحُ أن نعرض ما استقرّ هناك لا ما طلبناه.
+ *
+ * @param {string[]} ids معرّفاتُ الشحنات في المنصّة
+ */
+async function syncShipmentsById(ids) {
+  const list = [...new Set((ids || []).map((x) => String(x || '').trim()).filter(Boolean))];
+  if (!list.length) return { rows: [], created: 0, updated: 0, removed: 0 };
+  const ships = [];
+  await Promise.all(list.slice(0, 50).map(async (id) => {
+    try {
+      const out = await upl.get(`/admin/shipments/${encodeURIComponent(id)}`);
+      const d = out?.data ?? out;
+      if (d && d.id) ships.push(d);
+    } catch (_) { /* شحنةٌ تعذّرت قراءتُها — الاستطلاعُ يلحقها */ }
+  }));
+  if (!ships.length) return { rows: [], created: 0, updated: 0, removed: 0 };
+  const res = await upsertShipments(ships);
+
+  // وقسمُ طلبات الشحنات يتبع كذلك — هو نظامُنا لا مرآة.
+  try {
+    const { upsertPlatformShipments } = require('./shipmentOrderSyncService');
+    const r = await upsertPlatformShipments(ships);
+    if (r.created || r.updated) emitToAll('shipmentOrders:updated', { source: 'platform', ...r });
+  } catch (_) { /* */ }
+
+  const rows = await OperationsWorkflow.find({
+    externalSource: SOURCE, externalId: { $in: ships.map((s) => String(s.id)) },
+  }).lean();
+
+  // ── والخبرُ يُبَثّ إلى العاملَين لا إلى واحد ────────────────────────────
+  // `workflow:updated` يُرسَل بـ`emitPerRole` — حلقةٌ على مقابس هذا العامل
+  // وحدَه، لأنّ الصفَّ يُحجَب بحسب الدور قبل إرساله. فالنصفُ المتّصلُ بالعامل
+  // الآخر لا يسمع شيئًا. وهذا الخبرُ لا يحمل صفًّا أصلًا — أرقامَ الشحنات
+  // وحالاتِها — فيُبَثّ للجميع عبر المحوّل، وكلُّ شاشةٍ تُعيد جلبَ صفوفها
+  // بحجبها المعتاد.
+  try {
+    emitToAll('workflow:bulkImported', {
+      source: SOURCE, live: true, write: true,
+      statuses: ships.map((s) => ({ id: String(s.id), status: String(s.status || '') })),
+    });
+  } catch (_) { /* */ }
+  return { rows, ...res };
 }
 
 // Full reconciliation pass: pull every shipment and upsert. Heavy — runs on a
@@ -352,4 +431,6 @@ function startOpsWorkflowSync() {
   console.log(`[opsWorkflowSync] full sync scheduled every ${minutes} min (live updates via poll)`);
 }
 
-module.exports = { startOpsWorkflowSync, syncOnce, upsertShipments };
+module.exports = {
+  startOpsWorkflowSync, syncOnce, upsertShipments, syncShipmentsById,
+};

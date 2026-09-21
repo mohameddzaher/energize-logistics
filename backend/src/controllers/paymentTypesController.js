@@ -128,7 +128,7 @@ exports.update = async (req, res) => {
       changes: { before: { paymentType: before }, after: { paymentType: type }, reportsChanged: applied.changed },
       ipAddress: req.ip,
     }).catch(() => {});
-    cache.clear('wf:');
+    cache.clear('wf:'); cache.clear('wfparty:');
     cache.clear('colledger:');
     try { require('../websocket/socketManager').emitToAll('workflow:updated', { bulk: true, paymentType: true }); } catch (_) {}
 
@@ -228,7 +228,7 @@ exports.unifyCustomer = async (req, res) => {
       user: req.user, action: 'unify_customer_payment_type', entity: 'CollectionsParty', entityId: party._id,
       entityKey: party.name, changes: { after: { paymentType: type, changed } }, ipAddress: req.ip,
     }).catch(() => {});
-    cache.clear('wf:'); cache.clear('colledger:');
+    cache.clear('wf:'); cache.clear('wfparty:'); cache.clear('colledger:');
     try { require('../websocket/socketManager').emitToAll('workflow:updated', { bulk: true, paymentType: true }); } catch (_) {}
 
     res.json({ changed, type, message: `وُحِّد ${changed} كشفًا على «${type === 'cash' ? 'كاش' : 'ضريبي'}»` });
@@ -283,7 +283,7 @@ exports.applyAll = async (req, res) => {
       user: req.user, action: 'apply_payment_types', entity: 'OperationsWorkflow',
       changes: { after: { changed, onlyEmpty, moves } }, ipAddress: req.ip,
     }).catch(() => {});
-    cache.clear('wf:'); cache.clear('colledger:');
+    cache.clear('wf:'); cache.clear('wfparty:'); cache.clear('colledger:');
     try { require('../websocket/socketManager').emitToAll('workflow:updated', { bulk: true, paymentType: true }); } catch (_) {}
     res.json({ changed, skippedManual, unknown, moves });
   } catch (e) {

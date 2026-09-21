@@ -174,14 +174,19 @@ module.exports = {
   // alerts). READ is broad across the fleet/ops/workshop side; the admin tier
   // (super_admin, admin, operations_manager) can acknowledge
   // alerts, mark vehicles serviced and tune the alert thresholds.
+  // ── وصاحبُ القسم في قوائم قسمه ──────────────────────────────────────────
+  // `location_manager` و`location_staff` (config/roles.js) لم يكونا في هذه
+  // القوائم، فكان دخولُهما بمنحٍ من مصفوفة الصلاحيّات وحدَه — والمنحُ لا يُرى
+  // في الحُرّاس المكتوبة بالأسماء (إعداداتُ القسم في القائمة الجانبيّة). راجع
+  // role-structure: كلُّ قسمٍ يذكر مديرَه وموظّفَه في قوائمه.
   LS2_STAFF_ROLES: [
     'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_staff',
-    'procurement_staff',
+    'procurement_staff', 'location_manager', 'location_staff',
   ],
-  LS2_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'],
+  LS2_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'location_manager'],
   // Core roles that see the section in their sidebar (others can still reach the
   // data via direct link / embeds but it isn't pinned to their nav).
-  LS2_SECTION_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator'],
+  LS2_SECTION_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'location_manager', 'location_staff'],
 
   // Roles that can access the Vehicles & Authorizations section (المركبات
   // والتفاويض): super admin + HR + Accounting. Delete ops are further limited to

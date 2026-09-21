@@ -113,7 +113,10 @@ export default function CustomsDetailPage() {
     ['portFees', 'أجور الموانى', 'Port fees'],
     ['unloadingFees', 'أجور التفريغ', 'Unloading fees'],
     ['inspection', 'أجور الكشف', 'Inspection'],
-    ['transport', 'أجور النقل (بالضريبة)', 'Transport (incl. VAT)'],
+    // ── سعرُ النقل من المورد ──────────────────────────────────────────────
+    // ما ندفعه للناقل: «كلّمنا ناقلًا فقال ١٥٠٠». وهو تكلفةٌ لا إيراد، ومنه
+    // يُطرَح سعرُ بيعنا فيظهر الربح (راجع `transportNet` في الإيرادات).
+    ['transport', 'سعر النقل من المورد', 'Transport — supplier price'],
     ['transportToYard', 'النقل إلى الساحة', 'Transport to yard'],
     ['appointmentBooking', 'حجز الموعد', 'Appointment booking'],
     ['storage', 'تخزين', 'Storage'],
@@ -129,6 +132,7 @@ export default function CustomsDetailPage() {
   // ── الهامش: ما يُضاف فوق المصروفات، ومجموعُه هو الربح ────────────────────
   const MARGIN_FIELDS: [string, string, string][] = [
     ['clearanceFee', 'أجور التخليص', 'Clearance fee'],
+    // يُحسب ولا يُكتب: سعرُ البيع ناقصَ سعر المورد (recomputeTotals في الخادم).
     ['transportNet', 'صافي النقل', 'Transport net'],
     ['transportToYardNet', 'صافي النقل إلى الساحة', 'Transport-to-yard net'],
     ['yardNet', 'صافي الساحة', 'Yard net'],
@@ -136,17 +140,33 @@ export default function CustomsDetailPage() {
     ['securityScan', 'فحص أمنى', 'Security scan'],
     ['labour', 'عمال', 'Labour'],
   ];
-  // بنودٌ تُسجَّل ولا تدخل الجمع: سعرُ بيع النقل إجماليٌّ صافيه محسوبٌ أعلاه،
-  // وصافي نقل الساحة عمودٌ مساعدٌ خارج صيغة الربح في الماستر.
+  // بنودٌ تُسجَّل ولا تدخل الجمع مباشرةً: «سعر النقل» هو ما نأخذه من العميل
+  // (يدخل الربحَ عبر صافيه)، وصافي نقل الساحة عمودٌ مساعدٌ خارج صيغة الماستر.
   const REVENUE_EXTRA: [string, string, string][] = [
-    ['transportSelling', 'سعر بيع النقل', 'Transport selling price'],
+    ['transportSelling', 'سعر النقل', 'Transport price'],
     ['yardTransportNet', 'صافي نقل الساحة', 'Yard transport net'],
   ];
-  const REVENUE_FIELDS: [string, string, string][] = [...MARGIN_FIELDS, ...REVENUE_EXTRA];
+  // ── وترتيبُ القراءة: السعرُ ثمّ صافيه ──────────────────────────────────────
+  // «سعر النقل» يُكتب و«صافي النقل» يُقرأ تحته محسوبًا، فيرى الموظّفُ أثرَ ما
+  // كتبه في اللحظة. والحقولُ المحسوبةُ لا تُفتَح للكتابة أصلًا.
+  const COMPUTED_REVENUE = new Set(['transportNet']);
+  const REVENUE_FIELDS: [string, string, string][] = [
+    ['transportSelling', 'سعر النقل', 'Transport price'],
+    ['transportNet', 'صافي النقل', 'Transport net'],
+    ...MARGIN_FIELDS.filter(([k]) => k !== 'transportNet'),
+    ...REVENUE_EXTRA.filter(([k]) => k !== 'transportSelling'),
+  ];
 
   const n = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
   const costsTotal = Math.round(COST_FIELDS.reduce((a, [k]) => a + n(c.costs?.[k]), 0) * 100) / 100;
-  const profit = Math.round(MARGIN_FIELDS.reduce((a, [k]) => a + n(c.revenue?.[k]), 0) * 100) / 100;
+  // ── صافي النقل يُحسب ولا يُكتب ────────────────────────────────────────────
+  // ما نأخذه من العميل ناقصَ ما ندفعه للناقل: ٢٠٠٠ − ١٥٠٠ = ٥٠٠ هي ربحُنا من
+  // النقل. وكان الرقمان يُكتبان بيدٍ فيختلفان: صافٍ لا يساوي الفرقَ بينهما،
+  // ولا أحدَ يعرف أيُّهما الصحيح. والقاعدةُ في الخادم (recomputeTotals)، وهذه
+  // مرآتُها لتُقرأ في اللحظة قبل الحفظ.
+  const transportNet = Math.round((n(c.revenue?.transportSelling) - n(c.costs?.transport)) * 100) / 100;
+  const revVal = (k: string) => (k === 'transportNet' ? transportNet : n(c.revenue?.[k]));
+  const profit = Math.round(MARGIN_FIELDS.reduce((a, [k]) => a + revVal(k), 0) * 100) / 100;
   const invoiced = Math.round((costsTotal + profit) * 100) / 100;
   const margin = invoiced ? (profit / invoiced) * 100 : 0;
   const sar = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 2 });
@@ -215,6 +235,18 @@ export default function CustomsDetailPage() {
 
   // الإقفالُ من الترويسة. والسببُ يُعرَض كما جاء من الخادم — «أضِف فاتورة النقل
   // بتاريخٍ ومرفق» لا «غير مسموح».
+  const [activating, setActivating] = useState(false);
+  /** المعاملةُ القادمة تصير جارية — هي هي، غيّر أنّها وقعت. */
+  const activate = async () => {
+    setActivating(true);
+    try {
+      const d = await api.patch<any>(`/api/customs-clearance/${params?.id}/activate`, {});
+      setC(d.clearance);
+      notify(ar ? 'صارت معاملةً جارية' : 'Now a current transaction', 'success');
+    } catch (e: any) { notify(e?.message || (ar ? 'تعذّر التحويل' : 'Failed'), 'error'); }
+    setActivating(false);
+  };
+
   const closeTransaction = async (value: boolean) => {
     setClosing(true);
     try {
@@ -291,7 +323,7 @@ export default function CustomsDetailPage() {
     name: ar ? 'الإيرادات والفوترة' : 'Revenue',
     columns: amountCols,
     rows: [
-      ...REVENUE_FIELDS.map(([key, arLabel, enLabel]) => ({ label: ar ? arLabel : enLabel, amount: n(c.revenue?.[key]) })),
+      ...REVENUE_FIELDS.map(([key, arLabel, enLabel]) => ({ label: ar ? arLabel : enLabel, amount: revVal(key) })),
       { label: ar ? 'إجمالي الفاتورة' : 'Total invoiced', amount: invoiced },
       { label: ar ? 'حالة الفاتورة' : 'Invoice status', amount: c.billing?.invoiceStatus || '—' },
       { label: ar ? 'رقم فاتورتنا' : 'Our invoice no.', amount: c.billing?.ourInvoiceNumber || '—' },
@@ -351,12 +383,27 @@ export default function CustomsDetailPage() {
                   {ar ? 'مقفولة' : 'Closed'}
                 </span>
               )}
+              {/* معاملةٌ لم تقع بعد — تُقرأ في الترويسة قبل أن يُبنى عليها رقم. */}
+              {(c as any).upcoming && (
+                <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">
+                  {ar ? `قادمة · ${(c as any).expectedDate || '—'}` : `Upcoming · ${(c as any).expectedDate || '—'}`}
+                </span>
+              )}
             </h1>
             <p className="text-slate-500 text-sm">{c.branch === 'dammam' ? T.dammam : T.jeddah} · {c.cancelled ? T.cancelled : (T.stages[c.stage] || c.stage)}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {saving && <span className="text-slate-400 text-xs flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /></span>}
+          {/* ── وتُحوَّل ولا تُنشأ من جديد ──────────────────────────────────
+              كلُّ ما كُتب فيها يبقى: العميلُ والوكيلُ والميناءُ والحاويات. */}
+          {canEdit && (c as any).upcoming && (
+            <button type="button" onClick={activate} disabled={activating}
+              className="flex items-center gap-1.5 rounded-lg bg-[#f37121] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#e06010] disabled:opacity-60">
+              {activating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              {ar ? 'تحويل إلى معاملة جارية' : 'Convert to current'}
+            </button>
+          )}
           <ExportMenu fileName={`customs-${c.refNumber || c.blNumber || c._id}`} lang={lang as 'ar' | 'en'}
             options={[{ key: 'full', label: ar ? 'ملف المعاملة كاملًا' : 'The whole clearance', sheets: exportSheets }]} />
           {/* ── إنهاءُ المعاملة من الترويسة ───────────────────────────────
@@ -472,7 +519,9 @@ export default function CustomsDetailPage() {
           <FieldInput label={ar ? 'رقم البيان' : 'Declaration no.'} value={c.declarationNumber} onSave={(v) => patch({ declarationNumber: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'تاريخ البيان' : 'Declaration date'} type="date" value={c.declarationDate} onSave={(v) => patch({ declarationDate: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'تاريخ استلام الورق' : 'Papers received'} type="date" value={c.papersReceivedDate} onSave={(v) => patch({ papersReceivedDate: v })} disabled={!canEdit} />
-          <FieldInput label={ar ? 'موعد التفريغ' : 'Unloading appointment'} value={c.unloadingAppointment} onSave={(v) => patch({ unloadingAppointment: v })} disabled={!canEdit} />
+          {/* موعدٌ يُختار من تقويمٍ كجارَيه: كتابتُه بالحرف تُدخِل «١٥/٩» و«15-9-2026»
+              و«الاثنين» في عمودٍ واحد، فلا يُفرَز ولا يُذكَّر به. */}
+          <FieldInput label={ar ? 'موعد التفريغ' : 'Unloading appointment'} type="date" value={c.unloadingAppointment ? String(c.unloadingAppointment).slice(0, 10) : ''} onSave={(v) => patch({ unloadingAppointment: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'مكان التفريغ' : 'Unloading location'} value={c.unloadingLocation} onSave={(v) => patch({ unloadingLocation: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'رقم إذن التسليم' : 'DO number'} value={c.doNumber} onSave={(v) => patch({ doNumber: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'رقم تصريح الخروج' : 'Exit permit no.'} value={c.exitPermitNumber} onSave={(v) => patch({ exitPermitNumber: v })} disabled={!canEdit} />
@@ -507,16 +556,18 @@ export default function CustomsDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-3" icon={<Ship className="w-4 h-4" />} title={T.transactionData}>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {/* ── وما لا يُستعمَل لا يُسأل عنه ──────────────────────────────
+              «نوع الفاتورة» و«رقم الفاتورة» و«العملة» كانت ثلاثَ خاناتٍ في كلّ
+              معاملة لا يملؤها أحد ولا يُقرأ منها شيء — والقسمُ يقول إنّها ليست
+              من عمله. وخانةٌ تُعرَض ولا تُملأ تُعلّم الناسَ أن يتخطّوا الخانات.
+              (الأرقامُ المحفوظةُ قبل اليوم باقيةٌ في السجلّ، لا تُعرَض فحسب.) */}
           <FieldInput label={T.blNumber} value={c.blNumber} onSave={(v) => patch({ blNumber: v })} disabled={!canEdit} />
           <FieldInput label={T.customerName} value={c.customerName} onSave={(v) => patch({ customerName: v })} disabled={!canEdit} />
-          <FieldInput label={T.invoiceNumber} value={c.invoiceNumber} onSave={(v) => patch({ invoiceNumber: v })} disabled={!canEdit} />
           <FieldInput label={T.invoiceDate} type="date" value={c.invoiceDate ? String(c.invoiceDate).slice(0, 10) : ''} onSave={(v) => patch({ invoiceDate: v || null })} disabled={!canEdit} />
           <FieldInput label={T.port} value={c.port} onSave={(v) => patch({ port: v })} disabled={!canEdit} />
-          <FieldSelect label={T.invoiceType} value={c.invoiceType || ''} options={[['', '—'], ['C&F', 'C&F'], ['CIF', 'CIF'], ['FOB', 'FOB']]} onSave={(v) => patch({ invoiceType: v })} disabled={!canEdit} />
           <FieldInput label={T.containerCount} type="number" value={c.containerCount} onSave={(v) => patch({ containerCount: Number(v) || 0 })} disabled={!canEdit} />
           <FieldInput label={T.totalWeight} type="number" value={c.totalWeight} onSave={(v) => patch({ totalWeight: Number(v) || 0 })} disabled={!canEdit} />
           <FieldInput label={T.invoiceValue} type="number" value={c.invoiceValue} onSave={(v) => patch({ invoiceValue: Number(v) || 0 })} disabled={!canEdit} />
-          <FieldInput label={T.currency} value={c.currency} onSave={(v) => patch({ currency: v })} disabled={!canEdit} />
           <FieldInput label={T.exporterCompany} value={c.exporterCompany} onSave={(v) => patch({ exporterCompany: v })} disabled={!canEdit} />
           <FieldInput label={T.countryOfOrigin} value={c.countryOfOrigin} onSave={(v) => patch({ countryOfOrigin: v })} disabled={!canEdit} />
           <FieldInput label={T.hsCode} value={c.hsCode} onSave={(v) => patch({ hsCode: v })} disabled={!canEdit} />
@@ -571,10 +622,20 @@ export default function CustomsDetailPage() {
         {/* Revenue & billing */}
         <Card title={ar ? 'الإيرادات والفوترة' : 'Revenue & billing'}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {REVENUE_FIELDS.map(([key, arLabel, enLabel]) => (
+            {REVENUE_FIELDS.map(([key, arLabel, enLabel]) => (COMPUTED_REVENUE.has(key) ? (
+              <div key={key}>
+                <p className="text-[11px] text-slate-500 mb-1">{ar ? arLabel : enLabel}</p>
+                <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <span className="text-sm font-bold text-slate-900 tabular-nums">{sar(revVal(key))}</span>
+                  <span className="text-[10px] text-slate-400">
+                    {ar ? 'سعر النقل − سعر المورد' : 'price − supplier'}
+                  </span>
+                </div>
+              </div>
+            ) : (
               <FieldInput key={key} label={ar ? arLabel : enLabel} type="number" value={c.revenue?.[key] ?? 0}
                 onSave={(v) => patch({ revenue: { [key]: Number(v) || 0 } })} disabled={!canEdit} />
-            ))}
+            )))}
             <FieldInput label={ar ? 'حالة الفاتورة' : 'Invoice status'} value={c.billing?.invoiceStatus} onSave={(v) => patch({ billing: { invoiceStatus: v } })} disabled={!canEdit} />
             <FieldInput label={ar ? 'رقم فاتورتنا' : 'Our invoice no.'} value={c.billing?.ourInvoiceNumber} onSave={(v) => patch({ billing: { ourInvoiceNumber: v } })} disabled={!canEdit} />
             <FieldInput label={ar ? 'تاريخ الفوترة' : 'Invoiced at'} type="date" value={c.billing?.invoicedAt} onSave={(v) => patch({ billing: { invoicedAt: v } })} disabled={!canEdit} />

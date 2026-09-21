@@ -21,6 +21,15 @@ router.get('/parties/:id', ctrl.getPartyProfile);
 router.put('/parties/:id', authorize(...EDIT_ROLES), ctrl.updateParty);
 router.delete('/parties/:id', authorize('super_admin', 'admin', 'customs_manager'), ctrl.deleteParty);
 // ── العقود: قبل `/:id` كذلك ────────────────────────────────────────────────
+// ── نقاطُ المجموعة قبل `/:id` ─────────────────────────────────────────────
+const FINANCE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant'];
+
+router.get('/settings', ctrl.getSettings);
+router.put('/settings', authorize('super_admin', 'admin', 'it_manager', 'customs_manager'), ctrl.updateSettings);
+router.get('/upcoming-alerts', ctrl.upcomingAlerts);
+// طلباتُ الصرف: يقرؤها التخليصُ ليتابع طلبَه، وتقرّر فيها الماليّةُ وحدَها.
+router.get('/payment-requests', ctrl.listPaymentRequests);
+
 router.get('/contracts', ctrl.listContracts);
 router.post('/contracts', authorize(...EDIT_ROLES), ctrl.createContract);
 router.put('/contracts/:id', authorize(...EDIT_ROLES), ctrl.updateContract);
@@ -43,6 +52,10 @@ router.put('/:id/payment-stages/:entryId', authorize(...EDIT_ROLES), ctrl.update
 router.delete('/:id/payment-stages/:entryId', authorize(...EDIT_ROLES), ctrl.deletePaymentStage);
 // الإقفال — لا يمرّ قبل «فاتورة النقل» بتاريخٍ ومرفق. راجع completeClearance.
 router.patch('/:id/complete', authorize(...EDIT_ROLES), ctrl.completeClearance);
+// تحويلُ معاملةٍ قادمةٍ إلى جارية.
+router.patch('/:id/activate', authorize(...EDIT_ROLES), ctrl.activateClearance);
+// قرارُ الإدارة الماليّة على طلبِ صرف — لها وحدَها.
+router.patch('/:id/payment-stages/:entryId/decision', authorize(...FINANCE_ROLES), ctrl.decidePaymentStage);
 
 // ملاحظاتُ المعاملة — تُضاف من الجدول ومن داخل المعاملة، وآخرُها يُعرض.
 router.post('/:id/notes', authorize(...EDIT_ROLES), ctrl.addNote);

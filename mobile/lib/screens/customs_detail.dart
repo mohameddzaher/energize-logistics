@@ -63,7 +63,8 @@ const _costItems = [
   ('portFees', 'أجور الموانئ', 'Port fees'),
   ('unloadingFees', 'أجور التفريغ', 'Unloading fees'),
   ('inspection', 'أجور الكشف', 'Inspection'),
-  ('transport', 'أجور النقل', 'Transport'),
+  // ما ندفعه للناقل — ومنه يُطرَح سعرُ بيعنا فيظهر صافي النقل.
+  ('transport', 'سعر النقل من المورد', 'Transport — supplier price'),
   ('transportToYard', 'النقل إلى الساحة', 'Transport to yard'),
   ('appointmentBooking', 'حجز الموعد', 'Appointment booking'),
   ('storage', 'تخزين', 'Storage'),
@@ -78,7 +79,9 @@ const _costItems = [
 
 /// بنود الهامش — مجموعُها هو الربح، والفاتورة = المصروفات + الهامش.
 const _marginItems = [
+  ('transportSelling', 'سعر النقل', 'Transport price'),
   ('clearanceFee', 'أجور التخليص', 'Clearance fee'),
+  // يُحسب في الخادم: سعرُ النقل ناقصَ سعر المورد — لا يُكتب بيد.
   ('transportNet', 'صافي النقل', 'Transport net'),
   ('transportToYardNet', 'صافي النقل إلى الساحة', 'Transport-to-yard net'),
   ('yardNet', 'صافي الساحة', 'Yard net'),
@@ -185,7 +188,13 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     final attachments = List<Map<String, dynamic>>.from(
         (c['attachments'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
     final totalCost = _costItems.fold<num>(0, (s, it) => s + _nz(costs, it.$1));
-    final profit = _marginItems.fold<num>(0, (s, it) => s + _nz(revenue, it.$1));
+    // ── وسعرُ النقل يُعرَض ولا يُجمَع ───────────────────────────────────────
+    // هو إجماليُّ ما نأخذه من العميل، وصافيه (transportNet) هو الداخلُ في
+    // الربح — فجمعُهما معًا يحسب النقلَ مرّتين. نفسُ قاعدة MARGIN_KEYS في
+    // الخادم (models/CustomsClearance).
+    final profit = _marginItems
+        .where((it) => it.$1 != 'transportSelling')
+        .fold<num>(0, (s, it) => s + _nz(revenue, it.$1));
     final invoiced = totalCost + profit;
 
     return AppScaffold(
@@ -495,8 +504,20 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     );
   }
 
+  /// بنودُ الهامش التي تُكتب بيد — وصافي النقل ليس منها: هو سعرُ النقل ناقصَ
+  /// سعرِ المورد، يحسبه الخادمُ ولا يقبله من أحد (راجع recomputeTotals).
+  static const _editableMargin = [
+    ('transportSelling', 'سعر النقل', 'Transport price'),
+    ('clearanceFee', 'أجور التخليص', 'Clearance fee'),
+    ('transportToYardNet', 'صافي النقل إلى الساحة', 'Transport-to-yard net'),
+    ('yardNet', 'صافي الساحة', 'Yard net'),
+    ('storageNet', 'صافي التخزين', 'Storage net'),
+    ('securityScan', 'فحص أمني', 'Security scan'),
+    ('labour', 'عمال', 'Labour'),
+  ];
+
   Future<void> _editMargin(Map<String, dynamic> revenue) async {
-    final ctrls = {for (final it in _marginItems) it.$1: TextEditingController(text: _nz(revenue, it.$1) == 0 ? '' : _nz(revenue, it.$1).toString())};
+    final ctrls = {for (final it in _editableMargin) it.$1: TextEditingController(text: _nz(revenue, it.$1) == 0 ? '' : _nz(revenue, it.$1).toString())};
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -507,10 +528,11 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(tr('تعديل بنود الهامش', 'Edit margin lines'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
               const SizedBox(height: 4),
-              Text(tr('الفاتورة تُحسب: المصروفات + هذه البنود.', 'The invoice is derived: costs + these lines.'),
+              Text(tr('الفاتورة تُحسب: المصروفات + هذه البنود. وصافي النقل = سعر النقل − سعر المورد.',
+                      'The invoice is derived: costs + these lines. Transport net = price − supplier.'),
                   style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
               const SizedBox(height: 12),
-              ..._marginItems.map((it) => Padding(
+              ..._editableMargin.map((it) => Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: TextField(controller: ctrls[it.$1], keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr(it.$2, it.$3))),
               )),
@@ -519,7 +541,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: () {
-                    final body = {'revenue': {for (final it in _marginItems) it.$1: num.tryParse(ctrls[it.$1]!.text) ?? 0}};
+                    final body = {'revenue': {for (final it in _editableMargin) it.$1: num.tryParse(ctrls[it.$1]!.text) ?? 0}};
                     Navigator.pop(c);
                     _patch(body, tr('حُفظ الهامش', 'Margin saved'));
                   },

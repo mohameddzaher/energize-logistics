@@ -8,7 +8,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { canEditSection } from '@/lib/sections';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Ship, Plus, Search, X, Check, Trash2, Loader2, ScrollText, Container, BarChart3, MessageSquarePlus } from 'lucide-react';
+import { Ship, Plus, Search, X, Check, Trash2, Loader2, ScrollText, Container, BarChart3, MessageSquarePlus, Bell, CalendarClock, CalendarPlus, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { getCustomsTranslations } from '@/lib/translations';
@@ -77,7 +77,7 @@ function stageBadge(stage: string, cancelled: boolean) {
 const EMPTY = {
   branch: 'jeddah', blNumber: '', customerName: '', customerParty: '',
   shippingAgent: '', agentParty: '', shippingAgentEmail: '',
-  invoiceNumber: '', port: '', invoiceType: '', containerCount: 0, currency: 'USD',
+  port: '', containerCount: 0,
 };
 
 export default function CustomsPage() {
@@ -104,6 +104,13 @@ export default function CustomsPage() {
     ]).then(([c, a]) => setParties({ customers: c.parties || [], agents: a.parties || [] })).catch(() => {});
   }, []);
   const [saving, setSaving] = useState(false);
+  // ── القائمتان منفصلتان ──────────────────────────────────────────────────
+  // الجاريةُ هي الأصل، والقادمةُ تُفتَح بزرّها: خلطُهما يجعل كلَّ عدٍّ في
+  // الشاشة يشمل ما لم يقع بعد.
+  const [upcomingView, setUpcomingView] = useState(false);
+  const [creatingUpcoming, setCreatingUpcoming] = useState(false);
+  const [alerts, setAlerts] = useState<{ count: number; days: number; items: any[] }>({ count: 0, days: 2, items: [] });
+  const [showAlerts, setShowAlerts] = useState(false);
   const [search, setSearch] = useState('');
   const [fYear, setFYear] = useState('');
   const [fMonth, setFMonth] = useState('');
@@ -129,25 +136,42 @@ export default function CustomsPage() {
 
   const fetchList = useCallback(async () => {
     try {
-      const data = await api.get<any>('/api/customs-clearance');
+      const data = await api.get<any>(`/api/customs-clearance${upcomingView ? '?upcoming=true' : ''}`);
       setList(data.clearances || []);
     } catch {}
     setLoading(false);
+  }, [upcomingView]);
+
+  // شارةُ «اقترب موعدُها» — مدّتُها من إعدادات القسم، تُقرأ في كلّ نداء.
+  const fetchAlerts = useCallback(async () => {
+    try { setAlerts(await api.get<any>('/api/customs-clearance/upcoming-alerts')); } catch { /* */ }
   }, []);
 
   useEffect(() => { fetchList(); }, [fetchList]);
+  useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
   useSocket('customs:created', useCallback(() => fetchList(), [fetchList]));
   useSocket('customs:updated', useCallback(() => fetchList(), [fetchList]));
   useSocket('customs:deleted', useCallback(() => fetchList(), [fetchList]));
+  useSocket('customs:created', useCallback(() => fetchAlerts(), [fetchAlerts]));
+  useSocket('customs:updated', useCallback(() => fetchAlerts(), [fetchAlerts]));
 
-  const openCreate = () => { setForm({ ...EMPTY }); setShowModal(true); };
+  const openCreate = (upcoming = false) => {
+    setCreatingUpcoming(upcoming);
+    setForm({ ...EMPTY, ...(upcoming ? { upcoming: true, expectedDate: '' } : {}) });
+    setShowModal(true);
+  };
 
   const handleSave = async () => {
+    if (creatingUpcoming && !String(form.expectedDate || '').trim()) {
+      notify(ar ? 'اختر تاريخ المعاملة المتوقَّع.' : 'Pick the expected date.', 'error');
+      return;
+    }
     setSaving(true);
     try {
       const data = await api.post<any>('/api/customs-clearance', form);
       setShowModal(false);
       fetchList();
+      fetchAlerts();
       if (data?.clearance?._id) router.push(`/system/customs/${data.clearance._id}`);
     } catch (e: any) { notify(e?.message || 'Failed to save', 'error'); }
     setSaving(false);
@@ -258,7 +282,9 @@ export default function CustomsPage() {
             <Ship className="w-5 h-5 text-[#f37121]" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">{T.title}</h1>
+            <h1 className="text-2xl font-bold text-slate-900">
+              {T.title}{upcomingView ? ` — ${ar ? 'القادمة' : 'upcoming'}` : ''}
+            </h1>
             <p className="text-slate-500 text-sm">{list.length} {T.xTransactions}</p>
           </div>
         </div>
@@ -267,8 +293,38 @@ export default function CustomsPage() {
               التنقّل، والدليلُ أُخفي من القسم. وزرٌّ في الرأس يقود إلى صفحةٍ
               موجودةٍ في القائمة الجانبيّة تكرارٌ يزاحم ما يخصّ هذه الشاشة. */}
           <ExportMenu fileName="customs-clearances" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
+
+          {/* ── شارةُ ما اقترب موعدُه ──────────────────────────────────────
+              رقمٌ على زرٍّ لا رسالةٌ تُغلَق: يبقى أمام العين ما دام هناك عمل،
+              ويُفتح فيرى القائمة. والمدّةُ من إعدادات القسم. */}
+          <button type="button" onClick={() => setShowAlerts(true)}
+            className={`relative inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              alerts.count ? 'bg-amber-50 text-amber-800 hover:bg-amber-100' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}`}
+            title={ar ? `تنبيه المعاملات القادمة (قبل ${alerts.days} يوم)` : `Upcoming alerts (${alerts.days} days ahead)`}>
+            <Bell className="w-4 h-4" />
+            <span className="hidden sm:inline">{ar ? 'تنبيه المعاملات القادمة' : 'Upcoming alerts'}</span>
+            {alerts.count > 0 && (
+              <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-amber-500 text-white text-[11px] font-bold">
+                {alerts.count}
+              </span>
+            )}
+          </button>
+
+          <button type="button" onClick={() => { setUpcomingView((v) => !v); setLoading(true); }}
+            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              upcomingView ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}`}>
+            <CalendarClock className="w-4 h-4" />
+            {upcomingView ? (ar ? 'المعاملات الجارية' : 'Current') : (ar ? 'المعاملات القادمة' : 'Upcoming')}
+          </button>
+
           {canEdit && (
-            <button type="button" onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors">
+            <button type="button" onClick={() => openCreate(true)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#f37121] text-[#f37121] text-sm font-medium hover:bg-[#f37121]/10 transition-colors">
+              <CalendarPlus className="w-4 h-4" /> {ar ? 'إنشاء معاملة قادمة' : 'New upcoming'}
+            </button>
+          )}
+          {canEdit && (
+            <button type="button" onClick={() => openCreate(false)} className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors">
               <Plus className="w-4 h-4" /> {T.addClearance}
             </button>
           )}
@@ -447,13 +503,57 @@ export default function CustomsPage() {
 
       {/* Create modal */}
       <AnimatePresence>
+        {/* ── نافذةُ التنبيه ────────────────────────────────────────────────
+            ما اقترب موعدُه أو فاته، مرتَّبًا بالأقرب. ومنها يُفتَح صفُّ المعاملة
+            لتُحوَّل إلى جارية. */}
+        {showAlerts && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={() => setShowAlerts(false)}>
+            <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                  <p className="font-bold text-slate-900">{ar ? 'معاملات قادمة قرُب موعدها' : 'Upcoming transactions due soon'}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {ar ? `خلال ${alerts.days} يوم — تُضبَط من إعدادات القسم` : `Within ${alerts.days} days — set in section settings`}
+                  </p>
+                </div>
+                <button type="button" onClick={() => setShowAlerts(false)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-5 space-y-2">
+                {alerts.items.length === 0 && (
+                  <p className="text-sm text-slate-500 text-center py-8">{ar ? 'لا معاملات قادمة قرُب موعدها.' : 'Nothing due soon.'}</p>
+                )}
+                {alerts.items.map((x: any) => (
+                  <button key={x._id} type="button" onClick={() => { setShowAlerts(false); router.push(`/system/customs/${x._id}`); }}
+                    className="w-full text-start rounded-xl border border-slate-200 hover:border-[#f37121] hover:bg-slate-50 px-4 py-3 transition-colors">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-900 text-sm truncate">{x.customerName || '—'}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {x.refNumber} {x.blNumber ? `· ${x.blNumber}` : ''} {x.port ? `· ${x.port}` : ''}
+                        </p>
+                      </div>
+                      <span className={`shrink-0 text-xs font-bold rounded-full px-2.5 py-1 ${x.overdue ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
+                        {x.expectedDate}{x.overdue ? ` · ${ar ? 'فات' : 'overdue'}` : ''}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {showModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowModal(false)}>
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
               onClick={(e) => e.stopPropagation()} className="w-full max-w-lg bg-slate-50 border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
               <div className="px-6 py-4 bg-slate-900 flex items-center justify-between">
-                <h2 className="text-white font-bold text-lg">{T.addClearance}</h2>
+                <h2 className="text-white font-bold text-lg">
+                  {creatingUpcoming ? (ar ? 'إنشاء معاملة قادمة' : 'New upcoming transaction') : T.addClearance}
+                </h2>
                 <button type="button" onClick={() => setShowModal(false)} className="text-slate-300 hover:text-white" aria-label={T.close}><X className="w-5 h-5" /></button>
               </div>
               <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto">
@@ -495,12 +595,19 @@ export default function CustomsPage() {
                     placeholder={ar ? 'يُملأ تلقائيًّا من ملفّ الوكيل' : 'Autofills from the agent profile'}
                     onChange={(e) => setForm((f: any) => ({ ...f, shippingAgentEmail: e.target.value }))} />
                 </Field>
-                <Field label={T.invoiceNumber}><input className="cc-input" value={form.invoiceNumber} onChange={(e) => setForm((f: any) => ({ ...f, invoiceNumber: e.target.value }))} /></Field>
-                {/* الموانئُ والعملاتُ وأنواعُ الفواتير قوائمُ تُدار من إعدادات القسم. */}
+                {/* الموانئُ قائمةٌ تُدار من إعدادات القسم. و«نوع الفاتورة» و«رقم
+                    الفاتورة» و«العملة» رُفعت: خاناتٌ لا يملؤها أحدٌ ولا تُقرأ —
+                    والمحفوظُ منها قبل اليوم باقٍ في السجلّ. */}
                 <Field label={T.port}><ManagedSelect storeLabel type="customs_port" value={form.port} onChange={(v) => setForm((f: any) => ({ ...f, port: v }))} /></Field>
-                <Field label={T.invoiceType}><ManagedSelect storeLabel type="customs_invoice_type" value={form.invoiceType} onChange={(v) => setForm((f: any) => ({ ...f, invoiceType: v }))} /></Field>
                 <Field label={T.containerCount}><input type="number" className="cc-input" value={form.containerCount} onChange={(e) => setForm((f: any) => ({ ...f, containerCount: Number(e.target.value) }))} /></Field>
-                <Field label={T.currency}><ManagedSelect storeLabel type="customs_currency" value={form.currency} onChange={(v) => setForm((f: any) => ({ ...f, currency: v }))} /></Field>
+                {/* التاريخُ المرتقَب هو كلُّ الفرق بين معاملةٍ قادمةٍ وجارية —
+                    وعليه يقوم التنبيه، فلا تُحفَظ القادمةُ بدونه. */}
+                {creatingUpcoming && (
+                  <Field label={ar ? 'تاريخ المعاملة المتوقَّع' : 'Expected date'}>
+                    <input type="date" className="cc-input" value={form.expectedDate || ''}
+                      onChange={(e) => setForm((f: any) => ({ ...f, expectedDate: e.target.value }))} />
+                  </Field>
+                )}
               </div>
               <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{T.cancel}</button>

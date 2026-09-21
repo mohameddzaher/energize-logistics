@@ -21,6 +21,8 @@ const EDITABLE = [
   'stagesDone',
   // ربطُ المعاملة بملفَّي العميل والوكيل.
   'customerParty', 'agentParty',
+  // المعاملةُ القادمة: علمُها وتاريخُها المرتقَب.
+  'upcoming', 'expectedDate',
 ];
 
 // Sub-documents. Sent as whole objects by the frontend but merged field-by-field
@@ -31,8 +33,10 @@ const NESTED = {
   stageDates: ['doInvoiceEmailed', 'doInvoicePaid', 'doLinkEmailed', 'dutyPaid', 'portFeesPaid', 'unloadingFeesPaid', 'containersReturned', 'returnInvoiceDate'],
   stageDone: ['doInvoiceEmailed', 'doInvoicePaid', 'doLinkEmailed', 'dutyPaid', 'portFeesPaid', 'unloadingFeesPaid', 'containersReturned', 'returnInvoiceDate'],
   costs: COST_KEYS,
-  // totalInvoiced/profit مشتقّتان — لا تُقبلان من العميل مهما أرسل.
-  revenue: [...MARGIN_KEYS, 'transportSelling', 'yardTransportNet'],
+  // totalInvoiced/profit مشتقّتان — لا تُقبلان من العميل مهما أرسل. ومثلُهما
+  // `transportNet`: صارت فرقَ سعرِ النقل عن سعر المورد (recomputeTotals)،
+  // فقبولُها من الشاشة يفتح بابَ رقمٍ يخالف بنودَه.
+  revenue: [...MARGIN_KEYS.filter((k) => k !== 'transportNet'), 'transportSelling', 'yardTransportNet'],
   billing: ['invoiceStatus', 'ourInvoiceNumber', 'invoicedAt'],
 };
 
@@ -85,6 +89,36 @@ function pick(body, existing) {
   return out;
 }
 
+/**
+ * ── وما لا يُعرَض ولا يُصدَّر ولا يُبحَث فيه لا يُنقَل ──────────────────────
+ *
+ * كانت القائمةُ تستثني الثقيلَ المعروف (المرفقات والحاويات ومراحل السداد)
+ * وتأخذ ما بقي كلَّه — فبلغت حمولتُها **٤٥٥ كيلوبايت** لمئتين وثمانٍ وستّين
+ * معاملة. وأثقلُ ما فيها لا يُقرأ في الجدول أصلًا: `costs` و`revenue` كاملين
+ * (١٢٦ كيلوبايت ولا يُقرأ منهما إلّا أربعةُ أرقام)، و`stageDates` و`agentPapers`
+ * (٦٥ كيلوبايت لا تُقرأ حرفًا).
+ *
+ * والوصلةُ إلى العنقود هي الثمنُ كلُّه لا الحساب (راجع dashboard-performance):
+ * ستُّ ثوانٍ تنتظرها الشاشةُ عند كلّ فتحةٍ بعد انقضاء الذاكرة.
+ *
+ * فتُذكَر الحقولُ بأسمائها: ما يعرضه الجدول، وما يخرج في إكسل، وما يُبحَث فيه
+ * (البحثُ يجري على هذه القائمة نفسِها في الذاكرة — فحقلٌ يسقط من هنا يسقط من
+ * البحث بلا أن يُقال).
+ */
+const LIST_FIELDS = [
+  // الجدول
+  'refNumber', 'blNumber', 'customerName', 'shippingAgent', 'port', 'stage', 'branch', 'city',
+  'containerCount', 'declarationNumber', 'periodYear', 'periodMonth', 'createdAt',
+  'cancelled', 'isCompleted', 'returnDeadline', 'returnFreeDays', 'billing', 'notesLog',
+  'stageDone.containersReturned', 'upcoming', 'expectedDate',
+  // إكسل
+  'costs.total', 'revenue.clearanceFee', 'revenue.totalInvoiced', 'revenue.profit',
+  // البحث (راجع الفلترةَ في الذاكرة أسفلَ الدالّة)
+  'invoiceNumber', 'doNumber', 'exitPermitNumber', 'saberNumber', 'hsCode',
+  'exporterCompany', 'countryOfOrigin', 'legacySerial', 'notes', 'carrierName',
+  'unloadingLocation', 'assignedTo', 'customerParty', 'agentParty',
+].join(' ');
+
 exports.getClearances = async (req, res) => {
   try {
     const q = req.query || {};
@@ -101,6 +135,10 @@ exports.getClearances = async (req, res) => {
       customerParty: 'customerParty', agentParty: 'agentParty',
     };
     for (const [k, path] of Object.entries(eq)) if (q[k]) filter[path] = q[k];
+    // ── والقادمةُ لا تُخلَط بالجارية ─────────────────────────────────────
+    // كلُّ ما يُقرأ في هذه الشاشة معاملاتٌ وقعت: عددُها، وربحُها، وما تأخّر
+    // منها. فصفٌّ لم يصل بعدُ يُفسد كلَّ عدٍّ فيها. ولها قائمتُها: `upcoming=true`.
+    filter.upcoming = q.upcoming === 'true' ? true : { $ne: true };
     if (q.active === 'true') filter.cancelled = { $ne: true };
     if (q.cancelled === 'true') filter.cancelled = true;
     if (q.year) filter.periodYear = Number(q.year);
@@ -125,7 +163,7 @@ exports.getClearances = async (req, res) => {
     // المعاملة فقط. يقلّل النقل بشكل كبير على Atlas المُقيَّد.
     let list = await cache.wrap(ck, 30000, async () => {
       const rows = await CustomsClearance.find(filter)
-        .select('-documents -attachments -containers -paymentStages').sort({ createdAt: -1 }).lean();
+        .select(LIST_FIELDS).sort({ createdAt: -1 }).lean();
       // ── آخرُ ملاحظةٍ فقط تُرسَل ──────────────────────────────────────────
       // الجدولُ يعرض الأخيرةَ لا السجلَّ كلَّه، ونقلُ عشر ملاحظاتٍ لكلّ صفٍّ
       // على وصلةٍ مقيَّدة نقلٌ لا يُعرَض. والسجلُّ يُقرأ في المعاملة.
@@ -286,7 +324,8 @@ exports.getAnalytics = async (req, res) => {
   try {
     const q = req.query || {};
     const { year, from, to } = q;
-    const filter = { cancelled: { $ne: true } };
+    // والقادمةُ خارجَ الأرقام: لم تقع بعدُ فلا إيرادَ لها ولا تكلفة.
+    const filter = { cancelled: { $ne: true }, upcoming: { $ne: true } };
     if (year) filter.periodYear = Number(year);
     // ── التحليلاتُ تقبل ما تقبله القائمة ────────────────────────────────────
     // كانت تقبل السنةَ والمدى وحدَها، فمن أراد «ربحُنا مع هذا العميل في هذا
@@ -718,6 +757,251 @@ exports.getPartyProfile = async (req, res) => {
   } catch (e) {
     console.error('getPartyProfile error:', e);
     res.status(500).json({ message: 'تعذّر تحميل الملفّ' });
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  إعداداتُ القسم · المعاملاتُ القادمة · طلباتُ الصرف
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CustomsSettings = require('../models/CustomsSettings');
+
+/** إعداداتُ القسم — رقمُ أيّام التنبيه اليوم. */
+exports.getSettings = async (req, res) => {
+  try {
+    res.json({ settings: await CustomsSettings.get() });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر تحميل الإعدادات' });
+  }
+};
+
+exports.updateSettings = async (req, res) => {
+  try {
+    const days = Number(req.body.upcomingAlertDays);
+    if (!Number.isFinite(days) || days < 0 || days > 60) {
+      return res.status(400).json({ message: 'عدد الأيّام بين صفر وستّين' });
+    }
+    const who = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || '';
+    const settings = await CustomsSettings.findOneAndUpdate(
+      { key: 'customs' },
+      { $set: { upcomingAlertDays: Math.round(days), updatedBy: req.user._id, updatedByName: who } },
+      { new: true, upsert: true },
+    ).lean();
+    try { cache.clear('customs:'); } catch (_) { /* */ }
+    res.json({ settings });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر حفظ الإعدادات' });
+  }
+};
+
+/**
+ * ── شارةُ المعاملات القادمة ────────────────────────────────────────────────
+ * عددُ ما اقترب موعدُه — والمدّةُ من إعدادات القسم لا من رقمٍ في الشيفرة، فمن
+ * غيّرها إلى ثلاثة أيّامٍ رأى أثرَها في النداء التالي بلا نشر.
+ *
+ * وما فات موعدُه يبقى في العدّ: معاملةٌ حان وقتُها ولم تُحوَّل هي أحقُّ بالتنبيه
+ * من معاملةٍ بعد يومين.
+ */
+exports.upcomingAlerts = async (req, res) => {
+  try {
+    const { upcomingAlertDays } = await CustomsSettings.get();
+    const days = Number.isFinite(Number(upcomingAlertDays)) ? Number(upcomingAlertDays) : 2;
+    // ── اليومُ بتوقيت الشركة لا بتوقيت الخادم ────────────────────────────
+    // `todayKey` تردّ «YYYY-MM-DD» بالرياض، وهو نفسُ شكلِ `expectedDate`
+    // المخزَّن — فالمقارنةُ نصّيّةٌ مباشرةٌ بلا تحويلِ مناطق. راجع
+    // utils/companyDay (و`startOfDay` تأخذ مفتاحَ يومٍ لا كائنَ تاريخ).
+    const { todayKey, DAY_MS, startOfDay } = require('../utils/companyDay');
+    const today = todayKey();
+    const until = new Date(startOfDay(today).getTime() + days * DAY_MS)
+      .toISOString().slice(0, 10);
+
+    const rows = await CustomsClearance.find({
+      upcoming: true,
+      cancelled: { $ne: true },
+      expectedDate: { $gt: '', $lte: until },
+    }).select('refNumber blNumber customerName shippingAgent port expectedDate containerCount branch')
+      .sort({ expectedDate: 1 }).lean();
+
+    res.json({
+      days,
+      count: rows.length,
+      today,
+      // وما فات موعدُه أحقُّ بالتنبيه ممّا لم يحِن — فيُعلَّم.
+      items: rows.map((r) => ({ ...r, overdue: r.expectedDate < today })),
+    });
+  } catch (e) {
+    console.error('customs upcomingAlerts:', e);
+    res.status(500).json({ message: 'تعذّر قراءة المعاملات القادمة' });
+  }
+};
+
+/**
+ * تحويلُ معاملةٍ قادمةٍ إلى جارية — هي هي، غيّر أنّها وقعت.
+ *
+ * ولا تُنشأ من جديد: كلُّ ما كُتب فيها (العميلُ والوكيلُ والميناءُ والحاويات)
+ * كُتب مرّةً — وإعادةُ كتابته بابُ خطأٍ ونسخةٌ ثانية.
+ */
+exports.activateClearance = async (req, res) => {
+  try {
+    const clearance = await CustomsClearance.findById(req.params.id);
+    if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
+    if (!clearance.upcoming) return res.json({ clearance });
+    const who = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || '';
+    clearance.upcoming = false;
+    clearance.activatedAt = new Date();
+    clearance.activatedBy = req.user._id;
+    clearance.activatedByName = who;
+    await clearance.save();
+    try { cache.clear('customs:'); } catch (_) { /* */ }
+    try { emitToAll('customs:updated', { clearance }); } catch (_) { /* */ }
+    await logAudit({
+      user: req.user._id, action: 'update_customs_clearance', entity: 'CustomsClearance',
+      entityId: clearance._id, changes: { after: { upcoming: false } }, ipAddress: req.ip,
+    });
+    res.json({ clearance });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر تحويل المعاملة' });
+  }
+};
+
+/**
+ * ── طلباتُ الصرف كما تراها الإدارةُ الماليّة ───────────────────────────────
+ * مدخلاتُ مراحل السداد في كلّ المعاملات، مسطَّحةً في قائمةٍ واحدة: كلُّ سطرٍ
+ * يقول أيَّ معاملةٍ وأيَّ مرحلةٍ وكم ومرفقَه — فيُقرأ العملُ كلُّه في شاشةٍ
+ * واحدةٍ بدل فتح المعاملات واحدةً واحدة.
+ */
+exports.listPaymentRequests = async (req, res) => {
+  try {
+    const status = String(req.query.status || 'pending');
+    const rows = await CustomsClearance.find({ cancelled: { $ne: true }, 'paymentStages.0': { $exists: true } })
+      .select('refNumber blNumber customerName shippingAgent port branch paymentStages isCompleted')
+      .sort({ createdAt: -1 }).lean();
+
+    const out = [];
+    for (const c of rows) {
+      for (const e of c.paymentStages || []) {
+        const st = e.payStatus || 'pending';
+        if (status !== 'all' && st !== status) continue;
+        out.push({
+          clearanceId: String(c._id),
+          refNumber: c.refNumber,
+          blNumber: c.blNumber,
+          customerName: c.customerName,
+          shippingAgent: c.shippingAgent,
+          port: c.port,
+          branch: c.branch,
+          entryId: String(e._id),
+          key: e.key,
+          label: e.label,
+          date: e.date,
+          amount: e.amount,
+          note: e.note,
+          fileUrl: e.fileUrl,
+          fileName: e.fileName,
+          addedByName: e.addedByName,
+          addedAt: e.addedAt,
+          payStatus: st,
+          decisionNote: e.decisionNote || '',
+          decidedByName: e.decidedByName || '',
+          decidedAt: e.decidedAt || null,
+          proofFiles: e.proofFiles || [],
+        });
+      }
+    }
+    out.sort((a, b) => new Date(b.addedAt || 0) - new Date(a.addedAt || 0));
+
+    // وعدّادُ كلّ حالةٍ يُقرأ مع القائمة، فالشاشةُ لا تسأل مرّتين.
+    const counts = { pending: 0, paid: 0, returned: 0, rejected: 0, amountPending: 0, amountPaid: 0 };
+    for (const c of rows) {
+      for (const e of c.paymentStages || []) {
+        const st = e.payStatus || 'pending';
+        if (counts[st] !== undefined) counts[st] += 1;
+        const amt = Number(e.amount) || 0;
+        if (st === 'pending') counts.amountPending += amt;
+        if (st === 'paid') counts.amountPaid += amt;
+      }
+    }
+    counts.amountPending = Math.round(counts.amountPending * 100) / 100;
+    counts.amountPaid = Math.round(counts.amountPaid * 100) / 100;
+
+    res.json({ requests: out, counts });
+  } catch (e) {
+    console.error('customs listPaymentRequests:', e);
+    res.status(500).json({ message: 'تعذّر تحميل طلبات الصرف' });
+  }
+};
+
+/**
+ * قرارُ الإدارة الماليّة على طلبِ صرف.
+ *
+ * ثلاثةُ أجوبةٍ لا واحد: دُفع (ومعه إثباتٌ اختياريّ)، أو يُعاد لتصحيحٍ (ومعه
+ * سببُه)، أو يُرفَض. والسببُ اختياريٌّ في الحالتين لأنّه قد يُقال مشافهةً —
+ * لكنّه يُحفَظ حيث يُقرأ: بجانب الإدخال نفسِه في شاشة التخليص، لا في بريد.
+ */
+exports.decidePaymentStage = async (req, res) => {
+  try {
+    const decision = String(req.body.decision || '').trim();
+    if (!['paid', 'returned', 'rejected'].includes(decision)) {
+      return res.status(400).json({ message: 'قرارٌ غير معروف' });
+    }
+    const clearance = await CustomsClearance.findById(req.params.id);
+    if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
+    const entry = (clearance.paymentStages || []).id(req.params.entryId);
+    if (!entry) return res.status(404).json({ message: 'الإدخال غير موجود' });
+
+    const who = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || '';
+    const files = Array.isArray(req.body.files) ? req.body.files.slice(0, 10) : [];
+    const stored = [];
+    for (const f of files) {
+      if (!f || !f.dataUrl) continue;
+      try { stored.push(saveUploadFile(f.dataUrl, 'customs', f.fileName || '')); }
+      catch (e) { return res.status(400).json({ message: e.message }); }
+    }
+
+    entry.payStatus = decision;
+    entry.decisionNote = String(req.body.note || '').trim().slice(0, 500);
+    entry.decidedBy = req.user._id;
+    entry.decidedByName = who;
+    entry.decidedAt = new Date();
+    if (stored.length) entry.proofFiles = [...(entry.proofFiles || []), ...stored];
+
+    // وإثباتُ الدفع يُوجَد مع ورق المعاملة كذلك — حيث يبحث عنه من لا يعرف
+    // من أيّ مرحلةٍ جاء (نفسُ قاعدة مرفق الإدخال).
+    for (const f of stored) {
+      clearance.attachments.push({
+        ...f, title: `إثبات دفع · ${entry.label || entry.key}`, stage: '',
+        uploadedBy: req.user._id, uploadedByName: who, uploadedAt: new Date(),
+      });
+    }
+
+    await clearance.save();
+    try { cache.clear('customs:'); cache.clear('finance:'); } catch (_) { /* */ }
+    try { emitToAll('customs:updated', { clearance }); } catch (_) { /* */ }
+
+    // ومن طلب الصرف يُخبَر بما صار إليه طلبُه — لا يفتح الشاشة ليعرف.
+    try {
+      const { createNotification } = require('../services/notificationService');
+      const label = { paid: 'تمّ الدفع', returned: 'أُعيد للتصحيح', rejected: 'رُفض' }[decision];
+      if (entry.addedBy && String(entry.addedBy) !== String(req.user._id)) {
+        await createNotification({
+          recipient: entry.addedBy,
+          type: 'status_changed',
+          title: `طلب صرف: ${label}`,
+          message: `${clearance.refNumber || ''} · ${entry.label || entry.key}${entry.decisionNote ? ` — ${entry.decisionNote}` : ''}`,
+          relatedEntity: 'CustomsClearance',
+          relatedEntityId: clearance._id,
+        });
+      }
+    } catch (_) { /* */ }
+
+    await logAudit({
+      user: req.user._id, action: 'update_customs_clearance', entity: 'CustomsClearance',
+      entityId: clearance._id, changes: { after: { paymentDecision: decision, entry: String(entry._id) } }, ipAddress: req.ip,
+    });
+    res.json({ clearance });
+  } catch (e) {
+    console.error('customs decidePaymentStage:', e);
+    res.status(500).json({ message: 'تعذّر تسجيل القرار' });
   }
 };
 

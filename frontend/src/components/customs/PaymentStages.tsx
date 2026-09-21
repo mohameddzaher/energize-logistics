@@ -17,14 +17,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import {
-  Plus, Paperclip, Trash2, Loader2, Check, CalendarDays, Lock, Unlock, AlertTriangle,
+  Plus, Paperclip, Trash2, Loader2, Check, CalendarDays, Lock, Unlock, AlertTriangle, Clock3,
 } from 'lucide-react';
 
 export interface StageEntry {
   _id: string; key: string; label?: string; date?: string; amount?: number | null;
   note?: string; fileUrl?: string; fileName?: string;
   addedByName?: string; addedAt?: string;
+  // قرارُ الإدارة الماليّة على هذا الطلب — راجع decidePaymentStage في الخادم.
+  payStatus?: 'pending' | 'paid' | 'returned' | 'rejected';
+  decisionNote?: string; decidedByName?: string; decidedAt?: string;
+  proofFiles?: { fileUrl: string; fileName?: string }[];
 }
+
+/** شارةُ حالة الطلب — نفسُ الألفاظ في شاشة التخليص وشاشة الماليّة. */
+export const PAY_BADGE: Record<string, { ar: string; en: string; cls: string }> = {
+  pending: { ar: 'بانتظار الدفع', en: 'Awaiting payment', cls: 'bg-amber-100 text-amber-800' },
+  paid: { ar: 'تمّ الدفع', en: 'Paid', cls: 'bg-green-100 text-green-700' },
+  returned: { ar: 'أُعيد للتصحيح', en: 'Returned', cls: 'bg-blue-100 text-blue-700' },
+  rejected: { ar: 'مرفوض', en: 'Rejected', cls: 'bg-red-100 text-red-700' },
+};
 interface StageDef { _id: string; key: string; nameAr?: string; nameEn?: string }
 
 const REQUIRED_KEY = 'transportInvoice';
@@ -110,9 +122,16 @@ export default function PaymentStages({
           return (
             <div key={def.key} className={`rounded-lg border ${isRequired ? 'border-[#f37121]/40 bg-[#f37121]/5' : 'border-slate-200 bg-slate-50'}`}>
               <div className="flex items-center gap-2 px-3 py-2">
+                {/* ── والعلامةُ تقول «دُفع» لا «كُتب» ───────────────────────
+                    كانت تخضرّ لمجرّد وجود إدخال — والإدخالُ طلبُ صرفٍ لا
+                    إثباتُ دفع. فصارت تتبع قرارَ الإدارة الماليّة: تخضرّ حين
+                    تُدفَع كلُّ إدخالات المرحلة، وتصفرّ ما دام فيها منتظِر. */}
                 <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
-                  list.length ? 'border-green-500 bg-green-500 text-white' : 'border-slate-300 bg-white'}`}>
-                  {!!list.length && <Check className="h-3.5 w-3.5" />}
+                  list.length && list.every((x) => (x.payStatus || 'pending') === 'paid')
+                    ? 'border-green-500 bg-green-500 text-white'
+                    : (list.length ? 'border-amber-400 bg-amber-50 text-amber-600' : 'border-slate-300 bg-white')}`}>
+                  {list.length ? (list.every((x) => (x.payStatus || 'pending') === 'paid')
+                    ? <Check className="h-3.5 w-3.5" /> : <Clock3 className="h-3 w-3" />) : null}
                 </span>
                 <span className="flex-1 truncate text-sm font-semibold text-slate-800">
                   {label}
@@ -159,11 +178,27 @@ export default function PaymentStages({
                       )}
                       {e.note && <span className="text-slate-400">· {e.note}</span>}
                       {e.addedByName && <span className="text-slate-300">· {e.addedByName}</span>}
+                      {/* قرارُ الإدارة الماليّة بجانب الطلب نفسِه — لا في بريد. */}
+                      <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold ${PAY_BADGE[e.payStatus || 'pending'].cls}`}>
+                        {ar ? PAY_BADGE[e.payStatus || 'pending'].ar : PAY_BADGE[e.payStatus || 'pending'].en}
+                      </span>
                       {canEdit && (
                         <button type="button" onClick={() => remove(e._id)} disabled={busy === e._id}
                           className="ms-auto text-slate-300 hover:text-red-600" title={t('حذف', 'Delete')}>
                           {busy === e._id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                         </button>
+                      )}
+                      {(e.decisionNote || (e.proofFiles || []).length || e.decidedByName) && (
+                        <span className="w-full ps-5 text-[11px] text-slate-500">
+                          {e.decisionNote ? <span className="text-slate-700">{e.decisionNote}</span> : null}
+                          {e.decidedByName ? <span className="ms-1.5">· {e.decidedByName}</span> : null}
+                          {(e.proofFiles || []).map((f, i) => (
+                            <a key={i} href={f.fileUrl} target="_blank" rel="noreferrer"
+                              className="ms-1.5 inline-flex items-center gap-1 font-semibold text-green-700 hover:underline">
+                              <Paperclip className="h-3 w-3" />{f.fileName || t('إثبات الدفع', 'proof')}
+                            </a>
+                          ))}
+                        </span>
                       )}
                     </li>
                   ))}

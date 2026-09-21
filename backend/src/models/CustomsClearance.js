@@ -107,6 +107,24 @@ const customsClearanceSchema = new mongoose.Schema(
     returnFreeDays: { type: Number, default: 0 },
 
     /**
+     * ── معاملةٌ لم يحِن وقتُها بعد ────────────────────────────────────────
+     * الشحنةُ تُعرَف قبل وصولها بأسبوع: العميلُ يُخطر، والوكيلُ يُحجَز،
+     * والأوراقُ تُجهَّز. وكان ذلك يُكتب في دفترٍ جانبيٍّ أو يُترَك للذاكرة،
+     * فتأتي الشحنةُ ولم يُحجَز لها موعد.
+     *
+     * فتُسجَّل معاملةً كاملةً بتاريخها المرتقَب، **ولا تُخلَط بالجاري**:
+     * قوائمُ العمل وأرقامُ اللوحة ومطالباتُ التحصيل كلُّها عن معاملاتٍ وقعت،
+     * فصفٌّ لم يقع بعدُ فيها يُفسد كلَّ عدّ. ولها قائمتُها وتنبيهُها، ومنها
+     * تُحوَّل بضغطةٍ إلى معاملةٍ جارية حين تصل.
+     */
+    upcoming: { type: Boolean, default: false, index: true },
+    expectedDate: { type: String, trim: true, default: '' }, // YYYY-MM-DD
+    // متى تحوّلت إلى معاملةٍ جارية — ومَن حوّلها.
+    activatedAt: { type: Date, default: null },
+    activatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    activatedByName: { type: String, trim: true, default: '' },
+
+    /**
      * ── مراحلُ السداد: قائمةٌ تتكرّر، لا ثمانيَ خانة ──────────────────────
      *
      * كانت `stageDates`/`stageDone` أدناه ثمانيَ مفتاحٍ مكتوبةً في المخطَّط:
@@ -143,6 +161,36 @@ const customsClearanceSchema = new mongoose.Schema(
         addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         addedByName: { type: String, default: '' },
         addedAt: { type: Date, default: Date.now },
+
+        /**
+         * ── والمدخلُ طلبُ صرفٍ إلى الإدارة الماليّة ──────────────────────
+         * حين يرفق موظّفُ التخليص فاتورةً في مرحلةٍ من مراحل السداد فهو لا
+         * يؤرّخ حدثًا مضى: هو يقول «هذا ما يجب أن يُدفَع». وكان ذلك يُقال
+         * بالهاتف أو على الواتساب، ويُعلَّم في الشاشة بعلامةٍ تُوضَع بيدٍ —
+         * فلا يُعرَف مَن طلب ولا مَن دفع ولا متى، ولا يظهر في مكانٍ يراه
+         * المحاسب.
+         *
+         * فصار المدخلُ نفسُه طلبًا له حالة: مُعلَّقٌ حتى تقرّر الماليّةُ —
+         * دفعتْ (ومعها إثباتُها)، أو أعادتْه لتصحيح (ومعها سببُها)، أو
+         * رفضتْه. والعلامةُ الخضراء لا تُوضَع بيدٍ: تُوضَع حين يُدفَع.
+         */
+        payStatus: {
+          type: String,
+          enum: ['pending', 'paid', 'returned', 'rejected'],
+          default: 'pending',
+          index: true,
+        },
+        decisionNote: { type: String, trim: true, default: '' },
+        decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        decidedByName: { type: String, trim: true, default: '' },
+        decidedAt: { type: Date, default: null },
+        // إثباتُ الدفع — ملفٌّ أو أكثر، واختياريٌّ (تحويلٌ بنكيٌّ قد لا يُصوَّر).
+        proofFiles: [{
+          fileUrl: { type: String, trim: true, default: '' },
+          fileName: { type: String, trim: true, default: '' },
+          mimeType: { type: String, trim: true, default: '' },
+          size: { type: Number, default: 0 },
+        }],
       },
     ],
 
@@ -327,6 +375,13 @@ function recomputeTotals(doc) {
   if (!doc) return doc;
   if (!doc.costs) doc.costs = {};
   if (!doc.revenue) doc.revenue = {};
+  // ── وصافي النقل فرقٌ لا خانةٌ تُملأ ───────────────────────────────────────
+  // كان رقمين يكتبهما الموظّف بيده: «سعر بيع النقل» و«صافي النقل». وهما ليسا
+  // مستقلَّين — الثاني هو الأوّل ناقصَ ما ندفعه للناقل (`costs.transport`).
+  // فكتابتُهما معًا تفتح بابَ اختلافهما: صافٍ لا يساوي الفرق، وربحٌ مبنيٌّ
+  // على رقمٍ كُتب سهوًا. والقاعدةُ واحدة: نأخذ من العميل ٢٠٠٠ وندفع للناقل
+  // ١٥٠٠، فربحُنا من النقل ٥٠٠ — يُحسب حيث تُحسب بقيّةُ الأرقام المشتقّة.
+  doc.revenue.transportNet = r2(n(doc.revenue.transportSelling) - n(doc.costs.transport));
   let total = 0;
   for (const k of COST_KEYS) total += n(doc.costs[k]);
   total = r2(total);

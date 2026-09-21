@@ -30,6 +30,7 @@
         "/api/ops/dashboard",
         "/api/workflows",
         "/api/workflows/bulk-delete",
+        "/api/workflows/bulk-import",
         "/api/workflows/bulk-update",
         "/api/workflows/export",
         "/api/workflows/filters",
@@ -66,6 +67,7 @@
     },
     "/system/wallet-dashboard": {
       "apis": [
+        "/api/wallet/branch",
         "/api/wallet/dashboard"
       ],
       "wildcard": false
@@ -106,6 +108,7 @@
         "/api/collections-dept/invoices/deliver",
         "/api/collections-dept/invoices/detail",
         "/api/collections-dept/invoices/filters",
+        "/api/collections-dept/invoices/tax",
         "/api/lookups/types",
         "/api/reports"
       ],
@@ -210,7 +213,11 @@
     "/system/ops": {
       "apis": [
         "/api/ops/branches",
-        "/api/ops/dashboard"
+        "/api/ops/dashboard",
+        "/api/ops/drivers",
+        "/api/ops/shipments",
+        "/api/ops/shipments/timeline",
+        "/api/ops/users"
       ],
       "wildcard": false
     },
@@ -226,7 +233,10 @@
     },
     "/system/ops/drivers": {
       "apis": [
-        "/api/ops"
+        "/api/ops",
+        "/api/ops/drivers",
+        "/api/ops/shipments",
+        "/api/ops/shipments/timeline"
       ],
       "wildcard": false
     },
@@ -244,7 +254,10 @@
     },
     "/system/ops/users": {
       "apis": [
-        "/api/ops"
+        "/api/ops",
+        "/api/ops/shipments",
+        "/api/ops/shipments/timeline",
+        "/api/ops/users"
       ],
       "wildcard": false
     },
@@ -299,9 +312,12 @@
     "/system/shipment-orders": {
       "apis": [
         "/api/shipment-orders/customers",
+        "/api/shipment-orders/fields",
         "/api/shipment-orders/orders",
         "/api/shipment-orders/orders/waybills.pdf",
-        "/api/shipment-orders/statuses"
+        "/api/shipment-orders/statuses",
+        "/api/shipment-orders/suppliers",
+        "/api/shipment-orders/vehicles"
       ],
       "wildcard": false
     },
@@ -375,9 +391,16 @@
     },
     "/system/fleet": {
       "apis": [
+        "/api/branches",
+        "/api/fleet/arrivals",
         "/api/fleet/customers",
+        "/api/fleet/drivers",
         "/api/fleet/shipments",
-        "/api/fleet/shipments/waybills.pdf"
+        "/api/fleet/shipments/waybills.pdf",
+        "/api/fleet/vehicle-logs",
+        "/api/fleet/vehicles",
+        "/api/lookups/types",
+        "/api/partners/account"
       ],
       "wildcard": false
     },
@@ -426,6 +449,7 @@
     },
     "/system/fleet/vehicles": {
       "apis": [
+        "/api/fleet/arrivals",
         "/api/fleet/supervisors",
         "/api/fleet/vehicles"
       ],
@@ -476,15 +500,18 @@
     },
     "/system/fleet/customers": {
       "apis": [
+        "/api/fleet/arrivals",
         "/api/fleet/customers",
         "/api/fleet/customers/filters",
-        "/api/lookups/types"
+        "/api/lookups/types",
+        "/api/partners/account"
       ],
       "wildcard": false
     },
     "/system/customs": {
       "apis": [
         "/api/customs-clearance",
+        "/api/customs-clearance/contracts",
         "/api/customs-clearance/parties",
         "/api/lookups/types"
       ],
@@ -539,7 +566,10 @@
       "apis": [
         "/api/lookups/types",
         "/api/vehicle-registry",
-        "/api/vehicle-registry/filters"
+        "/api/vehicle-registry/documents",
+        "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/renew-bulk",
+        "/api/vehicle-registry/renew-shared"
       ],
       "wildcard": false
     },
@@ -684,7 +714,12 @@
     },
     "/system/ls2": {
       "apis": [
-        "/api/ls2/dashboard"
+        "/api/ls2/assets/tires",
+        "/api/ls2/assets/vehicle",
+        "/api/ls2/dashboard",
+        "/api/ls2/repairs",
+        "/api/ls2/settings",
+        "/api/ls2/vehicles"
       ],
       "wildcard": false
     },
@@ -714,6 +749,7 @@
     },
     "/system/ls2/tires": {
       "apis": [
+        "/api/ls2/assets/tires",
         "/api/ls2/vehicles"
       ],
       "wildcard": false
@@ -779,6 +815,8 @@
     },
     "/system/performance": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team"
       ],
       "wildcard": false
@@ -805,6 +843,7 @@
     },
     "/system/marketing": {
       "apis": [
+        "/api/marketing/campaigns",
         "/api/marketing/dashboard"
       ],
       "wildcard": false
@@ -850,6 +889,7 @@
     },
     "/system/bd": {
       "apis": [
+        "/api/business-development/activities",
         "/api/business-development/dashboard",
         "/api/business-development/opportunities"
       ],
@@ -857,6 +897,7 @@
     },
     "/system/bd/opportunities": {
       "apis": [
+        "/api/business-development/activities",
         "/api/business-development/opportunities",
         "/api/crm/companies"
       ],
@@ -924,6 +965,7 @@
     },
     "/system/business-review": {
       "apis": [
+        "/api/business-review/actions",
         "/api/business-review/dashboard",
         "/api/business-review/meetings",
         "/api/business-review/meta"
@@ -955,7 +997,8 @@
     },
     "/system/contracts": {
       "apis": [
-        "/api/contracts/dashboard"
+        "/api/contracts/dashboard",
+        "/api/contracts/vendors"
       ],
       "wildcard": false
     },
@@ -1015,7 +1058,8 @@
     },
     "/system/it": {
       "apis": [
-        "/api/it/dashboard"
+        "/api/it/dashboard",
+        "/api/it/tickets"
       ],
       "wildcard": false
     },
@@ -1282,8 +1326,13 @@
     "/system/hr/master": {
       "apis": [
         "/api/hr/dashboard",
+        "/api/hr/master/choices",
+        "/api/hr/master/employees",
         "/api/hr/master/filters",
-        "/api/hr/master/overview"
+        "/api/hr/master/overview",
+        "/api/hr/master/records",
+        "/api/hr/master/renew",
+        "/api/hr/master/renew-bulk"
       ],
       "wildcard": false
     },
@@ -1338,10 +1387,15 @@
     },
     "/system/hr/employees": {
       "apis": [
+        "/api/hr/contracts",
+        "/api/hr/documents",
         "/api/hr/employees",
         "/api/hr/master/choices",
         "/api/hr/master/filters",
-        "/api/hr/options"
+        "/api/hr/options",
+        "/api/lookups/types",
+        "/api/uploads/...",
+        "/api/vehicles/by-employee"
       ],
       "wildcard": false
     },
@@ -1450,10 +1504,16 @@
     },
     "/system/crm/companies": {
       "apis": [
+        "/api/crm",
+        "/api/crm/activities",
         "/api/crm/companies",
+        "/api/crm/contacts",
         "/api/crm/customers-search",
+        "/api/crm/deals",
         "/api/crm/options",
-        "/api/lookups/types"
+        "/api/crm/tasks",
+        "/api/lookups/types",
+        "/api/partners/account"
       ],
       "wildcard": false
     },
@@ -1836,7 +1896,10 @@
     },
     "/system/portal": {
       "apis": [
-        "/api/portal/overview"
+        "/api/invoices",
+        "/api/payments",
+        "/api/portal/overview",
+        "/api/portal/shipments"
       ],
       "wildcard": false
     },
@@ -1854,7 +1917,9 @@
     },
     "/system/portal/invoices": {
       "apis": [
-        "/api/analytics/portal/dashboard"
+        "/api/analytics/portal/dashboard",
+        "/api/invoices",
+        "/api/payments"
       ],
       "wildcard": false
     },

@@ -179,6 +179,36 @@ function build() {
   const pages = {};
   let unresolved = 0;
 
+  // ── والشاشةُ التي تُفتَح بزرٍّ صفحةٌ كذلك ─────────────────────────────────
+  // القائمةُ الجانبيّة لا تذكر إلّا ما يُنقَر فيها، بينما «إنشاء شحنة»
+  // (`/system/fleet/new`) و«تفاصيل مركبة» (`[id]`) شاشاتٌ كاملةٌ تُفتَح من داخل
+  // صفحتها بزرّ. فنداءاتُها لم تكن منسوبةً إلى أيّ صفحة — ونقطةٌ لا تنسبها
+  // الخريطةُ إلى صفحةٍ يملكها الدورُ تُردّ ٤٠٣.
+  //
+  // وقد وقع: مشرفُ الأسطول يفتح «إنشاء شحنة» فتخرج قائمةُ الفروع فارغةً، لأنّ
+  // `/api/branches` منسوبٌ إلى صفحاتٍ لا يملكها — وصفحتُه هي التي تنادِيه.
+  //
+  // فتُضمّ الشاشاتُ الفرعيّةُ إلى صفحتها الأمّ: كلُّ `page.tsx` تحت مجلّدها
+  // وليست هي نفسُها صفحةً في الدليل. ومَن فتح الأمَّ فتح ما يُفتَح منها.
+  const pageKeys = new Set(PAGES.map((x) => x.key));
+  const subPages = (dir) => {
+    const out = [];
+    const walk = (d, rel) => {
+      let entries = [];
+      try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+      for (const e of entries) {
+        if (!e.isDirectory()) continue;
+        const childRel = `${rel}/${e.name}`;
+        const childFile = path.join(d, e.name, 'page.tsx');
+        // شاشةٌ لها مدخلُها في الدليل تُحسَب على نفسها لا على أمّها.
+        if (!pageKeys.has(`/system${childRel}`) && fs.existsSync(childFile)) out.push(childFile);
+        walk(path.join(d, e.name), childRel);
+      }
+    };
+    walk(dir, dir.slice(APP.length).replace(/\\/g, '/'));
+    return out;
+  };
+
   for (const p of PAGES) {
     // مسارُ الصفحة → ملفُّها. المسارُ ذو المعامل (`[id]`) يقابله مجلَّدٌ باسمه.
     const rel = p.key.replace(/^\/system\/?/, '');
@@ -187,10 +217,13 @@ function build() {
 
     const apis = new Set();
     let wildcard = false;
-    for (const [f, names] of fileClosure(file)) {
-      const got = apisIn(scopedSource(f, names));
-      got.apis.forEach((a) => apis.add(a));
-      if (got.wildcard) wildcard = true;
+    const entries = [file, ...subPages(path.join(APP, rel))];
+    for (const entry of entries) {
+      for (const [f, names] of fileClosure(entry)) {
+        const got = apisIn(scopedSource(f, names));
+        got.apis.forEach((a) => apis.add(a));
+        if (got.wildcard) wildcard = true;
+      }
     }
     // ما هو من الإطار لا يُنسَب إلى الصفحة: وإلّا صارت كلُّ صفحةٍ تفتح كلَّ شيء.
     const own = [...apis].filter((a) => !shell.has(a));

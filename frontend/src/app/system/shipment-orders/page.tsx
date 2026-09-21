@@ -10,7 +10,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
-import { PackageSearch, Plus, Pencil, Trash2, FileDown, Loader2, RefreshCw, X, Check } from 'lucide-react';
+import { PackageSearch, Plus, Pencil, Eye, FileDown, Loader2, RefreshCw, X, Check } from 'lucide-react';
 import {
   Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Select, ErrorNotice,
 } from '@/components/hr/HRKit';
@@ -23,6 +23,14 @@ import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import type { DispatchSheetRow } from '@/lib/dispatchSheetExcelParser';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import ScrollX from '@/components/system/ScrollX';
+
+
+// ── حالاتٌ لا تُقال بلا ورقة ────────────────────────────────────────────────
+// نظيرُ `REQUIRE_FILE` في الخادم (shipmentOrdersController) — وهو الحارس؛
+// وهذه لتعين الموظّفَ قبل أن يُردَّ عليه.
+const STATUS_NEEDS_FILE = new Set(['bond_sent']);
+type PickedFile = { dataUrl: string; fileName: string; size: number };
+const MAX_UPLOAD = 20 * 1024 * 1024;
 
 const fmtDate = (v?: string | null) => {
   if (!v) return '';
@@ -109,17 +117,24 @@ export default function ShipmentOrdersPage() {
   // نافذةُ المتابعة: الحالةُ الجديدة وملاحظةٌ اختياريّة.
 
   const [fu, setFu] = useState<{ order: any; status: string; note: string } | null>(null);
+  const [detail, setDetail] = useState<ShipmentOrder | null>(null);
+  const [fuFile, setFuFile] = useState<PickedFile | null>(null);
 
-  const openFollowUp = (o: any) => setFu({ order: o, status: o.status, note: '' });
+  const openFollowUp = (o: any) => { setFuFile(null); setFu({ order: o, status: o.status, note: '' }); };
 
+  // ── وحالةٌ تقول «أُرسل السند» تُثبِت السند ────────────────────────────────
+  // الشرطُ على الخادم (REQUIRE_FILE في shipmentOrdersController)، وهنا يُعان
+  // الموظّفُ عليه: الزرُّ لا يعمل قبل الإرفاق ويُقال له لماذا — بدل أن يضغط
+  // فيُردَّ عليه بخطأ.
   const submitFollowUp = async () => {
-
     if (!fu) return;
-
-    await changeStatus(fu.order, fu.status, fu.note.trim());
-
+    if (STATUS_NEEDS_FILE.has(fu.status) && fu.status !== fu.order.status && !fuFile) {
+      notify(ar ? 'أرفق صورة السند أو ملفه أولًا.' : 'Attach the bond file first.', 'error');
+      return;
+    }
+    await changeStatus(fu.order, fu.status, fu.note.trim(), fuFile);
+    setFuFile(null);
     setFu(null);
-
   };
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   // Tick rows → one ZIP of their بوليصات, named number-customer-date.
@@ -164,30 +179,33 @@ export default function ShipmentOrdersPage() {
   }, []);
 
   // The inline change — the reason nobody has to open an order to say "وصلت".
-  const changeStatus = async (o: ShipmentOrder, status: string, note = '') => {
+  const changeStatus = async (o: ShipmentOrder, status: string, note = '', file?: PickedFile | null) => {
     setBusyId(o._id);
     try {
-      await api.patch(`/api/shipment-orders/orders/${o._id}/status`, { status, note });
+      await api.patch(`/api/shipment-orders/orders/${o._id}/status`, {
+        status, note, ...(file ? { dataUrl: file.dataUrl, fileName: file.fileName } : {}),
+      });
       load();
     } catch (e: any) { notify(e.message, 'error'); }
     setBusyId(null);
   };
 
-  const remove = async (o: ShipmentOrder) => {
-    if (!(await confirm(ar
-      ? `حذف الشحنة بوليصة رقم ${(o as any).reference || o.waybillNumber} (${o.customerName || '—'})؟`
-      : `Delete shipment, waybill ${(o as any).reference || o.waybillNumber} (${o.customerName || '—'})?`))) return;
-    try { await api.delete(`/api/shipment-orders/orders/${o._id}`); load(); }
-    catch (e: any) { notify(e.message, 'error'); }
-  };
+  // ── ولا يُمحى كشفٌ حدث ────────────────────────────────────────────────────
+  // كان هنا زرُّ حذف: يُزيل البوليصةَ ورقمَها وسجلَّ حالاتها من القاعدة بلا
+  // رجعة. والشحنةُ الملغاة حدثٌ وقع — له رقمٌ أُعطي للعميل وسجلٌّ يُسأل عنه —
+  // فمحوُها يُخفي الواقعةَ لا يصحّحها، ويقطع تسلسلَ الأرقام. فمن أراد إلغاءَها
+  // يضعها في حالة «ملغاة»: تبقى مقروءةً ومحسوبةً ومفلترةً بحالتها.
 
-  // The dispatch generator is heavy (html2canvas + pdf-lib), so it loads only
-  // when someone actually asks for a بوليصة.
+  // ── والبوليصةُ الواحدة تُرسَم حيث تُرسَم الكثيرة ─────────────────────────
+  // كانت تُبنى في المتصفّح بقالبٍ ثانٍ (lib/dispatchSheetTemplate)، والجماعيّةُ
+  // تُبنى في الخادم بقالبه. فقالبان لورقةٍ واحدة: ما يُضاف إلى أحدهما لا يظهر
+  // في الآخر — الملاحظاتُ تُطبَع في الجماعيّة ولا تُطبَع في المفردة، والإقرارُ
+  // كذلك. والورقةُ التي تُسلَّم للسائق يجب أن تكون واحدةً مهما كان زرُّها.
   const downloadWaybill = async (o: ShipmentOrder) => {
     setDownloadingId(o._id);
     try {
+      const blob = await api.postBlob('/api/shipment-orders/orders/waybills.pdf', { ids: [o._id] });
       const gen = await import('@/lib/dispatchSheetGenerator');
-      const { blob } = await gen.generateSingleDispatchPdf(toSheetRow(o));
       gen.triggerDownload(blob, `${waybillFileName(o)}.pdf`);
     } catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
     setDownloadingId(null);
@@ -433,8 +451,9 @@ export default function ShipmentOrdersPage() {
               const pillStyle = st ? undefined : (sv ? { background: `${sv.color}1a`, color: sv.color } : undefined);
               const pillLabel = sv ? vocabLabel(sv, lang as Lang) : statusLabel(o.status, lang as Lang);
               return (
-                <tr key={o._id} className="border-b border-slate-200/70 hover:bg-slate-50">
-                  <td className="px-3 py-3">
+                <tr key={o._id} onClick={() => setDetail(o)}
+                  className="border-b border-slate-200/70 hover:bg-slate-50 cursor-pointer">
+                  <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" className="w-4 h-4 accent-[#f37121]"
                       checked={picked.has(o._id)} onChange={() => togglePick(o._id)}
                       aria-label={String(o.waybillNumber)} />
@@ -470,7 +489,8 @@ export default function ShipmentOrdersPage() {
                   <td className="px-4 py-3 text-slate-700">{o.truckType || '—'}</td>
                   <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{fmtDT(o.pickupTime, lang as Lang)}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{money(o.sellPrice)} / {money(o.buyPrice)}</td>
-                  <td className="px-4 py-3">
+                  {/* الحالةُ كلمتان («قيد الطلب») — وبلا `nowrap` تنكسر سطرين فيتباعد الصفّ. */}
+                  <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     {/* ── المتابعةُ نقلةُ حالةٍ ومعها سببُها ──────────────────
                         القائمةُ المنسدلة تنقل الحالةَ بلا أن تسأل «لماذا»، ثمّ
                         يُسأل بعد أسبوع «مين أخّرها؟» فلا جواب. صارت تفتح نافذةً
@@ -497,7 +517,7 @@ export default function ShipmentOrdersPage() {
                       ? <span className="block truncate text-[13px] text-slate-700" title={o.notes}>{o.notes}</span>
                       : <span className="text-slate-300">—</span>}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
                       <button type="button" onClick={() => downloadWaybill(o)} disabled={downloadingId === o._id}
                         className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 disabled:opacity-50"
@@ -510,12 +530,15 @@ export default function ShipmentOrdersPage() {
                           <Pencil className="w-4 h-4" />
                         </button>
                       )}
-                      {canAdminOrders(user) && (
-                        <button type="button" onClick={() => remove(o)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={ar ? 'حذف' : 'Delete'}>
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
+                      {/* ── والعرضُ مكانَ الحذف ──────────────────────────
+                          الصفُّ يحمل خمسةَ عشرَ عمودًا لا يظهر منها في الجدول
+                          إلّا ما يسع، والباقي يُعرَف بفتح التعديل — وهو بابُ
+                          كتابةٍ يُفتَح لقراءة. فصار للقراءة بابُها. */}
+                      <button type="button" onClick={() => setDetail(o)}
+                        className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+                        title={ar ? 'عرض التفاصيل' : 'View details'}>
+                        <Eye className="w-4 h-4" />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -534,6 +557,144 @@ export default function ShipmentOrdersPage() {
             className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 disabled:opacity-50">{ar ? 'التالي' : 'Next'}</button>
         </div>
       )}
+
+      {/* ── نافذةُ التفاصيل ──────────────────────────────────────────────────
+          الجدولُ يعرض ما يسعه، والحمولةُ فيها أربعون حقلًا: المدنُ والعناوينُ
+          والسائقُ ومركبتُه والأسعارُ ونوعُ التأجير والحقولُ التي زادها القسمُ
+          من إعداداته. وكانت تُقرأ بفتح شاشة التعديل — بابُ كتابةٍ يُفتَح
+          لقراءة، فيُحفَظ منه تعديلٌ بالخطأ. فصار للقراءة بابُها. */}
+      {detail && (() => {
+        const d = detail;
+        const sv2 = statusVocab.find((x) => x.key === d.status) || null;
+        const st2 = orderStatus(d.status);
+        const cust = typeof d.customer === 'object' && d.customer ? (d.customer as OrderCustomer) : null;
+        const Row = ({ k, v }: { k: string; v: any }) => {
+          const val = v === 0 ? '0' : (v || '').toString().trim();
+          if (!val) return null;
+          return (
+            <div className="flex gap-3 py-1.5 border-b border-slate-100 last:border-0">
+              <span className="w-40 shrink-0 text-xs text-slate-500">{k}</span>
+              <span className="text-[13px] font-semibold text-slate-900 break-words">{val}</span>
+            </div>
+          );
+        };
+        const Group = ({ title, children }: { title: string; children: React.ReactNode }) => (
+          <div className="rounded-xl border border-slate-200 bg-white">
+            <p className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-50 rounded-t-xl border-b border-slate-200">{title}</p>
+            <div className="px-4 py-2">{children}</div>
+          </div>
+        );
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={() => setDetail(null)}>
+            <div className="w-full max-w-3xl bg-slate-50 rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="px-5 py-4 border-b border-slate-200 bg-white rounded-t-2xl flex items-center justify-between sticky top-0 z-10">
+                <div className="min-w-0">
+                  <p className="font-bold text-slate-900 flex items-center gap-2">
+                    {ar ? 'بوليصة' : 'Waybill'} <span className="font-mono">{(d as any).reference || d.waybillNumber}</span>
+                    <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 ${st2 ? `${st2.bg} ${st2.text}` : 'bg-slate-100 text-slate-700'}`}
+                      style={st2 ? undefined : (sv2 ? { background: `${sv2.color}1a`, color: sv2.color } : undefined)}>
+                      {sv2 ? vocabLabel(sv2, lang as Lang) : statusLabel(d.status, lang as Lang)}
+                    </span>
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">{d.customerName || '—'}{d.fromCity ? ` · ${d.fromCity} → ${d.toCity || ''}` : ''}</p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button type="button" onClick={() => downloadWaybill(d)} disabled={downloadingId === d._id}
+                    className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 disabled:opacity-50"
+                    title={ar ? 'تحميل البوليصة PDF' : 'Download waybill PDF'}>
+                    {downloadingId === d._id ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileDown className="w-5 h-5" />}
+                  </button>
+                  {editor && (
+                    <button type="button" onClick={() => router.push(`/system/shipment-orders/new?id=${d._id}`)}
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}>
+                      <Pencil className="w-5 h-5" />
+                    </button>
+                  )}
+                  <button type="button" onClick={() => setDetail(null)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Group title={ar ? 'الرحلة' : 'Trip'}>
+                  <Row k={ar ? 'من مدينة' : 'From city'} v={d.fromCity} />
+                  <Row k={ar ? 'عنوان التحميل' : 'Pickup address'} v={d.addressFrom} />
+                  <Row k={ar ? 'إلى مدينة' : 'To city'} v={d.toCity} />
+                  <Row k={ar ? 'عنوان التسليم' : 'Delivery address'} v={d.addressTo} />
+                  <Row k={ar ? 'موعد التحميل' : 'Pickup time'} v={fmtDT(d.pickupTime, lang as Lang)} />
+                  <Row k={ar ? 'وقت الانطلاق' : 'Start time'} v={fmtDT(d.startTime, lang as Lang)} />
+                  <Row k={ar ? 'وقت الوصول' : 'Arrival time'} v={fmtDT(d.arrivalTime, lang as Lang)} />
+                  <Row k={ar ? 'ملاحظة الرحلة' : 'Trip note'} v={d.notes} />
+                </Group>
+
+                <Group title={ar ? 'الحمولة والمركبة' : 'Load & vehicle'}>
+                  <Row k={ar ? 'نوع الشاحنة' : 'Truck type'} v={d.truckType} />
+                  <Row k={ar ? 'طول الشاحنة' : 'Truck length'} v={d.truckLength} />
+                  <Row k={ar ? 'نوع الحمولة' : 'Cargo type'} v={d.cargoType} />
+                  <Row k={ar ? 'السائق' : 'Driver'} v={d.driverName} />
+                  <Row k={ar ? 'جوال السائق' : 'Driver phone'} v={d.driverPhone} />
+                  <Row k={ar ? 'المركبة' : 'Vehicle'} v={d.vehicleName} />
+                  <Row k={ar ? 'اللوحة' : 'Plate'} v={(d as any).vehiclePlate} />
+                  <Row k={ar ? 'الوسيط' : 'Agent'} v={d.agentName} />
+                </Group>
+
+                <Group title={ar ? 'العميل' : 'Customer'}>
+                  <Row k={ar ? 'الاسم' : 'Name'} v={d.customerName} />
+                  <Row k={ar ? 'الجوال' : 'Phone'} v={cust?.phone} />
+                  <Row k={ar ? 'الفرع' : 'Branch'} v={d.branch} />
+                  <Row k={ar ? 'المصدر' : 'Source'} v={(d as any).source === 'platform' ? (ar ? 'منصّة التشغيل' : 'Operations platform') : (ar ? 'النظام' : 'System')} />
+                  <Row k={ar ? 'أنشأها' : 'Created by'} v={typeof d.createdBy === 'object' && d.createdBy ? `${d.createdBy.firstName || ''} ${d.createdBy.lastName || ''}`.trim() : ''} />
+                  <Row k={ar ? 'تاريخ الإنشاء' : 'Created at'} v={fmtDT(d.createdAt, lang as Lang)} />
+                </Group>
+
+                {/* أرقامُ المال لمن يملكها — الجدولُ نفسُه يعرضها لهؤلاء. */}
+                <Group title={ar ? 'الأجرة والدفع' : 'Fare & payment'}>
+                  <Row k={ar ? 'سعر البيع' : 'Selling price'} v={money(d.sellPrice)} />
+                  <Row k={ar ? 'سعر الشراء' : 'Buying price'} v={money(d.buyPrice)} />
+                  <Row k={ar ? 'نوع تأجير السائق' : 'Driver rent type'} v={d.driverRentType} />
+                  <Row k={ar ? 'أجرة السائق' : 'Driver rent'} v={money(d.driverRentPrice)} />
+                  <Row k={ar ? 'طريقة الدفع' : 'Payment method'} v={d.paymentMethod} />
+                </Group>
+
+                {/* الحقولُ التي زادها القسمُ من إعداداته — تُقرأ بأسمائها لا بمفاتيحها. */}
+                {d.customFields && Object.keys(d.customFields).length > 0 && (
+                  <div className="md:col-span-2">
+                    <Group title={ar ? 'حقول إضافية' : 'Extra fields'}>
+                      {Object.entries(d.customFields).map(([k, v]) => <Row key={k} k={k} v={v as any} />)}
+                    </Group>
+                  </div>
+                )}
+
+                {/* سجلُّ الحالات — نفسُه المعروض في نافذة المتابعة. */}
+                {(d.statusLog || []).length > 0 && (
+                  <div className="md:col-span-2">
+                    <Group title={ar ? 'سجلّ الحالات' : 'Status history'}>
+                      <div className="space-y-1.5 py-1">
+                        {[...(d.statusLog || [])].reverse().map((l, i) => (
+                          <div key={i} className="flex flex-wrap items-center gap-2 text-[12px]">
+                            <span className="font-semibold text-slate-900">{statusLabel(l.to || '', lang as Lang)}</span>
+                            <span className="text-slate-400">·</span>
+                            <span className="text-slate-500">{fmtDT(l.at, lang as Lang)}</span>
+                            {l.byName ? <><span className="text-slate-400">·</span><span className="text-slate-500">{l.byName}</span></> : null}
+                            {l.note ? <span className="text-slate-700">— {l.note}</span> : null}
+                            {(l as any).fileUrl ? (
+                              <a href={(l as any).fileUrl} target="_blank" rel="noreferrer"
+                                className="inline-flex items-center gap-1 font-semibold text-[#f37121] hover:underline">
+                                <FileDown className="w-3 h-3" />{(l as any).fileName || (ar ? 'المرفق' : 'Attachment')}
+                              </a>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </Group>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── نافذةُ المتابعة ───────────────────────────────────────────────────
           الحالةُ تُنقَل، والملاحظةُ اختياريّة — تُكتب حين يكون للنقلة سبب
@@ -584,6 +745,34 @@ export default function ShipmentOrdersPage() {
                   className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
               </div>
 
+              {/* المرفقُ يظهر حين تطلبه الحالة — ولا يُعرَض في غيرها فيُشغِل. */}
+              {STATUS_NEEDS_FILE.has(fu.status) && (
+                <div>
+                  <label className="block text-sm font-semibold text-slate-800 mb-1.5">
+                    {ar ? 'صورة السند أو ملفه' : 'Bond file'}
+                    <span className="text-red-500 ms-1">*</span>
+                  </label>
+                  <input type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) { setFuFile(null); return; }
+                      if (f.size > MAX_UPLOAD) { notify(ar ? 'الملف أكبر من ٢٠ ميجابايت.' : 'File larger than 20MB.', 'error'); e.target.value = ''; return; }
+                      const dataUrl: string = await new Promise((resolve, reject) => {
+                        const r = new FileReader();
+                        r.onload = () => resolve(String(r.result || ''));
+                        r.onerror = () => reject(new Error('read failed'));
+                        r.readAsDataURL(f);
+                      });
+                      setFuFile({ dataUrl, fileName: f.name, size: f.size });
+                    }}
+                    className="block w-full text-xs text-slate-600 file:me-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200" />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    {fuFile ? `${fuFile.fileName} · ${Math.round(fuFile.size / 1024)}KB`
+                      : (ar ? 'لا تُحفَظ الحالة بلا إرفاق السند.' : 'The status is not saved without the bond file.')}
+                  </p>
+                </div>
+              )}
+
               {!!(fu.order.statusLog || []).length && (
                 <div className="border-t border-slate-200 pt-3">
                   <p className="text-xs font-semibold text-slate-500 mb-2">
@@ -601,6 +790,13 @@ export default function ShipmentOrdersPage() {
                           </span>
                         </div>
                         {h.note ? <p className="text-[12.5px] text-slate-700 mt-1">{h.note}</p> : null}
+                        {/* المرفقُ يُقرأ من حيث قُيِّد — لا يُبحَث عنه في مكانٍ آخر. */}
+                        {h.fileUrl ? (
+                          <a href={h.fileUrl} target="_blank" rel="noreferrer"
+                            className="inline-flex items-center gap-1 mt-1 text-[11.5px] font-semibold text-[#f37121] hover:underline">
+                            <FileDown className="w-3 h-3" />{h.fileName || (ar ? 'المرفق' : 'Attachment')}
+                          </a>
+                        ) : null}
                         {h.byName ? <p className="text-[11px] text-slate-400 mt-0.5">{h.byName}</p> : null}
                       </li>
                     ))}

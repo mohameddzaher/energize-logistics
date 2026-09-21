@@ -32,6 +32,45 @@ const valOrBlank = (v) => {
 
 // Ported verbatim from dispatchSheetTemplate.ts — with the Tajawal <link> added
 // to the head (the web loaded it into the parent document separately).
+/**
+ * إقرارُ السائق — بالعربيّة والأردية.
+ *
+ * ── لماذا في الورقة نفسِها ──────────────────────────────────────────────────
+ * البوليصةُ هي ما يحمله السائقُ ويوقّعه عند الاستلام، والإقرارُ هو ما يُلزمه:
+ * أنّه تسلّم الحمولةَ سليمةً، وأنّه مفوَّضٌ من المالك بالتوقيع والتسوية، وأنّه
+ * يتحمّل ما يترتّب على تقصيره. وورقةٌ منفصلةٌ تُنسى أو تُفقَد، وتُوقَّع مرّةً
+ * ثمّ لا تُربَط بحمولةٍ بعينها. فصارت في البوليصة بعينها: رقمُها ورقمُه.
+ *
+ * ── وبلغته ──────────────────────────────────────────────────────────────────
+ * أكثرُ السائقين يقرؤون الأردية، ونصٌّ لا يُقرأ لا يُلزِم أحدًا حقًّا. فيُكتب
+ * بالعربيّة (وهي المعتمدة نظامًا) وتحتها ترجمتُه الأردية بخطٍّ نسخيٍّ يغطّي
+ * حروفَها (ٹ ڈ ڑ ں ے ہ ھ) — وTajawal وحدَها لا تغطّيها فتظهر مربّعات.
+ */
+function pledgeHTML(row) {
+  const stampSrc = getStampDataUri();
+  const line = (v, w) => (v ? `<span class="fill">${esc(v)}</span>` : `<span class="fill" style="padding:0 ${w}px">&nbsp;</span>`);
+  const n = line(row.driverName || '', 70);
+  const i = line(row.driverIqama || '', 45);
+  return `<div class="sheet">
+  <div class="content">
+    <div class="pledge-head">
+      <div class="t1">إقرار السائق</div>
+      <div class="t2">ڈرائیور کا اقرار نامہ</div>
+      <div class="no">بوليصة رقم ${esc(row.dispatchNumber || '')}${row.date ? ` · ${esc(row.date)}` : ''}</div>
+    </div>
+    <div class="pledge-body">
+      <p>أقرّ أنا السائق/ ${n} هوية رقم (${i}) بأنني تسلّمت الحمولة الموضّحة بهذه البوليصة بحالة سليمة، وأتحمّل المسؤولية الكاملة عنها من الاستلام وحتى التسليم. كما تمّ تفويضي من المالك قانونًا بالتوقيع على كافة المستندات التشغيلية، والاتفاق وإتمام التسويات المالية المتعلقة بالحمولة نيابةً عنه. وألتزم بكافة الأنظمة المرورية، وأتحمّل كامل المسؤولية عن أيّ أضرار أو مخالفات تترتّب على تقصيري أو مخالفتي لأنظمة المملكة العربية السعودية.</p>
+      <p class="ur">میں ڈرائیور/ ${n} شناختی نمبر (${i}) اقرار کرتا ہوں کہ میں نے اس بلٹی میں درج مال درست حالت میں وصول کیا ہے، اور وصولی سے حوالگی تک اس کی مکمل ذمہ داری قبول کرتا ہوں۔ نیز مجھے مالک کی طرف سے قانونی طور پر اختیار حاصل ہے کہ میں تمام آپریشنل دستاویزات پر دستخط کروں اور مال سے متعلق معاہدہ اور مالی تصفیہ اُس کی جانب سے مکمل کروں۔ میں تمام ٹریفک قوانین کی پابندی کا عہد کرتا ہوں، اور اپنی کوتاہی یا مملکتِ سعودی عرب کے قوانین کی خلاف ورزی سے پیدا ہونے والے کسی بھی نقصان یا جرمانے کی مکمل ذمہ داری قبول کرتا ہوں۔</p>
+    </div>
+    <div class="pledge-sign">
+      <div class="box"><div class="k">التوقيع · دستخط</div><div class="l"></div></div>
+      <div class="box"><div class="k">التاريخ · تاریخ</div><div class="l"></div></div>
+    </div>
+    <div class="stamp-wrap"><img src="${esc(stampSrc)}" alt="" /></div>
+  </div>
+</div>`;
+}
+
 function buildDispatchSheetHTML(row) {
   const stampSrc = getStampDataUri();
   return `
@@ -39,7 +78,7 @@ function buildDispatchSheetHTML(row) {
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8" />
-<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&family=Noto+Naskh+Arabic:wght@400;600&display=swap" rel="stylesheet" />
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { font-family: 'Tajawal', 'Noto Sans Arabic', system-ui, sans-serif; direction: rtl; color: #1a1a1a; background: transparent; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
@@ -71,6 +110,25 @@ function buildDispatchSheetHTML(row) {
   .fare-section .fare-row .ar-label { font-size: 13.5px; font-weight: 700; color: #2a2a2a; text-align: right; }
   .fare-section .fare-row .value { font-size: 17px; font-weight: 800; color: #1a1a1a; text-align: center; }
   .fare-section .fare-row .en-label { font-size: 12px; font-weight: 700; color: #2a2a2a; text-align: left; direction: ltr; letter-spacing: 0.3px; }
+  /* ── الإقرار ──────────────────────────────────────────────────────────────
+     نصٌّ يوقّع عليه السائق، فيُقرأ بلغته: بالعربيّة وبالأردية. وهو فقرةٌ لا
+     جدول، وخطُّها أصغرُ من خطّ البيانات لأنّها تُقرأ مرّةً وتُوقَّع — والمساحةُ
+     في الورقة محسوبة (الصندوق ١٩٧مم وما زاد يُقصّ). */
+  /* ── صفحةُ الإقرار ────────────────────────────────────────────────────────
+     جُرّب وضعُه في ذيل الصفحة الأولى، فخرج عن صندوق المحتوى (١٩٧مم) ووقع فوق
+     تذييل الورقة المطبوع — و«overflow:hidden» يقصّ ما زاد، فبان نصفُ النصّ
+     ونُزع الختم. وهو نصٌّ يوقّع عليه السائقُ ويُحتجّ به، فلا يُصغَّر حتى لا
+     يُقرأ ولا يُقصّ. فصفحتُه له، بترويسة الشركة نفسِها وبخانتَي توقيعٍ وتاريخ. */
+  .pledge-head { text-align: center; margin-bottom: 14px; }
+  .pledge-head .t1 { font-size: 22px; font-weight: 800; }
+  .pledge-head .t2 { font-family: 'Noto Naskh Arabic', 'Tajawal', sans-serif; font-size: 17px; font-weight: 600; color: #444; margin-top: 2px; }
+  .pledge-head .no { font-size: 12px; font-weight: 700; color: #F58220; margin-top: 6px; }
+  .pledge-body p { font-size: 12.5px; line-height: 2.05; color: #1a1a1a; text-align: justify; }
+  .pledge-body .ur { font-family: 'Noto Naskh Arabic', 'Tajawal', sans-serif; font-size: 12px; line-height: 2.2; direction: rtl; margin-top: 14px; padding-top: 12px; border-top: 1px dashed #dcdcdc; }
+  .pledge-sign { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+  .pledge-sign .box .k { font-size: 12px; font-weight: 700; color: #2a2a2a; margin-bottom: 26px; }
+  .pledge-sign .box .l { border-bottom: 1px solid #1a1a1a; }
+  .fill { font-weight: 800; border-bottom: 1px solid #1a1a1a; padding: 0 10px; }
   .stamp-wrap { margin-top: auto; padding-top: 10px; text-align: center; }
   .stamp-wrap img { width: 120px; height: auto; display: inline-block; }
 </style>
@@ -120,6 +178,7 @@ function buildDispatchSheetHTML(row) {
     <div class="stamp-wrap"><img src="${esc(stampSrc)}" alt="" /></div>
   </div>
 </div>
+${pledgeHTML(row)}
 </body>
 </html>`;
 }
@@ -164,16 +223,28 @@ async function renderWaybillPdf(row) {
     await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1.5 });
     await page.setContent(buildDispatchSheetHTML(row), { waitUntil: 'networkidle0', timeout: 20000 });
     try { await page.evaluateHandle('document.fonts.ready'); } catch (e) { /* fallback font */ }
-    const el = await page.$('.sheet');
-    const overlayPng = await el.screenshot({ omitBackground: true, type: 'png' });
+    // ── وكلُّ ورقةٍ في المستند ورقةٌ بترويستها ──────────────────────────
+    // صار للبوليصة ورقتان: بياناتُها وإقرارُ السائق. فيُلتقط كلُّ `.sheet`
+    // ويُطبَع على نسخةٍ من الورق المطبوع — لا تُقصّ ورقةٌ لتسع أخرى.
+    const els = await page.$$('.sheet');
+    const shots = [];
+    for (const el of els) {
+      // eslint-disable-next-line no-await-in-loop
+      shots.push(await el.screenshot({ omitBackground: true, type: 'png' }));
+    }
 
-    const pdfDoc = await PDFDocument.load(getLetterhead());
-    const p0 = pdfDoc.getPages()[0];
-    const { width, height } = p0.getSize();
-    const png = await pdfDoc.embedPng(overlayPng);
-    p0.drawImage(png, { x: 0, y: 0, width, height });
-    while (pdfDoc.getPageCount() > 1) pdfDoc.removePage(pdfDoc.getPageCount() - 1);
-    return Buffer.from(await pdfDoc.save());
+    const letterhead = await PDFDocument.load(getLetterhead());
+    const outDoc = await PDFDocument.create();
+    for (const shot of shots) {
+      // eslint-disable-next-line no-await-in-loop
+      const [sheetPage] = await outDoc.copyPages(letterhead, [0]);
+      outDoc.addPage(sheetPage);
+      const { width, height } = sheetPage.getSize();
+      // eslint-disable-next-line no-await-in-loop
+      const png = await outDoc.embedPng(shot);
+      sheetPage.drawImage(png, { x: 0, y: 0, width, height });
+    }
+    return Buffer.from(await outDoc.save());
   } finally {
     await page.close();
   }
@@ -226,9 +297,10 @@ async function renderWaybillsPdf(rows) {
     if (!one) continue;
     // eslint-disable-next-line no-await-in-loop
     const doc = await PDFDocument.load(one);
+    // صفحاتُ البوليصة كلُّها لا أولاها: صار معها إقرارُ السائق.
     // eslint-disable-next-line no-await-in-loop
-    const [copied] = await merged.copyPages(doc, [0]);
-    merged.addPage(copied);
+    const copied = await merged.copyPages(doc, doc.getPageIndices());
+    copied.forEach((pg) => merged.addPage(pg));
   }
   return Buffer.from(await merged.save());
 }

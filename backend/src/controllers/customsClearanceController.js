@@ -301,8 +301,22 @@ exports.getAnalytics = async (req, res) => {
     for (const [k, path] of Object.entries(eq)) if (q[k]) filter[path] = q[k];
     if (q.month) filter.periodMonth = Number(q.month);
 
+    // ── ولا يُنقَل من الحقل إلّا ما يُجمَع ────────────────────────────────
+    // كانت تُقرأ `costs` و`revenue` و`billing` كاملةً — وهي أثقلُ ثلاثةِ حقولٍ
+    // في السجلّ (مئةٌ وستّةٌ وعشرون كيلوبايت من مئتين)، والحسابُ لا يمسّ منها
+    // إلّا ثلاثةَ أرقامٍ وحالةَ الفوترة. والوصلةُ إلى العنقود هي الثمنُ كلُّه
+    // لا الحساب — راجع dashboard-performance.
+    //
+    // ── وتُحفَظ دقيقةً ────────────────────────────────────────────────────
+    // اللوحةُ تُقرأ ولا تُكتب، وتُفتح مع كلّ فتحةٍ للصفحة ومع كلّ تحديثٍ حيّ.
+    // وكانت تُحسب من أوّلها في كلّ مرّة: ثلاثُ ثوانٍ ينتظرها كلُّ من يفتح.
+    // والكتابةُ في القسم تمسح `customs:` فلا تُقرأ أرقامٌ سبقت التعديل.
+    const ak = `customs:analytics:${JSON.stringify(q)}`;
+    const hit = cache.get(ak);
+    if (hit !== undefined) return res.json(hit);
+
     let list = await CustomsClearance.find(filter)
-      .select('blNumber refNumber customerName shippingAgent port stage city branch containerCount totalWeight periodMonth periodYear costs revenue billing createdAt')
+      .select('blNumber refNumber customerName shippingAgent port stage city branch containerCount periodMonth periodYear costs.total revenue.totalInvoiced revenue.clearanceFee billing.invoiceStatus')
       .lean();
 
     // from/to are month keys (YYYY-MM); filter in JS so rows with no period survive
@@ -366,7 +380,7 @@ exports.getAnalytics = async (req, res) => {
       }))
       .sort((a, b) => (a.year - b.year) || (a.month - b.month));
 
-    res.json({
+    const payload = {
       totals: {
         clearances: list.length,
         containers: totalContainers,
@@ -409,7 +423,9 @@ exports.getAnalytics = async (req, res) => {
         costs: round(num(r.costs && r.costs.total)),
         profit: round(num(r.revenue && r.revenue.totalInvoiced) - num(r.costs && r.costs.total)),
       })).filter((d) => d.profit < 0).sort((a, b) => a.profit - b.profit).slice(0, 20),
-    });
+    };
+    cache.set(ak, payload, 60000);
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ message: error.message || 'Failed to load customs analytics' });
   }

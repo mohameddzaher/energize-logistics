@@ -105,6 +105,10 @@ const shipmentOrderSchema = new mongoose.Schema(
     //
     // ويُقيَّد كلُّ انتقال: «متى صارت في الطريق؟» و«من أخّرها؟» سؤالان يُسألان
     // بعد أسبوع، ولا جوابَ لهما إن حُفظت الحالةُ الأخيرةُ وحدَها.
+    //
+    // ── والنقلةُ قد تحمل ورقتَها ────────────────────────────────────────────
+    // «أُرسل السند» قولٌ عن ورقةٍ أُرسلت، فالورقةُ تُرفَق مع النقلة نفسِها لا
+    // في مكانٍ آخر يُبحَث عنه لاحقًا (راجع REQUIRE_FILE في المتحكّم).
     statusLog: [{
       from: { type: String, default: '' },
       to: { type: String, default: '' },
@@ -112,6 +116,10 @@ const shipmentOrderSchema = new mongoose.Schema(
       at: { type: Date, default: Date.now },
       by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
       byName: { type: String, default: '' },
+      fileUrl: { type: String, default: '' },
+      fileName: { type: String, default: '' },
+      mimeType: { type: String, default: '' },
+      size: { type: Number, default: 0 },
     }],
 
     // Values of user-added inputs from the form-settings page, keyed by the

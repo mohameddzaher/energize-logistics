@@ -9,6 +9,7 @@ const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 const { createNotification } = require('../services/notificationService');
 const { statusVocabulary, isValidStatus } = require('../utils/shipmentOrderStatuses');
+const { saveUploadFile } = require('../utils/fileStore');
 
 // The trial section for creating shipments natively, instead of on the external
 // UPL platform. Fully self-contained: nothing here reads or writes anything the
@@ -569,6 +570,11 @@ exports.updateCounter = async (req, res) => {
   }
 };
 
+// ── حالاتٌ لا تُقال بلا ورقة ────────────────────────────────────────────────
+// «أُرسل السند» وحدَها اليوم. وهي مجموعةٌ لا شرطٌ مكتوبٌ في مكانه، لأنّ القسم
+// يزيد حالاتٍ من إعداداته وقد تلزم الورقةُ لغيرها غدًا.
+const REQUIRE_FILE = new Set(['bond_sent']);
+
 exports.patchStatus = async (req, res) => {
   try {
     const { status } = req.body;
@@ -582,13 +588,34 @@ exports.patchStatus = async (req, res) => {
     if (!order) return res.status(404).json({ message: 'Shipment order not found' });
     const from = order.status;
     const note = String(req.body.note || '').trim().slice(0, 500);
+
+    // ── وحالةٌ تقول «أُرسل السند» تُثبِت السند ──────────────────────────────
+    // نقلُ الحالة إلى «أُرسل السند» قولٌ عن ورقةٍ خرجت، وعليه تقوم المطالبةُ
+    // والتحصيل. وبلا الورقة يبقى القولُ بلا سند: يُسأل عنها بعد أسبوع فتُطلَب
+    // من الموظّف، وقد نسي أيَّها أرسل. فالنقلةُ نفسُها تحمل مرفقَها.
+    let file = null;
+    if (req.body.dataUrl) {
+      try {
+        file = saveUploadFile(String(req.body.dataUrl), 'shipment-orders', String(req.body.fileName || ''));
+      } catch (e) {
+        return res.status(400).json({ message: e.message || 'تعذّر حفظ المرفق' });
+      }
+    }
+    if (REQUIRE_FILE.has(status) && from !== status && !file) {
+      return res.status(400).json({
+        code: 'ATTACHMENT_REQUIRED',
+        message: 'حالة «أُرسل السند» تحتاج إرفاق صورة السند أو ملفه.',
+      });
+    }
+
     // نقلةٌ بلا تغييرٍ ولا ملاحظةٍ لا تُقيَّد: السجلُّ يمتلئ بأسطرٍ لا تقول شيئًا.
-    if (from === status && !note) return res.json({ order });
+    if (from === status && !note && !file) return res.json({ order });
     order.status = status;
     order.statusLog.push({
       from, to: status, note, at: new Date(),
       by: req.user._id,
       byName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
+      ...(file || {}),
     });
     await order.save();
     emit('shipmentOrders:updated', { id: String(order._id) });
@@ -627,19 +654,14 @@ exports.listStatuses = async (req, res) => {
 };
 
 exports.deleteOrder = async (req, res) => {
-  try {
-    const order = await ShipmentOrder.findByIdAndDelete(req.params.id);
-    if (!order) return res.status(404).json({ message: 'Shipment order not found' });
-    emit('shipmentOrders:updated', { id: String(req.params.id) });
-    await logAudit({
-      user: req.user, action: 'delete', entity: 'ShipmentOrder', entityId: req.params.id,
-      changes: { waybillNumber: order.waybillNumber, customerName: order.customerName },
-      ipAddress: req.ip,
-    });
-    res.json({ message: 'Shipment order deleted' });
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to delete the shipment order' });
-  }
+  // ── ولا تُمحى بوليصةٌ صدرت ────────────────────────────────────────────────
+  // الرقمُ أُعطي للعميل والسائق، والصفُّ يحمل سجلَّ حالاته ومرفقاتِه. ومحوُه
+  // يُخفي الواقعةَ ويقطع تسلسلَ الأرقام — والإلغاءُ حالةٌ لا حذف: تبقى مقروءةً
+  // ومفلترةً ومحسوبةً، ويُعرَف من ألغاها ومتى ولماذا.
+  return res.status(405).json({
+    code: 'DELETE_DISABLED',
+    message: 'البوليصة لا تُحذف — غيّر حالتها إلى «ملغاة» ليبقى سجلُّها.',
+  });
 };
 
 // ── Customers ───────────────────────────────────────────────────────────────

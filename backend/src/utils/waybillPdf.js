@@ -47,28 +47,20 @@ const valOrBlank = (v) => {
  * حروفَها (ٹ ڈ ڑ ں ے ہ ھ) — وTajawal وحدَها لا تغطّيها فتظهر مربّعات.
  */
 function pledgeHTML(row) {
-  const stampSrc = getStampDataUri();
   const line = (v, w) => (v ? `<span class="fill">${esc(v)}</span>` : `<span class="fill" style="padding:0 ${w}px">&nbsp;</span>`);
-  const n = line(row.driverName || '', 70);
-  const i = line(row.driverIqama || '', 45);
-  return `<div class="sheet">
-  <div class="content">
-    <div class="pledge-head">
-      <div class="t1">إقرار السائق</div>
-      <div class="t2">ڈرائیور کا اقرار نامہ</div>
-      <div class="no">بوليصة رقم ${esc(row.dispatchNumber || '')}${row.date ? ` · ${esc(row.date)}` : ''}</div>
-    </div>
-    <div class="pledge-body">
+  const n = line(row.driverName || '', 42);
+  const i = line(row.driverIqama || '', 26);
+  return `<div class="pledge">
+    <div class="head"><span>إقرار السائق</span><span class="ur-t">ڈرائیور کا اقرار نامہ</span></div>
+    <div class="cols">
       <p>أقرّ أنا السائق/ ${n} هوية رقم (${i}) بأنني تسلّمت الحمولة الموضّحة بهذه البوليصة بحالة سليمة، وأتحمّل المسؤولية الكاملة عنها من الاستلام وحتى التسليم. كما تمّ تفويضي من المالك قانونًا بالتوقيع على كافة المستندات التشغيلية، والاتفاق وإتمام التسويات المالية المتعلقة بالحمولة نيابةً عنه. وألتزم بكافة الأنظمة المرورية، وأتحمّل كامل المسؤولية عن أيّ أضرار أو مخالفات تترتّب على تقصيري أو مخالفتي لأنظمة المملكة العربية السعودية.</p>
       <p class="ur">میں ڈرائیور/ ${n} شناختی نمبر (${i}) اقرار کرتا ہوں کہ میں نے اس بلٹی میں درج مال درست حالت میں وصول کیا ہے، اور وصولی سے حوالگی تک اس کی مکمل ذمہ داری قبول کرتا ہوں۔ نیز مجھے مالک کی طرف سے قانونی طور پر اختیار حاصل ہے کہ میں تمام آپریشنل دستاویزات پر دستخط کروں اور مال سے متعلق معاہدہ اور مالی تصفیہ اُس کی جانب سے مکمل کروں۔ میں تمام ٹریفک قوانین کی پابندی کا عہد کرتا ہوں، اور اپنی کوتاہی یا مملکتِ سعودی عرب کے قوانین کی خلاف ورزی سے پیدا ہونے والے کسی بھی نقصان یا جرمانے کی مکمل ذمہ داری قبول کرتا ہوں۔</p>
     </div>
-    <div class="pledge-sign">
-      <div class="box"><div class="k">التوقيع · دستخط</div><div class="l"></div></div>
-      <div class="box"><div class="k">التاريخ · تاریخ</div><div class="l"></div></div>
+    <div class="sign">
+      <div><div class="k">توقيع السائق · ڈرائیور کے دستخط</div><div class="l"></div></div>
+      <div><div class="k">التاريخ · تاریخ</div><div class="l"></div></div>
     </div>
-    <div class="stamp-wrap"><img src="${esc(stampSrc)}" alt="" /></div>
-  </div>
-</div>`;
+  </div>`;
 }
 
 function buildDispatchSheetHTML(row) {
@@ -83,54 +75,55 @@ function buildDispatchSheetHTML(row) {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { font-family: 'Tajawal', 'Noto Sans Arabic', system-ui, sans-serif; direction: rtl; color: #1a1a1a; background: transparent; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
   .sheet { width: 210mm; height: 297mm; position: relative; background: transparent; overflow: hidden; }
-  .content { position: absolute; top: 40mm; bottom: 60mm; left: 16mm; right: 16mm; display: flex; flex-direction: column; }
+  /* ── الورقةُ واحدة، فالمقاساتُ محسوبة ────────────────────────────────────
+     البوليصةُ تُسلَّم بيدٍ وتُطبَع بالمئات، فصفحةٌ ثانيةٌ لها ثمنٌ يوميّ. وقد
+     زادها الإقرار، فضُغط المستندُ كلُّه بدل أن يُقسَم: الخطوطُ أصغرُ بقدرٍ
+     يبقى مقروءًا، والتذييلُ المطبوعُ في الورق يشغل نحوَ أربعةٍ وعشرين
+     مليمترًا لا ستّين — فالصندوقُ يمتدّ إلى ٤٤مم من أسفلَ بأمان.
+     وكلُّ تغييرٍ هنا يُعايَن بالعين: «overflow:hidden» يقصّ ما زاد صامتًا. */
+  .content { position: absolute; top: 34mm; bottom: 44mm; left: 15mm; right: 15mm; display: flex; flex-direction: column; }
   .title-block, .meta-row, .section, .stamp-wrap { flex-shrink: 0; }
-  .title-block { text-align: center; margin-bottom: 12px; }
-  .doc-title { font-size: 40px; font-weight: 800; color: #1a1a1a; line-height: 1.1; margin-bottom: 10px; }
-  .doc-subtitle { font-size: 17px; font-weight: 700; color: #333; line-height: 1.25; }
+  .title-block { text-align: center; margin-bottom: 6px; }
+  .doc-title { font-size: 30px; font-weight: 800; color: #1a1a1a; line-height: 1.05; margin-bottom: 4px; }
+  .doc-subtitle { font-size: 13.5px; font-weight: 700; color: #333; line-height: 1.2; }
   .doc-subtitle .en { color: #555; font-weight: 700; margin-right: 6px; }
-  .title-accent { width: 90px; height: 3px; background: #F58220; margin: 10px auto 0; border-radius: 2px; }
-  .meta-row { display: flex; gap: 4px; margin-bottom: 10px; background: rgba(253, 240, 224, 0.97); border: 1.5px solid #e8b585; border-radius: 6px; }
-  .meta-box { flex: 1; padding: 10px 12px 12px; text-align: center; border-left: 1px solid #d9b388; line-height: 1.4; }
+  .title-accent { width: 70px; height: 2.5px; background: #F58220; margin: 5px auto 0; border-radius: 2px; }
+  .meta-row { display: flex; gap: 4px; margin-bottom: 6px; background: rgba(253, 240, 224, 0.97); border: 1.2px solid #e8b585; border-radius: 5px; }
+  .meta-box { flex: 1; padding: 5px 8px 6px; text-align: center; border-left: 1px solid #d9b388; line-height: 1.25; }
   .meta-box:last-child { border-left: none; }
-  .meta-box .lbl-ar { display: block; font-size: 13px; font-weight: 700; color: #6e4f2e; line-height: 1.5; }
-  .meta-box .lbl-en { display: block; font-size: 11px; font-weight: 700; color: #6e4f2e; direction: ltr; letter-spacing: 0.3px; line-height: 1.5; margin-bottom: 5px; }
-  .meta-box .val { display: block; font-size: 16px; font-weight: 800; color: #1a1a1a; line-height: 1.5; padding-bottom: 2px; }
-  .section { margin-bottom: 7px; padding: 5px 10px 6px; border-right: 3px solid #F58220; background: rgba(255, 255, 255, 0.86); border-radius: 0 4px 4px 0; }
-  .section-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px dashed #f0d8c0; padding-bottom: 3px; margin-bottom: 4px; }
-  .section-head .ar { font-size: 14px; font-weight: 800; color: #F58220; }
-  .section-head .en { font-size: 12px; font-weight: 800; color: #F58220; direction: ltr; letter-spacing: 0.4px; }
-  .row { display: grid; grid-template-columns: 115px 1fr 125px; align-items: baseline; gap: 10px; padding: 5px 2px; border-bottom: 1px dashed #ececec; line-height: 1.45; }
+  .meta-box .lbl-ar { display: block; font-size: 11px; font-weight: 700; color: #6e4f2e; line-height: 1.3; }
+  .meta-box .lbl-en { display: block; font-size: 9.5px; font-weight: 700; color: #6e4f2e; direction: ltr; letter-spacing: 0.3px; line-height: 1.3; margin-bottom: 2px; }
+  .meta-box .val { display: block; font-size: 14px; font-weight: 800; color: #1a1a1a; line-height: 1.35; }
+  .section { margin-bottom: 4px; padding: 3px 8px 4px; border-right: 2.5px solid #F58220; background: rgba(255, 255, 255, 0.86); border-radius: 0 4px 4px 0; }
+  .section-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px dashed #f0d8c0; padding-bottom: 2px; margin-bottom: 2px; }
+  .section-head .ar { font-size: 12px; font-weight: 800; color: #F58220; }
+  .section-head .en { font-size: 10px; font-weight: 800; color: #F58220; direction: ltr; letter-spacing: 0.4px; }
+  .row { display: grid; grid-template-columns: 95px 1fr 105px; align-items: baseline; gap: 8px; padding: 2.5px 2px; border-bottom: 1px dashed #ececec; line-height: 1.25; }
   .row:last-child { border-bottom: none; }
-  .row .ar-label { font-size: 13.5px; font-weight: 700; color: #2a2a2a; text-align: right; }
-  .row .value { font-size: 14.5px; font-weight: 700; color: #1a1a1a; text-align: center; min-height: 20px; }
-  .row .en-label { font-size: 12px; font-weight: 700; color: #2a2a2a; text-align: left; direction: ltr; letter-spacing: 0.3px; }
+  .row .ar-label { font-size: 11.5px; font-weight: 700; color: #2a2a2a; text-align: right; }
+  .row .value { font-size: 12.5px; font-weight: 700; color: #1a1a1a; text-align: center; min-height: 14px; }
+  .row .en-label { font-size: 10px; font-weight: 700; color: #2a2a2a; text-align: left; direction: ltr; letter-spacing: 0.3px; }
   .row .blank { display: inline-block; width: 60%; border-bottom: 1px dotted #bbb; height: 0.7em; vertical-align: middle; }
-  .fare-section .fare-row { display: grid; grid-template-columns: 115px 1fr 125px; align-items: baseline; gap: 10px; padding: 5px 2px 2px; }
-  .fare-section .fare-row .ar-label { font-size: 13.5px; font-weight: 700; color: #2a2a2a; text-align: right; }
-  .fare-section .fare-row .value { font-size: 17px; font-weight: 800; color: #1a1a1a; text-align: center; }
-  .fare-section .fare-row .en-label { font-size: 12px; font-weight: 700; color: #2a2a2a; text-align: left; direction: ltr; letter-spacing: 0.3px; }
-  /* ── الإقرار ──────────────────────────────────────────────────────────────
-     نصٌّ يوقّع عليه السائق، فيُقرأ بلغته: بالعربيّة وبالأردية. وهو فقرةٌ لا
-     جدول، وخطُّها أصغرُ من خطّ البيانات لأنّها تُقرأ مرّةً وتُوقَّع — والمساحةُ
-     في الورقة محسوبة (الصندوق ١٩٧مم وما زاد يُقصّ). */
-  /* ── صفحةُ الإقرار ────────────────────────────────────────────────────────
-     جُرّب وضعُه في ذيل الصفحة الأولى، فخرج عن صندوق المحتوى (١٩٧مم) ووقع فوق
-     تذييل الورقة المطبوع — و«overflow:hidden» يقصّ ما زاد، فبان نصفُ النصّ
-     ونُزع الختم. وهو نصٌّ يوقّع عليه السائقُ ويُحتجّ به، فلا يُصغَّر حتى لا
-     يُقرأ ولا يُقصّ. فصفحتُه له، بترويسة الشركة نفسِها وبخانتَي توقيعٍ وتاريخ. */
-  .pledge-head { text-align: center; margin-bottom: 14px; }
-  .pledge-head .t1 { font-size: 22px; font-weight: 800; }
-  .pledge-head .t2 { font-family: 'Noto Naskh Arabic', 'Tajawal', sans-serif; font-size: 17px; font-weight: 600; color: #444; margin-top: 2px; }
-  .pledge-head .no { font-size: 12px; font-weight: 700; color: #F58220; margin-top: 6px; }
-  .pledge-body p { font-size: 12.5px; line-height: 2.05; color: #1a1a1a; text-align: justify; }
-  .pledge-body .ur { font-family: 'Noto Naskh Arabic', 'Tajawal', sans-serif; font-size: 12px; line-height: 2.2; direction: rtl; margin-top: 14px; padding-top: 12px; border-top: 1px dashed #dcdcdc; }
-  .pledge-sign { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
-  .pledge-sign .box .k { font-size: 12px; font-weight: 700; color: #2a2a2a; margin-bottom: 26px; }
-  .pledge-sign .box .l { border-bottom: 1px solid #1a1a1a; }
-  .fill { font-weight: 800; border-bottom: 1px solid #1a1a1a; padding: 0 10px; }
-  .stamp-wrap { margin-top: auto; padding-top: 10px; text-align: center; }
-  .stamp-wrap img { width: 120px; height: auto; display: inline-block; }
+  .fare-section .fare-row { display: grid; grid-template-columns: 95px 1fr 105px; align-items: baseline; gap: 8px; padding: 2.5px 2px 1px; }
+  .fare-section .fare-row .ar-label { font-size: 11.5px; font-weight: 700; color: #2a2a2a; text-align: right; }
+  .fare-section .fare-row .value { font-size: 14.5px; font-weight: 800; color: #1a1a1a; text-align: center; }
+  .fare-section .fare-row .en-label { font-size: 10px; font-weight: 700; color: #2a2a2a; text-align: left; direction: ltr; letter-spacing: 0.3px; }
+  /* ── الإقرارُ في ذيل الورقة نفسِها ────────────────────────────────────────
+     صفحةٌ ثانيةٌ لكلّ بوليصةٍ تعني ضعفَ الورق يوميًّا، فبقي في ورقته: عمودان
+     متجاوران (العربيُّ والأرديّ) بخطٍّ صغيرٍ يبقى مقروءًا، وخانتا توقيعٍ
+     وتاريخٍ تحتهما. */
+  .pledge { margin-top: 4px; border: 1px solid #e0d2c2; border-radius: 4px; padding: 4px 7px 5px; }
+  .pledge .head { display: flex; justify-content: space-between; align-items: baseline; font-size: 10px; font-weight: 800; color: #F58220; margin-bottom: 2px; }
+  .pledge .head .ur-t { font-family: 'Noto Naskh Arabic', 'Tajawal', sans-serif; font-weight: 600; }
+  .pledge .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .pledge p { font-size: 8.3px; line-height: 1.6; color: #2a2a2a; text-align: justify; }
+  .pledge .ur { font-family: 'Noto Naskh Arabic', 'Tajawal', sans-serif; font-size: 8.1px; line-height: 1.72; border-inline-start: 1px dashed #ececec; padding-inline-start: 7px; }
+  .pledge .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 6px; padding-top: 4px; border-top: 1px dashed #ececec; }
+  .pledge .sign .k { font-size: 9.5px; font-weight: 700; color: #2a2a2a; }
+  .pledge .sign .l { margin-top: 12px; border-bottom: 1px solid #1a1a1a; }
+  .fill { font-weight: 800; border-bottom: 1px solid #1a1a1a; padding: 0 7px; }
+  .stamp-wrap { margin-top: auto; padding-top: 4px; text-align: center; }
+  .stamp-wrap img { width: 95px; height: auto; display: inline-block; }
 </style>
 </head>
 <body>
@@ -175,10 +168,10 @@ function buildDispatchSheetHTML(row) {
       <div class="section-head"><span class="ar">ملاحظات</span><span class="en">Notes</span></div>
       <div class="row" style="grid-template-columns: 1fr;"><span class="value" style="text-align:start">${esc(row.notes)}</span></div>
     </div>` : ''}
+    ${pledgeHTML(row)}
     <div class="stamp-wrap"><img src="${esc(stampSrc)}" alt="" /></div>
   </div>
 </div>
-${pledgeHTML(row)}
 </body>
 </html>`;
 }
@@ -223,28 +216,20 @@ async function renderWaybillPdf(row) {
     await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1.5 });
     await page.setContent(buildDispatchSheetHTML(row), { waitUntil: 'networkidle0', timeout: 20000 });
     try { await page.evaluateHandle('document.fonts.ready'); } catch (e) { /* fallback font */ }
-    // ── وكلُّ ورقةٍ في المستند ورقةٌ بترويستها ──────────────────────────
-    // صار للبوليصة ورقتان: بياناتُها وإقرارُ السائق. فيُلتقط كلُّ `.sheet`
-    // ويُطبَع على نسخةٍ من الورق المطبوع — لا تُقصّ ورقةٌ لتسع أخرى.
-    const els = await page.$$('.sheet');
-    const shots = [];
-    for (const el of els) {
-      // eslint-disable-next-line no-await-in-loop
-      shots.push(await el.screenshot({ omitBackground: true, type: 'png' }));
-    }
+    // ── والبوليصةُ ورقةٌ واحدة ─────────────────────────────────────────
+    // بياناتُها وإقرارُ سائقها في ورقةٍ واحدة: تُسلَّم بيدٍ وتُطبَع بالمئات،
+    // فورقةٌ ثانيةٌ لكلّ واحدةٍ ضعفُ الورق كلَّ يوم. والإقرارُ ضُغط ليسع لا
+    // ليُقسَم — راجع أنماطَ `.pledge`.
+    const el = await page.$('.sheet');
+    const overlayPng = await el.screenshot({ omitBackground: true, type: 'png' });
 
-    const letterhead = await PDFDocument.load(getLetterhead());
-    const outDoc = await PDFDocument.create();
-    for (const shot of shots) {
-      // eslint-disable-next-line no-await-in-loop
-      const [sheetPage] = await outDoc.copyPages(letterhead, [0]);
-      outDoc.addPage(sheetPage);
-      const { width, height } = sheetPage.getSize();
-      // eslint-disable-next-line no-await-in-loop
-      const png = await outDoc.embedPng(shot);
-      sheetPage.drawImage(png, { x: 0, y: 0, width, height });
-    }
-    return Buffer.from(await outDoc.save());
+    const pdfDoc = await PDFDocument.load(getLetterhead());
+    const p0 = pdfDoc.getPages()[0];
+    const { width, height } = p0.getSize();
+    const png = await pdfDoc.embedPng(overlayPng);
+    p0.drawImage(png, { x: 0, y: 0, width, height });
+    while (pdfDoc.getPageCount() > 1) pdfDoc.removePage(pdfDoc.getPageCount() - 1);
+    return Buffer.from(await pdfDoc.save());
   } finally {
     await page.close();
   }

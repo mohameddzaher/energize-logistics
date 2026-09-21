@@ -563,6 +563,9 @@ const LIST_FIELDS = [
   'driverName', 'driverPhone', 'truckType', 'truckSize', 'loadType', 'quantity',
   'representativeName', 'operationsReview',
   'paymentDate', 'payingBranch', 'paymentAmount', 'paymentType',
+  // مسؤولُ البيانات يُقرأ في الجدول — وبغيره يظهر بعد الحفظ ثمّ يختفي في أوّل
+  // تحديثٍ حيّ، لأنّ الصفَّ يعود من القائمة بلا هذا الحقل.
+  'paymentDateByName', 'paymentDateAt',
   'finalReportDestination', 'documentNumber', 'sendingDate',
   'branchDeliveryDate', 'deliveryDate',
   'accountingReview', 'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice',

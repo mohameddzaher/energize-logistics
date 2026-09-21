@@ -275,15 +275,32 @@ router.get('/alerts', async (req, res) => {
     const filter = { resolvedAt: null };
     if (req.query.plate) filter.plate = String(req.query.plate).trim();
     if (req.query.type) filter.type = { $in: String(req.query.type).split(',').map((s) => s.trim()).filter(Boolean) };
-    const alerts = await Ls2Alert.find(filter).sort({ createdAt: -1 }).limit(500).lean();
+    const [alerts, crew, units] = await Promise.all([
+      Ls2Alert.find(filter).sort({ createdAt: -1 }).limit(500).lean(),
+      crewIndex(),
+      Ls2Vehicle.find({}).select('plate driver').lean(),
+    ]);
+    // ── والتنبيهُ يقول مَن يُبلَّغ ────────────────────────────────────────────
+    // «إطارُ الشاحنة ٣٤٤٩ على ٩٤ درجة» خبرٌ ناقص: مَن يسوقها الآن، وبأيّ رقمٍ
+    // يُبلَّغ؟ وكان يُبحَث عنهما بيدٍ في شاشةٍ أخرى والشاحنةُ تسير. فيُرسَلان مع
+    // التنبيه نفسِه (راجع `crewFor` — ولا يُخمَّن رقمٌ بين سائقَين).
+    const byPlate = new Map(units.map((u) => [String(u.plate || '').trim(), u]));
     res.json({
       generatedAt: new Date().toISOString(),
       count: alerts.length,
-      alerts: alerts.map((a) => ({
-        plate: a.plate, type: a.type, severity: a.severity ?? null,
-        message: a.message ?? null, value: a.value ?? null,
-        raisedAt: a.createdAt, ageSeconds: ageSec(a.createdAt),
-      })),
+      alerts: alerts.map((a) => {
+        const unit = byPlate.get(String(a.plate || '').trim());
+        const c = unit ? crewFor(unit, crew) : null;
+        return {
+          plate: a.plate, type: a.type, severity: a.severity ?? null,
+          message: a.message ?? null, value: a.value ?? null,
+          raisedAt: a.createdAt, ageSeconds: ageSec(a.createdAt),
+          driver: unit?.driver || null,
+          driverPhone: c ? c.phone : null,
+          driverPhoneSource: c ? c.source : null,
+          crew: c ? c.list : [],
+        };
+      }),
     });
   } catch (e) {
     res.status(500).json({ message: 'تعذّر جلب التنبيهات' });

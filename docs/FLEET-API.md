@@ -189,13 +189,20 @@ Open alerts as our system sees them, using thresholds our team configures on scr
       "message": "High tyre temperature",
       "value": 94,
       "raisedAt": "2026-08-26T09:58:00.000Z",
-      "ageSeconds": 1320
+      "ageSeconds": 1320,
+      "driver": "Driver name",
+      "driverPhone": "0551234567",
+      "driverPhoneSource": "driver_name",
+      "crew": [{ "name": "Driver name", "phone": "0551234567", "working": true }]
     }
   ]
 }
 ```
 
 Filters: `?plate=` and `?type=` (comma-separated for more than one type).
+
+> Each alert carries the driver on that truck and his number, so a message can be sent
+> without a second lookup. Same matching rules as `/vehicles` — see the note there.
 
 > **When to use this instead of your own rule:** when you want a threshold change made on
 > our screen to reach your automation without you editing code. If you have a rule we do

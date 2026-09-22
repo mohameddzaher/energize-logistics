@@ -342,6 +342,21 @@ server.listen(PORT, () => {
   if (typeof process.send === 'function') process.send('ready');
 });
 
+// ── والقديمُ يُنهي ما بدأه قبل أن يغلق ──────────────────────────────────────
+// pm2 يرسل SIGINT للنسخة القديمة عند النشر. وبلا معالجٍ تموت في الحال ومعها
+// الطلباتُ التي كانت في يدها — قيس: طلبٌ من ثمانين سقط أثناء نشرة. فتتوقّف
+// عن قبول الجديد وتُنهي ما عندها ثمّ تخرج، ولا يرى المستخدمُ انقطاعًا.
+let closing = false;
+const shutdown = () => {
+  if (closing) return;
+  closing = true;
+  server.close(() => process.exit(0));
+  // وحدٌّ أعلى: لو بقيت وصلةٌ مفتوحة (websocket) لا نعلّق النشرَ إلى الأبد.
+  setTimeout(() => process.exit(0), 4000).unref();
+};
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+
 connectDB().then(async () => {
   await autoSeedAdmin();
   // Seed the default HR leave types once (no-op once they exist).

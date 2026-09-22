@@ -141,8 +141,11 @@ exports.getClearances = async (req, res) => {
     filter.upcoming = q.upcoming === 'true' ? true : { $ne: true };
     if (q.active === 'true') filter.cancelled = { $ne: true };
     if (q.cancelled === 'true') filter.cancelled = true;
-    if (q.year) filter.periodYear = Number(q.year);
-    if (q.month) filter.periodMonth = Number(q.month);
+    // الشهرُ يُقبل رقمًا أو «YYYY-MM»، وما لا يُفهَم يُهمَل — راجع utils/period.
+    const yq = parseYear(q.year); if (yq) filter.periodYear = yq;
+    const mq = parseMonth(q.month);
+    if (mq.month) filter.periodMonth = mq.month;
+    if (mq.year && !yq) filter.periodYear = mq.year;
     // مدًى زمنيٌّ بتوقيت الشركة — راجع utils/companyDay.
     if (q.from || q.to) {
       const { startOfDay, endOfDay } = require('../utils/companyDay');
@@ -338,7 +341,9 @@ exports.getAnalytics = async (req, res) => {
       invoiceStatus: 'billing.invoiceStatus',
     };
     for (const [k, path] of Object.entries(eq)) if (q[k]) filter[path] = q[k];
-    if (q.month) filter.periodMonth = Number(q.month);
+    const mq2 = parseMonth(q.month);
+    if (mq2.month) filter.periodMonth = mq2.month;
+    if (mq2.year && !year) filter.periodYear = mq2.year;
 
     // ── ولا يُنقَل من الحقل إلّا ما يُجمَع ────────────────────────────────
     // كانت تُقرأ `costs` و`revenue` و`billing` كاملةً — وهي أثقلُ ثلاثةِ حقولٍ

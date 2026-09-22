@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const B2CProject = require('../models/B2CProject');
+const { parseMonth, parseYear } = require('../utils/period');
 const B2CRep = require('../models/B2CRep');
 const B2CDailyOrder = require('../models/B2CDailyOrder');
 const B2CExcelUpload = require('../models/B2CExcelUpload');
@@ -632,8 +633,10 @@ exports.getDailyOrders = async (req, res) => {
     if (req.query.rep) filter.rep = req.query.rep;
     if (req.query.project) filter.project = req.query.project;
     if (req.query.branch) filter.branch = req.query.branch;
-    if (req.query.year) filter.year = Number(req.query.year);
-    if (req.query.month) filter.month = Number(req.query.month);
+    const yq = parseYear(req.query.year); if (yq) filter.year = yq;
+    const mq = parseMonth(req.query.month);
+    if (mq.month) filter.month = mq.month;
+    if (mq.year && !yq) filter.year = mq.year;
     if (req.query.dateFrom || req.query.dateTo) {
       filter.dateKey = {};
       if (req.query.dateFrom) filter.dateKey.$gte = req.query.dateFrom;
@@ -922,8 +925,10 @@ exports.getDashboardSummary = async (req, res) => {
     if (req.query.project) filter.project = new mongoose.Types.ObjectId(String(req.query.project));
     if (req.query.branch) filter.branch = new mongoose.Types.ObjectId(String(req.query.branch));
     if (req.query.rep) filter.rep = new mongoose.Types.ObjectId(String(req.query.rep));
-    if (req.query.year) filter.year = Number(req.query.year);
-    if (req.query.month) filter.month = Number(req.query.month);
+    const yq = parseYear(req.query.year); if (yq) filter.year = yq;
+    const mq = parseMonth(req.query.month);
+    if (mq.month) filter.month = mq.month;
+    if (mq.year && !yq) filter.year = mq.year;
     if (req.query.dateFrom || req.query.dateTo) {
       filter.dateKey = {};
       if (req.query.dateFrom) filter.dateKey.$gte = req.query.dateFrom;

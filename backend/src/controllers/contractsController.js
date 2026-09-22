@@ -2,6 +2,7 @@ const { ContractVendor, VendorUtilisation, ContractProspect, DeptContract } = re
 const { saveUploadFile, deleteStoredFile } = require('../utils/fileStore');
 const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
+const { parseMonth, parseYear } = require('../utils/period');
 
 // إدارة العقود — controller. Every mutation broadcasts ONE event and clears the
 // dashboard cache, so the analysis screens always show what was just edited.
@@ -259,8 +260,10 @@ exports.listUtilisation = async (req, res) => {
   try {
     const { year, month } = req.query;
     const filter = {};
-    if (year) filter.year = Number(year);
-    if (month) filter.month = Number(month);
+    const y = parseYear(year); if (y) filter.year = y;
+    const mo = parseMonth(month);
+    if (mo.month) filter.month = mo.month;
+    if (mo.year && !y) filter.year = mo.year;
     // ١٧٧ ك.ب تُنقل كاملةً في كلّ فتح (~٢ ثانية) لسجلٍّ لا يتغيّر إلّا من هذا
     // الملفّ — وكلُّ كتابةٍ فيه تمرّ بـ emit() فتمسح 'contracts:'. فالمهلة طويلة.
     const rows = await cache.wrap(`contracts:utilisation:${JSON.stringify(filter)}`, 10 * 60000, () =>

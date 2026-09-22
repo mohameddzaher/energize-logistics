@@ -139,6 +139,15 @@ export default function PartyProfilePage() {
   }, [id, page]);
   useEffect(() => { load(); }, [load]);
 
+  // ── قمعُ إكسل على جدولَي الملفّ ────────────────────────────────────────
+  // لكلِّ جدولٍ قمعُه: فلترُ الفواتير لا يفلتر الكشوفَ ولا العكس.
+  //
+  // وموضعُهما هنا لا بعد العودتين أدناه: الشاشةُ ترجع باكرًا أثناء التحميل
+  // وحين لا يُوجَد الطرف، فخطّافٌ بعدهما يُنادى في رسمةٍ ولا يُنادى في أخرى —
+  // وهو خطأ React #310 الذي يُسقط الشاشةَ كلَّها برقمٍ لا يقول شيئًا.
+  const invCf = useColumnFilters<any>();
+  const repCf = useColumnFilters<any>();
+
   if (loading && !data) return <Spinner />;
   if (!data) return null;
 
@@ -150,11 +159,7 @@ export default function PartyProfilePage() {
   const valueKey = kind === 'customer' ? 'sellingValue' : 'purchaseValue';
   const closedKey = kind === 'customer' ? 'collectionDate' : 'paymentDate';
 
-  // ── قمعُ إكسل على جدولَي الملفّ ────────────────────────────────────────
-  // لكلِّ جدولٍ قمعُه: فلترُ الفواتير لا يفلتر الكشوفَ ولا العكس. والقيمُ هي
-  // نصوصُ الخلايا كما تُقرأ — «لم تُحصَّل» لا `false`.
-  const invCf = useColumnFilters<any>();
-  const repCf = useColumnFilters<any>();
+  // والقيمُ هي نصوصُ الخلايا كما تُقرأ — «لم تُحصَّل» لا `false`.
   const invBase = (data.money?.invoices || []).filter((i) => showPaidInvoices || !i.collected);
   const IG: Record<string, (i: any) => any> = {
     invoiceNumber: (i) => i.invoiceNumber,

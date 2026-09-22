@@ -69,6 +69,39 @@ const lastGood = new Map();          // key → { payload, at }
 const inflight = new Map();          // key → Promise
 const dashKey = (lang, q) => `ops:dash:${lang || ''}:${q.date_from || ''}:${q.date_to || ''}:${q.branches || ''}`;
 
+/**
+ * ── وبطاقاتُ الرأس لا تحبس الصفحة ──────────────────────────────────────────
+ *
+ * `/admins/operation-app-home` عند المنصّة يأخذ ثمانيَ ثوانٍ ليعيد كيلوبايتين
+ * (قيس على الخادم: home 7.7s · stats 0.6s · charts 0.35s)، والصفحةُ كانت تنتظر
+ * الثلاثةَ معًا فتنتظر أبطأَها. وهو ليس عندنا فنُصلحه.
+ *
+ * فيُنتظَر ثانيةً ونصفًا لا أكثر: إن تأخّر تُعرض قيمتُه السابقة وتُكمَّل الصفحةُ
+ * ببقيّة أرقامها، ويُخزَّن ما يصل متأخّرًا فيجده الفاتحُ التالي حاضرًا. ولا
+ * يُعرَض صفرٌ مكانَه أبدًا — إمّا آخرُ ما جاء وإمّا لا شيء.
+ */
+const HOME_WAIT_MS = 1500;
+const HOME_TTL = 60 * 1000;
+const lastHome = new Map();          // lang → { data, at }
+
+function homeSoon(lang) {
+  const k = lang || '';
+  const prev = lastHome.get(k);
+  const fresh = prev && Date.now() - prev.at < HOME_TTL ? prev.data : null;
+  const live = upl.get('/admins/operation-app-home', { lang })
+    .then((out) => {
+      const data = out?.data ?? out;
+      if (data) lastHome.set(k, { data, at: Date.now() });
+      return data;
+    })
+    .catch(() => null);
+  if (fresh) return Promise.resolve(fresh);
+  return Promise.race([
+    live,
+    new Promise((r) => setTimeout(() => r(prev ? prev.data : null), HOME_WAIT_MS)),
+  ]);
+}
+
 async function fetchDashboard(lang, q) {
   const key = dashKey(lang, q);
   if (inflight.has(key)) return inflight.get(key);
@@ -77,11 +110,11 @@ async function fetchDashboard(lang, q) {
     // ── محاولةٌ ثانية قبل الاستسلام ──────────────────────────────────────
     // المنصّة خارجيّة وشبكتُها تتعثّر، والفشلة الواحدة العابرة كانت تكفي.
     const once = () => Promise.allSettled([
-      upl.get('/admins/operation-app-home', { lang }),
+      homeSoon(lang),
       upl.get('/admin/reports/stats', { query, lang }),
       upl.get('/admin/reports/charts-maps-tables', { query, lang }),
     ]);
-    const pick = (r) => (r.status === 'fulfilled' ? r.value.data : null);
+    const pick = (r) => (r.status === 'fulfilled' ? r.value?.data ?? r.value : null);
     let [home, stats, charts] = (await once()).map(pick);
     if (!home && !stats) {
       await new Promise((r) => setTimeout(r, 400));

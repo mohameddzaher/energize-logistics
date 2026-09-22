@@ -197,4 +197,34 @@ async function wrap(key, ttlMs, producer) {
   }
 }
 
-module.exports = { get, set, clear, wrap, syncStamps, syncIfDue };
+/**
+ * ── القديمُ يُقدَّم والجديدُ يُحسب في الخلف ─────────────────────────────────
+ *
+ * لوحاتٌ يُعاد جلبُها مع كلّ خبرٍ حيّ (مزامنةُ التشغيل تبثّ كلَّ ثوانٍ) كانت
+ * تنتهي صلاحيّتُها كلَّ دقيقة، فيدفع أوّلُ فاتحٍ بعدها حسابَها كاملًا — ثوانٍ
+ * أمام دائرة تحميل. فهنا يُقدَّم آخرُ جوابٍ فورًا ما دام أحدثَ من `maxMs`،
+ * وإن تجاوز `freshMs` يُعاد حسابُه في الخلف مرّةً واحدة (single-flight)
+ * فيجده الطالبُ التالي جديدًا. ولا ينتظر أحدٌ إلّا حين لا يوجد جوابٌ أصلًا —
+ * أوّلَ مرّة، أو بعد `clear` حقيقيّ من كتابةٍ في القسم.
+ */
+async function wrapStale(key, freshMs, maxMs, producer) {
+  const hit = get(key);
+  const run = () => {
+    if (inflight.has(key)) return inflight.get(key);
+    const p = (async () => {
+      const val = await producer();
+      set(key, { val, at: Date.now() }, maxMs);
+      return val;
+    })();
+    inflight.set(key, p);
+    p.catch(() => {}).finally(() => inflight.delete(key));
+    return p;
+  };
+  if (hit !== undefined && hit && typeof hit === 'object' && 'at' in hit) {
+    if (Date.now() - hit.at > freshMs) run().catch(() => { /* القديمُ يبقى مقدَّمًا */ });
+    return hit.val;
+  }
+  return run();
+}
+
+module.exports = { get, set, clear, wrap, wrapStale, syncStamps, syncIfDue };

@@ -710,42 +710,127 @@ exports.dashboard = async (req, res) => {
     // تُخدَم لمن يرى وجهًا واحدًا، ولا نتيجةُ عميلٍ لعميلٍ آخر.
     const key = `${CACHE_PREFIX}dash:${receivablesOnly(req.user) ? 'r' : 'a'}:${JSON.stringify(req.query || {})}`;
 
-    const data = await cache.wrap(key, STATS_TTL, async () => {
-      const side = async (kind) => {
+    // ── قراءةٌ واحدةٌ لا ثمانٍ ──────────────────────────────────────────────
+    // كانت اللوحةُ ثمانيَ تجميعاتٍ تمسح كشوفَ التشغيل كلَّها (٣٦ ألفًا) كلٌّ
+    // على حدة — ثماني ثوانٍ لكلّ حسابٍ جديد. والأسئلةُ كلُّها على الصفوف
+    // نفسِها وبالحقول الثمانية نفسِها، فتُقرأ الصفوفُ مرّةً وتُجاب الأسئلةُ في
+    // `$facet` واحد. وكلُّ فرعٍ فيه شرطُه وتجميعُه كما كان حرفًا بحرف.
+    //
+    // ── ولا ينتظر الفاتحُ حسابَها ───────────────────────────────────────────
+    // الصفحةُ تُعيد الجلبَ مع كلّ خبرٍ من مزامنة التشغيل. فيُقدَّم آخرُ جوابٍ
+    // فورًا، ويُعاد حسابُه في الخلف إن مضت عليه دقيقة (ttlCache.wrapStale).
+    const data = await cache.wrapStale(key, STATS_TTL, 15 * 60 * 1000, async () => {
+      const onBranchRef = { v: {} };
+      const facetSide = (kind) => {
         const field = FIELD_OF[kind];
         const value = VALUE_OF[kind];
         const closed = CLOSED_BY[kind];
-        const match = { [field]: { $nin: [null, ''] }, ...NOT_CANCELLED, ...dateMatch };
-
-        const [totals] = await OperationsWorkflow.aggregate([
-          { $match: match },
+        const present = { [field]: { $nin: [null, ''] }, ...onBranchRef.v };
+        return {
+          totals: [
+            { $match: present },
+            {
+              $group: {
+                _id: null,
+                reports: { $sum: 1 },
+                total: { $sum: { $ifNull: [`$${value}`, 0] } },
+                settled: { $sum: { $cond: [{ $ifNull: [`$${closed}`, false] }, { $ifNull: [`$${value}`, 0] }, 0] } },
+                settledCount: { $sum: { $cond: [{ $ifNull: [`$${closed}`, false] }, 1, 0] } },
+              },
+            },
+          ],
+          top: [
+            { $match: { ...present, [closed]: null } },
+            {
+              $group: {
+                _id: `$${field}`,
+                reports: { $sum: 1 },
+                outstanding: { $sum: { $ifNull: [`$${value}`, 0] } },
+                oldest: { $min: '$reportDate' },
+              },
+            },
+            // والمتساويان يُرتَّبان بالاسم — وإلّا تبدّل مَن يدخل القائمةَ عند حدِّها
+            // بين فتحةٍ وأخرى والأرقامُ هي هي.
+            { $sort: { outstanding: -1, _id: 1 } },
+            { $limit: 200 },
+          ],
+        };
+      };
+      const facetAging = (kind) => {
+        const value = VALUE_OF[kind];
+        const closed = CLOSED_BY[kind];
+        return [
+          { $match: { reportDate: { $ne: null }, [closed]: null, ...onBranchRef.v } },
+          { $addFields: { ageDays: { $divide: [{ $subtract: ['$$NOW', '$reportDate'] }, 86400000] } } },
           {
             $group: {
               _id: null,
-              reports: { $sum: 1 },
-              total: { $sum: { $ifNull: [`$${value}`, 0] } },
-              settled: { $sum: { $cond: [{ $ifNull: [`$${closed}`, false] }, { $ifNull: [`$${value}`, 0] }, 0] } },
-              settledCount: { $sum: { $cond: [{ $ifNull: [`$${closed}`, false] }, 1, 0] } },
+              d0_30: { $sum: { $cond: [{ $lte: ['$ageDays', 30] }, { $ifNull: [`$${value}`, 0] }, 0] } },
+              d31_60: { $sum: { $cond: [{ $and: [{ $gt: ['$ageDays', 30] }, { $lte: ['$ageDays', 60] }] }, { $ifNull: [`$${value}`, 0] }, 0] } },
+              d61_90: { $sum: { $cond: [{ $and: [{ $gt: ['$ageDays', 60] }, { $lte: ['$ageDays', 90] }] }, { $ifNull: [`$${value}`, 0] }, 0] } },
+              d90p: { $sum: { $cond: [{ $gt: ['$ageDays', 90] }, { $ifNull: [`$${value}`, 0] }, 0] } },
             },
           },
-        ]);
+        ];
+      };
+      // ── والفرعُ يُصفّي كلَّ شيءٍ إلّا جدولَ الفروع ───────────────────────────
+      // جدولُ «حسب الفرع» يعرض الفروعَ كلَّها ليُقارَن المختارُ بغيره — هكذا
+      // كان (شرطُه `branch` كان يطغى على فلتر الفرع). فيُرفَع الفرعُ من الشرط
+      // المشترك ويُضاف إلى كلِّ فرعٍ من الـfacet سوى ذلك الجدول.
+      const { branch: branchFilter, ...baseMatch } = dateMatch;
+      const onBranch = branchFilter !== undefined ? { branch: branchFilter } : {};
+      onBranchRef.v = onBranch;
+      const cSide = facetSide('customer');
+      const sSide = facetSide('supplier');
 
-        const top = await OperationsWorkflow.aggregate([
-          { $match: { ...match, [closed]: null } },
+      const [[f], partyCounts] = await Promise.all([
+        OperationsWorkflow.aggregate([
+          // الشرطُ المشترك بين الأسئلة كلِّها — وما يخصّ كلَّ سؤالٍ داخل فرعه.
+          { $match: { ...NOT_CANCELLED, ...baseMatch } },
           {
-            $group: {
-              _id: `$${field}`,
-              reports: { $sum: 1 },
-              outstanding: { $sum: { $ifNull: [`$${value}`, 0] } },
-              oldest: { $min: '$reportDate' },
+            $project: {
+              _id: 0, username: 1, carOwner: 1, branch: 1, reportDate: 1,
+              sellingValue: 1, purchaseValue: 1, collectionDate: 1, paymentDate: 1,
             },
           },
-          { $sort: { outstanding: -1 } },
-          // سقفٌ أوسعُ قبل الطيّ: الصفُّ المقصوصُ قد يكون نصفَ صفٍّ آخر.
-          { $limit: 200 },
-        ]);
+          {
+            $facet: {
+              cTotals: cSide.totals,
+              cTop: cSide.top,
+              sTotals: sSide.totals,
+              sTop: sSide.top,
+              monthly: [
+                { $match: { reportDate: { $ne: null }, ...onBranch } },
+                {
+                  $group: {
+                    _id: { $dateToString: { date: '$reportDate', format: '%Y-%m', timezone: 'Asia/Riyadh' } },
+                    total: { $sum: { $ifNull: ['$sellingValue', 0] } },
+                    settled: { $sum: { $cond: [{ $ifNull: ['$collectionDate', false] }, { $ifNull: ['$sellingValue', 0] }, 0] } },
+                  },
+                },
+                { $sort: { _id: 1 } },
+              ],
+              cAging: facetAging('customer'),
+              sAging: facetAging('supplier'),
+              byBranch: [
+                { $match: { branch: { $nin: [null, ''] } } },
+                {
+                  $group: {
+                    _id: '$branch',
+                    reports: { $sum: 1 },
+                    receivable: { $sum: { $cond: [{ $ifNull: ['$collectionDate', false] }, 0, { $ifNull: ['$sellingValue', 0] }] } },
+                    payable: { $sum: { $cond: [{ $ifNull: ['$paymentDate', false] }, 0, { $ifNull: ['$purchaseValue', 0] }] } },
+                  },
+                },
+                { $sort: { receivable: -1 } },
+              ],
+            },
+          },
+        ]).allowDiskUse(true),
+        CollectionsParty.aggregate([{ $group: { _id: { kind: '$kind', active: '$isActive' }, n: { $sum: 1 } } }]),
+      ]);
 
-        // الطيُّ نفسُه المستعمَل في السجلّ — وإلّا ظهر المورّدُ الواحدُ صفّين.
+      const shapeSide = (totals, top) => {
         const merged = new Map();
         for (const row of top) {
           const k = fold(row._id);
@@ -757,7 +842,6 @@ exports.dashboard = async (req, res) => {
           if (row.oldest && (!cur.oldest || row.oldest < cur.oldest)) cur.oldest = row.oldest;
           if (row.reports > cur._top) { cur.name = row._id; cur._top = row.reports; }
         }
-
         const t = totals || { reports: 0, total: 0, settled: 0, settledCount: 0 };
         return {
           reports: t.reports,
@@ -767,75 +851,20 @@ exports.dashboard = async (req, res) => {
           settledCount: t.settledCount,
           openReports: t.reports - t.settledCount,
           top: [...merged.values()]
-            .sort((a, b) => b.outstanding - a.outstanding)
+            .sort((x, y) => (y.outstanding - x.outstanding) || String(x.name).localeCompare(String(y.name)))
             .slice(0, 15)
             .map((x) => ({ name: x.name, reports: x.reports, outstanding: r2(x.outstanding), oldest: x.oldest || null })),
         };
       };
-
-      const monthly = async (kind) => {
-        const value = VALUE_OF[kind];
-        const closed = CLOSED_BY[kind];
-        const rows = await OperationsWorkflow.aggregate([
-          { $match: { ...NOT_CANCELLED, ...datedMatch } },
-          {
-            $group: {
-              _id: { $dateToString: { date: '$reportDate', format: '%Y-%m', timezone: 'Asia/Riyadh' } },
-              total: { $sum: { $ifNull: [`$${value}`, 0] } },
-              settled: { $sum: { $cond: [{ $ifNull: [`$${closed}`, false] }, { $ifNull: [`$${value}`, 0] }, 0] } },
-            },
-          },
-          { $sort: { _id: 1 } },
-        ]);
-        return rows.map((m) => ({ month: m._id, total: r2(m.total), settled: r2(m.settled), outstanding: r2(m.total - m.settled) }));
-      };
-
-      // ── تقادمُ المستحقّ ─────────────────────────────────────────────────
-      // الرقمُ الواحد «مستحقٌّ ١.٢ مليون» لا يقول شيئًا عن خطره: مليونٌ عمرُه
-      // أسبوعٌ عملٌ جارٍ، ومليونٌ عمرُه سنةٌ مالٌ يكاد يضيع.
-      const aging = async (kind) => {
-        const value = VALUE_OF[kind];
-        const closed = CLOSED_BY[kind];
-        const [row] = await OperationsWorkflow.aggregate([
-          { $match: { ...NOT_CANCELLED, ...datedMatch, [closed]: null } },
-          { $addFields: { ageDays: { $divide: [{ $subtract: ['$$NOW', '$reportDate'] }, 86400000] } } },
-          {
-            $group: {
-              _id: null,
-              d0_30: { $sum: { $cond: [{ $lte: ['$ageDays', 30] }, { $ifNull: [`$${value}`, 0] }, 0] } },
-              d31_60: { $sum: { $cond: [{ $and: [{ $gt: ['$ageDays', 30] }, { $lte: ['$ageDays', 60] }] }, { $ifNull: [`$${value}`, 0] }, 0] } },
-              d61_90: { $sum: { $cond: [{ $and: [{ $gt: ['$ageDays', 60] }, { $lte: ['$ageDays', 90] }] }, { $ifNull: [`$${value}`, 0] }, 0] } },
-              d90p: { $sum: { $cond: [{ $gt: ['$ageDays', 90] }, { $ifNull: [`$${value}`, 0] }, 0] } },
-            },
-          },
-        ]);
-        const a = row || { d0_30: 0, d31_60: 0, d61_90: 0, d90p: 0 };
+      const shapeAging = (row) => {
+        const g = row || { d0_30: 0, d31_60: 0, d61_90: 0, d90p: 0 };
         return [
-          { bucket: '0-30', amount: r2(a.d0_30) },
-          { bucket: '31-60', amount: r2(a.d31_60) },
-          { bucket: '61-90', amount: r2(a.d61_90) },
-          { bucket: '90+', amount: r2(a.d90p) },
+          { bucket: '0-30', amount: r2(g.d0_30) },
+          { bucket: '31-60', amount: r2(g.d31_60) },
+          { bucket: '61-90', amount: r2(g.d61_90) },
+          { bucket: '90+', amount: r2(g.d90p) },
         ];
       };
-
-      const byBranch = await OperationsWorkflow.aggregate([
-        { $match: { ...NOT_CANCELLED, ...dateMatch, branch: { $nin: [null, ''] } } },
-        {
-          $group: {
-            _id: '$branch',
-            reports: { $sum: 1 },
-            receivable: { $sum: { $cond: [{ $ifNull: ['$collectionDate', false] }, 0, { $ifNull: ['$sellingValue', 0] }] } },
-            payable: { $sum: { $cond: [{ $ifNull: ['$paymentDate', false] }, 0, { $ifNull: ['$purchaseValue', 0] }] } },
-          },
-        },
-        { $sort: { receivable: -1 } },
-      ]);
-
-      const [customers, suppliers, custMonthly, custAging, suppAging, partyCounts] = await Promise.all([
-        side('customer'), side('supplier'), monthly('customer'),
-        aging('customer'), aging('supplier'),
-        CollectionsParty.aggregate([{ $group: { _id: { kind: '$kind', active: '$isActive' }, n: { $sum: 1 } } }]),
-      ]);
 
       const counts = { customer: { active: 0, inactive: 0 }, supplier: { active: 0, inactive: 0 } };
       for (const c of partyCounts) {
@@ -844,16 +873,15 @@ exports.dashboard = async (req, res) => {
       }
 
       return {
-        customers, suppliers,
-        monthly: custMonthly,
-        aging: { customer: custAging, supplier: suppAging },
-        byBranch: byBranch.map((b) => ({ branch: b._id, reports: b.reports, receivable: r2(b.receivable), payable: r2(b.payable) })),
+        customers: shapeSide(f.cTotals[0], f.cTop),
+        suppliers: shapeSide(f.sTotals[0], f.sTop),
+        monthly: f.monthly.map((m) => ({ month: m._id, total: r2(m.total), settled: r2(m.settled), outstanding: r2(m.total - m.settled) })),
+        aging: { customer: shapeAging(f.cAging[0]), supplier: shapeAging(f.sAging[0]) },
+        byBranch: f.byBranch.map((b) => ({ branch: b._id, reports: b.reports, receivable: r2(b.receivable), payable: r2(b.payable) })),
         counts,
       };
     });
 
-    // ما لا يُعرض لا يُرسَل. والكاشُ مشتركٌ بين الأدوار، فالحجبُ يجري على
-    // النسخة العائدة لا على المخزَّنة.
     if (receivablesOnly(req.user)) {
       const { suppliers: _s, ...rest } = data;
       return res.json({
@@ -874,16 +902,19 @@ exports.dashboard = async (req, res) => {
 exports.dashboardFilterOptions = async (req, res) => {
   try {
     const only = receivablesOnly(req.user);
-    const [customers, suppliers, branches] = await Promise.all([
+    // ثلاثُ قراءاتٍ distinct على الكشوف كلِّها (ثلاث ثوانٍ) مع كلّ فتحٍ للّوحة،
+    // لقائمةِ أسماءٍ لا تتغيّر إلّا بعميلٍ جديد. فتُحفَظ وتُحدَّث في الخلف.
+    const [customers, suppliers, branches] = await cache.wrapStale(`${CACHE_PREFIX}dashfilters`, 5 * 60 * 1000, 60 * 60 * 1000, () => Promise.all([
       OperationsWorkflow.distinct('username', { ...NOT_CANCELLED, username: { $nin: [null, ''] } }),
-      // ولا تُعرَض أسماءُ الموردين لمن لا يرى ما عليهم: فلترٌ لا نتيجةَ له.
-      only ? Promise.resolve([]) : OperationsWorkflow.distinct('carOwner', { ...NOT_CANCELLED, carOwner: { $nin: [null, ''] } }),
+      OperationsWorkflow.distinct('carOwner', { ...NOT_CANCELLED, carOwner: { $nin: [null, ''] } }),
       OperationsWorkflow.distinct('branch', { ...NOT_CANCELLED, branch: { $nin: [null, ''] } }),
-    ]);
+    ]))
+      // ولا تُعرَض أسماءُ الموردين لمن لا يرى ما عليهم: فلترٌ لا نتيجةَ له.
+      .then(([c, sup, b]) => [c, only ? [] : sup, b]);
     res.json({
-      customers: customers.sort().slice(0, 1000),
-      suppliers: suppliers.sort().slice(0, 1000),
-      branches: branches.sort(),
+      customers: [...customers].sort().slice(0, 1000),
+      suppliers: [...suppliers].sort().slice(0, 1000),
+      branches: [...branches].sort(),
       receivablesOnly: only,
     });
   } catch (e) {

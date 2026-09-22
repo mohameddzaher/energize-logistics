@@ -7,6 +7,10 @@
  */
 const express = require('express');
 const router = express.Router();
+
+// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+const { objectIdParam } = require('../utils/idParam');
+router.param('id', objectIdParam());
 const partners = require('../controllers/partnerController');
 const authenticate = require('../middleware/auth');
 

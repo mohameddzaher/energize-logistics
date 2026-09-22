@@ -1,5 +1,9 @@
 const express = require('express');
 const router = express.Router();
+
+// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+const { objectIdParam } = require('../utils/idParam');
+router.param('id', objectIdParam());
 const b2cController = require('../controllers/b2cController');
 const duty = require('../controllers/b2cDutyController');
 const authenticate = require('../middleware/auth');

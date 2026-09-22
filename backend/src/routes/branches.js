@@ -1,6 +1,10 @@
 const express = require('express');
 const { body } = require('express-validator');
 const router = express.Router();
+
+// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+const { objectIdParam } = require('../utils/idParam');
+router.param('id', objectIdParam());
 const branchController = require('../controllers/branchController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');

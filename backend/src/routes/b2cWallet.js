@@ -4,6 +4,11 @@
  */
 const express = require('express');
 const router = express.Router();
+
+// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+const { objectIdParam } = require('../utils/idParam');
+router.param('id', objectIdParam());
+router.param('managerId', objectIdParam());
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 const c = require('../controllers/b2cWalletController');

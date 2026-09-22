@@ -1,5 +1,11 @@
 const express = require('express');
 const router = express.Router();
+
+// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+const { objectIdParam } = require('../utils/idParam');
+router.param('id', objectIdParam({ status: 400 }));
+router.param('accId', objectIdParam({ status: 400 }));
+router.param('authId', objectIdParam({ status: 400 }));
 const vehicle = require('../controllers/vehicleController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');

@@ -5,6 +5,16 @@
  */
 const express = require('express');
 const router = express.Router();
+// ── معرّفان مختلفان تحت اسمٍ واحد ────────────────────────────────────────────
+// `:id` هنا معرّفُ منغوسة في المخزن والإطارات والتنبيهات، ورقمُ الوحدة في
+// Location Solutions في مسارات `/vehicles`. فلا يصحّ حارسٌ واحدٌ للاسم، ويُركَّب
+// على كلّ مسارٍ حارسُه. راجع utils/idParam.
+const { objectIdParam, objectIdGuard, numericParam } = require('../utils/idParam');
+const oid = objectIdGuard();
+const unit = numericParam({ status: 400, message: 'Invalid vehicle id' });
+router.param('repairId', objectIdParam());
+router.param('movementId', objectIdParam());
+
 const ls2 = require('../controllers/ls2Controller');
 const assets = require('../controllers/ls2AssetsController');
 const store = require('../controllers/ls2StoreController');
@@ -24,7 +34,7 @@ router.put('/settings', ADMIN, ls2.updateSettings);
 router.post('/refresh', ADMIN, ls2.refresh);
 
 router.get('/alerts', ls2.listAlerts);
-router.patch('/alerts/:id/ack', ls2.acknowledgeAlert);
+router.patch('/alerts/:id/ack', oid, ls2.acknowledgeAlert);
 
 router.get('/mileage', ls2.getMileage); // fleet distance over a period
 router.post('/identity/refresh', ADMIN, ls2.refreshIdentity); // re-pull VIN/brand/SIM…
@@ -59,45 +69,45 @@ router.get('/assets/vehicle/:plate', assets.getVehicleAssets);
 router.get('/assets/vehicle/:plate/history', assets.getVehicleHistory);
 router.post('/assets/import', ADMIN, assets.importAssets); // workshop JSON, idempotent
 router.post('/assets/tires', ADMIN, assets.createTire);
-router.patch('/assets/tires/:id', ADMIN, assets.updateTire);
-router.get('/assets/tires/:id/profile', assets.getTireProfile);   // حياة الفردة كاملةً
-router.post('/assets/tires/:id/move', ADMIN, assets.moveTire);
-router.post('/assets/tires/:id/renewal-result', ADMIN, assets.tireRenewalResult); // مجدد أو سكراب
-router.post('/assets/tires/:id/retire', ADMIN, assets.retireTire);
-router.post('/assets/tires/:id/status', ADMIN, assets.setTireStatus); // نقل بين الحالات
+router.patch('/assets/tires/:id', oid, ADMIN, assets.updateTire);
+router.get('/assets/tires/:id/profile', oid, assets.getTireProfile);   // حياة الفردة كاملةً
+router.post('/assets/tires/:id/move', oid, ADMIN, assets.moveTire);
+router.post('/assets/tires/:id/renewal-result', oid, ADMIN, assets.tireRenewalResult); // مجدد أو سكراب
+router.post('/assets/tires/:id/retire', oid, ADMIN, assets.retireTire);
+router.post('/assets/tires/:id/status', oid, ADMIN, assets.setTireStatus); // نقل بين الحالات
 
 // ── مخزن النقل الثقيل (قطع الغيار) — قائمة/CRUD + حركات وارد/صادر + سجل ──────────
 router.get('/store', store.listItems);
 router.get('/store/dashboard', store.dashboard);
 router.get('/store/movements', store.listMovements);
 router.post('/store', ADMIN, store.createItem);
-router.put('/store/:id', ADMIN, store.updateItem);
-router.delete('/store/:id', ADMIN, store.deleteItem);
+router.put('/store/:id', oid, ADMIN, store.updateItem);
+router.delete('/store/:id', oid, ADMIN, store.deleteItem);
 // حركة جماعية (صادر أو وارد) لعدة أصناف بكميات مختلفة — تُسجَّل قبل /store/:id
 // حتى لا يُفهم «bulk-out» على أنه معرّف صنف.
 router.post('/store/bulk-out', ADMIN, store.addBulkOut);
 router.post('/store/bulk-movement', ADMIN, store.addBulkMovement);
-router.post('/store/:id/movement', ADMIN, store.addMovement);
+router.post('/store/:id/movement', oid, ADMIN, store.addMovement);
 // التراجع عن حركة — بيكتب حركة معاكسة، مش بيمسح ولا بيعدّل سطر. مفيش PUT/PATCH
 // على الحركات عن قصد: الحركة المسجّلة لا تُعدَّل (قرار الإدارة المالية).
 router.post('/store/movements/:movementId/reverse', ADMIN, store.reverseMovement);
 router.post('/assets/trailers', ADMIN, assets.createTrailer);
-router.post('/assets/trailers/:id/move', ADMIN, assets.moveTrailer);
+router.post('/assets/trailers/:id/move', oid, ADMIN, assets.moveTrailer);
 router.post('/assets/flatbeds', ADMIN, assets.createFlatbed);
-router.patch('/assets/flatbeds/:id', ADMIN, assets.updateFlatbed);
+router.patch('/assets/flatbeds/:id', oid, ADMIN, assets.updateFlatbed);
 
 router.get('/deferrals', ls2.listDeferrals); // fleet-wide open deferred tasks (Maintenance page)
 router.get('/vehicles', ls2.listVehicles);
-router.get('/vehicles/:id', ls2.getVehicle);
-router.get('/vehicles/:id/mileage', ls2.getVehicleMileage); // ?from&to[&source=report]
-router.get('/vehicles/:id/history', ls2.getVehicleHistory); // daily distance series
-router.get('/vehicles/:id/trips', ls2.getVehicleTrips); // ?from&to — trips + derived stops
-router.get('/vehicles/:id/fuel', ls2.getVehicleFuel); // ?from&to — CAN fuel consumption
-router.get('/vehicles/:id/track', ls2.getVehicleTrack); // ?from&to — GPS polyline
-router.post('/vehicles/:id/service', ADMIN, ls2.markServiced);
-router.get('/vehicles/:id/maintenance', ls2.getVehicleMaintenance); // intervals + full local service history
-router.post('/vehicles/:id/register-service', ADMIN, ls2.registerServiceInterval); // writes ONE interval to Location Solutions
-router.post('/vehicles/:id/resolve-deferral', ADMIN, ls2.resolveDeferral); // close ONE deferred task (done on its own, no full service)
-router.patch('/vehicles/:id/meta', ADMIN, ls2.updateVehicleMeta); // manual metadata (tire brand/type)
+router.get('/vehicles/:id', unit, ls2.getVehicle);
+router.get('/vehicles/:id/mileage', unit, ls2.getVehicleMileage); // ?from&to[&source=report]
+router.get('/vehicles/:id/history', unit, ls2.getVehicleHistory); // daily distance series
+router.get('/vehicles/:id/trips', unit, ls2.getVehicleTrips); // ?from&to — trips + derived stops
+router.get('/vehicles/:id/fuel', unit, ls2.getVehicleFuel); // ?from&to — CAN fuel consumption
+router.get('/vehicles/:id/track', unit, ls2.getVehicleTrack); // ?from&to — GPS polyline
+router.post('/vehicles/:id/service', unit, ADMIN, ls2.markServiced);
+router.get('/vehicles/:id/maintenance', unit, ls2.getVehicleMaintenance); // intervals + full local service history
+router.post('/vehicles/:id/register-service', unit, ADMIN, ls2.registerServiceInterval); // writes ONE interval to Location Solutions
+router.post('/vehicles/:id/resolve-deferral', unit, ADMIN, ls2.resolveDeferral); // close ONE deferred task (done on its own, no full service)
+router.patch('/vehicles/:id/meta', unit, ADMIN, ls2.updateVehicleMeta); // manual metadata (tire brand/type)
 
 module.exports = router;

@@ -167,7 +167,12 @@ exports.listEmployees = async (req, res) => {
     // writes (create/update/terminate/renew) clear it so edits show immediately.
     const cache = require('../utils/ttlCache');
     const cacheKey = `hr:employees:${JSON.stringify(req.query || {})}`;
-    const rows = await cache.wrap(cacheKey, 30000, () => Employee.find(filter)
+    // ── والصلاحيةُ بختم التغيير لا بثلاثين ثانية ─────────────────────────────
+    // القائمةُ ٣٨٠ كيلوبايت ونقلُها أربعُ ثوانٍ، وكانت تنتهي كلَّ ثلاثين ثانية
+    // فيدفعها أغلبُ الفاتحين. الآن تُخدَم ما دام ختمُ الموظفين والمستخدمين
+    // والفروع (ما تُملأ منه الأسماء) لم يتغيّر — سؤالٌ واحدٌ صغير. راجع utils/changeStamp.
+    const rows = await require('../utils/changeStamp').freshWrap(cacheKey, 5 * 60 * 1000,
+      [Employee, User, require('../models/Branch')], () => Employee.find(filter)
       // حقول التواريخ كلها مطلوبة في المشروع لأن شرط المدى يُطبَّق على القيمة
       // بعد جلبها؛ الحقل غير المجلوب يبدو «بلا تاريخ» فيسقط من كل مدى بصمت.
       // ولذلك تُؤخَذ من مصدرها لا تُكتب هنا: كانت مكتوبةً بيدٍ، فكلُّ تاريخٍ

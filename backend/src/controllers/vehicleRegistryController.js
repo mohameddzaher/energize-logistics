@@ -1138,6 +1138,10 @@ const FILTER_SELECT = [...new Set([
 //
 // وكانت اللوحةُ تسحب الاتّحادَ كلَّه لكلّ فلترٍ نشط، فتسعُ ثوانٍ في كلّ فتحة.
 const DERIVED_SELECT = [...new Set(DERIVED_DEFS.flatMap((d) => d.select || []))].join(' ');
+// صفوفُ المشتقّات من مرآةٍ تُحدَّث بالفرق: كلُّ كتابةٍ تمسح `vreg:` فكانت الفتحةُ
+// التالية تسحب الأسطولَ كلَّه من جديد (ثانيتان إلى ثلاث) — وكذلك كلُّ فلترٍ نشط.
+// الآن يُسأل عن المعرّفات وحدها. راجع utils/changeStamp.
+const derivedMirror = require('../utils/changeStamp').mirror(VehicleMaster, DERIVED_SELECT);
 
 const _get = (o, path) => path.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
 
@@ -1206,7 +1210,7 @@ exports.filterOptions = async (req, res) => {
     const [sharedPlain, shared] = await Promise.all([
       passive.length ? plainTally(buildFilter(req.query)) : new Map(),
       needRows && passive.length
-        ? VehicleMaster.find(buildFilter(req.query)).select(DERIVED_SELECT).lean()
+        ? derivedMirror.rowsFor(buildFilter(req.query))
         : [],
     ]);
     const perActive = new Map(); const perActivePlain = new Map();
@@ -1215,7 +1219,7 @@ exports.filterOptions = async (req, res) => {
       delete others[d.key];
       const f = buildFilter(others);
       if (d.field) perActivePlain.set(d.key, (await plainTally(f)).get(d.key) || []);
-      else perActive.set(d.key, await VehicleMaster.find(f).select(DERIVED_SELECT).lean());
+      else perActive.set(d.key, await derivedMirror.rowsFor(f));
     }));
 
     const filters = ALL_DEFS.map((d) => ({
@@ -1317,6 +1321,8 @@ exports.warmFilters = async () => {
     await new Promise((resolve) => {
       exports.filterOptions(fake, { json: resolve, status: () => ({ json: resolve }) });
     });
+    // ومرآةُ الانتهاءات معها: أوّلُ فتحةٍ لها كانت تدفع نقلَ الأسطول كلّه.
+    await expiryMirror.sync();
   } catch (e) { /* التسخينُ رفاهيةٌ لا شرط */ }
 };
 
@@ -1557,10 +1563,21 @@ exports.overview = async (req, res) => {
 //
 // الدالة دي بقت المصدر الوحيد، والشاشتين بيبنوا منها. لو المستقبل عايز يفرّق
 // بينهم، بيفرّق في **الفلتر** مش في **الحساب**.
+// ما تقرؤه صفوفُ الانتهاءات من المركبة، لا أكثر. كانت تسحب AGG_FIELDS (ستّةً
+// وسبعين حقلًا) لتقرأ منها ثمانيةَ عشر، والنقلُ هو كلُّ ثمن هذه الشاشة.
+const EXPIRY_FIELDS = [...new Set([
+  'plateNumber', 'brandAr', 'modelAr', 'chassisNumber', 'serialNumber', 'registrationTypeAr',
+  'colorAr', 'sectorAr', 'ownerNameAr', 'modelYear',
+  ...DOC_TYPES.flatMap((dt) => [dt.path, dt.statusPath, dt.numberPath].filter(Boolean)),
+  'insurance.companyAr', 'gps.provider', 'authorizedPerson.name', 'authorizedPerson.iqamaNumber',
+])].join(' ');
+// والمرآةُ تُحدَّث بالفرق: تجديدُ وثيقةٍ واحدة يجلب مركبتَها وحدها — راجع utils/changeStamp.
+const expiryMirror = require('../utils/changeStamp').mirror(VehicleMaster, EXPIRY_FIELDS);
+
 async function buildExpiryRows(query = {}) {
   const DriverCard = require('../models/DriverCard');
   const [vehicles, cfg, cards] = await Promise.all([
-    VehicleMaster.find(buildFilter(query)).select(AGG_FIELDS).lean(),
+    expiryMirror.rowsFor(buildFilter(query)),
     getConfig(),
     DriverCard.find({ isActive: { $ne: false } })
       .select('name idNumber cardNumber cardType expiryDate logisticRegister').lean(),

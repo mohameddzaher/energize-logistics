@@ -77,8 +77,12 @@ exports.listVehicles = async (req, res) => {
     // whole team loading the vehicles page at once hits one query; Vehicle writes
     // clear 'vehicles:list' via the model post-hooks.
     const ck = `vehicles:list:${type || ''}:${status || ''}:${branch || ''}:${project || ''}`;
-    let vehicles = await cache.wrap(ck, 20000, () =>
-      populateVehicle(Vehicle.find(filter)).sort({ plateNumber: 1 }).limit(5000).lean());
+    // الصلاحيةُ بختم ما تُبنى منه القائمة (المركبة والتفويض والموظف والفرع) لا
+    // بعشرين ثانية: كانت تنتهي قبل الفتحة التالية فيدفع كلُّ فاتحٍ ثلاثَ ثوانٍ.
+    // راجع utils/changeStamp.
+    let vehicles = await require('../utils/changeStamp').freshWrap(ck, 5 * 60 * 1000,
+      [Vehicle, VehicleAuthorization, Employee, require('../models/Branch')], () =>
+        populateVehicle(Vehicle.find(filter)).sort({ plateNumber: 1 }).limit(5000).lean());
     if (q && q.trim()) {
       // المطابقةُ في الذاكرة كانت `includes` حرفيّةً: مسافةٌ زائدةٌ في اللوحة أو
       // همزةٌ ناقصةٌ في الاسم تُخرج الصفَّ من النتيجة وهو أمام عين الباحث.

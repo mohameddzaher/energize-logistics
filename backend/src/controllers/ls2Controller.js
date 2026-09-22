@@ -59,7 +59,7 @@ const cairoEpoch = (ymd, endOfDay = false) => Math.floor(new Date(`${ymd}T${endO
  * km = odometer(end of `to`) − odometer(end of day before `from`).
  */
 async function mileageByUnit(from, to) {
-  const [ends, starts] = await Promise.all([
+  const [ends, starts, firstIn] = await Promise.all([
     // Latest snapshot on/before `to` per unit.
     Ls2OdometerDaily.aggregate([
       { $match: { date: { $lte: to } } },
@@ -72,13 +72,14 @@ async function mileageByUnit(from, to) {
       { $sort: { unitId: 1, date: 1 } },
       { $group: { _id: '$unitId', odo: { $last: '$odometerKm' }, date: { $last: '$date' } } },
     ]),
-  ]);
-  // Earliest snapshot within the range — the fallback baseline when a unit has no
-  // history before `from` (measure from its first reading inside the window).
-  const firstIn = await Ls2OdometerDaily.aggregate([
-    { $match: { date: { $gte: from, $lte: to } } },
-    { $sort: { unitId: 1, date: 1 } },
-    { $group: { _id: '$unitId', odo: { $first: '$odometerKm' }, date: { $first: '$date' }, days: { $sum: 1 } } },
+    // Earliest snapshot within the range — the fallback baseline when a unit has no
+    // history before `from` (measure from its first reading inside the window).
+    // مستقلٌّ عن الاثنين فيجري معهما: رحلةٌ واحدة إلى القاعدة لا اثنتان.
+    Ls2OdometerDaily.aggregate([
+      { $match: { date: { $gte: from, $lte: to } } },
+      { $sort: { unitId: 1, date: 1 } },
+      { $group: { _id: '$unitId', odo: { $first: '$odometerKm' }, date: { $first: '$date' }, days: { $sum: 1 } } },
+    ]),
   ]);
   const endMap = new Map(ends.map((e) => [e._id, e]));
   const startMap = new Map(starts.map((s) => [s._id, s]));
@@ -107,107 +108,108 @@ exports.getDashboard = async (req, res) => {
     const to = req.query.to || today;
     const from = req.query.from || `${today.slice(0, 7)}-01`;
     const cacheKey = `ls2:dash:${from}:${to}`;
-    const hit = cache.get(cacheKey);
-    if (hit) return res.json(hit);
+    // طلعةٌ واحدة: عشرون فاتحًا للّوحة معًا ينتظرون حسابًا واحدًا بدل عشرين.
+    const payload = await cache.wrap(cacheKey, CACHE_TTL, async () => {
+      // الأربعة مستقلّة فتجري معًا، وكلٌّ بالحقول التي تقرؤها اللوحة وحدها: مستندُ
+      // المركبة الكامل (الحسّاسات والفترات) كان ٢٢٧ كيلوبايت يُقرأ منها ١٣.
+      const [settings, vehiclesRaw, openAlerts, mileMap] = await Promise.all([
+        Ls2Settings.getOrCreate(),
+        Ls2Vehicle.find({}).select('unitId plate driver status maxTireTempC coolantC odometerKm maintenanceStatus kmToService nextServiceKm').lean(),
+        Ls2Alert.find({ status: 'open' }).select('key unitId plate type severity message value unit firstSeenAt lastSeenAt').lean(),
+        mileageByUnit(from, to),
+      ]);
+      const maint = settings.maintenance;
+      const th = settings.thresholds;
+      const vehicles = vehiclesRaw.map((v) => withMaintenance(v));
 
-    const settings = await Ls2Settings.getOrCreate();
-    const maint = settings.maintenance;
-    const th = settings.thresholds;
-    const [vehiclesRaw, openAlerts] = await Promise.all([
-      Ls2Vehicle.find({}).lean(),
-      Ls2Alert.find({ status: 'open' }).lean(),
-    ]);
-    const vehicles = vehiclesRaw.map((v) => withMaintenance(v));
+      // Fleet status distribution
+      const statusCounts = { moving: 0, idle: 0, stopped: 0, offline: 0 };
+      for (const v of vehicles) statusCounts[v.status] = (statusCounts[v.status] || 0) + 1;
 
-    // Fleet status distribution
-    const statusCounts = { moving: 0, idle: 0, stopped: 0, offline: 0 };
-    for (const v of vehicles) statusCounts[v.status] = (statusCounts[v.status] || 0) + 1;
+      // Alert breakdowns 
+      const bySeverity = { critical: 0, warning: 0, info: 0 };
+      const byType = {};
+      for (const a of openAlerts) {
+        bySeverity[a.severity] = (bySeverity[a.severity] || 0) + 1;
+        byType[a.type] = (byType[a.type] || 0) + 1;
+      }
+      const vehiclesWithAlerts = new Set(openAlerts.map((a) => a.unitId)).size;
 
-    // Alert breakdowns 
-    const bySeverity = { critical: 0, warning: 0, info: 0 };
-    const byType = {};
-    for (const a of openAlerts) {
-      bySeverity[a.severity] = (bySeverity[a.severity] || 0) + 1;
-      byType[a.type] = (byType[a.type] || 0) + 1;
-    }
-    const vehiclesWithAlerts = new Set(openAlerts.map((a) => a.unitId)).size;
+      // Maintenance summary
+      const overdue = vehicles.filter((v) => v.maintenance && v.maintenance.statusLevel === 'overdue');
+      const due = vehicles.filter((v) => v.maintenance && v.maintenance.statusLevel === 'due');
 
-    // Maintenance summary
-    const overdue = vehicles.filter((v) => v.maintenance && v.maintenance.statusLevel === 'overdue');
-    const due = vehicles.filter((v) => v.maintenance && v.maintenance.statusLevel === 'due');
+      // Temperature analytics
+      const tireTemps = vehicles.map((v) => v.maxTireTempC).filter((x) => x != null);
+      const coolants = vehicles.map((v) => v.coolantC).filter((x) => x != null);
+      const hotTires = vehicles.filter((v) => v.maxTireTempC != null && v.maxTireTempC >= th.tireTempC).length;
+      const hotEngines = vehicles.filter((v) => v.coolantC != null && v.coolantC >= th.coolantTempC).length;
+      const avg = (arr) => (arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null);
 
-    // Temperature analytics
-    const tireTemps = vehicles.map((v) => v.maxTireTempC).filter((x) => x != null);
-    const coolants = vehicles.map((v) => v.coolantC).filter((x) => x != null);
-    const hotTires = vehicles.filter((v) => v.maxTireTempC != null && v.maxTireTempC >= th.tireTempC).length;
-    const hotEngines = vehicles.filter((v) => v.coolantC != null && v.coolantC >= th.coolantTempC).length;
-    const avg = (arr) => (arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null);
+      // Top offenders (hottest tires / most alerts / closest to service)
+      const topHotTires = [...vehicles].filter((v) => v.maxTireTempC != null)
+        .sort((a, b) => b.maxTireTempC - a.maxTireTempC).slice(0, 8)
+        .map((v) => ({ unitId: v.unitId, plate: v.plate, driver: v.driver, value: v.maxTireTempC }));
+      const nearestService = [...vehicles].filter((v) => v.maintenance && v.maintenance.kmToService != null)
+        .sort((a, b) => a.maintenance.kmToService - b.maintenance.kmToService).slice(0, 8)
+        .map((v) => ({ unitId: v.unitId, plate: v.plate, driver: v.driver, kmToService: v.maintenance.kmToService, odometerKm: v.odometerKm, statusLevel: v.maintenance.statusLevel }));
 
-    // Top offenders (hottest tires / most alerts / closest to service)
-    const topHotTires = [...vehicles].filter((v) => v.maxTireTempC != null)
-      .sort((a, b) => b.maxTireTempC - a.maxTireTempC).slice(0, 8)
-      .map((v) => ({ unitId: v.unitId, plate: v.plate, driver: v.driver, value: v.maxTireTempC }));
-    const nearestService = [...vehicles].filter((v) => v.maintenance && v.maintenance.kmToService != null)
-      .sort((a, b) => a.maintenance.kmToService - b.maintenance.kmToService).slice(0, 8)
-      .map((v) => ({ unitId: v.unitId, plate: v.plate, driver: v.driver, kmToService: v.maintenance.kmToService, odometerKm: v.odometerKm, statusLevel: v.maintenance.statusLevel }));
+      // Latest critical/warning alerts feed
+      const latestAlerts = [...openAlerts]
+        .sort((a, b) => new Date(b.firstSeenAt) - new Date(a.firstSeenAt)).slice(0, 12)
+        .map((a) => ({ id: a._id, key: a.key, unitId: a.unitId, plate: a.plate, type: a.type, severity: a.severity, message: a.message, value: a.value, unit: a.unit, lastSeenAt: a.lastSeenAt }));
 
-    // Latest critical/warning alerts feed
-    const latestAlerts = [...openAlerts]
-      .sort((a, b) => new Date(b.firstSeenAt) - new Date(a.firstSeenAt)).slice(0, 12)
-      .map((a) => ({ id: a._id, key: a.key, unitId: a.unitId, plate: a.plate, type: a.type, severity: a.severity, message: a.message, value: a.value, unit: a.unit, lastSeenAt: a.lastSeenAt }));
+      // Distance travelled over the selected period (from daily odometer snapshots).
+      const plateById = new Map(vehicles.map((v) => [v.unitId, v]));
+      const mileRows = [...mileMap.entries()].map(([unitId, m]) => ({
+        unitId, plate: plateById.get(unitId)?.plate || '', driver: plateById.get(unitId)?.driver || '', ...m,
+      }));
+      const totalKm = mileRows.reduce((s, r) => s + r.km, 0);
+      const movedVehicles = mileRows.filter((r) => r.km > 0).length;
+      const topMovers = [...mileRows].sort((a, b) => b.km - a.km).slice(0, 8);
 
-    // Distance travelled over the selected period (from daily odometer snapshots).
-    const mileMap = await mileageByUnit(from, to);
-    const plateById = new Map(vehicles.map((v) => [v.unitId, v]));
-    const mileRows = [...mileMap.entries()].map(([unitId, m]) => ({
-      unitId, plate: plateById.get(unitId)?.plate || '', driver: plateById.get(unitId)?.driver || '', ...m,
-    }));
-    const totalKm = mileRows.reduce((s, r) => s + r.km, 0);
-    const movedVehicles = mileRows.filter((r) => r.km > 0).length;
-    const topMovers = [...mileRows].sort((a, b) => b.km - a.km).slice(0, 8);
-
-    const payload = {
-      generatedAt: Date.now(),
-      fleet: {
-        total: vehicles.length,
-        online: vehicles.length - statusCounts.offline,
-        statusCounts,
-      },
-      alerts: {
-        totalOpen: openAlerts.length,
-        vehiclesWithAlerts,
-        bySeverity,
-        byType,
-        latest: latestAlerts,
-      },
-      maintenance: {
-        overdueCount: overdue.length,
-        dueCount: due.length,
-        overdue: overdue.map((v) => ({ unitId: v.unitId, plate: v.plate, driver: v.driver, odometerKm: v.odometerKm, kmToService: v.maintenance.kmToService, nextServiceKm: v.maintenance.nextServiceKm })),
-        due: due.map((v) => ({ unitId: v.unitId, plate: v.plate, driver: v.driver, odometerKm: v.odometerKm, kmToService: v.maintenance.kmToService, nextServiceKm: v.maintenance.nextServiceKm })),
-        nearest: nearestService,
-      },
-      temperature: {
-        avgTireTempC: avg(tireTemps),
-        maxTireTempC: tireTemps.length ? Math.max(...tireTemps) : null,
-        avgCoolantC: avg(coolants),
-        maxCoolantC: coolants.length ? Math.max(...coolants) : null,
-        hotTires,
-        hotEngines,
-        topHotTires,
-      },
-      distance: {
-        from, to,
-        totalKm: Math.round(totalKm),
-        movedVehicles,
-        avgKm: mileRows.length ? Math.round(totalKm / mileRows.length) : 0,
-        topMovers,
-        hasData: mileRows.length > 0,
-      },
-      thresholds: th,
-      maintenancePlan: maint,
-    };
-    cache.set(cacheKey, payload, CACHE_TTL);
+      return {
+        generatedAt: Date.now(),
+        fleet: {
+          total: vehicles.length,
+          online: vehicles.length - statusCounts.offline,
+          statusCounts,
+        },
+        alerts: {
+          totalOpen: openAlerts.length,
+          vehiclesWithAlerts,
+          bySeverity,
+          byType,
+          latest: latestAlerts,
+        },
+        maintenance: {
+          overdueCount: overdue.length,
+          dueCount: due.length,
+          overdue: overdue.map((v) => ({ unitId: v.unitId, plate: v.plate, driver: v.driver, odometerKm: v.odometerKm, kmToService: v.maintenance.kmToService, nextServiceKm: v.maintenance.nextServiceKm })),
+          due: due.map((v) => ({ unitId: v.unitId, plate: v.plate, driver: v.driver, odometerKm: v.odometerKm, kmToService: v.maintenance.kmToService, nextServiceKm: v.maintenance.nextServiceKm })),
+          nearest: nearestService,
+        },
+        temperature: {
+          avgTireTempC: avg(tireTemps),
+          maxTireTempC: tireTemps.length ? Math.max(...tireTemps) : null,
+          avgCoolantC: avg(coolants),
+          maxCoolantC: coolants.length ? Math.max(...coolants) : null,
+          hotTires,
+          hotEngines,
+          topHotTires,
+        },
+        distance: {
+          from, to,
+          totalKm: Math.round(totalKm),
+          movedVehicles,
+          avgKm: mileRows.length ? Math.round(totalKm / mileRows.length) : 0,
+          topMovers,
+          hasData: mileRows.length > 0,
+        },
+        thresholds: th,
+        maintenancePlan: maint,
+      };
+    });
     res.json(payload);
   } catch (error) {
     fail(res, error, 'Failed to load LS2 dashboard');

@@ -43,5 +43,16 @@ const shipmentOrderSupplierSchema = new mongoose.Schema(
 
 shipmentOrderSupplierSchema.index({ name: 1 });
 
+// ── قوائمُ «طلبات الشحنات» المحفوظة تُمسَح مع كلّ كتابة ─────────────────────
+// قائمتا الموردين والشاحنات تُحفظان دقيقتين (so:registry) لأنّ قراءتهما من
+// العنقود بطيئة. والمورّدُ يظهر داخل قائمة الشاحنات، وعددُ شاحناته في قائمته،
+// فأيُّ كتابةٍ على أحدهما — من أيّ شاشةٍ أو سكربت — تمسح البادئةَ كلَّها.
+const clearRegistry = () => {
+  try { require('../utils/ttlCache').clear('so:registry:'); } catch (_) { /* */ }
+};
+for (const op of ['save', 'findOneAndUpdate', 'updateOne', 'updateMany', 'insertMany', 'bulkWrite', 'deleteOne', 'deleteMany', 'findOneAndDelete']) {
+  shipmentOrderSupplierSchema.post(op, clearRegistry);
+}
+
 module.exports = mongoose.models.ShipmentOrderSupplier
   || mongoose.model('ShipmentOrderSupplier', shipmentOrderSupplierSchema);

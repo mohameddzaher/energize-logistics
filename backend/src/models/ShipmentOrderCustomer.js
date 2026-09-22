@@ -64,10 +64,15 @@ shipmentOrderCustomerSchema.index({ name: 1 });
 // «التشغيل — خاصّ» يحفظ فهرسَ (عميل|مسار ← سعر) دقيقةً بدل قراءة ٦٦٨ عميلًا في
 // كلّ نداء. فأيُّ كتابةٍ على عميلٍ — حفظٌ أو تحديثٌ أو حذف، من أيّ شاشة — تمسحه
 // هنا في موضعٍ واحد، فلا يُنسى مسارُ كتابةٍ فيبقى سعرٌ قديم.
+// وقائمةُ العملاء في «طلبات الشحنات» محفوظةٌ كذلك (so:registry) — تُمسَح معه.
 const clearRouteIndex = () => {
-  try { require('../utils/ttlCache').clear('opsprivate:routes'); } catch (_) { /* */ }
+  try {
+    const cache = require('../utils/ttlCache');
+    cache.clear('opsprivate:routes');
+    cache.clear('so:registry:');
+  } catch (_) { /* */ }
 };
-for (const op of ['save', 'findOneAndUpdate', 'updateOne', 'updateMany', 'insertMany', 'deleteOne', 'deleteMany', 'findOneAndDelete']) {
+for (const op of ['save', 'findOneAndUpdate', 'updateOne', 'updateMany', 'insertMany', 'bulkWrite', 'deleteOne', 'deleteMany', 'findOneAndDelete']) {
   shipmentOrderCustomerSchema.post(op, clearRouteIndex);
 }
 

@@ -250,26 +250,31 @@ exports.getMileage = async (req, res) => {
 exports.listVehicles = async (req, res) => {
   try {
     const { status, alertLevel, maintenance: maintFilter, q } = req.query;
-    const filter = {};
-    if (status) filter.status = status;
-    if (alertLevel) filter.alertLevel = alertLevel;
-    if (q) {
-      // مهرَّبٌ ومقصوص: نصُّ البحث يصير تعبيرًا نمطيًّا يُنفَّذ في القاعدة على
-      // المجموعة كاملة، فنصٌّ خبيثٌ واحد يشغلها دهرًا.
-      const rx = new RegExp(String(q).trim().slice(0, 120).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      filter.$or = [{ plate: rx }, { driver: rx }, { name: rx }];
-    }
-    // Maintenance filter is a stored field now — filter in Mongo, not in memory.
-    if (maintFilter === 'due') filter.maintenanceStatus = 'due';
-    else if (maintFilter === 'overdue') filter.maintenanceStatus = 'overdue';
-    else if (maintFilter === 'due_or_overdue') filter.maintenanceStatus = { $ne: 'ok' };
 
-    // Each ls2vehicle doc is heavy (telemetry snapshot + tires[] + sensors), so
-    // the raw fetch costs ~2s. The poller refreshes every 15s, so an 8s cache
-    // keyed by the filter collapses many concurrent LS2-page loads into one query
-    // without ever showing meaningfully-stale data.
-    const cacheKey = `ls2:vehicles:${status || ''}:${alertLevel || ''}:${maintFilter || ''}:${q || ''}`;
-    const rawVehicles = await cache.wrap(cacheKey, 15000, () => Ls2Vehicle.find(filter).lean());
+    // ── الأسطولُ كلُّه قراءةٌ واحدة، والفلترُ في الذاكرة ──────────────────────
+    // ٥٨ مركبةً بـ٢٠٠ ك.ب — قراءتُها من العنقود ٢٫٤ ثانية مهما ضاق الفلتر،
+    // لأنّ الثمنَ نقلُ البايتات لا البحث. وكان لكلّ فلترٍ مفتاحٌ في الذاكرة،
+    // فتسعُ صفحاتٍ تطلب القائمةَ بفلاترَ مختلفة تدفع كلٌّ منها الثانيتين. الآن
+    // مفتاحٌ واحد (والتجديدُ كلّ ١٥ ثانية كما يجدّد المستطلِع)، والفلترُ يطابق
+    // ما كانت القاعدة تفعله حرفًا بحرف.
+    // وخريطةُ الكاوتش تُقرأ معها بالتوازي لا بعدها: كانتا ثانيتين متتاليتين.
+    const [allVehicles] = await Promise.all([
+      cache.wrap('ls2:vehicles:all', 15000, () => Ls2Vehicle.find({}).lean()),
+      tireSensors.loadLayoutMap(),
+    ]);
+    // مهرَّبٌ ومقصوص: نصُّ البحث يصير تعبيرًا نمطيًّا، فنصٌّ خبيثٌ واحد يشغل
+    // العامل دهرًا.
+    const rx = q ? new RegExp(String(q).trim().slice(0, 120).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : null;
+    const rxHit = (v) => typeof v === 'string' && rx.test(v);
+    const rawVehicles = allVehicles.filter((v) => {
+      if (status && v.status !== status) return false;
+      if (alertLevel && v.alertLevel !== alertLevel) return false;
+      if (rx && !(rxHit(v.plate) || rxHit(v.driver) || rxHit(v.name))) return false;
+      if (maintFilter === 'due' && v.maintenanceStatus !== 'due') return false;
+      if (maintFilter === 'overdue' && v.maintenanceStatus !== 'overdue') return false;
+      if (maintFilter === 'due_or_overdue' && v.maintenanceStatus === 'ok') return false;
+      return true;
+    });
     // تغطية حسّاسات الكاوتش تُحسب هنا لا في المتصفّح: الشاشتان وتطبيق الهاتف
     // تقرأ الرقم نفسه من مصدرٍ واحد، فلا يختلف «٧ / ٥ / ٢» من شاشةٍ لأخرى.
     let vehicles = await tireSensors.attachToVehicles(rawVehicles.map((v) => withMaintenance(v)));

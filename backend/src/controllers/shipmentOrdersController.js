@@ -10,6 +10,7 @@ const logAudit = require('../utils/auditLogger');
 const { createNotification } = require('../services/notificationService');
 const { statusVocabulary, isValidStatus } = require('../utils/shipmentOrderStatuses');
 const { saveUploadFile } = require('../utils/fileStore');
+const cache = require('../utils/ttlCache');
 
 // The trial section for creating shipments natively, instead of on the external
 // UPL platform. Fully self-contained: nothing here reads or writes anything the
@@ -725,16 +726,35 @@ const askedLimit = (v, def, max) => {
 };
 const anyOf = (q, fields) => ({ $or: fields.map((f) => ({ [f]: rx(q) })) });
 
+// ── القوائمُ الثلاث: الحقولُ التي تُقرأ فقط، ومحفوظةٌ دقيقتين ─────────────────
+// العنقودُ يسلّم نحو ٧٠ ك.ب في الثانية، فثمنُ القائمة حجمُها لا حسابُها: ٥٠٠
+// عميلٍ كاملين ٣١٥ ك.ب ≈ ٤٫٥ ثانية، و١٠٠٠ شاحنةٍ ٤٦٣ ك.ب ≈ ٥ ثوانٍ. وحقولُ
+// الاستيراد (المالك والآيبان والسجلّ وبطاقة التشغيل…) لا تقرؤها شاشةٌ ولا
+// التطبيق — نموذجُ التعديل يرسل الحقولَ القابلة للتعديل وحدها. والحفظُ آمنٌ
+// لأنّ خطّافاتِ النماذج الثلاثة تمسح `so:registry:` مع كلّ كتابة.
+const REGISTRY_TTL = 2 * 60 * 1000;
+const CUSTOMER_LIST_FIELDS = 'name phone email notes routes defaults';
+const SUPPLIER_LIST_FIELDS = 'name type phone email notes';
+const VEHICLE_LIST_FIELDS = 'plate name truckType supplier defaultDriverName defaultDriverPhone notes';
+const registryKey = (kind, req, extra = '') => `so:registry:${kind}:${String(req.query.q || '')}:${req.query.limit || ''}:${extra}`;
+
 exports.listCustomers = async (req, res) => {
   try {
     const { q } = req.query;
     const filter = { isActive: { $ne: false } };
     if (q && q.trim()) Object.assign(filter, anyOf(q, ['name', 'phone', 'email', 'city', 'address', 'externalId']));
-    const customers = await ShipmentOrderCustomer.find(filter)
-      .sort({ name: 1 })
-      .limit(askedLimit(req.query.limit, 500, 5000))
-      .lean();
-    res.json({ customers, total: await ShipmentOrderCustomer.countDocuments(filter) });
+    const out = await cache.wrap(registryKey('customers', req), REGISTRY_TTL, async () => {
+      const [customers, total] = await Promise.all([
+        ShipmentOrderCustomer.find(filter)
+          .select(CUSTOMER_LIST_FIELDS)
+          .sort({ name: 1 })
+          .limit(askedLimit(req.query.limit, 500, 5000))
+          .lean(),
+        ShipmentOrderCustomer.countDocuments(filter),
+      ]);
+      return { customers, total };
+    });
+    res.json(out);
   } catch (error) {
     res.status(500).json({ message: 'Failed to load customers' });
   }
@@ -798,21 +818,29 @@ exports.listSuppliers = async (req, res) => {
       Object.assign(filter, anyOf(q, ['name', 'phone', 'email', 'ownerName', 'ownerPhone',
         'managerName', 'managerPhone', 'accountantName', 'commercialRegister', 'iban', 'externalId']));
     }
-    const suppliers = await ShipmentOrderSupplier.find(filter)
-      .sort({ name: 1 })
-      .limit(askedLimit(req.query.limit, 500, 5000))
-      .lean();
-    // How many trucks each one runs — the number the team actually asks for.
-    const counts = await ShipmentOrderVehicle.aggregate([
-      { $match: { isActive: { $ne: false }, supplier: { $ne: null } } },
-      { $group: { _id: '$supplier', n: { $sum: 1 } } },
-    ]);
-    const byId = {};
-    counts.forEach((c) => { byId[String(c._id)] = c.n; });
-    res.json({
-      suppliers: suppliers.map((s) => ({ ...s, vehicleCount: byId[String(s._id)] || 0 })),
-      total: await ShipmentOrderSupplier.countDocuments(filter),
+    const out = await cache.wrap(registryKey('suppliers', req), REGISTRY_TTL, async () => {
+      // How many trucks each one runs — the number the team actually asks for.
+      // والثلاثةُ مستقلّة فتُطلب معًا: ثلاث رحلاتٍ إلى العنقود في زمن واحدة.
+      const [suppliers, total, counts] = await Promise.all([
+        ShipmentOrderSupplier.find(filter)
+          .select(SUPPLIER_LIST_FIELDS)
+          .sort({ name: 1 })
+          .limit(askedLimit(req.query.limit, 500, 5000))
+          .lean(),
+        ShipmentOrderSupplier.countDocuments(filter),
+        ShipmentOrderVehicle.aggregate([
+          { $match: { isActive: { $ne: false }, supplier: { $ne: null } } },
+          { $group: { _id: '$supplier', n: { $sum: 1 } } },
+        ]),
+      ]);
+      const byId = {};
+      counts.forEach((c) => { byId[String(c._id)] = c.n; });
+      return {
+        suppliers: suppliers.map((s) => ({ ...s, vehicleCount: byId[String(s._id)] || 0 })),
+        total,
+      };
     });
+    res.json(out);
   } catch (error) {
     res.status(500).json({ message: 'Failed to load suppliers' });
   }
@@ -860,12 +888,19 @@ exports.listVehicles = async (req, res) => {
         'defaultDriverPhone', 'operationCardNumber', 'recordNumber', 'modelYear', 'externalId']));
     }
     if (req.query.supplier) filter.supplier = req.query.supplier;
-    const vehicles = await ShipmentOrderVehicle.find(filter)
-      .populate('supplier', 'name type')
-      .sort({ plate: 1 })
-      .limit(askedLimit(req.query.limit, 1000, 5000))
-      .lean();
-    res.json({ vehicles, total: await ShipmentOrderVehicle.countDocuments(filter) });
+    const out = await cache.wrap(registryKey('vehicles', req, req.query.supplier || ''), REGISTRY_TTL, async () => {
+      const [vehicles, total] = await Promise.all([
+        ShipmentOrderVehicle.find(filter)
+          .select(VEHICLE_LIST_FIELDS)
+          .populate('supplier', 'name type')
+          .sort({ plate: 1 })
+          .limit(askedLimit(req.query.limit, 1000, 5000))
+          .lean(),
+        ShipmentOrderVehicle.countDocuments(filter),
+      ]);
+      return { vehicles, total };
+    });
+    res.json(out);
   } catch (error) {
     res.status(500).json({ message: 'Failed to load vehicles' });
   }

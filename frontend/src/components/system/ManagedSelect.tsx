@@ -34,6 +34,25 @@ const loadCanManage = (): Promise<Record<string, boolean>> => {
   return typesCache;
 };
 
+// ── طلبٌ واحدٌ لكلّ نوعٍ لا لكلّ خانة ──────────────────────────────────────
+// جدولُ الفواتير يرسم الخانةَ في كلّ صفّ، فمئةُ صفٍّ كانت مئةَ طلبٍ للقائمة
+// نفسها (ثلاث قيم) في اللحظة نفسها — تصطفّ في المتصفّح والخادم فيصل آخرُها بعد
+// ٣٫٤ ثانية. فالخانات المرسومة معًا تشترك في وعدٍ واحد، ويبقى الجوابُ ثوانيَ
+// معدودة فقط كي لا تتأخّر إضافةٌ من شاشة الإعدادات؛ وإضافةٌ من هنا تمسحه.
+const LOOKUP_TTL = 10000;
+const lookupCache = new Map<string, { at: number; p: Promise<LookupItem[]> }>();
+const loadItems = (type: string): Promise<LookupItem[]> => {
+  const hit = lookupCache.get(type);
+  if (hit && Date.now() - hit.at < LOOKUP_TTL) return hit.p;
+  const p = api
+    .get<{ items: LookupItem[] }>(`/api/lookups?type=${encodeURIComponent(type)}&active=true`)
+    .then((d) => d.items || []);
+  lookupCache.set(type, { at: Date.now(), p });
+  // الفشلُ لا يُحفَظ — وإلّا ورثته كلُّ خانةٍ تُرسَم بعده.
+  p.catch(() => { if (lookupCache.get(type)?.p === p) lookupCache.delete(type); });
+  return p;
+};
+
 const inputCls =
   'w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50';
 
@@ -93,10 +112,10 @@ export default function ManagedSelect({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh = false) => {
     try {
-      const d = await api.get<{ items: LookupItem[] }>(`/api/lookups?type=${encodeURIComponent(type)}&active=true`);
-      setItems(d.items || []);
+      if (fresh) lookupCache.delete(type);
+      setItems(await loadItems(type));
     } catch {
       setItems([]);
     }
@@ -114,7 +133,7 @@ export default function ManagedSelect({
     try {
       const en = nameEn.trim() || nameAr.trim();
       const { item } = await api.post<{ item: LookupItem }>('/api/lookups', { type, nameEn: en, nameAr: nameAr.trim() || en });
-      await load();
+      await load(true);
       onChange(storeLabel ? item.nameAr : item.key); // select the freshly created option
       setAdding(false);
       setNameEn('');

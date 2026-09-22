@@ -109,17 +109,20 @@ exports.getCustomerKpis = async (req, res) => {
       companies, customers, invoices, payments, disputes,
       fleetTrips, orderTrips, customsJobs, deals, activities, tasks,
     ] = await Promise.all([
-      CrmCompany.find({}).select('name arabicName type status rating score industry city country phone email owner tags createdAt linkedCustomer externalSource').populate('owner', 'firstName lastName').lean(),
-      Customer.find({}).select('companyName customerNumber creditTerm creditLimit currentOutstanding grade clientStatus riskLevel isStopped isActive lastPaymentDate').lean(),
-      Invoice.find({ invoiceDate: { $gte: prevFrom, $lte: to } }).select('customer amount paidAmount balance invoiceDate dueDate status').lean(),
+      // ── لا يُجلب إلّا ما يدخل في حسابٍ أو يُعرض ────────────────────────────
+      // كلُّ حقلٍ زائدٍ هنا يُنقل من العنقود (زمنُ ذهابٍ وإيابٍ ٩٠ م.ث) ثمّ
+      // يُرمى، ويُضاعفه عددُ المستندات. فالإسقاطُ مضبوطٌ على ما تقرأه الصفحة.
+      CrmCompany.find({}).select('name arabicName city owner linkedCustomer').populate('owner', 'firstName lastName').lean(),
+      Customer.find({}).select('companyName customerNumber creditTerm grade isStopped').lean(),
+      Invoice.find({ invoiceDate: { $gte: prevFrom, $lte: to } }).select('customer amount balance invoiceDate dueDate status').lean(),
       Payment.find({ paymentDate: { $gte: prevFrom, $lte: to } }).select('customer invoice amount paymentDate').lean(),
-      Dispute.find({}).select('customer status createdAt').lean(),
-      FleetShipment.find({ createdAt: { $gte: prevFrom, $lte: to } }).select('customerName customer price status loadDate createdAt').lean(),
-      ShipmentOrder.find({ createdAt: { $gte: prevFrom, $lte: to } }).select('customerName customer sellPrice status createdAt').lean(),
-      CustomsClearance.find({ createdAt: { $gte: prevFrom, $lte: to } }).select('customerName customer stage cancelled containerCount createdAt').lean(),
-      CrmDeal.find({}).select('company status value wonAt lostAt createdAt').lean(),
-      CrmActivity.find({ date: { $gte: prevFrom } }).select('company type date').lean(),
-      CrmTask.find({}).select('company status dueDate').lean(),
+      Dispute.find({}).select('customer').lean(),
+      FleetShipment.find({ createdAt: { $gte: prevFrom, $lte: to } }).select('customerName price status loadDate createdAt').lean(),
+      ShipmentOrder.find({ createdAt: { $gte: prevFrom, $lte: to } }).select('customerName sellPrice status createdAt').lean(),
+      CustomsClearance.find({ createdAt: { $gte: prevFrom, $lte: to } }).select('customerName cancelled containerCount createdAt').lean(),
+      CrmDeal.find({}).select('company status value').lean(),
+      CrmActivity.find({ date: { $gte: prevFrom } }).select('company date').lean(),
+      CrmTask.find({}).select('company status').lean(),
     ]);
 
     // Indexes. Customers/invoices/payments are id-linked; the shipment registers
@@ -169,6 +172,11 @@ exports.getCustomerKpis = async (req, res) => {
 
     const inWindow = (d) => d && new Date(d) >= from && new Date(d) <= to;
     const inPrev = (d) => d && new Date(d) >= prevFrom && new Date(d) < from;
+
+    // ── قيمٌ يحتاجها الحسابُ ولا تُرسل ────────────────────────────────────────
+    // `isStopped` يصنع علامةً، و`onTimeRate`/`shipmentGrowthPct` يظهران داخل
+    // تفصيل التقييم لا كحقلٍ مستقلّ. فتُحفَظ جانبًا بدل أن تُحمَّل في كلّ صفّ.
+    const aux = new Map();
 
     const rows = companies.map((co) => {
       const k = nameKey(co.name) || nameKey(co.arabicName);
@@ -252,40 +260,23 @@ exports.getCustomerKpis = async (req, res) => {
       const totalRevenue = invoiced || shipmentRevenue;
       const prevRevenue = prevInvoiced || prevShipmentRevenue;
 
-      return {
+      const row = {
         _id: cid,
         name: co.name,
         arabicName: co.arabicName || '',
-        type: co.type || 'customer',
-        status: co.status,
-        industry: co.industry || '',
         city: co.city || '',
-        country: co.country || '',
-        phone: co.phone || '',
-        email: co.email || '',
-        rating: co.rating || 0,
         owner: co.owner ? `${co.owner.firstName || ''} ${co.owner.lastName || ''}`.trim() : '',
-        tags: co.tags || [],
-        fromOperations: co.externalSource === 'ops_upl',
         // Finance identity
-        linkedCustomer: linkedId,
         customerNumber: linked?.customerNumber || '',
         creditTerm: linked?.creditTerm ?? null,
-        creditLimit: linked?.creditLimit ?? null,
         grade: linked?.grade || '',
-        clientStatus: linked?.clientStatus || '',
-        riskLevel: linked?.riskLevel || '',
-        isStopped: !!linked?.isStopped,
         // Money
         revenue: r0(totalRevenue),
         invoiced: r0(invoiced),
         collected: r0(collected),
         outstanding: r0(outstanding),
         overdueAmount: r0(overdueAmount),
-        overdueInvoices: overdueInvoices.length,
-        invoiceCount: periodInvoices.length,
         avgDaysLate,
-        onTimePaymentRate: onTimeRate == null ? null : r0(onTimeRate * 100),
         disputes: linkedId ? (disputeByCustomer.get(linkedId) || 0) : 0,
         // Volume
         shipments,
@@ -297,21 +288,20 @@ exports.getCustomerKpis = async (req, res) => {
         // Relationship
         openDeals: openDeals.length,
         openPipeline: r0(openDeals.reduce((s, d) => s + (Number(d.value) || 0), 0)),
-        wonDeals: wonDeals.length,
-        wonValue: r0(wonDeals.reduce((s, d) => s + (Number(d.value) || 0), 0)),
-        lostDeals: lostDeals.length,
         winRate: (wonDeals.length + lostDeals.length)
           ? r0((wonDeals.length / (wonDeals.length + lostDeals.length)) * 100) : null,
         activities: actsNow.length,
         openTasks: openTasksByCompany.get(cid) || 0,
-        lastActivity, lastShipment, lastPayment, lastTouch,
         daysSinceLastTouch: daysAgo(lastTouch),
         // Growth
-        prevRevenue: r0(prevRevenue),
-        prevShipments,
         revenueGrowthPct: prevRevenue ? r0(((totalRevenue - prevRevenue) / prevRevenue) * 100) : null,
-        shipmentGrowthPct: prevShipments ? r0(((shipments - prevShipments) / prevShipments) * 100) : null,
       };
+      aux.set(row, {
+        isStopped: !!linked?.isStopped,
+        onTimePaymentRate: onTimeRate == null ? null : r0(onTimeRate * 100),
+        shipmentGrowthPct: prevShipments ? r0(((shipments - prevShipments) / prevShipments) * 100) : null,
+      });
+      return row;
     });
 
     // Score against the CRM's own best — "top of the book", not an invented target.
@@ -320,6 +310,7 @@ exports.getCustomerKpis = async (req, res) => {
     const maxActivities = Math.max(1, ...rows.map((r) => r.activities));
 
     for (const r of rows) {
+      const a = aux.get(r);
       // Payment: 100 when everything landed on or before the due date, sliding to
       // 0 at 45 days late. No payment history at all → neutral 60, so a brand-new
       // customer isn't punished for a habit they haven't had a chance to form.
@@ -336,10 +327,10 @@ exports.getCustomerKpis = async (req, res) => {
       const breakdown = [
         { key: 'revenue', ar: 'الإيرادات', en: 'Revenue', weight: CUSTOMER_WEIGHTS.revenue, value: r0(clamp01(r.revenue / maxRevenue) * 100), detail: { revenue: r.revenue, best: r0(maxRevenue) } },
         { key: 'volume', ar: 'حجم التعاملات', en: 'Volume', weight: CUSTOMER_WEIGHTS.volume, value: r0(clamp01(r.shipments / maxShipments) * 100), detail: { shipments: r.shipments, best: maxShipments } },
-        { key: 'payment', ar: 'انضباط السداد', en: 'Payment discipline', weight: CUSTOMER_WEIGHTS.payment, value: paymentValue, detail: { avgDaysLate: r.avgDaysLate, onTimeRate: r.onTimePaymentRate, overdue: r.overdueAmount } },
+        { key: 'payment', ar: 'انضباط السداد', en: 'Payment discipline', weight: CUSTOMER_WEIGHTS.payment, value: paymentValue, detail: { avgDaysLate: r.avgDaysLate, onTimeRate: a.onTimePaymentRate, overdue: r.overdueAmount } },
         { key: 'recency', ar: 'آخر تعامل', en: 'Recency', weight: CUSTOMER_WEIGHTS.recency, value: recencyValue, detail: { daysSince: d } },
         { key: 'engagement', ar: 'التواصل', en: 'Engagement', weight: CUSTOMER_WEIGHTS.engagement, value: r0(clamp01(r.activities / maxActivities) * 100), detail: { activities: r.activities, openTasks: r.openTasks } },
-        { key: 'growth', ar: 'النمو', en: 'Growth', weight: CUSTOMER_WEIGHTS.growth, value: growthValue, detail: { revenueGrowthPct: r.revenueGrowthPct, shipmentGrowthPct: r.shipmentGrowthPct } },
+        { key: 'growth', ar: 'النمو', en: 'Growth', weight: CUSTOMER_WEIGHTS.growth, value: growthValue, detail: { revenueGrowthPct: r.revenueGrowthPct, shipmentGrowthPct: a.shipmentGrowthPct } },
       ];
       const totalWeight = breakdown.reduce((s, b) => s + b.weight, 0);
       r.score = r0(breakdown.reduce((s, b) => s + (b.value / 100) * b.weight, 0) * (100 / totalWeight));
@@ -348,7 +339,7 @@ exports.getCustomerKpis = async (req, res) => {
       r.breakdown = breakdown;
       // The one-line "what should we do about this account".
       r.flags = [
-        r.isStopped && { key: 'stopped', ar: 'موقوف', en: 'Stopped' },
+        a.isStopped && { key: 'stopped', ar: 'موقوف', en: 'Stopped' },
         r.overdueAmount > 0 && { key: 'overdue', ar: 'عليه متأخرات', en: 'Has overdue' },
         d != null && d > 90 && { key: 'stale', ar: 'بلا تواصل > 90 يوم', en: 'No contact 90d+' },
         r.shipments === 0 && r.revenue === 0 && { key: 'no_activity', ar: 'بلا نشاط في الفترة', en: 'No activity' },
@@ -416,10 +407,14 @@ exports.getVendorKpis = async (req, res) => {
     // are joined on the same folded name.
     const { VendorUtilisation, ContractVendor } = require('../models/ContractModels');
     const [vendors, suppliers, orders, utilisation, contractVendors] = await Promise.all([
-      CrmVendor.find({}).select('-__v').lean(),
-      ShipmentOrderSupplier.find({}).select('name type phone email isActive').lean(),
+      // ── إسقاطٌ صريحٌ بدل `-__v` ───────────────────────────────────────────
+      // `select('-__v')` يجلب المستندَ كلَّه: الملاحظاتُ والمعرّفُ الخارجيُّ
+      // ومنشئُه وطوابعُ الوقت لا يقرؤها أحد. والصفحةُ لا تقرأ بريدَ المورّد
+      // ولا كونَه جديدًا، فلا يُجلبان أصلًا.
+      CrmVendor.find({}).select('name carsCount hasPapers vendorSideSigned ourSideSigned contractDate energizeRep vendorType representative mobile headOffice destinations followUpStatus').lean(),
+      ShipmentOrderSupplier.find({}).select('name phone').lean(),
       ShipmentOrder.find({ createdAt: { $gte: prevFrom, $lte: to } })
-        .select('supplier customerName sellPrice buyPrice status createdAt fromCity toCity driverName vehicleName').lean(),
+        .select('supplier sellPrice buyPrice status createdAt fromCity toCity').lean(),
       // من الكشوف الفعليّة لا من ورقة الاستخدام — راجع utils/liveVendorUtilisation.
       require('../utils/liveVendorUtilisation').liveUtilisationRows(),
       ContractVendor.find({}).select('nameKey name fleetSize monthlyCapacity vendorSideContract ourSideContract documentsReceived contractDate destinations headquarters energizeRep vendorType').lean(),
@@ -432,7 +427,14 @@ exports.getVendorKpis = async (req, res) => {
     for (const u of utilisation) {
       if (u.isExternal || !u.nameKey) continue; // the «أفراد خارجية» bucket is not a vendor
       if (!utilByKey.has(u.nameKey)) utilByKey.set(u.nameKey, []);
-      utilByKey.get(u.nameKey).push({ ...u, at: monthDate(u) });
+      // أربعةُ حقولٍ لا الصفُّ كلُّه: الباقي (اسمُ المالك والمندوبُ ونوعُ العقد)
+      // لا يدخل في أيِّ حساب، ونُسخةُ الصفِّ الكاملِ تتكرّر لآلاف الأشهر.
+      utilByKey.get(u.nameKey).push({
+        at: monthDate(u),
+        orders: u.orders,
+        expectedMonthlyCapacity: u.expectedMonthlyCapacity,
+        fleetSize: u.fleetSize,
+      });
     }
     const contractByKey = new Map(contractVendors.map((c) => [c.nameKey, c]));
 
@@ -456,10 +458,16 @@ exports.getVendorKpis = async (req, res) => {
     // supplier that has no CRM row yet (they exist — suppliers are usually born
     // on the create-shipment form).
     const seenKeys = new Set();
+    // المورّدون آلافٌ والمزوّدون مئات، فبحثٌ خطّيٌّ داخل كلِّ صفٍّ ضربٌ في ضرب.
+    const supByKey = new Map();
+    for (const s of suppliers) {
+      const k = nameKey(s.name);
+      if (k && !supByKey.has(k)) supByKey.set(k, s);
+    }
     const base = vendors.map((v) => {
       const k = nameKey(v.name);
       seenKeys.add(k);
-      return { key: k, crm: v, supplier: suppliers.find((s) => nameKey(s.name) === k) || null };
+      return { key: k, crm: v, supplier: supByKey.get(k) || null };
     });
     for (const s of suppliers) {
       const k = nameKey(s.name);
@@ -474,6 +482,7 @@ exports.getVendorKpis = async (req, res) => {
       base.push({ key: c.nameKey, crm: null, supplier: null });
     }
 
+    const vendorAux = new Map();
     const rows = base.map(({ key: k, crm: v, supplier }) => {
       const cv = contractByKey.get(k) || null;
 
@@ -530,18 +539,14 @@ exports.getVendorKpis = async (req, res) => {
       };
       const contractScore = r0((Object.values(checks).filter(Boolean).length / 4) * 100);
 
-      return {
+      const row = {
         _id: v ? String(v._id) : null,
         supplierId: supplier ? String(supplier._id) : null,
         name: v?.name || cv?.name || supplier?.name || '—',
-        inCrm: !!v,
-        inContracts: !!cv,
-        isNewVendor: v?.isNewVendor === true,
         energizeRep: v?.energizeRep || cv?.energizeRep || '',
         vendorType: v?.vendorType || cv?.vendorType || '',
         representative: v?.representative || cv?.contactPerson || '',
         mobile: v?.mobile || cv?.phone || supplier?.phone || '',
-        email: v?.email || supplier?.email || '',
         headOffice: v?.headOffice || cv?.headquarters || '',
         destinations: v?.destinations || cv?.destinations || '',
         carsCount: fleetSize,
@@ -551,23 +556,22 @@ exports.getVendorKpis = async (req, res) => {
         contractScore,
         // Work
         loads,
-        ledgerLoads,
-        trialLoads: now.length,
-        prevLoads,
         loadGrowthPct: prevLoads ? r0(((loads - prevLoads) / prevLoads) * 100) : null,
         activeMonths: utilNow.filter((u) => (Number(u.orders) || 0) > 0).length,
         monthlyCapacity: capacity,
         utilisationPct,
         cost: r0(cost),
-        revenue: r0(revenue),
         margin: r0(margin),
         marginPct: revenue ? r0((margin / revenue) * 100) : null,
         avgCostPerLoad: now.length ? r0(cost / now.length) : 0,
         routes,
-        lastLoad,
         daysSinceLastLoad: daysAgo(lastLoad),
         loadsPerMonth: r1(loads / months2),
       };
+      // ── قيمٌ للحساب لا للعرض ───────────────────────────────────────────────
+      // `inCrm` يصنع علامةً، و`ledgerLoads` يظهر داخل تفصيل التقييم وحده.
+      vendorAux.set(row, { inCrm: !!v, ledgerLoads });
+      return row;
     });
 
     const maxLoads = Math.max(1, ...rows.map((r) => r.loads));
@@ -578,6 +582,7 @@ exports.getVendorKpis = async (req, res) => {
     const totalLoads = rows.reduce((s2, r) => s2 + r.loads, 0);
 
     for (const r of rows) {
+      const a = vendorAux.get(r);
       const d = r.daysSinceLastLoad;
       const recencyValue = d == null ? 0 : r0(clamp01((120 - d) / 100) * 100);
       // Utilisation: how much of the capacity they told us they have did we
@@ -592,7 +597,7 @@ exports.getVendorKpis = async (req, res) => {
         { key: 'volume', ar: 'الحمولات المنفذة', en: 'Loads carried', weight: VENDOR_WEIGHTS.volume, value: r0(clamp01(r.loads / maxLoads) * 100), detail: { loads: r.loads, best: maxLoads } },
         { key: 'contract', ar: 'اكتمال العقد', en: 'Contract completeness', weight: VENDOR_WEIGHTS.contract, value: r.contractScore, detail: r.checks },
         { key: 'capacity', ar: 'حجم الأسطول', en: 'Fleet capacity', weight: VENDOR_WEIGHTS.capacity, value: r0(clamp01((r.carsCount || 0) / maxCars) * 100), detail: { cars: r.carsCount, best: maxCars } },
-        { key: 'utilisation', ar: 'نسبة التشغيل من الطاقة', en: 'Capacity utilisation', weight: VENDOR_WEIGHTS.utilisation, value: utilValue, detail: { utilisationPct: r.utilisationPct, capacity: r.monthlyCapacity, loads: r.ledgerLoads } },
+        { key: 'utilisation', ar: 'نسبة التشغيل من الطاقة', en: 'Capacity utilisation', weight: VENDOR_WEIGHTS.utilisation, value: utilValue, detail: { utilisationPct: r.utilisationPct, capacity: r.monthlyCapacity, loads: a.ledgerLoads } },
         { key: 'recency', ar: 'آخر تشغيل', en: 'Recency', weight: VENDOR_WEIGHTS.recency, value: recencyValue, detail: { daysSince: d } },
       ];
       const totalWeight = breakdown.reduce((s2, b) => s2 + b.weight, 0);
@@ -601,7 +606,7 @@ exports.getVendorKpis = async (req, res) => {
       r.band = band.key; r.bandAr = band.ar; r.bandEn = band.en; r.bandColor = band.color;
       r.breakdown = breakdown;
       r.flags = [
-        !r.inCrm && { key: 'not_in_crm', ar: 'غير مسجل في CRM', en: 'Not in CRM' },
+        !a.inCrm && { key: 'not_in_crm', ar: 'غير مسجل في CRM', en: 'Not in CRM' },
         r.contractScore < 100 && { key: 'contract_gap', ar: 'العقد/الأوراق ناقصة', en: 'Contract incomplete' },
         d != null && d > 90 && { key: 'idle', ar: 'بلا تشغيل > 90 يوم', en: 'Idle 90d+' },
         r.loads === 0 && { key: 'never_used', ar: 'لم يُشغَّل في الفترة', en: 'No loads in period' },

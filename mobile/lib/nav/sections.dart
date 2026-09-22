@@ -46,6 +46,7 @@ import '../screens/marketing_report.dart';
 import '../screens/ls2_drivers.dart';
 import '../screens/marketing_activities.dart';
 import '../screens/ops_workflows.dart';
+import '../screens/ops_private.dart';
 import '../screens/b2c_wallet.dart';
 import '../screens/my_profile.dart';
 import '../screens/customs_guide.dart';
@@ -138,6 +139,9 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [..._admins, 'employee', 'operations_manager', 'operations_staff', 'moderator'],
       pages: [
         AppPage('التشغيل', 'Operations', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen(), path: '/system/operations'),
+        // كشوفُ التشغيل بسعر بيعنا — صفحةٌ للإدارة، وصلاحيّتُها من الويب نفسِها
+        // (`path` مفتاحُها في مصفوفة الصلاحيّات، والخادمُ يحرسها فوق ذلك).
+        AppPage('التشغيل — خاصّ', 'Operations — private', Icons.lock_outline, (c) => const OpsPrivateScreen(), path: '/system/operations/private'),
         AppPage('العهدة اليومية', 'Cash Wallet', Icons.account_balance_wallet_outlined, (c) => const CashWalletScreen(), path: '/system/wallet'),
         AppPage('لوحة المحفظة', 'Wallet Dashboard', Icons.pie_chart_outline, (c) => const WalletDashboardScreen(), path: '/system/wallet-dashboard'),
       ],

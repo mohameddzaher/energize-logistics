@@ -142,14 +142,46 @@ const getIO = () => {
 // صفحاتُها تجمع مالَ الأقسام كلِّها، فأيُّ بثٍّ ماليٍّ في أيّ قسمٍ يمسح مخزنَها
 // ويُعلمها لتعيد القراءة. والمسحُ والإعلامُ يُجمَعان في نافذةٍ قصيرة: حفظُ كشفٍ
 // واحدٍ يبثّ ثلاثة أحداث، ولا معنى لثلاث قراءاتٍ متتالية.
+//
+// ── ولكلِّ حدثٍ أقسامُه لا الأقسامُ كلُّها ──────────────────────────────────
+// كان كلُّ حدثٍ يمسح مخزنَ الأقسام التسعة ويوقظ كلَّ صفحةٍ ماليّة. ومزامنةُ
+// منصّة التشغيل تبثّ `workflow:*` كلَّ ثوانٍ في ساعات العمل — فصفحةُ ماليات
+// التخليص، ولا شأنَ لها بكشوف التشغيل، كانت تُعاد من الصفر (ثانيتان) كلَّ
+// ثانيتين إلى عشر، ولا تستقرّ أمام المحاسب أبدًا. فصار كلُّ حدثٍ يسمّي الأقسامَ
+// التي تقرأ ما تغيّر (راجع مصادرَ كلِّ قسمٍ في financeController)، وما لم
+// يُسمَّ يمسح الكلَّ كما كان — فالخطأُ هنا قراءةٌ زائدة، لا رقمٌ قديم.
+const FINANCE_DEPTS = [
+  [/^(wallet:|workflow:|shipmentOrders:)/, ['operations', 'collections', 'fleet']],
+  [/^fleet:/, ['fleet']],
+  [/^customs:/, ['customs']],
+  [/^b2c:wallet/, ['light']],
+  [/^(marketing:|bd:)/, ['marketing']],
+  [/^hr:(contract|employee|asset|master)/, ['hr', 'it']],
+  [/^it:/, ['it', 'hr']],
+  [/^collections:/, ['collections']],
+  [/^(vreg:|vehicle:)/, ['vehicles', 'light']],
+  [/^ls2:(store|repair)/, ['fleet']],
+];
 const FINANCE_EVENTS = /^(wallet:|workflow:|collections:|fleet:|shipmentOrders:|customs:|b2c:wallet|marketing:|bd:|hr:(contract|employee|asset|master)|it:|vreg:|vehicle:|ls2:(store|repair)|procurement:|performance:|accounting:)/;
 let financeTimer = null;
+let financePending = new Set();
 const financeTouch = (event) => {
-  if (!FINANCE_EVENTS.test(String(event || '')) || financeTimer) return;
+  const ev = String(event || '');
+  if (!FINANCE_EVENTS.test(ev)) return;
+  const hit = FINANCE_DEPTS.find(([re]) => re.test(ev));
+  for (const d of (hit ? hit[1] : ['*'])) financePending.add(d);
+  if (financeTimer) return;
   financeTimer = setTimeout(() => {
     financeTimer = null;
-    try { require('../utils/ttlCache').clear('finance:'); } catch (e) { /* يكفي انتهاءُ المهلة */ }
-    if (io) io.emit('finance:changed', { at: Date.now(), event });
+    const depts = financePending.has('*') ? null : [...financePending];
+    financePending = new Set();
+    try {
+      const cache = require('../utils/ttlCache');
+      if (!depts) cache.clear('finance:');
+      else for (const d of depts) cache.clear(`finance:${d}:`);
+    } catch (e) { /* يكفي انتهاءُ المهلة */ }
+    // `depts` غائبٌ = الكلّ. والصفحةُ التي لا تعرف الحقلَ تعيد القراءةَ كما كانت.
+    if (io) io.emit('finance:changed', { at: Date.now(), event: ev, ...(depts ? { depts } : {}) });
   }, 1500);
 };
 

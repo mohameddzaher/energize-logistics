@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import api from '@/lib/api';
 import { connectSocket, disconnectSocket } from '@/lib/socket';
 
@@ -111,12 +111,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(id);
   }, [user]);
 
+  // ── والتبويباتُ تتبع الحسابَ لا تبقى على صاحبها القديم ──────────────────
+  // كوكيزُ الجلسة واحدةٌ للمتصفّح كلِّه. فمن دخل بحسابٍ آخرَ في تبويبٍ (يجرّب
+  // شاشةَ المدير الماليّ مثلًا) صارت تبويباتُه الأخرى تعمل بالحساب الجديد وهي
+  // ترسم الحسابَ القديم: صفحةُ المستخدمين تقول «لا يوجد مستخدمين»، والنظرةُ
+  // التنفيذيّة تُرفَض كلَّ ثوانٍ — ويبدو النظامُ معطَّلًا وهو سليم. فيُعلَن
+  // الدخولُ والخروجُ لكلّ التبويبات: الخروجُ يُخرجها، والدخولُ بحسابٍ غيرِ
+  // حسابها يعيد تحميلَها به.
+  const userIdRef = useRef<string | null>(cached?._id ?? null);
+  useEffect(() => { userIdRef.current = user?._id ?? null; }, [user]);
+  const channelRef = useRef<BroadcastChannel | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') return undefined;
+    let ch: BroadcastChannel;
+    try { ch = new BroadcastChannel('energize-auth'); } catch { return undefined; }
+    channelRef.current = ch;
+    ch.onmessage = (ev) => {
+      const msg = ev.data || {};
+      if (msg.type === 'logout') {
+        writeCached(null);
+        setUser(null);
+        disconnectSocket();
+      } else if (msg.type === 'login' && msg.id && msg.id !== userIdRef.current) {
+        writeCached(null);
+        window.location.reload();
+      }
+    };
+    return () => { ch.close(); channelRef.current = null; };
+  }, []);
+  const announce = (msg: { type: 'login' | 'logout'; id?: string }) => {
+    try { channelRef.current?.postMessage(msg); } catch { /* تبويبٌ واحدٌ لا يحتاجها */ }
+  };
+
   const login = async (email: string, password: string): Promise<User> => {
     const data = await api.post<{ user: User }>('/api/auth/login', { email, password });
     setUser(data.user);
     writeCached(data.user);
     setLoginKey(k => k + 1);
     connectSocket();
+    announce({ type: 'login', id: data.user?._id });
     return data.user;
   };
 
@@ -129,6 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setUser(null);
     disconnectSocket();
+    announce({ type: 'logout' });
   };
 
   return (

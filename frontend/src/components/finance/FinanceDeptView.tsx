@@ -60,7 +60,7 @@ export function PeriodBar({ period, ar }: { period: ReturnType<typeof usePeriod>
   );
 }
 
-export default function FinanceDeptView({ dept }: { dept: string }) {
+export default function FinanceDeptView({ dept, onOpenRow }: { dept: string; onOpenRow?: (row: any) => void }) {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const period = usePeriod();
@@ -84,7 +84,11 @@ export default function FinanceDeptView({ dept }: { dept: string }) {
   }, [dept, period.range.from, period.range.to, guard]);
 
   useEffect(() => { load(); }, [load]);
-  useSocket('finance:changed', useCallback(() => { setLiveAt(Date.now()); load(); }, [load]));
+  // الخبرُ يسمّي أقسامَه — وما لا يخصّ هذا القسمَ لا يعيد قراءتَه.
+  useSocket('finance:changed', useCallback((p?: { depts?: string[] }) => {
+    if (Array.isArray(p?.depts) && !p!.depts.includes(dept)) return;
+    setLiveAt(Date.now()); load();
+  }, [load, dept]));
 
   if (loading && !d) return <Spinner />;
   if (!d) return <div className="p-8 text-slate-500">{error || (ar ? 'تعذّر التحميل' : 'Could not load')}</div>;
@@ -156,7 +160,7 @@ export default function FinanceDeptView({ dept }: { dept: string }) {
         </div>
       )}
 
-      {d.tables.map((t) => <FinanceTable key={t.key} table={t} ar={ar} fileName={fileName} />)}
+      {d.tables.map((t) => <FinanceTable key={t.key} table={t} ar={ar} fileName={fileName} onOpenRow={onOpenRow} />)}
     </div>
   );
 }

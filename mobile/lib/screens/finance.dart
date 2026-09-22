@@ -6,6 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/file_upload.dart';
+import '../ui/clearance_quick_view.dart';
 
 /// الإدارة المالية — مالُ كلّ قسمٍ في موضعٍ واحد، من الحمولة نفسِها التي
 /// تعرضها صفحاتُ الموقع (/api/finance). فلا يختلف رقمٌ بين الهاتف والموقع.
@@ -218,19 +219,24 @@ class _FinanceDeptScreenState extends State<FinanceDeptScreen> {
   String? _error;
   bool _loading = true;
   int _seq = 0;
-  late final void Function() _onLive;
+  late final void Function(dynamic) _onLive;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _onLive = () => _load();
-    Live.instance.on('finance:changed', _onLive);
+    // الخبرُ يسمّي أقسامَه — وما لا يخصّ هذا القسمَ لا يعيد قراءتَه.
+    _onLive = (p) {
+      final depts = p is Map ? p['depts'] : null;
+      if (depts is List && !depts.contains(widget.dept)) return;
+      _load();
+    };
+    Live.instance.onData('finance:changed', _onLive);
   }
 
   @override
   void dispose() {
-    Live.instance.off('finance:changed', _onLive);
+    Live.instance.offData('finance:changed', _onLive);
     super.dispose();
   }
 
@@ -370,6 +376,11 @@ class _FinTableCard extends StatelessWidget {
 }
 
 /// طلباتُ صرف التخليص — المعلَّقةُ أوّلًا، وثلاثةُ أجوبةٍ لكلّ طلب.
+String _fmtAmt(dynamic v) {
+  final n = v is num ? v : num.tryParse('${v ?? ''}') ?? 0;
+  return n.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
+}
+
 class _CustomsPaymentRequests extends StatefulWidget {
   const _CustomsPaymentRequests();
   @override
@@ -381,14 +392,29 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
   Map<String, dynamic> _counts = const {};
   bool _loading = true;
   String _tab = 'pending';
+  int _seq = 0;
+  late final void Function() _onLive;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+    // قرارُ زميلٍ أو طلبٌ جديدٌ من التخليص يظهر هنا في اللحظة.
+    _onLive = () => _load();
+    Live.instance.on('customs:updated', _onLive);
+  }
+
+  @override
+  void dispose() {
+    Live.instance.off('customs:updated', _onLive);
+    super.dispose();
+  }
 
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
-      final d = await Api.instance.get('/api/customs-clearance/payment-requests?status=$_tab');
-      if (!mounted) return;
+      final d = await Api.instance.get('/api/customs-clearance/payment-requests?status=$_tab&limit=50');
+      if (!mounted || mine != _seq) return;
       setState(() {
         _rows = List<Map<String, dynamic>>.from(d['requests'] ?? const []);
         _counts = Map<String, dynamic>.from(d['counts'] ?? const {});
@@ -471,8 +497,30 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
           Chip2('${_counts['pending'] ?? 0}', T.warn),
         ]),
         const SizedBox(height: 2),
-        Text(tr('ما طلب قسمُ التخليص دفعَه — بمرفقه', 'What customs asked to be paid — with its file'),
+        Text(tr('ما طلب قسمُ التخليص دفعَه — اضغط رقم المعاملة لتفاصيلها', 'What customs asked to be paid — tap a transaction for details'),
             style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+        const SizedBox(height: 10),
+        Row(children: [
+          for (final x in [
+            (tr('بانتظار الدفع', 'Awaiting'), '${_counts['pending'] ?? 0}', T.warn),
+            (tr('مبالغ منتظِرة', 'Awaiting SAR'), _fmtAmt(_counts['amountPending']), T.warn),
+            (tr('مدفوعة', 'Paid'), '${_counts['paid'] ?? 0}', T.success),
+            (tr('مبالغ مدفوعة', 'Paid SAR'), _fmtAmt(_counts['amountPaid']), T.success),
+          ])
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 8),
+                decoration: BoxDecoration(color: x.$3.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(10)),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(x.$1, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9.5, color: T.inkSoft, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
+                      child: Text(x.$2, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: x.$3))),
+                ]),
+              ),
+            ),
+        ]),
         const SizedBox(height: 8),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -506,7 +554,15 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
                   Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800))),
-                  Text('${r['refNumber'] ?? ''}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                  // رقمُ المعاملة يفتح تفاصيلَها هنا — شاشةُ التخليص لا تُفتح للماليّة.
+                  InkWell(
+                    onTap: () => showClearanceQuickView(context, '${r['clearanceId']}'),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      child: Text('${r['refNumber'] ?? ''}',
+                          style: const TextStyle(fontSize: 12, color: T.orange, fontWeight: FontWeight.w800, decoration: TextDecoration.underline)),
+                    ),
+                  ),
                 ]),
                 const SizedBox(height: 2),
                 Text('${r['label'] ?? r['key'] ?? ''} · ${r['amount'] ?? '—'}${r['note'] != null && '${r['note']}'.isNotEmpty ? ' · ${r['note']}' : ''}',

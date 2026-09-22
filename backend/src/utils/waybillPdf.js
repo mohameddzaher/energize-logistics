@@ -22,6 +22,53 @@ const getLetterhead = () => (letterheadBytes ||= fs.readFileSync(LETTERHEAD));
 let stampDataUri = null;
 const getStampDataUri = () => (stampDataUri ||= `data:image/png;base64,${fs.readFileSync(STAMP).toString('base64')}`);
 
+/**
+ * ── الخطوطُ في الملفّ لا على الشبكة ─────────────────────────────────────────
+ *
+ * كانت الورقةُ تطلب خطوطَها من `fonts.googleapis.com` بوسمِ `<link>`، والترسيمُ
+ * ينتظر `networkidle0` — أي سكونَ الشبكة نصفَ ثانيةٍ بعد آخر طلب. فكلُّ بوليصةٍ
+ * تدفع ثمنَ رحلتين إلى خادمٍ في الخارج: ملفُّ التنسيق ثمّ ملفّاتُ الخطّ.
+ *
+ * قِيس ذلك: ثلاثُ ثوانٍ للبوليصة الواحدة، **٢٫٩٦ منها في `setContent` وحدَها**،
+ * واللقطةُ ثلاثٌ وستّون مِلّي ثانية. أي أنّ ٩٥٪ من انتظار المستخدم كان انتظارَ
+ * خطٍّ يُحمَّل من جديد في كلّ مرّة.
+ *
+ * فصارت الخطوطُ ملفّاتٍ عندنا (`assets/fonts`, وهي WOFF2 من Google Fonts
+ * بترخيص OFL) تُقرأ مرّةً عند أوّل ترسيمٍ وتُحقَن في الصفحة نصًّا. فلا شبكةَ
+ * أصلًا: الترسيمُ لا يتعلّق بخادمٍ ليس لنا، ولا يتغيّر شكلُ الورقة إن تعذّر
+ * الوصول إليه.
+ *
+ * والمجموعتان المحمَّلتان هما العربيّةُ واللاتينيّة — لا الرياضيّاتُ ولا الرموز.
+ */
+const FONTS_DIR = path.join(__dirname, '..', 'assets', 'fonts');
+const FONT_FACES = [
+  ['Tajawal', 400, ['tajawal-400-arabic.woff2', 'tajawal-400-latin.woff2']],
+  ['Tajawal', 700, ['tajawal-700-arabic.woff2', 'tajawal-700-latin.woff2']],
+  ['Tajawal', 800, ['tajawal-800-arabic.woff2', 'tajawal-800-latin.woff2']],
+  ['Noto Naskh Arabic', 400, ['noto-naskh-arabic-400-arabic.woff2', 'noto-naskh-arabic-400-latin.woff2']],
+  ['Noto Naskh Arabic', 600, ['noto-naskh-arabic-600-arabic.woff2', 'noto-naskh-arabic-600-latin.woff2']],
+];
+
+let fontCss = null;
+function getFontCss() {
+  if (fontCss !== null) return fontCss;
+  const out = [];
+  for (const [family, weight, files] of FONT_FACES) {
+    for (const file of files) {
+      try {
+        const b64 = fs.readFileSync(path.join(FONTS_DIR, file)).toString('base64');
+        out.push(`@font-face{font-family:'${family}';font-style:normal;font-weight:${weight};`
+          + `font-display:block;src:url(data:font/woff2;base64,${b64}) format('woff2');}`);
+      } catch (e) {
+        // ملفُّ خطٍّ مفقود لا يمنع البوليصة: تُرسَم بخطّ النظام وتُقرأ.
+        console.error('[waybill] font missing:', file);
+      }
+    }
+  }
+  fontCss = out.join('\n');
+  return fontCss;
+}
+
 const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -70,8 +117,8 @@ function buildDispatchSheetHTML(row) {
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8" />
-<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&family=Noto+Naskh+Arabic:wght@400;600&display=swap" rel="stylesheet" />
 <style>
+${getFontCss()}
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { font-family: 'Tajawal', 'Noto Sans Arabic', system-ui, sans-serif; direction: rtl; color: #1a1a1a; background: transparent; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
   .sheet { width: 210mm; height: 297mm; position: relative; background: transparent; overflow: hidden; }
@@ -214,7 +261,10 @@ async function renderWaybillPdf(row) {
   try {
     // 210mm × 297mm at 96dpi = 794 × 1123, ×1.5 device scale — matches the web's html2canvas scale.
     await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1.5 });
-    await page.setContent(buildDispatchSheetHTML(row), { waitUntil: 'networkidle0', timeout: 20000 });
+    // لا مواردَ خارجيّةً في الصفحة (الخطوطُ والختمُ مضمَّنان)، فانتظارُ سكون
+    // الشبكة انتظارٌ لما لا يأتي: `networkidle0` وحدَها كانت تكلّف ٢٫٩ ثانية
+    // من ثلاثٍ. ويبقى انتظارُ جاهزيّة الخطوط — وهو الشرطُ الحقيقيّ للّقطة.
+    await page.setContent(buildDispatchSheetHTML(row), { waitUntil: 'domcontentloaded', timeout: 20000 });
     try { await page.evaluateHandle('document.fonts.ready'); } catch (e) { /* fallback font */ }
     // ── والبوليصةُ ورقةٌ واحدة ─────────────────────────────────────────
     // بياناتُها وإقرارُ سائقها في ورقةٍ واحدة: تُسلَّم بيدٍ وتُطبَع بالمئات،

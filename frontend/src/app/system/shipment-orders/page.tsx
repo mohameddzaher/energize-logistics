@@ -20,7 +20,6 @@ import {
   fmtDT, money, canEditOrders, canAdminOrders, Lang, vocabLabel,
 } from '@/lib/shipmentOrders';
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
-import type { DispatchSheetRow } from '@/lib/dispatchSheetExcelParser';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import ScrollX from '@/components/system/ScrollX';
 
@@ -28,6 +27,21 @@ import ScrollX from '@/components/system/ScrollX';
 // ── حالاتٌ لا تُقال بلا ورقة ────────────────────────────────────────────────
 // نظيرُ `REQUIRE_FILE` في الخادم (shipmentOrdersController) — وهو الحارس؛
 // وهذه لتعين الموظّفَ قبل أن يُردَّ عليه.
+// ── ونزولُ الملفّ لا يستدعي مولّدًا ─────────────────────────────────────────
+// كان الزرُّ يجلب `lib/dispatchSheetGenerator` ليستعمل منه سطرَ التنزيل وحدَه —
+// وهو ملفٌّ يجرّ معه JSZip وpdf-lib والقالبَ كلَّه: مئاتُ الكيلوبايتات تُحمَّل
+// وتُفسَّر عند أوّل ضغطة، وقد صارت البوليصةُ تُرسَم في الخادم فلا حاجةَ إليه.
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 const STATUS_NEEDS_FILE = new Set(['bond_sent']);
 type PickedFile = { dataUrl: string; fileName: string; size: number };
 const MAX_UPLOAD = 20 * 1024 * 1024;
@@ -38,32 +52,11 @@ const fmtDate = (v?: string | null) => {
   return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
 };
 
-// The بوليصة is the same letterhead sheet the dispatch page generates — one
-// order maps onto one row of it. Fields we do not track stay blank on the
-// sheet, exactly as a blank cell did in the Excel flow.
-const toSheetRow = (o: ShipmentOrder): DispatchSheetRow => ({
-  rowIndex: 1,
-  rentalType: o.driverRentType || '',
-  carBrand: '',
-  carColor: '',
-  carType: o.truckType || '',
-  plateNumber: (o as any).vehiclePlate || o.vehicleName || '',
-  driverAdvance: '',
-  driverPhone: o.driverPhone || '',
-  driverIqama: '',
-  driverNationality: '',
-  driverName: o.driverName || '',
-  customerName: o.customerName || '',
-  branch: o.branch || '',
-  toLocation: o.toCity || '',
-  fromLocation: o.fromCity || '',
-  date: fmtDate(o.pickupTime || o.createdAt),
-  // رقمُ البوليصة على الورقة: المنقولُ من المنصّة لا رقمَ بوليصةٍ له عندنا —
-  // يحمل رقمَ كشف تخريجهم، وهو الرقمُ الذي يُسأل عنه. الورقةُ كانت تُطبع بخانةٍ
-  // فارغةٍ في ثلاثةٍ وثلاثين ألفَ شحنة.
-  dispatchNumber: String((o as any).reference || o.waybillNumber || ''),
-  missingRequired: [],
-});
+// ── والصفُّ لم يعد يُبنى هنا ───────────────────────────────────────────────
+// كان `toSheetRow` يحوّل الطلبَ إلى صفِّ بوليصةٍ ليرسمها المتصفّح. والرسمُ صار
+// في الخادم من الطلب نفسِه (utils/waybillPdf · rowFromOrder)، فالتحويلُ هنا
+// نسخةٌ ثانيةٌ من القاعدة تشيخ وحدَها: أُضيفت الملاحظاتُ وسعرُ البيع والإقرار
+// إلى تلك ولم تصل هذه.
 
 // بوليصة-501-اسم العميل-22-7-2026
 const waybillFileName = (o: ShipmentOrder) => {
@@ -205,8 +198,7 @@ export default function ShipmentOrdersPage() {
     setDownloadingId(o._id);
     try {
       const blob = await api.postBlob('/api/shipment-orders/orders/waybills.pdf', { ids: [o._id] });
-      const gen = await import('@/lib/dispatchSheetGenerator');
-      gen.triggerDownload(blob, `${waybillFileName(o)}.pdf`);
+      downloadBlob(blob, `${waybillFileName(o)}.pdf`);
     } catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
     setDownloadingId(null);
   };
@@ -228,8 +220,7 @@ export default function ShipmentOrdersPage() {
     setBulkProgress(ar ? `يجهّز ${rows.length}…` : `preparing ${rows.length}…`);
     try {
       const blob = await api.postBlob('/api/shipment-orders/orders/waybills.pdf', { ids: rows.map((o) => o._id) });
-      const gen = await import('@/lib/dispatchSheetGenerator');
-      gen.triggerDownload(blob, `بوليصات-الشحن-${rows.length}.pdf`);
+      downloadBlob(blob, `بوليصات-الشحن-${rows.length}.pdf`);
       setPicked(new Set());
     } catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
     setBulkBusy(false);

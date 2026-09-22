@@ -716,8 +716,9 @@ export default function ShipmentOrdersPage() {
                     const on = fu.status === s2.key;
                     return (
                       <button key={s2.key} type="button" onClick={() => setFu({ ...fu, status: s2.key })}
+                        // المختارُ يُعرَف بلونه — والحلقةُ البرتقاليّة فوقه تزاحمه.
                         className={`text-xs font-semibold rounded-lg px-2.5 py-2 border transition-colors ${
-                          on ? 'text-white border-transparent ring-2 ring-[#f37121]' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}
+                          on ? 'text-white border-transparent' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}
                         style={on ? { background: s2.color } : undefined}>
                         {vocabLabel(s2, lang as Lang)}
                       </button>

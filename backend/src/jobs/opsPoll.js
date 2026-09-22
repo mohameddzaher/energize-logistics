@@ -181,6 +181,20 @@ async function pollMovingShipments() {
     });
     const res = touched.length ? await upsertShipments(touched) : { created: 0, updated: 0, removed: 0 };
 
+    // ── وقسمُ طلبات الشحنات يتبع الحركةَ كذلك ──────────────────────────────
+    // كانت هذه الدورةُ تكتب في كشوف سير العمل وحدَها، وطلباتُ الشحنات لا
+    // تُحدَّث إلّا من الدورة السريعة — وهي تقرأ أحدثَ مئةٍ **أُنشئت** لا ما
+    // تغيّرت. فشحنةٌ أُنشئت أمسِ وتغيّرت حالتُها اليوم تبقى في القسم على
+    // حالتها القديمة إلى أن تمرّ مزامنةٌ شاملة. قِيس ذلك: شحنةٌ عندنا «في
+    // الطريق» وفي المنصّة «استُلم السند».
+    if (touched.length) {
+      try {
+        const { upsertPlatformShipments } = require('../services/shipmentOrderSyncService');
+        const r2 = await upsertPlatformShipments(touched);
+        if (r2.created || r2.updated) emitToAll('shipmentOrders:updated', { source: 'platform', ...r2 });
+      } catch (e) { /* المزامنةُ الشاملة تُصلح ما فات */ }
+    }
+
     // ② مَن غادر الحركة.
     const left = ourMoving.map((r) => String(r.externalId)).filter((id) => id && !seen.has(id));
 
@@ -194,7 +208,14 @@ async function pollMovingShipments() {
         if (one && one.data && one.data.id) resolved.push(one.data);
       } catch (e) { /* شحنةٌ حُذفت أو نداءٌ تعثّر — المزامنةُ الكاملة تُصلحه */ }
     }
-    if (resolved.length) await upsertShipments(resolved);
+    if (resolved.length) {
+      await upsertShipments(resolved);
+      try {
+        const { upsertPlatformShipments } = require('../services/shipmentOrderSyncService');
+        const r3 = await upsertPlatformShipments(resolved);
+        if (r3.created || r3.updated) emitToAll('shipmentOrders:updated', { source: 'platform', ...r3 });
+      } catch (e) { /* */ }
+    }
 
     // ── وعدُّ ما تغيّر حقًّا ──────────────────────────────────────────────────
     // لا يصحّ أن يُقاس بـ`modifiedCount`: كلُّ كتابةٍ تحمل `lastSyncedAt` جديدًا

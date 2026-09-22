@@ -104,8 +104,8 @@ function pledgeHTML(row) {
       <p class="ur">میں ڈرائیور/ ${n} شناختی نمبر (${i}) اقرار کرتا ہوں کہ میں نے اس بلٹی میں درج مال درست حالت میں وصول کیا ہے، اور وصولی سے حوالگی تک اس کی مکمل ذمہ داری قبول کرتا ہوں۔ نیز مجھے مالک کی طرف سے قانونی طور پر اختیار حاصل ہے کہ میں تمام آپریشنل دستاویزات پر دستخط کروں اور مال سے متعلق معاہدہ اور مالی تصفیہ اُس کی جانب سے مکمل کروں۔ میں تمام ٹریفک قوانین کی پابندی کا عہد کرتا ہوں، اور اپنی کوتاہی یا مملکتِ سعودی عرب کے قوانین کی خلاف ورزی سے پیدا ہونے والے کسی بھی نقصان یا جرمانے کی مکمل ذمہ داری قبول کرتا ہوں۔</p>
     </div>
     <div class="sign">
-      <div><div class="k">توقيع السائق · ڈرائیور کے دستخط</div><div class="l"></div></div>
-      <div><div class="k">التاريخ · تاریخ</div><div class="l"></div></div>
+      <div><div class="k">توقيع السائق<span class="ur-k">ڈرائیور کے دستخط</span></div><div class="l"></div></div>
+      <div><div class="k">التاريخ<span class="ur-k">تاریخ</span></div><div class="l"></div></div>
     </div>
   </div>`;
 }
@@ -128,30 +128,30 @@ ${getFontCss()}
      يبقى مقروءًا، والتذييلُ المطبوعُ في الورق يشغل نحوَ أربعةٍ وعشرين
      مليمترًا لا ستّين — فالصندوقُ يمتدّ إلى ٤٤مم من أسفلَ بأمان.
      وكلُّ تغييرٍ هنا يُعايَن بالعين: «overflow:hidden» يقصّ ما زاد صامتًا. */
-  .content { position: absolute; top: 34mm; bottom: 44mm; left: 15mm; right: 15mm; display: flex; flex-direction: column; }
+  .content { position: absolute; top: 34mm; bottom: 40mm; left: 15mm; right: 15mm; display: flex; flex-direction: column; }
   .title-block, .meta-row, .section, .stamp-wrap { flex-shrink: 0; }
-  .title-block { text-align: center; margin-bottom: 6px; }
+  .title-block { text-align: center; margin-bottom: 7px; }
   .doc-title { font-size: 30px; font-weight: 800; color: #1a1a1a; line-height: 1.05; margin-bottom: 4px; }
   .doc-subtitle { font-size: 13.5px; font-weight: 700; color: #333; line-height: 1.2; }
   .doc-subtitle .en { color: #555; font-weight: 700; margin-right: 6px; }
   .title-accent { width: 70px; height: 2.5px; background: #F58220; margin: 5px auto 0; border-radius: 2px; }
-  .meta-row { display: flex; gap: 4px; margin-bottom: 6px; background: rgba(253, 240, 224, 0.97); border: 1.2px solid #e8b585; border-radius: 5px; }
-  .meta-box { flex: 1; padding: 5px 8px 6px; text-align: center; border-left: 1px solid #d9b388; line-height: 1.25; }
+  .meta-row { display: flex; gap: 4px; margin-bottom: 7px; background: rgba(253, 240, 224, 0.97); border: 1.2px solid #e8b585; border-radius: 5px; }
+  .meta-box { flex: 1; padding: 6px 9px 7px; text-align: center; border-left: 1px solid #d9b388; line-height: 1.25; }
   .meta-box:last-child { border-left: none; }
   .meta-box .lbl-ar { display: block; font-size: 11px; font-weight: 700; color: #6e4f2e; line-height: 1.3; }
   .meta-box .lbl-en { display: block; font-size: 9.5px; font-weight: 700; color: #6e4f2e; direction: ltr; letter-spacing: 0.3px; line-height: 1.3; margin-bottom: 2px; }
   .meta-box .val { display: block; font-size: 14px; font-weight: 800; color: #1a1a1a; line-height: 1.35; }
-  .section { margin-bottom: 4px; padding: 3px 8px 4px; border-right: 2.5px solid #F58220; background: rgba(255, 255, 255, 0.86); border-radius: 0 4px 4px 0; }
-  .section-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px dashed #f0d8c0; padding-bottom: 2px; margin-bottom: 2px; }
+  .section { margin-bottom: 5px; padding: 4px 9px 5px; border-right: 2.5px solid #F58220; background: rgba(255, 255, 255, 0.86); border-radius: 0 4px 4px 0; }
+  .section-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px dashed #f0d8c0; padding-bottom: 3px; margin-bottom: 3px; }
   .section-head .ar { font-size: 12px; font-weight: 800; color: #F58220; }
   .section-head .en { font-size: 10px; font-weight: 800; color: #F58220; direction: ltr; letter-spacing: 0.4px; }
-  .row { display: grid; grid-template-columns: 95px 1fr 105px; align-items: baseline; gap: 8px; padding: 2.5px 2px; border-bottom: 1px dashed #ececec; line-height: 1.25; }
+  .row { display: grid; grid-template-columns: 105px 1fr 115px; align-items: baseline; gap: 12px; padding: 3.5px 2px; border-bottom: 1px dashed #ececec; line-height: 1.35; }
   .row:last-child { border-bottom: none; }
   .row .ar-label { font-size: 11.5px; font-weight: 700; color: #2a2a2a; text-align: right; }
-  .row .value { font-size: 12.5px; font-weight: 700; color: #1a1a1a; text-align: center; min-height: 14px; }
+  .row .value { font-size: 12.5px; font-weight: 700; color: #1a1a1a; text-align: center; min-height: 15px; }
   .row .en-label { font-size: 10px; font-weight: 700; color: #2a2a2a; text-align: left; direction: ltr; letter-spacing: 0.3px; }
   .row .blank { display: inline-block; width: 60%; border-bottom: 1px dotted #bbb; height: 0.7em; vertical-align: middle; }
-  .fare-section .fare-row { display: grid; grid-template-columns: 95px 1fr 105px; align-items: baseline; gap: 8px; padding: 2.5px 2px 1px; }
+  .fare-section .fare-row { display: grid; grid-template-columns: 105px 1fr 115px; align-items: baseline; gap: 12px; padding: 3.5px 2px 2px; }
   .fare-section .fare-row .ar-label { font-size: 11.5px; font-weight: 700; color: #2a2a2a; text-align: right; }
   .fare-section .fare-row .value { font-size: 14.5px; font-weight: 800; color: #1a1a1a; text-align: center; }
   .fare-section .fare-row .en-label { font-size: 10px; font-weight: 700; color: #2a2a2a; text-align: left; direction: ltr; letter-spacing: 0.3px; }
@@ -165,11 +165,21 @@ ${getFontCss()}
   .pledge .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
   .pledge p { font-size: 8.3px; line-height: 1.6; color: #2a2a2a; text-align: justify; }
   .pledge .ur { font-family: 'Noto Naskh Arabic', 'Tajawal', sans-serif; font-size: 8.1px; line-height: 1.72; border-inline-start: 1px dashed #ececec; padding-inline-start: 7px; }
-  .pledge .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 6px; padding-top: 4px; border-top: 1px dashed #ececec; }
-  .pledge .sign .k { font-size: 9.5px; font-weight: 700; color: #2a2a2a; }
-  .pledge .sign .l { margin-top: 12px; border-bottom: 1px solid #1a1a1a; }
+  /* ── والاسمان يقفان معًا لا متقاطعَين ────────────────────────────────────
+     كانت الخانةُ تُكتب «التاريخ · تاریخ» في سطرٍ واحد، والفقرةُ الأردية إلى
+     يسارها — فيُقرأ الاسمُ العربيُّ عند العمود الأرديّ وبالعكس. فصارت كلُّ
+     لغةٍ تحت أختها في الخانة نفسِها: لا يسارَ ولا يمينَ يُفهَم منه شيء.
+     والسطرُ تحتهما يُترَك فارغًا — السائقُ يوقّع ويكتب التاريخ بيده. */
+  .pledge .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; margin-top: 8px; padding-top: 6px; border-top: 1px dashed #ececec; }
+  .pledge .sign .k { font-size: 9px; font-weight: 700; color: #2a2a2a; line-height: 1.35; }
+  .pledge .sign .k .ur-k { display: block; font-family: 'Noto Naskh Arabic', 'Tajawal', sans-serif; font-size: 8.5px; font-weight: 400; color: #555; }
+  .pledge .sign .l { margin-top: 16px; border-bottom: 1px solid #1a1a1a; }
   .fill { font-weight: 800; border-bottom: 1px solid #1a1a1a; padding: 0 7px; }
-  .stamp-wrap { margin-top: auto; padding-top: 4px; text-align: center; }
+  /* ── والختمُ يتبع ما قبله ──────────────────────────────────────────────
+     كان «margin-top:auto» يدفعه إلى قاع الصندوق، فتفتح بين الإقرار والختم
+     فجوةٌ بيضاء ويبقى تحته فراغٌ ثانٍ إلى حافّة الورقة. والمساحةُ المتروكة
+     أولى بها السطورُ نفسُها: فُردت أعلاه، والختمُ صار يجلس تحت الإقرار. */
+  .stamp-wrap { padding-top: 6px; text-align: center; }
   .stamp-wrap img { width: 95px; height: auto; display: inline-block; }
 </style>
 </head>

@@ -323,6 +323,16 @@ exports.updateOrder = async (req, res) => {
     Object.assign(order, data);
     await order.save();
     emit('shipmentOrders:updated', { id: String(order._id) });
+
+    // وصفُّ سير عمل التشغيل لهذه الشحنة يتبع في اللحظة نفسِها — هي شحنةٌ
+    // واحدةٌ تُقرأ في شاشتين، فلا تُقرأ بحالتين. راجع syncShipmentsById.
+    if (order.source === 'platform' && order.externalId) {
+      setImmediate(() => {
+        require('../services/opsWorkflowSyncService')
+          .syncShipmentsById([String(order.externalId)])
+          .catch((e) => console.error('[shipment-orders] mirror after status:', e.message));
+      });
+    }
     res.json({ order });
   } catch (error) {
     return sendMongooseError(res, error, 'Failed to update the shipment order');
@@ -610,6 +620,36 @@ exports.patchStatus = async (req, res) => {
 
     // نقلةٌ بلا تغييرٍ ولا ملاحظةٍ لا تُقيَّد: السجلُّ يمتلئ بأسطرٍ لا تقول شيئًا.
     if (from === status && !note && !file) return res.json({ order });
+
+    // ── وشحنةُ المنصّة حالتُها هناك ─────────────────────────────────────────
+    // ستّةٌ وثلاثون ألفًا من طلبات هذا القسم مرآةٌ لشحنات منصّة التشغيل
+    // (`source: 'platform'`)، والمزامنةُ تكتب حالتَها من المنصّة في كلّ مرور.
+    // فتغييرُها عندنا وحدَنا يعيش دقائقَ ثمّ تمحوه المزامنةُ — ولا يصل المنصّةَ
+    // أبدًا. والموظّفُ يرى حالتَه تعود فيظنّ النظامَ يضيّع عملَه.
+    //
+    // فتُكتب حيث تُقرأ: المنصّةُ أوّلًا، فإن رفضت لم يتغيّر عندنا شيءٌ ويُقال
+    // السبب. والمفاتيحُ واحدةٌ في الطرفين (راجع STATUS في
+    // services/shipmentOrderSyncService)، فلا ترجمةَ بينهما.
+    if (order.source === 'platform' && order.externalId) {
+      const CORE = ['requesting', 'loading', 'uploaded', 'on_way', 'arrived',
+        'bond_sent', 'bond_received', 'late', 'invoiced', 'cancelled'];
+      if (!CORE.includes(status)) {
+        return res.status(400).json({
+          code: 'NOT_A_PLATFORM_STATUS',
+          message: `«${status}» حالةٌ من إعدادات القسم لا تعرفها منصّة التشغيل — وهذه الشحنة شحنتُها.`,
+        });
+      }
+      try {
+        const upl = require('../services/uplClient');
+        await upl.patch('/admin/shipments/status', { body: { status, ids: [String(order.externalId)] } });
+      } catch (e) {
+        return res.status(e.status && e.status < 600 ? e.status : 502).json({
+          code: 'PLATFORM_REJECTED',
+          message: e.message || 'تعذّر تغيير الحالة في منصّة التشغيل — لم يُحفظ شيء.',
+        });
+      }
+    }
+
     order.status = status;
     order.statusLog.push({
       from, to: status, note, at: new Date(),

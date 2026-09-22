@@ -2,6 +2,7 @@ const CustomsClearance = require('../models/CustomsClearance');
 const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const { recomputeTotals, COST_KEYS, MARGIN_KEYS } = require('../models/CustomsClearance');
 const cache = require('../utils/ttlCache');
+const { parseMonth, parseYear } = require('../utils/period');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
 const { createNotification } = require('../services/notificationService');

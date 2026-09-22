@@ -954,7 +954,7 @@ exports.getDashboardSummary = async (req, res) => {
     // مديرًا يفتحونها صباحًا يتقاسمون حسابًا واحدًا (wrap = طلعة واحدة) بدل أربعين.
     const scopeKey = scope.projectIds ? scope.projectIds.map(String).sort().join(',') : 'all';
     const cacheKey = `b2c:dash:${scopeKey}:${JSON.stringify(req.query || {})}`;
-    const payload = await cache.wrap(cacheKey, B2C_DASH_TTL, () => computeDashboard(req, filter, scope));
+    const payload = await cache.wrapStale(cacheKey, B2C_DASH_TTL, 15 * 60 * 1000, () => computeDashboard(req, filter, scope));
     res.json(payload);
   } catch (error) {
     console.error('Dashboard error:', error);

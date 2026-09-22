@@ -718,7 +718,9 @@ const DEPARTMENTS = {
 
 async function buildDept(key, p, user) {
   const d = DEPARTMENTS[key];
-  return cache.wrap(`finance:${key}:${p.from}:${p.to}`, TTL, async () => {
+  // تُقدَّم آخرُ حمولةٍ فورًا وتُعاد في الخلف بعد المهلة (ttlCache.wrapStale):
+  // صفحاتُ الماليّة تُعاد قراءتُها مع كلّ حركةٍ في قسمها.
+  return cache.wrapStale(`finance:${key}:${p.from}:${p.to}`, TTL, 15 * 60 * 1000, async () => {
     const body = await d.build(p, user);
     return { dept: key, ar: d.ar, en: d.en, period: { from: p.from, to: p.to }, generatedAt: new Date(), ...body };
   });

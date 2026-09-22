@@ -95,11 +95,37 @@ const CUSTOMER_WEIGHTS = {
   growth: 10,      // النمو مقارنة بالفترة السابقة
 };
 
+/**
+ * ── القديمُ يُقدَّم والجديدُ يُحسب في الخلف ─────────────────────────────────
+ *
+ * لوحاتُ المؤشّرات تُحسب في ثانية، وكانت المهلةُ تنتهي كلَّ دقيقةٍ فيدفع
+ * الحسابَ أوّلُ من يفتح بعدها. فتُقدَّم آخرُ حمولةٍ فورًا، وإن تجاوزت المهلةَ
+ * أُعيد الحسابُ في الخلف مرّةً واحدة (`FORCE` يتخطّى المخزن) فيجدُه من بعده
+ * جاهزًا. ولا يُنتظَر إلّا حين لا يوجد جوابٌ أصلًا.
+ */
+const FORCE = Symbol('crmKpiForce');
+const SILENT = { status() { return this; }, json() {}, };
+const refreshing = new Set();
+
+function served(key, req, res, self) {
+  if (req[FORCE]) return null;
+  const hit = cache.get(key);
+  if (!hit || !hit.at) return null;
+  if (Date.now() - hit.at > CACHE_TTL && !refreshing.has(key)) {
+    refreshing.add(key);
+    Promise.resolve()
+      .then(() => self({ ...req, query: { ...req.query }, [FORCE]: true }, SILENT))
+      .catch(() => { /* القديمُ يبقى مقدَّمًا */ })
+      .finally(() => refreshing.delete(key));
+  }
+  return res.json(hit.val);
+}
+
 exports.getCustomerKpis = async (req, res) => {
   try {
     const key = `crm:kpi:customers:${JSON.stringify(req.query || {})}`;
-    const hit = cache.get(key);
-    if (hit !== undefined) return res.json(hit);
+    const hit = served(key, req, res, exports.getVendorKpis);
+    if (hit) return hit;
 
     const { from, to, months } = resolvePeriod(req.query);
     // Previous window of the same length — the growth metric compares the two.
@@ -366,7 +392,7 @@ exports.getCustomerKpis = async (req, res) => {
       },
       items: rows,
     };
-    cache.set(key, payload, CACHE_TTL);
+    cache.set(key, { val: payload, at: Date.now() }, 15 * 60 * 1000);
     res.json(payload);
   } catch (error) {
     console.error('getCustomerKpis error:', error);
@@ -392,8 +418,8 @@ const VENDOR_WEIGHTS = {
 exports.getVendorKpis = async (req, res) => {
   try {
     const key = `crm:kpi:vendors:${JSON.stringify(req.query || {})}`;
-    const hit = cache.get(key);
-    if (hit !== undefined) return res.json(hit);
+    const hit = served(key, req, res, exports.getCustomerKpis);
+    if (hit) return hit;
 
     const { from, to, months: months2 } = resolvePeriod(req.query);
     const prevFrom = new Date(from.getTime() - (to - from));
@@ -635,7 +661,7 @@ exports.getVendorKpis = async (req, res) => {
       },
       items: rows,
     };
-    cache.set(key, payload, CACHE_TTL);
+    cache.set(key, { val: payload, at: Date.now() }, 15 * 60 * 1000);
     res.json(payload);
   } catch (error) {
     console.error('getVendorKpis error:', error);

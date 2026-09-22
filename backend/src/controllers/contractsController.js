@@ -42,7 +42,9 @@ exports.getDashboard = async (req, res) => {
     // wrap = طلعةٌ واحدة: الفاتحون معًا ينتظرون حسابًا واحدًا لا يكرّرونه. وكلُّ
     // كتابةٍ في القسم تمسح 'contracts:'، وجزءُ الكشوف كان يشيخ ٦٠ ثانيةً قبلًا
     // (ذاكرة liveutil) فلا يزيد التقادمُ عمّا كان.
-    const body = await cache.wrap('contracts:dashboard', 60000, buildDashboard);
+    // لوحةٌ تُحسب في ثوانٍ وتُطلَب مع كلّ فتحة: يُقدَّم آخرُ حسابٍ فورًا ويُعاد
+    // في الخلف بعد دقيقة — فلا ينتظر أحدٌ انتهاءَ صلاحيّة. راجع ttlCache.wrapStale.
+    const body = await cache.wrapStale('contracts:dashboard', 60000, 15 * 60 * 1000, buildDashboard);
     res.json(body);
   } catch (e) {
     res.status(500).json({ message: e.message });
@@ -611,7 +613,7 @@ const expiryState = (endDate) => {
  * تُفتَح في ثوانٍ ثمّ لا تُفتَح.
  */
 async function customerVolume() {
-  return cache.wrap('contracts:customer-volume', 60000, async () => {
+  return cache.wrapStale('contracts:customer-volume', 60000, 15 * 60 * 1000, async () => {
     const OperationsWorkflow = require('../models/OperationsWorkflow');
     const rows = await OperationsWorkflow.aggregate([
       { $match: { applicationStatus: { $ne: 'cancelled' }, username: { $nin: [null, ''] } } },
@@ -640,7 +642,7 @@ async function customerVolume() {
 
 /** أطرافُ التحصيل من نوع «عميل» — المهلةُ المتّفق عليها ورصيدُ ما بقي. */
 async function collectionsByKey() {
-  return cache.wrap('contracts:customer-collections', 60000, async () => {
+  return cache.wrapStale('contracts:customer-collections', 60000, 15 * 60 * 1000, async () => {
     try {
       const CollectionsParty = require('../models/CollectionsParty');
       const rows = await CollectionsParty.find({ kind: 'customer' })

@@ -202,7 +202,8 @@ async function build(user) {
 
 exports.overview = async (req, res) => {
   try {
-    res.json(await cache.wrap('exec:overview', TTL, () => build(req.user)));
+    // النظرةُ التنفيذيّة تُقدَّم فورًا وتُجدَّد في الخلف — لا انتظارَ عند انتهاء المهلة.
+    res.json(await cache.wrapStale('exec:overview', TTL, 15 * 60 * 1000, () => build(req.user)));
   } catch (e) {
     console.error('executive overview', e);
     res.status(500).json({ message: 'تعذّر تحميل النظرة التنفيذية' });

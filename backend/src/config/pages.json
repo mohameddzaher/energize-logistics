@@ -20,6 +20,12 @@
       "en": "Operations"
     },
     {
+      "key": "/system/operations/private",
+      "section": "Operations",
+      "ar": "التشغيل — خاصّ",
+      "en": "Operations — private"
+    },
+    {
       "key": "/system/operations/payment-types",
       "section": "Operations",
       "ar": "أنواع الدفع",

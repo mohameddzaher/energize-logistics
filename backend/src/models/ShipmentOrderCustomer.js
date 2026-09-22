@@ -26,10 +26,21 @@ const shipmentOrderCustomerSchema = new mongoose.Schema(
     // from/to on the create form pulls the matching price automatically; a NEW
     // route priced on the form is appended here, so the profile learns as the
     // work happens instead of someone maintaining it by hand.
+    // ── والسعرُ أحدثُ ما اتُّفق عليه ────────────────────────────────────────
+    // المسارُ الواحد يتكرّر خمسين مرّةً في السنة بأسعارٍ تتغيّر. فلا يُحفظ له
+    // صفٌّ لكلّ مرّة — صفٌّ واحدٌ يحمل **آخرَ** سعرٍ عُمل به، ومعه تاريخُه
+    // ومصدرُه: من أين جاء هذا الرقم (شحنةٌ أُنشئت، أو تقريرُ الفروع، أو يدُ
+    // موظّف)، ومتى. والأحدثُ يغلب الأقدمَ مهما كان مصدرُه.
+    //
+    // و`at` تاريخُ **العمل** لا تاريخُ الكتابة: صفٌّ يُستورَد اليوم عن شحنةٍ
+    // في مارس لا يُسقِط سعرًا اتُّفق عليه في أغسطس.
     routes: [{
       fromCity: { type: String, trim: true, default: '' },
       toCity: { type: String, trim: true, default: '' },
       price: { type: Number, default: null },
+      at: { type: Date, default: null },
+      source: { type: String, trim: true, default: '' }, // order | platform | sheet | manual | private
+      hits: { type: Number, default: 1 },                 // كم مرّةً رأينا هذا المسار
     }],
 
     // What this customer usually ships with — prefilled, always editable.

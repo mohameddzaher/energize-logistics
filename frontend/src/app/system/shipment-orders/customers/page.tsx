@@ -143,16 +143,34 @@ export default function ShipmentOrderCustomersPage() {
             </div>
 
             <div className="mt-3">
-              <p className="text-xs font-semibold text-slate-500 flex items-center gap-1 mb-1.5"><Route className="w-3.5 h-3.5" /> {ar ? 'أسعار المسارات' : 'Route prices'}</p>
+              <p className="text-xs font-semibold text-slate-500 flex items-center gap-1 mb-1.5">
+                <Route className="w-3.5 h-3.5" /> {ar ? 'الوجهات وأسعارها' : 'Destinations & prices'}
+                {(c.routes || []).length > 0 && <span className="text-slate-400 font-normal">· {(c.routes || []).length}</span>}
+              </p>
               {(c.routes || []).length === 0 ? (
-                <p className="text-xs text-slate-400">{ar ? 'لا توجد مسارات بعد — أول شحنة مسعّرة تُضيف مسارها هنا تلقائياً.' : 'No routes yet — the first priced shipment adds its route here automatically.'}</p>
+                <p className="text-xs text-slate-400">{ar ? 'لا وجهات بعد — أوّل شحنةٍ لهذا العميل تُسجّل وجهتَها هنا وحدَها.' : 'No destinations yet — this customer’s first shipment records its own.'}</p>
               ) : (
+                /* ── والأحدثُ أوّلًا، ومعه متى ومن أين جاء ────────────────────
+                   السعرُ الواحد يتغيّر على مدار السنة، والمعروضُ آخرُ ما عُمل
+                   به. وتاريخُه ومصدرُه يُقرآن معه: «١٤٥٠ منذ أسبوع من تقرير
+                   الفروع» خبرٌ يُبنى عليه، و«١٤٥٠» وحدَه لا يُعرَف عمرُه. */
                 <div className="flex flex-wrap gap-1.5">
-                  {c.routes.map((r, i) => (
-                    <span key={i} className="px-2 py-1 rounded-lg bg-slate-100 text-xs text-slate-700">
-                      {r.fromCity} ← {r.toCity} · <span className="font-semibold">{money(r.price)}</span>
-                    </span>
-                  ))}
+                  {[...(c.routes || [])]
+                    .sort((a: any, b: any) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime())
+                    .map((r: any, i: number) => (
+                      <span key={i} className="px-2 py-1 rounded-lg bg-slate-100 text-xs text-slate-700"
+                        title={[
+                          r.at ? `${ar ? 'آخر سعر في' : 'last priced'} ${new Date(r.at).toLocaleDateString('en-GB')}` : '',
+                          r.source === 'sheet' ? (ar ? 'من تقرير الفروع' : 'from the branches report')
+                            : r.source === 'order' ? (ar ? 'من شحنةٍ أُنشئت' : 'from a created shipment')
+                              : r.source === 'private' ? (ar ? 'من التشغيل — خاصّ' : 'from Operations — private')
+                                : r.source === 'platform' ? (ar ? 'وجهةٌ جاءت من منصّة التشغيل' : 'seen on the platform') : '',
+                          r.hits > 1 ? `${ar ? 'تكرّرت' : 'seen'} ${r.hits}` : '',
+                        ].filter(Boolean).join(' · ')}>
+                        {r.fromCity} ← {r.toCity} · <span className="font-semibold">{r.price != null ? money(r.price) : (ar ? 'بلا سعر' : 'no price')}</span>
+                        {r.at ? <span className="ms-1 text-slate-400">{new Date(r.at).toLocaleDateString('en-GB')}</span> : null}
+                      </span>
+                    ))}
                 </div>
               )}
             </div>

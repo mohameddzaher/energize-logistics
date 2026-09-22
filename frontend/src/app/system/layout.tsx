@@ -8,7 +8,7 @@ import { getLayoutTranslations, NAV_LABEL_KEYS, getSectionLabel, getRoleLabel } 
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Users, FileText, CreditCard, Phone,
-  AlertTriangle, UserCog, ClipboardList, BarChart3, Settings,
+  AlertTriangle, UserCog, ClipboardList, BarChart3, Settings, Lock,
   LogOut, Bell, Menu, X, ChevronDown, ChevronRight, ChevronLeft, Shield, Bot,
   Briefcase, TrendingUp, ListTodo, Building2, Wallet,
   Store, Truck, Tags, Languages, Wrench, Hammer, ShoppingCart, MessageSquare, Package,
@@ -214,6 +214,11 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/credit-alerts', label: L.creditAlerts, icon: <Shield className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'employee', 'moderator'], section: 'Main' },
     // Operations
     { href: '/system/operations', label: L.operations, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'collections_manager', 'collections_staff'], section: 'Operations' },
+    // ── والهامشُ لا يُعرَض لكلّ من يفتح القسم ────────────────────────────
+    // «التشغيل — خاصّ» تعرض ربحَنا على كلّ حمولة، فهي أضيقُ من سير العمل:
+    // الإدارةُ ومن يملك المال. و`restrict` تُبقي القائمةَ صادقةً — رابطٌ
+    // تردّه الصفحةُ أسوأُ من غيابه. والحارسُ في الخادم (routes/operationsPrivate).
+    { href: '/system/operations/private', label: lang === 'ar' ? 'التشغيل — خاصّ' : 'Operations — private', icon: <Lock className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'cfo', 'accounting_manager', 'accountant'], section: 'Operations', restrict: true },
     // صفةُ العميل تُقرأ لمن يفتح صفحةَ التشغيل ولا تُكتب إلّا لمن يديرها —
     // والحاجزُ في الخادم، وهذه القائمةُ مَن يصل إلى النقطة أصلًا.
     { href: '/system/operations/payment-types', label: lang === 'ar' ? 'أنواع الدفع' : 'Payment Types', icon: <Banknote className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff'], section: 'Operations' },

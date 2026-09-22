@@ -228,6 +228,9 @@ app.use('/api/audit', auditRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/assistant', assistantRoutes);
 app.use('/api/workflows', authenticate, sectionGate('Operations'), workflowRoutes);
+// «التشغيل — خاصّ»: الكشوفُ نفسُها بسعر بيعنا — قسمُ التشغيل نفسُه، وصلاحيّةٌ
+// أضيق داخلَه (راجع routes/operationsPrivate).
+app.use('/api/operations-private', authenticate, sectionGate('Operations'), require('./routes/operationsPrivate'));
 app.use('/api/branches', branchRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/drivers', driverRoutes);

@@ -120,6 +120,28 @@ async function upsertPlatformShipments(items) {
   } catch (_) { /* الاسمُ كما ورد */ }
   if (!mapped.length) return { created: 0, updated: 0 };
 
+  // ── ومسارُ المنصّة يُسجَّل بلا سعره ───────────────────────────────────────
+  // الشحنةُ التي تأتي من المنصّة تحمل مسارًا قد لا يكون في ملفّ العميل، فيُضاف
+  // إليه: مَن ينشئ شحنةً بعدَها يجد المسارَ أمامه بدل أن يكتبه.
+  //
+  // **وسعرُها لا يُؤخَذ**: منصّةُ التشغيل تكتب بيعًا يساوي الشراء، فلو تعلّمه
+  // الملفُّ لأفسد كلَّ سعرٍ صحيحٍ فيه — وصار المقترَحُ في شاشة الإنشاء سعرَ
+  // التكلفة. السعرُ يأتي من عملنا نحن: شحنةٌ نُسعّرها، أو تصحيحٌ في «التشغيل —
+  // خاصّ»، أو تقريرُ الفروع.
+  try {
+    const { learnRouteByName } = require('../utils/customerRoutes');
+    const seen = new Set();
+    for (const m2 of mapped) {
+      const k = `${m2.customerName}|${m2.fromCity}|${m2.toCity}`;
+      if (!m2.customerName || !m2.fromCity || !m2.toCity || seen.has(k)) continue;
+      seen.add(k);
+      // eslint-disable-next-line no-await-in-loop
+      await learnRouteByName(m2.customerName, {
+        fromCity: m2.fromCity, toCity: m2.toCity, price: null, at: m2.pickupTime, source: 'platform',
+      });
+    }
+  } catch (e) { /* تعلُّمُ المسار تحسينٌ لا شرطٌ لتثبيت الشحنة */ }
+
   const ids = mapped.map((m) => m.externalId);
   const have = new Set(
     (await ShipmentOrder.find({ externalId: { $in: ids } }).select('externalId').lean())

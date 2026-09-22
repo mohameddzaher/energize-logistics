@@ -39,6 +39,13 @@
       ],
       "wildcard": false
     },
+    "/system/operations/private": {
+      "apis": [
+        "/api/operations-private",
+        "/api/operations-private/stats"
+      ],
+      "wildcard": false
+    },
     "/system/operations/payment-types": {
       "apis": [
         "/api/workflows/payment-types",

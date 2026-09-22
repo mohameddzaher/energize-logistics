@@ -166,7 +166,7 @@ function CreateShipmentInner() {
       const d = c.defaults || {};
       (['truckType', 'cargoType', 'paymentMethod', 'driverRentType', 'branch'] as const)
         .forEach((k) => { if (!next[k] && d[k]) next[k] = d[k]; });
-      const route = (c.routes || []).find((r) => r.fromCity === next.fromCity && r.toCity === next.toCity);
+      const route = findRoute(c, next.fromCity, next.toCity);
       if (route?.price != null) next.sellPrice = route.price;
       return next;
     });
@@ -231,9 +231,13 @@ function CreateShipmentInner() {
     setSupplierBusy(false);
   };
 
+  // ── والمسارُ يُعرَف وإن كُتب بيدٍ من القوائم ──────────────────────────────
+  // مَن اختار «من» و«إلى» من الدروب ليست دون أن يضغط اختصارَ المسار يقصد
+  // المسارَ نفسَه — فيُملأ سعرُه كما لو ضغطه. والمطابقةُ مطويّة: «جده» و«جدة»
+  // مدينةٌ واحدة، والمقارنةُ الحرفيّة كانت تتركها مسارين بسعرين.
   useEffect(() => {
     if (!customer) return;
-    const route = (customer.routes || []).find((r) => r.fromCity === form.fromCity && r.toCity === form.toCity);
+    const route = findRoute(customer, form.fromCity, form.toCity);
     if (route?.price != null && (form.sellPrice == null || form.sellPrice === '')) set('sellPrice', route.price);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.fromCity, form.toCity, customerId]);
@@ -572,13 +576,17 @@ function CreateShipmentInner() {
             <div>
               <p className="text-xs font-semibold text-slate-500 mb-1.5">{ar ? 'مساراته المعتمدة — بضغطة واحدة يُملأ المسار والسعر:' : 'Known routes — one tap fills route and price:'}</p>
               <div className="flex flex-wrap gap-2">
-                {customer.routes.map((r, i) => (
-                  <button key={i} type="button"
-                    onClick={() => setForm((f) => ({ ...f, fromCity: r.fromCity, toCity: r.toCity, sellPrice: r.price ?? f.sellPrice }))}
-                    className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-sm text-slate-700 font-medium transition-colors">
-                    {r.fromCity} ← {r.toCity} · <span className="font-bold">{r.price ?? '—'}</span>
-                  </button>
-                ))}
+                {/* الأحدثُ أوّلًا: آخرُ ما عُمل به هو أوّلُ ما يُبحَث عنه. */}
+                {[...customer.routes]
+                  .sort((a: any, b: any) => (new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime()))
+                  .map((r, i) => (
+                    <button key={i} type="button"
+                      onClick={() => setForm((f) => ({ ...f, fromCity: r.fromCity, toCity: r.toCity, sellPrice: r.price ?? f.sellPrice }))}
+                      title={(r as any).at ? `${ar ? 'آخر سعر في' : 'last priced'} ${new Date((r as any).at).toLocaleDateString('en-GB')}` : undefined}
+                      className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-sm text-slate-700 font-medium transition-colors">
+                      {r.fromCity} ← {r.toCity} · <span className="font-bold">{r.price ?? '—'}</span>
+                    </button>
+                  ))}
               </div>
             </div>
           )}
@@ -799,6 +807,21 @@ function CreateShipmentInner() {
     </div>
   );
 }
+
+// ── مفتاحُ المسار كما يطويه الخادم ──────────────────────────────────────────
+// نظيرُ `routeKey` في backend/src/utils/customerRoutes: الاتّجاهُ يهمّ، والرسمُ
+// لا. ولولاه لكان «من جده» مسارًا و«من جدة» مسارًا آخرَ بسعرٍ آخر.
+const cityFold = (v: string) => String(v || '')
+  .replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/[ىئ]/g, 'ي').replace(/ؤ/g, 'و')
+  .replace(/[\u064B-\u0652\u0640]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .toLowerCase();
+const findRoute = (c: any, from: string, to: string) => {
+  if (!c || !from || !to) return null;
+  const k = `${cityFold(from)}→${cityFold(to)}`;
+  return (c.routes || []).find((r: any) => `${cityFold(r.fromCity)}→${cityFold(r.toCity)}` === k) || null;
+};
 
 export default function Page() {
   // useSearchParams needs a Suspense boundary in the app router.

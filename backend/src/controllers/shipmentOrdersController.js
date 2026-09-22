@@ -236,12 +236,21 @@ exports.createOrder = async (req, res) => {
       const c = await ShipmentOrderCustomer.findById(data.customer);
       if (c) {
         data.customerName = c.name;
-        // Teach the profile this route if it is new and a sell price was given.
-        const knows = (c.routes || []).some((r) => r.fromCity === data.fromCity && r.toCity === data.toCity);
-        if (!knows && data.fromCity && data.toCity && data.sellPrice != null) {
-          c.routes.push({ fromCity: data.fromCity, toCity: data.toCity, price: data.sellPrice });
-          await c.save();
-        }
+        // ── والملفُّ يتعلّم السعرَ الأحدثَ لا المسارَ الجديدَ وحدَه ──────────
+        // كان يُضاف المسارُ إن كان مجهولًا ويُترَك إن كان معروفًا — فسعرٌ
+        // اتُّفق عليه اليومَ على مسارٍ قديم لا يصل الملفَّ أبدًا، ويبقى
+        // المقترَحُ سعرَ أوّل شحنةٍ في تاريخ العميل. والمطلوبُ دائمًا آخرُ ما
+        // عُمل به. راجع utils/customerRoutes — والمدنُ تُطابَق مطويّةً فلا
+        // يصير «جده» مسارًا ثانيًا لـ«جدة».
+        const { applyRoute } = require('../utils/customerRoutes');
+        const r = applyRoute(c, {
+          fromCity: data.fromCity,
+          toCity: data.toCity,
+          price: data.sellPrice,
+          at: data.pickupTime || new Date(),
+          source: 'order',
+        });
+        if (r !== 'skipped') await c.save();
       }
     }
 

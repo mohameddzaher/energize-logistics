@@ -1840,3 +1840,7 @@ exports.getFieldPermissions = async (req, res) => {
 // لانفصل الجدولان عند أوّل تعديلٍ هنا: صفوفٌ في شاشةٍ ليست في الأخرى، ومجموعٌ
 // لا يساوي مجموعًا. فتُصدَّر الدالّةُ ويُقرأ الشرطُ من موضعٍ واحد.
 module.exports.buildWorkflowFilter = buildWorkflowFilter;
+// وحجبُ أعمدة المال واحدٌ أيضًا: الصفحةُ الخاصّة تعرض أعمدةَ الكشف كلَّها،
+// ومَن لا يملك الفاتورةَ هنا لا يملكها هناك.
+module.exports.canSeeMoney = canSeeMoney;
+module.exports.stripMoneyFor = stripMoneyFor;

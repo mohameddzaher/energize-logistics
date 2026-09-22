@@ -30,14 +30,24 @@ const logAudit = require('../utils/auditLogger');
 const S = (v) => String(v ?? '').trim();
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 
-/** الأعمدةُ التي تُقرأ في الجدول — لا يُنقَل ما لا يُعرَض. */
+/**
+ * الأعمدةُ التي تُقرأ في الجدول — أعمدةُ سير عمل التشغيل نفسُها، ليُرى الكشفُ
+ * هنا كما يُرى هناك. وأعمدةُ المال (الفاتورة والتحصيل) تُحجب عمّن لا يملكها
+ * بالقاعدة نفسِها التي تحجبها هناك (`stripMoneyFor`).
+ */
 const LIST_FIELDS = [
   'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch',
-  'carOwner', 'carNumber', 'username', 'userPhone', 'applicationStatus',
-  'paymentMethod', 'purchaseValue', 'sellingValue', 'driverName', 'truckType',
-  'truckSize', 'loadType', 'reference', 'representativeName', 'stage',
-  'externalSource', 'createdAt',
-].join(' ');
+  'carOwner', 'carNumber', 'ownerType', 'executionStatus', 'applicationStatus',
+  'paymentMethod', 'username', 'userPhone', 'taxIndicator',
+  'purchaseValue', 'sellingValue', 'driverName', 'driverPhone', 'truckType', 'truckSize',
+  'loadType', 'reference', 'representativeName', 'operationsReview',
+  'paymentDate', 'paymentDateByName', 'payingBranch', 'paymentAmount', 'paymentType',
+  'finalReportDestination', 'documentNumber', 'sendingDate', 'branchDeliveryDate', 'deliveryDate',
+  'accountingReview', 'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice',
+  'invoiceDate', 'invoiceNotes', 'collectedAmount', 'collectionDate',
+  'stage', 'externalSource', 'createdAt',
+];
+const LIST_PROJECT = Object.fromEntries(LIST_FIELDS.map((f) => [f, 1]));
 
 /** فهرسُ أسعار المسارات: مفتاحُ «عميل|مسار» ← السعر. يُبنى مرّةً لكلّ نداء. */
 async function routePriceIndex() {
@@ -54,58 +64,221 @@ async function routePriceIndex() {
   return map;
 }
 
+/** سعرُ المسار لعميلٍ ومدينتين — أو `undefined` إن لم يكن له سعر. */
+function routePrice(index, username, from, to) {
+  const { fold } = require('../models/CollectionsParty');
+  return index.get(`${fold(username || '')}|${routeKey(from, to)}`);
+}
+
 /** سعرُ الكشف كما يُعرَض: المحفوظُ عندنا، وإلّا سعرُ مسار العميل، وإلّا صفر. */
 function resolvePrice(w, saved, index) {
-  const { fold } = require('../models/CollectionsParty');
   if (saved) return { value: num(saved.sellingValue), source: saved.source || 'manual', saved: true };
-  const p = index.get(`${fold(w.username || '')}|${routeKey(w.fromLocation, w.toLocation)}`);
-  if (p != null) return { value: p, source: 'route', saved: false };
+  const p = routePrice(index, w.username, w.fromLocation, w.toLocation);
+  if (p != null) return { value: num(p), source: 'route', saved: false };
   return { value: 0, source: '', saved: false };
+}
+
+const r2 = (x) => Math.round(x * 100) / 100;
+
+/** الصفُّ كما يُعرَض: سعرُنا في `sellingValue`، وسعرُ المنصّة باسمه. */
+function shapeRow(w, saved, index) {
+  const p = resolvePrice(w, saved, index);
+  const buy = num(w.purchaseValue);
+  // ── وكشفٌ بلا سعرٍ لا ربحَ له ولا خسارة ──────────────────────────────────
+  // الصفرُ في خانة البيع ليس بيعًا بصفر: هو «لم يُسعَّر بعد». وطرحُه من
+  // الشراء يعطي خسارةً كاملةً في كلّ صفٍّ لم يصله سعرُه.
+  const profit = p.value > 0 ? r2(p.value - buy) : null;
+  const { _p, ...rest } = w;
+  return {
+    ...rest,
+    // ── والعمودُ يُسمّى باسمه ──────────────────────────────────────────────
+    // `sellingValue` هنا سعرُنا نحن، و`platformSellingValue` ما تقوله المنصّة.
+    platformSellingValue: num(w.sellingValue),
+    sellingValue: p.value,
+    priceSource: p.source,
+    priceSaved: p.saved,
+    profit,
+    margin: profit != null && p.value > 0 ? r2((profit / p.value) * 100) : null,
+  };
+}
+
+/**
+ * ── الفلترُ هو فلترُ سير عمل التشغيل حرفًا بحرف ─────────────────────────────
+ * البحثُ والمدى (من/إلى، ونهايةُ «إلى» آخرُ لحظةٍ من يومها بتوقيت الشركة)
+ * وفلاترُ الأعمدة (`cf_<العمود>`) و«فواتير لم تصل» — كلُّها من
+ * `buildWorkflowFilter`. وأعمدةُ المال لا يُفلتَر بها مَن لا يراها.
+ */
+function baseFilter(req) {
+  const { buildWorkflowFilter, canSeeMoney } = require('./workflowController');
+  const money = canSeeMoney(req.user && req.user.role);
+  return { filter: buildWorkflowFilter(req.query, undefined, money), money };
+}
+
+/** «مسعَّر / غير مسعَّر» — الفلترُ الوحيدُ الذي لا تعرفه صفحةُ سير العمل. */
+const pricedParam = (q) => {
+  const v = String((q && q.priced) || '').trim();
+  return v === 'yes' || v === 'no' ? v : '';
+};
+
+/** يُلحق بكلّ كشفٍ سعرَه المحفوظ (إن وُجد) في `_p`. */
+const lookupStages = () => [
+  {
+    $lookup: {
+      from: PrivateSellingPrice.collection.name,
+      localField: '_id',
+      foreignField: 'workflow',
+      as: '_p',
+    },
+  },
+  { $addFields: { _p: { $arrayElemAt: ['$_p', 0] } } },
+];
+
+/**
+ * ── المجاميعُ تُحسب في القاعدة لا بنقل الصفوف ────────────────────────────────
+ * كان الحسابُ ينقل كلَّ صفٍّ مطابقٍ إلى الخادم ليجمعه: ستّةٌ وثلاثون ألفَ صفٍّ
+ * على عنقودٍ بطيء النقل = دقيقةٌ وأكثر للبطاقات وحدَها. والسعرُ لا يحتاج الصفَّ:
+ *   • المحفوظُ يُقرأ بـ`$lookup` ويُجمع في القاعدة،
+ *   • وسعرُ المسار يتوقّف على (العميل، من، إلى) وحدَها — فتُجمع الصفوفُ بلا
+ *     سعرٍ محفوظ على هذا الثلاثيّ، ويُسعَّر كلُّ ثلاثيٍّ مرّةً في الخادم.
+ * فيعبر الشبكةَ بضعةُ آلافِ مجموعةٍ صغيرة لا عشراتُ آلافِ صفّ.
+ */
+async function priceGroups(filter, index) {
+  const groups = await OperationsWorkflow.aggregate([
+    { $match: filter },
+    ...lookupStages(),
+    {
+      $project: {
+        u: '$username', f: '$fromLocation', t: '$toLocation',
+        b: { $ifNull: ['$purchaseValue', 0] },
+        ps: { $ifNull: ['$sellingValue', 0] },
+        has: { $cond: [{ $ifNull: ['$_p', false] }, true, false] },
+        s: { $ifNull: ['$_p.sellingValue', 0] },
+      },
+    },
+    {
+      $group: {
+        _id: {
+          has: '$has',
+          pos: { $gt: ['$s', 0] },
+          u: { $cond: ['$has', null, '$u'] },
+          f: { $cond: ['$has', null, '$f'] },
+          t: { $cond: ['$has', null, '$t'] },
+        },
+        n: { $sum: 1 }, b: { $sum: '$b' }, s: { $sum: '$s' }, ps: { $sum: '$ps' },
+      },
+    },
+  ]).allowDiskUse(true);
+
+  return groups.map((g) => {
+    if (g._id.has) {
+      return { n: g.n, b: num(g.b), ps: num(g.ps), sell: g._id.pos ? num(g.s) : 0, priced: !!g._id.pos, has: true };
+    }
+    const p = num(routePrice(index, g._id.u, g._id.f, g._id.t));
+    return {
+      n: g.n, b: num(g.b), ps: num(g.ps), sell: p > 0 ? p * g.n : 0, priced: p > 0, has: false,
+      key: { u: g._id.u, f: g._id.f, t: g._id.t },
+    };
+  });
+}
+
+/**
+ * شرطُ «مسعَّر / غير مسعَّر» على مستوى الصفّ — بعد `$lookup`.
+ * المسعَّر: له سعرٌ محفوظٌ موجب، أو لا محفوظَ له ومسارُه مسعَّر في ملفّ العميل.
+ * والثلاثيّاتُ المسعَّرة تأتي من `priceGroups` نفسِها، فلا يفترق الجدولُ عن
+ * البطاقات في تعريف «المسعَّر».
+ */
+function pricedMatch(priced, groups) {
+  const combos = groups.filter((g) => !g.has && g.priced)
+    .map((g) => ({ username: g.key.u, fromLocation: g.key.f, toLocation: g.key.t }));
+  const noSaved = { _p: { $exists: false } };
+  if (priced === 'yes') {
+    return {
+      $or: [
+        { '_p.sellingValue': { $gt: 0 } },
+        ...(combos.length ? [{ $and: [noSaved, { $or: combos }] }] : []),
+      ],
+    };
+  }
+  return {
+    $or: [
+      { $and: [{ _p: { $exists: true } }, { $nor: [{ '_p.sellingValue': { $gt: 0 } }] }] },
+      combos.length ? { $and: [noSaved, { $nor: combos }] } : noSaved,
+    ],
+  };
+}
+
+/** يجمع المجموعات إلى أرقام البطاقات. */
+function summarize(groups) {
+  let sell = 0; let buyPriced = 0; let buyAll = 0; let priced = 0; let unpriced = 0; let total = 0; let platform = 0;
+  for (const g of groups) {
+    total += g.n; buyAll += g.b; platform += g.ps;
+    if (g.priced) { sell += g.sell; buyPriced += g.b; priced += g.n; } else unpriced += g.n;
+  }
+  return {
+    total,
+    priced,
+    unpriced,
+    sumSelling: r2(sell),
+    sumPurchase: r2(buyPriced),
+    sumPurchaseAll: r2(buyAll),
+    sumPurchaseUnpriced: r2(buyAll - buyPriced),
+    sumPlatformSelling: r2(platform),
+    profit: r2(sell - buyPriced),
+    margin: sell ? r2(((sell - buyPriced) / sell) * 100) : 0,
+  };
+}
+
+/**
+ * الصفوفُ المطابقة (بفلتر «مسعَّر» إن طُلب) مرتّبةً كالجدول، مع سعرها المحفوظ.
+ * `skip/limit` للصفحة؛ وبلا حدٍّ للتصدير (بسقفٍ عاقل).
+ */
+async function matchingRows(filter, priced, index, { skip = 0, limit = 0 } = {}) {
+  if (!priced) {
+    // بلا فلتر «مسعَّر»: الصفحةُ تُقصّ أوّلًا ثمّ يُلحق سعرُها — لا `$lookup`
+    // على الجدول كلِّه من أجل خمسين صفًّا.
+    const pipe = [{ $match: filter }, { $sort: { createdAt: -1 } }];
+    if (skip) pipe.push({ $skip: skip });
+    if (limit) pipe.push({ $limit: limit });
+    pipe.push({ $project: LIST_PROJECT }, ...lookupStages());
+    const [rows, total] = await Promise.all([
+      OperationsWorkflow.aggregate(pipe).allowDiskUse(true),
+      limit ? OperationsWorkflow.countDocuments(filter) : Promise.resolve(null),
+    ]);
+    return { rows, total: total == null ? rows.length : total };
+  }
+  const groups = await priceGroups(filter, index);
+  const pipe = [
+    { $match: filter },
+    ...lookupStages(),
+    { $match: pricedMatch(priced, groups) },
+    { $sort: { createdAt: -1 } },
+  ];
+  const page = [];
+  if (skip) page.push({ $skip: skip });
+  if (limit) page.push({ $limit: limit });
+  page.push({ $project: { ...LIST_PROJECT, _p: 1 } });
+  const [out] = await OperationsWorkflow.aggregate([
+    ...pipe,
+    { $facet: { rows: page, total: [{ $count: 'n' }] } },
+  ]).allowDiskUse(true);
+  return { rows: (out && out.rows) || [], total: (out && out.total[0] && out.total[0].n) || 0 };
 }
 
 // GET /api/operations-private
 exports.list = async (req, res) => {
   try {
-    const { buildWorkflowFilter } = require('./workflowController');
-    const filter = buildWorkflowFilter(req.query, undefined, true);
+    const { filter, money } = baseFilter(req);
+    const priced = pricedParam(req.query);
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
 
-    const [rows, total] = await Promise.all([
-      OperationsWorkflow.find(filter).select(LIST_FIELDS)
-        .sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit)
-        .lean(),
-      OperationsWorkflow.countDocuments(filter),
-    ]);
-
-    const ids = rows.map((r) => r._id);
-    const [saved, index] = await Promise.all([
-      PrivateSellingPrice.find({ workflow: { $in: ids } }).lean(),
-      routePriceIndex(),
-    ]);
-    const byId = new Map(saved.map((s) => [String(s.workflow), s]));
-
-    const workflows = rows.map((w) => {
-      const p = resolvePrice(w, byId.get(String(w._id)), index);
-      return {
-        ...w,
-        // ── والعمودُ يُسمّى باسمه ────────────────────────────────────────
-        // `sellingValue` هنا سعرُنا نحن، و`platformSellingValue` ما تقوله
-        // المنصّة — يُعرَضان معًا فيُرى الفرقُ ولا يُخلَط بينهما.
-        platformSellingValue: num(w.sellingValue),
-        sellingValue: p.value,
-        priceSource: p.source,
-        priceSaved: p.saved,
-        // ── وكشفٌ بلا سعرٍ لا ربحَ له ولا خسارة ────────────────────────────
-        // الصفرُ في خانة البيع ليس بيعًا بصفر: هو «لم يُسعَّر بعد». وطرحُه من
-        // الشراء يعطي خسارةً كاملةً في كلّ صفٍّ لم يصله سعرُه — ومجموعُها
-        // يُقرأ في اللوحة كارثةً لم تقع.
-        profit: p.value > 0 ? Math.round((p.value - num(w.purchaseValue)) * 100) / 100 : null,
-      };
-    });
+    const index = await routePriceIndex();
+    const { rows, total } = await matchingRows(filter, priced, index, { skip: (page - 1) * limit, limit });
+    const { stripMoneyFor } = require('./workflowController');
+    const workflows = stripMoneyFor(req.user.role, rows.map((w) => shapeRow(w, w._p, index)));
 
     res.json({
-      workflows, total, page, pages: Math.max(1, Math.ceil(total / limit)),
+      workflows, total, page, pages: Math.max(1, Math.ceil(total / limit)), money,
     });
   } catch (e) {
     console.error('operations-private list:', e);
@@ -114,46 +287,121 @@ exports.list = async (req, res) => {
 };
 
 // GET /api/operations-private/stats — مجاميعُ الفلتر كلِّه لا الصفحةِ المعروضة.
+//
+// ── والربحُ يُحسب على ما سُعِّر وحدَه ─────────────────────────────────────
+// الكشفُ الذي لم يصله سعرُ بيعه بعد ليس صفقةً بلا إيراد: هو صفقةٌ لم يُكتب
+// إيرادُها. فجمعُ شرائه مع بيعٍ صفرٍ يصنع «خسارةً» لا وجودَ لها. فتُفصَل:
+// ربحٌ على المسعَّر، وشراءُ غيرِ المسعَّر يُقال وحدَه ليُعرَف حجمُ ما ينقص.
 exports.stats = async (req, res) => {
   try {
-    const { buildWorkflowFilter } = require('./workflowController');
-    const filter = buildWorkflowFilter(req.query, undefined, true);
-    const rows = await OperationsWorkflow.find(filter)
-      .select('username fromLocation toLocation purchaseValue').lean();
-    const ids = rows.map((r) => r._id);
-    const [saved, index] = await Promise.all([
-      PrivateSellingPrice.find({ workflow: { $in: ids } }).select('workflow sellingValue source').lean(),
-      routePriceIndex(),
-    ]);
-    const byId = new Map(saved.map((s) => [String(s.workflow), s]));
-
-    // ── والربحُ يُحسب على ما سُعِّر وحدَه ─────────────────────────────────
-    // الكشفُ الذي لم يصله سعرُ بيعه بعد ليس صفقةً بلا إيراد: هو صفقةٌ لم
-    // يُكتب إيرادُها. فجمعُ شرائه مع بيعٍ صفرٍ يصنع «خسارةً» بعشرين مليونًا
-    // لا وجودَ لها. فتُفصَل: ربحٌ على المسعَّر، وشراءُ غيرِ المسعَّر يُقال
-    // وحدَه ليُعرَف حجمُ ما ينقص.
-    let sell = 0; let buyPriced = 0; let buyAll = 0; let priced = 0; let unpriced = 0;
-    for (const w of rows) {
-      const p = resolvePrice(w, byId.get(String(w._id)), index);
-      const b = num(w.purchaseValue);
-      buyAll += b;
-      if (p.value > 0) { sell += p.value; buyPriced += b; priced += 1; } else unpriced += 1;
-    }
-    const r2 = (x) => Math.round(x * 100) / 100;
-    res.json({
-      total: rows.length,
-      priced,
-      unpriced,
-      sumSelling: r2(sell),
-      sumPurchase: r2(buyPriced),
-      sumPurchaseAll: r2(buyAll),
-      sumPurchaseUnpriced: r2(buyAll - buyPriced),
-      profit: r2(sell - buyPriced),
-      margin: sell ? r2(((sell - buyPriced) / sell) * 100) : 0,
-    });
+    const { filter } = baseFilter(req);
+    const priced = pricedParam(req.query);
+    const index = await routePriceIndex();
+    let groups = await priceGroups(filter, index);
+    if (priced) groups = groups.filter((g) => g.priced === (priced === 'yes'));
+    res.json(summarize(groups));
   } catch (e) {
     console.error('operations-private stats:', e);
     res.status(500).json({ message: 'تعذّر حساب المجاميع' });
+  }
+};
+
+/**
+ * GET /api/operations-private/export — كلُّ ما طابق الفلتر (أو الجدولُ كلُّه بـ
+ * `scope=all`) بأسعارنا المحلولة، ملفَّ إكسل يُبنى في الخادم كما يُبنى تصديرُ
+ * سير العمل: عشراتُ آلاف الصفوف لا تعبر المتصفّحَ خامًا.
+ * و`format=json` يردّ الصفوفَ نفسَها (للجوّال وللتحقّق)، بسقف `EXPORT_CAP`.
+ */
+const EXPORT_CAP = 60000;
+exports.exportRows = async (req, res) => {
+  try {
+    const all = String(req.query.scope || '') === 'all';
+    const q = all ? {} : req.query;
+    const { buildWorkflowFilter, canSeeMoney } = require('./workflowController');
+    const money = canSeeMoney(req.user.role);
+    const filter = buildWorkflowFilter(q, undefined, money);
+    const priced = all ? '' : pricedParam(req.query);
+    const index = await routePriceIndex();
+    const { rows, total } = await matchingRows(filter, priced, index, { limit: 0 });
+    const capped = rows.slice(0, EXPORT_CAP);
+    const shaped = require('./workflowController').stripMoneyFor(req.user.role, capped.map((w) => shapeRow(w, w._p, index)));
+
+    if (String(req.query.format || '') === 'json') {
+      return res.json({ rows: shaped, total, truncated: total > capped.length, money });
+    }
+
+    const XLSX = require('xlsx');
+    const { SHIPMENT_STATUS_AR } = require('../config/constants');
+    const PAYMENT_AR = { cash: 'كاش', late: 'آجل' };
+    const STAGE_AR = {
+      draft: 'مسودة', submitted_to_ops: 'مرسل للتشغيل', ops_completed: 'تم التشغيل',
+      submitted_to_collections: 'مرسل للتحصيل', completed: 'مكتمل',
+    };
+    const SOURCE_AR = { sheet: 'تقرير الفروع', route: 'ملفّ العميل', manual: 'يدويّ', private: 'يدويّ' };
+    const d = (v) => (v ? new Date(v).toLocaleDateString('en-GB', { timeZone: 'Asia/Riyadh' }) : '');
+    const st = (v) => SHIPMENT_STATUS_AR[v] || v || '';
+    const yes = (v) => (v ? 'تمّت' : '');
+    const COLUMNS = [
+      ['رقم الطلب', (w) => w.reportNumber || ''],
+      ['تاريخ الطلب', (w) => d(w.reportDate)],
+      ['من', (w) => w.fromLocation || ''],
+      ['إلى', (w) => w.toLocation || ''],
+      ['الفرع', (w) => w.branch || ''],
+      ['مالك السيارة', (w) => w.carOwner || ''],
+      ['رقم السيارة', (w) => w.carNumber || ''],
+      ['نوع الملكية', (w) => w.ownerType || ''],
+      ['حالة التنفيذ', (w) => st(w.executionStatus)],
+      ['حالة الطلب', (w) => st(w.applicationStatus)],
+      ['طريقة الدفع', (w) => PAYMENT_AR[w.paymentMethod] || w.paymentMethod || ''],
+      ['العميل', (w) => w.username || ''],
+      ['هاتف العميل', (w) => w.userPhone || ''],
+      ['قيمة الشراء', (w) => num(w.purchaseValue)],
+      ['سعر البيع (المنصّة)', (w) => num(w.platformSellingValue)],
+      ['سعر البيع (الحقيقي)', (w) => (w.sellingValue > 0 ? w.sellingValue : '')],
+      ['الربح', (w) => (w.profit == null ? '' : w.profit)],
+      ['الهامش %', (w) => (w.margin == null ? '' : w.margin)],
+      ['مصدر السعر', (w) => SOURCE_AR[w.priceSource] || ''],
+      ['السائق', (w) => w.driverName || ''],
+      ['نوع الشاحنة', (w) => w.truckType || ''],
+      ['حجم الشاحنة', (w) => w.truckSize || ''],
+      ['المندوب', (w) => w.representativeName || ''],
+      ['مراجعة العمليات', (w) => yes(w.operationsReview)],
+      ['تاريخ السداد', (w) => d(w.paymentDate)],
+      ['مسؤول البيانات', (w) => w.paymentDateByName || ''],
+      ['فرع السداد', (w) => w.payingBranch || ''],
+      ['مبلغ السداد', (w) => num(w.paymentAmount)],
+      ['نوع الدفع', (w) => (w.paymentType === 'cash' ? 'كاش' : w.paymentType === 'tax' ? 'ضريبي' : '')],
+      ['وجهة الكشف النهائية', (w) => w.finalReportDestination || ''],
+      ['رقم المستند', (w) => w.documentNumber || ''],
+      ['تاريخ الإرسال', (w) => d(w.sendingDate)],
+      ['تاريخ التسليم للفرع', (w) => d(w.branchDeliveryDate)],
+      ['تاريخ التسليم للعميل', (w) => d(w.deliveryDate)],
+      ['مراجعة المحاسبة', (w) => yes(w.accountingReview), 'money'],
+      ['رقم الفاتورة', (w) => w.invoiceNumber || '', 'money'],
+      ['صافي الفاتورة', (w) => num(w.netInvoice), 'money'],
+      ['الضريبة', (w) => num(w.tax), 'money'],
+      ['إجمالي الفاتورة', (w) => num(w.totalInvoice), 'money'],
+      ['تاريخ الفاتورة', (w) => d(w.invoiceDate), 'money'],
+      ['المبلغ المحصّل', (w) => num(w.collectedAmount), 'money'],
+      ['تاريخ التحصيل', (w) => d(w.collectionDate), 'money'],
+      ['المرحلة', (w) => STAGE_AR[w.stage] || w.stage || '', 'money'],
+    ];
+    const cols = money ? COLUMNS : COLUMNS.filter(([, , tag]) => tag !== 'money');
+    const aoa = [cols.map(([h]) => h), ...shaped.map((w) => cols.map(([, get]) => get(w)))];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = cols.map(([h]) => ({ wch: Math.max(h.length + 4, 14) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'التشغيل خاص');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', compression: true });
+    const name = `operations-private-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=${name}`);
+    res.setHeader('Content-Length', String(buf.length));
+    if (total > capped.length) res.setHeader('X-Export-Truncated', String(total));
+    return res.send(buf);
+  } catch (e) {
+    console.error('operations-private export:', e);
+    return res.status(500).json({ message: 'تعذّر التصدير' });
   }
 };
 

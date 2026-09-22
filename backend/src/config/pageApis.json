@@ -42,7 +42,9 @@
     "/system/operations/private": {
       "apis": [
         "/api/operations-private",
-        "/api/operations-private/stats"
+        "/api/operations-private/export",
+        "/api/operations-private/stats",
+        "/api/workflows/filters"
       ],
       "wildcard": false
     },

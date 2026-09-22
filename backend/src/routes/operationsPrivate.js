@@ -26,6 +26,8 @@ router.use(authorize(...ROLES));
 
 router.get('/', ctrl.list);
 router.get('/stats', ctrl.stats);
+// كلُّ ما طابق الفلتر بأسعارنا — ملفُّ إكسل (أو `format=json`). يسبق `/:id`.
+router.get('/export', ctrl.exportRows);
 router.put('/:id', ctrl.updatePrice);
 
 module.exports = router;

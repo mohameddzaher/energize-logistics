@@ -222,6 +222,7 @@ const COST_COLS = {
   'تمديد': 'extension',
   'الدامج': 'consolidator',
   'عمولات': 'commissions',
+  'اجور اضافية': 'extraFees',
   'تخزين': 'storage',
   'تصريح الخروج': 'exitPermit',
   'فاتورة الارجاع': 'returnInvoice',

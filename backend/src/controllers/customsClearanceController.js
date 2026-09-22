@@ -354,6 +354,14 @@ exports.getAnalytics = async (req, res) => {
     const hit = cache.get(ak);
     if (hit !== undefined) return res.json(hit);
 
+    // والمدى يُصفّى في القاعدة أيضًا — لا تُنقَل سنتان ليُعرَض شهر. والتصفيةُ
+    // في الذاكرة بعده تبقى كما هي: هي التي تحكم، وهذه تُخفّف الحمولةَ فقط.
+    if (from || to) {
+      const lo0 = from ? Number(String(from).slice(0, 4)) * 100 + Number(String(from).slice(5, 7) || 1) : 0;
+      const hi0 = to ? Number(String(to).slice(0, 4)) * 100 + Number(String(to).slice(5, 7) || 12) : 999999;
+      const pk = { $add: [{ $multiply: [{ $ifNull: ['$periodYear', 0] }, 100] }, { $ifNull: ['$periodMonth', 0] }] };
+      filter.$expr = { $and: [{ $gte: [pk, lo0] }, { $lte: [pk, hi0] }] };
+    }
     let list = await CustomsClearance.find(filter)
       .select('blNumber refNumber customerName shippingAgent port stage city branch containerCount periodMonth periodYear costs.total revenue.totalInvoiced revenue.clearanceFee billing.invoiceStatus')
       .lean();
@@ -870,19 +878,81 @@ exports.activateClearance = async (req, res) => {
  * يقول أيَّ معاملةٍ وأيَّ مرحلةٍ وكم ومرفقَه — فيُقرأ العملُ كلُّه في شاشةٍ
  * واحدةٍ بدل فتح المعاملات واحدةً واحدة.
  */
+/**
+ * ── والعدُّ والتصفيةُ في القاعدة لا هنا ──────────────────────────────────────
+ * كانت تُحمَّل المعاملاتُ كلُّها بمراحلها كلّها (١٤٠٠ إدخالٍ، ميجابايت) في كلّ
+ * فتحٍ وكلّ نقرةِ تبويبٍ وبعد كلّ قرار — سبعُ ثوانٍ تنتظرها الشاشة، ولا يُعرَض
+ * منها إلّا عشرات. فصار التجميعُ في القاعدة: العدّاداتُ في مرور، والصفحةُ
+ * المعروضةُ وحدَها في مرور، ولا يعبر الشبكةَ إلّا ما يُقرأ.
+ *
+ * ── والسجلُّ المنقول ليس دفعًا ─────────────────────────────────────────────
+ * الاستيرادُ حوّل كلَّ «تم» في الماستر إلى إدخالٍ «مدفوع» بلا مبلغ (سجلّ سابق)
+ * — ليُرى تاريخُ المعاملة في شاشتها. لكنّه ليس قرارًا من الماليّة، وعدُّه مع
+ * المدفوع يجعل «مدفوعة: ١٤٠٣» رقمًا لا يعني شيئًا. فيُعدّ وحدَه ولا يُعرَض إلّا
+ * إن طُلب.
+ */
+const LEGACY_DECIDER = 'سجلّ سابق';
+
 exports.listPaymentRequests = async (req, res) => {
   try {
-    const status = String(req.query.status || 'pending');
-    const rows = await CustomsClearance.find({ cancelled: { $ne: true }, 'paymentStages.0': { $exists: true } })
-      .select('refNumber blNumber customerName shippingAgent port branch paymentStages isCompleted')
-      .sort({ createdAt: -1 }).lean();
+    const status = ['pending', 'paid', 'returned', 'rejected', 'all'].includes(String(req.query.status))
+      ? String(req.query.status) : 'pending';
+    const legacy = String(req.query.legacy || '') === '1';
+    const q = String(req.query.search || '').trim().slice(0, 80);
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const key = `customs:payreq:${status}:${legacy ? 1 : 0}:${q}:${page}:${limit}`;
 
-    const out = [];
-    for (const c of rows) {
-      for (const e of c.paymentStages || []) {
-        const st = e.payStatus || 'pending';
-        if (status !== 'all' && st !== status) continue;
-        out.push({
+    const body = await cache.wrap(key, 30000, async () => {
+      const rx = q ? new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : null;
+      const rowMatch = {
+        ...(status !== 'all' ? { st: status } : {}),
+        ...(legacy ? {} : { legacy: false }),
+        ...(rx ? { $or: [
+          { refNumber: rx }, { blNumber: rx }, { customerName: rx },
+          { 'paymentStages.label': rx }, { 'paymentStages.addedByName': rx },
+        ] } : {}),
+      };
+      const [agg] = await CustomsClearance.aggregate([
+        { $match: { cancelled: { $ne: true }, 'paymentStages.0': { $exists: true } } },
+        { $project: { refNumber: 1, blNumber: 1, customerName: 1, shippingAgent: 1, port: 1, branch: 1, paymentStages: 1 } },
+        { $unwind: '$paymentStages' },
+        { $addFields: {
+          st: { $ifNull: ['$paymentStages.payStatus', 'pending'] },
+          legacy: { $eq: ['$paymentStages.decidedByName', LEGACY_DECIDER] },
+        } },
+        { $facet: {
+          counts: [
+            { $group: {
+              _id: { st: '$st', legacy: '$legacy' },
+              n: { $sum: 1 },
+              amount: { $sum: { $ifNull: ['$paymentStages.amount', 0] } },
+            } },
+          ],
+          total: [{ $match: rowMatch }, { $count: 'n' }],
+          page: [
+            { $match: rowMatch },
+            { $sort: { 'paymentStages.addedAt': -1, _id: -1 } },
+            { $skip: (page - 1) * limit },
+            { $limit: limit },
+          ],
+        } },
+      ]);
+
+      const counts = { pending: 0, paid: 0, returned: 0, rejected: 0, legacy: 0, amountPending: 0, amountPaid: 0 };
+      for (const c of agg?.counts || []) {
+        if (c._id.legacy) { counts.legacy += c.n; continue; }
+        if (counts[c._id.st] !== undefined) counts[c._id.st] += c.n;
+        if (c._id.st === 'pending') counts.amountPending += c.amount;
+        if (c._id.st === 'paid') counts.amountPaid += c.amount;
+      }
+      counts.amountPending = Math.round(counts.amountPending * 100) / 100;
+      counts.amountPaid = Math.round(counts.amountPaid * 100) / 100;
+
+      const total = agg?.total?.[0]?.n || 0;
+      const requests = (agg?.page || []).map((c) => {
+        const e = c.paymentStages;
+        return {
           clearanceId: String(c._id),
           refNumber: c.refNumber,
           blNumber: c.blNumber,
@@ -900,31 +970,17 @@ exports.listPaymentRequests = async (req, res) => {
           fileName: e.fileName,
           addedByName: e.addedByName,
           addedAt: e.addedAt,
-          payStatus: st,
+          payStatus: c.st,
+          legacy: c.legacy,
           decisionNote: e.decisionNote || '',
           decidedByName: e.decidedByName || '',
           decidedAt: e.decidedAt || null,
           proofFiles: e.proofFiles || [],
-        });
-      }
-    }
-    out.sort((a, b) => new Date(b.addedAt || 0) - new Date(a.addedAt || 0));
-
-    // وعدّادُ كلّ حالةٍ يُقرأ مع القائمة، فالشاشةُ لا تسأل مرّتين.
-    const counts = { pending: 0, paid: 0, returned: 0, rejected: 0, amountPending: 0, amountPaid: 0 };
-    for (const c of rows) {
-      for (const e of c.paymentStages || []) {
-        const st = e.payStatus || 'pending';
-        if (counts[st] !== undefined) counts[st] += 1;
-        const amt = Number(e.amount) || 0;
-        if (st === 'pending') counts.amountPending += amt;
-        if (st === 'paid') counts.amountPaid += amt;
-      }
-    }
-    counts.amountPending = Math.round(counts.amountPending * 100) / 100;
-    counts.amountPaid = Math.round(counts.amountPaid * 100) / 100;
-
-    res.json({ requests: out, counts });
+        };
+      });
+      return { requests, counts, total, page, pages: Math.max(1, Math.ceil(total / limit)) };
+    });
+    res.json(body);
   } catch (e) {
     console.error('customs listPaymentRequests:', e);
     res.status(500).json({ message: 'تعذّر تحميل طلبات الصرف' });
@@ -978,6 +1034,11 @@ exports.decidePaymentStage = async (req, res) => {
     try { cache.clear('customs:'); cache.clear('finance:'); } catch (_) { /* */ }
     try { emitToAll('customs:updated', { clearance }); } catch (_) { /* */ }
 
+    // ── والجوابُ قبل الذيول ────────────────────────────────────────────────
+    // الإشعارُ والتدقيقُ نداءان إلى القاعدة (٩٠ مللي ثانيةٍ لكلٍّ منهما من
+    // الخادم) لا ينتظرهما المحاسبُ في شيء. فيُردّ عليه بما قرّر، ويكتملان بعد.
+    res.json({ ok: true, clearanceId: String(clearance._id), entryId: String(entry._id), payStatus: decision });
+
     // ومن طلب الصرف يُخبَر بما صار إليه طلبُه — لا يفتح الشاشة ليعرف.
     try {
       const { createNotification } = require('../services/notificationService');
@@ -997,10 +1058,10 @@ exports.decidePaymentStage = async (req, res) => {
     await logAudit({
       user: req.user._id, action: 'update_customs_clearance', entity: 'CustomsClearance',
       entityId: clearance._id, changes: { after: { paymentDecision: decision, entry: String(entry._id) } }, ipAddress: req.ip,
-    });
-    res.json({ clearance });
+    }).catch(() => { /* */ });
   } catch (e) {
     console.error('customs decidePaymentStage:', e);
+    if (res.headersSent) return;
     res.status(500).json({ message: 'تعذّر تسجيل القرار' });
   }
 };

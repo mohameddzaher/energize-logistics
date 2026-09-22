@@ -17,7 +17,11 @@ import ScrollX from '@/components/system/ScrollX';
 const fold = (v: any) => String(v ?? '').replace(/[أإآ]/g, 'ا').replace(/[ةه]/g, 'ه').replace(/[ىي]/g, 'ي').toLowerCase();
 const PAGE = 100;
 
-export default function FinanceTable({ table, ar, fileName }: { table: FinTable; ar: boolean; fileName: string }) {
+/**
+ * `_open` على الصفّ: يُفتح في الشاشة نفسِها (نافذة) بدل الانتقال إلى `_href` —
+ * لصفوفٍ مصدرُها شاشةٌ لا يملكها قارئُ الماليّة.
+ */
+export default function FinanceTable({ table, ar, fileName, onOpenRow }: { table: FinTable; ar: boolean; fileName: string; onOpenRow?: (row: any) => void }) {
   const router = useRouter();
   const cf = useColumnFilters<any>();
   const [q, setQ] = useState('');
@@ -101,8 +105,8 @@ export default function FinanceTable({ table, ar, fileName }: { table: FinTable;
           </thead>
           <tbody className="divide-y divide-slate-100">
             {shown.slice(0, limit).map((r, i) => (
-              <tr key={i} onClick={r._href ? () => router.push(r._href) : undefined}
-                className={r._href ? 'cursor-pointer hover:bg-orange-50/50' : 'hover:bg-slate-50'}>
+              <tr key={i} onClick={r._open && onOpenRow ? () => onOpenRow(r) : r._href ? () => router.push(r._href) : undefined}
+                className={(r._open && onOpenRow) || r._href ? 'cursor-pointer hover:bg-orange-50/50' : 'hover:bg-slate-50'}>
                 {table.columns.map((c, ci) => {
                   const numeric = ['money', 'number', 'pct'].includes(c.format);
                   const v = r[c.key];

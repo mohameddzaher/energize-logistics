@@ -246,6 +246,7 @@ const customsClearanceSchema = new mongoose.Schema(
       extension: { type: Number, default: 0 },          // تمديد
       consolidator: { type: Number, default: 0 },       // الدامج
       commissions: { type: Number, default: 0 },        // عمولات
+      extraFees: { type: Number, default: 0 },          // اجور اضافية
       storage: { type: Number, default: 0 },            // تخزين
       exitPermit: { type: Number, default: 0 },         // تصريح الخروج
       total: { type: Number, default: 0 },              // اجمالى المصروفات (computed)
@@ -342,6 +343,7 @@ const COST_KEYS = [
   'returnInvoice', 'deliveryOrder', 'customsDuty', 'portFees', 'unloadingFees',
   'inspection', 'transport', 'transportToYard', 'appointmentBooking', 'storage',
   'yardFees', 'exitPermit', 'demurrage', 'extension', 'consolidator', 'commissions',
+  'extraFees',
 ];
 
 // بنودُ الهامش التي يتكوّن منها revenue.profit. `transportSelling` ليس منها:

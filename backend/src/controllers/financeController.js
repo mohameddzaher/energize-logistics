@@ -383,10 +383,17 @@ async function fleet(p, user) {
 async function customs(p, user) {
   const CustomsClearance = require('../models/CustomsClearance');
   const ym = (k) => k.slice(0, 7);
+  const ymNum = (k) => Number(k.slice(0, 4)) * 100 + Number(k.slice(5, 7));
+  const pk = { $add: [{ $multiply: [{ $ifNull: ['$periodYear', 0] }, 100] }, { $ifNull: ['$periodMonth', 0] }] };
   const [a, files] = await Promise.all([
     callController('../controllers/customsClearanceController', 'getAnalytics', { from: ym(p.from), to: ym(p.to) }, user),
-    CustomsClearance.find({ cancelled: { $ne: true } })
-      .select('refNumber customerName agentParty shippingAgent branch port periodYear periodMonth costs revenue containerCount billing stage').lean(),
+    // الشهرُ يُصفّى في القاعدة: كانت تُنقَل المعاملاتُ كلُّها (٢٢٠ كيلوبايت)
+    // ليُعرَض منها شهر.
+    CustomsClearance.find({
+      cancelled: { $ne: true },
+      $expr: { $and: [{ $gte: [pk, ymNum(p.from)] }, { $lte: [pk, ymNum(p.to)] }] },
+    })
+      .select('refNumber blNumber customerName agentParty shippingAgent branch port periodYear periodMonth costs revenue containerCount billing stage').lean(),
   ]);
   const inRange = (f) => {
     if (!f.periodYear || !f.periodMonth) return false;
@@ -398,7 +405,7 @@ async function customs(p, user) {
     deliveryOrder: 'إذن التسليم', customsDuty: 'الرسوم الجمركية', portFees: 'رسوم الميناء', unloadingFees: 'التفريغ',
     transport: 'النقل', transportToYard: 'النقل للساحة', appointmentBooking: 'حجز المواعيد', yardFees: 'رسوم الساحة',
     demurrage: 'الأرضيات/التأخير', inspection: 'الكشف', extension: 'التمديد', consolidator: 'المجمِّع',
-    commissions: 'العمولات', storage: 'التخزين', exitPermit: 'إذن الخروج',
+    commissions: 'العمولات', extraFees: 'أجور إضافية', storage: 'التخزين', exitPermit: 'إذن الخروج',
   };
   const costRows = Object.entries(COST_AR).map(([k, ar]) => ({ item: ar, amount: round(sum(mine, (f) => f.costs?.[k])) })).filter((r) => r.amount);
   const T = a?.totals || {};
@@ -406,13 +413,13 @@ async function customs(p, user) {
   const g = (rows) => (rows || []).map((r) => ({ name: r.key, count: r.count, containers: r.containers, revenue: round(r.revenue), costs: round(r.costs), profit: round(r.profit), clearanceFee: round(r.clearanceFee) }));
   return {
     cards: [
-      card('revenue', 'إجمالي الإيراد', 'Total revenue', T.totalRevenue, { tone: 'good', href: '/system/customs/analytics' }),
+      card('revenue', 'إجمالي الإيراد', 'Total revenue', T.totalRevenue, { tone: 'good' }),
       card('costs', 'إجمالي التكاليف', 'Total costs', T.totalCosts, { tone: 'bad' }),
       card('profit', 'صافي الربح', 'Net profit', T.netProfit, { tone: (T.netProfit || 0) >= 0 ? 'good' : 'bad' }),
       card('margin', 'هامش الربح', 'Margin', (T.margin || 0) * 100, { format: 'pct' }),
       card('fees', 'أتعاب التخليص', 'Clearance fees', T.clearanceFees),
       card('avgInvoice', 'متوسط الفاتورة', 'Average invoice', T.avgInvoice),
-      card('files', 'المعاملات', 'Files', T.clearances, { format: 'number', href: '/system/customs' }),
+      card('files', 'المعاملات', 'Files', T.clearances, { format: 'number' }),
       card('notInvoiced', 'معاملات لم تُفوتر', 'Not invoiced', T.notInvoiced, { format: 'number', tone: T.notInvoiced ? 'warn' : 'neutral' }),
     ],
     tables: [
@@ -423,8 +430,8 @@ async function customs(p, user) {
       { key: 'costItems', ar: 'التكاليف حسب البند', en: 'Costs by item', columns: [col('item', 'البند', 'Item'), col('amount', 'المبلغ', 'Amount', 'money')], rows: costRows.sort((x, y) => y.amount - x.amount) },
       {
         key: 'files', ar: 'المعاملات', en: 'Files',
-        columns: [col('ref', 'المرجع', 'Ref'), col('customer', 'العميل', 'Customer'), col('branch', 'الفرع', 'Branch'), col('period', 'الشهر', 'Month'), col('containers', 'الحاويات', 'Containers', 'number'), col('revenue', 'الإيراد', 'Revenue', 'money'), col('costs', 'التكاليف', 'Costs', 'money'), col('profit', 'الربح', 'Profit', 'money'), col('invoice', 'حالة الفوترة', 'Invoicing')],
-        rows: mine.map((f) => ({ _href: `/system/customs/${f._id}`, ref: f.refNumber, customer: f.customerName, branch: f.branch === 'dammam' ? 'الدمام' : f.branch === 'jeddah' ? 'جدة' : f.branch, period: `${f.periodYear}-${String(f.periodMonth).padStart(2, '0')}`, containers: f.containerCount, revenue: round(f.revenue?.totalInvoiced), costs: round(f.costs?.total), profit: round(f.revenue?.profit), invoice: f.billing?.invoiceStatus || '' })),
+        columns: [col('ref', 'رقم المعاملة', 'Transaction'), col('customer', 'العميل', 'Customer'), col('bl', 'رقم البوليصة', 'BL'), col('branch', 'الفرع', 'Branch'), col('period', 'الشهر', 'Month'), col('containers', 'الحاويات', 'Containers', 'number'), col('revenue', 'الإيراد', 'Revenue', 'money'), col('costs', 'التكاليف', 'Costs', 'money'), col('profit', 'الربح', 'Profit', 'money'), col('invoice', 'حالة الفوترة', 'Invoicing')],
+        rows: mine.map((f) => ({ _open: true, _customsId: String(f._id), ref: f.refNumber, bl: f.blNumber, customer: f.customerName, branch: f.branch === 'dammam' ? 'الدمام' : f.branch === 'jeddah' ? 'جدة' : f.branch, period: `${f.periodYear}-${String(f.periodMonth).padStart(2, '0')}`, containers: f.containerCount, revenue: round(f.revenue?.totalInvoiced), costs: round(f.costs?.total), profit: round(f.revenue?.profit), invoice: f.billing?.invoiceStatus || '' })),
       },
     ],
     notes: [{ ar: 'نقلُ الساحة وبيعُ النقل مستثنيان من الربح عمدًا في حساب القسم كي لا يُعدّا مرّتين.', en: 'Yard transport and transport selling are excluded from profit by design.' }],

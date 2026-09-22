@@ -74,6 +74,7 @@ const _costItems = [
   ('extension', 'تمديد', 'Extension'),
   ('consolidator', 'الدامج', 'Consolidator'),
   ('commissions', 'عمولات', 'Commissions'),
+  ('extraFees', 'أجور إضافية', 'Extra fees'),
   ('returnInvoice', 'فاتورة الإرجاع', 'Return invoice'),
 ];
 

@@ -133,6 +133,7 @@ export default function CustomsDetailPage() {
     ['extension', 'تمديد', 'Extension'],
     ['consolidator', 'الدامج', 'Consolidator'],
     ['commissions', 'عمولات', 'Commissions'],
+    ['extraFees', 'أجور إضافية', 'Extra fees'],
     ['returnInvoice', 'فاتورة الإرجاع', 'Return invoice'],
   ];
   // ── الهامش: ما يُضاف فوق المصروفات، ومجموعُه هو الربح ────────────────────

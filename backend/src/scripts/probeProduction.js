@@ -73,6 +73,12 @@ const PAGES = [
   ['التخليص الجمركي', '/api/customs-clearance?limit=50'],
   ['إدارة الأسطول', '/api/fleet/dashboard'],
   ['CRM — الشركات', '/api/crm/companies?limit=50'],
+  // ── ماليّاتُ التخليص وطلباتُ صرفه — كانت سبعَ ثوانٍ لكلّ فتحة ────────────
+  ['طلبات صرف التخليص', '/api/customs-clearance/payment-requests?status=pending'],
+  ['طلبات الصرف — المدفوعة', '/api/customs-clearance/payment-requests?status=paid&legacy=1'],
+  ['ماليات التخليص', `/api/finance/departments/customs?from=${new Date().toISOString().slice(0, 8)}01&to=${new Date().toISOString().slice(0, 10)}`],
+  ['التشغيل — خاصّ', '/api/operations-private?page=1&limit=50'],
+  ['التشغيل — خاصّ (المجاميع)', '/api/operations-private/stats'],
 ];
 
 (async () => {

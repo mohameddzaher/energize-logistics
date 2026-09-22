@@ -60,7 +60,7 @@ function Block({ b }: { b: ReportBlock }) {
       return (
         <table className="w-full border-collapse text-xs mb-2">
           <tbody>
-            {b.items.map(([k, v], i) => (
+            {(b.items || []).map(([k, v], i) => (
               <tr key={i} className={i % 2 ? 'bg-slate-50' : ''}>
                 <td className="border border-slate-200 px-2.5 py-1.5 font-bold text-slate-700 w-1/3">{k}</td>
                 <td className="border border-slate-200 px-2.5 py-1.5 text-slate-900" dir="auto">{val(v)}</td>
@@ -74,7 +74,7 @@ function Block({ b }: { b: ReportBlock }) {
       if (!b.items?.length) return null;
       return (
         <div className="flex flex-wrap gap-2 mb-2">
-          {b.items.map((s, i) => (
+          {(b.items || []).map((s, i) => (
             <div key={i} className="flex-1 min-w-[92px] border border-slate-200 rounded-lg bg-slate-50 px-2 py-2 text-center">
               <p className="text-[10px] text-slate-500 leading-tight">{s.label}</p>
               <p className={`text-base font-extrabold mt-0.5 ${s.accent ? 'text-[#f37121]' : 'text-slate-900'}`}>{val(s.value)}</p>
@@ -94,15 +94,15 @@ function Block({ b }: { b: ReportBlock }) {
           <table className="w-full border-collapse text-[11px]">
             <thead>
               <tr>
-                {b.head.map((h, i) => (
+                {(b.head || []).map((h, i) => (
                   <th key={i} className={`bg-slate-900 text-slate-300 font-bold px-2 py-1.5 border border-slate-900 ${al(i)}`}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {b.rows.map((r, ri) => (
+              {(b.rows || []).map((r, ri) => (
                 <tr key={ri} className={ri % 2 ? 'bg-slate-50' : ''}>
-                  {r.map((c, i) => {
+                  {(r || []).map((c, i) => {
                     const cell = (c && typeof c === 'object' && 't' in c) ? c : { t: c, color: undefined };
                     return (
                       <td key={i} className={`border border-slate-200 px-2 py-1 ${al(i)} ${cell.color ? 'font-semibold' : 'text-slate-800'}`}
@@ -121,10 +121,10 @@ function Block({ b }: { b: ReportBlock }) {
 
     case 'bars': {
       if (!b.items?.length) return null;
-      const max = Math.max(1, ...b.items.map((i) => Number(i.max ?? i.value) || 0));
+      const max = Math.max(1, ...(b.items || []).map((i) => Number(i.max ?? i.value) || 0));
       return (
         <div className="mb-2 space-y-1.5">
-          {b.items.map((i, idx) => (
+          {(b.items || []).map((i, idx) => (
             <div key={idx} className="flex items-center gap-2 text-[11px]">
               <span className="w-[30%] text-slate-700 font-semibold truncate">{i.label}</span>
               <span className="flex-1 h-2 bg-slate-100 rounded overflow-hidden">
@@ -142,7 +142,7 @@ function Block({ b }: { b: ReportBlock }) {
       return (
         <div className="mb-2">
           {b.label && <div className="text-[11px] font-extrabold text-slate-500 pt-0.5 pb-1">{b.label}</div>}
-          {b.items.map((i, idx) => (
+          {(b.items || []).map((i, idx) => (
             <div key={idx} className="flex items-start gap-2 py-1.5 border-b border-dashed border-slate-200 text-[11px]">
               <span className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: i.color || '#f37121' }} />
               <span className="flex-1">
@@ -180,7 +180,7 @@ function Block({ b }: { b: ReportBlock }) {
       if (!b.items?.length) return null;
       return (
         <div className="flex gap-6 mt-7 pt-1.5">
-          {b.items.map((i, idx) => (
+          {(b.items || []).map((i, idx) => (
             <div key={idx} className="flex-1 text-center">
               <div className="border-t border-slate-400 h-[34px] mb-1.5" />
               <div className="text-[11px] font-extrabold text-slate-900">{i.name || ''}</div>
@@ -207,7 +207,7 @@ export default function ReportView({ doc, children }: { doc: ReportDoc; children
     <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 md:p-8">
       <Block b={{ kind: 'title', text: doc.title, sub: doc.subtitle }} />
       {children}
-      {doc.blocks.map((b, i) => <Block key={i} b={b} />)}
+      {(doc.blocks || []).map((b, i) => <Block key={i} b={b} />)}
       {(doc.generatedBy || doc.generatedAt) && (
         <p className="text-[10px] text-slate-400 mt-6 pt-2 border-t border-slate-200 flex justify-between">
           <span>{doc.generatedBy}</span>

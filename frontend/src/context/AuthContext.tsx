@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useLayoutEffect, useCallback, useRef, ReactNode } from 'react';
 import api from '@/lib/api';
 import { connectSocket, disconnectSocket } from '@/lib/socket';
 
@@ -67,12 +67,25 @@ const writeCached = (u: User | null) => {
   } catch { /* وضع التصفّح الخاص يرفض الكتابة — الشاشة تعمل بدونها */ }
 };
 
+// في الخادم لا `useLayoutEffect` (يحذّر React)؛ وفي المتصفّح هو المطلوب.
+const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const cached = readCached();
-  const [user, setUser] = useState<User | null>(cached);
-  // لا ننتظر إن كانت لدينا نسخة: نرسم ونتحقّق في الخلفية.
-  const [loading, setLoading] = useState(!cached);
+  // ── النسخةُ المحفوظة تُقرأ بعد الترطيب لا قبله ─────────────────────────────
+  // كانت تُقرأ في القيمة الابتدائيّة: الخادمُ يرسم «لا مستخدم، جارٍ التحميل»،
+  // والمتصفّحُ في أوّل رسمٍ يرى المستخدمَ من sessionStorage — رسمان مختلفان
+  // لأوّل لقطة، فيرمي React خطأَ الترطيب (#418) في كلّ إعادة تحميلٍ لتبويبٍ
+  // مسجَّل، ويرمي ما رسمه الخادمُ ويعيد الشجرةَ كلَّها من الصفر. فتبدأ الحالةُ
+  // كما رسمها الخادم، وتُطبَّق النسخةُ في `useLayoutEffect` — بعد الترطيب وقبل
+  // أن يُرسَم شيءٌ على الشاشة، فلا وميضَ ولا انتظار.
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [loginKey, setLoginKey] = useState(0);
+  useIsoLayoutEffect(() => {
+    const c = readCached();
+    // لا ننتظر إن كانت لدينا نسخة: نرسم ونتحقّق في الخلفية.
+    if (c) { setUser((u) => u || c); setLoading(false); }
+  }, []);
 
   const refreshUser = useCallback(async () => {
     try {
@@ -118,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // التنفيذيّة تُرفَض كلَّ ثوانٍ — ويبدو النظامُ معطَّلًا وهو سليم. فيُعلَن
   // الدخولُ والخروجُ لكلّ التبويبات: الخروجُ يُخرجها، والدخولُ بحسابٍ غيرِ
   // حسابها يعيد تحميلَها به.
-  const userIdRef = useRef<string | null>(cached?._id ?? null);
+  const userIdRef = useRef<string | null>(null);
   useEffect(() => { userIdRef.current = user?._id ?? null; }, [user]);
   const channelRef = useRef<BroadcastChannel | null>(null);
   useEffect(() => {

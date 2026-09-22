@@ -49,19 +49,29 @@ const LIST_FIELDS = [
 ];
 const LIST_PROJECT = Object.fromEntries(LIST_FIELDS.map((f) => [f, 1]));
 
-/** فهرسُ أسعار المسارات: مفتاحُ «عميل|مسار» ← السعر. يُبنى مرّةً لكلّ نداء. */
+/**
+ * فهرسُ أسعار المسارات: مفتاحُ «عميل|مسار» ← السعر.
+ *
+ * ── ويُحفَظ دقيقةً ولا يُبنى لكلّ نداء ─────────────────────────────────────
+ * بناؤه قراءةُ العملاء كلِّهم بمساراتهم (١٧٠ كيلوبايت) — أثقلُ ما في الصفحة،
+ * وكان يُدفَع مع كلّ صفحةٍ وكلّ مجموعٍ وكلّ خبرٍ حيّ. وأيُّ كتابةٍ على عميلٍ
+ * تمسحه (خطّافاتُ ShipmentOrderCustomer)، فلا يُقرأ سعرٌ سبق تصحيحَه.
+ */
 async function routePriceIndex() {
-  const { fold } = require('../models/CollectionsParty');
-  const customers = await ShipmentOrderCustomer.find({ isActive: { $ne: false } })
-    .select('name routes').lean();
-  const map = new Map();
-  for (const c of customers) {
-    for (const r of c.routes || []) {
-      if (r.price == null) continue;
-      map.set(`${fold(c.name)}|${routeKey(r.fromCity, r.toCity)}`, Number(r.price));
+  const cache = require('../utils/ttlCache');
+  return cache.wrap('opsprivate:routes', 60000, async () => {
+    const { fold } = require('../models/CollectionsParty');
+    const customers = await ShipmentOrderCustomer.find({ isActive: { $ne: false } })
+      .select('name routes.fromCity routes.toCity routes.price').lean();
+    const map = new Map();
+    for (const c of customers) {
+      for (const r of c.routes || []) {
+        if (r.price == null) continue;
+        map.set(`${fold(c.name)}|${routeKey(r.fromCity, r.toCity)}`, Number(r.price));
+      }
     }
-  }
-  return map;
+    return map;
+  });
 }
 
 /** سعرُ المسار لعميلٍ ومدينتين — أو `undefined` إن لم يكن له سعر. */
@@ -272,8 +282,10 @@ exports.list = async (req, res) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
 
-    const index = await routePriceIndex();
-    const { rows, total } = await matchingRows(filter, priced, index, { skip: (page - 1) * limit, limit });
+    // بلا فلتر «مسعَّر» لا تحتاج الصفحةُ الفهرسَ قبل قراءتها — فيُقرآن معًا.
+    const [index, { rows, total }] = priced
+      ? await routePriceIndex().then(async (ix) => [ix, await matchingRows(filter, priced, ix, { skip: (page - 1) * limit, limit })])
+      : await Promise.all([routePriceIndex(), matchingRows(filter, priced, null, { skip: (page - 1) * limit, limit })]);
     const { stripMoneyFor } = require('./workflowController');
     const workflows = stripMoneyFor(req.user.role, rows.map((w) => shapeRow(w, w._p, index)));
 

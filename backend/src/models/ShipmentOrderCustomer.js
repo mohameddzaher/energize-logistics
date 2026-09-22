@@ -60,5 +60,16 @@ const shipmentOrderCustomerSchema = new mongoose.Schema(
 
 shipmentOrderCustomerSchema.index({ name: 1 });
 
+// ── فهرسُ أسعار المسارات يُمسَح مع كلّ كتابة ─────────────────────────────────
+// «التشغيل — خاصّ» يحفظ فهرسَ (عميل|مسار ← سعر) دقيقةً بدل قراءة ٦٦٨ عميلًا في
+// كلّ نداء. فأيُّ كتابةٍ على عميلٍ — حفظٌ أو تحديثٌ أو حذف، من أيّ شاشة — تمسحه
+// هنا في موضعٍ واحد، فلا يُنسى مسارُ كتابةٍ فيبقى سعرٌ قديم.
+const clearRouteIndex = () => {
+  try { require('../utils/ttlCache').clear('opsprivate:routes'); } catch (_) { /* */ }
+};
+for (const op of ['save', 'findOneAndUpdate', 'updateOne', 'updateMany', 'insertMany', 'deleteOne', 'deleteMany', 'findOneAndDelete']) {
+  shipmentOrderCustomerSchema.post(op, clearRouteIndex);
+}
+
 module.exports = mongoose.models.ShipmentOrderCustomer
   || mongoose.model('ShipmentOrderCustomer', shipmentOrderCustomerSchema);

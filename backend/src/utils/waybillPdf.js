@@ -279,7 +279,11 @@ async function renderWaybillPdf(row) {
     const png = await pdfDoc.embedPng(overlayPng);
     p0.drawImage(png, { x: 0, y: 0, width, height });
     while (pdfDoc.getPageCount() > 1) pdfDoc.removePage(pdfDoc.getPageCount() - 1);
-    return Buffer.from(await pdfDoc.save());
+    // ── والحفظُ بلا «مجاري الكائنات» ──────────────────────────────────────
+    // ضغطُها يوفّر كيلوبايتين في ملفٍّ وزنُه أربعُمئة (الصورةُ هي الوزن كلُّه،
+    // وهي مضغوطةٌ أصلًا)، ويكلّف مئةً وعشرين مِلّي ثانيةٍ من انتظار المستخدم
+    // على معالج الخادم. فالكفّةُ واضحة.
+    return Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
   } finally {
     await page.close();
   }
@@ -337,7 +341,7 @@ async function renderWaybillsPdf(rows) {
     const copied = await merged.copyPages(doc, doc.getPageIndices());
     copied.forEach((pg) => merged.addPage(pg));
   }
-  return Buffer.from(await merged.save());
+  return Buffer.from(await merged.save({ useObjectStreams: false }));
 }
 
 /**

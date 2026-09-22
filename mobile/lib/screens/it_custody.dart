@@ -384,6 +384,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                                           if ((r['condition'] ?? '').toString().isNotEmpty) Chip2(conditionLabel(r['condition']), T.warn),
                                           if (r['status'] == 'in_stock') Chip2(tr('المستودع', 'In store'), T.info, icon: Icons.inventory_2_outlined),
                                           if (r['status'] == 'returned') Chip2(tr('تالف', 'Faulty'), T.danger),
+                                          if (r['status'] == 'sold') Chip2(tr('مُباع', 'Sold'), T.violet, icon: Icons.sell_outlined),
                                         ]),
                                       ]),
                                     ),
@@ -575,7 +576,10 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
               // «تالف»: زر واحد بالاسم الذي يحمله زر الفلتر نفسه. كان زرَّين —
               // أحدهما يكتب بلاغاً ويترك الصنف بعهدة الموظف، والآخر ينقل الحالة
               // بلا سبب ولا خصم — والمدمَج يفعل الاثنين.
-              if (r['status'] != 'returned')
+              // والمُباعُ طريقُه الوحيدُ الرجوعُ إلى المخزن حين يُلغى بيعُه.
+              if (r['status'] == 'sold')
+                _action(c, Icons.assignment_return_outlined, tr('إرجاع المبيع للمخزن', 'Return sale to stock'), T.success, () => _unsell(context, r)),
+              if (r['status'] != 'returned' && r['status'] != 'sold')
                 _action(c, Icons.report_gmailerrorred_outlined, tr('تالف', 'Faulty'), T.danger, () => _faulty(context, r)),
               _action(c, Icons.history_rounded, tr('السجل', 'History'), T.violet, () => _history(context, r)),
             ]),
@@ -629,6 +633,33 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
     await _post('/api/it/custody/${r['_id']}/return',
         {if (condition.text.trim().isNotEmpty) 'returnedCondition': condition.text.trim()},
         tr('أُرجعت العهدة إلى المستودع', 'Returned to stock'));
+  }
+
+  /// إرجاعُ المُباع: يُلغى البيعُ ويُردّ الثمن، فيعود الجهازُ نفسُه إلى المخزن.
+  /// نفسُ نقطة الموقع (/unsell) — البيعُ والإرجاعُ يبقيان في السجلّ.
+  Future<void> _unsell(BuildContext context, Map<String, dynamic> r) async {
+    final refund = TextEditingController(text: '${r['soldPrice'] ?? 0}');
+    final notes = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('إرجاع المبيع إلى المخزن', 'Return sale to stock')),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: refund, keyboardType: TextInputType.number,
+              decoration: InputDecoration(labelText: tr('المبلغ المردود للموظف', 'Amount refunded'))),
+          TextField(controller: notes, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('إرجاع', 'Return'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _post('/api/it/custody/${r['_id']}/unsell', {
+      'refund': num.tryParse(refund.text.trim()) ?? 0,
+      if (notes.text.trim().isNotEmpty) 'notes': notes.text.trim(),
+    }, tr('رجع الصنف إلى المخزن', 'Back in stock'));
   }
 
   /// «تالف» — الإجراء الذي كان زرَّين. يكتب البلاغ بسببه وخصمه، وينقل الصنف
@@ -702,6 +733,8 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
       // «retired» لم تعد تُكتب: «تالف» صارت إجراءً واحداً يكتب damaged/lost.
       // تبقى هنا لأن في السجل حركاتٍ قديمة كُتبت بها.
       'retired': ('إخراج من الخدمة', 'Retired', T.inkFaint),
+      'sold': ('بيع', 'Sold', T.violet),
+      'sale_returned': ('إرجاع المبيع للمخزن', 'Sale returned', T.success),
     };
     showModalBottomSheet(
       context: context,

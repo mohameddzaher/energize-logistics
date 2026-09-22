@@ -43,6 +43,8 @@ const ACTION_LABEL: Record<string, { en: string; ar: string }> = {
   updated: { en: 'Details updated', ar: 'عُدّلت بياناته' },
   // البيعُ حدثٌ بذاته: بلا سطرٍ له يظهر في السجلّ بمفتاحه الخامّ «sold».
   sold: { en: 'Sold', ar: 'بيع' },
+  // إرجاعُ المُباع: البيعُ يبقى في السجلّ وهذا بعده — رجع إلى المخزن ورُدّ ثمنُه.
+  sale_returned: { en: 'Sale returned to store', ar: 'أُرجع المبيع إلى المخزن' },
 };
 
 export default function ItCustodyPage() {
@@ -100,6 +102,10 @@ export default function ItCustodyPage() {
   // يردّ إن لم يُذكر واحدٌ منهما. راجع sellCustody.
   const [selling, setSelling] = useState<CustodyItem | null>(null);
   const [sellForm, setSellForm] = useState({ employee: '', buyerName: '', price: 0, date: '', notes: '' });
+  // ── إرجاعُ المُباع ────────────────────────────────────────────────────
+  // يُلغى البيعُ ويُردّ الثمن، فيعود الجهازُ نفسُه إلى الرفّ بسيرته. راجع unsellCustody.
+  const [unselling, setUnselling] = useState<CustodyItem | null>(null);
+  const [unsellForm, setUnsellForm] = useState({ refund: 0, date: '', notes: '' });
   const [faulty, setFaulty] = useState<CustodyItem | null>(null);
   const [faultyForm, setFaultyForm] = useState<{ kind: 'damaged' | 'lost'; notes: string; cost: number; date: string }>({ kind: 'damaged', notes: '', cost: 0, date: '' });
 
@@ -280,6 +286,22 @@ export default function ItCustodyPage() {
         buyerName: sellForm.employee ? undefined : sellForm.buyerName.trim(),
       });
       setSelling(null); refresh();
+    } catch (e: any) { notify(e.message, 'error'); }
+    setSaving(false);
+  };
+
+  const openUnsell = (a: CustodyItem) => {
+    setUnselling(a);
+    // المردودُ افتراضًا هو ما دُفع — ويُعدَّل إن رُدّ أقلُّ منه.
+    setUnsellForm({ refund: a.soldPrice || 0, date: today(), notes: '' });
+  };
+  const doUnsell = async () => {
+    if (!unselling) return;
+    setSaving(true);
+    try {
+      await api.post(`/api/it/custody/${unselling._id}/unsell`, unsellForm);
+      setUnselling(null); refresh();
+      notify(ar ? 'رجع الصنف إلى المخزن' : 'Item is back in stock', 'success');
     } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
@@ -531,6 +553,10 @@ export default function ItCustodyPage() {
                     )}
                     {/* البيع: ما دام الصنفُ في ملكنا — بعهدةٍ أو على الرفّ —
                         فهذا طريقُه إلى الخروج ببيع. والمُباعُ لا يُباع مرّتين. */}
+                    {/* والمُباعُ طريقُه الوحيدُ الرجوعُ إلى المخزن حين يُلغى بيعُه. */}
+                    {a.status === 'sold' && (
+                      <button type="button" onClick={() => openUnsell(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-emerald-600 hover:bg-slate-100" title={ar ? 'إرجاع المبيع إلى المخزن' : 'Return sale to store'}><Undo2 className="w-4 h-4" /></button>
+                    )}
                     {a.status !== 'sold' && (
                       <button type="button" onClick={() => openSell(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-violet-600 hover:bg-slate-100" title={ar ? 'بيع للموظف' : 'Sell'}><BadgeDollarSign className="w-4 h-4" /></button>
                     )}
@@ -783,6 +809,45 @@ export default function ItCustodyPage() {
           والمشتري أحدُ اثنين لا كلاهما: موظّفٌ من القائمة، أو اسمٌ حرٌّ لمن هو
           خارج الشركة. واختيارُ موظّفٍ يُعطّل خانةَ الاسم الحرّ كي لا يُكتب
           اسمانِ لمشترٍ واحد. */}
+      {/* ── إرجاعُ المُباع إلى المخزن ──────────────────────────────────────── */}
+      <Modal open={!!unselling} onClose={() => setUnselling(null)} title={ar ? 'إرجاع المبيع إلى المخزن' : 'Return sale to store'}
+        footer={<>
+          <button type="button" onClick={() => setUnselling(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+          <PrimaryButton onClick={doUnsell} disabled={saving}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{ar ? 'تأكيد الإرجاع' : 'Confirm return'}
+          </PrimaryButton>
+        </>}>
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            <span className="font-semibold text-slate-900">{unselling?.name}</span>
+            {unselling?.serialNumber ? <span className="text-slate-400 font-mono text-xs"> · {unselling.serialNumber}</span> : null}
+            <span className="text-slate-500"> — {ar ? 'بيع إلى' : 'sold to'} {unselling?.soldTo ? empName(unselling.soldTo as any, lang) : (unselling?.soldToName || '—')}
+              {unselling?.soldPrice ? ` · ${unselling.soldPrice.toLocaleString()}` : ''}{unselling?.soldDate ? ` · ${unselling.soldDate}` : ''}</span>
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={ar ? 'المبلغ المردود للموظف' : 'Amount refunded'}>
+              <input type="number" min={0} value={unsellForm.refund}
+                onChange={(e) => setUnsellForm({ ...unsellForm, refund: Number(e.target.value) })}
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" title={ar ? 'المبلغ المردود' : 'Refund'} />
+            </Field>
+            <Field label={ar ? 'تاريخ الإرجاع' : 'Return date'}>
+              <input type="date" value={unsellForm.date}
+                onChange={(e) => setUnsellForm({ ...unsellForm, date: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" title={ar ? 'تاريخ الإرجاع' : 'Return date'} />
+            </Field>
+          </div>
+          <Field label={ar ? 'ملاحظات' : 'Notes'}>
+            <input type="text" value={unsellForm.notes}
+              onChange={(e) => setUnsellForm({ ...unsellForm, notes: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" title={ar ? 'ملاحظات' : 'Notes'} />
+          </Field>
+          <p className="text-xs text-slate-500 bg-emerald-50 border border-emerald-100 rounded-lg p-2.5">
+            {ar ? 'يرجع الصنف نفسه إلى المخزن بحالة «في المخزن»، ويبقى البيع ثم الإرجاع والمبلغ المردود في سجل حركته.'
+              : 'The same item goes back to stock; its history keeps the sale, then this return and the refunded amount.'}
+          </p>
+        </div>
+      </Modal>
+
       <Modal open={!!selling} onClose={() => setSelling(null)} title={ar ? 'بيع الصنف' : 'Sell item'}
         footer={<>
           <button type="button" onClick={() => setSelling(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>

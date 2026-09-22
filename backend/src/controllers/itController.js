@@ -902,6 +902,58 @@ exports.sellCustody = async (req, res) => {
   }
 };
 
+/**
+ * ── إرجاعُ صنفٍ مُباع إلى المخزن ───────────────────────────────────────────
+ *
+ * يشتري الموظّفُ الجهازَ من العهدة، ثمّ يُلغى البيعُ: يُعيد الجهازَ ويُردّ له
+ * ثمنُه. وكان المُباعُ لا طريقَ له إلّا أن يبقى «مُباعًا» أو يُضاف صفٌّ جديد —
+ * فيضيع أنّه الجهازُ نفسُه بسيرته وسيريالِه. فصار يرجع إلى الرفّ صفًّا واحدًا
+ * بتاريخه كلِّه: البيعُ في السجلّ، وبعده حدثُ «إرجاع المبيع» بالمبلغ المردود.
+ *
+ * POST /api/it/custody/:id/unsell
+ *   { date?, refund?, condition?, location?, notes? }
+ */
+exports.unsellCustody = async (req, res) => {
+  try {
+    const item = await Asset.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Custody item not found' });
+    if (item.status !== 'sold') return res.status(400).json({ message: 'هذا الصنف غير مُباع.' });
+
+    const buyer = item.soldTo ? String(item.soldTo) : null;
+    const buyerName = item.soldToName || '';
+    const refund = req.body.refund !== undefined && req.body.refund !== ''
+      ? Number(req.body.refund) || 0
+      : Number(item.soldPrice) || 0;
+    const date = req.body.date || today();
+
+    item.status = 'in_stock';
+    item.employee = null;
+    item.holderKind = '';
+    item.holderName = '';
+    item.assignedDate = undefined;
+    // بيانُ البيع يُمحى من الصفّ — الصفُّ يقول ما هو الآن — ويبقى في السجلّ.
+    item.soldTo = null;
+    item.soldToName = '';
+    item.soldDate = undefined;
+    item.soldPrice = 0;
+    if (req.body.condition) item.condition = req.body.condition;
+    if (req.body.location !== undefined) item.location = req.body.location;
+    item.returnedDate = date;
+    item.returnedTo = req.user._id;
+    await item.save();
+
+    await logEvent(req, item, 'sale_returned', {
+      fromEmployee: buyer, buyerName, price: refund, date,
+      condition: item.condition, notes: req.body.notes,
+    });
+    emitCustody({ type: 'custody', id: String(item._id), employee: buyer });
+    if (buyer) emit('hr:employee', { id: buyer });
+    res.json({ item, refund });
+  } catch (error) {
+    return sendMongooseError(res, error, 'تعذّر إرجاع الصنف المُباع');
+  }
+};
+
 exports.handoverCustody = async (req, res) => {
   try {
     // ── ومصيرُ الصنف ثلاثةُ طرقٍ لا اثنان ──────────────────────────────────

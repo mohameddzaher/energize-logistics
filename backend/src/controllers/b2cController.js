@@ -108,6 +108,7 @@ exports.deleteProject = async (req, res) => {
     if (!project) return res.status(404).json({ message: 'Project not found' });
     await B2CRep.updateMany({ project: project._id }, { $unset: { project: 1 } });
     await logAudit({ user: req.user._id, action: 'delete_b2c_project', entity: 'B2CProject', entityId: project._id, changes: { before: { name: project.name } }, ipAddress: req.ip });
+    cache.clear('b2c:'); // الإبطال قبل الإعلان — وإلّا أعاد المستمعون قراءة ما قبل الكتابة
     try { emitToAll('b2c:project:deleted', { projectId: project._id }); } catch (e) {}
     res.json({ message: 'Project deleted' });
   } catch (error) {
@@ -387,6 +388,7 @@ exports.bulkResolveReps = async (req, res) => {
 
     const matched = result.filter((r) => !r.created).length;
     console.log(`[B2C bulk-resolve] incoming=${incoming.length} canonical=${canonicalByName.size} matched=${matched} created=${actuallyCreated}`);
+    cache.clear('b2c:'); // الإبطال قبل الإعلان — وإلّا أعاد المستمعون قراءة ما قبل الكتابة
     try { emitToAll('b2c:rep:bulk', { count: actuallyCreated }); } catch (e) {}
 
     res.json({ resolved: result, createdCount: actuallyCreated });
@@ -405,6 +407,7 @@ exports.deleteRep = async (req, res) => {
       await B2CDailyOrder.deleteMany({ rep: rep._id });
     }
     await logAudit({ user: req.user._id, action: 'delete_b2c_rep', entity: 'B2CRep', entityId: rep._id, changes: { before: { englishName: rep.englishName } }, ipAddress: req.ip });
+    cache.clear('b2c:'); // الإبطال قبل الإعلان — وإلّا أعاد المستمعون قراءة ما قبل الكتابة
     try { emitToAll('b2c:rep:deleted', { repId: rep._id }); } catch (e) {}
     res.json({ message: 'Rep deleted' });
   } catch (error) {
@@ -609,6 +612,7 @@ exports.reconcileReps = async (req, res) => {
     const { reconcileAllReps } = require('../services/b2cGoogleSheetSyncService');
     const result = await reconcileAllReps();
     if (result.mergedGroups > 0) {
+      cache.clear('b2c:'); // الإبطال قبل الإعلان — وإلّا أعاد المستمعون قراءة ما قبل الكتابة
       try { emitToAll('b2c:cleanup', result); } catch (_) {}
     }
     res.json({ ok: true, ...result });
@@ -898,6 +902,7 @@ exports.deleteDailyOrder = async (req, res) => {
   try {
     const order = await B2CDailyOrder.findByIdAndDelete(req.params.id);
     if (!order) return res.status(404).json({ message: 'Entry not found' });
+    cache.clear('b2c:'); // الإبطال قبل الإعلان — وإلّا أعاد المستمعون قراءة ما قبل الكتابة
     try { emitToAll('b2c:order:deleted', { id: order._id }); } catch (e) {}
     res.json({ message: 'Entry deleted' });
   } catch (error) {
@@ -911,12 +916,8 @@ exports.deleteDailyOrder = async (req, res) => {
 
 exports.getDashboardSummary = async (req, res) => {
   try {
-    // Serve an identical (user + filters) dashboard from cache — makes month
-    // switching feel instant. Keyed by user (scope differs per user) + query.
-    const cacheKey = `b2c:dash:${req.user._id}:${JSON.stringify(req.query || {})}`;
-    const cachedDash = cache.get(cacheKey);
-    if (cachedDash) return res.json(cachedDash);
-
+    // Serve an identical (scope + filters) dashboard from cache — makes month
+    // switching feel instant.
     const filter = {};
     if (req.query.project) filter.project = new mongoose.Types.ObjectId(String(req.query.project));
     if (req.query.branch) filter.branch = new mongoose.Types.ObjectId(String(req.query.branch));
@@ -944,228 +945,262 @@ exports.getDashboardSummary = async (req, res) => {
       });
     }
 
-    // ── الأداء: نحسب التجميعات داخل قاعدة البيانات (aggregation) بدل تحميل عشرات
-    // الآلاف من الصفوف إلى Node — التحميل الكامل كان ياخد ~68 ثانية ويجمّد حلقة
-    // الأحداث (single-thread) فيبطّئ النظام كله. الآن الـ DB يجمّع والنتائج صغيرة.
-    const repDefaults = { monthlyTarget: 400, dailyTarget: 15 };
-    const [repsList, projsList, branchesList] = await Promise.all([
-      B2CRep.find({}, 'englishName arabicName repId monthlyTarget dailyTarget expectedWorkingDays').lean(),
-      B2CProject.find({}, 'name code color monthlyTarget dailyTarget').lean(),
-      Branch.find({}, 'name code city').lean(),
-    ]);
-    const repMap2 = new Map(repsList.map((r) => [String(r._id), r]));
-    const projMap2 = new Map(projsList.map((p) => [String(p._id), p]));
-    const branchMap2 = new Map(branchesList.map((b) => [String(b._id), b]));
-
-    const workedExpr = { $and: [{ $eq: ['$worked', true] }, { $ne: ['$orders', null] }] };
-    const ordersNum = { $ifNull: ['$orders', 0] };
-    const setCount = (arr) => (arr || []).filter((x) => x != null).length;
-    const A = (extra) => B2CDailyOrder.aggregate([{ $match: filter }, ...extra]);
-
-    // تجميعات متوازية داخل قاعدة البيانات (أسرع من $facet على هذا العنقود، وكلها
-    // I/O لا تحجب حلقة الأحداث) بدل تحميل عشرات الآلاف من الصفوف إلى Node.
-    const [repAgg, monthAgg, projAgg, branchAgg, dayAgg, dowAgg, repMonthAgg, bestDaysAgg, totalsAgg] = await Promise.all([
-      A([{ $group: { _id: '$rep', totalOrders: { $sum: ordersNum }, workingDays: { $sum: { $cond: [workedExpr, 1, 0] } }, project: { $first: '$project' }, branch: { $first: '$branch' } } }]),
-      A([{ $group: { _id: { year: '$year', month: '$month' }, totalOrders: { $sum: ordersNum }, workingDays: { $sum: { $cond: [workedExpr, 1, 0] } }, repsActive: { $addToSet: { $cond: [workedExpr, '$rep', null] } } } }]),
-      A([{ $group: { _id: '$project', totalOrders: { $sum: ordersNum }, repsActive: { $addToSet: { $cond: [workedExpr, '$rep', null] } } } }]),
-      A([{ $group: { _id: '$branch', totalOrders: { $sum: ordersNum }, repsActive: { $addToSet: { $cond: [workedExpr, '$rep', null] } } } }]),
-      A([{ $group: { _id: '$dateKey', totalOrders: { $sum: ordersNum },
-        worked: { $sum: { $cond: [{ $gt: [ordersNum, 0] }, 1, 0] } },
-        repsActive: { $addToSet: { $cond: [{ $gt: [ordersNum, 0] }, '$rep', null] } },
-        repsNotWorked: { $addToSet: { $cond: [{ $eq: ['$orders', 0] }, '$rep', null] } },
-        repsAboveTarget: { $sum: { $cond: [{ $gte: [ordersNum, repDefaults.dailyTarget] }, 1, 0] } } } }]),
-      A([{ $group: { _id: { $let: { vars: { d: { $dateFromString: { dateString: { $concat: ['$dateKey', 'T00:00:00.000Z'] }, onError: null, onNull: null } } }, in: { $cond: [{ $eq: ['$$d', null] }, -1, { $subtract: [{ $dayOfWeek: '$$d' }, 1] }] } } }, totalOrders: { $sum: ordersNum }, workingCells: { $sum: { $cond: [workedExpr, 1, 0] } } } }]),
-      A([{ $group: { _id: { rep: '$rep', year: '$year', month: '$month' }, orders: { $sum: ordersNum }, workingDays: { $sum: { $cond: [workedExpr, 1, 0] } } } }]),
-      B2CDailyOrder.aggregate([{ $match: { ...filter, worked: true, orders: { $gt: 0 } } }, { $sort: { orders: -1 } }, { $limit: 5 }, { $project: { rep: 1, project: 1, dateKey: 1, orders: 1 } }]),
-      A([{ $group: { _id: null, totalOrders: { $sum: ordersNum }, totalWorkingDays: { $sum: { $cond: [workedExpr, 1, 0] } }, totalDaysOff: { $sum: { $cond: [{ $eq: ['$orders', 0] }, 1, 0] } }, totalNoDataDays: { $sum: { $cond: [{ $eq: ['$orders', null] }, 1, 0] } } } }]),
-    ]);
-
-    const tt = totalsAgg[0] || {};
-    const totalOrders = tt.totalOrders || 0;
-    const totalWorkingDays = tt.totalWorkingDays || 0;
-    const avgDailyRate = totalWorkingDays > 0 ? totalOrders / totalWorkingDays : 0;
-    const totalDaysOff = tt.totalDaysOff || 0;
-    const totalNoDataDays = tt.totalNoDataDays || 0;
-
-    const byRep = repAgg.map((r) => {
-      const meta = repMap2.get(String(r._id)) || {};
-      const dailyTarget = meta.dailyTarget || repDefaults.dailyTarget;
-      const br = branchMap2.get(String(r.branch));
-      return {
-        repId: r._id, englishName: meta.englishName, arabicName: meta.arabicName,
-        monthlyTarget: meta.monthlyTarget || repDefaults.monthlyTarget, dailyTarget,
-        totalOrders: r.totalOrders, workingDays: r.workingDays,
-        project: projMap2.get(String(r.project))?.name,
-        branch: br?.name, city: br?.city,
-        dailyRate: r.workingDays > 0 ? r.totalOrders / r.workingDays : 0,
-        performancePercent: r.workingDays > 0 ? (r.totalOrders / (r.workingDays * dailyTarget)) * 100 : 0,
-      };
-    }).sort((a, b) => b.totalOrders - a.totalOrders);
-
-    const byMonth = monthAgg.map((m) => ({
-      key: `${m._id.year}-${pad2(m._id.month)}`, year: m._id.year, month: m._id.month,
-      totalOrders: m.totalOrders, workingDays: m.workingDays, repsActive: setCount(m.repsActive),
-      avgDailyRate: m.workingDays > 0 ? m.totalOrders / m.workingDays : 0,
-    })).sort((a, b) => a.key.localeCompare(b.key));
-
-    const byProject = projAgg.map((p) => ({
-      projectId: p._id, name: projMap2.get(String(p._id))?.name || '—', color: projMap2.get(String(p._id))?.color,
-      totalOrders: p.totalOrders, repsActive: setCount(p.repsActive),
-    })).sort((a, b) => b.totalOrders - a.totalOrders);
-
-    const byBranch = branchAgg.map((b) => ({
-      branchId: b._id, name: branchMap2.get(String(b._id))?.name || '—', city: branchMap2.get(String(b._id))?.city,
-      totalOrders: b.totalOrders, repsActive: setCount(b.repsActive),
-    })).sort((a, b) => b.totalOrders - a.totalOrders);
-
-    const byDay = dayAgg.map((d) => {
-      const targetSum = d.worked * repDefaults.dailyTarget;
-      return {
-        dateKey: d._id, totalOrders: d.totalOrders, repsActive: setCount(d.repsActive),
-        repsNotWorked: setCount(d.repsNotWorked), worked: d.worked, targetSum,
-        achievementPercent: targetSum > 0 ? (d.totalOrders / targetSum) * 100 : 0,
-        repsAboveTarget: d.repsAboveTarget,
-      };
-    }).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
-
-    // KPIs. Only reps who actually worked at least one day have a measurable
-    // performance — reps added to the sheet but not yet working (all days
-    // null/0) would otherwise read as 0% and inflate the below/at-risk buckets
-    // and drag the average down.
-    const workedReps = byRep.filter((r) => r.workingDays > 0);
-    const repsActive = workedReps.length;
-    const aboveTargetReps = workedReps.filter((r) => r.performancePercent >= 100).length;
-    const onTrackReps = workedReps.filter((r) => r.performancePercent >= 80 && r.performancePercent < 100).length;
-    const belowTargetReps = workedReps.filter((r) => r.performancePercent < 80).length;
-    const atRiskReps = workedReps.filter((r) => r.performancePercent < 60).length;
-    const avgPerformance = workedReps.length > 0 ? workedReps.reduce((s, r) => s + r.performancePercent, 0) / workedReps.length : 0;
-
-    // Day-of-week breakdown (0=Sun..6=Sat) — من الـ aggregation.
-    const dowMap = new Map(dowAgg.map((d) => [d._id, d]));
-    const byDayOfWeek = Array.from({ length: 7 }, (_, i) => {
-      const e = dowMap.get(i) || { totalOrders: 0, workingCells: 0 };
-      return { dow: i, totalOrders: e.totalOrders, workingCells: e.workingCells, avgPerWorker: e.workingCells > 0 ? e.totalOrders / e.workingCells : 0 };
-    });
-
-    // Improvers / Decliners — من تجميع (rep, month) بدل المرور على كل الصفوف.
-    const repMonthMap = new Map(); // repId -> { monthKey -> { orders, workingDays } }
-    repMonthAgg.forEach((rm) => {
-      const repId = String(rm._id.rep || '');
-      if (!repMonthMap.has(repId)) repMonthMap.set(repId, new Map());
-      repMonthMap.get(repId).set(`${rm._id.year}-${pad2(rm._id.month)}`, { orders: rm.orders, workingDays: rm.workingDays });
-    });
-
-    const repTrends = byRep.map((r) => {
-      const months = [...(repMonthMap.get(String(r.repId)) || new Map()).entries()]
-        .sort((a, b) => a[0].localeCompare(b[0]));
-      if (months.length < 2) {
-        return { ...r, deltaPercent: 0, firstMonthAvg: 0, lastMonthAvg: 0, monthsActive: months.length };
-      }
-      const [, first] = months[0];
-      const [, last] = months[months.length - 1];
-      const firstAvg = first.workingDays > 0 ? first.orders / first.workingDays : 0;
-      const lastAvg = last.workingDays > 0 ? last.orders / last.workingDays : 0;
-      const delta = firstAvg > 0 ? ((lastAvg - firstAvg) / firstAvg) * 100 : 0;
-      return { ...r, deltaPercent: delta, firstMonthAvg: firstAvg, lastMonthAvg: lastAvg, monthsActive: months.length };
-    });
-
-    const topImprovers = [...repTrends].filter((r) => r.monthsActive >= 2 && r.deltaPercent > 0)
-      .sort((a, b) => b.deltaPercent - a.deltaPercent).slice(0, 5);
-    const topDecliners = [...repTrends].filter((r) => r.monthsActive >= 2 && r.deltaPercent < 0)
-      .sort((a, b) => a.deltaPercent - b.deltaPercent).slice(0, 5);
-
-    // Most consistent — std-dev of monthly orders / mean (low coefficient of variation)
-    const mostConsistent = byRep.map((r) => {
-      const months = [...(repMonthMap.get(String(r.repId)) || new Map()).values()];
-      if (months.length < 2) return { ...r, consistency: 0, monthsActive: months.length };
-      const totals = months.map((m) => m.orders);
-      const mean = totals.reduce((s, v) => s + v, 0) / totals.length;
-      if (mean <= 0) return { ...r, consistency: 0, monthsActive: months.length };
-      const variance = totals.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / totals.length;
-      const stdDev = Math.sqrt(variance);
-      const consistency = Math.max(0, 100 - (stdDev / mean) * 100);
-      return { ...r, consistency, monthsActive: months.length };
-    }).filter((r) => r.monthsActive >= 2)
-      .sort((a, b) => b.consistency - a.consistency).slice(0, 5);
-
-    // Best single days across all reps — من الـ aggregation (أعلى 5 صفوف).
-    const bestSingleDays = bestDaysAgg.map((o) => ({
-      repId: o.rep,
-      englishName: repMap2.get(String(o.rep))?.englishName,
-      arabicName: repMap2.get(String(o.rep))?.arabicName,
-      dateKey: o.dateKey,
-      orders: o.orders,
-      project: projMap2.get(String(o.project))?.name,
-    }));
-
-    // Most-productive days for the team as a whole (already covered by byDay sorted)
-    const topTeamDays = [...byDay].sort((a, b) => b.totalOrders - a.totalOrders).slice(0, 5);
-
-    // Capacity = expected orders for the days reps ACTUALLY worked
-    // (Σ workingDays × dailyTarget), not a full-month target × headcount. This
-    // keeps capacity-used meaningful mid-month (it's not diluted by days that
-    // haven't happened yet) and ignores reps who haven't started, so the % is a
-    // real "orders vs daily target on worked days" figure.
-    const expectedTotal = byRep.reduce((s, r) => s + r.workingDays * r.dailyTarget, 0);
-
-    const kpis = {
-      totalOrders,
-      totalWorkingDays,
-      avgDailyRate,
-      repsActive,
-      aboveTargetReps,
-      onTrackReps,
-      belowTargetReps,
-      atRiskReps,
-      avgPerformance,
-      bestRep: byRep[0] || null,
-      worstRep: byRep.length > 0 ? byRep[byRep.length - 1] : null,
-      bestDay: byDay.length > 0 ? [...byDay].sort((a, b) => b.totalOrders - a.totalOrders)[0] : null,
-      // Capacity = expected orders given (active reps × monthly target × months in scope)
-      teamCapacity: expectedTotal,
-      capacityUsedPercent: 0,
-      monthsCount: byMonth.length,
-      totalDaysOff,
-      totalNoDataDays,
-    };
-    if (kpis.teamCapacity > 0) kpis.capacityUsedPercent = (totalOrders / kpis.teamCapacity) * 100;
-
-    // List all (year, month) combinations that exist in DB regardless of current filter.
-    // Powers the month-picker tabs at the top of the dashboard.
-    const monthScopeFilter = {};
-    if (scope.projectIds && scope.projectIds.length > 0) {
-      monthScopeFilter.project = { $in: scope.projectIds.map((id) => new mongoose.Types.ObjectId(String(id))) };
-    }
-    if (req.query.project) monthScopeFilter.project = new mongoose.Types.ObjectId(String(req.query.project));
-    if (req.query.branch) monthScopeFilter.branch = new mongoose.Types.ObjectId(String(req.query.branch));
-    const monthsAggregate = await B2CDailyOrder.aggregate([
-      { $match: monthScopeFilter },
-      { $group: { _id: { year: '$year', month: '$month' }, count: { $sum: 1 } } },
-      { $sort: { '_id.year': 1, '_id.month': 1 } },
-    ]);
-    const monthsAvailable = monthsAggregate.map((a) => ({ year: a._id.year, month: a._id.month, entries: a.count }));
-
-    const payload = {
-      kpis,
-      byMonth, byProject, byBranch, byRep,
-      byDay,
-      byDayOfWeek,
-      monthsAvailable,
-      topReps: byRep.slice(0, 10),
-      bottomReps: byRep.length > 10 ? byRep.slice(-10).reverse() : [...byRep].reverse(),
-      topImprovers,
-      topDecliners,
-      mostConsistent,
-      bestSingleDays,
-      topTeamDays,
-    };
-    cache.set(cacheKey, payload, B2C_DASH_TTL);
+    // المفتاح بالنطاق لا بالمستخدم: اللوحة لا تتغيّر إلّا بالنطاق والفلاتر، فأربعون
+    // مديرًا يفتحونها صباحًا يتقاسمون حسابًا واحدًا (wrap = طلعة واحدة) بدل أربعين.
+    const scopeKey = scope.projectIds ? scope.projectIds.map(String).sort().join(',') : 'all';
+    const cacheKey = `b2c:dash:${scopeKey}:${JSON.stringify(req.query || {})}`;
+    const payload = await cache.wrap(cacheKey, B2C_DASH_TTL, () => computeDashboard(req, filter, scope));
     res.json(payload);
   } catch (error) {
     console.error('Dashboard error:', error);
     res.status(500).json({ message: error.message || 'Failed to load dashboard' });
   }
 };
+
+// ترتيبٌ ثابتٌ عند التعادل: مخرجات $group بلا ترتيب، فكان مندوبان بالعدد نفسه
+// يتبادلان مكانيهما بين نداءٍ وآخر (worstRep وbottomReps ومتوسّط الأداء — جمعُ
+// كسورٍ بترتيبٍ مختلف يختلف في آخر خانة). فيُكسَر التعادل بالمعرّف دائمًا.
+const byIdTie = (a, b) => (String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0);
+
+async function computeDashboard(req, filter, scope) {
+
+  // ── الأداء: نحسب التجميعات داخل قاعدة البيانات (aggregation) بدل تحميل عشرات
+  // الآلاف من الصفوف إلى Node — التحميل الكامل كان ياخد ~68 ثانية ويجمّد حلقة
+  // الأحداث (single-thread) فيبطّئ النظام كله. الآن الـ DB يجمّع والنتائج صغيرة.
+  const repDefaults = { monthlyTarget: 400, dailyTarget: 15 };
+  const [repsList, projsList, branchesList] = await Promise.all([
+    B2CRep.find({}, 'englishName arabicName monthlyTarget dailyTarget').lean(),
+    B2CProject.find({}, 'name code color monthlyTarget dailyTarget').lean(),
+    Branch.find({}, 'name code city').lean(),
+  ]);
+  const repMap2 = new Map(repsList.map((r) => [String(r._id), r]));
+  const projMap2 = new Map(projsList.map((p) => [String(p._id), p]));
+  const branchMap2 = new Map(branchesList.map((b) => [String(b._id), b]));
+
+  const workedExpr = { $and: [{ $eq: ['$worked', true] }, { $ne: ['$orders', null] }] };
+  const ordersNum = { $ifNull: ['$orders', 0] };
+  // عددُ المندوبين يُحسب داخل القاعدة: كانت مجموعاتُ المعرّفات نفسُها تُنقل (٨٧٠ ك.ب
+  // لتجميع الأيام وحده) ليُعدّ طولُها فقط — والنقلُ من العنقود هو الكلفة الحقيقية.
+  const setSize = (f) => ({ $size: { $setDifference: [f, [null]] } });
+  const A = (extra) => B2CDailyOrder.aggregate([{ $match: filter }, ...extra]);
+
+  // تجميعات متوازية داخل قاعدة البيانات (أسرع من $facet على هذا العنقود، وكلها
+  // I/O لا تحجب حلقة الأحداث) بدل تحميل عشرات الآلاف من الصفوف إلى Node.
+  // قائمةُ الأشهر المتاحة كانت تُطلب بعد انتهاء البقيّة (رحلةٌ إضافيّة كاملة)،
+  // وهي مستقلّةٌ عنها — فتُطلب معها.
+  const monthScopeFilter = {};
+  if (scope.projectIds && scope.projectIds.length > 0) {
+    monthScopeFilter.project = { $in: scope.projectIds.map((id) => new mongoose.Types.ObjectId(String(id))) };
+  }
+  if (req.query.project) monthScopeFilter.project = new mongoose.Types.ObjectId(String(req.query.project));
+  if (req.query.branch) monthScopeFilter.branch = new mongoose.Types.ObjectId(String(req.query.branch));
+
+  // تجميعُ (مندوب، شهر) يكفي للاثنين: مجموعُ المندوب هو مجموعُ أشهره، فلا
+  // يُمرّ على الصفوف مرّتين ولا يُنقل المعرّف مرّةً لكلّ شهر.
+  const [repAgg, monthAgg, projAgg, branchAgg, dayAgg, dowAgg, bestDaysAgg, totalsAgg, monthsAggregate] = await Promise.all([
+    A([
+      { $group: { _id: { rep: '$rep', year: '$year', month: '$month' }, orders: { $sum: ordersNum }, workingDays: { $sum: { $cond: [workedExpr, 1, 0] } }, project: { $first: '$project' }, branch: { $first: '$branch' } } },
+      // الأشهر نصٌّ مضغوط «سنة,شهر,طلبات,أيام» لا مستندات: أسماءُ الحقول ومفاتيحُ
+      // المصفوفة كانت نصفَ حجم هذا التجميع، والحجمُ هو الزمن على هذا العنقود.
+      { $group: { _id: '$_id.rep', totalOrders: { $sum: '$orders' }, workingDays: { $sum: '$workingDays' }, project: { $first: '$project' }, branch: { $first: '$branch' },
+        months: { $push: { $concat: [{ $toString: '$_id.year' }, ',', { $toString: '$_id.month' }, ',', { $toString: '$orders' }, ',', { $toString: '$workingDays' }] } } } },
+    ]),
+    A([{ $group: { _id: { year: '$year', month: '$month' }, totalOrders: { $sum: ordersNum }, workingDays: { $sum: { $cond: [workedExpr, 1, 0] } }, repsActive: { $addToSet: { $cond: [workedExpr, '$rep', null] } } } },
+      { $set: { repsActive: setSize('$repsActive') } }]),
+    A([{ $group: { _id: '$project', totalOrders: { $sum: ordersNum }, repsActive: { $addToSet: { $cond: [workedExpr, '$rep', null] } } } },
+      { $set: { repsActive: setSize('$repsActive') } }]),
+    A([{ $group: { _id: '$branch', totalOrders: { $sum: ordersNum }, repsActive: { $addToSet: { $cond: [workedExpr, '$rep', null] } } } },
+      { $set: { repsActive: setSize('$repsActive') } }]),
+    A([{ $group: { _id: '$dateKey', totalOrders: { $sum: ordersNum },
+      worked: { $sum: { $cond: [{ $gt: [ordersNum, 0] }, 1, 0] } },
+      repsActive: { $addToSet: { $cond: [{ $gt: [ordersNum, 0] }, '$rep', null] } },
+      repsNotWorked: { $addToSet: { $cond: [{ $eq: ['$orders', 0] }, '$rep', null] } },
+      repsAboveTarget: { $sum: { $cond: [{ $gte: [ordersNum, repDefaults.dailyTarget] }, 1, 0] } } } },
+      { $set: { repsActive: setSize('$repsActive'), repsNotWorked: setSize('$repsNotWorked') } }]),
+    A([{ $group: { _id: { $let: { vars: { d: { $dateFromString: { dateString: { $concat: ['$dateKey', 'T00:00:00.000Z'] }, onError: null, onNull: null } } }, in: { $cond: [{ $eq: ['$$d', null] }, -1, { $subtract: [{ $dayOfWeek: '$$d' }, 1] }] } } }, totalOrders: { $sum: ordersNum }, workingCells: { $sum: { $cond: [workedExpr, 1, 0] } } } }]),
+    // _id يكسر التعادل: خمسةُ أيّامٍ من عشراتٍ بالعدد نفسه كانت تتبدّل بين نداءٍ وآخر.
+    B2CDailyOrder.aggregate([{ $match: { ...filter, worked: true, orders: { $gt: 0 } } }, { $sort: { orders: -1, _id: 1 } }, { $limit: 5 }, { $project: { rep: 1, project: 1, dateKey: 1, orders: 1 } }]),
+    A([{ $group: { _id: null, totalOrders: { $sum: ordersNum }, totalWorkingDays: { $sum: { $cond: [workedExpr, 1, 0] } }, totalDaysOff: { $sum: { $cond: [{ $eq: ['$orders', 0] }, 1, 0] } }, totalNoDataDays: { $sum: { $cond: [{ $eq: ['$orders', null] }, 1, 0] } } } }]),
+    B2CDailyOrder.aggregate([
+      { $match: monthScopeFilter },
+      { $group: { _id: { year: '$year', month: '$month' }, count: { $sum: 1 } } },
+      { $sort: { '_id.year': 1, '_id.month': 1 } },
+    ]),
+  ]);
+
+  const tt = totalsAgg[0] || {};
+  const totalOrders = tt.totalOrders || 0;
+  const totalWorkingDays = tt.totalWorkingDays || 0;
+  const avgDailyRate = totalWorkingDays > 0 ? totalOrders / totalWorkingDays : 0;
+  const totalDaysOff = tt.totalDaysOff || 0;
+  const totalNoDataDays = tt.totalNoDataDays || 0;
+
+  const byRep = repAgg.map((r) => {
+    const meta = repMap2.get(String(r._id)) || {};
+    const dailyTarget = meta.dailyTarget || repDefaults.dailyTarget;
+    const br = branchMap2.get(String(r.branch));
+    return {
+      repId: r._id, englishName: meta.englishName, arabicName: meta.arabicName,
+      monthlyTarget: meta.monthlyTarget || repDefaults.monthlyTarget, dailyTarget,
+      totalOrders: r.totalOrders, workingDays: r.workingDays,
+      project: projMap2.get(String(r.project))?.name,
+      branch: br?.name, city: br?.city,
+      dailyRate: r.workingDays > 0 ? r.totalOrders / r.workingDays : 0,
+      performancePercent: r.workingDays > 0 ? (r.totalOrders / (r.workingDays * dailyTarget)) * 100 : 0,
+    };
+  }).sort((a, b) => (b.totalOrders - a.totalOrders) || byIdTie(a.repId, b.repId));
+
+  const byMonth = monthAgg.map((m) => ({
+    key: `${m._id.year}-${pad2(m._id.month)}`, year: m._id.year, month: m._id.month,
+    totalOrders: m.totalOrders, workingDays: m.workingDays, repsActive: m.repsActive,
+    avgDailyRate: m.workingDays > 0 ? m.totalOrders / m.workingDays : 0,
+  })).sort((a, b) => a.key.localeCompare(b.key));
+
+  const byProject = projAgg.map((p) => ({
+    projectId: p._id, name: projMap2.get(String(p._id))?.name || '—', color: projMap2.get(String(p._id))?.color,
+    totalOrders: p.totalOrders, repsActive: p.repsActive,
+  })).sort((a, b) => (b.totalOrders - a.totalOrders) || byIdTie(a.projectId, b.projectId));
+
+  const byBranch = branchAgg.map((b) => ({
+    branchId: b._id, name: branchMap2.get(String(b._id))?.name || '—', city: branchMap2.get(String(b._id))?.city,
+    totalOrders: b.totalOrders, repsActive: b.repsActive,
+  })).sort((a, b) => (b.totalOrders - a.totalOrders) || byIdTie(a.branchId, b.branchId));
+
+  const byDay = dayAgg.map((d) => {
+    const targetSum = d.worked * repDefaults.dailyTarget;
+    return {
+      dateKey: d._id, totalOrders: d.totalOrders, repsActive: d.repsActive,
+      repsNotWorked: d.repsNotWorked, worked: d.worked, targetSum,
+      achievementPercent: targetSum > 0 ? (d.totalOrders / targetSum) * 100 : 0,
+      repsAboveTarget: d.repsAboveTarget,
+    };
+  }).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+
+  // KPIs. Only reps who actually worked at least one day have a measurable
+  // performance — reps added to the sheet but not yet working (all days
+  // null/0) would otherwise read as 0% and inflate the below/at-risk buckets
+  // and drag the average down.
+  const workedReps = byRep.filter((r) => r.workingDays > 0);
+  const repsActive = workedReps.length;
+  const aboveTargetReps = workedReps.filter((r) => r.performancePercent >= 100).length;
+  const onTrackReps = workedReps.filter((r) => r.performancePercent >= 80 && r.performancePercent < 100).length;
+  const belowTargetReps = workedReps.filter((r) => r.performancePercent < 80).length;
+  const atRiskReps = workedReps.filter((r) => r.performancePercent < 60).length;
+  const avgPerformance = workedReps.length > 0 ? workedReps.reduce((s, r) => s + r.performancePercent, 0) / workedReps.length : 0;
+
+  // Day-of-week breakdown (0=Sun..6=Sat) — من الـ aggregation.
+  const dowMap = new Map(dowAgg.map((d) => [d._id, d]));
+  const byDayOfWeek = Array.from({ length: 7 }, (_, i) => {
+    const e = dowMap.get(i) || { totalOrders: 0, workingCells: 0 };
+    return { dow: i, totalOrders: e.totalOrders, workingCells: e.workingCells, avgPerWorker: e.workingCells > 0 ? e.totalOrders / e.workingCells : 0 };
+  });
+
+  // Improvers / Decliners — من تجميع (rep, month) بدل المرور على كل الصفوف.
+  const repMonthMap = new Map(); // repId -> { monthKey -> { orders, workingDays } }
+  // الأشهر مرتّبةً: الانحرافُ المعياريّ جمعُ كسورٍ، وترتيبُه يغيّر آخرَ خانة.
+  repAgg.forEach((r) => {
+    const repId = String(r._id || '');
+    const mm = new Map();
+    const months = r.months.map((t) => { const [y, m, o, w] = t.split(',').map(Number); return [`${y}-${pad2(m)}`, { orders: o, workingDays: w }]; });
+    for (const x of months.sort((a, b) => a[0].localeCompare(b[0]))) mm.set(x[0], x[1]);
+    repMonthMap.set(repId, mm);
+  });
+
+  const repTrends = byRep.map((r) => {
+    const months = [...(repMonthMap.get(String(r.repId)) || new Map()).entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]));
+    if (months.length < 2) {
+      return { ...r, deltaPercent: 0, firstMonthAvg: 0, lastMonthAvg: 0, monthsActive: months.length };
+    }
+    const [, first] = months[0];
+    const [, last] = months[months.length - 1];
+    const firstAvg = first.workingDays > 0 ? first.orders / first.workingDays : 0;
+    const lastAvg = last.workingDays > 0 ? last.orders / last.workingDays : 0;
+    const delta = firstAvg > 0 ? ((lastAvg - firstAvg) / firstAvg) * 100 : 0;
+    return { ...r, deltaPercent: delta, firstMonthAvg: firstAvg, lastMonthAvg: lastAvg, monthsActive: months.length };
+  });
+
+  const topImprovers = [...repTrends].filter((r) => r.monthsActive >= 2 && r.deltaPercent > 0)
+    .sort((a, b) => b.deltaPercent - a.deltaPercent).slice(0, 5);
+  const topDecliners = [...repTrends].filter((r) => r.monthsActive >= 2 && r.deltaPercent < 0)
+    .sort((a, b) => a.deltaPercent - b.deltaPercent).slice(0, 5);
+
+  // Most consistent — std-dev of monthly orders / mean (low coefficient of variation)
+  const mostConsistent = byRep.map((r) => {
+    const months = [...(repMonthMap.get(String(r.repId)) || new Map()).values()];
+    if (months.length < 2) return { ...r, consistency: 0, monthsActive: months.length };
+    const totals = months.map((m) => m.orders);
+    const mean = totals.reduce((s, v) => s + v, 0) / totals.length;
+    if (mean <= 0) return { ...r, consistency: 0, monthsActive: months.length };
+    const variance = totals.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / totals.length;
+    const stdDev = Math.sqrt(variance);
+    const consistency = Math.max(0, 100 - (stdDev / mean) * 100);
+    return { ...r, consistency, monthsActive: months.length };
+  }).filter((r) => r.monthsActive >= 2)
+    .sort((a, b) => b.consistency - a.consistency).slice(0, 5);
+
+  // Best single days across all reps — من الـ aggregation (أعلى 5 صفوف).
+  const bestSingleDays = bestDaysAgg.map((o) => ({
+    repId: o.rep,
+    englishName: repMap2.get(String(o.rep))?.englishName,
+    arabicName: repMap2.get(String(o.rep))?.arabicName,
+    dateKey: o.dateKey,
+    orders: o.orders,
+    project: projMap2.get(String(o.project))?.name,
+  }));
+
+  // Most-productive days for the team as a whole (already covered by byDay sorted)
+  const topTeamDays = [...byDay].sort((a, b) => b.totalOrders - a.totalOrders).slice(0, 5);
+
+  // Capacity = expected orders for the days reps ACTUALLY worked
+  // (Σ workingDays × dailyTarget), not a full-month target × headcount. This
+  // keeps capacity-used meaningful mid-month (it's not diluted by days that
+  // haven't happened yet) and ignores reps who haven't started, so the % is a
+  // real "orders vs daily target on worked days" figure.
+  const expectedTotal = byRep.reduce((s, r) => s + r.workingDays * r.dailyTarget, 0);
+
+  const kpis = {
+    totalOrders,
+    totalWorkingDays,
+    avgDailyRate,
+    repsActive,
+    aboveTargetReps,
+    onTrackReps,
+    belowTargetReps,
+    atRiskReps,
+    avgPerformance,
+    bestRep: byRep[0] || null,
+    worstRep: byRep.length > 0 ? byRep[byRep.length - 1] : null,
+    bestDay: byDay.length > 0 ? [...byDay].sort((a, b) => b.totalOrders - a.totalOrders)[0] : null,
+    // Capacity = expected orders given (active reps × monthly target × months in scope)
+    teamCapacity: expectedTotal,
+    capacityUsedPercent: 0,
+    monthsCount: byMonth.length,
+    totalDaysOff,
+    totalNoDataDays,
+  };
+  if (kpis.teamCapacity > 0) kpis.capacityUsedPercent = (totalOrders / kpis.teamCapacity) * 100;
+
+  // List all (year, month) combinations that exist in DB regardless of current filter.
+  // Powers the month-picker tabs at the top of the dashboard (fetched above, in parallel).
+  const monthsAvailable = monthsAggregate.map((a) => ({ year: a._id.year, month: a._id.month, entries: a.count }));
+
+  const payload = {
+    kpis,
+    byMonth, byProject, byBranch, byRep,
+    byDay,
+    byDayOfWeek,
+    monthsAvailable,
+    topReps: byRep.slice(0, 10),
+    bottomReps: byRep.length > 10 ? byRep.slice(-10).reverse() : [...byRep].reverse(),
+    topImprovers,
+    topDecliners,
+    mostConsistent,
+    bestSingleDays,
+    topTeamDays,
+  };
+  return payload;
+}
 
 const emptyKpis = () => ({
   totalOrders: 0, totalWorkingDays: 0, avgDailyRate: 0,
@@ -1528,6 +1563,7 @@ exports.cleanupB2CData = async (req, res) => {
       ipAddress: req.ip,
     });
 
+    cache.clear('b2c:'); // الإبطال قبل الإعلان — وإلّا أعاد المستمعون قراءة ما قبل الكتابة
     try { emitToAll('b2c:cleanup', { scope }); } catch (e) {}
 
     console.log(`[B2C cleanup] scope=${scope} orders=${ordersDeleted.deletedCount} uploads=${uploadsDeleted.deletedCount} reps=${repsDeleted.deletedCount}`);

@@ -38,90 +38,97 @@ const isCashType = (t) => /كاش|نقد/.test(String(t || ''));
 // ---- Dashboard --------------------------------------------------------------
 exports.getDashboard = async (req, res) => {
   try {
-    const cached = cache.get('contracts:dashboard');
-    if (cached) return res.json(cached);
-
-    const [vendors, prospects, deptContracts, utilMonths, customers] = await Promise.all([
-      ContractVendor.find().lean(),
-      ContractProspect.find({ convertedVendor: null }).lean(),
-      DeptContract.find().lean(),
-      require('../utils/liveVendorUtilisation').liveUtilisationRows().then((rows) => {
-        const m = new Map();
-        for (const r of rows) { const k = `${r.year}-${r.month}`; m.set(k, { _id: { year: r.year, month: r.month }, orders: (m.get(k)?.orders || 0) + r.orders }); }
-        return [...m.values()].sort((a, b) => (a._id.year - b._id.year) || (a._id.month - b._id.month));
-      }),
-      // العملاءُ يُقرآن مع المورّدين: الطرفان في لوحةٍ واحدة، لا سجلٌّ لأحدهما
-      // ولوحةٌ للآخر.
-      require('../models/ContractModels').ContractCustomer.find().select('-attachments').lean(),
-    ]);
-
-    const signed = vendors.filter((v) => vendorStatus(v) === 'signed');
-    const byHq = {}; const byRep = {}; const signTrend = {}; const fleetBuckets = { '1-10': 0, '11-25': 0, '26-50': 0, '51-100': 0, '+100': 0 };
-    for (const v of signed) {
-      byHq[v.headquarters || '—'] = (byHq[v.headquarters || '—'] || 0) + 1;
-      byRep[v.energizeRep || '—'] = (byRep[v.energizeRep || '—'] || 0) + 1;
-      if (v.contractDate) {
-        const k = `${v.contractDate.getFullYear()}-${String(v.contractDate.getMonth() + 1).padStart(2, '0')}`;
-        signTrend[k] = (signTrend[k] || 0) + 1;
-      }
-      const f = v.fleetSize || 0;
-      fleetBuckets[f > 100 ? '+100' : f > 50 ? '51-100' : f > 25 ? '26-50' : f > 10 ? '11-25' : '1-10'] += 1;
-    }
-
-    const body = {
-      vendors: {
-        total: vendors.length,
-        signed: signed.length,
-        pending: vendors.filter((v) => vendorStatus(v) === 'pending').length,
-        unsigned: vendors.filter((v) => vendorStatus(v) === 'unsigned').length,
-        signedFleet: signed.reduce((s, v) => s + (v.fleetSize || 0), 0),
-        totalFleet: vendors.reduce((s, v) => s + (v.fleetSize || 0), 0),
-        missingDocs: vendors.filter((v) => vendorStatus(v) === 'signed' && !v.documentsReceived)
-          .map((v) => ({ _id: v._id, name: v.name, missingDocuments: v.missingDocuments, energizeRep: v.energizeRep })),
-        reps: [...new Set(vendors.map((v) => v.energizeRep).filter(Boolean))].length,
-        byHq: Object.entries(byHq).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
-        byRep: Object.entries(byRep).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
-        signTrend: Object.entries(signTrend).map(([month, count]) => ({ month, count })).sort((a, b) => (a.month < b.month ? -1 : 1)),
-        fleetBuckets,
-        topByFleet: [...signed].sort((a, b) => (b.fleetSize || 0) - (a.fleetSize || 0)).slice(0, 10)
-          .map((v) => ({ _id: v._id, name: v.name, fleetSize: v.fleetSize, energizeRep: v.energizeRep, headquarters: v.headquarters })),
-      },
-      prospects: {
-        total: prospects.length,
-        interested: prospects.filter((p) => p.isInterested === true).length,
-      },
-      // ── والعملاء ────────────────────────────────────────────────────────
-      // ثلاثةُ أرقامٍ تُقرأ في ثانية: كم عميلًا، وكم منهم بلا عقدٍ موقَّع، وكم
-      // عقدًا يقارب انتهاءه. والأخيرُ هو العملُ: العقدُ يُجدَّد قبل أن ينتهي.
-      customers: (() => {
-        const signed = customers.filter((c) => c.customerSideContract && c.ourSideContract);
-        const soon = Date.now() + 60 * 86400000;
-        return {
-          total: customers.length,
-          signed: signed.length,
-          unsigned: customers.length - signed.length,
-          missingDocs: signed.filter((c) => !c.documentsReceived).length,
-          expiring: customers.filter((c) => c.endDate && new Date(c.endDate).getTime() < soon).length,
-          expiringList: customers
-            .filter((c) => c.endDate && new Date(c.endDate).getTime() < soon)
-            .sort((a, b) => new Date(a.endDate) - new Date(b.endDate))
-            .slice(0, 10)
-            .map((c) => ({ _id: c._id, name: c.name, endDate: c.endDate, energizeRep: c.energizeRep })),
-        };
-      })(),
-      deptContracts: {
-        total: deptContracts.length,
-        byDepartment: ['3pl', 'fleet', 'b2c', 'other'].map((d) => ({ department: d, count: deptContracts.filter((c) => c.department === d).length })),
-        expiringSoon: deptContracts.filter((c) => c.status === 'active' && c.endDate && c.endDate > new Date() && c.endDate < new Date(Date.now() + 60 * 86400000)).length,
-      },
-      utilisationMonths: utilMonths.map((m) => ({ year: m._id.year, month: m._id.month, orders: m.orders })),
-    };
-    cache.set('contracts:dashboard', body, 15000);
+    // wrap = طلعةٌ واحدة: الفاتحون معًا ينتظرون حسابًا واحدًا لا يكرّرونه. وكلُّ
+    // كتابةٍ في القسم تمسح 'contracts:'، وجزءُ الكشوف كان يشيخ ٦٠ ثانيةً قبلًا
+    // (ذاكرة liveutil) فلا يزيد التقادمُ عمّا كان.
+    const body = await cache.wrap('contracts:dashboard', 60000, buildDashboard);
     res.json(body);
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
 };
+
+// الحقول التي تقرؤها اللوحة وحدها: المورّدُ الكامل يحمل profileTables والمرفقات
+// (٥٣٠ ك.ب لـ٢٠٩ مورّدين ≈ ٧ ثوانٍ نقلًا) واللوحة لا تعرض منها شيئًا.
+const DASH_VENDOR_FIELDS = 'name fleetSize headquarters energizeRep contractDate vendorSideContract ourSideContract documentsReceived missingDocuments';
+const DASH_CUSTOMER_FIELDS = 'name energizeRep customerSideContract ourSideContract documentsReceived endDate';
+
+async function buildDashboard() {
+  const { liveUtilisationMonths } = require('../utils/liveVendorUtilisation');
+  const [vendors, prospects, deptContracts, utilMonths, customers] = await Promise.all([
+    ContractVendor.find().select(DASH_VENDOR_FIELDS).lean(),
+    ContractProspect.find({ convertedVendor: null }).select('isInterested').lean(),
+    DeptContract.find().select('department status endDate').lean(),
+    // مجموعُ الشهر وحده — راجع liveUtilisationMonths.
+    liveUtilisationMonths().then((rows) => rows.map((r) => ({ _id: { year: r.year, month: r.month }, orders: r.orders }))),
+    // العملاءُ يُقرآن مع المورّدين: الطرفان في لوحةٍ واحدة، لا سجلٌّ لأحدهما
+    // ولوحةٌ للآخر.
+    require('../models/ContractModels').ContractCustomer.find().select(DASH_CUSTOMER_FIELDS).lean(),
+  ]);
+
+  const signed = vendors.filter((v) => vendorStatus(v) === 'signed');
+  const byHq = {}; const byRep = {}; const signTrend = {}; const fleetBuckets = { '1-10': 0, '11-25': 0, '26-50': 0, '51-100': 0, '+100': 0 };
+  for (const v of signed) {
+    byHq[v.headquarters || '—'] = (byHq[v.headquarters || '—'] || 0) + 1;
+    byRep[v.energizeRep || '—'] = (byRep[v.energizeRep || '—'] || 0) + 1;
+    if (v.contractDate) {
+      const k = `${v.contractDate.getFullYear()}-${String(v.contractDate.getMonth() + 1).padStart(2, '0')}`;
+      signTrend[k] = (signTrend[k] || 0) + 1;
+    }
+    const f = v.fleetSize || 0;
+    fleetBuckets[f > 100 ? '+100' : f > 50 ? '51-100' : f > 25 ? '26-50' : f > 10 ? '11-25' : '1-10'] += 1;
+  }
+
+  const body = {
+    vendors: {
+      total: vendors.length,
+      signed: signed.length,
+      pending: vendors.filter((v) => vendorStatus(v) === 'pending').length,
+      unsigned: vendors.filter((v) => vendorStatus(v) === 'unsigned').length,
+      signedFleet: signed.reduce((s, v) => s + (v.fleetSize || 0), 0),
+      totalFleet: vendors.reduce((s, v) => s + (v.fleetSize || 0), 0),
+      missingDocs: vendors.filter((v) => vendorStatus(v) === 'signed' && !v.documentsReceived)
+        .map((v) => ({ _id: v._id, name: v.name, missingDocuments: v.missingDocuments, energizeRep: v.energizeRep })),
+      reps: [...new Set(vendors.map((v) => v.energizeRep).filter(Boolean))].length,
+      byHq: Object.entries(byHq).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
+      byRep: Object.entries(byRep).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
+      signTrend: Object.entries(signTrend).map(([month, count]) => ({ month, count })).sort((a, b) => (a.month < b.month ? -1 : 1)),
+      fleetBuckets,
+      topByFleet: [...signed].sort((a, b) => (b.fleetSize || 0) - (a.fleetSize || 0)).slice(0, 10)
+        .map((v) => ({ _id: v._id, name: v.name, fleetSize: v.fleetSize, energizeRep: v.energizeRep, headquarters: v.headquarters })),
+    },
+    prospects: {
+      total: prospects.length,
+      interested: prospects.filter((p) => p.isInterested === true).length,
+    },
+    // ── والعملاء ────────────────────────────────────────────────────────
+    // ثلاثةُ أرقامٍ تُقرأ في ثانية: كم عميلًا، وكم منهم بلا عقدٍ موقَّع، وكم
+    // عقدًا يقارب انتهاءه. والأخيرُ هو العملُ: العقدُ يُجدَّد قبل أن ينتهي.
+    customers: (() => {
+      const signed = customers.filter((c) => c.customerSideContract && c.ourSideContract);
+      const soon = Date.now() + 60 * 86400000;
+      return {
+        total: customers.length,
+        signed: signed.length,
+        unsigned: customers.length - signed.length,
+        missingDocs: signed.filter((c) => !c.documentsReceived).length,
+        expiring: customers.filter((c) => c.endDate && new Date(c.endDate).getTime() < soon).length,
+        expiringList: customers
+          .filter((c) => c.endDate && new Date(c.endDate).getTime() < soon)
+          .sort((a, b) => new Date(a.endDate) - new Date(b.endDate))
+          .slice(0, 10)
+          .map((c) => ({ _id: c._id, name: c.name, endDate: c.endDate, energizeRep: c.energizeRep })),
+      };
+    })(),
+    deptContracts: {
+      total: deptContracts.length,
+      byDepartment: ['3pl', 'fleet', 'b2c', 'other'].map((d) => ({ department: d, count: deptContracts.filter((c) => c.department === d).length })),
+      expiringSoon: deptContracts.filter((c) => c.status === 'active' && c.endDate && c.endDate > new Date() && c.endDate < new Date(Date.now() + 60 * 86400000)).length,
+    },
+    utilisationMonths: utilMonths.map((m) => ({ year: m._id.year, month: m._id.month, orders: m.orders })),
+  };
+  return body;
+}
 
 // ---- Vendors ----------------------------------------------------------------
 exports.listVendors = async (req, res) => {
@@ -254,7 +261,10 @@ exports.listUtilisation = async (req, res) => {
     const filter = {};
     if (year) filter.year = Number(year);
     if (month) filter.month = Number(month);
-    const rows = await VendorUtilisation.find(filter).sort({ year: 1, month: 1, orders: -1 }).lean();
+    // ١٧٧ ك.ب تُنقل كاملةً في كلّ فتح (~٢ ثانية) لسجلٍّ لا يتغيّر إلّا من هذا
+    // الملفّ — وكلُّ كتابةٍ فيه تمرّ بـ emit() فتمسح 'contracts:'. فالمهلة طويلة.
+    const rows = await cache.wrap(`contracts:utilisation:${JSON.stringify(filter)}`, 10 * 60000, () =>
+      VendorUtilisation.find(filter).sort({ year: 1, month: 1, orders: -1 }).lean());
     res.json({ rows });
   } catch (e) {
     res.status(500).json({ message: e.message });

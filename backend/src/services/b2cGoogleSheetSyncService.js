@@ -179,6 +179,7 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
     const merged = await reconcileAllReps();
     if (merged.mergedGroups > 0) {
       console.log(`[B2C sync ${config._id}] auto-reconciled ${merged.mergedGroups} dup group(s) — removed ${merged.repsRemoved}, repointed ${merged.ordersRepointed}`);
+      require('../utils/ttlCache').clear('b2c:');
       try { emitToAll('b2c:cleanup', merged); } catch (_) {}
     }
   } catch (e) {
@@ -466,6 +467,9 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
     { $set: { lastSyncAt: new Date(), lastSyncStatus: 'ok', lastSyncMessage: '', lastSyncStats: stats, lastSheetHash: sheetHash } }
   );
 
+  // المزامنة هي المصدر الأكبر للبيانات ولم تكن تُبطل ذاكرة اللوحة: الشاشة تعيد
+  // القراءة عند الحدث فتأخذ النسخة القديمة خمس دقائق. الإبطال قبل الإعلان.
+  require('../utils/ttlCache').clear('b2c:');
   try { emitToAll('b2c:sheet:synced', { configId: String(config._id), stats }); } catch (_) {}
   console.log(`[B2C google-sheet sync ${config._id}] OK in ${stats.durationMs}ms — inserted=${inserted} updated=${updated} skipped=${skipped} keptManual=${keptManual} pruned=${pruned} created_reps=${actuallyCreated}`);
 

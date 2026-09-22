@@ -75,6 +75,44 @@ async function liveUtilisationRows({ nameKey: onlyKey = null } = {}) {
   return onlyKey ? rows.filter((r) => r.nameKey === onlyKey) : rows;
 }
 
+/**
+ * مجموعُ الحمولات لكلّ شهر — ما تحتاجه لوحةُ العقود وحده، بلا صفوف المورّدين.
+ *
+ * يطابق `liveUtilisationRows` مجموعًا بالشهر حرفًا بحرف، لكنّه لا ينقل أسماء
+ * المالكين. فذلك التجميع يعيد ~٦٩٠ ك.ب (اسمُ المالك وقائمةُ المندوبين لكلّ شهر)،
+ * والنقلُ من العنقود هو الزمن كلّه: ١٢ ثانيةً للّوحة في البرودكشن، والخادمُ
+ * نفسُه ينهي التجميعَ في ٢٠٠ جزءٍ من الثانية.
+ *
+ * والفرقُ الوحيد بين «كلّ الكشوف» و«الصفوف» مالكٌ اسمُه يُطوى إلى لا شيء
+ * (`nameKey` فارغ) فيُسقَط. ولا يُطوى اسمٌ إلى الفراغ إلّا إن خلا من كلّ حرفٍ عربيٍّ
+ * أو لاتينيٍّ أو رقم، أو احتوى «_» (فـ`\bال` لا يحذف «ال» إلّا بعد حرفٍ لاتينيٍّ
+ * أو رقمٍ أو «_»، والأوّلان يبقيان). فتُجلب هذه الأسماءُ القليلة وحدها، وتُطوى
+ * بالدالّة نفسها، ويُطرح من الشهر ما طُوي منها إلى الفراغ.
+ */
+async function liveUtilisationMonths() {
+  const mongoose = require('mongoose');
+  const { nameKey } = require('../controllers/contractsController');
+  const coll = mongoose.connection.collection('operationsworkflows');
+  const match = { reportDate: { $ne: null }, carOwner: { $nin: [null, ''] }, executionStatus: { $ne: 'cancelled' } };
+  const ym = { y: { $year: { date: '$reportDate', timezone: 'Asia/Riyadh' } }, m: { $month: { date: '$reportDate', timezone: 'Asia/Riyadh' } } };
+  const [totals, suspects] = await Promise.all([
+    coll.aggregate([{ $match: match }, { $group: { _id: ym, n: { $sum: 1 } } }]).toArray(),
+    coll.aggregate([
+      { $match: { $and: [match, { $or: [{ carOwner: { $not: /[A-Za-z0-9؀-ۿ]/ } }, { carOwner: /_/ }] }] } },
+      { $group: { _id: { owner: '$carOwner', ...ym }, n: { $sum: 1 } } },
+    ]).toArray(),
+  ]);
+  const byMonth = new Map(totals.map((t) => [`${t._id.y}-${t._id.m}`, { year: t._id.y, month: t._id.m, orders: t.n }]));
+  for (const s of suspects) {
+    if (nameKey(s._id.owner)) continue;
+    const e = byMonth.get(`${s._id.y}-${s._id.m}`);
+    if (e) e.orders -= s.n;
+  }
+  // شهرٌ كلُّ كشوفه لمالكين بلا اسمٍ لا صفَّ له هناك، فلا يُعرض هنا.
+  return [...byMonth.values()].filter((e) => e.orders > 0)
+    .sort((a, b) => (a.year - b.year) || (a.month - b.month));
+}
+
 const invalidateLiveUtilisation = () => cache.clear(PREFIX);
 
-module.exports = { liveUtilisationRows, invalidateLiveUtilisation };
+module.exports = { liveUtilisationRows, liveUtilisationMonths, invalidateLiveUtilisation };

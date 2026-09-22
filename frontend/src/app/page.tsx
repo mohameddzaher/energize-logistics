@@ -7,11 +7,15 @@ import GoogleMapSection from "../components/GoogleMapSection"
 import ContactCTA from "../components/ContactCTA"
 import NewsSection from "../components/NewsSection"
 import GalleryPreview from "../components/GalleryPreview"
+import NationalDaySection from "../components/NationalDaySection"
 
 export default function Home() {
   return (
     <div className="w-full overflow-hidden"> {/* غيرت من overflow-x-hidden إلى overflow-hidden */}
       <Hero />
+
+      {/* اليوم الوطني السعودي ٩٦ — يختفي وحدَه بعد المناسبة */}
+      <NationalDaySection />
       
       <section className="w-full overflow-hidden">
         <div className="w-full">

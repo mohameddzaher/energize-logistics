@@ -98,3 +98,6 @@ frontend/deno.lock
 
 # Customs master workbooks — business data, imported by importCustomsMaster.js, never committed
 /custom clearance files/
+
+# Original 4K artwork kept locally — the site ships the compressed snd-2026-*.jpg copies
+/frontend/public/images/SND-page-*.jpg

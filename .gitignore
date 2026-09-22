@@ -95,3 +95,6 @@ backend/_*.js
 
 # Netlify edge-runtime lockfile written by a local `netlify build`
 frontend/deno.lock
+
+# Customs master workbooks — business data, imported by importCustomsMaster.js, never committed
+/custom clearance files/

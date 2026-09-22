@@ -25,6 +25,7 @@ const PrivateSellingPrice = require('../models/PrivateSellingPrice');
 const ShipmentOrderCustomer = require('../models/ShipmentOrderCustomer');
 const { routeKey, applyRoute, priceFor } = require('../utils/customerRoutes');
 const { emitToAll } = require('../websocket/socketManager');
+const cache = require('../utils/ttlCache');
 const logAudit = require('../utils/auditLogger');
 
 const S = (v) => String(v ?? '').trim();
@@ -308,10 +309,19 @@ exports.stats = async (req, res) => {
   try {
     const { filter } = baseFilter(req);
     const priced = pricedParam(req.query);
-    const index = await routePriceIndex();
-    let groups = await priceGroups(filter, index);
-    if (priced) groups = groups.filter((g) => g.priced === (priced === 'yes'));
-    res.json(summarize(groups));
+    // ── والمجاميعُ تُحفَظ كما تُحفَظ اللوحات ────────────────────────────────
+    // تجميعُ ستٍّ وثلاثين ألفَ كشفٍ على ثلاثيّ (عميل، من، إلى) يأخذ قرابةَ
+    // الثانية، وتُطلَب مع كلّ فتحةٍ وكلّ خبرٍ حيٍّ من مزامنة التشغيل. فيُقدَّم
+    // آخرُ حسابٍ فورًا ويُعاد في الخلف بعد نصف دقيقة، وتصحيحُ سعرٍ يمسحه في
+    // حينه (updatePrice) فلا يُقرأ رقمٌ سبق تصحيحَه.
+    const key = `opsprivate:stats:${req.user.role}:${JSON.stringify(req.query || {})}`;
+    const body = await cache.wrapStale(key, 30000, 10 * 60 * 1000, async () => {
+      const index = await routePriceIndex();
+      let groups = await priceGroups(filter, index);
+      if (priced) groups = groups.filter((g) => g.priced === (priced === 'yes'));
+      return summarize(groups);
+    });
+    res.json(body);
   } catch (e) {
     console.error('operations-private stats:', e);
     res.status(500).json({ message: 'تعذّر حساب المجاميع' });
@@ -465,6 +475,7 @@ exports.updatePrice = async (req, res) => {
       });
     } catch (e) { console.error('[private] learn route:', e.message); }
 
+    try { cache.clear('opsprivate:stats'); } catch (_) { /* */ }
     try { emitToAll('operationsPrivate:updated', { _id: String(w._id), sellingValue: value }); } catch (_) { /* */ }
     await logAudit({
       user: req.user._id,

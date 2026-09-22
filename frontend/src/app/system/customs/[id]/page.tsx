@@ -36,6 +36,12 @@ export default function CustomsDetailPage() {
   const [closing, setClosing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // ── وكلُّ حالةٍ تُعلَن هنا، قبل أيّ عودةٍ مبكّرة ──────────────────────────
+  // هذه الشاشةُ ترجع باكرًا مرّتين: أثناء التحميل، وحين لا تُوجَد المعاملة.
+  // وأيُّ `useState` يُكتب بعدهما يُنادى في بعض الرسمات ولا يُنادى في بعضها،
+  // فيسقط المكوّنُ كلُّه بخطأ React #310 («رُسمت خطّافاتٌ أكثرُ من المرّة
+  // السابقة») — شاشةٌ بيضاء لا يُفهَم سببُها. فموضعُها هنا لا هناك.
+  const [activating, setActivating] = useState(false);
 
   const canDelete = ['super_admin', 'admin', 'customs_manager'].includes(user?.role || '');
 
@@ -235,7 +241,6 @@ export default function CustomsDetailPage() {
 
   // الإقفالُ من الترويسة. والسببُ يُعرَض كما جاء من الخادم — «أضِف فاتورة النقل
   // بتاريخٍ ومرفق» لا «غير مسموح».
-  const [activating, setActivating] = useState(false);
   /** المعاملةُ القادمة تصير جارية — هي هي، غيّر أنّها وقعت. */
   const activate = async () => {
     setActivating(true);

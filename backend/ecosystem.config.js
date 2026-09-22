@@ -15,7 +15,7 @@ module.exports = {
     exec_mode: 'cluster',
     // `listen` يعني أن pm2 لا يعدّ النسخة جاهزةً حتى تفتح منفذها فعلًا —
     // فلا يُطفأ القديم قبل أن يصير الجديد قادرًا على الاستقبال.
-    wait_ready: false,
+    wait_ready: true,
     listen_timeout: 20000,
     kill_timeout: 5000,
     // ── وحدُّ الذاكرة يُقال لـnode لا لـpm2 وحدَها ────────────────────────────

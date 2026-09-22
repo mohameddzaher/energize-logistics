@@ -333,6 +333,13 @@ const autoSeedAdmin = async () => {
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  // ── ولا يُطفأ القديمُ قبل أن يسمع الجديد ──────────────────────────────────
+  // pm2 في وضع العنقود يستبدل نسخةً بنسخة. وبلا هذه الإشارة يعدّها جاهزةً
+  // بمجرّد إطلاقها — قبل أن تفتح منفذَها — فيقتل القديمةَ وتبقى ثوانٍ لا أحدَ
+  // فيها يسمع على المنفذ، فيردّ nginx ٥٠٢ على كلّ طلبٍ وقتَ النشر (قيس: عشرون
+  // من عشرين سقطت أثناء نشرة). والإشارةُ تُرسَل حين يصير الاستقبالُ ممكنًا
+  // فعلًا، فالنشرُ لا يُسقط طلبًا. راجع `wait_ready` في ecosystem.config.js.
+  if (typeof process.send === 'function') process.send('ready');
 });
 
 connectDB().then(async () => {

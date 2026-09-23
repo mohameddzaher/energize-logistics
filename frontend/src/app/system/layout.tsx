@@ -20,7 +20,7 @@ import {
   CalendarClock, TriangleAlert,
   FileSignature, PhoneCall, UserCheck, Fuel, ClipboardCheck,
   Receipt, Banknote, Layers, Link2,
-  Camera,
+  Camera, Loader2,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
@@ -148,6 +148,22 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   // Sections collapsed by default — user clicks a section header to expand it.
   // Persists across navigation because this layout stays mounted between pages.
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+
+  // ── الضغطةُ تُرى في حينها، والشيفرةُ تُجلَب قبلها ───────────────────────
+  //
+  // صفحاتُ النظام يُحمَّل كودُ كلٍّ منها عند أوّل فتحٍ لها. وأقسامُ القائمة
+  // مطويّةٌ فلا تراها Next فلا تُجهّزها مسبقًا: فمن يفتح قسمًا ويضغط فورًا
+  // ينتظر نزولَ الملفّ — جزءُ ثانيةٍ على خطٍّ سريع، وثوانٍ على خطّ المكتب —
+  // ولا شيءَ يتحرّك في الشاشة، فيظنّ أنّ ضغطتَه لم تُسجَّل ويضغط غيرَها.
+  //
+  // فأمران: تُجهَّز صفحاتُ القسم بمجرّد فتحه ومرورِ الفأرة على الرابط
+  // (`router.prefetch` — تنزيلٌ صامتٌ لا يُعيد رسم شيء)، ويُعلَّم الرابطُ
+  // المضغوطُ في اللحظة بشريطٍ ودوّارة حتى تُرسَم الصفحةُ الجديدة.
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+  useEffect(() => { setPendingHref(null); }, [pathname]);
+  const prefetch = useCallback((href: string) => {
+    try { router.prefetch(href); } catch (_) { /* التجهيزُ تحسينٌ لا شرط */ }
+  }, [router]);
 
   const toggleSection = useCallback((section: string) => {
     setExpandedSections((prev) => {
@@ -738,14 +754,20 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
       <Link
         key={item.href}
         href={item.href}
-        onClick={onClick}
+        onMouseEnter={() => prefetch(item.href)}
+        onTouchStart={() => prefetch(item.href)}
+        onClick={() => { setPendingHref(item.href); onClick?.(); }}
         className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
           isActive
             ? 'bg-[#f37121] text-white shadow-sm shadow-[#f37121]/30'
-            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            : pendingHref === item.href
+              ? 'bg-slate-800 text-white'
+              : 'text-slate-300 hover:bg-slate-800 hover:text-white'
         }`}
       >
-        {item.icon}
+        {pendingHref === item.href && !isActive
+          ? <Loader2 className="w-5 h-5 animate-spin text-[#f37121] shrink-0" />
+          : item.icon}
         {(onClick || sidebarOpen) && <span>{item.label}</span>}
       </Link>
     );
@@ -761,7 +783,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
       <div key={section}>
         <button
           type="button"
-          onClick={() => toggleSection(section)}
+          onClick={() => { toggleSection(section); items.forEach((i) => prefetch(i.href)); }}
+          onMouseEnter={() => items.forEach((i) => prefetch(i.href))}
           className="w-full flex items-center justify-between gap-2 px-3 py-2.5 mt-2 rounded-lg text-xs font-bold text-slate-400 uppercase tracking-wide bg-slate-800/40 hover:bg-slate-800 hover:text-slate-200 transition-colors"
         >
           <span>{getSectionLabel(section, lang)}</span>
@@ -793,6 +816,12 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     {/* صيغةُ خانات التاريخ واحدةٌ عند كلّ الناس — راجع رأس الملفّ. */}
     <DateFieldLocale />
     <div className="min-h-screen bg-slate-100 flex" dir={isRTL ? 'rtl' : 'ltr'}>
+      {/* شريطٌ رفيعٌ يقول «ضغطتُك وصلت» حتى تُرسَم الصفحة */}
+      {pendingHref && (
+        <div className="fixed inset-x-0 top-0 z-[60] h-0.5 overflow-hidden">
+          <div className="refresh-bar" />
+        </div>
+      )}
       {/* Desktop Sidebar */}
       <aside className={`hidden lg:flex flex-col ${sidebarOpen ? 'w-64' : 'w-20'} bg-slate-900 ${isRTL ? 'border-l' : 'border-r'} border-slate-800 transition-all duration-300 fixed h-full z-40 ${isRTL ? 'right-0' : 'left-0'}`}>
         {/* Logo */}

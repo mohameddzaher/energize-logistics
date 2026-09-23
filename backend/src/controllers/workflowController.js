@@ -701,34 +701,72 @@ function buildWorkflowFilter(query, skipField, allowMoney = true) {
     ] }];
   }
   if (search) {
-    // ── الرقمُ التامُّ يُطابَق تمامًا، فيمرّ على الفهرس ──────────────────────
-    // كان البحثُ تعبيرًا نمطيًّا غيرَ مثبَّتِ الطرفين على أربعة حقول، فيمسح
-    // أربعةً وثلاثين ألفَ صفٍّ في كلّ حرفٍ يُكتب — والفهرسُ على «رقم الكشف»
-    // موجودٌ ولا يُستعمَل. ومَن يبحث برقم كشفٍ يريد ذلك الكشفَ لا ما يحويه.
+    // ── البحثُ يُجيب عمّا سُئل عنه، لا عمّا يحتويه ─────────────────────────
     //
-    // فإن كان المكتوبُ أرقامًا كلَّه جُرّب التطابقُ التامّ أوّلًا؛ ويبقى معه
-    // البحثُ الجزئيّ في بقيّة الحقول كي لا يضيع مَن يبحث بجزءٍ من لوحة.
-    const digitsOnly = /^\d+$/.test(search);
-    // صورُ الحروف العربيّة والأرقامُ العربيّة والمسافاتُ كلُّها تُطوى — راجع
-    // utils/arabicSearch. «ابراهيم» تجد «إبراهيم»، و«٢٥٨٥» تجد «2585».
-    const rx = require('../utils/arabicSearch').arabicSearchRegex(search);
-    // ── والعميلُ أوّلُ ما يُبحَث به ────────────────────────────────────────────
-    // كان البحثُ على أربعة حقولٍ لا اسمَ العميل فيها — وهو أكثرُ ما يُكتب في
-    // هذه الشاشة: «هاتلي كشوف فلان». فيُكتب الاسمُ فلا يظهر شيء، فيُظنّ أنّ
-    // الكشوف غير موجودة.
-    const SEARCH_FIELDS = [
-      'username', 'carOwner', 'carNumber', 'branch', 'payingBranch',
-      'driverName', 'driverPhone', 'userPhone', 'plateNumber',
+    // كان تعبيرًا نمطيًّا واحدًا غيرَ مثبَّتٍ على سبعةَ عشرَ حقلًا — فمن كتب رقمَ
+    // كشفٍ «8730» جاءته واحدٌ وعشرون صفًّا ليس فيها ذلك الكشف: أرقامٌ وقعت داخل
+    // هاتف سائقٍ أو رقم مستند. ومن كتب «جدة» جاءه اثنان وثلاثون ألفًا — المدينةُ
+    // مكتوبةٌ في كلّ كشفٍ تقريبًا، فالبحثُ لم ينفِ شيئًا.
+    //
+    // فالحقولُ ثلاثةُ أصناف، ولكلٍّ قاعدتُه:
+    //   • أرقامُ الهويّة (كشف، مستند، فاتورة): تطابقٌ تامّ — من كتب رقمًا يريد
+    //     صاحبَه لا ما يحويه. وهو يمرّ على الفهرس فلا يمسح الجدول.
+    //   • الرموز (لوحةُ السيارة) والهواتف: احتواءٌ — يُبحَث بجزءٍ من اللوحة —
+    //     لكنّ الهاتفَ لا يُطابَق بأقلّ من ستّ خاناتٍ كي لا يصير كلُّ رقمٍ قصيرٍ
+    //     صيدًا في كلّ هاتف.
+    //   • الأسماءُ والأماكن: احتواءٌ مع طيّ صور الحروف (راجع utils/arabicSearch).
+    //
+    // والكلماتُ تُجمَع لا تُفرَّق: «اركان جدة» تعني الاثنين معًا، فكلُّ كلمةٍ
+    // شرطٌ قائم. وهذا ما يجعل الإضافةَ تُضيّق النتيجةَ كما يتوقّع من يكتبها.
+    const { arabicSearchRegex, westernDigits } = require('../utils/arabicSearch');
+    const term = westernDigits(String(search).trim());
+    const ID_EXACT = ['reportNumber', 'documentNumber', ...(allowMoney ? ['invoiceNumber'] : [])];
+    const CODE_FIELDS = ['carNumber', 'plateNumber'];
+    const PHONE_FIELDS = ['driverPhone', 'userPhone'];
+    // والملاحظاتُ خارجَ البحث السريع عمدًا: نصٌّ حرٌّ يجعل كلمةً عابرةً فيه
+    // تَجُرُّ كشوفًا لا علاقةَ لها بما يُسأل عنه. ولها فلترُ عمودها.
+    const NAME_FIELDS = [
+      'username', 'carOwner', 'driverName', 'branch', 'payingBranch',
       'fromLocation', 'toLocation', 'finalReportDestination',
-      'truckType', 'truckSize', 'documentNumber', 'agentName', 'notes',
+      'truckType', 'truckSize', 'agentName', 'representativeName',
     ];
-    filter.$or = [
-      digitsOnly ? { reportNumber: search } : { reportNumber: rx },
-      ...SEARCH_FIELDS.map((f) => ({ [f]: rx })),
-      // والبحثُ برقم الفاتورة لمن يراها: مطابقتُه لمن لا يراها تؤكّد وجودَ
-      // فاتورةٍ على صفٍّ بعينه — وهي القيمةُ المحجوبة نفسُها بصورةٍ أخرى.
-      ...(allowMoney ? [digitsOnly ? { invoiceNumber: search } : { invoiceNumber: rx }] : []),
-    ];
+
+    const clauseFor = (tk) => {
+      // «+966506793241» و«0506793241» و«506793241» رقمٌ واحد: تُنزع الزخرفةُ
+      // ويُطابَق آخرُ تسعِ خاناتٍ، فيُوجَد الهاتفُ كيفما كُتب.
+      const bare = tk.replace(/\D/g, '');
+      const numeric = /^[\d\s+()\-]+$/.test(tk) && bare.length > 0;
+      const rx = arabicSearchRegex(tk);
+      if (numeric) {
+        const rxBare = new RegExp(bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        const tail = bare.length > 9 ? bare.slice(-9) : bare;
+        const rxTail = new RegExp(`${tail}$`);
+        return [
+          ...ID_EXACT.map((f) => ({ [f]: bare })),
+          ...CODE_FIELDS.map((f) => ({ [f]: rxBare })),
+          ...(bare.length >= 6 ? PHONE_FIELDS.map((f) => ({ [f]: rxTail })) : []),
+        ];
+      }
+      return [...NAME_FIELDS, ...CODE_FIELDS].map((f) => ({ [f]: rx }));
+    };
+
+    const tokens = term.split(/\s+/).filter(Boolean);
+    if (tokens.length <= 1) {
+      filter.$or = clauseFor(term);
+    } else {
+      // كلُّ كلمةٍ شرطٌ مستقلّ، وتُجمَع بـ`$and` — والجملةُ كاملةً تُقبَل أيضًا
+      // في حقول الأسماء (اسمٌ فيه مسافةٌ يُكتب كما هو).
+      const whole = arabicSearchRegex(term);
+      filter.$and = [
+        ...(filter.$and || []),
+        {
+          $or: [
+            { $and: tokens.map((tk) => ({ $or: clauseFor(tk) })) },
+            ...NAME_FIELDS.map((f) => ({ [f]: whole })),
+          ],
+        },
+      ];
+    }
   }
   // فلاتر الأعمدة تُطبَّق هنا لا في المتصفح: كانت الصفحة تنزّل الجدول كلّه لتفلتره
   // محليًّا، فكان الفلتر يكلّف عشرات الآلاف من الصفوف ويجمّد التبويب.

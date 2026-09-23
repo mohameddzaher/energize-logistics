@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -161,9 +161,24 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   // المضغوطُ في اللحظة بشريطٍ ودوّارة حتى تُرسَم الصفحةُ الجديدة.
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   useEffect(() => { setPendingHref(null); }, [pathname]);
-  const prefetch = useCallback((href: string) => {
-    try { router.prefetch(href); } catch (_) { /* التجهيزُ تحسينٌ لا شرط */ }
+  // ── والتجهيزُ يتنحّى للطلب الحقيقيّ ────────────────────────────────────
+  // تجهيزُ صفحات قسمٍ كامل دفعةً واحدة يطلق عشرين تنزيلًا تزاحم ما تحمّله
+  // الشاشةُ الآن — قيس: أوّلُ ضغطةٍ بعد فتح الأقسام كلِّها انتظرت إحدى عشرة
+  // ثانية. فيُؤجَّل إلى وقت الفراغ (`requestIdleCallback`)، ولا يُجهَّز
+  // المُجهَّزُ مرّتين، وحدُّه ثمانيةٌ من القسم الواحد — وما مرّت عليه الفأرةُ
+  // يُجهَّز في حينه لأنّه أقربُ ما يُضغَط.
+  const prefetched = useRef<Set<string>>(new Set());
+  const prefetch = useCallback((href: string, soon = false) => {
+    if (prefetched.current.has(href)) return;
+    prefetched.current.add(href);
+    const run = () => { try { router.prefetch(href); } catch (_) { /* التجهيزُ تحسينٌ لا شرط */ } };
+    if (soon || typeof window === 'undefined') { run(); return; }
+    const ric = (window as any).requestIdleCallback;
+    if (typeof ric === 'function') ric(run, { timeout: 3000 }); else setTimeout(run, 300);
   }, [router]);
+  const prefetchSection = useCallback((items: NavItem[]) => {
+    items.slice(0, 8).forEach((i) => prefetch(i.href));
+  }, [prefetch]);
 
   const toggleSection = useCallback((section: string) => {
     setExpandedSections((prev) => {
@@ -754,8 +769,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
       <Link
         key={item.href}
         href={item.href}
-        onMouseEnter={() => prefetch(item.href)}
-        onTouchStart={() => prefetch(item.href)}
+        onMouseEnter={() => prefetch(item.href, true)}
+        onTouchStart={() => prefetch(item.href, true)}
         onClick={() => { setPendingHref(item.href); onClick?.(); }}
         className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
           isActive
@@ -783,8 +798,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
       <div key={section}>
         <button
           type="button"
-          onClick={() => { toggleSection(section); items.forEach((i) => prefetch(i.href)); }}
-          onMouseEnter={() => items.forEach((i) => prefetch(i.href))}
+          onClick={() => { toggleSection(section); prefetchSection(items); }}
+          onMouseEnter={() => prefetchSection(items)}
           className="w-full flex items-center justify-between gap-2 px-3 py-2.5 mt-2 rounded-lg text-xs font-bold text-slate-400 uppercase tracking-wide bg-slate-800/40 hover:bg-slate-800 hover:text-slate-200 transition-colors"
         >
           <span>{getSectionLabel(section, lang)}</span>

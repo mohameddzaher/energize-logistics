@@ -5,6 +5,7 @@ import '../screens/crm_company_profile.dart';
 import '../screens/contracts_vendor_profile.dart';
 import '../screens/customs_detail.dart';
 import '../screens/fleet_customer_profile.dart';
+import '../screens/customer_registry_profile.dart';
 import '../screens/bd_opportunity_detail.dart';
 import '../screens/marketing_campaign_detail.dart';
 import 'resource.dart';
@@ -892,15 +893,37 @@ final b2cRepsCfg = ResourceConfig(
 );
 
 // ── طلبات الشحنات (التجربة المستقلة) ────────────────────────────────────────
+// ── سجلُّ العملاء ────────────────────────────────────────────────────────────
+// يُقرأ من سجلّ العملاء المحسوب (كم كشفًا وبكم وكم مسارًا) لا من جدول العملاء
+// الخام، فيحمل الصفُّ أرقامَه كما على الويب؛ والكتابةُ تبقى على نقطة طلبات
+// الشحنات. والنقرةُ تفتح الملفَّ الكامل — نفسَ صفحة الويب.
 final shipmentOrdersCustomersCfg = ResourceConfig(
-  arTitle: 'عملاء طلبات الشحن', enTitle: 'SO Customers', icon: Icons.people_outline,
-  endpoint: '/api/shipment-orders/customers', listKey: 'customers', liveEvent: 'shipmentOrders:customers',
-  searchFields: const ['name', 'phone'],
+  onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(
+      builder: (_) => CustomerRegistryProfileScreen(customerId: (r['_id'] ?? '').toString()))),
+  arTitle: 'سجلّ العملاء', enTitle: 'Customer Register', icon: Icons.people_outline,
+  endpoint: '/api/customer-registry', writeEndpoint: '/api/shipment-orders/customers',
+  listKey: 'customers', liveEvent: 'shipmentOrders:customers',
+  searchFields: const ['name', 'phone', 'email', 'branch'],
+  sortFields: const [('sheets', 'الكشوف', 'Sheets'), ('routesCount', 'المسارات', 'Routes')],
   titleOf: (r) => _s(r, 'name'),
-  subtitleOf: (r) => _s(r, 'phone'),
+  // السطرُ الثاني يحمل أرقامَه: ٦٧٠ عميلًا بلا أرقامٍ جردٌ يُمرَّر لا سجلٌّ يُقرأ.
+  subtitleOf: (r) {
+    final parts = <String>[
+      if ((r['sheets'] ?? 0) != 0) '${tr('رحلات', 'trips')}: ${_n(r['sheets'])}',
+      if (r['purchaseTotal'] != null && (r['purchaseTotal'] ?? 0) != 0) '${tr('شراء', 'purchase')}: ${_n(r['purchaseTotal'])}',
+      if (_s(r, 'phone').isNotEmpty) _s(r, 'phone'),
+    ];
+    return parts.join(' · ');
+  },
+  chipsOf: (r) => [
+    if ((r['routesCount'] ?? 0) != 0) ('${tr('مسارات', 'routes')}: ${r['routesCount']}', T.navy),
+    if ((r['unpricedRoutes'] ?? 0) != 0) ('${tr('بلا سعر', 'no price')}: ${r['unpricedRoutes']}', T.warn),
+    if ((r['sheets'] ?? 0) == 0) (tr('بلا عمل', 'idle'), T.inkFaint),
+  ],
   fields: const [
     FieldSpec('name', 'اسم العميل', 'Name', required: true),
     FieldSpec('phone', 'الجوال', 'Phone', type: FieldType.phone),
+    FieldSpec('email', 'البريد', 'Email', type: FieldType.email),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );

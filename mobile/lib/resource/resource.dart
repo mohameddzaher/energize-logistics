@@ -45,6 +45,12 @@ class ResourceConfig {
   final String enTitle;
   final IconData icon;
   final String endpoint;      // '/api/fleet/drivers'
+  /// نقطةُ الكتابة حين تختلف عن نقطة القراءة.
+  ///
+  /// سجلُّ العملاء يُقرأ من `/api/customer-registry` (فيه الأرقام: كم كشفًا
+  /// وبكم) ويُكتب على `/api/shipment-orders/customers` — قراءةٌ محسوبةٌ وكتابةٌ
+  /// على الجدول نفسِه. وبلا هذا الفصل تُرسَل التعديلاتُ إلى نقطةٍ لا تكتب.
+  final String? writeEndpoint;
   final String listKey;       // 'drivers'
   final String listQuery;     // extra query for the LIST GET only (e.g. 'all=1') — kept off endpoint so /:id actions stay clean
   final String updateMethod;  // 'PUT' | 'PATCH'
@@ -76,7 +82,7 @@ class ResourceConfig {
 
   const ResourceConfig({
     required this.arTitle, required this.enTitle, required this.icon,
-    required this.endpoint, required this.listKey,
+    required this.endpoint, this.writeEndpoint, required this.listKey,
     this.listQuery = '', this.updateMethod = 'PUT', required this.liveEvent,
     required this.searchFields, required this.fields, required this.titleOf,
     this.subtitleOf, this.chipsOf,
@@ -86,6 +92,9 @@ class ResourceConfig {
   });
 
   String get title => tr(arTitle, enTitle);
+
+  /// المسارُ الذي تُرسَل إليه الإضافةُ والتعديلُ والحذف.
+  String get writePath => writeEndpoint ?? endpoint;
 }
 
 /// إجراء صف سريع: أيقونة + عنوان + لون + دالة تُرجع (method, path, body?) للتنفيذ،
@@ -271,7 +280,7 @@ class _ResourceScreenState extends State<ResourceScreen> {
     );
     if (ok != true) return;
     try {
-      await Api.instance.delete('${cfg.endpoint}/${row['_id']}');
+      await Api.instance.delete('${cfg.writePath}/${row['_id']}');
       _load();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
@@ -642,12 +651,12 @@ class _ResourceFormState extends State<_ResourceForm> {
     setState(() => _busy = true);
     try {
       if (isEdit) {
-        final path = '${widget.cfg.endpoint}/${widget.row!['_id']}';
+        final path = '${widget.cfg.writePath}/${widget.row!['_id']}';
         widget.cfg.updateMethod == 'PATCH'
             ? await Api.instance.patch(path, body)
             : await Api.instance.put(path, body);
       } else {
-        await Api.instance.post(widget.cfg.endpoint, body);
+        await Api.instance.post(widget.cfg.writePath, body);
       }
       await widget.onDone();
       if (mounted) Navigator.pop(context);

@@ -174,8 +174,19 @@ const OPTION_DOTS: Record<string, string> = { ok: 'bg-emerald-500', busy: 'bg-am
 //
 // Below `searchAfter` options it renders without the search box, so it can be
 // dropped in everywhere without adding noise to short lists.
+//
+// ── وقيمةٌ لا تعرفها القائمةُ تُعرَض كما هي ────────────────────────────────
+// كان يُقارِن القيمةَ بالخيارات، فإن لم يجدها رسم النصَّ الشبحيَّ («من…»)
+// كأنّ الخانةَ فارغة. ومسارات العملاء محفوظةٌ بمدنٍ ليست كلُّها في قوائم
+// النموذج («جده ص ٣» ← «مصنع الحرمين ص ق»)، فكان مَن يفتح التعديلَ يرى
+// ٧٢ مسارًا فارغَ الطرفين ويظنّ البيانات ضاعت — ثمّ يحفظ فتضيع فعلًا.
+// فالمعروضُ الآن القيمةُ المحفوظة نفسُها حين لا يعرفها الخيار.
+//
+// و`allowCustom` تجعله صندوقًا مركّبًا: المكتوبُ قيمةٌ صالحة، والخياراتُ
+// اقتراحاتٌ لا حصر.
 export function SearchableSelect({
   value, onChange, options, placeholder = '—', searchPlaceholder, disabled, searchAfter = 8, emptyLabel,
+  allowCustom, customHint,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -185,6 +196,10 @@ export function SearchableSelect({
   disabled?: boolean;
   searchAfter?: number;
   emptyLabel?: string;
+  /** يقبل نصًّا لا يوجد في القائمة — القائمةُ اقتراحات. */
+  allowCustom?: boolean;
+  /** نصُّ سطر «استعمل ما كتبت» — بلغة الشاشة. */
+  customHint?: (typed: string) => string;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -194,7 +209,11 @@ export function SearchableSelect({
   const listRef = useRef<HTMLDivElement>(null);
 
   const selected = options.find((o) => o.value === value) || null;
-  const showSearch = options.length > searchAfter;
+  const showSearch = allowCustom || options.length > searchAfter;
+  // القيمةُ المحفوظةُ تُعرَض حين لا تعرفها القائمة — إلّا أن تكون معرّفَ سجلّ.
+  // كثيرٌ من المنادين يحفظون `_id` وقوائمُهم تصل بعد الرسمة الأولى، ومعرّفٌ
+  // سداسيٌّ معروضٌ لحظةً أسوأُ من نصٍّ شبحيّ.
+  const rawLabel = value && !/^[0-9a-f]{24}$/i.test(value) ? value : '';
 
   const filtered = useMemo(() => {
     // Arabic folding: hamza forms, ta marbuta and alif maqsura collapse so that
@@ -211,6 +230,14 @@ export function SearchableSelect({
       return words.every((w) => hay.includes(w));
     });
   }, [options, q]);
+
+  // سطرُ «استعمل ما كتبتَ» يتصدّر القائمةَ حين يُسمَح بغير المعروف — وإلّا
+  // فكتابةُ مدينةٍ جديدةٍ لا تنتهي إلى شيء.
+  const rows = useMemo(() => {
+    const typed = q.trim();
+    if (!allowCustom || !typed || options.some((o) => o.value === typed)) return filtered;
+    return [{ value: typed, label: customHint ? customHint(typed) : typed } as SearchOption, ...filtered];
+  }, [allowCustom, customHint, filtered, options, q]);
 
   useEffect(() => {
     if (!open) return;
@@ -242,9 +269,13 @@ export function SearchableSelect({
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') { setOpen(false); return; }
-    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((i) => Math.min(i + 1, filtered.length - 1)); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((i) => Math.min(i + 1, rows.length - 1)); return; }
     if (e.key === 'ArrowUp') { e.preventDefault(); setActive((i) => Math.max(i - 1, 0)); return; }
-    if (e.key === 'Enter') { e.preventDefault(); if (filtered[active]) pick(filtered[active].value); }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (rows[active]) pick(rows[active].value);
+      else if (allowCustom && q.trim()) pick(q.trim());
+    }
   };
 
   // موضعُ اللوح — يُحسَب من موضع الزرّ لأنّه يُرسَم في جسم الصفحة.
@@ -277,7 +308,7 @@ export function SearchableSelect({
         onClick={() => !disabled && setOpen((o) => !o)}
         className={`${inputCls} flex items-center justify-between gap-2 text-start ${disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
       >
-        <span className={`truncate ${selected ? 'text-slate-900' : 'text-slate-400'}`}>{selected ? selected.label : placeholder}</span>
+        <span className={`truncate ${selected || rawLabel ? 'text-slate-900' : 'text-slate-400'}`}>{selected ? selected.label : (rawLabel || placeholder)}</span>
         <ChevronDown className={`w-4 h-4 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
@@ -306,9 +337,9 @@ export function SearchableSelect({
             </div>
           )}
           <div ref={listRef} className="max-h-60 overflow-y-auto" onKeyDown={onKeyDown}>
-            {filtered.length === 0 ? (
+            {rows.length === 0 ? (
               <p className="px-3 py-6 text-center text-sm text-slate-400">{emptyLabel || 'No matches'}</p>
-            ) : filtered.map((o, i) => (
+            ) : rows.map((o, i) => (
               <button
                 key={o.value}
                 type="button"

@@ -253,6 +253,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // صفةُ العميل تُقرأ لمن يفتح صفحةَ التشغيل ولا تُكتب إلّا لمن يديرها —
     // والحاجزُ في الخادم، وهذه القائمةُ مَن يصل إلى النقطة أصلًا.
     { href: '/system/operations/payment-types', label: lang === 'ar' ? 'أنواع الدفع' : 'Payment Types', icon: <Banknote className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff'], section: 'Operations' },
+    // ── سجلّ العملاء ──────────────────────────────────────────────────────
+    // الشاشةُ نفسُها في «طلبات الشحنات»؛ من يعمل على الكشوف يقرأ العميلَ من
+    // قسمه لا من قسمٍ آخر. والمكوّنُ واحد، فلا تفترق النسختان.
+    { href: '/system/operations/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'collections_manager', 'collections_staff'], section: 'Operations' },
     { href: '/system/vendors', label: L.vendors, icon: <Store className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'operations_staff', 'procurement_manager', 'procurement_staff'], section: 'Procurement' },
     // ── وقوائمُ العهدة من موضعٍ واحد ────────────────────────────────────────
     // كانت مكتوبةً هنا بيدٍ وفي شرط محدِّد الفرع داخل الصفحة، فأُضيف المحاسبُ

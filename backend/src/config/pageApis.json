@@ -26,8 +26,11 @@
     },
     "/system/operations": {
       "apis": [
+        "/api/customer-registry",
+        "/api/customer-registry/options",
         "/api/lookups/types",
         "/api/ops/dashboard",
+        "/api/partners/account",
         "/api/workflows",
         "/api/workflows/bulk-delete",
         "/api/workflows/bulk-import",
@@ -52,6 +55,15 @@
       "apis": [
         "/api/workflows/payment-types",
         "/api/workflows/payment-types/apply"
+      ],
+      "wildcard": false
+    },
+    "/system/operations/customers": {
+      "apis": [
+        "/api/customer-registry",
+        "/api/customer-registry/full",
+        "/api/customer-registry/options",
+        "/api/partners/account"
       ],
       "wildcard": false
     },
@@ -320,6 +332,9 @@
     },
     "/system/shipment-orders": {
       "apis": [
+        "/api/customer-registry",
+        "/api/customer-registry/options",
+        "/api/partners/account",
         "/api/shipment-orders/customers",
         "/api/shipment-orders/fields",
         "/api/shipment-orders/orders",
@@ -341,9 +356,10 @@
     },
     "/system/shipment-orders/customers": {
       "apis": [
-        "/api/partners/account",
-        "/api/shipment-orders/customers",
-        "/api/shipment-orders/fields"
+        "/api/customer-registry",
+        "/api/customer-registry/full",
+        "/api/customer-registry/options",
+        "/api/partners/account"
       ],
       "wildcard": false
     },

@@ -32,6 +32,12 @@
       "en": "Payment Types"
     },
     {
+      "key": "/system/operations/customers",
+      "section": "Operations",
+      "ar": "العملاء",
+      "en": "Customers"
+    },
+    {
       "key": "/system/vendors",
       "section": "Procurement",
       "ar": "الموردين",

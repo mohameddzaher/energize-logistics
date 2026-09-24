@@ -266,6 +266,11 @@ app.use('/api/b2c-wallet', authenticate, sectionGate('B2C'), b2cWalletRoutes);
 app.use('/api/crm-vendors', authenticate, sectionGate('CRM'), crmVendorRoutes);
 app.use('/api/ls2', authenticate, sectionGate('Location Solutions'), ls2Routes);
 app.use('/api/shipment-orders', authenticate, sectionGate('Shipment Orders'), shipmentOrderRoutes);
+// ── سجلُّ العملاء يُقرأ من قسمَين ───────────────────────────────────────────
+// الشاشةُ نفسُها في «طلبات الشحنات» و«التشغيل»، فلا تُنسَب إلى قسمٍ واحد:
+// بوّابةُ الصفحات (pageGate) تفتحها لمن يملك إحدى الصفحتين، والتعديلُ يبقى في
+// نقاط «طلبات الشحنات» بحارسها.
+app.use('/api/customer-registry', authenticate, require('./routes/customerRegistry'));
 app.use('/api/fleet', authenticate, sectionGate('Fleet Management'), fleetRoutes);
 // No sectionGate: every performance handler scopes itself (a manager only ever
 // sees their own team; only super_admin may configure or override), and a

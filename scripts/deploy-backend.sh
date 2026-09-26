@@ -87,7 +87,11 @@ verify() {
   done
 
   # The 2026-07-26 incident. 101 = the upgrade really happened.
-  check "websocket upgrade" "$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
+  #
+  # و`--http1.1` صراحةً: المقبسُ يُرقّى على HTTP/1.1 — هكذا يفعل المتصفّحُ نفسُه،
+  # ولا ترقيةَ بهذه الترويسات في HTTP/2. ومذ صار nginx يعرض h2 صار curl يتفاوض
+  # عليه فيردّ الخادمُ ٤٠٠: فحصٌ يسقط والمقبسُ سليمٌ يُرقّى ١٠١ من المتصفّح.
+  check "websocket upgrade" "$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 --http1.1 \
       -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
       -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
       "$API/socket.io/?EIO=4&transport=websocket")" "101"

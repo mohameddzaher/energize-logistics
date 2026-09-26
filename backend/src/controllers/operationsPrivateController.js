@@ -410,11 +410,12 @@ exports.exportRows = async (req, res) => {
     ];
     const cols = money ? COLUMNS : COLUMNS.filter(([, , tag]) => tag !== 'money');
     const aoa = [cols.map(([h]) => h), ...shaped.map((w) => cols.map(([, get]) => get(w)))];
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = cols.map(([h]) => ({ wch: Math.max(h.length + 4, 14) }));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'التشغيل خاص');
-    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', compression: true });
+    // كتابةُ المصنَّف في خيطٍ عامل — وإلّا جمَّد هذا التصديرُ كلَّ طلبٍ آخرَ
+    // على هذا العامل ثلاثين ثانية. راجع utils/xlsxBuilder.
+    const buf = await require('../utils/xlsxBuilder').buildXlsx(aoa, {
+      sheetName: 'التشغيل خاص',
+      cols: cols.map(([h]) => ({ wch: Math.max(h.length + 4, 14) })),
+    });
     const name = `operations-private-${new Date().toISOString().slice(0, 10)}.xlsx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=${name}`);

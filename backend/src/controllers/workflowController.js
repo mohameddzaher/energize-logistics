@@ -1659,12 +1659,14 @@ async function buildWorkflowWorkbook(filter, money) {
       aoa.push(cols.map(([, get]) => get(w)));
     }
 
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = headers.map((h) => ({ wch: Math.max(h.length + 4, 14) }));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'العمليات');
     // `compression` يصغّر الملفَّ إلى نحو خُمسه — وهو فرقُ ثوانٍ على الشبكة.
-    return { buf: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', compression: true }), rows: aoa.length - 1 };
+    // والكتابةُ في خيطٍ عامل: وإلّا توقّف هذا العاملُ عن خدمة الجميع طوالَها
+    // (قيس: طلبُ health أثناء تصديرةٍ أخذ أربعَ عشرةَ ثانية). راجع xlsxBuilder.
+    const buf = await require('../utils/xlsxBuilder').buildXlsx(aoa, {
+      sheetName: 'العمليات',
+      cols: headers.map((h) => ({ wch: Math.max(h.length + 4, 14) })),
+    });
+    return { buf, rows: aoa.length - 1 };
   }
 }
 

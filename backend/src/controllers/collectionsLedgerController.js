@@ -534,12 +534,33 @@ exports.invoiceFilters = async (req, res) => {
 const LIMIT_WARN_PCT = 80;     // «قارب» = بلغ ثمانين في المئة من سقفه
 const DUE_WARN_DAYS = 3;       // ينبَّه قبل الاستحقاق بثلاثة أيّام
 
+/**
+ * ── والشاشةُ تعرض خمسةً وتقول «وستُّمئةٍ غيرها» ──────────────────────────────
+ * فواتيرُ الاستحقاق ستُّمئةٌ وستّةَ عشر — مئتا كيلوبايتٍ تُنقَل وتُحلَّل على
+ * الهاتف ليُرسَم منها خمسةُ صفوف. فالعددُ يُحسَب على الكلّ كما كان (لا يتغيّر
+ * رقمٌ يراه أحد)، والصفوفُ تُقتطَع عند `rows`.
+ *
+ * والقطعُ بعد الذاكرة لا قبلها: المفتاحُ لا يعرف `rows`، فمن طلب خمسةً ومن طلب
+ * مئتين يقتسمان حسابًا واحدًا.
+ */
+const ALERT_ROWS_MAX = 1000;
+/** الأعدادُ كما هي والصفوفُ مقتطعةٌ — الجوابُ المخزَّنُ كاملٌ لا يُمسّ. */
+const sliceAlerts = (out, rows) => ({
+  ...out,
+  limit: out.limit.length > rows ? out.limit.slice(0, rows) : out.limit,
+  due: out.due.length > rows ? out.due.slice(0, rows) : out.due,
+  rows,
+});
 // GET /api/collections-dept/ledger/alerts
 exports.alerts = async (req, res) => {
   try {
-    const cacheKey = keyOf('alerts', req);
+    // ومَن لم يطلب عددًا يأخذ الكلّ: القطعُ يُطلَب صراحةً، فلا تغيب صفوفٌ عن
+    // نداءٍ قديمٍ لا يعرف هذا الوسيط.
+    const { rows: rowsQ, ...rest } = req.query || {};
+    const rows = Math.min(ALERT_ROWS_MAX, Math.max(1, parseInt(rowsQ, 10) || ALERT_ROWS_MAX));
+    const cacheKey = keyOf('alerts', { query: rest, user: req.user });
     const cached = cache.get(cacheKey);
-    if (cached) return res.json(cached);
+    if (cached) return res.json(sliceAlerts(cached, rows));
     const warnPct = Number(req.query.warnPct) || LIMIT_WARN_PCT;
     const warnDays = Number(req.query.warnDays) || DUE_WARN_DAYS;
     const today = startOfToday();
@@ -575,7 +596,6 @@ exports.alerts = async (req, res) => {
         kind: 'limit', party: p._id, code: p.code, name: p.name,
         officer: p.collectionOfficer, outstanding: out, creditLimit: p.creditLimit,
         pct, over: out > p.creditLimit,
-        severity: out > p.creditLimit ? 'over' : 'near',
       });
     }
     limitAlerts.sort((a, b) => b.pct - a.pct);
@@ -589,11 +609,12 @@ exports.alerts = async (req, res) => {
       const inDays = Math.floor((due - today) / DAY);
       if (inDays > warnDays) continue;                       // بعيدٌ بعد
       if (ackDue.has(`${v.party}::${v.invoiceNumber}`)) continue;
+      // `dueDate` و`severity` و`code` مشتقّاتٌ لا تُعرَض: الشاشةُ تكتب المهلةَ
+      // من `deliveryDate + creditDays`، وتلوّن من إشارة `daysToDue`.
       dueAlerts.push({
-        kind: 'due', party: v.party, code: v.partyCode, name: v.partyName,
+        kind: 'due', party: v.party, name: v.partyName,
         officer: p.collectionOfficer, invoiceNumber: v.invoiceNumber, total: v.total,
-        deliveryDate: v.deliveryDate, creditDays: p.creditDays, dueDate: due, daysToDue: inDays,
-        severity: inDays < 0 ? 'overdue' : 'soon',
+        deliveryDate: v.deliveryDate, creditDays: p.creditDays, daysToDue: inDays,
       });
     }
     dueAlerts.sort((a, b) => a.daysToDue - b.daysToDue);
@@ -606,11 +627,14 @@ exports.alerts = async (req, res) => {
         limitOver: limitAlerts.filter((a) => a.over).length,
         dueSoon: dueAlerts.filter((a) => a.daysToDue >= 0).length,
         overdue: dueAlerts.filter((a) => a.daysToDue < 0).length,
+        // العددُ الكاملُ للصفوف — به تعرف الشاشةُ «وكم غيرها» بعد الاقتطاع.
+        limitTotal: limitAlerts.length,
+        dueTotal: dueAlerts.length,
       },
       settings: { warnPct, warnDays },
     };
     cache.set(cacheKey, out, TTL);
-    res.json(out);
+    res.json(sliceAlerts(out, rows));
   } catch (e) {
     console.error('alerts error:', e);
     res.status(500).json({ message: 'تعذّر حسابُ التنبيهات' });

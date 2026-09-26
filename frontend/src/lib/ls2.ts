@@ -137,15 +137,19 @@ export interface Vehicle {
   speed: number | null; rpm: number | null; coolantC: number | null; fuelPct: number | null;
   totalFuelUsedL: number | null; weightKg: number | null; mainPowerV: number | null; backupBatteryV: number | null;
   gsmSignal: number | null; odometerKm: number | null; engineHours: number | null;
-  tires: Tire[]; tireCount: number; maxTireTempC: number | null; minTireTempC: number | null; maxTirePressurePsi: number | null; minTirePressurePsi: number | null; tireFaults: number;
+  // قراءةُ كلّ فردةٍ وخطّةُ الخدمة لا تأتيان مع القائمة إلّا بـ`include=`:
+  // انظر listVehicles في الخادم. الصفحاتُ التي تعرضهما تطلبهما، وغيرُها لا
+  // ينقل ٣٠٠ ك.ب لا يرسم منها شيئًا.
+  tires?: Tire[]; tireCount: number; maxTireTempC: number | null; minTireTempC: number | null; maxTirePressurePsi: number | null; minTirePressurePsi: number | null; tireFaults: number;
   tireBrand?: string; // manual: tire brand/type (e.g. Continental)
   tireSensors?: TireSensorCoverage; // محسوبة في الخادم — لا تُشتقّ في الشاشة
   status: string; alertLevel: string | null; activeAlertCount: number;
-  serviceIntervals: ServiceInterval[];
+  serviceIntervals?: ServiceInterval[];
   maintenanceStatus: 'ok' | 'due' | 'overdue';
+  maintenanceOverdueCount?: number; maintenanceDueCount?: number;
   kmToService: number | null; nextServiceKm: number | null; nextServiceName: string;
   upcomingKm: number | null; upcomingServiceKm: number | null; upcomingServiceName: string;
-  maintenance: Maintenance | null;
+  maintenance?: Maintenance | null; // مركبةٌ واحدة فقط — القائمةُ لا تعيده
   periodKm?: number; // attached when the list is queried with a from/to range
   profile?: VehicleProfile;
 }
@@ -164,8 +168,13 @@ export interface TireSensorCoverage {
   ground: number; registered: number; unregistered: number;
   fitted: number; reporting: number; faulty: number;
   layout: 'registry' | 'head' | 'standard';
-  positionsWithoutSensor: { positionNumber: number | null; positionLabel: string; section: string; serial: string; sensor: string }[];
-  faultyChannels: { axle: number | null; position: number | null }[];
+  // ── والتفصيلُ لا يرافق الصفّ ─────────────────────────────────────────────
+  // المواضعُ الناقصةُ والقنواتُ المعطوبة كانت ٤٦ ك.ب في كلّ قائمةٍ لا تُقرأ
+  // إلّا إن فتح أحدٌ نافذةَ شاحنةٍ واحدة. فتُطلَب عند الفتح من
+  // `/api/ls2/vehicles/:unitId/tire-sensors`، وتبقى هنا حين تأتي مع المركبة
+  // المفردة (‏`/vehicles/:id`).
+  positionsWithoutSensor?: { positionNumber: number | null; positionLabel: string; section: string; serial: string; sensor: string }[];
+  faultyChannels?: { axle: number | null; position: number | null }[];
   label: string;             // "7 / 5 / 2"
 }
 

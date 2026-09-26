@@ -13,7 +13,8 @@
 // فقط — ولا يُشتقّ هنا شيء.
 import { useState } from 'react';
 import Link from 'next/link';
-import { X, TriangleAlert, CircleDot, ExternalLink } from 'lucide-react';
+import { X, TriangleAlert, CircleDot, ExternalLink, Loader2 } from 'lucide-react';
+import api from '@/lib/api';
 import { ls2Text, type Lang, type TireSensorCoverage } from '@/lib/ls2';
 
 export default function TireSensorCell({ cov, plate, unitId, lang }: {
@@ -23,8 +24,26 @@ export default function TireSensorCell({ cov, plate, unitId, lang }: {
   lang: Lang;
 }) {
   const [open, setOpen] = useState(false);
+  // ── والتفصيلُ يُطلَب عند الفتح ───────────────────────────────────────────
+  // قائمةُ المواضع الناقصة والقنواتُ المعطوبة كانت ترافق كلَّ صفٍّ في الجدول
+  // (٤٦ ك.ب في القائمة كلّها) ولا تُقرأ إلّا إن فُتِحت نافذةُ شاحنةٍ واحدة.
+  // وحين تأتي مع الصفّ — كما في صفحة المركبة المفردة — لا يُطلَب شيء.
+  const [detail, setDetail] = useState<TireSensorCoverage | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
   const t = ls2Text(lang);
   if (!cov) return <span className="text-slate-300">—</span>;
+
+  const full = cov.positionsWithoutSensor ? cov : detail;
+  const openDetail = async () => {
+    setOpen(true);
+    if (cov.positionsWithoutSensor || detail || busy) return;
+    setBusy(true); setFailed(false);
+    try {
+      const r = await api.get<{ tireSensors: TireSensorCoverage }>(`/api/ls2/vehicles/${unitId}/tire-sensors`);
+      setDetail(r.tireSensors || null);
+    } catch { setFailed(true); /* الأرقامُ الثلاثةُ معروضةٌ على أي حال */ } finally { setBusy(false); }
+  };
 
   const spareOn = cov.spareWithSensor > 0;
   return (
@@ -32,7 +51,7 @@ export default function TireSensorCell({ cov, plate, unitId, lang }: {
       <button
         type="button"
         // الصفّ نفسه يفتح ملف المركبة؛ لولا الإيقاف هنا لَما ظهرت النافذة أصلًا.
-        onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+        onClick={(e) => { e.stopPropagation(); openDetail(); }}
         title={`${t.tireSensorsWorking}: ${cov.withSensor} · ${t.tireSensorsMissing}: ${cov.withoutSensor} · ${t.tireSensorsSpare}: ${cov.spare}`}
         className="inline-flex items-center gap-1 tabular-nums font-bold text-[13px] rounded-lg px-2 py-1 hover:bg-slate-100 transition-colors"
       >
@@ -80,20 +99,26 @@ export default function TireSensorCell({ cov, plate, unitId, lang }: {
               <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800 space-y-1">
                 <p className="font-semibold flex items-center gap-1.5"><TriangleAlert className="w-3.5 h-3.5" />{cov.silent} {t.tireSensorsSilent}</p>
                 <p className="text-[11px] opacity-90">{t.tireSensorsSilentNote}</p>
-                {cov.faultyChannels.length > 0 && (
+                {(full?.faultyChannels?.length || 0) > 0 && (
                   <p className="text-[11px]">
                     {t.tireSensorsChannels}:{' '}
-                    <span className="font-mono">{cov.faultyChannels.map((c) => `${c.axle ?? '?'}–${c.position ?? '?'}`).join('، ')}</span>
+                    <span className="font-mono">{(full?.faultyChannels || []).map((c) => `${c.axle ?? '?'}–${c.position ?? '?'}`).join('، ')}</span>
                   </p>
                 )}
               </div>
             )}
 
-            {cov.positionsWithoutSensor.length > 0 ? (
+            {!full ? (
+              <p className="flex items-center gap-2 text-xs text-slate-400 py-2">
+                {failed && !busy
+                  ? <span className="text-amber-600">{lang === 'ar' ? 'تعذّر تحميل تفصيل المواضع' : 'Could not load the position details'}</span>
+                  : <><Loader2 className="w-3.5 h-3.5 animate-spin" />{lang === 'ar' ? 'جارٍ تحميل التفصيل…' : 'Loading details…'}</>}
+              </p>
+            ) : (full.positionsWithoutSensor?.length || 0) > 0 ? (
               <div className="space-y-1">
-                <p className="text-xs font-semibold text-slate-600">{t.tireSensorsNoSensorList} ({cov.positionsWithoutSensor.length})</p>
+                <p className="text-xs font-semibold text-slate-600">{t.tireSensorsNoSensorList} ({full.positionsWithoutSensor?.length || 0})</p>
                 <ul className="text-xs text-slate-700 space-y-1">
-                  {cov.positionsWithoutSensor.map((p) => (
+                  {(full.positionsWithoutSensor || []).map((p) => (
                     <li key={`${p.positionNumber}-${p.serial}`} className="flex items-center gap-2 rounded-lg bg-slate-50 px-2 py-1">
                       <CircleDot className="w-3.5 h-3.5 text-red-400 shrink-0" />
                       <span className="flex-1 truncate">{p.positionLabel || (p.positionNumber != null ? `${lang === 'ar' ? 'اطار' : 'Tire'} ${p.positionNumber}` : '—')}{p.section ? ` — ${p.section}` : ''}</span>

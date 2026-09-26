@@ -297,7 +297,8 @@ export default function Ls2MaintenancePage() {
     try { const res = await api.get<{ deferrals: DeferralLike[] }>('/api/ls2/deferrals'); setDeferrals(res.deferrals || []); } catch { /* keep */ }
   }, []);
   const load = useCallback(async () => {
-    try { const res = await api.get<{ items: Vehicle[] }>('/api/ls2/vehicles'); setItems(res.items || []); } catch { /* keep */ }
+    // الجدولُ كلُّه مبنيٌّ على فترات الخدمة، فتُطلَب صراحةً.
+    try { const res = await api.get<{ items: Vehicle[] }>('/api/ls2/vehicles?include=intervals'); setItems(res.items || []); } catch { /* keep */ }
     loadDeferrals();
     setLoading(false);
   }, [loadDeferrals]);
@@ -462,7 +463,7 @@ export default function Ls2MaintenancePage() {
                             </button>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            {[...v.serviceIntervals].sort((a, b) => a.intervalKm - b.intervalKm).map((iv) => {
+                            {[...(v.serviceIntervals || [])].sort((a, b) => a.intervalKm - b.intervalKm).map((iv) => {
                               const r = remainOf(iv);
                               const st = maintStyle(iv.statusLevel);
                               const isOver = r.value < 0;

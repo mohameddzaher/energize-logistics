@@ -156,7 +156,12 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
                                         // تغطية حسّاسات الكاوتش «٧ / ٥ / ٢» — نفس رقم الموقع حرفًا بحرف،
                                         // والضغط عليها يفتح المواضع الناقصة بأسمائها.
                                         if (v['tireSensors'] is Map)
-                                          TireSensorBadge(cov: Map<String, dynamic>.from(v['tireSensors'] as Map), plate: (v['plate'] ?? v['name'] ?? '').toString()),
+                                          TireSensorBadge(
+                                            cov: Map<String, dynamic>.from(v['tireSensors'] as Map),
+                                            plate: (v['plate'] ?? v['name'] ?? '').toString(),
+                                            // القائمة تحمل الأرقام لا التفصيل — يُطلب برقم الوحدة عند الفتح.
+                                            unitId: v['unitId'] is num ? (v['unitId'] as num).toInt() : int.tryParse((v['unitId'] ?? '').toString()),
+                                          ),
                                         if (v['status'] == 'offline') Chip2(tr('غير متصلة', 'Offline'), T.danger, icon: Icons.wifi_off_rounded),
                                         if ((v['driver'] ?? '').toString().isNotEmpty) Chip2(v['driver'], T.inkSoft, icon: Icons.person_outline),
                                         Chip2('${tr('العداد', 'Odo')}: ${_fmtKm(v['odometerKm'])}', T.navy, icon: Icons.speed_outlined),

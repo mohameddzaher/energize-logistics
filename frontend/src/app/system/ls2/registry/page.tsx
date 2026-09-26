@@ -36,7 +36,9 @@ export default function Ls2RegistryPage() {
 
   const load = useCallback(async () => {
     try {
-      const res = await api.get<{ items: Vehicle[] }>(`/api/ls2/vehicles?from=${range.from}&to=${range.to}`);
+      // السجلُّ يعرض خطّةَ الخدمة وبطاقةَ الهويّة كاملةً، فيطلبهما صراحةً —
+      // وهما أثقلُ ما في المستند فلا يُحمَّلان على الشاشات الأخرى.
+      const res = await api.get<{ items: Vehicle[] }>(`/api/ls2/vehicles?from=${range.from}&to=${range.to}&include=intervals,profile`);
       setItems(res.items || []);
     } catch { /* keep */ }
     setLoading(false);

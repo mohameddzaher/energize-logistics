@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/api.dart';
 import '../services/lang.dart';
 import 'theme.dart';
 
@@ -16,7 +17,11 @@ import 'theme.dart';
 class TireSensorBadge extends StatelessWidget {
   final Map<String, dynamic>? cov;
   final String plate;
-  const TireSensorBadge({super.key, required this.cov, required this.plate});
+  /// رقم الوحدة — يُطلب به تفصيل المواضع عند فتح الشارة. قائمة المركبات لا
+  /// تحمل التفصيل (كان ٤٦ ك.ب لا تُقرأ إلا إن فُتحت شاحنة واحدة)، وصفحة
+  /// المركبة المفردة تحمله فلا تحتاج طلبًا.
+  final int? unitId;
+  const TireSensorBadge({super.key, required this.cov, required this.plate, this.unitId});
 
   static int _i(dynamic v) => v is num ? v.toInt() : int.tryParse(v?.toString() ?? '') ?? 0;
 
@@ -32,7 +37,7 @@ class TireSensorBadge extends StatelessWidget {
 
     return InkWell(
       borderRadius: BorderRadius.circular(20),
-      onTap: () => _showDetail(context, c, plate),
+      onTap: () => _showDetail(context, c, plate, unitId),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
         decoration: BoxDecoration(
@@ -63,23 +68,72 @@ class TireSensorBadge extends StatelessWidget {
   }
 }
 
-void _showDetail(BuildContext context, Map<String, dynamic> c, String plate) {
-  int i(dynamic v) => v is num ? v.toInt() : int.tryParse(v?.toString() ?? '') ?? 0;
-  final positions = c['positionsWithoutSensor'] is List
-      ? List<Map<String, dynamic>>.from((c['positionsWithoutSensor'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)))
-      : const <Map<String, dynamic>>[];
-  final channels = c['faultyChannels'] is List
-      ? List<Map<String, dynamic>>.from((c['faultyChannels'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)))
-      : const <Map<String, dynamic>>[];
-  final silent = i(c['silent']);
-  final unregistered = i(c['unregistered']);
-
+void _showDetail(BuildContext context, Map<String, dynamic> c, String plate, int? unitId) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.white,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
-    builder: (ctx) => SafeArea(
+    builder: (ctx) => _CoverageSheet(cov: c, plate: plate, unitId: unitId),
+  );
+}
+
+/// الأرقام الثلاثة تأتي مع الصف، والتفصيل (المواضع الناقصة والقنوات المعطوبة)
+/// يُطلب عند الفتح إن لم يكن معه.
+class _CoverageSheet extends StatefulWidget {
+  final Map<String, dynamic> cov;
+  final String plate;
+  final int? unitId;
+  const _CoverageSheet({required this.cov, required this.plate, this.unitId});
+  @override
+  State<_CoverageSheet> createState() => _CoverageSheetState();
+}
+
+class _CoverageSheetState extends State<_CoverageSheet> {
+  Map<String, dynamic>? _detail;
+  bool _busy = false;
+  bool _failed = false;
+
+  bool get _hasDetail => widget.cov['positionsWithoutSensor'] is List;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!_hasDetail && widget.unitId != null) _load();
+  }
+
+  Future<void> _load() async {
+    setState(() { _busy = true; _failed = false; });
+    try {
+      final d = await Api.instance.get('/api/ls2/vehicles/${widget.unitId}/tire-sensors');
+      final cov = d['tireSensors'];
+      if (!mounted) return;
+      setState(() { _detail = cov is Map ? Map<String, dynamic>.from(cov) : null; _busy = false; });
+    } catch (_) {
+      if (mounted) setState(() { _busy = false; _failed = true; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final full = _hasDetail ? widget.cov : _detail;
+    return _sheetBody(widget.cov, full, widget.plate, busy: _busy, failed: _failed);
+  }
+}
+
+Widget _sheetBody(Map<String, dynamic> c, Map<String, dynamic>? full, String plate, { required bool busy, required bool failed }) {
+  int i(dynamic v) => v is num ? v.toInt() : int.tryParse(v?.toString() ?? '') ?? 0;
+  final f = full ?? const <String, dynamic>{};
+  final positions = f['positionsWithoutSensor'] is List
+      ? List<Map<String, dynamic>>.from((f['positionsWithoutSensor'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)))
+      : const <Map<String, dynamic>>[];
+  final channels = f['faultyChannels'] is List
+      ? List<Map<String, dynamic>>.from((f['faultyChannels'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)))
+      : const <Map<String, dynamic>>[];
+  final silent = i(c['silent']);
+  final unregistered = i(c['unregistered']);
+
+  return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
         child: SingleChildScrollView(
@@ -117,6 +171,19 @@ void _showDetail(BuildContext context, Map<String, dynamic> c, String plate) {
                 ]),
               ),
             ],
+            if (full == null) ...[
+              const SizedBox(height: 12),
+              Row(children: [
+                if (busy) const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2)),
+                if (busy) const SizedBox(width: 8),
+                Text(
+                  failed
+                      ? tr('تعذّر تحميل تفصيل المواضع', 'Could not load the position details')
+                      : tr('جارٍ تحميل التفصيل…', 'Loading details…'),
+                  style: TextStyle(fontSize: 11.5, color: failed ? T.warn : T.inkSoft),
+                ),
+              ]),
+            ],
             if (positions.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text('${tr('المواضع المسجّلة بدون حساس', 'Positions registered without a sensor')} (${positions.length})',
@@ -146,8 +213,7 @@ void _showDetail(BuildContext context, Map<String, dynamic> c, String plate) {
           ]),
         ),
       ),
-    ),
-  );
+    );
 }
 
 Widget _line(Color color, String value, String label) => Padding(

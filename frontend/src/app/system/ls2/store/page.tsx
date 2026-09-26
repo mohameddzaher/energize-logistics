@@ -81,7 +81,9 @@ export default function Ls2StorePage() {
 
   useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t); }, [load]);
   useSocket('ls2:store', useCallback(() => load(), [load]));
-  useEffect(() => { api.get<{ vehicles: { plate: string }[] }>('/api/ls2/vehicles').then((d) => setPlates((d.vehicles || []).map((v) => v.plate).filter(Boolean))).catch(() => {}); }, []);
+  // `/api/ls2/vehicles` يردّ `items` لا `vehicles` — فقائمةُ اللوحات هنا كانت
+  // فارغةً دائمًا منذ أوّل يوم، ولا خطأَ يظهر: مفتاحٌ غيرُ موجودٍ يعطي قائمةً فارغة.
+  useEffect(() => { api.get<{ items: { plate: string }[] }>('/api/ls2/vehicles').then((d) => setPlates((d.items || []).map((v) => v.plate).filter(Boolean))).catch(() => {}); }, []);
 
   const loadLog = useCallback(async () => {
     try { const d = await api.get<{ movements: Movement[] }>('/api/ls2/store/movements?limit=300'); setMovements(d.movements || []); } catch { /* keep */ }

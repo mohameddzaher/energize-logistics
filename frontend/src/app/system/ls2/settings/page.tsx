@@ -68,7 +68,8 @@ export default function Ls2SettingsPage() {
     try {
       const [s, v] = await Promise.all([
         api.get<any>('/api/ls2/settings'),
-        api.get<{ items: Vehicle[] }>('/api/ls2/vehicles'),
+        // أسماءُ خدمات الأسطول تُستخرَج من الفترات، فتُطلَب صراحةً.
+        api.get<{ items: Vehicle[] }>('/api/ls2/vehicles?include=intervals'),
       ]);
       setThresholds(s.thresholds || {});
       setMaintenance(s.maintenance || {});

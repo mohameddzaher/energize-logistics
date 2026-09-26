@@ -47,7 +47,8 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     super.initState();
     _load();
     Api.instance.get('/api/ls2/vehicles').then((d) {
-      if (mounted) setState(() => _plates = List<Map<String, dynamic>>.from(d['vehicles'] ?? []).map((v) => (v['plate'] ?? '').toString()).where((p) => p.isNotEmpty).toList());
+      // النقطةُ تردّ `items` لا `vehicles` — وكانت القائمةُ تخرج فارغةً بلا خطأ.
+      if (mounted) setState(() => _plates = List<Map<String, dynamic>>.from(d['items'] ?? []).map((v) => (v['plate'] ?? '').toString()).where((p) => p.isNotEmpty).toList());
     }).catchError((_) {});
     _onLive = () => _load();
     Live.instance.on('ls2:store', _onLive);

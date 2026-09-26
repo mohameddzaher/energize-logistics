@@ -30,9 +30,13 @@ export default function CreditAlerts({ compact = false }: { compact?: boolean })
   const [openLimit, setOpenLimit] = useState(true);
   const [openDue, setOpenDue] = useState(!compact);
 
+  // ── والصفوفُ تُطلَب بقدر ما يُعرَض ─────────────────────────────────────────
+  // فواتيرُ الاستحقاق ستُّمئةٌ، والشاشةُ المضغوطةُ تعرض خمسةً ثمّ تقول «وكم
+  // غيرها» — والعددُ يأتي من `counts` لا من طول المصفوفة، فيظلّ العددُ هو
+  // نفسَه وإن قُطعت الصفوف.
   const load = useCallback(async () => {
-    try { setD(await api.get<any>('/api/collections-dept/ledger/alerts')); } catch { /* keep */ }
-  }, []);
+    try { setD(await api.get<any>(`/api/collections-dept/ledger/alerts?rows=${compact ? 5 : 1000}`)); } catch { /* keep */ }
+  }, [compact]);
   useEffect(() => { load(); }, [load]);
 
   const ack = async (a: any) => {
@@ -48,10 +52,13 @@ export default function CreditAlerts({ compact = false }: { compact?: boolean })
   if (!limit.length && !due.length) return null;
   const showLimit = compact ? limit.slice(0, 5) : limit;
   const showDue = compact ? due.slice(0, 5) : due;
+  // الأعدادُ محسوبةٌ في الخادم على الكلّ — لا على ما وصل من صفوف.
+  const limitTotal = d.counts?.limitTotal ?? limit.length;
+  const dueTotal = d.counts?.dueTotal ?? due.length;
 
   return (
     <div className="space-y-3" dir={isRTL ? 'rtl' : 'ltr'}>
-      {limit.length > 0 && (
+      {limitTotal > 0 && (
         <div className="bg-white border border-amber-200 rounded-xl shadow-sm overflow-hidden">
           <button type="button" onClick={() => setOpenLimit((v) => !v)}
             className="w-full flex items-center gap-2 px-4 py-3 bg-amber-50 border-b border-amber-100 text-start">
@@ -86,10 +93,10 @@ export default function CreditAlerts({ compact = false }: { compact?: boolean })
                   )}
                 </div>
               ))}
-              {compact && limit.length > 5 && (
+              {compact && limitTotal > 5 && (
                 <button type="button" onClick={() => router.push('/system/collections-dept/aging')}
                   className="w-full px-4 py-2 text-xs text-[#f37121] hover:underline text-start">
-                  {ar ? `و${limit.length - 5} غيرهم…` : `and ${limit.length - 5} more…`}
+                  {ar ? `و${limitTotal - 5} غيرهم…` : `and ${limitTotal - 5} more…`}
                 </button>
               )}
             </div>
@@ -97,7 +104,7 @@ export default function CreditAlerts({ compact = false }: { compact?: boolean })
         </div>
       )}
 
-      {due.length > 0 && (
+      {dueTotal > 0 && (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           <button type="button" onClick={() => setOpenDue((v) => !v)}
             className="w-full flex items-center gap-2 px-4 py-3 bg-slate-50 border-b border-slate-200 text-start">
@@ -135,10 +142,10 @@ export default function CreditAlerts({ compact = false }: { compact?: boolean })
                   )}
                 </div>
               ))}
-              {compact && due.length > 5 && (
+              {compact && dueTotal > 5 && (
                 <button type="button" onClick={() => router.push('/system/collections-dept/ledger?open=true')}
                   className="w-full px-4 py-2 text-xs text-[#f37121] hover:underline text-start">
-                  {ar ? `و${due.length - 5} غيرها…` : `and ${due.length - 5} more…`}
+                  {ar ? `و${dueTotal - 5} غيرها…` : `and ${dueTotal - 5} more…`}
                 </button>
               )}
             </div>

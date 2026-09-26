@@ -99,6 +99,7 @@ router.patch('/assets/flatbeds/:id', oid, ADMIN, assets.updateFlatbed);
 router.get('/deferrals', ls2.listDeferrals); // fleet-wide open deferred tasks (Maintenance page)
 router.get('/vehicles', ls2.listVehicles);
 router.get('/vehicles/:id', unit, ls2.getVehicle);
+router.get('/vehicles/:id/tire-sensors', unit, ls2.getVehicleTireSensors); // تفصيلُ التغطية عند فتح النافذة
 router.get('/vehicles/:id/mileage', unit, ls2.getVehicleMileage); // ?from&to[&source=report]
 router.get('/vehicles/:id/history', unit, ls2.getVehicleHistory); // daily distance series
 router.get('/vehicles/:id/trips', unit, ls2.getVehicleTrips); // ?from&to — trips + derived stops

@@ -246,10 +246,59 @@ exports.getMileage = async (req, res) => {
   }
 };
 
+/**
+ * ── صفُّ القائمة: ما تقرؤه الشاشات لا ما يخزّنه المستند ─────────────────────
+ * مستندُ المركبة الكامل ٧ ك.ب: فيه خطّةُ الخدمة مرّتين (`serviceIntervals`
+ * و`maintenance.intervals` نسخةٌ منها)، وقراءةُ كلّ فردةِ كاوتش، وحقولُ
+ * الاستطلاع الداخليّة. والقائمةُ تُعرَض في جدولٍ لا يقرأ من ذلك شيئًا — فكانت
+ * ٣٩٨ ك.ب على الهاتف تُحلَّل كلُّها ليُرسَم منها عمودٌ أو عمودان.
+ *
+ * فالصفُّ هنا هو الحقولُ التي تظهر في الجدول أو في تصديره أو يُفلتَر بها،
+ * وما تحتاجه شاشةٌ واحدة يُطلَب بـ`include=` صريحةً — لا يُحمَّل على الجميع:
+ *   intervals → خطّةُ الخدمة (السجل، الصيانة، الإعدادات)
+ *   tires     → قراءةُ كلّ فردة (صفحة الكاوتش وحدَها)
+ *   profile   → بطاقةُ الهويّة كاملةً (السجل وحدَه؛ وإلّا فالماركة والسنة والشاسيه)
+ * وتفصيلُ حسّاسات الكاوتش (المواضعُ الناقصة والقنواتُ المعطوبة، ٤٦ ك.ب)
+ * يُطلَب لشاحنةٍ واحدةٍ عند فتح نافذتها: `/vehicles/:id/tire-sensors`.
+ */
+const LIST_SCALARS = [
+  '_id', 'unitId', 'name', 'plate', 'driver',
+  'lastMessageAt', 'speed', 'coolantC', 'fuelPct', 'weightKg', 'engineHours', 'odometerKm',
+  'maxTireTempC', 'minTireTempC', 'maxTirePressurePsi', 'minTirePressurePsi',
+  'tireCount', 'tireFaults', 'tireBrand',
+  'status', 'alertLevel', 'activeAlertCount',
+  'maintenanceStatus', 'maintenanceOverdueCount', 'maintenanceDueCount',
+  'kmToService', 'nextServiceKm', 'nextServiceName',
+  'upcomingKm', 'upcomingServiceKm', 'upcomingServiceName',
+];
+// الهويّةُ المختصرة: الماركةُ والسنةُ تُعرضان تحت اللوحة، والشاسيهُ يُبحَث به.
+const LIST_PROFILE = ['vin', 'brand', 'modelYear'];
+// الأرقامُ الثلاثة «٧ / ٥ / ٢» وسياقُها العدديّ — بلا المصفوفتين الطويلتين.
+const SENSOR_SUMMARY = [
+  'withSensor', 'withoutSensor', 'spare', 'spareWithSensor', 'silent',
+  'ground', 'registered', 'unregistered', 'fitted', 'reporting', 'faulty', 'layout', 'label',
+];
+const pick = (src, keys) => {
+  const out = {};
+  for (const k of keys) if (src[k] !== undefined) out[k] = src[k];
+  return out;
+};
+function listRow(v, cov, include) {
+  const row = pick(v, LIST_SCALARS);
+  // الموضعُ للرابط إلى الخريطة — بلا الارتفاع الذي لا يُعرَض.
+  row.position = v.position ? pick(v.position, ['lat', 'lng', 'speed', 'course']) : null;
+  row.profile = include.has('profile') ? (v.profile || null) : pick(v.profile || {}, LIST_PROFILE);
+  row.tireSensors = include.has('sensorDetail') ? cov : pick(cov, SENSOR_SUMMARY);
+  if (include.has('intervals')) row.serviceIntervals = v.serviceIntervals || [];
+  if (include.has('tires')) row.tires = v.tires || [];
+  return row;
+}
+
 // ---- Vehicles list (with filters) -----------------------------------------
 exports.listVehicles = async (req, res) => {
   try {
     const { status, alertLevel, maintenance: maintFilter, q } = req.query;
+    const include = new Set(String(req.query.include || '').split(',').map((s) => s.trim()).filter(Boolean));
 
     // ── الأسطولُ كلُّه قراءةٌ واحدة، والفلترُ في الذاكرة ──────────────────────
     // ٥٨ مركبةً بـ٢٠٠ ك.ب — قراءتُها من العنقود ٢٫٤ ثانية مهما ضاق الفلتر،
@@ -277,21 +326,26 @@ exports.listVehicles = async (req, res) => {
     });
     // تغطية حسّاسات الكاوتش تُحسب هنا لا في المتصفّح: الشاشتان وتطبيق الهاتف
     // تقرأ الرقم نفسه من مصدرٍ واحد، فلا يختلف «٧ / ٥ / ٢» من شاشةٍ لأخرى.
-    let vehicles = await tireSensors.attachToVehicles(rawVehicles.map((v) => withMaintenance(v)));
+    const withCov = await tireSensors.attachToVehicles(rawVehicles);
+    let vehicles = withCov.map((v) => listRow(v, v.tireSensors, include));
 
     // Optional: attach per-vehicle distance for a period (fleet mileage view).
     const { from, to } = req.query;
+    let period = null;
     if (from || to) {
       const t = to || cairoDate();
       const f = from || `${t.slice(0, 7)}-01`;
       const mileMap = await mileageByUnit(f, t);
-      vehicles = vehicles.map((v) => ({ ...v, periodKm: mileMap.get(v.unitId)?.km ?? 0, periodFrom: f, periodTo: t }));
+      // الفترةُ نفسُها مرّةً واحدة في الجواب لا في كلّ صفٍّ: ٥٨ نسخةً من
+      // تاريخين لا يقرؤهما أحد.
+      period = { from: f, to: t };
+      vehicles = vehicles.map((v) => ({ ...v, periodKm: mileMap.get(v.unitId)?.km ?? 0 }));
     }
 
     // Sort: by period distance when requested, else by plate.
     if (from || to) vehicles.sort((a, b) => (b.periodKm || 0) - (a.periodKm || 0));
     else vehicles.sort((a, b) => (a.plate || '').localeCompare(b.plate || ''));
-    res.json({ items: vehicles, total: vehicles.length });
+    res.json({ items: vehicles, total: vehicles.length, ...(period ? { period } : {}) });
   } catch (error) {
     fail(res, error, 'Failed to list vehicles');
   }
@@ -310,6 +364,25 @@ exports.getVehicle = async (req, res) => {
     res.json({ vehicle: await tireSensors.attachToVehicle(withMaintenance(v)), alerts, serviceLog, driverHistory });
   } catch (error) {
     fail(res, error, 'Failed to load vehicle');
+  }
+};
+
+/**
+ * GET /vehicles/:id/tire-sensors — تفصيلُ التغطية لشاحنةٍ واحدة.
+ *
+ * المواضعُ التي لا حسّاسَ لها والقنواتُ المعطوبة كانت ترافق كلَّ صفٍّ في
+ * القائمة: ٤٦ ك.ب لا تُقرأ إلّا إذا فتح أحدٌ نافذةَ شاحنةٍ واحدة. فالأرقامُ
+ * الثلاثة تبقى في الصفّ، والتفصيلُ يُطلَب عند الفتح.
+ */
+exports.getVehicleTireSensors = async (req, res) => {
+  try {
+    const unitId = Number(req.params.id);
+    const v = await Ls2Vehicle.findOne({ unitId }).select('unitId plate name tires').lean();
+    if (!v) return res.status(404).json({ message: 'Vehicle not found' });
+    const { tireSensors: cov } = await tireSensors.attachToVehicle(v);
+    res.json({ unitId: v.unitId, plate: v.plate || v.name || '', tireSensors: cov });
+  } catch (error) {
+    fail(res, error, 'Failed to load tire-sensor coverage');
   }
 };
 

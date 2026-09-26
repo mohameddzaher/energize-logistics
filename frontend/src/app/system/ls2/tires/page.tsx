@@ -27,7 +27,9 @@ export default function Ls2TiresPage() {
   const [expanded, setExpanded] = useState<number | null>(null);
 
   const load = useCallback(async () => {
-    try { const res = await api.get<{ items: Vehicle[] }>('/api/ls2/vehicles'); setItems(res.items || []); } catch { /* keep */ }
+    // قراءةُ كلّ فردةٍ تُطلَب صراحةً: هذه الشاشةُ وحدَها تعرضها، والقائمةُ
+    // العاديّة لا تحملها إلى بقيّة الشاشات.
+    try { const res = await api.get<{ items: Vehicle[] }>('/api/ls2/vehicles?include=tires'); setItems(res.items || []); } catch { /* keep */ }
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -122,7 +124,7 @@ export default function Ls2TiresPage() {
                   </tr>
                   {expanded === v.unitId && (
                     <tr className="border-b border-slate-100 bg-slate-50/60">
-                      <td colSpan={7} className="px-6 py-4"><TireLayout tires={v.tires} t={t} lang={lang as Lang} /></td>
+                      <td colSpan={7} className="px-6 py-4"><TireLayout tires={v.tires || []} t={t} lang={lang as Lang} /></td>
                     </tr>
                   )}
                 </Fragment>

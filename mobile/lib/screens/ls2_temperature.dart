@@ -125,7 +125,9 @@ class _Ls2TemperatureScreenState extends State<Ls2TemperatureScreen> {
                                 final tire = _n(v['maxTireTempC']);
                                 final cool = _n(v['coolantC']);
                                 return Pressable(
-                                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => Ls2VehicleDetailScreen(vehicleId: (v['_id'] ?? '').toString(), plate: (v['plate'] ?? '').toString()))),
+                                  // `/api/ls2/vehicles/:id` يقرأ رقمَ الوحدة لا معرّفَ منغوسة — وبالمعرّف كان
+                                  // الملفُّ لا يُفتح أبدًا من هذه الشاشة.
+                                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => Ls2VehicleDetailScreen(vehicleId: (v['unitId'] ?? v['_id'] ?? '').toString(), plate: (v['plate'] ?? '').toString()))),
                                   child: AppCard(
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                     child: Row(children: [

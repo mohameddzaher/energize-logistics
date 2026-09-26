@@ -552,7 +552,7 @@ export default function Ls2VehicleDetailPage() {
             <span className="text-[11px] text-slate-400">({t.tireSensorsHint})</span>
           </div>
         )}
-        <TireLayout tires={v.tires} t={t} lang={lang as Lang} />
+        <TireLayout tires={v.tires || []} t={t} lang={lang as Lang} />
       </div>
 
       {/* Open alerts */}

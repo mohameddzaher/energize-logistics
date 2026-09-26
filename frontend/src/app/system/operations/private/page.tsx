@@ -24,6 +24,7 @@ import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useDialog } from '@/components/system/DialogProvider';
 import { getOperationsTranslations } from '@/lib/translations';
 import api from '@/lib/api';
+import { startBackgroundExport, type ExportJob } from '@/lib/backgroundExport';
 import {
   Lock, Search, Loader2, Check, X, ChevronLeft, ChevronRight, FilterX,
   TrendingUp, Wallet, ShoppingCart, Tags,
@@ -407,7 +408,23 @@ export default function OperationsPrivatePage() {
   });
   const downloadServerFile = async (scope: 'filtered' | 'all') => {
     const p = scope === 'all' ? new URLSearchParams() : buildParams();
+    p.delete('page'); p.delete('limit');
     if (scope === 'all') p.set('scope', 'all');
+
+    // ── «الجدولُ كلُّه» يُبنى في الخلفيّة ──────────────────────────────────
+    // ستّةٌ وثلاثون ألفَ صفٍّ ونصفُ دقيقةِ بناء: لا يُنتظَر أمام شاشةٍ جامدة،
+    // ولا يضيع العملُ إن أُغلقت الصفحة. يُسجَّل الطلبُ، ويُنزَّل حين يجهز،
+    // ويصل إشعارٌ بالرابط على كلّ حال. راجع lib/backgroundExport.
+    if (scope === 'all') {
+      notify(ar ? 'جارٍ تجهيز الملف… سيُنزَّل تلقائياً، وسيصلك إشعار عند جهوزه.'
+        : 'Preparing the file… it will download automatically, and you will get a notification.', 'info');
+      await startBackgroundExport('operations-private', Object.fromEntries(p.entries()), {
+        onReady: (j: ExportJob) => notify(ar ? `جهز الملف — ${j.rows.toLocaleString('en-US')} صفًّا` : `Ready — ${j.rows.toLocaleString('en-US')} rows`, 'success'),
+        onFailed: (msg: string) => notify(msg || (ar ? 'تعذّر التصدير' : 'Export failed'), 'error'),
+      });
+      return;
+    }
+
     const blob = await api.getBlob(`/api/operations-private/export?${p.toString()}`);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

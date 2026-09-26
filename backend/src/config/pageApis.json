@@ -5,6 +5,7 @@
     "/api/auth/login",
     "/api/auth/logout",
     "/api/auth/me",
+    "/api/exports/jobs",
     "/api/lookups",
     "/api/notifications",
     "/api/notifications/read-all",

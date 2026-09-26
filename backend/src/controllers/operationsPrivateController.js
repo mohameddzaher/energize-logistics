@@ -335,24 +335,55 @@ exports.stats = async (req, res) => {
  * و`format=json` يردّ الصفوفَ نفسَها (للجوّال وللتحقّق)، بسقف `EXPORT_CAP`.
  */
 const EXPORT_CAP = 60000;
+/**
+ * البناءُ نفسُه لطلبِ تصديرٍ في الخلفيّة (controllers/exportJobsController) —
+ * فالملفُّ واحدٌ سواءٌ نُزِّل في الحال أو جاء إشعارُه بعد حين.
+ */
+exports.buildExportFile = async (query = {}, user = {}) => {
+  const { shaped, money } = await exportRowsFor(query, user);
+  const buf = await buildPrivateWorkbook(shaped, money);
+  return { buf, rows: shaped.length, name: `operations-private-${new Date().toISOString().slice(0, 10)}.xlsx` };
+};
+
+/** الصفوفُ المشكَّلةُ للتصدير — يقرؤها الردُّ المباشر وطلبُ الخلفيّة معًا. */
+async function exportRowsFor(query, user) {
+  const all = String(query.scope || '') === 'all';
+  const q = all ? {} : query;
+  const { buildWorkflowFilter, canSeeMoney } = require('./workflowController');
+  const money = canSeeMoney(user.role);
+  const filter = buildWorkflowFilter(q, undefined, money);
+  const priced = all ? '' : pricedParam(query);
+  const index = await routePriceIndex();
+  const { rows, total } = await matchingRows(filter, priced, index, { limit: 0 });
+  const capped = rows.slice(0, EXPORT_CAP);
+  const shaped = require('./workflowController').stripMoneyFor(user.role, capped.map((w) => shapeRow(w, w._p, index)));
+  return { shaped, total, capped, money };
+}
+
 exports.exportRows = async (req, res) => {
   try {
-    const all = String(req.query.scope || '') === 'all';
-    const q = all ? {} : req.query;
-    const { buildWorkflowFilter, canSeeMoney } = require('./workflowController');
-    const money = canSeeMoney(req.user.role);
-    const filter = buildWorkflowFilter(q, undefined, money);
-    const priced = all ? '' : pricedParam(req.query);
-    const index = await routePriceIndex();
-    const { rows, total } = await matchingRows(filter, priced, index, { limit: 0 });
-    const capped = rows.slice(0, EXPORT_CAP);
-    const shaped = require('./workflowController').stripMoneyFor(req.user.role, capped.map((w) => shapeRow(w, w._p, index)));
+    const { shaped, total, capped, money } = await exportRowsFor(req.query, req.user);
 
     if (String(req.query.format || '') === 'json') {
       return res.json({ rows: shaped, total, truncated: total > capped.length, money });
     }
 
-    const XLSX = require('xlsx');
+    const buf = await buildPrivateWorkbook(shaped, money);
+    const name = `operations-private-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=${name}`);
+    res.setHeader('Content-Length', String(buf.length));
+    if (total > capped.length) res.setHeader('X-Export-Truncated', String(total));
+    return res.send(buf);
+  } catch (e) {
+    console.error('operations-private export:', e);
+    return res.status(500).json({ message: 'تعذّر التصدير' });
+  }
+};
+
+/** المصنَّفُ نفسُه بأعمدته وترجماته — من موضعٍ واحدٍ لا اثنين. */
+async function buildPrivateWorkbook(shaped, money) {
+  {
     const { SHIPMENT_STATUS_AR } = require('../config/constants');
     const PAYMENT_AR = { cash: 'كاش', late: 'آجل' };
     const STAGE_AR = {
@@ -416,17 +447,9 @@ exports.exportRows = async (req, res) => {
       sheetName: 'التشغيل خاص',
       cols: cols.map(([h]) => ({ wch: Math.max(h.length + 4, 14) })),
     });
-    const name = `operations-private-${new Date().toISOString().slice(0, 10)}.xlsx`;
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=${name}`);
-    res.setHeader('Content-Length', String(buf.length));
-    if (total > capped.length) res.setHeader('X-Export-Truncated', String(total));
-    return res.send(buf);
-  } catch (e) {
-    console.error('operations-private export:', e);
-    return res.status(500).json({ message: 'تعذّر التصدير' });
+    return buf;
   }
-};
+}
 
 /**
  * PUT /api/operations-private/:id — سعرُ البيع وحدَه.

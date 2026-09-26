@@ -23,6 +23,7 @@ import {
   Camera, Loader2,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { downloadExportJob } from '@/lib/backgroundExport';
 import { useSocket } from '@/hooks/useSocket';
 import { homeRouteForRole, landingFor } from '@/lib/roleRoutes';
 import { OPS_SECTION_ROLES as OPS_ROLES } from '@/lib/ops';
@@ -942,12 +943,29 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
                     {notifications.length === 0 ? (
                       <p className="p-4 text-slate-500 text-sm text-center">{L.noNewNotifications}</p>
                     ) : (
-                      notifications.map((n: any) => (
-                        <div key={n._id} className="p-3 border-b border-slate-200/70 hover:bg-slate-100">
-                          <p className="text-slate-900 text-sm font-medium">{n.title}</p>
-                          <p className="text-slate-500 text-xs mt-1">{n.message}</p>
-                        </div>
-                      ))
+                      notifications.map((n: any) => {
+                        // إشعارُ ملفِّ تصديرٍ جاهز: الضغطةُ تنزّله — لا يُبحث عنه.
+                        const isExport = n.relatedEntity === 'ExportJob' && n.relatedEntityId;
+                        return (
+                          <div
+                            key={n._id}
+                            onClick={isExport ? () => {
+                              api.get<{ job: any }>(`/api/exports/jobs/${n.relatedEntityId}`)
+                                .then(({ job }) => downloadExportJob(job))
+                                .catch(() => { /* انتهت صلاحيّةُ الملفّ أو حُذف */ });
+                            } : undefined}
+                            className={`p-3 border-b border-slate-200/70 hover:bg-slate-100 ${isExport ? 'cursor-pointer' : ''}`}
+                          >
+                            <p className="text-slate-900 text-sm font-medium">{n.title}</p>
+                            <p className="text-slate-500 text-xs mt-1">{n.message}</p>
+                            {isExport && (
+                              <p className="text-[#f37121] text-[11px] mt-1 font-semibold">
+                                {lang === 'ar' ? 'اضغط للتنزيل' : 'Click to download'}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })
                     )}
                   </motion.div>
                 )}

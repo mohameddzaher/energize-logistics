@@ -271,6 +271,8 @@ app.use('/api/shipment-orders', authenticate, sectionGate('Shipment Orders'), sh
 // بوّابةُ الصفحات (pageGate) تفتحها لمن يملك إحدى الصفحتين، والتعديلُ يبقى في
 // نقاط «طلبات الشحنات» بحارسها.
 app.use('/api/customer-registry', authenticate, require('./routes/customerRegistry'));
+// التصديرُ الكبيرُ يُبنى في الخلفيّة ويصل صاحبَه بإشعار — راجع exportJobsController.
+app.use('/api/exports', authenticate, require('./routes/exportJobs'));
 app.use('/api/fleet', authenticate, sectionGate('Fleet Management'), fleetRoutes);
 // No sectionGate: every performance handler scopes itself (a manager only ever
 // sees their own team; only super_admin may configure or override), and a
@@ -414,6 +416,8 @@ connectDB().then(async () => {
     startBusinessReviewSweep();
     // لوحاتُ مؤشّرات CRM تُحسب في الخلف، فلا ينتظرها من يفتحها — راجع warmKpis.
     try { require('./controllers/crmKpiController').startKpiWarm(); } catch (e) { /* */ }
+    // ملفّاتُ التصدير تُحذف بعد يوم — لقطةٌ للحظتها لا أرشيف.
+    try { require('./controllers/exportJobsController').startExportCleanup(); } catch (e) { /* */ }
     startKeepAlive();
     console.log('DB ready — scheduled jobs started');
   } else {

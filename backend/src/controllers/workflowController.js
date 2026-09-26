@@ -1742,6 +1742,18 @@ exports.exportWorkflows = async (req, res) => {
   }
 };
 
+/**
+ * البناءُ نفسُه لطلبِ تصديرٍ في الخلفيّة (controllers/exportJobsController).
+ * الأعمدةُ والحجبُ بالدور واحدةٌ هنا وهناك — ملفٌّ واحدٌ مهما كان طريقُه.
+ */
+exports.buildExportFile = async (query = {}, user = {}) => {
+  const money = canSeeMoney(user.role);
+  const all = String(query.scope || '') === 'all';
+  const filter = all ? {} : buildWorkflowFilter(query, undefined, money);
+  const { buf, rows } = await buildWorkflowWorkbook(filter, money);
+  return { buf, rows, name: `operations-${new Date().toISOString().slice(0, 10)}.xlsx` };
+};
+
 exports.refreshAllExport = refreshAllExport;
 
 // POST /api/workflows/bulk-import

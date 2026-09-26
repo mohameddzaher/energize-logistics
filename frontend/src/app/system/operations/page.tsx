@@ -8,6 +8,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { getOperationsTranslations } from '@/lib/translations';
 import { SHIPMENT_STATUSES, PAYMENT_METHODS } from '@/lib/ops';
 import api from '@/lib/api';
+import { startBackgroundExport, type ExportJob } from '@/lib/backgroundExport';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import DateRangeFilter, { DateField } from '@/components/system/DateRangeFilter';
 import ManagedSelect from '@/components/system/ManagedSelect';
@@ -741,13 +742,27 @@ export default function OperationsWorkflowPage() {
     const p = scope === 'all' ? new URLSearchParams() : buildParams();
     p.delete('page'); p.delete('limit');
     if (scope === 'all') p.set('scope', 'all');
+
+    // ── «الجدولُ كلُّه» يُبنى في الخلفيّة ──────────────────────────────────
+    // ستّةٌ وثلاثون ألفَ صفٍّ ونصفُ دقيقةِ بناء: لا يُنتظَر أمام شاشةٍ جامدة،
+    // ولا يضيع العملُ إن أُغلقت الصفحة. يُسجَّل الطلبُ، ويُنزَّل حين يجهز،
+    // ويصل إشعارٌ بالرابط على كلّ حال. راجع lib/backgroundExport.
+    if (scope === 'all') {
+      notify(lang === 'ar' ? 'جارٍ تجهيز الملف… سيُنزَّل تلقائياً، وسيصلك إشعار عند جهوزه.'
+        : 'Preparing the file… it will download automatically, and you will get a notification.', 'info');
+      await startBackgroundExport('workflows', Object.fromEntries(p.entries()), {
+        onReady: (j: ExportJob) => notify(lang === 'ar' ? `جهز الملف — ${j.rows.toLocaleString('en-US')} صفًّا` : `Ready — ${j.rows.toLocaleString('en-US')} rows`, 'success'),
+        onFailed: (msg: string) => notify(msg || (lang === 'ar' ? 'تعذّر التصدير' : 'Export failed'), 'error'),
+      });
+      return;
+    }
+
     const blob = await api.getBlob(`/api/workflows/export?${p.toString()}`);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `operations-${new Date().toISOString().slice(0, 10)}.xlsx`;
     document.body.appendChild(a); a.click(); a.remove();
-    // يُترك للمتصفّح ما يكفي لبدء الحفظ قبل سحب العنوان من تحته.
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   };
 

@@ -412,6 +412,8 @@ connectDB().then(async () => {
     startLs2Poll();
     startLs2TripWarm();
     startBusinessReviewSweep();
+    // لوحاتُ مؤشّرات CRM تُحسب في الخلف، فلا ينتظرها من يفتحها — راجع warmKpis.
+    try { require('./controllers/crmKpiController').startKpiWarm(); } catch (e) { /* */ }
     startKeepAlive();
     console.log('DB ready — scheduled jobs started');
   } else {

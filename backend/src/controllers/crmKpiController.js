@@ -165,6 +165,34 @@ function stale(kind, q) {
   return hit.val;
 }
 
+/**
+ * ── تسخينُ لوحات المؤشّرات ──────────────────────────────────────────────────
+ *
+ * حسابُ اللوحة الواحدة خمسُ ثوانٍ إلى اثنتي عشرة (ثلاثةُ آلافِ مورّدٍ تُجمَع من
+ * ستّةَ عشرَ مصدرًا). والمخزنُ يُفتَح بمفتاح الفترة، وفترةُ الصفحة الافتراضيّة
+ * «من سنةٍ إلى اليوم» — فمفتاحُها يتغيّر مع تغيّر التاريخ، فيدفع أوّلُ من يفتح
+ * في اليوم الحسابَ كاملًا وهو ينظر إلى دوّارة.
+ *
+ * فتُحسب في الخلف: مرّةً بعد الإقلاع، ثمّ كلَّ ربع ساعة — ومعها فترةُ «بلا
+ * تحديد» التي يطلبها التطبيق. وهي على النسخة التي تشغّل المهامّ وحدَها.
+ */
+const isoDay = (d) => d.toISOString().slice(0, 10);
+async function warmKpis() {
+  const to = isoDay(new Date());
+  const yearAgo = new Date();
+  yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+  const windows = [{ from: isoDay(yearAgo), to }, { from: '', to: '' }];
+  for (const kind of ['vendors', 'customers']) {
+    for (const q of windows) {
+      try { await compute(kind, q); } catch (e) { console.error('[crm-kpi] warm', kind, e.message); }
+    }
+  }
+}
+exports.startKpiWarm = () => {
+  setTimeout(() => { warmKpis().catch(() => {}); }, 60 * 1000);
+  setInterval(() => { warmKpis().catch(() => {}); }, 15 * 60 * 1000);
+};
+
 function listHandler(kind, label) {
   return async (req, res) => {
     try {

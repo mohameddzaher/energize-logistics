@@ -79,9 +79,14 @@ class _Breakdown extends StatelessWidget {
   }
 }
 
-Widget _bandChip(Map<String, dynamic> row) {
-  final color = _hex(row['bandColor'] as String?);
-  return Chip2('${_num(row['score'])} · ${tr(row['bandAr'] ?? '', row['bandEn'] ?? '')}', color);
+/// شارةُ التصنيف. ولوحاتُ CRM لا تحمل اسمَ التصنيف ولونَه في كلّ صفّ — تحمل
+/// مفتاحَه، وتعريفُه يأتي مرّةً أعلى الحمولة — فيُمرَّر هنا حين يُعرف.
+Widget _bandChip(Map<String, dynamic> row, {Map<String, dynamic>? band}) {
+  final color = _hex((band?['color'] ?? row['bandColor']) as String?);
+  final label = band != null
+      ? tr('${band['ar'] ?? ''}', '${band['en'] ?? ''}')
+      : tr(row['bandAr'] ?? '', row['bandEn'] ?? '');
+  return Chip2('${_num(row['score'])} · $label', color);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -480,8 +485,38 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // ── التصنيفُ والعلاماتُ تُرسَل مرّةً أعلى الحمولة ──────────────────────────
+  // كانت تُكرَّر في كلّ صفٍّ لثلاثة آلافِ مورّد (خمسةُ ميجابايت يهضمها الهاتف
+  // ليعرض صفًّا واحدًا). والآن: مفتاحٌ في الصفّ، ونصُّه وشكلُه من هنا.
+  List<Map<String, dynamic>> _bands = const [];
+  Map<String, dynamic> _flagLabels = const {};
+  final Map<String, Map<String, dynamic>> _details = {};
 
   bool get _isVendors => widget.kind == 'vendors';
+
+  Map<String, dynamic> _bandOf(Map<String, dynamic> r) {
+    final k = '${r['band'] ?? ''}';
+    return _bands.firstWhere((b) => '${b['key']}' == k, orElse: () => const <String, dynamic>{});
+  }
+
+  String _rowKey(Map<String, dynamic> r) =>
+      '${r['_id'] ?? r['supplierId'] ?? r['name'] ?? ''}';
+
+  /// تفصيلُ التقييم يُجلب عند فتح الصفِّ وحدَه ويُحفظ، فلا يُجلب مرّتين.
+  Future<Map<String, dynamic>> _detailOf(Map<String, dynamic> r) async {
+    final k = _rowKey(r);
+    final cached = _details[k];
+    if (cached != null) return cached;
+    try {
+      final d = await Api.instance.get(
+          '/api/crm/kpis/${widget.kind}/detail?key=${Uri.encodeQueryComponent(k)}');
+      final m = Map<String, dynamic>.from(d);
+      _details[k] = m;
+      return m;
+    } catch (_) {
+      return const <String, dynamic>{};
+    }
+  }
 
   @override
   void initState() { super.initState(); _load(); }
@@ -493,6 +528,9 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
       setState(() {
         _rows = List<Map<String, dynamic>>.from(d['items'] ?? []);
         _summary = Map<String, dynamic>.from(d['summary'] ?? {});
+        _bands = List<Map<String, dynamic>>.from((d['bands'] ?? const []).map((b) => Map<String, dynamic>.from(b)));
+        _flagLabels = Map<String, dynamic>.from(d['flagLabels'] ?? const {});
+        _details.clear();
         _loading = false; _error = null;
       });
     } catch (e) {
@@ -512,7 +550,7 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
             Text((r['name'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
             const SizedBox(height: 10),
             Wrap(spacing: 6, runSpacing: 6, children: [
-              _bandChip(r),
+              _bandChip(r, band: _bandOf(r)),
               if (_isVendors) ...[
                 Chip2('${tr('حمولات', 'Loads')}: ${_num(r['loads'])}', T.navy),
                 Chip2('${tr('التكلفة', 'Cost')}: ${_num(r['cost'])}', T.warn),
@@ -535,14 +573,29 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
             if (flags.isNotEmpty) ...[
               const SizedBox(height: 12),
               Wrap(spacing: 6, runSpacing: 6, children: flags.map<Widget>((raw) {
-                final f = Map<String, dynamic>.from(raw as Map);
-                return Chip2(tr(f['ar'] ?? '', f['en'] ?? ''), T.danger, icon: Icons.flag_outlined);
+                // المفتاحُ في الصفّ، ونصُّه في `flagLabels` — والقديمُ (كائنٌ
+                // كاملٌ في الصفّ) يبقى مقروءًا لئلّا ينكسر تطبيقٌ لم يُحدَّث.
+                if (raw is Map) {
+                  final f = Map<String, dynamic>.from(raw);
+                  return Chip2(tr('${f['ar'] ?? ''}', '${f['en'] ?? ''}'), T.danger, icon: Icons.flag_outlined);
+                }
+                final l = Map<String, dynamic>.from(_flagLabels['$raw'] ?? const {});
+                return Chip2(tr('${l['ar'] ?? raw}', '${l['en'] ?? raw}'), T.danger, icon: Icons.flag_outlined);
               }).toList()),
             ],
             const SizedBox(height: 18),
             Text(tr('تفصيل التقييم', 'Score breakdown'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
             const SizedBox(height: 10),
-            _Breakdown(List.from(r['breakdown'] ?? []), _hex(r['bandColor'] as String?)),
+            // التفصيلُ يُجلب عند فتح الصفّ — لا يُحمَّل مع ثلاثة آلافِ صفّ.
+            FutureBuilder<Map<String, dynamic>>(
+              future: _detailOf(r),
+              builder: (c2, snap) {
+                if (!snap.hasData) {
+                  return const Padding(padding: EdgeInsets.all(8), child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
+                }
+                return _Breakdown(List.from(snap.data!['breakdown'] ?? const []), _hex(_bandOf(r)['color'] as String?));
+              },
+            ),
           ]),
         ),
       ),
@@ -597,7 +650,8 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
                         itemCount: rows.length,
                         itemBuilder: (c, i) {
                           final r = rows[i];
-                          final color = _hex(r['bandColor'] as String?);
+                          final band = _bandOf(r);
+                          final color = _hex(band['color'] as String?);
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 10),
                             child: Pressable(
@@ -607,7 +661,7 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
                                   Row(children: [
                                     Expanded(child: Text((r['name'] ?? '').toString(),
                                         style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14), overflow: TextOverflow.ellipsis)),
-                                    _bandChip(r),
+                                    _bandChip(r, band: band),
                                   ]),
                                   const SizedBox(height: 8),
                                   _ScoreBar(_n(r['score']), color),

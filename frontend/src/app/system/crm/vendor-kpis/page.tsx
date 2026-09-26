@@ -24,12 +24,19 @@ import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ScrollX from '@/components/system/ScrollX';
 
 interface Flag { key: string; ar: string; en: string }
+/** تفصيلُ الصفِّ الواحد — لا يُرسَل مع القائمة، يُجلب عند فتحه. */
+interface RowDetail {
+  breakdown: ScoreBreakdownItem[];
+  checks: { hasPapers: boolean; vendorSigned: boolean; ourSigned: boolean; contractDated: boolean };
+  routes: string[];
+  representative: string;
+  flags: Flag[];
+}
 interface VendorKpi {
   _id: string | null; supplierId: string | null; name: string; inCrm: boolean;
   isNewVendor: boolean; energizeRep: string; vendorType: string; representative: string;
   mobile: string; email: string; headOffice: string; destinations: string;
   carsCount: number | null; followUpStatus: string; contractDate: string;
-  checks: { hasPapers: boolean; vendorSigned: boolean; ourSigned: boolean; contractDated: boolean };
   contractScore: number;
   loads: number; ledgerLoads: number; trialLoads: number; prevLoads: number; loadGrowthPct: number | null;
   activeMonths: number; monthlyCapacity: number; utilisationPct: number | null; sharePct: number;
@@ -37,14 +44,16 @@ interface VendorKpi {
   cost: number; revenue: number; margin: number; marginPct: number | null;
   avgCostPerLoad: number; routes: string[];
   lastLoad: string | null; daysSinceLastLoad: number | null; loadsPerMonth: number;
-  score: number; band: string; bandAr: string; bandEn: string; bandColor: string;
-  breakdown: ScoreBreakdownItem[];
-  flags: Flag[];
+  score: number; band: string;
+  // مفاتيحُ العلامات فقط — نصُّها في `flagLabels` أعلى الحمولة، فلا يتكرّر
+  // النصُّ نفسُه ثلاثةَ آلافِ مرّة (كان ذلك وحدَه تسعَ مئةِ كيلوبايت).
+  flags: string[];
 }
 
 interface Payload {
   period: { from: string; to: string; months: number };
   bands: ScoreBand[];
+  flagLabels: Record<string, { ar: string; en: string }>;
   medianMarginPct: number;
   summary: {
     vendors: number; working: number; idle: number; contractComplete: number;
@@ -71,6 +80,24 @@ export default function CrmVendorKpisPage() {
   const [band, setBand] = useState('');
   const [onlyWorking, setOnlyWorking] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
+  // ── تفصيلُ الصفِّ يُجلب عند فتحه ─────────────────────────────────────────
+  // تفصيلُ التقييم والعلاماتُ والخطوط لا تُعرض إلّا للصفِّ المفتوح، وكانت
+  // تُرسَل لثلاثة آلافٍ وخمسِ مئةٍ منهم: خمسةُ ميجابايت يهضمها الهاتف ليعرض
+  // صفًّا واحدًا. فتُجلب عند الفتح وتُحفظ، فلا تُجلب مرّتين.
+  const [details, setDetails] = useState<Record<string, RowDetail>>({});
+  const [detailLoading, setDetailLoading] = useState<string | null>(null);
+  const openRow = useCallback(async (key: string) => {
+    setOpen(key);
+    if (details[key]) return;
+    setDetailLoading(key);
+    try {
+      const d = await api.get<RowDetail>(`/api/crm/kpis/vendors/detail?key=${encodeURIComponent(key)}&from=${from}&to=${to}`);
+      setDetails((prev) => ({ ...prev, [key]: d }));
+    } catch { /* الصفُّ يبقى مفتوحًا بأرقامه، والتفصيلُ يُعاد طلبُه عند فتحٍ آخر */ }
+    setDetailLoading(null);
+  }, [details, from, to]);
+  // فترةٌ جديدة = تفصيلٌ جديد.
+  useEffect(() => { setDetails({}); }, [from, to]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -199,9 +226,15 @@ export default function CrmVendorKpisPage() {
               {items.map((v) => {
                 const key = v._id || v.supplierId || v.name;
                 const isOpen = open === key;
+                // اسمُ التصنيفِ ولونُه من قائمة `bands` بمفتاح الصفّ — تُرسَل
+                // مرّةً واحدةً أعلى الحمولة بدل تكرارها في كلّ صفّ.
+                const bandDef = (data?.bands || []).find((b: any) => b.key === v.band);
+                const bandColor = (bandDef as any)?.color || '#94a3b8';
+                const bandLabel = ar ? (bandDef as any)?.ar : (bandDef as any)?.en;
+                const detail = details[key];
                 return (
                   <Fragment key={key}>
-                    <tr className="hover:bg-slate-50 cursor-pointer" onClick={() => setOpen(isOpen ? null : key)}>
+                    <tr className="hover:bg-slate-50 cursor-pointer" onClick={() => (isOpen ? setOpen(null) : openRow(key))}>
                       <td className="px-3 py-2 text-slate-400">
                         {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4 rtl:rotate-180" />}
                       </td>
@@ -210,15 +243,16 @@ export default function CrmVendorKpisPage() {
                         <p className="text-[11px] text-slate-400">{[v.headOffice, v.vendorType, v.energizeRep].filter(Boolean).join(' · ') || '—'}</p>
                         {!!v.flags.length && (
                           <div className="flex flex-wrap gap-1 mt-1">
-                            {v.flags.map((f) => (
-                              <FlagPill key={f.key} label={ar ? f.ar : f.en} tone={f.key === 'contract_gap' ? 'danger' : 'warn'} />
-                            ))}
+                            {v.flags.map((k) => {
+                              const l = data?.flagLabels?.[k];
+                              return <FlagPill key={k} label={(ar ? l?.ar : l?.en) || k} tone={k === 'contract_gap' ? 'danger' : 'warn'} />;
+                            })}
                           </div>
                         )}
                       </td>
                       <td className="px-3 py-2">
-                        <ScoreBadge score={v.score} band={ar ? v.bandAr : v.bandEn} color={v.bandColor} size="sm" />
-                        <div className="mt-1"><ScoreBar value={v.score} color={v.bandColor} height={4} /></div>
+                        <ScoreBadge score={v.score} band={bandLabel} color={bandColor} size="sm" />
+                        <div className="mt-1"><ScoreBar value={v.score} color={bandColor} height={4} /></div>
                       </td>
                       <td className="px-3 py-2 text-sm text-slate-700 tabular-nums">
                         {v.loads}
@@ -256,27 +290,33 @@ export default function CrmVendorKpisPage() {
                             <Mini label={tx('Contract date', 'تاريخ العقد')} value={v.contractDate || '—'} />
                           </div>
 
-                          <div className="flex flex-wrap gap-2">
-                            <Check ok={v.checks.hasPapers} label={tx('Papers on file', 'الأوراق متوفرة')} />
-                            <Check ok={v.checks.vendorSigned} label={tx('Vendor signed', 'موقّع من المورد')} />
-                            <Check ok={v.checks.ourSigned} label={tx('We signed', 'موقّع من طرفنا')} />
-                            <Check ok={v.checks.contractDated} label={tx('Contract dated', 'تاريخ العقد مسجّل')} />
-                          </div>
+                          {detailLoading === key && !detail && (
+                            <p className="text-xs text-slate-400">{tx('Loading details…', 'جارٍ تحميل التفاصيل…')}</p>
+                          )}
 
-                          <ScoreBreakdown items={v.breakdown} lang={ar ? 'ar' : 'en'} color={v.bandColor} />
+                          {!!detail && (
+                            <div className="flex flex-wrap gap-2">
+                              <Check ok={detail.checks.hasPapers} label={tx('Papers on file', 'الأوراق متوفرة')} />
+                              <Check ok={detail.checks.vendorSigned} label={tx('Vendor signed', 'موقّع من المورد')} />
+                              <Check ok={detail.checks.ourSigned} label={tx('We signed', 'موقّع من طرفنا')} />
+                              <Check ok={detail.checks.contractDated} label={tx('Contract dated', 'تاريخ العقد مسجّل')} />
+                            </div>
+                          )}
 
-                          {!!v.routes.length && (
+                          {!!detail && <ScoreBreakdown items={detail.breakdown} lang={ar ? 'ar' : 'en'} color={bandColor} />}
+
+                          {!!detail?.routes?.length && (
                             <div>
                               <p className="text-slate-700 text-xs font-semibold mb-1.5">{tx('Routes served in period', 'الخطوط المنفَّذة في الفترة')}</p>
                               <div className="flex flex-wrap gap-1.5">
-                                {v.routes.map((r, i) => (
+                                {detail.routes.map((r, i) => (
                                   <span key={i} className="text-[11px] bg-white border border-slate-200 rounded px-2 py-0.5 text-slate-600">{r}</span>
                                 ))}
                               </div>
                             </div>
                           )}
                           <p className="text-[11px] text-slate-400">
-                            {v.representative && <>{tx('Contact', 'ممثل المورد')}: {v.representative} · </>}
+                            {detail?.representative && <>{tx('Contact', 'ممثل المورد')}: {detail.representative} · </>}
                             {v.mobile && <>{v.mobile} · </>}
                             {v.destinations && <>{tx('Coverage', 'التغطية')}: {v.destinations}</>}
                           </p>

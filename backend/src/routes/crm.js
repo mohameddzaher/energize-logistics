@@ -59,5 +59,10 @@ router.delete('/deals/:id', crm.deleteDeal);
 const crmKpi = require('../controllers/crmKpiController');
 router.get('/kpis/customers', crmKpi.getCustomerKpis); // ?from&to
 router.get('/kpis/vendors', crmKpi.getVendorKpis);     // ?from&to
+// تفصيلُ صفٍّ واحدٍ (تفصيلُ التقييم والعلاماتُ والخطوط) — يُقرأ عند فتح الصفّ
+// وحدَه، فلا تُحمَّل القائمةُ به لثلاثة آلافِ مورّد. والمفتاحُ في الاستعلام لا في
+// المسار: أسماءُ المورّدين عربيّةٌ وفيها ما يحمل «/».
+router.get('/kpis/customers/detail', crmKpi.getCustomerKpiDetail); // ?key&from&to
+router.get('/kpis/vendors/detail', crmKpi.getVendorKpiDetail);     // ?key&from&to
 
 module.exports = router;

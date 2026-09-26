@@ -1554,13 +1554,15 @@
     },
     "/system/crm/customer-kpis": {
       "apis": [
-        "/api/crm/kpis/customers"
+        "/api/crm/kpis/customers",
+        "/api/crm/kpis/customers/detail"
       ],
       "wildcard": false
     },
     "/system/crm/vendor-kpis": {
       "apis": [
-        "/api/crm/kpis/vendors"
+        "/api/crm/kpis/vendors",
+        "/api/crm/kpis/vendors/detail"
       ],
       "wildcard": false
     },

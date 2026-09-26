@@ -21,6 +21,8 @@ import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ScrollX from '@/components/system/ScrollX';
 
 interface Flag { key: string; ar: string; en: string }
+/** تفصيلُ الصفِّ الواحد — لا يُرسَل مع القائمة، يُجلب عند فتحه. */
+interface RowDetail { breakdown: ScoreBreakdownItem[]; flags: Flag[] }
 interface CustomerKpi {
   _id: string; name: string; arabicName: string; type: string; status: string;
   industry: string; city: string; country: string; phone: string; email: string;
@@ -37,14 +39,15 @@ interface CustomerKpi {
   activities: number; openTasks: number;
   lastTouch: string | null; daysSinceLastTouch: number | null;
   prevRevenue: number; revenueGrowthPct: number | null; shipmentGrowthPct: number | null;
-  score: number; band: string; bandAr: string; bandEn: string; bandColor: string;
-  breakdown: ScoreBreakdownItem[];
-  flags: Flag[];
+  score: number; band: string;
+  // مفاتيحُ العلامات فقط — نصُّها في `flagLabels` أعلى الحمولة.
+  flags: string[];
 }
 
 interface Payload {
   period: { from: string; to: string; months: number };
   bands: ScoreBand[];
+  flagLabels: Record<string, { ar: string; en: string }>;
   summary: {
     customers: number; active: number; dormant: number; averageScore: number;
     totalRevenue: number; totalOutstanding: number; totalOverdue: number;
@@ -83,6 +86,26 @@ export default function CrmCustomerKpisPage() {
   const [band, setBand] = useState('');
   const [service, setService] = useState('');
   const [open, setOpen] = useState<string | null>(null);
+  // تفصيلُ التقييم يُجلب عند فتح الصفِّ وحدَه — راجع صفحةَ الموردين.
+  const [details, setDetails] = useState<Record<string, RowDetail>>({});
+  const [detailLoading, setDetailLoading] = useState<string | null>(null);
+  const openRow = useCallback(async (key: string) => {
+    setOpen(key);
+    if (details[key]) return;
+    setDetailLoading(key);
+    try {
+      const d = await api.get<RowDetail>(`/api/crm/kpis/customers/detail?key=${encodeURIComponent(key)}&from=${from}&to=${to}`);
+      setDetails((prev) => ({ ...prev, [key]: d }));
+    } catch { /* الأرقامُ باقيةٌ، والتفصيلُ يُعاد طلبُه */ }
+    setDetailLoading(null);
+  }, [details, from, to]);
+  useEffect(() => { setDetails({}); }, [from, to]);
+
+  // اسمُ التصنيف من قائمة `bands` — يُستعمل في التصدير كما في الجدول.
+  const bandLabelOf = useCallback((k: string) => {
+    const b: any = (data?.bands || []).find((x: any) => x.key === k);
+    return (ar ? b?.ar : b?.en) || k || '';
+  }, [data, ar]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -109,7 +132,7 @@ export default function CrmCustomerKpisPage() {
   const exportColumns: ExportColumn[] = [
     { header: tx('Customer', 'العميل'), key: 'name', width: 30 },
     { header: tx('Score', 'التقييم'), key: 'score', width: 10 },
-    { header: tx('Band', 'التصنيف'), key: ar ? 'bandAr' : 'bandEn', width: 16 },
+    { header: tx('Band', 'التصنيف'), key: 'band', transform: (v: string) => bandLabelOf(v), width: 16 },
     { header: tx('Revenue', 'الإيرادات'), key: 'revenue', transform: (v: number) => v?.toLocaleString(), width: 16 },
     { header: tx('Outstanding', 'المستحق'), key: 'outstanding', transform: (v: number) => v?.toLocaleString(), width: 16 },
     { header: tx('Overdue', 'المتأخر'), key: 'overdueAmount', transform: (v: number) => v?.toLocaleString(), width: 16 },
@@ -207,9 +230,13 @@ export default function CrmCustomerKpisPage() {
             <tbody className="divide-y divide-slate-100">
               {items.map((c) => {
                 const isOpen = open === c._id;
+                const bandDef = (data?.bands || []).find((b: any) => b.key === c.band);
+                const bandColor = (bandDef as any)?.color || '#94a3b8';
+                const bandLabel = ar ? (bandDef as any)?.ar : (bandDef as any)?.en;
+                const detail = details[c._id];
                 return (
                   <Fragment key={c._id}>
-                    <tr className="hover:bg-slate-50 cursor-pointer" onClick={() => setOpen(isOpen ? null : c._id)}>
+                    <tr className="hover:bg-slate-50 cursor-pointer" onClick={() => (isOpen ? setOpen(null) : openRow(c._id))}>
                       <td className="px-3 py-2 text-slate-400">
                         {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4 rtl:rotate-180" />}
                       </td>
@@ -220,15 +247,16 @@ export default function CrmCustomerKpisPage() {
                         </p>
                         {!!c.flags.length && (
                           <div className="flex flex-wrap gap-1 mt-1">
-                            {c.flags.map((f) => (
-                              <FlagPill key={f.key} label={ar ? f.ar : f.en} tone={f.key === 'stopped' || f.key === 'overdue' ? 'danger' : 'warn'} />
-                            ))}
+                            {c.flags.map((k) => {
+                              const l = data?.flagLabels?.[k];
+                              return <FlagPill key={k} label={(ar ? l?.ar : l?.en) || k} tone={k === 'stopped' || k === 'overdue' ? 'danger' : 'warn'} />;
+                            })}
                           </div>
                         )}
                       </td>
                       <td className="px-3 py-2">
-                        <ScoreBadge score={c.score} band={ar ? c.bandAr : c.bandEn} color={c.bandColor} size="sm" />
-                        <div className="mt-1"><ScoreBar value={c.score} color={c.bandColor} height={4} /></div>
+                        <ScoreBadge score={c.score} band={bandLabel} color={bandColor} size="sm" />
+                        <div className="mt-1"><ScoreBar value={c.score} color={bandColor} height={4} /></div>
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1">
@@ -276,7 +304,10 @@ export default function CrmCustomerKpisPage() {
                             <Mini label={tx('Customs', 'تخليص')} value={`${c.customsJobs} (${c.containers})`} />
                             <Mini label={tx('Open deals', 'صفقات مفتوحة')} value={`${c.openDeals} · ${c.openPipeline.toLocaleString()}`} />
                           </div>
-                          <ScoreBreakdown items={c.breakdown} lang={ar ? 'ar' : 'en'} color={c.bandColor} />
+                          {detailLoading === c._id && !detail && (
+                            <p className="text-xs text-slate-400">{tx('Loading details…', 'جارٍ تحميل التفاصيل…')}</p>
+                          )}
+                          {!!detail && <ScoreBreakdown items={detail.breakdown} lang={ar ? 'ar' : 'en'} color={bandColor} />}
                           <p className="text-[11px] text-slate-400">
                             {c.creditTerm != null && <>{tx('Credit term', 'مدة الائتمان')}: {c.creditTerm} {tx('days', 'يوم')} · </>}
                             {c.grade && <>{tx('Grade', 'الفئة')}: {c.grade} · </>}

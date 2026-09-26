@@ -34,12 +34,27 @@ function buildXlsx(aoa, opts = {}) {
       // لا عاملَ: تُبنى هنا (تُبطئ هذا الطلبَ ولا تُسقطه).
       try { return resolve(buildInline(aoa, opts)); } catch (e2) { return reject(e2); }
     }
+    // ── ولا يُترك الوعدُ معلَّقًا ──────────────────────────────────────────
+    // العاملُ قد يموت بلا حدث `error` — نفادُ ذاكرةٍ أو إنهاءُ العمليّة عند
+    // النشر — فيبقى الطلبُ ينتظر إلى الأبد وتبقى معه وظيفةُ التصدير «جارية»
+    // ولا تنتهي. فكلُّ مخرجٍ مُغطًّى: رسالةٌ، أو خطأٌ، أو خروجٌ، أو مهلة.
+    let settled = false;
+    const finish = (fn, arg) => { if (settled) return; settled = true; clearTimeout(timer); fn(arg); };
+    const fallback = (err) => {
+      try { finish(resolve, buildInline(aoa, opts)); } catch (_) { finish(reject, err || new Error('xlsx build failed')); }
+    };
+    const timer = setTimeout(() => {
+      try { worker.terminate(); } catch (_) { /* */ }
+      fallback(new Error('xlsx worker timed out'));
+    }, 10 * 60 * 1000);
+
     worker.once('message', (msg) => {
-      if (msg && msg.ok) resolve(Buffer.from(msg.buf));
-      else reject(new Error((msg && msg.error) || 'xlsx worker failed'));
+      if (msg && msg.ok) finish(resolve, Buffer.from(msg.buf));
+      else fallback(new Error((msg && msg.error) || 'xlsx worker failed'));
     });
-    worker.once('error', (err) => {
-      try { resolve(buildInline(aoa, opts)); } catch (_) { reject(err); }
+    worker.once('error', (err) => fallback(err));
+    worker.once('exit', (code) => {
+      if (!settled) fallback(new Error(`xlsx worker exited (${code})`));
     });
   });
 }

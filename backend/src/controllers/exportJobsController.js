@@ -168,6 +168,23 @@ const shape = (j) => ({
   finishedAt: j.finishedAt,
 });
 
+/**
+ * ── وما قطعه النشرُ يُستأنف ────────────────────────────────────────────────
+ * الوظيفةُ تُبنى في ذاكرة العامل، والنشرُ يعيد تشغيلَه. فطلبٌ بدأ قبل النشر
+ * بثوانٍ يبقى «جاريًا» إلى الأبد ولا يصل صاحبَه شيء (وقع فعلًا في أوّل تجربة).
+ * فتُعاد الجاريةُ إلى الطابور عند الإقلاع، ويُعاد تشغيلُ الطابور.
+ */
+exports.resumeInterrupted = async () => {
+  try {
+    const stuck = await ExportJob.updateMany(
+      { status: 'running' },
+      { $set: { status: 'queued', startedAt: null } },
+    );
+    if (stuck.modifiedCount) console.log(`[export] requeued ${stuck.modifiedCount} interrupted job(s)`);
+    pump().catch(() => { /* السجلُّ يحمل الخطأ */ });
+  } catch (e) { console.error('[export] resume:', e.message); }
+};
+
 /** حذفُ ما انتهت صلاحيّتُه — ملفًّا وسجلًّا. تُنادى من مهامّ الإقلاع. */
 exports.startExportCleanup = () => {
   const sweep = async () => {

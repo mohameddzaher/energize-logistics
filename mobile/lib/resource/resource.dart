@@ -80,6 +80,18 @@ class ResourceConfig {
   /// المستخدمُ في أوّل مئتين ويُقال له «لا نتائج» — وهو قصٌّ صامت.
   final bool serverSearch;
 
+  /// مفتاحُ السجلِّ الكامل في `GET endpoint/:id` — يُضبَط حين تكون القائمةُ مقلَّمة.
+  ///
+  /// ── ولماذا ────────────────────────────────────────────────────────────────
+  /// ورقةُ التحرير تُملأ من صفّ القائمة، و`_save` ترسل **كلَّ** حقولِ النموذج.
+  /// فحقلٌ في النموذج لا يحمله الصفُّ يُرسَل فارغًا فيمحو ما في القاعدة: قيمةُ
+  /// الفاتورة وتاريخُ البيان في التخليص كانا يُمحيان عند كلّ تعديلٍ من الهاتف
+  /// لأنّهما ليسا في القائمة أصلًا. والقوائمُ تُقلَّم أكثرَ كلَّما ثقلت الحمولةُ
+  /// على الشبكة، فتُمحى حقولٌ أخرى بلا أن يُقال.
+  ///
+  /// فمن ضبطها: تُقرأ المعاملةُ كاملةً قبل الملء، والفارغُ فيها فارغٌ حقًّا.
+  final String? editFullKey;
+
   const ResourceConfig({
     required this.arTitle, required this.enTitle, required this.icon,
     required this.endpoint, this.writeEndpoint, required this.listKey,
@@ -88,7 +100,7 @@ class ResourceConfig {
     this.subtitleOf, this.chipsOf,
     this.canCreate = true, this.canEdit = true, this.canDelete = true,
     this.onOpen, this.filterField, this.sortFields = const [], this.rowActions,
-    this.serverSearch = false,
+    this.serverSearch = false, this.editFullKey,
   });
 
   String get title => tr(arTitle, enTitle);
@@ -595,8 +607,13 @@ class _ResourceFormState extends State<_ResourceForm> {
   @override
   void initState() {
     super.initState();
+    _prefill(widget.row);
+    if (isEdit && widget.cfg.editFullKey != null) _loadFull();
+  }
+
+  void _prefill(Map<String, dynamic>? row) {
     for (final f in widget.cfg.fields) {
-      final v = widget.row?[f.name];
+      final v = row?[f.name];
       switch (f.type) {
         case FieldType.checkbox:
           _values[f.name] = v == true;
@@ -613,8 +630,29 @@ class _ResourceFormState extends State<_ResourceForm> {
         case FieldType.date:
           _values[f.name] = v != null ? (v.toString().split('T').first) : '';
         default:
-          _ctrls[f.name] = TextEditingController(text: (v ?? '').toString());
+          // الضابطُ يُعاد استعمالُه حين تُعاد التعبئةُ بالسجلّ الكامل — إنشاءُ
+          // ضابطٍ جديدٍ يترك القديمَ معلَّقًا في الشجرة.
+          final c = _ctrls[f.name];
+          if (c == null) {
+            _ctrls[f.name] = TextEditingController(text: (v ?? '').toString());
+          } else {
+            c.text = (v ?? '').toString();
+          }
       }
+    }
+  }
+
+  /// السجلُّ الكامل قبل التعديل — راجع `editFullKey`: الصفُّ في القائمة مقلَّمٌ،
+  /// والحفظُ يرسل كلَّ حقولِ النموذج، فالملءُ من الصفِّ وحدَه يمحو ما ليس فيه.
+  Future<void> _loadFull() async {
+    try {
+      final d = await Api.instance.get('${widget.cfg.endpoint}/${widget.row!['_id']}');
+      final full = d[widget.cfg.editFullKey!];
+      if (full is Map && mounted) {
+        setState(() => _prefill({...widget.row!, ...Map<String, dynamic>.from(full)}));
+      }
+    } catch (_) {
+      // تعذّرت القراءة: تبقى التعبئةُ من الصفّ — ولا تُمنَع ورقةٌ مفتوحةٌ من العمل.
     }
   }
 

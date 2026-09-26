@@ -704,6 +704,9 @@ final customsCfg = ResourceConfig(
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => CustomsDetailScreen(clearanceId: (r['_id'] ?? '').toString(), ref: (r['refNumber'] ?? '').toString()))),
   arTitle: 'التخليص الجمركي', enTitle: 'Customs Clearance', icon: Icons.directions_boat_outlined,
   endpoint: '/api/customs-clearance', listKey: 'clearances', liveEvent: 'customs:updated',
+  // القائمةُ تحمل ما يُعرَض فقط، والنموذجُ يعدّل حقولًا ليست فيها (قيمةُ الفاتورة،
+  // تاريخُ البيان، الملاحظة) — فتُقرأ المعاملةُ كاملةً قبل التعبئة.
+  editFullKey: 'clearance',
   searchFields: const ['refNumber', 'customerName', 'blNumber', 'declarationNumber', 'exporterCompany', 'city'],
   titleOf: (r) => _s(r, 'refNumber').isNotEmpty ? '${_s(r, 'refNumber')} — ${_s(r, 'customerName')}' : _s(r, 'customerName'),
   subtitleOf: (r) => [
@@ -902,6 +905,8 @@ final shipmentOrdersCustomersCfg = ResourceConfig(
       builder: (_) => CustomerRegistryProfileScreen(customerId: (r['_id'] ?? '').toString()))),
   arTitle: 'سجلّ العملاء', enTitle: 'Customer Register', icon: Icons.people_outline,
   endpoint: '/api/customer-registry', writeEndpoint: '/api/shipment-orders/customers',
+  // الملاحظةُ لا عمودَ لها في السجلّ فلا تُنقَل فيه — وتُقرأ من ملفّ العميل قبل التعديل.
+  editFullKey: 'customer',
   listKey: 'customers', liveEvent: 'shipmentOrders:customers',
   searchFields: const ['name', 'phone', 'email', 'branch'],
   sortFields: const [('sheets', 'الكشوف', 'Sheets'), ('routesCount', 'المسارات', 'Routes')],

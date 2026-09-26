@@ -105,20 +105,69 @@ function pick(body, existing) {
  * فتُذكَر الحقولُ بأسمائها: ما يعرضه الجدول، وما يخرج في إكسل، وما يُبحَث فيه
  * (البحثُ يجري على هذه القائمة نفسِها في الذاكرة — فحقلٌ يسقط من هنا يسقط من
  * البحث بلا أن يُقال).
+ *
+ * ── وما يُبحَث فيه يُقرأ ولا يُرسَل ──────────────────────────────────────────
+ * بقي بعد ذلك ٢٣٠ كيلوبايت لمئتين وإحدى وسبعين معاملة، وثُلثُها حقولٌ لا تُرسَم
+ * في جدولٍ ولا تخرج في إكسل: إنّما تُقرأ ليصحَّ البحثُ عليها (رقمُ الفاتورة،
+ * سابر، البند، الرقمُ القديم، موقعُ التفريغ…). والبحثُ يجري **في الخادم** على
+ * الصفوف المحفوظة في الذاكرة، فلا حاجةَ أن تعبر الشبكةَ إلى الهاتف أصلًا:
+ * تُقرأ من العنقود، وتبقى في الذاكرة المؤقّتة، ويُسقطها `toWire` قبل الإرسال.
+ * فالبحثُ باقٍ كما كان، والحمولةُ تنقص ثلثًا.
  */
-const LIST_FIELDS = [
-  // الجدول
+// ما تقرؤه الشاشتان: جدولُ الويب وأعمدةُ إكسل وسطرُ الهاتف وفلاترُهما.
+const DISPLAY_FIELDS = [
   'refNumber', 'blNumber', 'customerName', 'shippingAgent', 'port', 'stage', 'branch', 'city',
   'containerCount', 'declarationNumber', 'periodYear', 'periodMonth', 'createdAt',
-  'cancelled', 'isCompleted', 'returnDeadline', 'returnFreeDays', 'billing', 'notesLog',
-  'stageDone.containersReturned', 'upcoming', 'expectedDate',
-  // إكسل
-  'costs.total', 'revenue.clearanceFee', 'revenue.totalInvoiced', 'revenue.profit',
-  // البحث (راجع الفلترةَ في الذاكرة أسفلَ الدالّة)
-  'invoiceNumber', 'doNumber', 'exitPermitNumber', 'saberNumber', 'hsCode',
-  'exporterCompany', 'countryOfOrigin', 'legacySerial', 'notes', 'carrierName',
-  'unloadingLocation', 'assignedTo', 'customerParty', 'agentParty',
-].join(' ');
+  'cancelled', 'isCompleted', 'returnDeadline', 'returnFreeDays',
+  'customerParty', 'agentParty',
+  // سطرُ الهاتف يعرض الشركةَ المصدّرة ويبحث فيها (configs.dart · customsCfg).
+  'exporterCompany',
+  // ── وصندوقُ بحثِ الويب يعمل في المتصفّح ────────────────────────────────
+  // شاشةُ الويب لا ترسل `search` إلى الخادم: تُصفّي الصفوفَ التي عندها. فما
+  // يقرؤه صندوقُها لا يكفي أن يكون في القراءة — لا بدّ أن يصل. ورقمُ فاتورة
+  // الوكيل منها، وثمنُه لا شيء (مذكورٌ في صفَّين من مئتين وإحدى وسبعين).
+  'invoiceNumber',
+];
+// تُرسَل بعد انتقاءٍ داخليّ — لا الوثيقةُ الفرعيّة كلُّها (راجع toWire).
+const DISPLAY_NESTED = ['billing.invoiceStatus', 'billing.ourInvoiceNumber', 'stageDone.containersReturned',
+  'costs.total', 'revenue.clearanceFee', 'revenue.totalInvoiced', 'revenue.profit'];
+// تُقرأ للبحث وحدَه ولا تُرسَل. ومَن أضاف حقلًا هنا فليضِفه إلى قائمة البحث أسفل.
+const SEARCH_ONLY = [
+  'doNumber', 'exitPermitNumber', 'saberNumber', 'hsCode',
+  'countryOfOrigin', 'legacySerial', 'notes', 'carrierName', 'unloadingLocation', 'assignedTo',
+];
+const LIST_FIELDS = [...DISPLAY_FIELDS, ...DISPLAY_NESTED, ...SEARCH_ONLY, 'notesLog'].join(' ');
+
+/**
+ * صفُّ القائمة كما يعبر الشبكة.
+ *
+ * ولا يُرسَل فراغ: `"carrierName":""` في مئتين وإحدى وسبعين صفًّا نقلٌ لا يُقرأ،
+ * ومثلُه `"lastNote":null` و`"returnDeadline":""`. وكلُّ قارئٍ لها في الشاشتين
+ * يقرؤها بـ`?.` أو `|| ''` — فالغائبُ والفارغُ عنده سواء. أمّا الصفرُ والـ
+ * `false` فيُرسَلان: «٠ حاوية» رقمٌ يُقرأ، و«غير مقفولة» حالةٌ تُرسَم.
+ */
+function toWire(r) {
+  const out = { _id: r._id };
+  for (const k of DISPLAY_FIELDS) {
+    const v = r[k];
+    if (v !== '' && v !== null && v !== undefined) out[k] = v;
+  }
+  if (r.costs) out.costs = { total: r.costs.total };
+  if (r.revenue) {
+    out.revenue = {
+      clearanceFee: r.revenue.clearanceFee, totalInvoiced: r.revenue.totalInvoiced, profit: r.revenue.profit,
+    };
+  }
+  const billing = {};
+  if (r.billing && r.billing.invoiceStatus) billing.invoiceStatus = r.billing.invoiceStatus;
+  if (r.billing && r.billing.ourInvoiceNumber) billing.ourInvoiceNumber = r.billing.ourInvoiceNumber;
+  if (Object.keys(billing).length) out.billing = billing;
+  // «أُرجعت» علمٌ يُرفع لا حالةٌ تُنقل: الشاشةُ تقرأ `stageDone?.containersReturned`.
+  if (r.stageDone && r.stageDone.containersReturned) out.stageDone = { containersReturned: true };
+  if (r.lastNote) out.lastNote = r.lastNote;
+  out.notesCount = r.notesCount;
+  return out;
+}
 
 exports.getClearances = async (req, res) => {
   try {
@@ -195,7 +244,8 @@ exports.getClearances = async (req, res) => {
       ].some(has));
     }
 
-    res.json({ clearances: list });
+    // والتقليمُ بعد البحث لا قبلَه: البحثُ يقرأ ما لا يُرسَل.
+    res.json({ clearances: list.map(toWire) });
   } catch (error) {
     console.error('getClearances error:', error);
     res.status(500).json({ message: 'Failed to load clearances' });

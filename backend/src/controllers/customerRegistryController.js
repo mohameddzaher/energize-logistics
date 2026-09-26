@@ -79,7 +79,21 @@ async function orderTotals() {
   return by;
 }
 
-/** صفُّ العميل كما يُقرأ في الجدول. */
+/**
+ * صفُّ العميل كما يُقرأ في الجدول.
+ *
+ * ── ولا يُرسَل فراغ ─────────────────────────────────────────────────────────
+ * كان الصفُّ يُكتب بكلّ حقوله دائمًا، فبلغت الحمولةُ ٣١١ كيلوبايت لستّمئةٍ
+ * وإحدى وسبعين عميلًا — وأكثرُ من ثلثها أسماءُ حقولٍ لا قيمةَ فيها:
+ * `"paymentMethod":""` في ٦٦٩ صفًّا، و`"minPrice":null` في ٥٤٣، و`"lastSheetAt":null`
+ * في ٤٤٩. وكلُّ قارئٍ لها — الجدولُ والتصديرُ والفرزُ وشاشةُ الهاتف — يقرؤها
+ * بـ`?? ''` أو `v == null`، فالغائبُ عنده هو الفارغُ نفسُه.
+ *
+ * فيُحذَف الفارغُ والمعدوم، ويبقى **الصفرُ** و`false`: «٠ كشفًا» رقمٌ يُقرأ في
+ * العمود، وبطاقةُ «بلا عمل» تُبنى على `sheets === 0` — فحذفُه يُفرغ الشريحة.
+ */
+const put = (out, k, v) => { if (v !== '' && v !== null && v !== undefined) out[k] = v; };
+
 function shapeRow(c, sheets, orders) {
   const routes = c.routes || [];
   const priced = routes.filter((r) => r.price != null && r.price > 0);
@@ -89,34 +103,36 @@ function shapeRow(c, sheets, orders) {
   const s = sheets || {};
   const o = orders || {};
   const lastRoute = routes.reduce((a, b) => ((a?.at || 0) > (b?.at || 0) ? a : b), null);
-  return {
+  const out = {
     _id: String(c._id),
     name: c.name,
-    phone: c.phone || '',
-    email: c.email || '',
-    notes: c.notes || '',
     isActive: c.isActive !== false,
     routesCount: routes.length,
     pricedRoutes: priced.length,
     unpricedRoutes: routes.length - priced.length,
     citiesCount: cities.size,
-    minPrice: prices.length ? Math.min(...prices) : null,
-    maxPrice: prices.length ? Math.max(...prices) : null,
-    avgPrice: prices.length ? r2(prices.reduce((x, y) => x + y, 0) / prices.length) : null,
-    lastPriceAt: lastRoute?.at || null,
     sheets: s.sheets || 0,
     purchaseTotal: r2(s.purchase || 0),
-    firstSheetAt: s.first || null,
-    lastSheetAt: s.last || null,
     orders: o.orders || 0,
-    lastOrderAt: o.last || null,
-    // التفضيلاتُ المعتمدة تُقرأ في الجدول أيضًا: من يملأ شحنةً يريد أن يعرف
-    // أنّ لهذا العميل نوعَ شاحنةٍ وطريقةَ دفعٍ متّفقًا عليهما.
-    truckType: c.defaults?.truckType || '',
-    cargoType: c.defaults?.cargoType || '',
-    paymentMethod: c.defaults?.paymentMethod || '',
-    branch: c.defaults?.branch || '',
   };
+  put(out, 'phone', c.phone);
+  put(out, 'email', c.email);
+  put(out, 'minPrice', prices.length ? Math.min(...prices) : null);
+  put(out, 'maxPrice', prices.length ? Math.max(...prices) : null);
+  put(out, 'avgPrice', prices.length ? r2(prices.reduce((x, y) => x + y, 0) / prices.length) : null);
+  put(out, 'lastPriceAt', lastRoute?.at || null);
+  put(out, 'firstSheetAt', s.first || null);
+  put(out, 'lastSheetAt', s.last || null);
+  // `notes` و`lastOrderAt` لا يُرسَلان: لا عمودَ لهما في الجدول ولا في التصدير
+  // (`REGISTRY_COLS` في lib/customerRegistry.ts). والملاحظاتُ تُقرأ وتُكتب في
+  // ملفّ العميل — `/api/customer-registry/:id` — لا في السجلّ.
+  // التفضيلاتُ المعتمدة تُقرأ في الجدول أيضًا: من يملأ شحنةً يريد أن يعرف
+  // أنّ لهذا العميل نوعَ شاحنةٍ وطريقةَ دفعٍ متّفقًا عليهما.
+  put(out, 'truckType', c.defaults?.truckType);
+  put(out, 'cargoType', c.defaults?.cargoType);
+  put(out, 'paymentMethod', c.defaults?.paymentMethod);
+  put(out, 'branch', c.defaults?.branch);
+  return out;
 }
 
 // GET /api/customer-registry — الجدول كلُّه بأرقامه (الفلترةُ والفرزُ في الشاشة).
@@ -124,7 +140,7 @@ exports.list = async (req, res) => {
   try {
     const body = await cache.wrapStale('so:registry:customers:full', TTL, 15 * 60 * 1000, async () => {
       const [customers, sheets, orders] = await Promise.all([
-        ShipmentOrderCustomer.find({}).select('name phone email notes routes defaults isActive').lean(),
+        ShipmentOrderCustomer.find({}).select('name phone email routes defaults isActive').lean(),
         sheetTotals(),
         orderTotals(),
       ]);

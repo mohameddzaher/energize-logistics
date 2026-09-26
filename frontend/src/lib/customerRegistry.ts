@@ -4,32 +4,37 @@
 // كلٍّ منهما افترقا بعد شهر: عمودٌ يُضاف هنا ولا يُضاف هناك، ومن يقرأ الرقمين
 // يظنّهما رقمين مختلفين. فالمصدرُ واحد.
 
+/**
+ * صفُّ السجلّ.
+ *
+ * والفارغُ لا يصل: الخادمُ يحذف الحقلَ الذي لا قيمةَ فيه بدل أن يرسله `""` أو
+ * `null` ستّمئةَ مرّة (راجع shapeRow) — فكلُّ ما قد يفرغ اختياريٌّ هنا، و`cellOf`
+ * يقرؤه كما كان. أمّا الصفرُ فيصل: «٠ كشفًا» رقمٌ يُقرأ وشريحةٌ تُبنى عليه.
+ */
 export interface RegistryRow {
   _id: string;
   name: string;
-  phone: string;
-  email: string;
-  notes: string;
+  phone?: string;
+  email?: string;
   isActive: boolean;
   routesCount: number;
   pricedRoutes: number;
   unpricedRoutes: number;
   citiesCount: number;
-  minPrice: number | null;
-  maxPrice: number | null;
-  avgPrice: number | null;
-  lastPriceAt: string | null;
+  minPrice?: number | null;
+  maxPrice?: number | null;
+  avgPrice?: number | null;
+  lastPriceAt?: string | null;
   sheets: number;
   /** غائبٌ لمن لا يرى المال — لا يُرسَم «undefined»، يُخفى العمود. */
   purchaseTotal?: number;
-  firstSheetAt: string | null;
-  lastSheetAt: string | null;
+  firstSheetAt?: string | null;
+  lastSheetAt?: string | null;
   orders: number;
-  lastOrderAt: string | null;
-  truckType: string;
-  cargoType: string;
-  paymentMethod: string;
-  branch: string;
+  truckType?: string;
+  cargoType?: string;
+  paymentMethod?: string;
+  branch?: string;
 }
 
 export interface RegistrySummary {

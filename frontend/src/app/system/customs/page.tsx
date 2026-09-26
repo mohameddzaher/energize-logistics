@@ -20,6 +20,14 @@ import DateRangeFilter from '@/components/system/DateRangeFilter';
 import { SlidersHorizontal } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
 
+/**
+ * صفُّ الجدول — وهو أقلُّ من المعاملة.
+ *
+ * الخادمُ يرسل ما تقرؤه هذه الشاشةُ وحدَه (راجع `DISPLAY_FIELDS` في
+ * customsClearanceController): فما لا عمودَ له ولا خانةَ في إكسل لا يصل، وما
+ * كان فارغًا يُحذف حقلُه بدل إرساله `""`. والمعاملةُ كاملةً تُقرأ من
+ * `/api/customs-clearance/:id` — وهو ما تفعله نافذةُ الملاحظات أدناه.
+ */
 interface Clearance {
   _id: string;
   refNumber: string;
@@ -30,10 +38,10 @@ interface Clearance {
   blNumber?: string;
   customerName?: string;
   shippingAgent?: string;
-  invoiceNumber?: string;
   port?: string;
+  /** يقرؤه صندوقُ البحث في المتصفّح — لا عمودَ له (راجع DISPLAY_FIELDS). */
+  invoiceNumber?: string;
   containerCount?: number;
-  assignedTo?: string;
   createdAt: string;
   periodMonth?: number;
   periodYear?: number;
@@ -43,14 +51,11 @@ interface Clearance {
   returnDeadline?: string;
   returnFreeDays?: number;
   stageDone?: Record<string, boolean>;
-  stageDates?: Record<string, string>;
   revenue?: { totalInvoiced?: number; clearanceFee?: number; profit?: number };
   billing?: { invoiceStatus?: string; ourInvoiceNumber?: string };
   // آخرُ ملاحظةٍ فقط تصل مع الجدول — والسجلُّ داخل المعاملة.
   lastNote?: { text: string; byName?: string; at?: string } | null;
   notesCount?: number;
-  notesLog?: any[];
-  notes?: string;
 }
 
 const MONTH_LABELS: [string, string][] = [
@@ -154,6 +159,17 @@ export default function CustomsPage() {
   useSocket('customs:deleted', useCallback(() => fetchList(), [fetchList]));
   useSocket('customs:created', useCallback(() => fetchAlerts(), [fetchAlerts]));
   useSocket('customs:updated', useCallback(() => fetchAlerts(), [fetchAlerts]));
+
+  // ── ونافذةُ الملاحظات تقرأ المعاملة ────────────────────────────────────
+  // سجلُّ الملاحظات والملاحظةُ القديمة ليسا في صفّ الجدول — الجدولُ يعرض
+  // الأخيرةَ وعددَها. فكانت النافذةُ تُفتح على سجلٍّ فارغٍ وإن كان للمعاملة
+  // عشرُ ملاحظات. فتُقرأ المعاملةُ عند الفتح، والصفُّ يظهر في الحال.
+  const openNotes = useCallback(async (c: Clearance) => {
+    setNoteFor(c);
+    const d = await api.get<any>(`/api/customs-clearance/${c._id}`).catch(() => null);
+    // ولا تُعاد فتحُ ما أُغلق: القارئُ قد يُغلق قبل وصول الجواب.
+    if (d?.clearance) setNoteFor((cur: any) => (cur && cur._id === c._id ? d.clearance : cur));
+  }, []);
 
   const openCreate = (upcoming = false) => {
     setCreatingUpcoming(upcoming);
@@ -470,7 +486,7 @@ export default function CustomsPage() {
                       عمودٌ يقول آخرَ ما قيل عن المعاملة بلا فتحها، وزرٌّ يكتب
                       ملاحظةً جديدة في مكانها. والسجلُّ كلُّه داخل المعاملة. */}
                   <td className="px-4 py-3 max-w-[280px]" onClick={(e) => e.stopPropagation()}>
-                    <button type="button" onClick={() => setNoteFor(c)} disabled={!canEdit}
+                    <button type="button" onClick={() => openNotes(c)} disabled={!canEdit}
                       title={canEdit ? (ar ? 'اضغط لإضافة ملاحظة' : 'Click to add a note') : ''}
                       className="w-full text-start group/note disabled:cursor-default">
                       {c.lastNote?.text ? (

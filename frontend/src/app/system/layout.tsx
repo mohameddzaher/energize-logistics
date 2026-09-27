@@ -473,6 +473,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/ls2/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Location Solutions' },
     // B2C
     { href: '/system/b2c/dashboard', label: L.b2cDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
+    // تحليلُ الأوردرات: ما كان في اللوحة — نُقل إلى صفحته، واللوحةُ صارت
+    // الصورةَ الكاملةَ للقسم (ناسٌ ومركباتٌ وسكنٌ) لا تقريرَ طلباتٍ وحدَه.
+    { href: '/system/b2c/orders-analysis', label: L.b2cOrdersAnalysis, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/reps-performance', label: L.b2cRepsPerformance, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/daily-entry', label: L.b2cDailyEntry, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     // ── تفقّد بداية الدوام ─────────────────────────────────────────────

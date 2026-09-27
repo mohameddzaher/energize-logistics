@@ -48,6 +48,7 @@ const layout = {
     b2cRepsPerformance: 'Reps Performance',
     // «مناديب المبيعات» استُبدلت بسجلّ القسم كلِّه — المفتاحُ يبقى لبياناتٍ قديمة.
     b2cReps: 'Sales Reps',
+    b2cOrdersAnalysis: 'Orders Analysis',
     b2cLightTransport: 'Light-transport Employees',
     b2cOrders: 'Operating Orders',
     b2cSettings: 'Section Settings',
@@ -232,6 +233,7 @@ const layout = {
     b2cDashboard: 'لوحة B2C',
     b2cRepsPerformance: 'أداء المناديب',
     b2cReps: 'مناديب المبيعات',
+    b2cOrdersAnalysis: 'تحليل الأوردرات',
     b2cLightTransport: 'موظفون النقل الخفيف',
     b2cOrders: 'أوامر التشغيل',
     b2cSettings: 'إعدادات القسم',

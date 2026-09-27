@@ -462,9 +462,24 @@ async function light(p, user) {
   const byPm = new Map(periodByPm.map((x) => [String(x._id), x]));
   const pms = managers?.managers || [];
   void User;
+  /**
+   * ── والمشروعُ يُقرأ من سجلّ النقل الخفيف ──────────────────────────────────
+   * كان يُقرأ من `departmentAr` على المركبة، وهي خانةٌ فارغةٌ في ثمانٍ وثلاثين
+   * مركبةً من مئةٍ وإحدى وخمسين ومكتوبةٌ بصياغةٍ أخرى في الباقي («صيانه» مقابل
+   * «صيانة»). فيصير في الجدول سطرٌ اسمُه «غير محدد» فيه ثمانٍ وثلاثون مركبةً
+   * ومشروعٌ واحدٌ مقسومٌ على سطرين.
+   *
+   * والإسنادُ التشغيليُّ مكتوبٌ في سجلّ القسم (أمرُ التشغيل يكتبه)، وهو الأصدق:
+   * فيُقرأ منه بمفتاح المركبة، وتبقى خانةُ المركبة بديلًا لما لا سجلَّ له.
+   */
+  const { LightTransportEmployee } = require('../models/LightTransport');
+  const ltRows = await LightTransportEmployee.find({ vehicle: { $ne: null }, isActive: { $ne: false } })
+    .select('vehicle projectAr cityAr').lean();
+  const projectByVehicle = new Map(ltRows.map((r) => [String(r.vehicle), r.projectAr]).filter(([, v]) => !!v));
+
   const byProject = new Map();
   for (const b of bikes) {
-    const k = b.departmentAr || 'غير محدد';
+    const k = projectByVehicle.get(String(b._id)) || b.departmentAr || 'غير محدد';
     const cur = byProject.get(k) || { project: k, vehicles: 0, premium: 0, noPremium: 0 };
     cur.vehicles += 1;
     if (b.insurance?.premiumSar != null) cur.premium += Number(b.insurance.premiumSar) || 0; else cur.noPremium += 1;

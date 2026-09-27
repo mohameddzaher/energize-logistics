@@ -28,6 +28,29 @@ const emit = (event, payload = {}) => {
 const S = (v) => String(v == null ? '' : v).trim();
 const byName = (u) => [u?.firstName, u?.lastName].filter(Boolean).join(' ');
 
+
+/**
+ * ── مفردتان لنوعِ المركبة الواحد ────────────────────────────────────────────
+ * سجلُّ المركبات يكتب «دراجة آلية» (نوعُ التسجيل الرسميّ) وشيتُ القسم يكتب
+ * «دراجة نارية». وهما شيءٌ واحد. فالفلترُ على إحداهما كان يردّ صفرًا من الجهة
+ * الأخرى: «الدراجات» تُظهر مئةً وخمسًا وتسعين مركبةً وصفرَ موظّف.
+ *
+ * والنوعُ يخصّ المركبةَ لا الإنسان، فيُقرأ من سجلّ المركبات متى كانت مربوطةً،
+ * وتبقى خانةُ الموظّف لمن لا مركبةَ له في السجلّ. وهذا الجدولُ يجمع المفردتين
+ * كي يُفلتَر بأيٍّ منهما.
+ */
+const TYPE_ALIASES = [
+  ['دراجة آلية', 'دراجة نارية', 'دراجه ناريه', 'دراجة'],
+  ['خاص', 'كيا', 'كيا بيجاز', 'فان'],
+];
+const typeKey = (v) => {
+  const x = S(v).replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/\s+/g, '');
+  for (const group of TYPE_ALIASES) {
+    if (group.some((g) => S(g).replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/\s+/g, '') === x)) return group[0];
+  }
+  return S(v);
+};
+
 /** حالةُ التوظيف من الموارد البشريّة بلغة هذا القسم. */
 const HR_STATUS_AR = { terminated: 'إنهاء خدمة', suspended: 'متوقف', active: '', on_leave: 'إجازة' };
 
@@ -46,6 +69,8 @@ const shownStatus = (row) => {
 const decorate = (row) => ({
   ...row,
   workStatusShown: shownStatus(row),
+  // نوعُ المركبة من سجلّها متى كانت مربوطةً — وهو مكتوبٌ هناك رسميًّا.
+  vehicleTypeShown: (row.vehicle && typeof row.vehicle === 'object' ? row.vehicle.registrationTypeAr : '') || row.vehicleTypeAr || '',
   // ومن أين جاء الخبر — فلا يُسأل «مين غيّر الحالة؟».
   statusSource: (() => {
     const hr = row.employee && typeof row.employee === 'object' ? row.employee.employmentStatus : null;
@@ -69,7 +94,7 @@ exports.listEmployees = async (req, res) => {
     const filter = {};
     if (q.active !== 'all') filter.isActive = { $ne: false };
     for (const [key, field] of [['project', 'projectAr'], ['city', 'cityAr'], ['jobTitle', 'jobTitleAr'],
-      ['contractType', 'contractTypeAr'], ['register', 'registerNumber'], ['vehicleType', 'vehicleTypeAr'],
+      ['contractType', 'contractTypeAr'], ['register', 'registerNumber'],
       ['supervisor', 'supervisorName'], ['staffKind', 'staffKind']]) {
       if (S(q[key])) filter[field] = S(q[key]);
     }
@@ -94,8 +119,9 @@ exports.listEmployees = async (req, res) => {
     let rows = await LightTransportEmployee.find(filter)
       .populate(LIST_POPULATE).sort({ name: 1 }).lean();
     rows = rows.map(decorate);
-    // الحالةُ تُفلتَر بعد الاشتقاق: هي مركّبةٌ من خانتين في سجلَّين.
+    // الحالةُ ونوعُ المركبة يُفلتَران بعد الاشتقاق: كلٌّ منهما مركّبٌ من سجلَّين.
     if (S(q.status)) rows = rows.filter((r) => r.workStatusShown === S(q.status));
+    if (S(q.vehicleType)) rows = rows.filter((r) => typeKey(r.vehicleTypeShown) === typeKey(q.vehicleType));
 
     res.json({ employees: rows, totals: totalsOf(rows), options: await optionsOf() });
   } catch (e) {
@@ -132,7 +158,7 @@ const totalsOf = (rows) => {
     byJob: group((r) => r.jobTitleAr),
     byContract: group((r) => r.contractTypeAr),
     byRegister: group((r) => r.registerNumber),
-    byVehicleType: group((r) => r.vehicleTypeAr),
+    byVehicleType: group((r) => r.vehicleTypeShown),
     bySupervisor: group((r) => r.supervisorName),
     byStatus: group((r) => r.workStatusShown),
   };
@@ -149,7 +175,15 @@ const optionsOf = async () => cache.wrap('lt:options', 60 * 1000, async () => {
     LightTransportEmployee.distinct('jobTitleAr'),
     LightTransportEmployee.distinct('contractTypeAr'),
     LightTransportEmployee.distinct('registerNumber'),
-    LightTransportEmployee.distinct('vehicleTypeAr'),
+    // الأنواعُ من السجلَّين: خانةُ الموظّف ونوعُ التسجيل في سجلّ المركبات، مطويّةً
+    // بمفردةٍ واحدة — وإلّا عُرض «دراجة نارية» و«دراجة آلية» خيارين لشيءٍ واحد.
+    (async () => {
+      const [a, b] = await Promise.all([
+        LightTransportEmployee.distinct('vehicleTypeAr'),
+        VehicleMaster.distinct('registrationTypeAr', { sectorAr: 'النقل الخفيف' }),
+      ]);
+      return [...new Set([...a, ...b].filter(Boolean).map(typeKey))];
+    })(),
     LightTransportEmployee.distinct('supervisorName'),
     LightTransportHousing.find({ isActive: { $ne: false } }).select('name').lean(),
   ]);
@@ -161,6 +195,122 @@ const optionsOf = async () => cache.wrap('lt:options', 60 * 1000, async () => {
     housing: housings.map((h) => ({ _id: String(h._id), name: h.name })),
   };
 });
+
+
+/**
+ * ── لوحةُ القسم: سؤالٌ واحدٌ لا عشرة ────────────────────────────────────────
+ * اللوحةُ تُقرأ في نداءٍ واحد: الموظّفون والمركباتُ والسكنُ معًا. وعشرةُ نداءاتٍ
+ * متتالية تعني عشرةَ دوراتٍ على القاعدة وشاشةً تُبنى على مراحل.
+ *
+ * وكلُّ الأعداد تُحسَب على **ما بعد الفلترة**، فالكارتُ والجدولُ لا يختلفان: من
+ * فلتر على مشروعٍ ثمّ قرأ «على الكفالة ٩» يجد التسعةَ أنفسَهم في القائمة.
+ *
+ * والمركباتُ تُعَدّ من سجلّ المركبات لا من صفوف الموظّفين: مركبةٌ لا راكبَ لها
+ * لا تظهر في صفوفهم، وهي أوّلُ ما يُسأل عنه («كام مركبة واقفة؟»).
+ */
+exports.overview = async (req, res) => {
+  try {
+    const q = req.query || {};
+    const filter = { isActive: { $ne: false } };
+    for (const [key, field] of [['project', 'projectAr'], ['city', 'cityAr'], ['jobTitle', 'jobTitleAr'],
+      ['contractType', 'contractTypeAr'], ['register', 'registerNumber'],
+      ['supervisor', 'supervisorName'], ['staffKind', 'staffKind']]) {
+      if (S(q[key])) filter[field] = S(q[key]);
+    }
+    if (S(q.housing)) filter.housing = S(q.housing) === 'none' ? null : S(q.housing);
+    if (q.hasVehicle === 'yes') filter.vehicle = { $ne: null };
+    if (q.hasVehicle === 'no') filter.vehicle = null;
+    if (S(q.hiredFrom) || S(q.hiredTo)) {
+      filter.hireDate = {};
+      if (S(q.hiredFrom)) filter.hireDate.$gte = new Date(S(q.hiredFrom));
+      if (S(q.hiredTo)) filter.hireDate.$lte = new Date(`${S(q.hiredTo)}T23:59:59.999Z`);
+    }
+
+    const [rawRows, allRidden, housing, vehicles, orders] = await Promise.all([
+      LightTransportEmployee.find(filter).populate(LIST_POPULATE).lean(),
+      // ── «واقفة» تُقاس على السجلّ كلِّه لا على المفلتَر ────────────────────
+      // لو حُسبت من الصفوف المفلترة لقال الفلترُ على مشروعٍ إنّ مئةً وأربعين
+      // مركبةً واقفة — وهي تعمل، لكن راكبَها ليس في هذا المشروع. والسؤالُ
+      // «كم مركبةً واقفة؟» جوابُه واحدٌ لا يتغيّر بما أُظهِر على الشاشة.
+      LightTransportEmployee.find({ isActive: { $ne: false }, vehicle: { $ne: null } })
+        .select('vehicle projectAr cityAr').lean(),
+      LightTransportHousing.find({ isActive: { $ne: false } }).lean(),
+      // قطاعُ النقل الخفيف في سجلّ المركبات — هو مصدرُ عددِ المركبات.
+      VehicleMaster.find({ sectorAr: 'النقل الخفيف', isActive: { $ne: false } })
+        .select('plateNumber registrationTypeAr departmentAr serviceStatusAr serviceStatusCode').lean(),
+      LightTransportOrder.find({ status: 'active' }).select('vehicle ltEmployee').lean(),
+    ]);
+    let rows = rawRows.map(decorate);
+    if (S(q.status)) rows = rows.filter((r) => r.workStatusShown === S(q.status));
+    if (S(q.vehicleType)) rows = rows.filter((r) => typeKey(r.vehicleTypeShown) === typeKey(q.vehicleType));
+
+    // ── المركبات ──────────────────────────────────────────────────────────
+    const ridden = new Set(allRidden.map((r) => String(r.vehicle)));
+    const onOrder = new Set(orders.map((o) => String(o.vehicle || '')));
+    // المشروعُ والفرعُ من سجلّ القسم كلِّه — خانةُ المركبة فارغةٌ في ثمانٍ
+    // وثلاثين منها ومكتوبةٌ بصياغةٍ أخرى في غيرها، فلا تُقرأ إلّا بديلًا.
+    const ltProjectByVehicle = new Map(allRidden.map((r) => [String(r.vehicle), r.projectAr]).filter(([, p]) => !!p));
+    const ltCityByVehicle = new Map(allRidden.map((r) => [String(r.vehicle), r.cityAr]).filter(([, p]) => !!p));
+
+    /**
+     * والفلترُ يمسّ المركباتَ أيضًا، لا الموظّفين وحدَهم: «كم دراجةً في مشروع
+     * كيتا؟» سؤالٌ عن المركبات. فما يخصّ المركبةَ من الفلاتر يُطبَّق عليها —
+     * المشروعُ والفرعُ ونوعُ المركبة — وما يخصّ الإنسانَ وحدَه لا يُطبَّق.
+     */
+    const vShown = vehicles.filter((v) => {
+      const id = String(v._id);
+      if (S(q.project) && (ltProjectByVehicle.get(id) || v.departmentAr) !== S(q.project)) return false;
+      if (S(q.city) && ltCityByVehicle.get(id) && ltCityByVehicle.get(id) !== S(q.city)) return false;
+      if (S(q.vehicleType) && typeKey(v.registrationTypeAr) !== typeKey(q.vehicleType)) return false;
+      if (q.hasVehicle === 'no') return !ridden.has(id);
+      return true;
+    });
+    const vGroup = (fn) => {
+      const o = {};
+      for (const v of vShown) { const k = fn(v) || '—'; o[k] = (o[k] || 0) + 1; }
+      return o;
+    };
+
+    const housedIn = {};
+    for (const r of rows) { if (r.housing) { const k = String(r.housing._id); housedIn[k] = (housedIn[k] || 0) + 1; } }
+    const roomOcc = {};
+    for (const r of rows) {
+      if (r.housing && r.housingRoom) { const k = `${String(r.housing._id)}|${r.housingRoom}`; roomOcc[k] = (roomOcc[k] || 0) + 1; }
+    }
+
+    res.json({
+      employees: totalsOf(rows),
+      vehicles: {
+        total: vShown.length,
+        // وإجماليُّ القطاع يبقى معروضًا كي يُعرَف أنّ المعروضَ جزءٌ منه.
+        totalAll: vehicles.length,
+        withRider: vShown.filter((v) => ridden.has(String(v._id))).length,
+        idle: vShown.filter((v) => !ridden.has(String(v._id))).length,
+        onActiveOrder: vShown.filter((v) => onOrder.has(String(v._id))).length,
+        byType: vGroup((v) => v.registrationTypeAr),
+        byProject: vGroup((v) => ltProjectByVehicle.get(String(v._id)) || v.departmentAr),
+        byServiceStatus: vGroup((v) => v.serviceStatusAr),
+      },
+      housing: housing.map((h) => {
+        const cap = (h.rooms || []).reduce((n, r) => n + (Number(r.capacity) || 0), 0) || Number(h.declaredCapacity) || 0;
+        const occupied = housedIn[String(h._id)] || 0;
+        return {
+          _id: String(h._id), name: h.name, cityAr: h.cityAr,
+          capacity: cap, occupied, free: Math.max(0, cap - occupied),
+          rooms: (h.rooms || []).map((r) => {
+            const o = roomOcc[`${String(h._id)}|${r.name}`] || 0;
+            return { name: r.name, kind: r.kind, capacity: r.capacity, occupied: o, free: Math.max(0, (Number(r.capacity) || 0) - o) };
+          }),
+        };
+      }),
+      orders: { active: orders.length },
+      options: await optionsOf(),
+    });
+  } catch (e) {
+    console.error('lt overview:', e);
+    res.status(500).json({ message: 'تعذّر تحميل لوحة القسم' });
+  }
+};
 
 // ── ملفُّ موظّفٍ واحد ───────────────────────────────────────────────────────
 exports.getEmployee = async (req, res) => {

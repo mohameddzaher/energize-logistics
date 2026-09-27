@@ -1190,6 +1190,13 @@
     },
     "/system/b2c/dashboard": {
       "apis": [
+        "/api/light-transport",
+        "/api/light-transport/overview"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/orders-analysis": {
+      "apis": [
         "/api/b2c/dashboard",
         "/api/b2c/day-details",
         "/api/b2c/evaluations",

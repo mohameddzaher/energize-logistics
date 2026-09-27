@@ -926,6 +926,12 @@
       "en": "B2C Dashboard"
     },
     {
+      "key": "/system/b2c/orders-analysis",
+      "section": "B2C",
+      "ar": "تحليل الأوردرات",
+      "en": "Orders Analysis"
+    },
+    {
       "key": "/system/b2c/reps-performance",
       "section": "B2C",
       "ar": "أداء المناديب",

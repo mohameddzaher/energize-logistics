@@ -16,8 +16,8 @@
  * ومشرفُه ومركبتُه وسجلُّ كفالته وسكنُه. والإنسانُ نفسُه في الموارد البشريّة
  * والمركبةُ في سجلّ المركبات — راجع تعليقَ backend/models/LightTransport.
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -43,7 +43,7 @@ const EMPTY_TOTALS = {
   byVehicleType: {}, bySupervisor: {}, byStatus: {},
 } as LTTotals;
 
-export default function LightTransportEmployeesPage() {
+function LightTransportEmployeesInner() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -64,7 +64,20 @@ export default function LightTransportEmployeesPage() {
   // الكاردات تُحسَب على ما بعد الفلترة — فما يُقرأ في الكارد هو ما في الجدول.
   const [q, setQ] = useState('');
   const [dq, setDq] = useState('');
-  const [f, setF] = useState<Record<string, string>>({});
+  /**
+   * ── والفلترُ يُورَث من اللوحة ───────────────────────────────────────────
+   * «أعرف أنّهم تسعة — أريد التسعةَ أنفسَهم»: زرُّ اللوحة ينقل فلترَه في الرابط،
+   * فتُفتَح القائمةُ على الجواب نفسِه لا على كلّ القسم. ويُقرأ مرّةً عند الفتح
+   * ثمّ تُمسك الشاشةُ حالتَها — وإلّا أعاد الرابطُ كتابةَ ما يغيّره المستخدم.
+   */
+  const sp = useSearchParams();
+  const [f, setF] = useState<Record<string, string>>(() => {
+    const keys = ['project', 'city', 'jobTitle', 'contractType', 'register', 'vehicleType',
+      'supervisor', 'staffKind', 'status', 'housing', 'hasVehicle', 'hiredFrom', 'hiredTo'];
+    const init: Record<string, string> = {};
+    for (const k of keys) { const v = sp?.get(k); if (v) init[k] = v; }
+    return init;
+  });
   const setFilter = (k: string, v: string) => setF((p) => ({ ...p, [k]: p[k] === v ? '' : v }));
   const clearFilters = () => { setF({}); setQ(''); setDq(''); };
   const activeCount = Object.values(f).filter(Boolean).length + (dq ? 1 : 0);
@@ -404,4 +417,8 @@ export default function LightTransportEmployeesPage() {
       )}
     </div>
   );
+}
+
+export default function Page() {
+  return <Suspense fallback={<Spinner />}><LightTransportEmployeesInner /></Suspense>;
 }

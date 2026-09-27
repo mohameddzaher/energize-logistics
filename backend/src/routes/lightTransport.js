@@ -14,6 +14,8 @@ const authorize = require('../middleware/rbac');
 // نفسِها (هي تقرأ `req.sectionAccess`) — راجع middleware/sectionGate.
 const EDIT = ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead', 'it_manager'];
 
+// لوحةُ القسم — نداءٌ واحدٌ يحسب الموظّفين والمركبات والسكن معًا.
+router.get('/overview', c.overview);
 router.get('/employees', c.listEmployees);
 router.get('/employees/:id', c.getEmployee);
 router.post('/employees', authorize(...EDIT), c.createEmployee);

@@ -58,9 +58,58 @@ export const homeRouteForRole = (role?: string | null) =>
   (role && ROLE_HOME_ROUTES[role]) || '/system/hr/me';
 
 /**
+ * ── وأوّلُ قسمٍ مُنح لهذا المستخدم ──────────────────────────────────────────
+ * الخريطةُ فوق مكتوبةٌ بأسماء الأدوار، فالدورُ المُصنَّع من شاشة الصلاحيّات ليس
+ * فيها ويسقط على «ملفّي». فمن أنشأ دورًا ومنحه «العمليات: تعديل» يرى صاحبَه
+ * يدخل على صفحة بياناته الشخصيّة ويستنتج أنّ المنحَ لم يُحفَظ.
+ *
+ * فإن لم يكن للدور بيتٌ مكتوب، يُقرأ ما مُنح فعلًا: أوّلُ قسمٍ له فيه وصولٌ
+ * بترتيب هذه القائمة. والترتيبُ مقصود — الأقسامُ التشغيليّةُ أوّلًا، لأنّها ما
+ * يُفتَح في الصباح.
+ */
+const SECTION_HOME: [string, string][] = [
+  ['Operations', ROLE_HOME_ROUTES.operations_manager],
+  ['Collections', ROLE_HOME_ROUTES.collections_manager],
+  ['Operations Platform', ROLE_HOME_ROUTES.ops_platform_manager],
+  ['Shipment Orders', ROLE_HOME_ROUTES.shipment_orders_manager],
+  ['Fleet Management', ROLE_HOME_ROUTES.fleet_manager],
+  ['Customs', ROLE_HOME_ROUTES.customs_manager],
+  ['Vehicles', ROLE_HOME_ROUTES.vehicles_manager],
+  ['Location Solutions', ROLE_HOME_ROUTES.location_manager],
+  ['Contracts', ROLE_HOME_ROUTES.contracts_manager],
+  ['Administration', ROLE_HOME_ROUTES.administration_manager],
+  ['B2C', ROLE_HOME_ROUTES.b2c_manager],
+  ['CRM', ROLE_HOME_ROUTES.crm_manager],
+  ['Sales', ROLE_HOME_ROUTES.sales_manager],
+  ['Marketing', ROLE_HOME_ROUTES.marketing_manager],
+  ['Business Development', ROLE_HOME_ROUTES.bd_manager],
+  ['Procurement', ROLE_HOME_ROUTES.procurement_manager],
+  ['Accounting', ROLE_HOME_ROUTES.accounting_manager],
+  ['HR', ROLE_HOME_ROUTES.hr_manager],
+  ['Remote', ROLE_HOME_ROUTES.remote_manager],
+  ['Software & IT', ROLE_HOME_ROUTES.it_manager],
+].filter(([, href]) => !!href) as [string, string][];
+
+const firstGrantedHome = (perms?: Record<string, string> | null): string | null => {
+  if (!perms) return null;
+  for (const [section, href] of SECTION_HOME) {
+    const a = perms[section];
+    if (a === 'edit' || a === 'view') return href;
+  }
+  return null;
+};
+
+/**
  * أوّلُ صفحةٍ يفتحها المستخدم: صفحةُ الدخول المضبوطة لدوره من شاشة الصلاحيّات،
  * وإلّا الافتراضيُّ المكتوب هنا. كانت تُحفَظ ولا تُقرأ عند الدخول، فيدخل الجميعُ
  * على الصفحة القديمة وكأنّ الإعدادَ لم يُحفَظ.
  */
-export const landingFor = (u?: { role?: string | null; homePage?: string | null } | null) =>
-  (u?.homePage && u.homePage.startsWith('/system') ? u.homePage : homeRouteForRole(u?.role));
+export const landingFor = (
+  u?: { role?: string | null; homePage?: string | null; permissions?: Record<string, string> | null } | null,
+) => {
+  // الصفحةُ المضبوطةُ لهذا المستخدم أوّلًا — هي قرارٌ صريح.
+  if (u?.homePage && u.homePage.startsWith('/system')) return u.homePage;
+  // ثمّ بيتُ دوره المكتوب، ثمّ أوّلُ قسمٍ مُنح له، ثمّ صفحتُه الشخصيّة.
+  const known = u?.role ? ROLE_HOME_ROUTES[u.role] : null;
+  return known || firstGrantedHome(u?.permissions) || '/system/hr/me';
+};

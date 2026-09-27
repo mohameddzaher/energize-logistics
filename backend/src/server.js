@@ -47,6 +47,7 @@ const walletRoutes = require('./routes/wallet');
 const adminRoutes = require('./routes/admin');
 const complaintRoutes = require('./routes/complaints');
 const b2cRoutes = require('./routes/b2c');
+const lightTransportRoutes = require('./routes/lightTransport');
 const remoteRoutes = require('./routes/remote');
 const hrRoutes = require('./routes/hr');
 const crmRoutes = require('./routes/crm');
@@ -246,6 +247,8 @@ app.use('/api/collections-dept', authenticate, sectionGate('Collections'), colle
 app.use('/api/admin', adminRoutes);
 app.use('/api/complaints', complaintRoutes);
 app.use('/api/b2c', authenticate, sectionGate('B2C'), b2cRoutes);
+// النقلُ الخفيف: موظّفوه وسكنُهم وأوامرُ تشغيلهم — قسمُ B2C نفسُه يحرسه.
+app.use('/api/light-transport', authenticate, sectionGate('B2C'), lightTransportRoutes);
 app.use('/api/remote', authenticate, sectionGate('Remote'), remoteRoutes);
 app.use('/api/hr', authenticate, sectionGate('HR'), hrRoutes);
 app.use('/api/crm', authenticate, sectionGate('CRM'), crmRoutes);

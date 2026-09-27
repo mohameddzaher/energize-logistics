@@ -5,6 +5,7 @@ const router = express.Router();
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam({ status: 400 }));
 router.param('docId', objectIdParam({ status: 400 }));
+router.param('attId', objectIdParam({ status: 400 }));
 const c = require('../controllers/vehicleRegistryController');
 const authorize = require('../middleware/rbac');
 
@@ -31,9 +32,17 @@ router.get('/insurance-policies', c.listInsurancePolicies);
 router.post('/insurance-policies/:id/renew', authorize(...EDIT), c.renewInsurancePolicy);
 
 router.get('/claims', c.listClaims);
+// ملفُّ المطالبة الواحدة وسجلُّها — قبل `/:id` العامّ أدناه، وإلّا قُرئ
+// «claims» رقمَ مركبةٍ فردَّ الخادمُ «غير موجود».
+router.get('/claims/:id', c.getClaim);
+router.get('/claims/:id/audit', c.getClaimAudit);
 router.post('/claims', authorize(...EDIT), c.createClaim);
 router.put('/claims/:id', authorize(...EDIT), c.updateClaim);
 router.delete('/claims/:id', authorize(...ADMIN), c.deleteClaim);
+// ورقُ المطالبة: تقريرُ نجم وصورُ الضرر وعرضُ الورشة وخطابُ الشركة.
+router.post('/claims/:id/attachments', authorize(...EDIT), c.addClaimAttachments);
+router.put('/claims/:id/attachments/:attId', authorize(...EDIT), c.renameClaimAttachment);
+router.delete('/claims/:id/attachments/:attId', authorize(...EDIT), c.deleteClaimAttachment);
 // تجديد أكتر من مستند مرة واحدة بنفس التاريخ
 router.post('/renew-bulk', authorize(...EDIT), c.renewBulk);
 // وثيقةٌ واحدةٌ تغطّي مئةً وثمانيًا وتسعين مركبة تُجدَّد بفعلٍ واحد لا بمئةٍ

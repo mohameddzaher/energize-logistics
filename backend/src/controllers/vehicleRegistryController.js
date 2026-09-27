@@ -724,7 +724,23 @@ const badInput = async (e, res) => {
 
 exports.create = async (req, res) => {
   try {
-    const v = await VehicleMaster.create({ ...req.body, isActive: true });
+    // ومركبةٌ تُسجَّل بهجريٍّ بلا ميلاديٍّ تُولَد بلا تنبيهات — راجع utils/hijri.
+    const body = { ...req.body };
+    try {
+      const { fillHijriPairs } = require('../utils/hijri');
+      const flat = {};
+      for (const b of ['vehicleLicense', 'inspection']) {
+        for (const f of ['expiryDate', 'expiryDateHijri']) {
+          if (body[b] && body[b][f] !== undefined) flat[`${b}.${f}`] = body[b][f];
+        }
+      }
+      fillHijriPairs(flat, {});
+      for (const [k, val] of Object.entries(flat)) {
+        const [b, f] = k.split('.');
+        body[b] = { ...(body[b] || {}), [f]: val };
+      }
+    } catch (e) { /* التسجيلُ يمضي */ }
+    const v = await VehicleMaster.create({ ...body, isActive: true });
     // مفتاحُ اللوحة يُشتقّ في الحفظ (models/VehicleMaster) — فتُعدّ حوادثُها المسجَّلة.
     await syncAccidentCount(v.plateKey);
     emit('vreg:updated', {});
@@ -768,11 +784,19 @@ exports.update = async (req, res) => {
   try {
     const $set = flattenPatch(req.body);
     if (!Object.keys($set).length) return res.status(400).json({ message: 'لا حقول للتعديل' });
+    // ── والتاريخُ الهجريُّ يُخرج ميلاديَّه ────────────────────────────────
+    // كلُّ الحسابِ على الميلاديّ، فهجريٌّ مكتوبٌ بلا ميلاديٍّ = مستندٌ «بلا
+    // تاريخ» لا يظهر في انتهاءٍ ولا تنبيه. والاشتقاقُ هنا لا في الشاشة: الشاشتان
+    // اثنتان (الويب والهاتف) ومعهما الاستيراد — راجع utils/hijri.
+    const { fillHijriPairs } = require('../utils/hijri');
+    const before = await VehicleMaster.findById(req.params.id).select('vehicleLicense inspection').lean();
+    const derived = fillHijriPairs($set, before || {});
     const v = await VehicleMaster.findByIdAndUpdate(req.params.id, { $set }, { new: true, runValidators: true });
     if (!v) return res.status(404).json({ message: 'Vehicle not found' });
     if ($set.plateNumber) await syncAccidentCount(v.plateKey);
     emit('vreg:updated', {});
-    res.json({ vehicle: v });
+    // ويُقال ما اشتُقّ: الشاشةُ تُظهره فلا يُفاجأ أحدٌ بتاريخٍ لم يكتبه.
+    res.json({ vehicle: v, ...(Object.keys(derived).length ? { derived } : {}) });
   } catch (e) {
     if (await badInput(e, res)) return;
     return sendMongooseError(res, e, 'Failed to update vehicle');
@@ -1833,6 +1857,20 @@ const applyRenewal = (v, doc, when, src = {}, byName = '') => {
   const previous = v[block]?.[field] || null;
   v[block][field] = when;
 
+  // ── والهجريُّ يُجدَّد مع الميلاديّ ──────────────────────────────────────
+  // رخصةُ السير والفحصُ يحملان تاريخًا هجريًّا مكتوبًا على الورقة. وكان التجديدُ
+  // يُحدّث الميلاديَّ وحدَه فيبقى الهجريُّ تاريخَ الورقةِ المنتهية: تُقرأ
+  // الشاشةُ فتجد انتهاءً بعد سنةٍ وبجانبه هجريًّا مضى — وأحدُهما كذب. ولا
+  // يُعرَف هجريُّ الورقة الجديدة إلّا منها، فيُحسَب من التاريخ الجديد: تقريبٌ
+  // متّسقٌ أهونُ من تاريخٍ يناقض جارَه.
+  if (v[block] && Object.prototype.hasOwnProperty.call(v[block], 'expiryDateHijri')) {
+    try {
+      const { toHijriPlain } = require('../utils/hijri');
+      const hij = toHijriPlain(when);
+      if (hij) v[block].expiryDateHijri = hij;
+    } catch (e) { /* التجديدُ يمضي وإن تعذّر الاشتقاق */ }
+  }
+
   // ── الرقم الجديد اختياريّ، وسكوتُه يعني «هو هو» ─────────────────────────
   // الفراغ ليس أمرًا بالمسح: من يترك الخانة فارغة لم يستخرج بطاقةً برقمٍ جديد،
   // ولو فسّرناه محوًا لأتلف التجديدُ الجماعيُّ مئتي رقمٍ في ضربة واحدة.
@@ -2442,6 +2480,13 @@ exports.createClaim = async (req, res) => {
     if (!doc.statusCode) { doc.statusCode = 'pending'; doc.statusAr = doc.statusAr || 'قيد المتابعة'; }
     await doc.save();
     await syncAccidentCount(doc.vehiclePlateKey);
+    // والمطالبةُ سجلٌّ ماليٌّ يُراجَع، فكلُّ ما يُكتب فيها يُقيَّد بصاحبه ووقته:
+    // لم تكن أيُّ كتابةٍ هنا تُقيَّد، فتاريخُ المطالبة كان يبدأ من لا شيء.
+    logAudit({
+      user: req.user, action: 'create_vehicle_claim', entity: 'VehicleClaim', entityId: doc._id,
+      changes: { after: { claimId: doc.claimId, plate: doc.vehiclePlate, date: doc.accidentDate } },
+      ipAddress: req.ip,
+    }).catch(() => {});
     emit('vreg:updated', {});
     res.status(201).json({ claim: doc });
   } catch (e) {
@@ -2477,6 +2522,12 @@ exports.updateClaim = async (req, res) => {
     await doc.save();
     await syncAccidentCount(oldKey);
     if (doc.vehiclePlateKey !== oldKey) await syncAccidentCount(doc.vehiclePlateKey);
+    logAudit({
+      user: req.user, action: 'update_vehicle_claim', entity: 'VehicleClaim', entityId: doc._id,
+      // الخاناتُ المُرسَلة وحدَها، لا المستندُ كلُّه: السجلُّ يُقرأ ليُعرَف ما تغيّر.
+      changes: { after: Object.keys({ ...req.body, ...(req.body.claim || {}) }).filter((k) => k !== 'claim') },
+      ipAddress: req.ip,
+    }).catch(() => {});
     emit('vreg:updated', {});
     res.json({ claim: doc });
   } catch (e) {
@@ -2493,11 +2544,128 @@ exports.deleteClaim = async (req, res) => {
     doc.isActive = false;
     await doc.save();
     await syncAccidentCount(doc.vehiclePlateKey);
+    logAudit({
+      user: req.user, action: 'delete_vehicle_claim', entity: 'VehicleClaim', entityId: doc._id,
+      changes: { before: { claimId: doc.claimId, plate: doc.vehiclePlate } }, ipAddress: req.ip,
+    }).catch(() => {});
     emit('vreg:updated', {});
     res.json({ ok: true });
   } catch (e) {
     console.error('vreg deleteClaim', e);
     res.status(500).json({ message: 'تعذّر حذف الحادث' });
+  }
+};
+
+/**
+ * ── ملفُّ المطالبة الواحدة ──────────────────────────────────────────────────
+ * كان الجدولُ هو كلَّ ما للمطالبة: تُقرأ في سطرٍ عرضُه تسعةُ أعمدةٍ ثمّ تُعدَّل
+ * في نافذة. فما لا يتّسع له السطرُ — الطرفُ الآخر ونسبةُ الخطأ ومصدرُ البلاغ
+ * وسجلُّ ردود الشركة والورقُ كلُّه — لا يُقرأ إلّا بفتح نافذة التعديل. والمطالبةُ
+ * ملفٌّ يُفتَح ويُتابَع لا سطرٌ في كشف.
+ */
+exports.getClaim = async (req, res) => {
+  try {
+    const claim = await VehicleClaim.findById(req.params.id)
+      .populate('vehicle', 'plateNumber sectorAr departmentAr brandAr modelAr modelYear ownerNameAr')
+      .lean();
+    if (!claim || claim.isActive === false) return res.status(404).json({ message: 'الحادث غير موجود' });
+    res.json({ claim });
+  } catch (e) {
+    console.error('vreg getClaim', e);
+    res.status(500).json({ message: 'تعذّر تحميل الحادث' });
+  }
+};
+
+/** سجلُّ ما جرى على هذه المطالبة — من قيود المراجعة، الأحدثُ أوّلًا. */
+exports.getClaimAudit = async (req, res) => {
+  try {
+    const AuditLog = require('../models/AuditLog');
+    const logs = await AuditLog.find({ entity: 'VehicleClaim', entityId: req.params.id })
+      .populate('user', 'firstName lastName role').sort({ createdAt: -1 }).limit(300).lean();
+    res.json({ logs });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر تحميل السجلّ' });
+  }
+};
+
+/**
+ * مرفقاتُ المطالبة — دفعةً واحدةً أو ملفًّا ملفًّا، ولكلٍّ اسمٌ يكتبه صاحبُه.
+ * الملفُّ يأتي في الجسم `data:` مُرمَّزًا (لا `multer` في هذا النظام) ويُفكّ
+ * ويُكتب في `uploads/claims` — راجع utils/fileStore.
+ */
+exports.addClaimAttachments = async (req, res) => {
+  try {
+    const doc = await VehicleClaim.findById(req.params.id);
+    if (!doc || doc.isActive === false) return res.status(404).json({ message: 'الحادث غير موجود' });
+    const incoming = Array.isArray(req.body.files) ? req.body.files : [req.body];
+    if (!incoming.length) return res.status(400).json({ message: 'اختر ملفًّا' });
+    doc.attachments = doc.attachments || [];
+    // وسقفٌ للعدد: مطالبةٌ بمئةِ مرفقٍ لا تُقرأ، والقرصُ ليس بلا حدّ.
+    if (doc.attachments.length + incoming.length > 40) {
+      return res.status(400).json({ message: 'لا يُرفَق أكثر من ٤٠ ملفًّا للمطالبة' });
+    }
+    for (const f of incoming) {
+      if (!f || !f.dataUrl) continue;
+      let stored;
+      try { stored = saveUploadFile(f.dataUrl, 'claims', f.fileName || ''); }
+      catch (e) { return res.status(400).json({ message: e.message }); }
+      doc.attachments.push({
+        ...stored,
+        title: String(f.title || '').trim().slice(0, 200),
+        uploadedBy: req.user?._id,
+        uploadedByName: [req.user?.firstName, req.user?.lastName].filter(Boolean).join(' '),
+        uploadedAt: new Date(),
+      });
+    }
+    await doc.save();
+    logAudit({
+      user: req.user, action: 'add_claim_attachment', entity: 'VehicleClaim', entityId: doc._id,
+      changes: { after: { files: incoming.map((f) => f.title || f.fileName).filter(Boolean) } }, ipAddress: req.ip,
+    }).catch(() => {});
+    emit('vreg:updated', {});
+    res.status(201).json({ claim: doc.toObject() });
+  } catch (e) {
+    console.error('vreg addClaimAttachments', e);
+    res.status(500).json({ message: 'تعذّر رفع الملفّ' });
+  }
+};
+
+/** الاسمُ وحدَه يُعدَّل — البايتاتُ لا تُستبدَل، فالمرفوعُ حجّةٌ لا مسوّدة. */
+exports.renameClaimAttachment = async (req, res) => {
+  try {
+    const doc = await VehicleClaim.findById(req.params.id);
+    if (!doc || doc.isActive === false) return res.status(404).json({ message: 'الحادث غير موجود' });
+    const att = doc.attachments.id(req.params.attId);
+    if (!att) return res.status(404).json({ message: 'المرفق غير موجود' });
+    att.title = String(req.body.title || '').trim().slice(0, 200);
+    await doc.save();
+    emit('vreg:updated', {});
+    res.json({ claim: doc.toObject() });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر تعديل المرفق' });
+  }
+};
+
+exports.deleteClaimAttachment = async (req, res) => {
+  try {
+    const doc = await VehicleClaim.findById(req.params.id);
+    if (!doc || doc.isActive === false) return res.status(404).json({ message: 'الحادث غير موجود' });
+    const att = doc.attachments.id(req.params.attId);
+    if (!att) return res.status(404).json({ message: 'المرفق غير موجود' });
+    const url = att.fileUrl;
+    const title = att.title || att.fileName;
+    att.deleteOne();
+    await doc.save();
+    // البايتاتُ تُحذف بعد نجاح الحفظ: لو سقط الحفظُ لبقي سجلٌّ بملفٍّ مفقود.
+    try { deleteStoredFile(url); } catch (e) { /* السجلُّ نُظِّف */ }
+    logAudit({
+      user: req.user, action: 'delete_claim_attachment', entity: 'VehicleClaim', entityId: doc._id,
+      changes: { before: { title } }, ipAddress: req.ip,
+    }).catch(() => {});
+    emit('vreg:updated', {});
+    res.json({ claim: doc.toObject() });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر حذف المرفق' });
   }
 };
 

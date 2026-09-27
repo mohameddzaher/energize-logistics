@@ -73,6 +73,27 @@ const vehicleClaimSchema = new mongoose.Schema({
   statusAr: { type: String, default: '' },
   statusCode: { type: String, default: '', index: true }, // pending / closed / …
 
+  /**
+   * ── مرفقاتُ المطالبة ──────────────────────────────────────────────────────
+   * المطالبةُ ورقٌ قبل أن تكون رقمًا: تقريرُ نجم، وصورُ الضرر، وعرضُ الورشة،
+   * وخطابُ الشركة. وكانت تُدار بالأرقام وحدَها — التقديرُ والمتحصَّلُ والفارق —
+   * وأمّا الورقُ الذي تُبنى عليه هذه الأرقام فيبقى في بريدٍ أو هاتفٍ عند مَن
+   * تابعها، فإن سُئلت عن الحجّة بعد سنةٍ لم تجدها.
+   *
+   * ولكلّ مرفقٍ اسمٌ يكتبه صاحبُه: «تقرير نجم» و«عرض الورشة» و«خطاب الرفض» لا
+   * `IMG_20260114.jpg` ثلاثَ مرّات. والاسمُ هو ما يُقرأ في القائمة.
+   */
+  attachments: [{
+    title: { type: String, trim: true, default: '' },
+    fileUrl: { type: String, required: true },
+    fileName: { type: String, trim: true, default: '' },
+    mimeType: { type: String, trim: true, default: '' },
+    size: { type: Number, default: 0 },
+    uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    uploadedByName: { type: String, default: '' },
+    uploadedAt: { type: Date, default: Date.now },
+  }],
+
   isActive: { type: Boolean, default: true, index: true },
 }, { timestamps: true });
 

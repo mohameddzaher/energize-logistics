@@ -219,6 +219,12 @@ export const docCategoryLabel = (key: string, lang: Lang) => labelFrom(DOCUMENT_
 
 // Human label for an audit action code.
 export const AUDIT_ACTIONS: Record<string, { en: string; ar: string }> = {
+  // أفعالُ المطالبة — بلا هذه الأسطر يُعرَض المفتاحُ الخامُ في سجلّ الملفّ.
+  create_vehicle_claim: { en: 'Claim opened', ar: 'تسجيل الحادثة' },
+  update_vehicle_claim: { en: 'Claim edited', ar: 'تعديل المطالبة' },
+  delete_vehicle_claim: { en: 'Claim removed', ar: 'حذف المطالبة' },
+  add_claim_attachment: { en: 'Attachment added', ar: 'إرفاق ملفّ' },
+  delete_claim_attachment: { en: 'Attachment removed', ar: 'حذف مرفق' },
   create_employee: { en: 'Created profile', ar: 'إنشاء الملف' },
   update_employee: { en: 'Edited profile', ar: 'تعديل البيانات' },
   delete_employee: { en: 'Deleted profile', ar: 'حذف الملف' },

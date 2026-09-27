@@ -463,6 +463,19 @@ export const createClaim = (body: any) => api.post<{ claim: any }>('/api/vehicle
 export const updateClaim = (id: string, body: any) => api.put<{ claim: any }>(`/api/vehicle-registry/claims/${id}`, body);
 export const deleteClaim = (id: string) => api.delete(`/api/vehicle-registry/claims/${id}`);
 
+/** ملفُّ مطالبةٍ واحدة — بلا ذاكرةٍ مؤقّتة، فما يُكتب يُرى. */
+export const getClaim = (id: string) => api.get<{ claim: any }>(`/api/vehicle-registry/claims/${id}`);
+/** سجلُّ ما جرى عليها — من قيود المراجعة، الأحدثُ أوّلًا. */
+export const getClaimAudit = (id: string) =>
+  api.get<{ logs: any[] }>(`/api/vehicle-registry/claims/${id}/audit`);
+/** المرفقاتُ: الردُّ يحمل المطالبةَ كاملةً فتُستبدَل حالةُ الشاشة بها. */
+export const addClaimAttachments = (id: string, files: { dataUrl: string; fileName: string; title: string }[]) =>
+  api.post<{ claim: any }>(`/api/vehicle-registry/claims/${id}/attachments`, { files });
+export const renameClaimAttachment = (id: string, attId: string, title: string) =>
+  api.put<{ claim: any }>(`/api/vehicle-registry/claims/${id}/attachments/${attId}`, { title });
+export const deleteClaimAttachment = (id: string, attId: string) =>
+  api.delete<{ claim: any }>(`/api/vehicle-registry/claims/${id}/attachments/${attId}`);
+
 // ── تجديد أكتر من مستند بنفس التاريخ ─────────────────────────────────────────
 // والرقم هنا **سطريّ لا مشترك**: بطاقةُ كل مركبة تخرج برقمها هي، ورقمٌ واحد
 // يُكتب على مئةٍ منها يجعل المئة نسخةً من ورقة واحدة.

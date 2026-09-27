@@ -19,10 +19,12 @@ const COLUMNS: DocColumn[] = [
 
 // وحالةُ الجهاز حقلٌ مستقلّ عن تاريخ الاشتراك، كما هي في العمود: جهازٌ مسروق
 // باشتراكٍ ساري وضعٌ قائم، ولو اشتُقّت إحداهما من الأخرى لضاع.
+// الجهازُ والشركةُ وحالتُه تُختار من قوائم القسم لا تُكتب حرّةً — راجع تعليقَ
+// صفحةِ التأمين: الاسمُ الحرّ يُكتب بصيغٍ فيصير في التقارير عدّةَ أجهزةٍ وهو جهاز.
 const FIELDS: DocField[] = [
-  { path: 'gps.deviceModel', ar: 'جهاز GPS', en: 'GPS device' },
-  { path: 'gps.deviceStatusAr', ar: 'حالة جهاز GPS', en: 'Device status' },
-  { path: 'gps.provider', ar: 'شركة الـGPS', en: 'GPS provider' },
+  { path: 'gps.deviceModel', ar: 'جهاز GPS', en: 'GPS device', lookup: 'vehicle_gps_device' },
+  { path: 'gps.deviceStatusAr', ar: 'حالة جهاز GPS', en: 'Device status', lookup: 'vehicle_gps_device_status' },
+  { path: 'gps.provider', ar: 'شركة الـGPS', en: 'GPS provider', lookup: 'vehicle_gps_provider' },
   { path: 'gps.serialImei', ar: 'سريال GPS', en: 'GPS serial', mono: true },
   { path: 'gps.simNumber', ar: 'رقم الشريحة', en: 'SIM number', mono: true },
   { path: 'gps.expiryDate', ar: 'تاريخ انتهاء الـGPS', en: 'Subscription expiry', kind: 'date' },

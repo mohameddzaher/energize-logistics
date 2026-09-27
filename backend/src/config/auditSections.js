@@ -56,7 +56,7 @@ const ENTITY_SECTION = {
   // المركبات — السجلّ ووثائقه وبطاقات السائقين
   VehicleMaster: 'vehicles', VehicleInsurancePolicy: 'vehicles',
   VehicleRegistryConfig: 'vehicles', DriverCard: 'vehicles',
-  VehicleAuthorization: 'vehicles', VehicleAccident: 'vehicles',
+  VehicleAuthorization: 'vehicles', VehicleAccident: 'vehicles', VehicleClaim: 'vehicles',
   // إدارة الأسطول
   FleetShipment: 'fleet', FleetVehicle: 'fleet', FleetVehicleLog: 'fleet',
   FleetDriver: 'fleet', FleetDriverExpense: 'fleet',

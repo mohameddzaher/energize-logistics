@@ -10,7 +10,7 @@ import api from '@/lib/api';
 import { syncUrl } from '@/lib/urlSync';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import { VReg, statusColor, statusLabel, fmtDate, canEditVehicles, canAdminVehicles } from '@/lib/vehicleRegistry';
+import { VReg, statusColor, statusLabel, fmtDate, canEditVehicles, canAdminVehicles, fromHijri, toHijriPlain } from '@/lib/vehicleRegistry';
 import { REGISTRY_COLUMNS, BASE_COLUMN_KEYS } from '@/lib/vehicleColumns';
 import { withHijri } from '@/utils/exportExcel';
 import { canEditSection } from '@/lib/sections';
@@ -421,6 +421,47 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
   const set = (k: string, v: any) => setF((p: any) => ({ ...p, [k]: v }));
   const setSub = (o: string, k: string, v: any) => setF((p: any) => ({ ...p, [o]: { ...(p[o] || {}), [k]: v } }));
 
+  /**
+   * ── والتاريخان يتبعان أحدهما الآخر ────────────────────────────────────────
+   * رخصةُ السير والفحصُ لكلٍّ خانتان: ميلاديّةٌ يقرؤها النظامُ ويحسب بها
+   * الانتهاء، وهجريّةٌ مكتوبةٌ على الورقة. وكانتا منفصلتين تمامًا: يكتب
+   * الموظّفُ «١٤٤٨/٠٤/٠٤» في الهجريّة ويحفظ، فتبقى الميلاديّةُ فارغةً —
+   * والحسابُ كلُّه على الميلاديّة، فالمستندُ الذي كُتب تاريخُه يُقرأ «بلا
+   * تاريخ» ولا يظهر في انتهاءٍ ولا تنبيه. سطرٌ مكتوبٌ بالكامل ولا أثرَ له.
+   *
+   * فالهجريُّ يُملي الميلاديَّ فورَ أن يصير قابلًا للقراءة (`fromHijri` يقلب
+   * جدولَ أمّ القرى الذي في المتصفّح، فالذهابُ والإياب متّفقان). والعكسُ يُكتب
+   * أيضًا — لكن لا يُطمَس هجريٌّ مكتوبٌ باليد: ما على الورقة هو الحجّة، وحسابُنا
+   * قد يخالفه بيوم.
+   */
+  /** ما يُقرأ من الهجريّ المكتوب: تاريخٌ ميلاديّ، أو سببُ تعذّره. */
+  const hijriHint = (text?: string) => {
+    const t = String(text || '').trim();
+    if (!t) return null;
+    const greg = fromHijri(t);
+    if (greg) return { ok: true, text: greg };
+    // العددُ ناقصٌ بعد: لا يُقال «غير صالح» وهو يكتب.
+    if (!/\d.*\D.*\d.*\D.*\d/.test(t)) return null;
+    return { ok: false, text: ar ? 'تاريخ غير موجود في التقويم — راجعه' : 'no such date in the calendar' };
+  };
+
+  const setHijri = (o: 'vehicleLicense' | 'inspection', text: string) => {
+    const greg = fromHijri(text);
+    setF((p: any) => ({
+      ...p,
+      [o]: { ...(p[o] || {}), expiryDateHijri: text, ...(greg ? { expiryDate: greg } : {}) },
+    }));
+  };
+  const setGreg = (o: 'vehicleLicense' | 'inspection', date: string | null) => {
+    setF((p: any) => {
+      const cur = p[o] || {};
+      const hadHijri = String(cur.expiryDateHijri || '').trim();
+      // الهجريُّ يُملأ إن كان فارغًا، ولا يُستبدَل إن كُتب.
+      const next = date && !hadHijri ? toHijriPlain(date) : cur.expiryDateHijri;
+      return { ...p, [o]: { ...cur, expiryDate: date, expiryDateHijri: next || '' } };
+    });
+  };
+
   const save = async () => {
     if (!f.plateNumber?.trim()) { notify(ar ? 'رقم اللوحة مطلوب' : 'Plate required', 'error'); return; }
     setSaving(true);
@@ -497,14 +538,28 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           </div>
           <div><L>{ar ? 'رقم بطاقة التشغيل' : 'Operating card no.'}</L><input className={inp} value={f.operatingCard?.cardNumber || ''} onChange={(e) => setSub('operatingCard', 'cardNumber', e.target.value)} /></div>
           <div><L>{ar ? 'انتهاء بطاقة التشغيل' : 'Operating card expiry'}</L><input type="date" className={inp} value={(f.operatingCard?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('operatingCard', 'expiryDate', e.target.value || null)} /></div>
-          <div><L>{ar ? 'انتهاء رخصة السير' : 'Licence expiry'}</L><input type="date" className={inp} value={(f.vehicleLicense?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('vehicleLicense', 'expiryDate', e.target.value || null)} /></div>
+          <div><L>{ar ? 'انتهاء رخصة السير' : 'Licence expiry'}</L><input type="date" className={inp} value={(f.vehicleLicense?.expiryDate || '').slice(0, 10)} onChange={(e) => setGreg('vehicleLicense', e.target.value || null)} /></div>
           <div><L>{ar ? 'حالة الفحص' : 'Inspection status'}</L><ManagedSelect storeLabel type="vehicle_inspection_status" value={f.inspection?.statusAr || ''} onChange={(v) => setSub('inspection', 'statusAr', v)} /></div>
-          <div><L>{ar ? 'انتهاء الفحص' : 'Inspection expiry'}</L><input type="date" className={inp} value={(f.inspection?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('inspection', 'expiryDate', e.target.value || null)} /></div>
+          <div><L>{ar ? 'انتهاء الفحص' : 'Inspection expiry'}</L><input type="date" className={inp} value={(f.inspection?.expiryDate || '').slice(0, 10)} onChange={(e) => setGreg('inspection', e.target.value || null)} /></div>
           {/* ── والهجريُّ المكتوبُ على الورقة يُكتب كما هو ────────────────────
               لا يُحسَب: الورقةُ تحمل تاريخًا هجريًّا مطبوعًا، وهو الحجّة. وحسابُنا
               قد يخالفه بيوم، فيُكتب ما على الورقة ويبقى المحسوبُ للتصدير. */}
-          <div><L>{ar ? 'انتهاء رخصة السير (هجري)' : 'Licence expiry (Hijri)'}</L><input className={inp} placeholder="1447/07/22" value={f.vehicleLicense?.expiryDateHijri || ''} onChange={(e) => setSub('vehicleLicense', 'expiryDateHijri', e.target.value)} /></div>
-          <div><L>{ar ? 'انتهاء الفحص (هجري)' : 'Inspection expiry (Hijri)'}</L><input className={inp} placeholder="1447/07/22" value={f.inspection?.expiryDateHijri || ''} onChange={(e) => setSub('inspection', 'expiryDateHijri', e.target.value)} /></div>
+          <div><L>{ar ? 'انتهاء رخصة السير (هجري)' : 'Licence expiry (Hijri)'}</L><input className={inp} placeholder="1447/07/22"
+            value={f.vehicleLicense?.expiryDateHijri || ''} onChange={(e) => setHijri('vehicleLicense', e.target.value)} />
+            {/* والأثرُ يُرى وهو يكتب: الميلاديُّ الذي مُلئ، أو سببُ عدم ملئه. */}
+            {(() => { const h = hijriHint(f.vehicleLicense?.expiryDateHijri); return h ? (
+              <p className={`mt-1 text-[11px] ${h.ok ? 'text-emerald-700' : 'text-amber-700'}`}>
+                {h.ok ? (ar ? `الميلادي: ${h.text}` : `Gregorian: ${h.text}`) : h.text}
+              </p>) : null; })()}
+          </div>
+          <div><L>{ar ? 'انتهاء الفحص (هجري)' : 'Inspection expiry (Hijri)'}</L><input className={inp} placeholder="1447/07/22"
+            value={f.inspection?.expiryDateHijri || ''} onChange={(e) => setHijri('inspection', e.target.value)} />
+            {/* والأثرُ يُرى وهو يكتب: الميلاديُّ الذي مُلئ، أو سببُ عدم ملئه. */}
+            {(() => { const h = hijriHint(f.inspection?.expiryDateHijri); return h ? (
+              <p className={`mt-1 text-[11px] ${h.ok ? 'text-emerald-700' : 'text-amber-700'}`}>
+                {h.ok ? (ar ? `الميلادي: ${h.text}` : `Gregorian: ${h.text}`) : h.text}
+              </p>) : null; })()}
+          </div>
 
         </Card>
 

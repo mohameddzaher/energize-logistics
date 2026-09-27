@@ -270,11 +270,19 @@ function ClaimsInner() {
                     )}
                     <td className={`${LEAD_2} px-3 py-2.5 bg-white group-hover:bg-slate-50`}
                       style={{ insetInlineStart: canEdit ? lead.offset : 0 }}>
-                      {r.vehicle
-                        ? <button onClick={() => router.push(`/system/vehicles/registry/${r.vehicle}`)}
-                            className="font-semibold text-slate-800 hover:text-[#f37121]">{r.vehiclePlate || r.incidentSubjectAr}</button>
-                        : <span className="text-slate-600">{r.vehiclePlate || r.incidentSubjectAr || '—'}</span>}
-                      {r.accidentNumber && <p className="text-[10px] text-slate-400">{r.accidentNumber}</p>}
+                      {/* ── والاسمُ يفتح ملفَّ الحادثة لا ملفَّ المركبة ────────
+                          كان يفتح المركبةَ، وهو الجوابُ عن سؤالٍ آخر: مَن يقف
+                          على صفٍّ في هذا الجدول يريد الحادثةَ نفسَها — طرفَها
+                          الآخر وردودَ الشركة وورقَها — لا سجلَّ المركبة. وملفُّ
+                          المركبة يُفتَح من داخل ملفّ الحادثة. */}
+                      <button onClick={() => router.push(`/system/vehicles/registry/claims/${r._id}`)}
+                        title={t('ملفّ الحادثة', 'Claim file')}
+                        className="font-semibold text-slate-800 hover:text-[#f37121] text-start">
+                        {r.vehiclePlate || r.incidentSubjectAr || '—'}
+                      </button>
+                      <p className="text-[10px] text-slate-400">
+                        {[r.claimId, r.accidentNumber].filter(Boolean).join(' · ')}
+                      </p>
                     </td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{fmtDate(r.accidentDate)}</td>
                     {/* ── و«صفر بالمئة» نتيجةٌ لا فراغ ────────────────────────

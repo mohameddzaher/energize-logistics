@@ -28,14 +28,21 @@ const COLUMNS: DocColumn[] = [
 // و«قيمة التأمين» خانتان لا واحدة: رقمٌ حين ندفعه نحن، ونصٌّ حين يدفعه المموِّل
 // («ملكية بنك الراجحي»). دمجُهما في خانةٍ واحدة يجبر المدخِل على ترك الرقم
 // فارغًا فتُعدّ المركبة بلا تأمين وهي مؤمَّنة.
+// ── والشركةُ تُختار لا تُكتب ─────────────────────────────────────────────────
+// «شركة التأمين» و«نوع التغطية» و«جهة سداد القسط» لها قوائمُ مُدارةٌ في إعدادات
+// القسم، والتعديلُ من صفحة سجل المركبات يستعملها. وكان التعديلُ من هذه الصفحة —
+// وهي الصفحةُ التي يُعدَّل منها التأمينُ فعلًا — خانةً حرّةً: فيُكتب الاسمُ الواحدُ
+// بألف صيغة («تكافل الراجحي» و«التكافل» و«الراجحي تكافل»)، فيصير في التقارير
+// ثلاثَ شركاتٍ وهي واحدة، ولا يُجمَع قسطُها ولا تُقارَن. والقائمةُ نفسُها تُضاف
+// إليها شركةٌ جديدةٌ من موضعها بلا مغادرة الشاشة.
 const FIELDS: DocField[] = [
   { path: 'insurance.policyNumber', ar: 'رقم وثيقة التأمين', en: 'Policy number', mono: true },
-  { path: 'insurance.companyAr', ar: 'شركة التأمين', en: 'Insurer' },
-  { path: 'insurance.coverageTypeAr', ar: 'نوع التأمين', en: 'Coverage type' },
+  { path: 'insurance.companyAr', ar: 'شركة التأمين', en: 'Insurer', lookup: 'vehicle_insurance_company' },
+  { path: 'insurance.coverageTypeAr', ar: 'نوع التأمين', en: 'Coverage type', lookup: 'vehicle_coverage_type' },
   { path: 'insurance.expiryDate', ar: 'تاريخ انتهاء التأمين', en: 'Insurance expiry', kind: 'date' },
   { path: 'insurance.premiumSar', ar: 'قيمة التأمين (ر.س)', en: 'Premium (SAR)', kind: 'number' },
   { path: 'insurance.premiumStatusAr', ar: 'جهة سداد القسط', en: 'Who pays the premium',
-    hint: 'إن كان القسط على المموِّل' },
+    hint: 'إن كان القسط على المموِّل', lookup: 'vehicle_premium_status' },
 ];
 
 export default function Page() {

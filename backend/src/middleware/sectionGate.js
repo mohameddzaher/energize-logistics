@@ -42,7 +42,25 @@ const sectionGate = (sectionKey) => {
     try {
       if (!req.user) return res.status(401).json({ message: 'Authentication required' });
       if (FULL_ACCESS_ROLES.includes(req.user.role)) { req.sectionAccess = 'edit'; return next(); }
-      if (exempt && exempt(req)) return next();
+      // ── والاستثناءُ يرفع المنعَ، ولا يمنع الختم ─────────────────────────
+      // هذه المساراتُ مُستثناةٌ ليقرأ كلُّ موظّفٍ ملفَّه وإجازاتَه وإن لم يكن من
+      // الموارد البشريّة. وكان الاستثناءُ يُخرِج الطلبَ من الحارس كلِّه بلا ختم،
+      // فيصل المتحكِّمَ بلا `sectionAccess` — والمتحكِّمُ يقرأ الختمَ ليعرف مَن
+      // مُنح القسمَ من مصفوفة الصلاحيّات. فمن كانت صلاحيّتُه بالمنح لا بدوره
+      // (مدير مالي مُنح «الموارد البشرية: تعديل») يُقرأ غريبًا عن القسم: القائمةُ
+      // تفتح له والبحثُ يجد الموظّف، ثمّ يضغط عليه فيُقال «لا توجد بيانات».
+      // وقع ذلك على البرودكشن: `GET /employees` ٢٠٠ و`GET /employees/:id` ٤٠٣
+      // للدور نفسِه في اللحظة نفسِها.
+      //
+      // فالمنحُ يُختَم إن وُجد، والمنعُ لا يقع أبدًا على هذه المسارات.
+      if (exempt && exempt(req)) {
+        try {
+          const g = await getOverride(req.user.role, sectionKey);
+          const a = g == null ? defaultAccess(req.user.role, sectionKey) : g;
+          if (a === 'view' || a === 'edit') req.sectionAccess = a;
+        } catch (e) { /* الاستثناءُ يمضي بلا ختم */ }
+        return next();
+      }
 
       let access = await getOverride(req.user.role, sectionKey); // 'none'|'view'|'edit'|null
       if (access == null) {

@@ -601,6 +601,13 @@ exports.list = async (req, res) => {
       + ' fuelCard.consumptionTypeAr fuelCard.limitSar fuelCard.limitStatus'
       + ' gps.deviceId gps.serialImei gps.simNumber gps.deviceModel gps.provider gps.deviceStatusAr'
       + ' gps.status gps.statusCode gps.expiryDate'
+      // ── والملاحظةُ تُقرأ مع الصفّ ─────────────────────────────────────────
+      // كانت ساقطةً من هذه القائمة، وحدَها. فتُكتب الملاحظةُ في «سجل المركبات»
+      // وتُحفَظ فعلًا (`PUT /:id` يمرّرها)، ثمّ يُعاد تحميلُ الجدول فتأتي الصفوفُ
+      // بلا `notesAr`: فعمودُ الملاحظات فارغٌ دائمًا، ونافذةُ التعديل — وهي
+      // تُغرَف من صفّ الجدول لا من قراءةٍ جديدة — تُفتح خاليةً. فيُقرأ ذلك
+      // «الملاحظةُ لم تُحفَظ» وهي محفوظةٌ في القاعدة ومعروضةٌ في البروفايل.
+      + ' notesAr'
       + ' accidentCount missingItems insurancePolicy';
     const [vehicles, total] = await Promise.all([
       VehicleMaster.find(filter).select(LIST_FIELDS).sort({ [sortBy]: sortDir }).skip((page - 1) * limit).limit(limit).lean(),
@@ -630,7 +637,7 @@ exports.list = async (req, res) => {
           cardType: card.cardType || '',
           expiryDate: card.expiryDate || '',
           daysLeft: days,
-          state: cardState(days),
+          state: cardState(days, cfg.alerts?.driverCard),
           fidelityStatus: card.fidelity?.status || '',
         };
       }
@@ -858,21 +865,19 @@ exports.remove = async (req, res) => {
 
 // ── لوحة التحليلات ─────────────────────────────────────────────────────────────
 /** ملخّصُ بطاقات السائقين للوحة القسم — عددٌ لكلّ شريحةِ انتهاء. */
-async function driverCardSummary() {
+async function driverCardSummary(alert) {
   try {
     const DriverCardModel = require('../models/DriverCard');
     const { startOfDay, todayKey } = require('../utils/companyDay');
     const today = startOfDay(todayKey());
     const rows = await DriverCardModel.find({ isActive: { $ne: false } }).select('expiryDate').lean();
     const left = (d) => (d ? Math.round((startOfDay(d) - today) / 86400000) : null);
-    const out = { total: rows.length, expired: 0, critical: 0, warning: 0, valid: 0, unknown: 0 };
+    // وثلاثُ شرائحَ لا اثنتان: «قريب» كانت ساقطةً هنا فتُحسَب مع «ساري»،
+    // فيقول الملخَّصُ إنّ البطاقةَ سارية وشاشةُ الانتهاءات تقول «قريبة».
+    const out = { total: rows.length, expired: 0, critical: 0, warning: 0, upcoming: 0, valid: 0, unknown: 0 };
     for (const r of rows) {
-      const n = left(r.expiryDate);
-      if (n === null) out.unknown += 1;
-      else if (n < 0) out.expired += 1;
-      else if (n <= 30) out.critical += 1;
-      else if (n <= 60) out.warning += 1;
-      else out.valid += 1;
+      const st = cardState(left(r.expiryDate), alert);
+      out[st] = (out[st] || 0) + 1;
     }
     return out;
   } catch (e) { return null; }
@@ -919,11 +924,20 @@ exports.dashboard = async (req, res) => {
     const totalFuelLimit = fuelLimits.reduce((a, b) => a + b, 0);
 
     // حالة المستندات (buckets) لكل نوع
+    // ── وشريحةُ «قريب» واحدةٌ من الشرائح ─────────────────────────────────
+    // لم يكن لها خانةٌ هنا، و`stateOf` تُرجعها. فـ`b['upcoming']` كان
+    // `undefined += 1` أي `NaN`: تُزرَع في الكائن خانةٌ قيمتُها ليست رقمًا،
+    // ولا تُحسَب مركبةٌ واحدةٌ من هذه الشريحة في أشرطة اللوحة — فالنِّسَب
+    // تنقص بقدر الشريحة كلِّها. و`+= 1` على خانةٍ مجهولةٍ يُسكت أيَّ خطأ،
+    // فالجمعُ يُبنى بمفتاحٍ مقروءٍ لا بخانةٍ مُعدَّةٍ سلفًا.
     const docBuckets = {};
     for (const dt of DOC_TYPES) {
-      const b = { expired: 0, critical: 0, warning: 0, valid: 0, none: 0, not_required: 0 };
+      const b = { expired: 0, critical: 0, warning: 0, upcoming: 0, valid: 0, none: 0, not_required: 0 };
       const alert = cfg.alerts?.[dt.key];
-      for (const v of vehicles) b[docStatus(getPath(v, dt.path), alert, getPath(v, dt.statusPath)).status] += 1;
+      for (const v of vehicles) {
+        const st = docStatus(getPath(v, dt.path), alert, getPath(v, dt.statusPath)).status;
+        b[st] = (b[st] || 0) + 1;
+      }
       docBuckets[dt.key] = b;
     }
 
@@ -939,10 +953,15 @@ exports.dashboard = async (req, res) => {
       if (dt.key === 'gps' && !cfg.alerts?.gps?.enabled) continue;
       const b = docBuckets[dt.key];
       expiredTotal += b.expired;
-      expiringTotal += b.critical + b.warning;
+      // و«قريب» من التنبيهات: هي آخرُ مهلةٍ يُستخرَج فيها البديلُ بلا عَجَل،
+      // وكانت تُطرَح من الإجمالي فيُقرأ العددُ أقلَّ ممّا هو.
+      expiringTotal += b.critical + b.warning + b.upcoming;
     }
 
     const body = {
+      // والعتباتُ تُرسَل مع اللوحة: أزرارُها تنتقل بها إلى القائمة، فلا
+      // ينتقل زرُّ «حرج» بثلاثين يومًا وقد ضُبط الحرجُ على عشرة.
+      alerts: cfg.alerts,
       totals: {
         vehicles: vehicles.length,
         totalPremium: Math.round(totalPremium),
@@ -960,7 +979,7 @@ exports.dashboard = async (req, res) => {
       // ── بطاقاتُ السائقين في اللوحة ────────────────────────────────────────
       // البطاقةُ مستندٌ ينتهي كسائر مستندات القسم، فمكانُها حيث تُقرأ حالةُ
       // المستندات لا صفحةً وحدَها لا يفتحها إلّا من يذكرها.
-      driverCards: await driverCardSummary(),
+      driverCards: await driverCardSummary(cfg.alerts?.driverCard),
     };
     cache.set(cacheKey, body, 30000);
     res.json(body);
@@ -1007,9 +1026,49 @@ exports.alerts = async (req, res) => {
   } catch (e) { console.error('vreg alerts', e); res.status(500).json({ message: 'Failed to load alerts' }); }
 };
 
+/**
+ * ── والعتبةُ تُعرَض مع أثرها ────────────────────────────────────────────────
+ * «أقول حرج ٢٠، أحفظ، أروح صفحة تأمين المركبات ألاقي حرج ٠ وتحذير ٠ وقريب ٠ —
+ * التلاتة مش مرتبطين باللي بيحصل في الإعدادات.»
+ *
+ * وهم مرتبطون: الأصفارُ كانت صحيحةً حرفًا بحرف — أقربُ تأمينٍ سارٍ ينتهي بعد
+ * ثمانين يومًا، و«قريب» عنده يبدأ من ستّين. فلا مركبةَ في أيٍّ من الشرائح
+ * الثلاث، وخمسٌ منتهيةٌ فعلًا. لكنّ الشاشةَ لم تكن تقول ذلك، ولا سبيلَ لصاحبها
+ * أن يفرّق بين «العتبةُ لم تُحفَظ» و«لا شيءَ يقع في هذه الشريحة اليوم».
+ *
+ * فتُرَدّ مع العتبات نتيجتُها الآن: كم مستندًا في كلّ شريحةٍ بهذه الأرقام،
+ * محسوبًا بالدالّة نفسِها التي تحسبه في الصفحات (`stateOf`). فيُقرأ الأثرُ في
+ * موضع الضبط، ويُعرَف الصفرُ الحقيقيُّ من الصفر المريب.
+ */
 exports.getSettings = async (req, res) => {
-  try { const cfg = await getConfig(); res.json({ config: { alerts: cfg.alerts } }); }
-  catch (e) { res.status(500).json({ message: 'Failed to load settings' }); }
+  try {
+    const cfg = await getConfig();
+    const counts = {};
+    const bump = (k, st) => { counts[k] = counts[k] || {}; counts[k][st] = (counts[k][st] || 0) + 1; };
+
+    const vehicles = await VehicleMaster.find({}).select(
+      DOC_TYPES.map((d) => `${d.path} ${d.statusPath || ''}`).join(' '),
+    ).lean();
+    for (const dt of DOC_TYPES) {
+      const alert = cfg.alerts?.[dt.key];
+      for (const v of vehicles) bump(dt.key, docStatus(getPath(v, dt.path), alert, getPath(v, dt.statusPath)).status);
+    }
+
+    // بطاقاتُ السائقين ووثائقُ الشركة: سجلّان آخران، والعتبةُ تُضبط لهما هنا.
+    try {
+      const cards = await require('../models/DriverCard').find({ isActive: { $ne: false } }).select('expiryDate').lean();
+      for (const c of cards) bump('driverCard', cardState(cardDaysLeft(c.expiryDate), cfg.alerts?.driverCard));
+    } catch (e) { /* السجلُّ قد يكون فارغًا */ }
+    try {
+      const pols = await VehicleInsurancePolicy.find({}).select('expiryDate').lean();
+      for (const pl of pols) bump('corporatePolicy', VDOC.stateOf(pl.expiryDate, '', cfg.alerts?.corporatePolicy || {}).state);
+    } catch (e) { /* كذلك */ }
+
+    res.json({ config: { alerts: cfg.alerts }, counts });
+  } catch (e) {
+    console.error('getSettings error:', e);
+    res.status(500).json({ message: 'Failed to load settings' });
+  }
 };
 
 exports.updateSettings = async (req, res) => {
@@ -1017,7 +1076,9 @@ exports.updateSettings = async (req, res) => {
     // بننضّف اللي جاي: أي مستند معروف بس، وأرقام موجبة، و«حرج» مايبقاش أكبر من
     // «تنبيه» — لو حصل، التنبيه البرتقالي كان هيختفي خالص وما حدش هيلاحظ.
     const incoming = req.body.alerts || {};
-    const keys = [...VDOC.DOC_KEYS, 'corporatePolicy'];
+    // وبطاقةُ السائق منها: الشاشةُ تعرضها، فتُقبَل وتُحفَظ — راجع `alerts`
+    // في models/VehicleMaster.
+    const keys = [...VDOC.DOC_KEYS, 'corporatePolicy', 'driverCard'];
     const clean = {};
     const problems = [];
     for (const k of keys) {
@@ -1048,9 +1109,17 @@ exports.updateSettings = async (req, res) => {
     }
     if (problems.length) return res.status(400).json({ message: problems.join(' · ') });
 
+    // ── ويُكتب المُرسَلُ وحدَه ────────────────────────────────────────────
+    // كان `$set: { alerts: clean }` يستبدل الشجرةَ كلَّها، فكلُّ مفتاحٍ لم
+    // يُرسله المتصفّحُ يُحذَف من القاعدة. والقراءةُ بـ`.lean()` لا تُعيد
+    // الافتراضاتَ، فمفتاحٌ محذوفٌ يبقى محذوفًا ويرتدّ كلُّ من يقرأه إلى
+    // ٧/٣٠/٩٠ المكتوبة في الشِّفرة — وتُعرَض عتباتُه في الشاشة مطفأةً
+    // لا تُحرَّر. فيُكتب كلُّ مفتاحٍ في مساره وحدَه.
+    const $set = { updatedBy: req.user?._id };
+    for (const [k, val] of Object.entries(clean)) $set[`alerts.${k}`] = val;
     const cfg = await VehicleRegistryConfig.findOneAndUpdate(
       { key: 'vehicle-registry' },
-      { $set: { alerts: clean, updatedBy: req.user?._id }, $setOnInsert: { key: 'vehicle-registry' } },
+      { $set, $setOnInsert: { key: 'vehicle-registry' } },
       { new: true, upsert: true, setDefaultsOnInsert: true },
     ).lean();
 
@@ -1838,6 +1907,21 @@ async function renewDriverCard(req, res) {
   const num = String(req.body.documentNumber || '').trim();
   if (num) card.cardNumber = num;
   if (req.body.startDate) card.issueDate = new Date(req.body.startDate);
+  // وما سألت عنه النافذةُ يُحفَظ: التكلفةُ والإيصالُ والملاحظة كانت تُقرأ من
+  // الطلب ثمّ تُهمَل — راجع `renewals` في models/DriverCard.
+  const cost = req.body.cost === '' || req.body.cost == null ? null : Number(req.body.cost);
+  card.renewals = card.renewals || [];
+  card.renewals.push({
+    previousExpiry: previous ? String(previous).slice(0, 10) : '',
+    newExpiry: String(req.body.newExpiry).slice(0, 10),
+    previousNumber: previousNumber || '',
+    newNumber: card.cardNumber || '',
+    cost: Number.isFinite(cost) ? cost : null,
+    reference: String(req.body.reference || '').trim(),
+    note: String(req.body.note || '').trim(),
+    at: new Date(),
+    byName: [req.user?.firstName, req.user?.lastName].filter(Boolean).join(' '),
+  });
   card.lastModifiedBy = req.user?._id;
   await card.save();
   try { await require('../utils/driverCardSync').pushCardToEmployee(card); } catch (e) { console.error('driver card renew → HR:', e.message); }
@@ -2794,13 +2878,61 @@ const cardDaysLeft = (ymd) => {
 };
 
 /** شريحةُ الانتهاء — نفسُ لغة بقيّة مستندات القسم. */
-const cardState = (days) => {
+/**
+ * ── وحالةُ البطاقة من إعدادات القسم ────────────────────────────────────────
+ * كانت العتباتُ مكتوبةً هنا (٣٠/٦٠/٩٠)، فالبطاقةُ الواحدة تُقرأ «حرجة» في
+ * صفحة البطاقات و«سارية» في صفحة الانتهاءات — لأنّ الثانية تحسبها بـ`stateOf`
+ * من الإعدادات. جوابان لسؤالٍ واحد، وأيُّهما يُصدَّق؟
+ * فصار الحسابُ واحدًا: `stateOf` نفسُها بعتبات `alerts.driverCard`.
+ */
+const cardState = (days, alert) => {
   if (days === null) return 'unknown';
   if (days < 0) return 'expired';
-  if (days <= 30) return 'critical';
-  if (days <= 60) return 'warning';
-  if (days <= 90) return 'upcoming';
+  const crit = Number(alert?.criticalDays ?? 30);
+  const warn = Number(alert?.warnDays ?? 60);
+  const soon = Number(alert?.soonDays ?? 90);
+  if (days <= crit) return 'critical';
+  if (days <= warn) return 'warning';
+  if (days <= soon) return 'upcoming';
   return 'valid';
+};
+
+/**
+ * ── سائقُ النقل الثقيل وغيرُه ──────────────────────────────────────────────
+ * «عايز أفرّق بين سائقين النقل الثقيل والباقي» — والبطاقةُ لا تقول ذلك: هي
+ * وثيقةٌ واحدةٌ في كلّ الأحوال، ولا في `DriverCard` حقلٌ لنوع المركبة. وليس
+ * الفرقُ في الورقة أصلًا، بل في ما تُخوِّله: نوعُ تسجيل المركبة المفوَّضة له.
+ * فثلاثُمئةٍ وستٌّ وثلاثون مركبةً في السجلّ، منها مئتان واثنتا عشرةَ دراجةً
+ * آليّةً يقودها مندوبو B2C، وثمانٍ وستّون «نقل عام» — وهي الشاحنات.
+ *
+ * والسائقُ قد يمسك أكثر من مركبة، فيُنسب إلى أثقلِ ما يقود: من يقود شاحنةً
+ * ودراجةً سائقُ نقلٍ ثقيل، لا مندوب.
+ */
+const CLASS_OF_REG = {
+  public_transport: 'heavy', private_transport: 'heavy',
+  private: 'light', motorcycle: 'motorcycle',
+};
+const CLASS_AR = { heavy: 'نقل ثقيل', light: 'مركبة خاصة', motorcycle: 'دراجة آلية', none: 'بلا تفويض' };
+const CLASS_EN = { heavy: 'Heavy transport', light: 'Private vehicle', motorcycle: 'Motorcycle', none: 'No authorisation' };
+const CLASS_RANK = { heavy: 3, light: 2, motorcycle: 1, none: 0 };
+
+const driverClass = (authorizations = []) => {
+  let best = 'none';
+  for (const a of authorizations) {
+    // الرمزُ أوّلًا، وإلّا فالنصُّ العربيُّ — بعضُ الصفوف بلا رمز.
+    const code = String(a.registrationTypeCode || '').trim();
+    let cls = CLASS_OF_REG[code];
+    if (!cls) {
+      // ويُقرأ النصُّ بالعربيّة وبالإنجليزيّة: سجلُّ الإسناد القديم يكتب
+      // «النقل الثقيل» في القسم و`truck` في النوع.
+      const s = String(a.registrationTypeAr || '');
+      if (/دراجة|motorcycle|bike|scooter/i.test(s)) cls = 'motorcycle';
+      else if (/نقل|شاحن|truck|trailer|heavy/i.test(s)) cls = 'heavy';
+      else if (/خاص|private|car|sedan/i.test(s)) cls = 'light';
+    }
+    if (cls && CLASS_RANK[cls] > CLASS_RANK[best]) best = cls;
+  }
+  return { vehicleClass: best, vehicleClassAr: CLASS_AR[best], vehicleClassEn: CLASS_EN[best] };
 };
 
 exports.listDriverCards = async (req, res) => {
@@ -2818,6 +2950,8 @@ exports.listDriverCards = async (req, res) => {
         { absherPhone: rx }, { logisticRegister: rx }, { cardType: rx }, { notes: rx }];
     }
     if (q.fidelity) filter['fidelity.status'] = q.fidelity === 'none' ? { $in: ['', null] } : q.fidelity;
+    // عتباتُ البطاقة من إعدادات القسم — نفسُها التي تحسب بها شاشةُ الانتهاءات.
+    const cfg = await getConfig();
     let cards = await DriverCard.find(filter)
       .populate('employee', 'firstName lastName arabicName employeeNumber employmentStatus')
       .sort({ expiryDate: 1 }).lean();
@@ -2849,11 +2983,14 @@ exports.listDriverCards = async (req, res) => {
     const [auths, masterAuths] = await Promise.all([
       empIds.length
         ? VehicleAuthorization.find({ employee: { $in: empIds }, status: 'active' })
-          .populate('vehicle', 'plateNumber').select('employee vehicle startDate documentExpiry').lean()
+          // سجلُّ الإسناد يشير إلى `Vehicle` القديم لا إلى سجلّ المركبات، وفيه
+          // التصنيفُ باسمين آخرين: `type` و`department` («النقل الثقيل»).
+          .populate('vehicle', 'plateNumber type department')
+          .select('employee vehicle startDate documentExpiry').lean()
         : [],
       idNumbers.length
         ? VehicleMaster.find({ 'authorizedPerson.iqamaNumber': { $in: idNumbers } })
-          .select('plateNumber authorizedPerson').lean()
+          .select('plateNumber authorizedPerson registrationTypeAr registrationTypeCode').lean()
         : [],
     ]);
 
@@ -2868,6 +3005,8 @@ exports.listDriverCards = async (req, res) => {
         startDate: a.startDate || '',
         expiryDate: a.documentExpiry || '',
         authorizationNumber: '',
+        registrationTypeAr: a.vehicle?.department || a.vehicle?.type || '',
+        registrationTypeCode: '',
       });
     }
     for (const v of masterAuths) {
@@ -2880,7 +3019,31 @@ exports.listDriverCards = async (req, res) => {
         startDate: ap.startDate ? String(ap.startDate).slice(0, 10) : '',
         expiryDate: ap.expiryDate ? String(ap.expiryDate).slice(0, 10) : '',
         authorizationNumber: ap.authorizationNumber || '',
+        registrationTypeAr: v.registrationTypeAr || '',
+        registrationTypeCode: v.registrationTypeCode || '',
       });
+    }
+
+    // ── والتصنيفُ من سجلّ المركبات وحدَه ──────────────────────────────────────
+    // سجلُّ الإسناد القديم يكتب القسمَ لا نوعَ التسجيل («B2C» في خانة القسم)،
+    // فسائقٌ ورقتُه ناقصةٌ يُقرأ تفويضُه منه فلا يُعرَف ما يقود. واللوحةُ هي
+    // المفتاحُ المشترك، فيُسأل عنها سجلُّ المركبات — وهو الذي يحمل نوعَ
+    // التسجيل رسميًّا — بمفتاح اللوحة المطويّ.
+    const plateKeys = [...new Set([...byIqama.values(), ...byEmp.values()].flat()
+      .map((a) => samePlate(a.plateNumber)).filter(Boolean))];
+    const regByPlate = new Map();
+    if (plateKeys.length) {
+      const regs = await VehicleMaster.find({}).select('plateNumber registrationTypeAr registrationTypeCode').lean();
+      for (const v of regs) {
+        const k = samePlate(v.plateNumber);
+        if (k) regByPlate.set(k, { ar: v.registrationTypeAr || '', code: v.registrationTypeCode || '' });
+      }
+    }
+    for (const list of [...byIqama.values(), ...byEmp.values()]) {
+      for (const a of list) {
+        const hit = regByPlate.get(samePlate(a.plateNumber));
+        if (hit) { a.registrationTypeAr = hit.ar || a.registrationTypeAr; a.registrationTypeCode = hit.code || a.registrationTypeCode; }
+      }
     }
 
     cards = cards.map((c) => {
@@ -2902,8 +3065,10 @@ exports.listDriverCards = async (req, res) => {
       return {
         ...c,
         daysLeft: days,
-        state: cardState(days),
+        state: cardState(days, cfg.alerts?.driverCard),
         authorizations,
+        // ما يقودُه هذا السائق — راجع `driverClass` تحت.
+        ...driverClass(authorizations),
         // ولا يُخفى الخلاف: الصفُّ يقول إنّ للسجلّ الأقدم رأيًا آخر، فيُراجَع.
         staleAssignments: fromRegistry.length
           ? fromAssign.filter((a) => !fromRegistry.some((r) => samePlate(r.plateNumber) === samePlate(a.plateNumber)))
@@ -2913,6 +3078,8 @@ exports.listDriverCards = async (req, res) => {
     });
     // الشريحةُ تُفلتَر بعد الحساب: هي مشتقّةٌ من التاريخ لا حقلٌ في القاعدة.
     if (q.state) cards = cards.filter((c) => c.state === q.state);
+    // وكذلك نوعُ ما يقود: مشتقٌّ من مركباته لا مكتوبٌ في بطاقته.
+    if (q.vehicleClass) cards = cards.filter((c) => c.vehicleClass === q.vehicleClass);
 
     const count = (s) => cards.filter((c) => c.state === s).length;
     // ── والبطاقةُ تُعرَف برقمها، والفراغُ يعني «مطلوبة» ────────────────────────
@@ -2946,7 +3113,10 @@ exports.listDriverCards = async (req, res) => {
         expired: count('expired'),
         critical: count('critical'),
         warning: count('warning'),
-        valid: count('valid') + count('upcoming'),
+        // و«قريب» شريحةٌ تُعرَض وتُفلتَر، فلا تُطوى في «ساري»: كانت تُجمَع معه
+        // فيقول العددُ إنّ البطاقةَ سارية وصفحةُ الانتهاءات تقول «قريبة».
+        upcoming: count('upcoming'),
+        valid: count('valid'),
         unlinked: cards.filter((c) => !c.employee).length,
         // خيانةُ الأمانة: «مطلوب» هو الرقمُ الذي يُقرأ — سائقٌ يعمل والوثيقةُ
         // لا تغطّيه. و«بلا جواب» ليس صفرًا: هو سؤالٌ لم يُسأل بعد.
@@ -2954,11 +3124,18 @@ exports.listDriverCards = async (req, res) => {
         fidelityRequired: cards.filter((c) => c.fidelity?.status === 'required').length,
         fidelityUnknown: cards.filter((c) => !c.fidelity?.status).length,
         authorized: cards.filter((c) => (c.authorizations || []).length > 0).length,
+        heavy: cards.filter((c) => c.vehicleClass === 'heavy').length,
+        motorcycle: cards.filter((c) => c.vehicleClass === 'motorcycle').length,
+        lightVehicle: cards.filter((c) => c.vehicleClass === 'light').length,
+        noVehicle: cards.filter((c) => c.vehicleClass === 'none').length,
       },
       // قيمُ الفلاتر تُبنى من السجلّ لا تُكتب يدًا.
       options: {
         logisticRegister: [...new Set(cards.map((c) => c.logisticRegister).filter(Boolean))],
         cardType: [...new Set(cards.map((c) => c.cardType).filter(Boolean))],
+        // بالرمز واسمِه معًا: الشاشةُ تعرض الاسمَ وتُرسل الرمز.
+        vehicleClass: ['heavy', 'light', 'motorcycle', 'none']
+          .map((k) => ({ code: k, ar: CLASS_AR[k], en: CLASS_EN[k] })),
       },
     });
   } catch (e) {

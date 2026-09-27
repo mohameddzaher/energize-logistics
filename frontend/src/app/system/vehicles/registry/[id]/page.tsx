@@ -377,14 +377,28 @@ export default function VehicleRegistryDetail() {
           </Row>
         </Section>
 
-        <Section title={t('بطاقة التشغيل ورخصة السير', 'Operating card & licence')} icon={<FileText className="w-4 h-4" />}
+        {/* ── بطاقةُ التشغيل ورخصةُ السير: مستندان لا مستند ─────────────────
+            كانا في بطاقةٍ واحدةٍ عنوانُها يجمعهما ورابطُها يفتح صفحةَ بطاقات
+            التشغيل وحدَها — فتاريخُ رخصةِ السير يُقرأ تحت عنوان غيرِه ولا
+            يُوصل إلى صفحته. وهما مستندان مستقلّان: لكلٍّ تاريخُه وحالتُه
+            وصفحتُه وتجديدُه، فلكلٍّ بطاقتُه. */}
+        <Section title={t('بطاقة التشغيل', 'Operating card')} icon={<FileText className="w-4 h-4" />}
           accent={docAccent('operatingCard')}
           href={`/system/vehicles/registry/operating-cards?q=${encodeURIComponent(v.plateNumber)}`}
           hrefLabel={t('صفحة بطاقات التشغيل', 'Operating-cards page')}>
-          <Row label={t('رقم بطاقة التشغيل', 'Operating card no.')} mono>{val(v.operatingCard?.cardNumber)}</Row>
-          <DateRow label={t('انتهاء بطاقة التشغيل', 'Op. card expiry')} date={v.operatingCard?.expiryDate} docKey="operatingCard" />
-          <DateRow label={t('انتهاء رخصة السير', 'Licence expiry')} date={v.vehicleLicense?.expiryDate} docKey="vehicleLicense" />
-          <Row label={t('انتهاء الرخصة (هجري)', 'Licence expiry (Hijri)')} mono>{val(toHijri(v.vehicleLicense?.expiryDate))}</Row>
+          <Row label={t('رقم البطاقة', 'Card no.')} mono>{val(v.operatingCard?.cardNumber)}</Row>
+          <DateRow label={t('تاريخ الانتهاء', 'Expiry')} date={v.operatingCard?.expiryDate} docKey="operatingCard" />
+        </Section>
+
+        <Section title={t('رخصة السير', 'Vehicle licence')} icon={<FileText className="w-4 h-4" />}
+          accent={docAccent('vehicleLicense')}
+          href={`/system/vehicles/registry/licenses?q=${encodeURIComponent(v.plateNumber)}`}
+          hrefLabel={t('صفحة رخص السير', 'Licences page')}>
+          <DateRow label={t('تاريخ الانتهاء', 'Expiry')} date={v.vehicleLicense?.expiryDate} docKey="vehicleLicense" />
+          {/* الهجريُّ المكتوبُ في الرخصة أوّلًا — والمحسوبُ إن لم يُسجَّل. */}
+          <Row label={t('تاريخ الانتهاء (هجري)', 'Expiry (Hijri)')} mono>
+            {val(v.vehicleLicense?.expiryDateHijri || toHijri(v.vehicleLicense?.expiryDate))}
+          </Row>
         </Section>
 
         <Section title={t('الفحص الدوري', 'Periodic inspection')} icon={<ClipboardCheck className="w-4 h-4" />}
@@ -393,7 +407,9 @@ export default function VehicleRegistryDetail() {
           hrefLabel={t('صفحة الفحص', 'Inspection page')}>
           <Row label={t('حالة الفحص', 'Status')}>{val(v.inspection?.statusAr)}</Row>
           <DateRow label={t('انتهاء الفحص', 'Expiry')} date={v.inspection?.expiryDate} docKey="inspection" />
-          <Row label={t('انتهاء الفحص (هجري)', 'Expiry (Hijri)')} mono>{val(toHijri(v.inspection?.expiryDate))}</Row>
+          <Row label={t('انتهاء الفحص (هجري)', 'Expiry (Hijri)')} mono>
+            {val(v.inspection?.expiryDateHijri || toHijri(v.inspection?.expiryDate))}
+          </Row>
         </Section>
 
         {!!v.notesAr && (
@@ -418,7 +434,13 @@ export default function VehicleRegistryDetail() {
           <ScrollX>
             <table className="w-full text-[13px]">
               <thead className="bg-slate-100 text-slate-600 text-[11.5px] uppercase tracking-wide">
-                <tr>{[t('المستند', 'Document'), t('الانتهاء السابق', 'Previous expiry'), t('الانتهاء الجديد', 'New expiry'), t('الرقم السابق', 'Previous no.'), t('الرقم الجديد', 'New no.'), t('التكلفة', 'Cost'), t('بواسطة', 'By'), t('التاريخ', 'Date')]
+                {/* ── والملاحظةُ والإيصالُ عمودان هنا ─────────────────────────
+                    نافذةُ التجديد تسأل عن ملاحظةٍ ورقمِ إيصال وتحفظهما فعلًا في
+                    `renewals[]`، ولم يكن في النظام كلِّه موضعٌ واحدٌ يقرؤهما:
+                    خمسةُ مواضعَ تكتب ولا موضعٌ يعرض. فمن كتب ملاحظةً عند
+                    التجديد رآها تُبتلَع — وهذا مكانُها الطبيعيّ: سطرُ التجديد
+                    الذي تشرحه. */}
+                <tr>{[t('المستند', 'Document'), t('الانتهاء السابق', 'Previous expiry'), t('الانتهاء الجديد', 'New expiry'), t('الرقم السابق', 'Previous no.'), t('الرقم الجديد', 'New no.'), t('التكلفة', 'Cost'), t('رقم الإيصال', 'Reference'), t('ملاحظة', 'Note'), t('بواسطة', 'By'), t('التاريخ', 'Date')]
                   .map((h) => <th key={h} className="px-3 py-2.5 text-start font-bold whitespace-nowrap">{h}</th>)}</tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -430,6 +452,8 @@ export default function VehicleRegistryDetail() {
                     <td className="px-3 py-2.5 font-mono text-slate-400 line-through">{r.previousNumber || '—'}</td>
                     <td className="px-3 py-2.5 font-mono font-semibold text-slate-900">{r.newNumber || '—'}</td>
                     <td className="px-3 py-2.5 font-mono text-slate-800">{r.cost != null ? money(r.cost) : '—'}</td>
+                    <td className="px-3 py-2.5 font-mono text-slate-600">{r.reference || '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-700 max-w-[22rem]" title={r.note || ''}>{r.note || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-600">{r.byName || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap font-mono">{r.at ? fmtDate(r.at) : '—'}</td>
                   </tr>

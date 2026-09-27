@@ -25,7 +25,11 @@ type Dash = {
   };
   bySector: Row[]; byRegistrationType: Row[]; byBrand: Row[]; byOwner: Row[]; byInsuranceCompany: Row[];
   byCoverageType: Row[]; byFuelCardStatus: Row[]; byInspectionStatus: Row[]; byColor: Row[]; byTamStatus: Row[]; byModelYear: Row[];
-  docBuckets: Record<string, { expired: number; critical: number; warning: number; valid: number; none: number }>;
+  // وشريحةُ «قريب» منها: كانت ساقطةً من هذا النوع ومن الحساب معًا، فلا تُعَدّ
+  // ولا تُرسَم — والمركباتُ التي تقع فيها تختفي من النِّسَب كلِّها.
+  docBuckets: Record<string, { expired: number; critical: number; warning: number; upcoming: number; valid: number; none: number }>;
+  /** عتباتُ القسم كما ضُبطت — أزرارُ الشرائح تنتقل بها. */
+  alerts?: Record<string, { criticalDays?: number; warnDays?: number; soonDays?: number }>;
 };
 
 export default function VehicleRegistryDashboard() {
@@ -89,7 +93,15 @@ export default function VehicleRegistryDashboard() {
   const sectorOpts = data.bySector.map((r) => r.key);
   const regTypeOpts = data.byRegistrationType.map((r) => r.key);
 
-  const bucketColors: Record<string, string> = { expired: '#dc2626', critical: '#ea580c', warning: '#ca8a04', valid: '#16a34a', none: '#cbd5e1' };
+  /** أقصى عددِ أيّامٍ في هذه الشريحة بحسب إعدادات القسم. */
+  const bandDays = (docKey: string, band: 'critical' | 'warning' | 'upcoming') => {
+    const a = data?.alerts?.[docKey] || {};
+    if (band === 'critical') return Number(a.criticalDays ?? 7);
+    if (band === 'warning') return Number(a.warnDays ?? 30);
+    return Number(a.soonDays ?? 90);
+  };
+
+  const bucketColors: Record<string, string> = { expired: '#dc2626', critical: '#ea580c', warning: '#ca8a04', upcoming: '#0284c7', valid: '#16a34a', none: '#cbd5e1' };
 
   return (
     <div className="space-y-5 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -147,22 +159,27 @@ export default function VehicleRegistryDashboard() {
         <p className="font-bold text-slate-900 mb-3">{ar ? 'حالة المستندات حسب النوع' : 'Document status by type'}</p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {DOC_TYPES.map((d) => {
-            const b = data.docBuckets[d.key] || { expired: 0, critical: 0, warning: 0, valid: 0, none: 0 };
-            const tot = b.expired + b.critical + b.warning + b.valid + b.none || 1;
+            const b = data.docBuckets[d.key] || { expired: 0, critical: 0, warning: 0, upcoming: 0, valid: 0, none: 0 };
+            const tot = b.expired + b.critical + b.warning + b.upcoming + b.valid + b.none || 1;
             return (
               <div key={d.key} className="rounded-xl border border-slate-100 p-3">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-semibold text-sm text-slate-800">{ar ? d.ar : d.en}</span>
-                  <span className="text-xs text-slate-400">{b.expired + b.critical + b.warning} {ar ? 'تنبيه' : 'alerts'}</span>
+                  <span className="text-xs text-slate-400">{b.expired + b.critical + b.warning + b.upcoming} {ar ? 'تنبيه' : 'alerts'}</span>
                 </div>
                 <div className="flex h-3 rounded-full overflow-hidden bg-slate-100">
-                  {(['expired', 'critical', 'warning', 'valid', 'none'] as const).map((k) => b[k] > 0 && (
+                  {(['expired', 'critical', 'warning', 'upcoming', 'valid', 'none'] as const).map((k) => b[k] > 0 && (
                     <div key={k} style={{ width: `${(b[k] / tot) * 100}%`, background: bucketColors[k] }} title={`${statusLabel(k, ar)}: ${b[k]}`} />
                   ))}
                 </div>
                 <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[11px]">
-                  {(['expired', 'critical', 'warning', 'valid'] as const).map((k) => b[k] > 0 && (
-                    <button key={k} onClick={() => k === 'valid' ? null : goList({ [k === 'expired' ? 'expiredDoc' : 'expiringDoc']: d.key, ...(k !== 'expired' ? { expiringWithin: k === 'critical' ? '30' : '60' } : {}) })}
+                  {/* ── والانتقالُ بالعتبة المضبوطة لا برقمٍ مكتوب ─────────
+                      كان «حرج» يفتح القائمةَ على ثلاثين يومًا و«تحذير» على
+                      ستّين، أيًّا كان ما ضبطه القسمُ في إعداداته. فمن جعل الحرجَ
+                      عشرةَ أيّامٍ ضغط «حرج ٤» فوجد أربعين صفًّا. والعتباتُ تأتي
+                      مع اللوحة (`alerts`) فيُنتقَل بها. */}
+                  {(['expired', 'critical', 'warning', 'upcoming', 'valid'] as const).map((k) => b[k] > 0 && (
+                    <button key={k} onClick={() => k === 'valid' ? null : goList({ [k === 'expired' ? 'expiredDoc' : 'expiringDoc']: d.key, ...(k !== 'expired' ? { expiringWithin: String(bandDays(d.key, k)) } : {}) })}
                       className="flex items-center gap-1" style={{ color: bucketColors[k] }}>
                       <span className="w-2 h-2 rounded-full" style={{ background: bucketColors[k] }} /> {statusLabel(k, ar)}: <b>{b[k]}</b>
                     </button>

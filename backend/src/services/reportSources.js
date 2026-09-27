@@ -115,6 +115,16 @@ async function vehicleOptions(q) {
   return [...byKey.values()].sort((a, b) => String(a.name).localeCompare(String(b.name), 'ar'));
 }
 
+/** عتباتُ التنبيه المحفوظةُ في إعدادات قسم المركبات — المصدرُ نفسُه الذي
+ *  تقرأه الشاشات، فالورقةُ المطبوعةُ تقول ما تقوله الشاشة. */
+async function vehicleAlertSettings() {
+  try {
+    const { VehicleRegistryConfig } = require('../models/VehicleMaster');
+    const cfg = await VehicleRegistryConfig.findOne({ key: 'vehicle-registry' }).lean();
+    return cfg?.alerts || {};
+  } catch (e) { return {}; }
+}
+
 async function buildVehicleReport(id, query, lang) {
   const Ls2Vehicle = require('../models/Ls2Vehicle');
   const Ls2Repair = require('../models/Ls2Repair');
@@ -204,7 +214,11 @@ async function buildVehicleReport(id, query, lang) {
   if (reg) {
     const VDOC = require('../config/vehicleDocuments');
     const at = (obj, path) => String(path || '').split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
-    const alerts = reg.alertSettings || {};
+    // ── وعتباتُ التنبيه من إعداداتِ القسم ─────────────────────────────────
+    // كان يُقرأ `reg.alertSettings` — حقلٌ لا وجودَ له في النظام كلِّه — فكلُّ
+    // تقريرٍ مطبوعٍ يُحسَب بعتبات الشِّفرة الافتراضيّة (٧/٣٠/٩٠) لا بما ضبطه
+    // القسم. فالورقةُ تقول «حرج» والشاشةُ تقول «قريب» عن المستند نفسِه.
+    const alerts = await vehicleAlertSettings();
     const rows = VDOC.DOCUMENTS.map((d) => {
       const expiry = at(reg, d.path);
       const status = at(reg, d.statusPath) || '';
@@ -286,7 +300,9 @@ async function buildVehicleReport(id, query, lang) {
       blocks.push({ kind: 'section', text: t('سجلّ التجديدات', 'Renewals') });
       blocks.push({
         kind: 'table',
-        head: [t('المستند', 'Document'), t('التاريخ', 'Done at'), t('الانتهاء السابق', 'Previous expiry'), t('الانتهاء الجديد', 'New expiry'), t('التكلفة', 'Cost'), t('نفّذه', 'By')],
+        // والملاحظةُ معها: هي تفسيرُ السطر («جُدِّدت بورقةٍ مؤقّتة»)، وبلا
+        // تفسيرٍ يصير السطرُ تاريخًا ومبلغًا لا يُعرَف سببُهما.
+        head: [t('المستند', 'Document'), t('التاريخ', 'Done at'), t('الانتهاء السابق', 'Previous expiry'), t('الانتهاء الجديد', 'New expiry'), t('التكلفة', 'Cost'), t('ملاحظة', 'Note'), t('نفّذه', 'By')],
         rows: renewals.map((r) => {
           const d = VDOC.getDoc(r.document);
           return [
@@ -295,6 +311,7 @@ async function buildVehicleReport(id, query, lang) {
             r.previousExpiry ? dt(r.previousExpiry) : '—',
             r.newExpiry ? dt(r.newExpiry) : '—',
             r.cost != null ? money(r.cost) : '—',
+            [r.reference, r.note].filter(Boolean).join(' — ') || '—',
             r.byName || '—',
           ];
         }),

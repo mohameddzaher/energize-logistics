@@ -25,10 +25,12 @@ interface Card {
   _id: string; idNumber: string; name?: string; dateOfBirth?: string; absherPhone?: string;
   logisticRegister?: string; cardNumber?: string; cardType?: string; expiryDate?: string;
   notes?: string; isActive?: boolean; daysLeft: number | null; state: string;
+  /** يُشتقّ في الخادم من نوع تسجيل المركبات المفوَّضة له — لا يُكتب في البطاقة. */
+  vehicleClass?: 'heavy' | 'light' | 'motorcycle' | 'none'; vehicleClassAr?: string; vehicleClassEn?: string;
   employee?: { _id: string; employeeNumber?: string; arabicName?: string; firstName?: string; lastName?: string; employmentStatus?: string } | null;
   // الشيءان الآخران اللذان يخصّان السائق لا المركبة.
   fidelity?: { status?: '' | 'covered' | 'required'; policyNumber?: string; addedDate?: string; notes?: string };
-  authorizations?: { _id: string; source?: 'registry' | 'assignment'; vehicle: string | null; plateNumber: string; startDate?: string; expiryDate?: string; authorizationNumber?: string }[];
+  authorizations?: { _id: string; source?: 'registry' | 'assignment'; vehicle: string | null; plateNumber: string; startDate?: string; expiryDate?: string; authorizationNumber?: string; registrationTypeAr?: string }[];
   // لوحاتٌ يسمّيها سجلُّ الإسناد الأقدمُ لهذا السائق وتخالف ورقةَ تفويضه.
   staleAssignments?: string[];
 }
@@ -42,12 +44,27 @@ const FIDELITY: Record<string, { ar: string; en: string; cls: string }> = {
   '': { ar: 'غير محدَّد', en: 'Not set', cls: 'bg-slate-100 text-slate-500' },
 };
 
+// ── نوعُ النقل ──────────────────────────────────────────────────────────────
+// «عايز أفرّق بين سائقين النقل الثقيل والباقي» — والبطاقةُ نفسُها لا تفرّق: هي
+// وثيقةٌ واحدةٌ للجميع. والفرقُ في ما تُخوِّله، أي في نوع تسجيل المركبة
+// المفوَّضة له، والخادمُ يشتقُّه (راجع `driverClass` في المتحكِّم).
+const VCLASS: Record<string, { ar: string; en: string; cls: string }> = {
+  heavy: { ar: 'نقل ثقيل', en: 'Heavy', cls: 'bg-indigo-100 text-indigo-700' },
+  light: { ar: 'مركبة خاصة', en: 'Private', cls: 'bg-teal-100 text-teal-700' },
+  motorcycle: { ar: 'دراجة آلية', en: 'Motorcycle', cls: 'bg-violet-100 text-violet-700' },
+  none: { ar: 'بلا تفويض', en: 'No auth.', cls: 'bg-slate-100 text-slate-500' },
+};
+
 // شرائحُ الانتهاء بلغة بقيّة مستندات القسم ولونِها نفسِه.
+// ── ولا يُكتب عددُ الأيّام في التسمية ──────────────────────────────────────
+// كانت «حرجة (≤٣٠ يوم)» مكتوبةً هكذا، والعتبةُ تُضبَط من إعدادات القسم. فمن
+// جعل الحرجَ عشرةَ أيّامٍ بقيت الشاشةُ تقول «≤٣٠» — تسميةٌ تكذب، وهي أسوأ من
+// تسميةٍ لا تُفصّل. والعددُ يُقرأ من عمود «المتبقي» بجانبها.
 const STATE: Record<string, { ar: string; en: string; cls: string }> = {
   expired: { ar: 'منتهية', en: 'Expired', cls: 'bg-red-100 text-red-700' },
-  critical: { ar: 'حرجة (≤٣٠ يوم)', en: 'Critical (≤30d)', cls: 'bg-orange-100 text-orange-700' },
-  warning: { ar: 'تحذير (≤٦٠ يوم)', en: 'Warning (≤60d)', cls: 'bg-amber-100 text-amber-700' },
-  upcoming: { ar: 'قريبة (≤٩٠ يوم)', en: 'Upcoming (≤90d)', cls: 'bg-sky-100 text-sky-700' },
+  critical: { ar: 'حرجة', en: 'Critical', cls: 'bg-orange-100 text-orange-700' },
+  warning: { ar: 'تحذير', en: 'Warning', cls: 'bg-amber-100 text-amber-700' },
+  upcoming: { ar: 'قريبة', en: 'Soon', cls: 'bg-sky-100 text-sky-700' },
   valid: { ar: 'سارية', en: 'Valid', cls: 'bg-emerald-100 text-emerald-700' },
   unknown: { ar: 'بلا تاريخ', en: 'No date', cls: 'bg-slate-100 text-slate-600' },
 };
@@ -61,7 +78,8 @@ const COL_DEFS: [string, string, string][] = [
   ['absher', 'جوال أبشر', 'Absher'],
   ['register', 'السجل اللوجستي', 'Register'],
   ['cardNumber', 'رقم البطاقة', 'Card no.'],
-  ['cardType', 'النوع', 'Type'],
+  ['cardType', 'نوع البطاقة', 'Card type'],
+  ['vclass', 'نوع النقل', 'Transport'],
   ['expiry', 'الانتهاء', 'Expiry'],
   ['daysLeft', 'المتبقي', 'Days left'],
   ['state', 'الحالة', 'State'],
@@ -76,6 +94,7 @@ const GETTERS: Record<string, (c: Card) => any> = {
   register: (c) => c.logisticRegister,
   cardNumber: (c) => c.cardNumber,
   cardType: (c) => c.cardType,
+  vclass: (c) => c.vehicleClass || 'none',
   expiry: (c) => c.expiryDate,
   daysLeft: (c) => c.daysLeft,
   state: (c) => c.state,
@@ -100,13 +119,14 @@ export default function DriverCardsPage() {
 
   const [cards, setCards] = useState<Card[]>([]);
   const [totals, setTotals] = useState<any>({});
-  const [options, setOptions] = useState<{ logisticRegister: string[]; cardType: string[] }>({ logisticRegister: [], cardType: [] });
+  const [options, setOptions] = useState<{ logisticRegister: string[]; cardType: string[]; vehicleClass?: { code: string; ar: string; en: string }[] }>({ logisticRegister: [], cardType: [], vehicleClass: [] });
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [fState, setFState] = useState('');
   const [fReg, setFReg] = useState('');
   const [fType, setFType] = useState('');
   const [fFid, setFFid] = useState('');
+  const [fClass, setFClass] = useState('');
   const [editing, setEditing] = useState<Partial<Card> | null>(null);
   // «له بطاقة / بلا بطاقة» — يُشتقّ في الخادم ويُفلتَر به هنا كبقيّة الشرائح.
   const [fHas, setFHas] = useState<'' | 'yes' | 'no'>('');
@@ -117,7 +137,7 @@ export default function DriverCardsPage() {
   const load = useCallback(async () => {
     try {
       const d = await api.get<any>('/api/vehicle-registry/driver-cards');
-      setCards(d.cards || []); setTotals(d.totals || {}); setOptions(d.options || { logisticRegister: [], cardType: [] });
+      setCards(d.cards || []); setTotals(d.totals || {}); setOptions(d.options || { logisticRegister: [], cardType: [], vehicleClass: [] });
     } catch (e: any) { notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error'); }
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -136,6 +156,7 @@ export default function DriverCardsPage() {
     const n = fold(q);
     return cards.filter((c) => {
       if (fState && c.state !== fState) return false;
+      if (fClass && (c.vehicleClass || 'none') !== fClass) return false;
       // «له بطاقة» يُشتقّ في الخادم من رقمها — راجع hasCard في listDriverCards.
       if (fHas === 'yes' && !c.hasCard) return false;
       if (fHas === 'no' && c.hasCard) return false;
@@ -148,12 +169,12 @@ export default function DriverCardsPage() {
         c.employee?.employeeNumber, c.employee?.arabicName,
         ...(c.authorizations || []).map((a) => a.plateNumber)].some((v) => fold(v).includes(n));
     });
-  }, [cards, q, fState, fReg, fType, fFid, fHas]);
+  }, [cards, q, fState, fReg, fType, fFid, fHas, fClass]);
 
   // آخرُ ما يُطبَّق: فوق البحث والشرائح، كما يفعل إكسل.
   const shownRows = cf.apply(shown, GETTERS);
 
-  const activeF = [fState, fReg, fType, fFid, fHas].filter(Boolean).length;
+  const activeF = [fState, fReg, fType, fFid, fHas, fClass].filter(Boolean).length;
 
   const save = async () => {
     if (!editing?.idNumber?.trim()) { notify(t('رقم الهوية مطلوب', 'ID number required'), 'error'); return; }
@@ -225,14 +246,17 @@ export default function DriverCardsPage() {
             اثنان من التسعة والخمسين لم تُستخرج بطاقتُهما. والسؤالُ المطروح «كم
             سائقًا عندنا وكم منهم يحمل بطاقة»، فصار الرقمُ يقوله. */}
         <Stat label={t('إجمالي السائقين', 'Total drivers')} value={totals.drivers ?? totals.total ?? 0}
-          onClick={() => { setFState(''); setFFid(''); setFHas(''); }} on={!fState && !fFid && !fHas} />
+          onClick={() => { setFState(''); setFFid(''); setFHas(''); setFClass(''); }} on={!fState && !fFid && !fHas && !fClass} />
         <Stat label={t('لهم بطاقة', 'With a card')} value={totals.withCard || 0} accent="text-emerald-600"
           onClick={() => { setFHas('yes'); setFState(''); }} on={fHas === 'yes'} />
         <Stat label={t('بلا بطاقة — مطلوبة', 'No card — needed')} value={totals.withoutCard || 0} accent="text-red-600"
           onClick={() => { setFHas('no'); setFState(''); }} on={fHas === 'no'} />
         <Stat label={t('منتهية', 'Expired')} value={totals.expired || 0} accent="text-red-600" onClick={() => setFState('expired')} on={fState === 'expired'} />
-        <Stat label={t('تنتهي خلال ٣٠ يوم', 'Within 30 days')} value={totals.critical || 0} accent="text-orange-600" onClick={() => setFState('critical')} on={fState === 'critical'} />
-        <Stat label={t('تنتهي خلال ٦٠ يوم', 'Within 60 days')} value={totals.warning || 0} accent="text-amber-600" onClick={() => setFState('warning')} on={fState === 'warning'} />
+        {/* الشرائحُ الثلاثُ كما في بقيّة القسم، وبأسمائها لا بأعداد أيّامها:
+            العتبةُ تُضبَط من «إعدادات القسم» وتُطبَّق هنا في اللحظة نفسها. */}
+        <Stat label={t('حرجة', 'Critical')} value={totals.critical || 0} accent="text-orange-600" onClick={() => setFState('critical')} on={fState === 'critical'} />
+        <Stat label={t('تحذير', 'Warning')} value={totals.warning || 0} accent="text-amber-600" onClick={() => setFState('warning')} on={fState === 'warning'} />
+        <Stat label={t('قريبة', 'Soon')} value={totals.upcoming || 0} accent="text-sky-600" onClick={() => setFState('upcoming')} on={fState === 'upcoming'} />
         <Stat label={t('سارية', 'Valid')} value={totals.valid || 0} accent="text-emerald-600" onClick={() => setFState('valid')} on={fState === 'valid'} />
       </div>
 
@@ -247,6 +271,11 @@ export default function DriverCardsPage() {
         <Stat label={t('بلا جواب', 'Not set')} value={totals.fidelityUnknown || 0} accent="text-slate-500"
           onClick={() => setFFid('')} on={false} />
         <Stat label={t('لديهم تفويض ساري', 'Holding a live authorisation')} value={totals.authorized || 0} accent="text-sky-600" />
+        {/* والفصلُ بين سائقي الشاحنات ومن دونهم — يُقرأ ويُفلتَر بضغطة. */}
+        <Stat label={t('سائقو النقل الثقيل', 'Heavy-transport drivers')} value={totals.heavy || 0} accent="text-indigo-600"
+          onClick={() => setFClass(fClass === 'heavy' ? '' : 'heavy')} on={fClass === 'heavy'} />
+        <Stat label={t('الدراجات الآلية', 'Motorcycles')} value={totals.motorcycle || 0} accent="text-violet-600"
+          onClick={() => setFClass(fClass === 'motorcycle' ? '' : 'motorcycle')} on={fClass === 'motorcycle'} />
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -264,6 +293,11 @@ export default function DriverCardsPage() {
           <option value="">{t('كل الأنواع', 'All types')}</option>
           {options.cardType.map((v) => <option key={v} value={v}>{v}</option>)}
         </select>
+        <select value={fClass} onChange={(e) => setFClass(e.target.value)} aria-label={t('نوع النقل', 'Transport type')}
+          className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800">
+          <option value="">{t('نوع النقل — الكل', 'Transport — all')}</option>
+          {(options.vehicleClass || []).map((o) => <option key={o.code} value={o.code}>{ar ? o.ar : o.en}</option>)}
+        </select>
         <select value={fFid} onChange={(e) => setFFid(e.target.value)} aria-label={t('خيانة الأمانة', 'Fidelity insurance')}
           className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800">
           <option value="">{t('خيانة الأمانة — الكل', 'Fidelity — all')}</option>
@@ -271,7 +305,7 @@ export default function DriverCardsPage() {
           <option value="required">{t('مطلوب ضمُّه', 'Required')}</option>
         </select>
         {(activeF > 0 || q) && (
-          <button type="button" onClick={() => { setFState(''); setFReg(''); setFType(''); setFFid(''); setQ(''); }}
+          <button type="button" onClick={() => { setFState(''); setFReg(''); setFType(''); setFFid(''); setFClass(''); setQ(''); }}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121]/10 text-[#f37121] text-sm font-semibold hover:bg-[#f37121]/20">
             <RotateCcw className="w-4 h-4" /> {t('مسح', 'Clear')}
           </button>
@@ -296,9 +330,10 @@ export default function DriverCardsPage() {
                     <span className="inline-flex items-center">
                       {t(arL, enL)}
                       {cf.header(key, shown, GETTERS[key], ar,
-                        key === 'state' ? (v: any) => (STATE[String(v)] ? (ar ? STATE[String(v)].ar : STATE[String(v)].en) : String(v))
-                          : key === 'fidelity' ? (v: any) => (ar ? FIDELITY[String(v)]?.ar : FIDELITY[String(v)]?.en) || String(v)
-                            : undefined)}
+                        key === 'vclass' ? (v: any) => (ar ? VCLASS[String(v)]?.ar : VCLASS[String(v)]?.en) || String(v)
+                          : key === 'state' ? (v: any) => (STATE[String(v)] ? (ar ? STATE[String(v)].ar : STATE[String(v)].en) : String(v))
+                            : key === 'fidelity' ? (v: any) => (ar ? FIDELITY[String(v)]?.ar : FIDELITY[String(v)]?.en) || String(v)
+                              : undefined)}
                     </span>
                   </th>
                 ))}
@@ -333,6 +368,12 @@ export default function DriverCardsPage() {
                         : <span className="font-sans px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[11px] font-semibold">{t('مطلوبة — لم تُستخرج', 'Needed — not issued')}</span>}
                     </td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{c.cardType || '—'}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${VCLASS[c.vehicleClass || 'none'].cls}`}
+                        title={c.authorizations?.map((a) => `${a.plateNumber} — ${a.registrationTypeAr || ''}`).join(' · ') || ''}>
+                        {ar ? VCLASS[c.vehicleClass || 'none'].ar : VCLASS[c.vehicleClass || 'none'].en}
+                      </span>
+                    </td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{c.expiryDate || '—'}</td>
                     <td className="px-3 py-2.5 tabular-nums text-slate-700">{c.daysLeft === null ? '—' : c.daysLeft}</td>
                     <td className="px-3 py-2.5"><span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${st.cls}`}>{ar ? st.ar : st.en}</span></td>

@@ -27,6 +27,29 @@ const driverCardSchema = new mongoose.Schema({
   notes: { type: String, trim: true, default: '' },
 
   /**
+   * ── سجلُّ تجديداتِ البطاقة ────────────────────────────────────────────────
+   * نافذةُ التجديد واحدةٌ لكلّ مستندات القسم، وتسأل عن التكلفة ورقم الإيصال
+   * وملاحظة. ومستنداتُ المركبة تحفظها في `VehicleMaster.renewals`، أمّا صفوفُ
+   * بطاقات السائقين فلم يكن لها موضعٌ تُحفَظ فيه: يُقرأ `newExpiry` ويُرمى
+   * الباقي بلا خبر. فكانت الشاشةُ تسأل عمّا لا يمكن حفظُه.
+   *
+   * وهو سجلٌّ لازمٌ في ذاته: البطاقةُ تُجدَّد كلَّ سنةٍ برقمٍ جديدٍ أحيانًا،
+   * والرقمُ القديم يبقى مذكورًا في أوراقٍ سابقة — فالسلسلةُ تُقرأ إلى الوراء
+   * كما تُقرأ في المركبات.
+   */
+  renewals: [{
+    previousExpiry: { type: String, default: '' },
+    newExpiry: { type: String, default: '' },
+    previousNumber: { type: String, default: '' },
+    newNumber: { type: String, default: '' },
+    cost: { type: Number, default: null },
+    reference: { type: String, trim: true, default: '' },
+    note: { type: String, trim: true, default: '' },
+    at: { type: Date, default: Date.now },
+    byName: { type: String, default: '' },
+  }],
+
+  /**
    * ── خيانة الأمانة ─────────────────────────────────────────────────────────
    *
    * وثيقةُ تأمينٍ تغطّي ما يسرقه السائق ممّا في عهدته. وهي وثيقةٌ واحدةٌ على

@@ -247,6 +247,13 @@ const vehicleRegistryConfigSchema = new mongoose.Schema({
     // التفويض ينتهي فجأةً ولا يُستخرج بديلُه في يوم — فعتبته أوسع من بطاقة التشغيل.
     authorization: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 45 }, criticalDays: { type: Number, default: 15 }, soonDays: { type: Number, default: 90 } },
     corporatePolicy: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 60 }, criticalDays: { type: Number, default: 30 }, soonDays: { type: Number, default: 90 } },
+    // ── وبطاقةُ السائق مستندٌ كالباقي ─────────────────────────────────────
+    // كانت صفحةُ الإعدادات تعرض لها سطرًا يُحرَّر ويُحفَظ ويردّ الخادمُ ٢٠٠،
+    // ثمّ تُرمى القيمةُ: لا مفتاحَ لها هنا ولا في قائمة المفاتيح المقبولة.
+    // وكانت حالتُها تُحسَب بأرقامٍ مكتوبةٍ في الشِّفرة (٣٠/٦٠/٩٠) تخالف ما
+    // يُحسَب للبطاقة نفسِها في شاشة الانتهاءات — فالبطاقةُ الواحدة «حرجة»
+    // هنا و«سارية» هناك.
+    driverCard: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 60 }, criticalDays: { type: Number, default: 30 }, soonDays: { type: Number, default: 90 } },
   },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });

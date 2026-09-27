@@ -20,18 +20,31 @@ import ScrollX from '@/components/system/ScrollX';
 
 type Tab = 'lists' | 'alerts';
 
-// المستنداتُ التي لها عتبةُ تنبيه — بالترتيب الذي يُقرأ به في الشاشة.
-const DOCS: { key: string; ar: string; en: string }[] = [
-  { key: 'insurance', ar: 'التأمين', en: 'Insurance' },
-  { key: 'operatingCard', ar: 'بطاقة التشغيل', en: 'Operating card' },
-  { key: 'vehicleLicense', ar: 'رخصة السير', en: 'Vehicle licence' },
-  { key: 'inspection', ar: 'الفحص الدوري', en: 'Inspection' },
-  { key: 'authorization', ar: 'التفويض بالقيادة', en: 'Driving authorisation' },
-  { key: 'gps', ar: 'اشتراك التتبّع', en: 'GPS subscription' },
+// ── المستنداتُ التي لها عتبةُ تنبيه ─────────────────────────────────────────
+// والاسمُ هو اسمُ الصفحة كما في القائمة الجانبيّة حرفًا بحرف — لا اسمٌ ثالثٌ
+// يُخترَع هنا. كان الصفُّ يُسمّى «التأمين» والصفحةُ «تأمين المركبات»، فيضبط
+// المستخدمُ عتبةً ولا يدري أيَّ شاشةٍ ضبط. ومعه مسارُه: تُفتَح الصفحةُ من
+// موضع ضبطها ويُرى الأثرُ.
+const DOCS: { key: string; ar: string; en: string; href: string }[] = [
+  { key: 'insurance', ar: 'تأمين المركبات', en: 'Vehicle insurance', href: '/system/vehicles/registry/insurance/vehicles' },
+  { key: 'operatingCard', ar: 'بطاقات التشغيل', en: 'Operating cards', href: '/system/vehicles/registry/operating-cards' },
+  { key: 'vehicleLicense', ar: 'رخص السير', en: 'Vehicle licences', href: '/system/vehicles/registry/licenses' },
+  { key: 'inspection', ar: 'الفحص الدوري', en: 'Periodic inspection', href: '/system/vehicles/registry/inspection' },
+  { key: 'authorization', ar: 'التفاويض', en: 'Authorisations', href: '/system/vehicles/registry/authorizations' },
+  { key: 'gps', ar: 'أجهزة التتبّع GPS', en: 'GPS devices', href: '/system/vehicles/registry/gps' },
   // بطاقةُ السائق ورقةٌ على إنسانٍ لا على مركبة، لكنّ انتهاءها يوقف العملَ كما
   // يوقفه انتهاءُ استمارة — فعتباتُها تُضبَط من هنا كغيرها.
-  { key: 'driverCard', ar: 'بطاقة السائق', en: 'Driver card' },
-  { key: 'corporatePolicy', ar: 'وثائق الشركة', en: 'Corporate policies' },
+  { key: 'driverCard', ar: 'بطاقات السائقين', en: 'Driver cards', href: '/system/vehicles/driver-cards' },
+  { key: 'corporatePolicy', ar: 'وثائق تأمين الشركة', en: 'Corporate policies', href: '/system/vehicles/registry/corporate' },
+];
+
+// شرائحُ الحالة بلغة الصفحات ولونِها — تُعرَض مع العتبة نتيجتُها الآن.
+const BANDS: { key: string; ar: string; en: string; cls: string }[] = [
+  { key: 'expired', ar: 'منتهٍ', en: 'Expired', cls: 'bg-red-100 text-red-700' },
+  { key: 'critical', ar: 'حرج', en: 'Critical', cls: 'bg-orange-100 text-orange-700' },
+  { key: 'warning', ar: 'تحذير', en: 'Warning', cls: 'bg-amber-100 text-amber-700' },
+  { key: 'upcoming', ar: 'قريب', en: 'Soon', cls: 'bg-sky-100 text-sky-700' },
+  { key: 'valid', ar: 'ساري', en: 'Valid', cls: 'bg-emerald-100 text-emerald-700' },
 ];
 
 type AlertCfg = { enabled: boolean; soonDays: number; warnDays: number; criticalDays: number };
@@ -48,13 +61,17 @@ export default function VehiclesSettingsPage() {
 
   const [tab, setTab] = useState<Tab>('lists');
   const [alerts, setAlerts] = useState<Record<string, AlertCfg> | null>(null);
+  // ما تقوله هذه العتباتُ عن البيانات الآن — يأتي محسوبًا من الخادم بالدالّة
+  // نفسِها التي تحسبه في الصفحات.
+  const [counts, setCounts] = useState<Record<string, Record<string, number>>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const d = await api.get<{ config: { alerts: Record<string, AlertCfg> } }>('/api/vehicle-registry/settings');
+      const d = await api.get<{ config: { alerts: Record<string, AlertCfg> }; counts?: Record<string, Record<string, number>> }>('/api/vehicle-registry/settings');
       setAlerts(d.config?.alerts || {});
+      setCounts(d.counts || {});
     } catch (e: any) { notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error'); }
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -76,6 +93,9 @@ export default function VehiclesSettingsPage() {
     try {
       await api.put('/api/vehicle-registry/settings', { alerts });
       notify(t('حُفظت الإعدادات', 'Settings saved'), 'success');
+      // ويُعاد السؤالُ فورًا: ما يُقصّه الخادمُ أو يردّه يُرى على الشاشة، ولا
+      // يبقى رقمٌ معروضٌ غيرَ الرقم المحفوظ. والعدّاداتُ تُعاد بالعتبة الجديدة.
+      await load();
     } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
     setSaving(false);
   };
@@ -114,8 +134,8 @@ export default function VehiclesSettingsPage() {
               الأخريان تغيّران اللونَ وحدَه — أصفرُ ثمّ برتقاليٌّ كلّما اقترب.
               فمن أراد أن يبدأ التنبيهُ أبكرَ يزيد «قريب» وحدَها. */}
           <p className="text-[12px] text-slate-500 mb-3 leading-relaxed">
-            {t('«قارب على الانتهاء» تبدأ من عتبة «قريب». و«تحذير» و«حرج» تغيّران اللون وحدَه كلّما اقترب الموعد — أصفر ثمّ برتقاليّ. كلُّها بالأيّام قبل الانتهاء.',
-               '“Due soon” starts at the soon threshold. Warning and critical only deepen the colour as the date nears. All in days before expiry.')}
+            {t('كلُّ رقمٍ عددُ أيّامٍ قبل الانتهاء، وكلُّ صفٍّ يُغيّر شرائحَ صفحته الثلاث: «حرج» و«تحذير» و«قريب» — تُعدّ في الصفحة وتُفلتَر بضغطة. وعمودُ «الوضع الآن» يقول ما تقوله هذه الأرقامُ على بياناتك في هذه اللحظة، فالصفرُ فيه صفرٌ حقيقيّ لا إعدادٌ لم يُحفَظ.',
+               'Each number is days before expiry, and each row drives its page’s three bands — critical, warning and soon. “Right now” shows what these numbers say about your data at this moment, so a zero there is a real zero, not an unsaved setting.')}
           </p>
           {/* ── والقاعدةُ تُكتب قبل الحفظ لا بعده ────────────────────────────
               كان ما يخالفها يُقَصّ في الخادم بلا خبر، فيقرأ صاحبُه رقمَه ولم
@@ -134,6 +154,8 @@ export default function VehiclesSettingsPage() {
                   <th className="px-3 py-2 text-center font-semibold">{t('قريب (يوم)', 'Soon (days)')}</th>
                   <th className="px-3 py-2 text-center font-semibold">{t('تحذير (يوم)', 'Warning (days)')}</th>
                   <th className="px-3 py-2 text-center font-semibold">{t('حرج (يوم)', 'Critical (days)')}</th>
+                  <th className="px-3 py-2 text-start font-semibold">{t('المدى الفعلي', 'Actual bands')}</th>
+                  <th className="px-3 py-2 text-start font-semibold">{t('الوضع الآن', 'Right now')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -159,6 +181,39 @@ export default function VehiclesSettingsPage() {
                       <td className="px-3 py-2.5 text-center">{num('soonDays')}</td>
                       <td className="px-3 py-2.5 text-center">{num('warnDays')}</td>
                       <td className="px-3 py-2.5 text-center">{num('criticalDays')}</td>
+                      {/* ── والرقمُ يُقرأ مدًى لا عتبةً مفردة ────────────────
+                          ثلاثةُ أرقامٍ في سطرٍ واحدٍ لا تقول أين يقع كلُّ
+                          مستند: مَن كتب «حرج ٢٠ وتحذير ٣٠ وقريب ٦٠» لا يرى أنّ
+                          «تحذير» صار ٢١–٣٠ يومًا وأنّ ما بعد الستّين ليس في
+                          شريحةٍ أصلًا. فالمدى مكتوبٌ صريحًا. */}
+                      <td className="px-3 py-2.5 text-[11.5px] text-slate-600 whitespace-nowrap leading-relaxed">
+                        <span className="text-orange-700 font-semibold">{t('حرج', 'Crit')}</span>{` ≤${c.criticalDays} · `}
+                        <span className="text-amber-700 font-semibold">{t('تحذير', 'Warn')}</span>
+                        {Number(c.warnDays) > Number(c.criticalDays) ? ` ${Number(c.criticalDays) + 1}–${c.warnDays}` : ` — ${t('معطَّلة', 'off')}`}
+                        {' · '}
+                        <span className="text-sky-700 font-semibold">{t('قريب', 'Soon')}</span>
+                        {Number(c.soonDays) > Number(c.warnDays) ? ` ${Number(c.warnDays) + 1}–${c.soonDays}` : ` — ${t('معطَّلة', 'off')}`}
+                      </td>
+                      {/* ── وأثرُ العتبة في موضع ضبطها ───────────────────────
+                          «أظبط حرج ٢٠ وأروح الصفحة ألاقي صفر» — والصفرُ قد يكون
+                          صحيحًا (لا مستندَ ينتهي في هذا المدى) وقد يكون عطلًا،
+                          ولا سبيلَ للتفريق. فالعددُ هنا، محسوبًا بالعتبة نفسِها
+                          التي تُحسب بها الصفحة. */}
+                      <td className="px-3 py-2.5">
+                        <span className="inline-flex items-center gap-1 flex-wrap">
+                          {BANDS.filter((b) => (counts[d.key]?.[b.key] || 0) > 0).map((b) => (
+                            <span key={b.key} className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${b.cls}`}>
+                              {t(b.ar, b.en)} {counts[d.key]?.[b.key]}
+                            </span>
+                          ))}
+                          {!BANDS.some((b) => (counts[d.key]?.[b.key] || 0) > 0) && (
+                            <span className="text-slate-400 text-[11.5px]">{t('لا بيانات بتاريخ', 'no dated records')}</span>
+                          )}
+                          <a href={d.href} className="text-[11px] font-bold text-slate-400 hover:text-[#f37121] whitespace-nowrap">
+                            {t('الصفحة ↗', 'page ↗')}
+                          </a>
+                        </span>
+                      </td>
                     </tr>
                   );
                 })}

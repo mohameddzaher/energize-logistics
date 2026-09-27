@@ -595,6 +595,7 @@
       "apis": [
         "/api/lookups/types",
         "/api/vehicle-registry",
+        "/api/vehicle-registry/claims",
         "/api/vehicle-registry/documents",
         "/api/vehicle-registry/filters",
         "/api/vehicle-registry/renew-bulk",

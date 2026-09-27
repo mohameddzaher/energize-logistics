@@ -11,7 +11,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
-import { Users, Plus, Edit, Trash2 } from 'lucide-react';
+import { Users, Plus, Edit, UserMinus, RotateCcw } from 'lucide-react';
 import {
   isHRStaff, Employee, EMPLOYMENT_STATUS, empName,
 } from '@/lib/hr';
@@ -101,9 +101,18 @@ export default function HREmployeesPage() {
   const openCreate = () => { setEditing(null); setShowModal(true); };
   const openEdit = (e: Employee) => { setEditing(e); setShowModal(true); };
 
-  const remove = async (e: Employee) => {
-    if (!(await confirm(`${tx.confirmDeletePrefix}${empName(e, lang)}${tx.confirmDeleteSuffix}`))) return;
-    try { await api.delete(`/api/hr/employees/${e._id}`); load(); } catch (err: any) { notify(err.message, 'error'); }
+  /**
+   * ── ولا زرَّ حذفٍ في سجلّ الموظّفين ─────────────────────────────────────
+   * كان هنا زرٌّ يمحو الموظّف ومستنداتِه وملفّاتَها على القرص محوًا لا رجعةَ
+   * فيه. ومَن ترك العملَ تُنهى خدمتُه ولا يُمحى ملفُّه: يُسأل عنه بعد سنواتٍ —
+   * مكتبُ العمل، والتأمينات، وشهادةُ خبرة، وعهدةٌ كانت بيده. والبابُ في الخادم
+   * مسدودٌ أيضًا (راجع `deleteEmployee`)، فلا يُصنَع الطلبُ من غير هذه الشاشة.
+   *
+   * وإنهاءُ الخدمة يُفعَل من ملفّ الموظّف حيث يُكتب سببُه وتاريخُه ويُحرَس
+   * بالعهدة والتفويض — فالزرُّ يفتح الملفّ ولا يفعل شيئًا بنفسه.
+   */
+  const openFileToEndService = (e: Employee) => {
+    router.push(`/system/hr/employees/${e._id}`);
   };
 
   const exportColumns: ExportColumn[] = [
@@ -126,6 +135,14 @@ export default function HREmployeesPage() {
   // حين لا فلتر — إذ يكون المعروضُ هو الكلَّ بعينه.
   // «المعروض» و«الكل» يفترقان متى كان ثَمّ فلترٌ أصلًا — واللوحةُ الجديدة منه.
   const hasActiveFilters = !!(debouncedSearch.trim() || statusFilter || countActive(filters));
+  /** الفلاتر التي قد تحجب نتيجةَ بحثٍ صحيح — تُسمّى للقارئ لا تُعَدّ. */
+  const blockers = [
+    statusFilter
+      ? `${ar ? 'الحالة' : 'status'}: ${ar ? EMPLOYMENT_STATUS[statusFilter]?.ar : EMPLOYMENT_STATUS[statusFilter]?.en}`
+      : '',
+    countActive(filters) ? `${countActive(filters)} ${ar ? 'فلتر متقدّم' : 'advanced filter(s)'}` : '',
+  ].filter(Boolean);
+  const clearAllFilters = () => { setStatusFilter(''); setFilters({}); };
   const fetchAllEmployees = async () => {
     const d = await api.get<{ employees: Employee[] }>('/api/hr/employees');
     return [{ name: 'Employees', rows: d.employees || [], columns: exportColumns }];
@@ -190,14 +207,41 @@ export default function HREmployeesPage() {
           </thead>
           <tbody>
             {employees.length === 0 ? (
-              <tr><td colSpan={7} className="text-center text-slate-800 py-12">{tx.noEmployees}</td></tr>
+              /* ── ولا يُقال «لا يوجد» وهو موجود ──────────────────────────────
+                 «بعمل سيرش عن موظّف مش بيلاقيه» — والموظّفُ في السجلّ. العلّةُ
+                 أنّ الفلترَ يبقى مكتوبًا في عنوان الصفحة فيعيش عبر التنقّل
+                 والتحديث، والبحثُ يُطبَّق **داخله**. فمن فلتر بالحالة «نشط»
+                 مرّةً ثمّ بحث عن واحدٍ من الواحدٍ وتسعين المنتهيةِ خدمتُهم قرأ
+                 «لا يوجد موظفون». ثبت ذلك على البرودكشن: الاسمُ يُوجَد بلا فلتر
+                 ويُعطي صفرًا مع `status=active`.
+                 فالشاشةُ الفارغةُ تقول ما يحجب، وتمسحه بضغطةٍ واحدة. */
+              <tr><td colSpan={7} className="text-center py-12">
+                <p className="text-slate-800 font-semibold">{tx.noEmployees}</p>
+                {blockers.length > 0 && (
+                  <div className="mt-2 space-y-2">
+                    <p className="text-[12.5px] text-slate-500">
+                      {ar ? 'فيه فلاتر شغّالة والبحث بيتم جوّاها: ' : 'Filters are active and the search runs inside them: '}
+                      <span className="font-semibold text-slate-700">{blockers.join(' · ')}</span>
+                    </p>
+                    <button type="button" onClick={clearAllFilters}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#f37121] text-white text-[12.5px] font-bold hover:bg-[#e06010]">
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      {ar ? 'ابحث في كل الموظفين' : 'Search all employees'}
+                    </button>
+                  </div>
+                )}
+              </td></tr>
             ) : employees.map((e) => (
               <tr key={e._id} className="group border-b border-slate-200/70 hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => router.push(`/system/hr/employees/${e._id}`)}>
                 <td {...pin.td(0, 'px-4 py-3', 'bg-white group-hover:bg-slate-100')} onClick={(ev) => ev.stopPropagation()}>
                   <div className="flex items-center gap-1">
                     <button type="button" onClick={() => openEdit(e)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.edit}><Edit className="w-4 h-4" /></button>
-                    {(user?.role === 'super_admin' || user?.role === 'hr_manager') && (
-                      <button type="button" onClick={() => remove(e)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.delete}><Trash2 className="w-4 h-4" /></button>
+                    {(user?.role === 'super_admin' || user?.role === 'hr_manager') && e.employmentStatus !== 'terminated' && (
+                      <button type="button" onClick={() => openFileToEndService(e)}
+                        className="p-1.5 rounded-lg text-slate-700 hover:text-amber-600 hover:bg-slate-100"
+                        title={ar ? 'إنهاء الخدمة — من ملفّ الموظّف' : 'End service — in the employee file'}>
+                        <UserMinus className="w-4 h-4" />
+                      </button>
                     )}
                   </div>
                 </td>

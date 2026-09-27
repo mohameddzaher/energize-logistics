@@ -1,0 +1,407 @@
+'use client';
+/**
+ * موظّفو النقل الخفيف — سجلُّ القسم.
+ *
+ * ── العلّة ──────────────────────────────────────────────────────────────────
+ * كان القسمُ يُدار من شيتَي إكسل: واحدٌ للموظّفين وآخرُ للمركبات وتفاويضها،
+ * يُرسَلان بالبريد ويُنسخان ويُعدَّلان في أكثرَ من نسخة. والسؤالُ البسيط — «كم
+ * مندوبًا في مشروع كيتا بجدة؟» — جوابُه فرزٌ يدويّ، و«مَن على كفالة السجلّ
+ * الفلانيّ؟» لا جوابَ له إلّا بالعدّ.
+ *
+ * وكانت الصفحةُ التي هنا («مناديب المبيعات») تعرض مناديبَ تقارير الطلبات وحدَهم
+ * — أي جزءًا من القسم — فلا يظهر فيها مشرفٌ ولا ميكانيكيٌّ ولا عاملُ نظافة،
+ * وهم أحدَ عشرَ من مئةٍ وواحدٍ وستّين.
+ *
+ * فالسجلُّ هنا كلُّ من يعمل في النقل الخفيف، بكلّ ما يُسأل عنه: مشروعُه وفرعُه
+ * ومشرفُه ومركبتُه وسجلُّ كفالته وسكنُه. والإنسانُ نفسُه في الموارد البشريّة
+ * والمركبةُ في سجلّ المركبات — راجع تعليقَ backend/models/LightTransport.
+ */
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
+import { useDialog } from '@/components/system/DialogProvider';
+import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
+import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, Select } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
+import ManagedSelect from '@/components/system/ManagedSelect';
+import ScrollX from '@/components/system/ScrollX';
+import { LEAD, LEAD_CELL } from '@/components/vehicles/stickyLead';
+import { Truck, Plus, Pencil, RotateCcw, UserMinus, ExternalLink } from 'lucide-react';
+import {
+  getLTEmployees, updateLTEmployee, createLTEmployee, deactivateLTEmployee,
+  LT_COLUMNS, statusCls, KIND_AR, KIND_EN, canEditLT, fmtDate,
+  type LTEmployee, type LTTotals, type LTOptions,
+} from '@/lib/lightTransport';
+
+const EMPTY_TOTALS = {
+  total: 0, reps: 0, admins: 0, working: 0, notWorking: 0, onLeave: 0, terminated: 0,
+  withVehicle: 0, withoutVehicle: 0, hrLinked: 0, ownedHere: 0, housed: 0, unhoused: 0,
+  byProject: {}, byCity: {}, byJob: {}, byContract: {}, byRegister: {},
+  byVehicleType: {}, bySupervisor: {}, byStatus: {},
+} as LTTotals;
+
+export default function LightTransportEmployeesPage() {
+  const { user } = useAuth();
+  const { lang, isRTL } = useLanguage();
+  const ar = lang === 'ar';
+  const t = (a: string, e: string) => (ar ? a : e);
+  const router = useRouter();
+  const { notify, confirm, prompt } = useDialog();
+  const canEdit = canEditLT(user as any);
+
+  const [rows, setRows] = useState<LTEmployee[]>([]);
+  const [totals, setTotals] = useState<LTTotals>(EMPTY_TOTALS);
+  const [options, setOptions] = useState<LTOptions>({ project: [], city: [], jobTitle: [], contractType: [], register: [], vehicleType: [], supervisor: [], housing: [] });
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<Partial<LTEmployee> | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // ── الفلاتر ───────────────────────────────────────────────────────────────
+  // كلُّها في الخادم: الجدولُ مئةٌ وواحدٌ وستّون صفًّا اليوم وسيكبر، والأعدادُ في
+  // الكاردات تُحسَب على ما بعد الفلترة — فما يُقرأ في الكارد هو ما في الجدول.
+  const [q, setQ] = useState('');
+  const [dq, setDq] = useState('');
+  const [f, setF] = useState<Record<string, string>>({});
+  const setFilter = (k: string, v: string) => setF((p) => ({ ...p, [k]: p[k] === v ? '' : v }));
+  const clearFilters = () => { setF({}); setQ(''); setDq(''); };
+  const activeCount = Object.values(f).filter(Boolean).length + (dq ? 1 : 0);
+
+  useEffect(() => { const h = setTimeout(() => setDq(q), 350); return () => clearTimeout(h); }, [q]);
+
+  // كلُّ نداءٍ مفلترٍ يحتاج حارسَه: النداءُ غيرُ المفلتر أبطأُ فيصل آخرًا ويكتب
+  // إجماليَّه فوق المفلتر — راجع hooks/useLatestRequest.
+  const guard = useLatestRequest();
+  const load = useCallback(async () => {
+    // الأبطأُ يصل آخرًا: نداءٌ بلا فلترٍ يُطلَب أوّلًا ويردّ بعد المفلتر فيكتب
+    // إجماليَّه فوقه. فتُقرأ الردودُ بترتيب طلبها لا بترتيب وصولها.
+    const token = guard.begin();
+    try {
+      const d = await getLTEmployees({ ...f, q: dq });
+      if (!guard.isCurrent(token)) return;
+      setRows(d.employees || []);
+      setTotals(d.totals || EMPTY_TOTALS);
+      setOptions(d.options || options);
+    } catch (e: any) {
+      if (guard.isCurrent(token)) notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error');
+    }
+    if (guard.isCurrent(token)) setLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(f), dq, guard]);
+  useEffect(() => { load(); }, [load]);
+  useSocket('lt:updated', useCallback(() => load(), [load]));
+  // وما يمسّ ملفَّ الموارد البشريّة يمسّ الحالةَ المعروضةَ هنا.
+  useSocket('hr:employee', useCallback(() => load(), [load]));
+
+  const cf = useColumnFilters<LTEmployee>();
+  const getters = useMemo(() => {
+    const o: Record<string, (e: LTEmployee) => any> = {};
+    for (const c of LT_COLUMNS) o[c.key] = c.get;
+    return o;
+  }, []);
+  const shown = cf.apply(rows, getters);
+
+  const exportColumns: ExportColumn[] = LT_COLUMNS.map((c) => ({
+    header: ar ? c.ar : c.en, key: c.key, width: c.width || 16,
+    transform: (_: any, r: any) => c.get(r),
+  }));
+  const scope = exportScopeLabels(ar);
+  const exportOptions = (activeCount || cf.count)
+    ? [
+      { key: 'shown', label: scope.shown, sheets: [{ name: 'LightTransport', rows: shown as any[], columns: exportColumns }] },
+      { key: 'all', label: scope.all, resolve: async () => {
+        const d = await getLTEmployees({ active: 'all' });
+        return [{ name: 'LightTransport', rows: d.employees as any[], columns: exportColumns }];
+      } },
+    ]
+    : [{ key: 'all', label: scope.all, sheets: [{ name: 'LightTransport', rows: shown as any[], columns: exportColumns }] }];
+
+  const save = async () => {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      const body: any = { ...editing };
+      delete body._id; delete body.vehicle; delete body.employee; delete body.supervisor;
+      if (editing._id) await updateLTEmployee(editing._id, body);
+      else await createLTEmployee(body);
+      notify(t('حُفظ', 'Saved'), 'success');
+      setEditing(null);
+      load();
+    } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
+    setSaving(false);
+  };
+
+  const deactivate = async (e: LTEmployee) => {
+    const ok = await confirm({
+      message: t(`يُخرَج «${e.name}» من سجلّ القسم؟ السجلُّ يبقى وأثرُه محفوظ.`,
+        `Remove "${e.name}" from the section register? The record and its trail are kept.`),
+      tone: 'error',
+      confirmLabel: t('إخراج', 'Remove'),
+    });
+    if (!ok) return;
+    const reason = await prompt({ message: t('السبب (اختياري)', 'Reason (optional)') });
+    try { await deactivateLTEmployee(e._id, String(reason || '')); load(); }
+    catch (err: any) { notify(err?.message || t('تعذّر', 'Failed'), 'error'); }
+  };
+
+  if (loading) return <Spinner />;
+
+  const Stat = ({ label, value, accent, onClick, on }: { label: string; value: any; accent?: string; onClick?: () => void; on?: boolean }) => (
+    <button type="button" onClick={onClick} disabled={!onClick}
+      className={`text-start bg-white border rounded-xl px-3.5 py-2.5 shadow-sm transition-all ${
+        on ? 'border-[#f37121] ring-2 ring-[#f37121]/20' : 'border-slate-200'} ${onClick ? 'hover:border-[#f37121]/50 cursor-pointer' : ''}`}>
+      <p className="text-[11px] text-slate-500 leading-tight">{label}</p>
+      <p className={`text-[19px] font-bold tabular-nums ${accent || 'text-slate-900'}`}>{value}</p>
+    </button>
+  );
+
+  /** قائمةُ اختيارٍ واحدةُ الشكل — قيمُها من السجلّ نفسِه. */
+  const Filter = ({ k, label, list }: { k: string; label: string; list: string[] }) => (
+    <select value={f[k] || ''} onChange={(e) => setF((p) => ({ ...p, [k]: e.target.value }))} aria-label={label}
+      className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800">
+      <option value="">{label}</option>
+      {list.map((v) => <option key={v} value={v}>{v}</option>)}
+    </select>
+  );
+
+  return (
+    <div className="space-y-4 pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
+      <PageHeader icon={<Truck className="w-6 h-6 text-[#f37121]" />}
+        title={t('موظفون النقل الخفيف', 'Light-transport employees')}
+        subtitle={t(`${totals.total} موظفًا — المندوبون والإداريون معًا`, `${totals.total} employees — reps and admin together`)}>
+        <ExportMenu fileName="light-transport" lang={ar ? 'ar' : 'en'} variant="subtle" label={t('تصدير Excel', 'Export')} options={exportOptions} />
+        {canEdit && <PrimaryButton onClick={() => setEditing({})}><Plus className="w-4 h-4" /> {t('إضافة موظف', 'Add employee')}</PrimaryButton>}
+      </PageHeader>
+
+      {/* ── الكاردات تُفلتِر، لا تُخبِر وحدَها ──────────────────────────────────
+          «أريد أن أعرف كم على الكفالة، ثمّ مَن هم» — فكلُّ رقمٍ هنا يُضغَط
+          فيُفلتَر الجدولُ عليه، وتُعاد الأعدادُ محسوبةً على ما بقي. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+        <Stat label={t('الإجمالي', 'Total')} value={totals.total} onClick={clearFilters} on={!activeCount} />
+        <Stat label={t('مناديب', 'Reps')} value={totals.reps} accent="text-indigo-600"
+          onClick={() => setFilter('staffKind', 'rep')} on={f.staffKind === 'rep'} />
+        <Stat label={t('إداريون', 'Admin')} value={totals.admins} accent="text-teal-600"
+          onClick={() => setFilter('staffKind', 'admin')} on={f.staffKind === 'admin'} />
+        <Stat label={t('على رأس العمل', 'Working')} value={totals.working} accent="text-emerald-600"
+          onClick={() => setFilter('status', 'يعمل')} on={f.status === 'يعمل'} />
+        <Stat label={t('لهم مركبة', 'With a vehicle')} value={totals.withVehicle} accent="text-slate-900"
+          onClick={() => setFilter('hasVehicle', 'yes')} on={f.hasVehicle === 'yes'} />
+        <Stat label={t('بلا مركبة', 'No vehicle')} value={totals.withoutVehicle} accent="text-amber-600"
+          onClick={() => setFilter('hasVehicle', 'no')} on={f.hasVehicle === 'no'} />
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+        <Stat label={t('في إجازة', 'On leave')} value={totals.onLeave} accent="text-sky-600"
+          onClick={() => setFilter('status', 'إجازة')} on={f.status === 'إجازة'} />
+        <Stat label={t('أُنهيت خدمتهم', 'Service ended')} value={totals.terminated} accent="text-red-600"
+          onClick={() => setFilter('status', 'إنهاء خدمة')} on={f.status === 'إنهاء خدمة'} />
+        {/* ومن له ملفٌّ في الموارد البشريّة ومن يملكه القسم — فرقٌ يُسأل عنه. */}
+        <Stat label={t('لهم ملفّ في الموارد البشرية', 'Have an HR file')} value={totals.hrLinked} accent="text-slate-900" />
+        <Stat label={t('بلا ملفّ (القسم يملكهم)', 'Owned by the section')} value={totals.ownedHere} accent="text-violet-600" />
+        <Stat label={t('لهم سكن', 'Housed')} value={totals.housed} accent="text-slate-900"
+          onClick={() => setFilter('housing', '')} />
+        <Stat label={t('بلا سكن', 'Unhoused')} value={totals.unhoused} accent="text-amber-600"
+          onClick={() => setFilter('housing', 'none')} on={f.housing === 'none'} />
+      </div>
+
+      {/* ── الفلاتر ───────────────────────────────────────────────────────── */}
+      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-wrap gap-2.5 items-center">
+        <div className="flex-1 min-w-[230px]">
+          <SearchInput value={q} onChange={setQ}
+            placeholder={t('اسم · هوية · لوحة · مشرف · مشروع · سجل…', 'name, ID, plate, supervisor, project, register…')} />
+        </div>
+        <Filter k="project" label={t('كل المشاريع', 'All projects')} list={options.project} />
+        <Filter k="city" label={t('كل الفروع', 'All branches')} list={options.city} />
+        <Filter k="jobTitle" label={t('كل الوظائف', 'All jobs')} list={options.jobTitle} />
+        <Filter k="contractType" label={t('كل أنواع التعاقد', 'All contracts')} list={options.contractType} />
+        <Filter k="register" label={t('كل السجلات', 'All registers')} list={options.register} />
+        <Filter k="vehicleType" label={t('كل أنواع المركبات', 'All vehicle types')} list={options.vehicleType} />
+        <Filter k="supervisor" label={t('كل المشرفين', 'All supervisors')} list={options.supervisor} />
+        <Filter k="status" label={t('كل الحالات', 'All statuses')} list={Object.keys(totals.byStatus || {}).filter((x) => x !== '—')} />
+        <select value={f.housing || ''} onChange={(e) => setF((p) => ({ ...p, housing: e.target.value }))} aria-label={t('السكن', 'Housing')}
+          className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800">
+          <option value="">{t('كل السكن', 'All housing')}</option>
+          <option value="none">{t('بلا سكن', 'Unhoused')}</option>
+          {options.housing.map((h) => <option key={h._id} value={h._id}>{h.name}</option>)}
+        </select>
+        {/* وبالمواعيد: تاريخُ التعيين من/إلى — والحدُّ الأعلى شاملٌ لليوم نفسِه. */}
+        <input type="date" value={f.hiredFrom || ''} onChange={(e) => setF((p) => ({ ...p, hiredFrom: e.target.value }))}
+          aria-label={t('التعيين من', 'Hired from')} className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800 [color-scheme:light]" />
+        <input type="date" value={f.hiredTo || ''} onChange={(e) => setF((p) => ({ ...p, hiredTo: e.target.value }))}
+          aria-label={t('التعيين إلى', 'Hired to')} className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800 [color-scheme:light]" />
+        {(activeCount > 0) && (
+          <button type="button" onClick={clearFilters}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121]/10 text-[#f37121] text-sm font-semibold hover:bg-[#f37121]/20">
+            <RotateCcw className="w-4 h-4" /> {t('مسح الفلاتر', 'Clear')}
+          </button>
+        )}
+        <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
+        <span className="text-xs text-slate-500">{t(`${shown.length} من ${totals.total}`, `${shown.length} of ${totals.total}`)}</span>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+        <ScrollX>
+          <table className="w-full text-sm">
+            <thead className="table-head">
+              <tr>
+                {canEdit && (
+                  <th className={`${LEAD} bg-slate-900 px-3 py-2.5 text-start font-semibold whitespace-nowrap`}>
+                    {t('إجراءات', 'Actions')}
+                  </th>
+                )}
+                {LT_COLUMNS.map((c) => (
+                  <th key={c.key} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
+                    <span className="inline-flex items-center">{ar ? c.ar : c.en}{cf.header(c.key, rows, c.get, ar)}</span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {shown.length === 0 ? (
+                <tr><td colSpan={LT_COLUMNS.length + (canEdit ? 1 : 0)} className="px-4 py-12 text-center">
+                  <p className="text-slate-800 font-semibold">{t('لا نتائج', 'No results')}</p>
+                  {(activeCount > 0 || cf.count > 0) && (
+                    // ولا يُقال «لا نتائج» بلا ذكرِ ما يحجب — الفلترُ يبقى فيُقرأ الفراغُ عطلًا.
+                    <button type="button" onClick={() => { clearFilters(); cf.clear(); }}
+                      className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#f37121] text-white text-[12.5px] font-bold">
+                      <RotateCcw className="w-3.5 h-3.5" /> {t(`فيه ${activeCount + cf.count} فلترًا شغّالًا — امسحها`, `${activeCount + cf.count} filters active — clear them`)}
+                    </button>
+                  )}
+                </td></tr>
+              ) : shown.map((e) => (
+                <tr key={e._id} className="group border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                  {canEdit && (
+                    <td className={`${LEAD_CELL} px-3 py-2.5 whitespace-nowrap`}>
+                      <div className="flex items-center gap-1">
+                        <button type="button" onClick={() => setEditing(e)} title={t('تعديل', 'Edit')}
+                          className="p-1.5 rounded-lg text-slate-600 hover:text-[#f37121] hover:bg-slate-100"><Pencil className="w-4 h-4" /></button>
+                        <button type="button" onClick={() => router.push(`/system/b2c/light-transport/${e._id}`)} title={t('الملفّ', 'Profile')}
+                          className="p-1.5 rounded-lg text-slate-600 hover:text-[#f37121] hover:bg-slate-100"><ExternalLink className="w-4 h-4" /></button>
+                        <button type="button" onClick={() => deactivate(e)} title={t('إخراج من القسم', 'Remove from section')}
+                          className="p-1.5 rounded-lg text-slate-600 hover:text-red-600 hover:bg-slate-100"><UserMinus className="w-4 h-4" /></button>
+                      </div>
+                    </td>
+                  )}
+                  {LT_COLUMNS.map((c) => {
+                    const v = c.get(e);
+                    const cell = c.key === 'workStatus'
+                      ? (
+                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${statusCls(v)}`}
+                          title={e.statusSource === 'hr' ? t('من ملفّ الموارد البشرية', 'from the HR file') : ''}>
+                          {v || '—'}{e.statusSource === 'hr' ? ' ⚑' : ''}
+                        </span>
+                      )
+                      : c.key === 'staffKind'
+                        ? <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${e.staffKind === 'rep' ? 'bg-indigo-100 text-indigo-700' : 'bg-teal-100 text-teal-700'}`}>{ar ? KIND_AR[e.staffKind || ''] : KIND_EN[e.staffKind || '']}</span>
+                        : c.key === 'name'
+                          ? (
+                            <button type="button" onClick={() => router.push(`/system/b2c/light-transport/${e._id}`)}
+                              className="font-semibold text-slate-800 hover:text-[#f37121] text-start">{v || '—'}</button>
+                          )
+                          : (v || <span className="text-slate-300">—</span>);
+                    return (
+                      <td key={c.key}
+                        className={`px-3 py-2.5 whitespace-nowrap ${c.key === 'plate' ? 'font-mono font-semibold text-slate-900' : c.mono ? 'font-mono text-slate-600' : 'text-slate-700'}`}>
+                        {cell}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ScrollX>
+      </div>
+
+      {editing && (
+        <Modal open onClose={() => setEditing(null)}
+          title={editing._id ? t('تعديل موظف', 'Edit employee') : t('إضافة موظف', 'Add employee')}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Field label={t('رقم الهوية', 'ID number')}>
+              <TextInput value={editing.idNumber || ''} disabled={!!editing._id}
+                onChange={(ev) => setEditing((p) => ({ ...p!, idNumber: ev.target.value }))} />
+            </Field>
+            <Field label={t('الاسم', 'Name')}>
+              <TextInput value={editing.name || ''} onChange={(ev) => setEditing((p) => ({ ...p!, name: ev.target.value }))} />
+            </Field>
+            {/* ── والقيمُ الثابتةُ قوائمُ مُدارة ────────────────────────────────
+                تُضبَط من «إعدادات القسم»، ويُضاف إليها من موضعها بـ«+ إضافة».
+                الخانةُ الحرّةُ تكتب الواحدةَ بألف صيغة فتصير في التقارير عدّةَ
+                مشاريع وهي مشروعٌ واحد. */}
+            <Field label={t('المشروع', 'Project')}>
+              <ManagedSelect storeLabel type="lt_project" value={editing.projectAr || ''}
+                onChange={(v) => setEditing((p) => ({ ...p!, projectAr: v }))} />
+            </Field>
+            <Field label={t('الفرع', 'Branch')}>
+              <ManagedSelect storeLabel type="lt_city" value={editing.cityAr || ''}
+                onChange={(v) => setEditing((p) => ({ ...p!, cityAr: v }))} />
+            </Field>
+            <Field label={t('الوظيفة', 'Job title')}>
+              <ManagedSelect storeLabel type="lt_job_title" value={editing.jobTitleAr || ''}
+                onChange={(v) => setEditing((p) => ({ ...p!, jobTitleAr: v }))} />
+            </Field>
+            <Field label={t('نوع التعاقد', 'Contract type')}>
+              <ManagedSelect storeLabel type="lt_contract_type" value={editing.contractTypeAr || ''}
+                onChange={(v) => setEditing((p) => ({ ...p!, contractTypeAr: v }))} />
+            </Field>
+            <Field label={t('رقم السجل', 'Commercial register')}>
+              <ManagedSelect storeLabel type="lt_register" value={editing.registerNumber || ''}
+                onChange={(v) => setEditing((p) => ({ ...p!, registerNumber: v }))} />
+            </Field>
+            <Field label={t('نوع المركبة', 'Vehicle type')}>
+              <ManagedSelect storeLabel type="lt_vehicle_type" value={editing.vehicleTypeAr || ''}
+                onChange={(v) => setEditing((p) => ({ ...p!, vehicleTypeAr: v }))} />
+            </Field>
+            <Field label={t('حالة العمل', 'Work status')}>
+              <ManagedSelect storeLabel type="lt_work_status" value={editing.workStatusAr || ''}
+                onChange={(v) => setEditing((p) => ({ ...p!, workStatusAr: v }))} />
+            </Field>
+            <Field label={t('المشرف', 'Supervisor')}>
+              <Select value={editing.supervisorName || ''} onChange={(ev: any) => setEditing((p) => ({ ...p!, supervisorName: ev.target.value }))}>
+                <option value="">{t('— بلا مشرف —', '— none —')}</option>
+                {options.supervisor.map((s) => <option key={s} value={s}>{s}</option>)}
+              </Select>
+            </Field>
+            <Field label={t('الجنسية', 'Nationality')}>
+              <TextInput value={editing.nationalityAr || ''} onChange={(ev) => setEditing((p) => ({ ...p!, nationalityAr: ev.target.value }))} />
+            </Field>
+            <Field label={t('الجوال', 'Phone')}>
+              <TextInput value={editing.phone || ''} onChange={(ev) => setEditing((p) => ({ ...p!, phone: ev.target.value }))} />
+            </Field>
+            <Field label={t('تاريخ التعيين', 'Hire date')}>
+              <input type="date" value={fmtDate(editing.hireDate)} onChange={(ev) => setEditing((p) => ({ ...p!, hireDate: ev.target.value }))}
+                aria-label={t('تاريخ التعيين', 'Hire date')}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm [color-scheme:light]" />
+            </Field>
+            <Field label={t('السكن', 'Housing')}>
+              <Select value={(editing.housing as any)?._id || (editing as any).housing || ''}
+                onChange={(ev: any) => setEditing((p) => ({ ...p!, housing: ev.target.value } as any))}>
+                <option value="">{t('— بلا سكن —', '— none —')}</option>
+                {options.housing.map((h) => <option key={h._id} value={h._id}>{h.name}</option>)}
+              </Select>
+            </Field>
+            <Field label={t('الغرفة', 'Room')}>
+              <TextInput value={editing.housingRoom || ''} onChange={(ev) => setEditing((p) => ({ ...p!, housingRoom: ev.target.value }))} />
+            </Field>
+            <div className="md:col-span-2">
+              <Field label={t('ملاحظات', 'Notes')}>
+                <TextInput value={editing.notesAr || ''} onChange={(ev) => setEditing((p) => ({ ...p!, notesAr: ev.target.value }))} />
+              </Field>
+            </div>
+            {/* المركبةُ تُسنَد بأمر تشغيل لا من هنا: الإسنادُ فعلٌ له تاريخٌ
+                وتفويضٌ يُنقَل، لا خانةٌ تُكتب. */}
+            <p className="md:col-span-2 text-[11.5px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              {t('المركبة والمشرف والسكن تُسنَد أيضًا بأمر تشغيل — فيُقيَّد التاريخ ويُنقَل التفويض في سجلّ المركبات.',
+                 'Vehicle, supervisor and housing are also assigned by an operating order, which records the move and transfers authorisation in the vehicle registry.')}
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <button type="button" onClick={() => setEditing(null)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm">{t('إلغاء', 'Cancel')}</button>
+            <PrimaryButton onClick={save} disabled={saving}>{t('حفظ', 'Save')}</PrimaryButton>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}

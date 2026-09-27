@@ -29,6 +29,18 @@ const vehicleList = (type, nameAr, nameEn, seed) => ({
   type, module: 'vehicles', nameAr, nameEn, roles: VEHICLE_ROLES, storeLabel: true, seed,
 });
 
+
+const B2C_LOOKUP_ROLES = ['b2c_manager', 'b2c_project_lead', 'it_manager'];
+/**
+ * قائمةٌ من قوائم النقل الخفيف. تُخزَّن بالاسم العربيّ لا بالمفتاح: الحقولُ
+ * تحمل النصَّ العربيَّ منذ الاستيراد وتقرؤه الفلاتر والتصديرات، والمقصودُ حصرُ
+ * ما يُكتب لا تغييرُ ما يُخزَّن.
+ */
+const ltList = (type, nameAr, nameEn, seed) => ([{
+  type, module: 'b2c', nameAr, nameEn, roles: B2C_LOOKUP_ROLES, storeLabel: true,
+  seed: seed.map((name, i) => ({ key: `lt_${type}_${i}`, nameEn: name, nameAr: name, order: i + 1 })),
+}]);
+
 const REGISTRY = [
   vehicleList('vehicle_coverage_type', 'نوع تغطية التأمين', 'Insurance Coverage Types', vehicleDefaults.coverageTypes),
   vehicleList('vehicle_insurance_company', 'شركات التأمين', 'Insurance Companies', vehicleDefaults.insuranceCompanies),
@@ -535,6 +547,26 @@ const REGISTRY = [
     roles: ['collections_manager', 'collections_staff', 'cfo', 'accounting_manager'],
     storeLabel: true, seed,
   })),
+
+  // ── النقلُ الخفيف: كلُّ خانةٍ ذاتِ اختياراتٍ ثابتة ──────────────────────────
+  // الشيتُ كان يكتبها حرًّا فجاءت الواحدةُ بصيغتين: «كفاله» و«كفالة»، و«دراجه
+  // ناريه» و«دراجة نارية»، و«غير مستخدم» و«غيرمستخدم» بلا مسافة. وكلُّ صيغةٍ
+  // تصير في التحليل بندًا مستقلًّا، فتُقسَم الأعدادُ على بنودٍ وهميّة.
+  //
+  // والبذورُ هي القيمُ الموجودةُ فعلًا في الداتا بعد توحيدها عند الاستيراد، لا
+  // قائمةٌ مُتخيَّلة — فما في الشاشة هو ما في السجلّ من أوّل يوم.
+  ...ltList('lt_project', 'مشاريع النقل الخفيف', 'Light-transport Projects',
+    ['كيتا', 'امازون', 'هنجرستيشن', 'نينجا', 'صيانة', '(غير محدد)']),
+  ...ltList('lt_city', 'فروع النقل الخفيف', 'Light-transport Branches', ['جدة', 'مكة المكرمة']),
+  ...ltList('lt_job_title', 'وظائف النقل الخفيف', 'Light-transport Job Titles',
+    ['مندوب', 'مشرف', 'إداري', 'ميكانيكي', 'عامل نظافة']),
+  ...ltList('lt_contract_type', 'نوع التعاقد', 'Contract Types', ['كفالة', 'فري لانسر']),
+  // ورقمُ السجلّ التجاريّ الذي يكفل الموظّف — و«خارج النظام» لمن ليس على كفالتنا.
+  ...ltList('lt_register', 'السجلات التجارية', 'Commercial Registers',
+    ['7025667531', '7038387267', '7012953373', 'خارج النظام']),
+  ...ltList('lt_vehicle_type', 'أنواع مركبات النقل الخفيف', 'Light-transport Vehicle Types',
+    ['دراجة نارية', 'فان', 'كيا', 'كيا بيجاز']),
+  ...ltList('lt_work_status', 'حالات العمل', 'Work Statuses', ['يعمل', 'إجازة', 'متوقف', 'إنهاء خدمة']),
 
   // ── قسمُ الأفراد: تفقُّد بداية الدوام ─────────────────────────────────────
   // حالةُ المركبة تُقال من قائمةٍ لا تُكتب حرًّا: «سليمة» و«سليم» و«تمام» ثلاثةُ

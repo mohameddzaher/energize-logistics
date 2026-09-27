@@ -1238,14 +1238,16 @@
       ],
       "wildcard": false
     },
-    "/system/b2c/reps": {
+    "/system/b2c/light-transport": {
       "apis": [
-        "/api/b2c/duty/assign",
-        "/api/b2c/duty/supervisors",
-        "/api/b2c/projects",
-        "/api/b2c/reps",
-        "/api/branches",
-        "/api/users"
+        "/api/light-transport",
+        "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/orders": {
+      "apis": [
+        "/api/light-transport"
       ],
       "wildcard": false
     },
@@ -1260,6 +1262,13 @@
         "/api/b2c-wallet",
         "/api/b2c-wallet/managers",
         "/api/b2c-wallet/me"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/settings": {
+      "apis": [
+        "/api/light-transport",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },

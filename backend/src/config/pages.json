@@ -950,10 +950,16 @@
       "en": "Duty Register"
     },
     {
-      "key": "/system/b2c/reps",
+      "key": "/system/b2c/light-transport",
       "section": "B2C",
-      "ar": "مناديب المبيعات",
-      "en": "Sales Reps"
+      "ar": "موظفون النقل الخفيف",
+      "en": "Light-transport Employees"
+    },
+    {
+      "key": "/system/b2c/orders",
+      "section": "B2C",
+      "ar": "أوامر التشغيل",
+      "en": "Operating Orders"
     },
     {
       "key": "/system/b2c/projects",
@@ -966,6 +972,12 @@
       "section": "B2C",
       "ar": "العهدة",
       "en": "Custody"
+    },
+    {
+      "key": "/system/b2c/settings",
+      "section": "B2C",
+      "ar": "إعدادات القسم",
+      "en": "Section Settings"
     },
     {
       "key": "/system/b2c/kpis",

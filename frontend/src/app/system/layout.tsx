@@ -481,9 +481,14 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // `B2CRep.supervisor` في الخادم لا هذه القائمة.
     { href: '/system/b2c/duty/start', label: lang === 'ar' ? 'تفقّد بداية الدوام' : 'Duty Start Check', icon: <Camera className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor'], section: 'B2C' },
     { href: '/system/b2c/duty', label: lang === 'ar' ? 'سجلّ التفقّد والتحليل' : 'Duty Register', icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor'], section: 'B2C' },
-    { href: '/system/b2c/reps', label: L.b2cReps, icon: <Award className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
+    // ── سجلُّ القسم كلُّه لا مناديبَ التقارير وحدَهم ────────────────────────
+    // «مناديب المبيعات» كانت تعرض مَن له تقريرُ طلبات، فلا يظهر فيها مشرفٌ ولا
+    // ميكانيكيٌّ ولا عاملُ نظافة — وهم أحدَ عشرَ من مئةٍ وواحدٍ وستّين.
+    { href: '/system/b2c/light-transport', label: L.b2cLightTransport, icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
+    { href: '/system/b2c/orders', label: L.b2cOrders, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/projects', label: L.b2cProjects, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/custody', label: lang === 'ar' ? 'العهدة' : 'Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
+    { href: '/system/b2c/settings', label: L.b2cSettings, icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead']), section: 'B2C', restrict: true },
     { href: '/system/b2c/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor'], section: 'B2C' },
     { href: '/system/b2c/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor'], section: 'B2C' },

@@ -175,7 +175,20 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
                   : RefreshIndicator(
                       onRefresh: _load,
                       child: _rows.isEmpty
-                          ? EmptyState(icon: Icons.people_alt_outlined, title: tr('لا يوجد موظفون مطابقون', 'No matching employees'))
+                          // ── ولا يُقال «لا يوجد» وهو موجود ───────────────
+                          // البحثُ يُطبَّق داخلَ الفلاتر القائمة، فمن فلتر
+                          // بـ«نشط» ثمّ بحث عن واحدٍ من منتهيةِ خدمتُهم قرأ
+                          // «لا يوجد موظفون» والموظّفُ في السجلّ. فالشاشةُ
+                          // الفارغةُ تقول ما يحجب. (نفسُ الإصلاح في الويب.)
+                          ? EmptyState(
+                              icon: Icons.people_alt_outlined,
+                              title: tr('لا يوجد موظفون مطابقون', 'No matching employees'),
+                              subtitle: (_status.isNotEmpty || _filters.isNotEmpty)
+                                  ? tr(
+                                      'فيه فلاتر شغّالة والبحث بيتم جوّاها — امسحها وابحث في كل الموظفين.',
+                                      'Filters are active and the search runs inside them — clear them to search everyone.')
+                                  : null,
+                            )
                           : ListView.separated(
                               padding: const EdgeInsets.all(14),
                               itemCount: _rows.length,

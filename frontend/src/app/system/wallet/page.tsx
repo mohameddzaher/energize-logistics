@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
+import { canEditSection } from '@/lib/sections';
 import { canPickWalletBranch, WALLET_START_DATE } from '@/lib/wallet';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
@@ -117,7 +118,10 @@ const endOfBook = () => {
 export default function WalletPage() {
   const { confirm } = useDialog();
   const { user } = useAuth();
-  const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(user?.role || '');
+  // والمصفوفةُ تُحسب كما تُحسب القائمة: دورٌ مُنح «تعديل» في هذا القسم يعدّل
+  // — وإلّا فُتحت الشاشةُ لدورٍ مصنوعٍ وامتنعت عنه أزرارُها (راجع فريق العمليات).
+  const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(user?.role || '')
+    || canEditSection((user as any)?.permissions, 'Operations');
   const isReadOnly = user?.role === 'moderator';
   /**
    * ── مديرُ النظام وحدَه يعمل خارج نافذة الدفتر ────────────────────────────

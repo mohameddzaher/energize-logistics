@@ -112,6 +112,48 @@ const ROLE_FIELD_ACCESS = {
  * فمن لا يملك أعمدةَ المال لا تصله أصلًا: لا في القائمة، ولا في التفاصيل، ولا
  * في التصدير. والقاعدةُ هي هي التي يفلتر بها الحفظُ — خريطةٌ واحدة.
  */
+/**
+ * ── حقولُ الدورِ المصنوع تأتي من مصفوفة الصلاحيّات ──────────────────────────
+ *
+ * `ROLE_FIELD_ACCESS` أعلاه مكتوبٌ بمفاتيح الأدوار التي في الشيفرة. والدورُ
+ * الذي يصنعه صاحبُ النظام من الشاشة ليس فيها، فيخرج من الخريطة بصفر حقول:
+ * يُفتَح له قسمُ العمليات ويُمنح «تعديل» في المصفوفة، ثمّ لا يجد في سير العمل
+ * خانةً واحدةً يكتب فيها — ولا رسالةَ خطأ، فيبدو أنّ الشاشة معطوبة. وقع فعلًا
+ * مع «فريق العمليات» (operation_team).
+ *
+ * والعلّةُ أنّ «مَن يكتب» كان يُقرأ من مكانين: مصفوفةُ الصلاحيّات تفتح القسم،
+ * وهذه الخريطةُ تقرّر الخانات، ولا جسرَ بينهما. فالجسرُ هنا: الدورُ المصنوعُ
+ * يأخذ — في كلّ قسمٍ مُنح فيه «تعديل» — حقولَ موظّفِ ذلك القسم نفسِه. لا أكثر:
+ * «عرض» لا يعطي خانةً تُكتب، وما لم يُمنَح لا يُورَّث.
+ */
+const SECTION_FIELD_SOURCE = {
+  Operations: 'operations_staff',
+  Collections: 'collections_staff',
+  Accounting: 'accountant',
+};
+const FIELDS_TTL = 60 * 1000;
+const fieldsCache = require('../utils/ttlCache');
+
+const fieldsForRole = async (role) => {
+  if (ROLE_FIELD_ACCESS[role]) return ROLE_FIELD_ACCESS[role];
+  return fieldsCache.wrap(`wf:fields:${role}`, FIELDS_TTL, async () => {
+    try {
+      const { effectivePermissions, isCustomRole } = require('../utils/permissions');
+      if (!(await isCustomRole(role))) return [];
+      const sections = await effectivePermissions(role);
+      const out = new Set();
+      for (const [section, source] of Object.entries(SECTION_FIELD_SOURCE)) {
+        if (sections[section] === 'edit') for (const f of ROLE_FIELD_ACCESS[source] || []) out.add(f);
+      }
+      return [...out];
+    } catch (e) {
+      // تعذّرُ القراءة لا يفتح شيئًا: بلا حقولٍ حتى يُعرف الجواب.
+      console.error('[workflow] fieldsForRole:', e.message);
+      return [];
+    }
+  });
+};
+
 const canSeeMoney = (role) => {
   const f = ROLE_FIELD_ACCESS[role] || [];
   return MONEY_FIELDS.some((x) => f.includes(x));
@@ -395,8 +437,8 @@ function applyBillingRules(patch, current = {}) {
 // ── والحذفُ لا يكون صامتًا ──────────────────────────────────────────────────
 // إسقاطُ حقلٍ لا يملكه الطالبُ صحيح؛ أمّا أن يُسقَط ثمّ يُقال «حُفِظ» فليس منعًا
 // بل كذب. تُعاد المرفوضةُ بأسمائها ليقرّر المستدعي: يردُّ ٤٠٣ يسمّيها، أو يمضي.
-const filterFieldsByRole = (body, role) => {
-  const allowedFields = ROLE_FIELD_ACCESS[role] || [];
+const filterFieldsByRole = (body, role, resolvedFields) => {
+  const allowedFields = resolvedFields || ROLE_FIELD_ACCESS[role] || [];
   const filtered = {}; const rejected = [];
   for (const key of Object.keys(body)) {
     if (allowedFields.includes(key)) filtered[key] = body[key];
@@ -928,7 +970,7 @@ exports.getWorkflow = async (req, res) => {
 // POST /api/workflows
 exports.createWorkflow = async (req, res) => {
   try {
-    const filteredBody = filterFieldsByRole(req.body, req.user.role);
+    const filteredBody = filterFieldsByRole(req.body, req.user.role, await fieldsForRole(req.user.role));
     // نوعُ الدفع يقرّر شكلَ الكشف من لحظة إنشائه، لا بعد أوّل تعديل.
     await fillPaymentTypeFromCustomer(filteredBody, {});
     applyBillingRules(filteredBody, {});
@@ -992,7 +1034,7 @@ exports.updateWorkflow = async (req, res) => {
       });
     }
 
-    const filteredBody = filterFieldsByRole(req.body, req.user.role);
+    const filteredBody = filterFieldsByRole(req.body, req.user.role, await fieldsForRole(req.user.role));
 
     // ── مبلغُ السداد من المحفظة لا يُكتب هنا ─────────────────────────────────
     // كشفٌ له مشترياتٌ في المحفظة: مبلغُه ما كتبه موظّفُ العهدة. وكان فتحُ
@@ -1331,7 +1373,7 @@ exports.updateApplicationStatus = async (req, res) => {
       return res.status(400).json({ message: `حالةٌ غير معروفة: ${status || '(فارغة)'}` });
     }
     // ومَن يملك عمودَ الحالة في الجدول هو مَن يملك تغييرَها — الخريطةُ نفسُها.
-    const allowed = ROLE_FIELD_ACCESS[req.user.role] || [];
+    const allowed = await fieldsForRole(req.user.role);
     if (!allowed.includes('applicationStatus')) {
       return res.status(403).json({ message: 'صلاحيّتك لا تسمح بتغيير حالة الطلب.' });
     }
@@ -1407,7 +1449,7 @@ exports.bulkUpdate = async (req, res) => {
     const CAP = 1000;
     if (ids.length > CAP) return res.status(400).json({ message: `الحدُّ الأقصى ${CAP} كشفًا في المرّة.` });
 
-    const patch = filterFieldsByRole(req.body.fields || {}, req.user.role);
+    const patch = filterFieldsByRole(req.body.fields || {}, req.user.role, await fieldsForRole(req.user.role));
     // والقواعدُ نفسُها في الجملة: لا يكسب أحدٌ بالتحديد ما لا يملكه بالمفرد.
     // (وتُعاد لكلّ صفٍّ على حدة أدناه، لأنّ نوعَ الدفع يختلف من كشفٍ لآخر.)
     const refused = patch.__rejected || [];
@@ -1881,9 +1923,12 @@ exports.getPendingByCustomer = async (req, res) => {
 
 // Return field permissions info for the frontend
 exports.getFieldPermissions = async (req, res) => {
+  // `roleAccess` تبقى كما هي (شاشاتٌ تقرؤها بالمفتاح)، ويُضاف `myFields`:
+  // حقولُ قارئِ هذه الصفحة نفسِه — وهي الوحيدةُ التي تعرف الدورَ المصنوع.
   res.json({
     groups: FIELD_GROUPS,
     roleAccess: ROLE_FIELD_ACCESS,
+    myFields: await fieldsForRole(req.user.role),
   });
 };
 
@@ -1895,4 +1940,5 @@ module.exports.buildWorkflowFilter = buildWorkflowFilter;
 // وحجبُ أعمدة المال واحدٌ أيضًا: الصفحةُ الخاصّة تعرض أعمدةَ الكشف كلَّها،
 // ومَن لا يملك الفاتورةَ هنا لا يملكها هناك.
 module.exports.canSeeMoney = canSeeMoney;
+module.exports.fieldsForRole = fieldsForRole;
 module.exports.stripMoneyFor = stripMoneyFor;

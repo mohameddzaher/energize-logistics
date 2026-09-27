@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
+import { canEditSection } from '@/lib/sections';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -31,7 +32,10 @@ export default function VendorsPage() {
   const { confirm } = useDialog();
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
-  const canEdit = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(user?.role || '');
+  // والمصفوفةُ تُحسب كما تُحسب القائمة: دورٌ مُنح «تعديل» في هذا القسم يعدّل
+  // — وإلّا فُتحت الشاشةُ لدورٍ مصنوعٍ وامتنعت عنه أزرارُها (راجع فريق العمليات).
+  const canEdit = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(user?.role || '')
+    || canEditSection((user as any)?.permissions, 'Operations');
   const { lang } = useLanguage();
   const T = getVendorsTranslations(lang);
   const txx = getVendorsExtraTranslations(lang);

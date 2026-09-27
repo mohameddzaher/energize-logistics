@@ -146,14 +146,19 @@ const SECTIONS = [
   },
 ];
 
-const ROLE_EDITABLE_GROUPS: Record<string, string[]> = {
-  super_admin: ['application', 'operations_staff', 'manual_moderator', 'collections'],
-  moderator: ['application', 'manual_moderator'],
-  operations_manager: ['operations_staff'],
-  operations: ['application'],
-  admin: ['collections'],
-  employee: ['collections'],
-};
+/**
+ * ── ما يحقُّ لهذا المستخدمِ تعديلُه يقولُه الخادم ───────────────────────────
+ * كان هنا جدولٌ مكتوبٌ باليد يوزّع «المجموعات» على الأدوار، وكان غلطًا من ثلاث
+ * جهات: أسماءُ مجموعاتٍ لا وجودَ لها في الصفحة نفسِها (مُنح مديرُ التشغيل
+ * مجموعةَ `operations_staff` وليس في الصفحة مجموعةٌ بهذا الاسم، فلم يقدر أن
+ * يعدّل شيئًا)، وأسماءُ أدوارٍ لا وجودَ لها في النظام (`operations`,
+ * `employee`)، وكلُّ دورٍ يُستحدَث — ومنه الأدوارُ المُصنَّعة — يسقط من الجدول
+ * فيجد الصفحةَ كلَّها للقراءة وإن كان له «تعديلٌ» على قسم التشغيل.
+ *
+ * فالإذنُ يُسأل عنه الخادمُ (`/api/workflows/permissions`) حقلًا حقلًا، وهي
+ * القائمةُ نفسُها التي يُنقّي بها ما يُحفظ. فما تُظهره الشاشةُ قابلًا للتعديل
+ * هو ما سيَقبله الخادم — لا بابٌ مفتوحٌ يُردّ عند الحفظ، ولا حقٌّ يُحجب.
+ */
 
 export default function WorkflowDetailPage() {
   const { id } = useParams();
@@ -184,7 +189,20 @@ export default function WorkflowDetailPage() {
 
   const role = user?.role || '';
 
-  const canEditGroup = (group: string) => (ROLE_EDITABLE_GROUPS[role] || []).includes(group);
+  // `null` = لم تصل القائمةُ بعد؛ فلا يُقال «للقراءة» قبل أن يُعرف الجواب.
+  const [myFields, setMyFields] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    if (!role) return;
+    if (role === 'super_admin') { setMyFields(null); return; }
+    let alive = true;
+    api.get<{ roleAccess?: Record<string, string[]>; myFields?: string[] }>('/api/workflows/permissions')
+      .then((d) => { if (alive) setMyFields(new Set(d?.myFields || d?.roleAccess?.[role] || [])); })
+      .catch(() => { if (alive) setMyFields(new Set()); });
+    return () => { alive = false; };
+  }, [role]);
+  const canEditField = (key: string) => role === 'super_admin' || myFields === null || myFields.has(key);
+  const canEditGroup = (group: string) =>
+    (SECTIONS.find((s) => s.group === group)?.fields || []).some((f) => canEditField(f.key));
 
   const fetchWorkflow = useCallback(async () => {
     try {
@@ -461,7 +479,6 @@ export default function WorkflowDetailPage() {
 
       {/* Field sections */}
       {SECTIONS.map((section) => {
-        const editable = editing && canEditGroup(section.group);
         return (
           <div key={section.group} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
             <div className={`px-6 py-3 border-b border-slate-200 border-l-4 ${section.color} flex items-center justify-between`}>
@@ -476,6 +493,8 @@ export default function WorkflowDetailPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {section.fields.map((field) => {
                   const val = formData[field.key];
+                  // حقلًا حقلًا: قد يُعدِّل المستخدمُ بعضَ مجموعةٍ لا كلَّها.
+                  const editable = editing && canEditField(field.key);
                   return (
                     <div key={field.key}>
                       <label className="block text-slate-500 text-xs mb-1.5">

@@ -232,8 +232,11 @@ app.use('/api/workflows', authenticate, sectionGate('Operations'), workflowRoute
 // أضيق داخلَه (راجع routes/operationsPrivate).
 app.use('/api/operations-private', authenticate, sectionGate('Operations'), require('./routes/operationsPrivate'));
 app.use('/api/branches', branchRoutes);
-app.use('/api/vendors', vendorRoutes);
-app.use('/api/drivers', driverRoutes);
+// سجلّان يكتب فيهما أكثرُ من قسم — يُختَم لهما منحُ الصلاحيّة ولا يُرفض أحد
+// (راجع stampSection): فالدورُ المصنوعُ الممنوحُ «تعديل التشغيل» يحفظ فيهما،
+// والمشترياتُ تبقى على وصولها كما كانت.
+app.use('/api/vendors', authenticate, sectionGate.stampSection('Operations', 'Procurement'), vendorRoutes);
+app.use('/api/drivers', authenticate, sectionGate.stampSection('Operations'), driverRoutes);
 app.use('/api/expense-categories', expenseCategoryRoutes);
 app.use('/api/wallet', authenticate, sectionGate('Operations'), walletRoutes);
 // قسمُ التحصيل. البادئةُ `-dept` تميّزها عن `/api/collections` (متابعاتُ

@@ -280,8 +280,11 @@ export default function OperationsWorkflowPage() {
   useEffect(() => {
     if (!role) return;
     let alive = true;
-    api.get<{ roleAccess: Record<string, string[]> }>('/api/workflows/permissions')
-      .then((d) => { if (alive) setMyFields(new Set(d?.roleAccess?.[role] || [])); })
+    // `myFields` حقولُ هذا القارئ كما حسبها الخادم — وهي وحدَها التي تعرف
+    // الدورَ المصنوعَ من شاشة الصلاحيّات (لا مفتاحَ له في `roleAccess`).
+    // و`roleAccess` تبقى احتياطًا لنسخةِ خادمٍ أقدم.
+    api.get<{ roleAccess: Record<string, string[]>; myFields?: string[] }>('/api/workflows/permissions')
+      .then((d) => { if (alive) setMyFields(new Set(d?.myFields || d?.roleAccess?.[role] || [])); })
       // تعذّرُ القراءة لا يفتح شيئًا: مجموعةٌ فارغةٌ تعني «لا حقول» فتبقى
       // الأعمدةُ الماليّةُ مخفيّةً حتى يُعرف الجواب.
       .catch(() => { if (alive) setMyFields(new Set()); });

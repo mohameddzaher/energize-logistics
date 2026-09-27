@@ -72,4 +72,38 @@ const sectionGate = (sectionKey) => {
   };
 };
 
+/**
+ * ── يمنح ولا يمنع ───────────────────────────────────────────────────────────
+ *
+ * بعضُ السجلّات يكتب فيها أكثرُ من قسم: «الموردون» يكتبها التشغيلُ والمشتريات،
+ * و«السائقون» يكتبها التشغيل. فلا تُحرَس بقسمٍ واحد — حراستُها بقسم التشغيل
+ * تمنع المشترياتِ من عملها اليوميّ.
+ *
+ * وفي الوقت نفسِه، الدورُ المصنوعُ الممنوحُ «تعديلَ التشغيل» كان يُردّ عنها:
+ * `authorize` يقرأ قائمةَ أدوارٍ لا اسمَ له فيها، و`req.sectionAccess` لا
+ * يُختَم لأنّ المسارَ بلا حارس. فالنتيجةُ أسوأُ ما يكون: الزرُّ يظهر والحفظُ
+ * يُرفَض.
+ *
+ * فهذا وسيطٌ يختم الصلاحيّةَ ولا يرفض أحدًا: من مُنح «تعديلًا» في أحد الأقسام
+ * المذكورة مرّ، ومن لا فقائمةُ `authorize` تقرّر كما كانت. لا أحدَ يخسر وصولًا،
+ * ومن مُنح يصل.
+ */
+const stampSection = (...sectionKeys) => async (req, res, next) => {
+  try {
+    if (!req.user) return next();
+    if (FULL_ACCESS_ROLES.includes(req.user.role)) { req.sectionAccess = 'edit'; return next(); }
+    let best = null;
+    for (const key of sectionKeys) {
+      const saved = await getOverride(req.user.role, getSection(key)?.key || key);
+      if (saved === 'edit') { best = 'edit'; break; }
+      if (saved === 'view' && best !== 'edit') best = 'view';
+    }
+    if (best) req.sectionAccess = best;
+    return next();
+  } catch (e) {
+    return next(); // الختمُ تيسيرٌ لا شرط
+  }
+};
+
 module.exports = sectionGate;
+module.exports.stampSection = stampSection;

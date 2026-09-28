@@ -71,6 +71,8 @@ export default function DutyStartPage() {
   const [data, setData] = useState<{
     reps: Rep[]; dateKey: string; done: number; total: number;
     mineDone?: number; mineTotal?: number; carsExcluded?: number;
+    /** دبّاباتُ القسم — تُختار منها اللوحةُ لمن لا صلةَ لصفّه بالسجلّ. */
+    vehicleOptions?: { plate: string; typeAr: string; rider: string }[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState<Rep | null>(null);
@@ -194,7 +196,7 @@ export default function DutyStartPage() {
         </Section>
       )}
 
-      {open && <CheckModal rep={open} ar={ar} onClose={() => setOpen(null)} onSaved={() => { setOpen(null); load(); notify(t('سُجّل التفقّد', 'Check recorded'), 'success'); }} />}
+      {open && <CheckModal rep={open} ar={ar} plates={data?.vehicleOptions || []} onClose={() => setOpen(null)} onSaved={() => { setOpen(null); load(); notify(t('سُجّل التفقّد', 'Check recorded'), 'success'); }} />}
     </div>
   );
 }
@@ -278,7 +280,12 @@ function PhotoViewer({ shot, ar, onClose }: { shot: { dataUrl: string; label: st
   );
 }
 
-function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onClose: () => void; onSaved: () => void }) {
+function CheckModal({ rep, ar, plates, onClose, onSaved }: {
+  rep: Rep; ar: boolean;
+  /** دبّاباتُ القسم بلوحاتها وراكبها في السجلّ. */
+  plates: { plate: string; typeAr: string; rider: string }[];
+  onClose: () => void; onSaved: () => void;
+}) {
   const { notify } = useDialog();
   const t = (a: string, e: string) => (ar ? a : e);
   const [outcome, setOutcome] = useState<Outcome>(rep.check?.outcome || 'started');
@@ -489,9 +496,28 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
               <option value="other">{t('أخرى', 'Other')}</option>
             </select>
           </Field>
+          {/* ── واللوحةُ تُختار لا تُكتب ─────────────────────────────────────
+              مركبتُه مكتوبةٌ في السجلّ فتُعرَض مملوءة. ومن لا صلةَ لصفّه بالسجلّ
+              (اسمٌ التبس على المطابقة) كان يكتبها بيده كلَّ صباحٍ — فتُكتب ناقصةً
+              أو بصيغةٍ أخرى. فصارت قائمةَ دبّابات القسم مع اسم راكبها في السجلّ:
+              يُختار مرّةً، ويحفظ الخادمُ الصلةَ فيجدها الغدُ مملوءة. */}
           <Field label={t('اللوحة', 'Plate')}>
-            <input className={`${inp} ${plateLocked ? 'bg-slate-50 font-mono' : ''}`} value={plate}
-              readOnly={plateLocked} onChange={(e) => setPlate(e.target.value)} />
+            {plateLocked ? (
+              <input className={`${inp} bg-slate-50 font-mono`} value={plate} readOnly />
+            ) : (
+              <select className={`${inp} font-mono`} value={plate} onChange={(e) => setPlate(e.target.value)}>
+                <option value="">{t('— اختر اللوحة —', '— pick the plate —')}</option>
+                {plates.map((v) => (
+                  <option key={v.plate} value={v.plate}>
+                    {v.plate}{v.rider ? ` — ${v.rider.slice(0, 26)}` : ''}
+                  </option>
+                ))}
+                {/* لوحةٌ محفوظةٌ سابقًا وليست في القائمة تبقى مختارةً لا تُمحى. */}
+                {!!plate && !plates.some((v) => v.plate === plate) && (
+                  <option value={plate}>{plate}</option>
+                )}
+              </select>
+            )}
           </Field>
         </div>
         {/* من أين جاءت اللوحة، وكيف تُغيَّر — يُقال صراحةً لا يُخمَّن. */}
@@ -515,8 +541,8 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
         )}
         {!rep.vehicle?.plate && (
           <p className="mt-1 text-[11px] text-amber-700">
-            {t('لا مركبةَ مسجَّلةً له في سجلّ النقل الخفيف — اكتب اللوحة، وسجِّلها هناك كي لا تُكتب كلَّ يوم.',
-               'No vehicle recorded for him in the register — type the plate, and record it there so it is not typed daily.')}
+            {t('لا صلةَ لحسابه بصفٍّ في سجلّ النقل الخفيف — اختر لوحته من القائمة مرّةً واحدة، وستُحفَظ فتجدها مملوءةً غدًا.',
+               'His account is not linked to a register row — pick his plate once and it will be remembered for tomorrow.')}
           </p>
         )}
         <textarea

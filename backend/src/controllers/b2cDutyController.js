@@ -170,11 +170,33 @@ exports.myReps = async (req, res) => {
       : [];
     const byRep = new Map(checks.map((c) => [String(c.rep), c]));
 
+    /**
+     * ── واللوحةُ تُختار لا تُكتب ──────────────────────────────────────────────
+     *
+     * الصلةُ بين حساب التطبيق وصفّ السجلّ لا تكتمل بالاسم: سجلُّ التطبيق لا
+     * يحمل هويّةً ولا جوالًا، وأسماءٌ مثل «MD ARSHED» تتكرّر على صفوفٍ عدّة —
+     * فتُرفَض المطابقةُ الملتبسة عن قصد (ربطُ رجلٍ بغير صفّه أسوأُ من لوحةٍ
+     * تُكتب). فيبقى نحو مئةٍ بلا صلة، ومشرفُهم يكتب اللوحةَ بيده.
+     *
+     * والمخرجُ أن تُعرَض **دبّاباتُ القسم** فيختار منها: لا كتابةَ يدٍ أصلًا،
+     * ولا لوحةَ تُكتب ناقصةً. ومتى اختار لوحةً لها صفٌّ واحدٌ في السجلّ حُفظت
+     * الصلةُ (راجع `submit`) — فالصباحُ التالي يجدها مملوءة. تُختار مرّةً لا كلَّ
+     * يوم.
+     */
+    const { LightTransportEmployee: LTE } = require('../models/LightTransport');
+    const bikeRows = await LTE.find({ isActive: { $ne: false }, vehiclePlate: { $nin: ['', null] } })
+      .select('name vehiclePlate vehicleTypeAr').sort({ vehiclePlate: 1 }).lean();
+    const vehicleOptions = bikeRows
+      .filter((e) => vehicleTypeKey(e.vehicleTypeAr) !== 'car')
+      .map((e) => ({ plate: e.vehiclePlate, typeAr: e.vehicleTypeAr || '', rider: e.name || '' }));
+
     res.json({
       dateKey,
       isToday: dateKey === dayKeyOf(),
       // يُقال صراحةً كم رُفع ولماذا — الغيابُ الصامتُ يُقرأ نقصًا في البيانات.
       carsExcluded,
+      // دبّاباتُ القسم — تُعرَض قائمةً لمن لا صلةَ لصفّه بالسجلّ.
+      vehicleOptions,
       reps: reps.map((r) => {
         const owner = r.supervisor && typeof r.supervisor === 'object' ? r.supervisor : null;
         return {
@@ -215,7 +237,7 @@ exports.myReps = async (req, res) => {
  * التقريرُ يقول مَن مشرفُه ومَن تفقّده، فيُسأل كلٌّ عمّا يخصّه.
  */
 const assertOwnsRep = async (req, repId) => {
-  const rep = await B2CRep.findById(repId).select('supervisor branch project englishName isActive').lean();
+  const rep = await B2CRep.findById(repId).select('supervisor branch project englishName isActive ltEmployee').lean();
   if (!rep) return { error: 404, message: 'المندوب غير موجود' };
   if (rep.isActive === false) return { error: 400, message: 'هذا المندوب غير نشط' };
   return { rep };
@@ -341,6 +363,26 @@ exports.submit = async (req, res) => {
       check = await existing.save();
     } else {
       check = await B2CDutyCheck.create({ ...doc, photos: saved });
+    }
+
+    /**
+     * ── وتُختار اللوحةُ مرّةً لا كلَّ يوم ──────────────────────────────────────
+     *
+     * المندوبُ الذي لا صلةَ لحسابه بصفّ السجلّ (الاسمُ التبس، فرُفضت المطابقة)
+     * يختار مشرفُه لوحتَه من قائمة دبّابات القسم. وتلك الاختيارةُ **خبرٌ**: هذا
+     * الرجلُ على هذا الدبّاب. فإن كانت اللوحةُ لصفٍّ واحدٍ في السجلّ حُفظت الصلةُ
+     * منها — فصباحُ الغد يجد اللوحةَ مملوءةً، ويُقرأ رقمُ هويّته ونوعُ مركبته معها.
+     *
+     * ولا تُكتب الصلةُ إن كانت اللوحةُ لصفّين (دبّابٌ تبادله رجلان في السجلّ):
+     * الظنُّ لا يُثبَّت. ولا تُبدَّل صلةٌ قائمة — تلك تُغيَّر من السجلّ لا من هنا.
+     */
+    if (!own.rep.ltEmployee && doc.vehiclePlate) {
+      try {
+        const { LightTransportEmployee: LTE2 } = require('../models/LightTransport');
+        const hit = await LTE2.find({ isActive: { $ne: false }, vehiclePlate: doc.vehiclePlate })
+          .select('_id').limit(2).lean();
+        if (hit.length === 1) await B2CRep.updateOne({ _id: own.rep._id }, { $set: { ltEmployee: hit[0]._id } });
+      } catch (e) { /* الربطُ خدمةٌ للغد، وفشلُه لا يمسّ تفقّدَ اليوم */ }
     }
 
     await logAudit({

@@ -339,7 +339,8 @@ function CheckModal({ rep, ar, plates, onClose, onSaved }: {
     setSaving(true);
     try {
       await api.post('/api/b2c/duty', {
-        rep: rep._id, outcome, vehicleType, vehiclePlate: plate,
+        // الموضوعُ صفُّ سجلّ النقل الخفيف — كشفُ مناديبنا. راجع `myReps`.
+        ltEmployee: rep._id, outcome, vehicleType, vehiclePlate: plate,
         notes,
         photos: shots, location: loc || undefined,
       });

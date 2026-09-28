@@ -61,6 +61,11 @@ const populate = (q) => q
   // ومع المندوب مشرفُه المسؤول: التقريرُ يقول مَن يُسأل عنه، و`supervisor`
   // أدناه يقول مَن تفقّده فعلًا — سؤالان مختلفان بعد أن صار أيُّ مشرفٍ يتفقّد
   // أيَّ مندوب.
+  //
+  // والموضوعُ صفُّ السجلّ (`ltEmployee`)، و`rep` لصفوفٍ قديمةٍ كُتبت بحساب
+  // التطبيق — يُقرآن معًا فلا ينكسر تاريخ.
+  .populate({ path: 'ltEmployee', select: 'name idNumber vehiclePlate vehicleTypeAr projectAr cityAr supervisorUser supervisorName',
+    populate: { path: 'supervisorUser', select: 'firstName lastName role' } })
   .populate({ path: 'rep', select: 'englishName arabicName repId phone supervisor',
     populate: { path: 'supervisor', select: 'firstName lastName role' } })
   .populate('supervisor', 'firstName lastName email role')
@@ -95,149 +100,109 @@ exports.myReps = async (req, res) => {
     const dateKey = validKey(req.query.date) ? req.query.date : dayKeyOf();
     // الإدارةُ قد تفتح الشاشةَ نيابةً عن مشرف — تُمرَّر `supervisor` صراحةً.
     const asUser = canSeeAll(req.user) && req.query.supervisor ? req.query.supervisor : req.user._id;
+    const { LightTransportEmployee } = require('../models/LightTransport');
 
     /**
-     * ── كلُّ المناديب أمام كلِّ مشرف ─────────────────────────────────────────
+     * ── كشفُ المناديب هو سجلُّ النقل الخفيف ─────────────────────────────────
      *
-     * الإسنادُ باقٍ كما هو: لكلّ مندوبٍ مشرفُه في السجلّ، وهو ما تُقرأ به
-     * المسؤوليّةُ والتقارير. لكنّ القائمةَ كانت مقصورةً على رجال المشرف وحدَه،
-     * والميدانُ لا يجري كذلك: يغيب مشرفٌ فلا يجد أحدٌ رجالَه في شاشته، ويقف
-     * مشرفٌ على محطّةٍ فيها رجالُ زميله فلا يستطيع أن يُخرجهم — فيُسجَّل
-     * التفقّدُ من حسابٍ ليس حسابَ من وقف، أو لا يُسجَّل.
+     * لا `B2CRep`: ذلك سجلُّ حساباتِ تطبيق التوصيل، خمسُمئةٍ وثلاثةٌ وتسعون صفًّا
+     * من قديمها وجديدها، لا يعرف القسمُ أكثرَها. وكشفُ مناديبنا هو هذا: مئةٌ
+     * وسبعةٌ وخمسون مندوبًا، لكلٍّ هويّتُه ولوحتُه ومشرفُه وكفالتُه.
      *
-     * فصارت القائمةُ كلَّ المناديب، ومع كلٍّ منهم **مشرفُه المسؤول** كي يُعرَف
-     * أهو من رجالي أم من رجال غيري. ومَن سجّل التفقّدَ فعلًا يُثبَّت في الصفّ
-     * (`B2CDutyCheck.supervisor`) — فالمسؤوليّةُ في السجلّ والفعلُ في القيد،
-     * ولا يُقرأ أحدُهما مكان الآخر.
+     * وبه سقط كلُّ الربطِ بالاسم: المشرفُ (`supervisorUser`) واللوحةُ والهويّةُ
+     * ونوعُ المركبة كلُّها في الصفّ نفسِه — تُقرأ لا تُطابَق.
+     *
+     * والتفقّدُ للدبّابات: من مركبتُه سيّارةٌ أو فان يُرفَع — صورةُ الدبّاب
+     * والبوكس لا معنى لهما فيه، وظهورُه كلَّ صباحٍ بلا ما يُصوَّر يُعَدُّ تقصيرًا
+     * وهو لا شيءَ عليه.
      */
-    const reps0 = await B2CRep.find({ isActive: { $ne: false } })
-      .select('englishName arabicName repId phone branch project supervisor ltEmployee')
-      .populate('branch', 'name code')
-      .populate('project', 'name nameAr')
-      .populate('supervisor', 'firstName lastName role')
-      .sort({ englishName: 1 }).lean();
+    const all = await LightTransportEmployee.find({ isActive: { $ne: false }, staffKind: 'rep' })
+      .select('name idNumber phone vehiclePlate vehicleTypeAr projectAr cityAr supervisorUser supervisorName workStatusAr')
+      .populate('supervisorUser', 'firstName lastName role')
+      .sort({ name: 1 }).lean();
 
-    /**
-     * ── ومركبةُ المندوب لا تُكتب بيدٍ كلَّ صباح ────────────────────────────
-     *
-     * المندوبُ قائدُ مركبةٍ بعينها: لوحتُها ونوعُها مكتوبان في سجلّ النقل الخفيف
-     * ومربوطان بسجلّ المركبات. وكان المشرفُ يكتب اللوحةَ في كلّ تفقّدٍ بيده —
-     * ثلاثين مرّةً كلَّ صباح — فتُكتب ناقصةً أو بصيغةٍ أخرى، ويصير التفقّدُ
-     * بلوحةٍ لا تُطابق أيَّ مركبةٍ عندنا.
-     *
-     * فتُقرأ من صفّه في السجلّ (الصلةُ المحفوظة `B2CRep.ltEmployee`) وتُعرَض
-     * مملوءةً. وتبقى قابلةً للتعديل: يومًا يخرج على مركبةٍ بديلة، وحينئذٍ يقول
-     * المشرفُ ذلك بيده — لكنّ الأصلَ ألّا يُسأل.
-     */
-    const ltIds = reps0.map((r) => r.ltEmployee).filter(Boolean);
-    const vehByLt = new Map();
-    if (ltIds.length) {
-      const { LightTransportEmployee } = require('../models/LightTransport');
-      const rows = await LightTransportEmployee.find({ _id: { $in: ltIds } })
-        .select('vehiclePlate vehicleTypeAr vehicle idNumber').lean();
-      for (const row of rows) {
-        vehByLt.set(String(row._id), {
-          plate: row.vehiclePlate || '',
-          typeAr: row.vehicleTypeAr || '',
-          typeKey: vehicleTypeKey(row.vehicleTypeAr),
-          // رقمُ الهويّة/الإقامة — يُبحَث به في الشاشة: هو ما في يد السائل.
-          idNumber: row.idNumber || '',
-        });
-      }
-    }
+    const rows = all.filter((e) => vehicleTypeKey(e.vehicleTypeAr) !== 'car');
+    const carsExcluded = all.length - rows.length;
 
-    /**
-     * ── والتفقّدُ للدبّابات لا للسيّارات ───────────────────────────────────────
-     *
-     * الشاشةُ وُجدت لسؤالٍ واحد: هل خرج الدبّابُ سليمًا؟ صورةُ الدبّاب وصورةُ
-     * البوكس لا معنى لهما في سيّارةٍ أو فان — ومن يقودها يظهر في القائمة كلَّ
-     * صباحٍ بلا ما يُصوَّر، فيُعَدّ ناقصًا في الالتزام وهو لا شيءَ عليه.
-     *
-     * فمن كانت مركبتُه سيّارةً في سجلّ النقل الخفيف يُرفَع من هذه الشاشة. ومن لا
-     * مركبةَ مسجَّلةً له يبقى: الغالبُ أنّه على دبّاب، والغيابُ ليس جوابًا.
-     */
-    const isCar = (r) => {
-      const v = r.ltEmployee && vehByLt.get(String(r.ltEmployee));
-      return v?.typeKey === 'car';
-    };
-    const reps = reps0.filter((r) => !isCar(r));
-    const carsExcluded = reps0.length - reps.length;
-
-    const checks = reps.length
-      ? await B2CDutyCheck.find({ dateKey, rep: { $in: reps.map((r) => r._id) } })
-        .select('rep outcome checkedAt photos conditionAr hasDamage damageNotes notes vehicleType vehiclePlate supervisorName')
+    const checks = rows.length
+      ? await B2CDutyCheck.find({ dateKey, ltEmployee: { $in: rows.map((r) => r._id) } })
+        .select('ltEmployee outcome checkedAt photos conditionAr hasDamage damageNotes notes vehicleType vehiclePlate supervisorName')
         .lean()
       : [];
-    const byRep = new Map(checks.map((c) => [String(c.rep), c]));
+    const byEmp = new Map(checks.map((c) => [String(c.ltEmployee), c]));
 
-    /**
-     * ── واللوحةُ تُختار لا تُكتب ──────────────────────────────────────────────
-     *
-     * الصلةُ بين حساب التطبيق وصفّ السجلّ لا تكتمل بالاسم: سجلُّ التطبيق لا
-     * يحمل هويّةً ولا جوالًا، وأسماءٌ مثل «MD ARSHED» تتكرّر على صفوفٍ عدّة —
-     * فتُرفَض المطابقةُ الملتبسة عن قصد (ربطُ رجلٍ بغير صفّه أسوأُ من لوحةٍ
-     * تُكتب). فيبقى نحو مئةٍ بلا صلة، ومشرفُهم يكتب اللوحةَ بيده.
-     *
-     * والمخرجُ أن تُعرَض **دبّاباتُ القسم** فيختار منها: لا كتابةَ يدٍ أصلًا،
-     * ولا لوحةَ تُكتب ناقصةً. ومتى اختار لوحةً لها صفٌّ واحدٌ في السجلّ حُفظت
-     * الصلةُ (راجع `submit`) — فالصباحُ التالي يجدها مملوءة. تُختار مرّةً لا كلَّ
-     * يوم.
-     */
-    const { LightTransportEmployee: LTE } = require('../models/LightTransport');
-    const bikeRows = await LTE.find({ isActive: { $ne: false }, vehiclePlate: { $nin: ['', null] } })
-      .select('name vehiclePlate vehicleTypeAr').sort({ vehiclePlate: 1 }).lean();
-    const vehicleOptions = bikeRows
-      .filter((e) => vehicleTypeKey(e.vehicleTypeAr) !== 'car')
-      .map((e) => ({ plate: e.vehiclePlate, typeAr: e.vehicleTypeAr || '', rider: e.name || '' }));
+    // دبّاباتُ القسم — تُعرَض قائمةً لمن لا لوحةَ في صفّه بعد.
+    const vehicleOptions = all
+      .filter((e) => String(e.vehiclePlate || '').trim() && vehicleTypeKey(e.vehicleTypeAr) !== 'car')
+      .map((e) => ({ plate: e.vehiclePlate, typeAr: e.vehicleTypeAr || '', rider: e.name || '' }))
+      .sort((a, b) => a.plate.localeCompare(b.plate, 'ar'));
 
+    const mineOf = (e) => String(e.supervisorUser?._id || e.supervisorUser || '') === String(asUser);
     res.json({
       dateKey,
       isToday: dateKey === dayKeyOf(),
-      // يُقال صراحةً كم رُفع ولماذا — الغيابُ الصامتُ يُقرأ نقصًا في البيانات.
       carsExcluded,
-      // دبّاباتُ القسم — تُعرَض قائمةً لمن لا صلةَ لصفّه بالسجلّ.
       vehicleOptions,
-      reps: reps.map((r) => {
-        const owner = r.supervisor && typeof r.supervisor === 'object' ? r.supervisor : null;
+      reps: rows.map((e) => {
+        const owner = e.supervisorUser && typeof e.supervisorUser === 'object' ? e.supervisorUser : null;
         return {
-          ...r,
-          supervisor: owner ? owner._id : r.supervisor || null,
-          // مشرفُه المسؤول بالاسم — تُميَّز به «مناديبي» من «الكلّ» في الشاشة.
-          ownerName: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(' ') : '',
-          mine: String(owner?._id || r.supervisor || '') === String(asUser),
-          vehicle: (r.ltEmployee && vehByLt.get(String(r.ltEmployee))) || null,
-          idNumber: (r.ltEmployee && vehByLt.get(String(r.ltEmployee))?.idNumber) || '',
-          check: byRep.get(String(r._id)) || null,
+          _id: String(e._id),
+          // الشاشةُ تقرأ الاسمَين، والسجلُّ يكتب اسمًا واحدًا — فيُعطى للاثنين.
+          englishName: e.name,
+          arabicName: e.name,
+          repId: e.idNumber || '',
+          idNumber: e.idNumber || '',
+          phone: e.phone || '',
+          branch: e.cityAr ? { name: e.cityAr } : null,
+          project: e.projectAr ? { name: e.projectAr } : null,
+          vehicle: String(e.vehiclePlate || '').trim()
+            ? { plate: e.vehiclePlate, typeAr: e.vehicleTypeAr || '', typeKey: vehicleTypeKey(e.vehicleTypeAr) }
+            : null,
+          ownerName: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(' ') : (e.supervisorName || ''),
+          mine: mineOf(e),
+          check: byEmp.get(String(e._id)) || null,
         };
       }),
-      // «كم أنجزتُ من رجالي» يبقى المقياسَ: العددان يخصّان مناديبي وحدَهم،
-      // وإلّا قرأ المشرفُ «٦٠ من ٥٩٣» فلا يعرف أنجز نصيبَه أم لا.
-      mineTotal: reps.filter((r) => String((r.supervisor && r.supervisor._id) || r.supervisor || '') === String(asUser)).length,
+      // «كم أنجزتُ من رجالي» — المقياسُ الذي يُسأل عنه المشرف.
+      mineTotal: rows.filter(mineOf).length,
       mineDone: checks.filter((c) => {
-        const r = reps.find((x) => String(x._id) === String(c.rep));
-        return r && String((r.supervisor && r.supervisor._id) || r.supervisor || '') === String(asUser);
+        const e = rows.find((x) => String(x._id) === String(c.ltEmployee));
+        return e && mineOf(e);
       }).length,
       done: checks.length,
-      total: reps.length,
+      total: rows.length,
     });
   } catch (e) { res.status(500).json({ message: 'تعذّر تحميل مندوبيك' }); }
 };
 
 /**
- * حارسُ المندوب — أموجودٌ ونشط؟
+ * حارسُ المندوب — أموجودٌ ونشط، وأهو مندوبُ دبّاب؟
  *
- * ── ولم يبقَ شرطُ «من رجالك» ───────────────────────────────────────────────
- * كان الحارسُ يردّ ٤٠٣ على تفقّدِ مندوبٍ مُسنَدٍ إلى مشرفٍ آخر. والميدانُ لا
- * يجري كذلك: يغيب مشرفٌ فيقوم زميلُه مقامَه، ويقف أحدُهم على محطّةٍ فيها رجالُ
- * غيره. والشرطُ كان يدفع إلى أسوأ: أن يُسجَّل التفقّدُ من حساب المشرف الغائب،
- * فيشهد السجلُّ بما لم يقع.
+ * ── والموضوعُ صفُّ السجلّ لا حسابُ التطبيق ──────────────────────────────────
+ * يُرسَل `ltEmployee` (أو `rep` من نسخةٍ قديمة). والصفُّ يُقرأ من سجلّ النقل
+ * الخفيف: فيه هويّتُه ولوحتُه ومشرفُه — فلا مطابقةَ باسمٍ ولا ربطٌ يُخمَّن.
  *
- * فأيُّ مشرفٍ يتفقّد أيَّ مندوب، و**من فعل يُثبَّت في القيد** (`supervisor` +
- * `supervisorName` على `B2CDutyCheck`). والإسنادُ في السجلّ باقٍ للمسؤوليّة:
- * التقريرُ يقول مَن مشرفُه ومَن تفقّده، فيُسأل كلٌّ عمّا يخصّه.
+ * ولم يبقَ شرطُ «من رجالك»: يغيب مشرفٌ فيقوم زميلُه مقامَه، ومَن فعل يُثبَّت في
+ * القيد (`supervisor` + `supervisorName`) والإسنادُ في السجلّ باقٍ للمسؤوليّة.
  */
-const assertOwnsRep = async (req, repId) => {
-  const rep = await B2CRep.findById(repId).select('supervisor branch project englishName isActive ltEmployee').lean();
+const assertOwnsRep = async (req, repId, ltId) => {
+  const { LightTransportEmployee } = require('../models/LightTransport');
+  const id = ltId || repId;
+  if (!id) return { error: 400, message: 'اختر المندوب' };
+
+  // الأصلُ: صفٌّ في سجلّ النقل الخفيف.
+  const emp = await LightTransportEmployee.findById(id)
+    .select('name idNumber vehiclePlate vehicleTypeAr projectAr cityAr isActive staffKind').lean();
+  if (emp) {
+    if (emp.isActive === false) return { error: 400, message: 'هذا المندوب خارج سجلّ القسم' };
+    if (vehicleTypeKey(emp.vehicleTypeAr) === 'car') {
+      return { error: 400, message: 'التفقّد للدبّابات — هذا الموظّف على سيّارة' };
+    }
+    return { emp, rep: { _id: emp._id, englishName: emp.name, branch: null, project: null } };
+  }
+
+  // ونسخةٌ قديمةٌ ترسل حسابَ التطبيق — تُقبَل حتّى تُحدَّث.
+  const rep = await B2CRep.findById(id).select('supervisor branch project englishName isActive ltEmployee').lean();
   if (!rep) return { error: 404, message: 'المندوب غير موجود' };
   if (rep.isActive === false) return { error: 400, message: 'هذا المندوب غير نشط' };
   return { rep };
@@ -257,12 +222,12 @@ const assertOwnsRep = async (req, repId) => {
 exports.submit = async (req, res) => {
   const saved = [];
   try {
-    const { rep: repId, outcome = 'started', photos = [] } = req.body;
-    if (!repId) return res.status(400).json({ message: 'اختر المندوب' });
+    const { rep: repId, ltEmployee: ltId, outcome = 'started', photos = [] } = req.body;
+    if (!repId && !ltId) return res.status(400).json({ message: 'اختر المندوب' });
     if (!['started', 'absent', 'blocked'].includes(outcome)) {
       return res.status(400).json({ message: 'حالة غير معروفة' });
     }
-    const own = await assertOwnsRep(req, repId);
+    const own = await assertOwnsRep(req, repId, ltId);
     if (own.error) return res.status(own.error).json({ message: own.message });
 
     /**
@@ -330,11 +295,14 @@ exports.submit = async (req, res) => {
 
     const me = await User.findById(req.user._id).select('firstName lastName').lean();
     const doc = {
-      rep: own.rep._id,
+      // الموضوعُ: صفُّ السجلّ. و`rep` يُكتب فقط إن جاء الطلبُ بحساب تطبيق
+      // (نسخةٌ قديمة) — فلا يُخلَق ربطٌ لم يُطلَب.
+      ltEmployee: own.emp ? own.emp._id : (own.rep.ltEmployee || null),
+      rep: own.emp ? undefined : own.rep._id,
       supervisor: req.user._id,
       supervisorName: [me?.firstName, me?.lastName].filter(Boolean).join(' '),
-      branch: own.rep.branch || null,
-      project: own.rep.project || null,
+      branch: own.emp ? null : (own.rep.branch || null),
+      project: own.emp ? null : (own.rep.project || null),
       date, dateKey, year, month, day,
       checkedAt: new Date(),
       outcome,
@@ -354,7 +322,8 @@ exports.submit = async (req, res) => {
     };
 
     // التصحيحُ يُعدِّل صفَّ اليوم ولا يضيف ثانيًا — راجع الفهرس الفريد.
-    const existing = await B2CDutyCheck.findOne({ rep: own.rep._id, dateKey });
+    const existing = await B2CDutyCheck.findOne(
+      own.emp ? { ltEmployee: own.emp._id, dateKey } : { rep: own.rep._id, dateKey });
     let check;
     if (existing) {
       // الصورُ تُضاف ولا تُمحى: صورةُ الصباح حجّةٌ لا تُستبدَل بأخرى بعد الحادث.
@@ -376,7 +345,9 @@ exports.submit = async (req, res) => {
      * ولا تُكتب الصلةُ إن كانت اللوحةُ لصفّين (دبّابٌ تبادله رجلان في السجلّ):
      * الظنُّ لا يُثبَّت. ولا تُبدَّل صلةٌ قائمة — تلك تُغيَّر من السجلّ لا من هنا.
      */
-    if (!own.rep.ltEmployee && doc.vehiclePlate) {
+    // والربطُ بحساب التطبيق يُحفَظ إن جاء الطلبُ منه ولوحتُه معروفةٌ في السجلّ —
+    // خدمةٌ للنسخة القديمة وحدَها؛ والشاشةُ الجديدة موضوعُها صفُّ السجلّ أصلًا.
+    if (!own.emp && !own.rep.ltEmployee && doc.vehiclePlate) {
       try {
         const { LightTransportEmployee: LTE2 } = require('../models/LightTransport');
         const hit = await LTE2.find({ isActive: { $ne: false }, vehiclePlate: doc.vehiclePlate })
@@ -388,7 +359,7 @@ exports.submit = async (req, res) => {
     await logAudit({
       user: req.user._id, action: existing ? 'update_b2c_duty_check' : 'create_b2c_duty_check',
       entity: 'B2CDutyCheck', entityId: check._id,
-      changes: { after: { rep: own.rep.englishName, dateKey, outcome } }, ipAddress: req.ip,
+      changes: { after: { rep: (own.emp?.name || own.rep.englishName), dateKey, outcome } }, ipAddress: req.ip,
     });
 
     // ما لا يُخرَج يُعلَم به فورًا: مركبةٌ بها تلفٌ أو مندوبٌ مُنع من العمل.
@@ -398,7 +369,7 @@ exports.submit = async (req, res) => {
       await Promise.all(heads.map((h) => createNotification({
         recipient: h._id, type: 'system_alert',
         title: outcome === 'blocked' ? 'مندوب مُنع من الخروج' : 'تلف في مركبة مندوب',
-        message: `${own.rep.englishName || ''} — ${doc.damageNotes || doc.conditionAr || ''}`.trim(),
+        message: `${own.emp?.name || own.rep.englishName || ''} — ${doc.damageNotes || doc.conditionAr || ''}`.trim(),
         relatedEntity: 'B2CDutyCheck', relatedEntityId: check._id,
       }).catch(() => {})));
     }
@@ -431,11 +402,15 @@ exports.submit = async (req, res) => {
  */
 const scopeOf = async (req) => {
   if (canSeeAll(req.user)) return {};
-  const mine = await B2CRep.find({ supervisor: req.user._id }).select('_id').lean();
-  const ids = mine.map((r) => r._id);
-  return ids.length
-    ? { $or: [{ supervisor: req.user._id }, { rep: { $in: ids } }] }
-    : { supervisor: req.user._id };
+  const { LightTransportEmployee } = require('../models/LightTransport');
+  const [mineEmp, mineRep] = await Promise.all([
+    LightTransportEmployee.find({ supervisorUser: req.user._id }).select('_id').lean(),
+    B2CRep.find({ supervisor: req.user._id }).select('_id').lean(),
+  ]);
+  const or = [{ supervisor: req.user._id }];
+  if (mineEmp.length) or.push({ ltEmployee: { $in: mineEmp.map((r) => r._id) } });
+  if (mineRep.length) or.push({ rep: { $in: mineRep.map((r) => r._id) } });
+  return or.length === 1 ? or[0] : { $or: or };
 };
 
 const listFilter = async (req) => {
@@ -452,7 +427,8 @@ const listFilter = async (req) => {
   if (oid(q.supervisor)) and.push({ supervisor: oid(q.supervisor) });
   if (oid(q.branch)) and.push({ branch: oid(q.branch) });
   if (oid(q.project)) and.push({ project: oid(q.project) });
-  if (oid(q.rep)) and.push({ rep: oid(q.rep) });
+  // «مندوبٌ بعينه» — بمعرِّف صفّ السجلّ أو بحساب التطبيق القديم.
+  if (oid(q.rep)) and.push({ $or: [{ ltEmployee: oid(q.rep) }, { rep: oid(q.rep) }] });
   if (['started', 'absent', 'blocked'].includes(q.outcome)) and.push({ outcome: q.outcome });
   if (q.damage === '1') and.push({ hasDamage: true });
   if (q.flagged === '1') and.push({ 'review.verdict': 'flagged' });
@@ -612,15 +588,24 @@ exports.analytics = async (req, res) => {
         { $project: { name: { $ifNull: [{ $first: '$b.name' }, '—'] }, checks: 1, damaged: 1 } },
         { $sort: { checks: -1 } },
       ]),
-      // المقام: كم مندوبًا لكلّ مشرفٍ كان يجب أن يُفقَّد كلَّ يوم.
-      B2CRep.aggregate([
-        { $match: repScope },
-        { $group: { _id: '$supervisor', reps: { $sum: 1 } } },
-      ]),
+      // المقام: كم مندوبًا لكلّ مشرفٍ كان يجب أن يُفقَّد كلَّ يوم — من كشف
+      // مناديبنا (سجلّ النقل الخفيف)، دبّاباتٍ لا سيّارات.
+      (async () => {
+        const { LightTransportEmployee } = require('../models/LightTransport');
+        const rows = await LightTransportEmployee.find({ isActive: { $ne: false }, staffKind: 'rep', supervisorUser: { $ne: null } })
+          .select('supervisorUser vehicleTypeAr').lean();
+        const by = new Map();
+        for (const e of rows) {
+          if (vehicleTypeKey(e.vehicleTypeAr) === 'car') continue;
+          const k = String(e.supervisorUser);
+          by.set(k, (by.get(k) || 0) + 1);
+        }
+        return [...by].map(([id, reps]) => ({ _id: id, reps }));
+      })(),
       // مَن تتكرّر مركبتُه تالفة — الرجلُ لا اليوم.
       B2CDutyCheck.aggregate([
         { $match: { ...base, hasDamage: true } },
-        { $group: { _id: '$rep', times: { $sum: 1 }, last: { $max: '$dateKey' } } },
+        { $group: { _id: { $ifNull: ['$ltEmployee', '$rep'] }, times: { $sum: 1 }, last: { $max: '$dateKey' } } },
         { $sort: { times: -1 } },
         { $limit: 10 },
         { $lookup: { from: 'b2creps', localField: '_id', foreignField: '_id', as: 'r' } },
@@ -693,16 +678,26 @@ exports.analytics = async (req, res) => {
 exports.missing = async (req, res) => {
   try {
     const dateKey = validKey(req.query.date) ? req.query.date : dayKeyOf();
-    const repScope = { isActive: { $ne: false }, supervisor: { $ne: null } };
-    if (!canSeeAll(req.user)) repScope.supervisor = req.user._id;
-    else if (mongoose.isValidObjectId(req.query.supervisor)) repScope.supervisor = new mongoose.Types.ObjectId(String(req.query.supervisor));
-    if (mongoose.isValidObjectId(req.query.branch)) repScope.branch = new mongoose.Types.ObjectId(String(req.query.branch));
+    // «مَن لم يُتفقَّد اليوم» — من كشف مناديبنا (سجلّ النقل الخفيف) لا من حسابات
+    // التطبيق. والدبّاباتُ وحدَها: من على سيّارةٍ لا تفقّدَ عليه.
+    const { LightTransportEmployee } = require('../models/LightTransport');
+    const repScope = { isActive: { $ne: false }, staffKind: 'rep', supervisorUser: { $ne: null } };
+    if (!canSeeAll(req.user)) repScope.supervisorUser = req.user._id;
+    else if (mongoose.isValidObjectId(req.query.supervisor)) repScope.supervisorUser = new mongoose.Types.ObjectId(String(req.query.supervisor));
 
-    const reps = await B2CRep.find(repScope)
-      .select('englishName arabicName repId supervisor branch')
-      .populate('branch', 'name').populate('supervisor', 'firstName lastName').lean();
-    const done = new Set((await B2CDutyCheck.find({ dateKey, rep: { $in: reps.map((r) => r._id) } })
-      .select('rep').lean()).map((c) => String(c.rep)));
+    const allRows = await LightTransportEmployee.find(repScope)
+      .select('name idNumber vehiclePlate vehicleTypeAr cityAr supervisorUser supervisorName')
+      .populate('supervisorUser', 'firstName lastName').lean();
+    const reps = allRows
+      .filter((e) => vehicleTypeKey(e.vehicleTypeAr) !== 'car')
+      .map((e) => ({
+        _id: e._id, englishName: e.name, arabicName: e.name, repId: e.idNumber || '',
+        vehiclePlate: e.vehiclePlate || '',
+        branch: e.cityAr ? { name: e.cityAr } : null,
+        supervisor: e.supervisorUser || null,
+      }));
+    const done = new Set((await B2CDutyCheck.find({ dateKey, ltEmployee: { $in: reps.map((r) => r._id) } })
+      .select('ltEmployee').lean()).map((c) => String(c.ltEmployee)));
 
     const rows = reps.filter((r) => !done.has(String(r._id)));
     res.json({ dateKey, missing: rows, total: reps.length, done: done.size });
@@ -716,10 +711,18 @@ exports.supervisors = async (req, res) => {
     // مندوبون فقط. كانت القائمةُ تُكمَّل في الواجهة من `/api/users`، وتلك لا
     // يفتحها مديرُ المشروع، فكان لا يرى إلّا المشرفين الذين أُسند إليهم سابقًا.
     const [counts, users] = await Promise.all([
-      B2CRep.aggregate([
-        { $match: { isActive: { $ne: false }, supervisor: { $ne: null } } },
-        { $group: { _id: '$supervisor', reps: { $sum: 1 } } },
-      ]),
+      // عددُ مناديب كلِّ مشرف — من كشف القسم لا من حسابات التطبيق.
+      (async () => {
+        const { LightTransportEmployee } = require('../models/LightTransport');
+        const rows = await LightTransportEmployee.find({ isActive: { $ne: false }, staffKind: 'rep', supervisorUser: { $ne: null } })
+          .select('supervisorUser').lean();
+        const by = new Map();
+        for (const e of rows) {
+          const k = String(e.supervisorUser);
+          by.set(k, (by.get(k) || 0) + 1);
+        }
+        return [...by].map(([id, reps]) => ({ _id: id, reps }));
+      })(),
       User.find({ role: { $in: SUPERVISOR_ROLES }, isActive: { $ne: false } })
         .select('firstName lastName role').lean(),
     ]);

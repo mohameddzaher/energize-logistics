@@ -44,7 +44,21 @@ const photoSchema = new mongoose.Schema(
 
 const b2cDutyCheckSchema = new mongoose.Schema(
   {
-    rep: { type: mongoose.Schema.Types.ObjectId, ref: 'B2CRep', required: true, index: true },
+    /**
+     * ── مَن يُتفقَّد: صفُّه في سجلّ القسم ──────────────────────────────────────
+     *
+     * كان `rep` — حسابُه على تطبيق التوصيل (`B2CRep`، ٥٩٣ صفًّا من قديم
+     * الحسابات). وذلك السجلُّ ليس كشفَ مناديبنا: كشفُهم سجلُّ النقل الخفيف
+     * (١٥٧ مندوبًا) وفيه الهويّةُ واللوحةُ والمشرفُ والكفالة. فكانت الشاشةُ تعرض
+     * خمسَمئةٍ وستّةً وثمانين اسمًا لا يعرفها القسم، ويُطلَب ربطُ كلٍّ منها بصفٍّ
+     * في السجلّ بالاسم — مطابقةٌ تلتبس في المئة.
+     *
+     * فصار الموضوعُ صفَّ السجلّ نفسَه: لا مطابقةَ، واللوحةُ والهويّةُ والمشرفُ
+     * كلُّها في الصفّ أصلًا. و`rep` يبقى اختياريًّا: صفوفُ التفقّد القديمة
+     * كُتبت به، وتاريخٌ لا يُعاد كتابتُه.
+     */
+    ltEmployee: { type: mongoose.Schema.Types.ObjectId, ref: 'LightTransportEmployee', index: true },
+    rep: { type: mongoose.Schema.Types.ObjectId, ref: 'B2CRep', index: true },
     // المشرفُ الذي وقف على الخروج — لا الذي يملك المندوبَ في السجلّ. فقد يقوم
     // غيرُه مقامَه يومًا، والمحاسبةُ تكون على من فعل لا على من كان مسؤولًا.
     supervisor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
@@ -105,7 +119,10 @@ const b2cDutyCheckSchema = new mongoose.Schema(
 );
 
 // صفٌّ واحدٌ لكلّ مندوبٍ في اليوم — راجع رأس الملفّ.
-b2cDutyCheckSchema.index({ rep: 1, dateKey: 1 }, { unique: true });
+// صفٌّ واحدٌ لكلّ مندوبٍ في اليوم — بالموضوع الجديد وبالقديم معًا، وكلاهما
+// متناثرٌ (`sparse`) لأنّ الصفَّ يحمل أحدَهما لا كليهما دائمًا.
+b2cDutyCheckSchema.index({ ltEmployee: 1, dateKey: 1 }, { unique: true, sparse: true });
+b2cDutyCheckSchema.index({ rep: 1, dateKey: 1 }, { unique: true, sparse: true });
 // شاشةُ الإدارة تُفتَح على يومٍ ثمّ تُصفّى بالمشرف أو الفرع أو المشروع.
 b2cDutyCheckSchema.index({ dateKey: 1, supervisor: 1 });
 b2cDutyCheckSchema.index({ dateKey: 1, branch: 1 });

@@ -37,6 +37,15 @@ interface Row {
     /** مشرفُه المسؤول في السجلّ — غيرُ الذي تفقّده حين يقوم زميلُه مقامَه. */
     supervisor?: { _id: string; firstName?: string; lastName?: string } | null;
   };
+  /**
+   * موضوعُ التفقّد: صفُّه في سجلّ النقل الخفيف — كشفُ مناديبنا.
+   * و`rep` أعلاه لصفوفٍ قديمةٍ كُتبت بحساب تطبيق التوصيل.
+   */
+  ltEmployee?: {
+    _id: string; name?: string; idNumber?: string; vehiclePlate?: string;
+    supervisorUser?: { _id: string; firstName?: string; lastName?: string } | null;
+    supervisorName?: string;
+  } | null;
   branch?: { name?: string }; project?: { name?: string };
   conditionAr?: string; hasDamage?: boolean; damageNotes?: string; notes?: string;
   vehicleType?: string; vehiclePlate?: string;
@@ -57,10 +66,17 @@ const KINDS: { key: PhotoKind; ar: string; en: string }[] = [
 ];
 const kindOf = (p: { kind?: PhotoKind }) => p.kind || 'vehicle';
 
-/** اسمُ مشرف المندوب المسؤول — من صفّ المندوب لا من القيد. */
-const ownerOf = (rep?: Row['rep']) => {
-  const o = rep?.supervisor;
-  return o ? [o.firstName, o.lastName].filter(Boolean).join(' ') : '';
+/** اسمُ المندوب — من صفّ السجلّ، وإلّا من حساب التطبيق القديم. */
+const nameOf = (r: Row, ar: boolean) => r.ltEmployee?.name
+  || (ar ? (r.rep?.arabicName || r.rep?.englishName) : r.rep?.englishName) || '—';
+
+/** اسمُ مشرفه المسؤول — من الصفّ لا من القيد. */
+const ownerOf = (r: Row) => {
+  const o = r.ltEmployee?.supervisorUser;
+  if (o) return [o.firstName, o.lastName].filter(Boolean).join(' ');
+  if (r.ltEmployee?.supervisorName) return r.ltEmployee.supervisorName;
+  const p = r.rep?.supervisor;
+  return p ? [p.firstName, p.lastName].filter(Boolean).join(' ') : '';
 };
 /**
  * أتفقّده غيرُ مشرفه؟ — يُقال في الصفّ.
@@ -68,7 +84,7 @@ const ownerOf = (rep?: Row['rep']) => {
  * الرجل، ومَن يبقى مسؤولًا عنه.
  */
 const onBehalf = (r: Row) => {
-  const owner = r.rep?.supervisor?._id;
+  const owner = r.ltEmployee?.supervisorUser?._id || r.rep?.supervisor?._id;
   const actor = r.supervisor?._id;
   return !!owner && !!actor && String(owner) !== String(actor);
 };
@@ -134,12 +150,13 @@ export default function DutyRegisterPage() {
 
   const cols: ExportColumn[] = [
     { header: t('اليوم', 'Day'), key: 'dateKey' },
-    { header: t('المندوب', 'Rider'), key: 'rep', transform: (v: any) => v?.englishName || '' },
+    { header: t('المندوب', 'Rider'), key: 'rep', transform: (_: any, r: any) => nameOf(r, ar) },
+    { header: t('رقم الهوية', 'ID number'), key: 'ltEmployee', transform: (v: any) => v?.idNumber || '' },
     // ── ومن تفقّده ومن يُسأل عنه عمودان ──────────────────────────────────────
     // صار أيُّ مشرفٍ يتفقّد أيَّ مندوب، فسؤالُ «مين عمل التفقّد ده؟» غيرُ سؤال
     // «مين المسؤول عن الراجل ده؟». وعمودٌ واحدٌ كان يخلط الجوابين.
     { header: t('المشرف الذي تفقّد', 'Checked by'), key: 'supervisorName' },
-    { header: t('مشرفه المسؤول', 'His supervisor'), key: 'rep', transform: (v: any) => ownerOf(v) },
+    { header: t('مشرفه المسؤول', 'His supervisor'), key: 'rep', transform: (_: any, r: any) => ownerOf(r) },
     { header: t('الحالة', 'Outcome'), key: 'outcome', transform: (v: any) => (ar ? OUT[v]?.ar : OUT[v]?.en) || v },
     { header: t('الفرع', 'Branch'), key: 'branch', transform: (v: any) => v?.name || '' },
     ...KINDS.map((k) => ({
@@ -250,14 +267,14 @@ export default function DutyRegisterPage() {
               {rows.map((r) => (
                 <tr key={r._id} onClick={() => setOpen(r)} className="cursor-pointer border-b border-slate-100 hover:bg-slate-50">
                   <td className="px-3 py-2 whitespace-nowrap text-xs text-slate-500">{r.dateKey}</td>
-                  <td className="px-3 py-2 text-[13px] font-semibold text-slate-900">{ar ? (r.rep?.arabicName || r.rep?.englishName) : r.rep?.englishName}</td>
+                  <td className="px-3 py-2 text-[13px] font-semibold text-slate-900">{nameOf(r, ar)}</td>
                   {/* من تفقّده، ومعه مشرفُه المسؤول إن كان غيرَه — فيُقرأ
                       «تفقّده فلان نيابةً عن فلان» من الصفّ بلا فتحه. */}
                   <td className="px-3 py-2 text-xs text-slate-600">
                     <span className="block">{r.supervisorName || '—'}</span>
                     {onBehalf(r) && (
                       <span className="block text-[10.5px] text-amber-700">
-                        {t(`نيابةً عن ${ownerOf(r.rep)}`, `for ${ownerOf(r.rep)}`)}
+                        {t(`نيابةً عن ${ownerOf(r)}`, `for ${ownerOf(r)}`)}
                       </span>
                     )}
                   </td>
@@ -435,7 +452,7 @@ function DetailModal({ row, ar, onClose, onSaved }: { row: Row; ar: boolean; onC
       <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-start justify-between">
           <div>
-            <p className="text-sm font-bold text-slate-900">{ar ? (row.rep?.arabicName || row.rep?.englishName) : row.rep?.englishName}</p>
+            <p className="text-sm font-bold text-slate-900">{nameOf(row, ar)}</p>
             <p className="text-[11.5px] text-slate-500">
               {row.dateKey} · {row.supervisorName} · <span className={`rounded px-1.5 py-0.5 ${OUT[row.outcome]?.cls}`}>{ar ? OUT[row.outcome]?.ar : OUT[row.outcome]?.en}</span>
             </p>

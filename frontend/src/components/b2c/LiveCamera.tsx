@@ -23,12 +23,14 @@ import { Camera, RefreshCw, X, AlertTriangle, SwitchCamera } from 'lucide-react'
 export interface Shot { dataUrl: string; fileName: string; captureSource: 'camera' }
 
 export default function LiveCamera({
-  onShot, disabled, ar, max = 3, shots, onRemove, label,
+  onShot, disabled, ar, max = 3, shots, onRemove, onOpen, label,
 }: {
   /** نصُّ زرّ الالتقاط — يقول ماذا يُصوَّر الآن. */
   label?: string;
   onShot: (s: Shot) => void;
   onRemove: (i: number) => void;
+  /** فتحُ الصورة بحجمها — اختياريّ، تعرضها الشاشةُ المستعملة. */
+  onOpen?: (s: Shot) => void;
   shots: Shot[];
   disabled?: boolean;
   ar: boolean;
@@ -132,8 +134,12 @@ export default function LiveCamera({
       <button type="button" onClick={take} disabled={!ready || disabled || shots.length >= max}
         className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#f37121] py-3 text-sm font-bold text-white disabled:opacity-40">
         <Camera className="h-4 w-4" />
+        {/* و«الحدّ ١ صور» جملةٌ لا تُقال: النوعُ الواحد صورتُه واحدة، فالزرُّ
+            يقول إنّها تمّت ويقول كيف تُعاد. */}
         {shots.length >= max
-          ? (ar ? `الحدّ ${max} صور` : `Limit ${max} photos`)
+          ? (max === 1
+            ? (ar ? 'تمّ التصوير — امسحها لإعادتها' : 'Captured — delete it to retake')
+            : (ar ? `الحدّ ${max} صور` : `Limit ${max} photos`))
           : (label || (ar ? 'التقاط صورة المركبة' : 'Capture the vehicle'))}
       </button>
 
@@ -141,8 +147,13 @@ export default function LiveCamera({
         <div className="flex flex-wrap gap-2">
           {shots.map((s, i) => (
             <div key={i} className="relative">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={s.dataUrl} alt="" className="h-20 w-20 rounded-lg border border-slate-200 object-cover" />
+              {/* المُصغَّرُ هنا يُفتَح أيضًا: من صوَّر لحظتَها يريد أن يتأكّد
+                  قبل أن ينتقل إلى النوع التالي، لا أن ينزل إلى شريط المراجعة. */}
+              <button type="button" onClick={() => onOpen?.(s)}
+                className="block overflow-hidden rounded-lg border border-slate-200">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={s.dataUrl} alt="" className="h-20 w-20 object-cover" />
+              </button>
               <button type="button" onClick={() => onRemove(i)}
                 className="absolute -top-1.5 -end-1.5 rounded-full bg-red-600 p-0.5 text-white">
                 <X className="h-3 w-3" />

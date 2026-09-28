@@ -172,6 +172,39 @@ function RepRow({ rep, ar, onClick }: { rep: Rep; ar: boolean; onClick: () => vo
   );
 }
 
+/**
+ * الصورةُ بحجم الشاشة — تُفتَح من شريط المراجعة قبل الحفظ.
+ *
+ * مكوّنٌ على مستوى الملفّ لا داخلَ جسم الرسم: المعرَّفُ في الرسم يُبنى من جديدٍ
+ * عند كلّ حالةٍ تتغيّر. راجع قاعدةَ «المكوّنات المضمَّنة».
+ *
+ * وطبقةٌ فوق النافذة لا نافذةٌ ثانية: التفقّدُ لم يُحفَظ بعد، فلا يُغلَق ما هو
+ * فيه لتُرى صورة. والضغطُ في أيّ موضعٍ يغلق — واللمسُ على الهاتف لا يعرف زرًّا
+ * صغيرًا في زاوية.
+ */
+function PhotoViewer({ shot, ar, onClose }: { shot: { dataUrl: string; label: string }; ar: boolean; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black/85 p-3"
+      onClick={onClose} role="presentation">
+      {!!shot.label && (
+        <p className="mb-2 text-[12.5px] font-bold text-white">{shot.label}</p>
+      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={shot.dataUrl} alt={shot.label}
+        className="max-h-[80vh] max-w-full rounded-xl object-contain" />
+      <button type="button" onClick={onClose}
+        className="mt-3 rounded-lg bg-white/15 px-4 py-2 text-[12.5px] font-semibold text-white hover:bg-white/25">
+        {ar ? 'إغلاق' : 'Close'}
+      </button>
+    </div>
+  );
+}
+
 function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onClose: () => void; onSaved: () => void }) {
   const { notify } = useDialog();
   const t = (a: string, e: string) => (ar ? a : e);
@@ -189,6 +222,8 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
   const [notes, setNotes] = useState(rep.check?.notes || '');
   const [saving, setSaving] = useState(false);
   const [loc, setLoc] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null);
+  // الصورةُ المفتوحةُ بحجمها — تُفتَح بالضغط على مُصغَّرها في شريط المراجعة.
+  const [preview, setPreview] = useState<{ dataUrl: string; label: string } | null>(null);
 
   // الموضعُ يُطلَب بلا إلحاح: رفضُ الإذن لا يمنع التفقّد، لكنّه حين يوجد يجيب
   // عن السؤال الذي لا تجيب عنه الصورةُ وحدَها — أكان المشرفُ هناك حقًّا؟
@@ -264,7 +299,13 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
                    'Ad-content photos are available today (Thursday) only, and you may add more than one.')}
               </p>
             )}
-            <LiveCamera ar={ar} max={kind === 'ad' ? 6 : 2}
+            {/* ── صورةٌ واحدةٌ لكلّ نوع ─────────────────────────────────────
+                كان الحدُّ صورتين لكلّ نوع، فيُصوَّر البوكسُ مرّتين وثلاثًا ولا
+                معنى لذلك: التفقّدُ يقول «هذا هو، وهذا دبّابُه، وهذا بوكسُه» —
+                ثلاثُ صورٍ لا أكثر. ومن أراد إعادةَ واحدةٍ يمسحها من شريط
+                المراجعة فيُفتَح التصويرُ لها وحدَها.
+                والإعلانيُّ يبقى متعدّدًا: الملصقُ يُصوَّر من أوجهٍ عدّة. */}
+            <LiveCamera ar={ar} max={kind === 'ad' ? 6 : 1}
               label={t(`التقاط ${PHOTO_KINDS.find((k) => k.key === kind)!.ar}`, `Capture ${PHOTO_KINDS.find((k) => k.key === kind)!.en}`)}
               shots={shots.filter((s) => s.kind === kind)}
               onShot={(s) => {
@@ -274,6 +315,10 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
                 const next = kind === 'ad' ? null : REQUIRED_KINDS.find((k) => k.key !== kind && !countOf(k.key));
                 if (next) setKind(next.key);
               }}
+              onOpen={(sh) => setPreview({
+                dataUrl: sh.dataUrl,
+                label: (() => { const m = [...REQUIRED_KINDS, AD_KIND].find((k) => k.key === kind); return m ? (ar ? m.ar : m.en) : ''; })(),
+              })}
               onRemove={(i) => setShots((p) => {
                 const mine = p.filter((s) => s.kind === kind);
                 const target = mine[i];
@@ -305,10 +350,19 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
                     const meta = [...REQUIRED_KINDS, AD_KIND].find((k) => k.key === sh.kind);
                     return (
                       <div key={`${sh.fileName}-${i}`} className="relative shrink-0">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={sh.dataUrl} alt={meta ? (ar ? meta.ar : meta.en) : ''}
-                          className="h-24 w-20 rounded-lg border border-slate-200 object-cover" />
-                        <span className="absolute inset-x-0 bottom-0 rounded-b-lg bg-black/55 px-1 py-0.5 text-center text-[9.5px] font-semibold text-white">
+                        {/* ── والمُصغَّرُ يُفتَح ──────────────────────────────
+                            مراجعةٌ على صورةٍ بعرض عشرين بكسلًا ليست مراجعة: لا
+                            يُعرَف منها أمهزوزةٌ هي أم واضحة، ولا أهذا دبّابُه.
+                            فالضغطُ يفتحها بحجم الشاشة. */}
+                        <button type="button"
+                          onClick={() => setPreview({ dataUrl: sh.dataUrl, label: meta ? (ar ? meta.ar : meta.en) : '' })}
+                          title={t('اضغط لعرض الصورة', 'Tap to view')}
+                          className="block overflow-hidden rounded-lg border border-slate-200">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={sh.dataUrl} alt={meta ? (ar ? meta.ar : meta.en) : ''}
+                            className="h-24 w-20 object-cover" />
+                        </button>
+                        <span className="pointer-events-none absolute inset-x-0 bottom-0 rounded-b-lg bg-black/55 px-1 py-0.5 text-center text-[9.5px] font-semibold text-white">
                           {meta ? (ar ? meta.ar : meta.en) : ''}
                         </span>
                         <button type="button" disabled={saving}
@@ -321,6 +375,10 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
                     );
                   })}
                 </div>
+                <p className="mt-1 text-[10.5px] text-slate-400">
+                  {t('اضغط أيّ صورة لعرضها بحجمها · ✕ لمسحها وإعادة تصويرها',
+                     'Tap a photo to view it full size · ✕ to delete and retake')}
+                </p>
                 {/* وما لم يُصوَّر بعد يُقال بالاسم، فلا يُبحَث عنه في الشرائح. */}
                 {!!lacking.length && (
                   <p className="mt-1.5 text-[11px] font-semibold text-amber-700">
@@ -378,6 +436,8 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
         )}
         <textarea className={`${inp} mt-2`} rows={2} placeholder={t('ملاحظات (اختياري)', 'Notes (optional)')}
           value={notes} onChange={(e) => setNotes(e.target.value)} />
+
+        {preview && <PhotoViewer shot={preview} ar={ar} onClose={() => setPreview(null)} />}
 
         <p className="mt-2 flex items-center gap-1 text-[11px] text-slate-400">
           <MapPin className="h-3 w-3" />

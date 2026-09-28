@@ -15,7 +15,7 @@
  * للمركبة مفوَّضان: واحدٌ يقرأه هذا القسمُ وآخرُ يقرأه قسمُ المركبات — وهو غلطٌ
  * يُكتشف عند المرور لا قبله. فالخيارُ هنا يكتب هناك ويُقيَّد في سجلّ المركبة.
  */
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -26,10 +26,13 @@ import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import ScrollX from '@/components/system/ScrollX';
 import { LEAD, LEAD_CELL } from '@/components/vehicles/stickyLead';
-import { ClipboardList, Plus, RotateCcw, Square, ExternalLink } from 'lucide-react';
+import { ClipboardList, Plus, RotateCcw, Square, ExternalLink, ArrowLeftRight } from 'lucide-react';
 import {
-  getLTOrders, getLTOrderOptions, createLTOrder, endLTOrder, fmtDate, canEditLT, type LTOrder,
+  getLTOrders, getLTOrderOptions, createLTOrder, endLTOrder, moveLTAuthorization, fmtDate, canEditLT, type LTOrder,
 } from '@/lib/lightTransport';
+
+/** ما يُشتقّ في الخادم من ورقة التفويض الحاضرة — راجع `listOrders`. */
+type LTOrderRow = LTOrder & { authorizedNowName?: string; authorizedNowId?: string; authorizationMismatch?: boolean };
 
 type Opts = Awaited<ReturnType<typeof getLTOrderOptions>>;
 
@@ -47,9 +50,10 @@ const COL_DEFS: [string, string, string][] = [
   ['endDate', 'إلى', 'To'],
   ['status', 'الحالة', 'Status'],
   ['authorization', 'التفويض', 'Authorisation'],
+  ['authorizedNow', 'التفويض باسم', 'Authorised to'],
   ['createdByName', 'أنشأه', 'Created by'],
 ];
-const GETTERS: Record<string, (o: LTOrder) => any> = {
+const GETTERS: Record<string, (o: LTOrderRow) => any> = {
   orderNumber: (o) => o.orderNumber,
   employeeName: (o) => o.employeeName,
   employeeIdNumber: (o) => o.employeeIdNumber,
@@ -63,6 +67,7 @@ const GETTERS: Record<string, (o: LTOrder) => any> = {
   endDate: (o) => fmtDate(o.endDate),
   status: (o) => (o.status === 'active' ? 'سارٍ' : 'مُغلَق'),
   authorization: (o) => (o.authorizationMoved ? 'نُقل' : ''),
+  authorizedNow: (o) => (o as any).authorizedNowName || '',
   createdByName: (o) => o.createdByName || '',
 };
 
@@ -76,14 +81,17 @@ function OrdersInner() {
   const { notify, confirm, prompt } = useDialog();
   const canEdit = canEditLT(user as any);
 
-  const [orders, setOrders] = useState<LTOrder[]>([]);
-  const [totals, setTotals] = useState({ total: 0, active: 0, ended: 0, authorizationMoved: 0 });
+  const [orders, setOrders] = useState<LTOrderRow[]>([]);
+  const [serverTotal, setServerTotal] = useState(0);
   const [opts, setOpts] = useState<Opts | null>(null);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [dq, setDq] = useState('');
   const [f, setF] = useState<Record<string, string>>({ status: '', project: '', city: '', from: '', to: '' });
   const [creating, setCreating] = useState<any | null>(null);
+  const [moving, setMoving] = useState<any | null>(null);
+  // الخلافُ مشتقٌّ في الخادم، فيُفلتَر هنا على ما وصل.
+  const [onlyMismatch, setOnlyMismatch] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => { const h = setTimeout(() => setDq(q), 350); return () => clearTimeout(h); }, [q]);
@@ -92,7 +100,7 @@ function OrdersInner() {
     try {
       const d = await getLTOrders({ ...f, q: dq, employee: sp?.get('employee') || '' });
       setOrders(d.orders || []);
-      setTotals(d.totals || { total: 0, active: 0, ended: 0, authorizationMoved: 0 });
+      setServerTotal(d.totals?.total || (d.orders || []).length);
     } catch (e: any) { notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error'); }
     setLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -114,6 +122,45 @@ function OrdersInner() {
         authorizationNumber: '', authorizationStart: '', authorizationEnd: '', notesAr: '',
       });
     } catch (e: any) { notify(e?.message || t('تعذّر تحميل الخيارات', 'Could not load options'), 'error'); }
+  };
+
+  /**
+   * ── نقلُ التفويض وحدَه ───────────────────────────────────────────────────
+   * المركبةُ قد تكون مفوَّضةً لشخصٍ وقائدُها الفعليُّ آخر — أربعةَ عشرَ مركبةً
+   * عندنا كذلك، وهي حالةٌ صحيحةٌ لا خطأ. فتصحيحُ الورقةِ وحدَها فعلٌ مستقلٌّ لا
+   * يستلزم أمرَ تشغيلٍ جديدًا، والكتابةُ تقع في سجلّ المركبات نفسِه.
+   */
+  const openMove = async (o: LTOrder) => {
+    try {
+      const op = opts || await getLTOrderOptions();
+      setOpts(op);
+      const vid = typeof o.vehicle === 'object' && o.vehicle ? o.vehicle._id : String(o.vehicle || '');
+      const v = op.vehicles.find((x) => x._id === vid);
+      setMoving({
+        vehicle: vid, plateNumber: o.vehiclePlate || v?.plateNumber || '',
+        currentName: v?.authorizedName || '', currentId: v?.authorizedId || '',
+        // المقترَحُ: القائدُ الفعليُّ لهذا الأمر — وهو الغرضُ الأغلب.
+        toEmployee: o.ltEmployee, authorizationNumber: o.authorizationNumber || '',
+        startDate: new Date().toISOString().slice(0, 10), expiryDate: fmtDate(o.authorizationEnd), reason: '',
+      });
+    } catch (e: any) { notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error'); }
+  };
+
+  const submitMove = async () => {
+    if (!moving?.vehicle) return;
+    setSaving(true);
+    try {
+      const r = await moveLTAuthorization({
+        vehicle: moving.vehicle, toEmployee: moving.toEmployee || '',
+        authorizationNumber: moving.authorizationNumber, startDate: moving.startDate,
+        expiryDate: moving.expiryDate, reason: moving.reason,
+      });
+      notify(t(`تفويض ${r.vehicle.plateNumber} → ${r.vehicle.authorizedPerson?.name || '(رُفع)'}`,
+        `${r.vehicle.plateNumber} → ${r.vehicle.authorizedPerson?.name || '(released)'}`), 'success');
+      setMoving(null);
+      load();
+    } catch (e: any) { notify(e?.message || t('تعذّر النقل', 'Could not move'), 'error'); }
+    setSaving(false);
   };
 
   const submit = async () => {
@@ -149,8 +196,17 @@ function OrdersInner() {
     } catch (e: any) { notify(e?.message || t('تعذّر', 'Failed'), 'error'); }
   };
 
-  const cf = useColumnFilters<LTOrder>();
-  const shown = cf.apply(orders, GETTERS);
+  const cf = useColumnFilters<LTOrderRow>();
+  const shown = cf.apply(onlyMismatch ? orders.filter((o) => o.authorizationMismatch) : orders, GETTERS);
+  // الأعدادُ من المعروض لا من ردّ الخادم — فيتحرّك الكارتُ مع فلتر العمود أيضًا،
+  // ولا يبقى رقمان لشيءٍ واحد على شاشةٍ واحدة.
+  const totals = useMemo(() => ({
+    total: shown.length,
+    active: shown.filter((o) => o.status === 'active').length,
+    ended: shown.filter((o) => o.status === 'ended').length,
+    authorizationMoved: shown.filter((o) => o.authorizationMoved).length,
+    mismatch: shown.filter((o) => o.authorizationMismatch).length,
+  }), [shown]);
   const exportColumns: ExportColumn[] = COL_DEFS.map(([k, a, e]) => ({
     header: ar ? a : e, key: k, width: 16, transform: (_: any, r: any) => GETTERS[k](r),
   }));
@@ -189,6 +245,13 @@ function OrdersInner() {
         <Stat label={t('مُغلَقة', 'Ended')} value={totals.ended} accent="text-slate-500"
           onClick={() => setF((p) => ({ ...p, status: p.status === 'ended' ? '' : 'ended' }))} on={f.status === 'ended'} />
         <Stat label={t('نُقل معها التفويض', 'Authorisation moved')} value={totals.authorizationMoved} accent="text-indigo-600" />
+        {/* ── والورقةُ باسم غيرِ الراكب ─────────────────────────────────────
+            ليست خطأً يُصحَّح بلا سؤال: الورقةُ باسم واحدٍ والراكبُ غيرُه واقعٌ
+            يحدث. لكنّها تُعرَض صريحةً، وإلّا لم تُكتشف إلّا عند مخالفةٍ أو حادث،
+            وحينها لا يُعرَف صاحبُها. */}
+        <Stat label={t('التفويض باسم غير الراكب', 'Authorised to someone else')} value={totals.mismatch}
+          accent={totals.mismatch ? 'text-amber-600' : 'text-slate-900'}
+          onClick={() => setOnlyMismatch((v) => !v)} on={onlyMismatch} />
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-wrap gap-2.5 items-center">
@@ -210,7 +273,7 @@ function OrdersInner() {
             className="text-[12px] font-bold text-[#f37121] hover:underline">{t('كل الموظفين', 'All employees')}</button>
         )}
         <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
-        <span className="text-xs text-slate-500">{shown.length} / {orders.length}</span>
+        <span className="text-xs text-slate-500">{shown.length} / {serverTotal}</span>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -239,6 +302,10 @@ function OrdersInner() {
                         <button type="button" onClick={() => router.push(`/system/b2c/light-transport/${o.ltEmployee}`)}
                           title={t('ملفّ الموظف', 'Employee file')}
                           className="p-1.5 rounded-lg text-slate-600 hover:text-[#f37121] hover:bg-slate-100"><ExternalLink className="w-4 h-4" /></button>
+                        {!!o.vehicle && (
+                          <button type="button" onClick={() => openMove(o)} title={t('نقل تفويض المركبة', 'Move the vehicle authorisation')}
+                            className="p-1.5 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-slate-100"><ArrowLeftRight className="w-4 h-4" /></button>
+                        )}
                         {o.status === 'active' && (
                           <button type="button" onClick={() => end(o)} title={t('إنزال وإغلاق الأمر', 'Take off & close')}
                             className="p-1.5 rounded-lg text-slate-600 hover:text-red-600 hover:bg-slate-100"><Square className="w-4 h-4" /></button>
@@ -266,6 +333,18 @@ function OrdersInner() {
                         </td>
                       );
                     }
+                    if (k === 'authorizedNow') {
+                      return (
+                        <td key={k} className="px-3 py-2.5 whitespace-nowrap text-[12.5px]">
+                          {!v ? <span className="text-slate-300">—</span> : o.authorizationMismatch ? (
+                            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold"
+                              title={t('الورقة باسمه والراكبُ غيره', 'the paper is in their name, the rider is someone else')}>
+                              {v} ⚠
+                            </span>
+                          ) : <span className="text-slate-600">{v}</span>}
+                        </td>
+                      );
+                    }
                     const mono = ['orderNumber', 'employeeIdNumber', 'vehiclePlate', 'startDate', 'endDate'].includes(k);
                     return <td key={k} className={`px-3 py-2.5 whitespace-nowrap ${mono ? 'font-mono text-slate-700' : 'text-slate-700'}`}>{v || <span className="text-slate-300">—</span>}</td>;
                   })}
@@ -275,6 +354,55 @@ function OrdersInner() {
           </table>
         </ScrollX>
       </div>
+
+      {moving && opts && (
+        <Modal open onClose={() => setMoving(null)} title={t('نقل تفويض المركبة', 'Move vehicle authorisation')}>
+          <div className="space-y-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+              <p className="text-[12.5px] text-slate-600">
+                {t('المركبة', 'Vehicle')}: <span className="font-mono font-bold text-slate-900">{moving.plateNumber}</span>
+              </p>
+              <p className="text-[12.5px] text-slate-600 mt-1">
+                {t('التفويض الآن باسم', 'Currently authorised to')}:{' '}
+                <span className="font-bold text-slate-900">{moving.currentName || t('(لا أحد)', '(nobody)')}</span>
+                {moving.currentId ? <span className="font-mono text-slate-500"> · {moving.currentId}</span> : null}
+              </p>
+            </div>
+            <Field label={t('يُنقَل إلى', 'Move to')}>
+              <SearchableSelect
+                value={moving.toEmployee}
+                onChange={(v: string) => setMoving((p: any) => ({ ...p, toEmployee: v }))}
+                options={[{ value: '', label: t('— رفع التفويض بلا بديل —', '— release with no replacement —') },
+                  ...opts.employees.map((e2) => ({ value: e2._id, label: `${e2.name} — ${e2.idNumber}` }))]}
+                placeholder={t('ابحث بالاسم أو الهوية…', 'search by name or ID…')} />
+            </Field>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+              <Field label={t('رقم التفويض', 'Authorisation no.')}>
+                <TextInput value={moving.authorizationNumber} onChange={(ev) => setMoving((p: any) => ({ ...p, authorizationNumber: ev.target.value }))} />
+              </Field>
+              <Field label={t('من تاريخ', 'Starts')}>
+                <input type="date" value={moving.startDate} onChange={(ev) => setMoving((p: any) => ({ ...p, startDate: ev.target.value }))}
+                  aria-label={t('من تاريخ', 'Starts')} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm [color-scheme:light]" />
+              </Field>
+              <Field label={t('إلى تاريخ', 'Ends')}>
+                <input type="date" value={moving.expiryDate} onChange={(ev) => setMoving((p: any) => ({ ...p, expiryDate: ev.target.value }))}
+                  aria-label={t('إلى تاريخ', 'Ends')} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm [color-scheme:light]" />
+              </Field>
+            </div>
+            <Field label={t('السبب', 'Reason')}>
+              <TextInput value={moving.reason} onChange={(ev) => setMoving((p: any) => ({ ...p, reason: ev.target.value }))} />
+            </Field>
+            <p className="text-[11.5px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 leading-relaxed">
+              {t('يُكتب في سجلّ المركبات ويُقيَّد في سجلّ تجديداتها وفي سجلّ الموظفين — عند مَن أخذها ومَن فقدها.',
+                 'Written into the vehicle registry, its renewal trail, and both employees’ history — the one who gained it and the one who lost it.')}
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <button type="button" onClick={() => setMoving(null)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm">{t('إلغاء', 'Cancel')}</button>
+            <PrimaryButton onClick={submitMove} disabled={saving}>{t('نقل التفويض', 'Move it')}</PrimaryButton>
+          </div>
+        </Modal>
+      )}
 
       {creating && opts && (
         <Modal open onClose={() => setCreating(null)} title={t('إنشاء أمر تشغيل', 'New operating order')}>

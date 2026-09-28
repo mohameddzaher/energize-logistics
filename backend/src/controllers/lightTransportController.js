@@ -108,12 +108,30 @@ exports.listEmployees = async (req, res) => {
       // الحدُّ الأعلى شاملٌ لليوم نفسِه — وإلّا سقط آخرُ يومٍ من كلّ مدّة.
       if (S(q.hiredTo)) filter.hireDate.$lte = new Date(`${S(q.hiredTo)}T23:59:59.999Z`);
     }
+    /**
+     * ── والبحثُ يجد بأيّ رقمٍ في يدِ السائل ─────────────────────────────────
+     * مَن يسأل عن سائقٍ يحمل ما وقع في يده: اسمَه، أو لوحتَه، أو رقمَ هويّته أو
+     * إقامته، أو الرقمَ التسلسليَّ للمركبة، أو رقمَ التفويض. وثلاثةٌ من هذه لا
+     * توجد في صفّ الموظّف أصلًا — هي في سجلّ المركبات. فبحثٌ يقتصر على صفوفنا
+     * يقول «لا نتائج» والمركبةُ عندنا.
+     *
+     * فالرقمُ يُبحَث عنه في سجلّ المركبات أوّلًا، وما يُوجَد يُضاف إلى الشرط
+     * بمعرِّف المركبة — سؤالٌ صغيرٌ واحد، وجوابُه يفتح البابَ من الجهة الأخرى.
+     */
     if (S(q.q)) {
       const { arabicSearchRegex } = require('../utils/arabicSearch');
-      const rx = arabicSearchRegex(S(q.q));
-      filter.$or = [{ name: rx }, { idNumber: rx }, { vehiclePlate: rx }, { phone: rx },
+      const term = S(q.q);
+      const rx = arabicSearchRegex(term);
+      const or = [{ name: rx }, { idNumber: rx }, { vehiclePlate: rx }, { phone: rx },
         { supervisorName: rx }, { projectAr: rx }, { cityAr: rx }, { jobTitleAr: rx },
-        { registerNumber: rx }, { notesAr: rx }];
+        { contractTypeAr: rx }, { registerNumber: rx }, { vehicleTypeAr: rx }, { notesAr: rx }];
+      const vm = await VehicleMaster.find({
+        $or: [{ plateNumber: rx }, { serialNumber: rx }, { chassisNumber: rx },
+          { 'authorizedPerson.name': rx }, { 'authorizedPerson.iqamaNumber': rx },
+          { 'authorizedPerson.authorizationNumber': rx }],
+      }).select('_id').limit(400).lean();
+      if (vm.length) or.push({ vehicle: { $in: vm.map((v) => v._id) } });
+      filter.$or = or;
     }
 
     let rows = await LightTransportEmployee.find(filter)

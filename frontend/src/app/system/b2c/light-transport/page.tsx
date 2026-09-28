@@ -31,17 +31,11 @@ import ScrollX from '@/components/system/ScrollX';
 import { LEAD, LEAD_CELL } from '@/components/vehicles/stickyLead';
 import { Truck, Plus, Pencil, RotateCcw, UserMinus, ExternalLink } from 'lucide-react';
 import {
-  getLTEmployees, updateLTEmployee, createLTEmployee, deactivateLTEmployee,
+  getLTEmployees, updateLTEmployee, createLTEmployee, deactivateLTEmployee, ltTotalsOf,
   LT_COLUMNS, statusCls, KIND_AR, KIND_EN, canEditLT, fmtDate,
-  type LTEmployee, type LTTotals, type LTOptions,
+  type LTEmployee, type LTOptions,
 } from '@/lib/lightTransport';
 
-const EMPTY_TOTALS = {
-  total: 0, reps: 0, admins: 0, working: 0, notWorking: 0, onLeave: 0, terminated: 0,
-  withVehicle: 0, withoutVehicle: 0, hrLinked: 0, ownedHere: 0, housed: 0, unhoused: 0,
-  byProject: {}, byCity: {}, byJob: {}, byContract: {}, byRegister: {},
-  byVehicleType: {}, bySupervisor: {}, byStatus: {},
-} as LTTotals;
 
 function LightTransportEmployeesInner() {
   const { user } = useAuth();
@@ -53,7 +47,8 @@ function LightTransportEmployeesInner() {
   const canEdit = canEditLT(user as any);
 
   const [rows, setRows] = useState<LTEmployee[]>([]);
-  const [totals, setTotals] = useState<LTTotals>(EMPTY_TOTALS);
+  // إجماليُّ الخادم يبقى معروضًا في «س من ص» ليُعرَف أنّ المعروضَ جزءٌ منه.
+  const [serverTotal, setServerTotal] = useState(0);
   const [options, setOptions] = useState<LTOptions>({ project: [], city: [], jobTitle: [], contractType: [], register: [], vehicleType: [], supervisor: [], housing: [] });
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Partial<LTEmployee> | null>(null);
@@ -95,7 +90,7 @@ function LightTransportEmployeesInner() {
       const d = await getLTEmployees({ ...f, q: dq });
       if (!guard.isCurrent(token)) return;
       setRows(d.employees || []);
-      setTotals(d.totals || EMPTY_TOTALS);
+      setServerTotal(d.totals?.total || (d.employees || []).length);
       setOptions(d.options || options);
     } catch (e: any) {
       if (guard.isCurrent(token)) notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error');
@@ -115,6 +110,9 @@ function LightTransportEmployeesInner() {
     return o;
   }, []);
   const shown = cf.apply(rows, getters);
+  // والأعدادُ من الصفوف المعروضة — فيتحرّك الكارتُ مع فلتر العمود كما يتحرّك
+  // مع الشرائح، ولا يبقى رقمان لشيءٍ واحد. راجع `ltTotalsOf`.
+  const totals = useMemo(() => ltTotalsOf(shown), [shown]);
 
   const exportColumns: ExportColumn[] = LT_COLUMNS.map((c) => ({
     header: ar ? c.ar : c.en, key: c.key, width: c.width || 16,
@@ -183,7 +181,7 @@ function LightTransportEmployeesInner() {
     <div className="space-y-4 pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Truck className="w-6 h-6 text-[#f37121]" />}
         title={t('موظفون النقل الخفيف', 'Light-transport employees')}
-        subtitle={t(`${totals.total} موظفًا — المندوبون والإداريون معًا`, `${totals.total} employees — reps and admin together`)}>
+        subtitle={t(`${serverTotal} موظفًا — المندوبون والإداريون معًا`, `${serverTotal} employees — reps and admin together`)}>
         <ExportMenu fileName="light-transport" lang={ar ? 'ar' : 'en'} variant="subtle" label={t('تصدير Excel', 'Export')} options={exportOptions} />
         {canEdit && <PrimaryButton onClick={() => setEditing({})}><Plus className="w-4 h-4" /> {t('إضافة موظف', 'Add employee')}</PrimaryButton>}
       </PageHeader>
@@ -250,7 +248,7 @@ function LightTransportEmployeesInner() {
           </button>
         )}
         <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
-        <span className="text-xs text-slate-500">{t(`${shown.length} من ${totals.total}`, `${shown.length} of ${totals.total}`)}</span>
+        <span className="text-xs text-slate-500">{t(`${shown.length} من ${serverTotal}`, `${shown.length} of ${serverTotal}`)}</span>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">

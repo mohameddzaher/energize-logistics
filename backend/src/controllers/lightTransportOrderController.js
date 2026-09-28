@@ -53,23 +53,56 @@ exports.listOrders = async (req, res) => {
       if (S(q.from)) filter.startDate.$gte = new Date(S(q.from));
       if (S(q.to)) filter.startDate.$lte = new Date(`${S(q.to)}T23:59:59.999Z`);
     }
+    // والبحثُ يجد بأيّ رقم — ومنها ما ليس في صفّ الأمر: الرقمُ التسلسليُّ ورقمُ
+    // التفويض في سجلّ المركبات، فيُسأل عنه هناك ويُضاف بمعرِّف المركبة.
     if (S(q.q)) {
       const { arabicSearchRegex } = require('../utils/arabicSearch');
       const rx = arabicSearchRegex(S(q.q));
-      filter.$or = [{ orderNumber: rx }, { employeeName: rx }, { employeeIdNumber: rx },
-        { vehiclePlate: rx }, { supervisorName: rx }, { notesAr: rx }];
+      const or = [{ orderNumber: rx }, { employeeName: rx }, { employeeIdNumber: rx },
+        { vehiclePlate: rx }, { vehicleTypeAr: rx }, { supervisorName: rx },
+        { projectAr: rx }, { cityAr: rx }, { authorizationNumber: rx }, { notesAr: rx }];
+      const vm = await VehicleMaster.find({
+        $or: [{ plateNumber: rx }, { serialNumber: rx }, { chassisNumber: rx },
+          { 'authorizedPerson.name': rx }, { 'authorizedPerson.iqamaNumber': rx },
+          { 'authorizedPerson.authorizationNumber': rx }],
+      }).select('_id').limit(400).lean();
+      if (vm.length) or.push({ vehicle: { $in: vm.map((v) => v._id) } });
+      filter.$or = or;
     }
     const orders = await LightTransportOrder.find(filter)
-      .populate('vehicle', 'plateNumber registrationTypeAr serialNumber')
+      // ورقةُ التفويضِ الحاضرةُ تُقرأ من سجلّ المركبات لا من الأمر: الأمرُ قيدُ
+      // لحظةِ إنشائه، والورقةُ تتغيّر بعده — من هنا أو من قسم المركبات.
+      .populate('vehicle', 'plateNumber registrationTypeAr serialNumber authorizedPerson')
       .populate('housing', 'name')
       .sort({ startDate: -1, createdAt: -1 }).limit(3000).lean();
+
+    /**
+     * ── والورقةُ باسم غيرِ الراكب حالةٌ تُعرَض ────────────────────────────────
+     * أربعةَ عشرَ مركبةً مفوَّضةٌ لشخصٍ وقائدُها الفعليُّ آخر. وهي ليست خطأً
+     * يُصحَّح بلا سؤال — الورقةُ باسم واحدٍ والراكبُ غيرُه واقعٌ يحدث. لكنّها
+     * تُعرَض صريحةً، وإلّا لم تُكتشف إلّا عند مخالفةٍ أو حادث.
+     */
+    const shaped = orders.map((o) => {
+      const holderId = S(o.vehicle?.authorizedPerson?.iqamaNumber);
+      const holderName = S(o.vehicle?.authorizedPerson?.name);
+      return {
+        ...o,
+        authorizedNowName: holderName,
+        authorizedNowId: holderId,
+        authorizationNumberNow: S(o.vehicle?.authorizedPerson?.authorizationNumber),
+        // خلافٌ حقيقيٌّ: ورقةٌ باسمٍ، وراكبٌ آخرُ يعمل عليها.
+        authorizationMismatch: !!holderId && !!S(o.employeeIdNumber) && holderId !== S(o.employeeIdNumber),
+      };
+    });
+
     res.json({
-      orders,
+      orders: shaped,
       totals: {
         total: orders.length,
         active: orders.filter((o) => o.status === 'active').length,
         ended: orders.filter((o) => o.status === 'ended').length,
         authorizationMoved: orders.filter((o) => o.authorizationMoved).length,
+        authorizationMismatch: shaped.filter((o) => o.authorizationMismatch).length,
       },
     });
   } catch (e) {
@@ -121,6 +154,99 @@ exports.orderOptions = async (req, res) => {
   } catch (e) {
     console.error('lt orderOptions:', e);
     res.status(500).json({ message: 'تعذّر تحميل خيارات أمر التشغيل' });
+  }
+};
+
+
+/**
+ * ── نقلُ تفويضِ مركبةٍ وحدَه ────────────────────────────────────────────────
+ * ليس كلُّ نقلٍ أمرَ تشغيلٍ جديدًا. والمركبةُ قد تكون مفوَّضةً لشخصٍ وقائدُها
+ * الفعليُّ شخصٌ آخر — وهي حالةٌ قائمةٌ في أربعةَ عشرَ مركبةً عندنا، وليست خطأً:
+ * الورقةُ باسم واحدٍ والراكبُ غيرُه. فقد يُطلَب تصحيحُ الورقة وحدَها، أو نقلُها
+ * من مندوبٍ إلى مندوبٍ آخرَ يمسك المركبةَ أصلًا.
+ *
+ * والكتابةُ في سجلّ المركبات كما هي في أمر التشغيل — موضعُ التفويض واحدٌ لا
+ * يتعدّد، وإلّا قرأ قسمٌ غيرَ ما يقرأ الآخر.
+ */
+exports.moveAuthorization = async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!mongoose.isValidObjectId(S(b.vehicle))) return res.status(400).json({ message: 'اختر المركبة' });
+    const vehicle = await VehicleMaster.findById(S(b.vehicle));
+    if (!vehicle) return res.status(404).json({ message: 'المركبةُ غير موجودة في سجلّ المركبات' });
+
+    // إلى مَن: موظّفٌ من هذا القسم، أو رفعُ التفويض بلا بديل.
+    let to = null;
+    if (S(b.toEmployee)) {
+      if (!mongoose.isValidObjectId(S(b.toEmployee))) return res.status(400).json({ message: 'موظّفٌ غير معروف' });
+      to = await LightTransportEmployee.findById(S(b.toEmployee));
+      if (!to) return res.status(404).json({ message: 'الموظّفُ غير موجود' });
+    }
+
+    const before = {
+      name: vehicle.authorizedPerson?.name || '',
+      id: vehicle.authorizedPerson?.iqamaNumber || '',
+    };
+    if (to && S(before.id) === S(to.idNumber)) {
+      return res.status(400).json({ message: `المركبة ${vehicle.plateNumber} مفوَّضةٌ له بالفعل` });
+    }
+
+    vehicle.authorizedPerson = to ? {
+      ...(vehicle.authorizedPerson || {}),
+      name: to.name,
+      iqamaNumber: to.idNumber,
+      phone: to.phone || S(b.phone),
+      authorizationNumber: S(b.authorizationNumber) || vehicle.authorizedPerson?.authorizationNumber || '',
+      startDate: D(b.startDate) || new Date(),
+      expiryDate: D(b.expiryDate) || vehicle.authorizedPerson?.expiryDate || null,
+    } : { name: '', iqamaNumber: '', phone: '', authorizationNumber: '', startDate: null, expiryDate: null };
+
+    // قيدٌ في سجلّ المركبة: مَن قبلَ مَن، ومن أيّ بابٍ جاء التغيير.
+    vehicle.renewals = vehicle.renewals || [];
+    vehicle.renewals.push({
+      document: 'authorization',
+      newExpiry: vehicle.authorizedPerson.expiryDate || new Date(),
+      previousNumber: before.name,
+      newNumber: to ? to.name : '',
+      note: to
+        ? `نُقل التفويضُ من قسم النقل الخفيف${S(b.reason) ? ` — ${S(b.reason)}` : ''}`
+        : `رُفع التفويضُ من قسم النقل الخفيف${S(b.reason) ? ` — ${S(b.reason)}` : ''}`,
+      byName: byName(req.user),
+      at: new Date(),
+    });
+    await vehicle.save();
+
+    // ويُقيَّد في سجلّ الموظّفين: عند من أخذها وعند من فقدها.
+    if (to) {
+      to.history.push({
+        kind: 'authorization', by: req.user?._id, byName: byName(req.user),
+        fromValue: before.name, toValue: to.name, note: `المركبة ${vehicle.plateNumber}${S(b.reason) ? ` — ${S(b.reason)}` : ''}`,
+      });
+      await to.save();
+    }
+    if (before.id) {
+      const from = await LightTransportEmployee.findOne({ idNumber: before.id });
+      if (from && String(from._id) !== String(to?._id || '')) {
+        from.history.push({
+          kind: 'authorization', by: req.user?._id, byName: byName(req.user),
+          fromValue: from.name, toValue: to ? to.name : '', note: `المركبة ${vehicle.plateNumber} — نُقل التفويضُ عنه`,
+        });
+        await from.save();
+      }
+    }
+
+    logAudit({
+      user: req.user, action: 'move_lt_authorization', entity: 'VehicleMaster', entityId: vehicle._id,
+      changes: { before: { authorizedTo: before.name }, after: { authorizedTo: to ? to.name : '(رُفع)' } },
+      ipAddress: req.ip,
+    }).catch(() => {});
+    emitBoth();
+    return res.json({
+      vehicle: { _id: String(vehicle._id), plateNumber: vehicle.plateNumber, authorizedPerson: vehicle.authorizedPerson },
+    });
+  } catch (e) {
+    console.error('lt moveAuthorization:', e);
+    return res.status(500).json({ message: 'تعذّر نقل التفويض' });
   }
 };
 

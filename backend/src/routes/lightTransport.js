@@ -33,5 +33,7 @@ router.get('/orders/options', o.orderOptions);
 router.get('/orders', o.listOrders);
 router.post('/orders', authorize(...EDIT), o.createOrder);
 router.post('/orders/:id/end', authorize(...EDIT), o.endOrder);
+// نقلُ تفويضِ مركبةٍ وحدَه — بلا أمرِ تشغيلٍ جديد. راجع `moveAuthorization`.
+router.post('/authorization/move', authorize(...EDIT), o.moveAuthorization);
 
 module.exports = router;

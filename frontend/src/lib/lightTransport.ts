@@ -27,6 +27,8 @@ export interface LTEmployee {
   workStatusAr?: string;
   /** الحالةُ كما تُقرأ: حالةُ القسم، تغلبها الموارد البشريّةُ حين تنفي. */
   workStatusShown?: string;
+  /** نوعُ المركبة من سجلّها متى كانت مربوطةً — مفردةٌ واحدةٌ للاثنين. */
+  vehicleTypeShown?: string;
   statusSource?: 'hr' | 'section';
   hrLinked?: boolean;
   employeeNumber?: string;
@@ -83,6 +85,51 @@ export interface LTOrder {
   notesAr?: string; createdByName?: string; createdAt?: string;
 }
 
+
+/**
+ * ── والكاردُ يقرأ ما في الجدول ──────────────────────────────────────────────
+ * الأعدادُ كانت تأتي من الخادم محسوبةً على فلاترِه وحدَها، وفلترُ العمود (الشبيهُ
+ * بفلتر إكسل) يُطبَّق في المتصفّح بعدها. فمن فلتر عمودًا رأى الجدولَ يَنقُص
+ * والكاردَ ثابتًا — رقمان لشيءٍ واحدٍ على شاشةٍ واحدة، ولا يُعرَف أيُّهما الصحيح.
+ *
+ * فالأعدادُ تُحسَب هنا من الصفوف المعروضة فعلًا — أيًّا كان ما نقّاها: شريحةٌ أو
+ * بحثٌ أو فلترُ عمود. والمنطقُ هو منطقُ الخادم نفسُه (`totalsOf` في المتحكِّم)
+ * كي لا يفترق الرقمُ باختلاف الجهة التي حسبته.
+ */
+export function ltTotalsOf(rows: LTEmployee[]): LTTotals {
+  const count = (fn: (r: LTEmployee) => boolean) => rows.filter(fn).length;
+  const group = (fn: (r: LTEmployee) => string | undefined) => {
+    const o: Record<string, number> = {};
+    for (const r of rows) { const k = fn(r) || '—'; o[k] = (o[k] || 0) + 1; }
+    return o;
+  };
+  // «على رأس العمل» = ليس منتهيَ الخدمة ولا موقوفًا — والإجازةُ عملٌ موقوتٌ لا انتهاء.
+  const working = (r: LTEmployee) => !['إنهاء خدمة', 'متوقف'].includes(String(r.workStatusShown || ''));
+  return {
+    total: rows.length,
+    reps: count((r) => r.staffKind === 'rep'),
+    admins: count((r) => r.staffKind === 'admin'),
+    working: count(working),
+    notWorking: count((r) => !working(r)),
+    onLeave: count((r) => ['إجازة', 'اجازه'].includes(String(r.workStatusShown || ''))),
+    terminated: count((r) => r.workStatusShown === 'إنهاء خدمة'),
+    withVehicle: count((r) => !!r.vehicle),
+    withoutVehicle: count((r) => !r.vehicle),
+    hrLinked: count((r) => !!r.hrLinked),
+    ownedHere: count((r) => !r.hrLinked),
+    housed: count((r) => !!r.housing),
+    unhoused: count((r) => !r.housing),
+    byProject: group((r) => r.projectAr),
+    byCity: group((r) => r.cityAr),
+    byJob: group((r) => r.jobTitleAr),
+    byContract: group((r) => r.contractTypeAr),
+    byRegister: group((r) => r.registerNumber),
+    byVehicleType: group((r) => r.vehicleTypeShown || r.vehicleTypeAr),
+    bySupervisor: group((r) => r.supervisorName),
+    byStatus: group((r) => r.workStatusShown),
+  };
+}
+
 const qs = (o: Record<string, string>) =>
   Object.entries(o).filter(([, v]) => v !== '' && v != null)
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
@@ -111,6 +158,15 @@ export const getLTOrderOptions = () => api.get<{
   supervisors: string[];
 }>(`${BASE}/orders/options`);
 export const createLTOrder = (body: any) => api.post<{ order: LTOrder }>(`${BASE}/orders`, body);
+/**
+ * نقلُ تفويضِ مركبةٍ وحدَه — بلا أمرِ تشغيلٍ جديد. يُستعمَل حين تكون المركبةُ
+ * مفوَّضةً لشخصٍ وقائدُها الفعليُّ آخرَ (حالةٌ قائمةٌ في أربعةَ عشرَ مركبة)، أو
+ * حين يُنقَل التفويضُ من مندوبٍ إلى مندوب. `toEmployee` فارغًا يعني رفعَه.
+ */
+export const moveLTAuthorization = (body: {
+  vehicle: string; toEmployee?: string; authorizationNumber?: string;
+  startDate?: string; expiryDate?: string; reason?: string;
+}) => api.post<{ vehicle: { _id: string; plateNumber: string; authorizedPerson: any } }>(`${BASE}/authorization/move`, body);
 export const endLTOrder = (id: string, body: any) => api.post<{ order: LTOrder }>(`${BASE}/orders/${id}/end`, body);
 
 // ── العرض ───────────────────────────────────────────────────────────────────

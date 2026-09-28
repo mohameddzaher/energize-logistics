@@ -15,7 +15,7 @@ import api from '@/lib/api';
 import Link from 'next/link';
 import {
   CheckCircle2, Clock, UserX, Ban, Camera, Loader2, MapPin, ShieldAlert, ClipboardList, User, Bike, Package,
-  Megaphone,
+  Megaphone, Images, X,
 } from 'lucide-react';
 import LiveCamera, { type Shot } from '@/components/b2c/LiveCamera';
 
@@ -44,6 +44,11 @@ interface Check {
 interface Rep {
   _id: string; englishName: string; arabicName?: string; repId?: string; phone?: string;
   branch?: { name?: string }; project?: { name?: string }; check: Check | null;
+  /**
+   * مركبتُه من سجلّ النقل الخفيف — المندوبُ قائدُ مركبةٍ بعينها، فلوحتُها
+   * تُقرأ ولا تُكتب. راجع `myReps` في الخادم.
+   */
+  vehicle?: { plate: string; typeAr: string; typeKey: string } | null;
 }
 
 const OUTCOME_META: Record<Outcome, { ar: string; en: string; cls: string; Icon: any }> = {
@@ -173,8 +178,14 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
   const [outcome, setOutcome] = useState<Outcome>(rep.check?.outcome || 'started');
   const [shots, setShots] = useState<KindShot[]>([]);
   const [kind, setKind] = useState<PhotoKind>('rep');
-  const [vehicleType, setVehicleType] = useState(rep.check?.vehicleType || 'motorcycle');
-  const [plate, setPlate] = useState(rep.check?.vehiclePlate || '');
+  // المحفوظُ أوّلًا (تفقّدٌ يُعدَّل)، ثمّ سجلُّ القسم، ثمّ الافتراضُ الشائع.
+  const [vehicleType, setVehicleType] = useState(
+    rep.check?.vehicleType || rep.vehicle?.typeKey || 'motorcycle');
+  const [plate, setPlate] = useState(rep.check?.vehiclePlate || rep.vehicle?.plate || '');
+  // ولوحةٌ جاءت من السجلّ تُعرَض مقروءةً، وتُفتَح للكتابة بضغطةٍ لمن خرج على
+  // مركبةٍ بديلة — فلا تُكتب كلَّ صباحٍ ولا تُحبَس حين تتغيّر.
+  const fromRegister = !!rep.vehicle?.plate && !rep.check?.vehiclePlate;
+  const [plateLocked, setPlateLocked] = useState(fromRegister);
   const [notes, setNotes] = useState(rep.check?.notes || '');
   const [saving, setSaving] = useState(false);
   const [loc, setLoc] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null);
@@ -274,6 +285,51 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
                    `${already} photo(s) already saved — new ones are added, not replaced.`)}
               </p>
             )}
+
+            {/* ── ويراها الثلاثةَ قبل أن يحفظ ────────────────────────────────
+                كانت الشاشةُ تعرض صورَ النوع المختار وحدَه: يُصوّر المندوبَ ثمّ
+                الدبّابَ ثمّ البوكسَ، وكلُّ لقطةٍ تُخفي ما قبلها. فيحفظ وهو لم
+                يرَ الثلاثةَ معًا — وإن كانت إحداها مهزوزةً أو لغير صاحبها لم
+                يُعلَم إلّا بعد الحفظ.
+
+                فصارت كلُّها معروضةً في شريطٍ واحدٍ قبل الحفظ، مسمّاةً بنوعها،
+                وعلى كلٍّ منها زرُّ حذفٍ يعيد التقاطَها وحدَها. */}
+            {!!shots.length && (
+              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                <p className="mb-2 flex items-center gap-1.5 text-[11.5px] font-bold text-slate-700">
+                  <Images className="h-3.5 w-3.5 text-[#f37121]" />
+                  {t(`راجع الصور قبل الحفظ (${shots.length})`, `Review the photos before saving (${shots.length})`)}
+                </p>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {shots.map((sh, i) => {
+                    const meta = [...REQUIRED_KINDS, AD_KIND].find((k) => k.key === sh.kind);
+                    return (
+                      <div key={`${sh.fileName}-${i}`} className="relative shrink-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={sh.dataUrl} alt={meta ? (ar ? meta.ar : meta.en) : ''}
+                          className="h-24 w-20 rounded-lg border border-slate-200 object-cover" />
+                        <span className="absolute inset-x-0 bottom-0 rounded-b-lg bg-black/55 px-1 py-0.5 text-center text-[9.5px] font-semibold text-white">
+                          {meta ? (ar ? meta.ar : meta.en) : ''}
+                        </span>
+                        <button type="button" disabled={saving}
+                          onClick={() => setShots((p) => p.filter((x) => x !== sh))}
+                          title={t('حذف وإعادة التصوير', 'Delete and retake')}
+                          className="absolute -top-1.5 -end-1.5 rounded-full bg-red-600 p-1 text-white shadow disabled:opacity-50">
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* وما لم يُصوَّر بعد يُقال بالاسم، فلا يُبحَث عنه في الشرائح. */}
+                {!!lacking.length && (
+                  <p className="mt-1.5 text-[11px] font-semibold text-amber-700">
+                    {t(`ناقص: ${lacking.map((k) => k.ar).join(' · ')}`,
+                       `Missing: ${lacking.map((k) => k.en).join(' · ')}`)}
+                  </p>
+                )}
+              </div>
+            )}
           </>
         ) : (
           <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11.5px] text-slate-600">
@@ -283,16 +339,43 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
 
         <div className="mt-3 grid grid-cols-2 gap-2.5">
           <Field label={t('نوع المركبة', 'Vehicle')}>
-            <select className={inp} value={vehicleType} onChange={(e) => setVehicleType(e.target.value)}>
+            <select className={inp} value={vehicleType} onChange={(e) => setVehicleType(e.target.value)}
+              disabled={plateLocked}>
               <option value="motorcycle">{t('دراجة نارية', 'Motorcycle')}</option>
               <option value="car">{t('سيارة', 'Car')}</option>
               <option value="other">{t('أخرى', 'Other')}</option>
             </select>
           </Field>
           <Field label={t('اللوحة', 'Plate')}>
-            <input className={inp} value={plate} onChange={(e) => setPlate(e.target.value)} />
+            <input className={`${inp} ${plateLocked ? 'bg-slate-50 font-mono' : ''}`} value={plate}
+              readOnly={plateLocked} onChange={(e) => setPlate(e.target.value)} />
           </Field>
         </div>
+        {/* من أين جاءت اللوحة، وكيف تُغيَّر — يُقال صراحةً لا يُخمَّن. */}
+        {rep.vehicle?.plate && (
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+            <Bike className="h-3 w-3" />
+            {plateLocked
+              ? t(`مركبته في سجلّ النقل الخفيف${rep.vehicle.typeAr ? ` — ${rep.vehicle.typeAr}` : ''}`,
+                  `His vehicle in the light-transport register${rep.vehicle.typeAr ? ` — ${rep.vehicle.typeAr}` : ''}`)
+              : t('عُدِّلت يدويًّا — خرج على مركبةٍ غير مركبته.', 'Edited by hand — he went out on another vehicle.')}
+            <button type="button" onClick={() => setPlateLocked((v) => {
+              if (v) return false;                       // فُتحت للكتابة
+              setPlate(rep.vehicle?.plate || '');        // رجعت إلى مركبته
+              setVehicleType(rep.vehicle?.typeKey || vehicleType);
+              return true;
+            })}
+              className="font-semibold text-[#f37121] underline">
+              {plateLocked ? t('تغيير', 'change') : t('رجوع لمركبته', 'back to his vehicle')}
+            </button>
+          </p>
+        )}
+        {!rep.vehicle?.plate && (
+          <p className="mt-1 text-[11px] text-amber-700">
+            {t('لا مركبةَ مسجَّلةً له في سجلّ النقل الخفيف — اكتب اللوحة، وسجِّلها هناك كي لا تُكتب كلَّ يوم.',
+               'No vehicle recorded for him in the register — type the plate, and record it there so it is not typed daily.')}
+          </p>
+        )}
         <textarea className={`${inp} mt-2`} rows={2} placeholder={t('ملاحظات (اختياري)', 'Notes (optional)')}
           value={notes} onChange={(e) => setNotes(e.target.value)} />
 

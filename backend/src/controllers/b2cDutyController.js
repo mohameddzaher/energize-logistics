@@ -74,6 +74,18 @@ const populate = (q) => q
  * يعودان معًا لا في نداءين: الشاشةُ لا تعرض «اختر مندوبًا» ثمّ تكتشف بعد
  * الضغط أنّه فُقِّد صباحًا. ومَن فُقِّد يظهر منتهيًا ومعه صورتُه.
  */
+/**
+ * نوعُ المركبة كما تكتبه شاشةُ التفقّد، من نوعِ تسجيلها في سجلّ المركبات.
+ * الشاشةُ تعرف ثلاثةً (دراجة/سيارة/أخرى)، والسجلُّ يكتب «دراجة نارية» و«فان»
+ * و«كيا» — فالترجمةُ في موضعٍ واحد.
+ */
+const vehicleTypeKey = (typeAr) => {
+  const v = String(typeAr || '');
+  if (/دراج/.test(v)) return 'motorcycle';
+  if (/سيار|فان|كيا|خاص|بيك|نقل خفيف/.test(v)) return 'car';
+  return v ? 'other' : '';
+};
+
 exports.myReps = async (req, res) => {
   try {
     const dateKey = validKey(req.query.date) ? req.query.date : dayKeyOf();
@@ -82,7 +94,7 @@ exports.myReps = async (req, res) => {
 
     const repFilter = { isActive: { $ne: false }, supervisor: asUser };
     const reps = await B2CRep.find(repFilter)
-      .select('englishName arabicName repId phone branch project supervisor')
+      .select('englishName arabicName repId phone branch project supervisor ltEmployee')
       .populate('branch', 'name code')
       .populate('project', 'name nameAr')
       .sort({ englishName: 1 }).lean();
@@ -94,10 +106,41 @@ exports.myReps = async (req, res) => {
       : [];
     const byRep = new Map(checks.map((c) => [String(c.rep), c]));
 
+    /**
+     * ── ومركبةُ المندوب لا تُكتب بيدٍ كلَّ صباح ────────────────────────────
+     *
+     * المندوبُ قائدُ مركبةٍ بعينها: لوحتُها ونوعُها مكتوبان في سجلّ النقل الخفيف
+     * ومربوطان بسجلّ المركبات. وكان المشرفُ يكتب اللوحةَ في كلّ تفقّدٍ بيده —
+     * ثلاثين مرّةً كلَّ صباح — فتُكتب ناقصةً أو بصيغةٍ أخرى، ويصير التفقّدُ
+     * بلوحةٍ لا تُطابق أيَّ مركبةٍ عندنا.
+     *
+     * فتُقرأ من صفّه في السجلّ (الصلةُ المحفوظة `B2CRep.ltEmployee`) وتُعرَض
+     * مملوءةً. وتبقى قابلةً للتعديل: يومًا يخرج على مركبةٍ بديلة، وحينئذٍ يقول
+     * المشرفُ ذلك بيده — لكنّ الأصلَ ألّا يُسأل.
+     */
+    const ltIds = reps.map((r) => r.ltEmployee).filter(Boolean);
+    const vehByLt = new Map();
+    if (ltIds.length) {
+      const { LightTransportEmployee } = require('../models/LightTransport');
+      const rows = await LightTransportEmployee.find({ _id: { $in: ltIds } })
+        .select('vehiclePlate vehicleTypeAr vehicle').lean();
+      for (const row of rows) {
+        vehByLt.set(String(row._id), {
+          plate: row.vehiclePlate || '',
+          typeAr: row.vehicleTypeAr || '',
+          typeKey: vehicleTypeKey(row.vehicleTypeAr),
+        });
+      }
+    }
+
     res.json({
       dateKey,
       isToday: dateKey === dayKeyOf(),
-      reps: reps.map((r) => ({ ...r, check: byRep.get(String(r._id)) || null })),
+      reps: reps.map((r) => ({
+        ...r,
+        vehicle: (r.ltEmployee && vehByLt.get(String(r.ltEmployee))) || null,
+        check: byRep.get(String(r._id)) || null,
+      })),
       done: checks.length,
       total: reps.length,
     });

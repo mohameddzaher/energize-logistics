@@ -28,7 +28,7 @@ const historyEntrySchema = new mongoose.Schema({
   at: { type: Date, default: Date.now },
   by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   byName: { type: String, default: '' },
-  // ما تغيّر: project | city | supervisor | vehicle | housing | status | created | order
+  // ما تغيّر: project | city | supervisor | dutySupervisor | vehicle | housing | status | created | order
   kind: { type: String, default: '' },
   fromValue: { type: String, default: '' },
   toValue: { type: String, default: '' },
@@ -127,6 +127,24 @@ const employeeSchema = new mongoose.Schema({
   supervisor: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
 
   /**
+   * ── وإشرافان لا إشرافٌ واحد ───────────────────────────────────────────────
+   *
+   * الذي فوق هو **المشرف التشغيليّ**: صاحبُ الرجل في الميدان — مشروعُه وفرعُه
+   * وعملُه اليوميّ، وهو المكتوب في السجلّ من أوّله.
+   *
+   * وهذا **مشرفُ التفقّد**: مَن يقف عليه صباحًا ويصوّره قبل أن يخرج. وهما لا
+   * يتطابقان بالضرورة: التفقّدُ توزيعٌ على المحطّات في ساعةٍ واحدة، والتشغيلُ
+   * مسؤوليّةٌ طولَ اليوم — فرجلٌ مشروعُه عند فلانٍ يُخرجه صباحًا مَن يقف على
+   * محطّته.
+   *
+   * وكانت شاشةُ التفقّد تقرأ الإشرافَ التشغيليّ لغياب غيره، فتُحمّل المشرفَ
+   * التشغيليَّ عملًا ليس عملَه، ولا يجد مَن يقف على المحطّة رجالَها في شاشته.
+   * فصارا حقلين يُسنَدان مستقلَّين — أحدُهما أو كلاهما.
+   */
+  dutySupervisorUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+  dutySupervisorName: { type: String, trim: true, default: '', index: true },
+
+  /**
    * حالةُ العمل. تُقرأ من الموارد البشريّة متى كان مربوطًا — فإنهاءُ الخدمة
    * هناك يظهر هنا بلا خطوةٍ ثانية. وتُكتب هنا لمن لا ملفَّ له.
    */
@@ -153,7 +171,18 @@ employeeSchema.index({ name: 'text' });
 
 /** «مندوب» وحدَه مندوب؛ وما سواه إداريّ. يُحسَب قبل كلّ حفظ. */
 const REP_TITLES = ['مندوب', 'مندوب توصيل', 'rep', 'delivery rep'];
+/**
+ * ── والمشتقُّ لا يُحسَب على حقلٍ لم يُقرأ ────────────────────────────────────
+ * `staffKind` يُشتَقّ من الوظيفة. وحفظُ صفٍّ حُمّل بحقولٍ مختارة (`select`)
+ * يُشغّل هذا الخطّافَ و`jobTitleAr` غيرُ محمَّلٍ — فيُقرأ فارغًا فيصير كلُّ
+ * مندوبٍ «إداريًّا»، ويسقط من كلّ شاشةٍ تسأل عن المناديب. وقع ذلك فعلًا في
+ * إسنادٍ جماعيّ: ثلاثةُ مناديبَ خرجوا من القائمة لأنّ الحقلَ لم يُطلَب.
+ *
+ * فالاشتقاقُ لا يقع إلّا إن كان الحقلُ حاضرًا — والغيابُ يعني «لا خبرَ عندي»
+ * لا «فارغ».
+ */
 employeeSchema.pre('save', function (next) {
+  if (this.jobTitleAr === undefined && !this.isNew) return next();
   const j = String(this.jobTitleAr || '').trim().toLowerCase();
   this.staffKind = REP_TITLES.some((t) => j === t.toLowerCase()) ? 'rep' : 'admin';
   next();

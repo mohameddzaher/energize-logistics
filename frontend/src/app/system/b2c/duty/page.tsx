@@ -43,6 +43,10 @@ interface Row {
    */
   ltEmployee?: {
     _id: string; name?: string; idNumber?: string; vehiclePlate?: string;
+    /** مشرفُ التفقّد — المسؤولُ عن هذا التفقّد. */
+    dutySupervisorUser?: { _id: string; firstName?: string; lastName?: string } | null;
+    dutySupervisorName?: string;
+    /** والتشغيليُّ — مسؤوليّةُ اليوم كلِّه، يُعرَض للعلم. */
     supervisorUser?: { _id: string; firstName?: string; lastName?: string } | null;
     supervisorName?: string;
   } | null;
@@ -70,13 +74,22 @@ const kindOf = (p: { kind?: PhotoKind }) => p.kind || 'vehicle';
 const nameOf = (r: Row, ar: boolean) => r.ltEmployee?.name
   || (ar ? (r.rep?.arabicName || r.rep?.englishName) : r.rep?.englishName) || '—';
 
-/** اسمُ مشرفه المسؤول — من الصفّ لا من القيد. */
+/**
+ * اسمُ المسؤول عن تفقّده — **مشرف التفقّد**، لا التشغيليّ.
+ * التشغيليُّ مسؤوليّةُ اليوم كلِّه، وهذه شاشةُ ساعةٍ واحدة.
+ */
 const ownerOf = (r: Row) => {
-  const o = r.ltEmployee?.supervisorUser;
-  if (o) return [o.firstName, o.lastName].filter(Boolean).join(' ');
-  if (r.ltEmployee?.supervisorName) return r.ltEmployee.supervisorName;
+  const d = r.ltEmployee?.dutySupervisorUser;
+  if (d) return [d.firstName, d.lastName].filter(Boolean).join(' ');
+  if (r.ltEmployee?.dutySupervisorName) return r.ltEmployee.dutySupervisorName;
   const p = r.rep?.supervisor;
   return p ? [p.firstName, p.lastName].filter(Boolean).join(' ') : '';
+};
+/** والمشرفُ التشغيليّ — يُصدَّر بجانبه فيُقرأ الفرقُ بينهما. */
+const opsOf = (r: Row) => {
+  const o = r.ltEmployee?.supervisorUser;
+  if (o) return [o.firstName, o.lastName].filter(Boolean).join(' ');
+  return r.ltEmployee?.supervisorName || '';
 };
 /**
  * أتفقّده غيرُ مشرفه؟ — يُقال في الصفّ.
@@ -84,7 +97,7 @@ const ownerOf = (r: Row) => {
  * الرجل، ومَن يبقى مسؤولًا عنه.
  */
 const onBehalf = (r: Row) => {
-  const owner = r.ltEmployee?.supervisorUser?._id || r.rep?.supervisor?._id;
+  const owner = r.ltEmployee?.dutySupervisorUser?._id || r.rep?.supervisor?._id;
   const actor = r.supervisor?._id;
   return !!owner && !!actor && String(owner) !== String(actor);
 };
@@ -156,7 +169,8 @@ export default function DutyRegisterPage() {
     // صار أيُّ مشرفٍ يتفقّد أيَّ مندوب، فسؤالُ «مين عمل التفقّد ده؟» غيرُ سؤال
     // «مين المسؤول عن الراجل ده؟». وعمودٌ واحدٌ كان يخلط الجوابين.
     { header: t('المشرف الذي تفقّد', 'Checked by'), key: 'supervisorName' },
-    { header: t('مشرفه المسؤول', 'His supervisor'), key: 'rep', transform: (_: any, r: any) => ownerOf(r) },
+    { header: t('مشرف التفقد', 'Duty supervisor'), key: 'rep', transform: (_: any, r: any) => ownerOf(r) },
+    { header: t('المشرف التشغيلي', 'Ops supervisor'), key: 'ltEmployee', transform: (_: any, r: any) => opsOf(r) },
     { header: t('الحالة', 'Outcome'), key: 'outcome', transform: (v: any) => (ar ? OUT[v]?.ar : OUT[v]?.en) || v },
     { header: t('الفرع', 'Branch'), key: 'branch', transform: (v: any) => v?.name || '' },
     ...KINDS.map((k) => ({

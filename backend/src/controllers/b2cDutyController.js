@@ -64,8 +64,11 @@ const populate = (q) => q
   //
   // والموضوعُ صفُّ السجلّ (`ltEmployee`)، و`rep` لصفوفٍ قديمةٍ كُتبت بحساب
   // التطبيق — يُقرآن معًا فلا ينكسر تاريخ.
-  .populate({ path: 'ltEmployee', select: 'name idNumber vehiclePlate vehicleTypeAr projectAr cityAr supervisorUser supervisorName',
-    populate: { path: 'supervisorUser', select: 'firstName lastName role' } })
+  .populate({ path: 'ltEmployee', select: 'name idNumber vehiclePlate vehicleTypeAr projectAr cityAr supervisorUser supervisorName dutySupervisorUser dutySupervisorName',
+    populate: [
+      { path: 'dutySupervisorUser', select: 'firstName lastName role' },
+      { path: 'supervisorUser', select: 'firstName lastName role' },
+    ] })
   .populate({ path: 'rep', select: 'englishName arabicName repId phone supervisor',
     populate: { path: 'supervisor', select: 'firstName lastName role' } })
   .populate('supervisor', 'firstName lastName email role')
@@ -117,8 +120,9 @@ exports.myReps = async (req, res) => {
      * وهو لا شيءَ عليه.
      */
     const all = await LightTransportEmployee.find({ isActive: { $ne: false }, staffKind: 'rep' })
-      .select('name idNumber phone vehiclePlate vehicleTypeAr projectAr cityAr supervisorUser supervisorName workStatusAr')
+      .select('name idNumber phone vehiclePlate vehicleTypeAr projectAr cityAr supervisorUser supervisorName dutySupervisorUser dutySupervisorName workStatusAr')
       .populate('supervisorUser', 'firstName lastName role')
+      .populate('dutySupervisorUser', 'firstName lastName role')
       .sort({ name: 1 }).lean();
 
     const rows = all.filter((e) => vehicleTypeKey(e.vehicleTypeAr) !== 'car');
@@ -137,13 +141,20 @@ exports.myReps = async (req, res) => {
       .map((e) => ({ plate: e.vehiclePlate, typeAr: e.vehicleTypeAr || '', rider: e.name || '' }))
       .sort((a, b) => a.plate.localeCompare(b.plate, 'ar'));
 
-    const mineOf = (e) => String(e.supervisorUser?._id || e.supervisorUser || '') === String(asUser);
+    /**
+     * ── و«مناديبي» هنا إشرافُ تفقّدٍ لا تشغيل ───────────────────────────────
+     * الإشرافُ التشغيليُّ مسؤوليّةُ اليوم كلِّه (مشروعُه وفرعُه وعملُه)، وهذه
+     * الشاشةُ عن ساعةٍ واحدة: مَن يقف على المحطّة صباحًا ويصوّره قبل الخروج.
+     * فالقائمةُ تُقسَم بمشرف التفقّد، وكلُّ المناديب تبقى مرئيّةً للجميع.
+     */
+    const mineOf = (e) => String(e.dutySupervisorUser?._id || e.dutySupervisorUser || '') === String(asUser);
     res.json({
       dateKey,
       isToday: dateKey === dayKeyOf(),
       carsExcluded,
       vehicleOptions,
       reps: rows.map((e) => {
+        const duty = e.dutySupervisorUser && typeof e.dutySupervisorUser === 'object' ? e.dutySupervisorUser : null;
         const owner = e.supervisorUser && typeof e.supervisorUser === 'object' ? e.supervisorUser : null;
         return {
           _id: String(e._id),
@@ -158,7 +169,10 @@ exports.myReps = async (req, res) => {
           vehicle: String(e.vehiclePlate || '').trim()
             ? { plate: e.vehiclePlate, typeAr: e.vehicleTypeAr || '', typeKey: vehicleTypeKey(e.vehicleTypeAr) }
             : null,
-          ownerName: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(' ') : (e.supervisorName || ''),
+          // مشرفُ التفقّد هو صاحبُ هذه الشاشة، والتشغيليُّ يُعرَض للعلم.
+          ownerName: duty ? [duty.firstName, duty.lastName].filter(Boolean).join(' ') : (e.dutySupervisorName || ''),
+          opsSupervisorName: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(' ') : (e.supervisorName || ''),
+          hasDutySupervisor: !!(e.dutySupervisorUser),
           mine: mineOf(e),
           check: byEmp.get(String(e._id)) || null,
         };
@@ -169,6 +183,8 @@ exports.myReps = async (req, res) => {
         const e = rows.find((x) => String(x._id) === String(c.ltEmployee));
         return e && mineOf(e);
       }).length,
+      // ومن لا مشرفَ تفقّدٍ له لا يقع في قائمة أحد — يُقال عددُه صراحةً.
+      unassigned: rows.filter((e) => !e.dutySupervisorUser).length,
       done: checks.length,
       total: rows.length,
     });
@@ -404,7 +420,7 @@ const scopeOf = async (req) => {
   if (canSeeAll(req.user)) return {};
   const { LightTransportEmployee } = require('../models/LightTransport');
   const [mineEmp, mineRep] = await Promise.all([
-    LightTransportEmployee.find({ supervisorUser: req.user._id }).select('_id').lean(),
+    LightTransportEmployee.find({ dutySupervisorUser: req.user._id }).select('_id').lean(),
     B2CRep.find({ supervisor: req.user._id }).select('_id').lean(),
   ]);
   const or = [{ supervisor: req.user._id }];
@@ -592,12 +608,12 @@ exports.analytics = async (req, res) => {
       // مناديبنا (سجلّ النقل الخفيف)، دبّاباتٍ لا سيّارات.
       (async () => {
         const { LightTransportEmployee } = require('../models/LightTransport');
-        const rows = await LightTransportEmployee.find({ isActive: { $ne: false }, staffKind: 'rep', supervisorUser: { $ne: null } })
-          .select('supervisorUser vehicleTypeAr').lean();
+        const rows = await LightTransportEmployee.find({ isActive: { $ne: false }, staffKind: 'rep', dutySupervisorUser: { $ne: null } })
+          .select('dutySupervisorUser vehicleTypeAr').lean();
         const by = new Map();
         for (const e of rows) {
           if (vehicleTypeKey(e.vehicleTypeAr) === 'car') continue;
-          const k = String(e.supervisorUser);
+          const k = String(e.dutySupervisorUser);
           by.set(k, (by.get(k) || 0) + 1);
         }
         return [...by].map(([id, reps]) => ({ _id: id, reps }));
@@ -681,20 +697,20 @@ exports.missing = async (req, res) => {
     // «مَن لم يُتفقَّد اليوم» — من كشف مناديبنا (سجلّ النقل الخفيف) لا من حسابات
     // التطبيق. والدبّاباتُ وحدَها: من على سيّارةٍ لا تفقّدَ عليه.
     const { LightTransportEmployee } = require('../models/LightTransport');
-    const repScope = { isActive: { $ne: false }, staffKind: 'rep', supervisorUser: { $ne: null } };
-    if (!canSeeAll(req.user)) repScope.supervisorUser = req.user._id;
-    else if (mongoose.isValidObjectId(req.query.supervisor)) repScope.supervisorUser = new mongoose.Types.ObjectId(String(req.query.supervisor));
+    const repScope = { isActive: { $ne: false }, staffKind: 'rep', dutySupervisorUser: { $ne: null } };
+    if (!canSeeAll(req.user)) repScope.dutySupervisorUser = req.user._id;
+    else if (mongoose.isValidObjectId(req.query.supervisor)) repScope.dutySupervisorUser = new mongoose.Types.ObjectId(String(req.query.supervisor));
 
     const allRows = await LightTransportEmployee.find(repScope)
-      .select('name idNumber vehiclePlate vehicleTypeAr cityAr supervisorUser supervisorName')
-      .populate('supervisorUser', 'firstName lastName').lean();
+      .select('name idNumber vehiclePlate vehicleTypeAr cityAr dutySupervisorUser dutySupervisorName')
+      .populate('dutySupervisorUser', 'firstName lastName').lean();
     const reps = allRows
       .filter((e) => vehicleTypeKey(e.vehicleTypeAr) !== 'car')
       .map((e) => ({
         _id: e._id, englishName: e.name, arabicName: e.name, repId: e.idNumber || '',
         vehiclePlate: e.vehiclePlate || '',
         branch: e.cityAr ? { name: e.cityAr } : null,
-        supervisor: e.supervisorUser || null,
+        supervisor: e.dutySupervisorUser || null,
       }));
     const done = new Set((await B2CDutyCheck.find({ dateKey, ltEmployee: { $in: reps.map((r) => r._id) } })
       .select('ltEmployee').lean()).map((c) => String(c.ltEmployee)));
@@ -714,11 +730,11 @@ exports.supervisors = async (req, res) => {
       // عددُ مناديب كلِّ مشرف — من كشف القسم لا من حسابات التطبيق.
       (async () => {
         const { LightTransportEmployee } = require('../models/LightTransport');
-        const rows = await LightTransportEmployee.find({ isActive: { $ne: false }, staffKind: 'rep', supervisorUser: { $ne: null } })
-          .select('supervisorUser').lean();
+        const rows = await LightTransportEmployee.find({ isActive: { $ne: false }, staffKind: 'rep', dutySupervisorUser: { $ne: null } })
+          .select('dutySupervisorUser').lean();
         const by = new Map();
         for (const e of rows) {
-          const k = String(e.supervisorUser);
+          const k = String(e.dutySupervisorUser);
           by.set(k, (by.get(k) || 0) + 1);
         }
         return [...by].map(([id, reps]) => ({ _id: id, reps }));

@@ -36,6 +36,14 @@ export interface LTEmployee {
    * بداية الدوام.
    */
   supervisorUser?: { _id: string; firstName?: string; lastName?: string; role?: string } | string | null;
+  /**
+   * ── إشرافان ───────────────────────────────────────────────────────────────
+   * `supervisorUser` = **المشرف التشغيليّ**: صاحبُ الرجل في الميدان طولَ اليوم.
+   * `dutySupervisorUser` = **مشرف التفقّد**: مَن يقف عليه صباحًا ويصوّره قبل
+   * الخروج — وهو الذي تنقسم به شاشةُ تفقّد بداية الدوام. ولا يتطابقان بالضرورة.
+   */
+  dutySupervisorUser?: { _id: string; firstName?: string; lastName?: string; role?: string } | string | null;
+  dutySupervisorName?: string;
   workStatusAr?: string;
   /** الحالةُ كما تُقرأ: حالةُ القسم، تغلبها الموارد البشريّةُ حين تنفي. */
   workStatusShown?: string;
@@ -112,6 +120,8 @@ export interface LTTotals {
   /** نوعُ التعاقد — كارتان ثابتان فوق الجدول، محسوبان على ما بعد الفلترة. */
   sponsored: number;
   freelance: number;
+  /** مناديبٌ بلا مشرف تفقّد — لا يظهرون لأحدٍ في شاشة التفقّد. */
+  noDutySupervisor: number;
   cardGap: number; cardSoon: number;
   inspectionGap: number; inspectionSoon: number; reps: number; admins: number; working: number; notWorking: number;
   onLeave: number; terminated: number; withVehicle: number; withoutVehicle: number;
@@ -126,11 +136,13 @@ export interface LTTotals {
  * معرِّفُ حساب المشرف في صفٍّ — يجيء مُعبَّأً من القائمة ومجرَّدًا بعد الحفظ.
  * `populate` تردّ كائنًا، والحفظُ المحليُّ يترك معرِّفًا نصًّا — فيُقرأ الاثنان.
  */
-export const supervisorIdOf = (e?: { supervisorUser?: unknown } | null): string => {
-  const v = e?.supervisorUser as any;
+const idOf = (v: unknown): string => {
   if (!v) return '';
-  return typeof v === 'string' ? v : String(v._id || '');
+  return typeof v === 'string' ? v : String((v as any)._id || '');
 };
+export const supervisorIdOf = (e?: { supervisorUser?: unknown } | null): string => idOf(e?.supervisorUser);
+/** معرِّفُ حساب مشرف التفقّد — يجيء مُعبَّأً من القائمة ومجرَّدًا بعد الحفظ. */
+export const dutySupervisorIdOf = (e?: { dutySupervisorUser?: unknown } | null): string => idOf(e?.dutySupervisorUser);
 
 /** مشرفٌ متاحٌ للإسناد — حسابٌ على النظام بدورِ إشرافٍ في القسم. */
 export interface LTSupervisor {
@@ -201,6 +213,7 @@ export function ltTotalsOf(rows: LTEmployee[]): LTTotals {
     total: rows.length,
     sponsored: count((r) => hasContract(r) && !isFreelance(r)),
     freelance: count(isFreelance),
+    noDutySupervisor: count((r) => r.staffKind === 'rep' && !dutySupervisorIdOf(r)),
     cardGap: count((r) => gap(r.operatingCard)),
     cardSoon: count((r) => soon(r.operatingCard)),
     inspectionGap: count((r) => gap(r.inspection)),
@@ -249,6 +262,13 @@ export const getLTEmployee = (id: string) =>
   api.get<{ employee: LTEmployee; orders: LTOrder[] }>(`/api/light-transport/employees/${id}`);
 export const createLTEmployee = (body: any) => api.post<{ employee: LTEmployee }>(`/api/light-transport/employees`, body);
 export const updateLTEmployee = (id: string, body: any) => api.put<{ employee: LTEmployee }>(`/api/light-transport/employees/${id}`, body);
+/**
+ * إسنادُ مشرفٍ لعدّة موظّفين دفعةً — تشغيليٌّ أو مشرفُ تفقّدٍ أو كلاهما.
+ * ما لا يُرسَل لا يُمَسّ، و`'none'` رفعٌ صريح.
+ */
+export const assignLTSupervisors = (body: {
+  ids: string[]; supervisorUser?: string; dutySupervisorUser?: string; note?: string;
+}) => api.post<{ updated: number }>('/api/light-transport/employees/assign-supervisors', body);
 export const deactivateLTEmployee = (id: string, reason: string) => api.post(`/api/light-transport/employees/${id}/deactivate`, { reason });
 
 export const getLTHousing = () => api.get<{ housing: LTHousing[] }>(`/api/light-transport/housing`);
@@ -320,7 +340,9 @@ export const LT_COLUMNS: LTCol[] = [
   { key: 'staffKind', ar: 'النوع', en: 'Kind', get: (e) => KIND_AR[e.staffKind || ''] || '', width: 10 },
   { key: 'projectAr', ar: 'المشروع', en: 'Project', get: (e) => e.projectAr || '', width: 14 },
   { key: 'cityAr', ar: 'الفرع', en: 'Branch', get: (e) => e.cityAr || '', width: 12 },
-  { key: 'supervisorName', ar: 'المشرف', en: 'Supervisor', get: (e) => e.supervisorName || '', width: 18 },
+  { key: 'supervisorName', ar: 'المشرف التشغيلي', en: 'Ops supervisor', get: (e) => e.supervisorName || '', width: 18 },
+  // مشرفُ التفقّد: مَن يقف عليه صباحًا — غيرُ التشغيليّ بالضرورة.
+  { key: 'dutySupervisorName', ar: 'مشرف التفقد', en: 'Duty supervisor', get: (e) => e.dutySupervisorName || '', width: 18 },
   { key: 'vehicleTypeAr', ar: 'نوع المركبة', en: 'Vehicle type', get: (e) => e.vehicleTypeAr || '', width: 14 },
   { key: 'contractTypeAr', ar: 'نوع التعاقد', en: 'Contract', get: (e) => e.contractTypeAr || '', width: 12 },
   { key: 'registerNumber', ar: 'رقم السجل', en: 'Register', get: (e) => e.registerNumber || '', width: 16, mono: true },

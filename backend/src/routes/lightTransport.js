@@ -24,6 +24,8 @@ router.post('/employees', authorize(...EDIT), c.createEmployee);
 router.put('/employees/:id', authorize(...EDIT), c.updateEmployee);
 // لا حذفَ لموظّف — يُعطَّل السجلّ ويبقى أثرُه، كقاعدة الموارد البشريّة.
 router.post('/employees/:id/deactivate', authorize(...EDIT), c.deactivateEmployee);
+// إسنادُ مشرفٍ تشغيليٍّ أو مشرفِ تفقّدٍ لعدّة موظّفين دفعةً واحدة.
+router.post('/employees/assign-supervisors', authorize(...EDIT), c.assignSupervisors);
 
 router.get('/housing', c.listHousing);
 router.post('/housing', authorize(...EDIT), c.saveHousing);

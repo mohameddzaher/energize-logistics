@@ -153,12 +153,13 @@ const decorate = (row, alerts = {}) => ({
  * محفوظةً ونسخًا من التطبيق تُرسله، ولأنّ من لا حسابَ لمشرفه بعد يبقى مفلتَرًا
  * باسمه المكتوب — فلا يختفي صفٌّ من شاشةٍ كان يُرى فيها.
  */
-const supervisorFilter = (filter, value) => {
+const supervisorFilter = (filter, value, field = 'supervisorUser') => {
   const v = S(value);
   if (!v) return;
-  if (v === 'none') { filter.supervisorUser = null; filter.supervisorName = ''; return; }
-  if (mongoose.isValidObjectId(v)) filter.supervisorUser = v;
-  else filter.supervisorName = v;
+  const nameField = field === 'supervisorUser' ? 'supervisorName' : 'dutySupervisorName';
+  if (v === 'none') { filter[field] = null; return; }
+  if (mongoose.isValidObjectId(v)) filter[field] = v;
+  else filter[nameField] = v;
 };
 
 // ── قائمةُ الموظّفين ────────────────────────────────────────────────────────
@@ -166,6 +167,7 @@ const LIST_POPULATE = [
   { path: 'employee', select: 'employeeNumber arabicName firstName lastName employmentStatus phone' },
   { path: 'supervisor', select: 'arabicName firstName lastName employeeNumber' },
   { path: 'supervisorUser', select: 'firstName lastName email role' },
+  { path: 'dutySupervisorUser', select: 'firstName lastName email role' },
   // ── وبطاقةُ التشغيل والفحصُ يُقرآن مع المركبة ──────────────────────────
   // «كارتُ تشغيلِ مَن ينتهي هذا الشهر؟» سؤالٌ يُسأل في هذا القسم لا في قسم
   // المركبات: المشرفُ يوقف الرجلَ لا المركبة. والوثيقتان على سجلّ المركبات —
@@ -185,6 +187,7 @@ exports.listEmployees = async (req, res) => {
       if (S(q[key])) filter[field] = S(q[key]);
     }
     supervisorFilter(filter, q.supervisor);
+    supervisorFilter(filter, q.dutySupervisor, 'dutySupervisorUser');
     if (S(q.housing)) filter.housing = S(q.housing) === 'none' ? null : S(q.housing);
     // ومن له مركبةٌ ومن لا مركبةَ له — سؤالٌ يُسأل كثيرًا.
     if (q.hasVehicle === 'yes') filter.vehicle = { $ne: null };
@@ -280,6 +283,8 @@ const totalsOf = (rows) => {
     sponsored: count((r) => contractIs(r, 'sponsored')),
     freelance: count((r) => contractIs(r, 'freelance')),
     // كارتُ تشغيلٍ أو فحصٌ منتهيان أو على وشك — الرجلُ يُوقَف لا المركبة.
+    // ومن لا مشرفَ تفقّدٍ له لا يظهر لأحدٍ في شاشة التفقّد — رقمٌ يُتابَع حتّى يصفر.
+    noDutySupervisor: count((r) => r.staffKind === 'rep' && !r.dutySupervisorUser),
     cardGap: count((r) => docState(r, 'operatingCard', 'gap')),
     cardSoon: count((r) => ['warning', 'upcoming'].includes(r.operatingCard?.state)),
     inspectionGap: count((r) => docState(r, 'inspection', 'gap')),
@@ -389,6 +394,7 @@ exports.overview = async (req, res) => {
       if (S(q[key])) filter[field] = S(q[key]);
     }
     supervisorFilter(filter, q.supervisor);
+    supervisorFilter(filter, q.dutySupervisor, 'dutySupervisorUser');
     if (S(q.housing)) filter.housing = S(q.housing) === 'none' ? null : S(q.housing);
     if (q.hasVehicle === 'yes') filter.vehicle = { $ne: null };
     if (q.hasVehicle === 'no') filter.vehicle = null;
@@ -546,20 +552,28 @@ const EDITABLE = ['name', 'nationalityAr', 'phone', 'cityAr', 'projectAr', 'jobT
  * وحسابٌ ليس من أدوار الإشراف يُردّ صراحةً: الإسنادُ إليه رجلٌ لا يتفقّده أحد.
  */
 async function applySupervisor(doc, body, res) {
-  if (body.supervisorUser === undefined) return true;
-  const want = S(body.supervisorUser);
-  if (!want || want === 'none') {
-    doc.supervisorUser = null; doc.supervisorName = ''; doc.supervisor = null;
-    return true;
+  // التشغيليُّ ومشرفُ التفقّد — يُسنَدان مستقلَّين، وكلاهما حسابٌ لا اسم.
+  for (const [field, nameField, empField] of [
+    ['supervisorUser', 'supervisorName', 'supervisor'],
+    ['dutySupervisorUser', 'dutySupervisorName', null],
+  ]) {
+    if (body[field] === undefined) continue;
+    const want = S(body[field]);
+    if (!want || want === 'none') {
+      doc[field] = null; doc[nameField] = '';
+      if (empField) doc[empField] = null;
+      continue;
+    }
+    // eslint-disable-next-line no-await-in-loop
+    const sup = await resolveSupervisor(want);
+    if (!sup) {
+      res.status(400).json({ message: 'هذا الحساب ليس مشرفَ مناديب ولا مديرَ مشروعٍ نشطًا في القسم' });
+      return false;
+    }
+    doc[field] = sup._id;
+    doc[nameField] = sup.name;
+    if (empField) doc[empField] = sup.employee || null;
   }
-  const sup = await resolveSupervisor(want);
-  if (!sup) {
-    res.status(400).json({ message: 'هذا الحساب ليس مشرفَ مناديب ولا مديرَ مشروعٍ نشطًا في القسم' });
-    return false;
-  }
-  doc.supervisorUser = sup._id;
-  doc.supervisorName = sup.name;
-  doc.supervisor = sup.employee || null;
   return true;
 }
 
@@ -671,12 +685,20 @@ exports.updateEmployee = async (req, res) => {
     // وتغييرُ المشرف يُقيَّد بالاسمين لا بالمعرِّفين: السجلُّ يُقرأ بعد شهور.
     const beforeSupName = S(doc.supervisorName);
     const beforeSupUser = String(doc.supervisorUser || '');
+    const beforeDutyName = S(doc.dutySupervisorName);
+    const beforeDutyUser = String(doc.dutySupervisorUser || '');
     for (const k of EDITABLE) if (req.body[k] !== undefined) doc[k] = req.body[k];
     if (!(await applySupervisor(doc, req.body, res))) return undefined;
     if (String(doc.supervisorUser || '') !== beforeSupUser) {
       doc.history.push({
         kind: 'supervisor', by: req.user?._id, byName: byName(req.user),
         fromValue: beforeSupName, toValue: S(doc.supervisorName), note: S(req.body.moveNote),
+      });
+    }
+    if (String(doc.dutySupervisorUser || '') !== beforeDutyUser) {
+      doc.history.push({
+        kind: 'dutySupervisor', by: req.user?._id, byName: byName(req.user),
+        fromValue: beforeDutyName, toValue: S(doc.dutySupervisorName), note: S(req.body.moveNote),
       });
     }
     if (req.body.housing !== undefined) {
@@ -692,6 +714,82 @@ exports.updateEmployee = async (req, res) => {
   } catch (e) {
     console.error('lt updateEmployee:', e);
     return res.status(500).json({ message: 'تعذّر تعديل الموظّف' });
+  }
+};
+
+/**
+ * ── إسنادُ مشرفٍ لعدّة موظّفين دفعةً ────────────────────────────────────────
+ *
+ * الإسنادُ صفًّا صفًّا يعني فتحَ نافذةٍ مئةً وسبعًا وأربعين مرّة. والتوزيعُ يقع
+ * على مجموعات: محطّةٌ كاملةٌ تنتقل إلى مشرفٍ، أو مشروعٌ يُسلَّم.
+ *
+ * ويُرسَل أيُّهما شاء — التشغيليُّ أو مشرفُ التفقّد أو كلاهما — وفراغٌ صريح
+ * (`none`) يعني الرفع. وما لم يُرسَل لا يُمَسّ: من أسند مشرفَ تفقّدٍ لا يُسقِط
+ * الإشرافَ التشغيليَّ بسكوته عنه.
+ */
+exports.assignSupervisors = async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body.ids) ? req.body.ids : []).filter((x) => mongoose.isValidObjectId(x));
+    if (!ids.length) return res.status(400).json({ message: 'اختر موظّفًا واحدًا على الأقلّ' });
+    const has = (k) => req.body[k] !== undefined && req.body[k] !== null && String(req.body[k]) !== '';
+    if (!has('supervisorUser') && !has('dutySupervisorUser')) {
+      return res.status(400).json({ message: 'اختر مشرفًا تشغيليًّا أو مشرفَ تفقّد' });
+    }
+
+    const set = {};
+    for (const [field, nameField, empField] of [
+      ['supervisorUser', 'supervisorName', 'supervisor'],
+      ['dutySupervisorUser', 'dutySupervisorName', null],
+    ]) {
+      if (!has(field)) continue;
+      const want = S(req.body[field]);
+      if (want === 'none') {
+        set[field] = null; set[nameField] = '';
+        if (empField) set[empField] = null;
+        continue;
+      }
+      // eslint-disable-next-line no-await-in-loop
+      const sup = await resolveSupervisor(want);
+      if (!sup) return res.status(400).json({ message: 'هذا الحساب ليس مشرفَ مناديب ولا مديرَ مشروعٍ نشطًا في القسم' });
+      set[field] = sup._id;
+      set[nameField] = sup.name;
+      if (empField) set[empField] = sup.employee || null;
+    }
+
+    // و`history` ضمن المحمَّل: القيدُ يُدفَع إليها، ومصفوفةٌ لم تُحمَّل `undefined`.
+    /**
+     * ── ويُكتب بالتحديث لا بالحفظ ────────────────────────────────────────────
+     * `doc.save()` على صفٍّ حُمّل بحقولٍ مختارة يُشغّل خطّافات المخطَّط على حقولٍ
+     * غائبة — فيُعاد اشتقاقُ ما لم يُقرَأ. والمطلوبُ هنا إسنادُ حقلين وقيدٌ في
+     * السجلّ، لا إعادةُ حساب الصفّ. فيُكتبان بـ`$set` و`$push` مباشرةً.
+     */
+    const rows = await LightTransportEmployee.find({ _id: { $in: ids } })
+      .select('name supervisorName dutySupervisorName supervisorUser dutySupervisorUser').lean();
+    for (const doc of rows) {
+      const entries = [];
+      if (set.supervisorUser !== undefined && String(doc.supervisorUser || '') !== String(set.supervisorUser || '')) {
+        entries.push({ kind: 'supervisor', by: req.user?._id, byName: byName(req.user),
+          fromValue: S(doc.supervisorName), toValue: S(set.supervisorName), note: S(req.body.note), at: new Date() });
+      }
+      if (set.dutySupervisorUser !== undefined && String(doc.dutySupervisorUser || '') !== String(set.dutySupervisorUser || '')) {
+        entries.push({ kind: 'dutySupervisor', by: req.user?._id, byName: byName(req.user),
+          fromValue: S(doc.dutySupervisorName), toValue: S(set.dutySupervisorName), note: S(req.body.note), at: new Date() });
+      }
+      const update = { $set: { ...set, lastModifiedBy: req.user?._id } };
+      if (entries.length) update.$push = { history: { $each: entries } };
+      // eslint-disable-next-line no-await-in-loop
+      await LightTransportEmployee.updateOne({ _id: doc._id }, update);
+    }
+
+    logAudit({ user: req.user, action: 'assign_lt_supervisors', entity: 'LightTransportEmployee',
+      changes: { after: { count: rows.length, ...set } }, ipAddress: req.ip }).catch(() => {});
+    emit('lt:updated', {});
+    // وشاشةُ التفقّد تقرأ مشرفَ التفقّد — فتُوقَظ معه.
+    try { require('../websocket/socketManager').emitToAll('b2c:duty', {}); } catch (e) { /* */ }
+    return res.json({ updated: rows.length });
+  } catch (e) {
+    console.error('lt assignSupervisors:', e);
+    return res.status(500).json({ message: 'تعذّر الإسناد' });
   }
 };
 

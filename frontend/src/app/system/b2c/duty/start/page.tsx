@@ -49,8 +49,13 @@ interface Rep {
    * تُقرأ ولا تُكتب. راجع `myReps` في الخادم.
    */
   vehicle?: { plate: string; typeAr: string; typeKey: string } | null;
-  /** مشرفُه المسؤول في السجلّ، و`mine` أهو من رجالي. */
+  /**
+   * `ownerName` = **مشرف التفقّد** المسؤول عنه — وبه تنقسم هذه الشاشة.
+   * `opsSupervisorName` = المشرف التشغيليّ، يُعرَض للعلم لا للقسمة.
+   */
   ownerName?: string;
+  opsSupervisorName?: string;
+  hasDutySupervisor?: boolean;
   mine?: boolean;
   /** رقمُ هويّته/إقامته من سجلّ النقل الخفيف — يُبحَث به. */
   idNumber?: string;
@@ -70,7 +75,7 @@ export default function DutyStartPage() {
 
   const [data, setData] = useState<{
     reps: Rep[]; dateKey: string; done: number; total: number;
-    mineDone?: number; mineTotal?: number; carsExcluded?: number;
+    mineDone?: number; mineTotal?: number; carsExcluded?: number; unassigned?: number;
     /** دبّاباتُ القسم — تُختار منها اللوحةُ لمن لا صلةَ لصفّه بالسجلّ. */
     vehicleOptions?: { plate: string; typeAr: string; rider: string }[];
   } | null>(null);
@@ -133,6 +138,12 @@ export default function DutyStartPage() {
                'A rider only goes out after three photos: rider, bike and box — captured live, never uploaded.')}
           </p>
           {/* ولماذا لا يظهر بعضُهم — يُقال، فلا يُحسَب نقصًا في البيانات. */}
+          {!!data?.unassigned && (
+            <p className="mt-0.5 text-[11px] text-amber-700">
+              {t(`${data.unassigned} مندوبًا بلا مشرف تفقّد — لا يظهرون في قائمة أحد. أُسندهم من «موظفون النقل الخفيف».`,
+                 `${data.unassigned} riders have no duty supervisor — they are in nobody's list. Assign them on the light-transport page.`)}
+            </p>
+          )}
           {!!data?.carsExcluded && (
             <p className="mt-0.5 text-[11px] text-slate-400">
               {t(`التفقّد للدبّابات — استُثني ${data.carsExcluded} من قائدي السيارات والفان.`,
@@ -148,7 +159,7 @@ export default function DutyStartPage() {
 
       {/* نطاقُ العرض: رجالي أوّلًا — والعدّادان يخصّان المعروضَ لا السجلَّ كلَّه. */}
       <div className="flex flex-wrap items-center gap-2">
-        {([['mine', t(`مندوبوي (${data?.mineTotal ?? 0})`, `My riders (${data?.mineTotal ?? 0})`)],
+        {([['mine', t(`تفقّدي أنا (${data?.mineTotal ?? 0})`, `My duty riders (${data?.mineTotal ?? 0})`)],
           ['all', t(`كل المناديب (${data?.total ?? 0})`, `All riders (${data?.total ?? 0})`)]] as const).map(([k, label]) => (
           <button key={k} type="button" onClick={() => setScope(k as 'mine' | 'all')}
             className={`rounded-lg border px-3 py-1.5 text-[12px] font-semibold ${scope === k
@@ -171,12 +182,12 @@ export default function DutyStartPage() {
         <div className="rounded-xl border border-slate-200 bg-white p-10 text-center shadow-sm">
           <ShieldAlert className="mx-auto mb-3 h-9 w-9 text-slate-300" />
           <p className="text-sm font-semibold text-slate-700">
-            {scope === 'mine' ? t('لا مندوبين مُسندين إليك', 'No riders assigned to you') : t('لا نتائج', 'No results')}
+            {scope === 'mine' ? t('لا مندوبين في تفقّدك', 'No riders in your duty list') : t('لا نتائج', 'No results')}
           </p>
           <p className="mt-1 text-xs text-slate-500">
             {scope === 'mine'
-              ? t('تُسنَد المندوبون للمشرفين من صفحة المندوبين — ويمكنك تفقّد أيّ مندوب من «كل المناديب».',
-                  'Riders are assigned on the riders page — and you can check any rider from “All riders”.')
+              ? t('مشرف التفقّد يُسنَد من صفحة «موظفون النقل الخفيف»: علِّم المناديب واختر «إسناد مشرف». ويمكنك تفقّد أيّ مندوب من «كل المناديب».',
+                  'The duty supervisor is assigned on the light-transport page: tick riders and choose “Assign supervisor”. You can also check any rider from “All riders”.')
               : t('جرّب اسمًا آخر أو امسح البحث.', 'Try another name or clear the search.')}
           </p>
         </div>
@@ -235,8 +246,8 @@ function RepRow({ rep, ar, onClick }: { rep: Rep; ar: boolean; onClick: () => vo
         {!rep.mine && (
           <span className="mt-0.5 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-800">
             {rep.ownerName
-              ? (ar ? `مشرفه: ${rep.ownerName}` : `Supervisor: ${rep.ownerName}`)
-              : (ar ? 'بلا مشرف مُسنَد' : 'No supervisor assigned')}
+              ? (ar ? `مشرف تفقّده: ${rep.ownerName}` : `Duty supervisor: ${rep.ownerName}`)
+              : (ar ? 'بلا مشرف تفقّد' : 'No duty supervisor')}
           </span>
         )}
       </span>

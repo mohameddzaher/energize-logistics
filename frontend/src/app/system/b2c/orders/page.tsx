@@ -117,7 +117,7 @@ function OrdersInner() {
       const pre = employeeId ? o.employees.find((x) => x._id === employeeId) : null;
       setCreating({
         ltEmployee: pre?._id || '', projectAr: pre?.projectAr || '', cityAr: pre?.cityAr || '',
-        supervisorName: pre?.supervisorName || '', vehicle: '', housing: '', housingRoom: '',
+        supervisorUser: pre?.supervisorUser || '', vehicle: '', housing: '', housingRoom: '',
         startDate: new Date().toISOString().slice(0, 10), moveAuthorization: true,
         authorizationNumber: '', authorizationStart: '', authorizationEnd: '', notesAr: '',
       });
@@ -419,7 +419,8 @@ function OrdersInner() {
                     ...p, ltEmployee: v,
                     projectAr: p.projectAr || e2?.projectAr || '',
                     cityAr: p.cityAr || e2?.cityAr || '',
-                    supervisorName: p.supervisorName || e2?.supervisorName || '',
+                    // مشرفُ الموظّف الحاضرُ هو المقترَح — والأمرُ ينقله إن غُيّر.
+                    supervisorUser: p.supervisorUser || e2?.supervisorUser || '',
                   }));
                 }}
                 options={opts.employees.map((e2) => ({
@@ -445,11 +446,14 @@ function OrdersInner() {
             <Field label={t('الفرع', 'Branch')}>
               <TextInput value={creating.cityAr} onChange={(ev) => setCreating((p: any) => ({ ...p, cityAr: ev.target.value }))} />
             </Field>
-            {/* المشرفُ إداريٌّ من القسم — المندوبُ لا يشرف على مندوب. */}
+            {/* ── المشرفُ حسابٌ على النظام ─────────────────────────────────
+                كانت القائمةُ أسماءَ إداريّي القسم — مشرفًا كان أو ميكانيكيًّا.
+                والسؤالُ «مَن يقف عليه صباحًا»، وجوابُه حسابٌ يفتح شاشةَ التفقّد.
+                وتركُها فارغةً يعني «كما هو على الموظّف» لا «بلا مشرف». */}
             <Field label={t('المشرف', 'Supervisor')}>
-              <Select value={creating.supervisorName} onChange={(ev: any) => setCreating((p: any) => ({ ...p, supervisorName: ev.target.value }))}>
-                <option value="">{t('— بلا مشرف —', '— none —')}</option>
-                {opts.supervisors.map((s) => <option key={s} value={s}>{s}</option>)}
+              <Select value={creating.supervisorUser} onChange={(ev: any) => setCreating((p: any) => ({ ...p, supervisorUser: ev.target.value }))}>
+                <option value="">{t('— كما هو على الموظّف —', '— keep the employee’s —')}</option>
+                {opts.supervisors.map((s) => <option key={s._id} value={s._id}>{s.name} — {s.roleAr}</option>)}
               </Select>
             </Field>
             <Field label={t('تاريخ البداية', 'Start date')}>

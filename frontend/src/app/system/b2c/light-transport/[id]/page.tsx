@@ -21,7 +21,8 @@ import { Spinner } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import {
   getLTEmployee, statusCls, KIND_AR, KIND_EN, HISTORY_KIND, fmtDate, canEditLT,
-  type LTEmployee, type LTOrder,
+  supervisorIdOf, DOC_CLS, DOC_AR, DOC_EN,
+  type LTEmployee, type LTOrder, type LTDoc,
 } from '@/lib/lightTransport';
 import {
   Truck, ArrowRight, User, Building2, Car, Home, History, ClipboardList, ChevronLeft, IdCard,
@@ -29,6 +30,25 @@ import {
 import ScrollX from '@/components/system/ScrollX';
 
 const NEUTRAL = '#64748b';
+
+/**
+ * تاريخُ وثيقةٍ بحالتها — مكوّنٌ على مستوى الملفّ لا داخلَ جسم الرسم.
+ * راجع قاعدةَ «المكوّنات المضمَّنة»: المعرَّفُ في الرسم يُبنى من جديدٍ كلَّ مرّة.
+ */
+function DocValue({ doc, ar }: { doc?: LTDoc; ar: boolean }) {
+  if (!doc || !doc.expiryDate) {
+    return <span className="text-slate-300">{ar ? 'غير مسجَّلة' : 'Not recorded'}</span>;
+  }
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className="font-mono">{fmtDate(doc.expiryDate)}</span>
+      <span className={`px-1.5 py-0.5 rounded-full text-[10.5px] font-semibold ${DOC_CLS[doc.state] || ''}`}>
+        {ar ? DOC_AR[doc.state] : DOC_EN[doc.state]}
+        {doc.days != null ? ` · ${doc.days}${ar ? ' يوم' : 'd'}` : ''}
+      </span>
+    </span>
+  );
+}
 
 export default function LightTransportProfile() {
   const { lang, isRTL } = useLanguage();
@@ -106,6 +126,8 @@ export default function LightTransportProfile() {
     [t('المشروع', 'Project'), e.projectAr],
     [t('الفرع', 'Branch'), e.cityAr],
     [t('المشرف', 'Supervisor'), e.supervisorName],
+    [t('انتهاء كارت التشغيل', 'Operating card expiry'), fmtDate(e.operatingCard?.expiryDate)],
+    [t('انتهاء الفحص الدوري', 'Inspection expiry'), fmtDate(e.inspection?.expiryDate)],
     [t('نوع التعاقد', 'Contract'), e.contractTypeAr],
     [t('رقم السجل', 'Register'), e.registerNumber],
     [t('حالة العمل', 'Status'), e.workStatusShown],
@@ -194,7 +216,17 @@ export default function LightTransportProfile() {
           <Row label={t('الوظيفة', 'Job')}>{val(e.jobTitleAr)}</Row>
           <Row label={t('المشروع', 'Project')}>{val(e.projectAr)}</Row>
           <Row label={t('الفرع', 'Branch')}>{val(e.cityAr)}</Row>
-          <Row label={t('المشرف', 'Supervisor')}>{val(e.supervisorName)}</Row>
+          {/* والمشرفُ حسابٌ على النظام: من لا حسابَ له لا يرى رجالَه في التفقّد. */}
+          <Row label={t('المشرف', 'Supervisor')}>
+            {e.supervisorName ? (
+              <span className="inline-flex items-center gap-2">
+                <span>{e.supervisorName}</span>
+                {supervisorIdOf(e)
+                  ? <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10.5px] font-semibold">{t('مربوطٌ بحساب', 'linked account')}</span>
+                  : <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10.5px] font-semibold">{t('بلا حساب على النظام', 'no system account')}</span>}
+              </span>
+            ) : val('')}
+          </Row>
           <Row label={t('حالة العمل', 'Status')}>{val(e.workStatusShown)}</Row>
         </Section>
 
@@ -205,6 +237,17 @@ export default function LightTransportProfile() {
           <Row label={t('نوع المركبة', 'Type')}>{val(e.vehicleTypeAr || e.vehicle?.registrationTypeAr)}</Row>
           <Row label={t('الرقم التسلسلي', 'Serial')} mono>{val(e.vehicle?.serialNumber)}</Row>
           <Row label={t('الماركة', 'Brand')}>{val([e.vehicle?.brandAr, e.vehicle?.modelAr].filter(Boolean).join(' '))}</Row>
+          {/* ── بطاقةُ التشغيل والفحصُ تُقرآن من ملفّ الرجل ────────────────────
+              الوثيقتان على المركبة، لكنّ الموقوفَ صباحًا هو الرجل — فمن يفتح
+              ملفَّه يجب أن يرى أقريبٌ انتهاؤهما أم مضى، بعتبات قسم المركبات
+              نفسِها لا بعتباتٍ ثانيةٍ تُكتب هنا. */}
+          <Row label={t('رقم كارت التشغيل', 'Operating card no.')} mono>{val(e.operatingCard?.number)}</Row>
+          <Row label={t('انتهاء كارت التشغيل', 'Operating card expiry')}>
+            <DocValue doc={e.operatingCard} ar={ar} />
+          </Row>
+          <Row label={t('انتهاء الفحص الدوري', 'Inspection expiry')}>
+            <DocValue doc={e.inspection} ar={ar} />
+          </Row>
         </Section>
 
         <Section title={t('السكن', 'Housing')} icon={<Home className="w-4 h-4" />} accent={NEUTRAL}

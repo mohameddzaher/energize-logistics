@@ -33,7 +33,8 @@ import { Truck, Plus, Pencil, RotateCcw, UserMinus, ExternalLink } from 'lucide-
 import {
   getLTEmployees, updateLTEmployee, createLTEmployee, deactivateLTEmployee, ltTotalsOf,
   LT_COLUMNS, statusCls, KIND_AR, KIND_EN, canEditLT, fmtDate,
-  type LTEmployee, type LTOptions,
+  supervisorIdOf, serverFilters, isFreelance, hasContract, DOC_CLS, DOC_AR, DOC_EN,
+  type LTEmployee, type LTOptions, type LTDoc,
 } from '@/lib/lightTransport';
 
 
@@ -49,7 +50,7 @@ function LightTransportEmployeesInner() {
   const [rows, setRows] = useState<LTEmployee[]>([]);
   // إجماليُّ الخادم يبقى معروضًا في «س من ص» ليُعرَف أنّ المعروضَ جزءٌ منه.
   const [serverTotal, setServerTotal] = useState(0);
-  const [options, setOptions] = useState<LTOptions>({ project: [], city: [], jobTitle: [], contractType: [], register: [], vehicleType: [], supervisor: [], housing: [] });
+  const [options, setOptions] = useState<LTOptions>({ project: [], city: [], jobTitle: [], contractType: [], register: [], vehicleType: [], supervisor: [], supervisorsUnlinked: [], housing: [] });
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Partial<LTEmployee> | null>(null);
   const [saving, setSaving] = useState(false);
@@ -68,7 +69,9 @@ function LightTransportEmployeesInner() {
   const sp = useSearchParams();
   const [f, setF] = useState<Record<string, string>>(() => {
     const keys = ['project', 'city', 'jobTitle', 'contractType', 'register', 'vehicleType',
-      'supervisor', 'staffKind', 'status', 'housing', 'hasVehicle', 'hiredFrom', 'hiredTo'];
+      'supervisor', 'staffKind', 'status', 'housing', 'hasVehicle', 'hiredFrom', 'hiredTo',
+      // مشتقّان يُحسَبان على الصفوف لا على القاعدة — راجع `LOCAL_KEYS`.
+      'contractKind', 'doc'];
     const init: Record<string, string> = {};
     for (const k of keys) { const v = sp?.get(k); if (v) init[k] = v; }
     return init;
@@ -87,7 +90,7 @@ function LightTransportEmployeesInner() {
     // إجماليَّه فوقه. فتُقرأ الردودُ بترتيب طلبها لا بترتيب وصولها.
     const token = guard.begin();
     try {
-      const d = await getLTEmployees({ ...f, q: dq });
+      const d = await getLTEmployees({ ...serverFilters(f), q: dq });
       if (!guard.isCurrent(token)) return;
       setRows(d.employees || []);
       setServerTotal(d.totals?.total || (d.employees || []).length);
@@ -103,13 +106,34 @@ function LightTransportEmployeesInner() {
   // وما يمسّ ملفَّ الموارد البشريّة يمسّ الحالةَ المعروضةَ هنا.
   useSocket('hr:employee', useCallback(() => load(), [load]));
 
+  /**
+   * ── فلترانِ يُحسَبان هنا لا في القاعدة ──────────────────────────────────────
+   *
+   * «على الكفالة / فري لانسر» و«كارتٌ منتهي» مشتقّان: الأوّلُ يُطوى ليُطابِق
+   * «كفاله» و«كفالة»، والثاني حالةٌ محسوبةٌ بعتباتٍ لا خانةٌ في الصفّ. وحسابُهما
+   * في الشاشة يضمن أنّ الكارتَ والجدولَ يقرآن الشيءَ نفسَه — ولو فُلتِرا في
+   * القاعدة بنصٍّ حرفيٍّ لقال الكارتُ ١٠٩ وردّ الجدولُ ٩٥ بلا تفسير.
+   */
+  const localFiltered = useMemo(() => rows.filter((r) => {
+    if (f.contractKind === 'sponsored' && !(hasContract(r) && !isFreelance(r))) return false;
+    if (f.contractKind === 'freelance' && !isFreelance(r)) return false;
+    if (f.doc) {
+      const [which, band] = f.doc.split('-');
+      const d = which === 'card' ? r.operatingCard : r.inspection;
+      const st = d?.state || 'missing';
+      if (band === 'gap' && !['expired', 'critical'].includes(st)) return false;
+      if (band === 'soon' && !['warning', 'upcoming'].includes(st)) return false;
+    }
+    return true;
+  }), [rows, f.contractKind, f.doc]);
+
   const cf = useColumnFilters<LTEmployee>();
   const getters = useMemo(() => {
     const o: Record<string, (e: LTEmployee) => any> = {};
     for (const c of LT_COLUMNS) o[c.key] = c.get;
     return o;
   }, []);
-  const shown = cf.apply(rows, getters);
+  const shown = cf.apply(localFiltered, getters);
   // والأعدادُ من الصفوف المعروضة — فيتحرّك الكارتُ مع فلتر العمود كما يتحرّك
   // مع الشرائح، ولا يبقى رقمان لشيءٍ واحد. راجع `ltTotalsOf`.
   const totals = useMemo(() => ltTotalsOf(shown), [shown]);
@@ -135,6 +159,9 @@ function LightTransportEmployeesInner() {
     try {
       const body: any = { ...editing };
       delete body._id; delete body.vehicle; delete body.employee; delete body.supervisor;
+      // الاسمُ لقطةٌ يكتبها الخادمُ من الحساب — ولا يُرسَل كي لا يفترق عنه.
+      delete body.supervisorName;
+      body.supervisorUser = supervisorIdOf(editing) || '';
       if (editing._id) await updateLTEmployee(editing._id, body);
       else await createLTEmployee(body);
       notify(t('حُفظ', 'Saved'), 'success');
@@ -216,6 +243,29 @@ function LightTransportEmployeesInner() {
           onClick={() => setFilter('housing', 'none')} on={f.housing === 'none'} />
       </div>
 
+      {/* ── نوعُ التعاقد ووثيقتا المركبة: كاردات ثابتة ────────────────────────
+          «كم على الكفالة وكم فري لانسر» يُسأل أوّلَ ما تُفتَح الشاشة، وكان
+          جوابُه يحتاج فتحَ قائمةِ الفلترة واختيارَ كلٍّ على حدة. وهما — كسائر
+          الكاردات — محسوبان على ما بعد الفلترة: من فلتر على مشروعٍ قرأ كفالةَ
+          هذا المشروع وحدَه.
+
+          ومعهما كارتُ التشغيل والفحص: الوثيقتان على المركبة، والموقوفُ صباحًا
+          هو الرجل — فعددُ من انتهت وثيقتُه يُقرأ هنا لا في قسمٍ آخر. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+        <Stat label={t('على الكفالة', 'On sponsorship')} value={totals.sponsored} accent="text-slate-900"
+          onClick={() => setFilter('contractKind', 'sponsored')} on={f.contractKind === 'sponsored'} />
+        <Stat label={t('فري لانسر', 'Freelance')} value={totals.freelance} accent="text-violet-600"
+          onClick={() => setFilter('contractKind', 'freelance')} on={f.contractKind === 'freelance'} />
+        <Stat label={t('كارت تشغيل منتهي/حرج', 'Operating card expired/critical')} value={totals.cardGap} accent="text-red-600"
+          onClick={() => setFilter('doc', 'card-gap')} on={f.doc === 'card-gap'} />
+        <Stat label={t('كارت تشغيل قريب', 'Operating card due soon')} value={totals.cardSoon} accent="text-amber-600"
+          onClick={() => setFilter('doc', 'card-soon')} on={f.doc === 'card-soon'} />
+        <Stat label={t('فحص منتهي/حرج', 'Inspection expired/critical')} value={totals.inspectionGap} accent="text-red-600"
+          onClick={() => setFilter('doc', 'inspection-gap')} on={f.doc === 'inspection-gap'} />
+        <Stat label={t('فحص قريب', 'Inspection due soon')} value={totals.inspectionSoon} accent="text-amber-600"
+          onClick={() => setFilter('doc', 'inspection-soon')} on={f.doc === 'inspection-soon'} />
+      </div>
+
       {/* ── الفلاتر ───────────────────────────────────────────────────────── */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-wrap gap-2.5 items-center">
         <div className="flex-1 min-w-[230px]">
@@ -228,7 +278,24 @@ function LightTransportEmployeesInner() {
         <Filter k="contractType" label={t('كل أنواع التعاقد', 'All contracts')} list={options.contractType} />
         <Filter k="register" label={t('كل السجلات', 'All registers')} list={options.register} />
         <Filter k="vehicleType" label={t('كل أنواع المركبات', 'All vehicle types')} list={options.vehicleType} />
-        <Filter k="supervisor" label={t('كل المشرفين', 'All supervisors')} list={options.supervisor} />
+        {/* ── وفلترُ المشرف بالحساب لا بالاسم ─────────────────────────────
+            المشرفُ صار حسابًا على النظام، فالفلترُ بمعرِّفه — فلا يفترق صفٌّ
+            عن صفٍّ لأنّ الاسمَ كُتب بصيغتين. ومن كُتب في السجلّ ولا حسابَ له
+            بعد يبقى في آخر القائمة كي لا يختفي صفُّه من شاشةٍ كان يُرى فيها. */}
+        <select value={f.supervisor || ''} onChange={(e) => setF((p) => ({ ...p, supervisor: e.target.value }))}
+          aria-label={t('كل المشرفين', 'All supervisors')}
+          className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800">
+          <option value="">{t('كل المشرفين', 'All supervisors')}</option>
+          <option value="none">{t('— بلا مشرف —', '— no supervisor —')}</option>
+          {options.supervisor.map((s) => (
+            <option key={s._id} value={s._id}>{s.name} — {s.roleAr}</option>
+          ))}
+          {(options.supervisorsUnlinked || []).length > 0 && (
+            <optgroup label={t('أسماءٌ بلا حساب', 'Names without an account')}>
+              {(options.supervisorsUnlinked || []).map((n) => <option key={n} value={n}>{n}</option>)}
+            </optgroup>
+          )}
+        </select>
         <Filter k="status" label={t('كل الحالات', 'All statuses')} list={Object.keys(totals.byStatus || {}).filter((x) => x !== '—')} />
         <select value={f.housing || ''} onChange={(e) => setF((p) => ({ ...p, housing: e.target.value }))} aria-label={t('السكن', 'Housing')}
           className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800">
@@ -310,7 +377,12 @@ function LightTransportEmployeesInner() {
                             <button type="button" onClick={() => router.push(`/system/b2c/light-transport/${e._id}`)}
                               className="font-semibold text-slate-800 hover:text-[#f37121] text-start">{v || '—'}</button>
                           )
-                          : (v || <span className="text-slate-300">—</span>);
+                          // ── والتاريخُ وحدَه لا يُقرأ ──────────────────────
+                          // «١٤ / ١١ / ٢٠٢٦» لا تقول أقريبٌ هو أم مضى؛ فتُكتب
+                          // معه حالتُه بعتبات قسم المركبات نفسِها.
+                          : (c.key === 'operatingCardExpiry' || c.key === 'inspectionExpiry')
+                            ? <DocCell doc={c.key === 'operatingCardExpiry' ? e.operatingCard : e.inspection} text={v} ar={ar} />
+                            : (v || <span className="text-slate-300">—</span>);
                     return (
                       <td key={c.key}
                         className={`px-3 py-2.5 whitespace-nowrap ${c.key === 'plate' ? 'font-mono font-semibold text-slate-900' : c.mono ? 'font-mono text-slate-600' : 'text-slate-700'}`}>
@@ -368,11 +440,24 @@ function LightTransportEmployeesInner() {
               <ManagedSelect storeLabel type="lt_work_status" value={editing.workStatusAr || ''}
                 onChange={(v) => setEditing((p) => ({ ...p!, workStatusAr: v }))} />
             </Field>
+            {/* ── المشرفُ حسابٌ يُختار، لا اسمٌ يُكتب ──────────────────────
+                القائمةُ حساباتُ الإشراف في القسم (مشرف مناديب · مدير مشروع ·
+                مدير القطاع). ومن يُختار هنا يرى هذا الرجلَ في تفقّد بداية
+                الدوام — فالإسنادُ في موضعٍ واحدٍ يظهر في الشاشتين. */}
             <Field label={t('المشرف', 'Supervisor')}>
-              <Select value={editing.supervisorName || ''} onChange={(ev: any) => setEditing((p) => ({ ...p!, supervisorName: ev.target.value }))}>
+              <Select value={supervisorIdOf(editing) || ''}
+                onChange={(ev: any) => setEditing((p) => ({ ...p!, supervisorUser: ev.target.value || null }))}>
                 <option value="">{t('— بلا مشرف —', '— none —')}</option>
-                {options.supervisor.map((s) => <option key={s} value={s}>{s}</option>)}
+                {options.supervisor.map((s) => (
+                  <option key={s._id} value={s._id}>{s.name} — {s.roleAr}</option>
+                ))}
               </Select>
+              {!supervisorIdOf(editing) && (editing.supervisorName || '').trim() && (
+                <p className="mt-1 text-[11.5px] text-amber-700">
+                  {t(`مكتوبٌ في السجلّ: «${editing.supervisorName}» — بلا حساب على النظام. اختر حسابَه ليرى رجالَه في التفقّد.`,
+                     `Recorded as "${editing.supervisorName}" with no system account. Pick the account so he sees his men in the duty check.`)}
+                </p>
+              )}
             </Field>
             <Field label={t('الجنسية', 'Nationality')}>
               <TextInput value={editing.nationalityAr || ''} onChange={(ev) => setEditing((p) => ({ ...p!, nationalityAr: ev.target.value }))} />
@@ -414,6 +499,28 @@ function LightTransportEmployeesInner() {
         </Modal>
       )}
     </div>
+  );
+}
+
+/**
+ * خليّةُ تاريخِ وثيقة: التاريخُ وحالتُه.
+ *
+ * مكوّنٌ على مستوى الملفّ لا داخلَ جسم الرسم — المكوّنُ المعرَّف في الرسم يُبنى
+ * من جديدٍ عند كلّ حالةٍ تتغيّر. راجع قاعدةَ «المكوّنات المضمَّنة».
+ */
+function DocCell({ doc, text, ar }: { doc?: LTDoc; text: string; ar: boolean }) {
+  if (!doc || doc.state === 'missing' || !text) {
+    return <span className="text-slate-300">—</span>;
+  }
+  const label = ar ? DOC_AR[doc.state] : DOC_EN[doc.state];
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <span className="font-mono text-slate-700">{text}</span>
+      <span className={`px-1.5 py-0.5 rounded-full text-[10.5px] font-semibold ${DOC_CLS[doc.state] || ''}`}
+        title={doc.days != null ? (ar ? `${doc.days} يومًا` : `${doc.days} days`) : ''}>
+        {label}
+      </span>
+    </span>
   );
 }
 

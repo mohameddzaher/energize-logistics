@@ -20,6 +20,18 @@ const b2cRepSchema = new mongoose.Schema(
      * ومَن لا مندوبَ له لا يرى شيئًا. راجع `controllers/b2cDutyController`.
      */
     supervisor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
+    /**
+     * ── صفُّه في سجلّ القسم ─────────────────────────────────────────────────
+     * هذا السجلُّ حسابُ المندوب على تطبيق التوصيل؛ وسجلُّ النقل الخفيف
+     * (`LightTransportEmployee`) ملفُّه عندنا: هويّتُه وكفالتُه وسكنُه ومركبتُه
+     * ومشرفُه. ورجلٌ واحدٌ في السجلّين.
+     *
+     * وكان المفتاحُ بينهما الاسمَ وحدَه — وسجلُّ التطبيق يكتب «MD ARSHED ALI»
+     * ويكتب غيرَه «MD ARSHED» و«محمد ارشد»، فمطابقةُ الاسم تردّ ثلاثةَ صفوفٍ
+     * أو لا تردّ شيئًا. فمتى عُرف الصفُّ مرّةً — بمطابقةٍ أو بيدِ مستخدم — كُتب
+     * هنا وانتهى الظنُّ: الإسنادُ بعدها يمشي على إشارةٍ لا على تشابهِ حروف.
+     */
+    ltEmployee: { type: mongoose.Schema.Types.ObjectId, ref: 'LightTransportEmployee', default: null, index: true },
     monthlyTarget: { type: Number, default: 400 },
     dailyTarget: { type: Number, default: 15 },
     expectedWorkingDays: { type: Number, default: 26 },

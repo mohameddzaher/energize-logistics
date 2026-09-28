@@ -23,7 +23,19 @@ export interface LTEmployee {
   registerNumber?: string;
   vehicleTypeAr?: string;
   vehiclePlate?: string;
+  /**
+   * بطاقةُ التشغيل والفحصُ الدوريُّ — من سجلّ المركبة، بحالتهما محسوبةً
+   * بعتبات قسم المركبات. راجع `docOf` في الخادم.
+   */
+  operatingCard?: LTDoc;
+  inspection?: LTDoc;
   supervisorName?: string;
+  /**
+   * حسابُ المشرف على النظام — هو الأصل، والاسمُ لقطةٌ منه.
+   * راجع `backend/utils/b2cSupervisors`: من أُسند إليه رجلٌ هنا رآه في تفقّد
+   * بداية الدوام.
+   */
+  supervisorUser?: { _id: string; firstName?: string; lastName?: string; role?: string } | string | null;
   workStatusAr?: string;
   /** الحالةُ كما تُقرأ: حالةُ القسم، تغلبها الموارد البشريّةُ حين تنفي. */
   workStatusShown?: string;
@@ -49,8 +61,59 @@ export interface LTHistory {
   fromValue?: string; toValue?: string; note?: string;
 }
 
+/**
+ * نوعُ التعاقد مطويًّا — «كفالة» و«كفاله» واحد، و«فري لانسر» و«فريلانسر» واحد.
+ * تُستعمل في العدّ وفي الفلترة معًا، فلا يفترق الكارتُ عن الجدول.
+ */
+export const foldContract = (v?: string) => String(v || '')
+  .replace(/[ً-ْ]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+  .replace(/\s+/g, '');
+export const isFreelance = (r: { contractTypeAr?: string }) => foldContract(r.contractTypeAr).includes('فريلانسر');
+export const hasContract = (r: { contractTypeAr?: string }) => !!foldContract(r.contractTypeAr);
+
+/** مفاتيحُ الفلترة المشتقّة — تُحسَب في الشاشة ولا تُرسَل إلى الخادم. */
+export const LOCAL_KEYS = ['contractKind', 'doc'] as const;
+export const serverFilters = (f: Record<string, string>) => {
+  const o: Record<string, string> = {};
+  for (const [k, v] of Object.entries(f)) if (v && !LOCAL_KEYS.includes(k as any)) o[k] = v;
+  return o;
+};
+
+/** حالةُ وثيقةٍ على مركبةِ الموظّف — نفسُ مفرداتِ قسم المركبات. */
+export interface LTDoc {
+  expiryDate?: string | null;
+  number?: string;
+  statusAr?: string;
+  state: 'valid' | 'upcoming' | 'warning' | 'critical' | 'expired' | 'missing' | 'not_applicable';
+  days: number | null;
+}
+
+/** ألوانُ حالة الوثيقة — نفسُها في كلّ شاشةٍ تقرؤها. */
+export const DOC_CLS: Record<string, string> = {
+  expired: 'bg-red-100 text-red-700',
+  critical: 'bg-orange-100 text-orange-700',
+  warning: 'bg-amber-100 text-amber-800',
+  upcoming: 'bg-sky-100 text-sky-700',
+  valid: 'bg-emerald-100 text-emerald-700',
+  missing: 'bg-slate-100 text-slate-500',
+  not_applicable: 'bg-slate-100 text-slate-400',
+};
+export const DOC_AR: Record<string, string> = {
+  expired: 'منتهية', critical: 'حرج', warning: 'تحذير', upcoming: 'قريبًا',
+  valid: 'سارية', missing: 'غير مسجَّلة', not_applicable: 'غير مطلوبة',
+};
+export const DOC_EN: Record<string, string> = {
+  expired: 'Expired', critical: 'Critical', warning: 'Warning', upcoming: 'Soon',
+  valid: 'Valid', missing: 'Not recorded', not_applicable: 'N/A',
+};
+
 export interface LTTotals {
-  total: number; reps: number; admins: number; working: number; notWorking: number;
+  total: number;
+  /** نوعُ التعاقد — كارتان ثابتان فوق الجدول، محسوبان على ما بعد الفلترة. */
+  sponsored: number;
+  freelance: number;
+  cardGap: number; cardSoon: number;
+  inspectionGap: number; inspectionSoon: number; reps: number; admins: number; working: number; notWorking: number;
   onLeave: number; terminated: number; withVehicle: number; withoutVehicle: number;
   hrLinked: number; ownedHere: number; housed: number; unhoused: number;
   byProject: Record<string, number>; byCity: Record<string, number>; byJob: Record<string, number>;
@@ -59,9 +122,36 @@ export interface LTTotals {
   byStatus: Record<string, number>;
 }
 
+/**
+ * معرِّفُ حساب المشرف في صفٍّ — يجيء مُعبَّأً من القائمة ومجرَّدًا بعد الحفظ.
+ * `populate` تردّ كائنًا، والحفظُ المحليُّ يترك معرِّفًا نصًّا — فيُقرأ الاثنان.
+ */
+export const supervisorIdOf = (e?: { supervisorUser?: unknown } | null): string => {
+  const v = e?.supervisorUser as any;
+  if (!v) return '';
+  return typeof v === 'string' ? v : String(v._id || '');
+};
+
+/** مشرفٌ متاحٌ للإسناد — حسابٌ على النظام بدورِ إشرافٍ في القسم. */
+export interface LTSupervisor {
+  _id: string;
+  /** ما يُعرَض: الاسمُ العربيُّ من ملفّه، وإلّا اسمُ حسابه. */
+  name: string;
+  nameEn: string;
+  nameAr: string;
+  role: string;
+  roleAr: string;
+  email?: string;
+  employeeNumber?: string;
+}
+
 export interface LTOptions {
   project: string[]; city: string[]; jobTitle: string[]; contractType: string[];
-  register: string[]; vehicleType: string[]; supervisor: string[];
+  register: string[]; vehicleType: string[];
+  /** حساباتُ الإشراف — لا أسماءٌ مكتوبة. */
+  supervisor: LTSupervisor[];
+  /** أسماءُ مشرفين كُتبت في السجلّ ولا حسابَ لها بعد — تبقى للفلترة. */
+  supervisorsUnlinked?: string[];
   housing: { _id: string; name: string }[];
 }
 
@@ -105,8 +195,16 @@ export function ltTotalsOf(rows: LTEmployee[]): LTTotals {
   };
   // «على رأس العمل» = ليس منتهيَ الخدمة ولا موقوفًا — والإجازةُ عملٌ موقوتٌ لا انتهاء.
   const working = (r: LTEmployee) => !['إنهاء خدمة', 'متوقف'].includes(String(r.workStatusShown || ''));
+  const gap = (d?: LTDoc) => !!d && ['expired', 'critical'].includes(d.state);
+  const soon = (d?: LTDoc) => !!d && ['warning', 'upcoming'].includes(d.state);
   return {
     total: rows.length,
+    sponsored: count((r) => hasContract(r) && !isFreelance(r)),
+    freelance: count(isFreelance),
+    cardGap: count((r) => gap(r.operatingCard)),
+    cardSoon: count((r) => soon(r.operatingCard)),
+    inspectionGap: count((r) => gap(r.inspection)),
+    inspectionSoon: count((r) => soon(r.inspection)),
     reps: count((r) => r.staffKind === 'rep'),
     admins: count((r) => r.staffKind === 'admin'),
     working: count(working),
@@ -161,10 +259,10 @@ export const deleteLTHousing = (id: string) => api.delete(`/api/light-transport/
 export const getLTOrders = (q: Record<string, string> = {}) =>
   api.get<{ orders: LTOrder[]; totals: { total: number; active: number; ended: number; authorizationMoved: number } }>(`/api/light-transport/orders${qs(q) ? `?${qs(q)}` : ''}`);
 export const getLTOrderOptions = () => api.get<{
-  employees: { _id: string; name: string; idNumber: string; jobTitleAr?: string; staffKind?: string; projectAr?: string; cityAr?: string; vehiclePlate?: string; supervisorName?: string }[];
+  employees: { _id: string; name: string; idNumber: string; jobTitleAr?: string; staffKind?: string; projectAr?: string; cityAr?: string; vehiclePlate?: string; supervisorName?: string; supervisorUser?: string }[];
   vehicles: { _id: string; plateNumber: string; serialNumber?: string; typeAr?: string; brand?: string; authorizedName?: string; authorizedId?: string }[];
   housing: { _id: string; name: string; rooms: { name: string; kind: string; capacity: number }[] }[];
-  supervisors: string[];
+  supervisors: LTSupervisor[];
 }>(`/api/light-transport/orders/options`);
 export const createLTOrder = (body: any) => api.post<{ order: LTOrder }>(`/api/light-transport/orders`, body);
 /**
@@ -233,6 +331,12 @@ export const LT_COLUMNS: LTCol[] = [
   { key: 'housing', ar: 'السكن', en: 'Housing', get: (e) => e.housing?.name || '', width: 14 },
   { key: 'housingRoom', ar: 'الغرفة', en: 'Room', get: (e) => e.housingRoom || '', width: 12 },
   { key: 'serialNumber', ar: 'الرقم التسلسلي', en: 'Serial', get: (e) => e.vehicle?.serialNumber || '', width: 15, mono: true },
+  // ── وثيقتا المركبة في الجدول والتصدير ────────────────────────────────────
+  // «كارتُ تشغيلِ مَن ينتهي هذا الشهر؟» يُقرأ من صفّ الرجل لا من سجلّ المركبات:
+  // من يُوقَف صباحًا هو الرجل.
+  { key: 'operatingCardNumber', ar: 'رقم كارت التشغيل', en: 'Operating card no.', get: (e) => e.operatingCard?.number || '', width: 16, mono: true },
+  { key: 'operatingCardExpiry', ar: 'انتهاء كارت التشغيل', en: 'Operating card expiry', get: (e) => fmtDate(e.operatingCard?.expiryDate), width: 16, mono: true },
+  { key: 'inspectionExpiry', ar: 'انتهاء الفحص', en: 'Inspection expiry', get: (e) => fmtDate(e.inspection?.expiryDate), width: 15, mono: true },
   { key: 'hrLinked', ar: 'ملفّ الموارد البشرية', en: 'HR file', get: (e) => (e.hrLinked ? (e.employeeNumber || 'مربوط') : 'لا ملفّ'), width: 16 },
   { key: 'notesAr', ar: 'ملاحظات', en: 'Notes', get: (e) => e.notesAr || '', width: 28 },
 ];

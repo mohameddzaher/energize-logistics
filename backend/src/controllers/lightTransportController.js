@@ -11,6 +11,23 @@
  * مجدولةٍ تنسى.
  */
 const mongoose = require('mongoose');
+const { listSupervisors, resolveSupervisor, syncRepSupervisor, fold: foldAr } = require('../utils/b2cSupervisors');
+const VDOC = require('../config/vehicleDocuments');
+const { VehicleRegistryConfig } = require('../models/VehicleMaster');
+
+/**
+ * عتباتُ تنبيه المستندات — من إعدادات قسم المركبات، لا من أرقامٍ تُكتب هنا.
+ * الوثيقةُ هناك والعتبةُ هناك؛ ولو نُسخت العتبةُ إلى هذا القسم لصار تغييرُها في
+ * موضعٍ لا يُغيّرها في الآخر، فقال كارتٌ واحدٌ «حرج» في شاشةٍ و«ساري» في أخرى.
+ */
+const docAlerts = async () => {
+  const hit = cache.get('lt:doc-alerts');
+  if (hit !== undefined) return hit;
+  const cfg = await VehicleRegistryConfig.findOne({ key: 'vehicle-registry' }).select('alerts').lean();
+  const alerts = cfg?.alerts || {};
+  cache.set('lt:doc-alerts', alerts, 60000);
+  return alerts;
+};
 const { LightTransportEmployee, LightTransportHousing, LightTransportOrder } = require('../models/LightTransport');
 const Employee = require('../models/Employee');
 const { VehicleMaster } = require('../models/VehicleMaster');
@@ -93,9 +110,32 @@ const shownStatus = (row) => {
   return row.workStatusAr || '';
 };
 
-const decorate = (row) => ({
+/**
+ * ── وثيقتا المركبة كما تُقرآن في هذا القسم ──────────────────────────────────
+ *
+ * بطاقةُ التشغيل والفحصُ الدوريُّ يعيشان على سجلّ المركبات، وعتباتُ التنبيه
+ * (حرج · تحذير · قريب) تُضبَط في إعدادات قسم المركبات. فتُقرأ الحالةُ بالحساب
+ * نفسِه (`VDOC.stateOf`) وبالعتبات نفسِها — وإلّا قالت شاشتان لوثيقةٍ واحدةٍ
+ * حالتين، وهو أسوأُ من ألّا تُقال.
+ */
+const docOf = (vehicle, key, alerts) => {
+  const d = vehicle && typeof vehicle === 'object' ? vehicle[key] : null;
+  const st = VDOC.stateOf(d?.expiryDate, d?.statusCode, alerts?.[key] || {});
+  return {
+    expiryDate: d?.expiryDate || null,
+    number: d?.cardNumber || '',
+    statusAr: d?.statusAr || '',
+    state: VDOC.publicState(st.state),
+    days: st.days,
+  };
+};
+
+const decorate = (row, alerts = {}) => ({
   ...row,
   workStatusShown: shownStatus(row),
+  // «كارتُ التشغيل والفحصُ» — من مركبته، بحالتهما لا بتاريخهما وحدَه.
+  operatingCard: docOf(row.vehicle, 'operatingCard', alerts),
+  inspection: docOf(row.vehicle, 'inspection', alerts),
   // نوعُ المركبة من سجلّها متى كانت مربوطةً — وهو مكتوبٌ هناك رسميًّا.
   vehicleTypeShown: (row.vehicle && typeof row.vehicle === 'object' ? row.vehicle.registrationTypeAr : '') || row.vehicleTypeAr || '',
   // ومن أين جاء الخبر — فلا يُسأل «مين غيّر الحالة؟».
@@ -107,11 +147,30 @@ const decorate = (row) => ({
   employeeNumber: row.employee && typeof row.employee === 'object' ? row.employee.employeeNumber : '',
 });
 
+/**
+ * ── والفلترُ بالمشرف يقبل الحساب والاسم ────────────────────────────────────
+ * صار المشرفُ حسابًا، فالفلترُ بالمعرِّف. ويبقى الاسمُ مقبولًا لأنّ روابطَ
+ * محفوظةً ونسخًا من التطبيق تُرسله، ولأنّ من لا حسابَ لمشرفه بعد يبقى مفلتَرًا
+ * باسمه المكتوب — فلا يختفي صفٌّ من شاشةٍ كان يُرى فيها.
+ */
+const supervisorFilter = (filter, value) => {
+  const v = S(value);
+  if (!v) return;
+  if (v === 'none') { filter.supervisorUser = null; filter.supervisorName = ''; return; }
+  if (mongoose.isValidObjectId(v)) filter.supervisorUser = v;
+  else filter.supervisorName = v;
+};
+
 // ── قائمةُ الموظّفين ────────────────────────────────────────────────────────
 const LIST_POPULATE = [
   { path: 'employee', select: 'employeeNumber arabicName firstName lastName employmentStatus phone' },
   { path: 'supervisor', select: 'arabicName firstName lastName employeeNumber' },
-  { path: 'vehicle', select: 'plateNumber serialNumber registrationTypeAr brandAr modelAr' },
+  { path: 'supervisorUser', select: 'firstName lastName email role' },
+  // ── وبطاقةُ التشغيل والفحصُ يُقرآن مع المركبة ──────────────────────────
+  // «كارتُ تشغيلِ مَن ينتهي هذا الشهر؟» سؤالٌ يُسأل في هذا القسم لا في قسم
+  // المركبات: المشرفُ يوقف الرجلَ لا المركبة. والوثيقتان على سجلّ المركبات —
+  // فتُقرآن معه في النداء نفسِه، ولا تُنسَخان هنا فتفترقا عن أصلهما.
+  { path: 'vehicle', select: 'plateNumber serialNumber registrationTypeAr brandAr modelAr operatingCard inspection' },
   { path: 'housing', select: 'name cityAr' },
 ];
 
@@ -122,9 +181,10 @@ exports.listEmployees = async (req, res) => {
     if (q.active !== 'all') filter.isActive = { $ne: false };
     for (const [key, field] of [['project', 'projectAr'], ['city', 'cityAr'], ['jobTitle', 'jobTitleAr'],
       ['contractType', 'contractTypeAr'], ['register', 'registerNumber'],
-      ['supervisor', 'supervisorName'], ['staffKind', 'staffKind']]) {
+      ['staffKind', 'staffKind']]) {
       if (S(q[key])) filter[field] = S(q[key]);
     }
+    supervisorFilter(filter, q.supervisor);
     if (S(q.housing)) filter.housing = S(q.housing) === 'none' ? null : S(q.housing);
     // ومن له مركبةٌ ومن لا مركبةَ له — سؤالٌ يُسأل كثيرًا.
     if (q.hasVehicle === 'yes') filter.vehicle = { $ne: null };
@@ -175,7 +235,8 @@ exports.listEmployees = async (req, res) => {
 
     let rows = await LightTransportEmployee.find(filter)
       .populate(LIST_POPULATE).sort({ name: 1 }).lean();
-    rows = rows.map(decorate);
+    const alerts = await docAlerts();
+    rows = rows.map((r) => decorate(r, alerts));
     // الحالةُ ونوعُ المركبة يُفلتَران بعد الاشتقاق: كلٌّ منهما مركّبٌ من سجلَّين.
     if (S(q.status)) rows = rows.filter((r) => r.workStatusShown === S(q.status));
     if (S(q.vehicleType)) rows = rows.filter((r) => typeKey(r.vehicleTypeShown) === typeKey(q.vehicleType));
@@ -196,8 +257,33 @@ const totalsOf = (rows) => {
     return o;
   };
   const working = (r) => !['إنهاء خدمة', 'متوقف'].includes(r.workStatusShown);
+  /**
+   * ── الكفالةُ والفري لانسر: كارتان لا خانةُ فلترٍ وحدَها ────────────────────
+   * «كم على الكفالة وكم فري لانسر» رقمان يُسألان أوّلَ ما تُفتَح الشاشة — وكانا
+   * يُعرَفان بفتح قائمة الفلترة واختيار كلٍّ على حدة ثمّ قراءة العدّاد. فصارا
+   * كارتين ثابتين، محسوبين على ما بعد الفلترة كسائر الكاردات: من فلتر على
+   * مشروعٍ قرأ كفالةَ هذا المشروع وحدَه.
+   *
+   * والمطابقةُ بالطيّ لا بالنصّ: الشيتُ يكتب «كفاله» و«كفالة» و«فري لانسر»
+   * و«فريلانسر» — وأربعةُ أشكالٍ لمعنيَين تُنتِج كارتًا يقرأ صفرًا.
+   */
+  const contractIs = (r, kind) => {
+    const v = foldAr(String(r.contractTypeAr || '')).replace(/\s+/g, '');
+    return kind === 'freelance' ? v.includes('فريلانسر') : (!!v && !v.includes('فريلانسر'));
+  };
+  const docState = (r, key, want) => {
+    const st = r[key]?.state;
+    return want === 'gap' ? ['expired', 'critical'].includes(st) : st === want;
+  };
   return {
     total: rows.length,
+    sponsored: count((r) => contractIs(r, 'sponsored')),
+    freelance: count((r) => contractIs(r, 'freelance')),
+    // كارتُ تشغيلٍ أو فحصٌ منتهيان أو على وشك — الرجلُ يُوقَف لا المركبة.
+    cardGap: count((r) => docState(r, 'operatingCard', 'gap')),
+    cardSoon: count((r) => ['warning', 'upcoming'].includes(r.operatingCard?.state)),
+    inspectionGap: count((r) => docState(r, 'inspection', 'gap')),
+    inspectionSoon: count((r) => ['warning', 'upcoming'].includes(r.inspection?.state)),
     reps: count((r) => r.staffKind === 'rep'),
     admins: count((r) => r.staffKind === 'admin'),
     working: count(working),
@@ -226,7 +312,8 @@ const totalsOf = (rows) => {
  * يظهر في الفلتر بلا نشرة، وما لا يُستعمَل لا يزحم القائمة.
  */
 const optionsOf = async () => cache.wrap('lt:options', 60 * 1000, async () => {
-  const [projects, cities, jobs, contracts, registers, vehicleTypes, supervisors, housings] = await Promise.all([
+  const [projects, cities, jobs, contracts, registers, vehicleTypes, supervisors, housings,
+    unlinkedSupervisors] = await Promise.all([
     LightTransportEmployee.distinct('projectAr'),
     LightTransportEmployee.distinct('cityAr'),
     LightTransportEmployee.distinct('jobTitleAr'),
@@ -241,18 +328,45 @@ const optionsOf = async () => cache.wrap('lt:options', 60 * 1000, async () => {
       ]);
       return [...new Set([...a, ...b].filter(Boolean).map(typeKey))];
     })(),
-    LightTransportEmployee.distinct('supervisorName'),
+    /**
+     * ── والمشرفون حساباتٌ لا أسماءٌ مكتوبة ─────────────────────────────────
+     * كانت القائمةُ `distinct('supervisorName')` — أي ما كُتب في الصفوف. فهي
+     * تعرض ما أُدخل ولو بصيغتين، ولا تعرض مشرفًا عُيِّن أمسِ ولم يُسنَد إليه
+     * أحدٌ بعد، ولا تعرف أنّ لصاحب الاسم حسابًا يدخل به.
+     *
+     * فصارت من الحسابات: كلُّ حسابٍ نشطٍ بدورِ إشرافٍ في القسم، ومعه اسمُه
+     * العربيُّ من ملفّه ودورُه. راجع `utils/b2cSupervisors`.
+     */
+    listSupervisors(),
     LightTransportHousing.find({ isActive: { $ne: false } }).select('name').lean(),
+    // ومن كُتب في الصفوف ولا حسابَ له بعد — يبقى في الفلتر كي لا يختفي صفُّه.
+    LightTransportEmployee.distinct('supervisorName', { supervisorUser: null }),
   ]);
   const clean = (a) => a.filter(Boolean).sort((x, y) => String(x).localeCompare(String(y), 'ar'));
   return {
     project: clean(projects), city: clean(cities), jobTitle: clean(jobs),
     contractType: clean(contracts), register: clean(registers), vehicleType: clean(vehicleTypes),
-    supervisor: clean(supervisors),
+    supervisor: supervisors,
+    supervisorsUnlinked: clean(unlinkedSupervisors),
     housing: housings.map((h) => ({ _id: String(h._id), name: h.name })),
   };
 });
 
+
+/**
+ * قائمةُ المشرفين وحدَها — نداءٌ صغيرٌ يقرؤه الهاتف.
+ *
+ * الويبُ يأخذها ضمن ردّ القائمة (`options.supervisor`)، والهاتفُ يبني حقلَ
+ * الاختيار من نقطةٍ مستقلّة. ومصدرُهما واحد: `listSupervisors`.
+ */
+exports.supervisors = async (req, res) => {
+  try {
+    res.json({ supervisors: await listSupervisors() });
+  } catch (e) {
+    console.error('lt supervisors:', e);
+    res.status(500).json({ message: 'تعذّر تحميل قائمة المشرفين' });
+  }
+};
 
 /**
  * ── لوحةُ القسم: سؤالٌ واحدٌ لا عشرة ────────────────────────────────────────
@@ -271,9 +385,10 @@ exports.overview = async (req, res) => {
     const filter = { isActive: { $ne: false } };
     for (const [key, field] of [['project', 'projectAr'], ['city', 'cityAr'], ['jobTitle', 'jobTitleAr'],
       ['contractType', 'contractTypeAr'], ['register', 'registerNumber'],
-      ['supervisor', 'supervisorName'], ['staffKind', 'staffKind']]) {
+      ['staffKind', 'staffKind']]) {
       if (S(q[key])) filter[field] = S(q[key]);
     }
+    supervisorFilter(filter, q.supervisor);
     if (S(q.housing)) filter.housing = S(q.housing) === 'none' ? null : S(q.housing);
     if (q.hasVehicle === 'yes') filter.vehicle = { $ne: null };
     if (q.hasVehicle === 'no') filter.vehicle = null;
@@ -297,7 +412,8 @@ exports.overview = async (req, res) => {
         .select('plateNumber registrationTypeAr departmentAr serviceStatusAr serviceStatusCode authorizedPerson').lean(),
       LightTransportOrder.find({ status: 'active' }).select('vehicle ltEmployee').lean(),
     ]);
-    let rows = rawRows.map(decorate);
+    const alerts = await docAlerts();
+    let rows = rawRows.map((r) => decorate(r, alerts));
     if (S(q.status)) rows = rows.filter((r) => r.workStatusShown === S(q.status));
     if (S(q.vehicleType)) rows = rows.filter((r) => typeKey(r.vehicleTypeShown) === typeKey(q.vehicleType));
 
@@ -406,15 +522,46 @@ exports.getEmployee = async (req, res) => {
       .populate('vehicle', 'plateNumber registrationTypeAr')
       .populate('housing', 'name')
       .sort({ startDate: -1 }).lean();
-    res.json({ employee: decorate(row), orders });
+    res.json({ employee: decorate(row, await docAlerts()), orders });
   } catch (e) {
     console.error('lt getEmployee:', e);
     res.status(500).json({ message: 'تعذّر تحميل ملفّ الموظّف' });
   }
 };
 
+// `supervisorName` ليس منها: يُشتَقُّ من الحساب المختار — راجع `applySupervisor`.
 const EDITABLE = ['name', 'nationalityAr', 'phone', 'cityAr', 'projectAr', 'jobTitleAr', 'contractTypeAr',
-  'registerNumber', 'vehicleTypeAr', 'supervisorName', 'workStatusAr', 'housingRoom', 'notesAr', 'hireDate'];
+  'registerNumber', 'vehicleTypeAr', 'workStatusAr', 'housingRoom', 'notesAr', 'hireDate'];
+
+/**
+ * ── إسنادُ المشرف: حسابٌ يُختار، والباقي يُشتَقّ ────────────────────────────
+ *
+ * يُرسَل `supervisorUser` (معرِّفُ حساب) أو فراغٌ يعني «بلا مشرف». ومنه يُكتب
+ * الاسمُ لقطةً والملفُّ إشارةً — فلا يُكتب اسمٌ بيدٍ فيفترق عن صاحبه.
+ *
+ * ويُسنَد الرجلُ في سجلّ التطبيق أيضًا (`B2CRep.supervisor`) فيراه مشرفُه في
+ * تفقّد بداية الدوام. وهذا هو الربطُ المقصود: الإسنادُ في موضعٍ واحدٍ يظهر في
+ * الشاشتين. راجع `utils/b2cSupervisors.syncRepSupervisor`.
+ *
+ * وحسابٌ ليس من أدوار الإشراف يُردّ صراحةً: الإسنادُ إليه رجلٌ لا يتفقّده أحد.
+ */
+async function applySupervisor(doc, body, res) {
+  if (body.supervisorUser === undefined) return true;
+  const want = S(body.supervisorUser);
+  if (!want || want === 'none') {
+    doc.supervisorUser = null; doc.supervisorName = ''; doc.supervisor = null;
+    return true;
+  }
+  const sup = await resolveSupervisor(want);
+  if (!sup) {
+    res.status(400).json({ message: 'هذا الحساب ليس مشرفَ مناديب ولا مديرَ مشروعٍ نشطًا في القسم' });
+    return false;
+  }
+  doc.supervisorUser = sup._id;
+  doc.supervisorName = sup.name;
+  doc.supervisor = sup.employee || null;
+  return true;
+}
 
 exports.createEmployee = async (req, res) => {
   try {
@@ -426,6 +573,7 @@ exports.createEmployee = async (req, res) => {
 
     const doc = new LightTransportEmployee({ idNumber, createdBy: req.user?._id });
     for (const k of EDITABLE) if (req.body[k] !== undefined) doc[k] = req.body[k];
+    if (!(await applySupervisor(doc, req.body, res))) return undefined;
     // ويُربَط بملفّ الموارد البشريّة إن كانت هويّتُه هناك — بلا سؤال.
     const hr = await Employee.findOne({ $or: [{ nationalId: idNumber }, { iqamaNumber: idNumber }] }).select('_id').lean();
     if (hr) doc.employee = hr._id;
@@ -433,6 +581,7 @@ exports.createEmployee = async (req, res) => {
     if (res.headersSent) return undefined;
     doc.history.push({ kind: 'created', by: req.user?._id, byName: byName(req.user), note: hr ? 'أُنشئ ومُرتبطٌ بملفّ الموارد البشريّة' : 'أُنشئ في القسم — لا ملفَّ له في الموارد البشريّة' });
     await doc.save();
+    if (doc.supervisorUser) await syncRepSupervisor(doc.name, doc.supervisorUser, { ltId: doc._id });
     logAudit({ user: req.user, action: 'create_lt_employee', entity: 'LightTransportEmployee', entityId: doc._id, changes: { after: { name: doc.name, idNumber } }, ipAddress: req.ip }).catch(() => {});
     emit('lt:updated', {});
     return res.status(201).json({ employee: doc.toObject() });
@@ -510,7 +659,7 @@ exports.updateEmployee = async (req, res) => {
     // ── وكلُّ نقلٍ يُقيَّد ────────────────────────────────────────────────
     // «نقلتُه من مشروعٍ إلى مشروع» سؤالٌ يُسأل بعد شهور، وخانةٌ تُستبدَل لا
     // تحفظ جوابَه. فما يُغيَّر من هذه الأربعةِ يُكتب في سجلّ الموظّف بصاحبه.
-    const TRACKED = { projectAr: 'project', cityAr: 'city', supervisorName: 'supervisor', workStatusAr: 'status' };
+    const TRACKED = { projectAr: 'project', cityAr: 'city', workStatusAr: 'status' };
     for (const [field, kind] of Object.entries(TRACKED)) {
       if (req.body[field] !== undefined && S(req.body[field]) !== S(doc[field])) {
         doc.history.push({
@@ -519,13 +668,24 @@ exports.updateEmployee = async (req, res) => {
         });
       }
     }
+    // وتغييرُ المشرف يُقيَّد بالاسمين لا بالمعرِّفين: السجلُّ يُقرأ بعد شهور.
+    const beforeSupName = S(doc.supervisorName);
+    const beforeSupUser = String(doc.supervisorUser || '');
     for (const k of EDITABLE) if (req.body[k] !== undefined) doc[k] = req.body[k];
+    if (!(await applySupervisor(doc, req.body, res))) return undefined;
+    if (String(doc.supervisorUser || '') !== beforeSupUser) {
+      doc.history.push({
+        kind: 'supervisor', by: req.user?._id, byName: byName(req.user),
+        fromValue: beforeSupName, toValue: S(doc.supervisorName), note: S(req.body.moveNote),
+      });
+    }
     if (req.body.housing !== undefined) {
       await applyHousing(doc, req.body.housing, req.body.housingRoom ?? doc.housingRoom, res);
       if (res.headersSent) return undefined;
     }
     doc.lastModifiedBy = req.user?._id;
     await doc.save();
+    if (String(doc.supervisorUser || '') !== beforeSupUser) await syncRepSupervisor(doc.name, doc.supervisorUser, { ltId: doc._id });
     logAudit({ user: req.user, action: 'update_lt_employee', entity: 'LightTransportEmployee', entityId: doc._id, changes: { after: Object.keys(req.body) }, ipAddress: req.ip }).catch(() => {});
     emit('lt:updated', {});
     return res.json({ employee: doc.toObject() });

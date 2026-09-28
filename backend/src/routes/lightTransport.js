@@ -16,6 +16,8 @@ const EDIT = ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead', 'it_man
 
 // لوحةُ القسم — نداءٌ واحدٌ يحسب الموظّفين والمركبات والسكن معًا.
 router.get('/overview', c.overview);
+// حساباتُ الإشراف في القسم — يُبنى منها حقلُ «المشرف» في الويب والهاتف.
+router.get('/supervisors', c.supervisors);
 router.get('/employees', c.listEmployees);
 router.get('/employees/:id', c.getEmployee);
 router.post('/employees', authorize(...EDIT), c.createEmployee);

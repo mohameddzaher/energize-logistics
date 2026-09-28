@@ -35,6 +35,23 @@ FieldSpec _crmCompanyLookup() => FieldSpec('company', 'الشركة', 'Company',
     type: FieldType.lookup, lookupEndpoint: '/api/crm/companies', lookupListKey: 'companies',
     lookupLabel: (r) => _s(r, 'arabicName').isNotEmpty ? _s(r, 'arabicName') : _s(r, 'name'));
 
+/// حالةُ وثيقةِ مركبةٍ كما يرسلها الخادم: `{ state, days, expiryDate }`.
+/// الحالاتُ نفسُها في قسم المركبات وفي الويب — مفردةٌ واحدةٌ لا ثلاث.
+bool _docBad(dynamic d) {
+  if (d is! Map) return false;
+  return ['expired', 'critical', 'warning'].contains((d['state'] ?? '').toString());
+}
+
+String _docWord(dynamic d) {
+  final st = (d is Map ? d['state'] : '').toString();
+  return st == 'expired' ? 'منتهي' : st == 'critical' ? 'حرج' : 'قارب الانتهاء';
+}
+
+Color _docColor(dynamic d) {
+  final st = (d is Map ? d['state'] : '').toString();
+  return st == 'expired' ? T.danger : st == 'critical' ? T.orange : T.warn;
+}
+
 // ── إدارة الأسطول ────────────────────────────────────────────────────────────
 final fleetDriversCfg = ResourceConfig(
   arTitle: 'السائقون', enTitle: 'Drivers', icon: Icons.badge_outlined,
@@ -1474,6 +1491,11 @@ final lightTransportCfg = ResourceConfig(
         (st, st == 'إنهاء خدمة' ? T.danger : st == 'متوقف' ? T.warn : st == 'إجازة' ? T.navy : T.success),
       // ولا ملفَّ له في الموارد البشريّة: القسمُ يملك سجلَّه — اثنا عشرَ فري لانسر.
       if (r['hrLinked'] == false) ('بلا ملفّ HR', T.warn),
+      // ── بطاقةُ التشغيل والفحصُ: لا تُعرَض إلّا حين تكون خبرًا ──────────────
+      // الشارةُ تقول ما يوقِف الرجلَ صباحًا. و«سارية» ليست خبرًا، فلا تُزاحم
+      // الشاراتِ الأخرى على شاشةِ هاتف.
+      if (_docBad(r['operatingCard'])) ('كارت التشغيل ${_docWord(r['operatingCard'])}', _docColor(r['operatingCard'])),
+      if (_docBad(r['inspection'])) ('الفحص ${_docWord(r['inspection'])}', _docColor(r['inspection'])),
     ];
   },
   fields: [
@@ -1511,7 +1533,15 @@ final lightTransportCfg = ResourceConfig(
         lookupEndpoint: '/api/lookups?type=lt_work_status&active=true',
         lookupListKey: 'items', lookupQuery: 'limit=200',
         lookupLabel: (r) => _s(r, 'nameAr'), lookupValue: (r) => _s(r, 'nameAr')),
-    const FieldSpec('supervisorName', 'المشرف', 'Supervisor'),
+    // ── المشرفُ حسابٌ على النظام لا اسمٌ يُكتب ────────────────────────────
+    // كان خانةً حرّة، فيُكتب «خالد عباس» هنا و«خالد عبدالسلام» هناك، ولا يعرف
+    // السجلُّ أنّ لصاحب الاسم حسابًا يدخل به ليتفقّد رجاله. فصار اختيارًا من
+    // حسابات الإشراف في القسم — ومن يُختار هنا يرى هذا الرجلَ في تفقّد بداية
+    // الدوام. راجع backend/utils/b2cSupervisors.
+    FieldSpec('supervisorUser', 'المشرف', 'Supervisor', type: FieldType.lookup,
+        lookupEndpoint: '/api/light-transport/supervisors', lookupListKey: 'supervisors',
+        lookupLabel: (r) => '${_s(r, 'name')} — ${_s(r, 'roleAr')}',
+        lookupValue: (r) => _s(r, '_id')),
     const FieldSpec('nationalityAr', 'الجنسية', 'Nationality'),
     const FieldSpec('phone', 'الجوال', 'Phone', type: FieldType.phone),
     const FieldSpec('hireDate', 'تاريخ التعيين', 'Hire date', type: FieldType.date),

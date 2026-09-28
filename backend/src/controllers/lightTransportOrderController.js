@@ -22,6 +22,7 @@ const { VehicleMaster } = require('../models/VehicleMaster');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
+const { listSupervisors, resolveSupervisor, syncRepSupervisor } = require('../utils/b2cSupervisors');
 const { applyHousing } = require('./lightTransportController');
 
 const S = (v) => String(v == null ? '' : v).trim();
@@ -135,7 +136,7 @@ exports.orderOptions = async (req, res) => {
   try {
     const [employees, vehicles, housings] = await Promise.all([
       LightTransportEmployee.find({ isActive: { $ne: false } })
-        .select('name idNumber jobTitleAr staffKind projectAr cityAr vehiclePlate supervisorName')
+        .select('name idNumber jobTitleAr staffKind projectAr cityAr vehiclePlate supervisorName supervisorUser')
         .sort({ name: 1 }).lean(),
       // النقلُ الخفيفُ دراجاتٌ ومركباتٌ خاصّة، لا شاحنات — فالقائمةُ تُضيَّق
       // بنوع التسجيل، وإلّا ظهرت الشاحناتُ الثقيلةُ في نافذةِ مندوب توصيل.
@@ -149,6 +150,7 @@ exports.orderOptions = async (req, res) => {
         _id: String(e._id), name: e.name, idNumber: e.idNumber, jobTitleAr: e.jobTitleAr,
         staffKind: e.staffKind, projectAr: e.projectAr, cityAr: e.cityAr,
         vehiclePlate: e.vehiclePlate, supervisorName: e.supervisorName,
+        supervisorUser: e.supervisorUser ? String(e.supervisorUser) : '',
       })),
       vehicles: vehicles.map((v) => ({
         _id: String(v._id), plateNumber: v.plateNumber, serialNumber: v.serialNumber,
@@ -162,8 +164,14 @@ exports.orderOptions = async (req, res) => {
         _id: String(h._id), name: h.name,
         rooms: (h.rooms || []).map((r) => ({ name: r.name, kind: r.kind, capacity: r.capacity })),
       })),
-      // المشرفون: إداريّو القسم — المندوبُ لا يشرف على مندوب.
-      supervisors: [...new Set(employees.filter((e) => e.staffKind === 'admin').map((e) => e.name))].sort(),
+      /**
+       * ── المشرفون: حساباتُ الإشراف على النظام ─────────────────────────────
+       * كانت أسماءَ إداريّي القسم — أي مَن كُتب في السجلّ إداريًّا، مشرفًا كان
+       * أو ميكانيكيًّا أو عاملَ نظافة. وأمرُ التشغيل يقول «مَن يقف على هذا
+       * الرجل صباحًا»، وجوابُه حسابٌ يفتح شاشةَ التفقّد لا اسمٌ في قائمة.
+       * راجع `utils/b2cSupervisors`.
+       */
+      supervisors: await listSupervisors(),
     });
   } catch (e) {
     console.error('lt orderOptions:', e);
@@ -312,6 +320,16 @@ exports.createOrder = async (req, res) => {
       await previous.save();
     }
 
+    /**
+     * المشرفُ المطلوبُ في الأمر: حسابٌ يُختار. وغيابُه يعني «كما هو على الموظّف»
+     * لا «بلا مشرف» — فأمرُ تشغيلٍ لمركبةٍ لا يُسقِط إشرافًا قائمًا.
+     */
+    let supervisor = null;
+    if (S(b.supervisorUser)) {
+      supervisor = await resolveSupervisor(S(b.supervisorUser));
+      if (!supervisor) return res.status(400).json({ message: 'هذا الحساب ليس مشرفَ مناديب ولا مديرَ مشروعٍ نشطًا في القسم' });
+    }
+
     const last = await LightTransportOrder.findOne({ orderNumber: /^LT-/ }).sort({ orderNumber: -1 }).select('orderNumber').lean();
     const n = last ? (Number(String(last.orderNumber).replace('LT-', '')) || 0) + 1 : 1;
 
@@ -325,7 +343,8 @@ exports.createOrder = async (req, res) => {
       vehicleTypeAr: vehicle ? vehicle.registrationTypeAr : S(b.vehicleTypeAr),
       projectAr: S(b.projectAr) || emp.projectAr,
       cityAr: S(b.cityAr) || emp.cityAr,
-      supervisorName: S(b.supervisorName) || emp.supervisorName,
+      supervisorUser: supervisor ? supervisor._id : (emp.supervisorUser || null),
+      supervisorName: supervisor ? supervisor.name : emp.supervisorName,
       housing: emp.housing,
       housingRoom: emp.housingRoom,
       startDate: D(b.startDate) || new Date(),
@@ -341,11 +360,14 @@ exports.createOrder = async (req, res) => {
     const moves = [];
     if (S(order.projectAr) !== S(emp.projectAr)) moves.push({ kind: 'project', fromValue: S(emp.projectAr), toValue: S(order.projectAr) });
     if (S(order.cityAr) !== S(emp.cityAr)) moves.push({ kind: 'city', fromValue: S(emp.cityAr), toValue: S(order.cityAr) });
-    if (S(order.supervisorName) !== S(emp.supervisorName)) moves.push({ kind: 'supervisor', fromValue: S(emp.supervisorName), toValue: S(order.supervisorName) });
+    const supChanged = String(order.supervisorUser || '') !== String(emp.supervisorUser || '');
+    if (supChanged) moves.push({ kind: 'supervisor', fromValue: S(emp.supervisorName), toValue: S(order.supervisorName) });
     if (String(order.vehicle || '') !== String(emp.vehicle || '')) moves.push({ kind: 'vehicle', fromValue: S(emp.vehiclePlate), toValue: S(order.vehiclePlate) });
     emp.projectAr = order.projectAr;
     emp.cityAr = order.cityAr;
+    emp.supervisorUser = order.supervisorUser;
     emp.supervisorName = order.supervisorName;
+    if (supervisor) emp.supervisor = supervisor.employee || null;
     emp.vehicle = order.vehicle;
     emp.vehiclePlate = order.vehiclePlate;
     if (vehicle?.registrationTypeAr) emp.vehicleTypeAr = vehicle.registrationTypeAr;
@@ -353,6 +375,8 @@ exports.createOrder = async (req, res) => {
     emp.history.push({ kind: 'order', by: req.user?._id, byName: byName(req.user), toValue: order.orderNumber, note: S(b.notesAr) });
     emp.lastModifiedBy = req.user?._id;
     await emp.save();
+    // ويراه مشرفُه في تفقّد بداية الدوام من هذه اللحظة.
+    if (supChanged) await syncRepSupervisor(emp.name, emp.supervisorUser, { ltId: emp._id });
 
     // ── ونقلُ التفويض يُكتب في سجلّ المركبات ──────────────────────────────
     if (vehicle && b.moveAuthorization) {

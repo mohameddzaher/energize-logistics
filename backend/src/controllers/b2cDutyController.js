@@ -24,7 +24,9 @@ const { createNotification } = require('../services/notificationService');
 const { emitToAll } = require('../websocket/socketManager');
 
 /** مَن يصلح أن يُسنَد إليه مندوب. */
-const SUPERVISOR_ROLES = ['b2c_rep_supervisor', 'b2c_project_lead', 'b2c_manager'];
+// أدوارُ الإشراف من موضعٍ واحد: سجلُّ النقل الخفيف يُسنِد بها، وهذه الشاشةُ
+// تقرأ بها — وقائمتان تفترقان تعني رجلًا مُسنَدًا لا يراه مشرفُه.
+const { SUPERVISOR_ROLES } = require('../utils/b2cSupervisors');
 const FULL_VIEW_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager'];
 const canSeeAll = (u) => FULL_VIEW_ROLES.includes(u?.role || '');
 

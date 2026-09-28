@@ -105,7 +105,24 @@ const employeeSchema = new mongoose.Schema({
    */
   staffKind: { type: String, enum: ['rep', 'admin'], default: 'rep', index: true },
 
-  // المشرفُ المسؤول: اسمُه كما يُكتب، وملفُّه إن عُرف.
+  /**
+   * ── المشرفُ المسؤول: حسابٌ على النظام، لا اسمٌ في قائمة ────────────────────
+   *
+   * كان اسمًا يُختار من قائمةٍ مُدارة: «خالد عباس»، «إسلام سرور». والقائمةُ
+   * تُكتب بيدٍ فتُكتب بصيغتين («أحمد الشرقاوي» و«احمد الشرقاوي») ولا تعرف أنّ
+   * صاحبَ الاسم له حسابٌ على النظام يدخل به كلَّ صباح. فالمشرفُ في السجلّ
+   * شيءٌ، والمشرفُ الذي يفتح شاشةَ التفقّد شيءٌ آخر — ولا يعرف أحدُهما الآخر.
+   *
+   * فصار `supervisorUser` هو الأصل: حسابٌ نشطٌ بدورٍ من أدوار الإشراف في القسم
+   * (مشرف مناديب · مدير مشروع · مدير القطاع). ومتى أُسند إليه رجلٌ هنا، رآه في
+   * تفقّد بداية الدوام — وهذا هو الربطُ كلُّه.
+   *
+   * ويبقى معه الاثنان الآخران ولا يُكتبان بيد:
+   *   `supervisorName` — لقطةُ الاسم: تُقرأ في الجداول والتصدير والسجلّ، وتبقى
+   *     صحيحةً في التاريخ ولو تغيّر الحسابُ أو زال.
+   *   `supervisor` — ملفُّه في الموارد البشريّة، يُشتَقّ من الحساب لا يُختار.
+   */
+  supervisorUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
   supervisorName: { type: String, trim: true, default: '', index: true },
   supervisor: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
 
@@ -163,6 +180,8 @@ const orderSchema = new mongoose.Schema({
 
   projectAr: { type: String, trim: true, default: '', index: true },
   cityAr: { type: String, trim: true, default: '', index: true },
+  // المشرفُ ساعةَ الإسناد — حسابُه واسمُه وملفُّه. راجع `supervisorUser` أعلاه.
+  supervisorUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
   supervisorName: { type: String, trim: true, default: '' },
   supervisor: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
 

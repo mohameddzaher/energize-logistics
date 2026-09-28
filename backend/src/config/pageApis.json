@@ -1246,13 +1246,17 @@
     },
     "/system/b2c/light-transport": {
       "apis": [
-        "/api/light-transport",
+        "/api/light-transport/employees",
         "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/b2c/orders": {
-      "apis": [],
+      "apis": [
+        "/api/light-transport/authorization/move",
+        "/api/light-transport/orders",
+        "/api/light-transport/orders/options"
+      ],
       "wildcard": false
     },
     "/system/b2c/projects": {
@@ -1271,6 +1275,7 @@
     },
     "/system/b2c/settings": {
       "apis": [
+        "/api/light-transport/housing",
         "/api/lookups/types"
       ],
       "wildcard": false

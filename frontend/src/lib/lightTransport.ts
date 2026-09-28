@@ -134,30 +134,39 @@ const qs = (o: Record<string, string>) =>
   Object.entries(o).filter(([, v]) => v !== '' && v != null)
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
 
-const BASE = '/api/light-transport';
+/**
+ * ── والمسارُ يُكتب صريحًا لا يُركَّب ──────────────────────────────────────────
+ * كان يُبنى من ثابتٍ ومقطعٍ («BASE» ثمّ اسمُ النقطة)، وخريطةُ نقاطِ الصفحات تُولَّد بقراءة
+ * النصوص في ملفّ الصفحة وما تستورده — فلا ترى نصًّا مركَّبًا. فكُتب للصفحات
+ * مسارٌ واحدٌ عامٌّ للقسم كلِّه، ثمّ سقط عند إعادة التوليد، فصارت
+ * صفحةُ أوامر التشغيل بلا نقاطٍ أصلًا: ومَن مُنح هذه الصفحةَ وحدَها يأخذ 403 من
+ * كلّ نداءٍ فيها (راجع middleware/pageGate).
+ *
+ * فالمسارُ يُكتب حرفًا حرفًا — طولٌ زائدٌ في الشِّفرة يقابل بابًا لا يُغلق خطأً.
+ */
 
 export const getLTEmployees = (q: Record<string, string> = {}) =>
-  api.get<{ employees: LTEmployee[]; totals: LTTotals; options: LTOptions }>(`${BASE}/employees${qs(q) ? `?${qs(q)}` : ''}`);
+  api.get<{ employees: LTEmployee[]; totals: LTTotals; options: LTOptions }>(`/api/light-transport/employees${qs(q) ? `?${qs(q)}` : ''}`);
 export const getLTEmployee = (id: string) =>
-  api.get<{ employee: LTEmployee; orders: LTOrder[] }>(`${BASE}/employees/${id}`);
-export const createLTEmployee = (body: any) => api.post<{ employee: LTEmployee }>(`${BASE}/employees`, body);
-export const updateLTEmployee = (id: string, body: any) => api.put<{ employee: LTEmployee }>(`${BASE}/employees/${id}`, body);
-export const deactivateLTEmployee = (id: string, reason: string) => api.post(`${BASE}/employees/${id}/deactivate`, { reason });
+  api.get<{ employee: LTEmployee; orders: LTOrder[] }>(`/api/light-transport/employees/${id}`);
+export const createLTEmployee = (body: any) => api.post<{ employee: LTEmployee }>(`/api/light-transport/employees`, body);
+export const updateLTEmployee = (id: string, body: any) => api.put<{ employee: LTEmployee }>(`/api/light-transport/employees/${id}`, body);
+export const deactivateLTEmployee = (id: string, reason: string) => api.post(`/api/light-transport/employees/${id}/deactivate`, { reason });
 
-export const getLTHousing = () => api.get<{ housing: LTHousing[] }>(`${BASE}/housing`);
+export const getLTHousing = () => api.get<{ housing: LTHousing[] }>(`/api/light-transport/housing`);
 export const saveLTHousing = (id: string | null, body: any) =>
-  (id ? api.put<{ housing: LTHousing }>(`${BASE}/housing/${id}`, body) : api.post<{ housing: LTHousing }>(`${BASE}/housing`, body));
-export const deleteLTHousing = (id: string) => api.delete(`${BASE}/housing/${id}`);
+  (id ? api.put<{ housing: LTHousing }>(`/api/light-transport/housing/${id}`, body) : api.post<{ housing: LTHousing }>(`/api/light-transport/housing`, body));
+export const deleteLTHousing = (id: string) => api.delete(`/api/light-transport/housing/${id}`);
 
 export const getLTOrders = (q: Record<string, string> = {}) =>
-  api.get<{ orders: LTOrder[]; totals: { total: number; active: number; ended: number; authorizationMoved: number } }>(`${BASE}/orders${qs(q) ? `?${qs(q)}` : ''}`);
+  api.get<{ orders: LTOrder[]; totals: { total: number; active: number; ended: number; authorizationMoved: number } }>(`/api/light-transport/orders${qs(q) ? `?${qs(q)}` : ''}`);
 export const getLTOrderOptions = () => api.get<{
   employees: { _id: string; name: string; idNumber: string; jobTitleAr?: string; staffKind?: string; projectAr?: string; cityAr?: string; vehiclePlate?: string; supervisorName?: string }[];
   vehicles: { _id: string; plateNumber: string; serialNumber?: string; typeAr?: string; brand?: string; authorizedName?: string; authorizedId?: string }[];
   housing: { _id: string; name: string; rooms: { name: string; kind: string; capacity: number }[] }[];
   supervisors: string[];
-}>(`${BASE}/orders/options`);
-export const createLTOrder = (body: any) => api.post<{ order: LTOrder }>(`${BASE}/orders`, body);
+}>(`/api/light-transport/orders/options`);
+export const createLTOrder = (body: any) => api.post<{ order: LTOrder }>(`/api/light-transport/orders`, body);
 /**
  * نقلُ تفويضِ مركبةٍ وحدَه — بلا أمرِ تشغيلٍ جديد. يُستعمَل حين تكون المركبةُ
  * مفوَّضةً لشخصٍ وقائدُها الفعليُّ آخرَ (حالةٌ قائمةٌ في أربعةَ عشرَ مركبة)، أو
@@ -166,8 +175,8 @@ export const createLTOrder = (body: any) => api.post<{ order: LTOrder }>(`${BASE
 export const moveLTAuthorization = (body: {
   vehicle: string; toEmployee?: string; authorizationNumber?: string;
   startDate?: string; expiryDate?: string; reason?: string;
-}) => api.post<{ vehicle: { _id: string; plateNumber: string; authorizedPerson: any } }>(`${BASE}/authorization/move`, body);
-export const endLTOrder = (id: string, body: any) => api.post<{ order: LTOrder }>(`${BASE}/orders/${id}/end`, body);
+}) => api.post<{ vehicle: { _id: string; plateNumber: string; authorizedPerson: any } }>(`/api/light-transport/authorization/move`, body);
+export const endLTOrder = (id: string, body: any) => api.post<{ order: LTOrder }>(`/api/light-transport/orders/${id}/end`, body);
 
 // ── العرض ───────────────────────────────────────────────────────────────────
 export const fmtDate = (d?: string | null) => (d ? new Date(d).toISOString().slice(0, 10) : '');

@@ -181,6 +181,25 @@ exports.submit = async (req, res) => {
     const own = await assertOwnsRep(req, repId);
     if (own.error) return res.status(own.error).json({ message: own.message });
 
+    /**
+     * ── ومَن لم يخرج يُسأل: لماذا ────────────────────────────────────────────
+     *
+     * «بدأ الدوام» تشهد له ثلاثُ صور. أمّا «لم يحضر» و«مُنع من الخروج» فليس
+     * لهما شاهدٌ إلّا كلمةُ المشرف — ويومٌ كاملٌ من الدخل يسقط بضغطةٍ واحدةٍ لا
+     * يُعرَف سببُها. ثمّ يُسأل بعد أسبوع «إيه اللي حصل يوم كذا؟» فلا جواب.
+     *
+     * فالملاحظةُ شرطٌ لهما: مرضَ، أو عطلت دبّابُه، أو مُنع لأنّ كارتَ تشغيله
+     * منتهٍ. سطرٌ واحدٌ يُكتب مرّةً ويُقرأ في كلّ مراجعة.
+     */
+    if (outcome !== 'started' && !String(req.body.notes || '').trim()) {
+      return res.status(400).json({
+        code: 'NOTE_REQUIRED',
+        message: outcome === 'absent'
+          ? 'اكتب سببَ عدم الحضور — «لم يحضر» بلا سببٍ لا يُراجَع'
+          : 'اكتب سببَ المنع من الخروج — «مُنع» بلا سببٍ لا يُراجَع',
+      });
+    }
+
     const dateKey = validKey(req.body.date) && canSeeAll(req.user) ? req.body.date : dayKeyOf();
     const { year, month, day, date } = partsOf(dateKey);
 

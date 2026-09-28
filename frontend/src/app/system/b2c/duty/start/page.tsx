@@ -244,7 +244,16 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
   const PHOTO_KINDS = adDay ? [...REQUIRED_KINDS, AD_KIND] : REQUIRED_KINDS;
   // المطلوبُ للحفظ هو الثلاثةُ وحدَها — والإعلانيّ زيادةٌ لا شرط.
   const lacking = REQUIRED_KINDS.filter((k) => !countOf(k.key));
-  const canSave = !needsPhoto || !lacking.length;
+  /**
+   * ── ومَن لم يخرج يُسأل: لماذا ─────────────────────────────────────────────
+   * «بدأ الدوام» تشهد له ثلاثُ صور. و«لم يحضر»/«مُنع من الخروج» ليس لهما شاهدٌ
+   * إلّا كلمةُ المشرف — ويومُ دخلٍ كاملٌ يسقط بضغطةٍ لا يُعرَف سببُها، ثمّ يُسأل
+   * عنه بعد أسبوعٍ فلا جواب. فالسببُ شرطٌ لهما.
+   * والخادمُ يردّ كذلك (`NOTE_REQUIRED`) — وهذا منعٌ قبل الرحلة لا بدلٌ عنه.
+   */
+  const needsNote = outcome !== 'started';
+  const noteMissing = needsNote && !notes.trim();
+  const canSave = (needsPhoto ? !lacking.length : true) && !noteMissing;
 
   const save = async () => {
     setSaving(true);
@@ -434,8 +443,23 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
                'No vehicle recorded for him in the register — type the plate, and record it there so it is not typed daily.')}
           </p>
         )}
-        <textarea className={`${inp} mt-2`} rows={2} placeholder={t('ملاحظات (اختياري)', 'Notes (optional)')}
+        <textarea
+          className={`${inp} mt-2 ${noteMissing ? 'border-amber-400 bg-amber-50/60' : ''}`}
+          rows={needsNote ? 3 : 2}
+          placeholder={needsNote
+            ? (outcome === 'absent'
+              ? t('سبب عدم الحضور — مطلوب', 'Reason for the absence — required')
+              : t('سبب المنع من الخروج — مطلوب', 'Reason he was blocked — required'))
+            : t('ملاحظات (اختياري)', 'Notes (optional)')}
           value={notes} onChange={(e) => setNotes(e.target.value)} />
+        {noteMissing && (
+          <p className="mt-1 flex items-center gap-1 text-[11.5px] font-semibold text-amber-700">
+            <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
+            {outcome === 'absent'
+              ? t('اكتب سبب عدم الحضور — يُقرأ في المراجعة بعد أسبوع.', 'Write why he was absent — it is read back on review.')
+              : t('اكتب سبب المنع من الخروج — يُقرأ في المراجعة بعد أسبوع.', 'Write why he was blocked — it is read back on review.')}
+          </p>
+        )}
 
         {preview && <PhotoViewer shot={preview} ar={ar} onClose={() => setPreview(null)} />}
 
@@ -453,8 +477,13 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
             {t('حفظ التفقّد', 'Save check')}
           </button>
         </div>
+        {/* وسببُ المنعِ من الحفظ يُقال باسمه: «ناقص: صورة البوكس» أو «ناقص:
+            السبب» — لا زرٌّ باهتٌ بلا تفسير. */}
         {!canSave && (
-          <p className="mt-1 text-end text-[11px] text-red-600">{t(`ناقص: ${lacking.map((k) => k.ar).join('، ')}`, `Missing: ${lacking.map((k) => k.en).join(', ')}`)}</p>
+          <p className="mt-1 text-end text-[11px] text-red-600">
+            {t(`ناقص: ${[...(needsPhoto ? lacking.map((k) => k.ar) : []), ...(noteMissing ? ['السبب'] : [])].join('، ')}`,
+               `Missing: ${[...(needsPhoto ? lacking.map((k) => k.en) : []), ...(noteMissing ? ['the reason'] : [])].join(', ')}`)}
+          </p>
         )}
       </div>
     </div>

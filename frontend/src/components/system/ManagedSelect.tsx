@@ -11,6 +11,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Plus, Check, X, Loader2 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
+import { SearchableSelect } from '@/components/hr/HRKit';
 
 export interface LookupItem {
   _id: string;
@@ -64,6 +65,7 @@ export default function ManagedSelect({
   required,
   disabled,
   storeLabel,
+  strict,
   noAdd,
   className,
 }: {
@@ -92,6 +94,8 @@ export default function ManagedSelect({
    * عربيًّا، لكنّه لا يأتي إلّا من القائمة — فلا تصير «مرسيدس» ثلاثَ ماركات.
    */
   storeLabel?: boolean;
+  /** يمنع الكتابةَ الحرّة — حيث تُبنى على القيمة منطقيّاتٌ لا تحتمل نصًّا جديدًا. */
+  strict?: boolean;
   /**
    * مقاسُ الخانة حين تختلف عن الافتراضيّ.
    *
@@ -150,23 +154,34 @@ export default function ManagedSelect({
   // فيُحفَظ الفراغ فوق قيمةٍ صحيحة عند أوّل تعديلٍ لحقلٍ آخر.
   const hasValue = value && items.some((i) => optionValue(i) === value);
 
+  /**
+   * ── ويُبحَث في القائمة ──────────────────────────────────────────────────
+   * بعضُ هذه القوائم يطول: الأقسامُ ثمانيةٌ وعشرون، وشركاتُ التأمين تسع،
+   * والمشاريعُ تكبر. و`<select>` المتصفّح لا بحثَ فيه — فيُفتَح ويُمرَّر بالعين
+   * سطرًا سطرًا، وهو أبطأُ ما في إدخال موظّف. فما زاد على ثمانيةِ خيارات يُفتَح
+   * بصندوق بحث، وما قلّ يبقى قائمةً مباشرةً لأنّ البحثَ فيه زينةٌ تُبطئ.
+   */
   return (
     <div>
-      <select
+      <SearchableSelect
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        required={required}
+        onChange={onChange}
         disabled={disabled}
-        className={className || inputCls}
-      >
-        <option value="">{placeholder || (ar ? 'اختر…' : 'Select…')}</option>
-        {value && !hasValue && <option value={value}>{value}</option>}
-        {items.map((i) => (
-          <option key={i._id} value={optionValue(i)}>
-            {ar ? i.nameAr : i.nameEn}
-          </option>
-        ))}
-      </select>
+        placeholder={placeholder || (ar ? 'اختر…' : 'Select…')}
+        searchPlaceholder={ar ? 'ابحث…' : 'Search…'}
+        options={[
+          // القيمةُ المحفوظةُ التي خرجت من القائمة تبقى خيارًا يتيمًا — حذفُها
+          // من الشاشة يجعل الحقلَ يبدو فارغًا وهو ليس كذلك.
+          ...(value && !hasValue ? [{ value, label: value }] : []),
+          ...items.map((i) => ({ value: optionValue(i), label: (ar ? i.nameAr : i.nameEn) || optionValue(i) })),
+        ]}
+        // ── و«أخرى» تُكتب ولا تُمنَع ──────────────────────────────────────
+        // القائمةُ حصرٌ لما يُكتب لا سجنٌ له: قسمٌ جديدٌ أو حالةٌ لم تُسجَّل بعد
+        // لا تُوقف إدخالَ موظّف. فما لا يوجد يُكتب، ويظهر لمن يُدير القائمة
+        // فيُضيفه إليها. (يُعطَّل بـ`strict` حيث تُبنى على القيمة منطقيّات.)
+        allowCustom={!strict}
+        customHint={(typed) => (ar ? `استعمل «${typed}» (أخرى)` : `Use “${typed}” (other)`)}
+      />
 
       {canManage && !disabled && !noAdd && (
         <div className="mt-1.5">

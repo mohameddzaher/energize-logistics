@@ -26,11 +26,18 @@ const { emitToAll } = require('../websocket/socketManager');
  * فيبثّ الاثنين هنا كذلك، وتُمسَح ذاكراتُ القسم الثلاث لا ذاكرةُ الماستر
  * وحدَها — وإلّا عادت اللوحةُ بأرقامٍ من قبل التعديل لدقيقةٍ كاملة.
  */
+/**
+ * ── تُمحى الذاكرةُ ثمّ يُعلَن ───────────────────────────────────────────────
+ * كان البثُّ يسبق المحو، والمستمعون يعيدون القراءةَ فورَ سماعه — فيقرؤون
+ * الذاكرةَ القديمةَ قبل أن تُمحى، وتبقى الشاشةُ متأخّرةً **تغييرًا واحدًا**:
+ * يُملأ رقمُ الجواز فيبقى الكارتُ يقول «مطلوب»، حتّى يقع تغييرٌ آخرُ فيُظهر
+ * أثرَ الأوّل. راجع [[announce-before-invalidate]].
+ */
 const emit = () => {
-  try { emitToAll('hr:master', {}); } catch (e) {}
-  try { emitToAll('hr:employee', {}); } catch (e) {}
   cache.clear('hrm:');
-  try { cache.clear('hr:employees:'); cache.clear('dash:hr:'); } catch (e) {}
+  try { cache.clear('hr:employees:'); cache.clear('dash:hr:'); } catch (e) { /* */ }
+  try { emitToAll('hr:master', {}); } catch (e) { /* */ }
+  try { emitToAll('hr:employee', {}); } catch (e) { /* */ }
 };
 const filled = (v) => !(v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length));
 const rx = (s) => new RegExp(String(s).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');

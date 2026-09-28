@@ -306,7 +306,13 @@ exports.createEmployee = async (req, res) => {
     applyMarks(employee, req.body.markStatus);
     await employee.save();
     bustEmployeeCaches();
-    await logAudit({ user: req.user._id, action: 'create_employee', entity: 'Employee', entityId: employee._id, changes: { after: { name: fullName(employee) } }, ipAddress: req.ip });
+    // ── ومَن قسمُه النقلُ الخفيف يدخل سجلَّ قسمه ────────────────────────────
+    // الإنسانُ يُسجَّل مرّةً واحدة. وما يُطلَب مرّتين يُنسى مرّةً، فيعمل الرجلُ
+    // شهرًا ولا يظهر في سجلّ قسمه ولا في عهدةٍ ولا سكن. راجع utils/lightTransportSync.
+    const { syncEmployeeToLightTransport } = require('../utils/lightTransportSync');
+    const ltSync = await syncEmployeeToLightTransport(employee, req.user);
+    if (ltSync) { try { emitToAll('lt:updated', {}); } catch (e) { /* */ } }
+    await logAudit({ user: req.user._id, action: 'create_employee', entity: 'Employee', entityId: employee._id, changes: { after: { name: fullName(employee), ...(ltSync ? { lightTransport: ltSync } : {}) } }, ipAddress: req.ip });
     try { emitToUser(String(req.user._id), 'hr:employee', { id: String(employee._id) }); } catch (e) {}
     await notifyHR({ title: 'New employee added', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
     res.status(201).json({ employee });
@@ -373,6 +379,15 @@ exports.updateEmployee = async (req, res) => {
       try { await require('../utils/driverCardSync').pushEmployeeToCard(employee, { userId: req.user?._id, emit: false }); } catch (e) { console.error('HR profile → driver card:', e.message); }
     }
     bustEmployeeCaches();
+    // ونقلُه إلى قسم النقل الخفيف يُدخله سجلَّ ذلك القسم — كما عند الإنشاء.
+    // ولا يُخرِجه نقلُه عنه: إخراجٌ تلقائيٌّ يمحو مشروعَه وسكنَه وتاريخَ نقله
+    // لتغييرِ خانةٍ في ملفٍّ آخر. راجع utils/lightTransportSync.
+    if (after.department !== undefined) {
+      const { syncEmployeeToLightTransport } = require('../utils/lightTransportSync');
+      if (await syncEmployeeToLightTransport(employee, req.user)) {
+        try { emitToAll('lt:updated', {}); } catch (e) { /* */ }
+      }
+    }
     if (Object.keys(after).length) {
       await logAudit({ user: req.user._id, action: 'update_employee', entity: 'Employee', entityId: employee._id, changes: { before, after }, ipAddress: req.ip });
     }

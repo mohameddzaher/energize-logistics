@@ -162,8 +162,13 @@ function HrMasterInner() {
           onClick={() => drill({ employment: 'active' })} />
         <Big label={t('ليس على رأس العمل', 'Not active')} value={d.totals.notActive} c="#94a3b8"
           onClick={() => drill({ employment: 'inactive' })} />
+        {/* ── ويفتح الناقصَ كلَّه لا ناقصَ مجموعةٍ واحدة ────────────────────
+            الرقمُ يُجمَع من المجموعات كلِّها — خمسةَ عشرَ في الجواز وخمسةٌ في
+            الإقامة وخمسةٌ في العقد وواحدٌ في الاتصال — وكان الضغطُ يفتح مجموعةَ
+            «الهوية» وحدَها وفيها صفر. فتُقرأ الشاشةُ فارغةً ويُظنّ الرقمُ كذبًا
+            وهو صحيح. و«المطلوب» مجموعةٌ تجمعها (راجع REQUIRED_GROUP). */}
         <Big label={t('بيانات مطلوبة', 'Required fields')} value={d.totals.required} c="#dc2626"
-          onClick={() => open('identity', { status: 'required' })} />
+          onClick={() => open('required', { status: 'required' })} />
         <Big label={t('ينتهي قريبًا', 'Expiring soon')} value={d.totals.expiringSoon} c="#ea580c"
           onClick={() => router.push('/system/hr/master/expiring')} />
         <Big label={t('مسجّل بالتأمينات', 'GOSI registered')} value={d.totals.gosiRegistered} c="#0ea5e9"

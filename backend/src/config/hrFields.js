@@ -210,7 +210,36 @@ const GROUP_KEYS = GROUPS.map((g) => g.key);
  * يعمل أمس، ولا شيء في الشاشة يقول لفاتحه إلى أين ذهبت صفحته.
  */
 const GROUP_ALIASES = { gosi: 'socialInsurance' };
-const getGroup = (key) => GROUPS.find((g) => g.key === (GROUP_ALIASES[key] || key)) || null;
+/**
+ * ── «المطلوب»: مجموعةٌ افتراضيّةٌ تجمع النقصَ كلَّه ──────────────────────────
+ * كارتُ «بيانات مطلوبة» في اللوحة يعدّ الناقصَ عبر المجموعات كلِّها — ستّةٌ
+ * وعشرون: خمسةَ عشرَ في الجواز، وخمسةٌ في الإقامة، وخمسةٌ في العقد، وواحدٌ في
+ * الاتصال. وكان الضغطُ عليه يفتح مجموعةَ «الهوية» وحدَها، وفيها صفر — فتُقرأ
+ * الشاشةُ فارغةً ويُظنّ الرقمُ كذبًا وهو صحيح.
+ *
+ * فهذه مجموعةٌ لا وجودَ لها في المخطَّط: حقولُها كلُّ حقلٍ في النظام يقبل
+ * «مطلوب». تُفتَح فتُرى الستّةُ والعشرون في مكانٍ واحد، ومعها اسمُ ما ينقص كلَّ
+ * موظّف — وهو ما يُبدأ منه العمل.
+ */
+const REQUIRED_GROUP = {
+  key: 'required',
+  ar: 'البيانات المطلوبة',
+  en: 'Required fields',
+  icon: 'alert',
+  virtual: true,
+  // كلُّ الحقول، بلا تكرارٍ للمفتاح الواحد بين مجموعتين.
+  get fields() {
+    const seen = new Set();
+    return GROUPS.flatMap((g) => g.fields.map((f) => ({ ...f, groupAr: g.ar, groupKey: g.key })))
+      .filter((f) => (seen.has(f.key) ? false : seen.add(f.key)));
+  },
+};
+
+const getGroup = (key) => {
+  const k = GROUP_ALIASES[key] || key;
+  if (k === 'required') return REQUIRED_GROUP;
+  return GROUPS.find((g) => g.key === k) || null;
+};
 const DOCUMENT_GROUPS = GROUPS.filter((g) => g.document);
 const ALL_FIELDS = GROUPS.flatMap((g) => g.fields.map((f) => ({ ...f, group: g.key, groupAr: g.ar })));
 const getField = (key) => ALL_FIELDS.find((f) => f.key === key) || null;
@@ -296,7 +325,7 @@ const searchKeysOf = (key) => {
 };
 
 module.exports = {
-  GROUPS, GROUP_KEYS, GROUP_ALIASES, getGroup, DOCUMENT_GROUPS, ALL_FIELDS, getField, statusKeyOf,
+  GROUPS, GROUP_KEYS, GROUP_ALIASES, getGroup, DOCUMENT_GROUPS, REQUIRED_GROUP, ALL_FIELDS, getField, statusKeyOf,
   STATUS_LABELS, statusLabel, STATE_LABELS, daysLeft, stateOf,
   valueOf, writeKeyOf, searchKeysOf, READ_DEPS,
 };

@@ -156,6 +156,85 @@ const REGISTRY = [
   // ── قوائمُ الموارد البشريّة ────────────────────────────────────────────────
   // ما كان يُكتب بالحرّيّة في خانةٍ نصّيّة فيصير في القاعدة عشرَ صيغٍ للشيء
   // الواحد («سائق»، «سائق شاحنة»، «سايق») — فلا يُفلتَر ولا يُعدّ.
+  /**
+   * ── قسمُ الموظّف: قائمةٌ لا خانةٌ حرّة ──────────────────────────────────────
+   * كانت تُكتب حرًّا، فصار في ملفّات الموظّفين ثمانيةٌ وعشرون «قسمًا»: «مؤامة»
+   * و«مواءمة» للشيء الواحد، و«B2C» و«b2c» و«ادارة B2C» ثلاثةً، وواحدٌ اسمُه
+   * «سامح» — وهو اسمُ رجلٍ لا قسم. فلا يُفلتَر القسمُ ولا يُعَدّ، ويُقرأ الملاكُ
+   * موزَّعًا على أقسامٍ لا وجودَ لها.
+   *
+   * والبذورُ أقسامُ النظام نفسُها (config/sections.js) — هي التي تُبنى عليها
+   * الصلاحيّاتُ والشاشات — ومعها ما يعمل فعلًا في الشركة ممّا ليس قسمًا في
+   * النظام. و«أخرى» تبقى ممكنةً بالكتابة: قائمةٌ تمنع الإدخالَ تُعطَّل لا تُتَّبع.
+   */
+  {
+    type: 'hr_department',
+    module: 'hr',
+    nameEn: 'Departments',
+    nameAr: 'الأقسام',
+    roles: ['hr_manager', 'hr_specialist'],
+    storeLabel: true,
+    seed: [
+      { key: 'operations', nameEn: 'Operations', nameAr: 'التشغيل' },
+      { key: 'collections', nameEn: 'Collections', nameAr: 'التحصيل' },
+      { key: 'heavy_transport', nameEn: 'Heavy Transport', nameAr: 'النقل الثقيل' },
+      // النقلُ الخفيف هو قطاعُ الأفراد نفسُه — مَن يُسجَّل فيه يدخل سجلَّ القسم.
+      { key: 'light_transport', nameEn: 'Light Transport (B2C)', nameAr: 'النقل الخفيف' },
+      { key: 'customs', nameEn: 'Customs', nameAr: 'التخليص الجمركي' },
+      { key: 'fleet', nameEn: 'Fleet Management', nameAr: 'إدارة الأسطول' },
+      { key: 'vehicles', nameEn: 'Vehicles', nameAr: 'المركبات والتفاويض' },
+      { key: 'maintenance', nameEn: 'Maintenance', nameAr: 'الصيانة' },
+      { key: 'hr', nameEn: 'Human Resources', nameAr: 'الموارد البشرية' },
+      { key: 'finance', nameEn: 'Finance', nameAr: 'الإدارة المالية' },
+      { key: 'accounting', nameEn: 'Accounting', nameAr: 'الحسابات' },
+      { key: 'procurement', nameEn: 'Procurement', nameAr: 'المشتريات' },
+      { key: 'crm', nameEn: 'CRM', nameAr: 'إدارة العلاقات' },
+      { key: 'sales', nameEn: 'Sales', nameAr: 'المبيعات' },
+      { key: 'marketing', nameEn: 'Marketing', nameAr: 'التسويق' },
+      { key: 'bd', nameEn: 'Business Development', nameAr: 'تطوير الأعمال' },
+      { key: 'it', nameEn: 'Software & IT', nameAr: 'تقنية المعلومات' },
+      { key: 'administration', nameEn: 'Administration', nameAr: 'الشؤون الإدارية' },
+      { key: 'contracts', nameEn: 'Contracts', nameAr: 'إدارة العقود' },
+      { key: 'location_solutions', nameEn: 'Location Solutions', nameAr: 'لوكيشن سوليوشن' },
+      { key: 'remote', nameEn: 'Remote Work', nameAr: 'العمل عن بُعد' },
+      { key: 'workshop', nameEn: 'Workshop', nameAr: 'الورشة' },
+      // ما يعمل فعلًا وليس قسمًا في النظام — مكتوبٌ في الملفّات ويُبقى عليه.
+      { key: 'saudization', nameEn: 'Saudization', nameAr: 'سعودة' },
+      { key: 'alignment', nameEn: 'Alignment', nameAr: 'مواءمة' },
+      { key: 'management', nameEn: 'Executive Management', nameAr: 'الإدارة العليا' },
+    ],
+  },
+  // ── وبقيّةُ خانات ملفّ الموظّف ذاتِ الاختيارات المحدودة ────────────────────
+  // «Saudi Arabia» و«السعودية» جنسيّةٌ واحدةٌ في خانتين، و«لايوجد» و«غير مطلوب»
+  // تصنيفان لشيءٍ واحد. والبذورُ ما هو مكتوبٌ فعلًا في الملفّات — لا قائمةٌ
+  // مُتخيَّلة — فما في الشاشة هو ما في السجلّ من أوّل يوم.
+  {
+    type: 'hr_nationality',
+    module: 'hr', nameEn: 'Nationalities', nameAr: 'الجنسيات',
+    roles: ['hr_manager', 'hr_specialist'], storeLabel: true,
+    seed: ['السعودية', 'مصر', 'باكستان', 'بنجلاديش', 'الهند', 'اليمن', 'السودان', 'سوريا', 'الأردن', 'الفلبين', 'نيبال', 'سريلانكا']
+      .map((n, i) => ({ key: `nat_${i}`, nameEn: n, nameAr: n })),
+  },
+  {
+    type: 'hr_iqama_profession',
+    module: 'hr', nameEn: 'Iqama Professions', nameAr: 'المهنة في الإقامة',
+    roles: ['hr_manager', 'hr_specialist'], storeLabel: true,
+    seed: ['سائق دراجة نارية', 'عامل دراجة نقل', 'عامل تحميل وتنزيل', 'سائق شاحنة ثقيلة', 'سائق', 'فني', 'محاسب', 'مشرف', 'عامل نظافة', 'غير مطلوب']
+      .map((n, i) => ({ key: `prof_${i}`, nameEn: n, nameAr: n })),
+  },
+  {
+    type: 'hr_classification',
+    module: 'hr', nameEn: 'Classifications', nameAr: 'التصنيف',
+    roles: ['hr_manager', 'hr_specialist'], storeLabel: true,
+    seed: ['A', 'B', 'C', 'E1', 'لا يوجد'].map((n, i) => ({ key: `cls_${i}`, nameEn: n, nameAr: n })),
+  },
+  {
+    type: 'hr_work_location',
+    module: 'hr', nameEn: 'Work Locations', nameAr: 'مواقع العمل',
+    roles: ['hr_manager', 'hr_specialist'], storeLabel: true,
+    seed: ['جدة', 'مكة المكرمة', 'الرياض', 'الدمام', 'جازان', 'ينبع', 'أبها', 'المدينة المنورة']
+      .map((n, i) => ({ key: `loc_${i}`, nameEn: n, nameAr: n })),
+  },
   {
     type: 'hr_job_title',
     module: 'hr',

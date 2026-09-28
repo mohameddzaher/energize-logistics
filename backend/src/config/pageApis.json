@@ -1190,7 +1190,6 @@
     },
     "/system/b2c/dashboard": {
       "apis": [
-        "/api/light-transport",
         "/api/light-transport/overview"
       ],
       "wildcard": false
@@ -1253,9 +1252,7 @@
       "wildcard": false
     },
     "/system/b2c/orders": {
-      "apis": [
-        "/api/light-transport"
-      ],
+      "apis": [],
       "wildcard": false
     },
     "/system/b2c/projects": {
@@ -1274,7 +1271,6 @@
     },
     "/system/b2c/settings": {
       "apis": [
-        "/api/light-transport",
         "/api/lookups/types"
       ],
       "wildcard": false

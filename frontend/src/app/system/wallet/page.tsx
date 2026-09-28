@@ -140,6 +140,20 @@ export default function WalletPage() {
   // الخادمُ في `superAdminPowers`. وهي التي تُظهر زرَّ فتح اليوم وأزرارَ التعديل.
   const isSuperAdmin = user?.role === 'super_admin' || !!(user as any)?.superAdminPowers;
   const isOpsManager = user?.role === 'operations_manager';
+  /**
+   * ── ومَن يكتب في يومٍ أُقفل ──────────────────────────────────────────────
+   *
+   * الإقفالُ عَدٌّ للنقد وتثبيتٌ لرصيدٍ يُنقَل إلى الغد، وفرقُ عدٍّ يُعلَّل. فقيدٌ
+   * يُضاف إلى يومٍ أُقفل يُعيد حسابَ رصيده ورصيدِ كلِّ يومٍ بعده، ويجعل الفرقَ
+   * المُعلَّل رقمًا لا يوافق ما عُدّ في الخزنة.
+   *
+   * وكانت الأزرارُ تُعرَض على `isManager` — وفيه موظّفُ العمليّات، وهو أكثرُ من
+   * يسجّل. فمن أراد الكتابةَ في يومٍ أُقفل يطلب إعادةَ فتحه، وإعادةُ الفتح
+   * لمدير النظام. والخادمُ هو المانعُ (`mayWriteIntoClosedDay`) وهذا إخفاءٌ
+   * لا يُغني عنه.
+   */
+  const canWriteClosedDay = ['super_admin', 'admin', 'operations_manager'].includes(user?.role || '')
+    || !!(user as any)?.superAdminPowers;
   // ── ومَن لا يُقفَل على فرعٍ يختار الفرعَ الذي ينظر فيه ────────────────────
   // كان الشرطُ «سوبر أدمن أو مدير عمليات» — قائمةٌ موجبةٌ تُنسى كلَّما دخل
   // دورٌ جديد. فالمحاسبُ يفتح الصفحةَ فيقع على مسار «استعمل فرعَ حسابك»،
@@ -1082,7 +1096,7 @@ export default function WalletPage() {
       {/* Action Buttons */}
       {!isReadOnly && (
         <div className="flex flex-wrap gap-2">
-          {(!wallet.isClosed || isManager) && (
+          {(!wallet.isClosed || canWriteClosedDay) && (
             <>
               <button type="button" onClick={() => openTxModal('collection')}
                 className="flex items-center gap-2 px-4 py-2 bg-green-500/20 text-green-600 rounded-lg text-sm font-medium hover:bg-green-500/30 transition-colors border border-green-500/30">
@@ -1105,6 +1119,16 @@ export default function WalletPage() {
                 <Receipt className="w-4 h-4" /> {typeLabel('tax_invoice')}
               </button>
             </>
+          )}
+          {/* ولا يُترَك الفراغُ بلا تفسير: من أقفل يومَه يجب أن يعرف لماذا
+              اختفت الأزرار وما الطريق. */}
+          {wallet.isClosed && !canWriteClosedDay && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[12.5px]">
+              <Lock className="w-4 h-4 shrink-0" />
+              {ar
+                ? 'اليوم مُقفل — لا تُسجَّل فيه حركة. اطلب من مدير النظام إعادة فتحه إن كان هناك قيدٌ ناقص.'
+                : 'The day is closed — no entries can be recorded. Ask a system administrator to reopen it.'}
+            </div>
           )}
           {!wallet.isClosed && (
             <button type="button" onClick={() => { setCloseForm({ actualCash: '', differenceReason: '', differenceNotes: '' }); setShowCloseModal(true); }}

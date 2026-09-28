@@ -325,6 +325,28 @@ exports.getDailyWallet = async (req, res) => {
 };
 
 // ─── ADD TRANSACTION ─────────────────────────────────────────
+/**
+ * ── ومَن يكتب في يومٍ أُقفل ────────────────────────────────────────────────
+ *
+ * الإقفالُ ليس زرًّا في شاشة: يُعَدُّ النقدُ ويُثبَّت رصيدُ اليوم ويُنقَل إلى
+ * الغد، ويُحسَب فرقُ العدّ ويُعلَّل. وكلُّ قيدٍ يُدَسُّ في ذلك اليوم بعد إقفاله
+ * يُعيد حسابَ رصيده ورصيدِ كلِّ يومٍ بعده، ويجعل فرقَ العدّ المُعلَّل رقمًا لا
+ * يوافق ما عُدّ في الخزنة.
+ *
+ * وكان الشرطُ مكتوبًا «للمديرين وحدَهم» في التعليق، وفي القائمة **موظّفُ
+ * العمليّات** — وهو أكثرُ من يسجّل. فكان الأثرُ أنّ يومًا أُقفل بالأمس تُضاف
+ * إليه حركاتٌ اليوم فيتغيّر رصيدُه وحدَه، ولا يعلم من أقفله. وقد وقع: خمسُ
+ * مشترياتٍ بتاريخ ٢٧ سبتمبر كُتبت في ٢٨ والدفترُ مقفل.
+ *
+ * فمن أراد أن يكتب في يومٍ أُقفل يطلب إعادةَ فتحه — وإعادةُ الفتح لمدير النظام
+ * (راجع `maySettle`)، ويُقفَل بعدها بعدٍّ جديد. وهذا هو المقصودُ من الإقفال.
+ */
+const mayWriteIntoClosedDay = (role) => ['super_admin', 'admin', 'operations_manager'].includes(role);
+const denyClosedDay = (res) => res.status(400).json({
+  code: 'DAY_CLOSED',
+  message: 'اليومُ مُقفل — لا يُكتب فيه إلّا بعد إعادة فتحه، وإعادةُ الفتح لمدير النظام.',
+});
+
 exports.addTransaction = async (req, res) => {
   try {
     const {
@@ -387,11 +409,8 @@ exports.addTransaction = async (req, res) => {
 
     // Check if day is closed (only managers can add to closed days)
     const wallet = await getOrCreateWallet(txBranch, txDate);
-    const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(req.user.role);
-
-    if (wallet.isClosed && !isManager) {
-      return res.status(400).json({ message: 'Day is closed. Contact manager to reopen.' });
-    }
+    // يومٌ أُقفل لا يُكتب فيه — راجع `mayWriteIntoClosedDay`.
+    if (wallet.isClosed && !mayWriteIntoClosedDay(req.user.role)) return denyClosedDay(res);
 
     // ── التحصيلُ يُقيَّد على الطرف، لا على فاتورة ──────────────────────────
     // كان رقمُ كشف التخريج يُبحَث به عن سجلّ عميلٍ ثمّ عن فاتورةٍ في ورك فلو
@@ -742,11 +761,7 @@ exports.deleteTransaction = async (req, res) => {
     // ولا تُمَسّ حركةٌ سابقةٌ للبداية ولو بقيت واحدةٌ في القاعدة: تعديلُها
     // يُعيد حساب سلسلةِ أرصدةٍ انتهت، وحذفُها يُحرّك رصيدَ أوّلِ سبتمبر المُقَرّ.
     if (denyOutsideBook(res, transaction.date, req.user)) return;
-    const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(req.user.role);
-
-    if (wallet && wallet.isClosed && !isManager) {
-      return res.status(400).json({ message: 'Day is closed' });
-    }
+    if (wallet && wallet.isClosed && !mayWriteIntoClosedDay(req.user.role)) return denyClosedDay(res);
 
     // ── ولا عكسَ لأثرٍ لم يعد يُكتب ────────────────────────────────────────
     // كان حذفُ التحصيل يعكس رصيدَ عميلٍ وفاتورةً في ورك فلو زال. والحركةُ
@@ -817,11 +832,7 @@ exports.updateTransaction = async (req, res) => {
     // ولا تُمَسّ حركةٌ سابقةٌ للبداية ولو بقيت واحدةٌ في القاعدة: تعديلُها
     // يُعيد حساب سلسلةِ أرصدةٍ انتهت، وحذفُها يُحرّك رصيدَ أوّلِ سبتمبر المُقَرّ.
     if (denyOutsideBook(res, transaction.date, req.user)) return;
-    const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(req.user.role);
-
-    if (wallet && wallet.isClosed && !isManager) {
-      return res.status(400).json({ message: 'Day is closed' });
-    }
+    if (wallet && wallet.isClosed && !mayWriteIntoClosedDay(req.user.role)) return denyClosedDay(res);
 
     const {
       amount, customer, invoice, deliveryStatementNumber, vendor, driver,

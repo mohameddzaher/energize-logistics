@@ -18,6 +18,7 @@ import { IdCard, Plus, Pencil, Trash2, RotateCcw, Phone } from 'lucide-react';
 import { LEAD, LEAD_CELL } from '@/components/vehicles/stickyLead';
 import { flexNormalize } from '@/lib/flexMatch';
 import ScrollX from '@/components/system/ScrollX';
+import ManagedSelect from '@/components/system/ManagedSelect';
 
 interface Card {
   /** يُشتقّ في الخادم: رقمٌ حقيقيٌّ في الخانة — لا كلمةٌ ولا فراغ. */
@@ -25,6 +26,8 @@ interface Card {
   _id: string; idNumber: string; name?: string; dateOfBirth?: string; absherPhone?: string;
   logisticRegister?: string; cardNumber?: string; cardType?: string; expiryDate?: string;
   notes?: string; isActive?: boolean; daysLeft: number | null; state: string;
+  /** نوعُ النقل المكتوبُ في البطاقة — يغلب المشتقَّ من مركباته. */
+  transportTypeAr?: string;
   /** يُشتقّ في الخادم من نوع تسجيل المركبات المفوَّضة له — لا يُكتب في البطاقة. */
   vehicleClass?: 'heavy' | 'light' | 'motorcycle' | 'none'; vehicleClassAr?: string; vehicleClassEn?: string;
   employee?: { _id: string; employeeNumber?: string; arabicName?: string; firstName?: string; lastName?: string; employmentStatus?: string } | null;
@@ -105,7 +108,7 @@ const GETTERS: Record<string, (c: Card) => any> = {
   employee: (c) => (c.employee ? (c.employee.employeeNumber || c.employee.arabicName || '✓') : ''),
 };
 
-const EMPTY: Partial<Card> = { idNumber: '', name: '', absherPhone: '', logisticRegister: '', cardNumber: '', cardType: 'سنوية', expiryDate: '', notes: '' };
+const EMPTY: Partial<Card> = { idNumber: '', name: '', absherPhone: '', logisticRegister: '', cardNumber: '', cardType: 'سنوية', transportTypeAr: '', expiryDate: '', notes: '' };
 
 export default function DriverCardsPage() {
   const { user } = useAuth();
@@ -276,6 +279,10 @@ export default function DriverCardsPage() {
           onClick={() => setFClass(fClass === 'heavy' ? '' : 'heavy')} on={fClass === 'heavy'} />
         <Stat label={t('الدراجات الآلية', 'Motorcycles')} value={totals.motorcycle || 0} accent="text-violet-600"
           onClick={() => setFClass(fClass === 'motorcycle' ? '' : 'motorcycle')} on={fClass === 'motorcycle'} />
+        <Stat label={t('النقل الخفيف / الخاص', 'Light / private')} value={totals.lightVehicle || 0} accent="text-teal-600"
+          onClick={() => setFClass(fClass === 'light' ? '' : 'light')} on={fClass === 'light'} />
+        <Stat label={t('بلا تفويض', 'No authorisation')} value={totals.noVehicle || 0} accent="text-slate-500"
+          onClick={() => setFClass(fClass === 'none' ? '' : 'none')} on={fClass === 'none'} />
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -459,7 +466,16 @@ export default function DriverCardsPage() {
             )}
           </Field>
           <Field label={t('نوع البطاقة', 'Card type')}>
-            <TextInput value={editing?.cardType || ''} onChange={(e) => setEditing((p) => ({ ...p, cardType: e.target.value }))} /></Field>
+            <ManagedSelect storeLabel type="vehicle_driver_card_type" value={editing?.cardType || ''}
+              onChange={(v: string) => setEditing((p) => ({ ...p, cardType: v }))} /></Field>
+          {/* ── ونوعُ النقل يُكتب عند الإنشاء ─────────────────────────────────
+              كان يُشتَقّ من مركبات السائق وحدَها — اشتقاقٌ صحيحٌ لمن بيده مركبة،
+              ولا يقول شيئًا عمّن أُصدرت بطاقتُه ولم يُسنَد إليه بعد: يُقرأ «بلا
+              تفويض» وهو سائقُ نقلٍ ثقيلٍ بالورقة. فالمكتوبُ يغلب، والمشتقُّ يملأ
+              الفارغ. */}
+          <Field label={t('نوع النقل', 'Transport type')}>
+            <ManagedSelect storeLabel type="vehicle_transport_type" value={editing?.transportTypeAr || ''}
+              onChange={(v: string) => setEditing((p) => ({ ...p, transportTypeAr: v }))} /></Field>
           <Field label={t('تاريخ الانتهاء', 'Expiry date')}>
             <TextInput type="date" value={editing?.expiryDate || ''} onChange={(e) => setEditing((p) => ({ ...p, expiryDate: e.target.value }))} /></Field>
           <Field label={t('تاريخ الميلاد', 'Date of birth')}>

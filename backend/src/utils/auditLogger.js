@@ -32,16 +32,38 @@ const logAudit = async ({ user, action, entity, entityId, entityKey, changes, ip
       console.error(`[audit] فعلٌ بلا فاعل: ${action} على ${entity} — لم يُقيَّد`);
       return;
     }
+    /**
+     * ── والاسمُ يُلتقط ولو لم يُمرَّر الكائن ────────────────────────────────
+     * بعضُ النداءات تمرّر `user: req.user` وبعضُها `user: req.user._id` — وكان
+     * الاسمُ يُلتقط من الأوّل وحدَه، فتُكتب قيودٌ بمرجعٍ صحيحٍ واسمٍ فارغ.
+     * والسجلُّ يُقرأ بالاسم لا بالمعرّف: سُئل «مَن أنهى خدمةَ فلان؟» فأظهر
+     * السجلُّ «(غير مسجَّل)» والفاعلُ مسجَّلٌ في الصفّ نفسِه.
+     *
+     * فمتى جاء المعرّفُ وحدَه يُقرأ اسمُه مرّةً — سؤالٌ صغيرٌ لا يقع إلّا حين
+     * ينقص الاسم، ولا يُبطئ نداءً مرّر كائنَه.
+     */
+    let snapName = user && (user.firstName || user.lastName)
+      ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '';
+    let snapEmail = (user && user.email) || '';
+    if (actor && !snapName) {
+      try {
+        const User = require('../models/User');
+        const u = await User.findById(actor).select('firstName lastName email').lean();
+        if (u) {
+          snapName = `${u.firstName || ''} ${u.lastName || ''}`.trim();
+          snapEmail = u.email || '';
+        }
+      } catch (e) { /* القيدُ يُكتب بمرجعه ولو تعذّر الاسم */ }
+    }
+
     const id = isObjectId(entityId) ? entityId : undefined;
     const key = entityKey || (entityId != null && id === undefined ? String(entityId) : '');
     await AuditLog.create({
       user: actor || undefined,
       bySystem: !actor,
       // يُلتقط الاسمُ الآن لا يُقرأ لاحقًا — راجع models/AuditLog.
-      userName: user && (user.firstName || user.lastName)
-        ? `${user.firstName || ''} ${user.lastName || ''}`.trim()
-        : (actor ? '' : 'النظام'),
-      userEmail: (user && user.email) || '',
+      userName: snapName || (actor ? '' : 'النظام'),
+      userEmail: snapEmail,
       action,
       entity,
       entityId: id,

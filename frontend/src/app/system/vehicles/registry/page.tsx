@@ -25,6 +25,11 @@ import { ReqToggle } from '@/components/vehicles/ReqToggle';
 import { LEAD, LEAD_CELL, LEAD_2, useLeadOffset } from '@/components/vehicles/stickyLead';
 import { Car, Plus, Edit, Trash2, BarChart3, CalendarClock, X, Save, ArrowRight, Columns3, Check } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
+// ── وكلُّ تاريخٍ هنا بتقويمين ───────────────────────────────────────────────
+// أوراقُ المرور والفحص تُصدَر بالهجريّ، والموظّفُ يقرأ ما في يده. وكانت الخانةُ
+// ميلاديّةً وحدَها فيحوّل بيده أو بهاتفه ثمّ يكتب — وكلُّ تحويلٍ بيدٍ خطأٌ ينتظر.
+// والمحفوظُ واحدٌ لا اثنان: الميلاديُّ يُخزَّن، والهجريُّ واجهةُ إدخالٍ وقراءة.
+import HijriGregorianField from '@/components/vehicles/HijriGregorianField';
 
 const EDIT_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
 
@@ -519,7 +524,7 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <div><L>{ar ? 'شركة التأمين' : 'Insurer'}</L><ManagedSelect storeLabel type="vehicle_insurance_company" value={f.insurance?.companyAr || ''} onChange={(v) => setSub('insurance', 'companyAr', v)} /></div>
           <div><L>{ar ? 'نوع التغطية' : 'Coverage type'}</L><ManagedSelect storeLabel type="vehicle_coverage_type" value={f.insurance?.coverageTypeAr || ''} onChange={(v) => setSub('insurance', 'coverageTypeAr', v)} /></div>
           <div><L>{ar ? 'رقم الوثيقة' : 'Policy no.'}</L><input className={inp} value={f.insurance?.policyNumber || ''} onChange={(e) => setSub('insurance', 'policyNumber', e.target.value)} /></div>
-          <div><L>{ar ? 'تاريخ انتهاء التأمين' : 'Insurance expiry'}</L><input type="date" className={inp} value={(f.insurance?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('insurance', 'expiryDate', e.target.value || null)} /></div>
+          <div><L>{ar ? 'تاريخ انتهاء التأمين' : 'Insurance expiry'}</L><HijriGregorianField value={(f.insurance?.expiryDate || '').slice(0, 10)} onChange={(v) => setSub('insurance', 'expiryDate', v || null)} ar={ar} inp={inp} /></div>
           <div><L>{ar ? 'قسط التأمين' : 'Premium'}</L><input type="number" className={inp} value={f.insurance?.premiumSar || ''} onChange={(e) => setSub('insurance', 'premiumSar', e.target.value ? Number(e.target.value) : null)} /></div>
           <div><L>{ar ? 'حالة القسط' : 'Premium status'}</L><ManagedSelect storeLabel type="vehicle_premium_status" value={f.insurance?.premiumStatusAr || ''} onChange={(v) => setSub('insurance', 'premiumStatusAr', v)} /></div>
 
@@ -537,10 +542,10 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
               code={f.inspection?.statusCode || ''} onChange={(v) => setSub('inspection', 'statusCode', v)} />
           </div>
           <div><L>{ar ? 'رقم بطاقة التشغيل' : 'Operating card no.'}</L><input className={inp} value={f.operatingCard?.cardNumber || ''} onChange={(e) => setSub('operatingCard', 'cardNumber', e.target.value)} /></div>
-          <div><L>{ar ? 'انتهاء بطاقة التشغيل' : 'Operating card expiry'}</L><input type="date" className={inp} value={(f.operatingCard?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('operatingCard', 'expiryDate', e.target.value || null)} /></div>
-          <div><L>{ar ? 'انتهاء رخصة السير' : 'Licence expiry'}</L><input type="date" className={inp} value={(f.vehicleLicense?.expiryDate || '').slice(0, 10)} onChange={(e) => setGreg('vehicleLicense', e.target.value || null)} /></div>
+          <div><L>{ar ? 'انتهاء بطاقة التشغيل' : 'Operating card expiry'}</L><HijriGregorianField value={(f.operatingCard?.expiryDate || '').slice(0, 10)} onChange={(v) => setSub('operatingCard', 'expiryDate', v || null)} ar={ar} inp={inp} /></div>
+          <div><L>{ar ? 'انتهاء رخصة السير' : 'Licence expiry'}</L><HijriGregorianField value={(f.vehicleLicense?.expiryDate || '').slice(0, 10)} onChange={(v) => setGreg('vehicleLicense', v || null)} ar={ar} inp={inp} /></div>
           <div><L>{ar ? 'حالة الفحص' : 'Inspection status'}</L><ManagedSelect storeLabel type="vehicle_inspection_status" value={f.inspection?.statusAr || ''} onChange={(v) => setSub('inspection', 'statusAr', v)} /></div>
-          <div><L>{ar ? 'انتهاء الفحص' : 'Inspection expiry'}</L><input type="date" className={inp} value={(f.inspection?.expiryDate || '').slice(0, 10)} onChange={(e) => setGreg('inspection', e.target.value || null)} /></div>
+          <div><L>{ar ? 'انتهاء الفحص' : 'Inspection expiry'}</L><HijriGregorianField value={(f.inspection?.expiryDate || '').slice(0, 10)} onChange={(v) => setGreg('inspection', v || null)} ar={ar} inp={inp} /></div>
           {/* ── والهجريُّ المكتوبُ على الورقة يُكتب كما هو ────────────────────
               لا يُحسَب: الورقةُ تحمل تاريخًا هجريًّا مطبوعًا، وهو الحجّة. وحسابُنا
               قد يخالفه بيوم، فيُكتب ما على الورقة ويبقى المحسوبُ للتصدير. */}
@@ -607,7 +612,7 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           {/* حالةُ الجهاز غيرُ حالة الاشتراك: جهازٌ مسروق قد يكون اشتراكه ساريًا،
               واشتراكٌ منتهٍ لا يعني أن الجهاز نُزع. */}
           <div><L>{ar ? 'حالة جهاز GPS' : 'GPS device status'}</L><ManagedSelect storeLabel type="vehicle_gps_device_status" value={f.gps?.deviceStatusAr || ''} onChange={(v) => setSub('gps', 'deviceStatusAr', v)} /></div>
-          <div><L>{ar ? 'انتهاء اشتراك GPS' : 'GPS expiry'}</L><input type="date" className={inp} value={(f.gps?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('gps', 'expiryDate', e.target.value || null)} /></div>
+          <div><L>{ar ? 'انتهاء اشتراك GPS' : 'GPS expiry'}</L><HijriGregorianField value={(f.gps?.expiryDate || '').slice(0, 10)} onChange={(v) => setSub('gps', 'expiryDate', v || null)} ar={ar} inp={inp} /></div>
         </Card>
 
         <Card title={ar ? 'التفويض بالقيادة' : 'Driving authorisation'}
@@ -617,8 +622,8 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <div><L>{ar ? 'الوظيفة' : 'Job title'}</L><ManagedSelect storeLabel type="vehicle_job_title" value={f.authorizedPerson?.jobTitleAr || ''} onChange={(v) => setSub('authorizedPerson', 'jobTitleAr', v)} /></div>
           <div><L>{ar ? 'رقم الإقامة' : 'Iqama number'}</L><input className={inp} value={f.authorizedPerson?.iqamaNumber || ''} onChange={(e) => setSub('authorizedPerson', 'iqamaNumber', e.target.value)} /></div>
           <div><L>{ar ? 'رقم التفويض' : 'Authorisation no.'}</L><input className={inp} value={f.authorizedPerson?.authorizationNumber || ''} onChange={(e) => setSub('authorizedPerson', 'authorizationNumber', e.target.value)} /></div>
-          <div><L>{ar ? 'بداية التفويض' : 'Auth. start'}</L><input type="date" className={inp} value={(f.authorizedPerson?.startDate || '').slice(0, 10)} onChange={(e) => setSub('authorizedPerson', 'startDate', e.target.value || null)} /></div>
-          <div><L>{ar ? 'نهاية التفويض' : 'Auth. expiry'}</L><input type="date" className={inp} value={(f.authorizedPerson?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('authorizedPerson', 'expiryDate', e.target.value || null)} /></div>
+          <div><L>{ar ? 'بداية التفويض' : 'Auth. start'}</L><HijriGregorianField value={(f.authorizedPerson?.startDate || '').slice(0, 10)} onChange={(v) => setSub('authorizedPerson', 'startDate', v || null)} ar={ar} inp={inp} /></div>
+          <div><L>{ar ? 'نهاية التفويض' : 'Auth. expiry'}</L><HijriGregorianField value={(f.authorizedPerson?.expiryDate || '').slice(0, 10)} onChange={(v) => setSub('authorizedPerson', 'expiryDate', v || null)} ar={ar} inp={inp} /></div>
 
         </Card>
 

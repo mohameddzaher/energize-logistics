@@ -42,6 +42,18 @@ const ltList = (type, nameAr, nameEn, seed) => ([{
 }]);
 
 const REGISTRY = [
+  // نوعُ النقل الذي تُخوِّله بطاقةُ السائق — يُكتب عند الإنشاء، والمشتقُّ من
+  // مركباته يملأ الفارغ. راجع `transportTypeAr` في models/DriverCard.
+  // نوعُ بطاقة السائق — كان خانةً حرّة، فكُتبت «سنوية» و«سنويه» و«مطلوب».
+  vehicleList('vehicle_driver_card_type', 'نوع بطاقة السائق', 'Driver Card Types',
+    [{ key: 'annual', nameEn: 'Annual', nameAr: 'سنوية' },
+      { key: 'restricted', nameEn: 'Restricted', nameAr: 'مقيدة' },
+      { key: 'required', nameEn: 'Required (not issued)', nameAr: 'مطلوبة' }]),
+  vehicleList('vehicle_transport_type', 'نوع النقل (بطاقة السائق)', 'Transport Types',
+    [{ key: 'heavy', nameEn: 'Heavy transport', nameAr: 'نقل ثقيل' },
+      { key: 'light', nameEn: 'Light transport', nameAr: 'نقل خفيف' },
+      { key: 'motorcycle', nameEn: 'Motorcycle', nameAr: 'دراجة آلية' },
+      { key: 'private', nameEn: 'Private vehicle', nameAr: 'مركبة خاصة' }]),
   vehicleList('vehicle_coverage_type', 'نوع تغطية التأمين', 'Insurance Coverage Types', vehicleDefaults.coverageTypes),
   vehicleList('vehicle_insurance_company', 'شركات التأمين', 'Insurance Companies', vehicleDefaults.insuranceCompanies),
   vehicleList('vehicle_premium_status', 'حالة قسط التأمين', 'Premium Statuses', vehicleDefaults.premiumStatuses),

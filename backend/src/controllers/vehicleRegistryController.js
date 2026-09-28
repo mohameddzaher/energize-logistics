@@ -2751,8 +2751,80 @@ exports.listClaims = async (req, res) => {
 };
 
 // ── وثائق التأمين على مستوى الشركة ──────────────────────────────────────────
+
+/**
+ * ── إنهاءُ العقد مع الشركة ─────────────────────────────────────────────────
+ * لم يكن للوثيقة إلّا التجديد: تُمدَّد أو تبقى منتهيةً تُنبِّه كلَّ أسبوع. وما
+ * يقع أحيانًا غيرُ ذلك — يُنهى العقدُ ولا يُجدَّد. فتبقى في الانتهاءات تُطالِب
+ * بتجديد شيءٍ أُغلق بقرار، ويُقرأ التنبيهُ إهمالًا وهو قرار.
+ *
+ * فالإنهاءُ فعلٌ يُسجَّل بتاريخه وسببه ويُقيَّد في سجلّ الوثيقة كما يُقيَّد
+ * التجديد — فيُقرأ إلى الوراء متى توقّفت ولماذا. والوثيقةُ تبقى في السجلّ: ما
+ * انتهى يُقرأ، ولا يُمحى.
+ */
+exports.endCorporatePolicy = async (req, res) => {
+  try {
+    const p = await CorporatePolicy.findById(req.params.id);
+    if (!p) return res.status(404).json({ message: 'الوثيقة غير موجودة' });
+    if (p.endedAt) return res.status(400).json({ message: 'العقدُ مُنهًى بالفعل' });
+    const when = req.body.endDate ? new Date(req.body.endDate) : new Date();
+    if (Number.isNaN(when.getTime())) return res.status(400).json({ message: 'تاريخٌ غير صالح' });
+
+    p.endedAt = when;
+    p.endReasonAr = String(req.body.reason || '').trim();
+    p.renewals = p.renewals || [];
+    p.renewals.push({
+      previousExpiry: p.expiryDate,
+      newExpiry: when,
+      note: `إنهاءُ العقد${p.endReasonAr ? ` — ${p.endReasonAr}` : ''}`,
+      byName: [req.user?.firstName, req.user?.lastName].filter(Boolean).join(' '),
+      at: new Date(),
+    });
+    await p.save();
+    logAudit({
+      user: req.user, action: 'end_corporate_policy', entity: 'CorporatePolicy', entityId: p._id,
+      changes: { after: { endedAt: when, reason: p.endReasonAr } }, ipAddress: req.ip,
+    }).catch(() => {});
+    emit('vreg:updated', {});
+    return res.json({ policy: p.toObject() });
+  } catch (e) {
+    console.error('endCorporatePolicy', e);
+    return res.status(500).json({ message: 'تعذّر إنهاء العقد' });
+  }
+};
+
+/** وما أُنهي قد يُستأنَف — فالرجوعُ ممكنٌ ويُقيَّد أيضًا. */
+exports.reopenCorporatePolicy = async (req, res) => {
+  try {
+    const p = await CorporatePolicy.findById(req.params.id);
+    if (!p) return res.status(404).json({ message: 'الوثيقة غير موجودة' });
+    if (!p.endedAt) return res.status(400).json({ message: 'العقدُ سارٍ أصلًا' });
+    p.renewals = p.renewals || [];
+    p.renewals.push({
+      newExpiry: p.expiryDate || new Date(),
+      note: 'أُعيد فتحُ العقد',
+      byName: [req.user?.firstName, req.user?.lastName].filter(Boolean).join(' '),
+      at: new Date(),
+    });
+    p.endedAt = null;
+    p.endReasonAr = '';
+    await p.save();
+    emit('vreg:updated', {});
+    return res.json({ policy: p.toObject() });
+  } catch (e) {
+    return res.status(500).json({ message: 'تعذّر إعادة الفتح' });
+  }
+};
+
 exports.listCorporatePolicies = async (req, res) => {
   try {
+    // ── والصفحةُ كانت تقرأ بطاقاتِ السائقين كلَّها في كلّ فتحة ──────────────
+    // ثلاثُ وثائقَ، ومعها إحدى وستّون بطاقةً تُقرأ لتُحسب تغطيةُ خيانة الأمانة —
+    // فالفتحةُ الباردةُ ثانيةٌ وربع. والبطاقاتُ تتغيّر في اليوم مرّاتٍ معدودة،
+    // فتُخدَم من ذاكرةٍ قصيرةٍ تُمحى مع أيّ كتابةٍ في القسم (راجع `emit`).
+    const ck = `vreg:corp:${JSON.stringify(req.query || {})}`;
+    const hit = cache.get(ck);
+    if (hit !== undefined) return res.json(hit);
     const [rows, cfg] = await Promise.all([
       CorporatePolicy.find({ isActive: true }).sort({ expiryDate: 1 }).lean(),
       getConfig(),
@@ -2769,10 +2841,13 @@ exports.listCorporatePolicies = async (req, res) => {
         .sort({ name: 1 }).lean()
       : [];
 
-    res.json({
+    const body = {
       policies: rows.map((p) => {
         const st = VDOC.stateOf(p.expiryDate, '', cfg.alerts?.corporatePolicy);
-        const out = { ...p, state: st.state, daysRemaining: st.days };
+        // ما أُنهي بقرارٍ لا يُنبَّه عليه: حالتُه «مُنهًى» لا «منتهٍ».
+        const out = p.endedAt
+          ? { ...p, state: 'ended', daysRemaining: null }
+          : { ...p, state: st.state, daysRemaining: st.days };
         // الوثائقُ القديمة بلا موضوعٍ مكتوب: يُستنتج من تسعيرها.
         if (!out.coverageSubject) out.coverageSubject = p.coversDrivers ? 'drivers' : 'other';
         if (out.coverageSubject === 'vehicles') {
@@ -2803,7 +2878,11 @@ exports.listCorporatePolicies = async (req, res) => {
         }
         return out;
       }),
-    });
+    };
+    // ذاكرةٌ قصيرة: الوثائقُ ثلاثٌ والبطاقاتُ إحدى وستّون، وكلاهما نادرُ التغيّر.
+    cache.set(ck, body, 60 * 1000);
+    res.json(body);
+
   } catch (e) { console.error('listCorporatePolicies', e); res.status(500).json({ message: 'تعذّر تحميل وثائق الشركة' }); }
 };
 
@@ -3279,8 +3358,15 @@ exports.listDriverCards = async (req, res) => {
         daysLeft: days,
         state: cardState(days, cfg.alerts?.driverCard),
         authorizations,
-        // ما يقودُه هذا السائق — راجع `driverClass` تحت.
-        ...driverClass(authorizations),
+        // ما يقودُه هذا السائق — المكتوبُ في البطاقة أوّلًا، والمشتقُّ من
+        // مركباته يملأ الفارغ. راجع `driverClass` تحت.
+        ...(() => {
+          const derived = driverClass(authorizations);
+          const written = S(c.transportTypeAr);
+          if (!written) return derived;
+          const code = Object.entries(CLASS_AR).find(([, ar]) => ar === written)?.[0] || derived.vehicleClass;
+          return { vehicleClass: code, vehicleClassAr: written, vehicleClassEn: CLASS_EN[code] || written, vehicleClassSource: 'card' };
+        })(),
         // ولا يُخفى الخلاف: الصفُّ يقول إنّ للسجلّ الأقدم رأيًا آخر، فيُراجَع.
         staleAssignments: fromRegistry.length
           ? fromAssign.filter((a) => !fromRegistry.some((r) => samePlate(r.plateNumber) === samePlate(a.plateNumber)))
@@ -3356,7 +3442,7 @@ exports.listDriverCards = async (req, res) => {
   }
 };
 
-const CARD_FIELDS = ['idNumber', 'employee', 'name', 'dateOfBirth', 'absherPhone',
+const CARD_FIELDS = ['idNumber', 'employee', 'name', 'dateOfBirth', 'absherPhone', 'transportTypeAr',
   'logisticRegister', 'cardNumber', 'cardType', 'expiryDate', 'notes', 'isActive', 'fidelity'];
 
 const pickCard = (body) => {

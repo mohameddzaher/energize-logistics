@@ -653,6 +653,7 @@
     },
     "/system/vehicles/driver-cards": {
       "apis": [
+        "/api/lookups/types",
         "/api/vehicle-registry/driver-cards",
         "/api/vehicles/employees"
       ],

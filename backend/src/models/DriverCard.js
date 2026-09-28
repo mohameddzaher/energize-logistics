@@ -23,6 +23,16 @@ const driverCardSchema = new mongoose.Schema({
   logisticRegister: { type: String, trim: true, default: '', index: true },
   cardNumber: { type: String, trim: true, default: '', index: true },
   cardType: { type: String, trim: true, default: '' },   // سنوية / مقيدة
+  /**
+   * ── نوعُ النقل الذي تُخوِّله هذه البطاقة ────────────────────────────────────
+   * كان يُشتَقّ من نوع تسجيل المركبات المفوَّضة له وحدَه — وهو اشتقاقٌ صحيحٌ لمن
+   * بيده مركبة، لكنّه لا يقول شيئًا عمّن أُصدرت بطاقتُه ولم يُسنَد إليه بعد:
+   * يُنشَأ الصفُّ فيُقرأ «بلا تفويض» وهو سائقُ نقلٍ ثقيلٍ بالورقة.
+   *
+   * فصار يُكتب عند الإنشاء، والمشتقُّ يملأ الفارغَ ولا يغلب المكتوب: ما على
+   * الورقة أصدقُ من استنتاجٍ عن مركبةٍ قد تُبدَّل غدًا.
+   */
+  transportTypeAr: { type: String, trim: true, default: '', index: true },
   expiryDate: { type: String, default: '', index: true }, // YYYY-MM-DD
   notes: { type: String, trim: true, default: '' },
 

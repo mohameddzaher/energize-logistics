@@ -15,6 +15,7 @@ import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ShieldCheck, RefreshCw, X, Check, ArrowRight, Pencil, Plus, Users, Trash2, Search } from 'lucide-react';
 import { stateMeta,
   getCorporatePolicies, renewCorporatePolicy, createCorporatePolicy, updateCorporatePolicy,
+  endCorporatePolicy, reopenCorporatePolicy,
   deleteCorporatePolicy, setPolicyDriver, canEditVehicles, canAdminVehicles,
   STATE_META, stateLabel, money, fmtDate, daysText,
 } from '@/lib/vehicleRegistry';
@@ -24,7 +25,7 @@ export default function CorporatePoliciesPage() {
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
   const router = useRouter();
-  const { notify, confirm } = useDialog();
+  const { notify, confirm, prompt } = useDialog();
   // كان زر التجديد ظاهرًا لكل من يفتح الصفحة، والسيرفر وحده يرفض — فيُقال للمستخدم
   // «ممنوع» بعد أن ملأ النموذج. البوابة نفسها المستعملة في بقية شاشات القسم.
   const { user } = useAuth();
@@ -49,6 +50,24 @@ export default function CorporatePoliciesPage() {
   }, [notify]);
   useEffect(() => { load(); }, [load]);
   useSocket('vreg:updated', useCallback(() => { load(); }, [load]));
+
+  /** إنهاءُ العقد: يُسأل عن السبب فيُقيَّد في سجلّ الوثيقة — لا يُغلَق بصمت. */
+  const endPolicy = useCallback(async (p: any) => {
+    const ok = await confirm({
+      message: t(`يُنهى العقدُ مع «${p.companyAr || p.scopeAr}»؟ لن تعود الوثيقةُ تُطالِب بتجديد.`,
+        `End the contract with "${p.companyAr || p.scopeAr}"? It will stop asking to be renewed.`),
+      tone: 'error', confirmLabel: t('إنهاء', 'End'),
+    });
+    if (!ok) return;
+    const reason = await prompt(t('سبب الإنهاء (اختياري)', 'Reason (optional)'));
+    try { await endCorporatePolicy(p._id, { reason: String(reason || '') }); load(); }
+    catch (e: any) { notify(e?.message || 'Failed', 'error'); }
+  }, [confirm, prompt, notify, load, t]);
+
+  const reopen = useCallback(async (p: any) => {
+    try { await reopenCorporatePolicy(p._id); load(); }
+    catch (e: any) { notify(e?.message || 'Failed', 'error'); }
+  }, [notify, load]);
 
   if (loading) return <Spinner />;
   const chosen = rows.filter((p) => picked.has(p._id));
@@ -213,8 +232,23 @@ export default function CorporatePoliciesPage() {
 
               {canEdit && (
                 <div className="flex items-center gap-2 mt-4">
-                  <button onClick={() => setRenewing(p)}
-                    className="flex-1 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold inline-flex items-center justify-center gap-2">
+                  {/* ── والإنهاءُ فعلٌ غيرُ التجديد ────────────────────────────
+                      لم يكن للوثيقة إلّا التجديد، فما أُنهي بقرارٍ يبقى في
+                      الانتهاءات يُطالِب بتجديد شيءٍ أُغلق — ويُقرأ التنبيهُ
+                      إهمالًا وهو قرار. */}
+                  {p.endedAt ? (
+                    <button onClick={() => reopen(p)}
+                      className="flex-1 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-semibold inline-flex items-center justify-center gap-2">
+                      <RefreshCw className="w-4 h-4" />{t('إعادة فتح العقد', 'Reopen')}
+                    </button>
+                  ) : (
+                  <button onClick={() => endPolicy(p)}
+                    className="py-2 px-3 rounded-lg bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-600 text-sm font-semibold inline-flex items-center justify-center gap-2">
+                    {t('إنهاء العقد', 'End contract')}
+                  </button>
+                  )}
+                  <button onClick={() => setRenewing(p)} disabled={!!p.endedAt}
+                    className="flex-1 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold inline-flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
                     <RefreshCw className="w-4 h-4" />{t('تجديد', 'Renew')}
                   </button>
                   <button onClick={() => setEditing(p)} title={t('تعديل بيانات الوثيقة', 'Edit policy')}

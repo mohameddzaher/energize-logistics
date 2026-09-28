@@ -22,6 +22,7 @@ import {
   createClaim, updateClaim, deleteClaim,
 } from '@/lib/vehicleRegistry';
 import ScrollX from '@/components/system/ScrollX';
+import ClaimAttachments from '@/components/vehicles/ClaimAttachments';
 
 // أعمدةُ جدول الحوادث وقارئُ كلٍّ منها — تعريفٌ واحدٌ للترويسة وللقمع.
 const COL_DEFS: [string, string, string][] = [
@@ -395,6 +396,8 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
   const t = (a: string, e: string) => (ar ? a : e);
   const { notify } = useDialog();
   const isNew = !claim?._id;
+  // المرفقاتُ تُقرأ من الصفّ وتُحدَّث بردّ الخادم — فما يُرفَع يظهر بلا إعادة فتح.
+  const [attachments, setAttachments] = useState<any[]>(claim?.attachments || []);
   const d = (v: any) => (v ? new Date(v).toISOString().slice(0, 10) : '');
   const [f, setF] = useState({
     vehiclePlate: claim?.vehiclePlate || '',
@@ -518,6 +521,17 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
               الشركةُ تردّ مرّاتٍ على المطالبة الواحدة — تطلب مستندًا، ثمّ
               تقدّر، ثمّ تعرض مبلغًا. وكتابةُ الردّ فوق سابقه تمحو تاريخَ
               المفاوضة، وهو ما يُحتَجّ به عند الخلاف. والأحدثُ أوّلًا. */}
+          {/* ── والورقُ يُرفَع من هنا أيضًا ─────────────────────────────────────
+              كان الإرفاقُ في ملفّ الحادثة وحدَه، ومن يفتح التعديلَ ليسجّل تقديرًا
+              يكون التقريرُ في يده في اللحظة نفسِها — فيُغلق النافذةَ ويفتح الملفَّ
+              ليُرفقه، أو يؤجّل فينسى. فهو هنا وهناك، والسجلُّ واحد. */}
+          {!isNew && (
+            <div className="rounded-xl border border-slate-200 p-3">
+              <ClaimAttachments claimId={claim._id} attachments={attachments} canEdit
+                onChange={(c2) => setAttachments(c2?.attachments || [])} />
+            </div>
+          )}
+
           <div className="rounded-xl border border-slate-200 p-3">
             <p className="text-[12.5px] font-bold text-slate-800 mb-2">
               {t('ردود شركة التأمين', 'Insurer replies')}

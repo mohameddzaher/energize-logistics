@@ -417,6 +417,15 @@ export const getCorporatePolicies = () =>
 export const renewCorporatePolicy = (id: string, body: any) =>
   api.post(`/api/vehicle-registry/corporate-policies/${id}/renew`, body);
 
+/**
+ * إنهاءُ العقد مع الشركة — فعلٌ غيرُ التجديد. الوثيقةُ التي أُنهيت لا تبقى
+ * تُطالِب بتجديدٍ في شاشة الانتهاءات، ويُقيَّد الإنهاءُ بتاريخه وسببه في سجلّها.
+ */
+export const endCorporatePolicy = (id: string, body: { endDate?: string; reason?: string }) =>
+  api.post<{ policy: any }>(`/api/vehicle-registry/corporate-policies/${id}/end`, body);
+export const reopenCorporatePolicy = (id: string) =>
+  api.post<{ policy: any }>(`/api/vehicle-registry/corporate-policies/${id}/reopen`, {});
+
 // ── الوثيقةُ تُكتب وتُصحَّح لا تُجدَّد فقط ────────────────────────────────────
 // كانت الصفحةُ تعرض وتجدّد، فأيُّ تصحيحٍ في رقمٍ أو قسطٍ أو شركةِ تأمينٍ يحتاج
 // فتحَ قاعدة البيانات.

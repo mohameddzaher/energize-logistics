@@ -58,12 +58,29 @@ export default function VehicleRegistryDetail() {
   // كان المستند يُرى منتهيًا هنا ثم يُخرَج إلى شاشة عائلته ليُجدَّد — والشاشتان
   // تفتحان النافذة ذاتها. فمن يقف على الملفّ ويرى الأحمر يجدّده من موضعه.
   const [renewing, setRenewing] = useState<RenewTarget | null>(null);
+  // مسوّدةُ الملاحظة — تُزامَن مع ما يصل من الخادم، ويبقى ما يكتبه المستخدمُ
+  // إن كان قد بدأ الكتابة (حدثٌ حيٌّ لا يمحو سطرًا نصفَ مكتوب).
+  const [noteDraft, setNoteDraft] = useState('');
+  const [noteTouched, setNoteTouched] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
 
   const load = useCallback(async () => {
     try { const d = await api.get<{ vehicle: VReg }>(`/api/vehicle-registry/${id}`); setV(d.vehicle); }
     catch { /* keep */ } finally { setLoading(false); }
   }, [id]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!noteTouched) setNoteDraft(v?.notesAr || ''); }, [v?.notesAr, noteTouched]);
+
+  /** تُحفَظ الملاحظةُ وحدَها — لا يُرسَل الملفُّ كلُّه فيُخاطر بخاناتٍ لم تُقرأ. */
+  const saveNote = useCallback(async () => {
+    setSavingNote(true);
+    try {
+      await api.put(`/api/vehicle-registry/${id}`, { notesAr: noteDraft });
+      setNoteTouched(false);
+      await load();
+    } catch (e) { /* الرسالةُ تصل من الحارس العامّ */ }
+    setSavingNote(false);
+  }, [id, noteDraft, load]);
   // كلُّ ما يمسّ المركبة يبثّ هذا الحدث: التعديل، التجديد، الحوادث، الإعدادات.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
 
@@ -412,11 +429,40 @@ export default function VehicleRegistryDetail() {
           </Row>
         </Section>
 
-        {!!v.notesAr && (
-          <Section title={t('ملاحظات', 'Notes')} icon={<FileText className="w-4 h-4" />} accent={NEUTRAL}>
-            <p className="text-[13.5px] text-slate-800 whitespace-pre-wrap leading-relaxed pt-1">{v.notesAr}</p>
-          </Section>
-        )}
+        {/* ── والملاحظةُ تُكتب من هنا، والكارتُ يظهر ولو كانت فارغة ──────────
+            كان يختفي متى خلت الملاحظة، فيُفتَح الملفُّ فلا يُرى للملاحظات موضعٌ
+            أصلًا — ويُظنّ أنّ الميزةَ غيرُ موجودة. وهي تُكتب حيث تُقرأ: مَن
+            يقف على الملفّ ويرى ما يستدعي ملاحظةً يكتبها في موضعها، لا يعود
+            إلى الجدول ويفتح نافذةَ تعديل. */}
+        <Section title={t('ملاحظات', 'Notes')} icon={<FileText className="w-4 h-4" />} accent={NEUTRAL}>
+          {!canEdit ? (
+            <p className="text-[13.5px] text-slate-800 whitespace-pre-wrap leading-relaxed pt-1">
+              {v.notesAr || <span className="text-slate-300">—</span>}
+            </p>
+          ) : (
+            <div className="pt-1 space-y-2">
+              <textarea
+                value={noteDraft}
+                onChange={(e) => { setNoteDraft(e.target.value); setNoteTouched(true); }}
+                rows={3}
+                aria-label={t('ملاحظات المركبة', 'Vehicle notes')}
+                placeholder={t('اكتب ملاحظةً عن هذه المركبة…', 'Write a note about this vehicle…')}
+                className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-[13px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
+              {noteDraft !== (v.notesAr || '') && (
+                <div className="flex items-center gap-2">
+                  <button type="button" disabled={savingNote} onClick={saveNote}
+                    className="px-3 py-1.5 rounded-lg bg-[#f37121] text-white text-[12.5px] font-bold disabled:opacity-50">
+                    {savingNote ? t('يُحفظ…', 'Saving…') : t('حفظ الملاحظة', 'Save note')}
+                  </button>
+                  <button type="button" onClick={() => setNoteDraft(v.notesAr || '')}
+                    className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-[12.5px]">
+                    {t('تراجع', 'Undo')}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </Section>
       </div>
 
       {/* ملفّات المركبة — صورُ ما سبق من مستندات */}

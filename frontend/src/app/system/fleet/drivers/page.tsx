@@ -32,6 +32,10 @@ const DRIVER_COLUMNS = [
   { header: 'IBAN', key: 'iban', width: 30 },
   { header: 'Nationality', key: 'nationality', width: 14 },
   { header: 'Vehicle', key: 'vehicle', transform: (v: any) => (v && typeof v === 'object' ? v.plate : ''), width: 16 },
+  // «السائق الثاني» يُصدَّر أيضًا: من يقرأ الكشف على الورق يسأل عنه كما يسأل
+  // من يقرأ الشاشة.
+  { header: 'Second driver', key: 'mateName', width: 24 },
+  { header: 'Second driver phone', key: 'matePhone', width: 16 },
   { header: 'Working', key: 'working', transform: (v: any) => (v ? 'Yes' : 'No'), width: 10 },
   { header: 'Off reason', key: 'offReason', width: 12 },
   { header: 'Off note', key: 'offNote', width: 24 },
@@ -90,6 +94,25 @@ export default function FleetDriversPage() {
         : (ar ? 'شاغرة' : 'Empty'),
     })),
   ], [vehicles, ar]);
+
+  /**
+   * ── السائقُ الثاني على نفس الشاحنة ────────────────────────────────────────
+   *
+   * المقعدان قاعدةٌ في القسم: الشاحنةُ تحمل سائقَين على الأكثر (الخادمُ يمنع
+   * الثالث). وكانت الصفحةُ تقول «السيّارة» ولا تقول **مع مَن** — فمن يريد
+   * «مين معاه على 2708؟» يبحث باللوحة ويقرأ صفّين ويقابل بينهما بعينه.
+   *
+   * والمقعدُ الآخر يجيء من الخادم مع القائمة (`mate`) لا يُقابَل هنا: فهو
+   * مشتقٌّ من الإسناد الحاضر لا حقلٌ يُكتَب، والهاتفُ يقرأ ما تقرؤه الشاشةُ
+   * حرفيًّا. ويُستدرَك من سجلّ المركبات إن غاب — خادمٌ لم يُحدَّث بعد.
+   */
+  const mateOf = useCallback((d: FleetDriver) => {
+    if (d.mate !== undefined) return d.mate;
+    const vid = vehId(d);
+    if (!vid) return null;
+    const v = vehicles.find((x) => x._id === vid);
+    return (v?.drivers || []).find((x) => String(x._id) !== String(d._id)) || null;
+  }, [vehicles]);
 
   const assignVehicle = async (d: FleetDriver, vehicleId: string) => {
     if (vehicleId === vehId(d)) return;
@@ -171,9 +194,22 @@ export default function FleetDriversPage() {
     if (statusFilter === 'leave' && d.offReason !== 'leave') return false;
     if (assignFilter === 'assigned' && !vehId(d)) return false;
     if (assignFilter === 'unassigned' && vehId(d)) return false;
+    // «مين شغّال لوحده ومين معاه تاني؟» — سؤالٌ يُسأل عند التوزيع.
+    if (assignFilter === 'paired' && !mateOf(d)) return false;
+    if (assignFilter === 'alone' && (!vehId(d) || mateOf(d))) return false;
     const s = foldAr(search.trim());
     if (!s) return true;
-    return [d.name, d.phone, d.iqama, vehPlate(d)].some((v) => foldAr(String(v || '')).includes(s));
+    // والبحثُ باسم الزميل يجد الاثنين معًا: من يكتب اسمَ سائقٍ يريد صفَّه
+    // وصفَّ من يشاركه الشاحنة.
+    return [d.name, d.phone, d.iqama, vehPlate(d), mateOf(d)?.name, mateOf(d)?.phone]
+      .some((v) => foldAr(String(v || '')).includes(s));
+  });
+
+  // صفوفُ التصدير تحمل الزميلَ منسوخًا — ExportMenu يقرأ مفاتيحَ الصفّ لا دوالَّ
+  // الشاشة، فلولا النسخُ لخرج العمودُ فارغًا في الملفّ.
+  const withMate = (rows: FleetDriver[]) => rows.map((d) => {
+    const m = mateOf(d);
+    return { ...d, mateName: m?.name || '', matePhone: m?.phone || '' };
   });
 
   if (loading) return <Spinner />;
@@ -181,17 +217,19 @@ export default function FleetDriversPage() {
   const th = 'text-start font-semibold px-4 py-3 whitespace-nowrap';
   const working = drivers.filter((d) => d.working).length;
   const unassigned = drivers.filter((d) => !vehId(d)).length;
+  // عددُ الشاحنات التي عليها سائقان — الرقمُ الذي يُسأل عنه مع عمود الزميل.
+  const pairedTrucks = vehicles.filter((v) => (v.drivers || []).length >= 2).length;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Users className="w-5 h-5" />} title={ar ? 'السائقون' : 'Drivers'}
         subtitle={ar
-          ? `${drivers.length} سائقاً · ${working} يعملون · ${unassigned} بلا سيارة — نقل السائق إلى سيارة أخرى يتم من الجدول مباشرة`
-          : `${drivers.length} drivers · ${working} working · ${unassigned} unassigned — move a driver between trucks right from the table`}>
+          ? `${drivers.length} سائقاً · ${working} يعملون · ${unassigned} بلا سيارة · ${pairedTrucks} سيارة بسائقين — نقل السائق إلى سيارة أخرى يتم من الجدول مباشرة`
+          : `${drivers.length} drivers · ${working} working · ${unassigned} unassigned · ${pairedTrucks} trucks with two drivers — move a driver between trucks right from the table`}>
         <ExportMenu lang={ar ? 'ar' : 'en'} fileName="fleet-drivers"
           options={[
-            { key: 'view', label: ar ? 'المعروض حسب الفلتر' : 'Filtered view', sheets: [{ name: 'Drivers', rows: filtered as any[], columns: DRIVER_COLUMNS }] },
-            { key: 'all', label: ar ? 'كل السائقين' : 'All drivers', sheets: [{ name: 'Drivers', rows: drivers as any[], columns: DRIVER_COLUMNS }] },
+            { key: 'view', label: ar ? 'المعروض حسب الفلتر' : 'Filtered view', sheets: [{ name: 'Drivers', rows: withMate(filtered) as any[], columns: DRIVER_COLUMNS }] },
+            { key: 'all', label: ar ? 'كل السائقين' : 'All drivers', sheets: [{ name: 'Drivers', rows: withMate(drivers) as any[], columns: DRIVER_COLUMNS }] },
           ]} />
         {editor && <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'إضافة سائق' : 'Add driver'}</PrimaryButton>}
       </PageHeader>
@@ -204,7 +242,7 @@ export default function FleetDriversPage() {
       <div className="flex flex-wrap gap-3 items-center">
         <div className="flex-1 min-w-[240px] basis-72">
           <SearchInput value={search} onChange={setSearch}
-            placeholder={ar ? 'بحث بالاسم أو الجوال أو الإقامة أو اللوحة…' : 'Search name, phone, iqama or plate…'} />
+            placeholder={ar ? 'بحث بالاسم أو الجوال أو الإقامة أو اللوحة أو اسم الزميل…' : 'Search name, phone, iqama, plate or team-mate…'} />
         </div>
         <div className="w-44 grow sm:grow-0">
           <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
@@ -220,6 +258,8 @@ export default function FleetDriversPage() {
             <option value="">{ar ? 'الجميع' : 'All'}</option>
             <option value="assigned">{ar ? 'على سيارة' : 'Assigned'}</option>
             <option value="unassigned">{ar ? 'بلا سيارة' : 'Unassigned'}</option>
+            <option value="paired">{ar ? 'سيارة بسائقين' : 'Sharing a truck'}</option>
+            <option value="alone">{ar ? 'سيارة بسائق واحد' : 'Alone on a truck'}</option>
           </Select>
         </div>
       </div>
@@ -233,6 +273,7 @@ export default function FleetDriversPage() {
             <th className={th}>{ar ? 'الحالة' : 'Status'}</th>
             <th className={th}>{ar ? 'الكفالة' : 'Sponsorship'}</th>
             <th className={th}>{ar ? 'السيارة' : 'Vehicle'}</th>
+            <th className={th}>{ar ? 'السائق الثاني' : 'Second driver'}</th>
             <th className={th}>{ar ? 'إجراءات' : 'Actions'}</th>
           </tr></thead>
           <tbody>
@@ -282,6 +323,25 @@ export default function FleetDriversPage() {
                       : <SmallBadge bg="bg-red-500/15" text="text-red-700" label={ar ? 'بدون سيارة' : 'Unassigned'} />
                   )}
                 </td>
+                {/* المقعدُ الآخر: مَن يشاركه الشاحنة، أو أنّه شاغرٌ ويقبل واحدًا. */}
+                <td className="px-4 py-3 whitespace-nowrap">
+                  {(() => {
+                    if (!vehId(d)) return <span className="text-slate-300">—</span>;
+                    const m = mateOf(d);
+                    if (!m) return <span className="text-[11.5px] text-slate-400">{ar ? 'المقعد الثاني شاغر' : 'Second seat free'}</span>;
+                    return (
+                      <span className="inline-flex flex-col">
+                        <span className="text-slate-800 font-medium flex items-center gap-1.5">
+                          {m.name}
+                          {m.working === false && (
+                            <span className="px-1.5 py-0.5 rounded-full bg-slate-500/15 text-slate-600 text-[10.5px] font-semibold">{ar ? 'لا يعمل' : 'Off'}</span>
+                          )}
+                        </span>
+                        {m.phone ? <span className="text-[11px] text-slate-500 font-mono" dir="ltr">{m.phone}</span> : null}
+                      </span>
+                    );
+                  })()}
+                </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
                     {editor && vehId(d) && (
@@ -298,7 +358,7 @@ export default function FleetDriversPage() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={7} className="text-center text-slate-500 py-12">
+              <tr><td colSpan={8} className="text-center text-slate-500 py-12">
                 {drivers.length === 0
                   ? (ar ? 'لا يوجد سائقون بعد.' : 'No drivers yet.')
                   : (ar ? 'لا نتائج مطابقة للبحث.' : 'No matches.')}

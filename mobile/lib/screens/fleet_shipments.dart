@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
@@ -11,6 +12,12 @@ import '../ui/widgets.dart';
 
 /// شحنات إدارة الأسطول — native: search, status filter chips, and a detail
 /// sheet with the follow-up form (the 3-hour cadence lives on this screen).
+///
+/// ── وبوالصُ كثيرةٌ في ملفٍّ واحد ────────────────────────────────────────────
+/// نفسُ ما على الويب: تُعلَّم حمولاتٌ ثمّ تُطبَع أو تُحفَظ بوالصُها مجتمعةً من
+/// نداءٍ واحدٍ يرسمها في الخادم. والتعليمُ **يعبر البحثَ والفلتر**: الصفُّ
+/// المعلَّم يُحفَظ بكامله في خريطةٍ لا معرّفُه وحدَه، فلا يضيع ما عُلّم حين
+/// تضيق القائمةُ — وهذا بعينه ما انكسر على الويب فخرج الملفُّ ببوليصتين.
 class FleetShipmentsScreen extends StatefulWidget {
   const FleetShipmentsScreen({super.key});
   @override
@@ -38,6 +45,9 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
   String _q = '';
   String _status = '';
   late final void Function() _onLive;
+  /// المعلَّمُ: المعرّف → الصفُّ نفسُه، فيبقى معروفًا ولو غاب عن الشاشة.
+  final Map<String, Map<String, dynamic>> _picked = {};
+  bool _bulkBusy = false;
 
   String _loadTypeLabel(String? key) {
     if (key == null || key.isEmpty) return '';
@@ -82,6 +92,37 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
 
   String _fold(String s) => s
       .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
+
+  void _togglePick(Map<String, dynamic> s) {
+    final id = s['_id'].toString();
+    setState(() { if (_picked.containsKey(id)) { _picked.remove(id); } else { _picked[id] = s; } });
+  }
+
+  /// البوالصُ المعلَّمة → ملفٌّ واحدٌ يُطبَع أو يُحفَظ من حوار النظام.
+  ///
+  /// والدفعةُ ستّون: الخادمُ يحدُّ النداءَ بمئة، وnginx يقطع بعد مئةٍ وعشرين
+  /// ثانية — فما زاد يُرسَل دفعاتٍ متتابعة.
+  Future<void> _printPicked() async {
+    if (_picked.isEmpty) return;
+    setState(() => _bulkBusy = true);
+    final ids = _picked.keys.toList();
+    try {
+      for (var i = 0; i < ids.length; i += 60) {
+        final part = ids.sublist(i, i + 60 > ids.length ? ids.length : i + 60);
+        final bytes = await Api.instance.postBytes('/api/fleet/shipments/waybills.pdf', {'ids': part});
+        await Printing.layoutPdf(onLayout: (_) async => bytes, name: 'بوليصات-الشحن-${part.length}');
+      }
+      if (mounted) setState(() => _picked.clear());
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(e is ApiException ? e.message : tr('تعذّر توليد البوالص', 'Could not generate the waybills')),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _bulkBusy = false);
+    }
+  }
 
   void _open(Map<String, dynamic> s) {
     Navigator.push(context, MaterialPageRoute(
@@ -155,6 +196,43 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                       ),
                     ),
                   ),
+                  // شريطُ المعلَّم: عددُه، وكم منه خارجَ نتائج البحث الآن، وزرُّ
+                  // الطباعة/الحفظ — فلا يشكّ من بحث في أنّ تعليمَه محفوظ.
+                  if (_picked.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: T.orange.withValues(alpha: 0.08),
+                        border: Border.all(color: T.orange.withValues(alpha: 0.4)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(children: [
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(tr('${_picked.length} بوليصة محدَّدة', '${_picked.length} selected'),
+                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                            if (_pickedOffScreen(filtered) > 0)
+                              Text(
+                                tr('منها ${_pickedOffScreen(filtered)} خارج نتائج البحث — محفوظة',
+                                   '${_pickedOffScreen(filtered)} outside the current results — kept'),
+                                style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                          ]),
+                        ),
+                        IconButton(
+                          tooltip: tr('إلغاء التحديد', 'Clear'),
+                          onPressed: _bulkBusy ? null : () => setState(_picked.clear),
+                          icon: const Icon(Icons.close, size: 20, color: T.danger),
+                        ),
+                        FilledButton.icon(
+                          onPressed: _bulkBusy ? null : _printPicked,
+                          icon: _bulkBusy
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : const Icon(Icons.print_outlined, size: 18),
+                          label: Text(_bulkBusy ? tr('يجهّز…', 'Preparing…') : tr('طباعة / حفظ', 'Print / save')),
+                        ),
+                      ]),
+                    ),
                   Expanded(
                     child: RefreshIndicator(
                       onRefresh: _load,
@@ -167,14 +245,22 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                               itemBuilder: (c, i) {
                                 final s = filtered[i];
                                 final st = _statuses[s['status']] ?? ('—', '—', T.inkFaint);
+                                final picked = _picked.containsKey(s['_id'].toString());
                                 return FadeSlideIn(
                                   delayMs: (i * 25).clamp(0, 250),
                                   child: Pressable(
-                                    onTap: () => _open(s),
+                                    // ضغطةٌ تفتح، وضغطةٌ طويلةٌ تُعلّم — ومتى بدأ
+                                    // التعليمُ صارت الضغطةُ العاديّةُ تُعلّم أيضًا،
+                                    // فلا يُطلَب ضغطٌ طويلٌ لكلّ بوليصة.
+                                    onTap: () => _picked.isEmpty ? _open(s) : _togglePick(s),
+                                    onLongPress: () => _togglePick(s),
                                     child: AppCard(
-                                      topAccent: st.$3,
+                                      topAccent: picked ? T.orange : st.$3,
                                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                         Row(children: [
+                                          Icon(picked ? Icons.check_box : Icons.check_box_outline_blank,
+                                              size: 18, color: picked ? T.orange : Colors.black26),
+                                          const SizedBox(width: 6),
                                           Text('${tr('بوليصة', 'WB')} ${s['waybillNumber'] ?? ''}',
                                               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                                           const Spacer(),
@@ -214,6 +300,12 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                   ),
                 ]),
     );
+  }
+
+  /// كم من المعلَّم غائبٌ عن القائمة المعروضة الآن.
+  int _pickedOffScreen(List<Map<String, dynamic>> shown) {
+    final ids = shown.map((r) => r['_id'].toString()).toSet();
+    return _picked.keys.where((id) => !ids.contains(id)).length;
   }
 
   int _hoursSince(String? v) {

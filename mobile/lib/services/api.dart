@@ -137,6 +137,34 @@ class Api {
     throw ApiException(res.statusCode, 'تعذّر تحميل الملف (${res.statusCode})');
   }
 
+  /// إرسالُ طلبٍ يردّ ملفًّا ثنائيًّا — بوالصُ عدّةِ شحناتٍ في ملفٍّ واحد.
+  ///
+  /// والمهلةُ أوسعُ من مهلة النداءات العادية: كلُّ بوليصةٍ ترسيمٌ في متصفّحٍ
+  /// بلا واجهةٍ على الخادم، فستّون بوليصةً تقارب الأربعين ثانية.
+  Future<Uint8List> postBytes(String path, Object body, {bool retried = false}) async {
+    final uri = Uri.parse('${AppConfig.apiBase}$path');
+    late http.Response res;
+    try {
+      res = await http
+          .post(uri, headers: _headers(), body: jsonEncode(body))
+          .timeout(const Duration(seconds: 150));
+    } on Exception {
+      throw ApiException(0, 'تعذّر تحميل الملف — تأكد من الإنترنت وأعد المحاولة');
+    }
+    if (res.statusCode == 401 && !retried) {
+      if (await _refresh()) return postBytes(path, body, retried: true);
+      throw ApiException(401, 'انتهت الجلسة — سجّل الدخول من جديد');
+    }
+    if (res.statusCode >= 200 && res.statusCode < 300) return res.bodyBytes;
+    // الخطأُ يعود JSON لا PDF — تُقرأ رسالتُه كما تُقرأ في النداءات العادية.
+    String msg = 'تعذّر تحميل الملف (${res.statusCode})';
+    try {
+      final d = jsonDecode(utf8.decode(res.bodyBytes));
+      if (d is Map && d['message'] != null) msg = d['message'].toString();
+    } catch (_) { /* ليس JSON */ }
+    throw ApiException(res.statusCode, msg);
+  }
+
   Future<dynamic> get(String path) => _request('GET', path);
   Future<dynamic> post(String path, [Object? body]) => _request('POST', path, body: body);
   Future<dynamic> patch(String path, [Object? body]) => _request('PATCH', path, body: body);

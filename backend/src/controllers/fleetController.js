@@ -56,9 +56,13 @@ const cache = require('../utils/ttlCache');
 const { cappedFind, askedLimit, CAP_NOTE_AR } = require('../utils/capped');
 // Every fleet mutation flows through emit() → also drop the cached board and
 // dashboard so the socket-triggered refetch returns the post-mutation state.
+//
+// والإبطالُ قبل الإعلان لا بعده: الحدثُ يوقظ كلَّ شاشةٍ مفتوحةٍ لتُعيد الجلب،
+// فإن أُعلن أوّلًا جاء الجلبُ على مخزونٍ لم يُمسَح بعد فقرأ حالةً قبل التعديل —
+// ومَن رأى ذلك رأى «تأخّرًا بتعديلٍ واحدٍ» لا خطأً في المنطق.
 const emit = (event, payload = {}) => {
-  try { emitToAll(event, payload); } catch (e) {}
   cache.clear('fleet:');
+  try { emitToAll(event, payload); } catch (e) {}
 };
 
 const pick = (body, fields) => {
@@ -270,6 +274,9 @@ const effectiveDateMatch = (start, end) => ({
 // نفس المعنى داخل خطوط التجميع: يُستعمل في `$group` و`$sort` على مستوى الخادم.
 const EFFECTIVE_DATE_EXPR = { $ifNull: ['$loadDate', '$createdAt'] };
 
+/** معرّفٌ واحدٌ من نصّ — راجع `_oids` لسبب الحاجة إليه. */
+const _oid = (v) => (mongoose.Types.ObjectId.isValid(v) ? new mongoose.Types.ObjectId(v) : v);
+
 // ── Shipments ───────────────────────────────────────────────────────────────
 
 exports.listShipments = async (req, res) => {
@@ -279,9 +286,12 @@ exports.listShipments = async (req, res) => {
     // أسفلَه يجيب سؤالًا آخر: «الرايح جدة كام سيارة» ضمن نفس الفلتر لكن **دون**
     // حصر الوجهة أو الحالة، وإلا صار الشريط يعدّ ما رشّحه المستخدم به لا غير.
     const base = [];
-    if (supervisor) base.push({ supervisor });
-    if (customer) base.push({ customer });
-    if (vehicle) base.push({ vehicle });
+    // معرّفاتٌ لا نصوص: `base` يُمرَّر إلى `aggregate` (عدّادُ الحالات وشريطُ
+    // الوجهات) لا إلى `find` وحدَه — و`aggregate` لا يحوّل النصَّ إلى معرّف.
+    // فكان الفلترُ بمشرفٍ أو عميلٍ يُظهر الصفوفَ ويُصفِّر البطاقاتَ فوقها.
+    if (supervisor) base.push({ supervisor: _oid(supervisor) });
+    if (customer) base.push({ customer: _oid(customer) });
+    if (vehicle) base.push({ vehicle: _oid(vehicle) });
     const scope = await supervisorVehicleIds(req);
     if (scope) base.push({ vehicle: { $in: scope } });
     // مدى التاريخ: يُطلَب باسم الفترة (اليوم/أمس/هذا الشهر…) أو بمدى صريح، ولا
@@ -707,6 +717,31 @@ exports.listDrivers = async (req, res) => {
       .sort({ name: 1 })
       .limit(1000)
       .lean();
+
+    // ── ومَن يشاركه الشاحنة؟ ─────────────────────────────────────────────
+    //
+    // المقعدان قاعدةٌ في القسم: شاحنةٌ تحمل سائقَين على الأكثر، والخادمُ يمنع
+    // الثالث. والقائمةُ كانت تقول «السيّارة» ولا تقول **مع مَن** — فمن يسأل
+    // «مين معاه على 2708؟» يبحث باللوحة ويقابل بين صفّين بعينه.
+    //
+    // ويُحسَب هنا لا في كلّ واجهةٍ على حدة: الويبُ والهاتفُ يقرآن الحقلَ نفسَه
+    // فلا يفترق جوابُهما، ولا يُطلَب من الهاتف أن يجلب سجلَّ المركبات ليقابله.
+    const seats = new Map();
+    for (const d of drivers) {
+      const vid = d.vehicle && (d.vehicle._id || d.vehicle);
+      if (!vid) continue;
+      const k = String(vid);
+      (seats.get(k) || seats.set(k, []).get(k)).push(d);
+    }
+    for (const d of drivers) {
+      const vid = d.vehicle && (d.vehicle._id || d.vehicle);
+      const mates = vid ? (seats.get(String(vid)) || []) : [];
+      const other = mates.find((x) => String(x._id) !== String(d._id));
+      d.mate = other
+        ? { _id: other._id, name: other.name || '', phone: other.phone || '', working: other.working !== false }
+        : null;
+      d.seatMates = mates.length;
+    }
     res.json({ drivers });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load drivers' });
@@ -1458,6 +1493,19 @@ exports.updateConfig = async (req, res) => {
 
 // ── Rich analytics (income, targets, rankings, trends) with many filters ────
 const _multi = (v) => (v ? String(v).split(',').map((s) => s.trim()).filter(Boolean) : []);
+/**
+ * ── معرّفاتٌ لا نصوص، لأنّ `aggregate` لا يُصلِح ما يُصلحه `find` ──────────
+ *
+ * فلترُ السيّارة والعميل والمشرف يأتي من الرابط نصًّا. و`find` يعرف مخطَّطَه
+ * فيحوّل النصَّ إلى ObjectId من نفسه، أمّا `aggregate` فيُمرّر المطابقةَ إلى
+ * Mongo كما هي — والنصُّ لا يساوي المعرّف. فكانت الشاشةُ تُفلتَر بسيّارةٍ
+ * فتعرض **صفوفَها** (من `find`) ومجاميعَها **أصفارًا** (من `aggregate`): عشرُ
+ * حمولاتٍ في الجدول وبطاقةٌ تقول صفرًا فوقها.
+ *
+ * وما ليس معرّفًا صحيحًا يبقى كما هو: قيمةٌ خاطئةٌ تُطابِق لا شيءَ، وهذا
+ * صحيحٌ — أمّا تحويلُها قسرًا فيُسقِط الطلبَ بخطأ.
+ */
+const _oids = (arr) => arr.map((x) => (mongoose.Types.ObjectId.isValid(x) ? new mongoose.Types.ObjectId(x) : x));
 const _monthIndex = (d) => d.getFullYear() * 12 + d.getMonth();
 
 exports.getAnalytics = async (req, res) => {
@@ -1502,7 +1550,13 @@ exports.getAnalytics = async (req, res) => {
     // كانت تفشل هنا فتخرج الشاشة أصفارًا كلّها.
     const qRx = q && q.trim() ? arRx(q) : null;
     if (qRx) {
-      filter.$and.push({ $or: [{ customerName: qRx }, { vehiclePlate: qRx }, { driverName: qRx }, { fromCity: qRx }, { toCity: qRx }, { loadType: qRx }] });
+      // نفسُ مدى بحث «تحليل الحمولات»: اسمُ السائق الثاني والمشرفُ ورقمُ
+      // البوليصة — وإلّا أعطى نصٌّ واحدٌ نتيجتين مختلفتين في تبويبين متجاورين.
+      const or = [{ customerName: qRx }, { vehiclePlate: qRx }, { driverName: qRx }, { secondDriverName: qRx },
+        { fromCity: qRx }, { toCity: qRx }, { loadType: qRx }, { supervisorName: qRx }];
+      const qn = Number(String(q).trim());
+      if (Number.isFinite(qn)) or.push({ waybillNumber: qn });
+      filter.$and.push({ $or: or });
     }
 
     if (!filter.$and.length) delete filter.$and; // ‏`$and: []` يرفضه Mongo
@@ -2484,9 +2538,10 @@ exports.getLoadsAnalysis = async (req, res) => {
     const and = [];
     if (period.preset !== 'all') and.push(effectiveDateMatch(start, end));
     if (scope) and.push({ vehicle: { $in: scope } });
-    if (vehicleF.length) and.push({ vehicle: { $in: vehicleF } });
-    if (supervisors.length) and.push({ supervisor: { $in: supervisors } });
-    if (customersF.length) and.push({ customer: { $in: customersF } });
+    // معرّفاتٌ لا نصوص: هذه المطابقةُ تُستعمل في `aggregate` أيضًا (راجع `_oids`).
+    if (vehicleF.length) and.push({ vehicle: { $in: _oids(vehicleF) } });
+    if (supervisors.length) and.push({ supervisor: { $in: _oids(supervisors) } });
+    if (customersF.length) and.push({ customer: { $in: _oids(customersF) } });
     if (customerTypes.length) and.push({ customerType: { $in: customerTypes } });
     if (statuses.length) and.push({ status: { $in: statuses } });
     if (!includeCancelled && !statuses.length) and.push({ status: { $ne: 'cancelled' } });

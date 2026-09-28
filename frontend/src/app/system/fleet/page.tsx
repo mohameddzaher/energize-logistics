@@ -1,8 +1,8 @@
 'use client';
 // الحمولات — the fleet section's main list. Inline status, follow-up recency at
-// a glance, filter by supervisor, and بوليصة downloads: one per row, or tick
-// several and download them all as a ZIP named
-// «بوليصة-<الرقم>-<العميل>-<التاريخ>».
+// a glance, filter by supervisor, and بوليصة output: one per row (download or
+// print), or tick several — across searches and pages — and download or print
+// them together in one server-rendered file.
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -12,7 +12,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
-import { Truck, Plus, Pencil, Trash2, FileDown, Loader2, PhoneCall } from 'lucide-react';
+import { Truck, Plus, Pencil, Trash2, FileDown, Loader2, PhoneCall, Printer, X, CheckSquare } from 'lucide-react';
 import {
   Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Select, ErrorNotice,
 } from '@/components/hr/HRKit';
@@ -25,6 +25,7 @@ import {
 } from '@/lib/fleet';
 import type { DispatchSheetRow } from '@/lib/dispatchSheetExcelParser';
 import ScrollX from '@/components/system/ScrollX';
+import { printPdfBlob } from '@/utils/printPdfBlob';
 
 // One shipment → one بوليصة sheet row. Untracked sheet fields stay blank.
 const toSheetRow = (s: FleetShipment): DispatchSheetRow => ({
@@ -107,8 +108,20 @@ function FleetShipmentsInner() {
 
   const [busyId, setBusyId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  // The checklist: tick rows → download their بوليصات together.
-  const [picked, setPicked] = useState<Set<string>>(new Set());
+  /**
+   * ── قائمةُ التحديد: خريطةٌ لا مجموعةُ معرّفات ────────────────────────────
+   *
+   * كانت `Set<string>` من المعرّفات، والتنزيلُ يقرأ صفوفَها من `shipments` —
+   * أي من **الصفحة المعروضة وحدَها**. فمن يعلّم عشرين بوليصةً ثمّ يبحث عن
+   * الحادية والعشرين يبقى تعليمُه محفوظًا في الذاكرة ويخرج الملفُّ ببوليصتين:
+   * الصفّان الباقيان على الشاشة بعد البحث. وهذا حرفيًّا ما اشتُكي منه.
+   *
+   * فصارت خريطةً تحمل **الصفَّ نفسَه** مع معرّفه: ما عُلّم مرّةً يبقى معروفًا
+   * بكامل بياناته ولو غاب عن الشاشة — فيُنزَّل ويُطبَع ويُعَدّ ويُسمَّى ملفُّه
+   * بلا رجوعٍ إلى القائمة الحاضرة.
+   */
+  const [picked, setPicked] = useState<Map<string, FleetShipment>>(new Map());
+  const [showPicked, setShowPicked] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState('');
 
@@ -198,23 +211,96 @@ function FleetShipmentsInner() {
   //
   // والخادمُ يرسم البوليصةَ الواحدة أصلًا بالملفّ نفسِه (زرُّ الصفّ يناديه).
   // فصار الجماعيُّ نداءً واحدًا يردّ **ملفًّا واحدًا** فيه صفحةٌ لكلّ بوليصة.
+  /**
+   * البوالصُ المعلَّمة → ملفٌّ واحد. والحدُّ في الخادم مئةٌ في النداء (كلُّ
+   * بوليصةٍ ترسيمٌ في متصفّحٍ بلا واجهة)، فما زاد يُقسَّم دفعاتٍ متتابعة —
+   * ولا يُقال للمستخدم «الحدُّ مئة» ويُترَك واقفًا أمام مئةٍ وعشرين.
+   *
+   * والدفعةُ ستّون لا مئة: الخادمُ يرسم ستًّا معًا بنحو أربع ثوانٍ للواحدة،
+   * فمئةٌ تعني قريبًا من دقيقةٍ وربع، وnginx يقطع بعد مئةٍ وعشرين ثانية. ستّون
+   * تبقى في نصف المهلة على خادمٍ مشغول.
+   */
+  const CHUNK = 60;
+  const pickedRows = useMemo(() => Array.from(picked.values()), [picked]);
+
+  const buildPickedPdfs = async (): Promise<Blob[]> => {
+    const rows = pickedRows;
+    const out: Blob[] = [];
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      const part = rows.slice(i, i + CHUNK);
+      setBulkProgress(rows.length > CHUNK
+        ? (ar ? `${i + part.length} من ${rows.length}` : `${i + part.length} of ${rows.length}`)
+        : String(rows.length));
+      out.push(await api.postBlob('/api/fleet/shipments/waybills.pdf', { ids: part.map((s) => s._id) }));
+    }
+    return out;
+  };
+
   const downloadPicked = async () => {
-    const rows = shipments.filter((s) => picked.has(s._id));
-    if (!rows.length) return;
+    if (!picked.size) return;
     setBulkBusy(true);
-    setBulkProgress(ar ? `يجهّز ${rows.length}…` : `preparing ${rows.length}…`);
+    setBulkProgress(ar ? `يجهّز ${picked.size}…` : `preparing ${picked.size}…`);
     try {
-      const blob = await api.postBlob('/api/fleet/shipments/waybills.pdf', { ids: rows.map((s) => s._id) });
+      const blobs = await buildPickedPdfs();
       const gen = await import('@/lib/dispatchSheetGenerator');
-      gen.triggerDownload(blob, `بوليصات-الشحن-${rows.length}.pdf`);
-      setPicked(new Set());
+      blobs.forEach((b, i) => gen.triggerDownload(
+        b, blobs.length > 1 ? `بوليصات-الشحن-${picked.size}-جزء-${i + 1}.pdf` : `بوليصات-الشحن-${picked.size}.pdf`));
+      setPicked(new Map());
+      setShowPicked(false);
     } catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
     setBulkBusy(false);
     setBulkProgress('');
   };
 
-  const togglePick = (id: string) =>
-    setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  /** الطباعةُ من السيستم مباشرةً على الطابعة المتّصلة — بلا مرورٍ بالتنزيلات. */
+  const printPicked = async () => {
+    if (!picked.size) return;
+    setBulkBusy(true);
+    setBulkProgress(ar ? `يجهّز ${picked.size}…` : `preparing ${picked.size}…`);
+    try {
+      const blobs = await buildPickedPdfs();
+      for (const b of blobs) {
+        // دفعةً بعد دفعة: حوارُ الطباعة واحدٌ لكلّ ملفّ، وفتحُها معًا يخفي
+        // بعضَها خلف بعض.
+        const ok = await printPdfBlob(b);
+        if (!ok) { notify(ar ? 'تعذّر فتح حوار الطباعة — حمّل الملفّ واطبعه.' : 'Could not open the print dialog.', 'error'); break; }
+      }
+    } catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
+    setBulkBusy(false);
+    setBulkProgress('');
+  };
+
+  /** طباعةُ بوليصةٍ واحدةٍ من صفّها — نفس ملفِّ التنزيل، إلى الطابعة. */
+  const printOne = async (s: FleetShipment) => {
+    setDownloadingId(s._id);
+    try {
+      const blob = await api.getBlob(`/api/fleet/shipments/${s._id}/waybill.pdf?lang=${ar ? 'ar' : 'en'}`);
+      const ok = await printPdfBlob(blob);
+      if (!ok) notify(ar ? 'تعذّر فتح حوار الطباعة.' : 'Could not open the print dialog.', 'error');
+    } catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
+    setDownloadingId(null);
+  };
+
+  const togglePick = (s: FleetShipment) =>
+    setPicked((p) => {
+      const n = new Map(p);
+      if (n.has(s._id)) n.delete(s._id); else n.set(s._id, s);
+      return n;
+    });
+
+  // «تحديد الكل» يخصّ الصفحةَ المعروضة: يضيفها إلى المعلَّم أو يرفعها منه —
+  // ولا يمسح تعليمًا على صفحةٍ أخرى، وإلّا ضاع ما جُمع بضغطةٍ واحدة.
+  const pageAllPicked = shipments.length > 0 && shipments.every((s) => picked.has(s._id));
+  const togglePage = (on: boolean) =>
+    setPicked((p) => {
+      const n = new Map(p);
+      shipments.forEach((s) => { if (on) n.set(s._id, s); else n.delete(s._id); });
+      return n;
+    });
+
+  // كم من المعلَّم غائبٌ عن الشاشة الآن — يُقال صراحةً كي يثق المستخدمُ أنّ
+  // بحثَه لم يُلغِ تعليمَه.
+  const pickedOffScreen = pickedRows.filter((s) => !shipments.some((x) => x._id === s._id)).length;
 
   if (loading) return <Spinner />;
 
@@ -229,13 +315,20 @@ function FleetShipmentsInner() {
         subtitle={ar ? 'سياراتنا فقط — الحجز والمتابعة والبوليصات' : 'Our own trucks — booking, follow-ups and waybills'}
       >
         {picked.size > 0 && (
-          <button type="button" onClick={downloadPicked} disabled={bulkBusy}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-60">
-            {bulkBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
-            {bulkBusy
-              ? (ar ? `جارٍ التجهيز ${bulkProgress}…` : `Generating ${bulkProgress}…`)
-              : (ar ? `تحميل ${picked.size} بوليصة` : `Download ${picked.size} waybills`)}
-          </button>
+          <>
+            <button type="button" onClick={downloadPicked} disabled={bulkBusy}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-60">
+              {bulkBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+              {bulkBusy
+                ? (ar ? `جارٍ التجهيز ${bulkProgress}…` : `Generating ${bulkProgress}…`)
+                : (ar ? `تحميل ${picked.size} بوليصة` : `Download ${picked.size} waybills`)}
+            </button>
+            <button type="button" onClick={printPicked} disabled={bulkBusy}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold disabled:opacity-60">
+              {bulkBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+              {ar ? `طباعة ${picked.size}` : `Print ${picked.size}`}
+            </button>
+          </>
         )}
         <ExportMenu lang={ar ? 'ar' : 'en'} fileName="fleet-shipments"
           options={[
@@ -315,14 +408,61 @@ function FleetShipmentsInner() {
       <PeriodFilter value={period} onChange={setPeriod} lang={ar ? 'ar' : 'en'} />
       <PeriodBanner period={resolvedPeriod} lang={ar ? 'ar' : 'en'} count={total} />
 
+      {/* ── شريطُ المعلَّم ─────────────────────────────────────────────────
+          التعليمُ يعبر البحثَ والترقيم، فيلزم أن يُرى: عددُه، وكم منه غائبٌ
+          عن الشاشة الآن، وقائمتُه بأرقام البوالص لمن يريد التحقّق أو رفعَ
+          واحدةٍ بعينها. وبغير هذا الشريط يظنّ من بحث أنّ تعليمَه ضاع. */}
+      {picked.size > 0 && (
+        <div className="rounded-xl border-2 border-[#f37121]/40 bg-orange-50 p-3 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <CheckSquare className="w-4 h-4 text-[#f37121]" />
+            <span className="text-sm font-bold text-slate-900">
+              {ar ? `${picked.size} بوليصة محدَّدة` : `${picked.size} waybills selected`}
+            </span>
+            {pickedOffScreen > 0 && (
+              <span className="px-2 py-0.5 rounded-full bg-white border border-orange-200 text-[11.5px] font-semibold text-orange-700">
+                {ar ? `منها ${pickedOffScreen} خارج نتائج البحث الحالية — محفوظة` : `${pickedOffScreen} outside the current results — kept`}
+              </span>
+            )}
+            {picked.size > CHUNK && (
+              <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-[11.5px] text-slate-600">
+                {ar ? `تُجهَّز على ${Math.ceil(picked.size / CHUNK)} ملفّات` : `prepared as ${Math.ceil(picked.size / CHUNK)} files`}
+              </span>
+            )}
+            <span className="flex-1" />
+            <button type="button" onClick={() => setShowPicked((v) => !v)}
+              className="text-xs font-semibold text-slate-700 underline hover:text-[#f37121]">
+              {showPicked ? (ar ? 'إخفاء القائمة' : 'Hide list') : (ar ? 'عرض المحدَّد' : 'Show selected')}
+            </button>
+            <button type="button" onClick={() => { setPicked(new Map()); setShowPicked(false); }}
+              className="flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-red-700">
+              <X className="w-3.5 h-3.5" /> {ar ? 'إلغاء التحديد' : 'Clear'}
+            </button>
+          </div>
+          {showPicked && (
+            <div className="flex flex-wrap gap-1.5 pt-1 border-t border-orange-200/70">
+              {pickedRows.map((s) => (
+                <span key={s._id} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white border border-slate-200 text-[11.5px]">
+                  <b className="font-mono">{s.waybillNumber}</b>
+                  <span className="text-slate-500 max-w-[110px] truncate">{s.customerName || '—'}</span>
+                  <button type="button" onClick={() => togglePick(s)} className="text-slate-400 hover:text-red-600" aria-label={ar ? 'رفع التحديد' : 'Unselect'}>
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className="px-3 py-3">
               <input type="checkbox" className="w-4 h-4 accent-[#f37121]"
-                checked={picked.size > 0 && shipments.every((s) => picked.has(s._id))}
-                onChange={(e) => setPicked(e.target.checked ? new Set(shipments.map((s) => s._id)) : new Set())}
-                aria-label={ar ? 'تحديد الكل' : 'Select all'} />
+                checked={pageAllPicked}
+                onChange={(e) => togglePage(e.target.checked)}
+                aria-label={ar ? 'تحديد كل المعروض' : 'Select everything shown'} />
             </th>
             {[
               ar ? 'رقم البوليصة' : 'Waybill',
@@ -345,7 +485,7 @@ function FleetShipmentsInner() {
           </tr></thead>
           <tbody>
             {shipments.length === 0 ? (
-              <tr><td colSpan={12} className="text-center text-slate-500 py-14">
+              <tr><td colSpan={15} className="text-center text-slate-500 py-14">
                 {ar ? 'لا توجد حمولات بعد — ابدأ من زر «إنشاء حمولة».' : 'No shipments yet.'}
               </td></tr>
             ) : shipments.map((s) => {
@@ -353,11 +493,14 @@ function FleetShipmentsInner() {
               const hrs = hoursSince(s.lastContactAt);
               const contactStale = ['loading', 'uploaded', 'on_way'].includes(s.status) && (hrs === null || hrs >= 3);
               return (
-                <tr key={s._id} className="border-b border-slate-200/70 hover:bg-slate-50 cursor-pointer"
+                <tr key={s._id}
+                  className={`border-b border-slate-200/70 cursor-pointer ${picked.has(s._id)
+                    ? 'bg-orange-50 hover:bg-orange-100/70 shadow-[inset_3px_0_0_0_#f37121]'
+                    : 'hover:bg-slate-50'}`}
                   onClick={() => router.push(`/system/fleet/${s._id}`)}>
                   <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" className="w-4 h-4 accent-[#f37121]"
-                      checked={picked.has(s._id)} onChange={() => togglePick(s._id)}
+                      checked={picked.has(s._id)} onChange={() => togglePick(s)}
                       aria-label={String(s.waybillNumber)} />
                   </td>
                   <td className="px-3 py-3 text-slate-900 font-bold font-mono">{s.waybillNumber}</td>
@@ -413,6 +556,11 @@ function FleetShipmentsInner() {
                         className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 disabled:opacity-50"
                         title={ar ? 'تحميل البوليصة' : 'Download waybill'}>
                         {downloadingId === s._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+                      </button>
+                      <button type="button" onClick={() => printOne(s)} disabled={downloadingId === s._id}
+                        className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 disabled:opacity-50"
+                        title={ar ? 'طباعة البوليصة' : 'Print waybill'}>
+                        <Printer className="w-4 h-4" />
                       </button>
                       {editor && (
                         <button type="button" onClick={() => router.push(`/system/fleet/new?id=${s._id}`)}

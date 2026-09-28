@@ -1,7 +1,7 @@
 'use client';
 // لوحة تحليلات إدارة الأسطول — الدخل، تحقيق الأهداف لكل سيارة، ترتيب السواقين
 // والعملاء والمشرفين، الترند الشهري وتوزيع الحمولات — بفلاتر متعددة وتصدير Excel.
-import { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, Suspense, Fragment } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -15,8 +15,8 @@ import {
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import PeriodFilter, { PeriodBanner, periodParams, periodFromParams, EMPTY_PERIOD, type Period } from '@/components/fleet/PeriodFilter';
-import { canViewFleet, FLEET_STATUSES, TRAILER_TYPES } from '@/lib/fleet';
-import { BarChart3, TrendingUp, RotateCcw, Search, Star, CalendarClock, PackageSearch } from 'lucide-react';
+import { canViewFleet, FLEET_STATUSES, TRAILER_TYPES, fleetStatus, fleetStatusLabel, fmtD, type Lang } from '@/lib/fleet';
+import { BarChart3, TrendingUp, RotateCcw, Search, Star, CalendarClock, PackageSearch, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import LoadsAnalysis from '@/components/fleet/LoadsAnalysis';
 import { syncUrl } from '@/lib/urlSync';
 import ScrollX from '@/components/system/ScrollX';
@@ -36,6 +36,15 @@ type Analytics = {
   monthlyTrend: { month: string; income: number; trips: number }[];
 };
 
+/** صفُّ حمولةٍ في التفصيل تحت السيّارة — نفس ما تقرؤه صفحةُ الحمولات. */
+type VehLoad = {
+  _id: string; waybillNumber: number; customerName?: string; customer?: string | null;
+  fromCity?: string; toCity?: string; driverName?: string; secondDriverName?: string;
+  loadType?: string; price?: number | null; fullRent?: number | null; driverExpense?: number | null;
+  status: string; loadDate?: string | null; createdAt?: string;
+};
+type VehLoads = { loading: boolean; rows: VehLoad[]; totals?: { loads: number; income: number; driverExpense: number }; truncated?: boolean; error?: string };
+
 const ORANGE = '#f37121';
 const PALETTE = ['#f37121', '#2563eb', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4', '#ef4444', '#64748b'];
 const money = (n: number) => (Number(n) || 0).toLocaleString('en-US');
@@ -47,6 +56,77 @@ const dmy = (v?: string | null) => {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}`;
 };
+
+/**
+ * حمولاتُ سيّارةٍ واحدة — الجدولُ الذي يُفتَح تحت صفّها.
+ *
+ * مكوّنٌ على مستوى الملفّ لا داخلَ جسم الرسم: المكوّنُ المعرَّف داخل الرسم
+ * يُبنى من جديدٍ عند كلّ حالةٍ تتغيّر، فيُفقَد ما فيه ويُعاد تركيبُه بلا سبب.
+ */
+function VehicleLoads({ state, plate, ar, lang }: { state?: VehLoads; plate: string; ar: boolean; lang: Lang }) {
+  if (!state || state.loading) {
+    return (
+      <div className="flex items-center gap-2 py-4 text-sm text-slate-500">
+        <Loader2 className="w-4 h-4 animate-spin" /> {ar ? `يجلب حمولات ${plate}…` : `Loading loads for ${plate}…`}
+      </div>
+    );
+  }
+  if (state.error) return <div className="py-3 text-sm text-red-600">{state.error}</div>;
+  if (!state.rows.length) {
+    return <div className="py-4 text-sm text-slate-400">{ar ? 'لا حمولات لهذه السيارة داخل الفلتر الحالي.' : 'No loads for this truck under the current filter.'}</div>;
+  }
+  const th = 'px-2.5 py-1.5 text-start font-semibold whitespace-nowrap';
+  const td = 'px-2.5 py-1.5 whitespace-nowrap';
+  return (
+    <div className="rounded-xl border border-orange-200 bg-white overflow-hidden">
+      <div className="px-3 py-2 bg-orange-50 border-b border-orange-100 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px]">
+        <b className="text-slate-900 text-xs">{ar ? `حمولات ${plate}` : `Loads of ${plate}`}</b>
+        <span className="text-slate-600">{ar ? 'العدد' : 'Loads'} <b className="tabular-nums">{state.totals?.loads ?? state.rows.length}</b></span>
+        <span className="text-emerald-700">{ar ? 'الإيجار' : 'Rent'} <b className="tabular-nums">{money(state.totals?.income || 0)}</b></span>
+        <span className="text-amber-700">{ar ? 'مصروف السائق' : 'Driver expense'} <b className="tabular-nums">{money(state.totals?.driverExpense || 0)}</b></span>
+        {state.truncated && <span className="text-slate-400">{ar ? 'معروضٌ أوّل 500 صفّ' : 'first 500 rows shown'}</span>}
+      </div>
+      <ScrollX>
+        <table className="w-full text-[12px]">
+          <thead className="bg-slate-100 text-slate-600">
+            <tr>{[ar ? 'البوليصة' : 'Waybill', ar ? 'التاريخ' : 'Date', ar ? 'العميل' : 'Customer', ar ? 'من' : 'From', ar ? 'إلى' : 'To',
+              ar ? 'السائق' : 'Driver', ar ? 'نوع الحمولة' : 'Load type', ar ? 'السعر' : 'Price', ar ? 'مصروف السائق' : 'Driver expense',
+              ar ? 'الحالة' : 'Status'].map((h) => <th key={h} className={th}>{h}</th>)}</tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {state.rows.map((r) => {
+              const st = fleetStatus(r.status);
+              return (
+                <tr key={r._id} className="hover:bg-orange-50/60">
+                  <td className={`${td} font-mono font-bold`}>
+                    <Link href={`/system/fleet/${r._id}`} className="text-[#f37121] hover:underline">{r.waybillNumber}</Link>
+                  </td>
+                  <td className={`${td} text-slate-600 tabular-nums`}>{fmtD(r.loadDate || r.createdAt)}</td>
+                  <td className={`${td} text-slate-800 max-w-[200px] truncate`} title={r.customerName}>
+                    {r.customer ? <Link href={`/system/fleet/customers/${r.customer}`} className="hover:underline">{r.customerName || '—'}</Link> : (r.customerName || '—')}
+                  </td>
+                  <td className={`${td} text-slate-600`}>{r.fromCity || '—'}</td>
+                  <td className={`${td} text-slate-600`}>{r.toCity || '—'}</td>
+                  <td className={`${td} text-slate-600 max-w-[160px] truncate`}>
+                    {[r.driverName, r.secondDriverName].filter(Boolean).join(' + ') || '—'}
+                  </td>
+                  <td className={`${td} text-slate-500`}>{r.loadType || '—'}</td>
+                  <td className={`${td} font-semibold text-emerald-700 tabular-nums`}>{r.price ? money(r.price) : '—'}</td>
+                  <td className={`${td} text-amber-700 tabular-nums`}>{r.driverExpense ? money(r.driverExpense) : '—'}</td>
+                  <td className={td}>
+                    <span className={`px-2 py-0.5 rounded-full text-[10.5px] font-semibold ${st?.bg || 'bg-slate-100'} ${st?.text || 'text-slate-600'}`}>
+                      {fleetStatusLabel(r.status, lang)}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </ScrollX>
+    </div>
+  );
+}
 
 function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
   const { lang, isRTL } = useLanguage();
@@ -128,6 +208,50 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
 
   const reset = () => { setPeriod(EMPTY_PERIOD); setCustomerType([]); setTrailerType([]); setStatus([]); setSupervisor([]); setQ(''); };
 
+  /**
+   * ── وتحت كلِّ سيّارةٍ حمولاتُها ────────────────────────────────────────────
+   *
+   * الجدولُ يقول «هذه السيّارة حملت إحدى عشرة حمولةً بستّةٍ وثلاثين ألفًا»،
+   * والسؤالُ الذي يليه دائمًا: **أيُّ إحدى عشرة؟** وكان الجوابُ في شاشةٍ أخرى
+   * بفلترٍ يُعاد بناؤه باليد — فمن بحث بلوحةٍ هنا رأى رقمًا مجمَّعًا ولم يرَ
+   * بوليصةً واحدة.
+   *
+   * فصار الصفُّ يُفتَح على حمولاته: البوليصةُ والعميلُ ومن أين إلى أين والسعر
+   * والمصروف والحالة — نفسُ أعمدة صفحة الحمولات، بنفس فلتر هذه الشاشة (الفترةُ
+   * والحالةُ والمشرفُ والبحث)، من نفس نداء «تحليل الحمولات». فلا رقمَ على
+   * الشاشة إلّا وله تفصيلُه تحته.
+   */
+  const [openVeh, setOpenVeh] = useState<string>('');
+  const [vehLoads, setVehLoads] = useState<Record<string, VehLoads>>({});
+
+  const fetchVehLoads = useCallback(async (id: string) => {
+    setVehLoads((m) => ({ ...m, [id]: { loading: true, rows: m[id]?.rows || [] } }));
+    try {
+      const p = new URLSearchParams(query);
+      p.set('vehicle', id);          // يغلب أيَّ فلترِ سيّارةٍ قائم: المقصودُ هذا الصفّ
+      p.set('limit', '500');
+      const d = await api.get<{ shipments: VehLoad[]; totals: VehLoads['totals']; truncated: boolean }>(`/api/fleet/loads-analysis?${p}`);
+      setVehLoads((m) => ({ ...m, [id]: { loading: false, rows: d.shipments || [], totals: d.totals, truncated: !!d.truncated } }));
+    } catch (e) {
+      setVehLoads((m) => ({ ...m, [id]: { loading: false, rows: [], error: (e as Error)?.message || 'Request failed' } }));
+    }
+  }, [query]);
+
+  const toggleVeh = (id: string) => {
+    if (openVeh === id) { setOpenVeh(''); return; }
+    setOpenVeh(id);
+    fetchVehLoads(id);
+  };
+
+  // الفلترُ يتغيّر → التفصيلُ المفتوح يُعاد جلبُه ويُنسى المحفوظُ لغيره: رقمٌ
+  // من فترةٍ وتفصيلٌ من أخرى أسوأُ من لا تفصيل.
+  useEffect(() => {
+    setVehLoads({});
+    if (openVeh) fetchVehLoads(openVeh);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+  useSocket('fleet:updated', useCallback(() => { if (openVeh) fetchVehLoads(openVeh); }, [openVeh, fetchVehLoads]));
+
   const sortedVehicles = useMemo(() => {
     if (!data) return [];
     const rows = targetFilter === 'all'
@@ -139,6 +263,19 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
       return b.income - a.income;
     });
   }, [data, vehSort, targetFilter]);
+
+  // ── ومن بحث بلوحةٍ واحدة لا يُطلَب منه ضغطُ صفٍّ واحد ───────────────────
+  // البحثُ يضيّق الجدولَ إلى سيّارةٍ واحدة، فالمقصودُ ظاهر: حمولاتُها. تُفتح
+  // من نفسها — وهذا هو «أعمل سيرش بسيّارة يظهرلي تحت الحمولات كلّها».
+  useEffect(() => {
+    if (!q.trim()) return;
+    const withLoads = sortedVehicles.filter((v) => v.trips > 0);
+    if (withLoads.length === 1 && openVeh !== withLoads[0]._id) {
+      setOpenVeh(withLoads[0]._id);
+      fetchVehLoads(withLoads[0]._id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, sortedVehicles]);
 
   const custRows = useMemo(() => {
     if (!data) return [];
@@ -343,6 +480,9 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
                 </p>
                 {/* المقياسُ يُقال مع الرقم: بغيره يُقرأ الرقمُ على غير وجهه. */}
                 <p className="text-[11.5px] text-slate-500 mt-0.5">
+                  {ar ? 'اضغط صفَّ سيّارةٍ لترى حمولاتها كلَّها بالبوليصة والعميل ومن/إلى والسعر.' : 'Click a row to see that truck’s loads — waybill, customer, route and price.'}
+                </p>
+                <p className="text-[11.5px] text-slate-500 mt-0.5">
                   {data.totals.targetBasis === 'net'
                     ? (ar ? 'الهدف يُقاس بالدخل بعد مصروف السائق (غير شامل)' : 'Target measured against income after driver expense')
                     : (ar ? 'الهدف يُقاس بالدخل كما هو (شامل مصاريف السائقين)' : 'Target measured against gross income')}
@@ -370,7 +510,9 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {sortedVehicles.map((v) => (
-                    <tr key={v._id} className={`hover:bg-slate-50 ${v.achieved === false ? 'bg-red-50/40' : ''}`}>
+                    <Fragment key={v._id}>
+                    <tr className={`cursor-pointer ${openVeh === v._id ? 'bg-orange-50' : v.achieved === false ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50'}`}
+                      onClick={() => toggleVeh(v._id)}>
                       {/* ── والحالةُ تُقرأ بالنظر ────────────────────────────
                           كانت تُستنتَج من لون نسبةِ التحقيق في آخر عمود: من
                           يريد «أيُّ السيّارات دون الهدف؟» يمسح الجدولَ عمودًا
@@ -390,7 +532,15 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
                         )}
                       </td>
                       <td className="px-3 py-2 font-mono font-semibold">
-                        <Link href={`/system/fleet/vehicles/${v._id}${query ? `?${query}` : ''}`} className="text-[#f37121] hover:underline">{v.plate}</Link>
+                        <span className="inline-flex items-center gap-1.5">
+                          {/* السهمُ يقول إنّ للصفّ تفصيلًا — والصفُّ كلُّه يفتحه. */}
+                          <span className="text-slate-400">
+                            {openVeh === v._id ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5 rtl:rotate-180" />}
+                          </span>
+                          <Link href={`/system/fleet/vehicles/${v._id}${query ? `?${query}` : ''}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-[#f37121] hover:underline">{v.plate}</Link>
+                        </span>
                       </td>
                       <td className="px-3 py-2 text-slate-600">{v.trailerType || '—'}</td>
                       <td className="px-3 py-2 text-slate-600">{v.supervisorName || '—'}</td>
@@ -417,6 +567,14 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
                         )}
                       </td>
                     </tr>
+                    {openVeh === v._id && (
+                      <tr className="bg-orange-50/40">
+                        <td colSpan={10} className="px-3 pb-4 pt-1">
+                          <VehicleLoads state={vehLoads[v._id]} plate={v.plate} ar={ar} lang={lang as Lang} />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                   {sortedVehicles.length === 0 && <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-400">{ar ? 'لا توجد بيانات لهذه الفلاتر' : 'No data'}</td></tr>}
                 </tbody>

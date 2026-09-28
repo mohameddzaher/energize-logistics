@@ -36,11 +36,22 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
   String _preset = 'thisMonth'; // thisMonth | lastMonth | all
   late final void Function() _onLive;
 
+  /// ── وتحت كلِّ سيّارةٍ حمولاتُها ──────────────────────────────────────────
+  ///
+  /// البطاقةُ تقول «إحدى عشرة حمولةً بستّةٍ وثلاثين ألفًا»، والسؤالُ الذي يليها:
+  /// **أيُّ إحدى عشرة؟** فتُفتَح البطاقةُ على بوالصها: الرقمُ والعميلُ ومن أين
+  /// إلى أين والسعر — من نفس نداء «تحليل الحمولات» الذي يقرؤه الويب، وبنفس
+  /// الفترة المختارة هنا.
+  String _openVeh = '';
+  Map<String, dynamic>? _vehLoads;
+  bool _vehLoading = false;
+  String? _vehError;
+
   @override
   void initState() {
     super.initState();
     _load();
-    _onLive = () => _load();
+    _onLive = () { _load(); if (_openVeh.isNotEmpty) _fetchVehLoads(_openVeh); };
     Live.instance.on('fleet:updated', _onLive);
   }
 
@@ -70,6 +81,27 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
+  }
+
+  Future<void> _fetchVehLoads(String id) async {
+    setState(() { _vehLoading = true; _vehError = null; });
+    try {
+      final mp = _monthParam();
+      final qs = StringBuffer('?vehicle=$id&limit=200');
+      if (mp.isNotEmpty) qs.write('&month=$mp');
+      final d = await Api.instance.get('/api/fleet/loads-analysis$qs');
+      if (!mounted || _openVeh != id) return;
+      setState(() { _vehLoads = Map<String, dynamic>.from(d); _vehLoading = false; });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _vehLoading = false; _vehError = e is ApiException ? e.message : e.toString(); });
+    }
+  }
+
+  void _toggleVeh(String id) {
+    if (_openVeh == id) { setState(() { _openVeh = ''; _vehLoads = null; }); return; }
+    setState(() { _openVeh = id; _vehLoads = null; });
+    _fetchVehLoads(id);
   }
 
   String _fold(String s) => s
@@ -171,7 +203,7 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
         ],
         // السيارات مقابل الهدف
         _section(tr('السيارات مقابل الهدف', 'Vehicles vs target')),
-        ...filterByName(vehicles, ['plate', 'supervisorName']).take(60).map(_vehicleRow),
+        ..._vehicleRows(filterByName(vehicles, ['plate', 'supervisorName']).take(60).toList()),
         const SizedBox(height: 14),
         // أفضل السواقين
         if (topDrivers.isNotEmpty) ...[
@@ -284,17 +316,37 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
     }).toList());
   }
 
+  /// ومن بحث بلوحةٍ واحدةٍ لا يُطلَب منه ضغطُ بطاقةٍ واحدة: المقصودُ ظاهر.
+  List<Widget> _vehicleRows(List<Map<String, dynamic>> rows) {
+    if (_q.trim().isNotEmpty) {
+      final withLoads = rows.where((v) => ((v['trips'] ?? 0) as num) > 0).toList();
+      if (withLoads.length == 1) {
+        final id = (withLoads.first['_id'] ?? '').toString();
+        if (id.isNotEmpty && _openVeh != id) {
+          WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted && _openVeh != id) _toggleVeh(id); });
+        }
+      }
+    }
+    return rows.map(_vehicleRow).toList();
+  }
+
   Widget _vehicleRow(Map<String, dynamic> v) {
     final pct = v['achievedPct'];
     final achieved = v['achieved'];
     final Color c = achieved == true ? T.success : (achieved == false ? T.danger : T.inkFaint);
     final double frac = (pct is num) ? (pct / 100).clamp(0.0, 1.0).toDouble() : 0.0;
+    final id = (v['_id'] ?? '').toString();
+    final open = id.isNotEmpty && _openVeh == id;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: AppCard(
+      child: Pressable(
+        onTap: id.isEmpty ? null : () => _toggleVeh(id),
+        child: AppCard(
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
+            Icon(open ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 18, color: T.inkFaint),
+            const SizedBox(width: 4),
             Text((v['plate'] ?? '—').toString(), style: const TextStyle(fontWeight: FontWeight.w800)),
             const SizedBox(width: 8),
             if ((v['supervisorName'] ?? '').toString().isNotEmpty)
@@ -313,9 +365,72 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
           ]),
           const SizedBox(height: 4),
           Text('${v['trips'] ?? 0} ${tr('رحلة', 'trips')} · ${tr('الهدف', 'target')} ${_money(v['target'])}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+          if (open) ...[
+            const Divider(height: 16),
+            _vehLoadsView((v['plate'] ?? '—').toString()),
+          ],
         ]),
       ),
+      ),
     );
+  }
+
+  /// حمولاتُ السيّارة المفتوحة — البوليصةُ والعميلُ والمسارُ والسعر.
+  Widget _vehLoadsView(String plate) {
+    if (_vehLoading) {
+      return Row(children: [
+        const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+        const SizedBox(width: 8),
+        Text(tr('يجلب حمولات $plate…', 'Loading loads for $plate…'),
+            style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+      ]);
+    }
+    if (_vehError != null) {
+      return Text(_vehError!, style: const TextStyle(fontSize: 11.5, color: T.danger));
+    }
+    final rows = List<Map<String, dynamic>>.from(_vehLoads?['shipments'] ?? const []);
+    if (rows.isEmpty) {
+      return Text(tr('لا حمولات لهذه السيارة في هذه الفترة.', 'No loads for this truck in this period.'),
+          style: const TextStyle(fontSize: 11.5, color: T.inkFaint));
+    }
+    final totals = Map<String, dynamic>.from(_vehLoads?['totals'] ?? const {});
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Wrap(spacing: 6, runSpacing: 6, children: [
+        Chip2('${tr('حمولات', 'Loads')} ${totals['loads'] ?? rows.length}', T.navy),
+        Chip2('${tr('الإيجار', 'Rent')} ${_money(totals['income'])}', T.success),
+        Chip2('${tr('مصروف السائق', 'Driver exp.')} ${_money(totals['driverExpense'])}', T.warn),
+      ]),
+      const SizedBox(height: 8),
+      ...rows.map((r) => Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: T.navy.withValues(alpha: 0.03),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Text('${tr('بوليصة', 'WB')} ${r['waybillNumber'] ?? ''}',
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5)),
+                  const Spacer(),
+                  Text(_money(r['price']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: T.success)),
+                ]),
+                Text('${r['fromCity'] ?? '—'} ← ${r['toCity'] ?? '—'}',
+                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600)),
+                if ((r['customerName'] ?? '').toString().isNotEmpty)
+                  Text(r['customerName'].toString(), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                if ((r['driverName'] ?? '').toString().isNotEmpty)
+                  Text(
+                    [r['driverName'], r['secondDriverName']].where((x) => (x ?? '').toString().isNotEmpty).join(' + '),
+                    style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+              ]),
+            ),
+          )),
+      if (_vehLoads?['truncated'] == true)
+        Text(tr('معروضٌ أوّل ٢٠٠ حمولة.', 'First 200 loads shown.'),
+            style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+    ]);
   }
 
   Widget _rankRow(String name, String sub, String value, Color color) => Padding(

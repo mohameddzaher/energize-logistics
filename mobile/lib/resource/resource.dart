@@ -127,6 +127,17 @@ class ResourceAction {
   String get label => tr(ar, en);
 }
 
+/// قيمةُ حقلٍ في صفٍّ — تقبل مسارًا بنقطة («mate.name») كي يُبحَث في
+/// كائنٍ متداخلٍ كما يُبحَث في حقلٍ مسطَّح.
+String _path(Map<String, dynamic> row, String field) {
+  if (!field.contains('.')) return (row[field] ?? '').toString();
+  dynamic cur = row;
+  for (final part in field.split('.')) {
+    if (cur is Map) { cur = cur[part]; } else { return ''; }
+  }
+  return (cur ?? '').toString();
+}
+
 String _fold(String s) => s
     .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه')
     .replaceAll('ؤ', 'و').replaceAll('ئ', 'ي').toLowerCase();
@@ -389,7 +400,7 @@ class _ResourceScreenState extends State<ResourceScreen> {
       // الخادمُ بحث بالفعل — وإعادةُ التصفية هنا تُسقط ما طابقه في حقلٍ
       // لا يعرفه `searchFields`.
       if (cfg.serverSearch) return true;
-      return cfg.searchFields.any((f) => _fold((r[f] ?? '').toString()).contains(q));
+      return cfg.searchFields.any((f) => _fold(_path(r, f)).contains(q));
     }).toList());
     // عدّاد كل خيار تصفية محسوبًا من كامل الصفوف المحمّلة.
     int countFor(String v) => v.isEmpty

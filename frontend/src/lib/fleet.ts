@@ -51,6 +51,16 @@ export interface FleetDriver {
   offNote?: string;
   onSponsorship: boolean; // على الكفالة أم لا
   vehicle?: FleetVehicle | string | null;
+  /**
+   * السائقُ الآخر على نفس الشاحنة — يحسبه الخادمُ مع القائمة.
+   *
+   * المقعدان قاعدةٌ في القسم (شاحنةٌ تحمل سائقَين على الأكثر)، والسؤالُ الذي
+   * يلي «على أيّ سيّارة؟» هو «ومع مَن؟». ويأتي من الخادم لا يُقابَل في كلّ
+   * واجهةٍ على حدة: فلا يفترق جوابُ الويب عن جواب الهاتف.
+   */
+  mate?: { _id: string; name: string; phone?: string; working?: boolean } | null;
+  /** عددُ من على الشاحنة — واحدٌ أو اثنان، أو صفرٌ لمن لا شاحنةَ له. */
+  seatMates?: number;
   notes?: string;
 }
 

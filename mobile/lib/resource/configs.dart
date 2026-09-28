@@ -39,13 +39,21 @@ FieldSpec _crmCompanyLookup() => FieldSpec('company', 'الشركة', 'Company',
 final fleetDriversCfg = ResourceConfig(
   arTitle: 'السائقون', enTitle: 'Drivers', icon: Icons.badge_outlined,
   endpoint: '/api/fleet/drivers', listKey: 'drivers', liveEvent: 'fleet:updated',
-  searchFields: const ['name', 'phone', 'iqama'],
+  // اسمُ الزميل يُبحَث به أيضًا: من يكتب اسمَ سائقٍ يريد صفَّه وصفَّ من يشاركه
+  // الشاحنة. والخادمُ يرسل `mate` مع كلّ صفّ، فالبحثُ المحليُّ يقرؤه بنقطة.
+  searchFields: const ['name', 'phone', 'iqama', 'mate.name'],
   titleOf: (r) => _s(r, 'name'),
   subtitleOf: (r) => [_s(r, 'phone'), _s(r, 'iqama')].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
     r['working'] != false ? ('يعمل', T.success) : ('متوقف', T.inkFaint),
     if (r['onSponsorship'] == true) ('على الكفالة', T.info),
     if (r['vehicle'] is Map) (_s(r['vehicle'] as Map<String, dynamic>, 'plate'), T.navy),
+    // ── ومع مَن على الشاحنة ────────────────────────────────────────────────
+    // الشاحنةُ تحمل سائقَين، والسؤالُ الذي يلي اللوحةَ دائمًا: «ومين معاه؟».
+    if (r['mate'] is Map)
+      ('مع ${_s(r['mate'] as Map<String, dynamic>, 'name')}', T.violet)
+    else if (r['vehicle'] is Map)
+      ('المقعد الثاني شاغر', T.inkFaint),
   ],
   // تبديل سريع لحالة العمل/الكفالة من قائمة الصف دون فتح النموذج.
   rowActions: (r) => [

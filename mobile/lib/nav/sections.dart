@@ -48,6 +48,7 @@ import '../screens/marketing_activities.dart';
 import '../screens/ops_workflows.dart';
 import '../screens/ops_private.dart';
 import '../screens/b2c_wallet.dart';
+import '../screens/light_transport_housing.dart';
 import '../screens/my_profile.dart';
 import '../screens/customs_guide.dart';
 import '../screens/cash_wallet.dart';
@@ -463,6 +464,9 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         // مئةٍ وواحدٍ وستّين. وتلك الصفحةُ صارت «تحليل الأوردرات» على الويب.
         AppPage('موظفون النقل الخفيف', 'Light-transport Employees', Icons.two_wheeler_outlined, (c) => ResourceScreen(config: lightTransportCfg), path: '/system/b2c/light-transport'),
         AppPage('أوامر التشغيل', 'Operating Orders', Icons.assignment_ind_outlined, (c) => ResourceScreen(config: lightTransportOrdersCfg), path: '/system/b2c/orders'),
+        AppPage('تحليل الأوردرات', 'Orders Analysis', Icons.insights_outlined, (c) => SectionDashScreen(spec: b2cOrdersDashSpec), path: '/system/b2c/orders-analysis'),
+        // السكنُ والقوائمُ المنسدلة — كما في «إعدادات القسم» على الويب.
+        AppPage('السكن', 'Housing', Icons.home_work_outlined, (c) => const LightTransportHousingScreen(), path: '/system/b2c/settings'),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'B2C'), path: '/system/b2c/kpis'),
       ],
     ),

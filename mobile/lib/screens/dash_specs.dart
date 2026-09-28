@@ -166,8 +166,35 @@ final fleetDashSpec = DashSpec(
   ],
 );
 
-final b2cDashSpec = DashSpec(
-  arTitle: 'لوحة B2C', enTitle: 'B2C Dashboard',
+/// لوحةُ قسم الأفراد — الصورةُ الكاملة كما في الويب.
+/// كانت تقريرَ طلباتٍ ومناديب: أعدادُ الأوردرات وتحقيقُ الهدف وحدَهما. وهي
+/// زاويةٌ من القسم لا القسمُ كلُّه — فلا يُقرأ فيها كم موظّفًا في فرعٍ، ولا كم
+/// مركبةً واقفة، ولا مَن على كفالة أيّ سجلّ، ولا مَن بلا سكن. وذلك التقريرُ
+/// انتقل إلى «تحليل الأوردرات» وبقي كما هو.
+const b2cDashSpec = DashSpec(
+  arTitle: 'لوحة قسم الأفراد', enTitle: 'B2C Board',
+  endpoint: '/api/light-transport/overview', liveEvent: 'lt:*',
+  lists: [],
+  stats: [
+    DashStat('الموظفون', 'Employees', 'employees.total', Icons.groups_outlined, T.navy),
+    DashStat('مناديب', 'Reps', 'employees.reps', Icons.two_wheeler_outlined, T.info),
+    DashStat('إداريون', 'Admin', 'employees.admins', Icons.badge_outlined, T.violet),
+    DashStat('على رأس العمل', 'Working', 'employees.working', Icons.check_circle_outline, T.success),
+    DashStat('مركبات', 'Vehicles', 'vehicles.total', Icons.directions_car_outlined, T.navy),
+    DashStat('عليها راكب', 'With a rider', 'vehicles.withRider', Icons.person_pin_circle_outlined, T.success),
+    // ما ينقص ويحتاج عملًا — لا ما هو قائم.
+    DashStat('مركبات واقفة', 'Idle vehicles', 'vehicles.idle', Icons.local_parking_outlined, T.warn),
+    DashStat('يعملون بلا مركبة', 'Working without a vehicle', 'gaps.workingWithoutVehicle', Icons.no_transfer_outlined, T.warn),
+    DashStat('تفويض باسم غير الراكب', 'Authorised to someone else', 'gaps.authorizationMismatch', Icons.assignment_late_outlined, T.danger),
+    DashStat('بلا سكن', 'Unhoused', 'gaps.unhoused', Icons.home_outlined, T.warn),
+    DashStat('أوامر تشغيل سارية', 'Active orders', 'orders.active', Icons.assignment_ind_outlined, T.navy),
+    DashStat('بلا ملفّ في الموارد البشرية', 'No HR file', 'gaps.noHrFile', Icons.person_off_outlined, T.violet),
+  ],
+);
+
+/// تقريرُ الطلبات — ما كان في اللوحة، في صفحته.
+final b2cOrdersDashSpec = DashSpec(
+  arTitle: 'تحليل الأوردرات', enTitle: 'Orders Analysis',
   endpoint: '/api/b2c/dashboard', liveEvent: 'b2c:*',
   stats: const [
     DashStat('إجمالي الطلبات', 'Total orders', 'kpis.totalOrders', Icons.shopping_basket_outlined, T.navy),

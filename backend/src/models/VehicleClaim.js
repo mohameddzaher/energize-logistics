@@ -26,6 +26,19 @@ const vehicleClaimSchema = new mongoose.Schema({
   ownerRegistrationAr: { type: String, default: '' },
 
   // الطرف الآخر
+  /**
+   * ── ومَن كان يقود مركبتَنا ──────────────────────────────────────────────
+   * السجلُّ كان يحمل الطرفَ الآخرَ وحدَه، ولا يقول مَن كان خلف المقود عندنا.
+   * وهو أوّلُ ما يُسأل عنه: تُقيَّد المخالفةُ على السائق، ويُخصَم منه، ويُسأل
+   * عن روايته، وتُراجَع رخصتُه. وكان الجوابُ يُبحَث عنه في التفويض وفي جدول
+   * الإسناد وفي ذاكرة المشرف — وثلاثتُها قد تختلف.
+   *
+   * ويُقترَح تلقائيًّا من مفوَّض المركبة أو قائدها الفعليّ في قسم النقل الخفيف
+   * (راجع `suggestDriver`)، ويُصحَّح باليد: المفوَّضُ ليس دائمًا الراكب.
+   */
+  driverNameAr: { type: String, default: '' },
+  driverIdNumber: { type: String, default: '', index: true },
+
   counterpartyNameAr: { type: String, default: '' },
   counterpartyNationalId: { type: String, default: '' },
 

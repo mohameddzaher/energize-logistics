@@ -2447,6 +2447,7 @@ exports.renewInsurancePolicy = async (req, res) => {
 const CLAIM_FIELDS = [
   'isVehicleIncident', 'incidentSubjectAr', 'vehiclePlate', 'vehicle',
   'vehicleSectorAr', 'vehicleTypeAr', 'vehicleCategoryAr', 'vehicleBrandAr', 'ownerRegistrationAr',
+  'driverNameAr', 'driverIdNumber',
   'counterpartyNameAr', 'counterpartyNationalId', 'faultRatio', 'faultPercent',
   'accidentDate', 'reportedViaAr', 'reportedViaCode', 'accidentNumber', 'reportOrEstimateNumber',
   'statusAr', 'statusCode',
@@ -2468,6 +2469,46 @@ function applyClaim(doc, body) {
   return doc;
 }
 
+
+/**
+ * ── مَن كان يقود هذه المركبة ────────────────────────────────────────────────
+ * يُقترَح ولا يُفرَض: قائدُ القسم الفعليُّ أوّلًا (سجلُّ النقل الخفيف يقول مَن
+ * يركبها اليوم)، ثمّ المفوَّضُ في سجلّ المركبات. وهما يختلفان في أربعةٍ وعشرين
+ * مركبة — الورقةُ باسم واحدٍ والراكبُ غيرُه — فالأقربُ إلى الحقيقة مَن يركب.
+ *
+ * ولا يُكتب إلّا إذا كانت الخانةُ فارغة: مَن كُتب باليد أصدقُ من كلّ اشتقاق.
+ */
+async function suggestDriver(doc) {
+  try {
+    if (S(doc.driverNameAr) || S(doc.driverIdNumber)) return false;
+    const key = doc.vehiclePlateKey || (doc.vehiclePlate ? plateKey(doc.vehiclePlate) : null);
+    if (!key && !doc.vehicle) return false;
+
+    const { LightTransportEmployee } = require('../models/LightTransport');
+    let lt = null;
+    if (doc.vehicle) lt = await LightTransportEmployee.findOne({ vehicle: doc.vehicle, isActive: { $ne: false } }).select('name idNumber').lean();
+    if (!lt && key) {
+      const rows = await LightTransportEmployee.find({ vehiclePlate: { $nin: ['', null] }, isActive: { $ne: false } })
+        .select('name idNumber vehiclePlate').lean();
+      lt = rows.find((r) => plateKey(r.vehiclePlate) === key) || null;
+    }
+    if (lt) { doc.driverNameAr = lt.name; doc.driverIdNumber = lt.idNumber; return true; }
+
+    const v = doc.vehicle
+      ? await VehicleMaster.findById(doc.vehicle).select('authorizedPerson').lean()
+      : (key ? (await VehicleMaster.find({}).select('plateNumber authorizedPerson').lean())
+        .find((x) => plateKey(x.plateNumber) === key) : null);
+    if (v?.authorizedPerson?.name) {
+      doc.driverNameAr = v.authorizedPerson.name;
+      doc.driverIdNumber = S(v.authorizedPerson.iqamaNumber);
+      return true;
+    }
+    return false;
+  } catch (e) {
+    return false;   // اقتراحٌ لا يُوقف حفظًا
+  }
+}
+
 exports.createClaim = async (req, res) => {
   try {
     if (!req.body?.accidentDate && !req.body?.incidentSubjectAr && !req.body?.vehiclePlate) {
@@ -2478,6 +2519,7 @@ exports.createClaim = async (req, res) => {
     const n = last ? (Number(String(last.claimId).replace('ACC-', '')) || 0) + 1 : 1;
     const doc = applyClaim(new VehicleClaim({ claimId: `ACC-${String(n).padStart(3, '0')}` }), req.body);
     if (!doc.statusCode) { doc.statusCode = 'pending'; doc.statusAr = doc.statusAr || 'قيد المتابعة'; }
+    await suggestDriver(doc);
     await doc.save();
     await syncAccidentCount(doc.vehiclePlateKey);
     // والمطالبةُ سجلٌّ ماليٌّ يُراجَع، فكلُّ ما يُكتب فيها يُقيَّد بصاحبه ووقته:
@@ -2501,6 +2543,8 @@ exports.updateClaim = async (req, res) => {
     if (!doc || doc.isActive === false) return res.status(404).json({ message: 'الحادث غير موجود' });
     const oldKey = doc.vehiclePlateKey;
     applyClaim(doc, req.body);
+    // تغييرُ المركبة يُعيد اقتراحَ السائق متى كانت الخانةُ فارغة.
+    await suggestDriver(doc);
 
     // ── وردُّ التأمين يُضاف ولا يُكتَب فوق سابقه ──────────────────────────
     // شركةُ التأمين تردّ مرّاتٍ على المطالبة الواحدة، وتاريخُ المفاوضة هو ما
@@ -3505,3 +3549,6 @@ exports.authorizationAction = async (req, res) => {
     return res.status(500).json({ message: e.message || 'تعذّر تنفيذ الإجراء' });
   }
 };
+
+// يُستعمَل من سكربت الملء الرجعيّ — راجع backfillClaimDrivers.
+module.exports.suggestDriver = suggestDriver;

@@ -294,7 +294,7 @@ exports.overview = async (req, res) => {
       LightTransportHousing.find({ isActive: { $ne: false } }).lean(),
       // قطاعُ النقل الخفيف في سجلّ المركبات — هو مصدرُ عددِ المركبات.
       VehicleMaster.find({ sectorAr: 'النقل الخفيف', isActive: { $ne: false } })
-        .select('plateNumber registrationTypeAr departmentAr serviceStatusAr serviceStatusCode').lean(),
+        .select('plateNumber registrationTypeAr departmentAr serviceStatusAr serviceStatusCode authorizedPerson').lean(),
       LightTransportOrder.find({ status: 'active' }).select('vehicle ltEmployee').lean(),
     ]);
     let rows = rawRows.map(decorate);
@@ -361,6 +361,34 @@ exports.overview = async (req, res) => {
         };
       }),
       orders: { active: orders.length },
+      /**
+       * ── وما يحتاج عملًا اليوم ────────────────────────────────────────────
+       * اللوحةُ تقول ما هو قائم؛ وهذه تقول ما ينقص. وهي أسئلةٌ تُسأل كلَّ أسبوع
+       * ولا جوابَ لها إلّا بالفرز: مَن يعمل بلا مركبة، ومركبةٌ تقف بلا راكب،
+       * ومَن لا سجلَّ كفالةٍ له، ومَن ورقةُ مركبته باسم غيره.
+       */
+      gaps: {
+        workingWithoutVehicle: rows.filter((r) => !r.vehicle
+          && !['إنهاء خدمة', 'متوقف'].includes(r.workStatusShown)).length,
+        idleVehicles: vShown.filter((v) => !ridden.has(String(v._id))).length,
+        noRegister: rows.filter((r) => !S(r.registerNumber)
+          && !['إنهاء خدمة'].includes(r.workStatusShown)).length,
+        noContractType: rows.filter((r) => !S(r.contractTypeAr)).length,
+        noSupervisor: rows.filter((r) => r.staffKind === 'rep' && !S(r.supervisorName)).length,
+        unhoused: rows.filter((r) => !r.housing).length,
+        noHrFile: rows.filter((r) => !r.hrLinked).length,
+        // الورقةُ باسم غيرِ الراكب — تُقرأ من سجلّ المركبات لا من الصفّ.
+        authorizationMismatch: (() => {
+          let n = 0;
+          for (const r of rows) {
+            if (!r.vehicle) continue;
+            const v = vehicles.find((x) => String(x._id) === String(r.vehicle._id));
+            const holder = S(v?.authorizedPerson?.iqamaNumber);
+            if (holder && S(r.idNumber) && holder !== S(r.idNumber)) n += 1;
+          }
+          return n;
+        })(),
+      },
       options: await optionsOf(),
     });
   } catch (e) {

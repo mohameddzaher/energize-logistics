@@ -127,6 +127,10 @@ export default function ClaimDetailPage() {
     [t('اللوحة', 'Plate'), c.vehiclePlate],
     [t('التاريخ', 'Date'), fmtDate(c.accidentDate)],
     [t('نسبة الخطأ', 'Fault'), c.faultPercent == null ? '' : `${c.faultPercent}%`],
+    [t('اسم السائق', 'Driver'), c.driverNameAr],
+    [t('رقم إقامة السائق', 'Driver iqama'), c.driverIdNumber],
+    [t('نوع السيارة', 'Vehicle type'), c.vehicleTypeAr],
+    [t('رقم التقدير', 'Estimate no.'), c.reportOrEstimateNumber],
     [t('الطرف الآخر', 'Counterparty'), c.counterpartyNameAr],
     [t('هوية الطرف الآخر', 'Counterparty ID'), c.counterpartyNationalId],
     [t('مصدر البلاغ', 'Reported via'), c.reportedViaAr],
@@ -217,11 +221,25 @@ export default function ClaimDetailPage() {
           <Row label={t('السجل المالك', 'Owner registration')}>{val(c.ownerRegistrationAr)}</Row>
         </Section>
 
-        <Section title={t('الطرف الآخر', 'Counterparty')} icon={<Users className="w-4 h-4" />} accent={NEUTRAL}>
-          <Row label={t('الاسم', 'Name')}>{val(c.counterpartyNameAr)}</Row>
-          <Row label={t('رقم الهوية', 'National ID')} mono>{val(c.counterpartyNationalId)}</Row>
-          <Row label={t('نسبة الخطأ', 'Fault ratio')}>{val(c.faultRatio)}</Row>
+        {/* ── مَن كان يقود مركبتَنا ─────────────────────────────────────────
+            كان هذا الكارتُ للطرف الآخر وحدَه، ولا يقول مَن كان خلف المقود عندنا
+            — وهو أوّلُ ما يُسأل عنه: المخالفةُ تُقيَّد عليه، ويُسأل عن روايته،
+            وتُراجَع رخصتُه. ويُقترَح من قائد القسم الفعليّ أو من مفوَّض المركبة،
+            ويُصحَّح باليد: المفوَّضُ ليس دائمًا الراكب. */}
+        <Section title={t('السائق والمركبة', 'Driver & vehicle')} icon={<Users className="w-4 h-4" />} accent="#f37121">
+          <Row label={t('اسم السائق', 'Driver name')}>{val(c.driverNameAr)}</Row>
+          <Row label={t('رقم الإقامة', 'Iqama number')} mono>{val(c.driverIdNumber)}</Row>
+          <Row label={t('نوع السيارة', 'Vehicle type')}>{val(c.vehicleTypeAr || c.vehicle?.registrationTypeAr)}</Row>
+          <Row label={t('رقم التقدير', 'Estimate number')} mono>{val(c.reportOrEstimateNumber)}</Row>
         </Section>
+
+        {(!!c.counterpartyNameAr || !!c.counterpartyNationalId || c.faultRatio != null) && (
+          <Section title={t('الطرف الآخر', 'Counterparty')} icon={<Users className="w-4 h-4" />} accent={NEUTRAL}>
+            <Row label={t('الاسم', 'Name')}>{val(c.counterpartyNameAr)}</Row>
+            <Row label={t('رقم الهوية', 'National ID')} mono>{val(c.counterpartyNationalId)}</Row>
+            <Row label={t('نسبة الخطأ', 'Fault ratio')}>{val(c.faultRatio)}</Row>
+          </Section>
+        )}
 
         <Section title={t('المطالبة', 'The claim')} icon={<Building2 className="w-4 h-4" />} accent="#f37121">
           <Row label={t('شركة التأمين', 'Insurer')}>{val(c.claim?.insurerAr)}</Row>

@@ -27,6 +27,10 @@ import ScrollX from '@/components/system/ScrollX';
 const COL_DEFS: [string, string, string][] = [
   ['plate', 'اللوحة', 'Plate'],
   ['date', 'التاريخ', 'Date'],
+  ['driver', 'اسم السائق', 'Driver'],
+  ['driverId', 'رقم الإقامة', 'Iqama'],
+  ['vehicleType', 'نوع السيارة', 'Vehicle type'],
+  ['estimateNo', 'رقم التقدير', 'Estimate no.'],
   ['fault', 'نسبة الخطأ', 'Fault'],
   ['insurer', 'شركة التأمين', 'Insurer'],
   ['estimated', 'المقدَّر', 'Estimated'],
@@ -38,6 +42,13 @@ const COL_DEFS: [string, string, string][] = [
 const GETTERS: Record<string, (r: any) => any> = {
   plate: (r) => r.vehiclePlate || r.incidentSubjectAr,
   date: (r) => fmtDate(r.accidentDate),
+  // ── ومَن كان يقود ───────────────────────────────────────────────────────
+  // «الطرف الآخر» وحدَه لا يكفي: المخالفةُ تُقيَّد على سائقنا، ويُسأل عن روايته،
+  // وتُراجَع رخصتُه — فهذه الأربعةُ هي ما يُبدأ منه عند كلّ حادث.
+  driver: (r) => r.driverNameAr || '',
+  driverId: (r) => r.driverIdNumber || '',
+  vehicleType: (r) => r.vehicleTypeAr || '',
+  estimateNo: (r) => r.reportOrEstimateNumber || '',
   fault: (r) => (r.faultPercent == null ? '' : `${r.faultPercent}%`),
   insurer: (r) => r.claim?.insurerAr,
   estimated: (r) => (r.claim?.estimatedAmountSar ? money(r.claim.estimatedAmountSar) : ''),
@@ -126,6 +137,10 @@ function ClaimsInner() {
     { header: t('متوقع استرداده', 'Expected recovery'), key: 'claim', transform: (v: any) => v?.expectedRecoverySar ?? '', width: 18 },
     { header: t('الحالة', 'Status'), key: 'statusCode', width: 14,
       transform: (v: any) => (v === 'closed' ? t('مقفولة', 'Closed') : t('قيد المتابعة', 'Pending')) },
+    { header: t('اسم السائق', 'Driver'), key: 'driverNameAr', width: 26 },
+    { header: t('رقم الإقامة', 'Iqama'), key: 'driverIdNumber', width: 14 },
+    { header: t('نوع السيارة', 'Vehicle type'), key: 'vehicleTypeAr', width: 14 },
+    { header: t('رقم التقدير', 'Estimate no.'), key: 'reportOrEstimateNumber', width: 16 },
     { header: t('الطرف الآخر', 'Counterparty'), key: 'counterpartyNameAr', width: 24 },
     { header: t('تم الإبلاغ عبر', 'Reported via'), key: 'reportedViaAr', width: 14 },
     { header: t('الملاحظات', 'Notes'), key: 'claim', transform: (v: any) => v?.notesAr || '', width: 46 },
@@ -386,6 +401,10 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
     incidentSubjectAr: claim?.incidentSubjectAr || '',
     accidentDate: d(claim?.accidentDate),
     accidentNumber: claim?.accidentNumber || '',
+    driverNameAr: claim?.driverNameAr || '',
+    driverIdNumber: claim?.driverIdNumber || '',
+    vehicleTypeAr: claim?.vehicleTypeAr || '',
+    reportOrEstimateNumber: claim?.reportOrEstimateNumber || '',
     counterpartyNameAr: claim?.counterpartyNameAr || '',
     faultPercent: claim?.faultPercent ?? '',
     reportedViaAr: claim?.reportedViaAr || '',
@@ -417,6 +436,10 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
         isVehicleIncident: !!f.vehiclePlate.trim(),
         accidentDate: f.accidentDate || null,
         accidentNumber: f.accidentNumber.trim(),
+        driverNameAr: f.driverNameAr.trim(),
+        driverIdNumber: f.driverIdNumber.trim(),
+        vehicleTypeAr: f.vehicleTypeAr.trim(),
+        reportOrEstimateNumber: f.reportOrEstimateNumber.trim(),
         counterpartyNameAr: f.counterpartyNameAr.trim(),
         faultPercent: num(f.faultPercent),
         reportedViaAr: f.reportedViaAr.trim(),
@@ -464,6 +487,17 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
               <input type="date" value={f.accidentDate} onChange={(e) => set('accidentDate', e.target.value)} className={inp} /></div>
             <div><label className={lbl}>{t('رقم الحادث', 'Accident no.')}</label>
               <input value={f.accidentNumber} onChange={(e) => set('accidentNumber', e.target.value)} className={inp} /></div>
+            {/* يُقترَح السائقُ من قائد القسم الفعليّ أو من مفوَّض المركبة، ويُصحَّح
+                هنا — فالمفوَّضُ ليس دائمًا الراكب (أربعٌ وعشرون مركبةً كذلك). */}
+            <div><label className={lbl}>{t('اسم السائق', 'Driver name')}</label>
+              <input value={f.driverNameAr} onChange={(e) => set('driverNameAr', e.target.value)} className={inp}
+                placeholder={t('يُملأ تلقائيًّا من المركبة', 'auto-filled from the vehicle')} /></div>
+            <div><label className={lbl}>{t('رقم إقامة السائق', 'Driver iqama')}</label>
+              <input value={f.driverIdNumber} onChange={(e) => set('driverIdNumber', e.target.value)} className={inp} dir="ltr" /></div>
+            <div><label className={lbl}>{t('نوع السيارة', 'Vehicle type')}</label>
+              <input value={f.vehicleTypeAr} onChange={(e) => set('vehicleTypeAr', e.target.value)} className={inp} /></div>
+            <div><label className={lbl}>{t('رقم التقدير', 'Estimate number')}</label>
+              <input value={f.reportOrEstimateNumber} onChange={(e) => set('reportOrEstimateNumber', e.target.value)} className={inp} dir="ltr" /></div>
             <div><label className={lbl}>{t('الطرف الآخر', 'Counterparty')}</label>
               <input value={f.counterpartyNameAr} onChange={(e) => set('counterpartyNameAr', e.target.value)} className={inp} /></div>
             <div><label className={lbl}>{t('نسبة الخطأ علينا %', 'Our fault %')}</label>

@@ -24,7 +24,7 @@ import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import ScrollX from '@/components/system/ScrollX';
 import {
-  LayoutDashboard, Users, Car, Home, RotateCcw, ArrowRight, BarChart3, Truck,
+  LayoutDashboard, Users, Car, Home, RotateCcw, ArrowRight, BarChart3, Truck, AlertTriangle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { statusCls, type LTTotals, type LTOptions } from '@/lib/lightTransport';
@@ -38,6 +38,12 @@ interface Overview {
   housing: { _id: string; name: string; cityAr?: string; capacity: number; occupied: number; free: number;
     rooms: { name: string; kind: string; capacity: number; occupied: number; free: number }[] }[];
   orders: { active: number };
+  /** ما ينقص ويحتاج عملًا — لا ما هو قائم. */
+  gaps: {
+    workingWithoutVehicle: number; idleVehicles: number; noRegister: number;
+    noContractType: number; noSupervisor: number; unhoused: number;
+    noHrFile: number; authorizationMismatch: number;
+  };
   options: LTOptions;
 }
 
@@ -249,6 +255,37 @@ export default function B2CDashboardPage() {
         <Breakdown title={t('بالمشرف', 'By supervisor')} icon={<Users className="w-4 h-4" />} data={E.bySupervisor} filterKey="supervisor" accent="#0ea5e9" />
         <Breakdown title={t('بنوع المركبة', 'By vehicle type')} icon={<Car className="w-4 h-4" />} data={V.byType} filterKey="vehicleType" accent="#4f46e5" />
         <Breakdown title={t('مركبات بحالة التشغيل', 'Vehicles by service status')} icon={<Car className="w-4 h-4" />} data={V.byServiceStatus} accent="#64748b" />
+      </div>
+
+      {/* ── ما يحتاج عملًا ────────────────────────────────────────────────────
+          اللوحةُ إلى هنا تقول ما هو قائم. وهذه تقول ما ينقص — وهي أسئلةٌ تُسأل
+          كلَّ أسبوع ولا جوابَ لها إلّا بالفرز اليدويّ. وكلُّ رقمٍ يفتح أصحابَه. */}
+      <h2 className="text-[13px] font-extrabold text-slate-500 flex items-center gap-1.5 pt-1">
+        <AlertTriangle className="w-4 h-4" />{t('ما يحتاج عملًا', 'Needs attention')}
+      </h2>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <Card label={t('يعملون بلا مركبة', 'Working without a vehicle')} value={d.gaps.workingWithoutVehicle}
+          accent={d.gaps.workingWithoutVehicle ? 'text-amber-600' : 'text-slate-900'}
+          onClick={() => router.push('/system/b2c/light-transport?hasVehicle=no&status=يعمل')} />
+        <Card label={t('مركبات واقفة', 'Idle vehicles')} value={d.gaps.idleVehicles}
+          accent={d.gaps.idleVehicles ? 'text-amber-600' : 'text-slate-900'}
+          onClick={() => toggle('hasVehicle', 'no')} on={f.hasVehicle === 'no'} />
+        {/* الورقةُ باسم غيرِ الراكب: لا تُكتشَف — إن لم تُعرَض — إلّا عند مخالفة. */}
+        <Card label={t('تفويض باسم غير الراكب', 'Authorised to someone else')} value={d.gaps.authorizationMismatch}
+          accent={d.gaps.authorizationMismatch ? 'text-red-600' : 'text-slate-900'}
+          onClick={() => router.push('/system/b2c/orders')} hint={t('يُصحَّح من أوامر التشغيل', 'fix from operating orders')} />
+        <Card label={t('بلا سجل كفالة', 'No register')} value={d.gaps.noRegister}
+          accent={d.gaps.noRegister ? 'text-amber-600' : 'text-slate-900'} />
+        <Card label={t('بلا نوع تعاقد', 'No contract type')} value={d.gaps.noContractType}
+          accent={d.gaps.noContractType ? 'text-amber-600' : 'text-slate-900'} />
+        <Card label={t('مناديب بلا مشرف', 'Reps with no supervisor')} value={d.gaps.noSupervisor}
+          accent={d.gaps.noSupervisor ? 'text-amber-600' : 'text-slate-900'}
+          onClick={() => toggle('staffKind', 'rep')} on={f.staffKind === 'rep'} />
+        <Card label={t('بلا سكن', 'Unhoused')} value={d.gaps.unhoused}
+          accent={d.gaps.unhoused ? 'text-amber-600' : 'text-slate-900'}
+          onClick={() => toggle('housing', 'none')} on={f.housing === 'none'} />
+        <Card label={t('بلا ملفّ في الموارد البشرية', 'No HR file')} value={d.gaps.noHrFile}
+          hint={t('القسم يملك سجلّهم', 'owned by the section')} accent="text-violet-600" />
       </div>
 
       {/* ── السكن ───────────────────────────────────────────────────────────── */}

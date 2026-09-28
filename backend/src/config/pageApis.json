@@ -1248,6 +1248,7 @@
     "/system/b2c/light-transport": {
       "apis": [
         "/api/light-transport/employees",
+        "/api/light-transport/employees/assign-supervisors",
         "/api/lookups/types"
       ],
       "wildcard": false

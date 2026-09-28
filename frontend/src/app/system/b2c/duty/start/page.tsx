@@ -49,6 +49,11 @@ interface Rep {
    * تُقرأ ولا تُكتب. راجع `myReps` في الخادم.
    */
   vehicle?: { plate: string; typeAr: string; typeKey: string } | null;
+  /** مشرفُه المسؤول في السجلّ، و`mine` أهو من رجالي. */
+  ownerName?: string;
+  mine?: boolean;
+  /** رقمُ هويّته/إقامته من سجلّ النقل الخفيف — يُبحَث به. */
+  idNumber?: string;
 }
 
 const OUTCOME_META: Record<Outcome, { ar: string; en: string; cls: string; Icon: any }> = {
@@ -63,9 +68,21 @@ export default function DutyStartPage() {
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
 
-  const [data, setData] = useState<{ reps: Rep[]; dateKey: string; done: number; total: number } | null>(null);
+  const [data, setData] = useState<{
+    reps: Rep[]; dateKey: string; done: number; total: number;
+    mineDone?: number; mineTotal?: number; carsExcluded?: number;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState<Rep | null>(null);
+  /**
+   * ── «مناديبي» أو «الكلّ» ────────────────────────────────────────────────
+   * الإسنادُ باقٍ: لكلّ مندوبٍ مشرفُه، وهو ما يُسأل عنه. لكنّ أيَّ مشرفٍ يتفقّد
+   * أيَّ مندوب — يغيب زميلٌ، أو يقف على محطّةٍ فيها رجالُ غيره. فالشاشةُ تفتح
+   * على رجاله (عملُه اليوميّ) وتُفتَح على الكلّ بضغطة، ومن ليس من رجاله يُعلَّم
+   * باسم مشرفه كي يُعرَف أنّه ينوب عنه.
+   */
+  const [scope, setScope] = useState<'mine' | 'all'>('mine');
+  const [q, setQ] = useState('');
 
   const load = useCallback(async () => {
     try { setData(await api.get('/api/b2c/duty/my-reps')); } catch { setData(null); }
@@ -74,7 +91,28 @@ export default function DutyStartPage() {
   useEffect(() => { load(); }, [load]);
   useSocket('b2c:duty', useCallback(() => load(), [load]));
 
-  const reps = data?.reps || [];
+  const all = data?.reps || [];
+  const fold = (v: string) => v.replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').toLowerCase();
+  const reps = useMemo(() => {
+    const term = fold(q.trim());
+    return all.filter((r) => {
+      if (scope === 'mine' && !r.mine) return false;
+      if (!term) return true;
+      // ── ويُبحَث بأيّ رقمٍ في يد السائل ───────────────────────────────────
+      // مَن يقف عند المحطّة يحمل ما وقع في يده: اسمَه، أو رقمَ هويّته أو
+      // إقامته، أو لوحةَ دبّابه، أو رقمَ حسابه على التطبيق. فالبحثُ يقبلها كلَّها
+      // — والرقمُ يُقارَن مجرَّدًا من الفواصل، فـ«2570614806» تجد «2570614806».
+      const digits = term.replace(/\D/g, '');
+      const hay = [r.englishName, r.arabicName, r.repId, r.idNumber,
+        r.vehicle?.plate, r.vehicle?.typeAr, r.ownerName, r.branch?.name, r.project?.name];
+      if (hay.some((x) => fold(String(x || '')).includes(term))) return true;
+      if (digits.length >= 3) {
+        return hay.some((x) => String(x || '').replace(/\D/g, '').includes(digits));
+      }
+      return false;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, scope, q]);
   const pending = useMemo(() => reps.filter((r) => !r.check), [reps]);
   const done = useMemo(() => reps.filter((r) => r.check), [reps]);
 
@@ -92,6 +130,13 @@ export default function DutyStartPage() {
             {t('لا يخرج المندوب إلا بثلاث صور: المندوب والدبّاب والبوكس — تُلتقط الآن ولا تُرفع من الجهاز.',
                'A rider only goes out after three photos: rider, bike and box — captured live, never uploaded.')}
           </p>
+          {/* ولماذا لا يظهر بعضُهم — يُقال، فلا يُحسَب نقصًا في البيانات. */}
+          {!!data?.carsExcluded && (
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              {t(`التفقّد للدبّابات — استُثني ${data.carsExcluded} من قائدي السيارات والفان.`,
+                 `Bikes only — ${data.carsExcluded} car and van drivers are excluded.`)}
+            </p>
+          )}
         </div>
         <Link href="/system/b2c/duty"
           className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:text-[#f37121]">
@@ -99,19 +144,38 @@ export default function DutyStartPage() {
         </Link>
       </div>
 
+      {/* نطاقُ العرض: رجالي أوّلًا — والعدّادان يخصّان المعروضَ لا السجلَّ كلَّه. */}
+      <div className="flex flex-wrap items-center gap-2">
+        {([['mine', t(`مندوبوي (${data?.mineTotal ?? 0})`, `My riders (${data?.mineTotal ?? 0})`)],
+          ['all', t(`كل المناديب (${data?.total ?? 0})`, `All riders (${data?.total ?? 0})`)]] as const).map(([k, label]) => (
+          <button key={k} type="button" onClick={() => setScope(k as 'mine' | 'all')}
+            className={`rounded-lg border px-3 py-1.5 text-[12px] font-semibold ${scope === k
+              ? 'border-[#f37121] bg-orange-50 text-[#f37121]' : 'border-slate-200 bg-white text-slate-600'}`}>
+            {label}
+          </button>
+        ))}
+        <input value={q} onChange={(e) => setQ(e.target.value)}
+          placeholder={t('ابحث بالاسم أو الهوية أو الإقامة أو اللوحة أو المشرف…', 'Search name, ID, iqama, plate or supervisor…')}
+          className="min-w-[200px] flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-[12.5px]" />
+      </div>
+
       <div className="grid grid-cols-3 gap-3">
-        <Stat label={t('مندوبوك', 'Your riders')} value={data?.total ?? 0} />
-        <Stat label={t('تمّ تفقّدهم', 'Checked')} value={data?.done ?? 0} tone="text-emerald-600" />
+        <Stat label={scope === 'mine' ? t('مندوبوك', 'Your riders') : t('المعروضون', 'Shown')} value={reps.length} />
+        <Stat label={t('تمّ تفقّدهم', 'Checked')} value={done.length} tone="text-emerald-600" />
         <Stat label={t('بقي', 'Remaining')} value={pending.length} tone={pending.length ? 'text-amber-600' : 'text-slate-400'} />
       </div>
 
       {!reps.length && (
         <div className="rounded-xl border border-slate-200 bg-white p-10 text-center shadow-sm">
           <ShieldAlert className="mx-auto mb-3 h-9 w-9 text-slate-300" />
-          <p className="text-sm font-semibold text-slate-700">{t('لا مندوبين مُسندين إليك', 'No riders assigned to you')}</p>
+          <p className="text-sm font-semibold text-slate-700">
+            {scope === 'mine' ? t('لا مندوبين مُسندين إليك', 'No riders assigned to you') : t('لا نتائج', 'No results')}
+          </p>
           <p className="mt-1 text-xs text-slate-500">
-            {t('تُسنَد المندوبون للمشرفين من صفحة المندوبين. اطلب من مدير القسم إسنادهم.',
-               'Riders are assigned to supervisors on the riders page. Ask your section manager to assign them.')}
+            {scope === 'mine'
+              ? t('تُسنَد المندوبون للمشرفين من صفحة المندوبين — ويمكنك تفقّد أيّ مندوب من «كل المناديب».',
+                  'Riders are assigned on the riders page — and you can check any rider from “All riders”.')
+              : t('جرّب اسمًا آخر أو امسح البحث.', 'Try another name or clear the search.')}
           </p>
         </div>
       )}
@@ -162,8 +226,17 @@ function RepRow({ rep, ar, onClick }: { rep: Rep; ar: boolean; onClick: () => vo
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13.5px] font-semibold text-slate-900">{name}</span>
         <span className="block truncate text-[11px] text-slate-500">
-          {[rep.repId, rep.branch?.name, rep.project?.name].filter(Boolean).join(' · ') || '—'}
+          {[rep.repId, rep.branch?.name, rep.project?.name, rep.vehicle?.plate].filter(Boolean).join(' · ') || '—'}
         </span>
+        {/* ── ومن ليس من رجالي يُعلَّم باسم مشرفه ──────────────────────────────
+            أتفقّده جائزٌ، لكنّه نيابةٌ لا أصل — فيُقال قبل الضغط لا بعده. */}
+        {!rep.mine && (
+          <span className="mt-0.5 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-800">
+            {rep.ownerName
+              ? (ar ? `مشرفه: ${rep.ownerName}` : `Supervisor: ${rep.ownerName}`)
+              : (ar ? 'بلا مشرف مُسنَد' : 'No supervisor assigned')}
+          </span>
+        )}
       </span>
       {m
         ? <span className={`shrink-0 rounded-md border px-2 py-1 text-[11px] font-semibold ${m.cls}`}>{ar ? m.ar : m.en}</span>
@@ -406,10 +479,13 @@ function CheckModal({ rep, ar, onClose, onSaved }: { rep: Rep; ar: boolean; onCl
 
         <div className="mt-3 grid grid-cols-2 gap-2.5">
           <Field label={t('نوع المركبة', 'Vehicle')}>
+            {/* ── والتفقّدُ للدبّابات ─────────────────────────────────────────
+                «سيّارة» لا تُختار هنا: الشاشةُ تسأل عن دبّابٍ وبوكسٍ، ومن مركبتُه
+                سيّارةٌ لا يظهر في القائمة أصلًا. وتبقى «أخرى» لمن لا مركبةَ
+                مسجَّلةً له فيُكتب وصفُها. */}
             <select className={inp} value={vehicleType} onChange={(e) => setVehicleType(e.target.value)}
               disabled={plateLocked}>
               <option value="motorcycle">{t('دراجة نارية', 'Motorcycle')}</option>
-              <option value="car">{t('سيارة', 'Car')}</option>
               <option value="other">{t('أخرى', 'Other')}</option>
             </select>
           </Field>

@@ -32,7 +32,11 @@ const todayKey = () => new Intl.DateTimeFormat('en-CA', {
 interface Row {
   _id: string; dateKey: string; checkedAt?: string; outcome: 'started' | 'absent' | 'blocked';
   supervisorName?: string; supervisor?: { _id: string; firstName?: string; lastName?: string };
-  rep?: { _id: string; englishName?: string; arabicName?: string; repId?: string };
+  rep?: {
+    _id: string; englishName?: string; arabicName?: string; repId?: string;
+    /** مشرفُه المسؤول في السجلّ — غيرُ الذي تفقّده حين يقوم زميلُه مقامَه. */
+    supervisor?: { _id: string; firstName?: string; lastName?: string } | null;
+  };
   branch?: { name?: string }; project?: { name?: string };
   conditionAr?: string; hasDamage?: boolean; damageNotes?: string; notes?: string;
   vehicleType?: string; vehiclePlate?: string;
@@ -52,6 +56,22 @@ const KINDS: { key: PhotoKind; ar: string; en: string }[] = [
   { key: 'ad', ar: 'المحتوى الإعلاني', en: 'Ad content' },
 ];
 const kindOf = (p: { kind?: PhotoKind }) => p.kind || 'vehicle';
+
+/** اسمُ مشرف المندوب المسؤول — من صفّ المندوب لا من القيد. */
+const ownerOf = (rep?: Row['rep']) => {
+  const o = rep?.supervisor;
+  return o ? [o.firstName, o.lastName].filter(Boolean).join(' ') : '';
+};
+/**
+ * أتفقّده غيرُ مشرفه؟ — يُقال في الصفّ.
+ * قيامُ مشرفٍ مقامَ زميله أمرٌ عاديٌّ في الميدان، لكنّه يُقرأ: مَن وقف على
+ * الرجل، ومَن يبقى مسؤولًا عنه.
+ */
+const onBehalf = (r: Row) => {
+  const owner = r.rep?.supervisor?._id;
+  const actor = r.supervisor?._id;
+  return !!owner && !!actor && String(owner) !== String(actor);
+};
 const countKind = (r: Row, k: PhotoKind) => (r.photos || []).filter((p) => kindOf(p) === k).length;
 
 const OUT: Record<string, { ar: string; en: string; cls: string }> = {
@@ -115,7 +135,11 @@ export default function DutyRegisterPage() {
   const cols: ExportColumn[] = [
     { header: t('اليوم', 'Day'), key: 'dateKey' },
     { header: t('المندوب', 'Rider'), key: 'rep', transform: (v: any) => v?.englishName || '' },
-    { header: t('المشرف', 'Supervisor'), key: 'supervisorName' },
+    // ── ومن تفقّده ومن يُسأل عنه عمودان ──────────────────────────────────────
+    // صار أيُّ مشرفٍ يتفقّد أيَّ مندوب، فسؤالُ «مين عمل التفقّد ده؟» غيرُ سؤال
+    // «مين المسؤول عن الراجل ده؟». وعمودٌ واحدٌ كان يخلط الجوابين.
+    { header: t('المشرف الذي تفقّد', 'Checked by'), key: 'supervisorName' },
+    { header: t('مشرفه المسؤول', 'His supervisor'), key: 'rep', transform: (v: any) => ownerOf(v) },
     { header: t('الحالة', 'Outcome'), key: 'outcome', transform: (v: any) => (ar ? OUT[v]?.ar : OUT[v]?.en) || v },
     { header: t('الفرع', 'Branch'), key: 'branch', transform: (v: any) => v?.name || '' },
     ...KINDS.map((k) => ({
@@ -216,7 +240,7 @@ export default function DutyRegisterPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300">
               <tr>
-                {[t('اليوم', 'Day'), t('المندوب', 'Rider'), t('المشرف', 'Supervisor'), t('الحالة', 'Outcome'),
+                {[t('اليوم', 'Day'), t('المندوب', 'Rider'), t('تفقّده', 'Checked by'), t('الحالة', 'Outcome'),
                   ...KINDS.map((k) => t(k.ar, k.en)), t('الوقت', 'Time'), t('المراجعة', 'Review')].map((h) => (
                   <th key={h} className="px-3 py-2.5 text-start font-semibold">{h}</th>
                 ))}
@@ -227,7 +251,16 @@ export default function DutyRegisterPage() {
                 <tr key={r._id} onClick={() => setOpen(r)} className="cursor-pointer border-b border-slate-100 hover:bg-slate-50">
                   <td className="px-3 py-2 whitespace-nowrap text-xs text-slate-500">{r.dateKey}</td>
                   <td className="px-3 py-2 text-[13px] font-semibold text-slate-900">{ar ? (r.rep?.arabicName || r.rep?.englishName) : r.rep?.englishName}</td>
-                  <td className="px-3 py-2 text-xs text-slate-600">{r.supervisorName || '—'}</td>
+                  {/* من تفقّده، ومعه مشرفُه المسؤول إن كان غيرَه — فيُقرأ
+                      «تفقّده فلان نيابةً عن فلان» من الصفّ بلا فتحه. */}
+                  <td className="px-3 py-2 text-xs text-slate-600">
+                    <span className="block">{r.supervisorName || '—'}</span>
+                    {onBehalf(r) && (
+                      <span className="block text-[10.5px] text-amber-700">
+                        {t(`نيابةً عن ${ownerOf(r.rep)}`, `for ${ownerOf(r.rep)}`)}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2"><span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${OUT[r.outcome]?.cls}`}>{ar ? OUT[r.outcome]?.ar : OUT[r.outcome]?.en}</span></td>
                   {KINDS.map((k) => {
                     const n = countKind(r, k.key);

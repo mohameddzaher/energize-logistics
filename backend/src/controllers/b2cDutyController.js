@@ -58,7 +58,11 @@ const PHOTO_KIND_AR = { rep: 'صورة المندوب', vehicle: 'صورة ال�
 const isThursday = (dateKey) => new Date(`${dateKey}T12:00:00Z`).getUTCDay() === 4;
 
 const populate = (q) => q
-  .populate('rep', 'englishName arabicName repId phone')
+  // ومع المندوب مشرفُه المسؤول: التقريرُ يقول مَن يُسأل عنه، و`supervisor`
+  // أدناه يقول مَن تفقّده فعلًا — سؤالان مختلفان بعد أن صار أيُّ مشرفٍ يتفقّد
+  // أيَّ مندوب.
+  .populate({ path: 'rep', select: 'englishName arabicName repId phone supervisor',
+    populate: { path: 'supervisor', select: 'firstName lastName role' } })
   .populate('supervisor', 'firstName lastName email role')
   .populate('branch', 'name code')
   .populate('project', 'name nameAr')
@@ -92,19 +96,26 @@ exports.myReps = async (req, res) => {
     // الإدارةُ قد تفتح الشاشةَ نيابةً عن مشرف — تُمرَّر `supervisor` صراحةً.
     const asUser = canSeeAll(req.user) && req.query.supervisor ? req.query.supervisor : req.user._id;
 
-    const repFilter = { isActive: { $ne: false }, supervisor: asUser };
-    const reps = await B2CRep.find(repFilter)
+    /**
+     * ── كلُّ المناديب أمام كلِّ مشرف ─────────────────────────────────────────
+     *
+     * الإسنادُ باقٍ كما هو: لكلّ مندوبٍ مشرفُه في السجلّ، وهو ما تُقرأ به
+     * المسؤوليّةُ والتقارير. لكنّ القائمةَ كانت مقصورةً على رجال المشرف وحدَه،
+     * والميدانُ لا يجري كذلك: يغيب مشرفٌ فلا يجد أحدٌ رجالَه في شاشته، ويقف
+     * مشرفٌ على محطّةٍ فيها رجالُ زميله فلا يستطيع أن يُخرجهم — فيُسجَّل
+     * التفقّدُ من حسابٍ ليس حسابَ من وقف، أو لا يُسجَّل.
+     *
+     * فصارت القائمةُ كلَّ المناديب، ومع كلٍّ منهم **مشرفُه المسؤول** كي يُعرَف
+     * أهو من رجالي أم من رجال غيري. ومَن سجّل التفقّدَ فعلًا يُثبَّت في الصفّ
+     * (`B2CDutyCheck.supervisor`) — فالمسؤوليّةُ في السجلّ والفعلُ في القيد،
+     * ولا يُقرأ أحدُهما مكان الآخر.
+     */
+    const reps0 = await B2CRep.find({ isActive: { $ne: false } })
       .select('englishName arabicName repId phone branch project supervisor ltEmployee')
       .populate('branch', 'name code')
       .populate('project', 'name nameAr')
+      .populate('supervisor', 'firstName lastName role')
       .sort({ englishName: 1 }).lean();
-
-    const checks = reps.length
-      ? await B2CDutyCheck.find({ dateKey, rep: { $in: reps.map((r) => r._id) } })
-        .select('rep outcome checkedAt photos conditionAr hasDamage damageNotes notes vehicleType vehiclePlate supervisorName')
-        .lean()
-      : [];
-    const byRep = new Map(checks.map((c) => [String(c.rep), c]));
 
     /**
      * ── ومركبةُ المندوب لا تُكتب بيدٍ كلَّ صباح ────────────────────────────
@@ -118,44 +129,95 @@ exports.myReps = async (req, res) => {
      * مملوءةً. وتبقى قابلةً للتعديل: يومًا يخرج على مركبةٍ بديلة، وحينئذٍ يقول
      * المشرفُ ذلك بيده — لكنّ الأصلَ ألّا يُسأل.
      */
-    const ltIds = reps.map((r) => r.ltEmployee).filter(Boolean);
+    const ltIds = reps0.map((r) => r.ltEmployee).filter(Boolean);
     const vehByLt = new Map();
     if (ltIds.length) {
       const { LightTransportEmployee } = require('../models/LightTransport');
       const rows = await LightTransportEmployee.find({ _id: { $in: ltIds } })
-        .select('vehiclePlate vehicleTypeAr vehicle').lean();
+        .select('vehiclePlate vehicleTypeAr vehicle idNumber').lean();
       for (const row of rows) {
         vehByLt.set(String(row._id), {
           plate: row.vehiclePlate || '',
           typeAr: row.vehicleTypeAr || '',
           typeKey: vehicleTypeKey(row.vehicleTypeAr),
+          // رقمُ الهويّة/الإقامة — يُبحَث به في الشاشة: هو ما في يد السائل.
+          idNumber: row.idNumber || '',
         });
       }
     }
 
+    /**
+     * ── والتفقّدُ للدبّابات لا للسيّارات ───────────────────────────────────────
+     *
+     * الشاشةُ وُجدت لسؤالٍ واحد: هل خرج الدبّابُ سليمًا؟ صورةُ الدبّاب وصورةُ
+     * البوكس لا معنى لهما في سيّارةٍ أو فان — ومن يقودها يظهر في القائمة كلَّ
+     * صباحٍ بلا ما يُصوَّر، فيُعَدّ ناقصًا في الالتزام وهو لا شيءَ عليه.
+     *
+     * فمن كانت مركبتُه سيّارةً في سجلّ النقل الخفيف يُرفَع من هذه الشاشة. ومن لا
+     * مركبةَ مسجَّلةً له يبقى: الغالبُ أنّه على دبّاب، والغيابُ ليس جوابًا.
+     */
+    const isCar = (r) => {
+      const v = r.ltEmployee && vehByLt.get(String(r.ltEmployee));
+      return v?.typeKey === 'car';
+    };
+    const reps = reps0.filter((r) => !isCar(r));
+    const carsExcluded = reps0.length - reps.length;
+
+    const checks = reps.length
+      ? await B2CDutyCheck.find({ dateKey, rep: { $in: reps.map((r) => r._id) } })
+        .select('rep outcome checkedAt photos conditionAr hasDamage damageNotes notes vehicleType vehiclePlate supervisorName')
+        .lean()
+      : [];
+    const byRep = new Map(checks.map((c) => [String(c.rep), c]));
+
     res.json({
       dateKey,
       isToday: dateKey === dayKeyOf(),
-      reps: reps.map((r) => ({
-        ...r,
-        vehicle: (r.ltEmployee && vehByLt.get(String(r.ltEmployee))) || null,
-        check: byRep.get(String(r._id)) || null,
-      })),
+      // يُقال صراحةً كم رُفع ولماذا — الغيابُ الصامتُ يُقرأ نقصًا في البيانات.
+      carsExcluded,
+      reps: reps.map((r) => {
+        const owner = r.supervisor && typeof r.supervisor === 'object' ? r.supervisor : null;
+        return {
+          ...r,
+          supervisor: owner ? owner._id : r.supervisor || null,
+          // مشرفُه المسؤول بالاسم — تُميَّز به «مناديبي» من «الكلّ» في الشاشة.
+          ownerName: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(' ') : '',
+          mine: String(owner?._id || r.supervisor || '') === String(asUser),
+          vehicle: (r.ltEmployee && vehByLt.get(String(r.ltEmployee))) || null,
+          idNumber: (r.ltEmployee && vehByLt.get(String(r.ltEmployee))?.idNumber) || '',
+          check: byRep.get(String(r._id)) || null,
+        };
+      }),
+      // «كم أنجزتُ من رجالي» يبقى المقياسَ: العددان يخصّان مناديبي وحدَهم،
+      // وإلّا قرأ المشرفُ «٦٠ من ٥٩٣» فلا يعرف أنجز نصيبَه أم لا.
+      mineTotal: reps.filter((r) => String((r.supervisor && r.supervisor._id) || r.supervisor || '') === String(asUser)).length,
+      mineDone: checks.filter((c) => {
+        const r = reps.find((x) => String(x._id) === String(c.rep));
+        return r && String((r.supervisor && r.supervisor._id) || r.supervisor || '') === String(asUser);
+      }).length,
       done: checks.length,
       total: reps.length,
     });
   } catch (e) { res.status(500).json({ message: 'تعذّر تحميل مندوبيك' }); }
 };
 
-/** حارسٌ واحد: أهذا المندوبُ من رجال هذا المشرف؟ */
+/**
+ * حارسُ المندوب — أموجودٌ ونشط؟
+ *
+ * ── ولم يبقَ شرطُ «من رجالك» ───────────────────────────────────────────────
+ * كان الحارسُ يردّ ٤٠٣ على تفقّدِ مندوبٍ مُسنَدٍ إلى مشرفٍ آخر. والميدانُ لا
+ * يجري كذلك: يغيب مشرفٌ فيقوم زميلُه مقامَه، ويقف أحدُهم على محطّةٍ فيها رجالُ
+ * غيره. والشرطُ كان يدفع إلى أسوأ: أن يُسجَّل التفقّدُ من حساب المشرف الغائب،
+ * فيشهد السجلُّ بما لم يقع.
+ *
+ * فأيُّ مشرفٍ يتفقّد أيَّ مندوب، و**من فعل يُثبَّت في القيد** (`supervisor` +
+ * `supervisorName` على `B2CDutyCheck`). والإسنادُ في السجلّ باقٍ للمسؤوليّة:
+ * التقريرُ يقول مَن مشرفُه ومَن تفقّده، فيُسأل كلٌّ عمّا يخصّه.
+ */
 const assertOwnsRep = async (req, repId) => {
   const rep = await B2CRep.findById(repId).select('supervisor branch project englishName isActive').lean();
   if (!rep) return { error: 404, message: 'المندوب غير موجود' };
   if (rep.isActive === false) return { error: 400, message: 'هذا المندوب غير نشط' };
-  if (canSeeAll(req.user)) return { rep };
-  if (String(rep.supervisor || '') !== String(req.user._id)) {
-    return { error: 403, message: 'هذا المندوب ليس ضمن مندوبيك' };
-  }
   return { rep };
 };
 
@@ -315,11 +377,28 @@ exports.submit = async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** شرطُ القراءة: الإدارةُ ترى الكلَّ، والمشرفُ يرى ما سجّله هو. */
-const scopeOf = (req) => (canSeeAll(req.user) ? {} : { supervisor: req.user._id });
+/**
+ * ── ما يراه المشرفُ في التقرير ──────────────────────────────────────────────
+ *
+ * كان: ما سجّلتَه بيدك. وصار أيُّ مشرفٍ يتفقّد أيَّ مندوب، فالمقصورُ على فعله
+ * وحدَه يُخفي عنه **رجالَه أنفسَهم** حين يتفقّدهم زميله — وهو أوّلُ ما يُسأل
+ * عنه: «مين خرّج رجالي النهاردة؟».
+ *
+ * فصار يرى: ما فعله هو، وما وقع على مناديبه من أيٍّ كان. والاثنان معنى واحد:
+ * ما يُسأل عنه.
+ */
+const scopeOf = async (req) => {
+  if (canSeeAll(req.user)) return {};
+  const mine = await B2CRep.find({ supervisor: req.user._id }).select('_id').lean();
+  const ids = mine.map((r) => r._id);
+  return ids.length
+    ? { $or: [{ supervisor: req.user._id }, { rep: { $in: ids } }] }
+    : { supervisor: req.user._id };
+};
 
-const listFilter = (req) => {
+const listFilter = async (req) => {
   const q = req.query || {};
-  const and = [scopeOf(req)];
+  const and = [await scopeOf(req)];
   // يومٌ واحد، أو مدًى بين تاريخين. وغيابُ الاثنين يعني اليوم.
   if (validKey(q.from) && validKey(q.to)) and.push({ dateKey: { $gte: q.from, $lte: q.to } });
   else if (validKey(q.date)) and.push({ dateKey: q.date });
@@ -343,7 +422,7 @@ const listFilter = (req) => {
 
 exports.list = async (req, res) => {
   try {
-    const filter = listFilter(req);
+    const filter = await listFilter(req);
     const limit = Math.min(Number(req.query.limit) || 300, 1000);
     const page = Math.max(Number(req.query.page) || 1, 1);
     const [rows, total] = await Promise.all([
@@ -415,7 +494,7 @@ exports.analytics = async (req, res) => {
     const q = req.query || {};
     const to = validKey(q.to) ? q.to : dayKeyOf();
     const from = validKey(q.from) ? q.from : to;
-    const base = { ...scopeOf(req), dateKey: { $gte: from, $lte: to } };
+    const base = { ...(await scopeOf(req)), dateKey: { $gte: from, $lte: to } };
     const oid = (v) => (mongoose.isValidObjectId(v) ? new mongoose.Types.ObjectId(String(v)) : null);
     if (oid(q.branch)) base.branch = oid(q.branch);
     if (oid(q.project)) base.project = oid(q.project);

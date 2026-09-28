@@ -8,6 +8,7 @@ import '../screens/fleet_customer_profile.dart';
 import '../screens/customer_registry_profile.dart';
 import '../screens/bd_opportunity_detail.dart';
 import '../screens/marketing_campaign_detail.dart';
+import '../screens/light_transport_profile.dart';
 import 'resource.dart';
 
 /// Page definitions on the CRUD engine — each entry IS a full native page
@@ -1427,4 +1428,113 @@ final customsContractsCfg = ResourceConfig(
     FieldSpec('scope', 'ما يغطّيه العقد', 'Scope'),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
+);
+
+// ── النقل الخفيف ─────────────────────────────────────────────────────────────
+// سجلُّ القسم كلِّه: المناديبُ والمشرفون والإداريّون والفنيّون. وهو غيرُ
+// «مناديب B2C» أعلاه — تلك تقرأ `B2CRep` وهي مَن لهم تقاريرُ طلبات، وأحدَ عشرَ
+// موظّفًا من مئةٍ وواحدٍ وستّين ليسوا فيها أصلًا.
+//
+// والإنسانُ في الموارد البشريّة والمركبةُ في سجلّ المركبات — لا يُنسَخ منهما شيء
+// (راجع backend/models/LightTransport). فالحالةُ المعروضةُ تأتي مشتقّةً من
+// الخادم في `workStatusShown`، ولا تُحسَب هنا مرّةً ثانية.
+final lightTransportCfg = ResourceConfig(
+  onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(
+      builder: (_) => LightTransportProfileScreen(id: (r['_id'] ?? '').toString()))),
+  arTitle: 'موظفون النقل الخفيف', enTitle: 'Light-transport Employees',
+  icon: Icons.two_wheeler_outlined,
+  endpoint: '/api/light-transport/employees', listKey: 'employees',
+  liveEvent: 'lt:*',
+  // البحثُ في الخادم: هو الذي يصل سجلَّ المركبات أيضًا — الرقمُ التسلسليُّ ورقمُ
+  // التفويض ليسا في صفّ الموظّف، فبحثٌ محلّيٌّ يقول «لا نتائج» والمركبةُ عندنا.
+  serverSearch: true,
+  searchFields: const ['name', 'idNumber', 'vehiclePlate', 'supervisorName', 'projectAr'],
+  // شرائحُ أعلى القائمة: المشروعُ أكثرُ ما يُفلتَر عليه في هذا القسم.
+  filterField: 'projectAr',
+  sortFields: const [('name', 'الاسم', 'Name'), ('hireDate', 'تاريخ التعيين', 'Hire date')],
+  titleOf: (r) => _s(r, 'name'),
+  subtitleOf: (r) => [
+    _s(r, 'idNumber'), _s(r, 'jobTitleAr'), _s(r, 'projectAr'), _s(r, 'cityAr'),
+  ].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) {
+    final st = _s(r, 'workStatusShown');
+    final kind = _s(r, 'staffKind');
+    return [
+      if (_s(r, 'vehiclePlate').isNotEmpty) (_s(r, 'vehiclePlate'), T.navy),
+      if (kind.isNotEmpty) (kind == 'rep' ? 'مندوب' : 'إداري', kind == 'rep' ? T.orange : T.navy),
+      if (st.isNotEmpty)
+        (st, st == 'إنهاء خدمة' ? T.danger : st == 'متوقف' ? T.warn : st == 'إجازة' ? T.navy : T.success),
+      // ولا ملفَّ له في الموارد البشريّة: القسمُ يملك سجلَّه — اثنا عشرَ فري لانسر.
+      if (r['hrLinked'] == false) ('بلا ملفّ HR', T.warn),
+    ];
+  },
+  fields: [
+    const FieldSpec('idNumber', 'رقم الهوية', 'ID number', required: true),
+    const FieldSpec('name', 'الاسم', 'Name', required: true),
+    // القيمُ الثابتةُ قوائمُ مُدارةٌ من إعدادات القسم، وتُخزَّن بنصِّها العربيّ:
+    // الخانةُ الحرّةُ تكتب الواحدةَ بألف صيغة فتصير في التقارير عدّةَ مشاريع.
+    FieldSpec('projectAr', 'المشروع', 'Project', type: FieldType.lookup,
+        lookupEndpoint: '/api/lookups?type=lt_project&active=true',
+        lookupListKey: 'items', lookupQuery: 'limit=200',
+        lookupLabel: (r) => _s(r, 'nameAr'), lookupValue: (r) => _s(r, 'nameAr')),
+    FieldSpec('cityAr', 'الفرع', 'Branch', type: FieldType.lookup,
+        lookupEndpoint: '/api/lookups?type=lt_city&active=true',
+        lookupListKey: 'items', lookupQuery: 'limit=200',
+        lookupLabel: (r) => _s(r, 'nameAr'), lookupValue: (r) => _s(r, 'nameAr')),
+    FieldSpec('jobTitleAr', 'الوظيفة', 'Job title', type: FieldType.lookup,
+        lookupEndpoint: '/api/lookups?type=lt_job_title&active=true',
+        lookupListKey: 'items', lookupQuery: 'limit=200',
+        lookupLabel: (r) => _s(r, 'nameAr'), lookupValue: (r) => _s(r, 'nameAr')),
+    FieldSpec('contractTypeAr', 'نوع التعاقد', 'Contract type', type: FieldType.lookup,
+        lookupEndpoint: '/api/lookups?type=lt_contract_type&active=true',
+        lookupListKey: 'items', lookupQuery: 'limit=200',
+        lookupLabel: (r) => _s(r, 'nameAr'), lookupValue: (r) => _s(r, 'nameAr')),
+    FieldSpec('registerNumber', 'رقم السجل', 'Commercial register', type: FieldType.lookup,
+        lookupEndpoint: '/api/lookups?type=lt_register&active=true',
+        lookupListKey: 'items', lookupQuery: 'limit=200',
+        lookupLabel: (r) => _s(r, 'nameAr'), lookupValue: (r) => _s(r, 'nameAr')),
+    FieldSpec('vehicleTypeAr', 'نوع المركبة', 'Vehicle type', type: FieldType.lookup,
+        lookupEndpoint: '/api/lookups?type=lt_vehicle_type&active=true',
+        lookupListKey: 'items', lookupQuery: 'limit=200',
+        lookupLabel: (r) => _s(r, 'nameAr'), lookupValue: (r) => _s(r, 'nameAr')),
+    // حالةُ العمل تُكتب هنا، وتغلبها الموارد البشريّةُ حين تقول «أُنهيت خدمتُه»
+    // أو «موقوف» — خبرٌ أقوى من أيّ خانة. راجع `shownStatus` في المتحكّم.
+    FieldSpec('workStatusAr', 'حالة العمل', 'Work status', type: FieldType.lookup,
+        lookupEndpoint: '/api/lookups?type=lt_work_status&active=true',
+        lookupListKey: 'items', lookupQuery: 'limit=200',
+        lookupLabel: (r) => _s(r, 'nameAr'), lookupValue: (r) => _s(r, 'nameAr')),
+    const FieldSpec('supervisorName', 'المشرف', 'Supervisor'),
+    const FieldSpec('nationalityAr', 'الجنسية', 'Nationality'),
+    const FieldSpec('phone', 'الجوال', 'Phone', type: FieldType.phone),
+    const FieldSpec('hireDate', 'تاريخ التعيين', 'Hire date', type: FieldType.date),
+    const FieldSpec('notesAr', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+  // لا حذفَ لموظّف — يُعطَّل السجلّ ويبقى أثرُه، كقاعدة الموارد البشريّة.
+  canDelete: false,
+);
+
+// ── أوامر التشغيل ────────────────────────────────────────────────────────────
+// «هذا الموظّفُ يعمل على هذه المركبة، في هذا المشروع والفرع.» والقراءةُ هنا
+// والإنشاءُ من الويب: النموذجُ يختار موظّفًا ومركبةً وسكنًا بقواعدَ (مركبةٌ
+// واحدةٌ لراكب، وغرفةٌ لا تُتجاوَز سعتُها) لا تُختصَر في ورقةٍ على هاتف.
+final lightTransportOrdersCfg = ResourceConfig(
+  arTitle: 'أوامر التشغيل', enTitle: 'Operating Orders', icon: Icons.assignment_ind_outlined,
+  endpoint: '/api/light-transport/orders', listKey: 'orders', liveEvent: 'lt:*',
+  serverSearch: true,
+  searchFields: const ['orderNumber', 'employeeName', 'employeeIdNumber', 'vehiclePlate'],
+  sortFields: const [('startDate', 'تاريخ البداية', 'Start date')],
+  titleOf: (r) => _s(r, 'employeeName'),
+  subtitleOf: (r) => [
+    _s(r, 'orderNumber'), _s(r, 'vehiclePlate'), _s(r, 'projectAr'), _s(r, 'cityAr'),
+  ].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    (r['status'] == 'active' ? 'سارٍ' : 'مُغلَق', r['status'] == 'active' ? T.success : T.inkFaint),
+    // ── والورقةُ باسم غيرِ الراكب تُعرَض ──────────────────────────────────
+    // أربعٌ وعشرون مركبةً مفوَّضةٌ لشخصٍ وقائدُها الفعليُّ آخر. وهي ليست خطأً
+    // يُصحَّح بلا سؤال، لكنّها لا تُكتشف — إن لم تُعرَض — إلّا عند مخالفة.
+    if (r['authorizationMismatch'] == true)
+      ('التفويض باسم ${_s(r, 'authorizedNowName')}', T.warn),
+  ],
+  fields: const [],
+  canCreate: false, canEdit: false, canDelete: false,
 );

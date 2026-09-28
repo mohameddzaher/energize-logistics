@@ -457,7 +457,12 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         // والمشرفُ يفتحه واقفًا في المحطّة لا خلف مكتب، فالهاتفُ موضعُه الأصليّ.
         AppPage('تفقّد بداية الدوام', 'Duty Start Check', Icons.photo_camera_outlined, (c) => const B2cDutyScreen(), path: '/system/b2c/duty/start'),
         AppPage('عهد المشاريع', 'Custody', Icons.account_balance_wallet_outlined, (c) => const B2cWalletScreen(), path: '/system/b2c/custody'),
-        AppPage('مناديب المبيعات', 'Reps', Icons.sports_motorsports_outlined, (c) => ResourceScreen(config: b2cRepsCfg), path: '/system/b2c/reps'),
+        // ── سجلُّ القسم كلِّه لا مناديبَ التقارير وحدَهم ────────────────────
+        // «مناديب المبيعات» كانت تقرأ `B2CRep` — وهم مَن لهم تقاريرُ طلبات،
+        // فلا يظهر فيها مشرفٌ ولا ميكانيكيٌّ ولا عاملُ نظافة: أحدَ عشرَ من
+        // مئةٍ وواحدٍ وستّين. وتلك الصفحةُ صارت «تحليل الأوردرات» على الويب.
+        AppPage('موظفون النقل الخفيف', 'Light-transport Employees', Icons.two_wheeler_outlined, (c) => ResourceScreen(config: lightTransportCfg), path: '/system/b2c/light-transport'),
+        AppPage('أوامر التشغيل', 'Operating Orders', Icons.assignment_ind_outlined, (c) => ResourceScreen(config: lightTransportOrdersCfg), path: '/system/b2c/orders'),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'B2C'), path: '/system/b2c/kpis'),
       ],
     ),

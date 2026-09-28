@@ -108,7 +108,13 @@
 - [~] `tickets` ✓ `systems` ✓ `stock` ✓ `custody` ✓ (تسليم/نقل/إرجاع/إبلاغ/إخراج/سجل) `my-tasks`/`complaints`/`kpis` ✓ — باقي: recurring (اللوحة ✓)
 
 ## B2C / b2c
-- [~] `reps` ✓ `projects` ✓ `daily-entry` ✓ `kpis` ✓ اللوحة ✓ — باقي: reps-performance/custody
+- [~] `light-transport` ✓ (سجلّ القسم كلّه + ملفّ الموظف بالسجلّ والأوامر) `orders` ✓ (قراءة)
+  `projects` ✓ `daily-entry` ✓ `duty/start` ✓ `custody` ✓ `kpis` ✓ اللوحة ✓
+  — باقي: `orders-analysis` (تقرير الطلبات)، إنشاءُ أمر تشغيل من الهاتف، `settings` (السكن والقوائم)
+  - `reps` حلّ محلَّها `light-transport`: تلك كانت تقرأ `B2CRep` — مَن لهم تقاريرُ طلبات — فلا
+    يظهر فيها مشرفٌ ولا فنيٌّ ولا عاملُ نظافة (أحدَ عشرَ من مئةٍ وواحدٍ وستّين).
+  - إنشاءُ أمر التشغيل بقي على الويب عمدًا: النموذجُ يختار موظّفًا ومركبةً وسكنًا بقواعدَ
+    (مركبةٌ واحدةٌ لراكب، وغرفةٌ لا تُتجاوَز سعتُها ولا نوعُها) لا تُختصَر في ورقةٍ على هاتف.
 
 ## العمل عن بُعد / remote
 - [~] `attendance` ✓ `leave` ✓ (طلب + قرار) `tasks` ✓ `report` ✓ `chat` ✓ (محادثات المشرف + مباشرة) `announcements` ✓ — باقي: dashboard/kpis

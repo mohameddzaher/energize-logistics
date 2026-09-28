@@ -57,7 +57,8 @@ exports.listOrders = async (req, res) => {
     // التفويض في سجلّ المركبات، فيُسأل عنه هناك ويُضاف بمعرِّف المركبة.
     if (S(q.q)) {
       const { arabicSearchRegex } = require('../utils/arabicSearch');
-      const rx = arabicSearchRegex(S(q.q));
+      const term = S(q.q);
+      const rx = arabicSearchRegex(term);
       const or = [{ orderNumber: rx }, { employeeName: rx }, { employeeIdNumber: rx },
         { vehiclePlate: rx }, { vehicleTypeAr: rx }, { supervisorName: rx },
         { projectAr: rx }, { cityAr: rx }, { authorizationNumber: rx }, { notesAr: rx }];
@@ -66,7 +67,20 @@ exports.listOrders = async (req, res) => {
           { 'authorizedPerson.name': rx }, { 'authorizedPerson.iqamaNumber': rx },
           { 'authorizedPerson.authorizationNumber': rx }],
       }).select('_id').limit(400).lean();
-      if (vm.length) or.push({ vehicle: { $in: vm.map((v) => v._id) } });
+      const ids = vm.map((v) => v._id);
+      // واللوحةُ تُقرأ بأيّ ترتيب — «ص ب 7918» و«7918 ص ب» لوحةٌ واحدة.
+      // راجع `plateKeyOf` في lightTransportController.
+      const { plateKeyOf, looksLikePlate } = require('./lightTransportController');
+      if (looksLikePlate(term)) {
+        const want = plateKeyOf(term);
+        const byKey = await VehicleMaster.find({}).select('_id plateNumber').lean();
+        for (const v of byKey) if (plateKeyOf(v.plateNumber) === want) ids.push(v._id);
+        const byOrderPlate = await LightTransportOrder.find({ vehiclePlate: { $nin: ['', null] } })
+          .select('_id vehiclePlate').lean();
+        const hit = byOrderPlate.filter((x) => plateKeyOf(x.vehiclePlate) === want).map((x) => x._id);
+        if (hit.length) or.push({ _id: { $in: hit } });
+      }
+      if (ids.length) or.push({ vehicle: { $in: ids } });
       filter.$or = or;
     }
     const orders = await LightTransportOrder.find(filter)

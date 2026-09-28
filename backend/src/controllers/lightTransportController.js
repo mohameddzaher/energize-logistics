@@ -51,6 +51,33 @@ const typeKey = (v) => {
   return S(v);
 };
 
+
+/**
+ * ── واللوحةُ تُقرأ بأيّ ترتيب ───────────────────────────────────────────────
+ * سجلُّ المركبات يكتبها «ص ب 7918» والشيتُ يكتبها «7918 ص ب» — والمخالفةُ تُملى
+ * بالهاتف بأيّهما وقع. فالبحثُ الحرفيُّ يردّ صفرًا والمركبةُ عندنا، وهو ما وقع
+ * فعلًا: سُئل عن سبع لوحاتٍ فلم تظهر واحدةٌ منها وهي مسجّلة.
+ *
+ * فيُطوى ترتيبُ الحروف والأرقام: تُقارَن اللوحةُ بمفتاحها (أرقامٌ + حروفٌ
+ * مرتَّبة) كما يفعل قسمُ المركبات نفسُه، فما يُكتب بأيّ ترتيبٍ يجد صاحبَه.
+ */
+const plateKeyOf = (p) => {
+  const w = S(p).replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+    .replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/[ىئ]/g, 'ي').replace(/ؤ/g, 'و');
+  const digits = (w.match(/\d+/g) || []).join('');
+  const letters = (w.match(/[\u0621-\u064AA-Za-z]/g) || []).map((c) => c.toUpperCase()).sort().join('');
+  const k = `${digits}|${letters}`;
+  return k === '|' ? null : k;
+};
+
+/** أهذا النصُّ لوحةٌ؟ حروفٌ وأرقامٌ معًا، وأربعةُ أرقامٍ فأقلّ — لا اسمٌ ولا هويّة. */
+const looksLikePlate = (t) => {
+  const w = S(t);
+  const digits = (w.match(/[0-9٠-٩]/g) || []).length;
+  const letters = (w.match(/[\u0621-\u064AA-Za-z]/g) || []).length;
+  return digits >= 3 && digits <= 4 && letters >= 2 && letters <= 6;
+};
+
 /** حالةُ التوظيف من الموارد البشريّة بلغة هذا القسم. */
 const HR_STATUS_AR = { terminated: 'إنهاء خدمة', suspended: 'متوقف', active: '', on_leave: 'إجازة' };
 
@@ -130,7 +157,19 @@ exports.listEmployees = async (req, res) => {
           { 'authorizedPerson.name': rx }, { 'authorizedPerson.iqamaNumber': rx },
           { 'authorizedPerson.authorizationNumber': rx }],
       }).select('_id').limit(400).lean();
-      if (vm.length) or.push({ vehicle: { $in: vm.map((v) => v._id) } });
+      const ids = vm.map((v) => v._id);
+      // ولو بدا النصُّ لوحةً، تُطابَق بمفتاحها المطويّ — فترتيبُ الحروف والأرقام
+      // لا يمنع العثور. راجع `plateKeyOf`.
+      if (looksLikePlate(term)) {
+        const want = plateKeyOf(term);
+        const byKey = await VehicleMaster.find({}).select('_id plateNumber').lean();
+        for (const v of byKey) if (plateKeyOf(v.plateNumber) === want) ids.push(v._id);
+        const ltByPlate = await LightTransportEmployee.find({ vehiclePlate: { $nin: ['', null] } })
+          .select('_id vehiclePlate').lean();
+        const hit = ltByPlate.filter((x) => plateKeyOf(x.vehiclePlate) === want).map((x) => x._id);
+        if (hit.length) or.push({ _id: { $in: hit } });
+      }
+      if (ids.length) or.push({ vehicle: { $in: ids } });
       filter.$or = or;
     }
 
@@ -580,6 +619,8 @@ exports.deleteHousing = async (req, res) => {
   }
 };
 
+module.exports.plateKeyOf = plateKeyOf;
+module.exports.looksLikePlate = looksLikePlate;
 module.exports.optionsOf = optionsOf;
 module.exports.totalsOf = totalsOf;
 module.exports.decorate = decorate;

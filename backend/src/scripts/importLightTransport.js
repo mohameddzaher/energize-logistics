@@ -256,9 +256,82 @@ const readSheet = (file, sheetName, headerRow) => {
     });
   }
 
+  /**
+   * ── ⑤ قادةٌ في شيت المركبات وليسوا في شيت الموظّفين ──────────────────────
+   * الشيتان لا يتطابقان: سبعةُ سائقين يقودون مركباتِنا اليوم — أسماؤهم
+   * وهويّاتُهم مكتوبةٌ في شيت المركبات — ولا صفَّ لهم في شيت الموظّفين. وقراءةُ
+   * الأوّلِ وحدَه تُسقطهم، فتُبحَث لوحاتُهم في القسم فلا تُوجَد، والمركبةُ عندنا
+   * ورجلٌ يقودها.
+   *
+   * وهم في الموارد البشريّة كلُّهم (أقسامُهم B2C)، فليسوا غرباء: هم نقصٌ في
+   * الشيت لا في الشركة. فيُقرأ الشيتان معًا، ويُبنى صفُّ مَن سقط ممّا في شيت
+   * المركبات — واسمُه وقسمُه ومركبتُه كلُّها فيه.
+   */
+  const inEmployeeSheet = new Set(staff.map((s) => s.idNumber));
+  const extraDrivers = [];
+  for (const v of vehicles) {
+    if (!v.driverId || !v.driverName) continue;
+    if (inEmployeeSheet.has(v.driverId)) continue;
+    if (extraDrivers.some((x) => x.idNumber === v.driverId)) continue;
+    const hr = hrById.get(v.driverId) || null;
+    extraDrivers.push({
+      idNumber: v.driverId,
+      name: v.driverName,
+      // مَن يقود دراجةً في مشروع توصيل مندوب. والوظيفةُ تُقرأ من الموارد
+      // البشريّة متى وُجدت، فلا تُخمَّن وهي مكتوبة.
+      jobTitleAr: hr && S(hr.jobTitle).includes('سائق') ? 'مندوب' : (S(hr?.jobTitle) || 'مندوب'),
+      cityAr: v.cityAr,
+      projectAr: v.projectAr,
+      vehiclePlate: v.plate,
+      // لا يُخمَّن ما ليس في الشيت: نوعُ التعاقد وحالةُ العمل والسجلُّ تُترك
+      // فارغةً ليملأها القسم — وقيمةٌ مخترعةٌ تُقرأ حقيقةً ولا يُعلَم أنّها ظنّ.
+      contractTypeAr: '',
+      registerNumber: '',
+      workStatusAr: '',
+      nationalityAr: '',
+      supervisorName: '',
+      hireDate: null,
+      notesAr: 'أُضيف من شيت المركبات — قائدٌ فعليٌّ لا صفَّ له في شيت الموظفين',
+      fromVehicleSheet: true,
+    });
+  }
+  for (const d of extraDrivers) {
+    const hr = hrById.get(d.idNumber) || null;
+    if (hr) report.linkedHR += 1; else report.ownedHere += 1;
+    const vm = vmByPlate.get(plateKey(d.vehiclePlate));
+    if (vm) report.vehicleLinked += 1;
+    let workStatusAr = d.workStatusAr;
+    if (hr && (hr.employmentStatus === 'terminated' || hr.employmentStatus === 'suspended')) {
+      workStatusAr = hr.employmentStatus === 'terminated' ? 'إنهاء خدمة' : 'متوقف';
+    } else if (hr?.employmentStatus === 'active') workStatusAr = 'يعمل';
+    docs.push({
+      idNumber: d.idNumber,
+      employee: hr ? hr._id : null,
+      name: d.name,
+      nationalityAr: S(hr?.nationality) || '',
+      hireDate: hr?.hireDate || null,
+      phone: S(hr?.phone) || '',
+      cityAr: d.cityAr,
+      projectAr: d.projectAr,
+      jobTitleAr: d.jobTitleAr,
+      contractTypeAr: '',
+      registerNumber: '',
+      vehicleTypeAr: vm?.registrationTypeAr || '',
+      supervisorName: '',
+      supervisor: null,
+      workStatusAr,
+      vehicle: vm ? vm._id : null,
+      vehiclePlate: vm ? vm.plateNumber : d.vehiclePlate,
+      notesAr: d.notesAr,
+      isActive: true,
+    });
+  }
+  report.fromVehicleSheet = extraDrivers.length;
+
   // ── ④ التقرير ─────────────────────────────────────────────────────────────
   console.log('── موظّفو النقل الخفيف ──────────────────────────────────────');
-  console.log('  في الشيت                :', staff.length);
+  console.log('  في شيت الموظّفين        :', staff.length);
+  console.log('  + قادةٌ من شيت المركبات  :', report.fromVehicleSheet || 0);
   console.log('  مربوطون بالموارد البشريّة:', report.linkedHR);
   console.log('  يملكهم هذا القسم        :', report.ownedHere);
   console.log('  حالتُهم من الموارد البشريّة:', report.statusFromHR);

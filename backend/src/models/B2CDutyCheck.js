@@ -119,10 +119,33 @@ const b2cDutyCheckSchema = new mongoose.Schema(
 );
 
 // صفٌّ واحدٌ لكلّ مندوبٍ في اليوم — راجع رأس الملفّ.
-// صفٌّ واحدٌ لكلّ مندوبٍ في اليوم — بالموضوع الجديد وبالقديم معًا، وكلاهما
-// متناثرٌ (`sparse`) لأنّ الصفَّ يحمل أحدَهما لا كليهما دائمًا.
-b2cDutyCheckSchema.index({ ltEmployee: 1, dateKey: 1 }, { unique: true, sparse: true });
-b2cDutyCheckSchema.index({ rep: 1, dateKey: 1 }, { unique: true, sparse: true });
+/**
+ * ── صفٌّ واحدٌ لكلّ مندوبٍ في اليوم — وشرطُه جزئيٌّ لا متناثر ────────────────
+ *
+ * `sparse` على فهرسٍ **مركَّب** لا يُسقِط الصفَّ إلّا إذا غابت مفاتيحُه كلُّها.
+ * و`dateKey` حاضرٌ دائمًا، فالصفُّ الذي لا يحمل `rep` يُفهرَس بـ`{null, اليوم}`
+ * — ويتعارض مع كلّ صفٍّ آخرَ في اليوم نفسِه لا يحمله.
+ *
+ * وقد وقع: صار الموضوعُ صفَّ سجلّ النقل الخفيف فلم يُكتب `rep` بعدها، فنجح
+ * أوّلُ تفقّدٍ في اليوم وردَّ الخادمُ على كلِّ ما بعده «سُجِّل تفقّدٌ لهذا
+ * المندوب اليوم» — ولمندوبٍ آخرَ تمامًا. مندوبٌ واحدٌ في اليوم للشركة كلِّها،
+ * والباقي واقفون.
+ *
+ * فالشرطُ جزئيٌّ (`partialFilterExpression`): لا يُفهرَس الصفُّ إلّا إن كان
+ * المفتاحُ معرِّفًا حقيقيًّا. فتبقى القاعدةُ («صفٌّ واحدٌ لكلّ مندوبٍ في اليوم»)
+ * ولا تُطبَّق على غيابٍ.
+ *
+ * وتغييرُ خصائصِ فهرسٍ قائمٍ لا يقع بتعديل هذا الملفّ: Mongoose يُنشئ الناقصَ
+ * ولا يُعيد بناءَ الموجود. فيُسقَط ويُبنى بـ`scripts/fixDutyCheckIndexes.js`.
+ */
+b2cDutyCheckSchema.index(
+  { ltEmployee: 1, dateKey: 1 },
+  { unique: true, partialFilterExpression: { ltEmployee: { $type: 'objectId' } }, name: 'ltEmployee_1_dateKey_1_partial' },
+);
+b2cDutyCheckSchema.index(
+  { rep: 1, dateKey: 1 },
+  { unique: true, partialFilterExpression: { rep: { $type: 'objectId' } }, name: 'rep_1_dateKey_1_partial' },
+);
 // شاشةُ الإدارة تُفتَح على يومٍ ثمّ تُصفّى بالمشرف أو الفرع أو المشروع.
 b2cDutyCheckSchema.index({ dateKey: 1, supervisor: 1 });
 b2cDutyCheckSchema.index({ dateKey: 1, branch: 1 });

@@ -119,6 +119,16 @@ export const REGISTRY_COLUMNS: VCol[] = [
   { key: 'sectorAr', ar: 'القطاع', en: 'Sector', get: (v) => v.sectorAr, width: 16, base: true },
   { key: 'departmentAr', ar: 'القسم', en: 'Department', get: (v) => v.departmentAr, width: 18, base: true },
   { key: 'cityAr', ar: 'المدينة', en: 'City', get: (v) => v.cityAr, width: 12, base: true },
+  /**
+   * ── ومركبةُ النقل الخفيف: أين تعمل ومع أيّ مشروع ────────────────────────────
+   * قطاعُ النقل الخفيف هو قسمُ الأفراد (b2c)، والمدينةُ والمشروعُ يُداران هناك
+   * على الراكب لا على المركبة — فتنتقل المركبةُ بانتقاله. ويُقرآن من سجلّ القسم
+   * وقتَ العرض (`ltCityAr`/`ltProjectAr` في الخادم)، فما يُعدَّل هناك يُقرأ هنا
+   * في الحال بلا نسخةٍ ثانيةٍ تفترق.
+   */
+  { key: 'ltCityAr', ar: 'مدينة التشغيل (نقل خفيف)', en: 'Operating city (light)', get: (v) => (v as any).ltCityAr || '', width: 16 },
+  { key: 'ltProjectAr', ar: 'المشروع (نقل خفيف)', en: 'Project (light)', get: (v) => (v as any).ltProjectAr || '', width: 18 },
+  { key: 'ltRiderName', ar: 'الراكب (نقل خفيف)', en: 'Rider (light)', get: (v) => (v as any).ltRiderName || '', width: 24 },
   { key: 'ownerNameAr', ar: 'المالك', en: 'Owner', get: (v) => v.ownerNameAr, width: 26, base: true },
   { key: 'tamStatusAr', ar: 'حالة تم', en: 'Tam status', get: (v) => v.tamStatusAr, width: 12 },
   { key: 'commercialRegistration', ar: 'السجل', en: 'CR', get: (v) => v.commercialRegistration, width: 16 },
@@ -136,6 +146,13 @@ export const REGISTRY_COLUMNS: VCol[] = [
   { key: 'authName', ar: 'اسم المفوض', en: 'Authorised person', get: (v) => v.authorizedPerson?.name, width: 24, base: true },
   { key: 'authIqama', ar: 'رقم الاقامة', en: 'Iqama number', get: (v) => v.authorizedPerson?.iqamaNumber, width: 16, mono: true },
   { key: 'authNumber', ar: 'رقم التفويض', en: 'Authorisation no.', get: (v) => v.authorizedPerson?.authorizationNumber, width: 16, mono: true },
+  { key: 'authPhone', ar: 'جوال المفوض', en: 'Authorised phone', get: (v) => (v as any).authorizedPerson?.phone || '', width: 14, mono: true },
+  // ── والمفوَّضُ ليس دائمًا الراكب ────────────────────────────────────────────
+  // ورقةُ التفويض تقول مَن يحقُّ له أن يقود، والواقعُ يقول مَن يقود — وشيتُ
+  // القسم يحملهما عمودين، ويختلفان في ثمانٍ وخمسين مركبة. ومن يُسأل بعد حادثٍ
+  // أو مخالفةٍ هو الراكب.
+  { key: 'actualDriverName', ar: 'القائد الفعلي', en: 'Actual driver', get: (v) => (v as any).actualDriver?.name || '', width: 24 },
+  { key: 'actualDriverId', ar: 'هوية القائد الفعلي', en: 'Actual driver ID', get: (v) => (v as any).actualDriver?.idNumber || '', width: 14, mono: true },
   { key: 'authStart', ar: 'تاريخ بداية التفويض', en: 'Auth. start', get: (v) => d(v.authorizedPerson?.startDate), width: 18, type: 'date' },
   { key: 'authEnd', ar: 'تاريخ نهاية التفويض', en: 'Auth. end', get: (v) => d(v.authorizedPerson?.expiryDate), width: 18, type: 'date' },
   { key: 'authDays', ar: 'الايام المتبقية علي نهاية التفويض', en: 'Days to auth. end', get: (v) => daysLeft(v.authorizedPerson?.expiryDate), width: 16, type: 'number' },

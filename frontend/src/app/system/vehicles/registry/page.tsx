@@ -19,6 +19,7 @@ import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/l
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import ManagedSelect from '@/components/system/ManagedSelect';
+import PersonLookup from '@/components/vehicles/PersonLookup';
 // السؤالُ نفسُه يُطرَح هنا وفي استمارة كلّ صفحةِ عائلة، فتعريفُه واحد — راجع
 // components/vehicles/ReqToggle.
 import { ReqToggle } from '@/components/vehicles/ReqToggle';
@@ -508,6 +509,16 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <div><L>{ar ? 'حالة الحيازة' : 'Possession'}</L><ManagedSelect storeLabel type="vehicle_possession_status" value={f.possessionStatusAr || ''} onChange={(v) => set('possessionStatusAr', v)} /></div>
           <div><L>{ar ? 'الإدارة' : 'Department'}</L><ManagedSelect storeLabel type="vehicle_department" value={f.departmentAr || ''} onChange={(v) => set('departmentAr', v)} /></div>
           <div><L>{ar ? 'المدينة' : 'City'}</L><ManagedSelect storeLabel type="vehicle_city" value={f.cityAr || ''} onChange={(v) => set('cityAr', v)} /></div>
+          {/* ── والمالكُ يُبحَث عنه أيضًا ────────────────────────────────────
+              كثيرٌ من المركبات مسجَّلةٌ باسم موظّفٍ عندنا — فيُبحَث عنه بدل أن
+              يُكتب اسمُه بصيغةٍ لا تطابق ملفَّه. */}
+          <div className="sm:col-span-2 lg:col-span-3">
+            <PersonLookup ar={ar}
+              label={ar ? 'ابحث عن المالك (موظف عندنا) فيُملأ اسمه' : 'Find the owner (our employee)'}
+              hint={ar ? 'اختياري — المالك قد يكون جهةً لا شخصًا، ويُكتب يدويًّا كما هو.'
+                       : 'Optional — the owner may be a company; typing by hand still works.'}
+              onPick={(pp) => set('ownerNameAr', pp.name || '')} />
+          </div>
           <div><L>{ar ? 'المالك' : 'Owner'}</L><input className={inp} value={f.ownerNameAr || ''} onChange={(e) => set('ownerNameAr', e.target.value)} /></div>
           {/* ── السجلُّ التجاريّ ────────────────────────────────────────────
               رقمٌ تُجمَّع به المركباتُ في صفحة السجلّات وتُفلتَر به القوائم،

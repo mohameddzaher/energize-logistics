@@ -55,7 +55,17 @@ export interface LTEmployee {
   notesAr?: string;
   isActive?: boolean;
   housingRoom?: string;
-  vehicle?: { _id: string; plateNumber?: string; serialNumber?: string; registrationTypeAr?: string; brandAr?: string; modelAr?: string } | null;
+  vehicle?: {
+    _id: string; plateNumber?: string; serialNumber?: string; registrationTypeAr?: string;
+    brandAr?: string; modelAr?: string;
+    /** ورقةُ التفويض على المركبة — مَن يحقُّ له أن يقودها وإلى متى. */
+    authorizedPerson?: {
+      name?: string; iqamaNumber?: string; phone?: string;
+      authorizationNumber?: string; startDate?: string | null; expiryDate?: string | null;
+    } | null;
+    /** والقائدُ الفعليّ — ليس المفوَّضَ دائمًا (٥٨ مركبةً كذلك). */
+    actualDriver?: { name?: string; idNumber?: string } | null;
+  } | null;
   housing?: { _id: string; name?: string; cityAr?: string } | null;
   employee?: { _id: string; employeeNumber?: string; arabicName?: string; employmentStatus?: string } | null;
   supervisor?: { _id: string; arabicName?: string; employeeNumber?: string } | null;
@@ -353,6 +363,15 @@ export const LT_COLUMNS: LTCol[] = [
   { key: 'housing', ar: 'السكن', en: 'Housing', get: (e) => e.housing?.name || '', width: 14 },
   { key: 'housingRoom', ar: 'الغرفة', en: 'Room', get: (e) => e.housingRoom || '', width: 12 },
   { key: 'serialNumber', ar: 'الرقم التسلسلي', en: 'Serial', get: (e) => e.vehicle?.serialNumber || '', width: 15, mono: true },
+  // ── ورقةُ التفويض والقائدُ الفعليّ — من شيت القسم، على مركبته ──────────────
+  { key: 'authorizedName', ar: 'المفوَّض', en: 'Authorised person', get: (e) => e.vehicle?.authorizedPerson?.name || '', width: 24 },
+  { key: 'authorizedId', ar: 'هوية المفوَّض', en: 'Authorised ID', get: (e) => e.vehicle?.authorizedPerson?.iqamaNumber || '', width: 14, mono: true },
+  { key: 'authorizedPhone', ar: 'جوال المفوَّض', en: 'Authorised phone', get: (e) => e.vehicle?.authorizedPerson?.phone || '', width: 14, mono: true },
+  { key: 'authorizationNumber', ar: 'رقم التفويض', en: 'Authorisation no.', get: (e) => e.vehicle?.authorizedPerson?.authorizationNumber || '', width: 20, mono: true },
+  { key: 'authorizationStart', ar: 'بداية التفويض', en: 'Auth. start', get: (e) => fmtDate(e.vehicle?.authorizedPerson?.startDate), width: 14, mono: true },
+  { key: 'authorizationEnd', ar: 'نهاية التفويض', en: 'Auth. end', get: (e) => fmtDate(e.vehicle?.authorizedPerson?.expiryDate), width: 14, mono: true },
+  { key: 'actualDriverName', ar: 'القائد الفعلي', en: 'Actual driver', get: (e) => e.vehicle?.actualDriver?.name || '', width: 24 },
+  { key: 'actualDriverId', ar: 'هوية القائد الفعلي', en: 'Actual driver ID', get: (e) => e.vehicle?.actualDriver?.idNumber || '', width: 14, mono: true },
   // ── وثيقتا المركبة في الجدول والتصدير ────────────────────────────────────
   // «كارتُ تشغيلِ مَن ينتهي هذا الشهر؟» يُقرأ من صفّ الرجل لا من سجلّ المركبات:
   // من يُوقَف صباحًا هو الرجل.

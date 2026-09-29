@@ -44,6 +44,8 @@ const COLUMNS: DocColumn[] = [
 const FIELDS: DocField[] = [
   { path: 'authorizedPerson.name', ar: 'اسم المفوَّض', en: 'Authorised person', wide: true },
   { path: 'authorizedPerson.iqamaNumber', ar: 'رقم الإقامة', en: 'Iqama number', mono: true },
+  // جوالُه في ورقة التفويض نفسِها — أوّلُ ما يُطلَب حين يقع شيءٌ في الطريق.
+  { path: 'authorizedPerson.phone', ar: 'جوال المفوَّض', en: 'Authorised phone', mono: true },
   // المسمّى قائمةٌ تُدار من إعدادات القسم: «سائق نقل ثقيل» في سبعٍ وخمسين مركبة
   // و«مندوب توصيل» في ثلاثٍ وعشرين — وخانةٌ حرّةٌ تجعلها عشرين مسمًّى بعد شهر.
   { path: 'authorizedPerson.jobTitleAr', ar: 'المسمّى الوظيفي لقائد المركبة', en: 'Driver job title', lookup: 'vehicle_job_title' },
@@ -100,6 +102,20 @@ export default function Page() {
         onDone={(msg) => { notify(msg, 'success'); assigning.reload(); setAssigning(null); }} />
     )}
     <DocumentFamilyPage
+      /* ── والمفوَّضُ يُبحَث عنه فتُملأ ورقتُه ──────────────────────────────
+         اسمُه وإقامتُه وجوالُه مكتوبةٌ في الموارد البشريّة وبطاقات السائقين —
+         فتُقرأ منها بدل أن تُكتب بالأيدي فتُكتب بصيغتين. */
+      personFill={{
+        label: t('ابحث عن المفوَّض فتُملأ ورقته', 'Find the authorised person'),
+        hint: t('بالاسم أو رقم الهوية أو الإقامة — والكتابة اليدوية تبقى متاحة.',
+                'By name, national ID or iqama — typing by hand still works.'),
+        map: (p) => ({
+          'authorizedPerson.name': p.name || '',
+          'authorizedPerson.iqamaNumber': p.idNumber || '',
+          'authorizedPerson.phone': p.absherPhone || p.phone || '',
+          ...(p.jobTitleAr ? { 'authorizedPerson.jobTitleAr': p.jobTitleAr } : {}),
+        }),
+      }}
       docKey="authorization"
       // ── ولا زرَّ «مسح البيانات» هنا ────────────────────────────────────────
       // هو الذي أوقع في الخطأ: اسمُه يقول إنّه يمسح، والمستخدمُ يريد أن يُلغي،

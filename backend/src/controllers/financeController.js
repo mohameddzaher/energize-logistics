@@ -453,7 +453,7 @@ async function light(p, user) {
       { $group: { _id: '$projectManager', in: { $sum: { $cond: [{ $eq: ['$direction', 'in'] }, '$amount', 0] } }, out: { $sum: { $cond: [{ $eq: ['$direction', 'out'] }, '$amount', 0] } }, n: { $sum: 1 } } },
     ]),
     B2CWalletEntry.find({ createdAt: { $gte: p.fromDate, $lte: p.toDate } }).populate('projectManager', 'firstName lastName').sort({ createdAt: -1 }).limit(2000).lean(),
-    VehicleMaster.find({ sectorAr: 'النقل الخفيف', isActive: { $ne: false } }).select('plateNumber departmentAr registrationTypeAr insurance.premiumSar insurance.premiumStatusAr insurance.companyAr fuelCard.limitSar').lean(),
+    VehicleMaster.find({ sectorAr: /خفيف/, isActive: { $ne: false } }).select('plateNumber departmentAr registrationTypeAr insurance.premiumSar insurance.premiumStatusAr insurance.companyAr fuelCard.limitSar').lean(),
     VehicleClaim.find({ isActive: { $ne: false } }).select('claimId vehicle vehiclePlate vehiclePlateKey vehicleSectorAr accidentDate claim statusAr').lean(),
   ]);
   // المطالبةُ تُنسب للدرّاجة بالمركبة نفسِها: سبعٌ وعشرون مطالبةً بلا قطاعٍ مكتوب.

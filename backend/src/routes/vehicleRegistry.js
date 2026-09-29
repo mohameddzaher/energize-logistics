@@ -31,6 +31,9 @@ router.get('/registers', c.registers);
 router.get('/insurance-policies', c.listInsurancePolicies);
 router.post('/insurance-policies/:id/renew', authorize(...EDIT), c.renewInsurancePolicy);
 
+// بحثُ الأشخاص ولوحاتُ السجلّ — تُملأ بهما نماذجُ القسم بدل الكتابة بالأيدي.
+router.get('/person-lookup', c.personLookup);
+router.get('/plate-options', c.plateOptions);
 router.get('/claims', c.listClaims);
 // ملفُّ المطالبة الواحدة وسجلُّها — قبل `/:id` العامّ أدناه، وإلّا قُرئ
 // «claims» رقمَ مركبةٍ فردَّ الخادمُ «غير موجود».

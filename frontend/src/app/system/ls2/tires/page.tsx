@@ -12,7 +12,7 @@ import { Activity, RefreshCw, AlertTriangle, ChevronDown, ChevronRight } from 'l
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
-import { ls2Text, isLs2Staff, tireTempColor, type Lang, type Vehicle, type Tire } from '@/lib/ls2';
+import { ls2Text, isLs2Staff, tireTempColor, tirePressColor, type Lang, type Vehicle, type Tire } from '@/lib/ls2';
 import ScrollX from '@/components/system/ScrollX';
 
 export default function Ls2TiresPage() {
@@ -25,6 +25,24 @@ export default function Ls2TiresPage() {
   const [problemsOnly, setProblemsOnly] = useState('');
   const [q, setQ] = useState('');
   const [expanded, setExpanded] = useState<number | null>(null);
+  /**
+   * ── وعتباتُ الضغط تُقرأ من إعدادات القسم ────────────────────────────────────
+   * كان «أقلّ ضغط» يُلوَّن برقمٍ مكتوبٍ في الشاشة (٩٠)، بينما تنبيهاتُ القسم
+   * تُحسَب بعتبةٍ تُضبَط في الإعدادات. فيُغيَّر الرقمُ هناك ولا يتغيّر اللونُ هنا:
+   * شاشةٌ تقول «طبيعيّ» وتنبيهٌ يقول «منخفض» عن الإطار نفسِه.
+   * فتُقرأ العتباتُ من مصدرها، وتُحدَّث مع أيّ تعديلٍ في الإعدادات.
+   */
+  const [th, setTh] = useState<{ tirePressureMinPsi: number; tirePressureCriticalPsi: number; tirePressureMaxPsi: number; tireTempC: number; tireTempCriticalC: number }>({
+    tirePressureMinPsi: 90, tirePressureCriticalPsi: 60, tirePressureMaxPsi: 150,
+    tireTempC: 75, tireTempCriticalC: 85,
+  });
+  const loadThresholds = useCallback(async () => {
+    try {
+      const r = await api.get<{ settings?: { thresholds?: any }; thresholds?: any }>('/api/ls2/settings');
+      const t2 = r.thresholds || r.settings?.thresholds;
+      if (t2) setTh((p2) => ({ ...p2, ...t2 }));
+    } catch { /* تبقى الافتراضاتُ — ولا تُعطَّل الشاشة */ }
+  }, []);
 
   const load = useCallback(async () => {
     // قراءةُ كلّ فردةٍ تُطلَب صراحةً: هذه الشاشةُ وحدَها تعرضها، والقائمةُ
@@ -33,7 +51,10 @@ export default function Ls2TiresPage() {
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
-  useSocket('ls2:updated', useCallback(() => load(), [load]));
+  useEffect(() => { loadThresholds(); }, [loadThresholds]);
+  // وتعديلُ الإعدادات يُرسَل بنفس الحدث (`settings: true`) — فتُعاد قراءةُ
+  // العتبات معه، ولا تبقى الشاشةُ تُلوّن بعتبةٍ قديمة.
+  useSocket('ls2:updated', useCallback(() => { load(); loadThresholds(); }, [load, loadThresholds]));
 
   const ar = lang === 'ar';
   // «المشاكل فقط» كانت تلات مشاكل مخلوطة في تبديل واحد، فاللي بيدوّر على الحرارة
@@ -107,6 +128,7 @@ export default function Ls2TiresPage() {
                 <th className="text-center font-semibold px-4 py-3">{lang === 'ar' ? 'عدد الكاوتش' : 'Tires'}</th>
                 <th className="text-end font-semibold px-4 py-3">{t.maxTireTemp}</th>
                 <th className="text-end font-semibold px-4 py-3">{lang === 'ar' ? 'أقل ضغط' : 'Min Pressure'}</th>
+                <th className="text-end font-semibold px-4 py-3">{lang === 'ar' ? 'أقصى ضغط' : 'Max Pressure'}</th>
                 <th className="text-center font-semibold px-4 py-3">{t.faults}</th>
               </tr>
             </thead>
@@ -118,18 +140,28 @@ export default function Ls2TiresPage() {
                     <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{v.plate || v.name}</td>
                     <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{v.driver || '—'}</td>
                     <td className="px-4 py-3 text-center text-slate-800">{v.tireCount || 0}</td>
-                    <td className="px-4 py-3 text-end">{v.maxTireTempC != null ? <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${tireTempColor(v.maxTireTempC)}`}>{v.maxTireTempC}°C</span> : '—'}</td>
-                    <td className={`px-4 py-3 text-end tabular-nums font-medium ${v.minTirePressurePsi != null && v.minTirePressurePsi < 90 ? 'text-amber-600' : 'text-slate-800'}`}>{v.minTirePressurePsi != null ? `${v.minTirePressurePsi} psi` : '—'}</td>
+                    <td className="px-4 py-3 text-end">{v.maxTireTempC != null ? <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${tireTempColor(v.maxTireTempC, th.tireTempC, th.tireTempCriticalC)}`}>{v.maxTireTempC}°C</span> : '—'}</td>
+                    {/* اللونُ من عتبات القسم لا من رقمٍ مكتوبٍ هنا — راجع `th`. */}
+                    <td className="px-4 py-3 text-end">
+                      {v.minTirePressurePsi != null
+                        ? <span className={`px-2 py-0.5 rounded-full text-xs font-medium tabular-nums ${tirePressColor(v.minTirePressurePsi, th.tirePressureMinPsi, th.tirePressureCriticalPsi, th.tirePressureMaxPsi)}`}>{v.minTirePressurePsi} psi</span>
+                        : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-end">
+                      {v.maxTirePressurePsi != null
+                        ? <span className={`px-2 py-0.5 rounded-full text-xs font-medium tabular-nums ${tirePressColor(v.maxTirePressurePsi, th.tirePressureMinPsi, th.tirePressureCriticalPsi, th.tirePressureMaxPsi)}`}>{v.maxTirePressurePsi} psi</span>
+                        : '—'}
+                    </td>
                     <td className="px-4 py-3 text-center">{v.tireFaults > 0 ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-600"><AlertTriangle className="w-3 h-3" />{v.tireFaults}</span> : <span className="text-slate-300">0</span>}</td>
                   </tr>
                   {expanded === v.unitId && (
                     <tr className="border-b border-slate-100 bg-slate-50/60">
-                      <td colSpan={7} className="px-6 py-4"><TireLayout tires={v.tires || []} t={t} lang={lang as Lang} /></td>
+                      <td colSpan={8} className="px-6 py-4"><TireLayout tires={v.tires || []} t={t} lang={lang as Lang} /></td>
                     </tr>
                   )}
                 </Fragment>
               ))}
-              {rows.length === 0 && <tr><td colSpan={7} className="text-center text-slate-700 py-10">{t.noData}</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={8} className="text-center text-slate-700 py-10">{t.noData}</td></tr>}
             </tbody>
           </table>
         </ScrollX>

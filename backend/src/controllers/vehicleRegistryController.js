@@ -23,11 +23,25 @@ const { registryPlateKey: plateKey, flexSpaceRegex } = require('../utils/plateKe
  * من هنا — ويبقى التخزينُ نافعًا لمن يفتح التقريرَ نفسَه مرّتين بلا تعديلٍ
  * بينهما. راجع `utils/ttlCache`: الإبطالُ يعبر إلى العامل الآخر أيضًا.
  */
+/**
+ * ── والقسمان يسمعان بعضَهما ──────────────────────────────────────────────────
+ *
+ * مركباتُ النقل الخفيف يقرؤها قسمان: هذا (سجلُّ المركبات) وقسمُ الأفراد (b2c)
+ * — وهو نفسُه قسمُ النقل الخفيف. والتفويضُ يُنقَل من أيّهما، والقطاعُ يُكتب
+ * هنا فيصير المركبةُ من مركباتهم.
+ *
+ * فكلُّ تغييرٍ هنا يُعلَن في الاثنين: يُمسَح مخزونُهما ثمّ يُرسَل حدثُهما —
+ * والإبطالُ قبل الإعلان، وإلّا جاء الجلبُ على مخزونٍ لم يُمسَح فقرأ حالةً قبل
+ * التعديل. ونقلُ التفويض من هناك يفعل المِثل (راجع `emitBoth`).
+ */
 const emit = (event, payload = {}) => {
-  try { emitToAll(event, payload); } catch (e) {}
   cache.clear('vreg:');
+  cache.clear('lt:');
   cache.clear('reports:doc:vehicle:');
   cache.clear('reports:opts:vehicle:');
+  try { emitToAll(event, payload); } catch (e) {}
+  // قسمُ النقل الخفيف يقرأ مركباتِ قطاعه من هنا — فيُوقَظ مع كلّ تغيير.
+  try { emitToAll('lt:updated', { from: 'vehicles' }); } catch (e) {}
 };
 
 // المستندات ذات تاريخ الانتهاء — المفتاح ← مسار التاريخ + الاسم.
@@ -591,7 +605,7 @@ exports.list = async (req, res) => {
     // باللوحة كما كُتبت، فلا تُطابِق شيئًا عند الرفع.
     const LIST_FIELDS = 'plateNumber plateLettersAr plateDigits chassisNumber serialNumber sectorAr departmentAr cityAr'
       + ' possessionStatusAr registrationTypeAr brandAr modelAr modelYear colorAr ownerNameAr commercialRegistration'
-      + ' authorizedPerson logistiGaps serviceStatusAr serviceStatusCode tamStatusAr'
+      + ' authorizedPerson actualDriver logistiGaps serviceStatusAr serviceStatusCode tamStatusAr'
       + ' insurance.policyNumber insurance.companyAr insurance.coverageTypeAr insurance.expiryDate'
       + ' insurance.premiumSar insurance.premiumStatusAr insurance.statusCode'
       + ' operatingCard.cardNumber operatingCard.expiryDate operatingCard.statusCode'
@@ -625,8 +639,37 @@ exports.list = async (req, res) => {
     const cardsAll = await DriverCard.find({ isActive: { $ne: false } })
       .select('idNumber name cardNumber cardType expiryDate fidelity').lean();
     const cardById = new Map(cardsAll.map((c) => [String(c.idNumber || '').trim(), c]));
+    /**
+     * ── ومركبةُ النقل الخفيف: أين تعمل ومع أيّ مشروع ────────────────────────
+     *
+     * قطاعُ النقل الخفيف هو قسمُ الأفراد (b2c)، والمدينةُ والمشروعُ يُداران
+     * هناك على الراكب لا على المركبة: تنتقل المركبةُ إلى مشروعٍ آخر بانتقال
+     * راكبها. فلو نُسخا إلى صفّ المركبة لافترقا عن أصلهما بعد أوّل نقل.
+     *
+     * فيُقرآن من سجلّ القسم وقتَ العرض — فما يُعدَّل هناك يُقرأ هنا في الحال،
+     * بلا مزامنةٍ تُنسى.
+     */
+    const ltVehicleIds = vehicles
+      .filter((v) => String(v.sectorAr || '').includes('خفيف'))
+      .map((v) => v._id);
+    const ltByVehicle = new Map();
+    if (ltVehicleIds.length) {
+      const { LightTransportEmployee } = require('../models/LightTransport');
+      const riders = await LightTransportEmployee.find({ vehicle: { $in: ltVehicleIds }, isActive: { $ne: false } })
+        .select('vehicle name idNumber cityAr projectAr supervisorName dutySupervisorName').lean();
+      for (const r of riders) ltByVehicle.set(String(r.vehicle), r);
+    }
+
     const withStatus = vehicles.map((v) => {
       const row = decorate(v, cfg);
+      const lt = ltByVehicle.get(String(v._id));
+      if (lt) {
+        row.ltCityAr = lt.cityAr || '';
+        row.ltProjectAr = lt.projectAr || '';
+        row.ltRiderName = lt.name || '';
+        row.ltRiderId = lt.idNumber || '';
+        row.ltSupervisorName = lt.supervisorName || '';
+      }
       const iq = String(v.authorizedPerson?.iqamaNumber || '').trim();
       const card = iq ? cardById.get(iq) : null;
       if (card) {
@@ -2509,6 +2552,114 @@ async function suggestDriver(doc) {
   }
 }
 
+/**
+ * ── بحثُ الأشخاص: يُكتب رقمٌ فتُملأ الخاناتُ ─────────────────────────────────
+ *
+ * كلُّ شاشةٍ في هذا القسم تسأل عن شخص: مالكُ المركبة، والمفوَّض، والقائدُ
+ * الفعليّ، وسائقُ الحادث، وصاحبُ البطاقة. وكانت تُكتب بالأيدي في كلّ مرّة —
+ * فيُكتب الاسمُ بصيغتين والرقمُ ناقصًا رقمًا، ويُبحَث عن جوّاله في ملفٍّ آخر.
+ *
+ * فبحثٌ واحدٌ بالاسم أو بالهويّة أو الإقامة يردّ الشخصَ ببياناته، وتُملأ
+ * الخاناتُ منه. وهو **بحثٌ لا قائمة**: لا تُعرَض أسماءُ الناس كلَّها على كلّ
+ * شاشة — يُكتب ما في اليد فيُردّ عليه، ومن لا يوجد يُقال فيه «كلّم الموارد
+ * البشريّة لتسجيله». والكتابةُ باليد تبقى مفتوحةً كما هي.
+ *
+ * والمصادرُ ثلاثةٌ بترتيب الوثوق: ملفُّ الموارد البشريّة، ثمّ سجلُّ النقل
+ * الخفيف (فيه من لا ملفَّ له)، ثمّ بطاقاتُ السائقين (فيها جوالُ أبشر).
+ */
+exports.personLookup = async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 3) return res.json({ people: [] });
+
+    const Employee = require('../models/Employee');
+    const DriverCard = require('../models/DriverCard');
+    const { LightTransportEmployee } = require('../models/LightTransport');
+    const { arabicSearchRegex } = require('../utils/arabicSearch');
+    const rx = arabicSearchRegex(q);
+    const digits = q.replace(/\D/g, '');
+
+    const [emps, lts, cards] = await Promise.all([
+      Employee.find({
+        $or: [{ firstName: rx }, { lastName: rx }, { arabicName: rx },
+          ...(digits.length >= 4 ? [{ iqamaNumber: new RegExp(digits) }, { nationalId: new RegExp(digits) }] : [])],
+      }).select('firstName lastName arabicName iqamaNumber nationalId phone mobile employeeNumber jobTitle department employmentStatus hireDate')
+        .limit(12).lean(),
+      LightTransportEmployee.find({
+        $or: [{ name: rx }, ...(digits.length >= 4 ? [{ idNumber: new RegExp(digits) }] : [])],
+      }).select('name idNumber phone jobTitleAr projectAr cityAr vehiclePlate employee').limit(12).lean(),
+      DriverCard.find({
+        $or: [{ name: rx }, ...(digits.length >= 4 ? [{ idNumber: new RegExp(digits) }] : [])],
+      }).select('name idNumber absherPhone cardNumber expiryDate transportTypeAr dateOfBirth').limit(12).lean(),
+    ]);
+
+    // ويُجمَع الشخصُ من مصادره برقم هويّته: صفٌّ واحدٌ لا ثلاثة لرجلٍ واحد.
+    const byId = new Map();
+    const put = (id, patch, source) => {
+      const key = String(id || '').trim() || `~${patch.name}`;
+      const cur = byId.get(key) || { idNumber: String(id || '').trim(), sources: [] };
+      for (const [k, val] of Object.entries(patch)) if (val && !cur[k]) cur[k] = val;
+      if (!cur.sources.includes(source)) cur.sources.push(source);
+      byId.set(key, cur);
+    };
+    for (const e of emps) {
+      put(e.iqamaNumber || e.nationalId, {
+        name: e.arabicName || [e.firstName, e.lastName].filter(Boolean).join(' '),
+        phone: e.mobile || e.phone || '',
+        employeeNumber: e.employeeNumber || '',
+        jobTitleAr: e.jobTitle || '',
+        departmentAr: e.department || '',
+        employmentStatus: e.employmentStatus || '',
+        hireDate: e.hireDate || null,
+        employeeId: String(e._id),
+      }, 'hr');
+    }
+    for (const e of lts) {
+      put(e.idNumber, {
+        name: e.name, phone: e.phone || '', jobTitleAr: e.jobTitleAr || '',
+        projectAr: e.projectAr || '', cityAr: e.cityAr || '', vehiclePlate: e.vehiclePlate || '',
+      }, 'light_transport');
+    }
+    for (const c of cards) {
+      put(c.idNumber, {
+        name: c.name, absherPhone: c.absherPhone || '', cardNumber: c.cardNumber || '',
+        cardExpiryDate: c.expiryDate || null, transportTypeAr: c.transportTypeAr || '',
+        dateOfBirth: c.dateOfBirth || '',
+      }, 'driver_card');
+    }
+
+    const people = [...byId.values()].filter((p) => p.name).slice(0, 15);
+    res.json({ people });
+  } catch (e) {
+    console.error('vreg personLookup', e);
+    res.status(500).json({ message: 'تعذّر البحث عن الشخص' });
+  }
+};
+
+/** لوحاتُ السجلّ للاختيار — بديلُ كتابة اللوحة بالأيدي في نماذج القسم. */
+exports.plateOptions = async (req, res) => {
+  try {
+    const rows = await VehicleMaster.find({ isActive: { $ne: false } })
+      .select('plateNumber serialNumber registrationTypeAr sectorAr authorizedPerson actualDriver')
+      .sort({ plateNumber: 1 }).limit(2000).lean();
+    res.json({
+      plates: rows.filter((v) => String(v.plateNumber || '').trim()).map((v) => ({
+        _id: String(v._id),
+        plate: v.plateNumber,
+        serial: v.serialNumber || '',
+        typeAr: v.registrationTypeAr || '',
+        sectorAr: v.sectorAr || '',
+        authorizedName: v.authorizedPerson?.name || '',
+        authorizedId: v.authorizedPerson?.iqamaNumber || '',
+        actualDriverName: v.actualDriver?.name || '',
+        actualDriverId: v.actualDriver?.idNumber || '',
+      })),
+    });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر تحميل اللوحات' });
+  }
+};
+
 exports.createClaim = async (req, res) => {
   try {
     if (!req.body?.accidentDate && !req.body?.incidentSubjectAr && !req.body?.vehiclePlate) {
@@ -2519,6 +2670,8 @@ exports.createClaim = async (req, res) => {
     const n = last ? (Number(String(last.claimId).replace('ACC-', '')) || 0) + 1 : 1;
     const doc = applyClaim(new VehicleClaim({ claimId: `ACC-${String(n).padStart(3, '0')}` }), req.body);
     if (!doc.statusCode) { doc.statusCode = 'pending'; doc.statusAr = doc.statusAr || 'قيد المتابعة'; }
+    doc.createdBy = req.user?._id;
+    doc.createdByName = [req.user?.firstName, req.user?.lastName].filter(Boolean).join(' ');
     await suggestDriver(doc);
     await doc.save();
     await syncAccidentCount(doc.vehiclePlateKey);
@@ -2543,6 +2696,8 @@ exports.updateClaim = async (req, res) => {
     if (!doc || doc.isActive === false) return res.status(404).json({ message: 'الحادث غير موجود' });
     const oldKey = doc.vehiclePlateKey;
     applyClaim(doc, req.body);
+    doc.lastModifiedBy = req.user?._id;
+    doc.lastModifiedByName = [req.user?.firstName, req.user?.lastName].filter(Boolean).join(' ');
     // تغييرُ المركبة يُعيد اقتراحَ السائق متى كانت الخانةُ فارغة.
     await suggestDriver(doc);
 
@@ -3422,7 +3577,19 @@ exports.listDriverCards = async (req, res) => {
         fidelityRequired: cards.filter((c) => c.fidelity?.status === 'required').length,
         fidelityUnknown: cards.filter((c) => !c.fidelity?.status).length,
         authorized: cards.filter((c) => (c.authorizations || []).length > 0).length,
-        heavy: cards.filter((c) => c.vehicleClass === 'heavy').length,
+        /**
+         * ── والقسمةُ على أصحاب البطاقات لا على كلّ السائقين ──────────────────
+         * السؤالُ: «البطاقاتُ التي عندنا — كم منها نقلٌ ثقيلٌ وكم نقلٌ خفيف؟».
+         * وكان العدُّ على كلّ الصفوف، فيُقرأ فوق بطاقةٍ عددُها تسعٌ وخمسون
+         * تقسيمٌ مجموعُه ستّون — رقمان لشيءٍ واحد لا يجتمعان.
+         *
+         * والنقلُ الخفيفُ هنا يجمع الدرّاجةَ والمركبةَ الخاصّة: هما في الميدان
+         * صنفٌ واحدٌ يقابل النقلَ الثقيل، والقسمةُ الثنائيّةُ هي التي تُقرأ.
+         */
+        heavy: cards.filter((c) => c.hasCard && c.vehicleClass === 'heavy').length,
+        light: cards.filter((c) => c.hasCard && ['light', 'motorcycle'].includes(c.vehicleClass)).length,
+        unclassified: cards.filter((c) => c.hasCard && !['heavy', 'light', 'motorcycle'].includes(c.vehicleClass)).length,
+        // وتبقى التفصيليّةُ لمن يفلتر بها من الجدول.
         motorcycle: cards.filter((c) => c.vehicleClass === 'motorcycle').length,
         lightVehicle: cards.filter((c) => c.vehicleClass === 'light').length,
         noVehicle: cards.filter((c) => c.vehicleClass === 'none').length,

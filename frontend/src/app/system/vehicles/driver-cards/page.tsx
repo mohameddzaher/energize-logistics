@@ -12,6 +12,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { canEditSection } from '@/lib/sections';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, SearchableSelect, Loader2 } from '@/components/hr/HRKit';
+import PersonLookup from '@/components/vehicles/PersonLookup';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { IdCard, Plus, Pencil, Trash2, RotateCcw, Phone } from 'lucide-react';
@@ -159,7 +160,15 @@ export default function DriverCardsPage() {
     const n = fold(q);
     return cards.filter((c) => {
       if (fState && c.state !== fState) return false;
-      if (fClass && (c.vehicleClass || 'none') !== fClass) return false;
+      /**
+       * «خفيف» في الكارت يجمع الدرّاجةَ والمركبةَ الخاصّة — هما صنفٌ واحدٌ
+       * يقابل النقلَ الثقيل، والكارتُ والجدولُ يجب أن يقرآ القسمةَ نفسَها.
+       */
+      if (fClass === 'light') {
+        if (!c.hasCard || !['light', 'motorcycle'].includes(c.vehicleClass || '')) return false;
+      } else if (fClass === 'heavy') {
+        if (!c.hasCard || c.vehicleClass !== 'heavy') return false;
+      } else if (fClass && (c.vehicleClass || 'none') !== fClass) return false;
       // «له بطاقة» يُشتقّ في الخادم من رقمها — راجع hasCard في listDriverCards.
       if (fHas === 'yes' && !c.hasCard) return false;
       if (fHas === 'no' && c.hasCard) return false;
@@ -267,22 +276,17 @@ export default function DriverCardsPage() {
           ثلاثةُ أشياء تخصُّ السائق نفسَه: بطاقتُه، وخيانةُ أمانته، وما هو
           مفوَّضٌ عليه. وكانت متفرّقةً في ثلاث شاشات لا يجمعها اسمُه. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Stat label={t('مشمولون بخيانة الأمانة', 'Fidelity covered')} value={totals.fidelityCovered || 0} accent="text-emerald-600"
+        <Stat label={t('لديهم وثيقة خيانة الأمانة', 'Have a fidelity policy')} value={totals.fidelityCovered || 0} accent="text-emerald-600"
           onClick={() => setFFid('covered')} on={fFid === 'covered'} />
-        <Stat label={t('مطلوب ضمُّهم', 'Fidelity required')} value={totals.fidelityRequired || 0} accent="text-red-600"
+        <Stat label={t('ليس لديهم وثيقة خيانة الأمانة', 'No fidelity policy')} value={totals.fidelityRequired || 0} accent="text-red-600"
           onClick={() => setFFid('required')} on={fFid === 'required'} />
-        <Stat label={t('بلا جواب', 'Not set')} value={totals.fidelityUnknown || 0} accent="text-slate-500"
-          onClick={() => setFFid('')} on={false} />
-        <Stat label={t('لديهم تفويض ساري', 'Holding a live authorisation')} value={totals.authorized || 0} accent="text-sky-600" />
-        {/* والفصلُ بين سائقي الشاحنات ومن دونهم — يُقرأ ويُفلتَر بضغطة. */}
-        <Stat label={t('سائقو النقل الثقيل', 'Heavy-transport drivers')} value={totals.heavy || 0} accent="text-indigo-600"
+        {/* ── وقسمةُ البطاقات نفسِها ───────────────────────────────────────────
+            «البطاقاتُ التي عندنا كم منها ثقيلٌ وكم خفيف» — فالعددان يُقسِّمان
+            أصحابَ البطاقات، ومجموعُهما لا يتجاوزهم. */}
+        <Stat label={t('سائقين النقل الثقيل', 'Heavy-transport drivers')} value={totals.heavy || 0} accent="text-indigo-600"
           onClick={() => setFClass(fClass === 'heavy' ? '' : 'heavy')} on={fClass === 'heavy'} />
-        <Stat label={t('الدراجات الآلية', 'Motorcycles')} value={totals.motorcycle || 0} accent="text-violet-600"
-          onClick={() => setFClass(fClass === 'motorcycle' ? '' : 'motorcycle')} on={fClass === 'motorcycle'} />
-        <Stat label={t('النقل الخفيف / الخاص', 'Light / private')} value={totals.lightVehicle || 0} accent="text-teal-600"
+        <Stat label={t('سائقين النقل الخفيف', 'Light-transport drivers')} value={totals.light || 0} accent="text-violet-600"
           onClick={() => setFClass(fClass === 'light' ? '' : 'light')} on={fClass === 'light'} />
-        <Stat label={t('بلا تفويض', 'No authorisation')} value={totals.noVehicle || 0} accent="text-slate-500"
-          onClick={() => setFClass(fClass === 'none' ? '' : 'none')} on={fClass === 'none'} />
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -435,6 +439,23 @@ export default function DriverCardsPage() {
           <button type="button" onClick={() => setEditing(null)} className="px-4 py-2 text-slate-500 text-sm">{t('إلغاء', 'Cancel')}</button>
           <PrimaryButton onClick={save} disabled={saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}{t('حفظ', 'Save')}</PrimaryButton>
         </>}>
+        {/* ── ويُبحَث عن صاحب البطاقة فتُملأ خاناتُه ──────────────────────────
+            اسمُه ورقمُه وجوالُ أبشر مكتوبةٌ في الموارد البشريّة وسجلّ النقل
+            الخفيف — تُقرأ منها بدل أن تُكتب في كلّ بطاقةٍ من جديد. */}
+        <div className="mb-3">
+          <PersonLookup ar={ar}
+            label={t('ابحث عن الشخص فتُملأ بيانات البطاقة', 'Find the person to fill the card')}
+            hint={t('بالاسم أو رقم الهوية أو الإقامة — والكتابة اليدوية تبقى متاحة.',
+                    'By name, national ID or iqama — typing by hand still works.')}
+            onPick={(pp) => setEditing((p) => ({
+              ...p,
+              idNumber: pp.idNumber || p?.idNumber || '',
+              name: pp.name || p?.name || '',
+              absherPhone: pp.absherPhone || pp.phone || p?.absherPhone || '',
+              dateOfBirth: pp.dateOfBirth || p?.dateOfBirth || '',
+              ...(pp.employeeId ? { employee: pp.employeeId as any } : {}),
+            }))} />
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label={t('رقم الهوية *', 'ID number *')}>
             <TextInput value={editing?.idNumber || ''} onChange={(e) => setEditing((p) => ({ ...p, idNumber: e.target.value }))} /></Field>

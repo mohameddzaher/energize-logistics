@@ -108,6 +108,17 @@ const vehicleClaimSchema = new mongoose.Schema({
   }],
 
   isActive: { type: Boolean, default: true, index: true },
+
+  /**
+   * ── ومَن سجّلها ومَن آخِرُ من مسّها ────────────────────────────────────────
+   * «أنا سجّلتُ حادثًا ولا أجده» سؤالٌ وقع فعلًا، ولم يكن في الصفّ ما يجيب عنه:
+   * لا صاحبَ له ولا آخِرَ كاتب. فالسجلُّ الماليُّ يُراجَع، ومن يُراجعه يسأل أوّلًا
+   * عمّن كتب.
+   */
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  createdByName: { type: String, trim: true, default: '' },
+  lastModifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  lastModifiedByName: { type: String, trim: true, default: '' },
 }, { timestamps: true });
 
 vehicleClaimSchema.index({ accidentDate: -1 });

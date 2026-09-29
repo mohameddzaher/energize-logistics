@@ -43,6 +43,73 @@ import ScrollX from '@/components/system/ScrollX';
 /** لونُ عائلةٍ حين لا يكون لها مستندٌ بحالة — للهوية والملكية. */
 const NEUTRAL = '#64748b';
 
+/**
+ * ── لبناتُ العرض على مستوى الملفّ لا داخلَ جسم الرسم ─────────────────────────
+ *
+ * كانت `Row` و`Section` و`DateRow` تُعرَّف داخل مكوّن الصفحة. والدالّةُ
+ * المعرَّفةُ في جسم الرسم تُبنى من جديدٍ عند كلّ حالةٍ تتغيّر، فتراها React
+ * نوعًا جديدًا كلَّ مرّة: تهدم الشجرةَ كلَّها وتبنيها. وأثرُ ذلك يُرى في أوّل
+ * خانةِ إدخال — حرفٌ يُكتب في الملاحظات فتُهدَم الخانةُ وتُبنى، فيضيع المؤشّرُ
+ * وتقفز الصفحةُ إلى أوّلها. وهو نفسُه سببُ الوميض وإعادة الجلب في غيرها.
+ *
+ * فمكانُها هنا: نوعُها ثابتٌ فلا يُعاد التركيب، ويُمرَّر إليها ما تحتاجه.
+ */
+function Row({ label, children, mono }: { label: string; children: React.ReactNode; mono?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-[7px] border-b border-slate-100 last:border-0">
+      <span className="text-[12px] text-slate-500 shrink-0 leading-tight">{label}</span>
+      <span className={`text-[13.5px] font-semibold text-slate-900 text-end break-all leading-snug ${mono ? 'font-mono tracking-tight' : ''}`}>
+        {children}
+      </span>
+    </div>
+  );
+}
+
+const valOf = (x: unknown) => (x === null || x === undefined || x === '' ? <span className="text-slate-300 font-normal">—</span> : (x as React.ReactNode));
+
+/** تاريخُ مستندٍ بحالته وأيامه — نفس ما تعرضه صفحة العائلة، من نفس المصدر. */
+function DocDateRow({ label, date, st, ar }: {
+  label: string; date?: string | null; st?: { status?: string; days?: number | null }; ar: boolean;
+}) {
+  const meta = statusMeta(st?.status);
+  if (!date) return <Row label={label}>{valOf(null)}</Row>;
+  return (
+    <Row label={label}>
+      <span className="inline-flex items-center gap-1.5 flex-wrap justify-end">
+        <span className="font-mono tracking-tight">{fmtDate(date)}</span>
+        {st?.days != null && (
+          <span className={`px-1.5 py-[1px] rounded text-[11px] font-bold ${meta?.bg} ${meta?.text}`}>
+            {daysText(st.days, ar)}
+          </span>
+        )}
+      </span>
+    </Row>
+  );
+}
+
+function Section({ title, icon, accent, children, href, hrefLabel, isRTL }: {
+  title: string; icon: React.ReactNode; accent: string; children: React.ReactNode;
+  href?: string; hrefLabel?: string; isRTL?: boolean;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden flex flex-col">
+      <div className="h-1" style={{ background: accent }} />
+      <div className="px-4 pt-3.5 pb-1 flex items-center gap-2">
+        <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+          style={{ background: `${accent}1a`, color: accent }}>{icon}</span>
+        <h2 className="font-extrabold text-slate-900 text-[14.5px] tracking-tight">{title}</h2>
+      </div>
+      <div className="px-4 pb-3 flex-1">{children}</div>
+      {href && (
+        <Link href={href}
+          className="mx-4 mb-3 inline-flex items-center gap-1 self-start text-[11.5px] font-bold text-slate-500 hover:text-[#f37121] transition-colors">
+          {hrefLabel} <ChevronLeft className={`w-3.5 h-3.5 ${isRTL ? '' : 'rotate-180'}`} />
+        </Link>
+      )}
+    </section>
+  );
+}
+
 export default function VehicleRegistryDetail() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -87,56 +154,10 @@ export default function VehicleRegistryDetail() {
   if (loading) return <Spinner />;
   if (!v) return <div className="p-8 text-slate-500">{t('المركبة غير موجودة', 'Not found')}</div>;
 
-  // ── لبنات العرض ────────────────────────────────────────────────────────────
-  const Row = ({ label, children, mono }: { label: string; children: React.ReactNode; mono?: boolean }) => (
-    <div className="flex items-baseline justify-between gap-4 py-[7px] border-b border-slate-100 last:border-0">
-      <span className="text-[12px] text-slate-500 shrink-0 leading-tight">{label}</span>
-      <span className={`text-[13.5px] font-semibold text-slate-900 text-end break-all leading-snug ${mono ? 'font-mono tracking-tight' : ''}`}>
-        {children}
-      </span>
-    </div>
-  );
-
+  // لبناتُ العرضِ مرفوعةٌ إلى مستوى الملفّ — راجع تعليقَها هناك.
   const val = (x: unknown) => (x === null || x === undefined || x === '' ? <span className="text-slate-300 font-normal">—</span> : (x as React.ReactNode));
-
-  /** تاريخُ مستندٍ بحالته وأيامه — نفس ما تعرضه صفحة العائلة، من نفس المصدر. */
-  const DateRow = ({ label, date, docKey }: { label: string; date?: string | null; docKey: string }) => {
-    const st = v.docStatuses?.[docKey];
-    const meta = statusMeta(st?.status);
-    if (!date) return <Row label={label}>{val(null)}</Row>;
-    return (
-      <Row label={label}>
-        <span className="inline-flex items-center gap-1.5 flex-wrap justify-end">
-          <span className="font-mono tracking-tight">{fmtDate(date)}</span>
-          {st?.days != null && (
-            <span className={`px-1.5 py-[1px] rounded text-[11px] font-bold ${meta?.bg} ${meta?.text}`}>
-              {daysText(st.days, ar)}
-            </span>
-          )}
-        </span>
-      </Row>
-    );
-  };
-
-  const Section = ({ title, icon, accent, children, href, hrefLabel }: {
-    title: string; icon: React.ReactNode; accent: string; children: React.ReactNode;
-    href?: string; hrefLabel?: string;
-  }) => (
-    <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden flex flex-col">
-      <div className="h-1" style={{ background: accent }} />
-      <div className="px-4 pt-3.5 pb-1 flex items-center gap-2">
-        <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-          style={{ background: `${accent}1a`, color: accent }}>{icon}</span>
-        <h2 className="font-extrabold text-slate-900 text-[14.5px] tracking-tight">{title}</h2>
-      </div>
-      <div className="px-4 pb-3 flex-1">{children}</div>
-      {href && (
-        <Link href={href}
-          className="mx-4 mb-3 inline-flex items-center gap-1 self-start text-[11.5px] font-bold text-slate-500 hover:text-[#f37121] transition-colors">
-          {hrefLabel} <ChevronLeft className={`w-3.5 h-3.5 ${isRTL ? '' : 'rotate-180'}`} />
-        </Link>
-      )}
-    </section>
+  const DateRow = ({ label, date, docKey }: { label: string; date?: string | null; docKey: string }) => (
+    <DocDateRow label={label} date={date} st={v.docStatuses?.[docKey]} ar={ar} />
   );
 
   // ملفُّ المركبة يُصدَّر شيتًا واحدًا مسطَّحًا: حقلٌ في كل صفّ — وهو الشكل
@@ -189,6 +210,53 @@ export default function VehicleRegistryDetail() {
   };
   const openDocPage = (key: string) =>
     router.push(`/system/vehicles/registry/${DOC_PAGE[key] || 'expiring'}?q=${encodeURIComponent(v.plateNumber)}`);
+
+  /**
+   * ── النواقصُ التي تُعمَل ─────────────────────────────────────────────────
+   *
+   * ما في `missingItems` ثلاثةُ أصناف: مستندٌ ناقصٌ باسمه (يُعمَل)، ووصفٌ لا
+   * عملَ فيه («نوع اللوحة: نقل عام»)، وشرطُ منصّةٍ مكتوبٌ جملةً طويلةً جاءت مع
+   * الشيت («أن تكون مالكًا أو مستخدمًا فعليًّا…»). والأخيران يُقرآن نقصًا وليسا
+   * كذلك، فيُخفيان النقصَ الحقيقيَّ بينهما.
+   *
+   * فيبقى ما يُطابق مستندًا نعرفه — وله عندئذٍ بابٌ يُفتَح ويُستكمَل منه.
+   */
+  const realGaps = ((): { key: string; label: string; reason?: string; href?: string }[] => {
+    const out: { key: string; label: string; reason?: string; href?: string }[] = [];
+    const seen = new Set<string>();
+    for (const mi of (v.missingItems || [])) {
+      const item = String(mi.item || '').trim();
+      if (!item) continue;
+      // جملةٌ طويلةٌ ليست اسمَ مستند — شرطُ منصّةٍ لا يُعمَل به من هنا.
+      if (item.length > 34 || item.includes(':')) continue;
+      const doc = DOC_TYPES.find((d) => item.includes(d.ar) || d.ar.includes(item));
+      if (!doc) continue;
+      if (seen.has(doc.key)) continue;
+      seen.add(doc.key);
+      out.push({
+        key: doc.key,
+        label: ar ? doc.ar : doc.en,
+        reason: String(mi.reason || '').trim() || undefined,
+        href: `/system/vehicles/registry/${DOC_PAGE[doc.key] || 'expiring'}?q=${encodeURIComponent(v.plateNumber)}`,
+      });
+    }
+    // ومستندٌ منتهٍ أو غائبٌ نقصٌ ولو لم يُكتب في القائمة — الحالةُ هي الخبر.
+    for (const d of DOC_TYPES) {
+      if (seen.has(d.key)) continue;
+      const st = v.docStatuses?.[d.key]?.status;
+      if (!['expired', 'missing', 'required'].includes(String(st || ''))) continue;
+      seen.add(d.key);
+      out.push({
+        key: d.key,
+        label: ar ? d.ar : d.en,
+        reason: st === 'expired' ? (ar ? 'منتهٍ' : 'expired') : (ar ? 'غير مسجَّل' : 'not recorded'),
+        href: `/system/vehicles/registry/${DOC_PAGE[d.key] || 'expiring'}?q=${encodeURIComponent(v.plateNumber)}`,
+      });
+    }
+    return out;
+    // حسابٌ عاديٌّ لا خطّاف: الموضعُ بعد عودةٍ مبكّرة، وخطّافٌ هنا يكسر
+    // ترتيبَ الخطّافات (React #310). وهي ستّةُ بنودٍ لا تحتاج تذكّرًا.
+  })();
 
   const renewTarget = (key: string): RenewTarget => {
     const d = DOC_TYPES.find((x) => x.key === key);
@@ -287,27 +355,44 @@ export default function VehicleRegistryDetail() {
         })}
       </div>
 
-      {/* بنودٌ ناقصة وشروط لوجستي — قائمةُ عملٍ لا وصف */}
-      {(!!v.missingItems?.length || !!v.logistiGaps?.length) && (
+      {/* ── نواقصُ المركبة: ما يُعمَل، لا ما كُتب في الشيت ────────────────────
+          كانت القائمةُ تخلط ثلاثةَ أشياء: نقصًا حقيقيًّا («الفحص الدوري ·
+          مطلوب»)، ووصفًا لا يُعمَل به («نوع اللوحة: نقل عام»)، وشرطًا مكتوبًا
+          بلغة المنصّة لا يفهمه قارئُه («أن تكون مالكًا أو مستخدمًا فعليًّا…»).
+          فتُقرأ كلُّها تحت عنوانٍ واحدٍ فلا يُعرَف ما المطلوبُ فعلُه.
+
+          فبقي النقصُ وحدَه، ومعه بابُه: كلُّ بندٍ مستنَدٌ معروفٌ يفتح صفحتَه
+          مباشرةً — يُجدَّد من هناك لا يُقرأ هنا. وما لا يُعرَف له مستندٌ لا
+          يُعرَض أصلًا. */}
+      {!!realGaps.length && (
         <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 shadow-sm">
           <p className="font-extrabold text-amber-900 mb-2.5 flex items-center gap-1.5 text-[14px]">
-            <AlertTriangle className="w-4 h-4" />{t('نواقص هذه المركبة', 'What this vehicle is missing')}
+            <AlertTriangle className="w-4 h-4" />
+            {t(`نواقص هذه المركبة (${realGaps.length})`, `What this vehicle is missing (${realGaps.length})`)}
           </p>
           <div className="flex flex-wrap gap-1.5">
-            {(v.missingItems || []).map((mi, i) => (
-              <span key={`m${i}`} className="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-[12px] font-semibold text-amber-900">
-                {mi.item}{mi.reason ? <span className="font-normal text-amber-700"> · {mi.reason}</span> : null}
-              </span>
-            ))}
-            {(v.logistiGaps || []).map((g, i) => (
-              <span key={`g${i}`} className="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-[12px] font-semibold text-amber-900">{g}</span>
+            {realGaps.map((g) => (
+              g.href ? (
+                <Link key={g.key} href={g.href}
+                  className="group inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white border border-amber-300 text-[12px] font-semibold text-amber-900 hover:border-[#f37121] hover:text-[#f37121] transition-colors">
+                  {g.label}
+                  {g.reason ? <span className="font-normal text-amber-700">· {g.reason}</span> : null}
+                  <span className="text-[11px] font-bold text-[#f37121] opacity-0 group-hover:opacity-100 transition-opacity">
+                    {t('استكملها ←', 'fix it ←')}
+                  </span>
+                </Link>
+              ) : (
+                <span key={g.key} className="px-2.5 py-1.5 rounded-lg bg-white border border-amber-300 text-[12px] font-semibold text-amber-900">
+                  {g.label}{g.reason ? <span className="font-normal text-amber-700"> · {g.reason}</span> : null}
+                </span>
+              )
             ))}
           </div>
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3.5">
-        <Section title={t('الهوية والتصنيف', 'Identity & classification')} icon={<Car className="w-4 h-4" />} accent={NEUTRAL}>
+        <Section isRTL={isRTL} title={t('الهوية والتصنيف', 'Identity & classification')} icon={<Car className="w-4 h-4" />} accent={NEUTRAL}>
           <Row label={t('رقم اللوحة', 'Plate')} mono>{v.plateNumber}</Row>
           <Row label={t('رقم الهيكل', 'Chassis')} mono>{val(v.chassisNumber)}</Row>
           <Row label={t('الرقم التسلسلي', 'Serial')} mono>{val(v.serialNumber)}</Row>
@@ -323,7 +408,7 @@ export default function VehicleRegistryDetail() {
           </Row>
         </Section>
 
-        <Section title={t('الملكية والحيازة', 'Ownership')} icon={<Building2 className="w-4 h-4" />} accent={NEUTRAL}>
+        <Section isRTL={isRTL} title={t('الملكية والحيازة', 'Ownership')} icon={<Building2 className="w-4 h-4" />} accent={NEUTRAL}>
           <Row label={t('المالك', 'Owner')}>{val(v.ownerNameAr)}</Row>
           <Row label={t('السجل التجاري', 'Commercial reg.')} mono>{val(v.commercialRegistration)}</Row>
           <Row label={t('حالة الحيازة', 'Possession')}>{val(v.possessionStatusAr)}</Row>
@@ -339,7 +424,7 @@ export default function VehicleRegistryDetail() {
         </Section>
 
         {/* ── التتبّع: نفس أعمدة صفحة أجهزة التتبّع بالضبط ─────────────────── */}
-        <Section title={t('جهاز التتبّع GPS', 'GPS tracking')} icon={<Satellite className="w-4 h-4" />}
+        <Section isRTL={isRTL} title={t('جهاز التتبّع GPS', 'GPS tracking')} icon={<Satellite className="w-4 h-4" />}
           accent={gpsOn ? docAccent('gps') : NEUTRAL}
           href={gpsOn ? `/system/vehicles/registry/gps?q=${encodeURIComponent(v.plateNumber)}` : undefined}
           hrefLabel={t('صفحة أجهزة التتبّع', 'GPS page')}>
@@ -356,7 +441,7 @@ export default function VehicleRegistryDetail() {
         </Section>
 
         {/* ── التفويض: نفس أعمدة صفحة التفاويض ─────────────────────────────── */}
-        <Section title={t('التفويض بالقيادة', 'Driving authorisation')} icon={<IdCard className="w-4 h-4" />}
+        <Section isRTL={isRTL} title={t('التفويض بالقيادة', 'Driving authorisation')} icon={<IdCard className="w-4 h-4" />}
           accent={authOn ? docAccent('authorization') : NEUTRAL}
           href={authOn ? `/system/vehicles/registry/authorizations?q=${encodeURIComponent(v.plateNumber)}` : undefined}
           hrefLabel={t('صفحة التفاويض', 'Authorisations page')}>
@@ -368,7 +453,7 @@ export default function VehicleRegistryDetail() {
           <DateRow label={t('نهاية التفويض', 'End date')} date={auth?.expiryDate} docKey="authorization" />
         </Section>
 
-        <Section title={t('التأمين', 'Insurance')} icon={<ShieldCheck className="w-4 h-4" />} accent={docAccent('insurance')}
+        <Section isRTL={isRTL} title={t('التأمين', 'Insurance')} icon={<ShieldCheck className="w-4 h-4" />} accent={docAccent('insurance')}
           href={`/system/vehicles/registry/insurance/vehicles?q=${encodeURIComponent(v.plateNumber)}`}
           hrefLabel={t('صفحة تأمين المركبات', 'Vehicle-insurance page')}>
           <Row label={t('رقم الوثيقة', 'Policy no.')} mono>{val(v.insurance?.policyNumber)}</Row>
@@ -379,7 +464,7 @@ export default function VehicleRegistryDetail() {
           <Row label={t('حالة القسط', 'Premium status')}>{val(v.insurance?.premiumStatusAr)}</Row>
         </Section>
 
-        <Section title={t('شريحة الوقود', 'Fuel card')} icon={<Fuel className="w-4 h-4" />} accent="#0891b2"
+        <Section isRTL={isRTL} title={t('شريحة الوقود', 'Fuel card')} icon={<Fuel className="w-4 h-4" />} accent="#0891b2"
           href={`/system/vehicles/registry/fuel-cards?q=${encodeURIComponent(v.plateNumber)}`}
           hrefLabel={t('صفحة بترو اب', 'Fuel-cards page')}>
           <Row label={t('المزوّد', 'Provider')}>{val(v.fuelCard?.provider)}</Row>
@@ -399,7 +484,7 @@ export default function VehicleRegistryDetail() {
             التشغيل وحدَها — فتاريخُ رخصةِ السير يُقرأ تحت عنوان غيرِه ولا
             يُوصل إلى صفحته. وهما مستندان مستقلّان: لكلٍّ تاريخُه وحالتُه
             وصفحتُه وتجديدُه، فلكلٍّ بطاقتُه. */}
-        <Section title={t('بطاقة التشغيل', 'Operating card')} icon={<FileText className="w-4 h-4" />}
+        <Section isRTL={isRTL} title={t('بطاقة التشغيل', 'Operating card')} icon={<FileText className="w-4 h-4" />}
           accent={docAccent('operatingCard')}
           href={`/system/vehicles/registry/operating-cards?q=${encodeURIComponent(v.plateNumber)}`}
           hrefLabel={t('صفحة بطاقات التشغيل', 'Operating-cards page')}>
@@ -407,7 +492,7 @@ export default function VehicleRegistryDetail() {
           <DateRow label={t('تاريخ الانتهاء', 'Expiry')} date={v.operatingCard?.expiryDate} docKey="operatingCard" />
         </Section>
 
-        <Section title={t('رخصة السير', 'Vehicle licence')} icon={<FileText className="w-4 h-4" />}
+        <Section isRTL={isRTL} title={t('رخصة السير', 'Vehicle licence')} icon={<FileText className="w-4 h-4" />}
           accent={docAccent('vehicleLicense')}
           href={`/system/vehicles/registry/licenses?q=${encodeURIComponent(v.plateNumber)}`}
           hrefLabel={t('صفحة رخص السير', 'Licences page')}>
@@ -418,7 +503,7 @@ export default function VehicleRegistryDetail() {
           </Row>
         </Section>
 
-        <Section title={t('الفحص الدوري', 'Periodic inspection')} icon={<ClipboardCheck className="w-4 h-4" />}
+        <Section isRTL={isRTL} title={t('الفحص الدوري', 'Periodic inspection')} icon={<ClipboardCheck className="w-4 h-4" />}
           accent={docAccent('inspection')}
           href={`/system/vehicles/registry/inspection?q=${encodeURIComponent(v.plateNumber)}`}
           hrefLabel={t('صفحة الفحص', 'Inspection page')}>
@@ -434,7 +519,7 @@ export default function VehicleRegistryDetail() {
             أصلًا — ويُظنّ أنّ الميزةَ غيرُ موجودة. وهي تُكتب حيث تُقرأ: مَن
             يقف على الملفّ ويرى ما يستدعي ملاحظةً يكتبها في موضعها، لا يعود
             إلى الجدول ويفتح نافذةَ تعديل. */}
-        <Section title={t('ملاحظات', 'Notes')} icon={<FileText className="w-4 h-4" />} accent={NEUTRAL}>
+        <Section isRTL={isRTL} title={t('ملاحظات', 'Notes')} icon={<FileText className="w-4 h-4" />} accent={NEUTRAL}>
           {!canEdit ? (
             <p className="text-[13.5px] text-slate-800 whitespace-pre-wrap leading-relaxed pt-1">
               {v.notesAr || <span className="text-slate-300">—</span>}

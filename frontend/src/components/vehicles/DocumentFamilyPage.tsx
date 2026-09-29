@@ -42,6 +42,7 @@ const EMPTY_SET: Set<string> = new Set();
 import { VReg, DOC_TYPES, daysText, STATE_META, publicState, canEditVehicles, canAdminVehicles, isSharedPaper } from '@/lib/vehicleRegistry';
 import { flexIncludes } from '@/lib/flexMatch';
 import ManagedSelect from '@/components/system/ManagedSelect';
+import PersonLookup, { type FoundPerson } from '@/components/vehicles/PersonLookup';
 import HijriGregorianField from '@/components/vehicles/HijriGregorianField';
 import ScrollX from '@/components/system/ScrollX';
 
@@ -151,7 +152,7 @@ const stateOf = (v: VReg, docKey: string) => {
 };
 
 function DocumentFamilyPageInner({
-  docKey, path, icon, titleAr, titleEn, subtitleAr, subtitleEn, columns, fileName, searchIn, chips, fields, keyField, rowAction, hideClear,
+  docKey, path, icon, titleAr, titleEn, subtitleAr, subtitleEn, columns, fileName, searchIn, chips, fields, keyField, rowAction, hideClear, personFill,
 }: {
   /**
    * مفتاح المستند ذي تاريخ الانتهاء — أو `null` لعائلةٍ لا تنتهي.
@@ -173,6 +174,11 @@ function DocumentFamilyPageInner({
   searchIn?: (v: VReg) => (string | number | null | undefined)[];
   /** شرائح خاصة بالعائلة — تحلّ محلّ شرائح الحالة حين لا مستندَ ينتهي. */
   chips?: Chip[];
+  /**
+   * بحثُ شخصٍ يملأ حقولَ هذه العائلة — يُعرَض في نموذج التحرير فوق الحقول.
+   * تردّ `map` خريطةَ «مسارُ الحقل → القيمة». راجع `PersonLookup`.
+   */
+  personFill?: { label?: string; hint?: string; map: (p: FoundPerson) => Record<string, any> };
   /**
    * حقولُ هذه العائلة وحدها — وبها وحدها تُفتَح الإضافةُ والتعديل والمسح.
    *
@@ -782,7 +788,7 @@ function DocumentFamilyPageInner({
       )}
       {form && !!fields?.length && (
         <DocFormModal vehicle={form.vehicle} fields={fields} keyField={keyField} famLabel={famLabel} ar={ar}
-          canDelete={canDelete}
+          canDelete={canDelete} personFill={personFill}
           onClose={() => setForm(null)}
           onDone={() => { setForm(null); load(); }} />
       )}
@@ -805,13 +811,18 @@ export default function DocumentFamilyPage(props: Parameters<typeof DocumentFami
 // يُسجَّل بعد على مركبةٍ قائمة**: مئةٌ وخمسَ عشرة مركبةً بلا رقم بطاقة تشغيل،
 // وطريقُ إدخالها كان يمرّ باستمارة السبعة والأربعين حقلًا. فالإنشاء هنا: اختر
 // المركبة — والقائمةُ تبدأ بمن لا مستندَ له — ثم املأ حقول العائلة وحدها.
-function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, onClose, onDone }: {
+function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, personFill, onClose, onDone }: {
   vehicle: VReg | null;
   fields: DocField[];
   keyField?: string;
   famLabel: string;
   ar: boolean;
   canDelete: boolean;
+  /**
+   * بحثُ شخصٍ يملأ حقولَ هذه العائلة — راجع `PersonLookup`.
+   * تردّ الدالّةُ خريطةَ «مسارُ الحقل → القيمة»، فتُملأ الخاناتُ من الجواب.
+   */
+  personFill?: { label?: string; hint?: string; map: (p: FoundPerson) => Record<string, any> };
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -984,6 +995,13 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, onCl
                    '«Not required» is not a gap: the vehicle leaves the work list and shows greyed out here, in the vehicle registry and in the overview.')}
               </p>
             </div>
+
+            {/* ── ويُبحَث عن الشخص فتُملأ خاناتُه ──────────────────────────────
+                بدل أن يُكتب الاسمُ والإقامةُ والجوالُ بالأيدي في كلّ ورقة. */}
+            {personFill && (
+              <PersonLookup ar={ar} label={personFill.label} hint={personFill.hint}
+                onPick={(pp) => setVals((prev) => ({ ...prev, ...personFill.map(pp) }))} />
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {fields.map((fl) => (

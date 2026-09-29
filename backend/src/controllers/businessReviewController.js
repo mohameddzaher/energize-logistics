@@ -232,7 +232,7 @@ const MEETING_FIELDS = [
  * `previous` is the list as it stands now: marking attendance must record WHEN
  * it was marked and by whom, and must not wipe a timestamp that is already
  * there — the attendance log is part of the meeting's history, not a checkbox.
- */
+ */ 
 async function buildAttendees(list, previous = [], actor = null) {
   const ids = (list || []).map((a) => a.user || a._id || a).filter(Boolean);
   if (!ids.length) return [];

@@ -598,6 +598,7 @@
         "/api/vehicle-registry/claims",
         "/api/vehicle-registry/documents",
         "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/person-lookup",
         "/api/vehicle-registry/renew-bulk",
         "/api/vehicle-registry/renew-shared"
       ],
@@ -615,7 +616,9 @@
     "/system/vehicles/registry/claims": {
       "apis": [
         "/api/lookups/types",
-        "/api/vehicle-registry/claims"
+        "/api/vehicle-registry/claims",
+        "/api/vehicle-registry/person-lookup",
+        "/api/vehicle-registry/plate-options"
       ],
       "wildcard": false
     },
@@ -636,6 +639,7 @@
         "/api/lookups/types",
         "/api/vehicle-registry",
         "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/person-lookup",
         "/api/vehicle-registry/renew-bulk",
         "/api/vehicle-registry/renew-shared"
       ],
@@ -646,6 +650,7 @@
         "/api/lookups/types",
         "/api/vehicle-registry",
         "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/person-lookup",
         "/api/vehicle-registry/renew-bulk",
         "/api/vehicle-registry/renew-shared"
       ],
@@ -655,6 +660,7 @@
       "apis": [
         "/api/lookups/types",
         "/api/vehicle-registry/driver-cards",
+        "/api/vehicle-registry/person-lookup",
         "/api/vehicles/employees"
       ],
       "wildcard": false
@@ -664,6 +670,7 @@
         "/api/lookups/types",
         "/api/vehicle-registry",
         "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/person-lookup",
         "/api/vehicle-registry/renew-bulk",
         "/api/vehicle-registry/renew-shared",
         "/api/vehicles/employees"
@@ -675,6 +682,7 @@
         "/api/lookups/types",
         "/api/vehicle-registry",
         "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/person-lookup",
         "/api/vehicle-registry/renew-bulk",
         "/api/vehicle-registry/renew-shared"
       ],
@@ -685,6 +693,7 @@
         "/api/lookups/types",
         "/api/vehicle-registry",
         "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/person-lookup",
         "/api/vehicle-registry/renew-bulk",
         "/api/vehicle-registry/renew-shared"
       ],
@@ -695,6 +704,7 @@
         "/api/lookups/types",
         "/api/vehicle-registry",
         "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/person-lookup",
         "/api/vehicle-registry/renew-bulk",
         "/api/vehicle-registry/renew-shared"
       ],
@@ -705,6 +715,7 @@
         "/api/lookups/types",
         "/api/vehicle-registry",
         "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/person-lookup",
         "/api/vehicle-registry/renew-bulk",
         "/api/vehicle-registry/renew-shared"
       ],
@@ -782,6 +793,7 @@
     "/system/ls2/tires": {
       "apis": [
         "/api/ls2/assets/tires",
+        "/api/ls2/settings",
         "/api/ls2/vehicles"
       ],
       "wildcard": false

@@ -153,6 +153,16 @@ const decorate = (row, alerts = {}) => ({
  * محفوظةً ونسخًا من التطبيق تُرسله، ولأنّ من لا حسابَ لمشرفه بعد يبقى مفلتَرًا
  * باسمه المكتوب — فلا يختفي صفٌّ من شاشةٍ كان يُرى فيها.
  */
+/**
+ * ── قطاعُ النقل الخفيف مطويًّا ────────────────────────────────────────────────
+ *
+ * قسمُ الأفراد (b2c) هو قسمُ النقل الخفيف، ومركباتُه تُعرَف بقطاعها في سجلّ
+ * المركبات. وكان المطابقُ نصًّا حرفيًّا («النقل الخفيف») — فمركبةٌ تُنشَأ هناك
+ * بكتابة «نقل خفيف» أو بمسافةٍ زائدة لا تصل إلى هذا القسم أبدًا، ولا يُعرَف
+ * لماذا. فالمطابقةُ بالكلمة: ما فيه «خفيف» فهو منه.
+ */
+const LIGHT_SECTOR = /خفيف/;
+
 const supervisorFilter = (filter, value, field = 'supervisorUser') => {
   const v = S(value);
   if (!v) return;
@@ -172,7 +182,9 @@ const LIST_POPULATE = [
   // «كارتُ تشغيلِ مَن ينتهي هذا الشهر؟» سؤالٌ يُسأل في هذا القسم لا في قسم
   // المركبات: المشرفُ يوقف الرجلَ لا المركبة. والوثيقتان على سجلّ المركبات —
   // فتُقرآن معه في النداء نفسِه، ولا تُنسَخان هنا فتفترقا عن أصلهما.
-  { path: 'vehicle', select: 'plateNumber serialNumber registrationTypeAr brandAr modelAr operatingCard inspection' },
+  // ومعها ورقةُ تفويضها وقائدُها الفعليّ: الشيتُ يحملهما عمودين، والسؤالُ عنهما
+  // يقع على الرجل لا على المركبة — «مين المفوَّض؟ ومين اللي راكبها فعلًا؟».
+  { path: 'vehicle', select: 'plateNumber serialNumber registrationTypeAr brandAr modelAr operatingCard inspection authorizedPerson actualDriver' },
   { path: 'housing', select: 'name cityAr' },
 ];
 
@@ -329,7 +341,7 @@ const optionsOf = async () => cache.wrap('lt:options', 60 * 1000, async () => {
     (async () => {
       const [a, b] = await Promise.all([
         LightTransportEmployee.distinct('vehicleTypeAr'),
-        VehicleMaster.distinct('registrationTypeAr', { sectorAr: 'النقل الخفيف' }),
+        VehicleMaster.distinct('registrationTypeAr', { sectorAr: LIGHT_SECTOR }),
       ]);
       return [...new Set([...a, ...b].filter(Boolean).map(typeKey))];
     })(),
@@ -414,7 +426,7 @@ exports.overview = async (req, res) => {
         .select('vehicle projectAr cityAr').lean(),
       LightTransportHousing.find({ isActive: { $ne: false } }).lean(),
       // قطاعُ النقل الخفيف في سجلّ المركبات — هو مصدرُ عددِ المركبات.
-      VehicleMaster.find({ sectorAr: 'النقل الخفيف', isActive: { $ne: false } })
+      VehicleMaster.find({ sectorAr: LIGHT_SECTOR, isActive: { $ne: false } })
         .select('plateNumber registrationTypeAr departmentAr serviceStatusAr serviceStatusCode authorizedPerson').lean(),
       LightTransportOrder.find({ status: 'active' }).select('vehicle ltEmployee').lean(),
     ]);

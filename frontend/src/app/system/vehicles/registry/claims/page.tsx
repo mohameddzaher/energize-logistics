@@ -3,7 +3,7 @@
 //
 // ⚠️ الصفحة دي غير «حوادث التفاويض» في نفس القسم. تلك بتسجّل الحادث من ناحية
 // التشغيل (أي سائق، بأي تفويض). دي بتتابع **المطالبة**: نسبة الخطأ، رقم نجم،
-// شركة التأمين، المقدَّر، والمتوقع استرداده.
+// شركة التأمين، مبلغ التقدير، والمبلغ المسترد.
 import { useState, useEffect, useCallback, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -12,7 +12,9 @@ import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
-import { TriangleAlert, Search, ArrowRight, Clock, Plus, Pencil, Trash2, X } from 'lucide-react';
+import {
+  TriangleAlert, Search, ArrowRight, Clock, Plus, Pencil, Trash2, X, Paperclip,
+} from 'lucide-react';
 import { LEAD, LEAD_CELL, LEAD_2, useLeadOffset } from '@/components/vehicles/stickyLead';
 import { useAuth } from '@/context/AuthContext';
 import ManagedSelect from '@/components/system/ManagedSelect';
@@ -23,6 +25,8 @@ import {
 } from '@/lib/vehicleRegistry';
 import ScrollX from '@/components/system/ScrollX';
 import ClaimAttachments from '@/components/vehicles/ClaimAttachments';
+import PersonLookup from '@/components/vehicles/PersonLookup';
+import api from '@/lib/api';
 
 // أعمدةُ جدول الحوادث وقارئُ كلٍّ منها — تعريفٌ واحدٌ للترويسة وللقمع.
 const COL_DEFS: [string, string, string][] = [
@@ -32,12 +36,19 @@ const COL_DEFS: [string, string, string][] = [
   ['driverId', 'رقم الإقامة', 'Iqama'],
   ['vehicleType', 'نوع السيارة', 'Vehicle type'],
   ['estimateNo', 'رقم التقدير', 'Estimate no.'],
+  // ── وبقيّةُ ما في الصفّ يُعرَض ويُفلتَر ──────────────────────────────────
+  // «فين باقي الكولومز؟» — كانت في القاعدة ولا تصل الشاشة: كيف أُبلغ عنه،
+  // ورقمُ المطالبة عند الشركة، والورقُ المرفَق. وكلُّها تُفلتَر من رأس عمودها.
+  ['reportedVia', 'تم الإبلاغ عبر', 'Reported via'],
+  ['claimNumber', 'رقم المطالبة', 'Claim no.'],
   ['fault', 'نسبة الخطأ', 'Fault'],
   ['insurer', 'شركة التأمين', 'Insurer'],
-  ['estimated', 'المقدَّر', 'Estimated'],
-  ['recovery', 'متوقع استرداده', 'Recovery'],
+  ['estimated', 'مبلغ التقدير', 'Estimate amount'],
+  ['recovery', 'المبلغ المسترد', 'Recovered amount'],
+  ['gap', 'الفجوة', 'Gap'],
   ['status', 'الحالة', 'Status'],
   ['lastReply', 'آخر رد', 'Last reply'],
+  ['files', 'المرفقات', 'Files'],
   ['notes', 'الملاحظات', 'Notes'],
 ];
 const GETTERS: Record<string, (r: any) => any> = {
@@ -50,6 +61,15 @@ const GETTERS: Record<string, (r: any) => any> = {
   driverId: (r) => r.driverIdNumber || '',
   vehicleType: (r) => r.vehicleTypeAr || '',
   estimateNo: (r) => r.reportOrEstimateNumber || '',
+  reportedVia: (r) => r.reportedViaAr || '',
+  claimNumber: (r) => r.claim?.claimNumber || '',
+  // الفجوةُ = المقدَّر ناقص المسترد — الرقمُ الذي يُسأل عنه، ولا يُحسَب بالعين.
+  gap: (r) => {
+    const e = Number(r.claim?.estimatedAmountSar);
+    const g = Number(r.claim?.expectedRecoverySar);
+    return Number.isFinite(e) && Number.isFinite(g) ? money(e - g) : '';
+  },
+  files: (r) => (r.attachments?.length ? String(r.attachments.length) : ''),
   fault: (r) => (r.faultPercent == null ? '' : `${r.faultPercent}%`),
   insurer: (r) => r.claim?.insurerAr,
   estimated: (r) => (r.claim?.estimatedAmountSar ? money(r.claim.estimatedAmountSar) : ''),
@@ -88,6 +108,12 @@ function ClaimsInner() {
   // «الخطأ علينا» يأتي من كارتٍ في النظرة الشاملة، فيُقرأ من الرابط: الضغطُ
   // هناك يجب أن يفتح الصفوفَ نفسَها التي عُدَّت هناك.
   const [fault, setFault] = useState(sp?.get('fault') || '');
+  // فلاترُ الصفحة الجديدة — تُحسَب على الصفوف المحمَّلة، فهي أسئلةٌ عن المعروض.
+  const [reportedVia, setReportedVia] = useState('');
+  const [insurer, setInsurer] = useState('');
+  const [files, setFiles] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [d, setD] = useState<Awaited<ReturnType<typeof getClaims>> | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -123,8 +149,23 @@ function ClaimsInner() {
     }
     // ونصفُ الخطأ علينا: هو حدُّ الخادم نفسُه (>= 50%) لا «أكثر من النصف».
     if (fault === 'ours') out = out.filter((r: any) => (r.faultPercent || 0) >= 50);
+    if (reportedVia) out = out.filter((r: any) => (r.reportedViaAr || '') === reportedVia);
+    if (insurer) out = out.filter((r: any) => (r.claim?.insurerAr || '') === insurer);
+    if (files === 'with') out = out.filter((r: any) => (r.attachments?.length || 0) > 0);
+    if (files === 'without') out = out.filter((r: any) => !(r.attachments?.length || 0));
+    // والمدى على تاريخ الحادث نفسِه — لا على تاريخ تسجيله.
+    if (from) out = out.filter((r: any) => r.accidentDate && String(r.accidentDate).slice(0, 10) >= from);
+    if (to) out = out.filter((r: any) => r.accidentDate && String(r.accidentDate).slice(0, 10) <= to);
     return out;
-  }, [allRows, stale, fault]);
+  }, [allRows, stale, fault, reportedVia, insurer, files, from, to]);
+
+  /** قيمُ الفلاتر من الصفوف نفسِها — لا قائمةَ ثابتةٌ تفترق عن الواقع. */
+  const viaOptions = useMemo(
+    () => [...new Set(allRows.map((r: any) => String(r.reportedViaAr || '').trim()).filter(Boolean))].sort(),
+    [allRows]);
+  const insurerOptions = useMemo(
+    () => [...new Set(allRows.map((r: any) => String(r.claim?.insurerAr || '').trim()).filter(Boolean))].sort(),
+    [allRows]);
   // آخرُ ما يُطبَّق: فوق البحث وفلتر الحالة.
   const rows = cf.apply(staleRows, GETTERS);
   const cols: ExportColumn[] = [
@@ -134,16 +175,24 @@ function ClaimsInner() {
     // الفارغُ يخرج فارغًا: صفرُ الخطأ نتيجةٌ، وغيابُه ليس صفرًا.
     { header: t('نسبة الخطأ %', 'Fault %'), key: 'faultPercent', width: 12, transform: (v: any) => (v == null ? '' : v) },
     { header: t('شركة التأمين', 'Insurer'), key: 'claim', transform: (v: any) => v?.insurerAr || '', width: 20 },
-    { header: t('المبلغ المقدَّر', 'Estimated'), key: 'claim', transform: (v: any) => v?.estimatedAmountSar ?? '', width: 16 },
-    { header: t('متوقع استرداده', 'Expected recovery'), key: 'claim', transform: (v: any) => v?.expectedRecoverySar ?? '', width: 18 },
+    { header: t('مبلغ التقدير', 'Estimate amount'), key: 'claim', transform: (v: any) => v?.estimatedAmountSar ?? '', width: 16 },
+    { header: t('المبلغ المسترد', 'Recovered amount'), key: 'claim', transform: (v: any) => v?.expectedRecoverySar ?? '', width: 18 },
     { header: t('الحالة', 'Status'), key: 'statusCode', width: 14,
       transform: (v: any) => (v === 'closed' ? t('مقفولة', 'Closed') : t('قيد المتابعة', 'Pending')) },
     { header: t('اسم السائق', 'Driver'), key: 'driverNameAr', width: 26 },
     { header: t('رقم الإقامة', 'Iqama'), key: 'driverIdNumber', width: 14 },
     { header: t('نوع السيارة', 'Vehicle type'), key: 'vehicleTypeAr', width: 14 },
     { header: t('رقم التقدير', 'Estimate no.'), key: 'reportOrEstimateNumber', width: 16 },
-    { header: t('الطرف الآخر', 'Counterparty'), key: 'counterpartyNameAr', width: 24 },
     { header: t('تم الإبلاغ عبر', 'Reported via'), key: 'reportedViaAr', width: 14 },
+    { header: t('رقم المطالبة', 'Claim no.'), key: 'claim', transform: (v: any) => v?.claimNumber || '', width: 16 },
+    { header: t('الفجوة', 'Gap'), key: 'claim', width: 14,
+      transform: (v: any) => {
+        const e = Number(v?.estimatedAmountSar); const g = Number(v?.expectedRecoverySar);
+        return Number.isFinite(e) && Number.isFinite(g) ? e - g : '';
+      } },
+    { header: t('عدد المرفقات', 'Attachments'), key: 'attachments', transform: (v: any) => (v?.length || 0), width: 12 },
+    { header: t('سجّلها', 'Recorded by'), key: 'createdByName', width: 20 },
+    { header: t('آخر من عدّلها', 'Last edited by'), key: 'lastModifiedByName', width: 20 },
     { header: t('الملاحظات', 'Notes'), key: 'claim', transform: (v: any) => v?.notesAr || '', width: 46 },
   ];
 
@@ -191,8 +240,8 @@ function ClaimsInner() {
         <Stat label={t('مفتوحة', 'Open')} value={d?.totals.open ?? 0} c="#f59e0b"
           onClick={() => { setStatus('pending'); setStale(false); }} on={status === 'pending' && !stale} />
         {/* كارتُ مبلغٍ لا قائمةَ صفوفٍ تحته — يبقى رقمًا يُقرأ. */}
-        <Stat label={t('المبلغ المقدَّر (ر.س)', 'Estimated (SAR)')} value={money(d?.totals.estimatedSar)} c="#0ea5e9" />
-        <Stat label={t('متوقع استرداده (ر.س)', 'Expected recovery')} value={money(d?.totals.expectedRecoverySar)} c="#16a34a" />
+        <Stat label={t('مبلغ التقدير (ر.س)', 'Estimate amount (SAR)')} value={money(d?.totals.estimatedSar)} c="#0ea5e9" />
+        <Stat label={t('المبلغ المسترد (ر.س)', 'Recovered amount')} value={money(d?.totals.expectedRecoverySar)} c="#16a34a" />
         <Stat label={t('الفجوة (ر.س)', 'Gap (SAR)')} value={money(d?.totals.gapSar)} c="#dc2626" />
         {/* «نايمة» = مفتوحة وعدّى عليها ٣٠ يوم من غير أي رد من التأمين. */}
         <Stat label={t('بدون رد من التأمين +٣٠ يوم', 'No insurer reply 30d+')} value={d?.totals.stale ?? 0} c="#ea580c"
@@ -223,6 +272,38 @@ function ClaimsInner() {
           <button onClick={() => setStale(false)}
             className="px-2.5 py-2 rounded-lg border border-[#f37121] text-[#d95f13] bg-orange-50 text-sm font-semibold">
             {t('بدون رد +٣٠ يوم ✕', 'No reply 30d+ ✕')}
+          </button>
+        )}
+        {/* ── وفلاترُ ما يُسأل عنه يوميًّا ───────────────────────────────────
+            «حوادثُ الشهر»، «اللي جاي من نجم»، «اللي بلا ورق»، «شركةٌ بعينها» —
+            أسئلةٌ كانت تُجاب بفتح الأعمدة واحدًا واحدًا. */}
+        <select value={reportedVia} onChange={(e) => setReportedVia(e.target.value)}
+          aria-label={t('تم الإبلاغ عبر', 'Reported via')}
+          className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+          <option value="">{t('كل طرق الإبلاغ', 'All report channels')}</option>
+          {viaOptions.map((x) => <option key={x} value={x}>{x}</option>)}
+        </select>
+        <select value={insurer} onChange={(e) => setInsurer(e.target.value)}
+          aria-label={t('شركة التأمين', 'Insurer')}
+          className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+          <option value="">{t('كل شركات التأمين', 'All insurers')}</option>
+          {insurerOptions.map((x) => <option key={x} value={x}>{x}</option>)}
+        </select>
+        <select value={files} onChange={(e) => setFiles(e.target.value)}
+          aria-label={t('المرفقات', 'Attachments')}
+          className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+          <option value="">{t('المرفقات: الكل', 'Files: all')}</option>
+          <option value="with">{t('لها مرفقات', 'With files')}</option>
+          <option value="without">{t('بلا مرفقات', 'Without files')}</option>
+        </select>
+        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
+          aria-label={t('من تاريخ', 'From')} className="px-2 py-2 rounded-lg border border-slate-200 text-sm [color-scheme:light]" />
+        <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
+          aria-label={t('إلى تاريخ', 'To')} className="px-2 py-2 rounded-lg border border-slate-200 text-sm [color-scheme:light]" />
+        {(reportedVia || insurer || files || from || to) && (
+          <button onClick={() => { setReportedVia(''); setInsurer(''); setFiles(''); setFrom(''); setTo(''); }}
+            className="px-2.5 py-2 rounded-lg border border-slate-200 text-slate-500 text-sm">
+            {t('مسح الفلاتر', 'Clear filters')}
           </button>
         )}
         <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
@@ -301,6 +382,25 @@ function ClaimsInner() {
                       </p>
                     </td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{fmtDate(r.accidentDate)}</td>
+                    {/* ── وأربعةُ أعمدةٍ كانت في الرأس ولا صفوفَ لها ──────────
+                        أُضيفت إلى `COL_DEFS` (السائقُ وإقامتُه ونوعُ السيّارة
+                        ورقمُ التقدير) ولم تُضَف إلى الجسم. فانزاح كلُّ عمودٍ
+                        بعد التاريخ أربعَ خاناتٍ عن عنوانه: «اسم السائق» يعرض
+                        نسبةَ الخطأ، و«نسبة الخطأ» تعرض «مقفولة»، و«شركة
+                        التأمين» تعرض «٤٨ يومًا». رأسٌ وجسمٌ يُكتبان في موضعين،
+                        فيُزاد في أحدهما ويُنسى الآخر. */}
+                    <td className="px-3 py-2.5 text-slate-700 text-[12px] whitespace-nowrap max-w-[220px] truncate"
+                      title={r.driverNameAr || ''}>{r.driverNameAr || <span className="text-slate-300">—</span>}</td>
+                    <td className="px-3 py-2.5 text-slate-600 font-mono text-[12px] whitespace-nowrap">
+                      {r.driverIdNumber || <span className="text-slate-300">—</span>}</td>
+                    <td className="px-3 py-2.5 text-slate-600 text-[12px] whitespace-nowrap max-w-[160px] truncate"
+                      title={r.vehicleTypeAr || ''}>{r.vehicleTypeAr || <span className="text-slate-300">—</span>}</td>
+                    <td className="px-3 py-2.5 text-slate-600 font-mono text-[12px] whitespace-nowrap">
+                      {r.reportOrEstimateNumber || <span className="text-slate-300">—</span>}</td>
+                    <td className="px-3 py-2.5 text-slate-600 text-[12px] whitespace-nowrap">
+                      {r.reportedViaAr || <span className="text-slate-300">—</span>}</td>
+                    <td className="px-3 py-2.5 text-slate-600 font-mono text-[12px] whitespace-nowrap">
+                      {r.claim?.claimNumber || <span className="text-slate-300">—</span>}</td>
                     {/* ── و«صفر بالمئة» نتيجةٌ لا فراغ ────────────────────────
                         كانت الخانةُ الفارغة تُعرَض «0%»، وصفرُ الخطأ نتيجةٌ
                         حقيقيّة: الحادثُ ليس علينا. فمن لم تُقيَّم مطالبتُه بعد
@@ -319,6 +419,12 @@ function ClaimsInner() {
                     <td className="px-3 py-2.5 text-slate-600 text-[12px]">{r.claim?.insurerAr || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-800 font-semibold whitespace-nowrap">{r.claim?.estimatedAmountSar ? money(r.claim.estimatedAmountSar) : '—'}</td>
                     <td className="px-3 py-2.5 text-emerald-700 font-semibold whitespace-nowrap">{r.claim?.expectedRecoverySar ? money(r.claim.expectedRecoverySar) : '—'}</td>
+                    {/* الفجوةُ محسوبةٌ لا مقروءة: ما لا يُسترَدّ هو ما نتحمّله. */}
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      {Number.isFinite(Number(r.claim?.estimatedAmountSar)) && Number.isFinite(Number(r.claim?.expectedRecoverySar))
+                        ? <span className="font-semibold text-red-600">{money(Number(r.claim.estimatedAmountSar) - Number(r.claim.expectedRecoverySar))}</span>
+                        : <span className="text-slate-300">—</span>}
+                    </td>
                     <td className="px-3 py-2.5">
                       <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
                         r.statusCode === 'closed' ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-700'}`}>
@@ -331,6 +437,14 @@ function ClaimsInner() {
                           {stale && <Clock className="w-3.5 h-3.5" />}{staleDays} {t('يوم', 'd')}
                         </span>
                       )}
+                    </td>
+                    {/* عددُ الأوراق المرفقة — يُقرأ من الصفّ فيُعرَف أيُّ حادثةٍ بلا ورق. */}
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      {r.attachments?.length
+                        ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px] font-semibold">
+                          <Paperclip className="w-3 h-3" />{r.attachments.length}
+                        </span>
+                        : <span className="text-slate-300">—</span>}
                     </td>
                     {/* ── الملاحظات في الجدول لا في النافذة ────────────────
                         كلُّ مطالبةٍ من التسع والأربعين تحمل ملاحظةً، وفيها
@@ -351,7 +465,16 @@ function ClaimsInner() {
         </ScrollX>
       </div>
 
-      {form && <ClaimForm claim={form} ar={ar} onClose={() => setForm(null)} onSaved={() => { setForm(null); load(); }} />}
+      {/* ── والنموذجُ يُبنى من جديدٍ لكلّ حادثةٍ يُفتَح عليها ────────────────
+          حالتُه تُبتدَأ من الخاصّيّة مرّةً واحدةً عند التركيب. فالانتقالُ من
+          حادثةٍ إلى أخرى — أو من حادثةٍ إلى «تسجيل جديد» — بلا إعادة تركيبٍ
+          يُبقي القيمَ القديمةَ في الخانات والمعرِّفَ الجديدَ في الحفظ: تُكتب
+          بياناتُ حادثةٍ فوق حادثةٍ أخرى. و`key` يجعل لكلّ هدفٍ نموذجَه. */}
+      {form && (
+        <ClaimForm key={form._id || 'new'} claim={form} ar={ar}
+          onClose={() => setForm(null)}
+          onSaved={(created) => { setForm(created || null); load(); }} />
+      )}
     </div>
   );
 }
@@ -391,13 +514,24 @@ function Stat({ label, value, c, onClick, on }: {
 // الحقول اللي بتتكتب بالإيد بس. فجوة الاسترداد محسوبة على السيرفر (المقدَّر ناقص
 // المتوقع)، فما بتتكتبش هنا — عشان الشاشة والتقرير ما يقولوش حاجتين مختلفتين.
 function ClaimForm({ claim, ar, onClose, onSaved }: {
-  claim: any; ar: boolean; onClose: () => void; onSaved: () => void;
+  claim: any; ar: boolean; onClose: () => void;
+  /** يُمرَّر الصفُّ المنشأ حديثًا كي يبقى النموذجُ مفتوحًا عليه للمرفقات. */
+  onSaved: (created?: any) => void;
 }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const { notify } = useDialog();
   const isNew = !claim?._id;
   // المرفقاتُ تُقرأ من الصفّ وتُحدَّث بردّ الخادم — فما يُرفَع يظهر بلا إعادة فتح.
   const [attachments, setAttachments] = useState<any[]>(claim?.attachments || []);
+  /**
+   * لوحاتُ السجلّ للاختيار — أيُّ مركبةٍ تقع في حادثٍ هي مركبةٌ مسجَّلةٌ عندنا،
+   * فلا تُكتب لوحتُها بالأيدي فتُكتب بصيغةٍ لا تطابق السجلّ.
+   */
+  const [plates, setPlates] = useState<{ plate: string; typeAr: string; authorizedName: string; actualDriverName: string; actualDriverId: string }[]>([]);
+  useEffect(() => {
+    api.get<{ plates: typeof plates }>('/api/vehicle-registry/plate-options')
+      .then((d) => setPlates(d.plates || [])).catch(() => {});
+  }, []);
   const d = (v: any) => (v ? new Date(v).toISOString().slice(0, 10) : '');
   const [f, setF] = useState({
     vehiclePlate: claim?.vehiclePlate || '',
@@ -408,12 +542,9 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
     driverIdNumber: claim?.driverIdNumber || '',
     vehicleTypeAr: claim?.vehicleTypeAr || '',
     reportOrEstimateNumber: claim?.reportOrEstimateNumber || '',
-    counterpartyNameAr: claim?.counterpartyNameAr || '',
     faultPercent: claim?.faultPercent ?? '',
     reportedViaAr: claim?.reportedViaAr || '',
     statusCode: claim?.statusCode || 'pending',
-    newReplyText: '',
-    newReplyAmount: '',
     insurerAr: claim?.claim?.insurerAr || '',
     claimNumber: claim?.claim?.claimNumber || '',
     estimatedAmountSar: claim?.claim?.estimatedAmountSar ?? '',
@@ -443,16 +574,11 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
         driverIdNumber: f.driverIdNumber.trim(),
         vehicleTypeAr: f.vehicleTypeAr.trim(),
         reportOrEstimateNumber: f.reportOrEstimateNumber.trim(),
-        counterpartyNameAr: f.counterpartyNameAr.trim(),
         faultPercent: num(f.faultPercent),
         reportedViaAr: f.reportedViaAr.trim(),
         statusCode: f.statusCode,
         // النصُّ لا يُخزَّن: يُشتقُّ من الكود عند العرض بلغة الشاشة.
         statusAr: '',
-        // الردُّ الجديد يُلحَق بالسجلّ في الخادم — راجع updateClaim.
-        ...(f.newReplyText.trim()
-          ? { newInsurerReply: { text: f.newReplyText.trim(), amountSar: f.newReplyAmount || null } }
-          : {}),
         claim: {
           insurerAr: f.insurerAr.trim(),
           claimNumber: f.claimNumber.trim(),
@@ -462,8 +588,23 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
           notesAr: f.notesAr.trim(),
         },
       };
-      if (isNew) await createClaim(body); else await updateClaim(claim._id, body);
-      notify(t(isNew ? 'اتسجّل الحادث' : 'اتعدّل', isNew ? 'Accident recorded' : 'Updated'), 'success');
+      /**
+       * ── والمرفقاتُ تحتاج صفًّا موجودًا ────────────────────────────────────
+       * الملفُّ يُرفَع على حادثةٍ لها معرِّف، فلا موضعَ له قبل الحفظ. وكان
+       * النموذجُ يُغلَق بعد التسجيل، فمن أراد إرفاقَ صورةٍ يفتحه من جديد —
+       * وأكثرُهم لا يفعل، فتبقى الحادثةُ بلا ورق.
+       *
+       * فبعد التسجيل يبقى مفتوحًا على الحادثة نفسِها: صار لها معرِّفٌ، فظهر
+       * صندوقُ المرفقات في موضعه ورُفعت الصورُ في النفَس نفسِه.
+       */
+      if (isNew) {
+        const created = await createClaim(body);
+        notify(t('اتسجّل الحادث — تقدر ترفع الملفات دلوقتي', 'Recorded — you can attach files now'), 'success');
+        onSaved(created?.claim || null);
+        return;
+      }
+      await updateClaim(claim._id, body);
+      notify(t('اتعدّل', 'Updated'), 'success');
       onSaved();
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setBusy(false); }
   };
@@ -483,13 +624,56 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
         <div className="px-5 py-4 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div><label className={lbl}>{t('لوحة المركبة', 'Plate')}</label>
-              <input value={f.vehiclePlate} onChange={(e) => set('vehiclePlate', e.target.value)} className={inp} placeholder="5010" /></div>
+              {/* ── واللوحةُ تُختار من السجلّ ────────────────────────────────
+                  وباختيارها يُملأ نوعُ المركبة وقائدُها الفعليّ من صفّها: هي
+                  مكتوبةٌ هناك، وإعادةُ كتابتها هنا تُنتِج حادثًا بلوحةٍ لا
+                  تطابق أيَّ مركبةٍ عندنا. */}
+              <select value={f.vehiclePlate} className={inp}
+                onChange={(e) => {
+                  const v2 = e.target.value;
+                  set('vehiclePlate', v2);
+                  const hit = plates.find((x) => x.plate === v2);
+                  if (hit) {
+                    setF((x) => ({
+                      ...x,
+                      vehiclePlate: v2,
+                      vehicleTypeAr: x.vehicleTypeAr || hit.typeAr || '',
+                      driverNameAr: x.driverNameAr || hit.actualDriverName || hit.authorizedName || '',
+                      driverIdNumber: x.driverIdNumber || hit.actualDriverId || '',
+                    }));
+                  }
+                }}>
+                <option value="">{t('— اختر اللوحة —', '— pick the plate —')}</option>
+                {plates.map((x) => (
+                  <option key={x.plate} value={x.plate}>
+                    {x.plate}{x.typeAr ? ` — ${x.typeAr}` : ''}
+                  </option>
+                ))}
+                {!!f.vehiclePlate && !plates.some((x) => x.plate === f.vehiclePlate) && (
+                  <option value={f.vehiclePlate}>{f.vehiclePlate}</option>
+                )}
+              </select></div>
             <div><label className={lbl}>{t('موضوع الواقعة (إن لم تكن مركبة)', 'Subject (if not a vehicle)')}</label>
               <input value={f.incidentSubjectAr} onChange={(e) => set('incidentSubjectAr', e.target.value)} className={inp} /></div>
             <div><label className={lbl}>{t('تاريخ الحادث', 'Accident date')}</label>
               <input type="date" value={f.accidentDate} onChange={(e) => set('accidentDate', e.target.value)} className={inp} /></div>
             <div><label className={lbl}>{t('رقم الحادث', 'Accident no.')}</label>
               <input value={f.accidentNumber} onChange={(e) => set('accidentNumber', e.target.value)} className={inp} /></div>
+            {/* ── والسائقُ يُبحَث عنه فتُملأ خاناتُه ──────────────────────────
+                يُكتب اسمُه أو رقمُ هويّته فيُردَّ عليه من الموارد البشريّة وسجلّ
+                النقل الخفيف وبطاقات السائقين معًا — فلا يُكتب الاسمُ بصيغتين
+                ولا يُبحَث عن الإقامة في ملفٍّ آخر. */}
+            <div className="sm:col-span-2 lg:col-span-3">
+              <PersonLookup ar={ar}
+                label={t('ابحث عن السائق فتُملأ خاناته', 'Find the driver to fill his fields')}
+                hint={t('بالاسم أو رقم الهوية أو الإقامة — والكتابة اليدوية تبقى متاحة.',
+                        'By name, national ID or iqama — typing by hand still works.')}
+                onPick={(pp) => setF((x) => ({
+                  ...x,
+                  driverNameAr: pp.name || x.driverNameAr,
+                  driverIdNumber: pp.idNumber || x.driverIdNumber,
+                }))} />
+            </div>
             {/* يُقترَح السائقُ من قائد القسم الفعليّ أو من مفوَّض المركبة، ويُصحَّح
                 هنا — فالمفوَّضُ ليس دائمًا الراكب (أربعٌ وعشرون مركبةً كذلك). */}
             <div><label className={lbl}>{t('اسم السائق', 'Driver name')}</label>
@@ -501,8 +685,7 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
               <input value={f.vehicleTypeAr} onChange={(e) => set('vehicleTypeAr', e.target.value)} className={inp} /></div>
             <div><label className={lbl}>{t('رقم التقدير', 'Estimate number')}</label>
               <input value={f.reportOrEstimateNumber} onChange={(e) => set('reportOrEstimateNumber', e.target.value)} className={inp} dir="ltr" /></div>
-            <div><label className={lbl}>{t('الطرف الآخر', 'Counterparty')}</label>
-              <input value={f.counterpartyNameAr} onChange={(e) => set('counterpartyNameAr', e.target.value)} className={inp} /></div>
+
             <div><label className={lbl}>{t('نسبة الخطأ علينا %', 'Our fault %')}</label>
               <input type="number" min={0} max={100} value={f.faultPercent} onChange={(e) => set('faultPercent', e.target.value)} className={inp} /></div>
             {/* جهةُ الإبلاغ قائمةٌ تُدار من «إعدادات القسم ← القوائم المنسدلة»:
@@ -560,19 +743,6 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
               </ul>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <div className="sm:col-span-2">
-                <label className={lbl}>{t('إضافة رد جديد', 'Add a reply')}</label>
-                <textarea rows={2} value={f.newReplyText}
-                  onChange={(e) => set('newReplyText', e.target.value)}
-                  placeholder={t('ماذا ردّت الشركة؟', 'What did the insurer say?')} className={inp} />
-              </div>
-              <div>
-                <label className={lbl}>{t('المبلغ (اختياري)', 'Amount (optional)')}</label>
-                <input type="number" value={f.newReplyAmount}
-                  onChange={(e) => set('newReplyAmount', e.target.value)} className={inp} />
-              </div>
-            </div>
           </div>
 
           <div className="rounded-xl border border-slate-200 p-3">
@@ -584,9 +754,9 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
                 <input value={f.claimNumber} onChange={(e) => set('claimNumber', e.target.value)} className={inp} /></div>
               <div><label className={lbl}>{t('آخر رد من التأمين', 'Last insurer reply')}</label>
                 <input type="date" value={f.lastInsurerUpdateDate} onChange={(e) => set('lastInsurerUpdateDate', e.target.value)} className={inp} /></div>
-              <div><label className={lbl}>{t('المبلغ المقدَّر', 'Estimated (SAR)')}</label>
+              <div><label className={lbl}>{t('مبلغ التقدير', 'Estimate amount (SAR)')}</label>
                 <input type="number" value={f.estimatedAmountSar} onChange={(e) => set('estimatedAmountSar', e.target.value)} className={inp} /></div>
-              <div><label className={lbl}>{t('المتوقع استرداده', 'Expected recovery')}</label>
+              <div><label className={lbl}>{t('المبلغ المسترد', 'Recovered amount')}</label>
                 <input type="number" value={f.expectedRecoverySar} onChange={(e) => set('expectedRecoverySar', e.target.value)} className={inp} /></div>
               <div>
                 <label className={lbl}>{t('الفجوة (محسوبة)', 'Gap (computed)')}</label>

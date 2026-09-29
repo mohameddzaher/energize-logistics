@@ -11,6 +11,7 @@ import {
   ChevronLeft, ChevronRight, Calendar, Search, X
 } from 'lucide-react';
 import { fmt } from '@/utils/exportExcel';
+import { actionSentence, fieldLabel, valueLabel } from '@/lib/auditLabels';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { SearchableSelect } from '@/components/hr/HRKit';
 
@@ -37,13 +38,7 @@ interface AuditBranch { _id: string; name: string }
 // ---- Readable rendering helpers --------------------------------------------
 // Arabic labels for the verbs and entities that actually occur, so a row reads
 // as "إنشاء · طلب شحن" instead of "create_shipment_order · ShipmentOrder".
-const ACTION_AR: Record<string, string> = {
-  create: 'إنشاء', add: 'إضافة', update: 'تعديل', edit: 'تعديل', delete: 'حذف', remove: 'إزالة',
-  complete: 'إكمال', receive: 'استلام', fulfill: 'تنفيذ', approve: 'اعتماد', reject: 'رفض',
-  login: 'تسجيل دخول', logout: 'تسجيل خروج', activate: 'تفعيل', deactivate: 'إيقاف',
-  transfer: 'نقل', assign: 'إسناد', revoke: 'إلغاء', import: 'استيراد', export: 'تصدير',
-  wallet_transaction: 'حركة محفظة', lock: 'قفل', unlock: 'فتح',
-};
+// جملُ الأفعال وأسماءُ الحقول في lib/auditLabels — موضعٌ واحدٌ تُراجَع فيه.
 // ── وكلُّ كيانٍ يقع فعلًا في السجلّ له اسمٌ عربيّ ────────────────────────────
 // كانت الخريطةُ تغطّي ثلثَ الكيانات، فتُقرأ القائمةُ نصفَها عربيًّا ونصفَها
 // `OperationsWorkflow` و`CollectionsParty` — خليطٌ يجعل القارئ يظنّ الصنفين
@@ -66,12 +61,15 @@ const ENTITY_AR: Record<string, string> = {
   CrmVendor: 'مورد نقل', JournalEntry: 'قيد محاسبي', PartnerAccount: 'حساب شريك',
   LeaveRequest: 'طلب إجازة',
 };
-const actionLabel = (a: string, ar: boolean) => {
-  if (!ar) return a.replace(/_/g, ' ');
-  if (ACTION_AR[a]) return ACTION_AR[a];
-  const [verb, ...rest] = a.split('_');
-  return ACTION_AR[verb] ? `${ACTION_AR[verb]} ${rest.join(' ')}`.trim() : a.replace(/_/g, ' ');
-};
+/**
+ * ── وما جرى يُقرأ جملةً ───────────────────────────────────────────────────────
+ * كانت الترجمةُ تُفكّك المفتاحَ إلى فعلٍ وبقيّةٍ إنجليزيّة: `create_b2c_duty_check`
+ * تُقرأ «إنشاء b2c duty check». وهذا السجلُّ يُقرأ حين يُسأل عن رجلٍ ما فعل،
+ * وسطرٌ نصفُه تقنيٌّ لا يُبنى عليه سؤالٌ فضلًا عن محاسبة.
+ * فالجملُ مكتوبةٌ في `lib/auditLabels` مأخوذةً من الأفعال الواقعة فعلًا.
+ */
+const actionLabel = (a: string, ar: boolean, entity?: string) =>
+  actionSentence(a, entityLabel(entity || '', ar), ar);
 const entityLabel = (e: string, ar: boolean) => (ar && ENTITY_AR[e]) || e;
 
 
@@ -85,16 +83,30 @@ const scalar = (v: any) => (v == null ? '—' : typeof v === 'object' ? JSON.str
 function changeSummary(log: AuditLog): string {
   const c = log.changes;
   if (!c || typeof c !== 'object') return '';
+  const ar = true;
   if (isDiffShape(c)) {
     const before = (c as any).before || {};
     const after = (c as any).after || {};
+    // قائمةُ أسماءِ حقولٍ فقط (تعديلٌ لم يُسجَّل قيمَه): تُقرأ «الحقول التي مُسَّت».
+    if (Array.isArray(after)) {
+      return `الحقول: ${after.slice(0, 6).map((k: string) => fieldLabel(k, ar)).join(' · ')}${after.length > 6 ? ` +${after.length - 6}` : ''}`;
+    }
+    // ── وما لا قيمةَ له لا يُذكَر ───────────────────────────────────────────
+    // «lockedBy: undefined» يُقرأ كأنّ شيئًا وقع ولم يقع. فالغيابُ يُسقَط،
+    // ويبقى ما تغيّر فعلًا — ومتى وُجد الطرفان قيل «من ← إلى».
     const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])]
-      .filter((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]));
-    const src = Object.keys(after).length ? after : before;
-    return keys.slice(0, 4).map((k) => `${k}: ${scalar(src[k])}`).join(' · ') + (keys.length > 4 ? ` · +${keys.length - 4}` : '');
+      .filter((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]))
+      .filter((k) => valueLabel(before[k], ar) !== null || valueLabel(after[k], ar) !== null);
+    return keys.slice(0, 4).map((k) => {
+      const b = valueLabel(before[k], ar); const a2 = valueLabel(after[k], ar);
+      if (b !== null && a2 !== null) return `${fieldLabel(k, ar)}: ${b} ← ${a2}`;
+      return `${fieldLabel(k, ar)}: ${a2 ?? b}`;
+    }).join(' · ') + (keys.length > 4 ? ` · +${keys.length - 4}` : '');
   }
-  const entries = Object.entries(c).filter(([, v]) => v != null);
-  return entries.slice(0, 4).map(([k, v]) => `${k}: ${scalar(v)}`).join(' · ') + (entries.length > 4 ? ` · +${entries.length - 4}` : '');
+  const entries = Object.entries(c)
+    .map(([k, v]) => [k, valueLabel(v, ar)] as const)
+    .filter(([, v]) => v !== null);
+  return entries.slice(0, 4).map(([k, v]) => `${fieldLabel(k, ar)}: ${v}`).join(' · ') + (entries.length > 4 ? ` · +${entries.length - 4}` : '');
 }
 
 const hasChangeDetails = (log: AuditLog) =>
@@ -253,7 +265,8 @@ export default function AuditPage() {
     { header: T.date, key: 'createdAt', transform: fmt.datetime, width: 22 },
     { header: T.user, key: 'user', transform: (_: any, row: any) => row.user ? `${row.user.firstName} ${row.user.lastName}` : txx.system, width: 20 },
     { header: T.email, key: 'user.email', width: 24 },
-    { header: T.action, key: 'action', width: 20 },
+    { header: T.action, key: 'action', width: 28,
+      transform: (v: any, r: any) => actionLabel(String(v || ''), ar, r?.entity) },
     { header: T.entity, key: 'entity', width: 14 },
     { header: T.entityId, key: 'entityId', width: 26 },
     { header: T.details, key: 'details', transform: (_: any, row: any) => changeSummary(row) || row.details || '', width: 48 },
@@ -714,7 +727,7 @@ export default function AuditPage() {
                       </td>
                       <td className="px-4 py-3 text-sm">
                         <span className={`px-2 py-0.5 rounded text-xs font-medium ${getActionColor(log.action)}`}>
-                          {actionLabel(log.action, ar)}
+                          {actionLabel(log.action, ar, log.entity)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm">

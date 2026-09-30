@@ -959,11 +959,16 @@ final shipmentOrdersCustomersCfg = ResourceConfig(
   ],
 );
 
+// ── والسجلّان يُبحَثان عند الخادم ───────────────────────────────────────────
+// ثلاثةُ آلافِ مورّدٍ وثلاثةَ عشرَ ألفَ شاحنة، والشاشةُ تُحمِّل مئتين: فالبحثُ
+// في الواصل يقول «لا نتائج» عن صفٍّ مسجَّل. و`serverSearch` تُرسل النصَّ إلى
+// الخادم فيبحث في السجلّ كلِّه — وفي اللوحةِ والسائقِ وبطاقةِ التشغيل معًا.
 final shipmentOrdersSuppliersCfg = ResourceConfig(
   filterField: 'type',
   arTitle: 'موردو الشاحنات', enTitle: 'SO Suppliers', icon: Icons.business_outlined,
   endpoint: '/api/shipment-orders/suppliers', listKey: 'suppliers', liveEvent: 'shipmentOrders:fleet',
   searchFields: const ['name', 'phone'],
+  serverSearch: true,
   titleOf: (r) => _s(r, 'name'),
   subtitleOf: (r) => _s(r, 'phone'),
   chipsOf: (r) => [(r['type'] == 'freelancer' ? tr('مستقل', 'Freelancer') : tr('شركة', 'Company'), const Color(0xFF4F46E5))],
@@ -983,12 +988,29 @@ final shipmentOrdersVehiclesCfg = ResourceConfig(
   arTitle: 'شاحنات طلبات الشحن', enTitle: 'SO Vehicles', icon: Icons.local_shipping_outlined,
   endpoint: '/api/shipment-orders/vehicles', listKey: 'vehicles', liveEvent: 'shipmentOrders:fleet',
   searchFields: const ['plate', 'name', 'defaultDriverName'],
+  serverSearch: true,
   titleOf: (r) => _s(r, 'plate'),
   subtitleOf: (r) => '${_s(r, 'name')} ${_s(r, 'defaultDriverName')}'.trim(),
+  // مالكُ الشاحنة شارةً — والخلوُّ يُقال مجهولًا لا «لنا». كان غيابُ المورّد
+  // يعني «من أسطولنا»، فاستُوردت آلافُ شاحنات الناقلين بلا مرجعٍ فقُرئت لنا.
+  chipsOf: (r) {
+    final sup = r['supplier'];
+    if (sup is Map && (sup['name'] ?? '').toString().isNotEmpty) {
+      return [((sup['name']).toString(), const Color(0xFF2563EB))];
+    }
+    if (r['ownership'] == 'ours') return [(tr('أسطولنا', 'Our fleet'), T.success)];
+    return [(tr('مالكٌ غير مسجَّل', 'Owner not recorded'), T.inkFaint)];
+  },
   fields: const [
     FieldSpec('plate', 'اللوحة', 'Plate', required: true),
     FieldSpec('name', 'وصف الشاحنة', 'Description'),
     FieldSpec('truckType', 'نوع الشاحنة', 'Truck type'),
+    // مالكُ الشاحنة يُصحَّح من التطبيق كما يُصحَّح من الموقع: خمسةُ آلافٍ
+    // وسبعُمئةِ شاحنةٍ لم يُعرَف مالكُها من تاريخ الطلبات، ومن يعرفه غالبًا
+    // في الطريق لا على المكتب.
+    FieldSpec('supplier', 'المورّد المالك', 'Owner (supplier)', type: FieldType.lookup,
+        lookupEndpoint: '/api/shipment-orders/suppliers', lookupListKey: 'suppliers',
+        lookupQuery: 'limit=60', lookupServerSearch: true),
     FieldSpec('defaultDriverName', 'السائق الافتراضي', 'Default driver'),
     FieldSpec('defaultDriverPhone', 'هاتف السائق', 'Driver phone', type: FieldType.phone),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
@@ -1382,7 +1404,7 @@ ResourceConfig _customsPartyCfg(String kind, String ar, String en, IconData icon
         if (r['isActive'] == false) ('معطَّل', T.inkFaint),
       ],
       fields: [
-        FieldSpec('name', 'الاسم', 'Name', required: true),
+        const FieldSpec('name', 'الاسم', 'Name', required: true),
         // الدورُ يُرسَل مع الإنشاء، وإلّا أُنشئ عميلًا مهما كانت الصفحة.
         FieldSpec('kind', 'الدور', 'Role', type: FieldType.select, options: [(kind, ar, en)]),
         const FieldSpec('contactPerson', 'مسؤول التواصل', 'Contact person'),

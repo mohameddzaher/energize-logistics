@@ -32,10 +32,15 @@ class FieldSpec {
   // والفلاتر مباشرةً، ومعرّفُ Mongo لا يقول شيئًا لمن يفتح الملفّ. فيُمرَّر ما
   // يُخزَّن صراحةً حين يختلف عن المعرّف.
   final String Function(Map<String, dynamic>)? lookupValue;
+  /// ── وسجلٌّ بالآلاف يُبحَث عند الخادم ────────────────────────────────────
+  /// لوحُ الاختيار يحمّل صفحةً ثمّ يصفّيها بصندوقِ بحثه. وهو يكفي أربعين
+  /// موظّفًا، ويكذب على ثلاثةِ آلافِ مورّد: مَن كتب اسمًا بعد الصفحة الأولى
+  /// قيل له «لا نتائج» وهو مسجَّل. فمن رفع هذه أرسل نصَّ البحث إلى الخادم.
+  final bool lookupServerSearch;
   const FieldSpec(this.name, this.ar, this.en,
       {this.type = FieldType.text, this.required = false, this.options,
        this.lookupEndpoint, this.lookupListKey, this.lookupQuery, this.lookupLabel,
-       this.lookupValue});
+       this.lookupValue, this.lookupServerSearch = false});
 
   String get label => tr(ar, en);
 }
@@ -892,11 +897,22 @@ class _LookupPickerState extends State<_LookupPicker> {
     _load();
   }
 
+  int _seq = 0;
+  Timer? _debounce;
+
+  @override
+  void dispose() { _debounce?.cancel(); super.dispose(); }
+
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
       final qs = f.lookupQuery ?? 'limit=200';
       final sep = (f.lookupEndpoint ?? '').contains('?') ? '&' : '?';
-      final d = await Api.instance.get('${f.lookupEndpoint}$sep$qs');
+      // نصُّ البحث يُرسَل إلى الخادم لمن طلب ذلك — وردٌّ قديمٌ لا يمحو أحدثَ منه.
+      final search = f.lookupServerSearch && _q.trim().isNotEmpty
+          ? '&q=${Uri.encodeQueryComponent(_q.trim())}' : '';
+      final d = await Api.instance.get('${f.lookupEndpoint}$sep$qs$search');
+      if (mine != _seq) return;
       final raw = d is Map ? d[f.lookupListKey] : (d is List ? d : null);
       if (!mounted) return;
       setState(() {
@@ -910,10 +926,20 @@ class _LookupPickerState extends State<_LookupPicker> {
 
   String _label(Map<String, dynamic> r) => f.lookupLabel?.call(r) ?? (r['name'] ?? r['title'] ?? r['_id'] ?? '').toString();
 
+  /// الكتابةُ تُعيد الطلبَ بعد سكونها — لمن يبحث عند الخادم وحدَه.
+  void _onQueryChanged() {
+    if (!f.lookupServerSearch) return;
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), _load);
+  }
+
   @override
   Widget build(BuildContext context) {
     final q = _fold(_q.trim());
-    final filtered = _rows.where((r) => q.isEmpty || _fold(_label(r)).contains(q)).toList();
+    // الخادمُ صفّى لمن طلب — وتصفيةُ الواصل ثانيًا تحجب ما وجده بالجوّال أو السجل.
+    final filtered = f.lookupServerSearch
+        ? _rows
+        : _rows.where((r) => q.isEmpty || _fold(_label(r)).contains(q)).toList();
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: DraggableScrollableSheet(
@@ -936,7 +962,7 @@ class _LookupPickerState extends State<_LookupPicker> {
             padding: const EdgeInsets.symmetric(horizontal: 14),
             child: TextField(
               autofocus: true,
-              onChanged: (v) => setState(() => _q = v),
+              onChanged: (v) { setState(() => _q = v); _onQueryChanged(); },
               decoration: InputDecoration(hintText: tr('ابحث…', 'Search…'), prefixIcon: const Icon(Icons.search)),
             ),
           ),

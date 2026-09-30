@@ -6,7 +6,7 @@
 // paid. Picking the customer autofills their defaults and route price; picking
 // the truck autofills its regular driver; a truck we have never seen registers
 // itself (and its 3PL supplier) as a side effect.
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -24,6 +24,7 @@ import {
   FIXED_KEYS, Lang, canEditOrders, vocabLabel,
 } from '@/lib/shipmentOrders';
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 
 // Labels are the form's wayfinding — near-black and readable, not a whisper.
 const labelCls = 'block text-sm font-semibold text-slate-800 mb-1.5';
@@ -69,8 +70,17 @@ function CreateShipmentInner() {
   const [newOption, setNewOption] = useState('');
   const [optionBusy, setOptionBusy] = useState(false);
   const [customers, setCustomers] = useState<OrderCustomer[]>([]);
+  // ── والقائمتان تُبحَثان عند الخادم ───────────────────────────────────────
+  // كانتا تُحمَّلان بحدٍّ أعمى — ألفُ شاحنةٍ من ثلاثةَ عشرَ ألفًا، وخمسُمئةِ
+  // مورّدٍ من ثلاثةِ آلافٍ — ثمّ يُبحَث في الواصل. فمن اختار مورّدًا لم تكن
+  // إحدى شاحناته في الألف رأى قائمةً فارغةً ولا يعرف السبب، ومن بحث عن
+  // مورّدٍ اسمُه بعد الخمسمئةِ قيل له «لا نتائج» وهو مسجّل.
   const [vehicles, setVehicles] = useState<OrderVehicle[]>([]);
   const [suppliers, setSuppliers] = useState<OrderSupplier[]>([]);
+  const [supTotal, setSupTotal] = useState(0);
+  const [vehTotal, setVehTotal] = useState(0);
+  const [supBusy, setSupBusy] = useState(false);
+  const [vehBusy, setVehBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   // Turned on by a failed save: from then on every missing required input is
@@ -103,16 +113,15 @@ function CreateShipmentInner() {
   useEffect(() => {
     (async () => {
       try {
-        const [f, c, v, sp] = await Promise.all([
+        const [f, c, sp] = await Promise.all([
           api.get<{ fields: FormField[] }>('/api/shipment-orders/fields'),
           api.get<{ customers: OrderCustomer[] }>('/api/shipment-orders/customers'),
-          api.get<{ vehicles: OrderVehicle[] }>('/api/shipment-orders/vehicles'),
-          api.get<{ suppliers: OrderSupplier[] }>('/api/shipment-orders/suppliers'),
+          api.get<{ suppliers: OrderSupplier[]; total: number }>('/api/shipment-orders/suppliers?limit=60'),
         ]);
         setFields(f.fields || []);
         setCustomers(c.customers || []);
-        setVehicles(v.vehicles || []);
         setSuppliers(sp.suppliers || []);
+        setSupTotal(sp.total || (sp.suppliers || []).length);
         if (editId) {
           // The order directly by id — paging through the list capped at 1000
           // used to silently blank the form for older orders.
@@ -129,6 +138,14 @@ function CreateShipmentInner() {
             setCustomerId(typeof o.customer === 'object' ? o.customer?._id : (o.customer || ''));
             setVehicleId(typeof o.vehicle === 'object' ? o.vehicle?._id : (o.vehicle || ''));
             setSupplierId(typeof o.supplier === 'object' ? (o.supplier?._id || '') : (o.supplier || ''));
+            // بذرُ المختارِ في قائمته: القائمةُ صفحةٌ من سجلٍّ كبير، فما لم
+            // يكن فيها ظهرت خانتُه فارغةً وهي مختارة.
+            if (o.vehicle && typeof o.vehicle === 'object') {
+              setVehicles((p) => (p.some((x) => x._id === o.vehicle._id) ? p : [o.vehicle, ...p]));
+            }
+            if (o.supplier && typeof o.supplier === 'object') {
+              setSuppliers((p) => (p.some((x) => x._id === o.supplier._id) ? p : [o.supplier, ...p]));
+            }
           }
         }
       } catch (e: any) {
@@ -140,6 +157,55 @@ function CreateShipmentInner() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);
+
+  /**
+   * ── بحثُ المورّدين وشاحناتُهم ─────────────────────────────────────────────
+   *
+   * كلُّ طلبٍ محروسٌ بـ`useLatestRequest`: الكتابةُ تُطلق طلبًا لكلّ سكتة،
+   * والشبكةُ لا تحفظ الترتيب — فردُّ «مح» الواصلُ متأخّرًا يمحو نتائجَ
+   * «محمد» ويُقال لا نتائج.
+   *
+   * وشاحناتُ المورّد تُطلَب بمعرّفه لا تُصفَّى من قائمةٍ محمَّلة: هذا هو
+   * موضعُ العطب الأصليّ — «بضغط على المورّد يطلع مفيش حاجة».
+   */
+  const supGuard = useLatestRequest();
+  const vehGuard = useLatestRequest();
+
+  const searchSuppliers = useCallback(async (q: string) => {
+    const mine = supGuard.begin();
+    setSupBusy(true);
+    try {
+      const d = await api.get<{ suppliers: OrderSupplier[]; total: number }>(
+        `/api/shipment-orders/suppliers?limit=60${q ? `&q=${encodeURIComponent(q)}` : ''}`);
+      if (!supGuard.isCurrent(mine)) return;
+      setSuppliers(d.suppliers || []);
+      setSupTotal(d.total || 0);
+    } catch { /* الخانةُ تبقى على ما كانت */ }
+    finally { if (supGuard.isCurrent(mine)) setSupBusy(false); }
+  }, [supGuard]);
+
+  // شاحناتُ المورّد المختار، أو بحثٌ في شاحنات الموردين كلِّها حين لا مورّد.
+  // و`ownership=supplier` تُخرج أسطولَنا من القائمة: أسطولُنا يُدار في «إدارة
+  // الأسطول» ولا يُسنَد إليه طلبُ شحنةٍ من هنا.
+  const searchVehicles = useCallback(async (q: string, sup: string) => {
+    const mine = vehGuard.begin();
+    setVehBusy(true);
+    try {
+      const qs = new URLSearchParams({ limit: '80' });
+      // بلا مورّدٍ: كلُّ ما ليس من أسطولنا — شاحناتُ الموردين ومَن لم يُعرَف
+      // مالكُه. وقصرُها على المعروفِ مالكُه يحجب أكثرَ السجلّ عن الاختيار.
+      if (sup) qs.set('supplier', sup); else qs.set('ownership', 'not_ours');
+      if (q) qs.set('q', q);
+      const d = await api.get<{ vehicles: OrderVehicle[]; total: number }>(`/api/shipment-orders/vehicles?${qs}`);
+      if (!vehGuard.isCurrent(mine)) return;
+      setVehicles(d.vehicles || []);
+      setVehTotal(d.total || 0);
+    } catch { /* كما هي */ }
+    finally { if (vehGuard.isCurrent(mine)) setVehBusy(false); }
+  }, [vehGuard]);
+
+  // تغيُّرُ المورّد يُعيد قائمةَ شاحناته فورًا — لا انتظارَ فتحِ القائمة.
+  useEffect(() => { searchVehicles('', supplierId); }, [supplierId, searchVehicles]);
 
   const customer = useMemo(() => customers.find((c) => c._id === customerId) || null, [customers, customerId]);
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
@@ -279,6 +345,11 @@ function CreateShipmentInner() {
       if (customerId) payload.customer = customerId;
       else payload.newCustomer = { name: newCustomer.name.trim(), phone: newCustomer.phone.trim() };
 
+      // ── والمورّدُ المختارُ يُرسَل ولو كانت الشاحنةُ مسجّلةً ────────────────
+      // خمسةُ آلافٍ وسبعُمئةِ شاحنةٍ في السجلّ مجهولةُ المالك، ومن يحجز
+      // الحمولةَ يعرف مالكَها. فيُرسَل اختيارُه، ويكتبه الخادمُ في السجلّ حين
+      // لا يكون مكتوبًا — ولا يُسأل عنه في الشحنة التالية.
+      if (supplierId) payload.supplierChoice = supplierId;
       if (vehicleId) payload.vehicle = vehicleId;
       else if (newPlate.trim()) {
         // اللوحةُ الجديدة تُسجَّل على المورّد المختار — والمورّدُ سُجِّل قبلها.
@@ -494,8 +565,16 @@ function CreateShipmentInner() {
     );
   };
 
-  const supplierOf = (v: OrderVehicle) =>
-    (typeof v.supplier === 'object' && v.supplier ? v.supplier.name : '') || (ar ? 'أسطولنا' : 'Our fleet');
+  // ── والخلوُّ ليس «أسطولنا» ─────────────────────────────────────────────
+  // كان غيابُ المورّد يُقرأ «من أسطولنا»، ثمّ استُوردت شاحناتُ الناقلين من
+  // تاريخ الطلبات بلا مرجعِ مورّدٍ — فصار السجلُّ يقول عن آلافِ شاحنات الغير
+  // إنّها لنا. فالملكيّةُ تُقرأ من `ownership` صريحةً.
+  const supplierOf = (v: OrderVehicle) => {
+    const n = typeof v.supplier === 'object' && v.supplier ? v.supplier.name : '';
+    if (n) return n;
+    if ((v as any).ownership === 'ours') return ar ? 'أسطولنا' : 'Our fleet';
+    return ar ? 'مالكٌ غير مسجَّل' : 'Owner not recorded';
+  };
 
   return (
     <div className="space-y-5 w-full pb-28" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -602,13 +681,17 @@ function CreateShipmentInner() {
                 شاحنةٍ من شاحناته. */}
             <div>
               <label className={labelCls}>{ar ? 'المورّد' : 'Supplier'}</label>
-              <SearchableSelect value={supplierId} onChange={(x) => { setSupplierId(x); setVehicleId(''); }} searchAfter={0}
+              <SearchableSelect value={supplierId} onChange={(x) => { setSupplierId(x); setVehicleId(''); setNewPlate(''); }} searchAfter={0}
+                onSearch={searchSuppliers} loading={supBusy}
                 placeholder={ar ? 'اختر المورّد — اكتب للبحث…' : 'Pick the supplier — type to search…'}
-                searchPlaceholder={ar ? 'اكتب اسم المورّد…' : 'Type supplier name…'}
+                searchPlaceholder={ar ? 'اكتب اسم المورّد أو جوّاله أو سجلَّه…' : 'Name, phone or CR…'}
                 emptyLabel={ar ? 'لا نتائج — سجّله من الزر' : 'No matches — register with the button'}
+                footer={supTotal > suppliers.length
+                  ? (ar ? `${suppliers.length} من ${supTotal} مورّدًا — اكتب لتضيّق` : `${suppliers.length} of ${supTotal} — type to narrow`)
+                  : (ar ? `${suppliers.length} مورّدًا` : `${suppliers.length} suppliers`)}
                 options={suppliers.map((sp) => ({
                   value: sp._id, label: sp.name,
-                  hint: sp.type === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : (ar ? 'شركة' : 'Company'),
+                  hint: [sp.type === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : (ar ? 'شركة' : 'Company'), sp.phone].filter(Boolean).join(' · '),
                 }))} />
               <button type="button" onClick={() => setAddingSupplier((o) => !o)}
                 className="mt-1.5 text-xs font-semibold text-[#f37121] hover:underline">
@@ -620,20 +703,27 @@ function CreateShipmentInner() {
               <label className={labelCls}>{ar ? 'السيارة' : 'Vehicle'}</label>
               {/* شاحناتُ المورّد المختار وحدَها: قائمةٌ من ثلاثٍ يُختار منها،
                   وقائمةٌ من ثلاثمئةٍ يُبحَث فيها. */}
+              {/* والخادمُ هو مَن يصفّي: `supplier=<id>` تجلب شاحناتِه وحدَها،
+                  وبلا مورّدٍ يُبحَث في شاحنات الموردين كلِّها. ولا تصفيةَ
+                  محليّةٌ فوقها — كانت `.filter(v => v.supplier)` على صفحةٍ
+                  محمَّلةٍ فتُخرج قائمةً فارغةً وشاحناتُ المورّد مسجَّلة. */}
               <SearchableSelect value={vehicleId} onChange={applyVehicle} searchAfter={0}
+                onSearch={(q) => searchVehicles(q, supplierId)} loading={vehBusy}
                 placeholder={supplierId
                   ? (ar ? 'اختر شاحنة المورّد…' : 'Pick the supplier’s truck…')
                   : (ar ? 'اختر المورّد أوّلًا، أو ابحث في كل الشاحنات…' : 'Pick a supplier first, or search all trucks…')}
-                searchPlaceholder={ar ? 'ابحث باللوحة أو السائق…' : 'Search plate or driver…'}
-                emptyLabel={ar ? 'غير موجودة؟ اكتب اللوحة في الخانة المجاورة' : 'Not listed? Type the plate beside it'}
-                options={vehicles
-                  .filter((v) => v.supplier)
-                  .filter((v) => !supplierId || String(typeof v.supplier === 'object' && v.supplier ? v.supplier._id : v.supplier) === supplierId)
-                  .map((v) => ({
-                    value: v._id,
-                    label: [v.plate, v.name].filter(Boolean).join(' — '),
-                    hint: [supplierOf(v), v.defaultDriverName].filter(Boolean).join(' · '),
-                  }))} />
+                searchPlaceholder={ar ? 'ابحث باللوحة أو السائق أو بطاقة التشغيل…' : 'Plate, driver or operation card…'}
+                emptyLabel={supplierId
+                  ? (ar ? 'لا شاحنةَ مسجّلةً لهذا المورّد — اكتب اللوحة في الخانة تحت' : 'No truck registered for them — type the plate below')
+                  : (ar ? 'غير موجودة؟ اكتب اللوحة في الخانة تحت' : 'Not listed? Type the plate below')}
+                footer={vehTotal > vehicles.length
+                  ? (ar ? `${vehicles.length} من ${vehTotal} شاحنة — اكتب لتضيّق` : `${vehicles.length} of ${vehTotal} — type to narrow`)
+                  : (ar ? `${vehicles.length} شاحنة` : `${vehicles.length} trucks`)}
+                options={vehicles.map((v) => ({
+                  value: v._id,
+                  label: [v.plate, v.name].filter(Boolean).join(' — '),
+                  hint: [supplierOf(v), v.defaultDriverName].filter(Boolean).join(' · '),
+                }))} />
               {/* ولوحةٌ لم تمرّ بنا تُكتب هنا — لا لوحةٌ تُفتح لها بأربع خانات. */}
               <input value={newPlate} onChange={(e) => { setNewPlate(e.target.value); if (e.target.value.trim()) setVehicleId(''); }}
                 placeholder={ar ? 'أو اكتب لوحةً جديدة — تُسجَّل على المورّد' : 'Or type a new plate — registered to the supplier'}

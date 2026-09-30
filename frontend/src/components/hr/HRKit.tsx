@@ -186,7 +186,7 @@ const OPTION_DOTS: Record<string, string> = { ok: 'bg-emerald-500', busy: 'bg-am
 // اقتراحاتٌ لا حصر.
 export function SearchableSelect({
   value, onChange, options, placeholder = '—', searchPlaceholder, disabled, searchAfter = 8, emptyLabel,
-  allowCustom, customHint,
+  allowCustom, customHint, onSearch, loading, footer,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -200,6 +200,19 @@ export function SearchableSelect({
   allowCustom?: boolean;
   /** نصُّ سطر «استعمل ما كتبت» — بلغة الشاشة. */
   customHint?: (typed: string) => string;
+  /**
+   * ── وقائمةٌ لا تُحمَّل كلُّها: البحثُ يُرسَل إلى الخادم ───────────────────
+   *
+   * الطيُّ العربيُّ هنا يصفّي ما وصل، وهو يكفي مئةَ سجلٍّ ويكذب على ثلاثةَ
+   * عشرَ ألفًا: يُحمَّل ألفٌ بحدٍّ أعمى فيُبحَث في الألفِ ويُقال «لا نتائج»
+   * وهي في الاثنيَ عشرَ ألفًا الباقية. فمَن سلّم `onSearch` تولّى الخادمُ
+   * التصفيةَ ولم يُصفَّ الواصلُ ثانيًا — يُنادى مؤجَّلًا بعد سكونِ الكتابة.
+   */
+  onSearch?: (q: string) => void;
+  /** يُظهر «جارٍ البحث…» بينما القائمةُ في الطريق. */
+  loading?: boolean;
+  /** سطرٌ ثابتٌ أسفلَ القائمة — «٥٠ من ٣٣٧٠، ضيّق البحث» ونحوه. */
+  footer?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -209,7 +222,7 @@ export function SearchableSelect({
   const listRef = useRef<HTMLDivElement>(null);
 
   const selected = options.find((o) => o.value === value) || null;
-  const showSearch = allowCustom || options.length > searchAfter;
+  const showSearch = allowCustom || !!onSearch || options.length > searchAfter;
   // القيمةُ المحفوظةُ تُعرَض حين لا تعرفها القائمة — إلّا أن تكون معرّفَ سجلّ.
   // كثيرٌ من المنادين يحفظون `_id` وقوائمُهم تصل بعد الرسمة الأولى، ومعرّفٌ
   // سداسيٌّ معروضٌ لحظةً أسوأُ من نصٍّ شبحيّ.
@@ -222,7 +235,10 @@ export function SearchableSelect({
       .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
       .replace(/ؤ/g, 'و').replace(/ئ/g, 'ي').replace(/[ًٌٍَُِّْ]/g, '');
     const s = fold(q.trim());
-    if (!s) return options;
+    // البحثُ البعيدُ صفّى عند الخادم — وتصفيةُ الواصلِ ثانيًا تحجب ما وجده
+    // (الخادمُ يبحث في اللوحةِ والسائقِ وبطاقةِ التشغيل، والطيُّ هنا يرى
+    // الاسمَ وحدَه فيُسقط الصفَّ الذي طابق برقمِه).
+    if (!s || onSearch) return options;
     // Every space-separated word must appear somewhere, so "ahmed 2570" works.
     const words = s.split(/\s+/);
     return options.filter((o) => {
@@ -238,6 +254,17 @@ export function SearchableSelect({
     if (!allowCustom || !typed || options.some((o) => o.value === typed)) return filtered;
     return [{ value: typed, label: customHint ? customHint(typed) : typed } as SearchOption, ...filtered];
   }, [allowCustom, customHint, filtered, options, q]);
+
+  // والنداءُ في مرجعٍ: منادٍ يكتبه في جسم الرسمة يتغيّر كلَّ رسمةٍ، فلو دخل
+  // في التبعيّات أُعيد الطلبُ بلا انقطاع.
+  const onSearchRef = useRef(onSearch);
+  onSearchRef.current = onSearch;
+  useEffect(() => {
+    if (!onSearch || !open) return;
+    const t = setTimeout(() => onSearchRef.current?.(q.trim()), q.trim() ? 260 : 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -337,7 +364,9 @@ export function SearchableSelect({
             </div>
           )}
           <div ref={listRef} className="max-h-60 overflow-y-auto" onKeyDown={onKeyDown}>
-            {rows.length === 0 ? (
+            {loading && rows.length === 0 ? (
+              <p className="px-3 py-6 text-center text-sm text-slate-400">…</p>
+            ) : rows.length === 0 ? (
               <p className="px-3 py-6 text-center text-sm text-slate-400">{emptyLabel || 'No matches'}</p>
             ) : rows.map((o, i) => (
               <button
@@ -362,6 +391,7 @@ export function SearchableSelect({
               </button>
             ))}
           </div>
+          {footer && <div className="px-3 py-2 border-t border-slate-100 text-[11px] text-slate-500 bg-slate-50">{footer}</div>}
         </div>, document.body)}
     </div>
   );

@@ -1,7 +1,6 @@
 const mongoose = require('mongoose');
 
-// A truck the shipment-orders section can put on a load. `supplier: null`
-// means it is OUR fleet; otherwise it belongs to that 3PL supplier.
+// A truck the shipment-orders section can put on a load.
 //
 // The default driver ride along so that picking the truck on the create form
 // fills the driver in one tap — the automation the section exists for. Both
@@ -12,6 +11,25 @@ const shipmentOrderVehicleSchema = new mongoose.Schema(
     name: { type: String, trim: true, default: '' },        // e.g. "مرسيدس أكتروس أبيض"
     truckType: { type: String, trim: true, default: '' },   // same vocabulary as the form field
     supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipmentOrderSupplier', default: null, index: true },
+
+    /**
+     * ── لمن هذه الشاحنة — صريحًا لا بالغياب ────────────────────────────────
+     *
+     * كان المعنى: «لا مورّدَ لها» = من أسطولنا. ثمّ استُوردت ثلاثةَ عشرَ ألفًا من
+     * شاحنات الناقلين من تاريخ الطلبات، وجاءت كلُّها بلا مرجع مورّد — فقُرئت
+     * كأنّها أسطولُنا، وقال العدّادُ «١٣١٠١ من أسطولنا» وأسطولُنا ثمانٍ وخمسون.
+     * والغيابُ لا يصلح أن يكون خبرًا: هو «لا أعلم» لا «ملكُنا».
+     *
+     *   supplier  — شاحنةُ ناقلٍ، ومرجعُه في `supplier`
+     *   ours      — من أسطولنا (تُطابق سجلَّ مركباتنا بلوحتها)
+     *   unknown   — جاءت من تاريخ الطلبات ولم يُعرَف مالكُها بعد
+     *
+     * وقسمُ طلبات الشحنات عن حمولاتٍ تُسنَد إلى ناقلين؛ أسطولُنا يُدار في «إدارة
+     * الأسطول». فما كان `ours` هنا لا يُعرَض في قائمة اختيار شاحنات الموردين.
+     */
+    ownership: {
+      type: String, enum: ['supplier', 'ours', 'unknown'], default: 'unknown', index: true,
+    },
     defaultDriverName: { type: String, trim: true, default: '' },
     defaultDriverPhone: { type: String, trim: true, default: '' },
     notes: { type: String, trim: true, default: '' },

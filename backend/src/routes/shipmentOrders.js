@@ -47,6 +47,8 @@ router.post('/suppliers', authorize(...EDIT_ROLES), so.createSupplier);
 router.put('/suppliers/:id', authorize(...EDIT_ROLES), so.updateSupplier);
 router.delete('/suppliers/:id', authorize(...ADMIN_ROLES), so.deleteSupplier);
 router.get('/vehicles', so.listVehicles);
+// أعدادُ السجلّ كاملةً — الترويسةُ لا تحسب من الصفحة الواصلة.
+router.get('/fleet-summary', so.fleetSummary);
 router.post('/vehicles', authorize(...EDIT_ROLES), so.createVehicle);
 router.put('/vehicles/:id', authorize(...EDIT_ROLES), so.updateVehicle);
 router.delete('/vehicles/:id', authorize(...ADMIN_ROLES), so.deleteVehicle);

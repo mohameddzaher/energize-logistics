@@ -1,8 +1,16 @@
 'use client';
-// الموردون والمركبات — the fleet register the create form reads and feeds.
-// A vehicle is either OURS (supplier = null) or belongs to a 3PL supplier —
-// a company or a freelancer, one flag apart. Most rows here are born from the
-// create-shipment form; this page is where they get enriched and corrected.
+/**
+ * الموردون والمركبات — the fleet register the create form reads and feeds.
+ *
+ * ── وثلاثةُ أحوالٍ للملكيّة لا حالان ────────────────────────────────────────
+ * كان الحالان: لها مورّدٌ، أو «من أسطولنا». ثمّ استُوردت ثلاثةَ عشرَ ألفَ
+ * شاحنةٍ من تاريخ الطلبات بلا مرجعِ مورّد، فقالت هذه الصفحةُ «١٠٠٠ سيارة،
+ * ١٠٠٠ من أسطولنا» — وأسطولُنا ثمانٍ وخمسون شاحنة. الغيابُ «لا أعلم».
+ *
+ * والأعدادُ تُقرأ من الخادم لا من المصفوفةِ الواصلة: القائمةُ صفحةٌ بحدٍّ،
+ * فعدُّها يعدّ الحدَّ. والبحثُ كذلك عند الخادم — طيُّ المسافاتِ والهمزةِ فيه
+ * لا في المتصفّح، وإلّا بُحث في مئةٍ وصلت وقيل «لا نتائج» عن اثنيَ عشرَ ألفًا.
+ */
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -16,11 +24,15 @@ import {
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { OrderSupplier, OrderVehicle, FormField, optionLabel, canEditOrders, canAdminOrders, Lang } from '@/lib/shipmentOrders';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { ContactButtons } from '@/components/crm/CrmKit';
 import ScrollX from '@/components/system/ScrollX';
 
 const EMPTY_SUPPLIER = { name: '', type: 'company' as 'company' | 'freelancer', phone: '', email: '', notes: '' };
-const EMPTY_VEHICLE = { plate: '', name: '', truckType: '', supplier: '', defaultDriverName: '', defaultDriverPhone: '', notes: '' };
+const EMPTY_VEHICLE = { plate: '', name: '', truckType: '', supplier: '', ownership: 'unknown', defaultDriverName: '', defaultDriverPhone: '', notes: '' };
+
+const PAGE = 200;
+type Owner = '' | 'not_ours' | 'supplier' | 'ours' | 'unknown';
 
 export default function FleetPage() {
   const { user } = useAuth();
@@ -36,6 +48,13 @@ export default function FleetPage() {
   const [error, setError] = useState('');
   const [tab, setTab] = useState('vehicles');
   const [search, setSearch] = useState('');
+  // ── وأسطولُنا لا يُعرَض إلّا إن طُلب ───────────────────────────────────
+  // هذا سجلُّ الناقلين: حمولاتُ هذا القسم تُسنَد إليهم، وأسطولُنا الثمانِ
+  // والخمسون يُدار في «إدارة الأسطول». فالصفحةُ تُفتَح على ما يخصُّها، وشارةُ
+  // «أسطولنا» تُظهره لمن أراد أن يتحقّق — ولا يُحذَف صفٌّ من السجلّ.
+  const [owner, setOwner] = useState<Owner>('not_ours');
+  const [sum, setSum] = useState({ vehicles: 0, suppliers: 0, supplier: 0, ours: 0, unknown: 0 });
+  const [shownTotals, setShownTotals] = useState({ vehicles: 0, suppliers: 0 });
 
   const [supModal, setSupModal] = useState(false);
   const [editingSup, setEditingSup] = useState<OrderSupplier | null>(null);
@@ -45,20 +64,37 @@ export default function FleetPage() {
   const [editingVeh, setEditingVeh] = useState<OrderVehicle | null>(null);
   const [vehForm, setVehForm] = useState<any>(EMPTY_VEHICLE);
   const [saving, setSaving] = useState(false);
+  // قائمةُ المالك في النموذج مستقلّةٌ عن قائمة التبويب: تلك تتبع بحثَ الصفحة،
+  // وهذه بحثَ الخانة — وخلطُهما يجعل الكتابةَ في النموذج تُعيد بناء الجدول.
+  const [modalSupQ, setModalSupQ] = useState('');
+  const [modalSups, setModalSups] = useState<OrderSupplier[]>([]);
+  const [modalSupTotal, setModalSupTotal] = useState(0);
+  const [modalSupBusy, setModalSupBusy] = useState(false);
 
+  const guard = useLatestRequest();
   const load = useCallback(async () => {
+    const mine = guard.begin();
     try {
-      const [sp, v] = await Promise.all([
-        api.get<{ suppliers: OrderSupplier[] }>('/api/shipment-orders/suppliers'),
-        api.get<{ vehicles: OrderVehicle[] }>('/api/shipment-orders/vehicles'),
+      const q = search.trim() ? `&q=${encodeURIComponent(search.trim())}` : '';
+      const [sp, v, sm] = await Promise.all([
+        api.get<{ suppliers: OrderSupplier[]; total: number }>(`/api/shipment-orders/suppliers?limit=${PAGE}${q}`),
+        api.get<{ vehicles: OrderVehicle[]; total: number }>(`/api/shipment-orders/vehicles?limit=${PAGE}${q}${owner ? `&ownership=${owner}` : ''}`),
+        api.get<typeof sum>('/api/shipment-orders/fleet-summary'),
       ]);
+      if (!guard.isCurrent(mine)) return;
       setSuppliers(sp.suppliers || []);
       setVehicles(v.vehicles || []);
+      setShownTotals({ vehicles: v.total || 0, suppliers: sp.total || 0 });
+      setSum(sm);
       setError('');
-    } catch (e: any) { setError(e?.message || 'Request failed'); }
-    setLoading(false);
-  }, []);
-  useEffect(() => { load(); }, [load]);
+    } catch (e: any) { if (guard.isCurrent(mine)) setError(e?.message || 'Request failed'); }
+    if (guard.isCurrent(mine)) setLoading(false);
+  }, [search, owner, guard]);
+  // البحثُ مؤجَّلٌ بعد سكونِ الكتابة — لا طلبٌ لكلّ حرف.
+  useEffect(() => {
+    const t = setTimeout(() => load(), search.trim() ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [load, search]);
   useSocket('shipmentOrders:fleet', useCallback(() => load(), [load]));
   // Truck types come from the same form vocabulary, so a type added in
   // form-settings is pickable here too.
@@ -69,15 +105,27 @@ export default function FleetPage() {
 
   const truckTypes = fields.find((f) => f.key === 'truckType')?.options || [];
 
-  const fold = (x: string) => x.toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه');
-  const hit = (...vals: (string | undefined | null)[]) => {
-    const s = fold(search.trim());
-    if (!s) return true;
-    return vals.some((v) => fold(String(v || '')).includes(s));
-  };
+  const modalGuard = useLatestRequest();
+  useEffect(() => {
+    if (!vehModal) return;
+    const mine = modalGuard.begin();
+    setModalSupBusy(true);
+    api.get<{ suppliers: OrderSupplier[]; total: number }>(
+      `/api/shipment-orders/suppliers?limit=60${modalSupQ.trim() ? `&q=${encodeURIComponent(modalSupQ.trim())}` : ''}`)
+      .then((d) => {
+        if (!modalGuard.isCurrent(mine)) return;
+        setModalSups(d.suppliers || []);
+        setModalSupTotal(d.total || 0);
+      })
+      .catch(() => {})
+      .finally(() => { if (modalGuard.isCurrent(mine)) setModalSupBusy(false); });
+  }, [vehModal, modalSupQ, modalGuard]);
 
   const supplierName = (v: OrderVehicle) =>
     typeof v.supplier === 'object' && v.supplier ? v.supplier.name : '';
+  // ملكيّةُ الصفّ في كلمة — والمجهولُ يُقال مجهولًا.
+  const ownerLabel = (v: OrderVehicle) => supplierName(v)
+    || (v.ownership === 'ours' ? (ar ? 'أسطولنا' : 'Our fleet') : (ar ? 'غير مسجَّل' : 'Not recorded'));
 
   const saveSupplier = async () => {
     if (!supForm.name.trim()) return;
@@ -94,7 +142,11 @@ export default function FleetPage() {
     if (!vehForm.plate.trim()) return;
     setSaving(true);
     try {
-      const payload = { ...vehForm, supplier: vehForm.supplier || null };
+      const payload = {
+        ...vehForm,
+        supplier: vehForm.supplier || null,
+        ownership: vehForm.supplier ? 'supplier' : (vehForm.ownership === 'ours' ? 'ours' : 'unknown'),
+      };
       if (editingVeh) await api.put(`/api/shipment-orders/vehicles/${editingVeh._id}`, payload);
       else await api.post('/api/shipment-orders/vehicles', payload);
       setVehModal(false); load();
@@ -111,16 +163,16 @@ export default function FleetPage() {
     try { await api.delete(`/api/shipment-orders/vehicles/${v._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
-  const shownVehicles = vehicles.filter((v) => hit(v.plate, v.name, supplierName(v), v.defaultDriverName));
-  const shownSuppliers = suppliers.filter((s) => hit(s.name, s.phone));
+  // الخادمُ صفّى بالبحث والملكيّة — وتصفيةُ الواصل ثانيًا تحجب ما وجده.
+  const shownVehicles = vehicles;
+  const shownSuppliers = suppliers;
 
   const vehicleCols: ExportColumn[] = [
     { header: ar ? 'اللوحة' : 'Plate', key: 'plate', width: 16 },
     { header: ar ? 'الوصف' : 'Description', key: 'name', width: 26, transform: (v) => v || '—' },
     { header: ar ? 'النوع' : 'Type', key: 'truckType', width: 18, transform: (v) => v || '—' },
-    // العمود يعرض «أسطولنا» حين لا مورّد، تمامًا كشارة الجدول: خلوّ الخانة
-    // يُقرأ نقصًا في البيانات، وهو هنا معلومة ملكيّةٍ صريحة.
-    { header: ar ? 'المالك' : 'Owner', key: 'supplier', width: 26, transform: (_v, r) => supplierName(r) || (ar ? 'أسطولنا' : 'Our fleet') },
+    // خلوُّ الخانة يُقرأ نقصًا في البيانات، فالملكيّةُ تُكتب كلمةً.
+    { header: ar ? 'المالك' : 'Owner', key: 'supplier', width: 26, transform: (_v, r) => ownerLabel(r) },
     { header: ar ? 'السائق المعتاد' : 'Usual driver', key: 'defaultDriverName', width: 24, transform: (v) => v || '—' },
     { header: ar ? 'جواله' : 'Driver phone', key: 'defaultDriverPhone', width: 16, transform: (v) => v || '—' },
     { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 30 },
@@ -143,8 +195,8 @@ export default function FleetPage() {
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Truck className="w-5 h-5" />} title={ar ? 'الموردون والمركبات' : 'Suppliers & vehicles'}
         subtitle={ar
-          ? `${vehicles.length} سيارة (${vehicles.filter((v) => !v.supplier).length} من أسطولنا) · ${suppliers.length} مورد — تُسجَّل تلقائياً من نموذج الشحنة`
-          : `${vehicles.length} vehicles (${vehicles.filter((v) => !v.supplier).length} ours) · ${suppliers.length} suppliers — auto-registered from the create form`}>
+          ? `${sum.vehicles} شاحنة: ${sum.supplier} لموردين · ${sum.ours} من أسطولنا · ${sum.unknown} مالكُها غير مسجَّل — و${sum.suppliers} مورّدًا`
+          : `${sum.vehicles} trucks: ${sum.supplier} supplier-owned · ${sum.ours} ours · ${sum.unknown} owner not recorded — and ${sum.suppliers} suppliers`}>
         {/* التبويبان يعرضان سجلّين مختلفين والبحث يصفّي المعروض منهما، فالخيار
             الأوّل يطابق الشاشة والثاني يخرج السجلّين كاملين في شيتين. */}
         <ExportMenu
@@ -154,11 +206,20 @@ export default function FleetPage() {
               ? { key: 'tab', label: exportScopeLabels(ar).shown, sheets: [{ name: ar ? 'المركبات' : 'Vehicles', rows: shownVehicles as any[], columns: vehicleCols }] }
               : { key: 'tab', label: exportScopeLabels(ar).shown, sheets: [{ name: ar ? 'الموردون' : 'Suppliers', rows: shownSuppliers as any[], columns: supplierCols }] },
             {
+              // ── والتصديرُ الكامل يُجلَب عند طلبه ─────────────────────────
+              // الصفحةُ تعرض مئتين من ثلاثةَ عشرَ ألفًا، فتصديرُ المصفوفةِ
+              // الواصلة تحت عنوان «الكل» يسلّم مئتين ويُقال إنّها السجلّ.
               key: 'all', label: exportScopeLabels(ar).all,
-              sheets: [
-                { name: ar ? 'المركبات' : 'Vehicles', rows: vehicles as any[], columns: vehicleCols },
-                { name: ar ? 'الموردون' : 'Suppliers', rows: suppliers as any[], columns: supplierCols },
-              ],
+              resolve: async () => {
+                const [v, sp] = await Promise.all([
+                  api.get<{ vehicles: OrderVehicle[] }>('/api/shipment-orders/vehicles?limit=5000'),
+                  api.get<{ suppliers: OrderSupplier[] }>('/api/shipment-orders/suppliers?limit=5000'),
+                ]);
+                return [
+                  { name: ar ? 'المركبات' : 'Vehicles', rows: (v.vehicles || []) as any[], columns: vehicleCols },
+                  { name: ar ? 'الموردون' : 'Suppliers', rows: (sp.suppliers || []) as any[], columns: supplierCols },
+                ];
+              },
             },
           ]}
         />
@@ -170,14 +231,49 @@ export default function FleetPage() {
       {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
       <Tabs active={tab} onChange={setTab} tabs={[
-        { key: 'vehicles', label: ar ? 'المركبات' : 'Vehicles', badge: vehicles.length },
-        { key: 'suppliers', label: ar ? 'الموردون' : 'Suppliers', badge: suppliers.length },
+        { key: 'vehicles', label: ar ? 'المركبات' : 'Vehicles', badge: sum.vehicles },
+        { key: 'suppliers', label: ar ? 'الموردون' : 'Suppliers', badge: sum.suppliers },
       ]} />
 
-      <div className="max-w-md">
-        <SearchInput value={search} onChange={setSearch}
-          placeholder={ar ? 'بحث باللوحة أو الاسم أو المورد…' : 'Search plate, name or supplier…'} />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="w-full sm:max-w-md">
+          <SearchInput value={search} onChange={setSearch}
+            placeholder={tab === 'vehicles'
+              ? (ar ? 'باللوحة أو السائق أو بطاقة التشغيل…' : 'Plate, driver or operation card…')
+              : (ar ? 'بالاسم أو الجوّال أو السجل أو الآيبان…' : 'Name, phone, CR or IBAN…')} />
+        </div>
+        {/* ── ومصفاةُ الملكيّة: «أرِني ما لا أعرف مالكَه» سؤالٌ يُسأل ───────
+            خمسةُ آلافٍ وسبعُمئةِ شاحنةٍ لم يُعرَف مالكُها من تاريخ الطلبات،
+            وهي عملٌ ينتظر — ولا تُرى إن لم تُطلَب. */}
+        {tab === 'vehicles' && (
+          <div className="flex flex-wrap gap-1.5">
+            {([['not_ours', ar ? 'شاحنات الناقلين' : 'Carrier trucks', sum.vehicles - sum.ours],
+              ['supplier', ar ? 'مالكُها مسجَّل' : 'Owner recorded', sum.supplier],
+              ['unknown', ar ? 'مالكُها غير مسجَّل' : 'Owner not recorded', sum.unknown],
+              ['ours', ar ? 'أسطولنا' : 'Ours', sum.ours],
+              ['', ar ? 'الكل' : 'All', sum.vehicles]] as const).map(([k, label, n]) => (
+              <button key={k} type="button" onClick={() => setOwner(k as Owner)}
+                className={`px-3 py-1.5 rounded-full border text-xs font-semibold ${owner === k
+                  ? 'border-[#f37121] bg-[#f37121] text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}>
+                {label} <span className="tabular-nums opacity-70">{n}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+      {/* ما يُعرَض من الـمُطابِق: الصفحةُ حدُّها مئتان، والصمتُ عن الباقي يخفيه. */}
+      {tab === 'vehicles' && shownTotals.vehicles > vehicles.length && (
+        <p className="text-xs text-slate-500">
+          {ar ? `يُعرَض ${vehicles.length} من ${shownTotals.vehicles} مطابقة — ضيّق البحث لترى البقيّة.`
+              : `Showing ${vehicles.length} of ${shownTotals.vehicles} matches — narrow the search for the rest.`}
+        </p>
+      )}
+      {tab === 'suppliers' && shownTotals.suppliers > suppliers.length && (
+        <p className="text-xs text-slate-500">
+          {ar ? `يُعرَض ${suppliers.length} من ${shownTotals.suppliers} مطابقة — ضيّق البحث لترى البقيّة.`
+              : `Showing ${suppliers.length} of ${shownTotals.suppliers} matches — narrow the search for the rest.`}
+        </p>
+      )}
 
       {tab === 'vehicles' && (
         <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
@@ -199,18 +295,34 @@ export default function FleetPage() {
                   <td className="px-4 py-3">
                     {v.supplier
                       ? <SmallBadge bg="bg-blue-500/15" text="text-blue-700" label={supplierName(v)} />
-                      : <SmallBadge bg="bg-emerald-500/15" text="text-emerald-700" label={ar ? 'أسطولنا' : 'Our fleet'} />}
+                      : v.ownership === 'ours'
+                        ? <SmallBadge bg="bg-emerald-500/15" text="text-emerald-700" label={ar ? 'أسطولنا' : 'Our fleet'} />
+                        : <SmallBadge bg="bg-slate-400/20" text="text-slate-600" label={ar ? 'غير مسجَّل' : 'Not recorded'} />}
                   </td>
                   <td className="px-4 py-3 text-slate-700">{[v.defaultDriverName, v.defaultDriverPhone].filter(Boolean).join(' · ') || '—'}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
-                      {editor && <button type="button" onClick={() => { setEditingVeh(v); setVehForm({ ...EMPTY_VEHICLE, ...v, supplier: typeof v.supplier === 'object' ? v.supplier?._id || '' : (v.supplier || '') }); setVehModal(true); }} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}><Pencil className="w-4 h-4" /></button>}
+                      {editor && <button type="button" onClick={() => {
+                        setEditingVeh(v);
+                        setVehForm({ ...EMPTY_VEHICLE, ...v, ownership: v.ownership || 'unknown', supplier: typeof v.supplier === 'object' ? v.supplier?._id || '' : (v.supplier || '') });
+                        // مورّدُ الصفّ يُبذَر في القائمة: هي صفحةٌ من ثلاثة آلاف.
+                        if (typeof v.supplier === 'object' && v.supplier) {
+                          const sp = v.supplier as OrderSupplier;
+                          setModalSups((pv) => (pv.some((x) => x._id === sp._id) ? pv : [sp, ...pv]));
+                        }
+                        setModalSupQ('');
+                        setVehModal(true);
+                      }} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}><Pencil className="w-4 h-4" /></button>}
                       {canAdminOrders(user) && <button type="button" onClick={() => removeVehicle(v)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={ar ? 'إزالة' : 'Remove'}><Trash2 className="w-4 h-4" /></button>}
                     </div>
                   </td>
                 </tr>
               ))}
-              {vehicles.length === 0 && <tr><td colSpan={6} className="text-center text-slate-500 py-12">{ar ? 'لا توجد سيارات بعد — أول شحنة بسيارة جديدة تُسجّلها هنا تلقائياً.' : 'No vehicles yet — the first shipment with a new truck registers it here.'}</td></tr>}
+              {vehicles.length === 0 && <tr><td colSpan={6} className="text-center text-slate-500 py-12">
+                {search.trim() || owner
+                  ? (ar ? 'لا شاحنةَ تطابق البحث — جرّب لوحةً أو جزءًا منها.' : 'No truck matches — try a plate or part of one.')
+                  : (ar ? 'لا توجد سيارات بعد — أول شحنة بسيارة جديدة تُسجّلها هنا تلقائياً.' : 'No vehicles yet — the first shipment with a new truck registers it here.')}
+              </td></tr>}
             </tbody>
           </table>
         </ScrollX>
@@ -266,7 +378,11 @@ export default function FleetPage() {
                   </td>
                 </tr>
               ))}
-              {suppliers.length === 0 && <tr><td colSpan={7} className="text-center text-slate-500 py-12">{ar ? 'لا يوجد مورّدون بعد — أول سيارة مورّد في شحنة تُسجّل صاحبها هنا.' : 'No suppliers yet — the first supplier truck on a shipment registers them.'}</td></tr>}
+              {suppliers.length === 0 && <tr><td colSpan={7} className="text-center text-slate-500 py-12">
+                {search.trim()
+                  ? (ar ? 'لا مورّدَ يطابق البحث.' : 'No supplier matches.')
+                  : (ar ? 'لا يوجد مورّدون بعد — أول سيارة مورّد في شحنة تُسجّل صاحبها هنا.' : 'No suppliers yet — the first supplier truck on a shipment registers them.')}
+              </td></tr>}
             </tbody>
           </table>
         </ScrollX>
@@ -319,11 +435,31 @@ export default function FleetPage() {
               placeholder={ar ? 'اختر النوع…' : 'Choose…'} searchPlaceholder={ar ? 'اكتب للبحث…' : 'Search…'}
               options={truckTypes.map((o) => ({ value: o.key, label: optionLabel(o, lang as Lang) }))} />
           </div>
+          {/* ── والمالكُ سؤالٌ صريحٌ بثلاثة أجوبة ────────────────────────────
+              كان «اتركه فارغًا إن كانت من أسطولنا»، والفراغُ جوابان في واحد:
+              «هي لنا» و«لا أعرف». فصار الأوّلُ خيارًا يُختار، والفراغُ يبقى
+              «غير مسجَّل» — والقائمةُ تُبحَث عند الخادم لأنّ الموردين آلاف. */}
           <div className="sm:col-span-2">
-            <label className={labelCls}>{ar ? 'المالك — اتركه فارغاً إن كانت من أسطولنا' : 'Owner — empty means our fleet'}</label>
-            <SearchableSelect value={vehForm.supplier} onChange={(x) => setVehForm((f: any) => ({ ...f, supplier: x }))} searchAfter={0}
-              placeholder={ar ? 'أسطولنا' : 'Our fleet'} searchPlaceholder={ar ? 'اكتب اسم المورد…' : 'Search supplier…'}
-              options={[{ value: '', label: ar ? 'أسطولنا' : 'Our fleet' }, ...suppliers.map((sp) => ({ value: sp._id, label: sp.name, hint: sp.type === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : (ar ? 'شركة' : 'Company') }))]} />
+            <label className={labelCls}>{ar ? 'المالك' : 'Owner'}</label>
+            <SearchableSelect
+              value={vehForm.supplier || (vehForm.ownership === 'ours' ? '#ours' : '')}
+              onChange={(x) => setVehForm((f: any) => (x === '#ours'
+                ? { ...f, supplier: '', ownership: 'ours' }
+                : { ...f, supplier: x, ownership: x ? 'supplier' : 'unknown' }))}
+              searchAfter={0} onSearch={setModalSupQ} loading={modalSupBusy}
+              placeholder={ar ? 'غير مسجَّل' : 'Not recorded'}
+              searchPlaceholder={ar ? 'اكتب اسم المورد…' : 'Search supplier…'}
+              footer={modalSupTotal > modalSups.length
+                ? (ar ? `${modalSups.length} من ${modalSupTotal} — اكتب لتضيّق` : `${modalSups.length} of ${modalSupTotal} — type to narrow`)
+                : undefined}
+              options={[
+                { value: '', label: ar ? 'غير مسجَّل' : 'Not recorded' },
+                { value: '#ours', label: ar ? 'أسطولنا' : 'Our fleet' },
+                ...modalSups.map((sp) => ({
+                  value: sp._id, label: sp.name,
+                  hint: sp.type === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : (ar ? 'شركة' : 'Company'),
+                })),
+              ]} />
           </div>
           <Field label={ar ? 'السائق المعتاد' : 'Usual driver'}><TextInput value={vehForm.defaultDriverName} onChange={(e) => setVehForm((f: any) => ({ ...f, defaultDriverName: e.target.value }))} /></Field>
           <Field label={ar ? 'جواله' : 'Their phone'}><TextInput value={vehForm.defaultDriverPhone} onChange={(e) => setVehForm((f: any) => ({ ...f, defaultDriverPhone: e.target.value }))} /></Field>

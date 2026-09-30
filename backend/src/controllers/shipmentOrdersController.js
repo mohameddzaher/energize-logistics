@@ -11,6 +11,7 @@ const { createNotification } = require('../services/notificationService');
 const { statusVocabulary, isValidStatus } = require('../utils/shipmentOrderStatuses');
 const { saveUploadFile } = require('../utils/fileStore');
 const cache = require('../utils/ttlCache');
+const { flexSpaceRegex } = require('../utils/plateKey');
 
 // The trial section for creating shipments natively, instead of on the external
 // UPL platform. Fully self-contained: nothing here reads or writes anything the
@@ -55,8 +56,18 @@ async function resolveInlineCustomer(req, data) {
   emit('shipmentOrders:customers', {});
 }
 
-// Inline fresh truck (and its supplier when that is new too) — the fleet
-// register learns from the work. Shared by create AND update.
+/**
+ * Inline fresh truck (and its supplier when that is new too) — the fleet
+ * register learns from the work. Shared by create AND update.
+ *
+ * ── ولوحةٌ مسجّلةٌ لا تُسجَّل ثانيةً ────────────────────────────────────────
+ * في السجلّ ثلاثةَ عشرَ ألفَ شاحنةٍ، فمن كتب لوحةً في الخانة الحرّة أكبرُ ظنًّا
+ * أنّها موجودةٌ من أنّها جديدة — والقائمةُ لا تُعرض كلُّها فلا يراها. وكان
+ * المكتوبُ يُنشئ صفًّا جديدًا بلا سؤال: صفّان للوحةٍ واحدةٍ، ولكلٍّ سائقُه
+ * وسجلُّ شحناته، ولا يعرف أحدٌ أيُّهما الشاحنة. فالمكتوبُ يُبحَث عنه أوّلًا
+ * بمفتاح اللوحة — فإن وُجد أُخِذ الصفُّ الموجود، ونُسب إلى المورّد إن كان
+ * مجهولَ المالك، ولا يُنشأ شيء.
+ */
 async function resolveInlineVehicle(req, data) {
   if (data.vehicle || !req.body.newVehicle || !String(req.body.newVehicle.plate || '').trim()) return;
   const nv = req.body.newVehicle;
@@ -70,11 +81,27 @@ async function resolveInlineVehicle(req, data) {
     });
     supplierId = sup._id;
   }
+  const plate = String(nv.plate).trim();
+  const existing = await ShipmentOrderVehicle
+    .findOne({ plate: flexSpaceRegex(plate) })
+    .select('_id supplier ownership').lean();
+  if (existing) {
+    // شاحنةُ مورّدٍ عُرف مالكُها الآن: المعرفةُ تُكتب، ولا تُنسَخ الشاحنة.
+    if (supplierId && !existing.supplier && existing.ownership !== 'ours') {
+      await ShipmentOrderVehicle.updateOne(
+        { _id: existing._id }, { $set: { supplier: supplierId, ownership: 'supplier' } },
+      );
+      emit('shipmentOrders:fleet', {});
+    }
+    data.vehicle = existing._id;
+    return;
+  }
   const veh = await ShipmentOrderVehicle.create({
-    plate: String(nv.plate).trim(),
+    plate,
     name: String(nv.name || '').trim(),
     truckType: data.truckType || '',
     supplier: supplierId,
+    ownership: supplierId ? 'supplier' : 'unknown',
     defaultDriverName: data.driverName || '',
     defaultDriverPhone: data.driverPhone || '',
     createdBy: req.user._id,
@@ -83,15 +110,37 @@ async function resolveInlineVehicle(req, data) {
   emit('shipmentOrders:fleet', {});
 }
 
-// The denormalized snapshot an order carries of its truck: display label,
-// supplier, and the truck's regular driver as a fallback. Must be refreshed
-// whenever `vehicle` changes or the list/PDF keep printing the OLD plate.
-async function applyVehicleSnapshot(data) {
+/**
+ * The denormalized snapshot an order carries of its truck: display label,
+ * supplier, and the truck's regular driver as a fallback. Must be refreshed
+ * whenever `vehicle` changes or the list/PDF keep printing the OLD plate.
+ *
+ * ── والسجلُّ يتعلّم من العمل ────────────────────────────────────────────────
+ * خمسةُ آلافٍ وسبعُمئةِ شاحنةٍ في السجلّ لم يُعرَف مالكُها: استُوردت من تاريخ
+ * الطلبات، ولوحاتُها ظهرت مع أكثرَ من مورّدٍ أو مع مورّدٍ لا صفَّ له. ومَن
+ * يحجز الحمولةَ يعرف مالكَها — هو يتّفق معه — فحين يختار المورّدَ ثمّ شاحنةً
+ * مجهولةَ المالك تُكتب المعرفةُ في السجلّ مرّةً واحدةً ولا تُسأل ثانيًا.
+ *
+ * ولا تُكتب فوق معرفةٍ سابقة: شاحنةٌ لها مورّدٌ مسجَّلٌ تبقى له، وما كان من
+ * أسطولنا لا يُنسَب إلى مورّد.
+ */
+async function applyVehicleSnapshot(data, req) {
   if (!data.vehicle) return;
   const veh = await ShipmentOrderVehicle.findById(data.vehicle).lean();
   if (!veh) return;
   data.vehicleName = [veh.plate, veh.name].filter(Boolean).join(' — ');
   data.supplier = veh.supplier || null;
+  const chosen = req && req.body ? String(req.body.supplierChoice || '') : '';
+  if (!veh.supplier && veh.ownership !== 'ours' && /^[0-9a-f]{24}$/i.test(chosen)) {
+    const sup = await ShipmentOrderSupplier.findById(chosen).select('_id').lean();
+    if (sup) {
+      await ShipmentOrderVehicle.updateOne(
+        { _id: veh._id }, { $set: { supplier: sup._id, ownership: 'supplier' } },
+      );
+      data.supplier = sup._id;
+      emit('shipmentOrders:fleet', {});
+    }
+  }
   if (!data.driverName && veh.defaultDriverName) data.driverName = veh.defaultDriverName;
   if (!data.driverPhone && veh.defaultDriverPhone) data.driverPhone = veh.defaultDriverPhone;
 }
@@ -260,7 +309,7 @@ exports.createOrder = async (req, res) => {
     // side effect — the fleet register learns from the work, like the customer
     // price list does.
     await resolveInlineVehicle(req, data);
-    await applyVehicleSnapshot(data);
+    await applyVehicleSnapshot(data, req);
 
     // والحالةُ تُقاس على المفردات الحيّة: المكتوبةُ في الشيفرة وما زاده القسم.
     if (data.status && !(await isValidStatus(data.status))) {
@@ -288,10 +337,22 @@ exports.createOrder = async (req, res) => {
 
 // One order by id — the edit form's loader. Finding it by paging through the
 // list capped at 1000 silently blanked the form for older orders.
+/**
+ * الطلبُ بمعرّفه — لنموذج التعديل.
+ *
+ * ── والشاحنةُ والمورّدُ يصلان كاملين ────────────────────────────────────────
+ * القائمتان في النموذج لا تُحمَّلان كلَّهما (ثلاثةَ عشرَ ألفَ شاحنةٍ وثلاثةُ
+ * آلاف مورّد) بل تُبحَث كلٌّ منهما عند الخادم. فلو وصل الطلبُ بمعرّفين
+ * مجرّدين لم تعرفهما القائمةُ المعروضة، فرأى مَن يعدّل خانتين فارغتين وشاحنةً
+ * مختارةً لا اسمَ لها — ثمّ حفظ فمحاها. فيُرسَلان مسمَّيين، ويبذرهما النموذج
+ * في قائمتيه.
+ */
 exports.getOrder = async (req, res) => {
   try {
     const order = await ShipmentOrder.findById(req.params.id)
       .populate('customer', 'name phone')
+      .populate('vehicle', 'plate name truckType supplier ownership defaultDriverName defaultDriverPhone')
+      .populate('supplier', 'name type phone')
       .lean();
     if (!order) return res.status(404).json({ message: 'Shipment order not found' });
     res.json({ order });
@@ -319,7 +380,7 @@ exports.updateOrder = async (req, res) => {
     // Truck swapped → refresh the denormalized plate/supplier snapshot, or the
     // list, the Excel export and the بوليصة keep printing the OLD truck.
     if (data.vehicle && String(data.vehicle) !== String(order.vehicle)) {
-      await applyVehicleSnapshot(data);
+      await applyVehicleSnapshot(data, req);
     }
 
     if (data.status && !(await isValidStatus(data.status))) {
@@ -724,7 +785,14 @@ const askedLimit = (v, def, max) => {
   const n = Number(v);
   return Number.isFinite(n) ? Math.min(Math.max(n, 1), max) : def;
 };
-const anyOf = (q, fields) => ({ $or: fields.map((f) => ({ [f]: rx(q) })) });
+// ── والبحثُ لا يبالي بمسافةٍ ولا بهمزة ─────────────────────────────────────
+// `rx` تهرّب الرموزَ وتبحث حرفيًّا: من نسخ اللوحةَ من أبشر بمسافتين، أو كتب
+// «احمد» وهي مخزّنةٌ «أحمد»، خرجت له شاشةٌ فارغةٌ عن صفٍّ موجود. و`flexSpaceRegex`
+// هي قاعدةُ البحث في بقيّة الأقسام — فتُستعمَل هنا كما تُستعمَل هناك.
+const anyOf = (q, fields) => {
+  const re = flexSpaceRegex(q);
+  return { $or: fields.map((f) => ({ [f]: re })) };
+};
 
 // ── القوائمُ الثلاث: الحقولُ التي تُقرأ فقط، ومحفوظةٌ دقيقتين ─────────────────
 // العنقودُ يسلّم نحو ٧٠ ك.ب في الثانية، فثمنُ القائمة حجمُها لا حسابُها: ٥٠٠
@@ -735,8 +803,23 @@ const anyOf = (q, fields) => ({ $or: fields.map((f) => ({ [f]: rx(q) })) });
 const REGISTRY_TTL = 2 * 60 * 1000;
 const CUSTOMER_LIST_FIELDS = 'name phone email notes routes defaults';
 const SUPPLIER_LIST_FIELDS = 'name type phone email notes';
-const VEHICLE_LIST_FIELDS = 'plate name truckType supplier defaultDriverName defaultDriverPhone notes';
+const VEHICLE_LIST_FIELDS = 'plate name truckType supplier ownership defaultDriverName defaultDriverPhone notes';
 const registryKey = (kind, req, extra = '') => `so:registry:${kind}:${String(req.query.q || '')}:${req.query.limit || ''}:${extra}`;
+
+// ── ملكيّةُ الشاحنة تُطلَب صريحةً ──────────────────────────────────────────
+// `ours` لا تُعرَض في قائمة اختيار شاحنات الموردين، و`unknown` تُعرَض لأنّها
+// شاحناتُ ناقلين لم يُعرَف ناقلُها بعد — إخفاؤها يُخفي أكثرَ النصف.
+const ownershipFilter = (v) => {
+  const k = String(v || '').trim();
+  if (k === 'supplier') return { supplier: { $ne: null } };
+  if (k === 'ours') return { ownership: 'ours' };
+  if (k === 'unknown') return { ownership: { $ne: 'ours' }, supplier: null };
+  // `not_ours` مصفاةُ قائمةِ اختيار الشحنة: شاحناتُ الموردين ومَن لم يُعرَف
+  // مالكُه بعد. وقصرُها على المعروفِ مالكُه يحجب أكثرَ السجلّ عن الاختيار،
+  // وهي شاحناتٌ عملنا عليها فعلًا — والمجهولُ يُعرَف باختيارها لمورّده.
+  if (k === 'not_ours') return { ownership: { $ne: 'ours' } };
+  return null;
+};
 
 exports.listCustomers = async (req, res) => {
   try {
@@ -808,7 +891,21 @@ exports.deleteCustomer = async (req, res) => {
 // ── Suppliers & vehicles (الموردون والمركبات) ───────────────────────────────
 
 const SUPPLIER_EDITABLE = ['name', 'type', 'phone', 'email', 'notes', 'isActive'];
-const VEHICLE_EDITABLE = ['plate', 'name', 'truckType', 'supplier', 'defaultDriverName', 'defaultDriverPhone', 'notes', 'isActive'];
+const VEHICLE_EDITABLE = ['plate', 'name', 'truckType', 'supplier', 'ownership', 'defaultDriverName', 'defaultDriverPhone', 'notes', 'isActive'];
+
+// ── والحقلان لا يتناقضان ────────────────────────────────────────────────────
+// مرجعُ المورّد والملكيّةُ خبران عن شيءٍ واحد، فلو كُتب أحدُهما وحدَه صار في
+// السجلّ شاحنةٌ لها مورّدٌ ومكتوبٌ أنّها من أسطولنا. فمن نُسب إلى مورّدٍ فهو
+// `supplier`، ومن قيل إنّه من أسطولنا فلا مورّدَ له.
+const coherentOwnership = (data) => {
+  if (!('supplier' in data) && !('ownership' in data)) return data;
+  if (data.ownership === 'ours') return { ...data, supplier: null };
+  if (data.supplier) return { ...data, ownership: 'supplier' };
+  if ('supplier' in data && !data.supplier && data.ownership !== 'ours') {
+    return { ...data, ownership: 'unknown' };
+  }
+  return data;
+};
 
 exports.listSuppliers = async (req, res) => {
   try {
@@ -888,7 +985,11 @@ exports.listVehicles = async (req, res) => {
         'defaultDriverPhone', 'operationCardNumber', 'recordNumber', 'modelYear', 'externalId']));
     }
     if (req.query.supplier) filter.supplier = req.query.supplier;
-    const out = await cache.wrap(registryKey('vehicles', req, req.query.supplier || ''), REGISTRY_TTL, async () => {
+    const own = ownershipFilter(req.query.ownership);
+    if (own && !req.query.supplier) Object.assign(filter, own);
+    const out = await cache.wrap(
+      registryKey('vehicles', req, `${req.query.supplier || ''}:${req.query.ownership || ''}`),
+      REGISTRY_TTL, async () => {
       const [vehicles, total] = await Promise.all([
         ShipmentOrderVehicle.find(filter)
           .select(VEHICLE_LIST_FIELDS)
@@ -906,10 +1007,43 @@ exports.listVehicles = async (req, res) => {
   }
 };
 
+// ── أعدادُ السجلّ: الصفحةُ تقول ما في القاعدة لا ما وصل إليها ────────────────
+// كانت الترويسةُ تحسب من المصفوفة الواصلة، والحدُّ ألف — فقالت «١٠٠٠ سيارة،
+// ١٠٠٠ من أسطولنا» وأسطولُنا ثمانٍ وخمسون شاحنة. العدُّ عند الخادم.
+exports.fleetSummary = async (req, res) => {
+  try {
+    const out = await cache.wrap('so:registry:summary', REGISTRY_TTL, async () => {
+      const live = { isActive: { $ne: false } };
+      const [byOwner, vehicles, suppliers] = await Promise.all([
+        ShipmentOrderVehicle.aggregate([
+          { $match: live },
+          {
+            $group: {
+              _id: {
+                $cond: [{ $ne: ['$supplier', null] }, 'supplier',
+                  { $cond: [{ $eq: ['$ownership', 'ours'] }, 'ours', 'unknown'] }],
+              },
+              n: { $sum: 1 },
+            },
+          },
+        ]),
+        ShipmentOrderVehicle.countDocuments(live),
+        ShipmentOrderSupplier.countDocuments(live),
+      ]);
+      const n = { supplier: 0, ours: 0, unknown: 0 };
+      byOwner.forEach((r) => { n[r._id] = r.n; });
+      return { vehicles, suppliers, ...n };
+    });
+    res.json(out);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load the fleet summary' });
+  }
+};
+
 exports.createVehicle = async (req, res) => {
   try {
     if (!req.body.plate || !String(req.body.plate).trim()) return res.status(400).json({ message: 'Plate is required' });
-    const vehicle = await ShipmentOrderVehicle.create({ ...pick(req.body, VEHICLE_EDITABLE), createdBy: req.user._id });
+    const vehicle = await ShipmentOrderVehicle.create({ ...coherentOwnership(pick(req.body, VEHICLE_EDITABLE)), createdBy: req.user._id });
     emit('shipmentOrders:fleet', {});
     res.status(201).json({ vehicle });
   } catch (error) {
@@ -919,7 +1053,7 @@ exports.createVehicle = async (req, res) => {
 
 exports.updateVehicle = async (req, res) => {
   try {
-    const vehicle = await ShipmentOrderVehicle.findByIdAndUpdate(req.params.id, pick(req.body, VEHICLE_EDITABLE), { new: true });
+    const vehicle = await ShipmentOrderVehicle.findByIdAndUpdate(req.params.id, coherentOwnership(pick(req.body, VEHICLE_EDITABLE)), { new: true });
     if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
     emit('shipmentOrders:fleet', {});
     res.json({ vehicle });

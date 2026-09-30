@@ -367,6 +367,7 @@
     "/system/shipment-orders/fleet": {
       "apis": [
         "/api/shipment-orders/fields",
+        "/api/shipment-orders/fleet-summary",
         "/api/shipment-orders/suppliers",
         "/api/shipment-orders/vehicles"
       ],

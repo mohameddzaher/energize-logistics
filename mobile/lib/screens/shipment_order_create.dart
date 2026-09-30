@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/api.dart';
@@ -77,8 +79,13 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       final results = await Future.wait([
         Api.instance.get('/api/shipment-orders/fields'),
         Api.instance.get('/api/shipment-orders/customers').catchError((_) => <String, dynamic>{}),
-        Api.instance.get('/api/shipment-orders/vehicles').catchError((_) => <String, dynamic>{}),
-        Api.instance.get('/api/shipment-orders/suppliers').catchError((_) => <String, dynamic>{}),
+        // ── ولا تُحمَّل القائمتان كلَّهما ──────────────────────────────────
+        // في السجلّ ثلاثةَ عشرَ ألفَ شاحنةٍ وثلاثةُ آلاف مورّد، وكان يُطلَب
+        // الكلُّ فيصل حدُّ الخادم (ألفٌ) ثمّ يُبحَث في الواصل — فمن اختار
+        // مورّدًا لم تكن شاحناتُه في الألف رأى قائمةً فارغة. فصار البحثُ عند
+        // الخادم، وشاحناتُ المورّد تُطلَب بمعرّفه.
+        Api.instance.get('/api/shipment-orders/vehicles?limit=80&ownership=supplier').catchError((_) => <String, dynamic>{}),
+        Api.instance.get('/api/shipment-orders/suppliers?limit=60').catchError((_) => <String, dynamic>{}),
       ]);
       if (!mounted) return;
       setState(() {
@@ -105,6 +112,16 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
             for (final c in _customers) {
               if (c['_id'] == cid) _customer = c;
             }
+          }
+          // الشاحنةُ والمورّدُ يصلان مسمَّيين من `getOrder` — فيُبذران في
+          // القائمتين، وإلّا ظهرت خانتان فارغتان وهما مختارتان.
+          if (o['vehicle'] is Map) {
+            _vehicle = Map<String, dynamic>.from(o['vehicle']);
+            if (!_vehicles.any((x) => x['_id'] == _vehicle!['_id'])) _vehicles = [_vehicle!, ..._vehicles];
+          }
+          if (o['supplier'] is Map) {
+            _supplier = Map<String, dynamic>.from(o['supplier']);
+            if (!_suppliers.any((x) => x['_id'] == _supplier!['_id'])) _suppliers = [_supplier!, ..._suppliers];
           }
         }
         _loading = false;
@@ -153,10 +170,14 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       _newVehicle = false;
       // اختيارُ الشاحنة يُسمّي مورّدَها من نفسِه — لا يُسأل عنه مرّتين.
       final sup = v['supplier'];
-      final sid = sup is Map ? sup['_id'] : sup;
-      if (sid != null) {
+      if (sup is Map) {
+        // المورّدُ يصل مع الشاحنة مسمَّى (`populate`)، فلا يُبحَث عنه في صفحةٍ
+        // قد لا يكون فيها — وكان يُبحَث فيها فيبقى فارغًا وله مورّدٌ معروف.
+        _supplier = Map<String, dynamic>.from(sup);
+        if (!_suppliers.any((x) => x['_id'] == _supplier!['_id'])) _suppliers = [_supplier!, ..._suppliers];
+      } else if (sup != null) {
         for (final sp in _suppliers) {
-          if (sp['_id'] == sid) _supplier = sp;
+          if (sp['_id'] == sup) _supplier = sp;
         }
       }
       if ((v['defaultDriverName'] ?? '').toString().isNotEmpty) {
@@ -172,6 +193,87 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         _ctrls.remove('truckType');
       }
     });
+  }
+
+  /// ── وقائمةٌ لا تُحمَّل كلُّها: البحثُ يُرسَل إلى الخادم ─────────────────────
+  ///
+  /// `_pickSheet` يبحث في قائمةٍ في اليد، وهو الصوابُ لمئةِ عميل. أمّا ثلاثةَ
+  /// عشرَ ألفَ شاحنةٍ وثلاثةُ آلافِ مورّدٍ فلا تُحمَّل، فالبحثُ فيها بحثٌ في
+  /// الصفحةِ الواصلة يقول «لا نتائج» عن صفٍّ مسجَّل. فهذا يسأل الخادمَ بعد
+  /// سكونِ الكتابة، ويعرض ما ردّه كما هو.
+  ///
+  /// و`seq` تمنع سباقَ الردود: ردُّ «مح» الواصلُ متأخّرًا لا يمحو نتائجَ «محمد».
+  Future<Map<String, dynamic>?> _pickRemote(
+    String title,
+    Future<List<Map<String, dynamic>>> Function(String q) fetch,
+    String Function(Map<String, dynamic>) label, {
+    String Function(Map<String, dynamic>)? sub,
+    String? hint,
+    List<Map<String, dynamic>> initial = const [],
+  }) {
+    return showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) {
+        var rows = List<Map<String, dynamic>>.from(initial);
+        var busy = false;
+        var seq = 0;
+        Timer? debounce;
+        return StatefulBuilder(builder: (c, setS) {
+          Future<void> run(String q) async {
+            final mine = ++seq;
+            setS(() => busy = true);
+            try {
+              final r = await fetch(q);
+              if (mine != seq) return;
+              setS(() { rows = r; busy = false; });
+            } catch (_) {
+              if (mine == seq) setS(() => busy = false);
+            }
+          }
+          if (rows.isEmpty && !busy && seq == 0) run('');
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(c).viewInsets.bottom),
+              child: SizedBox(
+                height: MediaQuery.of(c).size.height * 0.72,
+                child: Column(children: [
+                  Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: TextField(
+                      autofocus: true,
+                      onChanged: (v) {
+                        debounce?.cancel();
+                        debounce = Timer(const Duration(milliseconds: 300), () => run(v.trim()));
+                      },
+                      decoration: InputDecoration(
+                        hintText: hint ?? '${tr('ابحث في', 'Search')} $title…',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: busy
+                            ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)))
+                            : null,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: rows.isEmpty
+                        ? Center(child: Text(busy ? '…' : tr('لا نتائج', 'No matches'), style: const TextStyle(fontSize: 13)))
+                        : ListView.builder(
+                            itemCount: rows.length,
+                            itemBuilder: (c, i) => ListTile(
+                              title: Text(label(rows[i]), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                              subtitle: sub == null ? null : Text(sub(rows[i]), style: const TextStyle(fontSize: 12)),
+                              onTap: () => Navigator.pop(c, rows[i]),
+                            ),
+                          ),
+                  ),
+                ]),
+              ),
+            ),
+          );
+        });
+      },
+    );
   }
 
   Future<P?> _pickSheet<P>(String title, List<P> items, String Function(P) label, {String Function(P)? sub}) {
@@ -303,6 +405,9 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     if (_newCustomer && _ncName.text.trim().isNotEmpty) {
       payload['newCustomer'] = {'name': _ncName.text.trim(), 'phone': _ncPhone.text.trim()};
     }
+    // المورّدُ المختارُ يُرسَل ولو كانت الشاحنةُ مسجّلة: آلافٌ منها مجهولةُ
+    // المالك، ومن يحجز الحمولةَ يعرفه — فيكتبه الخادمُ في السجلّ مرّةً.
+    if (_supplier != null) payload['supplierChoice'] = _supplier!['_id'];
     if (_vehicle != null) payload['vehicle'] = _vehicle!['_id'];
     if (_newVehicle && _nvPlate.text.trim().isNotEmpty) {
       payload['newVehicle'] = {
@@ -521,9 +626,19 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                             child: OutlinedButton.icon(
                               style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
                               onPressed: () async {
-                                final sp = await _pickSheet<Map<String, dynamic>>(
-                                    tr('الموردين', 'suppliers'), _suppliers, (x) => (x['name'] ?? '').toString(),
-                                    sub: (x) => (x['phone'] ?? '').toString());
+                                final sp = await _pickRemote(
+                                  tr('الموردين', 'suppliers'),
+                                  (q) async {
+                                    final d = await Api.instance.get(
+                                        '/api/shipment-orders/suppliers?limit=60${q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(q)}'}');
+                                    return List<Map<String, dynamic>>.from(d['suppliers'] ?? []);
+                                  },
+                                  (x) => (x['name'] ?? '').toString(),
+                                  sub: (x) => [x['phone'], x['type'] == 'freelancer' ? tr('فريلانسر', 'Freelancer') : tr('شركة', 'Company')]
+                                      .where((e) => (e ?? '').toString().isNotEmpty).join(' · '),
+                                  hint: tr('الاسم أو الجوّال أو السجل…', 'Name, phone or CR…'),
+                                  initial: _suppliers,
+                                );
                                 if (sp != null) setState(() { _supplier = sp; _vehicle = null; });
                               },
                               icon: const Icon(Icons.storefront_outlined, size: 17),
@@ -544,16 +659,30 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                           OutlinedButton.icon(
                             style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
                             onPressed: () async {
-                              // شاحناتُ المورّد المختار وحدَها متى اختير.
-                              final pool = _supplier == null
-                                  ? _vehicles
-                                  : _vehicles.where((v) {
-                                      final sup = v['supplier'];
-                                      final sid = sup is Map ? sup['_id'] : sup;
-                                      return sid == _supplier!['_id'];
-                                    }).toList();
-                              final v = await _pickSheet<Map<String, dynamic>>(tr('الشاحنات', 'vehicles'), pool, (v) => (v['plate'] ?? '').toString(),
-                                  sub: (v) => '${v['name'] ?? ''} ${v['defaultDriverName'] ?? ''}'.trim());
+                              // شاحناتُ المورّد المختار تُطلَب بمعرّفه، وبلا
+                              // مورّدٍ يُبحَث في كلّ ما ليس من أسطولنا:
+                              // أسطولُنا يُدار في «إدارة الأسطول» لا هنا.
+                              final sid = _supplier?['_id'];
+                              final v = await _pickRemote(
+                                tr('الشاحنات', 'vehicles'),
+                                (q) async {
+                                  final qs = StringBuffer('limit=80');
+                                  if (sid != null) { qs.write('&supplier=$sid'); } else { qs.write('&ownership=not_ours'); }
+                                  if (q.isNotEmpty) qs.write('&q=${Uri.encodeQueryComponent(q)}');
+                                  final d = await Api.instance.get('/api/shipment-orders/vehicles?$qs');
+                                  return List<Map<String, dynamic>>.from(d['vehicles'] ?? []);
+                                },
+                                (v) => (v['plate'] ?? '').toString(),
+                                sub: (v) {
+                                  final sup = v['supplier'];
+                                  final owner = sup is Map
+                                      ? (sup['name'] ?? '').toString()
+                                      : (v['ownership'] == 'ours' ? tr('أسطولنا', 'Our fleet') : tr('مالكٌ غير مسجَّل', 'Owner not recorded'));
+                                  return [v['name'], owner, v['defaultDriverName']]
+                                      .where((e) => (e ?? '').toString().isNotEmpty).join(' · ');
+                                },
+                                hint: tr('اللوحة أو السائق أو بطاقة التشغيل…', 'Plate, driver or operation card…'),
+                              );
                               if (v != null) _applyVehicle(v);
                             },
                             icon: const Icon(Icons.search, size: 17),

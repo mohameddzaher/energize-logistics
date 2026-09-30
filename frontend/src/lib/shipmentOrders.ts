@@ -135,7 +135,15 @@ export interface OrderVehicle {
   plate: string;
   name?: string;
   truckType?: string;
-  supplier?: OrderSupplier | string | null; // null = our own fleet
+  supplier?: OrderSupplier | string | null;
+  /**
+   * لمن الشاحنة — صريحًا لا بالغياب.
+   *
+   * كان خلوُّ `supplier` يعني «من أسطولنا»، ثمّ وصلت ثلاثةَ عشرَ ألفَ شاحنةٍ
+   * من تاريخ الطلبات بلا مرجعِ مورّدٍ فقُرئت كأنّها أسطولُنا — وأسطولُنا
+   * ثمانٍ وخمسون. والغيابُ «لا أعلم» لا «ملكُنا».
+   */
+  ownership?: 'supplier' | 'ours' | 'unknown';
   defaultDriverName?: string;
   defaultDriverPhone?: string;
   notes?: string;

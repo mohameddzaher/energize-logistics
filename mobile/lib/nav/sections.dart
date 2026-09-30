@@ -451,7 +451,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       // (كانوا بيشوفوا القسم ببيانات صفر) — نطابق النطاق تمامًا.
       roles: const ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead'],
       pages: [
-        AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: b2cDashSpec), path: '/system/b2c/dashboard'),
+        AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const SectionDashScreen(spec: b2cDashSpec), path: '/system/b2c/dashboard'),
         AppPage('المشاريع', 'Projects', Icons.folder_special_outlined, (c) => ResourceScreen(config: b2cProjectsCfg), path: '/system/b2c/projects'),
         AppPage('الإدخال اليومي', 'Daily Entry', Icons.edit_calendar_outlined, (c) => const B2cDailyEntryScreen(), path: '/system/b2c/daily-entry'),
         // تفقُّد بداية الدوام — أوّلُ ما يُفتَح صباحًا، فيُوضَع قبل ما دونه.

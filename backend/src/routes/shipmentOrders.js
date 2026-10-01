@@ -17,6 +17,8 @@ router.use(authenticate);
 
 // Orders
 router.get('/orders', so.listOrders);
+// قيمُ عمودٍ بعدّادها — لفلترِ الأعمدة على طريقة إكسل فوق جدولٍ مُصفَّحٍ في الخادم.
+router.get('/orders/filter-options', so.orderFilterOptions);
 router.get('/orders/:id', so.getOrder); // the edit form loads ONE order directly
 // بوالصُ عدّةِ طلباتٍ في ملفٍّ واحد — تُسجَّل قبل `/orders/:id` لا بعده حتى لا
 // يبتلعَها المسارُ ذو المتغيّر.
@@ -65,5 +67,17 @@ router.get('/fields', so.listFields);
 router.post('/fields', authorize(...ADMIN_ROLES), so.createField);
 router.put('/fields/:id', authorize(...ADMIN_ROLES), so.updateField);
 router.delete('/fields/:id', authorize(...ADMIN_ROLES), so.deleteField);
+/**
+ * ── وإضافةُ خيارٍ إلى قائمةٍ قائمةٍ ليست تغييرًا للنموذج ────────────────────
+ *
+ * الدالّةُ كانت مكتوبةً في الكونترولر بلا مسار، ونموذجُ الشحنة يناديها من زرّ
+ * «+ أضِف» تحت القوائم — فيعود النداءُ ٤٠٤ ويُقال للموظّف «تعذّرت الإضافة»،
+ * وطولُ الشاحنة الجديدُ لا يُسجَّل.
+ *
+ * وصلاحيّتُها صلاحيّةُ التشغيل لا الإدارة: تغييرُ شكل النموذج (حقلٌ يُضاف أو
+ * يُحذَف) قرارٌ إداريّ، أمّا «جاءت شاحنةٌ بطولٍ لم نسجّله» فواقعُ يومٍ يقف عليه
+ * من يحجز الحمولة — ولو احتاج مديرًا لتوقّف العمل حتّى يردّ.
+ */
+router.post('/fields/:id/options', authorize(...EDIT_ROLES), so.addFieldOption);
 
 module.exports = router;

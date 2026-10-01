@@ -1046,6 +1046,14 @@ final shipmentOrdersVehiclesCfg = ResourceConfig(
     FieldSpec('plate', 'اللوحة', 'Plate', required: true),
     FieldSpec('name', 'وصف الشاحنة', 'Description'),
     FieldSpec('truckType', 'نوع الشاحنة', 'Truck type'),
+    // ── الماركةُ واللونُ: البوليصةُ تطبعهما ────────────────────────────────
+    // «بيانات السيارة» في البوليصة ثلاثةٌ: اللوحةُ والماركةُ واللون. وكان
+    // الأخيران يُطبَعان فارغين في ورقةٍ يُتحقَّق منها في البوّابات.
+    FieldSpec('brand', 'الماركة', 'Brand', required: true),
+    FieldSpec('color', 'اللون', 'Color', required: true),
+    FieldSpec('modelYear', 'سنة الصنع', 'Model year'),
+    FieldSpec('operationCardNumber', 'رقم بطاقة التشغيل', 'Operation card no.'),
+    FieldSpec('operationCardExpiry', 'انتهاء بطاقة التشغيل', 'Card expiry', type: FieldType.date),
     // مالكُ الشاحنة يُصحَّح من التطبيق كما يُصحَّح من الموقع: خمسةُ آلافٍ
     // وسبعُمئةِ شاحنةٍ لم يُعرَف مالكُها من تاريخ الطلبات، ومن يعرفه غالبًا
     // في الطريق لا على المكتب.

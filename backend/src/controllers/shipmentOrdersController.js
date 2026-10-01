@@ -166,7 +166,34 @@ exports.getWaybillsPdf = async (req, res) => {
     const order = new Map(ids.map((id, i) => [String(id), i]));
     orders.sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0));
 
-    const pdf = await renderWaybillsPdf(orders.map((o) => rowFromOrder(o)));
+    // ── والبوليصةُ تُملأ من السجلّات لا من لقطةِ الطلب وحدَها ────────────────
+    // الطلبُ يحمل لقطةً باللوحة واسم السائق، وخاناتُ «الماركة» و«اللون»
+    // و«رقم الإقامة» و«الجنسية» كانت تُطبَع فارغةً في كلّ ورقةٍ تخرج مع سائق —
+    // وهي أوراقٌ يُتحقَّق منها في البوّابات. والبياناتُ موجودةٌ عندنا: في سجلّ
+    // الشاحنات وسجلّ السوّاق. فتُقرأ منهما بنداءين لا بنداءٍ لكلّ بوليصة.
+    const plateKeyOf = (v) => require('../utils/plateKey').registryPlateKey(v);
+    const plates = [...new Set(orders.map((o) => plateKeyOf(o.vehiclePlate)).filter(Boolean))];
+    const names = [...new Set(orders.map((o) => String(o.driverName || '').trim()).filter(Boolean))];
+    const [vehRows, drvRows] = await Promise.all([
+      plates.length
+        ? ShipmentOrderVehicle.find({}).select('plate brand color truckType').lean()
+          .then((rows) => rows.filter((v) => plates.includes(plateKeyOf(v.plate))))
+        : [],
+      names.length
+        ? ShipmentOrderDriver.find({ name: { $in: names } }).select('name residenceNumber nationality phone').lean()
+        : [],
+    ]);
+    const vehByPlate = new Map(vehRows.map((v) => [plateKeyOf(v.plate), v]));
+    const drvByName = new Map(drvRows.map((d) => [d.name.trim(), d]));
+
+    const pdf = await renderWaybillsPdf(orders.map((o) => {
+      const row = rowFromOrder(o);
+      const v = vehByPlate.get(plateKeyOf(o.vehiclePlate));
+      if (v) { row.carBrand = v.brand || ''; row.carColor = v.color || ''; row.carType = row.carType || v.truckType || ''; }
+      const d = drvByName.get(String(o.driverName || '').trim());
+      if (d) { row.driverIqama = d.residenceNumber || ''; row.driverNationality = d.nationality || ''; row.driverPhone = row.driverPhone || d.phone || ''; }
+      return row;
+    }));
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="waybills-${orders.length}.pdf"`);
     res.send(pdf);
@@ -175,10 +202,55 @@ exports.getWaybillsPdf = async (req, res) => {
   }
 };
 
+/**
+ * ── فلترُ الأعمدة على طريقة إكسل ───────────────────────────────────────────
+ *
+ * الجدولُ مُصفَّحٌ في الخادم (خمسةٌ وعشرون صفًّا في الصفحة)، فبناءُ قائمة قيم
+ * العمود من الصفوف الواصلة يعرض قيمَ هذه الصفحة وحدَها — ثلاثَ مدنٍ من عشرين.
+ * فالقيمُ تُحسَب في الخادم بعدّادها، والتصفيةُ تجري هناك أيضًا.
+ *
+ * وكلُّ عمودٍ يُحسَب بعد تطبيق فلاتر **بقيّة** الأعمدة لا كلِّها: من صفّى
+ * «جدة» في «من» يريد أن يرى في «إلى» ما وصلت إليه شحناتُ جدة فقط — وهذا ما
+ * يفعله إكسل، ولولاه لعُرضت قيمٌ تُنتقى فيخرج الجدولُ فارغًا.
+ */
+const ORDER_COLUMNS = {
+  customerName: 'customerName',
+  fromCity: 'fromCity',
+  toCity: 'toCity',
+  driverName: 'driverName',
+  vehiclePlate: 'vehicleName',
+  truckType: 'truckType',
+  branch: 'branch',
+  supplierName: 'supplierName',
+  driverRentType: 'driverRentType',
+  paymentMethod: 'paymentMethod',
+};
+
+/** `col.<key>=أ,ب` → `{ field: { $in: [...] } }`. والفارغُ يُطلَب بـ`__blank__`. */
+const columnFilters = (query, skipKey = null) => {
+  const out = {};
+  for (const [key, field] of Object.entries(ORDER_COLUMNS)) {
+    if (key === skipKey) continue;
+    const raw = query[`col.${key}`];
+    if (!raw) continue;
+    const vals = String(raw).split('\u0000').length > 1
+      ? String(raw).split('\u0000')
+      : String(raw).split(',');
+    const list = vals.map((v) => v.trim()).filter((v) => v !== '');
+    if (!list.length) continue;
+    const wantsBlank = list.includes('__blank__');
+    const plain = list.filter((v) => v !== '__blank__');
+    if (wantsBlank && plain.length) out[field] = { $in: [...plain, '', null] };
+    else if (wantsBlank) out[field] = { $in: ['', null] };
+    else out[field] = { $in: plain };
+  }
+  return out;
+};
+
 exports.listOrders = async (req, res) => {
   try {
     const { q, status, customer, supplier, source, branch, from, to, page = 1, limit = 25 } = req.query;
-    const filter = {};
+    const filter = { ...columnFilters(req.query) };
     // ── الحالةُ قد تكون أكثرَ من واحدة ────────────────────────────────────
     // البطاقاتُ فوق الجدول تُنتقى بالتراكم: «أرِني المتأخّرةَ وما في الطريق
     // معًا». فتصل مفصولةً بفاصلة.
@@ -277,6 +349,55 @@ exports.listOrders = async (req, res) => {
 // Creating an order can also create the customer it is for ("first time we work
 // with them"), and a priced route the customer's profile does not know yet is
 // written back to it — the profile learns from the work.
+/**
+ * قيمُ عمودٍ واحدٍ بعدّادها — لقائمة الفلتر.
+ *
+ * عمودٌ واحدٌ في النداء لا الأعمدةُ كلُّها: القائمةُ تُفتَح بالضغط على قمعِ
+ * عمودٍ بعينه، وحسابُ العشرة معًا في كلّ فتحةٍ عشرةُ تجميعاتٍ لا تُقرأ.
+ * و`q` تضيّق القائمةَ نفسَها حين تكون قيمُها بالمئات.
+ */
+exports.orderFilterOptions = async (req, res) => {
+  try {
+    const key = String(req.query.field || '');
+    const field = ORDER_COLUMNS[key];
+    if (!field) return res.status(400).json({ message: 'عمودٌ غير معروف' });
+
+    // فلاترُ بقيّةِ الأعمدة وحدَها — فما يُعرَض يقدر أن يُنتقى.
+    const base = { ...columnFilters(req.query, key) };
+    if (req.query.status) {
+      const keys = String(req.query.status).split(',').map((x) => x.trim()).filter(Boolean);
+      if (keys.length === 1) [base.status] = keys; else if (keys.length) base.status = { $in: keys };
+    }
+    if (req.query.from || req.query.to) {
+      base.createdAt = {};
+      if (req.query.from) base.createdAt.$gte = startOfDay(req.query.from);
+      if (req.query.to) base.createdAt.$lte = endOfDay(req.query.to);
+    }
+    if (req.query.source === 'system' || req.query.source === 'platform') base.source = req.query.source;
+    if (req.query.customer) base.customer = req.query.customer;
+    if (req.query.branch) base.branch = req.query.branch;
+
+    // بحثُ القائمة اسمُه `search` لا `q`: `q` هو بحثُ الجدول نفسِه، ولو
+    // استُعمل الاسمان واحدًا لفلتر أحدُهما بالآخر — وهو الاسمُ المستعمَل في
+    // نظيرتها بقسم التحصيل، فلا يُسأل أحدٌ أيَّهما هنا.
+    const search = String(req.query.search || '').trim();
+    const pipeline = [
+      { $match: base },
+      { $group: { _id: { $ifNull: [`$${field}`, ''] }, count: { $sum: 1 } } },
+    ];
+    if (search) pipeline.push({ $match: { _id: flexSpaceRegex(search) } });
+    pipeline.push({ $sort: { count: -1 } }, { $limit: 400 });
+
+    const rows = await ShipmentOrder.aggregate(pipeline);
+    res.json({
+      field: key,
+      values: rows.map((r) => ({ value: r._id === '' ? '__blank__' : r._id, count: r.count })),
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'تعذّر تحميل قيم العمود' });
+  }
+};
+
 exports.createOrder = async (req, res) => {
   try {
     const data = pick(req.body, ORDER_EDITABLE);
@@ -804,7 +925,7 @@ const anyOf = (q, fields) => {
 const REGISTRY_TTL = 2 * 60 * 1000;
 const CUSTOMER_LIST_FIELDS = 'name phone email notes routes defaults';
 const SUPPLIER_LIST_FIELDS = 'name type phone email notes';
-const VEHICLE_LIST_FIELDS = 'plate name truckType supplier ownership defaultDriverName defaultDriverPhone operationCardNumber operationCardExpiry modelYear notes';
+const VEHICLE_LIST_FIELDS = 'plate name truckType brand color supplier ownership defaultDriverName defaultDriverPhone operationCardNumber operationCardExpiry modelYear notes';
 const DRIVER_LIST_FIELDS = 'name phone nationality residenceNumber driverCardNumber driverCardExpiry supplier vehicle sponsorName notes';
 const registryKey = (kind, req, extra = '') => `so:registry:${kind}:${String(req.query.q || '')}:${req.query.limit || ''}:${extra}`;
 
@@ -893,7 +1014,7 @@ exports.deleteCustomer = async (req, res) => {
 // ── Suppliers & vehicles (الموردون والمركبات) ───────────────────────────────
 
 const SUPPLIER_EDITABLE = ['name', 'type', 'phone', 'email', 'notes', 'isActive'];
-const VEHICLE_EDITABLE = ['plate', 'name', 'truckType', 'supplier', 'ownership', 'defaultDriverName', 'defaultDriverPhone', 'notes', 'isActive'];
+const VEHICLE_EDITABLE = ['plate', 'name', 'truckType', 'brand', 'color', 'supplier', 'ownership', 'defaultDriverName', 'defaultDriverPhone', 'operationCardNumber', 'operationCardExpiry', 'modelYear', 'notes', 'isActive'];
 
 // ── والحقلان لا يتناقضان ────────────────────────────────────────────────────
 // مرجعُ المورّد والملكيّةُ خبران عن شيءٍ واحد، فلو كُتب أحدُهما وحدَه صار في
@@ -1396,7 +1517,9 @@ exports.addFieldOption = async (req, res) => {
       paymentMethod: String(req.body.paymentMethod || '').trim(),
     });
     await field.save();
-    try { require('../websocket/socketManager').emitToAll('so:fields', { id: String(field._id) }); } catch (_) { /* */ }
+    // الحدثُ نفسُه الذي تسمعه الشاشاتُ لبقيّة تغييرات النموذج — كان يُبثّ
+    // باسمٍ ثالثٍ لا يسمعه أحد، فيُضاف الخيارُ ولا يراه زميلٌ فاتحٌ للصفحة.
+    emit('shipmentOrders:fields', { id: String(field._id) });
     try { require('../utils/ttlCache').clear('so:'); } catch (_) { /* */ }
     res.status(201).json({ field });
   } catch (e) {

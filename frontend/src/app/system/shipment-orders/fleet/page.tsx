@@ -29,7 +29,11 @@ import { ContactButtons } from '@/components/crm/CrmKit';
 import ScrollX from '@/components/system/ScrollX';
 
 const EMPTY_SUPPLIER = { name: '', type: 'company' as 'company' | 'freelancer', phone: '', email: '', notes: '' };
-const EMPTY_VEHICLE = { plate: '', name: '', truckType: '', supplier: '', ownership: 'unknown', defaultDriverName: '', defaultDriverPhone: '', notes: '' };
+const EMPTY_VEHICLE = {
+  plate: '', name: '', truckType: '', brand: '', color: '', modelYear: '',
+  operationCardNumber: '', operationCardExpiry: '',
+  supplier: '', ownership: 'unknown', defaultDriverName: '', defaultDriverPhone: '', notes: '',
+};
 
 const PAGE = 200;
 type Owner = '' | 'not_ours' | 'supplier' | 'ours' | 'unknown';
@@ -115,6 +119,11 @@ export default function FleetPage() {
     return () => clearTimeout(t);
   }, [load, search]);
   useSocket('shipmentOrders:fleet', useCallback(() => load(), [load]));
+  // أنواعُ الشاحنات تُقرأ من حقول النموذج، فنوعٌ يُضاف هناك يُنتقى هنا فورًا.
+  useSocket('shipmentOrders:fields', useCallback(() => {
+    api.get<{ fields: FormField[] }>('/api/shipment-orders/fields')
+      .then((d) => setFields(d.fields || [])).catch(() => {});
+  }, []));
   // Truck types come from the same form vocabulary, so a type added in
   // form-settings is pickable here too.
   useEffect(() => {
@@ -159,6 +168,11 @@ export default function FleetPage() {
 
   const saveVehicle = async () => {
     if (!vehForm.plate.trim()) return;
+    // البوليصةُ تطبع الماركةَ واللون، فالخانتان تُطلبان هنا لا تُترَكان للورقة.
+    if (!String(vehForm.brand || '').trim() || !String(vehForm.color || '').trim()) {
+      notify(ar ? 'الماركة واللون مطلوبان — يُطبعان في البوليصة.' : 'Brand and colour are required — they print on the waybill.', 'error');
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -233,6 +247,10 @@ export default function FleetPage() {
     { header: ar ? 'اللوحة' : 'Plate', key: 'plate', width: 16 },
     { header: ar ? 'الوصف' : 'Description', key: 'name', width: 26, transform: (v) => v || '—' },
     { header: ar ? 'النوع' : 'Type', key: 'truckType', width: 18, transform: (v) => v || '—' },
+    { header: ar ? 'الماركة' : 'Brand', key: 'brand', width: 18, transform: (v) => v || '—' },
+    { header: ar ? 'اللون' : 'Color', key: 'color', width: 14, transform: (v) => v || '—' },
+    { header: ar ? 'بطاقة التشغيل' : 'Operation card', key: 'operationCardNumber', width: 16, transform: (v) => v || '—' },
+    { header: ar ? 'انتهاؤها' : 'Card expiry', key: 'operationCardExpiry', width: 14, transform: (v) => (v || '').slice(0, 10) || '—' },
     // خلوُّ الخانة يُقرأ نقصًا في البيانات، فالملكيّةُ تُكتب كلمةً.
     { header: ar ? 'المالك' : 'Owner', key: 'supplier', width: 26, transform: (_v, r) => ownerLabel(r) },
     { header: ar ? 'السائق المعتاد' : 'Usual driver', key: 'defaultDriverName', width: 24, transform: (v) => v || '—' },
@@ -650,13 +668,30 @@ export default function FleetPage() {
         title={editingVeh ? (ar ? 'تعديل سيارة' : 'Edit vehicle') : (ar ? 'إضافة سيارة' : 'Add vehicle')}
         footer={<>
           <button type="button" onClick={() => setVehModal(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
-          <PrimaryButton onClick={saveVehicle} disabled={saving || !vehForm.plate.trim()}>
+          <PrimaryButton onClick={saveVehicle} disabled={saving || !vehForm.plate.trim() || !String(vehForm.brand || '').trim() || !String(vehForm.color || '').trim()}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{ar ? 'حفظ' : 'Save'}
           </PrimaryButton>
         </>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label={ar ? 'رقم اللوحة *' : 'Plate *'}><TextInput value={vehForm.plate} onChange={(e) => setVehForm((f: any) => ({ ...f, plate: e.target.value }))} /></Field>
           <Field label={ar ? 'الوصف' : 'Description'}><TextInput value={vehForm.name} onChange={(e) => setVehForm((f: any) => ({ ...f, name: e.target.value }))} /></Field>
+          {/* ── الماركةُ واللونُ مطلوبان ────────────────────────────────────
+              البوليصةُ فيها «بيانات السيارة»: اللوحةُ والماركةُ واللون. وكانت
+              الخانتان تُطبَعان فارغتين في كلّ ورقةٍ تخرج مع سائقٍ ويُتحقَّق منها
+              في البوّابات — لأنّ السجلَّ لم يكن يسأل عنهما أصلًا. */}
+          <Field label={ar ? 'الماركة *' : 'Brand *'}>
+            <TextInput value={vehForm.brand} onChange={(e) => setVehForm((f: any) => ({ ...f, brand: e.target.value }))} />
+          </Field>
+          <Field label={ar ? 'اللون *' : 'Color *'}>
+            <TextInput value={vehForm.color} onChange={(e) => setVehForm((f: any) => ({ ...f, color: e.target.value }))} />
+          </Field>
+          <Field label={ar ? 'سنة الصنع' : 'Model year'}><TextInput value={vehForm.modelYear} onChange={(e) => setVehForm((f: any) => ({ ...f, modelYear: e.target.value }))} /></Field>
+          <Field label={ar ? 'رقم بطاقة التشغيل' : 'Operation card no.'}><TextInput value={vehForm.operationCardNumber} onChange={(e) => setVehForm((f: any) => ({ ...f, operationCardNumber: e.target.value }))} /></Field>
+          <Field label={ar ? 'انتهاء بطاقة التشغيل' : 'Operation card expiry'}>
+            <input type="date" value={(vehForm.operationCardExpiry || '').slice(0, 10)}
+              onChange={(e) => setVehForm((f: any) => ({ ...f, operationCardExpiry: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+          </Field>
           <div className="sm:col-span-2">
             <label className={labelCls}>{ar ? 'نوع الشاحنة' : 'Truck type'}</label>
             <SearchableSelect value={vehForm.truckType} onChange={(x) => setVehForm((f: any) => ({ ...f, truckType: x }))} searchAfter={0}

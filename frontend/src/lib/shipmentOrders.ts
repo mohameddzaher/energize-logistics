@@ -162,6 +162,12 @@ export interface OrderVehicle {
   plate: string;
   name?: string;
   truckType?: string;
+  /** الماركةُ واللون — تُطبعان في «بيانات السيارة» من البوليصة. */
+  brand?: string;
+  color?: string;
+  modelYear?: string;
+  operationCardNumber?: string;
+  operationCardExpiry?: string;
   supplier?: OrderSupplier | string | null;
   /**
    * لمن الشاحنة — صريحًا لا بالغياب.

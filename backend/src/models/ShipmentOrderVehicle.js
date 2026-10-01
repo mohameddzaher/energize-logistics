@@ -10,6 +10,16 @@ const shipmentOrderVehicleSchema = new mongoose.Schema(
     plate: { type: String, required: true, trim: true },
     name: { type: String, trim: true, default: '' },        // e.g. "مرسيدس أكتروس أبيض"
     truckType: { type: String, trim: true, default: '' },   // same vocabulary as the form field
+    /**
+     * ── الماركةُ واللونُ: البوليصةُ تسألهما ─────────────────────────────────
+     *
+     * البوليصةُ فيها «بيانات السيارة»: اللوحةُ والماركةُ واللون. وسجلُّ شاحنات
+     * الناقلين لم يكن يحمل الاثنين الأخيرين، فكانت الخانتان تُطبَعان فارغتين
+     * في كلّ ورقةٍ تخرج مع سائق — وهي أوراقٌ تُسلَّم في البوّابات ويُتحقَّق
+     * منها. فصارتا حقلين يُسألان عند تسجيل الشاحنة.
+     */
+    brand: { type: String, trim: true, default: '' },
+    color: { type: String, trim: true, default: '' },
     supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipmentOrderSupplier', default: null, index: true },
 
     /**

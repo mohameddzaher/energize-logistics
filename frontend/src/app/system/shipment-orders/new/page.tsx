@@ -25,6 +25,7 @@ import {
 } from '@/lib/shipmentOrders';
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
+import { useSocket } from '@/hooks/useSocket';
 
 // Labels are the form's wayfinding — near-black and readable, not a whisper.
 const labelCls = 'block text-sm font-semibold text-slate-800 mb-1.5';
@@ -234,6 +235,13 @@ function CreateShipmentInner() {
       .catch(() => setDrivers([]));
   }, [vehicleId, supplierId]);
 
+  // ── وخيارٌ يضيفه زميلٌ يظهر هنا بلا إعادة فتح ────────────────────────────
+  // «طول شاحنةٍ» جديدٌ يضيفه موظّفٌ في مكتبٍ آخر يحتاجه مَن يحجز الآن.
+  useSocket('shipmentOrders:fields', useCallback(() => {
+    api.get<{ fields: FormField[] }>('/api/shipment-orders/fields')
+      .then((d) => setFields(d.fields || [])).catch(() => {});
+  }, []));
+
   const customer = useMemo(() => customers.find((c) => c._id === customerId) || null, [customers, customerId]);
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -306,6 +314,17 @@ function CreateShipmentInner() {
   // لا عند حفظ الشحنة: من فتح النموذج وأضاف مورّدًا ثمّ تركه نصفَ ساعةٍ يجب أن
   // يجده في صفحة المورّدين — ويجده زميلُه أيضًا. والتسجيلُ هنا يُطلق
   // `shipmentOrders:fleet`، فتلتقطه كلُّ شاشةٍ مفتوحةٍ في القسم.
+  /**
+   * ── والمورّدُ وسائقُه يُسجَّلان معًا ────────────────────────────────────────
+   *
+   * الثلاثةُ سجلٌّ واحدٌ في الواقع: مورّدٌ له شاحناتٌ لها سوّاق. وكان التسجيلُ
+   * يقف عند المورّد، فيُحجَز عليه حمولةٌ وليس في السجلّ سائقٌ واحدٌ له — ثمّ
+   * يُكتب اسمُ السائق بيدٍ في كلّ شحنة.
+   *
+   * والفريلانسرُ حالةٌ خاصّةٌ تستحقّ الذكر: هو مورّدٌ وسائقٌ في آنٍ — شاحنتُه
+   * واحدةٌ يسوقها بنفسه — فاسمُه يُبذَر في خانة السائق ولا يُكتب مرّتين.
+   */
+  const [newDriver, setNewDriver] = useState({ name: '', phone: '', residenceNumber: '' });
   const saveSupplier = async () => {
     const name = newSupplier.name.trim();
     if (!name) { notify(ar ? 'اكتب اسم المورد.' : 'Name the supplier.', 'error'); return; }
@@ -317,9 +336,31 @@ function CreateShipmentInner() {
       setSuppliers((p) => [...p, d.supplier].sort((a, b) => a.name.localeCompare(b.name, 'ar')));
       setSupplierId(d.supplier._id);
       setVehicleId('');
+
+      // سائقُه يُسجَّل معه إن كُتب — وفريلانسرٌ بلا اسمِ سائقٍ هو نفسُه السائق.
+      const drvName = newDriver.name.trim() || (newSupplier.type === 'freelancer' ? name : '');
+      let savedDriver: OrderDriver | null = null;
+      if (drvName) {
+        try {
+          const dd = await api.post<{ driver: OrderDriver }>('/api/shipment-orders/drivers', {
+            name: drvName,
+            phone: newDriver.phone.trim() || (newSupplier.type === 'freelancer' ? newSupplier.phone.trim() : ''),
+            residenceNumber: newDriver.residenceNumber.trim(),
+            supplier: d.supplier._id,
+          });
+          savedDriver = dd.driver;
+          setDrivers((p) => [dd.driver, ...p]);
+          set('driverName', dd.driver.name);
+          if (dd.driver.phone) set('driverPhone', dd.driver.phone);
+        } catch (e: any) { notify(e?.message || (ar ? 'سُجِّل المورّد ولم يُسجَّل السائق' : 'Supplier saved, driver did not'), 'error'); }
+      }
+
       setAddingSupplier(false);
       setNewSupplier({ name: '', phone: '', type: 'company' });
-      notify(ar ? `سُجِّل المورد «${d.supplier.name}» — تجده في صفحة المورّدين` : `Supplier “${d.supplier.name}” registered`, 'success');
+      setNewDriver({ name: '', phone: '', residenceNumber: '' });
+      notify(ar
+        ? `سُجِّل المورد «${d.supplier.name}»${savedDriver ? ` وسائقُه «${savedDriver.name}»` : ''} — تجدهما في صفحة المورّدين`
+        : `Supplier “${d.supplier.name}”${savedDriver ? ` and driver “${savedDriver.name}”` : ''} registered`, 'success');
     } catch (e: any) { notify(e?.message || (ar ? 'تعذّر الحفظ' : 'Could not save'), 'error'); }
     setSupplierBusy(false);
   };
@@ -777,9 +818,21 @@ function CreateShipmentInner() {
                   {ar ? 'حفظ المورّد' : 'Save supplier'}
                 </PrimaryButton>
               </div>
+              {/* سائقُه معه: المورّدُ وشاحناتُه وسوّاقُه سجلٌّ واحدٌ مترابط. */}
+              <div className="flex flex-col sm:flex-row gap-2 pt-1 border-t border-[#f37121]/20">
+                <input value={newDriver.name} onChange={(e) => setNewDriver((v) => ({ ...v, name: e.target.value }))}
+                  placeholder={newSupplier.type === 'freelancer'
+                    ? (ar ? 'اسم السائق — يُترك فارغًا فهو المورّد نفسُه' : 'Driver name — blank means the supplier himself')
+                    : (ar ? 'اسم سائقه (اختياري)' : 'His driver (optional)')}
+                  className={inputCls + ' flex-1'} />
+                <input value={newDriver.phone} onChange={(e) => setNewDriver((v) => ({ ...v, phone: e.target.value }))}
+                  placeholder={ar ? 'جوال السائق' : 'Driver phone'} className={inputCls + ' sm:w-40'} />
+                <input value={newDriver.residenceNumber} onChange={(e) => setNewDriver((v) => ({ ...v, residenceNumber: e.target.value }))}
+                  placeholder={ar ? 'رقم الإقامة' : 'Iqama'} className={inputCls + ' sm:w-40'} />
+              </div>
               <p className="text-xs text-slate-500">
-                {ar ? 'يُسجَّل فورًا في صفحة المورّدين — لا ينتظر حفظ الشحنة، ويظهر عند زملائك في اللحظة نفسِها.'
-                    : 'Registered at once on the suppliers page — it does not wait for the shipment to save, and colleagues see it immediately.'}
+                {ar ? 'المورّد وسائقه يُسجَّلان فورًا في صفحة المورّدين — لا ينتظران حفظ الشحنة، ويظهران عند زملائك في اللحظة نفسِها.'
+                    : 'Supplier and driver are registered at once — they do not wait for the shipment to save, and colleagues see them immediately.'}
               </p>
             </div>
           )}

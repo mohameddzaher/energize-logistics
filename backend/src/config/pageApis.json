@@ -340,6 +340,7 @@
         "/api/shipment-orders/drivers",
         "/api/shipment-orders/fields",
         "/api/shipment-orders/orders",
+        "/api/shipment-orders/orders/filter-options",
         "/api/shipment-orders/orders/waybills.pdf",
         "/api/shipment-orders/statuses",
         "/api/shipment-orders/suppliers",

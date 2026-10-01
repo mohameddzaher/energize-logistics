@@ -69,6 +69,20 @@ function getFontCss() {
   return fontCss;
 }
 
+/**
+ * أرقامُ التواصل المطبوعةُ في البوليصة.
+ *
+ * مكتوبةٌ هنا لا في قاعدةٍ: هي أرقامُ الشركةِ على ورقٍ يُسلَّم بيدٍ، تتغيّر مرّةً
+ * في سنواتٍ ويُراجَع نصُّها قبل الطبع. وإن صارت تُدار من إعدادات القسم فمكانُها
+ * `FleetConfig` — لا تُكتب في شاشةٍ وتُقرأ هنا بافتراضٍ.
+ */
+const CONTACT_PHONES = [
+  '0566515766',
+  '0544714240',
+  '0540665851',
+  '0547338714',
+];
+
 const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -128,63 +142,80 @@ ${getFontCss()}
      يبقى مقروءًا، والتذييلُ المطبوعُ في الورق يشغل نحوَ أربعةٍ وعشرين
      مليمترًا لا ستّين — فالصندوقُ يمتدّ إلى ٤٤مم من أسفلَ بأمان.
      وكلُّ تغييرٍ هنا يُعايَن بالعين: «overflow:hidden» يقصّ ما زاد صامتًا. */
-  .content { position: absolute; top: 34mm; bottom: 40mm; left: 15mm; right: 15mm; display: flex; flex-direction: column; }
+  /* ── والمحتوى أُنزل قليلًا والخطُّ كُبّر قليلًا ─────────────────────────────
+     كانت تبقى فجوةٌ بيضاء بين الختم وتذييلِ الورق المطبوع، والفراغُ المدفوعُ
+     ثمنُه ورقًا أولى به السطورُ نفسُها. فنزل أعلى الصندوق ثلاثةَ مليمترات
+     وارتفع أسفلُه ثلاثة، وكُبّرت الخطوطُ بنحو السُّدس — والقصُّ صامت
+     («overflow:hidden») فكلُّ تغييرٍ هنا يُعايَن بالعين على صفحةٍ مرسومة. */
+  .content { position: absolute; top: 36mm; bottom: 34mm; left: 15mm; right: 15mm; display: flex; flex-direction: column; }
+  /* ── أرقامُ التواصل في الجهة المقابلة للّوجو ────────────────────────────────
+     اللوجو مطبوعٌ في الورق أعلى اليسار، وتبقى الجهةُ المقابلةُ بياضًا. والسائقُ
+     يحمل هذه الورقة وحدَها: فمن أراد أن يسأل عن حمولةٍ وجد الرقمَ في يده بدل
+     أن يبحث. وهي خارجَ صندوق المحتوى حتّى لا تزاحم سطورَه. */
+  .contacts { position: absolute; top: 14mm; right: 15mm; text-align: right; direction: ltr; }
+  .contacts .k { font-size: 9px; font-weight: 800; color: #F58220; letter-spacing: 0.4px; margin-bottom: 1px; direction: rtl; text-align: right; }
+  .contacts .n { font-size: 10.6px; font-weight: 700; color: #1a1a1a; line-height: 1.45; }
   .title-block, .meta-row, .section, .stamp-wrap { flex-shrink: 0; }
   .title-block { text-align: center; margin-bottom: 7px; }
   .doc-title { font-size: 30px; font-weight: 800; color: #1a1a1a; line-height: 1.05; margin-bottom: 4px; }
-  .doc-subtitle { font-size: 13.5px; font-weight: 700; color: #333; line-height: 1.2; }
+  .doc-subtitle { font-size: 14.3px; font-weight: 700; color: #333; line-height: 1.2; }
   .doc-subtitle .en { color: #555; font-weight: 700; margin-right: 6px; }
   .title-accent { width: 70px; height: 2.5px; background: #F58220; margin: 5px auto 0; border-radius: 2px; }
   .meta-row { display: flex; gap: 4px; margin-bottom: 7px; background: rgba(253, 240, 224, 0.97); border: 1.2px solid #e8b585; border-radius: 5px; }
   .meta-box { flex: 1; padding: 6px 9px 7px; text-align: center; border-left: 1px solid #d9b388; line-height: 1.25; }
   .meta-box:last-child { border-left: none; }
-  .meta-box .lbl-ar { display: block; font-size: 11px; font-weight: 700; color: #6e4f2e; line-height: 1.3; }
-  .meta-box .lbl-en { display: block; font-size: 9.5px; font-weight: 700; color: #6e4f2e; direction: ltr; letter-spacing: 0.3px; line-height: 1.3; margin-bottom: 2px; }
-  .meta-box .val { display: block; font-size: 14px; font-weight: 800; color: #1a1a1a; line-height: 1.35; }
-  .section { margin-bottom: 5px; padding: 4px 9px 5px; border-right: 2.5px solid #F58220; background: rgba(255, 255, 255, 0.86); border-radius: 0 4px 4px 0; }
+  .meta-box .lbl-ar { display: block; font-size: 11.6px; font-weight: 700; color: #6e4f2e; line-height: 1.3; }
+  .meta-box .lbl-en { display: block; font-size: 10px; font-weight: 700; color: #6e4f2e; direction: ltr; letter-spacing: 0.3px; line-height: 1.3; margin-bottom: 2px; }
+  .meta-box .val { display: block; font-size: 14.9px; font-weight: 800; color: #1a1a1a; line-height: 1.3; }
+  .meta-box.customer .val { font-size: 12.4px; line-height: 1.25; }
+  .section { margin-bottom: 4px; padding: 3px 9px 4px; border-right: 2.5px solid #F58220; background: rgba(255, 255, 255, 0.86); border-radius: 0 4px 4px 0; }
   .section-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px dashed #f0d8c0; padding-bottom: 3px; margin-bottom: 3px; }
-  .section-head .ar { font-size: 12px; font-weight: 800; color: #F58220; }
-  .section-head .en { font-size: 10px; font-weight: 800; color: #F58220; direction: ltr; letter-spacing: 0.4px; }
-  .row { display: grid; grid-template-columns: 105px 1fr 115px; align-items: baseline; gap: 12px; padding: 3.5px 2px; border-bottom: 1px dashed #ececec; line-height: 1.35; }
+  .section-head .ar { font-size: 13.4px; font-weight: 800; color: #F58220; }
+  .section-head .en { font-size: 10.6px; font-weight: 800; color: #F58220; direction: ltr; letter-spacing: 0.4px; }
+  .row { display: grid; grid-template-columns: 105px 1fr 115px; align-items: baseline; gap: 12px; padding: 2.9px 2px; border-bottom: 1px dashed #ececec; line-height: 1.35; }
   .row:last-child { border-bottom: none; }
-  .row .ar-label { font-size: 11.5px; font-weight: 700; color: #2a2a2a; text-align: right; }
-  .row .value { font-size: 12.5px; font-weight: 700; color: #1a1a1a; text-align: center; min-height: 15px; }
-  .row .en-label { font-size: 10px; font-weight: 700; color: #2a2a2a; text-align: left; direction: ltr; letter-spacing: 0.3px; }
+  .row .ar-label { font-size: 13px; font-weight: 700; color: #2a2a2a; text-align: right; }
+  .row .value { font-size: 14.2px; font-weight: 700; color: #1a1a1a; text-align: center; min-height: 15px; }
+  .row .en-label { font-size: 11px; font-weight: 700; color: #2a2a2a; text-align: left; direction: ltr; letter-spacing: 0.3px; }
   .row .blank { display: inline-block; width: 60%; border-bottom: 1px dotted #bbb; height: 0.7em; vertical-align: middle; }
   .fare-section .fare-row { display: grid; grid-template-columns: 105px 1fr 115px; align-items: baseline; gap: 12px; padding: 3.5px 2px 2px; }
-  .fare-section .fare-row .ar-label { font-size: 11.5px; font-weight: 700; color: #2a2a2a; text-align: right; }
-  .fare-section .fare-row .value { font-size: 14.5px; font-weight: 800; color: #1a1a1a; text-align: center; }
-  .fare-section .fare-row .en-label { font-size: 10px; font-weight: 700; color: #2a2a2a; text-align: left; direction: ltr; letter-spacing: 0.3px; }
+  .fare-section .fare-row .ar-label { font-size: 13px; font-weight: 700; color: #2a2a2a; text-align: right; }
+  .fare-section .fare-row .value { font-size: 16.2px; font-weight: 800; color: #1a1a1a; text-align: center; }
+  .fare-section .fare-row .en-label { font-size: 10.6px; font-weight: 700; color: #2a2a2a; text-align: left; direction: ltr; letter-spacing: 0.3px; }
   /* ── الإقرارُ في ذيل الورقة نفسِها ────────────────────────────────────────
      صفحةٌ ثانيةٌ لكلّ بوليصةٍ تعني ضعفَ الورق يوميًّا، فبقي في ورقته: عمودان
      متجاوران (العربيُّ والأرديّ) بخطٍّ صغيرٍ يبقى مقروءًا، وخانتا توقيعٍ
      وتاريخٍ تحتهما. */
   .pledge { margin-top: 4px; border: 1px solid #e0d2c2; border-radius: 4px; padding: 4px 7px 5px; }
-  .pledge .head { display: flex; justify-content: space-between; align-items: baseline; font-size: 10px; font-weight: 800; color: #F58220; margin-bottom: 2px; }
+  .pledge .head { display: flex; justify-content: space-between; align-items: baseline; font-size: 10.6px; font-weight: 800; color: #F58220; margin-bottom: 2px; }
   .pledge .head .ur-t { font-family: 'Noto Naskh Arabic', 'Tajawal', sans-serif; font-weight: 600; }
   .pledge .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-  .pledge p { font-size: 8.3px; line-height: 1.6; color: #2a2a2a; text-align: justify; }
-  .pledge .ur { font-family: 'Noto Naskh Arabic', 'Tajawal', sans-serif; font-size: 8.1px; line-height: 1.72; border-inline-start: 1px dashed #ececec; padding-inline-start: 7px; }
+  .pledge p { font-size: 7.9px; line-height: 1.45; color: #2a2a2a; text-align: justify; }
+  .pledge .ur { font-family: 'Noto Naskh Arabic', 'Tajawal', sans-serif; font-size: 7.7px; line-height: 1.52; border-inline-start: 1px dashed #ececec; padding-inline-start: 7px; }
   /* ── والاسمان يقفان معًا لا متقاطعَين ────────────────────────────────────
      كانت الخانةُ تُكتب «التاريخ · تاریخ» في سطرٍ واحد، والفقرةُ الأردية إلى
      يسارها — فيُقرأ الاسمُ العربيُّ عند العمود الأرديّ وبالعكس. فصارت كلُّ
      لغةٍ تحت أختها في الخانة نفسِها: لا يسارَ ولا يمينَ يُفهَم منه شيء.
      والسطرُ تحتهما يُترَك فارغًا — السائقُ يوقّع ويكتب التاريخ بيده. */
-  .pledge .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; margin-top: 8px; padding-top: 6px; border-top: 1px dashed #ececec; }
-  .pledge .sign .k { font-size: 9px; font-weight: 700; color: #2a2a2a; line-height: 1.35; }
-  .pledge .sign .k .ur-k { display: block; font-family: 'Noto Naskh Arabic', 'Tajawal', sans-serif; font-size: 8.5px; font-weight: 400; color: #555; }
-  .pledge .sign .l { margin-top: 16px; border-bottom: 1px solid #1a1a1a; }
+  .pledge .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; margin-top: 5px; padding-top: 5px; border-top: 1px dashed #ececec; }
+  .pledge .sign .k { font-size: 9.6px; font-weight: 700; color: #2a2a2a; line-height: 1.35; }
+  .pledge .sign .k .ur-k { display: block; font-family: 'Noto Naskh Arabic', 'Tajawal', sans-serif; font-size: 9px; font-weight: 400; color: #555; }
+  .pledge .sign .l { margin-top: 12px; border-bottom: 1px solid #1a1a1a; }
   .fill { font-weight: 800; border-bottom: 1px solid #1a1a1a; padding: 0 7px; }
   /* ── والختمُ يتبع ما قبله ──────────────────────────────────────────────
      كان «margin-top:auto» يدفعه إلى قاع الصندوق، فتفتح بين الإقرار والختم
      فجوةٌ بيضاء ويبقى تحته فراغٌ ثانٍ إلى حافّة الورقة. والمساحةُ المتروكة
      أولى بها السطورُ نفسُها: فُردت أعلاه، والختمُ صار يجلس تحت الإقرار. */
-  .stamp-wrap { padding-top: 6px; text-align: center; }
+  .stamp-wrap { padding-top: 3px; text-align: center; }
   .stamp-wrap img { width: 95px; height: auto; display: inline-block; }
 </style>
 </head>
 <body>
 <div class="sheet">
+  <div class="contacts">
+    <div class="k">للتواصل · Contact</div>
+    ${CONTACT_PHONES.map((n) => `<div class="n">${esc(n)}</div>`).join('')}
+  </div>
   <div class="content">
     <div class="title-block">
       <div class="doc-title">بوليصة شحن</div>
@@ -192,6 +223,9 @@ ${getFontCss()}
       <div class="title-accent"></div>
     </div>
     <div class="meta-row">
+      <!-- العميلُ أوّلُ ما يُقرأ: الورقةُ تُسلَّم بيدٍ ولم تكن تقول لمن الحمولة،
+           فيُسأل عنها السائقُ أو يُراجَع السجلُّ بالرقم. -->
+      <div class="meta-box customer"><span class="lbl-ar">العميل</span><span class="lbl-en">Customer</span><span class="val">${valOrBlank(row.customerName)}</span></div>
       <div class="meta-box"><span class="lbl-ar">الفرع</span><span class="lbl-en">Branch</span><span class="val">${valOrBlank(row.branch)}</span></div>
       <div class="meta-box"><span class="lbl-ar">التاريخ</span><span class="lbl-en">Date</span><span class="val">${valOrBlank(row.date)}</span></div>
       <div class="meta-box"><span class="lbl-ar">رقم البوليصة</span><span class="lbl-en">Bill No.</span><span class="val">${valOrBlank(row.dispatchNumber)}</span></div>
@@ -208,7 +242,7 @@ ${getFontCss()}
       <div class="row"><span class="ar-label">الجنسية</span><span class="value">${valOrBlank(row.driverNationality)}</span><span class="en-label">Nationality</span></div>
       <div class="row"><span class="ar-label">رقم الإقامة</span><span class="value">${valOrBlank(row.driverIqama)}</span><span class="en-label">Iqama No.</span></div>
       <div class="row"><span class="ar-label">جوال السائق</span><span class="value" dir="ltr">${valOrBlank(row.driverPhone)}</span><span class="en-label">Driver Phone</span></div>
-      <div class="row"><span class="ar-label">مصروف السائق</span><span class="value">${valOrBlank(row.driverAdvance)}</span><span class="en-label">Driver Expense</span></div>
+      <div class="row"><span class="ar-label">سلفة السائق</span><span class="value">${valOrBlank(row.driverAdvance)}</span><span class="en-label">Driver Advance</span></div>
     </div>
     <div class="section">
       <div class="section-head"><span class="ar">بيانات السيارة</span><span class="en">Vehicle Details</span></div>

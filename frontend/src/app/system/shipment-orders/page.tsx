@@ -2,7 +2,7 @@
 // طلبات الشحنات — the trial section's main list. Everything the team needs to
 // run the day happens HERE, without opening each order: search by بوليصة or
 // customer, flip a status inline, download the بوليصة PDF per row.
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { ContactButtons } from '@/components/crm/CrmKit';
@@ -10,6 +10,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
+import { ColumnFilter } from '@/components/ColumnFilter';
 import { PackageSearch, Plus, Pencil, Eye, FileDown, Loader2, RefreshCw, X, Check } from 'lucide-react';
 import {
   Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Select, ErrorNotice,
@@ -64,6 +65,10 @@ const waybillFileName = (o: ShipmentOrder) => {
   const ref = (o as any).reference || o.waybillNumber || '';
   return `بوليصة-${ref}-${o.customerName || 'عميل'}-${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()}`;
 };
+
+/** ثابتان لئلّا يُبنَيا في كلّ رسمةٍ فتُعاد لوحةُ الفلتر بلا سبب. */
+const EMPTY_SET: Set<string> = new Set();
+const EMPTY_OPTIONS: { value: string; count: number }[] = [];
 
 export default function ShipmentOrdersPage() {
   const { user } = useAuth();
@@ -143,10 +148,63 @@ export default function ShipmentOrdersPage() {
 
   // لا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث — راجع hooks/useLatestRequest.
   const guard = useLatestRequest();
+  /**
+   * ── فلترُ الأعمدة على طريقة إكسل ─────────────────────────────────────────
+   *
+   * الجدولُ مُصفَّحٌ في الخادم (خمسةٌ وعشرون صفًّا)، فبناءُ قائمة العمود من
+   * الصفوف الواصلة يعرض قيمَ هذه الصفحة وحدَها — ثلاثَ مدنٍ من أربعِمئة.
+   * فالقيمُ تُطلَب من الخادم بعدّادها عند فتح القمع، والتصفيةُ تجري هناك.
+   */
+  const COL_PREFIX = 'col.';
+  const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
+  const [colOptions, setColOptions] = useState<Record<string, { values: { value: string; count: number }[] }>>({});
+  const [colLoading, setColLoading] = useState<Record<string, boolean>>({});
+  const colSeq = useRef<Record<string, number>>({});
+
+  /** معاملاتُ الصفحة الحاليّة — تُستعمل للجدول وللقائمة وللتصدير معًا. */
+  const colParams = useCallback((into: URLSearchParams, skip?: string) => {
+    Object.entries(colFilters).forEach(([k, set]) => {
+      if (!set.size || k === skip) return;
+      into.set(`${COL_PREFIX}${k}`, [...set].join(','));
+    });
+  }, [colFilters]);
+
+  const setColFilter = useCallback((key: string, sel: Set<string>) => {
+    setColFilters((prev) => {
+      const next = { ...prev };
+      if (sel.size) next[key] = sel; else delete next[key];
+      return next;
+    });
+    setPage(1);
+  }, []);
+
+  const fetchColOptions = useCallback(async (field: string, search = '') => {
+    const seq = (colSeq.current[field] || 0) + 1;
+    colSeq.current[field] = seq;
+    setColLoading((p) => ({ ...p, [field]: true }));
+    try {
+      const qs = new URLSearchParams({ field });
+      // فلاترُ بقيّةِ الأعمدة وحدَها: من صفّى «جدة» في «من» يريد أن يرى في
+      // «إلى» ما وصلت إليه شحناتُ جدة فقط — وهذا ما يفعله إكسل.
+      colParams(qs, field);
+      if (statusFilter) qs.set('status', statusFilter);
+      if (sourceFilter) qs.set('source', sourceFilter);
+      if (customerFilter) qs.set('customer', customerFilter);
+      if (fromDate) qs.set('from', fromDate);
+      if (toDate) qs.set('to', toDate);
+      if (search.trim()) qs.set('search', search.trim());
+      const d = await api.get<{ values: { value: string; count: number }[] }>(`/api/shipment-orders/orders/filter-options?${qs}`);
+      if (colSeq.current[field] !== seq) return;   // ردٌّ سبقه أحدثُ منه
+      setColOptions((p) => ({ ...p, [field]: d }));
+    } catch { /* تُترَك القائمةُ كما هي */ }
+    finally { if (colSeq.current[field] === seq) setColLoading((p) => ({ ...p, [field]: false })); }
+  }, [colParams, statusFilter, sourceFilter, customerFilter, fromDate, toDate]);
+
   const load = useCallback(async () => {
     const mine = guard.begin();
     try {
       const qs = new URLSearchParams({ page: String(page), limit: '25' });
+      colParams(qs);
       if (debounced.trim()) qs.set('q', debounced.trim());
       if (statusFilter) qs.set('status', statusFilter);
       if (sourceFilter) qs.set('source', sourceFilter);
@@ -162,7 +220,7 @@ export default function ShipmentOrdersPage() {
       setError('');
     } catch (e: any) { setError(e?.message || 'Request failed'); }
     setLoading(false);
-  }, [debounced, statusFilter, sourceFilter, customerFilter, fromDate, toDate, page, guard]);
+  }, [debounced, statusFilter, sourceFilter, customerFilter, fromDate, toDate, page, colParams, guard]);
 
   useEffect(() => { load(); }, [load]);
   useSocket('shipmentOrders:updated', useCallback(() => load(), [load]));
@@ -257,6 +315,8 @@ export default function ShipmentOrdersPage() {
   const fetchForExport = async (withFilters: boolean) => {
     const qs = new URLSearchParams({ page: '1', limit: '100000' });
     if (withFilters) {
+      // وفلاترُ الأعمدة منها: ملفٌّ يخالف الشاشةَ أسوأُ من ملفٍّ لا يخرج.
+      colParams(qs);
       if (debounced.trim()) qs.set('q', debounced.trim());
       if (statusFilter) qs.set('status', statusFilter);
       if (sourceFilter) qs.set('source', sourceFilter);
@@ -410,24 +470,43 @@ export default function ShipmentOrdersPage() {
                 onChange={(e) => setPicked(e.target.checked ? new Set(orders.map((o) => o._id)) : new Set())}
                 aria-label={ar ? 'تحديد الكل' : 'Select all'} />
             </th>
-            {[
-              ar ? 'رقم البوليصة' : 'Waybill',
-              ar ? 'العميل' : 'Customer',
+            {([
+              [ar ? 'رقم البوليصة' : 'Waybill', null],
+              [ar ? 'العميل' : 'Customer', 'customerName'],
               // ── «من» و«إلى» عمودان لا سهمٌ في عمود ─────────────────────────
               // «جدة ← الرياض» في خليّةٍ واحدة يُقرأ بالعينين لا بالعين، ويُخطئ
               // في العربيّة خاصّةً: السهمُ يشير إلى اليسار والنصُّ يجري إلى
               // اليمين، فيُقرأ عكسَه. وعمودان يُفرَزان ويُفلتَران ويُصدَّران.
-              ar ? 'من' : 'From',
-              ar ? 'إلى' : 'To',
-              ar ? 'السائق' : 'Driver',
-              ar ? 'تواصل' : 'Contact',
-              ar ? 'الشاحنة' : 'Truck',
-              ar ? 'وقت الاستلام' : 'Pickup',
-              ar ? 'بيع / شراء' : 'Sell / buy',
-              ar ? 'الحالة' : 'Status',
-              ar ? 'ملاحظة' : 'Note',
-              ar ? 'إجراءات' : 'Actions',
-            ].map((h, i) => <th key={i} className="text-start font-semibold px-4 py-3 whitespace-nowrap">{h}</th>)}
+              [ar ? 'من' : 'From', 'fromCity'],
+              [ar ? 'إلى' : 'To', 'toCity'],
+              [ar ? 'السائق' : 'Driver', 'driverName'],
+              [ar ? 'تواصل' : 'Contact', null],
+              [ar ? 'الشاحنة' : 'Truck', 'vehiclePlate'],
+              [ar ? 'وقت الاستلام' : 'Pickup', null],
+              [ar ? 'بيع / شراء' : 'Sell / buy', null],
+              [ar ? 'الحالة' : 'Status', null],
+              [ar ? 'ملاحظة' : 'Note', null],
+              [ar ? 'إجراءات' : 'Actions', null],
+            ] as const).map(([h, col], i) => (
+              <th key={i} className="text-start font-semibold px-4 py-3 whitespace-nowrap">
+                <span className="inline-flex items-center">
+                  {h}
+                  {/* القمعُ يُفتَح فيُطلَب عمودُه وحدَه — لا الأعمدةُ العشرة. */}
+                  {col && (
+                    <ColumnFilter
+                      field={col}
+                      selected={colFilters[col] || EMPTY_SET}
+                      onChange={(set) => setColFilter(col, set)}
+                      onOpen={() => fetchColOptions(col)}
+                      onQuery={(query) => fetchColOptions(col, query)}
+                      options={colOptions[col]?.values || EMPTY_OPTIONS}
+                      loading={!!colLoading[col]}
+                      lang={ar ? 'ar' : 'en'}
+                      format={(v: any) => (v === '__blank__' ? (ar ? '(فارغ)' : '(blank)') : String(v ?? ''))} />
+                  )}
+                </span>
+              </th>
+            ))}
           </tr></thead>
           <tbody>
             {orders.length === 0 ? (

@@ -13,7 +13,7 @@ import '../ui/widgets.dart';
 /// the phone and prints the server's PDF — so a report opened on a phone is the
 /// identical document to one opened on a desktop, down to the letterhead.
 ///
-/// Adding a block kind on the server means adding one case to `_Block` here.
+/// Adding a block kind on the server means adding one case to `ReportBlock` here.
 
 const _icons = <String, IconData>{
   'truck': Icons.local_shipping_outlined,
@@ -145,6 +145,64 @@ class _ReportsScreenState extends State<ReportsScreen> {
       }
     }
     if (mounted) setState(() => _pdfBusy = false);
+  }
+
+  /// ── الفترةُ تُسأل بالطريقة التي يُسأل بها ────────────────────────────────
+  ///
+  /// كان المدى يُختار بتقويمين: من يريد «هذا الشهر» يحسب أوّلَه وآخرَه بيده،
+  /// وآخرُ الشهر ليس رقمًا واحدًا (٢٨ · ٢٩ · ٣٠ · ٣١). فتُعرَض الفتراتُ بأسمائها
+  /// ويُحسَب حدّاها — بنفس أسماء الموقع وحسابِه (`resolvePeriod` في الخادم).
+  static const _presets = <(String, String, String)>[
+    ('today', 'اليوم', 'Today'),
+    ('yesterday', 'أمس', 'Yesterday'),
+    ('this_month', 'هذا الشهر', 'This month'),
+    ('last_month', 'الشهر الماضي', 'Last month'),
+    ('this_quarter', 'هذا الربع', 'This quarter'),
+    ('this_year', 'هذا العام', 'This year'),
+    ('last_year', 'العام الماضي', 'Last year'),
+    ('last_12m', 'آخر ١٢ شهرًا', 'Last 12 months'),
+    ('all', 'كل التاريخ', 'All time'),
+  ];
+
+  void _applyPreset(String key) {
+    final now = DateTime.now();
+    DateTime f;
+    DateTime t = now;
+    switch (key) {
+      case 'today': f = now; break;
+      case 'yesterday': f = now.subtract(const Duration(days: 1)); t = f; break;
+      case 'this_month': f = DateTime(now.year, now.month, 1); t = DateTime(now.year, now.month + 1, 0); break;
+      case 'last_month': f = DateTime(now.year, now.month - 1, 1); t = DateTime(now.year, now.month, 0); break;
+      case 'this_quarter': { final q = (now.month - 1) ~/ 3 * 3 + 1; f = DateTime(now.year, q, 1); t = DateTime(now.year, q + 3, 0); break; }
+      case 'this_year': f = DateTime(now.year, 1, 1); t = DateTime(now.year, 12, 31); break;
+      case 'last_year': f = DateTime(now.year - 1, 1, 1); t = DateTime(now.year - 1, 12, 31); break;
+      case 'all': f = DateTime(2000, 1, 1); break;
+      default: f = DateTime(now.year - 1, now.month, now.day);
+    }
+    setState(() { _from = f; _to = t; });
+    if (_selectedId != null) _build(_selectedId!);
+  }
+
+  Future<void> _pickPeriod() async {
+    final key = await showModalBottomSheet<String>(
+      context: context,
+      builder: (c) => SafeArea(
+        child: ListView(shrinkWrap: true, children: [
+          for (final p in _presets)
+            ListTile(dense: true, title: Text(tr(p.$2, p.$3)), onTap: () => Navigator.pop(c, p.$1)),
+          const Divider(height: 1),
+          ListTile(
+            dense: true,
+            leading: const Icon(Icons.date_range, size: 18),
+            title: Text(tr('من — إلى', 'From — to')),
+            onTap: () => Navigator.pop(c, '#range'),
+          ),
+        ]),
+      ),
+    );
+    if (key == null) return;
+    if (key == '#range') { await _pickRange(); return; }
+    _applyPreset(key);
   }
 
   Future<void> _pickRange() async {
@@ -291,7 +349,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ),
                   const Divider(height: 18),
                   Pressable(
-                    onTap: _pickRange,
+                    onTap: _pickPeriod,
                     child: Row(children: [
                       const Icon(Icons.date_range_outlined, size: 18, color: T.inkSoft),
                       const SizedBox(width: 10),
@@ -340,7 +398,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ),
                 const SizedBox(height: 14),
                 ...List<Map<String, dynamic>>.from(_doc!['blocks'] ?? [])
-                    .map((b) => _Block(block: b)),
+                    .map((b) => ReportBlock(block: b)),
               ] else
                 Padding(
                   padding: const EdgeInsets.only(top: 40),
@@ -355,9 +413,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
 }
 
 /// One report block, drawn to match what the PDF prints.
-class _Block extends StatelessWidget {
+/// كتلةُ وثيقةٍ واحدة — عنوانٌ أو خاناتٌ أو جدول.
+///
+/// عامّةٌ لا خاصّة: المساعدُ يعرض وثيقةَ التقرير نفسَها، فلو رسمها بكودٍ ثانٍ
+/// لاختلفت الشاشتان في عرضِ الشيء الواحد عند أوّل تعديل.
+class ReportBlock extends StatelessWidget {
   final Map<String, dynamic> block;
-  const _Block({required this.block});
+  const ReportBlock({super.key, required this.block});
 
   @override
   Widget build(BuildContext context) {
@@ -431,7 +493,7 @@ class _Block extends StatelessWidget {
         final rows = List.from(block['rows'] ?? []);
         if (rows.isEmpty) {
           final empty = block['emptyText']?.toString();
-          return empty == null ? const SizedBox.shrink() : _Block(block: {'kind': 'note', 'text': empty});
+          return empty == null ? const SizedBox.shrink() : ReportBlock(block: {'kind': 'note', 'text': empty});
         }
         final head = List.from(block['head'] ?? []);
         // A wide table on a phone is a horizontal scroll, not a squeeze.

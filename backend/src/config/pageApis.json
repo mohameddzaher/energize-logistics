@@ -1922,7 +1922,9 @@
     },
     "/system/assistant": {
       "apis": [
-        "/api/assistant/query"
+        "/api/assistant/search",
+        "/api/assistant/sections",
+        "/api/assistant/topics"
       ],
       "wildcard": false
     },

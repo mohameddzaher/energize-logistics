@@ -23,13 +23,70 @@ const {
   SHIPMENT_STATUS_AR, EMPLOYMENT_STATUS_AR, statusLabel,
 } = require('../config/constants');
 const { nameKey, nameRegex } = require('../utils/nameKey');
+// صيغةُ عرض اللوحة واحدةٌ في النظام كلِّه — راجع `utils/plateKey`.
+const { formatPlate } = require('../utils/plateKey');
 
 const COMPANY = 'تنشيط للخدمات اللوجستية · Energize Logistics';
 const T = (ar, en, lang) => (lang === 'en' ? en : ar);
 
 // A period every builder shares. Defaults to the last 12 months, which is the
 // span most of these questions are actually asked over.
+/**
+ * ── الفترةُ تُسأل بالطريقة التي يُسأل بها ────────────────────────────────────
+ *
+ * كانت خانتين: «من» و«إلى». ومَن يريد يومًا بعينه يكتب التاريخ مرّتين، ومَن
+ * يريد شهرًا يحسب أوّلَه وآخرَه بيده — وآخرُ الشهر ليس رقمًا واحدًا (٢٨ · ٢٩ ·
+ * ٣٠ · ٣١)، فمن كتب ٣٠ لفبراير أخذ شهرًا ناقصًا ولم يعرف. والسؤالُ الحقيقيّ
+ * «يوم كذا» أو «شهر كذا» أو «هذا العام».
+ *
+ * فالفترةُ تُطلَب باسمها (`period=this_month`) أو بيومها (`day=YYYY-MM-DD`) أو
+ * بشهرها (`month=YYYY-MM`)، والحدّان يُحسبان هنا وحدَهما — فلا تختلف شاشتان
+ * في معنى «الشهر الماضي»، ولا يُكتب الحسابُ مرّةً في كلّ تقرير.
+ */
+const PERIOD_PRESETS = ['today', 'yesterday', 'this_week', 'this_month', 'last_month', 'this_quarter', 'this_year', 'last_year', 'last_12m', 'all'];
+
+/** أوّلُ الشهر وآخرُه من «YYYY-MM» — واليومُ صفرٌ من التالي هو آخرُ هذا. */
+const monthBounds = (m) => {
+  const [y, mo] = String(m).split('-').map(Number);
+  if (!y || !mo) return null;
+  return { from: `${m}-01`, to: `${m}-${String(new Date(y, mo, 0).getDate()).padStart(2, '0')}` };
+};
+
+/** اسمُ الفترة → حدّاها بتقويم الرياض. */
+function presetBounds(preset) {
+  const key = (d) => {
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  };
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  switch (preset) {
+    case 'today': return { from: key(now), to: key(now) };
+    case 'yesterday': { const d = new Date(now); d.setDate(d.getDate() - 1); return { from: key(d), to: key(d) }; }
+    case 'this_week': { const d = new Date(now); d.setDate(d.getDate() - d.getDay()); return { from: key(d), to: key(now) }; }
+    case 'this_month': return { from: key(new Date(y, m, 1)), to: key(new Date(y, m + 1, 0)) };
+    case 'last_month': return { from: key(new Date(y, m - 1, 1)), to: key(new Date(y, m, 0)) };
+    case 'this_quarter': { const q = Math.floor(m / 3) * 3; return { from: key(new Date(y, q, 1)), to: key(new Date(y, q + 3, 0)) }; }
+    case 'this_year': return { from: key(new Date(y, 0, 1)), to: key(new Date(y, 11, 31)) };
+    case 'last_year': return { from: key(new Date(y - 1, 0, 1)), to: key(new Date(y - 1, 11, 31)) };
+    case 'last_12m': { const d = new Date(now); d.setFullYear(d.getFullYear() - 1); return { from: key(d), to: key(now) }; }
+    // «الكلّ» مخرجٌ صريحٌ من كلّ مدى: من يسأل عن تاريخ المركبة كلِّه يسأله.
+    case 'all': return { from: '2000-01-01', to: key(now) };
+    default: return null;
+  }
+}
+
 function resolvePeriod(query = {}) {
+  // اسمُ الفترة أو يومُها أو شهرُها — ثمّ «من/إلى» لمن أراد مدًى لا اسمَ له.
+  const named = query.period && PERIOD_PRESETS.includes(String(query.period))
+    ? presetBounds(String(query.period))
+    : null;
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(query.day || '')) ? { from: query.day, to: query.day } : null;
+  const month = /^\d{4}-\d{2}$/.test(String(query.month || '')) ? monthBounds(query.month) : null;
+  const picked = named || day || month;
+  if (picked) { query = { ...query, from: picked.from, to: picked.to }; }
+
   // ── الحدُّ بتوقيت الرياض لا بتوقيت الخادم ──────────────────────────────────
   // `new Date('2026-01-01T00:00:00')` بلا منطقةٍ تُقرأ بتوقيت الجهاز الذي
   // يشغّل الخادم: نتيجةٌ على حاسوب المطوّر وأخرى على الخادم، وكلتاهما ليست
@@ -132,7 +189,7 @@ async function buildVehicleReport(id, query, lang) {
   const Ls2TireAsset = require('../models/Ls2TireAsset');
   const { FleetVehicle, FleetShipment } = require('../models/FleetModels');
   const { VehicleMaster } = require('../models/VehicleMaster');
-  const { plateKey, registryPlateKey, formatPlate } = require('../utils/plateKey');
+  const { plateKey, registryPlateKey } = require('../utils/plateKey');
   const { from, to, fromKey, toKey } = resolvePeriod(query);
   const t = (ar, en) => T(ar, en, lang);
 
@@ -2203,6 +2260,340 @@ async function buildTireReport(id, query, lang) {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// شحنةٌ واحدة — قصّةُ بوليصةٍ من طلبها إلى تسليمها
+//
+// ── ولماذا تقريرٌ لشحنةٍ واحدة ──────────────────────────────────────────────
+// يُسأل عن بوليصةٍ بعينها: مَن العميل، ومَن حملها، وبكم بِيعت وبكم اشتُريت،
+// ومتى تحرّكت ومتى وصلت، ومَن غيّر حالتَها ومتى. وكان الجوابُ يُجمَع من ثلاث
+// شاشاتٍ باليد، أو تُصوَّر الشاشةُ وتُرسَل. وهي الورقةُ التي تُطلَب في نزاعٍ
+// مع عميلٍ أو ناقل، فيُحتاج إليها مرتّبةً مختومة.
+async function shipmentOptions(q) {
+  const ShipmentOrder = require('../models/ShipmentOrder');
+  const filter = {};
+  if (q && String(q).trim()) {
+    const n = Number(String(q).trim());
+    filter.$or = [
+      { customerName: nameRegex(q) }, { vehiclePlate: nameRegex(q) }, { driverName: nameRegex(q) },
+      ...(Number.isFinite(n) ? [{ waybillNumber: n }, { graduationNumber: n }] : []),
+    ];
+  }
+  const rows = await ShipmentOrder.find(filter)
+    .select('waybillNumber customerName fromCity toCity vehiclePlate status createdAt')
+    .sort({ createdAt: -1 }).limit(200).lean();
+  return rows.map((o) => ({
+    id: String(o._id),
+    name: `${o.waybillNumber || '—'} · ${o.customerName || ''}`,
+    detail: [`${o.fromCity || '—'} ← ${o.toCity || '—'}`, o.vehiclePlate, statusLabel(SHIPMENT_STATUS_AR, o.status)].filter(Boolean).join(' · '),
+  }));
+}
+
+async function buildShipmentReport(id, query, lang) {
+  const ShipmentOrder = require('../models/ShipmentOrder');
+  const t = (ar, en) => T(ar, en, lang);
+  if (!/^[0-9a-f]{24}$/i.test(String(id))) return null;
+  const o = await ShipmentOrder.findById(id)
+    .populate('customer', 'name phone email')
+    .populate('supplier', 'name type phone')
+    .populate('vehicle', 'plate name brand color truckType operationCardNumber operationCardExpiry')
+    .populate('createdBy', 'firstName lastName')
+    .lean();
+  if (!o) return null;
+
+  const blocks = [];
+  blocks.push({ kind: 'section', text: t('بيانات الشحنة', 'Shipment details') });
+  blocks.push({
+    kind: 'kv',
+    items: [
+      [t('رقم البوليصة', 'Waybill no.'), o.waybillNumber],
+      [t('رقم كشف التخريج', 'Graduation no.'), o.graduationNumber],
+      [t('العميل', 'Customer'), o.customerName || o.customer?.name],
+      [t('جوال العميل', 'Customer phone'), o.customer?.phone],
+      [t('من', 'From'), o.fromCity],
+      [t('إلى', 'To'), o.toCity],
+      [t('عنوان الاستلام', 'Pickup address'), o.addressFrom],
+      [t('عنوان التسليم', 'Delivery address'), o.addressTo],
+      [t('نوع الشاحنة', 'Truck type'), o.truckType],
+      [t('نوع الحمولة', 'Cargo type'), o.cargoType],
+      [t('الكمية', 'Quantity'), o.quantity],
+      [t('الفرع', 'Branch'), o.branch],
+      [t('الحالة', 'Status'), statusLabel(SHIPMENT_STATUS_AR, o.status)],
+      [t('المندوب', 'Agent'), o.agentName],
+      [t('أنشأها', 'Created by'), o.createdBy ? `${o.createdBy.firstName || ''} ${o.createdBy.lastName || ''}`.trim() : null],
+      [t('تاريخ الإنشاء', 'Created at'), o.createdAt ? dtm(o.createdAt) : null],
+    ],
+  });
+
+  blocks.push({ kind: 'section', text: t('الناقل والسائق', 'Carrier & driver') });
+  blocks.push({
+    kind: 'kv',
+    items: [
+      [t('المورّد', 'Supplier'), o.supplierName || o.supplier?.name || (o.vehicle ? t('غير مسجَّل', 'not recorded') : null)],
+      [t('جوال المورّد', 'Supplier phone'), o.supplier?.phone],
+      [t('اللوحة', 'Plate'), formatPlate(o.vehiclePlate || o.vehicle?.plate)],
+      [t('الماركة', 'Brand'), o.vehicle?.brand],
+      [t('اللون', 'Colour'), o.vehicle?.color],
+      [t('بطاقة التشغيل', 'Operation card'), o.vehicle?.operationCardNumber],
+      [t('انتهاؤها', 'Card expiry'), o.vehicle?.operationCardExpiry],
+      [t('السائق', 'Driver'), o.driverName],
+      [t('جواله', 'Driver phone'), o.driverPhone],
+    ],
+  });
+
+  blocks.push({ kind: 'section', text: t('المواعيد والمال', 'Timing & money') });
+  blocks.push({
+    kind: 'kv',
+    items: [
+      [t('وقت الاستلام', 'Pickup'), o.pickupTime ? dt(o.pickupTime) : null],
+      [t('وقت البداية', 'Start'), o.startTime ? dt(o.startTime) : null],
+      [t('وقت الوصول', 'Arrival'), o.arrivalTime ? dt(o.arrivalTime) : null],
+      [t('سعر البيع', 'Sell price'), o.sellPrice != null ? money(o.sellPrice) : null],
+      [t('سعر الشراء', 'Buy price'), o.buyPrice != null ? money(o.buyPrice) : null],
+      [t('الهامش', 'Margin'), (o.sellPrice != null && o.buyPrice != null) ? money(Number(o.sellPrice) - Number(o.buyPrice)) : null],
+      [t('نوع تأجير السائق', 'Rental type'), o.driverRentType],
+      [t('طريقة الدفع', 'Payment'), o.paymentMethod],
+      [t('سلفة السائق', 'Driver advance'), o.driverRentPrice != null ? money(o.driverRentPrice) : null],
+    ],
+  });
+
+  // ── ومسيرةُ الحالة: مَن قال «وصلت» ومتى ───────────────────────────────────
+  // الحالةُ الحاليّةُ تقول أين هي الآن، ولا تقول كم بقيت في كلّ مرحلةٍ ولا مَن
+  // حرّكها — وهو ما يُسأل عنه في النزاع.
+  const hist = Array.isArray(o.statusHistory) ? o.statusHistory : [];
+  if (hist.length) {
+    blocks.push({ kind: 'section', text: t('مسيرة الحالة', 'Status trail') });
+    blocks.push({
+      kind: 'table',
+      head: [t('الحالة', 'Status'), t('متى', 'When'), t('مَن', 'By'), t('ملاحظة', 'Note')],
+      rows: hist.map((h) => [
+        statusLabel(SHIPMENT_STATUS_AR, h.status),
+        h.at ? dtm(h.at) : '—',
+        h.byName || '—',
+        h.note || '—',
+      ]),
+    });
+  }
+
+  if (o.notes) {
+    blocks.push({ kind: 'section', text: t('ملاحظات', 'Notes') });
+    blocks.push({ kind: 'text', text: o.notes });
+  }
+
+  return {
+    title: t('تقرير شحنة', 'Shipment Report'),
+    subtitle: `${t('بوليصة', 'Waybill')} ${o.waybillNumber || ''} · ${o.customerName || ''}`,
+    meta: { waybill: o.waybillNumber },
+    blocks,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ناقلٌ (مورّدُ شاحنات) — شاحناتُه وسوّاقُه وما حمله لنا
+async function carrierOptions(q) {
+  const Sup = require('../models/ShipmentOrderSupplier');
+  const rows = await Sup.find({ isActive: { $ne: false }, ...(q ? { name: nameRegex(q) } : {}) })
+    .select('name type phone commercialRegister').sort({ name: 1 }).limit(300).lean();
+  return rows.map((v) => ({
+    id: String(v._id),
+    name: v.name,
+    detail: [v.type === 'freelancer' ? 'فريلانسر' : 'شركة', v.phone, v.commercialRegister].filter(Boolean).join(' · '),
+  }));
+}
+
+async function buildCarrierReport(id, query, lang) {
+  const Sup = require('../models/ShipmentOrderSupplier');
+  const Veh = require('../models/ShipmentOrderVehicle');
+  const Drv = require('../models/ShipmentOrderDriver');
+  const ShipmentOrder = require('../models/ShipmentOrder');
+  const { from, to, fromKey, toKey } = resolvePeriod(query);
+  const t = (ar, en) => T(ar, en, lang);
+  if (!/^[0-9a-f]{24}$/i.test(String(id))) return null;
+  const sup = await Sup.findById(id).lean();
+  if (!sup) return null;
+
+  const [vehicles, drivers, orders] = await Promise.all([
+    Veh.find({ supplier: sup._id, isActive: { $ne: false } }).select('plate brand color truckType operationCardExpiry defaultDriverName').sort({ plate: 1 }).lean(),
+    Drv.find({ supplier: sup._id, isActive: { $ne: false } }).select('name phone residenceNumber nationality driverCardExpiry vehicle').sort({ name: 1 }).lean(),
+    ShipmentOrder.find({ supplier: sup._id, createdAt: { $gte: from, $lte: to } })
+      .select('waybillNumber customerName fromCity toCity vehiclePlate buyPrice status createdAt').sort({ createdAt: -1 }).limit(400).lean(),
+  ]);
+
+  const blocks = [];
+  blocks.push({ kind: 'section', text: t('بيانات الناقل', 'Carrier details') });
+  blocks.push({
+    kind: 'kv',
+    items: [
+      [t('الاسم', 'Name'), sup.name],
+      [t('النوع', 'Type'), sup.type === 'freelancer' ? t('فريلانسر', 'Freelancer') : t('شركة', 'Company')],
+      [t('الجوال', 'Phone'), sup.phone],
+      [t('البريد', 'Email'), sup.email],
+      [t('السجل التجاري', 'CR'), sup.commercialRegister],
+      [t('البطاقة الضريبية', 'Tax card'), sup.taxCard],
+      [t('العنوان الوطني', 'National address'), sup.nationalAddress],
+      [t('البنك', 'Bank'), sup.bankName],
+      [t('الآيبان', 'IBAN'), sup.iban],
+      [t('المالك', 'Owner'), sup.ownerName],
+      [t('جوال المالك', 'Owner phone'), sup.ownerPhone],
+      [t('المدير', 'Manager'), sup.managerName],
+      [t('جوال المدير', 'Manager phone'), sup.managerPhone],
+      [t('المحاسب', 'Accountant'), sup.accountantName],
+      [t('جوال المحاسب', 'Accountant phone'), sup.accountantPhone],
+      [t('شروط السداد', 'Payment terms'), sup.paymentTerms],
+      [t('عدد شاحناته', 'Trucks'), vehicles.length],
+      [t('عدد سوّاقه', 'Drivers'), drivers.length],
+    ],
+  });
+
+  if (vehicles.length) {
+    blocks.push({ kind: 'section', text: t('شاحناته', 'His trucks') });
+    blocks.push({
+      kind: 'table',
+      head: [t('اللوحة', 'Plate'), t('الماركة', 'Brand'), t('اللون', 'Colour'), t('النوع', 'Type'), t('بطاقة التشغيل', 'Op. card'), t('سائقها', 'Driver')],
+      rows: vehicles.slice(0, 120).map((v) => [
+        formatPlate(v.plate), v.brand || '—', v.color || '—', v.truckType || '—',
+        (v.operationCardExpiry || '').slice(0, 10) || '—', v.defaultDriverName || '—',
+      ]),
+    });
+  }
+
+  if (drivers.length) {
+    blocks.push({ kind: 'section', text: t('سوّاقه', 'His drivers') });
+    blocks.push({
+      kind: 'table',
+      head: [t('الاسم', 'Name'), t('الجوال', 'Phone'), t('الإقامة', 'Iqama'), t('الجنسية', 'Nationality'), t('انتهاء بطاقة التشغيل', 'Card expiry')],
+      rows: drivers.slice(0, 120).map((d) => [
+        d.name, d.phone || '—', d.residenceNumber || '—', d.nationality || '—', (d.driverCardExpiry || '').slice(0, 10) || '—',
+      ]),
+    });
+  }
+
+  blocks.push({ kind: 'section', text: `${t('ما حمله لنا', 'Loads carried for us')} · ${fromKey} → ${toKey}` });
+  const paid = orders.reduce((n, o) => n + (Number(o.buyPrice) || 0), 0);
+  blocks.push({
+    kind: 'kv',
+    items: [
+      [t('عدد الشحنات', 'Shipments'), orders.length],
+      [t('إجمالي ما نستحقّ عليه دفعُه', 'Total payable'), money(paid)],
+      [t('متوسّط الشحنة', 'Average per load'), orders.length ? money(Math.round(paid / orders.length)) : null],
+    ],
+  });
+  if (orders.length) {
+    blocks.push({
+      kind: 'table',
+      head: [t('البوليصة', 'Waybill'), t('العميل', 'Customer'), t('المسار', 'Route'), t('اللوحة', 'Plate'), t('الشراء', 'Buy'), t('الحالة', 'Status'), t('التاريخ', 'Date')],
+      rows: orders.slice(0, 200).map((o) => [
+        o.waybillNumber || '—', o.customerName || '—',
+        `${o.fromCity || '—'} ← ${o.toCity || '—'}`, formatPlate(o.vehiclePlate) || '—',
+        o.buyPrice != null ? money(o.buyPrice) : '—',
+        statusLabel(SHIPMENT_STATUS_AR, o.status), o.createdAt ? dt(o.createdAt) : '—',
+      ]),
+    });
+  }
+
+  return {
+    title: t('تقرير ناقل', 'Carrier Report'),
+    subtitle: sup.name,
+    meta: { period: `${fromKey} → ${toKey}` },
+    blocks,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// مندوبُ النقل الخفيف — ملفُّه ومركبتُه وتفقّداتُه
+async function riderOptions(q) {
+  const { LightTransportEmployee } = require('../models/LightTransport');
+  const rows = await LightTransportEmployee
+    .find({ isActive: { $ne: false }, ...(q ? { $or: [{ name: nameRegex(q) }, { idNumber: nameRegex(q) }, { vehiclePlate: nameRegex(q) }] } : {}) })
+    .select('name idNumber jobTitleAr cityAr projectAr vehiclePlate').sort({ name: 1 }).limit(400).lean();
+  return rows.map((e) => ({
+    id: String(e._id),
+    name: e.name,
+    detail: [e.idNumber, e.jobTitleAr, e.cityAr, e.projectAr, e.vehiclePlate].filter(Boolean).join(' · '),
+  }));
+}
+
+async function buildRiderReport(id, query, lang) {
+  const { LightTransportEmployee } = require('../models/LightTransport');
+  const B2CDutyCheck = require('../models/B2CDutyCheck');
+  const { from, to, fromKey, toKey } = resolvePeriod(query);
+  const t = (ar, en) => T(ar, en, lang);
+  if (!/^[0-9a-f]{24}$/i.test(String(id))) return null;
+  const e = await LightTransportEmployee.findById(id)
+    .populate('supervisorUser', 'firstName lastName')
+    .populate('dutySupervisorUser', 'firstName lastName')
+    .lean();
+  if (!e) return null;
+
+  const who = (u, fallback) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : fallback || null);
+  const blocks = [];
+  blocks.push({ kind: 'section', text: t('بيانات المندوب', 'Rider details') });
+  blocks.push({
+    kind: 'kv',
+    items: [
+      [t('الاسم', 'Name'), e.name],
+      [t('رقم الهوية', 'ID number'), e.idNumber],
+      [t('الجنسية', 'Nationality'), e.nationalityAr],
+      [t('المسمّى الوظيفي', 'Job title'), e.jobTitleAr],
+      [t('المدينة', 'City'), e.cityAr],
+      [t('المشروع', 'Project'), e.projectAr],
+      [t('نوع التعاقد', 'Contract'), e.contractTypeAr],
+      [t('الجوال', 'Phone'), e.phone],
+      [t('المشرف التشغيلي', 'Ops supervisor'), who(e.supervisorUser, e.supervisorName)],
+      [t('مشرف التفقّد', 'Duty supervisor'), who(e.dutySupervisorUser, e.dutySupervisorName)],
+      [t('السكن', 'Housing'), e.housingAr],
+    ],
+  });
+
+  blocks.push({ kind: 'section', text: t('المركبة', 'Vehicle') });
+  blocks.push({
+    kind: 'kv',
+    items: [
+      [t('اللوحة', 'Plate'), formatPlate(e.vehiclePlate)],
+      [t('نوع المركبة', 'Vehicle type'), e.vehicleTypeAr],
+      [t('المفوَّض', 'Authorised person'), e.authorizedPersonName],
+      [t('رقم هويته', 'His ID'), e.authorizedPersonId],
+      [t('القائد الفعلي', 'Actual driver'), e.actualDriverName],
+      [t('رقم هويته', 'His ID'), e.actualDriverId],
+      [t('انتهاء كرت التشغيل', 'Operation card expiry'), e.operationCardExpiry ? dt(e.operationCardExpiry) : null],
+      [t('انتهاء الفحص', 'Inspection expiry'), e.inspectionExpiry ? dt(e.inspectionExpiry) : null],
+    ],
+  });
+
+  // ── تفقّدُ بداية الدوام في الفترة ──────────────────────────────────────────
+  // الالتزامُ يُقاس بالأيّام التي خرج فيها بتفقّدٍ مقابل أيّام الفترة، ومَن
+  // مُنع من الخروج أو لم يحضر يُقال بسببه كما كُتب وقتَه.
+  const checks = await B2CDutyCheck.find({ ltEmployee: e._id, dateKey: { $gte: fromKey, $lte: toKey } })
+    .select('dateKey outcome supervisorName notes photos vehiclePlate').sort({ dateKey: -1 }).limit(200).lean();
+  blocks.push({ kind: 'section', text: `${t('تفقّد بداية الدوام', 'Duty start checks')} · ${fromKey} → ${toKey}` });
+  const OUT = { started: t('بدأ الدوام', 'Started'), absent: t('لم يحضر', 'Absent'), blocked: t('مُنع', 'Blocked') };
+  blocks.push({
+    kind: 'kv',
+    items: [
+      [t('عدد التفقّدات', 'Checks'), checks.length],
+      [t('بدأ الدوام', 'Started'), checks.filter((c) => c.outcome === 'started').length],
+      [t('لم يحضر', 'Absent'), checks.filter((c) => c.outcome === 'absent').length],
+      [t('مُنع من الخروج', 'Blocked'), checks.filter((c) => c.outcome === 'blocked').length],
+    ],
+  });
+  if (checks.length) {
+    blocks.push({
+      kind: 'table',
+      head: [t('اليوم', 'Day'), t('الحالة', 'Outcome'), t('مَن تفقّده', 'Checked by'), t('الصور', 'Photos'), t('ملاحظة', 'Note')],
+      rows: checks.slice(0, 120).map((c) => [
+        c.dateKey, OUT[c.outcome] || c.outcome || '—', c.supervisorName || '—',
+        String((c.photos || []).length), c.notes || '—',
+      ]),
+    });
+  }
+
+  return {
+    title: t('تقرير مندوب', 'Rider Report'),
+    subtitle: `${e.name}${e.idNumber ? ` · ${e.idNumber}` : ''}`,
+    meta: { period: `${fromKey} → ${toKey}` },
+    blocks,
+  };
+}
+
 const SUBJECTS = [
   { key: 'vehicle', ar: 'مركبة', en: 'Vehicle', icon: 'truck', options: vehicleOptions, build: buildVehicleReport, searchable: true },
   { key: 'tire', ar: 'فردة كاوتش', en: 'Tire', icon: 'circle', options: tireOptions, build: buildTireReport, searchable: true },
@@ -2213,9 +2604,16 @@ const SUBJECTS = [
   { key: 'section', ar: 'قسم', en: 'Department', icon: 'layers', options: sectionOptions, build: buildSectionReport, searchable: false },
   // userScoped: the list of meetings you may print depends on who you are.
   { key: 'meeting', ar: 'محضر اجتماع', en: 'Meeting minutes', icon: 'calendar', options: meetingOptions, build: buildMeetingReport, searchable: true, userScoped: true },
+  // ── مواضيعُ أُضيفت بعد أن صار في النظام ما يُجيب عنها ──────────────────────
+  // الشحنةُ الواحدة: ورقةٌ تُطلَب في نزاعٍ مع عميلٍ أو ناقل. والناقلُ: شاحناتُه
+  // وسوّاقُه وما حمله لنا — وهي سجلّاتٌ لم تكن موجودةً قبل استيراد الناقلين.
+  // والمندوب: ملفُّه ومركبتُه والتزامُه بتفقّد بداية الدوام.
+  { key: 'shipment', ar: 'شحنة', en: 'Shipment', icon: 'file', options: shipmentOptions, build: buildShipmentReport, searchable: true },
+  { key: 'carrier', ar: 'ناقل (مورّد شاحنات)', en: 'Carrier', icon: 'store', options: carrierOptions, build: buildCarrierReport, searchable: true },
+  { key: 'rider', ar: 'مندوب نقل خفيف', en: 'Rider', icon: 'user', options: riderOptions, build: buildRiderReport, searchable: true },
 ];
 
 const getSubject = (key) => SUBJECTS.find((s) => s.key === key) || null;
 const subjectMeta = () => SUBJECTS.map((s) => ({ key: s.key, ar: s.ar, en: s.en, icon: s.icon, searchable: s.searchable }));
 
-module.exports = { SUBJECTS, SECTION_REPORTS, getSubject, subjectMeta, resolvePeriod, COMPANY };
+module.exports = { SUBJECTS, SECTION_REPORTS, getSubject, subjectMeta, resolvePeriod, PERIOD_PRESETS, COMPANY };

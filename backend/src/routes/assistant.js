@@ -1,6 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const authenticate = require('../middleware/auth');
+
+/**
+ * ── المساعدُ الجديدُ أوّلًا ──────────────────────────────────────────────────
+ *
+ * هذه المساراتُ هي المساعد: حوارٌ موجَّهٌ على مواضيع مركز التقارير وصلاحيّاته —
+ * راجع `controllers/assistantController`. وهي مفتوحةٌ لكلّ حسابٍ داخليّ لأنّ
+ * **ما يراه كلٌّ محسومٌ بمصفوفة صلاحيّات الأقسام** داخلَها، لا بقائمة أدوارٍ
+ * على الباب.
+ *
+ * وما تحتها (`/query`) بقايا المساعد القديم: مطابقةُ عباراتٍ إنجليزيّةٍ على
+ * جداولَ ماليّةٍ أكثرُها زال. تبقى حتى تُزال واجهتُها، وحارسُها الماليُّ القديم
+ * يُطبَّق عليها وحدَها — لا على الجديد.
+ */
+const assistant = require('../controllers/assistantController');
+router.get('/sections', authenticate, assistant.sections);
+router.get('/search', authenticate, assistant.search);
+router.get('/topics/:topic/options', authenticate, assistant.options);
+router.get('/topics/:topic/:id', authenticate, assistant.answer);
+
 const Customer = require('../models/Customer');
 const Invoice = require('../models/Invoice');
 const Payment = require('../models/Payment');

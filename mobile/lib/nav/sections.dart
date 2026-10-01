@@ -66,6 +66,7 @@ import '../screens/ls2_store.dart';
 import '../screens/settings_screen.dart';
 import '../screens/performance_evaluations.dart';
 import '../screens/scorecards.dart';
+import '../screens/assistant.dart';
 import '../screens/reports.dart';
 import '../screens/business_review.dart';
 import '../screens/portal.dart';
@@ -565,6 +566,9 @@ List<AppPage> selfServicePages(bool hasTeam, {bool isPartner = false}) => isPart
       AppPage('ملفي', 'My Profile', Icons.account_circle_outlined, (c) => const MyProfileScreen()),
       AppPage('الإشعارات', 'Notifications', Icons.notifications_outlined, (c) => const NotificationsScreen()),
       AppPage('مركز التقارير', 'Reports', Icons.assessment_outlined, (c) => const ReportsScreen()),
+      // المساعد: سؤالٌ عن أيّ شيءٍ في النظام — مواضيعُه وصلاحيّاتُه من مركز
+      // التقارير نفسِه، فلا يعرف شيئًا من عنده ولا يُري أحدًا ما لا يملك.
+      AppPage('المساعد', 'Assistant', Icons.auto_awesome_outlined, (c) => const AssistantScreen(), path: '/system/assistant'),
       AppPage('إجازاتي', 'My Leaves', Icons.beach_access_outlined, (c) => const MyLeavesScreen()),
       AppPage('طلباتي', 'My Requests', Icons.description_outlined, (c) => const MyRequestsScreen()),
       if (hasTeam) AppPage('موافقات فريقي', 'Team Approvals', Icons.fact_check_outlined, (c) => const ApprovalsScreen()),

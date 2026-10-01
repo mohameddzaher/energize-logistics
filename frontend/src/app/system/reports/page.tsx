@@ -17,7 +17,7 @@ import { PageHeader } from '@/components/hr/HRKit';
 import ReportView from '@/components/system/ReportView';
 import type { ReportDoc } from '@/components/system/ReportView';
 import {
-  listSubjects, listOptions, fetchReport, openReportPdf, defaultRange,
+  listSubjects, listOptions, fetchReport, openReportPdf, defaultRange, PERIOD_PRESETS, presetRange, monthRange,
   SUBJECT_HINT, type ReportSubject, type ReportOption,
 } from '@/lib/reports';
 
@@ -41,6 +41,8 @@ function ReportsInner() {
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState<string>(sp?.get('id') || '');
+  // نوعُ اختيار الفترة: اسمٌ جاهز، أو يومٌ، أو شهرٌ، أو مدًى حرّ.
+  const [mode, setMode] = useState<'preset' | 'day' | 'month' | 'range'>('preset');
   const [range, setRange] = useState(() => ({
     from: sp?.get('from') || defaultRange().from,
     to: sp?.get('to') || defaultRange().to,
@@ -164,17 +166,62 @@ function ReportsInner() {
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-5 items-start">
         {/* 2 — who, and over what period */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3 lg:sticky lg:top-4">
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block">
-              <span className="text-[11px] text-slate-500">{tx('From', 'من')}</span>
-              <input type="date" value={range.from} onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))}
-                className="w-full mt-1 px-2 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-800" />
-            </label>
-            <label className="block">
-              <span className="text-[11px] text-slate-500">{tx('To', 'إلى')}</span>
-              <input type="date" value={range.to} onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))}
-                className="w-full mt-1 px-2 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-800" />
-            </label>
+          {/* ── الفترةُ تُسأل بالطريقة التي يُسأل بها ────────────────────────
+              كانت خانتين فقط، فمن يريد يومًا يكتب التاريخ مرّتين، ومن يريد
+              شهرًا يحسب آخرَه بيده — وهو ٢٨ أو ٢٩ أو ٣٠ أو ٣١. فصارت تُختار
+              باسمها أو بيومها أو بشهرها، و«من/إلى» تبقى لمدًى لا اسمَ له. */}
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-1">
+              {PERIOD_PRESETS.map((p) => (
+                <button key={p.key} type="button"
+                  onClick={() => { const r = presetRange(p.key); if (r) { setMode('preset'); setRange(r); } }}
+                  className={`px-2 py-1 rounded-lg border text-[11px] font-semibold ${
+                    range.from === presetRange(p.key)?.from && range.to === presetRange(p.key)?.to
+                      ? 'border-[#f37121] bg-[#f37121] text-white'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}>
+                  {ar ? p.ar : p.en}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1.5 text-[11px]">
+              {(['day', 'month', 'range'] as const).map((k) => (
+                <button key={k} type="button" onClick={() => setMode(k)}
+                  className={`px-2 py-1 rounded-lg border font-semibold ${
+                    mode === k ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-500'}`}>
+                  {k === 'day' ? tx('A day', 'يوم') : k === 'month' ? tx('A month', 'شهر') : tx('From — to', 'من — إلى')}
+                </button>
+              ))}
+            </div>
+            {mode === 'day' && (
+              <label className="block">
+                <span className="text-[11px] text-slate-500">{tx('Day', 'اليوم')}</span>
+                <input type="date" value={range.from}
+                  onChange={(e) => setRange({ from: e.target.value, to: e.target.value })}
+                  className="w-full mt-1 px-2 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-800" />
+              </label>
+            )}
+            {mode === 'month' && (
+              <label className="block">
+                <span className="text-[11px] text-slate-500">{tx('Month', 'الشهر')}</span>
+                <input type="month" value={range.from.slice(0, 7)}
+                  onChange={(e) => { const r = monthRange(e.target.value); if (r) setRange(r); }}
+                  className="w-full mt-1 px-2 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-800" />
+              </label>
+            )}
+            {(mode === 'range' || mode === 'preset') && (
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="text-[11px] text-slate-500">{tx('From', 'من')}</span>
+                  <input type="date" value={range.from} onChange={(e) => { setMode('range'); setRange((r) => ({ ...r, from: e.target.value })); }}
+                    className="w-full mt-1 px-2 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-800" />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] text-slate-500">{tx('To', 'إلى')}</span>
+                  <input type="date" value={range.to} onChange={(e) => { setMode('range'); setRange((r) => ({ ...r, to: e.target.value })); }}
+                    className="w-full mt-1 px-2 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-800" />
+                </label>
+              </div>
+            )}
           </div>
 
           {current?.searchable && (

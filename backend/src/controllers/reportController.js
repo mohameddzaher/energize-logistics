@@ -60,6 +60,12 @@ const SUBJECT_SECTIONS = {
   meeting: ['Business Review'],
   // تقريرُ القسم يُصدره صاحبُ كلِّ قسمٍ عن قسمِه، فلا يُقيَّد بقسمٍ بعينه.
   section: null,
+  // ── والمواضيعُ المضافة ────────────────────────────────────────────────────
+  // الشحنةُ والناقلُ يخصّان قسمَ طلبات الشحنات ومعه المحاسبةُ والتحصيل (الورقةُ
+  // تُطلَب في نزاعٍ ماليّ)، والمندوبُ يخصّ B2C والمواردَ البشريّة.
+  shipment: ['Shipment Orders', 'Accounting', 'Collections'],
+  carrier: ['Shipment Orders', 'Procurement', 'Accounting'],
+  rider: ['B2C', 'HR'],
 };
 
 const { getOverride } = require('../utils/permissions');

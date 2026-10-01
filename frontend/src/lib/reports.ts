@@ -56,6 +56,57 @@ export function defaultRange() {
   return { from: iso(from), to: iso(to) };
 }
 
+/**
+ * ── الفترةُ تُسأل بالطريقة التي يُسأل بها ────────────────────────────────────
+ *
+ * كانت خانتين: «من» و«إلى». ومَن يريد يومًا بعينه يكتب التاريخ مرّتين، ومَن
+ * يريد شهرًا يحسب أوّلَه وآخرَه بيده — وآخرُ الشهر ليس رقمًا واحدًا (٢٨ · ٢٩ ·
+ * ٣٠ · ٣١). فتُختار الفترةُ باسمها، والحدّان يُحسبان — ونظيرُ هذا الحساب في
+ * الخادم (`resolvePeriod`) فلا تختلف شاشتان في معنى «الشهر الماضي».
+ */
+export const PERIOD_PRESETS: { key: string; ar: string; en: string }[] = [
+  { key: 'today', ar: 'اليوم', en: 'Today' },
+  { key: 'yesterday', ar: 'أمس', en: 'Yesterday' },
+  { key: 'this_week', ar: 'هذا الأسبوع', en: 'This week' },
+  { key: 'this_month', ar: 'هذا الشهر', en: 'This month' },
+  { key: 'last_month', ar: 'الشهر الماضي', en: 'Last month' },
+  { key: 'this_quarter', ar: 'هذا الربع', en: 'This quarter' },
+  { key: 'this_year', ar: 'هذا العام', en: 'This year' },
+  { key: 'last_year', ar: 'العام الماضي', en: 'Last year' },
+  { key: 'last_12m', ar: 'آخر ١٢ شهرًا', en: 'Last 12 months' },
+  { key: 'all', ar: 'كل التاريخ', en: 'All time' },
+];
+
+/** حدّا فترةٍ باسمها — بتقويم الجهاز، كما يحسبها الخادم. */
+export function presetRange(preset: string): { from: string; to: string } | null {
+  const p = (n: number) => String(n).padStart(2, '0');
+  const key = (d: Date) => `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  switch (preset) {
+    case 'today': return { from: key(now), to: key(now) };
+    case 'yesterday': { const d = new Date(now); d.setDate(d.getDate() - 1); return { from: key(d), to: key(d) }; }
+    case 'this_week': { const d = new Date(now); d.setDate(d.getDate() - d.getDay()); return { from: key(d), to: key(now) }; }
+    case 'this_month': return { from: key(new Date(y, m, 1)), to: key(new Date(y, m + 1, 0)) };
+    case 'last_month': return { from: key(new Date(y, m - 1, 1)), to: key(new Date(y, m, 0)) };
+    case 'this_quarter': { const q = Math.floor(m / 3) * 3; return { from: key(new Date(y, q, 1)), to: key(new Date(y, q + 3, 0)) }; }
+    case 'this_year': return { from: key(new Date(y, 0, 1)), to: key(new Date(y, 11, 31)) };
+    case 'last_year': return { from: key(new Date(y - 1, 0, 1)), to: key(new Date(y - 1, 11, 31)) };
+    case 'last_12m': { const d = new Date(now); d.setFullYear(d.getFullYear() - 1); return { from: key(d), to: key(now) }; }
+    case 'all': return { from: '2000-01-01', to: key(now) };
+    default: return null;
+  }
+}
+
+/** شهرٌ «YYYY-MM» → أوّلُه وآخرُه — واليومُ صفرٌ من التالي هو آخرُ هذا. */
+export function monthRange(month: string): { from: string; to: string } | null {
+  const [y, mo] = String(month).split('-').map(Number);
+  if (!y || !mo) return null;
+  const last = new Date(y, mo, 0).getDate();
+  return { from: `${month}-01`, to: `${month}-${String(last).padStart(2, '0')}` };
+}
+
 export const SUBJECT_HINT: Record<string, { ar: string; en: string }> = {
   vehicle: { ar: 'التتبّع والصيانة والحمولات والدخل لمركبة واحدة', en: 'Telemetry, maintenance, loads and income for one truck' },
   driver: { ar: 'الرحلات ومدة الوصول والتحميل والحمولات المنفَّذة', en: 'Trips, delivery and loading time, and the loads carried' },
@@ -66,5 +117,21 @@ export const SUBJECT_HINT: Record<string, { ar: string; en: string }> = {
   meeting: {
     ar: 'محضر رسمي كامل: الحضور والاعتذارات، المحضر، البنود والتكليفات، وخانات التوقيع',
     en: 'The official record: attendance and excuses, minutes, actions and delegations, with signature lines',
+  },
+  shipment: {
+    ar: 'بوليصةٌ واحدة من طلبها إلى تسليمها: العميل والناقل والسائق والمال ومسيرة الحالة',
+    en: 'One waybill end to end: customer, carrier, driver, money and the status trail',
+  },
+  carrier: {
+    ar: 'ناقلٌ بشاحناته وسوّاقه وأوراقه، وما حمله لنا في الفترة وما نستحقّ دفعَه',
+    en: 'A carrier with his trucks, drivers and paperwork, what he carried and what we owe',
+  },
+  rider: {
+    ar: 'مندوبٌ بملفّه ومركبته والتزامه بتفقّد بداية الدوام في الفترة',
+    en: 'A rider: his file, his vehicle and his duty-check compliance over the period',
+  },
+  tire: {
+    ar: 'فردةُ كاوتش بسجلّها: أين رُكّبت ومتى، وما جرى لها',
+    en: 'One tire and its history: where it was fitted, when, and what happened to it',
   },
 };

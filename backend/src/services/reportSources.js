@@ -132,7 +132,7 @@ async function buildVehicleReport(id, query, lang) {
   const Ls2TireAsset = require('../models/Ls2TireAsset');
   const { FleetVehicle, FleetShipment } = require('../models/FleetModels');
   const { VehicleMaster } = require('../models/VehicleMaster');
-  const { plateKey, registryPlateKey } = require('../utils/plateKey');
+  const { plateKey, registryPlateKey, formatPlate } = require('../utils/plateKey');
   const { from, to, fromKey, toKey } = resolvePeriod(query);
   const t = (ar, en) => T(ar, en, lang);
 
@@ -164,12 +164,31 @@ async function buildVehicleReport(id, query, lang) {
   let reg = wantedReg
     ? await VehicleMaster.findOne({ $or: [{ plateKey: wantedReg }, { plateNumber: String(id).trim() }] }).lean()
     : null;
-  // وأخيرًا بالأرقام — لكن فقط إن لم يكن الرقمُ متصادمًا في السجلّ.
+  // ── وأخيرًا بالأرقام، والتصادمُ يُحسَم بالقطاع لا بالحظّ ──────────────────
+  //
+  // لوكيشن سوليوشن تكتب اللوحةَ باللاتينيّة («1080 RXA») وسجلُّ المركبات
+  // بالعربيّة («أ ص ر 1080»)، فلا يلتقي المفتاحان. ويبقى التطابقُ بالأرقام،
+  // وهي تتصادم: «١٠٨٠» تريلا في النقل الثقيل ودرّاجةٌ في النقل الخفيف. وكان
+  // التصادمُ يُترَك — وهو صوابٌ في نفسه، إذ لا تُقيَّد بياناتُ درّاجةٍ على
+  // تريلا — لكنّه كان يُخرج تقريرَ الشاحنة بلا رقمٍ تسلسليٍّ ولا قطاعٍ ولا
+  // مستندات، وهي مكتوبةٌ في السجلّ.
+  //
+  // والحاسمُ موجود: لوكيشن سوليوشن مرآةُ أسطولنا الثقيل وحدَه (ثمانٍ وخمسون
+  // شاحنة)، فلا تكون وحدةٌ فيها درّاجةً أبدًا. فمن جاء من هناك يُطابَق في
+  // النقل الثقيل، فيبقى التصادمُ محسومًا بسببٍ لا بترجيح.
   if (!reg && (ls2 || fleet)) {
     const digits = plateKey((ls2 || fleet).plate);
     if (digits) {
-      const hits = await VehicleMaster.find({ plateKey: new RegExp(`${digits}$`) }).limit(2).lean();
+      // والأرقامُ تُطلَب أينما وقعت في المفتاح ثمّ تُطابَق بالضبط: اللوحةُ
+      // تُكتب «أ ص ر 1080» فينتهي مفتاحُها بالأرقام، وتُكتب «1611 ب ق ب»
+      // فينتهي بالحروف — ومطابقةُ «تنتهي بالأرقام» وحدَها تُسقط الثانية.
+      const candidates = await VehicleMaster.find({ plateKey: new RegExp(digits) }).limit(20).lean();
+      const hits = candidates.filter((v) => plateKey(v.plateNumber) === digits);
       if (hits.length === 1) [reg] = hits;
+      else if (hits.length > 1) {
+        const heavy = hits.filter((v) => /ثقيل/.test(String(v.sectorAr || '')));
+        if (heavy.length === 1) [reg] = heavy;
+      }
     }
   }
 
@@ -183,7 +202,7 @@ async function buildVehicleReport(id, query, lang) {
   blocks.push({
     kind: 'kv',
     items: [
-      [t('رقم اللوحة', 'Plate'), plate],
+      [t('رقم اللوحة', 'Plate'), formatPlate(plate)],
       [t('الاسم في النظام', 'Unit name'), ls2?.name || fleet?.name],
       [t('نوع المركبة', 'Vehicle type'), reg?.vehicleTypeAr],
       [t('القطاع', 'Sector'), reg?.sectorAr],

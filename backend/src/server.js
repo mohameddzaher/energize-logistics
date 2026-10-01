@@ -150,6 +150,14 @@ app.use(csrfGuard);
 // أخطاءُ المتصفّح تصل إلينا بلا تسجيل دخول — راجع routes/clientErrors.
 app.use('/api/client-errors', require('./routes/clientErrors'));
 app.use('/api/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+// ── توثيقُ الـ API ──────────────────────────────────────────────────────────
+// يُبنى من الراوتر نفسِه لحظةَ الطلب، فلا يستطيع أن يبعد عمّا رُكِّب فعلًا:
+// مسارٌ يُضاف يظهر فيه، ومسارٌ يُحذَف يختفي منه. راجع `services/apiDocs`.
+//
+// ويُركَّب قبل `pageGate`: تلك تحرس نداءاتِ الشاشات بخريطةِ الصفحات، وهذه
+// وثيقةٌ تُقرأ — يفتحها شريكٌ بمفتاحه ولا صفحةَ له في نظامنا. وحراستُها في
+// الراوتر نفسِه: مفتاحٌ للشركاء، وحسابٌ إداريٌّ للسطح الداخليّ.
+app.use('/api/docs', require('./routes/apiDocs'));
 
 // Logging
 if (process.env.NODE_ENV !== 'production') {
@@ -343,7 +351,17 @@ const autoSeedAdmin = async () => {
 // getting connection-refused → a 502 window on every deploy. Mongoose buffers
 // queries until the pool is ready, so DB-backed routes just wait sub-second
 // while /api/health stays up the whole time.
-server.listen(PORT, () => {
+/**
+ * ── وتُحمَّل الخريطةُ بلا تشغيلِ خادم ───────────────────────────────────────
+ *
+ * فحصُ توثيق الـ API (`scripts/checkApiDocs`) يحتاج الراوترَ كما يُركَّب هنا
+ * بالضبط — ونسخُ تركيبِه في ملفٍّ آخر يعني خريطتين تفترقان. فيُستورَد هذا
+ * الملفُّ نفسُه، و`API_DOCS_ONLY` تمنعه من فتحِ منفذٍ أو وصلِ قاعدةٍ أو تشغيل
+ * المهامّ الدوريّة: الهدفُ شجرةُ المسارات لا خادمٌ يعمل.
+ */
+const DOCS_ONLY = process.env.API_DOCS_ONLY === '1';
+
+if (!DOCS_ONLY) server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   // ── ولا يُطفأ القديمُ قبل أن يسمع الجديد ──────────────────────────────────
@@ -370,7 +388,7 @@ const shutdown = () => {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
-connectDB().then(async () => {
+if (!DOCS_ONLY) connectDB().then(async () => {
   await autoSeedAdmin();
   // Seed the default HR leave types once (no-op once they exist).
   const { ensureDefaultLeaveTypes, ensureLeavePolicyDefaults } = require('./config/hrDefaults');

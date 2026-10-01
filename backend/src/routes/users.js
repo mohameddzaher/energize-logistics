@@ -18,6 +18,8 @@ const User = require('../models/User');
 // ما كانت تعنيه `enum` أصلًا.
 const { ALL_ROLE_DEFS, sectionOfRole, isManager } = require('../config/roles');
 
+router.use(authenticate);
+
 /**
  * GET /api/users/roles — قائمةُ الأدوار التي يقبلها الخادم فعلًا.
  *
@@ -31,6 +33,13 @@ const { ALL_ROLE_DEFS, sectionOfRole, isManager } = require('../config/roles');
  * ومعها القسمُ ومَن يديره: الشاشة تحتاجهما لتقترح المدير المباشر عند اختيار
  * الدور، وحسابُهما هنا يجعل الاقتراح يتبع تعريف الأدوار وحده.
  */
+// ── وتُقرأ بعد تسجيل الدخول ────────────────────────────────────────────────
+// كانت مسجَّلةً قبل `authenticate` فكانت مفتوحةً للإنترنت: تُنادى بلا حساب
+// فتُسلّم بنيةَ الأدوار كلَّها بأسمائها وأقسامها ومن يُعدّ مديرًا — خريطةُ
+// تنظيمِ الشركة لمن سأل. وليست سرًّا خطيرًا، لكنّها ليست للعموم، ولا سببَ
+// يجعلها كذلك: لا تُقرأ إلّا من شاشاتٍ خلف تسجيل الدخول.
+//
+// (وجدها فحصُ توثيق الـ API: مسارٌ بلا حارسٍ مقروء — راجع `scripts/checkApiDocs`.)
 router.get('/roles', async (req, res) => {
   const roles = ALL_ROLE_DEFS.map((d) => ({
     key: d.key,
@@ -54,8 +63,6 @@ router.get('/roles', async (req, res) => {
 
   res.json({ roles });
 });
-
-router.use(authenticate);
 
 router.get('/', authorize('super_admin', 'admin', 'operations_manager'), userController.getUsers);
 router.get('/suggest-manager', authorize('super_admin'), userController.suggestManager);

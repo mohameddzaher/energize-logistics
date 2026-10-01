@@ -12,7 +12,7 @@ const crypto = require('crypto');
  * محاولةٍ ومحاولة يكشف المفتاح محرفًا محرفًا لمن يقيسه.
  */
 function requireApiKey(envVar, label) {
-  return (req, res, next) => {
+  const guard = (req, res, next) => {
     const expected = process.env[envVar];
     if (!expected) {
       return res.status(503).json({
@@ -32,6 +32,10 @@ function requireApiKey(envVar, label) {
     req.apiClient = label;
     return next();
   };
+  // الحارسُ يقول عن نفسِه — يقرؤه مولّدُ التوثيق. راجع `services/apiDocs`.
+  guard.__apiKey = envVar;
+  guard.__apiLabel = label;
+  return guard;
 }
 
 module.exports = { requireApiKey };

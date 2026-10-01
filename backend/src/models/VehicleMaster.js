@@ -8,7 +8,18 @@ const vehicleMasterSchema = new mongoose.Schema({
   source_row: Number,
 
   // الهوية
-  plateNumber: { type: String, required: true, unique: true, trim: true, index: true },
+  /**
+   * اللوحةُ تُضبَط عند الحفظ لا عند العرض وحدَه.
+   *
+   * ضبطُها في الشاشة يُجمّل المعروضَ ويترك المخزَّنَ على فروقه — فيُبحَث عنها
+   * بما يُرى فلا تُوجَد، ويخرج التصديرُ بصيغةٍ غير صيغة الجدول. فالدخولُ إلى
+   * القاعدة يمرّ بالقاعدة نفسِها (`formatPlate`): مسافةٌ واحدة، وأرقامٌ غربيّة،
+   * ولاتينيّةٌ كبيرة — والترتيبُ كما كُتب.
+   */
+  plateNumber: {
+    type: String, required: true, unique: true, trim: true, index: true,
+    set: (v) => require('../utils/plateKey').formatPlate(v),
+  },
   // اللوحة بعد توحيد الهمزات وإزالة المسافات — مفتاح الربط بالحوادث، لأن نفس
   // اللوحة بتتكتب «أ س ي» و«ا س ي» في ملفات مختلفة.
   plateKey: { type: String, default: '', index: true },

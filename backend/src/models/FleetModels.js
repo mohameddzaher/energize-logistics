@@ -8,7 +8,10 @@ const mongoose = require('mongoose');
 
 // ── Vehicles: the 57 trucks (seeded from Location Solutions) ────────────────
 const fleetVehicleSchema = new mongoose.Schema({
-  plate: { type: String, required: true, unique: true, trim: true },
+  plate: { type: String, required: true, unique: true, trim: true ,
+    // صيغةُ اللوحة واحدةٌ في النظام كلِّه — راجع `formatPlate`.
+    set: (v) => require('../utils/plateKey').formatPlate(v),
+  },
   name: { type: String, trim: true, default: '' },
   trailerType: { type: String, trim: true, default: 'سطحة' }, // سطحة / ستارة / …
   gpsType: { type: String, trim: true, default: 'LS' },       // LS / EX

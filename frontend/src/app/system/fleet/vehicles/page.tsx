@@ -11,6 +11,7 @@
  * وكان العمودُ واحدًا يسرد الأسماء بلا رتبة، فلا يُعرَف مِن الشاشة مَن الأوّل.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { formatPlate } from '@/lib/flexMatch';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -310,7 +311,7 @@ export default function FleetVehiclesPage() {
                     السيارة خلال أي فترة — وكان الوصول إليه يمرّ بشاشة تحليلاتٍ
                     عامة لا تُفتح منها سيارةٌ بعينها أصلًا. */}
                 <td className="px-4 py-3 whitespace-nowrap">
-                  <Link href={`/system/fleet/vehicles/${v._id}`} className="text-[#f37121] font-bold font-mono hover:underline">{v.plate}</Link>
+                  <Link href={`/system/fleet/vehicles/${v._id}`} className="text-[#f37121] font-bold font-mono hover:underline">{formatPlate(v.plate)}</Link>
                   {v.name && <span className="block text-xs text-slate-500">{v.name}</span>}
                 </td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{v.trailerType || '—'}</td>

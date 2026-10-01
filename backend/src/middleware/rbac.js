@@ -18,7 +18,7 @@ const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
  */
 const authorize = (...roles) => {
   const allowed = new Set(roles.map(canonicalRole));
-  return (req, res, next) => {
+  const guard = (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({ message: 'Authentication required' });
     }
@@ -37,6 +37,12 @@ const authorize = (...roles) => {
 
     return res.status(403).json({ message: 'Insufficient permissions' });
   };
+  // ── والحارسُ يقول عن نفسِه ────────────────────────────────────────────────
+  // توثيقُ الـ API يُبنى من الراوتر نفسِه كي لا يبعد عنه (راجع
+  // `services/apiDocs`)، والحارسُ بعد تركيبه دالّةٌ مغلقةٌ لا يُقرأ منها شيء.
+  // فيُعلَّق عليها ما تحرسه — سطرٌ واحدٌ يجعل الوثيقةَ تقول الحقيقة.
+  guard.__roles = [...allowed];
+  return guard;
 };
 
 module.exports = authorize;

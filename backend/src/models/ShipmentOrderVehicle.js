@@ -7,7 +7,10 @@ const mongoose = require('mongoose');
 // stay editable per shipment; a truck driven by someone else today is normal.
 const shipmentOrderVehicleSchema = new mongoose.Schema(
   {
-    plate: { type: String, required: true, trim: true },
+    plate: { type: String, required: true, trim: true ,
+      // صيغةُ اللوحة واحدةٌ في النظام كلِّه — راجع `formatPlate`.
+      set: (v) => require('../utils/plateKey').formatPlate(v),
+    },
     name: { type: String, trim: true, default: '' },        // e.g. "مرسيدس أكتروس أبيض"
     truckType: { type: String, trim: true, default: '' },   // same vocabulary as the form field
     /**

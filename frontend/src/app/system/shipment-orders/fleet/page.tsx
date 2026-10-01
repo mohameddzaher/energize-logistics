@@ -12,6 +12,7 @@
  * لا في المتصفّح، وإلّا بُحث في مئةٍ وصلت وقيل «لا نتائج» عن اثنيَ عشرَ ألفًا.
  */
 import { useState, useEffect, useCallback } from 'react';
+import { formatPlate } from '@/lib/flexMatch';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -409,7 +410,7 @@ export default function FleetPage() {
             <tbody>
               {shownVehicles.map((v) => (
                 <tr key={v._id} className="border-b border-slate-200/70 hover:bg-slate-50">
-                  <td className="px-4 py-3 text-slate-900 font-bold font-mono">{v.plate}</td>
+                  <td className="px-4 py-3 text-slate-900 font-bold font-mono">{formatPlate(v.plate)}</td>
                   <td className="px-4 py-3 text-slate-700">{v.name || '—'}</td>
                   <td className="px-4 py-3 text-slate-700">{v.truckType || '—'}</td>
                   <td className="px-4 py-3">
@@ -563,7 +564,7 @@ export default function FleetPage() {
                         ? <SmallBadge bg="bg-blue-500/15" text="text-blue-700" label={sup.name} />
                         : <span className="text-slate-400 text-xs">{ar ? 'غير مربوط' : 'Unlinked'}</span>}
                     </td>
-                    <td className="px-4 py-3 font-mono text-slate-700">{veh?.plate || '—'}</td>
+                    <td className="px-4 py-3 font-mono text-slate-700">{formatPlate(veh?.plate) || '—'}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         {editor && <button type="button" onClick={() => openDriver(d)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}><Pencil className="w-4 h-4" /></button>}

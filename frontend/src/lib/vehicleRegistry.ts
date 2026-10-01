@@ -34,6 +34,8 @@ export type VReg = {
   insurancePolicy?: string | null;
   accidentCount?: number;
   registrationTypeAr?: string; registrationTypeCode?: string;
+  /** الشركةُ المالكة — المجموعةُ شركتان والأسطولُ مشتركُ التشغيلِ مفصولُ الملكيّة. */
+  ownerCompanyAr?: string;
   brandAr?: string; modelAr?: string; modelYear?: number | null; colorAr?: string; colorCode?: string;
   ownerNameAr?: string; commercialRegistration?: string; tamStatusAr?: string; tamStatusCode?: string;
   insurance?: { policyNumber?: string; companyAr?: string; coverageTypeAr?: string; coverageTypeCode?: string; expiryDate?: string | null; premiumSar?: number | null; premiumStatusAr?: string; status?: string; statusCode?: string };
@@ -322,7 +324,7 @@ export interface VehicleOverview {
 export interface ExpiringRow {
   vehicleId: string; plateNumber: string; brandAr: string; modelAr: string; sectorAr: string;
   ownerNameAr: string; modelYear: number | null;
-  chassisNumber?: string; serialNumber?: string; registrationTypeAr?: string; colorAr?: string;
+  chassisNumber?: string; serialNumber?: string; registrationTypeAr?: string; ownerCompanyAr?: string; colorAr?: string;
   /** المفوَّضُ على المركبة، أو صاحبُ بطاقة السائق في صفّها. */
   holder?: string; driverCardNumber?: string;
   /** صفُّ بطاقة سائق: لا مركبةَ له، ويُجدَّد بمعرّف البطاقة. */

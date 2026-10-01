@@ -5,6 +5,7 @@
 // التشغيل (أي سائق، بأي تفويض). دي بتتابع **المطالبة**: نسبة الخطأ، رقم نجم،
 // شركة التأمين، مبلغ التقدير، والمبلغ المسترد.
 import { useState, useEffect, useCallback, Suspense, useMemo } from 'react';
+import { formatPlate } from '@/lib/flexMatch';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -375,7 +376,7 @@ function ClaimsInner() {
                       <button onClick={() => router.push(`/system/vehicles/registry/claims/${r._id}`)}
                         title={t('ملفّ الحادثة', 'Claim file')}
                         className="font-semibold text-slate-800 hover:text-[#f37121] text-start">
-                        {r.vehiclePlate || r.incidentSubjectAr || '—'}
+                        {formatPlate(r.vehiclePlate) || r.incidentSubjectAr || '—'}
                       </button>
                       <p className="text-[10px] text-slate-400">
                         {[r.claimId, r.accidentNumber].filter(Boolean).join(' · ')}

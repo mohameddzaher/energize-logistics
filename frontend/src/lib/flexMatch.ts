@@ -23,3 +23,46 @@ export const flexIncludes = (needle: unknown, ...fields: unknown[]): boolean => 
   if (!n) return true;
   return fields.some((f) => flexNormalize(f).includes(n));
 };
+
+/**
+ * ── صيغةُ عرضِ اللوحة: واحدةٌ في النظام كلِّه ────────────────────────────────
+ *
+ * توأمُ `formatPlate` في `backend/src/utils/plateKey.js` — ولا بدّ من توأم:
+ * البوليصةُ والتقريرُ يُرسمان في الخادم والجداولُ في المتصفّح، فلو اختلفت
+ * القاعدتان قرأ الموظّفُ اللوحةَ على الشاشة بصيغةٍ وفي الورقة بأخرى.
+ *
+ * كانت تُكتب عندنا بأربع صيغ: «أ س ي 7357» في سجلّ المركبات، و«1080 RXA» في
+ * إدارة الأسطول ولوكيشن سوليوشن، و«0749 jxa» و«0008» في شاحنات الناقلين —
+ * وبينها فروقٌ لا معنى لها: مسافتان أو ثلاث، ولاتينيّةٌ صغيرةٌ أو كبيرة،
+ * وأرقامٌ عربيّةٌ أو غربيّة.
+ *
+ * القاعدة: أرقامٌ غربيّةٌ، ولاتينيّةٌ كبيرةٌ ملتصقة، وعربيّةٌ مفصولةٌ بمسافة،
+ * ومسافةٌ واحدةٌ بين الحروف والرقم.
+ *
+ * والذي **لا يُمسّ** الترتيبُ: «1611 ب ق ب» و«1080 RXA» مكتوبتان بالرقم أوّلًا،
+ * وإعادةُ ترتيبهما تغييرٌ للبيان لا تنسيقٌ له — اللوحةُ تُطابَق بنصّها عند
+ * الرفع والاستيراد. فيُضبَط الفراغُ والأبجديّةُ ويبقى الترتيبُ كما كُتب.
+ */
+export const formatPlate = (v: unknown): string => {
+  if (v == null) return '';
+  const raw = String(v).replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).trim();
+  if (!raw) return '';
+  const digitsMatch = raw.match(/\d+/);
+  if (!digitsMatch) return raw.replace(/\s+/g, ' ');
+  const digits = digitsMatch[0];
+  const before = raw.slice(0, digitsMatch.index).trim();
+  const after = raw.slice((digitsMatch.index || 0) + digits.length).trim();
+  // الحروفُ العربيّةُ مفصولةٌ بمسافةٍ كما تُقرأ على اللوحة، واللاتينيّةُ ملتصقةٌ
+  // وكبيرةٌ كما تُكتب في الرخصة.
+  const tidy = (part: string) => (/[A-Za-z]/.test(part)
+    ? part.replace(/\s+/g, '').toUpperCase()
+    : part.split(/\s+/).filter(Boolean).join(' '));
+  // ── وما كان على الجانبين يبقى على الجانبين ──────────────────────────────
+  // «Car 4263 SNA» حروفٌ قبل الرقم وبعده. وأخذُ أحد الطرفين يُسقط الآخرَ —
+  // أي يحذف من اللوحة ما هو مكتوبٌ فيها، وهو إتلافٌ لا تنسيق.
+  const head = before ? tidy(before) : '';
+  const tail = after ? tidy(after) : '';
+  if (!head && !tail) return digits;
+  return [head, digits, tail].filter(Boolean).join(' ');
+
+};

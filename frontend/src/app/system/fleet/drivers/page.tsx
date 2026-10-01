@@ -4,6 +4,7 @@
 // row, the server enforces the two-seat rule, and its Arabic 400 message is
 // surfaced as-is. Benching (sick / vacation) is just `vehicle: null`.
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { formatPlate } from '@/lib/flexMatch';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -326,7 +327,7 @@ export default function FleetDriversPage() {
                     </div>
                   ) : (
                     vehPlate(d)
-                      ? <span className="font-mono text-slate-700">{vehPlate(d)}</span>
+                      ? <span className="font-mono text-slate-700">{formatPlate(vehPlate(d))}</span>
                       : <SmallBadge bg="bg-red-500/15" text="text-red-700" label={ar ? 'بدون سيارة' : 'Unassigned'} />
                   )}
                 </td>

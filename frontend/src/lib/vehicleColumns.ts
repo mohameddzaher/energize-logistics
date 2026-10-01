@@ -11,6 +11,7 @@
  * نختاره: الملفُّ يُفتَح إلى جانب ملفّاتٍ سابقةٍ ويُقارَن عمودًا بعمود.
  */
 import { type VReg } from '@/lib/vehicleRegistry';
+import { formatPlate } from '@/lib/flexMatch';
 
 export type VCol = {
   key: string;
@@ -49,24 +50,14 @@ export type VCol = {
  * وهذه لوحةٌ تُطابَق بالنصّ عند الرفع. فيُقرأ الترتيبُ من المكتوب ويُبقى كما هو،
  * ولا يُضبَط إلّا الفراغ.
  */
-export const platformPlate = (v: Partial<VReg>): string => {
-  const raw = String(v.plateNumber || '').trim();
-  if (!raw) return '';
-  // الرقمُ مقطعٌ واحدٌ متّصل، وما عداه حروف — بترتيبهما كما كُتبا.
-  const digitsMatch = raw.match(/\d+/);
-  if (!digitsMatch) return raw;
-  const digits = digitsMatch[0];
-  const before = raw.slice(0, digitsMatch.index).trim();
-  const after = raw.slice((digitsMatch.index || 0) + digits.length).trim();
-  const lettersSide = before || after;
-  if (!lettersSide) return raw;
-  const parts = lettersSide.split(/\s+/).filter(Boolean);
-  // أكثرُ من ثلاثةٍ لا يُقصّ: لوحةٌ خارج القاعدة تُترك كما هي بدل أن يُبتَر منها.
-  if (parts.length > 3) return raw;
-  while (parts.length < 3) parts.push('');
-  const padded = parts.join(' ');
-  return before ? `${padded} ${digits}` : `${digits} ${padded}`;
-};
+/**
+ * لوحةُ السجلّ كما تُعرَض — والقاعدةُ واحدةٌ في النظام كلِّه الآن.
+ *
+ * كانت مكتوبةً هنا وحدَها، فتُضبَط في جداول المركبات وتبقى على حالها في إدارة
+ * الأسطول وشاحنات الناقلين والبوليصة. فصارت في `lib/flexMatch` ومعها توأمُها
+ * في الخادم، وهذه تنادِيها — راجع `formatPlate`.
+ */
+export const platformPlate = (v: Partial<VReg>): string => formatPlate(v.plateNumber);
 
 const d = (x: any) => (x ? String(x).slice(0, 10) : '');
 

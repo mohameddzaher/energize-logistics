@@ -12,6 +12,8 @@
 const fs = require('fs');
 const path = require('path');
 const { PDFDocument } = require('pdf-lib');
+// صيغةُ اللوحة واحدةٌ في النظام كلِّه — راجع `utils/plateKey`.
+const { formatPlate } = require('./plateKey');
 
 const ASSETS = path.join(__dirname, '..', 'assets', 'waybill');
 const LETTERHEAD = path.join(ASSETS, 'letterhead.pdf');
@@ -246,7 +248,7 @@ ${getFontCss()}
     </div>
     <div class="section">
       <div class="section-head"><span class="ar">بيانات السيارة</span><span class="en">Vehicle Details</span></div>
-      <div class="row"><span class="ar-label">رقم السيارة</span><span class="value">${valOrBlank(row.plateNumber)}</span><span class="en-label">Plate No.</span></div>
+      <div class="row"><span class="ar-label">رقم السيارة</span><span class="value">${valOrBlank(formatPlate(row.plateNumber))}</span><span class="en-label">Plate No.</span></div>
       <div class="row"><span class="ar-label">الماركة</span><span class="value">${valOrBlank(row.carBrand)}</span><span class="en-label">Brand</span></div>
       <div class="row"><span class="ar-label">اللون</span><span class="value">${valOrBlank(row.carColor)}</span><span class="en-label">Color</span></div>
     </div>

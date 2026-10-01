@@ -266,6 +266,18 @@ for gen in genPageCatalog genPageApis; do
 done
 good "generated page maps are current"
 
+# ── توثيقُ الـ API يُبنى فعلًا قبل النشر ──────────────────────────────────────
+# الوثيقةُ لا تُخزَّن في ملفّ: تُبنى من الراوتر لحظةَ طلبِها، فهي بطبيعتها
+# مطابقةٌ لما رُكِّب. والذي يبقى ممكنًا أن ينكسر المولِّدُ أو تُركَّب مساراتٌ لا
+# يقرؤها، فتُسلَّم للشركاء وثيقةٌ ناقصة — فتُبنى هنا بالراوتر الحقيقيّ ويُرفَض
+# النشرُ إن كسرت. وتقول أيضًا أيُّ مسارٍ لا حارسَ له يُقرأ.
+if ! out="$(API_DOCS_ONLY=1 node "$ROOT/backend/src/scripts/checkApiDocs.js" 2>&1)"; then
+  bad "api docs do not build — $out"
+  exit 1
+fi
+good "api docs build ($(echo "$out" | head -1 | tr -d '✓' | xargs))"
+echo "$out" | tail -n +2 | sed 's/^/    /'
+
 # Syntax-check every file being shipped. A parse error would otherwise be found
 # by pm2, after the old code is already gone.
 if ! find backend/src -name '*.js' -print0 | xargs -0 -n40 node --check >/dev/null 2>&1; then

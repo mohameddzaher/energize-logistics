@@ -38,7 +38,7 @@ const hrSelfServiceExempt = (req) => {
 const sectionGate = (sectionKey) => {
   const section = getSection(sectionKey);
   const exempt = section && section.exemptSelfService ? hrSelfServiceExempt : null;
-  return async (req, res, next) => {
+  const guard = async (req, res, next) => {
     try {
       if (!req.user) return res.status(401).json({ message: 'Authentication required' });
       if (FULL_ACCESS_ROLES.includes(req.user.role)) { req.sectionAccess = 'edit'; return next(); }
@@ -88,6 +88,9 @@ const sectionGate = (sectionKey) => {
       next(); // fail-open
     }
   };
+  // الحارسُ يقول عن نفسِه — يقرؤه مولّدُ التوثيق من الراوتر. راجع `services/apiDocs`.
+  guard.__section = (section && section.key) || sectionKey;
+  return guard;
 };
 
 /**

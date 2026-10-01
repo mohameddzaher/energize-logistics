@@ -5,6 +5,16 @@ const logAudit = require('../utils/auditLogger');
 
 const emit = () => { try { emitToAll('ls2:store', {}); } catch (e) {} cache.clear('ls2store:'); };
 
+/**
+ * مخزنُ الطلب: الثقيلُ افتراضًا، والخفيفُ حين يُطلَب صراحةً.
+ *
+ * الشاشتان تنادِيان النقاطَ نفسَها بـ`?warehouse=light`، فآليّةُ المخزن واحدةٌ
+ * ورصيدُ كلٍّ على حدة. والافتراضُ «ثقيل» يُبقي الروابطَ القديمةَ تعمل كما كانت.
+ */
+const whOf = (req) => (String(req.query.warehouse || req.body?.warehouse || '').trim() === 'light' ? 'light' : 'heavy');
+/** الصفوفُ القديمةُ كُتبت قبل الحقل، فغيابُه يعني «ثقيل». */
+const whFilter = (wh) => (wh === 'light' ? { warehouse: 'light' } : { warehouse: { $ne: 'light' } });
+
 // تعريب تصنيفات القطع.
 const CATEGORY_AR = {
   air_system: 'نظام الهواء', lighting: 'الإضاءة', brakes: 'الفرامل', body_cabin: 'الهيكل والكابينة',
@@ -27,7 +37,7 @@ exports.listItems = async (req, res) => {
     const hit = cache.get(cacheKey);
     if (hit !== undefined) return res.json(hit);
 
-    const filter = { isActive: { $ne: false } };
+    const filter = { isActive: { $ne: false }, ...whFilter(whOf(req)) };
     if (req.query.category) filter.category = req.query.category;
     if (req.query.q && req.query.q.trim()) {
       const rx = new RegExp(req.query.q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
@@ -49,9 +59,13 @@ exports.listItems = async (req, res) => {
 // ── لوحة/إحصاءات ──────────────────────────────────────────────────────────────
 exports.dashboard = async (req, res) => {
   try {
-    const hit = cache.get('ls2store:dash');
+    // ── ومفتاحُ الحفظ يحمل المخزن ─────────────────────────────────────────
+    // كان ثابتًا، فأوّلُ مخزنٍ يُسأل عنه يملأ الحفظَ ويقرؤه الآخر: لوحةُ النقل
+    // الخفيف تعرض أرقامَ الثقيل أو بالعكس، وكلاهما صحيحُ الشكل كاذبُ المعنى.
+    const dashKey = `ls2store:dash:${whOf(req)}`;
+    const hit = cache.get(dashKey);
     if (hit !== undefined) return res.json(hit);
-    const items = await Ls2StoreItem.find({ isActive: { $ne: false } }).lean();
+    const items = await Ls2StoreItem.find({ isActive: { $ne: false }, ...whFilter(whOf(req)) }).lean();
     let totalValue = 0; let totalUnits = 0; let low = 0; let out = 0;
     const byCategory = {};
     for (const it of items) {
@@ -64,14 +78,14 @@ exports.dashboard = async (req, res) => {
       totals: { items: items.length, totalUnits, totalValue: Math.round(totalValue), lowStock: low, outOfStock: out },
       byCategory: Object.entries(byCategory).map(([key, count]) => ({ key, ar: catAr(key), count })).sort((a, b) => b.count - a.count),
     };
-    cache.set('ls2store:dash', body, 15000);
+    cache.set(dashKey, body, 15000);
     res.json(body);
   } catch (e) { res.status(500).json({ message: 'Failed to load store dashboard' }); }
 };
 
 exports.createItem = async (req, res) => {
   try {
-    const it = await Ls2StoreItem.create({ ...pick(req.body), isActive: true });
+    const it = await Ls2StoreItem.create({ ...pick(req.body), warehouse: whOf(req), isActive: true });
     emit();
     res.status(201).json({ item: it });
   } catch (e) { res.status(500).json({ message: 'Failed to create item' }); }
@@ -106,7 +120,7 @@ exports.addMovement = async (req, res) => {
     item.quantity += type === 'in' ? qty : -qty;
     await item.save();
     const mv = await Ls2StoreMovement.create({
-      item: item._id, itemName: item.name, type, quantity: qty,
+      item: item._id, itemName: item.name, warehouse: item.warehouse || 'heavy', type, quantity: qty,
       vehiclePlate: (req.body.vehiclePlate || '').trim(), reason: (req.body.reason || '').trim(),
       balanceAfter: item.quantity, performedBy: req.user?._id, performedByName: req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : '',
     });
@@ -200,7 +214,7 @@ exports.addBulkMovement = async (req, res) => {
       it.quantity += type === 'in' ? qty : -qty;
       await it.save();
       movements.push({
-        item: it._id, itemName: it.name, type, quantity: qty,
+        item: it._id, itemName: it.name, warehouse: it.warehouse || 'heavy', type, quantity: qty,
         vehiclePlate, reason, balanceAfter: it.quantity, ...actor(req),
       });
     }
@@ -276,7 +290,7 @@ exports.reverseMovement = async (req, res) => {
     await item.save();
 
     const rev = await Ls2StoreMovement.create({
-      item: item._id, itemName: item.name,
+      item: item._id, itemName: item.name, warehouse: item.warehouse || 'heavy',
       type: mv.type === 'in' ? 'out' : 'in', quantity: mv.quantity,
       vehiclePlate: mv.vehiclePlate,
       reason: `تراجع عن ${mv.type === 'in' ? 'وارد' : 'صادر'} ${mv.quantity} — ${reason}`,
@@ -303,7 +317,7 @@ exports.reverseMovement = async (req, res) => {
 // ── سجل الحركات ───────────────────────────────────────────────────────────────
 exports.listMovements = async (req, res) => {
   try {
-    const filter = {};
+    const filter = { ...whFilter(whOf(req)) };
     if (req.query.item) filter.item = req.query.item;
     if (req.query.type) filter.type = req.query.type;
     const limit = Math.min(Number(req.query.limit) || 200, 1000);

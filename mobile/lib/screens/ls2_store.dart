@@ -10,8 +10,25 @@ import '../ui/widgets.dart';
 
 /// مخزن النقل الثقيل (LS2) — قطع الغيار: أصناف برصيد وسعر وحالة، حركات وارد/صادر
 /// (صادر على عربية / وارد من عربية)، إضافة أصناف، وسجل حركات. مطابق للويب.
+/// شاشةُ المخزن — للنقل الثقيل وللنقل الخفيف معًا.
+///
+/// ── ولماذا شاشةٌ واحدة ──────────────────────────────────────────────────────
+/// سؤالُ المخزن واحدٌ في القسمين: ماذا عندنا، وكم بقي، ومن صرف ماذا على أيّ
+/// مركبة، وما الذي قارب النفاد. وآليّتُه واحدةٌ حرفًا بحرف — وارد وصادر، رصيدٌ
+/// بعد كلّ حركة، وتراجعٌ بحركةٍ معاكسةٍ لا بمسح. وأصنافُ المخزنين وأرصدتُهما
+/// منفصلةٌ في القاعدة (`warehouse`)، فلا يُقرأ رصيدُ أحدهما في الآخر.
+///
+/// فيُمرَّر `base` ولا تُنسَخ الشاشة — ونسخُها يعني شاشتين تفترقان أوّلَ إصلاح.
 class Ls2StoreScreen extends StatefulWidget {
-  const Ls2StoreScreen({super.key});
+  final String base;
+  final String titleAr;
+  final String titleEn;
+  const Ls2StoreScreen({
+    super.key,
+    this.base = '/api/ls2/store',
+    this.titleAr = 'مخزن النقل الثقيل',
+    this.titleEn = 'Heavy Transport Store',
+  });
   @override
   State<Ls2StoreScreen> createState() => _Ls2StoreScreenState();
 }
@@ -60,8 +77,8 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
   Future<void> _load() async {
     try {
       final res = await Future.wait([
-        Api.instance.get('/api/ls2/store${_q.trim().isEmpty ? '' : '?q=${Uri.encodeComponent(_q.trim())}'}'),
-        Api.instance.get('/api/ls2/store/dashboard'),
+        Api.instance.get('${widget.base}${_q.trim().isEmpty ? '' : '?q=${Uri.encodeComponent(_q.trim())}'}'),
+        Api.instance.get('${widget.base}/dashboard'),
       ]);
       if (!mounted) return;
       setState(() {
@@ -87,7 +104,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
         || auth.canEditSection('Location Solutions');
     final items = _items.where((i) => (_statusF.isEmpty || i['status'] == _statusF) && (_catF.isEmpty || i['category'] == _catF)).toList();
     return AppScaffold(
-      title: Text(tr('مخزن النقل الثقيل', 'Heavy Transport Store')),
+      title: Text(tr(widget.titleAr, widget.titleEn)),
       actions: [IconButton(icon: const Icon(Icons.history), tooltip: tr('سجل الحركات', 'Movements'), onPressed: _openLog)],
       floatingActionButton: !canEdit ? null : FloatingActionButton.extended(
         backgroundColor: const Color(0xFF12325C), foregroundColor: Colors.white,
@@ -241,7 +258,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     final qty = num.tryParse(qtyC.text.trim()) ?? 0;
     if (qty <= 0) return;
     try {
-      await Api.instance.post('/api/ls2/store/${it['_id']}/movement', {'type': type, 'quantity': qty, 'vehiclePlate': plateC.text.trim(), 'reason': reasonC.text.trim()});
+      await Api.instance.post('${widget.base}/${it['_id']}/movement', {'type': type, 'quantity': qty, 'vehiclePlate': plateC.text.trim(), 'reason': reasonC.text.trim()});
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم التسجيل', 'Recorded'))));
       _load();
     } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
@@ -286,8 +303,8 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     if (saved != true || name.text.trim().isEmpty) return;
     final body = {'name': name.text.trim(), 'category': cat.text.trim(), 'unit': unit.text.trim(), 'unitPrice': num.tryParse(price.text.trim()) ?? 0, 'minQuantity': num.tryParse(minQ.text.trim()) ?? 0, if (item == null) 'quantity': num.tryParse(qty.text.trim()) ?? 0};
     try {
-      if (item == null) { await Api.instance.post('/api/ls2/store', body); }
-      else { await Api.instance.put('/api/ls2/store/${item['_id']}', body); }
+      if (item == null) { await Api.instance.post(widget.base, body); }
+      else { await Api.instance.put('${widget.base}/${item['_id']}', body); }
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم الحفظ', 'Saved'))));
       _load();
     } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
@@ -334,7 +351,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     );
     if (go != true) return false;
     try {
-      await Api.instance.post('/api/ls2/store/movements/${m['_id']}/reverse', {'reason': reason.text.trim()});
+      await Api.instance.post('${widget.base}/movements/${m['_id']}/reverse', {'reason': reason.text.trim()});
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم التراجع ورجع الرصيد', 'Reversed'))));
       _load();
       return true;
@@ -348,7 +365,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
   Future<void> _openLog() async {
     List<Map<String, dynamic>> movs = [];
     Future<void> fetch() async {
-      try { final d = await Api.instance.get('/api/ls2/store/movements?limit=300'); movs = List<Map<String, dynamic>>.from(d['movements'] ?? []); } catch (_) {}
+      try { final d = await Api.instance.get('${widget.base}/movements?limit=300'); movs = List<Map<String, dynamic>>.from(d['movements'] ?? []); } catch (_) {}
     }
     await fetch();
     if (!mounted) return;

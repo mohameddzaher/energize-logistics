@@ -137,6 +137,11 @@ export const REGISTRY_COLUMNS: VCol[] = [
   { key: 'chassisNumber', ar: 'رقم الهيكل', en: 'Chassis', get: (v) => v.chassisNumber, width: 22, base: true, mono: true },
   { key: 'serialNumber', ar: 'الرقم التسلسلي', en: 'Serial', get: (v) => v.serialNumber, width: 18, base: true, mono: true },
   { key: 'registrationTypeAr', ar: 'نوع التسجيل', en: 'Registration type', get: (v) => v.registrationTypeAr, width: 14, base: true },
+  // ── الشركةُ المالكة ──────────────────────────────────────────────────────
+  // المجموعةُ شركتان والأسطولُ مشتركُ التشغيلِ مفصولُ الملكيّة: الرخصةُ
+  // والتأمينُ والمخالفةُ تُنسَب إلى شركةٍ بعينها. وعمودٌ `base` كي يظهر في
+  // الشاشة والتصديرِ معًا بلا أن يُطلَب.
+  { key: 'ownerCompanyAr', ar: 'الشركة المالكة', en: 'Owning company', get: (v) => v.ownerCompanyAr, width: 20, base: true },
   { key: 'brandAr', ar: 'ماركة المركبة', en: 'Brand', get: (v) => v.brandAr, width: 14, base: true },
   { key: 'modelAr', ar: 'طراز المركبة', en: 'Model', get: (v) => v.modelAr, width: 14, base: true },
   { key: 'modelYear', ar: 'الموديل', en: 'Year', get: (v) => v.modelYear, width: 10, type: 'number', base: true },

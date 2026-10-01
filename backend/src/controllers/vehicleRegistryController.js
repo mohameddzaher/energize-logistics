@@ -422,6 +422,7 @@ const DOC_PATHS = [...new Set(VDOC.DOCUMENTS.flatMap((d) => [
 /** ما تحتاجه شاشاتُ التجميع: تصنيفُ المركبة، وحالةُ كلّ مستند وتاريخُه. */
 const AGG_FIELDS = [...new Set([
   'plateNumber', 'plateKey', 'chassisNumber', 'serialNumber', 'sectorAr', 'sectorCode', 'registrationTypeAr',
+  'ownerCompanyAr',
   'departmentAr', 'cityAr', 'possessionStatusAr', 'serviceStatusAr', 'serviceStatusCode',
   'brandAr', 'modelAr', 'modelYear', 'colorAr', 'ownerNameAr', 'commercialRegistration',
   'tamStatusAr', 'accidentCount', 'missingItems', 'logistiGaps', 'insurancePolicy',
@@ -443,7 +444,7 @@ function buildFilter(q) {
   const and = [];
   // كل الفلاتر بالاسم العربي (نفس ما تعرضه التوزيعات) — أبسط وأوضح.
   const map = {
-    sector: 'sectorAr', registrationType: 'registrationTypeAr', brand: 'brandAr',
+    sector: 'sectorAr', registrationType: 'registrationTypeAr', ownerCompany: 'ownerCompanyAr', brand: 'brandAr',
     department: 'departmentAr', city: 'cityAr', possession: 'possessionStatusAr',
     gpsDeviceStatus: 'gps.deviceStatusAr',
     // مفاتيح سجلّات القسم — كل صفّ فيها يفتح مركباته بهذه الفلاتر
@@ -958,7 +959,7 @@ exports.dashboard = async (req, res) => {
 
     const filter = buildFilter(req.query);
     const DASH_FIELDS = [
-      'plateNumber sectorAr registrationTypeAr brandAr modelAr ownerNameAr colorAr tamStatusAr modelYear accidentCount',
+      'plateNumber sectorAr registrationTypeAr ownerCompanyAr brandAr modelAr ownerNameAr colorAr tamStatusAr modelYear accidentCount',
       'insurance.companyAr insurance.coverageTypeAr insurance.expiryDate insurance.premiumSar insurance.statusCode insurance.policyNumber',
       'fuelCard.provider fuelCard.statusAr fuelCard.statusCode fuelCard.consumptionTypeAr fuelCard.limitSar fuelCard.limitStatus fuelCard.cardNumber',
       'gps.deviceModel gps.provider gps.status gps.statusCode gps.expiryDate gps.serialImei',
@@ -1223,6 +1224,9 @@ const FILTER_DEFS = [
   { key: 'department', field: 'departmentAr', ar: 'الإدارة', en: 'Department', groupAr: 'التصنيف', groupEn: 'Classification' },
   { key: 'city', field: 'cityAr', ar: 'المدينة', en: 'City', groupAr: 'التصنيف', groupEn: 'Classification' },
   { key: 'registrationType', field: 'registrationTypeAr', ar: 'نوع التسجيل', en: 'Registration type', groupAr: 'التصنيف', groupEn: 'Classification' },
+  // المجموعةُ شركتان، والأسطولُ مشتركُ التشغيلِ مفصولُ الملكيّة — فالسؤالُ
+  // «أرِني مركبات تنشيط المستقبل» سؤالُ إدارةٍ لا تصنيفُ ترف.
+  { key: 'ownerCompany', field: 'ownerCompanyAr', ar: 'الشركة المالكة', en: 'Owning company', groupAr: 'التصنيف', groupEn: 'Classification' },
   { key: 'possession', field: 'possessionStatusAr', ar: 'حالة الحيازة', en: 'Possession', groupAr: 'التصنيف', groupEn: 'Classification' },
   // حالة التشغيل: أوّل سؤالٍ تسأله الإدارة وآخرُ ما كان يجد شاشةً تجيبه.
   { key: 'serviceStatus', field: 'serviceStatusAr', ar: 'حالة التشغيل', en: 'Service status', groupAr: 'التصنيف', groupEn: 'Classification' },
@@ -1527,6 +1531,7 @@ exports.overview = async (req, res) => {
       // ربعُ الأسطول لا يعمل، ولم تكن في الصفحة بطاقةٌ تقول ذلك.
       { key: 'serviceStatus', ar: 'حالة التشغيل', en: 'Service status', field: 'serviceStatusAr', items: group('serviceStatusAr', (v) => v.serviceStatusAr) },
       { key: 'registrationType', ar: 'نوع التسجيل', en: 'Registration type', field: 'registrationTypeAr', items: group('registrationTypeAr', (v) => v.registrationTypeAr) },
+      { key: 'ownerCompany', ar: 'الشركة المالكة', en: 'Owning company', field: 'ownerCompanyAr', items: group('ownerCompanyAr', (v) => v.ownerCompanyAr) },
       { key: 'brand', ar: 'الماركة', en: 'Brand', field: 'brandAr', items: group('brandAr', (v) => v.brandAr) },
       { key: 'model', ar: 'الموديل', en: 'Model', field: 'modelAr', items: group('modelAr', (v) => v.modelAr) },
       { key: 'modelYear', ar: 'سنة الصنع', en: 'Model year', field: 'modelYear', items: group('modelYear', (v) => v.modelYear) },
@@ -1702,7 +1707,7 @@ exports.overview = async (req, res) => {
 // ما تقرؤه صفوفُ الانتهاءات من المركبة، لا أكثر. كانت تسحب AGG_FIELDS (ستّةً
 // وسبعين حقلًا) لتقرأ منها ثمانيةَ عشر، والنقلُ هو كلُّ ثمن هذه الشاشة.
 const EXPIRY_FIELDS = [...new Set([
-  'plateNumber', 'brandAr', 'modelAr', 'chassisNumber', 'serialNumber', 'registrationTypeAr',
+  'plateNumber', 'brandAr', 'modelAr', 'chassisNumber', 'serialNumber', 'registrationTypeAr', 'ownerCompanyAr',
   'colorAr', 'sectorAr', 'ownerNameAr', 'modelYear',
   ...DOC_TYPES.flatMap((dt) => [dt.path, dt.statusPath, dt.numberPath].filter(Boolean)),
   'insurance.companyAr', 'gps.provider', 'authorizedPerson.name', 'authorizedPerson.iqamaNumber',
@@ -1737,7 +1742,7 @@ async function buildExpiryRows(query = {}) {
         rowId: `v:${v._id}:${dt.key}`,
         vehicleId: v._id, plateNumber: v.plateNumber, brandAr: v.brandAr, modelAr: v.modelAr,
         chassisNumber: v.chassisNumber || '', serialNumber: v.serialNumber || '',
-        registrationTypeAr: v.registrationTypeAr || '', colorAr: v.colorAr || '',
+        registrationTypeAr: v.registrationTypeAr || '', ownerCompanyAr: v.ownerCompanyAr || '', colorAr: v.colorAr || '',
         sectorAr: v.sectorAr, ownerNameAr: v.ownerNameAr, modelYear: v.modelYear,
         docKey: dt.key, docAr: dt.ar, docEn: dt.en,
         expiryDate: expiry, daysRemaining: st.days, state: st.state, statusCode,
@@ -1790,7 +1795,7 @@ async function buildExpiryRows(query = {}) {
         rowId: `dc:${c._id}`,
         vehicleId: null, driverCardId: String(c._id),
         plateNumber: '', brandAr: '', modelAr: '', modelYear: null,
-        chassisNumber: '', serialNumber: '', registrationTypeAr: '', colorAr: '',
+        chassisNumber: '', serialNumber: '', registrationTypeAr: '', ownerCompanyAr: '', colorAr: '',
         sectorAr: '', ownerNameAr: '',
         driverCardNumber: String(c.cardNumber || ''),
         docKey: 'driverCard', docAr: 'بطاقة السائق', docEn: 'Driver card',
@@ -2640,14 +2645,21 @@ exports.personLookup = async (req, res) => {
 exports.plateOptions = async (req, res) => {
   try {
     const rows = await VehicleMaster.find({ isActive: { $ne: false } })
-      .select('plateNumber serialNumber registrationTypeAr sectorAr authorizedPerson actualDriver')
+      .select('plateNumber serialNumber registrationTypeAr sectorAr brandAr modelAr ownerCompanyAr authorizedPerson actualDriver')
       .sort({ plateNumber: 1 }).limit(2000).lean();
     res.json({
+      // ── ونوعُ المركبة ليس نوعَ تسجيلها ──────────────────────────────────
+      // كانت القائمةُ تعرض `registrationTypeAr` تحت اسم «النوع»، وهي رخصةُ
+      // اللوحة: ثمانٍ وستّون شاحنةً كلُّها «نقل عام». فمن فتح القائمة رأى
+      // الوصفَ نفسَه بجانب كلّ شاحنةٍ ولم يميّز بينها. والنوعُ الذي يُقصَد هو
+      // الماركةُ والطراز («سينو / رأس»)، وهو المكتوبُ في سجلّ الحوادث نفسِه.
       plates: rows.filter((v) => String(v.plateNumber || '').trim()).map((v) => ({
         _id: String(v._id),
         plate: v.plateNumber,
         serial: v.serialNumber || '',
-        typeAr: v.registrationTypeAr || '',
+        typeAr: [v.brandAr, v.modelAr].filter(Boolean).join(' / '),
+        registrationTypeAr: v.registrationTypeAr || '',
+        ownerCompanyAr: v.ownerCompanyAr || '',
         sectorAr: v.sectorAr || '',
         authorizedName: v.authorizedPerson?.name || '',
         authorizedId: v.authorizedPerson?.iqamaNumber || '',

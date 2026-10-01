@@ -388,3 +388,14 @@ export const LT_PINNED = ['plate'];
 export const canEditLT = (u?: { role?: string | null; permissions?: Record<string, string> | null } | null) =>
   ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead', 'it_manager'].includes(String(u?.role || ''))
   || u?.permissions?.B2C === 'edit';
+
+/**
+ * من يرى شاشاتِ القسم.
+ *
+ * الحارسُ على **القسم** لا على قائمةِ أدوارٍ مكتوبةٍ بيد: من مُنح «B2C» من
+ * صفحة الصلاحيّات يدخل بلا تعديلِ شيفرة — وهو ما يعِد به الخادمُ أصلًا
+ * (`sectionGate`). وقائمةُ الأدوار كانت تنقض ذلك الوعد بصمت.
+ */
+export const canSeeLT = (u?: { role?: string | null; permissions?: Record<string, string> | null } | null) =>
+  canEditLT(u) || !!u?.permissions?.B2C
+  || ['b2c_rep_supervisor', 'operations_manager', 'moderator'].includes(String(u?.role || ''));

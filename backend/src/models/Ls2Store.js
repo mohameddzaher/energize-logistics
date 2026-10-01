@@ -4,6 +4,17 @@ const mongoose = require('mongoose');
 // صنف واحد لكل مادة: الاسم، التصنيف، الرصيد الحالي، الوحدة، سعر القطعة. الرصيد
 // يتغيّر عبر حركات (وارد/صادر) المسجّلة في Ls2StoreMovement.
 const storeItemSchema = new mongoose.Schema({
+  /**
+   * ── مخزنان لا مخزنٌ واحد ─────────────────────────────────────────────────
+   *
+   * للنقل الثقيل مخزنُه، وللنقل الخفيف مخزنُه: الأصنافُ مختلفةٌ (رأسُ موتورٍ
+   * ودرّاجاتٌ هنا، فلاترُ تريلاتٍ هناك)، والرصيدان لا يُجمعان في رقمٍ واحد.
+   *
+   * وهو حقلٌ على الصنف لا نموذجٌ ثانٍ: آليّةُ المخزن واحدةٌ — وارد وصادر، حركةٌ
+   * لا تُعدَّل بل تُعكَس، رصيدٌ بعد كلّ حركة، وعتبةُ نقص. ونسخُها لمخزنٍ ثانٍ
+   * يعني قاعدتين تفترقان أوّلَ تعديلٍ يُجرى على إحداهما.
+   */
+  warehouse: { type: String, enum: ['heavy', 'light'], default: 'heavy', index: true },
   code: { type: String, default: '', trim: true, index: true },
   name: { type: String, required: true, trim: true, index: true },
   category: { type: String, default: '', index: true },       // inferred_category
@@ -21,6 +32,8 @@ const storeItemSchema = new mongoose.Schema({
 // وارد: دخل للمخزن (اختياريًا وارد من عربية معيّنة نزلت منها القطعة).
 // صادر: صُرف من المخزن على عربية (vehiclePlate).
 const storeMovementSchema = new mongoose.Schema({
+  /** مخزنُ الحركة — يُنسَخ من الصنف وقتَ تسجيلها فلا يُقرأ سجلُّ مخزنٍ في آخر. */
+  warehouse: { type: String, enum: ['heavy', 'light'], default: 'heavy', index: true },
   item: { type: mongoose.Schema.Types.ObjectId, ref: 'Ls2StoreItem', required: true, index: true },
   itemName: { type: String, default: '' },                    // لقطة الاسم
   type: { type: String, enum: ['in', 'out'], required: true, index: true },

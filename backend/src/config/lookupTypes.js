@@ -84,6 +84,7 @@ const REGISTRY = [
     { key: 'makkah', nameAr: 'مكه المكرمه', nameEn: 'Makkah' },
   ]),
   vehicleList('vehicle_registration_type', 'أنواع التسجيل', 'Registration Types', vehicleDefaults.registrationTypes),
+  vehicleList('vehicle_owner_company', 'الشركة المالكة للمركبة', 'Vehicle Owning Companies', vehicleDefaults.ownerCompanies),
   vehicleList('vehicle_possession_status', 'حالة الحيازة', 'Possession Statuses', vehicleDefaults.possessionStatuses),
   vehicleList('vehicle_service_status', 'حالة تشغيل المركبة', 'Service Statuses', vehicleDefaults.serviceStatuses),
   vehicleList('vehicle_color', 'ألوان المركبات', 'Vehicle Colours', vehicleDefaults.colors),

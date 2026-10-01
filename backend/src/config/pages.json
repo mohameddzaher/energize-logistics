@@ -962,6 +962,12 @@
       "en": "Light-transport Employees"
     },
     {
+      "key": "/system/b2c/light-transport/store",
+      "section": "B2C",
+      "ar": "مخزن النقل الخفيف",
+      "en": "Light Transport Store"
+    },
+    {
       "key": "/system/b2c/orders",
       "section": "B2C",
       "ar": "أوامر التشغيل",

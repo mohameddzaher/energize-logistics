@@ -22,6 +22,17 @@ const vehicleMasterSchema = new mongoose.Schema({
   sectorCode: { type: String, default: '', index: true }, // heavy_transport / light_transport / …
   registrationTypeAr: { type: String, default: '' },
   registrationTypeCode: { type: String, default: '', index: true },
+  /**
+   * ── لأيّ شركةٍ المركبة ──────────────────────────────────────────────────
+   *
+   * المجموعةُ شركتان: «تنشيط الخدمات اللوجيستية» و«تنشيط المستقبل». والأسطولُ
+   * مشتركٌ في التشغيل ومفصولٌ في الملكيّة — الرخصةُ والتأمينُ والمخالفةُ تُنسَب
+   * إلى شركةٍ بعينها، وتقريرُ أيٍّ منهما كان يُبنى بالتخمين من القطاع.
+   *
+   * ونصُّها عربيٌّ لا رمزٌ: تقرأه التصديراتُ والفلاترُ مباشرةً كما تقرأ
+   * `sectorAr` و`registrationTypeAr` أخواتِه في هذا السجلّ.
+   */
+  ownerCompanyAr: { type: String, default: '', index: true },
   brandAr: { type: String, default: '', index: true },
   modelAr: { type: String, default: '' },
   modelYear: { type: Number, default: null, index: true },

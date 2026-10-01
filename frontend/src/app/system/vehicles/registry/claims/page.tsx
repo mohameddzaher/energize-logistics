@@ -10,7 +10,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useDialog } from '@/components/system/DialogProvider';
-import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, SearchableSelect } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   TriangleAlert, Search, ArrowRight, Clock, Plus, Pencil, Trash2, X, Paperclip,
@@ -527,7 +527,10 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
    * لوحاتُ السجلّ للاختيار — أيُّ مركبةٍ تقع في حادثٍ هي مركبةٌ مسجَّلةٌ عندنا،
    * فلا تُكتب لوحتُها بالأيدي فتُكتب بصيغةٍ لا تطابق السجلّ.
    */
-  const [plates, setPlates] = useState<{ plate: string; typeAr: string; authorizedName: string; actualDriverName: string; actualDriverId: string }[]>([]);
+  const [plates, setPlates] = useState<{
+    plate: string; typeAr: string; serial?: string; sectorAr?: string; ownerCompanyAr?: string;
+    registrationTypeAr?: string; authorizedName: string; actualDriverName: string; actualDriverId: string;
+  }[]>([]);
   useEffect(() => {
     api.get<{ plates: typeof plates }>('/api/vehicle-registry/plate-options')
       .then((d) => setPlates(d.plates || [])).catch(() => {});
@@ -628,9 +631,14 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
                   وباختيارها يُملأ نوعُ المركبة وقائدُها الفعليّ من صفّها: هي
                   مكتوبةٌ هناك، وإعادةُ كتابتها هنا تُنتِج حادثًا بلوحةٍ لا
                   تطابق أيَّ مركبةٍ عندنا. */}
-              <select value={f.vehiclePlate} className={inp}
-                onChange={(e) => {
-                  const v2 = e.target.value;
+              {/* ── وثلاثُمئةٍ وثمانٍ وثلاثون لوحةً تُبحَث لا تُمرَّر ──────────
+                  كانت قائمةً عاديّةً يُنزَل فيها بالعين حتّى تُرى اللوحة، وهي
+                  مكتوبةٌ بحروفٍ عربيّةٍ متشابهة. والسطرُ الثاني يقول الماركةَ
+                  والطراز لا نوعَ التسجيل: ثمانٍ وستّون شاحنةً نوعُ تسجيلها
+                  «نقل عام» جميعًا، فكان الوصفُ واحدًا بجانب كلّ صفّ. */}
+              <SearchableSelect
+                value={f.vehiclePlate} searchAfter={0}
+                onChange={(v2) => {
                   set('vehiclePlate', v2);
                   const hit = plates.find((x) => x.plate === v2);
                   if (hit) {
@@ -642,17 +650,22 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
                       driverIdNumber: x.driverIdNumber || hit.actualDriverId || '',
                     }));
                   }
-                }}>
-                <option value="">{t('— اختر اللوحة —', '— pick the plate —')}</option>
-                {plates.map((x) => (
-                  <option key={x.plate} value={x.plate}>
-                    {x.plate}{x.typeAr ? ` — ${x.typeAr}` : ''}
-                  </option>
-                ))}
-                {!!f.vehiclePlate && !plates.some((x) => x.plate === f.vehiclePlate) && (
-                  <option value={f.vehiclePlate}>{f.vehiclePlate}</option>
-                )}
-              </select></div>
+                }}
+                placeholder={t('— اختر اللوحة —', '— pick the plate —')}
+                searchPlaceholder={t('اللوحة أو الرقم التسلسلي أو الماركة…', 'Plate, serial or brand…')}
+                emptyLabel={t('لا لوحةَ تطابق — المركبة يجب أن تكون مسجّلةً عندنا', 'No match — the vehicle must be in our registry')}
+                options={[
+                  { value: '', label: t('— اختر اللوحة —', '— pick the plate —') },
+                  ...plates.map((x) => ({
+                    value: x.plate,
+                    label: x.plate,
+                    hint: [x.typeAr, x.sectorAr, x.ownerCompanyAr, x.serial && `#${x.serial}`].filter(Boolean).join(' · '),
+                  })),
+                  // لوحةٌ قديمةٌ في حادثٍ مسجَّلٍ قبل أن تُحذف المركبة تبقى مقروءة.
+                  ...(f.vehiclePlate && !plates.some((x) => x.plate === f.vehiclePlate)
+                    ? [{ value: f.vehiclePlate, label: f.vehiclePlate, hint: t('ليست في سجلّ المركبات', 'not in the registry') }]
+                    : []),
+                ]} /></div>
             <div><label className={lbl}>{t('موضوع الواقعة (إن لم تكن مركبة)', 'Subject (if not a vehicle)')}</label>
               <input value={f.incidentSubjectAr} onChange={(e) => set('incidentSubjectAr', e.target.value)} className={inp} /></div>
             <div><label className={lbl}>{t('تاريخ الحادث', 'Accident date')}</label>

@@ -422,7 +422,7 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
   const { lang } = useLanguage();
   const ar = lang === 'ar';
   const { notify } = useDialog();
-  const [f, setF] = useState<any>(vehicle || { plateNumber: '', sectorAr: '', registrationTypeAr: '', brandAr: '', modelAr: '', modelYear: '', colorAr: '', ownerNameAr: '', chassisNumber: '', insurance: {}, operatingCard: {}, vehicleLicense: {}, inspection: {}, fuelCard: {} });
+  const [f, setF] = useState<any>(vehicle || { plateNumber: '', sectorAr: '', registrationTypeAr: '', ownerCompanyAr: '', brandAr: '', modelAr: '', modelYear: '', colorAr: '', ownerNameAr: '', chassisNumber: '', insurance: {}, operatingCard: {}, vehicleLicense: {}, inspection: {}, fuelCard: {} });
   const [saving, setSaving] = useState(false);
   const set = (k: string, v: any) => setF((p: any) => ({ ...p, [k]: v }));
   const setSub = (o: string, k: string, v: any) => setF((p: any) => ({ ...p, [o]: { ...(p[o] || {}), [k]: v } }));
@@ -501,6 +501,9 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <div><L>{ar ? 'الرقم التسلسلي' : 'Serial'}</L><input className={inp} value={f.serialNumber || ''} onChange={(e) => set('serialNumber', e.target.value)} /></div>
           <div><L>{ar ? 'القطاع' : 'Sector'}</L><ManagedSelect storeLabel type="vehicle_sector" value={f.sectorAr || ''} onChange={(v) => set('sectorAr', v)} /></div>
           <div><L>{ar ? 'نوع التسجيل' : 'Registration type'}</L><ManagedSelect storeLabel type="vehicle_registration_type" value={f.registrationTypeAr || ''} onChange={(v) => set('registrationTypeAr', v)} /></div>
+          {/* الشركةُ المالكة: المجموعةُ شركتان، والقائمةُ مُدارةٌ من المرجعيّات
+              فتُضاف ثالثةٌ بلا تعديلِ شيفرة. */}
+          <div><L>{ar ? 'الشركة المالكة' : 'Owning company'}</L><ManagedSelect storeLabel type="vehicle_owner_company" value={f.ownerCompanyAr || ''} onChange={(v) => set('ownerCompanyAr', v)} /></div>
           <div><L>{ar ? 'الماركة' : 'Brand'}</L><ManagedSelect storeLabel type="vehicle_brand" value={f.brandAr || ''} onChange={(v) => set('brandAr', v)} /></div>
           <div><L>{ar ? 'الطراز' : 'Model'}</L><input className={inp} value={f.modelAr || ''} onChange={(e) => set('modelAr', e.target.value)} /></div>
           <div><L>{ar ? 'سنة الصنع' : 'Year'}</L><input type="number" className={inp} value={f.modelYear || ''} onChange={(e) => set('modelYear', e.target.value ? Number(e.target.value) : null)} /></div>

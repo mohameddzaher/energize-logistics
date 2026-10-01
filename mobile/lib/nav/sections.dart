@@ -462,6 +462,15 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('تفقّد بداية الدوام', 'Duty Start Check', Icons.photo_camera_outlined, (c) => const B2cDutyScreen(), path: '/system/b2c/duty/start'),
         // والسجلُّ بعدها: شاشةُ المشرف يُعمَل بها التفقّد، وهذه تُقرأ.
         AppPage('سجل التفقّد', 'Duty Register', Icons.fact_check_outlined, (c) => const B2cDutyRegisterScreen(), path: '/system/b2c/duty'),
+        // مخزنُ القسم — الشاشةُ نفسُها بنطاقٍ آخر: آليّةُ المخزن واحدةٌ
+        // وأصنافُه وأرصدتُه منفصلةٌ عن مخزن النقل الثقيل.
+        AppPage('المخزن', 'Store', Icons.inventory_2_outlined,
+            (c) => const Ls2StoreScreen(
+                  base: '/api/light-transport/store',
+                  titleAr: 'مخزن النقل الخفيف',
+                  titleEn: 'Light Transport Store',
+                ),
+            path: '/system/b2c/light-transport/store'),
         AppPage('عهد المشاريع', 'Custody', Icons.account_balance_wallet_outlined, (c) => const B2cWalletScreen(), path: '/system/b2c/custody'),
         // ── سجلُّ القسم كلِّه لا مناديبَ التقارير وحدَهم ────────────────────
         // «مناديب المبيعات» كانت تقرأ `B2CRep` — وهم مَن لهم تقاريرُ طلبات،

@@ -834,9 +834,6 @@
     "/system/ls2/store": {
       "apis": [
         "/api/ls2/store",
-        "/api/ls2/store/bulk-movement",
-        "/api/ls2/store/dashboard",
-        "/api/ls2/store/movements",
         "/api/ls2/vehicles"
       ],
       "wildcard": false
@@ -1266,7 +1263,9 @@
       "apis": [
         "/api/light-transport/employees",
         "/api/light-transport/employees/assign-supervisors",
-        "/api/lookups/types"
+        "/api/light-transport/store",
+        "/api/lookups/types",
+        "/api/ls2/vehicles"
       ],
       "wildcard": false
     },

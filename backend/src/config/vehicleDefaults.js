@@ -57,6 +57,13 @@ module.exports = {
     row('private', 'خاص', 'Private'),
     row('private_transport', 'نقل خاص', 'Private transport'),
   ],
+  // ── شركتا المجموعة ────────────────────────────────────────────────────────
+  // الأسطولُ مشتركُ التشغيلِ مفصولُ الملكيّة: الرخصةُ والتأمينُ والمخالفةُ
+  // تُنسَب إلى شركةٍ بعينها. وهي قائمةٌ مُدارةٌ فتُزاد ثالثةٌ بلا شيفرة.
+  ownerCompanies: [
+    row('tanshit_logistics', 'تنشيط الخدمات اللوجيستية', 'Tanshit Logistics Services'),
+    row('tanshit_future', 'تنشيط المستقبل', 'Tanshit Al-Mustaqbal'),
+  ],
   possessionStatuses: [
     row('owner', 'مالك', 'Owner'),
     row('user', 'مستخدم', 'User'),

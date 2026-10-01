@@ -40,4 +40,31 @@ router.post('/orders/:id/end', authorize(...EDIT), o.endOrder);
 // نقلُ تفويضِ مركبةٍ وحدَه — بلا أمرِ تشغيلٍ جديد. راجع `moveAuthorization`.
 router.post('/authorization/move', authorize(...EDIT), o.moveAuthorization);
 
+/**
+ * ── مخزنُ النقل الخفيف ──────────────────────────────────────────────────────
+ *
+ * آليّةُ المخزن مكتوبةٌ مرّةً في `ls2StoreController` — وارد وصادر، حركةٌ لا
+ * تُعدَّل بل تُعكَس، رصيدٌ بعد كلّ حركة، وعتبةُ نقص. ولهذا القسم مخزنُه
+ * بأصنافه (رأسُ موتورٍ وجوانٌ ودرّاجات)، فيُنادى الكونترولرُ نفسُه بنطاق
+ * `warehouse=light` بدل نسخِ مخزنٍ ثانٍ يفترق عن الأوّل أوّلَ تعديل.
+ *
+ * والنطاقُ يُفرَض هنا لا يُترَك للواجهة: الصفحةُ تنادي `/api/light-transport/
+ * store` فلا تستطيع — ولو بخطأ — أن تقرأ مخزنَ النقل الثقيل أو تكتب فيه.
+ */
+const store = require('../controllers/ls2StoreController');
+const lightStore = (handler) => (req, res) => {
+  req.query = { ...req.query, warehouse: 'light' };
+  if (req.body && typeof req.body === 'object') req.body.warehouse = 'light';
+  return handler(req, res);
+};
+router.get('/store', lightStore(store.listItems));
+router.get('/store/dashboard', lightStore(store.dashboard));
+router.get('/store/movements', lightStore(store.listMovements));
+router.post('/store', authorize(...EDIT), lightStore(store.createItem));
+router.post('/store/bulk-movement', authorize(...EDIT), lightStore(store.addBulkMovement));
+router.post('/store/movements/:movementId/reverse', authorize(...EDIT), lightStore(store.reverseMovement));
+router.post('/store/:id/movement', objectIdParam('id'), authorize(...EDIT), lightStore(store.addMovement));
+router.put('/store/:id', objectIdParam('id'), authorize(...EDIT), lightStore(store.updateItem));
+router.delete('/store/:id', objectIdParam('id'), authorize(...EDIT), lightStore(store.deleteItem));
+
 module.exports = router;

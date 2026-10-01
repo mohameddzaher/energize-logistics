@@ -50,6 +50,25 @@ const fleetDriverSchema = new mongoose.Schema({
   // picking him on a shipment for another truck — just moves this pointer;
   // the shipment events keep the story.
   vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetVehicle', default: null, index: true },
+  /**
+   * ── أوّلٌ أو ثانٍ: المقعدُ رتبةٌ لا مجرّدُ وجود ────────────────────────────
+   *
+   * المقعدان قاعدةُ القسم منذ البداية — شاحنةٌ تحمل سائقَين على الأكثر — لكنّ
+   * الرتبةَ لم تكن مكتوبةً في شيء: السائقان يشتركان في الشاحنة ويُعرَضان بأيّ
+   * ترتيبٍ تُعيده القاعدة. فمن سأل «مين السائق الأول على 2708؟» لم يكن للسؤال
+   * جوابٌ في السجلّ، ونموذجُ الشحنة كان يُجلس أوّلَ مَن يصل في خانة «السائق
+   * الأساسي» — فتُطبَع البوليصةُ باسم الثاني.
+   *
+   * والرتبةُ تُكتب على السائق لا على المركبة: مؤشّرُ `vehicle` هو الصلةُ
+   * الوحيدة بينهما، فلو كُتبت قائمةُ سائقين على المركبة أيضًا صار في النظام
+   * سجلّان لشيءٍ واحدٍ يختلفان أوّلَ ما يُنقَل سائقٌ من شاشةٍ لا تعرف الآخر
+   * (وهذا بعينه ما حدث في تفاويض المركبات).
+   *
+   * ولا معنى للمقعد بلا شاحنة: مَن نزل عن شاحنته يعود إلى الأوّل، فلا يبقى
+   * في السجلّ «سائقٌ ثانٍ» لا شاحنةَ له. وشاحنةٌ فيها ثانٍ بلا أوّلٍ محالٌ —
+   * إن نزل الأوّلُ رُقِّي الثاني (راجع `seatDriver`).
+   */
+  seat: { type: Number, enum: [1, 2], default: 1 },
   // هدفُه الشهريُّ إن خُصَّ بواحد — وإلّا فافتراضيُّ القسم.
   // `null` تعني «استعمل الافتراضيّ»، و`0` تعني «لا هدفَ له» وهما مختلفان.
   monthlyLoadsTarget: { type: Number, default: null },
@@ -58,7 +77,7 @@ const fleetDriverSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
 fleetDriverSchema.index({ name: 1 });
-fleetDriverSchema.index({ vehicle: 1 }); // every board/list joins drivers by seat
+fleetDriverSchema.index({ vehicle: 1, seat: 1 }); // every board/list joins drivers by seat
 
 // ── Customers of the fleet section (separate register from the trial's) ─────
 const fleetCustomerSchema = new mongoose.Schema({

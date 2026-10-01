@@ -34,8 +34,9 @@ const DRIVER_COLUMNS = [
   { header: 'Vehicle', key: 'vehicle', transform: (v: any) => (v && typeof v === 'object' ? v.plate : ''), width: 16 },
   // «السائق الثاني» يُصدَّر أيضًا: من يقرأ الكشف على الورق يسأل عنه كما يسأل
   // من يقرأ الشاشة.
-  { header: 'Second driver', key: 'mateName', width: 24 },
-  { header: 'Second driver phone', key: 'matePhone', width: 16 },
+  { header: 'Seat', key: 'seat', transform: (v: any) => (v === 2 ? 'Second' : v === 1 ? 'First' : ''), width: 10 },
+  { header: 'Team-mate', key: 'mateName', width: 24 },
+  { header: 'Team-mate phone', key: 'matePhone', width: 16 },
   { header: 'Working', key: 'working', transform: (v: any) => (v ? 'Yes' : 'No'), width: 10 },
   { header: 'Off reason', key: 'offReason', width: 12 },
   { header: 'Off note', key: 'offNote', width: 24 },
@@ -197,6 +198,8 @@ export default function FleetDriversPage() {
     // «مين شغّال لوحده ومين معاه تاني؟» — سؤالٌ يُسأل عند التوزيع.
     if (assignFilter === 'paired' && !mateOf(d)) return false;
     if (assignFilter === 'alone' && (!vehId(d) || mateOf(d))) return false;
+    if (assignFilter === 'seat1' && !(vehId(d) && d.seat !== 2)) return false;
+    if (assignFilter === 'seat2' && d.seat !== 2) return false;
     const s = foldAr(search.trim());
     if (!s) return true;
     // والبحثُ باسم الزميل يجد الاثنين معًا: من يكتب اسمَ سائقٍ يريد صفَّه
@@ -260,6 +263,9 @@ export default function FleetDriversPage() {
             <option value="unassigned">{ar ? 'بلا سيارة' : 'Unassigned'}</option>
             <option value="paired">{ar ? 'سيارة بسائقين' : 'Sharing a truck'}</option>
             <option value="alone">{ar ? 'سيارة بسائق واحد' : 'Alone on a truck'}</option>
+            {/* الرتبةُ تُسأل كما يُسأل عنها: «هاتِ السوّاق الثواني». */}
+            <option value="seat1">{ar ? 'سائقون أوائل' : 'First drivers'}</option>
+            <option value="seat2">{ar ? 'سائقون ثوانٍ' : 'Second drivers'}</option>
           </Select>
         </div>
       </div>
@@ -273,7 +279,8 @@ export default function FleetDriversPage() {
             <th className={th}>{ar ? 'الحالة' : 'Status'}</th>
             <th className={th}>{ar ? 'الكفالة' : 'Sponsorship'}</th>
             <th className={th}>{ar ? 'السيارة' : 'Vehicle'}</th>
-            <th className={th}>{ar ? 'السائق الثاني' : 'Second driver'}</th>
+            <th className={th}>{ar ? 'مقعده' : 'His seat'}</th>
+            <th className={th}>{ar ? 'الزميل على نفس السيارة' : 'Team-mate'}</th>
             <th className={th}>{ar ? 'إجراءات' : 'Actions'}</th>
           </tr></thead>
           <tbody>
@@ -323,16 +330,36 @@ export default function FleetDriversPage() {
                       : <SmallBadge bg="bg-red-500/15" text="text-red-700" label={ar ? 'بدون سيارة' : 'Unassigned'} />
                   )}
                 </td>
+                {/* ── رتبتُه على شاحنته ──────────────────────────────────────
+                    «السائق الثاني» رتبةٌ تُقرأ في البوليصة وفي نموذج الشحنة،
+                    وكان الجدولُ يقول «على 2708» ولا يقول أوّلًا أم ثانيًا —
+                    فيُسأل المشرفُ عن طاقم شاحنةٍ فيجيب بالظنّ. وتُبدَّل من
+                    صفحة الشاحنات حيث يُرى المقعدان معًا. */}
+                <td className="px-4 py-3 whitespace-nowrap">
+                  {!vehId(d) ? <span className="text-slate-300">—</span>
+                    : d.seat === 2
+                      ? <SmallBadge bg="bg-violet-500/15" text="text-violet-700" label={ar ? 'سائق ثانٍ' : 'Second'} />
+                      : <SmallBadge bg="bg-blue-500/15" text="text-blue-700" label={ar ? 'سائق أول' : 'First'} />}
+                </td>
                 {/* المقعدُ الآخر: مَن يشاركه الشاحنة، أو أنّه شاغرٌ ويقبل واحدًا. */}
                 <td className="px-4 py-3 whitespace-nowrap">
                   {(() => {
                     if (!vehId(d)) return <span className="text-slate-300">—</span>;
                     const m = mateOf(d);
-                    if (!m) return <span className="text-[11.5px] text-slate-400">{ar ? 'المقعد الثاني شاغر' : 'Second seat free'}</span>;
+                    if (!m) {
+                      return (
+                        <span className="text-[11.5px] text-slate-400">
+                          {d.seat === 2 ? (ar ? 'المقعد الأول شاغر' : 'First seat free') : (ar ? 'المقعد الثاني شاغر' : 'Second seat free')}
+                        </span>
+                      );
+                    }
                     return (
                       <span className="inline-flex flex-col">
                         <span className="text-slate-800 font-medium flex items-center gap-1.5">
                           {m.name}
+                          <span className="text-[10.5px] text-slate-500 font-normal">
+                            {m.seat === 2 ? (ar ? '(ثانٍ)' : '(2nd)') : (ar ? '(أول)' : '(1st)')}
+                          </span>
                           {m.working === false && (
                             <span className="px-1.5 py-0.5 rounded-full bg-slate-500/15 text-slate-600 text-[10.5px] font-semibold">{ar ? 'لا يعمل' : 'Off'}</span>
                           )}
@@ -358,7 +385,7 @@ export default function FleetDriversPage() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={8} className="text-center text-slate-500 py-12">
+              <tr><td colSpan={9} className="text-center text-slate-500 py-12">
                 {drivers.length === 0
                   ? (ar ? 'لا يوجد سائقون بعد.' : 'No drivers yet.')
                   : (ar ? 'لا نتائج مطابقة للبحث.' : 'No matches.')}

@@ -477,6 +477,7 @@
     "/system/fleet/vehicles": {
       "apis": [
         "/api/fleet/arrivals",
+        "/api/fleet/drivers",
         "/api/fleet/supervisors",
         "/api/fleet/vehicles"
       ],

@@ -18,7 +18,7 @@ import { Spinner, PageHeader, Select, SearchableSelect, PrimaryButton, SmallBadg
 import SearchableManagedSelect from '@/components/system/SearchableManagedSelect';
 import {
   FleetVehicle, FleetDriver, FleetCustomer, FLEET_STATUSES, fmtDT,
-  canEditFleet, vehicleAvailabilityText, Lang,
+  canEditFleet, vehicleAvailabilityText, seatsOf, Lang,
 } from '@/lib/fleet';
 
 const labelCls = 'block text-sm font-semibold text-slate-800 mb-1.5';
@@ -122,15 +122,22 @@ function CreateFleetShipmentInner() {
   }, [customerId]);
   const driverOf = (id: string) => drivers.find((d) => d._id === id) || null;
 
-  // Picking the truck seats its own drivers into the two slots automatically.
+  /**
+   * Picking the truck seats its own drivers into the two slots automatically.
+   *
+   * ── والرتبةُ تأتي من سجلّ الشاحنة لا من ترتيب الوصول ─────────────────────
+   * `seatsOf` تقرأ المقعدَ المكتوب (الأوّل/الثاني)، وكانت الخانتان تُملآن
+   * بأوّلِ مَن يصل من القاعدة — فتُطبَع البوليصةُ أحيانًا باسم السائق الثاني
+   * في موضع الأساسيّ. وتغييرُ الخانة هنا يُعيد ترتيبَ مقاعد الشاحنة عند
+   * الحفظ: مَن اختير أساسيًّا للحمولة هو سائقُها الأوّل.
+   */
   const applyVehicle = (id: string) => {
     setVehicleId(id);
     const v = vehicles.find((x) => x._id === id);
     if (!v) return;
-    const seated = v.drivers || [];
-    if (seated[0]) setDriverId(seated[0]._id);
-    if (seated[1]) setSecondDriverId(seated[1]._id);
-    else setSecondDriverId('');
+    const [first, second] = seatsOf(v);
+    if (first) setDriverId(first._id);
+    setSecondDriverId(second?._id || '');
   };
 
   const vehicleOfDriver = (d: FleetDriver) => {
@@ -320,7 +327,14 @@ function CreateFleetShipmentInner() {
                 </div>
                 <div>
                   <p className="text-xs text-slate-500 mb-0.5">{ar ? 'السائقون عليها' : 'Seated drivers'}</p>
-                  <p className="font-semibold text-slate-900">{(vehicle.drivers || []).map((d) => d.name).join(' + ') || '—'}</p>
+                  <p className="font-semibold text-slate-900">
+                    {(() => {
+                      const [a, b] = seatsOf(vehicle);
+                      if (!a && !b) return '—';
+                      return [a && `${a.name}${ar ? ' (أول)' : ' (1st)'}`, b && `${b.name}${ar ? ' (ثانٍ)' : ' (2nd)'}`]
+                        .filter(Boolean).join(' · ');
+                    })()}
+                  </p>
                 </div>
               </div>
             )}
@@ -344,8 +358,8 @@ function CreateFleetShipmentInner() {
       {card(ar ? 'السائقون' : 'Drivers', UsersIcon, (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {([
-            { id: driverId, setId: setDriverId, label: ar ? 'السائق الأساسي' : 'Primary driver' },
-            { id: secondDriverId, setId: setSecondDriverId, label: ar ? 'سائق ثانٍ (اختياري — للوصول الأسرع)' : 'Second driver (optional)' },
+            { id: driverId, setId: setDriverId, label: ar ? 'السائق الأول' : 'First driver' },
+            { id: secondDriverId, setId: setSecondDriverId, label: ar ? 'السائق الثاني (اختياري — للوصول الأسرع)' : 'Second driver (optional)' },
           ]).map((slot, i) => {
             const d = driverOf(slot.id);
             const hint = moveHint(slot.id);

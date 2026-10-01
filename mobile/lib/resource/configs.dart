@@ -65,12 +65,16 @@ final fleetDriversCfg = ResourceConfig(
     r['working'] != false ? ('يعمل', T.success) : ('متوقف', T.inkFaint),
     if (r['onSponsorship'] == true) ('على الكفالة', T.info),
     if (r['vehicle'] is Map) (_s(r['vehicle'] as Map<String, dynamic>, 'plate'), T.navy),
+    // ── ورتبتُه على الشاحنة ────────────────────────────────────────────────
+    // «السائق الثاني» رتبةٌ تُقرأ في البوليصة وفي نموذج الشحنة، وكانت الشاشةُ
+    // تقول اللوحةَ ولا تقول أوّلًا أم ثانيًا — فيُجاب عن طاقم الشاحنة بالظنّ.
+    if (r['vehicle'] is Map) (r['seat'] == 2 ? 'سائق ثانٍ' : 'سائق أول', r['seat'] == 2 ? T.violet : T.info),
     // ── ومع مَن على الشاحنة ────────────────────────────────────────────────
     // الشاحنةُ تحمل سائقَين، والسؤالُ الذي يلي اللوحةَ دائمًا: «ومين معاه؟».
     if (r['mate'] is Map)
       ('مع ${_s(r['mate'] as Map<String, dynamic>, 'name')}', T.violet)
     else if (r['vehicle'] is Map)
-      ('المقعد الثاني شاغر', T.inkFaint),
+      (r['seat'] == 2 ? 'المقعد الأول شاغر' : 'المقعد الثاني شاغر', T.inkFaint),
   ],
   // تبديل سريع لحالة العمل/الكفالة من قائمة الصف دون فتح النموذج.
   rowActions: (r) => [
@@ -88,6 +92,18 @@ final fleetDriversCfg = ResourceConfig(
       color: T.info,
       request: (row) => ('PUT', '/api/fleet/drivers/${row['_id']}', {'onSponsorship': !(row['onSponsorship'] == true)}),
     ),
+    // ── ورفعُه أو إنزالُه بين المقعدين من الصفّ ────────────────────────────
+    // المقعدُ يُبدَّل في الموقع من جدول الشاحنات، وفي الهاتف من صفّ السائق:
+    // المشرفُ في الطريق هو مَن يقرّر مَن يسوق أوّلًا اليوم. والخادمُ يتولّى
+    // التبادل — فمَن رُفع إلى الأوّل نزل زميلُه إلى الثاني.
+    if (r['vehicle'] is Map)
+      ResourceAction(
+        icon: r['seat'] == 2 ? Icons.arrow_upward : Icons.arrow_downward,
+        ar: r['seat'] == 2 ? 'ارفعه سائقًا أول' : 'اجعله سائقًا ثانيًا',
+        en: r['seat'] == 2 ? 'Make first driver' : 'Make second driver',
+        color: T.violet,
+        request: (row) => ('PUT', '/api/fleet/drivers/${row['_id']}', {'seat': row['seat'] == 2 ? 1 : 2}),
+      ),
   ],
   fields: [
     const FieldSpec('name', 'اسم السائق', 'Name', required: true),
@@ -97,6 +113,10 @@ final fleetDriversCfg = ResourceConfig(
     FieldSpec('vehicle', 'السيارة', 'Vehicle', type: FieldType.lookup,
         lookupEndpoint: '/api/fleet/vehicles', lookupListKey: 'vehicles',
         lookupLabel: (v) => [_s(v, 'plate'), _s(v, 'name')].where((x) => x.isNotEmpty).join(' · ')),
+    const FieldSpec('seat', 'مقعده', 'Seat', type: FieldType.select, options: [
+      ('1', 'سائق أول', 'First driver'),
+      ('2', 'سائق ثانٍ', 'Second driver'),
+    ]),
     const FieldSpec('working', 'يعمل حاليًا', 'Working', type: FieldType.checkbox),
     const FieldSpec('onSponsorship', 'على الكفالة', 'On sponsorship', type: FieldType.checkbox),
     const FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
@@ -109,11 +129,27 @@ final fleetVehiclesCfg = ResourceConfig(
   endpoint: '/api/fleet/vehicles', listKey: 'vehicles', liveEvent: 'fleet:updated',
   searchFields: const ['plate', 'name', 'trailerType', 'supervisorName'],
   titleOf: (r) => _s(r, 'plate'),
-  subtitleOf: (r) => [_s(r, 'name'), _s(r, 'supervisorName')].where((x) => x.isNotEmpty).join(' · '),
-  chipsOf: (r) => [
-    if (_s(r, 'trailerType').isNotEmpty) (_s(r, 'trailerType'), T.navy),
-    if (_s(r, 'gpsType').isNotEmpty) ('GPS: ${_s(r, 'gpsType')}', T.cyan),
-  ],
+  // ── وطاقمُها بالرتبة في السطر الثاني ──────────────────────────────────────
+  // «مَن على هذه الشاحنة؟» سؤالُ المشرف الأوّل، وكان السطرُ يقول اسمَها واسمَ
+  // مشرفها ولا يقول سائقَها. والخادمُ يرسل `drivers` مرتَّبةً بالمقعد.
+  subtitleOf: (r) {
+    final crew = List<Map<String, dynamic>>.from((r['drivers'] as List? ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)));
+    final first = crew.firstWhere((d) => (d['seat'] ?? 1) == 1, orElse: () => const {});
+    final second = crew.firstWhere((d) => d['seat'] == 2, orElse: () => const {});
+    final who = [
+      if (first.isNotEmpty) '${_s(first, 'name')} (أول)',
+      if (second.isNotEmpty) '${_s(second, 'name')} (ثانٍ)',
+    ].join(' · ');
+    return [who.isEmpty ? 'بدون سائق' : who, _s(r, 'supervisorName')].where((x) => x.isNotEmpty).join(' — ');
+  },
+  chipsOf: (r) {
+    final crew = (r['drivers'] as List? ?? const []).length;
+    return [
+      if (_s(r, 'trailerType').isNotEmpty) (_s(r, 'trailerType'), T.navy),
+      if (_s(r, 'gpsType').isNotEmpty) ('GPS: ${_s(r, 'gpsType')}', T.cyan),
+      if (crew == 0) ('بدون سائق', T.danger) else if (crew == 1) ('سائق واحد', T.warn) else ('سائقان', T.success),
+    ];
+  },
   fields: const [
     FieldSpec('plate', 'اللوحة', 'Plate', required: true),
     FieldSpec('name', 'اسم السيارة', 'Name'),

@@ -115,12 +115,35 @@ export default function DutyRegisterPage() {
   const t = (a: string, e: string) => (ar ? a : e);
 
   const [tab, setTab] = useState<'log' | 'gallery' | 'missing' | 'analysis'>('log');
+  /**
+   * ── المدى يُسأل بالطريقة التي يُسأل بها ────────────────────────────────────
+   *
+   * كان خانتين: «من» و«إلى». ومَن يريد يومًا بعينه يكتب التاريخ مرّتين، ومَن
+   * يريد شهرًا يحسب أوّلَه وآخرَه بيده — وآخرُ الشهر ليس رقمًا واحدًا (ثمانيةٌ
+   * وعشرون، تسعةٌ وعشرون، ثلاثون، واحدٌ وثلاثون)، فمن كتب ٣٠ لشهر فبراير أخذ
+   * شهرًا ناقصًا ولم يعرف. والسؤالان الحقيقيّان: «يوم كذا» و«شهر كذا».
+   *
+   * فصار المدى يُختار بنوعه، والحدّان يُحسبان منه — و«من/إلى» يبقى لمن أراد
+   * مدًى لا يبدأ بأوّلِ شهرٍ ولا ينتهي بآخره.
+   */
+  const [mode, setMode] = useState<'day' | 'month' | 'range'>('day');
   const [from, setFrom] = useState(todayKey());
   const [to, setTo] = useState(todayKey());
   const [supervisor, setSupervisor] = useState('');
   const [outcome, setOutcome] = useState('');
   // نوعُ الصورة: يحصر السجلَّ فيمن له صورةٌ من هذا النوع، ويحصر المعرضَ فيه.
   const [photoKind, setPhotoKind] = useState<'' | PhotoKind>('');
+
+  // يومٌ واحد: الحدّان واحد. وشهرٌ: أوّلُه وآخرُه — وآخرُه يُحسَب لا يُفترَض
+  // (اليومُ صفرٌ من الشهر التالي هو آخرُ يومٍ في هذا الشهر).
+  const pickDay = (d: string) => { setFrom(d); setTo(d); };
+  const pickMonth = (m: string) => {
+    const [y, mo] = m.split('-').map(Number);
+    if (!y || !mo) return;
+    const last = new Date(y, mo, 0).getDate();
+    setFrom(`${m}-01`);
+    setTo(`${m}-${String(last).padStart(2, '0')}`);
+  };
 
   const [rows, setRows] = useState<Row[]>([]);
   const [sups, setSups] = useState<{ _id: string; name: string; reps: number }[]>([]);
@@ -129,26 +152,53 @@ export default function DutyRegisterPage() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState<Row | null>(null);
 
+  /**
+   * ── والمدى الشهريُّ أكبرُ من صفحةٍ واحدة ──────────────────────────────────
+   *
+   * كان الطلبُ `limit=500` وصفحةً واحدة، والردُّ يحمل `total` فلا يُقرأ. ومئةٌ
+   * وسبعةٌ وأربعون مندوبًا تعني نحو ثلاثة آلاف تفقّدٍ في الشهر — فكان الجدولُ
+   * يعرض خمسمئة ويسكت عن الباقي، فيُقرأ النقصُ على أنّه الواقع.
+   *
+   * فتُطلَب الصفحاتُ معًا (`PAGE` لكلٍّ)، ويُقال كم عُرض من كم، ويُزاد بزرّ.
+   * والعددُ في التبويب من `total` لا من طول المصفوفة الواصلة.
+   */
+  const PAGE = 500;
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  // أيُّ تغييرٍ في الفلاتر يعيد العرضَ إلى صفحته الأولى.
+  useEffect(() => { setPages(1); }, [from, to, supervisor, outcome, photoKind]);
+
   const qs = useMemo(() => {
-    const p = new URLSearchParams({ from, to, limit: '500' });
+    const p = new URLSearchParams({ from, to, limit: String(PAGE) });
     if (supervisor) p.set('supervisor', supervisor);
     if (outcome) p.set('outcome', outcome);
     if (photoKind) p.set('photoKind', photoKind);
     return p.toString();
   }, [from, to, supervisor, outcome, photoKind]);
 
+  const missingDate = useMemo(() => {
+    const today = todayKey();
+    return from <= today && today <= to ? today : to;
+  }, [from, to]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [l, a, m] = await Promise.all([
-        api.get<{ rows: Row[] }>(`/api/b2c/duty?${qs}`),
+        // الصفحاتُ معًا لا واحدةً بعد واحدة: انتظارٌ واحدٌ لا ستّة.
+        Promise.all(Array.from({ length: pages }, (_, i) => api.get<{ rows: Row[]; total: number }>(`/api/b2c/duty?${qs}&page=${i + 1}`)))
+          .then((parts) => ({ rows: parts.flatMap((x) => x.rows || []), total: parts[0]?.total || 0 })),
         api.get<any>(`/api/b2c/duty/analytics?from=${from}&to=${to}${supervisor ? `&supervisor=${supervisor}` : ''}`),
-        api.get<any>(`/api/b2c/duty/missing?date=${to}${supervisor ? `&supervisor=${supervisor}` : ''}`).catch(() => null),
+        // ── ويومُ «مَن لم يُتفقَّد» داخل المدى ──────────────────────────────
+        // الشاشةُ تسأل عن يومٍ واحد: مَن لم يُتفقَّد فيه. وكان اليومُ هو `to`
+        // دائمًا — وهو في مدى الشهر آخرُ يومٍ فيه، وقد يكون في المستقبل: فيقال
+        // «لم يُتفقَّد أحد» عن يومٍ لم يأتِ. فإن كان اليومُ داخل المدى سُئل عنه.
+        api.get<any>(`/api/b2c/duty/missing?date=${missingDate}${supervisor ? `&supervisor=${supervisor}` : ''}`).catch(() => null),
       ]);
-      setRows(l.rows || []); setAn(a); setMissing(m);
-    } catch { setRows([]); }
+      setRows(l.rows || []); setTotal(l.total || 0); setAn(a); setMissing(m);
+    } catch { setRows([]); setTotal(0); }
     setLoading(false);
-  }, [qs, from, to, supervisor]);
+  }, [qs, pages, from, to, supervisor, missingDate]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.get<any>('/api/b2c/duty/supervisors').then((d) => setSups(d.supervisors || [])).catch(() => {}); }, []);
@@ -211,8 +261,35 @@ export default function DutyRegisterPage() {
 
       {/* الفلاتر */}
       <div className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-        <F label={t('من', 'From')}><input type="date" className={inp} value={from} onChange={(e) => setFrom(e.target.value)} /></F>
-        <F label={t('إلى', 'To')}><input type="date" className={inp} value={to} onChange={(e) => setTo(e.target.value)} /></F>
+        <F label={t('المدى', 'Period')}>
+          <select className={inp} value={mode}
+            onChange={(e) => {
+              const m = e.target.value as typeof mode;
+              setMode(m);
+              // تغييرُ النوع يضبط الحدّين فورًا على الفترة المعروضة الآن، فلا
+              // تبقى الشاشةُ على مدًى لا يوافق ما تقوله الخانة.
+              if (m === 'day') pickDay(to);
+              if (m === 'month') pickMonth(to.slice(0, 7));
+            }}>
+            <option value="day">{t('يوم محدَّد', 'A single day')}</option>
+            <option value="month">{t('شهر محدَّد', 'A whole month')}</option>
+            <option value="range">{t('من — إلى', 'From — to')}</option>
+          </select>
+        </F>
+        {mode === 'day' && (
+          <F label={t('اليوم', 'Day')}>
+            <input type="date" className={inp} value={from} onChange={(e) => pickDay(e.target.value)} />
+          </F>
+        )}
+        {mode === 'month' && (
+          <F label={t('الشهر', 'Month')}>
+            <input type="month" className={inp} value={from.slice(0, 7)} onChange={(e) => pickMonth(e.target.value)} />
+          </F>
+        )}
+        {mode === 'range' && (<>
+          <F label={t('من', 'From')}><input type="date" className={inp} value={from} onChange={(e) => setFrom(e.target.value)} /></F>
+          <F label={t('إلى', 'To')}><input type="date" className={inp} value={to} onChange={(e) => setTo(e.target.value)} /></F>
+        </>)}
         <F label={t('المشرف', 'Supervisor')}>
           <select className={inp} value={supervisor} onChange={(e) => setSupervisor(e.target.value)}>
             <option value="">{t('الكل', 'All')}</option>
@@ -231,8 +308,15 @@ export default function DutyRegisterPage() {
             {KINDS.map((k) => <option key={k.key} value={k.key}>{t(`${k.ar} فقط`, `${k.en} only`)}</option>)}
           </select>
         </F>
-        <button type="button" onClick={() => { const d = todayKey(); setFrom(d); setTo(d); setSupervisor(''); setOutcome(''); setPhotoKind(''); }}
+        <button type="button" onClick={() => { setMode('day'); pickDay(todayKey()); setSupervisor(''); setOutcome(''); setPhotoKind(''); }}
           className="pb-2 text-xs font-semibold text-slate-400 hover:text-[#f37121]">{t('اليوم', 'Today')}</button>
+        {/* الشهرُ الحاليُّ بضغطة: أكثرُ ما يُطلَب بعد اليوم. */}
+        <button type="button" onClick={() => { setMode('month'); pickMonth(todayKey().slice(0, 7)); }}
+          className="pb-2 text-xs font-semibold text-slate-400 hover:text-[#f37121]">{t('هذا الشهر', 'This month')}</button>
+        {/* والمدى المعروضُ مكتوبٌ صريحًا: مَن غيّر الشهرَ ثمّ نسي يقرأ ما يراه. */}
+        <span className="pb-2 text-[11px] text-slate-400">
+          {from === to ? from : `${from} → ${to}`}
+        </span>
       </div>
 
       {/* الأرقام */}
@@ -252,7 +336,8 @@ export default function DutyRegisterPage() {
 
       <div className="flex flex-wrap gap-1.5">
         {([
-          ['log', t('السجلّ', 'Register'), rows.length],
+          // العددُ من `total`: الشارةُ تقول ما في المدى لا ما حُمِّل منه.
+          ['log', t('السجلّ', 'Register'), total || rows.length],
           ['gallery', t('الصور', 'Photos'), photos.length],
           ['missing', t('لم يُفقَّدوا', 'Not checked'), missing?.missing?.length ?? 0],
           ['analysis', t('التحليل', 'Analysis'), null],
@@ -263,6 +348,17 @@ export default function DutyRegisterPage() {
           </button>
         ))}
       </div>
+
+      {/* ما عُرض من المدى، وزرُّ الزيادة — فلا يُقرأ نقصُ الصفحة واقعًا. */}
+      {total > rows.length && (
+        <div className="flex items-center gap-3 text-xs text-slate-500">
+          <span>{t(`يُعرَض ${rows.length} من ${total} تفقّدًا في هذا المدى`, `Showing ${rows.length} of ${total} checks in this period`)}</span>
+          <button type="button" onClick={() => setPages((p) => p + 1)} disabled={loading}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 hover:border-[#f37121] hover:text-[#f37121] disabled:opacity-50">
+            {loading ? t('جارٍ…', 'Loading…') : t('عرض المزيد', 'Show more')}
+          </button>
+        </div>
+      )}
 
       {loading && <div className="py-8 text-center text-sm text-slate-500"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>}
 

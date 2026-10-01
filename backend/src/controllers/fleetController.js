@@ -130,30 +130,77 @@ const applyFridayBonus = async (data) => {
   }
 };
 
-// Move a driver onto a vehicle, enforcing the two-seat rule. Returns a line
-// for the event log when he actually moved.
-const seatDriver = async (driverId, vehicleId) => {
+/**
+ * ── وشاحنةٌ لا تبقى بثانٍ بلا أوّل ─────────────────────────────────────────
+ *
+ * يُدعى بعد كلِّ نزولٍ عن شاحنة. فإن خلا المقعدُ الأوّلُ وفي الثاني رجلٌ
+ * رُقِّي إلى الأوّل: «السائق الثاني» رتبةٌ نسبةً إلى أوّلٍ موجود، فإذا لم
+ * يوجد صارت الكلمةُ بلا معنى — وتقرأ الشاشةُ شاحنةً سائقُها الأوّلُ خالٍ
+ * وسائقُها الثاني فلان، فلا يُعرَف أهو خطأٌ في البيانات أم نقصٌ في الطاقم.
+ */
+const promoteSeats = async (vehicleId) => {
+  if (!vehicleId) return;
+  const live = { vehicle: vehicleId, isActive: { $ne: false } };
+  const seated = await FleetDriver.find(live).select('seat').sort({ seat: 1 }).lean();
+  if (!seated.length) return;
+  if (!seated.some((d) => d.seat === 1)) {
+    await FleetDriver.updateOne({ _id: seated[0]._id }, { $set: { seat: 1 } });
+    if (seated[1]) await FleetDriver.updateOne({ _id: seated[1]._id }, { $set: { seat: 2 } });
+  }
+};
+
+/**
+ * Move a driver onto a vehicle, enforcing the two-seat rule. Returns a line
+ * for the event log when he actually moved.
+ *
+ * ── والمقعدُ يُطلَب أو يُعطى أوّلَ ما يخلو ─────────────────────────────────
+ * `seat` مطلوبٌ صريحًا حين يقول المستخدم «هذا سائقٌ ثانٍ على هذه الشاحنة»،
+ * ومتروكٌ حين يُسنَد السائقُ بلا ترتيب — فيأخذ أوّلَ مقعدٍ خالٍ. ولو طُلب
+ * مقعدٌ يشغله غيرُه، تبادلا: المستخدم طلب أن يكون هذا هو الأوّل، فالآخر
+ * يصير الثاني — وهو أقربُ إلى مراده من رسالةِ خطأ.
+ */
+const seatDriver = async (driverId, vehicleId, seat = null) => {
   if (!driverId) return null;
   const driver = await FleetDriver.findById(driverId);
   if (!driver) return null;
-  if (String(driver.vehicle || '') === String(vehicleId || '')) return { driver, moved: null };
-  const fromVehicle = driver.vehicle ? await FleetVehicle.findById(driver.vehicle).select('plate').lean() : null;
+  const sameVehicle = String(driver.vehicle || '') === String(vehicleId || '');
+  const want = seat === 1 || seat === 2 ? seat : null;
+  if (sameVehicle && (!want || driver.seat === want)) return { driver, moved: null };
+  const fromVehicle = driver.vehicle && !sameVehicle
+    ? await FleetVehicle.findById(driver.vehicle).select('plate').lean() : null;
+
+  let mates = [];
   if (vehicleId) {
-    const seated = await FleetDriver.countDocuments({ vehicle: vehicleId, isActive: { $ne: false }, _id: { $ne: driver._id } });
-    if (seated >= 2) {
+    mates = await FleetDriver
+      .find({ vehicle: vehicleId, isActive: { $ne: false }, _id: { $ne: driver._id } })
+      .select('seat name').lean();
+    if (mates.length >= 2) {
       const veh = await FleetVehicle.findById(vehicleId).select('plate').lean();
       const err = new Error(`السيارة ${veh?.plate || ''} عليها سائقان بالفعل — أنزِل أحدهما أولاً`);
       err.status = 400;
       throw err;
     }
   }
+
+  const taken = new Set(mates.map((m) => m.seat || 1));
+  const target = want || (taken.has(1) ? 2 : 1);
+  // تبادلُ الرتبة: مَن كان في المقعد المطلوب ينتقل إلى الآخر.
+  const holder = mates.find((m) => (m.seat || 1) === target);
+  if (holder) await FleetDriver.updateOne({ _id: holder._id }, { $set: { seat: target === 1 ? 2 : 1 } });
+
+  const leftBehind = sameVehicle ? null : driver.vehicle;
   driver.vehicle = vehicleId || null;
+  // المقعدُ لا معنى له بلا شاحنة، فيعود إلى الأوّل حتّى لا يُقرأ بقيّةً كاذبة.
+  driver.seat = vehicleId ? target : 1;
   await driver.save();
+  if (leftBehind) await promoteSeats(leftBehind);
   return {
     driver,
     moved: fromVehicle
       ? `نُقل السائق ${driver.name} من السيارة ${fromVehicle.plate}`
-      : `أُسند السائق ${driver.name}`,
+      : (sameVehicle
+        ? `صار السائق ${driver.name} السائقَ ${target === 1 ? 'الأول' : 'الثاني'}`
+        : `أُسند السائق ${driver.name} سائقًا ${target === 1 ? 'أول' : 'ثانيًا'}`),
   };
 };
 
@@ -184,7 +231,9 @@ const resolveAssignments = async (req, data, existing = null) => {
       if (key === 'driver') { data.driverPhone = ''; data.driverIqama = ''; data.driverNationality = ''; }
       continue;
     }
-    const seated = await seatDriver(data[key], vehicleId);
+    // رتبةُ الخانة في النموذج هي رتبةُ المقعد على الشاحنة: مَن اختير «السائق
+    // الأساسي» للحمولة هو السائقُ الأوّل عليها — وإلّا قالت الشاشتان قولين.
+    const seated = await seatDriver(data[key], vehicleId, key === 'driver' ? 1 : 2);
     if (seated?.moved) notes.push(seated.moved);
     if (seated?.driver) {
       if (key === 'driver') {
@@ -691,7 +740,7 @@ exports.addFollowUp = async (req, res) => {
 // `monthlyLoadsTarget` و`monthlyKmTarget`: هدفُ سائقٍ بعينه — و`null` تعني
 // «استعمل افتراضيَّ القسم»، وهي غيرُ `0` التي تعني «لا هدفَ له».
 // `iban` معه: مصاريفُ السوّاق تُحوَّل إليه، ومصدرُه ملفُّ الرجل لا سطرُ الحمولة.
-const DRIVER_EDITABLE = ['name', 'phone', 'iqama', 'iban', 'working', 'onSponsorship', 'nationality', 'vehicle', 'notes', 'isActive', 'offReason', 'offNote', 'monthlyLoadsTarget', 'monthlyKmTarget'];
+const DRIVER_EDITABLE = ['name', 'phone', 'iqama', 'iban', 'working', 'onSponsorship', 'nationality', 'vehicle', 'seat', 'notes', 'isActive', 'offReason', 'offNote', 'monthlyLoadsTarget', 'monthlyKmTarget'];
 
 exports.listDrivers = async (req, res) => {
   try {
@@ -717,6 +766,7 @@ exports.listDrivers = async (req, res) => {
       .sort({ name: 1 })
       .limit(1000)
       .lean();
+    drivers.forEach((d) => { d.seat = d.vehicle ? (d.seat || 1) : null; });
 
     // ── ومَن يشاركه الشاحنة؟ ─────────────────────────────────────────────
     //
@@ -738,7 +788,10 @@ exports.listDrivers = async (req, res) => {
       const mates = vid ? (seats.get(String(vid)) || []) : [];
       const other = mates.find((x) => String(x._id) !== String(d._id));
       d.mate = other
-        ? { _id: other._id, name: other.name || '', phone: other.phone || '', working: other.working !== false }
+        ? {
+          _id: other._id, name: other.name || '', phone: other.phone || '',
+          working: other.working !== false, seat: other.seat || 1,
+        }
         : null;
       d.seatMates = mates.length;
     }
@@ -753,9 +806,11 @@ exports.createDriver = async (req, res) => {
     if (!req.body.name || !String(req.body.name).trim()) return res.status(400).json({ message: 'Driver name is required' });
     const data = pick(req.body, DRIVER_EDITABLE);
     const vehicleId = data.vehicle;
+    const seat = Number(data.seat) || null;
     delete data.vehicle;
+    delete data.seat;
     const driver = await FleetDriver.create(data);
-    if (vehicleId) await seatDriver(driver._id, vehicleId);
+    if (vehicleId) await seatDriver(driver._id, vehicleId, seat);
     emit('fleet:drivers', {});
     res.status(201).json({ driver });
   } catch (error) {
@@ -770,9 +825,11 @@ exports.updateDriver = async (req, res) => {
     if (!driver) return res.status(404).json({ message: 'Driver not found' });
     const data = pick(req.body, DRIVER_EDITABLE);
     // Vehicle moves go through the two-seat rule, not a raw write.
-    if (data.vehicle !== undefined) {
-      await seatDriver(driver._id, data.vehicle || null);
+    if (data.vehicle !== undefined || data.seat !== undefined) {
+      const toVehicle = data.vehicle !== undefined ? (data.vehicle || null) : driver.vehicle;
+      await seatDriver(driver._id, toVehicle, Number(data.seat) || null);
       delete data.vehicle;
+      delete data.seat;
     }
     // Reason and availability move together: naming a reason means he is off;
     // marking him working again clears the reason.
@@ -790,9 +847,15 @@ exports.updateDriver = async (req, res) => {
 
 exports.deleteDriver = async (req, res) => {
   try {
-    const driver = await FleetDriver.findByIdAndUpdate(req.params.id, { isActive: false, vehicle: null }, { new: true });
+    const before = await FleetDriver.findById(req.params.id).select('vehicle').lean();
+    const driver = await FleetDriver.findByIdAndUpdate(
+      req.params.id, { isActive: false, vehicle: null, seat: 1 }, { new: true },
+    );
     if (!driver) return res.status(404).json({ message: 'Driver not found' });
+    // شاحنتُه السابقةُ لا تبقى بثانٍ بلا أوّل.
+    if (before?.vehicle) await promoteSeats(before.vehicle);
     emit('fleet:drivers', {});
+    emit('fleet:vehicles', {});
     res.json({ message: 'Driver removed' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to remove the driver' });
@@ -810,13 +873,20 @@ exports.listVehicles = async (req, res) => {
     if (scope) vFilter._id = { $in: scope };
     const [vehicles, drivers] = await Promise.all([
       FleetVehicle.find(vFilter).sort({ plate: 1 }).limit(500).lean(),
-      FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null } }).select('name phone working vehicle').lean(),
+      FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null } })
+        .select('name phone working vehicle seat').sort({ seat: 1, name: 1 }).lean(),
     ]);
+    // ── والترتيبُ هو الرتبة ────────────────────────────────────────────────
+    // `drivers[0]` يُقرأ في ثلاث شاشاتٍ على أنّه السائقُ الأوّل — ونموذجُ
+    // الشحنة يُجلسه في خانة «السائق الأساسي». فالفرزُ بالمقعد شرطٌ لا تجميل.
     const byVehicle = {};
     drivers.forEach((d) => {
       const k = String(d.vehicle);
-      (byVehicle[k] = byVehicle[k] || []).push({ _id: d._id, name: d.name, phone: d.phone, working: d.working });
+      (byVehicle[k] = byVehicle[k] || []).push({
+        _id: d._id, name: d.name, phone: d.phone, working: d.working, seat: d.seat || 1,
+      });
     });
+    Object.values(byVehicle).forEach((list) => list.sort((a, b) => a.seat - b.seat));
 
     // What the dispatcher needs WHILE PICKING a truck: where it is right now
     // (live GPS → city), what it is already carrying, and whether it entered
@@ -896,12 +966,79 @@ exports.updateVehicle = async (req, res) => {
   }
 };
 
+/**
+ * ── مقعدا الشاحنة يُحرَّران من صفحة الشاحنة ────────────────────────────────
+ *
+ * PATCH /api/fleet/vehicles/:id/drivers  { first, second }
+ *
+ * كان الإسنادُ من صفحة السائقين وحدَها: تُفتَح، ويُبحَث عن الرجل بين سبعين،
+ * وتُختار شاحنتُه من قائمة. والسؤالُ في الواقع معكوسٌ — المشرفُ ينظر إلى
+ * شاحنةٍ ويقول «مَن عليها؟ ومَن معه؟» — فيصير سؤالين في صفٍّ واحدٍ من جدول
+ * الشاحنات: السائقُ الأوّل والسائقُ الثاني.
+ *
+ * والنداءُ واحدٌ للمقعدين عمدًا: لو كُتب كلُّ مقعدٍ بنداءٍ لاصطدم التبادل —
+ * مَن نقل الأوّلَ إلى الثاني ثمّ أسند أوّلًا جديدًا يمرّ بلحظةٍ فيها رجلان
+ * في مقعدٍ واحدٍ أو شاحنةٌ تُرفض لأنّ «عليها سائقان بالفعل».
+ *
+ * والمحذوفُ من الخانة يعني النزول: مَن كان على الشاحنة ولم يُذكَر في الطلب
+ * يعود إلى المخزون (`vehicle: null`) — لا يُحذَف ولا يُنقَل إلى شاحنةٍ أخرى.
+ */
+exports.setVehicleDrivers = async (req, res) => {
+  try {
+    const vehicle = await FleetVehicle.findById(req.params.id).select('plate').lean();
+    if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
+    const idOf = (v) => (v && mongoose.Types.ObjectId.isValid(v) ? String(v) : '');
+    const first = idOf(req.body.first);
+    const second = idOf(req.body.second);
+    if (first && second && first === second) {
+      return res.status(400).json({ message: 'لا يكون الرجلُ سائقَ الشاحنة الأولَ والثانيَ معًا' });
+    }
+
+    const current = await FleetDriver
+      .find({ vehicle: vehicle._id, isActive: { $ne: false } }).select('name seat').lean();
+    const keep = new Set([first, second].filter(Boolean));
+
+    // ── ومَن جاء من شاحنةٍ أخرى تُرقَّى مقاعدُها بعده ──────────────────────
+    // اثنان وستّون سائقًا على ثمانٍ وخمسين شاحنة، وأربعةٌ في المخزون — فإسنادُ
+    // سائقٍ ثانٍ هو في الغالب سحبُه من شاحنةِ غيره. ولو لم تُرقَّ مقاعدُ تلك
+    // الشاحنة لبقي عليها «سائقٌ ثانٍ» بلا أوّل.
+    const incoming = await FleetDriver
+      .find({ _id: { $in: [first, second].filter(Boolean) } }).select('vehicle').lean();
+    const vacated = incoming
+      .map((d) => d.vehicle).filter((v) => v && String(v) !== String(vehicle._id));
+
+    // ١. يُنزَل من لم يُذكَر — قبل الإسناد، وإلّا رُفض الجديدُ بحجّة المقعدين.
+    for (const d of current) {
+      if (!keep.has(String(d._id))) {
+        await FleetDriver.updateOne({ _id: d._id }, { $set: { vehicle: null, seat: 1 } });
+      }
+    }
+    // ٢. تُفرَّغ المقاعدُ المعنيّة ثمّ تُكتب: فلا تمرّ القاعدةُ بحالةٍ فيها
+    //    رجلان في مقعدٍ واحد، ولا يُرفض إسنادٌ بسبب ترتيبِ الكتابة.
+    if (first) await FleetDriver.updateOne({ _id: first }, { $set: { vehicle: vehicle._id, seat: 1 } });
+    if (second) await FleetDriver.updateOne({ _id: second }, { $set: { vehicle: vehicle._id, seat: 2 } });
+    // ٣. وثانٍ بلا أوّلٍ يُرقَّى — هنا وفي كلّ شاحنةٍ خلا منها رجلٌ.
+    await promoteSeats(vehicle._id);
+    for (const v of vacated) await promoteSeats(v);
+
+    const seated = await FleetDriver
+      .find({ vehicle: vehicle._id, isActive: { $ne: false } })
+      .select('name phone working seat').sort({ seat: 1 }).lean();
+    emit('fleet:drivers', {});
+    emit('fleet:vehicles', {});
+    res.json({ plate: vehicle.plate, drivers: seated });
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ message: error.message });
+    res.status(500).json({ message: 'Failed to set the vehicle drivers' });
+  }
+};
+
 exports.deleteVehicle = async (req, res) => {
   try {
     const vehicle = await FleetVehicle.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
     if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
     // Its drivers go back to the bench rather than pointing at a ghost.
-    await FleetDriver.updateMany({ vehicle: vehicle._id }, { vehicle: null });
+    await FleetDriver.updateMany({ vehicle: vehicle._id }, { vehicle: null, seat: 1 });
     emit('fleet:vehicles', {});
     res.json({ message: 'Vehicle removed' });
   } catch (error) {

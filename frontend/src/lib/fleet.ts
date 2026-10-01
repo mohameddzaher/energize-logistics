@@ -15,7 +15,13 @@ export interface FleetVehicle {
   supervisor?: string | null;   // المشرف المسؤول — يعيّنه مدير القسم
   supervisorName?: string;
   notes?: string;
-  drivers?: { _id: string; name: string; phone?: string; working?: boolean }[];
+  /**
+   * السائقون عليها، **مرتَّبين بالمقعد**: الأوّلُ ثمّ الثاني.
+   *
+   * والترتيبُ من الخادم لا من الواجهة: ثلاثُ شاشاتٍ تقرأ `drivers[0]` على
+   * أنّه السائقُ الأوّل — ونموذجُ الشحنة يُجلسه في خانة «السائق الأساسي».
+   */
+  drivers?: { _id: string; name: string; phone?: string; working?: boolean; seat?: 1 | 2 }[];
   // إثراء حي وقت الاختيار: أين هي الآن، وماذا تحمل بالفعل، وهل وصلت وجهتها.
   live?: { city: string | null; status?: string | null; lastMessageAt?: string | null } | null;
   /** حالة الصيانة من لوكيشن سوليوشن — تُقرأ مع الموقع لأنّ القرار يحتاجهما معًا. */
@@ -38,6 +44,20 @@ export const vehicleAvailabilityText = (v: FleetVehicle, lang: Lang): string => 
   return ar ? 'متاحة' : 'Available';
 };
 
+/**
+ * سائقا الشاحنة بالرتبة: `[الأوّل, الثاني]` وأحدُهما قد يكون `null`.
+ *
+ * يُقرأ في ثلاث شاشاتٍ (الشاحنات، السائقون، نموذج الشحنة)، فلو حسبته كلُّ
+ * واحدةٍ بنفسها اختلفت الشاشاتُ في مَن هو الأوّلُ أوّلَ ما يتغيّر الترتيب.
+ */
+export const seatsOf = (v?: Pick<FleetVehicle, 'drivers'> | null) => {
+  const list = v?.drivers || [];
+  return [
+    list.find((d) => (d.seat || 1) === 1) || null,
+    list.find((d) => d.seat === 2) || null,
+  ] as const;
+};
+
 export interface FleetDriver {
   _id: string;
   name: string;
@@ -58,9 +78,11 @@ export interface FleetDriver {
    * يلي «على أيّ سيّارة؟» هو «ومع مَن؟». ويأتي من الخادم لا يُقابَل في كلّ
    * واجهةٍ على حدة: فلا يفترق جوابُ الويب عن جواب الهاتف.
    */
-  mate?: { _id: string; name: string; phone?: string; working?: boolean } | null;
+  mate?: { _id: string; name: string; phone?: string; working?: boolean; seat?: 1 | 2 } | null;
   /** عددُ من على الشاحنة — واحدٌ أو اثنان، أو صفرٌ لمن لا شاحنةَ له. */
   seatMates?: number;
+  /** مقعدُه على شاحنته: الأوّلُ أو الثاني. و`null` لمن لا شاحنةَ له. */
+  seat?: 1 | 2 | null;
   notes?: string;
 }
 

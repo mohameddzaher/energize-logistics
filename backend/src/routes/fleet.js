@@ -22,6 +22,9 @@ router.get('/board', fleet.getBoard);
 router.get('/supervisors', fleet.listSupervisors);
 router.patch('/vehicles/:id/supervisor', authorize(...ADMIN_ROLES), fleet.assignVehicleSupervisor);
 router.post('/vehicles/assign-supervisor-bulk', authorize(...ADMIN_ROLES), fleet.assignVehicleSupervisorBulk);
+// مقعدا الشاحنة: السائقُ الأوّل والثاني في نداءٍ واحد — المشرفُ يسندهما من
+// صفّ الشاحنة لا من صفحة السائقين، فالسؤالُ عنده «مَن على هذه الشاحنة؟».
+router.patch('/vehicles/:id/drivers', authorize(...EDIT_ROLES), fleet.setVehicleDrivers);
 
 // Shipments (الحمولات)
 router.get('/shipments', fleet.listShipments);

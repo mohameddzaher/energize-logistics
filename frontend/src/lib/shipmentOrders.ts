@@ -128,6 +128,33 @@ export interface OrderSupplier {
   email?: string;
   notes?: string;
   vehicleCount?: number;
+  /** كم سائقًا يعمل عنده — يُقرأ قبل فتح ملفّه كما يُقرأ عددُ شاحناته. */
+  driverCount?: number;
+}
+
+/**
+ * سائقُ شاحنةِ ناقل — سجلٌّ كان ناقصًا بالكامل.
+ *
+ * كان السائقُ اسمًا ورقمَ هاتفٍ مكتوبين على صفّ الشاحنة، فلا ملفَّ له ولا
+ * رقمَ إقامةٍ ولا بطاقةَ تشغيلٍ ولا تاريخَ انتهائها. ومنصّةُ الأوبريشن تحمل
+ * لكلٍّ ملفَّه، فاستُورد السجلُّ منها.
+ */
+export interface OrderDriver {
+  _id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  nationality?: string;
+  /** رقمُ الإقامة — به يُعرَف الرجلُ حين يتشابه الاسم. */
+  residenceNumber?: string;
+  driverCardNumber?: string;
+  /** انتهاءُ بطاقة التشغيل: سائقٌ بطاقتُه منتهيةٌ يُوقفه الطريقُ لا نحن. */
+  driverCardExpiry?: string;
+  companyName?: string;
+  sponsorName?: string;
+  supplier?: OrderSupplier | string | null;
+  vehicle?: OrderVehicle | string | null;
+  notes?: string;
 }
 
 export interface OrderVehicle {

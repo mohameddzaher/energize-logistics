@@ -1007,7 +1007,12 @@ final shipmentOrdersSuppliersCfg = ResourceConfig(
   serverSearch: true,
   titleOf: (r) => _s(r, 'name'),
   subtitleOf: (r) => _s(r, 'phone'),
-  chipsOf: (r) => [(r['type'] == 'freelancer' ? tr('مستقل', 'Freelancer') : tr('شركة', 'Company'), const Color(0xFF4F46E5))],
+  chipsOf: (r) => [
+    (r['type'] == 'freelancer' ? tr('مستقل', 'Freelancer') : tr('شركة', 'Company'), const Color(0xFF4F46E5)),
+    // كم شاحنةً وكم سائقًا — الرقمان اللذان يُسألان عن المورّد قبل فتح ملفّه.
+    ('${r['vehicleCount'] ?? 0} شاحنة', T.navy),
+    ('${r['driverCount'] ?? 0} سائق', T.cyan),
+  ],
   fields: const [
     FieldSpec('name', 'اسم المورد', 'Name', required: true),
     FieldSpec('type', 'النوع', 'Type', type: FieldType.select, options: [
@@ -1050,6 +1055,68 @@ final shipmentOrdersVehiclesCfg = ResourceConfig(
     FieldSpec('defaultDriverName', 'السائق الافتراضي', 'Default driver'),
     FieldSpec('defaultDriverPhone', 'هاتف السائق', 'Driver phone', type: FieldType.phone),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+);
+
+/// سوّاقُ شاحنات الناقلين — سجلٌّ كان ناقصًا بالكامل في القسمين.
+///
+/// كان السائقُ اسمًا على صفّ الشاحنة، فلا ملفَّ له ولا رقمَ إقامةٍ ولا بطاقةَ
+/// تشغيلٍ ولا تاريخَ انتهائها. ومنصّةُ الأوبريشن تحمل سبعةَ عشرَ ألفًا وخمسَمئةٍ
+/// وثلاثةً وستّين سائقًا لكلٍّ ملفُّه، فاستُورد السجلُّ منها.
+///
+/// والبحثُ عند الخادم: سجلٌّ بهذا الحجم لا يُبحَث في صفحةٍ وصلت.
+final shipmentOrdersDriversCfg = ResourceConfig(
+  arTitle: 'سوّاق الناقلين', enTitle: 'Carrier Drivers', icon: Icons.badge_outlined,
+  endpoint: '/api/shipment-orders/drivers', listKey: 'drivers', liveEvent: 'shipmentOrders:fleet',
+  searchFields: const ['name', 'phone', 'residenceNumber', 'driverCardNumber'],
+  serverSearch: true,
+  titleOf: (r) => _s(r, 'name'),
+  subtitleOf: (r) => [
+    _s(r, 'phone'),
+    if (_s(r, 'residenceNumber').isNotEmpty) 'إقامة ${_s(r, 'residenceNumber')}',
+    if (r['vehicle'] is Map) _s(r['vehicle'] as Map<String, dynamic>, 'plate'),
+  ].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) {
+    final out = <(String, Color)>[];
+    if (r['supplier'] is Map) out.add((_s(r['supplier'] as Map<String, dynamic>, 'name'), T.info));
+    if (_s(r, 'nationality').isNotEmpty) out.add((_s(r, 'nationality'), T.navy));
+    // ── وبطاقةُ التشغيل تُقال قبل الإسناد ────────────────────────────────────
+    // سائقٌ بطاقتُه منتهيةٌ يُوقفه الطريقُ لا نحن، ومعرفةُ ذلك قبل تحميله
+    // توفّر حمولةً متعطّلةً على الطريق.
+    final exp = _s(r, 'driverCardExpiry');
+    if (exp.isNotEmpty) {
+      final d = DateTime.tryParse(exp);
+      if (d != null) {
+        final days = d.difference(DateTime.now()).inDays;
+        if (days < 0) {
+          out.add(('بطاقة التشغيل منتهية', T.danger));
+        } else if (days <= 30) {
+          out.add(('البطاقة تنتهي بعد $days يوم', T.warn));
+        } else {
+          out.add(('البطاقة سارية', T.success));
+        }
+      }
+    } else {
+      out.add(('بلا بطاقة تشغيل', T.inkFaint));
+    }
+    return out;
+  },
+  fields: [
+    const FieldSpec('name', 'اسم السائق', 'Name', required: true),
+    const FieldSpec('phone', 'الجوال', 'Phone', type: FieldType.phone),
+    const FieldSpec('nationality', 'الجنسية', 'Nationality'),
+    const FieldSpec('residenceNumber', 'رقم الإقامة', 'Iqama number'),
+    const FieldSpec('driverCardNumber', 'رقم بطاقة التشغيل', 'Driver card number'),
+    const FieldSpec('driverCardExpiry', 'انتهاء بطاقة التشغيل', 'Card expiry', type: FieldType.date),
+    const FieldSpec('sponsorName', 'الكفيل', 'Sponsor'),
+    const FieldSpec('supplier', 'المورّد', 'Supplier', type: FieldType.lookup,
+        lookupEndpoint: '/api/shipment-orders/suppliers', lookupListKey: 'suppliers',
+        lookupQuery: 'limit=60', lookupServerSearch: true),
+    FieldSpec('vehicle', 'شاحنته', 'His truck', type: FieldType.lookup,
+        lookupEndpoint: '/api/shipment-orders/vehicles', lookupListKey: 'vehicles',
+        lookupQuery: 'limit=60', lookupServerSearch: true,
+        lookupLabel: (v) => [_s(v, 'plate'), _s(v, 'name')].where((x) => x.isNotEmpty).join(' · ')),
+    const FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );
 

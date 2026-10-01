@@ -35,6 +35,7 @@ import '../screens/remote_suite.dart';
 import '../screens/ls2_dashboard.dart';
 import '../screens/b2c_daily.dart';
 import '../screens/b2c_duty.dart';
+import '../screens/b2c_duty_register.dart';
 import '../screens/ops_platform.dart';
 import '../screens/ls2_fleet_assets.dart';
 import '../screens/admin_suite.dart';
@@ -429,6 +430,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: shipmentOrdersCustomersCfg), path: '/system/shipment-orders/customers'),
         AppPage('الموردون', 'Suppliers', Icons.business_outlined, (c) => ResourceScreen(config: shipmentOrdersSuppliersCfg), path: '/system/shipment-orders/fleet'),
         AppPage('الشاحنات', 'Vehicles', Icons.local_shipping_outlined, (c) => ResourceScreen(config: shipmentOrdersVehiclesCfg), path: '/system/shipment-orders/fleet'),
+        // السوّاق: سجلٌّ ثالثٌ في الصفحة نفسها على الويب (تبويب)، وشاشةٌ هنا.
+        AppPage('السوّاق', 'Drivers', Icons.badge_outlined, (c) => ResourceScreen(config: shipmentOrdersDriversCfg), path: '/system/shipment-orders/fleet'),
         AppPage('إعدادات النموذج', 'Form Settings', Icons.tune_outlined, (c) => ResourceScreen(config: shipmentOrdersFieldsCfg), path: '/system/shipment-orders/settings'),
       ],
     ),
@@ -457,6 +460,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         // تفقُّد بداية الدوام — أوّلُ ما يُفتَح صباحًا، فيُوضَع قبل ما دونه.
         // والمشرفُ يفتحه واقفًا في المحطّة لا خلف مكتب، فالهاتفُ موضعُه الأصليّ.
         AppPage('تفقّد بداية الدوام', 'Duty Start Check', Icons.photo_camera_outlined, (c) => const B2cDutyScreen(), path: '/system/b2c/duty/start'),
+        // والسجلُّ بعدها: شاشةُ المشرف يُعمَل بها التفقّد، وهذه تُقرأ.
+        AppPage('سجل التفقّد', 'Duty Register', Icons.fact_check_outlined, (c) => const B2cDutyRegisterScreen(), path: '/system/b2c/duty'),
         AppPage('عهد المشاريع', 'Custody', Icons.account_balance_wallet_outlined, (c) => const B2cWalletScreen(), path: '/system/b2c/custody'),
         // ── سجلُّ القسم كلِّه لا مناديبَ التقارير وحدَهم ────────────────────
         // «مناديب المبيعات» كانت تقرأ `B2CRep` — وهم مَن لهم تقاريرُ طلبات،

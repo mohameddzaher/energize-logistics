@@ -5,6 +5,7 @@ const ShipmentOrderCustomer = require('../models/ShipmentOrderCustomer');
 const ShipmentOrderField = require('../models/ShipmentOrderField');
 const ShipmentOrderSupplier = require('../models/ShipmentOrderSupplier');
 const ShipmentOrderVehicle = require('../models/ShipmentOrderVehicle');
+const ShipmentOrderDriver = require('../models/ShipmentOrderDriver');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 const { createNotification } = require('../services/notificationService');
@@ -803,7 +804,8 @@ const anyOf = (q, fields) => {
 const REGISTRY_TTL = 2 * 60 * 1000;
 const CUSTOMER_LIST_FIELDS = 'name phone email notes routes defaults';
 const SUPPLIER_LIST_FIELDS = 'name type phone email notes';
-const VEHICLE_LIST_FIELDS = 'plate name truckType supplier ownership defaultDriverName defaultDriverPhone notes';
+const VEHICLE_LIST_FIELDS = 'plate name truckType supplier ownership defaultDriverName defaultDriverPhone operationCardNumber operationCardExpiry modelYear notes';
+const DRIVER_LIST_FIELDS = 'name phone nationality residenceNumber driverCardNumber driverCardExpiry supplier vehicle sponsorName notes';
 const registryKey = (kind, req, extra = '') => `so:registry:${kind}:${String(req.query.q || '')}:${req.query.limit || ''}:${extra}`;
 
 // ── ملكيّةُ الشاحنة تُطلَب صريحةً ──────────────────────────────────────────
@@ -918,7 +920,9 @@ exports.listSuppliers = async (req, res) => {
     const out = await cache.wrap(registryKey('suppliers', req), REGISTRY_TTL, async () => {
       // How many trucks each one runs — the number the team actually asks for.
       // والثلاثةُ مستقلّة فتُطلب معًا: ثلاث رحلاتٍ إلى العنقود في زمن واحدة.
-      const [suppliers, total, counts] = await Promise.all([
+      // كم شاحنةً وكم سائقًا لكلٍّ — الرقمان اللذان يُسألان عن المورّد قبل
+      // أن يُفتَح ملفُّه. والأربعةُ مستقلّةٌ فتُطلب معًا: رحلةٌ واحدةٌ بزمنِها.
+      const [suppliers, total, vCounts, dCounts] = await Promise.all([
         ShipmentOrderSupplier.find(filter)
           .select(SUPPLIER_LIST_FIELDS)
           .sort({ name: 1 })
@@ -929,11 +933,21 @@ exports.listSuppliers = async (req, res) => {
           { $match: { isActive: { $ne: false }, supplier: { $ne: null } } },
           { $group: { _id: '$supplier', n: { $sum: 1 } } },
         ]),
+        ShipmentOrderDriver.aggregate([
+          { $match: { isActive: { $ne: false }, supplier: { $ne: null } } },
+          { $group: { _id: '$supplier', n: { $sum: 1 } } },
+        ]),
       ]);
       const byId = {};
-      counts.forEach((c) => { byId[String(c._id)] = c.n; });
+      vCounts.forEach((c) => { byId[String(c._id)] = c.n; });
+      const drvById = {};
+      dCounts.forEach((c) => { drvById[String(c._id)] = c.n; });
       return {
-        suppliers: suppliers.map((s) => ({ ...s, vehicleCount: byId[String(s._id)] || 0 })),
+        suppliers: suppliers.map((s) => ({
+          ...s,
+          vehicleCount: byId[String(s._id)] || 0,
+          driverCount: drvById[String(s._id)] || 0,
+        })),
         total,
       };
     });
@@ -1014,7 +1028,7 @@ exports.fleetSummary = async (req, res) => {
   try {
     const out = await cache.wrap('so:registry:summary', REGISTRY_TTL, async () => {
       const live = { isActive: { $ne: false } };
-      const [byOwner, vehicles, suppliers] = await Promise.all([
+      const [byOwner, vehicles, suppliers, drivers] = await Promise.all([
         ShipmentOrderVehicle.aggregate([
           { $match: live },
           {
@@ -1029,10 +1043,11 @@ exports.fleetSummary = async (req, res) => {
         ]),
         ShipmentOrderVehicle.countDocuments(live),
         ShipmentOrderSupplier.countDocuments(live),
+        ShipmentOrderDriver.countDocuments(live),
       ]);
       const n = { supplier: 0, ours: 0, unknown: 0 };
       byOwner.forEach((r) => { n[r._id] = r.n; });
-      return { vehicles, suppliers, ...n };
+      return { vehicles, suppliers, drivers, ...n };
     });
     res.json(out);
   } catch (error) {
@@ -1070,6 +1085,85 @@ exports.deleteVehicle = async (req, res) => {
     res.json({ message: 'Vehicle removed' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to remove the vehicle' });
+  }
+};
+
+// ── السوّاق (سائقو شاحنات الناقلين) ─────────────────────────────────────────
+//
+// سجلٌّ كان ناقصًا بالكامل: السائقُ كان اسمًا على صفّ الشاحنة لا ملفًّا. وملفُّه
+// هو ما يُسأل عنه عند الإسناد: رقمُ إقامته، وبطاقةُ تشغيله ومتى تنتهي، ومَن
+// كفيلُه، وعلى أيّ شاحنةٍ هو ولأيّ مورّد.
+
+const DRIVER_EDITABLE = [
+  'name', 'phone', 'email', 'nationality', 'residenceNumber',
+  'driverCardNumber', 'driverCardExpiry', 'companyName', 'sponsorName',
+  'supplier', 'vehicle', 'notes', 'isActive',
+];
+
+exports.listDrivers = async (req, res) => {
+  try {
+    const { q } = req.query;
+    const filter = { isActive: { $ne: false } };
+    if (q && q.trim()) {
+      Object.assign(filter, anyOf(q, ['name', 'phone', 'residenceNumber', 'driverCardNumber',
+        'nationality', 'sponsorName', 'companyName', 'email', 'externalId']));
+    }
+    // بسائقِ مورّدٍ بعينه، أو بسائقِ شاحنةٍ بعينها — السؤالان اللذان تُفتَح
+    // لهما هذه القائمة من شاشةٍ أخرى.
+    if (req.query.supplier) filter.supplier = req.query.supplier;
+    if (req.query.vehicle) filter.vehicle = req.query.vehicle;
+    const out = await cache.wrap(
+      registryKey('drivers', req, `${req.query.supplier || ''}:${req.query.vehicle || ''}`),
+      REGISTRY_TTL, async () => {
+        const [drivers, total] = await Promise.all([
+          ShipmentOrderDriver.find(filter)
+            .select(DRIVER_LIST_FIELDS)
+            .populate('supplier', 'name type')
+            .populate('vehicle', 'plate name')
+            .sort({ name: 1 })
+            .limit(askedLimit(req.query.limit, 500, 5000))
+            .lean(),
+          ShipmentOrderDriver.countDocuments(filter),
+        ]);
+        return { drivers, total };
+      },
+    );
+    res.json(out);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load drivers' });
+  }
+};
+
+exports.createDriver = async (req, res) => {
+  try {
+    if (!req.body.name || !String(req.body.name).trim()) return res.status(400).json({ message: 'Driver name is required' });
+    const driver = await ShipmentOrderDriver.create({ ...pick(req.body, DRIVER_EDITABLE), createdBy: req.user._id });
+    emit('shipmentOrders:fleet', {});
+    res.status(201).json({ driver });
+  } catch (error) {
+    return sendMongooseError(res, error, 'Failed to create the driver');
+  }
+};
+
+exports.updateDriver = async (req, res) => {
+  try {
+    const driver = await ShipmentOrderDriver.findByIdAndUpdate(req.params.id, pick(req.body, DRIVER_EDITABLE), { new: true });
+    if (!driver) return res.status(404).json({ message: 'Driver not found' });
+    emit('shipmentOrders:fleet', {});
+    res.json({ driver });
+  } catch (error) {
+    return sendMongooseError(res, error, 'Failed to update the driver');
+  }
+};
+
+exports.deleteDriver = async (req, res) => {
+  try {
+    const driver = await ShipmentOrderDriver.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
+    if (!driver) return res.status(404).json({ message: 'Driver not found' });
+    emit('shipmentOrders:fleet', {});
+    res.json({ message: 'Driver removed' });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to remove the driver' });
   }
 };
 

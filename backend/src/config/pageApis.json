@@ -337,6 +337,7 @@
         "/api/customer-registry/options",
         "/api/partners/account",
         "/api/shipment-orders/customers",
+        "/api/shipment-orders/drivers",
         "/api/shipment-orders/fields",
         "/api/shipment-orders/orders",
         "/api/shipment-orders/orders/waybills.pdf",
@@ -366,6 +367,7 @@
     },
     "/system/shipment-orders/fleet": {
       "apis": [
+        "/api/shipment-orders/drivers",
         "/api/shipment-orders/fields",
         "/api/shipment-orders/fleet-summary",
         "/api/shipment-orders/suppliers",

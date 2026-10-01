@@ -53,6 +53,13 @@ router.post('/vehicles', authorize(...EDIT_ROLES), so.createVehicle);
 router.put('/vehicles/:id', authorize(...EDIT_ROLES), so.updateVehicle);
 router.delete('/vehicles/:id', authorize(...ADMIN_ROLES), so.deleteVehicle);
 
+// السوّاق — سائقو شاحنات الناقلين، لكلٍّ ملفُّه (الإقامة وبطاقةُ التشغيل
+// والكفيل) ومورّدُه وشاحنتُه. يُستورَد من منصّة الأوبريشن ويُصحَّح هنا.
+router.get('/drivers', so.listDrivers);
+router.post('/drivers', authorize(...EDIT_ROLES), so.createDriver);
+router.put('/drivers/:id', authorize(...EDIT_ROLES), so.updateDriver);
+router.delete('/drivers/:id', authorize(...ADMIN_ROLES), so.deleteDriver);
+
 // Form fields (the settings page). Changing the form is an admin act.
 router.get('/fields', so.listFields);
 router.post('/fields', authorize(...ADMIN_ROLES), so.createField);

@@ -17,13 +17,13 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
-import { Truck, Building2, User as UserIcon, Plus, Pencil, Trash2, Check, Loader2 } from 'lucide-react';
+import { Truck, Building2, User as UserIcon, Plus, Pencil, Trash2, Check, Loader2, IdCard } from 'lucide-react';
 import {
   Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea,
   SearchableSelect, SmallBadge, Tabs, ErrorNotice,
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
-import { OrderSupplier, OrderVehicle, FormField, optionLabel, canEditOrders, canAdminOrders, Lang } from '@/lib/shipmentOrders';
+import { OrderSupplier, OrderVehicle, OrderDriver, FormField, optionLabel, canEditOrders, canAdminOrders, Lang } from '@/lib/shipmentOrders';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { ContactButtons } from '@/components/crm/CrmKit';
 import ScrollX from '@/components/system/ScrollX';
@@ -43,6 +43,11 @@ export default function FleetPage() {
 
   const [suppliers, setSuppliers] = useState<OrderSupplier[]>([]);
   const [vehicles, setVehicles] = useState<OrderVehicle[]>([]);
+  // ── والسوّاق سجلٌّ ثالث ─────────────────────────────────────────────────
+  // كان السائقُ اسمًا على صفّ الشاحنة: فلا يُسأل عن رقم إقامته ولا عن بطاقة
+  // تشغيله ولا متى تنتهي، ولا «أرِني سوّاق هذا المورّد». وهو السجلُّ الذي
+  // تحمل به المنصّةُ ربطَ الشاحنة بمالكها، فبه عُرف مالكُ أحدَ عشرَ ألفًا.
+  const [drivers, setDrivers] = useState<OrderDriver[]>([]);
   const [fields, setFields] = useState<FormField[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -53,8 +58,8 @@ export default function FleetPage() {
   // والخمسون يُدار في «إدارة الأسطول». فالصفحةُ تُفتَح على ما يخصُّها، وشارةُ
   // «أسطولنا» تُظهره لمن أراد أن يتحقّق — ولا يُحذَف صفٌّ من السجلّ.
   const [owner, setOwner] = useState<Owner>('not_ours');
-  const [sum, setSum] = useState({ vehicles: 0, suppliers: 0, supplier: 0, ours: 0, unknown: 0 });
-  const [shownTotals, setShownTotals] = useState({ vehicles: 0, suppliers: 0 });
+  const [sum, setSum] = useState({ vehicles: 0, suppliers: 0, drivers: 0, supplier: 0, ours: 0, unknown: 0 });
+  const [shownTotals, setShownTotals] = useState({ vehicles: 0, suppliers: 0, drivers: 0 });
 
   const [supModal, setSupModal] = useState(false);
   const [editingSup, setEditingSup] = useState<OrderSupplier | null>(null);
@@ -71,20 +76,34 @@ export default function FleetPage() {
   const [modalSupTotal, setModalSupTotal] = useState(0);
   const [modalSupBusy, setModalSupBusy] = useState(false);
 
+  const EMPTY_DRIVER = {
+    name: '', phone: '', nationality: '', residenceNumber: '',
+    driverCardNumber: '', driverCardExpiry: '', sponsorName: '',
+    supplier: '', vehicle: '', notes: '',
+  };
+  const [drvModal, setDrvModal] = useState(false);
+  const [editingDrv, setEditingDrv] = useState<OrderDriver | null>(null);
+  const [drvForm, setDrvForm] = useState<any>(EMPTY_DRIVER);
+  // شاحناتُ المورّد المختار وحدَها: سائقٌ يُربَط بشاحنةٍ ليست لمورّده خطأٌ
+  // يُكتب مرّةً ويُقرأ طويلًا.
+  const [drvVehicles, setDrvVehicles] = useState<OrderVehicle[]>([]);
+
   const guard = useLatestRequest();
   const load = useCallback(async () => {
     const mine = guard.begin();
     try {
       const q = search.trim() ? `&q=${encodeURIComponent(search.trim())}` : '';
-      const [sp, v, sm] = await Promise.all([
+      const [sp, v, dr, sm] = await Promise.all([
         api.get<{ suppliers: OrderSupplier[]; total: number }>(`/api/shipment-orders/suppliers?limit=${PAGE}${q}`),
         api.get<{ vehicles: OrderVehicle[]; total: number }>(`/api/shipment-orders/vehicles?limit=${PAGE}${q}${owner ? `&ownership=${owner}` : ''}`),
+        api.get<{ drivers: OrderDriver[]; total: number }>(`/api/shipment-orders/drivers?limit=${PAGE}${q}`),
         api.get<typeof sum>('/api/shipment-orders/fleet-summary'),
       ]);
       if (!guard.isCurrent(mine)) return;
       setSuppliers(sp.suppliers || []);
       setVehicles(v.vehicles || []);
-      setShownTotals({ vehicles: v.total || 0, suppliers: sp.total || 0 });
+      setDrivers(dr.drivers || []);
+      setShownTotals({ vehicles: v.total || 0, suppliers: sp.total || 0, drivers: dr.total || 0 });
       setSum(sm);
       setError('');
     } catch (e: any) { if (guard.isCurrent(mine)) setError(e?.message || 'Request failed'); }
@@ -154,6 +173,49 @@ export default function FleetPage() {
     setSaving(false);
   };
 
+  const openDriver = (d: OrderDriver | null) => {
+    setEditingDrv(d);
+    const sup = d && typeof d.supplier === 'object' && d.supplier ? d.supplier : null;
+    const veh = d && typeof d.vehicle === 'object' && d.vehicle ? d.vehicle : null;
+    setDrvForm(d
+      ? {
+        ...EMPTY_DRIVER, ...d,
+        driverCardExpiry: (d.driverCardExpiry || '').slice(0, 10),
+        supplier: sup?._id || (typeof d.supplier === 'string' ? d.supplier : ''),
+        vehicle: veh?._id || (typeof d.vehicle === 'string' ? d.vehicle : ''),
+      }
+      : { ...EMPTY_DRIVER });
+    // مورّدُه وشاحنتُه يُبذران في قائمتيهما: كلٌّ منهما صفحةٌ من سجلٍّ كبير.
+    if (sup) setModalSups((p) => (p.some((x) => x._id === sup._id) ? p : [sup, ...p]));
+    setDrvVehicles(veh ? [veh] : []);
+    setModalSupQ('');
+    setDrvModal(true);
+  };
+
+  // شاحناتُ المورّد تُطلَب بمعرّفه لا تُصفَّى من صفحةٍ محمَّلة.
+  useEffect(() => {
+    if (!drvModal || !drvForm.supplier) return;
+    api.get<{ vehicles: OrderVehicle[] }>(`/api/shipment-orders/vehicles?supplier=${drvForm.supplier}&limit=500`)
+      .then((d) => setDrvVehicles(d.vehicles || [])).catch(() => {});
+  }, [drvModal, drvForm.supplier]);
+
+  const saveDriver = async () => {
+    if (!drvForm.name.trim()) return;
+    setSaving(true);
+    try {
+      const payload = { ...drvForm, supplier: drvForm.supplier || null, vehicle: drvForm.vehicle || null };
+      if (editingDrv) await api.put(`/api/shipment-orders/drivers/${editingDrv._id}`, payload);
+      else await api.post('/api/shipment-orders/drivers', payload);
+      setDrvModal(false); load();
+    } catch (e: any) { notify(e.message, 'error'); }
+    setSaving(false);
+  };
+
+  const removeDriver = async (d: OrderDriver) => {
+    if (!(await confirm(ar ? `إزالة السائق «${d.name}»؟ شحناته السابقة تحتفظ ببياناتها.` : `Remove “${d.name}”? Past shipments keep their snapshot.`))) return;
+    try { await api.delete(`/api/shipment-orders/drivers/${d._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
+  };
+
   const removeSupplier = async (s: OrderSupplier) => {
     if (!(await confirm(ar ? `إزالة المورد «${s.name}»؟ سياراته تبقى مسجلة.` : `Remove “${s.name}”? Their vehicles stay.`))) return;
     try { await api.delete(`/api/shipment-orders/suppliers/${s._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
@@ -183,8 +245,33 @@ export default function FleetPage() {
     { header: ar ? 'الجوال' : 'Phone', key: 'phone', width: 16 },
     { header: ar ? 'البريد' : 'Email', key: 'email', width: 26 },
     { header: ar ? 'عدد السيارات' : 'Vehicles', key: 'vehicleCount', width: 12, transform: (v) => Number(v || 0) },
+    { header: ar ? 'عدد السائقين' : 'Drivers', key: 'driverCount', width: 12, transform: (v) => Number(v || 0) },
     { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 30 },
   ];
+
+  const driverCols: ExportColumn[] = [
+    { header: ar ? 'الاسم' : 'Name', key: 'name', width: 28 },
+    { header: ar ? 'الجوال' : 'Phone', key: 'phone', width: 16 },
+    { header: ar ? 'الجنسية' : 'Nationality', key: 'nationality', width: 16 },
+    { header: ar ? 'رقم الإقامة' : 'Iqama', key: 'residenceNumber', width: 16 },
+    { header: ar ? 'بطاقة التشغيل' : 'Driver card', key: 'driverCardNumber', width: 16 },
+    { header: ar ? 'انتهاء البطاقة' : 'Card expiry', key: 'driverCardExpiry', width: 14 },
+    { header: ar ? 'المورّد' : 'Supplier', key: 'supplier', width: 28, transform: (v: any) => v?.name || '' },
+    { header: ar ? 'الشاحنة' : 'Truck', key: 'vehicle', width: 16, transform: (v: any) => v?.plate || '' },
+    { header: ar ? 'الكفيل' : 'Sponsor', key: 'sponsorName', width: 22 },
+    { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 26 },
+  ];
+
+  // انتهاءُ بطاقة التشغيل يُلوَّن: سائقٌ بطاقتُه منتهيةٌ يُوقفه الطريقُ لا نحن،
+  // ومعرفةُ التاريخ قبل الإسناد توفّر حمولةً متعطّلةً على الطريق.
+  const cardState = (d: OrderDriver) => {
+    const x = (d.driverCardExpiry || '').slice(0, 10);
+    if (!x) return { cls: 'text-slate-300', label: '—' };
+    const days = Math.round((new Date(`${x}T00:00:00`).getTime() - Date.now()) / 86400000);
+    if (days < 0) return { cls: 'bg-red-500/15 text-red-700', label: ar ? `منتهية (${x})` : `Expired (${x})` };
+    if (days <= 30) return { cls: 'bg-amber-500/15 text-amber-700', label: ar ? `تنتهي بعد ${days} يوم` : `${days} days left` };
+    return { cls: 'bg-emerald-500/15 text-emerald-700', label: x };
+  };
 
   if (loading) return <Spinner />;
 
@@ -195,8 +282,8 @@ export default function FleetPage() {
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Truck className="w-5 h-5" />} title={ar ? 'الموردون والمركبات' : 'Suppliers & vehicles'}
         subtitle={ar
-          ? `${sum.vehicles} شاحنة: ${sum.supplier} لموردين · ${sum.ours} من أسطولنا · ${sum.unknown} مالكُها غير مسجَّل — و${sum.suppliers} مورّدًا`
-          : `${sum.vehicles} trucks: ${sum.supplier} supplier-owned · ${sum.ours} ours · ${sum.unknown} owner not recorded — and ${sum.suppliers} suppliers`}>
+          ? `${sum.suppliers} مورّدًا · ${sum.vehicles} شاحنة (${sum.supplier} مالكُها مسجَّل · ${sum.unknown} غير مسجَّل · ${sum.ours} من أسطولنا) · ${sum.drivers} سائقًا`
+          : `${sum.suppliers} suppliers · ${sum.vehicles} trucks (${sum.supplier} owner recorded · ${sum.unknown} not recorded · ${sum.ours} ours) · ${sum.drivers} drivers`}>
         {/* التبويبان يعرضان سجلّين مختلفين والبحث يصفّي المعروض منهما، فالخيار
             الأوّل يطابق الشاشة والثاني يخرج السجلّين كاملين في شيتين. */}
         <ExportMenu
@@ -204,7 +291,9 @@ export default function FleetPage() {
           options={[
             tab === 'vehicles'
               ? { key: 'tab', label: exportScopeLabels(ar).shown, sheets: [{ name: ar ? 'المركبات' : 'Vehicles', rows: shownVehicles as any[], columns: vehicleCols }] }
-              : { key: 'tab', label: exportScopeLabels(ar).shown, sheets: [{ name: ar ? 'الموردون' : 'Suppliers', rows: shownSuppliers as any[], columns: supplierCols }] },
+              : tab === 'drivers'
+                ? { key: 'tab', label: exportScopeLabels(ar).shown, sheets: [{ name: ar ? 'السائقون' : 'Drivers', rows: drivers as any[], columns: driverCols }] }
+                : { key: 'tab', label: exportScopeLabels(ar).shown, sheets: [{ name: ar ? 'الموردون' : 'Suppliers', rows: shownSuppliers as any[], columns: supplierCols }] },
             {
               // ── والتصديرُ الكامل يُجلَب عند طلبه ─────────────────────────
               // الصفحةُ تعرض مئتين من ثلاثةَ عشرَ ألفًا، فتصديرُ المصفوفةِ
@@ -215,9 +304,11 @@ export default function FleetPage() {
                   api.get<{ vehicles: OrderVehicle[] }>('/api/shipment-orders/vehicles?limit=5000'),
                   api.get<{ suppliers: OrderSupplier[] }>('/api/shipment-orders/suppliers?limit=5000'),
                 ]);
+                const dr = await api.get<{ drivers: OrderDriver[] }>('/api/shipment-orders/drivers?limit=5000');
                 return [
                   { name: ar ? 'المركبات' : 'Vehicles', rows: (v.vehicles || []) as any[], columns: vehicleCols },
                   { name: ar ? 'الموردون' : 'Suppliers', rows: (sp.suppliers || []) as any[], columns: supplierCols },
+                  { name: ar ? 'السائقون' : 'Drivers', rows: (dr.drivers || []) as any[], columns: driverCols },
                 ];
               },
             },
@@ -225,7 +316,9 @@ export default function FleetPage() {
         />
         {editor && (tab === 'vehicles'
           ? <PrimaryButton onClick={() => { setEditingVeh(null); setVehForm({ ...EMPTY_VEHICLE }); setVehModal(true); }}><Plus className="w-4 h-4" /> {ar ? 'إضافة سيارة' : 'Add vehicle'}</PrimaryButton>
-          : <PrimaryButton onClick={() => { setEditingSup(null); setSupForm({ ...EMPTY_SUPPLIER }); setSupModal(true); }}><Plus className="w-4 h-4" /> {ar ? 'إضافة مورد' : 'Add supplier'}</PrimaryButton>)}
+          : tab === 'drivers'
+            ? <PrimaryButton onClick={() => openDriver(null)}><Plus className="w-4 h-4" /> {ar ? 'إضافة سائق' : 'Add driver'}</PrimaryButton>
+            : <PrimaryButton onClick={() => { setEditingSup(null); setSupForm({ ...EMPTY_SUPPLIER }); setSupModal(true); }}><Plus className="w-4 h-4" /> {ar ? 'إضافة مورد' : 'Add supplier'}</PrimaryButton>)}
       </PageHeader>
 
       {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
@@ -233,6 +326,7 @@ export default function FleetPage() {
       <Tabs active={tab} onChange={setTab} tabs={[
         { key: 'vehicles', label: ar ? 'المركبات' : 'Vehicles', badge: sum.vehicles },
         { key: 'suppliers', label: ar ? 'الموردون' : 'Suppliers', badge: sum.suppliers },
+        { key: 'drivers', label: ar ? 'السائقون' : 'Drivers', badge: sum.drivers },
       ]} />
 
       <div className="flex flex-wrap items-center gap-3">
@@ -240,7 +334,9 @@ export default function FleetPage() {
           <SearchInput value={search} onChange={setSearch}
             placeholder={tab === 'vehicles'
               ? (ar ? 'باللوحة أو السائق أو بطاقة التشغيل…' : 'Plate, driver or operation card…')
-              : (ar ? 'بالاسم أو الجوّال أو السجل أو الآيبان…' : 'Name, phone, CR or IBAN…')} />
+              : tab === 'drivers'
+                ? (ar ? 'بالاسم أو الجوّال أو رقم الإقامة أو بطاقة التشغيل…' : 'Name, phone, iqama or driver card…')
+                : (ar ? 'بالاسم أو الجوّال أو السجل أو الآيبان…' : 'Name, phone, CR or IBAN…')} />
         </div>
         {/* ── ومصفاةُ الملكيّة: «أرِني ما لا أعرف مالكَه» سؤالٌ يُسأل ───────
             خمسةُ آلافٍ وسبعُمئةِ شاحنةٍ لم يُعرَف مالكُها من تاريخ الطلبات،
@@ -272,6 +368,12 @@ export default function FleetPage() {
         <p className="text-xs text-slate-500">
           {ar ? `يُعرَض ${suppliers.length} من ${shownTotals.suppliers} مطابقة — ضيّق البحث لترى البقيّة.`
               : `Showing ${suppliers.length} of ${shownTotals.suppliers} matches — narrow the search for the rest.`}
+        </p>
+      )}
+      {tab === 'drivers' && shownTotals.drivers > drivers.length && (
+        <p className="text-xs text-slate-500">
+          {ar ? `يُعرَض ${drivers.length} من ${shownTotals.drivers} مطابقة — ضيّق البحث لترى البقيّة.`
+              : `Showing ${drivers.length} of ${shownTotals.drivers} matches — narrow the search for the rest.`}
         </p>
       )}
 
@@ -341,6 +443,7 @@ export default function FleetPage() {
               <th className={th}>{ar ? 'الجوال' : 'Phone'}</th>
               <th className={th}>{ar ? 'البريد' : 'Email'}</th>
               <th className={th}>{ar ? 'سياراته' : 'Vehicles'}</th>
+              <th className={th}>{ar ? 'سوّاقه' : 'Drivers'}</th>
               <th className={th}>{ar ? 'ملاحظات' : 'Notes'}</th>
               <th className={th}>{ar ? 'إجراءات' : 'Actions'}</th>
             </tr></thead>
@@ -369,6 +472,7 @@ export default function FleetPage() {
                   {/* عددُ سياراته: من له سيّارةٌ واحدةٌ ليس كمن له عشرون، والفرقُ
                       يُقرأ من الرقم قبل أن يُفتَح أيُّ ملفّ. */}
                   <td className="px-4 py-3 tabular-nums text-slate-700">{s.vehicleCount || 0}</td>
+                  <td className="px-4 py-3 tabular-nums text-slate-700">{s.driverCount || 0}</td>
                   <td className="px-4 py-3 text-slate-500 max-w-[260px] truncate" title={s.notes || ''}>{s.notes || '—'}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
@@ -378,10 +482,83 @@ export default function FleetPage() {
                   </td>
                 </tr>
               ))}
-              {suppliers.length === 0 && <tr><td colSpan={7} className="text-center text-slate-500 py-12">
+              {suppliers.length === 0 && <tr><td colSpan={8} className="text-center text-slate-500 py-12">
                 {search.trim()
                   ? (ar ? 'لا مورّدَ يطابق البحث.' : 'No supplier matches.')
                   : (ar ? 'لا يوجد مورّدون بعد — أول سيارة مورّد في شحنة تُسجّل صاحبها هنا.' : 'No suppliers yet — the first supplier truck on a shipment registers them.')}
+              </td></tr>}
+            </tbody>
+          </table>
+        </ScrollX>
+      )}
+
+      {/* ── جدولُ السوّاق ───────────────────────────────────────────────────
+          الملفُّ هو ما يُسأل عنه عند الإسناد: رقمُ الإقامة، وبطاقةُ التشغيل
+          ومتى تنتهي، ومَن كفيلُه، وعلى أيّ شاحنةٍ هو ولأيّ مورّد. */}
+      {tab === 'drivers' && (
+        <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
+          <table className="w-full text-sm">
+            <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
+              <th className={th}>{ar ? 'السائق' : 'Driver'}</th>
+              <th className={th}>{ar ? 'الجوال' : 'Phone'}</th>
+              <th className={th}>{ar ? 'الجنسية' : 'Nationality'}</th>
+              <th className={th}>{ar ? 'رقم الإقامة' : 'Iqama'}</th>
+              <th className={th}>{ar ? 'بطاقة التشغيل' : 'Driver card'}</th>
+              <th className={th}>{ar ? 'انتهاؤها' : 'Expires'}</th>
+              <th className={th}>{ar ? 'المورّد' : 'Supplier'}</th>
+              <th className={th}>{ar ? 'شاحنته' : 'His truck'}</th>
+              <th className={th}>{ar ? 'إجراءات' : 'Actions'}</th>
+            </tr></thead>
+            <tbody>
+              {drivers.map((d) => {
+                const card = cardState(d);
+                const sup = typeof d.supplier === 'object' && d.supplier ? d.supplier : null;
+                const veh = typeof d.vehicle === 'object' && d.vehicle ? d.vehicle : null;
+                return (
+                  <tr key={d._id} className="border-b border-slate-200/70 hover:bg-slate-50">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-slate-500/10 text-slate-600">
+                          <IdCard className="w-4 h-4" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block font-bold text-slate-900 truncate">{d.name}</span>
+                          {d.sponsorName ? <span className="block text-[11px] text-slate-500 truncate">{ar ? 'كفيله: ' : 'Sponsor: '}{d.sponsorName}</span> : null}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
+                      {(d.phone || '').trim()
+                        ? <div className="flex items-center gap-2"><span className="font-mono text-[13px]" dir="ltr">{d.phone}</span><ContactButtons phone={d.phone} size={15} /></div>
+                        : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">{d.nationality || '—'}</td>
+                    <td className="px-4 py-3 font-mono text-slate-700">{d.residenceNumber || '—'}</td>
+                    <td className="px-4 py-3 font-mono text-slate-700">{d.driverCardNumber || '—'}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {d.driverCardExpiry
+                        ? <span className={`px-2 py-1 rounded-lg text-[11px] font-semibold ${card.cls}`}>{card.label}</span>
+                        : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {sup
+                        ? <SmallBadge bg="bg-blue-500/15" text="text-blue-700" label={sup.name} />
+                        : <span className="text-slate-400 text-xs">{ar ? 'غير مربوط' : 'Unlinked'}</span>}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-slate-700">{veh?.plate || '—'}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        {editor && <button type="button" onClick={() => openDriver(d)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}><Pencil className="w-4 h-4" /></button>}
+                        {canAdminOrders(user) && <button type="button" onClick={() => removeDriver(d)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={ar ? 'إزالة' : 'Remove'}><Trash2 className="w-4 h-4" /></button>}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {drivers.length === 0 && <tr><td colSpan={9} className="text-center text-slate-500 py-12">
+                {search.trim()
+                  ? (ar ? 'لا سائقَ يطابق البحث — جرّب رقم الإقامة.' : 'No driver matches — try the iqama number.')
+                  : (ar ? 'لا سائقين بعد.' : 'No drivers yet.')}
               </td></tr>}
             </tbody>
           </table>
@@ -414,6 +591,57 @@ export default function FleetPage() {
           <Field label={ar ? 'الجوال' : 'Phone'}><TextInput value={supForm.phone} onChange={(e) => setSupForm((f: any) => ({ ...f, phone: e.target.value }))} /></Field>
           <Field label={ar ? 'البريد' : 'Email'}><TextInput value={supForm.email} onChange={(e) => setSupForm((f: any) => ({ ...f, email: e.target.value }))} /></Field>
           <Field label={ar ? 'ملاحظات' : 'Notes'}><TextArea rows={2} value={supForm.notes} onChange={(e) => setSupForm((f: any) => ({ ...f, notes: e.target.value }))} /></Field>
+        </div>
+      </Modal>
+
+      {/* ── نموذجُ السائق ───────────────────────────────────────────────────
+          المورّدُ قبل الشاحنة: الشاحنةُ تُختار من شاحنات مورّده وحدَها، فلا
+          يُربَط رجلٌ بشاحنةٍ ليست لمن يعمل عنده. */}
+      <Modal open={drvModal} onClose={() => setDrvModal(false)}
+        title={editingDrv ? (ar ? 'تعديل سائق' : 'Edit driver') : (ar ? 'إضافة سائق' : 'Add driver')}
+        footer={<>
+          <button type="button" onClick={() => setDrvModal(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+          <PrimaryButton onClick={saveDriver} disabled={saving || !drvForm.name.trim()}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{ar ? 'حفظ' : 'Save'}
+          </PrimaryButton>
+        </>}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label={ar ? 'الاسم *' : 'Name *'}><TextInput value={drvForm.name} onChange={(e) => setDrvForm((f: any) => ({ ...f, name: e.target.value }))} /></Field>
+          <Field label={ar ? 'الجوال' : 'Phone'}><TextInput value={drvForm.phone} onChange={(e) => setDrvForm((f: any) => ({ ...f, phone: e.target.value }))} /></Field>
+          <Field label={ar ? 'الجنسية' : 'Nationality'}><TextInput value={drvForm.nationality} onChange={(e) => setDrvForm((f: any) => ({ ...f, nationality: e.target.value }))} /></Field>
+          <Field label={ar ? 'رقم الإقامة' : 'Iqama number'}><TextInput value={drvForm.residenceNumber} onChange={(e) => setDrvForm((f: any) => ({ ...f, residenceNumber: e.target.value }))} /></Field>
+          <Field label={ar ? 'رقم بطاقة التشغيل' : 'Driver card number'}><TextInput value={drvForm.driverCardNumber} onChange={(e) => setDrvForm((f: any) => ({ ...f, driverCardNumber: e.target.value }))} /></Field>
+          <Field label={ar ? 'انتهاء بطاقة التشغيل' : 'Driver card expiry'}>
+            <input type="date" value={drvForm.driverCardExpiry || ''}
+              onChange={(e) => setDrvForm((f: any) => ({ ...f, driverCardExpiry: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+          </Field>
+          <Field label={ar ? 'الكفيل' : 'Sponsor'}><TextInput value={drvForm.sponsorName} onChange={(e) => setDrvForm((f: any) => ({ ...f, sponsorName: e.target.value }))} /></Field>
+          <div>
+            <label className={labelCls}>{ar ? 'المورّد الذي يعمل عنده' : 'Supplier he works for'}</label>
+            <SearchableSelect
+              value={drvForm.supplier}
+              onChange={(x) => setDrvForm((f: any) => ({ ...f, supplier: x, vehicle: '' }))}
+              searchAfter={0} onSearch={setModalSupQ} loading={modalSupBusy}
+              placeholder={ar ? 'غير مربوط' : 'Unlinked'}
+              searchPlaceholder={ar ? 'اكتب اسم المورد…' : 'Search supplier…'}
+              footer={modalSupTotal > modalSups.length
+                ? (ar ? `${modalSups.length} من ${modalSupTotal} — اكتب لتضيّق` : `${modalSups.length} of ${modalSupTotal} — type to narrow`)
+                : undefined}
+              options={[{ value: '', label: ar ? 'غير مربوط' : 'Unlinked' },
+                ...modalSups.map((sp) => ({ value: sp._id, label: sp.name }))]} />
+          </div>
+          <div>
+            <label className={labelCls}>{ar ? 'شاحنته' : 'His truck'}</label>
+            <SearchableSelect
+              value={drvForm.vehicle} onChange={(x) => setDrvForm((f: any) => ({ ...f, vehicle: x }))}
+              searchAfter={0} disabled={!drvForm.supplier}
+              placeholder={drvForm.supplier ? (ar ? 'بدون شاحنة' : 'No truck') : (ar ? 'اختر المورّد أولًا' : 'Pick the supplier first')}
+              searchPlaceholder={ar ? 'ابحث باللوحة…' : 'Search plate…'}
+              options={[{ value: '', label: ar ? 'بدون شاحنة' : 'No truck' },
+                ...drvVehicles.map((v) => ({ value: v._id, label: v.plate, hint: v.name || undefined }))]} />
+          </div>
+          <Field label={ar ? 'ملاحظات' : 'Notes'} span2><TextArea rows={2} value={drvForm.notes} onChange={(e) => setDrvForm((f: any) => ({ ...f, notes: e.target.value }))} /></Field>
         </div>
       </Modal>
 

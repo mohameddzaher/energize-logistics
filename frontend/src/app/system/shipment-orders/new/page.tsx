@@ -21,7 +21,7 @@ import { Spinner, PageHeader, Select, SearchableSelect, PrimaryButton } from '@/
 import { ContactButtons } from '@/components/crm/CrmKit';
 import {
   FormField, OrderCustomer, OrderVehicle, OrderSupplier, GROUP_LABELS, fieldLabel, optionLabel,
-  FIXED_KEYS, Lang, canEditOrders, vocabLabel,
+  FIXED_KEYS, Lang, canEditOrders, vocabLabel, OrderDriver,
 } from '@/lib/shipmentOrders';
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
@@ -81,6 +81,11 @@ function CreateShipmentInner() {
   const [vehTotal, setVehTotal] = useState(0);
   const [supBusy, setSupBusy] = useState(false);
   const [vehBusy, setVehBusy] = useState(false);
+  // ── وسوّاقُ المورّد يُختارون لا يُكتَبون ──────────────────────────────────
+  // كان السائقُ خانةً حرّة: يُكتب الاسمُ بهجاءٍ مرّةً وبآخر أخرى، ويُكتب رقمُه
+  // ناقصًا، ولا يُعرَف أمعه بطاقةُ تشغيلٍ سارية. وسجلُّ السوّاق فيه سبعةَ عشرَ
+  // ألفًا لكلٍّ ملفُّه — فيُختار منه، والكتابةُ تبقى لمن ليس فيه.
+  const [drivers, setDrivers] = useState<OrderDriver[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   // Turned on by a failed save: from then on every missing required input is
@@ -206,6 +211,28 @@ function CreateShipmentInner() {
 
   // تغيُّرُ المورّد يُعيد قائمةَ شاحناته فورًا — لا انتظارَ فتحِ القائمة.
   useEffect(() => { searchVehicles('', supplierId); }, [supplierId, searchVehicles]);
+
+  /**
+   * سوّاقُ الشاحنة المختارة، فإن لم يُسجَّل لها سائقٌ فسوّاقُ مورّدها.
+   *
+   * والترتيبُ مقصود: السائقُ المسجَّل على الشاحنة هو سائقُها المعتاد، وسوّاقُ
+   * المورّد الآخرون بديلٌ حين يتغيّر — لا يُسأل عن مئةٍ وأربعين سائقًا
+   * لمورّدٍ وشاحنتُه لها سائقُها.
+   */
+  useEffect(() => {
+    if (!vehicleId && !supplierId) { setDrivers([]); return; }
+    const qs = vehicleId ? `vehicle=${vehicleId}` : `supplier=${supplierId}`;
+    api.get<{ drivers: OrderDriver[] }>(`/api/shipment-orders/drivers?${qs}&limit=200`)
+      .then(async (d) => {
+        let rows = d.drivers || [];
+        if (!rows.length && supplierId) {
+          const alt = await api.get<{ drivers: OrderDriver[] }>(`/api/shipment-orders/drivers?supplier=${supplierId}&limit=200`);
+          rows = alt.drivers || [];
+        }
+        setDrivers(rows);
+      })
+      .catch(() => setDrivers([]));
+  }, [vehicleId, supplierId]);
 
   const customer = useMemo(() => customers.find((c) => c._id === customerId) || null, [customers, customerId]);
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
@@ -760,8 +787,34 @@ function CreateShipmentInner() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>{ar ? 'السائق' : 'Driver'}</label>
-              <input value={form.driverName || ''} onChange={(e) => set('driverName', e.target.value)}
-                placeholder={ar ? 'يُملأ تلقائياً عند اختيار السيارة' : 'Autofills from the vehicle'} className={inputCls} />
+              {/* صندوقٌ مركّب: المسجَّلون اقتراحاتٌ لا حصر (`allowCustom`)، فمن
+                  ليس في السجلّ يُكتب اسمُه ويمضي العمل. واختيارُ المسجَّل يملأ
+                  جوّالَه معه، ويقول إن كانت بطاقةُ تشغيله منتهية. */}
+              <SearchableSelect
+                value={form.driverName || ''} allowCustom searchAfter={0}
+                customHint={(x) => (ar ? `استعمل «${x}» كما كُتب` : `Use “${x}” as typed`)}
+                onChange={(x) => {
+                  const d = drivers.find((y) => y.name === x);
+                  set('driverName', x);
+                  if (d?.phone) set('driverPhone', d.phone);
+                }}
+                placeholder={ar ? 'يُملأ تلقائياً عند اختيار السيارة' : 'Autofills from the vehicle'}
+                searchPlaceholder={ar ? 'الاسم أو رقم الإقامة…' : 'Name or iqama…'}
+                emptyLabel={ar ? 'لا سائقَ مسجَّلًا — اكتب الاسم' : 'No registered driver — type the name'}
+                options={drivers.map((d) => {
+                  const exp = (d.driverCardExpiry || '').slice(0, 10);
+                  const over = exp && new Date(`${exp}T00:00:00`).getTime() < Date.now();
+                  return {
+                    value: d.name,
+                    label: d.name,
+                    hint: [d.phone, d.residenceNumber, d.nationality].filter(Boolean).join(' · '),
+                    badge: exp
+                      ? (over ? (ar ? `بطاقة التشغيل منتهية ${exp}` : `Driver card expired ${exp}`)
+                        : (ar ? `بطاقة التشغيل حتى ${exp}` : `Card valid to ${exp}`))
+                      : undefined,
+                    tone: (exp ? (over ? 'busy' : 'ok') : undefined) as 'busy' | 'ok' | undefined,
+                  };
+                })} />
             </div>
             <div>
               <label className={labelCls}>{ar ? 'جوال السائق' : 'Driver phone'}</label>

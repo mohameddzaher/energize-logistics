@@ -59,6 +59,17 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   final _nvPlate = TextEditingController();
   final _nvName = TextEditingController();
 
+  /// ── الحمولةُ الواحدةُ على عدّةِ شاحنات ────────────────────────────────────
+  ///
+  /// العميلُ يطلب حمولةً تخرج على خمسِ شاحنات: العميلُ والمسارُ والسعرُ والموعدُ
+  /// واحد، ويختلف المورّدُ والشاحنةُ والسائق. وكان الموظّفُ يخرج من النموذج
+  /// ويعيد كتابةَ العشرين خانةً خمسَ مرّات.
+  ///
+  /// وكلُّ شاحنةٍ تصير **طلبًا مستقلًّا** برقم بوليصته من العدّاد نفسِه — لا
+  /// طلبٌ أبٌ ولا رابطٌ بينها: كلُّ شاحنةٍ تمضي وحدَها وتصل وحدَها وتُحاسَب
+  /// وحدَها.
+  final List<Map<String, dynamic>> _extraTrucks = [];
+
   final Map<String, dynamic> _form = {};
   final Map<String, TextEditingController> _ctrls = {};
   final Set<String> _missing = {};
@@ -276,6 +287,42 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     );
   }
 
+  /// إضافةُ شاحنةٍ أخرى للحمولة نفسِها: مورّدُها وشاحنتُه وسائقُه.
+  ///
+  /// السؤالان بالترتيب نفسِه الذي في البطاقة أعلاه — المورّدُ ثمّ شاحنتُه —
+  /// والسائقُ يُملأ من الشاحنة المسجَّلة ويبقى قابلًا للتصحيح.
+  Future<void> _addExtraTruck() async {
+    final sup = await _pickRemote(
+      tr('الموردين', 'suppliers'),
+      (q) async {
+        final d = await Api.instance.get('/api/shipment-orders/suppliers?limit=60${q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(q)}'}');
+        return List<Map<String, dynamic>>.from(d['suppliers'] ?? []);
+      },
+      (x) => (x['name'] ?? '').toString(),
+      hint: tr('الاسم أو الجوّال…', 'Name or phone…'),
+    );
+    if (sup == null || !mounted) return;
+    final veh = await _pickRemote(
+      tr('شاحنات المورّد', 'his trucks'),
+      (q) async {
+        final d = await Api.instance.get(
+            '/api/shipment-orders/vehicles?limit=80&supplier=${sup['_id']}${q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(q)}'}');
+        return List<Map<String, dynamic>>.from(d['vehicles'] ?? []);
+      },
+      (v) => (v['plate'] ?? '').toString(),
+      sub: (v) => [v['name'], v['defaultDriverName']].where((e) => (e ?? '').toString().isNotEmpty).join(' · '),
+      hint: tr('اللوحة أو السائق…', 'Plate or driver…'),
+    );
+    if (!mounted) return;
+    setState(() => _extraTrucks.add({
+          'supplier': sup,
+          'vehicle': veh,
+          'newPlate': '',
+          'driverName': (veh?['defaultDriverName'] ?? '').toString(),
+          'driverPhone': (veh?['defaultDriverPhone'] ?? '').toString(),
+        }));
+  }
+
   Future<P?> _pickSheet<P>(String title, List<P> items, String Function(P) label, {String Function(P)? sub}) {
     return showModalBottomSheet<P>(
       context: context,
@@ -423,6 +470,42 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     try {
       if (_editing) {
         await Api.instance.put('/api/shipment-orders/orders/${widget.order!['_id']}', payload);
+      } else if (_extraTrucks.isNotEmpty) {
+        // الصفُّ الأوّلُ شاحنةٌ كالبقيّة فيُرسَل معها في القائمة نفسِها — ولو
+        // أُنشئ وحدَه ثمّ أُرسلت البقيّةُ لحُفظ الأوّلُ ورُفضت الثانيةُ ولا
+        // يعرف الموظّفُ أين وقف.
+        final body = Map<String, dynamic>.from(payload)
+          ..remove('vehicle')
+          ..remove('newVehicle')
+          ..remove('supplierChoice');
+        body['trucks'] = [
+          {
+            if (_vehicle != null) 'vehicle': _vehicle!['_id'],
+            if (_newVehicle && _nvPlate.text.trim().isNotEmpty)
+              'newVehicle': {'plate': _nvPlate.text.trim(), 'name': _nvName.text.trim(), 'supplierId': _supplier?['_id']},
+            if (_supplier != null) 'supplierChoice': _supplier!['_id'],
+            if ((_form['driverName'] ?? '').toString().isNotEmpty) 'driverName': _form['driverName'],
+            if ((_form['driverPhone'] ?? '').toString().isNotEmpty) 'driverPhone': _form['driverPhone'],
+          },
+          ..._extraTrucks.map((t) => {
+                if (t['vehicle'] != null) 'vehicle': (t['vehicle'] as Map)['_id'],
+                if ((t['newPlate'] ?? '').toString().isNotEmpty)
+                  'newVehicle': {'plate': t['newPlate'], 'name': '', 'supplierId': (t['supplier'] as Map?)?['_id']},
+                if (t['supplier'] != null) 'supplierChoice': (t['supplier'] as Map)['_id'],
+                if ((t['driverName'] ?? '').toString().isNotEmpty) 'driverName': t['driverName'],
+                if ((t['driverPhone'] ?? '').toString().isNotEmpty) 'driverPhone': t['driverPhone'],
+              }),
+        ];
+        final d = await Api.instance.post('/api/shipment-orders/orders/batch', body);
+        final nums = (d['waybills'] as List? ?? const []).join('، ');
+        final failedN = (d['failed'] as List? ?? const []).length;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(tr('أُنشئت ${d['created']} شحنة — بوالص $nums${failedN > 0 ? ' · تعذّرت $failedN' : ''}',
+                '${d['created']} created — waybills $nums${failedN > 0 ? ' · $failedN failed' : ''}')),
+          ));
+        }
+        if (failedN > 0) { if (mounted) setState(() => _saving = false); return; }
       } else {
         await Api.instance.post('/api/shipment-orders/orders', payload);
       }
@@ -754,6 +837,61 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                     );
                   }),
                   const SizedBox(height: 16),
+                  // ── الحمولةُ على عدّةِ شاحنات ──────────────────────────────
+                  // تُضاف الشاحنةُ وتُرى قبل الحفظ، وكلٌّ تصير شحنةً مستقلّةً
+                  // برقم بوليصتها — نفسُ العميل والمسار والسعر والموعد.
+                  if (!_editing) ...[
+                    if (_extraTrucks.isNotEmpty)
+                      AppCard(
+                        topAccent: T.orange,
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(tr('الحمولة على ${_extraTrucks.length + 1} شاحنات', 'This load on ${_extraTrucks.length + 1} trucks'),
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                          const SizedBox(height: 2),
+                          Text(tr('كلُّ شاحنةٍ شحنةٌ مستقلّةٌ برقم بوليصةٍ خاصّ — نفسُ بقيّة البيانات',
+                                  'each truck becomes its own shipment with its own waybill'),
+                              style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                          const Divider(height: 18),
+                          // الشاحنةُ الأولى تُعرَض للعلم: تُحرَّر في بطاقتها أعلاه.
+                          Row(children: [
+                            const Text('1 · ', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                            Expanded(child: Text(
+                              [(_supplier?['name'] ?? tr('بلا مورّد', 'no supplier')).toString(),
+                               (_vehicle?['plate'] ?? (_nvPlate.text.trim().isEmpty ? tr('بلا شاحنة', 'no truck') : _nvPlate.text.trim())).toString()].join(' · '),
+                              style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+                          ]),
+                          for (var i = 0; i < _extraTrucks.length; i++)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Row(children: [
+                                Text('${i + 2} · ', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                                Expanded(child: Text(
+                                  [((_extraTrucks[i]['supplier'] as Map?)?['name'] ?? tr('بلا مورّد', 'no supplier')).toString(),
+                                   ((_extraTrucks[i]['vehicle'] as Map?)?['plate'] ?? (_extraTrucks[i]['newPlate'] ?? tr('بلا شاحنة', 'no truck'))).toString(),
+                                   if ((_extraTrucks[i]['driverName'] ?? '').toString().isNotEmpty) _extraTrucks[i]['driverName'].toString()]
+                                      .join(' · '),
+                                  style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+                                IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  icon: const Icon(Icons.close, size: 16, color: T.inkFaint),
+                                  onPressed: () => setState(() => _extraTrucks.removeAt(i)),
+                                ),
+                              ]),
+                            ),
+                        ]),
+                      ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 46,
+                      child: OutlinedButton.icon(
+                        onPressed: _saving ? null : _addExtraTruck,
+                        icon: const Icon(Icons.local_shipping_outlined, size: 18),
+                        label: Text(tr('+ شاحنة أخرى بنفس التفاصيل', '+ Another truck, same details'),
+                            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
                   SizedBox(
                     height: 50,
                     child: FilledButton.icon(
@@ -761,7 +899,13 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                       icon: _saving
                           ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                           : const Icon(Icons.check_rounded),
-                      label: Text(_editing ? tr('حفظ التعديلات', 'Save changes') : tr('إنشاء الطلب', 'Create order'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                      label: Text(
+                          _editing
+                              ? tr('حفظ التعديلات', 'Save changes')
+                              : (_extraTrucks.isEmpty
+                                  ? tr('إنشاء الطلب', 'Create order')
+                                  : tr('إنشاء ${_extraTrucks.length + 1} شحنات', 'Create ${_extraTrucks.length + 1} shipments')),
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
                     ),
                   ),
                   const SizedBox(height: 30),

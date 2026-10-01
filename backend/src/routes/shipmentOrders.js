@@ -24,6 +24,9 @@ router.get('/orders/:id', so.getOrder); // the edit form loads ONE order directl
 // يبتلعَها المسارُ ذو المتغيّر.
 router.post('/orders/waybills.pdf', so.getWaybillsPdf);
 router.post('/orders', authorize(...EDIT_ROLES), so.createOrder);
+// الحمولةُ الواحدة على عدّةِ شاحنات — كلُّ شاحنةٍ طلبٌ مستقلٌّ برقم بوليصته.
+// تُسجَّل قبل `/orders/:id` كي لا يبتلعها المسارُ ذو المعامل.
+router.post('/orders/batch', authorize(...EDIT_ROLES), so.createOrdersBatch);
 router.put('/orders/:id', authorize(...EDIT_ROLES), so.updateOrder);
 router.patch('/orders/:id/status', authorize(...EDIT_ROLES), so.patchStatus); // inline from the list
 router.delete('/orders/:id', authorize(...ADMIN_ROLES), so.deleteOrder);

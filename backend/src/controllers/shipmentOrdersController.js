@@ -130,6 +130,12 @@ async function applyVehicleSnapshot(data, req) {
   const veh = await ShipmentOrderVehicle.findById(data.vehicle).lean();
   if (!veh) return;
   data.vehicleName = [veh.plate, veh.name].filter(Boolean).join(' — ');
+  // ── واللوحةُ في خانتها ───────────────────────────────────────────────────
+  // كانت تُكتب داخل `vehicleName` وحدَه («1111 ABC — مرسيدس»)، وخانةُ اللوحة
+  // تبقى فارغةً في كلّ طلبٍ يُنشأ من شاشتنا — تملؤها طلباتُ المنصّة وحدَها.
+  // فتخرج شحناتُنا من فلتر عمود «الشاحنة»، ولا تجد البوليصةُ ماركتَها ولونَها
+  // (تُطلبان باللوحة من سجلّ الشاحنات)، ولا يُطابقها تقريرٌ يبحث بلوحة.
+  data.vehiclePlate = veh.plate || '';
   data.supplier = veh.supplier || null;
   const chosen = req && req.body ? String(req.body.supplierChoice || '') : '';
   if (!veh.supplier && veh.ownership !== 'ours' && /^[0-9a-f]{24}$/i.test(chosen)) {
@@ -398,62 +404,144 @@ exports.orderFilterOptions = async (req, res) => {
   }
 };
 
-exports.createOrder = async (req, res) => {
-  try {
-    const data = pick(req.body, ORDER_EDITABLE);
+/**
+ * إنشاءُ طلبٍ واحد — جسدُ العمل، تنادِيه الشاشةُ ويناديه الإنشاءُ المتعدّد.
+ *
+ * ── ولماذا دالّةٌ لا معالجُ مسارٍ وحدَه ─────────────────────────────────────
+ * الحمولةُ الواحدة تخرج أحيانًا على خمسِ شاحنات: العميلُ واحدٌ والمسارُ والسعرُ
+ * والموعدُ واحد، ويختلف المورّدُ والشاحنةُ والسائق. فلو نُسخ منطقُ الإنشاء
+ * لـ«المتعدّد» لصار في النظام طريقان لصنع طلبٍ يفترقان أوّلَ تعديل: سعرُ
+ * المسار يُسجَّل في أحدهما ولا يُسجَّل في الآخر، ولقطةُ الشاحنة تُؤخذ هنا ولا
+ * تُؤخذ هناك. فالجسدُ واحدٌ ويُنادى مرّاتٍ.
+ */
+async function createOneOrder(req, body) {
+  const inner = { ...req, body };
+  const data = pick(body, ORDER_EDITABLE);
 
-    await resolveInlineCustomer(req, data);
+  await resolveInlineCustomer(inner, data);
 
-    if (data.customer) {
-      const c = await ShipmentOrderCustomer.findById(data.customer);
-      if (c) {
-        data.customerName = c.name;
+  if (data.customer) {
+    const c = await ShipmentOrderCustomer.findById(data.customer);
+    if (c) {
+      data.customerName = c.name;
         // ── والملفُّ يتعلّم السعرَ الأحدثَ لا المسارَ الجديدَ وحدَه ──────────
         // كان يُضاف المسارُ إن كان مجهولًا ويُترَك إن كان معروفًا — فسعرٌ
         // اتُّفق عليه اليومَ على مسارٍ قديم لا يصل الملفَّ أبدًا، ويبقى
         // المقترَحُ سعرَ أوّل شحنةٍ في تاريخ العميل. والمطلوبُ دائمًا آخرُ ما
         // عُمل به. راجع utils/customerRoutes — والمدنُ تُطابَق مطويّةً فلا
         // يصير «جده» مسارًا ثانيًا لـ«جدة».
-        const { applyRoute } = require('../utils/customerRoutes');
-        const r = applyRoute(c, {
-          fromCity: data.fromCity,
-          toCity: data.toCity,
-          price: data.sellPrice,
-          at: data.pickupTime || new Date(),
-          source: 'order',
-        });
-        if (r !== 'skipped') await c.save();
+      const { applyRoute } = require('../utils/customerRoutes');
+      const r = applyRoute(c, {
+        fromCity: data.fromCity,
+        toCity: data.toCity,
+        price: data.sellPrice,
+        at: data.pickupTime || new Date(),
+        source: 'order',
+      });
+      if (r !== 'skipped') await c.save();
+    }
+  }
+
+  // The truck: one of ours, a known supplier's, or typed in fresh. A fresh
+  // plate registers the vehicle (and its supplier when that is new too) as a
+  // side effect — the fleet register learns from the work, like the customer
+  // price list does.
+  await resolveInlineVehicle(inner, data);
+  await applyVehicleSnapshot(data, inner);
+
+  // والحالةُ تُقاس على المفردات الحيّة: المكتوبةُ في الشيفرة وما زاده القسم.
+  if (data.status && !(await isValidStatus(data.status))) {
+    const err = new Error(`حالةٌ غير معروفة: ${data.status}`);
+    err.status = 400;
+    throw err;
+  }
+
+  data.agentName = fullName(req.user); // المندوب — stamped, never typed
+  data.createdBy = req.user._id;
+
+  const order = await ShipmentOrder.create(data);
+  emit('shipmentOrders:updated', { id: String(order._id) });
+
+  await logAudit({
+    user: req.user, action: 'create', entity: 'ShipmentOrder', entityId: order._id,
+    changes: { waybillNumber: order.waybillNumber, customerName: order.customerName },
+    ipAddress: req.ip,
+  });
+
+  return order;
+}
+
+exports.createOrder = async (req, res) => {
+  try {
+    const order = await createOneOrder(req, req.body);
+    res.status(201).json({ order });
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ message: error.message });
+    console.error('Error creating shipment order:', error);
+    return sendMongooseError(res, error, 'Failed to create the shipment order');
+  }
+};
+
+/**
+ * ── الحمولةُ الواحدةُ على عدّةِ شاحنات ──────────────────────────────────────
+ *
+ * POST /orders/batch  { ...الطلب, trucks: [ { supplier|newSupplier, vehicle|newVehicle,
+ *                                             driverName, driverPhone }, … ] }
+ *
+ * العميلُ يطلب حمولةً تخرج على خمسِ شاحنات: العميلُ واحدٌ والمسارُ والسعرُ
+ * والموعدُ والدفعُ واحد، ويختلف المورّدُ والشاحنةُ والسائق. وكان الموظّفُ يخرج
+ * من النموذج ويعيد كتابةَ العشرين خانةً خمسَ مرّات — فيُخطئ في واحدةٍ منها ولا
+ * يُكتشَف إلّا عند المحاسبة.
+ *
+ * وكلُّ شاحنةٍ **طلبٌ مستقلٌّ تمامًا**: رقمُ بوليصةٍ خاصٌّ به من العدّاد نفسِه،
+ * ولقطةُ شاحنته وسائقه، وحالتُه ومتابعتُه وبوليصتُه. لا «طلبٌ أبٌ» ولا رابطٌ
+ * بينها — إذ لا معنى له في العمل: كلُّ شاحنةٍ تمضي وحدَها وتصل وحدَها وتُحاسَب
+ * وحدَها.
+ *
+ * ── وما يفشل منها يُقال باسمه ───────────────────────────────────────────────
+ * تُنشأ واحدةً بعد واحدة لا معًا: العدّادُ متسلسلٌ، وتوازيها يُخرج رقمين
+ * متساويين. وإن سقطت الثالثةُ فالأُولَيان قد أُنشئتا فعلًا — فلا تُمحَيان (هما
+ * عملٌ صحيح) ويُقال في الردّ أيُّها نجحت وأيُّها سقطت ولماذا، فيعرف الموظّفُ ما
+ * بقي عليه بدل أن يرى «فشل» فيعيد الخمسَ كلَّها.
+ */
+exports.createOrdersBatch = async (req, res) => {
+  try {
+    const trucks = Array.isArray(req.body?.trucks) ? req.body.trucks : [];
+    if (!trucks.length) return res.status(400).json({ message: 'لا شاحناتٍ في الطلب' });
+    if (trucks.length > 25) return res.status(400).json({ message: 'الحدُّ الأقصى خمسٌ وعشرون شاحنةً في المرّة' });
+
+    // الحقولُ المشتركة: كلُّ ما في الجسد عدا ما يخصّ الشاحنةَ وسائقَها.
+    const TRUCK_FIELDS = ['vehicle', 'newVehicle', 'supplier', 'supplierChoice', 'driverName', 'driverPhone'];
+    const shared = { ...req.body };
+    delete shared.trucks;
+    TRUCK_FIELDS.forEach((f) => delete shared[f]);
+
+    const created = [];
+    const failed = [];
+    for (const [i, truck] of trucks.entries()) {
+      const body = { ...shared };
+      TRUCK_FIELDS.forEach((f) => { if (truck[f] !== undefined) body[f] = truck[f]; });
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const order = await createOneOrder(req, body);
+        created.push(order);
+      } catch (e) {
+        failed.push({ index: i, plate: truck.plateLabel || truck.newVehicle?.plate || '', message: e.message || 'تعذّر الإنشاء' });
       }
     }
 
-    // The truck: one of ours, a known supplier's, or typed in fresh. A fresh
-    // plate registers the vehicle (and its supplier when that is new too) as a
-    // side effect — the fleet register learns from the work, like the customer
-    // price list does.
-    await resolveInlineVehicle(req, data);
-    await applyVehicleSnapshot(data, req);
-
-    // والحالةُ تُقاس على المفردات الحيّة: المكتوبةُ في الشيفرة وما زاده القسم.
-    if (data.status && !(await isValidStatus(data.status))) {
-      return res.status(400).json({ message: `حالةٌ غير معروفة: ${data.status}` });
+    if (!created.length) {
+      return res.status(400).json({ message: failed[0]?.message || 'لم تُنشأ أيُّ شحنة', failed });
     }
-
-    data.agentName = fullName(req.user); // المندوب — stamped, never typed
-    data.createdBy = req.user._id;
-
-    const order = await ShipmentOrder.create(data);
-    emit('shipmentOrders:updated', { id: String(order._id) });
-
-    await logAudit({
-      user: req.user, action: 'create', entity: 'ShipmentOrder', entityId: order._id,
-      changes: { waybillNumber: order.waybillNumber, customerName: order.customerName },
-      ipAddress: req.ip,
+    return res.status(201).json({
+      orders: created,
+      waybills: created.map((o) => o.waybillNumber),
+      created: created.length,
+      failed,
     });
-
-    res.status(201).json({ order });
   } catch (error) {
-    console.error('Error creating shipment order:', error);
-    return sendMongooseError(res, error, 'Failed to create the shipment order');
+    console.error('Error creating shipment batch:', error);
+    return sendMongooseError(res, error, 'Failed to create the shipment orders');
   }
 };
 

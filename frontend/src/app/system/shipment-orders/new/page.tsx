@@ -325,6 +325,48 @@ function CreateShipmentInner() {
    * واحدةٌ يسوقها بنفسه — فاسمُه يُبذَر في خانة السائق ولا يُكتب مرّتين.
    */
   const [newDriver, setNewDriver] = useState({ name: '', phone: '', residenceNumber: '' });
+
+  /**
+   * ── الحمولةُ الواحدةُ على عدّةِ شاحنات ────────────────────────────────────
+   *
+   * العميلُ يطلب حمولةً تخرج على خمسِ شاحنات: العميلُ والمسارُ والسعرُ والموعدُ
+   * والدفعُ واحد، ويختلف المورّدُ والشاحنةُ والسائق. وكان الموظّفُ يخرج من
+   * النموذج ويعيد كتابةَ العشرين خانةً خمسَ مرّات — فيُخطئ في واحدةٍ ولا
+   * يُكتشَف إلّا عند المحاسبة.
+   *
+   * فتُضاف الشاحناتُ هنا وتُرى قبل الحفظ، ويُنشئ الخادمُ لكلٍّ منها **طلبًا
+   * مستقلًّا** برقم بوليصته من العدّاد نفسِه — لا طلبٌ أبٌ ولا رابطٌ بينها، إذ
+   * كلُّ شاحنةٍ تمضي وحدَها وتصل وحدَها وتُحاسَب وحدَها.
+   */
+  type ExtraTruck = {
+    uid: string;
+    supplierId: string; supplierName: string;
+    vehicleId: string; vehicleLabel: string;
+    newPlate: string;
+    driverName: string; driverPhone: string;
+    vehicles: OrderVehicle[]; busy: boolean;
+  };
+  const [extras, setExtras] = useState<ExtraTruck[]>([]);
+  const addExtra = () => setExtras((p) => [...p, {
+    uid: `x${Date.now()}${p.length}`,
+    supplierId: '', supplierName: '', vehicleId: '', vehicleLabel: '',
+    newPlate: '', driverName: '', driverPhone: '', vehicles: [], busy: false,
+  }]);
+  const setExtra = (uid: string, patch: Partial<ExtraTruck>) =>
+    setExtras((p) => p.map((x) => (x.uid === uid ? { ...x, ...patch } : x)));
+  const dropExtra = (uid: string) => setExtras((p) => p.filter((x) => x.uid !== uid));
+
+  /** شاحناتُ مورّدِ هذا الصفّ — تُطلَب بمعرّفه كما في الصفّ الأوّل. */
+  const loadExtraVehicles = async (uid: string, supplierId: string, q = '') => {
+    setExtra(uid, { busy: true });
+    try {
+      const qs = new URLSearchParams({ limit: '80' });
+      if (supplierId) qs.set('supplier', supplierId); else qs.set('ownership', 'not_ours');
+      if (q) qs.set('q', q);
+      const d = await api.get<{ vehicles: OrderVehicle[] }>(`/api/shipment-orders/vehicles?${qs}`);
+      setExtra(uid, { vehicles: d.vehicles || [], busy: false });
+    } catch { setExtra(uid, { busy: false }); }
+  };
   const saveSupplier = async () => {
     const name = newSupplier.name.trim();
     if (!name) { notify(ar ? 'اكتب اسم المورد.' : 'Name the supplier.', 'error'); return; }
@@ -436,7 +478,34 @@ function CreateShipmentInner() {
       });
 
       if (editId) await api.put(`/api/shipment-orders/orders/${editId}`, payload);
-      else {
+      else if (extras.length) {
+        // ── الحمولةُ على عدّةِ شاحنات ──────────────────────────────────────
+        // الصفُّ الأوّلُ شاحنةٌ كالبقيّة، فيُرسَل معها في القائمة نفسِها —
+        // ولو أُنشئ وحدَه ثمّ أُرسلت البقيّةُ لصار الأوّلُ قد حُفظ بينما
+        // الثانيةُ تُرفَض، والموظّفُ لا يعرف أين وقف.
+        const truckOf = (sup: string, veh: string, plate: string, dn: string, dp: string) => ({
+          ...(veh ? { vehicle: veh } : {}),
+          ...(!veh && plate.trim() ? { newVehicle: { plate: plate.trim(), name: '', supplierId: sup || null, newSupplier: null } } : {}),
+          ...(sup ? { supplierChoice: sup } : {}),
+          ...(dn ? { driverName: dn } : {}),
+          ...(dp ? { driverPhone: dp } : {}),
+          plateLabel: plate.trim() || undefined,
+        });
+        const body = { ...payload };
+        delete body.vehicle; delete body.newVehicle; delete body.supplierChoice;
+        body.trucks = [
+          truckOf(supplierId, vehicleId, newPlate, form.driverName || '', form.driverPhone || ''),
+          ...extras.map((x) => truckOf(x.supplierId, x.vehicleId, x.newPlate, x.driverName, x.driverPhone)),
+        ];
+        const d = await api.post<{ waybills: number[]; created: number; failed: any[] }>(
+          '/api/shipment-orders/orders/batch', body);
+        const nums = (d.waybills || []).join('، ');
+        notify(ar
+          ? `أُنشئت ${d.created} شحنة — بوالص ${nums}${d.failed?.length ? ` · تعذّرت ${d.failed.length}` : ''}`
+          : `${d.created} shipments created — waybills ${nums}${d.failed?.length ? ` · ${d.failed.length} failed` : ''}`,
+          d.failed?.length ? 'error' : 'success');
+        if (d.failed?.length) { setSaving(false); return; }   // يبقى النموذجُ ليُعاد ما سقط
+      } else {
         const d = await api.post<{ order: any }>('/api/shipment-orders/orders', payload);
         notify(ar ? `تم إنشاء الشحنة — رقم البوليصة ${d.order.waybillNumber}` : `Created — waybill ${d.order.waybillNumber}`, 'success');
       }
@@ -992,13 +1061,115 @@ function CreateShipmentInner() {
             </p>
             <button type="button" onClick={() => router.push('/system/shipment-orders')}
               className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+            {/* ── شاحنةٌ أخرى بنفس التفاصيل ──────────────────────────────────
+                بجانب زرّ الإنشاء لأنّها قرارُ اللحظة نفسِها: «هذه الحمولة تخرج
+                على أكثرَ من شاحنة». ولا تظهر في التعديل — التعديلُ على شحنةٍ
+                قائمةٍ لا على حمولةٍ تُحجَز. */}
+            {!editId && (
+              <button type="button" onClick={addExtra}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#f37121]/40 text-[#f37121] text-sm font-semibold hover:bg-[#f37121]/10">
+                <Truck className="w-4 h-4" /> {ar ? '+ شاحنة أخرى بنفس التفاصيل' : '+ Another truck, same details'}
+              </button>
+            )}
             <PrimaryButton onClick={save} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-              {editId ? (ar ? 'حفظ التعديلات' : 'Save changes') : (ar ? 'إنشاء الشحنة' : 'Create shipment')}
+              {editId ? (ar ? 'حفظ التعديلات' : 'Save changes')
+                : extras.length
+                  ? (ar ? `إنشاء ${extras.length + 1} شحنات` : `Create ${extras.length + 1} shipments`)
+                  : (ar ? 'إنشاء الشحنة' : 'Create shipment')}
             </PrimaryButton>
           </div>
         </div>
       </div>
+
+      {/* ── الشاحناتُ الإضافيّةُ تُرى قبل الحفظ ───────────────────────────────
+          كلُّ صفٍّ شحنةٌ مستقلّةٌ ستُنشأ برقم بوليصتها: نفسُ العميل والمسار
+          والسعر والموعد، ويختلف المورّدُ والشاحنةُ والسائق. */}
+      {!editId && extras.length > 0 && (
+        <div className="rounded-2xl border border-[#f37121]/30 bg-[#f37121]/[0.03] p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Truck className="w-4 h-4 text-[#f37121]" />
+            <h3 className="font-bold text-slate-900 text-sm">
+              {ar ? `الحمولة على ${extras.length + 1} شاحنات` : `This load on ${extras.length + 1} trucks`}
+            </h3>
+            <span className="text-xs text-slate-500">
+              {ar ? 'كلُّ شاحنةٍ شحنةٌ مستقلّةٌ برقم بوليصة خاصّ بها — نفس بقيّة البيانات'
+                  : 'each truck becomes its own shipment with its own waybill — everything else identical'}
+            </span>
+          </div>
+
+          {/* الصفُّ الأوّلُ يُعرَض للعلم لا للتعديل: يُحرَّر في بطاقته أعلاه. */}
+          <div className="rounded-xl bg-white border border-slate-200 px-3 py-2 text-xs text-slate-600 flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span className="font-bold text-slate-900">{ar ? 'الشاحنة ١' : 'Truck 1'}</span>
+            <span>{suppliers.find((x) => x._id === supplierId)?.name || (ar ? 'بلا مورّد' : 'no supplier')}</span>
+            <span className="font-mono">{vehicles.find((x) => x._id === vehicleId)?.plate || newPlate || (ar ? 'بلا شاحنة' : 'no truck')}</span>
+            <span>{form.driverName || (ar ? 'بلا سائق' : 'no driver')}</span>
+            <span className="text-slate-400">{ar ? '— تُحرَّر من بطاقة «المورّد والسيارة» أعلاه' : '— edited in the card above'}</span>
+          </div>
+
+          {extras.map((x, i) => (
+            <div key={x.uid} className="rounded-xl bg-white border border-slate-200 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-slate-900">{ar ? `الشاحنة ${i + 2}` : `Truck ${i + 2}`}</span>
+                <button type="button" onClick={() => dropExtra(x.uid)}
+                  className="text-xs font-semibold text-slate-400 hover:text-red-600">{ar ? 'إزالة' : 'Remove'}</button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">{ar ? 'المورّد' : 'Supplier'}</label>
+                  <SearchableSelect
+                    value={x.supplierId} searchAfter={0} onSearch={searchSuppliers} loading={supBusy}
+                    onChange={(v) => {
+                      const sp = suppliers.find((y) => y._id === v);
+                      setExtra(x.uid, { supplierId: v, supplierName: sp?.name || '', vehicleId: '', vehicleLabel: '' });
+                      loadExtraVehicles(x.uid, v);
+                    }}
+                    placeholder={ar ? 'اختر المورّد…' : 'Pick supplier…'}
+                    searchPlaceholder={ar ? 'اسمه أو جوّاله…' : 'Name or phone…'}
+                    options={suppliers.map((sp) => ({ value: sp._id, label: sp.name }))} />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">{ar ? 'الشاحنة' : 'Truck'}</label>
+                  <SearchableSelect
+                    value={x.vehicleId} searchAfter={0} loading={x.busy}
+                    onSearch={(q) => loadExtraVehicles(x.uid, x.supplierId, q)}
+                    onChange={(v) => {
+                      const veh = x.vehicles.find((y) => y._id === v);
+                      setExtra(x.uid, {
+                        vehicleId: v, vehicleLabel: veh?.plate || '', newPlate: '',
+                        driverName: x.driverName || veh?.defaultDriverName || '',
+                        driverPhone: x.driverPhone || veh?.defaultDriverPhone || '',
+                      });
+                    }}
+                    placeholder={x.supplierId ? (ar ? 'اختر شاحنته…' : 'Pick his truck…') : (ar ? 'اختر المورّد أوّلًا' : 'Pick a supplier first')}
+                    searchPlaceholder={ar ? 'باللوحة أو السائق…' : 'Plate or driver…'}
+                    emptyLabel={ar ? 'لا شاحنة — اكتب اللوحة' : 'None — type the plate'}
+                    options={x.vehicles.map((v) => ({
+                      value: v._id, label: [v.plate, v.name].filter(Boolean).join(' — '), hint: v.defaultDriverName || undefined,
+                    }))} />
+                  <input value={x.newPlate}
+                    onChange={(e) => setExtra(x.uid, { newPlate: e.target.value, vehicleId: e.target.value.trim() ? '' : x.vehicleId })}
+                    placeholder={ar ? 'أو لوحة جديدة' : 'or a new plate'}
+                    className={`${inputCls} mt-1.5 text-xs py-1.5`} />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">{ar ? 'السائق' : 'Driver'}</label>
+                  <input value={x.driverName} onChange={(e) => setExtra(x.uid, { driverName: e.target.value })}
+                    placeholder={ar ? 'يُملأ من الشاحنة' : 'from the truck'} className={`${inputCls} text-xs py-1.5`} />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">{ar ? 'جوّاله' : 'His phone'}</label>
+                  <input value={x.driverPhone} onChange={(e) => setExtra(x.uid, { driverPhone: e.target.value })}
+                    dir="ltr" placeholder="+9665…" className={`${inputCls} text-xs py-1.5`} />
+                </div>
+              </div>
+            </div>
+          ))}
+
+          <button type="button" onClick={addExtra}
+            className="text-xs font-semibold text-[#f37121] hover:underline">{ar ? '+ شاحنة أخرى' : '+ another truck'}</button>
+        </div>
+      )}
 
     </div>
   );

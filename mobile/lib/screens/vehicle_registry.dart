@@ -281,6 +281,9 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
                     ]),
                     const SizedBox(height: 10),
                     _section(tr('الملكية', 'Ownership'), [
+                      // المجموعةُ شركتان والأسطولُ مشتركُ التشغيلِ مفصولُ الملكيّة:
+                      // الرخصةُ والتأمينُ والمخالفةُ تُنسَب إلى شركةٍ بعينها.
+                      _row(tr('الشركة المالكة', 'Owning company'), v['ownerCompanyAr']),
                       _row(tr('المالك', 'Owner'), v['ownerNameAr']),
                       _row(tr('السجل التجاري', 'Comm. reg.'), v['commercialRegistration']),
                       _row(tr('حالة تم', 'Tam status'), v['tamStatusAr']),

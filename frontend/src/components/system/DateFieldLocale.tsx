@@ -17,6 +17,16 @@
  * ويُرفَع الوسمُ بمجرّد امتلائها فيعود نصُّها الأصليّ، وليس فيه حينئذٍ إلّا
  * الأرقام.
  *
+ * ── ويفتح التقويمَ بالضغط على الخانة كلِّها ───────────────────────────────
+ * الضغطُ على خانة التاريخ لا يفتح التقويمَ في متصفّحاتٍ كثيرة: يفتحه الضغطُ
+ * على أيقونته وحدَها، وهي صغيرةٌ وقد تكون باهتةً على الأبيض. فيُقرأ الحقلُ
+ * نصًّا يُكتب بالإصبع — ويُكتب فعلًا، فيدخل تاريخٌ بصيغةٍ غيرِ صيغتنا أو لا
+ * يدخل شيءٌ ويُقال «مش بعرف أختار».
+ *
+ * و`showPicker()` يفتحه من أيّ موضعٍ في الخانة. وهو هنا للكلّ: مئتا خانةٍ في
+ * سبعةٍ وثمانين ملفًّا، وما يُكتب في شاشةٍ واحدةٍ يُنسى في الشاشة التالية.
+ * (`DateRangeFilter` يفعلها لنفسه أصلًا، وتكرارُها لا يضرّ — نداءٌ واحدٌ.)
+ *
  * ── ولماذا مراقبٌ للـDOM ─────────────────────────────────────────────────
  * الخاناتُ مئتان في سبعةٍ وثمانين ملفًّا، وأكثرُها داخل نوافذَ تُبنى عند فتحها
  * لا مع الصفحة. ولا يصحّ أن يُعتمَد على أن يتذكّر ذلك كاتبُ كلِّ شاشةٍ جديدة —
@@ -52,6 +62,15 @@ export default function DateFieldLocale() {
     document.addEventListener('change', onChange, true);
     document.addEventListener('blur', onChange, true);
 
+    // الضغطُ في أيّ موضعٍ من الخانة يفتح التقويمَ الأصليّ. والمتصفّحُ الذي لا
+    // يعرف `showPicker` يبقى كما هو — لا يُرمى خطأٌ في وجه المستخدم.
+    const onClick = (e: Event) => {
+      const t = e.target as (HTMLInputElement & { showPicker?: () => void }) | null;
+      if (!t?.matches?.(SELECTOR) || t.disabled || t.readOnly) return;
+      try { t.showPicker?.(); } catch { /* يحتاج تفاعلًا مباشرًا في بعضها */ }
+    };
+    document.addEventListener('click', onClick, true);
+
     const mo = new MutationObserver((records) => {
       for (const r of records) {
         for (const n of r.addedNodes) {
@@ -68,6 +87,7 @@ export default function DateFieldLocale() {
       document.removeEventListener('input', onChange, true);
       document.removeEventListener('change', onChange, true);
       document.removeEventListener('blur', onChange, true);
+      document.removeEventListener('click', onClick, true);
       mo.disconnect();
     };
   }, []);

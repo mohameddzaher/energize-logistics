@@ -24,7 +24,7 @@ const {
 } = require('../config/constants');
 const { nameKey, nameRegex } = require('../utils/nameKey');
 // صيغةُ عرض اللوحة واحدةٌ في النظام كلِّه — راجع `utils/plateKey`.
-const { formatPlate } = require('../utils/plateKey');
+const { formatPlate, flexSpaceRegex: flexPlate } = require('../utils/plateKey');
 
 const COMPANY = 'تنشيط للخدمات اللوجستية · Energize Logistics';
 const T = (ar, en, lang) => (lang === 'en' ? en : ar);
@@ -261,7 +261,11 @@ async function buildVehicleReport(id, query, lang) {
     items: [
       [t('رقم اللوحة', 'Plate'), formatPlate(plate)],
       [t('الاسم في النظام', 'Unit name'), ls2?.name || fleet?.name],
-      [t('نوع المركبة', 'Vehicle type'), reg?.vehicleTypeAr],
+      // ── ونوعُها ماركتُها وطرازُها ──────────────────────────────────────
+      // `vehicleTypeAr` خانةٌ في النموذج لم تُملأ قطّ: فارغةٌ في ٣٣٧ من ٣٣٧.
+      // والنوعُ الذي يُقصَد ويُكتب في سجلّ الحوادث هو «سينو / رأس».
+      [t('نوع المركبة', 'Vehicle type'),
+        [reg?.brandAr, reg?.modelAr].filter(Boolean).join(' / ') || reg?.vehicleTypeAr || fleet?.trailerType],
       [t('القطاع', 'Sector'), reg?.sectorAr],
       [t('الإدارة', 'Department'), reg?.departmentAr],
       [t('المدينة', 'City'), reg?.cityAr],
@@ -907,6 +911,11 @@ async function buildCustomerReport(id, query, lang) {
   const fin = finance.filter((c) => nameKey(c.companyName) === key);
   const fc = fleetCust.filter((c) => nameKey(c.name) === key);
   const co = crm.filter((c) => nameKey(c.name) === key);
+  // طرفُ التحصيل: فيه كودُ الحساب وحدُّ الائتمان — وهما ما كان يُقرأ من السجلّ
+  // المالي الذي زال. ويُطابَق بالاسم المطويّ كما تُطابَق بقيّةُ السجلّات.
+  const CollectionsPartyM = require('../models/CollectionsParty');
+  const parties = await CollectionsPartyM.find({ kind: 'customer' }).select('name code creditLimit creditTerm').lean();
+  const party = parties.find((p) => nameKey(p.name) === key) || null;
 
   // A great many customers have no row in ANY register — customs work in
   // particular is filed against a typed name. Those are real customers with real
@@ -993,14 +1002,17 @@ async function buildCustomerReport(id, query, lang) {
     kind: 'kv',
     items: [
       [t('الاسم', 'Name'), displayName],
-      [t('رقم العميل', 'Customer no.'), fin[0]?.customerNumber],
+      // ── ورقمُ العميل وحدودُه من سجلّ التحصيل ───────────────────────────
+      // كانت تُقرأ من `Customer` — سجلِّ قسمِ «العملاء والمالية» الذي زال،
+      // وفيه اليومَ صفرُ صفوف. فكانت خمسُ خاناتٍ تُطبَع فارغةً في كلّ تقريرِ
+      // عميل، والأرقامُ موجودةٌ في سجلّ أطراف التحصيل.
+      [t('رقم العميل', 'Customer no.'), party?.code || fin[0]?.customerNumber],
       [t('نوع العميل', 'Type'), fc[0] ? (fc[0].customerType === 'branch' ? t('عميل فروع', 'Branch customer') : t('نقل ثقيل', 'Heavy transport')) : null],
       [t('الهاتف', 'Phone'), fin[0]?.phone || fc[0]?.phone || co[0]?.phone],
       [t('البريد', 'Email'), fin[0]?.email || fc[0]?.email || co[0]?.email],
       [t('العنوان', 'Address'), fin[0]?.address || co[0]?.address],
-      [t('مدة الائتمان', 'Credit term'), fin[0]?.creditTerm ? `${fin[0].creditTerm} ${t('يوم', 'days')}` : null],
-      [t('حد الائتمان', 'Credit limit'), fin[0]?.creditLimit != null ? money(fin[0].creditLimit) : null],
-      [t('الفئة', 'Grade'), fin[0]?.grade],
+      [t('مدة الائتمان', 'Credit term'), (party?.creditTerm ?? fin[0]?.creditTerm) ? `${party?.creditTerm ?? fin[0].creditTerm} ${t('يوم', 'days')}` : null],
+      [t('حد الائتمان', 'Credit limit'), (party?.creditLimit ?? fin[0]?.creditLimit) != null ? money(party?.creditLimit ?? fin[0].creditLimit) : null],
       [t('حالة العميل', 'Status'), fin[0]?.clientStatus || co[0]?.status],
       [t('السجلات المرتبطة', 'Registers'), [fin.length && t('المالية', 'Finance'), fc.length && t('النقل الثقيل', 'Heavy transport'), co.length && 'CRM'].filter(Boolean).join(' · ') || null],
     ],
@@ -2187,7 +2199,6 @@ async function buildTireReport(id, query, lang) {
       [t('المقاس', 'Size'), tire.size || null],
       [t('الحالة', 'Status'), stDef ? (lang === 'en' ? stDef.en : stDef.ar) : tire.status],
       [t('الدرجة', 'Grade'), tire.condition === 'new' ? t('جديدة', 'New') : t('مستعملة', 'Used')],
-      [t('نسبة الحالة', 'Condition %'), tire.conditionPercent != null ? `${tire.conditionPercent}%` : null],
       [t('حسّاس الضغط', 'Pressure sensor'), tire.sensor === 'yes' ? t('يوجد', 'Yes') : tire.sensor === 'no' ? t('لا يوجد', 'No') : null],
       [t('مركَّبة على', 'Mounted on'), tire.status === 'mounted'
         ? [tire.plate || (tire.trailerNumber ? `${t('تيدر', 'trailer')} ${tire.trailerNumber}` : null),
@@ -2300,15 +2311,53 @@ async function buildShipmentReport(id, query, lang) {
     .lean();
   if (!o) return null;
 
+  // ── والمراجعُ لا تكفي: الطلباتُ المستوردةُ تحمل أسماءً لا مراجع ──────────
+  //
+  // سبعةٌ وثلاثون ألفَ طلبٍ، ثلاثةٌ منها تحمل مرجعَ عميل. والباقي جاء من منصّة
+  // التشغيل بأسماءٍ لقطةً: `customerName` و`supplierName` و`vehiclePlate`.
+  // فكان التقريرُ يطبع «جوال العميل» و«جوال المورّد» و«الماركة» و«اللون»
+  // و«بطاقة التشغيل» فارغةً دائمًا — وهي مكتوبةٌ في سجلّاتنا، تُقرأ بالاسم
+  // واللوحة كما تقرؤها البوليصة.
+  // والمطابقةُ مطويّةٌ لا حرفيّة: اللقطةُ تُكتب «شركه» والسجلُّ «شركة»، وتُنسخ
+  // اللوحةُ بمسافتين. والمطابقةُ الحرفيّةُ تُخرج فارغًا عن صفٍّ موجود — وهو ما
+  // كان يقع: ستُّمئةٍ وثمانيةُ عملاءَ لهم جوّالٌ ولا يظهر منه واحد.
+  //
+  // ولوحةُ الشحنة قد تكون في `vehicleName` وحدَه ومعها وصفٌ («1111 ABC — مرسيدس»)،
+  // فتُنتزَع اللوحةُ منه بمفتاحها لا بنصّه كلِّه.
+  const plateOf = (v) => {
+    const raw = String(v || '');
+    const m = raw.match(/[\u0621-\u064AA-Za-z0-9\s]+/);
+    return (m ? m[0] : raw).split('—')[0].trim();
+  };
+  const snapPlate = plateOf(o.vehiclePlate || o.vehicleName);
+  const [custRow, supRow, vehRow, drvRow] = await Promise.all([
+    !o.customer && o.customerName
+      ? require('../models/ShipmentOrderCustomer').findOne({ name: nameRegex(o.customerName) }).select('name phone email').lean() : null,
+    !o.supplier && o.supplierName
+      ? require('../models/ShipmentOrderSupplier').findOne({ name: nameRegex(o.supplierName) }).select('name phone type commercialRegister').lean() : null,
+    !o.vehicle && snapPlate
+      ? require('../models/ShipmentOrderVehicle')
+        .findOne({ plate: flexPlate(snapPlate) })
+        .select('plate brand color truckType operationCardNumber operationCardExpiry').lean() : null,
+    o.driverName
+      ? require('../models/ShipmentOrderDriver').findOne({ name: nameRegex(o.driverName) })
+        .select('phone residenceNumber nationality').lean() : null,
+  ]);
+  const veh = o.vehicle || vehRow;
+  const cust = o.customer || custRow;
+  const sup = o.supplier || supRow;
+
   const blocks = [];
   blocks.push({ kind: 'section', text: t('بيانات الشحنة', 'Shipment details') });
   blocks.push({
     kind: 'kv',
     items: [
-      [t('رقم البوليصة', 'Waybill no.'), o.waybillNumber],
+      // ورقمُ البوليصة: شحناتُنا تُرقَّم من ٥٠٠، وشحناتُ المنصّة رقمُها رقمُ
+      // كشف تخريجها — وهو الذي يعرفه الفريقُ عنها ويُسأل به.
+      [t('رقم البوليصة', 'Waybill no.'), o.waybillNumber || o.reference || o.graduationNumber],
       [t('رقم كشف التخريج', 'Graduation no.'), o.graduationNumber],
-      [t('العميل', 'Customer'), o.customerName || o.customer?.name],
-      [t('جوال العميل', 'Customer phone'), o.customer?.phone],
+      [t('العميل', 'Customer'), o.customerName || cust?.name],
+      [t('جوال العميل', 'Customer phone'), cust?.phone],
       [t('من', 'From'), o.fromCity],
       [t('إلى', 'To'), o.toCity],
       [t('عنوان الاستلام', 'Pickup address'), o.addressFrom],
@@ -2328,15 +2377,17 @@ async function buildShipmentReport(id, query, lang) {
   blocks.push({
     kind: 'kv',
     items: [
-      [t('المورّد', 'Supplier'), o.supplierName || o.supplier?.name || (o.vehicle ? t('غير مسجَّل', 'not recorded') : null)],
-      [t('جوال المورّد', 'Supplier phone'), o.supplier?.phone],
-      [t('اللوحة', 'Plate'), formatPlate(o.vehiclePlate || o.vehicle?.plate)],
-      [t('الماركة', 'Brand'), o.vehicle?.brand],
-      [t('اللون', 'Colour'), o.vehicle?.color],
-      [t('بطاقة التشغيل', 'Operation card'), o.vehicle?.operationCardNumber],
-      [t('انتهاؤها', 'Card expiry'), o.vehicle?.operationCardExpiry],
+      [t('المورّد', 'Supplier'), o.supplierName || sup?.name || (veh ? t('غير مسجَّل', 'not recorded') : null)],
+      [t('جوال المورّد', 'Supplier phone'), sup?.phone],
+      [t('اللوحة', 'Plate'), formatPlate(o.vehiclePlate || veh?.plate)],
+      [t('الماركة', 'Brand'), veh?.brand],
+      [t('اللون', 'Colour'), veh?.color],
+      [t('بطاقة التشغيل', 'Operation card'), veh?.operationCardNumber],
+      [t('انتهاؤها', 'Card expiry'), (veh?.operationCardExpiry || '').slice(0, 10) || null],
       [t('السائق', 'Driver'), o.driverName],
-      [t('جواله', 'Driver phone'), o.driverPhone],
+      [t('جواله', 'Driver phone'), o.driverPhone || drvRow?.phone],
+      [t('رقم إقامته', 'Driver iqama'), drvRow?.residenceNumber],
+      [t('جنسيته', 'Nationality'), drvRow?.nationality],
     ],
   });
 
@@ -2613,7 +2664,47 @@ const SUBJECTS = [
   { key: 'rider', ar: 'مندوب نقل خفيف', en: 'Rider', icon: 'user', options: riderOptions, build: buildRiderReport, searchable: true },
 ];
 
-const getSubject = (key) => SUBJECTS.find((s) => s.key === key) || null;
+/**
+ * ── والتقريرُ يقول ما يَعرف، لا ما لا يَعرف ────────────────────────────────
+ *
+ * كلُّ بانٍ يسرد خاناتِ موضوعه كلَّها ويترك الخاليَ `null`، فتُطبَع شُرَطًا.
+ * وفي سجلّاتٍ استُوردت من خارجٍ لا يحمل كلَّ ما نحمله، يصير نصفُ الورقة شُرَطًا
+ * — فتُقرأ «التقرير فارغ» وهي مملوءةٌ بما نعرفه فعلًا.
+ *
+ * فتُحذَف الخانةُ الخالية، ويُحذَف العنوانُ الذي خلا ما تحته. وما بقي حقائقُ
+ * مكتوبة. وما ليس عندنا يُعرَف من سجلّ مصدره لا من شُرَطٍ في ورقةٍ تُطبَع.
+ *
+ * ولا يُحذَف رقمٌ قيمتُه صفر: الصفرُ خبرٌ («لا حوادث») لا فراغ.
+ */
+const pruneEmpty = (doc) => {
+  if (!doc || !Array.isArray(doc.blocks)) return doc;
+  const kept = [];
+  for (const b of doc.blocks) {
+    if (b.kind === 'kv') {
+      const items = (b.items || []).filter(([, v]) => v !== null && v !== undefined && v !== '' && v !== '—');
+      if (items.length) kept.push({ ...b, items });
+      continue;
+    }
+    if (b.kind === 'table' && !(b.rows || []).length) continue;
+    kept.push(b);
+  }
+  // عنوانُ قسمٍ لم يبقَ تحته شيءٌ يُحذَف معه.
+  const out = [];
+  for (let i = 0; i < kept.length; i += 1) {
+    const b = kept[i];
+    if (b.kind === 'section' && (!kept[i + 1] || kept[i + 1].kind === 'section')) continue;
+    out.push(b);
+  }
+  return { ...doc, blocks: out };
+};
+
+const getSubject = (key) => {
+  const sub = SUBJECTS.find((s) => s.key === key);
+  if (!sub) return null;
+  // التنقيةُ هنا لا عند كلّ منادٍ: التقاريرُ والمساعدُ والهاتفُ يبنون بالدالّة
+  // نفسِها، فلو نُقّيت عند أحدهم اختلفت الورقةُ عن الشاشة.
+  return { ...sub, build: async (...args) => pruneEmpty(await sub.build(...args)) };
+};
 const subjectMeta = () => SUBJECTS.map((s) => ({ key: s.key, ar: s.ar, en: s.en, icon: s.icon, searchable: s.searchable }));
 
 module.exports = { SUBJECTS, SECTION_REPORTS, getSubject, subjectMeta, resolvePeriod, PERIOD_PRESETS, COMPANY };

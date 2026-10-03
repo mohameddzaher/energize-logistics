@@ -2,8 +2,8 @@
 // طلبات الشحنات — the trial section's main list. Everything the team needs to
 // run the day happens HERE, without opening each order: search by بوليصة or
 // customer, flip a status inline, download the بوليصة PDF per row.
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { ContactButtons } from '@/components/crm/CrmKit';
 import { useLanguage } from '@/context/LanguageContext';
@@ -70,8 +70,18 @@ const waybillFileName = (o: ShipmentOrder) => {
 const EMPTY_SET: Set<string> = new Set();
 const EMPTY_OPTIONS: { value: string; count: number }[] = [];
 
-export default function ShipmentOrdersPage() {
+/**
+ * ── والفلترُ يُورَث من الرابط ─────────────────────────────────────────────────
+ * بطاقاتُ اللوحة تؤدّي إلى هنا: «١٤ متأخّرة» تُضغَط فتُفتَح الشحناتُ المتأخّرةُ
+ * أنفسُها لا كلُّ الجدول. وكانت الشاشةُ تبدأ فارغةَ الفلاتر دائمًا، فينتهي كلُّ
+ * رقمٍ في النظام إلى الصفحة الأولى من سبعةٍ وثلاثين ألف صفّ.
+ *
+ * ويُقرأ مرّةً عند الفتح ثمّ تُمسك الشاشةُ حالتَها — وإلّا أعاد الرابطُ كتابةَ
+ * ما يغيّره المستخدم.
+ */
+function ShipmentOrdersInner() {
   const { user } = useAuth();
+  const sp = useSearchParams();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const router = useRouter();
@@ -85,13 +95,13 @@ export default function ShipmentOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [search, setSearch] = useState('');
-  const [debounced, setDebounced] = useState('');
+  const [search, setSearch] = useState(() => sp?.get('q') || '');
+  const [debounced, setDebounced] = useState(() => sp?.get('q') || '');
   // ── الحالةُ تُنتقى بالتراكم ───────────────────────────────────────────────
   // «أرِني المتأخّرةَ وما في الطريق معًا» سؤالٌ يُسأل كلَّ صباح، وقائمةٌ منسدلة
   // تجيب عن واحدةٍ فقط. فالبطاقاتُ فوق الجدول هي الفلتر — كما في شاشة شحنات
   // المنصّة، والفريقُ يعرفها.
-  const [statuses, setStatuses] = useState<string[]>([]);
+  const [statuses, setStatuses] = useState<string[]>(() => (sp?.get('status') || '').split(',').filter(Boolean));
   // ملاحظةُ الرحلة: الكلّ · لها ملاحظة · بلا ملاحظة.
   const [noteFilter, setNoteFilter] = useState('');
   const statusVocab = useOrderStatuses();
@@ -104,10 +114,10 @@ export default function ShipmentOrdersPage() {
   // شحناتُ المنصّة تحمل رقمَ كشف تخريجٍ حقيقيًّا يُحاسَب عليه، وشحناتُنا —
   // تجريبيّةً اليوم — يسبق رقمَها حرف. ومن يقرأ تقريرًا يجب أن يعرف أهو عن
   // عملٍ جرى أم عن تجربة.
-  const [sourceFilter, setSourceFilter] = useState('');
-  const [customerFilter, setCustomerFilter] = useState('');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
+  const [sourceFilter, setSourceFilter] = useState(() => sp?.get('source') || '');
+  const [customerFilter, setCustomerFilter] = useState(() => sp?.get('customer') || '');
+  const [fromDate, setFromDate] = useState(() => sp?.get('from') || '');
+  const [toDate, setToDate] = useState(() => sp?.get('to') || '');
   const [page, setPage] = useState(1);
 
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -338,8 +348,13 @@ export default function ShipmentOrdersPage() {
 
   if (loading) return <Spinner />;
 
-  const inFlight = ['loading', 'uploaded', 'on_way'].reduce((s, k) => s + (stats?.byStatus[k] || 0), 0);
-  const done = ['arrived', 'bond_sent', 'bond_received', 'invoiced'].reduce((s, k) => s + (stats?.byStatus[k] || 0), 0);
+  // المجموعتان تُكتبان مرّةً: البطاقةُ تعدُّ ما تفلتره هي نفسُها.
+  const IN_FLIGHT_KEYS = ['loading', 'uploaded', 'on_way'];
+  const DONE_KEYS = ['arrived', 'bond_sent', 'bond_received', 'invoiced'];
+  const inFlight = IN_FLIGHT_KEYS.reduce((s, k) => s + (stats?.byStatus[k] || 0), 0);
+  const done = DONE_KEYS.reduce((s, k) => s + (stats?.byStatus[k] || 0), 0);
+  /** الحالاتُ المنتقاةُ هي هذه المجموعةُ بعينها؟ */
+  const isSet = (keys: string[]) => keys.length === statuses.length && keys.every((k) => statuses.includes(k));
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -404,9 +419,17 @@ export default function ShipmentOrdersPage() {
           يوم — رقمان ماليّان لا يُقرآن هنا ولا يُتصرَّف بهما، ومكانُهما صفحةُ
           التحليلات. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <StatCard label={ar ? 'إجمالي الشحنات' : 'Total shipments'} value={total} accent="text-[#f37121]" />
-        <StatCard label={ar ? 'قيد التنفيذ' : 'In flight'} value={inFlight} accent="text-blue-600" />
-        <StatCard label={ar ? 'وصلت / مكتملة' : 'Arrived / done'} value={done} accent="text-emerald-600" />
+        {/* والبطاقةُ تضغط بطاقاتِ الحالات تحتها: «قيد التنفيذ» ثلاثُ حالاتٍ
+            مجموعة، و«وصلت/مكتملة» أربع — والفلترُ يقبل عدّةً أصلًا. */}
+        <StatCard label={ar ? 'إجمالي الشحنات' : 'Total shipments'} value={total} accent="text-[#f37121]"
+          onClick={() => { setStatuses([]); setPage(1); }} active={statuses.length === 0}
+          hint={ar ? 'اضغط لعرض الكل' : 'tap to show all'} />
+        <StatCard label={ar ? 'قيد التنفيذ' : 'In flight'} value={inFlight} accent="text-blue-600"
+          onClick={() => { setStatuses(isSet(IN_FLIGHT_KEYS) ? [] : IN_FLIGHT_KEYS); setPage(1); }}
+          active={isSet(IN_FLIGHT_KEYS)} hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
+        <StatCard label={ar ? 'وصلت / مكتملة' : 'Arrived / done'} value={done} accent="text-emerald-600"
+          onClick={() => { setStatuses(isSet(DONE_KEYS) ? [] : DONE_KEYS); setPage(1); }}
+          active={isSet(DONE_KEYS)} hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
       </div>
 
       <div className="flex flex-wrap gap-3 items-center">
@@ -891,4 +914,9 @@ export default function ShipmentOrdersPage() {
       )}
     </div>
   );
+}
+
+export default function ShipmentOrdersPage() {
+  // useSearchParams يحتاج حدَّ Suspense في موجّه التطبيقات.
+  return <Suspense fallback={<Spinner />}><ShipmentOrdersInner /></Suspense>;
 }

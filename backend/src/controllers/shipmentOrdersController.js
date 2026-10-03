@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const ShipmentOrder = require('../models/ShipmentOrder');
 const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const { startOfDay, endOfDay } = require('../utils/companyDay');
@@ -125,7 +126,29 @@ async function resolveInlineVehicle(req, data) {
  * ولا تُكتب فوق معرفةٍ سابقة: شاحنةٌ لها مورّدٌ مسجَّلٌ تبقى له، وما كان من
  * أسطولنا لا يُنسَب إلى مورّد.
  */
+/**
+ * ── المورّدُ المتّفقُ معه، لا مالكُ الشاحنة ───────────────────────────────────
+ *
+ * صارا سؤالين منفصلين في الشاشة: المورّدُ طرفٌ في الصفقة يُختار مع العميل،
+ * ومالكُ الشاحنة خبرٌ عنها يُقرأ من سجلّها. وهما يختلفان فعلًا — مورّدٌ يُخرج
+ * حمولتَنا على شاحنةِ غيره.
+ *
+ * فيُرَدُّ هنا المختارُ إن صحّ، ويبقى مالكُ الشاحنة بديلًا عند غيابه. وكان
+ * الطلبُ يأخذ مالكَ الشاحنة دائمًا ويُكتب فوق اختيارِ من حجز الحمولة: فتُحفَظ
+ * الشحنةُ على مورّدٍ لم يتّفق معه أحد، ويُطالَب بما لم يَحمِل.
+ */
+async function resolveSupplierChoice(req) {
+  const chosen = req && req.body ? String(req.body.supplierChoice || '') : '';
+  if (!/^[0-9a-f]{24}$/i.test(chosen)) return null;
+  const sup = await ShipmentOrderSupplier.findById(chosen).select('_id').lean();
+  return sup ? sup._id : null;
+}
+
 async function applyVehicleSnapshot(data, req) {
+  const chosenId = await resolveSupplierChoice(req);
+  // ويُكتب ولو لم تُعرَف الشاحنة: المورّدُ يُتّفق معه قبل أن يُسمّي شاحنتَه،
+  // وكانت الدالّةُ ترجع من هنا فيُحفَظ الطلبُ بلا مورّدٍ وقد اختير.
+  if (chosenId) data.supplier = chosenId;
   if (!data.vehicle) return;
   const veh = await ShipmentOrderVehicle.findById(data.vehicle).lean();
   if (!veh) return;
@@ -136,17 +159,17 @@ async function applyVehicleSnapshot(data, req) {
   // فتخرج شحناتُنا من فلتر عمود «الشاحنة»، ولا تجد البوليصةُ ماركتَها ولونَها
   // (تُطلبان باللوحة من سجلّ الشاحنات)، ولا يُطابقها تقريرٌ يبحث بلوحة.
   data.vehiclePlate = veh.plate || '';
-  data.supplier = veh.supplier || null;
-  const chosen = req && req.body ? String(req.body.supplierChoice || '') : '';
-  if (!veh.supplier && veh.ownership !== 'ours' && /^[0-9a-f]{24}$/i.test(chosen)) {
-    const sup = await ShipmentOrderSupplier.findById(chosen).select('_id').lean();
-    if (sup) {
-      await ShipmentOrderVehicle.updateOne(
-        { _id: veh._id }, { $set: { supplier: sup._id, ownership: 'supplier' } },
-      );
-      data.supplier = sup._id;
-      emit('shipmentOrders:fleet', {});
-    }
+  // مالكُ الشاحنة بديلٌ عند غياب الاختيار، لا بديلًا عنه.
+  if (!chosenId) data.supplier = veh.supplier || null;
+  // ── والسجلُّ يتعلّم مالكًا مجهولًا ─────────────────────────────────────
+  // خمسةُ آلافٍ وسبعُمئةِ شاحنةٍ في السجلّ لا مالكَ لها، ومن يحجز الحمولة
+  // يعرفه. فيُكتب — ولا يُكتب فوق مالكٍ معروفٍ: من اتّفق مع مورّدٍ على شاحنة
+  // غيرِه لا يُغيّر ملكيّتَها في السجلّ بذلك.
+  if (chosenId && !veh.supplier && veh.ownership !== 'ours') {
+    await ShipmentOrderVehicle.updateOne(
+      { _id: veh._id }, { $set: { supplier: chosenId, ownership: 'supplier' } },
+    );
+    emit('shipmentOrders:fleet', {});
   }
   if (!data.driverName && veh.defaultDriverName) data.driverName = veh.defaultDriverName;
   if (!data.driverPhone && veh.defaultDriverPhone) data.driverPhone = veh.defaultDriverPhone;
@@ -265,8 +288,34 @@ exports.listOrders = async (req, res) => {
       if (keys.length === 1) [filter.status] = keys;
       else if (keys.length > 1) filter.status = { $in: keys };
     }
-    if (customer) filter.customer = customer;
-    if (supplier) filter.supplier = supplier;
+    // ── والعميلُ يُطابَق بمرجعه أو باسمه ──────────────────────────────────
+    //
+    // ثلاثةُ طلباتٍ من سبعةٍ وثلاثين ألفًا تحمل مرجعَ عميل: الباقي جاء من
+    // منصّة التشغيل ويحمل الاسمَ لقطةً (`customerName`) بلا ربط. فكان اختيارُ
+    // عميلٍ من المصفاة يُخرج صفرَ صفوفٍ لعميلٍ له آلافُ الشحنات — يُقرأ عطبًا.
+    //
+    // والاسمُ يُطابَق مطويًّا (`flexSpaceRegex`): «شركه» و«شركة» واحدةٌ، ومسافتان
+    // كمسافة. وكذلك المورّد — وهو أسوأُ حالًا: أسماؤه تُكتب في اللقطة بصورٍ شتّى.
+    //
+    // ويُحرَس المعرّف: قيمةٌ ليست ObjectId كانت تُلقي `CastError` فيعود النداءُ
+    // ٥٠٠ — خطأُ خادمٍ عن مُدخَلٍ خاطئ.
+    const refOrName = async (Model, id, nameField) => {
+      if (!mongoose.Types.ObjectId.isValid(String(id))) return null;
+      const row = await Model.findById(id).select('name').lean();
+      const or = [{ [nameField === 'customerName' ? 'customer' : 'supplier']: id }];
+      if (row?.name) or.push({ [nameField]: flexSpaceRegex(row.name) });
+      return { $or: or };
+    };
+    if (customer) {
+      const cond = await refOrName(ShipmentOrderCustomer, customer, 'customerName');
+      if (cond) filter.$and = [...(filter.$and || []), cond];
+      else return res.status(400).json({ message: 'مُعرّفُ عميلٍ غيرُ صالح' });
+    }
+    if (supplier) {
+      const cond = await refOrName(ShipmentOrderSupplier, supplier, 'supplierName');
+      if (cond) filter.$and = [...(filter.$and || []), cond];
+      else return res.status(400).json({ message: 'مُعرّفُ مورّدٍ غيرُ صالح' });
+    }
     if (branch) filter.branch = branch;
     // ── من أين جاءت الشحنة؟ ───────────────────────────────────────────────
     // شحناتُ المنصّة تحمل رقمَ كشف تخريجٍ حقيقيًّا يُحاسَب عليه، وشحناتُنا —
@@ -380,7 +429,13 @@ exports.orderFilterOptions = async (req, res) => {
       if (req.query.to) base.createdAt.$lte = endOfDay(req.query.to);
     }
     if (req.query.source === 'system' || req.query.source === 'platform') base.source = req.query.source;
-    if (req.query.customer) base.customer = req.query.customer;
+    // العميلُ يُطابَق كما يُطابَق في الجدول — بمرجعه أو باسمه المطويّ.
+    if (req.query.customer && mongoose.Types.ObjectId.isValid(String(req.query.customer))) {
+      const c = await ShipmentOrderCustomer.findById(req.query.customer).select('name').lean();
+      const or = [{ customer: req.query.customer }];
+      if (c?.name) or.push({ customerName: flexSpaceRegex(c.name) });
+      base.$and = [...(base.$and || []), { $or: or }];
+    }
     if (req.query.branch) base.branch = req.query.branch;
 
     // بحثُ القائمة اسمُه `search` لا `q`: `q` هو بحثُ الجدول نفسِه، ولو
@@ -591,6 +646,11 @@ exports.updateOrder = async (req, res) => {
     // list, the Excel export and the بوليصة keep printing the OLD truck.
     if (data.vehicle && String(data.vehicle) !== String(order.vehicle)) {
       await applyVehicleSnapshot(data, req);
+    } else {
+      // وتغييرُ المورّد وحدَه تعديلٌ قائمٌ بنفسِه: صار يُختار مع العميل لا مع
+      // الشاحنة، فلا يُشترَط تبديلُ شاحنةٍ ليُحفَظ.
+      const chosenId = await resolveSupplierChoice(req);
+      if (chosenId) data.supplier = chosenId;
     }
 
     if (data.status && !(await isValidStatus(data.status))) {
@@ -631,9 +691,15 @@ exports.updateOrder = async (req, res) => {
 // ولذلك لا تصلح تحليلاتُ إدارة الأسطول هنا: هناك السيّارةُ سيّارتُنا فالسؤالُ
 // «هل حقّقت هدفَها»، وهنا لا سيّارةَ لنا — السؤالُ «هل كان الفرقُ يستحقّ».
 
-exports.getAnalytics = async (req, res) => {
-  try {
-    const { from, to, customer, supplier, status, branch, q, source } = req.query;
+/**
+ * ── حسابُ التحليلات جسدٌ واحد ───────────────────────────────────────────────
+ * تنادِيه شاشةُ التحليلات ولوحةُ القسم (في المتصفّح والهاتف). ولو نُسخ لصار
+ * في النظام رقمان لربح الشهر يفترقان أوّلَ تعديلٍ في معنى «الملغاة» أو في طيّ
+ * أسماء الموردين — ومن يرى رقمَين لا يثق بأيّهما.
+ */
+async function analyticsOf(query = {}) {
+  {
+    const { from, to, customer, supplier, status, branch, q, source } = query;
     const match = {};
     if (from || to) {
       match.pickupTime = {};
@@ -785,7 +851,7 @@ exports.getAnalytics = async (req, res) => {
     const byStatus = {};
     statusAgg.forEach((x) => { byStatus[x._id] = x.n; });
 
-    res.json({
+    return {
       totals: {
         orders: T.orders,
         live: T.live,
@@ -814,10 +880,75 @@ exports.getAnalytics = async (req, res) => {
       })),
       byStatus,
       losing: losingRows.map((o) => ({ ...o, margin: r2(o.margin) })),
-    });
+    };
+  }
+}
+
+exports.getAnalytics = async (req, res) => {
+  try {
+    res.json(await analyticsOf(req.query));
   } catch (error) {
     console.error('shipmentOrders analytics error:', error);
     res.status(500).json({ message: error.message || 'Failed to load analytics' });
+  }
+};
+
+/**
+ * لوحةُ القسم — GET /api/shipment-orders/dashboard
+ *
+ * ── أوّلُ صفحةِ القسم تجيب «كيف حالُه؟» ─────────────────────────────────────
+ * كان القسمُ يُفتَح على جدولِ سبعةٍ وثلاثين ألف شحنة. فهذه لوحتُه: اليومُ
+ * والشهرُ وأين تقف شحناتُه، وربحُه، والسجلُّ الذي يُحمَّل منه، وآخرُ ما سُجِّل.
+ *
+ * ونداءٌ واحدٌ لا أربعة: الهاتفُ يرسمها من ردٍّ واحد، والمتصفّحُ يقرأ الردَّ
+ * نفسَه — فلا يختلف رقمٌ بين شاشةٍ وشاشة. والحسابُ هو حسابُ التحليلات نفسُه
+ * (`analyticsOf`).
+ */
+exports.getDashboard = async (req, res) => {
+  try {
+    const now = new Date();
+    const iso = (d) => d.toISOString().slice(0, 10);
+    const monthFrom = iso(new Date(now.getFullYear(), now.getMonth(), 1));
+    const todayFrom = iso(now);
+
+    // ── وتُقدَّم القديمةُ بينما تُجدَّد ─────────────────────────────────────
+    // بناؤها يستغرق ثانيتَين ونصفًا (سبعةٌ وثلاثون ألفَ شحنةٍ تُجمَّع في
+    // القاعدة). ومن يفتح القسمَ لا ينتظر: تُقدَّم قيمةُ آخرِ بناءٍ فورًا
+    // ويُجدَّد في الخلف — راجع utils/ttlCache.wrapStale.
+    const out = await cache.wrapStale(`so:dashboard:${monthFrom}:${todayFrom}`, 60 * 1000, 10 * 60 * 1000, async () => {
+      const [month, today, fleet, recent] = await Promise.all([
+        analyticsOf({ from: monthFrom }),
+        analyticsOf({ from: todayFrom }),
+        registrySummary(),
+        ShipmentOrder.find({}).sort({ createdAt: -1 }).limit(8)
+          .select('waybillNumber reference customerName fromCity toCity status vehiclePlate driverName pickupTime createdAt')
+          .lean(),
+      ]);
+      return {
+        month, today, fleet, recent,
+        // مسطّحةٌ للهاتف: بطاقاتُه تقرأ مسارًا نصيًّا واحدًا لكلّ رقم.
+        flat: {
+          todayOrders: today.totals.orders,
+          monthOrders: month.totals.orders,
+          monthCancelled: month.totals.cancelled,
+          monthMargin: month.totals.margin,
+          monthSell: month.totals.sell,
+          monthBuy: month.totals.buy,
+          avgMargin: month.totals.avgMargin,
+          customers: month.totals.customers,
+          suppliers: fleet.suppliers,
+          vehicles: fleet.vehicles,
+          drivers: fleet.drivers,
+          losing: month.totals.losing,
+          missingPrice: month.totals.missingPrice,
+          ownerUnknown: fleet.gaps ? fleet.gaps.unknown : 0,
+        },
+      };
+    });
+    res.json(out);
+  } catch (error) {
+    console.error('shipmentOrders dashboard error:', error);
+    res.status(500).json({ message: 'تعذّر تحميل اللوحة' });
   }
 };
 
@@ -1235,9 +1366,10 @@ exports.listVehicles = async (req, res) => {
 // ── أعدادُ السجلّ: الصفحةُ تقول ما في القاعدة لا ما وصل إليها ────────────────
 // كانت الترويسةُ تحسب من المصفوفة الواصلة، والحدُّ ألف — فقالت «١٠٠٠ سيارة،
 // ١٠٠٠ من أسطولنا» وأسطولُنا ثمانٍ وخمسون شاحنة. العدُّ عند الخادم.
-exports.fleetSummary = async (req, res) => {
-  try {
-    const out = await cache.wrap('so:registry:summary', REGISTRY_TTL, async () => {
+/** ملخّصُ السجلّ — تنادِيه صفحةُ الموردين ولوحةُ القسم، فالرقمُ واحد. */
+async function registrySummary() {
+  {
+    return cache.wrap('so:registry:summary', REGISTRY_TTL, async () => {
       const live = { isActive: { $ne: false } };
       const [byOwner, vehicles, suppliers, drivers] = await Promise.all([
         ShipmentOrderVehicle.aggregate([
@@ -1283,7 +1415,12 @@ exports.fleetSummary = async (req, res) => {
 
       return { vehicles, suppliers, drivers, ...n, gaps: { unknown: n.unknown, noBrand, supNoVehicle } };
     });
-    res.json(out);
+  }
+}
+
+exports.fleetSummary = async (req, res) => {
+  try {
+    res.json(await registrySummary());
   } catch (error) {
     res.status(500).json({ message: 'Failed to load the fleet summary' });
   }

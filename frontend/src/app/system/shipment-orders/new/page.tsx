@@ -17,7 +17,7 @@ import {
   MapPin, Package, Clock3, Wallet, User as UserIcon, Building2,
   TrendingUp, TrendingDown, AlertCircle,
 } from 'lucide-react';
-import { Spinner, PageHeader, Select, SearchableSelect, PrimaryButton } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, Select, SearchableSelect, PrimaryButton, PhoneSA } from '@/components/hr/HRKit';
 import { ContactButtons } from '@/components/crm/CrmKit';
 import {
   FormField, OrderCustomer, OrderVehicle, OrderSupplier, GROUP_LABELS, fieldLabel, optionLabel,
@@ -280,9 +280,13 @@ function CreateShipmentInner() {
     setNewPlate('');
     const v = vehicles.find((x) => x._id === id);
     if (!v) return;
-    // اختيارُ الشاحنة يُسمّي مورّدَها من نفسِه — لا يُسأل عنه مرّتين.
+    // ── واختيارُ الشاحنة يُسمّي مالكَها، ولا يُغيّر المورّدَ المختار ──────
+    // يُملأ المورّدُ من مالك الشاحنة حين لم يُختَر بعد — فمن بدأ من اللوحة لا
+    // يُسأل عن مورّدها. أمّا من اختار مورّدَه أوّلًا فاختيارُه قرارُ صفقةٍ،
+    // وكان يُستبدَل صامتًا بمالكِ الشاحنة: فتُحفَظ الشحنةُ على مورّدٍ لم
+    // يتّفق معه أحد. فالمالكُ يُعرَض بجانبها، والمورّدُ يبقى كما اختير.
     const sup = typeof v.supplier === 'object' && v.supplier ? v.supplier._id : (v.supplier || '');
-    if (sup) setSupplierId(String(sup));
+    if (sup && !supplierId) setSupplierId(String(sup));
     setForm((f) => ({
       ...f,
       driverName: f.driverName || v.defaultDriverName || '',
@@ -642,8 +646,8 @@ function CreateShipmentInner() {
     group: (g: string) => `sec-${g}`,
   };
   const steps = [
-    { id: SEC.customer, no: 1, title: ar ? 'العميل' : 'Customer', missing: missingKeys.has('customer') ? 1 : 0 },
-    { id: SEC.truck, no: 2, title: ar ? 'المورّد والسيارة' : 'Supplier & truck', missing: 0 },
+    { id: SEC.customer, no: 1, title: ar ? 'العميل والمورّد' : 'Customer & supplier', missing: missingKeys.has('customer') ? 1 : 0 },
+    { id: SEC.truck, no: 2, title: ar ? 'مالك السيارة' : 'Truck owner', missing: 0 },
     ...activeGroups.map((g, i) => ({
       id: SEC.group(g), no: i + 3,
       title: ar ? GROUP_LABELS[g].ar : GROUP_LABELS[g].en,
@@ -713,6 +717,13 @@ function CreateShipmentInner() {
     return ar ? 'مالكٌ غير مسجَّل' : 'Owner not recorded';
   };
 
+  // المختارةُ ومالكُها والمتّفقُ معه — ثلاثةُ أسماءٍ تُقرأ في بطاقةِ المالك.
+  const vehicle = vehicles.find((v) => v._id === vehicleId) || null;
+  const supplierName = suppliers.find((x) => x._id === supplierId)?.name || '';
+  const ownerSupId = vehicle && typeof vehicle.supplier === 'object' && vehicle.supplier
+    ? String(vehicle.supplier._id) : String(vehicle?.supplier || '');
+  const ownerDiffers = !!(vehicle && supplierId && ownerSupId && ownerSupId !== supplierId);
+
   return (
     <div className="space-y-5 w-full pb-28" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<PackagePlus className="w-5 h-5" />}
@@ -750,8 +761,12 @@ function CreateShipmentInner() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
-      {/* 1 ── العميل */}
-      {sectionCard(UserIcon, 1, ar ? 'العميل' : 'Customer', (
+      {/* ── ١ ── العميل والمورّد: طرفا الصفقة ───────────────────────────────
+          الشحنةُ عقدٌ بين طرفين: مَن تُحمَل له ومَن تُحمَل منه. وكان المورّدُ
+          في بطاقة الشاحنة لأنّه يصفّيها، فكان يُقرأ وصفًا للشاحنة لا طرفًا في
+          الصفقة. فصار جوارَ العميل بنفس شكلِه: قائمةٌ تُبحَث وزرُّ «جديد»
+          يسجّله في اللحظة — وبطاقةُ الشاحنة تسأل عن الشاحنة ومالكِها وحدَهما. */}
+      {sectionCard(UserIcon, 1, ar ? 'العميل والمورّد' : 'Customer & supplier', (
         <div className="space-y-3">
           {!newCustomerOpen ? (
             <div className="flex flex-col sm:flex-row gap-3">
@@ -772,8 +787,10 @@ function CreateShipmentInner() {
               <input value={newCustomer.name} onChange={(e) => setNewCustomer((c) => ({ ...c, name: e.target.value }))}
                 placeholder={ar ? 'اسم العميل الجديد *' : 'New customer name *'}
                 className={(miss('customer') ? inputMissCls : inputCls) + ' flex-1'} />
-              <input value={newCustomer.phone} onChange={(e) => setNewCustomer((c) => ({ ...c, phone: e.target.value }))}
-                placeholder={ar ? 'الجوال' : 'Phone'} className={inputCls + ' sm:w-44'} />
+              <div className="sm:w-56">
+                {/* نفسُ صندوق الجوّال في كلّ النظام: مفتاحُه يسارًا وتسعُ خاناتٍ. */}
+                <PhoneSA value={newCustomer.phone} onChange={(v) => setNewCustomer((c) => ({ ...c, phone: v }))} />
+              </div>
               <PrimaryButton onClick={saveCustomer} disabled={customerBusy}>
                 {customerBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                 {ar ? 'حفظ العميل' : 'Save customer'}
@@ -806,36 +823,88 @@ function CreateShipmentInner() {
               </div>
             </div>
           )}
+
+          {/* ── والمورّدُ تحتَه بنفس الشكل ────────────────────────────────────
+              نفسُ السؤال ونفسُ الزرّ: قائمةٌ تُبحَث عند الخادم، و«مورّد جديد»
+              يسجّله في صفحة المورّدين فورًا — لا ينتظر حفظَ الشحنة — ومعه
+              سائقُه إن عُرف. واختيارُه هنا يصفّي شاحناتَه في البطاقة التالية. */}
+          <div className="pt-3 border-t border-slate-200/70 space-y-3">
+            <label className={labelCls}>{ar ? 'المورّد' : 'Supplier'}</label>
+            {!addingSupplier ? (
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1">
+                  <SearchableSelect value={supplierId} onChange={(x) => { setSupplierId(x); setVehicleId(''); setNewPlate(''); }} searchAfter={0}
+                    onSearch={searchSuppliers} loading={supBusy}
+                    placeholder={ar ? 'اختر المورّد — اكتب للبحث…' : 'Pick the supplier — type to search…'}
+                    searchPlaceholder={ar ? 'اكتب اسم المورّد أو جوّاله أو سجلَّه…' : 'Name, phone or CR…'}
+                    emptyLabel={ar ? 'لا نتائج — سجّله كمورّد جديد' : 'No matches — register them as new'}
+                    footer={supTotal > suppliers.length
+                      ? (ar ? `${suppliers.length} من ${supTotal} مورّدًا — اكتب لتضيّق` : `${suppliers.length} of ${supTotal} — type to narrow`)
+                      : (ar ? `${suppliers.length} مورّدًا` : `${suppliers.length} suppliers`)}
+                    options={suppliers.map((sp) => ({
+                      value: sp._id, label: sp.name,
+                      hint: [sp.type === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : (ar ? 'شركة' : 'Company'), sp.phone].filter(Boolean).join(' · '),
+                    }))} />
+                </div>
+                <button type="button" onClick={() => { setAddingSupplier(true); setSupplierId(''); setVehicleId(''); }}
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-sm font-semibold">
+                  <UserPlus className="w-4 h-4" /> {ar ? 'مورّد جديد' : 'New supplier'}
+                </button>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-[#f37121]/30 bg-[#f37121]/[0.04] p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input value={newSupplier.name} onChange={(e) => setNewSupplier((v) => ({ ...v, name: e.target.value }))}
+                    placeholder={ar ? 'اسم المورّد *' : 'Supplier name *'} className={inputCls + ' flex-1'} />
+                  <div className="sm:w-56">
+                    <PhoneSA value={newSupplier.phone} onChange={(v) => setNewSupplier((x) => ({ ...x, phone: v }))} />
+                  </div>
+                  {([['company', ar ? 'شركة' : 'Company'], ['freelancer', ar ? 'فريلانسر' : 'Freelancer']] as const).map(([k, label]) => (
+                    <button key={k} type="button" onClick={() => setNewSupplier((v) => ({ ...v, type: k }))}
+                      className={`px-4 py-2 rounded-full border text-sm font-semibold shrink-0 ${newSupplier.type === k
+                        ? 'border-[#f37121] bg-[#f37121] text-white' : 'border-slate-300 bg-white text-slate-600'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {/* سائقُه معه: المورّدُ وشاحناتُه وسوّاقُه سجلٌّ واحدٌ مترابط. */}
+                <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-[#f37121]/20">
+                  <input value={newDriver.name} onChange={(e) => setNewDriver((v) => ({ ...v, name: e.target.value }))}
+                    placeholder={newSupplier.type === 'freelancer'
+                      ? (ar ? 'اسم السائق — يُترك فارغًا فهو المورّد نفسُه' : 'Driver name — blank means the supplier himself')
+                      : (ar ? 'اسم سائقه (اختياري)' : 'His driver (optional)')}
+                    className={inputCls + ' flex-1'} />
+                  <div className="sm:w-52">
+                    <PhoneSA value={newDriver.phone} onChange={(v) => setNewDriver((x) => ({ ...x, phone: v }))} />
+                  </div>
+                  <input value={newDriver.residenceNumber} onChange={(e) => setNewDriver((v) => ({ ...v, residenceNumber: e.target.value }))}
+                    placeholder={ar ? 'رقم الإقامة' : 'Iqama'} dir="ltr" className={inputCls + ' sm:w-40'} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <PrimaryButton onClick={saveSupplier} disabled={supplierBusy}>
+                    {supplierBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    {ar ? 'حفظ المورّد' : 'Save supplier'}
+                  </PrimaryButton>
+                  <button type="button" onClick={() => { setAddingSupplier(false); setNewSupplier({ name: '', phone: '', type: 'company' }); }}
+                    className="p-2.5 text-slate-400 hover:text-slate-700" aria-label="close"><X className="w-4 h-4" /></button>
+                  <p className="text-xs text-slate-500">
+                    {ar ? 'يُسجَّل هو وسائقُه في صفحة المورّدين فورًا، ويظهران عند زملائك في اللحظة نفسِها.'
+                        : 'He and his driver are registered at once — colleagues see them immediately.'}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       ), { id: SEC.customer, missing: missingKeys.has('customer') ? 1 : 0 })}
 
-      {/* 2 ── المورّد والسيارة والسائق — three questions in order */}
-      {sectionCard(Truck, 2, ar ? 'المورّد والسيارة' : 'Supplier & truck', (
+      {/* ── ٢ ── مالك السيارة: الشاحنةُ ومن يملكها وسائقُها ────────────────
+          المورّدُ طرفٌ في الصفقة وقد صار جوارَ العميل. وهنا الشاحنةُ نفسُها:
+          لوحتُها، ومالكُها في السجلّ — وهما ليسا واحدًا بالضرورة، فالمورّدُ
+          قد يُخرج حمولتَنا على شاحنةِ غيرِه — ثمّ سائقُها وجوّالُه. */}
+      {sectionCard(Truck, 2, ar ? 'مالك السيارة' : 'Truck owner', (
         <div className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* ── المورّدُ أوّلًا ────────────────────────────────────────────
-                هو ما يُعرَف أوّلًا في الواقع: يُتّفق مع مورّدٍ ثمّ يُقال أيُّ
-                شاحنةٍ من شاحناته. */}
-            <div>
-              <label className={labelCls}>{ar ? 'المورّد' : 'Supplier'}</label>
-              <SearchableSelect value={supplierId} onChange={(x) => { setSupplierId(x); setVehicleId(''); setNewPlate(''); }} searchAfter={0}
-                onSearch={searchSuppliers} loading={supBusy}
-                placeholder={ar ? 'اختر المورّد — اكتب للبحث…' : 'Pick the supplier — type to search…'}
-                searchPlaceholder={ar ? 'اكتب اسم المورّد أو جوّاله أو سجلَّه…' : 'Name, phone or CR…'}
-                emptyLabel={ar ? 'لا نتائج — سجّله من الزر' : 'No matches — register with the button'}
-                footer={supTotal > suppliers.length
-                  ? (ar ? `${suppliers.length} من ${supTotal} مورّدًا — اكتب لتضيّق` : `${suppliers.length} of ${supTotal} — type to narrow`)
-                  : (ar ? `${suppliers.length} مورّدًا` : `${suppliers.length} suppliers`)}
-                options={suppliers.map((sp) => ({
-                  value: sp._id, label: sp.name,
-                  hint: [sp.type === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : (ar ? 'شركة' : 'Company'), sp.phone].filter(Boolean).join(' · '),
-                }))} />
-              <button type="button" onClick={() => setAddingSupplier((o) => !o)}
-                className="mt-1.5 text-xs font-semibold text-[#f37121] hover:underline">
-                {addingSupplier ? (ar ? 'إلغاء' : 'Cancel') : (ar ? '+ مورّد جديد' : '+ New supplier')}
-              </button>
-            </div>
-
             <div>
               <label className={labelCls}>{ar ? 'السيارة' : 'Vehicle'}</label>
               {/* شاحناتُ المورّد المختار وحدَها: قائمةٌ من ثلاثٍ يُختار منها،
@@ -866,45 +935,37 @@ function CreateShipmentInner() {
                 placeholder={ar ? 'أو اكتب لوحةً جديدة — تُسجَّل على المورّد' : 'Or type a new plate — registered to the supplier'}
                 className={`${inputCls} mt-2`} />
             </div>
-          </div>
 
-          {addingSupplier && (
-            <div className="rounded-xl border border-[#f37121]/30 bg-[#f37121]/[0.04] p-4 space-y-3">
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input value={newSupplier.name} onChange={(e) => setNewSupplier((v) => ({ ...v, name: e.target.value }))}
-                  placeholder={ar ? 'اسم المورّد *' : 'Supplier name *'} className={inputCls + ' flex-1'} />
-                <input value={newSupplier.phone} onChange={(e) => setNewSupplier((v) => ({ ...v, phone: e.target.value }))}
-                  placeholder={ar ? 'الجوال' : 'Phone'} className={inputCls + ' sm:w-44'} />
-                {([['company', ar ? 'شركة' : 'Company'], ['freelancer', ar ? 'فريلانسر' : 'Freelancer']] as const).map(([k, label]) => (
-                  <button key={k} type="button" onClick={() => setNewSupplier((v) => ({ ...v, type: k }))}
-                    className={`px-4 py-2 rounded-full border text-sm font-semibold shrink-0 ${newSupplier.type === k
-                      ? 'border-[#f37121] bg-[#f37121] text-white' : 'border-slate-300 bg-white text-slate-600'}`}>
-                    {label}
-                  </button>
-                ))}
-                <PrimaryButton onClick={saveSupplier} disabled={supplierBusy}>
-                  {supplierBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  {ar ? 'حفظ المورّد' : 'Save supplier'}
-                </PrimaryButton>
+            {/* ── ومالكُها يُقرأ لا يُكتب ──────────────────────────────────
+                مالكُ الشاحنة في السجلّ خبرٌ عن الشاحنة لا قرارٌ في الشحنة:
+                يُعرَض ليُرى مَن تخرج حمولتُنا على شاحنته. ولو خالف المورّدَ
+                المتّفقَ معه قيل ذلك صراحةً — فهو أمرٌ معتاد (مورّدٌ يُخرجها
+                على شاحنةِ غيره) وليس خطأً، لكنّه يُعرَف قبل الحفظ لا بعده. */}
+            <div>
+              <label className={labelCls}>{ar ? 'مالك السيارة (من السجلّ)' : 'Owner (from the registry)'}</label>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 min-h-[42px] flex items-center flex-wrap gap-x-2 gap-y-1 text-sm">
+                {vehicle ? (
+                  <>
+                    <span className="font-semibold text-slate-900">{supplierOf(vehicle)}</span>
+                    {vehicle.plate && <span className="font-mono text-xs text-slate-500" dir="ltr">{vehicle.plate}</span>}
+                    {ownerDiffers && (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-semibold">
+                        {ar ? `المتّفقُ معه: ${supplierName}` : `Agreed with: ${supplierName}`}
+                      </span>
+                    )}
+                  </>
+                ) : newPlate.trim() ? (
+                  <span className="text-slate-600">
+                    {supplierName
+                      ? (ar ? `لوحةٌ جديدة — تُسجَّل على «${supplierName}»` : `New plate — will be registered to “${supplierName}”`)
+                      : (ar ? 'لوحةٌ جديدة — اختر المورّد لتُسجَّل عليه' : 'New plate — pick the supplier to register it to')}
+                  </span>
+                ) : (
+                  <span className="text-slate-400">{ar ? 'يظهر عند اختيار الشاحنة' : 'Shows once a truck is picked'}</span>
+                )}
               </div>
-              {/* سائقُه معه: المورّدُ وشاحناتُه وسوّاقُه سجلٌّ واحدٌ مترابط. */}
-              <div className="flex flex-col sm:flex-row gap-2 pt-1 border-t border-[#f37121]/20">
-                <input value={newDriver.name} onChange={(e) => setNewDriver((v) => ({ ...v, name: e.target.value }))}
-                  placeholder={newSupplier.type === 'freelancer'
-                    ? (ar ? 'اسم السائق — يُترك فارغًا فهو المورّد نفسُه' : 'Driver name — blank means the supplier himself')
-                    : (ar ? 'اسم سائقه (اختياري)' : 'His driver (optional)')}
-                  className={inputCls + ' flex-1'} />
-                <input value={newDriver.phone} onChange={(e) => setNewDriver((v) => ({ ...v, phone: e.target.value }))}
-                  placeholder={ar ? 'جوال السائق' : 'Driver phone'} className={inputCls + ' sm:w-40'} />
-                <input value={newDriver.residenceNumber} onChange={(e) => setNewDriver((v) => ({ ...v, residenceNumber: e.target.value }))}
-                  placeholder={ar ? 'رقم الإقامة' : 'Iqama'} className={inputCls + ' sm:w-40'} />
-              </div>
-              <p className="text-xs text-slate-500">
-                {ar ? 'المورّد وسائقه يُسجَّلان فورًا في صفحة المورّدين — لا ينتظران حفظ الشحنة، ويظهران عند زملائك في اللحظة نفسِها.'
-                    : 'Supplier and driver are registered at once — they do not wait for the shipment to save, and colleagues see them immediately.'}
-              </p>
             </div>
-          )}
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -940,26 +1001,13 @@ function CreateShipmentInner() {
             </div>
             <div>
               <label className={labelCls}>{ar ? 'جوال السائق' : 'Driver phone'}</label>
-              {/* ── والرقمُ سعوديٌّ من تسع خانات ─────────────────────────────
-                  المفتاحُ مكتوبٌ ثابتًا ولا يُكتب، والخاناتُ تسعٌ لا أكثر
-                  (5xxxxxxxx). كان يُكتب حرًّا فيدخل بمفتاحٍ مرّة وبدونه مرّة،
-                  وبأرقامٍ ناقصة — فلا يُتَّصل به ولا يُطابَق. */}
-              <div className="flex items-center gap-2">
-                <div className={`${inputCls} flex-1 flex items-center gap-2 p-0 overflow-hidden`}>
-                  <span className="px-2.5 py-2 bg-slate-100 text-slate-600 text-sm font-semibold shrink-0" dir="ltr">+966</span>
-                  <input value={localPhone} inputMode="numeric" dir="ltr" maxLength={9}
-                    placeholder="5XXXXXXXX"
-                    onChange={(e) => {
-                      // يُقبل الرقمُ وحدَه، ويُسقَط الصفرُ الأوّل ومفتاحُ الدولة إن لُصقا.
-                      let v = e.target.value.replace(/\D/g, '');
-                      if (v.startsWith('966')) v = v.slice(3);
-                      if (v.startsWith('0')) v = v.slice(1);
-                      set('driverPhone', v ? `+966${v.slice(0, 9)}` : '');
-                    }}
-                    className="flex-1 min-w-0 px-2 py-2 text-sm outline-none bg-transparent" />
-                </div>
-                {(form.driverPhone || '').trim() && <ContactButtons phone={form.driverPhone} />}
-              </div>
+              {/* ── والرقمُ سعوديٌّ من تسع خانات، ومفتاحُه يسارًا دائمًا ─────
+                  `PhoneSA` واحدٌ لكلّ جوّالٍ في النظام: المفتاحُ ثابتٌ لا يُكتب،
+                  والخاناتُ تسعٌ لا أكثر، والصندوقُ `ltr` فيبقى «+966» يسارَ
+                  الأرقام عربيًّا كان أو إنجليزيًّا — والهاتفُ يُقرأ من اليسار. */}
+              <PhoneSA value={form.driverPhone || ''} onChange={(v) => set('driverPhone', v)}>
+                {(form.driverPhone || '').trim() ? <ContactButtons phone={form.driverPhone} /> : null}
+              </PhoneSA>
               {localPhone && localPhone.length !== 9 && (
                 <p className="mt-1 text-[11.5px] text-red-600">{ar ? 'الرقم تسع خانات بعد +966' : 'Nine digits after +966'}</p>
               )}
@@ -1104,7 +1152,7 @@ function CreateShipmentInner() {
             <span>{suppliers.find((x) => x._id === supplierId)?.name || (ar ? 'بلا مورّد' : 'no supplier')}</span>
             <span className="font-mono">{vehicles.find((x) => x._id === vehicleId)?.plate || newPlate || (ar ? 'بلا شاحنة' : 'no truck')}</span>
             <span>{form.driverName || (ar ? 'بلا سائق' : 'no driver')}</span>
-            <span className="text-slate-400">{ar ? '— تُحرَّر من بطاقة «المورّد والسيارة» أعلاه' : '— edited in the card above'}</span>
+            <span className="text-slate-400">{ar ? '— تُحرَّر من بطاقتَي «العميل والمورّد» و«مالك السيارة» أعلاه' : '— edited in the cards above'}</span>
           </div>
 
           {extras.map((x, i) => (
@@ -1145,12 +1193,24 @@ function CreateShipmentInner() {
                     searchPlaceholder={ar ? 'باللوحة أو السائق…' : 'Plate or driver…'}
                     emptyLabel={ar ? 'لا شاحنة — اكتب اللوحة' : 'None — type the plate'}
                     options={x.vehicles.map((v) => ({
-                      value: v._id, label: [v.plate, v.name].filter(Boolean).join(' — '), hint: v.defaultDriverName || undefined,
+                      value: v._id, label: [v.plate, v.name].filter(Boolean).join(' — '),
+                      // مالكُها وسائقُها — نفسُ ما يُقرأ في بطاقة «مالك السيارة» فوق.
+                      hint: [supplierOf(v), v.defaultDriverName].filter(Boolean).join(' · ') || undefined,
                     }))} />
                   <input value={x.newPlate}
                     onChange={(e) => setExtra(x.uid, { newPlate: e.target.value, vehicleId: e.target.value.trim() ? '' : x.vehicleId })}
                     placeholder={ar ? 'أو لوحة جديدة' : 'or a new plate'}
                     className={`${inputCls} mt-1.5 text-xs py-1.5`} />
+                  {(() => {
+                    const veh = x.vehicles.find((y) => y._id === x.vehicleId);
+                    if (!veh) return null;
+                    const own = typeof veh.supplier === 'object' && veh.supplier ? String(veh.supplier._id) : String(veh.supplier || '');
+                    return (
+                      <p className={`mt-1 text-[11px] ${own && x.supplierId && own !== x.supplierId ? 'text-amber-700 font-semibold' : 'text-slate-500'}`}>
+                        {ar ? 'مالكها: ' : 'Owner: '}{supplierOf(veh)}
+                      </p>
+                    );
+                  })()}
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">{ar ? 'السائق' : 'Driver'}</label>
@@ -1159,8 +1219,8 @@ function CreateShipmentInner() {
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">{ar ? 'جوّاله' : 'His phone'}</label>
-                  <input value={x.driverPhone} onChange={(e) => setExtra(x.uid, { driverPhone: e.target.value })}
-                    dir="ltr" placeholder="+9665…" className={`${inputCls} text-xs py-1.5`} />
+                  {/* نفسُ صندوق الجوّال المشترك: مفتاحُه يسارًا وتسعُ خاناتٍ لا أكثر. */}
+                  <PhoneSA compact value={x.driverPhone} onChange={(v) => setExtra(x.uid, { driverPhone: v })} />
                 </div>
               </div>
             </div>

@@ -166,6 +166,46 @@ final fleetDashSpec = DashSpec(
   ],
 );
 
+/// لوحةُ طلبات الشحنات — أوّلُ صفحةِ القسم، كما في الويب.
+///
+/// نداءٌ واحدٌ (`/api/shipment-orders/dashboard`) يحمل حسابَ التحليلات نفسَه،
+/// فلا يختلف رقمٌ بين الهاتف والمتصفّح.
+final shipmentOrdersDashSpec = DashSpec(
+  arTitle: 'لوحة الشحنات', enTitle: 'Shipments Dashboard',
+  endpoint: '/api/shipment-orders/dashboard', liveEvent: 'shipmentOrders:updated',
+  stats: const [
+    DashStat('شحنات اليوم', 'Today', 'flat.todayOrders', Icons.today_outlined, T.orange),
+    DashStat('شحنات الشهر', 'This month', 'flat.monthOrders', Icons.calendar_month_outlined, T.navy),
+    DashStat('ملغاة هذا الشهر', 'Cancelled', 'flat.monthCancelled', Icons.cancel_outlined, T.warn),
+    DashStat('ربح الشهر', 'Month margin', 'flat.monthMargin', Icons.trending_up_outlined, T.success, money: true),
+    DashStat('بيع الشهر', 'Month sell', 'flat.monthSell', Icons.sell_outlined, T.info, money: true),
+    DashStat('شراء الشهر', 'Month buy', 'flat.monthBuy', Icons.shopping_cart_outlined, T.violet, money: true),
+    DashStat('متوسط ربح الشحنة', 'Avg margin', 'flat.avgMargin', Icons.calculate_outlined, T.cyan, money: true),
+    DashStat('عملاء عملوا هذا الشهر', 'Customers', 'flat.customers', Icons.people_outline, T.navy),
+    DashStat('موردون في السجل', 'Suppliers', 'flat.suppliers', Icons.business_outlined, T.navy),
+    DashStat('شاحنات في السجل', 'Trucks', 'flat.vehicles', Icons.local_shipping_outlined, T.cyan),
+    DashStat('سوّاق في السجل', 'Drivers', 'flat.drivers', Icons.badge_outlined, T.violet),
+    // ما يحتاج تصرُّفًا — لا ما هو قائم.
+    DashStat('شحنات بخسارة', 'Loss-making', 'flat.losing', Icons.trending_down_outlined, T.danger),
+    DashStat('بلا سعر', 'No price', 'flat.missingPrice', Icons.money_off_outlined, T.warn),
+    DashStat('شاحنات مجهولة المالك', 'Owner unknown', 'flat.ownerUnknown', Icons.help_outline, T.warn),
+  ],
+  breakdowns: const [
+    DashBreakdown('أين تقف شحنات الشهر', 'Where this month stands', 'month.byStatus'),
+  ],
+  lists: [
+    DashList('أكبر العملاء', 'Top customers', 'month.byCustomer', (r) => _s(r, 'name'),
+        subtitle: (r) => '${_n(r['orders'])} ${tr('شحنة', 'loads')} · ${_n(r['margin'])} ${tr('ر.س ربح', 'SAR margin')}'),
+    DashList('أكبر الموردين', 'Top suppliers', 'month.bySupplier', (r) => _s(r, 'name'),
+        subtitle: (r) => '${_n(r['orders'])} ${tr('شحنة', 'loads')}'),
+    DashList('أكثر المسارات', 'Top routes', 'month.byRoute', (r) => _s(r, 'name'),
+        subtitle: (r) => '${_n(r['orders'])} ${tr('شحنة', 'loads')}'),
+    DashList('آخر الشحنات', 'Latest', 'recent',
+        (r) => '${_s(r, 'reference').isEmpty ? _n(r['waybillNumber']) : _s(r, 'reference')} · ${_s(r, 'customerName')}',
+        subtitle: (r) => '${_s(r, 'fromCity')} ← ${_s(r, 'toCity')} · ${_s(r, 'vehiclePlate')}'),
+  ],
+);
+
 /// لوحةُ قسم الأفراد — الصورةُ الكاملة كما في الويب.
 /// كانت تقريرَ طلباتٍ ومناديب: أعدادُ الأوردرات وتحقيقُ الهدف وحدَهما. وهي
 /// زاويةٌ من القسم لا القسمُ كلُّه — فلا يُقرأ فيها كم موظّفًا في فرعٍ، ولا كم

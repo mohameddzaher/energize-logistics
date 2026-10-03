@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
@@ -84,6 +83,10 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
 
   TextEditingController _ctrl(String key) =>
       _ctrls.putIfAbsent(key, () => TextEditingController(text: (_form[key] ?? '').toString()));
+
+  /// متحكّمُ جوّالٍ سعوديّ: يُعرَض محليًّا («5XXXXXXXX») ويُخزَّن كاملًا.
+  TextEditingController _phoneCtrl(String key) =>
+      _ctrls.putIfAbsent(key, () => TextEditingController(text: saLocal((_form[key] ?? '').toString())));
 
   Future<void> _load() async {
     try {
@@ -179,14 +182,17 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     setState(() {
       _vehicle = v;
       _newVehicle = false;
-      // اختيارُ الشاحنة يُسمّي مورّدَها من نفسِه — لا يُسأل عنه مرّتين.
+      // ── واختيارُ الشاحنة يُسمّي مالكَها، ولا يُبدّل المورّدَ المختار ────
+      // يُملأ المورّدُ من المالك حين لم يُختَر بعد. ومن اختاره أوّلًا فذاك
+      // قرارُ صفقة، وكان يُستبدَل صامتًا بمالك الشاحنة — فتُحفَظ الشحنةُ على
+      // مورّدٍ لم يتّفق معه أحد.
       final sup = v['supplier'];
-      if (sup is Map) {
+      if (sup is Map && _supplier == null) {
         // المورّدُ يصل مع الشاحنة مسمَّى (`populate`)، فلا يُبحَث عنه في صفحةٍ
         // قد لا يكون فيها — وكان يُبحَث فيها فيبقى فارغًا وله مورّدٌ معروف.
         _supplier = Map<String, dynamic>.from(sup);
         if (!_suppliers.any((x) => x['_id'] == _supplier!['_id'])) _suppliers = [_supplier!, ..._suppliers];
-      } else if (sup != null) {
+      } else if (sup != null && _supplier == null) {
         for (final sp in _suppliers) {
           if (sp['_id'] == sup) _supplier = sp;
         }
@@ -310,7 +316,12 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         return List<Map<String, dynamic>>.from(d['vehicles'] ?? []);
       },
       (v) => (v['plate'] ?? '').toString(),
-      sub: (v) => [v['name'], v['defaultDriverName']].where((e) => (e ?? '').toString().isNotEmpty).join(' · '),
+      // مالكُها وسائقُها — كما يُقرآن في بطاقة «مالك السيارة».
+      sub: (v) {
+        final sup = v['supplier'];
+        final owner = sup is Map ? (sup['name'] ?? '').toString() : '';
+        return [v['name'], owner, v['defaultDriverName']].where((e) => (e ?? '').toString().isNotEmpty).join(' · ');
+      },
       hint: tr('اللوحة أو السائق…', 'Plate or driver…'),
     );
     if (!mounted) return;
@@ -379,7 +390,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           TextField(controller: nameC, autofocus: true, decoration: InputDecoration(labelText: tr('الاسم *', 'Name *'))),
           const SizedBox(height: 8),
-          TextField(controller: phoneC, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: tr('الجوال', 'Phone'))),
+          PhoneSA(controller: phoneC, label: tr('الجوال', 'Phone')),
           const SizedBox(height: 10),
           Row(children: [
             for (final t in const [('company', 'شركة', 'Company'), ('freelancer', 'فريلانسر', 'Freelancer')])
@@ -403,7 +414,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     setState(() => _savingSupplier = true);
     try {
       final d = await Api.instance.post('/api/shipment-orders/suppliers', {
-        'name': nameC.text.trim(), 'phone': phoneC.text.trim(), 'type': type,
+        'name': nameC.text.trim(), 'phone': saPhone(phoneC.text), 'type': type,
       });
       final sup = Map<String, dynamic>.from(d['supplier'] ?? {});
       if (!mounted) return;
@@ -450,7 +461,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     }
     if (_customer != null) payload['customer'] = _customer!['_id'];
     if (_newCustomer && _ncName.text.trim().isNotEmpty) {
-      payload['newCustomer'] = {'name': _ncName.text.trim(), 'phone': _ncPhone.text.trim()};
+      payload['newCustomer'] = {'name': _ncName.text.trim(), 'phone': saPhone(_ncPhone.text)};
     }
     // المورّدُ المختارُ يُرسَل ولو كانت الشاحنةُ مسجّلة: آلافٌ منها مجهولةُ
     // المالك، ومن يحجز الحمولةَ يعرفه — فيكتبه الخادمُ في السجلّ مرّةً.
@@ -660,7 +671,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                         Row(children: [
                           const Icon(Icons.person_outline, size: 18, color: T.navy),
                           const SizedBox(width: 6),
-                          Text(tr('العميل', 'Customer'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                          Text(tr('العميل والمورّد', 'Customer & supplier'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                           const Spacer(),
                           TextButton(
                             onPressed: () => setState(() { _newCustomer = !_newCustomer; if (_newCustomer) _customer = null; }),
@@ -681,29 +692,13 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                         else ...[
                           TextField(controller: _ncName, decoration: InputDecoration(labelText: tr('اسم العميل الجديد *', 'New customer name *'))),
                           const SizedBox(height: 8),
-                          TextField(controller: _ncPhone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: tr('الهاتف', 'Phone'))),
+                          PhoneSA(controller: _ncPhone, label: tr('الهاتف', 'Phone')),
                         ],
-                      ]),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  // ── الشاحنة ──
-                  FadeSlideIn(
-                    delayMs: 40,
-                    child: AppCard(
-                      topAccent: T.orange,
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Row(children: [
-                          const Icon(Icons.local_shipping_outlined, size: 18, color: T.orange),
-                          const SizedBox(width: 6),
-                          Text(tr('المورّد والشاحنة', 'Supplier & truck'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                          const Spacer(),
-                          TextButton(
-                            onPressed: () => setState(() { _newVehicle = !_newVehicle; if (_newVehicle) _vehicle = null; }),
-                            child: Text(_newVehicle ? tr('اختيار من السجل', 'Pick existing') : tr('+ شاحنة جديدة', '+ New'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-                          ),
-                        ]),
-                        // ── المورّدُ أوّلًا ──────────────────────────────────
+                        const Divider(height: 18),
+                        // ── والمورّدُ تحتَه كما في الويب ──────────────────
+                        // طرفا الصفقة في بطاقةٍ واحدة: مَن تُحمَل له ومَن
+                        // تُحمَل منه. وكان المورّدُ في بطاقة الشاحنة فيُقرأ
+                        // وصفًا لها لا طرفًا في العقد.
                         Row(children: [
                           Expanded(
                             child: OutlinedButton.icon(
@@ -735,6 +730,26 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                             icon: _savingSupplier
                                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                                 : const Icon(Icons.add_circle_outline, color: T.orange),
+                          ),
+                        ]),
+                      ]),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // ── الشاحنة ──
+                  FadeSlideIn(
+                    delayMs: 40,
+                    child: AppCard(
+                      topAccent: T.orange,
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(children: [
+                          const Icon(Icons.local_shipping_outlined, size: 18, color: T.orange),
+                          const SizedBox(width: 6),
+                          Text(tr('مالك السيارة', 'Truck owner'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () => setState(() { _newVehicle = !_newVehicle; if (_newVehicle) _vehicle = null; }),
+                            child: Text(_newVehicle ? tr('اختيار من السجل', 'Pick existing') : tr('+ شاحنة جديدة', '+ New'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
                           ),
                         ]),
                         const SizedBox(height: 8),
@@ -778,6 +793,36 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                           TextField(controller: _nvName, decoration: InputDecoration(labelText: tr('وصف الشاحنة', 'Truck description'))),
                         ],
                         const SizedBox(height: 8),
+                        // ── ومالكُها يُقرأ لا يُكتب ───────────────────────
+                        // مالكُ الشاحنة في السجلّ خبرٌ عنها، والمورّدُ المتّفقُ
+                        // معه قرارٌ في الصفقة — وقد يختلفان (مورّدٌ يُخرجها على
+                        // شاحنةِ غيره)، فيُقال ذلك قبل الحفظ لا بعده.
+                        if (_vehicle != null) ...[
+                          Builder(builder: (_) {
+                            final sup = _vehicle!['supplier'];
+                            final ownerId = sup is Map ? (sup['_id'] ?? '').toString() : (sup ?? '').toString();
+                            final owner = sup is Map
+                                ? (sup['name'] ?? '').toString()
+                                : (_vehicle!['ownership'] == 'ours' ? tr('أسطولنا', 'Our fleet') : tr('مالكٌ غير مسجَّل', 'Owner not recorded'));
+                            final chosen = (_supplier?['_id'] ?? '').toString();
+                            final differs = ownerId.isNotEmpty && chosen.isNotEmpty && ownerId != chosen;
+                            return Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: differs ? const Color(0xFFFEF3C7) : const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                differs
+                                    ? '${tr('مالك السيارة', 'Owner')}: $owner · ${tr('المتّفقُ معه', 'Agreed with')}: ${(_supplier?['name'] ?? '').toString()}'
+                                    : '${tr('مالك السيارة', 'Owner')}: $owner',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: differs ? const Color(0xFF92400E) : T.inkSoft),
+                              ),
+                            );
+                          }),
+                          const SizedBox(height: 8),
+                        ],
                         Row(children: [
                           Expanded(
                             child: TextField(
@@ -788,27 +833,17 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                           ),
                           const SizedBox(width: 8),
                           Expanded(
-                            // الرقمُ سعوديٌّ من تسع خانات، والمفتاحُ ثابتٌ لا يُكتب.
-                            child: TextField(
-                              controller: _ctrl('driverPhone'),
-                              keyboardType: TextInputType.number,
-                              maxLength: 9,
-                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                              onChanged: (v) => setState(() {
-                                var d = v.replaceAll(RegExp(r'\D'), '');
-                                if (d.startsWith('966')) d = d.substring(3);
-                                if (d.startsWith('0')) d = d.substring(1);
-                                if (d.length > 9) d = d.substring(0, 9);
-                                _form['driverPhone'] = d.isEmpty ? '' : '+966$d';
-                              }),
-                              decoration: InputDecoration(
-                                labelText: tr('هاتف السائق', 'Driver phone'),
-                                prefixText: '+966 ',
-                                counterText: '',
-                                hintText: '5XXXXXXXX',
-                              ),
+                            // ── مفتاحُ الدولة يسارَ الأرقام في كلّ لغة ─────
+                            // `PhoneSA` واحدٌ لكلّ جوّالٍ في التطبيق: الحقلُ
+                            // `ltr` فيبقى «+966» يسارًا والأرقامُ بعده، تسعُ
+                            // خاناتٍ لا أكثر، والمخزَّنُ كاملٌ دائمًا.
+                            child: PhoneSA(
+                              controller: _phoneCtrl('driverPhone'),
+                              label: tr('هاتف السائق', 'Driver phone'),
+                              onChanged: (full) => setState(() => _form['driverPhone'] = full),
                             ),
                           ),
+                          const SizedBox(width: 4),
                           // اتصال/واتساب على رقم السائق مباشرة.
                           ContactButtons(phone: (_form['driverPhone'] ?? _ctrls['driverPhone']?.text ?? '').toString(), compact: true),
                         ]),

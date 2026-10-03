@@ -491,36 +491,17 @@ exports.addTransaction = async (req, res) => {
           fields: { purchaseDeliveryStatementNumber: 'غير موجود' },
         });
       }
-      // ── ولا يُسدَّد قبل أن يُستلَم السند ──────────────────────────────────
+      // ── والشراءُ هو الذي يُعلن استلامَ السند، لا العكس ────────────────────
       //
-      // تسجيلُ المشتريات يكتب تاريخَ السداد على الكشف (راجع fillReportFromWallet)،
-      // وتاريخُ السداد لا يُكتب إلّا بعد أن تصير حالةُ الطلب «استُلم السند» —
-      // وهو الشرطُ نفسُه المطبَّق في شاشة سير عمل التشغيل منذ فُرض هناك.
+      // كان الشراءُ يُمنَع حتّى تصير الحالةُ «استُلم السند»، والقاعدةُ معقولةٌ
+      // في ظاهرها: السدادُ لا يسبق الورقة. لكنّ الواقعَ عكسُها — الموظّفُ يستلم
+      // السندَ بيده ويدفع في اللحظة نفسِها، ثمّ يُطلَب منه أن يفتح شاشةً أخرى
+      // (أو المنصّةَ الخارجيّة) ليُعلن ما فعله قبل أن يُسمَح له بتسجيله. فيبقى
+      // الشراءُ غيرَ مسجَّلٍ حتّى يتذكّر، والعهدةُ لا تطابق ما في يده.
       //
-      // وبدونه هنا يُلتَفّ حول القاعدة من باب المحفظة: يُسجَّل الشراء فيُكتب
-      // تاريخُ السداد على كشفٍ لم يصل سندُه بعد. فالسدادُ إقرارٌ بخروج المال
-      // مقابل ورقةٍ في اليد، والورقةُ لم تُستلَم.
-      // ── وقبل المنع تُسأل المنصّةُ نفسُها ──────────────────────────────────
-      // المرآةُ قد تكون متأخّرةً عن المنصّة (راجع utils/bondStatus)، والموظّف
-      // الذي غيّرها هناك للتوّ لا ينتظر مزامنةً حتّى يشتري.
-      const { isBondReceived } = require('../utils/bondStatus');
-      if (!(await isBondReceived(purchaseWorkflow))) {
-        const appStatus = String(purchaseWorkflow.applicationStatus || '').trim();
-        const known = {
-          requesting: 'قيد الطلب', loading: 'جارٍ التحميل', uploaded: 'تم التحميل',
-          on_way: 'في الطريق', arrived: 'وصلت', bond_sent: 'أُرسل السند',
-          late: 'متأخرة', invoiced: 'تمت الفوترة', cancelled: 'ملغاة',
-        };
-        return res.status(409).json({
-          code: 'BOND_NOT_RECEIVED',
-          message: `الكشف ${purchaseWorkflow.reportNumber} حالتُه «${known[appStatus] || appStatus || 'غير محدَّدة'}»،`
-            + ' ولا تُسجَّل مشترياتٌ إلّا بعد أن تصير «استُلم السند».'
-            + ' تسجيلُ الشراء يكتب تاريخَ السداد على الكشف، والسدادُ لا يسبق استلامَ السند.',
-          fields: { purchaseDeliveryStatementNumber: 'حالة الطلب' },
-          applicationStatus: appStatus || null,
-          reportNumber: purchaseWorkflow.reportNumber,
-        });
-      }
+      // فصار التسجيلُ هو الإعلان: مَن سجّل شراءً على كشفٍ فقد استلم سندَه —
+      // وتُكتب الحالةُ «استُلم السند» عندنا **وفي المنصّة** بعد نجاح الشراء،
+      // لا قبله. راجع ما بعد الحفظ أدناه.
 
       const prior = await WalletTransaction.findOne({
         type: 'purchase',
@@ -624,6 +605,23 @@ exports.addTransaction = async (req, res) => {
       });
       // والمبلغُ يُكتب ولو كانت الخانةُ مملوءة — المحفظةُ هي المرجع.
       try { await require('../utils/walletPayment').syncSheetPayment(purchaseWorkflow.reportNumber); } catch (e) { console.error('wallet→sheet payment sync (create):', e.message); }
+
+      // ── والشراءُ يُعلن استلامَ السند — عندنا وفي المنصّة ──────────────────
+      //
+      // مَن دفع فقد استلم الورقة؛ فتُكتب الحالةُ بعد نجاح الشراء لا قبله.
+      // وتُدفَع إلى المنصّة لا تُكتب عندنا وحدَها: `applicationStatus` عمودٌ
+      // مرآةٌ تُعيد المزامنةُ كتابتَه، فما يُكتب هنا وحدَه يُمحى بعد دقائق بلا
+      // أثر — وهو ما كان يقع لمن يعدّله من الجدول قبل أن يُصلَح هناك.
+      //
+      // وفشلُ المنصّة لا يُسقط الشراء: المالُ خرج فعلًا والقيدُ حُفظ، والحالةُ
+      // ستصحّ في المزامنة التالية أو يصحّحها الموظّف. وإسقاطُ قيدٍ ماليٍّ لأنّ
+      // نظامًا خارجيًّا لم يردّ خطأٌ أكبرُ من حالةٍ متأخّرة.
+      try {
+        const { pushApplicationStatus } = require('./workflowController');
+        await pushApplicationStatus(purchaseWorkflow, 'bond_received', req.user);
+      } catch (e) {
+        console.error('wallet→ops bond_received:', e.message);
+      }
     }
     // ── وكلُّ كشفٍ مستلَمٍ يُختَم، لا الأوّلُ منها ─────────────────────────
     // لا مبلغَ في هذا القيد، فيُؤخذ لكلّ كشفٍ **سعرُ شرائه هو** — وهو المطلوب:
@@ -873,16 +871,8 @@ exports.updateTransaction = async (req, res) => {
           fields: { purchaseDeliveryStatementNumber: 'غير موجود' },
         });
       }
-      // الشرطُ نفسُه على التعديل — وإلّا نُقل الشراءُ إلى كشفٍ لم يصل سندُه.
-      // ويُسأل عن الحالة الحيّة قبل المنع كما في التسجيل.
-      const { isBondReceived } = require('../utils/bondStatus');
-      if (!(await isBondReceived(wf))) {
-        return res.status(409).json({
-          code: 'BOND_NOT_RECEIVED',
-          message: `الكشف ${wf.reportNumber} لم تصر حالتُه «استُلم السند» بعد، فلا تُنقَل إليه مشتريات.`,
-          fields: { purchaseDeliveryStatementNumber: 'حالة الطلب' },
-        });
-      }
+      // والشرطُ رُفع هنا كما رُفع في التسجيل: نقلُ الشراء إلى كشفٍ إعلانٌ
+      // بأنّ سندَه في اليد، فتُكتب حالتُه بعد نجاح النقل — راجع ما بعد الحفظ.
 
       const prior = await WalletTransaction.findOne({
         _id: { $ne: transaction._id },
@@ -950,6 +940,18 @@ exports.updateTransaction = async (req, res) => {
           await syncSheetPayment(priorSheetNumber, { previousAmount: priorAmount });
         }
       } catch (e) { console.error('wallet→sheet payment sync (update):', e.message); }
+
+      // والكشفُ الذي صار يحمل الشراءَ يصير «استُلم السند» — كما في التسجيل.
+      // ويُدفَع إلى المنصّة لا يُكتب عندنا وحدَه، وفشلُه لا يُسقط القيد.
+      try {
+        const OperationsWorkflow = require('../models/OperationsWorkflow');
+        const wfNow = await OperationsWorkflow.findOne({ reportNumber: flexSpaceRegex(transaction.purchaseDeliveryStatementNumber) })
+          .select('externalSource externalId applicationStatus reportNumber');
+        if (wfNow) {
+          const { pushApplicationStatus } = require('./workflowController');
+          await pushApplicationStatus(wfNow, 'bond_received', req.user);
+        }
+      } catch (e) { console.error('wallet→ops bond_received (update):', e.message); }
     }
 
     // ─── APPLY NEW FINANCIAL EFFECTS ──────────────────────

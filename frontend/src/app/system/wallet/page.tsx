@@ -450,17 +450,10 @@ export default function WalletPage() {
           `هذا الكشف مدفوعٌ بالفعل: ${Number(purchaseAlready.amount || 0).toLocaleString()} ريال${where}${who}${when}. لا يُدفَع الكشف مرّتين — راجعه مع الفرع الذي دفعه إن كان هناك خطأ.`,
           `This report is already paid: ${Number(purchaseAlready.amount || 0).toLocaleString()} SAR${where}${who}${when}. A report is not paid twice — take it up with the branch that paid it if this is wrong.`);
       }
-      if (purchaseBond && !purchaseBond.ok) {
-        const AR: Record<string, string> = {
-          requesting: 'قيد الطلب', loading: 'جارٍ التحميل', uploaded: 'تم التحميل', on_way: 'في الطريق',
-          arrived: 'وصلت', bond_sent: 'أُرسل السند', late: 'متأخرة', invoiced: 'تمت الفوترة', cancelled: 'ملغاة',
-        };
-        const st = purchaseBond.status
-          ? (lang === 'ar' ? (AR[purchaseBond.status] || purchaseBond.status) : purchaseBond.status)
-          : t('غير محدَّدة', 'unknown');
-        return t(`لا يُسجَّل الشراء قبل أن يُستلَم السند. حالةُ الطلب الآن: «${st}» — راجعها في منصّة التشغيل، وتُفتَح الشاشةُ متى صارت «استُلم السند».`,
-          `A purchase cannot be recorded before the bond is received. The order is currently "${st}" — check it on the operations platform; this opens once it reads "bond received".`);
-      }
+      // ── وحالةُ السند لم تعد مانعًا ────────────────────────────────────
+      // كانت تردّ الحفظ حتّى تصير «استُلم السند». ومَن دفع فقد استلم الورقة:
+      // فالتسجيلُ هو الإعلان لا العكس — تُكتب الحالةُ بعد الحفظ عندنا وفي
+      // المنصّة معًا. والشاشةُ تقول ذلك قبل الحفظ (البطاقةُ الزرقاء أدناه).
       if (!txForm.amount || Number(txForm.amount) <= 0) return t('اكتب مبلغ الشراء', 'Enter the purchase amount');
       return null;
     }
@@ -1555,20 +1548,26 @@ export default function WalletPage() {
                           <Search className="w-4 h-4" />
                         </button>
                       </div>
+                      {/* ── إخبارٌ لا منع ──────────────────────────────────
+                          كان الشراءُ يُمنَع حتّى تصير الحالةُ «استُلم السند»،
+                          والموظّفُ يستلم السندَ بيده ويدفع في اللحظة نفسِها —
+                          فيُطلَب منه أن يفتح شاشةً أخرى ليُعلن ما فعله قبل أن
+                          يُسمَح له بتسجيله. فصار الحفظُ هو الإعلان، ويُقال له
+                          ما سيقع. */}
                       {purchaseBond && !purchaseBond.ok && (
-                        <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
-                          <p className="text-[12.5px] font-bold text-amber-900">
-                            {lang === 'ar' ? 'حالة الطلب لم تصر «استُلم السند» بعد' : 'The order is not at "bond received" yet'}
+                        <div className="mt-2 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2">
+                          <p className="text-[12.5px] font-bold text-blue-900">
+                            {lang === 'ar' ? 'بالحفظ تصير حالةُ الطلب «استُلم السند»' : 'Saving sets the order to "bond received"'}
                           </p>
-                          <p className="text-[11.5px] text-amber-800 mt-0.5">
+                          <p className="text-[11.5px] text-blue-800 mt-0.5">
                             {lang === 'ar'
                               ? `حالتُه الآن: ${({ requesting: 'قيد الطلب', loading: 'جارٍ التحميل', uploaded: 'تم التحميل', on_way: 'في الطريق', arrived: 'وصلت', bond_sent: 'أُرسل السند', late: 'متأخرة', invoiced: 'تمت الفوترة', cancelled: 'ملغاة' } as Record<string, string>)[purchaseBond.status] || purchaseBond.status || 'غير محدَّدة'}`
                               : `Current status: ${purchaseBond.status || 'unknown'}`}
                           </p>
-                          <p className="text-[11px] text-amber-700 mt-1">
+                          <p className="text-[11px] text-blue-700 mt-1">
                             {lang === 'ar'
-                              ? 'تسجيلُ الشراء يكتب تاريخَ السداد على الكشف، والسدادُ لا يسبق استلامَ السند. غيِّر حالة الطلب أوّلًا من سير عمل التشغيل.'
-                              : 'Recording a purchase writes the payment date onto the report, and payment cannot precede the bond.'}
+                              ? 'مَن سجّل شراءً فقد استلم السند — فتُكتب الحالةُ عندنا وفي منصّة التشغيل معًا بعد الحفظ.'
+                              : 'Recording a purchase means the bond is in hand — the status is written here and on the operations platform after saving.'}
                           </p>
                         </div>
                       )}

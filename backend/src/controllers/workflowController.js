@@ -1386,6 +1386,50 @@ const UPL_STATUSES = [
   'bond_sent', 'bond_received', 'late', 'invoiced', 'cancelled',
 ];
 
+/**
+ * دفعُ حالةِ الطلب إلى المنصّة ثمّ قراءةُ ما استقرّ هناك.
+ *
+ * ── ولماذا دالّةٌ مستقلّة ───────────────────────────────────────────────────
+ * يناديها جدولُ سير العمل حين يغيّرها الموظّفُ بيده، وتنادِيها المحفظةُ حين
+ * يُسجَّل شراءٌ على كشف — والشراءُ إقرارٌ بأنّ السندَ في اليد. ونسخُ المنطق
+ * للثانية يعني طريقين لكتابة الحالة يفترقان: أحدُهما يدفعها إلى المنصّة
+ * ويُعيد المزامنة، والآخرُ يكتبها عندنا فتُمحى في أوّل مزامنةٍ بلا أثر.
+ *
+ * وتُرجع ما استقرّ، أو `null` إن لم يكن الكشفُ من المنصّة أصلًا.
+ */
+async function pushApplicationStatus(workflow, status, actor) {
+  if (!UPL_STATUSES.includes(status)) throw new Error(`حالةٌ غير معروفة: ${status}`);
+  if (workflow.externalSource !== 'ops_upl' || !workflow.externalId) return null;
+  if (String(workflow.applicationStatus || '') === status) return { applicationStatus: status, unchanged: true };
+
+  const before = String(workflow.applicationStatus || '');
+  const upl = require('../services/uplClient');
+  await upl.patch('/admin/shipments/status', { body: { status, ids: [String(workflow.externalId)] } });
+
+  const { syncShipmentsById } = require('../services/opsWorkflowSyncService');
+  const out = await syncShipmentsById([String(workflow.externalId)]);
+  const row = (out.rows || [])[0] || null;
+
+  try { cache.clear('ops:'); } catch (e) { /* */ }
+  bustFilterCache();
+  try {
+    emitToAll('ops:shipments:changed', {
+      resource: 'shipments', action: 'status', ids: [String(workflow.externalId)], status, at: Date.now(),
+    });
+  } catch (e) { /* */ }
+  if (actor) {
+    await logAudit({
+      user: actor._id || actor,
+      action: 'update_workflow',
+      entity: 'OperationsWorkflow',
+      entityId: workflow._id,
+      changes: { before: { applicationStatus: before }, after: { applicationStatus: row?.applicationStatus || status } },
+    });
+  }
+  return row || { applicationStatus: status };
+}
+exports.pushApplicationStatus = pushApplicationStatus;
+
 exports.updateApplicationStatus = async (req, res) => {
   try {
     const status = String(req.body?.status || '').trim();

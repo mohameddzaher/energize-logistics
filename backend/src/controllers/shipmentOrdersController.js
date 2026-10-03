@@ -1012,7 +1012,9 @@ const anyOf = (q, fields) => {
 // لأنّ خطّافاتِ النماذج الثلاثة تمسح `so:registry:` مع كلّ كتابة.
 const REGISTRY_TTL = 2 * 60 * 1000;
 const CUSTOMER_LIST_FIELDS = 'name phone email notes routes defaults';
-const SUPPLIER_LIST_FIELDS = 'name type phone email notes';
+// وأوراقُه المالية تُقرأ من الصفّ: السجلُّ التجاريُّ والآيبانُ ومديرُه برقمه
+// هي ما يُطلَب عند أوّل دفعةٍ له، وكانت تُفتَح لها بطاقةٌ لكلّ مورّد.
+const SUPPLIER_LIST_FIELDS = 'name type phone email notes commercialRegister taxCard iban bankName managerName managerPhone paymentTerms';
 const VEHICLE_LIST_FIELDS = 'plate name truckType brand color supplier ownership defaultDriverName defaultDriverPhone operationCardNumber operationCardExpiry modelYear notes';
 const DRIVER_LIST_FIELDS = 'name phone nationality residenceNumber driverCardNumber driverCardExpiry supplier vehicle sponsorName notes';
 const registryKey = (kind, req, extra = '') => `so:registry:${kind}:${String(req.query.q || '')}:${req.query.limit || ''}:${extra}`;
@@ -1256,7 +1258,30 @@ exports.fleetSummary = async (req, res) => {
       ]);
       const n = { supplier: 0, ours: 0, unknown: 0 };
       byOwner.forEach((r) => { n[r._id] = r.n; });
-      return { vehicles, suppliers, drivers, ...n };
+
+      // ── ونواقصُ السجلّ تُقال ──────────────────────────────────────────────
+      // الجداولُ تُفتَح على خاناتٍ فارغةٍ كثيرةٍ فيُقرأ ذلك خرابًا، وهي ليست
+      // خرابًا: المنصّةُ التي استُورد منها لا تحمل الماركةَ ولا اللون أصلًا
+      // (صفرٌ من ثلاثةَ عشرَ ألفًا)، ومئاتُ الشاحنات لم يُعرَف مالكُها بعد.
+      // فتُقال الأعدادُ صريحةً — عملٌ ينتظر لا عيبٌ يُخفى.
+      const [noBrand, supNoVehicle] = await Promise.all([
+        ShipmentOrderVehicle.countDocuments({ ...live, $or: [{ brand: '' }, { brand: null }, { color: '' }, { color: null }] }),
+        ShipmentOrderSupplier.aggregate([
+          { $match: live },
+          {
+            $lookup: {
+              from: 'shipmentordervehicles',
+              let: { s: '$_id' },
+              pipeline: [{ $match: { $expr: { $eq: ['$supplier', '$$s'] }, isActive: { $ne: false } } }, { $count: 'n' }],
+              as: 'v',
+            },
+          },
+          { $match: { v: { $size: 0 } } },
+          { $count: 'n' },
+        ]).then((r) => r[0]?.n || 0),
+      ]);
+
+      return { vehicles, suppliers, drivers, ...n, gaps: { unknown: n.unknown, noBrand, supNoVehicle } };
     });
     res.json(out);
   } catch (error) {

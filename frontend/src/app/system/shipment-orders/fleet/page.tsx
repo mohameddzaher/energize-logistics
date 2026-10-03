@@ -56,7 +56,16 @@ export default function FleetPage() {
   const [fields, setFields] = useState<FormField[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState('vehicles');
+  /**
+   * ── والصفحةُ تفتح على الموردين ─────────────────────────────────────────
+   *
+   * المورّدُ هو وحدةُ هذا السجلّ: له شاحناتُه وله سوّاقُه، ويُتّفق معه أوّلًا
+   * ثمّ يُقال أيُّ شاحنةٍ من شاحناته. وفتحُها على ثلاثةَ عشرَ ألفَ شاحنةٍ
+   * يضع القارئَ أمام قائمةٍ لا أوّلَ لها ولا تنظيم.
+   */
+  const [tab, setTab] = useState('suppliers');
+  // مورّدٌ مفتوحٌ: تبويبا الشاحنات والسوّاق يقتصران عليه حتى يُغلَق.
+  const [focusSup, setFocusSup] = useState<OrderSupplier | null>(null);
   const [search, setSearch] = useState('');
   // ── وأسطولُنا لا يُعرَض إلّا إن طُلب ───────────────────────────────────
   // هذا سجلُّ الناقلين: حمولاتُ هذا القسم تُسنَد إليهم، وأسطولُنا الثمانِ
@@ -64,6 +73,8 @@ export default function FleetPage() {
   // «أسطولنا» تُظهره لمن أراد أن يتحقّق — ولا يُحذَف صفٌّ من السجلّ.
   const [owner, setOwner] = useState<Owner>('not_ours');
   const [sum, setSum] = useState({ vehicles: 0, suppliers: 0, drivers: 0, supplier: 0, ours: 0, unknown: 0 });
+  // نواقصُ السجلّ كما يعدّها الخادم — تُعرَض صريحةً ويُضغَط عليها فتُصفّي.
+  const [gaps, setGaps] = useState({ unknown: 0, noBrand: 0, supNoVehicle: 0 });
   const [shownTotals, setShownTotals] = useState({ vehicles: 0, suppliers: 0, drivers: 0 });
 
   const [supModal, setSupModal] = useState(false);
@@ -100,8 +111,8 @@ export default function FleetPage() {
       const q = search.trim() ? `&q=${encodeURIComponent(search.trim())}` : '';
       const [sp, v, dr, sm] = await Promise.all([
         api.get<{ suppliers: OrderSupplier[]; total: number }>(`/api/shipment-orders/suppliers?limit=${PAGE}${q}`),
-        api.get<{ vehicles: OrderVehicle[]; total: number }>(`/api/shipment-orders/vehicles?limit=${PAGE}${q}${owner ? `&ownership=${owner}` : ''}`),
-        api.get<{ drivers: OrderDriver[]; total: number }>(`/api/shipment-orders/drivers?limit=${PAGE}${q}`),
+        api.get<{ vehicles: OrderVehicle[]; total: number }>(`/api/shipment-orders/vehicles?limit=${PAGE}${q}${focusSup ? `&supplier=${focusSup._id}` : (owner ? `&ownership=${owner}` : '')}`),
+        api.get<{ drivers: OrderDriver[]; total: number }>(`/api/shipment-orders/drivers?limit=${PAGE}${q}${focusSup ? `&supplier=${focusSup._id}` : ''}`),
         api.get<typeof sum>('/api/shipment-orders/fleet-summary'),
       ]);
       if (!guard.isCurrent(mine)) return;
@@ -110,10 +121,11 @@ export default function FleetPage() {
       setDrivers(dr.drivers || []);
       setShownTotals({ vehicles: v.total || 0, suppliers: sp.total || 0, drivers: dr.total || 0 });
       setSum(sm);
+      setGaps((sm as any).gaps || { unknown: 0, noBrand: 0, supNoVehicle: 0 });
       setError('');
     } catch (e: any) { if (guard.isCurrent(mine)) setError(e?.message || 'Request failed'); }
     if (guard.isCurrent(mine)) setLoading(false);
-  }, [search, owner, guard]);
+  }, [search, owner, focusSup, guard]);
   // البحثُ مؤجَّلٌ بعد سكونِ الكتابة — لا طلبٌ لكلّ حرف.
   useEffect(() => {
     const t = setTimeout(() => load(), search.trim() ? 300 : 0);
@@ -301,8 +313,8 @@ export default function FleetPage() {
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Truck className="w-5 h-5" />} title={ar ? 'الموردون والمركبات' : 'Suppliers & vehicles'}
         subtitle={ar
-          ? `${sum.suppliers} مورّدًا · ${sum.vehicles} شاحنة (${sum.supplier} مالكُها مسجَّل · ${sum.unknown} غير مسجَّل · ${sum.ours} من أسطولنا) · ${sum.drivers} سائقًا`
-          : `${sum.suppliers} suppliers · ${sum.vehicles} trucks (${sum.supplier} owner recorded · ${sum.unknown} not recorded · ${sum.ours} ours) · ${sum.drivers} drivers`}>
+          ? `${sum.suppliers} مورّدًا · ${sum.vehicles} شاحنة · ${sum.drivers} سائقًا — المورّدُ أوّلًا، ومنه تُفتَح شاحناتُه وسوّاقُه`
+          : `${sum.suppliers} suppliers · ${sum.vehicles} trucks · ${sum.drivers} drivers — start from the supplier, open his trucks and drivers from him`}>
         {/* التبويبان يعرضان سجلّين مختلفين والبحث يصفّي المعروض منهما، فالخيار
             الأوّل يطابق الشاشة والثاني يخرج السجلّين كاملين في شيتين. */}
         <ExportMenu
@@ -343,10 +355,56 @@ export default function FleetPage() {
       {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
       <Tabs active={tab} onChange={setTab} tabs={[
-        { key: 'vehicles', label: ar ? 'المركبات' : 'Vehicles', badge: sum.vehicles },
         { key: 'suppliers', label: ar ? 'الموردون' : 'Suppliers', badge: sum.suppliers },
-        { key: 'drivers', label: ar ? 'السائقون' : 'Drivers', badge: sum.drivers },
+        { key: 'vehicles', label: ar ? 'المركبات' : 'Vehicles', badge: focusSup ? shownTotals.vehicles : sum.vehicles },
+        { key: 'drivers', label: ar ? 'السائقون' : 'Drivers', badge: focusSup ? shownTotals.drivers : sum.drivers },
       ]} />
+
+      {/* ── المورّدُ المفتوح: الشاحناتُ والسوّاقُ تقتصر عليه ───────────────────
+          السؤالُ الذي يلي «مَن المورّد؟» هو «ماذا عنده؟»، وكان جوابُه يحتاج
+          بحثًا بالاسم في تبويبٍ آخر. */}
+      {focusSup && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#f37121]/30 bg-[#f37121]/[0.04] px-4 py-2.5">
+          <span className="text-sm font-bold text-slate-900">{focusSup.name}</span>
+          <span className="text-xs text-slate-500">
+            {ar ? `${focusSup.vehicleCount || 0} شاحنة · ${focusSup.driverCount || 0} سائق`
+                : `${focusSup.vehicleCount || 0} trucks · ${focusSup.driverCount || 0} drivers`}
+          </span>
+          <button type="button" onClick={() => setFocusSup(null)}
+            className="ms-auto text-xs font-semibold text-slate-400 hover:text-[#f37121]">
+            {ar ? 'عرض الكل' : 'Show all'}
+          </button>
+        </div>
+      )}
+
+      {/* ── نواقصُ السجلّ تُقال ولا تُترَك تُقرأ خرابًا ───────────────────────
+          الجداولُ تُفتَح على خاناتٍ فارغةٍ كثيرة، فيُقرأ ذلك على أنّ السجلّ
+          معطوب — وهو ليس معطوبًا: المنصّةُ التي استُورد منها لا تحمل الماركةَ
+          ولا اللون أصلًا، وثمانِمئةٍ وثمانون شاحنةً لم يُعرَف مالكُها بعد.
+          فتُقال الأعدادُ صريحةً، وكلُّ رقمٍ يُضغَط فيُصفّي الجدولَ عليه: عملٌ
+          ينتظر لا عيبٌ يُخفى. */}
+      {tab !== 'drivers' && !focusSup && (gaps.unknown > 0 || gaps.noBrand > 0) && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-2.5">
+          <span className="text-xs font-bold text-amber-900">{ar ? 'ينقص السجلَّ:' : 'The register is missing:'}</span>
+          {gaps.unknown > 0 && (
+            <button type="button" onClick={() => { setTab('vehicles'); setOwner('unknown'); }}
+              className="text-xs font-semibold text-amber-800 underline decoration-amber-300 hover:decoration-amber-700">
+              {ar ? `${gaps.unknown} شاحنة بلا مورّد` : `${gaps.unknown} trucks with no supplier`}
+            </button>
+          )}
+          {gaps.noBrand > 0 && (
+            <span className="text-xs text-amber-800">
+              {ar ? `· ${gaps.noBrand} بلا ماركة أو لون — تُطبَع فارغةً في البوليصة`
+                  : `· ${gaps.noBrand} with no brand or colour — they print blank on the waybill`}
+            </span>
+          )}
+          {gaps.supNoVehicle > 0 && (
+            <span className="text-xs text-amber-800">
+              {ar ? `· ${gaps.supNoVehicle} مورّدًا بلا شاحنة` : `· ${gaps.supNoVehicle} suppliers with no truck`}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="w-full sm:max-w-md">
@@ -360,7 +418,7 @@ export default function FleetPage() {
         {/* ── ومصفاةُ الملكيّة: «أرِني ما لا أعرف مالكَه» سؤالٌ يُسأل ───────
             خمسةُ آلافٍ وسبعُمئةِ شاحنةٍ لم يُعرَف مالكُها من تاريخ الطلبات،
             وهي عملٌ ينتظر — ولا تُرى إن لم تُطلَب. */}
-        {tab === 'vehicles' && (
+        {tab === 'vehicles' && !focusSup && (
           <div className="flex flex-wrap gap-1.5">
             {([['not_ours', ar ? 'شاحنات الناقلين' : 'Carrier trucks', sum.vehicles - sum.ours],
               ['supplier', ar ? 'مالكُها مسجَّل' : 'Owner recorded', sum.supplier],
@@ -459,8 +517,12 @@ export default function FleetPage() {
             <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
               <th className={th}>{ar ? 'المورّد' : 'Supplier'}</th>
               <th className={th}>{ar ? 'النوع' : 'Type'}</th>
-              <th className={th}>{ar ? 'الجوال' : 'Phone'}</th>
-              <th className={th}>{ar ? 'البريد' : 'Email'}</th>
+              <th className={th}>{ar ? 'التواصل' : 'Contact'}</th>
+              {/* ── والبريدُ يُستبدَل بما يُسأل عنه ──────────────────────────
+                  البريدُ مكتوبٌ عند واحدٍ من كلّ عشرة، والسجلُّ التجاريُّ
+                  والآيبانُ عند ثمانيةٍ من كلّ عشرة — وهما ما يُطلَب عند أوّل
+                  دفعةٍ لمورّد. */}
+              <th className={th}>{ar ? 'السجل والآيبان' : 'CR & IBAN'}</th>
               <th className={th}>{ar ? 'سياراته' : 'Vehicles'}</th>
               <th className={th}>{ar ? 'سوّاقه' : 'Drivers'}</th>
               <th className={th}>{ar ? 'ملاحظات' : 'Notes'}</th>
@@ -474,7 +536,12 @@ export default function FleetPage() {
                       <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${s.type === 'freelancer' ? 'bg-violet-500/15 text-violet-600' : 'bg-blue-500/15 text-blue-600'}`}>
                         {s.type === 'freelancer' ? <UserIcon className="w-4 h-4" /> : <Building2 className="w-4 h-4" />}
                       </span>
-                      <span className="font-bold text-slate-900 truncate">{s.name}</span>
+                      <button type="button"
+                        onClick={() => { setFocusSup(s); setTab('vehicles'); setSearch(''); }}
+                        className="font-bold text-slate-900 truncate text-start hover:text-[#f37121]"
+                        title={ar ? 'افتح شاحناته وسوّاقه' : 'Open his trucks and drivers'}>
+                        {s.name}
+                      </button>
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -484,14 +551,43 @@ export default function FleetPage() {
                   </td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                     {(s.phone || '').trim()
-                      ? <div className="flex items-center gap-2"><span className="font-mono text-[13px]">{s.phone}</span><ContactButtons phone={s.phone} size={15} /></div>
+                      ? <div className="flex items-center gap-2"><span className="font-mono text-[13px]" dir="ltr">{s.phone}</span><ContactButtons phone={s.phone} size={15} /></div>
                       : <span className="text-slate-300">—</span>}
+                    {/* ومديرُه برقمه: الاتّصالُ بالمالك في شأن فاتورةٍ يضيّع يومًا. */}
+                    {s.managerName ? (
+                      <span className="block text-[11px] text-slate-500 truncate max-w-[190px]">
+                        {s.managerName}{s.managerPhone ? ` · ${s.managerPhone}` : ''}
+                      </span>
+                    ) : null}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 max-w-[220px] truncate" title={s.email || ''}>{s.email || '—'}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {s.commercialRegister || s.iban ? (
+                      <span className="block text-[11.5px] text-slate-600 font-mono" dir="ltr">
+                        {s.commercialRegister || '—'}
+                        {s.iban ? <span className="block text-[10.5px] text-slate-400">{s.iban}</span> : null}
+                      </span>
+                    ) : <span className="text-amber-600 text-[11px] font-semibold">{ar ? 'بلا أوراق' : 'no paperwork'}</span>}
+                  </td>
                   {/* عددُ سياراته: من له سيّارةٌ واحدةٌ ليس كمن له عشرون، والفرقُ
                       يُقرأ من الرقم قبل أن يُفتَح أيُّ ملفّ. */}
-                  <td className="px-4 py-3 tabular-nums text-slate-700">{s.vehicleCount || 0}</td>
-                  <td className="px-4 py-3 tabular-nums text-slate-700">{s.driverCount || 0}</td>
+                  {/* والرقمُ بابٌ: مَن قرأ «١٧٥ شاحنة» يريد أن يراها، وكان
+                      عليه أن يبحث باسم المورّد في تبويبٍ آخر. */}
+                  <td className="px-4 py-3">
+                    {s.vehicleCount
+                      ? <button type="button" onClick={() => { setFocusSup(s); setTab('vehicles'); setSearch(''); }}
+                          className="tabular-nums font-semibold text-slate-900 hover:text-[#f37121] underline decoration-slate-200 hover:decoration-[#f37121]">
+                          {s.vehicleCount}
+                        </button>
+                      : <span className="text-amber-600 text-xs font-semibold">{ar ? 'بلا شاحنة' : 'none'}</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    {s.driverCount
+                      ? <button type="button" onClick={() => { setFocusSup(s); setTab('drivers'); setSearch(''); }}
+                          className="tabular-nums font-semibold text-slate-900 hover:text-[#f37121] underline decoration-slate-200 hover:decoration-[#f37121]">
+                          {s.driverCount}
+                        </button>
+                      : <span className="text-slate-300">0</span>}
+                  </td>
                   <td className="px-4 py-3 text-slate-500 max-w-[260px] truncate" title={s.notes || ''}>{s.notes || '—'}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">

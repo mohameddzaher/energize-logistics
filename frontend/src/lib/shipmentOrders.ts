@@ -130,6 +130,19 @@ export interface OrderSupplier {
   vehicleCount?: number;
   /** كم سائقًا يعمل عنده — يُقرأ قبل فتح ملفّه كما يُقرأ عددُ شاحناته. */
   driverCount?: number;
+  /**
+   * ── أوراقُه المالية ──────────────────────────────────────────────────────
+   * المورّدُ ليس اسمًا ورقمَ هاتف: هو سجلٌّ تجاريٌّ وآيبانٌ يُحوَّل إليه المال،
+   * ومديرٌ له رقمُه — والاتّصالُ بالمالك في شأن فاتورةٍ يضيّع يومًا. وهي
+   * مكتوبةٌ عند أربعةٍ من كلّ خمسة، فتُقرأ من الصفّ قبل أن يُفتَح ملفّ.
+   */
+  commercialRegister?: string;
+  taxCard?: string;
+  iban?: string;
+  bankName?: string;
+  managerName?: string;
+  managerPhone?: string;
+  paymentTerms?: string;
 }
 
 /**

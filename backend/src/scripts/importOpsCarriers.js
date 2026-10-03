@@ -195,7 +195,8 @@ const dateOnly = (v) => (v ? String(v).slice(0, 10) : '');
   // ════ ٢. المركبات ════════════════════════════════════════════════════════
   const vehByExt = new Map();
   const vehByPlate = new Map();
-  for (const v of await ShipmentOrderVehicle.find({}).select('plate externalId supplier ownership').lean()) {
+  const existing = await ShipmentOrderVehicle.find({}).select('plate externalId supplier ownership isActive').lean();
+  for (const v of existing) {
     if (v.externalId) vehByExt.set(v.externalId, v);
     const k = registryPlateKey(v.plate);
     if (k && !vehByPlate.has(k)) vehByPlate.set(k, v);
@@ -203,6 +204,10 @@ const dateOnly = (v) => (v ? String(v).slice(0, 10) : '');
 
   const vehOps = [];
   let vehNew = 0; let vehLinked = 0; let vehUpdated = 0; let plateTaken = 0;
+  // قرارُ الإيقاف قرارُنا: ما أوقفناه من الشاشة يبقى موقوفًا، وما لم نوقفه
+  // يبقى عاملًا مهما قالت المنصّة عن نفسها.
+  const stoppedHere = new Set(existing.filter((v) => v.isActive === false).map((v) => v.externalId).filter(Boolean));
+  const existingIsInactive = (extId) => stoppedHere.has(extId);
   for (const c of cars) {
     const plate = txt(c.plate_number) || txt(c.car_number) || txt(c.name);
     if (!plate) continue;
@@ -217,8 +222,19 @@ const dateOnly = (v) => (v ? String(v).slice(0, 10) : '');
       operationCardExpiry: dateOnly(c.operation_card_expiry),
       insuranceDetails: txt(c.insurance_details),
       externalId: c.id,
-      isActive: !c.deleted_at && c.active !== false,
     };
+    // ── ولا تُخفى شاحنةٌ تعمل لنا ───────────────────────────────────────────
+    //
+    // كانت تُنسَخ حالةُ المنصّة كما هي (`active`/`deleted_at`)، فأُوقفت سبعُمئةٍ
+    // وأربعُ وخمسون شاحنة — وسبعُمئةٍ وأربعون منها حملت لنا ألفين ومئتين وتسعًا
+    // وستّين شحنة، وخمسُمئةٍ وأربعٌ وعشرون منها عملت في آخر ستّة أشهر، وبعضُها
+    // حمل في اليوم نفسِه. فحالةُ المنصّة ليست خبرًا عن وجود الشاحنة: تُعلَّم فيها
+    // المركبةُ محذوفةً لأسبابها هي — انتهاءُ ورقةٍ عندها أو تنظيفُ قوائمها —
+    // والشاحنةُ تسير وتُحمَّل.
+    //
+    // فالإيقافُ لا يُستورَد. ومَن أراد إيقافَ شاحنةٍ عندنا يوقفها من الشاشة،
+    // وهو قرارٌ يُتَّخذ هنا على بيّنةٍ من عملها معنا.
+    if (!existingIsInactive(c.id)) fields.isActive = true;
     // أسطولُنا لا يُنسَب إلى مورّد — ومعرفتُنا بلوحاتنا أوّليّة.
     if (isOurs) { fields.ownership = 'ours'; fields.supplier = null; }
     const plateRow = vehByPlate.get(key);

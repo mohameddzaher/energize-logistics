@@ -3,6 +3,7 @@
 // short. Pure presentation — all data/logic lives in the pages themselves.
 import { ReactNode, useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, X, Download, Loader2, ChevronDown, Check as CheckIcon, AlertTriangle, RefreshCw } from 'lucide-react';
 
@@ -109,6 +110,52 @@ export function TextInput({ className, ...props }: React.InputHTMLAttributes<HTM
 export function TextArea({ className, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea {...props} className={`${inputCls} ${className || ''}`} />;
 }
+/**
+ * ── جوّالٌ سعوديّ: المفتاحُ على اليسار دائمًا ────────────────────────────────
+ *
+ * الرقمُ يُكتب بالأرقام اللاتينيّة ويُقرأ من اليسار إلى اليمين في كلّ لغة —
+ * والهاتفُ ليس نصًّا عربيًّا. وحين كان المفتاحُ `+966` أوّلَ عنصرٍ في صفٍّ
+ * عربيٍّ ذهب إلى **يمين** الخانة وجاءت الأرقامُ يسارَه: يُقرأ «٥XXXXXXXX 966+»
+ * — معكوسًا عمّا يُكتب، ومخالفًا لما يراه نفسُه من يفتح الشاشة بالإنجليزيّة.
+ *
+ * فالصندوقُ كلُّه `dir="ltr"`: المفتاحُ يسارًا والأرقامُ بعده، عربيًّا كان أو
+ * إنجليزيًّا. والمخزَّنُ كاملٌ دائمًا (`+9665XXXXXXXX`) وما يُكتب تسعُ خاناتٍ
+ * لا أكثر، ويُسقَط الصفرُ الأوّلُ ومفتاحُ الدولة إن لُصقا.
+ */
+export function PhoneSA({
+  value, onChange, className, placeholder = '5XXXXXXXX', compact, children,
+}: {
+  /** المخزَّن — «+9665XXXXXXXX» أو فارغ. */
+  value: string;
+  onChange: (full: string) => void;
+  className?: string;
+  placeholder?: string;
+  /** صفوفُ الجداول ضيّقة. */
+  compact?: boolean;
+  /** أزرارُ الاتّصال ونحوُها — تُرسَم خارج الصندوق. */
+  children?: React.ReactNode;
+}) {
+  const local = String(value || '').replace(/\D/g, '').replace(/^966/, '').slice(0, 9);
+  const pad = compact ? 'py-1.5' : 'py-2';
+  return (
+    <div className="flex items-center gap-2">
+      <div dir="ltr" className={`${inputCls} flex-1 flex items-center gap-2 p-0 overflow-hidden ${className || ''}`}>
+        <span className={`px-2.5 ${pad} bg-slate-100 text-slate-600 text-sm font-semibold shrink-0`}>+966</span>
+        <input
+          value={local} inputMode="numeric" dir="ltr" maxLength={9} placeholder={placeholder}
+          onChange={(e) => {
+            let v = e.target.value.replace(/\D/g, '');
+            if (v.startsWith('966')) v = v.slice(3);
+            if (v.startsWith('0')) v = v.slice(1);
+            onChange(v ? `+966${v.slice(0, 9)}` : '');
+          }}
+          className={`flex-1 min-w-0 px-2 ${pad} ${compact ? 'text-xs' : 'text-sm'} outline-none bg-transparent`} />
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export function Select({ className, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return <select {...props} className={`${inputCls} ${className || ''}`} />;
 }
@@ -306,7 +353,8 @@ export function SearchableSelect({
   };
 
   // موضعُ اللوح — يُحسَب من موضع الزرّ لأنّه يُرسَم في جسم الصفحة.
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const [pos, setPos] = useState<{ left: number; width: number; top?: number; bottom?: number; maxH: number }>(
+    { left: 0, width: 0, top: 0, maxH: 320 });
   useLayoutEffect(() => {
     if (!open) return;
     const place = () => {
@@ -315,8 +363,17 @@ export function SearchableSelect({
       // ولو ضاق ما تحته فُتح فوقه: قائمةٌ تخرج من أسفل الشاشة لا تُقرأ.
       const below = window.innerHeight - r.bottom;
       const H = 280;
-      const top = below < H && r.top > below ? Math.max(8, r.top - H - 4) : r.bottom + 4;
-      setPos({ top, left: r.left, width: r.width });
+      if (below < H && r.top > below) {
+        // ── وفوقَه مُلتصقًا به ──────────────────────────────────────────
+        // يُثبَّت **أسفلُ** اللوح عند أعلى الخانة فينمو صاعدًا بقدر ما فيه.
+        // وكان يُثبَّت أعلاه عند `r.top - 280`: أي يُحجَز له ارتفاعٌ لا يملؤه،
+        // فقائمةٌ من ثلاثة أسطرٍ تُرسَم ومئةٌ وستّون بكسلًا فراغًا بينها وبين
+        // ما ضُغِط — تبدو معلّقةً «فوق خالص» لا علاقةَ لها بالخانة. وهو أظهرُ
+        // ما يكون في آخر الصفحة، حيث شاحناتُ الشحنة الإضافيّة.
+        setPos({ left: r.left, width: r.width, bottom: Math.round(window.innerHeight - r.top) + 4, maxH: Math.max(140, r.top - 12) });
+      } else {
+        setPos({ left: r.left, width: r.width, top: r.bottom + 4, maxH: Math.max(140, below - 12) });
+      }
     };
     place();
     window.addEventListener('scroll', place, true);
@@ -347,10 +404,10 @@ export function SearchableSelect({
       {open && typeof document !== 'undefined' && createPortal(
         <div
           data-searchable-select
-          style={{ top: pos.top, left: pos.left, width: pos.width }}
-          className="fixed z-[80] rounded-lg border border-slate-200 bg-white shadow-xl overflow-hidden">
+          style={{ top: pos.top, bottom: pos.bottom, left: pos.left, width: pos.width, maxHeight: pos.maxH }}
+          className="fixed z-[80] rounded-lg border border-slate-200 bg-white shadow-xl overflow-hidden flex flex-col">
           {showSearch && (
-            <div className="relative border-b border-slate-100">
+            <div className="relative border-b border-slate-100 shrink-0">
               <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 ref={searchRef}
@@ -363,7 +420,7 @@ export function SearchableSelect({
               />
             </div>
           )}
-          <div ref={listRef} className="max-h-60 overflow-y-auto" onKeyDown={onKeyDown}>
+          <div ref={listRef} className="flex-1 min-h-0 max-h-60 overflow-y-auto" onKeyDown={onKeyDown}>
             {loading && rows.length === 0 ? (
               <p className="px-3 py-6 text-center text-sm text-slate-400">…</p>
             ) : rows.length === 0 ? (
@@ -443,13 +500,45 @@ export function Pick({ on, onClick, children }: { on?: boolean; onClick: () => v
   );
 }
 
-export function StatCard({ label, value, accent }: { label: string; value: ReactNode; accent?: string }) {
-  return (
-    <div className="min-w-0 bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+/**
+ * ── بطاقةُ رقمٍ تؤدّي إلى صفوفها ─────────────────────────────────────────────
+ *
+ * الرقمُ الذي لا يُفتَح نصفُ جواب: يُقرأ «أربعَ عشرةَ متأخّرة» ثمّ يُبحَث عنها
+ * في الجدول باليد — أو تُفتَح شاشةٌ أخرى وتُفلتَر من جديد. وهذا هو العملُ الذي
+ * يُفترَض أنّ اللوحةَ توفّره.
+ *
+ * فمن مرّر `href` أو `onClick` صارت بطاقتُه زرًّا: مؤشّرُ يدٍ، وحدٌّ يتلوّن عند
+ * المرور، وسهمٌ صغير، وسطرٌ يقول «اضغط لعرضها». ومن لم يمرّر شيئًا بقيت بطاقتَه
+ * كما كانت — فلا تُوهِم بضغطةٍ لا تؤدّي إلى شيء.
+ *
+ * و`href` يُفضَّل على `onClick` حيث يوجد مقصد: يُفتَح في تبويبٍ آخر، ويُنسَخ
+ * ويُرسَل كرابطٍ يحمل الفلترَ معه.
+ */
+export function StatCard({ label, value, accent, href, onClick, hint, active }: {
+  label: string; value: ReactNode; accent?: string;
+  /** مقصدُ البطاقة — صفحةُ الصفوف بفلترها في العنوان. */
+  href?: string;
+  /** أو تصفيةٌ في المكان نفسِه. */
+  onClick?: () => void;
+  /** سطرٌ صغيرٌ أسفلَ الرقم: ما الذي سيُعرَض. */
+  hint?: string;
+  /** البطاقةُ المختارةُ الآن (مع `onClick`). */
+  active?: boolean;
+}) {
+  const clickable = !!href || !!onClick;
+  const body = (
+    <>
       <p className="text-slate-500 text-xs truncate" title={typeof label === 'string' ? label : undefined}>{label}</p>
       <p className={`text-xl sm:text-2xl font-bold mt-1 leading-tight tabular-nums break-words ${accent || 'text-slate-900'}`}>{value}</p>
-    </div>
+      {hint ? <p className="text-[10px] text-slate-400 mt-1 truncate">{hint}</p> : null}
+    </>
   );
+  const cls = `min-w-0 bg-white border rounded-xl p-4 shadow-sm block text-start w-full ${
+    active ? 'border-[#f37121] ring-1 ring-[#f37121]/40' : 'border-slate-200'
+  } ${clickable ? 'transition hover:border-[#f37121]/60 hover:shadow-md cursor-pointer' : ''}`;
+  if (href) return <Link href={href} className={cls}>{body}</Link>;
+  if (onClick) return <button type="button" onClick={onClick} className={cls}>{body}</button>;
+  return <div className={cls}>{body}</div>;
 }
 
 export { Loader2 };

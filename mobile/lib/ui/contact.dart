@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/lang.dart';
 import 'theme.dart';
@@ -53,4 +54,68 @@ class ContactButtons extends StatelessWidget {
       btn(Icons.chat, const Color(0xFF25D366), () => whatsappNumber(p), tr('واتساب', 'WhatsApp')),
     ]);
   }
+}
+
+/// ── جوّالٌ سعوديّ: المفتاحُ على اليسار دائمًا ────────────────────────────────
+///
+/// الرقمُ يُكتب بالأرقام اللاتينيّة ويُقرأ من اليسار في كلّ لغة. وحين يكون
+/// الحقلُ داخل شاشةٍ عربيّة (`rtl`) يذهب `prefixText` إلى **يمينه** وتجيء
+/// الأرقامُ يسارَه: يُقرأ معكوسًا عمّا يُكتب، ومخالفًا لما يراه من يفتح
+/// الشاشةَ بالإنجليزيّة. فالحقلُ وحدَه `ltr`: «+966» يسارًا والأرقامُ بعده.
+///
+/// والمخزَّنُ في المتحكّم تسعُ خاناتٍ محليّة، والكاملُ يُؤخَذ بـ`saPhone`.
+class PhoneSA extends StatelessWidget {
+  const PhoneSA({super.key, required this.controller, this.label, this.onChanged, this.hint = '5XXXXXXXX'});
+
+  final TextEditingController controller;
+  final String? label;
+  /// يُنادى بالرقم الكامل «+9665XXXXXXXX» أو بالفراغ.
+  final void Function(String full)? onChanged;
+  final String hint;
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: TextField(
+        controller: controller,
+        keyboardType: TextInputType.number,
+        maxLength: 9,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        onChanged: (v) {
+          var d = v.replaceAll(RegExp(r'\D'), '');
+          if (d.startsWith('966')) d = d.substring(3);
+          if (d.startsWith('0')) d = d.substring(1);
+          if (d.length > 9) d = d.substring(0, 9);
+          if (d != v) {
+            controller.value = TextEditingValue(text: d, selection: TextSelection.collapsed(offset: d.length));
+          }
+          onChanged?.call(d.isEmpty ? '' : '+966$d');
+        },
+        decoration: InputDecoration(
+          labelText: label,
+          prefixText: '+966 ',
+          counterText: '',
+          hintText: hint,
+        ),
+      ),
+    );
+  }
+}
+
+/// تسعُ خاناتٍ محليّة ← الرقمُ الكامل كما يُخزَّن في النظام.
+String saPhone(String local) {
+  var d = local.replaceAll(RegExp(r'\D'), '');
+  if (d.startsWith('966')) d = d.substring(3);
+  if (d.startsWith('0')) d = d.substring(1);
+  if (d.isEmpty) return '';
+  return '+966${d.length > 9 ? d.substring(0, 9) : d}';
+}
+
+/// والعكسُ: ما يُعرَض في الحقل من رقمٍ مخزَّن.
+String saLocal(String full) {
+  var d = full.replaceAll(RegExp(r'\D'), '');
+  if (d.startsWith('966')) d = d.substring(3);
+  if (d.startsWith('0')) d = d.substring(1);
+  return d.length > 9 ? d.substring(0, 9) : d;
 }

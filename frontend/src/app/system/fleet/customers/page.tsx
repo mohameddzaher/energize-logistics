@@ -80,6 +80,13 @@ export default function FleetCustomersPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<FilterValues>({});
+  /**
+   * ── وبطاقةُ الرقم تُصفّي القائمة ────────────────────────────────────────────
+   * «٢٨ تعاملنا معهم» و«٩ حمولاتٌ جارية» كانا رقمين لا يُفتَحان: يُقرآن ثمّ
+   * يُقلَّب السجلُّ بالعين. وهذان شرطان على الصفّ نفسِه (له رحلاتٌ / له رحلةٌ
+   * جارية) — فيُكتبان فلترًا يضغطه الرقمُ نفسُه.
+   */
+  const [work, setWork] = useState<'' | 'dealt' | 'open'>('');
   const [sort, setSort] = useState<SortKey>('name');
   const [dir, setDir] = useState<1 | -1>(1);
   const [page, setPage] = useState(1);
@@ -110,20 +117,26 @@ export default function FleetCustomersPage() {
   }, [qs]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); }, [qs, sort, dir]);
+  useEffect(() => { setPage(1); }, [qs, sort, dir, work]);
   useSocket('fleet:customers', useCallback(() => load(), [load]));
 
   const sorted = useMemo(() => {
-    const rows = [...customers];
-    rows.sort((a, b) => {
+    // شرطُ البطاقة يُطبَّق قبل الترتيب: ما يُعَدُّ فوق هو ما يُعرَض تحت.
+    const rows = customers.filter((c) => {
+      if (work === 'dealt') return (c.trips || 0) > 0;
+      if (work === 'open') return (c.openTrips || 0) > 0;
+      return true;
+    });
+    const out = [...rows];
+    out.sort((a, b) => {
       let x: any; let y: any;
       if (sort === 'name') { x = a.name || ''; y = b.name || ''; return x.localeCompare(y, 'ar') * dir; }
       if (sort === 'lastTrip') { x = a.lastTrip ? +new Date(a.lastTrip) : 0; y = b.lastTrip ? +new Date(b.lastTrip) : 0; }
       else { x = (a as any)[sort] || 0; y = (b as any)[sort] || 0; }
       return (x - y) * dir;
     });
-    return rows;
-  }, [customers, sort, dir]);
+    return out;
+  }, [customers, sort, dir, work]);
 
   const pages = Math.max(1, Math.ceil(sorted.length / PER));
   const shown = sorted.slice((page - 1) * PER, page * PER);
@@ -214,9 +227,15 @@ export default function FleetCustomersPage() {
       {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label={t('العملاء المعروضون', 'Customers shown')} value={sorted.length} />
-        <StatCard label={t('تعامَلنا معهم', 'With shipments')} value={totals.dealt} accent="#0ea5e9" />
-        <StatCard label={t('حمولاتٌ جارية', 'Open shipments')} value={totals.open} accent="#f59e0b" />
+        {/* والبطاقةُ تُصفّي القائمةَ تحتها: مَن تعاملنا معه، ومن له حمولةٌ تسير. */}
+        <StatCard label={t('العملاء المعروضون', 'Customers shown')} value={sorted.length}
+          onClick={() => setWork('')} active={!work} hint={t('اضغط لعرض الكل', 'tap to show all')} />
+        <StatCard label={t('تعامَلنا معهم', 'With shipments')} value={totals.dealt} accent="#0ea5e9"
+          onClick={() => setWork((v) => (v === 'dealt' ? '' : 'dealt'))} active={work === 'dealt'}
+          hint={t('اضغط لعرضهم', 'tap to filter')} />
+        <StatCard label={t('حمولاتٌ جارية', 'Open shipments')} value={totals.open} accent="#f59e0b"
+          onClick={() => setWork((v) => (v === 'open' ? '' : 'open'))} active={work === 'open'}
+          hint={t('مَن له حمولةٌ تسير', 'customers with a live load')} />
         <StatCard label={t('الدخل من المعروضين', 'Income shown')} value={money(totals.income)} accent="#16a34a" />
       </div>
 

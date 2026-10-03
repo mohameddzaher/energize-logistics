@@ -26,6 +26,12 @@ router.post('/vehicles/assign-supervisor-bulk', authorize(...ADMIN_ROLES), fleet
 // صفّ الشاحنة لا من صفحة السائقين، فالسؤالُ عنده «مَن على هذه الشاحنة؟».
 router.patch('/vehicles/:id/drivers', authorize(...EDIT_ROLES), fleet.setVehicleDrivers);
 
+// ── طلباتُ الصيانة: الأسطولُ يطلب، ولوكيشن سوليوشن يقرّر ────────────────────
+// القرارُ ليس هنا: من يملك الصيانةَ هو من يأذن بتأجيلها — راجع routes/ls2.
+const fleetRequests = require('../controllers/fleetRequestController');
+router.get('/requests', fleetRequests.list);
+router.post('/requests', authorize(...EDIT_ROLES), fleetRequests.create);
+
 // Shipments (الحمولات)
 router.get('/shipments', fleet.listShipments);
 router.post('/shipments', authorize(...EDIT_ROLES), fleet.createShipment);

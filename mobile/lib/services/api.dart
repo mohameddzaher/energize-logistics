@@ -11,7 +11,12 @@ import '../config.dart';
 class ApiException implements Exception {
   final int status;
   final String message;
-  ApiException(this.status, this.message);
+  /// ── وما زاد على الرسالة يبقى معها ──────────────────────────────────────
+  /// بعضُ الردود رسالةٌ ومعها قرار: ٤٠٩ من إنشاء الحمولة تحمل ما فات من
+  /// الصيانة ورقمَ الطلب المعلّق، وتُبنى منها لوحةٌ لا سطرُ خطأ. وكان الجسدُ
+  /// يُطرَح فتُقرأ الرسالةُ وحدَها ويضيع الباقي — كما في الويب (`err.data`).
+  final Map<String, dynamic> data;
+  ApiException(this.status, this.message, [this.data = const {}]);
   @override
   String toString() => message;
 }
@@ -117,7 +122,7 @@ class Api {
     final msg = (decoded is Map && decoded['message'] != null)
         ? decoded['message'].toString()
         : 'تعذر تنفيذ الطلب (${res.statusCode})';
-    throw ApiException(res.statusCode, msg);
+    throw ApiException(res.statusCode, msg, decoded is Map ? Map<String, dynamic>.from(decoded) : const {});
   }
 
   // تحميل ملف ثنائي (PDF البوليصة مثلًا) بالمصادقة — يرجّع البايتات كما هي.

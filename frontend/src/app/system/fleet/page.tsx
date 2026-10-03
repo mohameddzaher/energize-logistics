@@ -304,8 +304,13 @@ function FleetShipmentsInner() {
 
   if (loading) return <Spinner />;
 
-  const inFlight = ['loading', 'uploaded', 'on_way'].reduce((s, k) => s + (stats?.byStatus[k] || 0), 0);
-  const arrived = ['arrived', 'bond_sent', 'bond_received', 'invoiced'].reduce((s, k) => s + (stats?.byStatus[k] || 0), 0);
+  // المجموعتان تُكتبان مرّةً: البطاقةُ تعدُّ ما يفلتره الزرُّ نفسُه.
+  const IN_FLIGHT_KEYS = ['loading', 'uploaded', 'on_way'];
+  const DONE_KEYS = ['arrived', 'bond_sent', 'bond_received', 'invoiced'];
+  const IN_FLIGHT = IN_FLIGHT_KEYS.join(',');
+  const DONE_SET = DONE_KEYS.join(',');
+  const inFlight = IN_FLIGHT_KEYS.reduce((s, k) => s + (stats?.byStatus[k] || 0), 0);
+  const arrived = DONE_KEYS.reduce((s, k) => s + (stats?.byStatus[k] || 0), 0);
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -355,11 +360,23 @@ function FleetShipmentsInner() {
 
       {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
+      {/* ── والبطاقةُ تُصفّي الجدولَ تحتها ───────────────────────────────────
+          «قيد التنفيذ» ثلاثُ حالاتٍ مجموعة، و«وصلت/مكتملة» أربع — والخادمُ صار
+          يقبل عدّةَ حالاتٍ في الفلتر (`status=a,b,c`) فتُفتَح البطاقةُ على
+          صفوفها كما تُقرأ. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label={ar ? 'إجمالي الحمولات' : 'Total shipments'} value={total} accent="text-[#f37121]" />
-        <StatCard label={ar ? 'قيد التنفيذ' : 'In flight'} value={inFlight} accent="text-blue-600" />
-        <StatCard label={ar ? 'وصلت / مكتملة' : 'Arrived / done'} value={arrived} accent="text-emerald-600" />
-        <StatCard label={ar ? 'ملغاة' : 'Cancelled'} value={stats?.byStatus.cancelled || 0} accent="text-red-600" />
+        <StatCard label={ar ? 'إجمالي الحمولات' : 'Total shipments'} value={total} accent="text-[#f37121]"
+          onClick={() => { setStatusFilter(''); setPage(1); }} active={!statusFilter}
+          hint={ar ? 'اضغط لعرض الكل' : 'tap to show all'} />
+        <StatCard label={ar ? 'قيد التنفيذ' : 'In flight'} value={inFlight} accent="text-blue-600"
+          onClick={() => { setStatusFilter((v) => (v === IN_FLIGHT ? '' : IN_FLIGHT)); setPage(1); }}
+          active={statusFilter === IN_FLIGHT} hint={ar ? 'اضغط لعرضها' : 'tap to open'} />
+        <StatCard label={ar ? 'وصلت / مكتملة' : 'Arrived / done'} value={arrived} accent="text-emerald-600"
+          onClick={() => { setStatusFilter((v) => (v === DONE_SET ? '' : DONE_SET)); setPage(1); }}
+          active={statusFilter === DONE_SET} hint={ar ? 'اضغط لعرضها' : 'tap to open'} />
+        <StatCard label={ar ? 'ملغاة' : 'Cancelled'} value={stats?.byStatus.cancelled || 0} accent="text-red-600"
+          onClick={() => { setStatusFilter((v) => (v === 'cancelled' ? '' : 'cancelled')); setPage(1); }}
+          active={statusFilter === 'cancelled'} hint={ar ? 'اضغط لعرضها' : 'tap to open'} />
       </div>
 
       {/* الوجهات الحالية — "عدد السيارات المتّجهة إلى جدة" دون بحث. الضغط يرشح القائمة. */}

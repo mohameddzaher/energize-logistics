@@ -230,7 +230,10 @@ const fleetEventSchema = new mongoose.Schema({
   type: {
     type: String,
     required: true,
-    enum: ['created', 'updated', 'status', 'driver_change', 'followup'],
+    // maintenance_override: حُمِّلت وصيانتُها متأخّرةٌ بإذنٍ مسجَّل — أثرٌ يبقى
+    // في سجلّ الحمولة لا في جدولٍ آخر: من يقرأ قصّةَ هذه الحمولة يعرف أنّها
+    // خرجت بإذنٍ ومن أذِن. راجع controllers/fleetRequestController.
+    enum: ['created', 'updated', 'status', 'driver_change', 'followup', 'maintenance_override'],
   },
   // followup: { contactTime, currentLocation, note, expectedArrival }
   // status:   { from, to } · updated: { fields } · driver_change: { text }

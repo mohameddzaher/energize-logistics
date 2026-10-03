@@ -33,6 +33,13 @@ router.get('/settings', ls2.getSettings);
 router.put('/settings', ADMIN, ls2.updateSettings);
 router.post('/refresh', ADMIN, ls2.refresh);
 
+// ── طلباتُ الأسطول ──────────────────────────────────────────────────────────
+// «أحتاج هذه الشاحنةَ وصيانتُها متأخّرة» — تُقرأ هنا ويُؤخَذ فيها القرار.
+// والقرارُ لرتبة الإدارة: الموافقةُ على تأجيل صيانةٍ مسؤوليّةٌ تُسجَّل بالاسم.
+const fleetRequests = require('../controllers/fleetRequestController');
+router.get('/fleet-requests', fleetRequests.list);
+router.post('/fleet-requests/:id/decide', oid, ADMIN, fleetRequests.decide);
+
 router.get('/alerts', ls2.listAlerts);
 router.patch('/alerts/:id/ack', oid, ls2.acknowledgeAlert);
 

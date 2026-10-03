@@ -251,15 +251,33 @@ export default function FleetVehiclesPage() {
 
       {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
+      {/* ── والبطاقةُ تُصفّي الجدولَ تحتها ───────────────────────────────────
+          «ستُّ شاحناتٍ بلا سائق» رقمٌ لا يُفتَح: يُقرأ ثمّ يُبحَث عن الستّ
+          بالعين في سبعٍ وخمسين صفًّا. والفلاترُ قائمةٌ في الشاشة أصلًا
+          (`seatsFilter` و`maintFilter`) — فالبطاقةُ تضغطها، وضغطةٌ ثانيةٌ
+          تُرجع الكلّ. */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-        <StatCard label={ar ? 'إجمالي السيارات' : 'Total vehicles'} value={vehicles.length} />
-        <StatCard label={ar ? 'بدون سائق' : 'No driver'} value={withNone} accent={withNone > 0 ? 'text-red-600' : 'text-slate-900'} />
-        <StatCard label={ar ? 'بسائق واحد' : 'One driver'} value={withOne} />
-        <StatCard label={ar ? 'بسائقين' : 'Two drivers'} value={withTwo} accent="text-emerald-600" />
+        <StatCard label={ar ? 'إجمالي السيارات' : 'Total vehicles'} value={vehicles.length}
+          onClick={() => { setSeatsFilter(''); setMaintFilter(''); setGpsFilter(''); setSearch(''); }}
+          active={!seatsFilter && !maintFilter && !gpsFilter && !search}
+          hint={ar ? 'اضغط لعرض الكل' : 'tap to show all'} />
+        <StatCard label={ar ? 'بدون سائق' : 'No driver'} value={withNone} accent={withNone > 0 ? 'text-red-600' : 'text-slate-900'}
+          onClick={() => setSeatsFilter((v) => (v === '0' ? '' : '0'))} active={seatsFilter === '0'}
+          hint={ar ? 'اضغط لعرضها' : 'tap to open'} />
+        <StatCard label={ar ? 'بسائق واحد' : 'One driver'} value={withOne}
+          onClick={() => setSeatsFilter((v) => (v === '1' ? '' : '1'))} active={seatsFilter === '1'}
+          hint={ar ? 'اضغط لعرضها' : 'tap to open'} />
+        <StatCard label={ar ? 'بسائقين' : 'Two drivers'} value={withTwo} accent="text-emerald-600"
+          onClick={() => setSeatsFilter((v) => (v === '2' ? '' : '2'))} active={seatsFilter === '2'}
+          hint={ar ? 'اضغط لعرضها' : 'tap to open'} />
         <StatCard label={ar ? 'صيانةٌ متأخّرة' : 'Maintenance overdue'} value={maintOverdue}
-          accent={maintOverdue > 0 ? 'text-red-600' : 'text-slate-900'} />
+          accent={maintOverdue > 0 ? 'text-red-600' : 'text-slate-900'}
+          onClick={() => setMaintFilter((v) => (v === 'overdue' ? '' : 'overdue'))} active={maintFilter === 'overdue'}
+          hint={ar ? 'اضغط لعرضها' : 'tap to open'} />
         <StatCard label={ar ? 'صيانةٌ مستحقّة' : 'Maintenance due'} value={maintDue}
-          accent={maintDue > 0 ? 'text-amber-600' : 'text-slate-900'} />
+          accent={maintDue > 0 ? 'text-amber-600' : 'text-slate-900'}
+          onClick={() => setMaintFilter((v) => (v === 'due' ? '' : 'due'))} active={maintFilter === 'due'}
+          hint={ar ? 'اضغط لعرضها' : 'tap to open'} />
       </div>
 
       <div className="flex flex-wrap gap-3 items-center">

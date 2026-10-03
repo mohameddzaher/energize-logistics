@@ -41,6 +41,11 @@ function ArrivalsInner() {
   const [period, setPeriod] = useState<Period>(() => periodFromParams(sp));
   const [city, setCity] = useState(() => sp?.get('toCity') || '');
   const [q, setQ] = useState(() => sp?.get('q') || '');
+  // ── البطاقةُ المضغوطةُ تُظهر جدولَها وتُخفي ما سواه ───────────────────────
+  // كانت البطاقاتُ الخمسُ أرقامًا لا تُفتَح: يُقرأ «٤ بلا موعد وصول» ثمّ
+  // يُنزَل بالعين للبحث عن جدولها، و«مشغولة» لم يكن لها جدولٌ أصلًا. فصارت
+  // البطاقةُ فلترًا: ضغطةٌ تُفرِد جدولَها، وضغطةٌ تُرجع الكلّ.
+  const [focus, setFocus] = useState(() => sp?.get('focus') || '');
   const [debouncedQ, setDebouncedQ] = useState(q);
   useEffect(() => { const t = setTimeout(() => setDebouncedQ(q), 300); return () => clearTimeout(t); }, [q]);
 
@@ -50,6 +55,9 @@ function ArrivalsInner() {
     if (debouncedQ.trim()) p.q = debouncedQ.trim();
     return p;
   }, [period, city, debouncedQ]);
+
+  // الفلترُ المعروضُ لا يُرسَل إلى الخادم: الجداولُ كلُّها وصلت، والإفرادُ عرضٌ.
+  const urlParams = useMemo(() => (focus ? { ...params, focus } : params), [params, focus]);
 
   const load = useCallback(async () => {
     try {
@@ -65,9 +73,9 @@ function ArrivalsInner() {
 
   // `replace` لا `push`: ضغطةُ فلترٍ لا تستحقّ خطوةً في تاريخ المتصفّح.
   useEffect(() => {
-    const qs = new URLSearchParams(params).toString();
+    const qs = new URLSearchParams(urlParams).toString();
     router.replace(`/system/fleet/arrivals${qs ? `?${qs}` : ''}`, { scroll: false });
-  }, [params, router]);
+  }, [urlParams, router]);
 
   const shipCols = [
     { header: 'Waybill', key: 'waybillNumber', width: 10 },
@@ -93,10 +101,23 @@ function ArrivalsInner() {
     { header: 'Last trip date', key: 'lastTrip', transform: (v: any) => (v?.at ? fmtD(v.at) : ''), width: 14 },
   ];
 
+  const busyCols = [
+    { header: 'Plate', key: 'plate', width: 14 },
+    { header: 'Trailer', key: 'trailerType', width: 14 },
+    { header: 'Supervisor', key: 'supervisorName', width: 18 },
+    { header: 'Waybill', key: 'trip', transform: (v: any) => v?.waybillNumber ?? '', width: 10 },
+    { header: 'Customer', key: 'trip', transform: (v: any) => v?.customerName || '', width: 24 },
+    { header: 'From', key: 'trip', transform: (v: any) => v?.fromCity || '', width: 14 },
+    { header: 'To', key: 'trip', transform: (v: any) => v?.toCity || '', width: 14 },
+    { header: 'Status', key: 'trip', transform: (v: any) => (v?.status ? fleetStatusLabel(v.status, 'en') : ''), width: 14 },
+    { header: 'Expected arrival', key: 'trip', transform: (v: any) => (v?.expectedArrival ? fmtDT(v.expectedArrival, 'en') : ''), width: 20 },
+  ];
+
   const sheets: ExportSheet[] = d ? [
     { name: ar ? 'المتوقع وصولها' : 'Arriving', rows: d.arriving as any[], columns: shipCols },
     { name: ar ? 'بلا موعد وصول' : 'No ETA', rows: d.noEta as any[], columns: shipCols },
     { name: ar ? 'السيارات الفاضية' : 'Idle vehicles', rows: d.idle as any[], columns: idleCols },
+    { name: ar ? 'السيارات المشغولة' : 'Busy vehicles', rows: (d.busyList || []) as any[], columns: busyCols },
   ] : [];
 
   if (!canViewFleet(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية.' : 'Not authorized.'}</div>;
@@ -200,14 +221,36 @@ function ArrivalsInner() {
 
       {d && (
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          <StatCard label={ar ? 'متوقع وصولها' : 'Arriving'} value={d.summary.arriving} accent="text-[#f37121]" />
-          <StatCard label={ar ? 'بلا موعد وصول' : 'No ETA'} value={d.summary.noEta} accent={d.summary.noEta ? 'text-amber-600' : undefined} />
-          <StatCard label={ar ? 'سيارات فاضية' : 'Idle vehicles'} value={d.summary.idle} accent="text-slate-900" />
-          <StatCard label={ar ? 'سيارات مشغولة' : 'Busy vehicles'} value={d.summary.busy} accent="text-emerald-600" />
-          <StatCard label={ar ? 'إجمالي السيارات' : 'Total vehicles'} value={d.summary.vehicles} />
+          {([
+            ['arriving', ar ? 'متوقع وصولها' : 'Arriving', d.summary.arriving, 'text-[#f37121]'],
+            ['noEta', ar ? 'بلا موعد وصول' : 'No ETA', d.summary.noEta, d.summary.noEta ? 'text-amber-600' : 'text-slate-900'],
+            ['idle', ar ? 'سيارات فاضية' : 'Idle vehicles', d.summary.idle, 'text-slate-900'],
+            ['busy', ar ? 'سيارات مشغولة' : 'Busy vehicles', d.summary.busy, 'text-emerald-600'],
+            ['', ar ? 'إجمالي السيارات' : 'Total vehicles', d.summary.vehicles, 'text-slate-900'],
+          ] as [string, string, number, string][]).map(([key, label, value, accent]) => {
+            const on = !!key && focus === key;
+            return (
+              <button key={label} type="button"
+                onClick={() => setFocus(focus === key ? '' : key)}
+                className={`rounded-xl border bg-white p-4 text-start shadow-sm transition ${on ? 'border-[#f37121] ring-1 ring-[#f37121]/40' : 'border-slate-200 hover:border-[#f37121]/50'}`}>
+                <p className={`text-2xl font-bold tabular-nums ${accent}`}>{value}</p>
+                <p className="text-xs text-slate-600 mt-0.5">{label}</p>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {key ? (on ? (ar ? 'معروضة — اضغط للإلغاء' : 'shown — tap to clear') : (ar ? 'اضغط لعرضها' : 'tap to show'))
+                       : (ar ? 'اضغط لعرض الكل' : 'tap to show all')}
+                </p>
+              </button>
+            );
+          })}
         </div>
       )}
+      {focus && (
+        <p className="-mt-2 text-[11px] text-[#f37121] font-semibold">
+          {ar ? 'يُعرَض جدولٌ واحد — اضغط «إجمالي السيارات» لعرض الكل.' : 'One table shown — press “Total vehicles” to show all.'}
+        </p>
+      )}
 
+      {(!focus || focus === 'arriving') && (
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2">
           <Truck className="w-4 h-4 text-[#f37121]" />
@@ -225,10 +268,11 @@ function ArrivalsInner() {
           </table>
         </ScrollX>
       </div>
+      )}
 
       {/* بلا موعدٍ متوقَّع: سائرةٌ فعلًا لكنها لا تدخل أيّ نافذةٍ زمنية، وإخفاؤها
           يجعل سيارتَها «لا واصلة ولا فاضية» فتسقط من التخطيط بلا أثر. */}
-      {(d?.noEta.length || 0) > 0 && (
+      {(!focus || focus === 'noEta') && (d?.noEta.length || 0) > 0 && (
         <div className="bg-white border border-amber-200 rounded-xl overflow-hidden shadow-sm">
           <div className="px-4 py-3 bg-amber-50 border-b border-amber-100">
             <p className="font-bold text-amber-800">{ar ? 'سائرة بلا موعد وصول مُسجَّل' : 'On the road with no ETA recorded'}</p>
@@ -243,6 +287,7 @@ function ArrivalsInner() {
         </div>
       )}
 
+      {(!focus || focus === 'idle') && (
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2">
           <CircleSlash className="w-4 h-4 text-slate-500" />
@@ -295,6 +340,55 @@ function ArrivalsInner() {
           </table>
         </ScrollX>
       </div>
+      )}
+
+      {/* ── السياراتُ المشغولةُ بأسمائها ──────────────────────────────────────
+          بطاقةُ «مشغولة» كانت رقمًا بلا جدول — والسؤالُ الذي يُسأل بعدها
+          مباشرةً: «مشغولةٌ بماذا؟». فهذا جوابُه: الحمولةُ والعميلُ والوجهةُ
+          والموعد، وضغطُ الصفِّ يفتح الحمولة. */}
+      {(!focus || focus === 'busy') && (
+        <div className="bg-white border border-emerald-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="px-4 py-3 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2">
+            <Truck className="w-4 h-4 text-emerald-600" />
+            <p className="font-bold text-slate-900">{ar ? 'السيارات المشغولة — وعلى أي حمولة' : 'Busy vehicles — and on what'}</p>
+            <span className="text-xs text-slate-500">({d?.busyList?.length || 0})</span>
+          </div>
+          <ScrollX>
+            <table className="w-full text-sm">
+              <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
+                {[ar ? 'اللوحة' : 'Plate', ar ? 'نوع التيدر' : 'Trailer', ar ? 'المشرف' : 'Supervisor',
+                  ar ? 'البوليصة' : 'Waybill', ar ? 'العميل' : 'Customer', ar ? 'المسار' : 'Route',
+                  ar ? 'الحالة' : 'Status', ar ? 'الوصول المتوقع' : 'ETA',
+                ].map((h, i) => <th key={i} className={th}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {(d?.busyList?.length || 0) === 0
+                  ? <tr><td colSpan={8} className="text-center text-slate-500 py-12">{ar ? 'لا سيارةَ مشغولةً الآن.' : 'No truck is busy right now.'}</td></tr>
+                  : d!.busyList.map((v) => (
+                    <tr key={v._id} className={`border-b border-slate-200/70 hover:bg-slate-50 ${v.trip ? 'cursor-pointer' : ''}`}
+                      onClick={() => v.trip && router.push(`/system/fleet/${v.trip._id}`)}>
+                      <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                        <Link href={`/system/fleet/vehicles/${v._id}`} className="font-mono font-bold text-[#f37121] hover:underline">{v.plate}</Link>
+                        {v.name && <span className="block text-[11px] text-slate-500">{v.name}</span>}
+                      </td>
+                      <td className="px-3 py-3 text-slate-700 text-xs">{v.trailerType || '—'}</td>
+                      <td className="px-3 py-3 text-slate-600 text-xs">{v.supervisorName || '—'}</td>
+                      <td className="px-3 py-3 font-mono font-bold text-slate-900">{v.trip?.waybillNumber ?? '—'}</td>
+                      <td className="px-3 py-3 text-slate-900 text-xs max-w-[180px] truncate" title={v.trip?.customerName}>{v.trip?.customerName || '—'}</td>
+                      <td className="px-3 py-3 text-slate-700 text-xs whitespace-nowrap">{v.trip ? <>{v.trip.fromCity || '—'} ← <b className="text-slate-900">{v.trip.toCity || '—'}</b></> : '—'}</td>
+                      <td className="px-3 py-3 text-xs whitespace-nowrap">
+                        {v.trip ? (() => { const st = fleetStatus(v.trip!.status); return <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${st?.bg || 'bg-slate-100'} ${st?.text || 'text-slate-700'}`}>{fleetStatusLabel(v.trip!.status, lang as Lang)}</span>; })() : '—'}
+                      </td>
+                      <td className="px-3 py-3 text-xs whitespace-nowrap">
+                        {v.trip?.expectedArrival ? fmtDT(v.trip.expectedArrival, lang as Lang) : <span className="text-amber-600">{ar ? 'غير محدَّد' : 'Not set'}</span>}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </ScrollX>
+        </div>
+      )}
     </div>
   );
 }

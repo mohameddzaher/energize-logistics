@@ -48,13 +48,13 @@ interface BoardCard {
   supervisor: string | null; supervisorName: string;
   drivers: { name: string; working: boolean }[];
   trip: BoardTrip | null;
-  state: 'late' | 'arrived' | 'moving' | 'preparing' | 'idle';
+  state: 'late' | 'arrived' | 'unloaded' | 'moving' | 'preparing' | 'idle';
   liveCity: string | null;      // أين هي الآن جغرافيًا (من GPS لوكيشن سوليوشن)
   atDestination: boolean;       // دخلت نطاق مدينة وجهتها — يُفترض أنها تُفرِّغ
   maintenance: { status: 'ok' | 'due' | 'overdue'; kmToService: number | null; nextServiceName: string; odometerKm: number | null } | null;
 }
 interface BoardSummary {
-  total: number; moving: number; late: number; arrived: number; preparing: number; idle: number;
+  total: number; moving: number; late: number; arrived: number; unloaded: number; preparing: number; idle: number;
   maintOverdue: number; maintDue: number;
   byDestination: { city: string; n: number }[];
 }
@@ -117,23 +117,56 @@ export default function FleetBoardPage() {
     return [...m.entries()].sort((a, b) => (a[0] === '_none' ? 1 : b[0] === '_none' ? -1 : a[1].name.localeCompare(b[1].name)));
   }, [filtered, ar]);
 
+  // ── الأرقامُ تُحسب من البطاقات نفسِها، لا من ملخّصٍ ثابت ───────────────────
+  // سببُه أنّ شرائحَ الوجهات صارت فلترًا: مَن ضغط «الدمام» يريد أرقامَ الدمام
+  // («تسعٌ إليها، منها ثلاثٌ في الطريق وواحدةٌ متأخّرة»)، لا أرقامَ الأسطول
+  // كلِّه وتحتَها تسعُ بطاقات. والملخّصُ من الخادم يصف الأسطولَ كلَّه، فيُحسب
+  // هنا على المدى المختار — والبحثُ والحالةُ لا يدخلان فيه: البطاقةُ هي التي
+  // تختار الحالة، فلو قاست نفسَها بها لصفّرت أخواتِها.
+  const cityScoped = useMemo(
+    () => (cityFilter ? cards.filter((c) => c.trip?.toCity === cityFilter) : cards),
+    [cards, cityFilter],
+  );
+  const kpis = useMemo(() => {
+    const of = (f: (c: BoardCard) => boolean) => cityScoped.filter(f);
+    // ── وكم منها صيانتُها متأخّرة، وأيُّ صيانة ───────────────────────────────
+    // رقمٌ وحدَه يقول «ثمانيةَ عشرَ في الطريق» ولا يقول إنّ خمسًا منها تسير
+    // وصيانتُها فائتة. وهو القرارُ نفسُه: تُستدعى أو تُكمل. ويُسمّى ما فاتها —
+    // «زيت محرّك» ليست «فرامل» — فيُعرَف قبل أن تُفتَح بطاقتُها.
+    const overdueOf = (list: BoardCard[]) => {
+      const od = list.filter((c) => c.maintenance?.status === 'overdue');
+      const names = new Map<string, number>();
+      for (const c of od) {
+        const n = (c.maintenance?.nextServiceName || '').trim() || (ar ? 'صيانة دوريّة' : 'Scheduled service');
+        names.set(n, (names.get(n) || 0) + 1);
+      }
+      const sorted = [...names.entries()].sort((a, b) => b[1] - a[1]);
+      return { n: od.length, top: sorted[0]?.[0] || '', all: sorted.map(([n, k]) => `${n} (${k})`).join(' · ') };
+    };
+    const card = (key: string, label: string, cls: string, f: (c: BoardCard) => boolean) => {
+      const list = of(f);
+      return { key, label, cls, value: list.length, maint: overdueOf(list) };
+    };
+    return [
+      card('late', ar ? 'متأخرة عن الوصول' : 'Late', 'text-red-600', (c) => c.state === 'late'),
+      card('moving', ar ? 'في الطريق' : 'On the road', 'text-amber-600', (c) => c.state === 'moving'),
+      card('arrived', ar ? 'وصلت' : 'Arrived', 'text-emerald-600', (c) => c.state === 'arrived'),
+      card('unloaded', ar ? 'فرّغت' : 'Unloaded', 'text-cyan-600', (c) => c.state === 'unloaded'),
+      card('preparing', ar ? 'تحميل / تجهيز' : 'Loading', 'text-blue-600', (c) => c.state === 'preparing'),
+      card('maintOverdue', ar ? 'صيانة متأخرة' : 'Service overdue', 'text-red-600', (c) => c.maintenance?.status === 'overdue'),
+      card('maintDue', ar ? 'صيانة قريبة' : 'Service due', 'text-amber-600', (c) => c.maintenance?.status === 'due'),
+    ];
+  }, [cityScoped, ar]);
+
   if (!canViewFleet(user)) return <div className="text-slate-500 p-8">{ar ? 'غير مصرح.' : 'Not authorized.'}</div>;
   if (loading && !cards.length) return <Spinner />;
 
-  const KPIS: { key: string; label: string; value: number; cls: string }[] = summary ? [
-    { key: '', label: ar ? 'إجمالي السيارات' : 'Total', value: summary.total, cls: 'text-slate-800' },
-    { key: 'late', label: ar ? 'متأخرة عن الوصول' : 'Late', value: summary.late, cls: 'text-red-600' },
-    { key: 'moving', label: ar ? 'في الطريق' : 'On the road', value: summary.moving, cls: 'text-amber-600' },
-    { key: 'arrived', label: ar ? 'وصلت' : 'Arrived', value: summary.arrived, cls: 'text-emerald-600' },
-    { key: 'preparing', label: ar ? 'تحميل / تجهيز' : 'Loading', value: summary.preparing, cls: 'text-blue-600' },
-    { key: 'idle', label: ar ? 'بدون حمولة' : 'Idle', value: summary.idle, cls: 'text-slate-500' },
-    { key: 'maintOverdue', label: ar ? 'صيانة متأخرة' : 'Service overdue', value: summary.maintOverdue, cls: 'text-red-600' },
-    { key: 'maintDue', label: ar ? 'صيانة قريبة' : 'Service due', value: summary.maintDue, cls: 'text-amber-600' },
-  ] : [];
+  const KPIS = kpis;
 
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
-      <PageHeader icon={<LayoutGrid className="w-5 h-5" />} title={ar ? 'اللوحة الرئيسية للأسطول' : 'Fleet Board'}
+      <PageHeader icon={<LayoutGrid className="w-5 h-5" />}
+        title={`${ar ? 'اللوحة الرئيسية للأسطول' : 'Fleet Board'}${summary ? ` · ${summary.total} ${ar ? 'سيارة' : 'trucks'}` : ''}`}
         subtitle={ar ? 'كل سيارة ببطاقة — الحالة والوجهة والصيانة تلقائيًا' : 'Every truck as one card — state, destination and maintenance, automatically'}>
         {/* اللوحة تُظهر حالة اللحظة؛ ومَن أراد التخطيط لما هو آتٍ ينتقل من هنا. */}
         <Link href="/system/fleet/arrivals" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121]/10 hover:bg-[#f37121]/20 text-[#f37121] text-sm font-medium">
@@ -151,28 +184,58 @@ export default function FleetBoardPage() {
 
       {error && <ErrorNotice error={error} lang={lang} onRetry={() => { setLoading(true); load(); }} />}
 
-      {/* بطاقات الأرقام — الضغط على أي بطاقة يرشح السيارات تحتها */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
-        {KPIS.map((k) => (
-          <button key={k.label} type="button" onClick={() => setStateFilter(stateFilter === k.key ? '' : k.key)}
-            className={`bg-white border rounded-xl p-3 text-center shadow-sm transition ${stateFilter === k.key && k.key ? 'border-[#f37121] ring-1 ring-[#f37121]/40' : 'border-slate-200 hover:border-slate-300'}`}>
-            <p className={`text-2xl font-bold tabular-nums ${k.cls}`}>{k.value}</p>
-            <p className="text-[11px] font-medium text-slate-600 mt-0.5">{k.label}</p>
-          </button>
-        ))}
+      {/* ── بطاقاتُ الأرقام: ثلثان للرقم وثلثٌ لما فاتته صيانتُه ──────────────
+          الضغطُ يرشح السياراتَ تحتها، والثلثُ يقول كم منها صيانتُها متأخّرةٌ
+          وأيُّ صيانة — ولو صفرًا كُتب خطٌّ باهتٌ ليُقرأ «لا شيءَ فائت» صريحًا. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        {KPIS.map((k) => {
+          const on = stateFilter === k.key && !!k.key;
+          const isMaintCard = k.key === 'maintOverdue' || k.key === 'maintDue';
+          return (
+            <button key={k.label} type="button" onClick={() => setStateFilter(stateFilter === k.key ? '' : k.key)}
+              className={`bg-white border rounded-xl shadow-sm transition flex overflow-hidden text-start ${on ? 'border-[#f37121] ring-1 ring-[#f37121]/40' : 'border-slate-200 hover:border-slate-300'}`}>
+              <div className="basis-2/3 p-3">
+                <p className={`text-2xl font-bold tabular-nums ${k.cls}`}>{k.value}</p>
+                <p className="text-[11px] font-medium text-slate-600 mt-0.5">{k.label}</p>
+              </div>
+              {!isMaintCard && (
+                <div className={`basis-1/3 p-2.5 border-s flex flex-col justify-center ${k.maint.n ? 'bg-red-50/70 border-red-100' : 'bg-slate-50 border-slate-100'}`}
+                  title={k.maint.all || undefined}>
+                  <p className={`text-base font-bold tabular-nums leading-none ${k.maint.n ? 'text-red-600' : 'text-slate-400'}`}>{k.maint.n}</p>
+                  <p className="text-[10px] text-slate-500 leading-tight mt-1">{ar ? 'صيانة متأخرة' : 'overdue'}</p>
+                  {k.maint.top && <p className="text-[10px] font-semibold text-red-700 leading-tight mt-0.5 truncate">{k.maint.top}</p>}
+                </div>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* الوجهات الحالية — "عدد السيارات المتّجهة إلى جدة" بنظرة واحدة */}
       {summary && summary.byDestination.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold text-slate-600 flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-[#f37121]" /> {ar ? 'الوجهات الآن:' : 'Destinations now:'}</span>
+          <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
+            <MapPin className="w-3.5 h-3.5 text-[#f37121]" /> {ar ? 'الوجهات الآن:' : 'Destinations now:'}
+          </span>
           {summary.byDestination.map((d) => (
             <button key={d.city} type="button" onClick={() => setCityFilter(cityFilter === d.city ? '' : d.city)}
               className={`px-2.5 py-1 rounded-full text-xs font-medium border ${cityFilter === d.city ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-700 border-slate-200 hover:border-[#f37121]'}`}>
               {d.city} <b className="tabular-nums">{d.n}</b>
             </button>
           ))}
+          {cityFilter && (
+            <button type="button" onClick={() => setCityFilter('')}
+              className="px-2 py-1 rounded-full text-xs font-semibold text-slate-500 hover:text-slate-800 inline-flex items-center gap-1">
+              <X className="w-3 h-3" /> {ar ? `إلغاء فلتر ${cityFilter}` : `clear ${cityFilter}`}
+            </button>
+          )}
         </div>
+      )}
+      {/* والأرقامُ فوق صارت أرقامَ هذه الوجهة وحدَها — يُقال ذلك ولا يُترَك يُخمَّن. */}
+      {cityFilter && (
+        <p className="-mt-2 text-[11px] text-[#f37121] font-semibold">
+          {ar ? `البطاقات أعلاه تعرض ${cityScoped.length} سيارة متوجهة إلى ${cityFilter}` : `The cards above cover ${cityScoped.length} trucks bound for ${cityFilter}`}
+        </p>
       )}
 
       <div className="relative w-full sm:w-72">
@@ -241,8 +304,8 @@ export default function FleetBoardPage() {
                     <p className={`mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${m.status === 'overdue' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
                       {m.status === 'overdue' ? <AlertTriangle className="w-3 h-3" /> : <Wrench className="w-3 h-3" />}
                       {m.status === 'overdue'
-                        ? (ar ? `صيانة متأخرة${m.kmToService != null ? ` ${Math.abs(m.kmToService).toLocaleString('en-US')} كم` : ''}` : `Service overdue${m.kmToService != null ? ` by ${Math.abs(m.kmToService).toLocaleString('en-US')} km` : ''}`)
-                        : (ar ? `صيانة قريبة${m.kmToService != null ? ` — باقي ${m.kmToService.toLocaleString('en-US')} كم` : ''}` : `Service due${m.kmToService != null ? ` in ${m.kmToService.toLocaleString('en-US')} km` : ''}`)}
+                        ? (ar ? `${m.nextServiceName || 'صيانة'} متأخرة${m.kmToService != null ? ` ${Math.abs(m.kmToService).toLocaleString('en-US')} كم` : ''}` : `${m.nextServiceName || 'Service'} overdue${m.kmToService != null ? ` by ${Math.abs(m.kmToService).toLocaleString('en-US')} km` : ''}`)
+                        : (ar ? `${m.nextServiceName || 'صيانة'} قريبة${m.kmToService != null ? ` — باقي ${m.kmToService.toLocaleString('en-US')} كم` : ''}` : `${m.nextServiceName || 'Service'} due${m.kmToService != null ? ` in ${m.kmToService.toLocaleString('en-US')} km` : ''}`)}
                     </p>
                   )}
                 </button>

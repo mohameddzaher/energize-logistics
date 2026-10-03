@@ -18,16 +18,22 @@ class FleetBoardScreen extends StatefulWidget {
 const _states = {
   'late': ('متأخرة عن الوصول', 'Late', T.danger),
   'arrived': ('وصلت موقع التنزيل', 'Arrived', T.success),
+  // فرّغت: أُرسل سندُها فخلت من حمولتها — تُجهَّز لما بعدها ولا تُستعجَل.
+  'unloaded': ('فرّغت', 'Unloaded', T.cyan),
   'moving': ('في الطريق', 'On the road', T.warn),
   'preparing': ('تحميل / تجهيز', 'Loading', T.info),
   'idle': ('بدون حمولة', 'Idle', T.inkFaint),
 };
+
+/// ما يُعَدُّ في الشرائح — «بدون حمولة» حالةُ بطاقةٍ لا رقمٌ يُتابَع.
+const _counted = ['late', 'moving', 'arrived', 'unloaded', 'preparing'];
 
 class _FleetBoardScreenState extends State<FleetBoardScreen> {
   Map<String, dynamic>? _data;
   bool _loading = true;
   String? _error;
   String _filter = '';
+  String _city = '';
   String _q = '';
   late final void Function() _onLive;
 
@@ -61,7 +67,12 @@ class _FleetBoardScreenState extends State<FleetBoardScreen> {
         .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
     final q = fold(_q.trim());
     final cards = List<Map<String, dynamic>>.from(_data?['cards'] ?? [])
-        .where((c) => _filter.isEmpty || c['state'] == _filter)
+        .where((c) => _city.isEmpty || ((c['trip'] as Map?)?['toCity'] ?? '') == _city)
+        .where((c) {
+          if (_filter == 'maintOverdue') return (c['maintenance'] as Map?)?['status'] == 'overdue';
+          if (_filter == 'maintDue') return (c['maintenance'] as Map?)?['status'] == 'due';
+          return _filter.isEmpty || c['state'] == _filter;
+        })
         .where((c) {
           if (q.isEmpty) return true;
           final trip = c['trip'] as Map<String, dynamic>?;
@@ -80,11 +91,31 @@ class _FleetBoardScreenState extends State<FleetBoardScreen> {
       groups.putIfAbsent(k, () => []).add(c);
     }
 
-    final all = List<Map<String, dynamic>>.from(_data?['cards'] ?? []);
+    // ── والأرقامُ تُقاس على الوجهة المختارة ─────────────────────────────────
+    // مَن ضغط «الدمام» يريد أرقامَ الدمام لا أرقامَ الأسطول كلِّه. والحالةُ لا
+    // تدخل في العَدّ: الشريحةُ هي التي تختار الحالة، فلو قاست نفسَها بها
+    // لصفّرت أخواتِها.
+    final all = List<Map<String, dynamic>>.from(_data?['cards'] ?? [])
+        .where((c) => _city.isEmpty || ((c['trip'] as Map?)?['toCity'] ?? '') == _city)
+        .toList();
     int countOf(String s) => all.where((c) => c['state'] == s).length;
+    /// كم من حالةٍ ما صيانتُها متأخّرة، وأيُّ صيانة.
+    (int, String) maintOf(String st) {
+      final od = all.where((c) => c['state'] == st && (c['maintenance'] as Map?)?['status'] == 'overdue').toList();
+      final names = <String, int>{};
+      for (final c in od) {
+        final n = ((c['maintenance'] as Map?)?['nextServiceName'] ?? '').toString().trim();
+        final k = n.isEmpty ? tr('صيانة دوريّة', 'Scheduled service') : n;
+        names[k] = (names[k] ?? 0) + 1;
+      }
+      final top = names.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+      return (od.length, top.isEmpty ? '' : top.first.key);
+    }
+    final dests = List<Map<String, dynamic>>.from((_data?['summary'] ?? {})['byDestination'] ?? []);
+    final total = ((_data?['summary'] ?? {})['total'] ?? 0).toString();
 
     return AppScaffold(
-      title: Text(tr('لوحة الأسطول', 'Fleet Board')),
+      title: Text(_loading ? tr('لوحة الأسطول', 'Fleet Board') : '${tr('لوحة الأسطول', 'Fleet Board')} · $total'),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 60), SizedBox(height: 10), Shimmer(height: 120),
@@ -110,15 +141,18 @@ class _FleetBoardScreenState extends State<FleetBoardScreen> {
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
-                          children: _states.entries.map((e) {
+                          children: _counted.map((key) {
+                            final e = (key: key, value: _states[key]!);
                             final selected = _filter == e.key;
                             final n = countOf(e.key);
+                            final m = maintOf(e.key);
                             return Padding(
                               padding: const EdgeInsets.only(left: 6),
                               child: FilterChip(
                                 selected: selected,
                                 onSelected: (_) => setState(() => _filter = selected ? '' : e.key),
-                                label: Text('${tr(e.value.$1, e.value.$2)} ($n)'),
+                                label: Text('${tr(e.value.$1, e.value.$2)} ($n)'
+                                    '${m.$1 > 0 ? ' · ${tr('صيانة', 'svc')} ${m.$1}${m.$2.isEmpty ? '' : ' ${m.$2}'}' : ''}'),
                                 labelStyle: TextStyle(
                                   fontSize: 12, fontWeight: FontWeight.w700,
                                   color: selected ? Colors.white : e.value.$3,
@@ -130,9 +164,66 @@ class _FleetBoardScreenState extends State<FleetBoardScreen> {
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                               ),
                             );
-                          }).toList(),
+                          }).toList()
+                            ..addAll([
+                              for (final m in const [('maintOverdue', 'overdue', 'صيانة متأخرة', 'Service overdue'), ('maintDue', 'due', 'صيانة قريبة', 'Service due')])
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 6),
+                                  child: FilterChip(
+                                    selected: _filter == m.$1,
+                                    onSelected: (_) => setState(() => _filter = _filter == m.$1 ? '' : m.$1),
+                                    label: Text('${tr(m.$3, m.$4)} (${all.where((c) => (c['maintenance'] as Map?)?['status'] == m.$2).length})'),
+                                    labelStyle: TextStyle(
+                                      fontSize: 12, fontWeight: FontWeight.w700,
+                                      color: _filter == m.$1 ? Colors.white : (m.$2 == 'overdue' ? T.danger : T.warn),
+                                    ),
+                                    selectedColor: m.$2 == 'overdue' ? T.danger : T.warn,
+                                    backgroundColor: (m.$2 == 'overdue' ? T.danger : T.warn).withValues(alpha: 0.1),
+                                    checkmarkColor: Colors.white,
+                                    side: BorderSide.none,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  ),
+                                ),
+                            ]),
                         ),
                       ),
+                      // ── الوجهاتُ الآن: شريحةٌ تحكم الأرقام فوقها ──────────
+                      if (dests.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(children: [
+                            const Icon(Icons.place_outlined, size: 16, color: T.orange),
+                            const SizedBox(width: 4),
+                            for (final d in dests)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 6),
+                                child: FilterChip(
+                                  selected: _city == d['city'],
+                                  onSelected: (_) => setState(() => _city = _city == d['city'] ? '' : (d['city'] ?? '').toString()),
+                                  label: Text('${d['city']} ${d['n']}'),
+                                  labelStyle: TextStyle(
+                                    fontSize: 12, fontWeight: FontWeight.w700,
+                                    color: _city == d['city'] ? Colors.white : T.navy,
+                                  ),
+                                  selectedColor: T.orange,
+                                  backgroundColor: T.navy.withValues(alpha: 0.08),
+                                  checkmarkColor: Colors.white,
+                                  side: BorderSide.none,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                ),
+                              ),
+                          ]),
+                        ),
+                        if (_city.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              tr('الأرقام أعلاه لـ${all.length} سيارة متوجهة إلى $_city', 'The counts above cover ${all.length} trucks bound for $_city'),
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: T.orange),
+                            ),
+                          ),
+                      ],
                       const SizedBox(height: 12),
                       if (cards.isEmpty)
                         EmptyState(icon: Icons.local_shipping_outlined, title: tr('لا توجد سيارات مطابقة', 'No matching vehicles')),
@@ -172,7 +263,8 @@ class _VehicleCard extends StatelessWidget {
     final trip = card['trip'] as Map<String, dynamic>?;
     final maint = card['maintenance'] as Map<String, dynamic>?;
     final drivers = List<Map<String, dynamic>>.from(card['drivers'] ?? []);
-    final maintDue = maint != null && (maint['status'] == 'overdue' || maint['status'] == 'due_soon');
+    // الخادمُ يقول `due` لا `due_soon` — وكانت الشارةُ لا تظهر للقريبة أصلًا.
+    final maintDue = maint != null && (maint['status'] == 'overdue' || maint['status'] == 'due');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -214,7 +306,8 @@ class _VehicleCard extends StatelessWidget {
                 Chip2(drivers.map((d) => d['name']).join(' · '), T.inkSoft, icon: Icons.person_outline),
               if (maintDue)
                 Chip2(
-                  maint['status'] == 'overdue' ? tr('صيانة متأخرة', 'Maintenance overdue') : tr('صيانة قريبة', 'Maintenance due'),
+                  '${((maint['nextServiceName'] ?? '').toString().trim().isEmpty ? tr('صيانة', 'Service') : maint['nextServiceName'])} '
+                      '${maint['status'] == 'overdue' ? tr('متأخرة', 'overdue') : tr('قريبة', 'due')}',
                   maint['status'] == 'overdue' ? T.danger : T.warn,
                   icon: Icons.build_outlined,
                 ),

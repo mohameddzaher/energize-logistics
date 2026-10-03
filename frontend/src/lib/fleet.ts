@@ -223,6 +223,8 @@ export const FLEET_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operati
 export const BOARD_STATES: Record<string, { ar: string; en: string; card: string; chip: string; dot: string }> = {
   late: { ar: 'متأخرة عن الوصول', en: 'Late', card: 'border-red-300 bg-red-50', chip: 'bg-red-100 text-red-700', dot: 'bg-red-500' },
   arrived: { ar: 'وصلت موقع التنزيل', en: 'Arrived', card: 'border-emerald-300 bg-emerald-50', chip: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
+  // فرّغت: أُرسل سندُها فخلت من حمولتها — تُجهَّز لما بعدها، ولا تُستعجَل.
+  unloaded: { ar: 'فرّغت', en: 'Unloaded', card: 'border-cyan-300 bg-cyan-50', chip: 'bg-cyan-100 text-cyan-700', dot: 'bg-cyan-500' },
   moving: { ar: 'في الطريق', en: 'On the road', card: 'border-amber-300 bg-amber-50', chip: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' },
   preparing: { ar: 'تحميل / تجهيز', en: 'Loading', card: 'border-blue-200 bg-blue-50', chip: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500' },
   idle: { ar: 'بدون حمولة', en: 'Idle', card: 'border-slate-200 bg-white', chip: 'bg-slate-100 text-slate-600', dot: 'bg-slate-400' },
@@ -264,6 +266,10 @@ export interface FleetArrivals {
   /** حمولاتٌ سائرة بلا وصولٍ متوقَّع مُسجَّل — لا تظهر في أيّ نافذةٍ زمنية. */
   noEta: FleetShipment[];
   idle: FleetIdleVehicle[];
+  /** السياراتُ المشغولةُ بأسمائها وحمولةِ كلٍّ — لتُفتَح بطاقةُ «مشغولة». */
+  busyList: (FleetIdleVehicle & {
+    trip: { _id: string; waybillNumber: number; customerName?: string; fromCity?: string; toCity?: string; status: string; expectedArrival?: string | null; driverName?: string } | null;
+  })[];
   byCity: { city: string; n: number }[];
   summary: { arriving: number; noEta: number; idle: number; vehicles: number; busy: number };
 }

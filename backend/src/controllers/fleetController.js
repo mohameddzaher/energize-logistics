@@ -361,7 +361,15 @@ exports.listShipments = async (req, res) => {
       base.push({ $or: or });
     }
     const narrow = [];
-    if (status) narrow.push({ status });
+    // ── وحالةٌ واحدةٌ أو عدّة ────────────────────────────────────────────────
+    // بطاقاتُ أعلى الشاشة تجمع حالاتٍ («قيد التنفيذ» ثلاثُ حالات، و«وصلت /
+    // مكتملة» أربع). وكان الفلترُ يقبل واحدةً فقط، فلم تكن البطاقةُ تُفتَح على
+    // صفوفها أصلًا — تُقرأ ولا تؤدّي إلى شيء.
+    if (status) {
+      const keys = String(status).split(',').map((x) => x.trim()).filter(Boolean);
+      if (keys.length === 1) narrow.push({ status: keys[0] });
+      else if (keys.length) narrow.push({ status: { $in: keys } });
+    }
     if (toCity) narrow.push({ toCity });
     const all = [...base, ...narrow];
     const filter = all.length ? { $and: all } : {};
@@ -451,6 +459,19 @@ exports.createShipment = async (req, res) => {
 
     const moveNotes = await resolveAssignments(req, data);
 
+    // ── ولا تُحمَّل شاحنةٌ فات موعدُ صيانتها بلا إذن ──────────────────────────
+    // الشارةُ الحمراءُ على بطاقتها كانت تُقرأ ولا تمنع: تُحمَّل وتسير ألفًا
+    // وخمسَمئةِ كيلومترٍ أخرى. والمنعُ وحدَه لا يكفي — فالطلبُ يُرفَع إلى مدير
+    // الصيانة في «طلبات الأسطول» ويُوافَق أو يُرفَض بالاسم.
+    // راجع controllers/fleetRequestController.
+    const { maintenanceGate, consumeApproval } = require('./fleetRequestController');
+    let override = null;
+    if (data.vehicle) {
+      const gate = await maintenanceGate(data.vehicle);
+      if (gate && gate.block) return res.status(409).json(gate.block);
+      if (gate && gate.approval) override = gate.approval;
+    }
+
     // المشرف: يأتي من السيارة المعيَّنة (resolveAssignments أعلاه)؛ وإن لم يكن
     // للسيارة مشرف بعد، يُختم بمنشئ الحمولة.
     if (!data.supervisor) {
@@ -461,6 +482,13 @@ exports.createShipment = async (req, res) => {
 
     const shipment = await FleetShipment.create(data);
     await logEvent(req, shipment._id, 'created', { waybillNumber: shipment.waybillNumber });
+    // الموافقةُ لحمولةٍ واحدة: تُستهلَك هنا، والتاليةُ تُطلَب من جديد.
+    if (override) {
+      await consumeApproval(override, shipment);
+      await logEvent(req, shipment._id, 'maintenance_override', {
+        text: `حُمِّلت بموافقة ${override.decidedByName || ''} على تأخّر «${override.service || 'الصيانة'}»${override.decisionNote ? ` — ${override.decisionNote}` : ''}`,
+      });
+    }
     for (const line of moveNotes) await logEvent(req, shipment._id, 'driver_change', { text: line });
 
     emit('fleet:updated', { id: String(shipment._id) });
@@ -512,6 +540,17 @@ exports.updateShipment = async (req, res) => {
       if (c) data.customerName = c.name;
     }
 
+    // ── وتبديلُ الشاحنة يمرّ بالحارس نفسِه ────────────────────────────────
+    // المنعُ عند الإنشاء وحدَه بابٌ نصفُه مفتوح: تُنشأ الحمولةُ على شاحنةٍ
+    // سليمةٍ ثمّ تُبدَّل بالمتأخّرة في تعديل.
+    let overrideUpd = null;
+    if (data.vehicle !== undefined && String(data.vehicle || '') && String(data.vehicle) !== String(shipment.vehicle || '')) {
+      const { maintenanceGate } = require('./fleetRequestController');
+      const gate = await maintenanceGate(data.vehicle);
+      if (gate && gate.block) return res.status(409).json(gate.block);
+      if (gate && gate.approval) overrideUpd = gate.approval;
+    }
+
     // Replacing a driver is a SWAP: the outgoing one steps off this truck so
     // the incoming one has a seat — otherwise the two-seat rule would refuse
     // every substitution.
@@ -542,6 +581,13 @@ exports.updateShipment = async (req, res) => {
 
     if (changed.length) await logEvent(req, shipment._id, 'updated', { fields: changed });
     for (const line of moveNotes) await logEvent(req, shipment._id, 'driver_change', { text: line });
+    if (overrideUpd) {
+      const { consumeApproval } = require('./fleetRequestController');
+      await consumeApproval(overrideUpd, shipment);
+      await logEvent(req, shipment._id, 'maintenance_override', {
+        text: `بُدِّلت إلى شاحنةٍ صيانتُها متأخّرة بموافقة ${overrideUpd.decidedByName || ''}${overrideUpd.decisionNote ? ` — ${overrideUpd.decisionNote}` : ''}`,
+      });
+    }
 
     emit('fleet:updated', { id: String(shipment._id) });
     res.json({ shipment });
@@ -1456,12 +1502,18 @@ exports.getBoard = async (req, res) => {
       // The card's automatic state:
       //   late (متأخرة عن الوصول المتوقع) > arrived (وصلت موقع التنزيل) >
       //   moving (في الطريق) > preparing (تحميل/تجهيز) > idle (بدون حمولة).
+      // ── ووصلت ليست فرّغت ──────────────────────────────────────────────
+      // كانتا حالةً واحدةً («وصلت») تضمُّ `arrived` و`bond_sent`. وهما سؤالان
+      // مختلفان على اللوحة: الواصلةُ تنتظر تفريغًا — يُسأل عنها ويُستعجَل،
+      // والمفرَّغةُ أرسلت سندَها وفرغت من الحمولة — تُجهَّز لحمولةٍ تالية. ومن
+      // جمعهما في رقمٍ واحدٍ لا يعرف أيُّهما يحتاج اتّصالًا الآن.
       let state = 'idle';
       if (trip) {
         const lateByTime = trip.expectedArrival
           && new Date(trip.expectedArrival).getTime() < now
           && !ARRIVED_FAMILY.includes(trip.status);
-        if (ARRIVED_FAMILY.includes(trip.status)) state = 'arrived';
+        if (trip.status === 'bond_sent') state = 'unloaded';
+        else if (trip.status === 'arrived') state = 'arrived';
         else if (trip.status === 'late' || lateByTime) state = 'late';
         else if (trip.status === 'on_way') state = 'moving';
         else state = 'preparing';
@@ -1494,9 +1546,13 @@ exports.getBoard = async (req, res) => {
     });
 
     const count = (st) => cards.filter((c) => c.state === st).length;
+    // ── والوجهةُ فلترٌ لا خبرٌ عابر ─────────────────────────────────────────
+    // كانت تُحسب للسائرة وحدَها، فلا تجد الواصلةَ ولا المفرَّغة. وقد صارت
+    // الوجهةُ فلترًا تُقاس عليه بطاقاتُ الأرقام فوقها («الدمام: ٩ — منها ٣ في
+    // الطريق وواحدةٌ متأخّرة»)، فتُحسب لكلّ شاحنةٍ لها حمولةٌ إلى تلك المدينة.
     const byDestination = {};
     for (const c of cards) {
-      if (c.trip && !ARRIVED_FAMILY.includes(c.trip.status) && c.trip.toCity) {
+      if (c.trip && c.trip.toCity) {
         byDestination[c.trip.toCity] = (byDestination[c.trip.toCity] || 0) + 1;
       }
     }
@@ -1507,6 +1563,7 @@ exports.getBoard = async (req, res) => {
         moving: count('moving'),
         late: count('late'),
         arrived: count('arrived'),
+        unloaded: count('unloaded'),
         preparing: count('preparing'),
         idle: count('idle'),
         maintOverdue: cards.filter((c) => c.maintenance?.status === 'overdue').length,
@@ -2463,11 +2520,39 @@ exports.getArrivals = async (req, res) => {
       lastTrip: lastByVehicle.get(String(v._id)) || null,
     }));
 
+    // ── و«المشغولة» كانت رقمًا لا يُفتَح ───────────────────────────────────
+    // كانت تُحسب طرحًا (الكلُّ ناقصَ الفاضية) وتُعرَض رقمًا في بطاقةٍ لا تؤدّي
+    // إلى شيء: يُقرأ «٣٩ مشغولة» ولا يُعرَف أيُّها ولا على أيّ حمولة. فتُرَدُّ
+    // الأسماءُ معها: كلُّ سيارةٍ مشغولةٍ وحمولتُها الحاليّة. وتُسأل سؤالًا
+    // واحدًا ولا تُقرأ من الجدولين فوق: هما مصفّيان بالوجهة والفترة، فلو قُرئا
+    // لظهرت سيارةٌ مشغولةٌ «بلا حمولة» لأنّ حمولتَها إلى مدينةٍ أخرى.
+    const busyVehicles = allVehicles.filter((v) => busy.has(String(v._id)));
+    const busyIds = busyVehicles.map((v) => v._id);
+    const busyTrips = busyIds.length ? await FleetShipment.aggregate([
+      { $match: { vehicle: { $in: busyIds }, status: { $in: ARRIVAL_ACTIVE } } },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$vehicle',
+          t: {
+            $first: {
+              _id: '$_id', waybillNumber: '$waybillNumber', customerName: '$customerName',
+              fromCity: '$fromCity', toCity: '$toCity', status: '$status',
+              expectedArrival: '$expectedArrival', driverName: '$driverName',
+            },
+          },
+        },
+      },
+    ]) : [];
+    const tripOfVehicle = new Map(busyTrips.map((r) => [String(r._id), r.t]));
+    const busyList = busyVehicles.map((v) => ({ ...v, trip: tripOfVehicle.get(String(v._id)) || null }));
+
     const body = {
       period: { from: period.start, to: period.end, preset: period.preset },
       arriving,
       noEta,
       idle,
+      busyList,
       byCity: cityAgg.filter((r) => r._id).map((r) => ({ city: r._id, n: r.n })),
       summary: {
         arriving: arriving.length,

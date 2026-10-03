@@ -12,7 +12,7 @@ import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import {
   Truck, ArrowRight, Check, Loader2, X, UserPlus, User as UserIcon,
-  MapPin, Satellite, Users as UsersIcon, ShieldCheck, ShieldOff,
+  MapPin, Satellite, Users as UsersIcon, ShieldCheck, ShieldOff, AlertTriangle,
 } from 'lucide-react';
 import { Spinner, PageHeader, Select, SearchableSelect, PrimaryButton, SmallBadge } from '@/components/hr/HRKit';
 import SearchableManagedSelect from '@/components/system/SearchableManagedSelect';
@@ -57,6 +57,15 @@ function CreateFleetShipmentInner() {
   const [vehicleId, setVehicleId] = useState('');
   const [driverId, setDriverId] = useState('');
   const [secondDriverId, setSecondDriverId] = useState('');
+  /**
+   * ── شاحنةٌ فات موعدُ صيانتها: مانعٌ لا شارة ───────────────────────────────
+   * الخادمُ يردّ ٤٠٩ بما فات واسمِه. وهذا ما يُعرَض: ما الصيانةُ، وكم تجاوزت،
+   * وزرٌّ يرفع الطلبَ إلى مدير الصيانة في «طلبات الأسطول». ولا يُحمَّل إلّا بعد
+   * موافقةٍ — تُستهلَك بهذه الحمولة وحدَها.
+   */
+  const [maintBlock, setMaintBlock] = useState<any>(null);
+  const [askReason, setAskReason] = useState('');
+  const [asking, setAsking] = useState(false);
   const [form, setForm] = useState<Record<string, any>>({ status: 'requesting' });
 
   useEffect(() => {
@@ -206,8 +215,40 @@ function CreateFleetShipmentInner() {
         notify(ar ? `تم إنشاء الحمولة — رقم البوليصة ${d.shipment.waybillNumber}` : `Created — waybill ${d.shipment.waybillNumber}`, 'success');
       }
       router.push('/system/fleet');
-    } catch (e: any) { notify(e.message, 'error'); }
+    } catch (e: any) {
+      // ٤٠٩ هنا ليست خطأً في المدخلات: هي بابٌ يُطرَق — فتُعرَض لوحتُها لا سطرُ خطأ.
+      if (e?.status === 409 && e?.data?.needsMaintenanceApproval) {
+        setMaintBlock(e.data);
+        setAskReason('');
+      } else notify(e.message, 'error');
+    }
     setSaving(false);
+  };
+
+  /** رفعُ الطلب إلى مدير الصيانة — ومعه ما الحمولةُ المنتظرة ليُقرَأ في القرار. */
+  const askMaintenance = async () => {
+    setAsking(true);
+    try {
+      await api.post('/api/fleet/requests', {
+        vehicle: maintBlock.vehicle,
+        reason: askReason.trim(),
+        load: {
+          customerName: customers.find((c: any) => c._id === customerId)?.name || newCustomer.name || '',
+          fromCity: form.fromCity || '',
+          toCity: form.toCity || '',
+          loadDate: form.loadDate || '',
+        },
+      });
+      notify(ar ? 'أُرسل الطلب إلى مدير الصيانة — ستُشعَر بالقرار، ثمّ أعِد الحفظ.'
+                : 'Sent to the maintenance manager — you will be notified, then save again.', 'success');
+      setMaintBlock(null);
+    } catch (e: any) {
+      // له طلبٌ معلّقٌ بالفعل: ليس خطأً، بل جوابُ «أُرسِل من قبل».
+      if (e?.status === 409) notify(ar ? 'لهذه الشاحنة طلبٌ معلّقٌ بالفعل — انتظر القرار.' : 'A request is already pending for this truck.', 'info');
+      else notify(e?.message || (ar ? 'تعذّر إرسال الطلب' : 'Could not send'), 'error');
+      setMaintBlock(null);
+    }
+    setAsking(false);
   };
 
   if (!canEditFleet(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية.' : 'Not authorized.'}</div>;
@@ -523,6 +564,57 @@ function CreateFleetShipmentInner() {
           </PrimaryButton>
         </div>
       </div>
+
+      {/* ── لوحةُ المنع: ما فات، وزرٌّ يرفع الطلب ───────────────────────────────
+          لا تُحمَّل شاحنةٌ فات موعدُ صيانتها بلا إذن. والمنعُ وحدَه لا يكفي:
+          الحمولةُ قد تكون ساعتين إلى جدّة، ومديرُ الصيانة قد يقول «امشِ بها
+          وأحضِرها الخميس». فهذا هو ذلك الحوارُ مكتوبًا. */}
+      {maintBlock && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4" onClick={() => setMaintBlock(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              <span className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </span>
+              <div className="min-w-0">
+                <h3 className="font-extrabold text-slate-900">
+                  {ar ? 'صيانةٌ متأخّرة — التحميل يحتاج موافقة' : 'Service overdue — loading needs approval'}
+                </h3>
+                <p className="text-[13px] text-slate-700 mt-1">{maintBlock.message}</p>
+                <p className="text-[12px] text-slate-500 mt-1 font-mono" dir="ltr">
+                  {maintBlock.plate}
+                  {maintBlock.odometerKm != null ? ` · ${Number(maintBlock.odometerKm).toLocaleString('en-US')} km` : ''}
+                </p>
+              </div>
+            </div>
+
+            {maintBlock.pendingRequest ? (
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-[13px] text-amber-900">
+                {ar ? `لها طلبٌ معلّقٌ أرسله ${maintBlock.pendingRequest.by || '—'} — انتظر قرار مدير الصيانة.`
+                    : `A request is already pending (${maintBlock.pendingRequest.by || '—'}) — await the decision.`}
+              </div>
+            ) : (
+              <>
+                <textarea value={askReason} onChange={(e) => setAskReason(e.target.value)} rows={3}
+                  placeholder={ar ? 'لماذا هذه الشاحنة الآن؟ — «الحمولة ساعتان إلى جدة ولا بديل»' : 'Why this truck now?'}
+                  className={inputCls} />
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <button type="button" onClick={() => setMaintBlock(null)}
+                    className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'اختر شاحنةً أخرى' : 'Pick another truck'}</button>
+                  <PrimaryButton onClick={askMaintenance} disabled={asking}>
+                    {asking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    {ar ? 'اطلب موافقة مدير الصيانة' : 'Ask the maintenance manager'}
+                  </PrimaryButton>
+                </div>
+              </>
+            )}
+            <p className="text-[11px] text-slate-400">
+              {ar ? 'الموافقةُ تصلح لحمولةٍ واحدة، وتُسجَّل باسم من وافق وسببِه في «لوكيشن سوليوشن ← طلبات الأسطول».'
+                  : 'An approval is good for one load and is recorded by name under Location Solutions → Fleet requests.'}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

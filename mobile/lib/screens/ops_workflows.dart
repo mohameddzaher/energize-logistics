@@ -14,16 +14,6 @@ class OpsWorkflowsScreen extends StatefulWidget {
   State<OpsWorkflowsScreen> createState() => _OpsWorkflowsScreenState();
 }
 
-const _wfStages = {
-  'draft': ('مسودة', 'Draft', T.inkFaint),
-  'submitted_to_ops': ('للتشغيل', 'To Ops', T.warn),
-  'ops_completed': ('اكتمل التشغيل', 'Ops done', T.info),
-  'submitted_to_collections': ('للتحصيل', 'To Collections', T.violet),
-  'completed': ('مكتمل', 'Completed', T.success),
-};
-
-const _wfStageOrder = ['draft', 'submitted_to_ops', 'ops_completed', 'submitted_to_collections', 'completed'];
-
 /// حالاتُ الطلب في منصّة التشغيل — نفسُ قائمة الويب (lib/ops.ts) ونفسُ ألوان
 /// شاشة المنصّة (screens/ops_platform.dart)، فالحالةُ الواحدة تُقرأ لونًا
 /// واحدًا في الشاشتين.
@@ -56,7 +46,9 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  String _stage = '';
+  /// حالةُ الطلب المختارة — تُرسَل فلترَ عمودٍ كما ترسله الشاشةُ في الويب.
+  String _status = '';
+  Map<String, dynamic> _byStatus = const {};
   int _page = 1;
   int _pages = 1;
   late final void Function() _onLive;
@@ -84,7 +76,11 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
 
   Future<void> _load() async {
     try {
-      final params = ['page=$_page', 'limit=40', if (_stage.isNotEmpty) 'stage=$_stage', if (_q.trim().isNotEmpty) 'search=${Uri.encodeQueryComponent(_q.trim())}'];
+      final params = [
+        'page=$_page', 'limit=40',
+        if (_status.isNotEmpty) 'cf_applicationStatus=${Uri.encodeQueryComponent(_status)}',
+        if (_q.trim().isNotEmpty) 'search=${Uri.encodeQueryComponent(_q.trim())}',
+      ];
       final results = await Future.wait([
         Api.instance.get('/api/workflows?${params.join('&')}'),
         Api.instance.get('/api/workflows/stats').catchError((_) => <String, dynamic>{}),
@@ -94,36 +90,14 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
         _rows = List<Map<String, dynamic>>.from(results[0]['workflows'] ?? []);
         _pages = ((results[0]['pages'] ?? 1) as num).toInt();
         _stats = Map<String, dynamic>.from(results[1]);
+        // أعدادُ الحالات تُحسَب في الخادم على كلّ الصفوف — لا على الأربعين
+        // المعروضة، كما في الويب.
+        _byStatus = Map<String, dynamic>.from(_stats['byStatus'] ?? {});
         _loading = false;
         _error = null;
       });
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
-    }
-  }
-
-  Future<void> _advance(Map<String, dynamic> w) async {
-    final idx = _wfStageOrder.indexOf((w['stage'] ?? 'draft').toString());
-    if (idx < 0 || idx >= _wfStageOrder.length - 1) return;
-    final next = _wfStageOrder[idx + 1];
-    final nextMeta = _wfStages[next]!;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: Text(tr('نقل المرحلة', 'Advance stage')),
-        content: Text('${w['reportNumber'] ?? ''} → ${tr(nextMeta.$1, nextMeta.$2)}'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('نقل', 'Advance'))),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    try {
-      await Api.instance.put('/api/workflows/${w['_id']}/stage', {'stage': next});
-      _load();
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -223,12 +197,23 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                   if (_stats.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-                      child: Row(children: [
-                        Expanded(child: _statCard(tr('الإجمالي', 'Total'), '${_stats['total'] ?? 0}', T.navy)),
-                        const SizedBox(width: 8),
-                        Expanded(child: _statCard(tr('فواتير معلّقة', 'Pending inv.'), '${_stats['pendingInvoices'] ?? 0}', T.warn)),
-                        const SizedBox(width: 8),
-                        Expanded(child: _statCard(tr('قيمة الشراء', 'Purchase'), _money(_stats['sumPurchaseValue']), T.violet)),
+                      // ── أربعُ بطاقاتٍ كما في الويب ────────────────────────
+                      // والرابعةُ تناقضٌ يُقرأ: السندُ «وصل» في حالة الطلب ولا
+                      // تاريخَ لسداده في الكشف — فإمّا تاريخٌ ناقصٌ يُكتب أو
+                      // حالةٌ تُصحَّح. وهي رقمٌ لا يُستخرَج من البطاقتين
+                      // منفصلتين.
+                      child: Column(children: [
+                        Row(children: [
+                          Expanded(child: _statCard(tr('الإجمالي', 'Total'), '${_stats['total'] ?? 0}', T.navy)),
+                          const SizedBox(width: 8),
+                          Expanded(child: _statCard(tr('سندات لم تصل', 'Pending bonds'), '${_stats['pendingInvoices'] ?? 0}', T.warn)),
+                        ]),
+                        const SizedBox(height: 8),
+                        Row(children: [
+                          Expanded(child: _statCard(tr('سند لم يصل وحالته «استُلم»', 'Pending, status received'), '${_stats['pendingBondReceived'] ?? 0}', T.danger)),
+                          const SizedBox(width: 8),
+                          Expanded(child: _statCard(tr('قيمة الشراء', 'Purchase'), _money(_stats['sumPurchaseValue']), T.violet)),
+                        ]),
                       ]),
                     ),
                   Padding(
@@ -244,15 +229,21 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                     padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
+                      // ── والشرائحُ حالةُ الطلب لا المرحلة ────────────────────
+                      // كانت خمسَ شرائحِ مراحلَ أربعٌ منها فارغةٌ دائمًا (كلُّ
+                      // الكشوف «مسودة»). والسؤالُ الذي يُسأل كلَّ صباح هو حالةُ
+                      // الطلب: كم في الطريق، وكم وصلت ولم يصل سندُها — ومعها
+                      // عددُها من الخادم كما في بطاقات الويب.
                       child: Row(
-                        children: _wfStages.entries.map((e) {
-                          final selected = _stage == e.key;
+                        children: _appStatuses.entries.map((e) {
+                          final selected = _status == e.key;
+                          final n = (_byStatus[e.key] ?? 0) as num;
                           return Padding(
                             padding: const EdgeInsets.only(left: 6),
                             child: FilterChip(
                               selected: selected,
-                              onSelected: (_) { setState(() { _stage = selected ? '' : e.key; _page = 1; _loading = true; }); _load(); },
-                              label: Text(tr(e.value.$1, e.value.$2)),
+                              onSelected: (_) { setState(() { _status = selected ? '' : e.key; _page = 1; _loading = true; }); _load(); },
+                              label: Text('${tr(e.value.$1, e.value.$2)}${n > 0 ? ' ($n)' : ''}'),
                               labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: selected ? Colors.white : e.value.$3),
                               selectedColor: e.value.$3,
                               backgroundColor: e.value.$3.withValues(alpha: 0.1),
@@ -276,19 +267,36 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (c, i) {
                                 final w = _rows[i];
-                                final st = _wfStages[w['stage']] ?? ('—', '—', T.inkFaint);
+                                // ── و«المرحلة» لم تبقَ تقول شيئًا ──────────────
+                                // سبعةٌ وثلاثون ألفًا وواحدٌ وأربعون كشفًا في
+                                // «مسودة» وواحدٌ في غيرها: المراحلُ صُمّمت حين
+                                // كانت الكشوفُ تُنشأ عندنا وتتنقّل بين أقسامنا،
+                                // وهي تصل الآن من المنصّة وقد جرت هناك. فسقطت
+                                // الشارةُ وزرُّ «نقل المرحلة» معها، كما سقط
+                                // عمودُها في الويب. والحالةُ الحقيقيّةُ هي
+                                // «حالة الطلب» — وهي تُضغَط فتُغيَّر.
                                 final appSt = _appStatuses[w['applicationStatus']] ?? ('—', '—', T.inkFaint);
-                                final canAdvance = _wfStageOrder.indexOf((w['stage'] ?? 'draft').toString()) < _wfStageOrder.length - 1;
                                 return FadeSlideIn(
                                   delayMs: (i * 12).clamp(0, 120),
                                   child: Pressable(
                                     onTap: () => _detail(w),
                                     child: AppCard(
-                                      topAccent: st.$3,
+                                      topAccent: appSt.$3,
                                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                         Row(children: [
                                           Expanded(child: Text((w['reportNumber'] ?? '—').toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
-                                          Chip2(tr(st.$1, st.$2), st.$3),
+                                          // ومسؤولُ البيانات يُقرأ في الصفّ: من
+                                          // كتب تاريخَ السداد، أو من سجّل الشراء
+                                          // في المحفظة، أو «منقول من المنصّة».
+                                          if ((w['dataOwnerShown'] ?? '').toString().isNotEmpty)
+                                            Text(
+                                              w['dataOwnerShown'].toString(),
+                                              style: TextStyle(
+                                                fontSize: 10.5,
+                                                fontWeight: FontWeight.w600,
+                                                color: w['dataOwnerFrom'] == 'import' ? T.inkFaint : T.violet,
+                                              ),
+                                            ),
                                         ]),
                                         const SizedBox(height: 4),
                                         Text('${w['fromLocation'] ?? '—'} ← ${w['toLocation'] ?? '—'}${(w['carOwner'] ?? '').toString().isNotEmpty ? ' · ${w['carOwner']}' : ''}',
@@ -308,13 +316,6 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                                               ),
                                             ),
                                           ],
-                                          const Spacer(),
-                                          if (canAdvance)
-                                            TextButton.icon(
-                                              onPressed: () => _advance(w),
-                                              icon: const Icon(Icons.arrow_forward, size: 16),
-                                              label: Text(tr('نقل المرحلة', 'Advance'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                                            ),
                                         ]),
                                       ]),
                                     ),

@@ -45,6 +45,35 @@ async function walletPaidMap(reportNumbers) {
 }
 
 /**
+ * ── ومَن سجّل الشراء في المحفظة ──────────────────────────────────────────────
+ *
+ * «مسؤول البيانات» في سير العمل كان يُقرأ من `paymentDateByName` وحدَه — أي من
+ * كتب تاريخَ السداد في شاشتنا. وذلك مكتوبٌ في مئتين وسبعةٍ وعشرين صفًّا من
+ * ثلاثين ألفًا وثلاثمئةٍ واثنين وستّين لها تاريخُ سداد: فيُقرأ تاريخٌ ولا يُعرَف
+ * مَن كتبه.
+ *
+ * وأكثرُ ما سُدِّد سُجِّل في المحفظة، وهناك اسمُ من دفع ساعتَها. فيُقرأ منه —
+ * والسؤالُ المطروح («مَن كتب هذا الصفّ؟») يجده.
+ */
+async function walletRecorderMap(reportNumbers) {
+  const nums = [...new Set((reportNumbers || []).map(clean).filter(Boolean))];
+  if (!nums.length) return new Map();
+  const WalletTransaction = require('../models/WalletTransaction');
+  const rows = await WalletTransaction.find({ type: 'purchase', purchaseDeliveryStatementNumber: { $in: nums } })
+    .populate('user', 'firstName lastName username')
+    .select('purchaseDeliveryStatementNumber user date').lean();
+  const m = new Map();
+  for (const r of rows) {
+    const k = clean(r.purchaseDeliveryStatementNumber);
+    if (!k || m.has(k)) continue;
+    const u = r.user;
+    const name = u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.username || '' : '';
+    if (name) m.set(k, name);
+  }
+  return m;
+}
+
+/**
  * يُطابق مبلغَ السداد على الكشف مع المحفظة ويكتبه إن اختلف.
  * `previousAmount` لقيدٍ حُذف أو نُقل: يُمسح مبلغُه من الكشف إن كان هو المكتوب.
  */
@@ -75,4 +104,5 @@ async function syncSheetPayment(reportNumber, { previousAmount = null } = {}) {
   return { _id: wf._id, from: current, to: next };
 }
 
-module.exports = { walletPurchaseAmount, walletPaidMap, syncSheetPayment };
+module.exports = {
+  walletRecorderMap, walletPurchaseAmount, walletPaidMap, syncSheetPayment };

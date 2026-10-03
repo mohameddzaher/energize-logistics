@@ -16,10 +16,7 @@ import ManagedSelect from '@/components/system/ManagedSelect';
 import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import {
-  ClipboardList, Plus, Search, Filter, FilterX,
-  Lock, Unlock, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, AlertCircle,
-  CheckSquare, Check, Receipt,
-} from 'lucide-react';
+  ClipboardList, Plus, Search, Filter, FilterX, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, AlertCircle, CheckSquare, Check, Receipt, AlertTriangle } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
 
 interface Workflow {
@@ -58,6 +55,14 @@ interface Workflow {
   paymentDate: string;
   /** آخرُ مَن كتب تاريخ السداد أو عدّله — يُكتب في الخادم. */
   paymentDateByName?: string;
+  /**
+   * ── مسؤولُ البيانات كما يحسبه الخادم ──────────────────────────────────────
+   * من كتب تاريخَ السداد عندنا، فمن سجّل الشراءَ في المحفظة (هو من دفع
+   * ساعتَها)، وإلّا فـ«منقول من منصّة الأوبريشن» — فلا تُقرأ خانةٌ فارغةٌ
+   * «مجهولًا» وفي الصفّ تاريخٌ وفرعٌ ومبلغ. راجع workflowController.
+   */
+  dataOwnerShown?: string;
+  dataOwnerFrom?: 'system' | 'wallet' | 'import' | '';
   paymentDateAt?: string;
   payingBranch: string;
   finalReportDestination: string;
@@ -131,7 +136,7 @@ const EXPORT_COLUMNS = [
   { header: 'المندوب', key: 'representativeName', width: 18 },
   { header: 'مراجعة العمليات', key: 'operationsReview', width: 14 },
   { header: 'تاريخ السداد', key: 'paymentDate', width: 12 },
-  { header: 'مسؤول البيانات', key: 'paymentDateByName', width: 18 },
+  { header: 'مسؤول البيانات', key: 'dataOwnerShown', width: 22 },
   { header: 'فرع السداد', key: 'payingBranch', width: 14 },
   { header: 'وجهة الكشف النهائية', key: 'finalReportDestination', width: 18 },
   { header: 'رقم المستند', key: 'documentNumber', width: 14 },
@@ -145,7 +150,6 @@ const EXPORT_COLUMNS = [
   { header: 'إجمالي الفاتورة', key: 'totalInvoice', width: 14 },
   { header: 'تاريخ الفاتورة', key: 'invoiceDate', width: 12 },
   { header: 'تاريخ التحصيل', key: 'collectionDate', width: 12 },
-  { header: 'المرحلة', key: 'stage', width: 16 },
 ];
 
 export default function OperationsWorkflowPage() {
@@ -302,9 +306,9 @@ export default function OperationsWorkflowPage() {
 
   // Aggregates over the WHOLE matching dataset (all ~27k rows, not one page).
   const [stats, setStats] = useState<{
-    total: number; pendingInvoices: number; sumPurchaseValue: number;
+    total: number; pendingInvoices: number; pendingBondReceived: number; sumPurchaseValue: number;
     byStage: Record<string, number>; byStatus: Record<string, number>; statusTotal: number;
-  }>({ total: 0, pendingInvoices: 0, sumPurchaseValue: 0, byStage: {}, byStatus: {}, statusTotal: 0 });
+  }>({ total: 0, pendingInvoices: 0, pendingBondReceived: 0, sumPurchaseValue: 0, byStage: {}, byStatus: {}, statusTotal: 0 });
 
   // كل ما يفهمه الخادم من فلترة في مكانٍ واحد: يقرؤه الجدولُ والإحصاءاتُ وقوائمُ
   // القيم والتصدير، فلا يفلتر أحدها على شرطٍ ويعرض الآخر نتيجة شرطٍ غيره.
@@ -395,6 +399,7 @@ export default function OperationsWorkflowPage() {
       setStats({
         total: data.total || 0,
         pendingInvoices: data.pendingInvoices || 0,
+        pendingBondReceived: data.pendingBondReceived || 0,
         sumPurchaseValue: data.sumPurchaseValue || 0,
         byStage: data.byStage || {},
         byStatus: data.byStatus || {},
@@ -716,7 +721,7 @@ export default function OperationsWorkflowPage() {
     ...w,
     reportDate: formatDate(w.reportDate),
     paymentDate: formatDate(w.paymentDate),
-    paymentDateByName: w.paymentDateByName || '',
+    dataOwnerShown: (w as any).dataOwnerShown || w.paymentDateByName || '',
     sendingDate: formatDate(w.sendingDate),
     branchDeliveryDate: formatDate(w.branchDeliveryDate),
     deliveryDate: formatDate(w.deliveryDate),
@@ -725,7 +730,6 @@ export default function OperationsWorkflowPage() {
     executionStatus: trStatus(w.executionStatus),
     applicationStatus: trStatus(w.applicationStatus),
     paymentMethod: trPayment(w.paymentMethod),
-    stage: stageLabels[w.stage] || w.stage,
     operationsReview: w.operationsReview ? (lang === 'ar' ? 'تمّت' : 'Done') : '',
     accountingReview: w.accountingReview ? (lang === 'ar' ? 'تمّت' : 'Done') : '',
   });
@@ -1093,9 +1097,11 @@ export default function OperationsWorkflowPage() {
             ))}
           </div>
           {dateMode === 'day' && (
-            <input type="date" value={dayKey} onChange={(e) => applyDay(e.target.value)}
-              aria-label={lang === 'ar' ? 'اختر اليوم' : 'Pick day'}
-              className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
+            /* الحقلُ المشترك: أيقونةٌ ظاهرةٌ تُضغَط، وتقويمٌ يُفتَح من أيّ موضع،
+               ونصٌّ واحدٌ «dd/mm/yyyy» عند كلّ الناس — وكان حقلًا خامًا تُقرأ
+               صيغتُه من جهاز المستخدم ولا يفتح تقويمَه إلّا بإصابة الأيقونة. */
+            <DateField value={dayKey} onChange={applyDay} ar={lang === 'ar'}
+              label={lang === 'ar' ? 'اختر اليوم' : 'Pick day'} />
           )}
           {dateMode === 'month' && (
             <MonthPicker value={monthKey} onChange={applyMonth} ar={lang === 'ar'} />
@@ -1143,6 +1149,47 @@ export default function OperationsWorkflowPage() {
           </div>
           {showPendingOnly && (
             <span className="ms-2 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/30 text-amber-700">
+              {lang === 'ar' ? 'مُفعّل' : 'ACTIVE'}
+            </span>
+          )}
+        </button>
+
+        {/* ── والرابعةُ: السندُ «وصل» ولا تاريخَ لسداده ───────────────────────
+            البطاقتان منفصلتان لا تُجيبان: ٩٨٨ بلا تاريخ سداد، وأربعةُ آلافٍ
+            حالتُها «استُلم السند» — ولا يُعرَف أيُّهما يتقاطع. وتقاطعُهما هو
+            موضعُ العمل: الحالةُ تقول إنّ السند وصل والكشفُ بلا تاريخ سداد، فإمّا
+            تاريخٌ ناقصٌ يُكتب أو حالةٌ تُصحَّح. والضغطةُ تُصفّي الشرطين معًا. */}
+        <button
+          type="button"
+          onClick={() => {
+            const on = showPendingOnly && statusSel.has('bond_received') && statusSel.size === 1;
+            setShowPendingOnly(!on);
+            toggleStatusCard(on ? '' : 'bond_received');
+            if (!on) setTimeout(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+          }}
+          title={lang === 'ar'
+            ? 'صفّي على: سندات لم تصل + حالة الطلب «استُلم السند»'
+            : 'Filter: pending bonds whose status says the bond was received'}
+          className={`flex items-center gap-3 px-5 py-3.5 rounded-xl border transition-colors text-start ${
+            showPendingOnly && statusSel.has('bond_received') && statusSel.size === 1
+              ? 'bg-rose-500/20 border-rose-500/60 ring-2 ring-rose-500/30'
+              : 'bg-rose-500/10 border-rose-500/30 hover:bg-rose-500/15 hover:border-rose-500/50'
+          }`}
+        >
+          <div className="p-2 rounded-lg bg-rose-500/20">
+            <AlertTriangle className="w-5 h-5 text-rose-700" />
+          </div>
+          <div className="flex flex-col items-start">
+            <span className="text-2xl font-bold text-rose-700">{stats.pendingBondReceived.toLocaleString()}</span>
+            <span className="text-xs text-rose-700/80">
+              {lang === 'ar' ? 'سند لم يصل وحالته «استُلم السند»' : 'Pending bond, status says received'}
+            </span>
+            <span className="text-[10px] text-rose-700/60 leading-tight">
+              {lang === 'ar' ? 'تناقض: تاريخُ السداد ناقص أو الحالة خطأ' : 'mismatch: missing payment date or wrong status'}
+            </span>
+          </div>
+          {showPendingOnly && statusSel.has('bond_received') && statusSel.size === 1 && (
+            <span className="ms-2 px-2 py-0.5 rounded text-[10px] font-medium bg-rose-500/30 text-rose-700">
               {lang === 'ar' ? 'مُفعّل' : 'ACTIVE'}
             </span>
           )}
@@ -1270,6 +1317,8 @@ export default function OperationsWorkflowPage() {
                     سجّل المشتريات في العهدة اليوميّة. يُكتب في الخادم ولا يُعدَّل
                     بيدٍ هنا (راجع paymentDateBy). */}
                 {ColHead('paymentDateByName' as any, lang === 'ar' ? 'مسؤول البيانات' : 'Data owner', 'text-purple-300')}
+                {/* الفلترُ يبقى على `paymentDateByName` — هو الحقلُ الموجودُ في
+                    القاعدة؛ والمعروضُ أوسعُ منه (المحفظةُ والمنقول). */}
                 {ColHead('payingBranch', T.thPayingBranch, 'text-purple-300')}
                 {/* ما دُفع للمورّد، وبأيّ صفةٍ يُفوتَر العميل. والنوعُ هو ما
                     يقرّر شكلَ بقيّة الصفّ: نقديٌّ لا يُفوتَر، وضريبيٌّ يُفوتَر. */}
@@ -1300,14 +1349,19 @@ export default function OperationsWorkflowPage() {
                 {ColHead('deliveryDate', T.thDeliveryDate, 'text-green-400')}
                 {canViewFinancials && ColHead('collectedAmount', T.thCollectedAmount, 'text-green-400')}
                 {canViewFinancials && ColHead('collectionDate', T.thCollectionDate, 'text-green-400')}
-                {/* Meta — stage/المرحلة is treated as financial too */}
-                {canViewFinancials && ColHead('stage', T.thStage)}
-                <th className="px-3 py-3 text-start text-xs text-slate-300 font-semibold whitespace-nowrap w-10">{T.lock}</th>
+                {/* ── عمودان حُذفا: «المرحلة» و«قفل» ──────────────────────────
+                    «المرحلة» حالةٌ يحسبها النظامُ من الصفّ نفسِه (أيَّ خاناتٍ
+                    مُلئت) — تُقرأ في سير العمل فلا تُقرّر شيئًا: مَن يعمل هنا
+                    يتابع «حالة الطلب» و«تاريخ السداد»، لا مرحلةً مشتقّة.
+                    و«قفل» أيقونةٌ تقول إن كان الصفُّ مفتوحًا عند زميلٍ الآن؛
+                    والقفلُ نفسُه لم يُلغَ — هو يمنع التحريرَ المتزامن ويُقال
+                    لمن يحاول حينها — لكنّ عمودًا كاملًا في جدولٍ بأربعين
+                    عمودًا ليُقال «لا أحدَ يحرّره» ثمنٌ لا مقابلَ له. */}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {workflows.length === 0 ? (
-                <tr><td colSpan={42} className="px-4 py-12 text-center text-slate-800 text-sm">{showPendingOnly ? (lang === 'ar' ? 'لا توجد فواتير معلقة' : 'No pending invoices') : (hasColFilters ? (lang === 'ar' ? 'لا نتائج للفلتر المحدد' : 'No rows match the filters') : T.noWorkflows)}</td></tr>
+                <tr><td colSpan={40} className="px-4 py-12 text-center text-slate-800 text-sm">{showPendingOnly ? (lang === 'ar' ? 'لا توجد فواتير معلقة' : 'No pending invoices') : (hasColFilters ? (lang === 'ar' ? 'لا نتائج للفلتر المحدد' : 'No rows match the filters') : T.noWorkflows)}</td></tr>
               ) : workflows.map((wf) => {
                 const locked = isLockedByOther(wf);
                 const transitions = getTransitions(wf);
@@ -1580,10 +1634,26 @@ export default function OperationsWorkflowPage() {
                         {operationsReviewCell()}
                         {/* Manual Moderator */}
                         {dateCell('paymentDate', 'text-purple-700')}
-                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={(e) => e.stopPropagation()}
-                          title={(wf as any).paymentDateAt ? new Date((wf as any).paymentDateAt).toLocaleString('en-GB') : undefined}>
-                          <span className="text-purple-700">{(wf as any).paymentDateByName || '-'}</span>
-                        </td>
+                        {(() => {
+                          const owner = (wf as any).dataOwnerShown || (wf as any).paymentDateByName || '';
+                          const from = (wf as any).dataOwnerFrom || '';
+                          const at = (wf as any).paymentDateAt;
+                          return (
+                            <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={(e) => e.stopPropagation()}
+                              title={[
+                                from === 'wallet' ? (lang === 'ar' ? 'سجّل الشراء في المحفظة' : 'recorded the purchase in the wallet') : '',
+                                from === 'import' ? (lang === 'ar' ? 'صفٌّ منقولٌ من المنصّة — لا أحدَ كتبه عندنا' : 'synced from the platform') : '',
+                                at ? new Date(at).toLocaleString('en-GB') : '',
+                              ].filter(Boolean).join(' · ') || undefined}>
+                              <span className={from === 'import' ? 'text-slate-500 text-xs' : 'text-purple-700'}>
+                                {owner || '-'}
+                                {from === 'wallet' && (
+                                  <span className="ms-1 text-[10px] text-slate-400">{lang === 'ar' ? '· المحفظة' : '· wallet'}</span>
+                                )}
+                              </span>
+                            </td>
+                          );
+                        })()}
                         {lookupCell('payingBranch', 'workflow_paying_branch', 'text-purple-700')}
                         {numCell('paymentAmount', 'text-purple-700')}
                         {paymentTypeCell()}
@@ -1605,17 +1675,7 @@ export default function OperationsWorkflowPage() {
                         {canViewFinancials && dateCell('collectionDate', 'text-green-700')}
                       </>);
                     })()}
-                    {/* Meta — stage/المرحلة, finance/owner roles only */}
-                    {canViewFinancials && (
-                      <td className="px-3 py-2.5 whitespace-nowrap"><span className={`px-2 py-0.5 rounded text-xs font-medium ${sc.bg} ${sc.color}`}>{stageLabels[wf.stage] || sc.label}</span></td>
-                    )}
-                    <td className="px-3 py-2.5">
-                      {wf.lockedBy ? (
-                        <div className="flex items-center gap-1" title={T.lockedByTooltip.replace('{name}', wf.lockedByName)}>
-                          <Lock className="w-3.5 h-3.5 text-red-600" />
-                        </div>
-                      ) : <Unlock className="w-3.5 h-3.5 text-slate-600" />}
-                    </td>
+
                   </tr>
                 );
               })}

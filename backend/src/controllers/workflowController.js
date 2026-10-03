@@ -640,8 +640,29 @@ exports.getWorkflows = async (req, res) => {
     ]);
 
     // الكشوفُ التي دفعتها المحفظة: خانةُ «مبلغ السداد» فيها تُعرض مقفولة.
-    const walletPaid = await require('../utils/walletPayment').walletPaidMap(workflows.map((w) => w.reportNumber));
+    const { walletPaidMap, walletRecorderMap } = require('../utils/walletPayment');
+    const nums = workflows.map((w) => w.reportNumber);
+    const [walletPaid, recorders] = await Promise.all([walletPaidMap(nums), walletRecorderMap(nums)]);
     for (const w of workflows) if (walletPaid.has(String(w.reportNumber || '').trim())) w.paidFromWallet = true;
+
+    // ── ومسؤولُ البيانات يُقرأ من ثلاثة مصادرَ بترتيب ─────────────────────────
+    // من كتب تاريخَ السداد عندنا أوّلًا، فمن سجّل الشراءَ في المحفظة (هو من دفع
+    // ساعتَها)، وإلّا فالصفُّ منقولٌ من منصّة الأوبريشن ولا شخصَ عندنا كتبه —
+    // ويُقال ذلك صريحًا بدل خانةٍ فارغةٍ تُقرأ «مجهول».
+    for (const w of workflows) {
+      const rn = String(w.reportNumber || '').trim();
+      const who = String(w.paymentDateByName || '').trim();
+      if (who) { w.dataOwnerShown = who; w.dataOwnerFrom = 'system'; continue; }
+      const rec = recorders.get(rn);
+      if (rec) { w.dataOwnerShown = rec; w.dataOwnerFrom = 'wallet'; continue; }
+      if (w.externalSource) {
+        w.dataOwnerShown = w.externalSource === 'ops_upl' ? 'منقول من منصّة الأوبريشن' : `مستورَد (${w.externalSource})`;
+        w.dataOwnerFrom = 'import';
+        continue;
+      }
+      w.dataOwnerShown = '';
+      w.dataOwnerFrom = '';
+    }
     res.json({
       workflows: stripMoneyFor(req.user.role, workflows),
       total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)),
@@ -829,9 +850,24 @@ exports.getWorkflowStats = async (req, res) => {
     // نفس الشرط الذي يفلتر به الزرّ — من تعريفٍ واحد، فلا يقول العدّاد رقمًا
     // ويفتح الزرّ غيره.
     const pendingMatch = { ...filter, $and: [...(filter.$and || []), PENDING_PAYMENT] };
-    const [total, pendingInvoices, agg, stages] = await Promise.all([
+    /**
+     * ── والرقمُ الذي يُسأل عنه بعد «سندات لم تصل» مباشرةً ────────────────────
+     *
+     * صفٌّ بلا تاريخ سداد يُعَدُّ سندًا لم يصل، وحالةُ طلبِه تقول «استُلم
+     * السند». وهذا تناقضٌ لا يُقرأ من البطاقتين منفصلتين: مجموعُ الأولى ٩٨٨
+     * ومجموعُ الحالة أربعةُ آلاف، ولا يُعرَف أيُّهما يتقاطع.
+     *
+     * وهو موضعُ العمل: السندُ وصل (قالت الحالةُ ذلك) ولم يُكتب تاريخُ سداده في
+     * الكشف — فإمّا تاريخٌ ناقصٌ يُكتب، أو حالةٌ تُصحَّح. فيُعَدُّ صريحًا.
+     */
+    const bondReceivedPending = {
+      ...filter,
+      $and: [...(filter.$and || []), PENDING_PAYMENT, { applicationStatus: 'bond_received' }],
+    };
+    const [total, pendingInvoices, pendingBondReceived, agg, stages] = await Promise.all([
       OperationsWorkflow.countDocuments(filter),
       OperationsWorkflow.countDocuments(pendingMatch),
+      OperationsWorkflow.countDocuments(bondReceivedPending),
       OperationsWorkflow.aggregate([
         { $match: filter },
         { $group: { _id: null, sumPurchaseValue: { $sum: '$purchaseValue' } } },
@@ -864,6 +900,7 @@ exports.getWorkflowStats = async (req, res) => {
     res.json({
       total,
       pendingInvoices,
+      pendingBondReceived,
       sumPurchaseValue: agg[0]?.sumPurchaseValue || 0,
       byStage: stages.reduce((acc, r) => { acc[r._id || 'draft'] = r.count; return acc; }, {}),
       byStatus,

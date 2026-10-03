@@ -208,11 +208,30 @@ export interface LTOrder {
  * بحثٌ أو فلترُ عمود. والمنطقُ هو منطقُ الخادم نفسُه (`totalsOf` في المتحكِّم)
  * كي لا يفترق الرقمُ باختلاف الجهة التي حسبته.
  */
+/**
+ * ── والقسمُ مناديبُ ومَن يخدمهم ──────────────────────────────────────────────
+ *
+ * في السجلّ مئةٌ واثنتان وسبعون نفسًا: مئةٌ وإحدى وستّون مندوبًا، وأحدَ عشرَ
+ * إداريًّا وفنيًّا ومشرفًا. والسؤالُ الذي تُسأل عنه البطاقاتُ كلُّها سؤالُ
+ * المناديب وحدَهم: مَن له مركبة، ومن كارتُ تشغيله منتهٍ، ومن له سكنٌ، وكيف
+ * يتوزّعون على المشاريع والمدن.
+ *
+ * وكان كلُّ ذلك يُقاس على المئةِ والاثنتين والسبعين. فيُقرَأ «أحدَ عشرَ بلا
+ * مركبة» وهم إداريُّو مكتبٍ لا تُعطى لهم مركبةٌ أصلًا، و«بلا كارت تشغيل» وهم
+ * لا يُشغَّلون. فأرقامُ النقص كلُّها مضخَّمةٌ بثابتٍ لا يعني شيئًا — ومن يقرأ
+ * نقصًا كاذبًا يطارده.
+ *
+ * فالإجمالُ وقسمتُه (مناديب/إداريون) على الجميع، وكلُّ ما بعدها على المناديب.
+ * ويُكتب ذلك في الشاشة صريحًا تحت البطاقات، فلا تُجمَع أرقامٌ لا تُجمَع.
+ */
 export function ltTotalsOf(rows: LTEmployee[]): LTTotals {
-  const count = (fn: (r: LTEmployee) => boolean) => rows.filter(fn).length;
+  // المندوبُ هو الأصل: `staffKind` يُشتَقّ من الوظيفة في الخادم، والافتراضُ
+  // «مندوب» — فصفٌّ قديمٌ بلا نوعٍ يُعَدُّ مندوبًا كما يعدُّه الخادم.
+  const reps = rows.filter((r) => (r.staffKind || 'rep') === 'rep');
+  const count = (fn: (r: LTEmployee) => boolean) => reps.filter(fn).length;
   const group = (fn: (r: LTEmployee) => string | undefined) => {
     const o: Record<string, number> = {};
-    for (const r of rows) { const k = fn(r) || '—'; o[k] = (o[k] || 0) + 1; }
+    for (const r of reps) { const k = fn(r) || '—'; o[k] = (o[k] || 0) + 1; }
     return o;
   };
   // «على رأس العمل» = ليس منتهيَ الخدمة ولا موقوفًا — والإجازةُ عملٌ موقوتٌ لا انتهاء.
@@ -223,13 +242,14 @@ export function ltTotalsOf(rows: LTEmployee[]): LTTotals {
     total: rows.length,
     sponsored: count((r) => hasContract(r) && !isFreelance(r)),
     freelance: count(isFreelance),
-    noDutySupervisor: count((r) => r.staffKind === 'rep' && !dutySupervisorIdOf(r)),
+    noDutySupervisor: count((r) => !dutySupervisorIdOf(r)),
     cardGap: count((r) => gap(r.operatingCard)),
     cardSoon: count((r) => soon(r.operatingCard)),
     inspectionGap: count((r) => gap(r.inspection)),
     inspectionSoon: count((r) => soon(r.inspection)),
-    reps: count((r) => r.staffKind === 'rep'),
-    admins: count((r) => r.staffKind === 'admin'),
+    // هذان على الجميع — هما قسمةُ الإجمال نفسِه.
+    reps: reps.length,
+    admins: rows.length - reps.length,
     working: count(working),
     notWorking: count((r) => !working(r)),
     onLeave: count((r) => ['إجازة', 'اجازه'].includes(String(r.workStatusShown || ''))),

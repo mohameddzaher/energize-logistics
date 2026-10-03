@@ -264,7 +264,7 @@ function GroupInner() {
           extraLabels={{
             employment: { ar: 'حالة التوظيف', en: 'Employment', values: {
               active: { ar: 'على رأس العمل', en: 'Active' },
-              inactive: { ar: 'ليس على رأس العمل', en: 'Not active' } } },
+              inactive: { ar: 'منتهي خدماته', en: 'Service ended' } } },
             outsideKingdom: { ar: 'خارج المملكة', en: 'Outside kingdom', values: { 1: { ar: 'خارج المملكة', en: 'Outside kingdom' } } },
             freelancer: { ar: 'عمل حر', en: 'Freelancer', values: { 1: { ar: 'عمل حر', en: 'Freelancer' } } },
           }}

@@ -123,13 +123,13 @@ function HrMasterInner() {
           extraLabels={{
             employment: { ar: 'حالة التوظيف', en: 'Employment', values: {
               active: { ar: 'على رأس العمل', en: 'Active' },
-              inactive: { ar: 'ليس على رأس العمل', en: 'Not active' } } },
+              inactive: { ar: 'منتهي خدماته', en: 'Service ended' } } },
             outsideKingdom: { ar: 'خارج المملكة', en: 'Outside kingdom', values: { 1: { ar: 'خارج المملكة', en: 'Outside kingdom' } } },
             freelancer: { ar: 'عمل حر', en: 'Freelancer', values: { 1: { ar: 'عمل حر', en: 'Freelancer' } } },
           }}
           extra={(
             <div className="flex items-center gap-1.5 flex-wrap">
-              {([['', 'الكل', 'All'], ['active', 'على رأس العمل', 'Active'], ['inactive', 'ليس على رأس العمل', 'Not active']] as const).map(([v, a, e]) => (
+              {([['', 'الكل', 'All'], ['active', 'على رأس العمل', 'Active'], ['inactive', 'منتهي خدماته', 'Service ended']] as const).map(([v, a, e]) => (
                 <button key={v || 'all'}
                   onClick={() => setFilters((f) => { const n = { ...f }; if (v) n.employment = v; else delete n.employment; return n; })}
                   className={`px-2.5 py-1 rounded-lg text-[11.5px] font-semibold border transition
@@ -160,7 +160,7 @@ function HrMasterInner() {
           onClick={() => open('identity')} />
         <Big label={t('على رأس العمل', 'Active')} value={d.totals.active} c="#16a34a"
           onClick={() => drill({ employment: 'active' })} />
-        <Big label={t('ليس على رأس العمل', 'Not active')} value={d.totals.notActive} c="#94a3b8"
+        <Big label={t('منتهي خدماته', 'Service ended')} value={d.totals.notActive} c="#94a3b8"
           onClick={() => drill({ employment: 'inactive' })} />
         {/* ── ويفتح الناقصَ كلَّه لا ناقصَ مجموعةٍ واحدة ────────────────────
             الرقمُ يُجمَع من المجموعات كلِّها — خمسةَ عشرَ في الجواز وخمسةٌ في

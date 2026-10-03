@@ -78,6 +78,15 @@ function LightTransportEmployeesInner() {
     return init;
   });
   const setFilter = (k: string, v: string) => setF((p) => ({ ...p, [k]: p[k] === v ? '' : v }));
+  /**
+   * ── وبطاقةُ المناديب تفلتر على المناديب معها ───────────────────────────────
+   * أرقامُ البطاقات كلِّها — خلا الإجمال وقسمتَه — محسوبةٌ على المناديب وحدَهم
+   * (راجع `ltTotalsOf`). فلو فلترت الشرطَ وحدَه لعرض الجدولُ إداريًّا لا يُعَدُّ
+   * في الرقم فوقه: رقمٌ وجدولٌ يقولان شيئين. فالشرطُ والنوعُ يُضبَطان معًا.
+   */
+  const repFilter = (k: string, v: string) => setF((p) => (
+    p[k] === v ? { ...p, [k]: '', staffKind: '' } : { ...p, [k]: v, staffKind: 'rep' }
+  ));
   const clearFilters = () => { setF({}); setQ(''); setDq(''); };
   const activeCount = Object.values(f).filter(Boolean).length + (dq ? 1 : 0);
 
@@ -246,31 +255,37 @@ function LightTransportEmployeesInner() {
       {/* ── الكاردات تُفلتِر، لا تُخبِر وحدَها ──────────────────────────────────
           «أريد أن أعرف كم على الكفالة، ثمّ مَن هم» — فكلُّ رقمٍ هنا يُضغَط
           فيُفلتَر الجدولُ عليه، وتُعاد الأعدادُ محسوبةً على ما بقي. */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+      {/* ── الإجمالُ وقسمتُه: الصفُّ الوحيدُ عن القسم كلِّه ───────────────────── */}
+      <div className="grid grid-cols-3 gap-2.5">
         <Stat label={t('الإجمالي', 'Total')} value={totals.total} onClick={clearFilters} on={!activeCount} />
         <Stat label={t('مناديب', 'Reps')} value={totals.reps} accent="text-indigo-600"
           onClick={() => setFilter('staffKind', 'rep')} on={f.staffKind === 'rep'} />
-        <Stat label={t('إداريون', 'Admin')} value={totals.admins} accent="text-teal-600"
+        <Stat label={t('إداريون وفنيون', 'Admin & technical')} value={totals.admins} accent="text-teal-600"
           onClick={() => setFilter('staffKind', 'admin')} on={f.staffKind === 'admin'} />
-        <Stat label={t('على رأس العمل', 'Working')} value={totals.working} accent="text-emerald-600"
-          onClick={() => setFilter('status', 'يعمل')} on={f.status === 'يعمل'} />
-        <Stat label={t('لهم مركبة', 'With a vehicle')} value={totals.withVehicle} accent="text-slate-900"
-          onClick={() => setFilter('hasVehicle', 'yes')} on={f.hasVehicle === 'yes'} />
-        <Stat label={t('بلا مركبة', 'No vehicle')} value={totals.withoutVehicle} accent="text-amber-600"
-          onClick={() => setFilter('hasVehicle', 'no')} on={f.hasVehicle === 'no'} />
       </div>
+      {/* والأساسُ يُكتب، لا يُخمَّن: ما بعد الإجمال وقسمتِه عن المناديب وحدَهم. */}
+      <p className="-mt-1 text-[11.5px] text-slate-500">
+        {t(`البطاقات التالية محسوبةٌ على المناديب (${totals.reps}) — لا تشمل ${totals.admins} إداريًّا وفنيًّا ومشرفًا، فليست لهم مركبةٌ ولا كارت تشغيل. وضغطُ أيٍّ منها يفلتر على المناديب أيضًا.`,
+           `The cards below are computed on reps (${totals.reps}) — excluding ${totals.admins} admin/technical staff, who have no vehicle or operating card. Pressing one also filters to reps.`)}
+      </p>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+        <Stat label={t('على رأس العمل', 'Working')} value={totals.working} accent="text-emerald-600"
+          onClick={() => repFilter('status', 'يعمل')} on={f.status === 'يعمل'} />
+        <Stat label={t('لهم مركبة', 'With a vehicle')} value={totals.withVehicle} accent="text-slate-900"
+          onClick={() => repFilter('hasVehicle', 'yes')} on={f.hasVehicle === 'yes'} />
+        <Stat label={t('بلا مركبة', 'No vehicle')} value={totals.withoutVehicle} accent="text-amber-600"
+          onClick={() => repFilter('hasVehicle', 'no')} on={f.hasVehicle === 'no'} />
         <Stat label={t('في إجازة', 'On leave')} value={totals.onLeave} accent="text-sky-600"
-          onClick={() => setFilter('status', 'إجازة')} on={f.status === 'إجازة'} />
+          onClick={() => repFilter('status', 'إجازة')} on={f.status === 'إجازة'} />
         <Stat label={t('أُنهيت خدمتهم', 'Service ended')} value={totals.terminated} accent="text-red-600"
-          onClick={() => setFilter('status', 'إنهاء خدمة')} on={f.status === 'إنهاء خدمة'} />
+          onClick={() => repFilter('status', 'إنهاء خدمة')} on={f.status === 'إنهاء خدمة'} />
         {/* ومن له ملفٌّ في الموارد البشريّة ومن يملكه القسم — فرقٌ يُسأل عنه. */}
         <Stat label={t('لهم ملفّ في الموارد البشرية', 'Have an HR file')} value={totals.hrLinked} accent="text-slate-900" />
         <Stat label={t('بلا ملفّ (القسم يملكهم)', 'Owned by the section')} value={totals.ownedHere} accent="text-violet-600" />
         <Stat label={t('لهم سكن', 'Housed')} value={totals.housed} accent="text-slate-900"
-          onClick={() => setFilter('housing', '')} />
+          onClick={() => repFilter('housing', '')} />
         <Stat label={t('بلا سكن', 'Unhoused')} value={totals.unhoused} accent="text-amber-600"
-          onClick={() => setFilter('housing', 'none')} on={f.housing === 'none'} />
+          onClick={() => repFilter('housing', 'none')} on={f.housing === 'none'} />
       </div>
 
       {/* ── نوعُ التعاقد ووثيقتا المركبة: كاردات ثابتة ────────────────────────
@@ -283,20 +298,20 @@ function LightTransportEmployeesInner() {
           هو الرجل — فعددُ من انتهت وثيقتُه يُقرأ هنا لا في قسمٍ آخر. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
         <Stat label={t('على الكفالة', 'On sponsorship')} value={totals.sponsored} accent="text-slate-900"
-          onClick={() => setFilter('contractKind', 'sponsored')} on={f.contractKind === 'sponsored'} />
+          onClick={() => repFilter('contractKind', 'sponsored')} on={f.contractKind === 'sponsored'} />
         <Stat label={t('فري لانسر', 'Freelance')} value={totals.freelance} accent="text-violet-600"
-          onClick={() => setFilter('contractKind', 'freelance')} on={f.contractKind === 'freelance'} />
+          onClick={() => repFilter('contractKind', 'freelance')} on={f.contractKind === 'freelance'} />
         <Stat label={t('كارت تشغيل منتهي/حرج', 'Operating card expired/critical')} value={totals.cardGap} accent="text-red-600"
-          onClick={() => setFilter('doc', 'card-gap')} on={f.doc === 'card-gap'} />
+          onClick={() => repFilter('doc', 'card-gap')} on={f.doc === 'card-gap'} />
         <Stat label={t('كارت تشغيل قريب', 'Operating card due soon')} value={totals.cardSoon} accent="text-amber-600"
-          onClick={() => setFilter('doc', 'card-soon')} on={f.doc === 'card-soon'} />
+          onClick={() => repFilter('doc', 'card-soon')} on={f.doc === 'card-soon'} />
         <Stat label={t('فحص منتهي/حرج', 'Inspection expired/critical')} value={totals.inspectionGap} accent="text-red-600"
-          onClick={() => setFilter('doc', 'inspection-gap')} on={f.doc === 'inspection-gap'} />
+          onClick={() => repFilter('doc', 'inspection-gap')} on={f.doc === 'inspection-gap'} />
         <Stat label={t('فحص قريب', 'Inspection due soon')} value={totals.inspectionSoon} accent="text-amber-600"
-          onClick={() => setFilter('doc', 'inspection-soon')} on={f.doc === 'inspection-soon'} />
+          onClick={() => repFilter('doc', 'inspection-soon')} on={f.doc === 'inspection-soon'} />
         {/* من لا مشرفَ تفقّدٍ له لا يظهر لأحدٍ في شاشة التفقّد — يُتابَع حتى يصفر. */}
         <Stat label={t('بلا مشرف تفقد', 'No duty supervisor')} value={totals.noDutySupervisor} accent="text-red-600"
-          onClick={() => setFilter('dutySupervisor', 'none')} on={f.dutySupervisor === 'none'} />
+          onClick={() => repFilter('dutySupervisor', 'none')} on={f.dutySupervisor === 'none'} />
       </div>
 
       {/* ── الفلاتر ───────────────────────────────────────────────────────── */}
@@ -339,7 +354,10 @@ function LightTransportEmployeesInner() {
             </optgroup>
           )}
         </select>
-        <Filter k="status" label={t('كل الحالات', 'All statuses')} list={Object.keys(totals.byStatus || {}).filter((x) => x !== '—')} />
+        {/* قائمةُ الحالات من الصفوف كلِّها لا من تجميع المناديب: التجميعُ صار
+            عنهم وحدَهم، فحالةٌ لا يحملها إلّا إداريٌّ تسقط من القائمة فلا تُفلتَر. */}
+        <Filter k="status" label={t('كل الحالات', 'All statuses')}
+          list={[...new Set(shown.map((r) => String(r.workStatusShown || '')).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'))} />
         <select value={f.housing || ''} onChange={(e) => setF((p) => ({ ...p, housing: e.target.value }))} aria-label={t('السكن', 'Housing')}
           className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800">
           <option value="">{t('كل السكن', 'All housing')}</option>

@@ -18,6 +18,24 @@ import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import SelectionBar from '@/components/ls2/SelectionBar';
+import { SearchableSelect } from '@/components/hr/HRKit';
+import { formatPlate } from '@/lib/flexMatch';
+
+/** مركبةٌ يُصرَف عليها: لوحتُها وما يُعرَف عنها. */
+export interface PlateRow {
+  plate: string;
+  /** المشروعُ الذي تعمل فيه — يُعرَض في القائمة وتحت الخانة. */
+  project?: string;
+  /** راكبُها الآن. */
+  rider?: string;
+  /** الفرع/المدينة. */
+  city?: string;
+  /** وصفٌ حرٌّ (النوعُ والماركة) لمن لا مشروعَ له. */
+  detail?: string;
+}
+
+/** مفتاحُ المطابقة: اللوحةُ تُكتب بصيغٍ مختلفةٍ في سجلّين. */
+const plateKeyOf = (v: unknown) => String(v ?? '').replace(/[^0-9A-Za-z\u0621-\u064A]/g, '').toUpperCase();
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
 import { Boxes, Plus, ArrowDownToLine, ArrowUpFromLine, Edit, Trash2, X, Save, History, Search, Undo2 } from 'lucide-react';
@@ -52,7 +70,17 @@ export type StoreScope = {
   subtitleAr: string;
   subtitleEn: string;
   /** من أين تُجلَب لوحاتُ المركبات التي يُصرَف عليها. */
-  plateSource: { url: string; key: string; of: (row: any) => string };
+  /**
+   * ── مصدرُ المركبات التي يُصرَف عليها ──────────────────────────────────────
+   * كان يردّ لوحاتٍ عاريةً تُعرَض في `datalist`. واللوحةُ وحدَها لا تكفي
+   * من يصرف: الصنفُ يُصرَف على مركبةٍ، والمركبةُ تعمل في **مشروع** — والمصروفُ
+   * يُحمَّل على ذلك المشروع. فمن يصرف يسأل «هذه المركبةُ تبع أيّ مشروع؟» ولا
+   * يجد الجوابَ إلّا بفتح شاشةٍ أخرى والعودة.
+   *
+   * فصار المصدرُ يردّ صفوفًا: اللوحةُ ومشروعُها وراكبُها وفرعُها — تُعرَض في
+   * القائمة وتحت الخانة بعد الاختيار.
+   */
+  plateSource: { url: string; rows: (data: any) => PlateRow[] };
   /** حارسا القسم: من يرى الشاشة، ومن يكتب فيها. */
   canSee: (user: any) => boolean;
   canEdit: (user: any) => boolean;
@@ -75,7 +103,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
   const [items, setItems] = useState<Item[]>([]);
   const [totals, setTotals] = useState<any>(null);
   const [cats, setCats] = useState<Cat[]>([]);
-  const [plates, setPlates] = useState<string[]>([]);
+  const [plates, setPlates] = useState<PlateRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [statusF, setStatusF] = useState('');
@@ -113,9 +141,10 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
   // لوحاتُ المركبات التي يُصرَف عليها — من سجلّ القسم نفسِه لا من سجلٍّ آخر.
   useEffect(() => {
     api.get<any>(scope.plateSource.url)
-      .then((d) => setPlates(((d[scope.plateSource.key] || []) as any[]).map(scope.plateSource.of).filter(Boolean)))
+      .then((d) => setPlates(scope.plateSource.rows(d) || []))
       .catch(() => {});
-  }, [scope]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope.plateSource.url]);
 
   const loadLog = useCallback(async () => {
     try { const d = await api.get<{ movements: Movement[] }>(`${scope.base}/movements?limit=300`); setMovements(d.movements || []); } catch { /* keep */ }
@@ -320,7 +349,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
 // الحركة الملغية بتفضل ظاهرة ومشطوبة، مش بتختفي: الرصيد اتغيّر فعلاً وقتها،
 // وإخفاء السطر معناه إن اللي بيراجع المخزن مش هيفهم الرقم جه منين.
 function MovementsLog({ movements, ar, canEdit, plates, onChanged, base }: {
-  movements: Movement[]; ar: boolean; canEdit: boolean; plates: string[]; onChanged: () => void; base: string;
+  movements: Movement[]; ar: boolean; canEdit: boolean; plates: PlateRow[]; onChanged: () => void; base: string;
 }) {
   const [undoing, setUndoing] = useState<Movement | null>(null);
 
@@ -437,7 +466,7 @@ function ReverseModal({ m, ar, onClose, onDone, base }: { m: Movement; ar: boole
 // بالنتيجة بعد الحفظ. والصنف الذي لا يكفي رصيده يُعلَّم بالأحمر، والعملية كلها
 // ترفض إن بقي واحد منها ناقصًا.
 function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base }: {
-  items: Item[]; plates: string[]; ar: boolean; kind?: 'in' | 'out';
+  items: Item[]; plates: PlateRow[]; ar: boolean; kind?: 'in' | 'out';
   onClose: () => void; onDone: () => void; base: string;
 }) {
   const { notify } = useDialog();
@@ -493,14 +522,8 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base }
         </p>
 
         <div className="px-5 space-y-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              {isIn ? t('واردة من مركبة (اختياري)', 'In from vehicle (optional)') : t('صادرة على مركبة', 'Out to vehicle')}
-            </label>
-            <input list="ls2-plates-bulk" value={plate} onChange={(e) => setPlate(e.target.value)} className={inp}
-              placeholder={t('اختر أو اكتب اللوحة…', 'pick or type plate…')} autoFocus />
-            <datalist id="ls2-plates-bulk">{plates.map((p) => <option key={p} value={p} />)}</datalist>
-          </div>
+          <PlatePicker plates={plates} value={plate} onChange={setPlate} ar={ar}
+            label={isIn ? t('واردة من مركبة (اختياري)', 'In from vehicle (optional)') : t('صادرة على مركبة', 'Out to vehicle')} />
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">{t('ملاحظة / سبب', 'Reason')}</label>
             <input value={reason} onChange={(e) => setReason(e.target.value)} className={inp} />
@@ -561,7 +584,70 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base }
   );
 }
 
-function MovementModal({ move, plates, ar, onClose, onDone, base }: { move: { item: Item; type: 'in' | 'out' }; plates: string[]; ar: boolean; onClose: () => void; onDone: () => void; base: string }) {
+
+/**
+ * ── منتقي المركبة: قائمةٌ تُبحَث، وتحتها مشروعُها ─────────────────────────────
+ *
+ * كان `<input list>` — و`datalist` في المتصفّحات ليس قائمةً منسدلة: لا يُفتَح
+ * بضغطةٍ موثوقة، ولا يُظهر إلّا اللوحةَ عاريةً، ويُقصّ بعد خمسةٍ أو ستّة في
+ * بعضها. وقائمةُ مئتي مركبةٍ بلا بحثٍ لا تُستعمَل أصلًا.
+ *
+ * فصارت `SearchableSelect`: تُبحَث باللوحة أو بالمشروع أو باسم الراكب،
+ * و`allowCustom` يبقي بابَ كتابةِ لوحةٍ ليست في السجلّ مفتوحًا (مركبةٌ أُدخلت
+ * اليومَ ولم تُسجَّل بعد) — ومن كتبها يُقال له صريحًا إنّها ليست في السجلّ.
+ *
+ * وتحت الخانة سطرٌ يقول مشروعَ المركبة المختارة وراكبَها وفرعَها: السؤالُ الذي
+ * يُسأل بعد الاختيار مباشرةً — «على حساب أيّ مشروع؟» — فيُجاب في موضعه.
+ */
+function PlatePicker({ plates, value, onChange, ar, label }: {
+  plates: PlateRow[]; value: string; onChange: (v: string) => void; ar: boolean; label: string;
+}) {
+  const t = (a: string, e: string) => (ar ? a : e);
+  // المختارةُ تُطابَق بمفتاح اللوحة: «١٢٣٤ ا ب ج» و«1234 ABC» لوحةٌ واحدة.
+  const hit = plates.find((p) => plateKeyOf(p.plate) === plateKeyOf(value)) || null;
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-slate-700 mb-1">{label}</label>
+      <SearchableSelect
+        value={value}
+        onChange={(v) => onChange(formatPlate(v) || v)}
+        allowCustom
+        searchAfter={0}
+        customHint={(x) => t(`استعمل «${x}» — لوحةٌ ليست في سجلّ القسم`, `Use “${x}” — not in the register`)}
+        placeholder={t('اختر المركبة — اكتب للبحث…', 'Pick the vehicle — type to search…')}
+        searchPlaceholder={t('اللوحة أو المشروع أو اسم الراكب…', 'Plate, project or rider…')}
+        emptyLabel={t('لا نتائج — اكتب اللوحة كما هي', 'No match — type the plate')}
+        footer={t(`${plates.length} مركبة في سجلّ القسم`, `${plates.length} vehicles on file`)}
+        options={plates.map((p) => ({
+          value: p.plate,
+          label: p.plate,
+          hint: [p.project && `${t('مشروع', 'project')}: ${p.project}`, p.rider, p.city, p.detail]
+            .filter(Boolean).join(' · '),
+        }))}
+      />
+      {/* ومشروعُها يُقال في مكانه — لا يُبحَث عنه في شاشةٍ أخرى. */}
+      {value.trim() ? (
+        hit ? (
+          <p className="mt-1.5 text-[11.5px] text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
+            {hit.project
+              ? <>{t('هذه المركبة تبع مشروع', 'This vehicle is on project')} <b className="text-[#f37121]">{hit.project}</b></>
+              : t('لا مشروعَ مسجَّلًا لهذه المركبة', 'No project recorded for this vehicle')}
+            {hit.rider ? <> · {t('الراكب', 'rider')}: {hit.rider}</> : null}
+            {hit.city ? <> · {hit.city}</> : null}
+            {hit.detail ? <> · {hit.detail}</> : null}
+          </p>
+        ) : (
+          <p className="mt-1.5 text-[11.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+            {t('هذه اللوحة ليست في سجلّ مركبات القسم — ستُسجَّل الحركةُ عليها كما كُتبت.',
+               'This plate is not in the section register — the movement will be recorded as typed.')}
+          </p>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+function MovementModal({ move, plates, ar, onClose, onDone, base }: { move: { item: Item; type: 'in' | 'out' }; plates: PlateRow[]; ar: boolean; onClose: () => void; onDone: () => void; base: string }) {
   const { notify } = useDialog();
   const isIn = move.type === 'in';
   const [qty, setQty] = useState('1');
@@ -586,11 +672,8 @@ function MovementModal({ move, plates, ar, onClose, onDone, base }: { move: { it
         <p className="text-sm text-slate-500 mb-4">{move.item.name} · {ar ? 'الرصيد الحالي' : 'current'}: <b>{move.item.quantity}</b> {move.item.unit}</p>
         <div className="space-y-3">
           <div><label className="block text-xs font-semibold text-slate-600 mb-1">{ar ? 'الكمية' : 'Quantity'} *</label><input type="number" min={1} value={qty} onChange={(e) => setQty(e.target.value)} className={inp} autoFocus /></div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">{isIn ? (ar ? 'واردة من عربية (اختياري)' : 'In from vehicle (optional)') : (ar ? 'صادرة على عربية' : 'Out to vehicle')}</label>
-            <input list="ls2-plates" value={plate} onChange={(e) => setPlate(e.target.value)} className={inp} placeholder={ar ? 'اختر أو اكتب اللوحة…' : 'pick or type plate…'} />
-            <datalist id="ls2-plates">{plates.map((p) => <option key={p} value={p} />)}</datalist>
-          </div>
+          <PlatePicker plates={plates} value={plate} onChange={setPlate} ar={ar}
+            label={isIn ? (ar ? 'واردة من مركبة (اختياري)' : 'In from vehicle (optional)') : (ar ? 'صادرة على مركبة' : 'Out to vehicle')} />
           <div><label className="block text-xs font-semibold text-slate-600 mb-1">{ar ? 'ملاحظة / سبب' : 'Reason'}</label><input value={reason} onChange={(e) => setReason(e.target.value)} className={inp} /></div>
         </div>
         <button onClick={submit} disabled={busy} className="w-full mt-5 py-2.5 rounded-lg text-white text-sm font-semibold disabled:opacity-50" style={{ background: isIn ? '#059669' : '#f37121' }}>{ar ? 'تسجيل الحركة' : 'Record'}</button>

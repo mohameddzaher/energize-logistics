@@ -23,11 +23,19 @@ class Ls2StoreScreen extends StatefulWidget {
   final String base;
   final String titleAr;
   final String titleEn;
+  /// مصدرُ المركبات التي يُصرَف عليها: `heavy` أو `light`.
+  ///
+  /// ── وكان مصدرًا واحدًا للمخزنين ──────────────────────────────────────────
+  /// كانت القائمةُ تُجلَب من `/api/ls2/vehicles` دائمًا — أي شاحناتُ النقل
+  /// الثقيل — فمن يصرف قطعةَ دراجةٍ في مخزن النقل الخفيف يُعرَض له سبعٌ
+  /// وخمسون شاحنةً لا علاقةَ لها بما في يده، ولا تظهر دراجتُه أصلًا.
+  final String vehiclesKind;
   const Ls2StoreScreen({
     super.key,
     this.base = '/api/ls2/store',
     this.titleAr = 'مخزن النقل الثقيل',
     this.titleEn = 'Heavy Transport Store',
+    this.vehiclesKind = 'heavy',
   });
   @override
   State<Ls2StoreScreen> createState() => _Ls2StoreScreenState();
@@ -51,7 +59,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
   List<Map<String, dynamic>> _items = [];
   Map<String, dynamic> _totals = {};
   List<Map<String, dynamic>> _cats = [];
-  List<String> _plates = [];
+  List<Map<String, dynamic>> _plates = [];
   bool _loading = true;
   String? _error;
   String _q = '';
@@ -63,16 +71,142 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
   void initState() {
     super.initState();
     _load();
-    Api.instance.get('/api/ls2/vehicles').then((d) {
-      // النقطةُ تردّ `items` لا `vehicles` — وكانت القائمةُ تخرج فارغةً بلا خطأ.
-      if (mounted) setState(() => _plates = List<Map<String, dynamic>>.from(d['items'] ?? []).map((v) => (v['plate'] ?? '').toString()).where((p) => p.isNotEmpty).toList());
-    }).catchError((_) {});
+    _loadPlates();
     _onLive = () => _load();
     Live.instance.on('ls2:store', _onLive);
   }
 
   @override
   void dispose() { Live.instance.off('ls2:store', _onLive); super.dispose(); }
+
+  /// مفتاحُ اللوحة: السجلّان يكتبانها بصيغتين، فتُطابَق بحروفها وأرقامها.
+  String _pk(dynamic v) => (v ?? '').toString().replaceAll(RegExp(r'[^0-9A-Za-z\u0621-\u064A]'), '').toUpperCase();
+
+  /// المركباتُ التي يُصرَف عليها — ومعها ما يُعرَف عنها (المشروعُ أوّلًا).
+  Future<void> _loadPlates() async {
+    try {
+      if (widget.vehiclesKind == 'light') {
+        // سجلُّ مركبات القسم موصولًا براكبها الحاليّ — ومنه المشروعُ والفرع.
+        final d = await Api.instance.get('/api/light-transport/orders/options');
+        final riders = <String, Map<String, dynamic>>{};
+        for (final e in List<Map<String, dynamic>>.from(d['employees'] ?? [])) {
+          final k = _pk(e['vehiclePlate']);
+          if (k.isNotEmpty) riders.putIfAbsent(k, () => e);
+        }
+        final rows = <Map<String, dynamic>>[];
+        for (final v in List<Map<String, dynamic>>.from(d['vehicles'] ?? [])) {
+          final r = riders[_pk(v['plateNumber'])];
+          rows.add({
+            'plate': (v['plateNumber'] ?? '').toString(),
+            'project': (r?['projectAr'] ?? '').toString(),
+            'rider': (r?['name'] ?? v['authorizedName'] ?? '').toString(),
+            'city': (r?['cityAr'] ?? '').toString(),
+            'detail': [v['typeAr'], v['brand']].where((x) => (x ?? '').toString().isNotEmpty).join(' '),
+          });
+        }
+        // ولوحةٌ على موظّفٍ وليست في سجلّ المركبات تُضاف: الصرفُ عليها واقعٌ.
+        final have = rows.map((r) => _pk(r['plate'])).toSet();
+        for (final e in riders.entries) {
+          if (!have.contains(e.key)) {
+            rows.add({
+              'plate': (e.value['vehiclePlate'] ?? '').toString(),
+              'project': (e.value['projectAr'] ?? '').toString(),
+              'rider': (e.value['name'] ?? '').toString(),
+              'city': (e.value['cityAr'] ?? '').toString(),
+              'detail': '',
+            });
+          }
+        }
+        rows.sort((a, b) => a['plate'].toString().compareTo(b['plate'].toString()));
+        if (mounted) setState(() => _plates = rows.where((r) => r['plate'].toString().isNotEmpty).toList());
+      } else {
+        // النقطةُ تردّ `items` لا `vehicles` — وكانت القائمةُ تخرج فارغةً بلا خطأ.
+        final d = await Api.instance.get('/api/ls2/vehicles');
+        final rows = List<Map<String, dynamic>>.from(d['items'] ?? []).map((v) => {
+              'plate': (v['plate'] ?? '').toString(),
+              'project': '',
+              'rider': (v['driverName'] ?? '').toString(),
+              'city': '',
+              'detail': [v['name'], v['brand']].where((x) => (x ?? '').toString().isNotEmpty).join(' '),
+            }).where((r) => r['plate'].toString().isNotEmpty).toList();
+        if (mounted) setState(() => _plates = rows);
+      }
+    } catch (_) { /* القائمةُ تبقى فارغةً وتُكتَب اللوحةُ يدًا */ }
+  }
+
+  /// ── منتقي المركبة: قائمةٌ تُبحَث، ومعها مشروعُها ───────────────────────────
+  /// كان `Autocomplete` يُطابق النصَّ حرفيًّا على اللوحة وحدَها: لا يُبحَث
+  /// بمشروعٍ ولا باسم راكب، ولا يُعرَض شيءٌ غيرُ اللوحة — ومن يصرف يسأل «هذه
+  /// تبع أيّ مشروع؟».
+  Future<Map<String, dynamic>?> _pickPlate() {
+    return showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) {
+        String q = '';
+        String fold(String x) => x
+            .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه')
+            .replaceAll(' ', '').toLowerCase();
+        return StatefulBuilder(builder: (c, setS) {
+          final fq = fold(q.trim());
+          final list = _plates.where((r) => fq.isEmpty
+              || fold('${r['plate']} ${r['project']} ${r['rider']} ${r['city']} ${r['detail']}').contains(fq)).toList();
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(c).viewInsets.bottom),
+              child: SizedBox(
+                height: MediaQuery.of(c).size.height * 0.7,
+                child: Column(children: [
+                  Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: TextField(
+                      autofocus: true,
+                      onChanged: (v) => setS(() => q = v),
+                      decoration: InputDecoration(
+                        hintText: tr('اللوحة أو المشروع أو اسم الراكب…', 'Plate, project or rider…'),
+                        prefixIcon: const Icon(Icons.search),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Text(tr('${list.length} من ${_plates.length} مركبة', '${list.length} of ${_plates.length}'),
+                          style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                    ),
+                  ),
+                  const Divider(height: 14),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: list.length,
+                      itemBuilder: (c, i) {
+                        final r = list[i];
+                        final sub = [
+                          if ((r['project'] ?? '').toString().isNotEmpty) '${tr('مشروع', 'project')}: ${r['project']}',
+                          if ((r['rider'] ?? '').toString().isNotEmpty) r['rider'],
+                          if ((r['city'] ?? '').toString().isNotEmpty) r['city'],
+                          if ((r['detail'] ?? '').toString().isNotEmpty) r['detail'],
+                        ].join(' · ');
+                        return ListTile(
+                          dense: true,
+                          title: Text(r['plate'].toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                          subtitle: sub.isEmpty ? null : Text(sub, style: const TextStyle(fontSize: 11.5)),
+                          onTap: () => Navigator.pop(c, r),
+                        );
+                      },
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+          );
+        });
+      },
+    );
+  }
 
   Future<void> _load() async {
     try {
@@ -236,15 +370,58 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
           const SizedBox(height: 14),
           TextField(controller: qtyC, keyboardType: TextInputType.number, autofocus: true, decoration: InputDecoration(labelText: tr('الكمية', 'Quantity'))),
           const SizedBox(height: 10),
-          Autocomplete<String>(
-            optionsBuilder: (v) => v.text.isEmpty ? _plates : _plates.where((p) => p.contains(v.text)),
-            onSelected: (s) => plateC.text = s,
-            fieldViewBuilder: (ctx, tc, fn, onSubmit) {
-              tc.text = plateC.text;
-              return TextField(controller: tc, focusNode: fn, onChanged: (v) => plateC.text = v,
-                decoration: InputDecoration(labelText: isIn ? tr('واردة من عربية (اختياري)', 'In from vehicle (optional)') : tr('صادرة على عربية', 'Out to vehicle'), prefixIcon: const Icon(Icons.local_shipping_outlined)));
-            },
-          ),
+          // ── المركبةُ تُنتقى من قائمةٍ تُبحَث، ومشروعُها يُقال تحتها ─────────
+          StatefulBuilder(builder: (c2, setS) {
+            final hit = _plates.firstWhere(
+              (r) => _pk(r['plate']) == _pk(plateC.text) && plateC.text.trim().isNotEmpty,
+              orElse: () => const {},
+            );
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 48)),
+                onPressed: () async {
+                  final r = await _pickPlate();
+                  if (r != null) setS(() => plateC.text = (r['plate'] ?? '').toString());
+                },
+                icon: const Icon(Icons.local_shipping_outlined, size: 18),
+                label: Text(
+                  plateC.text.trim().isEmpty
+                      ? (isIn ? tr('واردة من مركبة (اختياري)', 'In from vehicle (optional)') : tr('صادرة على مركبة', 'Out to vehicle'))
+                      : plateC.text,
+                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                ),
+              ),
+              if (plateC.text.trim().isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: hit.isEmpty ? const Color(0xFFFEF3C7) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      hit.isEmpty
+                          ? tr('هذه اللوحة ليست في سجلّ مركبات القسم — ستُسجَّل كما كُتبت.',
+                              'Not in the section register — recorded as typed.')
+                          : [
+                              (hit['project'] ?? '').toString().isNotEmpty
+                                  ? '${tr('تبع مشروع', 'project')}: ${hit['project']}'
+                                  : tr('لا مشروعَ مسجَّلًا لهذه المركبة', 'No project recorded'),
+                              if ((hit['rider'] ?? '').toString().isNotEmpty) '${tr('الراكب', 'rider')}: ${hit['rider']}',
+                              if ((hit['city'] ?? '').toString().isNotEmpty) hit['city'],
+                              if ((hit['detail'] ?? '').toString().isNotEmpty) hit['detail'],
+                            ].join(' · '),
+                      style: TextStyle(
+                        fontSize: 11.5, fontWeight: FontWeight.w700,
+                        color: hit.isEmpty ? const Color(0xFF92400E) : T.inkSoft,
+                      ),
+                    ),
+                  ),
+                ),
+            ]);
+          }),
           const SizedBox(height: 10),
           TextField(controller: reasonC, decoration: InputDecoration(labelText: tr('ملاحظة / سبب', 'Reason'))),
           const SizedBox(height: 14),

@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import MonthPicker from '@/components/system/MonthPicker';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -8,7 +9,6 @@ import api from '@/lib/api';
 import { TrendingUp, Trophy, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react';
 import { isSalesStaff, money, pct, num, thisPeriod } from '@/lib/finance';
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
-import OpsLiveSummary from '@/components/ops/OpsLiveSummary';
 import { getSalesDashboardTranslations } from '@/lib/translations';
 
 interface StageRow { stage: string; count: number; value: number; }
@@ -75,10 +75,9 @@ export default function SalesDashboardPage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<TrendingUp className="w-5 h-5" />} title={tx.title} subtitle={tx.subtitle}>
-        <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" aria-label={tx.period} />
+        <MonthPicker value={period} onChange={setPeriod} ar={lang === 'ar'} label={tx.period} />
       </PageHeader>
 
-      <OpsLiveSummary />
 
       {/* Primary KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

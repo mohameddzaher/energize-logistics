@@ -8,6 +8,7 @@
 // والصفحة طبقتان: جدولٌ بكلّ السيارات في الفترة (حمولاتُها ودخلُها وأعطالُها)،
 // وحين تُختار سيّارةٌ يُفتح سجلُّها الكامل تحته.
 import { useState, useEffect, useCallback, Suspense } from 'react';
+import MonthPicker from '@/components/system/MonthPicker';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -146,8 +147,7 @@ function VehicleLogsInner() {
               <button type="button" onClick={() => setMonth(shiftMonth(month, -1))} className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600" aria-label="prev">
                 {ar ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
               </button>
-              <input type="month" value={month} onChange={(e) => setMonth(e.target.value)}
-                className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]" />
+              <MonthPicker value={month} onChange={setMonth} ar={ar} allowEmpty={false} />
               <button type="button" onClick={() => setMonth(shiftMonth(month, 1))} className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600" aria-label="next">
                 {ar ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
               </button>

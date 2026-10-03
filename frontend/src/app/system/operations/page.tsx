@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import MonthPicker from '@/components/system/MonthPicker';
 import { useRouter } from 'next/navigation';
 import { ColumnFilter, type ColumnFilterOption } from '@/components/ColumnFilter';
 import { useAuth } from '@/context/AuthContext';
@@ -13,7 +14,6 @@ import ExportMenu from '@/components/ls2/ExportMenu';
 import DateRangeFilter, { DateField } from '@/components/system/DateRangeFilter';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import { useSocket } from '@/hooks/useSocket';
-import OpsLiveSummary from '@/components/ops/OpsLiveSummary';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import {
   ClipboardList, Plus, Search, Filter, FilterX,
@@ -212,6 +212,8 @@ export default function OperationsWorkflowPage() {
   const [error, setError] = useState('');
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  // الجدولُ يُنزَل إليه من بطاقة العدد: «أرِني هذه الصفوف» لا «كم هي».
+  const tableRef = useRef<HTMLDivElement>(null);
   const [transitioningId, setTransitioningId] = useState<string | null>(null);
   const initialLoadDone = useRef(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -299,7 +301,10 @@ export default function OperationsWorkflowPage() {
   const canEditOperationsReview = role === 'super_admin' || has('operationsReview');
 
   // Aggregates over the WHOLE matching dataset (all ~27k rows, not one page).
-  const [stats, setStats] = useState<{ total: number; pendingInvoices: number; sumPurchaseValue: number; byStage: Record<string, number> }>({ total: 0, pendingInvoices: 0, sumPurchaseValue: 0, byStage: {} });
+  const [stats, setStats] = useState<{
+    total: number; pendingInvoices: number; sumPurchaseValue: number;
+    byStage: Record<string, number>; byStatus: Record<string, number>; statusTotal: number;
+  }>({ total: 0, pendingInvoices: 0, sumPurchaseValue: 0, byStage: {}, byStatus: {}, statusTotal: 0 });
 
   // كل ما يفهمه الخادم من فلترة في مكانٍ واحد: يقرؤه الجدولُ والإحصاءاتُ وقوائمُ
   // القيم والتصدير، فلا يفلتر أحدها على شرطٍ ويعرض الآخر نتيجة شرطٍ غيره.
@@ -392,6 +397,8 @@ export default function OperationsWorkflowPage() {
         pendingInvoices: data.pendingInvoices || 0,
         sumPurchaseValue: data.sumPurchaseValue || 0,
         byStage: data.byStage || {},
+        byStatus: data.byStatus || {},
+        statusTotal: data.statusTotal || 0,
       });
     } catch { /* non-critical */ }
   }, [buildParams, statsGuard]);
@@ -775,6 +782,30 @@ export default function OperationsWorkflowPage() {
   // كل أرقام البطاقات محسوبةٌ في الخادم على مجموعة الصفوف المطابقة كاملةً — لا على
   // الخمسين صفًّا المعروضة. حسابُها من الصفوف المحمَّلة كان يجعلها تقول «٥٠» مهما
   // كان في القاعدة، أو يُلزمنا بتنزيل الجدول كلّه لتصحّ.
+  /**
+   * ── بطاقاتُ حالة الأبلكيشن ───────────────────────────────────────────────
+   *
+   * كانت في صفحة شحنات المنصّة وحدَها، وهي السؤالُ الأوّل هنا أيضًا: كم في
+   * الطريق؟ وكم وصلت ولم يصل سندُها؟ وكان مكانَها اختصارٌ إلى تلك الصفحة —
+   * بطاقةٌ تُنقَل إليها بدل أن تُجيب.
+   *
+   * والعددُ من الخادم على مجموعة الصفوف كاملةً، ويُحسَب تحت بقيّة الفلاتر عدا
+   * فلترِ الحالة نفسِه: من صفّى «في الطريق» يريد أن يرى بقيّةَ الحالات لينتقل
+   * إليها لا أصفارًا — وهذا ما يفعله إكسل.
+   */
+  const statusSel = colFilters.applicationStatus || EMPTY_SET;
+  const toggleStatusCard = (key: string) => {
+    setColFilters((prev) => {
+      const next = { ...prev };
+      const cur = next.applicationStatus;
+      if (!key) { delete next.applicationStatus; return next; }
+      if (cur && cur.has(key) && cur.size === 1) delete next.applicationStatus;
+      else next.applicationStatus = new Set([key]);
+      return next;
+    });
+    setPage(1);
+  };
+
   const pendingCount = stats.pendingInvoices;
   const filteredRowsCount = stats.total || total;
   const filteredPurchaseSum = stats.sumPurchaseValue;
@@ -824,7 +855,46 @@ export default function OperationsWorkflowPage() {
 
   return (
     <div className="space-y-4">
-      <OpsLiveSummary />
+
+      {/* ── بطاقاتُ حالة الأبلكيشن ──────────────────────────────────────────
+          مكانَ اختصارٍ كان ينقل إلى صفحةٍ أخرى بدل أن يُجيب. والأعدادُ من
+          الخادم على الصفوف كلِّها لا على الخمسين المعروضة، وتُحسَب تحت بقيّة
+          الفلاتر عدا فلترِ الحالة نفسِه. وضغطةٌ على البطاقة تصفّي الجدولَ
+          عليها، وضغطةٌ ثانيةٌ تلغيها. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+        <button type="button" onClick={() => toggleStatusCard('')}
+          className={`text-start rounded-xl p-3 border transition-all ${statusSel.size === 0
+            ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'}`}>
+          <p className="text-xl font-bold">{(stats.statusTotal || stats.total || 0).toLocaleString()}</p>
+          <p className="text-[11px] mt-0.5">{lang === 'ar' ? 'الكل' : 'All'}</p>
+        </button>
+        {SHIPMENT_STATUSES.map((st) => {
+          const on = statusSel.has(st.key);
+          const n = stats.byStatus?.[st.key] ?? 0;
+          // ── واثنتان تُميَّزان دائمًا ──────────────────────────────────────
+          // «متأخرة» و«وصلت» هما ما يُبحَث عنه كلَّ صباح: الأولى عملٌ متعثّرٌ
+          // يُسأل عنه، والثانية حمولةٌ تنتظر سندَها. وبقيّةُ الحالات تُقرأ حين
+          // تُطلب، وهاتان تُقرآن قبل أن تُطلبا — فتُلوَّنان ولو لم تُنتقيا.
+          const alwaysOn = st.key === 'late' || st.key === 'arrived';
+          const base = on
+            ? `${st.bg} ${st.text} border-current ring-2 ring-offset-1 ring-current`
+            : st.key === 'late'
+              ? 'bg-red-50 text-red-700 border-red-200 hover:border-red-400'
+              : st.key === 'arrived'
+                ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:border-indigo-400'
+                : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300';
+          return (
+            <button key={st.key} type="button" onClick={() => toggleStatusCard(st.key)}
+              className={`text-start rounded-xl p-3 border transition-all ${base}`}>
+              <p className={`text-xl font-bold ${alwaysOn && !on ? '' : ''}`}>{n.toLocaleString()}</p>
+              <p className="text-[11px] mt-0.5 flex items-center gap-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${st.key === 'late' ? 'bg-red-500' : st.dot}`} />
+                {lang === 'ar' ? st.ar : st.en}
+              </p>
+            </button>
+          );
+        })}
+      </div>
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -1028,9 +1098,7 @@ export default function OperationsWorkflowPage() {
               className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
           )}
           {dateMode === 'month' && (
-            <input type="month" value={monthKey} onChange={(e) => applyMonth(e.target.value)}
-              aria-label={lang === 'ar' ? 'اختر الشهر' : 'Pick month'}
-              className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
+            <MonthPicker value={monthKey} onChange={applyMonth} ar={lang === 'ar'} />
           )}
           {dateMode === 'range' && (
             <DateRangeFilter ar={lang === 'ar'} from={dateFrom} to={dateTo}
@@ -1062,13 +1130,13 @@ export default function OperationsWorkflowPage() {
             <AlertCircle className="w-5 h-5 text-amber-700" />
           </div>
           {/* ── الرقمُ يقول قاعدتَه ──────────────────────────────────────────
-              «فواتير لم تصل» وحدَها لا تكفي لمطابقة الرقم بشيتٍ خارجيّ: هل
+              «سندات لم تصل» وحدَها لا تكفي لمطابقة الرقم بشيتٍ خارجيّ: هل
               الملغاةُ داخلةٌ فيه؟ أربعةُ آلافٍ ومئةٌ وخمسةٌ وسبعون كشفًا ملغًى
               بلا تاريخ سداد، ولو دخلت لصار الرقمُ خمسةَ آلافٍ وستَّمئة. تُكتب
               القاعدةُ تحت الرقم فيُراجَع بلا سؤال. */}
           <div className="flex flex-col items-start">
             <span className="text-2xl font-bold text-amber-700">{pendingCount.toLocaleString()}</span>
-            <span className="text-xs text-amber-700/80">{lang === 'ar' ? 'فواتير لم تصل' : 'Pending Invoices'}</span>
+            <span className="text-xs text-amber-700/80">{lang === 'ar' ? 'سندات لم تصل' : 'Pending Bonds'}</span>
             <span className="text-[10px] text-amber-700/60 leading-tight">
               {lang === 'ar' ? 'بلا تاريخ سداد · عدا الملغاة' : 'no payment date · excludes cancelled'}
             </span>
@@ -1080,16 +1148,33 @@ export default function OperationsWorkflowPage() {
           )}
         </button>
 
-        {/* Filtered row count — live with the active filters */}
-        <div className="flex items-center gap-3 px-5 py-3.5 rounded-xl border bg-blue-500/10 border-blue-500/30">
+        {/* ── وعددُ الناتج بابٌ لا خبرٌ ──────────────────────────────────────
+            كان رقمًا يُقرأ ويُترَك. وهو جوابُ «ماذا يخرج لو صفّيتُ على هذه
+            الحالة ومعها السنداتُ التي لم تصل؟» — والسائلُ يريد أن يراها لا أن
+            يعرف عددَها. فالضغطةُ تنزل به إلى الجدول حيث هي، ويقول السطرُ تحته
+            ما الذي بُنيَ عليه الرقمُ بالاسم. */}
+        <button
+          type="button"
+          onClick={() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          title={lang === 'ar' ? 'اعرض هذه الصفوف في الجدول' : 'Show these rows in the table'}
+          className="flex items-center gap-3 px-5 py-3.5 rounded-xl border bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/15 hover:border-blue-500/50 transition-colors text-start"
+        >
           <div className="p-2 rounded-lg bg-blue-500/20">
             <ClipboardList className="w-5 h-5 text-blue-700" />
           </div>
           <div className="flex flex-col items-start">
             <span className="text-2xl font-bold text-blue-700">{filteredRowsCount.toLocaleString()}</span>
             <span className="text-xs text-blue-700/80">{lang === 'ar' ? 'عدد الصفوف (حسب الفلتر)' : 'Rows (filtered)'}</span>
+            {(statusSel.size > 0 || showPendingOnly) && (
+              <span className="text-[10px] text-blue-700/60 leading-tight">
+                {[
+                  statusSel.size ? trStatus([...statusSel][0]) : '',
+                  showPendingOnly ? (lang === 'ar' ? 'سندات لم تصل' : 'pending bonds') : '',
+                ].filter(Boolean).join(lang === 'ar' ? ' · ' : ' · ')}
+              </span>
+            )}
           </div>
-        </div>
+        </button>
 
         {/* ── مجموعُ قيمة الشراء — لمن يملك الحقلَ نفسَه ────────────────────
             كان الشرطُ `canViewFinancials`، وهو ملكيّةُ حقول **الفاتورة**. وقيمةُ
@@ -1138,6 +1223,7 @@ export default function OperationsWorkflowPage() {
             وذلك أهونُ ألفَ مرّةٍ من شاشةٍ لا تستجيب. فالشريطُ وحدَه يقول
             «جارٍ»، والجدولُ يبقى حيًّا. */}
         <ScrollX aria-busy={searching}>
+          <div ref={tableRef} className="scroll-mt-4" />
           <table className="w-full min-w-[3200px]">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">

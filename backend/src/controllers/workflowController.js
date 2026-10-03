@@ -843,11 +843,31 @@ exports.getWorkflowStats = async (req, res) => {
         { $group: { _id: '$stage', count: { $sum: 1 } } },
       ]),
     ]);
+
+    // ── وأعدادُ حالة الأبلكيشن ───────────────────────────────────────────────
+    // بطاقاتُ الحالات فوق الجدول كانت في صفحة شحنات المنصّة وحدَها، وهي السؤالُ
+    // الأوّل هنا أيضًا: كم في الطريق؟ وكم وصلت ولم يصل سندُها؟ وحسابُها في
+    // المتصفّح من الصفوف المحمَّلة يعدّ خمسين صفًّا من ستّةٍ وثلاثين ألفًا.
+    //
+    // وتُحسَب تحت الفلاتر القائمة عدا فلترَ الحالة نفسِه — كما يفعل إكسل: من
+    // صفّى «في الطريق» يريد أن يرى بقيّةَ الحالات لينتقل إليها، لا أصفارًا.
+    // و`skipField` هي الآليّةُ المكتوبةُ لذلك أصلًا في `buildWorkflowFilter`.
+    const statusFree = buildWorkflowFilter(req.query, 'applicationStatus', canSeeMoney(req.user.role));
+    const byStatusRows = await OperationsWorkflow.aggregate([
+      { $match: statusFree },
+      { $group: { _id: { $ifNull: ['$applicationStatus', ''] }, count: { $sum: 1 } } },
+    ]);
+    const byStatus = {};
+    let statusTotal = 0;
+    byStatusRows.forEach((r) => { byStatus[r._id || '(بلا حالة)'] = r.count; statusTotal += r.count; });
+
     res.json({
       total,
       pendingInvoices,
       sumPurchaseValue: agg[0]?.sumPurchaseValue || 0,
       byStage: stages.reduce((acc, r) => { acc[r._id || 'draft'] = r.count; return acc; }, {}),
+      byStatus,
+      statusTotal,
     });
   } catch (error) {
     console.error('Get workflow stats error:', error);

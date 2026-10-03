@@ -13,6 +13,7 @@
  * السجلّ، والسجلُّ لا يعرضه لأنّه ليس فيه.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import MonthPicker from '@/components/system/MonthPicker';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -283,7 +284,7 @@ export default function DutyRegisterPage() {
         )}
         {mode === 'month' && (
           <F label={t('الشهر', 'Month')}>
-            <input type="month" className={inp} value={from.slice(0, 7)} onChange={(e) => pickMonth(e.target.value)} />
+            <MonthPicker value={from.slice(0, 7)} onChange={pickMonth} ar={ar} allowEmpty={false} />
           </F>
         )}
         {mode === 'range' && (<>

@@ -6,6 +6,7 @@
 // صفحةً تُفتح. فصار للسيّارة صفحتُها: رابطٌ يُرسَل، وسهمُ رجوعٍ يعود، وفلترُ
 // فترةٍ يبقى في الرابط.
 import { useState, Suspense } from 'react';
+import MonthPicker from '@/components/system/MonthPicker';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -80,8 +81,8 @@ function Inner() {
                 className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600" aria-label="prev">
                 {ar ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
               </button>
-              <input type="month" value={month} onChange={(e) => { setMonth(e.target.value); sync({ month: e.target.value }); }}
-                className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]" />
+              <MonthPicker value={month} ar={ar} allowEmpty={false}
+                onChange={(v) => { setMonth(v); sync({ month: v }); }} />
               <button type="button" onClick={() => { const v = shiftMonth(month, 1); setMonth(v); sync({ month: v }); }}
                 className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600" aria-label="next">
                 {ar ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}

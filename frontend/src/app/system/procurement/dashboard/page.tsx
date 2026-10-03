@@ -8,7 +8,6 @@ import api from '@/lib/api';
 import { ShoppingCart, ClipboardList, FileText, Receipt, AlertTriangle, Building2, ArrowRight } from 'lucide-react';
 import { isProcStaff, money, vendorName, userName, fmtDate, PR_STATUS_STYLE, PO_STATUS_STYLE, BILL_STATUS_STYLE, PRIORITY_STYLE } from '@/lib/procurement';
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
-import OpsLiveSummary from '@/components/ops/OpsLiveSummary';
 import { getProcurementDashboardTranslations } from '@/lib/translations';
 import type { ProcDashboard } from '@/lib/procurement';
 
@@ -49,7 +48,6 @@ export default function ProcurementDashboardPage() {
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<ShoppingCart className="w-5 h-5" />} title={tx.procurement} subtitle={tx.headerSubtitle} />
 
-      <OpsLiveSummary />
 
       {/* Top KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

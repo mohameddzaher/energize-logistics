@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import MonthPicker from '@/components/system/MonthPicker';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -79,7 +80,7 @@ export default function SalesTargetsPage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Target className="w-5 h-5" />} title={tx.pageTitle}>
-        <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" aria-label={tx.period} />
+        <MonthPicker value={period} onChange={setPeriod} ar={lang === 'ar'} label={tx.period} />
         <ExportMenu fileName="sales-targets" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
         {canEdit && <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.setTarget}</PrimaryButton>}
       </PageHeader>
@@ -118,7 +119,12 @@ export default function SalesTargetsPage() {
             <option value="">{tx.wholeTeam}</option>
             {reps.map((r) => <option key={r._id} value={r._id}>{r.firstName} {r.lastName}</option>)}
           </Select></Field>
-          <Field label={tx.period}><TextInput type="month" value={form.period} onChange={(e) => setForm({ ...form, period: e.target.value })} disabled={!!editing} /></Field>
+          {/* الشهرُ قائمتان لا حقلٌ أصليّ: سفاري وفايرفوكس يرسمانه خانةَ نصّ. */}
+          <Field label={tx.period}>
+            {editing
+              ? <TextInput value={form.period} disabled onChange={() => {}} />
+              : <MonthPicker value={form.period} onChange={(v) => setForm({ ...form, period: v })} ar={lang === 'ar'} allowEmpty={false} />}
+          </Field>
           <Field label={tx.amountTarget}><TextInput type="number" value={form.amountTarget} onChange={(e) => setForm({ ...form, amountTarget: e.target.value })} dir="ltr" /></Field>
           <Field label={tx.dealsTarget}><TextInput type="number" value={form.dealsTarget} onChange={(e) => setForm({ ...form, dealsTarget: e.target.value })} dir="ltr" /></Field>
         </div>

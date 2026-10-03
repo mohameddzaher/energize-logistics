@@ -10,6 +10,7 @@
  * الصفحةُ مطالبةً واحدةً لا فرقَ فيها، فيُدفَع الشيءُ مرّتين أو لا يُدفَع.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import MonthPicker from '@/components/system/MonthPicker';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -205,7 +206,7 @@ export default function DriverExpensesPage() {
               </button>
             ))}
         </div>
-        {mode === 'month' && <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className={inp} aria-label={t('الشهر', 'Month')} />}
+        {mode === 'month' && <MonthPicker value={month} onChange={setMonth} ar={ar} allowEmpty={false} label={t('الشهر', 'Month')} />}
         {mode === 'day' && <input type="date" value={day} onChange={(e) => setDay(e.target.value)} className={inp} aria-label={t('اليوم', 'Day')} />}
         {mode === 'range' && (
           <>

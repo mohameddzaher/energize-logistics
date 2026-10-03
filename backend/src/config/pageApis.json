@@ -30,7 +30,6 @@
         "/api/customer-registry",
         "/api/customer-registry/options",
         "/api/lookups/types",
-        "/api/ops/dashboard",
         "/api/partners/account",
         "/api/workflows",
         "/api/workflows/bulk-delete",
@@ -1570,8 +1569,7 @@
     "/system/crm/dashboard": {
       "apis": [
         "/api/crm/dashboard",
-        "/api/crm/options",
-        "/api/ops/dashboard"
+        "/api/crm/options"
       ],
       "wildcard": false
     },
@@ -1652,7 +1650,6 @@
     },
     "/system/sales/dashboard": {
       "apis": [
-        "/api/ops/dashboard",
         "/api/sales/dashboard"
       ],
       "wildcard": false
@@ -1741,7 +1738,6 @@
     },
     "/system/procurement/dashboard": {
       "apis": [
-        "/api/ops/dashboard",
         "/api/procurement/dashboard"
       ],
       "wildcard": false

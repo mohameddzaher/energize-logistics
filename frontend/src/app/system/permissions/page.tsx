@@ -230,9 +230,7 @@ export default function PermissionsPage() {
 
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
-      <PageHeader icon={<ShieldCheck className="w-5 h-5" />} title={tx.pageTitle}
-        subtitle={t('القسمُ يقول ماذا يُفعَل، والصفحةُ تقول أين — والاثنان من هنا',
-                    'The section says what may be done, the page says where — both from here')}>
+      <PageHeader icon={<ShieldCheck className="w-5 h-5" />} title={tx.pageTitle}>
         {canMakeRoles && (
           <PrimaryButton onClick={() => setNewRoleOpen(true)}>
             <UserPlus className="w-4 h-4" /> {t('نوع مستخدم جديد', 'New user type')}

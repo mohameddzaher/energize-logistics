@@ -5,6 +5,7 @@
 // rendered from, so what you read here is exactly what comes out of the printer.
 // (This page replaced a stub that redirected to the dashboard.)
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
+import MonthPicker from '@/components/system/MonthPicker';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -203,9 +204,9 @@ function ReportsInner() {
             {mode === 'month' && (
               <label className="block">
                 <span className="text-[11px] text-slate-500">{tx('Month', 'الشهر')}</span>
-                <input type="month" value={range.from.slice(0, 7)}
-                  onChange={(e) => { const r = monthRange(e.target.value); if (r) setRange(r); }}
-                  className="w-full mt-1 px-2 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-800" />
+                <MonthPicker value={range.from.slice(0, 7)} ar={ar} allowEmpty={false}
+                  className="mt-1"
+                  onChange={(v) => { const r = monthRange(v); if (r) setRange(r); }} />
               </label>
             )}
             {(mode === 'range' || mode === 'preset') && (

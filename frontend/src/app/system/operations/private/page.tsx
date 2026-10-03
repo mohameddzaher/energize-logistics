@@ -17,6 +17,7 @@
  * وفوقها ما لنا وحدَنا: البيعُ الحقيقيّ والربحُ والهامش.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
+import MonthPicker from '@/components/system/MonthPicker';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -545,9 +546,7 @@ export default function OperationsPrivatePage() {
               className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
           )}
           {dateMode === 'month' && (
-            <input type="month" value={monthKey} onChange={(e) => applyMonth(e.target.value)}
-              aria-label={ar ? 'اختر الشهر' : 'Pick month'}
-              className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
+            <MonthPicker value={monthKey} onChange={applyMonth} ar={ar} />
           )}
           {dateMode === 'range' && (
             <DateRangeFilter ar={ar} from={dateFrom} to={dateTo} onFrom={setDateFrom} onTo={setDateTo} />

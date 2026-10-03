@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import MonthPicker from '@/components/system/MonthPicker';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -48,7 +49,7 @@ export default function SalesPerformancePage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<BarChart3 className="w-5 h-5" />} title={tx.title}>
-        <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" aria-label={tx.periodAria} />
+        <MonthPicker value={period} onChange={setPeriod} ar={lang === 'ar'} label={tx.periodAria} />
         <ExportMenu fileName={`sales-performance-${period}`} lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
       </PageHeader>
 

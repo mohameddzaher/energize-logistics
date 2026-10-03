@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import MonthPicker from '@/components/system/MonthPicker';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { canEditSection } from '@/lib/sections';
@@ -1027,9 +1028,9 @@ export default function WalletPage() {
           )}
 
           {mode === 'month' && (
-            <input type="month" value={monthKey} min={freeDates ? undefined : WALLET_START_DATE.slice(0, 7)} max={freeDates ? undefined : endOfBook().slice(0, 7)} onChange={(e) => setMonthKey(e.target.value)}
-              className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light]"
-              aria-label={lang === 'ar' ? 'الشهر' : 'Month'} />
+            <MonthPicker value={monthKey} onChange={setMonthKey} ar={lang === 'ar'} allowEmpty={false}
+              fromYear={freeDates ? 2023 : Number(WALLET_START_DATE.slice(0, 4))}
+              toYear={freeDates ? undefined : Number(endOfBook().slice(0, 4))} />
           )}
           <ExportMenu fileName={`Wallet_${branchNameForFile}_${shownLabel.replace(/[^0-9A-Za-z-]/g, '_')}`}
             lang={lang === 'ar' ? 'ar' : 'en'} options={exportOptions} />

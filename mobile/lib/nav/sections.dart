@@ -6,6 +6,7 @@ import '../screens/my_leaves.dart';
 import '../screens/my_requests.dart';
 import '../screens/approvals.dart';
 import '../screens/fleet_board.dart';
+import '../screens/fleet_arrivals.dart';
 import '../screens/fleet_shipments.dart';
 import '../screens/fleet_analytics.dart';
 import '../screens/fleet_settings.dart';
@@ -25,6 +26,7 @@ import '../screens/remote_attendance.dart';
 import '../screens/hr_inbox.dart';
 import '../screens/party_links.dart';
 import '../screens/ls2_alerts.dart';
+import '../screens/ls2_fleet_requests.dart';
 import '../screens/shipment_orders.dart';
 import '../screens/it_custody.dart';
 import '../screens/it_emails.dart';
@@ -201,6 +203,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: fleetDashSpec), path: '/system/fleet/dashboard'),
         AppPage('التحليلات', 'Analytics', Icons.insights_outlined, (c) => const FleetAnalyticsScreen(), path: '/system/fleet/dashboard'),
         AppPage('اللوحة الرئيسية', 'Board', Icons.grid_view_rounded, (c) => const FleetBoardScreen(), path: '/system/fleet/board'),
+        // المتوقع للوصول — بطاقاتٌ تُضغَط، كما في الويب.
+        AppPage('المتوقع للوصول', 'Expected arrivals', Icons.schedule_outlined, (c) => const FleetArrivalsScreen(), path: '/system/fleet/arrivals'),
         AppPage('الشحنات والمتابعة', 'Shipments', Icons.inventory_2_outlined, (c) => const FleetShipmentsScreen(), path: '/system/fleet/board'),
         AppPage('السائقون', 'Drivers', Icons.badge_outlined, (c) => ResourceScreen(config: fleetDriversCfg), path: '/system/fleet/drivers'),
         AppPage('تقييم السائقين', 'Driver KPIs', Icons.speed_outlined, (c) => const FleetDriverKpisScreen(), path: '/system/fleet/driver-kpis'),
@@ -306,6 +310,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('تقييم السواقين', 'Driver Performance', Icons.speed_outlined, (c) => const Ls2DriverPerformanceScreen(), path: '/system/ls2/driver-performance'),
         AppPage('الحرارة', 'Temperature', Icons.thermostat_outlined, (c) => const Ls2TemperatureScreen(), path: '/system/ls2/temperature'),
         AppPage('التنبيهات', 'Alerts', Icons.notifications_active_outlined, (c) => const Ls2AlertsScreen(), path: '/system/ls2/alerts'),
+        // طلبُ تحميلٍ على شاحنةٍ صيانتُها متأخّرة — يُقرَّر هنا بالاسم.
+        AppPage('طلبات الأسطول', 'Fleet Requests', Icons.verified_user_outlined, (c) => const Ls2FleetRequestsScreen(), path: '/system/ls2/fleet-requests'),
         AppPage('الإعدادات', 'Settings', Icons.settings_outlined, (c) => const Ls2SettingsScreen(), path: '/system/ls2/settings'),
       ],
     ),
@@ -427,6 +433,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'Shipment Orders', arTitle: 'طلبات الشحنات', enTitle: 'Shipment Orders', icon: Icons.assignment_outlined,
       roles: const [..._admins, 'operations_manager', 'operations_staff', 'moderator'],
       pages: [
+        // لوحةُ القسم أوّلًا، كما في الويب: «كيف حالُه اليوم؟» قبل الجدول.
+        AppPage('لوحة الشحنات', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: shipmentOrdersDashSpec), path: '/system/shipment-orders/dashboard'),
         AppPage('الشحنات', 'Orders', Icons.assignment_outlined, (c) => const ShipmentOrdersScreen(), path: '/system/shipment-orders'),
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: shipmentOrdersCustomersCfg), path: '/system/shipment-orders/customers'),
         AppPage('الموردون', 'Suppliers', Icons.business_outlined, (c) => ResourceScreen(config: shipmentOrdersSuppliersCfg), path: '/system/shipment-orders/fleet'),
@@ -470,6 +478,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
                   base: '/api/light-transport/store',
                   titleAr: 'مخزن النقل الخفيف',
                   titleEn: 'Light Transport Store',
+                  // مركباتُ القسم ومشاريعُها — لا شاحناتُ النقل الثقيل.
+                  vehiclesKind: 'light',
                 ),
             path: '/system/b2c/light-transport/store'),
         AppPage('عهد المشاريع', 'Custody', Icons.account_balance_wallet_outlined, (c) => const B2cWalletScreen(), path: '/system/b2c/custody'),

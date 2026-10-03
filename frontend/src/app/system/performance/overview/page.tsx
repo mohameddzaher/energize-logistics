@@ -121,8 +121,11 @@ export default function PerformanceOverviewPage() {
       </PageHeader>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <StatCard label={ar ? 'إجمالي الموظفين' : 'Headcount'} value={String(t?.headcount ?? 0)} />
-        <StatCard label={ar ? 'تم تقييمهم' : 'Evaluated'} value={String(t?.evaluated ?? 0)} />
+        {/* والعددُ يؤدّي إلى أسماءه: سجلُّ الموظفين، وشاشةُ التقييم. */}
+        <StatCard label={ar ? 'إجمالي الموظفين' : 'Headcount'} value={String(t?.headcount ?? 0)}
+          href="/system/hr/master" hint={ar ? 'سجل الموارد البشرية' : 'HR register'} />
+        <StatCard label={ar ? 'تم تقييمهم' : 'Evaluated'} value={String(t?.evaluated ?? 0)}
+          href="/system/performance" hint={ar ? 'شاشة التقييم' : 'evaluation screen'} />
         <StatCard label={ar ? 'نسبة التغطية' : 'Coverage'} value={pct(t?.coverage)} />
         <StatCard label={ar ? 'متوسط الأداء' : 'Avg performance'} value={pct(t?.avgPercentage)} />
         <StatCard label={ar ? 'إجمالي البونص (رواتب)' : 'Total bonus (salaries)'} value={String(t?.totalBonusSalaries ?? 0)} />

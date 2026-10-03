@@ -42,6 +42,8 @@ export default function CompanyEmailsPage() {
   const [status, setStatus] = useState('');
   const [type, setType] = useState('');
   const [linked, setLinked] = useState('');
+  /** «بدون كلمة مرور» فلترٌ قائمٌ بنفسِه — لا نوعُ صندوق. */
+  const [hasPassword, setHasPassword] = useState('');
   const [editing, setEditing] = useState<CompanyEmail | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -49,14 +51,14 @@ export default function CompanyEmailsPage() {
 
   const load = useCallback(async () => {
     try {
-      const d = await listCompanyEmails({ q: q.trim(), status, mailboxType: type, linked });
+      const d = await listCompanyEmails({ q: q.trim(), status, mailboxType: type, linked, hasPassword });
       setRows(d.emails || []);
       setCounts(d.counts);
       setVaultReady(d.vaultReady);
       setCanReveal(d.canReveal);
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setLoading(false);
-  }, [q, status, type, linked, notify]);
+  }, [q, status, type, linked, hasPassword, notify]);
 
   useEffect(() => { const h = setTimeout(load, 250); return () => clearTimeout(h); }, [load]);
   useSocket('it:emails', useCallback(() => { load(); }, [load]));
@@ -116,21 +118,24 @@ export default function CompanyEmailsPage() {
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-        <button onClick={() => { setStatus(''); setType(''); setLinked(''); }} className="text-start">
-          <StatCard label={t('إجمالي الصناديق', 'Mailboxes')} value={counts?.total ?? 0} accent="text-[#f37121]" />
-        </button>
-        <button onClick={() => setStatus(status === 'active' ? '' : 'active')} className="text-start">
-          <StatCard label={t('نشط', 'Active')} value={counts?.active ?? 0} accent="text-emerald-600" />
-        </button>
-        <button onClick={() => setLinked(linked === 'yes' ? '' : 'yes')} className="text-start">
-          <StatCard label={t('مربوط بموظف', 'Linked to HR')} value={counts?.linked ?? 0} />
-        </button>
-        <button onClick={() => setLinked(linked === 'no' ? '' : 'no')} className="text-start">
-          <StatCard label={t('غير مربوط', 'Not linked')} value={counts?.unlinked ?? 0} accent="text-amber-600" />
-        </button>
-        <button onClick={() => setType(type === 'functional' ? '' : 'functional')} className="text-start">
-          <StatCard label={t('بدون كلمة مرور', 'No password yet')} value={counts?.withoutPassword ?? 0} accent="text-red-600" />
-        </button>
+        {/* ── وبطاقةُ «بدون كلمة مرور» كانت تضغط فلترًا آخر ────────────────────
+            كانت تُصفّي «صندوق وظيفيّ»: رقمٌ يُقرأ وصفوفٌ أخرى تُعرَض. وصار لها
+            فلترُها في الخادم (`hasPassword=no`) — فالمعدودُ هو المعروض. */}
+        <StatCard label={t('إجمالي الصناديق', 'Mailboxes')} value={counts?.total ?? 0} accent="text-[#f37121]"
+          onClick={() => { setStatus(''); setType(''); setLinked(''); setHasPassword(''); }}
+          active={!status && !type && !linked && !hasPassword} hint={t('اضغط لعرض الكل', 'tap to show all')} />
+        <StatCard label={t('نشط', 'Active')} value={counts?.active ?? 0} accent="text-emerald-600"
+          onClick={() => setStatus(status === 'active' ? '' : 'active')} active={status === 'active'}
+          hint={t('اضغط لعرضها', 'tap to filter')} />
+        <StatCard label={t('مربوط بموظف', 'Linked to HR')} value={counts?.linked ?? 0}
+          onClick={() => setLinked(linked === 'yes' ? '' : 'yes')} active={linked === 'yes'}
+          hint={t('اضغط لعرضها', 'tap to filter')} />
+        <StatCard label={t('غير مربوط', 'Not linked')} value={counts?.unlinked ?? 0} accent="text-amber-600"
+          onClick={() => setLinked(linked === 'no' ? '' : 'no')} active={linked === 'no'}
+          hint={t('اضغط لعرضها', 'tap to filter')} />
+        <StatCard label={t('بدون كلمة مرور', 'No password yet')} value={counts?.withoutPassword ?? 0} accent="text-red-600"
+          onClick={() => setHasPassword(hasPassword === 'no' ? '' : 'no')} active={hasPassword === 'no'}
+          hint={t('اضغط لعرضها', 'tap to filter')} />
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm flex flex-wrap items-center gap-2">
@@ -154,8 +159,8 @@ export default function CompanyEmailsPage() {
           <option value="yes">{t('مربوط بموظف', 'Linked')}</option>
           <option value="no">{t('غير مربوط', 'Not linked')}</option>
         </select>
-        {(q || status || type || linked) && (
-          <button onClick={() => { setQ(''); setStatus(''); setType(''); setLinked(''); }}
+        {(q || status || type || linked || hasPassword) && (
+          <button onClick={() => { setQ(''); setStatus(''); setType(''); setLinked(''); setHasPassword(''); }}
             className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm text-slate-500 hover:text-slate-800">
             {t('إلغاء الفلترة', 'Clear')}
           </button>

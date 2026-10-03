@@ -4,7 +4,14 @@
 // الهيكل الوظيفي: كل قسم له مدير وموظف. المديرين بينتهوا بـ `_manager`
 // والموظفين لأ — القاعدة دي هي اللي بيتحدد بيها مين يقعد في اجتماعات الإدارة.
 
-export interface RoleDef { key: string; ar: string; en: string }
+/**
+ * الدورُ وما يميّزه.
+ *
+ * `distinct` سطرٌ يُقرأ عند اختيار الدور: ما يراه صاحبُه وما لا يراه. وكان
+ * مكتوبًا في البيانات ولا يُعرَض ولا يُعرِّفه النوعُ — فيُقرأ اسمُ الدور وحدَه،
+ * ومن أراد مشرفَ تفقّدٍ بحث عن دورٍ بهذا الاسم فلم يجده (التفقّدُ إسنادٌ لا دور).
+ */
+export interface RoleDef { key: string; ar: string; en: string; distinct?: string }
 export interface SectionRoles { section: string; manager: RoleDef; staff: RoleDef[] }
 
 export const GLOBAL_ROLES: RoleDef[] = [
@@ -253,7 +260,7 @@ export const SECTION_ROLES: SectionRoles[] = [
         "key": "b2c_rep_supervisor",
         "ar": "مشرف مناديب",
         "en": "B2C Rep Supervisor",
-        "distinct": "يرى مناديبه ويسجّل تفقّدهم فقط — لا يوزّع المناديب ولا يعدّلهم"
+        "distinct": "هذا هو دورُ «مشرف التفقّد»: يرى مناديبه ويسجّل تفقّدهم فقط — ولا يوزّع المناديب ولا يعدّلهم. ولا دورَ اسمُه «مشرف تفقّد»: التفقّدُ إسنادٌ يُكتب على كلّ مندوبٍ من سجلّ النقل الخفيف (إسناد مشرف تفقّد)، ويصحّ أيضًا لمدير المشروع ومدير القطاع"
       }
     ]
   },

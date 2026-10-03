@@ -38,6 +38,12 @@
       "en": "Customers"
     },
     {
+      "key": "/system/procurement/dashboard",
+      "section": "Procurement",
+      "ar": "المشتريات",
+      "en": "Procurement"
+    },
+    {
       "key": "/system/vendors",
       "section": "Procurement",
       "ar": "الموردين",
@@ -242,6 +248,12 @@
       "en": "Car Colors"
     },
     {
+      "key": "/system/shipment-orders/dashboard",
+      "section": "Shipment Orders",
+      "ar": "لوحة الشحنات",
+      "en": "Dashboard"
+    },
+    {
       "key": "/system/shipment-orders",
       "section": "Shipment Orders",
       "ar": "الشحنات",
@@ -392,16 +404,16 @@
       "en": "Customers"
     },
     {
-      "key": "/system/customs",
-      "section": "Customs",
-      "ar": "التخليص الجمركي",
-      "en": "Customs Clearance"
-    },
-    {
       "key": "/system/customs/analytics",
       "section": "Customs",
       "ar": "التحليلات",
       "en": "Analytics"
+    },
+    {
+      "key": "/system/customs",
+      "section": "Customs",
+      "ar": "التخليص الجمركي",
+      "en": "Customs Clearance"
     },
     {
       "key": "/system/customs/customers",
@@ -614,6 +626,12 @@
       "en": "Exceptional Repairs"
     },
     {
+      "key": "/system/ls2/fleet-requests",
+      "section": "Location Solutions",
+      "ar": "طلبات الأسطول",
+      "en": "Fleet Requests"
+    },
+    {
       "key": "/system/ls2/alerts",
       "section": "Location Solutions",
       "ar": "التنبيهات",
@@ -626,16 +644,16 @@
       "en": "Reports"
     },
     {
-      "key": "/system/performance",
-      "section": "Performance",
-      "ar": "تقييم مديري الأقسام",
-      "en": "Evaluate Managers"
-    },
-    {
       "key": "/system/performance/overview",
       "section": "Performance",
       "ar": "نظرة كل الأقسام",
       "en": "All Departments"
+    },
+    {
+      "key": "/system/performance",
+      "section": "Performance",
+      "ar": "تقييم مديري الأقسام",
+      "en": "Evaluate Managers"
     },
     {
       "key": "/system/performance/requests",
@@ -1010,16 +1028,16 @@
       "en": "Complaints"
     },
     {
-      "key": "/system/remote/attendance",
-      "section": "Remote",
-      "ar": "الحضور والانصراف",
-      "en": "Attendance"
-    },
-    {
       "key": "/system/remote/dashboard",
       "section": "Remote",
       "ar": "لوحتي",
       "en": "My Dashboard"
+    },
+    {
+      "key": "/system/remote/attendance",
+      "section": "Remote",
+      "ar": "الحضور والانصراف",
+      "en": "Attendance"
     },
     {
       "key": "/system/remote/leave",
@@ -1362,12 +1380,6 @@
       "section": "Accounting",
       "ar": "ماليات المركبات",
       "en": "Vehicles Finance"
-    },
-    {
-      "key": "/system/procurement/dashboard",
-      "section": "Procurement",
-      "ar": "المشتريات",
-      "en": "Procurement"
     },
     {
       "key": "/system/procurement/requests",

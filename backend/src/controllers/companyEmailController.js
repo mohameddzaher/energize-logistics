@@ -31,6 +31,12 @@ exports.list = async (req, res) => {
     if (req.query.mailboxType) filter.mailboxType = req.query.mailboxType;
     if (req.query.linked === 'yes') filter.employee = { $ne: null };
     if (req.query.linked === 'no') filter.employee = null;
+    // ── ومَن لا كلمةَ مرورٍ له يُفلتَر ────────────────────────────────────────
+    // «بدون كلمة مرور» هو الرقمُ الذي يقول لتقنية المعلومات فيه شغلٌ ناقص، وكان
+    // عددًا بلا فلتر: فبطاقتُه في الشاشة كانت تضغط فلترَ «صندوق وظيفيّ» — رقمٌ
+    // يُقرأ وصفوفٌ أخرى تُعرَض.
+    if (req.query.hasPassword === 'no') filter.passwordEnc = { $in: ['', null] };
+    if (req.query.hasPassword === 'yes') filter.passwordEnc = { $nin: ['', null] };
     if (req.query.q && req.query.q.trim()) {
       const r = rx(req.query.q);
       filter.$or = [{ email: r }, { displayName: r }, { employeeName: r }, { employeeNumber: r }, { department: r }, { functionAr: r }];

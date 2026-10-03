@@ -81,12 +81,19 @@ export default function BdDashboardPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-        <StatCard label={ar ? 'فرص مفتوحة' : 'Open opportunities'} value={t.openOpportunities} />
-        <StatCard label={ar ? 'قيمة خط الفرص' : 'Pipeline value'} value={moneyShort(t.pipelineValue)} accent="text-[#f37121]" />
-        <StatCard label={ar ? 'القيمة المرجحة' : 'Weighted pipeline'} value={moneyShort(t.weightedPipelineValue)} accent="text-indigo-600" />
-        <StatCard label={ar ? 'نسبة الفوز' : 'Win rate'} value={`${t.winRate}%`} accent={t.winRate >= 50 ? 'text-emerald-600' : 'text-slate-900'} />
-        <StatCard label={ar ? 'شراكات نشطة' : 'Active partners'} value={activePartners} accent="text-teal-600" />
-        <StatCard label={ar ? 'مناقصات تقترب' : 'Tenders due soon'} value={t.tendersDueSoon} accent={t.tendersDueSoon > 0 ? 'text-red-600' : 'text-slate-900'} />
+        {/* وكلُّ رقمٍ يؤدّي إلى سجلّه: الفرصُ والشراكاتُ والمناقصات. */}
+        <StatCard label={ar ? 'فرص مفتوحة' : 'Open opportunities'} value={t.openOpportunities}
+          href="/system/bd/opportunities" hint={ar ? 'اضغط لعرضها' : 'tap to open'} />
+        <StatCard label={ar ? 'قيمة خط الفرص' : 'Pipeline value'} value={moneyShort(t.pipelineValue)} accent="text-[#f37121]"
+          href="/system/bd/opportunities" hint={ar ? 'الفرص' : 'opportunities'} />
+        <StatCard label={ar ? 'القيمة المرجحة' : 'Weighted pipeline'} value={moneyShort(t.weightedPipelineValue)} accent="text-indigo-600"
+          href="/system/bd/opportunities" hint={ar ? 'الفرص' : 'opportunities'} />
+        <StatCard label={ar ? 'نسبة الفوز' : 'Win rate'} value={`${t.winRate}%`} accent={t.winRate >= 50 ? 'text-emerald-600' : 'text-slate-900'}
+          href="/system/bd/opportunities" hint={ar ? 'الفرص' : 'opportunities'} />
+        <StatCard label={ar ? 'شراكات نشطة' : 'Active partners'} value={activePartners} accent="text-teal-600"
+          href="/system/bd/partners" hint={ar ? 'الشراكات' : 'partners'} />
+        <StatCard label={ar ? 'مناقصات تقترب' : 'Tenders due soon'} value={t.tendersDueSoon} accent={t.tendersDueSoon > 0 ? 'text-red-600' : 'text-slate-900'}
+          href="/system/bd/tenders" hint={ar ? 'المناقصات' : 'tenders'} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -149,12 +149,20 @@ export default function ItDashboardPage() {
       </PageHeader>
 
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-        <StatCard label={ar ? 'بلاغات مفتوحة' : 'Open tickets'} value={t?.openTickets ?? 0} accent="text-amber-600" />
-        <StatCard label={ar ? 'قيد التنفيذ' : 'In progress'} value={t?.inProgress ?? 0} accent="text-blue-600" />
-        <StatCard label={ar ? 'تم حلها في الفترة' : 'Resolved this period'} value={t?.resolvedThisPeriod ?? 0} accent="text-green-600" />
-        <StatCard label={ar ? 'متوسط زمن الحل' : 'Avg resolution'} value={fmtDuration(t?.avgResolutionMinutes, lang)} accent="text-[#f37121]" />
-        <StatCard label={ar ? 'عهد مسلّمة' : 'Assets assigned'} value={t?.assetsAssigned ?? 0} accent="text-indigo-600" />
-        <StatCard label={ar ? 'أنظمة متعثرة' : 'Systems down'} value={systemsDown} accent={systemsDown ? 'text-red-600' : 'text-slate-900'} />
+        {/* وكلُّ بطاقةٍ تؤدّي إلى صفوفها: البلاغاتُ بحالتها، والعهدُ، والأنظمة. */}
+        <StatCard label={ar ? 'بلاغات مفتوحة' : 'Open tickets'} value={t?.openTickets ?? 0} accent="text-amber-600"
+          href="/system/it/tickets?status=open" hint={ar ? 'اضغط لعرضها' : 'tap to open'} />
+        <StatCard label={ar ? 'قيد التنفيذ' : 'In progress'} value={t?.inProgress ?? 0} accent="text-blue-600"
+          href="/system/it/tickets?status=in_progress" hint={ar ? 'اضغط لعرضها' : 'tap to open'} />
+        <StatCard label={ar ? 'تم حلها في الفترة' : 'Resolved this period'} value={t?.resolvedThisPeriod ?? 0} accent="text-green-600"
+          href="/system/it/tickets?status=resolved" hint={ar ? 'اضغط لعرضها' : 'tap to open'} />
+        {/* متوسطُ الزمن ليس صفوفًا — يُفتَح الجدولُ كلُّه ليُقرأ منه. */}
+        <StatCard label={ar ? 'متوسط زمن الحل' : 'Avg resolution'} value={fmtDuration(t?.avgResolutionMinutes, lang)} accent="text-[#f37121]"
+          href="/system/it/tickets" hint={ar ? 'كل البلاغات' : 'all tickets'} />
+        <StatCard label={ar ? 'عهد مسلّمة' : 'Assets assigned'} value={t?.assetsAssigned ?? 0} accent="text-indigo-600"
+          href="/system/it/custody" hint={ar ? 'سجل العهد' : 'custody register'} />
+        <StatCard label={ar ? 'أنظمة متعثرة' : 'Systems down'} value={systemsDown} accent={systemsDown ? 'text-red-600' : 'text-slate-900'}
+          href="/system/it/systems" hint={ar ? 'الأنظمة' : 'systems'} />
       </div>
 
       {/* ── العهد ───────────────────────────────────────────────────────────

@@ -40,7 +40,13 @@ function VendorsPageInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'' | 'signed' | 'pending' | 'unsigned' | 'missingDocs'>(params?.get('filter') === 'missingDocs' ? 'missingDocs' : '');
+  // ── والفلترُ يُورَث من الرابط كلُّه ────────────────────────────────────────
+  // كانت «مستندات ناقصة» وحدَها تُقرأ من العنوان، فبطاقاتُ لوحة العقود الأخرى
+  // («موردون موقّعون»، «قيد التوقيع») لم يكن لها مقصدٌ يُفتَح على صفوفها.
+  const [statusFilter, setStatusFilter] = useState<'' | 'signed' | 'pending' | 'unsigned' | 'missingDocs'>(() => {
+    const v = params?.get('filter') || '';
+    return (['signed', 'pending', 'unsigned', 'missingDocs'].includes(v) ? v : '') as any;
+  });
   const [repFilter, setRepFilter] = useState('');
   const [hqFilter, setHqFilter] = useState('');
   const [showForm, setShowForm] = useState(false);

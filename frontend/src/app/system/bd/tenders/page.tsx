@@ -45,6 +45,12 @@ export default function BdTendersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
+  /**
+   * ── وبطاقةُ الرقم تُصفّي القائمة ────────────────────────────────────────────
+   * «تُغلق خلال ٧ أيام» و«تم الفوز بها» شرطانِ على الصفّ (موعدٌ قريبٌ وحالةٌ
+   * مترقّبة / حالةُ فوز) — وكانا رقمين يُقرآن ثمّ يُقلَّب الجدولُ بالعين.
+   */
+  const [cardF, setCardF] = useState<'' | 'dueSoon' | 'open' | 'won'>('');
 
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<BdTender | null>(null);
@@ -76,7 +82,16 @@ export default function BdTendersPage() {
   }, []);
 
   // Deadline-ascending, with undated tenders parked at the end.
-  const sorted = useMemo(() => byDeadline(rows), [rows]);
+  // وشرطُ البطاقة يُطبَّق قبل الترتيب: المعدودُ هو المعروض.
+  const sorted = useMemo(() => byDeadline(rows.filter((r) => {
+    if (cardF === 'dueSoon') {
+      const d = daysUntil(r.submissionDeadline);
+      return d !== null && d >= 0 && d <= 30 && ['watching', 'preparing'].includes(r.status);
+    }
+    if (cardF === 'open') return !['lost', 'cancelled'].includes(r.status);
+    if (cardF === 'won') return r.status === 'won';
+    return true;
+  })), [rows, cardF]);
 
   const statusCounts = useMemo(() => {
     const m: Record<string, number> = {};
@@ -86,7 +101,7 @@ export default function BdTendersPage() {
 
   // Same definition as the BD dashboard's «مناقصات قريبة» KPI (watching/preparing
   // within 30 days) — two different numbers under one name confused everyone.
-  const dueSoon = sorted.filter((r) => {
+  const dueSoon = rows.filter((r) => {
     const d = daysUntil(r.submissionDeadline);
     return d !== null && d >= 0 && d <= 30 && ['watching', 'preparing'].includes(r.status);
   }).length;
@@ -180,10 +195,18 @@ export default function BdTendersPage() {
       </PageHeader>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label={ar ? 'إجمالي المناقصات' : 'Total tenders'} value={rows.length} />
-        <StatCard label={ar ? 'تُغلق خلال 7 أيام' : 'Closing in 7 days'} value={dueSoon} accent={dueSoon > 0 ? 'text-red-600' : 'text-slate-900'} />
-        <StatCard label={ar ? 'القيمة القائمة' : 'Value in play'} value={money(openValue)} accent="text-[#f37121]" />
-        <StatCard label={ar ? 'تم الفوز بها' : 'Won'} value={wonCount} accent="text-emerald-600" />
+        {/* والبطاقةُ تُصفّي القائمةَ تحتها — ما يُعَدُّ هو ما يُعرَض. */}
+        <StatCard label={ar ? 'إجمالي المناقصات' : 'Total tenders'} value={rows.length}
+          onClick={() => setCardF('')} active={!cardF} hint={ar ? 'اضغط لعرض الكل' : 'tap to show all'} />
+        <StatCard label={ar ? 'تُغلق خلال 7 أيام' : 'Closing in 7 days'} value={dueSoon} accent={dueSoon > 0 ? 'text-red-600' : 'text-slate-900'}
+          onClick={() => setCardF((v) => (v === 'dueSoon' ? '' : 'dueSoon'))} active={cardF === 'dueSoon'}
+          hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
+        <StatCard label={ar ? 'القيمة القائمة' : 'Value in play'} value={money(openValue)} accent="text-[#f37121]"
+          onClick={() => setCardF((v) => (v === 'open' ? '' : 'open'))} active={cardF === 'open'}
+          hint={ar ? 'المناقصات القائمة' : 'open tenders'} />
+        <StatCard label={ar ? 'تم الفوز بها' : 'Won'} value={wonCount} accent="text-emerald-600"
+          onClick={() => setCardF((v) => (v === 'won' ? '' : 'won'))} active={cardF === 'won'}
+          hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
       </div>
 
       {/* Status filter pills */}

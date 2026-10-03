@@ -493,7 +493,10 @@ export default function ItCustodyPage() {
           من أيٍّ اقتُطع — وبلا الثاني لا يعرف أحد أن الفلتر أخفى شيئاً أصلاً. */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <StatCard label={ar ? 'المعروض الآن' : 'Showing'} value={counts?.total ?? items.length} accent="text-slate-900" />
-        <StatCard label={ar ? 'إجمالي السجل' : 'Total register'} value={register.total} accent="text-slate-900" />
+        {/* «إجمالي السجل» تُرجع الكلَّ: الرقمُ الأكبرُ هو البابُ إلى غير المفلتَر. */}
+        <StatCard label={ar ? 'إجمالي السجل' : 'Total register'} value={register.total} accent="text-slate-900"
+          onClick={() => { setStateFilter(''); setConditionFilter(''); setBucket(''); setOtherType(''); setSearch(''); }}
+          hint={ar ? 'اضغط لعرض الكل' : 'tap to show all'} />
         <StatCard label={ar ? 'قيمة المعروض' : 'Value shown'} value={fmtMoney(counts?.value ?? 0)} accent="text-[#f37121]" />
       </div>
 

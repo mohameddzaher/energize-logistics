@@ -67,6 +67,12 @@
       ],
       "wildcard": false
     },
+    "/system/procurement/dashboard": {
+      "apis": [
+        "/api/procurement/dashboard"
+      ],
+      "wildcard": false
+    },
     "/system/vendors": {
       "apis": [
         "/api/vendors"
@@ -330,6 +336,13 @@
       ],
       "wildcard": false
     },
+    "/system/shipment-orders/dashboard": {
+      "apis": [
+        "/api/shipment-orders/dashboard",
+        "/api/shipment-orders/statuses"
+      ],
+      "wildcard": false
+    },
     "/system/shipment-orders": {
       "apis": [
         "/api/customer-registry",
@@ -425,6 +438,7 @@
         "/api/fleet/arrivals",
         "/api/fleet/customers",
         "/api/fleet/drivers",
+        "/api/fleet/requests",
         "/api/fleet/shipments",
         "/api/fleet/shipments/waybills.pdf",
         "/api/fleet/vehicle-logs",
@@ -539,6 +553,13 @@
       ],
       "wildcard": false
     },
+    "/system/customs/analytics": {
+      "apis": [
+        "/api/customs-clearance/analytics",
+        "/api/customs-clearance/filters"
+      ],
+      "wildcard": false
+    },
     "/system/customs": {
       "apis": [
         "/api/customs-clearance",
@@ -547,13 +568,6 @@
         "/api/customs-clearance/parties",
         "/api/customs-clearance/upcoming-alerts",
         "/api/lookups/types"
-      ],
-      "wildcard": false
-    },
-    "/system/customs/analytics": {
-      "apis": [
-        "/api/customs-clearance/analytics",
-        "/api/customs-clearance/filters"
       ],
       "wildcard": false
     },
@@ -845,6 +859,12 @@
       ],
       "wildcard": false
     },
+    "/system/ls2/fleet-requests": {
+      "apis": [
+        "/api/ls2/fleet-requests"
+      ],
+      "wildcard": false
+    },
     "/system/ls2/alerts": {
       "apis": [
         "/api/ls2/alerts"
@@ -859,17 +879,17 @@
       ],
       "wildcard": false
     },
+    "/system/performance/overview": {
+      "apis": [
+        "/api/performance/overview"
+      ],
+      "wildcard": false
+    },
     "/system/performance": {
       "apis": [
         "/api/performance/evaluations",
         "/api/performance/evaluations/form",
         "/api/performance/team"
-      ],
-      "wildcard": false
-    },
-    "/system/performance/overview": {
-      "apis": [
-        "/api/performance/overview"
       ],
       "wildcard": false
     },
@@ -1269,7 +1289,7 @@
     },
     "/system/b2c/light-transport/store": {
       "apis": [
-        "/api/light-transport/employees",
+        "/api/light-transport/orders/options",
         "/api/light-transport/store",
         "/api/ls2/vehicles"
       ],
@@ -1324,18 +1344,18 @@
       ],
       "wildcard": false
     },
+    "/system/remote/dashboard": {
+      "apis": [
+        "/api/remote/dashboard",
+        "/api/remote/employees"
+      ],
+      "wildcard": false
+    },
     "/system/remote/attendance": {
       "apis": [
         "/api/remote/attendance",
         "/api/remote/attendance/today",
         "/api/remote/attendance/toggle",
-        "/api/remote/employees"
-      ],
-      "wildcard": false
-    },
-    "/system/remote/dashboard": {
-      "apis": [
-        "/api/remote/dashboard",
         "/api/remote/employees"
       ],
       "wildcard": false
@@ -1733,12 +1753,6 @@
     "/system/finance/vehicles": {
       "apis": [
         "/api/finance/departments"
-      ],
-      "wildcard": false
-    },
-    "/system/procurement/dashboard": {
-      "apis": [
-        "/api/procurement/dashboard"
       ],
       "wildcard": false
     },

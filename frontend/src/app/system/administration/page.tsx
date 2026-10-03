@@ -118,6 +118,13 @@ export default function AdministrationBoardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  /**
+   * ── وبطاقةُ الرقم تُصفّي اللوحة ────────────────────────────────────────────
+   * «سبعُ مهامٍ متأخّرة» رقمٌ لا يُفتَح: يُقرأ ثمّ تُقلَّب الأعمدةُ الأربعةُ
+   * بالعين بحثًا عن السبع. والضغطةُ تُبقي المتأخّرةَ وحدَها في الأعمدة، وضغطةٌ
+   * ثانيةٌ تُرجع الكلّ.
+   */
+  const [dueF, setDueF] = useState<'' | 'overdue' | 'today' | 'open' | 'doneWeek'>('');
   const [saving, setSaving] = useState(false);
 
   // New-task modal — due date pre-filled with today (end of workday).
@@ -172,10 +179,17 @@ export default function AdministrationBoardPage() {
   const hit = useCallback((t: Task) => {
     const fold = (x: string) => x.toLowerCase()
       .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي');
+    if (dueF === 'overdue' && dueState(t) !== 'overdue') return false;
+    if (dueF === 'today' && dueState(t) !== 'today') return false;
+    if (dueF === 'open' && t.status === 'done') return false;
+    if (dueF === 'doneWeek') {
+      const weekAgo = Date.now() - 7 * 86400000;
+      if (!(t.status === 'done' && t.completedAt && new Date(t.completedAt).getTime() >= weekAgo)) return false;
+    }
     const s = fold(search.trim());
     if (!s) return true;
     return [t.title, t.description, t.assigneeName, t.createdByName].some((v) => fold(String(v || '')).includes(s));
-  }, [search]);
+  }, [search, dueF]);
 
   const byColumn = useMemo(() => {
     const map: Record<StatusKey, Task[]> = { new: [], in_progress: [], follow_up: [], done: [] };
@@ -328,11 +342,25 @@ export default function AdministrationBoardPage() {
       {error && <ErrorNotice error={error} onRetry={() => { setLoading(true); load(); }} lang={lang} />}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label={ar ? 'مهام مفتوحة' : 'Open tasks'} value={stats.open} accent="text-sky-700" />
-        <StatCard label={ar ? 'متأخرة عن موعدها' : 'Overdue'} value={stats.overdue} accent={stats.overdue ? 'text-red-600' : 'text-slate-400'} />
-        <StatCard label={ar ? 'تستحق اليوم' : 'Due today'} value={stats.today} accent={stats.today ? 'text-amber-600' : 'text-slate-400'} />
-        <StatCard label={ar ? 'أُنجزت هذا الأسبوع' : 'Done this week'} value={stats.doneWeek} accent="text-emerald-600" />
+        <StatCard label={ar ? 'مهام مفتوحة' : 'Open tasks'} value={stats.open} accent="text-sky-700"
+          onClick={() => setDueF((v) => (v === 'open' ? '' : 'open'))} active={dueF === 'open'}
+          hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
+        <StatCard label={ar ? 'متأخرة عن موعدها' : 'Overdue'} value={stats.overdue} accent={stats.overdue ? 'text-red-600' : 'text-slate-400'}
+          onClick={() => setDueF((v) => (v === 'overdue' ? '' : 'overdue'))} active={dueF === 'overdue'}
+          hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
+        <StatCard label={ar ? 'تستحق اليوم' : 'Due today'} value={stats.today} accent={stats.today ? 'text-amber-600' : 'text-slate-400'}
+          onClick={() => setDueF((v) => (v === 'today' ? '' : 'today'))} active={dueF === 'today'}
+          hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
+        <StatCard label={ar ? 'أُنجزت هذا الأسبوع' : 'Done this week'} value={stats.doneWeek} accent="text-emerald-600"
+          onClick={() => setDueF((v) => (v === 'doneWeek' ? '' : 'doneWeek'))} active={dueF === 'doneWeek'}
+          hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
       </div>
+      {dueF && (
+        <p className="-mt-2 text-[11.5px] text-[#f37121] font-semibold">
+          {ar ? 'اللوحة تعرض المهام المطابقة للبطاقة المختارة — اضغطها ثانيةً لعرض الكل.'
+              : 'The board shows only the selected card’s tasks — press it again to show all.'}
+        </p>
+      )}
 
       <div className="max-w-md">
         <SearchInput value={search} onChange={setSearch} placeholder={ar ? 'ابحث في المهام بالعنوان أو الاسم…' : 'Search tasks by title or name…'} />

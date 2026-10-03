@@ -44,6 +44,12 @@ export default function PerformanceRequestsPage() {
   const ar = lang === 'ar';
 
   const [pending, setPending] = useState<RequestRow[]>([]);
+  /**
+   * ── وبطاقةُ الرقم تُفرِد قائمتَها ──────────────────────────────────────────
+   * الشاشةُ قائمتان: المعلّقةُ تُقرَّر، والمقرَّرةُ تُراجَع. وبطاقاتُها الثلاثُ
+   * كانت أرقامًا لا تؤدّي إلى شيء — فصارت تُفرِد ما تَعدُّه.
+   */
+  const [show, setShow] = useState<'' | 'pending' | 'approved' | 'rejected'>('');
   const [recent, setRecent] = useState<RequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -95,6 +101,10 @@ export default function PerformanceRequestsPage() {
     { header: ar ? 'ملاحظة القرار' : 'Decision note', key: 'editRequest.decisionNote', width: 40 },
   ];
   const pendingSheet = { name: ar ? 'قيد المراجعة' : 'Pending', rows: pending as any[], columns: baseCols };
+  // ما يُعرَض من القرارات السابقة بحسب البطاقة المختارة.
+  const recentShown = show === 'approved' || show === 'rejected'
+    ? recent.filter((r) => r.editRequest.status === show)
+    : recent;
   const decidedSheet = { name: ar ? 'قرارات سابقة' : 'Decided', rows: recent as any[], columns: decidedCols };
 
   if (!canConfigurePerf(user?.role)) {
@@ -126,12 +136,20 @@ export default function PerformanceRequestsPage() {
       </PageHeader>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <StatCard label={ar ? 'قيد المراجعة' : 'Pending'} value={String(pending.length)} />
-        <StatCard label={ar ? 'تمت الموافقة (آخر ٥٠)' : 'Approved (last 50)'} value={String(recent.filter((r) => r.editRequest.status === 'approved').length)} />
-        <StatCard label={ar ? 'مرفوضة (آخر ٥٠)' : 'Rejected (last 50)'} value={String(recent.filter((r) => r.editRequest.status === 'rejected').length)} />
+        {/* والبطاقةُ تُفرِد قائمتَها: المعلّقةُ تُقرَّر، والمقرَّرةُ تُراجَع. */}
+        <StatCard label={ar ? 'قيد المراجعة' : 'Pending'} value={String(pending.length)}
+          onClick={() => setShow((v) => (v === 'pending' ? '' : 'pending'))} active={show === 'pending'}
+          hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
+        <StatCard label={ar ? 'تمت الموافقة (آخر ٥٠)' : 'Approved (last 50)'} value={String(recent.filter((r) => r.editRequest.status === 'approved').length)}
+          onClick={() => setShow((v) => (v === 'approved' ? '' : 'approved'))} active={show === 'approved'}
+          hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
+        <StatCard label={ar ? 'مرفوضة (آخر ٥٠)' : 'Rejected (last 50)'} value={String(recent.filter((r) => r.editRequest.status === 'rejected').length)}
+          onClick={() => setShow((v) => (v === 'rejected' ? '' : 'rejected'))} active={show === 'rejected'}
+          hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
       </div>
 
-      {/* Pending */}
+      {/* Pending — تُخفى إن انتُقيت بطاقةُ قرارٍ سابق. */}
+      {(show === '' || show === 'pending') && (
       <div className="space-y-3">
         <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
           <Clock className="w-4 h-4 text-amber-500" /> {ar ? 'في انتظار القرار' : 'Awaiting decision'}
@@ -190,9 +208,10 @@ export default function PerformanceRequestsPage() {
           </div>
         ))}
       </div>
+      )}
 
       {/* Recently decided */}
-      {recent.length > 0 && (
+      {show !== 'pending' && recentShown.length > 0 && (
         <div className="space-y-2">
           <h2 className="text-sm font-semibold text-slate-800">{ar ? 'قرارات سابقة' : 'Recent decisions'}</h2>
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -209,7 +228,7 @@ export default function PerformanceRequestsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {recent.map((r) => (
+                  {recentShown.map((r) => (
                     <tr key={r._id} className="border-b border-slate-100 hover:bg-slate-50">
                       <td className="px-4 py-3 font-medium text-slate-800">{r.employeeName}</td>
                       <td className="px-4 py-3 text-slate-600 text-xs">{r.periodKey}</td>

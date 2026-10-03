@@ -112,14 +112,22 @@ export default function ContractsDashboardPage() {
 
       {/* KPI row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-        <StatCard label={ar ? 'موردون موقّعون' : 'Signed vendors'} value={fmtN(v.signed)} accent="text-emerald-600" />
-        <StatCard label={ar ? 'قيد التوقيع / غير موقّع' : 'Pending / unsigned'} value={`${fmtN(v.pending)} / ${fmtN(v.unsigned)}`} accent="text-amber-600" />
-        <StatCard label={ar ? 'الأسطول المتعاقد' : 'Contracted fleet'} value={fmtN(v.signedFleet)} accent="text-cyan-700" />
-        <StatCard label={ar ? 'مستندات ناقصة' : 'Missing documents'} value={fmtN(v.missingDocs.length)} accent={v.missingDocs.length ? 'text-red-600' : 'text-slate-400'} />
+        {/* وكلُّ رقمٍ يُفتَح على صفوفه بفلترها في العنوان. */}
+        <StatCard label={ar ? 'موردون موقّعون' : 'Signed vendors'} value={fmtN(v.signed)} accent="text-emerald-600"
+          href="/system/contracts/vendors?filter=signed" hint={ar ? 'اضغط لعرضهم' : 'tap to open'} />
+        <StatCard label={ar ? 'قيد التوقيع / غير موقّع' : 'Pending / unsigned'} value={`${fmtN(v.pending)} / ${fmtN(v.unsigned)}`} accent="text-amber-600"
+          href="/system/contracts/vendors?filter=pending" hint={ar ? 'قيد التوقيع' : 'pending'} />
+        <StatCard label={ar ? 'الأسطول المتعاقد' : 'Contracted fleet'} value={fmtN(v.signedFleet)} accent="text-cyan-700"
+          href="/system/contracts/vendors?filter=signed" hint={ar ? 'الموردون الموقّعون' : 'signed vendors'} />
+        <StatCard label={ar ? 'مستندات ناقصة' : 'Missing documents'} value={fmtN(v.missingDocs.length)} accent={v.missingDocs.length ? 'text-red-600' : 'text-slate-400'}
+          href="/system/contracts/vendors?filter=missingDocs" hint={ar ? 'اضغط لعرضهم' : 'tap to open'} />
         <StatCard label={ar ? 'عملاء موقّعون' : 'Signed customers'}
-          value={`${fmtN(data.customers?.signed || 0)} / ${fmtN(data.customers?.total || 0)}`} accent="text-emerald-600" />
-        <StatCard label={ar ? 'شركات قيد التنشيط' : 'Prospects'} value={`${fmtN(data.prospects.interested)} / ${fmtN(data.prospects.total)}`} accent="text-violet-600" />
-        <StatCard label={ar ? 'عقود الأقسام الأخرى' : 'Dept contracts'} value={fmtN(data.deptContracts.total)} accent="text-blue-600" />
+          value={`${fmtN(data.customers?.signed || 0)} / ${fmtN(data.customers?.total || 0)}`} accent="text-emerald-600"
+          href="/system/contracts/customers?filter=signed" hint={ar ? 'اضغط لعرضهم' : 'tap to open'} />
+        <StatCard label={ar ? 'شركات قيد التنشيط' : 'Prospects'} value={`${fmtN(data.prospects.interested)} / ${fmtN(data.prospects.total)}`} accent="text-violet-600"
+          href="/system/contracts/prospects" hint={ar ? 'قيد التنشيط' : 'prospects'} />
+        <StatCard label={ar ? 'عقود الأقسام الأخرى' : 'Dept contracts'} value={fmtN(data.deptContracts.total)} accent="text-blue-600"
+          href="/system/contracts/agreements" hint={ar ? 'عقود الأقسام' : 'dept contracts'} />
       </div>
 
       {/* Quick links */}

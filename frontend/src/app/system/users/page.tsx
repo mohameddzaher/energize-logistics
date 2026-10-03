@@ -564,7 +564,7 @@ export default function UsersPage() {
   // القائمة المكتوبة هنا انحرفت عن الحقيقة في الاتّجاهين: أربعةُ أدوار تعرضها
   // ولا وجود لها (فيردّ الخادم «الدور غير صالح»)، وثلاثةٌ وعشرون دورًا صحيحًا
   // لا تظهر فلا سبيل إلى إسنادها. وكلّ دورٍ يُضاف بعد اليوم كان سيغيب كذلك.
-  const [serverRoles, setServerRoles] = useState<{ key: string; ar: string; en: string; section: string; isManager: boolean }[]>([]);
+  const [serverRoles, setServerRoles] = useState<{ key: string; ar: string; en: string; section: string; isManager: boolean; distinct?: string }[]>([]);
   useEffect(() => {
     api.get<{ roles: typeof serverRoles }>('/api/users/roles')
       .then((r) => setServerRoles(r.roles || []))
@@ -622,6 +622,9 @@ export default function UsersPage() {
   ).map((r) => ({
     value: r.key,
     label: `${lang === 'ar' ? r.ar : r.en}${r.section ? ` — ${getSectionLabel(r.section, lang)}` : ''}`,
+    // ما يميّز الدورَ يُقرأ في القائمة، ويُبحَث فيه: من كتب «تفقّد» يجد
+    // «مشرف مناديب» — وهو الدورُ المقصود. راجع config/roles.distinct.
+    hint: (r as any).distinct || undefined,
   }));
 
   /**
@@ -937,6 +940,18 @@ export default function UsersPage() {
           searchPlaceholder={lang === 'ar' ? 'ابحث باسم الدور أو القسم…' : 'role or section…'}
           options={roleOptions}
         />
+        {/* ── وما يميّز الدورَ يُقرأ بعد اختياره ────────────────────────────
+            اسمُ الدور لا يكفي: «مشرف مناديب» هو مشرفُ التفقّد، ولا دورَ بهذا
+            الاسم — والتفقّدُ إسنادٌ على كلّ مندوبٍ من سجلّ النقل الخفيف. وكان
+            هذا مكتوبًا في الخادم ولا يُعرَض. */}
+        {(() => {
+          const def = serverRoles.find((r) => r.key === formData.role);
+          return def?.distinct ? (
+            <p className="mt-1.5 text-[11.5px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 leading-relaxed">
+              {def.distinct}
+            </p>
+          ) : null;
+        })()}
       </div>
       )}
 

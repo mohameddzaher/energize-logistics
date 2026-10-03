@@ -134,8 +134,13 @@ export default function ItSystemsPage() {
       </PageHeader>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label={ar ? 'تعمل بشكل طبيعي' : 'Operational'} value={operational} accent="text-green-600" />
-        <StatCard label={ar ? 'متوقفة أو متعثرة' : 'Down / degraded'} value={down} accent={down ? 'text-red-600' : 'text-slate-900'} />
+        {/* والبطاقةُ تُصفّي الجدولَ على حالتها — الفلترُ قائمٌ في الشاشة أصلًا. */}
+        <StatCard label={ar ? 'تعمل بشكل طبيعي' : 'Operational'} value={operational} accent="text-green-600"
+          onClick={() => setStatusFilter((v) => (v === 'operational' ? '' : 'operational'))}
+          active={statusFilter === 'operational'} hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
+        <StatCard label={ar ? 'متوقفة أو متعثرة' : 'Down / degraded'} value={down} accent={down ? 'text-red-600' : 'text-slate-900'}
+          onClick={() => setStatusFilter((v) => (v === 'down,degraded' ? '' : 'down,degraded'))}
+          active={statusFilter === 'down,degraded'} hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
         <StatCard label={ar ? 'تجديدات خلال ٣٠ يوم' : 'Renewals ≤ 30d'} value={dueSoon} accent={dueSoon ? 'text-amber-600' : 'text-slate-900'} />
         <StatCard label={ar ? 'التكلفة السنوية' : 'Annualised cost'} value={fmtMoney(annualCost)} accent="text-[#f37121]" />
       </div>
@@ -154,6 +159,9 @@ export default function ItSystemsPage() {
         <div className="w-full sm:w-48 shrink-0">
           <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">{ar ? 'كل الحالات' : 'All statuses'}</option>
+            {/* حالتان في خيارٍ واحد: هو ما تَعدُّه بطاقةُ «متوقفة أو متعثرة»
+                فوق — ولولاه لصار للقائمة قيمةٌ لا خيارَ لها فتبدو فارغة. */}
+            <option value="down,degraded">{ar ? 'متوقفة أو متعثرة' : 'Down or degraded'}</option>
             {optionsOf(SYSTEM_STATUSES).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
           </Select>
         </div>

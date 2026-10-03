@@ -47,6 +47,11 @@ router.get('/roles', async (req, res) => {
     en: d.en,
     section: sectionOfRole(d.key) || '',
     isManager: isManager(d.key),
+    // ── وما يميّز الدورَ يُرسَل معه ────────────────────────────────────────
+    // كان `distinct` مكتوبًا في `config/roles` ولا يُرَدّ، فلا يُقرأ في شاشة
+    // إنشاء المستخدم. ومن أراد «مشرف تفقّد» بحث عن دورٍ بهذا الاسم فلم يجده —
+    // والتفقّدُ إسنادٌ لا دور، وهذا السطرُ هو ما يقوله.
+    distinct: d.distinct || '',
     custom: false,
   }));
 

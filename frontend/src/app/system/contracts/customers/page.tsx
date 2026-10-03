@@ -1,4 +1,5 @@
 'use client';
+import { useSearchParams } from 'next/navigation';
 /**
  * عملاءُ العقود — الطرفُ الآخر من كلّ صفقة.
  *
@@ -12,7 +13,7 @@
  * معنا وبكم (من كشوف التشغيل)، ومهلتُه ومحصِّلُه (من التحصيل)، وكم عقدًا مرفوعًا
  * له (من عقود الأقسام). ورقمٌ منسوخٌ يشيخ في يومه.
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -43,7 +44,8 @@ const emptyForm = {
 
 interface Suggestion { nameKey: string; name: string; loads: number; value: number; lastLoad: string | null }
 
-export default function ContractCustomersPage() {
+function ContractCustomersInner() {
+  const sp = useSearchParams();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -55,7 +57,11 @@ export default function ContractCustomersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'' | 'signed' | 'pending' | 'unsigned' | 'expiring'>('');
+  // الفلترُ يُورَث من الرابط: بطاقةُ «عملاء موقّعون» في لوحة القسم تؤدّي إليهم.
+  const [statusFilter, setStatusFilter] = useState<'' | 'signed' | 'pending' | 'unsigned' | 'expiring'>(() => {
+    const v = sp?.get('filter') || '';
+    return (['signed', 'pending', 'unsigned', 'expiring'].includes(v) ? v : '') as any;
+  });
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ContractCustomer | null>(null);
@@ -417,4 +423,9 @@ export default function ContractCustomersPage() {
       </Modal>
     </div>
   );
+}
+
+export default function ContractCustomersPage() {
+  // useSearchParams يحتاج حدَّ Suspense في موجّه التطبيقات.
+  return <Suspense fallback={<Spinner />}><ContractCustomersInner /></Suspense>;
 }

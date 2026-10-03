@@ -1274,7 +1274,13 @@ exports.listSystems = async (req, res) => {
   try {
     const { status, type, q } = req.query;
     const filter = {};
-    if (status) filter.status = status;
+    // ── حالةٌ واحدةٌ أو عدّة ──────────────────────────────────────────────
+    // بطاقةُ «متوقفة أو متعثرة» تجمع حالتين (`down` و`degraded`). وفلترٌ يقبل
+    // واحدةً يجعل الرقمَ والجدولَ يقولان شيئين مختلفين عند ضغطها.
+    if (status) {
+      const keys = String(status).split(',').map((x) => x.trim()).filter(Boolean);
+      if (keys.length === 1) [filter.status] = keys; else if (keys.length) filter.status = { $in: keys };
+    }
     if (type) filter.type = type;
     if (q && q.trim()) {
       const r = rx(q);

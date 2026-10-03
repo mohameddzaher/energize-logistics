@@ -17,7 +17,7 @@ import {
   Activity, Car, UserSquare, IdCard, MapPin, Globe, Boxes, Ruler, Palette, ShieldCheck, PackageSearch, SlidersHorizontal,
   Thermometer, Satellite, Crown, Container, FileBarChart,
   Compass, Handshake, Gavel, MonitorCog, LifeBuoy, Laptop, Server, RefreshCw, Inbox, LayoutGrid, Mail,
-  CalendarClock, TriangleAlert,
+  CalendarClock, TriangleAlert, ShieldQuestion,
   FileSignature, PhoneCall, UserCheck, Fuel, ClipboardCheck,
   Receipt, Banknote, Layers, Link2,
   Camera, Loader2,
@@ -258,6 +258,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // الشاشةُ نفسُها في «طلبات الشحنات»؛ من يعمل على الكشوف يقرأ العميلَ من
     // قسمه لا من قسمٍ آخر. والمكوّنُ واحد، فلا تفترق النسختان.
     { href: '/system/operations/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'collections_manager', 'collections_staff'], section: 'Operations' },
+    // ── وأوّلُ صفحةِ القسم لوحتُه ──────────────────────────────────────────
+    // من يفتح قسمًا يسأل أوّلًا «كيف حالُ القسم؟» لا «أرني الصفَّ الأوّل من
+    // جدوله». وكانت اللوحةُ آخرَ عناصر المشتريات، فتُفتَح على سجلّ الموردين.
+    { href: '/system/procurement/dashboard', label: L.procurementDashboard, icon: <ShoppingCart className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'procurement_manager', 'procurement_staff'], section: 'Procurement' },
     { href: '/system/vendors', label: L.vendors, icon: <Store className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'operations_staff', 'procurement_manager', 'procurement_staff'], section: 'Procurement' },
     // ── وقوائمُ العهدة من موضعٍ واحد ────────────────────────────────────────
     // كانت مكتوبةً هنا بيدٍ وفي شرط محدِّد الفرع داخل الصفحة، فأُضيف المحاسبُ
@@ -316,6 +320,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Creating shipments natively instead of on the external UPL system. Kept
     // fully independent from Operations Platform: if the trial works, the team
     // moves HERE and the integration is what gets retired.
+    // لوحةُ القسم أوّلًا: مَن يفتحه يسأل «كيف حالُه اليوم؟» لا «أرني الصفَّ الأوّل».
+    { href: '/system/shipment-orders/dashboard', label: lang === 'ar' ? 'لوحة الشحنات' : 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
     { href: '/system/shipment-orders', label: lang === 'ar' ? 'الشحنات' : 'Shipments', icon: <PackageSearch className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
     { href: '/system/shipment-orders/chat', label: lang === 'ar' ? 'مساعد الإنشاء' : 'Create Assistant', icon: <Bot className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
     { href: '/system/shipment-orders/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
@@ -354,11 +360,12 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/fleet/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(FLEET_ROLES), section: 'Fleet Management', restrict: true },
     { href: '/system/fleet/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
 
+    // لوحةُ القسم أوّلًا: «كيف يسير العمل» قبل «ما حالُ هذه المعاملة».
+    { href: '/system/customs/analytics', label: lang === 'ar' ? 'التحليلات' : 'Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     { href: '/system/customs', label: L.customsClearance, icon: <Ship className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     // ── صفحاتُ التخليص ────────────────────────────────────────────────────
     // «دليل التخليص» أُخفي من التنقّل وبقي في الكود: الصفحةُ مكتوبةٌ وتعمل، ولو
     // طُلبت عادت بسطرٍ واحد. حذفُها كان سيُفقد ما كُتب لأجل إخفائه.
-    { href: '/system/customs/analytics', label: lang === 'ar' ? 'التحليلات' : 'Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     { href: '/system/customs/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     { href: '/system/customs/agents', label: lang === 'ar' ? 'وكلاء الشحن' : 'Shipping Agents', icon: <Ship className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     { href: '/system/customs/carriers', label: lang === 'ar' ? 'الناقلون' : 'Carriers', icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
@@ -403,6 +410,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/ls2/fleet-assets', label: lang === 'ar' ? 'السطحات والكاوتشات' : 'Fleet Assets', icon: <Container className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/store', label: lang === 'ar' ? 'مخزن النقل الثقيل' : 'Store', icon: <Boxes className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/repairs', label: lang === 'ar' ? 'الصيانة الاستثنائية' : 'Exceptional Repairs', icon: <Hammer className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
+    // «أحتاج هذه الشاحنةَ وصيانتُها متأخّرة» — طلبُ إدارة الأسطول، وقرارُه هنا.
+    { href: '/system/ls2/fleet-requests', label: lang === 'ar' ? 'طلبات الأسطول' : 'Fleet Requests', icon: <ShieldQuestion className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/alerts', label: lang === 'ar' ? 'التنبيهات' : 'Alerts', icon: <Bell className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/reports', label: lang === 'ar' ? 'التقارير' : 'Reports', icon: <FileBarChart className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
 
@@ -411,8 +420,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // trailers the ls2 asset registry tracks. Keeping the two sections apart made
     // people hunt across the sidebar for one truck's story.
     // ---- Performance (KPI evaluation) ----
-    { href: '/system/performance', label: lang === 'ar' ? 'تقييم مديري الأقسام' : 'Evaluate Managers', icon: <Target className="w-5 h-5" />, roles: ['super_admin'], section: 'Performance' },
+    // لوحةُ القسم أوّلًا: «نظرةُ كلّ الأقسام» هي حالُ القسم، والتقييمُ عملٌ فيه.
     { href: '/system/performance/overview', label: lang === 'ar' ? 'نظرة كل الأقسام' : 'All Departments', icon: <Crown className="w-5 h-5" />, roles: ['super_admin'], section: 'Performance' },
+    { href: '/system/performance', label: lang === 'ar' ? 'تقييم مديري الأقسام' : 'Evaluate Managers', icon: <Target className="w-5 h-5" />, roles: ['super_admin'], section: 'Performance' },
     { href: '/system/performance/requests', label: lang === 'ar' ? 'طلبات تعديل التقييم' : 'Edit Requests', icon: <Inbox className="w-5 h-5" />, roles: ['super_admin'], section: 'Performance' },
     { href: '/system/performance/settings', label: lang === 'ar' ? 'إعداد المؤشرات' : 'Configure KPIs', icon: <Settings className="w-5 h-5" />, roles: ['super_admin'], section: 'Performance' },
     // ---- Marketing ----
@@ -499,8 +509,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/b2c/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor'], section: 'B2C' },
     { href: '/system/b2c/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor'], section: 'B2C' },
     // Remote (work-from-home)
-    { href: '/system/remote/attendance', label: L.remoteAttendance, icon: <Clock className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'attendance' },
     { href: '/system/remote/dashboard', label: L.remoteDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'dashboard' },
+    { href: '/system/remote/attendance', label: L.remoteAttendance, icon: <Clock className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'attendance' },
     { href: '/system/remote/leave', label: L.remoteLeave, icon: <CalendarCheck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'leave' },
     { href: '/system/remote/chat', label: L.remoteChat, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'chat' },
     { href: '/system/remote/tasks', label: L.remoteTasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'tasks' },
@@ -578,7 +588,6 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/finance/collections', label: lang === 'ar' ? 'ماليات التحصيل' : 'Collections Finance', icon: <CreditCard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'cfo', 'accounting_manager', 'accountant'], section: 'Accounting' },
     { href: '/system/finance/vehicles', label: lang === 'ar' ? 'ماليات المركبات' : 'Vehicles Finance', icon: <Car className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'cfo', 'accounting_manager', 'accountant'], section: 'Accounting' },
     // Procurement
-    { href: '/system/procurement/dashboard', label: L.procurementDashboard, icon: <ShoppingCart className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'procurement_manager', 'procurement_staff'], section: 'Procurement' },
     { href: '/system/procurement/requests', label: L.purchaseRequests, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'procurement_manager', 'procurement_staff'], section: 'Procurement' },
     { href: '/system/procurement/orders', label: L.purchaseOrders, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'procurement_manager', 'procurement_staff'], section: 'Procurement' },
     { href: '/system/procurement/bills', label: L.vendorBills, icon: <CreditCard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'procurement_manager', 'procurement_staff'], section: 'Procurement' },

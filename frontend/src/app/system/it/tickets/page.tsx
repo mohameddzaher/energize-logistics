@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -32,7 +33,12 @@ const EMPTY = {
 // الحالات التي يصير فيها للبلاغ زمن حل، فيُطلب يوم الحل.
 const CLOSED_STATUSES = ['resolved', 'closed'];
 
-export default function ItTicketsPage() {
+/**
+ * ── والفلترُ يُورَث من الرابط ─────────────────────────────────────────────────
+ * بطاقاتُ لوحة تقنية المعلومات تؤدّي إلى هنا: «١٤ بلاغًا مفتوحًا» تُضغَط فتُفتَح
+ * الأربعةَ عشرَ أنفسُها لا كلُّ البلاغات.
+ */
+function ItTicketsInner() {
   const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
@@ -47,7 +53,8 @@ export default function ItTicketsPage() {
   const [assignees, setAssignees] = useState<ItAssignee[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const sp = useSearchParams();
+  const [statusFilter, setStatusFilter] = useState(() => sp?.get('status') || '');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [from, setFrom] = useState('');
@@ -347,4 +354,9 @@ export default function ItTicketsPage() {
       </Modal>
     </div>
   );
+}
+
+export default function ItTicketsPage() {
+  // useSearchParams يحتاج حدَّ Suspense في موجّه التطبيقات.
+  return <Suspense fallback={<Spinner />}><ItTicketsInner /></Suspense>;
 }

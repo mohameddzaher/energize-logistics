@@ -6,13 +6,15 @@
 // نفس العدّ تفترقان عند أول تعديل — فيقرأ المستخدم رقمين لشيء واحد ولا يعود
 // يثق في أيّهما. الحساب في الخادم، والعرض هنا، والشاشتان تقرآن من الاثنين.
 import { CUSTODY_BUCKETS, CUSTODY_STATUSES, CUSTODY_STATE_KEYS, custodyStatusLabel, Lang } from '@/lib/it';
-import { Laptop, Keyboard, Smartphone, Monitor, Package, UserCheck, Boxes, AlertOctagon, BadgeDollarSign } from 'lucide-react';
+import { Laptop, Keyboard, Mouse, Smartphone, Monitor, Package, UserCheck, Boxes, AlertOctagon, BadgeDollarSign } from 'lucide-react';
 
 export interface BucketCount { key: string; count: number }
 
 const BUCKET_ICON: Record<string, React.ElementType> = {
   laptops: Laptop,
-  peripherals: Keyboard,
+  mice: Mouse,
+  keyboards: Keyboard,
+  keyboard_mouse_sets: Keyboard,
   phones: Smartphone,
   monitors: Monitor,
   other: Package,

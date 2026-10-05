@@ -23,12 +23,35 @@ const BUCKETS = [
     canonicalType: 'laptop',
     types: ['laptop', 'desktop'],
   },
+  // ── والماوسُ دلوٌ وحدَه، والكيبوردُ وحدَه ────────────────────────────────────
+  // كانا دلوًا واحدًا «ماوس وكيبورد». وفي المستودع ماوساتٌ بلا كيبورد
+  // وكيبورداتٌ بلا ماوس (٩ ماوسات و٣٢ كيبوردًا بأنواعها المفصّلة)، فمن أراد
+  // «أضِف ماوسًا» لم يجد تصنيفًا له إلّا الذي يكتبه «ماوس وكيبورد» — فيصير
+  // الصنفُ الفردُ مكتوبًا طقمًا، ولا يُعرَف كم ماوسًا عندنا.
+  //
+  // والطقمُ يبقى دلوًا ثالثًا: خمسةَ عشرَ صنفًا مكتوبًا `keyboard_mouse` فعلًا
+  // («ماوس وكيبورد Logitech»…) — وضمُّها إلى أحد الفردين يجعل العدَّ كاذبًا في
+  // الاتّجاه الآخر.
   {
-    key: 'peripherals',
-    nameAr: 'ماوس وكيبورد',
-    nameEn: 'Mouse & Keyboard',
+    key: 'mice',
+    nameAr: 'ماوس',
+    nameEn: 'Mouse',
+    canonicalType: 'mouse',
+    types: ['mouse'],
+  },
+  {
+    key: 'keyboards',
+    nameAr: 'كيبورد',
+    nameEn: 'Keyboard',
+    canonicalType: 'keyboard',
+    types: ['keyboard'],
+  },
+  {
+    key: 'keyboard_mouse_sets',
+    nameAr: 'طقم ماوس وكيبورد',
+    nameEn: 'Mouse + keyboard set',
     canonicalType: 'keyboard_mouse',
-    types: ['mouse', 'keyboard', 'keyboard_mouse'],
+    types: ['keyboard_mouse'],
   },
   {
     key: 'phones',

@@ -63,7 +63,10 @@ class CustodyBucket {
 
 const custodyBuckets = <CustodyBucket>[
   CustodyBucket('laptops', 'لابتوبات', 'Laptops', 'laptop', ['laptop', 'desktop'], Icons.laptop_mac_rounded),
-  CustodyBucket('peripherals', 'ماوس وكيبورد', 'Mouse & Keyboard', 'keyboard_mouse', ['mouse', 'keyboard', 'keyboard_mouse'], Icons.keyboard_rounded),
+  // الماوسُ وحدَه والكيبوردُ وحدَه والطقمُ ثالثًا — نظيرُ config/itCustody.
+  CustodyBucket('mice', 'ماوس', 'Mouse', 'mouse', ['mouse'], Icons.mouse_rounded),
+  CustodyBucket('keyboards', 'كيبورد', 'Keyboard', 'keyboard', ['keyboard'], Icons.keyboard_rounded),
+  CustodyBucket('keyboard_mouse_sets', 'طقم ماوس وكيبورد', 'Mouse + keyboard set', 'keyboard_mouse', ['keyboard_mouse'], Icons.keyboard_alt_rounded),
   CustodyBucket('phones', 'موبايلات', 'Phones', 'phone', ['phone', 'tablet'], Icons.smartphone_rounded),
   CustodyBucket('monitors', 'شاشات', 'Monitors', 'monitor', ['monitor'], Icons.monitor_rounded),
   CustodyBucket('other', 'أخرى', 'Other', 'other',

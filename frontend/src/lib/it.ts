@@ -249,7 +249,11 @@ export interface CustodyBucket {
 
 export const CUSTODY_BUCKETS: CustodyBucket[] = [
   { key: 'laptops', ar: 'لابتوبات', en: 'Laptops', canonicalType: 'laptop', types: ['laptop', 'desktop'] },
-  { key: 'peripherals', ar: 'ماوس وكيبورد', en: 'Mouse & Keyboard', canonicalType: 'keyboard_mouse', types: ['mouse', 'keyboard', 'keyboard_mouse'] },
+  // الماوسُ وحدَه والكيبوردُ وحدَه والطقمُ ثالثًا — نظيرُ config/itCustody في
+  // الخادم حرفًا: الفردُ لم يكن له تصنيفٌ فكان يُكتب طقمًا.
+  { key: 'mice', ar: 'ماوس', en: 'Mouse', canonicalType: 'mouse', types: ['mouse'] },
+  { key: 'keyboards', ar: 'كيبورد', en: 'Keyboard', canonicalType: 'keyboard', types: ['keyboard'] },
+  { key: 'keyboard_mouse_sets', ar: 'طقم ماوس وكيبورد', en: 'Mouse + keyboard set', canonicalType: 'keyboard_mouse', types: ['keyboard_mouse'] },
   { key: 'phones', ar: 'موبايلات', en: 'Phones', canonicalType: 'phone', types: ['phone', 'tablet'] },
   { key: 'monitors', ar: 'شاشات', en: 'Monitors', canonicalType: 'monitor', types: ['monitor'] },
   { key: 'other', ar: 'أخرى', en: 'Other', canonicalType: 'other', types: ['laptop_bag', 'charger', 'cable', 'headset', 'printer', 'router', 'access_card', 'accessory', 'other'] },

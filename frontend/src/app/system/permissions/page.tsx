@@ -24,14 +24,14 @@
  * من يحتاج «مراجعًا يرى المالَ ولا يكتب فيه». فيُصنَع نوعُه بضغطة، ويُولَد لا
  * يملك شيئًا حتّى يُمنَح صراحةً.
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import {
   ShieldCheck, Check, Eye, Ban, Save, Loader2, ChevronDown, ChevronLeft,
-  UserPlus, Trash2, Search, X, Home, Layers,
+  UserPlus, Trash2, Search, X, Home, Layers, Lock,
 } from 'lucide-react';
 import { getPermissionsTranslations, getSectionLabel } from '@/lib/translations';
 import { Spinner, PageHeader, Modal, Field, TextInput, PrimaryButton } from '@/components/hr/HRKit';
@@ -98,12 +98,28 @@ export default function PermissionsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  /**
+   * ── ولا تُمسَح شهادةُ الحفظ باليد التي كتبتها ───────────────────────────────
+   *
+   * هذا الأثرُ يُعيد بذرَ النسخة العاملة كلّما تغيّر `data` — وهو صحيحٌ عند
+   * تغيير الدور أو إعادة التحميل. لكنّ `save()` يكتب في `data` أيضًا، فكان
+   * الأثرُ يُطلَق بعد كلّ حفظٍ ناجحٍ ويُصفّر `savedFlash` في نفس الرسمة: يُضغَط
+   * «حفظ» فلا تظهر «تم الحفظ» أبدًا، ويخبو الزرُّ لأنّ `dirty` صارت كذبًا —
+   * فيُقرأ أنّ الشاشةَ لم تستجب، ويُعاد الضغطُ مرّةً ومرّتين.
+   *
+   * فالتصفيرُ مشروطٌ بتغيُّر الدور لا بتغيُّر البيانات: الشهادةُ تبقى حتى
+   * يُنتقَل إلى دورٍ آخر أو يُعدَّل شيءٌ جديد.
+   */
+  const seededFor = useRef('');
   useEffect(() => {
     if (!data || !selectedRole) return;
     setDraft({ ...(data.permissions[selectedRole] || {}) });
     setPageDraft({ ...(data.pages[selectedRole] || {}) });
     setHomePage(data.explicit?.[selectedRole]?.homePage || '');
-    setSavedFlash(false);
+    if (seededFor.current !== selectedRole) {
+      seededFor.current = selectedRole;
+      setSavedFlash(false);
+    }
   }, [data, selectedRole]);
 
   const roleLabel = useCallback((r: string) => {
@@ -147,6 +163,30 @@ export default function PermissionsPage() {
   };
 
   const togglePage = (key: string) => setPageDraft((p) => ({ ...p, [key]: !p[key] }));
+
+  /**
+   * ── والمربّعُ المعطَّلُ كان بابًا مسدودًا بلا لافتة ──────────────────────────
+   *
+   * صفحةٌ في قسمٍ غيرِ ممنوحٍ لا تُفتَح مهما أُشِّرت — والقاعدةُ صحيحة. وكان
+   * مربّعُها `disabled`: يُضغَط فلا يحدث شيء، ولا سطرَ يقول لماذا. فمن أراد أن
+   * يُعطي متدرّبًا شاشةً واحدةً في قسمٍ آخر ضغط عليها عشرَ مرّاتٍ ثمّ قال
+   * «الصلاحيّاتُ لا تُحفَظ» — وهي لم تُطلَب أصلًا.
+   *
+   * فالضغطةُ الآن **تفعل المقصود**: تمنح القسمَ «مشاهدة» (لا تعديل)، وتفتح
+   * هذه الصفحةَ وحدَها فيه وتُغلق بقيّتَه. وهو عينُ ما كان يُفعَل بثلاث خطواتٍ
+   * يدويّة، ويُقال في سطرٍ تحت القائمة.
+   */
+  const openOnePage = (section: string, key: string) => {
+    setDraft((d) => ({ ...d, [section]: 'view' }));
+    setPageDraft((p) => {
+      const next = { ...p };
+      (data?.catalog || []).filter((x) => x.section === section).forEach((x) => { next[x.key] = x.key === key; });
+      return next;
+    });
+    notify(ar
+      ? `مُنح القسمُ «${getSectionLabel(section, lang)}» مشاهدةً، وفُتحت هذه الصفحةُ وحدَها فيه — اضغط «حفظ» ليسري.`
+      : `Granted “${getSectionLabel(section, lang)}” view access with only this page open — press Save to apply.`, 'info');
+  };
   const setSectionPages = (section: string, on: boolean) => {
     setPageDraft((p) => {
       const next = { ...p };
@@ -177,6 +217,18 @@ export default function PermissionsPage() {
         `/api/admin/permissions/${selectedRole}`,
         { sections: draft, pages, homePage },
       );
+
+      // ── والحفظُ يُثبت نفسَه بما عاد من الخادم ─────────────────────────────
+      // ما يُعرَض بعد الحفظ هو **الصلاحيّةُ الفعليّةُ** التي ردّها الخادمُ لا
+      // ما أرسلناه: لو اختلف حرفٌ (قاعدةٌ في الخادم تمنع، أو صفحةٌ لا تتجاوز
+      // قسمَها) ظهر الاختلافُ في الحال بدل أن يُقرأ «حُفظ» ثمّ يُفتَح الغدَ
+      // فيُرى غيرُه. وما يختلف يُقال صريحًا.
+      const asked = Object.entries(draft).filter(([k]) => (data.sections || []).includes(k));
+      const differ = asked.filter(([k, v]) => (res.permissions?.[k] || 'none') !== (v || 'none'));
+      // ما صار ساريًا فعلًا — من ردّ الخادم لا من النسخة العاملة.
+      const grantedNow = Object.values(res.permissions || {}).filter((v) => v !== 'none').length;
+      const pagesNow = Object.values(res.pages || {}).filter(Boolean).length;
+
       setData((prev) => (prev ? {
         ...prev,
         permissions: { ...prev.permissions, [selectedRole]: res.permissions },
@@ -184,6 +236,16 @@ export default function PermissionsPage() {
         explicit: { ...prev.explicit, [selectedRole]: { pages, homePage } },
       } : prev));
       setSavedFlash(true);
+
+      if (differ.length) {
+        notify(ar
+          ? `حُفِظ، وفي ${differ.length} قسمًا اختلفت النتيجةُ عمّا طُلب: ${differ.map(([k]) => getSectionLabel(k, lang)).join('، ')}`
+          : `Saved, but ${differ.length} section(s) came back different: ${differ.map(([k]) => getSectionLabel(k, lang)).join(', ')}`, 'error');
+      } else {
+        notify(ar
+          ? `حُفِظت صلاحيّاتُ «${roleLabel(selectedRole)}» — ${grantedNow} قسمًا و${pagesNow} صفحة`
+          : `Saved “${roleLabel(selectedRole)}” — ${grantedNow} sections, ${pagesNow} pages`, 'success');
+      }
       if (user?.role === selectedRole) refreshUser();
     } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
     setSaving(false);
@@ -341,11 +403,17 @@ export default function PermissionsPage() {
 
                     {open && (
                       <div className="px-4 pb-4 -mt-1">
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <button type="button" onClick={() => setSectionPages(section, true)}
                             className="text-[11px] px-2 py-1 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100">{t('فتح الكل', 'Open all')}</button>
                           <button type="button" onClick={() => setSectionPages(section, false)}
                             className="text-[11px] px-2 py-1 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100">{t('إغلاق الكل', 'Close all')}</button>
+                          {isManaged && cur === 'none' && (
+                            <span className="text-[11px] text-amber-700">
+                              {t('القسمُ غيرُ ممنوح — اضغط أيّ صفحةٍ لمنحه «مشاهدة» وفتحِها وحدَها.',
+                                 'Section not granted — click a page to grant view and open just it.')}
+                            </span>
+                          )}
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-1.5">
                           {pages.map((pg) => {
@@ -353,14 +421,25 @@ export default function PermissionsPage() {
                             // صفحةٌ في قسمٍ ممنوع لا تُفتَح مهما أُشِّرت — تُقال
                             // لا تُخفى، كي يُعرف السببُ ويُرفَع القسمُ أوّلًا.
                             const blockedBySection = isManaged && cur === 'none';
+                            if (blockedBySection) {
+                              // لا مربّعَ معطَّلًا: زرٌّ يفعل المقصود ويقول ما سيفعله.
+                              return (
+                                <button key={pg.key} type="button" onClick={() => openOnePage(section, pg.key)}
+                                  title={ar
+                                    ? `قسمُ «${getSectionLabel(section, lang)}» غيرُ ممنوح — اضغط لمنحه مشاهدةً وفتحِ هذه الصفحة وحدَها`
+                                    : `Section not granted — click to grant view and open only this page`}
+                                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-dashed border-slate-300 bg-slate-50 text-[13px] text-slate-500 text-start hover:border-[#f37121] hover:text-[#f37121] transition-colors">
+                                  <Lock className="w-3.5 h-3.5 shrink-0 opacity-60" />
+                                  <span className="truncate" title={pg.key}>{ar ? pg.ar : pg.en}</span>
+                                </button>
+                              );
+                            }
                             return (
                               <label key={pg.key}
                                 className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[13px] cursor-pointer transition-colors ${
-                                  blockedBySection ? 'border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed'
-                                    : allowed ? 'border-emerald-200 bg-emerald-50/60 text-slate-800' : 'border-slate-200 bg-white text-slate-500'}`}>
+                                  allowed ? 'border-emerald-200 bg-emerald-50/60 text-slate-800' : 'border-slate-200 bg-white text-slate-500'}`}>
                                 <input type="checkbox" className="w-4 h-4 accent-[#f37121] shrink-0"
-                                  checked={allowed && !blockedBySection}
-                                  disabled={blockedBySection}
+                                  checked={allowed}
                                   onChange={() => togglePage(pg.key)} />
                                 <span className="truncate" title={pg.key}>{ar ? pg.ar : pg.en}</span>
                               </label>

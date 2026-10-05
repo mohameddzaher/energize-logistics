@@ -4,6 +4,30 @@ const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
 const { invalidateUserCache } = require('../middleware/auth');
 
+/**
+ * مديرُ النظام لا يُصنَع ولا يُمسّ حسابُه إلّا من مديرِ نظام.
+ *
+ * ── لماذا هنا لا في قائمةِ الحارس ───────────────────────────────────────────
+ * حارسُ هذا المسار كان `super_admin` وحدَه، فكان الشرطُ مضمونًا بالصدفة. ثمّ
+ * صارت تأشيرةُ الصفحة في مصفوفة الصلاحيّات تفتح الشاشةَ وأفعالَها (راجع
+ * middleware/rbac): من يُؤشَّر له على «المستخدمين» ينشئ حسابًا ويعدّله — وهذا
+ * هو المقصود. لكنّ **إنشاءَ مديرِ نظامٍ جديد، أو تحويلَ حسابٍ إليه، أو تعديلَ
+ * حسابِ مديرِ نظامٍ قائم** ليس «استعمالَ شاشة»: هو تسليمُ النظام كلِّه، ولا
+ * يجوز أن يكون مربّعٌ واحدٌ طريقًا إليه.
+ *
+ * فالشرطُ مكتوبٌ في المتحكّم: يُقرأ وينطبق من أيّ بابٍ جاء الطلب.
+ */
+const guardSuperAdminRole = (req, res, { currentRole, nextRole } = {}) => {
+  if (canonicalRole(req.user?.role) === 'super_admin') return false;
+  const touches = canonicalRole(currentRole) === 'super_admin' || canonicalRole(nextRole) === 'super_admin';
+  if (!touches) return false;
+  res.status(403).json({
+    message: 'حسابُ مديرِ النظام لا يُنشَأ ولا يُعدَّل إلّا من مديرِ النظام | Only a super admin may create or modify a super admin account',
+    code: 'SUPER_ADMIN_ONLY',
+  });
+  return true;
+};
+
 // Keep the Employee↔User link consistent and exclusive: point the chosen
 // employee at this user, and detach the employee from any other user that was
 // previously linked to it. Passing employeeId=null just detaches this user.
@@ -133,6 +157,7 @@ exports.createUser = async (req, res) => {
     // Partner accounts always carry the external `client` role, whatever the
     // form sent — the role list is the staff list.
     const role = accountType === 'employee' ? req.body.role : 'client';
+    if (guardSuperAdminRole(req, res, { nextRole: role })) return;
 
     const existing = await User.findOne({ email });
     if (existing) {
@@ -220,6 +245,7 @@ exports.updateUser = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
+    if (guardSuperAdminRole(req, res, { currentRole: user.role, nextRole: role })) return;
 
     const before = { firstName: user.firstName, lastName: user.lastName, role: user.role, email: user.email };
 
@@ -406,6 +432,8 @@ exports.lockUser = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    if (guardSuperAdminRole(req, res, { currentRole: user.role })) return;
+
     user.isLocked = !user.isLocked;
     await user.save();
     invalidateUserCache(user._id);
@@ -435,6 +463,8 @@ exports.resetPassword = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
+
+    if (guardSuperAdminRole(req, res, { currentRole: user.role })) return;
 
     user.password = newPassword; // hashed by the pre-save hook
     // Resetting someone's password must sign them out everywhere — otherwise a

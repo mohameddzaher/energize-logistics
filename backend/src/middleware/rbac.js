@@ -16,7 +16,7 @@ const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
  * فيُطبَّع الطرفان قبل المقارنة: قائمةُ الحارس ودورُ الحساب. وبهذا لا يكسر
  * تغييرُ اسمٍ بابًا نسي أحدُهم تحديثَه.
  */
-const authorize = (...roles) => {
+const build = (roles, { strict = false } = {}) => {
   const allowed = new Set(roles.map(canonicalRole));
   const guard = (req, res, next) => {
     if (!req.user) {
@@ -27,6 +27,13 @@ const authorize = (...roles) => {
       return next();
     }
 
+    // ── وبابٌ لا يُفتَح بمنحٍ من المصفوفة ─────────────────────────────────────
+    // `authorize.strict` لا يقرأ ختمَ قسمٍ ولا تأشيرةَ صفحة: قائمتُه هي كلُّ
+    // شيء. وهو لمَن يملك المصفوفةَ نفسَها — من يضبط الصلاحيّاتَ يضبط صلاحيّاتَه،
+    // فلو فُتحت شاشتُه بتأشيرةٍ لمنح صاحبُها نفسَه كلَّ شيءٍ في ضغطتين. ومعها
+    // محوُ البيانات: فعلٌ لا رجعةَ فيه.
+    if (strict) return res.status(403).json({ message: 'Insufficient permissions' });
+
     // Dynamic permissions: sectionGate() stamps req.sectionAccess when the
     // super_admin has granted this role access to the section this route lives
     // in. Honour it so a granted role passes even when it isn't in the route's
@@ -35,18 +42,23 @@ const authorize = (...roles) => {
     if (access === 'edit') return next();
     if (access === 'view' && READ_METHODS.has(req.method)) return next();
 
-    // ── وتأشيرةُ الصفحة تفتح القراءةَ وحدَها ───────────────────────────────
+    // ── وتأشيرةُ الصفحة تُقرأ كما يُقرأ ختمُ القسم ─────────────────────────
     // `pageGate` يختم `pageGranted` إن كانت هذه النقطةُ تملكها صفحةٌ أُشِّر
-    // عليها صراحةً لهذا الدور، ولا قسمَ مُدارًا لها. وشاشاتُ تلك الأقسام لا
-    // تُمنَح بغير هذا الطريق، فكان من يُؤشَّر له عليها يفتحها ويُقال له «لا
+    // عليها صراحةً لهذا الدور، ولا قسمَ مُدارًا لها (هناك الحارسُ الأعلى هو
+    // القسم). وشاشاتُ تلك الأقسام — المستخدمون، سجلُّ المراجعة، الفروع،
+    // القوائمُ المرجعيّة، مركزُ التقارير، النظرةُ التنفيذيّة، تقييمُ الأداء —
+    // لا تُمنَح بغير هذا الطريق: يحرسها سطرُ أدوارٍ مكتوبٌ في كلّ مسار لا
+    // يعرف الأنواعَ المصنوعة. فكان من يُؤشَّر له عليها يفتحها ويُقال له «لا
     // تملك صلاحيّة» ولا شيءَ يقول لماذا.
     //
-    // والقراءةُ وحدَها، لا الكتابة. والسببُ محسوب: `POST /api/users` حارسُه
-    // `super_admin` فقط، فلو فتحت التأشيرةُ الكتابةَ لصار مربّعٌ واحدٌ في
-    // شاشة الصلاحيّات طريقًا إلى **إنشاء حسابِ مديرِ نظامٍ جديد**. فالتأشيرُ
-    // يقول «لتُفتَح له هذه الشاشة»، وفتحُ شاشةٍ قراءةٌ؛ وأفعالُها تبقى لمن
-    // يملكها بدوره أو بقسمه. راجع middleware/pageGate.
-    if (req.pageGranted && READ_METHODS.has(req.method)) return next();
+    // والتأشيرةُ تفتح الشاشةَ وأفعالَها، كما يفتحها القسمُ بـ«تعديل»: من يؤشّر
+    // على شاشةٍ في مصفوفة الصلاحيّات يقصد أن تعمل، لا أن تُعرَض معطّلة.
+    //
+    // وبقي حدٌّ واحدٌ خارجَ هذا البابِ كلِّه: **مديرُ النظام لا يُصنَع ولا يُمسّ
+    // حسابُه إلّا من مديرِ نظام** (راجع `guardSuperAdminRole` في
+    // controllers/userController). ذاك تسليمُ النظام لا فتحُ شاشة، فلا يجوز أن
+    // يكون مربّعٌ واحدٌ طريقًا إليه.
+    if (req.pageGranted) return next();
 
     return res.status(403).json({ message: 'Insufficient permissions' });
   };
@@ -55,7 +67,13 @@ const authorize = (...roles) => {
   // `services/apiDocs`)، والحارسُ بعد تركيبه دالّةٌ مغلقةٌ لا يُقرأ منها شيء.
   // فيُعلَّق عليها ما تحرسه — سطرٌ واحدٌ يجعل الوثيقةَ تقول الحقيقة.
   guard.__roles = [...allowed];
+  if (strict) guard.__strict = true;
   return guard;
 };
+
+const authorize = (...roles) => build(roles);
+
+/** قائمتُه وحدَها تقرّر — لا ختمَ قسمٍ ولا تأشيرةَ صفحةٍ تفتحه. */
+authorize.strict = (...roles) => build(roles, { strict: true });
 
 module.exports = authorize;

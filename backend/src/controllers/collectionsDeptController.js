@@ -1176,7 +1176,31 @@ exports.invoiceColumnOptions = async (req, res) => {
       // المصوغةَ كما تُعرض.
       pipeline.push({ $match: { _id: { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } } });
     }
-    pipeline.push({ $sort: type === 'date' ? { _id: -1 } : { count: -1, _id: 1 } });
+    // ── والترتيبُ بالتكرار لا يصلح لعمودٍ قيمتُه فريدة ──────────────────────
+    //
+    // دفترُ الفواتير أحدَ عشرَ ألفَ صفٍّ فيها أحدَ عشرَ ألفَ رقمٍ مختلف: رقمان
+    // فقط يتكرّران (٧٦٧٩ و‍«-14»، مرّتين لكلٍّ). والترتيبُ بالتكرار يرفع هذين
+    // إلى رأس القائمة دائمًا — فمَن يختار فاتورةً يجد «٧٦٧٩» ملتصقًا بها في
+    // كلّ مرّة ويقرأها فلترًا مفروضًا عليه. وهي ليست مفروضةً: هي أعلى القائمة
+    // لأنّها الرقمُ الوحيدُ الذي تكرّر.
+    //
+    // فأعمدةُ الأرقام (الفاتورة، الكشف، المستند، كودُ الحساب) تُرتَّب بقيمتها
+    // تنازليًّا — والأرقامُ تكبر مع الزمن، فأعلى القائمة أحدثُها وهو ما يُطلَب.
+    // وتُقرأ رقمًا لا نصًّا: «10012» بعد «7679» لا قبله.
+    //
+    // وبقيّةُ الأعمدة (الحالة، الفرع، العميل) تبقى بالتكرار: قيمُها قليلةٌ
+    // متكرّرةٌ، وأكثرُها ورودًا هو ما يُبحَث عنه.
+    const ID_LIKE = new Set(['invoiceNumber', 'reportNumber', 'documentNumber', 'partyCode']);
+    if (type === 'date') {
+      pipeline.push({ $sort: { _id: -1 } });
+    } else if (ID_LIKE.has(field)) {
+      pipeline.push({ $addFields: { _num: { $convert: { input: '$_id', to: 'double', onError: null, onNull: null } } } });
+      // ما ليس رقمًا يُؤخَّر: «(فارغ)» ونصوصٌ شاذّةٌ لا تتقدّم أرقامَ الفواتير.
+      pipeline.push({ $sort: { _num: -1, _id: -1 } });
+      pipeline.push({ $project: { _num: 0 } });
+    } else {
+      pipeline.push({ $sort: { count: -1, _id: 1 } });
+    }
     pipeline.push({ $limit: LIMIT + 1 });
 
     const rows = await Model.aggregate(pipeline).allowDiskUse(true);

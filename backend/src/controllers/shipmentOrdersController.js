@@ -335,7 +335,8 @@ exports.listOrders = async (req, res) => {
       const r = rx(q);
       const or = [
         { customerName: r }, { driverName: r }, { driverPhone: r }, { fromCity: r }, { toCity: r },
-        { vehicleName: r }, { supplierName: r }, { agentName: r }, { notes: r },
+        // واللوحةُ في خانتها كما في اسم المركبة: من كتب لوحةً يجدها بأيّهما.
+        { vehicleName: r }, { vehiclePlate: r }, { supplierName: r }, { agentName: r }, { notes: r },
         { truckType: r }, { branch: r }, { reference: r },
       ];
       // A run of digits is almost always a waybill lookup — match it exactly,

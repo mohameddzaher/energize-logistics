@@ -958,9 +958,18 @@ exports.filterOptions = async (req, res) => {
     }
 
     const isDate = DATE_COLUMNS.has(field);
-    // التواريخ تُرتَّب من الأحدث لا بالأكثر تكرارًا: مَن يفلتر بتاريخ يبحث عن أيامٍ
-    // قريبة، لا عن اليوم الذي صادف أن فيه أكبر عدد كشوف.
-    const sort = isDate ? { _id: -1 } : { count: -1, _id: 1 };
+    // ── والترتيبُ يتبع طبيعةَ العمود ──────────────────────────────────────────
+    // التواريخُ من الأحدث: مَن يفلتر بتاريخ يبحث عن أيامٍ قريبة، لا عن اليوم
+    // الذي صادف أن فيه أكبرَ عددِ كشوف.
+    //
+    // وأعمدةُ الأرقام (الكشف، المستند، الفاتورة) قيمتُها فريدةٌ لكلّ صفٍّ تقريبًا،
+    // فالترتيبُ بالتكرار يرفع إلى رأس القائمة الرقمَ الذي تكرّر مرّتين بالخطأ
+    // ويدفن سبعةً وثلاثين ألفًا سواه — ويُقرأ كأنّه فلترٌ مفروض. فتُرتَّب
+    // بقيمتها تنازليًّا: أعلى القائمة أحدثُها، وهو ما يُطلَب.
+    // (وقع هذا في دفتر الفواتير: راجع collectionsDeptController.invoiceColumnOptions.)
+    const ID_LIKE = new Set(['reportNumber', 'documentNumber', 'invoiceNumber', 'carNumber', 'plateNumber']);
+    const isIdLike = !isDate && ID_LIKE.has(field);
+    const sort = isDate ? { _id: -1 } : (isIdLike ? { _num: -1, _id: -1 } : { count: -1, _id: 1 });
     const [agg] = await OperationsWorkflow.aggregate([
       { $match: match },
       {
@@ -969,6 +978,8 @@ exports.filterOptions = async (req, res) => {
           count: { $sum: 1 },
         },
       },
+      // الرقمُ يُقرأ رقمًا لا نصًّا: «10012» بعد «7679» لا قبله.
+      ...(isIdLike ? [{ $addFields: { _num: { $convert: { input: '$_id', to: 'double', onError: null, onNull: null } } } }] : []),
       {
         $facet: {
           values: [{ $sort: sort }, { $limit: MAX_FILTER_VALUES + 1 }],
@@ -988,8 +999,20 @@ exports.filterOptions = async (req, res) => {
         : (id instanceof Date ? id.toISOString() : String(id));
       merged.set(value, (merged.get(value) || 0) + r.count);
     }
+    // والدمجُ لا يُفسد ترتيبَ القاعدة: يُعاد الترتيبُ بنفس القاعدة التي فوق.
+    const numOf = (v) => { const n = Number(String(v).replace(/[\s,]/g, '')); return Number.isFinite(n) ? n : null; };
     let values = [...merged.entries()].map(([value, count]) => ({ value, count }))
-      .sort((a, b) => (isDate ? b.value.localeCompare(a.value) : (b.count - a.count || a.value.localeCompare(b.value, 'ar', { numeric: true }))));
+      .sort((a, b) => {
+        if (isDate) return b.value.localeCompare(a.value);
+        if (isIdLike) {
+          const na = numOf(a.value); const nb = numOf(b.value);
+          if (na !== null && nb !== null) return nb - na;
+          if (na !== null) return -1;
+          if (nb !== null) return 1;
+          return b.value.localeCompare(a.value, 'ar', { numeric: true });
+        }
+        return b.count - a.count || a.value.localeCompare(b.value, 'ar', { numeric: true });
+      });
     const distinct = agg?.meta?.[0]?.distinct || values.length;
     const truncated = values.length > MAX_FILTER_VALUES;
     if (truncated) values = values.slice(0, MAX_FILTER_VALUES);

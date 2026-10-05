@@ -504,7 +504,12 @@ function ShipmentOrdersInner() {
               [ar ? 'إلى' : 'To', 'toCity'],
               [ar ? 'السائق' : 'Driver', 'driverName'],
               [ar ? 'تواصل' : 'Contact', null],
-              [ar ? 'الشاحنة' : 'Truck', 'vehiclePlate'],
+              // ── والقمعُ يسأل عمّا يُعرَض في العمود ──────────────────────────
+              // العمودُ يكتب **نوعَ** الشاحنة («تريلا»، «دينا»)، وكان قمعُه
+              // يفتح قائمةَ **اللوحات** — فمن ضغطه وجد أرقامًا لا علاقةَ لها
+              // بما يقرأ في العمود. فصار يسأل عن النوع، واللوحةُ تُكتب في
+              // الخليّة تحته وتُبحَث من خانة البحث.
+              [ar ? 'الشاحنة' : 'Truck', 'truckType'],
               [ar ? 'وقت الاستلام' : 'Pickup', null],
               [ar ? 'بيع / شراء' : 'Sell / buy', null],
               [ar ? 'الحالة' : 'Status', null],
@@ -579,7 +584,13 @@ function ShipmentOrdersInner() {
                         />
                       : <span className="text-slate-300 text-xs">{ar ? 'لا رقم' : 'no phone'}</span>}
                   </td>
-                  <td className="px-4 py-3 text-slate-700">{o.truckType || '—'}</td>
+                  <td className="px-4 py-3 text-slate-700">
+                    <span className="block">{o.truckType || '—'}</span>
+                    {/* واللوحةُ تحتها: هي ما يُطابَق به في البوّابات والتقارير. */}
+                    {(o as any).vehiclePlate
+                      ? <span className="block text-[11px] text-slate-400 font-mono" dir="ltr">{(o as any).vehiclePlate}</span>
+                      : null}
+                  </td>
                   <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{fmtDT(o.pickupTime, lang as Lang)}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{money(o.sellPrice)} / {money(o.buyPrice)}</td>
                   {/* الحالةُ كلمتان («قيد الطلب») — وبلا `nowrap` تنكسر سطرين فيتباعد الصفّ. */}

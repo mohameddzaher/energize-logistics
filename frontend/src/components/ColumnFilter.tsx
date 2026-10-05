@@ -195,18 +195,31 @@ export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen,
           داكنة، فمرّ صاحبُ القسم على صفحات القسم كلِّها ولم يجده. والفلترُ الذي
           لا يُرى غيرُ موجود. فصار خانةً صغيرةً لها أرضيّةٌ وحدٌّ — تُقرأ زرًّا
           من موضعها قبل أن تُقرأ أيقونة — وتصير برتقاليّةً صريحةً حين تُفعَّل. */}
+      {/* ── والمفعَّلُ يقول عددَه، لا يصير كتلةً ملوّنة ────────────────────────
+          كان المفعَّلُ مربّعًا برتقاليًّا مملوءًا بقمعٍ أبيضَ داخله، في عشرين
+          بكسلًا على ترويسةٍ داكنة: يُقرأ بقعةً مستديرةً غريبةً لا زرًّا — ولا
+          يقول كم قيمةً أُشّرت. فصار إطارًا برتقاليًّا بأرضيّةٍ خفيفةٍ والقمعُ
+          برتقاليٌّ فيه، ومعه العددُ رقمًا حين يزيد على واحد. الحالةُ تُقرأ،
+          والشكلُ يبقى زرًّا. */}
       <button
         type="button"
         onClick={() => { const next = !open; setOpen(next); if (next) onOpen?.(); }}
-        className={`ms-1.5 inline-flex items-center justify-center w-5 h-5 rounded border transition-colors align-middle ${
+        className={`ms-1.5 inline-flex items-center justify-center gap-0.5 h-5 min-w-5 px-1 rounded-md border transition-colors align-middle ${
           active
-            ? 'bg-[#f37121] border-[#f37121] text-white'
-            : 'bg-white/10 border-white/25 text-white/80 hover:bg-white/25 hover:text-white'
+            ? 'bg-[#f37121]/20 border-[#f37121] text-[#f37121]'
+            : open
+              ? 'bg-white/30 border-white/50 text-white'
+              : 'bg-white/10 border-white/25 text-white/80 hover:bg-white/25 hover:text-white'
         }`}
-        title={ar ? 'فلترة هذا العمود' : 'Filter this column'}
+        title={active
+          ? (ar ? `مفلترٌ على ${selected.size} قيمة — اضغط للتعديل` : `Filtered on ${selected.size} — click to change`)
+          : (ar ? 'فلترة هذا العمود' : 'Filter this column')}
         aria-label={ar ? 'فلترة هذا العمود' : 'Filter this column'}
       >
-        <Filter className="w-3 h-3" fill={active ? 'currentColor' : 'none'} />
+        <Filter className="w-3 h-3 shrink-0" fill={active ? 'currentColor' : 'none'} />
+        {active && selected.size > 1 && (
+          <span className="text-[10px] font-bold leading-none tabular-nums">{selected.size}</span>
+        )}
       </button>
       {open && typeof document !== 'undefined' && createPortal(panel, document.body)}
     </span>

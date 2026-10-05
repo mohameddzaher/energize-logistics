@@ -36,7 +36,7 @@ import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import CreditAlerts from '@/components/collections/CreditAlerts';
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
+  ComposedChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
 import {
   Wallet, Users, Building2, TrendingUp, FileText, CheckCircle2, Clock, ChevronLeft, SlidersHorizontal, X,
@@ -359,7 +359,20 @@ export default function CollectionsDashboardPage() {
           <p className="text-[11px] text-slate-400 mt-4">{t('الكشوف الملغاة مستثناة', 'Cancelled reports excluded')}</p>
         </Panel>
 
+        {/* ── شكلٌ واحدٌ لا شكلان للبيانات نفسِها ──────────────────────────────
+            كان في الرسم ثلاث سلاسل: عمودٌ للمبيعات وعمودٌ للمحصَّل وخطٌّ أحمرُ
+            للمتبقّي. والمتبقّي **هو الفرقُ بين العمودين** بعينه
+            (`outstanding = total − settled` في الخادم) — فالرقمُ الواحدُ مرسومٌ
+            مرّتين: مرّةً مسافةً بين عمودين ومرّةً خطًّا يعلوهما. فتُقرأ الصورةُ
+            بثلاث حركاتٍ للعين، ويُسأل «أيُّهما الصحيح؟» وهما واحد.
+            فصار عمودًا واحدًا لكلّ شهر: ارتفاعُه كلُّه هو المبيعات، مقسومًا
+            أخضرَ محصَّلًا وأحمرَ متبقّيًا. ثلاثُ حقائقَ في علامةٍ واحدة،
+            والفجوةُ تُقرأ مباشرةً بلا خطٍّ يكرّرها. والنسبةُ تُقال في التلميح. */}
         <Panel className="lg:col-span-3" icon={<TrendingUp className="w-4 h-4" />} title={t('المبيعات والمحصَّل بالشهر', 'Billed vs collected, by month')}>
+          <p className="text-[11.5px] text-slate-500 -mt-1 mb-2">
+            {t('كلُّ عمودٍ مبيعاتُ شهرِه: الأخضرُ محصَّلٌ والأحمرُ متبقٍّ.',
+               'Each bar is that month’s billing: green collected, red outstanding.')}
+          </p>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={data.monthly} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
@@ -367,11 +380,21 @@ export default function CollectionsDashboardPage() {
                 <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} reversed={isRTL} />
                 <YAxis tick={{ fontSize: 11, fill: '#64748b' }} width={70} axisLine={false} tickLine={false} orientation={isRTL ? 'right' : 'left'}
                   tickFormatter={(v) => (Math.abs(v) >= 1e6 ? `${Math.round(v / 1e5) / 10}M` : Math.abs(v) >= 1e3 ? `${Math.round(v / 1e3)}k` : String(v))} />
-                <Tooltip formatter={(v: any) => money(v)} contentStyle={{ borderRadius: 12, borderColor: '#e2e8f0', fontSize: 12 }} />
+                <Tooltip
+                  contentStyle={{ borderRadius: 12, borderColor: '#e2e8f0', fontSize: 12 }}
+                  formatter={(v: any, name: any, item: any) => {
+                    const row = item?.payload || {};
+                    const billed = Number(row.total) || 0;
+                    const pct = billed ? Math.round((Number(v) / billed) * 1000) / 10 : null;
+                    return [`${money(v)}${pct != null ? ` · ${pct}%` : ''}`, name];
+                  }}
+                  labelFormatter={(l: any, items: any) => {
+                    const row = items?.[0]?.payload || {};
+                    return `${l} — ${t('المبيعات', 'Billed')} ${money(row.total || 0)}`;
+                  }} />
                 <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
-                <Bar dataKey="total" name={t('المبيعات', 'Billed')} fill="#cbd5e1" radius={[6, 6, 0, 0]} maxBarSize={28} />
-                <Bar dataKey="settled" name={t('المحصَّل', 'Collected')} fill="#10b981" radius={[6, 6, 0, 0]} maxBarSize={28} />
-                <Line type="monotone" dataKey="outstanding" name={t('المتبقي', 'Outstanding')} stroke="#dc2626" strokeWidth={2.5} dot={{ r: 3 }} />
+                <Bar dataKey="settled" stackId="billed" name={t('المحصَّل', 'Collected')} fill="#10b981" maxBarSize={34} />
+                <Bar dataKey="outstanding" stackId="billed" name={t('المتبقي', 'Outstanding')} fill="#dc2626" radius={[6, 6, 0, 0]} maxBarSize={34} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>

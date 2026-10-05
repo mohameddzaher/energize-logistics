@@ -147,6 +147,38 @@ function buildFilter(q) {
   // «غير مطلوب»)، فمقارنتها بـ$gte/$lte على كائن تاريخ تقارن نوعين مختلفين في
   // BSON فتُرجع صفوفًا لا علاقة لها بالمدى المطلوب. تُطبَّق على القيمة بعد
   // قراءتها تاريخًا حقيقيًّا.
+  // ── وأعمدةُ الهويّة الثلاثةُ تُفلتَر كما تُعرَض ────────────────────────────
+  //
+  // جدولُ الماستر يعرض ثلاثةَ أعمدةٍ مثبَّتةٍ لا توجد في `FILTERABLE`: «الموظف»
+  // و«رقم الهوية/الإقامة» و«عدد العهد». فمن أشّر في قمعها على موظّفٍ بعينه
+  // انتظر أن يقتصر الجدولُ عليه، وكانت القيمةُ تُرسَل فتُهمَل في صمت: لا خطأً
+  // يُقرأ ولا صفًّا يتغيّر — وهو أسوأُ من الرفض، لأنّه يُقرأ «الفلتر معطوب».
+  //
+  // وسببُ غيابها أنّ كلَّ عمودٍ منها **ليس حقلًا في القاعدة**:
+  //   • «الموظف» = `arabicName` أو «الاسمُ الأوّل + الأخير» مركَّبين.
+  //   • «رقم الهوية/الإقامة» = `iqamaNumber` أو `nationalId` بحسب نوع الهويّة
+  //     (راجع ذاكرة «رقم الهوية في عمودين»).
+  //   • «عدد العهد» محسوبٌ من سجلّ الأصول — ويُطبَّق في `exports.grid`.
+  const multiRaw = (v) => String(v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  const names = multiRaw(q.name);
+  if (names.length) {
+    const full = { $trim: { input: { $concat: [{ $ifNull: ['$firstName', ''] }, ' ', { $ifNull: ['$lastName', ''] }] } } };
+    f.$and = [...(f.$and || []), { $or: [
+      { arabicName: { $in: names } },
+      { $expr: { $in: [full, names] } },
+    ] }];
+  }
+  const ids = multiRaw(q.iqamaNumber);
+  if (ids.length) {
+    // «—» في القمع تعني «بلا رقم»: وهي فئةٌ يُسأل عنها (مَن لم تُسجَّل هويّتُه).
+    const wantsBlank = ids.includes('—');
+    const rest = ids.filter((x) => x !== '—');
+    const keys = H.searchKeysOf('iqamaNumber');
+    const or = rest.length ? keys.map((k) => ({ [k]: { $in: rest } })) : [];
+    if (wantsBlank) or.push({ $and: keys.map((k) => ({ [k]: { $in: ['', null] } })) });
+    if (or.length) f.$and = [...(f.$and || []), { $or: or }];
+  }
+
   if (q.q && q.q.trim()) {
     const r = rx(q.q);
     // ويُبحَث في عمودَي رقم الهويّة معًا: مَن كتب رقمَ سعوديٍّ كان لا يجده.
@@ -387,10 +419,18 @@ exports.filterOptions = async (req, res) => {
     }
 
     const tally = (rows, key) => {
+      // ── والخانةُ الخاليةُ في حقلٍ منطقيٍّ ليست فئةً ثالثة ────────────────────
+      // «خارج المملكة» إمّا نعم أو لا. والحقلُ غيرُ المكتوب كان يُعَدُّ «—»،
+      // فتقول القائمةُ «لا: ٤٠٩» ويردّ الجدولُ ٤١٤ — لأنّ فلترَ «لا» هو
+      // `{ $ne: true }` وهو يشمل غيرَ المكتوب. فيُعَدُّ غيرُ المكتوب «لا» كما
+      // يُفلتَر، فيتساوى ما يُقرأ وما يُرَدّ.
+      const isBool = BOOL_FILTERABLE.includes(key);
       const counts = new Map();
       for (const r of rows) {
         const raw = r[key];
-        const v = raw === true ? 'نعم' : raw === false ? 'لا' : (filled(raw) ? String(raw) : '—');
+        const v = raw === true ? 'نعم'
+          : isBool ? 'لا'
+            : (raw === false ? 'لا' : (filled(raw) ? String(raw) : '—'));
         counts.set(v, (counts.get(v) || 0) + 1);
       }
       return [...counts.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count);
@@ -734,6 +774,30 @@ exports.grid = async (req, res) => {
     // الفلترةُ والترتيبُ في القاعدة؛ ومدى التواريخ المشتقُّ يُطبَّق بعدها كما
     // في بقيّة الشاشات (راجع findEmployees).
     const filter = buildFilter(req.query);
+
+    // ── و«عدد العهد» عمودٌ محسوبٌ يُفلتَر هنا ─────────────────────────────────
+    // ليس حقلًا في ملفّ الموظّف بل عددُ ما في عهدته من سجلّ الأصول، فلا تعرفه
+    // `buildFilter`. وكان التأشيرُ عليه في القمع يُهمَل صامتًا. فيُحوَّل العددُ
+    // المطلوبُ إلى قائمةِ موظّفين: مَن عهدتُه ثلاثةٌ هم هؤلاء بأعيانهم — و«٠»
+    // هم مَن لا عهدةَ لهم، وهو أكثرُ ما يُسأل عنه.
+    const custodyWanted = String(req.query.custodyCount ?? '').split(',').map((x) => x.trim()).filter((x) => x !== '');
+    if (custodyWanted.length) {
+      const AssetModel = require('../models/Asset');
+      const byEmp = await AssetModel.aggregate([
+        { $match: { employee: { $ne: null }, status: 'assigned' } },
+        { $group: { _id: '$employee', n: { $sum: 1 } } },
+      ]);
+      const wanted = new Set(custodyWanted.map((x) => Number(x)).filter((n) => Number.isFinite(n)));
+      const withCount = byEmp.filter((r) => wanted.has(r.n)).map((r) => r._id);
+      if (wanted.has(0)) {
+        // الصفرُ نفيٌ لا قيمة: كلُّ من ليس في سجلّ العهد.
+        const held = byEmp.map((r) => r._id);
+        filter.$and = [...(filter.$and || []), { $or: [{ _id: { $nin: held } }, ...(withCount.length ? [{ _id: { $in: withCount } }] : [])] }];
+      } else {
+        filter.$and = [...(filter.$and || []), { _id: { $in: withCount } }];
+      }
+    }
+
     const pred = dateRangePred(req.query);
     const sortKey = String(req.query.sort || 'employeeNumber');
     const dir = req.query.dir === 'desc' ? -1 : 1;

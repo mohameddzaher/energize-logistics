@@ -183,6 +183,9 @@ const explicitlyGrantedPages = async (role) => {
   return Object.entries(pages || {}).filter(([, v]) => v).map(([k]) => k);
 };
 
+/** نفسُها مجموعةً — تُقرأ في كلّ نداءٍ محروس، فتأتي من ذاكرة الصلاحيّات. */
+const explicitlyGrantedSet = async (role) => new Set(await explicitlyGrantedPages(role));
+
 /** أوّلُ شاشةٍ تُفتَح لصاحب هذا الدور، إن ضُبطت له واحدة. */
 const homePageFor = async (role) => {
   if (FULL_ACCESS_ROLES.includes(role)) return '';
@@ -228,5 +231,5 @@ const hasSuperAdminPowers = async (role) => {
 module.exports = {
   invalidate, getOverride, effectivePermissions, effectivePages, homePageFor,
   sectionForPath, getOverrides, isCustomRole, customRoleKeys, hasSuperAdminPowers,
-  resolveSections, pageFollowsSection, explicitlyGrantedPages,
+  resolveSections, pageFollowsSection, explicitlyGrantedPages, explicitlyGrantedSet,
 };

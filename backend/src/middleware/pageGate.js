@@ -20,7 +20,7 @@
  */
 const { decide } = require('../config/pageApis');
 const { resolveUser } = require('./auth');
-const { effectivePages } = require('../utils/permissions');
+const { effectivePages, explicitlyGrantedSet, sectionForPath } = require('../utils/permissions');
 const { FULL_ACCESS_ROLES } = require('../config/constants');
 const { getPage } = require('../config/pages');
 
@@ -37,7 +37,33 @@ const pageGate = async (req, res, next) => {
 
     const pages = await effectivePages(user.role);
     const verdict = decide(path, (key) => pages[key] !== false);
-    if (!verdict || verdict.ok) return next();
+    if (!verdict || verdict.ok) {
+      // ── ومَن مُنح الشاشةَ مُنح ما تفعله ───────────────────────────────────
+      // ثلاثُ طبقاتٍ تقف أمام النداء: حارسُ القسم، وهذا الحارس، ثمّ قائمةُ
+      // الأدوار المكتوبةُ في المسار (`authorize`). والطبقةُ الثالثةُ لا تعرف
+      // الأدوارَ المصنوعة، ولا تقرأ ختمَ القسم إلّا إن كان للمسار قسمٌ مُدارٌ
+      // بالمصفوفة. والشاشاتُ التي لا قسمَ لها (المستخدمون، سجلُّ المراجعة،
+      // الفروع، القوائمُ المرجعيّة، مركزُ التقارير، النظرةُ التنفيذيّة…) لا
+      // سبيلَ إلى منحها إلّا بتأشير صفحتها — فكان يُؤشَّر عليها فتُفتَح الشاشةُ
+      // وتردّ نقاطُها «Insufficient permissions»، ولا شيءَ يقول لماذا.
+      //
+      // فيُختَم أنّ هذه النقطةَ تملكها صفحةٌ أُشِّر عليها **صراحةً** لهذا الدور،
+      // ويقرأ `authorize` الختمَ كما يقرأ ختمَ القسم. والتأشيرُ فعلُ صاحب
+      // النظام بيده، ولا يتجاوز به قسمًا مُدارًا: هناك حارسُ القسم يقرّر قبله.
+      //
+      // والختمُ لا يُوضَع على نقطةٍ لها قسمٌ مُدارٌ بالمصفوفة: هناك الحارسُ
+      // الأعلى هو القسم، و«الصفحةُ لا تتجاوز قسمَها» قاعدةٌ لا يُستثنى منها.
+      try {
+        if (!sectionForPath(path)) {
+          const granted = await explicitlyGrantedSet(user.role);
+          if (granted.size) {
+            const owned = decide(path, (key) => granted.has(key));
+            if (owned && owned.ok && !owned.widened) req.pageGranted = true;
+          }
+        }
+      } catch (e) { /* الختمُ زيادةٌ لا شرط — وغيابُه يترك القرارَ كما كان */ }
+      return next();
+    }
 
     // ── والرفضُ يقول أيَّ صفحةٍ يُطلَب فتحُها ──────────────────────────────
     // «غير مصرّح» وحدَها تُقرأ عطلًا، فتُعاد المحاولةُ مرّاتٍ ثمّ يُتَّصل بالدعم.

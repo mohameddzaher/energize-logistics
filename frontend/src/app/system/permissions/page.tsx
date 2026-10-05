@@ -418,6 +418,18 @@ export default function PermissionsPage() {
                                  'Section not granted — click a page to grant view and open just it.')}
                             </span>
                           )}
+                          {/* ── وما تفعله التأشيرةُ هنا يُقال، لا يُترك يُكتشَف ──
+                              شاشاتُ هذه الأقسام يحرسها سطرُ أدوارٍ في كلّ مسار، لا
+                              قسمٌ يُمنَح. فالتأشيرةُ تفتحها **للمشاهدة**: تُقرأ
+                              بياناتُها، وتبقى أفعالُها (إنشاءُ مستخدمٍ، تعديلُ
+                              فرعٍ) لمن يملكها بدوره — وإلّا صار مربّعٌ واحدٌ
+                              طريقًا إلى إنشاء حسابِ مديرِ نظام. */}
+                          {!isManaged && (
+                            <span className="text-[11px] text-slate-500">
+                              {t('هذه الشاشاتُ تُفتَح للمشاهدة بالتأشير — وأفعالُها تبقى لمن يملكها بدوره.',
+                                 'Ticking opens these screens for viewing — their actions still need the role itself.')}
+                            </span>
+                          )}
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-1.5">
                           {pages.map((pg) => {

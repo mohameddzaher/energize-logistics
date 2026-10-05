@@ -3,7 +3,7 @@
 // for the model and the no-lockout guarantee.
 const RolePermission = require('../models/RolePermission');
 const { SECTIONS, SECTION_KEYS, defaultAccess } = require('../config/sections');
-const { PAGES } = require('../config/pages');
+const { PAGES, PERSONAL_SECTIONS } = require('../config/pages');
 const { FULL_ACCESS_ROLES } = require('../config/constants');
 
 // ── والذاكرةُ مشتركةٌ بين العاملَين ──────────────────────────────────────────
@@ -79,6 +79,49 @@ const getOverride = async (role, sectionKey) => {
   return null;
 };
 
+/**
+ * الأقسامُ السارية لمجموعةِ تجاوزاتٍ معيّنة — بلا قراءةٍ من القاعدة.
+ *
+ * تُقرأ مرّتين: هنا عند حساب الساري، وفي المتحكّم عند الحفظ ليعرف ما الذي
+ * ستصير عليه الأقسامُ **بعد** هذا الحفظ. ولذلك هي دالّةٌ واحدة: لو حسبها كلٌّ
+ * منهما على حدةٍ لافترق الحسابان يومًا — وقد افترقا فعلًا (راجع
+ * `pageFollowsSection` تحت).
+ */
+const resolveSections = (role, overrides, custom) => {
+  const out = {};
+  for (const k of SECTION_KEYS) {
+    out[k] = Object.prototype.hasOwnProperty.call(overrides || {}, k)
+      ? overrides[k]
+      : (custom ? 'none' : defaultAccess(role, k));
+  }
+  return out;
+};
+
+/**
+ * هل هذه الصفحةُ مفتوحةٌ **اتّباعًا لقسمها** (أي بلا تأشيرةٍ صريحة)؟
+ *
+ * ── ولماذا هي دالّةٌ مُصدَّرة ────────────────────────────────────────────────
+ * كان هذا السطرُ مكتوبًا مرّتين: هنا، وفي شاشةِ الصلاحيّات التي تختصر ما
+ * ترسله إلى «ما يخالف قسمَه وحدَه». واختلفا في حالةٍ واحدة: قسمٌ غيرُ مُدارٍ
+ * بالمصفوفة (ملفي، إجازاتي، طلباتي، الإعدادات، مركزُ التقارير، النظرةُ
+ * التنفيذيّة…) تقول عنه الشاشةُ «مفتوحٌ للجميع» ويقول عنه الخادمُ «مغلقٌ على
+ * الدور المصنوع». فمن أشّر لمتدرّبٍ على «ملفي» حسبت الشاشةُ أنّ التأشيرةَ
+ * تطابق الأصلَ فلم ترسلها، وقرأها الخادمُ مغلقةً: تختفي العلامةُ بعد حفظٍ
+ * قال «تمّ»، ولا تُفتَح الصفحة.
+ *
+ * فصار الاختصارُ في الخادم بهذه الدالّة نفسِها، ولم يبقَ للشاشة رأيٌ في
+ * القاعدة: ترسل الخريطةَ كما يراها المستخدمُ ويختصرها مَن يملك القاعدة.
+ */
+const pageFollowsSection = (page, sections, custom) => {
+  if (!Object.prototype.hasOwnProperty.call(sections || {}, page.section)) {
+    // قسمٌ شخصيٌّ (الخدمةُ الذاتيّة) أصلُه مفتوحٌ لكلّ دورٍ داخليّ ولو كان
+    // مصنوعًا — راجع `PERSONAL_SECTIONS` في config/pages.
+    if (PERSONAL_SECTIONS.has(page.section)) return true;
+    return !custom;
+  }
+  return sections[page.section] === 'view' || sections[page.section] === 'edit';
+};
+
 // Effective access for EVERY managed section (override or current default).
 // Used by getMe (drives the sidebar) and the permissions page display.
 const effectivePermissions = async (role) => {
@@ -87,14 +130,7 @@ const effectivePermissions = async (role) => {
     for (const k of SECTION_KEYS) out[k] = 'edit';
     return out;
   }
-  const overrides = await getOverrides(role);
-  const custom = await isCustomRole(role);
-  for (const k of SECTION_KEYS) {
-    out[k] = Object.prototype.hasOwnProperty.call(overrides, k)
-      ? overrides[k]
-      : (custom ? 'none' : defaultAccess(role, k));
-  }
-  return out;
+  return resolveSections(role, await getOverrides(role), await isCustomRole(role));
 };
 
 /**
@@ -119,14 +155,32 @@ const effectivePages = async (role) => {
   const custom = await isCustomRole(role);
   for (const p of PAGES) {
     if (Object.prototype.hasOwnProperty.call(pages, p.key)) { out[p.key] = pages[p.key]; continue; }
+    // وما سكتت عنه المصفوفةُ يتبع قسمَه — والقاعدةُ في `pageFollowsSection`:
     // قسمٌ غيرُ مُدارٍ بالمصفوفة (الرئيسية، الأدوات، الإدارة، الخدمة الذاتيّة،
-    // البوابة): تحرسه قوائمُ الأدوار القديمة كما كانت، فلا تُخفيه الصفحاتُ عمّن
-    // كان يراه. إلّا الدورَ المصنوع — فذاك لا تعرفه قائمةٌ، ولا يُفتَح له إلّا
-    // ما أُشِّر عليه.
-    if (!Object.prototype.hasOwnProperty.call(sections, p.section)) { out[p.key] = !custom; continue; }
-    out[p.key] = sections[p.section] === 'view' || sections[p.section] === 'edit';
+    // البوابة) تحرسه قوائمُ الأدوار القديمة كما كانت، إلّا الدورَ المصنوع فلا
+    // تعرفه قائمةٌ ولا يُفتَح له إلّا ما أُشِّر عليه.
+    out[p.key] = pageFollowsSection(p, sections, custom);
   }
   return out;
+};
+
+/**
+ * ما أُشِّر عليه صراحةً مفتوحًا لهذا الدور — لا ما وُرث عن قسمه.
+ *
+ * ── ولماذا تحتاجه الواجهة ───────────────────────────────────────────────────
+ * الأقسامُ غيرُ المُدارة بالمصفوفة (الرئيسيّة، الأدوات، الإدارة، البوابة) يحرس
+ * شريطُها قوائمَ أدوارٍ مكتوبةً باليد. فمن أشّر لدورٍ مصنوعٍ على «مركز
+ * التقارير» في المصفوفة فُتحت له نقاطُ الـ API (حارسُ الصفحات يسمح) ولم يظهر
+ * له رابطٌ في الشريط: قائمةٌ قديمةٌ لا تعرف دورَه. فصار «لا يُفتَح له» بلا
+ * سببٍ ظاهر.
+ *
+ * فتُرسَل التأشيراتُ الصريحةُ مع المستخدم، والشريطُ يقدّمها على القائمة: ما
+ * أشّر عليه صاحبُ النظام قصدَه، والقائمةُ تشيخ.
+ */
+const explicitlyGrantedPages = async (role) => {
+  if (FULL_ACCESS_ROLES.includes(role)) return [];
+  const { pages } = await getSaved(role);
+  return Object.entries(pages || {}).filter(([, v]) => v).map(([k]) => k);
 };
 
 /** أوّلُ شاشةٍ تُفتَح لصاحب هذا الدور، إن ضُبطت له واحدة. */
@@ -174,4 +228,5 @@ const hasSuperAdminPowers = async (role) => {
 module.exports = {
   invalidate, getOverride, effectivePermissions, effectivePages, homePageFor,
   sectionForPath, getOverrides, isCustomRole, customRoleKeys, hasSuperAdminPowers,
+  resolveSections, pageFollowsSection, explicitlyGrantedPages,
 };

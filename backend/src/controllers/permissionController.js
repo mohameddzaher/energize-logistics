@@ -2,9 +2,12 @@ const RolePermission = require('../models/RolePermission');
 const CustomRole = require('../models/CustomRole');
 const User = require('../models/User');
 const { SECTION_KEYS, ACCESS_LEVELS, ALL_ROLES, SECTION_LABELS_AR } = require('../config/sections');
-const { PAGES, isPage } = require('../config/pages');
+const { PAGES, isPage, getPage } = require('../config/pages');
 const { LABELS_AR: ROLE_LABELS_AR, LABELS_EN: ROLE_LABELS_EN } = require('../config/roles');
-const { effectivePermissions, effectivePages, invalidate } = require('../utils/permissions');
+const {
+  effectivePermissions, effectivePages, invalidate, isCustomRole, getOverrides,
+  resolveSections, pageFollowsSection,
+} = require('../utils/permissions');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 
@@ -89,10 +92,20 @@ exports.updateRolePermissions = async (req, res) => {
     // ما يوافق قسمَه لا يُكتب: لو كُتبت الصفحاتُ كلُّها لكلّ دورٍ لصار تغييرُ
     // قسمٍ بلا أثرٍ على صفحاته — كلُّ صفحةٍ محفوظةٌ باليد تسبق القسم. فالمحفوظُ
     // هو الاستثناءُ وحدَه، والباقي يتبع.
+    //
+    // ── والاختصارُ هنا لا في الشاشة ────────────────────────────────────────
+    // كانت الشاشةُ تحسب «ما يوافق قسمَه» بنفسها فترسل المخالفَ وحدَه، فوقع
+    // ما لا بدّ أن يقع: اختلف حسابُها عن حساب الخادم في الأقسام غيرِ المُدارة،
+    // فضاعت تأشيراتٌ أُشِّرت بالفعل وقال الحفظُ «تمّ». فمع `pagesAll` ترسل
+    // الشاشةُ الخريطةَ كاملةً كما يراها المستخدم، ويختصرها الخادمُ بالقاعدة
+    // التي يقرؤها هو نفسُه عند المنح (`pageFollowsSection`) — فلا يفترقان.
     if (req.body?.pages) {
       const pages = {};
+      const custom = await isCustomRole(role);
+      const after = resolveSections(role, $set.sections || (await getOverrides(role)), custom);
       for (const [key, on] of Object.entries(req.body.pages)) {
         if (!isPage(key)) continue;
+        if (req.body.pagesAll === true && !!on === pageFollowsSection(getPage(key), after, custom)) continue;
         pages[key] = !!on;
       }
       $set.pages = pages;

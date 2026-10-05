@@ -22,7 +22,7 @@ const User = require(`${ROOT}/models/User`);
 const CustomRole = require(`${ROOT}/models/CustomRole`);
 const { ALL_ROLE_DEFS } = require(`${ROOT}/config/roles`);
 const { SECTION_KEYS } = require(`${ROOT}/config/sections`);
-const { PAGES, isPage } = require(`${ROOT}/config/pages`);
+const { PAGES, isPage, PERSONAL_SECTIONS } = require(`${ROOT}/config/pages`);
 const { FULL_ACCESS_ROLES } = require(`${ROOT}/config/constants`);
 const { effectivePermissions, effectivePages, homePageFor } = require(`${ROOT}/utils/permissions`);
 
@@ -50,6 +50,13 @@ const ALL = process.argv.includes('--all');
       sections: Object.entries(perms).filter(([, v]) => v !== 'none'),
       edit: Object.entries(perms).filter(([, v]) => v === 'edit').length,
       pages: Object.entries(pages).filter(([, v]) => v).length,
+      // ── وأضعفُ ما يملكه موظّفٌ: نفسُه ────────────────────────────────────
+      // «ملفي» و«إجازاتي» و«طلباتي» و«الإعدادات» ليست قسمًا يُمنَح: هي ما
+      // يراه كلُّ موظّفٍ عن نفسه. وقد أُغلقت مرّةً على نوعَين مصنوعَين بأثرِ
+      // عطبٍ في الحفظ لا بقرار (راجع scripts/rebuildCustomRoleGrants)، فلم
+      // يجد صاحبُها رصيدَ إجازاته ولا موضعَ كلمةِ مروره، ولا شكوى تُقال.
+      // فيُقاس من اليوم في كلّ فحص.
+      selfClosed: PAGES.filter((p) => PERSONAL_SECTIONS.has(p.section) && pages[p.key] === false),
       home,
       full: FULL_ACCESS_ROLES.includes(r),
     });
@@ -74,6 +81,9 @@ const ALL = process.argv.includes('--all');
       if (!r.sections.length) issues.push('لا قسمَ ممنوحًا — يدخل فلا يرى شيئًا');
       else if (!r.pages) issues.push(`${r.sections.length} قسمًا ممنوحًا ولا صفحةَ تُفتَح`);
       if (r.home && !isPage(r.home)) issues.push(`صفحةُ الدخول «${r.home}» ليست في الفهرس`);
+      if (r.selfClosed.length) {
+        issues.push(`لا يرى عن نفسِه: ${r.selfClosed.map((p) => p.ar).join('، ')}`);
+      }
     }
     if (issues.length) problems.push({ u, r, issues });
     if (ALL) {

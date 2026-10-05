@@ -135,6 +135,9 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     if (role == 'super_admin') return true;
     if (s.roles.contains(role)) return true;
     if (s.managed && auth.canAccessSection(s.key)) return true;
+    // وصفحةٌ أُشِّر عليها صراحةً تفتح قسمَها ولو لم تعرفه القائمة — راجع
+    // `isPageGranted`.
+    if (s.pages.any((p) => auth.isPageGranted(p.path))) return true;
     return false;
   }
 

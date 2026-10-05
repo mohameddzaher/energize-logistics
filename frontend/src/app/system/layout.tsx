@@ -693,8 +693,17 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // و`visible` تسبق القائمة حيث وُجدت: قائمةُ الأدوار تُكتب باليد فتشيخ مع
     // كلّ دورٍ جديد، والقاعدةُ لا تشيخ. وهذا ما يجعل الخدمةَ الذاتيّة تظهر
     // لمدير المركبات ولموظّف التخليص دون أن يُضافا إلى ثلاثين سطرًا.
-    if (item.visible) { if (!item.visible(user)) return false; }
-    else if (!item.roles.includes(user.role)) return false;
+    //
+    // ── وتأشيرةُ المصفوفة تسبق القائمةَ أيضًا ────────────────────────────────
+    // هذه الأقسامُ لا تملكها مصفوفةُ الأقسام، فحارسُها قائمةٌ. ومن أشّر لدورٍ
+    // مصنوعٍ على «مركز التقارير» في مصفوفة الصفحات فُتحت له نقاطُه ولم يظهر
+    // له رابط: القائمةُ لا تعرف دورَه. فما أُشِّر عليه صراحةً يُعرَض — قصدَه
+    // صاحبُ النظام بيده، والقائمةُ هي التي تشيخ.
+    const ticked = Array.isArray(user.pagesGranted) && user.pagesGranted.includes(item.href);
+    if (!ticked) {
+      if (item.visible) { if (!item.visible(user)) return false; }
+      else if (!item.roles.includes(user.role)) return false;
+    }
     // Portal links are further narrowed to the services this partner has. While
     // the lookup is still in flight (null) we show nothing extra rather than
     // flashing tabs that then disappear.

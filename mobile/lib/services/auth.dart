@@ -38,6 +38,18 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     return pageAccess[path] != false;
   }
 
+  /// ── وما أُشِّر عليه صراحةً يسبق قائمةَ الأدوار ─────────────────────────────
+  /// الأقسامُ غيرُ المُدارة بالمصفوفة (تقييمُ الأداء، النظرةُ التنفيذيّة،
+  /// الإدارة، البوابة) يحرسها سطرُ أدوارٍ مكتوبٌ باليد. فنوعُ مستخدمٍ مصنوعٌ
+  /// من الشاشة لا تعرفه تلك السطور: يُؤشَّر له على صفحةٍ منها في المصفوفة
+  /// فتُفتَح له نقاطُها ولا يجد لها مدخلًا. وما أشّر عليه صاحبُ النظام قصدَه،
+  /// والقائمةُ هي التي تشيخ — فهي تُقدَّم عليها. ونفسُ القاعدة في الموقع.
+  List<String> get pagesGranted =>
+      ((user?['pagesGranted'] as List?) ?? const []).map((e) => e.toString()).toList();
+
+  bool isPageGranted(String? path) =>
+      path != null && path.isNotEmpty && pagesGranted.contains(path);
+
   /// App start: if a refresh token survives in the keychain, restore the
   /// session silently (loadTokens + /me does the refresh dance if needed).
   Future<void> bootstrap() async {

@@ -203,19 +203,21 @@ export default function PermissionsPage() {
     if (!selectedRole || !data) return;
     setSaving(true);
     try {
-      // ── ولا يُحفَظ إلّا الاستثناء ────────────────────────────────────────────
-      // صفحةٌ توافق قسمَها لا تُكتب: لو كُتبت الصفحاتُ كلُّها لصار تغييرُ قسمٍ
-      // بعد اليوم بلا أثرٍ على صفحاته — كلُّ صفحةٍ محفوظةٍ تسبق القسم إلى الأبد.
+      // ── وتُرسَل الخريطةُ كما تُرى، ويختصرها مَن يملك القاعدة ────────────────
+      // ما يوافق قسمَه لا يُكتب في القاعدة (وإلّا صار تغييرُ قسمٍ بعد اليوم بلا
+      // أثرٍ على صفحاته)، لكنّ **حسابَ** «ما يوافق قسمَه» كان هنا، وكان يقول
+      // عن قسمٍ غيرِ مُدارٍ بالمصفوفة — ملفي، إجازاتي، طلباتي، الإعدادات،
+      // مركزُ التقارير — إنّه مفتوحٌ للجميع، والخادمُ يقول إنّه مغلقٌ على
+      // الدور المصنوع. فمن أشّر لمتدرّبٍ على «ملفي» لم تُرسَل تأشيرتُه أصلًا:
+      // تُقال «حُفِظ» ثمّ تختفي العلامةُ ولا تُفتَح الصفحة.
+      //
+      // فلم يبقَ للشاشة رأيٌ في القاعدة: تُرسَل الخريطةُ كاملةً مع `pagesAll`،
+      // ويختصرها الخادمُ بالدالّة نفسِها التي يقرأ بها عند المنح.
       const pages: Record<string, boolean> = {};
-      data.catalog.forEach((p) => {
-        const sectionOn = data.sections.includes(p.section)
-          ? (draft[p.section] || 'none') !== 'none'
-          : true;
-        if (!!pageDraft[p.key] !== sectionOn) pages[p.key] = !!pageDraft[p.key];
-      });
+      data.catalog.forEach((p) => { pages[p.key] = !!pageDraft[p.key]; });
       const res = await api.put<{ role: string; permissions: Record<string, Access>; pages: Record<string, boolean> }>(
         `/api/admin/permissions/${selectedRole}`,
-        { sections: draft, pages, homePage },
+        { sections: draft, pages, pagesAll: true, homePage },
       );
 
       // ── والحفظُ يُثبت نفسَه بما عاد من الخادم ─────────────────────────────
@@ -233,7 +235,9 @@ export default function PermissionsPage() {
         ...prev,
         permissions: { ...prev.permissions, [selectedRole]: res.permissions },
         pages: { ...prev.pages, [selectedRole]: res.pages },
-        explicit: { ...prev.explicit, [selectedRole]: { pages, homePage } },
+        // و«الصريح» صار قرارَ الخادم لا قرارَنا — تُقرأ صفحةُ الدخول وحدَها
+        // منه هنا، والصفحاتُ الصريحةُ تُقرأ في التحميل التالي.
+        explicit: { ...prev.explicit, [selectedRole]: { pages: prev.explicit?.[selectedRole]?.pages || {}, homePage } },
       } : prev));
       setSavedFlash(true);
 

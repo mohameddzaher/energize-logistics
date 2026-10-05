@@ -138,9 +138,10 @@ exports.login = async (req, res) => {
     // Include effective section permissions so the sidebar renders correctly on
     // the first paint after login (without them, managed sections stay hidden
     // until a refresh re-fetches /api/auth/me).
-    const { effectivePermissions, effectivePages, homePageFor } = require('../utils/permissions');
+    const { effectivePermissions, effectivePages, homePageFor, explicitlyGrantedPages } = require('../utils/permissions');
     const permissions = await effectivePermissions(user.role);
     const pageAccess = await effectivePages(user.role);
+    const pagesGranted = await explicitlyGrantedPages(user.role);
     const homePage = await homePageFor(user.role);
     const { hasSuperAdminPowers } = require('../utils/permissions');
     const superAdminPowers = await hasSuperAdminPowers(user.role);
@@ -155,6 +156,8 @@ exports.login = async (req, res) => {
         permissions,
         // أيُّ الشاشات تُفتَح — الشريطُ الجانبيُّ يقرؤها من أوّل رسمة.
         pageAccess,
+        // وما أُشِّر عليه صراحةً يسبق قوائمَ الأدوار المكتوبةَ باليد في الشريط.
+        pagesGranted,
         homePage,
         superAdminPowers,
         // Without this the HR self-service pages think the account is not
@@ -369,9 +372,10 @@ exports.getMe = async (req, res) => {
     // Effective per-section access (drives the sidebar + client-side edit gating),
     // and per-page access beneath it — القسمُ يقول ماذا يُفعَل والصفحةُ تقول أين.
     // راجع config/pages.js.
-    const { effectivePermissions, effectivePages, homePageFor } = require('../utils/permissions');
+    const { effectivePermissions, effectivePages, homePageFor, explicitlyGrantedPages } = require('../utils/permissions');
     const permissions = user ? await effectivePermissions(user.role) : {};
     const pageAccess = user ? await effectivePages(user.role) : {};
+    const pagesGranted = user ? await explicitlyGrantedPages(user.role) : [];
     const homePage = user ? await homePageFor(user.role) : '';
     // ── واسمُ الدور المصنوع يأتي معه ──────────────────────────────────────────
     // الشاشاتُ تترجم الدورَ من جدولٍ في الواجهة لا يعرف ما صُنع بعد بنائها، فكان
@@ -381,7 +385,7 @@ exports.getMe = async (req, res) => {
     // مصنوعًا أو ممنوحًا كلَّ شيءٍ يملكها. الحارسُ الحقيقيُّ في الخادم على أيّ حال.
     const { hasSuperAdminPowers } = require('../utils/permissions');
     const superAdminPowers = user ? await hasSuperAdminPowers(user.role) : false;
-    const out = user ? { ...user.toObject(), permissions, pageAccess, homePage, superAdminPowers, ...(roleLabel ? { roleLabel } : {}) } : user;
+    const out = user ? { ...user.toObject(), permissions, pageAccess, pagesGranted, homePage, superAdminPowers, ...(roleLabel ? { roleLabel } : {}) } : user;
 
     res.json({ user: out });
   } catch (error) {

@@ -6,7 +6,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
-import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History } from 'lucide-react';
+import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History, RefreshCw } from 'lucide-react';
 import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, fmtDate, leaveTypeLabel } from '@/lib/hr';
 import { LeaveChainBar, LeaveThread } from '@/components/hr/LeaveChain';
 import { Spinner, PageHeader, SearchInput, Badge, Modal, TextArea, PrimaryButton, SearchableSelect, Loader2 } from '@/components/hr/HRKit';
@@ -48,6 +48,11 @@ export default function HRLeavesPage() {
   const [backFiles, setBackFiles] = useState<PickedFile[]>([]);
   const [backSaving, setBackSaving] = useState(false);
   const [employees, setEmployees] = useState<any[]>([]);
+  // ── و«جارٍ التحميل» لا تقال إلّا وهو جارٍ ──────────────────────────────────
+  // كان النداءُ يُبتلَع خطؤه (`.catch(() => {})`) فتبقى القائمةُ فارغةً
+  // و«جارٍ التحميلُ» معلّقةً إلى الأبد: يقرأ من يسجّل أنّ النظامَ بطيء، وهو
+  // في الحقيقة ردٌّ برفضٍ قبل ثانية. فتُقال الحالةُ كما هي، ويُعاد المحاولةُ.
+  const [empState, setEmpState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [types, setTypes] = useState<any[]>([]);
   const [mySigs, setMySigs] = useState<Signature[]>([]);
   const [signWith, setSignWith] = useState('');
@@ -66,13 +71,35 @@ export default function HRLeavesPage() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.get<{ signatures: Signature[] }>('/api/auth/signatures').then((r) => setMySigs(r.signatures || [])).catch(() => {}); }, []);
   // تُجلب مرّةً واحدة عند أوّل فتحٍ للنموذج، لا مع كلّ زيارةٍ للصفحة.
+  const loadPickers = useCallback(async () => {
+    setEmpState('loading');
+    try {
+      // القائمةُ الخفيفة لا المستندُ الكامل: سبعةُ حقولٍ لأربع مئة موظّف تصل
+      // في لحظة، بينما المستندُ الكامل (خمسون حقلًا) كان يجمّد القائمةَ عند فتحها.
+      //
+      // والمسارُ `employees-search` بشَرطةٍ لا `employees/search`: الثاني يطابق
+      // `/employees/:id` فيردّه حارسُ المعرّفات «معرّفٌ غير صالح» — فكانت
+      // القائمةُ لا تأتي أبدًا ولا يظهر سببٌ.
+      const d = await api.get<{ employees: any[] }>('/api/hr/employees-search?limit=2000');
+      setEmployees(d.employees || []);
+      setEmpState('ready');
+    } catch (e: any) {
+      setEmpState('error');
+      notify(e?.message || (ar ? 'تعذّر تحميل قائمة الموظفين' : 'Could not load the employee list'), 'error');
+    }
+    try {
+      const d = await api.get<{ leaveTypes: any[] }>('/api/hr/leave-types');
+      setTypes(d.leaveTypes || []);
+    } catch (e: any) {
+      notify(e?.message || (ar ? 'تعذّر تحميل أنواع الإجازات' : 'Could not load the leave types'), 'error');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ar]);
+
   useEffect(() => {
     if (!showBack || employees.length) return;
-    // القائمةُ الخفيفة لا المستندُ الكامل: سبعةُ حقولٍ لأربع مئة موظّف تصل
-    // في لحظة، بينما المستندُ الكامل (خمسون حقلًا) كان يجمّد القائمةَ عند فتحها.
-    api.get<{ employees: any[] }>('/api/hr/employees/search?limit=2000').then((d) => setEmployees(d.employees || [])).catch(() => {});
-    api.get<{ leaveTypes: any[] }>('/api/hr/leave-types').then((d) => setTypes(d.leaveTypes || [])).catch(() => {});
-  }, [showBack, employees.length]);
+    loadPickers();
+  }, [showBack, employees.length, loadPickers]);
 
   const days = (() => {
     const { startDate, endDate } = backForm;
@@ -208,7 +235,9 @@ export default function HRLeavesPage() {
                 onChange={(v) => setBackForm((f: any) => ({ ...f, employee: v }))}
                 placeholder={ar ? '— اختر الموظّف —' : '— pick the employee —'}
                 searchPlaceholder={ar ? 'ابحث بالاسم أو الإقامة أو الرقم الوظيفي…' : 'name, ID or employee number…'}
-                emptyLabel={employees.length ? undefined : (ar ? 'جارٍ التحميل…' : 'Loading…')}
+                emptyLabel={employees.length ? undefined : (empState === 'loading'
+                  ? (ar ? 'جارٍ التحميل…' : 'Loading…')
+                  : (ar ? 'لم تُحمَّل القائمة — اضغط «إعادة المحاولة» تحت' : 'The list did not load — press Retry below'))}
                 options={employees.map((e) => ({
                   value: e._id,
                   label: [
@@ -218,6 +247,12 @@ export default function HRLeavesPage() {
                   ].filter(Boolean).join(' · '),
                 }))}
               />
+              {empState === 'error' && (
+                <button type="button" onClick={loadPickers}
+                  className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-medium hover:bg-red-100 transition-colors">
+                  <RefreshCw className="w-3.5 h-3.5" /> {ar ? 'إعادة المحاولة' : 'Retry'}
+                </button>
+              )}
             </div>
             <div className="sm:col-span-2">
               <label className="text-slate-500 text-xs mb-1 block">{ar ? 'نوع الإجازة' : 'Leave type'}</label>

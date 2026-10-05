@@ -1501,7 +1501,7 @@
     "/system/hr/leaves": {
       "apis": [
         "/api/auth/signatures",
-        "/api/hr/employees/search",
+        "/api/hr/employees-search",
         "/api/hr/leave-types",
         "/api/hr/leaves",
         "/api/hr/leaves/backdated"

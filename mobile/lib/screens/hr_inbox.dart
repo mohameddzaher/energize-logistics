@@ -138,7 +138,9 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
     List<Map<String, dynamic>> types = [];
     try {
       // القائمةُ الخفيفة لا المستندُ الكامل — سبعةُ حقولٍ تصل في لحظة.
-      final a = await Api.instance.get('/api/hr/employees/search?limit=2000');
+      // بشَرطةٍ لا بشَرطةٍ مائلة: `employees/search` يطابق `/employees/:id`
+      // فيردّه حارسُ المعرّفات «معرّفٌ غير صالح» — ولا تُفتَح الورقةُ أبدًا.
+      final a = await Api.instance.get('/api/hr/employees-search?limit=2000');
       emps = List<Map<String, dynamic>>.from(((a as Map)['employees'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
       final b = await Api.instance.get('/api/hr/leave-types');
       types = List<Map<String, dynamic>>.from(((b as Map)['leaveTypes'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));

@@ -154,20 +154,24 @@ verify() {
     note "informational — انشر لو ده مش مقصود"
   fi
 
-  # The site is REPORTED but does not gate the backend. Netlify deploys on its own
-  # schedule, and a push that lands here mid-rebuild made a perfectly good API
-  # deploy "fail" and roll itself back — for a frontend blip that rolling the API
-  # back could not possibly fix. Report it; let a human judge it.
+  # ── والموقعُ يُذكَر ولا يحكم ────────────────────────────────────────────────
+  # يُقاس ولا يُسقط نشرةَ الـAPI: خللٌ في الواجهة لا يصلحه رجوعُ الخادم، فلا
+  # معنى لأن يُرجِعه. (كان ذلك يقع حين كانت الواجهةُ في Netlify تُبنى على
+  # جدولها: نشرةُ API سليمةٌ تُعلَن فاشلةً وترجع بنفسها لأنّ بناءً هناك لم يكن
+  # قد تمّ.)
+  #
+  # والواجهةُ الآن على خادمنا تحت pm2 — تُنشَر بـ`scripts/deploy-web.sh` ولا
+  # تتغيّر بنشرة الـAPI. فإن سقطت هنا فالخللُ قائمٌ فعلًا، لا بناءٌ في الطريق.
   local site_root site_route site_404
   site_root=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$SITE/")
   site_route=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$SITE/system/reports")
   # Control: a path that does not exist MUST 404, or the two above prove nothing.
   site_404=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$SITE/system/zzz-no-such-page")
   if [[ "$site_root" == "200" && "$site_route" == "200" && "$site_404" == "404" ]]; then
-    good "site healthy ${c_dim}(Netlify — informational)${c_off}"
+    good "site healthy ${c_dim}(energize-web — informational)${c_off}"
   else
     printf '  %s!%s site: / =%s, /system/reports =%s, unknown-path =%s (want 200/200/404)\n' "$c_bad" "$c_off" "$site_root" "$site_route" "$site_404"
-    note "informational only — Netlify may be mid-rebuild; not rolling the API back for this"
+    note "informational only — check 'pm2 describe energize-web'; not rolling the API back for this"
   fi
 
   # Nothing crash-looping: a restart storm shows as a climbing restart count.

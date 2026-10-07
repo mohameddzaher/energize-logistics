@@ -21,9 +21,11 @@ import {
   FileSignature, PhoneCall, UserCheck, Fuel, ClipboardCheck,
   Receipt, Banknote, Layers, Link2,
   Camera, Loader2,
+  CheckCircle2, Info,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { downloadExportJob } from '@/lib/backgroundExport';
+import { notificationHref, notificationTone, sinceLabel } from '@/lib/notificationLink';
 import { useSocket } from '@/hooks/useSocket';
 import { homeRouteForRole, landingFor } from '@/lib/roleRoutes';
 import { OPS_SECTION_ROLES as OPS_ROLES } from '@/lib/ops';
@@ -221,6 +223,14 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
       fetchNotifications();
     }
   }, [isAuthenticated, fetchNotifications]);
+
+  /** إشعارُ ملفِّ تصديرٍ جاهز: يُجلَب ثمّ يُنزَّل. */
+  const downloadExport = (n: any) => {
+    api.get<{ job: any }>(`/api/exports/jobs/${n.relatedEntityId}`)
+      .then(({ job }) => downloadExportJob(job))
+      .catch(() => { /* انتهت صلاحيّةُ الملفّ أو حُذف */ });
+    setShowNotifications(false);
+  };
 
   const markAllRead = async () => {
     try {
@@ -979,28 +989,60 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
                       )}
                     </div>
                     {notifications.length === 0 ? (
-                      <p className="p-4 text-slate-500 text-sm text-center">{L.noNewNotifications}</p>
+                      <p className="p-6 text-slate-400 text-sm text-center">{L.noNewNotifications}</p>
                     ) : (
                       notifications.map((n: any) => {
                         // إشعارُ ملفِّ تصديرٍ جاهز: الضغطةُ تنزّله — لا يُبحث عنه.
                         const isExport = n.relatedEntity === 'ExportJob' && n.relatedEntityId;
+                        // ── وبقيّةُ الإشعارات تذهب إلى ما تتحدّث عنه ──────────
+                        // كانت كلُّها `div` بلا معالج: يُقرأ «أُسنِدت إليك مهمّة»
+                        // ويُضغَط فلا يحدث شيء. الوجهةُ تُبنى من `relatedEntity`
+                        // — راجع lib/notificationLink. وما لا وجهةَ له لا
+                        // يُخمَّن: يبقى سطرًا يُقرأ ولا يُضغَط.
+                        const href = isExport ? null : notificationHref(n);
+                        const tone = notificationTone(n);
+                        const Icon = tone === 'alert' ? AlertTriangle : tone === 'task' ? ClipboardList : tone === 'ok' ? CheckCircle2 : Info;
+                        const toneCls = tone === 'alert' ? 'bg-red-50 text-red-600'
+                          : tone === 'task' ? 'bg-amber-50 text-amber-600'
+                          : tone === 'ok' ? 'bg-emerald-50 text-emerald-600' : 'bg-sky-50 text-sky-600';
+                        const go = () => {
+                          // يُعلَّم مقروءًا ثمّ يُفتَح: من يفتحه قرأه، وإبقاؤه
+                          // غيرَ مقروءٍ يُبقي العدّادَ يكذب.
+                          if (!n.isRead) {
+                            api.put(`/api/notifications/${n._id}/read`).catch(() => { /* العدّادُ يُصحَّح عند التحديث التالي */ });
+                            setUnreadCount((c) => Math.max(0, c - 1));
+                          }
+                          setShowNotifications(false);
+                          if (href) router.push(href);
+                        };
+                        const clickable = !!href || !!isExport;
                         return (
                           <div
                             key={n._id}
-                            onClick={isExport ? () => {
-                              api.get<{ job: any }>(`/api/exports/jobs/${n.relatedEntityId}`)
-                                .then(({ job }) => downloadExportJob(job))
-                                .catch(() => { /* انتهت صلاحيّةُ الملفّ أو حُذف */ });
-                            } : undefined}
-                            className={`p-3 border-b border-slate-200/70 hover:bg-slate-100 ${isExport ? 'cursor-pointer' : ''}`}
+                            role={clickable ? 'button' : undefined}
+                            tabIndex={clickable ? 0 : undefined}
+                            onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); isExport ? downloadExport(n) : go(); } } : undefined}
+                            onClick={isExport ? () => downloadExport(n) : (href ? go : undefined)}
+                            className={`px-3 py-2.5 border-b border-slate-100 flex items-start gap-2.5 ${clickable ? 'cursor-pointer hover:bg-slate-50' : ''}`}
                           >
-                            <p className="text-slate-900 text-sm font-medium">{n.title}</p>
-                            <p className="text-slate-500 text-xs mt-1">{n.message}</p>
-                            {isExport && (
-                              <p className="text-[#f37121] text-[11px] mt-1 font-semibold">
-                                {lang === 'ar' ? 'اضغط للتنزيل' : 'Click to download'}
-                              </p>
-                            )}
+                            <span className={`mt-0.5 shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${toneCls}`}>
+                              <Icon className="w-3.5 h-3.5" />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start gap-2">
+                                <p className="text-slate-900 text-[13px] font-semibold leading-snug flex-1 min-w-0">{n.title}</p>
+                                <span className="text-[10.5px] text-slate-400 shrink-0 mt-0.5 whitespace-nowrap">{sinceLabel(n.createdAt, lang === 'ar')}</span>
+                              </div>
+                              {/* سطران على الأكثر: الرسالةُ الطويلةُ كانت تمدّ
+                                  الصفَّ فتصير القائمةُ كتلةَ نصٍّ لا قائمة. */}
+                              <p className="text-slate-500 text-[12px] mt-0.5 leading-snug line-clamp-2">{n.message}</p>
+                              {isExport && (
+                                <p className="text-[#f37121] text-[11px] mt-1 font-semibold">
+                                  {lang === 'ar' ? 'اضغط للتنزيل' : 'Click to download'}
+                                </p>
+                              )}
+                            </div>
+                            {!n.isRead && <span className="mt-1.5 shrink-0 w-1.5 h-1.5 rounded-full bg-[#f37121]" aria-hidden="true" />}
                           </div>
                         );
                       })

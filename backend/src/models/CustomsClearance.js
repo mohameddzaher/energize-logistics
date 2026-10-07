@@ -200,6 +200,42 @@ const customsClearanceSchema = new mongoose.Schema(
      * تاريخٌ ومرفق — راجع `completeClearance`: المعاملةُ تُقفَل فتخرج من قوائم
      * المتابعة، فإن أُقفلت بلا فاتورةِ نقلٍ خرجت وفيها مالٌ لم يُطالَب به.
      */
+    /**
+     * ── وفاتورةُ العميل تُكتب عند الإقفال ────────────────────────────────
+     *
+     * مراحلُ السداد أعلاه **ما ندفعه**: طلباتُ صرفٍ تجيبها الإدارةُ الماليّة.
+     * وهذه **ما نفوتره**: عند إقفال المعاملة يُسأل موظّفُ التخليص عن سعر
+     * البيع لكلّ بندٍ (فاتورةُ النقل، الرسومُ الجمركيّة، حجزُ الموعد…) ومعه
+     * مرفقُه — فيُقال «سدّدنا النقلَ ١٨٠٠ ونفوتره ٢٢٠٠».
+     *
+     * وقاعدةُ الفاتورة (راجع utils/customsInvoice، والحسابُ هناك لا هنا):
+     *   بنودُ مراحل السداد بمبالغها **كما هي** بلا ضريبة — إلّا ما كان له
+     *   بندُ بيعٍ هنا، فيُؤخَذ من هنا ولا يُكرَّر.
+     *   + بنودُ البيع هذه مجموعةً × ١٫١٥
+     *   = إجماليُّ الفاتورة.
+     *
+     * ولا يُخزَّن الإجماليُّ: يُشتقّ عند القراءة من البنود نفسِها، فلا يبقى
+     * رقمٌ يصدق يومَ كُتب ويكذب بعد تعديل بند.
+     */
+    saleItems: [{
+      key: { type: String, trim: true, default: '' },
+      label: { type: String, trim: true, default: '' },
+      amount: { type: Number, default: 0 },
+      note: { type: String, trim: true, default: '' },
+      fileUrl: { type: String, default: '' },
+      fileName: { type: String, trim: true, default: '' },
+      mimeType: { type: String, trim: true, default: '' },
+      size: { type: Number, default: 0 },
+      addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      addedByName: { type: String, default: '' },
+      addedAt: { type: Date, default: Date.now },
+    }],
+    // رقمُ الفاتورة يُمنَح عند الإقفال ولا يتغيّر — به تُعرَف عند الماليّة.
+    saleInvoiceNumber: { type: String, trim: true, default: '', index: true },
+    saleInvoiceAt: { type: Date, default: null },
+    // نسبةُ الضريبة وقتَ الإقفال — تُلقَط كي لا تتغيّر فاتورةٌ قديمةٌ بتغيّرها.
+    saleVatRate: { type: Number, default: 0.15 },
+
     isCompleted: { type: Boolean, default: false, index: true },
     completedAt: { type: Date, default: null },
     completedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

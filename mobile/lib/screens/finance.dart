@@ -413,11 +413,14 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
   Future<void> _load() async {
     final mine = ++_seq;
     try {
-      final d = await Api.instance.get('/api/customs-clearance/payment-requests?status=$_tab&limit=50');
+      final invoices = _tab == 'invoices';
+      final d = await Api.instance.get(invoices
+          ? '/api/customs-clearance/invoices?limit=50'
+          : '/api/customs-clearance/payment-requests?status=$_tab&limit=50');
       if (!mounted || mine != _seq) return;
       setState(() {
-        _rows = List<Map<String, dynamic>>.from(d['requests'] ?? const []);
-        _counts = Map<String, dynamic>.from(d['counts'] ?? const {});
+        _rows = List<Map<String, dynamic>>.from((invoices ? d['invoices'] : d['requests']) ?? const []);
+        _counts = invoices ? Map<String, dynamic>.from(d['summary'] ?? const {}) : Map<String, dynamic>.from(d['counts'] ?? const {});
         _loading = false;
       });
     } catch (_) {
@@ -525,7 +528,11 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(children: [
-            for (final t in const [('pending', 'بانتظار الدفع', 'Awaiting'), ('paid', 'مدفوعة', 'Paid'), ('returned', 'مُعادة', 'Returned'), ('rejected', 'مرفوضة', 'Rejected')])
+            // ── و«فواتير العملاء» وجهٌ آخر لنفس القسم ────────────────────────
+            // الأربعةُ الأولى **ما ندفعه** (طلباتُ صرفٍ من التخليص)، وهذه **ما
+            // نقبضه**: فاتورةٌ تُصدَر عند إقفال المعاملة ببنودها ومجاميعها
+            // (راجع backend/utils/customsInvoice). ولا تُقرآن في شاشتين.
+            for (final t in const [('pending', 'بانتظار الدفع', 'Awaiting'), ('paid', 'مدفوعة', 'Paid'), ('returned', 'مُعادة', 'Returned'), ('rejected', 'مرفوضة', 'Rejected'), ('invoices', 'فواتير العملاء', 'Customer invoices')])
               Padding(
                 padding: const EdgeInsets.only(left: 6),
                 child: FilterChip(
@@ -546,6 +553,48 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
         else if (_rows.isEmpty)
           Padding(padding: const EdgeInsets.all(14), child: Center(child: Text(tr('لا طلبات', 'Nothing here'), style: const TextStyle(fontSize: 12, color: T.inkFaint))))
         else
+          // فواتيرُ العملاء صفٌّ آخر: رقمُ الفاتورة ومجاميعُها، لا قرارَ دفعٍ.
+          if (_tab == 'invoices')
+            ..._rows.take(40).map((r) {
+              final tot = Map<String, dynamic>.from(r['totals'] ?? const {});
+              final billed = Map<String, dynamic>.from(r['billed'] ?? const {});
+              final pass = Map<String, dynamic>.from(r['passThrough'] ?? const {});
+              String m(dynamic v) => (((v ?? 0) as num).round()).toString();
+              return Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: T.inkFaint.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(12)),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800))),
+                      Text('${r['invoiceNumber'] ?? ''}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: T.orange)),
+                    ]),
+                    const SizedBox(height: 2),
+                    Text([
+                      if ((r['refNumber'] ?? '').toString().isNotEmpty) '${r['refNumber']}',
+                      if ((r['declarationNumber'] ?? '').toString().isNotEmpty) '${tr('بيان', 'Decl')} ${r['declarationNumber']}',
+                    ].join(' · '), style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+                    const SizedBox(height: 6),
+                    Row(children: [
+                      Expanded(child: Text('${tr('يمرّ كما هو', 'Pass-through')}: ${m(pass['total'])}', style: const TextStyle(fontSize: 11, color: T.inkSoft))),
+                      Expanded(child: Text('${tr('مفوتر', 'Billed')}: ${m(billed['net'])} + ${tr('ض', 'VAT')} ${m(billed['vat'])}', style: const TextStyle(fontSize: 11, color: T.inkSoft))),
+                    ]),
+                    const SizedBox(height: 4),
+                    Row(children: [
+                      Text('${tr('الإجمالي', 'Total')} ', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
+                      Text(m(tot['grand']), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: T.navy)),
+                      const Spacer(),
+                      InkWell(
+                        onTap: () => showClearanceQuickView(context, '${r['_id']}'),
+                        child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.open_in_new, size: 15, color: T.orange)),
+                      ),
+                    ]),
+                  ]),
+                ),
+              );
+            })
+          else
           ..._rows.take(40).map((r) => Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Container(

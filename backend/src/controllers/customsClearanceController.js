@@ -1298,6 +1298,104 @@ exports.deletePaymentStage = async (req, res) => {
  *
  * والسببُ يُقال صريحًا: «ارفع فاتورة النقل واختر تاريخها» لا «غير مسموح».
  */
+/**
+ * بنودُ فاتورة العميل المسموحة — من إعدادات القسم (`customs_sale_item`).
+ * تُقرأ ولا تُكتب في الشيفرة: البنودُ تزيد بزيادة العمل، وزيادتُها إعدادٌ لا نشرة.
+ */
+const saleItemDefs = async () => {
+  const Lookup = require('../models/Lookup');
+  const rows = await Lookup.find({ type: 'customs_sale_item', isActive: { $ne: false } })
+    .sort({ order: 1 }).lean().catch(() => []);
+  if (rows.length) return rows.map((r) => ({ key: r.key, nameAr: r.nameAr, nameEn: r.nameEn }));
+  // ولا تُقفَل معاملةٌ لأنّ القائمةَ لم تُبذَر بعد — تُقرأ بذرةُ التعريف.
+  const { REGISTRY } = require('../config/lookupTypes');
+  const def = (REGISTRY || []).find((x) => x.type === 'customs_sale_item');
+  return (def?.seed || []).map((r) => ({ key: r.key, nameAr: r.nameAr, nameEn: r.nameEn }));
+};
+
+/**
+ * رقمُ فاتورةٍ جديد — تسلسلٌ خاصٌّ بالتخليص («CUS-1001») لا يُشتبَه بغيره.
+ * يُقرأ أكبرُ ما صُدِر ويُزاد؛ والرقمُ لا يُعاد استعمالُه ولا يُغيَّر بعد منحه.
+ */
+const nextSaleInvoiceNumber = async () => {
+  const last = await CustomsClearance.find({ saleInvoiceNumber: /^CUS-\d+$/ })
+    .sort({ saleInvoiceNumber: -1 }).limit(1).select('saleInvoiceNumber').lean();
+  const prev = Number(String(last?.[0]?.saleInvoiceNumber || '').replace('CUS-', '')) || 1000;
+  return `CUS-${prev + 1}`;
+};
+
+/**
+ * GET /:id/invoice — فاتورةُ العميل محسوبةً من بنودها.
+ * لا تُخزَّن المجاميعُ: تُشتقّ عند القراءة — راجع utils/customsInvoice.
+ */
+exports.getClearanceInvoice = async (req, res) => {
+  try {
+    const clearance = await CustomsClearance.findById(req.params.id)
+      .populate('customer', 'name nameEn vatNumber')
+      .lean();
+    if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
+    const { buildClearanceInvoice } = require('../utils/customsInvoice');
+    res.json({
+      invoice: buildClearanceInvoice(clearance),
+      saleItemDefs: await saleItemDefs(),
+      clearance: {
+        _id: clearance._id, refNumber: clearance.refNumber,
+        customerName: clearance.customerName || clearance.customer?.name || '',
+        declarationNumber: clearance.declarationNumber || '',
+        billOfLading: clearance.billOfLading || '',
+        containers: clearance.containers?.length || 0,
+        isCompleted: clearance.isCompleted,
+        completedAt: clearance.completedAt,
+      },
+    });
+  } catch (error) {
+    return sendMongooseError(res, error, 'تعذّر بناء الفاتورة');
+  }
+};
+
+/**
+ * GET /invoices — فواتيرُ العميل التي تنتظر الإدارةَ الماليّة.
+ * القائمةُ التي تقرؤها الماليّةُ: معاملةٌ أُقفلت ولها فاتورةٌ وبنودُها ومجاميعُها.
+ */
+exports.listClearanceInvoices = async (req, res) => {
+  try {
+    const f = { saleInvoiceNumber: { $gt: '' } };
+    if (req.query.from || req.query.to) {
+      f.saleInvoiceAt = {};
+      if (req.query.from) f.saleInvoiceAt.$gte = new Date(req.query.from);
+      if (req.query.to) f.saleInvoiceAt.$lte = new Date(`${req.query.to}T23:59:59.999Z`);
+    }
+    if (req.query.customer) f.customerName = new RegExp(String(req.query.customer).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const rows = await CustomsClearance.find(f)
+      .sort({ saleInvoiceAt: -1 })
+      .limit(Math.min(500, Math.max(1, Number(req.query.limit) || 200)))
+      .select('refNumber customerName declarationNumber billOfLading saleInvoiceNumber saleInvoiceAt saleVatRate saleItems paymentStages isCompleted completedAt')
+      .lean();
+    const { buildClearanceInvoice } = require('../utils/customsInvoice');
+    const invoices = rows.map((c) => {
+      const inv = buildClearanceInvoice(c);
+      return {
+        _id: c._id, refNumber: c.refNumber, customerName: c.customerName || '',
+        declarationNumber: c.declarationNumber || '', billOfLading: c.billOfLading || '',
+        invoiceNumber: c.saleInvoiceNumber, invoiceAt: c.saleInvoiceAt,
+        completedAt: c.completedAt,
+        lines: inv.lines.length, passThrough: inv.passThrough, billed: inv.billed, totals: inv.totals,
+      };
+    });
+    res.json({
+      invoices,
+      summary: invoices.reduce((a, i) => ({
+        count: a.count + 1,
+        net: Math.round((a.net + i.totals.net) * 100) / 100,
+        vat: Math.round((a.vat + i.totals.vat) * 100) / 100,
+        grand: Math.round((a.grand + i.totals.grand) * 100) / 100,
+      }), { count: 0, net: 0, vat: 0, grand: 0 }),
+    });
+  } catch (error) {
+    return sendMongooseError(res, error, 'تعذّر تحميل الفواتير');
+  }
+};
+
 exports.completeClearance = async (req, res) => {
   try {
     const clearance = await CustomsClearance.findById(req.params.id);
@@ -1322,6 +1420,71 @@ exports.completeClearance = async (req, res) => {
           missingStage: REQUIRED_STAGE_KEY,
         });
       }
+      // ── والإقفالُ يكتب فاتورةَ العميل ───────────────────────────────────
+      // مراحلُ السداد ما دفعناه؛ وهنا يُسأل عن **سعر البيع** لكلّ بند: فاتورةُ
+      // النقل والرسومُ وحجزُ الموعد. والقاعدةُ في utils/customsInvoice:
+      // بنودُ السداد كما هي + بنودُ البيع × ١٫١٥.
+      const sent = Array.isArray(req.body.saleItems) ? req.body.saleItems : null;
+      if (sent) {
+        const allowed = await saleItemDefs();
+        const byKey = new Map(allowed.map((x) => [x.key, x]));
+        const built = [];
+        for (const raw of sent) {
+          const key = String(raw?.key || '').trim();
+          const def = byKey.get(key);
+          if (!def) return res.status(400).json({ message: `بندٌ غير معروف: «${key || '—'}»` });
+          const amount = Number(raw?.amount);
+          // ── والسعرُ مطلوبٌ لا اختياريّ ───────────────────────────────────
+          // بندٌ بلا سعرٍ في فاتورةٍ تذهب إلى الماليّة يعني مبلغًا يُطالَب به
+          // ولا يُعرَف. فمن أدرج البندَ أدرج سعرَه.
+          if (!Number.isFinite(amount) || amount < 0) {
+            return res.status(400).json({ message: `اكتب سعرَ «${def.nameAr}»` });
+          }
+          const item = {
+            key, label: def.nameAr || key, amount: Math.round(amount * 100) / 100,
+            note: String(raw?.note || '').trim(),
+            addedBy: req.user._id,
+            addedByName: [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || '',
+            addedAt: new Date(),
+          };
+          if (raw?.file) {
+            try {
+              const saved = saveUploadFile(raw.file, 'customs', raw.fileName || def.nameAr);
+              Object.assign(item, {
+                fileUrl: saved.fileUrl, fileName: saved.fileName, mimeType: saved.mimeType, size: saved.size,
+              });
+              // والمرفقُ يُوجَد مع بقيّة ورق المعاملة كذلك — مكانٌ واحدٌ لكلّ الورق.
+              clearance.attachments.push({
+                title: `فاتورة العميل — ${item.label}`,
+                fileUrl: saved.fileUrl, fileName: saved.fileName,
+                mimeType: saved.mimeType, size: saved.size,
+                uploadedBy: req.user._id,
+              });
+            } catch (err) {
+              return res.status(400).json({ message: `مرفقُ «${def.nameAr}»: ${err.message}` });
+            }
+          } else if (raw?.fileUrl) {
+            Object.assign(item, {
+              fileUrl: String(raw.fileUrl), fileName: String(raw.fileName || ''),
+              mimeType: String(raw.mimeType || ''), size: Number(raw.size) || 0,
+            });
+          }
+          built.push(item);
+        }
+        if (!built.some((x) => x.key === REQUIRED_STAGE_KEY)) {
+          return res.status(400).json({
+            message: 'فاتورةُ العميل تحتاج سعرَ «فاتورة النقل» على الأقلّ',
+            missingSaleItem: REQUIRED_STAGE_KEY,
+          });
+        }
+        clearance.saleItems = built;
+        clearance.saleVatRate = 0.15;
+        if (!clearance.saleInvoiceNumber) {
+          clearance.saleInvoiceNumber = await nextSaleInvoiceNumber();
+          clearance.saleInvoiceAt = new Date();
+        }
+      }
+
       clearance.isCompleted = true;
       clearance.completedAt = new Date();
       clearance.completedBy = req.user._id;

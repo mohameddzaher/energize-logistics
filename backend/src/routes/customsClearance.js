@@ -34,6 +34,10 @@ router.put('/settings', authorize('super_admin', 'admin', 'it_manager', 'customs
 router.get('/upcoming-alerts', ctrl.upcomingAlerts);
 // طلباتُ الصرف: يقرؤها التخليصُ ليتابع طلبَه، وتقرّر فيها الماليّةُ وحدَها.
 router.get('/payment-requests', ctrl.listPaymentRequests);
+// ── فواتيرُ العميل ──────────────────────────────────────────────────────────
+// مراحلُ السداد ما ندفعه؛ وهذه ما نفوتره — تُكتب عند الإقفال وتُقرأ هنا.
+// القائمةُ للإدارة الماليّة ولقسم التخليص معًا، فالقراءةُ بحارس القسم وحدَه.
+router.get('/invoices', ctrl.listClearanceInvoices);
 
 router.get('/contracts', ctrl.listContracts);
 router.post('/contracts', authorize(...EDIT_ROLES), ctrl.createContract);
@@ -43,6 +47,8 @@ router.post('/contracts/:id/files', authorize(...EDIT_ROLES), ctrl.addContractFi
 router.delete('/contracts/:id/files/:attId', authorize(...EDIT_ROLES), ctrl.deleteContractFile);
 
 router.get('/:id', ctrl.getClearance);
+// فاتورةُ معاملةٍ واحدةٍ محسوبةً من بنودها — راجع utils/customsInvoice.
+router.get('/:id/invoice', ctrl.getClearanceInvoice);
 
 router.post('/', authorize(...EDIT_ROLES), ctrl.createClearance);
 router.put('/:id', authorize(...EDIT_ROLES), ctrl.updateClearance);

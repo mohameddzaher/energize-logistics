@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
+import CloseWithInvoice from '@/components/customs/CloseWithInvoice';
 import {
   Plus, Paperclip, Trash2, Loader2, Check, CalendarDays, Lock, Unlock, AlertTriangle, Clock3,
 } from 'lucide-react';
@@ -97,6 +98,8 @@ export default function PaymentStages({
     } catch (e: any) { notify(e?.message || t('تعذّر الحذف', 'Failed'), 'error'); }
     setBusy('');
   };
+
+  const [closeOpen, setCloseOpen] = useState(false);
 
   const setComplete = async (value: boolean) => {
     setBusy('complete');
@@ -248,15 +251,24 @@ export default function PaymentStages({
                 : t('تحتاج «فاتورة النقل» بتاريخٍ ومرفقٍ معًا', 'Needs “Transport invoice” with both a date and a file')}
             </span>
             {canEdit && (
-              <button type="button" onClick={() => setComplete(true)} disabled={busy === 'complete' || !readyToClose}
+              // ── والإقفالُ يسأل عن أسعار البيع ───────────────────────────
+              // مراحلُ السداد ما دفعناه؛ والإقفالُ هو لحظةُ قول ما نفوتره.
+              // راجع components/customs/CloseWithInvoice.
+              <button type="button" onClick={() => setCloseOpen(true)} disabled={busy === 'complete' || !readyToClose}
                 className="ms-auto inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-4 py-2 text-xs font-bold text-white disabled:opacity-40">
                 {busy === 'complete' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Lock className="h-3.5 w-3.5" />}
-                {t('إنهاء المعاملة', 'Close')}
+                {t('إنهاء المعاملة وإصدار الفاتورة', 'Close & issue invoice')}
               </button>
             )}
           </div>
         )}
       </div>
+
+      <CloseWithInvoice
+        open={closeOpen} onClose={() => setCloseOpen(false)}
+        clearanceId={clearanceId} stages={entries as any} ar={ar}
+        onDone={onChanged} notify={notify}
+      />
     </div>
   );
 }

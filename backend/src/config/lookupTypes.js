@@ -572,6 +572,20 @@ const REGISTRY = [
       { key: 'containersReturned', nameAr: 'الإرجاع', nameEn: 'Containers returned' },
       { key: 'returnInvoiceDate', nameAr: 'فاتورة الإرجاع', nameEn: 'Return invoice' },
       { key: 'transportInvoice', nameAr: 'فاتورة النقل', nameEn: 'Transport invoice' },
+      // تحت «فاتورة النقل» مباشرةً: حجزُ الموعد بندٌ يُدفَع ويُفوتَر كغيره.
+      { key: 'appointmentBooking', nameAr: 'حجز الموعد', nameEn: 'Appointment booking' },
+    ]],
+    /**
+     * ── بنودُ فاتورة العميل ─────────────────────────────────────────────────
+     * «مراحل السداد» ما **ندفعه** نحن؛ وهذه ما **نفوتره للعميل** عند إقفال
+     * المعاملة. والبندُ الواحدُ قد يكون في القائمتين بسعرين مختلفين: فاتورةُ
+     * النقل نُسدّدها ١٨٠٠ ونفوترها ٢٢٠٠ — فما كان هنا يُؤخَذ سعرُه من هنا،
+     * ولا يُكرَّر سعرُ التكلفة في الفاتورة. راجع utils/customsInvoice.
+     */
+    ['customs_sale_item', 'بنود فاتورة العميل', 'Customer Invoice Items', [
+      { key: 'transportInvoice', nameAr: 'فاتورة النقل', nameEn: 'Transport invoice' },
+      { key: 'dutyPaid', nameAr: 'الرسوم الجمركية', nameEn: 'Customs duty' },
+      { key: 'appointmentBooking', nameAr: 'حجز الموعد', nameEn: 'Appointment booking' },
     ]],
     ['customs_city', 'مدن التخليص', 'Customs Cities', [
       { key: 'jeddah', nameAr: 'جدة', nameEn: 'Jeddah' },

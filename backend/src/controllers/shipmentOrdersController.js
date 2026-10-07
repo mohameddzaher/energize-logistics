@@ -21,6 +21,24 @@ const { flexSpaceRegex } = require('../utils/plateKey');
 
 const emit = (event, payload = {}) => { try { emitToAll(event, payload); } catch (e) {} };
 
+/**
+ * تغيَّرت شحنةٌ: يُمحى المخزَّنُ **ثمّ** يُنادى على الشاشات.
+ *
+ * ── وإلّا تأخّر الرقمُ تغييرةً واحدةً بالضبط ────────────────────────────────
+ * اللوحةُ والتحليلاتُ تُبنيان خلف `wrapStale` بستّين ثانية. والكتابةُ كانت
+ * تُطلق `shipmentOrders:updated` ولا تمسّ المخزَّن: فتسمع الشاشةُ الحدثَ
+ * وتُعيد الطلبَ فورًا — فتقرأ ما بُني قبل الكتابة. تُسجَّل شحنةٌ فلا يتحرّك
+ * رقم، وتُسجَّل التي بعدها فتظهر الأولى. ويُقال «الأرقام غلط» ولا غلطَ فيها،
+ * إنّما نودي على القارئ قبل أن يُرفَع ما كان.
+ *
+ * فالترتيبُ جزءٌ من الإصلاح: المحوُ قبل النداء، لا بعده.
+ */
+const announceOrderChange = (id) => {
+  cache.clear('so:dashboard:');
+  cache.clear('so:analytics:');
+  emit('shipmentOrders:updated', id ? { id: String(id) } : {});
+};
+
 const pick = (body, fields) => {
   const out = {};
   fields.forEach((f) => { if (body[f] !== undefined) out[f] = body[f]; });
@@ -516,7 +534,7 @@ async function createOneOrder(req, body) {
   data.createdBy = req.user._id;
 
   const order = await ShipmentOrder.create(data);
-  emit('shipmentOrders:updated', { id: String(order._id) });
+  announceOrderChange(order._id);
 
   await logAudit({
     user: req.user, action: 'create', entity: 'ShipmentOrder', entityId: order._id,
@@ -664,7 +682,7 @@ exports.updateOrder = async (req, res) => {
 
     Object.assign(order, data);
     await order.save();
-    emit('shipmentOrders:updated', { id: String(order._id) });
+    announceOrderChange(order._id);
 
     // وصفُّ سير عمل التشغيل لهذه الشحنة يتبع في اللحظة نفسِها — هي شحنةٌ
     // واحدةٌ تُقرأ في شاشتين، فلا تُقرأ بحالتين. راجع syncShipmentsById.
@@ -885,9 +903,25 @@ async function analyticsOf(query = {}) {
   }
 }
 
+/**
+ * تحليلاتُ القسم — GET /api/shipment-orders/analytics
+ *
+ * ── واللوحةُ كانت مخزَّنةً وهذه ليست ───────────────────────────────────────
+ * `getDashboard` تحت `wrapStale` لأنّ بناءها ثقيل، وهذه تنادي `analyticsOf`
+ * نفسَها — الحسابَ الثقيلَ ذاتَه على سبعةٍ وثلاثين ألفَ شحنة — بلا مخزنٍ
+ * البتّة. فكانت أبطأَ نقطةٍ باقيةٍ في القسم: قيست ستَّ مرّاتٍ بلا تزامنٍ
+ * فأعطت 939 و 1006 و 1240 و 2004 و 2363 و 2436 جزءًا من الثانية، تتناوب
+ * عاليًا وواطئًا لأنّ العاملَين اثنان ولكلٍّ منهما ذاكرتُه.
+ *
+ * فتُخزَّن كما تُخزَّن اللوحة، وبالمفاتيح نفسِها من الاستعلام: من يغيّر مدًى
+ * أو فلترًا يبني بناءً جديدًا، ومن يفتح الشاشةَ على ما فتحها عليه غيرُه
+ * يقرأ ما بُني. و`wrapStale` تُقدّم آخرَ ما بُني فورًا وتُجدّده في الخلف،
+ * فلا ينتظر أحدٌ بناءً مرّتين.
+ */
 exports.getAnalytics = async (req, res) => {
   try {
-    res.json(await analyticsOf(req.query));
+    const key = `so:analytics:${JSON.stringify(req.query || {})}`;
+    res.json(await cache.wrapStale(key, 60 * 1000, 10 * 60 * 1000, async () => analyticsOf(req.query)));
   } catch (error) {
     console.error('shipmentOrders analytics error:', error);
     res.status(500).json({ message: error.message || 'Failed to load analytics' });
@@ -1071,7 +1105,7 @@ exports.patchStatus = async (req, res) => {
       ...(file || {}),
     });
     await order.save();
-    emit('shipmentOrders:updated', { id: String(order._id) });
+    announceOrderChange(order._id);
     // Tell whoever created the order its status moved — unless they moved it.
     if (order.createdBy && String(order.createdBy) !== String(req.user._id)) {
       try {

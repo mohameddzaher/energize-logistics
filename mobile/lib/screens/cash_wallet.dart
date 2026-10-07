@@ -85,6 +85,107 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
 
   num _n(dynamic v) => v is num ? v : num.tryParse(v?.toString() ?? '') ?? 0;
 
+  // ── نقلُ حركةٍ إلى فرعٍ آخر أو يومٍ آخر — لمديرِ النظام وحدَه ──────────────
+  // نظيرُ «نقل» في الموقع. والقيدُ يُسجَّل في اليوم الخطأ كما يُسجَّل في الفرع
+  // الخطأ — بل أكثر: مَن يُدخل عهدةَ أمسِ صباحًا يكتب تاريخَ اليوم بلا أن
+  // ينتبه. وعلاجُه بالحذف وإعادةِ التسجيل يمحو سطرَ المراجعة الذي يقول إنّ
+  // القيدَ كان.
+  //
+  // واليوميّتان يُعاد حسابهما وتتدحرج أرصدتُهما في الخادم — راجع
+  // `moveTransaction`. والشاشةُ تسمع `wallet:transaction` فتُحدَّث وحدَها.
+  List<Map<String, dynamic>> _branches = [];
+
+  Future<void> _loadBranches() async {
+    if (_branches.isNotEmpty) return;
+    try {
+      final d = await Api.instance.get('/api/branches?active=true');
+      _branches = List<Map<String, dynamic>>.from(d['branches'] ?? []);
+    } catch (_) { /* تبقى القائمةُ فارغةً: يُنقَل بالتاريخ وحدَه. */ }
+  }
+
+  Future<void> _moveTransaction(Map<String, dynamic> t) async {
+    await _loadBranches();
+    if (!mounted) return;
+    final fromBranch = (t['branch'] ?? '').toString();
+    final fromDate = (t['date'] ?? _dateKey).toString();
+    String toBranch = fromBranch;
+    String toDate = fromDate;
+    bool busy = false;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => StatefulBuilder(builder: (c, setS) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('نقل الحركة', 'Move transaction'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            const SizedBox(height: 4),
+            Text('${tr(_txTypes[t['type']]?.$1 ?? '—', _txTypes[t['type']]?.$2 ?? '—')} · ${_money(t['amount'])} · $fromDate',
+                style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+            const SizedBox(height: 14),
+            // والفرعُ الحاليُّ يبقى في القائمة: النقلُ قد يكون في التاريخ وحدَه.
+            if (_branches.isNotEmpty)
+              DropdownButtonFormField<String>(
+                initialValue: _branches.any((b) => b['_id'] == toBranch) ? toBranch : null,
+                decoration: InputDecoration(labelText: tr('الفرع', 'Branch'), border: const OutlineInputBorder(), isDense: true),
+                items: _branches.map((b) => DropdownMenuItem(value: b['_id'] as String, child: Text((b['name'] ?? '').toString(), style: const TextStyle(fontSize: 13)))).toList(),
+                onChanged: (v) => setS(() => toBranch = v ?? toBranch),
+              ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final d = DateTime.tryParse(toDate) ?? DateTime.now();
+                final v = await showDatePicker(context: c, initialDate: d, firstDate: DateTime(2020), lastDate: DateTime(2100));
+                if (v != null) {
+                  setS(() => toDate = '${v.year}-${v.month.toString().padLeft(2, '0')}-${v.day.toString().padLeft(2, '0')}');
+                }
+              },
+              icon: const Icon(Icons.event, size: 17),
+              label: Text('${tr('التاريخ', 'Date')}: $toDate', style: const TextStyle(fontWeight: FontWeight.w700)),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              tr('غيّر الفرعَ أو التاريخَ أو كليهما. تُعاد اليوميّتان وتتدحرج الأرصدةُ على أيّامهما التالية، ويُقيَّد النقلُ في سجلّ المراجعة.',
+                 'Change the branch, the date, or both. Both days are recalculated and their later days roll forward. The move is written to the audit log.'),
+              style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                // والزرُّ لا يعمل حتّى يتغيّر أحدُهما — ونقلٌ إلى حيث هو خطأٌ
+                // يردّه الخادم، فلا يُعرَض بابًا على الشاشة.
+                onPressed: busy || (toBranch == fromBranch && toDate == fromDate) ? null : () async {
+                  setS(() => busy = true);
+                  try {
+                    final r = await Api.instance.patch('/api/wallet/transactions/${t['_id']}/move',
+                        {'branch': toBranch, 'date': toDate});
+                    if (c.mounted) Navigator.pop(c);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text((r is Map ? r['message'] : null)?.toString() ?? tr('نُقلت الحركة', 'Moved'))));
+                      setState(() => _loading = true);
+                      await _load();
+                    }
+                  } catch (e) {
+                    setS(() => busy = false);
+                    if (c.mounted) {
+                      ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(e.toString())));
+                    }
+                  }
+                },
+                icon: busy
+                    ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.swap_horiz, size: 17),
+                label: Text(tr('نقل', 'Move')),
+              ),
+            ),
+          ]),
+        ),
+      )),
+    );
+  }
+
   Future<void> _addTransaction() async {
     String type = 'collection';
     final amount = TextEditingController();
@@ -373,9 +474,15 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
                       final ty = _txTypes[t['type']] ?? ('—', '—', T.inkFaint, Icons.help_outline);
                       final isIn = t['type'] == 'collection';
                       final label = t['customer'] is Map ? (t['customer']['companyName'] ?? '') : (t['description'] ?? t['itemName'] ?? t['vendorName'] ?? '');
+                      // ولا يُعرَض البابُ لمن لا يملكه: الحارسُ في الخادم
+                      // (`super_admin`)، وزرٌّ يُضغَط ليُقال «لا صلاحية» عطبٌ
+                      // في الشاشة لا حماية.
+                      final canMove = context.read<AuthProvider>().role == 'super_admin';
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
-                        child: AppCard(
+                        child: GestureDetector(
+                          onLongPress: canMove ? () => _moveTransaction(t) : null,
+                          child: AppCard(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                           child: Row(children: [
                             Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: ty.$3.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)), child: Icon(ty.$4, size: 17, color: ty.$3)),
@@ -400,7 +507,12 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
                               Text(tr('خارج الرصيد', 'off-balance'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: T.inkFaint))
                             else
                               Text('${isIn ? '+' : '−'}${_money(t['amount'])}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: ty.$3)),
+                            if (canMove) ...[
+                              const SizedBox(width: 6),
+                              Icon(Icons.swap_horiz, size: 15, color: T.inkFaint.withValues(alpha: 0.6)),
+                            ],
                           ]),
+                        ),
                         ),
                       );
                     }),

@@ -865,19 +865,33 @@ export default function WalletPage() {
     }
   };
 
-  // ── ونقلُ حركةٍ إلى فرعٍ آخر ─────────────────────────────────────────────
-  // الفرعان يُعاد حسابهما وتتدحرج أرصدتُهما في الخادم — راجع
-  // `moveTransactionBranch`. والشاشةُ تسمع `wallet:transaction` فتُحدَّث وحدَها.
+  // ── ونقلُ حركةٍ إلى فرعٍ آخر أو يومٍ آخر ─────────────────────────────────
+  // اليوميّتان يُعاد حسابهما وتتدحرج أرصدتُهما في الخادم — راجع
+  // `moveTransaction`. والشاشةُ تسمع `wallet:transaction` فتُحدَّث وحدَها.
+  //
+  // والطرفان مستقلّان: يُفتَح الحقلان على ما هو قائمٌ الآن، فمن أراد يومًا آخرَ
+  // في الفرع نفسِه غيّر التاريخَ وحدَه. والزرُّ لا يعمل حتّى يتغيّر أحدُهما —
+  // ونقلٌ إلى حيث هو خطأٌ يردّه الخادم، فلا يُعرَض بابًا على الشاشة.
   const [moving, setMoving] = useState<any | null>(null);
   const [moveTo, setMoveTo] = useState('');
+  const [moveDate, setMoveDate] = useState('');
   const [moveBusy, setMoveBusy] = useState(false);
+  const openMove = (t: any) => {
+    setMoving(t);
+    setMoveTo(String(t?.branch || ''));
+    setMoveDate(String(t?.date || selectedDate || ''));
+  };
+  const moveChanged = !!moving
+    && (moveTo !== String(moving.branch || '') || moveDate !== String(moving.date || selectedDate || ''));
   const doMove = async () => {
-    if (!moving || !moveTo) return;
+    if (!moving || !moveChanged) return;
     setMoveBusy(true);
     try {
-      const r = await api.patch<any>(`/api/wallet/transactions/${moving._id}/branch`, { branch: moveTo });
+      const r = await api.patch<any>(`/api/wallet/transactions/${moving._id}/move`, { branch: moveTo, date: moveDate });
       notify(r.message || (ar ? 'نُقلت الحركة' : 'Moved'), 'success');
-      setMoving(null); setMoveTo('');
+      setMoving(null); setMoveTo(''); setMoveDate('');
+      // واليومُ المعروضُ قد لا يعود يحوي القيد — نُقل إلى غيره. فتُقرأ اليوميّةُ
+      // المعروضةُ من جديدٍ لتُظهر نقصانَه، والوجهةُ تُقرأ حين تُفتَح.
       await fetchWallet(false);
     } catch (e: any) { notify(e?.message || (ar ? 'تعذّر النقل' : 'Could not move'), 'error'); }
     setMoveBusy(false);
@@ -1427,7 +1441,7 @@ export default function WalletPage() {
                               سجّلها ومتى. والنقلُ يُنسبها إلى يوميّة الفرع
                               الجديد **في اليوم نفسِه** ويُعيد حسابَ الفرعين
                               وأرصدةَ ما بعدهما. راجع moveTransactionBranch. */}
-                          <button type="button" onClick={() => { setMoving(tx); setMoveTo(''); }}
+                          <button type="button" onClick={() => openMove(tx)}
                             className="p-1.5 rounded-lg text-slate-700 hover:text-sky-600 hover:bg-slate-100 transition-colors"
                             title={ar ? 'نقل إلى فرع آخر' : 'Move to another branch'}>
                             <ArrowLeftRight className="w-4 h-4" />
@@ -1458,7 +1472,7 @@ export default function WalletPage() {
               onClick={(e) => e.stopPropagation()} className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
               <div className="px-5 py-3.5 border-b border-slate-200 flex items-center gap-2">
                 <ArrowLeftRight className="w-4 h-4 text-sky-600" />
-                <h3 className="font-bold text-slate-900">{ar ? 'نقل الحركة إلى فرع آخر' : 'Move to another branch'}</h3>
+                <h3 className="font-bold text-slate-900">{ar ? 'نقل الحركة' : 'Move transaction'}</h3>
                 <button type="button" onClick={() => setMoving(null)} className="ms-auto text-slate-400 hover:text-slate-900"><X className="w-5 h-5" /></button>
               </div>
               <div className="p-5 space-y-3">
@@ -1469,24 +1483,31 @@ export default function WalletPage() {
                   <p><span className="text-slate-500">{ar ? 'الفرع الحالي: ' : 'Current branch: '}</span>
                     <span className="font-semibold">{moving.purchaseBranch || moving.operationDetails?.branch || (branchList.find((b) => b._id === String(moving.branch))?.name) || '—'}</span></p>
                 </div>
-                <label className="block">
-                  <span className="block text-[12px] font-semibold text-slate-600 mb-1">{ar ? 'الفرع المنقول إليه' : 'Move to branch'} *</span>
-                  <select value={moveTo} onChange={(e) => setMoveTo(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm">
-                    <option value="">{ar ? '— اختر الفرع —' : '— pick a branch —'}</option>
-                    {branchList.filter((b) => b._id !== String(moving.branch)).map((b) => (
-                      <option key={b._id} value={b._id}>{b.name}</option>
-                    ))}
-                  </select>
-                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="block text-[12px] font-semibold text-slate-600 mb-1">{ar ? 'الفرع' : 'Branch'}</span>
+                    <select value={moveTo} onChange={(e) => setMoveTo(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm">
+                      {/* والفرعُ الحاليُّ يبقى في القائمة: النقلُ قد يكون في التاريخ وحدَه. */}
+                      {branchList.map((b) => (
+                        <option key={b._id} value={b._id}>{b.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="block text-[12px] font-semibold text-slate-600 mb-1">{ar ? 'التاريخ' : 'Date'}</span>
+                    <input type="date" value={moveDate} onChange={(e) => setMoveDate(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                  </label>
+                </div>
                 <p className="text-[11px] text-slate-500">
-                  {ar ? 'يُعاد حسابُ الفرعين: يرتفع رصيدُ الفرع الحالي بما خرج منه، وينقص الجديدُ بما دخل فيه — وتتدحرج الأرصدةُ على أيّامهما التالية. ويُقيَّد النقلُ في سجلّ المراجعة.'
-                      : 'Both branches are recalculated and their later days roll forward. The move is written to the audit log.'}
+                  {ar ? 'غيّر الفرعَ أو التاريخَ أو كليهما. تُعاد اليوميّتان: ترتفع يوميّةُ المصدر بما خرج منها وتنقص الوجهةُ بما دخل فيها — وتتدحرج الأرصدةُ على أيّامهما التالية. ويُقيَّد النقلُ في سجلّ المراجعة.'
+                      : 'Change the branch, the date, or both. Both days are recalculated and their later days roll forward. The move is written to the audit log.'}
                 </p>
               </div>
               <div className="px-5 py-3.5 border-t border-slate-200 flex items-center gap-2">
                 <button type="button" onClick={() => setMoving(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
-                <button type="button" onClick={doMove} disabled={!moveTo || moveBusy}
+                <button type="button" onClick={doMove} disabled={!moveChanged || moveBusy}
                   className="ms-auto inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 disabled:opacity-40 text-white text-sm font-bold">
                   {moveBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowLeftRight className="w-4 h-4" />}
                   {ar ? 'نقل' : 'Move'}

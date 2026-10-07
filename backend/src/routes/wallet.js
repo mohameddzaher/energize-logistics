@@ -93,10 +93,14 @@ router.put('/transactions/:id', authorize(...walletRoles), walletController.upda
 // Delete transaction
 router.delete('/transactions/:id', authorize(...walletRoles), walletController.deleteTransaction);
 
-// ── نقلُ حركةٍ إلى فرعٍ آخر — لمديرِ النظام وحدَه ──────────────────────────
-// تُنقَل مسؤوليّةُ نقدٍ بين دفترَي عهدةٍ لرجلين، ويُعاد حسابُ الفرعين وتتدحرج
-// أرصدتُهما. راجع رأسَ `moveTransactionBranch`.
-router.patch('/transactions/:id/branch', authorize('super_admin'), walletController.moveTransactionBranch);
+// ── نقلُ حركةٍ إلى فرعٍ آخر أو يومٍ آخر — لمديرِ النظام وحدَه ───────────────
+// تُنقَل مسؤوليّةُ نقدٍ بين دفترَي عهدةٍ لرجلين، أو يُردُّ قيدٌ إلى يومه الذي
+// وقع فيه، ويُعاد حسابُ اليوميّتين وتتدحرج أرصدتُهما. راجع رأسَ
+// `moveTransaction`.
+router.patch('/transactions/:id/move', authorize('super_admin'), walletController.moveTransaction);
+// والمسارُ القديمُ يبقى بابًا للنسخ المثبَّتة من التطبيق — يُوزَّع ملفًّا لا من
+// متجر، فنسخةٌ على هاتفٍ تبقى حتّى يُحدِّثها صاحبُها. وهو الحارسُ نفسُه.
+router.patch('/transactions/:id/branch', authorize('super_admin'), walletController.moveTransaction);
 
 // Close day
 router.post('/close-day', authorize(...walletRoles), walletController.closeDay);

@@ -521,6 +521,14 @@ exports.updatePrice = async (req, res) => {
   }
 };
 
+/**
+ * التحليلُ — بطاقاتُ لوحة مدير التشغيل ورسومُها، على نفس البيانات.
+ * الحسابُ في `opsAnalyticsController` كي يكون واحدًا لهذه الصفحة وللوحة طلبات
+ * الشحنات — ولا يختلف رقمٌ بين شاشتين.
+ */
+exports.analytics = require('./opsAnalyticsController').analytics;
+exports.analyticsFilters = require('./opsAnalyticsController').filters;
+
 /** يُستعمَل في الاستيراد وفي الاختبار — يكتب سعرًا بمصدره بلا طلبِ HTTP. */
 exports.setPrice = async function setPrice(workflowId, reportNumber, value, source) {
   return PrivateSellingPrice.findOneAndUpdate(

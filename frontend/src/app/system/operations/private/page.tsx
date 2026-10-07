@@ -24,11 +24,12 @@ import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useDialog } from '@/components/system/DialogProvider';
 import { getOperationsTranslations } from '@/lib/translations';
+import OpsAnalytics from '@/components/ops/OpsAnalytics';
 import api from '@/lib/api';
 import { startBackgroundExport, type ExportJob } from '@/lib/backgroundExport';
 import {
   Lock, Search, Loader2, Check, X, ChevronLeft, ChevronRight, FilterX,
-  TrendingUp, Wallet, ShoppingCart, Tags,
+  TrendingUp, Wallet, ShoppingCart, Tags, BarChart3,
 } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -87,6 +88,8 @@ const money = (v?: number | null) => (v == null ? '—'
 const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('en-GB') : '—');
 
 export default function OperationsPrivatePage() {
+  // لوحةُ التحليل تُطوى افتراضًا — راجع التعليقَ عند موضعها.
+  const [showAnalytics, setShowAnalytics] = useState(false);
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -457,6 +460,29 @@ export default function OperationsPrivatePage() {
             { key: 'all', label: ar ? 'الجدول كلّه (بلا فلتر)' : 'The whole table (no filter)', download: () => downloadServerFile('all') },
           ]} />
       </PageHeader>
+
+      {/* ── ولوحةُ التحليل تُفتَح من هنا ──────────────────────────────────────
+          هي اللوحةُ التي يعمل بها مديرُ التشغيل (ورقتُه في إكسل) — وموضعُها
+          هذه الصفحةُ لأنّها الصفحةُ التي فيها سعرُ البيع الحقيقيّ. وتُطوى
+          افتراضًا: من يفتح الصفحةَ يفتحها للجدول عادةً، فلا تُؤخَّر بحسابٍ
+          لا يطلبه. راجع components/ops/OpsAnalytics. */}
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <button type="button" onClick={() => setShowAnalytics((v) => !v)}
+          className="w-full flex items-center gap-2 px-4 py-3 text-start hover:bg-slate-50">
+          <BarChart3 className="w-4 h-4 text-[#f37121]" />
+          <span className="text-sm font-bold text-slate-900">{ar ? 'تحليل التشغيل — لوحة المدير' : 'Operations analytics'}</span>
+          <span className="text-[11px] text-slate-400">
+            {ar ? 'المال والرحلات والأهداف وأسباب الإلغاء والفروع والمناديب والعملاء والموردون'
+                : 'money, trips, targets, cancellations, branches, reps, clients, vendors'}
+          </span>
+          <span className="ms-auto text-[11px] text-slate-500">{showAnalytics ? (ar ? 'إخفاء' : 'hide') : (ar ? 'عرض' : 'show')}</span>
+        </button>
+        {showAnalytics && (
+          <div className="border-t border-slate-100 p-4 bg-slate-50/40">
+            <OpsAnalytics base="/api/operations-private/analytics" liveEvent="operationsPrivate:updated" />
+          </div>
+        )}
+      </div>
 
       {/* ── البطاقاتُ على الفلتر كلِّه لا على الصفحة المعروضة ───────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">

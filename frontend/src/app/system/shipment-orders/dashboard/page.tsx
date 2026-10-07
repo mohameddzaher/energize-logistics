@@ -23,6 +23,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Spinner, PageHeader, ErrorNotice } from '@/components/hr/HRKit';
+import OpsAnalytics from '@/components/ops/OpsAnalytics';
 import { statusLabel, vocabLabel, canEditOrders, type ShipmentOrder, type Lang } from '@/lib/shipmentOrders';
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { canAccessSection, permsOf } from '@/lib/sections';
@@ -125,6 +126,14 @@ export default function ShipmentOrdersDashboardPage() {
       </PageHeader>
 
       {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
+
+      {/* ── ولوحةُ مدير التشغيل أوّلًا ─────────────────────────────────────────
+          هذه هي اللوحةُ التي يعمل بها مديرُ التشغيل فعلًا (بناها لنفسه في
+          إكسل): المالُ والرحلاتُ والأهدافُ وأسبابُ الإلغاء والفروعُ والمناديبُ
+          والعملاءُ والموردون. نُقلت بعناوينها وترتيبها وبُنيت على بياناتنا —
+          راجع components/ops/OpsAnalytics. وما كان في هذه الصفحة من بطاقاتٍ
+          تشغيليّةٍ باقٍ تحتها: ذاك حالُ القسم اليوم، وهذا تحليلُ أعماله. */}
+      <OpsAnalytics base="/api/shipment-orders/ops-analytics" liveEvent="shipmentOrders:changed" />
 
       {/* ── اليومُ والشهر ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

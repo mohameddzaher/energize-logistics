@@ -233,13 +233,26 @@ app.use('/api/customers', customerRoutes);
 app.use('/api/fleet-api', require('./routes/publicFleetApi'));
 
 app.use('/api/notifications', notificationRoutes);
+// طلباتُ الأقسام إلى الموارد البشريّة — حراستُها في المتحكّم، راجع رأسَ الملفّ.
+app.use('/api/staff-requests', require('./routes/staffRequests'));
 app.use('/api/audit', auditRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/assistant', assistantRoutes);
 app.use('/api/workflows', authenticate, sectionGate('Operations'), workflowRoutes);
 // «التشغيل — خاصّ»: الكشوفُ نفسُها بسعر بيعنا — قسمُ التشغيل نفسُه، وصلاحيّةٌ
 // أضيق داخلَه (راجع routes/operationsPrivate).
-app.use('/api/operations-private', authenticate, sectionGate('Operations'), require('./routes/operationsPrivate'));
+// ── «التشغيل — خاصّ» بلا حارسِ القسم على الكتابة ───────────────────────────
+// الصفحةُ تقرأ كشوفَ التشغيل، فحارسُ القسم يحرس قراءتَها كما يحرس أصلَها.
+// لكنّ عمودَ سعر البيع **ليس من الكشف**: هو عمودُنا وحدَنا، ومن فُتحت له
+// الصفحةُ يكتبه (راجع رأسَ routes/operationsPrivate). و«مشاهدة» على القسم
+// كانت تمنع الكتابةَ بعد أن أتاحت الفتحَ، فيُضغَط السعرُ ويُردّ ٤٠٣.
+//
+// فالقراءةُ محروسةٌ بالقسم كما كانت، والكتابةُ بقائمة أدوار الصفحة وحارسِ
+// الصفحات — وهما أضيقُ من القسم أصلًا (الإدارةُ والماليّةُ ومديرُ العمليّات).
+app.use('/api/operations-private', authenticate, (req, res, next) => {
+  if (req.method === 'GET') return sectionGate('Operations')(req, res, next);
+  return next();
+}, require('./routes/operationsPrivate'));
 app.use('/api/branches', branchRoutes);
 // سجلّان يكتب فيهما أكثرُ من قسم — يُختَم لهما منحُ الصلاحيّة ولا يُرفض أحد
 // (راجع stampSection): فالدورُ المصنوعُ الممنوحُ «تعديل التشغيل» يحفظ فيهما،

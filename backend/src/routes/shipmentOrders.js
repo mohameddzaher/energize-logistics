@@ -36,6 +36,14 @@ router.delete('/orders/:id', authorize(...ADMIN_ROLES), so.deleteOrder);
 // لوحةُ القسم: نداءٌ واحدٌ للمتصفّح والهاتف — نفسُ حساب التحليلات.
 router.get('/dashboard', so.getDashboard);
 router.get('/analytics', so.getAnalytics);
+// ── ولوحةُ مدير التشغيل تُقرأ هنا أيضًا ────────────────────────────────────
+// هي نفسُها التي تُقرأ في «التشغيل — خاصّ»: حسابٌ واحدٌ ونقطةٌ واحدة
+// (controllers/opsAnalyticsController)، فلا يختلف رقمٌ بين الشاشتين.
+const opsAn = require('../controllers/opsAnalyticsController');
+router.get('/ops-analytics', opsAn.analytics);
+router.get('/ops-analytics/filters', opsAn.filters);
+router.get('/ops-analytics/targets', opsAn.getTargets);
+router.put('/ops-analytics/targets', authorize(...EDIT_ROLES), opsAn.setTargets);
 
 // عدّادُ البوالص — يُقرأ للجميع ويُقدَّم لمن يملك القسم.
 // مفرداتُ الحالات — تُقرأ للجميع، وتُضبَط من صفحة الإعدادات عبر /api/lookups.

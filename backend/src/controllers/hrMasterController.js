@@ -65,6 +65,16 @@ const statusOf = (emp, fieldKey) => {
 // عتبات التنبيه — نفس فكرة المركبات. لو حبينا نخلّيها قابلة للتعديل بعدين،
 // المكان ده هو اللي هيتغيّر.
 const ALERT = { warnDays: 60, criticalDays: 30 };
+// ── والعمودُ المشتقُّ لا يُعَدّ ولا يُستعلَم ──────────────────────────────────
+// لكلّ تاريخٍ توأمٌ هجريٌّ في التعريف (راجع config/hrFields)، وهو **مشتقٌّ** لا
+// مخزَّن. فلو دخل في قوائم العدّ لقُرئ فارغًا في القاعدة فعُدَّ «مطلوبًا» —
+// اثنتا عشرةَ خانةً ناقصةً لكلّ موظّفٍ لا وجودَ لها. وهذه هي القائمةُ الحقيقيّة.
+const storedFields = (g) => g.fields.filter((f) => !f.derived);
+const storedKeys = () => [...new Set(H.GROUPS.flatMap((g) => storedFields(g).map((f) => f.key)))];
+/** التوائمُ الهجريّة: تُشتقّ عند القراءة وتُرسَل مع الصفّ. راجع utils/hijri. */
+const { toHijri } = require('../utils/hijri');
+const hijriFields = () => H.ALL_FIELDS.filter((f) => f.type === 'hijri');
+
 
 // الحقول التي يجوز الفلترة بها — مشتقّة من تعريف الحقول نفسه، فأي حقل يُضاف
 // هناك ويُعلَّم `groupable` يصير قابلًا للفلترة هنا تلقائيًّا بلا تعديل.
@@ -493,7 +503,7 @@ exports.overview = async (req, res) => {
       'employeeNumber', 'arabicName', 'firstName', 'lastName', 'employmentStatus',
       'isOutsideKingdom', 'isFreelancer', 'iban', 'gosiNumber', 'inCurrentMaster',
       ...FILTERABLE, ...DATE_FILTERABLE,
-      ...H.GROUPS.flatMap((g) => [g.expiryField, ...g.fields.map((f) => f.key)]).filter(Boolean),
+      ...H.GROUPS.flatMap((g) => [g.expiryField, ...storedFields(g).map((f) => f.key)]).filter(Boolean),
     ])].join(' ');
     // ── والعدُّ يجري في القاعدة ───────────────────────────────────────────
     //
@@ -508,7 +518,7 @@ exports.overview = async (req, res) => {
     // تمامًا (راجع auditHrCountsParity و auditHrStatesParity).
     const { statusCounts, valueDistributions, boolCounts, docStateCounts, filledExpr } = require('../utils/hrCounts');
     const match = buildFilter(req.query);
-    const allKeys = [...new Set(H.GROUPS.flatMap((g) => g.fields.map((f) => f.key)))];
+    const allKeys = storedKeys();
     const groupableKeys = [...new Set(H.GROUPS.flatMap((g) => g.fields.filter((f) => f.groupable).map((f) => f.key)))];
 
     const [counts, dists, states, sums] = await Promise.all([
@@ -658,7 +668,7 @@ exports.records = async (req, res) => {
     const employees = await findEmployees(req.query,
       [...new Set(['employeeNumber', 'arabicName', 'firstName', 'lastName', 'iqamaNumber',
         'department', 'branchName', 'project', 'employmentStatus', 'workStatusText', 'fieldStatus',
-        ...DATE_FILTERABLE, ...g.fields.map((f) => f.key)])].join(' '));
+        ...DATE_FILTERABLE, ...storedFields(g).map((f) => f.key)])].join(' '));
 
     const field = req.query.field || '';
     // «active»/«inactive» حالة توظيف لا حالة خانة — تُطبَّق في buildFilter،
@@ -673,7 +683,16 @@ exports.records = async (req, res) => {
     let rows = employees.map((e) => {
       const values = {};
       const statuses = {};
-      for (const f of g.fields) { values[f.key] = H.valueOf(e, f.key) ?? null; statuses[f.key] = statusOf(e, f.key); }
+      for (const f of g.fields) {
+        if (f.derived) continue;
+        values[f.key] = H.valueOf(e, f.key) ?? null;
+        statuses[f.key] = statusOf(e, f.key);
+      }
+      // والتوأمُ الهجريُّ مشتقٌّ من الميلاديّ — حالتُه حالتُه.
+      for (const f of g.fields.filter((x) => x.type === 'hijri')) {
+        values[f.key] = values[f.of] ? toHijri(values[f.of]) : null;
+        statuses[f.key] = statuses[f.of];
+      }
       const doc = g.document
         ? H.stateOf(e[g.expiryField], statuses[g.expiryField] === 'filled' ? '' : statuses[g.expiryField], ALERT)
         : null;
@@ -764,7 +783,7 @@ exports.grid = async (req, res) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 50));
 
-    const allFields = [...new Set(H.GROUPS.flatMap((g) => g.fields.map((f) => f.key)))];
+    const allFields = storedKeys();
     const select = [...new Set([
       'employeeNumber', 'arabicName', 'firstName', 'lastName', 'employmentStatus',
       'department', 'branchName', 'project', 'fieldStatus', 'employmentType', 'isFreelancer',
@@ -848,6 +867,13 @@ exports.grid = async (req, res) => {
         // و«مملوء» هي الحالُ الغالبة، فتُفهَم بالسكوت وتُرسَل ما سواها.
         if (st !== 'filled') row.statuses[k] = st;
       }
+      // ── والتوأمُ الهجريُّ يُشتقّ هنا، لا في المتصفّح ──────────────────────
+      // لو حُسِب في الشاشة لحُسِب مرّةً في الويب ومرّةً في التطبيق بمكتبتين
+      // مختلفتين — فيختلف اليومُ بين الاثنين. المصدرُ واحدٌ: utils/hijri.
+      for (const f of hijriFields()) {
+        const g = row.values[f.of];
+        if (g) row.values[f.key] = toHijri(g);
+      }
       return row;
     });
 
@@ -889,9 +915,24 @@ exports.updateFields = async (req, res) => {
     if (!emp) return res.status(404).json({ message: 'الموظف غير موجود' });
 
     const applied = {}; const rejected = [];
-    for (const [k, v] of Object.entries(incoming)) {
+    for (const [rawKey, rawVal] of Object.entries(incoming)) {
+      // ── ومن كتب بالهجريّ كتب في التاريخ نفسِه ──────────────────────────
+      // العمودُ الهجريُّ مشتقٌّ لا مخزَّن (راجع config/hrFields وutils/hijri).
+      // فما وصل منه يُحوَّل إلى ميلاديٍّ ويُكتب في توأمه — فيَرى من يقرأ
+      // بالميلاديّ تجديدَ من كتب بالهجريّ في اللحظة نفسِها، بلا مزامنة.
+      let k = rawKey; let v = rawVal;
+      if (H.isHijriKey(k)) {
+        const base = H.baseOfHijri(k);
+        if (!H.getField(base)) { rejected.push(k); continue; }
+        if (v === '' || v === null) { k = base; v = ''; } else {
+          const greg = require('../utils/hijri').fromHijriString(String(v).trim());
+          if (!greg) { rejected.push(`${k} (تاريخٌ هجريٌّ غير صحيح)`); continue; }
+          k = base; v = greg;
+        }
+      }
       const f = H.getField(k);
       if (!f) { rejected.push(k); continue; }
+      if (f.derived) { rejected.push(k); continue; }
       if (f.type === 'date') {
         if (v === '' || v === null) { emp[k] = null; applied[k] = null; continue; }
         const dt = new Date(v);
@@ -1096,6 +1137,26 @@ const asIsoDay = (v) => {
   return isNaN(d.getTime()) ? null : s;
 };
 
+/**
+ * تاريخُ التجديد — ميلاديًّا كُتب أو هجريًّا.
+ *
+ * «ممكن واحد يعمل تجديد ويختار التاريخ هجري وممكن تاني يختار ميلادي». والمخزَّنُ
+ * ميلاديٌّ واحدٌ دائمًا (راجع utils/hijri)، فمن أرسل `newExpiryHijri` تُحوَّل
+ * كتابتُه هنا — ولا يُفتح حقلٌ ثانٍ في القاعدة ولا تُطلَب مزامنة.
+ *
+ * والسنةُ تفصل بينهما بلا لبس: الهجريّةُ اليومَ ١٤٤٨ والميلاديّةُ ٢٠٢٦، فحتّى
+ * لو كُتب الهجريُّ في خانة الميلاديّ غلطًا لم يُقرأ تاريخًا معقولًا — ومع ذلك
+ * لا يُخمَّن: الحقلُ الذي أرسله المستخدم هو الذي يُقرأ.
+ */
+const renewalDay = (body, prefix = 'newExpiry') => {
+  const hijri = String(body?.[`${prefix}Hijri`] ?? '').trim();
+  if (hijri) {
+    const greg = require('../utils/hijri').fromHijriString(hijri);
+    return greg ? asIsoDay(greg) : null;
+  }
+  return asIsoDay(body?.[prefix]);
+};
+
 /** المجموعة أو نوع المستند → خريطة الحقول. تقبل الاسمين فلا يهمّ من يُنادي. */
 const renewalMapOf = (docTypeOrGroup) => {
   const key = GROUP_DOC_TYPE[docTypeOrGroup] || docTypeOrGroup;
@@ -1111,8 +1172,12 @@ exports.renew = async (req, res) => {
   try {
     const resolved = renewalMapOf(req.body.docType || req.body.group);
     if (!resolved) return res.status(400).json({ message: 'نوع المستند غير معروف' });
-    const newExpiry = asIsoDay(req.body.newExpiry);
-    if (!newExpiry) return res.status(400).json({ message: 'أدخل تاريخ الانتهاء الجديد' });
+    const newExpiry = renewalDay(req.body);
+    if (!newExpiry) {
+      return res.status(400).json({
+        message: req.body?.newExpiryHijri ? 'التاريخُ الهجريُّ غير صحيح' : 'أدخل تاريخ الانتهاء الجديد',
+      });
+    }
 
     const emp = await Employee.findById(req.body.employee);
     if (!emp) return res.status(404).json({ message: 'الموظف غير موجود' });
@@ -1162,7 +1227,7 @@ exports.renewBulk = async (req, res) => {
     if (!items.length) return res.status(400).json({ message: 'اختر مستندًا واحدًا على الأقل' });
     if (items.length > 500) return res.status(400).json({ message: 'أقصى ٥٠٠ سطر في المرة الواحدة' });
 
-    const sharedExpiry = asIsoDay(req.body.newExpiry);
+    const sharedExpiry = renewalDay(req.body);
     const notes = String(req.body.notes ?? '').trim();
 
     // ① التحقّق من كل سطر قبل كتابة أي سطر.
@@ -1176,7 +1241,7 @@ exports.renewBulk = async (req, res) => {
       const line = i + 1;
       const resolved = renewalMapOf(row.docType || row.group);
       if (!resolved) return errors.push({ line, message: 'نوع المستند غير معروف' });
-      const newExpiry = asIsoDay(row.newExpiry) || sharedExpiry;
+      const newExpiry = renewalDay(row) || sharedExpiry;
       if (!newExpiry) return errors.push({ line, message: 'تاريخ الانتهاء الجديد ناقص أو غير صالح' });
       const emp = byId.get(String(row.employee || row.id || ''));
       if (!emp) return errors.push({ line, message: 'الموظف غير موجود' });
@@ -1224,5 +1289,164 @@ exports.renewBulk = async (req, res) => {
   } catch (e) {
     console.error('hr renewBulk', e);
     res.status(500).json({ message: 'تعذّر تسجيل التجديد الجماعي' });
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  التحليلُ بالأقسام
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /master/by-department — صفٌّ لكلّ قسمٍ بأرقامه كلِّها.
+ *
+ * ── لماذا جدولٌ لا فلترٌ وحدَه ──────────────────────────────────────────────
+ * اللوحةُ تُفلتَر بالقسم فتقول كلَّ شيءٍ عن قسمٍ واحد. وسؤالُ من يدير الموارد
+ * البشريّة ليس «ما حالُ التشغيل؟» بل **«أيُّ الأقسام أسوأ؟»** — وجوابُه يحتاج
+ * الأقسامَ كلَّها في شاشةٍ واحدةٍ متجاورة. وبغيره تُفتَح اللوحةُ عشرين مرّةً
+ * بعشرين فلترٍ ويُكتَب الناتجُ على ورقة.
+ *
+ * فلكلّ قسم: عددُه (على رأس العمل / منتهية خدمتُه)، وخاناتُه الناقصة، ومستنداتُه
+ * المنتهية والقريبة، وعقودُه، وإجازاتُه القائمة، وعهدُه. والعدُّ كلُّه في
+ * القاعدة في استعلامين — لا نقلَ لأربع مئة موظّفٍ لتُعَدّ في العقدة (راجع
+ * التعليقَ في `overview` لسبب هذه القاعدة).
+ *
+ * وكلُّ رقمٍ مفتاحُه فلترٌ جاهز: الشاشةُ تفتح صفوفَه بالقسم نفسِه فلا يُقرأ رقمٌ
+ * لا تُرى ورقتُه.
+ */
+exports.byDepartment = async (req, res) => {
+  try {
+    const key = `hrm:bydept:${JSON.stringify(req.query || {})}`;
+    const hit = cache.get(key);
+    if (hit !== undefined) return res.json(hit);
+
+    const match = buildFilter(req.query);
+    const allKeys = storedKeys();
+    // ── و«ناقص» تُقرأ بالقاعدة نفسِها التي تقرؤها اللوحة ────────────────────
+    // `statusExpr` هو تعريفُ حالة الخانة في القاعدة (راجع utils/hrCounts):
+    // «مطلوب» خانةٌ فارغةٌ لم تُعلَّم «غير مطلوبة». ولو كُتب هنا شرطٌ ثانٍ
+    // بمعناه لاختلف الرقمُ عن بطاقات اللوحة يومًا بلا أن يُعرَف لماذا.
+    const { statusExpr } = require('../utils/hrCounts');
+
+    const missingExpr = {
+      $add: allKeys.map((k) => ({ $cond: [{ $eq: [statusExpr(k), 'required'] }, 1, 0] })),
+    };
+
+    // ── والمستنداتُ المنتهيةُ تُعَدّ بقاعدة اللوحة أيضًا ────────────────────
+    // سبعةٌ من حقول الانتهاء الثمانية نصوصٌ لا تواريخ، وفيها نصوصٌ لا تُقرأ
+    // تاريخًا أصلًا («Fri Sep 03 2027 03:00:00 GMT+0300…») — فـ`$toDate`
+    // تُسقِط الاستعلامَ كلَّه عند أوّل واحدٍ منها. والقاعدةُ المكتوبةُ في
+    // `docStateCounts` تحوّل بـ`$convert` مع `onError: null`: ما لا يُقرأ
+    // تاريخًا يُعَدّ «ناقصًا». فتُقرأ هنا حرفًا بحرف.
+    const docGroups = H.GROUPS.filter((g) => g.document && g.expiryField);
+    const docDays = (g) => ({
+      $let: {
+        vars: { dd: { $convert: { input: `$${g.expiryField}`, to: 'date', onError: null, onNull: null } } },
+        in: { $cond: [{ $eq: ['$$dd', null] }, null, { $dateDiff: { startDate: '$$NOW', endDate: '$$dd', unit: 'day' } }] },
+      },
+    });
+    // «منتهٍ» ما مضى تاريخُه، و«قريب» ما بقي له ما دون حدّ التنبيه — ولا يُعَدّ
+    // مستندٌ لم يُطلَب من صاحبه (سعوديٌّ بلا إقامة ليس «منتهيًا»).
+    const applicable = (g) => ({ $not: [{ $in: [statusExpr(g.expiryField), ['not_required', 'none']] }] });
+    const expiredExpr = {
+      $add: docGroups.map((g) => ({
+        $cond: [{ $and: [applicable(g), { $lt: [docDays(g), 0] }] }, 1, 0],
+      })),
+    };
+    const soonExpr = {
+      $add: docGroups.map((g) => ({
+        $cond: [{
+          $and: [applicable(g), { $gte: [docDays(g), 0] }, { $lte: [docDays(g), ALERT.warnDays] }],
+        }, 1, 0],
+      })),
+    };
+
+    const rows = await Employee.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: { $ifNull: ['$department', ''] },
+          total: { $sum: 1 },
+          active: { $sum: { $cond: [{ $eq: ['$employmentStatus', 'active'] }, 1, 0] } },
+          ended: { $sum: { $cond: [{ $eq: ['$employmentStatus', 'active'] }, 0, 1] } },
+          saudi: { $sum: { $cond: [{ $eq: ['$nationality', 'سعودي'] }, 1, 0] } },
+          outside: { $sum: { $cond: ['$isOutsideKingdom', 1, 0] } },
+          freelancers: { $sum: { $cond: ['$isFreelancer', 1, 0] } },
+          missing: { $sum: missingExpr },
+          peopleWithMissing: { $sum: { $cond: [{ $gt: [missingExpr, 0] }, 1, 0] } },
+          docsExpired: { $sum: expiredExpr },
+          docsSoon: { $sum: soonExpr },
+          salary: { $sum: { $ifNull: ['$basicSalary', 0] } },
+        },
+      },
+      { $sort: { total: -1 } },
+    ]).allowDiskUse(true);
+
+    // الإجازاتُ والعهدُ والعقودُ تعيش في مجموعاتٍ أخرى، فتُعَدّ هناك وتُضَمّ
+    // بالقسم — لا تُقرأ لكلّ قسمٍ على حدة.
+    const Asset = require('../models/Asset');
+    const LeaveRequest = require('../models/LeaveRequest');
+    const Contract = require('../models/Contract');
+    const deptOf = new Map((await Employee.find(match).select('department').lean())
+      .map((e) => [String(e._id), e.department || '']));
+
+    const tallyBy = (docs, pick) => {
+      const m = new Map();
+      for (const d of docs) {
+        const dep = deptOf.get(String(pick(d)));
+        if (dep === undefined) continue;        // موظّفٌ خارج الفلتر الحاليّ
+        m.set(dep, (m.get(dep) || 0) + 1);
+      }
+      return m;
+    };
+    const [assets, leaves, contracts] = await Promise.all([
+      Asset.find({ status: 'assigned' }).select('employee').lean().catch(() => []),
+      LeaveRequest.find({ status: { $in: ['pending', 'approved'] } }).select('employee status').lean().catch(() => []),
+      Contract.find({ status: 'active' }).select('employee').lean().catch(() => []),
+    ]);
+    const custodyBy = tallyBy(assets, (a) => a.employee);
+    const leavePendingBy = tallyBy(leaves.filter((l) => l.status === 'pending'), (l) => l.employee);
+    const leaveApprovedBy = tallyBy(leaves.filter((l) => l.status === 'approved'), (l) => l.employee);
+    const contractsBy = tallyBy(contracts, (c) => c.employee);
+
+    const departments = rows.map((r) => ({
+      department: r._id || '',
+      total: r.total,
+      active: r.active,
+      ended: r.ended,
+      saudi: r.saudi,
+      outside: r.outside,
+      freelancers: r.freelancers,
+      missing: r.missing,
+      peopleWithMissing: r.peopleWithMissing,
+      // الاكتمالُ نسبةُ ما مُلئ من خانات القسم كلِّها — رقمٌ واحدٌ يقارن
+      // الأقسامَ بعضَها ببعضٍ مهما اختلفت أعدادُها.
+      completeness: r.total && allKeys.length
+        ? Math.round((1 - r.missing / (r.total * allKeys.length)) * 1000) / 10
+        : 100,
+      docsExpired: r.docsExpired,
+      docsSoon: r.docsSoon,
+      contracts: contractsBy.get(r._id || '') || 0,
+      custody: custodyBy.get(r._id || '') || 0,
+      leavesPending: leavePendingBy.get(r._id || '') || 0,
+      leavesApproved: leaveApprovedBy.get(r._id || '') || 0,
+      salary: Math.round(r.salary),
+    }));
+
+    const body = {
+      departments,
+      fieldsPerEmployee: allKeys.length,
+      totals: departments.reduce((s, d) => ({
+        total: s.total + d.total, active: s.active + d.active, ended: s.ended + d.ended,
+        missing: s.missing + d.missing, docsExpired: s.docsExpired + d.docsExpired,
+        docsSoon: s.docsSoon + d.docsSoon, custody: s.custody + d.custody,
+        leavesPending: s.leavesPending + d.leavesPending, leavesApproved: s.leavesApproved + d.leavesApproved,
+        contracts: s.contracts + d.contracts, salary: s.salary + d.salary,
+      }), { total: 0, active: 0, ended: 0, missing: 0, docsExpired: 0, docsSoon: 0, custody: 0, leavesPending: 0, leavesApproved: 0, contracts: 0, salary: 0 }),
+    };
+    cache.set(key, body, 20000);
+    res.json(body);
+  } catch (e) {
+    console.error('hr byDepartment', e);
+    res.status(500).json({ message: 'تعذّر تحميل تحليل الأقسام' });
   }
 };

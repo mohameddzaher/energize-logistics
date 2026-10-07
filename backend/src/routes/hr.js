@@ -31,6 +31,19 @@ router.get('/master/choices', authorize(...STAFF), hrm.choices);
 // الفلاتر المتاحة وقيمها بأعدادها — محسوبة على ما تبقّى بعد بقيّة الفلاتر
 router.get('/master/filters', authorize(...STAFF), hrm.filterOptions);
 router.get('/master/expiring', authorize(...STAFF), hrm.expiring);
+// تحليلُ الأقسام — صفٌّ لكلّ قسمٍ بأرقامه، يقرأ نفسَ فلتر اللوحة.
+router.get('/master/by-department', authorize(...STAFF), hrm.byDepartment);
+
+// ── النماذجُ والخطاباتُ الرسميّة ────────────────────────────────────────────
+// القراءةُ لمن مُنح قسمَ الموارد البشريّة (لا لأدوارٍ أربعةٍ مكتوبةٍ بيد):
+// حارسُ القسم قبلها يقرّر، فمن فُتح له القسمُ من المصفوفة يقرأ الأوراق.
+// والرفعُ والتعديلُ والأرشفةُ لموظّفي القسم.
+const hrForms = require('../controllers/hrFormsController');
+router.get('/forms', hrForms.list);
+router.post('/forms/:id/downloaded', hrForms.countDownload);
+router.post('/forms', authorize(...STAFF), hrForms.create);
+router.put('/forms/:id', authorize(...STAFF), hrForms.update);
+router.delete('/forms/:id', authorize(...STAFF), hrForms.remove);
 // الماستر: صفٌّ واحدٌ لكلّ موظّف بكلّ الأعمدة — يُسجَّل قبل `records/:group`
 // لأنّه أخصُّ منه في الشكل ولا يتداخلان.
 router.get('/master/grid', authorize(...STAFF), hrm.grid);

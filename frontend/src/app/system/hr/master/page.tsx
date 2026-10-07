@@ -10,6 +10,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import MasterNav from '@/components/hr/MasterNav';
+import DepartmentAnalysis, { type DeptAnalysis } from '@/components/hr/DepartmentAnalysis';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import {
   Users, CalendarClock, ChevronLeft, TriangleAlert, ClipboardList, Search, BarChart3,
@@ -49,12 +50,28 @@ function HrMasterInner() {
   // مرّةً واحدة عند فتح الصفحة، لا مع كل ضغطةٍ على فلتر.
   useEffect(() => { api.get<any>('/api/hr/dashboard').then(setOps).catch(() => {}); }, []);
 
+  // ── وتحليلُ الأقسام يقرأ الفلترَ نفسَه ───────────────────────────────────
+  // فلو قُصرت اللوحةُ على جدة كانت أرقامُ الأقسام أرقامَ جدة — ولا يبقى في
+  // الشاشة رقمان محسوبان على مجموعتين مختلفتين.
+  const [depts, setDepts] = useState<DeptAnalysis | null>(null);
+  // عددُ أوراق المكتبة — رقمٌ واحدٌ على اللوحة يفتحها، ولا يحرّكه فلترُ الموظفين.
+  const [forms, setForms] = useState(0);
+  useEffect(() => {
+    api.get<{ total: number }>('/api/hr/forms').then((r) => setForms(r.total || 0)).catch(() => {});
+  }, []);
+
   const load = useCallback(async () => {
     // الشاشة تبقى معروضةً باهتةً أثناء التحديث بدل أن تُفرَّغ: الفراغ يجعل كل
     // ضغطة فلترٍ تبدو انقطاعًا، والباهت يقول «يُحدَّث» بلا أن يأخذ الصفحة منك.
     setRefreshing(true);
     try {
-      setD(await getHrOverview(filters));
+      const qs = new URLSearchParams(filters as Record<string, string>).toString();
+      const [ov, dep] = await Promise.all([
+        getHrOverview(filters),
+        api.get<DeptAnalysis>(`/api/hr/master/by-department${qs ? `?${qs}` : ''}`).catch(() => null),
+      ]);
+      setD(ov);
+      if (dep) setDepts(dep);
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setLoading(false);
     setRefreshing(false);
@@ -180,13 +197,18 @@ function HrMasterInner() {
       </div>
 
       {/* الشغل اليوميّ — محسوبٌ على الموظفين المطابقين وحدهم */}
-      <div className="grid grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
         <Big label={t('إجازات قيد المراجعة', 'Leaves pending')} value={d.work?.pendingLeaves ?? 0} c="#0ea5e9"
           onClick={() => router.push('/system/hr/leaves')} />
         <Big label={t('طلبات مفتوحة', 'Open requests')} value={d.work?.openRequests ?? 0} c="#8b5cf6"
           onClick={() => router.push('/system/hr/requests')} />
         <Big label={t('عهد بعهدة الموظفين', 'Assets held')} value={d.work?.assignedAssets ?? 0} c="#0f172a"
           onClick={() => router.push('/system/hr/custody')} />
+        {/* ── ومكتبةُ أوراق القسم ────────────────────────────────────────────
+            النماذجُ والخطاباتُ كانت في محادثاتِ واتساب ومجلّداتٍ شخصيّة، فتُوقَّع
+            نسخةٌ قديمةٌ وتُعاد. ولها الآن خانةٌ واحدةٌ تُفتَح من هنا. */}
+        <Big label={t('النماذج والخطابات', 'Forms & letters')} value={forms} c="#0d9488"
+          onClick={() => router.push('/system/hr/forms')} />
       </div>
 
       {/* التراخيص والاشتراكات على مستوى الشركة، لا على مستوى الموظفين — فلا
@@ -224,6 +246,21 @@ function HrMasterInner() {
             ))}
           </div>
         </section>
+      )}
+
+      {/* تحليلُ الأقسام — الجوابُ عن «أيُّ الأقسام أسوأ؟» */}
+      {!!depts?.departments?.length && (
+        <DepartmentAnalysis
+          data={depts} ar={ar}
+          onOpen={(q) => drill(q as Record<string, string>)}
+          onFilter={(dept) => setFilters((f) => ({
+            ...f,
+            // الضغطةُ الثانيةُ على القسم نفسِه ترفع القصرَ عنه — فلا يبقى
+            // المستخدمُ يبحث عن زرٍّ يُلغي ما فعله.
+            department: f.department === dept ? '' : dept,
+          }))}
+          active={String(filters.department || '')}
+        />
       )}
 
       {/* توزيع كل عمود له قيم متكرّرة — بطاقة لكل عمود */}

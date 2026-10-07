@@ -798,13 +798,24 @@ export default function OperationsWorkflowPage() {
    * إليها لا أصفارًا — وهذا ما يفعله إكسل.
    */
   const statusSel = colFilters.applicationStatus || EMPTY_SET;
+  /**
+   * ── والبطاقاتُ قائمةُ اختيارٍ لا زرُّ راديو ────────────────────────────────
+   * كانت الضغطةُ تكتب `new Set([key])` — أي تمسح ما قبلها وتضع واحدةً. فمن
+   * أراد «في الطريق» و«وصلت» معًا لم يكن له سبيل، وهو أوّلُ ما يُسأل عنه:
+   * «أرني ما هو خارجٌ الآن». والبنيةُ مجموعةٌ أصلًا؛ المنطقُ وحدَه كان مفردًا.
+   *
+   * فصارت تُضيف وتحذف: ضغطةٌ تُدخل الحالةَ، وأخرى تُخرجها، وإفراغُ المجموعة
+   * يعني «الكلّ» — ولا يُترك فلترٌ بمجموعةٍ فارغةٍ تُقرأ «لا شيء».
+   * و«الكلّ» تمسحها جميعًا.
+   */
   const toggleStatusCard = (key: string) => {
     setColFilters((prev) => {
       const next = { ...prev };
-      const cur = next.applicationStatus;
       if (!key) { delete next.applicationStatus; return next; }
-      if (cur && cur.has(key) && cur.size === 1) delete next.applicationStatus;
-      else next.applicationStatus = new Set([key]);
+      const cur = new Set(next.applicationStatus || []);
+      if (cur.has(key)) cur.delete(key); else cur.add(key);
+      if (cur.size === 0) delete next.applicationStatus;
+      else next.applicationStatus = cur;
       return next;
     });
     setPage(1);

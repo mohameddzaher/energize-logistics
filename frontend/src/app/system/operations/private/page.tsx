@@ -73,6 +73,7 @@ interface Stats {
   total: number; priced: number; unpriced: number;
   sumSelling: number; sumPurchase: number; sumPurchaseAll: number; sumPurchaseUnpriced: number;
   profit: number; margin: number;
+  byStatus?: Record<string, number>; statusTotal?: number;
 }
 
 /** الشهرُ الجاري بتقويم الرياض: مفتاحُه وأوّلُه وآخرُه. */
@@ -82,6 +83,8 @@ const CURRENT_MONTH = () => {
   const last = new Date(Date.UTC(y, mo, 0)).getUTCDate();
   return { key, from: `${key}-01`, to: `${key}-${String(last).padStart(2, '0')}` };
 };
+
+const EMPTY_STATUS_SET: Set<string> = new Set();
 
 const money = (v?: number | null) => (v == null ? '—'
   : Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }));
@@ -441,6 +444,21 @@ export default function OperationsPrivatePage() {
   if (!allowed) {
     return <div className="p-8 text-slate-500">{ar ? 'هذه الصفحة للإدارة فقط.' : 'Management only.'}</div>;
   }
+  /**
+   * ── بطاقاتُ الحالة: قائمةُ اختيارٍ لا زرُّ راديو ──────────────────────────
+   * نظيرُ «سير عمل التشغيل». ضغطةٌ تُدخل الحالةَ وأخرى تُخرجها، فيُرى «في
+   * الطريق» و«وصلت» معًا — وهو أوّلُ ما يُسأل عنه. و«الكلّ» تمسحها جميعًا،
+   * ولا يُترك فلترٌ بمجموعةٍ فارغةٍ تُقرأ «لا شيء».
+   */
+  const statusSel: Set<string> = colFilters.applicationStatus || EMPTY_STATUS_SET;
+  const toggleStatusCard = (key: string) => {
+    const next = new Set(statusSel);
+    if (!key) { setColFilter('applicationStatus', new Set()); setPage(1); return; }
+    if (next.has(key)) next.delete(key); else next.add(key);
+    setColFilter('applicationStatus', next);
+    setPage(1);
+  };
+
   if (loading && rows.length === 0) return <Spinner />;
 
   const pricedShare = stats && stats.total ? Math.round((stats.priced / stats.total) * 100) : 0;
@@ -460,6 +478,45 @@ export default function OperationsPrivatePage() {
             { key: 'all', label: ar ? 'الجدول كلّه (بلا فلتر)' : 'The whole table (no filter)', download: () => downloadServerFile('all') },
           ]} />
       </PageHeader>
+
+      {/* ── بطاقاتُ حالة الطلب ────────────────────────────────────────────────
+          لم تكن هنا: الصفحةُ تعرض المالَ وحدَه، ومن أراد «ما هو في الطريق
+          الآن» فتح قائمةَ العمود. وهي الكشوفُ نفسُها التي في «سير عمل
+          التشغيل»، فلها بطاقاتُها نفسُها — والأعدادُ من الخادم على الفلتر كلِّه
+          لا على الصفحة المعروضة.
+
+          وهي قائمةُ اختيارٍ: ضغطةٌ تُضيف وأخرى تُزيل، فتُجمَع حالتان معًا. */}
+      {stats?.byStatus && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+          <button type="button" onClick={() => toggleStatusCard('')}
+            className={`text-start rounded-xl p-3 border transition-all ${statusSel.size === 0
+              ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'}`}>
+            <p className="text-xl font-bold">{(stats.statusTotal || 0).toLocaleString()}</p>
+            <p className="text-[11px] mt-0.5">{ar ? 'الكل' : 'All'}</p>
+          </button>
+          {SHIPMENT_STATUSES.map((st) => {
+            const on = statusSel.has(st.key);
+            const n = stats.byStatus?.[st.key] ?? 0;
+            const base = on
+              ? `${st.bg} ${st.text} border-current ring-2 ring-offset-1 ring-current`
+              : st.key === 'late'
+                ? 'bg-red-50 text-red-700 border-red-200 hover:border-red-400'
+                : st.key === 'arrived'
+                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:border-indigo-400'
+                  : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300';
+            return (
+              <button key={st.key} type="button" onClick={() => toggleStatusCard(st.key)}
+                className={`text-start rounded-xl p-3 border transition-all ${base}`}>
+                <p className="text-xl font-bold">{n.toLocaleString()}</p>
+                <p className="text-[11px] mt-0.5 flex items-center gap-1">
+                  <span className={`w-1.5 h-1.5 rounded-full ${st.key === 'late' ? 'bg-red-500' : st.dot}`} />
+                  {ar ? st.ar : st.en}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── ولوحةُ التحليل تُفتَح من هنا ──────────────────────────────────────
           هي اللوحةُ التي يعمل بها مديرُ التشغيل (ورقتُه في إكسل) — وموضعُها

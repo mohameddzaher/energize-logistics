@@ -319,7 +319,29 @@ exports.stats = async (req, res) => {
       const index = await routePriceIndex();
       let groups = await priceGroups(filter, index);
       if (priced) groups = groups.filter((g) => g.priced === (priced === 'yes'));
-      return summarize(groups);
+      const out = summarize(groups);
+
+      // ── وتوزيعُ حالات الطلب، ليُفلتَر منه ──────────────────────────────────
+      // الشاشةُ كانت تعرض المالَ وحدَه، ولا سبيلَ لرؤية «ما هو في الطريق الآن»
+      // إلّا بفتح قائمة العمود. وهي البطاقاتُ نفسُها في «سير عمل التشغيل»،
+      // فتُحسَب هنا كما تُحسَب هناك: على الفلتر كلِّه لا على الصفحة المعروضة.
+      //
+      // ويُحسَب على `filter` قبل قسمة «مسعَّر/غير مسعَّر»: تلك قسمةٌ تقع على
+      // المجموعات لا على الكشوف، فخلطُها بعدّ الحالات يعطي رقمًا لا يطابق ما
+      // يفتحه الضغطُ عليه — وهو العطبُ الذي يُقرأ كذبًا في البطاقة.
+      const OperationsWorkflow = require('../models/OperationsWorkflow');
+      const rows = await OperationsWorkflow.aggregate([
+        { $match: filter },
+        { $group: { _id: '$applicationStatus', n: { $sum: 1 } } },
+      ]);
+      out.byStatus = {};
+      out.statusTotal = 0;
+      for (const r of rows) {
+        if (!r._id) continue;
+        out.byStatus[r._id] = r.n;
+        out.statusTotal += r.n;
+      }
+      return out;
     });
     res.json(body);
   } catch (e) {

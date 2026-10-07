@@ -90,4 +90,25 @@ const generateDueAlerts = async () => {
   return { dueSoonCount: dueSoon.length, overdueCount: overdue.length };
 };
 
-module.exports = { createNotification, generateDueAlerts };
+/**
+ * خبرٌ يخصّ قسمًا — صفٌّ واحدٌ يراه كلُّ من يملك القسمَ في صلاحيّاته.
+ *
+ * ── ولماذا صفٌّ واحدٌ لا صفٌّ لكلّ شخص ───────────────────────────────────────
+ * الكتابةُ لكلّ مستلمٍ على حدةٍ كانت تضخّم المجموعةَ بعدد أهل القسم — رفعُ
+ * مستندٍ واحدٍ صار ثلاثةَ عشرَ صفًّا، وبلغ المجموعُ سبعين ألفًا. والأسوأ أنّ
+ * قائمةَ المستلمين تُكتب بيدٍ في كلّ موضع، فدورٌ يُستحدَث لا يصله شيء.
+ *
+ * فيُكتب الخبرُ مرّةً ويُوجَّه إلى القسم، ويُقرَّر القارئُ وقتَ القراءة من
+ * مصفوفة الصلاحيّات — راجع controllers/notificationController.
+ *
+ * @param {string} section مفتاحُ القسم كما في config/sections.
+ */
+const notifySection = async (section, { type = 'system_alert', title, message, relatedEntity, relatedEntityId }) => {
+  if (!section) throw new Error('notifySection needs a section');
+  const n = await Notification.create({ section, type, title, message, relatedEntity, relatedEntityId });
+  // ولا بثَّ لحظيًّا هنا: المقصودون يُحسَبون بالصلاحيّات لا بقائمةِ مقابسَ
+  // مفتوحة. والشاشةُ تسحب الجرسَ عند فتحه وعند الأحداث الحيّة لقسمها.
+  return n;
+};
+
+module.exports = { createNotification, notifySection, generateDueAlerts };

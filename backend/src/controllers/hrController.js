@@ -98,13 +98,17 @@ const refreshHR = async ({ relatedEntityId, event }) => {
 };
 
 const notifyHR = async ({ title, message, relatedEntity, relatedEntityId, event }) => {
-  const ids = await hrStaffIds();
-  await Promise.all(
-    ids.map((rid) =>
-      createNotification({ recipient: rid, type: 'system_alert', title, message, relatedEntity, relatedEntityId }).catch(() => {})
-    )
-  );
-  if (event) ids.forEach((rid) => { try { emitToUser(String(rid), event, { id: String(relatedEntityId || '') }); } catch (e) {} });
+  // ── صفٌّ واحدٌ للقسم، لا صفٌّ لكلّ موظّفٍ فيه ─────────────────────────────
+  // كانت تُكتب نسخةٌ لكلّ واحدٍ في `hrStaffIds()` — قائمةٌ بأدوارٍ مكتوبةٍ بيد،
+  // فمن استُحدث له دورٌ في الموارد البشريّة لا يصله شيءٌ حتّى يتذكّره أحد.
+  // والآن يُوجَّه الخبرُ إلى القسم، ويراه كلُّ من فُتح له «HR» في الصلاحيّات.
+  const { notifySection } = require('../services/notificationService');
+  await notifySection('HR', { title, message, relatedEntity, relatedEntityId }).catch(() => {});
+  // والحدثُ الحيُّ يبقى لمن يملك شاشةً مفتوحة.
+  if (event) {
+    const ids = await hrStaffIds();
+    ids.forEach((rid) => { try { emitToUser(String(rid), event, { id: String(relatedEntityId || '') }); } catch (e) {} });
+  }
 };
 
 /**

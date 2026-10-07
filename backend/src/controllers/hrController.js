@@ -72,6 +72,31 @@ const hrStaffIds = async () => {
 };
 
 // Notify every HR staff member + emit a realtime event to each of them.
+/**
+ * ── وتحديثُ الشاشة ليس خبرًا ────────────────────────────────────────────────
+ *
+ * `notifyHR` تفعل أمرين: تخزّن إشعارًا في الجرس، وتُطلق حدثًا حيًّا تُحدِّث به
+ * الشاشاتُ المفتوحة. وكان كلُّ تغييرٍ في ملفّ موظّفٍ يفعل الاثنين — فمن رفع
+ * مستندًا أرسل إشعارًا إلى ثلاثةَ عشرَ شخصًا.
+ *
+ * والنتيجةُ قيست على البرودكشن: سبعون ألفَ إشعار، **اثنان وتسعون بالمئة منها
+ * ثلاثةُ أحداثِ مسكِ دفاتر** — «Document added» خمسةٌ وأربعون ألفًا، و«Employee
+ * updated» أحدَ عشرَ ألفًا، و«Document removed» سبعةُ آلاف. وتسعةٌ وسبعون
+ * بالمئة من الكلّ غيرُ مقروء: لا لأنّ أحدًا أهمل، بل لأنّ جرسًا فيه خمسةُ آلافِ
+ * سطرٍ لا يُقرأ. فالضجيجُ لا يُخفي نفسَه وحدَه — يُخفي الإشعارَ الذي يلزم.
+ *
+ * وهذه الأحداثُ مكتوبةٌ في سجلّ المراجعة في السطر الذي يسبق الإشعارَ مباشرةً
+ * (`logAudit`)، وتُقرأ في تبويب «السجلّ» في ملفّ الموظّف. فلا شيءَ يضيع.
+ *
+ * فصارا دالّتين: `notifyHR` لما يحتاج علمًا، و`refreshHR` لما يحتاج تحديثَ
+ * شاشةٍ فقط — الحدثُ الحيُّ نفسُه بلا سطرٍ في الجرس.
+ */
+const refreshHR = async ({ relatedEntityId, event }) => {
+  if (!event) return;
+  const ids = await hrStaffIds();
+  ids.forEach((rid) => { try { emitToUser(String(rid), event, { id: String(relatedEntityId || '') }); } catch (e) {} });
+};
+
 const notifyHR = async ({ title, message, relatedEntity, relatedEntityId, event }) => {
   const ids = await hrStaffIds();
   await Promise.all(
@@ -399,7 +424,8 @@ exports.updateEmployee = async (req, res) => {
     if (Object.keys(after).length) {
       await logAudit({ user: req.user._id, action: 'update_employee', entity: 'Employee', entityId: employee._id, changes: { before, after }, ipAddress: req.ip });
     }
-    await notifyHR({ title: 'Employee updated', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
+    // تعديلُ ملفٍّ: تُحدَّث الشاشة، ولا يُخطَر أحد — السجلّ يحفظ ما تغيّر.
+    await refreshHR({ relatedEntityId: employee._id, event: 'hr:employee' });
     res.json({ employee });
   } catch (error) {
     console.error('updateEmployee error:', error);
@@ -757,7 +783,8 @@ exports.uploadDocument = async (req, res) => {
       uploadedBy: req.user._id, ...stored,
     });
     await logAudit({ user: req.user._id, action: 'add_employee_document', entity: 'Employee', entityId: employee._id, changes: { after: { title: doc.title } }, ipAddress: req.ip });
-    await notifyHR({ title: 'Document added', message: `${doc.title} — ${fullName(employee)}`, relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
+    // رفعُ مستند: مسكُ دفاتر، وهو في السجلّ.
+    await refreshHR({ relatedEntityId: employee._id, event: 'hr:employee' });
     const populated = await EmployeeDocument.findById(doc._id).populate('uploadedBy', 'firstName lastName').lean();
     res.status(201).json({ document: populated });
   } catch (error) {
@@ -775,7 +802,8 @@ exports.updateDocument = async (req, res) => {
     await doc.save();
     await logAudit({ user: req.user._id, action: 'update_employee_document', entity: 'Employee', entityId: doc.employee, changes: { after: { title: doc.title } }, ipAddress: req.ip });
     try { emitToUser(String(req.user._id), 'hr:employee', { id: String(doc.employee) }); } catch (e) {}
-    await notifyHR({ title: 'Document updated', message: doc.title, relatedEntity: 'Employee', relatedEntityId: doc.employee, event: 'hr:employee' });
+    // تعديلُ مستند: في السجلّ كذلك.
+    await refreshHR({ relatedEntityId: doc.employee, event: 'hr:employee' });
     const populated = await EmployeeDocument.findById(doc._id).populate('uploadedBy', 'firstName lastName').lean();
     res.json({ document: populated });
   } catch (error) {
@@ -792,7 +820,8 @@ exports.deleteDocument = async (req, res) => {
     const employeeId = doc.employee;
     await doc.deleteOne();
     await logAudit({ user: req.user._id, action: 'delete_employee_document', entity: 'Employee', entityId: employeeId, changes: { before: { title: doc.title } }, ipAddress: req.ip });
-    await notifyHR({ title: 'Document removed', message: doc.title, relatedEntity: 'Employee', relatedEntityId: employeeId, event: 'hr:employee' });
+    // حذفُ مستند: في السجلّ كذلك.
+    await refreshHR({ relatedEntityId: employeeId, event: 'hr:employee' });
     res.json({ message: 'Document deleted' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to delete document' });

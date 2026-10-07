@@ -12,13 +12,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wallet, X, Check, Loader2, ArrowUpCircle, ArrowDownCircle,
   ShoppingCart, Lock, Unlock, AlertTriangle, Search,
-  Receipt, Download, Pencil,
+  Receipt, Download, Pencil, ArrowLeftRight, ClipboardCopy,
 } from 'lucide-react';
 import { exportMultiSheet, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
 import { getWalletTranslations, getWalletExtraTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels } from '@/components/ls2/ExportMenu';
 import ScrollX from '@/components/system/ScrollX';
+import { useColumnFilters } from '@/hooks/useColumnFilters';
 
 interface DailyWallet {
   _id: string;
@@ -117,7 +118,7 @@ const endOfBook = () => {
 };
 
 export default function WalletPage() {
-  const { confirm } = useDialog();
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   // والمصفوفةُ تُحسب كما تُحسب القائمة: دورٌ مُنح «تعديل» في هذا القسم يعدّل
   // — وإلّا فُتحت الشاشةُ لدورٍ مصنوعٍ وامتنعت عنه أزرارُها (راجع فريق العمليات).
@@ -806,6 +807,83 @@ export default function WalletPage() {
   // والملفُّ والطباعة — ولو قُرئت في كلّ موضعٍ بسلسلةٍ خاصّة لافترقت.
   const driverOf = (tx: any) => tx?.driver?.name || tx?.driverName || tx?.purchaseDriverName || '';
 
+  /**
+   * ── قمعُ الأعمدة على طريقة إكسل ───────────────────────────────────────────
+   * جدولُ المحفظة تسعةَ عشرَ عمودًا، والسؤالُ اليوميُّ فيه «أرني مشترياتِ هذا
+   * السائق» أو «حركاتِ هذا الفرع» — وكان يُفعَل بالتصدير إلى إكسل والفلترة
+   * هناك. والقيمةُ المفلترةُ هي المقروءةُ في الصفّ حرفًا بحرف (نفسُ الدوالِّ
+   * أعلاه)، فلا يُفلتَر على شيءٍ لا يُرى. راجع hooks/useColumnFilters.
+   */
+  const cf = useColumnFilters<Transaction>({
+    day: (tx) => (tx as any).date || '',
+    type: (tx) => typeLabel(tx.type),
+    amount: (tx) => (tx.type === 'tax_invoice' ? '' : String(tx.amount ?? '')),
+    statement: (tx) => statementOf(tx) || '',
+    customer: (tx) => customerOf(tx) || '',
+    report: (tx) => tx.deliveryStatementNumber || tx.purchaseDeliveryStatementNumber || '',
+    receipt: (tx) => tx.purchaseReceiptNumber || '',
+    driver: (tx) => driverOf(tx) || '',
+    branch: (tx) => tx.purchaseBranch || tx.operationDetails?.branch || '',
+    client: (tx) => tx.operationDetails?.client || '',
+    from: (tx) => tx.operationDetails?.from || '',
+    to: (tx) => tx.operationDetails?.to || '',
+    carType: (tx) => tx.operationDetails?.carType || '',
+    length: (tx) => tx.operationDetails?.length || '',
+    carNumber: (tx) => tx.operationDetails?.carNumber || '',
+    recordedBy: (tx) => `${(tx as any).user?.firstName || ''} ${(tx as any).user?.lastName || ''}`.trim(),
+  }, transactions, ar ? 'ar' : 'en');
+  const shownTx = cf.apply(transactions);
+
+  /**
+   * ── كشوفُ اليوم كلُّها بنسخةٍ واحدة ───────────────────────────────────────
+   * «عايز آخد كشوف التخريج بتاعة يوم معيّن كلهم مع بعض» — وكان ذلك يُفعَل
+   * بقراءة الصفوف وكتابتها بيد. والأرقامُ تُنسَخ من **ما يُعرَض** لا من كلّ
+   * شيء: فإن فُلتر الجدولُ بالفرع أو بالسائق جاءت كشوفُ ذلك الفلتر وحدَها —
+   * وهو ما يُقصَد عادةً.
+   *
+   * وتُنسَخ مرتَّبةً وبلا تكرار، ويُقال كم رقمًا نُسِخ.
+   */
+  const dayReportNumbers = () => {
+    const nums = new Set<string>();
+    for (const tx of shownTx) {
+      for (const n of [tx.deliveryStatementNumber, tx.purchaseDeliveryStatementNumber, ...(tx.receivedReportNumbers || [])]) {
+        const v = String(n || '').trim();
+        if (v) nums.add(v);
+      }
+    }
+    return [...nums].sort((a, b) => (Number(a) - Number(b)) || a.localeCompare(b));
+  };
+  const copyDayReports = async (sep: string) => {
+    const nums = dayReportNumbers();
+    if (!nums.length) { notify(ar ? 'لا كشوفَ في المعروض' : 'No report numbers in view', 'error'); return; }
+    try {
+      await navigator.clipboard.writeText(nums.join(sep));
+      notify(ar ? `نُسِخ ${nums.length} كشفًا` : `Copied ${nums.length} report numbers`, 'success');
+    } catch {
+      // متصفّحٌ يمنع الحافظةَ بلا تفاعلٍ مباشر: يُعرَض النصُّ لِيُنسَخ بيد.
+      window.prompt(ar ? 'انسخ الأرقام:' : 'Copy the numbers:', nums.join(sep));
+    }
+  };
+
+  // ── ونقلُ حركةٍ إلى فرعٍ آخر ─────────────────────────────────────────────
+  // الفرعان يُعاد حسابهما وتتدحرج أرصدتُهما في الخادم — راجع
+  // `moveTransactionBranch`. والشاشةُ تسمع `wallet:transaction` فتُحدَّث وحدَها.
+  const [moving, setMoving] = useState<any | null>(null);
+  const [moveTo, setMoveTo] = useState('');
+  const [moveBusy, setMoveBusy] = useState(false);
+  const doMove = async () => {
+    if (!moving || !moveTo) return;
+    setMoveBusy(true);
+    try {
+      const r = await api.patch<any>(`/api/wallet/transactions/${moving._id}/branch`, { branch: moveTo });
+      notify(r.message || (ar ? 'نُقلت الحركة' : 'Moved'), 'success');
+      setMoving(null); setMoveTo('');
+      await fetchWallet(false);
+    } catch (e: any) { notify(e?.message || (ar ? 'تعذّر النقل' : 'Could not move'), 'error'); }
+    setMoveBusy(false);
+  };
+
+
   const txColumns = [
     { header: ar ? 'التاريخ' : 'Date', key: 'date', transform: fmt.date, width: 12 },
     { header: L.time, key: 'createdAt', transform: (v: any) => (v ? new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''), width: 8 },
@@ -885,13 +963,16 @@ export default function WalletPage() {
       ? {
         key: 'day',
         label: `${scope.shown} — ${selectedDate}`,
-        sheets: oneSheet(selectedDate, (wallet ? [wallet] : []) as Record<string, any>[], transactions as unknown as Record<string, any>[]),
+        // ── والمصدَّرُ هو المعروضُ بقمع أعمدته ─────────────────────────
+        // فلتر العمود جزءٌ من «ما على الشاشة»: من فلتر بالسائق ثمّ صدّر
+        // يتوقّع ملفَّ ذلك السائق لا الدفترَ كلَّه.
+        sheets: oneSheet(selectedDate, (wallet ? [wallet] : []) as Record<string, any>[], shownTx as unknown as Record<string, any>[]),
       }
       : {
         key: 'shown',
         label: `${scope.shown} — ${shownLabel}`,
         // ما على الشاشة محمَّلٌ بالفعل، فلا يُطلَب من الخادم مرّةً ثانية.
-        sheets: oneSheet(shownLabel, [] as Record<string, any>[], transactions as unknown as Record<string, any>[]),
+        sheets: oneSheet(shownLabel, [] as Record<string, any>[], shownTx as unknown as Record<string, any>[]),
       },
     {
       key: 'all',
@@ -1171,7 +1252,30 @@ export default function WalletPage() {
         <div className="px-4 py-3 border-b border-slate-200">
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-sm flex items-center gap-2 mb-3">
             <Receipt className="w-4 h-4 text-[#f37121]" />
-            {L.transactions} ({transactions.length})
+            {L.transactions} ({shownTx.length}{shownTx.length !== transactions.length ? ` / ${transactions.length}` : ''})
+            {/* ── وكشوفُ المعروض تُنسَخ بضغطة ──────────────────────────────
+                «عايز آخد كشوف التخريج بتاعة يوم معيّن كلهم مع بعض» — تُجمَع
+                من الصفوف المعروضة (فإن فُلترت بالفرع أو بالسائق جاءت كشوفُ
+                ذلك الفلتر وحدَها)، مرتَّبةً وبلا تكرار. */}
+            <span className="ms-auto flex items-center gap-1.5">
+              <button type="button" onClick={() => copyDayReports('\n')}
+                title={ar ? 'نسخ كشوف التخريج المعروضة — كلٌّ في سطر (للصقها في إكسل)' : 'Copy the shown report numbers — one per line'}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[11.5px] font-semibold">
+                <ClipboardCopy className="w-3.5 h-3.5" />
+                {ar ? `نسخ الكشوف (${dayReportNumbers().length})` : `Copy reports (${dayReportNumbers().length})`}
+              </button>
+              <button type="button" onClick={() => copyDayReports(', ')}
+                title={ar ? 'نسخها مفصولةً بفواصل' : 'Copy comma-separated'}
+                className="px-2 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[11.5px]">
+                {ar ? 'بفواصل' : ', '}
+              </button>
+              {cf.activeCount > 0 && (
+                <button type="button" onClick={cf.clear}
+                  className="px-2 py-1.5 rounded-lg bg-[#f37121] text-white text-[11.5px] font-semibold">
+                  {ar ? `مسح فلاتر الأعمدة (${cf.activeCount})` : `Clear column filters (${cf.activeCount})`}
+                </button>
+              )}
+            </span>
           </h3>
         </div>
         <ScrollX>
@@ -1184,47 +1288,47 @@ export default function WalletPage() {
                     جدولٍ واحد — وبلا هذا العمود لا يُعرَف أيُّ حركةٍ من أيّ
                     يوم، فيصير الجدولُ قائمةً لا تُراجَع. */}
                 {mode !== 'day' && (
-                  <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{lang === 'ar' ? 'اليوم' : 'Day'}</th>
+                  <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('day', lang === 'ar' ? 'اليوم' : 'Day')}</th>
                 )}
-                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.type}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.amount}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'البيان' : 'Statement'}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'العميل' : 'Customer'}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.deliveryStatementNumber}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('type', L.type)}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('amount', L.amount)}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('statement', ar ? 'البيان' : 'Statement')}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('customer', ar ? 'العميل' : 'Customer')}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('report', L.deliveryStatementNumber)}</th>
                 {/* ── ورقمُ السند عمودٌ بجانب كشفه ──────────────────────────
                     كان مدفونًا في عمود «التفاصيل» مع سائقٍ ووصفٍ وعميل، فمن
                     أراد أن يعرف أيَّ سندٍ كُتب لأيّ كشفِ تخريجٍ قرأ فقرةً في
                     كلّ صفّ وجمعها بعينه. وهو رقمٌ يُطابَق كما تُطابَق الأرقام —
                     فله عمودُه بجانب الكشف الذي يخصّه، ويُفرَز ويُفلتَر ويخرج
                     خانةً مستقلّةً في ملفّ إكسل. */}
-                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.receipt}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('receipt', L.receipt)}</th>
                 {/* ── والسائقُ عمودٌ كما صار رقمُ السند ────────────────────────
                     كان مدفونًا في «التفاصيل» بين وصفٍ ومورّدٍ وبندِ مصروف، فمن
                     أراد أن يعرف ماذا صُرف على سائقٍ بعينه قرأ فقرةً في كلّ صفّ.
                     وهو اسمٌ يُفلتَر عليه ويُجمَع تحته — فله عمودُه، وخانتُه في
                     الملفّ إلى جانب ما يخصّه لا في طرف الصفّ. */}
-                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.driver}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.branch}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.client}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.from}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.to}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.carType}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.length}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.carNumber}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('driver', L.driver)}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('branch', L.branch)}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('client', L.client)}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('from', L.from)}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('to', L.to)}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('carType', L.carType)}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('length', L.length)}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('carNumber', L.carNumber)}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.reportDate}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.notes}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.time}</th>
                 {/* ── ومَن سجّلها ────────────────────────────────────────────
                     المحفظةُ صارت للفرع يعمل عليها أكثرُ من موظّف، فالسطرُ هو
                     ما يقول مَن فعل. وبدونه يصير النقدُ المشتركُ بلا مسؤول. */}
-                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{lang === 'ar' ? 'سجّلها' : 'Recorded by'}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('recordedBy', lang === 'ar' ? 'سجّلها' : 'Recorded by')}</th>
                 <th className="text-end text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.actions}</th>
               </tr>
             </thead>
             <tbody>
-              {transactions.length === 0 ? (
+              {shownTx.length === 0 ? (
                 <tr><td colSpan={mode === 'day' ? 19 : 20} className="text-center text-slate-800 py-12">{L.noTransactions}</td></tr>
-              ) : transactions.map((tx) => {
+              ) : shownTx.map((tx) => {
                 const cfg = TYPE_CONFIG[tx.type];
                 const Icon = cfg.icon;
                 return (
@@ -1317,6 +1421,17 @@ export default function WalletPage() {
                             className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title={L.edit}>
                             <Pencil className="w-4 h-4" />
                           </button>
+                          {/* ── ونقلُ الحركة إلى فرعٍ آخر ──────────────────
+                              تُسجَّل مشترياتٌ على محفظة جدة وهي من الدمام،
+                              فكان العلاجُ حذفًا وإعادةَ كتابة — فيضيع من
+                              سجّلها ومتى. والنقلُ يُنسبها إلى يوميّة الفرع
+                              الجديد **في اليوم نفسِه** ويُعيد حسابَ الفرعين
+                              وأرصدةَ ما بعدهما. راجع moveTransactionBranch. */}
+                          <button type="button" onClick={() => { setMoving(tx); setMoveTo(''); }}
+                            className="p-1.5 rounded-lg text-slate-700 hover:text-sky-600 hover:bg-slate-100 transition-colors"
+                            title={ar ? 'نقل إلى فرع آخر' : 'Move to another branch'}>
+                            <ArrowLeftRight className="w-4 h-4" />
+                          </button>
                           <button type="button" onClick={() => handleDeleteTx(tx._id)}
                             className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100 transition-colors" title={L.delete}>
                             <X className="w-4 h-4" />
@@ -1331,6 +1446,56 @@ export default function WalletPage() {
           </table>
         </ScrollX>
       </div>
+
+      {/* ── نافذةُ نقلِ حركةٍ إلى فرعٍ آخر ────────────────────────────────────
+          تُفتَح من إجراءات الصفّ. والتاريخُ لا يتغيّر — النقلُ تصحيحُ مكانٍ لا
+          زمان، وتغييرُ اليوم معه يخفي خطأين في فعلٍ واحد. */}
+      <AnimatePresence>
+        {moving && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setMoving(null)}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              onClick={(e) => e.stopPropagation()} className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-slate-200 flex items-center gap-2">
+                <ArrowLeftRight className="w-4 h-4 text-sky-600" />
+                <h3 className="font-bold text-slate-900">{ar ? 'نقل الحركة إلى فرع آخر' : 'Move to another branch'}</h3>
+                <button type="button" onClick={() => setMoving(null)} className="ms-auto text-slate-400 hover:text-slate-900"><X className="w-5 h-5" /></button>
+              </div>
+              <div className="p-5 space-y-3">
+                <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-[12.5px] text-slate-700 space-y-0.5">
+                  <p><span className="text-slate-500">{ar ? 'النوع: ' : 'Type: '}</span><span className="font-semibold">{typeLabel(moving.type)}</span></p>
+                  <p><span className="text-slate-500">{ar ? 'المبلغ: ' : 'Amount: '}</span><span className="font-semibold tabular-nums">{Number(moving.amount || 0).toLocaleString()}</span></p>
+                  <p><span className="text-slate-500">{ar ? 'التاريخ: ' : 'Date: '}</span><span className="font-semibold tabular-nums">{moving.date || selectedDate}</span></p>
+                  <p><span className="text-slate-500">{ar ? 'الفرع الحالي: ' : 'Current branch: '}</span>
+                    <span className="font-semibold">{moving.purchaseBranch || moving.operationDetails?.branch || (branchList.find((b) => b._id === String(moving.branch))?.name) || '—'}</span></p>
+                </div>
+                <label className="block">
+                  <span className="block text-[12px] font-semibold text-slate-600 mb-1">{ar ? 'الفرع المنقول إليه' : 'Move to branch'} *</span>
+                  <select value={moveTo} onChange={(e) => setMoveTo(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm">
+                    <option value="">{ar ? '— اختر الفرع —' : '— pick a branch —'}</option>
+                    {branchList.filter((b) => b._id !== String(moving.branch)).map((b) => (
+                      <option key={b._id} value={b._id}>{b.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <p className="text-[11px] text-slate-500">
+                  {ar ? 'يُعاد حسابُ الفرعين: يرتفع رصيدُ الفرع الحالي بما خرج منه، وينقص الجديدُ بما دخل فيه — وتتدحرج الأرصدةُ على أيّامهما التالية. ويُقيَّد النقلُ في سجلّ المراجعة.'
+                      : 'Both branches are recalculated and their later days roll forward. The move is written to the audit log.'}
+                </p>
+              </div>
+              <div className="px-5 py-3.5 border-t border-slate-200 flex items-center gap-2">
+                <button type="button" onClick={() => setMoving(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+                <button type="button" onClick={doMove} disabled={!moveTo || moveBusy}
+                  className="ms-auto inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 disabled:opacity-40 text-white text-sm font-bold">
+                  {moveBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowLeftRight className="w-4 h-4" />}
+                  {ar ? 'نقل' : 'Move'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* النوافذُ كلُّها أفعالٌ على يومٍ بعينه — إضافةٌ وتعديلٌ وإقفال. ولا
           يُفعَل شيءٌ من ذلك بـ«شهر»، فتبقى مشروطةً بوجود محفظةِ اليوم. */}

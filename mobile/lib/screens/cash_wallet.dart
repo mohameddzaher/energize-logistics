@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../services/auth.dart';
 import '../services/api.dart';
@@ -209,6 +210,42 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
     );
   }
 
+  /// كشوفُ التخريج في حركات اليوم — مرتَّبةً وبلا تكرار. نظيرُ الزرّ في الموقع.
+  List<String> _dayReportNumbers() {
+    final out = <String>{};
+    for (final t in _transactions) {
+      for (final v in [
+        t['deliveryStatementNumber'],
+        t['purchaseDeliveryStatementNumber'],
+        ...((t['receivedReportNumbers'] as List?) ?? const []),
+      ]) {
+        final s = (v ?? '').toString().trim();
+        if (s.isNotEmpty) out.add(s);
+      }
+    }
+    final list = out.toList();
+    list.sort((a, b) {
+      final x = int.tryParse(a);
+      final y = int.tryParse(b);
+      if (x != null && y != null) return x.compareTo(y);
+      return a.compareTo(b);
+    });
+    return list;
+  }
+
+  Future<void> _copyDayReports() async {
+    final nums = _dayReportNumbers();
+    if (nums.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('لا كشوف في اليوم', 'No report numbers'))));
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: nums.join('\n')));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${tr('نُسِخ', 'Copied')} ${nums.length} ${tr('كشفًا', 'reports')}')));
+    }
+  }
+
   Future<void> _closeDay() async {
     final actualCash = TextEditingController(text: _n(_wallet?['closingBalance']).toStringAsFixed(0));
     final reason = TextEditingController();
@@ -316,7 +353,20 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
                       SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: _closeDay, icon: const Icon(Icons.lock_outline, size: 17), label: Text(tr('إغلاق اليوم', 'Close day')))),
                     ],
                     const SizedBox(height: 14),
-                    Text('${tr('الحركات', 'Transactions')} (${_transactions.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                    Row(children: [
+                      Text('${tr('الحركات', 'Transactions')} (${_transactions.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                      const Spacer(),
+                      // ── وكشوفُ اليوم تُنسَخ بضغطة ────────────────────────
+                      // نظيرُ الزرّ في الموقع: من يحتاج كشوفَ يومٍ كلَّها
+                      // ليلصقها في رسالةٍ أو ورقة لا يقرؤها صفًّا صفًّا.
+                      if (_transactions.isNotEmpty)
+                        TextButton.icon(
+                          onPressed: _copyDayReports,
+                          icon: const Icon(Icons.copy_all_outlined, size: 16),
+                          label: Text('${tr('نسخ الكشوف', 'Copy reports')} (${_dayReportNumbers().length})',
+                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
+                        ),
+                    ]),
                     const SizedBox(height: 8),
                     if (_transactions.isEmpty) EmptyState(icon: Icons.receipt_long_outlined, title: tr('لا توجد حركات', 'No transactions')),
                     ..._transactions.map((t) {

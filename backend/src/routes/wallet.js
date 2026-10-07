@@ -93,6 +93,11 @@ router.put('/transactions/:id', authorize(...walletRoles), walletController.upda
 // Delete transaction
 router.delete('/transactions/:id', authorize(...walletRoles), walletController.deleteTransaction);
 
+// ── نقلُ حركةٍ إلى فرعٍ آخر — لمديرِ النظام وحدَه ──────────────────────────
+// تُنقَل مسؤوليّةُ نقدٍ بين دفترَي عهدةٍ لرجلين، ويُعاد حسابُ الفرعين وتتدحرج
+// أرصدتُهما. راجع رأسَ `moveTransactionBranch`.
+router.patch('/transactions/:id/branch', authorize('super_admin'), walletController.moveTransactionBranch);
+
 // Close day
 router.post('/close-day', authorize(...walletRoles), walletController.closeDay);
 

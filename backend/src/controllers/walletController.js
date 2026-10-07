@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const DailyWallet = require('../models/DailyWallet');
 const WalletTransaction = require('../models/WalletTransaction');
 const { flexSpaceRegex } = require('../utils/plateKey');
@@ -812,6 +813,109 @@ exports.deleteTransaction = async (req, res) => {
   } catch (error) {
     console.error('deleteTransaction error:', error);
     res.status(500).json({ message: error.message || 'Failed to delete transaction' });
+  }
+};
+
+/**
+ * ── نقلُ حركةٍ من فرعٍ إلى فرع ─────────────────────────────────────────────
+ *
+ * تُسجَّل مشترياتٌ أو مصروفٌ أو تحصيلٌ في فرعٍ ثمّ يُكتشَف أنّها فرعٍ آخر: سُجّلت
+ * على محفظة جدّة وهي من محفظة الدمام. وكان العلاجُ الوحيد: حذفُها هناك
+ * وإعادةُ كتابتها هنا — فيضيع من سجّلها ومتى، ويُعاد إدخالُ كلّ حقل.
+ *
+ * فالنقلُ فعلٌ واحدٌ يفعل ما يجب أن يفعله: الحركةُ تُنسَب إلى يوميّة الفرع
+ * الجديد **في اليوم نفسِه**، ثمّ **يُعاد حسابُ الفرعين كليهما** — فرصيدُ الفرع
+ * القديم يرتفع بما خرج منه، والجديدُ ينقص بما دخل فيه، وتتدحرج الأرصدةُ على
+ * أيّام كلٍّ منهما (`recalcWallet` → `cascadeBalances`). وكأنّها لم تحدث هناك
+ * وحدثت هنا، كما طُلب حرفًا.
+ *
+ * ── وما لا يُنقَل ──────────────────────────────────────────────────────────
+ * التاريخُ لا يتغيّر: النقلُ تصحيحُ **مكان**، وتغييرُ اليوم معه يخفي خطأين في
+ * فعلٍ واحد. ومن أراد يومًا آخرَ فليعدّل التاريخَ بعده صريحًا.
+ *
+ * ── ولمديرِ النظام وحدَه ───────────────────────────────────────────────────
+ * الحركةُ تُنقَل بين دفترَي عهدةٍ لرجلين مختلفين، فتتغيّر مسؤوليّةُ نقدٍ لا
+ * خانةٌ في صفّ. وتُقيَّد في سجلّ المراجعة بالفرعين والمبلغ.
+ */
+exports.moveTransactionBranch = async (req, res) => {
+  try {
+    const Branch = require('../models/Branch');
+    const transaction = await WalletTransaction.findById(req.params.id);
+    if (!transaction) return res.status(404).json({ message: 'الحركة غير موجودة' });
+
+    const toBranchId = String(req.body?.branch || '').trim();
+    if (!mongoose.isValidObjectId(toBranchId)) return res.status(400).json({ message: 'اختر الفرع المنقول إليه' });
+    if (String(transaction.branch) === toBranchId) {
+      return res.status(400).json({ message: 'الحركةُ في هذا الفرع أصلًا' });
+    }
+    const [fromBranch, toBranch] = await Promise.all([
+      // الفرعُ له اسمٌ واحدٌ في المخطَّط (`name`) — راجع models/Branch.
+      Branch.findById(transaction.branch).select('name city').lean(),
+      Branch.findById(toBranchId).select('name city').lean(),
+    ]);
+    if (!toBranch) return res.status(404).json({ message: 'الفرعُ المنقول إليه غير موجود' });
+
+    const fromWallet = await DailyWallet.findById(transaction.wallet);
+    if (denyOutsideBook(res, transaction.date, req.user)) return;
+    // ويومٌ مُقفَلٌ على أيِّ الطرفين يحتاج الصلاحيّةَ نفسَها التي يحتاجها أيُّ
+    // كتابةٍ فيه — فلا يُفتَح بابٌ جانبيٌّ إلى يومٍ أُقفل.
+    const toWallet = await getOrCreateWallet(toBranchId, transaction.date);
+    if (((fromWallet && fromWallet.isClosed) || toWallet.isClosed) && !mayWriteIntoClosedDay(req.user.role)) {
+      return denyClosedDay(res);
+    }
+
+    const before = {
+      branch: String(transaction.branch), branchName: fromBranch?.name || '',
+      wallet: String(transaction.wallet),
+    };
+
+    transaction.branch = toWallet.branch;
+    transaction.wallet = toWallet._id;
+    // ولقطةُ اسم الفرع في المشتريات تتبع الحركةَ — وإلّا قرأ من يراجع فرعًا
+    // في الصفّ وفرعًا في الحساب.
+    if (transaction.type === 'purchase' && transaction.purchaseBranch) {
+      transaction.purchaseBranch = toBranch.name || transaction.purchaseBranch;
+    }
+    transaction.notes = [transaction.notes, `نُقلت من فرع «${before.branchName}» إلى «${toBranch.name}»`]
+      .filter(Boolean).join(' · ').slice(0, 1000);
+    await transaction.save();
+
+    // ── والفرعان يُعاد حسابُهما معًا ─────────────────────────────────────
+    // الحسابُ لطرفٍ واحدٍ يترك الآخرَ بمجموعٍ لا يطابق حركاتِه — وهو عطبٌ
+    // صامتٌ لا يُكتشَف إلّا عند جردِ النقد.
+    const updated = {};
+    if (fromWallet) updated.from = await recalcWallet(fromWallet._id);
+    updated.to = await recalcWallet(toWallet._id);
+
+    await logAudit({
+      user: req.user._id, action: 'move_wallet_transaction', entity: 'WalletTransaction',
+      entityId: transaction._id,
+      changes: {
+        before: { branch: before.branchName, amount: transaction.amount, type: transaction.type },
+        after: { branch: toBranch.name, date: transaction.date },
+      },
+      ipAddress: req.ip,
+    });
+
+    // وكلُّ شاشةٍ تقرأ المحفظةَ تسمع: اليوميّتان والحركةُ ولوحةُ الفروع.
+    try {
+      emitToAll('wallet:transaction', { wallet: updated.to });
+      if (updated.from) emitToAll('wallet:transaction', { wallet: updated.from });
+      emitToAll('wallet:moved', {
+        transactionId: String(transaction._id),
+        from: before.branch, to: String(toWallet.branch), date: transaction.date,
+      });
+    } catch (e) { console.error('walletController silent catch:', e.message); }
+
+    res.json({
+      message: `نُقلت الحركة إلى فرع «${toBranch.name}»`,
+      transaction,
+      from: updated.from ? { _id: updated.from._id, closingBalance: updated.from.closingBalance } : null,
+      to: { _id: updated.to._id, closingBalance: updated.to.closingBalance },
+    });
+  } catch (error) {
+    console.error('moveTransactionBranch error:', error);
+    res.status(500).json({ message: error.message || 'تعذّر نقل الحركة' });
   }
 };
 

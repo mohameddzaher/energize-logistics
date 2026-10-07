@@ -124,8 +124,6 @@
       "apis": [
         "/api/collections-dept/dashboard",
         "/api/collections-dept/dashboard/filters",
-        "/api/collections-dept/ledger/alerts",
-        "/api/collections-dept/ledger/alerts/ack",
         "/api/collections-dept/parties",
         "/api/collections-dept/receivables/overview",
         "/api/collections-dept/receivables/rows"
@@ -443,7 +441,6 @@
         "/api/fleet/arrivals",
         "/api/fleet/customers",
         "/api/fleet/drivers",
-        "/api/fleet/requests",
         "/api/fleet/shipments",
         "/api/fleet/shipments/waybills.pdf",
         "/api/fleet/vehicle-logs",

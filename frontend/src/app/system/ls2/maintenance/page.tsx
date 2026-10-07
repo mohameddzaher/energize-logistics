@@ -15,7 +15,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Wrench, RefreshCw, ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Clock, ExternalLink, FileSpreadsheet, X, Search } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import { ls2Text, isLs2Staff, isLs2Admin, maintStyle, fmtNum, fmtKm, fmtDate, checklistLabel, type Lang, type Vehicle, type ServiceInterval } from '@/lib/ls2';
+import { ls2Text, isLs2Staff, isLs2Admin, maintStyle, wherePhaseStyle, fmtNum, fmtKm, fmtDate, checklistLabel, type Lang, type Vehicle, type ServiceInterval } from '@/lib/ls2';
 import RegisterServiceModal from '@/components/ls2/RegisterServiceModal';
 import DeferralActionModal, { type DeferralLike } from '@/components/ls2/DeferralActionModal';
 import DeferralCard from '@/components/ls2/DeferralCard';
@@ -117,6 +117,12 @@ function vehicleRows(items: Vehicle[], ar: boolean, pick: (iv: ServiceInterval) 
       odometerKm: v.odometerKm ?? '',
       odometerAt: v.lastMessageAt || '', // WHEN that odometer was read (live telemetry)
       status: statusText(v.maintenanceStatus, ar),
+      // ومن يقرأ الورقةَ في الورشة يحتاج أن يعرف أين الشاحنةُ قبل أن يحدّد
+      // موعدًا — راجع العمودَ نفسَه في الجدول.
+      whereNow: v.whereabouts ? (ar ? v.whereabouts.whereAr : v.whereabouts.whereEn) : '',
+      whereEta: v.whereabouts?.expectedArrival || '',
+      whereWaybill: v.whereabouts?.waybillNumber || '',
+      whereCustomer: v.whereabouts?.customerName || '',
     };
 
     // What this truck actually needs — the whole point of the sheet.
@@ -158,6 +164,10 @@ function vehicleColumns(ar: boolean, items: Vehicle[]): ExportColumn[] {
     { header: ar ? 'الحالة العامة' : 'Overall status', key: 'status', width: 12 },
     { header: ar ? 'عدد الصيانات المطلوبة' : 'Services needed', key: 'neededCount', width: 12 },
     { header: ar ? 'الصيانات المطلوبة' : 'Which services are needed', key: 'needed', width: 52 },
+    { header: ar ? 'أين هي الآن' : 'Where it is now', key: 'whereNow', width: 26 },
+    { header: ar ? 'الوصول المتوقع' : 'Expected arrival', key: 'whereEta', transform: (v) => (v ? new Date(v).toLocaleString('en-GB') : ''), width: 20 },
+    { header: ar ? 'بوليصة الحمولة' : 'Waybill', key: 'whereWaybill', width: 12 },
+    { header: ar ? 'عميل الحمولة' : 'Load customer', key: 'whereCustomer', width: 26 },
   ];
   serviceGroups(items).forEach((g, i) => {
     cols.push(
@@ -280,6 +290,7 @@ export default function Ls2MaintenancePage() {
   const router = useRouter();
   const params = useSearchParams();
   const t = ls2Text(lang as Lang);
+  const ar = lang === 'ar';
   const [items, setItems] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState(params?.get('filter') || 'all');
@@ -298,7 +309,10 @@ export default function Ls2MaintenancePage() {
   }, []);
   const load = useCallback(async () => {
     // الجدولُ كلُّه مبنيٌّ على فترات الخدمة، فتُطلَب صراحةً.
-    try { const res = await api.get<{ items: Vehicle[] }>('/api/ls2/vehicles?include=intervals'); setItems(res.items || []); } catch { /* keep */ }
+    // ── ومعها: أين هي الآن ────────────────────────────────────────────────
+    // «صيانتُها تأخّرت» نصفُ الجواب؛ ونصفُه الآخر أنّها في الطريق إلى جدة أو
+    // فرّغت ووصلت الرياض. تأتي مع نفس النداء من حمولات إدارة الأسطول الحيّة.
+    try { const res = await api.get<{ items: Vehicle[] }>('/api/ls2/vehicles?include=intervals,whereabouts'); setItems(res.items || []); } catch { /* keep */ }
     loadDeferrals();
     setLoading(false);
   }, [loadDeferrals]);
@@ -419,6 +433,7 @@ export default function Ls2MaintenancePage() {
                 <th className="text-end font-semibold px-4 py-3">{t.odometer}</th>
                 <th className="text-end font-semibold px-4 py-3 text-red-300">{t.mostOverdue}</th>
                 <th className="text-end font-semibold px-4 py-3 text-amber-300">{t.nextUpcoming}</th>
+                <th className="text-start font-semibold px-4 py-3">{ar ? 'أين هي الآن' : 'Where it is now'}</th>
                 <th className="text-center font-semibold px-4 py-3">{t.status}</th>
               </tr>
             </thead>
@@ -452,11 +467,40 @@ export default function Ls2MaintenancePage() {
                           </div>
                         )}
                       </td>
+                      {/* ── أين هي الآن ──────────────────────────────────────
+                          من قسم إدارة الأسطول: حالةُ حمولتها الحيّة مترجَمةً
+                          إلى موضع. والفارغةُ خضراءُ لأنّها القابلةُ للسحب إلى
+                          الورشة الآن بلا تعطيل حمولة. */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {(() => {
+                          const w = v.whereabouts;
+                          const ws = wherePhaseStyle(w?.phase);
+                          const eta = w?.expectedArrival ? new Date(w.expectedArrival) : null;
+                          return (
+                            <div className="space-y-0.5">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium ring-1 ${ws.bg} ${ws.text} ${ws.ring}`}>
+                                {w ? (ar ? w.whereAr : w.whereEn) : (ar ? 'غير معروف' : 'Unknown')}
+                              </span>
+                              {eta && w?.phase !== 'idle' && (
+                                <p className="text-[10px] text-slate-500">
+                                  {(ar ? 'متوقّع: ' : 'ETA: ') + eta.toLocaleString(ar ? 'ar-EG' : 'en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                              )}
+                              {w?.waybillNumber ? (
+                                <p className="text-[10px] text-slate-400">
+                                  {(ar ? 'بوليصة ' : 'Waybill ') + w.waybillNumber}
+                                  {w.customerName ? ` · ${w.customerName}` : ''}
+                                </p>
+                              ) : null}
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ms.bg} ${ms.text}`}>{lang === 'ar' ? ms.ar : ms.en}</span></td>
                     </tr>
                     {isOpen && (
                       <tr className="bg-slate-50/60 border-b border-slate-100">
-                        <td colSpan={7} className="px-4 py-3">
+                        <td colSpan={8} className="px-4 py-3">
                           <div className="flex items-center justify-end mb-2">
                             <button type="button" onClick={() => router.push(`/system/ls2/${v.unitId}`)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:border-[#f37121] text-slate-700 text-xs font-medium">
                               <ExternalLink className="w-3.5 h-3.5 text-[#f37121]" /> {lang === 'ar' ? 'ملف المركبة الكامل' : 'Full vehicle profile'}

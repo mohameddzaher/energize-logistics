@@ -342,6 +342,17 @@ exports.listVehicles = async (req, res) => {
       vehicles = vehicles.map((v) => ({ ...v, periodKm: mileMap.get(v.unitId)?.km ?? 0 }));
     }
 
+    // ── وأين هي الآن؟ ──────────────────────────────────────────────────────
+    // سؤالُ مسؤول الصيانة الذي يلي «صيانتُها تأخّرت»: أهي في الطريق إلى
+    // الدمام أم فرّغت ووصلت الرياض؟ يُقرأ من حمولات إدارة الأسطول الحيّة
+    // ويُجمَع على مفتاح اللوحة — راجع utils/fleetWhereabouts.
+    if (include.has('whereabouts')) {
+      const { liveTripsByPlateKey, IDLE } = require('../utils/fleetWhereabouts');
+      const { vehiclePlateKey } = require('../utils/plateKey');
+      const trips = await cache.wrap('ls2:whereabouts', 20000, liveTripsByPlateKey);
+      vehicles = vehicles.map((v) => ({ ...v, whereabouts: trips.get(vehiclePlateKey(v)) || IDLE }));
+    }
+
     // Sort: by period distance when requested, else by plate.
     if (from || to) vehicles.sort((a, b) => (b.periodKm || 0) - (a.periodKm || 0));
     else vehicles.sort((a, b) => (a.plate || '').localeCompare(b.plate || ''));
@@ -361,7 +372,13 @@ exports.getVehicle = async (req, res) => {
       Ls2ServiceLog.find({ unitId: v.unitId }).sort({ createdAt: -1 }).limit(20).lean(),
       Ls2DriverAssignment.find({ unitId: v.unitId }).sort({ from: -1 }).limit(50).lean(),
     ]);
-    res.json({ vehicle: await tireSensors.attachToVehicle(withMaintenance(v)), alerts, serviceLog, driverHistory });
+    // وأين هي الآن — من حمولات إدارة الأسطول الحيّة، كما في القائمة.
+    const { liveTripsByPlateKey, IDLE } = require('../utils/fleetWhereabouts');
+    const { vehiclePlateKey } = require('../utils/plateKey');
+    const trips = await cache.wrap('ls2:whereabouts', 20000, liveTripsByPlateKey).catch(() => new Map());
+    const vehicle = await tireSensors.attachToVehicle(withMaintenance(v));
+    vehicle.whereabouts = trips.get(vehiclePlateKey(v)) || IDLE;
+    res.json({ vehicle, alerts, serviceLog, driverHistory });
   } catch (error) {
     fail(res, error, 'Failed to load vehicle');
   }

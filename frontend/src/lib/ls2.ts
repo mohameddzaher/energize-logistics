@@ -151,8 +151,37 @@ export interface Vehicle {
   upcomingKm: number | null; upcomingServiceKm: number | null; upcomingServiceName: string;
   maintenance?: Maintenance | null; // مركبةٌ واحدة فقط — القائمةُ لا تعيده
   periodKm?: number; // attached when the list is queried with a from/to range
+  // أين هي الآن — من حمولات إدارة الأسطول الحيّة، بـ`include=whereabouts`.
+  // راجع backend/src/utils/fleetWhereabouts.js: الحقيقةُ هناك ولا تُنسَخ هنا.
+  whereabouts?: Whereabouts;
   profile?: VehicleProfile;
 }
+
+/** موضعُ الشاحنة ووجهتُها كما يقرؤها قسمُ إدارة الأسطول. */
+export interface Whereabouts {
+  status: string;
+  phase: 'idle' | 'preparing' | 'loading' | 'moving' | 'late' | 'arrived' | 'unloaded' | 'unknown';
+  whereAr: string; whereEn: string;
+  fromCity?: string; toCity?: string;
+  customerName?: string; driverName?: string;
+  waybillNumber?: number | null;
+  loadDate?: string | null; lastContactAt?: string | null; expectedArrival?: string | null;
+  others?: number;
+}
+
+/** لونُ الموضع — الفارغُ أخضرُ لأنّه القابلُ للسحب إلى الورشة الآن. */
+export const wherePhaseStyle = (phase?: string) => {
+  switch (phase) {
+    case 'idle': return { bg: 'bg-emerald-50', text: 'text-emerald-700', ring: 'ring-emerald-200' };
+    case 'unloaded': return { bg: 'bg-teal-50', text: 'text-teal-700', ring: 'ring-teal-200' };
+    case 'arrived': return { bg: 'bg-sky-50', text: 'text-sky-700', ring: 'ring-sky-200' };
+    case 'moving': return { bg: 'bg-indigo-50', text: 'text-indigo-700', ring: 'ring-indigo-200' };
+    case 'late': return { bg: 'bg-red-50', text: 'text-red-700', ring: 'ring-red-200' };
+    case 'loading':
+    case 'preparing': return { bg: 'bg-amber-50', text: 'text-amber-700', ring: 'ring-amber-200' };
+    default: return { bg: 'bg-slate-100', text: 'text-slate-600', ring: 'ring-slate-200' };
+  }
+};
 /**
  * تغطية حسّاسات الكاوتش لشاحنةٍ واحدة، كما يحسبها الخادم
  * (backend/src/services/ls2TireSensors.js). تُقرأ هنا ولا تُعاد صياغتها:

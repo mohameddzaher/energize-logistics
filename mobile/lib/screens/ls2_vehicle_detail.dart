@@ -206,6 +206,39 @@ class _OverviewTab extends StatelessWidget {
                 Expanded(child: Text('${v['plate'] ?? ''} · ${v['driver'] ?? tr('بلا سائق', 'No driver')}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
                 Chip2(tr(statusMeta.$1, statusMeta.$2), statusMeta.$3),
               ]),
+              // ── وأين هي الآن؟ ─────────────────────────────────────────────
+              // «متحركة» حالةُ المحرّك، وهذا موضعُها من **عمل الشركة**: في
+              // الطريق إلى جدة، أو فرّغت ووصلت الرياض — من حمولات إدارة
+              // الأسطول الحيّة (راجع utils/fleetWhereabouts). ومن يقرأ أنّ
+              // صيانتَها تأخّرت يحتاج هذا السطرَ قبل أن يحدّد موعدًا.
+              if (_m(v['whereabouts']).isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Builder(builder: (_) {
+                  final w = _m(v['whereabouts']);
+                  final phase = (w['phase'] ?? '').toString();
+                  final color = {
+                    'idle': T.success, 'unloaded': T.cyan, 'arrived': T.info,
+                    'moving': T.violet, 'late': T.danger,
+                  }[phase] ?? T.warn;
+                  final eta = DateTime.tryParse((w['expectedArrival'] ?? '').toString())?.toLocal();
+                  return Row(children: [
+                    Icon(Icons.local_shipping_outlined, size: 15, color: color),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        [
+                          tr((w['whereAr'] ?? '—').toString(), (w['whereEn'] ?? '—').toString()),
+                          if (eta != null && phase != 'idle')
+                            '${tr('متوقّع', 'ETA')} ${eta.day}/${eta.month} ${eta.hour.toString().padLeft(2, '0')}:${eta.minute.toString().padLeft(2, '0')}',
+                          if ((w['waybillNumber'] ?? '').toString().isNotEmpty)
+                            '${tr('بوليصة', 'Waybill')} ${w['waybillNumber']}',
+                        ].join(' · '),
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
+                      ),
+                    ),
+                  ]);
+                }),
+              ],
               const SizedBox(height: 10),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 _sensor(tr('السرعة', 'Speed'), v['speed'], ' ${tr('كم/س', 'km/h')}', Icons.speed_outlined, T.navy),

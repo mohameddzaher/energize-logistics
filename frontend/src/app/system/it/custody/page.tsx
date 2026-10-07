@@ -21,6 +21,7 @@ import {
 } from '@/lib/it';
 import { CustodyCards, CustodyStateButtons } from '@/components/it/CustodyOverview';
 import ScrollX from '@/components/system/ScrollX';
+import { useColumnFilters } from '@/hooks/useColumnFilters';
 
 // لا `name` ولا `model`: الاسم يُشتق في الخادم من النوع والماركة، والموديل
 // أُسقط لأنه كان يُترك فارغاً في أغلب الصفوف.
@@ -378,6 +379,20 @@ export default function ItCustodyPage() {
   // خيارٌ نتيجته صفر ليس خياراً.
   const otherKinds = counts?.otherKinds ?? [];
 
+  // قمعُ الأعمدة — القيمُ كما تُقرأ في الصفّ، والقائمةُ بعد فلتر الصفحة.
+  // راجع hooks/useColumnFilters.
+  const cf = useColumnFilters<any>({
+    employee: (a) => empName(a.employee, lang),
+    item: (a) => a.name || '',
+    type: (a) => custodyTypeLabel(a.type, lang),
+    serial: (a) => a.serialNumber || '',
+    specs: (a) => a.specs || '',
+    condition: (a) => (a.condition ? conditionLabel(a.condition, lang) : ''),
+    assigned: (a) => fmtDate(a.assignedDate),
+    status: (a) => custodyStatusLabel(a.status, lang),
+  }, items, ar ? 'ar' : 'en');
+  const shown = cf.apply(items);
+
   if (!staff) return <div className="text-slate-500 p-8">{ar ? 'غير مصرح لك بالوصول لهذا القسم.' : 'You are not authorized to view this section.'}</div>;
   if (loading) return <Spinner />;
 
@@ -503,22 +518,22 @@ export default function ItCustodyPage() {
       <ScrollX className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الموظف' : 'Employee'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الجهاز' : 'Item'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'النوع' : 'Type'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الرقم التسلسلي' : 'Serial'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'المواصفات' : 'Specs'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الحالة الفنية' : 'Condition'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'تاريخ التسليم' : 'Assigned'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الحالة' : 'Status'}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('employee', ar ? 'الموظف' : 'Employee')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('item', ar ? 'الجهاز' : 'Item')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('type', ar ? 'النوع' : 'Type')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('serial', ar ? 'الرقم التسلسلي' : 'Serial')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('specs', ar ? 'المواصفات' : 'Specs')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('condition', ar ? 'الحالة الفنية' : 'Condition')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('assigned', ar ? 'تاريخ التسليم' : 'Assigned')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('status', ar ? 'الحالة' : 'Status')}</th>
             <th className="text-end font-semibold px-4 py-3">{ar ? 'إجراءات' : 'Actions'}</th>
           </tr></thead>
           <tbody>
-            {items.length === 0 ? (
+            {shown.length === 0 ? (
               <tr><td colSpan={9} className="text-center text-slate-500 py-12">{anyFilter
                 ? (ar ? 'لا توجد عهد مطابقة للفلتر الحالي.' : 'Nothing matches the current filter.')
                 : (ar ? 'لا توجد عهد مسجّلة.' : 'No custody items found.')}</td></tr>
-            ) : items.map((a) => (
+            ) : shown.map((a) => (
               <tr key={a._id} className="border-b border-slate-200/70 hover:bg-slate-50">
                 <td className="px-4 py-3 text-slate-900 font-medium">{empName(a.employee, lang)}</td>
                 <td className="px-4 py-3 text-slate-700">

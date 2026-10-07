@@ -16,6 +16,7 @@ import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/l
 import { getHrStockTranslations } from '@/lib/translations';
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import ScrollX from '@/components/system/ScrollX';
+import { useColumnFilters } from '@/hooks/useColumnFilters';
 
 const EMPTY = {
   name: '', type: 'tool', serialNumber: '', brand: '', model: '', specs: '',
@@ -137,6 +138,18 @@ export default function HRStockPage() {
       : { key: 'all', label: scope.all, sheets: [{ name: 'Stock', rows: items, columns: exportColumns }] },
   ];
 
+  // قمعُ الأعمدة — القيمُ كما تُقرأ في الصفّ، والقائمةُ بعد فلتر الصفحة.
+  // راجع hooks/useColumnFilters.
+  const cf = useColumnFilters<any>({
+    item: (a) => a.name || '',
+    type: (a) => typeLabel(a.type, lang),
+    serial: (a) => a.serialNumber || '',
+    condition: (a) => (a.condition ? conditionLabel(a.condition, lang) : ''),
+    qty: (a) => String(unitsOf(a) ?? ''),
+    location: (a) => (a as any).location || '',
+  }, filtered, ar ? 'ar' : 'en');
+  const shown = cf.apply(filtered);
+
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
@@ -192,17 +205,17 @@ export default function HRStockPage() {
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colActions}</th>
-            <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colItem}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.colType}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.colSerial}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.colCondition}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.colQty}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.colLocation}</th>
+            <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{cf.head('item', tx.colItem)}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('type', tx.colType)}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('serial', tx.colSerial)}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('condition', tx.colCondition)}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('qty', tx.colQty)}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('location', tx.colLocation)}</th>
           </tr></thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {shown.length === 0 ? (
               <tr><td colSpan={7} className="text-center text-slate-500 py-12">{tx.empty}</td></tr>
-            ) : filtered.map((a) => (
+            ) : shown.map((a) => (
               <tr key={a._id} className="group border-b border-slate-200/70 hover:bg-slate-50">
                 <td {...pin.td(0, 'px-4 py-3', 'bg-white group-hover:bg-slate-50')}>
                   <div className="flex items-center gap-1">

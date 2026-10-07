@@ -19,6 +19,7 @@ import {
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import ScrollX from '@/components/system/ScrollX';
+import { useColumnFilters } from '@/hooks/useColumnFilters';
 
 const EMPTY = {
   name: '', arabicName: '', status: 'lead', type: 'customer', rating: 0, score: 0,
@@ -159,6 +160,19 @@ export default function CrmCompaniesPage() {
     ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
   ];
 
+  /**
+   * قمعُ الأعمدة — والقائمةُ من `items` التي وصلت بعد فلتر الصفحة والبحث،
+   * فيعمل مع فلاتر القسم لا ضدَّها. راجع hooks/useColumnFilters.
+   */
+  const cf = useColumnFilters<any>({
+    name: (c) => companyName(c, lang),
+    status: (c) => { const m: any = (COMPANY_STATUS_STYLE as any)[c.status]; return m ? (ar ? m.ar : m.en) : String(c.status || ''); },
+    rating: (c) => String(c.rating || 0),
+    industry: (c) => optLabel(opts?.INDUSTRIES, c.industry, lang) || '',
+    owner: (c) => userName(c.owner) || '',
+  }, items, ar ? 'ar' : 'en');
+  const shown = cf.apply(items);
+
   if (!isCrmStaff(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
 
@@ -187,19 +201,19 @@ export default function CrmCompaniesPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 border-b border-slate-200 text-start">
-              <th className="px-4 py-3 text-slate-300 font-semibold">{T.name}</th>
-              <th className="px-4 py-3 text-slate-300 font-semibold">{T.status}</th>
-              <th className="px-4 py-3 text-slate-300 font-semibold">{T.rating}</th>
-              <th className="px-4 py-3 text-slate-300 font-semibold">{T.industry}</th>
-              <th className="px-4 py-3 text-slate-300 font-semibold">{T.owner}</th>
+              <th className="px-4 py-3 text-slate-300 font-semibold">{cf.head('name', T.name)}</th>
+              <th className="px-4 py-3 text-slate-300 font-semibold">{cf.head('status', T.status)}</th>
+              <th className="px-4 py-3 text-slate-300 font-semibold">{cf.head('rating', T.rating)}</th>
+              <th className="px-4 py-3 text-slate-300 font-semibold">{cf.head('industry', T.industry)}</th>
+              <th className="px-4 py-3 text-slate-300 font-semibold">{cf.head('owner', T.owner)}</th>
               <th className="px-4 py-3 text-slate-300 font-semibold">{ar ? 'تواصل' : 'Contact'}</th>
               <th className="px-4 py-3 text-slate-300 font-semibold text-end">{T.actions}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
-            {items.length === 0 ? (
+            {shown.length === 0 ? (
               <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-800">{T.noResults}</td></tr>
-            ) : items.map((c) => (
+            ) : shown.map((c) => (
               <tr key={c._id} className="hover:bg-slate-100">
                 <td className="px-4 py-3">
                   <button onClick={() => router.push(`/system/crm/companies/${c._id}`)} className="text-slate-900 font-medium hover:text-[#f37121]">{companyName(c, lang)}</button>

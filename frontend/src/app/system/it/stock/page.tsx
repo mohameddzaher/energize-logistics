@@ -18,6 +18,7 @@ import {
   empName, fmtMoney, today, unitsOf,
 } from '@/lib/it';
 import ScrollX from '@/components/system/ScrollX';
+import { useColumnFilters } from '@/hooks/useColumnFilters';
 
 // لا `name` ولا `model` ولا `location`: الاسم يُشتق من النوع والماركة،
 // والحقلان الآخران كانا يُتركان فارغين فيصيران عمودين فارغين في كل تقرير.
@@ -147,6 +148,18 @@ export default function ItStockPage() {
       ]
     : [{ key: 'all', label: scope.all, sheets: [{ name: 'Stock', rows: filtered, columns: exportColumns }] }];
 
+  // قمعُ الأعمدة — القيمُ كما تُقرأ في الصفّ، والقائمةُ بعد فلتر الصفحة.
+  // راجع hooks/useColumnFilters.
+  const cf = useColumnFilters<any>({
+    item: (a) => a.name || '',
+    type: (a) => custodyTypeLabel(a.type, lang),
+    serial: (a) => a.serialNumber || '',
+    specs: (a) => a.specs || '',
+    condition: (a) => (a.condition ? conditionLabel(a.condition, lang) : ''),
+    qty: (a) => String(unitsOf(a) ?? ''),
+  }, filtered, ar ? 'ar' : 'en');
+  const shown = cf.apply(filtered);
+
   if (!staff) return <div className="text-slate-500 p-8">{ar ? 'غير مصرح لك بالوصول لهذا القسم.' : 'You are not authorized to view this section.'}</div>;
   if (loading) return <Spinner />;
 
@@ -214,18 +227,18 @@ export default function ItStockPage() {
       <ScrollX className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الجهاز' : 'Item'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'النوع' : 'Type'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الرقم التسلسلي' : 'Serial'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'المواصفات' : 'Specs'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الحالة الفنية' : 'Condition'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الكمية' : 'Qty'}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('item', ar ? 'الجهاز' : 'Item')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('type', ar ? 'النوع' : 'Type')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('serial', ar ? 'الرقم التسلسلي' : 'Serial')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('specs', ar ? 'المواصفات' : 'Specs')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('condition', ar ? 'الحالة الفنية' : 'Condition')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('qty', ar ? 'الكمية' : 'Qty')}</th>
             <th className="text-end font-semibold px-4 py-3">{ar ? 'إجراءات' : 'Actions'}</th>
           </tr></thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {shown.length === 0 ? (
               <tr><td colSpan={7} className="text-center text-slate-500 py-12">{ar ? 'المستودع فارغ.' : 'No items in stock.'}</td></tr>
-            ) : filtered.map((a) => (
+            ) : shown.map((a) => (
               <tr key={a._id} className="border-b border-slate-200/70 hover:bg-slate-50">
                 <td className="px-4 py-3 text-slate-900 font-medium">
                   {a.name}

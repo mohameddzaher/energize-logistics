@@ -25,6 +25,7 @@ import {
 import ExportMenu from '@/components/ls2/ExportMenu';
 import { FleetVehicle, FleetDriver, TRAILER_TYPES, GPS_TYPES, foldAr, canEditFleet, canAdminFleet, seatsOf } from '@/lib/fleet';
 import ScrollX from '@/components/system/ScrollX';
+import { useColumnFilters } from '@/hooks/useColumnFilters';
 
 // أعمدة تصدير السيارات — الشاشة تصدّر مرّتين (الكل، والمعروض بعد الفلتر)،
 // فالتعريف واحدٌ كي لا يفترق الملفان.
@@ -215,6 +216,18 @@ export default function FleetVehiclesPage() {
     return [v.plate, v.name, v.trailerType, names].some((x) => foldAr(String(x || '')).includes(s));
   });
 
+  // قمعُ الأعمدة — القيمُ كما تُقرأ في الصفّ. راجع hooks/useColumnFilters.
+  const cf = useColumnFilters<any>({
+    plate: (v) => formatPlate(v.plate),
+    trailerType: (v) => v.trailerType || '',
+    maintenance: (v) => (v.maintenance ? String(v.maintenance.status || '') : ''),
+    gps: (v) => v.gpsType || '',
+    driver1: (v) => seatsOf(v)[0]?.name || '',
+    driver2: (v) => seatsOf(v)[1]?.name || '',
+    supervisor: (v) => (v as any).supervisorName || '',
+  }, filtered, ar ? 'ar' : 'en');
+  const shown = cf.apply(filtered);
+
   if (loading) return <Spinner />;
 
   const seatCount = (v: FleetVehicle) => (v.drivers || []).length;
@@ -312,18 +325,18 @@ export default function FleetVehiclesPage() {
       <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-            <th className={th}>{ar ? 'اللوحة' : 'Plate'}</th>
-            <th className={th}>{ar ? 'نوع التيدر' : 'Trailer type'}</th>
-            <th className={th}>{ar ? 'الصيانة' : 'Maintenance'}</th>
-            <th className={th}>GPS</th>
-            <th className={th}>{ar ? 'السائق الأول' : 'First driver'}</th>
-            <th className={th}>{ar ? 'السائق الثاني' : 'Second driver'}</th>
-            <th className={th}>{ar ? 'المشرف المسؤول' : 'Supervisor'}</th>
+            <th className={th}>{cf.head('plate', ar ? 'اللوحة' : 'Plate')}</th>
+            <th className={th}>{cf.head('trailerType', ar ? 'نوع التيدر' : 'Trailer type')}</th>
+            <th className={th}>{cf.head('maintenance', ar ? 'الصيانة' : 'Maintenance')}</th>
+            <th className={th}>{cf.head('gps', 'GPS')}</th>
+            <th className={th}>{cf.head('driver1', ar ? 'السائق الأول' : 'First driver')}</th>
+            <th className={th}>{cf.head('driver2', ar ? 'السائق الثاني' : 'Second driver')}</th>
+            <th className={th}>{cf.head('supervisor', ar ? 'المشرف المسؤول' : 'Supervisor')}</th>
             <th className={th}>{ar ? 'ملاحظات' : 'Notes'}</th>
             <th className={th}>{ar ? 'إجراءات' : 'Actions'}</th>
           </tr></thead>
           <tbody>
-            {filtered.map((v) => (
+            {shown.map((v) => (
               <tr key={v._id} className="border-b border-slate-200/70 hover:bg-slate-50">
                 {/* اللوحة هي مدخل التحليل: ضغطةٌ واحدة تفتح كل ما فعلته هذه
                     السيارة خلال أي فترة — وكان الوصول إليه يمرّ بشاشة تحليلاتٍ

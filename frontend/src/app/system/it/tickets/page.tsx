@@ -20,6 +20,7 @@ import {
 } from '@/lib/it';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ScrollX from '@/components/system/ScrollX';
+import { useColumnFilters } from '@/hooks/useColumnFilters';
 
 // لا `requesterName` ولا `device`: مقدّم البلاغ هو الموظف المختار نفسه، والجهاز
 // يعرّفه تصنيف البلاغ أعلاه — والحقلان الحرّان كانا يكرّران ما هو معروف أصلاً.
@@ -158,6 +159,19 @@ function ItTicketsInner() {
       ]
     : [{ key: 'all', label: scope.all, sheets: [{ name: 'Tickets', rows: filtered, columns: exportColumns }] }];
 
+  // قمعُ الأعمدة — القيمُ كما تُقرأ في الصفّ. راجع hooks/useColumnFilters.
+  const cf = useColumnFilters<any>({
+    ticketNumber: (t) => t.ticketNumber || '',
+    title: (t) => t.title || '',
+    category: (t) => categoryLabel(t.category, lang),
+    priority: (t) => priorityLabel(t.priority, lang),
+    status: (t) => ticketStatusLabel(t.status, lang),
+    requester: (t) => t.requesterName || empName(t.requester, lang) || '',
+    reported: (t) => fmtDate(t.reportedAt),
+    resolution: (t) => fmtDuration(t.resolutionMinutes, lang),
+  }, filtered, ar ? 'ar' : 'en');
+  const shown = cf.apply(filtered);
+
   if (!staff) return <div className="text-slate-500 p-8">{ar ? 'غير مصرح لك بالوصول لهذا القسم.' : 'You are not authorized to view this section.'}</div>;
   if (loading) return <Spinner />;
 
@@ -203,20 +217,20 @@ function ItTicketsInner() {
       <ScrollX className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'رقم البلاغ' : 'Ticket #'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'العنوان' : 'Title'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'التصنيف' : 'Category'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الأولوية' : 'Priority'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الحالة' : 'Status'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'مقدم البلاغ' : 'Requester'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'التاريخ' : 'Reported'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'زمن الحل' : 'Resolution'}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('ticketNumber', ar ? 'رقم البلاغ' : 'Ticket #')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('title', ar ? 'العنوان' : 'Title')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('category', ar ? 'التصنيف' : 'Category')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('priority', ar ? 'الأولوية' : 'Priority')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('status', ar ? 'الحالة' : 'Status')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('requester', ar ? 'مقدم البلاغ' : 'Requester')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('reported', ar ? 'التاريخ' : 'Reported')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('resolution', ar ? 'زمن الحل' : 'Resolution')}</th>
             <th className="text-end font-semibold px-4 py-3">{ar ? 'إجراءات' : 'Actions'}</th>
           </tr></thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {shown.length === 0 ? (
               <tr><td colSpan={9} className="text-center text-slate-500 py-12">{ar ? 'لا توجد بلاغات.' : 'No tickets found.'}</td></tr>
-            ) : filtered.map((t) => (
+            ) : shown.map((t) => (
               <tr key={t._id} className="border-b border-slate-200/70 hover:bg-slate-50">
                 <td className="px-4 py-3 text-slate-700 font-mono text-xs">{t.ticketNumber || '—'}</td>
                 <td className="px-4 py-3">

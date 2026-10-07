@@ -11,6 +11,7 @@ import { Truck, Plus, Search, X, Check, Edit, Trash2, Loader2 } from 'lucide-rea
 import { fmt } from '@/utils/exportExcel';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useLanguage } from '@/context/LanguageContext';
+import { useColumnFilters } from '@/hooks/useColumnFilters';
 import { getDriversTranslations, getDriversExtraTranslations } from '@/lib/translations';
 
 interface Branch {
@@ -129,6 +130,16 @@ export default function DriversPage() {
     { key: 'all', label: scope.all, sheets: [{ name: 'Drivers', rows: drivers, columns: exportColumns }] },
   ];
 
+  // قمعُ الأعمدة — القيمُ كما تُقرأ في الصفّ. راجع hooks/useColumnFilters.
+  const cf = useColumnFilters<any>({
+    name: (d) => d.name || '',
+    phone: (d) => d.phone || '',
+    idNumber: (d) => d.idNumber || '',
+    branch: (d) => d.branch?.name || '',
+    status: (d) => (d.isActive ? T.active : T.inactive),
+  }, filtered, lang === 'ar' ? 'ar' : 'en');
+  const shown = cf.apply(filtered);
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
@@ -170,19 +181,19 @@ export default function DriversPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 border-b border-slate-200">
-              <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.name}</th>
-              <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.phone}</th>
-              <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.idNumber}</th>
-              <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.branch}</th>
+              <th className="text-start text-slate-300 font-semibold px-4 py-3">{cf.head('name', T.name)}</th>
+              <th className="text-start text-slate-300 font-semibold px-4 py-3">{cf.head('phone', T.phone)}</th>
+              <th className="text-start text-slate-300 font-semibold px-4 py-3">{cf.head('idNumber', T.idNumber)}</th>
+              <th className="text-start text-slate-300 font-semibold px-4 py-3">{cf.head('branch', T.branch)}</th>
               <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.totalPaid}</th>
-              <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.status}</th>
+              <th className="text-start text-slate-300 font-semibold px-4 py-3">{cf.head('status', T.status)}</th>
               {(canEdit || isSuperAdmin) && <th className="text-end text-slate-300 font-semibold px-4 py-3">{T.actions}</th>}
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {shown.length === 0 ? (
               <tr><td colSpan={(canEdit || isSuperAdmin) ? 8 : 6} className="text-center text-slate-800 py-12">{T.noDrivers}</td></tr>
-            ) : filtered.map((d) => (
+            ) : shown.map((d) => (
               <tr key={d._id} className="border-b border-slate-200/70 hover:bg-slate-100 transition-colors">
                 <td className="px-4 py-3 text-slate-900 font-medium">{d.name}</td>
                 <td className="px-4 py-3 text-slate-700">{d.phone || '—'}</td>

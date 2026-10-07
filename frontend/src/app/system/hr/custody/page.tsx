@@ -13,6 +13,7 @@ import { Spinner, PageHeader, SearchInput, PrimaryButton, SmallBadge, Modal, Fie
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getHrCustodyTranslations } from '@/lib/translations';
 import ScrollX from '@/components/system/ScrollX';
+import { useColumnFilters } from '@/hooks/useColumnFilters';
 
 const EMPTY = { employee: '', name: '', type: '', serialNumber: '', brand: '', model: '', condition: 'good', value: 0, assignedDate: '', notes: '' };
 
@@ -91,6 +92,25 @@ export default function CustodyPage() {
     .filter((a) => !sourceFilter || (sourceFilter === 'it' ? isItOwned(a) : !isItOwned(a)))
     .filter((a) => !search.trim() || a.name.toLowerCase().includes(search.toLowerCase()) || (a.serialNumber || '').toLowerCase().includes(search.toLowerCase()) || empName(a.employee).toLowerCase().includes(search.toLowerCase()));
 
+  /**
+   * ── وقمعُ الأعمدة على ما يُقرأ في الصفّ ───────────────────────────────────
+   * القارئُ لكلّ عمودٍ هو نفسُه الذي يُرسَم به — وإلّا فلتر على شيءٍ غيرِ
+   * المعروض. والقائمةُ تُبنى من `filtered` (بعد فلتر المصدر والبحث)، فيعمل
+   * القمعُ **مع** فلاتر الصفحة لا ضدَّها. راجع hooks/useColumnFilters.
+   */
+  const cf = useColumnFilters<any>({
+    employeeNumber: (a) => (a.employee as any)?.employeeNumber || '',
+    employee: (a) => empName(a.employee, lang),
+    idNumber: (a) => idOf(a.employee) || '',
+    item: (a) => a.name || '',
+    type: (a) => typeLabel(a.type, lang),
+    serial: (a) => a.serialNumber || '',
+    condition: (a) => (a.condition ? conditionLabel(a.condition, lang) : ''),
+    status: (a) => (a.status === 'assigned' ? tx.badgeAssigned : tx.badgeReturned),
+    source: (a) => (isItOwned(a) ? tx.sourceIt : tx.sourceHr),
+  }, filtered, ar ? 'ar' : 'en');
+  const shown = cf.apply(filtered);
+
   const exportColumns: ExportColumn[] = [
     { header: 'Employee', key: 'employee', transform: (v: any) => empName(v), width: 22 },
     { header: 'Item', key: 'name', width: 20 },
@@ -150,20 +170,20 @@ export default function CustodyPage() {
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colActions}</th>
-            <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الرقم الوظيفي' : 'Emp. no.'}</th>
-            <th {...pin.th(2, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colEmployee}</th>
-            <th {...pin.th(3, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الهوية / الإقامة' : 'ID / Iqama'}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.colItem}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.colType}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.colSerial}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.colCondition}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.colStatus}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.colSource}</th>
+            <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{cf.head('employeeNumber', ar ? 'الرقم الوظيفي' : 'Emp. no.')}</th>
+            <th {...pin.th(2, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{cf.head('employee', tx.colEmployee)}</th>
+            <th {...pin.th(3, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{cf.head('idNumber', ar ? 'الهوية / الإقامة' : 'ID / Iqama')}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('item', tx.colItem)}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('type', tx.colType)}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('serial', tx.colSerial)}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('condition', tx.colCondition)}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('status', tx.colStatus)}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('source', tx.colSource)}</th>
           </tr></thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {shown.length === 0 ? (
               <tr><td colSpan={10} className="text-center text-slate-800 py-12">{tx.empty}</td></tr>
-            ) : filtered.map((a) => (
+            ) : shown.map((a) => (
               <tr key={a._id} className="group border-b border-slate-200/70 hover:bg-slate-100">
                 <td {...pin.td(0, 'px-4 py-3', BG)}>
                   <div className="flex items-center gap-1">

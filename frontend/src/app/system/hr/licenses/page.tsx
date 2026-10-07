@@ -12,6 +12,7 @@ import { Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Pick, SmallB
 import { getHrLicensesTranslations } from '@/lib/translations';
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import ScrollX from '@/components/system/ScrollX';
+import { useColumnFilters } from '@/hooks/useColumnFilters';
 
 interface License {
   _id: string;
@@ -150,6 +151,17 @@ export default function LicensesPage() {
     { key: 'all', label: scope.all, sheets: [{ name: 'Licenses', rows: licenses, columns: exportColumns }] },
   ];
 
+  // قمعُ الأعمدة — راجع hooks/useColumnFilters.
+  const cf = useColumnFilters<any>({
+    name: (l) => l.name || '',
+    category: (l) => l.category || '',
+    duration: (l) => l.duration || '',
+    expiry: (l) => fmtDate(l.expiryDate),
+    location: (l) => l.location || '',
+    daysLeft: (l) => { const d = daysUntil(l.expiryDate); return d === null ? '' : (d < 0 ? tx.expiredLabel : `${d} ${tx.dayUnit}`); },
+  }, filtered, ar ? 'ar' : 'en');
+  const shown = cf.apply(filtered);
+
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
@@ -210,17 +222,17 @@ export default function LicensesPage() {
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.thActions}</th>
-            <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.thName}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.thCategory}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.thDuration}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.thExpiry}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.thLocation}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.thDaysLeft}</th>
+            <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{cf.head('name', tx.thName)}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('category', tx.thCategory)}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('duration', tx.thDuration)}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('expiry', tx.thExpiry)}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('location', tx.thLocation)}</th>
+            <th className="text-start font-semibold px-4 py-3">{cf.head('daysLeft', tx.thDaysLeft)}</th>
           </tr></thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {shown.length === 0 ? (
               <tr><td colSpan={7} className="text-center text-slate-800 py-12">{tx.empty}</td></tr>
-            ) : filtered.map((l) => {
+            ) : shown.map((l) => {
               const b = expiryBadge(l.expiryDate, lang);
               const d = daysUntil(l.expiryDate);
               return (

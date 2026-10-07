@@ -1,7 +1,8 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import FilterPanel, { countActive, type FilterValues } from '@/components/system/FilterPanel';
+import { ColumnFilter } from '@/components/ColumnFilter';
 import { HR_DATE_FIELDS, HR_NUM_RANGES } from '@/lib/hrMaster';
 import { syncUrl } from '@/lib/urlSync';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -54,6 +55,19 @@ export default function HREmployeesPage() {
     Object.fromEntries([...(searchParams?.entries() || [])].filter(([k]) => k !== 'q' && k !== 'status')));
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
+  /**
+   * ── وقمعُ العمود كما في إكسل ───────────────────────────────────────────────
+   * فلترُ الصفحة (لوحةُ الفلاتر) يسأل الخادمَ ويُضيّق المجموعة؛ وهذا يُضيّق
+   * **ما يُعرَض منها** بقيمةٍ بعينها في عمودٍ بعينه — وهو ما يفعله المستخدمُ
+   * في الورقة: يضغط رأسَ العمود ويختار. فالاثنان يعملان معًا: القمعُ يُحسَب
+   * على ما وصل بعد فلتر الصفحة، فلا يُرى في القائمة ما لا يُرى في الجدول.
+   */
+  const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
+  const setCol = (k: string, v: Set<string>) => setColFilters((p) => {
+    const n = { ...p };
+    if (v.size) n[k] = v; else delete n[k];
+    return n;
+  });
 
   // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ──────────────────────────────────────
   // نداءُ القائمة الكاملة يبدأ عند فتح الصفحة وهو الأبطأ (أربعُمئةِ موظّف)،
@@ -147,6 +161,30 @@ export default function HREmployeesPage() {
     const d = await api.get<{ employees: Employee[] }>('/api/hr/employees');
     return [{ name: 'Employees', rows: d.employees || [], columns: exportColumns }];
   };
+  // القيمةُ المقروءةُ لكلّ عمود — واحدةٌ للرسم وللقمع وللتصدير، فلا يُفلتَر
+  // على شيءٍ غيرِ المعروض.
+  const colValue: Record<string, (e: Employee) => string> = {
+    employeeNumber: (e) => String(e.employeeNumber || ''),
+    name: (e) => empName(e, lang),
+    iqamaId: (e) => String((e as any).iqamaNumber || (e as any).nationalId || ''),
+    jobTitle: (e) => String((e as any).jobTitle || ''),
+    nationality: (e) => String((e as any).nationality || ''),
+    // ويُقرأ نصُّ الحالة من نفس الخريطة التي تُرسَم بها الشارةُ في الصفّ،
+    // فلا تُفلتَر على كلمةٍ غيرِ المعروضة.
+    status: (e) => {
+      const m = (EMPLOYMENT_STATUS as any)[(e as any).employmentStatus || 'active'];
+      return m ? (ar ? m.ar : m.en) : String((e as any).employmentStatus || '');
+    },
+  };
+
+  // ما يُعرَض فعلًا: ما وصل من الخادم بعد فلتر الصفحة، مُضيَّقًا بقمع الأعمدة.
+  const shown = useMemo(() => {
+    const keys = Object.keys(colFilters);
+    if (!keys.length) return employees;
+    return employees.filter((e) => keys.every((k) => colFilters[k].has(colValue[k]?.(e) ?? '')));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees, JSON.stringify(Object.fromEntries(Object.entries(colFilters).map(([k, v]) => [k, [...v]])))]);
+
   const scope = exportScopeLabels(ar);
   const exportOptions = hasActiveFilters
     ? [
@@ -197,16 +235,30 @@ export default function HREmployeesPage() {
           <thead>
             <tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
               <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.thActions}</th>
-              <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.thEmpNumber}</th>
-              <th {...pin.th(2, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.thName}</th>
-              <th {...pin.th(3, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.thIqamaId}</th>
-              <th className="text-start font-semibold px-4 py-3">{tx.thJobTitle}</th>
-              <th className="text-start font-semibold px-4 py-3">{tx.thNationality}</th>
-              <th className="text-start font-semibold px-4 py-3">{tx.thStatus}</th>
+              {([
+                [1, 'employeeNumber', tx.thEmpNumber],
+                [2, 'name', tx.thName],
+                [3, 'iqamaId', tx.thIqamaId],
+                [null, 'jobTitle', tx.thJobTitle],
+                [null, 'nationality', tx.thNationality],
+                [null, 'status', tx.thStatus],
+              ] as [number | null, string, string][]).map(([pinIdx, key, label]) => {
+                const cls = 'text-start font-semibold px-4 py-3 whitespace-nowrap';
+                const inner = (
+                  <span className="inline-flex items-center gap-1">
+                    {label}
+                    <ColumnFilter rows={employees} field={key} valueOf={colValue[key]}
+                      selected={colFilters[key] || new Set()} onChange={(v) => setCol(key, v)} lang={ar ? 'ar' : 'en'} />
+                  </span>
+                );
+                return pinIdx == null
+                  ? <th key={key} className={cls}>{inner}</th>
+                  : <th key={key} {...pin.th(pinIdx, cls)}>{inner}</th>;
+              })}
             </tr>
           </thead>
           <tbody>
-            {employees.length === 0 ? (
+            {shown.length === 0 ? (
               /* ── ولا يُقال «لا يوجد» وهو موجود ──────────────────────────────
                  «بعمل سيرش عن موظّف مش بيلاقيه» — والموظّفُ في السجلّ. العلّةُ
                  أنّ الفلترَ يبقى مكتوبًا في عنوان الصفحة فيعيش عبر التنقّل
@@ -231,7 +283,7 @@ export default function HREmployeesPage() {
                   </div>
                 )}
               </td></tr>
-            ) : employees.map((e) => (
+            ) : shown.map((e) => (
               <tr key={e._id} className="group border-b border-slate-200/70 hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => router.push(`/system/hr/employees/${e._id}`)}>
                 <td {...pin.td(0, 'px-4 py-3', 'bg-white group-hover:bg-slate-100')} onClick={(ev) => ev.stopPropagation()}>
                   <div className="flex items-center gap-1">
@@ -247,7 +299,14 @@ export default function HREmployeesPage() {
                 </td>
                 <td {...pin.td(1, 'px-4 py-3 text-slate-700 whitespace-nowrap', 'bg-white group-hover:bg-slate-100')}>{e.employeeNumber || '—'}</td>
                 {/* سطر واحد — الإيميل كان تحت الاسم فبيطوّل الصف من غير داعي */}
-                <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-semibold whitespace-nowrap', 'bg-white group-hover:bg-slate-100')}>{empName(e, lang)}</td>
+                {/* ── والاسمُ لا يأخذ نصفَ الشاشة ──────────────────────────────
+                    كان العمودُ `whitespace-nowrap` بلا حدٍّ، والأسماءُ الرباعيّة
+                    العربيّة تُمدّده حتى يبلغ نصفَ شاشةِ اللابتوب فتُدفَع بقيّةُ
+                    الأعمدة خارجها. فله حدٌّ وما زاد يُقصّ — والكاملُ يُقرأ
+                    بالوقوف عليه، ويبقى كاملًا في التصدير. */}
+                <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-semibold', 'bg-white group-hover:bg-slate-100')}>
+                  <span className="block max-w-[15rem] truncate" title={empName(e, lang)}>{empName(e, lang)}</span>
+                </td>
                 <td {...pin.td(3, 'px-4 py-3 text-slate-700 whitespace-nowrap', 'bg-white group-hover:bg-slate-100')}>{e.idType === 'national_id' ? (e.nationalId || '—') : (e.iqamaNumber || '—')}</td>
                 <td className="px-4 py-3 text-slate-700">{e.jobTitle || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{e.nationality || '—'}</td>

@@ -15,6 +15,7 @@ import ContractsTabs from '@/components/hr/ContractsTabs';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
 import { localFilterFields, applyLocalFilters, type LocalFieldDef } from '@/lib/localFilters';
 import ScrollX from '@/components/system/ScrollX';
+import { useColumnFilters } from '@/hooks/useColumnFilters';
 
 const EMPTY = { employee: '', type: 'fixed', startDate: '', endDate: '', durationMonths: 12, annualLeaveDays: 21, jobTitle: '', basicSalary: 0, allowances: 0, probationMonths: 3, notes: '',
   iqamaNumber: '', contractProfession: '', sponsorRegistration: '', contractNumber: '' };
@@ -208,6 +209,26 @@ export default function ContractsPage() {
       : { key: 'all', label: scope.all, sheets: [{ name: 'Contracts', rows: contracts, columns: exportColumns }] },
   ];
 
+  /**
+   * قمعُ الأعمدة — القارئُ لكلّ عمودٍ هو الذي يُرسَم به، والقائمةُ من الصفوف
+   * بعد فلتر الصفحة. راجع hooks/useColumnFilters.
+   */
+  const cf = useColumnFilters<any>({
+    employeeNumber: (c) => (c.employee as any)?.employeeNumber || '',
+    employee: (c) => empName(c.employee, lang) || c.employeeNameAr || '',
+    idNumber: (c) => c.iqamaNumber || (c.employee as any)?.iqamaNumber || (c.employee as any)?.nationalId || '',
+    contractNumber: (c) => c.contractNumber || '',
+    profession: (c) => c.contractProfession || c.jobTitle || '',
+    type: (c) => (c.type === 'unlimited' ? tx.typeUnlimited : tx.typeFixed),
+    startDate: (c) => fmtDate(c.startDate),
+    endDate: (c) => (c.endDate ? fmtDate(c.endDate) : ''),
+    annualLeave: (c) => c.annualLeaveText || `${c.annualLeaveDays} ${tx.daysShort}`,
+    probation: (c) => c.probationText || (c.probationMonths ? `${c.probationMonths} ${ar ? 'شهر' : 'mo'}` : ''),
+    cr: (c) => c.sponsorRegistration || '',
+    status: (c) => { const m: any = (CONTRACT_STATUS as any)[c.status]; return m ? (ar ? m.ar : m.en) : String(c.status || ''); },
+  }, filtered, ar ? 'ar' : 'en');
+  const shown = cf.apply(filtered);
+
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
@@ -243,23 +264,23 @@ export default function ContractsPage() {
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colActions}</th>
-            <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الرقم الوظيفي' : 'Emp. no.'}</th>
-            <th {...pin.th(2, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colEmployee}</th>
-            <th {...pin.th(3, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الهوية' : 'ID number'}</th>
-            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'رقم العقد' : 'Contract no.'}</th>
-            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'المهنة في العقد' : 'Contract profession'}</th>
-            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.colType}</th>
-            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.thStart}</th>
-            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.thEnd}</th>
-            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.thAnnualLeave}</th>
-            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'فترة التجربة' : 'Probation'}</th>
-            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'السجل' : 'CR number'}</th>
-            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.colStatus}</th>
+            <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{cf.head('employeeNumber', ar ? 'الرقم الوظيفي' : 'Emp. no.')}</th>
+            <th {...pin.th(2, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{cf.head('employee', tx.colEmployee)}</th>
+            <th {...pin.th(3, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{cf.head('idNumber', ar ? 'الهوية' : 'ID number')}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('contractNumber', ar ? 'رقم العقد' : 'Contract no.')}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('profession', ar ? 'المهنة في العقد' : 'Contract profession')}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('type', tx.colType)}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('startDate', tx.thStart)}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('endDate', tx.thEnd)}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('annualLeave', tx.thAnnualLeave)}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('probation', ar ? 'فترة التجربة' : 'Probation')}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('cr', ar ? 'السجل' : 'CR number')}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('status', tx.colStatus)}</th>
           </tr></thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {shown.length === 0 ? (
               <tr><td colSpan={13} className="text-center text-slate-800 py-12">{tx.noContracts}</td></tr>
-            ) : filtered.map((c) => (
+            ) : shown.map((c) => (
               <tr key={c._id} className="group border-b border-slate-200/70 hover:bg-slate-100">
                 <td {...pin.td(0, 'px-4 py-3', BG)}>
                   <div className="flex items-center gap-1">

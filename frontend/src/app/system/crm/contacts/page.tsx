@@ -16,6 +16,7 @@ import {
 } from '@/components/crm/CrmKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import ScrollX from '@/components/system/ScrollX';
+import { useColumnFilters } from '@/hooks/useColumnFilters';
 
 const EMPTY = { company: '', firstName: '', lastName: '', arabicName: '', title: '', department: '', email: '', phone: '', mobile: '', whatsapp: '', linkedinUrl: '', isPrimary: false, rating: 0, notes: '' };
 
@@ -103,6 +104,14 @@ export default function CrmContactsPage() {
     ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
   ];
 
+  // قمعُ الأعمدة — القيمُ كما تُقرأ في الصفّ. راجع hooks/useColumnFilters.
+  const cf = useColumnFilters<any>({
+    name: (c) => contactName(c, lang),
+    company: (c) => companyName(c.company, lang) || '',
+    title: (c) => c.title || '',
+  }, items, ar ? 'ar' : 'en');
+  const shown = cf.apply(items);
+
   if (!isCrmStaff(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
 
@@ -125,17 +134,17 @@ export default function CrmContactsPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 border-b border-slate-200 text-start">
-              <th className="px-4 py-3 text-slate-300 font-semibold">{T.name}</th>
-              <th className="px-4 py-3 text-slate-300 font-semibold">{T.company}</th>
-              <th className="px-4 py-3 text-slate-300 font-semibold">{T.title}</th>
+              <th className="px-4 py-3 text-slate-300 font-semibold">{cf.head('name', T.name)}</th>
+              <th className="px-4 py-3 text-slate-300 font-semibold">{cf.head('company', T.company)}</th>
+              <th className="px-4 py-3 text-slate-300 font-semibold">{cf.head('title', T.title)}</th>
               <th className="px-4 py-3 text-slate-300 font-semibold">{ar ? 'تواصل' : 'Contact'}</th>
               <th className="px-4 py-3 text-slate-300 font-semibold text-end">{T.actions}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
-            {items.length === 0 ? (
+            {shown.length === 0 ? (
               <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-800">{T.noResults}</td></tr>
-            ) : items.map((c) => (
+            ) : shown.map((c) => (
               <tr key={c._id} className="hover:bg-slate-100">
                 <td className="px-4 py-3 text-slate-900 font-medium flex items-center gap-2">{contactName(c, lang)} {c.isPrimary && <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-700" />}</td>
                 <td className="px-4 py-3 text-slate-700">{companyName(c.company, lang)}</td>

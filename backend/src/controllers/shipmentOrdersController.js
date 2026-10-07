@@ -222,15 +222,18 @@ exports.getWaybillsPdf = async (req, res) => {
     const plates = [...new Set(orders.map((o) => plateKeyOf(o.vehiclePlate)).filter(Boolean))];
     const names = [...new Set(orders.map((o) => String(o.driverName || '').trim()).filter(Boolean))];
     const [vehRows, drvRows] = await Promise.all([
+      // والشاحناتُ تُطلَب بمفتاحها لا بسحبِ السجلّ كلِّه: كان هذا يقرأ ثلاثةَ
+      // عشرَ ألفًا ونصفًا ليُرشِّح منها ثلاثًا، في ورقةٍ تُطبَع كلَّ يوم ويكبر
+      // سجلُّها كلَّ أسبوع. راجع `plateKey` في models/ShipmentOrderVehicle.
       plates.length
-        ? ShipmentOrderVehicle.find({}).select('plate brand color truckType').lean()
-          .then((rows) => rows.filter((v) => plates.includes(plateKeyOf(v.plate))))
+        ? ShipmentOrderVehicle.find({ plateKey: { $in: plates } })
+          .select('plate plateKey brand color truckType').lean()
         : [],
       names.length
         ? ShipmentOrderDriver.find({ name: { $in: names } }).select('name residenceNumber nationality phone').lean()
         : [],
     ]);
-    const vehByPlate = new Map(vehRows.map((v) => [plateKeyOf(v.plate), v]));
+    const vehByPlate = new Map(vehRows.map((v) => [v.plateKey || plateKeyOf(v.plate), v]));
     const drvByName = new Map(drvRows.map((d) => [d.name.trim(), d]));
 
     const pdf = await renderWaybillsPdf(orders.map((o) => {

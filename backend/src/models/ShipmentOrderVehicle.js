@@ -57,6 +57,18 @@ const shipmentOrderVehicleSchema = new mongoose.Schema(
     operationCardExpiry: { type: String, trim: true, default: '' },
     insuranceDetails: { type: String, trim: true, default: '' },
 
+    // ── اللوحةُ بمفتاحها، لا بصيغتها ────────────────────────────────────────
+    // `plate` تُخزَّن بصيغةِ العرض (`formatPlate`)، واللوحةُ الواحدة تُكتب في
+    // الطلب بصيغةٍ أخرى: همزةٌ مختلفة، أرقامٌ عربيّة، مسافةٌ زائدة. فالمقارنةُ
+    // تجري على مفتاحٍ مجرَّد (`registryPlateKey`)، وهو لم يكن مخزَّنًا — فكان
+    // طريقُ البوليصة يسحب **كلَّ** الشاحنات (ثلاثةَ عشرَ ألفًا ونصفًا) ليجد
+    // ثلاثًا، ويُرشِّح بالجافاسكربت. ويكبر مع كلّ شاحنةٍ تُضاف، في ورقةٍ تُطبَع
+    // كلَّ يوم.
+    //
+    // فيُشتقُّ المفتاحُ عند الحفظ ويُفهرَس، كما في `VehicleMaster` و
+    // `Ls2TireAsset` — ويصير النداءُ `$in` على فهرس.
+    plateKey: { type: String, default: '', index: true },
+
     isActive: { type: Boolean, default: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
@@ -64,6 +76,33 @@ const shipmentOrderVehicleSchema = new mongoose.Schema(
 );
 
 shipmentOrderVehicleSchema.index({ plate: 1 });
+
+// ── ويُشتقُّ عند كلّ حفظ، لا في الاستيراد وحدَه ──────────────────────────────
+// شاحنةٌ تُضاف من الشاشة بلا مفتاحٍ لا تُوجَد حين تُطبَع بوليصتُها، ولا شيءَ
+// يقول لماذا: الخاناتُ تخرج فارغةً وحسب. و`updateOne`/`findOneAndUpdate`
+// تُغطَّى كذلك، فتعديلُ اللوحة من أيّ طريقٍ يُعيد اشتقاقَه.
+const deriveKey = (plate) => {
+  try { return require('../utils/plateKey').registryPlateKey(plate) || ''; } catch (_) { return ''; }
+};
+
+shipmentOrderVehicleSchema.pre('save', function setPlateKey(next) {
+  if (this.isModified('plate') || !this.plateKey) this.plateKey = deriveKey(this.plate);
+  next();
+});
+
+for (const op of ['findOneAndUpdate', 'updateOne', 'updateMany']) {
+  shipmentOrderVehicleSchema.pre(op, function setPlateKeyOnUpdate(next) {
+    const u = this.getUpdate() || {};
+    const plate = (u.$set && u.$set.plate) ?? u.plate;
+    if (plate != null) {
+      const { formatPlate } = require('../utils/plateKey');
+      const key = deriveKey(formatPlate(plate));
+      if (u.$set) u.$set.plateKey = key; else u.plateKey = key;
+      this.setUpdate(u);
+    }
+    next();
+  });
+}
 
 // ── قوائمُ «طلبات الشحنات» المحفوظة تُمسَح مع كلّ كتابة ─────────────────────
 // قائمتا الموردين والشاحنات تُحفظان دقيقتين (so:registry) لأنّ قراءتهما من

@@ -44,6 +44,8 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
   const start = () => {
     if (!canEdit) return;
     // التاريخ غير المقروء («مطلوب» مكتوبةً في خانة تاريخ) يُفتح فارغًا ليُصحَّح.
+    // الهجريُّ يُعرَض ويُحرَّر نصًّا «yyyy-mm-dd» — لا حقلَ تاريخٍ أصليًّا
+    // للتقويم الهجريّ في المتصفّح.
     const v = f.type === 'date' ? toDateInput(raw) : String(raw ?? '');
     setVal(v);
     setMark('');
@@ -75,6 +77,9 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
           </select>
         ) : (
           <input type={f.type === 'date' ? 'date' : 'text'} value={val} autoFocus
+            dir={f.type === 'hijri' ? 'ltr' : undefined}
+            placeholder={f.type === 'hijri' ? '1448-05-07' : undefined}
+            title={f.type === 'hijri' ? t('اكتب التاريخ الهجري — يُحوَّل إلى ميلاديٍّ ويُحفَظ', 'Type the Hijri date — it is converted and stored as Gregorian') : undefined}
             onChange={(e) => setVal(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
             className={`${box} text-center`} />

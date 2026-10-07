@@ -1,116 +1,109 @@
 /**
- * الهجريُّ والميلاديُّ — أحدهما يُملي الآخر.
+ * التاريخُ الهجريُّ والميلاديُّ — وجهان لتاريخٍ واحدٍ لا حقلان.
  *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * رخصةُ السير والفحصُ لكلٍّ تاريخان في السجلّ: ميلاديٌّ يحسب به النظامُ
- * الانتهاءَ والتنبيهَ، وهجريٌّ مكتوبٌ على الورقة كما طُبع. وكانا خانتين لا
- * صلةَ بينهما: يكتب الموظّفُ «١٤٤٨/٠٤/٠٤» في الهجريّة ويحفظ، فتبقى الميلاديّةُ
- * فارغة. وكلُّ الحسابِ على الميلاديّة — فالمستندُ الذي كُتب تاريخُه بالكامل
- * يُقرأ «بلا تاريخ»، ولا يظهر في انتهاءٍ ولا تنبيهٍ ولا تقرير. سطرٌ مُلئ
- * وأثرُه صفر.
+ * ── لماذا يُشتقّ ولا يُخزَّن ───────────────────────────────────────────────
+ * الطلبُ أن يكون لكلّ تاريخٍ عمودان: ميلاديٌّ وهجريّ، و«مجرّد ما يُكتب أحدهما
+ * يسمع الآخر». وأوّلُ ما يُفكَّر فيه حقلان في القاعدة ومزامنةٌ بينهما — وهو
+ * بابُ اختلافٍ مؤكَّد: من يكتب في أحدهما بسكربتٍ أو استيرادٍ أو شاشةٍ قديمة
+ * يترك الآخرَ قديمًا، ثمّ يُقرأ تاريخان لشيءٍ واحدٍ ولا يُعرَف أيُّهما الصحيح.
  *
- * والموضعُ هنا لا في الشاشة: الشاشتان اثنتان (الويب وتطبيقُ الهاتف) ومعهما
- * الاستيراد، فلو كان الاشتقاقُ في إحداهما بقيت الأخرى على حالها. فمن كتب
- * هجريًّا — من أيّ باب — خرج منه ميلاديٌّ يُحسَب به.
+ * فالمخزَّنُ واحدٌ — الميلاديُّ كما هو اليوم (`YYYY-MM-DD`) — والهجريُّ **عرضٌ
+ * له**. ومن أدخل بالهجريّ تُحوَّل كتابتُه إلى ميلاديٍّ قبل الحفظ. فالعمودان
+ * متوافقان بالبناء لا بالمزامنة، ولا يحتاج الأمرُ تحديثَ صفٍّ واحدٍ في القاعدة.
  *
- * ── ولماذا بحثٌ لا معادلة ───────────────────────────────────────────────────
- * تقويمُ أمّ القرى مقرَّرٌ في جداولَ رسميّةٍ لا يُستخرج بمعادلة: أطوالُ شهوره
- * مثبَّتةٌ سلفًا، وكلُّ تقريبٍ حسابيٍّ يخطئ يومًا في بعض السنين. والجدولُ الصحيح
- * موجودٌ في `Intl` — لكنّه يُخرج ولا يُدخل. فيُقلَب عليه: يُقدَّر اليومُ ثمّ
- * يُمشى حولَه حتّى يُطابق. وميزتُه أنّ الذهابَ والإيابَ يتّفقان دائمًا، فما
- * كُتب هجريًّا يعود هجريًّا كما كُتب حرفًا بحرف.
+ * ── والتحويلُ بتقويم أمّ القرى ─────────────────────────────────────────────
+ * هو التقويمُ الرسميُّ في المملكة، وهو المعنيُّ في الإقامات والرخص. ويُقرأ من
+ * `Intl` المبنيّ في العقدة (`islamic-umalqura`) — بلا حزمةٍ تُضاف ولا جدولٍ
+ * يُنسَخ ويشيخ.
  *
- * وما لا وجودَ له في التقويم يُرَدّ فارغًا لا يُقرَّب: «٣٠/١٢/١٤٤٧» ليس تاريخًا
- * — ذو الحجّة تلك السنة تسعةٌ وعشرون يومًا — فتقريبُه إلى يومٍ مجاورٍ يكتب في
- * السجلّ تاريخًا لم يُطبَع على ورقةٍ قطّ.
+ * والعكس (هجريٌّ ← ميلاديّ) لا تقدّمه `Intl`، فيُحسَب ببحثٍ ثنائيٍّ على
+ * الأيّام: التقويمان متزايدان معًا، فيُقارَب اليومُ الميلاديُّ الذي يُعطي هذا
+ * التاريخَ الهجريَّ في نحوِ خمسَ عشرةَ خطوة. وهو دقيقٌ تمامًا لأنّ المرجعَ هو
+ * `Intl` نفسُها التي تُقرأ بها الوجهةُ الأخرى — فالذهابُ والعودةُ لا يختلفان.
  */
-const FMT = new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura-nu-latn', {
-  year: 'numeric', month: '2-digit', day: '2-digit',
-});
 
-/** ميلاديٌّ → هجريٌّ `DD/MM/YYYY` بلا لاحقة «هـ». */
-const toHijriPlain = (d) => {
+const DAY = 86400000;
+const PAD = (n) => String(n).padStart(2, '0');
+
+// تنسيقٌ واحدٌ يُبنى مرّةً — بناؤه لكلّ تاريخٍ أغلى من التحويل نفسِه.
+let fmt = null;
+const formatter = () => {
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura-nu-latn', {
+      year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC',
+    });
+  }
+  return fmt;
+};
+
+const asDate = (v) => {
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v;
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+  if (m) return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+/** ميلاديٌّ ← هجريٌّ «YYYY-MM-DD»، أو '' إن لم يُقرأ تاريخًا. */
+const toHijri = (value) => {
+  const d = asDate(value);
   if (!d) return '';
-  const x = new Date(d);
-  if (Number.isNaN(x.getTime())) return '';
   try {
-    return FMT.format(x).replace(/[‎‏]/g, '').replace(/\s*هـ\s*$/, '').trim();
-  } catch (e) { return ''; }
-};
-
-/**
- * hijriParts — يقبل ما يكتبه الناس: «1448-04-04» و«4/4/1448» و«١٤٤٨/٠٤/٠٤».
- * والسنةُ هي الطرفُ الرباعيّ أيًّا كان موضعُه.
- */
-const hijriParts = (text) => {
-  if (!text) return null;
-  const t = String(text)
-    .replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660))
-    .replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0))
-    .replace(/هـ|AH|H/gi, '').trim();
-  const n = t.split(/[^\d]+/).filter(Boolean).map(Number);
-  if (n.length < 3) return null;
-  const [a, b, c] = n;
-  const y = a > 1000 ? a : c;
-  const d = a > 1000 ? c : a;
-  const m = b;
-  if (!y || !m || !d || m > 12 || d > 30 || y < 1300 || y > 1600) return null;
-  return { y, m, d };
-};
-
-/** هجريٌّ → ميلاديٌّ `YYYY-MM-DD`، أو `''` إن لم يكن التاريخُ موجودًا. */
-const fromHijri = (text) => {
-  const p = hijriParts(text);
-  if (!p) return '';
-  const want = `${String(p.d).padStart(2, '0')}/${String(p.m).padStart(2, '0')}/${p.y}`;
-  // نقطةُ البدء: السنةُ الهجريّة ٣٥٤٫٣٦٧ يومًا، والأولى تبدأ ١٦ يوليو ٦٢٢م.
-  const approx = Date.UTC(622, 6, 16)
-    + Math.round(((p.y - 1) * 354.367 + (p.m - 1) * 29.53 + (p.d - 1)) * 86400000);
-  for (let step = 0; step <= 40; step += 1) {
-    for (const dir of step === 0 ? [0] : [step, -step]) {
-      const cand = new Date(approx + dir * 86400000);
-      if (toHijriPlain(cand.toISOString().slice(0, 10)) === want) return cand.toISOString().slice(0, 10);
-    }
+    const parts = formatter().formatToParts(d);
+    const get = (t) => parts.find((p) => p.type === t)?.value || '';
+    // بعض الإصدارات تُلحق «AH» بالسنة — تُقشَر الأرقامُ وحدَها.
+    const y = String(get('year')).replace(/\D/g, '');
+    const mo = String(get('month')).replace(/\D/g, '');
+    const da = String(get('day')).replace(/\D/g, '');
+    if (!y || !mo || !da) return '';
+    return `${y.padStart(4, '0')}-${PAD(mo)}-${PAD(da)}`;
+  } catch (e) {
+    return '';
   }
-  return '';
+};
+
+/** مفتاحٌ رقميٌّ للمقارنة: 1446-07-03 → 14460703. */
+const hKey = (s) => {
+  const m = /^(\d{3,4})-(\d{1,2})-(\d{1,2})$/.exec(String(s || '').trim());
+  return m ? Number(m[1]) * 10000 + Number(m[2]) * 100 + Number(m[3]) : null;
 };
 
 /**
- * الأزواجُ التي يُملي فيها أحدُ التاريخين الآخر — مسارٌ هجريٌّ ومسارُه الميلاديّ.
- * تُقرأ من مُخطَّط المركبة: كلُّ مستندٍ له `expiryDateHijri` له `expiryDate`.
+ * هجريٌّ «YYYY-MM-DD» ← ميلاديٌّ `Date` (UTC منتصفَ الليل)، أو null.
+ * بحثٌ ثنائيٌّ بين سنةِ ٦٠٠ﻫ وسنةِ ١٦٠٠ﻫ تقريبًا — يكفي كلَّ ما يُكتب.
  */
-const HIJRI_PAIRS = [
-  ['vehicleLicense.expiryDateHijri', 'vehicleLicense.expiryDate'],
-  ['inspection.expiryDateHijri', 'inspection.expiryDate'],
-];
-
-/**
- * يكمل ما نقص في تعديلٍ مُسطَّح (`{'vehicleLicense.expiryDateHijri': '…'}`)،
- * ويُعيد ما أضافه ليُقال لصاحبه.
- *
- * والأولويّةُ للهجريّ حين يُكتب: هو ما على الورقة، وهو الحجّة. وإن كُتب
- * الميلاديُّ وحدَه مُلئ الهجريُّ منه — ولا يُطمَس هجريٌّ موجودٌ في السجلّ.
- */
-const fillHijriPairs = ($set, existing = {}) => {
-  const added = {};
-  const at = (obj, path) => String(path).split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
-  for (const [hPath, gPath] of HIJRI_PAIRS) {
-    const hNew = Object.prototype.hasOwnProperty.call($set, hPath) ? $set[hPath] : undefined;
-    const gNew = Object.prototype.hasOwnProperty.call($set, gPath) ? $set[gPath] : undefined;
-
-    if (hNew !== undefined && String(hNew || '').trim() && (gNew === undefined || !gNew)) {
-      const greg = fromHijri(hNew);
-      if (greg) { $set[gPath] = greg; added[gPath] = greg; }
-      continue;
-    }
-    if (gNew !== undefined && gNew && (hNew === undefined) && !String(at(existing, hPath) || '').trim()) {
-      const hij = toHijriPlain(gNew);
-      if (hij) { $set[hPath] = hij; added[hPath] = hij; }
-    }
+const fromHijri = (value) => {
+  const want = hKey(value);
+  if (!want) return null;
+  // تقديرٌ أوّليٌّ: السنةُ الهجريّة ٣٥٤٫٣٦٧ يومًا، و١ محرّم ١ﻫ = 622-07-19م.
+  const m = /^(\d{3,4})-(\d{1,2})-(\d{1,2})$/.exec(String(value).trim());
+  const [, hy, hm, hd] = m.map(Number);
+  const guess = Date.UTC(622, 6, 19) + Math.round(((hy - 1) * 354.367 + (hm - 1) * 29.53 + (hd - 1)) * DAY);
+  let lo = guess - 40 * DAY;
+  let hi = guess + 40 * DAY;
+  // وإن أخطأ التقديرُ وُسِّع المدى — لا يُفترَض صحّةُ التقريب.
+  if (hKey(toHijri(new Date(lo))) > want) lo = Date.UTC(600, 0, 1);
+  if (hKey(toHijri(new Date(hi))) < want) hi = Date.UTC(2200, 0, 1);
+  for (let i = 0; i < 64 && lo <= hi; i += 1) {
+    const mid = lo + Math.floor((hi - lo) / 2 / DAY) * DAY;
+    const got = hKey(toHijri(new Date(mid)));
+    if (got === want) return new Date(mid);
+    if (got == null) return null;
+    if (got < want) lo = mid + DAY; else hi = mid - DAY;
   }
-  return added;
+  return null;
 };
 
-module.exports = {
-  toHijriPlain, hijriParts, fromHijri, HIJRI_PAIRS, fillHijriPairs,
+/** هجريٌّ ← ميلاديٌّ نصًّا «YYYY-MM-DD»، أو ''. */
+const fromHijriString = (value) => {
+  const d = fromHijri(value);
+  return d ? `${d.getUTCFullYear()}-${PAD(d.getUTCMonth() + 1)}-${PAD(d.getUTCDate())}` : '';
 };
+
+/** أسماءُ الأشهر الهجريّة — للعرض حين يُكتب التاريخُ كلامًا. */
+const HIJRI_MONTHS_AR = ['محرّم', 'صفر', 'ربيع الأول', 'ربيع الثاني', 'جمادى الأولى', 'جمادى الآخرة',
+  'رجب', 'شعبان', 'رمضان', 'شوّال', 'ذو القعدة', 'ذو الحجة'];
+
+module.exports = { toHijri, fromHijri, fromHijriString, hKey, HIJRI_MONTHS_AR };

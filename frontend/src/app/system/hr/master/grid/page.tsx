@@ -125,7 +125,16 @@ export default function HrMasterGridPage() {
       if (PINNED.has(c.key)) continue;
       base.push({ key: c.key, label: ar ? c.ar : c.en, type: c.type });
       if (c.type === 'date') {
-        base.push({ key: `${c.key}__hijri`, label: `${ar ? c.ar : c.en} ${t('(هجري)', '(Hijri)')}`, type: 'hijri', hijriOf: c.key });
+        // ── واسمُ العمودِ الهجريِّ لا يحمل «الميلادي» ───────────────────────
+        // الخادمُ يسمّي عمودَ التاريخ «تاريخ الانتهاء الميلادي» (راجع
+        // config/hrFields)، فإلحاقُ «(هجري)» به يعطي «الميلادي (هجري)».
+        const baseLabel = (ar ? c.ar : c.en)
+          .replace(' الميلادي', '').replace(' (ميلادي)', '').replace(' (Gregorian)', '');
+        base.push({
+          key: `${c.key}Hijri`,
+          label: ar ? `${baseLabel} الهجري` : `${baseLabel} (Hijri)`,
+          type: 'hijri', hijriOf: c.key,
+        });
         // ── والمدّةُ بالأيّام تلي انتهاءَها ───────────────────────────────────
         // التاريخُ يقول متى، والمدّةُ تقول كم بقي — وهي السؤالُ الذي يُفتَح
         // الجدولُ لأجله. وتقع بعد عمودِ انتهائها مباشرةً فتُقرأ معه، ولها اسمٌ
@@ -159,7 +168,10 @@ export default function HrMasterGridPage() {
     if (c.key === 'name') return r.name || '—';
     if (c.key === 'custodyCount') return r.custodyCount || 0;
     if (c.key === 'iqamaNumber') return r.values.iqamaNumber || r.values.nationalId || '';
-    if (c.hijriOf) return gregorianToHijri(r.values[c.hijriOf]) || '';
+    // الخادمُ يرسل التوأمَ الهجريَّ مع الصفّ (راجع hrMasterController.grid)،
+    // والحسابُ في المتصفّح يبقى احتياطًا لنسخةٍ أقدمَ من الخادم — فلا شاشةٌ
+    // فارغةٌ إن لم يصل الحقل.
+    if (c.hijriOf) return (r.values[c.key] as string) || gregorianToHijri(r.values[c.hijriOf]) || '';
     // الأيّامُ تُحسَب عند القراءة — راجع daysUntil. والفارغُ يبقى فارغًا لا صفرًا:
     // «بلا تاريخ» غيرُ «ينتهي اليوم».
     if (c.daysOf) { const n = daysUntil(r.values[c.daysOf] as any); return n === null ? '' : n; }
@@ -278,7 +290,13 @@ export default function HrMasterGridPage() {
                   </td>
                   {shown.map((c, i) => {
                     const st = r.statuses[c.hijriOf || c.key];
-                    const field = colMap.get(c.key);
+                    // ── والهجريُّ يُعدَّل كما يُعدَّل الميلاديّ ────────────────
+                    // «ممكن واحد يجدّد ويكتب بالهجري» — فالخانةُ تُفتَح ويُكتب
+                    // فيها، والخادمُ يحوّلها إلى ميلاديٍّ ويكتبها في التاريخ
+                    // نفسِه (راجع updateFields)، فيسمع العمودان معًا بلا مزامنة.
+                    const field = c.hijriOf
+                      ? { key: c.key, ar: c.label, en: c.label, type: 'hijri' }
+                      : colMap.get(c.key);
                     const tone = st === 'required' ? 'bg-red-50/60 text-red-700' : st === 'not_required' ? 'text-slate-300' : 'text-slate-700';
                     const cls = `px-3 py-2 whitespace-nowrap ${i < 3 ? '' : tone}`;
                     const props = i < 3 ? pin.td(i + 1, cls) : { className: cls };

@@ -37,6 +37,7 @@ import { canEditSection } from '@/lib/sections';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
 import { HR_DATE_FIELDS, HR_NUM_RANGES } from '@/lib/hrMaster';
 import MasterNav from '@/components/hr/MasterNav';
+import { gregorianToHijri, hijriToGregorian } from '@/lib/hijri';
 import ContractsTabs from '@/components/hr/ContractsTabs';
 import { HrGroupFormModal, HrGroupClearModal } from '@/components/hr/HrGroupModals';
 import ScrollX from '@/components/system/ScrollX';
@@ -586,6 +587,7 @@ function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router, choice
 function HrRenewModal({ row, group, groupLabel, expiryField, ar, t, notify, onClose, onDone }: any) {
   const cur = expiryField ? row.values?.[expiryField] : null;
   const [newExpiry, setNewExpiry] = useState('');
+  const [hijri, setHijri] = useState('');
   const [docNum, setDocNum] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -597,7 +599,9 @@ function HrRenewModal({ row, group, groupLabel, expiryField, ar, t, notify, onCl
     const from = base > new Date() ? base : new Date();
     const d = new Date(from);
     d.setFullYear(d.getFullYear() + 1);
-    setNewExpiry(d.toISOString().slice(0, 10));
+    const iso = d.toISOString().slice(0, 10);
+    setNewExpiry(iso);
+    setHijri(gregorianToHijri(iso) || '');
   }, [cur]);
 
   const save = async () => {
@@ -622,9 +626,37 @@ function HrRenewModal({ row, group, groupLabel, expiryField, ar, t, notify, onCl
           {row.name} · {groupLabel}{cur ? ` · ${t('ينتهي', 'expires')} ${fmtDate(cur)}` : ''}
         </p>
 
+        {/* ── ويُكتب بأيِّ التقويمين ────────────────────────────────────────
+            من يجدّد يقرأ الورقةَ التي في يده: إقامةٌ مكتوبٌ عليها «١٤٥٠/٠٦/١٥»
+            أو جوازٌ بالميلاديّ. فيُكتب كما هو مكتوبٌ، ويُحوَّل عندنا — والمحفوظُ
+            ميلاديٌّ واحدٌ دائمًا (راجع lib/hijri وutils/hijri). والحقلُ الآخرُ
+            يُحدَّث أمام عينه فيتأكّد قبل أن يحفظ. */}
         <label className="block text-[12px] font-semibold text-slate-600 mb-1">{t('تاريخ الانتهاء الجديد', 'New expiry')} *</label>
-        <input type="date" autoFocus value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm mb-3" />
+        <div className="grid grid-cols-2 gap-2 mb-1">
+          <div>
+            <span className="block text-[10.5px] text-slate-400 mb-0.5">{t('ميلادي', 'Gregorian')}</span>
+            <input type="date" autoFocus value={newExpiry}
+              onChange={(e) => { setNewExpiry(e.target.value); setHijri(gregorianToHijri(e.target.value) || ''); }}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+          </div>
+          <div>
+            <span className="block text-[10.5px] text-slate-400 mb-0.5">{t('هجري', 'Hijri')}</span>
+            <input dir="ltr" placeholder="1450-06-15" value={hijri}
+              onChange={(e) => {
+                setHijri(e.target.value);
+                const g = hijriToGregorian(e.target.value);
+                if (g) setNewExpiry(g);
+              }}
+              className={`w-full px-3 py-2 rounded-lg border text-sm text-center ${
+                hijri && !hijriToGregorian(hijri) ? 'border-red-300 bg-red-50' : 'border-slate-200'}`} />
+          </div>
+        </div>
+        <p className="text-[10.5px] text-slate-400 mb-3">
+          {hijri && !hijriToGregorian(hijri)
+            ? t('التاريخ الهجري غير صحيح', 'That Hijri date is not valid')
+            : t('اكتب أيَّهما شئت — والآخرُ يتبعه. والمحفوظ ميلاديٌّ واحد.',
+                'Type either one — the other follows. Only the Gregorian date is stored.')}
+        </p>
 
         <label className="block text-[12px] font-semibold text-slate-600 mb-1">{t('رقم المستند الجديد', 'New document number')}</label>
         <input value={docNum} onChange={(e) => setDocNum(e.target.value)}

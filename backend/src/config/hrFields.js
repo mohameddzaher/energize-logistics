@@ -201,6 +201,51 @@ const GROUPS = [
   },
 ];
 
+/**
+ * ── وكلُّ تاريخٍ وجهان: ميلاديٌّ وهجريّ ──────────────────────────────────────
+ *
+ * الطلبُ أن يُقرأ كلُّ تاريخٍ بالتقويمين، و«مجرّد ما يُكتب أحدهما يسمع الآخر».
+ * وأوّلُ ما يُفكَّر فيه عمودان في القاعدة ومزامنةٌ بينهما — وهو بابُ اختلافٍ
+ * مؤكَّد: من يكتب في أحدهما باستيرادٍ أو شاشةٍ قديمةٍ يترك الآخرَ قديمًا، فيُقرأ
+ * تاريخان لشيءٍ واحد.
+ *
+ * فالمخزَّنُ واحدٌ — الميلاديُّ كما هو — والهجريُّ **مشتقٌّ منه** بتقويم أمّ
+ * القرى (راجع utils/hijri). ومن أدخل بالهجريّ تُحوَّل كتابتُه قبل الحفظ. فهما
+ * متوافقان بالبناء لا بالمزامنة، ولا صفَّ واحدٌ يحتاج تحديثًا.
+ *
+ * واسمُ العمود يقول تقويمَه: «تاريخ انتهاء الإقامة الميلادي» و«… الهجري» —
+ * فلا يُقرأ تاريخٌ ولا يُعرَف بأيّ تقويمٍ كُتب، وهو أصلُ أخطاءِ التجديد.
+ */
+const HIJRI_SUFFIX = 'Hijri';
+const hijriKeyOf = (key) => `${key}${HIJRI_SUFFIX}`;
+const isHijriKey = (key) => String(key || '').endsWith(HIJRI_SUFFIX);
+const baseOfHijri = (key) => String(key || '').slice(0, -HIJRI_SUFFIX.length);
+
+// تُطبَّق على التعريف نفسِه: كلُّ حقلٍ `type: 'date'` يُسمّى ميلاديًّا ويُتبَع
+// بتوأمه الهجريّ (مشتقٌّ، غيرُ قابلٍ للفلترة — الفلترةُ بالميلاديّ هي الفلترة).
+for (const g of GROUPS) {
+  const out = [];
+  for (const f of g.fields) {
+    if (f.type !== 'date' || f.hijri || isHijriKey(f.key)) { out.push(f); continue; }
+    // «تاريخ الميلاد الميلادي» لا يُقرأ — فالصياغةُ بالقوسين حيث يتكرّر الجذر.
+    const clash = /ميلاد/.test(f.ar);
+    if (!/ميلادي/.test(f.ar) || clash) f.ar = clash ? `${f.ar} (ميلادي)` : `${f.ar} الميلادي`;
+    if (!/Gregorian/i.test(f.en)) f.en = `${f.en} (Gregorian)`;
+    out.push(f);
+    out.push({
+      key: hijriKeyOf(f.key),
+      ar: f.ar.replace(' الميلادي', ' الهجري').replace(' (ميلادي)', ' (هجري)'),
+      en: f.en.replace(' (Gregorian)', ' (Hijri)'),
+      type: 'hijri',
+      hijri: true,
+      of: f.key,
+      // مشتقٌّ: لا يُخزَّن ولا يُعَدّ ناقصًا — نقصُه نقصُ توأمه الميلاديّ.
+      derived: true,
+    });
+  }
+  g.fields = out;
+}
+
 const GROUP_KEYS = GROUPS.map((g) => g.key);
 /**
  * أسماءٌ قديمة لمجموعاتٍ أُعيدت تسميتها.
@@ -325,6 +370,7 @@ const searchKeysOf = (key) => {
 };
 
 module.exports = {
+  hijriKeyOf, isHijriKey, baseOfHijri, HIJRI_SUFFIX,
   GROUPS, GROUP_KEYS, GROUP_ALIASES, getGroup, DOCUMENT_GROUPS, REQUIRED_GROUP, ALL_FIELDS, getField, statusKeyOf,
   STATUS_LABELS, statusLabel, STATE_LABELS, daysLeft, stateOf,
   valueOf, writeKeyOf, searchKeysOf, READ_DEPS,

@@ -174,15 +174,25 @@ async function fillReportFromWallet({ workflow, amount, date, branchId, document
   // بلا فرع. وهي المعنى المقصود: المالُ خرج من عهدة فرعٍ بعينه، فذلك هو الفرعُ
   // الذي سدّد. أمّا مَن ناوَل المال فقد يكون منقولًا أو زائرًا أو بلا فرعٍ
   // مسجّل، ولا شأنَ له بمصدر المال.
-  if (!workflow.payingBranch) {
+  // ── وهو يتبع العهدةَ دائمًا، لا الخانةَ الفارغةَ وحدَها ──────────────────
+  // كان يُكتَب على الفارغ فقط، كبقيّة ما تكتبه المحفظة. والفرعُ المسدِّد ليس
+  // كبقيّتها: هو **تعريفُ** مصدرِ المال لا خبرٌ عنه. فإن نُقل القيدُ إلى عهدة
+  // فرعٍ آخر صار الفرعُ الأوّلُ في الكشف خطأً صريحًا — تُصحَّح العهدةُ ويبقى
+  // الكشفُ يقول إنّ الرياضَ سدّدت ما سدّدته جدّة، فلا يظهر القيدُ لمن يفلتر
+  // بجدّة ويظهر لمن يفلتر بالرياض.
+  //
+  // فصار يُكتَب في كلّ مرّة. والخانةُ تبقى قابلةً للتعديل بيدٍ من شاشة التشغيل
+  // كما كانت — غير أنّ حركةً تالية على العهدة نفسِها تُعيدها إلى فرع العهدة،
+  // لأنّ العهدةَ هي الأصلُ وما سواها قراءةٌ عنها.
+  try {
     // اسمُ الفرع لا معرّفُه، وبالعربيّة كما يكتبه الموظّف — لا `Branch.name`
     // الإنجليزيّ. التفصيلُ في `utils/payingBranch.js`.
-    try {
-      const { arabicBranchName } = require('../utils/payingBranch');
-      const name = await arabicBranchName(branchId);
-      if (name) patch.payingBranch = name;
-    } catch (e) { console.error('wallet→report branch lookup:', e.message); }
-  }
+    const { arabicBranchName } = require('../utils/payingBranch');
+    const name = await arabicBranchName(branchId);
+    // وما لا نظيرَ له في القائمة لا يُخمَّن ولا يُمحى به اسمٌ قائم: فرعٌ خارجَ
+    // القائمة يعيد '' ، وكتابتُها تمحو ما كُتب بيدٍ بلا بديل.
+    if (name && name !== workflow.payingBranch) patch.payingBranch = name;
+  } catch (e) { console.error('wallet→report branch lookup:', e.message); }
 
   // ── ولا يُستنتَج نوعُ الدفع من ملفّ العميل ───────────────────────────────
   // كان يُقرأ من السجلّ ويُكتب هنا، على أنّ النوعَ صفةٌ ثابتةٌ في العميل. وليس
@@ -908,6 +918,33 @@ exports.moveTransaction = async (req, res) => {
     transaction.notes = [transaction.notes, `نُقلت ${moves.join(' و')}`]
       .filter(Boolean).join(' · ').slice(0, 1000);
     await transaction.save();
+
+    // ── والكشفُ يتبع العهدةَ إلى فرعها الجديد ───────────────────────────────
+    // «الفرع المسدِّد» في سير عمل التشغيل تعريفُ مصدرِ المال. فإن نُقل القيدُ
+    // إلى عهدة فرعٍ آخر ولم يتبعه الكشف، صُحِّحت العهدةُ وبقي الكشفُ يقول إنّ
+    // الفرعَ الأوّلَ سدّد: لا يظهر القيدُ لمن يفلتر بالفرع الذي دفع فعلًا،
+    // ويظهر لمن يفلتر بالذي لم يدفع. راجع `fillReportFromWallet`.
+    //
+    // والتاريخُ لا يُمسّ هنا: «تاريخ السداد» في الكشف يُبنى عليه حسابُ المهلة
+    // والتحصيل، فتحريكُه أثرٌ خارجَ العهدة لا يُحدِثه نقلُ قيدٍ بلا طلب.
+    if (!sameBranch && transaction.type === 'purchase'
+        && String(transaction.purchaseDeliveryStatementNumber || '').trim()) {
+      try {
+        const OperationsWorkflow = require('../models/OperationsWorkflow');
+        const { arabicBranchName } = require('../utils/payingBranch');
+        const name = await arabicBranchName(toWallet.branch);
+        // وما لا نظيرَ له في القائمة لا يُخمَّن ولا يُمحى به اسمٌ قائم.
+        if (name) {
+          const wf = await OperationsWorkflow.findOne({
+            reportNumber: flexSpaceRegex(transaction.purchaseDeliveryStatementNumber),
+          }).select('_id payingBranch').lean();
+          if (wf && wf.payingBranch !== name) {
+            await OperationsWorkflow.updateOne({ _id: wf._id }, { $set: { payingBranch: name } });
+            try { emitToAll('workflow:updated', { _id: wf._id, fromWallet: true }); } catch (_) {}
+          }
+        }
+      } catch (e) { console.error('wallet move → report branch:', e.message); }
+    }
 
     // ── واليوميّتان تُعاد حسابُهما، بالأقدم أوّلًا ──────────────────────────
     // الحسابُ لطرفٍ واحدٍ يترك الآخرَ بمجموعٍ لا يطابق حركاتِه — وهو عطبٌ

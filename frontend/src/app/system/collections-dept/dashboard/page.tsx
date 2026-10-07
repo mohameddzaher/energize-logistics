@@ -34,14 +34,13 @@ import SearchSelect from '@/components/system/SearchSelect';
 import { Spinner, PageHeader, Field } from '@/components/hr/HRKit';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ExportMenu from '@/components/ls2/ExportMenu';
-import CreditAlerts from '@/components/collections/CreditAlerts';
 import ReceivablesTree, { type Tree, type Check, type Query } from '@/components/collections/ReceivablesTree';
 import ReceivablesRows from '@/components/collections/ReceivablesRows';
 import {
   ComposedChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
 import {
-  Wallet, Users, Building2, TrendingUp, FileText, CheckCircle2, Clock, ChevronLeft, SlidersHorizontal, X,
+  Wallet, Users, Building2, TrendingUp, Clock, ChevronLeft, SlidersHorizontal, X,
   UserCheck, Truck,
 } from 'lucide-react';
 
@@ -100,27 +99,7 @@ function Panel({ title, icon, right, children, className = '' }: {
   );
 }
 
-function Kpi({ icon, label, value, sub, tone, onClick, isRTL }: {
-  icon: React.ReactNode; label: string; value: string; sub?: string;
-  tone: 'slate' | 'emerald' | 'amber' | 'sky'; onClick?: () => void; isRTL: boolean;
-}) {
-  const TONE = {
-    slate: 'bg-slate-100 text-slate-700', emerald: 'bg-emerald-50 text-emerald-600',
-    amber: 'bg-amber-50 text-amber-600', sky: 'bg-sky-50 text-sky-600',
-  }[tone];
-  return (
-    <button type="button" onClick={onClick} disabled={!onClick}
-      className="group text-start bg-white border border-slate-200 rounded-2xl p-4 shadow-sm min-w-0 transition-all enabled:hover:border-[#f37121]/50 enabled:hover:shadow-md disabled:cursor-default">
-      <div className="flex items-center justify-between">
-        <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${TONE}`}>{icon}</span>
-        {onClick && <ChevronLeft className={`w-4 h-4 text-slate-300 group-hover:text-[#f37121] ${isRTL ? '' : 'rotate-180'}`} />}
-      </div>
-      <p className="text-[12px] text-slate-500 mt-3">{label}</p>
-      <p className="text-[22px] leading-tight font-extrabold tabular-nums text-slate-900 truncate" title={value}>{value}</p>
-      {sub && <p className="text-[11.5px] text-slate-400 mt-0.5 truncate">{sub}</p>}
-    </button>
-  );
-}
+// (مكوّنُ Kpi رُفع مع البطاقات التي كانت تستعمله — راجع القسم ١ أدناه.)
 
 export default function CollectionsDashboardPage() {
   const { lang, isRTL } = useLanguage();
@@ -324,52 +303,23 @@ export default function CollectionsDashboardPage() {
         </Panel>
       )}
 
-      {/* ── ١. كم لنا، وكم حصّلنا ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
-        <button type="button" onClick={() => router.push('/system/collections-dept/customers')}
-          className="xl:col-span-2 text-start rounded-2xl p-6 text-white shadow-md bg-gradient-to-br from-[#12325C] to-[#081833] hover:shadow-lg transition-shadow relative overflow-hidden">
-          <div className="absolute -top-10 -end-10 w-40 h-40 rounded-full bg-[#f37121]/20 blur-2xl" aria-hidden="true" />
-          <p className="text-[13px] text-slate-300 flex items-center gap-2">
-            <Wallet className="w-4 h-4 text-[#f37121]" />{t('المستحق لنا من العملاء', 'Receivable from customers')}
-          </p>
-          <p className="text-[34px] leading-tight font-extrabold tabular-nums mt-2">{money(C.outstanding)}</p>
-          <p className="text-[12.5px] text-slate-300 mt-1">
-            {t(`${money(C.openReports)} كشفًا لم يُحصَّل`, `${money(C.openReports)} reports not yet collected`)}
-          </p>
-          <div className="mt-5">
-            <div className="flex items-center justify-between text-[12px] mb-1.5">
-              <span className="text-slate-300">{t('نسبة التحصيل', 'Collection rate')}</span>
-              <span className="font-bold text-emerald-300 tabular-nums">{C.total ? `${rate}%` : '—'}</span>
-            </div>
-            <div className="h-2.5 rounded-full bg-white/10 overflow-hidden">
-              <div className="h-full rounded-full bg-gradient-to-l from-emerald-400 to-emerald-500 transition-all duration-700" style={{ width: `${Math.min(100, rate)}%` }} />
-            </div>
-            <p className="text-[11.5px] text-slate-400 mt-1.5 tabular-nums">
-              {t(`حُصِّل ${money(C.settled)} من ${money(C.total)}`, `${money(C.settled)} collected of ${money(C.total)}`)}
-            </p>
-          </div>
-        </button>
+      {/* ── ١. كم لنا، وكم حصّلنا ────────────────────────────────────────────
+          هنا كانت بطاقةُ «المستحق لنا من العملاء» ومعها المبيعاتُ والمحصَّلُ
+          ونسبةُ التحصيل — محسوبةً من **كشوف التشغيل**. وشجرةُ المديونيّة فوقها
+          محسوبةٌ من **دفتر الفواتير**. فكانت الصفحةُ تقول رقمين لشيءٍ واحد:
+          20,661,545 فوق و47,214,194 تحت، ولا شيءَ يقول لماذا.
 
-        <div className="xl:col-span-3 grid grid-cols-2 gap-4">
-          <Kpi isRTL={isRTL} tone="slate" icon={<TrendingUp className="w-5 h-5" />}
-            label={t('إجمالي المبيعات', 'Total billed')} value={money(C.total)}
-            sub={t(`${money(C.reports)} كشفًا`, `${money(C.reports)} reports`)} />
-          <Kpi isRTL={isRTL} tone="emerald" icon={<CheckCircle2 className="w-5 h-5" />}
-            label={t('المحصَّل', 'Collected')} value={money(C.settled)}
-            sub={t(`${money(C.settledCount)} كشفًا مُقفَلًا`, `${money(C.settledCount)} settled reports`)} />
-          <Kpi isRTL={isRTL} tone="amber" icon={<FileText className="w-5 h-5" />}
-            label={t('كشوف لم تُحصَّل', 'Uncollected reports')} value={money(C.openReports)}
-            sub={t('افتح فواتيرها', 'Open their invoices')}
-            onClick={() => router.push('/system/collections-dept/invoices/tax')} />
-          <Kpi isRTL={isRTL} tone="sky" icon={<UserCheck className="w-5 h-5" />}
-            label={t('عملاء مسجَّلون', 'Registered customers')} value={money(data.counts.customer.active)}
-            sub={data.counts.customer.inactive ? t(`${money(data.counts.customer.inactive)} معطَّل`, `${money(data.counts.customer.inactive)} inactive`) : t('كلُّهم نشِطون', 'All active')}
-            onClick={() => router.push('/system/collections-dept/customers')} />
-        </div>
-      </div>
+          والسببُ قيس: `collectedAmount` **صفرٌ على كلّ الكشوف** — سبعةٌ
+          وثلاثون ألفًا وخمسمئةٍ واثنا عشر، بلا استثناء. لا أحد يكتبها. فكان
+          ذلك الحسابُ يعدّ كلَّ ما سُلِّم منذ بدء الشركة مستحقًّا. وتفكيكُ
+          الفرق يثبته: 29.9 مليونًا منه كشوفٌ يقول الدفترُ إنّ فواتيرَها
+          **حُصِّلت** (125.9 مليونًا محصَّلة من 146.6).
 
-      {/* ── ٢. ما يحتاج تصرّفًا اليوم ───────────────────────────────────────── */}
-      <CreditAlerts compact />
+          فالدفترُ هو الحقيقة: 1,572 فاتورةً غيرَ محصَّلة بـ20.7 مليون. وشجرةُ
+          المديونيّة تقولها وتطابق نفسَها. ورقمٌ ثانٍ يناقضها ليس معلومةً
+          إضافيّةً — هو شكٌّ في الاثنين معًا.
+
+          وبطاقةُ «الحد الائتماني» (`CreditAlerts`) رُفعت بطلب المستخدم. */}
 
       {/* ── ٣. عمرُ ما لنا، وسيرُ الأشهر ────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">

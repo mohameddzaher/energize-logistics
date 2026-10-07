@@ -1477,7 +1477,10 @@ async function buildEmployeeReport(id, query, lang) {
   const active = contracts.find((c) => c.status === 'active') || contracts[0] || null;
   const takenAll = leaves.filter((l) => l.status === 'approved')
     .reduce((s, l) => s + ((l.leaveType?.affectsBalance ?? true) ? (l.days || 0) : 0), 0);
-  const balance = active ? computeBalance(active, takenAll) : null;
+  // الرصيدُ يُعَدّ من يوم مباشرة العمل لا من تاريخ العقد — راجع utils/leaveBalance.
+  const balance = active
+    ? computeBalance(active, takenAll, new Date(), { workStartDate: e.actualWorkStartDate || '', contracts: contracts.length })
+    : null;
   const leavesP = leaves.filter((l) => inRange(l.createdAt, from, to));
 
   const blocks = [];

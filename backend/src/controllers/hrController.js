@@ -115,6 +115,14 @@ const ensureSelfEmployee = (req) => ensureSelfEmployeeUtil(req.user);
 // balance-affecting leave → progressive accrual maths.
 const computeEmployeeBalance = async (employeeId, asOf = new Date()) => {
   const contract = await getActiveContract(employeeId);
+  // ── والرصيدُ يُعَدّ من يوم مباشرة العمل ───────────────────────────────────
+  // لا من تاريخ العقد: الورقةُ قد تُوقَّع قبل المباشرة أو بعدها بأسابيع (١٧٥
+  // عقدًا مباشرتُه قبل بدايته، و١٦ بعدها). راجع utils/leaveBalance.
+  const [emp, contractCount] = await Promise.all([
+    Employee.findById(employeeId).select('actualWorkStartDate').lean(),
+    Contract.countDocuments({ employee: employeeId }),
+  ]);
+  const accrualOpts = { workStartDate: emp?.actualWorkStartDate || '', contracts: contractCount };
   // ── والمأخوذُ يُحسب من بداية العقد النشط لا من أوّل الزمان ────────────────
   // ما استُهلك في عقدٍ سابقٍ حُسب هناك، وما بقي منه رُحِّل صراحةً في
   // `carriedOverDays`. فعدُّه ثانيةً هنا خصمٌ مرّتين لإجازةٍ واحدة.
@@ -132,7 +140,7 @@ const computeEmployeeBalance = async (employeeId, asOf = new Date()) => {
     (s, l) => s + ((l.leaveType?.affectsBalance ?? true) ? (l.days || 0) : 0),
     0
   );
-  return { contract, balance: computeBalance(contract, taken, asOf) };
+  return { contract, balance: computeBalance(contract, taken, asOf, accrualOpts) };
 };
 
 // ── Employees ─────────────────────────────────────────────────────────────────

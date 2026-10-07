@@ -12,6 +12,25 @@
 //
 // `daysElapsed` is clamped to the contract window (never before start, never
 // after end), and `daysTaken` is the sum of approved, balance-affecting leave.
+//
+// ── ومن أيِّ يومٍ يبدأ العدّ ─────────────────────────────────────────────────
+// كان من `contract.startDate` — تاريخِ الورقة. والرصيدُ لا يُستحَقّ بالورقة بل
+// بالعمل: الموظّفُ يستحقّ إجازتَه من **يوم مباشرته العمل**
+// (`Employee.actualWorkStartDate`)، وهو تاريخٌ آخر غيرُ تاريخ التعيين.
+//
+// وقياسُه على البيانات: من ٢٩٦ عقدًا، ١٧٥ مباشرتُها **قبل** بداية العقد (عمل
+// ثمّ وُثّق عقدُه) و١٦ **بعدها** (وُقّع العقدُ ثمّ تأخّرت المباشرة). فالعدُّ من
+// الورقة يظلم الأوّلين ويحسب للآخرين أيّامًا لم يعملوها.
+//
+// وقرارُ صاحب العمل صريح: **من تاريخ المباشرة، لا من تاريخ العقد** — وفي كلّ
+// حال. فلا حدَّ ولا استثناء: لا لمن سبقت مباشرتُه عقدَه بسنواتٍ (٥٣ موظّفًا،
+// أكبرُهم مباشرتُه ٢٠١٨ وعقدُه ٢٠٢٦)، ولا لمن تعدّدت عقودُه.
+//
+// ويتبع ذلك أمرٌ يجب أن يُعرَف لا أن يُخفى: مَن خدم سنواتٍ قبل عقده المسجَّل
+// يستحقّ الآن رصيدَ تلك السنوات كاملًا، **وما أخذه فيها من إجازاتٍ لا سجلَّ له
+// عندنا** فلا يُخصَم. فإن أُريد خصمُه فموضعُه `Contract.carriedOverDays` برقمٍ
+// سالبٍ يكتبه من يعرفه — لا رقمٌ يخترعه النظامُ من فرق تاريخين.
+// و`scripts/auditLeaveAccrualBasis.js` يسمّي هؤلاء ويقول كم زاد رصيدُ كلٍّ.
 
 const DAY_MS = 86400000;
 
@@ -30,9 +49,20 @@ function leaveDays(startDate, endDate) {
   return diff >= 0 ? diff + 1 : 1;
 }
 
-// Days of the contract elapsed as of `asOf`, clamped to [start, end].
-function contractDaysElapsed(contract, asOf = new Date()) {
-  const start = toDate(contract?.startDate);
+/**
+ * اليومُ الذي يبدأ منه العدّ: مباشرةُ العمل إن عُرفت، وإلّا بدايةُ العقد.
+ * `opts.workStartDate` يأتي من `Employee.actualWorkStartDate`، و`opts.contracts`
+ * عددُ عقود الموظّف — راجع رأسَ الملفّ لسبب الحدّ.
+ */
+function accrualStart(contract, opts = {}) {
+  const work = toDate(opts.workStartDate);
+  if (work) return work;                 // المباشرةُ هي الأصل، بلا استثناء
+  return toDate(contract?.startDate);    // ولا مباشرةَ مسجَّلة: يُعَدّ من العقد
+}
+
+// Days elapsed as of `asOf`, from the accrual start, clamped to the contract end.
+function contractDaysElapsed(contract, asOf = new Date(), opts = {}) {
+  const start = accrualStart(contract, opts);
   if (!start) return 0;
   let now = asOf < start ? start : asOf;
   const end = toDate(contract?.endDate);
@@ -42,7 +72,7 @@ function contractDaysElapsed(contract, asOf = new Date()) {
 
 // The full progressive computation. `daysTaken` is supplied by the caller
 // (sum of approved leave whose type affects the balance).
-function computeBalance(contract, daysTaken = 0, asOf = new Date()) {
+function computeBalance(contract, daysTaken = 0, asOf = new Date(), opts = {}) {
   const annual = Number(contract?.annualLeaveDays) || 0;
   // ما رُحِّل من العقد السابق يُضاف إلى المتاح: أيّامٌ لم تُستهلَك، ولا تسقط
   // بتجديد العقد. راجع `models/Contract.carriedOverDays`.
@@ -53,9 +83,10 @@ function computeBalance(contract, daysTaken = 0, asOf = new Date()) {
       taken: round2(daysTaken), available: round2(carried - daysTaken), daysElapsed: 0,
     };
   }
-  const daysElapsed = contractDaysElapsed(contract, asOf);
+  const daysElapsed = contractDaysElapsed(contract, asOf, opts);
   const accrued = round2(annual * (daysElapsed / 365));
   const taken = round2(daysTaken);
+  const start = accrualStart(contract, opts);
   return {
     entitlement: annual,
     carried,
@@ -63,9 +94,14 @@ function computeBalance(contract, daysTaken = 0, asOf = new Date()) {
     accrued,
     taken,
     available: round2(carried + accrued - taken),
+    // ويُقال من أيِّ يومٍ عُدَّ، وبأيّ تاريخٍ — فمن يقرأ رصيدًا لا يطابق
+    // توقّعَه يجد السببَ في السطر نفسِه بدل أن يسأل.
+    accrualFrom: start ? start.toISOString().slice(0, 10) : '',
+    accrualBasis: start && opts.workStartDate && start.toISOString().slice(0, 10) === String(opts.workStartDate).slice(0, 10)
+      ? 'workStart' : 'contract',
   };
 }
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-module.exports = { computeBalance, leaveDays, contractDaysElapsed };
+module.exports = { computeBalance, leaveDays, contractDaysElapsed, accrualStart };

@@ -281,7 +281,9 @@ const codeOf = (t) => {
           { $match: { employee: x.emp._id, status: 'approved' } },
           { $group: { _id: null, d: { $sum: '$days' } } },
         ]);
-        const b = computeBalance(contract, taken[0]?.d || 0, now);
+        const b = computeBalance(contract, taken[0]?.d || 0, now, {
+          workStartDate: e.actualWorkStartDate || '', contracts: 1,
+        });
         snap = {
           accrued: b.accrued,
           requested: x.days,

@@ -303,7 +303,14 @@ export default function HrMasterGridPage() {
                     if (c.key === 'name') {
                       return (
                         <td key={c.key} {...props}>
-                          <Link href={`/system/hr/employees/${r._id}`} className="font-semibold text-slate-900 hover:text-[#f37121]">{r.name || '—'}</Link>
+                          {/* ── واسمُ الموظّف لا يأخذ نصفَ الشاشة ──────────────
+                              العمودُ `whitespace-nowrap` بلا حدٍّ أعلى، فاسمٌ
+                              رباعيٌّ يمدّه حتّى تختفي الأعمدةُ التي يُفتَح
+                              الجدولُ من أجلها. حدٌّ أعلى وقصٌّ، والاسمُ كاملًا
+                              في التلميح وفي صفحته. نظيرُ جدول الموظّفين. */}
+                          <Link href={`/system/hr/employees/${r._id}`}
+                            title={r.name || ''}
+                            className="block max-w-[15rem] truncate font-semibold text-slate-900 hover:text-[#f37121]">{r.name || '—'}</Link>
                         </td>
                       );
                     }

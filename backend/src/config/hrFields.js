@@ -122,7 +122,19 @@ const GROUPS = [
     fields: [
       { key: 'iqamaIssueDate', ar: 'تاريخ الإصدار', en: 'Issue date', type: 'date' },
       { key: 'iqamaExpiry', ar: 'تاريخ الانتهاء', en: 'Expiry', type: 'date' },
-      { key: 'iqamaExpiryHijri', ar: 'الانتهاء (هجري)', en: 'Expiry (Hijri)', type: 'text' },
+      // ── ولا عمودَ هجريٍّ مخزَّنٍ هنا ──────────────────────────────────────
+      // كان `iqamaExpiryHijri` حقلًا نصّيًّا يُكتَب بيدٍ ويُستورَد من الشيت،
+      // ثمّ صار كلُّ تاريخٍ يولّد توأمَه الهجريَّ تلقائيًّا بالمفتاح نفسِه —
+      // فظهر عمودان بمفتاحٍ واحد: «تاريخ الانتهاء الهجري» و«الانتهاء (هجري)».
+      //
+      // والمخزَّنُ منهما خاطئ: من ٢٢١ قيمةً محفوظة، ١١٠ تسبق الصحيحةَ بثلاثة
+      // أشهرٍ ويومٍ تقريبًا — فرقٌ منتظمٌ لا يُخطئه إدخالٌ بشريّ، أثرُ تحويلٍ
+      // معطوبٍ في الاستيراد الأوّل. وقد تحقَّقنا من المحوّل: ميلاديٌّ ← هجريٌّ ←
+      // ميلاديٌّ يعود إلى اليوم نفسِه في كلّ حالة.
+      //
+      // فالعمودُ المشتقُّ وحدَه يبقى، والقيمُ المحفوظةُ تُترَك في القاعدة ولا
+      // تُقرأ. وتاريخُ الانتهاء الميلاديُّ هو الأصل: عليه تُبنى التنبيهاتُ
+      // والتجديد.
       { key: 'iqamaProfession', ar: 'المهنة في الإقامة', en: 'Iqama occupation', type: 'text', groupable: true },
     ],
   },
@@ -286,7 +298,37 @@ const getGroup = (key) => {
   return GROUPS.find((g) => g.key === k) || null;
 };
 const DOCUMENT_GROUPS = GROUPS.filter((g) => g.document);
-const ALL_FIELDS = GROUPS.flatMap((g) => g.fields.map((f) => ({ ...f, group: g.key, groupAr: g.ar })));
+/**
+ * ── والعنوانُ الغامضُ يُقيَّد بمجموعته ──────────────────────────────────────
+ *
+ * «تاريخ الانتهاء» عنوانٌ واضحٌ داخل صفحة «الإقامات»، لأنّ المجموعةَ مكتوبةٌ
+ * فوقه. وفي الجدول المسطَّح — الماستر — تقف المجموعاتُ كلُّها جنبًا إلى جنب،
+ * فيظهر «تاريخ الانتهاء الميلادي» **سبعَ مرّات**: الإقامة والجواز ورخصة العمل
+ * والتأمين والشهادة الصحيّة وبطاقة السائق ورخصة القيادة. ومن يفلتر أو يصدّر
+ * لا يعرف أيُّها أيّ.
+ *
+ * فما تكرَّر عنوانُه يُسبَق باسم مجموعته، وما انفرد يبقى كما هو. والقاعدةُ
+ * تُحسَب لا تُكتَب: مجموعةٌ تُضاف غدًا بعنوانٍ مكرَّرٍ تُقيَّد وحدَها، ولا
+ * ينتظر أحدٌ أن ينتبه.
+ */
+const qualifyDuplicateLabels = (fields) => {
+  const countAr = new Map();
+  const countEn = new Map();
+  for (const f of fields) {
+    countAr.set(f.ar, (countAr.get(f.ar) || 0) + 1);
+    countEn.set(f.en, (countEn.get(f.en) || 0) + 1);
+  }
+  return fields.map((f) => {
+    const out = { ...f };
+    if (countAr.get(f.ar) > 1 && f.groupAr) out.ar = `${f.groupAr} — ${f.ar}`;
+    if (countEn.get(f.en) > 1 && f.groupEn) out.en = `${f.groupEn} — ${f.en}`;
+    return out;
+  });
+};
+
+const ALL_FIELDS = qualifyDuplicateLabels(
+  GROUPS.flatMap((g) => g.fields.map((f) => ({ ...f, group: g.key, groupAr: g.ar, groupEn: g.en })))
+);
 const getField = (key) => ALL_FIELDS.find((f) => f.key === key) || null;
 /** اسم حقل الحالة المقابل لأي حقل — الاتفاق: <field>Status. */
 const statusKeyOf = (fieldKey) => `${fieldKey}Status`;

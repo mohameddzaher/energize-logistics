@@ -184,12 +184,20 @@ function HrMasterInner() {
             الإقامة وخمسةٌ في العقد وواحدٌ في الاتصال — وكان الضغطُ يفتح مجموعةَ
             «الهوية» وحدَها وفيها صفر. فتُقرأ الشاشةُ فارغةً ويُظنّ الرقمُ كذبًا
             وهو صحيح. و«المطلوب» مجموعةٌ تجمعها (راجع REQUIRED_GROUP). */}
-        <Big label={t('بيانات مطلوبة', 'Required fields')} value={d.totals.required} c="#dc2626"
+        {/* ── والعنوانُ يقول وحدةَ العدّ ───────────────────────────────────
+            الرقمُ مجموعُ **الخانات** الناقصة عبر الموظّفين كلِّهم، والضغطةُ
+            تفتح **الموظّفين** الذين فيهم نقص. فكان الكارتُ يقول 189 وتُفتَح
+            18 صفًّا، فيُقرأ عطبًا وهو صحيح: ثمانيةَ عشرَ موظّفًا تنقصهم مئةٌ
+            وتسعٌ وثمانون خانة. «خانة» في العنوان تُنهي اللبس بكلمة. */}
+        <Big label={t('خانات مطلوبة', 'Required fields')} value={d.totals.required} c="#dc2626"
           onClick={() => open('required', { status: 'required' })} />
         <Big label={t('ينتهي قريبًا', 'Expiring soon')} value={d.totals.expiringSoon} c="#ea580c"
           onClick={() => router.push('/system/hr/master/expiring')} />
+        {/* ── والضغطةُ تحمل فلترَ الكارت ───────────────────────────────────
+            الرقمُ عددُ من له رقمٌ تأمينيٌّ مكتوب (368)، وكانت الضغطةُ تفتح
+            المجموعةَ كلَّها (439) — كارتٌ يقول رقمًا ويفتح غيرَه. */}
         <Big label={t('مسجّل بالتأمينات', 'GOSI registered')} value={d.totals.gosiRegistered} c="#0ea5e9"
-          onClick={() => open('gosi')} />
+          onClick={() => open('socialInsurance', { field: 'gosiNumber', status: 'filled' })} />
         <Big label={t('خارج المملكة', 'Outside kingdom')} value={d.totals.outsideKingdom} c="#64748b"
           onClick={() => drill({ outsideKingdom: '1' })} />
         <Big label={t('عمل حر', 'Freelancers')} value={d.totals.freelancers} c="#0f172a"

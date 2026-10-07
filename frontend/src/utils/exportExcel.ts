@@ -1,6 +1,7 @@
 // Type-only import — erased at build time, so exceljs (~1MB) stays OUT of every
 // page bundle and loads on demand the moment an export button is clicked.
 import type * as ExcelJSNS from 'exceljs';
+import { toHijri } from '@/lib/hijri';
 type Workbook = ExcelJSNS.Workbook;
 
 const loadExcelJS = async () => (await import('exceljs')).default ?? (await import('exceljs'));
@@ -30,13 +31,9 @@ type ExportColumn = {
 };
 
 // ── التاريخ الهجريّ ──────────────────────────────────────────────────────────
-// لا يُحوَّل هنا إلى نصّ: خانةُ إكسل لا تحمل إلّا تاريخًا واحدًا، والتقويمُ شكلُ
-// عرضه. فالعمودُ الهجريُّ يحمل التاريخَ نفسَه بتنسيق `B2` — يبقى تاريخًا يُفرَز
-// ويُحسَب، ويُعرَض هجريًّا. راجع `type: 'hijri'` أدناه.
-//
-// (وتحويلُ الهجريّ نصًّا موجودٌ في `lib/vehicleRegistry.toHijri` لعرض الشاشة —
-//  ونسخةٌ ثانيةٌ منه هنا كانت تفترق عنه في المنطقة الزمنيّة، فتُظهر يومًا آخر
-//  في الملفّ عن الشاشة.)
+// يُكتَب نصًّا بأمّ القرى، كما تحسبه الشاشة بالضبط (`lib/hijri`) — فما يراه
+// المستخدمُ في الصفحة هو ما يجده في الملفّ. التفصيلُ عند `type === 'hijri'` في
+// كاتب الخانات أدناه.
 
 /**
  * يُدخِل عمودَ «هجري» بعد كلّ عمودٍ ميلاديّ.
@@ -121,7 +118,9 @@ function addStyledSheet(
 
   const styleHeader = (r: number, count: number) => {
     const header = ws.getRow(r);
-    header.height = 26;
+    // ستّةٌ وعشرون تكفي سطرًا واحدًا وتقصّ الثاني. والعرضُ يُقاس على الترويسة
+    // أيضًا فأكثرُها يسع سطرًا — وما احتاج سطرَين لا يُقَصّ.
+    header.height = 32;
     for (let c = 1; c <= count; c++) {
       const cell = header.getCell(c);
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
@@ -159,18 +158,31 @@ function addStyledSheet(
         const raw = col.key.split('.').reduce((obj: any, k) => obj?.[k], row);
         const v = col.transform ? col.transform(raw, row) : (raw ?? '');
         const cell = r.getCell(i + 1);
-        if ((col.type === 'date' || col.type === 'hijri') && v !== '' && v !== null && v !== undefined) {
+        // ── والهجريُّ يُكتَب كما يُقرأ على الشاشة ────────────────────────────
+        // كان يُكتَب خانةَ تاريخٍ ميلاديّةً بتنسيق `[$-060401]B2dd/mm/yyyy`، على
+        // أنّ التقويمَ شكلُ عرضٍ لا قيمة. وهو صحيحٌ في النظريّة وخاطئٌ في الملفّ:
+        //
+        //  • التنسيقُ أعرضُ من العمود فيخرج «#####» — وهو ما رآه المستخدم في
+        //    «تاريخ الميلاد الهجري» في كلّ صفٍّ تقريبًا.
+        //  • وتقويمُ إكسل `B2` ليس أمَّ القرى. فيختلف اليومُ عمّا على الشاشة،
+        //    فيُقرأ الملفُّ تاريخًا آخرَ لا يعرف أحدٌ من أين جاء.
+        //  • ولا يفهمه إلّا إكسل على ويندوز: Numbers وGoogle Sheets وLibreOffice
+        //    تُسقط التنسيقَ فيظهر التاريخُ ميلاديًّا في عمودٍ عنوانُه «هجري».
+        //
+        // فيُكتَب نصًّا كما تحسبه الشاشة (أمّ القرى، `lib/hijri`). ويبقى الفرزُ
+        // صحيحًا لأنّ الصيغةَ `yyyy-mm-dd` مصفوفةُ الأرقام: ترتيبُها الأبجديُّ
+        // هو ترتيبُها الزمنيُّ.
+        if (col.type === 'hijri' && v !== '' && v !== null && v !== undefined) {
+          const d = v instanceof Date ? v : new Date(v);
+          cell.value = (Number.isNaN(d.getTime()) ? String(v) : toHijri(d)) as any;
+          return;
+        }
+        if (col.type === 'date' && v !== '' && v !== null && v !== undefined) {
           // كائنُ تاريخٍ حقيقيٌّ وتنسيقُ عرض — لا نصٌّ يبدو تاريخًا.
           const d = v instanceof Date ? v : new Date(v);
           if (!Number.isNaN(d.getTime())) {
             cell.value = d;
-            // ── والهجريُّ عرضٌ لا قيمة ────────────────────────────────────────
-            // خانةُ إكسل لا تحمل إلّا تاريخًا واحدًا (رقمًا ميلاديًّا)، والتقويمُ
-            // شكلُ عرضه. فكتابةُ الهجريِّ نصًّا تجعل نوعَه General: لا يُفرَز
-            // زمنيًّا ولا يُطرَح منه تاريخ. وكتابتُه بالقيمة نفسِها وتنسيقِ
-            // `B2` تجعله تاريخًا حقيقيًّا يُعرَض هجريًّا — يُفرَز ويُفلتَر
-            // ويُحسَب، وهو المقصود.
-            cell.numFmt = col.type === 'hijri' ? '[$-060401]B2dd/mm/yyyy' : 'dd/mm/yyyy';
+            cell.numFmt = 'dd/mm/yyyy';
             return;
           }
         }
@@ -196,7 +208,11 @@ function addStyledSheet(
         // كل خانةٍ في المتن موسَّطة أفقيًّا ورأسيًّا. الشيت الذي يخرج بأرقامٍ
         // على اليمين ونصوصٍ على اليسار وتواريخَ في الوسط يبدو مسوَّدةً لا
         // مستندًا يُرسَل — وهذه الشيتات تُرسَل خارج الشركة.
-        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+        //
+        // ولا لفَّ: ارتفاعُ الصفِّ ثابتٌ عند عشرين، فاللفُّ يطوي الاسمَ سطرَين
+        // ويُخفي الثاني — يُقرأ نصفُ الاسم ويُظنُّ أنّه كلُّه. والعرضُ يُقاس
+        // على أطولِ قيمةٍ في العمود (راجع `widthOf`)، فالمساحةُ تكفيه أصلًا.
+        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: false };
       }
     }
 

@@ -336,7 +336,12 @@ export default function HRLeavesPage() {
                     </button>
                   </td>
                   <td {...pin.td(1, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{(l.employee as any)?.employeeNumber || '—'}</td>
-                  <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-medium whitespace-nowrap', BG)}>{empName(l.employee, lang)}</td>
+                  <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-medium whitespace-nowrap', BG)}>
+                    {/* حدٌّ أعلى وقصّ: الاسمُ الرباعيُّ بلا حدٍّ يمدّ العمودَ
+                        حتّى تختفي الأعمدةُ التي يُفتَح الجدولُ من أجلها.
+                        والاسمُ كاملًا في التلميح. */}
+                    <span className="block max-w-[15rem] truncate" title={empName(l.employee, lang)}>{empName(l.employee, lang)}</span>
+                  </td>
                   <td {...pin.td(3, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{idOf(l.employee)}</td>
                   <td className="px-4 py-3 text-slate-700">{leaveTypeLabel(l.leaveType, lang)}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{fmtDate(l.startDate)}</td>

@@ -198,7 +198,10 @@ export default function CustodyPage() {
                   </div>
                 </td>
                 <td {...pin.td(1, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{(a.employee as any)?.employeeNumber || '—'}</td>
-                <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-medium whitespace-nowrap', BG)}>{empName(a.employee, lang)}</td>
+                <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-medium whitespace-nowrap', BG)}>
+                  {/* حدٌّ أعلى وقصّ — راجع جدول الموظّفين. */}
+                  <span className="block max-w-[15rem] truncate" title={empName(a.employee, lang)}>{empName(a.employee, lang)}</span>
+                </td>
                 <td {...pin.td(3, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{idOf(a.employee)}</td>
                 <td className="px-4 py-3 text-slate-700">{a.name}{a.brand ? <span className="text-slate-700"> · {a.brand} {a.model}</span> : ''}</td>
                 <td className="px-4 py-3 text-slate-700">{typeLabel(a.type, lang)}</td>

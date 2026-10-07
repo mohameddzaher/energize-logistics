@@ -299,7 +299,10 @@ export default function ContractsPage() {
                   </div>
                 </td>
                 <td {...pin.td(1, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{(c.employee as any)?.employeeNumber || '—'}</td>
-                <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-medium whitespace-nowrap', BG)}>{empName(c.employee, lang) || c.employeeNameAr || '—'}</td>
+                <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-medium whitespace-nowrap', BG)}>
+                  {/* حدٌّ أعلى وقصّ — راجع جدول الموظّفين. */}
+                  <span className="block max-w-[15rem] truncate" title={empName(c.employee, lang) || c.employeeNameAr || ''}>{empName(c.employee, lang) || c.employeeNameAr || '—'}</span>
+                </td>
                 <td {...pin.td(3, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{c.iqamaNumber || (c.employee as any)?.iqamaNumber || (c.employee as any)?.nationalId || '—'}</td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.contractNumber || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{c.contractProfession || c.jobTitle || '—'}</td>

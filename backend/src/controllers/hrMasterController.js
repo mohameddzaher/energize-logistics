@@ -885,10 +885,24 @@ exports.grid = async (req, res) => {
       pages: Math.max(1, Math.ceil(total / limit)),
       // تعريفُ الأعمدة يُرسَل مع البيانات: الشاشةُ لا تعيد كتابته، وأيُّ حقلٍ
       // يُضاف في `config/hrFields` يظهر هنا بلا تعديلٍ في الواجهة.
-      columns: H.GROUPS.flatMap((g) => g.fields.map((f) => ({
-        key: f.key, ar: f.ar, en: f.en, type: f.type, group: g.key, groupAr: g.ar, groupEn: g.en,
+      // ── والعناوينُ من القائمة المسطَّحة لا من المجموعات الخام ─────────────
+      // كانت تُبنى من `H.GROUPS` مباشرةً بـ`f.ar` كما كُتب. وهو مكتوبٌ لصفحة
+      // المجموعة، حيث اسمُ المجموعة فوقه: «تاريخ الانتهاء» واضحٌ داخل
+      // «الإقامات». وهنا تقف المجموعاتُ كلُّها في صفٍّ واحد، فيظهر «تاريخ
+      // الانتهاء الميلادي» **سبعَ مرّات** — ولا يُعرَف أيُّها أيّ، لا على
+      // الشاشة ولا في ملفّ الإكسل.
+      //
+      // و`ALL_FIELDS` هي القائمةُ نفسُها بعد تقييد ما تكرّر باسم مجموعته
+      // (راجع `qualifyDuplicateLabels` في config/hrFields)، وتحمل المجموعةَ
+      // معها. فصفحةُ المجموعة تُبقي عنوانَها القصير، والجدولُ المسطَّح يأخذ
+      // المقيَّد — من مصدرٍ واحد.
+      columns: H.ALL_FIELDS.map((f) => ({
+        key: f.key, ar: f.ar, en: f.en, type: f.type, group: f.group, groupAr: f.groupAr, groupEn: f.groupEn,
+        // `of` يقول للشاشةِ أيُّ تاريخٍ ميلاديٍّ هذا توأمُه الهجريّ — فتقرأ
+        // قيمتَه من أصله ولا تحوّل نصًّا هجريًّا مرّةً ثانية.
+        of: f.of || null,
         choice: !!f.choice, cashPayroll: !!f.cashPayroll,
-      }))),
+      })),
     };
     cache.set(ck, body, 30000);
     res.json(body);

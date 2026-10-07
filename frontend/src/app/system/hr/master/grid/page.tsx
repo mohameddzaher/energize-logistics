@@ -121,10 +121,27 @@ export default function HrMasterGridPage() {
     // `employeeNumber` و`arabicName` — فيظهران مرّتين في قائمة الاختيار،
     // ويُعلَّم عليهما فيتكرّران في الجدول وفي الملفّ.
     const PINNED = new Set(['employeeNumber', 'arabicName', 'name', 'iqamaNumber']);
+    // ── ولا يُولَّد توأمٌ هجريٌّ يرسله الخادمُ أصلًا ──────────────────────────
+    // الخادمُ يولّد لكلّ تاريخٍ توأمَه الهجريَّ في `config/hrFields` ويرسله
+    // عمودًا من نوع `hijri` بالمفتاح `<key>Hijri`. وكانت هذه الحلقةُ تولّده
+    // ثانيةً — فيظهر العمودُ **مرّتين**.
+    //
+    // وأسوأُ من التكرار أنّ النسختين تختلفان في المصدر: المُولَّدةُ هنا تقرأ
+    // التاريخَ الميلاديَّ وتحوّله، والقادمةُ من الخادم قيمتُها **نصٌّ هجريٌّ
+    // جاهز**. فعند التصدير يُقرأ ذلك النصُّ تاريخًا ميلاديًّا («1448-07-08» سنةَ
+    // ألفٍ وأربعمئةٍ وثمانٍ وأربعين ميلاديّة) ثمّ يُحوَّل هجريًّا مرّةً ثانية —
+    // فيخرج في الملفّ تاريخٌ لا علاقةَ له بشيء. وهو العمودُ الذي قيل إنّ
+    // تاريخَه خطأ.
+    const serverHijri = new Set(cols.filter((c: any) => c.type === 'hijri').map((c: any) => c.key));
     for (const c of cols) {
       if (PINNED.has(c.key)) continue;
+      // عمودٌ هجريٌّ من الخادم: يُقرأ من أصله الميلاديّ (`of`) لا من نصّه.
+      if (c.type === 'hijri') {
+        base.push({ key: c.key, label: ar ? c.ar : c.en, type: 'hijri', hijriOf: (c as any).of || c.key.replace(/Hijri$/, '') });
+        continue;
+      }
       base.push({ key: c.key, label: ar ? c.ar : c.en, type: c.type });
-      if (c.type === 'date') {
+      if (c.type === 'date' && !serverHijri.has(`${c.key}Hijri`)) {
         // ── واسمُ العمودِ الهجريِّ لا يحمل «الميلادي» ───────────────────────
         // الخادمُ يسمّي عمودَ التاريخ «تاريخ الانتهاء الميلادي» (راجع
         // config/hrFields)، فإلحاقُ «(هجري)» به يعطي «الميلادي (هجري)».
@@ -139,9 +156,11 @@ export default function HrMasterGridPage() {
         // التاريخُ يقول متى، والمدّةُ تقول كم بقي — وهي السؤالُ الذي يُفتَح
         // الجدولُ لأجله. وتقع بعد عمودِ انتهائها مباشرةً فتُقرأ معه، ولها اسمٌ
         // صريحٌ لأنّ خمسةَ أعمدةٍ هنا عنوانُها «تاريخ الانتهاء» نفسُه.
-        if (isExpiryField(c.key)) {
-          base.push({ key: `${c.key}__days`, label: daysColLabel(c.key, ar), type: 'number', daysOf: c.key });
-        }
+      }
+      // ── والمدّةُ بالأيّام تلي انتهاءَها، سواءٌ وُلِّد التوأمُ هنا أم جاء ─────
+      // كانت داخل شرطِ توليدِ التوأم، فلو لم يُولَّد سقطت معه.
+      if (c.type === 'date' && isExpiryField(c.key)) {
+        base.push({ key: `${c.key}__days`, label: daysColLabel(c.key, ar), type: 'number', daysOf: c.key });
       }
     }
     base.push({ key: 'custodyCount', label: t('عدد العهد', 'Custody items'), type: 'number' });

@@ -269,82 +269,14 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
         Navigator.pop(context, true);
       }
     } catch (e) {
-      // ── شاحنةٌ فات موعدُ صيانتها: مانعٌ لا رسالةُ خطأ ──────────────────────
-      // ٤٠٩ هنا بابٌ يُطرَق: تُعرَض لوحةٌ بما فات وزرٌّ يرفع الطلبَ إلى مدير
-      // الصيانة في «طلبات الأسطول» — كما في الويب حرفًا.
-      if (e is ApiException && e.status == 409 && e.data['needsMaintenanceApproval'] == true) {
-        if (mounted) await _askMaintenance(e.data);
-      } else if (mounted) {
+      // (لا مانعَ صيانةٍ بعد اليوم: كانت شاحنةٌ فات موعدُ صيانتها تُردّ بـ409
+      //  فتُعرَض لوحةٌ ويُرفَع الطلبُ إلى مدير الصيانة. رُفع المنعُ بطلب
+      //  المستخدم في الطرفين معًا — الخادمِ والويبِ والتطبيق.)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  /// لوحةُ المنع ورفعُ الطلب — ومعه ما الحمولةُ المنتظرة ليُقرَأ في القرار.
-  Future<void> _askMaintenance(Map<String, dynamic> block) async {
-    final reason = TextEditingController();
-    final pending = block['pendingRequest'] as Map?;
-    final send = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: Row(children: [
-          const Icon(Icons.warning_amber_rounded, color: T.danger, size: 20),
-          const SizedBox(width: 6),
-          Expanded(child: Text(tr('صيانةٌ متأخّرة', 'Service overdue'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800))),
-        ]),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text((block['message'] ?? '').toString(), style: const TextStyle(fontSize: 13)),
-          const SizedBox(height: 8),
-          if (pending != null)
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(10)),
-              child: Text(
-                tr('لها طلبٌ معلّقٌ أرسله ${pending['by'] ?? '—'} — انتظر القرار.', 'A request is already pending (${pending['by'] ?? '—'}).'),
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF92400E)),
-              ),
-            )
-          else
-            TextField(
-              controller: reason,
-              maxLines: 3,
-              decoration: InputDecoration(labelText: tr('لماذا هذه الشاحنة الآن؟', 'Why this truck now?')),
-            ),
-          const SizedBox(height: 6),
-          Text(
-            tr('الموافقةُ تصلح لحمولةٍ واحدة، وتُسجَّل باسم من وافق.', 'An approval is good for one load and is recorded by name.'),
-            style: const TextStyle(fontSize: 11, color: T.inkFaint),
-          ),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إغلاق', 'Close'))),
-          if (pending == null)
-            FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('اطلب الموافقة', 'Ask approval'))),
-        ],
-      ),
-    );
-    if (send != true || !mounted) return;
-    try {
-      await Api.instance.post('/api/fleet/requests', {
-        'vehicle': block['vehicle'],
-        'reason': reason.text.trim(),
-        'load': {
-          'customerName': (_customer?['name'] ?? _newCustomerName.text).toString(),
-          'fromCity': _fromCity.text.trim(),
-          'toCity': _toCity.text.trim(),
-          'loadDate': _loadDate.toIso8601String().substring(0, 10),
-        },
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(tr('أُرسل الطلب إلى مدير الصيانة — ستُشعَر بالقرار ثمّ أعِد الحفظ.',
-              'Sent to the maintenance manager — you will be notified, then save again.')),
-        ));
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 

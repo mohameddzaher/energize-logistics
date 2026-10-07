@@ -459,18 +459,11 @@ exports.createShipment = async (req, res) => {
 
     const moveNotes = await resolveAssignments(req, data);
 
-    // ── ولا تُحمَّل شاحنةٌ فات موعدُ صيانتها بلا إذن ──────────────────────────
-    // الشارةُ الحمراءُ على بطاقتها كانت تُقرأ ولا تمنع: تُحمَّل وتسير ألفًا
-    // وخمسَمئةِ كيلومترٍ أخرى. والمنعُ وحدَه لا يكفي — فالطلبُ يُرفَع إلى مدير
-    // الصيانة في «طلبات الأسطول» ويُوافَق أو يُرفَض بالاسم.
-    // راجع controllers/fleetRequestController.
-    const { maintenanceGate, consumeApproval } = require('./fleetRequestController');
-    let override = null;
-    if (data.vehicle) {
-      const gate = await maintenanceGate(data.vehicle);
-      if (gate && gate.block) return res.status(409).json(gate.block);
-      if (gate && gate.approval) override = gate.approval;
-    }
+    // ── ولا تأذنَ صيانةٍ قبل التحميل ─────────────────────────────────────────
+    // كانت شاحنةٌ فات موعدُ صيانتها تُمنَع من التحميل حتّى يوافق مديرُ الصيانة
+    // في «طلبات الأسطول». رُفع المنعُ بطلب المستخدم: التحميلُ يمضي كما كان،
+    // والشارةُ الحمراءُ على بطاقة الشاحنة وتقاريرُ الصيانة تبقى كما هي — تُعلِم
+    // ولا تحجز.
 
     // المشرف: يأتي من السيارة المعيَّنة (resolveAssignments أعلاه)؛ وإن لم يكن
     // للسيارة مشرف بعد، يُختم بمنشئ الحمولة.
@@ -482,13 +475,6 @@ exports.createShipment = async (req, res) => {
 
     const shipment = await FleetShipment.create(data);
     await logEvent(req, shipment._id, 'created', { waybillNumber: shipment.waybillNumber });
-    // الموافقةُ لحمولةٍ واحدة: تُستهلَك هنا، والتاليةُ تُطلَب من جديد.
-    if (override) {
-      await consumeApproval(override, shipment);
-      await logEvent(req, shipment._id, 'maintenance_override', {
-        text: `حُمِّلت بموافقة ${override.decidedByName || ''} على تأخّر «${override.service || 'الصيانة'}»${override.decisionNote ? ` — ${override.decisionNote}` : ''}`,
-      });
-    }
     for (const line of moveNotes) await logEvent(req, shipment._id, 'driver_change', { text: line });
 
     emit('fleet:updated', { id: String(shipment._id) });
@@ -540,16 +526,9 @@ exports.updateShipment = async (req, res) => {
       if (c) data.customerName = c.name;
     }
 
-    // ── وتبديلُ الشاحنة يمرّ بالحارس نفسِه ────────────────────────────────
-    // المنعُ عند الإنشاء وحدَه بابٌ نصفُه مفتوح: تُنشأ الحمولةُ على شاحنةٍ
-    // سليمةٍ ثمّ تُبدَّل بالمتأخّرة في تعديل.
-    let overrideUpd = null;
-    if (data.vehicle !== undefined && String(data.vehicle || '') && String(data.vehicle) !== String(shipment.vehicle || '')) {
-      const { maintenanceGate } = require('./fleetRequestController');
-      const gate = await maintenanceGate(data.vehicle);
-      if (gate && gate.block) return res.status(409).json(gate.block);
-      if (gate && gate.approval) overrideUpd = gate.approval;
-    }
+    // (ولا حارسَ صيانةٍ عند تبديل الشاحنة كذلك — رُفع المنعُ من الطرفين معًا.
+    //  إبقاؤه هنا وحدَه يجعل التبديلَ يُرفَض بينما الإنشاءُ على الشاحنة نفسِها
+    //  يمضي، وهو تناقضٌ لا يفسّره شيءٌ على الشاشة.)
 
     // Replacing a driver is a SWAP: the outgoing one steps off this truck so
     // the incoming one has a seat — otherwise the two-seat rule would refuse
@@ -581,14 +560,6 @@ exports.updateShipment = async (req, res) => {
 
     if (changed.length) await logEvent(req, shipment._id, 'updated', { fields: changed });
     for (const line of moveNotes) await logEvent(req, shipment._id, 'driver_change', { text: line });
-    if (overrideUpd) {
-      const { consumeApproval } = require('./fleetRequestController');
-      await consumeApproval(overrideUpd, shipment);
-      await logEvent(req, shipment._id, 'maintenance_override', {
-        text: `بُدِّلت إلى شاحنةٍ صيانتُها متأخّرة بموافقة ${overrideUpd.decidedByName || ''}${overrideUpd.decisionNote ? ` — ${overrideUpd.decisionNote}` : ''}`,
-      });
-    }
-
     emit('fleet:updated', { id: String(shipment._id) });
     res.json({ shipment });
   } catch (error) {

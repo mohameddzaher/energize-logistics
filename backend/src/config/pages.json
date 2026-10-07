@@ -1004,6 +1004,12 @@
       "en": "Custody"
     },
     {
+      "key": "/system/b2c/hr-requests",
+      "section": "B2C",
+      "ar": "طلبات الموارد البشرية",
+      "en": "HR Requests"
+    },
+    {
       "key": "/system/b2c/settings",
       "section": "B2C",
       "ar": "إعدادات القسم",
@@ -1194,6 +1200,18 @@
       "section": "HR",
       "ar": "التراخيص والاشتراكات",
       "en": "Licenses & Subscriptions"
+    },
+    {
+      "key": "/system/hr/staff-requests",
+      "section": "HR",
+      "ar": "طلبات الأقسام",
+      "en": "Section Requests"
+    },
+    {
+      "key": "/system/hr/forms",
+      "section": "HR",
+      "ar": "النماذج والخطابات",
+      "en": "Forms & Letters"
     },
     {
       "key": "/system/hr/leave-types",

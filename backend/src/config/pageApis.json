@@ -45,6 +45,7 @@
     "/system/operations/private": {
       "apis": [
         "/api/operations-private",
+        "/api/operations-private/analytics",
         "/api/operations-private/export",
         "/api/operations-private/stats",
         "/api/workflows/filters"
@@ -124,7 +125,10 @@
         "/api/collections-dept/dashboard",
         "/api/collections-dept/dashboard/filters",
         "/api/collections-dept/ledger/alerts",
-        "/api/collections-dept/ledger/alerts/ack"
+        "/api/collections-dept/ledger/alerts/ack",
+        "/api/collections-dept/parties",
+        "/api/collections-dept/receivables/overview",
+        "/api/collections-dept/receivables/rows"
       ],
       "wildcard": false
     },
@@ -339,6 +343,7 @@
     "/system/shipment-orders/dashboard": {
       "apis": [
         "/api/shipment-orders/dashboard",
+        "/api/shipment-orders/ops-analytics",
         "/api/shipment-orders/statuses"
       ],
       "wildcard": false
@@ -780,8 +785,7 @@
         "/api/ls2/dashboard",
         "/api/ls2/repairs",
         "/api/ls2/settings",
-        "/api/ls2/vehicles",
-        "/api/ls2/vehicles/:unitId/tire-sensors"
+        "/api/ls2/vehicles"
       ],
       "wildcard": false
     },
@@ -828,7 +832,8 @@
       "apis": [
         "/api/ls2/deferrals",
         "/api/ls2/settings",
-        "/api/ls2/vehicles"
+        "/api/ls2/vehicles",
+        "/api/ls2/vehicles/:unitId/tire-sensors"
       ],
       "wildcard": false
     },
@@ -1317,6 +1322,13 @@
       ],
       "wildcard": false
     },
+    "/system/b2c/hr-requests": {
+      "apis": [
+        "/api/hr/employees-search",
+        "/api/staff-requests"
+      ],
+      "wildcard": false
+    },
     "/system/b2c/settings": {
       "apis": [
         "/api/light-transport/housing",
@@ -1418,6 +1430,8 @@
     "/system/hr/master": {
       "apis": [
         "/api/hr/dashboard",
+        "/api/hr/forms",
+        "/api/hr/master/by-department",
         "/api/hr/master/choices",
         "/api/hr/master/employees",
         "/api/hr/master/filters",
@@ -1531,6 +1545,19 @@
     "/system/hr/licenses": {
       "apis": [
         "/api/hr/licenses"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/staff-requests": {
+      "apis": [
+        "/api/hr/employees-search",
+        "/api/staff-requests"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/forms": {
+      "apis": [
+        "/api/hr/forms"
       ],
       "wildcard": false
     },

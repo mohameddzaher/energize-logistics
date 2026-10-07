@@ -16,7 +16,7 @@ import {
   Calculator, Scale, BookOpen, Gauge, Ship, ScrollText, Landmark,
   Activity, Car, UserSquare, IdCard, MapPin, Globe, Boxes, Ruler, Palette, ShieldCheck, PackageSearch, SlidersHorizontal,
   Thermometer, Satellite, Crown, Container, FileBarChart,
-  Compass, Handshake, Gavel, MonitorCog, LifeBuoy, Laptop, Server, RefreshCw, Inbox, LayoutGrid, Mail,
+  Compass, Handshake, Gavel, MonitorCog, LifeBuoy, Laptop, Server, RefreshCw, Inbox, LayoutGrid, Mail, Send,
   CalendarClock, TriangleAlert, ShieldQuestion,
   FileSignature, PhoneCall, UserCheck, Fuel, ClipboardCheck,
   Receipt, Banknote, Layers, Link2,
@@ -492,8 +492,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // شاشتان: واحدةٌ يقف عليها المشرفُ كلَّ صباح، وواحدةٌ تقرأ منها الإدارة.
     // وكلتاهما مفتوحتان لأدوار القسم — والذي يحكم مَن يرى أيَّ مندوبٍ هو
     // `B2CRep.supervisor` في الخادم لا هذه القائمة.
-    { href: '/system/b2c/duty/start', label: lang === 'ar' ? 'تفقّد بداية الدوام' : 'Duty Start Check', icon: <Camera className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor'], section: 'B2C' },
-    { href: '/system/b2c/duty', label: lang === 'ar' ? 'سجلّ التفقّد والتحليل' : 'Duty Register', icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor'], section: 'B2C' },
+    { href: '/system/b2c/duty/start', label: lang === 'ar' ? 'تفقّد بداية الدوام' : 'Duty Start Check', icon: <Camera className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
+    { href: '/system/b2c/duty', label: lang === 'ar' ? 'سجلّ التفقّد والتحليل' : 'Duty Register', icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
     // ── سجلُّ القسم كلُّه لا مناديبَ التقارير وحدَهم ────────────────────────
     // «مناديب المبيعات» كانت تعرض مَن له تقريرُ طلبات، فلا يظهر فيها مشرفٌ ولا
     // ميكانيكيٌّ ولا عاملُ نظافة — وهم أحدَ عشرَ من مئةٍ وواحدٍ وستّين.
@@ -504,10 +504,15 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/b2c/orders', label: L.b2cOrders, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/projects', label: L.b2cProjects, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/custody', label: lang === 'ar' ? 'العهدة' : 'Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
+    // ── ويُبلَّغ القسمُ الموارد البشريّة بما رآه في الميدان ─────────────────
+    // المندوبُ يعود إلى العمل اليومَ ويبلغ الخبرُ الموارد البشريّة بعد أيّام،
+    // فيبقى في النظام «منتهيًا» ولا يُصدَر له أمرُ تشغيل. ومشرفُ المناديب
+    // التشغيليُّ أوّلُ من يراه، فله هذه الشاشة.
+    { href: '/system/b2c/hr-requests', label: lang === 'ar' ? 'طلبات الموارد البشرية' : 'HR Requests', icon: <Send className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor'], section: 'B2C' },
     { href: '/system/b2c/settings', label: L.b2cSettings, icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead']), section: 'B2C', restrict: true },
-    { href: '/system/b2c/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor'], section: 'B2C' },
-    { href: '/system/b2c/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor'], section: 'B2C' },
+    { href: '/system/b2c/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
+    { href: '/system/b2c/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
     // Remote (work-from-home)
     { href: '/system/remote/dashboard', label: L.remoteDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'dashboard' },
     { href: '/system/remote/attendance', label: L.remoteAttendance, icon: <Clock className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'attendance' },
@@ -540,6 +545,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/hr/custody', label: L.hrCustody, icon: <Package className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     { href: '/system/hr/stock', label: L.hrStock, icon: <Boxes className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     { href: '/system/hr/licenses', label: lang === 'ar' ? 'التراخيص والاشتراكات' : 'Licenses & Subscriptions', icon: <ScrollText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
+    // الجانبُ المستقبِل لطلبات الأقسام — تُستلَم ثمّ تُنفَّذ أو تُرفَض بسبب.
+    { href: '/system/hr/staff-requests', label: lang === 'ar' ? 'طلبات الأقسام' : 'Section Requests', icon: <Inbox className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
+    // مكتبةُ أوراق القسم: النماذجُ والخطاباتُ الرسميّة، ولكلٍّ رقمُ نسخة.
+    { href: '/system/hr/forms', label: lang === 'ar' ? 'النماذج والخطابات' : 'Forms & Letters', icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     { href: '/system/hr/leave-types', label: L.hrLeaveTypes, icon: <Tags className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     // إعداداتُ القسم: أنواعُ الإجازات وعتباتُ التنبيه وقوائمُه — في موضعٍ واحد
     // بدل أن يُبحَث عن كلٍّ منها في صفحة.

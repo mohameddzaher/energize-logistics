@@ -24,6 +24,8 @@ import '../screens/section_work.dart';
 import '../screens/team_board.dart';
 import '../screens/remote_attendance.dart';
 import '../screens/hr_inbox.dart';
+import '../screens/staff_requests.dart';
+import '../screens/hr_forms.dart';
 import '../screens/party_links.dart';
 import '../screens/ls2_alerts.dart';
 import '../screens/ls2_fleet_requests.dart';
@@ -291,6 +293,10 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الموظفون', 'Employees', Icons.people_alt_outlined, (c) => const HrEmployeesScreen(), path: '/system/hr/employees'),
         AppPage('طلبات الإجازات', 'Leave Requests', Icons.event_available_outlined, (c) => const HrLeavesScreen(), path: '/system/hr/leaves'),
         AppPage('طلبات الموظفين', 'Employee Requests', Icons.mark_email_unread_outlined, (c) => const HrRequestsScreen(), path: '/system/hr/requests'),
+        // طلباتُ الأقسام — الجانبُ المستقبِل. راجع screens/staff_requests.dart.
+        AppPage('طلبات الأقسام', 'Section Requests', Icons.move_to_inbox_outlined, (c) => const StaffRequestsScreen(side: 'hr'), path: '/system/hr/staff-requests'),
+        // مكتبةُ النماذج والخطابات الرسميّة.
+        AppPage('النماذج والخطابات', 'Forms & Letters', Icons.description_outlined, (c) => const HrFormsScreen(), path: '/system/hr/forms'),
         AppPage('التراخيص والاشتراكات', 'Licenses', Icons.workspace_premium_outlined, (c) => ResourceScreen(config: hrLicensesCfg), path: '/system/hr/licenses'),
         AppPage('عقود الموظفين', 'Contracts', Icons.description_outlined, (c) => ResourceScreen(config: hrContractsCfg), path: '/system/hr/contracts'),
         AppPage('المخزون', 'Stock', Icons.inventory_2_outlined, (c) => ResourceScreen(config: hrStockCfg), path: '/system/hr/stock'),
@@ -486,6 +492,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
                 ),
             path: '/system/b2c/light-transport/store'),
         AppPage('عهد المشاريع', 'Custody', Icons.account_balance_wallet_outlined, (c) => const B2cWalletScreen(), path: '/system/b2c/custody'),
+        // ويُبلِّغ القسمُ الموارد البشريّة بما رآه في الميدان — الجانبُ المُرسِل.
+        AppPage('طلبات الموارد البشرية', 'HR Requests', Icons.send_outlined, (c) => const StaffRequestsScreen(side: 'section', section: 'B2C'), path: '/system/b2c/hr-requests'),
         // ── سجلُّ القسم كلِّه لا مناديبَ التقارير وحدَهم ────────────────────
         // «مناديب المبيعات» كانت تقرأ `B2CRep` — وهم مَن لهم تقاريرُ طلبات،
         // فلا يظهر فيها مشرفٌ ولا ميكانيكيٌّ ولا عاملُ نظافة: أحدَ عشرَ من

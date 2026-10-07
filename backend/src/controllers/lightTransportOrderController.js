@@ -280,11 +280,25 @@ exports.createOrder = async (req, res) => {
     if (!emp) return res.status(404).json({ message: 'الموظّف غير موجود' });
 
     // ── ولا يُشغَّل من ليس على رأس العمل ─────────────────────────────────
-    // إنهاءُ الخدمة في الموارد البشريّة خبرٌ قاطع؛ وأمرُ تشغيلٍ لمن أُنهيت
-    // خدمتُه يعني مركبةً مسجَّلةً على من ليس عندنا.
+    // حالةُ الموظّف في الموارد البشريّة خبرٌ قاطع؛ وأمرُ تشغيلٍ لمن ليس على
+    // رأس العمل يعني مركبةً مسجَّلةً على من ليس في العمل. وكان الشرطُ
+    // «المنتهي» وحدَه، فالموقوفُ ومن في إجازةٍ كانا يُشغَّلان — وهما ليسا على
+    // رأس العمل. فالشرطُ على الحالة الواحدة التي تصحّ: `active`.
+    //
+    // ومن عاد فعلًا ولم يُحدَّث ملفُّه بعد: القسمُ يرسل طلبًا إلى الموارد
+    // البشريّة من «طلبات الموارد البشرية» فتُصحَّح الحالةُ ثمّ يُشغَّل — راجع
+    // models/StaffStatusRequest.
+    const HR_STATUS_AR = {
+      terminated: 'أُنهيت خدمتُه', suspended: 'موقوف', on_leave: 'في إجازة',
+      resigned: 'استقال', retired: 'متقاعد',
+    };
     const hr = emp.employee ? await require('../models/Employee').findById(emp.employee).select('employmentStatus').lean() : null;
-    if (hr && hr.employmentStatus === 'terminated') {
-      return res.status(400).json({ message: `${emp.name}: أُنهيت خدمتُه في الموارد البشريّة — لا يُشغَّل` });
+    if (hr && hr.employmentStatus && hr.employmentStatus !== 'active') {
+      const why = HR_STATUS_AR[hr.employmentStatus] || hr.employmentStatus;
+      return res.status(400).json({
+        message: `${emp.name}: ${why} في الموارد البشريّة — لا يُشغَّل. إن عاد فعلًا فأرسِل طلبًا من «طلبات الموارد البشرية».`,
+        code: 'HR_NOT_ACTIVE',
+      });
     }
 
     let vehicle = null;

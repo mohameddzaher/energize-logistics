@@ -26,7 +26,9 @@ export const ROLE_HOME_ROUTES: Record<string, string> = {
   vehicles_staff: '/system/vehicles/registry/overview',
   b2c_manager: '/system/b2c/dashboard',
   b2c_project_lead: '/system/b2c/dashboard',
-  b2c_rep_supervisor: '/system/b2c/duty/start',
+  b2c_rep_supervisor: '/system/b2c/daily-entry',
+  // التفقّديُّ يدخل على عملِه: شاشةُ تفقّد بداية الدوام.
+  b2c_inspection_supervisor: '/system/b2c/duty/start',
   remote_employee: '/system/remote/attendance',
   remote_manager: '/system/remote/dashboard',
   hr_manager: '/system/hr/master',

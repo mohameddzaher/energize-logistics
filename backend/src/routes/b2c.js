@@ -20,7 +20,8 @@ router.use(authenticate);
 // Project managers currently have the same access as heads.
 const READ = ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead'];
 // مشرفُ المناديب: شاشتا التفقّد فقط، ومناديبُه هو (يحسمه المتحكّم).
-const DUTY = [...READ, 'b2c_rep_supervisor'];
+// التفقّدُ للمشرفَين كليهما — التشغيليُّ يراه، والتفقّديُّ هو عملُه كلُّه.
+const DUTY = [...READ, 'b2c_rep_supervisor', 'b2c_inspection_supervisor'];
 const WRITE = ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead'];
 const ADMIN_WRITE = ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead'];
 

@@ -762,7 +762,7 @@ exports.supervisors = async (req, res) => {
       (await User.find({ _id: { $in: missing } }).select('firstName lastName role').lean())
         .forEach((u) => byId.set(String(u._id), u));
     }
-    const ORDER = { b2c_rep_supervisor: 0, b2c_project_lead: 1, b2c_manager: 2 };
+    const ORDER = { b2c_rep_supervisor: 0, b2c_inspection_supervisor: 1, b2c_project_lead: 2, b2c_manager: 3 };
     const supervisors = [...byId.values()].map((u) => ({
       _id: u._id,
       name: [u.firstName, u.lastName].filter(Boolean).join(' ') || '—',

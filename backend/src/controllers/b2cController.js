@@ -1413,25 +1413,44 @@ exports.getRepEvaluations = async (req, res) => {
 
     const reps = await B2CRep.find(filter).populate('project', 'name code color monthlyTarget').populate('branch', 'name city');
     const repIds = reps.map((r) => r._id);
-    const orders = await B2CDailyOrder.find({ rep: { $in: repIds } }).lean();
 
-    const ordersByRep = new Map();
-    orders.forEach((o) => {
-      const id = String(o.rep);
-      if (!ordersByRep.has(id)) ordersByRep.set(id, []);
-      ordersByRep.get(id).push(o);
+    // ── والجمعُ يجري في القاعدة، لا في الذاكرة ────────────────────────────────
+    // كان هذا السطرُ `B2CDailyOrder.find({ rep: { $in: repIds } })` بلا حدٍّ ولا
+    // اختيارِ حقول: يسحب **كلَّ** طلبٍ يوميٍّ سُجِّل منذ بدء المشروع — واحدًا
+    // وخمسين ألفًا اليوم، أربعةَ عشرَ ميجابايت — في كلّ مرّةٍ تُفتَح فيها شاشةُ
+    // التقييم، ثمّ يجمعها بالجافاسكربت. والنقطةُ قيست 5.6 ثانيةٍ وهي دافئة.
+    //
+    // وأسوأُ من البطء أنّه بطءٌ يزيد كلَّ يوم: كلُّ طلبٍ جديدٍ يُسجَّل يُضاف إلى
+    // ما يُسحَب، فالشاشةُ تثقل بنموّ الشركة ولا شيءَ يقول لماذا.
+    //
+    // والمطلوبُ منها أربعةُ حقولٍ ومجموعٌ شهريّ، وهذا عملُ `$group`: يعود بصفٍّ
+    // لكلّ مندوبٍ في كلّ شهرٍ — مئاتٌ لا عشراتُ آلاف. والفهرسُ على `rep` قائم.
+    //
+    // وتُحفَظ دقيقتان من سلوك ما كان:
+    //  • الشهرُ الذي كلُّ طلباته `null` يبقى شهرًا موجودًا بمجموعٍ صفر — لأنّ
+    //    `monthsArr.length` يقسم المتوسّطَ ويدخل في حساب الثبات. فلا يُرشَّح
+    //    `orders: { $ne: null }` في `$match`؛ و`$sum` يتجاهل القيمَ غيرَ
+    //    العدديّة فيخرج المجموعُ نفسُه.
+    //  • ترتيبُ الشهور: كان ترتيبَ ورودِ المستنداتِ من القاعدة — أي ترتيبًا لا
+    //    معنى له — و`trend` يقارن «النصفَ الأوّل» بـ«النصف الأخير» منه. فكانت
+    //    «صاعد/هابط» تُحسَب على شهورٍ غيرِ مرتَّبةٍ زمنيًّا، وهي لذلك كلمةٌ بلا
+    //    مدلول. وهي الآن مرتَّبةٌ بالسنة فالشهر، فصارت تقول ما تعنيه.
+    const grouped = await B2CDailyOrder.aggregate([
+      { $match: { rep: { $in: repIds } } },
+      { $group: { _id: { rep: '$rep', y: '$year', m: '$month' }, total: { $sum: '$orders' } } },
+      { $sort: { '_id.y': 1, '_id.m': 1 } },
+    ]);
+
+    const monthsByRep = new Map();
+    grouped.forEach((g) => {
+      const id = String(g._id.rep);
+      if (!monthsByRep.has(id)) monthsByRep.set(id, new Map());
+      monthsByRep.get(id).set(`${g._id.y}-${pad2(g._id.m)}`, g.total || 0);
     });
 
     const evaluations = reps.map((rep) => {
-      const repOrders = ordersByRep.get(String(rep._id)) || [];
       const monthlyTarget = rep.monthlyTarget || 400;
-
-      const monthMap = new Map();
-      repOrders.forEach((o) => {
-        const key = `${o.year}-${pad2(o.month)}`;
-        if (!monthMap.has(key)) monthMap.set(key, 0);
-        if (o.orders !== null) monthMap.set(key, monthMap.get(key) + (o.orders || 0));
-      });
+      const monthMap = monthsByRep.get(String(rep._id)) || new Map();
       const monthsArr = [...monthMap.values()];
       const totalOrders = monthsArr.reduce((s, v) => s + v, 0);
       const avgPerformance = monthsArr.length > 0

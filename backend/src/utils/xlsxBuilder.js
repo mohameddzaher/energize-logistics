@@ -25,7 +25,7 @@ const WORKER = path.join(__dirname, 'xlsxWorker.js');
  * @param {{ sheetName?: string, cols?: Array<{ wch: number }> }} opts
  * @returns {Promise<Buffer>}
  */
-function buildXlsx(aoa, opts = {}) {
+function runBuild(aoa, opts = {}) {
   return new Promise((resolve, reject) => {
     let worker;
     try {
@@ -58,6 +58,41 @@ function buildXlsx(aoa, opts = {}) {
     });
   });
 }
+
+// ── ولا يُبنى مصنَّفان في وقتٍ واحد ──────────────────────────────────────────
+// بناءُ المصنَّف حسابٌ خالصٌ يشغل نواةً كاملةً دقيقةً تقريبًا، والخادمُ نواتان.
+// والخيطُ العاملُ يحمي الخيطَ الرئيسيَّ من التعطّل — وهو يفعل: قِيس أثناء
+// تصديرةٍ واحدةٍ فبقي `/api/auth/me` عند مئةٍ وخمسين جزءًا من الثانية — لكنّه
+// لا يحمي النواتين من الامتلاء. ولمّا كُنست نقاطُ القراءة بأربعةِ طلباتٍ
+// متوازية صادف أن جرت تصديرتان معًا، فامتلأت النواتان وصار نداءٌ يُنجَز في
+// مئتي جزءٍ من الثانية يأخذ **ستَّ عشرةَ ثانيةً ونصفًا**. وليس في النقطتين
+// عطبٌ: قيستا وحدَهما فكانتا 266ms و 220ms.
+//
+// فالبناءُ يُصطَفّ: واحدٌ في كلّ عمليّة. من ضغط «تصدير» ثانيًا ينتظر الأوّل —
+// وهو ينتظره اليوم أيضًا، إذ يتسابقان على النواة نفسِها فيبطؤان معًا ويُبطئان
+// الناسَ كلَّهم. والاصطفافُ يجعل الانتظارَ انتظارَ صاحبِه وحدَه.
+const MAX = Math.max(1, Number(process.env.XLSX_MAX_CONCURRENT || 1));
+let active = 0;
+const waiting = [];
+
+function buildXlsx(aoa, opts = {}) {
+  if (active < MAX) {
+    active++;
+    return runBuild(aoa, opts).finally(release);
+  }
+  return new Promise((resolve, reject) => {
+    waiting.push(() => { active++; runBuild(aoa, opts).finally(release).then(resolve, reject); });
+  });
+}
+
+function release() {
+  active--;
+  const next = waiting.shift();
+  if (next) next();
+}
+
+/** للفحص: كم يُبنى الآن وكم ينتظر. */
+buildXlsx.stats = () => ({ active, waiting: waiting.length, max: MAX });
 
 function buildInline(aoa, opts = {}) {
   const XLSX = require('xlsx');

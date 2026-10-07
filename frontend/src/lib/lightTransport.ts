@@ -18,7 +18,7 @@ export interface LTEmployee {
   cityAr?: string;
   projectAr?: string;
   jobTitleAr?: string;
-  staffKind?: 'rep' | 'admin';
+  staffKind?: 'rep' | 'driver' | 'admin' | 'unknown';
   contractTypeAr?: string;
   registerNumber?: string;
   vehicleTypeAr?: string;
@@ -133,7 +133,7 @@ export interface LTTotals {
   /** مناديبٌ بلا مشرف تفقّد — لا يظهرون لأحدٍ في شاشة التفقّد. */
   noDutySupervisor: number;
   cardGap: number; cardSoon: number;
-  inspectionGap: number; inspectionSoon: number; reps: number; admins: number; working: number; notWorking: number;
+  inspectionGap: number; inspectionSoon: number; reps: number; admins: number; drivers?: number; unknownKind?: number; working: number; notWorking: number;
   onLeave: number; terminated: number; withVehicle: number; withoutVehicle: number;
   hrLinked: number; ownedHere: number; housed: number; unhoused: number;
   byProject: Record<string, number>; byCity: Record<string, number>; byJob: Record<string, number>;
@@ -249,7 +249,13 @@ export function ltTotalsOf(rows: LTEmployee[]): LTTotals {
     inspectionSoon: count((r) => soon(r.inspection)),
     // هذان على الجميع — هما قسمةُ الإجمال نفسِه.
     reps: reps.length,
-    admins: rows.length - reps.length,
+    // ── ولا يُحسَب «الإداريّون» بالطرح ──────────────────────────────────────
+    // كان `rows.length - reps.length`، أي «كلُّ من ليس مندوبًا». وهي القسمةُ
+    // نفسُها التي جعلت تسعةَ عشرَ بلا وظيفةٍ وثلاثةَ سائقين إداريّين. فيُعَدّ
+    // كلُّ نوعٍ باسمه.
+    admins: rows.filter((r) => r.staffKind === 'admin').length,
+    drivers: rows.filter((r) => r.staffKind === 'driver').length,
+    unknownKind: rows.filter((r) => r.staffKind === 'unknown' || !String((r as any).jobTitleAr || '').trim()).length,
     working: count(working),
     notWorking: count((r) => !working(r)),
     onLeave: count((r) => ['إجازة', 'اجازه'].includes(String(r.workStatusShown || ''))),

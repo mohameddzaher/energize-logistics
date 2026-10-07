@@ -303,6 +303,10 @@ const totalsOf = (rows) => {
     inspectionSoon: count((r) => ['warning', 'upcoming'].includes(r.inspection?.state)),
     reps: count((r) => r.staffKind === 'rep'),
     admins: count((r) => r.staffKind === 'admin'),
+    // والسائقُ ميدانٌ لا مكتب، ومن لا وظيفةَ مكتوبةً له لا تنطبق عليه القاعدة —
+    // كلاهما عددٌ قائمٌ بذاته لا زيادةٌ في «الإداريّين».
+    drivers: count((r) => r.staffKind === 'driver'),
+    unknownKind: count((r) => r.staffKind === 'unknown' || !String(r.jobTitleAr || '').trim()),
     working: count(working),
     notWorking: count((r) => !working(r)),
     onLeave: count((r) => r.workStatusShown === 'إجازة' || r.workStatusShown === 'اجازه'),

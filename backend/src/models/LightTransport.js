@@ -103,7 +103,19 @@ const employeeSchema = new mongoose.Schema({
    * مشرفًا كان أو ميكانيكيًّا أو عاملَ نظافة — إداريٌّ يخدم التشغيل. وهو مشتقٌّ
    * من الوظيفة لا يُكتب مرّتين، فلا يختلف الاثنان.
    */
-  staffKind: { type: String, enum: ['rep', 'admin'], default: 'rep', index: true },
+  // ── أربعةٌ لا اثنان ──────────────────────────────────────────────────────
+  // كان النوعان `rep` و`admin` فقط، و«إداريّ» فرعَ الـelse: كلُّ من ليست
+  // وظيفتُه «مندوب» حرفًا صار إداريًّا — بما فيهم من لا وظيفةَ مكتوبةً له.
+  // فقالت الشاشةُ «إداريّون وفنيّون: ٣٨» وفيهم تسعةَ عشرَ بلا وظيفة، وثلاثةُ
+  // سائقين — والإداريّون وأهلُ الحِرَف ستّةَ عشر.
+  //
+  // والقاعدةُ كما قالها صاحبُ القسم: من ليس مندوبَ توصيلٍ ولا سائقًا فهو
+  // إداريّ. فالسائقُ نوعٌ قائمٌ بذاته، لا يُحشَر في الإداريّين.
+  //
+  // و«لا أعرف» ليست تصنيفًا: من لا وظيفةَ مكتوبةً له لا تنطبق عليه القاعدةُ
+  // أصلًا — لا يُقال إنّه ليس مندوبًا، إنّما لم يُكتب. فيُعَدّ `unknown`
+  // ويظهر عددًا يُملأ، لا رقمًا يتضخّم داخل غيره.
+  staffKind: { type: String, enum: ['rep', 'driver', 'admin', 'unknown'], default: 'unknown', index: true },
 
   /**
    * ── المشرفُ المسؤول: حسابٌ على النظام، لا اسمٌ في قائمة ────────────────────
@@ -171,6 +183,9 @@ employeeSchema.index({ name: 'text' });
 
 /** «مندوب» وحدَه مندوب؛ وما سواه إداريّ. يُحسَب قبل كلّ حفظ. */
 const REP_TITLES = ['مندوب', 'مندوب توصيل', 'rep', 'delivery rep'];
+// والسائقُ ليس إداريًّا: هو ميدانٌ كالمندوب، وإن لم يكن مندوبًا. وضعُه في
+// «الإداريّين» يضخّم رقمًا يُقرأ على أنّه عبءٌ مكتبيّ.
+const DRIVER_TITLES = ['سائق', 'سايق', 'driver'];
 /**
  * ── والمشتقُّ لا يُحسَب على حقلٍ لم يُقرأ ────────────────────────────────────
  * `staffKind` يُشتَقّ من الوظيفة. وحفظُ صفٍّ حُمّل بحقولٍ مختارة (`select`)
@@ -184,7 +199,10 @@ const REP_TITLES = ['مندوب', 'مندوب توصيل', 'rep', 'delivery rep'
 employeeSchema.pre('save', function (next) {
   if (this.jobTitleAr === undefined && !this.isNew) return next();
   const j = String(this.jobTitleAr || '').trim().toLowerCase();
-  this.staffKind = REP_TITLES.some((t) => j === t.toLowerCase()) ? 'rep' : 'admin';
+  if (!j) { this.staffKind = 'unknown'; return next(); }
+  if (REP_TITLES.some((t) => j === t.toLowerCase())) this.staffKind = 'rep';
+  else if (DRIVER_TITLES.some((t) => j === t.toLowerCase())) this.staffKind = 'driver';
+  else this.staffKind = 'admin';
   next();
 });
 

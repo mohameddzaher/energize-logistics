@@ -256,17 +256,28 @@ function LightTransportEmployeesInner() {
           «أريد أن أعرف كم على الكفالة، ثمّ مَن هم» — فكلُّ رقمٍ هنا يُضغَط
           فيُفلتَر الجدولُ عليه، وتُعاد الأعدادُ محسوبةً على ما بقي. */}
       {/* ── الإجمالُ وقسمتُه: الصفُّ الوحيدُ عن القسم كلِّه ───────────────────── */}
-      <div className="grid grid-cols-3 gap-2.5">
+      {/* ── و«بلا وظيفة» عددٌ قائمٌ بذاته ───────────────────────────────────
+          كان النوعان «مندوب» و«إداريّ» فقط، والثاني فرعَ الباقي: فصار من لا
+          وظيفةَ مكتوبةً له إداريًّا. قالت البطاقةُ «إداريّون وفنيّون: ٣٨»
+          وفيهم تسعةَ عشرَ بلا وظيفة — والإداريّون ستّة، ومعهم خمسةُ مشرفين
+          وثلاثةُ ميكانيكيّين وثلاثةُ سائقين وعاملا نظافة.
+          «لا أعرف» ليست تصنيفًا: تُعرَض عددًا يُملأ، لا رقمًا يتضخّم داخل
+          غيره. وضغطُها يفتحهم بأسمائهم. */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
         <Stat label={t('الإجمالي', 'Total')} value={totals.total} onClick={clearFilters} on={!activeCount} />
         <Stat label={t('مناديب', 'Reps')} value={totals.reps} accent="text-indigo-600"
           onClick={() => setFilter('staffKind', 'rep')} on={f.staffKind === 'rep'} />
+        <Stat label={t('سائقون', 'Drivers')} value={totals.drivers ?? 0} accent="text-sky-600"
+          onClick={() => setFilter('staffKind', 'driver')} on={f.staffKind === 'driver'} />
         <Stat label={t('إداريون وفنيون', 'Admin & technical')} value={totals.admins} accent="text-teal-600"
           onClick={() => setFilter('staffKind', 'admin')} on={f.staffKind === 'admin'} />
+        <Stat label={t('بلا وظيفة مكتوبة', 'No job title')} value={totals.unknownKind ?? 0} accent="text-rose-600"
+          onClick={() => setFilter('staffKind', 'unknown')} on={f.staffKind === 'unknown'} />
       </div>
       {/* والأساسُ يُكتب، لا يُخمَّن: ما بعد الإجمال وقسمتِه عن المناديب وحدَهم. */}
       <p className="-mt-1 text-[11.5px] text-slate-500">
-        {t(`البطاقات التالية محسوبةٌ على المناديب (${totals.reps}) — لا تشمل ${totals.admins} إداريًّا وفنيًّا ومشرفًا، فليست لهم مركبةٌ ولا كارت تشغيل. وضغطُ أيٍّ منها يفلتر على المناديب أيضًا.`,
-           `The cards below are computed on reps (${totals.reps}) — excluding ${totals.admins} admin/technical staff, who have no vehicle or operating card. Pressing one also filters to reps.`)}
+        {t(`البطاقات التالية محسوبةٌ على المناديب (${totals.reps}) — لا تشمل ${totals.admins} إداريًّا وفنيًّا ومشرفًا ولا ${totals.drivers ?? 0} سائقًا ولا ${totals.unknownKind ?? 0} بلا وظيفةٍ مكتوبة، فليست لهم مركبةٌ ولا كارت تشغيل. وضغطُ أيٍّ منها يفلتر على المناديب أيضًا.`,
+           `The cards below are computed on reps (${totals.reps}) — excluding ${totals.admins} admin/technical, ${totals.drivers ?? 0} drivers and ${totals.unknownKind ?? 0} with no job title, who have no vehicle or operating card. Pressing one also filters to reps.`)}
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
         <Stat label={t('على رأس العمل', 'Working')} value={totals.working} accent="text-emerald-600"

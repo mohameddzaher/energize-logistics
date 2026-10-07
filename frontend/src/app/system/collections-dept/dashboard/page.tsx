@@ -35,6 +35,8 @@ import { Spinner, PageHeader, Field } from '@/components/hr/HRKit';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import CreditAlerts from '@/components/collections/CreditAlerts';
+import ReceivablesTree, { type Tree, type Check, type Query } from '@/components/collections/ReceivablesTree';
+import ReceivablesRows from '@/components/collections/ReceivablesRows';
 import {
   ComposedChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
@@ -47,6 +49,12 @@ interface Side {
   reports: number; total: number; settled: number; outstanding: number;
   settledCount: number; openReports: number;
   top: { name: string; reports: number; outstanding: number; oldest: string | null }[];
+}
+interface Recv {
+  tree: Tree;
+  checks: Check[];
+  officers: { officer: string; count: number; value: number; late: number; lateValue: number; over60: number; over60Value: number }[];
+  parties: { party: string | null; name: string; code: string; officer: string; issueState: string; count: number; value: number; late: number; lateValue: number; over60: number; over60Value: number; oldest: number | null }[];
 }
 interface Dash {
   customers: Side;
@@ -122,6 +130,10 @@ export default function CollectionsDashboardPage() {
   const router = useRouter();
 
   const [data, setData] = useState<Dash | null>(null);
+  // شجرةُ المديونيّة من دفتر الفواتير — راجع components/collections/ReceivablesTree.
+  const [recv, setRecv] = useState<Recv | null>(null);
+  // العقدةُ المفتوحة: صفوفُها تأتي من نفس اشتقاق الخادم الذي حسب البطاقة.
+  const [drill, setDrill] = useState<{ q: Record<string, string>; title: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -138,6 +150,7 @@ export default function CollectionsDashboardPage() {
 
   const load = useCallback(async () => {
     const mine = ++seq.current;
+
     try {
       const p = new URLSearchParams();
       if (from) p.set('from', from);
@@ -145,9 +158,15 @@ export default function CollectionsDashboardPage() {
       if (customer) p.set('customer', customer);
       if (branch) p.set('branch', branch);
       if (age) p.set('age', age);
-      const d = await api.get<Dash>(`/api/collections-dept/dashboard?${p.toString()}`);
+      // ── وقراءتان لا واحدة ────────────────────────────────────────────────
+      // الشجرةُ من دفتر الفواتير، وما تحتها من كشوف التشغيل. ويُطلَبان معًا
+      // بنفس الفلتر فلا تختلف الشاشةُ عن نفسها، ولا ينتظر أحدُهما الآخر.
+      const [d, rv] = await Promise.all([
+        api.get<Dash>(`/api/collections-dept/dashboard?${p.toString()}`),
+        api.get<Recv>(`/api/collections-dept/receivables/overview?${p.toString()}`).catch(() => null),
+      ]);
       // ردٌّ متأخّرٌ لفلترٍ سابق لا يكتب فوق الأحدث.
-      if (mine === seq.current) setData(d);
+      if (mine === seq.current) { setData(d); if (rv) setRecv(rv); }
     } catch (e: any) {
       if (mine === seq.current) notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error');
     }
@@ -275,6 +294,35 @@ export default function CollectionsDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* ── ٠. المديونيّةُ كشجرة ───────────────────────────────────────────────
+          أوّلُ سؤالٍ يُسأل في القسم: كم علينا، وما منه في موعده وما خرج عنه،
+          وما كسر الستّين أمشكلةٌ في اليد أم قضيّة. ومصدرُه **دفترُ الفواتير**
+          لا كشوفُ التشغيل (٩٤٪ من فواتير الدفتر لا كشوفَ لها عندنا) — ولذلك
+          هو نداءٌ آخر، والشجرةُ تُطابق نفسَها بشريط تحقّقٍ أسفلها. */}
+      {recv && (
+        <ReceivablesTree tree={recv.tree} checks={recv.checks} ar={ar}
+          onOpen={(q, title) => setDrill({ q: q as Record<string, string>, title })} />
+      )}
+
+      {/* وبالموظّف: العملُ موزَّعًا لا مجموعًا — لكلٍّ ما عليه وما تأخّر منه. */}
+      {!!recv?.officers?.length && (
+        <Panel title={t('المديونية بموظف التحصيل', 'Receivables by officer')} icon={<UserCheck className="w-4 h-4" />}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
+            {recv.officers.map((o) => (
+              <button key={o.officer} type="button"
+                onClick={() => setDrill({ q: { officer: o.officer === '—' ? '' : o.officer }, title: `${t('مديونية', 'Receivables')} — ${o.officer}` })}
+                className="text-start bg-slate-50 border border-slate-200 rounded-xl p-3 hover:border-[#f37121]/50 transition-colors">
+                <p className="text-[12px] font-semibold text-slate-800">{o.officer}</p>
+                <p className="text-lg font-extrabold tabular-nums text-slate-900">{money(o.value)}</p>
+                <p className="text-[11px] text-slate-500 tabular-nums">
+                  {o.count} {t('فاتورة', 'inv')} · {t('متأخر', 'late')} {money(o.lateValue)} · {t('فوق ٦٠', '60+')} {o.over60}
+                </p>
+              </button>
+            ))}
+          </div>
+        </Panel>
+      )}
 
       {/* ── ١. كم لنا، وكم حصّلنا ──────────────────────────────────────────── */}
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
@@ -472,6 +520,14 @@ export default function CollectionsDashboardPage() {
           </button>
         </div>
       </div>
+
+      {/* صفوفُ العقدة المفتوحة — ومنها يُصنَّف خلافُ العميل. */}
+      <ReceivablesRows
+        open={!!drill} onClose={() => setDrill(null)}
+        title={drill?.title || ''} query={drill?.q || {}}
+        ar={ar} canEdit
+        onChanged={load}
+      />
     </div>
   );
 }

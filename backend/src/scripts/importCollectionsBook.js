@@ -302,13 +302,29 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   // المطابقةُ بالكود أوّلًا ثمّ بالاسم المطويّ. ولا يُخترَع ربطٌ بالتشابه هنا:
   // الملفُّ الجديد يحمل الأكواد التي رُبطت في الاستيراد السابق، فما طابق طابق
   // وما لم يطابق يُنشأ بكوده — والربطُ بالتشابه قرارُ مديرِ التحصيل من شاشته.
-  const ours = await CollectionsParty.find({ kind: 'customer' }).select('name nameKey aliasKeys').lean();
+  const ours = await CollectionsParty.find({ kind: 'customer' }).select('name nameKey aliasKeys code').lean();
+  // ── والمفتاحُ الواحد قد يكون لصفّين ─────────────────────────────────────
+  // في السجلّ أزواجٌ لشركةٍ واحدة يطويهما `fold` إلى مفتاحٍ واحد: «شركة افاق
+  // النماء» بكودٍ من دفتر المحاسبة، و«شركه افاق النماء» بلا كودٍ أنشأها قسمٌ
+  // آخر. وكانت الخريطةُ تحفظ أوّلَ ما وجدت، فيُسنَد الكودُ إلى التوأم الخالي
+  // بينما التوأمُ الآخر لا يزال يحمله (تفريغُه يرتطم بالفهرس فيُترَك) —
+  // فيصير صفّان بنفس (النوع، الاسم المطويّ، الكود) ويردّهما الفهرسُ الفريد،
+  // **فيقف الاستيرادُ وقد مُسحت الفواتيرُ كلُّها**. وقع ذلك فعلًا.
+  //
+  // فتُحفَظ المرشّحاتُ كلُّها، ويُقدَّم عليهنّ من يحمل هذا الكودَ أصلًا.
   const byKey = new Map();
   for (const p of ours) {
-    for (const k of [p.nameKey || fold(p.name), ...(p.aliasKeys || [])]) if (k && !byKey.has(k)) byKey.set(k, p);
+    for (const k of [p.nameKey || fold(p.name), ...(p.aliasKeys || [])]) {
+      if (!k) continue;
+      if (!byKey.has(k)) byKey.set(k, []);
+      byKey.get(k).push(p);
+    }
   }
+  const holderOfCode = new Map();
+  for (const p of ours) if (p.code) holderOfCode.set(String(p.code), p);
   const claimed = new Set();
   const partyOfCode = new Map();
+  const failedAccounts = [];
   let linked = 0; let created = 0;
 
   for (const a of [...accounts.values()].sort((x, y) => String(x.code).localeCompare(String(y.code)))) {
@@ -320,23 +336,43 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
       creditLimit: a.limit || 0, creditDays: a.creditDays || 0, ledger,
       ...(a.status ? { status: a.status } : {}),
     };
-    const match = a.codeOnly ? null : byKey.get(fold(a.name));
-    if (match && !claimed.has(String(match._id))) {
-      claimed.add(String(match._id));
-      await CollectionsParty.updateOne({ _id: match._id }, {
-        $set: set, $addToSet: { aliases: a.name, aliasKeys: fold(a.name) },
-      });
-      partyOfCode.set(a.code, match._id);
-      linked += 1;
-    } else if (!a.codeOnly) {
-      const doc = await CollectionsParty.findOneAndUpdate({ code: a.code }, {
-        $set: { ...set, name: a.name, nameKey: fold(a.name), source: 'collections_workbook', isActive: true },
-      }, { upsert: true, new: true, setDefaultsOnInsert: true });
-      partyOfCode.set(a.code, doc._id);
-      created += 1;
+    // صاحبُ الكود أوّلًا — هو المعروفُ في دفتر الحسابات وعليه المديونيّة؛
+    // ثمّ من يطابق اسمَه ولا كودَ له؛ ثمّ أيُّ مطابقٍ لم يُطالَب به.
+    const cands = a.codeOnly ? [] : (byKey.get(fold(a.name)) || []);
+    const free = (p) => p && !claimed.has(String(p._id));
+    const holder = holderOfCode.get(String(a.code));
+    const match = (free(holder) && holder)
+      || cands.find((p) => free(p) && !p.code)
+      || cands.find((p) => free(p))
+      || null;
+    // ── وحسابٌ واحدٌ لا يُوقِف الدفترَ كلَّه ───────────────────────────────
+    // كان كلُّ كتابةٍ ترفع خطأَها فيقف الاستيراد — وقد مُسحت الفواتيرُ قبله،
+    // فتبقى القاعدةُ بلا دفترٍ أصلًا. ووقع ذلك مرّةً. فما تعذّر يُسمّى ويمضي
+    // الباقي، ويُقال في آخر التشغيل من لم يدخل ولماذا.
+    try {
+      if (match) {
+        claimed.add(String(match._id));
+        await CollectionsParty.updateOne({ _id: match._id }, {
+          $set: set, $addToSet: { aliases: a.name, aliasKeys: fold(a.name) },
+        });
+        partyOfCode.set(a.code, match._id);
+        linked += 1;
+      } else if (!a.codeOnly) {
+        const doc = await CollectionsParty.findOneAndUpdate({ code: a.code }, {
+          $set: { ...set, name: a.name, nameKey: fold(a.name), source: 'collections_workbook', isActive: true },
+        }, { upsert: true, new: true, setDefaultsOnInsert: true });
+        partyOfCode.set(a.code, doc._id);
+        created += 1;
+      }
+    } catch (e) {
+      failedAccounts.push(`${a.code} ${a.name} — ${e.code === 11000 ? 'تكرارٌ في السجلّ (اسمٌ مطويٌّ مكرّر)' : e.message}`);
     }
   }
   console.log(`  ✔ حسابات: رُبطت بسجلٍّ قائم ${linked} · أُنشئت ${created}`);
+  if (failedAccounts.length) {
+    console.log(`  ⚠ حساباتٌ لم تدخل (${failedAccounts.length}) — تُدمَج نسختُها المكرّرة ثمّ يُعاد الاستيراد:`);
+    for (const x of failedAccounts) console.log(`      ${x}`);
+  }
 
   // ═══ ٧ · الفواتير تدخل ══════════════════════════════════════════════════
   // ــ والحسابُ الذي تعرفه الفواتيرُ ولا تعرفه ورقةُ الأعمار يُنشأ هنا ــــــ

@@ -106,6 +106,24 @@ const collectionsPartySchema = new mongoose.Schema({
   // ── شروطُ التحصيل ────────────────────────────────────────────────────────
   paymentTerms: { type: String, trim: true, default: '' },
   creditLimit: { type: Number, default: 0 },
+
+  /**
+   * ── وحالةُ الخلاف مع هذا العميل ─────────────────────────────────────────
+   * فاتورةٌ تأخّرت ستّين يومًا ليست حالةً واحدة: إمّا عميلٌ يتفاوض ويُسدّد
+   * متأخّرًا، وإمّا خلافٌ وصل إلى القضاء. والفرقُ بينهما هو الفرقُ بين مكالمةٍ
+   * أخرى ومحضرٍ — ولوحةُ التحصيل لا تُقرأ بغيره: رقمٌ واحدٌ كبيرٌ لا يقول
+   * أيُّه ما زال في اليد وأيُّه خرج منها.
+   *
+   * ويُكتب على **العميل** لا على الفاتورة: الخلافُ مع صاحب الحساب، وفواتيرُه
+   * كلُّها تتبعه. والتاريخُ يُقيَّد كي يُعرَف منذ متى.
+   */
+  issue: {
+    state: { type: String, enum: ['none', 'negotiating', 'legal'], default: 'none', index: true },
+    note: { type: String, trim: true, default: '' },
+    since: { type: Date, default: null },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    updatedByName: { type: String, trim: true, default: '' },
+  },
   // حالةُ التحصيل قرارٌ بشريٌّ لا مشتقٌّ من الأرقام: عميلٌ متأخّرٌ اتُّفق معه
   // على جدولةٍ ليس متعثّرًا، والرقمُ وحدَه لا يعرف الفرق.
   status: { type: String, trim: true, default: '' },

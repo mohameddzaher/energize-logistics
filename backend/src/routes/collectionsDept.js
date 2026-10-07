@@ -35,6 +35,14 @@ const EDIT_ROLES = [
 
 router.get('/dashboard', authorize(...READ_ROLES), ctrl.dashboard);
 router.get('/dashboard/filters', authorize(...READ_ROLES), ctrl.dashboardFilterOptions);
+
+// ── المديونيّة: الشجرةُ وصفوفُها وحالةُ الخلاف ────────────────────────────
+// لوحةٌ ثانيةٌ مبنيّةٌ على دفتر الفواتير لا على كشوف التشغيل — راجع رأسَ
+// controllers/collectionsReceivablesController لسبب الفصل.
+const recv = require('../controllers/collectionsReceivablesController');
+router.get('/receivables/overview', authorize(...READ_ROLES), recv.overview);
+router.get('/receivables/rows', authorize(...READ_ROLES), recv.rows);
+router.put('/parties/:id/issue', authorize(...EDIT_ROLES), recv.setIssue);
 // قبل `/parties/:id` لا بعده: «filters» لو جاءت بعدَه قُرئت معرّفَ طرف.
 router.get('/parties/filters', authorize(...READ_ROLES), ctrl.filterOptions);
 router.get('/parties', authorize(...READ_ROLES), ctrl.listParties);

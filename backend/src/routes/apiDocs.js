@@ -57,7 +57,12 @@ router.get('/stats', authenticate, (req, res) => {
  */
 router.get('/', (req, res) => {
   const key = String(req.query.key || '');
-  const src = key ? `partner.json?key=${encodeURIComponent(key)}` : 'partner.json';
+  // ── ورابطُ الوثيقة مطلقٌ لا نسبيّ ─────────────────────────────────────────
+  // كان `partner.json` نسبيًّا، والصفحةُ تُخدَم على `/api/docs` بلا شرطةٍ
+  // أخيرة — فيحلُّه المتصفّحُ إلى `/api/partner.json`، وهو مسارٌ لا وجودَ له.
+  // فتُحمَّل الصفحةُ وأداةُ العرضِ سليمةً ثمّ تُطلَب وثيقةٌ تردّ 404، فتظهر
+  // الصفحةُ فارغةً بلا سببٍ ظاهرٍ لمن يفتحها.
+  const src = key ? `/api/docs/partner.json?key=${encodeURIComponent(key)}` : '/api/docs/partner.json';
   res.type('html').send(`<!doctype html>
 <html lang="ar" dir="rtl">
 <head>

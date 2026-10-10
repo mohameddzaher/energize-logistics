@@ -789,10 +789,11 @@ final customsCfg = ResourceConfig(
   // تاريخُ البيان، الملاحظة) — فتُقرأ المعاملةُ كاملةً قبل التعبئة.
   editFullKey: 'clearance',
   searchFields: const ['refNumber', 'customerName', 'blNumber', 'declarationNumber', 'exporterCompany', 'city'],
-  titleOf: (r) => _s(r, 'refNumber').isNotEmpty ? '${_s(r, 'refNumber')} — ${_s(r, 'customerName')}' : _s(r, 'customerName'),
+  // رقمُ البوليصة أوّلًا: به تُعرَف المعاملةُ في القسم — ورقمُها المرجعيُّ بعده.
+  titleOf: (r) => _s(r, 'blNumber').isNotEmpty ? '${_s(r, 'blNumber')} — ${_s(r, 'customerName')}' : _s(r, 'customerName'),
   subtitleOf: (r) => [
-    if (_s(r, 'blNumber').isNotEmpty) 'BL: ${_s(r, 'blNumber')}',
-    if (_s(r, 'exporterCompany').isNotEmpty) _s(r, 'exporterCompany'),
+    if (_s(r, 'refNumber').isNotEmpty) _s(r, 'refNumber'),
+    if (_s(r, 'shippingAgent').isNotEmpty) _s(r, 'shippingAgent'),
     // آخرُ ملاحظةٍ كُتبت على المعاملة — كعمود «ملاحظات» في الموقع.
     if ((r['lastNote'] is Map) && '${r['lastNote']['text'] ?? ''}'.isNotEmpty) '📝 ${r['lastNote']['text']}',
   ].join(' · '),
@@ -815,14 +816,14 @@ final customsCfg = ResourceConfig(
     (_s(r, 'branch') == 'dammam' ? 'الدمام' : 'جدة', T.inkSoft),
   ],
   fields: const [
-    FieldSpec('refNumber', 'الرقم المرجعي', 'Ref number'),
-    FieldSpec('customerName', 'اسم العميل', 'Customer', required: true),
+    // خاناتُ بيانات المعاملة كما في الموقع: البوليصةُ والعميلُ والحاوياتُ ووكيلُ
+    // الشحن والبندُ الجمركيّ — وما عداها رُفع بطلب القسم.
     FieldSpec('blNumber', 'رقم البوليصة BL', 'BL number'),
-    FieldSpec('declarationNumber', 'رقم البيان الجمركي', 'Declaration no.'),
-    FieldSpec('exporterCompany', 'الشركة المصدّرة', 'Exporter'),
-    FieldSpec('countryOfOrigin', 'بلد المنشأ', 'Origin country'),
+    FieldSpec('customerName', 'اسم العميل', 'Customer', required: true),
     FieldSpec('containerCount', 'عدد الحاويات', 'Containers', type: FieldType.number),
-    FieldSpec('invoiceValue', 'قيمة الفاتورة', 'Invoice value', type: FieldType.number),
+    FieldSpec('shippingAgent', 'وكيل الشحن', 'Shipping agent'),
+    FieldSpec('hsCode', 'البند الجمركي HS', 'HS code'),
+    FieldSpec('declarationNumber', 'رقم البيان الجمركي', 'Declaration no.'),
     FieldSpec('branch', 'الفرع', 'Branch', type: FieldType.select, options: [
       ('jeddah', 'جدة', 'Jeddah'), ('dammam', 'الدمام', 'Dammam'),
     ]),

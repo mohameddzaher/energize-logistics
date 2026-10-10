@@ -13,6 +13,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import ExportMenu, { type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import { getCustomsTranslations, getCustomsIdExtraTranslations } from '@/lib/translations';
 import ClearanceAttachments from '@/components/customs/ClearanceAttachments';
+import { SearchableSelect } from '@/components/hr/HRKit';
 import ClearanceNotes from '@/components/customs/ClearanceNotes';
 import PaymentStages from '@/components/customs/PaymentStages';
 
@@ -64,6 +65,14 @@ export default function CustomsDetailPage() {
   }, [params.id, router]);
 
   useEffect(() => { fetchOne(); }, [fetchOne]);
+  // ملفّاتُ العملاء والوكلاء — منها يُختار كما في نموذج الإنشاء.
+  const [parties, setParties] = useState<{ customers: any[]; agents: any[] }>({ customers: [], agents: [] });
+  useEffect(() => {
+    Promise.all([
+      api.get<{ parties: any[] }>('/api/customs-clearance/parties?kind=customer'),
+      api.get<{ parties: any[] }>('/api/customs-clearance/parties?kind=agent'),
+    ]).then(([cu, ag]) => setParties({ customers: cu.parties || [], agents: ag.parties || [] })).catch(() => {});
+  }, []);
   useSocket('customs:updated', useCallback((d: any) => { if (d?.clearance?._id === params.id) setC(d.clearance); }, [params.id]));
 
   // Persist a partial change immediately (gives the "automatic / instant" feel).
@@ -382,8 +391,10 @@ export default function CustomsDetailPage() {
           <Link href="/system/customs" className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"><Back className="w-4 h-4" /></Link>
           <div className="w-10 h-10 rounded-lg bg-[#f37121]/20 flex items-center justify-center"><Ship className="w-5 h-5 text-[#f37121]" /></div>
           <div>
-            <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
-              {c.refNumber}
+            <h1 className="flex flex-wrap items-center gap-2 text-2xl font-bold text-slate-900">
+              {/* رقمُ البوليصة أوّلًا: به تُعرَف المعاملةُ في القسم، ورقمُها بعده. */}
+              <bdi>{c.blNumber || (ar ? 'بلا رقم بوليصة' : 'No BL number')}</bdi>
+              <span className="text-[13px] font-semibold text-slate-400"><bdi>{c.refNumber}</bdi></span>
               {c.isCompleted && (
                 <span className="rounded-md bg-green-100 px-2 py-0.5 text-[11px] font-bold text-green-700">
                   {ar ? 'مقفولة' : 'Closed'}
@@ -530,7 +541,6 @@ export default function CustomsDetailPage() {
           <FieldInput label={ar ? 'موعد التفريغ' : 'Unloading appointment'} type="date" value={c.unloadingAppointment ? String(c.unloadingAppointment).slice(0, 10) : ''} onSave={(v) => patch({ unloadingAppointment: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'مكان التفريغ' : 'Unloading location'} value={c.unloadingLocation} onSave={(v) => patch({ unloadingLocation: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'رقم إذن التسليم' : 'DO number'} value={c.doNumber} onSave={(v) => patch({ doNumber: v })} disabled={!canEdit} />
-          <FieldInput label={ar ? 'رقم تصريح الخروج' : 'Exit permit no.'} value={c.exitPermitNumber} onSave={(v) => patch({ exitPermitNumber: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'أيّام السماح للإرجاع' : 'Return free days'} type="number" value={c.returnFreeDays ?? 0} onSave={(v) => patch({ returnFreeDays: Number(v) || 0 })} disabled={!canEdit} />
           <FieldInput label={ar ? 'آخر موعد إرجاع' : 'Return deadline'} type="date" value={c.returnDeadline} onSave={(v) => patch({ returnDeadline: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'المدينة' : 'City'} value={c.city} onSave={(v) => patch({ city: v })} disabled={!canEdit} />
@@ -567,23 +577,42 @@ export default function CustomsDetailPage() {
               معاملة لا يملؤها أحد ولا يُقرأ منها شيء — والقسمُ يقول إنّها ليست
               من عمله. وخانةٌ تُعرَض ولا تُملأ تُعلّم الناسَ أن يتخطّوا الخانات.
               (الأرقامُ المحفوظةُ قبل اليوم باقيةٌ في السجلّ، لا تُعرَض فحسب.) */}
+          {/* ── خمسُ خاناتٍ والفرع — هي خاناتُ الإنشاء نفسُها ─────────────────
+              القسمُ قال: يبقى رقمُ البوليصة والعميلُ وعددُ الحاويات ووكيلُ
+              الشحن والبندُ الجمركيّ، والباقي لا لزومَ له. (والفرعُ معها لأنّه
+              يُكتب عند الإنشاء، فلا يصير خانةً تُكتب ولا تُصحَّح.)
+              والعميلُ والوكيلُ يُختاران من ملفَّيهما كما في الإنشاء — لا نصًّا
+              حرًّا يفصل المعاملةَ عن ملفّ صاحبها. وما رُفع من الخانات باقٍ في
+              السجلّ بقيمه، لا يُعرَض فحسب. */}
           <FieldInput label={T.blNumber} value={c.blNumber} onSave={(v) => patch({ blNumber: v })} disabled={!canEdit} />
-          <FieldInput label={T.customerName} value={c.customerName} onSave={(v) => patch({ customerName: v })} disabled={!canEdit} />
-          <FieldInput label={T.invoiceDate} type="date" value={c.invoiceDate ? String(c.invoiceDate).slice(0, 10) : ''} onSave={(v) => patch({ invoiceDate: v || null })} disabled={!canEdit} />
-          <FieldInput label={T.port} value={c.port} onSave={(v) => patch({ port: v })} disabled={!canEdit} />
+          <div>
+            <label className="text-slate-500 text-xs mb-1 block">{T.customerName}</label>
+            <SearchableSelect value={String((c as any).customerParty || '')} searchAfter={0} disabled={!canEdit}
+              onChange={(v) => patch({ customerParty: v || null, customerName: (parties.customers.find((p) => p._id === v) || {}).name || (v ? c.customerName : '') })}
+              placeholder={c.customerName || (ar ? 'اختر العميل…' : 'Pick customer…')}
+              searchPlaceholder={ar ? 'اكتب اسم العميل…' : 'Type customer name…'}
+              emptyLabel={ar ? 'لا نتائج — أضِفه من صفحة العملاء' : 'No match — add from customers page'}
+              options={parties.customers.map((p) => ({ value: p._id, label: p.name }))} />
+          </div>
           <FieldInput label={T.containerCount} type="number" value={c.containerCount} onSave={(v) => patch({ containerCount: Number(v) || 0 })} disabled={!canEdit} />
-          <FieldInput label={T.totalWeight} type="number" value={c.totalWeight} onSave={(v) => patch({ totalWeight: Number(v) || 0 })} disabled={!canEdit} />
-          <FieldInput label={T.invoiceValue} type="number" value={c.invoiceValue} onSave={(v) => patch({ invoiceValue: Number(v) || 0 })} disabled={!canEdit} />
-          <FieldInput label={T.exporterCompany} value={c.exporterCompany} onSave={(v) => patch({ exporterCompany: v })} disabled={!canEdit} />
-          <FieldInput label={T.countryOfOrigin} value={c.countryOfOrigin} onSave={(v) => patch({ countryOfOrigin: v })} disabled={!canEdit} />
+          <div>
+            <label className="text-slate-500 text-xs mb-1 block">{T.shippingAgent}</label>
+            <SearchableSelect value={String((c as any).agentParty || '')} searchAfter={0} disabled={!canEdit}
+              onChange={(v) => {
+                const a = parties.agents.find((p) => p._id === v);
+                patch({ agentParty: v || null, shippingAgent: a?.name || (v ? c.shippingAgent : ''), shippingAgentEmail: a?.email || '' });
+              }}
+              placeholder={c.shippingAgent || (ar ? 'اختر الوكيل…' : 'Pick agent…')}
+              searchPlaceholder={ar ? 'اكتب اسم الوكيل…' : 'Type agent name…'}
+              emptyLabel={ar ? 'لا نتائج — أضِفه من صفحة الوكلاء' : 'No match — add from agents page'}
+              options={parties.agents.map((p) => ({ value: p._id, label: p.name }))} />
+          </div>
           <FieldInput label={T.hsCode} value={c.hsCode} onSave={(v) => patch({ hsCode: v })} disabled={!canEdit} />
-          <FieldInput label={T.saberNumber} value={c.saberNumber} onSave={(v) => patch({ saberNumber: v })} disabled={!canEdit} />
-          <FieldInput label={T.assignedTo} value={c.assignedTo} onSave={(v) => patch({ assignedTo: v })} disabled={!canEdit} />
           <FieldSelect label={T.branch} value={c.branch} options={[['jeddah', T.jeddah], ['dammam', T.dammam]]} onSave={(v) => patch({ branch: v })} disabled={!canEdit} />
-          <FieldInput label={T.shippingAgent} value={c.shippingAgent} onSave={(v) => patch({ shippingAgent: v })} disabled={!canEdit} />
-          <FieldInput label={T.shippingAgentEmail} value={c.shippingAgentEmail} onSave={(v) => patch({ shippingAgentEmail: v })} disabled={!canEdit} />
-          {/* الناقلُ — سجلٌّ كالعميل والوكيل، وله صفحتُه وملفُّه. */}
-          <FieldInput label={ar ? 'الناقل' : 'Carrier'} value={c.carrierName} onSave={(v) => patch({ carrierName: v })} disabled={!canEdit} />
+          {/* والقادمةُ يُعدَّل تاريخُها المرتقَبُ من هنا أيضًا — كما من نافذتها. */}
+          {(c as any).upcoming && (
+            <FieldInput label={ar ? 'تاريخ المعاملة المتوقَّع' : 'Expected date'} type="date" value={(c as any).expectedDate || ''} onSave={(v) => patch({ expectedDate: v })} disabled={!canEdit} />
+          )}
           </div>
         </Card>
       </div>

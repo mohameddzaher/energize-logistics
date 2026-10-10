@@ -1,5 +1,6 @@
 'use client';
 
+import UpcomingPanel, { DocChecklist, type UpcomingItem } from '@/components/customs/UpcomingPanel';
 import { useState, useEffect, useCallback } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter } from 'next/navigation';
@@ -79,10 +80,11 @@ function stageBadge(stage: string, cancelled: boolean) {
   return 'bg-[#f37121]/20 text-[#f37121]';
 }
 
+// الميناءُ وبريدُ الوكيل رُفعا من الإنشاء بطلب القسم — البريدُ في ملفّ الوكيل.
 const EMPTY = {
   branch: 'jeddah', blNumber: '', customerName: '', customerParty: '',
-  shippingAgent: '', agentParty: '', shippingAgentEmail: '',
-  port: '', containerCount: 0,
+  shippingAgent: '', agentParty: '',
+  containerCount: 0,
 };
 
 export default function CustomsPage() {
@@ -112,9 +114,9 @@ export default function CustomsPage() {
   // ── القائمتان منفصلتان ──────────────────────────────────────────────────
   // الجاريةُ هي الأصل، والقادمةُ تُفتَح بزرّها: خلطُهما يجعل كلَّ عدٍّ في
   // الشاشة يشمل ما لم يقع بعد.
-  const [upcomingView, setUpcomingView] = useState(false);
+  // (صفحةُ «القادمة» رُفعت: النافذةُ تحملها كلَّها — راجع UpcomingPanel.)
   const [creatingUpcoming, setCreatingUpcoming] = useState(false);
-  const [alerts, setAlerts] = useState<{ count: number; days: number; items: any[] }>({ count: 0, days: 2, items: [] });
+  const [alerts, setAlerts] = useState<{ count: number; days: number; items: any[]; upcoming: UpcomingItem[]; total: number }>({ count: 0, days: 2, items: [], upcoming: [], total: 0 });
   const [showAlerts, setShowAlerts] = useState(false);
   const [search, setSearch] = useState('');
   const [fYear, setFYear] = useState('');
@@ -141,15 +143,18 @@ export default function CustomsPage() {
 
   const fetchList = useCallback(async () => {
     try {
-      const data = await api.get<any>(`/api/customs-clearance${upcomingView ? '?upcoming=true' : ''}`);
+      const data = await api.get<any>('/api/customs-clearance');
       setList(data.clearances || []);
     } catch {}
     setLoading(false);
-  }, [upcomingView]);
+  }, []);
 
   // شارةُ «اقترب موعدُها» — مدّتُها من إعدادات القسم، تُقرأ في كلّ نداء.
   const fetchAlerts = useCallback(async () => {
-    try { setAlerts(await api.get<any>('/api/customs-clearance/upcoming-alerts')); } catch { /* */ }
+    try {
+      const d = await api.get<any>('/api/customs-clearance/upcoming-alerts');
+      setAlerts({ count: d.count || 0, days: d.days ?? 2, items: d.items || [], upcoming: d.upcoming || [], total: d.total || 0 });
+    } catch { /* */ }
   }, []);
 
   useEffect(() => { fetchList(); }, [fetchList]);
@@ -173,7 +178,8 @@ export default function CustomsPage() {
 
   const openCreate = (upcoming = false) => {
     setCreatingUpcoming(upcoming);
-    setForm({ ...EMPTY, ...(upcoming ? { upcoming: true, expectedDate: '' } : {}) });
+    // القادمةُ تُنشأ ومعها أوراقُها الخمس: يُعلَّم ما استُلِم منها الآن.
+    setForm({ ...EMPTY, ...(upcoming ? { upcoming: true, expectedDate: '', documents: {} } : {}) });
     setShowModal(true);
   };
 
@@ -188,7 +194,9 @@ export default function CustomsPage() {
       setShowModal(false);
       fetchList();
       fetchAlerts();
-      if (data?.clearance?._id) router.push(`/system/customs/${data.clearance._id}`);
+      // القادمةُ تبقى في نافذتها — منها تُتابَع أوراقُها وتاريخُها؛ والجاريةُ تُفتَح.
+      if (creatingUpcoming) setShowAlerts(true);
+      else if (data?.clearance?._id) router.push(`/system/customs/${data.clearance._id}`);
     } catch (e: any) { notify(e?.message || 'Failed to save', 'error'); }
     setSaving(false);
   };
@@ -253,8 +261,8 @@ export default function CustomsPage() {
   const withReturn = (c: Clearance) => ({ ...c, _returnState: RETURN_LABEL[returnState(c)][ar ? 0 : 1] });
 
   const exportColumns: ExportColumn[] = [
-    { header: T.refNumber, key: 'refNumber', width: 18 },
     { header: T.blNumber, key: 'blNumber', width: 18, transform: (v) => v || '—' },
+    { header: T.refNumber, key: 'refNumber', width: 18 },
     { header: T.customerName, key: 'customerName', width: 22, transform: (v) => v || '—' },
     { header: T.branch, key: 'branch', width: 14, transform: (v) => (v === 'dammam' ? T.dammam : T.jeddah) },
     { header: ar ? 'المدينة' : 'City', key: 'city', width: 14, transform: (v) => v || '—' },
@@ -299,7 +307,7 @@ export default function CustomsPage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-slate-900">
-              {T.title}{upcomingView ? ` — ${ar ? 'القادمة' : 'upcoming'}` : ''}
+              {T.title}
             </h1>
             <p className="text-slate-500 text-sm">{list.length} {T.xTransactions}</p>
           </div>
@@ -316,21 +324,14 @@ export default function CustomsPage() {
           <button type="button" onClick={() => setShowAlerts(true)}
             className={`relative inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
               alerts.count ? 'bg-amber-50 text-amber-800 hover:bg-amber-100' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}`}
-            title={ar ? `تنبيه المعاملات القادمة (قبل ${alerts.days} يوم)` : `Upcoming alerts (${alerts.days} days ahead)`}>
+            title={ar ? `المعاملات القادمة — ${alerts.count} قرُب موعدها (خلال ${alerts.days} يوم)` : `Upcoming — ${alerts.count} due within ${alerts.days} days`}>
             <Bell className="w-4 h-4" />
-            <span className="hidden sm:inline">{ar ? 'تنبيه المعاملات القادمة' : 'Upcoming alerts'}</span>
+            <span className="hidden sm:inline">{ar ? `المعاملات القادمة (${alerts.total})` : `Upcoming (${alerts.total})`}</span>
             {alerts.count > 0 && (
               <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-amber-500 text-white text-[11px] font-bold">
                 {alerts.count}
               </span>
             )}
-          </button>
-
-          <button type="button" onClick={() => { setUpcomingView((v) => !v); setLoading(true); }}
-            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
-              upcomingView ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}`}>
-            <CalendarClock className="w-4 h-4" />
-            {upcomingView ? (ar ? 'المعاملات الجارية' : 'Current') : (ar ? 'المعاملات القادمة' : 'Upcoming')}
           </button>
 
           {canEdit && (
@@ -428,8 +429,9 @@ export default function CustomsPage() {
           <table className="w-full text-sm min-w-[1160px]">
             <thead>
               <tr className="bg-slate-900">
-                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.refNumber}</th>
+                {/* رقمُ البوليصة قبل رقم المعاملة: به تُعرَف المعاملةُ في القسم. */}
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.blNumber}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.refNumber}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.customerName}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.branch}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'الفترة' : 'Period'}</th>
@@ -448,8 +450,8 @@ export default function CustomsPage() {
               ) : filtered.map((c) => (
                 <tr key={c._id} onClick={() => router.push(`/system/customs/${c._id}`)}
                   className="bg-white hover:bg-slate-50 transition-colors cursor-pointer">
-                  <td className="px-4 py-3 text-slate-900 font-medium">{c.refNumber}</td>
-                  <td className="px-4 py-3 text-slate-700">{c.blNumber || '—'}</td>
+                  <td className="px-4 py-3 text-slate-900 font-semibold">{c.blNumber || '—'}</td>
+                  <td className="px-4 py-3 text-slate-600">{c.refNumber}</td>
                   <td className="px-4 py-3 text-slate-700">{c.customerName || '—'}</td>
                   <td className="px-4 py-3 text-slate-700">{c.branch === 'dammam' ? T.dammam : T.jeddah}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
@@ -519,46 +521,9 @@ export default function CustomsPage() {
 
       {/* Create modal */}
       <AnimatePresence>
-        {/* ── نافذةُ التنبيه ────────────────────────────────────────────────
-            ما اقترب موعدُه أو فاته، مرتَّبًا بالأقرب. ومنها يُفتَح صفُّ المعاملة
-            لتُحوَّل إلى جارية. */}
         {showAlerts && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={() => setShowAlerts(false)}>
-            <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-slate-900">{ar ? 'معاملات قادمة قرُب موعدها' : 'Upcoming transactions due soon'}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {ar ? `خلال ${alerts.days} يوم — تُضبَط من إعدادات القسم` : `Within ${alerts.days} days — set in section settings`}
-                  </p>
-                </div>
-                <button type="button" onClick={() => setShowAlerts(false)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="p-5 space-y-2">
-                {alerts.items.length === 0 && (
-                  <p className="text-sm text-slate-500 text-center py-8">{ar ? 'لا معاملات قادمة قرُب موعدها.' : 'Nothing due soon.'}</p>
-                )}
-                {alerts.items.map((x: any) => (
-                  <button key={x._id} type="button" onClick={() => { setShowAlerts(false); router.push(`/system/customs/${x._id}`); }}
-                    className="w-full text-start rounded-xl border border-slate-200 hover:border-[#f37121] hover:bg-slate-50 px-4 py-3 transition-colors">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-slate-900 text-sm truncate">{x.customerName || '—'}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          {x.refNumber} {x.blNumber ? `· ${x.blNumber}` : ''} {x.port ? `· ${x.port}` : ''}
-                        </p>
-                      </div>
-                      <span className={`shrink-0 text-xs font-bold rounded-full px-2.5 py-1 ${x.overdue ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
-                        {x.expectedDate}{x.overdue ? ` · ${ar ? 'فات' : 'overdue'}` : ''}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+          <UpcomingPanel items={alerts.upcoming} days={alerts.days} canEdit={canEdit} ar={ar} notify={notify}
+            onClose={() => setShowAlerts(false)} onChanged={() => { fetchAlerts(); fetchList(); }} />
         )}
 
         {showModal && (
@@ -599,22 +564,14 @@ export default function CustomsPage() {
                   <SearchableSelect value={form.agentParty || ''} searchAfter={0}
                     onChange={(v) => {
                       const a = parties.agents.find((p) => p._id === v);
-                      setForm((f: any) => ({ ...f, agentParty: v, shippingAgent: a?.name || '', shippingAgentEmail: a?.email || f.shippingAgentEmail }));
+                      // بريدُ الوكيل يُؤخَذ من ملفّه بلا خانةٍ تُكتب.
+                      setForm((f: any) => ({ ...f, agentParty: v, shippingAgent: a?.name || '', shippingAgentEmail: a?.email || '' }));
                     }}
                     placeholder={ar ? 'اختر الوكيل — اكتب للبحث…' : 'Pick agent — type to search…'}
                     searchPlaceholder={ar ? 'اكتب اسم الوكيل…' : 'Type agent name…'}
                     emptyLabel={ar ? 'لا نتائج — أضِفه من صفحة الوكلاء' : 'No match — add from agents page'}
                     options={parties.agents.map((p) => ({ value: p._id, label: p.name, hint: p.email || '' }))} />
                 </Field>
-                <Field label={T.shippingAgentEmail}>
-                  <input className="cc-input" value={form.shippingAgentEmail}
-                    placeholder={ar ? 'يُملأ تلقائيًّا من ملفّ الوكيل' : 'Autofills from the agent profile'}
-                    onChange={(e) => setForm((f: any) => ({ ...f, shippingAgentEmail: e.target.value }))} />
-                </Field>
-                {/* الموانئُ قائمةٌ تُدار من إعدادات القسم. و«نوع الفاتورة» و«رقم
-                    الفاتورة» و«العملة» رُفعت: خاناتٌ لا يملؤها أحدٌ ولا تُقرأ —
-                    والمحفوظُ منها قبل اليوم باقٍ في السجلّ. */}
-                <Field label={T.port}><ManagedSelect storeLabel type="customs_port" value={form.port} onChange={(v) => setForm((f: any) => ({ ...f, port: v }))} /></Field>
                 <Field label={T.containerCount}><input type="number" className="cc-input" value={form.containerCount} onChange={(e) => setForm((f: any) => ({ ...f, containerCount: Number(e.target.value) }))} /></Field>
                 {/* التاريخُ المرتقَب هو كلُّ الفرق بين معاملةٍ قادمةٍ وجارية —
                     وعليه يقوم التنبيه، فلا تُحفَظ القادمةُ بدونه. */}
@@ -623,6 +580,16 @@ export default function CustomsPage() {
                     <input type="date" className="cc-input" value={form.expectedDate || ''}
                       onChange={(e) => setForm((f: any) => ({ ...f, expectedDate: e.target.value }))} />
                   </Field>
+                )}
+                {/* ── الأوراقُ المطلوبة: ما استُلِم منها الآن ───────────────────
+                    هي قائمةُ «الأوراق المطلوبة» نفسُها داخل المعاملة — تُعلَّم
+                    هنا عند الإنشاء، ثمّ من نافذة القادمة أو من داخل المعاملة. */}
+                {creatingUpcoming && (
+                  <div className="sm:col-span-2">
+                    <label className="text-slate-500 text-xs mb-1.5 block">{ar ? 'الأوراق المطلوبة — علِّم ما استُلِم' : 'Required papers — tick what has been received'}</label>
+                    <DocChecklist value={form.documents} ar={ar}
+                      onToggle={(k, on) => setForm((f: any) => ({ ...f, documents: { ...(f.documents || {}), [k]: on } }))} />
+                  </div>
                 )}
               </div>
               <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">

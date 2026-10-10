@@ -886,12 +886,29 @@ exports.upcomingAlerts = async (req, res) => {
     }).select('refNumber blNumber customerName shippingAgent port expectedDate containerCount branch')
       .sort({ expectedDate: 1 }).lean();
 
+    // ── والقادمةُ كلُّها في النافذة نفسِها ────────────────────────────────
+    // صفحةُ «المعاملات القادمة» رُفعت بطلب القسم: النافذةُ تكفي. فتحمل كلَّ
+    // قادمةٍ — لا ما اقترب وحدَه — ومع كلٍّ منها كم بقي على موعدها وأوراقُها
+    // الخمس، فتُعلَّم الأوراقُ ويُعدَّل التاريخُ من النافذة بلا فتح المعاملة.
+    const all = await CustomsClearance.find({ upcoming: true, cancelled: { $ne: true } })
+      .select('refNumber blNumber customerName shippingAgent expectedDate containerCount branch documents')
+      .sort({ expectedDate: 1 }).lean();
+    const t0 = startOfDay(today).getTime();
+    const daysLeft = (d) => (d ? Math.round((startOfDay(d).getTime() - t0) / DAY_MS) : null);
+
     res.json({
       days,
       count: rows.length,
       today,
       // وما فات موعدُه أحقُّ بالتنبيه ممّا لم يحِن — فيُعلَّم.
       items: rows.map((r) => ({ ...r, overdue: r.expectedDate < today })),
+      upcoming: all.map((r) => ({
+        ...r,
+        daysLeft: daysLeft(r.expectedDate),
+        overdue: !!r.expectedDate && r.expectedDate < today,
+        dueSoon: !!r.expectedDate && r.expectedDate <= until,
+      })),
+      total: all.length,
     });
   } catch (e) {
     console.error('customs upcomingAlerts:', e);

@@ -38,10 +38,27 @@ import { canEditSection } from '@/lib/sections';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
 import { HR_DATE_FIELDS, HR_NUM_RANGES, HR_EMPLOYMENT_LABELS } from '@/lib/hrMaster';
 import MasterNav from '@/components/hr/MasterNav';
-import { gregorianToHijri, hijriToGregorian } from '@/lib/hijri';
+import DatePair from '@/components/hr/DatePair';
+import { bothDates } from '@/lib/hrDates';
 import ContractsTabs from '@/components/hr/ContractsTabs';
 import { HrGroupFormModal, HrGroupClearModal } from '@/components/hr/HrGroupModals';
 import ScrollX from '@/components/system/ScrollX';
+
+/**
+ * ── أين يقع عمودُ «الأيّام المتبقّية» ───────────────────────────────────────
+ * كان يلي تاريخَ الانتهاء الميلاديَّ مباشرةً — فيقع **بين** التاريخ وتوأمه
+ * الهجريّ: «الميلادي ← الأيّام ← الهجري». والقاعدةُ أنّ الهجريَّ يلي ميلاديَّه
+ * بلا فاصل. فالمدّةُ تأتي بعد الزوج كلِّه: تُعاد هنا مفتاحَ الانتهاء حين يكون
+ * `f` آخرَ الزوج (التوأمُ الهجريّ، أو التاريخُ نفسُه إن لم يكن له توأم).
+ */
+const daysAfter = (f: { key: string }, fields: { key: string }[]): string | null => {
+  if (f.key.endsWith('Hijri')) {
+    const base = f.key.slice(0, -'Hijri'.length);
+    return isExpiryField(base) ? base : null;
+  }
+  if (!isExpiryField(f.key)) return null;
+  return fields.some((x) => x.key === `${f.key}Hijri`) ? null : f.key;
+};
 
 const QUICK = [30, 60, 90, 180];
 // حالاتُ الخانة التي تُعرَض عدّاداتٍ وتُختار فلترًا. الأربعُ الأولى هي الغالبة،
@@ -218,9 +235,9 @@ function GroupInner() {
         width: 18,
       },
       // والملفُّ يحمل ما تحمله الشاشة — رقمًا يُرتَّب ويُجمَع لا نصًّا.
-      ...(isExpiryField(f.key) ? [{
-        header: daysColLabel(f.key, ar), key: 'values', width: 16,
-        transform: (_v: any, row: any) => { const n = daysUntil(row.values?.[f.key]); return n === null ? '' : n; },
+      ...(daysAfter(f, g.fields) ? [{
+        header: daysColLabel(daysAfter(f, g.fields)!, ar), key: 'values', width: 16,
+        transform: (_v: any, row: any) => { const n = daysUntil(row.values?.[daysAfter(f, g.fields)!]); return n === null ? '' : n; },
       }] : []),
     ] as ExportColumn[]),
   ];
@@ -435,9 +452,9 @@ function GroupInner() {
                       {ar ? f.ar : f.en}<ArrowUpDown className="w-3 h-3 opacity-60" />
                     </button>
                   </th>,
-                  ...(isExpiryField(f.key) ? [
-                    <th key={`${f.key}__days`} className="px-3 py-3 text-center font-bold whitespace-nowrap">
-                      {daysColLabel(f.key, ar)}
+                  ...(daysAfter(f, g.fields) ? [
+                    <th key={`${daysAfter(f, g.fields)}__days`} className="px-3 py-3 text-center font-bold whitespace-nowrap">
+                      {daysColLabel(daysAfter(f, g.fields)!, ar)}
                     </th>,
                   ] : []),
                 ])}
@@ -581,10 +598,11 @@ function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router, choice
         </td>,
         // المدّةُ تُحسَب عند القراءة — راجع daysUntil. و«بلا تاريخ» تبقى فارغةً
         // لا صفرًا: الصفرُ يعني «ينتهي اليوم» وهو خبرٌ آخر.
-        ...(isExpiryField(f.key) ? [(() => {
-          const n = daysUntil(r.values?.[f.key]);
+        ...(daysAfter(f, fields) ? [(() => {
+          const base = daysAfter(f, fields)!;
+          const n = daysUntil(r.values?.[base]);
           return (
-            <td key={`${f.key}__days`} className="px-3 py-2.5 whitespace-nowrap text-[13px] tabular-nums font-semibold"
+            <td key={`${base}__days`} className="px-3 py-2.5 whitespace-nowrap text-[13px] tabular-nums font-semibold"
               style={{ color: n == null ? undefined : n < 0 ? '#dc2626' : n <= 30 ? '#ea580c' : n <= 90 ? '#f59e0b' : '#16a34a' }}>
               {n == null ? <span className="text-slate-300">—</span> : n}
             </td>
@@ -608,7 +626,6 @@ function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router, choice
 function HrRenewModal({ row, group, groupLabel, expiryField, ar, t, notify, onClose, onDone }: any) {
   const cur = expiryField ? row.values?.[expiryField] : null;
   const [newExpiry, setNewExpiry] = useState('');
-  const [hijri, setHijri] = useState('');
   const [docNum, setDocNum] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -622,7 +639,6 @@ function HrRenewModal({ row, group, groupLabel, expiryField, ar, t, notify, onCl
     d.setFullYear(d.getFullYear() + 1);
     const iso = d.toISOString().slice(0, 10);
     setNewExpiry(iso);
-    setHijri(gregorianToHijri(iso) || '');
   }, [cur]);
 
   const save = async () => {
@@ -644,7 +660,7 @@ function HrRenewModal({ row, group, groupLabel, expiryField, ar, t, notify, onCl
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="w-4 h-4" /></button>
         </div>
         <p className="text-[12px] text-slate-500 mb-4">
-          {row.name} · {groupLabel}{cur ? ` · ${t('ينتهي', 'expires')} ${fmtDate(cur)}` : ''}
+          {row.name} · {groupLabel}{cur ? ` · ${t('ينتهي', 'expires')} ${bothDates(cur, ar)}` : ''}
         </p>
 
         {/* ── ويُكتب بأيِّ التقويمين ────────────────────────────────────────
@@ -652,31 +668,12 @@ function HrRenewModal({ row, group, groupLabel, expiryField, ar, t, notify, onCl
             أو جوازٌ بالميلاديّ. فيُكتب كما هو مكتوبٌ، ويُحوَّل عندنا — والمحفوظُ
             ميلاديٌّ واحدٌ دائمًا (راجع lib/hijri وutils/hijri). والحقلُ الآخرُ
             يُحدَّث أمام عينه فيتأكّد قبل أن يحفظ. */}
-        <label className="block text-[12px] font-semibold text-slate-600 mb-1">{t('تاريخ الانتهاء الجديد', 'New expiry')} *</label>
-        <div className="grid grid-cols-2 gap-2 mb-1">
-          <div>
-            <span className="block text-[10.5px] text-slate-400 mb-0.5">{t('ميلادي', 'Gregorian')}</span>
-            <input type="date" autoFocus value={newExpiry}
-              onChange={(e) => { setNewExpiry(e.target.value); setHijri(gregorianToHijri(e.target.value) || ''); }}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
-          </div>
-          <div>
-            <span className="block text-[10.5px] text-slate-400 mb-0.5">{t('هجري', 'Hijri')}</span>
-            <input dir="ltr" placeholder="1450-06-15" value={hijri}
-              onChange={(e) => {
-                setHijri(e.target.value);
-                const g = hijriToGregorian(e.target.value);
-                if (g) setNewExpiry(g);
-              }}
-              className={`w-full px-3 py-2 rounded-lg border text-sm text-center ${
-                hijri && !hijriToGregorian(hijri) ? 'border-red-300 bg-red-50' : 'border-slate-200'}`} />
-          </div>
+        <div className="grid mb-1">
+          <DatePair label={`${t('تاريخ الانتهاء الجديد', 'New expiry')} *`} value={newExpiry} onChange={setNewExpiry} ar={ar} autoFocus />
         </div>
         <p className="text-[10.5px] text-slate-400 mb-3">
-          {hijri && !hijriToGregorian(hijri)
-            ? t('التاريخ الهجري غير صحيح', 'That Hijri date is not valid')
-            : t('اكتب أيَّهما شئت — والآخرُ يتبعه. والمحفوظ ميلاديٌّ واحد.',
-                'Type either one — the other follows. Only the Gregorian date is stored.')}
+          {t('اكتب أيَّهما شئت — والآخرُ يتبعه. والمحفوظ ميلاديٌّ واحد.',
+             'Type either one — the other follows. Only the Gregorian date is stored.')}
         </p>
 
         <label className="block text-[12px] font-semibold text-slate-600 mb-1">{t('رقم المستند الجديد', 'New document number')}</label>
@@ -752,9 +749,10 @@ function HrBulkRenewModal({ rows, group, groupLabel, ar, onClose, onDone }: {
           </p>
 
           <div>
-            <label className="block text-[12px] font-semibold text-slate-600 mb-1">{t('تاريخ الانتهاء الجديد', 'New expiry')} *</label>
-            <input type="date" autoFocus min={today} value={when} onChange={(e) => setWhen(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+            {/* خانتان كما في تجديد المستند الواحد — والحدُّ الأدنى على الخانتين معًا. */}
+            <div className="grid">
+              <DatePair label={`${t('تاريخ الانتهاء الجديد', 'New expiry')} *`} value={when} onChange={setWhen} ar={ar} min={today} autoFocus />
+            </div>
             {past && <p className="text-[11px] text-red-600 mt-1">{t('التاريخ في الماضي', 'That date is in the past')}</p>}
           </div>
 

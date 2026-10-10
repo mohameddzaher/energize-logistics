@@ -7,7 +7,9 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History, RefreshCw } from 'lucide-react';
-import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, fmtDate, leaveTypeLabel } from '@/lib/hr';
+import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, leaveTypeLabel } from '@/lib/hr';
+import DatePair from '@/components/hr/DatePair';
+import { bothDates, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { LeaveChainBar, LeaveThread } from '@/components/hr/LeaveChain';
 import { Spinner, PageHeader, SearchInput, Badge, Modal, TextArea, PrimaryButton, SearchableSelect, Loader2 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -173,11 +175,17 @@ export default function HRLeavesPage() {
   // ولا يبتّ من هنا إلا في محطّةٍ قائمة؛ الخادمُ يتحقّق أنّها محطّةُ القارئ.
   const actionable = (l: LeaveRequest | null) => !!l && ['pending_manager', 'pending_hr', 'pending_finance', 'pending_executive'].includes(l.status);
 
+  // «من الميلادي» لا تُقرأ — فالاسمُ الأساسيُّ «تاريخ البداية/النهاية».
+  const FROM_LABEL = ar ? 'تاريخ البداية' : 'Start date';
+  const TO_LABEL = ar ? 'تاريخ النهاية' : 'End date';
+  const fromLabels = pairLabels(FROM_LABEL, ar);
+  const toLabels = pairLabels(TO_LABEL, ar);
   const exportColumns: ExportColumn[] = [
     { header: 'Employee', key: 'employee', transform: (v: any) => empName(v), width: 22 },
     { header: 'Type', key: 'leaveType', transform: (v: any) => leaveTypeLabel(v, 'en'), width: 16 },
-    { header: 'From', key: 'startDate', width: 14 },
-    { header: 'To', key: 'endDate', width: 14 },
+    // كلُّ تاريخٍ عمودان متجاوران: الميلاديُّ ثمّ هجريُّه المشتقّ (lib/hrDates).
+    ...exportDatePair(FROM_LABEL, 'startDate', ar),
+    ...exportDatePair(TO_LABEL, 'endDate', ar),
     { header: 'Days', key: 'days', width: 8 },
     { header: 'Status', key: 'status', width: 16 },
     { header: 'Reason', key: 'reason', width: 28 },
@@ -269,17 +277,11 @@ export default function HRLeavesPage() {
                 }))}
               />
             </div>
-            <div>
-              <label className="text-slate-500 text-xs mb-1 block">{ar ? 'من' : 'From'}</label>
-              <input type="date" value={backForm.startDate} onChange={(e) => setBackForm((f: any) => ({ ...f, startDate: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm [color-scheme:light]" />
-            </div>
-            <div>
-              <label className="text-slate-500 text-xs mb-1 block">{ar ? 'إلى' : 'To'}</label>
-              <input type="date" value={backForm.endDate} min={backForm.startDate || undefined}
-                onChange={(e) => setBackForm((f: any) => ({ ...f, endDate: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm [color-scheme:light]" />
-            </div>
+            {/* لكلّ تاريخٍ خانتان: الميلاديّةُ ثمّ الهجريّة — وما يُرسَل ميلاديٌّ وحدَه. */}
+            <DatePair label={FROM_LABEL} ar={ar} inputClassName="[color-scheme:light]"
+              value={backForm.startDate} onChange={(v) => setBackForm((f: any) => ({ ...f, startDate: v }))} />
+            <DatePair label={TO_LABEL} ar={ar} inputClassName="[color-scheme:light]" min={backForm.startDate || undefined}
+              value={backForm.endDate} onChange={(v) => setBackForm((f: any) => ({ ...f, endDate: v }))} />
           </div>
           {!!days && (
             <p className="text-slate-900 text-sm font-semibold">
@@ -317,15 +319,17 @@ export default function HRLeavesPage() {
                 «١٤/٠٩ → ١٩/٠٩» في خانةٍ واحدة يُقرأ سطرًا واحدًا، ولا يُفرَز
                 ولا يُقارَن بجاره. والسؤالان مختلفان: متى يبدأ غيابُه، ومتى
                 يعود. فعمودان يُقرآن ويُرتَّبان. */}
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'من' : 'From'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'إلى' : 'To'}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{fromLabels[0]}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{fromLabels[1]}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{toLabels[0]}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{toLabels[1]}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colDays}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colBalance}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colStatus}</th>
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={10} className="text-center text-slate-800 py-12">{tx.noRequests}</td></tr>
+              <tr><td colSpan={12} className="text-center text-slate-800 py-12">{tx.noRequests}</td></tr>
             ) : filtered.map((l) => {
               const over = l.balanceSnapshot && typeof l.balanceSnapshot.remainingAfter === 'number' && l.balanceSnapshot.remainingAfter < 0;
               return (
@@ -344,8 +348,10 @@ export default function HRLeavesPage() {
                   </td>
                   <td {...pin.td(3, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{idOf(l.employee)}</td>
                   <td className="px-4 py-3 text-slate-700">{leaveTypeLabel(l.leaveType, lang)}</td>
-                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{fmtDate(l.startDate)}</td>
-                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{fmtDate(l.endDate)}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{gregCell(l.startDate)}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums" dir="ltr">{hijriCell(l.startDate)}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{gregCell(l.endDate)}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums" dir="ltr">{hijriCell(l.endDate)}</td>
                   <td className="px-4 py-3 text-slate-700">{l.days}</td>
                   <td className="px-4 py-3"><span className={over ? 'text-red-600' : 'text-slate-700'}>{l.balanceSnapshot?.accrued ?? '—'}{over ? ` ${tx.over}` : ''}</span></td>
                   <td className="px-4 py-3">
@@ -380,8 +386,8 @@ export default function HRLeavesPage() {
             <Row k={tx.fieldEmployee} v={empName(review.employee, lang)} />
             <Row k={tx.fieldRequester} v={userName(review.requester)} />
             <Row k={tx.fieldType} v={leaveTypeLabel(review.leaveType, lang)} />
-            <Row k={ar ? 'من' : 'From'} v={fmtDate(review.startDate)} />
-            <Row k={ar ? 'إلى' : 'To'} v={fmtDate(review.endDate)} />
+            <Row k={FROM_LABEL} v={bothDates(review.startDate, ar)} />
+            <Row k={TO_LABEL} v={bothDates(review.endDate, ar)} />
             <Row k={tx.colDays} v={`${review.days} ${tx.dayUnit}`} />
             <Row k={tx.fieldAccrued} v={`${review.balanceSnapshot?.accrued ?? '—'} ${tx.dayUnit}`} />
             <Row k={tx.fieldRemainingAfter} v={`${review.balanceSnapshot?.remainingAfter ?? '—'} ${tx.dayUnit}`} danger={typeof review.balanceSnapshot?.remainingAfter === 'number' && review.balanceSnapshot.remainingAfter < 0} />

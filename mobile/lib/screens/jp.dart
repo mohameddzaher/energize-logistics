@@ -229,6 +229,56 @@ class _JpScreenState extends State<JpScreen> {
     }));
   }
 
+  /// تعليقاتُ المهمّة — تُقرأ ويُكتب فيها من أُسنِدت إليه ومن أسندها ومديرُ القسم.
+  Future<void> _comments(Map<String, dynamic> t) async {
+    final text = TextEditingController();
+    var list = List<Map<String, dynamic>>.from(t['comments'] ?? []);
+    final canWrite = (t['can'] ?? {})['comment'] == true;
+    await showModalBottomSheet<void>(
+      context: context, isScrollControlled: true, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (c) => StatefulBuilder(builder: (c, set) => Padding(
+        padding: EdgeInsets.fromLTRB(16, 18, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(tr('التعليقات', 'Comments'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          Text((t['title'] ?? '').toString(), style: const TextStyle(color: T.inkSoft, fontSize: 12.5)),
+          const SizedBox(height: 10),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(c).size.height * 0.4),
+            child: list.isEmpty
+                ? Padding(padding: const EdgeInsets.all(16), child: Text(tr('لا تعليقات بعد', 'No comments yet'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint)))
+                : ListView(shrinkWrap: true, children: [
+                    for (final m in list) Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text((m['byName'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+                        Text((m['text'] ?? '').toString(), style: const TextStyle(fontSize: 13)),
+                      ]),
+                    ),
+                  ]),
+          ),
+          if (canWrite) Row(children: [
+            Expanded(child: TextField(controller: text, decoration: InputDecoration(isDense: true, hintText: tr('اكتب تعليقًا…', 'Write a comment…'), border: const OutlineInputBorder()))),
+            const SizedBox(width: 8),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: T.navy),
+              onPressed: () async {
+                final v = text.text.trim(); if (v.isEmpty) return;
+                try {
+                  final r = await Api.instance.post('/api/jp/tasks/${t['_id']}/comments', {'text': v});
+                  text.clear();
+                  set(() => list = List<Map<String, dynamic>>.from(r['task']?['comments'] ?? list));
+                } catch (e) { _say(e); }
+              },
+              child: Text(tr('إرسال', 'Send')),
+            ),
+          ]),
+        ]),
+      )),
+    );
+    _load();
+  }
+
   Future<void> _delete(Map<String, dynamic> t) async {
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
       title: Text(tr('تأكيد الحذف', 'Confirm delete')),
@@ -400,6 +450,11 @@ class _JpScreenState extends State<JpScreen> {
             ),
           ])),
           Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+            if (can['comment'] == true || List.from(t['comments'] ?? []).isNotEmpty) TextButton.icon(
+              onPressed: () => _comments(t),
+              icon: const Icon(Icons.mode_comment_outlined, size: 18, color: T.inkSoft),
+              label: Text('${List.from(t['comments'] ?? []).length}', style: const TextStyle(color: T.inkSoft)),
+            ),
             if (can['attach'] == true) IconButton(tooltip: tr('إرفاق', 'Attach'), icon: const Icon(Icons.attach_file, size: 20, color: T.inkSoft), onPressed: () async {
               final p = await pickFileAsDataUrl(); if (p == null) return;
               await _run(() => Api.instance.post('/api/jp/tasks/${t['_id']}/attachments', {'dataUrl': p.dataUrl, 'fileName': p.fileName}));
@@ -585,6 +640,7 @@ class JpDashScreen extends StatefulWidget {
 class _JpDashScreenState extends State<JpDashScreen> {
   Map<String, dynamic>? _d;
   String? _error;
+  String _assignee = '';
   late final void Function() _onLive;
 
   @override
@@ -594,7 +650,7 @@ class _JpDashScreenState extends State<JpDashScreen> {
 
   Future<void> _load() async {
     try {
-      final d = Map<String, dynamic>.from(await Api.instance.get('/api/jp/dashboard?${_qs(widget.scope, widget.section)}'));
+      final d = Map<String, dynamic>.from(await Api.instance.get('/api/jp/dashboard?${_qs(widget.scope, widget.section)}${_assignee.isEmpty ? '' : '&assignee=$_assignee'}'));
       if (mounted) setState(() { _d = d; _error = null; });
     } catch (e) { if (mounted) setState(() => _error = e.toString()); }
   }
@@ -637,7 +693,19 @@ class _JpDashScreenState extends State<JpDashScreen> {
                       subtitle: Text('${r['assignedToName']} · ${dl.$1}', style: TextStyle(fontSize: 12, color: dl.$2)),
                     );
                   }
+                  final team = List<Map<String, dynamic>>.from(d['team'] ?? []);
                   return ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 30), children: [
+                    // اللوحةُ كلُّها لموظّفٍ بعينه — كما في الموقع.
+                    DropdownButtonFormField<String>(
+                      initialValue: team.any((m) => m['_id'] == _assignee) ? _assignee : '', isExpanded: true,
+                      decoration: InputDecoration(isDense: true, labelText: management ? tr('المدير', 'Manager') : tr('الموظّف', 'Employee'), border: const OutlineInputBorder()),
+                      items: [
+                        DropdownMenuItem(value: '', child: Text(management ? tr('كلُّ المديرين', 'All managers') : tr('كلُّ الموظّفين', 'All employees'))),
+                        for (final m in team) DropdownMenuItem(value: m['_id'].toString(), child: Text((m['name'] ?? '').toString(), overflow: TextOverflow.ellipsis)),
+                      ],
+                      onChanged: (v) { setState(() => _assignee = v ?? ''); _load(); },
+                    ),
+                    const SizedBox(height: 10),
                     GridView.count(
                       crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
                       crossAxisSpacing: 8, mainAxisSpacing: 8, childAspectRatio: 1.45,

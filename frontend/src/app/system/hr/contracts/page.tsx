@@ -8,7 +8,7 @@ import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import { FileText, Plus, Edit, Ban, Check, Trash2, RefreshCw } from 'lucide-react';
-import { isHRStaff, Contract, Employee, CONTRACT_STATUS, empName, fmtDate, today } from '@/lib/hr';
+import { isHRStaff, Contract, Employee, CONTRACT_STATUS, empName, today } from '@/lib/hr';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal, Field, TextInput, Select, SearchableSelect, TextArea, Loader2 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getHrContractsTranslations } from '@/lib/translations';
@@ -17,6 +17,8 @@ import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel'
 import { localFilterFields, applyLocalFilters, type LocalFieldDef } from '@/lib/localFilters';
 import ScrollX from '@/components/system/ScrollX';
 import { useColumnFilters } from '@/hooks/useColumnFilters';
+import DatePair from '@/components/hr/DatePair';
+import { gregCell, hijriCell, hijriDay, pairLabels, exportDatePair } from '@/lib/hrDates';
 
 const EMPTY = { employee: '', type: 'fixed', startDate: '', endDate: '', durationMonths: 12, annualLeaveDays: 21, jobTitle: '', basicSalary: 0, allowances: 0, probationMonths: 3, notes: '',
   iqamaNumber: '', contractProfession: '', sponsorRegistration: '', contractNumber: '' };
@@ -177,8 +179,11 @@ export default function ContractsPage() {
       contractNumber: (c: Contract) => c.contractNumber || '',
       profession: (c: Contract) => c.contractProfession || c.jobTitle || '',
       type: (c: Contract) => (c.type === 'unlimited' ? tx.typeUnlimited : tx.typeFixed),
-      startDate: (c: Contract) => fmtDate(c.startDate),
-      endDate: (c: Contract) => (c.endDate ? fmtDate(c.endDate) : ''),
+      startDate: (c: Contract) => gregCell(c.startDate),
+      endDate: (c: Contract) => (c.endDate ? gregCell(c.endDate) : ''),
+      // التوأمُ الهجريُّ مشتقٌّ من التاريخ نفسِه — يُرسَم ويُفلتَر ويُصدَّر بالقارئ ذاتِه.
+      startDateHijri: (c: Contract) => hijriDay(c.startDate),
+      endDateHijri: (c: Contract) => hijriDay(c.endDate),
       startYear: (c: Contract) => year(c.startDate),
       endYear: (c: Contract) => year(c.endDate),
       annualLeave: (c: Contract) => c.annualLeaveText || `${c.annualLeaveDays} ${tx.daysShort}`,
@@ -230,6 +235,12 @@ export default function ContractsPage() {
       || (c.contractProfession || '').toLowerCase().includes(search.toLowerCase());
   });
 
+  // «البداية الميلادي» لا تُقرأ — فالاسمُ الأساسيُّ «تاريخ البداية».
+  const START_LABEL = ar ? 'تاريخ البداية' : 'Start date';
+  const END_LABEL = ar ? 'تاريخ النهاية' : 'End date';
+  const startLabels = pairLabels(START_LABEL, ar);
+  const endLabels = pairLabels(END_LABEL, ar);
+
   const exportColumns: ExportColumn[] = [
     { header: tx.colEmployee, key: 'employee', transform: (v: any) => empName(v), width: 22 },
     { header: ar ? 'الهوية' : 'ID number', key: 'iqamaNumber', width: 16, transform: (_v: any, r: any) => read.idNumber(r) || '—' },
@@ -237,8 +248,9 @@ export default function ContractsPage() {
     { header: ar ? 'رقم العقد' : 'Contract no.', key: 'contractNumber', width: 16, transform: (v: any) => v || '—' },
     { header: ar ? 'المهنة في العقد' : 'Contract profession', key: 'contractProfession', width: 22, transform: (v: any) => v || '—' },
     { header: tx.colType, key: 'type', width: 12 },
-    { header: tx.colStart, key: 'startDate', width: 14 },
-    { header: tx.colEnd, key: 'endDate', width: 14 },
+    // كلُّ تاريخٍ عمودان متجاوران: الميلاديُّ ثمّ هجريُّه (راجع lib/hrDates).
+    ...exportDatePair(START_LABEL, 'startDate', ar),
+    ...exportDatePair(END_LABEL, 'endDate', ar),
     { header: tx.colAnnualLeave, key: 'annualLeaveDays', width: 14, transform: (v: any, r: any) => r?.annualLeaveText || v },
     { header: ar ? 'فترة التجربة' : 'Probation', key: 'probationText', width: 14, transform: (v: any, r: any) => v || (r?.probationMonths ? `${r.probationMonths}` : '—') },
     { header: ar ? 'السجل' : 'CR number', key: 'sponsorRegistration', width: 16, transform: (v: any) => v || '—' },
@@ -302,8 +314,10 @@ export default function ContractsPage() {
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('contractNumber', ar ? 'رقم العقد' : 'Contract no.')}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('profession', ar ? 'المهنة في العقد' : 'Contract profession')}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('type', tx.colType)}</th>
-            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('startDate', tx.thStart)}</th>
-            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('endDate', tx.thEnd)}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('startDate', startLabels[0])}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('startDateHijri', startLabels[1])}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('endDate', endLabels[0])}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('endDateHijri', endLabels[1])}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('annualLeave', tx.thAnnualLeave)}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('probation', ar ? 'فترة التجربة' : 'Probation')}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('cr', ar ? 'السجل' : 'CR number')}</th>
@@ -311,7 +325,7 @@ export default function ContractsPage() {
           </tr></thead>
           <tbody>
             {shown.length === 0 ? (
-              <tr><td colSpan={14} className="text-center text-slate-800 py-12">{tx.noContracts}</td></tr>
+              <tr><td colSpan={16} className="text-center text-slate-800 py-12">{tx.noContracts}</td></tr>
             ) : shown.map((c) => (
               <tr key={c._id} className="group border-b border-slate-200/70 hover:bg-slate-100">
                 <td {...pin.td(0, 'px-4 py-3', BG)}>
@@ -340,8 +354,10 @@ export default function ContractsPage() {
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.contractNumber || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{c.contractProfession || c.jobTitle || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{c.type === 'unlimited' ? tx.typeUnlimited : tx.typeFixed}</td>
-                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{fmtDate(c.startDate)}</td>
-                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.endDate ? fmtDate(c.endDate) : '—'}</td>
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{gregCell(c.startDate)}</td>
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums" dir="ltr">{hijriCell(c.startDate)}</td>
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{gregCell(c.endDate)}</td>
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums" dir="ltr">{hijriCell(c.endDate)}</td>
                 {/* «غير مطلوب» حالةٌ سليمة لا صفرٌ ناقص — تُكتب كما هي. */}
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.annualLeaveText || `${c.annualLeaveDays} ${tx.daysShort}`}</td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.probationText || (c.probationMonths ? `${c.probationMonths} ${ar ? 'شهر' : 'mo'}` : '—')}</td>
@@ -378,8 +394,9 @@ export default function ContractsPage() {
           </Field>
           <Field label={tx.fieldType}><Select value={form.type} onChange={(e) => set('type', e.target.value)}><option value="fixed">{tx.optFixedTerm}</option><option value="unlimited">{tx.typeUnlimited}</option></Select></Field>
           <Field label={tx.fieldDuration}><TextInput type="number" value={form.durationMonths} onChange={(e) => set('durationMonths', Number(e.target.value))} /></Field>
-          <Field label={tx.fieldStartDate}><TextInput type="date" value={form.startDate || ''} onChange={(e) => set('startDate', e.target.value)} /></Field>
-          <Field label={tx.fieldEndDate}><TextInput type="date" value={form.endDate || ''} onChange={(e) => set('endDate', e.target.value)} /></Field>
+          {/* خانتان لكلّ تاريخ — الميلاديّةُ ثمّ الهجريّة، وما يُرسَل ميلاديٌّ وحدَه. */}
+          <DatePair label={tx.fieldStartDate} value={form.startDate || ''} onChange={(v) => set('startDate', v)} ar={ar} />
+          <DatePair label={tx.fieldEndDate} value={form.endDate || ''} onChange={(v) => set('endDate', v)} ar={ar} />
           <Field label={tx.fieldAnnualLeaveDays}><TextInput type="number" value={form.annualLeaveDays} onChange={(e) => set('annualLeaveDays', Number(e.target.value))} /></Field>
           <Field label={tx.fieldProbation}><TextInput type="number" value={form.probationMonths} onChange={(e) => set('probationMonths', Number(e.target.value))} /></Field>
           <Field label={tx.fieldJobTitle}><TextInput value={form.jobTitle} onChange={(e) => set('jobTitle', e.target.value)} /></Field>
@@ -414,10 +431,10 @@ export default function ContractsPage() {
               : 'The current contract is closed as “renewed” (not deleted), a successor is created, and the renewal is recorded in the employee’s history.'}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label={ar ? 'بداية العقد الجديد *' : 'New start date *'}>
-              <TextInput type="date" value={renewForm.startDate} onChange={(e) => setRenewForm((f) => ({ ...f, startDate: e.target.value }))} /></Field>
-            <Field label={ar ? 'نهاية العقد الجديد' : 'New end date'}>
-              <TextInput type="date" value={renewForm.endDate} onChange={(e) => setRenewForm((f) => ({ ...f, endDate: e.target.value }))} /></Field>
+            <DatePair label={ar ? 'تاريخ بداية العقد الجديد *' : 'New start date *'} ar={ar}
+              value={renewForm.startDate} onChange={(v) => setRenewForm((f) => ({ ...f, startDate: v }))} />
+            <DatePair label={ar ? 'تاريخ نهاية العقد الجديد' : 'New end date'} ar={ar}
+              value={renewForm.endDate} onChange={(v) => setRenewForm((f) => ({ ...f, endDate: v }))} />
             <Field label={ar ? 'أيام الإجازة السنوية' : 'Annual leave days'}>
               <TextInput type="number" value={renewForm.annualLeaveDays} onChange={(e) => setRenewForm((f) => ({ ...f, annualLeaveDays: e.target.value }))} /></Field>
             {/* ── والمهنةُ تُراجَع هنا، اختياريّةً ──────────────────────────

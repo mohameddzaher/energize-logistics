@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
+import '../services/hijri.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
@@ -117,7 +118,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
 
   String _d(dynamic v) {
     final d = v != null ? DateTime.tryParse(v.toString()) : null;
-    return d == null ? '—' : '${d.day}/${d.month}/${d.year}';
+    return d == null ? '—' : '${d.day}/${d.month}/${d.year}${hijriDay(v).isEmpty ? '' : ' · ${hijriDay(v)} ${tr('هـ', 'AH')}'}';
   }
 
   /// يطوي همزاتِ العربيّة وتاءَها المربوطة كي لا يفشل البحثُ بفارق همزة.
@@ -235,7 +236,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                               firstDate: DateTime(DateTime.now().year - 5), lastDate: DateTime.now());
                           if (d != null) setSt(() => start = d);
                         },
-                        child: Text('${tr('من', 'From')}: ${fmt(start)}'),
+                        child: Text('${tr('من', 'From')}: ${fmt(start)}${start == null ? '' : '\n${hijriHint(start, ar: Lang.instance.ar)}'}', textAlign: TextAlign.center),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -246,7 +247,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                               firstDate: start!, lastDate: DateTime.now().add(const Duration(days: 365)));
                           if (d != null) setSt(() => end = d);
                         },
-                        child: Text('${tr('إلى', 'To')}: ${fmt(end)}'),
+                        child: Text('${tr('إلى', 'To')}: ${fmt(end)}${end == null ? '' : '\n${hijriHint(end, ar: Lang.instance.ar)}'}', textAlign: TextAlign.center),
                       ),
                     ),
                   ]),

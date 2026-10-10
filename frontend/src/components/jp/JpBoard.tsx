@@ -14,7 +14,8 @@
  * ── والمكوِّناتُ الفرعيّةُ خارج جسم الرسم ─────────────────────────────────
  * مكوِّنٌ يُعرَّف داخل الرسم يُهدَم ويُبنى مع كلّ ضغطة مفتاح فتضيع الكتابة.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
@@ -27,7 +28,7 @@ import {
 import { Spinner, PageHeader, Modal, Field, TextInput, TextArea, Select, PrimaryButton } from '@/components/hr/HRKit';
 import {
   CalendarCheck, Plus, Check, Paperclip, Trash2, Pencil, FolderKanban, Clock, ChevronDown,
-  Phone, MessageCircle, MapPin, Mail, Users, MoreHorizontal, X, Send, CornerDownLeft, Loader2,
+  Phone, MessageCircle, MapPin, Mail, Users, MoreHorizontal, X, Send, CornerDownLeft, Loader2, MessageSquare, ArrowRight, ArrowLeft,
 } from 'lucide-react';
 
 const ACTION_ICON: Record<string, React.ReactNode> = {
@@ -147,8 +148,9 @@ function MoreFields({ d, set, projects, ar, allowFiles }: {
   );
 }
 
-function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onAttach, onRemoveFile, onHandDown, meId }: {
+function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onAttach, onRemoveFile, onHandDown, onComment, meId }: {
   task: JpTask; now: number; ar: boolean; busy: boolean; meId: string;
+  onComment: (t: JpTask, text: string) => Promise<boolean>;
   onDone: (t: JpTask) => void; onReopen: (t: JpTask) => void; onEdit: (t: JpTask) => void; onDelete: (t: JpTask) => void;
   onAttach: (t: JpTask, f: File) => void; onRemoveFile: (t: JpTask, id: string) => void; onHandDown: (t: JpTask) => void;
 }) {
@@ -157,6 +159,17 @@ function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onA
   const done = task.status === 'done';
   const href = contactHref(task.action, task.contact);
   const mine = jpId(task.assignedTo) === meId;
+  // التعليقاتُ مطويّةٌ حتى تُطلَب — والمكتوبُ حالةُ هذه البطاقة وحدَها.
+  const [showComments, setShowComments] = useState(false);
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const comments = task.comments || [];
+  const send = async () => {
+    if (!text.trim() || sending) return;
+    setSending(true);
+    if (await onComment(task, text.trim())) setText('');
+    setSending(false);
+  };
   return (
     <li className={`bg-white border rounded-2xl p-4 shadow-sm transition-colors ${
       task.state === 'overdue' ? 'border-red-200' : done ? 'border-slate-200 opacity-80' : 'border-slate-200'}`}>
@@ -243,6 +256,36 @@ function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onA
               )}
             </div>
           )}
+
+          {(comments.length > 0 || task.can.comment) && (
+            <div className="mt-2">
+              <button type="button" onClick={() => setShowComments((v) => !v)}
+                className="inline-flex items-center gap-1 text-[12px] text-slate-500 hover:text-slate-900">
+                <MessageSquare className="w-3.5 h-3.5" />
+                {comments.length ? t(`التعليقات (${comments.length})`, `Comments (${comments.length})`) : t('أضف تعليقًا', 'Add a comment')}
+              </button>
+              {showComments && (
+                <div className="mt-2 space-y-2 rounded-xl bg-slate-50 border border-slate-200 p-3">
+                  {comments.map((c) => (
+                    <div key={c._id} className="text-[12.5px]">
+                      <span className="font-semibold text-slate-800">{c.byName}</span>
+                      <span className="mx-1.5 text-[11px] text-slate-400">{new Date(c.at).toLocaleString(ar ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
+                      <p className="text-slate-700 whitespace-pre-wrap">{c.text}</p>
+                    </div>
+                  ))}
+                  {task.can.comment && (
+                    <div className="flex gap-2">
+                      <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
+                        placeholder={t('اكتب تعليقًا…', 'Write a comment…')}
+                        className="flex-1 px-3 py-2 rounded-lg bg-white border border-slate-200 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                      <button type="button" onClick={send} disabled={sending || !text.trim()}
+                        className="px-3 py-2 rounded-lg bg-slate-900 text-white text-[12.5px] font-semibold disabled:opacity-40">{t('إرسال', 'Send')}</button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </li>
@@ -252,12 +295,18 @@ function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onA
 type Box = 'mine' | 'sent' | 'all';
 type Status = '' | 'open' | 'overdue' | 'done';
 
-export default function JpBoard({ scope, section }: { scope: JpScope; section?: string }) {
+function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
   const { confirm, notify } = useDialog();
   const q = qs(scope, section);
+  // ── المشروعُ صفحةٌ لها رابط ───────────────────────────────────────────────
+  // فتحُ مشروعٍ يغيّر الرابط (`?project=`): زرُّ الرجوع يعود منه، والرابطُ يُرسَل.
+  const router = useRouter();
+  const pathname = usePathname() || '';
+  const project = useSearchParams()?.get('project') || '';
+  const setProject = useCallback((id: string) => { router.push(id ? `${pathname}?project=${id}` : pathname); }, [router, pathname]);
 
   const [me, setMe] = useState<JpMe | null>(null);
   const [denied, setDenied] = useState('');
@@ -266,7 +315,6 @@ export default function JpBoard({ scope, section }: { scope: JpScope; section?: 
   const [projects, setProjects] = useState<JpProject[]>([]);
   const [box, setBox] = useState<Box>('mine');
   const [status, setStatus] = useState<Status>('open');
-  const [project, setProject] = useState('');
   const [assignee, setAssignee] = useState('');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
@@ -310,7 +358,8 @@ export default function JpBoard({ scope, section }: { scope: JpScope; section?: 
     const token = begin();
     try {
       const p = new URLSearchParams(q);
-      p.set('box', box);
+      // داخل المشروع تُعرَض مهامُّه كلُّها (ممّا يراه السائل) لا صندوقٌ منها.
+      p.set('box', project ? 'all' : box);
       if (status) p.set('status', status);
       if (project) p.set('project', project);
       if (assignee) p.set('assignee', assignee);
@@ -328,6 +377,8 @@ export default function JpBoard({ scope, section }: { scope: JpScope; section?: 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me, q, box, status, project, assignee]);
   useEffect(() => { load(); }, [load]);
+  // داخل المشروع تُعرَض كلُّ حالاته أوّلًا: ما تمّ جزءٌ من صورته.
+  useEffect(() => { setStatus(project ? '' : 'open'); }, [project]);
 
   // حيّة: أيُّ تغييرٍ في هذه الخطّة يعيد القراءة.
   useSocket('jp:changed', useCallback((d: { scope?: string; section?: string }) => {
@@ -399,6 +450,9 @@ export default function JpBoard({ scope, section }: { scope: JpScope; section?: 
     setBusyId(task._id);
     try { await api.post(`/api/jp/tasks/${task._id}/attachments`, await fileToDataUrl(file)); load(); } catch (e) { say(e); } finally { setBusyId(''); }
   };
+  const comment = async (task: JpTask, text: string) => {
+    try { await api.post(`/api/jp/tasks/${task._id}/comments`, { text }); load(); return true; } catch (e) { say(e); return false; }
+  };
   const removeFile = async (task: JpTask, id: string) => {
     try { await api.delete(`/api/jp/tasks/${task._id}/attachments/${id}`); load(); } catch (e) { say(e); }
   };
@@ -419,7 +473,7 @@ export default function JpBoard({ scope, section }: { scope: JpScope; section?: 
   };
   const deleteProject = async (p: JpProject) => {
     if (!(await confirm({ message: t(`حذفُ مشروع «${p.name}»؟ مهامُّه تبقى بلا مشروع.`, `Delete project “${p.name}”? Its tasks stay, without a project.`), confirmLabel: t('حذف', 'Delete') }))) return;
-    try { await api.delete(`/api/jp/projects/${p._id}`); if (project === p._id) setProject(''); load(); } catch (e) { say(e); }
+    try { await api.delete(`/api/jp/projects/${p._id}`); if (project === p._id) setProject(''); else load(); } catch (e) { say(e); }
   };
 
   // ── الإنزال: مديرُ القسم يُسند ما كُلِّف به إلى موظّفٍ عنده ───────────────
@@ -451,6 +505,9 @@ export default function JpBoard({ scope, section }: { scope: JpScope; section?: 
   if (!me) return <Spinner />;
 
   const management = scope === 'management';
+  const current = project ? projects.find((p) => p._id === project) || null : null;
+  // من عليه مهامُّ في المشروع وكم — ممّا يراه السائل.
+  const people = current ? [...tasks.reduce((m, x) => m.set(x.assignedToName, (m.get(x.assignedToName) || 0) + 1), new Map<string, number>())] : [];
   const boxes: { key: Box; label: string; n?: number }[] = [
     { key: 'mine', label: t('المُسنَدة إليّ', 'Assigned to me'), n: counts.mine },
     { key: 'sent', label: t('ما أسندتُه', 'Assigned by me'), n: counts.sent },
@@ -501,11 +558,64 @@ export default function JpBoard({ scope, section }: { scope: JpScope; section?: 
           <ChevronDown className={`w-4 h-4 transition-transform ${more ? 'rotate-180' : ''}`} />
           {more ? t('إخفاء التفاصيل', 'Hide details') : t('تفاصيل أكثر: طريقة التواصل، مشروع، مرفق', 'More: contact method, project, attachment')}
         </button>
-        {more && <MoreFields d={draft} set={patchDraft} projects={projects} ar={ar} allowFiles />}
+        {more && <MoreFields d={draft} set={patchDraft} projects={current ? [] : projects} ar={ar} allowFiles />}
+        {current && <p className="text-[12px] text-slate-500">{t(`تُضاف إلى مشروع «${current.name}».`, `Added to project “${current.name}”.`)}</p>}
       </div>
 
+      {/* ── صفحةُ المشروع ─────────────────────────────────────────────────── */}
+      {current && (
+        <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <button type="button" onClick={() => setProject('')} className="inline-flex items-center gap-1 text-[12.5px] text-slate-500 hover:text-slate-900">
+                {isRTL ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}{t('كلُّ المشروعات', 'All projects')}
+              </button>
+              <h2 className="mt-1 flex items-center gap-2 text-lg font-extrabold text-slate-900">
+                <FolderKanban className="w-5 h-5 text-[#f37121]" />{current.name}
+                {current.status === 'closed' && <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[11px] font-semibold">{t('مغلق', 'Closed')}</span>}
+              </h2>
+              {current.description && <p className="mt-1 text-[13px] text-slate-600 whitespace-pre-wrap">{current.description}</p>}
+              <p className="mt-1.5 text-[12px] text-slate-500">
+                {current.createdByName ? t(`أنشأه ${current.createdByName}`, `Created by ${current.createdByName}`) : ''}
+                {current.endDate ? ` · ${t('ينتهي في', 'Ends')} ${new Date(current.endDate).toLocaleDateString(ar ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+              </p>
+            </div>
+            {me.canManage && (
+              <div className="flex items-center gap-2 text-[12.5px]">
+                <button type="button" onClick={() => setProjForm({ _id: current._id, name: current.name, description: current.description || '', endDate: current.endDate ? String(current.endDate).slice(0, 10) : '' })} className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:border-[#f37121]/60">{t('تعديل', 'Edit')}</button>
+                <button type="button" onClick={() => toggleProject(current)} className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:border-[#f37121]/60">{current.status === 'active' ? t('إغلاق المشروع', 'Close project') : t('إعادة فتح', 'Reopen')}</button>
+                <button type="button" onClick={() => deleteProject(current)} className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-red-600 hover:border-red-200">{t('حذف', 'Delete')}</button>
+              </div>
+            )}
+            {management && !me.canManage && !!mySection && (
+              <button type="button" onClick={() => openHand({ project: current })} className="px-3 py-1.5 rounded-lg border border-[#f37121]/40 text-[#f37121] text-[12.5px] font-semibold">{t('إسنادُ مهامّي فيه إلى موظّف', 'Assign my tasks to staff')}</button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-slate-100 rtl:divide-x-reverse">
+            {[
+              [t('المهامّ', 'Tasks'), String(current.total || 0), 'text-slate-900'],
+              [t('تمّت', 'Done'), String(current.done || 0), 'text-emerald-600'],
+              [t('متأخّرة', 'Late'), String(current.overdue || 0), current.overdue ? 'text-red-600' : 'text-slate-400'],
+              [t('الإنجاز', 'Progress'), `${current.total ? Math.round(((current.done || 0) / current.total) * 100) : 0}%`, 'text-slate-900'],
+            ].map(([label, value, tone]) => (
+              <div key={label} className="px-5 py-3">
+                <p className="text-[11.5px] text-slate-500">{label}</p>
+                <p className={`text-xl font-extrabold tabular-nums ${tone}`}>{value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="h-1.5 bg-slate-100"><div className="h-full bg-emerald-500" style={{ width: `${current.total ? Math.round(((current.done || 0) / current.total) * 100) : 0}%` }} /></div>
+          {people.length > 0 && (
+            <div className="px-5 py-3 flex flex-wrap items-center gap-1.5 border-t border-slate-100">
+              <span className="text-[12px] text-slate-500 me-1">{t('المشاركون:', 'People:')}</span>
+              {people.map(([name, n]) => <span key={name} className="px-2.5 py-1 rounded-full bg-slate-100 text-[12px] text-slate-700">{name} <span className="tabular-nums text-slate-400">{n}</span></span>)}
+            </div>
+          )}
+        </section>
+      )}
+
       {/* ── المشروعات ─────────────────────────────────────────────────────── */}
-      {projects.length > 0 && (
+      {!current && projects.length > 0 && (
         <div className="flex gap-2.5 overflow-x-auto pb-1">
           <button type="button" onClick={() => setProject('')}
             className={`shrink-0 px-4 py-2.5 rounded-xl border text-sm font-semibold ${project === '' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200'}`}>
@@ -516,7 +626,7 @@ export default function JpBoard({ scope, section }: { scope: JpScope; section?: 
             const on = project === p._id;
             return (
               <div key={p._id} className={`shrink-0 w-56 rounded-xl border p-3 ${on ? 'border-[#f37121] bg-orange-50/50' : 'border-slate-200 bg-white'} ${p.status === 'closed' ? 'opacity-60' : ''}`}>
-                <button type="button" onClick={() => setProject(on ? '' : p._id)} className="w-full text-start">
+                <button type="button" onClick={() => setProject(p._id)} className="w-full text-start" title={t('افتح المشروع', 'Open project')}>
                   <p className="flex items-center gap-1.5 text-[13.5px] font-bold text-slate-900 truncate"><FolderKanban className="w-4 h-4 text-[#f37121] shrink-0" />{p.name}</p>
                   <p className="mt-1 text-[11.5px] text-slate-500 tabular-nums">
                     {t(`${p.done || 0} من ${p.total || 0} تمّت`, `${p.done || 0} of ${p.total || 0} done`)}
@@ -544,17 +654,17 @@ export default function JpBoard({ scope, section }: { scope: JpScope; section?: 
 
       {/* ── الفلاتر ───────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2">
-        {boxes.map((b) => (
+        {!current && boxes.map((b) => (
           <Chip key={b.key} on={box === b.key} onClick={() => setBox(b.key)}>
             {b.label}{b.n ? <span className="ms-1.5 tabular-nums opacity-80">{b.n}</span> : null}
           </Chip>
         ))}
-        <span className="w-px h-5 bg-slate-200 mx-1" />
+        {!current && <span className="w-px h-5 bg-slate-200 mx-1" />}
         <Chip on={status === 'open'} onClick={() => setStatus('open')}>{t('القائمة', 'Open')}</Chip>
         <Chip on={status === 'overdue'} onClick={() => setStatus('overdue')}>{t('المتأخّرة', 'Late')}</Chip>
         <Chip on={status === 'done'} onClick={() => setStatus('done')}>{t('التي تمّت', 'Done')}</Chip>
         <Chip on={status === ''} onClick={() => setStatus('')}>{t('الكلّ', 'All')}</Chip>
-        {me.canManage && box === 'all' && (
+        {me.canManage && (box === 'all' || !!current) && (
           <select value={assignee} onChange={(e) => setAssignee(e.target.value)} aria-label={t('الموظّف', 'Person')}
             className="ms-auto px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-[12.5px] text-slate-700">
             <option value="">{management ? t('كلُّ المديرين', 'All managers') : t('كلُّ الموظّفين', 'Everyone')}</option>
@@ -575,7 +685,7 @@ export default function JpBoard({ scope, section }: { scope: JpScope; section?: 
             <TaskCard key={task._id} task={task} now={now} ar={ar} busy={busyId === task._id} meId={me.me}
               onDone={(x) => { setDoneFor(x); setDoneNote(''); setDoneFile(null); }} onReopen={reopen}
               onEdit={startEdit} onDelete={remove} onAttach={attach} onRemoveFile={removeFile}
-              onHandDown={(x) => openHand({ task: x })} />
+              onHandDown={(x) => openHand({ task: x })} onComment={comment} />
           ))}
         </ul>
       )}
@@ -663,4 +773,9 @@ export default function JpBoard({ scope, section }: { scope: JpScope; section?: 
       </Modal>
     </div>
   );
+}
+
+// `useSearchParams` يحتاج حدَّ تعليقٍ عند البناء الثابت — يُوضَع هنا مرّةً، لا في ستّين صفحة.
+export default function JpBoard(props: { scope: JpScope; section?: string }) {
+  return <Suspense fallback={<Spinner />}><JpBoardInner {...props} /></Suspense>;
 }

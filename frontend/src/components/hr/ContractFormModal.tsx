@@ -8,6 +8,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import { Check } from 'lucide-react';
 import { Modal, Field, TextInput, Select, TextArea, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
+import DatePair from '@/components/hr/DatePair';
 
 const EMPTY = { type: 'fixed', startDate: '', endDate: '', durationMonths: 12, annualLeaveDays: 21, probationMonths: 3, jobTitle: '', basicSalary: 0, allowances: 0, notes: '' };
 
@@ -64,8 +65,9 @@ export default function ContractFormModal({ open, contract, employeeId, onClose,
       <Group title={t('Term', 'المدة')}>
         <Field label={t('Type', 'النوع')}><Select value={form.type} onChange={(e) => set('type', e.target.value)}><option value="fixed">{t('Fixed term', 'محدد المدة')}</option><option value="unlimited">{t('Unlimited', 'غير محدد')}</option></Select></Field>
         <Field label={t('Duration (months)', 'المدة (أشهر)')}><TextInput type="number" value={form.durationMonths} onChange={(e) => set('durationMonths', Number(e.target.value))} /></Field>
-        <Field label={t('Start date', 'تاريخ البداية')}><TextInput type="date" value={form.startDate || ''} onChange={(e) => set('startDate', e.target.value)} /></Field>
-        <Field label={t('End date', 'تاريخ النهاية')}><TextInput type="date" value={form.endDate || ''} onChange={(e) => set('endDate', e.target.value)} /></Field>
+        {/* لكلّ تاريخٍ خانتان: الميلاديّةُ ثمّ الهجريّة — وما يُرسَل ميلاديٌّ وحدَه. */}
+        <DatePair label={t('Start date', 'تاريخ البداية')} value={form.startDate || ''} onChange={(v) => set('startDate', v)} ar={ar} />
+        <DatePair label={t('End date', 'تاريخ النهاية')} value={form.endDate || ''} onChange={(v) => set('endDate', v)} ar={ar} />
       </Group>
 
       <Group title={t('Leave & probation', 'الإجازات والاختبار')}>

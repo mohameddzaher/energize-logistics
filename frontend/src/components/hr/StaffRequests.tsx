@@ -17,6 +17,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
+import { hijriDay, hijriLong } from '@/lib/hrDates';
 import {
   Inbox, Send, Plus, Check, X, UserCog, Clock, CheckCircle2, XCircle, Search, ExternalLink, Users,
 } from 'lucide-react';
@@ -232,6 +233,8 @@ export default function StaffRequests({ side, section = 'B2C' }: { side: 'sectio
                   {r.body ? <p className="text-sm text-slate-600 whitespace-pre-wrap mt-0.5">{r.body}</p> : null}
                   <p className="text-[11px] text-slate-400 mt-1">
                     {t('من', 'From')} {r.createdByName || '—'} · {new Date(r.createdAt).toLocaleString(ar ? 'ar-EG' : 'en-GB')}
+                    {/* والهجريُّ بعد الميلاديّ مباشرةً — قاعدةُ القسم (lib/hrDates). */}
+                    {hijriDay(r.createdAt) ? ` · ${hijriLong(r.createdAt, ar)} ${t('هـ', 'AH')}` : ''}
                     {r.receivedByName ? ` · ${t('استلمها', 'received by')} ${r.receivedByName}` : ''}
                     {r.decidedByName ? ` · ${t('أجابها', 'answered by')} ${r.decidedByName}` : ''}
                   </p>

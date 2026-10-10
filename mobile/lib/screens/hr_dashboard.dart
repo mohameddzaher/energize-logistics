@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
+import '../services/hijri.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
@@ -139,7 +140,7 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                                   Expanded(
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                       Text(d['employeeName'] ?? '', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
-                                      Text('${(Lang.instance.ar ? d['docAr'] : d['docEn']) ?? d['docType'] ?? ''} · ${(d['expiry'] ?? '').toString().split('T').first}',
+                                      Text('${(Lang.instance.ar ? d['docAr'] : d['docEn']) ?? d['docType'] ?? ''} · ${bothDates(d['expiry'], ar: Lang.instance.ar, empty: '')}',
                                           style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
                                     ]),
                                   ),

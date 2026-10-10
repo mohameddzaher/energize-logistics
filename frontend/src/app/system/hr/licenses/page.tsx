@@ -6,7 +6,9 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { ScrollText, Plus, Edit, Trash2, Check, Building2 } from 'lucide-react';
-import { isHRStaff, fmtDate, daysUntil, expiryBadge } from '@/lib/hr';
+import { isHRStaff, daysUntil, expiryBadge } from '@/lib/hr';
+import DatePair from '@/components/hr/DatePair';
+import { gregCell, hijriCell, hijriDay, pairLabels, exportDatePair } from '@/lib/hrDates';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Pick, SmallBadge, Modal, Field, TextInput, Select, TextArea, Loader2 } from '@/components/hr/HRKit';
 import { getHrLicensesTranslations } from '@/lib/translations';
@@ -134,11 +136,13 @@ export default function LicensesPage() {
     return { total: licenses.length, expired, soon, valid, categories: categories.length, locations: locations.length };
   }, [licenses, categories.length, locations.length]);
 
+  const expiryLabels = pairLabels(tx.thExpiry, ar);
   const exportColumns: ExportColumn[] = [
     { header: tx.thCategory, key: 'category', width: 26 },
     { header: tx.thName, key: 'name', width: 40 },
     { header: tx.thDuration, key: 'duration', width: 16 },
-    { header: tx.thExpiry, key: 'expiryDate', width: 14 },
+    // تاريخُ الانتهاء عمودان متجاوران: الميلاديُّ ثمّ هجريُّه المشتقّ (lib/hrDates).
+    ...exportDatePair(tx.thExpiry, 'expiryDate', ar),
     { header: tx.thLocation, key: 'location', width: 16 },
     { header: tx.thDaysLeft, key: 'expiryDate', transform: (v: any) => { const d = daysUntil(v); return d === null ? '' : d; }, width: 12 },
   ];
@@ -156,7 +160,8 @@ export default function LicensesPage() {
     name: (l) => l.name || '',
     category: (l) => l.category || '',
     duration: (l) => l.duration || '',
-    expiry: (l) => fmtDate(l.expiryDate),
+    expiry: (l) => gregCell(l.expiryDate),
+    expiryHijri: (l) => hijriDay(l.expiryDate),
     location: (l) => l.location || '',
     daysLeft: (l) => { const d = daysUntil(l.expiryDate); return d === null ? '' : (d < 0 ? tx.expiredLabel : `${d} ${tx.dayUnit}`); },
   }, filtered, ar ? 'ar' : 'en');
@@ -225,13 +230,14 @@ export default function LicensesPage() {
             <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{cf.head('name', tx.thName)}</th>
             <th className="text-start font-semibold px-4 py-3">{cf.head('category', tx.thCategory)}</th>
             <th className="text-start font-semibold px-4 py-3">{cf.head('duration', tx.thDuration)}</th>
-            <th className="text-start font-semibold px-4 py-3">{cf.head('expiry', tx.thExpiry)}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('expiry', expiryLabels[0])}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('expiryHijri', expiryLabels[1])}</th>
             <th className="text-start font-semibold px-4 py-3">{cf.head('location', tx.thLocation)}</th>
             <th className="text-start font-semibold px-4 py-3">{cf.head('daysLeft', tx.thDaysLeft)}</th>
           </tr></thead>
           <tbody>
             {shown.length === 0 ? (
-              <tr><td colSpan={7} className="text-center text-slate-800 py-12">{tx.empty}</td></tr>
+              <tr><td colSpan={8} className="text-center text-slate-800 py-12">{tx.empty}</td></tr>
             ) : shown.map((l) => {
               const b = expiryBadge(l.expiryDate, lang);
               const d = daysUntil(l.expiryDate);
@@ -246,7 +252,8 @@ export default function LicensesPage() {
                   <td {...pin.td(1, 'px-4 py-3 text-slate-900 font-medium', 'bg-white group-hover:bg-slate-100')}>{l.name}</td>
                   <td className="px-4 py-3 text-slate-800">{l.category}</td>
                   <td className="px-4 py-3 text-slate-700">{l.duration || '—'}</td>
-                  <td className="px-4 py-3 text-slate-700">{fmtDate(l.expiryDate)}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{gregCell(l.expiryDate)}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums" dir="ltr">{hijriCell(l.expiryDate)}</td>
                   <td className="px-4 py-3 text-slate-700">{l.location || '—'}</td>
                   <td className="px-4 py-3">{d === null ? <span className="text-slate-700">—</span> : b && <SmallBadge bg={b.bg} text={b.text} label={d < 0 ? tx.expiredLabel : `${d} ${tx.dayUnit}`} />}</td>
                 </tr>
@@ -267,8 +274,9 @@ export default function LicensesPage() {
           <Field label={tx.fieldCategory} span2><TextInput list="license-categories" value={form.category} onChange={(e) => set('category', e.target.value)} /></Field>
           <Field label={tx.fieldName} span2><TextInput value={form.name} onChange={(e) => set('name', e.target.value)} /></Field>
           <Field label={tx.fieldDuration}><TextInput value={form.duration} onChange={(e) => set('duration', e.target.value)} placeholder={ar ? 'سنوي / 3 سنوات' : 'Annual / 3 years'} /></Field>
-          <Field label={tx.fieldExpiry}><TextInput type="date" value={form.expiryDate || ''} onChange={(e) => set('expiryDate', e.target.value)} /></Field>
           <Field label={tx.fieldLocation}><TextInput list="license-locations" value={form.location} onChange={(e) => set('location', e.target.value)} /></Field>
+          {/* خانتان في صفٍّ واحد: الميلاديّةُ ثمّ الهجريّة — وما يُرسَل ميلاديٌّ وحدَه. */}
+          <DatePair label={tx.fieldExpiry} value={form.expiryDate || ''} onChange={(v) => set('expiryDate', v)} ar={ar} />
           <Field label={tx.fieldNotes} span2><TextArea rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
         </div>
       </Modal>

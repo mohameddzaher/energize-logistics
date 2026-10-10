@@ -12,6 +12,7 @@ import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, TextInput, Sel
 import { getHrMyRequestsTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import ScrollX from '@/components/system/ScrollX';
+import { gregDay, hijriCell, pairLabels } from '@/lib/hrDates';
 
 export default function MyRequestsPage() {
   const { notify, confirm } = useDialog();
@@ -80,11 +81,15 @@ export default function MyRequestsPage() {
     setBusy(false);
   };
 
+  // «آخر تحديث الميلادي» لا تُقرأ — فالاسمُ الأساسيُّ «تاريخ آخر تحديث».
+  const updatedLabels = pairLabels(ar ? 'تاريخ آخر تحديث' : 'Last updated', ar);
   const exportColumns: ExportColumn[] = [
     { header: tx.colCategory, key: 'category', transform: (v) => categoryLabel(v, lang), width: 22 },
     { header: tx.colSubject, key: 'subject', width: 32 },
     { header: tx.colStatus, key: 'status', transform: (v) => (ar ? REQUEST_STATUS[v]?.ar : REQUEST_STATUS[v]?.en) || v, width: 16 },
-    { header: tx.colUpdated, key: 'updatedAt', transform: (v) => fmtDateTime(v), width: 20 },
+    // الميلاديُّ بساعته، وبعده مباشرةً هجريُّ اليوم نفسِه (lib/hrDates).
+    { header: updatedLabels[0], key: 'updatedAt', transform: (v) => fmtDateTime(v), width: 22 },
+    { header: updatedLabels[1], key: 'updatedAt', type: 'hijri', transform: (v) => gregDay(v), width: 16 },
   ];
   // طلباتي أنا وحدي، والجدول يعرضها كلَّها بلا بحثٍ ولا فلتر — فـ«المعروض» هو
   // «الكلّ» حرفيًّا، وفصلُهما خيارين يوهم بفرقٍ لا وجود له.
@@ -108,17 +113,19 @@ export default function MyRequestsPage() {
             <th className="text-start font-semibold px-4 py-3">{tx.colCategory}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colSubject}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colStatus}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.colUpdated}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{updatedLabels[0]}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{updatedLabels[1]}</th>
             <th className="text-end font-semibold px-4 py-3 w-24" />
           </tr></thead>
           <tbody>
-            {requests.length === 0 ? <tr><td colSpan={5} className="text-center text-slate-800 py-10">{tx.noRequests}</td></tr> :
+            {requests.length === 0 ? <tr><td colSpan={6} className="text-center text-slate-800 py-10">{tx.noRequests}</td></tr> :
               requests.map((r) => (
                 <tr key={r._id} className="border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => setOpen(r)}>
                   <td className="px-4 py-3 text-slate-700">{categoryLabel(r.category, lang)}</td>
                   <td className="px-4 py-3 text-slate-900 font-medium">{r.subject} {!r.readByRequester && <span className="ms-1 inline-block w-2 h-2 rounded-full bg-[#f37121]" />}</td>
                   <td className="px-4 py-3 whitespace-nowrap"><Badge style={REQUEST_STATUS[r.status]} lang={lang} /></td>
-                  <td className="px-4 py-3 text-slate-800 text-xs">{fmtDateTime(r.updatedAt)}</td>
+                  <td className="px-4 py-3 text-slate-800 text-xs whitespace-nowrap">{fmtDateTime(r.updatedAt)}</td>
+                <td className="px-4 py-3 text-slate-800 text-xs whitespace-nowrap tabular-nums" dir="ltr">{hijriCell(r.updatedAt)}</td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     {editable(r) && (
                       <div className="flex items-center justify-end gap-1">
@@ -159,7 +166,7 @@ export default function MyRequestsPage() {
                 return (
                   <div key={m._id || i} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${mine ? 'bg-[#f37121]/20 text-white' : 'bg-slate-100 text-slate-900'}`}>
-                      <p className="text-xs text-slate-500 mb-1">{userName(m.sender)} · {fmtDateTime(m.at)}</p>
+                      <p className="text-xs text-slate-500 mb-1">{userName(m.sender)} · {fmtDateTime(m.at)} · <span dir="ltr" className="tabular-nums">{hijriCell(m.at)}</span>{ar ? ' هـ' : ' AH'}</p>
                       {m.body && <p className="whitespace-pre-wrap">{m.body}</p>}
                       {m.link && <a href={m.link} target="_blank" rel="noreferrer" className="text-[#f37121] underline flex items-center gap-1 mt-1"><Link2 className="w-3 h-3" /> {tx.openLink}</a>}
                       <AttachmentList items={(m as any).attachments} />

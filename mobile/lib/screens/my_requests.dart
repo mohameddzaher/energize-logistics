@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
+import '../services/hijri.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
@@ -42,7 +43,7 @@ String _fmtDate(dynamic v) {
   if (d == null) return '';
   final l = d.toLocal();
   String two(int n) => n.toString().padLeft(2, '0');
-  return '${two(l.day)}/${two(l.month)} ${two(l.hour)}:${two(l.minute)}';
+  return '${two(l.day)}/${two(l.month)} ${two(l.hour)}:${two(l.minute)}${hijriDay(v).isEmpty ? '' : ' · ${hijriDay(v)} ${tr('هـ', 'AH')}'}';
 }
 
 class _MyRequestsScreenState extends State<MyRequestsScreen> {

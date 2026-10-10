@@ -20,6 +20,7 @@ import {
   Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Select,
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import { exportDatePair } from '@/lib/hrDates';
 import { EmployeeFormModal } from '@/components/hr/EmployeeFormModal';
 import { getHrEmployeesTranslations } from '@/lib/translations';
 import ScrollX from '@/components/system/ScrollX';
@@ -136,12 +137,13 @@ export default function HREmployeesPage() {
     { header: tx.colJobTitle, key: 'jobTitle', width: 18 },
     { header: tx.colIdType, key: 'idType', width: 12 },
     { header: tx.colIqama, key: 'iqamaNumber', width: 16 },
-    { header: tx.colIqamaExpiry, key: 'iqamaExpiry', width: 14 },
+    // كلُّ تاريخٍ عمودان متجاوران: الميلاديُّ ثمّ هجريُّه المشتقّ (lib/hrDates).
+    ...exportDatePair(tx.colIqamaExpiry, 'iqamaExpiry', ar),
     { header: tx.colNationalId, key: 'nationalId', width: 16 },
     { header: tx.colNationality, key: 'nationality', width: 14 },
     { header: tx.colPhone, key: 'phone', width: 16 },
     { header: tx.colStatus, key: 'employmentStatus', width: 12 },
-    { header: tx.colHireDate, key: 'hireDate', width: 14 },
+    ...exportDatePair(tx.colHireDate, 'hireDate', ar),
   ];
   // البحث وفلتر الحالة كلاهما على الخادم، فالذاكرة لا تحمل إلّا نتائجهما:
   // زرُّ تصديرٍ واحد كان يكتب «الموظّفون» على ملفٍّ فيه ما طابق كلمة البحث

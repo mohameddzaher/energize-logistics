@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../config.dart';
 import '../services/api.dart';
+import '../services/hijri.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
@@ -144,7 +145,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
 
   String _d(String? v) {
     final d = v != null ? DateTime.tryParse(v) : null;
-    return d == null ? '—' : '${d.day}/${d.month}/${d.year}';
+    return d == null ? '—' : '${d.day}/${d.month}/${d.year}${hijriDay(v).isEmpty ? '' : ' · ${hijriDay(v)} ${tr('هـ', 'AH')}'}';
   }
 
   @override
@@ -443,14 +444,14 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
             Expanded(
               child: OutlinedButton(
                 onPressed: _type.isEmpty ? null : () async { final d = await _pick(_start); if (d != null) setState(() { _start = d; if (_end != null && _end!.isBefore(d)) _end = d; }); },
-                child: Text('${tr('من', 'From')}: ${fmt(_start)}'),
+                child: Text('${tr('من', 'From')}: ${fmt(_start)}${_start == null ? '' : '\n${hijriHint(_start, ar: Lang.instance.ar)}'}', textAlign: TextAlign.center),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: OutlinedButton(
                 onPressed: _type.isEmpty || _start == null ? null : () async { final d = await _pick(_end ?? _start); if (d != null) setState(() => _end = d); },
-                child: Text('${tr('إلى', 'To')}: ${fmt(_end)}'),
+                child: Text('${tr('إلى', 'To')}: ${fmt(_end)}${_end == null ? '' : '\n${hijriHint(_end, ar: Lang.instance.ar)}'}', textAlign: TextAlign.center),
               ),
             ),
           ]),

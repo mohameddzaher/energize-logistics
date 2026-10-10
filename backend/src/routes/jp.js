@@ -27,6 +27,7 @@ router.delete('/tasks/:id', c.deleteTask);
 router.post('/tasks/:id/done', c.setDone);
 router.post('/tasks/:id/hand-down', c.handDown);
 router.post('/tasks/:id/attachments', c.addAttachment);
+router.post('/tasks/:id/comments', c.addComment);
 router.delete('/tasks/:id/attachments/:attId', c.removeAttachment);
 
 router.get('/projects', c.listProjects);

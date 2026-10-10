@@ -17,28 +17,45 @@ import { Columns3, Search, X } from 'lucide-react';
 
 export type ChooserColumn = { key: string; label: string; /** عمودٌ لا يُخفى — كالمفتاح الذي يُعرَف به الصفّ. */ locked?: boolean };
 
-/** يقرأ الاختيارَ المحفوظ، ويعود بالكلّ حين لا يوجد أو حين يتغيّر تعريفُ الأعمدة. */
-export function useVisibleColumns(storageKey: string, columns: ChooserColumn[]) {
+/**
+ * يقرأ الاختيارَ المحفوظ ويحفظه.
+ *
+ * ── والمحفوظُ لا يُقصّ على ما وصل من الأعمدة حتى الآن ──────────────────────
+ * كان يُقرأ مرّةً واحدةً عند أوّل رسمة ويُصفّى على الأعمدة القائمة لحظتَها.
+ * وأعمدةُ ماستر الموارد البشريّة تصل من الخادم **بعد** أوّل رسمة — فكانت
+ * القائمةُ لحظةَ القراءة أربعةَ أعمدةٍ ثابتة، فيُقصّ الاختيارُ المحفوظُ عليها
+ * ويضيع: يختار المستخدمُ عشرين عمودًا، يحدّث الصفحةَ، فيجد أربعة.
+ *
+ * فالمحفوظُ يبقى كما كُتب، و«الظاهر» يُشتقّ منه ومن الأعمدة القائمة في كلّ
+ * رسمة — فمتى وصلت الأعمدةُ ظهر اختيارُه كاملًا.
+ *
+ * `defaults`: ما يظهر لمن لم يختر بعد (وإلّا فالكلّ).
+ */
+export function useVisibleColumns(storageKey: string, columns: ChooserColumn[], opts?: { defaults?: string[] }) {
   const allKeys = useMemo(() => columns.map((c) => c.key), [columns]);
-  const [visible, setVisible] = useState<string[]>(allKeys);
-  const loaded = useRef(false);
+  // `undefined` = لم يُقرأ التخزينُ بعد · `null` = لا اختيارَ محفوظًا.
+  const [saved, setSaved] = useState<string[] | null | undefined>(undefined);
 
   useEffect(() => {
-    if (loaded.current) return;
-    loaded.current = true;
     try {
       const raw = localStorage.getItem(storageKey);
-      if (!raw) return;
-      const saved: string[] = JSON.parse(raw);
-      // تُقبل المحفوظةُ بعد تصفيتها على الأعمدة القائمة: عمودٌ حُذف من الكود
-      // لا يبقى مختارًا، وعمودٌ أُضيف يظهر افتراضًا.
+      const parsed = raw ? JSON.parse(raw) : null;
+      setSaved(Array.isArray(parsed) && parsed.length ? parsed.map(String) : null);
+    } catch { setSaved(null); /* متصفّحٌ يمنع التخزين — تُعرض الافتراضيّة */ }
+  }, [storageKey]);
+
+  const defaults = opts?.defaults;
+  const visible = useMemo(() => {
+    if (saved) {
       const kept = saved.filter((k) => allKeys.includes(k));
-      if (kept.length) setVisible(kept);
-    } catch { /* متصفّحٌ يمنع التخزين — تُعرض الأعمدة كلُّها */ }
-  }, [storageKey, allKeys]);
+      if (kept.length) return kept;
+    }
+    const d = (defaults || []).filter((k) => allKeys.includes(k));
+    return d.length ? d : allKeys;
+  }, [saved, allKeys, defaults]);
 
   const set = (next: string[]) => {
-    setVisible(next);
+    setSaved(next);
     try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* لا يضرّ */ }
   };
   const isOn = (k: string) => visible.includes(k);

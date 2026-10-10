@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
+import '../services/hijri.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
@@ -93,7 +94,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
             OutlinedButton.icon(
               icon: const Icon(Icons.calendar_month_outlined, size: 18),
               style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), alignment: AlignmentDirectional.centerStart),
-              label: Text('${tr('تاريخ الانتهاء الجديد', 'New expiry')}: ${newExpiry == null ? tr('اختر', 'Pick') : newExpiry!.toIso8601String().split('T').first}'),
+              label: Text('${tr('تاريخ الانتهاء الجديد', 'New expiry')}: ${newExpiry == null ? tr('اختر', 'Pick') : newExpiry!.toIso8601String().split('T').first}${newExpiry == null ? '' : '\n${hijriHint(newExpiry, ar: Lang.instance.ar)}'}'),
               onPressed: () async {
                 final d = await showDatePicker(context: c, initialDate: DateTime.now().add(const Duration(days: 365)), firstDate: DateTime(2020), lastDate: DateTime(2040));
                 if (d != null) setSheet(() => newExpiry = d);
@@ -155,7 +156,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
           OutlinedButton.icon(
             icon: const Icon(Icons.calendar_month_outlined, size: 18),
             style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), alignment: AlignmentDirectional.centerStart),
-            label: Text('${tr('تاريخ الانتهاء (اختياري)', 'Expiry (optional)')}: ${expiry == null ? '—' : expiry!.toIso8601String().split('T').first}'),
+            label: Text('${tr('تاريخ الانتهاء (اختياري)', 'Expiry (optional)')}: ${expiry == null ? '—' : expiry!.toIso8601String().split('T').first}${expiry == null ? '' : '\n${hijriHint(expiry, ar: Lang.instance.ar)}'}'),
             onPressed: () async {
               final d = await showDatePicker(context: c, initialDate: DateTime.now(), firstDate: DateTime(2015), lastDate: DateTime(2040));
               if (d != null) setS(() => expiry = d);
@@ -246,7 +247,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
             const SizedBox(height: 8),
             OutlinedButton.icon(
               icon: const Icon(Icons.calendar_month_outlined, size: 16),
-              label: Text('${tr('التاريخ', 'Date')}: ${when.toIso8601String().split('T').first}'),
+              label: Text('${tr('التاريخ', 'Date')}: ${when.toIso8601String().split('T').first}\n${hijriHint(when, ar: Lang.instance.ar)}'),
               onPressed: () async {
                 final d = await showDatePicker(context: c, initialDate: when, firstDate: DateTime(2015), lastDate: DateTime(2035));
                 if (d != null) setD(() => when = d);
@@ -302,7 +303,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
 
   String _date(dynamic v) {
     final d = v != null ? DateTime.tryParse(v.toString()) : null;
-    return d == null ? '—' : '${d.day}/${d.month}/${d.year}';
+    return d == null ? '—' : '${d.day}/${d.month}/${d.year}${hijriDay(v).isEmpty ? '' : ' · ${hijriDay(v)} ${tr('هـ', 'AH')}'}';
   }
 
   void _edit() {
@@ -351,13 +352,13 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                   Expanded(child: OutlinedButton.icon(onPressed: () async {
                     final v = await showDatePicker(context: c, initialDate: start, firstDate: DateTime(2015), lastDate: DateTime(2100));
                     if (v != null) setS(() => start = v);
-                  }, icon: const Icon(Icons.event, size: 16), label: Text('${tr('من', 'From')} ${fmt(start)}', style: const TextStyle(fontSize: 11.5)))),
+                  }, icon: const Icon(Icons.event, size: 16), label: Text('${tr('من', 'From')} ${fmt(start)}\n${hijriHint(start, ar: Lang.instance.ar)}', style: const TextStyle(fontSize: 11.5)))),
                   if (type == 'fixed') ...[
                     const SizedBox(width: 8),
                     Expanded(child: OutlinedButton.icon(onPressed: () async {
                       final v = await showDatePicker(context: c, initialDate: end, firstDate: DateTime(2015), lastDate: DateTime(2100));
                       if (v != null) setS(() => end = v);
-                    }, icon: const Icon(Icons.event, size: 16), label: Text('${tr('إلى', 'To')} ${fmt(end)}', style: const TextStyle(fontSize: 11.5)))),
+                    }, icon: const Icon(Icons.event, size: 16), label: Text('${tr('إلى', 'To')} ${fmt(end)}\n${hijriHint(end, ar: Lang.instance.ar)}', style: const TextStyle(fontSize: 11.5)))),
                   ],
                 ]),
                 const SizedBox(height: 10),
@@ -783,6 +784,8 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
             readOnly: f.$4,
             decoration: InputDecoration(
               labelText: tr(f.$2, f.$3),
+              // تحت التاريخ المختار ما يوافقه هجريًّا — والمُرسَل ميلاديٌّ وحدَه.
+              helperText: f.$4 && hijriHint(_d[k]!.text, ar: Lang.instance.ar).isNotEmpty ? hijriHint(_d[k]!.text, ar: Lang.instance.ar) : null,
               suffixIcon: f.$4 ? const Icon(Icons.calendar_today_outlined, size: 18) : null,
             ),
             onTap: f.$4 ? () async {
@@ -915,7 +918,7 @@ class _EmployeeVehiclesTabState extends State<_EmployeeVehiclesTab> with Automat
   String _plate(dynamic v) => v is Map ? (v['plateNumber'] ?? '—').toString() : '—';
   String _dt(dynamic v) {
     final x = v != null ? DateTime.tryParse(v.toString())?.toLocal() : null;
-    return x == null ? '—' : '${x.day}/${x.month}/${x.year}';
+    return x == null ? '—' : '${x.day}/${x.month}/${x.year}${hijriDay(v).isEmpty ? '' : ' · ${hijriDay(v)} ${tr('هـ', 'AH')}'}';
   }
 
   @override

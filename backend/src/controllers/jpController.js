@@ -110,6 +110,7 @@ const shape = (t, req, w) => {
       edit: w.canManage || (author && t.kind === 'request'),
       remove: w.canManage || (author && t.kind === 'request'),
       attach: mine || author || w.canManage,
+      comment: mine || author || w.canManage,
     },
   };
 };
@@ -391,6 +392,22 @@ exports.addAttachment = async (req, res) => {
   } catch (e) { res.status(400).json({ message: e.message }); }
 };
 
+// POST /api/jp/tasks/:id/comments — { text }
+exports.addComment = async (req, res) => {
+  try {
+    const got = await loadTask(req, res); if (!got) return;
+    const { t, w, mine } = got;
+    const text = String(req.body.text || '').trim();
+    if (!text) throw bad('اكتب التعليق');
+    t.comments.push({ by: req.user._id, byName: nameOf(req.user), text });
+    await t.save();
+    // يُخبَر الطرفُ الآخر: من أُسنِدت إليه إن علّق غيرُه، ومن أسندها إن علّق هو.
+    await notify(mine ? t.createdBy : t.assignedTo, req.user._id, 'تعليقٌ على مهمّة', `${t.title} — ${nameOf(req.user)}: ${text.slice(0, 120)}`, t._id);
+    broadcast(w);
+    res.status(201).json({ task: shape(await POP(JpTask.findById(t._id)).lean(), req, w) });
+  } catch (e) { fail(res, e, 'تعذّر حفظ التعليق'); }
+};
+
 // DELETE /api/jp/tasks/:id/attachments/:attId
 exports.removeAttachment = async (req, res) => {
   try {
@@ -517,7 +534,12 @@ exports.listProjects = async (req, res) => {
       if (s === 'done') e.done += 1; if (s === 'overdue') e.overdue += 1;
       by.set(String(t.project), e);
     }
-    res.json({ projects: projects.map((p) => ({ ...p, ...(by.get(String(p._id)) || { total: 0, done: 0, overdue: 0 }) })) });
+    const authors = await User.find({ _id: { $in: projects.map((p) => p.createdBy) } }).select('firstName lastName').lean();
+    const authorOf = new Map(authors.map((u) => [String(u._id), nameOf(u)]));
+    res.json({ projects: projects.map((p) => ({
+      ...p, parentProject: undefined, createdByName: authorOf.get(String(p.createdBy)) || '',
+      ...(by.get(String(p._id)) || { total: 0, done: 0, overdue: 0 }),
+    })) });
   } catch (e) { fail(res, e, 'تعذّر تحميل المشروعات'); }
 };
 
@@ -589,6 +611,16 @@ exports.dashboard = async (req, res) => {
       if (from) f.createdAt.$gte = from;
       if (to) f.createdAt.$lt = new Date(to.getTime() + 86400000);
     }
+    // ── فلاترُ اللوحة: موظّفٌ، مشروعٌ، نوعٌ، طريقةُ تواصل ─────────────────────
+    // تُطبَّق على كلّ شيءٍ في اللوحة — البطاقاتُ والجداولُ والقائمة — فلا يُقرأ
+    // رقمٌ على الفريق كلِّه فوق قائمةِ موظّفٍ واحد.
+    const { assignee, project: projectQ, kind: kindQ, action: actionQ } = req.query;
+    if (assignee && mongoose.isValidObjectId(assignee)) f.assignedTo = assignee;
+    if (projectQ === 'none') f.project = null;
+    else if (projectQ && mongoose.isValidObjectId(projectQ)) f.project = projectQ;
+    if (kindQ === 'task' || kindQ === 'request') f.kind = kindQ;
+    if (actionQ === 'none') f.action = '';
+    else if (actionQ && ACTIONS.includes(actionQ)) f.action = actionQ;
     const [tasks, team, projects] = await Promise.all([
       POP(JpTask.find(f)).lean(),
       teamOf(w),
@@ -665,6 +697,14 @@ exports.dashboard = async (req, res) => {
       overdue: tasks.filter((t) => stateOf(t, now) === 'overdue').sort((a, b) => new Date(a.deadlineAt) - new Date(b.deadlineAt)).slice(0, 50).map(slim),
       dueSoon: tasks.filter((t) => stateOf(t, now) === 'open' && t.deadlineAt && new Date(t.deadlineAt).getTime() - now <= 24 * HOUR).sort((a, b) => new Date(a.deadlineAt) - new Date(b.deadlineAt)).slice(0, 50).map(slim),
       recentDone: tasks.filter((t) => t.status === 'done').sort((a, b) => new Date(b.doneAt) - new Date(a.doneAt)).slice(0, 20).map(slim),
+      // القائمةُ كلُّها تحت الفلاتر — وفلترُ الحالة يُطبَّق في الشاشة عليها، فتبقى
+      // البطاقاتُ تعدّ الحالاتِ كلَّها ويُختار منها.
+      tasks: tasks.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 500).map((t) => ({
+        ...slim(t), action: t.action || '', comments: (t.comments || []).length,
+        dueSoon: stateOf(t, now) === 'open' && !!t.deadlineAt && new Date(t.deadlineAt).getTime() - now <= 24 * HOUR,
+      })),
+      team: team.map((m) => ({ _id: m._id, name: m.name })),
+      projectOptions: projects.map((p) => ({ _id: p._id, name: p.name })),
       generatedAt: new Date(),
     });
   } catch (e) { fail(res, e, 'تعذّر تحميل اللوحة'); }

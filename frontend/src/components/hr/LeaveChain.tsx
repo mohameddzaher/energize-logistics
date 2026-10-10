@@ -6,7 +6,8 @@
  * تاريخٌ لا حالةٌ واحدة: مَن وافق ومتى، ومَن سأل وبمَ ردّ صاحبُه. ولو كُتب هذا
  * في كلّ صفحةٍ من الصفحات الأربع اختلفت الأربعُ بعد شهر — فهو هنا مرّةً.
  */
-import { LeaveRequest, LEAVE_STAGES, LeaveStage, userName, fmtDate } from '@/lib/hr';
+import { LeaveRequest, LEAVE_STAGES, LeaveStage, userName } from '@/lib/hr';
+import { bothDatesShort } from '@/lib/hrDates';
 import { Check, X, HelpCircle, Clock, MessageSquare, Paperclip } from 'lucide-react';
 
 const STAGE_INDEX: Record<string, number> = { manager: 0, hr: 1, finance: 2, executive: 3 };
@@ -51,8 +52,8 @@ export function LeaveChainBar({ leave, lang }: { leave: LeaveRequest; lang: 'ar'
             </span>
             <span className="min-w-0">
               <span className="block truncate text-[11px] font-semibold text-slate-700">{ar ? s.ar : s.en}</span>
-              <span className="block truncate text-[10px] text-slate-500">
-                {d?.at ? `${userName(d.by) || ''} · ${fmtDate(d.at)}`
+              <span className="block text-[10px] text-slate-500">
+                {d?.at ? `${userName(d.by) || ''} · ${bothDatesShort(d.at, ar)}`
                   : st === 'current' ? (ar ? 'بانتظار القرار' : 'awaiting decision')
                   : st === 'asked' ? (ar ? 'طلب إيضاحًا' : 'asked for info')
                   : (ar ? '—' : '—')}
@@ -83,7 +84,7 @@ export function LeaveThread({ leave, lang }: { leave: LeaveRequest; lang: 'ar' |
               {t.kind === 'question' ? `${stageLabel(t.stage)} ${ar ? '— استفسار' : '— asked'}` : (ar ? 'ردّ الموظف' : 'Employee reply')}
             </span>
             <span>{t.byName || userName(t.by)}</span>
-            {t.at && <span>· {fmtDate(t.at)}</span>}
+            {t.at && <span>· {bothDatesShort(t.at, ar)}</span>}
           </div>
           <p className="whitespace-pre-wrap text-slate-700">{t.text}</p>
           {t.attachment && (

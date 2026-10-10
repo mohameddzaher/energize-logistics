@@ -31,6 +31,7 @@ import { statusMeta,
   getHrRecords, updateEmployeeFields, toDateInput, statusLabel, STATUS_META,
   type FieldDef, type RecordRow,
 } from '@/lib/hrMaster';
+import DatePair from '@/components/hr/DatePair';
 
 const isFilled = (v: any) => !(v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length));
 
@@ -200,20 +201,31 @@ export function HrGroupFormModal({ open, mode, group, groupLabel, fields, row, a
 
       {target && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {fields.map((f) => (
-            <div key={f.key}>
+          {/* ── التاريخُ خانتان، وتوأمُه الهجريُّ لا يُرسَم مرّةً ثانية ──────────
+              الخادمُ يرسل لكلّ تاريخٍ حقلًا مشتقًّا `<key>Hijri` (config/hrFields).
+              لو رُسم خانةً مستقلّةً لصار للتاريخ الواحد ثلاثُ خانات، اثنتان
+              منها هجريّتان لا تسمع إحداهما الأخرى. فالزوجُ يُرسَم مرّةً واحدةً
+              عند الحقل الميلاديّ (DatePair)، والمشتقُّ يُتخطّى — والمُرسَل
+              ميلاديٌّ وحدَه كما كان. */}
+          {fields.filter((f) => (f.type as string) !== 'hijri').map((f) => (
+            <div key={f.key} className={f.type === 'date' ? 'col-span-full' : undefined}>
               <div className="flex items-center justify-between gap-2 mb-1">
-                <label className="text-slate-500 text-xs">{ar ? f.ar : f.en}</label>
+                {f.type === 'date' ? <span /> : <label className="text-slate-500 text-xs">{ar ? f.ar : f.en}</label>}
                 <StatusChip code={target.statuses?.[f.key]} ar={ar} />
               </div>
-              {f.type === 'bool' ? (
+              {f.type === 'date' ? (
+                <div className="grid">
+                  <DatePair label={ar ? f.ar : f.en} value={form[f.key] ?? ''} ar={ar}
+                    onChange={(v) => setForm((s) => ({ ...s, [f.key]: v }))} />
+                </div>
+              ) : f.type === 'bool' ? (
                 <Select value={form[f.key] ?? ''} onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))}>
                   <option value="">{t('—', '—')}</option>
                   <option value="1">{t('نعم', 'Yes')}</option>
                   <option value="0">{t('لا', 'No')}</option>
                 </Select>
               ) : (
-                <TextInput type={f.type === 'date' ? 'date' : 'text'} value={form[f.key] ?? ''}
+                <TextInput type="text" value={form[f.key] ?? ''}
                   onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))} />
               )}
               {/* العَلَم الإداريّ بجانب الحقل لا في شاشةٍ أخرى: «هذا لا ينطبق على

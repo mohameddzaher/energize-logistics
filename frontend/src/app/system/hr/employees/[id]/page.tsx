@@ -14,7 +14,7 @@ import {
 import {
   isHRStaff, Employee, Contract, LeaveRequest, Asset, HRRequest, LeaveBalance,
   EmployeeDocument, EmployeeRenewal, AuditEntry,
-  empName, userName, fmtDate, fmtDateTime, leaveTypeLabel, expiryBadge,
+  empName, userName, fmtDateTime, leaveTypeLabel, expiryBadge,
   EMPLOYMENT_STATUS, CONTRACT_STATUS, LEAVE_STATUS, REQUEST_STATUS, assetTypeLabel, conditionLabel,
   RENEWAL_TYPES, DOCUMENT_CATEGORIES, renewalTypeLabel, docCategoryLabel, auditActionLabel,
 } from '@/lib/hr';
@@ -25,6 +25,8 @@ import ReportButton from '@/components/system/ReportButton';
 import ExportMenu, { exportScopeLabels, type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import { EmployeeFormModal } from '@/components/hr/EmployeeFormModal';
 import ContractFormModal from '@/components/hr/ContractFormModal';
+import DatePair from '@/components/hr/DatePair';
+import { bothDates, bothDatesShort, gregCell, gregDay, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { getHrEmployeesIdTranslations } from '@/lib/translations';
 import {
   VehicleAuthorization, VehicleAccident, AUTH_STATUS, ACCIDENT_SEVERITY, ACCIDENT_STATUS,
@@ -122,6 +124,28 @@ export default function EmployeeProfilePage() {
   const statusText = (map: Record<string, { en: string; ar: string }>, key?: string) =>
     (key && map[key] ? (ar ? map[key].ar : map[key].en) : (key || ''));
 
+  // ── أسماءُ التواريخ الأساسيّة ─────────────────────────────────────────────
+  // يُشتقّ منها اسما العمودين («… الميلادي» ثمّ «… الهجري») في الجدول والتصدير
+  // معًا، فلا يُسمّى التاريخُ الواحدُ باسمين. و«من/إلى» و«التاريخ» لا تقبل
+  // الصفة («من الميلادي»)، فلكلٍّ اسمُه الصريح.
+  const L = {
+    from: ar ? 'تاريخ البداية' : 'Start date',
+    to: ar ? 'تاريخ النهاية' : 'End date',
+    submitted: ar ? 'تاريخ التقديم' : 'Submitted on',
+    assigned: ar ? 'تاريخ الاستلام' : 'Assigned on',
+    returned: ar ? 'تاريخ التسليم' : 'Returned on',
+    uploaded: ar ? 'تاريخ الرفع' : 'Uploaded on',
+    docExpiry: ar ? 'تاريخ انتهاء المستند' : 'Document expiry',
+    authStart: ar ? 'تاريخ بداية التفويض' : 'Authorisation start',
+    authEnd: ar ? 'تاريخ نهاية التفويض' : 'Authorisation end',
+    accident: ar ? 'تاريخ الحادث' : 'Accident date',
+    requested: ar ? 'تاريخ الطلب' : 'Request date',
+    prevExpiry: ar ? 'تاريخ الانتهاء السابق' : 'Previous expiry',
+    newExpiry: ar ? 'تاريخ الانتهاء الجديد' : 'New expiry',
+    renewedAt: ar ? 'تاريخ التجديد' : 'Renewed on',
+    changed: ar ? 'تاريخ التغيير' : 'Changed on',
+  };
+
   const kvCols: ExportColumn[] = [
     { header: ar ? 'البند' : 'Field', key: 'label', width: 26 },
     { header: ar ? 'القيمة' : 'Value', key: 'value', width: 34 },
@@ -138,9 +162,17 @@ export default function EmployeeProfilePage() {
       { label: ar ? 'المسمّى الوظيفي' : 'Job title', value: e.jobTitle || '' },
       { label: ar ? 'الإدارة' : 'Department', value: e.department || '' },
       { label: ar ? 'حالة الخدمة' : 'Employment status', value: statusText(EMPLOYMENT_STATUS, e.employmentStatus || 'active') },
-      { label: tx.iqamaExpiry, value: fmtDate(e.iqamaExpiry) },
-      ...profileRows(e, tx, vtx).filter((r) => staff || !r.financial),
-    ] as ProfileRow[]).filter((r) => r.value && r.value !== '—'),
+      { label: tx.iqamaExpiry, value: bothDates(e.iqamaExpiry, ar, ''), date: e.iqamaExpiry },
+      ...profileRows(e, tx, vtx, ar).filter((r) => staff || !r.financial),
+    ] as ProfileRow[]).filter((r) => r.value && r.value !== '—')
+      // ── وبندُ التاريخ في الملفّ سطران متتاليان ───────────────────────────
+      // الشاشةُ تكتب التقويمين في سطرٍ واحد، والملفُّ يُفرَز ويُنسَخ منه: فلكلّ
+      // تاريخٍ سطرٌ ميلاديٌّ يليه مباشرةً سطرُه الهجريّ، باسمٍ يقول تقويمَه.
+      .flatMap((r) => {
+        if (!r.date) return [r];
+        const [g, h] = pairLabels(r.label, ar);
+        return [{ ...r, label: g, value: gregCell(r.date) }, { ...r, label: h, value: hijriCell(r.date) }];
+      }),
     columns: kvCols,
   };
 
@@ -150,9 +182,9 @@ export default function EmployeeProfilePage() {
     columns: [
       { header: ar ? 'اسم الملف' : 'Title', key: 'title', width: 28 },
       { header: ar ? 'التصنيف' : 'Category', key: 'category', transform: (v) => docCategoryLabel(v || 'other', lang), width: 16 },
-      { header: ar ? 'تاريخ الرفع' : 'Uploaded', key: 'createdAt', transform: (v) => fmtDate(v), width: 13 },
+      ...exportDatePair(L.uploaded, 'createdAt', ar),
       { header: ar ? 'رفعه' : 'Uploaded by', key: 'uploadedBy', transform: (v) => (v ? userName(v) : ''), width: 20 },
-      { header: ar ? 'انتهاء المستند' : 'Expiry', key: 'expiryDate', transform: (v) => (v ? fmtDate(v) : ''), width: 13 },
+      ...exportDatePair(L.docExpiry, 'expiryDate', ar),
       { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 26 },
       { header: ar ? 'الرابط' : 'Link', key: 'fileUrl', width: 40 },
     ],
@@ -163,12 +195,12 @@ export default function EmployeeProfilePage() {
     rows: data.leaves as any[],
     columns: [
       { header: tx.colType, key: 'leaveType', transform: (v) => leaveTypeLabel(v, lang), width: 18 },
-      { header: tx.colFrom, key: 'startDate', transform: (v) => fmtDate(v), width: 13 },
-      { header: tx.colTo, key: 'endDate', transform: (v) => fmtDate(v), width: 13 },
+      ...exportDatePair(L.from, 'startDate', ar),
+      ...exportDatePair(L.to, 'endDate', ar),
       { header: tx.colDays, key: 'days', width: 9 },
       { header: tx.colStatus, key: 'status', transform: (v) => statusText(LEAVE_STATUS, v), width: 18 },
       { header: ar ? 'السبب' : 'Reason', key: 'reason', width: 28 },
-      { header: tx.colSubmitted, key: 'createdAt', transform: (v) => fmtDate(v), width: 13 },
+      ...exportDatePair(L.submitted, 'createdAt', ar),
     ],
   };
 
@@ -183,8 +215,8 @@ export default function EmployeeProfilePage() {
       { header: ar ? 'الطراز' : 'Model', key: 'model', width: 14 },
       { header: tx.colCondition, key: 'condition', transform: (v) => (v ? conditionLabel(v, lang) : ''), width: 14 },
       { header: tx.colStatus, key: 'status', transform: (v) => (v === 'assigned' ? tx.assigned : tx.returned), width: 14 },
-      { header: tx.colAssigned, key: 'assignedDate', transform: (v) => fmtDate(v), width: 13 },
-      { header: ar ? 'تاريخ التسليم' : 'Returned', key: 'returnedDate', transform: (v) => (v ? fmtDate(v) : ''), width: 13 },
+      ...exportDatePair(L.assigned, 'assignedDate', ar),
+      ...exportDatePair(L.returned, 'returnedDate', ar),
       { header: ar ? 'الجهة المُسلِّمة' : 'Issued by section', key: 'issuedBySection', width: 16 },
     ],
   };
@@ -195,11 +227,12 @@ export default function EmployeeProfilePage() {
     columns: [
       { header: vtx.plateNumber, key: 'vehicle', transform: (v) => plateOf(v), width: 14 },
       { header: vtx.status, key: 'status', transform: (v) => statusText(AUTH_STATUS, v), width: 12 },
-      { header: vtx.startDate, key: 'startDate', transform: (v) => fmtDate(v), width: 13 },
-      { header: vtx.endDate, key: 'endDate', transform: (v) => (v ? fmtDate(v) : (ar ? 'حتى الآن' : 'now')), width: 13 },
+      ...exportDatePair(L.authStart, 'startDate', ar),
+      // تفويضٌ بلا نهايةٍ قائمٌ «حتى الآن» — تُكتَب في العمودين معًا.
+      ...exportDatePair(L.authEnd, 'endDate', ar, { empty: ar ? 'حتى الآن' : 'now' }),
       { header: vtx.authType, key: 'authorizationType', width: 16 },
       { header: vtx.documentNumber, key: 'documentNumber', width: 16 },
-      { header: vtx.documentExpiry, key: 'documentExpiry', transform: (v) => (v ? fmtDate(v) : ''), width: 13 },
+      ...exportDatePair(L.docExpiry, 'documentExpiry', ar),
       { header: vtx.revokedReason, key: 'revokedReason', width: 24 },
     ],
   };
@@ -208,7 +241,7 @@ export default function EmployeeProfilePage() {
     name: vtx.empAccidents,
     rows: (vehicleData?.accidents || []) as any[],
     columns: [
-      { header: vtx.date, key: 'date', transform: (v) => fmtDate(v), width: 13 },
+      ...exportDatePair(L.accident, 'date', ar),
       { header: vtx.plateNumber, key: 'vehicle', transform: (v) => plateOf(v), width: 14 },
       { header: vtx.description, key: 'description', width: 40 },
       { header: vtx.location, key: 'location', width: 20 },
@@ -224,8 +257,8 @@ export default function EmployeeProfilePage() {
     columns: [
       { header: tx.colType, key: 'type', transform: (v) => (v === 'unlimited' ? tx.contractUnlimited : tx.contractFixed), width: 14 },
       { header: ar ? 'المسمّى الوظيفي' : 'Job title', key: 'jobTitle', width: 20 },
-      { header: tx.colStart, key: 'startDate', transform: (v) => fmtDate(v), width: 13 },
-      { header: tx.colEnd, key: 'endDate', transform: (v) => (v ? fmtDate(v) : ''), width: 13 },
+      ...exportDatePair(L.from, 'startDate', ar),
+      ...exportDatePair(L.to, 'endDate', ar),
       { header: tx.colAnnualLeave, key: 'annualLeaveDays', width: 12 },
       // الراتب والبدلات عمودان يُبنيان بشرطٍ لا يُخفيان بعد البناء: العمود الذي
       // لا يُنشَأ لا يمكن أن يتسرّب في ملفٍّ يُفتَح خارج النظام.
@@ -245,7 +278,9 @@ export default function EmployeeProfilePage() {
       { header: tx.colSubject, key: 'subject', width: 34 },
       { header: ar ? 'التصنيف' : 'Category', key: 'category', width: 18 },
       { header: tx.colStatus, key: 'status', transform: (v) => statusText(REQUEST_STATUS, v), width: 14 },
-      { header: tx.colDate, key: 'createdAt', transform: (v) => fmtDateTime(v), width: 18 },
+      // الميلاديُّ بساعته، وبعده مباشرةً هجريُّ اليوم نفسِه.
+      { header: pairLabels(L.requested, ar)[0], key: 'createdAt', transform: (v) => fmtDateTime(v), width: 20 },
+      { header: pairLabels(L.requested, ar)[1], key: 'createdAt', type: 'hijri', transform: (v) => gregDay(v), width: 16 },
     ],
   };
 
@@ -254,10 +289,10 @@ export default function EmployeeProfilePage() {
     rows: (data.renewals || []) as any[],
     columns: [
       { header: ar ? 'المستند' : 'Document', key: 'docType', transform: (v) => renewalTypeLabel(v, lang), width: 18 },
-      { header: ar ? 'الانتهاء السابق' : 'Previous expiry', key: 'previousExpiry', transform: (v) => (v ? fmtDate(v) : ''), width: 15 },
-      { header: ar ? 'الانتهاء الجديد' : 'New expiry', key: 'newExpiry', transform: (v) => (v ? fmtDate(v) : ''), width: 15 },
+      ...exportDatePair(L.prevExpiry, 'previousExpiry', ar),
+      ...exportDatePair(L.newExpiry, 'newExpiry', ar),
       { header: ar ? 'الرقم الجديد' : 'New number', key: 'documentNumber', width: 18 },
-      { header: ar ? 'تاريخ التجديد' : 'Renewed at', key: 'renewedAt', transform: (v) => fmtDate(v), width: 13 },
+      ...exportDatePair(L.renewedAt, 'renewedAt', ar),
       { header: ar ? 'نفّذه' : 'Renewed by', key: 'renewedBy', transform: (v) => (v ? userName(v) : ''), width: 20 },
       { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 26 },
     ],
@@ -265,7 +300,8 @@ export default function EmployeeProfilePage() {
 
   const auditCols: ExportColumn[] = [
     { header: ar ? 'الإجراء' : 'Action', key: 'action', transform: (v) => auditActionLabel(v, lang), width: 20 },
-    { header: ar ? 'التاريخ' : 'When', key: 'createdAt', transform: (v) => fmtDateTime(v), width: 18 },
+    { header: pairLabels(L.changed, ar)[0], key: 'createdAt', transform: (v) => fmtDateTime(v), width: 20 },
+    { header: pairLabels(L.changed, ar)[1], key: 'createdAt', type: 'hijri', transform: (v) => gregDay(v), width: 16 },
     { header: ar ? 'المستخدم' : 'User', key: 'user', transform: (v) => (v ? userName(v) : ''), width: 20 },
     { header: ar ? 'الحقول المتغيّرة' : 'Changed fields', key: 'changes', transform: (v) => (v?.after && typeof v.after === 'object' ? Object.keys(v.after).join('، ') : ''), width: 40 },
   ];
@@ -357,7 +393,7 @@ export default function EmployeeProfilePage() {
       {terminated && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
           {ar ? 'انتهت خدمة هذا الموظف' : 'This employee’s service has ended'}
-          {e.terminatedAt ? ` · ${fmtDate(e.terminatedAt)}` : ''}
+          {e.terminatedAt ? ` · ${bothDates(e.terminatedAt, ar)}` : ''}
           {e.terminationReason ? ` · ${e.terminationReason}` : ''}
         </div>
       )}
@@ -431,9 +467,11 @@ export default function EmployeeProfilePage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap text-xs text-slate-500">
-                      <span>{fmtDate(d.createdAt)}</span>
+                      <span>{bothDatesShort(d.createdAt, ar)}</span>
                       {d.uploadedBy && <span>· {userName(d.uploadedBy)}</span>}
                       {d.expiryDate && exp && <SmallBadge bg={exp.bg} text={exp.text} label={exp.label} />}
+                      {/* تاريخُ الانتهاء نفسُه بتقويميه — الشارةُ تقول كم بقي ولا تقول متى. */}
+                      {d.expiryDate && <span className="basis-full">{L.docExpiry}: {bothDates(d.expiryDate, ar)}</span>}
                     </div>
                     <div className="flex items-center gap-1 pt-1 border-t border-slate-100">
                       <a href={d.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-2 py-1 rounded-lg text-slate-600 hover:text-[#f37121] hover:bg-slate-100 text-xs"><ExternalLink className="w-3.5 h-3.5" /> {ar ? 'فتح' : 'Open'}</a>
@@ -452,7 +490,7 @@ export default function EmployeeProfilePage() {
         <DataCard empty={!data.leaves.length} emptyText={tx.noLeaves}>
           <table className="w-full text-sm">
             <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-              <Th>{tx.colType}</Th><Th>{tx.colFrom}</Th><Th>{tx.colTo}</Th><Th>{tx.colDays}</Th><Th>{tx.colStatus}</Th><Th>{tx.colSubmitted}</Th><Th>{ar ? 'المرفقات' : 'Attachments'}</Th>
+              <Th>{tx.colType}</Th><DateThs label={L.from} ar={ar} /><DateThs label={L.to} ar={ar} /><Th>{tx.colDays}</Th><Th>{tx.colStatus}</Th><DateThs label={L.submitted} ar={ar} /><Th>{ar ? 'المرفقات' : 'Attachments'}</Th>
             </tr></thead>
             <tbody>{data.leaves.map((l) => {
               // مرفقاتُ الطلب ومرفقاتُ قراريه معًا: التقريرُ الطبّيّ وورقةُ
@@ -465,9 +503,9 @@ export default function EmployeeProfilePage() {
               return (
                 <Tr key={l._id}>
                   <Td className="text-slate-900">{leaveTypeLabel(l.leaveType, lang)}</Td>
-                  <Td>{fmtDate(l.startDate)}</Td><Td>{fmtDate(l.endDate)}</Td><Td>{l.days}</Td>
+                  <DateTds v={l.startDate} /><DateTds v={l.endDate} /><Td>{l.days}</Td>
                   <Td><Badge style={LEAVE_STATUS[l.status]} lang={lang} /></Td>
-                  <Td>{fmtDate(l.createdAt)}</Td>
+                  <DateTds v={l.createdAt} />
                   <Td>{files.length ? <AttachmentLinks items={files} /> : <span className="text-slate-400">—</span>}</Td>
                 </Tr>
               );
@@ -480,14 +518,14 @@ export default function EmployeeProfilePage() {
         <DataCard empty={!data.assets.length} emptyText={tx.noCustodyItems}>
           <table className="w-full text-sm">
             <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-              <Th>{tx.colItem}</Th><Th>{tx.colType}</Th><Th>{tx.colSerial}</Th><Th>{tx.colCondition}</Th><Th>{tx.colStatus}</Th><Th>{tx.colAssigned}</Th>
+              <Th>{tx.colItem}</Th><Th>{tx.colType}</Th><Th>{tx.colSerial}</Th><Th>{tx.colCondition}</Th><Th>{tx.colStatus}</Th><DateThs label={L.assigned} ar={ar} />
             </tr></thead>
             <tbody>{data.assets.map((a) => (
               <Tr key={a._id}>
                 <Td className="text-slate-900">{a.name}</Td><Td>{assetTypeLabel(a.type, lang)}</Td><Td>{a.serialNumber || '—'}</Td>
                 <Td>{a.condition ? conditionLabel(a.condition, lang) : '—'}</Td>
                 <Td>{a.status === 'assigned' ? <SmallBadge bg="bg-amber-500/20" text="text-amber-700" label={tx.assigned} /> : <SmallBadge bg="bg-green-500/20" text="text-green-600" label={tx.returned} />}</Td>
-                <Td>{fmtDate(a.assignedDate)}</Td>
+                <DateTds v={a.assignedDate} />
               </Tr>
             ))}</tbody>
           </table>
@@ -504,7 +542,7 @@ export default function EmployeeProfilePage() {
                   <Link href={`/system/vehicles/${typeof vehicleData.current.vehicle === 'object' ? (vehicleData.current.vehicle as any)?._id : vehicleData.current.vehicle}`} className="text-slate-900 font-bold text-lg hover:text-[#f37121]">{plateOf(vehicleData.current.vehicle)}</Link>
                   <p className="text-slate-500 text-sm mt-1">
                     {vehicleTypeLabel(typeof vehicleData.current.vehicle === 'object' ? (vehicleData.current.vehicle as any)?.type : '', lang)}
-                    {' · '}{vtx.since} {fmtDate(vehicleData.current.startDate)}
+                    {' · '}{vtx.since} {bothDates(vehicleData.current.startDate, ar)}
                     {vehicleData.current.authorizationType ? ` · ${vehicleData.current.authorizationType}` : ''}
                   </p>
                 </div>
@@ -546,7 +584,7 @@ export default function EmployeeProfilePage() {
                     <p className="text-[12px] text-slate-500 mt-1">
                       {[
                         r.ownerNameAr && (lang === 'ar' ? `المالك: ${r.ownerNameAr}` : `Owner: ${r.ownerNameAr}`),
-                        r.authExpiry && (lang === 'ar' ? `ينتهي التفويض ${fmtDate(r.authExpiry)}` : `Auth ends ${fmtDate(r.authExpiry)}`),
+                        r.authExpiry && (lang === 'ar' ? `ينتهي التفويض ${bothDates(r.authExpiry, ar)}` : `Auth ends ${bothDates(r.authExpiry, ar)}`),
                         r.consumptionTypeAr,
                         r.limitStatus === 'open'
                           ? (lang === 'ar' ? 'بلا سقف صرف' : 'no spending ceiling')
@@ -577,7 +615,7 @@ export default function EmployeeProfilePage() {
                       <Link href={`/system/vehicles/${typeof a.vehicle === 'object' ? (a.vehicle as any)?._id : a.vehicle}`} className="text-slate-900 font-medium hover:text-[#f37121]">{plateOf(a.vehicle)}</Link>
                       <Badge style={AUTH_STATUS[a.status]} lang={lang} />
                     </div>
-                    <p className="text-slate-500 text-xs mt-1">{vtx.period}: {fmtDate(a.startDate)} → {a.endDate ? fmtDate(a.endDate) : (ar ? 'حتى الآن' : 'now')}</p>
+                    <p className="text-slate-500 text-xs mt-1">{vtx.period}: {bothDates(a.startDate, ar)} → {a.endDate ? bothDates(a.endDate, ar) : (ar ? 'حتى الآن' : 'now')}</p>
                     {a.revokedReason && <p className="text-slate-500 text-xs">{vtx.revokedReason}: {a.revokedReason}</p>}
                   </li>
                 ))}
@@ -588,11 +626,11 @@ export default function EmployeeProfilePage() {
           <DataCard empty={!vehicleData?.accidents.length} emptyText={vtx.noAccidents}>
             <table className="w-full text-sm">
               <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-                <Th>{vtx.date}</Th><Th>{vtx.plateNumber}</Th><Th>{vtx.description}</Th><Th>{vtx.faultParty}</Th><Th>{vtx.severity}</Th><Th>{vtx.status}</Th>
+                <DateThs label={L.accident} ar={ar} /><Th>{vtx.plateNumber}</Th><Th>{vtx.description}</Th><Th>{vtx.faultParty}</Th><Th>{vtx.severity}</Th><Th>{vtx.status}</Th>
               </tr></thead>
               <tbody>{(vehicleData?.accidents || []).map((a) => (
                 <Tr key={a._id}>
-                  <Td>{fmtDate(a.date)}</Td>
+                  <DateTds v={a.date} />
                   <Td className="text-slate-900">{plateOf(a.vehicle)}</Td>
                   <Td>{a.description}</Td>
                   <Td>{faultPartyLabel(a.faultParty, lang)}</Td>
@@ -615,12 +653,12 @@ export default function EmployeeProfilePage() {
           <DataCard empty={!data.contracts.length} emptyText={tx.noContracts}>
             <table className="w-full text-sm">
               <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-                <Th>{tx.colType}</Th><Th>{tx.colStart}</Th><Th>{tx.colEnd}</Th><Th>{tx.colAnnualLeave}</Th><Th>{tx.colSalary}</Th><Th>{tx.colStatus}</Th>{staff && <Th>{ar ? 'إجراء' : 'Action'}</Th>}
+                <Th>{tx.colType}</Th><DateThs label={L.from} ar={ar} /><DateThs label={L.to} ar={ar} /><Th>{tx.colAnnualLeave}</Th><Th>{tx.colSalary}</Th><Th>{tx.colStatus}</Th>{staff && <Th>{ar ? 'إجراء' : 'Action'}</Th>}
               </tr></thead>
               <tbody>{data.contracts.map((c) => (
                 <Tr key={c._id}>
                   <Td className="text-slate-900">{c.type === 'unlimited' ? tx.contractUnlimited : tx.contractFixed}</Td>
-                  <Td>{fmtDate(c.startDate)}</Td><Td>{c.endDate ? fmtDate(c.endDate) : '—'}</Td>
+                  <DateTds v={c.startDate} /><DateTds v={c.endDate} />
                   <Td>{c.annualLeaveDays} {tx.dayUnit}</Td><Td>{(c.basicSalary || 0).toLocaleString()}</Td>
                   <Td><Badge style={CONTRACT_STATUS[c.status]} lang={lang} /></Td>
                   {staff && <Td><button type="button" onClick={() => { setEditingContract(c); setShowContract(true); }} className="p-1 rounded text-slate-500 hover:text-[#f37121]" title={ar ? 'تعديل' : 'Edit'}><Edit className="w-4 h-4" /></button></Td>}
@@ -639,7 +677,7 @@ export default function EmployeeProfilePage() {
         <DataCard empty={!data.requests.length} emptyText={tx.noRequests}>
           <table className="w-full text-sm">
             <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-              <Th>{tx.colSubject}</Th><Th>{tx.colStatus}</Th><Th>{tx.colDate}</Th><Th>{ar ? 'المرفقات' : 'Attachments'}</Th>
+              <Th>{tx.colSubject}</Th><Th>{tx.colStatus}</Th><DateThs label={L.requested} ar={ar} /><Th>{ar ? 'المرفقات' : 'Attachments'}</Th>
             </tr></thead>
             <tbody>{data.requests.map((r) => {
               const files = ((r as any).thread || []).flatMap((m: any) => (m.attachments || []).map((a: any) => ({ ...a, at: m.at })));
@@ -647,7 +685,7 @@ export default function EmployeeProfilePage() {
                 <Tr key={r._id}>
                   <Td className="text-slate-900">{r.subject}</Td>
                   <Td><Badge style={REQUEST_STATUS[r.status]} lang={lang} /></Td>
-                  <Td>{fmtDateTime(r.createdAt)}</Td>
+                  <Td className="whitespace-nowrap">{fmtDateTime(r.createdAt)}</Td><Td className="whitespace-nowrap tabular-nums"><span dir="ltr">{hijriCell(r.createdAt)}</span></Td>
                   <Td>{files.length ? <AttachmentLinks items={files} /> : <span className="text-slate-400">—</span>}</Td>
                 </Tr>
               );
@@ -667,11 +705,11 @@ export default function EmployeeProfilePage() {
                   <div key={r._id} className="flex items-center justify-between gap-3 flex-wrap border-b border-slate-100 pb-3 last:border-0">
                     <div>
                       <span className="text-slate-900 font-medium">{renewalTypeLabel(r.docType, lang)}</span>
-                      <span className="text-slate-500 text-sm"> · {r.previousExpiry ? fmtDate(r.previousExpiry) : '—'} → {fmtDate(r.newExpiry)}</span>
+                      <span className="text-slate-500 text-sm"> · {bothDatesShort(r.previousExpiry, ar)} → {bothDatesShort(r.newExpiry, ar)}</span>
                       {r.documentNumber && <span className="text-slate-500 text-xs"> · {r.documentNumber}</span>}
                       {r.notes && <p className="text-slate-500 text-xs mt-0.5">{r.notes}</p>}
                     </div>
-                    <span className="text-slate-400 text-xs">{fmtDate(r.renewedAt)} {r.renewedBy ? `· ${userName(r.renewedBy)}` : ''}</span>
+                    <span className="text-slate-400 text-xs">{bothDatesShort(r.renewedAt, ar)} {r.renewedBy ? `· ${userName(r.renewedBy)}` : ''}</span>
                   </div>
                 ))}
               </div>
@@ -687,7 +725,7 @@ export default function EmployeeProfilePage() {
                     <span className={`absolute ${isRTL ? '-right-[27px]' : '-left-[27px]'} top-1 w-3 h-3 rounded-full bg-[#f37121]`} />
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-slate-900 font-medium text-sm">{auditActionLabel(a.action, lang)}</span>
-                      <span className="text-slate-400 text-xs">{fmtDateTime(a.createdAt)} {a.user ? `· ${userName(a.user)}` : ''}</span>
+                      <span className="text-slate-400 text-xs">{fmtDateTime(a.createdAt)} · <span dir="ltr" className="tabular-nums">{hijriCell(a.createdAt)}</span>{ar ? ' هـ' : ' AH'} {a.user ? `· ${userName(a.user)}` : ''}</span>
                     </div>
                     {a.changes?.after && typeof a.changes.after === 'object' && (
                       <p className="text-slate-500 text-xs mt-1">
@@ -759,7 +797,8 @@ function RenewModal({ open, employeeId, ar, onClose, onDone }: { open: boolean; 
           {RENEWAL_TYPES.map((t) => <option key={t.key} value={t.key}>{renewalTypeLabel(t.key, lang)}</option>)}
         </Select>
       </Field>
-      <Field label={ar ? 'تاريخ الانتهاء الجديد' : 'New expiry date'}><TextInput type="date" value={newExpiry} onChange={(ev) => setNewExpiry(ev.target.value)} /></Field>
+      {/* خانتان: الميلاديّةُ ثمّ الهجريّة — وما يُرسَل `newExpiry` ميلاديًّا كما كان. */}
+      <DatePair label={ar ? 'تاريخ الانتهاء الجديد' : 'New expiry date'} value={newExpiry} onChange={setNewExpiry} ar={ar} />
       <Field label={ar ? 'الرقم الجديد (اختياري)' : 'New number (optional)'}><TextInput value={documentNumber} onChange={(ev) => setDocumentNumber(ev.target.value)} /></Field>
       <Field label={ar ? 'ملاحظات' : 'Notes'}><TextArea rows={2} value={notes} onChange={(ev) => setNotes(ev.target.value)} /></Field>
     </Modal>
@@ -844,7 +883,7 @@ function TerminateModal({ open, employeeId, ar, onClose, onDone }: { open: boole
         <p className="text-emerald-700 text-sm font-semibold">{ar ? 'مُخلًى طرفه — لا عهدة ولا تفويض معلّق ✓' : 'Cleared — no custody or authorisation outstanding ✓'}</p>
       )}
       <p className="text-slate-500 text-sm">{ar ? 'سيتم تحديث الحالة إلى "منتهي" وإنهاء العقد الساري.' : 'Status becomes “terminated” and the active contract is ended.'}</p>
-      <Field label={ar ? 'تاريخ الإنهاء' : 'Date'}><TextInput type="date" value={date} onChange={(ev) => setDate(ev.target.value)} /></Field>
+      <DatePair label={ar ? 'تاريخ الإنهاء' : 'Termination date'} value={date} onChange={setDate} ar={ar} />
       {/* ── السببُ قائمةٌ لا نصٌّ حرّ ──────────────────────────────────────────
           «استقالة» و«استقاله» و«قدّم استقالته» ثلاثةُ أسبابٍ في التقرير لشيءٍ
           واحد، فلا يُعَدّ سببٌ ولا يُقارَن شهرٌ بشهر. والقائمةُ تُدار من إعدادات
@@ -933,7 +972,8 @@ function DocModal({ open, doc, employeeId, ar, onClose, onDone }: { open: boolea
           {DOCUMENT_CATEGORIES.map((c) => <option key={c.key} value={c.key}>{docCategoryLabel(c.key, lang)}</option>)}
         </Select>
       </Field>
-      <Field label={ar ? 'تاريخ انتهاء المستند (اختياري)' : 'Document expiry (optional)'}><TextInput type="date" value={expiryDate} onChange={(ev) => setExpiryDate(ev.target.value)} /></Field>
+      <DatePair label={ar ? 'تاريخ انتهاء المستند' : 'Document expiry'} value={expiryDate} onChange={setExpiryDate} ar={ar} />
+      <p className="text-slate-400 text-[11px] -mt-1">{ar ? 'تاريخ الانتهاء اختياري.' : 'The expiry date is optional.'}</p>
       <Field label={ar ? 'ملاحظات' : 'Notes'}><TextArea rows={2} value={notes} onChange={(ev) => setNotes(ev.target.value)} /></Field>
     </Modal>
   );
@@ -942,13 +982,16 @@ function DocModal({ open, doc, employeeId, ar, onClose, onDone }: { open: boolea
 // صفوف «نظرة عامة»: تعريفٌ واحد تقرؤه الشاشةُ ويقرؤه التصدير، فلا تُصان قائمةُ
 // الحقول في موضعين فيتخلّف أحدهما عن الآخر. و`financial` تُعلّم الحقول المالية
 // وحدها كي يُسقطها التصديرُ عمّن لا يملك صلاحية الموارد البشرية.
-type ProfileRow = { label: string; value: any; financial?: boolean };
-function profileRows(e: Employee, tx: ReturnType<typeof getHrEmployeesIdTranslations>, vtx: ReturnType<typeof getVehiclesText>): ProfileRow[] {
-  const rows: [string, any, boolean?][] = [
+// `date` تحمل التاريخَ الخامّ لبنود التواريخ: الشاشةُ تكتبه بتقويميه في السطر،
+// والتصديرُ يشقّه سطرين متتاليين (ميلاديّ ثمّ هجريّ).
+type ProfileRow = { label: string; value: any; financial?: boolean; date?: string | null };
+function profileRows(e: Employee, tx: ReturnType<typeof getHrEmployeesIdTranslations>, vtx: ReturnType<typeof getVehiclesText>, ar: boolean): ProfileRow[] {
+  const D = (v?: string | null): [string, boolean, string | null] => [bothDates(v, ar, ''), false, v || null];
+  const rows: [string, any, boolean?, (string | null)?][] = [
     [tx.arabicName, e.arabicName],
     [tx.nationality, e.nationality],
     [tx.gender, e.gender ? (e.gender === 'male' ? tx.male : tx.female) : ''],
-    [tx.dateOfBirth, fmtDate(e.dateOfBirth)],
+    [tx.dateOfBirth, ...D(e.dateOfBirth)],
     [tx.idType, e.idType === 'national_id' ? tx.idTypeNational : tx.idTypeIqama],
     [tx.iqamaNumber, e.iqamaNumber],
     [tx.nationalId, e.nationalId],
@@ -957,8 +1000,8 @@ function profileRows(e: Employee, tx: ReturnType<typeof getHrEmployeesIdTranslat
     [tx.gosiNumber, e.gosiNumber],
     [tx.absherStatus, e.absherStatus],
     [tx.sponsor, e.sponsorName],
-    [tx.hireDate, fmtDate(e.hireDate)],
-    [tx.actualWorkStartDate, fmtDate(e.actualWorkStartDate)],
+    [tx.hireDate, ...D(e.hireDate)],
+    [tx.actualWorkStartDate, ...D(e.actualWorkStartDate)],
     [tx.workLocation, e.workLocation],
     [tx.directManager, userName(e.directManager)],
     [tx.phone, e.phone],
@@ -974,24 +1017,25 @@ function profileRows(e: Employee, tx: ReturnType<typeof getHrEmployeesIdTranslat
     [vtx.iqamaProfession, e.iqamaProfession],
     [vtx.penaltyClause, e.penaltyClause ? e.penaltyClause.toLocaleString() : '', true],
     [vtx.insuranceCompany, e.insuranceCompany],
-    [vtx.insuranceExpiry, fmtDate(e.insuranceExpiry)],
+    [vtx.insuranceExpiry, ...D(e.insuranceExpiry)],
     [vtx.socialInsuranceStatus, e.socialInsuranceStatus],
-    [vtx.visaExpiry, fmtDate(e.visaExpiry)],
+    [vtx.visaExpiry, ...D(e.visaExpiry)],
     [vtx.classification, e.classification],
     [vtx.fileStatus, e.fileStatus],
     [vtx.vehiclePlate, e.vehiclePlate],
     [vtx.licenseNumber, e.licenseNumber],
     [vtx.licenseType, e.licenseType],
-    [vtx.licenseExpiry, fmtDate(e.licenseExpiry)],
+    [vtx.licenseExpiry, ...D(e.licenseExpiry)],
     [vtx.driverCardNumber, e.driverCardNumber],
     [vtx.driverCardType, e.driverCardType],
-    [vtx.driverCardExpiry, fmtDate(e.driverCardExpiry)],
+    [vtx.driverCardExpiry, ...D(e.driverCardExpiry)],
   ];
-  return rows.map(([label, value, financial]) => ({ label, value, financial }));
+  return rows.map(([label, value, financial, date]) => ({ label, value, financial, date }));
 }
 
 function Overview({ e, lang, tx, vtx }: { e: Employee; lang: 'en' | 'ar'; tx: ReturnType<typeof getHrEmployeesIdTranslations>; vtx: ReturnType<typeof getVehiclesText> }) {
-  const rows = profileRows(e, tx, vtx);
+  const ar = lang === 'ar';
+  const rows = profileRows(e, tx, vtx, ar);
   const iqamaB = expiryBadge(e.iqamaExpiry, lang);
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
@@ -1005,7 +1049,7 @@ function Overview({ e, lang, tx, vtx }: { e: Employee; lang: 'en' | 'ar'; tx: Re
         {e.iqamaExpiry && (
           <div className="flex justify-between gap-4 border-b border-slate-200/70 pb-2">
             <span className="text-slate-500 text-sm">{tx.iqamaExpiry}</span>
-            <span className="text-slate-900 text-sm flex items-center gap-2">{fmtDate(e.iqamaExpiry)} {iqamaB && <SmallBadge bg={iqamaB.bg} text={iqamaB.text} label={iqamaB.label} />}</span>
+            <span className="text-slate-900 text-sm flex items-center gap-2 flex-wrap justify-end">{bothDates(e.iqamaExpiry, ar)} {iqamaB && <SmallBadge bg={iqamaB.bg} text={iqamaB.text} label={iqamaB.label} />}</span>
           </div>
         )}
       </div>
@@ -1017,6 +1061,20 @@ function Overview({ e, lang, tx, vtx }: { e: Employee; lang: 'en' | 'ar'; tx: Re
 const Th = ({ children }: { children: React.ReactNode }) => <th className="text-start font-medium px-4 py-3">{children}</th>;
 const Td = ({ children, className }: { children: React.ReactNode; className?: string }) => <td className={`px-4 py-3 text-slate-700 ${className || ''}`}>{children}</td>;
 const Tr = ({ children }: { children: React.ReactNode }) => <tr className="border-b border-slate-200/70 hover:bg-slate-100">{children}</tr>;
+
+// ── كلُّ تاريخٍ في جدولٍ عمودان متجاوران ───────────────────────────────────
+// الميلاديُّ ثمّ هجريُّه مباشرةً، من القيمة نفسِها (lib/hrDates). وهما مكوّنان
+// على مستوى الملفّ: رأسٌ بخانتين وصفٌّ بخانتين، فلا يُنسى أحدُهما دون الآخر.
+const DateThs = ({ label, ar }: { label: string; ar: boolean }) => {
+  const [g, h] = pairLabels(label, ar);
+  return <><Th>{g}</Th><Th>{h}</Th></>;
+};
+const DateTds = ({ v }: { v?: string | Date | null }) => (
+  <>
+    <Td className="whitespace-nowrap tabular-nums">{gregCell(v)}</Td>
+    <Td className="whitespace-nowrap tabular-nums"><span dir="ltr">{hijriCell(v)}</span></Td>
+  </>
+);
 
 /**
  * روابطُ المرفقات في صفٍّ من جدول.

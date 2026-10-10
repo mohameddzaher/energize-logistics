@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/hijri.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
 import '../screens/crm_company_profile.dart';
@@ -740,9 +741,13 @@ final ls2RepairsCfg = ResourceConfig(
 final hrLicensesCfg = ResourceConfig(
   arTitle: 'التراخيص والاشتراكات', enTitle: 'Licenses', icon: Icons.workspace_premium_outlined,
   endpoint: '/api/hr/licenses', listKey: 'licenses', liveEvent: 'hr:license',
+  hijriDates: true,
   searchFields: const ['name', 'category', 'location', 'duration'],
   titleOf: (r) => _s(r, 'name'),
-  subtitleOf: (r) => [_s(r, 'category'), _s(r, 'location')].where((x) => x.isNotEmpty).join(' · '),
+  // تاريخُ الانتهاء بتقويميه في السطر: الميلاديُّ ثمّ هجريُّه (services/hijri).
+  subtitleOf: (r) => [_s(r, 'category'), _s(r, 'location'),
+    if (_s(r, 'expiryDate').isNotEmpty) '${tr('ينتهي', 'Expires')} ${bothDates(_s(r, 'expiryDate'), ar: Lang.instance.ar)}',
+  ].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) {
     final end = DateTime.tryParse(_s(r, 'expiryDate'));
     final days = end?.difference(DateTime.now()).inDays;
@@ -1475,7 +1480,8 @@ final hrContractsCfg = ResourceConfig(
     _s(r, 'iqamaNumber'),
     // القسمُ كما في جدول الويب — يُقرأ من ملفّ الموظّف المرفق بالعقد.
     if (r['employee'] is Map) (r['employee']['department'] ?? '').toString(),
-    [_s(r, 'startDate'), _s(r, 'endDate')].where((x) => x.isNotEmpty).join(' → '),
+    // بدايةُ العقد ونهايتُه، كلٌّ بتقويميه: الميلاديُّ ثمّ هجريُّه.
+    [_s(r, 'startDate'), _s(r, 'endDate')].where((x) => x.isNotEmpty).map((x) => bothDates(x, ar: Lang.instance.ar)).join(' → '),
   ].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
     if (_s(r, 'status').isNotEmpty) (_s(r, 'status'), r['status'] == 'active' ? T.success : T.inkFaint),

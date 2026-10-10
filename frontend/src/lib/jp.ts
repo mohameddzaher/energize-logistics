@@ -12,7 +12,9 @@ export interface JpAttachment { _id: string; fileUrl: string; fileName: string; 
 export interface JpProject {
   _id: string; name: string; description?: string; status: 'active' | 'closed';
   startDate?: string | null; endDate?: string | null; total?: number; done?: number; overdue?: number;
+  createdByName?: string; createdAt?: string;
 }
+export interface JpComment { _id: string; by?: string; byName: string; text: string; at: string }
 export interface JpTask {
   _id: string; kind: 'task' | 'request'; title: string; details?: string; action: JpAction; contact?: string;
   project?: { _id: string; name: string } | null;
@@ -22,7 +24,8 @@ export interface JpTask {
   status: 'open' | 'done'; state: 'open' | 'overdue' | 'done'; onTime?: boolean | null;
   doneAt?: string | null; doneNote?: string; createdAt: string;
   attachments: JpAttachment[];
-  can: { complete: boolean; edit: boolean; remove: boolean; attach: boolean };
+  comments?: JpComment[];
+  can: { complete: boolean; edit: boolean; remove: boolean; attach: boolean; comment?: boolean };
   fromManagement?: boolean;
   handedTo?: { _id: string; name: string; state: string }[];
   canHandDown?: boolean;

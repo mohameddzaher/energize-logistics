@@ -74,6 +74,16 @@ const jpTaskSchema = new mongoose.Schema({
 
   attachments: [attachmentSchema],
 
+  // ── تعليقات ──────────────────────────────────────────────────────────────
+  // سؤالٌ عن المهمّة أو خبرٌ عنها يُكتب عليها، لا في محادثةٍ خارج النظام.
+  // يكتبه من أُسنِدت إليه ومن أسندها ومديرُ القسم.
+  comments: [{
+    by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    byName: { type: String, default: '' },
+    text: { type: String, trim: true, required: true, maxlength: 2000 },
+    at: { type: Date, default: Date.now },
+  }],
+
   // ── مهمّةٌ نزلت من الإدارة العليا ────────────────────────────────────────
   // مديرُ القسم يُسند ما كُلِّف به إلى أحد موظّفيه: فتُنشأ مهمّةُ قسمٍ عاديّةٌ
   // باسمه هو، وهذا الرابطُ يصلها بأصلها. **ولا يخرج إلى الموظّف أبدًا** — هو

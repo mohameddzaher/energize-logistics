@@ -18,10 +18,11 @@ import api from '@/lib/api';
 import { CalendarCheck, Check, X, HelpCircle, Inbox, Loader2 } from 'lucide-react';
 import {
   LeaveRequest, LEAVE_STATUS, LEAVE_STAGES, LeaveStage,
-  empName, userName, fmtDate, leaveTypeLabel,
+  empName, userName, leaveTypeLabel,
 } from '@/lib/hr';
 import { Spinner, PageHeader, PrimaryButton, Badge, Modal, TextArea, Tabs, SearchInput } from '@/components/hr/HRKit';
 import { LeaveChainBar, LeaveThread } from '@/components/hr/LeaveChain';
+import { bothPeriod } from '@/lib/hrDates';
 import { AttachmentList } from '@/components/system/FilePicker';
 
 type Decision = 'approved' | 'rejected' | 'info';
@@ -126,7 +127,7 @@ export default function LeaveApprovalsPage() {
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-900">{empName(l.employee, lang) || userName(l.requester)}</p>
                     <p className="mt-0.5 text-xs text-slate-500">
-                      {leaveTypeLabel(l.leaveType, lang)} · {fmtDate(l.startDate)} → {fmtDate(l.endDate)} · {l.days} {ar ? 'يوم' : 'days'}
+                      {leaveTypeLabel(l.leaveType, lang)} · {bothPeriod(l.startDate, l.endDate, ar)} · {l.days} {ar ? 'يوم' : 'days'}
                     </p>
                     {l.reason && <p className="mt-1 max-w-2xl text-xs text-slate-600">{l.reason}</p>}
                   </div>
@@ -171,7 +172,7 @@ export default function LeaveApprovalsPage() {
             <div className="grid gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-3">
               <Row label={ar ? 'الموظف' : 'Employee'} value={`${empName(review.employee, lang)} (${userName(review.requester)})`} />
               <Row label={ar ? 'النوع' : 'Type'} value={leaveTypeLabel(review.leaveType, lang)} />
-              <Row label={ar ? 'الفترة' : 'Period'} value={`${fmtDate(review.startDate)} → ${fmtDate(review.endDate)} (${review.days} ${ar ? 'يوم' : 'd'})`} />
+              <Row label={ar ? 'الفترة' : 'Period'} value={`${bothPeriod(review.startDate, review.endDate, ar)} (${review.days} ${ar ? 'يوم' : 'd'})`} />
               <Row label={ar ? 'الرصيد المستحق' : 'Accrued balance'}
                 value={<>
                   {review.balanceSnapshot?.accrued ?? '—'} {ar ? 'يوم' : 'd'}

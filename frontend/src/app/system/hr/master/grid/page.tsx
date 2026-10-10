@@ -49,6 +49,19 @@ type Row = {
 const EMPTY_SET: Set<string> = new Set();
 const EMPTY_OPTS: ColumnFilterOption[] = [];
 
+/**
+ * ما يظهر لمن لم يختر أعمدتَه بعد: الأساسيُّ الذي يُسأل عنه كلَّ يوم — من هو،
+ * وأين يعمل، ومتى تنتهي إقامتُه وعقدُه. والباقي (مئةُ عمودٍ ونيّف) في قائمة
+ * الأعمدة لمن أراده، واختيارُه يُحفَظ.
+ */
+const DEFAULT_COLS = [
+  'employeeNumber', 'name', 'iqamaNumber',
+  'nationality', 'jobTitle', 'department', 'branchName', 'project', 'systemStatus',
+  'hireDate', 'hireDateHijri',
+  'iqamaExpiry', 'iqamaExpiryHijri', 'iqamaExpiry__days',
+  'contractEndDate', 'contractEndDateHijri', 'contractEndDate__days',
+];
+
 export default function HrMasterGridPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -176,7 +189,22 @@ export default function HrMasterGridPage() {
   };
 
   const chooserCols: ChooserColumn[] = allCols.map((c, i) => ({ key: c.key, label: c.label, locked: i < 3 }));
-  const { visible, setVisible } = useVisibleColumns('hr:master:grid:cols', chooserCols);
+  // (المفتاحُ `v2`: الاختيارُ القديمُ حُفظ مقصوصًا على أربعة أعمدة — راجع useVisibleColumns.)
+  const { visible, setVisible: saveVisible } = useVisibleColumns('hr:master:grid:cols:v2', chooserCols, { defaults: DEFAULT_COLS });
+  // ── والتاريخُ وتوأمُه الهجريُّ يظهران معًا ويختفيان معًا ──────────────────
+  // هما وجهان لتاريخٍ واحد، ومكانُ أحدِهما بعد الآخر مباشرةً. فمن أظهر
+  // الميلاديَّ ظهر هجريُّه بجانبه (والعكس)، ولا يبقى أحدُهما وحدَه.
+  const setVisible = (next: string[]) => {
+    const prev = new Set(visible); const out = new Set(next);
+    for (const c of allCols) {
+      if (!c.hijriOf) continue;
+      const g = out.has(c.hijriOf); const h = out.has(c.key);
+      if (g === h) continue;
+      const on = g !== prev.has(c.hijriOf) ? g : h;
+      if (on) { out.add(c.hijriOf); out.add(c.key); } else { out.delete(c.hijriOf); out.delete(c.key); }
+    }
+    saveVisible(allCols.map((c) => c.key).filter((k) => out.has(k)));
+  };
   // الثلاثةُ الأولى ثابتةٌ دائمًا — حتّى لو حُفظ اختيارٌ قديمٌ قبل تثبيت الهويّة.
   const shown = allCols.filter((c, i) => i < 3 || visible.includes(c.key));
   // الحقلُ الذي يُعدَّل: عمودٌ من أعمدة الخادم، لا مشتقٌّ (هجريّ، أيّام، عهد).

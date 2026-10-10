@@ -106,4 +106,69 @@ const fromHijriString = (value) => {
 const HIJRI_MONTHS_AR = ['محرّم', 'صفر', 'ربيع الأول', 'ربيع الثاني', 'جمادى الأولى', 'جمادى الآخرة',
   'رجب', 'شعبان', 'رمضان', 'شوّال', 'ذو القعدة', 'ذو الحجة'];
 
-module.exports = { toHijri, fromHijri, fromHijriString, hKey, HIJRI_MONTHS_AR };
+/**
+ * fillHijriPairs — يُكمل توأمَ التاريخ في تعديلٍ مسطَّح (`{ 'block.expiryDate': … }`).
+ *
+ * بعضُ السجلّات (المركبات) تخزّن التاريخَ مرّتين: `expiryDate` ميلاديًّا
+ * و`expiryDateHijri` نصًّا. والحسابُ كلُّه على الميلاديّ، فهجريٌّ بلا ميلاديٍّ
+ * مستندٌ «بلا تاريخ». فمن أرسل أحدَهما يُكتب له الآخر هنا:
+ *
+ *   • هجريٌّ وحدَه            ← يُشتقّ ميلاديُّه.
+ *   • ميلاديٌّ وحدَه           ← يُشتقّ هجريُّه (إن كان للحقل توأمٌ في السجلّ).
+ *   • الاثنان معًا            ← يغلب ما **تغيّر** عمّا في السجلّ؛ وإن تغيّرا معًا
+ *                               فالميلاديُّ هو المرجع.
+ *
+ * يعدّل `$set` في مكانه ويردّ ما اشتقّه (`{ مفتاح: قيمة }`) ليُقال للشاشة.
+ * ولا يرمي: تاريخٌ لا يُقرأ يُترك كما هو — يرفضه التحقّقُ بعده برسالته.
+ *
+ * ── ولماذا هو هنا ───────────────────────────────────────────────────────────
+ * كان متحكِّمُ المركبات ينادي هذه الدالّةَ وهي غيرُ موجودة: فكلُّ حفظٍ على
+ * مركبة — تعديلُ بيانٍ، إضافةُ جهاز تتبّع — يردّ «fillHijriPairs is not a
+ * function» ولا يُحفَظ شيء.
+ */
+const SUFFIX = 'Hijri';
+const getPath = (obj, path) => String(path).split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+const sameDay = (a, b) => {
+  const x = asDate(a); const y = asDate(b);
+  if (!x && !y) return true;
+  if (!x || !y) return false;
+  return x.toISOString().slice(0, 10) === y.toISOString().slice(0, 10);
+};
+const isBlank = (v) => v === undefined || v === null || String(v).trim() === '';
+
+// التواريخُ التي لها توأمٌ هجريٌّ مخزَّنٌ في سجلّ المركبة (models/VehicleMaster):
+// رخصةُ السير والفحصُ الدوريّ. وغيرُهما (اشتراك GPS، التأمين…) ميلاديٌّ وحدَه —
+// فلا يُخترَع له حقلٌ هجريٌّ لا وجودَ له في النموذج.
+const VEHICLE_PAIRS = ['vehicleLicense.expiryDate', 'inspection.expiryDate'];
+
+function fillHijriPairs($set, before = {}, known = VEHICLE_PAIRS) {
+  const derived = {};
+  if (!$set || typeof $set !== 'object') return derived;
+  const bases = new Set();
+  for (const k of Object.keys($set)) {
+    if (k.endsWith(SUFFIX)) bases.add(k.slice(0, -SUFFIX.length));
+    // ميلاديٌّ بلا توأمٍ مُرسَل: له توأمٌ إن كان معروفًا أو كان في السجلّ.
+    else if (known.includes(k) || getPath(before, `${k}${SUFFIX}`) !== undefined) bases.add(k);
+  }
+  for (const base of bases) {
+    const hk = `${base}${SUFFIX}`;
+    const hasG = Object.prototype.hasOwnProperty.call($set, base);
+    const hasH = Object.prototype.hasOwnProperty.call($set, hk);
+    const gChanged = hasG && !sameDay($set[base], getPath(before, base));
+    const hChanged = hasH && hKey($set[hk]) !== hKey(getPath(before, hk));
+    try {
+      if (hasH && !isBlank($set[hk]) && (!hasG || (hChanged && !gChanged))) {
+        // الهجريُّ هو المكتوب: يُخرج ميلاديَّه.
+        const g = fromHijriString(String($set[hk]).trim());
+        if (g) { $set[base] = g; derived[base] = g; }
+      } else if (hasG) {
+        // الميلاديُّ هو المكتوب (أو مُسح): توأمُه يتبعه.
+        const h = isBlank($set[base]) ? '' : toHijri($set[base]);
+        if (h !== undefined && h !== null && (!hasH || hKey($set[hk]) !== hKey(h))) { $set[hk] = h; derived[hk] = h; }
+      }
+    } catch (e) { /* يُترك للتحقّق بعده */ }
+  }
+  return derived;
+}
+
+module.exports = { toHijri, fromHijri, fromHijriString, hKey, HIJRI_MONTHS_AR, fillHijriPairs };

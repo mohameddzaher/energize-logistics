@@ -7,7 +7,9 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import { Package, Plus, Edit, Undo2, Trash2, Check, Eye, Lock } from 'lucide-react';
-import { isHRStaff, Asset, Employee, empName, fmtDate, today } from '@/lib/hr';
+import { isHRStaff, Asset, Employee, empName, today } from '@/lib/hr';
+import DatePair from '@/components/hr/DatePair';
+import { bothDates, bothDatesShort, exportDatePair } from '@/lib/hrDates';
 import { useAssetVocab } from '@/hooks/useAssetVocab';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, SmallBadge, Modal, Field, TextInput, Select, SearchableSelect, TextArea, Loader2 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -119,8 +121,9 @@ export default function CustodyPage() {
     { header: 'Brand', key: 'brand', width: 14 },
     { header: 'Condition', key: 'condition', width: 12 },
     { header: 'Status', key: 'status', width: 12 },
-    { header: 'Assigned', key: 'assignedDate', width: 14 },
-    { header: 'Returned', key: 'returnedDate', width: 14 },
+    // كلُّ تاريخٍ عمودان متجاوران: الميلاديُّ ثمّ هجريُّه المشتقّ (lib/hrDates).
+    ...exportDatePair(tx.fieldAssignedDate, 'assignedDate', ar),
+    ...exportDatePair(tx.fieldReturnedDate, 'returnedDate', ar),
     { header: 'Source', key: 'issuedBySection', transform: (v: any) => (v === 'it' ? tx.sourceIt : tx.sourceHr), width: 20 },
   ];
   // فلتر الحالة (مُسلَّمة/مُعادة) يُطبَّق على الخادم، فما في الذاكرة ليس كلّ
@@ -207,7 +210,7 @@ export default function CustodyPage() {
                 <td className="px-4 py-3 text-slate-700">{typeLabel(a.type, lang)}</td>
                 <td className="px-4 py-3 text-slate-700">{a.serialNumber || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{a.condition ? conditionLabel(a.condition, lang) : '—'}</td>
-                <td className="px-4 py-3">{a.status === 'assigned' ? <SmallBadge bg="bg-amber-500/20" text="text-amber-700" label={tx.badgeAssigned} /> : <SmallBadge bg="bg-green-500/20" text="text-green-600" label={`${tx.badgeReturned} ${fmtDate(a.returnedDate)}`} />}</td>
+                <td className="px-4 py-3">{a.status === 'assigned' ? <SmallBadge bg="bg-amber-500/20" text="text-amber-700" label={tx.badgeAssigned} /> : <SmallBadge bg="bg-green-500/20" text="text-green-600" label={`${tx.badgeReturned} ${bothDatesShort(a.returnedDate, ar, '')}`} />}</td>
                 <td className="px-4 py-3">{isItOwned(a) ? <SmallBadge bg="bg-sky-500/20" text="text-sky-700" label={tx.sourceIt} /> : <SmallBadge bg="bg-slate-500/20" text="text-slate-700" label={tx.sourceHr} />}</td>
               </tr>
             ))}
@@ -242,8 +245,9 @@ export default function CustodyPage() {
           <Field label={tx.fieldBrand}><TextInput value={form.brand} onChange={(e) => set('brand', e.target.value)} /></Field>
           <Field label={tx.fieldModel}><TextInput value={form.model} onChange={(e) => set('model', e.target.value)} /></Field>
           <Field label={tx.fieldCondition}><Select value={form.condition} onChange={(e) => set('condition', e.target.value)}>{conditions.map((c) => <option key={c.key} value={c.key}>{ar ? c.ar : c.en}</option>)}</Select></Field>
+          {/* خانتان في صفٍّ واحد: الميلاديّةُ ثمّ الهجريّة — وما يُرسَل ميلاديٌّ وحدَه. */}
+          <DatePair label={tx.fieldAssignedDate} value={form.assignedDate || ''} onChange={(v) => set('assignedDate', v)} ar={ar} />
           <Field label={tx.fieldValue}><TextInput type="number" value={form.value} onChange={(e) => set('value', Number(e.target.value))} /></Field>
-          <Field label={tx.fieldAssignedDate}><TextInput type="date" value={form.assignedDate || ''} onChange={(e) => set('assignedDate', e.target.value)} /></Field>
           <Field label={tx.fieldNotes} span2><TextArea rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
         </div>
       </Modal>
@@ -269,11 +273,11 @@ export default function CustodyPage() {
                 [tx.fieldSpecs, details.specs],
                 [tx.fieldCategory, details.category],
                 [tx.fieldCondition, details.condition ? conditionLabel(details.condition, lang) : ''],
-                [tx.fieldAssignedDate, fmtDate(details.assignedDate)],
+                [tx.fieldAssignedDate, bothDates(details.assignedDate, ar, '')],
                 [tx.fieldAssignedBy, userName(details.assignedBy)],
                 [tx.colSource, isItOwned(details) ? tx.sourceIt : tx.sourceHr],
                 [tx.colStatus, details.status === 'assigned' ? tx.badgeAssigned : tx.badgeReturned],
-                [tx.fieldReturnedDate, details.status === 'returned' ? fmtDate(details.returnedDate) : ''],
+                [tx.fieldReturnedDate, details.status === 'returned' ? bothDates(details.returnedDate, ar, '') : ''],
                 [tx.fieldReturnedCondition, details.returnedCondition ? conditionLabel(details.returnedCondition, lang) : ''],
               ].map(([label, value]) => (
                 <div key={label as string}>

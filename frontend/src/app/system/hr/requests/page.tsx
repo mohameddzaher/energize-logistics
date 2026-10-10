@@ -13,6 +13,7 @@ import { Spinner, PageHeader, SearchInput, Badge, Modal, TextInput, Select, Prim
 import { getHrRequestsTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import ScrollX from '@/components/system/ScrollX';
+import { gregDay, hijriCell, pairLabels } from '@/lib/hrDates';
 
 const idOf = (e: any) => (e?.idType === 'national_id' ? (e?.nationalId || e?.iqamaNumber) : (e?.iqamaNumber || e?.nationalId)) || '—';
 const BG = 'bg-white group-hover:bg-slate-100';
@@ -70,12 +71,16 @@ export default function HRRequestsPage() {
   const filtered = requests.filter((r) => !search.trim() || r.subject.toLowerCase().includes(search.toLowerCase()) || userName(r.requester).toLowerCase().includes(search.toLowerCase()));
   const openCount = requests.filter((r) => r.status === 'open' || r.status === 'in_progress').length;
 
+  // «آخر تحديث الميلادي» لا تُقرأ — فالاسمُ الأساسيُّ «تاريخ آخر تحديث».
+  const updatedLabels = pairLabels(ar ? 'تاريخ آخر تحديث' : 'Last updated', ar);
   const exportColumns: ExportColumn[] = [
     { header: tx.colEmployee, key: 'requester', transform: (v) => userName(v), width: 22 },
     { header: tx.colCategory, key: 'category', transform: (v) => categoryLabel(v, lang), width: 18 },
     { header: tx.colSubject, key: 'subject', width: 32 },
     { header: tx.colStatus, key: 'status', transform: (v) => (REQUEST_STATUS[v] ? (ar ? REQUEST_STATUS[v].ar : REQUEST_STATUS[v].en) : v), width: 16 },
-    { header: tx.colUpdated, key: 'updatedAt', transform: (v) => fmtDateTime(v), width: 20 },
+    // الميلاديُّ بساعته، وبعده مباشرةً هجريُّ اليوم نفسِه (lib/hrDates).
+    { header: updatedLabels[0], key: 'updatedAt', transform: (v) => fmtDateTime(v), width: 22 },
+    { header: updatedLabels[1], key: 'updatedAt', type: 'hijri', transform: (v) => gregDay(v), width: 16 },
   ];
   // فلتر الحالة يُطبَّق على الخادم: حين يكون «مغلق» لا تعرف الذاكرة بالطلبات
   // المفتوحة شيئًا، فـ«الكلّ» يجب أن يعيد النداء بلا حالة. والبحث في الذاكرة،
@@ -119,11 +124,12 @@ export default function HRRequestsPage() {
             <th className="text-start font-semibold px-4 py-3">{tx.colCategory}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colSubject}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colStatus}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.colUpdated}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{updatedLabels[0]}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{updatedLabels[1]}</th>
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={7} className="text-center text-slate-800 py-12">{tx.noRequests}</td></tr>
+              <tr><td colSpan={8} className="text-center text-slate-800 py-12">{tx.noRequests}</td></tr>
             ) : filtered.map((r) => (
               <tr key={r._id} className="group border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => setOpen(r)}>
                 <td {...pin.td(0, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{(r as any).employee?.employeeNumber || '—'}</td>
@@ -132,7 +138,8 @@ export default function HRRequestsPage() {
                 <td className="px-4 py-3 text-slate-700">{categoryLabel(r.category, lang)}</td>
                 <td className="px-4 py-3 text-slate-700">{r.subject}</td>
                 <td className="px-4 py-3 whitespace-nowrap"><Badge style={REQUEST_STATUS[r.status]} lang={lang} /></td>
-                <td className="px-4 py-3 text-slate-800 text-xs">{fmtDateTime(r.updatedAt)}</td>
+                <td className="px-4 py-3 text-slate-800 text-xs whitespace-nowrap">{fmtDateTime(r.updatedAt)}</td>
+                <td className="px-4 py-3 text-slate-800 text-xs whitespace-nowrap tabular-nums" dir="ltr">{hijriCell(r.updatedAt)}</td>
               </tr>
             ))}
           </tbody>
@@ -159,7 +166,7 @@ export default function HRRequestsPage() {
                 return (
                   <div key={m._id || i} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${fromStaff ? 'bg-[#f37121]/20 text-white' : 'bg-slate-100 text-slate-900'}`}>
-                      <p className="text-xs text-slate-500 mb-1">{userName(m.sender)} · {fmtDateTime(m.at)}</p>
+                      <p className="text-xs text-slate-500 mb-1">{userName(m.sender)} · {fmtDateTime(m.at)} · <span dir="ltr" className="tabular-nums">{hijriCell(m.at)}</span>{ar ? ' هـ' : ' AH'}</p>
                       {m.body && <p className="whitespace-pre-wrap">{m.body}</p>}
                       {m.link && <a href={m.link} target="_blank" rel="noreferrer" className="text-[#f37121] underline flex items-center gap-1 mt-1"><Link2 className="w-3 h-3" /> {tx.openLink}</a>}
                       <AttachmentList items={(m as any).attachments} />

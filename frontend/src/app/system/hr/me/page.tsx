@@ -7,18 +7,20 @@ import api from '@/lib/api';
 import { Briefcase } from 'lucide-react';
 import {
   Employee, Contract, LeaveRequest, Asset, LeaveBalance,
-  empName, userName, fmtDate, leaveTypeLabel, expiryBadge,
+  empName, userName, leaveTypeLabel, expiryBadge,
   EMPLOYMENT_STATUS, LEAVE_STATUS, assetTypeLabel,
 } from '@/lib/hr';
 import { Spinner, PageHeader, Badge, SmallBadge, Tabs, StatCard, Pick } from '@/components/hr/HRKit';
 import { getHrMeTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import ScrollX from '@/components/system/ScrollX';
+import { bothDates, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 
 interface Me { employee: Employee | null; contracts: Contract[]; activeContract: Contract | null; balance: LeaveBalance | null; leaves: LeaveRequest[]; assets: Asset[]; }
 
 export default function MyProfilePage() {
   const { lang, isRTL } = useLanguage();
+  const ar = lang === 'ar';
   const tx = getHrMeTranslations(lang);
   const [data, setData] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,17 +64,24 @@ export default function MyProfilePage() {
     [tx.nationality, e.nationality],
     [tx.iqama, e.iqamaNumber],
     [tx.nationalId, e.nationalId],
-    [tx.hireDate, fmtDate(e.hireDate)],
+    // سطرُ التفاصيل يحمل التقويمين معًا، الميلاديَّ أوّلًا (lib/hrDates).
+    [tx.hireDate, bothDates(e.hireDate, ar, '')],
     [tx.manager, userName(e.directManager)],
     [tx.phone, e.phone],
     [tx.email, e.email],
   ];
   const iqamaB = expiryBadge(e.iqamaExpiry, lang);
 
+  // «من الميلادي» لا تُقرأ — فالاسمُ الأساسيُّ «تاريخ البداية/النهاية».
+  const FROM_LABEL = ar ? 'تاريخ البداية' : 'Start date';
+  const TO_LABEL = ar ? 'تاريخ النهاية' : 'End date';
+  const fromLabels = pairLabels(FROM_LABEL, ar);
+  const toLabels = pairLabels(TO_LABEL, ar);
   const leaveColumns: ExportColumn[] = [
     { header: tx.colType, key: 'leaveType', transform: (v) => leaveTypeLabel(v, lang), width: 18 },
-    { header: tx.colFrom, key: 'startDate', transform: (v) => fmtDate(v), width: 14 },
-    { header: tx.colTo, key: 'endDate', transform: (v) => fmtDate(v), width: 14 },
+    // كلُّ تاريخٍ عمودان متجاوران: الميلاديُّ ثمّ هجريُّه المشتقّ.
+    ...exportDatePair(FROM_LABEL, 'startDate', ar),
+    ...exportDatePair(TO_LABEL, 'endDate', ar),
     { header: tx.colDays, key: 'days', width: 10 },
     { header: tx.colStatus, key: 'status', transform: (v) => (lang === 'ar' ? LEAVE_STATUS[v]?.ar : LEAVE_STATUS[v]?.en) || v, width: 14 },
   ];
@@ -126,8 +135,8 @@ export default function MyProfilePage() {
           {rows.filter(([, v]) => v && v !== '—').map(([k, v]) => (
             <div key={k} className="flex justify-between gap-4 border-b border-slate-200/70 pb-2"><span className="text-slate-500 text-sm">{k}</span><span className="text-slate-900 text-sm text-end">{v}</span></div>
           ))}
-          {e.iqamaExpiry && <div className="flex justify-between gap-4 border-b border-slate-200/70 pb-2"><span className="text-slate-500 text-sm">{tx.iqamaExpiry}</span><span className="text-slate-900 text-sm flex items-center gap-2">{fmtDate(e.iqamaExpiry)} {iqamaB && <SmallBadge bg={iqamaB.bg} text={iqamaB.text} label={iqamaB.label} />}</span></div>}
-          {data.activeContract && <div className="flex justify-between gap-4 border-b border-slate-200/70 pb-2"><span className="text-slate-500 text-sm">{tx.currentContract}</span><span className="text-slate-900 text-sm text-end">{fmtDate(data.activeContract.startDate)} → {data.activeContract.endDate ? fmtDate(data.activeContract.endDate) : tx.unlimited}</span></div>}
+          {e.iqamaExpiry && <div className="flex justify-between gap-4 border-b border-slate-200/70 pb-2"><span className="text-slate-500 text-sm">{tx.iqamaExpiry}</span><span className="text-slate-900 text-sm flex items-center gap-2">{bothDates(e.iqamaExpiry, ar)} {iqamaB && <SmallBadge bg={iqamaB.bg} text={iqamaB.text} label={iqamaB.label} />}</span></div>}
+          {data.activeContract && <div className="flex justify-between gap-4 border-b border-slate-200/70 pb-2"><span className="text-slate-500 text-sm">{tx.currentContract}</span><span className="text-slate-900 text-sm text-end">{bothDates(data.activeContract.startDate, ar)}<br />→ {data.activeContract.endDate ? bothDates(data.activeContract.endDate, ar) : tx.unlimited}</span></div>}
         </div>
       )}
 
@@ -141,9 +150,9 @@ export default function MyProfilePage() {
           <ScrollX id="me-leave-list" className="scroll-mt-24">
           {data.leaves.length === 0 ? <p className="text-center text-slate-500 py-10">{tx.noLeaves}</p> : (
             <table className="w-full text-sm">
-              <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300"><th className="text-start px-4 py-3 font-semibold">{tx.colType}</th><th className="text-start px-4 py-3 font-semibold">{tx.colFrom}</th><th className="text-start px-4 py-3 font-semibold">{tx.colTo}</th><th className="text-start px-4 py-3 font-semibold">{tx.colDays}</th><th className="text-start px-4 py-3 font-semibold">{tx.colStatus}</th></tr></thead>
+              <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300"><th className="text-start px-4 py-3 font-semibold">{tx.colType}</th><th className="text-start px-4 py-3 font-semibold whitespace-nowrap">{fromLabels[0]}</th><th className="text-start px-4 py-3 font-semibold whitespace-nowrap">{fromLabels[1]}</th><th className="text-start px-4 py-3 font-semibold whitespace-nowrap">{toLabels[0]}</th><th className="text-start px-4 py-3 font-semibold whitespace-nowrap">{toLabels[1]}</th><th className="text-start px-4 py-3 font-semibold">{tx.colDays}</th><th className="text-start px-4 py-3 font-semibold">{tx.colStatus}</th></tr></thead>
               <tbody>{data.leaves.map((l) => (
-                <tr key={l._id} className="border-b border-slate-200/70"><td className="px-4 py-3 text-slate-900">{leaveTypeLabel(l.leaveType, lang)}</td><td className="px-4 py-3 text-slate-700">{fmtDate(l.startDate)}</td><td className="px-4 py-3 text-slate-700">{fmtDate(l.endDate)}</td><td className="px-4 py-3 text-slate-700">{l.days}</td><td className="px-4 py-3 whitespace-nowrap"><Badge style={LEAVE_STATUS[l.status]} lang={lang} /></td></tr>
+                <tr key={l._id} className="border-b border-slate-200/70"><td className="px-4 py-3 text-slate-900">{leaveTypeLabel(l.leaveType, lang)}</td><td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{gregCell(l.startDate)}</td><td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums" dir="ltr">{hijriCell(l.startDate)}</td><td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{gregCell(l.endDate)}</td><td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums" dir="ltr">{hijriCell(l.endDate)}</td><td className="px-4 py-3 text-slate-700">{l.days}</td><td className="px-4 py-3 whitespace-nowrap"><Badge style={LEAVE_STATUS[l.status]} lang={lang} /></td></tr>
               ))}</tbody>
             </table>
           )}

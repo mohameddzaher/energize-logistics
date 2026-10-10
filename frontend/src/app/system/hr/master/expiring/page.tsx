@@ -15,6 +15,7 @@ import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { CalendarClock } from 'lucide-react';
 import { stateMeta, getHrExpiring, STATE_META, stateLabel, fmtDate, daysText } from '@/lib/hrMaster';
+import { hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import MasterNav from '@/components/hr/MasterNav';
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import ScrollX from '@/components/system/ScrollX';
@@ -70,12 +71,15 @@ function ExpiringInner() {
   useSocket('hr:master', useCallback(() => { load(); }, [load]));
 
   const rows = d?.rows || [];
+  const EXPIRY_LABEL = t('تاريخ الانتهاء', 'Expiry date');
+  const expiryLabels = pairLabels(EXPIRY_LABEL, ar);
   const cols: ExportColumn[] = [
     { header: t('الرقم الوظيفي', 'Employee no.'), key: 'employeeNumber', width: 14 },
     { header: t('الاسم', 'Name'), key: 'name', width: 30 },
     { header: t('رقم الهوية', 'ID number'), key: 'iqamaNumber', width: 16 },
     { header: t('المستند', 'Document'), key: 'docAr', width: 18 },
-    { header: t('ينتهي في', 'Expires'), key: 'expiryDate', transform: (v) => fmtDate(v), width: 14 },
+    // تاريخُ الانتهاء عمودان متجاوران: الميلاديُّ ثمّ هجريُّه المشتقّ (lib/hrDates).
+    ...exportDatePair(EXPIRY_LABEL, 'expiryDate', ar),
     { header: t('المتبقي', 'Days left'), key: 'daysRemaining', width: 12 },
     { header: t('الحالة', 'State'), key: 'state', transform: (v) => stateLabel(v, ar), width: 16 },
     { header: t('القسم', 'Department'), key: 'department', width: 18 },
@@ -171,7 +175,7 @@ function ExpiringInner() {
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
               <tr>{[t('الرقم الوظيفي', 'Emp. no.'), t('الموظف', 'Employee'), t('رقم الهوية', 'ID number'),
-                t('المستند', 'Document'), t('ينتهي في', 'Expires'),
+                t('المستند', 'Document'), expiryLabels[0], expiryLabels[1],
                 t('المتبقي', 'Left'), t('الحالة', 'State'), t('القسم', 'Department')].map((h, i) => (
                 <th key={i} {...(i < 3 ? pin.th(i, 'px-3 py-3 text-center font-bold whitespace-nowrap') : { className: 'px-3 py-3 text-center font-bold whitespace-nowrap' })}>{h}</th>
               ))}</tr>
@@ -193,6 +197,7 @@ function ExpiringInner() {
                         className="text-slate-800 hover:text-[#f37121] text-[13px] whitespace-nowrap font-medium">{ar ? r.docAr : r.docEn}</button>
                     </td>
                     <td className="px-3 py-2.5 text-slate-800 text-[13px] whitespace-nowrap tabular-nums">{fmtDate(r.expiryDate)}</td>
+                    <td className="px-3 py-2.5 text-slate-800 text-[13px] whitespace-nowrap tabular-nums" dir="ltr">{hijriCell(r.expiryDate)}</td>
                     <td className="px-3 py-2.5 font-bold whitespace-nowrap" style={{ color: m.color }}>{daysText(r.daysRemaining, ar)}</td>
                     <td className="px-3 py-2.5">
                       <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${m.bg}`}>{stateLabel(r.state, ar)}</span>
@@ -202,7 +207,7 @@ function ExpiringInner() {
                 );
               })}
               {!rows.length && (
-                <tr><td colSpan={8} className="px-3 py-12 text-center text-slate-400">
+                <tr><td colSpan={9} className="px-3 py-12 text-center text-slate-400">
                   {t('لا شيء ينتهي خلال هذه المدة', 'Nothing expires in this window')}
                 </td></tr>
               )}

@@ -6,8 +6,10 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { CalendarDays, Plus, Check, X, XCircle, AlertTriangle, ShieldCheck, Pencil, Trash2, HelpCircle, Eye, Send } from 'lucide-react';
-import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, fmtDate, leaveTypeLabel, today, earliestStartDate, daysUntil } from '@/lib/hr';
-import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, TextInput, Select, TextArea, Tabs, StatCard, Pick, Loader2 } from '@/components/hr/HRKit';
+import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, leaveTypeLabel, today, earliestStartDate, daysUntil } from '@/lib/hr';
+import DatePair from '@/components/hr/DatePair';
+import { bothPeriod, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
+import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, Select, TextArea, Tabs, StatCard, Pick, Loader2 } from '@/components/hr/HRKit';
 import { getHrMyLeavesTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import FilePicker, { AttachmentList, type PickedFile } from '@/components/system/FilePicker';
@@ -168,18 +170,24 @@ export default function MyLeavesPage() {
     setBusy(false);
   };
 
+  // ── كلُّ تاريخٍ عمودان متجاوران: الميلاديُّ ثمّ هجريُّه المشتقّ ───────────
+  // «من الميلادي» لا تُقرأ — فالاسمُ الأساسيُّ «تاريخ البداية/النهاية».
+  const FROM_LABEL = ar ? 'تاريخ البداية' : 'Start date';
+  const TO_LABEL = ar ? 'تاريخ النهاية' : 'End date';
+  const fromLabels = pairLabels(FROM_LABEL, ar);
+  const toLabels = pairLabels(TO_LABEL, ar);
   const mineColumns: ExportColumn[] = [
     { header: tx.colType, key: 'leaveType', transform: (v) => leaveTypeLabel(v, lang), width: 20 },
-    { header: tx.colFrom, key: 'startDate', transform: (v) => fmtDate(v), width: 14 },
-    { header: tx.colTo, key: 'endDate', transform: (v) => fmtDate(v), width: 14 },
+    ...exportDatePair(FROM_LABEL, 'startDate', ar),
+    ...exportDatePair(TO_LABEL, 'endDate', ar),
     { header: tx.colDays, key: 'days', width: 8 },
     { header: tx.colStatus, key: 'status', transform: (v) => (LEAVE_STATUS[v] ? (ar ? LEAVE_STATUS[v].ar : LEAVE_STATUS[v].en) : v), width: 16 },
   ];
   const teamColumns: ExportColumn[] = [
     { header: tx.colEmployee, key: 'requester', transform: (v) => userName(v), width: 22 },
     { header: tx.colType, key: 'leaveType', transform: (v) => leaveTypeLabel(v, lang), width: 20 },
-    { header: tx.colFrom, key: 'startDate', transform: (v) => fmtDate(v), width: 14 },
-    { header: tx.colTo, key: 'endDate', transform: (v) => fmtDate(v), width: 14 },
+    ...exportDatePair(FROM_LABEL, 'startDate', ar),
+    ...exportDatePair(TO_LABEL, 'endDate', ar),
     { header: tx.colDays, key: 'days', width: 8 },
     { header: tx.colStatus, key: 'status', transform: (v) => (LEAVE_STATUS[v] ? (ar ? LEAVE_STATUS[v].ar : LEAVE_STATUS[v].en) : v), width: 16 },
   ];
@@ -235,13 +243,13 @@ export default function MyLeavesPage() {
         )}
         <Card>
           <table className="w-full text-sm">
-            <thead className="bg-slate-900"><Tr head><Th>{tx.colType}</Th><Th>{tx.colFrom}</Th><Th>{tx.colTo}</Th><Th>{tx.colDays}</Th><Th>{tx.colStatus}</Th><Th end></Th></Tr></thead>
+            <thead className="bg-slate-900"><Tr head><Th>{tx.colType}</Th><Th>{fromLabels[0]}</Th><Th>{fromLabels[1]}</Th><Th>{toLabels[0]}</Th><Th>{toLabels[1]}</Th><Th>{tx.colDays}</Th><Th>{tx.colStatus}</Th><Th end></Th></Tr></thead>
             <tbody>
-              {leaves.length === 0 ? <tr><td colSpan={6} className="text-center text-slate-800 py-10">{tx.noRequests}</td></tr> :
+              {leaves.length === 0 ? <tr><td colSpan={8} className="text-center text-slate-800 py-10">{tx.noRequests}</td></tr> :
                 leaves.map((l) => (
                   <Tr key={l._id}>
                     <Td className="text-slate-900">{leaveTypeLabel(l.leaveType, lang)}</Td>
-                    <Td>{fmtDate(l.startDate)}</Td><Td>{fmtDate(l.endDate)}</Td><Td>{l.days}</Td>
+                    <Td className="whitespace-nowrap tabular-nums">{gregCell(l.startDate)}</Td><Td className="whitespace-nowrap tabular-nums"><span dir="ltr">{hijriCell(l.startDate)}</span></Td><Td className="whitespace-nowrap tabular-nums">{gregCell(l.endDate)}</Td><Td className="whitespace-nowrap tabular-nums"><span dir="ltr">{hijriCell(l.endDate)}</span></Td><Td>{l.days}</Td>
                     <Td>
                       <Badge style={LEAVE_STATUS[l.status]} lang={lang} />
                       {l.status === 'info_requested' && lastQuestion(l) && (
@@ -287,14 +295,14 @@ export default function MyLeavesPage() {
         )}
         <Card>
           <table className="w-full text-sm">
-            <thead className="bg-slate-900"><Tr head><Th>{tx.colEmployee}</Th><Th>{tx.colType}</Th><Th>{tx.colPeriod}</Th><Th>{tx.colDays}</Th><Th>{tx.colStatus}</Th><Th end></Th></Tr></thead>
+            <thead className="bg-slate-900"><Tr head><Th>{tx.colEmployee}</Th><Th>{tx.colType}</Th><Th>{fromLabels[0]}</Th><Th>{fromLabels[1]}</Th><Th>{toLabels[0]}</Th><Th>{toLabels[1]}</Th><Th>{tx.colDays}</Th><Th>{tx.colStatus}</Th><Th end></Th></Tr></thead>
             <tbody>
-              {teamLeaves.length === 0 ? <tr><td colSpan={6} className="text-center text-slate-800 py-10">{tx.noTeamRequests}</td></tr> :
+              {teamLeaves.length === 0 ? <tr><td colSpan={9} className="text-center text-slate-800 py-10">{tx.noTeamRequests}</td></tr> :
                 teamLeaves.map((l) => (
                   <Tr key={l._id}>
                     <Td className="text-slate-900">{userName(l.requester)}</Td>
                     <Td>{leaveTypeLabel(l.leaveType, lang)}</Td>
-                    <Td>{fmtDate(l.startDate)} → {fmtDate(l.endDate)}</Td><Td>{l.days}</Td>
+                    <Td className="whitespace-nowrap tabular-nums">{gregCell(l.startDate)}</Td><Td className="whitespace-nowrap tabular-nums"><span dir="ltr">{hijriCell(l.startDate)}</span></Td><Td className="whitespace-nowrap tabular-nums">{gregCell(l.endDate)}</Td><Td className="whitespace-nowrap tabular-nums"><span dir="ltr">{hijriCell(l.endDate)}</span></Td><Td>{l.days}</Td>
                     <Td><Badge style={LEAVE_STATUS[l.status]} lang={lang} /></Td>
                     <Td end>{l.status === 'pending_manager' ? <button type="button" onClick={() => { setReview(l); setNote(''); }} className="text-[#f37121] hover:underline text-xs">{tx.review}</button> : null}</Td>
                   </Tr>
@@ -364,8 +372,12 @@ export default function MyLeavesPage() {
           )}
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label={tx.fromRequired}><TextInput type="date" value={form.startDate} min={minStart} disabled={!form.leaveType} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} /></Field>
-            <Field label={tx.toRequired}><TextInput type="date" value={form.endDate} min={form.startDate || minStart} disabled={!form.startDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} /></Field>
+            {/* لكلّ تاريخٍ خانتان: الميلاديّةُ ثمّ الهجريّة. والحدُّ الأدنى يُطبَّق على
+                الخانتين معًا — وإلّا كُتب بالهجريّ تاريخٌ دون مهلة الإشعار ومرّ. */}
+            <DatePair label={`${FROM_LABEL} *`} ar={ar} value={form.startDate} min={minStart} disabled={!form.leaveType}
+              onChange={(v) => setForm((f) => ({ ...f, startDate: v }))} />
+            <DatePair label={`${TO_LABEL} *`} ar={ar} value={form.endDate} min={form.startDate || minStart} disabled={!form.startDate}
+              onChange={(v) => setForm((f) => ({ ...f, endDate: v }))} />
           </div>
           {noticeViolated && (
             <p className="text-xs text-red-600">
@@ -435,7 +447,7 @@ export default function MyLeavesPage() {
         {detail && (
           <div className="space-y-3 text-sm">
             <p className="text-slate-700">
-              {leaveTypeLabel(detail.leaveType, lang)} · {fmtDate(detail.startDate)} → {fmtDate(detail.endDate)} · {detail.days} {tx.dayShort}
+              {leaveTypeLabel(detail.leaveType, lang)} · {bothPeriod(detail.startDate, detail.endDate, ar)} · {detail.days} {tx.dayShort}
             </p>
             <LeaveChainBar leave={detail} lang={ar ? 'ar' : 'en'} />
             <LeaveThread leave={detail} lang={ar ? 'ar' : 'en'} />
@@ -456,7 +468,7 @@ export default function MyLeavesPage() {
           <div className="space-y-2 text-sm">
             <p><span className="text-slate-500">{tx.colEmployee}: </span><span className="text-slate-900">{empName(review.employee, lang)} ({userName(review.requester)})</span></p>
             <p><span className="text-slate-500">{tx.colType}: </span><span className="text-slate-900">{leaveTypeLabel(review.leaveType, lang)}</span></p>
-            <p><span className="text-slate-500">{tx.colPeriod}: </span><span className="text-slate-900">{fmtDate(review.startDate)} → {fmtDate(review.endDate)} ({review.days} {tx.dayShort})</span></p>
+            <p><span className="text-slate-500">{tx.colPeriod}: </span><span className="text-slate-900">{bothPeriod(review.startDate, review.endDate, ar)} ({review.days} {tx.dayShort})</span></p>
             <p><span className="text-slate-500">{tx.accruedBalance}: </span><span className="text-slate-900">{review.balanceSnapshot?.accrued ?? '—'} {tx.dayShort}</span> {typeof review.balanceSnapshot?.remainingAfter === 'number' && review.balanceSnapshot.remainingAfter < 0 && <span className="text-red-600">({tx.exceedsBalance})</span>}</p>
             {review.reason && <p className="border-t border-slate-200 pt-2"><span className="text-slate-500">{tx.reason}: </span><span className="text-slate-900">{review.reason}</span></p>}
             {!!((review as any)?.attachments || []).length && (

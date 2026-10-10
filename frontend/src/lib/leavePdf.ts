@@ -8,6 +8,8 @@
 // page bundle of every screen that can print.
 
 
+import { bothDatesShort } from './hrDates';
+
 const LETTERHEAD = '/images/payroll.png';
 
 const esc = (s: any) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' } as any)[c]);
@@ -46,10 +48,10 @@ export async function downloadLeaveSheet(leave: any, lang: 'ar' | 'en') {
     [t('Employee', 'الموظف'), empDisplay || '—'],
     [t('Employee No.', 'الرقم الوظيفي'), emp.employeeNumber || emp.iqamaNumber || '—'],
     [t('Leave Type', 'نوع الإجازة'), type],
-    [t('From', 'من'), fmtDate(leave.startDate)],
-    [t('To', 'إلى'), fmtDate(leave.endDate)],
+    [t('From', 'من'), bothDatesShort(leave.startDate, ar)],
+    [t('To', 'إلى'), bothDatesShort(leave.endDate, ar)],
     [t('Days', 'عدد الأيام'), String(leave.days ?? '—')],
-    [t('Request Date', 'تاريخ الطلب'), fmtDate(leave.createdAt)],
+    [t('Request Date', 'تاريخ الطلب'), bothDatesShort(leave.createdAt, ar)],
     [t('Status', 'الحالة'), leave.status || '—'],
   ];
   if (leave.reason) rows.push([t('Reason', 'السبب'), leave.reason]);

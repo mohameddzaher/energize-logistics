@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api.dart';
+import '../services/hijri.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
@@ -97,6 +98,10 @@ class ResourceConfig {
   /// فمن ضبطها: تُقرأ المعاملةُ كاملةً قبل الملء، والفارغُ فيها فارغٌ حقًّا.
   final String? editFullKey;
 
+  /// قسمُ الموارد البشريّة: تحت كلّ تاريخٍ يُختار يُكتب ما يوافقه هجريًّا.
+  /// اختياريٌّ كي لا يتغيّر نموذجُ قسمٍ لم يطلبه.
+  final bool hijriDates;
+
   const ResourceConfig({
     required this.arTitle, required this.enTitle, required this.icon,
     required this.endpoint, this.writeEndpoint, required this.listKey,
@@ -105,7 +110,7 @@ class ResourceConfig {
     this.subtitleOf, this.chipsOf,
     this.canCreate = true, this.canEdit = true, this.canDelete = true,
     this.onOpen, this.filterField, this.sortFields = const [], this.rowActions,
-    this.serverSearch = false, this.editFullKey,
+    this.serverSearch = false, this.editFullKey, this.hijriDates = false,
   });
 
   String get title => tr(arTitle, enTitle);
@@ -837,7 +842,8 @@ class _ResourceFormState extends State<_ResourceForm> {
               minimumSize: const Size.fromHeight(48),
               alignment: AlignmentDirectional.centerStart,
             ),
-            label: Text('${f.label}: ${val.isEmpty ? tr('اختر التاريخ', 'Pick date') : val}',
+            label: Text('${f.label}: ${val.isEmpty ? tr('اختر التاريخ', 'Pick date') : val}'
+                '${widget.cfg.hijriDates && val.isNotEmpty ? '\n${hijriHint(val, ar: Lang.instance.ar)}' : ''}',
                 style: const TextStyle(fontSize: 14)),
             onPressed: () async {
               final d = await showDatePicker(

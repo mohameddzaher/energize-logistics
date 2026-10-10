@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../config.dart';
 import '../services/api.dart';
+import '../services/hijri.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
@@ -169,7 +170,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
 
   String _d(String? v) {
     final d = v != null ? DateTime.tryParse(v) : null;
-    return d == null ? '—' : '${d.day}/${d.month}/${d.year}';
+    return d == null ? '—' : '${d.day}/${d.month}/${d.year}${hijriDay(v).isEmpty ? '' : ' · ${hijriDay(v)} ${tr('هـ', 'AH')}'}';
   }
 
   @override

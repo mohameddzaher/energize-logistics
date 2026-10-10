@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
+import '../services/hijri.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
@@ -18,7 +19,7 @@ List<Map<String, dynamic>> _l(dynamic v) =>
 
 String _d(dynamic v) {
   final d = v != null ? DateTime.tryParse(v.toString())?.toLocal() : null;
-  return d == null ? (v ?? '—').toString() : '${d.day}/${d.month}/${d.year}';
+  return d == null ? (v ?? '—').toString() : '${d.day}/${d.month}/${d.year}${hijriDay(v).isEmpty ? '' : ' · ${hijriDay(v)} ${tr('هـ', 'AH')}'}';
 }
 
 class _MyProfileScreenState extends State<MyProfileScreen> {

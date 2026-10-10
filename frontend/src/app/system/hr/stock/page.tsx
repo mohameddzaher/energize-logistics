@@ -17,6 +17,7 @@ import { getHrStockTranslations } from '@/lib/translations';
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import ScrollX from '@/components/system/ScrollX';
 import { useColumnFilters } from '@/hooks/useColumnFilters';
+import DatePair from '@/components/hr/DatePair';
 
 const EMPTY = {
   name: '', type: 'tool', serialNumber: '', brand: '', model: '', specs: '',
@@ -283,7 +284,8 @@ export default function HRStockPage() {
               }))}
             />
           </Field>
-          <Field label={tx.fieldHandoverDate}><TextInput type="date" value={assignForm.assignedDate} onChange={(e) => setAssignForm({ ...assignForm, assignedDate: e.target.value })} /></Field>
+          {/* خانتان: الميلاديّةُ ثمّ الهجريّة — وما يُرسَل ميلاديٌّ وحدَه. */}
+          <DatePair label={tx.fieldHandoverDate} value={assignForm.assignedDate} onChange={(v) => setAssignForm({ ...assignForm, assignedDate: v })} ar={ar} />
           <Field label={tx.fieldConditionAtHandover}>
             <Select value={assignForm.condition} onChange={(e) => setAssignForm({ ...assignForm, condition: e.target.value })}>
               {conditions.map((c) => <option key={c.key} value={c.key}>{ar ? c.ar : c.en}</option>)}

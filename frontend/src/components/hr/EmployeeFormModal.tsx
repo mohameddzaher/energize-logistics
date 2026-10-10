@@ -7,10 +7,12 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import { Check } from 'lucide-react';
-import { Employee, EMPLOYMENT_STATUS, fmtDate } from '@/lib/hr';
+import { Employee, EMPLOYMENT_STATUS } from '@/lib/hr';
 import { Modal, Field, TextInput, Select, TextArea, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
 import { getHrEmployeesTranslations } from '@/lib/translations';
 import { getVehiclesText } from '@/lib/vehicles';
+import DatePair from '@/components/hr/DatePair';
+import { bothDates } from '@/lib/hrDates';
 
 export const EMPTY_EMPLOYEE = {
   firstName: '', lastName: '', arabicName: '', employeeNumber: '', gender: '', dateOfBirth: '', nationality: '',
@@ -59,6 +61,23 @@ function DocInput({ k, label, type = 'text', form, set, mark, setMark, choices, 
   const opts = choices?.[k];
   const val = form[k] ?? '';
   const known = !opts || !val || String(val).toLowerCase() === 'cash' || opts.some((o) => o.value === val);
+  const status = DOC_STATUS_FIELDS.has(k) && (
+    <select value={mark} onChange={(e) => setMark(k, e.target.value)}
+      className="w-full px-2 py-1 rounded-md border border-slate-200 bg-slate-50 text-[11.5px] text-slate-600">
+      {STATUS_OPTS.map(([v, a, e]) => <option key={v} value={v}>{ar ? a : e}</option>)}
+    </select>
+  );
+  // ── تاريخُ المستند خانتان: الميلاديّةُ ثمّ الهجريّة ───────────────────────
+  // أوراقُ الإقامة والرخصة تُصدَر بالهجريّ، فيُكتب كما في الورقة ويُحفَظ
+  // ميلاديًّا (راجع DatePair). والحالةُ تحتهما كما كانت تحت الخانة الواحدة.
+  if (type === 'date') {
+    return (
+      <div className="col-span-full space-y-1">
+        <DatePair label={label} value={val || ''} onChange={(v) => set(k, v)} ar={ar} />
+        {status}
+      </div>
+    );
+  }
   return (
     <Field label={label}>
       <div className="space-y-1">
@@ -70,14 +89,9 @@ function DocInput({ k, label, type = 'text', form, set, mark, setMark, choices, 
             <option value="__other">{ar ? 'أخرى… (اكتب)' : 'Other… (type)'}</option>
           </Select>
         ) : (
-          <TextInput type={type} value={type === 'date' ? (val || '') : String(val).trimStart()} onChange={(e) => set(k, e.target.value)} />
+          <TextInput type={type} value={String(val).trimStart()} onChange={(e) => set(k, e.target.value)} />
         )}
-        {DOC_STATUS_FIELDS.has(k) && (
-          <select value={mark} onChange={(e) => setMark(k, e.target.value)}
-            className="w-full px-2 py-1 rounded-md border border-slate-200 bg-slate-50 text-[11.5px] text-slate-600">
-            {STATUS_OPTS.map(([v, a, e]) => <option key={v} value={v}>{ar ? a : e}</option>)}
-          </select>
-        )}
+        {status}
       </div>
     </Field>
   );
@@ -208,7 +222,7 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         <Field label={tx.arabicName}><TextInput value={form.arabicName} onChange={(e) => set('arabicName', e.target.value)} /></Field>
         <Field label={tx.employeeNumber}><TextInput value={form.employeeNumber} onChange={(e) => set('employeeNumber', e.target.value)} /></Field>
         <Field label={tx.gender}><Select value={form.gender} onChange={(e) => set('gender', e.target.value)}><option value="">—</option><option value="male">{tx.male}</option><option value="female">{tx.female}</option></Select></Field>
-        <Field label={tx.dateOfBirth}><TextInput type="date" value={form.dateOfBirth || ''} onChange={(e) => set('dateOfBirth', e.target.value)} /></Field>
+        <DatePair label={tx.dateOfBirth} value={form.dateOfBirth || ''} onChange={(v) => set('dateOfBirth', v)} ar={ar} />
         <Field label={tx.nationality}><TextInput value={form.nationality} onChange={(e) => set('nationality', e.target.value)} /></Field>
       </Section>
 
@@ -237,8 +251,8 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
       <Section title={tx.sectionJob}>
         <Field label={tx.jobTitle}><TextInput value={form.jobTitle} onChange={(e) => set('jobTitle', e.target.value)} /></Field>
         <Field label={tx.department}><TextInput value={form.department} onChange={(e) => set('department', e.target.value)} /></Field>
-        <Field label={tx.hireDate}><TextInput type="date" value={form.hireDate || ''} onChange={(e) => set('hireDate', e.target.value)} /></Field>
-        <Field label={tx.actualWorkStartDate}><TextInput type="date" value={form.actualWorkStartDate || ''} onChange={(e) => set('actualWorkStartDate', e.target.value)} /></Field>
+        <DatePair label={tx.hireDate} value={form.hireDate || ''} onChange={(v) => set('hireDate', v)} ar={ar} />
+        <DatePair label={tx.actualWorkStartDate} value={form.actualWorkStartDate || ''} onChange={(v) => set('actualWorkStartDate', v)} ar={ar} />
         <Field label={tx.workLocation}><TextInput value={form.workLocation} onChange={(e) => set('workLocation', e.target.value)} /></Field>
         <Field label={tx.branch}><Select value={form.branch} onChange={(e) => set('branch', e.target.value)}><option value="">—</option>{branches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}</Select></Field>
         {/* ── فروع إضافية ────────────────────────────────────────────────────
@@ -296,7 +310,7 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         <DocInput k="insuranceCompany" label={vtx.insuranceCompany} form={form} set={set} mark={marks['insuranceCompany'] || ''} setMark={setMark} choices={choices} ar={ar} />
         <DocInput k="insuranceExpiry" label={vtx.insuranceExpiry} type="date" form={form} set={set} mark={marks['insuranceExpiry'] || ''} setMark={setMark} choices={choices} ar={ar} />
         <DocInput k="socialInsuranceStatus" label={vtx.socialInsuranceStatus} form={form} set={set} mark={marks['socialInsuranceStatus'] || ''} setMark={setMark} choices={choices} ar={ar} />
-        <Field label={vtx.visaExpiry}><TextInput type="date" value={form.visaExpiry || ''} onChange={(e) => set('visaExpiry', e.target.value)} /></Field>
+        <DatePair label={vtx.visaExpiry} value={form.visaExpiry || ''} onChange={(v) => set('visaExpiry', v)} ar={ar} />
       </Section>
 
       <Section title={vtx.sectionDriving}>
@@ -308,7 +322,7 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         <Field label={vtx.driverCardType}><TextInput value={form.driverCardType} onChange={(e) => set('driverCardType', e.target.value)} /></Field>
         <DocInput k="driverCardExpiry" label={vtx.driverCardExpiry} type="date" form={form} set={set} mark={marks['driverCardExpiry'] || ''} setMark={setMark} choices={choices} ar={ar} />
       </Section>
-      {employee && fmtDate(employee.createdAt) !== '—' && <p className="text-xs text-slate-500">{tx.added}: {fmtDate(employee.createdAt)}</p>}
+      {employee && bothDates(employee.createdAt, ar, '') && <p className="text-xs text-slate-500">{tx.added}: {bothDates(employee.createdAt, ar)}</p>}
     </Modal>
   );
 }

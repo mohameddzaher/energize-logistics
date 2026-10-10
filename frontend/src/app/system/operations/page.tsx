@@ -1,4 +1,5 @@
 'use client';
+import { FINANCE_FULL_ROLES } from '@/lib/financeAuthority';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import MonthPicker from '@/components/system/MonthPicker';
 import { useRouter } from 'next/navigation';
@@ -268,8 +269,10 @@ export default function OperationsWorkflowPage() {
   const hasColFilters = Object.keys(colFilters).length > 0;
 
   const role = user?.role || '';
-  const canCreate = role === 'super_admin' || role === 'moderator';
-  const canDelete = role === 'super_admin';
+  // أهلُ المال يملكون في هذه الصفحة ما يملكه مديرُ النظام — راجع lib/financeAuthority.
+  const full = role === 'super_admin' || FINANCE_FULL_ROLES.includes(role || '');
+  const canCreate = full || role === 'moderator';
+  const canDelete = full;
 
   // ── مَن يرى ماذا: يُسأل الخادمُ ولا يُخمَّن ───────────────────────────────
   //
@@ -300,9 +303,9 @@ export default function OperationsWorkflowPage() {
 
   // الأعمدةُ الماليّة (رقمُ الفاتورة وصافيها وضريبتها وإجماليها وتواريخُها):
   // تُعرض لمن يملك الكتابةَ فيها. و`super_admin` يرى كلَّ شيءٍ دائمًا.
-  const canViewFinancials = role === 'super_admin' || has('invoiceNumber') || has('totalInvoice');
-  const canEditAccountingReview = role === 'super_admin' || has('accountingReview');
-  const canEditOperationsReview = role === 'super_admin' || has('operationsReview');
+  const canViewFinancials = full || has('invoiceNumber') || has('totalInvoice');
+  const canEditAccountingReview = full || has('accountingReview');
+  const canEditOperationsReview = full || has('operationsReview');
 
   // Aggregates over the WHOLE matching dataset (all ~27k rows, not one page).
   const [stats, setStats] = useState<{
@@ -494,18 +497,18 @@ export default function OperationsWorkflowPage() {
 
   const getTransitions = (wf: Workflow) => {
     const map: Record<string, { stage: string; label: string; roles: string[] }[]> = {
-      draft: [{ stage: 'submitted_to_ops', label: T.submitToOps, roles: ['moderator', 'super_admin'] }],
+      draft: [{ stage: 'submitted_to_ops', label: T.submitToOps, roles: ['moderator', 'super_admin', ...FINANCE_FULL_ROLES] }],
       submitted_to_ops: [
-        { stage: 'ops_completed', label: T.markOpsComplete, roles: ['operations_manager', 'super_admin'] },
-        { stage: 'draft', label: T.returnToDraft, roles: ['operations_manager', 'super_admin'] },
+        { stage: 'ops_completed', label: T.markOpsComplete, roles: ['operations_manager', 'super_admin', ...FINANCE_FULL_ROLES] },
+        { stage: 'draft', label: T.returnToDraft, roles: ['operations_manager', 'super_admin', ...FINANCE_FULL_ROLES] },
       ],
       ops_completed: [
-        { stage: 'submitted_to_collections', label: T.submitToCollections, roles: ['operations_manager', 'super_admin'] },
-        { stage: 'submitted_to_ops', label: T.returnToOps, roles: ['operations_manager', 'super_admin'] },
+        { stage: 'submitted_to_collections', label: T.submitToCollections, roles: ['operations_manager', 'super_admin', ...FINANCE_FULL_ROLES] },
+        { stage: 'submitted_to_ops', label: T.returnToOps, roles: ['operations_manager', 'super_admin', ...FINANCE_FULL_ROLES] },
       ],
       submitted_to_collections: [
-        { stage: 'completed', label: T.markComplete, roles: ['admin', 'employee', 'super_admin'] },
-        { stage: 'ops_completed', label: T.returnToOps, roles: ['admin', 'employee', 'super_admin'] },
+        { stage: 'completed', label: T.markComplete, roles: ['admin', 'employee', 'super_admin', ...FINANCE_FULL_ROLES] },
+        { stage: 'ops_completed', label: T.returnToOps, roles: ['admin', 'employee', 'super_admin', ...FINANCE_FULL_ROLES] },
       ],
       completed: [],
     };
@@ -1241,7 +1244,7 @@ export default function OperationsWorkflowPage() {
             مجموعَه فوقه.
             فالشرطُ صار ملكيّةَ `purchaseValue` نفسِه — أدقُّ، ولا يفتح معه
             عمودًا ماليًّا واحدًا. */}
-        {(role === 'super_admin' || has('purchaseValue')) && (
+        {(full || has('purchaseValue')) && (
           <div className="flex items-center gap-3 px-5 py-3.5 rounded-xl border bg-emerald-500/10 border-emerald-500/30">
             <div className="p-2 rounded-lg bg-emerald-500/20">
               <FileSpreadsheet className="w-5 h-5 text-emerald-700" />
@@ -1437,7 +1440,7 @@ export default function OperationsWorkflowPage() {
                       // سببُه عند المرور عليه. ولا تُصلَح القائمةُ مرّةً بعد
                       // مرّة — يُقفل البابُ الذي منه تدخل الغلطة.
                       const owns = (field: keyof Workflow) =>
-                        myFields === null || role === 'super_admin' || myFields.has(field as string);
+                        myFields === null || full || myFields.has(field as string);
                       const noPermMsg = lang === 'ar'
                         ? 'صلاحيّتك لا تسمح بتعديل هذا العمود'
                         : 'Your role cannot edit this column';

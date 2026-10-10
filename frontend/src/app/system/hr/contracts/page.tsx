@@ -4,6 +4,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import { FileText, Plus, Edit, Ban, Check, Trash2, RefreshCw } from 'lucide-react';
@@ -43,14 +44,24 @@ export default function ContractsPage() {
   const [form, setForm] = useState<any>(EMPTY);
   const [saving, setSaving] = useState(false);
 
+  // ── السجلُّ يُحمَّل كاملًا، وحالةُ العقد فلترٌ كغيرها ─────────────────────────
+  // كانت «الحالة» وحدَها تُرسَل إلى الخادم وبقيّةُ الفلاتر تُحسَب من الصفوف
+  // المحمّلة. فمَن اختار «ساري» لم يبقَ في الذاكرة إلّا العقودُ السارية: خياراتُ
+  // اللوحة وأعدادُها تُحسَب على جزءٍ من السجلّ، و«حالة العقد» فيها قيمةٌ واحدة،
+  // والعنوانُ يقول «٢٦٥ عقدًا» والسجلُّ ثلاثمئة. فيُحمَّل السجلُّ كلُّه مرّةً
+  // (والخادمُ يسقفه بألفَين) وتُحسَب الخياراتُ كلُّها عليه.
+  const guard = useLatestRequest();
   const load = useCallback(async () => {
+    const mine = guard.begin();
     try {
-      const qs = statusFilter ? `?status=${statusFilter}` : '';
-      const d = await api.get<{ contracts: Contract[] }>(`/api/hr/contracts${qs}`);
+      const d = await api.get<{ contracts: Contract[] }>('/api/hr/contracts');
+      // تحديثان متتاليان من السوكِت: الأقدمُ قد يصل أخيرًا فيعيد الجدولَ إلى
+      // ما قبل التعديل الثاني.
+      if (!guard.isCurrent(mine)) return;
       setContracts(d.contracts || []);
     } catch {}
-    setLoading(false);
-  }, [statusFilter]);
+    if (guard.isCurrent(mine)) setLoading(false);
+  }, [guard]);
 
   useEffect(() => { load(); }, [load]);
   // ── وما يُعدَّل في الماستر يصل هنا ──────────────────────────────────────
@@ -147,24 +158,63 @@ export default function ContractsPage() {
   // ── فلاترُ العقود ─────────────────────────────────────────────────────────
   // تُحسَب من الصفوف المحمّلة: الصفحةُ تُحمَّل كاملةً وتُفلتَر محلّيًّا، فنداءٌ
   // إلى الخادم ليعدّ ما بين يديها يصنع فرصةً لأن يختلف العددُ عن الجدول.
+  //
+  // ── وقارئٌ واحدٌ لكلّ عمود ──────────────────────────────────────────────────
+  // ما يُرسَم في الخانة هو ما يُفلتَر به في اللوحة وفي قمع العمود وما يُصدَّر.
+  // كانت اللوحةُ تقرأ `annualLeaveDays` رقمًا والجدولُ يعرض «غير مطلوب» من
+  // `annualLeaveText` — فيُختار «٠» ليظهر صفٌّ مكتوبٌ فيه «غير مطلوب». والقسمُ
+  // كان يُقرأ من عمودٍ لا يجلبه الخادم (راجع listContracts) فخرج فارغًا كلُّه.
+  const read = useMemo(() => {
+    const emp = (c: Contract) => (typeof c.employee === 'object' && c.employee ? c.employee : null) as any;
+    const year = (v?: string) => { const d = v ? new Date(v) : null; return d && !isNaN(d.getTime()) ? String(d.getFullYear()) : ''; };
+    return {
+      employeeNumber: (c: Contract) => emp(c)?.employeeNumber || '',
+      employee: (c: Contract) => empName(c.employee, lang) || c.employeeNameAr || '',
+      idNumber: (c: Contract) => c.iqamaNumber || emp(c)?.iqamaNumber || emp(c)?.nationalId || '',
+      department: (c: Contract) => emp(c)?.department || '',
+      branch: (c: Contract) => emp(c)?.branchName || '',
+      project: (c: Contract) => emp(c)?.project || '',
+      contractNumber: (c: Contract) => c.contractNumber || '',
+      profession: (c: Contract) => c.contractProfession || c.jobTitle || '',
+      type: (c: Contract) => (c.type === 'unlimited' ? tx.typeUnlimited : tx.typeFixed),
+      startDate: (c: Contract) => fmtDate(c.startDate),
+      endDate: (c: Contract) => (c.endDate ? fmtDate(c.endDate) : ''),
+      startYear: (c: Contract) => year(c.startDate),
+      endYear: (c: Contract) => year(c.endDate),
+      annualLeave: (c: Contract) => c.annualLeaveText || `${c.annualLeaveDays} ${tx.daysShort}`,
+      probation: (c: Contract) => c.probationText || (c.probationMonths ? `${c.probationMonths} ${ar ? 'شهر' : 'mo'}` : ''),
+      cr: (c: Contract) => c.sponsorRegistration || '',
+      status: (c: Contract) => { const m: any = (CONTRACT_STATUS as any)[c.status]; return m ? (ar ? m.ar : m.en) : String(c.status || ''); },
+    };
+  }, [ar, lang, tx.typeUnlimited, tx.typeFixed, tx.daysShort]);
+
+  // كلُّ عمودٍ معروضٍ له فلتر. والأعمدةُ التي قيمتُها فريدةٌ لكلّ عقد (الرقم
+  // الوظيفيّ، الاسم، الهويّة، رقم العقد، التاريخُ بيومه) تُفلتَر من قمع رأس
+  // العمود ومن البحث — قائمةٌ من ثلاثمئةِ سطرٍ كلٌّ منها «١» لا تُختار منها
+  // قيمة. وللتاريخين هنا سنتُهما، وهي ما يُسأل به: «عقودُ تنتهي في ٢٠٢٧».
   const FILTER_DEFS: LocalFieldDef<Contract>[] = useMemo(() => [
-    { key: 'status', ar: 'حالة العقد', en: 'Status', groupAr: 'العقد', groupEn: 'Contract',
-      get: (c) => (c.status ? (CONTRACT_STATUS[c.status] ? (ar ? CONTRACT_STATUS[c.status].ar : CONTRACT_STATUS[c.status].en) : c.status) : '') },
-    { key: 'type', ar: 'نوع العقد', en: 'Type', groupAr: 'العقد', groupEn: 'Contract', get: (c) => c.type || '' },
-    { key: 'contractProfession', ar: 'المهنة في العقد', en: 'Profession', groupAr: 'العقد', groupEn: 'Contract', get: (c) => c.contractProfession || '' },
-    { key: 'annualLeaveDays', ar: 'أيام الإجازة', en: 'Annual leave', groupAr: 'العقد', groupEn: 'Contract', get: (c) => c.annualLeaveDays ?? '' },
-    { key: 'probationMonths', ar: 'شهور التجربة', en: 'Probation', groupAr: 'العقد', groupEn: 'Contract', get: (c) => c.probationMonths ?? '' },
-    { key: 'sponsorRegistration', ar: 'السجل التجاري', en: 'CR', groupAr: 'الجهة', groupEn: 'Sponsor', get: (c) => c.sponsorRegistration || '' },
-    { key: 'department', ar: 'القسم', en: 'Department', groupAr: 'الموظف', groupEn: 'Employee',
-      get: (c) => (typeof c.employee === 'object' ? c.employee?.department : '') || '' },
-    { key: 'jobTitle', ar: 'المسمى الوظيفي', en: 'Job title', groupAr: 'الموظف', groupEn: 'Employee',
-      get: (c) => c.jobTitle || (typeof c.employee === 'object' ? c.employee?.jobTitle : '') || '' },
-  ], [ar]);
+    { key: 'status', ar: 'حالة العقد', en: 'Status', groupAr: 'العقد', groupEn: 'Contract', get: read.status },
+    { key: 'type', ar: 'نوع العقد', en: 'Type', groupAr: 'العقد', groupEn: 'Contract', get: read.type },
+    { key: 'contractProfession', ar: 'المهنة في العقد', en: 'Profession', groupAr: 'العقد', groupEn: 'Contract', get: read.profession },
+    { key: 'startYear', ar: 'سنة بداية العقد', en: 'Start year', groupAr: 'العقد', groupEn: 'Contract', get: read.startYear },
+    { key: 'endYear', ar: 'سنة نهاية العقد', en: 'End year', groupAr: 'العقد', groupEn: 'Contract', get: read.endYear },
+    { key: 'annualLeave', ar: 'الإجازة السنوية', en: 'Annual leave', groupAr: 'العقد', groupEn: 'Contract', get: read.annualLeave },
+    { key: 'probation', ar: 'فترة التجربة', en: 'Probation', groupAr: 'العقد', groupEn: 'Contract', get: read.probation },
+    { key: 'sponsorRegistration', ar: 'السجل التجاري', en: 'CR', groupAr: 'الجهة', groupEn: 'Sponsor', get: read.cr },
+    { key: 'department', ar: 'القسم', en: 'Department', groupAr: 'الموظف', groupEn: 'Employee', get: read.department },
+    { key: 'branch', ar: 'الفرع', en: 'Branch', groupAr: 'الموظف', groupEn: 'Employee', get: read.branch },
+    { key: 'project', ar: 'وحدة العمل', en: 'Business unit', groupAr: 'الموظف', groupEn: 'Employee', get: read.project },
+  ], [read]);
+
+  // «الحالة» في الشريط فلترٌ محلّيٌّ كغيره — وتُستثنى من حساب قيمِ نفسِها في
+  // اللوحة كما تُستثنى كلُّ لوحةٍ من فلترها.
+  const byStatus = useMemo(
+    () => (statusFilter ? contracts.filter((c) => c.status === statusFilter) : contracts), [contracts, statusFilter]);
 
   const filterFields = useMemo(
-    () => localFilterFields(contracts, FILTER_DEFS, filters), [contracts, FILTER_DEFS, filters]);
+    () => localFilterFields(byStatus, FILTER_DEFS, filters), [byStatus, FILTER_DEFS, filters]);
 
-  const filtered = applyLocalFilters(contracts, FILTER_DEFS, filters).filter((c) => {
+  const filtered = applyLocalFilters(byStatus, FILTER_DEFS, filters).filter((c) => {
     if (!search.trim()) return true;
     const n = empName(c.employee).toLowerCase();
     const emp = typeof c.employee === 'object' ? c.employee : null;
@@ -182,7 +232,8 @@ export default function ContractsPage() {
 
   const exportColumns: ExportColumn[] = [
     { header: tx.colEmployee, key: 'employee', transform: (v: any) => empName(v), width: 22 },
-    { header: ar ? 'الهوية' : 'ID number', key: 'iqamaNumber', width: 16, transform: (v: any) => v || '—' },
+    { header: ar ? 'الهوية' : 'ID number', key: 'iqamaNumber', width: 16, transform: (_v: any, r: any) => read.idNumber(r) || '—' },
+    { header: ar ? 'القسم' : 'Department', key: 'employee', width: 18, transform: (_v: any, r: any) => read.department(r) || '—' },
     { header: ar ? 'رقم العقد' : 'Contract no.', key: 'contractNumber', width: 16, transform: (v: any) => v || '—' },
     { header: ar ? 'المهنة في العقد' : 'Contract profession', key: 'contractProfession', width: 22, transform: (v: any) => v || '—' },
     { header: tx.colType, key: 'type', width: 12 },
@@ -194,40 +245,20 @@ export default function ContractsPage() {
     { header: tx.colBasicSalary, key: 'basicSalary', width: 14 },
     { header: tx.colStatus, key: 'status', width: 12 },
   ];
-  // فلتر الحالة يُطبَّق على الخادم، فالذاكرة لا تحمل إلّا عقود تلك الحالة؛
-  // «الكلّ» لو صُدِّر منها لخرج ناقصًا وهو يدّعي الشمول، فلا بدّ من إعادة جلبٍ
-  // بلا الفلتر. والبحث نصّيٌّ في الذاكرة، فـ«المعروض» يبقى صادقًا كما هو.
-  const fetchAllContracts = async () => {
-    const d = await api.get<{ contracts: Contract[] }>('/api/hr/contracts');
-    return [{ name: 'Contracts', rows: d.contracts || [], columns: exportColumns }];
-  };
-  const scope = exportScopeLabels(ar);
-  const exportOptions = [
-    { key: 'shown', label: scope.shown, sheets: [{ name: 'Contracts', rows: filtered, columns: exportColumns }] },
-    statusFilter
-      ? { key: 'all', label: scope.all, resolve: fetchAllContracts }
-      : { key: 'all', label: scope.all, sheets: [{ name: 'Contracts', rows: contracts, columns: exportColumns }] },
-  ];
-
   /**
    * قمعُ الأعمدة — القارئُ لكلّ عمودٍ هو الذي يُرسَم به، والقائمةُ من الصفوف
    * بعد فلتر الصفحة. راجع hooks/useColumnFilters.
    */
-  const cf = useColumnFilters<any>({
-    employeeNumber: (c) => (c.employee as any)?.employeeNumber || '',
-    employee: (c) => empName(c.employee, lang) || c.employeeNameAr || '',
-    idNumber: (c) => c.iqamaNumber || (c.employee as any)?.iqamaNumber || (c.employee as any)?.nationalId || '',
-    contractNumber: (c) => c.contractNumber || '',
-    profession: (c) => c.contractProfession || c.jobTitle || '',
-    type: (c) => (c.type === 'unlimited' ? tx.typeUnlimited : tx.typeFixed),
-    startDate: (c) => fmtDate(c.startDate),
-    endDate: (c) => (c.endDate ? fmtDate(c.endDate) : ''),
-    annualLeave: (c) => c.annualLeaveText || `${c.annualLeaveDays} ${tx.daysShort}`,
-    probation: (c) => c.probationText || (c.probationMonths ? `${c.probationMonths} ${ar ? 'شهر' : 'mo'}` : ''),
-    cr: (c) => c.sponsorRegistration || '',
-    status: (c) => { const m: any = (CONTRACT_STATUS as any)[c.status]; return m ? (ar ? m.ar : m.en) : String(c.status || ''); },
-  }, filtered, ar ? 'ar' : 'en');
+  const cf = useColumnFilters<any>(read, filtered, ar ? 'ar' : 'en');
   const shown = cf.apply(filtered);
+
+  // السجلُّ كلُّه في الذاكرة (راجع load)، فـ«الكلّ» يُصدَّر منها بلا نداءٍ ثانٍ؛
+  // و«المعروض» هو ما في الجدول بعد اللوحة والبحث وقمع الأعمدة جميعًا.
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: 'Contracts', rows: shown, columns: exportColumns }] },
+    { key: 'all', label: scope.all, sheets: [{ name: 'Contracts', rows: contracts, columns: exportColumns }] },
+  ];
 
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
@@ -249,12 +280,12 @@ export default function ContractsPage() {
           </Select>
         </div>
         <div className="shrink-0">
-          {/* الخياراتُ محسوبةٌ من الصفوف المعروضة — راجع lib/localFilters. */}
+          {/* الخياراتُ وأعدادُها محسوبةٌ على السجلّ كلِّه بعد بقيّة الفلاتر — راجع lib/localFilters. */}
           <FilterPanel
             fields={filterFields}
             value={filters}
             onChange={setFilters}
-            resultCount={filtered.length}
+            resultCount={shown.length}
             resultLabel={ar ? 'العقود المطابقة' : 'Matching contracts'}
           />
         </div>
@@ -267,6 +298,7 @@ export default function ContractsPage() {
             <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{cf.head('employeeNumber', ar ? 'الرقم الوظيفي' : 'Emp. no.')}</th>
             <th {...pin.th(2, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{cf.head('employee', tx.colEmployee)}</th>
             <th {...pin.th(3, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{cf.head('idNumber', ar ? 'الهوية' : 'ID number')}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('department', ar ? 'القسم' : 'Department')}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('contractNumber', ar ? 'رقم العقد' : 'Contract no.')}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('profession', ar ? 'المهنة في العقد' : 'Contract profession')}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{cf.head('type', tx.colType)}</th>
@@ -279,7 +311,7 @@ export default function ContractsPage() {
           </tr></thead>
           <tbody>
             {shown.length === 0 ? (
-              <tr><td colSpan={13} className="text-center text-slate-800 py-12">{tx.noContracts}</td></tr>
+              <tr><td colSpan={14} className="text-center text-slate-800 py-12">{tx.noContracts}</td></tr>
             ) : shown.map((c) => (
               <tr key={c._id} className="group border-b border-slate-200/70 hover:bg-slate-100">
                 <td {...pin.td(0, 'px-4 py-3', BG)}>
@@ -304,6 +336,7 @@ export default function ContractsPage() {
                   <span className="block max-w-[15rem] truncate" title={empName(c.employee, lang) || c.employeeNameAr || ''}>{empName(c.employee, lang) || c.employeeNameAr || '—'}</span>
                 </td>
                 <td {...pin.td(3, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{c.iqamaNumber || (c.employee as any)?.iqamaNumber || (c.employee as any)?.nationalId || '—'}</td>
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{read.department(c) || '—'}</td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.contractNumber || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{c.contractProfession || c.jobTitle || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{c.type === 'unlimited' ? tx.typeUnlimited : tx.typeFixed}</td>

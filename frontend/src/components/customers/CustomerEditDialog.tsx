@@ -44,8 +44,10 @@ const DEFAULT_KEYS: [keyof typeof EMPTY_DEFAULTS, string, string][] = [
 ];
 
 export default function CustomerEditDialog({
-  open, customer, onClose, onSaved, lang,
+  open, customer, onClose, onSaved, lang, canEditPrices = false,
 }: {
+  /** أسعارُ المسارات تُعرَض للتعديل لمدير العمليّات ومدير النظام وحدَهما. */
+  canEditPrices?: boolean;
   open: boolean;
   /** `null` = عميلٌ جديد. */
   customer: EditableCustomer | null;
@@ -116,7 +118,8 @@ export default function CustomerEditDialog({
         email: form.email,
         notes: form.notes,
         defaults: form.defaults,
-        routes: (form.routes || [])
+        // من لا يكتب الأسعارَ لا يرسل المسارات أصلًا — والخادمُ يتجاهلها لو أُرسِلت.
+        ...(!canEditPrices ? {} : { routes: (form.routes || [])
           .filter((r: any) => r.fromCity && r.toCity)
           .map((r: any) => ({
             fromCity: r.fromCity,
@@ -126,7 +129,7 @@ export default function CustomerEditDialog({
             ...(r.at ? { at: r.at } : {}),
             ...(r.source ? { source: r.source } : {}),
             ...(r.hits ? { hits: r.hits } : {}),
-          })),
+          })) }),
       };
       if (customer?._id) await api.put(`/api/customer-registry/${customer._id}`, payload);
       else await api.post('/api/customer-registry', payload);
@@ -157,6 +160,7 @@ export default function CustomerEditDialog({
         </Field>
       </div>
 
+      {canEditPrices && (
       <div className="mt-4 rounded-xl border border-slate-200 bg-white overflow-hidden">
         <div className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur border-b border-slate-200 px-3 py-2 flex flex-wrap items-center gap-2">
           <p className="text-xs font-bold text-slate-700 flex items-center gap-1.5 me-auto">
@@ -222,6 +226,7 @@ export default function CustomerEditDialog({
           ))}
         </div>
       </div>
+      )}
 
       <div className="mt-4">
         <p className="text-xs font-semibold text-slate-600 mb-2">{ar ? 'التفضيلات المعتمدة (تُملأ تلقائياً في الشحنة)' : 'Usual defaults (autofilled on the form)'}</p>

@@ -20,6 +20,23 @@ export const isFinanceStaff = (u: RoleOrUser) => FINANCE_STAFF_ROLES.includes(ro
 export const isFinanceAdmin = (u: RoleOrUser) => FINANCE_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Accounting');
 export const isSalesStaff = (u: RoleOrUser) => SALES_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Sales');
 export const isSalesAdmin = (u: RoleOrUser) => SALES_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Sales');
+// ── مَن يحدّد أهدافَ المبيعات ────────────────────────────────────────────────
+// الهدفُ يضعه المديرُ لفريقه. و`isSalesAdmin` تفتح لكلّ من له «تعديلٌ» على
+// القسم — وهو حالُ المندوب نفسِه في المصفوفة — فكانت أزرارُ الهدف تظهر له ثمّ
+// يردّه الخادم. فالقاعدةُ هنا مطابقةٌ لحارس الخادم (`canSetTargets` في
+// salesController): أدوارُ الإدارة، ومعها دورٌ من خارج فريق القسم مُنح «تعديلَه».
+export const canSetSalesTargets = (u: RoleOrUser) => SALES_ADMIN_ROLES.includes(roleOf(u))
+  || (canEditSection(permsOf(u), 'Sales') && !SALES_STAFF_ROLES.includes(roleOf(u)));
+/**
+ * الشهرُ المحمولُ في الرابط (`?period=2026-09`) — بطاقةُ اللوحة تفتح القائمةَ
+ * على الشهر نفسِه الذي قُرئ فيه رقمُها، لا على الشهر الجاري. يُقرأ من العنوان
+ * مباشرةً: `useSearchParams` يفرض حدَّ Suspense عند البناء.
+ */
+export const periodFromUrl = (fallback: string): string => {
+  if (typeof window === 'undefined') return fallback;
+  const p = new URLSearchParams(window.location.search).get('period') || '';
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(p) ? p : fallback;
+};
 export const isKpiViewer = (r?: string | null) => !!r && KPI_ROLES.includes(r);
 
 // ── Types ────────────────────────────────────────────────────────────────────

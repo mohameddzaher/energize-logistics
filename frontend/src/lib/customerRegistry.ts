@@ -1,8 +1,24 @@
 // سجلُّ العملاء — الأنواعُ والأعمدةُ مكتوبةٌ مرّةً واحدة.
 //
-// الشاشةُ نفسُها تُفتَح من قسمين (طلبات الشحنات والتشغيل)، فلو كُتب العمودُ في
-// كلٍّ منهما افترقا بعد شهر: عمودٌ يُضاف هنا ولا يُضاف هناك، ومن يقرأ الرقمين
-// يظنّهما رقمين مختلفين. فالمصدرُ واحد.
+// الشاشةُ نفسُها تُفتَح من ثلاثة أقسام (طلبات الشحنات والتشغيل والمبيعات)، فلو
+// كُتب العمودُ في كلٍّ منها افترقت بعد شهر: عمودٌ يُضاف هنا ولا يُضاف هناك، ومن
+// يقرأ الرقمين يظنّهما رقمين مختلفين. فالمصدرُ واحد.
+import { canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
+import { SO_EDIT_ROLES, SO_ADMIN_ROLES } from './shipmentOrders';
+
+// ── مَن يعدّل العميل ─────────────────────────────────────────────────────────
+// قاعدةٌ واحدةٌ للأبواب الثلاثة، تطابق حارسَ `/api/customer-registry` حرفًا:
+// أدوارُ طلبات الشحنات، ومعها مديرُ المبيعات (السعرُ المتّفقُ عليه عملُه)، ومن
+// مُنح «تعديلَ طلبات الشحنات» من المصفوفة. والمندوبُ يقرأ ولا يكتب. وشرائحُ
+// السعر خارجَ هذه القاعدة: يقرّرها الخادمُ في `canEditTiers`.
+export const CUSTOMER_EDIT_ROLES = [...SO_EDIT_ROLES, 'sales_manager', 'sales_rep'];
+/** أسعارُ الوجهات (المتّفقُ عليه والشرائح) — لمدير العمليّات ومدير النظام وحدَهما؛ والخادمُ هو الحارس. */
+export const canEditRoutePrices = (u: RoleOrUser) => ['super_admin', 'operations_manager'].includes(roleOf(u));
+export const canEditCustomers = (u: RoleOrUser) =>
+  CUSTOMER_EDIT_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Shipment Orders');
+/** الإزالةُ (إيقافُ العميل) — لقائمة الإدارة كما كانت. */
+export const canRemoveCustomers = (u: RoleOrUser) =>
+  SO_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Shipment Orders');
 
 /**
  * صفُّ السجلّ.
@@ -59,7 +75,18 @@ export interface AgreedRoute {
   hits?: number;
 }
 
+/** شريحةُ سعرٍ بعدد السيارات: من عددٍ إلى عدد (والنهايةُ الفارغة = فما فوق) بسعر السيارة. */
+export interface PriceTier { minTrucks: number; maxTrucks: number | null; price: number }
+
+/** «١–٥: 2,200 · ٦ فأكثر: 2,400» — الشرائحُ سطرًا يُقرأ ويُصدَّر. */
+export const tiersText = (tiers: PriceTier[] | undefined, ar: boolean): string =>
+  (tiers || []).map((t) => `${t.maxTrucks == null ? (ar ? `${t.minTrucks} فأكثر` : `${t.minTrucks}+`)
+    : t.minTrucks === t.maxTrucks ? `${t.minTrucks}` : `${t.minTrucks}–${t.maxTrucks}`}: ${Number(t.price).toLocaleString('en-US')}`).join(' · ');
+
 export interface RunRoute {
+  tiers?: PriceTier[];
+  tiersAt?: string | null;
+  tiersBy?: string;
   from: string;
   to: string;
   sheets: number;
@@ -83,6 +110,8 @@ export interface ProfilePayload {
     monthly: { month: string; sheets: number; purchase?: number }[];
   };
   routes: RunRoute[];
+  /** مديرُ العمليّات ومديرُ النظام وحدَهما — يقوله الخادم. */
+  canEditTiers?: boolean;
   sheets: { rows: any[]; total: number; page: number; pages: number };
   orders: any[];
 }

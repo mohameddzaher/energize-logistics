@@ -36,6 +36,8 @@ const BY_ENTITY: Record<string, string> = {
   RemoteLeaveRequest: '/system/remote/leave',
   RemoteReport: '/system/remote/dashboard',
   SectionComplaint: '/system/operations/complaints',
+  // المهمّةُ لا تعرف قسمَ صاحبها — `/system/jp` تسأل الخادمَ وتذهب إلى خطّته.
+  JpTask: '/system/jp',
 };
 
 export type NotificationLike = {

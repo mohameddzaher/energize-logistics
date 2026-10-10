@@ -4255,7 +4255,7 @@ const salesDashboardPage = {
     "wonValue": "مبيعات محققة",
     "target": "الهدف",
     "attainment": "نسبة التحقيق",
-    "winRate": "نسبة الإغلاق",
+    "winRate": "نسبة الفوز",
     "openDeals": "صفقات مفتوحة",
     "pipelineValue": "قيمة المسار",
     "wonDeals": "صفقات رابحة",
@@ -4282,7 +4282,7 @@ const salesPerformancePage = {
     "title": "أداء المبيعات",
     "periodAria": "الفترة",
     "colRep": "المندوب",
-    "colWon": "محقق",
+    "colWon": "المحقَّق",
     "colTarget": "الهدف",
     "colAttainment": "التحقيق",
     "colOpen": "مفتوحة",
@@ -4300,7 +4300,7 @@ const salesPipelinePage = {
   ar: {
     "notAuthorized": "لا تملك صلاحية",
     "pageTitle": "مسار البيع",
-    "manageDealsHint": "لإدارة الصفقات بالكامل (سحب وإفلات/إضافة) استخدم قسم CRM ← الصفقات.",
+    "manageDealsHint": "لإضافة الصفقات ونقلها بين المراحل افتح «إدارة العلاقات» ← «الصفقات»؛ هذه الشاشةُ للعرض.",
   },
 };
 export function getSalesPipelineTranslations(lang: Lang) {
@@ -4333,7 +4333,7 @@ const salesTargetsPage = {
     "amountTarget": "هدف القيمة",
     "dealsTarget": "هدف الصفقات",
     "actions": "إجراءات",
-    "wholeTeam": "الفريق كامل",
+    "wholeTeam": "الفريق كلّه",
     "edit": "تعديل",
     "delete": "حذف",
     "editTarget": "تعديل هدف",

@@ -44,8 +44,8 @@ async function login(e) {
   const iq = (o.body?.groups || []).find((g) => g.key === 'iqama');
   ok('الإقامات فيها حالات التاريخ', iq && typeof iq.states?.expired === 'number', JSON.stringify(iq?.states));
   const iqExp = iq?.fields?.find((f) => f.key === 'iqamaExpiry');
-  ok('وكل حقل فيه مطلوب/غير مطلوب/مملي', iqExp && typeof iqExp.counts.required === 'number',
-    `مطلوب ${iqExp?.counts.required} · غير مطلوب ${iqExp?.counts.not_required} · مملي ${iqExp?.counts.filled}`);
+  ok('وكل حقل فيه مطلوب/غير مطلوب/مُدخَل', iqExp && typeof iqExp.counts.required === 'number',
+    `مطلوب ${iqExp?.counts.required} · غير مطلوب ${iqExp?.counts.not_required} · مُدخَل ${iqExp?.counts.filled}`);
   ok('«غير مطلوب» متعدّة لوحدها مش مع الناقص', (iqExp?.counts.not_required || 0) > 0, `${iqExp?.counts.not_required}`);
   ok('إجمالي المطلوب محسوب', o.body?.totals?.required > 1000, `${o.body?.totals?.required} حقل مطلوب`);
   ok('«ابدأ من هنا» مرتّبة بالأكتر نقصًا', (o.body?.topRequired || []).length > 0
@@ -82,7 +82,7 @@ async function login(e) {
   const before = o.body.groups.find((g) => g.key === 'iqama').fields.find((f) => f.key === 'iqamaExpiry').counts.required;
   const fill = await req('PATCH', `/api/hr/master/employees/${target._id}/fields`, ck, { fields: { iqamaExpiry: '2027-06-30' } });
   ok('الحفظ نجح', fill.status === 200, `http ${fill.status} ${fill.body?.message || ''}`);
-  ok('حالة الحقل بقت «مملي»', fill.body?.statuses?.iqamaExpiry === 'filled', fill.body?.statuses?.iqamaExpiry);
+  ok('حالة الحقل صارت «مُدخَل»', fill.body?.statuses?.iqamaExpiry === 'filled', fill.body?.statuses?.iqamaExpiry);
   const o2 = await req('GET', '/api/hr/master/overview', ck);
   const after = o2.body.groups.find((g) => g.key === 'iqama').fields.find((f) => f.key === 'iqamaExpiry').counts.required;
   ok('عدّاد «مطلوب» نقص واحد لوحده', after === before - 1, `${before} → ${after}`);

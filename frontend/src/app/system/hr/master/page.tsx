@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useDialog } from '@/components/system/DialogProvider';
 import MasterNav from '@/components/hr/MasterNav';
 import DepartmentAnalysis, { type DeptAnalysis } from '@/components/hr/DepartmentAnalysis';
@@ -17,7 +18,7 @@ import {
 } from 'lucide-react';
 import FilterPanel, { countActive, type FilterValues } from '@/components/system/FilterPanel';
 import { stateMeta, statusMeta,
-  getHrOverview, STATUS_META, STATE_META, statusLabel, stateLabel, HR_DATE_FIELDS, HR_NUM_RANGES,
+  getHrOverview, STATUS_META, STATE_META, statusLabel, stateLabel, HR_DATE_FIELDS, HR_NUM_RANGES, HR_EMPLOYMENT_LABELS,
   type HrOverview, type GroupCard, type FieldCard, type AnalyticBlock,
 } from '@/lib/hrMaster';
 import api from '@/lib/api';
@@ -60,7 +61,13 @@ function HrMasterInner() {
     api.get<{ total: number }>('/api/hr/forms').then((r) => setForms(r.total || 0)).catch(() => {});
   }, []);
 
+  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ───────────────────────────────────────
+  // اللوحةُ بلا فلترٍ أثقلُ طلباتها، وهي التي تُطلَق عند الفتح. فكلُّ فلترٍ
+  // يُضاف بعدها يفتح نافذةً يصل فيها الردُّ الأوسعُ أخيرًا — فتُقرأ أرقامُ
+  // الشركة كلِّها تحت فلترِ قسمٍ واحد. راجع hooks/useLatestRequest.
+  const guard = useLatestRequest();
   const load = useCallback(async () => {
+    const mine = guard.begin();
     // الشاشة تبقى معروضةً باهتةً أثناء التحديث بدل أن تُفرَّغ: الفراغ يجعل كل
     // ضغطة فلترٍ تبدو انقطاعًا، والباهت يقول «يُحدَّث» بلا أن يأخذ الصفحة منك.
     setRefreshing(true);
@@ -70,12 +77,14 @@ function HrMasterInner() {
         getHrOverview(filters),
         api.get<DeptAnalysis>(`/api/hr/master/by-department${qs ? `?${qs}` : ''}`).catch(() => null),
       ]);
+      if (!guard.isCurrent(mine)) return;
       setD(ov);
       if (dep) setDepts(dep);
-    } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
+    } catch (e: any) { if (guard.isCurrent(mine)) notify(e?.message || 'Failed', 'error'); }
+    if (!guard.isCurrent(mine)) return;
     setLoading(false);
     setRefreshing(false);
-  }, [JSON.stringify(filters), notify]);
+  }, [JSON.stringify(filters), notify, guard]);
   useEffect(() => { load(); }, [load]);
 
   // `replace` لا `push`: كل ضغطةِ قيمةٍ في الفلتر لا تستحقّ خطوةً في تاريخ
@@ -106,6 +115,18 @@ function HrMasterInner() {
    * «الهوية» هي المجموعة العامّة التي تعرض الموظف ببياناته الأساسية.
    */
   const drill = (q: Record<string, string>) => open('identity', q);
+  /**
+   * صفحةُ الانتهاءات بالفلتر الحاليّ وبالمدّة التي عُدَّ بها الرقم.
+   * «ينتهي قريبًا» = المنتهي + ما ينتهي خلال `alert.warnDays` على ما يعرضه
+   * الفلتر — فتُفتَح الصفحةُ على الشرطين نفسيهما، لا مجرَّدةً منهما.
+   */
+  const openExpiring = () => {
+    const p = new URLSearchParams({
+      ...(filters as Record<string, string>),
+      ...(d?.alert?.warnDays != null ? { withinDays: String(d.alert.warnDays) } : {}),
+    }).toString();
+    router.push(`/system/hr/master/expiring${p ? `?${p}` : ''}`);
+  };
 
   if (loading) return <Spinner />;
   if (!d) return <div className="text-slate-500 p-8">{t('تعذّر التحميل', 'Could not load')}</div>;
@@ -120,7 +141,7 @@ function HrMasterInner() {
                     'A card per column — click any number to open the people behind it and fill their data')}
       >
         <div className="flex items-center gap-2">
-          <button onClick={() => router.push('/system/hr/master/expiring')}
+          <button onClick={openExpiring}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#e5651a] text-white text-sm">
             <CalendarClock className="w-4 h-4" /> {t('الانتهاءات', 'Expiries')}
           </button>
@@ -138,15 +159,13 @@ function HrMasterInner() {
           resultCount={d?.totals?.filtered}
           resultLabel={t('الموظفون المطابقون', 'Matching employees')}
           extraLabels={{
-            employment: { ar: 'حالة التوظيف', en: 'Employment', values: {
-              active: { ar: 'على رأس العمل', en: 'Active' },
-              inactive: { ar: 'منتهي خدماته', en: 'Service ended' } } },
+            employment: HR_EMPLOYMENT_LABELS,
             outsideKingdom: { ar: 'خارج المملكة', en: 'Outside kingdom', values: { 1: { ar: 'خارج المملكة', en: 'Outside kingdom' } } },
             freelancer: { ar: 'عمل حر', en: 'Freelancer', values: { 1: { ar: 'عمل حر', en: 'Freelancer' } } },
           }}
           extra={(
             <div className="flex items-center gap-1.5 flex-wrap">
-              {([['', 'الكل', 'All'], ['active', 'على رأس العمل', 'Active'], ['inactive', 'منتهي خدماته', 'Service ended']] as const).map(([v, a, e]) => (
+              {([['', 'الكل', 'All'], ['active', 'على رأس العمل', 'Active'], ['inactive', 'ليس على رأس العمل', 'Not active'], ['terminated', 'منتهية خدمته', 'Service ended']] as const).map(([v, a, e]) => (
                 <button key={v || 'all'}
                   onClick={() => setFilters((f) => { const n = { ...f }; if (v) n.employment = v; else delete n.employment; return n; })}
                   className={`px-2.5 py-1 rounded-lg text-[11.5px] font-semibold border transition
@@ -177,7 +196,12 @@ function HrMasterInner() {
           onClick={() => open('identity')} />
         <Big label={t('على رأس العمل', 'Active')} value={d.totals.active} c="#16a34a"
           onClick={() => drill({ employment: 'active' })} />
-        <Big label={t('منتهي خدماته', 'Service ended')} value={d.totals.notActive} c="#94a3b8"
+        {/* ── والعنوانُ يقول ما يعدّه الرقم ────────────────────────────────
+            الرقمُ كلُّ مَن ليس على رأس العمل: مَن انتهت خدمتُه ومعه مَن في إجازةٍ
+            أو موقوف. وكان عنوانُه «منتهي خدماته» — ١١٢ والمنتهيةُ خدمتُهم ١٠٤،
+            فثمانيةٌ في إجازةٍ يُقرؤون مغادرين. والسطرُ الصغيرُ يفصل بينهما. */}
+        <Big label={t('ليس على رأس العمل', 'Not active')} value={d.totals.notActive} c="#94a3b8"
+          sub={d.totals.terminated != null ? t(`منهم ${d.totals.terminated} انتهت خدمتهم`, `${d.totals.terminated} ended`) : undefined}
           onClick={() => drill({ employment: 'inactive' })} />
         {/* ── ويفتح الناقصَ كلَّه لا ناقصَ مجموعةٍ واحدة ────────────────────
             الرقمُ يُجمَع من المجموعات كلِّها — خمسةَ عشرَ في الجواز وخمسةٌ في
@@ -191,8 +215,8 @@ function HrMasterInner() {
             وتسعٌ وثمانون خانة. «خانة» في العنوان تُنهي اللبس بكلمة. */}
         <Big label={t('خانات مطلوبة', 'Required fields')} value={d.totals.required} c="#dc2626"
           onClick={() => open('required', { status: 'required' })} />
-        <Big label={t('ينتهي قريبًا', 'Expiring soon')} value={d.totals.expiringSoon} c="#ea580c"
-          onClick={() => router.push('/system/hr/master/expiring')} />
+        <Big label={t('مستندات منتهية أو قريبة الانتهاء', 'Expired or expiring documents')} value={d.totals.expiringSoon} c="#ea580c"
+          onClick={openExpiring} />
         {/* ── والضغطةُ تحمل فلترَ الكارت ───────────────────────────────────
             الرقمُ عددُ من له رقمٌ تأمينيٌّ مكتوب (368)، وكانت الضغطةُ تفتح
             المجموعةَ كلَّها (439) — كارتٌ يقول رقمًا ويفتح غيرَه. */}
@@ -289,7 +313,7 @@ function HrMasterInner() {
         <section className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
             <ClipboardList className="w-4 h-4 text-red-600" />
-            <h2 className="text-sm font-bold text-slate-800">{t('ابدأ من هنا — أكتر البيانات نقصًا', 'Start here — most missing')}</h2>
+            <h2 className="text-sm font-bold text-slate-800">{t('ابدأ من هنا — أكثر البيانات نقصًا', 'Start here — most missing')}</h2>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
             {d.topRequired.map((f) => (
@@ -310,7 +334,7 @@ function HrMasterInner() {
         <h2 className="text-sm font-bold text-slate-800">{t('المستندات ومواعيد انتهائها', 'Documents and their expiry')}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {d.groups.filter((g) => g.document).map((g) => (
-            <DocGroupCard key={g.key} g={g} ar={ar} t={t} onOpen={open} />
+            <DocGroupCard key={g.key} g={g} ar={ar} t={t} scope={d.expiryScope || {}} onOpen={open} />
           ))}
         </div>
       </section>
@@ -345,7 +369,13 @@ function Big({ label, value, c, onClick, sub }: {
 }
 
 // كارت مستند: حالات التاريخ فوق، وحالة الحقول تحت.
-function DocGroupCard({ g, ar, t, onOpen }: { g: GroupCard; ar: boolean; t: any; onOpen: any }) {
+//
+// ── وكلُّ رقمٍ يفتح صفوفَه بشرطه ────────────────────────────────────────────
+// حالاتُ الانتهاء تُعَدّ لمن لم تنتهِ خدمتُه (`scope` من الخادم)، فيُحمَل الشرطُ
+// في كلّ ضغطة. وشارةُ «يحتاج انتباهًا» مجموعُ المنتهي والحرج والقريب — وكانت
+// تفتح المنتهي وحدَه: ٢٥٧ في الشارة و١٠٢ في الجدول.
+function DocGroupCard({ g, ar, t, onOpen: openRaw, scope }: { g: GroupCard; ar: boolean; t: any; onOpen: any; scope: Record<string, string> }) {
+  const onOpen = (key: string, q: Record<string, string> = {}) => openRaw(key, { ...scope, ...q });
   const s = g.states!;
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
@@ -354,7 +384,8 @@ function DocGroupCard({ g, ar, t, onOpen }: { g: GroupCard; ar: boolean; t: any;
           {ar ? g.ar : g.en}
         </button>
         {!!g.needsAttention && (
-          <button onClick={() => onOpen(g.key, { state: 'expired' })}
+          <button onClick={() => onOpen(g.key, { state: 'attention' })}
+            title={t('منتهية أو قريبة الانتهاء', 'Expired or nearing expiry')}
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-red-600 text-[11px] font-bold">
             <TriangleAlert className="w-3 h-3" />{g.needsAttention}
           </button>

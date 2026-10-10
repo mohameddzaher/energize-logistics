@@ -1,3 +1,4 @@
+const { isFinanceFull, FINANCE_FULL_ROLES } = require('../config/financeAuthority');
 const mongoose = require('mongoose');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
 const { startOfDay, endOfDay, DAY_MS: COMPANY_DAY_MS } = require('../utils/companyDay');
@@ -1271,7 +1272,8 @@ exports.updateStage = async (req, res) => {
 
     const allowed = validTransitions[workflow.stage] || [];
     // Super admin can force any transition
-    if (req.user.role !== 'super_admin' && !allowed.includes(stage)) {
+    // …وأهلُ المال معه — راجع config/financeAuthority.
+    if (req.user.role !== 'super_admin' && !isFinanceFull(req.user.role) && !allowed.includes(stage)) {
       return res.status(400).json({
         message: `Cannot transition from "${workflow.stage}" to "${stage}"`,
       });
@@ -1279,11 +1281,11 @@ exports.updateStage = async (req, res) => {
 
     // Role-based stage transition authorization
     const stageRoleMap = {
-      submitted_to_ops: ['moderator', 'super_admin'],
-      ops_completed: ['operations_manager', 'super_admin'],
-      submitted_to_collections: ['operations_manager', 'super_admin'],
-      completed: ['admin', 'employee', 'super_admin'],
-      draft: ['moderator', 'operations_manager', 'super_admin'], // rollback
+      submitted_to_ops: ['moderator', 'super_admin', ...FINANCE_FULL_ROLES],
+      ops_completed: ['operations_manager', 'super_admin', ...FINANCE_FULL_ROLES],
+      submitted_to_collections: ['operations_manager', 'super_admin', ...FINANCE_FULL_ROLES],
+      completed: ['admin', 'employee', 'super_admin', ...FINANCE_FULL_ROLES],
+      draft: ['moderator', 'operations_manager', 'super_admin', ...FINANCE_FULL_ROLES], // rollback
     };
 
     const allowedRoles = stageRoleMap[stage] || [];
@@ -1373,7 +1375,7 @@ exports.unlockWorkflow = async (req, res) => {
     if (
       workflow.lockedBy &&
       workflow.lockedBy.toString() !== req.user._id.toString() &&
-      req.user.role !== 'super_admin'
+      req.user.role !== 'super_admin' && !isFinanceFull(req.user.role)
     ) {
       return res.status(403).json({ message: 'Only the locking user or super admin can unlock' });
     }

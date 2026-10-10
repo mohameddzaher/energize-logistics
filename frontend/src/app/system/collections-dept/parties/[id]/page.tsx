@@ -154,6 +154,7 @@ export default function PartyProfilePage() {
   const p = data.party;
   const kind = p.kind;
   const W = kindWords(kind, ar);
+  const openCount = kind === 'customer' ? (p.openInvoices ?? 0) : p.openReports;
   const Icon = kind === 'supplier' ? Truck : Users;
   // العمودُ الذي يحمل المال يختلف بالجهة، وكذلك الذي يقول إنّه أُغلق.
   const valueKey = kind === 'customer' ? 'sellingValue' : 'purchaseValue';
@@ -285,7 +286,8 @@ export default function PartyProfilePage() {
         <Stat label={W.totalLabel} value={money(p.total)} />
         <Stat label={W.settledLabel} value={money(p.settled)} accent="text-emerald-600" />
         <Stat label={W.dueLabel} value={money(p.outstanding)} accent={p.outstanding > 0 ? 'text-red-600' : 'text-slate-400'} />
-        <Stat label={W.openLabel} value={money(p.openReports)} accent={p.openReports > 0 ? 'text-amber-600' : 'text-slate-400'} />
+        {/* للعميل: فواتيرُ الدفتر المفتوحة. وللمورّد: كشوفُه التي لم تُسدَّد. */}
+        <Stat label={W.openLabel} value={money(openCount)} accent={openCount > 0 ? 'text-amber-600' : 'text-slate-400'} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

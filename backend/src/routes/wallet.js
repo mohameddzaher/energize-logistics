@@ -22,7 +22,8 @@ const walletRoles = [
   'cfo', 'accounting_manager', 'accountant',
 ];
 const walletReadRoles = [...walletRoles, 'moderator', 'collections_manager', 'collections_staff'];
-const managerRoles = ['super_admin', 'admin', 'operations_manager'];
+const { FINANCE_FULL_ROLES } = require('../config/financeAuthority');
+const managerRoles = ['super_admin', 'admin', 'operations_manager', ...FINANCE_FULL_ROLES];
 
 // ── ولوحةُ العهدة تُقرأ بمن يراجعها لا بمن يديرها ──────────────────────────
 // كانت مقصورةً على مديري العمليات، والمحاسبُ خارجَها — وهو من يقرؤها أصلًا:
@@ -97,10 +98,10 @@ router.delete('/transactions/:id', authorize(...walletRoles), walletController.d
 // تُنقَل مسؤوليّةُ نقدٍ بين دفترَي عهدةٍ لرجلين، أو يُردُّ قيدٌ إلى يومه الذي
 // وقع فيه، ويُعاد حسابُ اليوميّتين وتتدحرج أرصدتُهما. راجع رأسَ
 // `moveTransaction`.
-router.patch('/transactions/:id/move', authorize('super_admin'), walletController.moveTransaction);
+router.patch('/transactions/:id/move', authorize('super_admin', ...FINANCE_FULL_ROLES), walletController.moveTransaction);
 // والمسارُ القديمُ يبقى بابًا للنسخ المثبَّتة من التطبيق — يُوزَّع ملفًّا لا من
 // متجر، فنسخةٌ على هاتفٍ تبقى حتّى يُحدِّثها صاحبُها. وهو الحارسُ نفسُه.
-router.patch('/transactions/:id/branch', authorize('super_admin'), walletController.moveTransaction);
+router.patch('/transactions/:id/branch', authorize('super_admin', ...FINANCE_FULL_ROLES), walletController.moveTransaction);
 
 // Close day
 router.post('/close-day', authorize(...walletRoles), walletController.closeDay);

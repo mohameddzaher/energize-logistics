@@ -19,6 +19,7 @@ import { useRouter, useSearchParams, useParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import MasterCell, { type Choices } from '@/components/hr/MasterCell';
@@ -35,7 +36,7 @@ import { stateMeta, statusMeta,
 import SelectionBar from '@/components/ls2/SelectionBar';
 import { canEditSection } from '@/lib/sections';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
-import { HR_DATE_FIELDS, HR_NUM_RANGES } from '@/lib/hrMaster';
+import { HR_DATE_FIELDS, HR_NUM_RANGES, HR_EMPLOYMENT_LABELS } from '@/lib/hrMaster';
 import MasterNav from '@/components/hr/MasterNav';
 import { gregorianToHijri, hijriToGregorian } from '@/lib/hijri';
 import ContractsTabs from '@/components/hr/ContractsTabs';
@@ -43,6 +44,10 @@ import { HrGroupFormModal, HrGroupClearModal } from '@/components/hr/HrGroupModa
 import ScrollX from '@/components/system/ScrollX';
 
 const QUICK = [30, 60, 90, 180];
+// حالاتُ الخانة التي تُعرَض عدّاداتٍ وتُختار فلترًا. الأربعُ الأولى هي الغالبة،
+// والثلاثُ بعدها تظهر حيث توجد (البنك: «راتب نقدي»، التأمين: «غير نشط») — وبغيرها
+// لا يبلغ مجموعُ عدّادات الحقل عددَ الموظّفين في تلك المجموعات.
+const STATUS_KEYS = ['required', 'not_required', 'filled', 'none', 'cash_payroll', 'inactive', 'unparseable'] as const;
 
 /**
  * ── مَن ليس على رأس العمل: لماذا؟ ───────────────────────────────────────────
@@ -122,20 +127,30 @@ function GroupInner() {
   const [form, setForm] = useState<{ mode: 'create' | 'edit'; row: RecordRow | null } | null>(null);
   const [clearing, setClearing] = useState<RecordRow | null>(null);
 
+  // ── والعدّاداتُ والجدولُ ردٌّ واحدٌ محروس ──────────────────────────────────
+  // الصفحةُ بلا فلترٍ أثقلُ طلباتها وهي التي تُطلَق عند الفتح؛ فمَن ضغط عدّادًا
+  // بعدها مباشرةً — أو وصله تحديثٌ من السوكِت — كان الردُّ الأوسعُ يصل أخيرًا
+  // فيكتب الجدولَ كلَّه تحت عدّادٍ مضغوط. راجع hooks/useLatestRequest.
+  const guard = useLatestRequest();
   const load = useCallback(async () => {
+    const mine = guard.begin();
     try {
-      setD(await getHrRecords(group, {
+      const res = await getHrRecords(group, {
         q: q.trim(), field, status, state, withinDays: within, sort, dir,
         includeExpired: includeExpired ? '1' : '0',
         // فلاتر القيم القادمة من بطاقات النظرة الشاملة (القسم، الجنسية، المدد…)
         ...filters,
-      }));
-    } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
-    setLoading(false);
-  }, [group, q, field, status, state, within, includeExpired, sort, dir, JSON.stringify(filters), notify]);
+      });
+      if (!guard.isCurrent(mine)) return;
+      setD(res);
+    } catch (e: any) { if (guard.isCurrent(mine)) notify(e?.message || 'Failed', 'error'); }
+    if (guard.isCurrent(mine)) setLoading(false);
+  }, [group, q, field, status, state, within, includeExpired, sort, dir, JSON.stringify(filters), notify, guard]);
 
   useEffect(() => { const h = setTimeout(load, 250); return () => clearTimeout(h); }, [load]);
   useSocket('hr:master', useCallback(() => { load(); }, [load]));
+  // وما يُكتب في صفحة العقود (إنشاءٌ، فسخٌ، حذف) يغيّر «حالة العقد» هنا.
+  useSocket('hr:contract', useCallback(() => { load(); }, [load]));
   // قوائمُ حقول الاختيار (نوع الرخصة، البنك، حالة التأمين…) — راجع MasterCell.
   const [choices, setChoices] = useState<Choices>({});
   const loadChoices = useCallback(() => { api.get<{ choices: Choices }>('/api/hr/master/choices').then((d) => setChoices(d.choices || {})).catch(() => {}); }, []);
@@ -263,9 +278,7 @@ function GroupInner() {
           dateFields={HR_DATE_FIELDS}
           numRanges={HR_NUM_RANGES}
           extraLabels={{
-            employment: { ar: 'حالة التوظيف', en: 'Employment', values: {
-              active: { ar: 'على رأس العمل', en: 'Active' },
-              inactive: { ar: 'منتهي خدماته', en: 'Service ended' } } },
+            employment: HR_EMPLOYMENT_LABELS,
             outsideKingdom: { ar: 'خارج المملكة', en: 'Outside kingdom', values: { 1: { ar: 'خارج المملكة', en: 'Outside kingdom' } } },
             freelancer: { ar: 'عمل حر', en: 'Freelancer', values: { 1: { ar: 'عمل حر', en: 'Freelancer' } } },
           }}
@@ -274,7 +287,14 @@ function GroupInner() {
         />
       </div>
 
-      {/* كروت الحالة لكل حقل — نفس أرقام النظرة الشاملة، بس على المعروض */}
+      {/* ── عدّاداتُ الحالة لكلّ حقل ───────────────────────────────────────────
+          محسوبةٌ على ما تعرضه الفلاتر **عدا العدّادَ المضغوطَ نفسَه** (راجع
+          records في الخادم): فمجموعُ حالات كلّ حقلٍ يساوي `summary.population`
+          دائمًا، والضغطُ على عدّادٍ لا يُخفي جيرانَه — يُنتقَل بينها مباشرةً. */}
+      <p className="text-[11.5px] text-slate-500 -mb-2 px-1">
+        {t(`حالة كل حقل لدى ${d.summary.population ?? rows.length} موظفًا — اضغط أي رقم لعرض أصحابه`,
+           `Status of every field across ${d.summary.population ?? rows.length} employees — click a number to list them`)}
+      </p>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
         {g.fields.map((f) => {
           const s = d.summary[f.key] || {};
@@ -282,7 +302,7 @@ function GroupInner() {
             <div key={f.key} className="bg-white border border-slate-200 rounded-xl px-3 py-2.5 shadow-sm">
               <p className="text-[12.5px] font-bold text-slate-800 mb-1.5">{ar ? f.ar : f.en}</p>
               <div className="flex flex-wrap gap-1">
-                {(['required', 'not_required', 'filled', 'none'] as const).map((k) => (s[k] > 0) && (
+                {STATUS_KEYS.map((k) => (s[k] > 0) && (
                   <button key={k}
                     onClick={() => { setField(f.key); setStatus(status === k && field === f.key ? '' : k); }}
                     className={`px-1.5 py-0.5 rounded text-[10.5px] font-semibold ${statusMeta(k).bg} ${
@@ -337,7 +357,8 @@ function GroupInner() {
         </select>
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white">
           <option value="">{t('كل الحالات', 'All statuses')}</option>
-          {['required', 'not_required', 'filled', 'none'].map((k) => <option key={k} value={k}>{statusLabel(k, ar)}</option>)}
+          {STATUS_KEYS.filter((k) => g.fields.some((f) => (d.summary[f.key]?.[k] || 0) > 0) || status === k)
+            .map((k) => <option key={k} value={k}>{statusLabel(k, ar)}</option>)}
         </select>
         {g.document && (
           <div className="flex items-center gap-1.5">
@@ -438,7 +459,7 @@ function GroupInner() {
               ))}
               {!rows.length && (
                 <tr><td colSpan={4 + (showWhyInactive ? 2 : 0) + g.fields.length + g.fields.filter((f) => isExpiryField(f.key)).length + (g.document ? 1 : 0) + (renewable && canEdit ? 1 : 0) + (canEdit ? 1 : 0)} className="px-3 py-12 text-center text-slate-500">
-                  {t('لا نتائج بالفلاتر دي', 'Nothing matches these filters')}
+                  {t('لا نتائج تطابق هذه الفلاتر', 'Nothing matches these filters')}
                 </td></tr>
               )}
             </tbody>
@@ -703,14 +724,14 @@ function HrBulkRenewModal({ rows, group, groupLabel, ar, onClose, onDone }: {
         items: rows.map((x) => ({ employee: x._id, group })),
         newExpiry: when, notes: note.trim(),
       });
-      notify(t(`اتجدّد ${r.summary.count} مستند لـ${r.summary.employees} موظف`,
+      notify(t(`جُدِّد ${r.summary.count} مستندًا لـ${r.summary.employees} موظفًا`,
                `Renewed ${r.summary.count} documents for ${r.summary.employees} employees`), 'success');
       onDone();
     } catch (e: any) {
       const list = e?.data?.errors || e?.errors;
       if (Array.isArray(list) && list.length) {
         setErrors(list.map((x: any) => t(`سطر ${x.line}: ${x.message}`, `Row ${x.line}: ${x.message}`)));
-        notify(t('العملية اترفضت بالكامل — مفيش أي مستند اتجدّد', 'Rejected in full — nothing was renewed'), 'error');
+        notify(t('رُفضت العملية كاملةً — لم يُجدَّد أي مستند', 'Rejected in full — nothing was renewed'), 'error');
       } else notify(e?.message || 'Failed', 'error');
     }
     setBusy(false);

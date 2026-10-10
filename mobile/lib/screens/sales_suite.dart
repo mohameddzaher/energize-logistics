@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// المبيعات — الأداء (هدف مقابل تحقيق لكل مندوب) وخط الأنابيب (صفقات مفتوحة
+/// المبيعات — الأداء (هدف مقابل تحقيق لكل مندوب) ومسار البيع (الصفقات
 /// مجمّعة بالمرحلة). نفس بيانات /api/sales/performance و /api/sales/pipeline.
 
 String _money(dynamic v) {
@@ -25,8 +26,12 @@ class _SalesPerformanceScreenState extends State<SalesPerformanceScreen> {
   bool _loading = true;
   String? _error;
 
+  // `sales:updated` نداءُ القسم: صفقةٌ تغيّرت أو هدفٌ وُضع — كما على الويب.
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() { super.initState(); _load(); Live.instance.on('sales:updated', _load); }
+
+  @override
+  void dispose() { Live.instance.off('sales:updated', _load); super.dispose(); }
 
   Future<void> _load() async {
     try {
@@ -84,9 +89,9 @@ class _SalesPerformanceScreenState extends State<SalesPerformanceScreen> {
                                   ),
                                   const SizedBox(height: 8),
                                   Wrap(spacing: 6, runSpacing: 6, children: [
-                                    Chip2('${tr('محقق', 'Won')}: ${_money(r['wonValue'])} (${r['wonCount'] ?? 0})', T.success),
+                                    Chip2('${tr('المحقَّق', 'Won')}: ${_money(r['wonValue'])} (${r['wonCount'] ?? 0})', T.success),
                                     Chip2('${tr('الهدف', 'Target')}: ${_money(r['target'])}', T.navy),
-                                    Chip2('${tr('مفتوح', 'Open')}: ${_money(r['openValue'])} (${r['openCount'] ?? 0})', T.info),
+                                    Chip2('${tr('مفتوحة', 'Open')}: ${_money(r['openValue'])} (${r['openCount'] ?? 0})', T.info),
                                   ]),
                                 ]),
                               ),
@@ -99,11 +104,18 @@ class _SalesPerformanceScreenState extends State<SalesPerformanceScreen> {
 }
 
 // ── خط الأنابيب ─────────────────────────────────────────────────────────────
+// ── المراحلُ كما في الخادم (config/crmDefaults PIPELINE_STAGES) ─────────────
+// كانت القائمةُ هنا تبدأ بـ«lead» — مفتاحٌ لا وجودَ له — وتخلو من «new»
+// و«contacted» و«won» و«lost»: فالصفقةُ الجديدةُ (وهي أوّلُ ما تُنشأ عليه) لا
+// تظهر في الهاتف أصلًا، والشاشةُ تُعرَض وكأنّها كاملة.
 const _pipeStages = {
-  'lead': ('عميل محتمل', 'Lead', T.inkSoft),
-  'qualified': ('مؤهلة', 'Qualified', T.cyan),
-  'proposal': ('عرض مقدم', 'Proposal', T.violet),
+  'new': ('جديدة', 'New', T.inkSoft),
+  'contacted': ('تمّ التواصل', 'Contacted', T.info),
+  'qualified': ('مؤهَّلة', 'Qualified', T.cyan),
+  'proposal': ('عرض سعر', 'Proposal', T.violet),
   'negotiation': ('تفاوض', 'Negotiation', T.warn),
+  'won': ('رابحة', 'Won', T.success),
+  'lost': ('خاسرة', 'Lost', T.danger),
 };
 
 class SalesPipelineScreen extends StatefulWidget {
@@ -118,7 +130,10 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
   String? _error;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() { super.initState(); _load(); Live.instance.on('sales:updated', _load); }
+
+  @override
+  void dispose() { Live.instance.off('sales:updated', _load); super.dispose(); }
 
   Future<void> _load() async {
     try {
@@ -135,10 +150,12 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
     // تجميع الصفقات بالمرحلة.
     final byStage = <String, List<Map<String, dynamic>>>{};
     for (final d in _deals) {
-      (byStage[(d['stage'] ?? 'lead').toString()] ??= []).add(d);
+      // مرحلةٌ لا تعرفها القائمةُ تُعرَض مع «جديدة» — لا تُخفى.
+      final st = (d['stage'] ?? 'new').toString();
+      (byStage[_pipeStages.containsKey(st) ? st : 'new'] ??= []).add(d);
     }
     return AppScaffold(
-      title: Text(tr('خط الأنابيب', 'Pipeline')),
+      title: Text(tr('مسار البيع', 'Pipeline')),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 60), SizedBox(height: 10), Shimmer(height: 120)])
           : _error != null
@@ -146,7 +163,7 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: _deals.isEmpty
-                      ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.view_kanban_outlined, title: tr('لا توجد صفقات مفتوحة', 'No open deals'))])
+                      ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.view_kanban_outlined, title: tr('لا توجد صفقات', 'No deals'))])
                       : ListView(
                           padding: const EdgeInsets.all(14),
                           children: [

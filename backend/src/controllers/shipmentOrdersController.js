@@ -1231,6 +1231,8 @@ exports.createCustomer = async (req, res) => {
       return res.status(400).json({ message: 'Customer name is required' });
     }
     const data = pick(req.body, CUSTOMER_EDITABLE);
+    // أسعارُ الوجهات لمدير العمليّات ومدير النظام وحدَهما — راجع customerRoutes.canEditPrices.
+    if (!require('../utils/customerRoutes').canEditPrices(req.user.role)) delete data.routes;
     data.createdBy = req.user._id;
     const customer = await ShipmentOrderCustomer.create(data);
     emit('shipmentOrders:customers', {});
@@ -1244,7 +1246,27 @@ exports.updateCustomer = async (req, res) => {
   try {
     const customer = await ShipmentOrderCustomer.findById(req.params.id);
     if (!customer) return res.status(404).json({ message: 'Customer not found' });
-    Object.assign(customer, pick(req.body, CUSTOMER_EDITABLE));
+    const data = pick(req.body, CUSTOMER_EDITABLE);
+    // ── وأسعارُ الوجهات لا يكتبها إلّا صاحباها ───────────────────────────────
+    // من يعدّل العميلَ (المبيعات، موظّفو العمليّات…) يحفظ اسمَه وهاتفَه
+    // وتفضيلاتِه؛ والمساراتُ وأسعارُها تبقى كما هي مهما أُرسِل — فلا يُعتمَد
+    // على إخفاء الخانة في الشاشة.
+    if (!require('../utils/customerRoutes').canEditPrices(req.user.role)) delete data.routes;
+    // ── وشرائحُ السعر لا تُمسَح بحفظ قائمة الأسعار ───────────────────────────
+    // نافذةُ «تعديل الأسعار» ترسل المساراتِ كلَّها بلا شرائحها، والشرائحُ
+    // يكتبها مديرُ العمليّات من بابٍ آخر (setRouteTiers). فتُحمَل على المسار
+    // نفسِه بمفتاحه المطويّ — ولا تُقبَل من هذا الباب أصلًا.
+    if (Array.isArray(data.routes)) {
+      const { routeKey } = require('../utils/customerRoutes');
+      const kept = new Map((customer.routes || []).map((r) => [routeKey(r.fromCity, r.toCity), r]));
+      data.routes = data.routes.map((r) => {
+        const old = kept.get(routeKey(r.fromCity, r.toCity));
+        const { tiers, tiersAt, tiersBy, ...rest } = r || {};
+        return old && (old.tiers || []).length
+          ? { ...rest, tiers: old.tiers, tiersAt: old.tiersAt, tiersBy: old.tiersBy } : rest;
+      });
+    }
+    Object.assign(customer, data);
     await customer.save();
     // Orders show the snapshot name; keep future reads coherent after a rename.
     await ShipmentOrder.updateMany({ customer: customer._id }, { customerName: customer.name });

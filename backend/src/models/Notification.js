@@ -55,6 +55,11 @@ const notificationSchema = new mongoose.Schema({
   // صفٌّ واحدٌ يراه عشرون شخصًا لا يسعه `isRead` واحدة: قراءةُ أحدِهم تُخفيه
   // عن الباقين. فمن قرأه يُسجَّل هنا، و«غيرُ المقروء» يُحسَب بغياب اسمه.
   readBy: { type: [mongoose.Schema.Types.ObjectId], ref: 'User', default: [] },
+  // ── خبرُ فعلٍ على النظام ─────────────────────────────────────────────────
+  // «فلانٌ عدّل كذا» — يُكتب من سجلّ المراجعة (services/activityFeed). `actor`
+  // صاحبُ الفعل: لا يُعرَض عليه خبرُ ما فعله هو.
+  activity: { type: Boolean, default: false },
+  actor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   createdAt: { type: Date, default: Date.now },
 });
 

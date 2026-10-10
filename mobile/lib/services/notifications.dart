@@ -39,6 +39,9 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
 
     // نستقبل الإشعار الحي من السوكت.
     Live.instance.onData('notification:new', _onNew);
+    // خبرُ فعلٍ على النظام (لمدير النظام ومدير القسم): يُحدَّث العدّادُ من
+    // الخادم — هو من يقرّر ما يخصّ هذا المستخدم — بلا صوتٍ لكلّ فعل.
+    Live.instance.on('notification:activity', refreshCount);
     WidgetsBinding.instance.addObserver(this);
     refreshCount();
   }

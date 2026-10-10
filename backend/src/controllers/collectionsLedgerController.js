@@ -78,8 +78,8 @@ const bandOf = (days) => {
 const startOfToday = () => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); };
 const daysBetween = (from, to) => (from ? Math.floor((to - new Date(from)) / DAY) : null);
 
-// «محصَّلة» هي الحالةُ الوحيدة التي تُخرج الفاتورة من الدين.
-const OPEN = { status: { $ne: 'Collected' } };
+// «مفتوحة» تعريفٌ واحدٌ للقسم كلِّه — راجع models/CollectionInvoice.OPEN.
+const OPEN = CollectionInvoice.OPEN;
 
 /**
  * قسمُ التحصيل لا يرى ما علينا — يرى ما لنا.
@@ -92,9 +92,24 @@ const receivablesOnly = (user) => RECEIVABLES_ONLY.includes(user?.role);
 // ── فلاترُ السجلّ ───────────────────────────────────────────────────────────
 // تُبنى في موضعٍ واحدٍ يقرؤه الجدولُ والإحصاءُ والتصدير، فلا يعرض أحدُها عددًا
 // ويعرض الآخرُ صفوفَ شرطٍ غيرِه.
-function partyFilter(q = {}) {
-  const f = { kind: 'customer', code: { $gt: '' } };
-  const { officer, grade, department, hoLocation, kind, creditDays, status, search, region } = q;
+//
+// ── ومن في السجلّ: صاحبُ كودٍ، أو صاحبُ فاتورةٍ مفتوحة ─────────────────────
+// كان الشرطُ الكودَ وحدَه. وفي ورقة الشحنات النقديّة ٣٥٧ صفًّا بلا كود (المناولة
+// للشحن وحدَها عليها ٤٩١ ألفًا)، فحساباتُها بلا كود — فكانت اللوحةُ تعدّ
+// مديونيّتَها وسجلُّ الأعمار لا يراها، ويختلف الإجماليّان بـ٥٩٣ ألفًا.
+// فمن عليه فاتورةٌ مفتوحةٌ في الدفتر يدخل السجلَّ بكودٍ أو بغير كود.
+async function ledgerPartyBase() {
+  return cache.wrap(`${CACHE_PREFIX}partybase`, TTL, async () => {
+    const holders = (await CollectionInvoice.distinct('party', OPEN)).filter(Boolean);
+    return { kind: 'customer', $or: [{ code: { $gt: '' } }, { _id: { $in: holders } }] };
+  });
+}
+
+function partyFilter(q = {}, base = { kind: 'customer', code: { $gt: '' } }) {
+  const f = { $and: [base] };
+  const { officer, grade, department, hoLocation, kind, creditDays, status, region } = q;
+  // التطبيقُ يرسل البحثَ باسم `q` والموقعُ باسم `search` — يُقبَلان معًا.
+  const search = q.search || q.q;
   const list = (v) => (Array.isArray(v) ? v : [v]).filter(Boolean);
   if (officer) f.collectionOfficer = { $in: list(officer) };
   if (grade) f.grade = { $in: list(grade) };
@@ -124,107 +139,16 @@ function partyFilter(q = {}) {
  * ودفتر — يُعرَض ليُرى، لا يُخفى.
  */
 /**
- * ── والمستحقُّ النقديُّ ليس في دفتر الفواتير ──────────────────────────────────
+ * ── والنقديُّ من الدفتر نفسِه، لا من كشوف التشغيل ───────────────────────────
  *
- * `agingByParty` تقرأ `CollectionInvoice` وحدَها، وهي الفواتيرُ الضريبيّة. أمّا
- * الحسابُ النقديُّ فلا فاتورةَ له أصلًا — يُحصَّل بالكشف. فكان مئةٌ وسبعةٌ
- * وعشرون حسابًا نقديًّا تظهر في سجلّ الأعمار **بصفر**، وورقةُ «Aging Shipment»
- * تقول إنّ خمسةً وعشرين منها عليها ثلاثُمئةٍ وستّةٌ وثمانون ألفًا ومئتان.
- * أي أنّ الشاشةَ كانت تقول «لا شيءَ على العميل» عن عميلٍ عليه سبعةٌ وسبعون ألفًا.
+ * كان المستحقُّ النقديُّ يُجمَع من كشوف التشغيل ويُضاف فوق الدفتر — يومَ لم
+ * تكن ورقةُ الشحنات النقديّة تدخل النظام. ثمّ دخلت (١٨٣٥ شحنةً في الدفتر)،
+ * وبقيت الإضافة: فصار النقديُّ يُعَدّ مرّتين. مكتبُ الشيخ عليه في الدفتر
+ * ٢١٬٥٠٠ وكان يظهر ١٠٣ آلاف، وإجماليُّ الأعمار ٢٢٫٠٥ مليونًا واللوحةُ ١٩٫٩٦.
  *
- * والمستحقُّ النقديُّ يُحسب من الكشوف نفسِها لا يُنسَخ رقمًا من ورقة: كشفٌ نقديٌّ
- * لم يُحصَّل هو دَينٌ قائم. وقد قِيس ذلك بالورقة حسابًا حسابًا فتطابقا — مكتب
- * الشيخ ٢١٥٠٠ في الاثنين، والزهراني ٩٠٠٠، والراجحي ٩٣٥٠ — فالرقمُ المحسوبُ حيٌّ
- * ويصحّ، ولا يجمُد يومَ صُدِّرت الورقة.
- *
- * والربطُ بالاسم المطويّ: أربعةٌ وسبعون ألفَ... بل ألفان وأربعةٌ وسبعون كشفًا من
- * ألفين وأربعةٍ وثمانين تجد حسابَها (١٠٠٪)، والعشرةُ الباقية بلا اسم عميلٍ أصلًا.
+ * وقيمةُ الكشف في التشغيل هي سعرُ الشراء لا ما على العميل — راجع
+ * real-selling-price. فالدفترُ وحدَه، بنوعَيه، وتتطابق الأعمارُ واللوحة.
  */
-async function cashAgingByParty(parties) {
-  const OperationsWorkflow = require('../models/OperationsWorkflow');
-  const { fold } = CollectionsParty;
-  const byKey = new Map();
-  for (const p of parties) {
-    const k = p.nameKey || fold(p.name || '');
-    if (k) byKey.set(k, String(p._id));
-  }
-  if (!byKey.size) return new Map();
-
-  const today = startOfToday();
-
-  // ── والجمعُ في القاعدة لا في العقدة ──────────────────────────────────────
-  //
-  // كانت الكشوفُ النقديّةُ غيرُ المحصَّلة تُقرأ كلُّها ثمّ تُجمَّع هنا، على
-  // أنّها «مئاتٌ لا آلاف». وهي على الإنتاج **ثلاثةُ آلافٍ وثلاثمئة**.
-  //
-  // وقِيس الأمرُ فبان أين الزمن: الخادمُ يجدها في تسعَ عشرةَ مِلّي ثانية
-  // بالفهرس، ثمّ يستغرق نقلُها إلى العقدة **خمسَ ثوانٍ ونصفًا**. فالبطءُ ليس
-  // في البحث بل في حمل ثلاثة آلاف مستندٍ عبر الشبكة لتُجمَع سطرًا سطرًا.
-  // والتجميعُ في القاعدة يردّ مئةً وعشرين مجموعةً في أقلَّ من ثانية.
-  //
-  // وهو الدرسُ نفسُه المكتوب في `agingByParty` تحت هذا مباشرةً — لم يكن قد
-  // طُبّق على الوجه النقديّ.
-  //
-  // والطيُّ العربيُّ يبقى في العقدة: لا يُكتب في القاعدة، والأسماءُ المجمَّعةُ
-  // مئاتٌ لا آلاف، فطيُّها هنا رخيص.
-  //
-  // ── والعمرُ يُعَدُّ بالأيّام لا بقسمة المللي ────────────────────────────
-  // كان يُحسب `floor((اليوم − التاريخ) / ٨٦٤٠٠٠٠٠)`. وتواريخُ كشوف التشغيل
-  // تحمل وقتًا (التاسعة صباحًا)، و«اليوم» منتصفُ ليلٍ — فالقسمةُ تُسقط يومًا
-  // من عمر كلّ كشفٍ نقديّ: كشفُ ٢٦ أغسطس يُقرأ اليومَ ١١ يومًا وهو ١٢.
-  //
-  // وأثرُه أنّ الدَّينَ يبدو أحدثَ ممّا هو، فيقع في شريحةٍ أصغر — وهو الرقمُ
-  // الذي تُبنى عليه المطالبة. ودفترُ الفواتير يَعُدّ بـ`$dateDiff` من أوّل
-  // يوم، فكان الوجهان يختلفان في قاعدة العدّ نفسِها. صارا واحدًا.
-  const rows = await OperationsWorkflow.aggregate([
-    { $match: {
-      paymentType: 'cash',
-      collectionDate: null,
-      cashCollectionStatus: { $ne: 'collected' },
-      username: { $nin: [null, ''] },
-    } },
-    { $addFields: { _base: { $ifNull: ['$reportDate', '$paymentDate'] } } },
-    { $addFields: {
-      _days: { $cond: [{ $eq: ['$_base', null] }, null, { $dateDiff: { startDate: '$_base', endDate: today, unit: 'day' } }] },
-    } },
-    { $addFields: {
-      _band: { $switch: { branches: [
-        { case: { $eq: ['$_days', null] }, then: 'noDate' },
-        { case: { $gte: ['$_days', 365] }, then: '1Y+' },
-        { case: { $gte: ['$_days', 120] }, then: '120+' },
-        { case: { $gte: ['$_days', 90] }, then: '90+' },
-        { case: { $gte: ['$_days', 60] }, then: '60+' },
-        { case: { $gte: ['$_days', 45] }, then: '60-' },
-        { case: { $gte: ['$_days', 30] }, then: '45-' },
-        { case: { $gte: ['$_days', 15] }, then: '30-' },
-      ], default: '15-' } },
-    } },
-    { $group: {
-      _id: { name: '$username', band: '$_band' },
-      amount: { $sum: { $ifNull: ['$sellingValue', 0] } },
-      n: { $sum: 1 },
-    } },
-  ]).allowDiskUse(true);
-
-  const out = new Map();
-  for (const r of rows) {
-    const id = byKey.get(fold(r._id.name || ''));
-    if (!id) continue;
-    if (!out.has(id)) {
-      out.set(id, {
-        outstanding: 0, count: 0,
-        bands: Object.fromEntries(BANDS.map((b) => [b.key, 0])),
-        counts: Object.fromEntries(BANDS.map((b) => [b.key, 0])),
-      });
-    }
-    const e = out.get(id);
-    const band = r._id.band;
-    e.outstanding += r.amount; e.count += r.n;
-    if (band in e.bands) { e.bands[band] += r.amount; e.counts[band] += r.n; }
-  }
-  return out;
-}
-
 async function agingByParty(partyIds) {
   const today = startOfToday();
   // ── والحسابُ في القاعدة لا في العقدة ────────────────────────────────────
@@ -255,12 +179,12 @@ async function agingByParty(partyIds) {
         { case: { $gte: ['$_days', 15] }, then: '30-' },
       ], default: '15-' } },
     } },
-    { $group: { _id: { p: '$party', b: '$_band' }, sum: { $sum: '$total' }, n: { $sum: 1 } } },
+    { $group: { _id: { p: '$party', b: '$_band', k: '$kind' }, sum: { $sum: '$total' }, n: { $sum: 1 } } },
   ]);
 
   const out = new Map();
   const blank = () => ({
-    outstanding: 0, count: 0,
+    outstanding: 0, count: 0, tax: 0, cash: 0,
     bands: Object.fromEntries(BANDS.map((b) => [b.key, 0])),
     counts: Object.fromEntries(BANDS.map((b) => [b.key, 0])),
   });
@@ -269,6 +193,7 @@ async function agingByParty(partyIds) {
     if (!out.has(k)) out.set(k, blank());
     const e = out.get(k);
     e.outstanding += r.sum; e.count += r.n;
+    if (r._id.k === 'cash') e.cash += r.sum; else e.tax += r.sum;
     e.bands[r._id.b] += r.sum; e.counts[r._id.b] += r.n;
   }
   return out;
@@ -281,31 +206,18 @@ exports.aging = async (req, res) => {
     const cacheKey = keyOf('aging', req);
     const cached = cache.get(cacheKey);
     if (cached) return res.json(cached);
-    const filter = partyFilter(req.query);
+    const filter = partyFilter(req.query, await ledgerPartyBase());
     const parties = await CollectionsParty.find(filter)
       .select('code name paymentType collectionOfficer hoLocation grade salesManagers department region creditLimit creditDays status')
       .lean();
 
-    // الضريبيُّ من دفتر الفواتير، والنقديُّ من الكشوف — راجع cashAgingByParty.
-    const [ageMap, cashMap] = await Promise.all([
-      agingByParty(parties.map((p) => p._id)),
-      cashAgingByParty(parties),
-    ]);
+    // الدفترُ وحدَه بنوعَيه — راجع التعليق فوق agingByParty.
+    const ageMap = await agingByParty(parties.map((p) => p._id));
     let rows = parties.map((p) => {
-      const blank = { outstanding: 0, count: 0, bands: Object.fromEntries(BANDS.map((b) => [b.key, 0])), counts: Object.fromEntries(BANDS.map((b) => [b.key, 0])) };
-      const tax = ageMap.get(String(p._id)) || blank;
-      const cash = cashMap.get(String(p._id)) || blank;
-      // حسابٌ قد يكون له الوجهان (كودُه في الورقتين)، فيُجمَعان لا يُختار أحدُهما.
-      const a = {
-        outstanding: tax.outstanding + cash.outstanding,
-        count: tax.count + cash.count,
-        bands: Object.fromEntries(BANDS.map((b) => [b.key, (tax.bands[b.key] || 0) + (cash.bands[b.key] || 0)])),
-        counts: Object.fromEntries(BANDS.map((b) => [b.key, (tax.counts[b.key] || 0) + (cash.counts[b.key] || 0)])),
-        taxOutstanding: tax.outstanding,
-        cashOutstanding: cash.outstanding,
-      };
+      const a = ageMap.get(String(p._id))
+        || { outstanding: 0, count: 0, tax: 0, cash: 0, bands: Object.fromEntries(BANDS.map((b) => [b.key, 0])), counts: Object.fromEntries(BANDS.map((b) => [b.key, 0])) };
       const pct = p.creditLimit > 0 ? (a.outstanding / p.creditLimit) * 100 : null;
-      return { ...p, outstanding: a.outstanding, taxOutstanding: a.taxOutstanding, cashOutstanding: a.cashOutstanding, invoiceCount: a.count, bands: a.bands, bandCounts: a.counts, limitUsedPct: pct };
+      return { ...p, outstanding: a.outstanding, taxOutstanding: a.tax, cashOutstanding: a.cash, invoiceCount: a.count, bands: a.bands, bandCounts: a.counts, limitUsedPct: pct };
     });
     // شريحةٌ بعينها: تُطبَّق بعد الجمع لا قبله، وإلّا لم تجمع الشرائحُ الإجماليَّ.
     if (band && BANDS.some((b) => b.key === band)) rows = rows.filter((r) => r.bands[band] !== 0);
@@ -324,7 +236,8 @@ exports.aging = async (req, res) => {
       return dir * ((x || 0) - (y || 0));
     });
 
-    const p = Math.max(1, parseInt(page, 10)); const l = Math.min(500, Math.max(1, parseInt(limit, 10)));
+    // السقفُ يسع ما تطلبه الشاشةُ للتصدير (٥٠٠٠)؛ كان ٥٠٠ فيخرج الملفُّ بأوّل خمسمئةٍ صامتًا.
+    const p = Math.max(1, parseInt(page, 10)); const l = Math.min(20000, Math.max(1, parseInt(limit, 10)));
     const out = { rows: rows.slice((p - 1) * l, p * l), total: rows.length, page: p, pages: Math.ceil(rows.length / l), totals, bands: BANDS };
     cache.set(cacheKey, out, TTL);
     res.json(out);
@@ -365,12 +278,13 @@ exports.agingFilters = async (req, res) => {
 function invoiceFilter(q = {}) {
   const f = {};
   const list = (v) => (Array.isArray(v) ? v : [v]).filter(Boolean);
-  const { kind, status, partyCode, officer, from, to, dateField = 'invoiceDate', open, search, band } = q;
+  const { kind, status, partyCode, officer, from, to, dateField = 'invoiceDate', open, band } = q;
+  const search = q.search || q.q;
   if (kind) f.kind = { $in: list(kind) };
   if (status) f.status = { $in: list(status) };
   if (partyCode) f.partyCode = { $in: list(partyCode) };
   if (open === 'true') Object.assign(f, OPEN);
-  if (open === 'false') f.status = 'Collected';
+  if (open === 'false') Object.assign(f, CollectionInvoice.COLLECTED);
   if (from || to) {
     const field = ['invoiceDate', 'deliveryDate', 'collectionDate'].includes(dateField) ? dateField : 'invoiceDate';
     f[field] = {};
@@ -393,7 +307,9 @@ function decorate(v, today, creditDaysOf) {
   const cd = creditDaysOf ? creditDaysOf(v) : 0;
   // الاستحقاقُ من التسليم — لا تبدأ المهلةُ قبل أن تصل الفاتورةُ العميلَ.
   const dueDate = v.deliveryDate && cd ? new Date(new Date(v.deliveryDate).getTime() + cd * DAY) : null;
-  const daysToDue = dueDate ? Math.floor((dueDate - today) / DAY) : null;
+  // ما حُصِّل لا يُقال عنه «متأخّر» ولا «بقي له كذا» — انتهى أمرُه.
+  const isCollected = CollectionInvoice.isCollected(v);
+  const daysToDue = dueDate && !isCollected ? Math.floor((dueDate - today) / DAY) : null;
   return {
     ...v,
     ageDays, band: ageDays == null ? '' : bandOf(ageDays),
@@ -401,7 +317,8 @@ function decorate(v, today, creditDaysOf) {
     daysDeliveryToCollection: toCollection,
     daysTotal: v.collectionDate && v.invoiceDate ? Math.floor((new Date(v.collectionDate) - new Date(v.invoiceDate)) / DAY) : null,
     creditDays: cd, dueDate, daysToDue,
-    overdue: daysToDue != null && daysToDue < 0 && v.status !== 'Collected',
+    collected: isCollected,
+    overdue: daysToDue != null && daysToDue < 0 && !isCollected,
   };
 }
 
@@ -455,20 +372,21 @@ exports.invoices = async (req, res) => {
 
     // فلترُ الموظّف المسؤول يمرّ عبر الحساب — الفاتورةُ لا تحمل اسمَه.
     if (req.query.officer) {
-      const codes = await CollectionsParty.distinct('code', {
+      // بالرابط لا بالكود: ٣٥٧ شحنةً نقديّةً في الدفتر بلا كود، وحسابُها معروف.
+      filter.party = { $in: await CollectionsParty.distinct('_id', {
         kind: 'customer',
         collectionOfficer: { $in: (Array.isArray(req.query.officer) ? req.query.officer : [req.query.officer]) },
-      });
-      filter.partyCode = filter.partyCode ? { $in: codes.filter((c) => filter.partyCode.$in.includes(c)) } : { $in: codes };
+      }) };
     }
 
     const today = startOfToday();
-    const p = Math.max(1, parseInt(page, 10)); const l = Math.min(500, Math.max(1, parseInt(limit, 10)));
+    // السقفُ يسع ما تطلبه الشاشةُ للتصدير (٥٠٠٠)؛ كان ٥٠٠ فيخرج الملفُّ بأوّل خمسمئةٍ صامتًا.
+    const p = Math.max(1, parseInt(page, 10)); const l = Math.min(20000, Math.max(1, parseInt(limit, 10)));
 
     // مهلةُ السداد صفةُ الحساب، فتُقرأ مرّةً وتُلصق بفواتيره.
-    const cdByCode = new Map((await CollectionsParty.find({ kind: 'customer', code: { $gt: '' } })
-      .select('code creditDays').lean()).map((x) => [x.code, x.creditDays || 0]));
-    const creditDaysOf = (v) => cdByCode.get(v.partyCode) || 0;
+    const cdById = new Map((await CollectionsParty.find({ kind: 'customer', creditDays: { $gt: 0 } })
+      .select('creditDays').lean()).map((x) => [String(x._id), x.creditDays || 0]));
+    const creditDaysOf = (v) => cdById.get(String(v.party)) || 0;
 
     if (band && BANDS.some((b) => b.key === band)) {
       // الشريحةُ شرطٌ على قيمةٍ محسوبة، فتُطبَّق بعد القراءة — والمجموعُ عليها لا على الصفحة.
@@ -565,18 +483,18 @@ exports.alerts = async (req, res) => {
     const warnDays = Number(req.query.warnDays) || DUE_WARN_DAYS;
     const today = startOfToday();
 
-    const parties = await CollectionsParty.find({ ...partyFilter(req.query), isActive: { $ne: false } })
+    const parties = await CollectionsParty.find({ ...partyFilter(req.query, await ledgerPartyBase()), isActive: { $ne: false } })
       .select('code name creditLimit creditDays collectionOfficer hoLocation grade paymentType').lean();
     const ids = parties.map((p) => p._id);
     // ── والثلاثةُ معًا لا واحدًا بعد واحد ────────────────────────────────────
     // لا يعتمد أيٌّ منها على نتيجة الآخر، وكانت تُطلب بالتتابع — فثلاثُ رحلاتٍ
     // إلى العنقود المشترك ثمنُها ثلاثةُ أضعاف الواحدة بلا سبب.
-    const cdByCode = new Map(parties.filter((p) => p.creditDays > 0).map((p) => [p.code, p]));
-    const [ageMap, cashMap, acks, open] = await Promise.all([
+    // بالرابط لا بالكود المكتوب: كودُ الفاتورة قد يكون فارغًا وحسابُها معروف.
+    const cdByCode = new Map(parties.filter((p) => p.creditDays > 0).map((p) => [String(p._id), p]));
+    const [ageMap, acks, open] = await Promise.all([
       agingByParty(ids),
-      cashAgingByParty(parties),
       CreditAlertAck.find({ party: { $in: ids } }).lean(),
-      CollectionInvoice.find({ ...OPEN, partyCode: { $in: [...cdByCode.keys()] }, deliveryDate: { $ne: null } })
+      CollectionInvoice.find({ ...OPEN, party: { $in: [...cdByCode.keys()] }, deliveryDate: { $ne: null } })
         .select('invoiceNumber partyCode partyName party total deliveryDate invoiceDate').lean(),
     ]);
 
@@ -586,7 +504,7 @@ exports.alerts = async (req, res) => {
     for (const p of parties) {
       if (!p.creditLimit || p.creditLimit <= 0) continue;
       // الحدُّ يُقاس على ما على العميل كلِّه — ضريبيًّا كان أم نقديًّا.
-      const out = (ageMap.get(String(p._id))?.outstanding || 0) + (cashMap.get(String(p._id))?.outstanding || 0);
+      const out = ageMap.get(String(p._id))?.outstanding || 0;
       const pct = (out / p.creditLimit) * 100;
       if (pct < warnPct) continue;
       // الإسكاتُ يسقط إذا ارتفعت المديونيّةُ بعده: «رأيتُه عند ٩٠٪» لا يُسكت ١٢٠٪.
@@ -604,7 +522,7 @@ exports.alerts = async (req, res) => {
     const ackDue = new Set(acks.filter((a) => a.kind === 'due').map((a) => `${a.party}::${a.invoiceNumber}`));
     const dueAlerts = [];
     for (const v of open) {
-      const p = cdByCode.get(v.partyCode); if (!p) continue;
+      const p = cdByCode.get(String(v.party)); if (!p) continue;
       const due = new Date(new Date(v.deliveryDate).getTime() + p.creditDays * DAY);
       const inDays = Math.floor((due - today) / DAY);
       if (inDays > warnDays) continue;                       // بعيدٌ بعد
@@ -736,21 +654,16 @@ exports.team = async (req, res) => {
     const cacheKey = keyOf('team', req);
     const cached = cache.get(cacheKey);
     if (cached) return res.json(cached);
-    const parties = await CollectionsParty.find({ kind: 'customer', code: { $gt: '' } })
+    const parties = await CollectionsParty.find(await ledgerPartyBase())
       .select('code name collectionOfficer creditLimit paymentType').lean();
-    // الضريبيُّ من دفتر الفواتير، والنقديُّ من الكشوف — راجع cashAgingByParty.
-    const [ageMap, cashMap] = await Promise.all([
-      agingByParty(parties.map((p) => p._id)),
-      cashAgingByParty(parties),
-    ]);
-    // (رحلتان لا ثلاث: الثانيةُ تحتاج معرّفاتِ الأولى فلا تُوازى.)
+    const ageMap = await agingByParty(parties.map((p) => p._id));
     const byOfficer = new Map();
     for (const p of parties) {
       const k = p.collectionOfficer || '';
       if (!byOfficer.has(k)) byOfficer.set(k, { officer: k, accounts: 0, outstanding: 0, overLimit: 0, tax: 0, cash: 0 });
       const e = byOfficer.get(k);
       // الحدُّ يُقاس على ما على العميل كلِّه — ضريبيًّا كان أم نقديًّا.
-      const out = (ageMap.get(String(p._id))?.outstanding || 0) + (cashMap.get(String(p._id))?.outstanding || 0);
+      const out = ageMap.get(String(p._id))?.outstanding || 0;
       e.accounts += 1; e.outstanding += out;
       if (p.creditLimit > 0 && out > p.creditLimit) e.overLimit += 1;
       if (p.paymentType === 'cash') e.cash += 1; else e.tax += 1;
@@ -808,7 +721,7 @@ exports.performance = async (req, res) => {
     // كانت تسعةُ آلاف فاتورةٍ تُنقَل إلى العقدة لتُجمَع هناك: خمسَ عشرةَ ثانيةً
     // على الإنتاج، تكفي لأن تبدو الصفحةُ معطَّلة. والمجموعُ عملُ القاعدة.
     // والأرقامُ المحجوزةُ في التسلسل ليست عملَ أحد — راجع models/CollectionInvoice.unused.
-    const collectedMatch = { party: { $in: ids }, status: 'Collected', unused: { $ne: true } };
+    const collectedMatch = { party: { $in: ids }, ...CollectionInvoice.COLLECTED };
     if (hasRange) collectedMatch.collectionDate = range;
     const [collected, open] = await Promise.all([
       CollectionInvoice.aggregate([
@@ -825,7 +738,7 @@ exports.performance = async (req, res) => {
         } },
       ]),
       CollectionInvoice.aggregate([
-        { $match: { ...OPEN, party: { $in: ids }, unused: { $ne: true } } },
+        { $match: { ...OPEN, party: { $in: ids } } },
         { $group: { _id: '$party', n: { $sum: 1 }, amount: { $sum: '$total' },
           // ولا يُقاس الاستحقاقُ بتاريخ التسليم وحدَه: فاتورةٌ لم تُسلَّم بعدُ لها
           // تاريخُ إصدارٍ على أيّ حال، وإسقاطُها تُخفي دَينًا قائمًا.
@@ -980,7 +893,5 @@ exports.decideLink = async (req, res) => {
 
 module.exports.BANDS = BANDS;
 module.exports._internals = { partyFilter, invoiceFilter, agingByParty, decorate, bandOf, startOfToday, OPEN, receivablesOnly };
-module.exports.invalidate = () => cache.clear(CACHE_PREFIX);
-
-// تُصدَّر للاختبار وحدَه: مقارنةُ التجميع الجديد بالحساب القديم.
-module.exports.__cashAgingByParty = cashAgingByParty;
+// واللوحةُ («cdr:») تقرأ الحساباتِ نفسَها: موظّفٌ يُنقَل أو حدٌّ يُرفَع يغيّرها.
+module.exports.invalidate = () => { cache.clear(CACHE_PREFIX); cache.clear('cdr:'); };

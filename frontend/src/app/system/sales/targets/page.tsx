@@ -5,10 +5,11 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { Target, Plus, Trash2, Edit } from 'lucide-react';
-import { isSalesStaff, isSalesAdmin, SalesTarget, money, userName, thisPeriod } from '@/lib/finance';
-import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, Select } from '@/components/hr/HRKit';
+import { isSalesStaff, canSetSalesTargets, SalesTarget, money, userName, thisPeriod, periodFromUrl } from '@/lib/finance';
+import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, TextArea, Select, ErrorNotice } from '@/components/hr/HRKit';
 import { getSalesTargetsTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import ScrollX from '@/components/system/ScrollX';
@@ -23,32 +24,59 @@ export default function SalesTargetsPage() {
   const tx = getSalesTargetsTranslations(lang);
   const [items, setItems] = useState<SalesTarget[]>([]);
   const [reps, setReps] = useState<any[]>([]);
-  const [period, setPeriod] = useState(thisPeriod());
+  // الشهرُ من الرابط إن جاء من بطاقة «الهدف» في اللوحة.
+  const [period, setPeriod] = useState(() => periodFromUrl(thisPeriod()));
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const guard = useLatestRequest();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<SalesTarget | null>(null);
   const [form, setForm] = useState<any>(EMPTY);
   const [saving, setSaving] = useState(false);
 
-  const canEdit = isSalesAdmin(user);
+  // الهدفُ يضعه المدير: القاعدةُ نفسُها التي يحرس بها الخادم (راجع canSetSalesTargets).
+  const canEdit = canSetSalesTargets(user);
 
   const load = useCallback(async () => {
-    try { const d = await api.get<{ targets: SalesTarget[] }>(`/api/sales/targets?period=${period}`); setItems(d.targets || []); } catch { /* */ }
+    const mine = guard.begin();
+    try {
+      const d = await api.get<{ targets: SalesTarget[] }>(`/api/sales/targets?period=${period}`);
+      if (!guard.isCurrent(mine)) return;
+      setItems(d.targets || []); setError('');
+    } catch (e: any) {
+      if (!guard.isCurrent(mine)) return;
+      setError(e?.message || 'Request failed');
+    }
     setLoading(false);
-  }, [period]);
+  }, [period, guard]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.get<{ reps: any[] }>('/api/sales/options').then((d) => setReps(d.reps || [])).catch(() => {}); }, []);
-  useSocket('sales:target', useCallback(() => load(), [load]));
+  useSocket('sales:updated', useCallback(() => load(), [load]));
 
   const openCreate = () => { setEditing(null); setForm({ ...EMPTY, period }); setShowModal(true); };
-  const openEdit = (t: SalesTarget) => { setEditing(t); setForm({ ...EMPTY, ...t, rep: typeof t.rep === 'object' ? t.rep?._id : (t.rep || '') }); setShowModal(true); };
+  const openEdit = (t: SalesTarget) => { setEditing(t); setForm({ ...EMPTY, ...t, notes: t.notes || '', rep: typeof t.rep === 'object' ? t.rep?._id : (t.rep || '') }); setShowModal(true); };
   const save = async () => {
+    if (!form.period) { notify(ar ? 'اختر الشهر أوّلًا' : 'Pick a month first', 'error'); return; }
+    // هدفٌ جديدٌ لمندوبٍ له هدفٌ في الشهر نفسِه يستبدله على الخادم — فيُسأل قبله.
+    if (!editing) {
+      const clash = items.find((t) => t.period === form.period
+        && String((typeof t.rep === 'object' ? t.rep?._id : t.rep) || '') === String(form.rep || ''));
+      if (clash && !(await confirm(ar
+        ? 'لهذا المندوب هدفٌ محدَّدٌ في هذا الشهر. هل تريد استبداله؟'
+        : 'A target already exists for this rep and month. Replace it?'))) return;
+    }
     setSaving(true);
     try {
-      const payload = { ...form, rep: form.rep || null, amountTarget: Number(form.amountTarget) || 0, dealsTarget: Number(form.dealsTarget) || 0 };
+      // لا يُرسَل إلّا ما يقرؤه الخادم — لا السجلُّ كلُّه بمعرّفه وتواريخه.
+      const payload = {
+        rep: form.rep || null, period: form.period, notes: form.notes || '',
+        amountTarget: Number(form.amountTarget) || 0, dealsTarget: Number(form.dealsTarget) || 0,
+      };
       if (editing) await api.put(`/api/sales/targets/${editing._id}`, payload);
       else await api.post('/api/sales/targets', payload);
-      setShowModal(false); load();
+      // الشهرُ المحفوظُ هو المعروض: هدفٌ يُحفَظ لشهرٍ آخر كان يختفي من الجدول فيُظنّ أنّه لم يُحفَظ.
+      setShowModal(false);
+      if (!editing && form.period !== period) setPeriod(form.period); else load();
     } catch (e: any) { notify(e.message, 'error'); } finally { setSaving(false); }
   };
   const remove = async (t: SalesTarget) => {
@@ -61,6 +89,7 @@ export default function SalesTargetsPage() {
     { header: tx.period, key: 'period', width: 14 },
     { header: tx.amountTarget, key: 'amountTarget', width: 18, transform: (v) => money(v) },
     { header: tx.dealsTarget, key: 'dealsTarget', width: 14 },
+    { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 30 },
   ];
   // الشاشة لا تُظهر إلّا مستهدفات الشهر المختار لأنّ الفلترة على الخادم، ومن صدّر
   // «الأهداف» ظنَّها كلَّها؛ فصار «الكلّ» نداءً بلا معامل الفترة يجلب كلَّ الشهور.
@@ -84,6 +113,8 @@ export default function SalesTargetsPage() {
         <ExportMenu fileName="sales-targets" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
         {canEdit && <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.setTarget}</PrimaryButton>}
       </PageHeader>
+
+      {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
       <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
@@ -125,8 +156,10 @@ export default function SalesTargetsPage() {
               ? <TextInput value={form.period} disabled onChange={() => {}} />
               : <MonthPicker value={form.period} onChange={(v) => setForm({ ...form, period: v })} ar={lang === 'ar'} allowEmpty={false} />}
           </Field>
-          <Field label={tx.amountTarget}><TextInput type="number" value={form.amountTarget} onChange={(e) => setForm({ ...form, amountTarget: e.target.value })} dir="ltr" /></Field>
-          <Field label={tx.dealsTarget}><TextInput type="number" value={form.dealsTarget} onChange={(e) => setForm({ ...form, dealsTarget: e.target.value })} dir="ltr" /></Field>
+          <Field label={tx.amountTarget}><TextInput type="number" min={0} value={form.amountTarget} onChange={(e) => setForm({ ...form, amountTarget: e.target.value })} dir="ltr" /></Field>
+          <Field label={tx.dealsTarget}><TextInput type="number" min={0} value={form.dealsTarget} onChange={(e) => setForm({ ...form, dealsTarget: e.target.value })} dir="ltr" /></Field>
+          {/* الملاحظةُ في النموذج والهاتف، وكانت الشاشةُ لا تعرضها ولا تكتبها. */}
+          <Field label={ar ? 'ملاحظات' : 'Notes'} span2><TextArea value={form.notes || ''} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} /></Field>
         </div>
       </Modal>
     </div>

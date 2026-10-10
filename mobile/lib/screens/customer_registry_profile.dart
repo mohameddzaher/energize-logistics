@@ -20,6 +20,13 @@ class CustomerRegistryProfileScreen extends StatefulWidget {
   State<CustomerRegistryProfileScreen> createState() => _CustomerRegistryProfileScreenState();
 }
 
+/// «١–٥: 2,200 · ٦ فأكثر: 2,400»
+String _tiersText(dynamic tiers) => List.from(tiers ?? []).map((t) {
+      final a = t['minTrucks'], b = t['maxTrucks'];
+      final range = b == null ? tr('$a فأكثر', '$a+') : (a == b ? '$a' : '$a–$b');
+      return '$range: ${_money(t['price'])}';
+    }).join(' · ');
+
 String _money(dynamic v) {
   if (v == null) return '—';
   final n = (v is num) ? v : num.tryParse(v.toString()) ?? 0;
@@ -68,6 +75,71 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
   void dispose() {
     Live.instance.off('shipmentOrders:customers', _onLive);
     super.dispose();
+  }
+
+  /// شرائحُ السعر بعدد السيارات — نظيرُ `TierEditor` في الموقع.
+  Future<void> _editTiers(Map<String, dynamic> route) async {
+    final rows = List.from(route['tiers'] ?? []).map((t) => [
+          TextEditingController(text: '${t['minTrucks'] ?? ''}'),
+          TextEditingController(text: t['maxTrucks'] == null ? '' : '${t['maxTrucks']}'),
+          TextEditingController(text: '${t['price'] ?? ''}'),
+        ]).toList();
+    if (rows.isEmpty) rows.add([TextEditingController(text: '1'), TextEditingController(), TextEditingController()]);
+    final ok = await showModalBottomSheet<bool>(
+      context: context, isScrollControlled: true, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (c) => StatefulBuilder(builder: (c, set) {
+        Widget f(TextEditingController t, String label) => Expanded(child: Padding(
+          padding: const EdgeInsetsDirectional.only(end: 6),
+          child: TextField(controller: t, keyboardType: TextInputType.number,
+              decoration: InputDecoration(isDense: true, labelText: label, border: const OutlineInputBorder())),
+        ));
+        return Padding(
+          padding: EdgeInsets.fromLTRB(16, 18, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+          child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(tr('السعر بعدد السيارات', 'Price by truck count'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            const SizedBox(height: 4),
+            Text('${route['from'] ?? ''} ← ${route['to'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text(tr('السعرُ للسيارة الواحدة، بحسب عدد السيارات التي يطلبها العميل على المسار. اترك «إلى» فارغةً في آخر شريحةٍ لتعني «فما فوق». و«التشغيل — خاصّ» يكتب للكشف أعلى سعرٍ هنا.',
+                'Price per truck, by how many trucks the customer orders on the route. Leave “to” empty on the last tier for “and above”. Operations — private applies the highest price.'),
+                style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+            const SizedBox(height: 12),
+            for (var i = 0; i < rows.length; i++) Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(children: [
+                f(rows[i][0], tr('من عدد', 'From')), f(rows[i][1], tr('إلى عدد', 'To')), f(rows[i][2], tr('سعر السيارة', 'Per truck')),
+                IconButton(icon: const Icon(Icons.close, size: 18, color: T.inkFaint), onPressed: () => set(() => rows.removeAt(i))),
+              ]),
+            ),
+            Align(alignment: AlignmentDirectional.centerStart, child: TextButton.icon(
+              icon: const Icon(Icons.add), label: Text(tr('شريحة أخرى', 'Another tier')),
+              onPressed: () => set(() {
+                final last = rows.isEmpty ? null : int.tryParse(rows.last[1].text);
+                rows.add([TextEditingController(text: last == null ? '' : '${last + 1}'), TextEditingController(), TextEditingController()]);
+              }),
+            )),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: T.navy, padding: const EdgeInsets.symmetric(vertical: 14)),
+              onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save')),
+            ),
+          ])),
+        );
+      }),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.put('/api/customer-registry/${widget.customerId}/route-tiers', {
+        'fromCity': route['from'], 'toCity': route['to'],
+        'tiers': rows.where((r) => r.any((t) => t.text.trim().isNotEmpty)).map((r) => {
+              'minTrucks': int.tryParse(r[0].text.trim()), 'maxTrucks': r[1].text.trim().isEmpty ? null : int.tryParse(r[1].text.trim()),
+              'price': num.tryParse(r[2].text.trim()),
+            }).toList(),
+      });
+      await _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
   }
 
   Future<void> _load() async {
@@ -181,7 +253,21 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
                                     r['price'] == null
                                         ? Chip2(tr('بلا سعر', 'no price'), T.warn)
                                         : Chip2(_money(r['price']), T.success),
+                                    // شرائحُ السعر يعدّلها مديرُ العمليّات ومديرُ النظام وحدَهما.
+                                    if (d['canEditTiers'] == true)
+                                      IconButton(
+                                        visualDensity: VisualDensity.compact,
+                                        tooltip: tr('السعر بعدد السيارات', 'Price by truck count'),
+                                        icon: const Icon(Icons.edit_outlined, size: 18, color: T.inkSoft),
+                                        onPressed: () => _editTiers(r),
+                                      ),
                                   ]),
+                                )).expand((w) => [w]),
+                            // السعرُ بعدد السيارات — يُقرأ تحت مساره.
+                            ...runRoutes.take(25).where((r) => List.from(r['tiers'] ?? []).isNotEmpty).map((r) => Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text('${r['from'] ?? ''} ← ${r['to'] ?? ''}: ${_tiersText(r['tiers'])}',
+                                      style: const TextStyle(fontSize: 11.5, color: T.success, fontWeight: FontWeight.w700)),
                                 )),
                             if (runRoutes.length > 25)
                               Padding(

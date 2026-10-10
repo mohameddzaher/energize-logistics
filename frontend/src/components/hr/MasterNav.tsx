@@ -20,10 +20,11 @@
 //
 // العدّاد بيتقرا من نفس اندبوينت النظرة الشاملة اللي الصفحة الرئيسية بتستعمله،
 // فمفيش حساب تاني ممكن يختلف عنه.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { getHrOverview } from '@/lib/hrMaster';
 import { LayoutGrid, CalendarClock, Users } from 'lucide-react';
 
@@ -37,10 +38,23 @@ export default function MasterNav() {
   const pathname = usePathname() || '';
   const [groups, setGroups] = useState<{ key: string; ar: string; en: string; count?: number }[]>([]);
   const [expiring, setExpiring] = useState(0);
+  // ── والرابطُ يحمل الشرطَ الذي عُدَّ به الرقم ────────────────────────────────
+  // الانتهاءاتُ تُعَدّ لمن لم تنتهِ خدمتُه (`expiryScope`)، وحدُّ «القريب» هو
+  // `alert.warnDays`. وكلاهما يأتي من الخادم مع الرقم ويُكتب في الرابط كما هو،
+  // فلا يفتح «٤٥٩» صفحةً تعدّ قومًا آخرين أو مدّةً أخرى.
+  const [scope, setScope] = useState<Record<string, string>>({});
+  const [warnDays, setWarnDays] = useState<number | null>(null);
+  // تعديلان متتاليان يُطلقان قراءتين؛ والأقدمُ قد يصل أخيرًا فيُعيد الرقمَ إلى
+  // ما قبل التعديل الثاني. راجع hooks/useLatestRequest.
+  const guard = useLatestRequest();
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    const mine = guard.begin();
     try {
       const o = await getHrOverview({});
+      if (!guard.isCurrent(mine)) return;
+      setScope(o.expiryScope || {});
+      setWarnDays(o.alert?.warnDays ?? null);
       setGroups((o.groups || []).map((g: any) => ({
         key: g.key, ar: g.ar, en: g.en,
         // المستنداتُ وحدَها لها انتهاءات؛ وغيرُها بلا رقم.
@@ -48,17 +62,23 @@ export default function MasterNav() {
       })));
       setExpiring(o.totals?.expiringSoon || 0);
     } catch { /* الشريط مايوقفش الصفحة */ }
-  };
-  useEffect(() => { load(); }, []);
-  useSocket('hr:master', () => { load(); });
+  }, [guard]);
+  useEffect(() => { load(); }, [load]);
+  useSocket('hr:master', load);
+  // العقدُ يُنشأ ويُفسخ من صفحة العقود؛ وكلاهما يحرّك «حالة العقد» وعددَ مَن
+  // تُتابَع مستنداتُهم.
+  useSocket('hr:contract', load);
+
+  const scopeQs = new URLSearchParams(scope).toString();
 
   const items: Item[] = [
     { href: '/system/hr/master', ar: 'النظرة الشاملة', en: 'Overview', icon: <LayoutGrid className="w-3.5 h-3.5" /> },
-    { href: '/system/hr/master/expiring', ar: 'الانتهاءات', en: 'Expiries', count: expiring, icon: <CalendarClock className="w-3.5 h-3.5" /> },
+    // الرقمُ = المنتهي + ما ينتهي خلال `warnDays` — فالصفحةُ تُفتَح على المدّة نفسِها.
+    { href: `/system/hr/master/expiring${warnDays != null ? `?withinDays=${warnDays}` : ''}`, ar: 'الانتهاءات', en: 'Expiries', count: expiring, icon: <CalendarClock className="w-3.5 h-3.5" /> },
     // والرابطُ يحمل الفلترَ الذي يُنتج الرقمَ نفسَه: من ضغط «٢٣٢» يجد اثنين
     // وثلاثين ومئتين، لا الجدولَ كلَّه. راجع state=attention في الخادم.
     ...groups.map((g) => ({
-      href: g.count ? `/system/hr/master/${g.key}?state=attention` : `/system/hr/master/${g.key}`,
+      href: g.count ? `/system/hr/master/${g.key}?state=attention${scopeQs ? `&${scopeQs}` : ''}` : `/system/hr/master/${g.key}`,
       ar: g.ar, en: g.en, count: g.count,
     })),
     { href: '/system/hr/employees', ar: 'كل الموظفين', en: 'All employees', icon: <Users className="w-3.5 h-3.5" /> },
@@ -89,8 +109,8 @@ export default function MasterNav() {
         })}
       </div>
       <p className="px-1 pt-1.5 text-[11px] text-slate-500">
-        {t('الرقم بجانب كل صفحة = مستندات منتهية أو تقترب من الانتهاء',
-           'The number next to each page = documents expired or nearing expiry')}
+        {t('الرقم بجانب كل صفحة = مستندات منتهية أو تقترب من الانتهاء، لمن لم تنتهِ خدمته. و«الانتهاءات» مجموعها: يُعَدّ كل مستند مرة، فالموظف الواحد قد يُعَدّ بأكثر من مستند.',
+           'The number next to each page = documents expired or nearing expiry, for staff whose service has not ended. “Expiries” is their sum: each document counts once, so one employee may count more than once.')}
       </p>
     </nav>
   );

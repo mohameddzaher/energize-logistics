@@ -3,10 +3,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { TrendingUp } from 'lucide-react';
 import { isSalesStaff, money, userName } from '@/lib/finance';
-import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, ErrorNotice } from '@/components/hr/HRKit';
 import { getSalesPipelineTranslations } from '@/lib/translations';
 
 // Mirrors backend config/crmDefaults PIPELINE_STAGES.
@@ -27,13 +28,23 @@ export default function SalesPipelinePage() {
   const tx = getSalesPipelineTranslations(lang);
   const [deals, setDeals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const guard = useLatestRequest();
 
   const load = useCallback(async () => {
-    try { const d = await api.get<{ deals: any[] }>('/api/sales/pipeline'); setDeals(d.deals || []); } catch { /* */ }
+    const mine = guard.begin();
+    try {
+      const d = await api.get<{ deals: any[] }>('/api/sales/pipeline');
+      if (!guard.isCurrent(mine)) return;
+      setDeals(d.deals || []); setError('');
+    } catch (e: any) {
+      if (!guard.isCurrent(mine)) return;
+      setError(e?.message || 'Request failed');
+    }
     setLoading(false);
-  }, []);
+  }, [guard]);
   useEffect(() => { load(); }, [load]);
-  useSocket('crm:deal', useCallback(() => load(), [load]));
+  useSocket('sales:updated', useCallback(() => load(), [load]));
 
   if (!isSalesStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
@@ -43,7 +54,9 @@ export default function SalesPipelinePage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<TrendingUp className="w-5 h-5" />} title={tx.pageTitle}
-        subtitle={`${deals.length} · ${money(deals.filter((d) => d.status === 'open').reduce((s, d) => s + (d.value || 0), 0))}`} />
+        subtitle={`${deals.length.toLocaleString('en-US')} ${ar ? 'صفقة' : 'deals'} · ${ar ? 'قيمة المفتوحة' : 'open value'}: ${money(deals.filter((d) => d.status === 'open').reduce((s, d) => s + (d.value || 0), 0))}`} />
+
+      {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
       <div className="flex gap-4 overflow-x-auto pb-4">
         {STAGES.map((st) => {

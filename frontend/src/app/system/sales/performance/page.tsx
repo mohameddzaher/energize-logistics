@@ -4,10 +4,11 @@ import MonthPicker from '@/components/system/MonthPicker';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { BarChart3 } from 'lucide-react';
-import { isSalesStaff, money, pct, thisPeriod } from '@/lib/finance';
-import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import { isSalesStaff, money, pct, thisPeriod, periodFromUrl } from '@/lib/finance';
+import { Spinner, PageHeader, ErrorNotice } from '@/components/hr/HRKit';
 import { getSalesPerformanceTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import ScrollX from '@/components/system/ScrollX';
@@ -16,21 +17,33 @@ export default function SalesPerformancePage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const tx = getSalesPerformanceTranslations(lang);
-  const [period, setPeriod] = useState(thisPeriod());
+  // الشهرُ من الرابط إن جاء من بطاقةٍ في اللوحة — فالرقمُ هنا هو الرقمُ الذي ضُغط عليه.
+  const [period, setPeriod] = useState(() => periodFromUrl(thisPeriod()));
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const guard = useLatestRequest();
 
   const load = useCallback(async () => {
-    try { const d = await api.get<{ rows: any[] }>(`/api/sales/performance?period=${period}`); setRows(d.rows || []); } catch { /* */ }
+    const mine = guard.begin();
+    try {
+      const d = await api.get<{ rows: any[] }>(`/api/sales/performance?period=${period}`);
+      if (!guard.isCurrent(mine)) return;
+      setRows(d.rows || []); setError('');
+    } catch (e: any) {
+      if (!guard.isCurrent(mine)) return;
+      setError(e?.message || 'Request failed');
+    }
     setLoading(false);
-  }, [period]);
+  }, [period, guard]);
   useEffect(() => { load(); }, [load]);
-  useSocket('crm:deal', useCallback(() => load(), [load]));
+  // كانت تسمع الصفقاتِ وحدَها: هدفٌ يُعدَّل لا يحرّك عمودَ «الهدف» ولا نسبةَ التحقيق.
+  useSocket('sales:updated', useCallback(() => load(), [load]));
 
   const exportColumns: ExportColumn[] = [
     { header: tx.colRep, key: 'rep', width: 24, transform: (_v, r) => r.rep?.name ?? '' },
     { header: tx.colWon, key: 'wonValue', width: 16, transform: (_v, r) => money(r.wonValue) },
-    { header: lang === 'ar' ? 'عدد الصفقات الفائزة' : 'Won Count', key: 'wonCount', width: 14 },
+    { header: lang === 'ar' ? 'عدد الصفقات الرابحة' : 'Won Count', key: 'wonCount', width: 14 },
     { header: tx.colTarget, key: 'target', width: 16, transform: (v) => money(v) },
     { header: tx.colAttainment, key: 'attainment', width: 14, transform: (v) => pct(v) },
     { header: tx.colOpen, key: 'openValue', width: 16, transform: (_v, r) => money(r.openValue) },
@@ -49,9 +62,11 @@ export default function SalesPerformancePage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<BarChart3 className="w-5 h-5" />} title={tx.title}>
-        <MonthPicker value={period} onChange={setPeriod} ar={lang === 'ar'} label={tx.periodAria} />
+        <MonthPicker value={period} onChange={setPeriod} ar={lang === 'ar'} label={tx.periodAria} allowEmpty={false} />
         <ExportMenu fileName={`sales-performance-${period}`} lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
       </PageHeader>
+
+      {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
       <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">

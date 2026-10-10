@@ -1,5 +1,6 @@
 'use client';
 
+import { hasFinancePowers, FINANCE_FULL_ROLES } from '@/lib/financeAuthority';
 import { useState, useEffect, useCallback } from 'react';
 import MonthPicker from '@/components/system/MonthPicker';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -122,7 +123,7 @@ export default function WalletPage() {
   const { user } = useAuth();
   // والمصفوفةُ تُحسب كما تُحسب القائمة: دورٌ مُنح «تعديل» في هذا القسم يعدّل
   // — وإلّا فُتحت الشاشةُ لدورٍ مصنوعٍ وامتنعت عنه أزرارُها (راجع فريق العمليات).
-  const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(user?.role || '')
+  const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff', ...FINANCE_FULL_ROLES].includes(user?.role || '')
     || canEditSection((user as any)?.permissions, 'Operations');
   const isReadOnly = user?.role === 'moderator';
   /**
@@ -137,10 +138,11 @@ export default function WalletPage() {
    * والخادمُ هو المانعُ فعلًا (`mayWorkOutsideBook`)؛ هذا يرفع القيدَ عن
    * المنتقيات فقط، فلا تُعرَض له شاشةٌ تمنعه ممّا يملكه.
    */
-  const freeDates = user?.role === 'super_admin';
+  const freeDates = hasFinancePowers(user as any);
   // مديرُ النظام أو دورٌ مُنح صلاحيّاتِه كاملةً من شاشة الصلاحيّات — يرسلها
   // الخادمُ في `superAdminPowers`. وهي التي تُظهر زرَّ فتح اليوم وأزرارَ التعديل.
-  const isSuperAdmin = user?.role === 'super_admin' || !!(user as any)?.superAdminPowers;
+  // مديرُ النظام وأهلُ المال: التعديلُ والحذفُ والنقلُ وإعادةُ الفتح — راجع lib/financeAuthority.
+  const isSuperAdmin = hasFinancePowers(user as any);
   const isOpsManager = user?.role === 'operations_manager';
   /**
    * ── ومَن يكتب في يومٍ أُقفل ──────────────────────────────────────────────
@@ -154,7 +156,7 @@ export default function WalletPage() {
    * لمدير النظام. والخادمُ هو المانعُ (`mayWriteIntoClosedDay`) وهذا إخفاءٌ
    * لا يُغني عنه.
    */
-  const canWriteClosedDay = ['super_admin', 'admin', 'operations_manager'].includes(user?.role || '')
+  const canWriteClosedDay = ['super_admin', 'admin', 'operations_manager', ...FINANCE_FULL_ROLES].includes(user?.role || '')
     || !!(user as any)?.superAdminPowers;
   // ── ومَن لا يُقفَل على فرعٍ يختار الفرعَ الذي ينظر فيه ────────────────────
   // كان الشرطُ «سوبر أدمن أو مدير عمليات» — قائمةٌ موجبةٌ تُنسى كلَّما دخل

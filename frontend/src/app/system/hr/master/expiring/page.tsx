@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -36,16 +37,35 @@ function ExpiringInner() {
   const [includeExpired, setIncludeExpired] = useState(sp?.get('includeExpired') !== '0');
   const [d, setD] = useState<Awaited<ReturnType<typeof getHrExpiring>> | null>(null);
   const [loading, setLoading] = useState(true);
+  // ── وفلترُ اللوحة يُحمَل إلى هنا ───────────────────────────────────────────
+  // «ينتهي قريبًا» في النظرة الشاملة يُحسَب على فلترها (قسمٌ، جنسيّة…). وكانت
+  // الضغطةُ تفتح هذه الصفحةَ مجرَّدةً منه: رقمٌ لقسمٍ واحدٍ يفتح انتهاءاتِ
+  // الشركة كلِّها. فما جاء في العنوان غيرَ مفاتيح هذه الشاشة فلترٌ يُرسَل كما هو.
+  const CTRL = ['withinDays', 'doc', 'state', 'includeExpired'];
+  const [filters, setFilters] = useState<Record<string, string>>(() =>
+    Object.fromEntries([...(sp?.entries() || [])].filter(([k, v]) => !CTRL.includes(k) && v !== '')));
+  const hasFilters = Object.keys(filters).length > 0;
+  // المدّةُ والمستندُ والحالةُ ثلاثةُ مفاتيحَ تتغيّر تباعًا، ومعها تحديثُ السوكِت:
+  // أوسعُ الطلبات أبطؤها، فيصل أخيرًا ويكتب فوق الأضيق. راجع useLatestRequest.
+  const guard = useLatestRequest();
 
+  // ── ولا تُرسَل حالةُ توظيفٍ من هنا ──────────────────────────────────────────
+  // كانت الصفحةُ تُرسل `status: 'active'` والشريطُ يعدّ الملفَّ كلَّه: ٥٦٨ في
+  // الرقم و٤٤٣ في الجدول. والنطاقُ الآن قاعدةٌ واحدةٌ في الخادم (مَن لم تنتهِ
+  // خدمتُه — وفيهم مَن في إجازة) يقرؤها الرقمُ والجدولُ معًا.
   const load = useCallback(async () => {
+    const mine = guard.begin();
     try {
-      setD(await getHrExpiring({
+      const res = await getHrExpiring({
+        ...filters,
         withinDays: within === '' ? undefined : within,
-        doc, state, includeExpired: includeExpired ? '1' : '0', status: 'active',
-      }));
-    } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
-    setLoading(false);
-  }, [within, doc, state, includeExpired, notify]);
+        doc, state, includeExpired: includeExpired ? '1' : '0',
+      });
+      if (!guard.isCurrent(mine)) return;
+      setD(res);
+    } catch (e: any) { if (guard.isCurrent(mine)) notify(e?.message || 'Failed', 'error'); }
+    if (guard.isCurrent(mine)) setLoading(false);
+  }, [within, doc, state, includeExpired, JSON.stringify(filters), notify, guard]);
   useEffect(() => { const h = setTimeout(load, 250); return () => clearTimeout(h); }, [load]);
   useSocket('hr:master', useCallback(() => { load(); }, [load]));
 
@@ -64,9 +84,9 @@ function ExpiringInner() {
   // الشاشة تفتح على مدّةٍ افتراضيّة (٦٠ يومًا) — أي أنّها مفلترة قبل أن يلمسها
   // أحد. فمَن صدّر ظانًّا أنّه أخذ كلّ الانتهاءات كان يأخذ نافذةً ضيّقة بلا أن
   // يُنبَّه؛ و«الكلّ» هنا يعيد النداء بلا مدّةٍ ولا مستندٍ ولا حالة.
-  const hasActiveFilters = within !== '' || !!doc || !!state || !includeExpired;
+  const hasActiveFilters = within !== '' || !!doc || !!state || !includeExpired || hasFilters;
   const fetchAllExpiring = async () => {
-    const full = await getHrExpiring({ includeExpired: '1', status: 'active' });
+    const full = await getHrExpiring({ includeExpired: '1' });
     return [{ name: t('الانتهاءات', 'Expiries'), rows: full.rows || [], columns: cols }];
   };
   const scope = exportScopeLabels(ar);
@@ -85,9 +105,23 @@ function ExpiringInner() {
 
       <PageHeader icon={<CalendarClock className="w-5 h-5" />}
         title={t('انتهاءات مستندات الموظفين', 'Employee document expiries')}
-        subtitle={t('كل مستند له تاريخ — اختر المدة التي تهمّك', 'Every dated document — pick the window that matters')}>
+        subtitle={(d?.expiryScope?.employment === 'current')
+          ? t('كل مستند له تاريخ، لمن لم تنتهِ خدمته — اختر المدة التي تهمّك', 'Every dated document, for staff whose service has not ended — pick the window that matters')
+          : t('كل مستند له تاريخ — اختر المدة التي تهمّك', 'Every dated document — pick the window that matters')}>
         <ExportMenu fileName="hr-expiries" lang={lang as 'ar' | 'en'} options={exportOptions} />
       </PageHeader>
+
+      {hasFilters && (
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5">
+          <p className="text-[13px] font-semibold text-sky-900">
+            {t('المعروض مقصور على فلتر النظرة الشاملة', 'Limited to the overview filter')}
+          </p>
+          <button type="button" onClick={() => setFilters({})}
+            className="text-[12px] font-medium text-sky-800 hover:text-sky-950 underline">
+            {t('عرض الكل', 'Show all')}
+          </button>
+        </div>
+      )}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
         <div className="flex flex-wrap items-center gap-2">

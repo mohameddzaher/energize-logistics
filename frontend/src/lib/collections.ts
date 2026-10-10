@@ -95,6 +95,9 @@ export interface CollectionsParty {
   settled: number;
   outstanding: number;
   openReports: number;
+  // للعميل: من دفتر الفواتير (والمالُ أعلاه منه كذلك).
+  invoices?: number;
+  openInvoices?: number;
   invoiced: number;
   lastReportAt?: string | null;
   lastSettledAt?: string | null;
@@ -108,10 +111,11 @@ export const kindWords = (kind: PartyKind, ar: boolean) =>
     ? {
       title: ar ? 'العملاء' : 'Customers',
       one: ar ? 'عميل' : 'customer',
-      totalLabel: ar ? 'إجمالي المبيعات' : 'Total billed',
+      // من دفتر الفواتير: ما فُوتِر وما حُصِّل منه وما بقي.
+      totalLabel: ar ? 'إجمالي المفوتَر' : 'Total invoiced',
       settledLabel: ar ? 'المحصَّل' : 'Collected',
       dueLabel: ar ? 'المستحق لنا' : 'Receivable',
-      openLabel: ar ? 'كشوف لم تُحصَّل' : 'Uncollected reports',
+      openLabel: ar ? 'فواتير لم تُحصَّل' : 'Open invoices',
       newOne: ar ? 'عميل جديد' : 'New customer',
     }
     : {

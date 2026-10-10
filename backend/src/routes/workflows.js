@@ -9,6 +9,8 @@ router.param('customerId', objectIdParam());
 const workflowController = require('../controllers/workflowController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
+// أهلُ المال يملكون في هذه الصفحة ما يملكه مديرُ النظام — راجع config/financeAuthority.
+const { FINANCE_FULL_ROLES } = require('../config/financeAuthority');
 const validate = require('../middleware/validate');
 
 router.use(authenticate);
@@ -56,7 +58,7 @@ router.post('/payment-types/:id/unify', authorize(...PT_WRITE), paymentTypes.uni
 router.get('/', authorize(...allWorkflowRoles), workflowController.getWorkflows);
 
 // Bulk delete
-router.post('/bulk-delete', authorize('super_admin'), workflowController.bulkDelete);
+router.post('/bulk-delete', authorize('super_admin', ...FINANCE_FULL_ROLES), workflowController.bulkDelete);
 // ── تحديثٌ جماعيّ ──────────────────────────────────────────────────────────
 // مفتوحٌ لكلّ من يعدّل صفًّا واحدًا: الصلاحيّةُ تُفحص على مستوى **الحقل** داخل
 // النقطة نفسِها، فلا يكسب أحدٌ بالجملة ما لا يملكه بالمفرد.
@@ -65,7 +67,7 @@ router.post('/bulk-update', authorize(...allWorkflowRoles), workflowController.b
 // Bulk import (must be before /:id routes)
 router.post(
   '/bulk-import',
-  authorize('super_admin', 'moderator'),
+  authorize('super_admin', 'moderator', ...FINANCE_FULL_ROLES),
   [body('rows').isArray({ min: 1 }).withMessage('rows must be a non-empty array')],
   validate,
   workflowController.bulkImport
@@ -108,6 +110,6 @@ router.post('/:id/lock', authorize(...allWorkflowRoles), workflowController.lock
 router.post('/:id/unlock', authorize(...allWorkflowRoles), workflowController.unlockWorkflow);
 
 // Delete (super_admin only)
-router.delete('/:id', authorize('super_admin'), workflowController.deleteWorkflow);
+router.delete('/:id', authorize('super_admin', ...FINANCE_FULL_ROLES), workflowController.deleteWorkflow);
 
 module.exports = router;

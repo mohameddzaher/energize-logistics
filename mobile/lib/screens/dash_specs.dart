@@ -63,15 +63,18 @@ final salesDashSpec = DashSpec(
   arTitle: 'لوحة المبيعات', enTitle: 'Sales Dashboard',
   endpoint: '/api/sales/dashboard', liveEvent: 'sales:updated',
   stats: const [
-    DashStat('قيمة المكسوب', 'Won value', 'wonValue', Icons.emoji_events_outlined, T.success, money: true),
-    DashStat('صفقات مكسوبة', 'Won deals', 'wonCount', Icons.check_circle_outline, T.success),
-    DashStat('قيمة المفتوح', 'Open value', 'openValue', Icons.work_outline, T.info, money: true),
+    // البطاقاتُ الثماني كما على الويب — كان الهدفُ وعددُ المفتوحة غائبَين هنا.
+    DashStat('مبيعات محقّقة', 'Won value', 'wonValue', Icons.emoji_events_outlined, T.success, money: true),
+    DashStat('الهدف', 'Target', 'teamTarget', Icons.track_changes_outlined, T.info, money: true),
     DashStat('نسبة التحقيق %', 'Attainment %', 'attainment', Icons.flag_outlined, T.orange),
-    DashStat('نسبة الكسب %', 'Win rate %', 'winRate', Icons.percent_rounded, T.violet),
+    DashStat('نسبة الفوز %', 'Win rate %', 'winRate', Icons.percent_rounded, T.violet),
+    DashStat('صفقات مفتوحة', 'Open deals', 'openCount', Icons.work_outline, T.navy),
+    DashStat('قيمة المفتوحة', 'Open value', 'openValue', Icons.timeline_outlined, T.info, money: true),
     DashStat('متوسط الصفقة', 'Avg deal', 'avgDealSize', Icons.payments_outlined, T.navy, money: true),
+    DashStat('صفقات رابحة', 'Won deals', 'wonCount', Icons.check_circle_outline, T.success),
   ],
   breakdowns: const [
-    DashBreakdown('حسب المرحلة', 'By stage', 'byStage', idKey: 'stage', labels: _dealStageLabels),
+    DashBreakdown('مسار البيع حسب المرحلة', 'Pipeline by stage', 'byStage', idKey: 'stage', labels: _dealStageLabels),
   ],
   lists: [
     DashList('أفضل المناديب', 'Top reps', 'topReps', (r) => _s(r, 'rep'),
@@ -339,24 +342,26 @@ final customsDashSpec = DashSpec(
 );
 
 // ── لوحةُ التحصيل ───────────────────────────────────────────────────────────
-// ما لنا وما علينا. الأرقامُ كلُّها مشتقّةٌ من كشوف التشغيل، فلا يقول التطبيقُ
-// رقمًا ويقول الموقعُ غيرَه.
+// المديونيّةُ من دفتر الفواتير — النداءُ نفسُه الذي تُبنى منه شجرةُ الموقع.
+// كانت تُقرأ من كشوف التشغيل فتقول ٤٧ مليونًا والموقعُ يقول ١٩٫٩٦: تاريخُ
+// التحصيل لا يُكتب على الكشوف، فكان كلُّ ما سُلِّم يُعَدّ دَينًا.
 final collectionsDashSpec = DashSpec(
   arTitle: 'لوحة التحصيل', enTitle: 'Collections Dashboard',
-  endpoint: '/api/collections-dept/dashboard', liveEvent: 'collections:party',
+  endpoint: '/api/collections-dept/receivables/overview', liveEvent: 'collections:party',
   stats: const [
-    DashStat('المستحق لنا', 'Receivable', 'customers.outstanding', Icons.call_received_rounded, T.danger, money: true),
-    DashStat('المستحق علينا', 'Payable', 'suppliers.outstanding', Icons.call_made_rounded, T.orange, money: true),
-    DashStat('المحصَّل', 'Collected', 'customers.settled', Icons.task_alt_rounded, T.success, money: true),
-    DashStat('إجمالي المبيعات', 'Total billed', 'customers.total', Icons.receipt_long_outlined, T.navy, money: true),
-    DashStat('كشوف لم تُحصَّل', 'Uncollected', 'customers.openReports', Icons.pending_actions_outlined, T.warn),
-    DashStat('كشوف لم تُسدَّد', 'Unpaid', 'suppliers.openReports', Icons.schedule_outlined, T.info),
+    DashStat('إجمالي المديونية', 'Receivable', 'tree.all.value', Icons.call_received_rounded, T.danger, money: true),
+    DashStat('ضريبي', 'Tax', 'tree.byKind.tax.value', Icons.receipt_long_outlined, T.navy, money: true),
+    DashStat('نقدي', 'Cash', 'tree.byKind.cash.value', Icons.payments_outlined, T.info, money: true),
+    DashStat('في موعده', 'Within terms', 'tree.tax.within.value', Icons.task_alt_rounded, T.success, money: true),
+    DashStat('متأخّر', 'Late', 'tree.tax.late.value', Icons.schedule_outlined, T.orange, money: true),
+    DashStat('متأخّر فوق ٦٠ يومًا', 'Late 60+', 'tree.tax.bands.d60_plus.value', Icons.warning_amber_rounded, T.danger, money: true),
+    DashStat('فواتير مفتوحة', 'Open invoices', 'tree.all.count', Icons.pending_actions_outlined, T.warn),
   ],
   lists: [
-    DashList('أكبر المتأخّرين — عملاء', 'Largest due — customers', 'customers.top', (r) => _s(r, 'name'),
-        subtitle: (r) => '${_n(r['outstanding'])} ${tr('ر.س', 'SAR')} · ${_n(r['reports'])} ${tr('كشف', 'reports')}'),
-    DashList('أكبر المستحقّ — موردون', 'Largest owed — suppliers', 'suppliers.top', (r) => _s(r, 'name'),
-        subtitle: (r) => '${_n(r['outstanding'])} ${tr('ر.س', 'SAR')} · ${_n(r['reports'])} ${tr('كشف', 'reports')}'),
+    DashList('أكبر المديونيات', 'Largest receivables', 'parties', (r) => _s(r, 'name'),
+        subtitle: (r) => '${_n(r['value'])} ${tr('ر.س', 'SAR')} · ${_n(r['count'])} ${tr('فاتورة', 'invoices')} · ${tr('متأخّر', 'late')} ${_n(r['lateValue'])}'),
+    DashList('بموظف التحصيل', 'By officer', 'officers', (r) => _s(r, 'officer'),
+        subtitle: (r) => '${_n(r['value'])} ${tr('ر.س', 'SAR')} · ${tr('متأخّر', 'late')} ${_n(r['lateValue'])}'),
   ],
 );
 

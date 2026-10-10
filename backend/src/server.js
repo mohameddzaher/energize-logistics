@@ -289,14 +289,15 @@ app.use('/api/ops', (req, res, next) => {
   authenticate(req, res, (err) => (err ? next(err) : sectionGate('Operations Platform')(req, res, next)));
 }, opsRoutes);
 app.use('/api/section-work', sectionWorkRoutes);
+app.use('/api/jp', require('./routes/jp'));
 app.use('/api/b2c-wallet', authenticate, sectionGate('B2C'), b2cWalletRoutes);
 app.use('/api/crm-vendors', authenticate, sectionGate('CRM'), crmVendorRoutes);
 app.use('/api/ls2', authenticate, sectionGate('Location Solutions'), ls2Routes);
 app.use('/api/shipment-orders', authenticate, sectionGate('Shipment Orders'), shipmentOrderRoutes);
-// ── سجلُّ العملاء يُقرأ من قسمَين ───────────────────────────────────────────
-// الشاشةُ نفسُها في «طلبات الشحنات» و«التشغيل»، فلا تُنسَب إلى قسمٍ واحد:
-// بوّابةُ الصفحات (pageGate) تفتحها لمن يملك إحدى الصفحتين، والتعديلُ يبقى في
-// نقاط «طلبات الشحنات» بحارسها.
+// ── سجلُّ العملاء يُقرأ من ثلاثة أقسام ──────────────────────────────────────
+// الشاشةُ نفسُها في «طلبات الشحنات» و«التشغيل» و«المبيعات»، فلا تُنسَب إلى قسمٍ
+// واحد: بوّابةُ الصفحات (pageGate) تفتحها لمن يملك إحدى الصفحات الثلاث،
+// والتعديلُ بحارس الأدوار في المسار نفسِه (routes/customerRegistry).
 app.use('/api/customer-registry', authenticate, require('./routes/customerRegistry'));
 // التصديرُ الكبيرُ يُبنى في الخلفيّة ويصل صاحبَه بإشعار — راجع exportJobsController.
 app.use('/api/exports', authenticate, require('./routes/exportJobs'));

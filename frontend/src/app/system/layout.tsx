@@ -36,6 +36,7 @@ import { LS2_SECTION_ROLES } from '@/lib/ls2';
 
 import { isManagedSection, canAccessSection, canAccessPage } from '@/lib/sections';
 import { ALL_ROLES } from '@/lib/roles';
+import { jpMember, jpManager, jpTop } from '@/lib/jpNav';
 import { PERF_STAFF_ROLES } from '@/lib/performance';
 import { WALLET_ROLES, WALLET_DASHBOARD_ROLES } from '@/lib/wallet';
 
@@ -245,6 +246,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Page + /api/analytics/super-overview admit super_admin/admin ONLY — offering
     // the link to the IT roles was a guaranteed dead-end screen.
     { href: '/system/executive', label: lang === 'ar' ? 'النظرة التنفيذية' : 'Executive Overview', icon: <Crown className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Main' },
+    // خطّةُ الإدارة العليا إلى مديري الأقسام — ولوحتُها لمدير النظام وحدَه.
+    // (مديرُ القسم يجد خطّةَ الإدارة داخل قسمه.)
+    { href: '/system/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <CalendarCheck className="w-5 h-5" />, roles: ['super_admin'], section: 'Main', visible: (u) => jpTop(u) },
+    { href: '/system/management-jp/dashboard', label: lang === 'ar' ? 'لوحة خطّة الإدارة' : 'Management JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin'], section: 'Main', visible: (u) => jpTop(u) },
     // ── و«المتأخرات» أُزيلت ────────────────────────────────────────────────
     // صفحةٌ من قسم «العملاء والمالية» الذي حُذف. بقيت في القائمة الرئيسيّة
     // تقرأ `Invoice` و`Customer` — وكلتاهما فارغتان — ثمّ تغيّر شكلُ نقطتها
@@ -278,7 +283,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // في الخادم ونُسي في الاثنين: نقاطُه مفتوحةٌ ولا يجد الرابطَ أصلًا.
     { href: '/system/wallet', label: L.wallet, icon: <Wallet className="w-5 h-5" />, roles: WALLET_ROLES, section: 'Operations' },
     { href: '/system/wallet-dashboard', label: L.walletDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: WALLET_DASHBOARD_ROLES, section: 'Operations' },
-    { href: '/system/operations/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'], section: 'Operations' },
+    { href: '/system/operations/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Operations', visible: (u) => jpMember(u, 'Operations') },
+    { href: '/system/operations/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Operations', visible: (u) => jpManager(u, 'Operations') },
+    { href: '/system/operations/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Operations', visible: (u) => jpManager(u, 'Operations') && !jpTop(u) },
     { href: '/system/operations/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'], section: 'Operations' },
     { href: '/system/operations/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator']), section: 'Operations', restrict: true },
     // ── قسمُ التحصيل ──────────────────────────────────────────────────────
@@ -305,7 +312,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // الفاتورةُ وتاريخُ التحصيل. ووضعُ الرابط هنا يوفّر عليهم البحثَ عنه في
     // قسمٍ لا يملكونه.
     { href: '/system/operations', label: lang === 'ar' ? 'سير عمل التشغيل' : 'Operations Workflow', icon: <ClipboardList className="w-5 h-5" />, roles: ['collections_manager', 'collections_staff'], section: 'Collections', restrict: true },
-    { href: '/system/collections-dept/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
+    { href: '/system/collections-dept/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Collections', visible: (u) => jpMember(u, 'Collections') },
+    { href: '/system/collections-dept/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Collections', visible: (u) => jpManager(u, 'Collections') },
+    { href: '/system/collections-dept/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Collections', visible: (u) => jpManager(u, 'Collections') && !jpTop(u) },
     { href: '/system/collections-dept/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     { href: '/system/collections-dept/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(COLLECTIONS_NAV_ROLES), section: 'Collections', restrict: true },
     { href: '/system/collections-dept/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'collections_manager'], section: 'Collections', restrict: true },
@@ -341,7 +350,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // ترقيمُ البوالص، وقوائمُ القسم، ودورةُ الحالات. صارت صفحةً واحدة.
     { href: '/system/shipment-orders/analytics', label: lang === 'ar' ? 'التحليلات' : 'Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
     { href: '/system/shipment-orders/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'operations_manager', 'shipment_orders_manager'], section: 'Shipment Orders', restrict: true },
-    { href: '/system/shipment-orders/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'operations_manager'], section: 'Shipment Orders' },
+    { href: '/system/shipment-orders/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Shipment Orders', visible: (u) => jpMember(u, 'Shipment Orders') },
+    { href: '/system/shipment-orders/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Shipment Orders', visible: (u) => jpManager(u, 'Shipment Orders') },
+    { href: '/system/shipment-orders/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Shipment Orders', visible: (u) => jpManager(u, 'Shipment Orders') && !jpTop(u) },
     { href: '/system/shipment-orders/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'operations_manager'], section: 'Shipment Orders' },
     { href: '/system/shipment-orders/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'admin', 'it_manager', 'operations_manager']), section: 'Shipment Orders', restrict: true },
 
@@ -365,7 +376,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/fleet/vehicle-logs', label: lang === 'ar' ? 'سجلّات السيارات' : 'Vehicle Logs', icon: <ClipboardList className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/assign', label: lang === 'ar' ? 'توزيع المشرفين' : 'Assign Supervisors', icon: <UserCog className="w-5 h-5" />, roles: FLEET_ADMIN_ROLES, section: 'Fleet Management', restrict: true },
     { href: '/system/fleet/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Fleet Settings', icon: <Settings className="w-5 h-5" />, roles: FLEET_ADMIN_ROLES, section: 'Fleet Management', restrict: true },
-    { href: '/system/fleet/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
+    { href: '/system/fleet/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Fleet Management', visible: (u) => jpMember(u, 'Fleet Management') },
+    { href: '/system/fleet/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Fleet Management', visible: (u) => jpManager(u, 'Fleet Management') },
+    { href: '/system/fleet/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Fleet Management', visible: (u) => jpManager(u, 'Fleet Management') && !jpTop(u) },
     { href: '/system/fleet/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(FLEET_ROLES), section: 'Fleet Management', restrict: true },
     { href: '/system/fleet/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
@@ -404,7 +417,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/vehicles/registry/licenses', label: lang === 'ar' ? 'رخص السير' : 'Vehicle Licences', icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/registry/inspection', label: lang === 'ar' ? 'الفحص الدوري' : 'Periodic Inspection', icon: <ClipboardCheck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/registry/dashboard', label: lang === 'ar' ? 'تحليلات المركبات' : 'Registry Analytics', icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
-    { href: '/system/vehicles/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
+    { href: '/system/vehicles/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Vehicles', visible: (u) => jpMember(u, 'Vehicles') },
+    { href: '/system/vehicles/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Vehicles', visible: (u) => jpManager(u, 'Vehicles') },
+    { href: '/system/vehicles/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Vehicles', visible: (u) => jpManager(u, 'Vehicles') && !jpTop(u) },
     { href: '/system/vehicles/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'vehicles_manager'], section: 'Vehicles', restrict: true },
     { href: '/system/vehicles/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant']), section: 'Vehicles', restrict: true },
@@ -440,7 +455,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/marketing/campaigns', label: lang === 'ar' ? 'الحملات' : 'Campaigns', icon: <Target className="w-5 h-5" />, roles: MARKETING_ROLES, section: 'Marketing' },
     { href: '/system/marketing/activities', label: lang === 'ar' ? 'سجل الأنشطة' : 'Activity Log', icon: <ClipboardList className="w-5 h-5" />, roles: MARKETING_ROLES, section: 'Marketing' },
     { href: '/system/marketing/reports', label: lang === 'ar' ? 'التقارير الدورية' : 'Periodic Reports', icon: <BarChart3 className="w-5 h-5" />, roles: MARKETING_ROLES, section: 'Marketing' },
-    { href: '/system/marketing/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: MARKETING_ROLES, section: 'Marketing' },
+    { href: '/system/marketing/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Marketing', visible: (u) => jpMember(u, 'Marketing') },
+    { href: '/system/marketing/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Marketing', visible: (u) => jpManager(u, 'Marketing') },
+    { href: '/system/marketing/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Marketing', visible: (u) => jpManager(u, 'Marketing') && !jpTop(u) },
     { href: '/system/marketing/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: MARKETING_ROLES, section: 'Marketing' },
     { href: '/system/marketing/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(MARKETING_ROLES), section: 'Marketing', restrict: true },
     // ---- Business Development ----
@@ -448,12 +465,16 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/bd/opportunities', label: lang === 'ar' ? 'الفرص الاستراتيجية' : 'Opportunities', icon: <Compass className="w-5 h-5" />, roles: BD_ROLES, section: 'Business Development' },
     { href: '/system/bd/partners', label: lang === 'ar' ? 'الشراكات' : 'Partners', icon: <Handshake className="w-5 h-5" />, roles: BD_ROLES, section: 'Business Development' },
     { href: '/system/bd/tenders', label: lang === 'ar' ? 'المناقصات' : 'Tenders', icon: <Gavel className="w-5 h-5" />, roles: BD_ROLES, section: 'Business Development' },
-    { href: '/system/bd/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: BD_ROLES, section: 'Business Development' },
+    { href: '/system/bd/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Business Development', visible: (u) => jpMember(u, 'Business Development') },
+    { href: '/system/bd/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Business Development', visible: (u) => jpManager(u, 'Business Development') },
+    { href: '/system/bd/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Business Development', visible: (u) => jpManager(u, 'Business Development') && !jpTop(u) },
     { href: '/system/bd/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: BD_ROLES, section: 'Business Development' },
     { href: '/system/bd/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(BD_ROLES), section: 'Business Development', restrict: true },
     // ---- Administration (الشؤون الإدارية / السكرتارية) ----
     { href: '/system/administration', label: lang === 'ar' ? 'لوحة المهام' : 'Task Board', icon: <ClipboardList className="w-5 h-5" />, roles: ADMINISTRATION_ROLES, section: 'Administration' },
-    { href: '/system/administration/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Administration' },
+    { href: '/system/administration/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Administration', visible: (u) => jpMember(u, 'Administration') },
+    { href: '/system/administration/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Administration', visible: (u) => jpManager(u, 'Administration') },
+    { href: '/system/administration/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Administration', visible: (u) => jpManager(u, 'Administration') && !jpTop(u) },
     { href: '/system/administration/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Administration' },
     { href: '/system/administration/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'admin']), section: 'Administration', restrict: true },
     // ---- Contracts (إدارة العقود) ----
@@ -473,7 +494,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/contracts/analysis', label: lang === 'ar' ? 'تحليل التشغيل' : 'Utilisation Analysis', icon: <BarChart3 className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
     { href: '/system/contracts/prospects', label: lang === 'ar' ? 'تنشيط الموردين الجدد' : 'Prospect Outreach', icon: <PhoneCall className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
     { href: '/system/contracts/agreements', label: lang === 'ar' ? 'عقود الأقسام' : 'Department Contracts', icon: <ScrollText className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
-    { href: '/system/contracts/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
+    { href: '/system/contracts/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Contracts', visible: (u) => jpMember(u, 'Contracts') },
+    { href: '/system/contracts/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Contracts', visible: (u) => jpManager(u, 'Contracts') },
+    { href: '/system/contracts/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Contracts', visible: (u) => jpManager(u, 'Contracts') && !jpTop(u) },
     { href: '/system/contracts/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
     { href: '/system/contracts/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(CONTRACTS_ROLES), section: 'Contracts', restrict: true },
     // ---- Software & IT ----
@@ -484,12 +507,16 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/it/stock', label: lang === 'ar' ? 'المستودع' : 'IT Stock', icon: <Boxes className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/it/systems', label: lang === 'ar' ? 'الأنظمة والخدمات' : 'Systems & Services', icon: <Server className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/it/emails', label: lang === 'ar' ? 'بريد الشركة' : 'Company Email', icon: <Mail className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
-    { href: '/system/it/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ClipboardList className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
+    { href: '/system/it/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Software & IT', visible: (u) => jpMember(u, 'Software & IT') },
+    { href: '/system/it/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Software & IT', visible: (u) => jpManager(u, 'Software & IT') },
+    { href: '/system/it/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Software & IT', visible: (u) => jpManager(u, 'Software & IT') && !jpTop(u) },
     { href: '/system/it/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/it/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(IT_ROLES), section: 'Software & IT', restrict: true },
     { href: '/system/ls2/settings', label: lang === 'ar' ? 'الإعدادات' : 'Settings', icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'location_manager'], section: 'Location Solutions', restrict: true },
     { href: '/system/ls2/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(LS2_SECTION_ROLES), section: 'Location Solutions', restrict: true },
-    { href: '/system/ls2/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Location Solutions' },
+    { href: '/system/ls2/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Location Solutions', visible: (u) => jpMember(u, 'Location Solutions') },
+    { href: '/system/ls2/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Location Solutions', visible: (u) => jpManager(u, 'Location Solutions') },
+    { href: '/system/ls2/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Location Solutions', visible: (u) => jpManager(u, 'Location Solutions') && !jpTop(u) },
     { href: '/system/ls2/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Location Solutions' },
     // B2C
     { href: '/system/b2c/dashboard', label: L.b2cDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
@@ -507,10 +534,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // ── سجلُّ القسم كلُّه لا مناديبَ التقارير وحدَهم ────────────────────────
     // «مناديب المبيعات» كانت تعرض مَن له تقريرُ طلبات، فلا يظهر فيها مشرفٌ ولا
     // ميكانيكيٌّ ولا عاملُ نظافة — وهم أحدَ عشرَ من مئةٍ وواحدٍ وستّين.
-    { href: '/system/b2c/light-transport', label: L.b2cLightTransport, icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
+    { href: '/system/b2c/light-transport', label: L.b2cLightTransport, icon: <Truck className="w-5 h-5" />, roles: ['cfo', 'accounting_manager', 'accountant', 'super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     // مخزنُ القسم: أصنافُه ورصيدُه وحركاتُه — مفصولٌ عن مخزن النقل الثقيل في
     // القاعدة، وشاشتُه هي شاشتُه نفسُها (آليّةُ المخزن واحدة).
-    { href: '/system/b2c/light-transport/store', label: lang === 'ar' ? 'مخزن النقل الخفيف' : 'Light Transport Store', icon: <Boxes className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
+    { href: '/system/b2c/light-transport/store', label: lang === 'ar' ? 'مخزن النقل الخفيف' : 'Light Transport Store', icon: <Boxes className="w-5 h-5" />, roles: ['cfo', 'accounting_manager', 'accountant', 'super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/orders', label: L.b2cOrders, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/projects', label: L.b2cProjects, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/custody', label: lang === 'ar' ? 'العهدة' : 'Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
@@ -521,7 +548,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/b2c/hr-requests', label: lang === 'ar' ? 'طلبات الموارد البشرية' : 'HR Requests', icon: <Send className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor'], section: 'B2C' },
     { href: '/system/b2c/settings', label: L.b2cSettings, icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead']), section: 'B2C', restrict: true },
-    { href: '/system/b2c/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
+    { href: '/system/b2c/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'B2C', visible: (u) => jpMember(u, 'B2C') },
+    { href: '/system/b2c/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'B2C', visible: (u) => jpManager(u, 'B2C') },
+    { href: '/system/b2c/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'B2C', visible: (u) => jpManager(u, 'B2C') && !jpTop(u) },
     { href: '/system/b2c/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
     // Remote (work-from-home)
     { href: '/system/remote/dashboard', label: L.remoteDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'dashboard' },
@@ -532,7 +561,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/remote/report', label: L.remoteReport, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'report' },
     { href: '/system/remote/announcements', label: L.remoteAnnouncements, icon: <Megaphone className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'announcements' },
     { href: '/system/remote/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'remote_manager']), section: 'Remote', restrict: true },
-    { href: '/system/remote/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote' },
+    { href: '/system/remote/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Remote', visible: (u) => jpMember(u, 'Remote') },
+    { href: '/system/remote/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Remote', visible: (u) => jpManager(u, 'Remote') },
+    { href: '/system/remote/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Remote', visible: (u) => jpManager(u, 'Remote') && !jpTop(u) },
     { href: '/system/remote/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote' },
     // HR (back-office — staff only)
     { href: '/system/hr/master', label: L.hrDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
@@ -588,6 +619,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/crm/activities', label: L.crmActivities, icon: <Phone className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_staff'], section: 'CRM' },
     // Sales
     { href: '/system/sales/dashboard', label: L.salesDashboard, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },
+    // العملاء — سجلُّ «التشغيل» و«طلبات الشحنات» نفسُه (components/customers): بابٌ ثالثٌ لا نسخةٌ ثالثة.
+    { href: '/system/sales/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },
     { href: '/system/sales/pipeline', label: L.salesPipeline, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },
     { href: '/system/sales/targets', label: L.salesTargets, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },
     { href: '/system/sales/performance', label: L.salesPerformance, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },
@@ -612,25 +645,39 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/procurement/bills', label: L.vendorBills, icon: <CreditCard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'procurement_manager', 'procurement_staff'], section: 'Procurement' },
 
     // Per-section Tasks (private) + Complaints — strict visibility (assignee + creator + super_admin)
-    { href: '/system/crm/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_staff'], section: 'CRM' },
+    { href: '/system/crm/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'CRM', visible: (u) => jpMember(u, 'CRM') },
+    { href: '/system/crm/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'CRM', visible: (u) => jpManager(u, 'CRM') },
+    { href: '/system/crm/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'CRM', visible: (u) => jpManager(u, 'CRM') && !jpTop(u) },
     { href: '/system/crm/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_staff'], section: 'CRM' },
     { href: '/system/crm/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_staff']), section: 'CRM', restrict: true },
-    { href: '/system/sales/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },
+    { href: '/system/sales/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Sales', visible: (u) => jpMember(u, 'Sales') },
+    { href: '/system/sales/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Sales', visible: (u) => jpManager(u, 'Sales') },
+    { href: '/system/sales/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Sales', visible: (u) => jpManager(u, 'Sales') && !jpTop(u) },
     { href: '/system/sales/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },
     { href: '/system/sales/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff']), section: 'Sales', restrict: true },
-    { href: '/system/accounting/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'cfo', 'accounting_manager', 'accountant'], section: 'Accounting' },
+    { href: '/system/accounting/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Accounting', visible: (u) => jpMember(u, 'Accounting') },
+    { href: '/system/accounting/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Accounting', visible: (u) => jpManager(u, 'Accounting') },
+    { href: '/system/accounting/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Accounting', visible: (u) => jpManager(u, 'Accounting') && !jpTop(u) },
     { href: '/system/accounting/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'cfo', 'accounting_manager', 'accountant'], section: 'Accounting' },
     { href: '/system/accounting/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'cfo', 'accounting_manager', 'accountant']), section: 'Accounting', restrict: true },
-    { href: '/system/procurement/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'procurement_manager', 'procurement_staff'], section: 'Procurement' },
+    { href: '/system/procurement/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Procurement', visible: (u) => jpMember(u, 'Procurement') },
+    { href: '/system/procurement/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Procurement', visible: (u) => jpManager(u, 'Procurement') },
+    { href: '/system/procurement/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Procurement', visible: (u) => jpManager(u, 'Procurement') && !jpTop(u) },
     { href: '/system/procurement/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'procurement_manager', 'procurement_staff'], section: 'Procurement' },
     { href: '/system/procurement/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'procurement_manager', 'procurement_staff']), section: 'Procurement', restrict: true },
-    { href: '/system/hr/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
+    { href: '/system/hr/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'HR', visible: (u) => jpMember(u, 'HR') },
+    { href: '/system/hr/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'HR', visible: (u) => jpManager(u, 'HR') },
+    { href: '/system/hr/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'HR', visible: (u) => jpManager(u, 'HR') && !jpTop(u) },
     { href: '/system/hr/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     { href: '/system/hr/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist']), section: 'HR', restrict: true },
-    { href: '/system/ops/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
+    { href: '/system/ops/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Operations Platform', visible: (u) => jpMember(u, 'Operations Platform') },
+    { href: '/system/ops/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Operations Platform', visible: (u) => jpManager(u, 'Operations Platform') },
+    { href: '/system/ops/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Operations Platform', visible: (u) => jpManager(u, 'Operations Platform') && !jpTop(u) },
     { href: '/system/ops/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
     { href: '/system/ops/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(OPS_ROLES), section: 'Operations Platform', restrict: true },
-    { href: '/system/customs/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
+    { href: '/system/customs/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Customs', visible: (u) => jpMember(u, 'Customs') },
+    { href: '/system/customs/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Customs', visible: (u) => jpManager(u, 'Customs') },
+    { href: '/system/customs/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Customs', visible: (u) => jpManager(u, 'Customs') && !jpTop(u) },
     { href: '/system/customs/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     { href: '/system/customs/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer']), section: 'Customs', restrict: true },
 
@@ -677,6 +724,13 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   useSocket('notification:new', useCallback(() => {
     fetchNotifications();
   }, []));
+  // خبرُ فعلٍ على النظام: يراه مديرُ النظام ومديرُ القسم، فهما وحدَهما يعيدان
+  // السحب — والخادمُ يقرّر ما يُعرَض لكلٍّ منهما (راجع notificationController.scopeOf).
+  useSocket('notification:activity', useCallback(() => {
+    const r = user?.role || '';
+    if (r === 'super_admin' || r === 'cfo' || /_manager$/.test(r)) fetchNotifications();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.role]));
 
   // Live permission changes: when the super_admin edits a role's section access,
   // every logged-in user of that role refetches /me so their sidebar + access

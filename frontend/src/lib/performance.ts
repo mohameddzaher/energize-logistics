@@ -75,8 +75,16 @@ export interface Evaluation {
   tier: number | null; bonusMultiplier: number | null; monthlySalary: number | null;
   notes: string; status: 'draft' | 'submitted'; submittedAt: string | null; updatedAt: string;
 }
+// قسمٌ ممثَّلٌ في قائمة التقييم — باسمه المعتمد في الموارد البشريّة.
+export interface DeptGroup {
+  key: string; label: string; labelEn: string; count: number;
+  // صفحةُ القسم التي يُقيَّم منها، إن وُجدت.
+  section: string | null; sectionAr: string;
+}
 export interface TeamMember {
-  _id: string; name: string; jobTitle: string; department: string;
+  _id: string; name: string; jobTitle: string;
+  // القسمُ كما في ملفّ الموظّف، باسمه المعتمد — و`departmentKey` لتجميع البطاقات.
+  department: string; departmentEn?: string; departmentKey?: string;
   employeeNumber: string; photo: string;
   template: { _id: string; nameAr: string; tier: number; criteriaCount: number } | null;
   evaluation: {

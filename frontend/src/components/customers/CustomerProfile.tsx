@@ -7,7 +7,7 @@
  * وهي وحدَها القابلةُ للتعديل. والفرقُ بين الجدولين هو الفائدة: مسارٌ يُشتغَل
  * عليه خمسين مرّةً بلا سعرٍ متّفقٍ عليه سؤالٌ يُرى بالعين.
  *
- * وهو مكوّنٌ واحدٌ تفتحه صفحتان (طلبات الشحنات والتشغيل) — راجع رأسَ
+ * وهو مكوّنٌ واحدٌ تفتحه ثلاثُ صفحات (طلبات الشحنات والتشغيل والمبيعات) — راجع رأسَ
  * CustomersRegister.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -26,9 +26,9 @@ import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/l
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import PortalAccountCard from '@/components/system/PortalAccountCard';
 import CustomerEditDialog from '@/components/customers/CustomerEditDialog';
-import { canEditOrders, Lang } from '@/lib/shipmentOrders';
+import { Lang } from '@/lib/shipmentOrders';
 import {
-  ProfilePayload, RunRoute, AgreedRoute, foldAr, fmtDay, fmtNum, priceSourceLabel,
+  canEditCustomers, canEditRoutePrices, ProfilePayload, RunRoute, AgreedRoute, PriceTier, tiersText, foldAr, fmtDay, fmtNum, priceSourceLabel,
 } from '@/lib/customerRegistry';
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
@@ -48,6 +48,7 @@ const runRouteCols = (ar: boolean, money: boolean) => ([
   { key: 'price', ar: 'السعر المتّفق', en: 'Agreed price', num: true },
   { key: 'priceAt', ar: 'تاريخ السعر', en: 'Price date', date: true },
   { key: 'priceSource', ar: 'مصدر السعر', en: 'Price source' },
+  { key: 'tiers', ar: 'السعر بعدد السيارات', en: 'Price by truck count' },
 ] as { key: string; ar: string; en: string; num?: boolean; date?: boolean }[]);
 
 const runCell = (r: RunRoute, key: string, ar: boolean): string => {
@@ -55,6 +56,7 @@ const runCell = (r: RunRoute, key: string, ar: boolean): string => {
   if (key === 'lastAt' || key === 'priceAt') return fmtDay(v);
   if (key === 'sheets' || key === 'purchase' || key === 'price') return fmtNum(v);
   if (key === 'priceSource') return priceSourceLabel(v, ar);
+  if (key === 'tiers') return tiersText(r.tiers, ar);
   return v == null || v === '' ? '' : String(v);
 };
 
@@ -73,6 +75,77 @@ const SHEET_COLS: { key: string; ar: string; en: string; date?: boolean; num?: b
   { key: 'purchaseValue', ar: 'قيمة الشراء', en: 'Purchase', num: true, money: true },
 ];
 
+/**
+ * شرائحُ سعر المسار بعدد السيارات.
+ *
+ * «من سيارةٍ إلى خمسٍ السعرُ ٢٢٠٠ للسيارة، ومن ستٍّ إلى عشرٍ ٢٤٠٠». والعددُ
+ * ما يطلبه العميلُ على المسار. و«التشغيل — خاصّ» يكتب للكشف أعلى شريحة:
+ * الكشفُ سيارةٌ واحدة ولا يُعرَف منه العدد. معرَّفٌ خارج جسم الصفحة: مكوِّنٌ يُعرَّف
+ * داخل الرسم يُهدَم مع كلّ ضغطة مفتاح فتضيع الكتابة.
+ */
+function TierEditor({ customerId, route, ar, onClose, onSaved }: {
+  customerId: string; route: RunRoute; ar: boolean; onClose: () => void; onSaved: () => void;
+}) {
+  const { notify } = useDialog();
+  type Row = { min: string; max: string; price: string };
+  const [rows, setRows] = useState<Row[]>(() => ((route.tiers || []).length
+    ? (route.tiers as PriceTier[]).map((t) => ({ min: String(t.minTrucks), max: t.maxTrucks == null ? '' : String(t.maxTrucks), price: String(t.price) }))
+    : [{ min: '1', max: '', price: '' }]));
+  const [saving, setSaving] = useState(false);
+  const set = (i: number, p: Partial<Row>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...p } : r)));
+  // الشريحةُ الجديدة تبدأ بعد نهاية الأخيرة — فلا يُكتب العددُ مرّتين.
+  const add = () => setRows((rs) => {
+    const last = rs[rs.length - 1];
+    const next = last && last.max ? String(Number(last.max) + 1) : '';
+    return [...rs, { min: next, max: '', price: '' }];
+  });
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.put(`/api/customer-registry/${customerId}/route-tiers`, {
+        fromCity: route.from, toCity: route.to,
+        tiers: rows.filter((r) => r.min || r.max || r.price)
+          .map((r) => ({ minTrucks: Number(r.min), maxTrucks: r.max === '' ? null : Number(r.max), price: Number(r.price) })),
+      });
+      notify(ar ? 'حُفظت شرائحُ السعر' : 'Price tiers saved', 'success');
+      onSaved();
+    } catch (e: any) {
+      notify(e?.message || (ar ? 'تعذّر الحفظ' : 'Could not save'), 'error');
+    } finally { setSaving(false); }
+  };
+  const num = 'w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-[#f37121]/50';
+  return (
+    <Modal open onClose={onClose} title={ar ? 'السعر بعدد السيارات' : 'Price by truck count'}
+      footer={(
+        <>
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:text-slate-900">{ar ? 'إلغاء' : 'Cancel'}</button>
+          <PrimaryButton onClick={save} disabled={saving}>{ar ? 'حفظ' : 'Save'}</PrimaryButton>
+        </>
+      )}>
+      <p className="text-[14px] font-bold text-slate-900">{route.from} ← {route.to}</p>
+      <p className="text-[12.5px] text-slate-500">
+        {ar ? 'السعرُ للسيارة الواحدة، بحسب عدد السيارات التي يطلبها العميل على هذا المسار. اترك «إلى» فارغةً في آخر شريحةٍ لتعني «فما فوق». و«التشغيل — خاصّ» يكتب للكشف أعلى سعرٍ هنا (الكشفُ سيارةٌ واحدة ولا يُعرَف منه العدد)، ويُعدَّل هناك بيده.'
+          : 'Price per truck, by how many trucks the customer orders on this route. Leave “to” empty on the last tier for “and above”. Operations — private applies the highest price here to each sheet (a sheet is one truck, the count is unknown) and it can be corrected there.'}
+      </p>
+      <div className="space-y-2">
+        <div className="grid grid-cols-[1fr_1fr_1.3fr_auto] gap-2 text-[11.5px] text-slate-500">
+          <span>{ar ? 'من عدد' : 'From'}</span><span>{ar ? 'إلى عدد' : 'To'}</span><span>{ar ? 'سعر السيارة' : 'Price per truck'}</span><span />
+        </div>
+        {rows.map((r, i) => (
+          <div key={i} className="grid grid-cols-[1fr_1fr_1.3fr_auto] gap-2 items-center">
+            <input type="number" min={1} inputMode="numeric" value={r.min} onChange={(e) => set(i, { min: e.target.value })} className={num} aria-label={ar ? 'من عدد' : 'From'} />
+            <input type="number" min={1} inputMode="numeric" value={r.max} onChange={(e) => set(i, { max: e.target.value })} className={num} placeholder={ar ? 'فما فوق' : 'and above'} aria-label={ar ? 'إلى عدد' : 'To'} />
+            <input type="number" min={0} inputMode="decimal" value={r.price} onChange={(e) => set(i, { price: e.target.value })} className={num} aria-label={ar ? 'سعر السيارة' : 'Price per truck'} />
+            <button type="button" onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))} className="px-2 text-slate-400 hover:text-red-600" aria-label={ar ? 'حذف الشريحة' : 'Remove tier'}>✕</button>
+          </div>
+        ))}
+      </div>
+      <button type="button" onClick={add} className="text-[13px] font-semibold text-[#f37121] hover:underline">{ar ? '+ شريحة أخرى' : '+ Another tier'}</button>
+      {!!route.tiersBy && <p className="text-[11.5px] text-slate-400">{ar ? `آخر تعديل: ${route.tiersBy} — ${fmtDay(route.tiersAt)}` : `Last edited: ${route.tiersBy} — ${fmtDay(route.tiersAt)}`}</p>}
+    </Modal>
+  );
+}
+
 export default function CustomerProfile({ id, basePath }: { id: string; basePath: string }) {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -86,6 +159,8 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
   const [tab, setTab] = useState('routes');
+  // المسارُ المفتوحةُ شرائحُه للتعديل — لمدير العمليّات ومدير النظام وحدَهما.
+  const [tierRoute, setTierRoute] = useState<RunRoute | null>(null);
   const [routeQ, setRouteQ] = useState('');
   const [agreedQ, setAgreedQ] = useState('');
   const [editOpen, setEditOpen] = useState(false);
@@ -109,7 +184,7 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
   useSocket('shipmentOrders:customers', useCallback(() => load(), [load]));
 
   const money = !!data && data.analysis.purchaseTotal !== undefined;
-  const editor = canEditOrders(user);
+  const editor = canEditCustomers(user);
 
   const rcols = useMemo(() => runRouteCols(ar, money), [ar, money]);
   const rgetters = useMemo(
@@ -267,11 +342,30 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
               <tbody className="divide-y divide-slate-100">
                 {runShown.map((r, i) => (
                   <tr key={`${r.from}|${r.to}|${i}`} className={`hover:bg-slate-50 ${r.price == null ? 'bg-amber-50/40' : ''}`}>
-                    {rcols.map((col) => (
+                    {rcols.map((col) => (col.key === 'tiers' ? (
+                      <td key={col.key} className="px-3 py-2 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1.5">
+                          {(r.tiers || []).map((t, j) => (
+                            <span key={j} className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11.5px] font-semibold tabular-nums"
+                              title={ar ? 'سعرُ السيارة الواحدة' : 'Price per truck'}>
+                              {tiersText([t], ar)}
+                            </span>
+                          ))}
+                          {!(r.tiers || []).length && <span className="text-slate-300">—</span>}
+                          {data.canEditTiers && (
+                            <button type="button" onClick={() => setTierRoute(r)}
+                              className="p-1 rounded-md text-slate-400 hover:text-[#f37121] hover:bg-orange-50"
+                              title={ar ? 'تعديل شرائح السعر' : 'Edit price tiers'}>
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </span>
+                      </td>
+                    ) : (
                       <td key={col.key} className={`px-3 py-2 whitespace-nowrap ${col.num ? 'text-end tabular-nums' : 'text-slate-700'}`}>
                         {runCell(r, col.key, ar) || (col.key === 'price' ? <span className="text-amber-600 font-semibold">{ar ? 'بلا سعر' : 'no price'}</span> : '—')}
                       </td>
-                    ))}
+                    )))}
                   </tr>
                 ))}
                 {!runShown.length && <tr><td colSpan={rcols.length} className="px-3 py-10 text-center text-slate-400">{ar ? 'لا مسارات.' : 'No routes.'}</td></tr>}
@@ -279,6 +373,11 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
             </table>
           </ScrollX>
         </div>
+      )}
+
+      {tierRoute && (
+        <TierEditor customerId={String(c._id)} route={tierRoute} ar={ar}
+          onClose={() => setTierRoute(null)} onSaved={() => { setTierRoute(null); load(); }} />
       )}
 
       {tab === 'agreed' && (
@@ -297,7 +396,7 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
               </div>
               <ExportMenu fileName={`customer-prices-${c.name}`} lang={ar ? 'ar' : 'en'}
                 options={[{ key: 'all', label: scope.all, sheets: [{ name: ar ? 'الأسعار' : 'Prices', rows: c.routes as any[], columns: agreedExportCols }] }]} />
-              {editor && <PrimaryButton onClick={() => setEditOpen(true)}><Pencil className="w-4 h-4" /> {ar ? 'تعديل الأسعار' : 'Edit prices'}</PrimaryButton>}
+              {canEditRoutePrices(user) && <PrimaryButton onClick={() => setEditOpen(true)}><Pencil className="w-4 h-4" /> {ar ? 'تعديل الأسعار' : 'Edit prices'}</PrimaryButton>}
             </div>
           </div>
           <ScrollX>
@@ -423,7 +522,7 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
         <PortalAccountCard source="shipment_order_customer" refId={c._id} name={c.name} />
       </Modal>
 
-      <CustomerEditDialog open={editOpen} customer={c} lang={lang as Lang}
+      <CustomerEditDialog open={editOpen} customer={c} lang={lang as Lang} canEditPrices={canEditRoutePrices(user)}
         onClose={() => setEditOpen(false)}
         onSaved={() => { notify(ar ? 'تم الحفظ' : 'Saved', 'success'); load(); }} />
     </div>

@@ -1,11 +1,11 @@
 'use client';
 /**
- * سجلُّ العملاء — شاشةٌ واحدةٌ تُعرَض في قسمين.
+ * سجلُّ العملاء — شاشةٌ واحدةٌ تُعرَض في ثلاثة أقسام.
  *
  * ── لماذا مكوّنٌ لا صفحتان ──────────────────────────────────────────────────
- * الشاشةُ نفسُها مطلوبةٌ في «طلبات الشحنات» و«التشغيل». ولو نُسخت لافترقتا بعد
- * أوّل تعديل: عمودٌ يُضاف هنا ولا يُضاف هناك، وبطاقةٌ تُصلَح في واحدةٍ وتبقى
- * مكسورةً في الأخرى. فالصفحتان غلافان، والشاشةُ هنا.
+ * الشاشةُ نفسُها مطلوبةٌ في «طلبات الشحنات» و«التشغيل» و«المبيعات». ولو نُسخت
+ * لافترقت بعد أوّل تعديل: عمودٌ يُضاف هنا ولا يُضاف هناك، وبطاقةٌ تُصلَح في
+ * واحدةٍ وتبقى مكسورةً في الأخرى. فالصفحاتُ الثلاثُ أغلفة، والشاشةُ هنا.
  *
  * ── وبطاقاتٌ تُضغَط ────────────────────────────────────────────────────────
  * «كم عميلًا يعمل معنا؟» رقمٌ لا يكفي: من يقرؤه يريد أسماءَهم. فكلُّ بطاقةٍ
@@ -35,9 +35,9 @@ import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/l
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import PortalAccountCard from '@/components/system/PortalAccountCard';
 import CustomerEditDialog, { type EditableCustomer } from '@/components/customers/CustomerEditDialog';
-import { canEditOrders, canAdminOrders, Lang } from '@/lib/shipmentOrders';
+import { Lang } from '@/lib/shipmentOrders';
 import {
-  RegistryRow, RegistrySummary, REGISTRY_COLS, cellOf, foldAr, fmtDay, KpiKey, kpiMatches,
+  canEditCustomers, canEditRoutePrices, canRemoveCustomers, RegistryRow, RegistrySummary, REGISTRY_COLS, cellOf, foldAr, fmtDay, KpiKey, kpiMatches,
 } from '@/lib/customerRegistry';
 
 const PAGE_SIZES = [50, 100, 200, 500];
@@ -77,8 +77,8 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
   const guard = useLatestRequest();
   const cf = useColumnFilters<RegistryRow>();
 
-  const editor = canEditOrders(user);
-  const admin = canAdminOrders(user);
+  const editor = canEditCustomers(user);
+  const admin = canRemoveCustomers(user);
 
   const [rows, setRows] = useState<RegistryRow[]>([]);
   const [summary, setSummary] = useState<RegistrySummary | null>(null);
@@ -389,7 +389,7 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
         {portalFor && <PortalAccountCard source="shipment_order_customer" refId={String(portalFor._id)} name={portalFor.name} />}
       </Modal>
 
-      <CustomerEditDialog open={editOpen} customer={editing} lang={lang as Lang}
+      <CustomerEditDialog open={editOpen} customer={editing} lang={lang as Lang} canEditPrices={canEditRoutePrices(user)}
         onClose={() => setEditOpen(false)}
         onSaved={() => { setFullById(null); load(); }} />
 

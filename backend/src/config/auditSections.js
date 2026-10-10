@@ -23,58 +23,104 @@
  * ولا يرى فعلًا يظنّ أنّه لم يقع.
  */
 
-/** القسم ← اسمُه المقروء. `other` آخرًا دائمًا: هو ما لم يُصنَّف بعد. */
+const { SECTION_LABELS_AR, SECTION_KEYS: SYSTEM_SECTION_KEYS } = require('./sections');
+
+/**
+ * القسم ← اسمُه المقروء. `other` آخرًا دائمًا: هو ما لم يُصنَّف بعد.
+ *
+ * ── وكلُّ قسمٍ في النظام له سطرٌ هنا ─────────────────────────────────────────
+ * كانت القائمةُ خمسةَ عشرَ قسمًا والنظامُ واحدٌ وعشرون: تطويرُ الأعمال ومراجعةُ
+ * الأعمال والمبيعات والمشتريات والتسويق والشؤون الإداريّة والعمل عن بُعد ومنصّة
+ * الأوبريشن غائبةٌ كلُّها. وأفعالُ بعضها تُقيَّد فعلًا (`tender`، `BrMeeting`)
+ * فكانت ستقع في «أخرى» يومَ تُكتب.
+ *
+ * `sys` مفتاحُ القسم في `config/sections` — منه يؤخذ الاسمُ العربيّ، فيقرأ
+ * المستخدمُ هنا الاسمَ الذي يقرؤه في القائمة الجانبيّة.
+ *
+ * وثلاثةٌ لا مقابلَ لها هناك: العهدةُ النقديّة (شاشةٌ داخل العمليّات يُسأل عنها
+ * وحدَها)، والمستخدمون والنظام، و«أخرى».
+ */
 const SECTIONS = [
+  { key: 'operations', sys: 'Operations', en: 'Operations' },
   { key: 'wallet', ar: 'العهدة النقدية', en: 'Cash Wallet' },
-  { key: 'hr', ar: 'الموارد البشرية', en: 'HR' },
-  { key: 'operations', ar: 'العمليات', en: 'Operations' },
-  { key: 'collections', ar: 'التحصيل', en: 'Collections' },
-  { key: 'vehicles', ar: 'المركبات', en: 'Vehicles' },
-  { key: 'fleet', ar: 'إدارة الأسطول', en: 'Fleet Management' },
-  { key: 'shipment-orders', ar: 'طلبات الشحنات', en: 'Shipment Orders' },
-  { key: 'customs', ar: 'التخليص الجمركي', en: 'Customs Clearance' },
-  { key: 'b2c', ar: 'B2C', en: 'B2C' },
-  { key: 'ls2', ar: 'الورشة والمستودع', en: 'Workshop & Store' },
-  { key: 'contracts', ar: 'العقود', en: 'Contracts' },
-  { key: 'crm', ar: 'العملاء والموردون', en: 'CRM' },
-  { key: 'accounting', ar: 'الحسابات', en: 'Accounting' },
-  { key: 'it', ar: 'تقنية المعلومات', en: 'IT' },
+  { key: 'collections', sys: 'Collections', en: 'Collections' },
+  { key: 'ops', sys: 'Operations Platform', en: 'Operations Platform' },
+  { key: 'shipment-orders', sys: 'Shipment Orders', en: 'Shipment Orders' },
+  { key: 'fleet', sys: 'Fleet Management', en: 'Fleet Management' },
+  { key: 'customs', sys: 'Customs', en: 'Customs Clearance' },
+  { key: 'vehicles', sys: 'Vehicles', en: 'Vehicles' },
+  { key: 'ls2', sys: 'Location Solutions', en: 'Location Solutions' },
+  { key: 'marketing', sys: 'Marketing', en: 'Marketing' },
+  { key: 'bd', sys: 'Business Development', en: 'Business Development' },
+  { key: 'it', sys: 'Software & IT', en: 'Software & IT' },
+  { key: 'business-review', sys: 'Business Review', en: 'Business Review' },
+  { key: 'administration', sys: 'Administration', en: 'Administration' },
+  { key: 'contracts', sys: 'Contracts', en: 'Contracts' },
+  { key: 'b2c', sys: 'B2C', en: 'B2C' },
+  { key: 'remote', sys: 'Remote', en: 'Remote' },
+  { key: 'hr', sys: 'HR', en: 'HR' },
+  { key: 'crm', sys: 'CRM', en: 'CRM' },
+  { key: 'sales', sys: 'Sales', en: 'Sales' },
+  { key: 'accounting', sys: 'Accounting', en: 'Accounting' },
+  { key: 'procurement', sys: 'Procurement', en: 'Procurement' },
   { key: 'system', ar: 'المستخدمون والنظام', en: 'Users & System' },
   { key: 'other', ar: 'أخرى', en: 'Other' },
-];
+].map((s) => ({ ...s, ar: s.ar || SECTION_LABELS_AR[s.sys] || s.en }));
 
-/** الكيان ← قسمُه. */
+// قسمٌ يُضاف إلى النظام ولا يُضاف هنا كان سيغيب عن فلتر السجلّ بصمت. فيُلحَق
+// بالقائمة باسمه قبل «النظام» و«أخرى» — يظهر ناقصَ الترتيب لا غائبًا.
+{
+  const covered = new Set(SECTIONS.map((s) => s.sys).filter(Boolean));
+  const missing = SYSTEM_SECTION_KEYS.filter((k) => !covered.has(k));
+  const at = SECTIONS.findIndex((s) => s.key === 'system');
+  SECTIONS.splice(at, 0, ...missing.map((k) => ({
+    key: k.toLowerCase().replace(/[^a-z0-9]+/g, '-'), sys: k, ar: SECTION_LABELS_AR[k] || k, en: k,
+  })));
+}
+
+/**
+ * الكيان ← قسمُه.
+ *
+ * يشمل كلَّ اسمٍ يمرَّر إلى `logAudit` في الخادم، لا ما وقع في القاعدة وحدَه:
+ * كيانٌ لم يُقيَّد عليه فعلٌ بعدُ سيُقيَّد غدًا، ويجب أن يجد قسمَه جاهزًا.
+ */
 const ENTITY_SECTION = {
   // العهدة النقدية
   WalletTransaction: 'wallet', DailyWallet: 'wallet',
   // الموارد البشرية
   Employee: 'hr', CompanyLicense: 'hr', LeaveRequest: 'hr',
-  // العمليات
-  OperationsWorkflow: 'operations',
+  HrFormTemplate: 'hr', StaffStatusRequest: 'hr',
+  // العمليات — والسعرُ الخاصّ عمودٌ في كشف التشغيل نفسِه، والسائقون سجلُّها
+  OperationsWorkflow: 'operations', PrivateSellingPrice: 'operations', Driver: 'operations',
   // التحصيل
   CollectionsParty: 'collections', CollectionsFollowUp: 'collections',
-  // المركبات — السجلّ ووثائقه وبطاقات السائقين
+  // المركبات — السجلّ ووثائقه وبطاقات السائقين ووثائق تأمين الشركة
   VehicleMaster: 'vehicles', VehicleInsurancePolicy: 'vehicles',
-  VehicleRegistryConfig: 'vehicles', DriverCard: 'vehicles',
+  VehicleRegistryConfig: 'vehicles', DriverCard: 'vehicles', CorporatePolicy: 'vehicles',
   VehicleAuthorization: 'vehicles', VehicleAccident: 'vehicles', VehicleClaim: 'vehicles',
   // إدارة الأسطول
   FleetShipment: 'fleet', FleetVehicle: 'fleet', FleetVehicleLog: 'fleet',
-  FleetDriver: 'fleet', FleetDriverExpense: 'fleet',
+  FleetDriver: 'fleet', FleetDriverExpense: 'fleet', FleetCustomer: 'fleet', FleetRequest: 'fleet',
   // طلبات الشحنات
   ShipmentOrder: 'shipment-orders',
   // التخليص الجمركي
-  CustomsClearance: 'customs',
-  // B2C — أربعةُ نماذجَ يقرؤها المستخدمُ قسمًا واحدًا
+  CustomsClearance: 'customs', CustomsContract: 'customs',
+  // قطاع الأفراد — ومنه النقلُ الخفيف: شاشتُه داخل القسم وصلاحيّتُه صلاحيّتُه
   B2C: 'b2c', B2CRep: 'b2c', B2CProject: 'b2c', B2CDutyCheck: 'b2c', B2CWalletEntry: 'b2c',
-  // الورشة والمستودع
+  LightTransportEmployee: 'b2c', LightTransportOrder: 'b2c',
+  // لوكيشن سوليوشن — الورشة والمستودع
   WorkshopPurchaseRequest: 'ls2', WorkshopTask: 'ls2', MaintenanceRequest: 'ls2',
   InventoryItem: 'ls2', Ls2StoreMovement: 'ls2', Ls2Asset: 'ls2',
   // العقود
   Contract: 'contracts',
-  // العملاء والموردون
-  Customer: 'crm', Vendor: 'crm', CrmVendor: 'crm', Dispute: 'crm',
-  // الحسابات
+  // إدارة العلاقات
+  Customer: 'crm', Vendor: 'crm', CrmVendor: 'crm', Dispute: 'crm', Complaint: 'crm',
+  // الإدارة المالية
   Payment: 'accounting', Invoice: 'accounting', JournalEntry: 'accounting',
+  // تطوير الأعمال — أسماؤها صغيرةُ الحرف كما تُقيَّد في `bdController`
+  tender: 'bd', partner: 'bd', opportunity: 'bd', activity: 'bd',
+  // مراجعة الأعمال
+  BrMeeting: 'business-review', BrAction: 'business-review', BrAssignment: 'business-review',
   // تقنية المعلومات
   CompanyEmail: 'it', Asset: 'it',
   // المستخدمون والنظام

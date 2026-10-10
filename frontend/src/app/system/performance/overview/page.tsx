@@ -24,6 +24,8 @@ import {
 import ScrollX from '@/components/system/ScrollX';
 
 interface DeptRow {
+  // القسمُ باسمه المعتمد في الموارد البشريّة، وصفحةُ القسم التي يُقيَّم منها.
+  departmentEn?: string; departmentKey?: string; section?: string | null; sectionAr?: string;
   department: string; headcount: number; evaluated: number; coverage: number;
   avgPercentage: number | null; bonusSalaries: number; tier: number | null;
   byBand: { key: string; count: number }[];
@@ -206,8 +208,16 @@ export default function PerformanceOverviewPage() {
             </thead>
             <tbody>
               {(data?.departments || []).map((d) => (
-                <tr key={d.department} className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="px-4 py-3 font-medium text-slate-800">{d.department}</td>
+                <tr key={d.departmentKey || d.department} className="border-b border-slate-100 hover:bg-slate-50">
+                  <td className="px-4 py-3 font-medium text-slate-800">
+                    {(!ar && d.departmentEn) || d.department}
+                    {/* من أيّ صفحةِ قسمٍ يُقيَّم — وقسمٌ بلا صفحةٍ يقيّمه مديرُ النظام. */}
+                    <span className="block text-[11px] font-normal text-slate-400">
+                      {d.section
+                        ? (ar ? `يُقيَّم من صفحة: ${d.sectionAr || d.section}` : `Evaluated from: ${d.section}`)
+                        : (ar ? 'لا يتبع صفحة قسم — يقيّمه مدير النظام' : 'No section page — evaluated by the system admin')}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-end tabular-nums text-slate-700">{d.headcount}</td>
                   <td className="px-4 py-3 text-end tabular-nums text-slate-700">{d.evaluated}</td>
                   <td className="px-4 py-3 text-end">

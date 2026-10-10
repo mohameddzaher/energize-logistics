@@ -41,6 +41,22 @@ const shipmentOrderCustomerSchema = new mongoose.Schema(
       at: { type: Date, default: null },
       source: { type: String, trim: true, default: '' }, // order | platform | sheet | manual | private
       hits: { type: Number, default: 1 },                 // كم مرّةً رأينا هذا المسار
+      // ── والسعرُ قد يتبع عددَ السيارات ────────────────────────────────────
+      // «من سيارةٍ إلى خمسٍ السعرُ ٢٢٠٠ للسيارة، ومن ستٍّ إلى عشرٍ ٢٤٠٠».
+      // فالمسارُ يحمل شرائحَه: من عددٍ إلى عدد (و`maxTrucks` الفارغُ = فما
+      // فوق) بسعرٍ **للسيارة الواحدة**. والعددُ سياراتُ العميل على هذا المسار
+      // في الطلب. يكتبها مديرُ العمليّات أو مديرُ النظام وحدَهما
+      // (customerRegistryController.setRouteTiers). و«التشغيل — خاصّ» يكتب
+      // للكشف **أعلى** شريحةٍ في مساره: الكشفُ سيارةٌ واحدة ولا يُعرَف منه كم
+      // طلب العميل. ومسارٌ بلا شرائحَ يبقى على سعره الواحد كما كان.
+      tiers: [{
+        _id: false,
+        minTrucks: { type: Number, required: true },
+        maxTrucks: { type: Number, default: null },
+        price: { type: Number, required: true },
+      }],
+      tiersAt: { type: Date, default: null },
+      tiersBy: { type: String, trim: true, default: '' },
     }],
 
     // What this customer usually ships with — prefilled, always editable.

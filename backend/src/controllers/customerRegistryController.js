@@ -259,6 +259,11 @@ exports.profile = async (req, res) => {
           const prev = priceOf.get(k);
           if (!prev || (r.at || 0) > (prev.at || 0)) priceOf.set(k, { price: r.price, at: r.at, source: r.source });
         }
+        // وشرائحُ السعر بعدد السيارات — على المسار نفسِه، سُعِّر بسعرٍ واحدٍ أم لا.
+        const tiersOf = new Map();
+        for (const r of c.routes || []) {
+          if ((r.tiers || []).length) tiersOf.set(routeKey(r.fromCity, r.toCity), { tiers: r.tiers, at: r.tiersAt || null, by: r.tiersBy || '' });
+        }
         const routes = byRoute.map((r) => {
           const p = priceOf.get(routeKey(r._id.from, r._id.to));
           return {
@@ -266,6 +271,9 @@ exports.profile = async (req, res) => {
             purchase: money ? r2(r.purchase) : undefined,
             lastAt: r.last || null,
             price: p ? p.price : null, priceAt: p?.at || null, priceSource: p?.source || '',
+            tiers: tiersOf.get(routeKey(r._id.from, r._id.to))?.tiers || [],
+            tiersAt: tiersOf.get(routeKey(r._id.from, r._id.to))?.at || null,
+            tiersBy: tiersOf.get(routeKey(r._id.from, r._id.to))?.by || '',
           };
         });
 
@@ -277,6 +285,7 @@ exports.profile = async (req, res) => {
             routes: (c.routes || []).map((r) => ({
               _id: String(r._id || ''), fromCity: r.fromCity || '', toCity: r.toCity || '',
               price: r.price ?? null, at: r.at || null, source: r.source || '', hits: r.hits || 1,
+              tiers: r.tiers || [],
             })),
           },
           analysis: {
@@ -296,9 +305,69 @@ exports.profile = async (req, res) => {
         };
       },
     );
-    res.json(body);
+    // من يعدّل الشرائح يُحسَب لكلّ سائلٍ — خارجَ الجواب المحفوظ المشترك.
+    // (والسعرُ المتّفقُ عليه كالشرائح: للدورين نفسَيهما.)
+    res.json({ ...body, canEditTiers: exports.canEditTiers(req.user.role), canEditPrices: exports.canEditTiers(req.user.role) });
   } catch (e) {
     console.error('customer registry profile:', e);
     res.status(500).json({ message: 'تعذّر تحميل ملف العميل' });
+  }
+};
+
+
+/**
+ * PUT /api/customer-registry/:id/route-tiers — { fromCity, toCity, tiers }
+ *
+ * شرائحُ سعر المسار بعدد السيارات. يكتبها **مديرُ العمليّات أو مديرُ النظام**
+ * وحدَهما، ومن يفتح ملفَّ العميل غيرَهما يقرؤها ولا يعدّلها.
+ *
+ * ── والحارسُ هنا لا في قائمة المسار ────────────────────────────────────────
+ * `authorize` تمرّ بمنح القسم («تعديل» على القسم يفتح كلَّ نقطةٍ فيه)، فقائمةُ
+ * أدوارٍ في ملفّ المسارات لا تمنع من مُنح القسم. والمطلوبُ دوران بعينهما
+ * مهما مُنح غيرُهما — فيُسأل الدورُ هنا.
+ */
+const { PRICE_EDITORS: TIER_EDITORS } = require('../utils/customerRoutes');
+exports.canEditTiers = (role) => TIER_EDITORS.includes(role);
+
+exports.setRouteTiers = async (req, res) => {
+  try {
+    if (!TIER_EDITORS.includes(req.user && req.user.role)) {
+      return res.status(403).json({ message: 'شرائحُ الأسعار يعدّلها مديرُ العمليّات أو مديرُ النظام', code: 'TIERS_EDITOR_ONLY' });
+    }
+    const { cleanTiers } = require('../utils/customerRoutes');
+    const from = String(req.body.fromCity || '').trim();
+    const to = String(req.body.toCity || '').trim();
+    if (!from || !to) return res.status(400).json({ message: 'المسارُ ناقص: من وإلى' });
+    const tiers = cleanTiers(req.body.tiers);
+
+    const customer = await ShipmentOrderCustomer.findById(req.params.id);
+    if (!customer) return res.status(404).json({ message: 'العميل غير موجود' });
+    const k = routeKey(from, to);
+    let route = (customer.routes || []).find((r) => routeKey(r.fromCity, r.toCity) === k);
+    const before = route ? (route.tiers || []).map((t) => ({ minTrucks: t.minTrucks, maxTrucks: t.maxTrucks, price: t.price })) : [];
+    if (!route) {
+      // مسارٌ يعمل عليه العميلُ ولم يدخل قائمةَ أسعاره بعد: يدخل الآن بشرائحه.
+      customer.routes.push({ fromCity: from, toCity: to, price: null, at: null, source: '', hits: 0 });
+      route = customer.routes[customer.routes.length - 1];
+    }
+    route.tiers = tiers;
+    route.tiersAt = new Date();
+    route.tiersBy = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ').trim();
+    await customer.save();
+
+    cache.clear('opsprivate:');
+    await require('../utils/auditLogger')({
+      user: req.user, action: 'update_route_price_tiers', entity: 'ShipmentOrderCustomer', entityId: customer._id,
+      changes: { before: { route: `${from} ← ${to}`, tiers: before }, after: { route: `${from} ← ${to}`, tiers } },
+      ipAddress: req.ip,
+    });
+    try {
+      const { emitToAll } = require('../websocket/socketManager');
+      emitToAll('shipmentOrders:customers', {});
+      emitToAll('workflow:updated', { bulk: true, prices: true });
+    } catch (_) { /* زيادة */ }
+    res.json({ fromCity: from, toCity: to, tiers, tiersAt: route.tiersAt, tiersBy: route.tiersBy });
+  } catch (e) {
+    res.status(e.status === 400 ? 400 : 500).json({ message: e.status === 400 ? e.message : 'تعذّر حفظ الشرائح' });
   }
 };

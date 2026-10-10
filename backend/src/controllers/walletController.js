@@ -342,7 +342,8 @@ exports.getDailyWallet = async (req, res) => {
  * فمن أراد أن يكتب في يومٍ أُقفل يطلب إعادةَ فتحه — وإعادةُ الفتح لمدير النظام
  * (راجع `maySettle`)، ويُقفَل بعدها بعدٍّ جديد. وهذا هو المقصودُ من الإقفال.
  */
-const mayWriteIntoClosedDay = (role) => ['super_admin', 'admin', 'operations_manager'].includes(role);
+// وأهلُ المال معهم — راجع config/financeAuthority.
+const mayWriteIntoClosedDay = (role) => ['super_admin', 'admin', 'operations_manager', ...require('../config/financeAuthority').FINANCE_FULL_ROLES].includes(role);
 const denyClosedDay = (res) => res.status(400).json({
   code: 'DAY_CLOSED',
   message: 'اليومُ مُقفل — لا يُكتب فيه إلّا بعد إعادة فتحه، وإعادةُ الفتح لمدير النظام.',
@@ -731,17 +732,17 @@ exports.addTransaction = async (req, res) => {
 // مديرُ النظام أو دورٌ مُنح صلاحيّاتِه كاملةً — راجع utils/permissions.hasSuperAdminPowers.
 const maySettle = async (user) => {
   if (!user) return false;
-  const { hasSuperAdminPowers } = require('../utils/permissions');
-  return hasSuperAdminPowers(user.role);
+  // ومعه المحاسبُ ومديرُ الحسابات والمديرُ الماليّ — راجع config/financeAuthority.
+  return require('../config/financeAuthority').hasFinancePowers(user.role);
 };
 const denySettle = (res, what) => res.status(403).json({
   code: 'SUPER_ADMIN_ONLY',
   message: what === 'reopen'
-    ? 'إعادةُ فتح يومٍ أُقفل لمدير النظام ومن له صلاحيّاتُه كاملةً.'
-    : 'تعديلُ حركةٍ مسجَّلةٍ أو حذفُها لمدير النظام ومن له صلاحيّاتُه كاملةً — والتسجيلُ الجديد متاحٌ كما هو.',
+    ? 'إعادةُ فتح يومٍ أُقفل لمدير النظام والإدارة الماليّة.'
+    : 'تعديلُ حركةٍ مسجَّلةٍ أو حذفُها لمدير النظام والإدارة الماليّة — والتسجيلُ الجديد متاحٌ كما هو.',
 });
 
-const MANAGER_ROLES = ['super_admin', 'admin', 'operations_manager'];
+const MANAGER_ROLES = ['super_admin', 'admin', 'operations_manager', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
 const mayTouchWallet = (req, wallet) => {
   if (MANAGER_ROLES.includes(req.user.role)) return true;
   if (!wallet) return false;

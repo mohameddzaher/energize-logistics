@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { TrendingUp, Trophy, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react';
 import { isSalesStaff, money, pct, num, thisPeriod } from '@/lib/finance';
-import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, StatCard, ErrorNotice } from '@/components/hr/HRKit';
 import { getSalesDashboardTranslations } from '@/lib/translations';
 
 interface StageRow { stage: string; count: number; value: number; }
@@ -34,6 +35,24 @@ const STAGE_META: Record<string, { en: string; ar: string; color: string }> = {
   negotiation: { en: 'Negotiation', ar: 'تفاوض', color: '#f97316' },
 };
 
+// مؤشّرُ التغيّر عن الشهر السابق. معرَّفان خارج جسم الصفحة: مكوِّنٌ يُعرَّف داخل
+// الرسم هويّةٌ جديدةٌ في كلّ رسمة فيُهدَم ما تحته ويُبنى.
+type Delta = { dir: 'up' | 'down' | 'flat'; txt: string };
+const deltaOf = (cur: number, prev: number, ar: boolean): Delta => {
+  if (!prev && !cur) return { dir: 'flat', txt: '—' };
+  if (!prev) return { dir: 'up', txt: ar ? 'جديد' : 'new' };
+  const d = ((cur - prev) / prev) * 100;
+  return { dir: d > 0 ? 'up' : d < 0 ? 'down' : 'flat', txt: `${d > 0 ? '+' : ''}${Math.round(d)}%` };
+};
+function Trend({ d }: { d: Delta }) {
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${d.dir === 'up' ? 'text-green-600' : d.dir === 'down' ? 'text-red-600' : 'text-slate-400'}`}>
+      {d.dir === 'up' ? <ArrowUpRight className="w-3 h-3" /> : d.dir === 'down' ? <ArrowDownRight className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+      {d.txt}
+    </span>
+  );
+}
+
 export default function SalesDashboardPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
@@ -42,32 +61,35 @@ export default function SalesDashboardPage() {
   const [period, setPeriod] = useState(thisPeriod());
   const [data, setData] = useState<Dash | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  // تبديلُ الشهر يُطلق طلبًا والسوكِت آخر: الأقدمُ لا يكتب فوق الأحدث.
+  const guard = useLatestRequest();
 
   const load = useCallback(async () => {
-    try { setData(await api.get<Dash>(`/api/sales/dashboard?period=${period}`)); } catch { /* */ }
+    const mine = guard.begin();
+    try {
+      const d = await api.get<Dash>(`/api/sales/dashboard?period=${period}`);
+      if (!guard.isCurrent(mine)) return;
+      setData(d); setError('');
+    } catch (e: any) {
+      if (!guard.isCurrent(mine)) return;
+      // كان الخطأُ يُبتلَع فتبقى الشاشةُ تدور بلا نهاية ولا سبب.
+      setError(e?.message || 'Request failed');
+    }
     setLoading(false);
-  }, [period]);
+  }, [period, guard]);
   useEffect(() => { load(); }, [load]);
-  useSocket('crm:deal', useCallback(() => load(), [load]));
-  useSocket('sales:target', useCallback(() => load(), [load]));
+  // `sales:updated` نداءُ القسم الواحد: صفقةٌ تغيّرت أو هدفٌ وُضع — يصل كلَّ من يفتح القسم.
+  useSocket('sales:updated', useCallback(() => load(), [load]));
 
   if (!isSalesStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
-  if (loading || !data) return <Spinner />;
+  if (loading) return <Spinner />;
+  if (!data) return <div className="p-6"><ErrorNotice error={error || 'Request failed'} lang={lang} onRetry={load} /></div>;
 
-  // Month-over-month delta indicator.
-  const delta = (cur: number, prev: number) => {
-    if (!prev && !cur) return { dir: 'flat' as const, txt: '—' };
-    if (!prev) return { dir: 'up' as const, txt: ar ? 'جديد' : 'new' };
-    const d = ((cur - prev) / prev) * 100;
-    return { dir: (d > 0 ? 'up' : d < 0 ? 'down' : 'flat') as 'up' | 'down' | 'flat', txt: `${d > 0 ? '+' : ''}${Math.round(d)}%` };
-  };
-  const wonDelta = delta(data.wonValue, data.prevWonValue);
-  const Trend = ({ d }: { d: ReturnType<typeof delta> }) => (
-    <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${d.dir === 'up' ? 'text-green-600' : d.dir === 'down' ? 'text-red-600' : 'text-slate-400'}`}>
-      {d.dir === 'up' ? <ArrowUpRight className="w-3 h-3" /> : d.dir === 'down' ? <ArrowDownRight className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
-      {d.txt}
-    </span>
-  );
+  const wonDelta = deltaOf(data.wonValue, data.prevWonValue, ar);
+  // البطاقةُ تفتح قائمتَها على الشهر نفسِه الذي قُرئ فيه رقمُها.
+  const perfHref = `/system/sales/performance?period=${data.period}`;
+  const targetsHref = `/system/sales/targets?period=${data.period}`;
 
   const stageTotal = data.byStage.reduce((s, x) => s + x.value, 0);
   const maxStageVal = Math.max(1, ...data.byStage.map((s) => s.value));
@@ -75,27 +97,28 @@ export default function SalesDashboardPage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<TrendingUp className="w-5 h-5" />} title={tx.title} subtitle={tx.subtitle}>
-        <MonthPicker value={period} onChange={setPeriod} ar={lang === 'ar'} label={tx.period} />
+        <MonthPicker value={period} onChange={setPeriod} ar={lang === 'ar'} label={tx.period} allowEmpty={false} />
       </PageHeader>
 
+      {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
       {/* Primary KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Link href="/system/sales/performance" className="block">
+        <Link href={perfHref} className="block">
           <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:border-[#f37121] transition-colors">
             <p className="text-slate-500 text-xs flex items-center justify-between">{tx.wonValue} <Trend d={wonDelta} /></p>
             <p className="text-2xl font-bold mt-1 text-green-600">{money(data.wonValue)}</p>
             <p className="text-slate-400 text-[11px] mt-1">{ar ? 'الشهر السابق' : 'prev'}: {money(data.prevWonValue)}</p>
           </div>
         </Link>
-        <Link href="/system/sales/targets" className="block">
+        <Link href={targetsHref} className="block">
           <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:border-[#f37121] transition-colors">
             <p className="text-slate-500 text-xs">{tx.target}</p>
             <p className="text-2xl font-bold mt-1 text-blue-600">{money(data.teamTarget)}</p>
             <p className="text-slate-400 text-[11px] mt-1">{ar ? 'إدارة الأهداف' : 'manage targets'}</p>
           </div>
         </Link>
-        <Link href="/system/sales/performance" className="block">
+        <Link href={perfHref} className="block">
           <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:border-[#f37121] transition-colors">
             <p className="text-slate-500 text-xs">{tx.attainment}</p>
             <p className={`text-2xl font-bold mt-1 ${data.attainment >= 100 ? 'text-green-600' : 'text-amber-700'}`}>{pct(data.attainment)}</p>
@@ -104,11 +127,11 @@ export default function SalesDashboardPage() {
             </div>
           </div>
         </Link>
-        <Link href="/system/sales/performance" className="block">
+        <Link href={perfHref} className="block">
           <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:border-[#f37121] transition-colors">
-            <p className="text-slate-500 text-xs flex items-center justify-between">{tx.winRate} <Trend d={delta(data.winRate, data.prevWinRate)} /></p>
+            <p className="text-slate-500 text-xs flex items-center justify-between">{tx.winRate} <Trend d={deltaOf(data.winRate, data.prevWinRate, ar)} /></p>
             <p className="text-2xl font-bold mt-1 text-purple-600">{pct(data.winRate)}</p>
-            <p className="text-slate-400 text-[11px] mt-1">{ar ? 'فاز' : 'won'} {num(data.wonCount)} · {ar ? 'خسر' : 'lost'} {num(data.lostCount)}</p>
+            <p className="text-slate-400 text-[11px] mt-1">{ar ? 'رابحة' : 'won'} {num(data.wonCount)} · {ar ? 'خاسرة' : 'lost'} {num(data.lostCount)}</p>
           </div>
         </Link>
       </div>
@@ -118,13 +141,13 @@ export default function SalesDashboardPage() {
         <Link href="/system/sales/pipeline"><StatCard label={tx.openDeals} value={num(data.openCount)} /></Link>
         <Link href="/system/sales/pipeline"><StatCard label={tx.pipelineValue} value={money(data.openValue)} accent="text-amber-700" /></Link>
         <Link href="/system/sales/pipeline"><StatCard label={ar ? 'متوسط حجم الصفقة' : 'Avg Deal Size'} value={money(data.avgDealSize)} accent="text-slate-900" /></Link>
-        <Link href="/system/sales/performance"><StatCard label={ar ? 'الصفقات الفائزة' : 'Won Deals'} value={num(data.wonCount)} accent="text-green-600" /></Link>
+        <Link href={perfHref}><StatCard label={ar ? 'الصفقات الرابحة' : 'Won Deals'} value={num(data.wonCount)} accent="text-green-600" /></Link>
       </div>
 
       {/* Pipeline by stage — clickable to pipeline */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold flex items-center gap-2"><TrendingUp className="w-4 h-4 text-[#f37121]" /> {ar ? 'خط الأنابيب حسب المرحلة' : 'Pipeline by Stage'}</h3>
+          <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold flex items-center gap-2"><TrendingUp className="w-4 h-4 text-[#f37121]" /> {ar ? 'مسار البيع حسب المرحلة' : 'Pipeline by Stage'}</h3>
           <Link href="/system/sales/pipeline" className="text-[#f37121] text-sm font-medium hover:underline">{ar ? 'عرض اللوحة' : 'View board'} →</Link>
         </div>
         <div className="space-y-2">
@@ -146,14 +169,14 @@ export default function SalesDashboardPage() {
           })}
           {data.byStage.every((s) => s.count === 0) && <p className="text-slate-500 text-sm">—</p>}
         </div>
-        <p className="text-slate-400 text-xs mt-3 text-end">{ar ? 'إجمالي خط الأنابيب المفتوح' : 'Total open pipeline'}: {money(stageTotal)}</p>
+        <p className="text-slate-400 text-xs mt-3 text-end">{ar ? 'إجمالي الصفقات المفتوحة' : 'Total open pipeline'}: {money(stageTotal)}</p>
       </div>
 
       {/* Per-rep performance with target progress — clickable to performance */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold flex items-center gap-2"><Trophy className="w-4 h-4 text-[#f37121]" /> {ar ? 'أداء المندوبين' : 'Rep Performance'}</h3>
-          <Link href="/system/sales/performance" className="text-[#f37121] text-sm font-medium hover:underline">{ar ? 'التفاصيل' : 'Details'} →</Link>
+          <Link href={perfHref} className="text-[#f37121] text-sm font-medium hover:underline">{ar ? 'التفاصيل' : 'Details'} →</Link>
         </div>
         {data.repRows.length === 0 ? <p className="text-slate-500 text-sm">—</p> : (
           <div className="space-y-2">
@@ -161,7 +184,7 @@ export default function SalesDashboardPage() {
               const att = r.attainment;
               const barColor = att >= 100 ? '#16a34a' : att >= 50 ? '#f37121' : '#f59e0b';
               return (
-                <Link key={r.repId} href="/system/sales/performance" className="block group">
+                <Link key={r.repId} href={perfHref} className="block group">
                   <div className="bg-slate-50 group-hover:bg-slate-100 rounded-lg px-3 py-3 transition-colors">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-slate-800 text-sm font-medium">{i + 1}. {r.rep}</span>
@@ -177,8 +200,8 @@ export default function SalesDashboardPage() {
                       <span className="text-xs font-medium w-12 text-end" style={{ color: barColor }}>{r.target > 0 ? pct(att) : '—'}</span>
                     </div>
                     <div className="flex items-center gap-4 mt-2 text-[11px] text-slate-500">
-                      <span>{ar ? 'فاز' : 'won'}: {num(r.wonCount)}</span>
-                      <span>{ar ? 'مفتوح' : 'open'}: {num(r.openCount)} · {money(r.openValue)}</span>
+                      <span>{ar ? 'رابحة' : 'won'}: {num(r.wonCount)}</span>
+                      <span>{ar ? 'مفتوحة' : 'open'}: {num(r.openCount)} · {money(r.openValue)}</span>
                     </div>
                   </div>
                 </Link>

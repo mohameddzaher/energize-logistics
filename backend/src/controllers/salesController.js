@@ -15,15 +15,51 @@ const isStaff = (u) => SALES_STAFF_ROLES.includes(u.role);
 // otherwise the grant passes the route gate but the handler still rejects it.
 const staffReq = (req) => isStaff(req.user) || grantedBySection(req);
 const isAdmin = (u) => SALES_ADMIN_ROLES.includes(u.role);
+// ── مَن يكتب الهدف ───────────────────────────────────────────────────────────
+// الهدفُ يضعه المديرُ لفريقه؛ مندوبٌ يكتب هدفَ نفسِه ليس هدفًا. وكانت الشاشةُ
+// تُظهر أزرارَ الهدف لكلّ من له «تعديلٌ» على القسم — وهو حالُ المندوب نفسِه في
+// المصفوفة — ثمّ يردّه هذا الحارسُ ٤٠٣. فالقاعدةُ واحدةٌ في الطرفين
+// (`canSetSalesTargets` في lib/finance): أدوارُ الإدارة، ومعها دورٌ من **خارج**
+// فريق القسم مُنح «تعديلَه» بيد صاحب النظام (مديرٌ أعلى يُصنَع غدًا). أمّا
+// أعضاءُ الفريق أنفسُهم فيقرؤون الأهدافَ ولا يكتبونها.
+const canSetTargets = (req) => isAdmin(req.user)
+  || (req.sectionAccess === 'edit' && !isStaff(req.user));
 const denyNonStaff = (req, res) => { if (!staffReq(req)) { res.status(403).json({ message: 'Insufficient permissions' }); return true; } return false; };
-const denyNonAdmin = (req, res) => { if (!isAdmin(req.user)) { res.status(403).json({ message: 'Only sales managers can perform this action' }); return true; } return false; };
+const denyNonAdmin = (req, res) => { if (!canSetTargets(req)) { res.status(403).json({ message: 'الأهدافُ يحدّدها مديرُ المبيعات', code: 'TARGETS_MANAGER_ONLY' }); return true; } return false; };
 const badId = (id, res) => { if (!mongoose.isValidObjectId(id)) { res.status(400).json({ message: 'Invalid id' }); return true; } return false; };
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
-const emitSales = (event, payload = {}) => { try { emitToAll(event, payload); } catch (e) {} };
-const thisPeriod = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+// ── يُمحى المخزَّنُ ثمّ يُنادى ───────────────────────────────────────────────
+// لوحةُ المبيعات محفوظةٌ ١٢ ثانية (`dash:sales:`). والنداءُ بلا محوٍ يُعيد
+// الشاشاتِ إلى الرقم القديم ولا يوقظها شيءٌ بعده — فيبدو الحفظُ متأخّرًا
+// خطوةً (راجع announce-before-invalidate). و`sales:updated` نداءٌ واحدٌ لكلّ ما
+// يتغيّر في القسم: يسمعه الهاتفُ (يستمع لحدثٍ واحد) والويبُ معًا.
+const emitSales = (event, payload = {}) => {
+  try { require('../utils/ttlCache').clear('dash:sales:'); } catch (e) {}
+  try { emitToAll(event, payload); emitToAll('sales:updated', {}); } catch (e) {}
+};
+// ── والشهرُ شهرُ الرياض ──────────────────────────────────────────────────────
+// كان الشهرُ يُحسَب بتوقيت الخادم (UTC)، فصفقةٌ تُكسَب في الساعات الثلاث
+// الأولى من أوّل الشهر تُحسَب على الشهر الذي قبله، و«هذا الشهر» يتأخّر ثلاثَ
+// ساعاتٍ عن التقويم الذي يقرؤه الفريق.
+const RIYADH_MS = 3 * 60 * 60 * 1000;
+const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+const thisPeriod = () => new Date(Date.now() + RIYADH_MS).toISOString().slice(0, 7);
+const cleanPeriod = (p) => (PERIOD_RE.test(String(p || '')) ? String(p) : thisPeriod());
 const periodRange = (period) => {
-  const [y, m] = (period || thisPeriod()).split('-').map(Number);
-  return { start: new Date(y, m - 1, 1), end: new Date(y, m, 0, 23, 59, 59) };
+  const [y, m] = cleanPeriod(period).split('-').map(Number);
+  return { start: new Date(Date.UTC(y, m - 1, 1) - RIYADH_MS), end: new Date(Date.UTC(y, m, 1) - RIYADH_MS - 1) };
+};
+/**
+ * هدفُ الفريق في الشهر.
+ *
+ * صفُّ «الفريق كلّه» (بلا مندوب) هو هدفُ الفريق إن وُضع، وإلّا فمجموعُ أهداف
+ * المناديب. وكان الاثنان يُجمَعان معًا: فريقٌ هدفُه مليونٌ موزَّعٌ على مناديبه
+ * يُقرأ مليونين، ونسبةُ التحقيق نصفَ حقيقتها.
+ */
+const teamTargetOf = (targets) => {
+  const team = targets.find((t) => !t.rep);
+  if (team) return team.amountTarget || 0;
+  return targets.reduce((s2, t) => s2 + (t.amountTarget || 0), 0);
 };
 // A rep is anyone who can own deals: sales + the admins/managers.
 const repFilter = { role: { $in: [...SALES_STAFF_ROLES, 'crm_manager', 'crm_specialist'] }, isActive: true };
@@ -43,9 +79,8 @@ exports.getOptions = async (req, res) => {
 // ── Dashboard ────────────────────────────────────────────────────────────────
 // Previous YYYY-MM relative to a given period.
 const prevPeriod = (period) => {
-  const [y, m] = (period || thisPeriod()).split('-').map(Number);
-  const d = new Date(y, m - 2, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const [y, m] = cleanPeriod(period).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 7);
 };
 
 exports.getDashboard = async (req, res) => {
@@ -54,12 +89,12 @@ exports.getDashboard = async (req, res) => {
     // Same data for every staff viewer (per period) — cache briefly so concurrent
     // loads and socket-driven reloads share one computation. See crm dashboard.
     const cache = require('../utils/ttlCache');
-    const _ck = `dash:sales:${JSON.stringify(req.query)}`;
+    const _ck = `dash:sales:${cleanPeriod(req.query.period)}`;
     const _hit = cache.get(_ck);
     if (_hit !== undefined) return res.json(_hit);
     const _send = res.json.bind(res);
     res.json = (b) => { if (res.statusCode < 300) cache.set(_ck, b, 12000); return _send(b); };
-    const period = req.query.period || thisPeriod();
+    const period = cleanPeriod(req.query.period);
     const { start, end } = periodRange(period);
     const prev = prevPeriod(period);
     const { start: pStart, end: pEnd } = periodRange(prev);
@@ -87,7 +122,7 @@ exports.getDashboard = async (req, res) => {
     const open = openAgg[0] || { count: 0, value: 0 };
     const prevWon = prevWonAgg[0] || { count: 0, value: 0 };
     const prevLost = prevLostAgg[0] || { count: 0 };
-    const teamTarget = targets.reduce((s, t) => s + (t.amountTarget || 0), 0);
+    const teamTarget = teamTargetOf(targets);
     const closed = won.count + lost.count;
     const prevClosed = prevWon.count + prevLost.count;
 
@@ -155,7 +190,8 @@ exports.listTargets = async (req, res) => {
     const filter = {};
     if (period) filter.period = period;
     const targets = await SalesTarget.find(filter).populate('rep', 'firstName lastName email role').sort({ period: -1 }).lean();
-    res.json({ targets });
+    // `canEdit` يقوله الخادم: الشاشةُ والهاتفُ يقرآنه فلا يُظهران زرًّا يُردّ.
+    res.json({ targets, canEdit: canSetTargets(req) });
   } catch (error) {
     console.error('listTargets error:', error);
     res.status(500).json({ message: 'Failed to load targets' });
@@ -165,8 +201,13 @@ exports.listTargets = async (req, res) => {
 exports.createTarget = async (req, res) => {
   try {
     if (denyNonAdmin(req, res)) return;
-    const { rep, period, amountTarget, dealsTarget, notes } = req.body;
-    if (!period) return res.status(400).json({ message: 'Period (YYYY-MM) is required' });
+    const { rep, amountTarget, dealsTarget, notes } = req.body;
+    const period = String(req.body.period || '').trim();
+    // الفترةُ تُكتب بالشهر (YYYY-MM): «2026/10» أو «10-2026» تُحفَظ ولا يقرؤها
+    // شهرٌ أبدًا — هدفٌ موجودٌ لا يظهر في لوحةٍ ولا في أداء.
+    if (!PERIOD_RE.test(period)) return res.status(400).json({ message: 'الفترةُ مطلوبةٌ بصيغة السنة والشهر (مثال: 2026-10)' });
+    if (rep && !mongoose.isValidObjectId(rep)) return res.status(400).json({ message: 'المندوبُ غير صحيح' });
+    if (Number(amountTarget) < 0 || Number(dealsTarget) < 0) return res.status(400).json({ message: 'الهدفُ لا يكون سالبًا' });
     const data = { rep: rep || null, period, amountTarget: Number(amountTarget) || 0, dealsTarget: Number(dealsTarget) || 0, notes, createdBy: req.user._id };
     // Upsert so re-setting a rep's target for a period overwrites it.
     const target = await SalesTarget.findOneAndUpdate({ rep: data.rep, period }, data, { new: true, upsert: true, setDefaultsOnInsert: true });
@@ -198,7 +239,14 @@ exports.updateTarget = async (req, res) => {
     if (badId(id, res)) return;
     const target = await SalesTarget.findById(id);
     if (!target) return res.status(404).json({ message: 'Target not found' });
-    ['amountTarget', 'dealsTarget', 'notes'].forEach((f) => { if (req.body[f] !== undefined) target[f] = req.body[f]; });
+    for (const f of ['amountTarget', 'dealsTarget']) {
+      if (req.body[f] === undefined) continue;
+      const n = Number(req.body[f]);
+      // نصٌّ فارغٌ من حقل رقمٍ كان يُلقى على القاعدة فيردّ ٥٠٠ بلا سبب.
+      if (!Number.isFinite(n) || n < 0) return res.status(400).json({ message: 'الهدفُ رقمٌ غير سالب' });
+      target[f] = n;
+    }
+    if (req.body.notes !== undefined) target.notes = req.body.notes;
     await target.save();
     emitSales('sales:target', { id: String(id) });
     res.json({ target });
@@ -227,7 +275,7 @@ exports.deleteTarget = async (req, res) => {
 exports.getPerformance = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
-    const period = req.query.period || thisPeriod();
+    const period = cleanPeriod(req.query.period);
     const { start, end } = periodRange(period);
 
     const [reps, won, open, targets] = await Promise.all([

@@ -9,7 +9,7 @@
  *   required      ناقص و**لازم التيم يجمّعه** — ده شغل مطلوب منهم
  *   not_required  لا ينطبق على الموظف ده — مش نقص أصلاً
  *   none          لا يوجد
- *   filled        مملي فعلاً
+ *   filled        مُدخَل — في الخانة قيمةٌ مكتوبة
  * الخلط بين «مطلوب» و«غير مطلوب» بيخلّي قايمة الشغل بتاعة الموارد البشرية
  * كذب: سعودي مالوش إقامة مش «ناقص إقامة».
  *
@@ -341,7 +341,9 @@ const STATUS_LABELS = {
   inactive: { ar: 'غير نشط', en: 'Inactive', color: '#b45309' },
   cash_payroll: { ar: 'راتب نقدي', en: 'Cash payroll', color: '#8b5cf6' },
   unparseable: { ar: 'تاريخ غير مقروء', en: 'Unreadable date', color: '#f59e0b' },
-  filled: { ar: 'مملي', en: 'Filled', color: '#16a34a' },
+  // «مُدخَل» لا «مكتمل»: الحالةُ تقول إنّ في الخانة قيمةً مكتوبة، ولا تشهد بصحّتها
+  // ولا بتمام ملفّ صاحبها. والعاميّةُ («مملي») لا تُكتب في واجهةٍ ولا في ملفٍّ مُصدَّر.
+  filled: { ar: 'مُدخَل', en: 'Filled', color: '#16a34a' },
 };
 const statusLabel = (code, lang = 'ar') => (STATUS_LABELS[code || 'filled'] || { ar: code, en: code })[lang === 'en' ? 'en' : 'ar'];
 

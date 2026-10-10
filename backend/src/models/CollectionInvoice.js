@@ -101,5 +101,42 @@ collectionInvoiceSchema.index({ party: 1, status: 1 });
 collectionInvoiceSchema.index({ status: 1, deliveryDate: -1 });
 collectionInvoiceSchema.index({ partyCode: 1, invoiceDate: -1 });
 
-module.exports = mongoose.models.CollectionInvoice
+const CollectionInvoice = mongoose.models.CollectionInvoice
   || mongoose.model('CollectionInvoice', collectionInvoiceSchema);
+
+// ── «مفتوحة» تعريفٌ واحدٌ تقرؤه الشاشاتُ كلُّها ─────────────────────────────
+//
+// كان لكلّ شاشةٍ تعريفُها: اللوحةُ تقول «بلا تاريخ تحصيلٍ وليست Collected»،
+// والأعمارُ والتنبيهاتُ والتقييمُ تقول «الحالةُ ليست Collected» وحدَها. وفي
+// الدفتر عشرُ فواتيرَ حالتُها «Delivered» ولها تاريخُ تحصيل، ومئةٌ وثمانيةَ
+// عشرَ رقمًا محجوزًا بلا فاتورة — فاختلفت الشاشاتُ في المديونيّة بتسعةٍ وسبعين
+// ألفًا وفي العدد بمئةٍ وثمانٍ وعشرين، والدفترُ واحد.
+//
+// ── والحكمُ للحالة، كما في دفترهم ────────────────────────────────────────
+// الفواتيرُ العشرُ التي حالتُها «Delivered» ولها تاريخُ تحصيل: ورقةُ الأعمار
+// في دفتر التحصيل تعدّها **قائمة** (صناعات العزل ٣٣١٬٢٠٠ فيها، ولا تبلغها
+// إلّا بهذه الفواتير). فتاريخٌ في خانة التحصيل ليس تحصيلًا حتى تقول الحالةُ
+// ذلك — قد يكون دفعةً جزئيّةً أو موعدًا. والدفترُ هو المرجع، فالحالةُ هي الحكم.
+// (وتسجيلُ التحصيل في النظام يكتب التاريخَ والحالةَ معًا، فلا يفترقان عندنا.)
+//
+// فالفاتورةُ مفتوحةٌ ما لم تكن حالتُها «محصَّلة»، ولم تكن رقمًا محجوزًا. ومن
+// احتاج الشرطَ أخذه من هنا لا من نسخةٍ عنده.
+CollectionInvoice.OPEN = Object.freeze({
+  unused: { $ne: true },
+  status: { $not: /collected/i },
+});
+CollectionInvoice.COLLECTED = Object.freeze({
+  unused: { $ne: true },
+  status: /collected/i,
+});
+/** والشرطُ نفسُه على مستندٍ مقروء. */
+CollectionInvoice.isCollected = (i) => /collected/i.test((i && i.status) || '');
+/** الشرطُ نفسُه داخل تجميعة (`$cond`) — صفٌّ بصفّ. */
+CollectionInvoice.isOpenExpr = {
+  $and: [
+    { $ne: ['$unused', true] },
+    { $not: [{ $regexMatch: { input: { $ifNull: ['$status', ''] }, regex: /collected/i } }] },
+  ],
+};
+
+module.exports = CollectionInvoice;

@@ -3,9 +3,10 @@
  *
  * Who sees whom:
  *   • super_admin / admin / it_manager / it_specialist → the whole company, and
- *     they alone may edit the forms, the weights, the bands and the bonus tiers.
- *   • a department manager → the people who report to them (Employee.directManager)
- *     plus their own department, so they can grade their team and nobody else's.
+ *     super_admin alone may edit the forms, the weights, the bands and the tiers.
+ *   • a section manager → the employees of the HR department(s) his section
+ *     owns, and nobody else's. One rule (config/performanceDepartments) decides
+ *     the list, the permission to grade and the per-department numbers.
  *
  * The score itself is computed in ONE place (config/performanceConfig.computeScore)
  * so the live preview, the saved record and the PDF can never disagree.
@@ -16,6 +17,8 @@ const PerfTemplate = require('../models/PerfTemplate');
 const PerfEvaluation = require('../models/PerfEvaluation');
 const PerfSettings = require('../models/PerfSettings');
 const { computeScore } = require('../config/performanceConfig');
+const D = require('../config/performanceDepartments');
+const { canonicalRole, sectionOfRole } = require('../config/roles');
 const { emitToAll } = require('../websocket/socketManager');
 
 // Who may SEE everything (read-only oversight).
@@ -75,107 +78,169 @@ function parsePeriod(q) {
 }
 
 // ---- Who can this user grade? ---------------------------------------------
-// The people who run a department: anyone who is somebody's directManager, or
-// whose linked user holds a manager/head/lead role. This is super-admin's own
-// evaluation list — they grade the managers, the managers grade their teams.
-async function departmentManagers() {
-  const [managerIds, managerUsers] = await Promise.all([
-    Employee.distinct('directManager', { directManager: { $ne: null } }),
+/**
+ * ── الملاكُ كما تراه صفحاتُ التقييم: حساباتُ النظام ─────────────────────────
+ *
+ * من يُقيَّم ومن يقيِّم يُعرَفان من **حسابات النظام** لا من خانة القسم في ملفّ
+ * الموارد البشريّة (قرارُ صاحب الشركة): الحسابُ الذي دورُه مديرُ قسمٍ يقيّم،
+ * والحساباتُ التي دورُها موظّفُ ذلك القسم تُقيَّم — كما في config/roles.
+ *
+ * فمن لا حسابَ له (سائقٌ، مندوب) لا يدخل تقييمَ الأقسام، ومن نُقل دورُه من
+ * قسمٍ إلى قسم انتقل معه في اللحظة نفسِها، بلا تعديلٍ في ملفّه.
+ *
+ * كلُّ موظّفٍ في الملاك عليه:
+ *   section   قسمُ النظام الذي ينتمي إليه دورُه
+ *   manager   أهو مديرُ ذلك القسم
+ *   dept      القسمُ كما يُعرَض ويُجمَع: قسمُ النظام باسمه العربيّ
+ *   hrDept    قسمُه في ملفّه — يُختار به نموذجُ التقييم إن وُجد له نموذج
+ */
+const EMP_FIELDS = 'arabicName firstName lastName jobTitle department employeeNumber photo user directManager isHrRecord employmentStatus';
+// من يدير فوق الأقسام — يقيّمه مديرُ النظام مع مديري الأقسام.
+const ABOVE_SECTIONS = ['cfo', 'moderator'];
+const sectionDept = (section) => {
+  const { sectionLabel } = require('../config/sections');
+  return { key: `sec:${section}`, label: sectionLabel(section, 'ar'), labelEn: section, known: true, section };
+};
+
+async function loadOrg() {
+  const [index, linked, users] = await Promise.all([
+    D.loadIndex(),
+    Employee.find({ employmentStatus: { $ne: 'terminated' }, user: { $ne: null } }).select(EMP_FIELDS).lean(),
     User.find({ isActive: { $ne: false } }, { _id: 1, role: 1 }).lean(),
   ]);
-  const managerUserIds = managerUsers
-    .filter((u) => u.role !== 'super_admin' && isManagerRole(u.role))
-    .map((u) => u._id);
-  return Employee.find({
-    employmentStatus: { $ne: 'terminated' },
-    // directManager stores USER ids (Employee.directManager ref: 'User'), so a
-    // manager is the employee whose linked `user` is referenced — matching
-    // Employee._id against user ids could never hit.
-    $or: [{ user: { $in: managerIds } }, { user: { $in: managerUserIds } }],
-  }).lean();
+  const roleOf = new Map(users.map((u) => [String(u._id), canonicalRole(u.role)]));
+  // حسابٌ واحدٌ قد يكون له ملفّان (ملفُّ الموارد وملفٌّ وُلد مع الحساب): يُؤخذ
+  // ملفُّ الموارد البشريّة، فلا يُعَدّ الشخصُ مرّتين.
+  const byUser = new Map();
+  for (const e of linked) {
+    const k = String(e.user);
+    const cur = byUser.get(k);
+    if (!cur || (cur.isHrRecord === false && e.isHrRecord !== false)) byUser.set(k, e);
+  }
+  const out = [];
+  const owner = new Map();
+  // ── ومن يقيّمهم مديرُ النظام: مديرو الأقسام بحساباتهم ────────────────────
+  // الحسابُ الذي دورُه مديرُ قسمٍ في config/roles — لا من كُتب «مديرًا مباشرًا»
+  // في ملفّ أحد، ولا من في اسم دوره «lead» وهو موظّفٌ في فريق مديره (كان
+  // مديرُ المشروع يظهر هنا وفي فريق مدير قطاعه معًا). ومعهم من يدير فوق
+  // الأقسام وليس في فريق أحد: المديرُ الماليّ والمشرفُ العامّ.
+  const managers = [];
+  for (const e of byUser.values()) {
+    const role = roleOf.get(String(e.user));
+    if (!role || D.isKpiExempt(e.department)) continue;
+    const sec = sectionOfRole(role);
+    const heads = sec && D.managerRolesOf(sec).includes(role);
+    if (!heads && !ABOVE_SECTIONS.includes(role)) continue;
+    e.section = sec || D.sectionOfManagerRole(role) || null;
+    e.manager = true;
+    e.hrDept = D.resolveDepartment(e.department, index);
+    e.dept = e.section ? sectionDept(e.section) : e.hrDept;
+    managers.push(e);
+  }
+  for (const e of byUser.values()) {
+    const role = roleOf.get(String(e.user));
+    const section = role ? sectionOfRole(role) : null;
+    // حسابٌ معطَّل، أو دورٌ لا قسمَ له (الإدارةُ العليا، «موظّف») — خارجَ الأقسام.
+    if (!section) continue;
+    // «سعودة» و«مواءمة» لا تقييمَ لهم — راجع config/performanceDepartments.isKpiExempt.
+    if (D.isKpiExempt(e.department)) continue;
+    e.section = section;
+    e.manager = D.managerRolesOf(section).includes(role);
+    e.dept = sectionDept(section);
+    e.hrDept = D.resolveDepartment(e.department, index);
+    owner.set(e.dept.key, section);
+    out.push(e);
+  }
+  return { index, employees: out, roleOf, owner, managers };
+}
+
+/** الموظّفُ المقروءُ وحدَه يُحمَّل ما يُحمَّله الملاك: قسمُ حسابه وقسمُ ملفّه. */
+async function decorate(employee, index) {
+  const u = employee.user ? await User.findOne({ _id: employee.user, isActive: { $ne: false } }).select('role').lean() : null;
+  const section = u ? sectionOfRole(canonicalRole(u.role)) : null;
+  employee.section = section;
+  employee.hrDept = D.resolveDepartment(employee.department, index);
+  employee.dept = section ? sectionDept(section) : employee.hrDept;
+  return employee;
 }
 
 /**
- * ── نطاقُ قسمٍ بعينه: مَن يقيّمه مديرُ ذلك القسم ─────────────────────────
- *
- * صفحاتُ تقييم الأداء في الأقسام واحدةٌ في كلّ قسم. وكانت لا ترسل شيئًا يميّز
- * القسمَ عن غيره، فيرى مديرُ القسم فريقَه نفسَه في كلّ صفحةٍ يفتحها، ويرى
- * مديرُ النظام **قائمةَ مديري الأقسام** في كلّ صفحةٍ من صفحات الأقسام — فتظهر
- * الشاشةُ وفيها مديرون مكانَ الموظفين، وفي كلّ قسمٍ الوجوهُ نفسُها.
- *
- * ولا يُعالَج بخريطةٍ من «القسم في النظام» إلى «القسم في الموارد البشرية»:
- * التسميتان تصنيفان مختلفان أصلًا — أقسامُ النظام إنجليزيّةٌ (Operations،
- * Collections) وأقسامُ الموظفين عربيّةٌ تصف العمل (التشغيل، النقل الثقيل،
- * سعودة). وخريطةٌ تُكتب بالإيد بينهما تشيخ في أوّل قسمٍ يُضاف.
- *
- * فيُسأل التنظيمُ نفسُه: مَن مديرُ هذا القسم؟ ثمّ: مَن فريقُه؟ — وهو السؤالُ
- * الذي يجيب عنه النظامُ للمدير حين يفتح صفحتَه. فمديرُ النظام حين يفتح قسمًا
- * يرى ما يراه مديرُ ذلك القسم بالضبط، وهو المطلوب.
+ * فريقُ قسمٍ من أقسام النظام: حساباتُ موظّفيه — إلّا مديرَه. المديرُ يقيّمه
+ * مديرُ النظام من الصفحة المركزيّة، وإلّا قيَّم نفسَه.
  */
-async function sectionScope(sectionKey) {
-  const { rolesOfSection } = require('../config/roles');
-  const roles = rolesOfSection(sectionKey) || [];
-  const managerRole = roles.find((r) => /_manager$/.test(r));
-  if (!managerRole) return null;
-
-  const managers = await User.find({ role: managerRole, isActive: { $ne: false } }, { _id: 1 }).lean();
-  if (!managers.length) return { ors: [], managerIds: [] };
-
-  const managerIds = managers.map((m) => m._id);
-  const rows = await Employee.find({ user: { $in: managerIds } }).select('department').lean();
-  const departments = [...new Set(rows.map((r) => r.department).filter(Boolean))];
-
-  const ors = [{ directManager: { $in: managerIds } }];
-  if (departments.length) ors.push({ department: { $in: departments } });
-  return { ors, managerIds };
+function sectionTeam(org, sectionKey) {
+  return org.employees.filter((e) => e.section === sectionKey && !e.manager);
 }
 
 /**
- * scope: 'team' (default for managers) | 'managers' (default for super-admin)
+ * مَن يحقّ لهذا المستخدم تقييمُه (لغير أصحاب الاطّلاع الكامل): مديرُ القسم
+ * يقيّم حساباتِ موظّفي قسمه، ولا أحدَ غيرُه يقيّم.
+ */
+function evaluableBy(org, user) {
+  const section = D.sectionOfManagerRole(canonicalRole(user.role));
+  return section ? sectionTeam(org, section) : [];
+}
+
+/**
+ * scope: 'managers' (default for super-admin on the central page)
  *        | 'all' (full-access only — the whole company)
- * department: optional narrowing by the HR department name.
- * section: the system section whose KPI page this is — see sectionScope.
+ * department: optional narrowing by HR department (any spelling of it).
+ * section: the system section whose KPI page this is.
+ *
+ * كلُّ موظّفٍ في الناتج عليه `dept` — قسمُه المعتمد.
  */
-async function visibleEmployees(user, { scope, department, section } = {}) {
-  const base = { employmentStatus: { $ne: 'terminated' } };
+async function visibleEmployees(user, { scope, department, section } = {}, org) {
+  org = org || await loadOrg();
   let list;
 
-  // ── صفحةُ قسمٍ بعينه ───────────────────────────────────────────────────
-  // تُقرأ بنطاق ذلك القسم أيًّا كان من يفتحها، ما دام يملك فتحَها — والصفحةُ
-  // محروسةٌ بمصفوفة الصلاحيّات أصلًا. فمديرُ النظام يرى فريقَ القسم لا قائمةَ
-  // المديرين، ومديرُ القسم يرى فريقَه كما كان.
-  if (section && !scope) {
-    const sc = await sectionScope(section);
-    if (sc) {
-      list = sc.ors.length ? await Employee.find({ ...base, $or: sc.ors }).lean() : [];
-      // ولا يُقيَّم المديرُ في صفحة قسمه: تقييمُ المديرين لمديرِ النظام في
-      // الصفحة المركزيّة، وإلّا قيَّم المديرُ نفسَه أو قيَّمه زميلُه.
-      const mgr = new Set(sc.managerIds.map(String));
-      list = list.filter((e) => !mgr.has(String(e.user || '')));
-    }
-  }
-
-  if (!list) {
-    if (isFull(user.role)) {
-      const effective = scope || (canOverride(user.role) ? 'managers' : 'all');
-      list = effective === 'managers' ? await departmentManagers() : await Employee.find(base).lean();
+  if (isFull(user.role)) {
+    // ── صفحةُ قسمٍ بعينه ─────────────────────────────────────────────────
+    // مديرُ النظام يرى فيها فريقَ القسم نفسَه الذي يراه مديرُه، لا قائمةَ
+    // المديرين.
+    if (section && !scope) {
+      list = sectionTeam(org, section);
     } else {
-      const ors = [{ directManager: user._id }];
-      // A manager also covers their own department — most departments here don't
-      // maintain directManager on every row.
-      if (isManagerRole(user.role)) {
-        const me = await Employee.findOne({ user: user._id }).lean();
-        if (me?.department) ors.push({ department: me.department });
-      }
-      list = await Employee.find({ ...base, $or: ors }).lean();
+      const effective = scope || (canOverride(user.role) ? 'managers' : 'all');
+      if (effective === 'managers') {
+        // مديرو الأقسام بحساباتهم — راجع loadOrg.
+        list = org.managers;
+      } else list = org.employees;
+    }
+  } else {
+    list = evaluableBy(org, user);
+    // وصفحةُ قسمٍ ليس قسمَه لا تُريه فريقَ غيره: القائمةُ هي ما يحقّ له
+    // تقييمُه. (كانت تردّ فريقَ القسم المطلوب لأيّ حسابٍ يكتب اسمَه في الرابط
+    // — ومعه درجاتُ الفريق — ثمّ يرفض الخادمُ فتحَ أيّ بطاقةٍ منها.)
+    if (section) {
+      const ids = new Set(sectionTeam(org, section).map((e) => String(e._id)));
+      list = list.filter((e) => ids.has(String(e._id)));
     }
   }
 
-  if (department) list = list.filter((e) => e.department === department);
-  // ولا تُقيَّم الحساباتُ التي وُلدت من إنشاء مستخدم: ليست سجلَّ موارد بشريّة.
-  list = list.filter((e) => e.isHrRecord !== false);
+  if (department) {
+    // القسمُ يُطلَب بمفتاحه أو باسمه كما عُرض.
+    const want = D.resolveDepartment(department, org.index).key;
+    list = list.filter((e) => e.dept.key === department || e.dept.label === department || e.dept.key === want);
+  }
   // Never let anyone grade themselves.
   return list.filter((e) => String(e.user || '') !== String(user._id));
+}
+
+// الأقسامُ الممثَّلة في قائمة، بعدد موظّفيها — «بدون قسم» آخرًا.
+function groupsOf(list, org) {
+  const { sectionLabel } = require('../config/sections');
+  const m = new Map();
+  for (const e of list) {
+    const g = m.get(e.dept.key) || {
+      key: e.dept.key, label: e.dept.label, labelEn: e.dept.labelEn,
+      section: org.owner.get(e.dept.key) || null, count: 0,
+    };
+    g.count += 1;
+    m.set(e.dept.key, g);
+  }
+  return [...m.values()]
+    .map((g) => ({ ...g, sectionAr: g.section ? sectionLabel(g.section, 'ar') : '' }))
+    .sort((a, b) => (a.key === D.NONE.key) - (b.key === D.NONE.key) || b.count - a.count || a.label.localeCompare(b.label, 'ar'));
 }
 
 // May this user write to this evaluation right now?
@@ -198,15 +263,36 @@ function writeGuard(existing, user) {
 }
 
 // Pick the form that applies to an employee: an exact job-title match wins over
-// the department-wide fallback.
-function templateFor(employee, templates) {
-  const inDept = templates.filter((t) => t.active && t.department === employee.department);
+// the department-wide fallback. القسمُ يُطابَق بمفتاحه المعتمد لا بحروفه: نموذجٌ
+// كُتب لـ«تخليص جمركي» يخدم «التخليص الجمركي».
+const sameDept = (a, b) => D.deptFold(a) === D.deptFold(b);
+function templateFor(employee, templates, index) {
+  // النموذجُ يُختار بقسم الموظّف في ملفّه؛ فإن لم يكن لذلك القسم نموذجٌ (أو
+  // لا قسمَ في ملفّه) فبنموذج قسم النظام الذي ينتمي إليه حسابُه.
+  const hr = employee.hrDept || D.resolveDepartment(employee.department, index);
+  const pick = (key) => templates.filter((t) => t.active && D.resolveDepartment(t.department, index).key === key);
+  let inDept = pick(hr.key);
+  if (!inDept.length && employee.section) {
+    const { sectionLabel } = require('../config/sections');
+    for (const name of [sectionLabel(employee.section, 'ar'), employee.section]) {
+      inDept = pick(D.resolveDepartment(name, index).key);
+      if (inDept.length) break;
+    }
+  }
   const byTitle = inDept.find((t) => (t.jobTitles || []).length && t.jobTitles.includes(employee.jobTitle));
   return byTitle || inDept.find((t) => !(t.jobTitles || []).length) || inDept[0] || null;
 }
 
+// طبقةُ القسم محفوظةٌ باسمه كما كُتب يومَ الحفظ — فتُقرأ بأيّ صورةٍ من صوره.
+function departmentTier(settings, ...names) {
+  const tiers = settings.departmentTiers || {};
+  for (const n of names) if (n && tiers[n] != null) return tiers[n];
+  const hit = Object.keys(tiers).find((k) => names.some((n) => n && sameDept(k, n)));
+  return hit ? tiers[hit] : null;
+}
+
 const tierOf = (template, settings) => {
-  const t = template?.tier || settings.departmentTiers?.[template?.department] || 1;
+  const t = template?.tier || departmentTier(settings, template?.department) || 1;
   return (settings.tiers || []).find((x) => Number(x.tier) === Number(t)) || (settings.tiers || [])[0] || null;
 };
 
@@ -214,9 +300,21 @@ const tierOf = (template, settings) => {
 exports.getSettings = async (req, res) => {
   try {
     const s = await PerfSettings.getOrCreate();
-    // Departments actually in use, so the settings page can offer real choices.
-    const departments = await Employee.distinct('department', { department: { $nin: [null, ''] } });
-    res.json({ settings: s, departments: departments.sort(), canConfigure: canConfigure(req.user.role) });
+    // الأقسامُ التي فيها موظّفون فعلًا، بأسمائها المعتمدة — ومعها أقسامُ النماذج
+    // القائمة، كي لا يختفي من القائمة قسمٌ له نموذج.
+    const [org, tplDepts] = await Promise.all([loadOrg(), PerfTemplate.distinct('department')]);
+    const names = new Map();
+    // أقسامُ النظام التي فيها حسابات، وأقسامُ ملفّات أصحابها (لها تُكتب النماذج).
+    for (const e of org.employees) {
+      names.set(e.dept.key, e.dept.label);
+      if (e.hrDept && !e.hrDept.none) names.set(e.hrDept.key, e.hrDept.label);
+    }
+    for (const t of tplDepts) {
+      const d = D.resolveDepartment(t, org.index);
+      if (!d.none && !names.has(d.key)) names.set(d.key, d.label);
+    }
+    const departments = [...names.values()].sort((a, b) => a.localeCompare(b, 'ar'));
+    res.json({ settings: s, departments, canConfigure: canConfigure(req.user.role) });
   } catch (e) { fail(res, e, 'Failed to load settings'); }
 };
 
@@ -332,22 +430,27 @@ exports.getTeam = async (req, res) => {
   try {
     const period = parsePeriod(req.query.period);
     const periodKey = periodKeyOf(period);
-    const [employees, templates, settings] = await Promise.all([
-      visibleEmployees(req.user, { scope: req.query.scope, department: req.query.department, section: req.query.section }),
+    const [org, templates, settings] = await Promise.all([
+      loadOrg(),
       PerfTemplate.find({ active: true }).lean(),
       PerfSettings.getOrCreate(),
     ]);
+    const employees = await visibleEmployees(req.user, {
+      scope: req.query.scope, department: req.query.department, section: req.query.section,
+    }, org);
     const ids = employees.map((e) => e._id);
     const evals = await PerfEvaluation.find({ employee: { $in: ids }, periodKey }).lean();
     const byEmp = new Map(evals.map((v) => [String(v.employee), v]));
 
     const members = employees.map((e) => {
-      const template = templateFor(e, templates);
+      const template = templateFor(e, templates, org.index);
       const ev = byEmp.get(String(e._id)) || null;
       return {
         _id: e._id,
         name: e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim(),
-        jobTitle: e.jobTitle || '', department: e.department || '',
+        // القسمُ باسمه المعتمد، ومفتاحُه لتجميع البطاقات تحته.
+        jobTitle: e.jobTitle || '', department: e.dept.label, departmentEn: e.dept.labelEn,
+        departmentKey: e.dept.key,
         employeeNumber: e.employeeNumber || '', photo: e.photo || '',
         template: template ? { _id: template._id, nameAr: template.nameAr, tier: template.tier, criteriaCount: (template.criteria || []).length } : null,
         evaluation: ev ? {
@@ -379,7 +482,11 @@ exports.getTeam = async (req, res) => {
         count: done.filter((m) => m.evaluation.band === b.key).length,
       })),
     };
-    res.json({ period, periodKey, periodLabel: periodLabel(period), members, summary, settings });
+    res.json({
+      period, periodKey, periodLabel: periodLabel(period), members, summary, settings,
+      // الأقسامُ الممثَّلة في القائمة — تُعرَض البطاقاتُ تحتها في الويب والجوّال.
+      groups: groupsOf(employees, org),
+    });
   } catch (e) { fail(res, e, 'Failed to load team'); }
 };
 
@@ -388,14 +495,19 @@ exports.listEvaluations = async (req, res) => {
   try {
     const q = {};
     if (req.query.period) q.periodKey = periodKeyOf(parsePeriod(req.query.period));
-    if (req.query.department) q.department = req.query.department;
     if (req.query.employee) q.employee = req.query.employee;
     if (req.query.status) q.status = req.query.status;
     if (!isFull(req.user.role)) {
       const allowed = await visibleEmployees(req.user);
       q.employee = { $in: allowed.map((e) => e._id) };
     }
-    const evaluations = await PerfEvaluation.find(q).sort({ updatedAt: -1 }).limit(1000).lean();
+    let evaluations = await PerfEvaluation.find(q).sort({ updatedAt: -1 }).limit(1000).lean();
+    // القسمُ المحفوظ على التقييم لقطةٌ نصّيّة؛ يُفلتَر بمفتاحه المعتمد.
+    if (req.query.department) {
+      const index = await D.loadIndex();
+      const want = D.resolveDepartment(req.query.department, index).key;
+      evaluations = evaluations.filter((v) => D.resolveDepartment(v.department, index).key === want);
+    }
     res.json({ evaluations });
   } catch (e) { fail(res, e, 'Failed to list evaluations'); }
 };
@@ -415,13 +527,16 @@ exports.getEvaluationForm = async (req, res) => {
         return res.status(403).json({ message: 'Not your team member' });
       }
     }
-    const [templates, settings] = await Promise.all([
+    const [templates, settings, index] = await Promise.all([
       PerfTemplate.find({ active: true }).lean({ virtuals: true }),
       PerfSettings.getOrCreate(),
+      D.loadIndex(),
     ]);
+    if (D.isKpiExempt(employee.department)) return res.status(400).json({ message: 'هذا الموظّف لا تقييمَ أداءٍ له (سعودة / مواءمة)', code: 'KPI_EXEMPT' });
+    await decorate(employee, index);
     const template = req.query.template
       ? templates.find((t) => String(t._id) === req.query.template)
-      : templateFor(employee, templates);
+      : templateFor(employee, templates, index);
     const evaluation = template
       ? await PerfEvaluation.findOne({ employee: employee._id, periodKey, template: template._id }).lean()
       : null;
@@ -430,7 +545,8 @@ exports.getEvaluationForm = async (req, res) => {
       employee: {
         _id: employee._id,
         name: employee.arabicName || `${employee.firstName || ''} ${employee.lastName || ''}`.trim(),
-        jobTitle: employee.jobTitle || '', department: employee.department || '',
+        jobTitle: employee.jobTitle || '', department: employee.dept.label,
+        departmentEn: employee.dept.labelEn, departmentKey: employee.dept.key,
         employeeNumber: employee.employeeNumber || '',
       },
       template: template || null,
@@ -458,7 +574,7 @@ exports.getEvaluationForm = async (req, res) => {
       // Other forms in this department, so the evaluator can switch if the
       // employee's job maps to more than one.
       alternatives: templates
-        .filter((t) => t.department === employee.department)
+        .filter((t) => D.resolveDepartment(t.department, index).key === employee.dept.key)
         .map((t) => ({ _id: t._id, nameAr: t.nameAr })),
     });
   } catch (e) { fail(res, e, 'Failed to load evaluation form'); }
@@ -471,13 +587,16 @@ exports.saveEvaluation = async (req, res) => {
     const period = body.period || parsePeriod(body.periodKey);
     const periodKey = periodKeyOf(period);
 
-    const [employee, template, settings] = await Promise.all([
+    const [employee, template, settings, index] = await Promise.all([
       Employee.findById(body.employee).lean(),
       PerfTemplate.findById(body.template).lean(),
       PerfSettings.getOrCreate(),
+      D.loadIndex(),
     ]);
     if (!employee) return res.status(404).json({ message: 'Employee not found' });
     if (!template) return res.status(404).json({ message: 'Template not found' });
+    if (D.isKpiExempt(employee.department)) return res.status(400).json({ message: 'هذا الموظّف لا تقييمَ أداءٍ له (سعودة / مواءمة)', code: 'KPI_EXEMPT' });
+    await decorate(employee, index);
 
     if (!isFull(req.user.role)) {
       const allowed = await visibleEmployees(req.user);
@@ -518,7 +637,8 @@ exports.saveEvaluation = async (req, res) => {
     const doc = {
       template: template._id, employee: employee._id,
       employeeName: employee.arabicName || `${employee.firstName || ''} ${employee.lastName || ''}`.trim(),
-      department: employee.department || '', jobTitle: employee.jobTitle || '',
+      // يُحفَظ القسمُ باسمه المعتمد، فيتّفق التقييمُ مع القوائم والأرقام.
+      department: employee.dept.none ? '' : employee.dept.label, jobTitle: employee.jobTitle || '',
       evaluator: req.user._id,
       evaluatorName: body.evaluatorName || `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
       period, periodKey, evaluationDate: body.evaluationDate || '',
@@ -679,33 +799,55 @@ exports.getOverview = async (req, res) => {
     if (!isFull(req.user.role)) return res.status(403).json({ message: 'Not allowed' });
     const period = parsePeriod(req.query.period);
     const periodKey = periodKeyOf(period);
-    const [employees, evals, settings, templates] = await Promise.all([
-      Employee.find({ employmentStatus: { $ne: 'terminated' } }, { department: 1 }).lean(),
+    const [org, evals, settings, templates] = await Promise.all([
+      loadOrg(),
       PerfEvaluation.find({ periodKey }).lean(),
       PerfSettings.getOrCreate(),
       PerfTemplate.find({ active: true }).lean(),
     ]);
+    const { employees } = org;
+    const { sectionLabel } = require('../config/sections');
 
-    const headcount = employees.reduce((m, e) => {
-      const d = e.department || '—';
-      m[d] = (m[d] || 0) + 1; return m;
-    }, {});
+    // ── القسمُ هنا هو القسمُ في القوائم ──────────────────────────────────
+    // الملاكُ من loadOrg نفسِها، والتقييمُ يُنسَب إلى قسم صاحبه **الآن** في
+    // ملفّه — لا إلى النصّ المحفوظ عليه يومَ كُتب — فما يُعَدّ تحت قسمٍ هو ما
+    // يُعرَض تحته. ومن غادر الملاكَ يُقرأ قسمُه من لقطة تقييمه.
+    const deptOfEmp = new Map(employees.map((e) => [String(e._id), e.dept]));
+    const deptOfEval = (v) => deptOfEmp.get(String(v.employee)) || D.resolveDepartment(v.department, org.index);
     const submitted = evals.filter((e) => e.status === 'submitted');
 
-    const departments = Object.keys(headcount).sort().map((dept) => {
-      const rows = submitted.filter((e) => e.department === dept);
+    const depts = new Map();
+    const bucket = (d) => {
+      if (!depts.has(d.key)) depts.set(d.key, { dept: d, headcount: 0, rows: [] });
+      return depts.get(d.key);
+    };
+    for (const e of employees) bucket(e.dept).headcount += 1;
+    for (const v of submitted) {
+      // تقييمٌ قديمٌ لمن صار بلا تقييم لا يصنع صفَّ قسمٍ في النظرة الشاملة.
+      if (!deptOfEmp.has(String(v.employee)) && D.isKpiExempt(v.department)) continue;
+      bucket(deptOfEval(v)).rows.push(v);
+    }
+
+    const departments = [...depts.values()].map(({ dept, headcount, rows }) => {
       const scored = rows.filter((r) => r.percentage != null);
+      const section = org.owner.get(dept.key) || null;
       return {
-        department: dept,
-        headcount: headcount[dept],
+        department: dept.label,
+        departmentEn: dept.labelEn,
+        departmentKey: dept.key,
+        // صفحةُ القسم التي يُقيَّم منها — فارغٌ لقسمٍ لا تملكه صفحة.
+        section, sectionAr: section ? sectionLabel(section, 'ar') : '',
+        headcount,
         evaluated: rows.length,
-        coverage: headcount[dept] ? Math.round((rows.length / headcount[dept]) * 1000) / 10 : 0,
+        coverage: headcount ? Math.round((rows.length / headcount) * 1000) / 10 : 0,
         avgPercentage: scored.length ? Math.round((scored.reduce((s, r) => s + r.percentage, 0) / scored.length) * 10) / 10 : null,
         bonusSalaries: Math.round(rows.reduce((s, r) => s + (r.bonusMultiplier || 0), 0) * 100) / 100,
-        tier: settings.departmentTiers?.[dept] || (templates.find((t) => t.department === dept)?.tier ?? null),
+        tier: departmentTier(settings, dept.label, dept.labelEn)
+          || (templates.find((t) => D.resolveDepartment(t.department, org.index).key === dept.key)?.tier ?? null),
         byBand: (settings.bands || []).map((b) => ({ key: b.key, count: rows.filter((r) => r.band === b.key).length })),
       };
-    });
+    }).sort((a, b) => (a.departmentKey === D.NONE.key) - (b.departmentKey === D.NONE.key)
+      || a.department.localeCompare(b.department, 'ar'));
 
     const scoredAll = submitted.filter((r) => r.percentage != null);
     res.json({

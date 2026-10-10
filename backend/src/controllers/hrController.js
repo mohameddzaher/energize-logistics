@@ -899,8 +899,13 @@ exports.listContracts = async (req, res) => {
     const filter = {};
     if (req.query.employee) filter.employee = req.query.employee;
     if (req.query.status) filter.status = req.query.status;
+    // ── والقسمُ يُجلَب مع الموظّف ─────────────────────────────────────────────
+    // لوحةُ الفلترة في صفحة العقود فيها «القسم» منذ البداية، وتقرؤه من
+    // `employee.department` — ولم يكن بين الأعمدة المجلوبة. فكلُّ عقدٍ قُرئ
+    // قسمُه فراغًا، وصار الفلترُ قيمةً واحدةً «—» لثلاثمئةِ عقد: موجودٌ في
+    // اللوحة ولا يُختار منه شيء. ومعه الفرعُ ووحدةُ العمل وحالةُ التوظيف.
     const contracts = await Contract.find(filter)
-      .populate({ path: 'employee', select: 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber jobTitle' })
+      .populate({ path: 'employee', select: 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber jobTitle department branchName project employmentStatus' })
       .sort({ createdAt: -1 })
       .limit(2000)
       .lean();
@@ -923,6 +928,11 @@ exports.createContract = async (req, res) => {
     }
     const contract = await Contract.create({ ...req.body, createdBy: req.user._id });
     await syncEmployeeContractStatus(employee);
+    // «حالة العقد» في ملفّ الموظّف تغيّرت للتوّ، وعدّاداتُ الماستر تقرؤها من
+    // ذاكرةٍ عمرُها دقيقة. والتجديدُ كان يمسحها وحدَه؛ والإنشاءُ والتعديلُ
+    // والفسخُ والحذفُ يكتبون الخانةَ نفسَها ولا يمسحون — فتبقى البطاقةُ على
+    // رقمها القديم حتى تنقضي الدقيقة، ولا يُبَثّ `hr:master` أصلًا.
+    bustEmployeeCaches();
     await notifyHR({ title: 'Contract created', message: `Contract for employee ${employee}`, relatedEntity: 'Contract', relatedEntityId: contract._id, event: 'hr:contract' });
     res.status(201).json({ contract });
   } catch (error) {
@@ -944,7 +954,10 @@ exports.updateContract = async (req, res) => {
     for (const f of fields) if (req.body[f] !== undefined) contract[f] = req.body[f];
     await contract.save();
     await syncEmployeeContractStatus(contract.employee);
-    try { emitToUser(String(req.user._id), 'hr:contract', { id: String(contract._id) }); } catch (e) {}
+    // راجع createContract: تُمحى ذاكرةُ الماستر ثمّ يُعلَن للجميع — كان الحدثُ
+    // يُرسَل إلى مَن عدّل وحدَه، فتبقى شاشةُ زميله على ما قبل التعديل.
+    bustEmployeeCaches();
+    try { emitToAll('hr:contract', { id: String(contract._id) }); } catch (e) {}
     res.json({ contract });
   } catch (error) {
     return sendMongooseError(res, error, 'Failed to update contract');
@@ -985,6 +998,9 @@ exports.terminateContract = async (req, res) => {
     // و«حالة العقد» تُشتقّ من العقد نفسِه — لا تُكتب هنا بلفظٍ ثانٍ يفترق عمّا
     // تعرضه صفحة العقود. راجع utils/contractStatus.
     await syncEmployeeContractStatus(contract.employee);
+    // الفسخُ يُخرج الموظّفَ من «على رأس العمل» ومن عدّ الانتهاءات معًا — وهو
+    // أكثرُ ما يحرّك أرقامَ الشريط، وكان لا يمسح ذاكرتَها.
+    bustEmployeeCaches();
     const emp = await Employee.findById(contract.employee).select('user').lean();
     await notifyHR({ title: 'Contract terminated', message: `Contract ${contract._id} terminated`, relatedEntity: 'Contract', relatedEntityId: contract._id, event: 'hr:contract' });
     try { emitToUser(String(req.user._id), 'hr:employee', { id: String(contract.employee) }); } catch (e) {}
@@ -1004,7 +1020,8 @@ exports.deleteContract = async (req, res) => {
     if (!contract) return res.status(404).json({ message: 'Contract not found' });
     // حُذف عقدٌ فقد تتغيّر الحالةُ الحاكمة — تُعاد القراءة ممّا بقي.
     await syncEmployeeContractStatus(contract.employee);
-    try { emitToUser(String(req.user._id), 'hr:contract', { id: String(contract._id) }); } catch (e) {}
+    bustEmployeeCaches();
+    try { emitToAll('hr:contract', { id: String(contract._id) }); } catch (e) {}
     res.json({ message: 'Contract deleted' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to delete contract' });

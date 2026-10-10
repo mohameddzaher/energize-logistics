@@ -643,19 +643,33 @@ final crmActivitiesCfg = ResourceConfig(
 );
 
 // ── المبيعات ─────────────────────────────────────────────────────────────────
-final salesTargetsCfg = ResourceConfig(
-  arTitle: 'الأهداف', enTitle: 'Targets', icon: Icons.track_changes_outlined,
+// ── أهدافُ المبيعات ──────────────────────────────────────────────────────────
+// كان النموذجُ بلا حقل المندوب: كلُّ هدفٍ يُحفَظ من الهاتف هدفًا «للفريق كلّه»،
+// والثاني يستبدل الأوّل (المفتاحُ مندوبٌ + شهر). وكان عنوانُ الصفّ الشهرَ وحدَه
+// فلا يُعرَف هدفُ مَن. والهدفُ يضعه المدير: `canEdit` تُمرَّر من القائمة بقاعدة
+// الخادم نفسِها (canSetTargets في salesController).
+String _repName(dynamic rep) => rep is Map
+    ? '${rep['firstName'] ?? ''} ${rep['lastName'] ?? ''}'.trim()
+    : '';
+
+ResourceConfig salesTargetsCfg({required bool canEdit}) => ResourceConfig(
+  canCreate: canEdit, canEdit: canEdit, canDelete: canEdit,
+  arTitle: 'أهداف المبيعات', enTitle: 'Sales Targets', icon: Icons.track_changes_outlined,
   endpoint: '/api/sales/targets', listKey: 'targets', liveEvent: 'sales:updated',
-  searchFields: const ['period', 'notes'],
-  titleOf: (r) => _s(r, 'period'),
-  subtitleOf: (r) => _s(r, 'notes'),
+  searchFields: const ['period', 'notes', 'rep.firstName', 'rep.lastName'],
+  titleOf: (r) => _repName(r['rep']).isNotEmpty ? _repName(r['rep']) : tr('الفريق كلّه', 'Whole team'),
+  subtitleOf: (r) => [_s(r, 'period'), _s(r, 'notes')].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
-    if (r['amountTarget'] != null) ('${r['amountTarget']} ر.س', T.success),
-    if (r['dealsTarget'] != null) ('${r['dealsTarget']} صفقة', T.info),
+    if (r['amountTarget'] != null) ('${_n(r['amountTarget'])} ${tr('ر.س', 'SAR')}', T.success),
+    if (r['dealsTarget'] != null) ('${r['dealsTarget']} ${tr('صفقة', 'deals')}', T.info),
   ],
   fields: const [
-    FieldSpec('period', 'الفترة (YYYY-MM)', 'Period (YYYY-MM)', required: true),
-    FieldSpec('amountTarget', 'هدف المبلغ', 'Amount target', type: FieldType.number),
+    // فارغٌ = الفريق كلّه. ولا يتغيّر بعد الحفظ: الخادمُ يثبّت المندوبَ والشهر.
+    FieldSpec('rep', 'المندوب (فارغ = الفريق كلّه)', 'Rep (empty = whole team)',
+        type: FieldType.lookup, lookupEndpoint: '/api/sales/options', lookupListKey: 'reps',
+        lookupLabel: _repName),
+    FieldSpec('period', 'الشهر (مثال: 2026-10)', 'Month (e.g. 2026-10)', required: true),
+    FieldSpec('amountTarget', 'هدف القيمة', 'Amount target', type: FieldType.number),
     FieldSpec('dealsTarget', 'هدف الصفقات', 'Deals target', type: FieldType.number),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
@@ -960,13 +974,23 @@ final b2cRepsCfg = ResourceConfig(
 // ── طلبات الشحنات (التجربة المستقلة) ────────────────────────────────────────
 // ── سجلُّ العملاء ────────────────────────────────────────────────────────────
 // يُقرأ من سجلّ العملاء المحسوب (كم كشفًا وبكم وكم مسارًا) لا من جدول العملاء
-// الخام، فيحمل الصفُّ أرقامَه كما على الويب؛ والكتابةُ تبقى على نقطة طلبات
-// الشحنات. والنقرةُ تفتح الملفَّ الكامل — نفسَ صفحة الويب.
-final shipmentOrdersCustomersCfg = ResourceConfig(
+// الخام، فيحمل الصفُّ أرقامَه كما على الويب. والنقرةُ تفتح الملفَّ الكامل —
+// نفسَ صفحة الويب.
+//
+// ── سجلٌّ واحدٌ بثلاثة أبواب ─────────────────────────────────────────────────
+// يُفتح من «طلبات الشحنات» و«التشغيل» و«المبيعات»، والقراءةُ والكتابةُ كلُّها
+// على `/api/customer-registry`: كانت الكتابةُ على نقطة طلبات الشحنات المحروسةِ
+// بقسمها، فمن يفتح السجلَّ من قسمٍ آخر يُردّ ٤٠٣ عند أوّل حفظ. ومن يعدّل ومن
+// يزيل يقرّرهما الدورُ كما على الويب (`canEditCustomers`): تُمرَّران من القائمة.
+const customerEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'sales_manager', 'sales_rep'];
+const customerRemoveRoles = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
+
+ResourceConfig customersRegisterCfg({required bool canEdit, required bool canDelete}) => ResourceConfig(
+  canCreate: canEdit, canEdit: canEdit, canDelete: canDelete,
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(
       builder: (_) => CustomerRegistryProfileScreen(customerId: (r['_id'] ?? '').toString()))),
   arTitle: 'سجلّ العملاء', enTitle: 'Customer Register', icon: Icons.people_outline,
-  endpoint: '/api/customer-registry', writeEndpoint: '/api/shipment-orders/customers',
+  endpoint: '/api/customer-registry',
   // الملاحظةُ لا عمودَ لها في السجلّ فلا تُنقَل فيه — وتُقرأ من ملفّ العميل قبل التعديل.
   editFullKey: 'customer',
   listKey: 'customers', liveEvent: 'shipmentOrders:customers',
@@ -994,6 +1018,9 @@ final shipmentOrdersCustomersCfg = ResourceConfig(
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );
+
+/// الصيغةُ القديمة — لمن يعدّل ويزيل بدوره في طلبات الشحنات.
+final shipmentOrdersCustomersCfg = customersRegisterCfg(canEdit: true, canDelete: true);
 
 // ── والسجلّان يُبحَثان عند الخادم ───────────────────────────────────────────
 // ثلاثةُ آلافِ مورّدٍ وثلاثةَ عشرَ ألفَ شاحنة، والشاشةُ تُحمِّل مئتين: فالبحثُ
@@ -1283,7 +1310,9 @@ final collectionsCashInvoicesCfg = ResourceConfig(
   subtitleOf: (r) => [_s(r, 'customer'), _s(r, 'payingBranch')].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
     if (r['ageDays'] != null) ('${r['ageDays']} يوم', _ageColor(r['ageDays'])),
-    if (_s(r, 'collectionDate').isEmpty) ('لم يُحصَّل', T.danger)
+    // «محصَّل» في الدفتر وإن لم يُكتب يومُه — كما تقولها شاشةُ الموقع.
+    if (r['collectedNoDate'] == true) ('محصَّل — بلا تاريخ', T.success)
+    else if (_s(r, 'collectionDate').isEmpty) ('لم يُحصَّل', T.danger)
     else ('${_n(r['collectedAmount'])} محصَّل', T.success),
     // التسليمُ خطوةٌ قبل التحصيل — ومنه تُعَدُّ مهلةُ العميل.
     if (_s(r, 'deliveryDate').isEmpty) ('لم تُسلَّم', T.warn) else ('سُلِّمت', T.info),
@@ -1429,7 +1458,11 @@ final crmVendorsCfg = ResourceConfig(
 // ── عقود الموظفين — HR Contracts (قراءة؛ الإنشاء يتم من ملف الموظف) ──────────
 final hrContractsCfg = ResourceConfig(
   arTitle: 'عقود الموظفين', enTitle: 'Employment Contracts', icon: Icons.description_outlined,
-  endpoint: '/api/hr/contracts', listKey: 'contracts', liveEvent: 'hr:updated',
+  // ── والحدثُ الحيُّ هو ما يبثّه الخادمُ فعلًا ─────────────────────────────────
+  // كان `hr:updated` — اسمٌ لا يبثّه الخادمُ في أيّ موضع، فالقائمةُ لا تتحدّث
+  // إلّا بالسحب. وكلُّ كتابةٍ في العقود (إنشاءٌ، تعديلٌ، تجديدٌ، فسخٌ، حذف) وكلُّ
+  // تعديلٍ في ملفّ الموظّف يبثّ `hr:master` للجميع — وهو ما تسمعه صفحةُ الويب.
+  endpoint: '/api/hr/contracts', listKey: 'contracts', liveEvent: 'hr:master',
   canCreate: false, canEdit: false, canDelete: false,
   // بياناتُ ورقة العقد نفسِها: الهويّةُ كما كُتبت فيه، والمهنةُ **كما في العقد**
   // (تختلف عن المهنة في الإقامة وعن المسمّى الوظيفيّ)، والسجلُّ الصادر تحته —
@@ -1440,6 +1473,8 @@ final hrContractsCfg = ResourceConfig(
   subtitleOf: (r) => [
     _s(r, 'contractProfession').isNotEmpty ? _s(r, 'contractProfession') : _s(r, 'jobTitle'),
     _s(r, 'iqamaNumber'),
+    // القسمُ كما في جدول الويب — يُقرأ من ملفّ الموظّف المرفق بالعقد.
+    if (r['employee'] is Map) (r['employee']['department'] ?? '').toString(),
     [_s(r, 'startDate'), _s(r, 'endDate')].where((x) => x.isNotEmpty).join(' → '),
   ].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
@@ -1484,16 +1519,26 @@ final hrStockCfg = ResourceConfig(
 
 // ── أوامر شغل المركبات — Workshop Work Orders ───────────────────────────────
 
-// ── سجل التدقيق — Audit Log (قراءة فقط) ─────────────────────────────────────
+// ── سجل المراجعة — Audit Log (قراءة فقط) ────────────────────────────────────
+// الصفُّ كان يعرض مفتاحَي الفعل والكيان كما هما في القاعدة
+// (`update_workflow · OperationsWorkflow`) ولا يقول ما تغيّر. والخادمُ صار يكتب
+// الجملةَ نفسَها التي يعرضها الموقع: اسمَ الفعل، والسجلَّ الذي وقع عليه، وما
+// تغيّر فيه «من كذا إلى كذا» — فتُعرَض هنا كما هي، ولا تُبنى مرّةً ثانية.
 final auditCfg = ResourceConfig(
   arTitle: 'سجل التدقيق', enTitle: 'Audit Log', icon: Icons.fact_check_outlined,
   endpoint: '/api/audit', listKey: 'logs', liveEvent: '',
   canCreate: false, canEdit: false, canDelete: false,
-  searchFields: const ['action', 'entity', 'userName'],
-  titleOf: (r) => '${_s(r, 'action')} · ${_s(r, 'entity')}',
-  subtitleOf: (r) => [_s(r, 'userName'), _s(r, 'createdAt').split('T').first].where((x) => x.isNotEmpty).join(' · '),
+  searchFields: const ['actionLabel', 'entityLabel', 'sectionLabel', 'subject', 'summary', 'userName'],
+  titleOf: (r) => [_s(r, 'actionLabel'), _s(r, 'subject')].where((x) => x.isNotEmpty).join(' — '),
+  // السطرُ الثاني سطرٌ واحدٌ في القائمة العامّة، فهو لجملة ما تغيّر وحدَها —
+  // ومَن ومتى في الشرائح تحته، فلا تُقصّ الجملةُ ليُفسَح لهما.
+  subtitleOf: (r) => _s(r, 'summary'),
   chipsOf: (r) => [
-    if (_s(r, 'action').isNotEmpty) (_s(r, 'action'), _s(r, 'action') == 'delete' ? T.danger : T.info),
+    if (_s(r, 'sectionLabel').isNotEmpty) (_s(r, 'sectionLabel'), T.navy),
+    if (_s(r, 'userName').isNotEmpty) (_s(r, 'userName'), T.info),
+    if (_s(r, 'createdAt').isNotEmpty) (_s(r, 'createdAt').split('T').first, T.inkFaint),
+    if (_s(r, 'kind') == 'delete') ('حذف', T.danger),
+    if (_s(r, 'kind') == 'bulk') ('إجراء جماعي', T.info),
   ],
   fields: const [],
 );

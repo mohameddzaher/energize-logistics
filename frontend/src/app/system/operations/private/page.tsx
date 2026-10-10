@@ -285,6 +285,7 @@ export default function OperationsPrivatePage() {
   const sourceLabel = (s?: string) => (
     s === 'sheet' ? (ar ? 'تقرير الفروع' : 'branches report')
       : s === 'route' ? (ar ? 'ملفّ العميل' : 'customer profile')
+      : s === 'tier' ? (ar ? 'أعلى شريحةٍ للمسار' : 'highest route tier')
         : s === 'manual' || s === 'private' ? (ar ? 'يدويّ' : 'manual') : '—');
   const payType = (v?: string) => (v === 'cash' ? (ar ? 'كاش' : 'Cash') : v === 'tax' ? (ar ? 'ضريبي' : 'Tax') : '—');
   const done = (v?: string) => (v ? (ar ? 'تمّت' : 'Done') : '—');

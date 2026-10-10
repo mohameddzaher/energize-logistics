@@ -19,6 +19,20 @@
       ],
       "wildcard": false
     },
+    "/system/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/management-jp/dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
     "/system/credit-alerts": {
       "apis": [
         "/api/analytics/credit-alerts"
@@ -100,10 +114,25 @@
       ],
       "wildcard": false
     },
-    "/system/operations/my-tasks": {
+    "/system/operations/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/operations/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/operations/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -123,7 +152,7 @@
     "/system/collections-dept/dashboard": {
       "apis": [
         "/api/collections-dept/dashboard",
-        "/api/collections-dept/dashboard/filters",
+        "/api/collections-dept/invoices/filters",
         "/api/collections-dept/parties",
         "/api/collections-dept/receivables/overview",
         "/api/collections-dept/receivables/rows"
@@ -213,10 +242,25 @@
       ],
       "wildcard": false
     },
-    "/system/collections-dept/my-tasks": {
+    "/system/collections-dept/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/collections-dept/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/collections-dept/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -408,10 +452,25 @@
       ],
       "wildcard": false
     },
-    "/system/shipment-orders/my-tasks": {
+    "/system/shipment-orders/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/shipment-orders/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/shipment-orders/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -525,10 +584,25 @@
       ],
       "wildcard": false
     },
-    "/system/fleet/my-tasks": {
+    "/system/fleet/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/fleet/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/fleet/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -748,10 +822,25 @@
       ],
       "wildcard": false
     },
-    "/system/vehicles/my-tasks": {
+    "/system/vehicles/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/vehicles/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -935,10 +1024,25 @@
       ],
       "wildcard": false
     },
-    "/system/marketing/my-tasks": {
+    "/system/marketing/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/marketing/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/marketing/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -984,10 +1088,25 @@
       ],
       "wildcard": false
     },
-    "/system/bd/my-tasks": {
+    "/system/bd/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/bd/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/bd/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -1011,10 +1130,25 @@
       ],
       "wildcard": false
     },
-    "/system/administration/my-tasks": {
+    "/system/administration/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/administration/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/administration/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -1104,10 +1238,25 @@
       ],
       "wildcard": false
     },
-    "/system/contracts/my-tasks": {
+    "/system/contracts/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/contracts/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/contracts/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -1178,10 +1327,25 @@
       ],
       "wildcard": false
     },
-    "/system/it/my-tasks": {
+    "/system/it/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/it/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/it/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -1211,10 +1375,25 @@
       ],
       "wildcard": false
     },
-    "/system/ls2/my-tasks": {
+    "/system/ls2/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -1339,10 +1518,25 @@
       ],
       "wildcard": false
     },
-    "/system/b2c/my-tasks": {
+    "/system/b2c/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -1410,10 +1604,25 @@
       ],
       "wildcard": false
     },
-    "/system/remote/my-tasks": {
+    "/system/remote/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/remote/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/remote/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -1698,6 +1907,15 @@
       ],
       "wildcard": false
     },
+    "/system/sales/customers": {
+      "apis": [
+        "/api/customer-registry",
+        "/api/customer-registry/full",
+        "/api/customer-registry/options",
+        "/api/partners/account"
+      ],
+      "wildcard": false
+    },
     "/system/sales/pipeline": {
       "apis": [
         "/api/sales/pipeline"
@@ -1807,10 +2025,25 @@
       ],
       "wildcard": false
     },
-    "/system/crm/my-tasks": {
+    "/system/crm/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/crm/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/crm/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -1827,10 +2060,25 @@
       ],
       "wildcard": false
     },
-    "/system/sales/my-tasks": {
+    "/system/sales/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/sales/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/sales/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -1847,10 +2095,25 @@
       ],
       "wildcard": false
     },
-    "/system/accounting/my-tasks": {
+    "/system/accounting/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/accounting/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/accounting/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -1867,10 +2130,25 @@
       ],
       "wildcard": false
     },
-    "/system/procurement/my-tasks": {
+    "/system/procurement/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/procurement/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/procurement/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -1887,10 +2165,25 @@
       ],
       "wildcard": false
     },
-    "/system/hr/my-tasks": {
+    "/system/hr/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -1907,10 +2200,25 @@
       ],
       "wildcard": false
     },
-    "/system/ops/my-tasks": {
+    "/system/ops/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/ops/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/ops/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },
@@ -1927,10 +2235,25 @@
       ],
       "wildcard": false
     },
-    "/system/customs/my-tasks": {
+    "/system/customs/jp": {
       "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
+      ],
+      "wildcard": false
+    },
+    "/system/customs/jp-dashboard": {
+      "apis": [
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/customs/management-jp": {
+      "apis": [
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks"
       ],
       "wildcard": false
     },

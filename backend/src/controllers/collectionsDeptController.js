@@ -168,14 +168,57 @@ const emptyStats = () => ({
   lastReportAt: null, lastSettledAt: null, names: [],
 });
 
-const withStats = (party, stats) => {
+/**
+ * ── ومالُ العميل من دفتر الفواتير، لا من كشوف التشغيل ──────────────────────
+ *
+ * كانت قائمةُ العملاء وملفُّ العميل يحسبان «المستحقّ لنا» من الكشوف: قيمةُ
+ * البيع ناقصَ ما له تاريخُ تحصيلٍ على الكشف. وتاريخُ التحصيل لا يُكتب على
+ * الكشوف (٤٨٨٠ من ٣٢ ألفًا)، وقيمةُ البيع فيها سعرُ الشراء. فكانت القائمةُ
+ * تقول إنّ على العملاء ٤٥٫٣ مليونًا واللوحةُ تقول ١٩٫٩٦ — والدفترُ هو الصحيح.
+ *
+ * فالمالُ للعميل يُقرأ من الدفتر بالرابط، وعددُ الكشوف يبقى من التشغيل لأنّه
+ * عملٌ لا مال. والموردُ على حاله: لا دفترَ له، ومالُه من الكشوف.
+ */
+async function ledgerMoneyByParty() {
+  return cache.wrap(`${CACHE_PREFIX}ledger-money`, STATS_TTL, async () => {
+    const CollectionInvoice = require('../models/CollectionInvoice');
+    const open = CollectionInvoice.isOpenExpr;
+    const rows = await CollectionInvoice.aggregate([
+      { $match: { unused: { $ne: true }, party: { $ne: null } } },
+      { $group: {
+        _id: '$party',
+        invoices: { $sum: 1 },
+        invoiced: { $sum: { $ifNull: ['$total', 0] } },
+        outstanding: { $sum: { $cond: [open, { $ifNull: ['$total', 0] }, 0] } },
+        openInvoices: { $sum: { $cond: [open, 1, 0] } },
+        lastCollectedAt: { $max: '$collectionDate' },
+      } },
+    ]);
+    return new Map(rows.map((r) => [String(r._id), r]));
+  });
+}
+const NO_MONEY = { invoices: 0, invoiced: 0, outstanding: 0, openInvoices: 0, lastCollectedAt: null };
+
+const withStats = (party, stats, money) => {
   const s = stats.get(party.nameKey || fold(party.name)) || emptyStats();
-  return {
+  const base = {
     ...party,
     reports: s.reports, total: s.total, settled: s.settled, outstanding: s.outstanding,
     openReports: s.openReports, invoiced: s.invoiced,
     lastReportAt: s.lastReportAt, lastSettledAt: s.lastSettledAt,
     nameVariants: (s.names || []).length > 1 ? s.names.map((n) => n.name) : [],
+  };
+  if (!money) return base;
+  const m = money.get(String(party._id)) || NO_MONEY;
+  return {
+    ...base,
+    total: r2(m.invoiced),
+    settled: r2(m.invoiced - m.outstanding),
+    outstanding: r2(m.outstanding),
+    invoices: m.invoices,
+    openInvoices: m.openInvoices,
+    lastSettledAt: m.lastCollectedAt || null,
+    moneySource: 'ledger',
   };
 };
 
@@ -250,7 +293,15 @@ exports.listParties = async (req, res) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
 
-    const [parties, total, stats] = await Promise.all([
+    // ── «عليه مستحقّ فقط» شرطٌ على القائمة كلِّها ───────────────────────
+    // كان يُطبَّق في المتصفّح على المئة المحمَّلة، والعدّادُ يعرض عددَ الكلّ.
+    const money = kind === 'customer' ? await ledgerMoneyByParty() : null;
+    if (money && req.query.owing === 'true') {
+      const owing = [...money.entries()].filter(([, m]) => m.outstanding > 0.005).map(([id]) => new mongoose.Types.ObjectId(id));
+      filter.$and = [...(filter.$and || []), { _id: { $in: owing } }];
+    }
+
+    const [parties, total, stats, allIds] = await Promise.all([
       CollectionsParty.find(filter)
         .populate('assignedTo', 'firstName lastName')
         .sort({ name: 1 })
@@ -259,10 +310,25 @@ exports.listParties = async (req, res) => {
         .lean(),
       CollectionsParty.countDocuments(filter),
       statsByKind(kind),
+      // المجاميعُ على ما طابق الفلترَ كلِّه لا على الصفحة المعروضة.
+      money ? CollectionsParty.find(filter).select('_id').lean() : [],
     ]);
 
+    let totals = null;
+    if (money) {
+      totals = { invoices: 0, total: 0, settled: 0, outstanding: 0, openInvoices: 0 };
+      for (const p of allIds) {
+        const m = money.get(String(p._id)); if (!m) continue;
+        totals.invoices += m.invoices; totals.total += m.invoiced;
+        totals.outstanding += m.outstanding; totals.openInvoices += m.openInvoices;
+      }
+      totals.settled = r2(totals.total - totals.outstanding);
+      totals.total = r2(totals.total); totals.outstanding = r2(totals.outstanding);
+    }
+
     res.json({
-      parties: parties.map((p) => withStats(p, stats)),
+      parties: parties.map((p) => withStats(p, stats, money)),
+      totals,
       total,
       page,
       limit,
@@ -356,31 +422,34 @@ exports.getPartyProfile = async (req, res) => {
     // فالفواتيرُ تُقرأ من الدفتر بالاسم المطويّ، ومعها ما حُصِّل منها وما بقي.
     // وهو الرقمُ الذي يُطالَب به، والذي يُطبَع في كشف الحساب.
     const CollectionInvoice = require('../models/CollectionInvoice');
-    const keys = new Set([party.nameKey || fold(party.name), ...names.map((n) => fold(n))]);
-    // الأسماءُ المتمايزة أوّلًا ثمّ الفواتيرُ بالصيغ المطابقة — لا أربعون ألف
-    // فاتورةٍ تُنقل لتُطوى في الذاكرة (كانت تأخذ نصفَ دقيقة على القاعدة).
-    const nameCacheKey = `${CACHE_PREFIX}invoice-party-names`;
-    let invNames = cache.get(nameCacheKey);
-    if (invNames === undefined) {
-      invNames = (await CollectionInvoice.distinct('partyName')).filter(Boolean);
-      cache.set(nameCacheKey, invNames, 5 * 60 * 1000);
-    }
-    const myInvNames = invNames.filter((n) => keys.has(fold(n)));
-    const ledgerAll = await CollectionInvoice.find({ $or: [
-      { party: party._id },
-      ...(myInvNames.length ? [{ partyName: { $in: myInvNames } }] : []),
-    ] }).select('invoiceNumber partyName partyCode total invoiceDate deliveryDate collectionDate status kind').lean();
+    // ── وبالرابط وحدَه، لا بالاسم ─────────────────────────────────────────
+    // كانت تُضَمّ إليها كلُّ فاتورةٍ يطابق اسمُها اسمَه بعد الطيّ. والشركةُ
+    // الواحدةُ قد يكون لها حسابان بكودَين (نقديٌّ وضريبيّ) لكلٍّ رصيدُه: فكانت
+    // ١٣٤ فاتورةً تظهر في ملفَّين، وملفُّ العميل يخالف سطرَه في أعمار الديون.
+    const ledgerAll = await CollectionInvoice.find({ party: party._id, unused: { $ne: true } })
+      .select('invoiceNumber partyName partyCode total invoiceDate deliveryDate collectionDate status kind').lean();
     const ledger = ledgerAll
       .sort((x, y) => new Date(y.invoiceDate || 0) - new Date(x.invoiceDate || 0));
 
-    const isCollected = (i) => !!i.collectionDate || /collected/i.test(i.status || '');
+    const { isCollected } = CollectionInvoice;
     const invoiced = ledger.reduce((a2, i) => a2 + (Number(i.total) || 0), 0);
     const collectedSum = ledger.filter(isCollected).reduce((a2, i) => a2 + (Number(i.total) || 0), 0);
     const openInvoices = ledger.filter((i) => !isCollected(i));
     const now2 = Date.now();
+    const byMonth = new Map();
+    for (const i of ledger) {
+      if (!i.invoiceDate) continue;
+      const m = new Date(i.invoiceDate).toISOString().slice(0, 7);
+      const e = byMonth.get(m) || { month: m, reports: 0, total: 0, settled: 0 };
+      e.reports += 1; e.total += Number(i.total) || 0;
+      if (isCollected(i)) e.settled += Number(i.total) || 0;
+      byMonth.set(m, e);
+    }
+    const ledgerMonthly = [...byMonth.values()].sort((x, y) => x.month.localeCompare(y.month)).slice(-36)
+      .map((e) => ({ ...e, total: r2(e.total), settled: r2(e.settled), outstanding: r2(e.total - e.settled) }));
 
     res.json({
-      party: withStats(party, stats),
+      party: withStats(party, stats, kind === 'customer' ? await ledgerMoneyByParty() : null),
       // ── المالُ كما يقوله الدفتر ────────────────────────────────────────
       money: {
         invoices: ledger.slice(0, 500).map((i) => ({
@@ -421,7 +490,8 @@ exports.getPartyProfile = async (req, res) => {
       page,
       limit,
       pages: Math.max(1, Math.ceil(reportsTotal / limit)),
-      monthly: monthly.map((m) => ({
+      // حركةُ العميل بالشهر من فواتير الدفتر (شهرُ الفوترة)؛ والموردُ من كشوفه.
+      monthly: kind === 'customer' ? ledgerMonthly : monthly.map((m) => ({
         month: m._id,
         reports: m.reports,
         total: r2(m.total),
@@ -939,7 +1009,7 @@ exports.filterOptions = async (req, res) => {
 };
 
 // تُنادى من السكربتات بعد الاستيراد فلا تبقى الشاشة على أرقامٍ قديمة دقيقةً.
-exports.invalidate = () => cache.clear(CACHE_PREFIX);
+exports.invalidate = () => cache.clear(CACHE_PREFIX); cache.clear('cdr:');
 exports._internals = { statsByKind, FIELD_OF, VALUE_OF, CLOSED_BY, NOT_CANCELLED };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1031,15 +1101,21 @@ async function partyIdsByName(names, kind = 'customer') {
 
 /** شروطُ دفتر الفواتير من استعلام الصفحة — يقرؤها الجدولُ وقائمةُ قيم الأعمدة. */
 function ledgerInvoiceMatch(query) {
-  const f = {};
+  // ── صفحةُ الضريبيّ للضريبيّ ────────────────────────────────────────────
+  // كانت تعرض الدفترَ كلَّه يومَ لم يكن فيه نقديٌّ إلّا ثلاثُ فواتير. ثمّ دخلت
+  // ورقةُ الشحنات النقديّة (١٨٣٥ شحنة) فصارت تظهر هنا «فواتيرَ ضريبيّة» وتُشتقّ
+  // لها ضريبةٌ لا وجودَ لها، ومعها ١١٨ رقمًا محجوزًا يُعَدّ «لم يُحصَّل بعد».
+  // والنوعُ اليومَ هو الورقةُ التي جاء منها الصفّ: Daily Invoice Report ضريبيّ.
+  const f = { kind: 'tax', unused: { $ne: true } };
   if (query.customer) f.partyName = flexSpaceRegex(String(query.customer));
   if (query.q) {
     const { exact, loose } = numberSearchRegex(String(query.q));
     const rx = exact || loose;
     f.$or = [{ invoiceNumber: rx }, { partyName: exact ? rx : loose }, { partyCode: rx }];
   }
-  if (query.collected === 'yes') f.$and = [...(f.$and || []), { $or: [{ collectionDate: { $ne: null } }, { status: /collected/i }] }];
-  else if (query.collected === 'no') f.$and = [...(f.$and || []), { collectionDate: null, status: { $not: /collected/i } }];
+  // «محصَّلة» بتعريف الدفتر الواحد — راجع models/CollectionInvoice.OPEN.
+  if (query.collected === 'yes') f.status = /collected/i;
+  else if (query.collected === 'no') f.status = { $not: /collected/i };
   if (query.from || query.to) {
     f.invoiceDate = {};
     if (query.from) f.invoiceDate.$gte = new Date(query.from);
@@ -1417,7 +1493,7 @@ exports.taxInvoices = async (req, res) => {
           _id: null,
           value: { $sum: '$total' },
           invoices: { $sum: 1 },
-          fullyCollected: { $sum: { $cond: [{ $or: [{ $ifNull: ['$collectionDate', false] }, { $regexMatch: { input: { $ifNull: ['$status', ''] }, regex: /collected/i } }] }, 1, 0] } },
+          fullyCollected: { $sum: { $cond: [{ $regexMatch: { input: { $ifNull: ['$status', ''] }, regex: /collected/i } }, 1, 0] } },
         } },
       ]),
     ]);
@@ -1446,7 +1522,7 @@ exports.taxInvoices = async (req, res) => {
         // ── والمحصَّلُ يُقرأ من الدفتر أوّلًا ────────────────────────────────
         // الدفترُ يقول «محصَّلة» ولو لم يكن لها كشفٌ عندنا؛ وكشوفُنا تُكمِّل
         // الصورةَ ولا تنقضها.
-        const collected = !!i.collectionDate || /collected/i.test(i.status || '');
+        const collected = /collected/i.test(i.status || '');
         return {
           invoiceNumber: i.invoiceNumber,
           customer: i.partyName || '',
@@ -1502,7 +1578,7 @@ exports.taxInvoiceDetail = async (req, res) => {
 
     const CollectionInvoice = require('../models/CollectionInvoice');
     const [ledger, rows] = await Promise.all([
-      CollectionInvoice.findOne({ invoiceNumber: number }).lean(),
+      CollectionInvoice.findOne({ invoiceNumber: number }).sort({ kind: -1 }).lean(),
       OperationsWorkflow.find({ invoiceNumber: number, ...NOT_CANCELLED })
         .select('reportNumber reportDate username branch payingBranch fromLocation toLocation carNumber carOwner sellingValue netInvoice tax totalInvoice invoiceDate deliveryDate sendingDate documentNumber collectedAmount collectionDate accountingReview paymentType')
         .sort({ reportDate: 1 }).lean(),
@@ -1583,13 +1659,38 @@ const syncInvoiceLedger = async (invoiceNumber, { deliveryDate, collectionDate }
   if (deliveryDate !== undefined) $set.deliveryDate = deliveryDate;
   if (collectionDate !== undefined) $set.collectionDate = collectionDate;
   // الحالةُ تتبع التواريخ لا تُكتب على حدة: «محصَّلة» أقوى من «مسلَّمة».
-  const inv = await CollectionInvoice.findOne({ invoiceNumber: no });
+  // الضريبيُّ وحدَه: رقمُ الشحنة النقديّة تسلسلٌ آخر قد يوافق رقمَ فاتورة.
+  const inv = await CollectionInvoice.findOne({ invoiceNumber: no, kind: 'tax' });
   if (!inv) return null;
   const collected = collectionDate !== undefined ? collectionDate : inv.collectionDate;
   const delivered = deliveryDate !== undefined ? deliveryDate : inv.deliveryDate;
   $set.status = collected ? 'Collected' : (delivered ? 'Delivered' : (inv.status || ''));
   await CollectionInvoice.updateOne({ _id: inv._id }, { $set });
   return inv._id;
+};
+
+/**
+ * ── والشحنةُ النقديّةُ لها صفٌّ في الدفتر أيضًا ─────────────────────────────
+ *
+ * صفحةُ الكاش تكتب التحصيلَ على كشف التشغيل، والدفترُ يحمل الشحنةَ نفسَها
+ * برقم كشفها (`kind: cash`). وكان التسجيلُ يقف عند الكشف: يُحصِّل المحصِّلُ
+ * الشحنةَ فتبقى في اللوحة والأعمار دَينًا قائمًا. فيُكتب في الوجهين.
+ */
+const syncCashLedger = async (filter, { deliveryDate, collectionDate }) => {
+  const CollectionInvoice = require('../models/CollectionInvoice');
+  const sheets = await OperationsWorkflow.find(filter).select('reportNumber').lean();
+  const numbers = sheets.map((w) => String(w.reportNumber || '').trim()).filter(Boolean);
+  if (!numbers.length) return 0;
+  const $set = {};
+  if (deliveryDate !== undefined) $set.deliveryDate = deliveryDate;
+  if (collectionDate !== undefined) {
+    $set.collectionDate = collectionDate;
+    // رفعُ التاريخ يردّ الشحنةَ مفتوحةً، فلا تبقى حالتُها «محصَّلة» بلا تاريخ.
+    $set.status = collectionDate ? 'Collected' : '';
+  }
+  if (!Object.keys($set).length) return 0;
+  const r = await CollectionInvoice.updateMany({ kind: 'cash', invoiceNumber: { $in: numbers } }, { $set });
+  return r.modifiedCount || 0;
 };
 
 /**
@@ -1617,9 +1718,10 @@ exports.recordDelivery = async (req, res) => {
     const when = new Date(deliveryDate);
     const r = await OperationsWorkflow.updateMany(filter, { $set: { deliveryDate: when, lastModifiedBy: req.user._id } });
     await syncInvoiceLedger(invoiceNumber, { deliveryDate: when });
+    if (!invoiceNumber) await syncCashLedger(filter, { deliveryDate: when });
 
     cache.clear('wf:');
-    cache.clear(CACHE_PREFIX);
+    cache.clear(CACHE_PREFIX); cache.clear('cdr:');
     try { require('./collectionsLedgerController').invalidate(); } catch (_) {}
     await logAudit({
       user: req.user._id, action: 'record_delivery', entity: 'OperationsWorkflow',
@@ -1659,7 +1761,7 @@ exports.setCollectionDetail = async (req, res) => {
     );
 
     cache.clear('wf:');
-    cache.clear(CACHE_PREFIX);
+    cache.clear(CACHE_PREFIX); cache.clear('cdr:');
     await logAudit({
       user: req.user._id, action: 'set_collection_detail', entity: 'OperationsWorkflow',
       entityId: ids.length === 1 ? ids[0] : null,
@@ -1698,15 +1800,17 @@ exports.updateCashInvoice = async (req, res) => {
 
     await OperationsWorkflow.updateOne({ _id: wf._id }, { $set });
     // والفاتورةُ في الدفتر تُحدَّث معه — الوجهان لا يتحرّك أحدُهما وحدَه.
-    if (wf.invoiceNumber && ($set.deliveryDate !== undefined || $set.collectionDate !== undefined)) {
-      await syncInvoiceLedger(wf.invoiceNumber, {
+    if ($set.deliveryDate !== undefined || $set.collectionDate !== undefined) {
+      const dates = {
         ...($set.deliveryDate !== undefined ? { deliveryDate: $set.deliveryDate } : {}),
         ...($set.collectionDate !== undefined ? { collectionDate: $set.collectionDate } : {}),
-      });
+      };
+      if (wf.invoiceNumber) await syncInvoiceLedger(wf.invoiceNumber, dates);
+      await syncCashLedger({ _id: wf._id }, dates);
     }
 
     cache.clear('wf:');
-    cache.clear(CACHE_PREFIX);
+    cache.clear(CACHE_PREFIX); cache.clear('cdr:');
     try { require('./collectionsLedgerController').invalidate(); } catch (_) {}
     await logAudit({
       user: req.user._id, action: 'update', entity: 'OperationsWorkflow', entityId: wf._id,
@@ -1743,8 +1847,9 @@ exports.recordCollection = async (req, res) => {
     const r = await OperationsWorkflow.updateMany(filter, { $set });
     // والدفترُ الآخر معه — راجع syncInvoiceLedger.
     await syncInvoiceLedger(invoiceNumber, { collectionDate: $set.collectionDate });
+    if (!invoiceNumber) await syncCashLedger(filter, { collectionDate: $set.collectionDate });
     cache.clear('wf:');
-    cache.clear(CACHE_PREFIX);
+    cache.clear(CACHE_PREFIX); cache.clear('cdr:');
     try { require('./collectionsLedgerController').invalidate(); } catch (_) {}
 
     await logAudit({

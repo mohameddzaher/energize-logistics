@@ -29,6 +29,7 @@ import {
 import ScrollX from '@/components/system/ScrollX';
 
 const PAGE_SIZE = 100;
+interface ServerTotals { invoices: number; total: number; settled: number; outstanding: number; openInvoices: number }
 
 export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
   const { user } = useAuth();
@@ -102,6 +103,8 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
   const [partyType, setPartyType] = useState('');
   const [active, setActive] = useState('');
   const [onlyDue, setOnlyDue] = useState(false);
+  // مجاميعُ العملاء من الخادم على ما طابق الفلترَ كلِّه — لا مجموعُ الصفحة المعروضة.
+  const [serverTotals, setServerTotals] = useState<ServerTotals | null>(null);
 
   // ── ورقمٌ في لوحةٍ يجب أن يفتح صفوفَه ────────────────────────────────────
   // لوحةُ تقييم الفريق تعرض «حسابات ٥٧» و«(بلا مسؤول) ١٢» ولا سبيلَ إلى ما
@@ -131,11 +134,14 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
       if (active) p.set('active', active);
       if (assignedTo) p.set('officer', assignedTo);
       if (hasCode) p.set('hasCode', 'true');
-      const d = await api.get<{ parties: CollectionsParty[]; total: number; pages: number }>(
+      // «عليه مستحقّ» شرطٌ على القائمة كلِّها، فيُطبَّق في الخادم لا على المئة المحمَّلة.
+      if (onlyDue && kind === 'customer') p.set('owing', 'true');
+      const d = await api.get<{ parties: CollectionsParty[]; total: number; pages: number; totals?: ServerTotals | null }>(
         `/api/collections-dept/parties?${p.toString()}`,
       );
       if (!isCurrent(token)) return;
       setRows(d.parties || []);
+      setServerTotals(d.totals || null);
       setTotal(d.total || 0);
       setPages(d.pages || 1);
     } catch (e: any) {
@@ -144,7 +150,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
       if (isCurrent(token)) setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, page, q, status, city, partyType, active, assignedTo, hasCode]);
+  }, [kind, page, q, status, city, partyType, active, assignedTo, hasCode, onlyDue]);
 
   // البحثُ يُمهَل: نداءُ الخادم عند كلّ حرفٍ إسرافٌ على عنقودٍ مقيَّد.
   const first = useRef(true);
@@ -156,13 +162,13 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
 
   // تغييرُ الفلتر يعيد إلى الصفحة الأولى: البقاءُ على الصفحة السابعة بعد فلترٍ
   // يعيد صفّين هو ما يجعل الشاشة تظهر فارغةً بلا سبب.
-  useEffect(() => { setPage(1); }, [q, status, city, partyType, active]);
+  useEffect(() => { setPage(1); }, [q, status, city, partyType, active, onlyDue]);
 
   // ── وفلاتُر الأعمدة آخرُ ما يُطبَّق ──────────────────────────────────────
   // بعد البحث وشريحةِ «عليه مستحقّ» وكلِّ شيء — كما يفعل إكسل. و`base` هي ما
   // يقرؤه القمعُ ليبني قائمتَه، فتبقى بقيّةُ القيم معروضةً بعد اختيار واحدة.
   const cf = useColumnFilters<CollectionsParty>();
-  const base = useMemo(() => (onlyDue ? rows.filter((r) => (r.outstanding || 0) > 0) : rows), [rows, onlyDue]);
+  const base = useMemo(() => (onlyDue && kind !== 'customer' ? rows.filter((r) => (r.outstanding || 0) > 0) : rows), [rows, onlyDue, kind]);
 
   const save = async () => {
     if (!editing?.name?.trim()) { notify(t('الاسم مطلوب', 'Name required'), 'error'); return; }
@@ -251,7 +257,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
         cell: (p: any) => (
           <span className="tabular-nums">
             {money(p.reports)}
-            {p.openReports > 0 && <span className="text-[11px] text-red-500 ms-1">({money(p.openReports)})</span>}
+            {kind !== 'customer' && p.openReports > 0 && <span className="text-[11px] text-red-500 ms-1">({money(p.openReports)})</span>}
           </span>
         ) },
       { header: W.totalLabel, key: 'total', width: 16, align: 'end',
@@ -276,6 +282,8 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
     settled: a.settled + (r.settled || 0),
     outstanding: a.outstanding + (r.outstanding || 0),
   }), { reports: 0, total: 0, settled: 0, outstanding: 0 }), [shown]);
+
+  const sums = serverTotals && !cf.count ? { reports: totals.reports, ...serverTotals } : totals;
 
   const chooserCols: ChooserColumn[] = allCols.map((c, i) => ({ key: c.key, label: c.header, locked: i === 0 }));
   const { visible, setVisible } = useVisibleColumns(`collections:parties:${kind}:cols`, chooserCols);
@@ -372,9 +380,9 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <Stat label={W.title} value={money(total)} />
         <Stat label={t('كشوف', 'Reports')} value={money(totals.reports)} />
-        {!hideMoney && <Stat label={W.totalLabel} value={money(totals.total)} />}
-        {!hideMoney && <Stat label={W.settledLabel} value={money(totals.settled)} accent="text-emerald-600" />}
-        {!hideMoney && <Stat label={W.dueLabel} value={money(totals.outstanding)} accent={totals.outstanding > 0 ? 'text-red-600' : 'text-slate-900'} />}
+        {!hideMoney && <Stat label={W.totalLabel} value={money(sums.total)} />}
+        {!hideMoney && <Stat label={W.settledLabel} value={money(sums.settled)} accent="text-emerald-600" />}
+        {!hideMoney && <Stat label={W.dueLabel} value={money(sums.outstanding)} accent={sums.outstanding > 0 ? 'text-red-600' : 'text-slate-900'} />}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

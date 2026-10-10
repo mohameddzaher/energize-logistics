@@ -63,16 +63,35 @@ async function routePriceIndex() {
   return cache.wrap('opsprivate:routes', 60000, async () => {
     const { fold } = require('../models/CollectionsParty');
     const customers = await ShipmentOrderCustomer.find({ isActive: { $ne: false } })
-      .select('name routes.fromCity routes.toCity routes.price').lean();
+      .select('name routes.fromCity routes.toCity routes.price routes.tiers').lean();
     const map = new Map();
+    // ── ومسارُ الشرائح يُسعَّر بأعلى شريحةٍ فيه ─────────────────────────────
+    // ملفُّ العميل يحمل السعرَ بعدد السيارات («١–٥ بـ٢٥٠٠، ٦–١٠ بـ٣٠٠٠»).
+    // والكشفُ هنا سيارةٌ واحدة يأتي من منصّة التشغيل، ولا شيءَ فيه يقول كم
+    // سيارةً طلب العميل — فلا تُعرَف شريحتُه. فيُكتب له **أعلى** سعرٍ للمسار
+    // (قرارُ صاحب الشركة، إلى أن تُعرَف الكمّيّة)، ويُصحَّح بيده إن كان غيرَه:
+    // السعرُ المكتوبُ على الكشف يغلب دائمًا.
+    map.tiers = new Set();
     for (const c of customers) {
       for (const r of c.routes || []) {
+        const k = `${fold(c.name)}|${routeKey(r.fromCity, r.toCity)}`;
+        const top = Math.max(0, ...(r.tiers || []).map((t) => Number(t.price) || 0));
+        if (top > 0) { map.set(k, top); map.tiers.add(k); continue; }
         if (r.price == null) continue;
-        map.set(`${fold(c.name)}|${routeKey(r.fromCity, r.toCity)}`, Number(r.price));
+        map.set(k, Number(r.price));
       }
     }
     return map;
   });
+}
+
+/** مصدرُ سعر المسار: «شريحة» إن جاء من شرائح المسار، وإلّا «المسار». */
+function unitPrice(index, username, from, to) {
+  const { fold } = require('../models/CollectionsParty');
+  const k = `${fold(username || '')}|${routeKey(from, to)}`;
+  const p = index.get(k);
+  if (p == null) return null;
+  return { value: Number(p), source: index.tiers && index.tiers.has(k) ? 'tier' : 'route' };
 }
 
 /** سعرُ المسار لعميلٍ ومدينتين — أو `undefined` إن لم يكن له سعر. */
@@ -84,8 +103,8 @@ function routePrice(index, username, from, to) {
 /** سعرُ الكشف كما يُعرَض: المحفوظُ عندنا، وإلّا سعرُ مسار العميل، وإلّا صفر. */
 function resolvePrice(w, saved, index) {
   if (saved) return { value: num(saved.sellingValue), source: saved.source || 'manual', saved: true };
-  const p = routePrice(index, w.username, w.fromLocation, w.toLocation);
-  if (p != null) return { value: num(p), source: 'route', saved: false };
+  const p = unitPrice(index, w.username, w.fromLocation, w.toLocation);
+  if (p) return { value: num(p.value), source: p.source, saved: false };
   return { value: 0, source: '', saved: false };
 }
 
@@ -509,10 +528,12 @@ exports.updatePrice = async (req, res) => {
     // مَن صحّح سعرَ كشفٍ إنّما يقول «هذا سعرُنا على هذا المسار اليوم». فيرثه
     // كلُّ كشفٍ بعده بلا أن يُكتب مرّةً ثانية — وهو نفسُه الرقمُ الذي تقترحه
     // شاشةُ إنشاء الشحنة.
+    // ولا يُعلِّمه إلّا من له أن يكتب سعرَ وجهة: غيرُه يصحّح سعرَ هذا الكشف
+    // وحدَه، ولا يصير تصحيحُه سعرَ المسار لكلّ كشفٍ بعده.
     let learned = null;
     try {
-      const { learnRouteByName } = require('../utils/customerRoutes');
-      learned = await learnRouteByName(w.username, {
+      const { learnRouteByName, canEditPrices } = require('../utils/customerRoutes');
+      if (canEditPrices(req.user.role)) learned = await learnRouteByName(w.username, {
         fromCity: w.fromLocation,
         toCity: w.toLocation,
         price: value,

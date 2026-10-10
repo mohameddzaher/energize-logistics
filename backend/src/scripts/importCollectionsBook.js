@@ -90,6 +90,28 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
     : []);
   const body = (n, headerRow) => raw(n).slice(headerRow + 1);
 
+  // ── والأعمدةُ تُقرأ بأسمائها لا بمواضعها ─────────────────────────────────
+  //
+  // ورقةُ الفواتير حُذف منها عمودُ «Exit Date» بين ملفّ سبتمبر وملفّ أكتوبر،
+  // فانزاح كلُّ ما بعده خانةً: قُرئت «Supervisor Comments» تاريخَ خروجٍ (فضاعت)
+  // وقُرئ «Days TTL» ملاحظةً — ٩٣٦٤ فاتورةً ملاحظتُها رقمٌ مثل «46301».
+  // وكان الرأسُ يُفترَض في صفٍّ بعينه فيُتخطّى أوّلُ صفّ بياناتٍ بعده.
+  //
+  // فيُبحَث عن صفّ الرأس («Code») ويُقرأ كلُّ عمودٍ باسمه؛ والعمودُ الغائبُ
+  // يُقرأ فارغًا ويُقال، لا يُؤخَذ جارُه مكانَه.
+  const table = (n) => {
+    const rows = raw(n);
+    const h = rows.findIndex((r) => r && S(r[0]).toLowerCase() === 'code');
+    if (h < 0) return { rows: [], col: () => -1 };
+    const names = rows[h].map((c) => S(c).toLowerCase().replace(/\s+/g, ' '));
+    const col = (...wanted) => {
+      for (const w of wanted) { const i = names.indexOf(w); if (i >= 0) return i; }
+      return -1;
+    };
+    return { rows: rows.slice(h + 1), col };
+  };
+  const at = (r, i) => (i >= 0 ? r[i] : null);
+
   // ═══ ١ · الحسابات ═══════════════════════════════════════════════════════
   // Aging          0 Code 1 Name 2 Officer 3 HO 4 Grade 5 Sales 6 Dept 7 limit
   //                8 Status 9 CreditDays 10 Outstanding 11..20 أعمار 21 Contracts
@@ -150,15 +172,26 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   //                      10 ExitDate 11 Comments 12 DaysTTL
   const invoices = [];
   let skippedNoInv = 0; let skippedTotals = 0;
-  for (const r of body('Daily Invoice Report', 6)) {
+  const dirSheet = table('Daily Invoice Report');
+  const DC = {
+    // عمودُ الرقم سُمّي «Invoice No» ثمّ «Column2» — وهو الثالثُ في الحالين.
+    num: Math.max(dirSheet.col('invoice no', 'column2'), 2),
+    total: dirSheet.col('total outstanding'), invoiceDate: dirSheet.col('invoice date'),
+    deliveryDate: dirSheet.col('delivery date'), collectionDate: dirSheet.col('collection date'),
+    status: dirSheet.col('status'), exitDate: dirSheet.col('exit date'), comments: dirSheet.col('supervisor comments'),
+  };
+  for (const [k, i] of Object.entries(DC)) {
+    if (i < 0 && k !== 'exitDate') { console.error(`  ✘ ورقةُ الفواتير بلا عمود «${k}» — لا يُستورَد ملفٌّ لا يُعرَف شكلُه`); process.exit(1); }
+  }
+  for (const r of dirSheet.rows) {
     const name = S(r[1]);
     if (name && TOTALS_ROW.test(name)) { skippedTotals += 1; continue; }
-    const num = S(r[2]);
+    const num = S(r[DC.num]);
     if (!num || NO_INVOICE.test(num)) { if (num || name) skippedNoInv += 1; continue; }
     invoices.push({
-      kind: 'tax', sheetCode: S(r[0]), partyName: name, invoiceNumber: num, total: N(r[3]),
-      invoiceDate: D(r[4]), deliveryDate: D(r[6]), collectionDate: D(r[8]),
-      status: S(r[9]), exitDate: D(r[10]), comments: S(r[11]),
+      kind: 'tax', sheetCode: S(r[0]), partyName: name, invoiceNumber: num, total: N(at(r, DC.total)),
+      invoiceDate: D(at(r, DC.invoiceDate)), deliveryDate: D(at(r, DC.deliveryDate)), collectionDate: D(at(r, DC.collectionDate)),
+      status: S(at(r, DC.status)), exitDate: D(at(r, DC.exitDate)), comments: S(at(r, DC.comments)),
     });
   }
 

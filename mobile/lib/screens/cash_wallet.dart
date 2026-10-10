@@ -11,6 +11,10 @@ import '../ui/widgets.dart';
 
 /// المحفظة اليومية (النقدية) — محفظة الفرع اليومية: التحصيلات والمصروفات
 /// والمشتريات، مع تسجيل حركة وإغلاق اليوم — /api/wallet/daily.
+// أهلُ المال يملكون في المحفظة ما يملكه مديرُ النظام — مرآةُ
+// backend/src/config/financeAuthority.js؛ والخادمُ هو الحارس.
+bool _financePowers(String role) => const {'super_admin', 'cfo', 'accounting_manager', 'accountant'}.contains(role);
+
 class CashWalletScreen extends StatefulWidget {
   const CashWalletScreen({super.key});
   @override
@@ -408,7 +412,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
                             // ومديرُ النظام وحدَه بلا حدّ: الحدّان حمايةٌ من الخطأ اليوميّ لا
                             // قاعدةٌ محاسبيّة، ويبقى بعدهما تصحيحٌ حقيقيّ يحتاج بابًا —
                             // راجع backend/src/config/walletStart.js.
-                            final free = context.read<AuthProvider>().role == 'super_admin';
+                            final free = _financePowers(context.read<AuthProvider>().role);
                             final v = await showDatePicker(
                                 context: context,
                                 initialDate: _date,
@@ -477,7 +481,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
                       // ولا يُعرَض البابُ لمن لا يملكه: الحارسُ في الخادم
                       // (`super_admin`)، وزرٌّ يُضغَط ليُقال «لا صلاحية» عطبٌ
                       // في الشاشة لا حماية.
-                      final canMove = context.read<AuthProvider>().role == 'super_admin';
+                      final canMove = _financePowers(context.read<AuthProvider>().role);
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: GestureDetector(

@@ -12,7 +12,7 @@ const authorize = require('../middleware/rbac');
 // authenticate + sectionGate('B2C') مطبَّقان عند التركيب في server.js.
 // أدوارُ القسم أوّلًا، ومن مُنح القسمَ من مصفوفة الصلاحيّات يمرّ بـ`authorize`
 // نفسِها (هي تقرأ `req.sectionAccess`) — راجع middleware/sectionGate.
-const EDIT = ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead', 'it_manager'];
+const EDIT = ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead', 'it_manager', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
 
 // لوحةُ القسم — نداءٌ واحدٌ يحسب الموظّفين والمركبات والسكن معًا.
 router.get('/overview', c.overview);

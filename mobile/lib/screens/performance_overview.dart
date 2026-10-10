@@ -107,6 +107,13 @@ class _PerformanceOverviewScreenState extends State<PerformanceOverviewScreen> {
                                 Expanded(child: Text((dep['department'] ?? '—').toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
                                 if (dep['avgPercentage'] != null) Chip2(_pct(dep['avgPercentage']), T.orange),
                               ]),
+                              // من أيّ صفحةِ قسمٍ يُقيَّم — كما في الويب.
+                              Text(
+                                (dep['sectionAr'] ?? '').toString().isNotEmpty
+                                    ? tr('يُقيَّم من صفحة: ${dep['sectionAr']}', 'Evaluated from: ${dep['section']}')
+                                    : tr('لا يتبع صفحة قسم — يقيّمه مدير النظام', 'No section page — evaluated by the system admin'),
+                                style: const TextStyle(fontSize: 11, color: T.inkFaint),
+                              ),
                               const SizedBox(height: 8),
                               Row(children: [
                                 Expanded(child: Stack(children: [

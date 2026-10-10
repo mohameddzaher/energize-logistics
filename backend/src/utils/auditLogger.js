@@ -22,7 +22,9 @@ const isObjectId = (v) => !!v && mongoose.Types.ObjectId.isValid(String(v)) && S
 // الإنتاج (`AUDIT_SUPPRESS=1`، وتضعها سكربتاتُ الفحص) لم يُكتب شيء.
 const SUPPRESSED = process.env.AUDIT_SUPPRESS === '1';
 
-const logAudit = async ({ user, action, entity, entityId, entityKey, changes, ipAddress, bySystem }) => {
+const logAudit = async ({
+  user, action, entity, entityId, entityKey, changes, ipAddress, bySystem, details, ip,
+}) => {
   if (SUPPRESSED) return;
   try {
     // الفاعلُ إمّا إنسانٌ وإمّا النظامُ صراحةً. وغيابُهما معًا خطأُ نداءٍ: يُقيَّد
@@ -58,7 +60,7 @@ const logAudit = async ({ user, action, entity, entityId, entityKey, changes, ip
 
     const id = isObjectId(entityId) ? entityId : undefined;
     const key = entityKey || (entityId != null && id === undefined ? String(entityId) : '');
-    await AuditLog.create({
+    const entry = await AuditLog.create({
       user: actor || undefined,
       bySystem: !actor,
       // يُلتقط الاسمُ الآن لا يُقرأ لاحقًا — راجع models/AuditLog.
@@ -68,9 +70,17 @@ const logAudit = async ({ user, action, entity, entityId, entityKey, changes, ip
       entity,
       entityId: id,
       entityKey: key,
-      changes,
-      ipAddress,
+      // ── و`details` لا تُرمى ──────────────────────────────────────────────
+      // التعديلُ الجماعيّ في كشوف التشغيل يمرّر وصفَه في `details` وعنوانَه في
+      // `ip` — اسمان لا يعرفهما هذا النداء، فكُتب اثنان وخمسون قيدًا بلا أيّ
+      // تفصيل: «تعديل جماعي» ولا يُعرَف كم كشفًا ولا أيَّ حقل. فيُحفَظ الوصفُ
+      // حيث تُقرأ التفاصيل.
+      changes: changes !== undefined ? changes : (details ? { details } : undefined),
+      ipAddress: ipAddress || ip,
     });
+    // والفعلُ يصير خبرًا في الجرس لمن يحقّ له — راجع services/activityFeed.
+    // لا يُنتظَر: الخبرُ لا يؤخّر الفعلَ ولا يُفشله.
+    require('../services/activityFeed').announce(entry.toObject());
   } catch (error) {
     console.error('Audit log error:', error.message);
   }

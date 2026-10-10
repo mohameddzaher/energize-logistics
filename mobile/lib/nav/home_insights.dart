@@ -31,11 +31,12 @@ const _finance = HomeInsight('الإدارة المالية', 'Finance snapshot'
 // ── ولا «ما علينا» لمن يُحصِّل ────────────────────────────────────────────
 // القسمُ يُحصِّل، وما ندفعه للموردين شأنُ الإدارة والمالية. فنظرتُهم على وجهٍ
 // واحد — وللإدارة نظرتُها الكاملة في لوحة القسم.
-const _collections = HomeInsight('نظرة التحصيل', 'Collections snapshot', '/api/collections-dept/dashboard', 'collections:party', [
-  HomeKpi('المستحق لنا', 'Receivable', 'customers.outstanding', Icons.call_received_rounded, T.danger, money: true),
-  HomeKpi('المحصَّل', 'Collected', 'customers.settled', Icons.task_alt_rounded, T.success, money: true),
-  HomeKpi('كشوف لم تُحصَّل', 'Uncollected', 'customers.openReports', Icons.pending_actions_outlined, T.info),
-  HomeKpi('إجمالي المبيعات', 'Total billed', 'customers.total', Icons.receipt_long_outlined, T.navy, money: true),
+// ومن دفتر الفواتير لا من كشوف التشغيل — راجع collectionsDashSpec.
+const _collections = HomeInsight('نظرة التحصيل', 'Collections snapshot', '/api/collections-dept/receivables/overview', 'collections:party', [
+  HomeKpi('إجمالي المديونية', 'Receivable', 'tree.all.value', Icons.call_received_rounded, T.danger, money: true),
+  HomeKpi('في موعده', 'Within terms', 'tree.tax.within.value', Icons.task_alt_rounded, T.success, money: true),
+  HomeKpi('متأخّر', 'Late', 'tree.tax.late.value', Icons.schedule_outlined, T.orange, money: true),
+  HomeKpi('فواتير مفتوحة', 'Open invoices', 'tree.all.count', Icons.pending_actions_outlined, T.info),
 ]);
 
 const _fleet = HomeInsight('نظرة الأسطول', 'Fleet snapshot', '/api/fleet/dashboard', 'fleet:updated', [

@@ -43,7 +43,7 @@ const filled = (v) => !(v === null || v === undefined || v === '' || (Array.isAr
 const rx = (s) => new RegExp(String(s).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
 /**
- * حالة حقل عند موظف: مطلوب / غير مطلوب / لا يوجد / مملي.
+ * حالة حقل عند موظف: مطلوب / غير مطلوب / لا يوجد / مُدخَل.
  *
  * القيمة الموجودة تسبق العَلَم الإداري: حقلٌ فيه تاريخ إقامة مكتوب ليس «مطلوبًا»
  * مهما قال العَلَم — العَلَم أثرٌ قديم من قبل أن يُملأ الحقل، وإبقاؤه يضع اسمًا
@@ -65,6 +65,26 @@ const statusOf = (emp, fieldKey) => {
 // عتبات التنبيه — نفس فكرة المركبات. لو حبينا نخلّيها قابلة للتعديل بعدين،
 // المكان ده هو اللي هيتغيّر.
 const ALERT = { warnDays: 60, criticalDays: 30 };
+
+/**
+ * ── مستنداتُ مَن تُتابَع؟ ────────────────────────────────────────────────────
+ *
+ * رقمُ «الانتهاءات» في الشريط كان ٥٦٨ وصفحتُه تفتح على ٤٤٣ — رقمان لشيءٍ واحد.
+ * والسببُ أنّ كلًّا منهما عدَّ قومًا: الشريطُ والبطاقاتُ يعدّان الملفَّ كلَّه ومعه
+ * مئةٌ وأربعةٌ انتهت خدمتُهم (إقامةُ مَن غادر قبل سنةٍ «منتهيةٌ» إلى الأبد، ولا
+ * عملَ فيها)، والصفحةُ تعدّ مَن «على رأس العمل» وحدَهم فتُسقِط مَن في إجازةٍ أو
+ * موقوفًا — وهؤلاء بالذات مَن تفوت مستنداتُهم.
+ *
+ * فالقاعدةُ واحدةٌ تُكتب هنا مرّةً ويقرؤها الثلاثة: ما لم يُطلَب صراحةً غيرُ
+ * ذلك، تُعَدّ الانتهاءاتُ لكلّ مَن **لم تنتهِ خدمتُه**. ومَن اختار حالةَ توظيفٍ
+ * بيده فاختيارُه يسبق — و`employment=all` يُرجع الملفَّ كلَّه بمن غادر.
+ *
+ * والنطاقُ يُرسَل مع الأرقام (`expiryScope`) فتحمله الروابطُ كما هو: الرقمُ
+ * والجدولُ الذي يفتحه يقرآن الشرطَ نفسَه بالبناء لا بالمصادفة.
+ */
+const EXPIRY_SCOPE = { employment: 'current' };
+const hasEmploymentFilter = (q) => !!q.employment || ['active', 'inactive'].includes(q.status);
+const expiryScopeOf = (q) => (hasEmploymentFilter(q || {}) ? {} : EXPIRY_SCOPE);
 // ── والعمودُ المشتقُّ لا يُعَدّ ولا يُستعلَم ──────────────────────────────────
 // لكلّ تاريخٍ توأمٌ هجريٌّ في التعريف (راجع config/hrFields)، وهو **مشتقٌّ** لا
 // مخزَّن. فلو دخل في قوائم العدّ لقُرئ فارغًا في القاعدة فعُدَّ «مطلوبًا» —
@@ -123,6 +143,13 @@ function buildFilter(q) {
   const employment = q.employment || (['active', 'inactive'].includes(q.status) ? q.status : '');
   if (employment === 'active') f.employmentStatus = 'active';
   if (employment === 'inactive') f.employmentStatus = { $ne: 'active' };
+  // ── و«على قوّة العمل» غيرُ «على رأس العمل» ───────────────────────────────
+  // مَن في إجازةٍ أو موقوفٌ ليس «على رأس العمل» اليوم، لكنّه موظّفٌ قائمٌ
+  // تُجدَّد إقامتُه ورخصتُه. و`inactive` تجمعه مع مَن انتهت خدمتُه، فلا تصلح
+  // لسؤال «مستنداتُ مَن تُتابَع؟». فهذه القيمةُ هي الجواب: كلُّ مَن لم تنتهِ
+  // خدمتُه — راجع EXPIRY_SCOPE.
+  if (employment === 'current') f.employmentStatus = { $ne: 'terminated' };
+  if (employment === 'terminated') f.employmentStatus = 'terminated';
   // ── الفلترة بأكثر من قيمة، وبأكثر من حقل معًا ──────────────────────────────
   // «أرِني الباكستانيين والهنود، الذكور، في النقل الثقيل، بجدة ومكة» سؤال واحد
   // لا أربعة. كان كل حقل يقبل قيمةً واحدة، فيُجيب عن ربعه.
@@ -315,6 +342,23 @@ async function findEmployees(q, select) {
   const rows = await query.lean();
   const pred = dateRangePred(q);
   return pred ? rows.filter(pred) : rows;
+}
+
+/**
+ * شرطُ القاعدة المكافئُ لكلّ فلاتر الاستعلام — ومعها مدى التواريخ.
+ *
+ * العدُّ انتقل إلى القاعدة (راجع utils/hrCounts) وبقي مدى التواريخ شرطًا يُطبَّق
+ * في العقدة بعد الجلب. فكانت اللوحةُ تعدّ بـ`buildFilter` وحدَها: يُختار «العمر
+ * من ٢٥ إلى ٣٠» فيقول عدّادُ الفلتر ٥٤ وتبقى البطاقاتُ كلُّها على ٤٤١ — فلترٌ
+ * يظهر مطبَّقًا ولا يحرّك رقمًا. فحين يوجد مدًى تُحسَم المطابقةُ أوّلًا إلى
+ * قائمةِ معرّفات، وهي التي تُعَدّ.
+ */
+async function matchFor(q) {
+  const match = buildFilter(q);
+  const pred = dateRangePred(q);
+  if (!pred) return match;
+  const rows = await Employee.find(match).select(['_id', ...DATE_FILTERABLE].join(' ')).lean();
+  return { _id: { $in: rows.filter(pred).map((r) => r._id) } };
 }
 
 // ── تحليلات مشتقّة ─────────────────────────────────────────────────────────
@@ -517,16 +561,20 @@ exports.overview = async (req, res) => {
     // وقد قُورنت النتيجةُ بالحساب القديم حقلًا حقلًا وحالةً حالة — مطابقةٌ
     // تمامًا (راجع auditHrCountsParity و auditHrStatesParity).
     const { statusCounts, valueDistributions, boolCounts, docStateCounts, filledExpr } = require('../utils/hrCounts');
-    const match = buildFilter(req.query);
+    const match = await matchFor(req.query);
+    // حالاتُ الانتهاء تُعَدّ لمن لم تنتهِ خدمتُه — راجع EXPIRY_SCOPE.
+    const expiryScope = expiryScopeOf(req.query);
+    const docMatch = expiryScope.employment ? { $and: [match, buildFilter(expiryScope)] } : match;
     const allKeys = storedKeys();
     const groupableKeys = [...new Set(H.GROUPS.flatMap((g) => g.fields.filter((f) => f.groupable).map((f) => f.key)))];
 
     const [counts, dists, states, sums] = await Promise.all([
       statusCounts(Employee, match, allKeys),
       valueDistributions(Employee, match, groupableKeys),
-      docStateCounts(Employee, match, H.GROUPS, ALERT),
+      docStateCounts(Employee, docMatch, H.GROUPS, ALERT),
       boolCounts(Employee, match, {
         active: { $eq: ['$employmentStatus', 'active'] },
+        terminated: { $eq: ['$employmentStatus', 'terminated'] },
         outsideKingdom: { $eq: ['$isOutsideKingdom', true] },
         freelancers: { $eq: ['$isFreelancer', true] },
         gosiRegistered: filledExpr('gosiNumber'),
@@ -536,17 +584,27 @@ exports.overview = async (req, res) => {
     const employeeCount = sums.total;
 
     // مُعرِّفاتُ الموظّفين المطابقين — تحتاجها عدّاداتُ الإجازات والطلبات والعهد.
-    const empIdRows = await Employee.find(match).select('_id').lean();
-    const employees = empIdRows;                       // لم يعد يُقرأ منها إلّا `_id`
+    //
+    // ── ومعها تواريخُ التحليلات ───────────────────────────────────────────────
+    // حين نُقل العدُّ إلى القاعدة قُصر هذا الاستعلامُ على `_id`، وبقيت
+    // `buildAnalytics` تقرأ منه تاريخَ الميلاد والتعيين وتواريخَ الانتهاء — فقرأت
+    // فراغًا: كلُّ شريحةٍ صفر، و«بلا تاريخ» تساوي عددَ الموظّفين كلِّهم. أحدَ
+    // عشرَ تاريخًا قصيرًا لكلّ موظّفٍ حمولةٌ صغيرة، وبغيرها القسمُ كلُّه كاذب.
+    const empIdRows = await Employee.find(match)
+      .select(['_id', 'dateOfBirth', 'hireDate', ...HORIZON_DOCS.map((x) => x.key)].join(' ')).lean();
+    const employees = empIdRows;
 
     // ── كارت لكل حقل ─────────────────────────────────────────────────────────
-    // العدّادات الأربعة هي اللي المستخدم طلبها بالاسم: مطلوب، غير مطلوب، مملي،
+    // العدّادات الأربعة هي اللي المستخدم طلبها بالاسم: مطلوب، غير مطلوب، مُدخَل،
     // والإجمالي. وكل واحد معاه الفلتر اللي بيفتح الناس دول بالظبط.
     const countsOf = (key) => counts[key] || {};
     const groups = H.GROUPS.map((g) => {
       const fields = g.fields.map((f) => {
         const counts = { required: 0, not_required: 0, none: 0, filled: 0, cash_payroll: 0, inactive: 0, unparseable: 0 };
-        Object.assign(counts, counts, countsOf(f.key));
+        // التوأمُ الهجريُّ مشتقٌّ: حالتُه حالةُ أصله الميلاديّ (وهكذا تعدّه صفحةُ
+        // المجموعة). وكان يُعَدّ بمفتاحه هو فيخرج صفرًا في الأربعة — سطرٌ بلا
+        // رقمٍ في اللوحة، وأرقامُه كاملةٌ في الصفحة التي يفتحها.
+        Object.assign(counts, countsOf(f.of || f.key));
         // ── التوزيع في البطاقة: أعلى القيم لا كلُّها ────────────────────────────
         // أعمدةٌ مفتاحُها فريدٌ لكلّ موظّف (البريد، الرقم الوظيفيّ، جوال أبشر)
         // توزيعُها ثلاثمئةٌ وستّون سطرًا كلٌّ منها «١» — ليس توزيعًا يُقرأ، وهو
@@ -560,7 +618,8 @@ exports.overview = async (req, res) => {
           total: employeeCount,
           counts,
           // «مطلوب» هو الرقم اللي بيتصرف فيه — بيتقدّم في الترتيب.
-          required: counts.required,
+          // والمشتقُّ لا يدخل المجموع: نقصُه نقصُ أصله، فلو جُمع لعُدَّ مرّتين.
+          required: f.derived ? 0 : counts.required,
           values: dist ? dist.list : undefined,
           valuesTotal: dist ? dist.total : undefined,
         };
@@ -598,6 +657,9 @@ exports.overview = async (req, res) => {
       employees: employeeCount,
       active: activeCount,
       notActive: employeeCount - activeCount,
+      // «ليس على رأس العمل» يجمع مَن انتهت خدمتُه ومَن في إجازةٍ أو موقوف —
+      // والثاني ليس مغادرًا. فيُرسَل عددُ المنتهية خدمتُهم وحدَه بجانبه.
+      terminated: sums.terminated,
       // إجمالي الملفّ الوظيفيّ — تعرضه الشاشة بجانب الرقم المفلتر ليُعرف من أيٍّ
       // اقتُطع، لا لتحلّ محلّه.
       roster: rosterTotal,
@@ -633,7 +695,12 @@ exports.overview = async (req, res) => {
       .sort((a, b) => b.required - a.required)
       .slice(0, 12);
 
-    const body = { totals, work, groups, topRequired, analytics: buildAnalytics(employees), alert: ALERT, statuses: H.STATUS_LABELS, states: H.STATE_LABELS };
+    const body = {
+      totals, work, groups, topRequired, analytics: buildAnalytics(employees), alert: ALERT,
+      // الشرطُ الذي عُدَّت به الانتهاءات — تحمله الروابطُ فيفتح الرقمُ صفوفَه.
+      expiryScope,
+      statuses: H.STATUS_LABELS, states: H.STATE_LABELS,
+    };
     // زيادة TTL الـ cache من 20s إلى 60s لتقليل الحسابات المتكررة
     cache.set(key, body, 60000);
     res.json(body);
@@ -709,19 +776,39 @@ exports.records = async (req, res) => {
       };
     });
 
-    if (field && wantStatus) rows = rows.filter((r) => r.statuses[field] === wantStatus);
-    else if (wantStatus) rows = rows.filter((r) => g.fields.some((f) => r.statuses[f.key] === wantStatus));
+    const statusPass = (r) => {
+      if (!wantStatus) return true;
+      if (field) return r.statuses[field] === wantStatus;
+      return g.fields.some((f) => r.statuses[f.key] === wantStatus);
+    };
     // ── و«يحتاج انتباهًا» حالةٌ تُطلَب باسمها ──────────────────────────────
     // الشريطُ يعرض رقمَ المنتهي والحرج والقريب مجموعةً (`needsAttention`).
     // وبغير قيمةٍ تجمعها لا يستطيع الضغطُ على الرقم أن يفتح صفوفَه بعينها —
     // فيقرأ المستخدم رقمًا ويفتح جدولًا فيه غيرُه، وهو أصلُ الشكوى.
     const ATTENTION = ['expired', 'critical', 'warning'];
-    if (wantState === 'attention') rows = rows.filter((r) => ATTENTION.includes(r.state));
-    else if (wantState) rows = rows.filter((r) => r.state === wantState);
+    const statePass = (r) => {
+      if (!wantState) return true;
+      return wantState === 'attention' ? ATTENTION.includes(r.state) : r.state === wantState;
+    };
     if (withinDays !== null && g.document) {
       rows = rows.filter((r) => r.daysRemaining != null && r.daysRemaining <= withinDays
         && (includeExpired || r.daysRemaining >= 0));
     }
+    // ── والعدّادُ لا يُفلتَر بنفسه ─────────────────────────────────────────────
+    //
+    // كان الملخّصُ يُحسَب على الصفوف **بعد** الضغط على العدّاد. فمَن ضغط «مطلوب ٤»
+    // في «حالة العقد» رأى البطاقةَ نفسَها تنكمش إلى «مطلوب ٤» وحدَها وتختفي
+    // «غير مطلوب ٧٨» و«مُدخَل ٣٣٣» — وبقيّةُ البطاقات تُعَدّ على الأربعة. فلا
+    // يُنتقَل من عدّادٍ إلى جاره إلّا برفع الأوّل، ومجموعُ الأربعة لم يعد عددَ
+    // الموظّفين.
+    //
+    // فكلُّ طائفةٍ من العدّادات تُحسَب بكلّ الفلاتر **عدا فلترَها هي** — القاعدةُ
+    // نفسُها التي تُحسَب بها قيمُ لوحة الفلترة (راجع filterOptions): عدّاداتُ
+    // الحالة لا يحرّكها اختيارُ حالة، وبطاقاتُ الانتهاء لا يحرّكها اختيارُ
+    // انتهاء. والرقمُ المضغوطُ يبقى عددَ الصفوف التي يفتحها بالضبط.
+    const forStatusCounts = rows.filter(statePass);
+    const forStateCounts = rows.filter(statusPass);
+    rows = forStatusCounts.filter(statusPass);
 
     // الترتيب: بالأقرب انتهاءً افتراضيًا للمستندات، وبالاسم لغيرها.
     const dir = req.query.dir === 'desc' ? -1 : 1;
@@ -733,15 +820,15 @@ exports.records = async (req, res) => {
       return String(av).localeCompare(String(bv), 'ar') * dir;
     });
 
-    // ملخّص محسوب على **نفس** الصفوف المعروضة.
-    const summary = { total: rows.length };
+    // `population` مقامُ عدّادات الحالة: مجموعُ حالات أيّ حقلٍ يساويه دائمًا.
+    const summary = { total: rows.length, population: forStatusCounts.length };
     for (const f of g.fields) {
       summary[f.key] = { required: 0, not_required: 0, none: 0, filled: 0 };
-      for (const r of rows) summary[f.key][r.statuses[f.key]] = (summary[f.key][r.statuses[f.key]] || 0) + 1;
+      for (const r of forStatusCounts) summary[f.key][r.statuses[f.key]] = (summary[f.key][r.statuses[f.key]] || 0) + 1;
     }
     if (g.document) {
       summary.states = { valid: 0, warning: 0, critical: 0, expired: 0, missing: 0, not_applicable: 0 };
-      for (const r of rows) if (r.state) summary.states[r.state] += 1;
+      for (const r of forStateCounts) if (r.state) summary.states[r.state] += 1;
     }
 
     const body = {
@@ -1044,7 +1131,9 @@ exports.expiring = async (req, res) => {
     const includeExpired = req.query.includeExpired !== '0';
     const wantState = req.query.state || '';
 
-    const employees = await findEmployees(req.query,
+    // النطاقُ نفسُه الذي عُدَّ به رقمُ الشريط — راجع EXPIRY_SCOPE.
+    const scope = expiryScopeOf(req.query);
+    const employees = await findEmployees({ ...req.query, ...scope },
       [...new Set(['employeeNumber', 'arabicName', 'firstName', 'lastName', 'iqamaNumber',
         'department', 'branchName', 'fieldStatus', ...DATE_FILTERABLE,
         ...H.DOCUMENT_GROUPS.map((g) => g.expiryField)])].join(' '));
@@ -1080,6 +1169,7 @@ exports.expiring = async (req, res) => {
       rows: rows.slice(0, 2000), summary,
       byDoc: H.DOCUMENT_GROUPS.map((g) => ({ key: g.key, ar: g.ar, en: g.en, count: byDoc[g.key] || 0 })),
       withinDays,
+      alert: ALERT, expiryScope: scope,
     };
     cache.set(ck, body, 60000);
     res.json(body);
@@ -1263,7 +1353,7 @@ exports.renewBulk = async (req, res) => {
     });
 
     if (errors.length) {
-      return res.status(400).json({ message: 'العملية اترفضت — مفيش أي مستند اتجدّد', errors });
+      return res.status(400).json({ message: 'رُفضت العملية كاملةً — لم يُجدَّد أي مستند', errors });
     }
 
     // ② الكتابة.
@@ -1333,7 +1423,7 @@ exports.byDepartment = async (req, res) => {
     const hit = cache.get(key);
     if (hit !== undefined) return res.json(hit);
 
-    const match = buildFilter(req.query);
+    const match = await matchFor(req.query);
     const allKeys = storedKeys();
     // ── و«ناقص» تُقرأ بالقاعدة نفسِها التي تقرؤها اللوحة ────────────────────
     // `statusExpr` هو تعريفُ حالة الخانة في القاعدة (راجع utils/hrCounts):

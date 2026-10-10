@@ -2,9 +2,9 @@
 // TeamBoard — the manager's KPI evaluation board (لوحة تقييم الأداء).
 //
 // One component, mounted from every section's own /kpis page as well as the
-// central /system/performance page. The API already scopes the result to the
-// CALLER's own team, so the same board is correct everywhere — the section is
-// just where the page lives in the menu.
+// central /system/performance page. The API decides who is listed: a section
+// page shows the employees of the HR department(s) that section owns, and the
+// cards are grouped under the department written in each employee's HR file.
 //
 // Shows the period's headline numbers, then one card per team member with a
 // colour bar telling you at a glance whether they've been graded and how they
@@ -24,12 +24,13 @@ import { exportToExcel } from '@/utils/exportExcel';
 import {
   isPerfStaff, isPerfFull, bandStyle, bandLabel, bonusLabel,
   pct, score5, periodLabel, periodKey, currentPeriod,
-  type Lang, type Period, type TeamMember, type Settings, type Band,
+  type Lang, type Period, type TeamMember, type Settings, type Band, type DeptGroup,
 } from '@/lib/performance';
 
 interface TeamResponse {
   period: Period; periodKey: string; periodLabel: string;
   members: TeamMember[];
+  groups?: DeptGroup[];
   summary: {
     total: number; evaluated: number; drafts: number; pending: number; noTemplate: number;
     avgPercentage: number | null; totalBonusSalaries: number;
@@ -94,10 +95,8 @@ export default function TeamBoard({ title, subtitle, department, section, showSc
   /**
    * قسمُ النظام الذي تخصّه هذه الصفحة.
    *
-   * صفحاتُ التقييم واحدةٌ في كلّ قسم، وكانت لا ترسل ما يميّزها — فيرى مديرُ
-   * النظام قائمةَ مديري الأقسام في كلّ صفحةٍ منها، ويرى مديرُ القسم فريقَه
-   * نفسَه في صفحة قسمٍ ليس قسمَه. والخادمُ يقرأ هذا فيردّ فريقَ ذلك القسم
-   * بعينه — راجع sectionScope.
+   * الخادمُ يقرأ هذا فيردّ موظّفي الأقسام التي تملكها هذه الصفحة بحسب ملفّاتهم
+   * في الموارد البشريّة — راجع config/performanceDepartments في الخادم.
    */
   section?: string;
   showScopeToggle?: boolean;
@@ -147,6 +146,26 @@ export default function TeamBoard({ title, subtitle, department, section, showSc
     if (s) rows = rows.filter((m) => [m.name, m.jobTitle, m.employeeNumber, m.department].some((x) => String(x || '').toLowerCase().includes(s)));
     return rows;
   }, [data, filter, q]);
+
+  // ── البطاقاتُ تحت أقسامها ────────────────────────────────────────────────
+  // القسمُ ما كُتب في ملفّ الموظّف، بترتيب الخادم (الأكبرُ أوّلًا و«بدون قسم»
+  // آخرًا). والعنوانُ يظهر متى تعدّدت الأقسام؛ قائمةُ قسمٍ واحدٍ لا تحتاجه.
+  const grouped = useMemo(() => {
+    const by = new Map<string, TeamMember[]>();
+    for (const m of members) {
+      const k = m.departmentKey || m.department || '';
+      if (!by.has(k)) by.set(k, []);
+      by.get(k)!.push(m);
+    }
+    const order = (data?.groups || []).map((g) => g.key);
+    const info = new Map((data?.groups || []).map((g) => [g.key, g] as const));
+    return [...by.entries()]
+      .sort((a, b) => {
+        const ia = order.indexOf(a[0]); const ib = order.indexOf(b[0]);
+        return (ia < 0 ? order.length : ia) - (ib < 0 ? order.length : ib);
+      })
+      .map(([key, rows]) => ({ key, rows, info: info.get(key) }));
+  }, [members, data]);
 
   if (!isPerfStaff(user?.role)) {
     return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية لهذا القسم' : 'You do not have access to this section'}</div>;
@@ -275,11 +294,29 @@ export default function TeamBoard({ title, subtitle, department, section, showSc
       {/* One card per team member */}
       {members.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-500 shadow-sm">
-          {ar ? 'لا يوجد موظفون لعرضهم' : 'No employees to show'}
+          <p>{ar ? 'لا يوجد موظفون لعرضهم' : 'No employees to show'}</p>
+          {section && !q && filter === 'all' && (
+            <p className="text-xs text-slate-400 mt-2">
+              {ar
+                ? 'تُعرَض هنا أسماء الموظفين المسجَّلين في هذا القسم في ملفات الموارد البشرية ممّن يحقّ لك تقييمهم.'
+                : 'This page lists the employees whose HR file places them in this department and whom you may evaluate.'}
+            </p>
+          )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-          {members.map((m) => {
+        <div className="space-y-6">
+          {grouped.map((g) => (
+          <section key={g.key} className="space-y-3">
+          {grouped.length > 1 && (
+            <div className="flex items-baseline gap-2 border-b border-slate-200 pb-1.5">
+              <h3 className="text-sm font-bold text-slate-800">
+                {(ar ? g.info?.label : g.info?.labelEn) || g.rows[0]?.department || (ar ? 'بدون قسم' : 'No department')}
+              </h3>
+              <span className="text-xs text-slate-400 tabular-nums">({g.rows.length})</span>
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {g.rows.map((m) => {
             const ev = m.evaluation;
             const band = ev?.band ? bandByKey.get(ev.band) : null;
             const st = bandStyle(band);
@@ -362,6 +399,9 @@ export default function TeamBoard({ title, subtitle, department, section, showSc
               </button>
             );
           })}
+          </div>
+          </section>
+          ))}
         </div>
       )}
     </div>

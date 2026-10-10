@@ -8,6 +8,18 @@
       "en": "Executive Overview"
     },
     {
+      "key": "/system/management-jp",
+      "section": "Main",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
+    },
+    {
+      "key": "/system/management-jp/dashboard",
+      "section": "Main",
+      "ar": "لوحة خطّة الإدارة",
+      "en": "Management JP Dashboard"
+    },
+    {
       "key": "/system/credit-alerts",
       "section": "Main",
       "ar": "تنبيهات الائتمان",
@@ -62,10 +74,22 @@
       "en": "Wallet Dashboard"
     },
     {
-      "key": "/system/operations/my-tasks",
+      "key": "/system/operations/jp",
       "section": "Operations",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/operations/jp-dashboard",
+      "section": "Operations",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/operations/management-jp",
+      "section": "Operations",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/operations/complaints",
@@ -140,10 +164,22 @@
       "en": "Suppliers"
     },
     {
-      "key": "/system/collections-dept/my-tasks",
+      "key": "/system/collections-dept/jp",
       "section": "Collections",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/collections-dept/jp-dashboard",
+      "section": "Collections",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/collections-dept/management-jp",
+      "section": "Collections",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/collections-dept/complaints",
@@ -290,10 +326,22 @@
       "en": "Section Settings"
     },
     {
-      "key": "/system/shipment-orders/my-tasks",
+      "key": "/system/shipment-orders/jp",
       "section": "Shipment Orders",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/shipment-orders/jp-dashboard",
+      "section": "Shipment Orders",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/shipment-orders/management-jp",
+      "section": "Shipment Orders",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/shipment-orders/complaints",
@@ -380,10 +428,22 @@
       "en": "Fleet Settings"
     },
     {
-      "key": "/system/fleet/my-tasks",
+      "key": "/system/fleet/jp",
       "section": "Fleet Management",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/fleet/jp-dashboard",
+      "section": "Fleet Management",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/fleet/management-jp",
+      "section": "Fleet Management",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/fleet/complaints",
@@ -536,10 +596,22 @@
       "en": "Registry Analytics"
     },
     {
-      "key": "/system/vehicles/my-tasks",
+      "key": "/system/vehicles/jp",
       "section": "Vehicles",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/vehicles/jp-dashboard",
+      "section": "Vehicles",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/vehicles/management-jp",
+      "section": "Vehicles",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/vehicles/complaints",
@@ -692,10 +764,22 @@
       "en": "Periodic Reports"
     },
     {
-      "key": "/system/marketing/my-tasks",
+      "key": "/system/marketing/jp",
       "section": "Marketing",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/marketing/jp-dashboard",
+      "section": "Marketing",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/marketing/management-jp",
+      "section": "Marketing",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/marketing/complaints",
@@ -734,10 +818,22 @@
       "en": "Tenders"
     },
     {
-      "key": "/system/bd/my-tasks",
+      "key": "/system/bd/jp",
       "section": "Business Development",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/bd/jp-dashboard",
+      "section": "Business Development",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/bd/management-jp",
+      "section": "Business Development",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/bd/complaints",
@@ -758,10 +854,22 @@
       "en": "Task Board"
     },
     {
-      "key": "/system/administration/my-tasks",
+      "key": "/system/administration/jp",
       "section": "Administration",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/administration/jp-dashboard",
+      "section": "Administration",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/administration/management-jp",
+      "section": "Administration",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/administration/complaints",
@@ -836,10 +944,22 @@
       "en": "Department Contracts"
     },
     {
-      "key": "/system/contracts/my-tasks",
+      "key": "/system/contracts/jp",
       "section": "Contracts",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/contracts/jp-dashboard",
+      "section": "Contracts",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/contracts/management-jp",
+      "section": "Contracts",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/contracts/complaints",
@@ -896,10 +1016,22 @@
       "en": "Company Email"
     },
     {
-      "key": "/system/it/my-tasks",
+      "key": "/system/it/jp",
       "section": "Software & IT",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/it/jp-dashboard",
+      "section": "Software & IT",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/it/management-jp",
+      "section": "Software & IT",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/it/complaints",
@@ -926,10 +1058,22 @@
       "en": "KPIs"
     },
     {
-      "key": "/system/ls2/my-tasks",
+      "key": "/system/ls2/jp",
       "section": "Location Solutions",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/ls2/jp-dashboard",
+      "section": "Location Solutions",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/ls2/management-jp",
+      "section": "Location Solutions",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/ls2/complaints",
@@ -1022,10 +1166,22 @@
       "en": "KPIs"
     },
     {
-      "key": "/system/b2c/my-tasks",
+      "key": "/system/b2c/jp",
       "section": "B2C",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/b2c/jp-dashboard",
+      "section": "B2C",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/b2c/management-jp",
+      "section": "B2C",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/b2c/complaints",
@@ -1082,10 +1238,22 @@
       "en": "KPIs"
     },
     {
-      "key": "/system/remote/my-tasks",
+      "key": "/system/remote/jp",
       "section": "Remote",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/remote/jp-dashboard",
+      "section": "Remote",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/remote/management-jp",
+      "section": "Remote",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/remote/complaints",
@@ -1322,6 +1490,12 @@
       "en": "Sales Dashboard"
     },
     {
+      "key": "/system/sales/customers",
+      "section": "Sales",
+      "ar": "العملاء",
+      "en": "Customers"
+    },
+    {
       "key": "/system/sales/pipeline",
       "section": "Sales",
       "ar": "مسار البيع",
@@ -1418,10 +1592,22 @@
       "en": "Vendor Bills"
     },
     {
-      "key": "/system/crm/my-tasks",
+      "key": "/system/crm/jp",
       "section": "CRM",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/crm/jp-dashboard",
+      "section": "CRM",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/crm/management-jp",
+      "section": "CRM",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/crm/complaints",
@@ -1436,10 +1622,22 @@
       "en": "KPIs"
     },
     {
-      "key": "/system/sales/my-tasks",
+      "key": "/system/sales/jp",
       "section": "Sales",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/sales/jp-dashboard",
+      "section": "Sales",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/sales/management-jp",
+      "section": "Sales",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/sales/complaints",
@@ -1454,10 +1652,22 @@
       "en": "KPIs"
     },
     {
-      "key": "/system/accounting/my-tasks",
+      "key": "/system/accounting/jp",
       "section": "Accounting",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/accounting/jp-dashboard",
+      "section": "Accounting",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/accounting/management-jp",
+      "section": "Accounting",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/accounting/complaints",
@@ -1472,10 +1682,22 @@
       "en": "KPIs"
     },
     {
-      "key": "/system/procurement/my-tasks",
+      "key": "/system/procurement/jp",
       "section": "Procurement",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/procurement/jp-dashboard",
+      "section": "Procurement",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/procurement/management-jp",
+      "section": "Procurement",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/procurement/complaints",
@@ -1490,10 +1712,22 @@
       "en": "KPIs"
     },
     {
-      "key": "/system/hr/my-tasks",
+      "key": "/system/hr/jp",
       "section": "HR",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/hr/jp-dashboard",
+      "section": "HR",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/hr/management-jp",
+      "section": "HR",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/hr/complaints",
@@ -1508,10 +1742,22 @@
       "en": "KPIs"
     },
     {
-      "key": "/system/ops/my-tasks",
+      "key": "/system/ops/jp",
       "section": "Operations Platform",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/ops/jp-dashboard",
+      "section": "Operations Platform",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/ops/management-jp",
+      "section": "Operations Platform",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/ops/complaints",
@@ -1526,10 +1772,22 @@
       "en": "KPIs"
     },
     {
-      "key": "/system/customs/my-tasks",
+      "key": "/system/customs/jp",
       "section": "Customs",
-      "ar": "مهامي",
-      "en": "My Tasks"
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/customs/jp-dashboard",
+      "section": "Customs",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/customs/management-jp",
+      "section": "Customs",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
     },
     {
       "key": "/system/customs/complaints",

@@ -113,6 +113,55 @@ function priceFor(customer, fromCity, toCity) {
   return r && r.price != null ? Number(r.price) : null;
 }
 
+/**
+ * ── شرائحُ السعر بعدد السيارات ──────────────────────────────────────────────
+ *
+ * `cleanTiers` تقرأ ما كُتب في الشاشة وتردّه مرتَّبًا، أو ترمي برسالةٍ تُعرَض:
+ * عددٌ صحيحٌ من واحد، ونهايةٌ لا تسبق بدايتَها، وسعرٌ موجب، ولا شريحتان على
+ * عددٍ واحد — فسعران لخمس سياراتٍ ليسا سعرًا. والشريحةُ الأخيرةُ وحدَها يجوز
+ * أن تُترك بلا نهاية («فما فوق»).
+ */
+function cleanTiers(input) {
+  const bad = (m) => Object.assign(new Error(m), { status: 400 });
+  const rows = (Array.isArray(input) ? input : []).map((t) => ({
+    minTrucks: Number(t && t.minTrucks),
+    maxTrucks: t && t.maxTrucks !== null && t.maxTrucks !== undefined && t.maxTrucks !== '' ? Number(t.maxTrucks) : null,
+    price: Number(t && t.price),
+  }));
+  for (const t of rows) {
+    if (!Number.isInteger(t.minTrucks) || t.minTrucks < 1) throw bad('بدايةُ الشريحة عددٌ صحيحٌ من ١ فأكثر');
+    if (t.maxTrucks !== null && (!Number.isInteger(t.maxTrucks) || t.maxTrucks < t.minTrucks)) throw bad('نهايةُ الشريحة لا تسبق بدايتَها');
+    if (!Number.isFinite(t.price) || t.price <= 0) throw bad('اكتب سعرَ السيارة في كلّ شريحة');
+  }
+  rows.sort((a, b) => a.minTrucks - b.minTrucks);
+  for (let i = 1; i < rows.length; i += 1) {
+    const prev = rows[i - 1];
+    if (prev.maxTrucks === null) throw bad('الشريحةُ المفتوحةُ («فما فوق») تكون الأخيرة');
+    if (rows[i].minTrucks <= prev.maxTrucks) throw bad(`شريحتان على العدد ${rows[i].minTrucks} — لكلّ عددٍ سعرٌ واحد`);
+  }
+  return rows;
+}
+
+/** سعرُ السيارة لعددٍ من السيارات — `null` إن لم تشمله شريحة. */
+function tierPriceFor(tiers, trucks) {
+  const n = Math.max(1, Number(trucks) || 1);
+  for (const t of tiers || []) {
+    if (n >= t.minTrucks && (t.maxTrucks == null || n <= t.maxTrucks)) return Number(t.price);
+  }
+  return null;
+}
+
+/**
+ * ── من يكتب سعرَ مسار ──────────────────────────────────────────────────────
+ * أسعارُ الوجهات — السعرُ المتّفقُ عليه وشرائحُ عدد السيارات — يكتبها **مديرُ
+ * العمليّات ومديرُ النظام وحدَهما** (قرارُ صاحب الشركة). غيرُهما يعدّل بياناتِ
+ * العميل (الاسم والهاتف والتفضيلات) ولا يمسّ سعرًا. والسؤالُ هنا في موضعٍ واحدٍ
+ * يقرؤه كلُّ بابٍ يصل إلى السعر.
+ */
+const PRICE_EDITORS = ['super_admin', 'operations_manager'];
+const canEditPrices = (role) => PRICE_EDITORS.includes(role);
+
 module.exports = {
-  cityKey, routeKey, applyRoute, learnRouteByName, priceFor,
+  cityKey, routeKey, applyRoute, learnRouteByName, priceFor, cleanTiers, tierPriceFor,
+  PRICE_EDITORS, canEditPrices,
 };

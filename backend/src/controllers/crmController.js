@@ -55,6 +55,19 @@ const crmStaffIds = async () => {
   return staff.map((s) => s._id);
 };
 const emitCrm = async (event, payload = {}) => {
+  // ── يُمحى المخزَّنُ ثمّ يُنادى ─────────────────────────────────────────────
+  // لوحتا العلاقات والمبيعات محفوظتان ١٢ ثانية، وكان النداءُ يسبق المحو: تعيد
+  // الشاشةُ القراءةَ فتأخذ الرقمَ القديم ولا يوقظها شيءٌ بعده. والصفقةُ مادّةُ
+  // قسم المبيعات كلِّه، فيُنادى عليه بحدثه (`sales:updated`، بلا حمولة) لكلّ
+  // من يفتحه — ومنهم العمليّاتُ والإدارة، وهم خارج قائمة أدوار العلاقات.
+  try {
+    const cache = require('../utils/ttlCache');
+    cache.clear('dash:crm:');
+    if (event === 'crm:deal') {
+      cache.clear('dash:sales:');
+      require('../websocket/socketManager').emitToAll('sales:updated', {});
+    }
+  } catch (e) {}
   try {
     const ids = await crmStaffIds();
     ids.forEach((rid) => { try { emitToUser(String(rid), event, payload); } catch (e) {} });

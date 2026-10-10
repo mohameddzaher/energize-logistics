@@ -31,13 +31,18 @@ export interface AnalyticBlock {
 export interface HrOverview {
   // employees/active/notActive = ما يعرضه الفلتر الآن، وroster = إجمالي الملفّ
   // الوظيفيّ يُعرض بجانبه ليُعرف من أيٍّ اقتُطع.
-  totals: { employees: number; active: number; notActive: number; roster: number; filtered: number; required: number; expiringSoon: number; outsideKingdom: number; freelancers: number; cashPayroll: number; gosiRegistered: number };
+  totals: { employees: number; active: number; notActive: number; terminated?: number; roster: number; filtered: number; required: number; expiringSoon: number; outsideKingdom: number; freelancers: number; cashPayroll: number; gosiRegistered: number };
   /** الشغل اليوميّ محسوبًا على الموظفين المطابقين وحدهم. */
   work: { pendingLeaves: number; openRequests: number; assignedAssets: number };
   groups: GroupCard[];
   topRequired: (FieldCard & { groupAr: string; groupKey: string })[];
   analytics: AnalyticBlock[];
   alert: { warnDays: number; criticalDays: number };
+  /**
+   * الشرطُ الذي عُدَّت به الانتهاءات (مَن لم تنتهِ خدمتُه، ما لم يُختَر غيرُه).
+   * يُحمَل في كلّ رابطٍ يفتح رقمَ انتهاءٍ — فيفتح الرقمُ صفوفَه بعينها.
+   */
+  expiryScope?: Record<string, string>;
 }
 
 export interface RecordRow {
@@ -56,7 +61,8 @@ export const STATUS_META: Record<string, { ar: string; en: string; color: string
   required: { ar: 'مطلوب', en: 'Required', color: '#dc2626', bg: 'bg-red-100 text-red-700' },
   not_required: { ar: 'غير مطلوب', en: 'Not required', color: '#64748b', bg: 'bg-slate-100 text-slate-600' },
   none: { ar: 'لا يوجد', en: 'None', color: '#94a3b8', bg: 'bg-slate-100 text-slate-500' },
-  filled: { ar: 'مملي', en: 'Filled', color: '#16a34a', bg: 'bg-emerald-100 text-emerald-700' },
+  // «مُدخَل»: في الخانة قيمةٌ مكتوبة — راجع توأمَها في config/hrFields.
+  filled: { ar: 'مُدخَل', en: 'Filled', color: '#16a34a', bg: 'bg-emerald-100 text-emerald-700' },
   cash_payroll: { ar: 'راتب نقدي', en: 'Cash payroll', color: '#8b5cf6', bg: 'bg-violet-100 text-violet-700' },
   inactive: { ar: 'غير نشط', en: 'Inactive', color: '#b45309', bg: 'bg-amber-100 text-amber-800' },
   unparseable: { ar: 'تاريخ غير مقروء', en: 'Unreadable', color: '#f59e0b', bg: 'bg-amber-100 text-amber-700' },
@@ -165,7 +171,8 @@ export const getHrRecords = (group: string, q: Record<string, any> = {}) =>
   }>(`/api/hr/master/records/${group}${qs(q) ? `?${qs(q)}` : ''}`);
 
 export const getHrExpiring = (q: Record<string, any> = {}) =>
-  api.get<{ rows: any[]; summary: Record<string, number>; byDoc: { key: string; ar: string; en: string; count: number }[]; withinDays: number | null }>(
+  api.get<{ rows: any[]; summary: Record<string, number>; byDoc: { key: string; ar: string; en: string; count: number }[]; withinDays: number | null;
+    alert?: { warnDays: number; criticalDays: number }; expiryScope?: Record<string, string> }>(
     `/api/hr/master/expiring${qs(q) ? `?${qs(q)}` : ''}`);
 
 /** ملء حقول ناقصة. حالة «مطلوب» بتتشال لوحدها على السيرفر. */
@@ -192,6 +199,21 @@ export const renewHrBulk = (body: {
 export const RENEWABLE_GROUPS = new Set([
   'iqama', 'passport', 'contract', 'workPermit', 'medicalInsurance', 'healthCertificate', 'driverCard', 'drivingLicense',
 ]);
+
+/**
+ * تسمياتُ حالة التوظيف في لوحة الفلترة — مصدرٌ واحدٌ لصفحات الماستر كلِّها.
+ * «على قوّة العمل» = كلُّ مَن لم تنتهِ خدمتُه (على رأس العمل أو في إجازةٍ أو
+ * موقوف)، وهو نطاقُ عدّ الانتهاءات. راجع EXPIRY_SCOPE في الخادم.
+ */
+export const HR_EMPLOYMENT_LABELS = {
+  ar: 'حالة التوظيف', en: 'Employment', values: {
+    active: { ar: 'على رأس العمل', en: 'Active' },
+    inactive: { ar: 'ليس على رأس العمل', en: 'Not active' },
+    current: { ar: 'على قوّة العمل (لم تنتهِ خدمته)', en: 'Current workforce' },
+    terminated: { ar: 'منتهية خدمته', en: 'Service ended' },
+    all: { ar: 'الجميع بمن انتهت خدمتهم', en: 'Everyone incl. ended' },
+  },
+};
 
 export const getHrFieldConfig = () =>
   api.get<{ groups: (GroupCard & { fields: FieldDef[] })[]; statuses: any; states: any; alert: any }>('/api/hr/master/field-config');

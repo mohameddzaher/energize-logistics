@@ -28,6 +28,7 @@ const mongoose = require('mongoose');
 const CollectionInvoice = require('../models/CollectionInvoice');
 const CollectionsParty = require('../models/CollectionsParty');
 const cache = require('../utils/ttlCache');
+const { flexSpaceRegex } = require('../utils/plateKey');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
 
@@ -35,11 +36,7 @@ const DAY = 86400000;
 const TTL = 30 * 1000;
 
 /** الفاتورةُ قائمةٌ ما لم تُحصَّل ولم تكن رقمًا محجوزًا. */
-const OUTSTANDING = {
-  unused: { $ne: true },
-  collectionDate: null,
-  status: { $not: /collected/i },
-};
+const OUTSTANDING = CollectionInvoice.OPEN;
 
 /**
  * المراحلُ المشتركة: تُضَمّ مدّةُ العميل، ثمّ يُشتقّ الاستحقاقُ والتأخير
@@ -116,8 +113,8 @@ const derive = () => [
 const baseMatch = (q) => {
   const f = { ...OUTSTANDING };
   if (q.kind === 'tax' || q.kind === 'cash') f.kind = q.kind;
-  if (q.officerParties) f.party = { $in: q.officerParties };
-  if (q.customer) f.partyName = new RegExp(String(q.customer).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  if (q.officerParties) f.party = q.officerParties.exclude ? { $nin: q.officerParties.exclude } : { $in: q.officerParties };
+  if (q.customer) f.partyName = flexSpaceRegex(String(q.customer));
   if (q.from || q.to) {
     f.invoiceDate = {};
     if (q.from) f.invoiceDate.$gte = new Date(q.from);
@@ -127,8 +124,17 @@ const baseMatch = (q) => {
 };
 
 /** الأطرافُ التي يحملها موظّفُ تحصيلٍ بعينه — يُقرأ مرّةً لا لكلّ فاتورة. */
+//
+// ── و«بلا مسؤول» سؤالٌ لا غيابُ سؤال ──────────────────────────────────────
+// بطاقةُ «—» في اللوحة كانت ترسل اسمًا فارغًا، والفارغُ يُقرأ «بلا فلتر» —
+// فتفتح البطاقةُ التي عليها ٥٩٣ ألفًا المديونيّةَ كلَّها بعشرين مليونًا.
+// فـ`none` تعني الحساباتِ التي لا موظّفَ لها، ومعها الفواتيرُ غيرُ المربوطة.
 const partiesOfOfficer = async (officer) => {
   if (!officer) return null;
+  if (officer === 'none') {
+    const rows = await CollectionsParty.find({ collectionOfficer: { $nin: [null, ''] } }).select('_id').lean();
+    return { exclude: rows.map((r) => r._id) };
+  }
   const rows = await CollectionsParty.find({ collectionOfficer: officer }).select('_id').lean();
   return rows.map((r) => r._id);
 };

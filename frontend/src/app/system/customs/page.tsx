@@ -17,7 +17,8 @@ import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/l
 import { SearchableSelect, Modal } from '@/components/hr/HRKit';
 import ClearanceNotes from '@/components/customs/ClearanceNotes';
 import ManagedSelect from '@/components/system/ManagedSelect';
-import DateRangeFilter from '@/components/system/DateRangeFilter';
+import PeriodFilter from '@/components/system/PeriodFilter';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { SlidersHorizontal } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
 import { stageName } from '@/lib/customsPipeline';
@@ -65,6 +66,9 @@ interface Clearance {
   awaitingTransportInvoice?: boolean;
   /** نسبةُ المراحل والمرحلةُ التالية — محسوبتان في الخادم (pipelineOf). */
   pipeline?: { percent: number; done: number; total: number; next: string };
+  /** تاريخُ المعاملة الذي تُفلتَر به: استلامُ الورق ثمّ البيان ثمّ شهرُها (راجع txDateOf في الخادم). */
+  date?: string;
+  invoiced?: boolean;
 }
 
 const MONTH_LABELS: [string, string][] = [
@@ -132,6 +136,7 @@ export default function CustomsPage() {
   const [fInvoice, setFInvoice] = useState('');
   const [fReturn, setFReturn] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const cf = useColumnFilters<Clearance>();
   // ── فلاترُ الأعمدة التي كانت تُقرأ ولا يُفلتَر بها ──────────────────────────
   // العميلُ والوكيلُ والميناءُ والفرعُ والمرحلة: أعمدةٌ في الجدول أمام العين،
   // ومَن أراد قصْرَ القائمة عليها كان يصدّر الكلَّ ويفلتر في إكسل.
@@ -270,9 +275,9 @@ export default function CustomsPage() {
     if (fPort && (c.port || '') !== fPort) return false;
     if (fBranch && (c.branch || '') !== fBranch) return false;
     if (fStage && (c.isCompleted || c.cancelled || (c.pipeline?.next || '') !== fStage)) return false;
-    // المدى بتاريخ الإنشاء — ويُقاس بيوم الرياض كما في الخادم.
+    // المدى بتاريخ المعاملة لا بيوم إدخالها: ما استُورد أُدخل كلُّه في يومٍ واحد.
     if (fFrom || fTo) {
-      const d = c.createdAt ? String(c.createdAt).slice(0, 10) : '';
+      const d = c.date || (c.createdAt ? String(c.createdAt).slice(0, 10) : '');
       if (!d) return false;
       if (fFrom && d < fFrom) return false;
       if (fTo && d > fTo) return false;
@@ -281,6 +286,24 @@ export default function CustomsPage() {
   });
 
   const money = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  // ── فلاترُ الأعمدة على طريقة إكسل ───────────────────────────────────────
+  // تُطبَّق آخرًا — على ما تركه البحثُ والفلاترُ أعلاه — وبالقيمة التي تُقرأ في
+  // الخليّة نفسِها.
+  const colGetters: Record<string, (c: Clearance) => any> = {
+    bl: (c) => c.blNumber, ref: (c) => c.refNumber, customer: (c) => c.customerName,
+    branch: (c) => (c.branch === 'dammam' ? T.dammam : T.jeddah),
+    period: (c) => (c.periodMonth ? `${MONTH_LABELS[c.periodMonth - 1][ar ? 0 : 1]} ${c.periodYear || ''}`.trim() : (c.periodYear || '')),
+    units: (c) => `${c.cargoType === 'vehicles' ? (ar ? 'سيّارات' : 'Vehicles') : (ar ? 'حاويات' : 'Containers')} · ${c.containerCount || 0}`,
+    ret: (c) => RETURN_LABEL[returnState(c)][ar ? 0 : 1],
+    invoice: (c) => (c.awaitingTransportInvoice ? (ar ? 'بانتظار فاتورة النقل' : 'Awaiting transport invoice') : invoiceState(c).text || (ar ? 'غير مفوترة' : 'Not invoiced')),
+    stage: (c) => stageText(c),
+  };
+  const shownRows = cf.apply(filtered, colGetters);
+  const th = (k: string, label: string) => (
+    <th key={k} className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">
+      <span className="inline-flex items-center gap-1">{label}{cf.header(k, filtered, colGetters[k], ar)}</span>
+    </th>
+  );
   const withReturn = (c: Clearance) => ({
     ...c, _returnState: RETURN_LABEL[returnState(c)][ar ? 0 : 1],
     _invoiceState: invoiceState(c).text ? `${invoiceState(c).text}${c.awaitingTransportInvoice ? (ar ? ' — بانتظار فاتورة النقل' : ' — awaiting transport invoice') : ''}` : (ar ? 'غير مفوترة' : 'Not invoiced'),
@@ -318,7 +341,7 @@ export default function CustomsPage() {
   // تعمل في المتصفّح؛ فمن صدّر وهو على فلتر شهرٍ واحد كان يحمل ملفًّا يسمّيه سجلَّ السنة.
   const scope = exportScopeLabels(ar);
   const exportOptions = [
-    { key: 'shown', label: scope.shown, sheets: [{ name: T.title, rows: filtered.map(withReturn), columns: exportColumns }] },
+    { key: 'shown', label: scope.shown, sheets: [{ name: T.title, rows: shownRows.map(withReturn), columns: exportColumns }] },
     { key: 'all', label: scope.all, sheets: [{ name: T.title, rows: list.map(withReturn), columns: exportColumns }] },
   ];
 
@@ -341,7 +364,9 @@ export default function CustomsPage() {
             <h1 className="text-2xl font-bold text-slate-900">
               {T.title}
             </h1>
-            <p className="text-slate-500 text-sm">{list.length} {T.xTransactions}</p>
+            <p className="text-slate-500 text-sm">
+              {shownRows.length !== list.length ? `${shownRows.length} ${ar ? 'من' : 'of'} ` : ''}{list.length} {T.xTransactions}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -397,6 +422,7 @@ export default function CustomsPage() {
           <SlidersHorizontal className="w-4 h-4" />
           {ar ? 'فلتر' : 'Filter'}{activeFilters > 0 ? ` (${activeFilters})` : ''}
         </button>
+        <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
         {activeFilters > 0 && (
           <button type="button" onClick={resetFilters}
             className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm">
@@ -452,7 +478,8 @@ export default function CustomsPage() {
           ))}
         </select>
         <div className="sm:col-span-2 lg:col-span-4 flex items-center gap-2">
-          <DateRangeFilter ar={ar} from={fFrom} to={fTo} onFrom={setFFrom} onTo={setFTo} />
+          <span className="text-[12px] font-bold text-slate-600">{ar ? 'المدّة (بتاريخ المعاملة):' : 'Period (transaction date):'}</span>
+          <PeriodFilter ar={ar} from={fFrom} to={fTo} onChange={(a, b) => { setFFrom(a); setFTo(b); }} />
         </div>
       </div>
       )}
@@ -463,24 +490,24 @@ export default function CustomsPage() {
             <thead>
               <tr className="bg-slate-900">
                 {/* رقمُ البوليصة قبل رقم المعاملة: به تُعرَف المعاملةُ في القسم. */}
-                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.blNumber}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.refNumber}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.customerName}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.branch}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'الفترة' : 'Period'}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'الحاويات / السيّارات' : 'Units'}</th>
+                {th('bl', T.blNumber)}
+                {th('ref', T.refNumber)}
+                {th('customer', T.customerName)}
+                {th('branch', T.branch)}
+                {th('period', ar ? 'الفترة' : 'Period')}
+                {th('units', ar ? 'الحاويات / السيّارات' : 'Units')}
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'إجمالي الفاتورة' : 'Invoiced'}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'الإرجاع' : 'Return'}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'حالة الفاتورة' : 'Invoice status'}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.stage}</th>
+                {th('ret', ar ? 'الإرجاع' : 'Return')}
+                {th('invoice', ar ? 'حالة الفاتورة' : 'Invoice status')}
+                {th('stage', T.stage)}
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'ملاحظات' : 'Notes'}</th>
                 {canDelete && <th className="text-end text-slate-300 font-semibold px-4 py-3">{T.actions}</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {filtered.length === 0 ? (
+              {shownRows.length === 0 ? (
                 <tr><td colSpan={canDelete ? 12 : 11} className="text-center text-slate-800 py-12">{T.noClearances}</td></tr>
-              ) : filtered.map((c) => (
+              ) : shownRows.map((c) => (
                 <tr key={c._id} onClick={() => router.push(`/system/customs/${c._id}`)}
                   className="bg-white hover:bg-slate-50 transition-colors cursor-pointer">
                   <td className="px-4 py-3 text-slate-900 font-semibold">{c.blNumber || '—'}</td>

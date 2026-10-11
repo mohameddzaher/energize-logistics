@@ -334,6 +334,9 @@ final customsDashSpec = DashSpec(
     DashStat('الإيرادات', 'Revenue', 'totals.totalRevenue', Icons.payments_outlined, T.success, money: true),
     DashStat('صافي الربح', 'Net profit', 'totals.netProfit', Icons.trending_up_rounded, T.orange, money: true),
     DashStat('متوسط شهري', 'Avg / month', 'totals.avgPerMonth', Icons.calendar_month_outlined, T.cyan),
+    DashStat('ربح الحاوية', 'Profit / container', 'insight.profitPerContainer', Icons.view_week_outlined, T.success, money: true),
+    DashStat('قيمة ما لم يُفوتَر', 'Not-invoiced value', 'insight.notInvoicedValue', Icons.receipt_long_outlined, T.warn, money: true),
+    DashStat('معاملات خاسرة', 'Losing transactions', 'insight.losing', Icons.trending_down_rounded, T.danger),
   ],
   lists: [
     DashList('حسب العميل', 'By customer', 'byCustomer', (r) => _s(r, 'key'),

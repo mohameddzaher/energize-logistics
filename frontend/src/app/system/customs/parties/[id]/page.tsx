@@ -8,6 +8,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
@@ -36,6 +37,7 @@ export default function CustomsPartyProfile() {
     .includes((user as any)?.role || '') || canEditSection((user as any)?.permissions, 'Customs');
 
   const [d, setD] = useState<any>(null);
+  const cf = useColumnFilters<any>();
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -63,6 +65,12 @@ export default function CustomsPartyProfile() {
     </div>
   );
 
+  // فلاترُ أعمدة جدول المعاملات — على طريقة إكسل.
+  const dealGetters: Record<string, (c: any) => any> = {
+    ref: (c) => c.refNumber, bl: (c) => c.blNumber, other: (c) => (isAgent ? c.customerName : c.shippingAgent),
+    port: (c) => c.port, stage: (c) => stageText(c), units: (c) => c.containerCount || 0, month: (c) => String(c.createdAt || '').slice(0, 7),
+  };
+  const deals: any[] = cf.apply(d.deals || [], dealGetters);
   const dealCols: ExportColumn[] = [
     { header: t('المرجع', 'Ref'), key: 'refNumber', width: 14 },
     { header: t('البوليصة', 'BL'), key: 'blNumber', width: 18 },
@@ -166,24 +174,27 @@ export default function CustomsPartyProfile() {
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
           <p className="text-sm font-bold text-slate-800 flex items-center gap-2">
-            <FileText className="w-4 h-4 text-slate-400" /> {t('كلّ المعاملات', 'All deals')} ({d.deals.length})
+            <FileText className="w-4 h-4 text-slate-400" /> {t('كلّ المعاملات', 'All deals')} ({deals.length !== d.deals.length ? `${deals.length} / ` : ''}{d.deals.length})
           </p>
           <ExportMenu fileName={`customs-${p.name}`} lang={ar ? 'ar' : 'en'}
-            options={[{ key: 'all', label: t('كل المعاملات', 'All deals'), sheets: [{ name: t('معاملات', 'Deals'), rows: d.deals, columns: dealCols }] }]} />
+            options={[{ key: 'all', label: t('كل المعاملات', 'All deals'), sheets: [{ name: t('معاملات', 'Deals'), rows: deals, columns: dealCols }] }]} />
+          <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
         </div>
         <ScrollX className="max-h-[32rem]">
           <table className="w-full text-sm">
             <thead className="table-head sticky top-0">
               <tr>
-                {[t('المرجع', 'Ref'), t('البوليصة', 'BL'), isAgent ? t('العميل', 'Customer') : t('الوكيل', 'Agent'),
-                  t('الميناء', 'Port'), t('المرحلة', 'Stage'), t('حاويات', 'Cntrs'), t('الإيراد', 'Revenue'),
-                  t('التكلفة', 'Cost'), ...(seesMoney ? [t('الربح', 'Profit')] : []), t('التاريخ', 'Date')].map((h, i) => (
-                  <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>
+                {([[t('رقم المعاملة', 'Transaction no.'), 'ref'], [t('البوليصة', 'BL'), 'bl'], [isAgent ? t('العميل', 'Customer') : t('الوكيل', 'Agent'), 'other'],
+                  [t('الميناء', 'Port'), 'port'], [t('المرحلة', 'Stage'), 'stage'], [t('حاويات', 'Cntrs'), 'units'], [t('الإيراد', 'Revenue'), ''],
+                  [t('التكلفة', 'Cost'), ''], ...(seesMoney ? [[t('الربح', 'Profit'), '']] : []), [t('التاريخ', 'Date'), 'month']] as [string, string][]).map(([h, k], i) => (
+                  <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1">{h}{k ? cf.header(k, d.deals || [], dealGetters[k], ar) : null}</span>
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {d.deals.map((c: any) => (
+              {deals.map((c: any) => (
                 <tr key={c._id} className={`border-b border-slate-100 hover:bg-slate-50 cursor-pointer ${c.cancelled ? 'opacity-50 line-through' : ''}`}
                   onClick={() => router.push(`/system/customs/${c._id}`)}>
                   <td className="px-3 py-2.5 font-mono font-semibold text-slate-900 whitespace-nowrap">{c.refNumber || '—'}</td>

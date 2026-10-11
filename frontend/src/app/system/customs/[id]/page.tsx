@@ -462,6 +462,9 @@ export default function CustomsDetailPage() {
                   {ar ? 'مغلقة' : 'Closed'}
                 </span>
               )}
+              {c.isCompleted && !invoiceNumber && !pipeline.steps.some((st) => st.key === 'invoiced' && st.done) && (
+                <span className="rounded-md bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-700">{ar ? 'لم تُفوتَر' : 'Not invoiced'}</span>
+              )}
               {!!invoiceNumber && !c.isCompleted && (
                 <span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${awaitingTransport ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
                   {ar ? 'مفوترة' : 'Invoiced'} · <bdi>{invoiceNumber}</bdi>
@@ -507,10 +510,19 @@ export default function CustomsDetailPage() {
           {canEdit && !c.cancelled && !(c as any).upcoming && (
             c.isCompleted
               ? (
-                <button type="button" onClick={reopen} disabled={closing}
-                  className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:text-[#f37121]">
-                  <Unlock className="w-4 h-4" /> {ar ? 'إعادة الفتح' : 'Reopen'}
-                </button>
+                <>
+                  {/* أُغلقت ولم تُفوتَر (من السجلّ القديم): فاتورتُها تُصدَر وهي مغلقة. */}
+                  {!invoiceNumber && !pipeline.steps.some((st) => st.key === 'invoiced' && st.done) && (
+                    <button type="button" onClick={() => setInvoiceOpen(true)}
+                      className="flex items-center gap-1.5 rounded-lg bg-[#f37121] px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-[#e06010]">
+                      <Receipt className="w-4 h-4" /> {ar ? 'إصدار الفاتورة' : 'Issue invoice'}
+                    </button>
+                  )}
+                  <button type="button" onClick={reopen} disabled={closing}
+                    className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:text-[#f37121]">
+                    <Unlock className="w-4 h-4" /> {ar ? 'إعادة الفتح' : 'Reopen'}
+                  </button>
+                </>
               )
               : (
                 <button type="button" onClick={() => setInvoiceOpen(true)}

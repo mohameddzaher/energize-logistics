@@ -12,7 +12,9 @@ import { useDialog } from '@/components/system/DialogProvider';
 import Link from 'next/link';
 import api from '@/lib/api';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import DateRangeFilter from '@/components/system/DateRangeFilter';
+import PeriodFilter from '@/components/system/PeriodFilter';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
+import { getCustomsTranslations } from '@/lib/translations';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
@@ -36,7 +38,9 @@ export default function CustomsAnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [denied, setDenied] = useState(false);
   const [f, setF] = useState<Record<string, string>>({});
-  const [tab, setTab] = useState<'byCustomer' | 'byAgent' | 'byPort' | 'byStage' | 'byCity' | 'byBranch'>('byCustomer');
+  const [tab, setTab] = useState<'byCustomer' | 'byAgent' | 'byCarrier' | 'byPort' | 'byStage' | 'byCity' | 'byBranch' | 'byCargo' | 'byState' | 'byMonth'>('byCustomer');
+  const cf = useColumnFilters<Bucket>();
+  const TR = getCustomsTranslations(lang);
 
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
   const qs = useMemo(() => {
@@ -98,12 +102,35 @@ export default function CustomsAnalyticsPage() {
   const TABS: [typeof tab, string, string][] = [
     ['byCustomer', 'حسب العميل', 'By customer'],
     ['byAgent', 'حسب وكيل الشحن', 'By agent'],
+    ['byCarrier', 'حسب الناقل', 'By carrier'],
+    ['byMonth', 'حسب الشهر', 'By month'],
+    ['byCargo', 'حاويات / سيّارات', 'Containers / vehicles'],
+    ['byState', 'مفتوحة / مغلقة', 'Open / closed'],
     ['byPort', 'حسب الميناء', 'By port'],
     ['byStage', 'حسب المرحلة', 'By stage'],
     ['byCity', 'حسب المدينة', 'By city'],
     ['byBranch', 'حسب الفرع', 'By branch'],
   ];
-  const rows: Bucket[] = (d[tab] || []).slice().sort((a: Bucket, b: Bucket) => b.profit - a.profit);
+  // اسمُ البند كما يُقرأ: مفتاحُ المرحلة أو النوع أو الحالة يُترجَم، وغيرُه اسمٌ كما هو.
+  const WORDS: Record<string, [string, string]> = {
+    containers: ['حاويات', 'Containers'], vehicles: ['سيّارات', 'Vehicles'], open: ['مفتوحة', 'Open'], closed: ['مغلقة', 'Closed'],
+  };
+  const nameOf = (k: string) => (tab === 'byStage' ? (TR.stages[k] || k) : WORDS[k] ? (ar ? WORDS[k][0] : WORDS[k][1]) : k);
+  const baseRows: Bucket[] = (d[tab] || []).slice().sort((a: Bucket, b: Bucket) => (tab === 'byMonth' ? a.key.localeCompare(b.key) : b.profit - a.profit));
+  const getters: Record<string, (b: Bucket) => any> = { key: (b) => nameOf(b.key) };
+  const rows: Bucket[] = cf.apply(baseRows, getters);
+  const I = d.insight || {};
+  const COST_AR: Record<string, [string, string]> = {
+    deliveryOrder: ['قيمة إذن التسليم', 'Delivery order'], customsDuty: ['الرسوم الجمركية', 'Customs duty'], portFees: ['أجور الموانئ', 'Port fees'],
+    unloadingFees: ['أجور التفريغ', 'Unloading fees'], inspection: ['أجور الكشف', 'Inspection'], transport: ['النقل (سعر المورّد)', 'Transport (supplier)'],
+    transportToYard: ['النقل إلى الساحة', 'Transport to yard'], appointmentBooking: ['حجز الموعد', 'Appointment booking'], storage: ['التخزين', 'Storage'],
+    yardFees: ['أجور الساحة', 'Yard fees'], exitPermit: ['تصريح الخروج (الأرضيّات)', 'Exit permit (demurrage)'], demurrage: ['أرضيّات', 'Demurrage'],
+    extension: ['تمديد', 'Extension'], consolidator: ['الدامج', 'Consolidator'], commissions: ['عمولات', 'Commissions'], extraFees: ['أجور إضافيّة', 'Extra fees'],
+    returnInvoice: ['فاتورة الإرجاع', 'Return invoice'],
+    clearanceFee: ['أجور التخليص', 'Clearance fee'], labour: ['عمّال', 'Labour'], yardNet: ['صافي الساحة', 'Yard net'], storageNet: ['صافي التخزين', 'Storage net'],
+    transportToYardNet: ['صافي النقل إلى الساحة', 'Transport-to-yard net'], securityScan: ['فحص أمنيّ', 'Security scan'], transportNet: ['صافي النقل', 'Transport net'],
+  };
+  const lineName = (k: string) => (COST_AR[k] ? (ar ? COST_AR[k][0] : COST_AR[k][1]) : k);
 
   const cols: ExportColumn[] = [
     { header: t('البند', 'Item'), key: 'key', width: 28 },
@@ -121,7 +148,7 @@ export default function CustomsAnalyticsPage() {
         subtitle={t('الإيرادات والتكاليف والأرباح — للإدارة', 'Revenue, costs and profit — management only')}>
         <ExportMenu fileName="customs-analytics" lang={ar ? 'ar' : 'en'}
           options={[
-            { key: 'view', label: t('الجدول المعروض', 'Shown table'), sheets: [{ name: t('تحليل', 'Analysis'), rows, columns: cols }] },
+            { key: 'view', label: t('الجدول المعروض', 'Shown table'), sheets: [{ name: t('تحليل', 'Analysis'), rows: rows.map((b) => ({ ...b, key: nameOf(b.key) })), columns: cols }] },
             { key: 'all', label: t('كل التجميعات', 'All groupings'), sheets: TABS.map(([k, arL, enL]) => ({ name: ar ? arL : enL, rows: d[k] || [], columns: cols })) },
           ]} />
       </PageHeader>
@@ -139,10 +166,13 @@ export default function CustomsAnalyticsPage() {
         <Sel k="countryOfOrigin" label={t('كل بلدان المنشأ', 'All origins')} list={opts.countryOfOrigin} />
         <Sel k="invoiceStatus" label={t('كل حالات الفوترة', 'All invoice statuses')} list={opts.invoiceStatus} />
         <Sel k="year" label={t('كل السنوات', 'All years')} list={opts.years} />
-        <Sel k="month" label={t('كل الأشهر', 'All months')}
-          list={Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))} />
-        {/* المدى بمفتاح الشهر (YYYY-MM) كما يقرؤه الخادم. */}
-        <DateRangeFilter ar={ar} from={f.from || ''} to={f.to || ''} onFrom={(v) => set('from', v)} onTo={(v) => set('to', v)} />
+        <Sel k="cargoType" label={t('حاويات وسيّارات', 'Containers & vehicles')}
+          list={[{ value: 'containers', label: t('حاويات', 'Containers') }, { value: 'vehicles', label: t('سيّارات', 'Vehicles') }]} />
+        <Sel k="state" label={t('مفتوحة ومغلقة', 'Open & closed')}
+          list={[{ value: 'open', label: t('مفتوحة', 'Open') }, { value: 'closed', label: t('مغلقة', 'Closed') }]} />
+        {/* المدّة بشهر المعاملة: التحليلُ يُجمَع بالشهر، فيُختار شهرٌ أو فترةُ أشهر. */}
+        <PeriodFilter ar={ar} modes={['month', 'range']} from={f.from || ''} to={f.to || ''}
+          onChange={(a, b) => setF((p) => ({ ...p, from: a, to: b, year: '', month: '' }))} />
         {active > 0 && (
           <button type="button" onClick={() => setF({})}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121]/10 text-[#f37121] text-sm font-semibold hover:bg-[#f37121]/20">
@@ -168,6 +198,53 @@ export default function CustomsAnalyticsPage() {
         <Stat label={t('متوسط المعاملات شهريًّا', 'Avg deals / month')} value={money(T.avgPerMonth)} />
       </div>
 
+      {/* ── ما تسأل عنه الإدارة ───────────────────────────────────────────────
+          الأرقامُ أعلاه مجاميع. وهذه ما يُبنى عليه قرار: كم يدرّ الحاوية، وما
+          المالُ الذي لم يُفوتَر بعد، وكم من الربح يتوقّف على عميلٍ واحد. */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+        <Stat label={t('ربح الحاوية', 'Profit / container')} value={money(I.profitPerContainer)} accent={I.profitPerContainer >= 0 ? 'text-emerald-600' : 'text-red-600'} />
+        <Stat label={t('إيراد الحاوية', 'Revenue / container')} value={money(I.revenuePerContainer)} />
+        <Stat label={t('تكلفة الحاوية', 'Cost / container')} value={money(I.costPerContainer)} />
+        <Stat label={t('متوسط ربح المعاملة', 'Avg profit / deal')} value={money(I.avgProfit)} />
+        <Stat label={t('قيمة ما لم يُفوتَر', 'Uninvoiced value')} value={money(I.notInvoicedValue)} accent={I.notInvoiced ? 'text-amber-600' : undefined}
+          hint={t(`${I.notInvoiced || 0} معاملة · مصروفُها ${money(I.notInvoicedCosts)}`, `${I.notInvoiced || 0} deals · costs ${money(I.notInvoicedCosts)}`)} />
+        <Stat label={t('معاملات مفتوحة', 'Open deals')} value={money(I.open)} hint={t(`قيمتُها ${money(I.openValue)}`, `value ${money(I.openValue)}`)} />
+        <Stat label={t('معاملات خاسرة', 'Losing deals')} value={money(I.losing)} accent={I.losing ? 'text-red-600' : undefined} />
+        <Stat label={t('تركّز الربح', 'Profit concentration')} value={pct(I.top5Share)} accent={I.top1Share > 0.4 ? 'text-amber-600' : undefined}
+          hint={t(`أكبرُ خمسة عملاء · الأوّل ${pct(I.top1Share)}`, `top 5 customers · #1 ${pct(I.top1Share)}`)} />
+      </div>
+
+      {/* أين يذهب المالُ ومن أين يأتي الربح — بندًا بندًا. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {[
+          { title: t('أين تذهب التكلفة', 'Where the cost goes'), rows: d.costBreakdown || [], total: T.totalCosts, bar: 'bg-slate-500' },
+          { title: t('من أين يأتي الربح', 'Where the profit comes from'), rows: d.marginBreakdown || [], total: (d.marginBreakdown || []).reduce((a: number, x: any) => a + x.amount, 0), bar: 'bg-[#f37121]' },
+        ].map((sec) => (
+          <div key={sec.title} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+            <p className="text-sm font-bold text-slate-800 mb-3">{sec.title}</p>
+            {sec.rows.length === 0 ? <p className="py-6 text-center text-sm text-slate-400">{t('لا بيانات', 'No data')}</p> : (
+              <ul className="space-y-2">
+                {sec.rows.map((x: any) => (
+                  <li key={x.key}>
+                    <div className="flex items-center justify-between gap-2 text-[13px]">
+                      <span className="truncate font-semibold text-slate-700">{lineName(x.key)}</span>
+                      <span className="shrink-0 tabular-nums text-slate-500">
+                        <b className={x.amount < 0 ? 'text-red-600' : 'text-slate-900'}>{money(x.amount)}</b>
+                        {sec.total ? <span className="ms-1.5 text-[11.5px]">{pct(x.amount / sec.total)}</span> : null}
+                        <span className="ms-1.5 text-[11px] text-slate-400">{t(`${x.deals} معاملة`, `${x.deals} deals`)}</span>
+                      </span>
+                    </div>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                      <div className={`h-full rounded-full ${sec.bar}`} style={{ width: `${sec.total ? Math.min(100, Math.abs(x.amount / sec.total) * 100) : 0}%` }} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+      </div>
+
       {d.byMonth?.length > 1 && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <p className="text-sm font-bold text-slate-800 mb-3">{t('بالشهر', 'By month')}</p>
@@ -191,17 +268,18 @@ export default function CustomsAnalyticsPage() {
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <div className="px-4 pt-4 flex items-center gap-2 flex-wrap">
           {TABS.map(([k, arL, enL]) => (
-            <button key={k} type="button" onClick={() => setTab(k)}
+            <button key={k} type="button" onClick={() => { setTab(k); cf.clear(); }}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                 tab === k ? 'bg-[#f37121] text-white' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
               {t(arL, enL)}
             </button>
           ))}
+          <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
         </div>
         {rows.length > 1 && (
           <div className="h-64 px-2 pt-3">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={rows.slice(0, 12)}>
+              <BarChart data={rows.slice(0, 12).map((b) => ({ ...b, key: nameOf(b.key) }))}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis dataKey="key" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={60} />
                 <YAxis tick={{ fontSize: 11 }} />
@@ -216,22 +294,28 @@ export default function CustomsAnalyticsPage() {
         <ScrollX>
           <table className="w-full text-sm">
             <thead className="table-head">
-              <tr>{[t('البند', 'Item'), t('معاملات', 'Deals'), t('حاويات', 'Containers'), t('الإيراد', 'Revenue'),
-                t('التكلفة', 'Cost'), t('الربح', 'Profit'), t('الهامش', 'Margin')].map((h, i) => (
-                <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>))}</tr>
+              <tr>
+                <th className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
+                  <span className="inline-flex items-center gap-1">{t('البند', 'Item')}{cf.header('key', baseRows, getters.key, ar)}</span>
+                </th>
+                {[t('معاملات', 'Deals'), t('حاويات', 'Containers'), t('الإيراد', 'Revenue'),
+                  t('التكلفة', 'Cost'), t('الربح', 'Profit'), t('الهامش', 'Margin'), t('ربح الحاوية', 'Profit / container')].map((h, i) => (
+                  <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>))}
+              </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400">{t('لا بيانات', 'No data')}</td></tr>
+                <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400">{t('لا بيانات', 'No data')}</td></tr>
               ) : rows.map((b) => (
                 <tr key={b.key} className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="px-3 py-2.5 font-semibold text-slate-800 max-w-[240px] truncate" title={b.key}>{b.key}</td>
+                  <td className="px-3 py-2.5 font-semibold text-slate-800 max-w-[240px] truncate" title={nameOf(b.key)}>{nameOf(b.key)}</td>
                   <td className="px-3 py-2.5 tabular-nums">{money(b.count)}</td>
                   <td className="px-3 py-2.5 tabular-nums">{money(b.containers)}</td>
                   <td className="px-3 py-2.5 tabular-nums text-emerald-700">{money(b.revenue)}</td>
                   <td className="px-3 py-2.5 tabular-nums text-slate-600">{money(b.costs)}</td>
                   <td className={`px-3 py-2.5 tabular-nums font-semibold ${b.profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{money(b.profit)}</td>
                   <td className="px-3 py-2.5 tabular-nums text-slate-600">{b.revenue ? pct(b.profit / b.revenue) : '—'}</td>
+                  <td className="px-3 py-2.5 tabular-nums text-slate-600">{b.containers ? money(b.profit / b.containers) : '—'}</td>
                 </tr>
               ))}
             </tbody>

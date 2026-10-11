@@ -17,7 +17,8 @@ import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import DateRangeFilter from '@/components/system/DateRangeFilter';
+import PeriodFilter from '@/components/system/PeriodFilter';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import ScrollX from '@/components/system/ScrollX';
 import { getCustomsTranslations } from '@/lib/translations';
@@ -31,6 +32,7 @@ interface Row {
   _id: string; refNumber: string; blNumber: string; customerName: string; customerParty: string | null;
   shippingAgent: string; branch: string; cargoType: 'containers' | 'vehicles'; units: number;
   bucket: 'upcoming' | 'open' | 'closed' | 'cancelled'; percent: number; next: string; nextLabel: string;
+  date: string; port?: string; declarationNumber?: string;
   createdAt: string; createdBy: string | null; createdByName: string; expectedDate: string; expectedState?: string;
   completedAt: string | null; invoiceNumber: string; invoiced: boolean; awaitingTransportInvoice: boolean;
   returnDeadline: string; returnState: '' | 'overdue' | 'due'; pendingPayments: number; openTasks: number;
@@ -56,6 +58,7 @@ const VIEWS: Record<string, (r: Row) => boolean> = {
   upcoming: (r) => r.bucket === 'upcoming',
   open: (r) => r.bucket === 'open',
   closed: (r) => r.bucket === 'closed',
+  closedNotInvoiced: (r) => r.bucket === 'closed' && !r.invoiced,
   awaiting: (r) => r.awaitingTransportInvoice,
   notInvoiced: (r) => r.bucket === 'open' && !r.invoiced,
   returnOverdue: (r) => r.returnState === 'overdue',
@@ -112,24 +115,37 @@ export default function CustomsDashboardPage() {
   useSocket('customs:deleted', load);
   useSocket('jp:changed', useCallback((x: any) => { if (x?.section === 'customs') load(); }, [load]));
 
-  const rows = useMemo(() => {
+  const base = useMemo(() => {
     if (!d) return [];
     const test = VIEWS[view] || VIEWS.all;
     const s = search.trim().toLowerCase();
     return d.rows.filter((r) => test(r)
       && (!stage || (r.bucket === 'open' && (r.next || 'done') === stage))
-      && (!s || [r.blNumber, r.refNumber, r.customerName, r.shippingAgent, r.invoiceNumber, r.createdByName].some((v) => v && String(v).toLowerCase().includes(s))));
+      && (!s || [r.blNumber, r.refNumber, r.customerName, r.shippingAgent, r.invoiceNumber, r.createdByName, r.declarationNumber].some((v) => v && String(v).toLowerCase().includes(s))));
   }, [d, view, stage, search]);
+  // فلاترُ الأعمدة (على طريقة إكسل) آخرُ ما يُطبَّق — على ما تركته البطاقةُ والبحث.
+  const cf = useColumnFilters<Row>();
 
   if (!d) return <Spinner />;
   const C = d.counts;
+  const bucketWord = (r: Row) => (r.bucket === 'cancelled' ? t('ملغاة', 'Cancelled') : r.bucket === 'upcoming' ? t('قادمة', 'Upcoming') : r.bucket === 'closed' ? t('مغلقة', 'Closed') : t('مفتوحة', 'Open'));
+  const getters: Record<string, (r: Row) => any> = {
+    bl: (r) => r.blNumber, ref: (r) => r.refNumber, customer: (r) => r.customerName, agent: (r) => r.shippingAgent,
+    branch: (r) => (r.branch === 'dammam' ? t('الدمام', 'Dammam') : t('جدة', 'Jeddah')),
+    type: (r) => (r.cargoType === 'vehicles' ? t('سيّارات', 'Vehicles') : t('حاويات', 'Containers')),
+    units: (r) => r.units, state: bucketWord,
+    next: (r) => (r.bucket === 'open' ? stageOf(r.next || 'done', r.cargoType) : ''),
+    invoice: (r) => (r.awaitingTransportInvoice ? t('بانتظار فاتورة النقل', 'Awaiting transport invoice') : r.invoiced ? t('مفوترة', 'Invoiced') : t('غير مفوترة', 'Not invoiced')),
+    date: (r) => r.date, month: (r) => (r.date || '').slice(0, 7), by: (r) => r.createdByName,
+  };
+  const rows = cf.apply(base, getters);
   const active = Object.values(f).filter(Boolean).length;
   const pick = (v: string) => { setView(v); setStage(''); tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
   const customerName = f.customerParty ? (opts.customers || []).find((o) => o.value === f.customerParty)?.label : '';
 
   const VIEW_TITLE: Record<string, [string, string]> = {
     all: ['كلّ المعاملات', 'All transactions'], upcoming: ['المعاملات القادمة', 'Upcoming'], open: ['المعاملات المفتوحة', 'Open'],
-    closed: ['المعاملات المغلقة', 'Closed'], awaiting: ['مفوترة بانتظار فاتورة النقل', 'Invoiced — awaiting transport invoice'],
+    closed: ['المعاملات المغلقة', 'Closed'], closedNotInvoiced: ['مغلقة لم تُفوتَر', 'Closed, not invoiced'], awaiting: ['مفوترة بانتظار فاتورة النقل', 'Invoiced — awaiting transport invoice'],
     notInvoiced: ['مفتوحة لم تُفوتَر', 'Open, not invoiced'], returnOverdue: ['متأخّرة الإرجاع', 'Return overdue'],
     returnDue: ['يقترب موعد إرجاعها', 'Return due soon'], pendingPayments: ['لها طلبات صرف معلّقة', 'With pending payment requests'],
     withTasks: ['عليها مهامّ مفتوحة', 'With open tasks'], cancelled: ['الملغاة', 'Cancelled'],
@@ -164,16 +180,25 @@ export default function CustomsDashboardPage() {
     { header: t('لم تُرجَع', 'Not returned'), key: 'unitsState.notReturned', width: 10 },
     { header: t('متأخّرة الإرجاع', 'Late to return'), key: 'unitsState.late', width: 12 },
     { header: t('أنشأها', 'Created by'), key: 'createdByName', width: 18 },
-    { header: t('تاريخ الإنشاء', 'Created'), key: 'createdAt', width: 14, transform: (v) => String(v || '').slice(0, 10) },
+    { header: t('تاريخ المعاملة', 'Transaction date'), key: 'date', width: 14, transform: (v) => v || '—' },
   ];
 
   const maxStage = Math.max(1, ...d.byStage.map((s) => s.count));
+
+  // رأسُ عمودٍ بقمعِ فلتره. دالّةٌ تُنادى لا مكوّنٌ يُعرَّف هنا: المكوّنُ المعرَّفُ
+  // داخل الرسم يُعاد بناؤه مع كلّ رسمة، فتُغلَق لوحةُ الفلتر وهي مفتوحة.
+  const th = (k: string, label: string) => (
+    <th key={k} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
+      <span className="inline-flex items-center gap-1">{label}{cf.header(k, base, getters[k], ar)}</span>
+    </th>
+  );
+  const toTable = () => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   return (
     <div className="space-y-5 pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<LayoutDashboard className="w-6 h-6 text-[#f37121]" />}
         title={t('لوحة القسم', 'Section dashboard')}
-        subtitle={t('متابعةٌ تشغيليّة: المعاملاتُ ومراحلُها والفريق — اضغط أيَّ رقمٍ لترى ما وراءه', 'Operational follow-up: transactions, stages and the team — click any figure to see what is behind it')}>
+        subtitle={t('متابعةٌ تشغيليّة: المعاملاتُ ومراحلُها والحاوياتُ والفريق — اضغط أيَّ رقمٍ فيظهر ما وراءه في الجدول تحته', 'Operational follow-up — click any figure and what is behind it shows in the table below')}>
         {d.canSeeAnalytics && (
           <Link href="/system/customs/analytics" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-[#f37121]/50">
             <BarChart3 className="h-4 w-4" />{t('تحليلات قسم التخليص', 'Customs analytics')}
@@ -182,21 +207,27 @@ export default function CustomsDashboardPage() {
       </PageHeader>
 
       {/* ── الفلاتر: تُطبَّق على كلّ ما في الصفحة ───────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <Sel value={f.customerParty} onChange={(v) => set('customerParty', v)} label={t('كلّ العملاء', 'All customers')} list={opts.customers} />
-        <Sel value={f.agentParty} onChange={(v) => set('agentParty', v)} label={t('كلّ وكلاء الشحن', 'All agents')} list={opts.agents} />
-        <Sel value={f.branch} onChange={(v) => set('branch', v)} label={t('كلّ الفروع', 'All branches')}
-          list={[{ value: 'jeddah', label: t('جدة', 'Jeddah') }, { value: 'dammam', label: t('الدمام', 'Dammam') }]} />
-        <Sel value={f.cargoType} onChange={(v) => set('cargoType', v)} label={t('حاويات وسيّارات', 'Containers & vehicles')}
-          list={[{ value: 'containers', label: t('حاويات', 'Containers') }, { value: 'vehicles', label: t('سيّارات', 'Vehicles') }]} />
-        <Sel value={f.member} onChange={(v) => set('member', v)} label={t('كلّ الفريق (مَن أنشأ)', 'Whole team (created by)')}
-          list={d.team.map((m) => ({ value: m._id, label: m.name }))} />
-        <DateRangeFilter ar={ar} from={f.from || ''} to={f.to || ''} onFrom={(v) => set('from', v)} onTo={(v) => set('to', v)} />
-        {active > 0 && (
-          <button type="button" onClick={() => setF({})} className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200">
-            <RotateCcw className="h-4 w-4" />{t('مسح الفلاتر', 'Clear filters')}
-          </button>
-        )}
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <Sel value={f.customerParty} onChange={(v) => set('customerParty', v)} label={t('كلّ العملاء', 'All customers')} list={opts.customers} />
+          <Sel value={f.agentParty} onChange={(v) => set('agentParty', v)} label={t('كلّ وكلاء الشحن', 'All agents')} list={opts.agents} />
+          <Sel value={f.branch} onChange={(v) => set('branch', v)} label={t('كلّ الفروع', 'All branches')}
+            list={[{ value: 'jeddah', label: t('جدة', 'Jeddah') }, { value: 'dammam', label: t('الدمام', 'Dammam') }]} />
+          <Sel value={f.cargoType} onChange={(v) => set('cargoType', v)} label={t('حاويات وسيّارات', 'Containers & vehicles')}
+            list={[{ value: 'containers', label: t('حاويات', 'Containers') }, { value: 'vehicles', label: t('سيّارات', 'Vehicles') }]} />
+          <Sel value={f.member} onChange={(v) => set('member', v)} label={t('كلّ الفريق (مَن أنشأ)', 'Whole team (created by)')}
+            list={d.team.map((m) => ({ value: m._id, label: m.name }))} />
+          {active > 0 && (
+            <button type="button" onClick={() => setF({})} className="inline-flex items-center gap-1 rounded-lg bg-[#f37121]/10 px-3 py-2 text-sm font-semibold text-[#f37121] hover:bg-[#f37121]/20">
+              <RotateCcw className="h-4 w-4" />{t(`مسح الفلاتر (${active})`, `Clear filters (${active})`)}
+            </button>
+          )}
+        </div>
+        {/* المدّة بتاريخ المعاملة (استلام الورق ثمّ البيان ثمّ شهرها) — والقادمةُ بتاريخها المرتقَب. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[12px] font-bold text-slate-600">{t('المدّة:', 'Period:')}</span>
+          <PeriodFilter ar={ar} from={f.from || ''} to={f.to || ''} onChange={(a, b) => setF((p) => ({ ...p, from: a, to: b }))} />
+        </div>
       </div>
 
       {customerName && (
@@ -205,71 +236,177 @@ export default function CustomsDashboardPage() {
         </p>
       )}
 
-      {/* ── الحالاتُ الثلاث ─────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Tile on={view === 'upcoming'} onClick={() => pick('upcoming')} icon={<CalendarClock className="h-5 w-5" />} tone="amber"
-          label={t('معاملات قادمة', 'Upcoming')} value={C.upcoming}
-          hint={C.upcomingOverdue ? t(`${C.upcomingOverdue} فات موعدُها ولم تُحوَّل`, `${C.upcomingOverdue} past their date`) : t('لم تبدأ بعد', 'Not started yet')} />
-        <Tile on={view === 'open'} onClick={() => pick('open')} icon={<FolderOpen className="h-5 w-5" />} tone="blue"
-          label={t('معاملات مفتوحة', 'Open')} value={C.open}
-          hint={t(`${C.notInvoiced} لم تُفوتَر بعد`, `${C.notInvoiced} not invoiced yet`)} />
-        <Tile on={view === 'closed'} onClick={() => pick('closed')} icon={<Lock className="h-5 w-5" />} tone="green"
-          label={t('معاملات مغلقة', 'Closed')} value={C.closed}
-          hint={t(`${C.closedThisMonth} أُغلقت هذا الشهر`, `${C.closedThisMonth} closed this month`)} />
-        {/* فُوترت ولم تصل فاتورةُ نقلها — حمراءُ ما دام فيها شيء. */}
-        <Tile on={view === 'awaiting'} onClick={() => pick('awaiting')} icon={<AlertTriangle className="h-5 w-5" />} tone={C.awaitingTransportInvoice ? 'red' : 'slate'}
-          label={t('مفوترة بانتظار فاتورة النقل', 'Invoiced, awaiting transport invoice')} value={C.awaitingTransportInvoice}
-          hint={t('تُنهى حين تُرفَق فاتورةُ النقل', 'Closes once the transport invoice is attached')} />
-      </div>
+      {/* ══ ١ · حالةُ المعاملات ═════════════════════════════════════════════ */}
+      <Group title={t('حالة المعاملات', 'Transactions')} hint={t(`${C.total} معاملة`, `${C.total} transactions`)}>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Tile on={view === 'upcoming'} onClick={() => pick('upcoming')} icon={<CalendarClock className="h-5 w-5" />} tone="amber"
+            label={t('معاملات قادمة', 'Upcoming')} value={C.upcoming}
+            hint={C.upcomingOverdue ? t(`${C.upcomingOverdue} فات موعدُها ولم تُحوَّل`, `${C.upcomingOverdue} past their date`) : t('لم تبدأ بعد', 'Not started yet')} />
+          <Tile on={view === 'open'} onClick={() => pick('open')} icon={<FolderOpen className="h-5 w-5" />} tone="blue"
+            label={t('معاملات مفتوحة', 'Open')} value={C.open}
+            hint={t(`${C.notInvoiced} لم تُفوتَر بعد`, `${C.notInvoiced} not invoiced yet`)} />
+          <Tile on={view === 'closed'} onClick={() => pick('closed')} icon={<Lock className="h-5 w-5" />} tone="green"
+            label={t('معاملات مغلقة', 'Closed')} value={C.closed}
+            hint={t(`${C.closedThisMonth} أُغلقت هذا الشهر`, `${C.closedThisMonth} closed this month`)} />
+          <Tile on={view === 'all'} onClick={() => pick('all')} icon={<Users className="h-5 w-5" />} tone="slate"
+            label={t('عملاء نعمل معهم الآن', 'Active customers')} value={C.activeCustomers}
+            hint={t(`من ${C.customers} عميلًا — اضغط لكلّ المعاملات`, `of ${C.customers} — click for all transactions`)} />
+        </div>
+      </Group>
 
-      {/* ── ما يُتابَع ──────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Mini onClick={() => pick('open')} icon={<Users className="h-4 w-4" />} label={t('عملاء نعمل معهم الآن', 'Active customers')} value={C.activeCustomers}
-          hint={t(`من ${C.customers} عميلًا`, `of ${C.customers}`)} />
-        <Mini onClick={() => pick('open')} icon={<Container className="h-4 w-4" />} label={t('حاويات قيد العمل', 'Containers in work')} value={C.openContainers}
-          hint={C.openVehicles ? t(`و${C.openVehicles} سيّارة`, `+ ${C.openVehicles} vehicles`) : ''} />
-        <Mini on={view === 'returnOverdue'} onClick={() => pick('returnOverdue')} icon={<Clock3 className="h-4 w-4" />} tone={C.returnOverdue ? 'red' : undefined}
-          label={t('متأخّرة الإرجاع', 'Return overdue')} value={C.returnOverdue}
-          hint={C.returnDue ? t(`${C.returnDue} يقترب موعدُها`, `${C.returnDue} due soon`) : ''} />
-        <Mini on={view === 'pendingPayments'} onClick={() => pick('pendingPayments')} icon={<Wallet className="h-4 w-4" />}
-          label={t('طلبات صرف معلّقة', 'Pending payment requests')} value={C.pendingPayments}
-          hint={t(`في ${C.withPendingPayments} معاملة`, `in ${C.withPendingPayments} transactions`)} />
-        <Mini on={view === 'notInvoiced'} onClick={() => pick('notInvoiced')} icon={<Receipt className="h-4 w-4" />}
-          label={t('مفتوحة لم تُفوتَر', 'Open, not invoiced')} value={C.notInvoiced} />
-        <Mini on={view === 'withTasks'} onClick={() => pick('withTasks')} icon={<CalendarCheck className="h-4 w-4" />} tone={C.tasksOverdue ? 'red' : undefined}
-          label={t('مهامّ خطّة العمل المفتوحة', 'Open work-plan tasks')} value={C.tasksOpen}
-          hint={C.tasksOverdue ? t(`${C.tasksOverdue} متأخّرة`, `${C.tasksOverdue} overdue`) : ''} />
-      </div>
+      {/* ══ ٢ · ما يحتاج متابعة ═════════════════════════════════════════════ */}
+      <Group title={t('ما يحتاج متابعة', 'Needs attention')}>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <Mini on={view === 'awaiting'} onClick={() => pick('awaiting')} icon={<AlertTriangle className="h-4 w-4" />} tone={C.awaitingTransportInvoice ? 'red' : undefined}
+            label={t('مفوترة بانتظار فاتورة النقل', 'Awaiting transport invoice')} value={C.awaitingTransportInvoice} hint={t('تُنهى حين تُرفَق', 'Closes once attached')} />
+          <Mini on={view === 'closedNotInvoiced'} onClick={() => pick('closedNotInvoiced')} icon={<Receipt className="h-4 w-4" />} tone={C.closedNotInvoiced ? 'red' : undefined}
+            label={t('مغلقة لم تُفوتَر', 'Closed, not invoiced')} value={C.closedNotInvoiced || 0} hint={t('تنتظر إصدارَ فاتورتها', 'Invoice still to be issued')} />
+          <Mini on={view === 'notInvoiced'} onClick={() => pick('notInvoiced')} icon={<Receipt className="h-4 w-4" />}
+            label={t('مفتوحة لم تُفوتَر', 'Open, not invoiced')} value={C.notInvoiced} />
+          <Mini on={view === 'pendingPayments'} onClick={() => pick('pendingPayments')} icon={<Wallet className="h-4 w-4" />}
+            label={t('طلبات صرف معلّقة', 'Pending payment requests')} value={C.pendingPayments}
+            hint={t(`في ${C.withPendingPayments} معاملة`, `in ${C.withPendingPayments} transactions`)} />
+          <Mini on={view === 'returnOverdue'} onClick={() => pick('returnOverdue')} icon={<Clock3 className="h-4 w-4" />} tone={C.returnOverdue ? 'red' : undefined}
+            label={t('معاملات فات موعد إرجاعها', 'Return overdue')} value={C.returnOverdue}
+            hint={C.returnDue ? t(`${C.returnDue} يقترب موعدُها`, `${C.returnDue} due soon`) : ''} />
+          <Mini on={view === 'withTasks'} onClick={() => pick('withTasks')} icon={<CalendarCheck className="h-4 w-4" />} tone={C.tasksOverdue ? 'red' : undefined}
+            label={t('مهامّ خطّة العمل المفتوحة', 'Open work-plan tasks')} value={C.tasksOpen}
+            hint={C.tasksOverdue ? t(`${C.tasksOverdue} متأخّرة`, `${C.tasksOverdue} overdue`) : ''} />
+        </div>
+      </Group>
 
-      {/* ── الحاوياتُ واحدةً واحدة ─────────────────────────────────────────────
+      {/* ══ ٣ · الحاوياتُ واحدةً واحدة ══════════════════════════════════════
           المعاملةُ لا تقول أين حاوياتُها: ثلاثٌ في بوليصةٍ قد تكون واحدةٌ منها
-          سُلِّمت واثنتان في الساحة. فتُعَدّ الوحداتُ نفسُها — في المعاملات
-          المفتوحة — بمواضعها، وما لم يُرجَع منها وما فات موعدُ إرجاعه. */}
-      <div>
-        <p className="mb-2 text-[12.5px] font-bold text-slate-700">{t('الحاوياتُ والسيّاراتُ في المعاملات المفتوحة', 'Containers & vehicles in open transactions')} <span className="font-normal text-slate-400">({C.openUnits})</span></p>
+          سُلِّمت واثنتان في الساحة. فتُعَدّ الوحداتُ نفسُها بمواضعها. */}
+      <Group title={t('الحاويات والسيّارات في المعاملات المفتوحة', 'Containers & vehicles in open transactions')} hint={t(`${C.openUnits} وحدة`, `${C.openUnits} units`)}>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           <Mini on={view === 'unitsAtPort'} onClick={() => pick('unitsAtPort')} icon={<Container className="h-4 w-4" />}
             label={t('ما زالت في الميناء', 'Still at the port')} value={C.unitsAtPort} hint={t('لم تُنقَل بعد', 'Not moved yet')} />
           <Mini on={view === 'unitsInYard'} onClick={() => pick('unitsInYard')} icon={<Container className="h-4 w-4" />}
             label={t('في الساحة', 'In the yard')} value={C.unitsInYard} hint={t('لم تُنقَل إلى العميل بعد', 'Not yet moved to the customer')} />
-          <Mini onClick={() => pick('open')} icon={<Container className="h-4 w-4" />}
+          <Mini on={view === 'open' && !stage} onClick={() => pick('open')} icon={<Container className="h-4 w-4" />}
             label={t('سُلِّمت للعميل', 'Delivered to customer')} value={C.unitsDelivered} />
           <Mini on={view === 'unitsNotReturned'} onClick={() => pick('unitsNotReturned')} icon={<RotateCcw className="h-4 w-4" />}
             label={t('حاويات لم تُرجَع', 'Containers not returned')} value={C.unitsNotReturned} hint={t('ناقصةُ الإرجاع إلى الوكيل', 'Still to go back to the agent')} />
           <Mini on={view === 'unitsLate'} onClick={() => pick('unitsLate')} icon={<AlertTriangle className="h-4 w-4" />} tone={C.unitsLate ? 'red' : undefined}
             label={t('حاويات فات موعد إرجاعها', 'Containers past return deadline')} value={C.unitsLate} hint={t('متأخّرة — أرضيّاتٌ تُحسَب', 'Late — demurrage accrues')} />
         </div>
+      </Group>
+
+      {/* ══ الجدول: ما وراء البطاقة المضغوطة — تحت البطاقات مباشرةً ══════════ */}
+      <div ref={tableRef} className="scroll-mt-4 overflow-hidden rounded-xl border-2 border-slate-900/10 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-3">
+          <h3 className="text-[14px] font-bold text-slate-900">{ar ? VIEW_TITLE[view][0] : VIEW_TITLE[view][1]}</h3>
+          <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[12px] font-bold tabular-nums text-white">{rows.length}</span>
+          {stage && (
+            <button type="button" onClick={() => setStage('')} className="inline-flex items-center gap-1 rounded-full bg-[#f37121]/10 px-2 py-0.5 text-[12px] font-semibold text-[#b4471a]">
+              {t('تنتظر', 'Waiting on')}: {stageOf(stage)}<X className="h-3 w-3" />
+            </button>
+          )}
+          <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
+          <div className="ms-auto flex flex-wrap items-center gap-2">
+            <div className="flex overflow-hidden rounded-lg border border-slate-200 text-[12px] font-semibold">
+              {(['all', 'upcoming', 'open', 'closed'] as const).map((k) => (
+                <button key={k} type="button" onClick={() => { setView(k); setStage(''); }}
+                  className={`px-2.5 py-1.5 ${view === k ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+                  {ar ? { all: 'الكلّ', upcoming: 'قادمة', open: 'مفتوحة', closed: 'مغلقة' }[k] : { all: 'All', upcoming: 'Upcoming', open: 'Open', closed: 'Closed' }[k]}
+                </button>
+              ))}
+            </div>
+            <div className="relative">
+              <Search className="absolute start-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('بحث…', 'Search…')}
+                className="w-44 rounded-lg border border-slate-200 bg-white py-1.5 pe-2 ps-8 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
+            </div>
+            <ExportMenu fileName={`customs-dashboard-${view}`} lang={ar ? 'ar' : 'en'} variant="subtle"
+              options={[{ key: 'shown', label: t('المعروض', 'Shown'), sheets: [{ name: ar ? VIEW_TITLE[view][0] : VIEW_TITLE[view][1], rows, columns: exportCols }] }]} />
+          </div>
+        </div>
+        <ScrollX className="max-h-[34rem]">
+          <table className="w-full min-w-[1180px] text-[13px]">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-slate-900 text-slate-300">
+                {th("bl", t('رقم البوليصة', 'BL no.'))}
+                {th("ref", t('رقم المعاملة', 'Transaction no.'))}
+                {th("customer", t('العميل', 'Customer'))}
+                {th("type", t('الوحدات', 'Units'))}
+                {th("state", t('الحالة', 'State'))}
+                {th("next", t('المرحلة المنتظَرة', 'Waiting on'))}
+                {th("invoice", t('الفاتورة', 'Invoice'))}
+                {th("month", t('تاريخ المعاملة', 'Date'))}
+                <th className="px-3 py-2.5 text-start font-semibold">{t('تنبيهات', 'Alerts')}</th>
+                {th("by", t('أنشأها', 'Created by'))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {rows.length === 0 ? (
+                <tr><td colSpan={10} className="py-12 text-center text-slate-400">{t('لا معاملاتٍ في هذا العرض.', 'No transactions in this view.')}</td></tr>
+              ) : rows.map((r) => {
+                const [cls, label] = bucketBadge(r);
+                return (
+                  <tr key={r._id} onClick={() => router.push(`/system/customs/${r._id}`)}
+                    className={`cursor-pointer transition-colors hover:bg-slate-50 ${r.awaitingTransportInvoice || (r.bucket === 'closed' && !r.invoiced) ? 'bg-red-50/60' : ''}`}>
+                    <td className="px-3 py-2.5 font-semibold text-slate-900"><bdi>{r.blNumber || '—'}</bdi></td>
+                    <td className="px-3 py-2.5 text-slate-500"><bdi>{r.refNumber}</bdi></td>
+                    <td className="max-w-[14rem] truncate px-3 py-2.5 text-slate-700">{r.customerName || '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-700">
+                      <span className="inline-flex items-center gap-1">
+                        {r.cargoType === 'vehicles' ? <Car className="h-3.5 w-3.5" /> : <Container className="h-3.5 w-3.5" />}{r.units}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <span className={`rounded-full px-2 py-0.5 text-[11.5px] font-bold ${cls}`}>{label}</span>
+                      {r.bucket === 'upcoming' && r.expectedState === 'overdue' && <span className="ms-1.5 text-[11.5px] font-bold text-red-600">{t('فات موعدُها', 'overdue')}</span>}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {r.bucket === 'open' ? (
+                        <span className="flex items-center gap-2">
+                          <span className="h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-emerald-500" style={{ width: `${r.percent}%` }} /></span>
+                          <span className="tabular-nums text-[11.5px] text-slate-500">{r.percent}%</span>
+                          <span className="max-w-[15rem] truncate text-slate-700">{stageOf(r.next || 'done', r.cargoType)}</span>
+                        </span>
+                      ) : r.bucket === 'closed' ? <span className="text-slate-400">{t('أُغلقت', 'Closed')} {fmt(r.completedAt)}</span> : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      {r.awaitingTransportInvoice
+                        ? <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white">{t('بانتظار فاتورة النقل', 'Awaiting transport invoice')}</span>
+                        : r.invoiceNumber ? <bdi className="text-slate-700">{r.invoiceNumber}</bdi>
+                          : r.invoiced ? <span className="text-slate-500">{t('مفوترة', 'Invoiced')}</span>
+                            : r.bucket === 'closed' ? <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-700">{t('لم تُفوتَر', 'Not invoiced')}</span>
+                              : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-slate-500">{fmt(r.date)}</td>
+                    <td className="px-3 py-2.5">
+                      <span className="flex flex-wrap gap-1">
+                        {r.unitsState?.late > 0
+                          ? <Flag cls="bg-red-100 text-red-700" text={t(`${r.unitsState.late} حاوية متأخّرة الإرجاع`, `${r.unitsState.late} late to return`)} />
+                          : r.returnState === 'overdue' && <Flag cls="bg-red-100 text-red-700" text={t('متأخّرة الإرجاع', 'Return overdue')} />}
+                        {r.bucket === 'open' && r.unitsState?.total > 0 && r.unitsState.notReturned > 0 && r.unitsState.returned > 0 && (
+                          <Flag cls="bg-slate-100 text-slate-700" text={t(`أُرجعت ${r.unitsState.returned} من ${r.unitsState.returned + r.unitsState.notReturned}`, `${r.unitsState.returned}/${r.unitsState.returned + r.unitsState.notReturned} returned`)} />
+                        )}
+                        {r.returnState === 'due' && <Flag cls="bg-amber-100 text-amber-800" text={t('يقترب الإرجاع', 'Return due')} />}
+                        {r.pendingPayments > 0 && <Flag cls="bg-slate-100 text-slate-700" text={t(`${r.pendingPayments} طلب صرف`, `${r.pendingPayments} payment req.`)} />}
+                        {r.openTasks > 0 && <Flag cls="bg-violet-50 text-violet-700" text={t(`${r.openTasks} مهمّة`, `${r.openTasks} tasks`)} />}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-500">{r.createdByName || '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </ScrollX>
       </div>
 
+      {/* ══ ٤ · تفصيلٌ: بالمرحلة، وبالعميل — والضغطُ يُصفّي الجدولَ أعلاه ════ */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        {/* ── أين تقف المعاملاتُ المفتوحة ─────────────────────────────────── */}
         <Panel title={t('أين تقف المعاملاتُ المفتوحة', 'Where the open transactions stand')}
-          hint={t('بالمرحلة التي تنتظرها كلُّ معاملة', 'By the stage each one is waiting on')}>
+          hint={t('بالمرحلة التي تنتظرها كلُّ معاملة — اضغط مرحلةً فتظهر معاملاتُها في الجدول', 'By the stage each one is waiting on — click one to list its transactions above')}>
           {d.byStage.length === 0 ? <Empty text={t('لا معاملاتٍ مفتوحة.', 'No open transactions.')} /> : (
             <ul className="space-y-1.5">
               {d.byStage.map((s) => (
                 <li key={s.key}>
-                  <button type="button" onClick={() => { setView('open'); setStage(stage === s.key ? '' : s.key); tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
+                  <button type="button" onClick={() => { setView('open'); setStage(stage === s.key ? '' : s.key); toTable(); }}
                     className={`group w-full rounded-lg px-2.5 py-1.5 text-start transition-colors ${stage === s.key ? 'bg-[#f37121]/10 ring-1 ring-[#f37121]/40' : 'hover:bg-slate-50'}`}>
                     <span className="flex items-center justify-between gap-2 text-[13px]">
                       <span className="truncate font-semibold text-slate-800">{stageOf(s.key)}</span>
@@ -287,7 +424,6 @@ export default function CustomsDashboardPage() {
           )}
         </Panel>
 
-        {/* ── العملاء: قادمٌ ومفتوحٌ ومغلق لكلّ عميل ───────────────────────── */}
         <Panel title={t('المعاملاتُ حسب العميل', 'Transactions by customer')}
           hint={t('اضغط عميلًا لتُحصَر اللوحةُ كلُّها فيه', 'Click a customer to narrow the whole dashboard to them')}>
           {d.byCustomer.length === 0 ? <Empty text={t('لا بيانات.', 'No data.')} /> : (
@@ -304,7 +440,7 @@ export default function CustomsDashboardPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {d.byCustomer.map((c) => (
-                    <tr key={c.key} onClick={() => { if (c.party) { set('customerParty', String(c.party)); setView('all'); setStage(''); } }}
+                    <tr key={c.key} onClick={() => { if (c.party) { set('customerParty', String(c.party)); setView('all'); setStage(''); window.scrollTo({ top: 0, behavior: 'smooth' }); } }}
                       className={c.party ? 'cursor-pointer hover:bg-slate-50' : ''}>
                       <td className="max-w-[14rem] truncate py-2 font-semibold text-slate-800">{c.name}</td>
                       <Num v={c.upcoming} cls="text-amber-700" />
@@ -320,7 +456,7 @@ export default function CustomsDashboardPage() {
         </Panel>
       </div>
 
-      {/* ── الفريق ─────────────────────────────────────────────────────────── */}
+      {/* ══ ٥ · الفريق ══════════════════════════════════════════════════════ */}
       <Panel title={t('الفريق', 'The team')}
         hint={t('ما على كلّ فردٍ الآن، وحركتُه في آخر ثلاثين يومًا — اضغط اسمًا لترى معاملاتِه', 'What each member carries now and their last-30-day activity — click a name to see their transactions')}>
         <ScrollX>
@@ -340,7 +476,7 @@ export default function CustomsDashboardPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {d.team.map((m) => (
-                <tr key={m._id} onClick={() => { set('member', f.member === m._id ? '' : m._id); setView('all'); setStage(''); }}
+                <tr key={m._id} onClick={() => { set('member', f.member === m._id ? '' : m._id); setView('all'); setStage(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                   className={`cursor-pointer hover:bg-slate-50 ${f.member === m._id ? 'bg-[#f37121]/5' : ''}`}>
                   <td className="py-2 font-semibold text-slate-800">
                     {m.name}
@@ -373,108 +509,20 @@ export default function CustomsDashboardPage() {
           )}
         </div>
       </Panel>
-
-      {/* ── المعاملاتُ وراء الرقم ───────────────────────────────────────────── */}
-      <div ref={tableRef} className="scroll-mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3">
-          <h3 className="text-[14px] font-bold text-slate-900">{ar ? VIEW_TITLE[view][0] : VIEW_TITLE[view][1]}</h3>
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[12px] font-bold tabular-nums text-slate-700">{rows.length}</span>
-          {stage && (
-            <button type="button" onClick={() => setStage('')} className="inline-flex items-center gap-1 rounded-full bg-[#f37121]/10 px-2 py-0.5 text-[12px] font-semibold text-[#b4471a]">
-              {t('تنتظر', 'Waiting on')}: {stageOf(stage)}<X className="h-3 w-3" />
-            </button>
-          )}
-          <div className="ms-auto flex flex-wrap items-center gap-2">
-            <div className="flex overflow-hidden rounded-lg border border-slate-200 text-[12px] font-semibold">
-              {(['all', 'upcoming', 'open', 'closed'] as const).map((k) => (
-                <button key={k} type="button" onClick={() => { setView(k); setStage(''); }}
-                  className={`px-2.5 py-1.5 ${view === k ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
-                  {ar ? { all: 'الكلّ', upcoming: 'قادمة', open: 'مفتوحة', closed: 'مغلقة' }[k] : { all: 'All', upcoming: 'Upcoming', open: 'Open', closed: 'Closed' }[k]}
-                </button>
-              ))}
-            </div>
-            <div className="relative">
-              <Search className="absolute start-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('بحث…', 'Search…')}
-                className="w-44 rounded-lg border border-slate-200 bg-white py-1.5 pe-2 ps-8 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
-            </div>
-            <ExportMenu fileName={`customs-dashboard-${view}`} lang={ar ? 'ar' : 'en'} variant="subtle"
-              options={[{ key: 'shown', label: t('المعروض', 'Shown'), sheets: [{ name: ar ? VIEW_TITLE[view][0] : VIEW_TITLE[view][1], rows, columns: exportCols }] }]} />
-          </div>
-        </div>
-        <ScrollX>
-          <table className="w-full min-w-[1040px] text-[13px]">
-            <thead>
-              <tr className="bg-slate-900 text-slate-300">
-                <th className="px-4 py-2.5 text-start font-semibold">{t('رقم البوليصة', 'BL no.')}</th>
-                <th className="px-3 py-2.5 text-start font-semibold">{t('رقم المعاملة', 'Transaction no.')}</th>
-                <th className="px-3 py-2.5 text-start font-semibold">{t('العميل', 'Customer')}</th>
-                <th className="px-3 py-2.5 text-start font-semibold">{t('الوحدات', 'Units')}</th>
-                <th className="px-3 py-2.5 text-start font-semibold">{t('الحالة', 'State')}</th>
-                <th className="px-3 py-2.5 text-start font-semibold">{t('المرحلة المنتظَرة', 'Waiting on')}</th>
-                <th className="px-3 py-2.5 text-start font-semibold">{t('الفاتورة', 'Invoice')}</th>
-                <th className="px-3 py-2.5 text-start font-semibold">{t('تنبيهات', 'Alerts')}</th>
-                <th className="px-3 py-2.5 text-start font-semibold">{t('أنشأها', 'Created by')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {rows.length === 0 ? (
-                <tr><td colSpan={9} className="py-12 text-center text-slate-400">{t('لا معاملاتٍ في هذا العرض.', 'No transactions in this view.')}</td></tr>
-              ) : rows.map((r) => {
-                const [cls, label] = bucketBadge(r);
-                return (
-                  <tr key={r._id} onClick={() => router.push(`/system/customs/${r._id}`)}
-                    className={`cursor-pointer transition-colors hover:bg-slate-50 ${r.awaitingTransportInvoice ? 'bg-red-50/60' : ''}`}>
-                    <td className="px-4 py-2.5 font-semibold text-slate-900"><bdi>{r.blNumber || '—'}</bdi></td>
-                    <td className="px-3 py-2.5 text-slate-500"><bdi>{r.refNumber}</bdi></td>
-                    <td className="max-w-[14rem] truncate px-3 py-2.5 text-slate-700">{r.customerName || '—'}</td>
-                    <td className="px-3 py-2.5 text-slate-700">
-                      <span className="inline-flex items-center gap-1">
-                        {r.cargoType === 'vehicles' ? <Car className="h-3.5 w-3.5" /> : <Container className="h-3.5 w-3.5" />}{r.units}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className={`rounded-full px-2 py-0.5 text-[11.5px] font-bold ${cls}`}>{label}</span>
-                      {r.bucket === 'upcoming' && r.expectedDate && (
-                        <span className={`ms-1.5 text-[11.5px] ${r.expectedState === 'overdue' ? 'font-bold text-red-600' : 'text-slate-500'}`}>{fmt(r.expectedDate)}</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {r.bucket === 'open' ? (
-                        <span className="flex items-center gap-2">
-                          <span className="h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-emerald-500" style={{ width: `${r.percent}%` }} /></span>
-                          <span className="tabular-nums text-[11.5px] text-slate-500">{r.percent}%</span>
-                          <span className="max-w-[15rem] truncate text-slate-700">{stageOf(r.next || 'done', r.cargoType)}</span>
-                        </span>
-                      ) : r.bucket === 'closed' ? <span className="text-slate-400">{fmt(r.completedAt)}</span> : <span className="text-slate-300">—</span>}
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      {r.awaitingTransportInvoice
-                        ? <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white">{t('بانتظار فاتورة النقل', 'Awaiting transport invoice')}</span>
-                        : r.invoiceNumber ? <bdi className="text-slate-700">{r.invoiceNumber}</bdi> : <span className="text-slate-300">—</span>}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className="flex flex-wrap gap-1">
-                        {r.unitsState?.late > 0
-                          ? <Flag cls="bg-red-100 text-red-700" text={t(`${r.unitsState.late} حاوية متأخّرة الإرجاع`, `${r.unitsState.late} late to return`)} />
-                          : r.returnState === 'overdue' && <Flag cls="bg-red-100 text-red-700" text={t('متأخّرة الإرجاع', 'Return overdue')} />}
-                        {r.bucket === 'open' && r.unitsState?.total > 0 && r.unitsState.notReturned > 0 && r.unitsState.returned > 0 && (
-                          <Flag cls="bg-slate-100 text-slate-700" text={t(`أُرجعت ${r.unitsState.returned} من ${r.unitsState.returned + r.unitsState.notReturned}`, `${r.unitsState.returned}/${r.unitsState.returned + r.unitsState.notReturned} returned`)} />
-                        )}
-                        {r.returnState === 'due' && <Flag cls="bg-amber-100 text-amber-800" text={t('يقترب الإرجاع', 'Return due')} />}
-                        {r.pendingPayments > 0 && <Flag cls="bg-slate-100 text-slate-700" text={t(`${r.pendingPayments} طلب صرف`, `${r.pendingPayments} payment req.`)} />}
-                        {r.openTasks > 0 && <Flag cls="bg-violet-50 text-violet-700" text={t(`${r.openTasks} مهمّة`, `${r.openTasks} tasks`)} />}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-slate-500">{r.createdByName || '—'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </ScrollX>
-      </div>
     </div>
+  );
+}
+
+function Group({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <div className="mb-2 flex items-baseline gap-2">
+        <h2 className="text-[13px] font-extrabold text-slate-800">{title}</h2>
+        {hint && <span className="text-[11.5px] text-slate-400">{hint}</span>}
+        <span className="h-px flex-1 bg-slate-200" />
+      </div>
+      {children}
+    </section>
   );
 }
 

@@ -17,6 +17,7 @@ import Link from 'next/link';
 import api from '@/lib/api';
 import { Modal, Field, TextInput, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
 import ScrollX from '@/components/system/ScrollX';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { FileSignature, Plus, Pencil, Trash2, Paperclip, Upload, X } from 'lucide-react';
 
 export type CustomsContract = {
@@ -57,6 +58,7 @@ export default function CustomsContracts({ ar, canEdit, party, parties, notify, 
 }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const [rows, setRows] = useState<CustomsContract[]>([]);
+  const cf = useColumnFilters<CustomsContract>();
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<any>(null);
   const [saving, setSaving] = useState(false);
@@ -132,21 +134,30 @@ export default function CustomsContracts({ ar, canEdit, party, parties, notify, 
 
   const openNew = () => setEditing({ ...EMPTY, party: party?._id || '' });
 
+  // فلاترُ الأعمدة على طريقة إكسل — بالقيمة التي تُقرأ في الخليّة.
+  const colGetters: Record<string, (c: CustomsContract) => any> = {
+    title: (c) => c.title, party: (c) => (c as any).partyName, no: (c) => (c as any).contractNumber,
+    start: (c) => String((c as any).startDate || '').slice(0, 7), end: (c) => String((c as any).endDate || '').slice(0, 7),
+    state: (c) => { const m = STATE_META[c.state || c.status] || STATE_META.draft; return ar ? (m as any).ar : (m as any).en; },
+  };
+  const shownRows = cf.apply(rows, colGetters);
   const table = (
     <ScrollX>
       <table className="w-full text-sm">
         <thead className="table-head">
           <tr>
-            {[t('العقد', 'Contract'), ...(party ? [] : [t('الطرف', 'Party')]), t('الرقم', 'No.'), t('يبدأ', 'Starts'), t('ينتهي', 'Ends'),
-              t('القيمة', 'Value'), t('السداد', 'Terms'), t('الحالة', 'State'), t('المرفقات', 'Files'), ''].map((h, i) => (
-              <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>
+            {([[t('العقد', 'Contract'), 'title'], ...(party ? [] : [[t('الطرف', 'Party'), 'party']]), [t('رقم العقد', 'Contract no.'), 'no'], [t('يبدأ', 'Starts'), 'start'], [t('ينتهي', 'Ends'), 'end'],
+              [t('القيمة', 'Value'), ''], [t('السداد', 'Terms'), ''], [t('الحالة', 'State'), 'state'], [t('المرفقات', 'Files'), ''], ['', '']] as [string, string][]).map(([h, k], i) => (
+              <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
+                <span className="inline-flex items-center gap-1">{h}{k ? cf.header(k, rows, colGetters[k], ar) : null}</span>
+              </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 ? (
-            <tr><td colSpan={10} className="px-3 py-10 text-center text-slate-400">{t('لا عقود بعد', 'No contracts yet')}</td></tr>
-          ) : rows.map((c) => {
+          {shownRows.length === 0 ? (
+            <tr><td colSpan={10} className="px-3 py-10 text-center text-slate-400">{rows.length ? <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} /> : t('لا عقود بعد', 'No contracts yet')}</td></tr>
+          ) : shownRows.map((c) => {
             const st = STATE_META[c.state || c.status] || STATE_META.draft;
             return (
               <tr key={c._id} className="border-b border-slate-100 hover:bg-slate-50 align-top">

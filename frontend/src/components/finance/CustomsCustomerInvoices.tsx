@@ -14,6 +14,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import ScrollX from '@/components/system/ScrollX';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { Receipt, AlertTriangle, Loader2 } from 'lucide-react';
 
 interface Inv {
@@ -31,6 +32,7 @@ export default function CustomsCustomerInvoices({ onOpen }: { onOpen: (id: strin
   const [summary, setSummary] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [onlyAwaiting, setOnlyAwaiting] = useState(false);
+  const cf = useColumnFilters<Inv>();
 
   const load = useCallback(async () => {
     try {
@@ -42,7 +44,13 @@ export default function CustomsCustomerInvoices({ onOpen }: { onOpen: (id: strin
   useEffect(() => { load(); }, [load]);
   useSocket('customs:updated', load);
 
-  const shown = onlyAwaiting ? rows.filter((r) => r.awaitingTransportInvoice) : rows;
+  const base = onlyAwaiting ? rows.filter((r) => r.awaitingTransportInvoice) : rows;
+  const stateOf = (r: Inv) => (r.awaitingTransportInvoice ? t('بانتظار فاتورة النقل', 'Awaiting transport invoice') : r.isCompleted ? t('مغلقة', 'Closed') : t('مفتوحة', 'Open'));
+  const getters: Record<string, (r: Inv) => any> = {
+    inv: (r) => r.invoiceNumber, month: (r) => (r.invoiceAt ? String(r.invoiceAt).slice(0, 7) : ''), bl: (r) => r.blNumber,
+    ref: (r) => r.refNumber, customer: (r) => r.customerName, state: stateOf,
+  };
+  const shown = cf.apply(base, getters);
   const awaiting = summary.awaitingTransportInvoice || 0;
 
   return (
@@ -56,6 +64,7 @@ export default function CustomsCustomerInvoices({ onOpen }: { onOpen: (id: strin
                `${summary.count || 0} invoices · total ${money(summary.grand)} SAR — click one to see its transaction`)}
           </p>
         </div>
+        <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
         <button type="button" onClick={() => setOnlyAwaiting((v) => !v)} disabled={!awaiting && !onlyAwaiting}
           className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition-colors disabled:opacity-50 ${
             onlyAwaiting ? 'bg-red-600 text-white' : awaiting ? 'bg-red-50 text-red-700 ring-1 ring-red-200 hover:bg-red-100' : 'bg-slate-100 text-slate-500'}`}>
@@ -65,16 +74,18 @@ export default function CustomsCustomerInvoices({ onOpen }: { onOpen: (id: strin
       </div>
       {loading ? (
         <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
-      ) : shown.length === 0 ? (
+      ) : shown.length === 0 && !cf.count ? (
         <p className="py-10 text-center text-sm text-slate-400">{t('لا فواتير.', 'No invoices.')}</p>
       ) : (
         <ScrollX>
           <table className="w-full min-w-[820px] text-[13px]">
             <thead>
               <tr className="bg-slate-50 text-[12px] text-slate-500">
-                {[t('رقم الفاتورة', 'Invoice no.'), t('التاريخ', 'Date'), t('رقم البوليصة', 'BL no.'), t('رقم المعاملة', 'Transaction no.'),
-                  t('العميل', 'Customer'), t('قبل الضريبة', 'Net'), t('الضريبة', 'VAT'), t('الإجمالي', 'Total'), t('حالة المعاملة', 'Transaction state')].map((h) => (
-                  <th key={h} className="whitespace-nowrap px-3 py-2.5 text-start font-semibold">{h}</th>
+                {([[t('رقم الفاتورة', 'Invoice no.'), 'inv'], [t('التاريخ', 'Date'), 'month'], [t('رقم البوليصة', 'BL no.'), 'bl'], [t('رقم المعاملة', 'Transaction no.'), 'ref'],
+                  [t('العميل', 'Customer'), 'customer'], [t('قبل الضريبة', 'Net'), ''], [t('الضريبة', 'VAT'), ''], [t('الإجمالي', 'Total'), ''], [t('حالة المعاملة', 'Transaction state'), 'state']] as [string, string][]).map(([h, k]) => (
+                  <th key={h} className="whitespace-nowrap px-3 py-2.5 text-start font-semibold">
+                    <span className="inline-flex items-center gap-1">{h}{k ? cf.header(k, base, getters[k], ar) : null}</span>
+                  </th>
                 ))}
               </tr>
             </thead>

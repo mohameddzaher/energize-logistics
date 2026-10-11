@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { canEditSection } from '@/lib/sections';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, Loader2 } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -46,6 +47,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
     .includes((user as any)?.role || '') || canEditSection((user as any)?.permissions, 'Customs');
 
   const [rows, setRows] = useState<Party[]>([]);
+  const cf = useColumnFilters<Party>();
   // الربحُ والهامش للإدارة وحدَها — الخادمُ يقول من يراهما ولا يرسلهما لغيره.
   const [seesMoney, setSeesMoney] = useState(false);
   const [q, setQ] = useState('');
@@ -69,13 +71,20 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
   const fold = (v: any) => String(v ?? '')
     .replace(/[أإآٱ]/g, 'ا').replace(/[ةه]/g, 'ه').replace(/[ىئي]/g, 'ي')
     .replace(/\s+/g, '').toLowerCase();
-  const shown = useMemo(() => {
+  const searched = useMemo(() => {
     const n = fold(q);
     if (!n) return rows;
     return rows.filter((r) => [r.name, r.email, r.phone, r.contactPerson, r.commercialRegister, r.taxNumber, r.city]
       .some((v) => fold(v).includes(n)));
   }, [rows, q]);
 
+  // فلاترُ الأعمدة (على طريقة إكسل) — آخرُ ما يُطبَّق، بعد البحث.
+  const colGetters: Record<string, (p: Party) => any> = {
+    name: (p) => p.name, deals: (p) => p.deals, containers: (p) => p.containers,
+    active: (p) => (p.isActive === false ? t('معطَّل', 'Inactive') : t('نشط', 'Active')),
+    last: (p) => (p.lastDealAt ? String(p.lastDealAt).slice(0, 7) : ''),
+  };
+  const shown = cf.apply(searched, colGetters);
   const totals = useMemo(() => shown.reduce((t2, r) => ({
     deals: t2.deals + (r.deals || 0), revenue: t2.revenue + (r.revenue || 0),
     profit: t2.profit + (r.profit || 0), containers: t2.containers + (r.containers || 0),
@@ -145,6 +154,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
         {seesMoney && <Stat label={t('الربح', 'Profit')} value={money(totals.profit)} accent={totals.profit >= 0 ? 'text-emerald-600' : 'text-red-600'} />}
       </div>
 
+      <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
       <SearchInput value={q} onChange={setQ}
         placeholder={t('بحث بالاسم أو البريد أو الجوال أو السجل التجاري أو الرقم الضريبي…', 'name, email, phone, CR, tax number…')} />
 
@@ -153,10 +163,12 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
-                {[t('الاسم', 'Name'), ...(kind !== 'customer' ? [t('البريد', 'Email')] : []), t('التواصل', 'Contact'),
-                  t('معاملات', 'Deals'), t('حاويات', 'Containers'), t('الإيراد', 'Revenue'),
-                  ...(seesMoney ? [t('الربح', 'Profit'), t('الهامش', 'Margin')] : []), t('آخر معاملة', 'Last deal'), ''].map((h, i) => (
-                  <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>
+                {([[t('الاسم', 'Name'), 'name'], ...(kind !== 'customer' ? [[t('البريد', 'Email'), '']] : []), [t('التواصل', 'Contact'), ''],
+                  [t('معاملات', 'Deals'), 'deals'], [t('حاويات', 'Containers'), 'containers'], [t('الإيراد', 'Revenue'), ''],
+                  ...(seesMoney ? [[t('الربح', 'Profit'), ''], [t('الهامش', 'Margin'), '']] : []), [t('آخر معاملة', 'Last deal'), 'last'], ['', '']] as [string, string][]).map(([h, k], i) => (
+                  <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1">{h}{k ? cf.header(k, searched, colGetters[k], ar) : null}</span>
+                  </th>
                 ))}
               </tr>
             </thead>

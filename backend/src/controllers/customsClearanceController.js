@@ -170,7 +170,7 @@ const SEARCH_ONLY = [
   'countryOfOrigin', 'legacySerial', 'notes', 'carrierName', 'unloadingLocation', 'assignedTo',
 ];
 // تُقرأ ليُحسَب منها ولا تُرسَل: منها نسبةُ المراحل وهل تنتظر فاتورةَ النقل.
-const DERIVE_ONLY = ['stagesDone', 'transportRoute', 'pipelineVersion', 'stageDone.doInvoicePaid', 'transportInvoiceReceived',
+const DERIVE_ONLY = ['papersReceivedDate', 'declarationDate', 'stagesDone', 'transportRoute', 'pipelineVersion', 'stageDone.doInvoicePaid', 'transportInvoiceReceived',
   'containers.route', 'containers.stagesDone'];
 const LIST_FIELDS = [...DISPLAY_FIELDS, ...DISPLAY_NESTED, ...SEARCH_ONLY, ...DERIVE_ONLY, 'notesLog'].join(' ');
 
@@ -184,6 +184,22 @@ const MONEY_ROLES = ['super_admin', 'customs_manager'];
 const seesMoney = (req) => MONEY_ROLES.includes(req.user && req.user.role);
 // ربحُ المعاملة الواحدة: للإدارة، وللماليّة التي تراجعها من شاشتها.
 const PROFIT_ROLES = [...MONEY_ROLES, 'cfo', 'accounting_manager', 'accountant'];
+/**
+ * ── تاريخُ المعاملة ────────────────────────────────────────────────────────
+ * فلاترُ اليوم والشهر والفترة تُقاس عليه. و`createdAt` لا يصلح له: ما استُورد
+ * من الماستر أُدخل كلُّه في يومٍ واحد، فكان فلترُ التاريخ يُخرجه كلَّه أو يُبقيه
+ * كلَّه. فالتاريخُ ما يعرفه العمل: استلامُ الورق، ثمّ البيان، ثمّ أوّلُ شهرها
+ * في الماستر، ثمّ يومُ إدخالها (بتوقيت الرياض).
+ */
+const txDateOf = (c) => {
+  for (const v of [c.papersReceivedDate, c.declarationDate]) {
+    const d = String(v || '').slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+  }
+  if (c.periodYear && c.periodMonth) return `${c.periodYear}-${String(c.periodMonth).padStart(2, '0')}-01`;
+  return c.createdAt ? new Date(new Date(c.createdAt).getTime() + 3 * 3600000).toISOString().slice(0, 10) : '';
+};
+
 /** فُوترت ولم تُنهَ: تنتظر فاتورةَ النقل. */
 const awaitsTransportInvoice = (c) => !!c.saleInvoiceNumber && !c.isCompleted && !c.cancelled
   && !(c.transportInvoiceReceived || hasTransportInvoice(c));
@@ -212,6 +228,9 @@ function toWire(r, money = true) {
   // النسبةُ والمرحلةُ التاليةُ محسوبتان بقاعدة المعاملة نفسِها (pipelineOf).
   const p = pipelineOf(r);
   out.pipeline = { percent: p.percent, done: p.done, total: p.total, next: p.next };
+  // تاريخُ المعاملة الذي تُفلتَر به (راجع txDateOf)، وهل فُوترت — ولو قبل النظام.
+  out.date = txDateOf(r);
+  if (r.saleInvoiceNumber || p.steps.some((x) => x.key === 'invoiced' && x.done)) out.invoiced = true;
   if (awaitsTransportInvoice(r)) out.awaitingTransportInvoice = true;
   const billing = {};
   if (r.billing && r.billing.invoiceStatus) billing.invoiceStatus = r.billing.invoiceStatus;
@@ -446,6 +465,10 @@ exports.getAnalytics = async (req, res) => {
       invoiceStatus: 'billing.invoiceStatus',
     };
     for (const [k, path] of Object.entries(eq)) if (q[k]) filter[path] = q[k];
+    // نوعُ المعاملة وحالتُها — يُسأل بهما كما يُسأل بالعميل والميناء.
+    if (CARGO_TYPES.includes(q.cargoType)) filter.cargoType = q.cargoType === 'vehicles' ? 'vehicles' : { $ne: 'vehicles' };
+    if (q.state === 'closed') filter.isCompleted = true;
+    if (q.state === 'open') filter.isCompleted = { $ne: true };
     const mq2 = parseMonth(q.month);
     if (mq2.month) filter.periodMonth = mq2.month;
     if (mq2.year && !year) filter.periodYear = mq2.year;
@@ -473,7 +496,8 @@ exports.getAnalytics = async (req, res) => {
       filter.$expr = { $and: [{ $gte: [pk, lo0] }, { $lte: [pk, hi0] }] };
     }
     let list = await CustomsClearance.find(filter)
-      .select('blNumber refNumber customerName shippingAgent port stage city branch containerCount periodMonth periodYear costs.total revenue.totalInvoiced revenue.clearanceFee billing.invoiceStatus')
+      .select('blNumber refNumber customerName shippingAgent carrierName port stage city branch containerCount periodMonth periodYear costs revenue billing.invoiceStatus '
+        + 'cargoType isCompleted saleInvoiceNumber stagesDone transportRoute pipelineVersion stageDone.doInvoicePaid containers.route containers.stagesDone')
       .lean();
 
     // from/to are month keys (YYYY-MM); filter in JS so rows with no period survive
@@ -537,14 +561,49 @@ exports.getAnalytics = async (req, res) => {
       }))
       .sort((a, b) => (a.year - b.year) || (a.month - b.month));
 
+    // ── أين يذهب المالُ ومن أين يأتي ────────────────────────────────────────
+    // «التكلفة ٣ ملايين» لا تقول شيئًا للإدارة حتى تُفصَّل: أيُّ بندٍ يأكلها.
+    // و«الربح» كذلك: أجورُ التخليص أم فرقُ النقل أم التخزين.
+    const breakdown = (keys, of) => keys
+      .map((key) => ({ key, amount: round(list.reduce((a, r) => a + num(of(r)[key]), 0)), deals: list.filter((r) => num(of(r)[key]) !== 0).length }))
+      .filter((x) => x.amount !== 0).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+    const costBreakdown = breakdown(COST_KEYS, (r) => r.costs || {});
+    const marginBreakdown = breakdown(MARGIN_KEYS, (r) => r.revenue || {});
+    const isInvoiced = (r) => !!r.saleInvoiceNumber || !!String((r.billing && r.billing.invoiceStatus) || '').trim()
+      || pipelineOf(r).steps.some((x) => x.key === 'invoiced' && x.done);
+    const sumRev = (rows) => round(rows.reduce((a, r) => a + num(r.revenue && r.revenue.totalInvoiced), 0));
+    const openRows = list.filter((r) => !r.isCompleted);
+    const notInvoicedRows = list.filter((r) => !isInvoiced(r));
+    const byCust = finish(group(list, (r) => r.customerName), totalContainers).sort((a, b) => b.profit - a.profit);
+    const profitAll = totalRevenue - totalCosts;
+    const share = (n) => (profitAll > 0 ? byCust.slice(0, n).reduce((a, b) => a + Math.max(0, b.profit), 0) / profitAll : 0);
+
     const payload = {
+      costBreakdown,
+      marginBreakdown,
+      byCargo: finish(group(list, (r) => (r.cargoType === 'vehicles' ? 'vehicles' : 'containers')), totalContainers),
+      byCarrier: finish(group(list.filter((r) => (r.carrierName || '').trim()), (r) => r.carrierName), totalContainers),
+      byState: finish(group(list, (r) => (r.isCompleted ? 'closed' : 'open')), totalContainers),
+      insight: {
+        open: openRows.length, closed: list.length - openRows.length,
+        openValue: sumRev(openRows),
+        notInvoiced: notInvoicedRows.length, notInvoicedValue: sumRev(notInvoicedRows),
+        notInvoicedCosts: round(notInvoicedRows.reduce((a, r) => a + num(r.costs && r.costs.total), 0)),
+        profitPerContainer: totalContainers ? round(profitAll / totalContainers) : 0,
+        revenuePerContainer: totalContainers ? round(totalRevenue / totalContainers) : 0,
+        costPerContainer: totalContainers ? round(totalCosts / totalContainers) : 0,
+        avgProfit: list.length ? round(profitAll / list.length) : 0,
+        losing: list.filter((r) => num(r.revenue && r.revenue.totalInvoiced) - num(r.costs && r.costs.total) < 0).length,
+        // كم من الربح يصنعه أكبرُ عميلٍ وأكبرُ خمسة — تركّزٌ يُعرَف قبل أن يُفاجِئ.
+        top1Share: share(1), top5Share: share(5),
+      },
       totals: {
         clearances: list.length,
         containers: totalContainers,
         customers: new Set(list.map((r) => (r.customerName || '').trim()).filter(Boolean)).size,
         agents: new Set(list.map((r) => (r.shippingAgent || '').trim()).filter(Boolean)).size,
-        invoiced,
-        notInvoiced: list.length - invoiced,
+        invoiced: list.length - notInvoicedRows.length,
+        notInvoiced: notInvoicedRows.length,
         avgContainersPerBl: list.length ? round(totalContainers / list.length) : 0,
         totalRevenue,
         clearanceFees,
@@ -1925,7 +1984,7 @@ exports.getDashboard = async (req, res) => {
   try {
     const q = req.query || {};
     const mongoose = require('mongoose');
-    const { todayKey, startOfDay, endOfDay, DAY_MS } = require('../utils/companyDay');
+    const { todayKey, startOfDay, DAY_MS } = require('../utils/companyDay');
     const { stageLabel } = require('../config/customsStages');
     const User = require('../models/User');
     const { JpTask } = require('../models/JpModels');
@@ -1940,11 +1999,9 @@ exports.getDashboard = async (req, res) => {
     if (q.branch === 'jeddah' || q.branch === 'dammam') filter.branch = q.branch;
     if (CARGO_TYPES.includes(q.cargoType)) filter.cargoType = q.cargoType === 'vehicles' ? 'vehicles' : { $ne: 'vehicles' };
     if (q.member && mongoose.isValidObjectId(q.member)) filter.createdBy = q.member;
-    if (q.from || q.to) {
-      filter.createdAt = {};
-      if (q.from) filter.createdAt.$gte = startOfDay(q.from);
-      filter.createdAt.$lte = q.to ? endOfDay(q.to) : new Date();
-    }
+    // المدى يُقاس على تاريخ المعاملة (txDateOf) بعد القراءة — لا على يوم الإدخال.
+    const ymd = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : '');
+    const dFrom = ymd(q.from); const dTo = ymd(q.to);
 
     const ck = `customs:dash:${isManager ? 'm' : String(req.user._id)}:${JSON.stringify(Object.keys(q).sort().map((k) => [k, q[k]]))}`;
     const body = await cache.wrap(ck, 30000, async () => {
@@ -1967,8 +2024,14 @@ exports.getDashboard = async (req, res) => {
         CustomsClearance.find(filter)
           .select('refNumber blNumber customerName customerParty shippingAgent agentParty carrierName carrierParty branch cargoType containerCount '
             + 'containers.route containers.stagesDone stage stagesDone transportRoute pipelineVersion stageDone.doInvoicePaid stageDone.containersReturned saleInvoiceNumber saleInvoiceAt '
-            + 'transportInvoiceReceived isCompleted completedAt completedBy cancelled upcoming expectedDate returnDeadline createdAt createdBy updatedAt declarationNumber port')
-          .sort({ createdAt: -1 }).lean(),
+            + 'transportInvoiceReceived isCompleted completedAt completedBy cancelled upcoming expectedDate returnDeadline createdAt createdBy updatedAt declarationNumber port '
+            + 'papersReceivedDate declarationDate periodYear periodMonth')
+          .sort({ createdAt: -1 }).lean()
+          // القادمةُ تُقاس بتاريخها المرتقَب: هو تاريخُها الوحيد.
+          .then((list) => (dFrom || dTo ? list.filter((c) => {
+            const d = c.upcoming ? String(c.expectedDate || '').slice(0, 10) : txDateOf(c);
+            return !!d && (!dFrom || d >= dFrom) && (!dTo || d <= dTo);
+          }) : list)),
         User.find({ role: { $in: jp.memberRoles }, isActive: { $ne: false } }).select('firstName lastName role').lean(),
         act('notesLog', 'by', 'at'),
         act('paymentStages', 'addedBy', 'addedAt'),
@@ -2028,6 +2091,8 @@ exports.getDashboard = async (req, res) => {
           bucket, percent: p.percent, next: bucket === 'open' ? p.next : '',
           nextLabel: bucket === 'open' && p.next ? stageLabel(p.next, c.cargoType) : '',
           route: p.route,
+          date: c.upcoming ? String(c.expectedDate || '').slice(0, 10) : txDateOf(c),
+          port: c.port || '', declarationNumber: c.declarationNumber || '',
           createdAt: c.createdAt, createdBy: c.createdBy || null, createdByName: userName.get(String(c.createdBy || '')) || '',
           expectedDate: c.expectedDate || '', completedAt: c.completedAt || null,
           invoiceNumber: c.saleInvoiceNumber || '',
@@ -2099,6 +2164,8 @@ exports.getDashboard = async (req, res) => {
           upcomingOverdue: count((r) => r.bucket === 'upcoming' && r.expectedState === 'overdue'),
           open: open.length,
           closed: count((r) => r.bucket === 'closed'),
+          // أُغلقت ولم تُفوتَر — من السجلّ القديم؛ تبقى ظاهرةً حتى تُصدَر فواتيرُها.
+          closedNotInvoiced: count((r) => r.bucket === 'closed' && !r.invoiced),
           cancelled: count((r) => r.bucket === 'cancelled'),
           awaitingTransportInvoice: count((r) => r.awaitingTransportInvoice),
           notInvoiced: open.filter((r) => !r.invoiced).length,

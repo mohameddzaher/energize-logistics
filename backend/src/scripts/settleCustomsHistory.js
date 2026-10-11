@@ -8,9 +8,11 @@
  * القاعدةُ كما قيلت:
  *   · القادمةُ تبقى قادمة.
  *   · `IN_PROGRESS` ما زالت تجري — لا تُمسّ.
- *   · `AWAITING_INVOICE` أنهت دورتَها كلَّها ولم تُفوتَر: مفتوحةٌ، مراحلُها مُنجَزةٌ
- *     إلّا «إصدار الفاتورة»، وحالةُ فاتورتها فارغة. وما لم يُعرَف طريقُه بعد أمر
- *     النقل يُكتب «إلى العميل مباشرةً» — يُصحَّح من شاشة المعاملة إن كان غيرَ ذلك.
+ *   · `AWAITING_INVOICE` أنهت دورتَها كلَّها ولم تُفوتَر: **مغلقةٌ** (صحّحها صاحبُ
+ *     الشركة: مغلقةٌ ولم تُفوتَر، لا مفتوحة)، مراحلُها مُنجَزةٌ إلّا «إصدار
+ *     الفاتورة»، وحالةُ فاتورتها فارغة — فتظهر في لوحة القسم «مغلقة لم تُفوتَر»
+ *     حتى تُصدَر فاتورتُها. وما لم يُعرَف طريقُه بعد أمر النقل يُكتب «إلى العميل
+ *     مباشرةً» — يُصحَّح من شاشة المعاملة إن كان غيرَ ذلك.
  *   · وكلُّ ما عدا ذلك تاريخ: أُغلق وفُوتر.
  *
  * والإغلاقُ يُؤرَّخ بآخر يومٍ من شهر المعاملة لا باليوم، وباسم «سجلّ سابق».
@@ -53,7 +55,8 @@ const norm = (s) => String(s || '').replace(/\s+/g, '').toUpperCase();
     if (AWAITING_INVOICE.includes(bl)) {
       const { guessed, ...st } = allDone(r, false);
       plan.push({ r, kind: 'awaiting', guessed, set: {
-        ...st, isCompleted: false, completedAt: null, completedBy: null, completedByName: '', 'billing.invoiceStatus': '',
+        ...st, 'billing.invoiceStatus': '',
+        ...(r.isCompleted ? {} : { isCompleted: true, completedAt: closedAt(r), completedBy: null, completedByName: BY }),
       } });
       continue;
     }
@@ -65,10 +68,10 @@ const norm = (s) => String(s || '').replace(/\s+/g, '').toUpperCase();
   }
 
   const n = (k) => plan.filter((p) => p.kind === k).length;
-  console.log(`\n  غيرُ القادمة: ${rows.length} · تجري ولا تُمسّ: ${n('progress')} · أنهت دورتَها وتنتظر الفاتورة: ${n('awaiting')} · تاريخٌ يُغلَق ويُفوتَر: ${n('history')}`);
+  console.log(`\n  غيرُ القادمة: ${rows.length} · تجري ولا تُمسّ: ${n('progress')} · مغلقةٌ لم تُفوتَر: ${n('awaiting')} · تاريخٌ يُغلَق ويُفوتَر: ${n('history')}`);
   console.log(`  من التاريخ: مفتوحةٌ ستُغلَق ${plan.filter((p) => p.kind === 'history' && !p.r.isCompleted).length} · مغلقةٌ تُكمَل مراحلُها ${plan.filter((p) => p.kind === 'history' && p.r.isCompleted).length}`);
   for (const p of plan.filter((x) => x.kind !== 'history')) {
-    console.log(`   ${p.kind === 'progress' ? 'تجري' : 'تنتظر الفاتورة'} · ${p.r.blNumber} (${p.r.refNumber}) · الآن ${p.r.stage} ${pipelineOf(p.r).percent}%${p.r.isCompleted ? ' · مغلقة' : ''}${p.guessed ? ' · طريقُها غيرُ معروف → إلى العميل مباشرةً' : ''}`);
+    console.log(`   ${p.kind === 'progress' ? 'تجري' : 'مغلقةٌ لم تُفوتَر'} · ${p.r.blNumber} (${p.r.refNumber}) · الآن ${p.r.stage} ${pipelineOf(p.r).percent}%${p.r.isCompleted ? ' · مغلقة' : ''}${p.guessed ? ' · طريقُها غيرُ معروف → إلى العميل مباشرةً' : ''}`);
   }
   if (missing.size) { console.error(`  ✗ بوالصُ لم تُوجَد: ${[...missing].join('، ')} — لا يُكتب شيء.`); await mongoose.disconnect(); process.exit(1); }
   if (!APPLY) { console.log('  — تجربة، بلا كتابة. أضف --apply للتنفيذ.\n'); await mongoose.disconnect(); return; }

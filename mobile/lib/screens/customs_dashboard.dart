@@ -30,10 +30,13 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
   bool _loading = true;
   String? _error;
   // فلاترُ النداء بأسمائها عند الخادم: customerParty, agentParty, branch,
-  // cargoType, member (مَن أنشأ), from/to (تاريخُ الإنشاء). وكلُّ بطاقةٍ تُحسَب
+  // cargoType, member (مَن أنشأ), from/to (تاريخُ المعاملة). وكلُّ بطاقةٍ تُحسَب
   // على ما بقي بعدها.
   final Map<String, String> _f = {};
   bool _showFilters = false;
+  // المدّة: '' كلُّها · day · month · range — تُترجَم إلى from/to على تاريخ المعاملة.
+  String _period = '';
+  int _pm = DateTime.now().month, _py = DateTime.now().year;
   // العملاءُ والوكلاءُ من `/filters` ({value,label})؛ والفريقُ من ردّ اللوحة.
   List<Map<String, dynamic>> _customerOpts = const [], _agentOpts = const [];
   bool _allCustomers = false;
@@ -104,20 +107,80 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
         ),
       );
 
-  Widget _date(String key, String label) => Expanded(
+  String _ymd(DateTime d) => d.toIso8601String().split('T').first;
+
+  void _setRange(String from, String to) {
+    setState(() {
+      from.isEmpty ? _f.remove('from') : _f['from'] = from;
+      to.isEmpty ? _f.remove('to') : _f['to'] = to;
+      _loading = true;
+    });
+    _load();
+  }
+
+  Widget _dateButton(String label, String value, void Function(String) onPicked) => Expanded(
         child: OutlinedButton(
           onPressed: () async {
             final d = await showDatePicker(
               context: context,
-              initialDate: DateTime.tryParse(_f[key] ?? '') ?? DateTime.now(),
+              initialDate: DateTime.tryParse(value) ?? DateTime.now(),
               firstDate: DateTime(2020), lastDate: DateTime(2100),
             );
-            if (d != null) _setF(key, d.toIso8601String().split('T').first);
+            if (d != null) onPicked(_ymd(d));
           },
-          onLongPress: _f[key] == null ? null : () => _setF(key, ''),
-          child: Text('$label: ${_f[key] ?? '—'}', style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+          child: Text('$label: ${value.isEmpty ? '—' : value}', style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
         ),
       );
+
+  /// المدّةُ على تاريخ المعاملة: يومٌ بعينه، أو شهرٌ بأوّله وآخره، أو فترةٌ من–إلى.
+  /// والخادمُ يعرف `from`/`to` وحدَهما — فكلُّ اختيارٍ يُترجَم إليهما.
+  Widget _periodControl() {
+    final from = _f['from'] ?? '', to = _f['to'] ?? '';
+    void month() => _setRange(_ymd(DateTime(_py, _pm, 1)), _ymd(DateTime(_py, _pm + 1, 0)));
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Wrap(spacing: 6, children: [
+        for (final m in [('', tr('كلّ المدّة', 'All time')), ('day', tr('يوم', 'Day')), ('month', tr('شهر', 'Month')), ('range', tr('فترة', 'Range'))])
+          ChoiceChip(
+            label: Text(m.$2, style: const TextStyle(fontSize: 12)),
+            selected: _period == m.$1,
+            onSelected: (_) {
+              setState(() => _period = m.$1);
+              if (m.$1 == 'month') { month(); } else if (from.isNotEmpty || to.isNotEmpty) { _setRange('', ''); }
+            },
+          ),
+      ]),
+      if (_period == 'day')
+        Row(children: [_dateButton(tr('اليوم', 'Day'), from, (v) => _setRange(v, v))]),
+      if (_period == 'month')
+        Row(children: [
+          Expanded(
+            flex: 3,
+            child: DropdownButtonFormField<int>(
+              initialValue: _pm, isExpanded: true,
+              decoration: InputDecoration(isDense: true, labelText: tr('الشهر', 'Month'), border: const OutlineInputBorder()),
+              items: [for (var i = 1; i <= 12; i++) DropdownMenuItem(value: i, child: Text('$i'))],
+              onChanged: (v) { _pm = v ?? _pm; month(); },
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 4,
+            child: DropdownButtonFormField<int>(
+              initialValue: _py, isExpanded: true,
+              decoration: InputDecoration(isDense: true, labelText: tr('السنة', 'Year'), border: const OutlineInputBorder()),
+              items: [for (var y = DateTime.now().year + 1; y >= 2020; y--) DropdownMenuItem(value: y, child: Text('$y'))],
+              onChanged: (v) { _py = v ?? _py; month(); },
+            ),
+          ),
+        ]),
+      if (_period == 'range')
+        Row(children: [
+          _dateButton(tr('من', 'From'), from, (v) => _setRange(v, to)),
+          const SizedBox(width: 8),
+          _dateButton(tr('إلى', 'To'), to, (v) => _setRange(from, v)),
+        ]),
+    ]);
+  }
 
   Widget _filters(List<Map<String, dynamic>> team) => AppCard(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -134,7 +197,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
               if (_f.isNotEmpty)
                 TextButton(
                   style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                  onPressed: () { setState(() { _f.clear(); _loading = true; }); _load(); },
+                  onPressed: () { setState(() { _f.clear(); _period = ''; _loading = true; }); _load(); },
                   child: Text(tr('مسح الفلاتر', 'Clear filters')),
                 ),
               Icon(_showFilters ? Icons.expand_less : Icons.expand_more, color: T.inkSoft),
@@ -155,8 +218,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
             _pick('member', tr('مَن أنشأ', 'Created by'), tr('كلُّ الفريق', 'Whole team'),
                 [for (final m in team) ('${m['_id']}', '${m['name'] ?? ''}')]),
             const SizedBox(height: 8),
-            // تاريخُ الإنشاء — والضغطةُ الطويلةُ تمسح التاريخ.
-            Row(children: [_date('from', tr('من', 'From')), const SizedBox(width: 8), _date('to', tr('إلى', 'To'))]),
+            _periodControl(),
             const SizedBox(height: 6),
           ],
         ]),
@@ -226,6 +288,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
           const SizedBox(height: 2),
           Text([
             '${tr('رقم المعاملة', 'Transaction no.')}: ${r['refNumber'] ?? ''}',
+            if ('${r['date'] ?? ''}'.isNotEmpty) '${r['date']}',
             if ('${r['createdByName'] ?? ''}'.isNotEmpty) '${r['createdByName']}',
           ].join(' · '), style: const TextStyle(fontSize: 11.5, color: T.inkSoft), maxLines: 1, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 6),
@@ -242,6 +305,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
           Wrap(spacing: 5, runSpacing: 5, children: [
             Chip2('${_i(r['units'])} ${vehicles ? tr('سيّارة', 'vehicles') : tr('حاوية', 'containers')}', T.violet),
             if ('${r['invoiceNumber'] ?? ''}'.isNotEmpty) Chip2('${tr('مفوترة', 'Invoiced')} · ${r['invoiceNumber']}', T.success),
+            if (bucket == 'closed' && r['invoiced'] != true) Chip2(tr('لم تُفوتَر', 'Not invoiced'), T.danger, icon: Icons.error_outline),
             if (awaiting) Chip2(tr('بانتظار فاتورة النقل', 'Awaiting transport invoice'), T.danger, icon: Icons.error_outline),
             if (r['unitsState'] is Map && _i(r['unitsState']['late']) > 0)
               Chip2(tr('${_i(r['unitsState']['late'])} حاوية متأخّرة الإرجاع', '${_i(r['unitsState']['late'])} containers late to return'), T.danger, icon: Icons.error_outline),
@@ -309,7 +373,8 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
     return ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 30), children: [
       _filters(team),
       if (_loading) const Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator(minHeight: 2)),
-      const SizedBox(height: 10),
+      // ── حالة المعاملات ──
+      _head(tr('حالة المعاملات', 'Transaction status')),
       GridView.count(
         crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
         crossAxisSpacing: 10, mainAxisSpacing: 10, childAspectRatio: 1.7,
@@ -320,16 +385,28 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
               sub: tr('${_i(n['openContainers'])} حاوية · ${_i(n['openVehicles'])} سيّارة', '${_i(n['openContainers'])} containers · ${_i(n['openVehicles'])} vehicles')),
           _card(tr('مغلقة', 'Closed'), _i(n['closed']), T.success, Icons.task_alt_outlined, (r) => r['bucket'] == 'closed',
               sub: tr('${_i(n['closedThisMonth'])} هذا الشهر', '${_i(n['closedThisMonth'])} this month')),
-          _card(tr('بانتظار فاتورة النقل', 'Awaiting transport invoice'), _i(n['awaitingTransportInvoice']), T.danger, Icons.error_outline,
-              (r) => r['awaitingTransportInvoice'] == true,
-              sub: tr('${_i(n['notInvoiced'])} مفتوحة لم تُفوتَر', '${_i(n['notInvoiced'])} open not invoiced')),
           _card(tr('عملاء نعمل معهم الآن', 'Active customers'), _i(n['activeCustomers']), T.violet, Icons.people_outline, (r) => r['bucket'] == 'open',
               sub: tr('من ${_i(n['customers'])} عميلًا', 'of ${_i(n['customers'])} customers')),
-          _card(tr('متأخّرة الإرجاع', 'Return overdue'), _i(n['returnOverdue']), T.danger, Icons.assignment_return_outlined, (r) => r['returnState'] == 'overdue',
-              sub: _i(n['returnDue']) > 0 ? tr('${n['returnDue']} موعدُها قريب', '${n['returnDue']} due soon') : null),
+        ],
+      ),
+      // ── ما يحتاج متابعة ──
+      _head(tr('ما يحتاج متابعة', 'Needs follow-up')),
+      GridView.count(
+        crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+        crossAxisSpacing: 10, mainAxisSpacing: 10, childAspectRatio: 1.7,
+        children: [
+          _card(tr('مفوترة بانتظار فاتورة النقل', 'Invoiced, awaiting transport invoice'), _i(n['awaitingTransportInvoice']), T.danger, Icons.error_outline,
+              (r) => r['awaitingTransportInvoice'] == true),
+          // أُغلقت ولم تصدر فاتورتُها: مالٌ خرج من قوائم المتابعة ولم يُطالَب به.
+          _card(tr('مغلقة لم تُفوتَر', 'Closed, not invoiced'), _i(n['closedNotInvoiced']), T.danger, Icons.receipt_long_outlined,
+              (r) => r['bucket'] == 'closed' && r['invoiced'] != true),
+          _card(tr('مفتوحة لم تُفوتَر', 'Open, not invoiced'), _i(n['notInvoiced']), T.warn, Icons.pending_actions_outlined,
+              (r) => r['bucket'] == 'open' && r['invoiced'] != true),
           _card(tr('طلبات صرف معلّقة', 'Pending payment requests'), _i(n['pendingPayments']), T.warn, Icons.payments_outlined, (r) => _i(r['pendingPayments']) > 0,
               sub: tr('في ${_i(n['withPendingPayments'])} معاملة', 'in ${_i(n['withPendingPayments'])} transactions')),
-          _card(tr('مهامّ JP', 'JP tasks'), _i(n['tasksOpen']), T.cyan, Icons.event_available_outlined, (r) => _i(r['openTasks']) > 0,
+          _card(tr('معاملات فات موعد إرجاعها', 'Transactions past return date'), _i(n['returnOverdue']), T.danger, Icons.assignment_return_outlined, (r) => r['returnState'] == 'overdue',
+              sub: _i(n['returnDue']) > 0 ? tr('${n['returnDue']} موعدُها قريب', '${n['returnDue']} due soon') : null),
+          _card(tr('مهامّ خطّة العمل', 'Work-plan tasks'), _i(n['tasksOpen']), T.cyan, Icons.event_available_outlined, (r) => _i(r['openTasks']) > 0,
               sub: _i(n['tasksOverdue']) > 0 ? tr('${n['tasksOverdue']} متأخّرة', '${n['tasksOverdue']} late') : null),
         ],
       ),

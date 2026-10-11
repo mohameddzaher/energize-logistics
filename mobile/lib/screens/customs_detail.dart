@@ -469,6 +469,8 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
       final no = i < units.length ? '${units[i]['containerNumber'] ?? ''}'.trim() : '';
       return no.isNotEmpty ? no : '${vehicles ? tr('السيّارة', 'Vehicle') : tr('الحاوية', 'Container')} ${_arDigits(i + 1)}';
     }
+    // أُغلقت ولم تصدر فاتورتُها — تُفوتَر وهي مغلقة.
+    final closedNotInvoiced = completed && invoiceNo.isEmpty && !steps.any((x) => x['key'] == 'invoiced' && x['done'] == true);
     // أوّلُ اسمِ كلّ ملفٍّ يُنزَّل: رقمُ البوليصة، وإلّا رقمُ المعاملة.
     final fileBase = '${c['blNumber'] ?? ''}'.trim().isNotEmpty ? '${c['blNumber']}'.trim() : '${c['refNumber'] ?? widget.ref}';
     String attTitle(Map<String, dynamic> a) {
@@ -505,6 +507,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                             if ((c['shippingAgent'] ?? '').toString().isNotEmpty) Chip2(c['shippingAgent'].toString(), T.cyan, icon: Icons.directions_boat_outlined),
                             if (invoiceNo.isNotEmpty) Chip2('${tr('مفوترة', 'Invoiced')} · $invoiceNo', T.navy, icon: Icons.receipt_long_outlined),
                             if (completed) Chip2(tr('مُقفلة', 'Closed'), T.success),
+                            if (closedNotInvoiced) Chip2(tr('لم تُفوتَر', 'Not invoiced'), T.danger, icon: Icons.error_outline),
                             if (cancelled) Chip2(tr('ملغاة', 'Cancelled'), T.danger),
                           ]),
                         ]),
@@ -559,8 +562,8 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                           icon: const Icon(Icons.lock_open_outlined, size: 16),
                           label: Text(tr('إعادة الفتح', 'Reopen')),
                         ),
-                      )
-                    else if (!cancelled && c['upcoming'] != true)
+                      ),
+                    if (closedNotInvoiced || (!completed && !cancelled && c['upcoming'] != true))
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(

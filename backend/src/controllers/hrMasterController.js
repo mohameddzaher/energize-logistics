@@ -1036,6 +1036,14 @@ exports.updateFields = async (req, res) => {
       if (f.derived) { rejected.push(k); continue; }
       if (f.type === 'date') {
         if (v === '' || v === null) { emp[k] = null; applied[k] = null; continue; }
+        // ── وسنةٌ هجريّةٌ كُتبت في الخانة الميلاديّة تُحوَّل ولا تُحفَظ كما هي ──
+        // «1415-06-13» في خانة الميلاديّ ليست سنةَ ١٤١٥ للميلاد: هي هجريّةٌ كُتبت
+        // في غير خانتها (هكذا دخل ميلادُ تسعةٍ وثلاثين موظّفًا من أوراقهم). فتُقرأ
+        // هجريّةً ويُكتب ميلاديُّها — والعمودُ الهجريُّ يعرضها كما كُتبت.
+        if (/^1[34]\d\d-\d{1,2}-\d{1,2}$/.test(String(v).trim())) {
+          const g = require('../utils/hijri').fromHijriString(String(v).trim());
+          if (g) v = g;
+        }
         const dt = new Date(v);
         if (isNaN(dt)) { rejected.push(k); continue; }
         // أكثرُ حقول التواريخ هنا **نصٌّ** في المخطَّط بصيغة YYYY-MM-DD (انظر

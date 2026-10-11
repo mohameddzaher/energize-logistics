@@ -525,7 +525,7 @@ export default function CustomsPage() {
       {/* Create modal */}
       <AnimatePresence>
         {showAlerts && (
-          <UpcomingPanel items={alerts.upcoming} days={alerts.days} canEdit={canEdit} ar={ar} notify={notify} confirm={confirm}
+          <UpcomingPanel items={alerts.upcoming} days={alerts.days} canEdit={canEdit} canDelete={canDelete} ar={ar} notify={notify} confirm={confirm}
             onClose={() => setShowAlerts(false)} onChanged={(full) => { fetchAlerts(); if (full) fetchList(); }} />
         )}
 

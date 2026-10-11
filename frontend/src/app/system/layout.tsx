@@ -317,7 +317,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/collections-dept/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Collections', visible: (u) => jpManager(u, 'Collections') && !jpTop(u) },
     { href: '/system/collections-dept/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     { href: '/system/collections-dept/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(COLLECTIONS_NAV_ROLES), section: 'Collections', restrict: true },
-    { href: '/system/collections-dept/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'collections_manager'], section: 'Collections', restrict: true },
+    { href: '/system/collections-dept/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'collections_manager'], section: 'Collections' },
     // Customs Clearance
     // Operations Platform (قسم الأوبريشن) — live mirror of the external UPL field-ops system (B2B: Fleet + 3PL)
     { href: '/system/ops', label: lang === 'ar' ? 'لوحة الأوبريشن' : 'Ops Dashboard', icon: <Activity className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
@@ -349,7 +349,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // كانت «إعدادات النموذج» صفحةً وحدَها، وبقيّةُ ما يُضبط لا موضعَ له:
     // ترقيمُ البوالص، وقوائمُ القسم، ودورةُ الحالات. صارت صفحةً واحدة.
     { href: '/system/shipment-orders/analytics', label: lang === 'ar' ? 'التحليلات' : 'Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
-    { href: '/system/shipment-orders/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'operations_manager', 'shipment_orders_manager'], section: 'Shipment Orders', restrict: true },
+    { href: '/system/shipment-orders/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'operations_manager', 'shipment_orders_manager'], section: 'Shipment Orders' },
     { href: '/system/shipment-orders/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Shipment Orders', visible: (u) => jpMember(u, 'Shipment Orders') },
     { href: '/system/shipment-orders/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Shipment Orders', visible: (u) => jpManager(u, 'Shipment Orders') },
     { href: '/system/shipment-orders/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Shipment Orders', visible: (u) => jpManager(u, 'Shipment Orders') && !jpTop(u) },
@@ -375,7 +375,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/fleet/vehicles', label: lang === 'ar' ? 'سياراتنا' : 'Our Vehicles', icon: <Car className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/vehicle-logs', label: lang === 'ar' ? 'سجلّات السيارات' : 'Vehicle Logs', icon: <ClipboardList className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/assign', label: lang === 'ar' ? 'توزيع المشرفين' : 'Assign Supervisors', icon: <UserCog className="w-5 h-5" />, roles: FLEET_ADMIN_ROLES, section: 'Fleet Management', restrict: true },
-    { href: '/system/fleet/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Fleet Settings', icon: <Settings className="w-5 h-5" />, roles: FLEET_ADMIN_ROLES, section: 'Fleet Management', restrict: true },
+    { href: '/system/fleet/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Fleet Settings', icon: <Settings className="w-5 h-5" />, roles: FLEET_ADMIN_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Fleet Management', visible: (u) => jpMember(u, 'Fleet Management') },
     { href: '/system/fleet/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Fleet Management', visible: (u) => jpManager(u, 'Fleet Management') },
     { href: '/system/fleet/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Fleet Management', visible: (u) => jpManager(u, 'Fleet Management') && !jpTop(u) },
@@ -393,8 +393,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/customs/agents', label: lang === 'ar' ? 'وكلاء الشحن' : 'Shipping Agents', icon: <Ship className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     { href: '/system/customs/carriers', label: lang === 'ar' ? 'الناقلون' : 'Carriers', icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     { href: '/system/customs/contracts', label: lang === 'ar' ? 'العقود' : 'Contracts', icon: <FileSignature className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
-    // إعداداتُ القسم تتبع صفحةَ الصلاحيّات كبقيّة صفحاته: كانت `restrict` تقصرها
-    // على أربعة أدوار، فمن فُتحت له من صفحة الصلاحيّات لا يجدها في القائمة.
+    // إعداداتُ القسم تتبع صفحةَ الصلاحيّات كبقيّة صفحاته — في الأقسام كلِّها: كانت
+    // `restrict` تقصرها على المدير والإدارة، فموظّفُ القسم الذي فُتحت له من صفحة
+    // الصلاحيّات لا يجدها في القائمة. ومن أُريد حجبُها عنه تُقفَل له من هناك.
     { href: '/system/customs/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'customs_manager'], section: 'Customs' },
     // Vehicles & Authorizations (المركبات والتفاويض) — super admin + HR + Accounting
     { href: '/system/vehicles/registry/overview', label: lang === 'ar' ? 'نظرة شاملة' : 'Overview', icon: <LayoutGrid className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
@@ -423,7 +424,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/vehicles/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Vehicles', visible: (u) => jpManager(u, 'Vehicles') },
     { href: '/system/vehicles/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Vehicles', visible: (u) => jpManager(u, 'Vehicles') && !jpTop(u) },
     { href: '/system/vehicles/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
-    { href: '/system/vehicles/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'vehicles_manager'], section: 'Vehicles', restrict: true },
+    { href: '/system/vehicles/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'vehicles_manager'], section: 'Vehicles' },
     { href: '/system/vehicles/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant']), section: 'Vehicles', restrict: true },
     // Location Solutions (لوكيشن سوليوشن) — live Wialon GPS/telemetry mirror
     { href: '/system/ls2', label: lang === 'ar' ? 'لوحة التتبّع' : 'Telemetry Dashboard', icon: <Gauge className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
@@ -514,7 +515,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/it/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Software & IT', visible: (u) => jpManager(u, 'Software & IT') && !jpTop(u) },
     { href: '/system/it/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/it/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(IT_ROLES), section: 'Software & IT', restrict: true },
-    { href: '/system/ls2/settings', label: lang === 'ar' ? 'الإعدادات' : 'Settings', icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'location_manager'], section: 'Location Solutions', restrict: true },
+    { href: '/system/ls2/settings', label: lang === 'ar' ? 'الإعدادات' : 'Settings', icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'location_manager'], section: 'Location Solutions' },
     { href: '/system/ls2/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(LS2_SECTION_ROLES), section: 'Location Solutions', restrict: true },
     { href: '/system/ls2/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Location Solutions', visible: (u) => jpMember(u, 'Location Solutions') },
     { href: '/system/ls2/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Location Solutions', visible: (u) => jpManager(u, 'Location Solutions') },
@@ -595,7 +596,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/hr/leave-types', label: L.hrLeaveTypes, icon: <Tags className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     // إعداداتُ القسم: أنواعُ الإجازات وعتباتُ التنبيه وقوائمُه — في موضعٍ واحد
     // بدل أن يُبحَث عن كلٍّ منها في صفحة.
-    { href: '/system/hr/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'HR Settings', icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR', restrict: true },
+    { href: '/system/hr/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'HR Settings', icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     // Self Service (HR pages every employee sees)
     { href: '/system/hr/me', label: L.hrMyProfile, icon: <Briefcase className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, visible: (u: any) => isInternal(u?.role), section: 'Self Service' },
     { href: '/system/hr/my-leaves', label: L.hrMyLeaves, icon: <CalendarDays className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, visible: (u: any) => isInternal(u?.role), section: 'Self Service' },

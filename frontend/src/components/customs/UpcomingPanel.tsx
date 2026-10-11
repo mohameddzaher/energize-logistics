@@ -16,7 +16,7 @@
  */
 import { useRef, useState } from 'react';
 import api from '@/lib/api';
-import { X, Check, Loader2, CalendarClock } from 'lucide-react';
+import { X, Check, Loader2, CalendarClock, Trash2 } from 'lucide-react';
 
 export const DOC_KEYS = ['bl', 'commercialInvoice', 'certificateOfOrigin', 'packingList', 'saber'] as const;
 export type DocKey = typeof DOC_KEYS[number];
@@ -109,8 +109,10 @@ function DateEditor({ value, disabled, saving, onSave, ar }: {
   );
 }
 
-export default function UpcomingPanel({ items, days, canEdit, ar, onClose, onChanged, notify, confirm }: {
+export default function UpcomingPanel({ items, days, canEdit, canDelete, ar, onClose, onChanged, notify, confirm }: {
   items: UpcomingItem[]; days: number; canEdit: boolean; ar: boolean;
+  /** من يحذف المعاملة — مديرُ القسم وموظّفُه، كما في جدول المعاملات. */
+  canDelete?: boolean;
   /** `full` حين تتغيّر قائمةُ الجارية أيضًا (تحويل)؛ وإلّا فالنافذةُ وحدَها. */
   onClose: () => void; onChanged: (full?: boolean) => void; notify: (m: string, tone?: 'success' | 'error' | 'info') => void;
   /** سؤالُ التأكيد قبل التحويل — نافذةُ النظام لا `window.confirm`. */
@@ -188,6 +190,22 @@ export default function UpcomingPanel({ items, days, canEdit, ar, onClose, onCha
     setBusy('');
   };
 
+  // ── وقادمةٌ أُدخلت خطأً أو لن تأتي تُحذَف من هنا ──────────────────────────
+  // الحذفُ نهائيٌّ (المعاملةُ وأوراقُها)، فيُسأل عنه ويُقال أيُّ معاملة — وهو
+  // الحذفُ نفسُه الذي في جدول المعاملات، يُقيَّد في سجلّ المراجعة.
+  const remove = async (x: UpcomingItem) => {
+    const name = x.blNumber || x.refNumber || '';
+    if (!(await confirm(t(`حذفُ المعاملة القادمة ${name} نهائيًّا؟ لا يمكن استرجاعُها بعد الحذف.`,
+      `Permanently delete upcoming transaction ${name}? This cannot be undone.`)))) return;
+    setBusy(x._id);
+    try {
+      await api.delete(`/api/customs-clearance/${x._id}`);
+      notify(t('حُذفت المعاملة', 'Transaction deleted'), 'success');
+      onChanged();
+    } catch (e) { notify((e as { message?: string })?.message || t('تعذّر الحذف', 'Could not delete'), 'error'); }
+    setBusy('');
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose}>
       <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -259,6 +277,12 @@ export default function UpcomingPanel({ items, days, canEdit, ar, onClose, onCha
                     <button type="button" onClick={() => activate(x._id)} disabled={busy === x._id}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#f37121] text-white text-[12.5px] font-semibold hover:bg-[#e06010] disabled:opacity-60">
                       <Check className="w-3.5 h-3.5" />{t('تحويل إلى معاملة جارية', 'Convert to current')}
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button type="button" onClick={() => remove(x)} disabled={busy === x._id}
+                      className="ms-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-[12.5px] font-semibold hover:border-red-300 hover:text-red-600 hover:bg-red-50 disabled:opacity-60">
+                      <Trash2 className="w-3.5 h-3.5" />{t('حذف', 'Delete')}
                     </button>
                   )}
                 </div>

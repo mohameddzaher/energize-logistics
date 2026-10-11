@@ -92,7 +92,8 @@ export default function CustomsPage() {
   const { user } = useAuth();
   const router = useRouter();
   const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs'); // matrix edit grants count too
-  const canDelete = ['super_admin', 'admin', 'customs_manager'].includes(user?.role || '');
+  // الحذفُ لمدير القسم وموظّفه — يطابق حارسَ المسار في الخادم.
+  const canDelete = ['super_admin', 'admin', 'customs_manager', 'customs_officer'].includes(user?.role || '');
   const { lang } = useLanguage();
   const T = getCustomsTranslations(lang);
 
@@ -160,7 +161,9 @@ export default function CustomsPage() {
   useEffect(() => { fetchList(); }, [fetchList]);
   useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
   useSocket('customs:created', useCallback(() => fetchList(), [fetchList]));
-  useSocket('customs:updated', useCallback(() => fetchList(), [fetchList]));
+  // تعديلُ معاملةٍ **قادمة** (ورقةٌ عُلِّمت، تاريخٌ غُيِّر) لا يمسّ جدولَ الجارية —
+  // فلا يُعاد تحميلُه كلِّه مع كلّ علامة؛ تكفي النافذة (fetchAlerts أدناه).
+  useSocket('customs:updated', useCallback((d: any) => { if (!d?.clearance?.upcoming) fetchList(); }, [fetchList]));
   useSocket('customs:deleted', useCallback(() => fetchList(), [fetchList]));
   useSocket('customs:created', useCallback(() => fetchAlerts(), [fetchAlerts]));
   useSocket('customs:updated', useCallback(() => fetchAlerts(), [fetchAlerts]));
@@ -522,8 +525,8 @@ export default function CustomsPage() {
       {/* Create modal */}
       <AnimatePresence>
         {showAlerts && (
-          <UpcomingPanel items={alerts.upcoming} days={alerts.days} canEdit={canEdit} ar={ar} notify={notify}
-            onClose={() => setShowAlerts(false)} onChanged={() => { fetchAlerts(); fetchList(); }} />
+          <UpcomingPanel items={alerts.upcoming} days={alerts.days} canEdit={canEdit} ar={ar} notify={notify} confirm={confirm}
+            onClose={() => setShowAlerts(false)} onChanged={(full) => { fetchAlerts(); if (full) fetchList(); }} />
         )}
 
         {showModal && (

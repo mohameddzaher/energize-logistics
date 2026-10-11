@@ -140,7 +140,7 @@ const fieldsForRole = async (role) => {
   return fieldsCache.wrap(`wf:fields:${role}`, FIELDS_TTL, async () => {
     try {
       const { effectivePermissions, isCustomRole } = require('../utils/permissions');
-      if (!(await isCustomRole(role))) return [];
+      if (!(await require('../utils/permissions').inheritsNothing(role))) return [];
       const sections = await effectivePermissions(role);
       const out = new Set();
       for (const [section, source] of Object.entries(SECTION_FIELD_SOURCE)) {

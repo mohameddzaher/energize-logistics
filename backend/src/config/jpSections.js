@@ -39,7 +39,8 @@ for (const [slug, s] of Object.entries(JP_SECTIONS)) {
   if (!def) throw new Error(`jpSections: «${slug}» يشير إلى قسمٍ غير معرَّف في roles.js (${s.roleSection})`);
   s.slug = slug;
   s.managerRoles = [def.manager.key, ...(s.extraManagers || [])];
-  s.staffRoles = def.staff.map((x) => x.key);
+  // والمتدرّبُ من الفريق متى فُتحت له صفحةُ الخطّة: يُسنَد إليه ويكتب طلبًا.
+  s.staffRoles = [...def.staff.map((x) => x.key), def.trainee.key];
   s.memberRoles = [...s.managerRoles, ...s.staffRoles];
 }
 

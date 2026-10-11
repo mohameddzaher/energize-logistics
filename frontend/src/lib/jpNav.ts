@@ -24,7 +24,8 @@ export const jpManager = (u: U, section: string): boolean => {
 
 export const jpMember = (u: U, section: string): boolean => {
   const d = def(section);
-  return jpManager(u, section) || (!!d && d.staff.some((s) => s.key === (u?.role || '')));
+  // والمتدرّبُ من الفريق — متى فُتح له القسمُ وصفحةُ الخطّة من الصلاحيّات.
+  return jpManager(u, section) || (!!d && (d.trainee.key === (u?.role || '') || d.staff.some((s) => s.key === (u?.role || ''))));
 };
 
 export const jpTop = (u: U): boolean => TOP.includes(u?.role || '');

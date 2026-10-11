@@ -52,7 +52,9 @@ router.get('/:id/invoice', ctrl.getClearanceInvoice);
 
 router.post('/', authorize(...EDIT_ROLES), ctrl.createClearance);
 router.put('/:id', authorize(...EDIT_ROLES), ctrl.updateClearance);
-router.delete('/:id', authorize('super_admin', 'admin', 'customs_manager'), ctrl.deleteClearance);
+// حذفُ المعاملة لمدير القسم وموظّفه معًا (طلبُ صاحب الشركة) — والحذفُ يُقيَّد في
+// سجلّ المراجعة باسم من حذف ورقم المعاملة.
+router.delete('/:id', authorize('super_admin', 'admin', 'customs_manager', 'customs_officer'), ctrl.deleteClearance);
 
 // مرفقات المعاملة — ورقُ كلِّ مرحلة يُرفَع مع المعاملة نفسِها.
 // ── مراحلُ السداد ──────────────────────────────────────────────────────────

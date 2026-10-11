@@ -44,7 +44,8 @@ export default function CustomsDetailPage() {
   // السابقة») — شاشةٌ بيضاء لا يُفهَم سببُها. فموضعُها هنا لا هناك.
   const [activating, setActivating] = useState(false);
 
-  const canDelete = ['super_admin', 'admin', 'customs_manager'].includes(user?.role || '');
+  // الحذفُ لمدير القسم وموظّفه — يطابق حارسَ المسار في الخادم.
+  const canDelete = ['super_admin', 'admin', 'customs_manager', 'customs_officer'].includes(user?.role || '');
 
   const removeClearance = async () => {
     if (!window.confirm(lang === 'ar'
@@ -253,6 +254,10 @@ export default function CustomsDetailPage() {
   // بتاريخٍ ومرفق» لا «غير مسموح».
   /** المعاملةُ القادمة تصير جارية — هي هي، غيّر أنّها وقعت. */
   const activate = async () => {
+    // التحويلُ يُسأل عنه: ضغطةٌ خاطئةٌ كانت تُخرج المعاملةَ من القادمة في الحال.
+    if (!(await confirm(ar
+      ? `تحويلُ المعاملة ${c?.blNumber || c?.refNumber || ''} إلى معاملةٍ جارية؟ ستخرج من المعاملات القادمة وتدخل قائمةَ الجارية.`
+      : `Convert ${c?.blNumber || c?.refNumber || ''} to a current transaction? It leaves the upcoming list and joins the current one.`))) return;
     setActivating(true);
     try {
       const d = await api.patch<any>(`/api/customs-clearance/${params?.id}/activate`, {});
@@ -260,6 +265,17 @@ export default function CustomsDetailPage() {
       notify(ar ? 'صارت معاملةً جارية' : 'Now a current transaction', 'success');
     } catch (e: any) { notify(e?.message || (ar ? 'تعذّر التحويل' : 'Failed'), 'error'); }
     setActivating(false);
+  };
+
+  // ── وما حُوِّل خطأً يُرَدّ ───────────────────────────────────────────────
+  // معاملةٌ حُوِّلت إلى جاريةٍ بضغطةٍ خاطئة تعود إلى القادمة بتاريخها المرتقَب
+  // نفسِه — لا تُحذف وتُنشأ من جديد. وما كُتب فيها يبقى.
+  const backToUpcoming = async () => {
+    if (!(await confirm(ar
+      ? `إرجاعُ المعاملة ${c?.blNumber || c?.refNumber || ''} إلى المعاملات القادمة؟ ستخرج من قائمة الجارية وأعدادها.`
+      : `Move ${c?.blNumber || c?.refNumber || ''} back to upcoming? It leaves the current list and its counts.`))) return;
+    await patch({ upcoming: true } as any);
+    notify(ar ? 'عادت إلى المعاملات القادمة' : 'Back in upcoming', 'success');
   };
 
   const closeTransaction = async (value: boolean) => {
@@ -419,6 +435,13 @@ export default function CustomsDetailPage() {
               className="flex items-center gap-1.5 rounded-lg bg-[#f37121] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#e06010] disabled:opacity-60">
               {activating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
               {ar ? 'تحويل إلى معاملة جارية' : 'Convert to current'}
+            </button>
+          )}
+          {canEdit && !(c as any).upcoming && !c.isCompleted && !c.cancelled && !!(c as any).expectedDate && (
+            <button type="button" onClick={backToUpcoming}
+              title={ar ? 'للمعاملة التي حُوِّلت إلى جاريةٍ قبل أوانها' : 'For a transaction converted too early'}
+              className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:text-[#f37121]">
+              <RotateCcw className="w-4 h-4" /> {ar ? 'إرجاع إلى القادمة' : 'Back to upcoming'}
             </button>
           )}
           <ExportMenu fileName={`customs-${c.refNumber || c.blNumber || c._id}`} lang={lang as 'ar' | 'en'}

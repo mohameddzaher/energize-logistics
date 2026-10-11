@@ -158,12 +158,32 @@ const SECTION_ROLES = [
   // بتاعك، مش بدور خاص بيها.
 ];
 
+// ── ولكلّ قسمٍ متدرّب ──────────────────────────────────────────────────────
+//
+// دورٌ ثالثٌ في كلّ قسم: «متدرّب». ولا يخالف قاعدةَ «مدير وموظّف فقط» أدناه،
+// لأنّه يختلف عنهما في **الصلاحيّة** لا في اللقب: **لا يرث شيئًا**. الموظّفُ
+// يأخذ قسمَه كاملًا من لحظة إنشاء حسابه؛ والمتدرّبُ لا يرى إلّا ما يُفتَح له
+// من صفحة الصلاحيّات — قسمًا قسمًا وصفحةً صفحة. فسكوتُ المصفوفة عنه يعني «لا
+// شيء» (راجع utils/permissions.inheritsNothing)، كالدور المصنوع من الشاشة.
+//
+// ولذلك لا يدخل `staff`: دخولُه يمنحه القسمَ افتراضيًّا (`sections.defaultAccess`
+// تقرأ `rolesOfSection`). يُشتقّ مفتاحُه واسمُه من مدير القسم، فقسمٌ يُضاف
+// غدًا يأتي بمتدرّبه بلا سطرٍ ثانٍ.
+for (const s of SECTION_ROLES) {
+  s.trainee = {
+    key: s.manager.key.replace(/_manager$/, '_trainee'),
+    ar: s.manager.ar.replace(/^مدير\s+/, 'متدرّب '),
+    en: s.manager.en.replace(/\s+Manager$/, ' Trainee'),
+  };
+}
+
 // ── مفاتيح جاهزة ────────────────────────────────────────────────────────────
 const MANAGER_ROLES = SECTION_ROLES.map((s) => s.manager.key);
 const STAFF_ROLES = SECTION_ROLES.flatMap((s) => s.staff.map((x) => x.key));
+const TRAINEE_ROLES = SECTION_ROLES.map((s) => s.trainee.key);
 const ALL_ROLE_DEFS = [
   ...GLOBAL_ROLES,
-  ...SECTION_ROLES.flatMap((s) => [s.manager, ...s.staff]),
+  ...SECTION_ROLES.flatMap((s) => [s.manager, ...s.staff, s.trainee]),
 ];
 const ALL_ROLES = ALL_ROLE_DEFS.map((r) => r.key);
 
@@ -172,11 +192,11 @@ const LABELS_EN = Object.fromEntries(ALL_ROLE_DEFS.map((r) => [r.key, r.en]));
 
 /** القسم اللي الدور ده تبعه، أو null للأدوار العامة. */
 const sectionOfRole = (role) => {
-  const s = SECTION_ROLES.find((x) => x.manager.key === role || x.staff.some((y) => y.key === role));
+  const s = SECTION_ROLES.find((x) => x.manager.key === role || x.trainee.key === role || x.staff.some((y) => y.key === role));
   return s ? s.section : null;
 };
 
-/** الأدوار (مدير + موظفين) اللي بتملك القسم ده. */
+/** الأدوار (مدير + موظفين) اللي بتملك القسم ده — والمتدرّبُ ليس منها: لا يملك، يُمنَح. */
 const rolesOfSection = (section) => {
   const s = SECTION_ROLES.find((x) => x.section === section);
   return s ? [s.manager.key, ...s.staff.map((y) => y.key)] : [];
@@ -184,6 +204,7 @@ const rolesOfSection = (section) => {
 
 const isManager = (role) => MANAGER_ROLES.includes(role);
 const isStaff = (role) => STAFF_ROLES.includes(role);
+const isTrainee = (role) => TRAINEE_ROLES.includes(role);
 
 // ── أسماء المفاتيح القديمة ──────────────────────────────────────────────────
 // اتسابت هنا عشان أي بيانات أو إعدادات قديمة تتقرا صح لو فضلت مخزّنة في مكان
@@ -232,6 +253,7 @@ const canonicalRole = (role) => RENAMED[role] || role;
     for (const st of s.staff) {
       if (/_manager$/.test(st.key)) problems.push(`دور الموظف «${st.key}» بينتهي بـ _manager — هيتحسب مدير بالغلط`);
     }
+    if (!/_trainee$/.test(s.trainee.key) || /^مدير/.test(s.trainee.ar)) problems.push(`متدرّبُ قسم «${s.section}» لم يُشتقّ اسمُه (${s.trainee.key} / ${s.trainee.ar})`);
   }
   const dupes = ALL_ROLES.filter((r, i) => ALL_ROLES.indexOf(r) !== i);
   if (dupes.length) problems.push(`مفاتيح مكرّرة: ${[...new Set(dupes)].join(', ')}`);
@@ -259,7 +281,7 @@ const assertRolesCoverSections = (sectionKeys, exempt = []) => {
 
 module.exports = {
   GLOBAL_ROLES, SECTION_ROLES, assertRolesCoverSections,
-  ALL_ROLES, ALL_ROLE_DEFS, MANAGER_ROLES, STAFF_ROLES,
+  ALL_ROLES, ALL_ROLE_DEFS, MANAGER_ROLES, STAFF_ROLES, TRAINEE_ROLES, isTrainee,
   LABELS_AR, LABELS_EN,
   sectionOfRole, rolesOfSection, isManager, isStaff,
   RENAMED, canonicalRole,

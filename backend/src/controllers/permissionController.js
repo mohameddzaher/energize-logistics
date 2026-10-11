@@ -101,7 +101,8 @@ exports.updateRolePermissions = async (req, res) => {
     // التي يقرؤها هو نفسُه عند المنح (`pageFollowsSection`) — فلا يفترقان.
     if (req.body?.pages) {
       const pages = {};
-      const custom = await isCustomRole(role);
+      // المتدرّبُ كالمصنوع: لا يرث — راجع permissions.inheritsNothing.
+      const custom = await require('../utils/permissions').inheritsNothing(role);
       const after = resolveSections(role, $set.sections || (await getOverrides(role)), custom);
       for (const [key, on] of Object.entries(req.body.pages)) {
         if (!isPage(key)) continue;

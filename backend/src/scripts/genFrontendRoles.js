@@ -23,7 +23,7 @@ const HEAD = `// ⚠️ مولَّد من backend/src/config/roles.js — متع
 // والموظفين لأ — القاعدة دي هي اللي بيتحدد بيها مين يقعد في اجتماعات الإدارة.
 
 export interface RoleDef { key: string; ar: string; en: string }
-export interface SectionRoles { section: string; manager: RoleDef; staff: RoleDef[] }
+export interface SectionRoles { section: string; manager: RoleDef; staff: RoleDef[]; trainee: RoleDef }
 
 export const GLOBAL_ROLES: RoleDef[] = ${JSON.stringify(R.GLOBAL_ROLES, null, 2)};
 
@@ -33,11 +33,13 @@ export const SECTION_ROLES: SectionRoles[] = ${JSON.stringify(R.SECTION_ROLES, n
 const TAIL = `
 export const ALL_ROLE_DEFS: RoleDef[] = [
   ...GLOBAL_ROLES,
-  ...SECTION_ROLES.flatMap((s) => [s.manager, ...s.staff]),
+  ...SECTION_ROLES.flatMap((s) => [s.manager, ...s.staff, s.trainee]),
 ];
 export const ALL_ROLES: string[] = ALL_ROLE_DEFS.map((r) => r.key);
 export const MANAGER_ROLES: string[] = SECTION_ROLES.map((s) => s.manager.key);
 export const STAFF_ROLES: string[] = SECTION_ROLES.flatMap((s) => s.staff.map((x) => x.key));
+// متدرّبُ القسم: لا يرث شيئًا — يُفتَح له ما يُفتَح من صفحة الصلاحيّات.
+export const TRAINEE_ROLES: string[] = SECTION_ROLES.map((s) => s.trainee.key);
 
 const AR: Record<string, string> = Object.fromEntries(ALL_ROLE_DEFS.map((r) => [r.key, r.ar]));
 const EN: Record<string, string> = Object.fromEntries(ALL_ROLE_DEFS.map((r) => [r.key, r.en]));
@@ -52,11 +54,11 @@ export const roleLabel = (key?: string | null, lang: 'ar' | 'en' = 'ar'): string
 /** الأدوار مرتّبة حسب القسم — للقوائم المنسدلة، عشان المستخدم يلاقي دوره جنب قسمه. */
 export const rolesGroupedBySection = (lang: 'ar' | 'en' = 'ar') => [
   { section: lang === 'ar' ? 'أدوار عامة' : 'General', roles: GLOBAL_ROLES.filter((r) => r.key !== 'client') },
-  ...SECTION_ROLES.map((s) => ({ section: s.section, roles: [s.manager, ...s.staff] })),
+  ...SECTION_ROLES.map((s) => ({ section: s.section, roles: [s.manager, ...s.staff, s.trainee] })),
 ];
 
 export const sectionOfRole = (role?: string | null): string | null => {
-  const s = SECTION_ROLES.find((x) => x.manager.key === role || x.staff.some((y) => y.key === role));
+  const s = SECTION_ROLES.find((x) => x.manager.key === role || x.trainee.key === role || x.staff.some((y) => y.key === role));
   return s ? s.section : null;
 };
 export const isManagerRole = (role?: string | null): boolean => !!role && MANAGER_ROLES.includes(role);

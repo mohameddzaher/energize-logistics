@@ -8,15 +8,15 @@
  *   • كم بقي على موعدها (أو كم فات)،
  *   • تاريخُها يُعدَّل في مكانه،
  *   • أوراقُها الخمسُ تُعلَّم في مكانها — ما استُلِم منها وما لم يُستلَم،
- *   • وتُحوَّل إلى جاريةٍ أو تُفتَح.
+ *   • وتُحوَّل إلى جاريةٍ (بسؤالٍ أوّلًا). ولا تُفتَح من هنا: القادمةُ تُدار
+ *     من نافذتها، وصفحتُها تُفتَح بعد أن تصير جارية.
  *
  * والأوراقُ هي نفسُها قائمةُ «الأوراق المطلوبة» داخل المعاملة (`documents`):
  * ما يُعلَّم هنا معلَّمٌ هناك، والعكس — خانةٌ واحدةٌ تُكتب من بابين.
  */
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRef, useState } from 'react';
 import api from '@/lib/api';
-import { X, Check, ExternalLink, Loader2, CalendarClock } from 'lucide-react';
+import { X, Check, Loader2, CalendarClock } from 'lucide-react';
 
 export const DOC_KEYS = ['bl', 'commercialInvoice', 'certificateOfOrigin', 'packingList', 'saber'] as const;
 export type DocKey = typeof DOC_KEYS[number];
@@ -30,7 +30,7 @@ export const DOC_LABELS: Record<DocKey, [string, string]> = {
 
 export interface UpcomingItem {
   _id: string; refNumber?: string; blNumber?: string; customerName?: string; shippingAgent?: string;
-  expectedDate?: string; containerCount?: number; documents?: Partial<Record<DocKey, boolean>>;
+  expectedDate?: string; containerCount?: number; branch?: string; documents?: Partial<Record<DocKey, boolean>>;
   daysLeft: number | null; overdue?: boolean; dueSoon?: boolean;
 }
 
@@ -71,26 +71,119 @@ export function DocChecklist({ value, onToggle, disabled, ar }: {
   );
 }
 
-export default function UpcomingPanel({ items, days, canEdit, ar, onClose, onChanged, notify }: {
-  items: UpcomingItem[]; days: number; canEdit: boolean; ar: boolean;
-  onClose: () => void; onChanged: () => void; notify: (m: string, tone?: 'success' | 'error' | 'info') => void;
+/**
+ * خانةُ التاريخ في صفّ القادمة.
+ *
+ * ── ولماذا لها مكوِّنٌ وزرُّ حفظ ─────────────────────────────────────────────
+ * كانت تُحفَظ مع كلّ تغيير: يفتح المستخدمُ التقويمَ فيكتب المتصفّحُ قيمةً
+ * أولى، فيُرسَل الحفظُ، فتُعاد قراءةُ النافذة، فيُعاد بناءُ الخانة (مفتاحُها
+ * كان التاريخَ نفسَه) — **فيُغلَق التقويمُ قبل أن يُختار اليوم**.
+ *
+ * فالمكتوبُ مسوّدةٌ في الخانة لا تُرسَل حتى يُقال «حفظ» (أو Enter). والخانةُ
+ * لا يُعاد بناؤها: مفتاحُها المعاملةُ لا تاريخُها.
+ */
+function DateEditor({ value, disabled, saving, onSave, ar }: {
+  value: string; disabled?: boolean; saving?: boolean; onSave: (v: string) => void; ar: boolean;
 }) {
-  const router = useRouter();
+  const [draft, setDraft] = useState(value);
+  // تاريخٌ تغيّر من خارج الخانة (حفظٌ نجح، أو زميلٌ عدّله) يُعرَض — ما لم تكن
+  // فيها مسوّدةٌ لم تُحفَظ بعد.
+  const [seen, setSeen] = useState(value);
+  if (value !== seen) { if (draft === seen) setDraft(value); setSeen(value); }
+  const dirty = !!draft && draft !== value;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <input type="date" value={draft} disabled={disabled}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter' && dirty) onSave(draft); }}
+        className="px-2 py-1.5 rounded-lg bg-white border border-slate-200 text-[13px] text-slate-800 disabled:opacity-60" />
+      {dirty && (
+        <>
+          <button type="button" onClick={() => onSave(draft)} disabled={saving}
+            className="px-2.5 py-1.5 rounded-lg bg-slate-900 text-white text-[12px] font-semibold disabled:opacity-50">{ar ? 'حفظ' : 'Save'}</button>
+          <button type="button" onClick={() => setDraft(value)}
+            className="px-2 py-1.5 rounded-lg text-[12px] text-slate-500 hover:text-slate-900">{ar ? 'تراجع' : 'Undo'}</button>
+        </>
+      )}
+    </span>
+  );
+}
+
+export default function UpcomingPanel({ items, days, canEdit, ar, onClose, onChanged, notify, confirm }: {
+  items: UpcomingItem[]; days: number; canEdit: boolean; ar: boolean;
+  /** `full` حين تتغيّر قائمةُ الجارية أيضًا (تحويل)؛ وإلّا فالنافذةُ وحدَها. */
+  onClose: () => void; onChanged: (full?: boolean) => void; notify: (m: string, tone?: 'success' | 'error' | 'info') => void;
+  /** سؤالُ التأكيد قبل التحويل — نافذةُ النظام لا `window.confirm`. */
+  confirm: (message: string) => Promise<boolean>;
+}) {
   const [busy, setBusy] = useState('');
   const t = (a: string, e: string) => (ar ? a : e);
 
-  const save = async (id: string, body: Record<string, unknown>) => {
-    setBusy(id);
-    try { await api.put(`/api/customs-clearance/${id}`, body); onChanged(); }
-    catch (e) { notify((e as { message?: string })?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
+  // ── العلامةُ تظهر في الحال، والحفظُ خلفها ────────────────────────────────
+  // كانت الورقةُ لا تُعلَّم حتى يعود الخادمُ ثمّ تُعاد قراءةُ النافذة والجدول
+  // كلِّه — فيضغط المستخدمُ ولا يرى شيئًا لثانيةٍ أو اثنتين، فيظنّها معلّقةً
+  // ويضغط ثانيةً فتنقلب. فما ضُغط يُكتب على الشاشة فورًا (`local`)، ويُحفَظ في
+  // الخلف؛ وإن رُدّ الحفظُ عادت العلامةُ كما كانت وقيل ذلك.
+  const [local, setLocal] = useState<Record<string, { documents?: Partial<Record<DocKey, boolean>>; expectedDate?: string; branch?: string }>>({});
+  const view = (x: UpcomingItem): UpcomingItem => {
+    const o = local[x._id];
+    return o ? {
+      ...x,
+      ...(o.expectedDate !== undefined ? { expectedDate: o.expectedDate } : {}),
+      ...(o.branch !== undefined ? { branch: o.branch } : {}),
+      documents: { ...(x.documents || {}), ...(o.documents || {}) },
+    } : x;
+  };
+
+  const queue = useRef<Record<string, Promise<unknown>>>({});
+  const toggleDoc = async (x: UpcomingItem, k: DocKey, on: boolean) => {
+    setLocal((m) => ({ ...m, [x._id]: { ...m[x._id], documents: { ...(m[x._id]?.documents || {}), [k]: on } } }));
+    try {
+      // ── وعلامتان متتاليتان تُحفَظان واحدةً بعد واحدة ──────────────────────
+      // الخادمُ يقرأ أوراقَ المعاملة ثمّ يكتبها كاملةً؛ فطلبان معًا يقرآن الحالةَ
+      // نفسَها ويكتب الثاني فوق الأوّل فتضيع علامتُه. فتُصَفّ طلباتُ المعاملة
+      // الواحدة: كلٌّ ينتظر ما قبله.
+      const prev = queue.current[x._id] || Promise.resolve();
+      const mine = prev.catch(() => undefined).then(() => api.put(`/api/customs-clearance/${x._id}`, { documents: { [k]: on } }));
+      queue.current[x._id] = mine;
+      await mine;
+      onChanged();
+    } catch (e) {
+      setLocal((m) => ({ ...m, [x._id]: { ...m[x._id], documents: { ...(m[x._id]?.documents || {}), [k]: !on } } }));
+      notify((e as { message?: string })?.message || t('تعذّر الحفظ — عادت العلامةُ كما كانت', 'Not saved — the tick was restored'), 'error');
+    }
+  };
+
+  /** التاريخُ أو الفرع: يُكتب على الشاشة فورًا ويُحفَظ في صفّ المعاملة نفسِه. */
+  const save = async (x: UpcomingItem, body: { expectedDate?: string; branch?: string }) => {
+    const before = { expectedDate: x.expectedDate, branch: x.branch };
+    setBusy(x._id);
+    setLocal((m) => ({ ...m, [x._id]: { ...m[x._id], ...body } }));
+    try {
+      const prev = queue.current[x._id] || Promise.resolve();
+      const mine = prev.catch(() => undefined).then(() => api.put(`/api/customs-clearance/${x._id}`, body));
+      queue.current[x._id] = mine;
+      await mine;
+      onChanged();
+    } catch (e) {
+      setLocal((m) => ({ ...m, [x._id]: { ...m[x._id], ...Object.fromEntries(Object.keys(body).map((k) => [k, (before as Record<string, string | undefined>)[k]])) } }));
+      notify((e as { message?: string })?.message || t('تعذّر الحفظ — عادت القيمةُ كما كانت', 'Not saved — the value was restored'), 'error');
+    }
     setBusy('');
   };
+  // ── والتحويلُ يُسأل عنه أوّلًا ─────────────────────────────────────────
+  // ضغطةٌ خاطئةٌ على الزرّ كانت تُخرج المعاملةَ من
+  // القادمة في الحال وتُدخلها أعدادَ الجارية. فيُسأل، ويُقال أيُّ معاملة.
   const activate = async (id: string) => {
+    const x = items.find((i) => i._id === id);
+    const name = x?.blNumber || x?.refNumber || '';
+    if (!(await confirm(t(`تحويلُ المعاملة ${name} إلى معاملةٍ جارية؟ ستخرج من المعاملات القادمة وتدخل قائمةَ الجارية.`,
+      `Convert ${name} to a current transaction? It leaves the upcoming list and joins the current one.`)))) return;
     setBusy(id);
     try {
       await api.patch(`/api/customs-clearance/${id}/activate`, {});
       notify(t('صارت معاملةً جارية', 'Now a current transaction'), 'success');
-      onChanged();
+      onChanged(true);
     } catch (e) { notify((e as { message?: string })?.message || t('تعذّر التحويل', 'Could not convert'), 'error'); }
     setBusy('');
   };
@@ -115,7 +208,7 @@ export default function UpcomingPanel({ items, days, canEdit, ar, onClose, onCha
 
         <div className="p-5 space-y-3">
           {items.length === 0 && <p className="text-sm text-slate-500 text-center py-10">{t('لا معاملات قادمة.', 'No upcoming transactions.')}</p>}
-          {items.map((x) => {
+          {items.map(view).map((x) => {
             const tone = x.overdue ? 'border-red-200 bg-red-50/40' : x.dueSoon ? 'border-amber-200 bg-amber-50/40' : 'border-slate-200';
             const badge = x.overdue ? 'bg-red-100 text-red-700' : x.dueSoon ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600';
             const received = DOC_KEYS.filter((k) => x.documents?.[k]).length;
@@ -127,6 +220,7 @@ export default function UpcomingPanel({ items, days, canEdit, ar, onClose, onCha
                     <p className="font-bold text-slate-900 text-[14.5px]"><bdi>{x.blNumber || t('بلا رقم بوليصة', 'No BL number')}</bdi></p>
                     <p className="text-[12.5px] text-slate-600 mt-0.5 truncate">
                       {x.customerName || '—'}{x.shippingAgent ? ` · ${x.shippingAgent}` : ''}{x.containerCount ? ` · ${x.containerCount} ${t('حاوية', 'containers')}` : ''}
+                      {` · ${x.branch === 'dammam' ? t('الدمام', 'Dammam') : t('جدة', 'Jeddah')}`}
                     </p>
                     <p className="text-[11.5px] text-slate-400 mt-0.5"><bdi>{x.refNumber}</bdi></p>
                   </div>
@@ -137,11 +231,18 @@ export default function UpcomingPanel({ items, days, canEdit, ar, onClose, onCha
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <label className="inline-flex items-center gap-2 text-[12px] text-slate-500">
+                  <span className="inline-flex items-center gap-2 text-[12px] text-slate-500">
                     {t('تاريخ المعاملة', 'Expected date')}
-                    <input type="date" defaultValue={x.expectedDate || ''} key={`${x._id}:${x.expectedDate || ''}`} disabled={!canEdit}
-                      onChange={(e) => { if (e.target.value && e.target.value !== x.expectedDate) save(x._id, { expectedDate: e.target.value }); }}
-                      className="px-2 py-1.5 rounded-lg bg-white border border-slate-200 text-[13px] text-slate-800 disabled:opacity-60" />
+                    <DateEditor value={x.expectedDate || ''} disabled={!canEdit} saving={busy === x._id} ar={ar}
+                      onSave={(v) => save(x, { expectedDate: v })} />
+                  </span>
+                  <label className="inline-flex items-center gap-2 text-[12px] text-slate-500">
+                    {t('الفرع', 'Branch')}
+                    <select value={x.branch || 'jeddah'} disabled={!canEdit} onChange={(e) => save(x, { branch: e.target.value })}
+                      className="px-2 py-1.5 rounded-lg bg-white border border-slate-200 text-[13px] text-slate-800 disabled:opacity-60">
+                      <option value="jeddah">{t('جدة', 'Jeddah')}</option>
+                      <option value="dammam">{t('الدمام', 'Dammam')}</option>
+                    </select>
                   </label>
                   <span className="text-[12px] text-slate-500">
                     {t(`الأوراق: ${received} من ${DOC_KEYS.length}`, `Papers: ${received} of ${DOC_KEYS.length}`)}
@@ -149,8 +250,8 @@ export default function UpcomingPanel({ items, days, canEdit, ar, onClose, onCha
                 </div>
 
                 <div className="mt-2">
-                  <DocChecklist value={x.documents} ar={ar} disabled={!canEdit || busy === x._id}
-                    onToggle={(k, on) => save(x._id, { documents: { [k]: on } })} />
+                  <DocChecklist value={x.documents} ar={ar} disabled={!canEdit}
+                    onToggle={(k, on) => toggleDoc(x, k, on)} />
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -160,10 +261,6 @@ export default function UpcomingPanel({ items, days, canEdit, ar, onClose, onCha
                       <Check className="w-3.5 h-3.5" />{t('تحويل إلى معاملة جارية', 'Convert to current')}
                     </button>
                   )}
-                  <button type="button" onClick={() => { onClose(); router.push(`/system/customs/${x._id}`); }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-[12.5px] font-semibold hover:border-[#f37121]/60">
-                    <ExternalLink className="w-3.5 h-3.5" />{t('فتح المعاملة', 'Open')}
-                  </button>
                 </div>
               </div>
             );

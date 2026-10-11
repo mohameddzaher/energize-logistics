@@ -5,7 +5,7 @@
 // والموظفين لأ — القاعدة دي هي اللي بيتحدد بيها مين يقعد في اجتماعات الإدارة.
 
 export interface RoleDef { key: string; ar: string; en: string }
-export interface SectionRoles { section: string; manager: RoleDef; staff: RoleDef[] }
+export interface SectionRoles { section: string; manager: RoleDef; staff: RoleDef[]; trainee: RoleDef }
 
 export const GLOBAL_ROLES: RoleDef[] = [
   {
@@ -54,7 +54,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "موظف العمليات",
         "en": "Operations Team"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "operations_trainee",
+      "ar": "متدرّب العمليات",
+      "en": "Operations Trainee"
+    }
   },
   {
     "section": "Collections",
@@ -69,7 +74,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "موظف التحصيل",
         "en": "Collections Officer"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "collections_trainee",
+      "ar": "متدرّب التحصيل",
+      "en": "Collections Trainee"
+    }
   },
   {
     "section": "Operations Platform",
@@ -84,7 +94,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "موظف منصة الأوبريشن",
         "en": "Operations Platform Team"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "ops_platform_trainee",
+      "ar": "متدرّب منصة الأوبريشن",
+      "en": "Operations Platform Trainee"
+    }
   },
   {
     "section": "Shipment Orders",
@@ -99,7 +114,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "موظف طلبات الشحنات",
         "en": "Shipment Orders Team"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "shipment_orders_trainee",
+      "ar": "متدرّب طلبات الشحنات",
+      "en": "Shipment Orders Trainee"
+    }
   },
   {
     "section": "Fleet Management",
@@ -114,7 +134,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "مشرف الأسطول",
         "en": "Fleet Supervisor"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "fleet_trainee",
+      "ar": "متدرّب الأسطول",
+      "en": "Fleet Trainee"
+    }
   },
   {
     "section": "Customs",
@@ -129,7 +154,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "مخلّص جمركي",
         "en": "Customs Officer"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "customs_trainee",
+      "ar": "متدرّب التخليص الجمركي",
+      "en": "Customs Trainee"
+    }
   },
   {
     "section": "Vehicles",
@@ -144,7 +174,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "موظف المركبات والتفاويض",
         "en": "Vehicles & Authorizations Officer"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "vehicles_trainee",
+      "ar": "متدرّب المركبات والتفاويض",
+      "en": "Vehicles & Authorizations Trainee"
+    }
   },
   {
     "section": "Location Solutions",
@@ -159,7 +194,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "موظف لوكيشن سوليوشن",
         "en": "Location Solutions Team"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "location_trainee",
+      "ar": "متدرّب لوكيشن سوليوشن",
+      "en": "Location Solutions Trainee"
+    }
   },
   {
     "section": "Marketing",
@@ -174,7 +214,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "أخصائي تسويق",
         "en": "Marketing Specialist"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "marketing_trainee",
+      "ar": "متدرّب التسويق",
+      "en": "Marketing Trainee"
+    }
   },
   {
     "section": "Business Development",
@@ -189,7 +234,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "أخصائي تطوير الأعمال",
         "en": "Business Development Specialist"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "bd_trainee",
+      "ar": "متدرّب تطوير الأعمال",
+      "en": "Business Development Trainee"
+    }
   },
   {
     "section": "Software & IT",
@@ -204,7 +254,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "أخصائي تقنية المعلومات",
         "en": "IT Specialist"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "it_trainee",
+      "ar": "متدرّب تقنية المعلومات",
+      "en": "IT Trainee"
+    }
   },
   {
     "section": "Administration",
@@ -219,7 +274,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "موظف الشؤون الإدارية",
         "en": "Administration Officer"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "administration_trainee",
+      "ar": "متدرّب الشؤون الإدارية",
+      "en": "Administration Trainee"
+    }
   },
   {
     "section": "Contracts",
@@ -234,7 +294,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "موظف العقود",
         "en": "Contracts Officer"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "contracts_trainee",
+      "ar": "متدرّب العقود",
+      "en": "Contracts Trainee"
+    }
   },
   {
     "section": "B2C",
@@ -261,7 +326,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "en": "B2C Inspection Supervisor",
         "distinct": "للتفقّد وحدَه: «تفقّد بداية الدوام» بالكاميرا الحيّة وسجلُّه وتحليلُه. لا يُدخِل يومًا ولا يصدر أمرَ تشغيلٍ ولا يوزّع المناديب. والتفقّدُ يبقى إسنادًا يُكتب على كلّ مندوبٍ من سجلّ النقل الخفيف، ويصحّ لمدير المشروع ومدير القطاع أيضًا."
       }
-    ]
+    ],
+    "trainee": {
+      "key": "b2c_trainee",
+      "ar": "متدرّب قطاع الأفراد",
+      "en": "B2C Trainee"
+    }
   },
   {
     "section": "Remote",
@@ -276,7 +346,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "موظف عن بُعد",
         "en": "Remote Employee"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "remote_trainee",
+      "ar": "متدرّب العمل عن بُعد",
+      "en": "Remote Work Trainee"
+    }
   },
   {
     "section": "HR",
@@ -291,7 +366,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "أخصائي موارد بشرية",
         "en": "HR Specialist"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "hr_trainee",
+      "ar": "متدرّب الموارد البشرية",
+      "en": "HR Trainee"
+    }
   },
   {
     "section": "CRM",
@@ -306,7 +386,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "أخصائي علاقات العملاء",
         "en": "CRM Specialist"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "crm_trainee",
+      "ar": "متدرّب إدارة العلاقات",
+      "en": "CRM Trainee"
+    }
   },
   {
     "section": "Sales",
@@ -321,7 +406,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "مندوب مبيعات",
         "en": "Sales Representative"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "sales_trainee",
+      "ar": "متدرّب المبيعات",
+      "en": "Sales Trainee"
+    }
   },
   {
     "section": "Accounting",
@@ -336,7 +426,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "محاسب",
         "en": "Accountant"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "accounting_trainee",
+      "ar": "متدرّب الحسابات",
+      "en": "Accounting Trainee"
+    }
   },
   {
     "section": "Procurement",
@@ -351,17 +446,24 @@ export const SECTION_ROLES: SectionRoles[] = [
         "ar": "موظف المشتريات",
         "en": "Procurement Officer"
       }
-    ]
+    ],
+    "trainee": {
+      "key": "procurement_trainee",
+      "ar": "متدرّب المشتريات",
+      "en": "Procurement Trainee"
+    }
   }
 ];
 
 export const ALL_ROLE_DEFS: RoleDef[] = [
   ...GLOBAL_ROLES,
-  ...SECTION_ROLES.flatMap((s) => [s.manager, ...s.staff]),
+  ...SECTION_ROLES.flatMap((s) => [s.manager, ...s.staff, s.trainee]),
 ];
 export const ALL_ROLES: string[] = ALL_ROLE_DEFS.map((r) => r.key);
 export const MANAGER_ROLES: string[] = SECTION_ROLES.map((s) => s.manager.key);
 export const STAFF_ROLES: string[] = SECTION_ROLES.flatMap((s) => s.staff.map((x) => x.key));
+// متدرّبُ القسم: لا يرث شيئًا — يُفتَح له ما يُفتَح من صفحة الصلاحيّات.
+export const TRAINEE_ROLES: string[] = SECTION_ROLES.map((s) => s.trainee.key);
 
 const AR: Record<string, string> = Object.fromEntries(ALL_ROLE_DEFS.map((r) => [r.key, r.ar]));
 const EN: Record<string, string> = Object.fromEntries(ALL_ROLE_DEFS.map((r) => [r.key, r.en]));
@@ -376,11 +478,11 @@ export const roleLabel = (key?: string | null, lang: 'ar' | 'en' = 'ar'): string
 /** الأدوار مرتّبة حسب القسم — للقوائم المنسدلة، عشان المستخدم يلاقي دوره جنب قسمه. */
 export const rolesGroupedBySection = (lang: 'ar' | 'en' = 'ar') => [
   { section: lang === 'ar' ? 'أدوار عامة' : 'General', roles: GLOBAL_ROLES.filter((r) => r.key !== 'client') },
-  ...SECTION_ROLES.map((s) => ({ section: s.section, roles: [s.manager, ...s.staff] })),
+  ...SECTION_ROLES.map((s) => ({ section: s.section, roles: [s.manager, ...s.staff, s.trainee] })),
 ];
 
 export const sectionOfRole = (role?: string | null): string | null => {
-  const s = SECTION_ROLES.find((x) => x.manager.key === role || x.staff.some((y) => y.key === role));
+  const s = SECTION_ROLES.find((x) => x.manager.key === role || x.trainee.key === role || x.staff.some((y) => y.key === role));
   return s ? s.section : null;
 };
 export const isManagerRole = (role?: string | null): boolean => !!role && MANAGER_ROLES.includes(role);

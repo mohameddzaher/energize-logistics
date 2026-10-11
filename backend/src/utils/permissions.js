@@ -48,6 +48,14 @@ const customRoleKeys = async () => {
 
 const isCustomRole = async (role) => (await customRoleKeys()).has(String(role));
 
+/**
+ * ── من لا يرث شيئًا ─────────────────────────────────────────────────────────
+ * الدورُ المصنوعُ من الشاشة، و**متدرّبُ القسم** (config/roles): كلاهما لا ماضيَ
+ * له في قوائم الأدوار، فسكوتُ المصفوفة عنه يعني «لا شيء» لا «كما كان». يُفتَح
+ * له ما يُفتَح من صفحة الصلاحيّات، ولا يأخذ قسمًا ولا صفحةً بالافتراض.
+ */
+const inheritsNothing = async (role) => require('../config/roles').isTrainee(String(role)) || isCustomRole(role);
+
 // Raw saved doc for a role (empty when none). Cached across workers.
 const getSaved = async (role) => cache.wrap(`${PREFIX}role:${role}`, TTL, async () => {
   const doc = await RolePermission.findOne({ role }).lean();
@@ -75,7 +83,7 @@ const getOverride = async (role, sectionKey) => {
   // الدورُ المكتوبُ في الشيفرة له قسمُه افتراضيًّا وقوائمُ `authorize` تعرفه،
   // فسكوتُ المصفوفة عنه يعني «كما كان». والمصنوعُ لا ماضيَ له: سكوتُها عنه
   // يجب أن يعني **لا شيء**، وإلّا وُلد دورٌ جديدٌ يملك ما لم يُمنَح.
-  if (await isCustomRole(role)) return 'none';
+  if (await inheritsNothing(role)) return 'none';
   return null;
 };
 
@@ -130,7 +138,7 @@ const effectivePermissions = async (role) => {
     for (const k of SECTION_KEYS) out[k] = 'edit';
     return out;
   }
-  return resolveSections(role, await getOverrides(role), await isCustomRole(role));
+  return resolveSections(role, await getOverrides(role), await inheritsNothing(role));
 };
 
 /**
@@ -152,7 +160,7 @@ const effectivePages = async (role) => {
   }
   const { pages } = await getSaved(role);
   const sections = await effectivePermissions(role);
-  const custom = await isCustomRole(role);
+  const custom = await inheritsNothing(role);
   for (const p of PAGES) {
     if (Object.prototype.hasOwnProperty.call(pages, p.key)) { out[p.key] = pages[p.key]; continue; }
     // وما سكتت عنه المصفوفةُ يتبع قسمَه — والقاعدةُ في `pageFollowsSection`:
@@ -230,6 +238,6 @@ const hasSuperAdminPowers = async (role) => {
 
 module.exports = {
   invalidate, getOverride, effectivePermissions, effectivePages, homePageFor,
-  sectionForPath, getOverrides, isCustomRole, customRoleKeys, hasSuperAdminPowers,
+  sectionForPath, getOverrides, isCustomRole, inheritsNothing, customRoleKeys, hasSuperAdminPowers,
   resolveSections, pageFollowsSection, explicitlyGrantedPages, explicitlyGrantedSet,
 };

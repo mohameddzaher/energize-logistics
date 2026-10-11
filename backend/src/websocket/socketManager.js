@@ -208,8 +208,22 @@ const executiveTouch = (event) => {
   }, 30000);
 };
 
+/**
+ * ── والحمولةُ تُرسَل كما تُقرأ ──────────────────────────────────────────────
+ * الخادمُ نسختان يصل بينهما مُحوِّلُ Mongo: الحدثُ يُكتب في مجموعةٍ بترميز BSON
+ * وتقرؤه النسخةُ الأخرى. ووثيقةُ Mongoose تُرمَّز هناك **خامًا** لا عبر
+ * `toJSON` — فتصل متّصلي النسخة الأخرى بلا حقولها المشتقّة (مراحلُ التخليص
+ * `pipeline` اختفت من الشاشة بعد كلّ تعديل) وبما يحذفه `toJSON` عمدًا (ربحُ
+ * المعاملة). ومتّصلو النسخة نفسِها يأخذونها صحيحة — فيظهر العطلُ لنصف الناس.
+ * فتُحوَّل الحمولةُ إلى JSON صريحٍ مرّةً هنا: ما يخرج من أيّ نسخةٍ واحد.
+ */
+const plain = (data) => {
+  if (data === undefined || data === null || typeof data !== 'object') return data;
+  try { return JSON.parse(JSON.stringify(data)); } catch (_) { return data; }
+};
+
 const emitToAll = (event, data) => {
-  if (io) io.emit(event, data);
+  if (io) io.emit(event, plain(data));
   financeTouch(event);
   executiveTouch(event);
 };

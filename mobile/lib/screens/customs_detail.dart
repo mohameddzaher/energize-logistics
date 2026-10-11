@@ -569,7 +569,9 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                             final locked = e.value['locked'] == true;
                             final isNext = key == nextKey && !completed && !cancelled;
                             // «إصدار الفاتورة» لا تُعلَّم بيد: تُعلَّم بإصدارها.
-                            final VoidCallback? onTap = _saving || locked || cancelled
+                            // الطريقُ الآخرُ يُضغَط فيتحوّل الاختيارُ إليه — لا بابٌ موصد.
+                            final switchable = e.value['switchable'] == true;
+                            final VoidCallback? onTap = _saving || (locked && !switchable) || cancelled
                                 ? null
                                 : key == 'invoiced'
                                     ? (done || c['upcoming'] == true ? null : _issueInvoice)
@@ -589,7 +591,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                                       ),
                                       child: done
                                           ? const Icon(Icons.check, size: 13, color: Colors.white)
-                                          : locked ? const Icon(Icons.lock_outline, size: 12, color: T.inkFaint) : null,
+                                          : locked && !switchable ? const Icon(Icons.lock_outline, size: 12, color: T.inkFaint) : null,
                                     ),
                                     if (e.key < steps.length - 1)
                                       Container(width: 2, height: 20, color: done ? T.success.withValues(alpha: 0.4) : T.inkFaint.withValues(alpha: 0.25)),

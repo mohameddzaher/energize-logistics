@@ -5,7 +5,7 @@
  * الخادم وحدَه: `pipelineOf` في backend/src/models/CustomsClearance. والشاشةُ
  * ترسم ما وصلها — فلا تُكتب القاعدةُ مرّتين فتختلفان.
  */
-export interface PipelineStep { key: string; done: boolean; locked: boolean; reason?: string }
+export interface PipelineStep { key: string; done: boolean; locked: boolean; reason?: string; /** الطريقُ الآخر: يُضغَط فيتحوّل الاختيارُ إليه. */ switchable?: boolean }
 export interface Pipeline {
   route: '' | 'yard' | 'customer';
   cargoType: 'containers' | 'vehicles';

@@ -1770,8 +1770,16 @@ exports.setStage = async (req, res) => {
     let { done, route } = readStages(clearance);
     const isPortLeg = key === 'transport_to_yard' || key === 'transport_to_customer';
     if (on) {
+      // ── الطريقُ يُبدَّل بضغطة ───────────────────────────────────────────
+      // مَن علّم «إلى الساحة» ثمّ ضغط «إلى العميل» يريد التحويلَ لا رسالةَ
+      // رفض: تُرفَع علامةُ الأوّل وما بُني عليه، ويُعلَّم الثاني.
+      if (isPortLeg && route && lockReason(key, route, clearance.cargoType)) {
+        done.delete('transport_to_yard'); done.delete('transport_to_customer');
+        done.delete('unloaded_stored'); done.delete('yard_to_customer');
+        route = '';
+      }
       const reason = lockReason(key, route, clearance.cargoType);
-      if (reason) return res.status(400).json({ message: `هذه المرحلةُ مُغلَقة: ${reason}`, code: 'STAGE_LOCKED' });
+      if (reason) return res.status(400).json({ message: `هذه المرحلةُ غيرُ متاحة: ${reason}`, code: 'STAGE_LOCKED' });
       done.add(key);
       if (isPortLeg) route = key === 'transport_to_yard' ? 'yard' : 'customer';
     } else {

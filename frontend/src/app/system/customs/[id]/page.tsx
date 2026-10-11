@@ -80,7 +80,8 @@ export default function CustomsDetailPage() {
     ]).then(([cu, ag]) => setParties({ customers: cu.parties || [], agents: ag.parties || [] })).catch(() => {});
   }, []);
   useSocket('customs:updated', useCallback((d: any) => {
-    if (d?.clearance?._id === params.id) setC(d.clearance);
+    // حمولةٌ بلا مراحلها المحسوبة (نسخةٌ قديمةٌ من الخادم) لا تُعتمَد: تُعاد القراءة.
+    if (d?.clearance?._id === params.id) { if (d.clearance.pipeline) setC(d.clearance); else fetchOne(); }
     // اسمُ بندٍ عُدِّل في إعدادات القسم: يُعاد قراءةُ المعاملة ليظهر الجديد.
     else if (d?.renamed) fetchOne();
   }, [params.id, fetchOne]));
@@ -568,13 +569,16 @@ export default function CustomsDetailPage() {
               setStage(st.key, !st.done);
             };
             return (
-              <button key={st.key} type="button" disabled={!canEdit || st.locked || stageBusy === st.key || (auto && st.done)} onClick={onClick}
-                title={st.locked ? (ar ? st.reason : 'Not applicable to this transaction')
+              <button key={st.key} type="button" disabled={!canEdit || (st.locked && !st.switchable) || stageBusy === st.key || (auto && st.done)} onClick={onClick}
+                title={st.switchable ? (ar ? 'اضغط للتحويل إلى هذا الطريق' : 'Click to switch to this route')
+                  : st.locked ? (ar ? st.reason : 'Not applicable to this transaction')
                   : auto ? (ar ? 'تُعلَّم بإصدار الفاتورة' : 'Ticked by issuing the invoice')
                     : canEdit ? (ar ? 'اضغط للتعليم أو إلغائه' : 'Click to tick or untick') : ''}
                 className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-start border transition-all ${
-                  st.locked
-                    ? 'border-dashed border-slate-200 bg-slate-50/60 text-slate-300 cursor-not-allowed'
+                  st.switchable
+                    ? 'border-slate-200 bg-slate-100 text-slate-400 hover:border-[#f37121]/60 hover:text-slate-700 cursor-pointer'
+                    : st.locked
+                    ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
                     : st.done
                       ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
                       : next
@@ -586,11 +590,15 @@ export default function CustomsDetailPage() {
                     : st.done ? 'bg-emerald-500 text-white' : next ? 'bg-[#f37121] text-white' : 'bg-white border border-slate-200 text-slate-400'
                 }`}>
                   {stageBusy === st.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    : st.locked ? <Lock className="w-3 h-3" /> : st.done ? <Check className="w-3.5 h-3.5" /> : i + 1}
+                    : st.locked && !st.switchable ? <Lock className="w-3 h-3" /> : st.done ? <Check className="w-3.5 h-3.5" /> : i + 1}
                 </span>
                 <span className="min-w-0">
-                  <span className={`block truncate ${st.locked ? 'line-through decoration-slate-300' : ''}`}>{sName(st.key)}</span>
-                  {st.locked && <span className="block truncate text-[10.5px] no-underline">{ar ? st.reason : 'Not applicable'}</span>}
+                  <span className="block truncate">{sName(st.key)}</span>
+                  {st.locked && (
+                    <span className="block truncate text-[10.5px]">
+                      {st.switchable ? (ar ? 'اضغط للتحويل إلى هذا الطريق' : 'Click to switch route') : (ar ? st.reason : 'Not applicable')}
+                    </span>
+                  )}
                 </span>
                 {next && !st.done && <span className="ms-auto shrink-0 text-[10px] font-bold text-[#f37121]">{ar ? 'التالية' : 'next'}</span>}
               </button>
@@ -600,8 +608,8 @@ export default function CustomsDetailPage() {
         {!pipeline.route && (
           <p className="mt-3 text-[12px] text-slate-500">
             {ar
-              ? 'بعد «أمر النقل» يُختار أحدُ الطريقين: إلى الساحة (ويتبعه التفريغُ والتخزين ثمّ النقلُ إلى العميل) أو إلى العميل مباشرةً. تعليمُ أحدهما يُغلِق الآخر.'
-              : 'After the transport order pick one route: to the yard (then unloading & storage, then on to the customer) or straight to the customer. Ticking one locks the other.'}
+              ? 'بعد «أمر النقل» يُختار أحدُ الطريقين: إلى الساحة (ويتبعه التفريغُ والتخزين ثمّ النقلُ إلى العميل) أو إلى العميل مباشرةً. ويُبدَّل بينهما بالضغط على الآخر.'
+              : 'After the transport order pick one route: to the yard (then unloading & storage, then on to the customer) or straight to the customer. Click the other one to switch.'}
           </p>
         )}
       </section>

@@ -38,6 +38,8 @@ const LINEAR_V1 = [
 ];
 // المراحلُ التي هي نقلٌ — لكلٍّ منها بيانُ سيّاراته (راجع containers.moves).
 const TRANSPORT_LEGS = ['transport_to_yard', 'transport_to_customer', 'yard_to_customer'];
+// مرحلتا الميناء — يُختار أحدُهما، ويُبدَّل بينهما بضغطة.
+const PORT_LEGS = ['transport_to_yard', 'transport_to_customer'];
 const CARGO_TYPES = ['containers', 'vehicles'];
 const VEHICLE_KINDS = ['energize', 'external'];
 
@@ -535,7 +537,11 @@ function pipelineOf(c) {
   const cargoType = (c && c.cargoType) || 'containers';
   const steps = STAGES.map((key) => {
     const reason = lockReason(key, route, cargoType);
-    return { key, done: !reason && done.has(key), locked: !!reason, ...(reason ? { reason } : {}) };
+    return {
+      key, done: !reason && done.has(key), locked: !!reason, ...(reason ? { reason } : {}),
+      // الطريقُ الآخرُ ليس بابًا موصدًا: يُضغَط فيتحوّل الاختيارُ إليه (راجع setStage).
+      ...(reason && PORT_LEGS.includes(key) ? { switchable: true } : {}),
+    };
   });
   const open = steps.filter((s) => !s.locked);
   const total = open.length - (route ? 0 : 1);

@@ -21,6 +21,8 @@
     },
     "/system/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -116,6 +118,8 @@
     },
     "/system/operations/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -130,6 +134,8 @@
     },
     "/system/operations/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -244,6 +250,8 @@
     },
     "/system/collections-dept/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -258,6 +266,8 @@
     },
     "/system/collections-dept/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -454,6 +464,8 @@
     },
     "/system/shipment-orders/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -468,6 +480,8 @@
     },
     "/system/shipment-orders/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -586,6 +600,8 @@
     },
     "/system/fleet/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -600,6 +616,8 @@
     },
     "/system/fleet/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -629,6 +647,13 @@
       ],
       "wildcard": false
     },
+    "/system/customs/dashboard": {
+      "apis": [
+        "/api/customs-clearance/dashboard",
+        "/api/customs-clearance/filters"
+      ],
+      "wildcard": false
+    },
     "/system/customs/analytics": {
       "apis": [
         "/api/customs-clearance/analytics",
@@ -642,7 +667,9 @@
         "/api/customs-clearance/:id",
         "/api/customs-clearance/contracts",
         "/api/customs-clearance/parties",
+        "/api/customs-clearance/release-sheets",
         "/api/customs-clearance/upcoming-alerts",
+        "/api/jp/tasks",
         "/api/lookups/types"
       ],
       "wildcard": false
@@ -824,6 +851,8 @@
     },
     "/system/vehicles/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -838,6 +867,8 @@
     },
     "/system/vehicles/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -1026,6 +1057,8 @@
     },
     "/system/marketing/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -1040,6 +1073,8 @@
     },
     "/system/marketing/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -1090,6 +1125,8 @@
     },
     "/system/bd/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -1104,6 +1141,8 @@
     },
     "/system/bd/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -1132,6 +1171,8 @@
     },
     "/system/administration/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -1146,6 +1187,8 @@
     },
     "/system/administration/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -1240,6 +1283,8 @@
     },
     "/system/contracts/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -1254,6 +1299,8 @@
     },
     "/system/contracts/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -1329,6 +1376,8 @@
     },
     "/system/it/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -1343,6 +1392,8 @@
     },
     "/system/it/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -1377,6 +1428,8 @@
     },
     "/system/ls2/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -1391,6 +1444,8 @@
     },
     "/system/ls2/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -1520,6 +1575,8 @@
     },
     "/system/b2c/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -1534,6 +1591,8 @@
     },
     "/system/b2c/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -1606,6 +1665,8 @@
     },
     "/system/remote/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -1620,6 +1681,8 @@
     },
     "/system/remote/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -1957,6 +2020,7 @@
     "/system/finance/customs": {
       "apis": [
         "/api/customs-clearance",
+        "/api/customs-clearance/invoices",
         "/api/customs-clearance/payment-requests",
         "/api/finance/departments"
       ],
@@ -2027,6 +2091,8 @@
     },
     "/system/crm/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -2041,6 +2107,8 @@
     },
     "/system/crm/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -2062,6 +2130,8 @@
     },
     "/system/sales/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -2076,6 +2146,8 @@
     },
     "/system/sales/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -2097,6 +2169,8 @@
     },
     "/system/accounting/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -2111,6 +2185,8 @@
     },
     "/system/accounting/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -2132,6 +2208,8 @@
     },
     "/system/procurement/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -2146,6 +2224,8 @@
     },
     "/system/procurement/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -2167,6 +2247,8 @@
     },
     "/system/hr/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -2181,6 +2263,8 @@
     },
     "/system/hr/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -2202,6 +2286,8 @@
     },
     "/system/ops/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -2216,6 +2302,8 @@
     },
     "/system/ops/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -2237,6 +2325,8 @@
     },
     "/system/customs/jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"
@@ -2251,6 +2341,8 @@
     },
     "/system/customs/management-jp": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks"

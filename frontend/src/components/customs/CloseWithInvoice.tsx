@@ -1,11 +1,11 @@
 'use client';
 /**
- * إنهاءُ المعاملة — وكتابةُ فاتورة العميل.
+ * إصدارُ فاتورة العميل (الفوترة).
  *
  * ── الفرقُ الذي تقوم عليه هذه الشاشة ───────────────────────────────────────
  * «مراحل السداد» ما **ندفعه** نحن: طلباتُ صرفٍ تجيبها الإدارةُ الماليّة —
- * «سدّدنا النقلَ ١٨٠٠، وهذا إيصالُه». وهذه الشاشةُ ما **نقبضه**: عند الإقفال
- * يُكتب سعرُ البيع لكلّ بندٍ — «نفوتر النقلَ ٢٢٠٠» — ومعه مرفقُه إن وُجد.
+ * «سدّدنا النقلَ ١٨٠٠، وهذا إيصالُه». وهذه الشاشةُ ما **نقبضه**: يُكتب سعرُ
+ * البيع لكلّ بندٍ — «نفوتر النقلَ ٢٢٠٠» — ومعه مرفقُه إن وُجد.
  *
  * وبهما تُبنى فاتورةٌ واحدةٌ تذهب إلى الماليّة (القاعدةُ في
  * backend/utils/customsInvoice، والحسابُ هناك لا هنا كي لا يختلف رقمان):
@@ -13,11 +13,16 @@
  *   + بنودُ البيع × ١٫١٥
  *   = إجماليُّ الفاتورة.
  *
- * والمعاينةُ أدناه تُحسَب بالقاعدة نفسِها قبل الحفظ — فمن يقفل يرى الفاتورةَ
+ * ── والفوترةُ غيرُ الإنهاء ─────────────────────────────────────────────────
+ * كانت الفاتورةُ لا تصدر قبل «فاتورة النقل» بسعرها ومرفقها، وهي تتأخّر عند
+ * الناقل فتتأخّر معها فاتورةُ العميل. فصار: تصدر الفاتورةُ بما هو معروف،
+ * ويُقال عند بند النقل «لم تُستلَم بعد»، وتُنهى المعاملةُ حين تُرفَق لاحقًا.
+ *
+ * والمعاينةُ أدناه تُحسَب بالقاعدة نفسِها قبل الحفظ — فمن يُصدر يرى الفاتورةَ
  * التي سيقرؤها المحاسبُ، لا رقمًا يكتشفه بعدها.
  */
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { X, Lock, Loader2, Paperclip, Receipt, AlertTriangle } from 'lucide-react';
+import { X, Loader2, Paperclip, Receipt, AlertTriangle, Check, Clock3 } from 'lucide-react';
 import api from '@/lib/api';
 
 export interface SaleDef { key: string; nameAr: string; nameEn: string }
@@ -26,17 +31,23 @@ export interface StageEntry { key: string; label: string; amount: number | null;
 const money = (n: number) => (Math.round((n || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2 });
 const VAT = 0.15;
 
+const TRANSPORT_KEY = 'transportInvoice';
+
 export default function CloseWithInvoice({
-  open, onClose, clearanceId, stages, ar, onDone, notify,
+  open, onClose, clearanceId, stages, ar, onDone, notify, transportReceived,
 }: {
   open: boolean; onClose: () => void; clearanceId: string;
   stages: StageEntry[]; ar: boolean;
+  /** فاتورةُ النقل وصلت من قبل (من مراحل السداد أو أُرفقت) — فلا يُسأل عنها. */
+  transportReceived?: boolean;
   onDone: (clearance: any) => void; notify: (m: string, tone?: any) => void;
 }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const [defs, setDefs] = useState<SaleDef[]>([]);
   const [rows, setRows] = useState<Record<string, { amount: string; note: string; file?: { dataUrl: string; fileName: string } }>>({});
   const [busy, setBusy] = useState(false);
+  // ما أُرفِق في إصدارٍ سابق — يبقى ويُعرَض، فلا يُظنّ أنّه سقط.
+  const [kept, setKept] = useState<Record<string, string>>({});
   const fileFor = useRef<string>('');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -47,10 +58,13 @@ export default function CloseWithInvoice({
         setDefs(d.saleItemDefs || []);
         // ما كُتب قبلًا يُقرأ لا يُمحى — إعادةُ الإقفال لا تبدأ من فراغ.
         const pre: typeof rows = {};
+        const files: Record<string, string> = {};
         (d.invoice?.lines || []).filter((l: any) => l.from === 'sale').forEach((l: any) => {
           pre[l.key] = { amount: String(l.amount ?? ''), note: l.note || '' };
+          if (l.fileUrl) files[l.key] = l.fileUrl;
         });
         setRows(pre);
+        setKept(files);
       })
       .catch(() => {});
   }, [open, clearanceId]);
@@ -82,23 +96,27 @@ export default function CloseWithInvoice({
       vat: Math.round(vat * 100) / 100,
       grand: Math.round((passSum + saleNet + vat) * 100) / 100,
       missing: defs.filter((d) => !overridden.has(d.key)).map((d) => (ar ? d.nameAr : d.nameEn)),
-      hasTransport: overridden.has('transportInvoice'),
+      hasLines: priced.length > 0 || passLines.length > 0,
     };
   }, [rows, stages, defs, ar]);
+  // فاتورةُ النقل حاضرةٌ الآن؟ وصلت من قبل، أو أُرفقت في هذه النافذة.
+  const transportHere = !!transportReceived || !!rows[TRANSPORT_KEY]?.file || !!kept[TRANSPORT_KEY];
 
   const save = async () => {
     const saleItems = Object.entries(rows)
       .filter(([, v]) => String(v.amount).trim() !== '')
       .map(([key, v]) => ({ key, amount: Number(v.amount), note: v.note, file: v.file?.dataUrl, fileName: v.file?.fileName }));
-    if (!saleItems.length) { notify(t('اكتب أسعارَ البيع', 'Enter the selling prices'), 'error'); return; }
+    if (!preview.hasLines) { notify(t('اكتب سعرَ بندٍ واحدٍ على الأقلّ', 'Enter at least one selling price'), 'error'); return; }
     setBusy(true);
     try {
-      const d = await api.patch<any>(`/api/customs-clearance/${clearanceId}/complete`, { completed: true, saleItems });
-      notify(t(`أُقفلت المعاملة وصدرت الفاتورة ${d.clearance?.saleInvoiceNumber || ''}`,
-               `Closed — invoice ${d.clearance?.saleInvoiceNumber || ''} issued`), 'success');
+      const d = await api.patch<any>(`/api/customs-clearance/${clearanceId}/invoice`, { saleItems });
+      const no = d.clearance?.saleInvoiceNumber || '';
+      notify(d.closed
+        ? t(`صدرت الفاتورة ${no} وأُنهيت المعاملة`, `Invoice ${no} issued — transaction closed`)
+        : t(`صدرت الفاتورة ${no} — المعاملةُ بانتظار فاتورة النقل`, `Invoice ${no} issued — awaiting the transport invoice`), 'success');
       onDone(d.clearance);
       onClose();
-    } catch (e: any) { notify(e?.message || t('تعذّر الإقفال', 'Failed'), 'error'); }
+    } catch (e: any) { notify(e?.message || t('تعذّر إصدار الفاتورة', 'Failed'), 'error'); }
     setBusy(false);
   };
 
@@ -109,7 +127,7 @@ export default function CloseWithInvoice({
       <div className="bg-white w-full max-w-3xl max-h-[92vh] rounded-2xl shadow-xl flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-3.5 border-b border-slate-200 flex items-center gap-2">
           <Receipt className="w-4 h-4 text-[#f37121]" />
-          <h3 className="font-bold text-slate-900">{t('إنهاء المعاملة وفاتورة العميل', 'Close the transaction & customer invoice')}</h3>
+          <h3 className="font-bold text-slate-900">{t('إصدار فاتورة العميل', 'Issue the customer invoice')}</h3>
           <button type="button" onClick={onClose} className="ms-auto text-slate-400 hover:text-slate-900"><X className="w-5 h-5" /></button>
         </div>
 
@@ -135,7 +153,7 @@ export default function CloseWithInvoice({
                       </p>
                     </div>
                     <label className="block">
-                      <span className="mb-1 block text-[10.5px] font-semibold text-slate-500">{t('سعر البيع', 'Selling price')} *</span>
+                      <span className="mb-1 block text-[10.5px] font-semibold text-slate-500">{t('سعر البيع', 'Selling price')}</span>
                       <input type="number" value={r.amount} onChange={(e) => set(d.key, { amount: e.target.value })}
                         className="w-28 rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-end" />
                     </label>
@@ -153,9 +171,25 @@ export default function CloseWithInvoice({
                       onClick={() => { fileFor.current = d.key; inputRef.current?.click(); }}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-200">
                       <Paperclip className="h-3.5 w-3.5" />
-                      {r.file ? r.file.fileName.slice(0, 18) : t('إرفاق', 'Attach')}
+                      {r.file ? r.file.fileName.slice(0, 18) : kept[d.key] ? t('مُرفَق — استبدال', 'Attached — replace') : t('إرفاق', 'Attach')}
                     </button>
                   </div>
+                  {/* ── فاتورةُ النقل ليست شرطًا ────────────────────────────
+                      تُصدَر الفاتورةُ بدونها، ويُقال ذلك هنا قبل الضغط: ما
+                      الذي سيقع للمعاملة إن أُرفقت الآن، وما الذي يقع إن لم
+                      تُرفَق. */}
+                  {d.key === TRANSPORT_KEY && (transportHere ? (
+                    <p className="mt-2 flex items-center gap-1.5 text-[11.5px] font-semibold text-emerald-700">
+                      <Check className="h-3.5 w-3.5" />
+                      {t('فاتورةُ النقل مُرفقة — ستُنهى المعاملةُ مع إصدار الفاتورة.', 'Transport invoice on file — the transaction closes with the invoice.')}
+                    </p>
+                  ) : (
+                    <p className="mt-2 flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-[11.5px] font-semibold text-red-700">
+                      <Clock3 className="h-3.5 w-3.5 shrink-0" />
+                      {t('فاتورةُ النقل لم تُستلَم بعد — تصدر الفاتورةُ الآن، وتبقى المعاملةُ معلَّمةً بالأحمر حتى تُرفَق فتُنهى.',
+                         'Transport invoice not received yet — the invoice is issued now; the transaction stays flagged red until it is attached, then closes.')}
+                    </p>
+                  ))}
                 </div>
               );
             })}
@@ -197,15 +231,14 @@ export default function CloseWithInvoice({
 
         <div className="px-5 py-3.5 border-t border-slate-200 flex items-center gap-2">
           <p className="text-[11px] text-slate-400 flex-1">
-            {t('يُمنَح رقمُ فاتورةٍ عند الإقفال ولا يتغيّر، وتظهر الفاتورةُ للإدارة الماليّة.',
-               'An invoice number is issued on closing and never changes; Finance sees the invoice.')}
+            {t('يُمنَح رقمُ الفاتورة عند أوّل إصدارٍ ولا يتغيّر، وتظهر الفاتورةُ للإدارة الماليّة.',
+               'The invoice number is issued once and never changes; Finance sees the invoice.')}
           </p>
           <button type="button" onClick={onClose} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{t('إلغاء', 'Cancel')}</button>
-          <button type="button" onClick={save} disabled={busy || !preview.hasTransport}
-            title={preview.hasTransport ? '' : t('سعرُ «فاتورة النقل» مطلوب', 'The transport invoice price is required')}
+          <button type="button" onClick={save} disabled={busy || !preview.hasLines}
             className="inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-4 py-2 text-xs font-bold text-white disabled:opacity-40">
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Lock className="h-3.5 w-3.5" />}
-            {t('إنهاء وإصدار الفاتورة', 'Close & issue invoice')}
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Receipt className="h-3.5 w-3.5" />}
+            {transportHere ? t('إصدار الفاتورة وإنهاء المعاملة', 'Issue invoice & close') : t('إصدار الفاتورة', 'Issue invoice')}
           </button>
         </div>
       </div>

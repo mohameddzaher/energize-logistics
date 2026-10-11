@@ -18,12 +18,8 @@ import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { getCustomsTranslations } from '@/lib/translations';
 import { PAY_BADGE } from '@/components/customs/PaymentStages';
+import { stageName, type Pipeline } from '@/lib/customsPipeline';
 
-const STAGE_ORDER = [
-  'papers_received', 'declaration_paid', 'do_requested', 'do_linked', 'port_fees_paid',
-  'unloading_fees_paid', 'transport_order', 'containers_transported', 'unloaded_stored',
-  'containers_returned', 'invoiced',
-];
 
 // مطابقةٌ لبنود شاشة المعاملة (customs/[id]) — الاسمُ نفسُه في المكانين.
 const COSTS: [string, string, string][] = [
@@ -91,6 +87,10 @@ function Section({ title, icon: Icon, children, extra }: { title: string; icon: 
 }
 
 export default function ClearanceQuickView({ id, ar, onClose }: { id: string; ar: boolean; onClose: () => void }) {
+  // صافي الربح للإدارة وللماليّة — والخادمُ هو من يقرّر: يرسله في حقلٍ على حدة
+  // لمن يحقّ له، ولا يرسله لغيره. فلا قائمةَ أدوارٍ هنا تشيخ وحدَها.
+  const [netProfit, setNetProfit] = useState<number | null>(null);
+  const seesMoney = netProfit !== null;
   const T = getCustomsTranslations(ar ? 'ar' : 'en');
   const [c, setC] = useState<any>(null);
   const [error, setError] = useState('');
@@ -99,9 +99,10 @@ export default function ClearanceQuickView({ id, ar, onClose }: { id: string; ar
   const load = useCallback(async () => {
     const mine = guard.begin();
     try {
-      const d = await api.get<{ clearance: any }>(`/api/customs-clearance/${id}`);
+      const d = await api.get<{ clearance: any; profit?: number }>(`/api/customs-clearance/${id}`);
       if (!guard.isCurrent(mine)) return;
       setC(d.clearance); setError('');
+      setNetProfit(typeof d.profit === 'number' ? d.profit : null);
     } catch (e: any) {
       if (guard.isCurrent(mine)) setError(e?.message || 'Failed');
     }
@@ -119,12 +120,12 @@ export default function ClearanceQuickView({ id, ar, onClose }: { id: string; ar
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const done = (c?.stagesDone || []) as string[];
-  const doneCount = STAGE_ORDER.filter((k) => done.includes(k)).length;
+  // المراحلُ كما تَلزم هذه المعاملة — محسوبةً في الخادم (pipelineOf).
+  const pipeline: Pipeline = c?.pipeline || { route: '', cargoType: 'containers', steps: [], done: 0, total: 0, percent: 0, next: '' };
   const costs = COSTS.filter(([k]) => num(c?.costs?.[k]) !== 0);
   const margin = MARGIN.filter(([k]) => num(c?.revenue?.[k]) !== 0);
   const stages = [...(c?.paymentStages || [])].sort((a: any, b: any) => String(b.date || b.addedAt || '').localeCompare(String(a.date || a.addedAt || '')));
-  const profit = num(c?.revenue?.profit);
+  const profit = num(netProfit);
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-3 sm:p-6" onClick={onClose}>
@@ -140,7 +141,7 @@ export default function ClearanceQuickView({ id, ar, onClose }: { id: string; ar
               {c && (
                 <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
                   c.cancelled ? 'bg-red-100 text-red-700' : c.isCompleted ? 'bg-emerald-100 text-emerald-700' : c.upcoming ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-800'}`}>
-                  {c.cancelled ? T.cancelled : c.isCompleted ? (ar ? 'مُقفلة' : 'Closed') : c.upcoming ? (ar ? 'قادمة' : 'Upcoming') : (T.stages[c.stage] || c.stage)}
+                  {c.cancelled ? T.cancelled : c.isCompleted ? (ar ? 'مغلقة' : 'Closed') : c.upcoming ? (ar ? 'قادمة' : 'Upcoming') : stageName(T.stages, c.stage, c.cargoType)}
                 </span>
               )}
             </div>
@@ -162,11 +163,12 @@ export default function ClearanceQuickView({ id, ar, onClose }: { id: string; ar
         {c && (
           <div className="space-y-4 p-4 sm:p-5">
             {/* المالُ في ثلاثة أرقام */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className={`grid grid-cols-1 gap-3 ${seesMoney ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
               {[
                 [ar ? 'إجمالي المصروفات' : 'Total costs', c.costs?.total, 'text-slate-900', 'bg-white'],
                 [ar ? 'إجمالي الفاتورة' : 'Total invoiced', c.revenue?.totalInvoiced, 'text-slate-900', 'bg-white'],
-                [ar ? 'صافي الربح' : 'Net profit', profit, profit < 0 ? 'text-red-600' : 'text-emerald-700', profit < 0 ? 'bg-red-50' : 'bg-emerald-50'],
+                // الربحُ للإدارة وحدَها (مديرُ النظام ومديرُ القسم).
+                ...(seesMoney ? [[ar ? 'صافي الربح' : 'Net profit', profit, profit < 0 ? 'text-red-600' : 'text-emerald-700', profit < 0 ? 'bg-red-50' : 'bg-emerald-50']] : []),
               ].map(([label, v, tone, bg]) => (
                 <div key={String(label)} className={`rounded-2xl border border-slate-200 px-4 py-3 ${bg}`}>
                   <p className="text-[11.5px] font-semibold text-slate-500">{label as string}</p>
@@ -181,22 +183,18 @@ export default function ClearanceQuickView({ id, ar, onClose }: { id: string; ar
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
               <div className="mb-2 flex items-center justify-between text-[12px]">
                 <span className="font-bold text-slate-800">{ar ? 'مراحل المعاملة' : 'Progress'}</span>
-                <span className="tabular-nums text-slate-500">{doneCount}/{STAGE_ORDER.length}</span>
+                <span className="tabular-nums text-slate-500">{pipeline.done}/{pipeline.total} · {pipeline.percent}%</span>
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                <div className="h-full rounded-full bg-emerald-500" style={{ width: `${(doneCount / STAGE_ORDER.length) * 100}%` }} />
+                <div className="h-full rounded-full bg-emerald-500" style={{ width: `${pipeline.percent}%` }} />
               </div>
               <div className="mt-2.5 flex flex-wrap gap-1.5">
-                {STAGE_ORDER.map((s) => {
-                  const isDone = done.includes(s);
-                  const isNow = c.stage === s;
-                  return (
-                    <span key={s} className={`rounded-lg px-2 py-0.5 text-[11px] font-semibold ${
-                      isNow ? 'bg-[#f37121] text-white' : isDone ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
-                      {T.stages[s] || s}
-                    </span>
-                  );
-                })}
+                {pipeline.steps.filter((st) => !st.locked).map((st) => (
+                  <span key={st.key} className={`rounded-lg px-2 py-0.5 text-[11px] font-semibold ${
+                    st.done ? 'bg-emerald-50 text-emerald-700' : pipeline.next === st.key ? 'bg-[#f37121] text-white' : 'bg-slate-100 text-slate-400'}`}>
+                    {stageName(T.stages, st.key, pipeline.cargoType)}
+                  </span>
+                ))}
               </div>
             </div>
 
@@ -236,7 +234,7 @@ export default function ClearanceQuickView({ id, ar, onClose }: { id: string; ar
                 ) : <p className="text-[12px] text-slate-400">{ar ? 'لا مصروفات مسجّلة.' : 'No costs recorded.'}</p>}
               </Section>
               <Section title={ar ? 'الإيراد والهامش' : 'Revenue & margin'} icon={Wallet}
-                extra={<span className={`text-[12px] font-bold tabular-nums ${profit < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{money(profit)}</span>}>
+                extra={seesMoney ? <span className={`text-[12px] font-bold tabular-nums ${profit < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{money(profit)}</span> : undefined}>
                 {margin.length ? (
                   <dl className="divide-y divide-slate-100 text-[13px]">
                     {margin.map(([k, a, e]) => (

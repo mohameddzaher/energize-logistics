@@ -9,11 +9,14 @@ import api from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { Ship, Container, Search, CheckCircle2, Circle, ChevronDown, ChevronRight } from 'lucide-react';
 import { KpiTile } from '@/components/system/Scorecard';
-import { CUSTOMS_STAGES, customsStageIndex, customsStageText, money, fmtDate, type Lang } from '@/lib/portal';
+import { CUSTOMS_STAGES, customsSteps, customsStageText, money, fmtDate, type Lang } from '@/lib/portal';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 interface CustomsFile {
   _id: string;
+  cargoType?: 'containers' | 'vehicles';
+  isCompleted?: boolean;
+  pipeline?: { steps?: { key: string; done: boolean; locked: boolean }[]; percent?: number };
   refNumber: string;
   branch: string;
   stage: string;
@@ -70,7 +73,7 @@ export default function PortalCustomsPage() {
   }, [items, q, stage]);
 
   const active = items.filter((c) => !c.cancelled);
-  const done = active.filter((c) => c.stage === 'invoiced').length;
+  const done = active.filter((c) => c.isCompleted || c.stage === 'invoiced').length;
 
   const exportColumns: ExportColumn[] = [
     { header: tx('Reference', 'الرقم المرجعي'), key: 'refNumber', width: 16 },
@@ -134,8 +137,10 @@ export default function PortalCustomsPage() {
 
       <div className="space-y-3">
         {filtered.map((c) => {
-          const idx = customsStageIndex(c.stage);
-          const pct = idx < 0 ? 0 : ((idx + 1) / CUSTOMS_STAGES.length) * 100;
+          // مراحلُ هذه المعاملة بعينها: من الخادم، لا من قائمةٍ ثابتة.
+          const flow = customsSteps(c);
+          const pct = flow.percent;
+          const nextStep = flow.steps.find((s) => !s.done);
           const isOpen = open === c._id;
           return (
             <div key={c._id} className={`bg-white border rounded-xl p-4 shadow-sm ${c.cancelled ? 'border-slate-200 opacity-60' : 'border-slate-200'}`}>
@@ -152,8 +157,10 @@ export default function PortalCustomsPage() {
                     </p>
                   </div>
                   <div className="text-end">
-                    <p className="text-[#f37121] text-xs font-medium">{customsStageText(c.stage, lang as Lang)}</p>
-                    <p className="text-slate-400 text-[11px]">{(c.containerCount || 0)} {tx('containers', 'حاوية')} · {fmtDate(c.createdAt)}</p>
+                    <p className="text-[#f37121] text-xs font-medium">
+                      {c.isCompleted ? tx('Completed', 'مكتملة') : nextStep ? `${tx('Next', 'المرحلة التالية')}: ${ar ? nextStep.ar : nextStep.en}` : customsStageText(c.stage, lang as Lang)}
+                    </p>
+                    <p className="text-slate-400 text-[11px]">{(c.containerCount || 0)} {c.cargoType === 'vehicles' ? tx('vehicles', 'سيّارة') : tx('containers', 'حاوية')} · {fmtDate(c.createdAt)}</p>
                   </div>
                 </div>
 
@@ -163,7 +170,7 @@ export default function PortalCustomsPage() {
                     <div className="h-full rounded-full bg-[#f37121]" style={{ width: `${pct}%` }} />
                   </div>
                   <p className="text-slate-400 text-[10px] mt-1">
-                    {tx(`Stage ${idx + 1} of ${CUSTOMS_STAGES.length}`, `المرحلة ${idx + 1} من ${CUSTOMS_STAGES.length}`)}
+                    {tx(`${flow.done} of ${flow.steps.length} stages done`, `أُنجزت ${flow.done} من ${flow.steps.length} مرحلة`)}
                   </p>
                 </div>
               </button>
@@ -212,8 +219,8 @@ export default function PortalCustomsPage() {
                   <div>
                     <p className="text-slate-700 text-xs font-semibold mb-1.5">{tx('Clearance pipeline', 'مسار التخليص')}</p>
                     <ol className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-                      {CUSTOMS_STAGES.map((st, i) => {
-                        const passed = idx >= i;
+                      {flow.steps.map((st) => {
+                        const passed = st.done;
                         return (
                           <li key={st.key} className={`flex items-center gap-1.5 text-[11px] px-2 py-1 rounded ${passed ? 'text-slate-800' : 'text-slate-400'}`}>
                             {passed ? <CheckCircle2 className="w-3.5 h-3.5 text-green-600" /> : <Circle className="w-3.5 h-3.5" />}

@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import FinanceDeptView from '@/components/finance/FinanceDeptView';
 import CustomsPaymentRequests from '@/components/finance/CustomsPaymentRequests';
+import CustomsCustomerInvoices from '@/components/finance/CustomsCustomerInvoices';
 import ClearanceQuickView from '@/components/customs/ClearanceQuickView';
 
 export default function Page() {
@@ -21,6 +22,8 @@ export default function Page() {
   return (
     <div className="space-y-6">
       <CustomsPaymentRequests onOpen={setOpenId} />
+      {/* ما أصدره قسمُ التخليص ليُفوتَر — وما لم تصل فاتورةُ نقله منه بالأحمر. */}
+      <CustomsCustomerInvoices onOpen={setOpenId} />
       <FinanceDeptView dept="customs" onOpenRow={(r) => { if (r._customsId) setOpenId(String(r._customsId)); }} />
       {openId && <ClearanceQuickView id={openId} ar={lang === 'ar'} onClose={() => setOpenId(null)} />}
     </div>

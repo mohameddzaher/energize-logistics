@@ -32,24 +32,54 @@ export const statusText = (s: string, lang: Lang) =>
   (STATUS_LABEL[s] ? (lang === 'ar' ? STATUS_LABEL[s].ar : STATUS_LABEL[s].en) : s || '—');
 export const statusColor = (s: string) => STATUS_LABEL[s]?.color || '#94a3b8';
 
-// The 11 customs stages, in order, so the portal can draw a real progress bar
-// instead of a status word with no context.
+// The customs stages, in order, so the portal can draw a real progress bar
+// instead of a status word with no context. Keys and order mirror
+// backend/src/models/CustomsClearance (STAGES).
 export const CUSTOMS_STAGES: { key: string; ar: string; en: string }[] = [
   { key: 'papers_received', ar: 'استلام الأوراق', en: 'Papers received' },
   { key: 'declaration_paid', ar: 'سداد البيان الجمركي', en: 'Declaration paid' },
-  { key: 'do_requested', ar: 'طلب إذن التسليم', en: 'Delivery order requested' },
+  { key: 'do_requested', ar: 'طلب فاتورة إذن التسليم', en: 'Delivery order requested' },
+  { key: 'do_invoice_paid', ar: 'سداد فاتورة إذن التسليم', en: 'Delivery order invoice paid' },
   { key: 'do_linked', ar: 'ربط إذن التسليم', en: 'Delivery order linked' },
   { key: 'port_fees_paid', ar: 'سداد أجور الموانئ', en: 'Port fees paid' },
   { key: 'unloading_fees_paid', ar: 'سداد أجور التفريغ', en: 'Unloading fees paid' },
   { key: 'transport_order', ar: 'أمر النقل', en: 'Transport order' },
-  { key: 'containers_transported', ar: 'نقل الحاويات', en: 'Containers transported' },
-  { key: 'unloaded_stored', ar: 'التفريغ والتخزين', en: 'Unloaded & stored' },
+  { key: 'transport_to_yard', ar: 'النقل من الميناء إلى الساحة', en: 'Port to yard' },
+  { key: 'transport_to_customer', ar: 'النقل من الميناء إلى العميل', en: 'Port to customer' },
+  { key: 'unloaded_stored', ar: 'التفريغ والتخزين', en: 'Unloading & storage' },
+  { key: 'yard_to_customer', ar: 'النقل من الساحة إلى العميل', en: 'Yard to customer' },
   { key: 'containers_returned', ar: 'إرجاع الحاويات', en: 'Containers returned' },
-  { key: 'invoiced', ar: 'الفوترة', en: 'Invoiced' },
+  { key: 'invoiced', ar: 'إصدار الفاتورة', en: 'Invoiced' },
 ];
 
-export const customsStageIndex = (stage: string) => CUSTOMS_STAGES.findIndex((s) => s.key === stage);
+// A row ticked before the transport stage was split still carries the old key.
+const LEGACY_CUSTOMS_STAGE: Record<string, string> = { containers_transported: 'transport_to_customer' };
+export const customsStageIndex = (stage: string) =>
+  CUSTOMS_STAGES.findIndex((s) => s.key === (LEGACY_CUSTOMS_STAGE[stage] || stage));
+/**
+ * مراحلُ معاملةٍ بعينها كما يرسلها الخادم (`pipeline`): ما يَلزمها وحدَه، وما
+ * أُنجز منه. الدورةُ تتفرّع، فقائمةٌ ثابتةٌ تُري العميلَ مراحلَ ليست من طريقه.
+ * وما لم يحمل `pipeline` (جوابٌ قديم) يُقرأ بموضع مرحلته في القائمة.
+ */
+export interface PortalStep { key: string; ar: string; en: string; done: boolean }
+export function customsSteps(c: { stage?: string; cargoType?: string; pipeline?: { steps?: { key: string; done: boolean; locked: boolean }[]; percent?: number } }): { steps: PortalStep[]; percent: number; done: number } {
+  const name = (key: string) => {
+    const s = CUSTOMS_STAGES.find((x) => x.key === key) || { key, ar: key, en: key };
+    return c.cargoType === 'vehicles'
+      ? { ...s, ar: s.ar.replace('الحاويات', 'السيّارات'), en: s.en.replace('Containers', 'Vehicles') } : s;
+  };
+  const live = c.pipeline?.steps;
+  if (live?.length) {
+    const steps = live.filter((s) => !s.locked).map((s) => ({ ...name(s.key), done: s.done }));
+    return { steps, percent: c.pipeline?.percent ?? 0, done: steps.filter((s) => s.done).length };
+  }
+  const idx = customsStageIndex(c.stage || '');
+  const steps = CUSTOMS_STAGES.map((s, i) => ({ ...name(s.key), done: idx >= i }));
+  return { steps, percent: idx < 0 ? 0 : ((idx + 1) / steps.length) * 100, done: Math.max(0, idx + 1) };
+}
+
 export const customsStageText = (stage: string, lang: Lang) => {
+  if (stage === 'containers_transported') return lang === 'ar' ? 'نقل الحاويات' : 'Containers transported';
   const s = CUSTOMS_STAGES.find((x) => x.key === stage);
   return s ? (lang === 'ar' ? s.ar : s.en) : stage || '—';
 };

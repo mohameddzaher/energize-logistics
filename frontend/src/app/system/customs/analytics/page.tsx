@@ -1,5 +1,7 @@
 'use client';
-// لوحةُ تحليلات التخليص الجمركيّ — صفحةٌ قائمةٌ بذاتها.
+// تحليلاتُ قسم التخليص — الإيراداتُ والتكاليفُ والأرباح. **للإدارة وحدَها**:
+// مديرُ النظام ومديرُ القسم. والفريقُ له «لوحة القسم» التشغيليّة
+// (/system/customs/dashboard) بلا رقمٍ ماليّ. والحارسُ في الخادم لا هنا.
 //
 // كانت تُفتح من زرٍّ في صفحة المعاملات فتُقرأ ملحقًا بها. وهي سؤالٌ آخر: الجدولُ
 // يقول «ما حال هذه المعاملة»، واللوحةُ تقول «كيف يسير العمل». ولها فلاترُها
@@ -7,6 +9,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
+import Link from 'next/link';
 import api from '@/lib/api';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
@@ -31,6 +34,7 @@ export default function CustomsAnalyticsPage() {
   const [d, setD] = useState<any>(null);
   const [opts, setOpts] = useState<any>({});
   const [loading, setLoading] = useState(true);
+  const [denied, setDenied] = useState(false);
   const [f, setF] = useState<Record<string, string>>({});
   const [tab, setTab] = useState<'byCustomer' | 'byAgent' | 'byPort' | 'byStage' | 'byCity' | 'byBranch'>('byCustomer');
 
@@ -43,7 +47,10 @@ export default function CustomsAnalyticsPage() {
 
   const load = useCallback(async () => {
     try { setD(await api.get<any>(`/api/customs-clearance/analytics?${qs}`)); }
-    catch (e: any) { notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error'); }
+    catch (e: any) {
+      if (e?.status === 403 || e?.code === 'CUSTOMS_ANALYTICS_MANAGERS') setDenied(true);
+      else notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error');
+    }
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qs]);
@@ -51,6 +58,16 @@ export default function CustomsAnalyticsPage() {
   useEffect(() => { api.get<any>('/api/customs-clearance/filters').then((r) => setOpts(r.options || {})).catch(() => {}); }, []);
 
   if (loading && !d) return <Spinner />;
+  if (denied) {
+    return (
+      <div className="mx-auto mt-16 max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <BarChart3 className="mx-auto mb-3 h-8 w-8 text-slate-300" />
+        <p className="font-bold text-slate-900">{t('تحليلات قسم التخليص', 'Customs section analytics')}</p>
+        <p className="mt-1 text-sm text-slate-500">{t('هذه الصفحةُ لمدير النظام ومدير القسم. وللمتابعة اليوميّة افتح «لوحة القسم».', 'This page is for the system admin and the section manager. For day-to-day follow-up open the section dashboard.')}</p>
+        <Link href="/system/customs/dashboard" className="mt-4 inline-block rounded-lg bg-[#f37121] px-4 py-2 text-sm font-bold text-white">{t('لوحة القسم', 'Section dashboard')}</Link>
+      </div>
+    );
+  }
   if (!d) return null;
   const T = d.totals;
   const active = Object.values(f).filter(Boolean).length;
@@ -100,8 +117,8 @@ export default function CustomsAnalyticsPage() {
   return (
     <div className="space-y-4 pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<BarChart3 className="w-6 h-6 text-[#f37121]" />}
-        title={t('تحليلات التخليص الجمركي', 'Customs analytics')}
-        subtitle={t('كيف يسير العمل — لا ما حالُ معاملةٍ بعينها', 'How the work is going — not the state of one transaction')}>
+        title={t('تحليلات قسم التخليص', 'Customs section analytics')}
+        subtitle={t('الإيرادات والتكاليف والأرباح — للإدارة', 'Revenue, costs and profit — management only')}>
         <ExportMenu fileName="customs-analytics" lang={ar ? 'ar' : 'en'}
           options={[
             { key: 'view', label: t('الجدول المعروض', 'Shown table'), sheets: [{ name: t('تحليل', 'Analysis'), rows, columns: cols }] },

@@ -384,7 +384,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/fleet/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
 
     // لوحةُ القسم أوّلًا: «كيف يسير العمل» قبل «ما حالُ هذه المعاملة».
-    { href: '/system/customs/analytics', label: lang === 'ar' ? 'التحليلات' : 'Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
+    // لوحةُ القسم للفريق كلِّه: تشغيلٌ بلا أرقامٍ ماليّة. والتحليلاتُ (الأرباح)
+    // لمدير النظام ومدير القسم وحدَهما — والخادمُ يحرسها بالقائمة نفسِها.
+    { href: '/system/customs/dashboard', label: lang === 'ar' ? 'لوحة القسم' : 'Section Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
+    { href: '/system/customs/analytics', label: lang === 'ar' ? 'تحليلات قسم التخليص' : 'Customs Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'customs_manager'], section: 'Customs', restrict: true },
     { href: '/system/customs', label: L.customsClearance, icon: <Ship className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     // ── صفحاتُ التخليص ────────────────────────────────────────────────────
     // «دليل التخليص» أُخفي من التنقّل وبقي في الكود: الصفحةُ مكتوبةٌ وتعمل، ولو

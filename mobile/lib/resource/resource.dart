@@ -38,10 +38,13 @@ class FieldSpec {
   /// موظّفًا، ويكذب على ثلاثةِ آلافِ مورّد: مَن كتب اسمًا بعد الصفحة الأولى
   /// قيل له «لا نتائج» وهو مسجَّل. فمن رفع هذه أرسل نصَّ البحث إلى الخادم.
   final bool lookupServerSearch;
+  /// عنوانٌ يتبع ما اختير في النموذج: «عدد الحاويات» يصير «عدد السيّارات» حين
+  /// يُختار نوعُ المعاملة. يُعطى قيمَ النموذج الحاليّة؛ وبلاه العنوانُ ثابت.
+  final String Function(Map<String, dynamic> values)? labelOf;
   const FieldSpec(this.name, this.ar, this.en,
       {this.type = FieldType.text, this.required = false, this.options,
        this.lookupEndpoint, this.lookupListKey, this.lookupQuery, this.lookupLabel,
-       this.lookupValue, this.lookupServerSearch = false});
+       this.lookupValue, this.lookupServerSearch = false, this.labelOf});
 
   String get label => tr(ar, en);
 }
@@ -872,7 +875,7 @@ class _ResourceFormState extends State<_ResourceForm> {
             textDirection: (f.type == FieldType.number || f.type == FieldType.phone || f.type == FieldType.email)
                 ? TextDirection.ltr
                 : null,
-            decoration: InputDecoration(labelText: f.label + (f.required ? ' *' : '')),
+            decoration: InputDecoration(labelText: (f.labelOf?.call(_values) ?? f.label) + (f.required ? ' *' : '')),
           ),
         );
     }

@@ -149,6 +149,20 @@ app.use(csrfGuard);
 // Filenames are random and unguessable; the app is internal (behind login).
 // أخطاءُ المتصفّح تصل إلينا بلا تسجيل دخول — راجع routes/clientErrors.
 app.use('/api/client-errors', require('./routes/clientErrors'));
+// ── والملفُّ يُنزَّل باسمٍ يُقرأ ───────────────────────────────────────────────
+// الاسمُ على القرص عشوائيٌّ عمدًا. والمتصفّحُ يسمّيه بخاصّيّة `download`، أمّا
+// التطبيقُ فيفتح الرابطَ كما هو — فيطلب الاسمَ في `?dl=` ويُجاب به هنا.
+app.use('/api/uploads', (req, res, next) => {
+  const dl = typeof req.query.dl === 'string' ? req.query.dl.replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim().slice(0, 180) : '';
+  if (dl) {
+    const ascii = dl.replace(/[^\x20-\x7E]+/g, '_').replace(/"/g, '');
+    // اسمٌ مبتورٌ في منتصف رمزٍ مركَّب يُسقط الترميز — فيُنزَّل الملفُّ باسمه اللاتينيّ.
+    let star = '';
+    try { star = `; filename*=UTF-8''${encodeURIComponent(dl)}`; } catch (_) { /* */ }
+    res.setHeader('Content-Disposition', `attachment; filename="${ascii}"${star}`);
+  }
+  next();
+});
 app.use('/api/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 // ── توثيقُ الـ API ──────────────────────────────────────────────────────────
 // يُبنى من الراوتر نفسِه لحظةَ الطلب، فلا يستطيع أن يبعد عمّا رُكِّب فعلًا:

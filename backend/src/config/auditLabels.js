@@ -385,13 +385,9 @@ const FIELD_VALUES_AR = {
   executionStatus: SHIPMENT_STATUS_AR,
   paymentMethod: { cash: 'كاش', late: 'آجل' },
   paymentType: { cash: 'نقدي', tax: 'ضريبي' },
-  // مراحلُ دورة التخليص — بترتيب وأسماء `models/CustomsClearance`.
+  // مراحلُ دورة التخليص — أسماؤها في config/customsStages.
   stage: {
-    papers_received: 'استلام الأوراق', declaration_paid: 'طباعة البيان الجمركي وسداده',
-    do_requested: 'إرسال أوراق الوكيل وطلب فاتورة إذن التسليم', do_linked: 'ربط إذن التسليم',
-    port_fees_paid: 'طباعة فاتورة أجور الموانئ وسدادها', unloading_fees_paid: 'طباعة فاتورة أجور التفريغ وسدادها',
-    transport_order: 'عمل أمر نقل', containers_transported: 'نقل الحاويات إلى العميل أو الساحة',
-    unloaded_stored: 'التفريغ والتخزين', containers_returned: 'إرجاع الحاويات إلى الوكيل', invoiced: 'عمل الفواتير',
+    ...require('./customsStages').CUSTOMS_STAGE_AR,
     draft: 'مسودة', submitted_to_ops: 'أُرسل إلى العمليات',
   },
   type: { in: 'وارد', out: 'صادر', collection: 'تحصيل', expense: 'مصروف', purchase: 'مشتريات',

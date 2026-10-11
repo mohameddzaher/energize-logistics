@@ -1,0 +1,197 @@
+'use client';
+/**
+ * وحداتُ المعاملة — حاويةٌ لكلّ حاوية.
+ *
+ * كان في المعاملة رقمٌ واحد: «عدد الحاويات ٣». والعملُ ليس على العدد بل على
+ * كلّ حاويةٍ بعينها: رقمُها، وبأيّ سيّارةٍ نُقلت، ومتى أُرجعت إلى الوكيل. فكان
+ * ذلك يُكتب في ملاحظةٍ أو في ورقةٍ جانبيّة.
+ *
+ * فتُرسَم الحاوياتُ بعددها، ولكلّ حاويةٍ خانتُها. وبيانُ النقل يظهر حين تُعلَّم
+ * مرحلةُ نقلٍ في دورة التخليص: بسيّارة تنشيط فيُكتب «رقم كشف التخريج» (وهو
+ * نفسُه في سير عمل التشغيل، فيُقال في الحال أمرتبطٌ هو أم لا)، أو بسيّارةٍ
+ * خارجيّةٍ فيُكتب «رقم الفاتورة».
+ */
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import api from '@/lib/api';
+import { TRANSPORT_LEGS, stageName, unitWord, type Pipeline } from '@/lib/customsPipeline';
+import { Car, CalendarDays, Link2, Truck, AlertTriangle, Check } from 'lucide-react';
+
+export interface UnitMove { leg: string; vehicleKind: '' | 'energize' | 'external'; ref: string }
+export interface Unit { _id?: string; containerNumber?: string; returnDate?: string; notes?: string; moves?: UnitMove[] }
+
+const moveOf = (u: Unit, leg: string): UnitMove => (u.moves || []).find((m) => m.leg === leg) || { leg, vehicleKind: '', ref: '' };
+const withMove = (u: Unit, leg: string, patch: Partial<UnitMove>): Unit => {
+  const next = { ...moveOf(u, leg), ...patch };
+  return { ...u, moves: [...(u.moves || []).filter((m) => m.leg !== leg), next] };
+};
+
+export default function ContainerUnits({
+  units, pipeline, stages, canEdit, ar, onSave,
+}: {
+  units: Unit[];
+  pipeline?: Pipeline;
+  stages: Record<string, string>;
+  canEdit: boolean;
+  ar: boolean;
+  onSave: (rows: Unit[]) => void;
+}) {
+  const t = (a: string, e: string) => (ar ? a : e);
+  const cargo = pipeline?.cargoType || 'containers';
+  const vehicles = cargo === 'vehicles';
+  // مراحلُ النقل التي عُلِّمت — لها وحدَها يُسأل عن السيّارة.
+  const legs = useMemo(
+    () => (pipeline?.steps || []).filter((s) => (TRANSPORT_LEGS as readonly string[]).includes(s.key) && s.done).map((s) => s.key),
+    [pipeline],
+  );
+
+  // أرقامُ كشوف التخريج المكتوبة: أيُّها موجودٌ في سير عمل التشغيل.
+  const sheetNumbers = useMemo(() => [...new Set(units.flatMap((u) => (u.moves || [])
+    .filter((m) => m.vehicleKind === 'energize' && m.ref).map((m) => m.ref.trim())))].sort().join(','), [units]);
+  const [found, setFound] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!sheetNumbers) { setFound({}); return; }
+    let live = true;
+    api.get<{ found: Record<string, string> }>(`/api/customs-clearance/release-sheets?numbers=${encodeURIComponent(sheetNumbers)}`)
+      .then((d) => { if (live) setFound(d.found || {}); }).catch(() => {});
+    return () => { live = false; };
+  }, [sheetNumbers]);
+
+  const setUnit = (i: number, next: Unit) => onSave(units.map((u, idx) => (idx === i ? next : u)));
+  const setLegKind = (leg: string, kind: 'energize' | 'external') => onSave(units.map((u) => withMove(u, leg, { vehicleKind: kind })));
+  const legKind = (leg: string) => {
+    const kinds = new Set(units.map((u) => moveOf(u, leg).vehicleKind).filter(Boolean));
+    return kinds.size === 1 ? [...kinds][0] : '';
+  };
+
+  if (!units.length) {
+    return (
+      <p className="py-6 text-center text-sm text-slate-400">
+        {vehicles ? t('اكتب عدد السيّارات في بيانات المعاملة لتظهر خاناتُها.', 'Enter the vehicle count to open their slots.')
+          : t('اكتب عدد الحاويات في بيانات المعاملة لتظهر خاناتُها.', 'Enter the container count to open their slots.')}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* ── بأيّ سيّارةٍ نُقلت — لكلّ مرحلةِ نقلٍ عُلِّمت ───────────────────── */}
+      {legs.length > 0 ? (
+        <div className="space-y-2">
+          {legs.map((leg) => {
+            const kind = legKind(leg);
+            return (
+              <div key={leg} className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <Truck className="h-4 w-4 shrink-0 text-[#f37121]" />
+                <span className="text-[13px] font-semibold text-slate-800">{stageName(stages, leg, cargo)}</span>
+                <div className="ms-auto flex overflow-hidden rounded-lg border border-slate-200 bg-white text-[12px] font-semibold">
+                  {([['energize', 'سيّارة تنشيط', 'Energize truck'], ['external', 'سيّارة خارجيّة', 'External truck']] as const).map(([k, a, e]) => (
+                    <button key={k} type="button" disabled={!canEdit} onClick={() => setLegKind(leg, k)}
+                      className={`px-3 py-1.5 transition-colors ${kind === k ? 'bg-[#f37121] text-white' : 'text-slate-600 hover:bg-slate-50'} disabled:cursor-default`}>
+                      {ar ? a : e}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="rounded-lg bg-slate-50 px-3 py-2 text-[12px] text-slate-500">
+          {t('بيانُ النقل (سيّارة تنشيط أو سيّارة خارجيّة) يُفتَح حين تُعلَّم مرحلةُ نقلٍ في مراحل التخليص.',
+             'Transport details open once a transport stage is ticked in the pipeline.')}
+        </p>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {units.map((u, i) => (
+          // المفتاحُ موضعُ الخانة لا معرّفُها: المعرّفُ يتجدّد مع كلّ حفظ، فلو كان
+          // هو المفتاحَ لأُعيد بناءُ الخانة بعد كلّ حقلٍ وضاع التركيزُ من الذي يليه.
+          <UnitBox key={i} index={i} unit={u} legs={legs} vehicles={vehicles} cargo={cargo}
+            stages={stages} found={found} canEdit={canEdit} ar={ar} onChange={(next) => setUnit(i, next)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** حاويةٌ واحدة — مرسومةً حاويةً: أضلاعُها المموَّجة، وبابُها، ولوحةُ بياناتها. */
+function UnitBox({
+  index, unit, legs, vehicles, cargo, stages, found, canEdit, ar, onChange,
+}: {
+  index: number; unit: Unit; legs: string[]; vehicles: boolean; cargo: string;
+  stages: Record<string, string>; found: Record<string, string>;
+  canEdit: boolean; ar: boolean; onChange: (u: Unit) => void;
+}) {
+  const t = (a: string, e: string) => (ar ? a : e);
+  const returned = !vehicles && !!unit.returnDate;
+  // الحاويةُ التي أُرجعت تخضرّ: تُرى من بعيدٍ بلا قراءة تاريخ.
+  const shell = returned ? ['#15803d', '#166534'] : vehicles ? ['#334155', '#1e293b'] : ['#ea6a1c', '#c9530f'];
+  return (
+    <div className="overflow-hidden rounded-md shadow-sm ring-1 ring-black/10"
+      style={{ background: `repeating-linear-gradient(90deg, ${shell[0]} 0 9px, ${shell[1]} 9px 11px)` }}>
+      {/* العارضةُ العليا: رقمُ الخانة ونوعُها */}
+      <div className="flex items-center gap-2 px-3 py-1.5 text-white" style={{ background: shell[1] }}>
+        {vehicles ? <Car className="h-4 w-4" /> : <span className="grid h-4 w-5 grid-cols-3 gap-px opacity-80">{[0, 1, 2].map((k) => <i key={k} className="bg-white/70" />)}</span>}
+        <span className="text-[12px] font-bold">{unitWord(cargo, ar, false)} {index + 1}</span>
+        {returned && <span className="ms-auto inline-flex items-center gap-1 rounded bg-white/20 px-1.5 py-0.5 text-[10.5px] font-bold"><Check className="h-3 w-3" />{t('أُرجعت', 'Returned')}</span>}
+      </div>
+      {/* لوحةُ البيانات — بيضاءُ على جسم الحاوية ليُقرأ ما فيها */}
+      <div className="m-2 space-y-2 rounded bg-white/95 p-2.5">
+        <Field label={vehicles ? t('رقم الهيكل', 'Chassis no.') : t('رقم الحاوية', 'Container no.')}
+          value={unit.containerNumber || ''} disabled={!canEdit} mono
+          placeholder={vehicles ? '' : 'MSKU1234567'}
+          onSave={(v) => onChange({ ...unit, containerNumber: v.trim().toUpperCase() })} />
+        {legs.map((leg) => {
+          const m = moveOf(unit, leg);
+          if (!m.vehicleKind) return null;
+          const energize = m.vehicleKind === 'energize';
+          const id = energize && m.ref ? found[m.ref.trim()] : '';
+          return (
+            <div key={leg}>
+              <Field label={`${energize ? t('رقم كشف التخريج', 'Release sheet no.') : t('رقم الفاتورة', 'Invoice no.')} · ${stageName(stages, leg, cargo)}`}
+                value={m.ref} disabled={!canEdit} mono
+                onSave={(v) => onChange(withMove(unit, leg, { ref: v.trim() }))} />
+              {energize && !!m.ref && (id ? (
+                <Link href={`/system/operations/${id}`} className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:underline">
+                  <Link2 className="h-3 w-3" />{t('مرتبطٌ بسير عمل التشغيل', 'Linked to operations workflow')}
+                </Link>
+              ) : (
+                <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-amber-600">
+                  <AlertTriangle className="h-3 w-3" />{t('غير موجودٍ في سير عمل التشغيل', 'Not found in operations workflow')}
+                </span>
+              ))}
+            </div>
+          );
+        })}
+        {!vehicles && (
+          <Field label={t('تاريخ إرجاع الحاوية', 'Return date')} type="date" icon
+            value={unit.returnDate || ''} disabled={!canEdit}
+            onSave={(v) => onChange({ ...unit, returnDate: v })} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Field({
+  label, value, onSave, type = 'text', disabled, mono, placeholder, icon,
+}: {
+  label: string; value: string; onSave: (v: string) => void; type?: string;
+  disabled?: boolean; mono?: boolean; placeholder?: string; icon?: boolean;
+}) {
+  const [v, setV] = useState(value);
+  useEffect(() => { setV(value); }, [value]);
+  return (
+    <label className="block">
+      <span className="mb-0.5 flex items-center gap-1 text-[10.5px] font-semibold text-slate-500">
+        {icon && <CalendarDays className="h-3 w-3" />}{label}
+      </span>
+      <input type={type} value={v} disabled={disabled} placeholder={placeholder}
+        onChange={(e) => setV(e.target.value)}
+        onBlur={() => { if (v !== value) onSave(v); }}
+        className={`w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-[13px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#f37121]/40 disabled:opacity-70 [color-scheme:light] ${mono ? 'font-mono tracking-wide' : ''}`}
+        dir={mono ? 'ltr' : undefined} />
+    </label>
+  );
+}

@@ -46,6 +46,8 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
     .includes((user as any)?.role || '') || canEditSection((user as any)?.permissions, 'Customs');
 
   const [rows, setRows] = useState<Party[]>([]);
+  // الربحُ والهامش للإدارة وحدَها — الخادمُ يقول من يراهما ولا يرسلهما لغيره.
+  const [seesMoney, setSeesMoney] = useState(false);
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Partial<Party> | null>(null);
@@ -53,7 +55,8 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
 
   const load = useCallback(async () => {
     try {
-      const d = await api.get<{ parties: Party[] }>(`/api/customs-clearance/parties?kind=${kind}`);
+      const d = await api.get<{ parties: Party[]; money?: boolean }>(`/api/customs-clearance/parties?kind=${kind}`);
+      setSeesMoney(!!d.money);
       setRows(d.parties || []);
     } catch (e: any) { notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error'); }
     setLoading(false);
@@ -106,7 +109,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
     { header: t('معاملات', 'Deals'), key: 'deals', width: 10 },
     { header: t('حاويات', 'Containers'), key: 'containers', width: 10 },
     { header: t('الإيراد', 'Revenue'), key: 'revenue', width: 14 },
-    { header: t('الربح', 'Profit'), key: 'profit', width: 14 },
+    ...(seesMoney ? [{ header: t('الربح', 'Profit'), key: 'profit', width: 14 }] : []),
   ];
 
   if (loading) return <Spinner />;
@@ -134,12 +137,12 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
         )}
       </PageHeader>
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className={`grid grid-cols-2 gap-3 ${seesMoney ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
         <Stat label={t(meta.oneAr, meta.oneEn)} value={shown.length} />
         <Stat label={t('معاملات', 'Deals')} value={money(totals.deals)} />
         <Stat label={t('حاويات', 'Containers')} value={money(totals.containers)} />
         <Stat label={t('الإيراد', 'Revenue')} value={money(totals.revenue)} accent="text-emerald-600" />
-        <Stat label={t('الربح', 'Profit')} value={money(totals.profit)} accent={totals.profit >= 0 ? 'text-emerald-600' : 'text-red-600'} />
+        {seesMoney && <Stat label={t('الربح', 'Profit')} value={money(totals.profit)} accent={totals.profit >= 0 ? 'text-emerald-600' : 'text-red-600'} />}
       </div>
 
       <SearchInput value={q} onChange={setQ}
@@ -151,8 +154,8 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
             <thead className="table-head">
               <tr>
                 {[t('الاسم', 'Name'), ...(kind !== 'customer' ? [t('البريد', 'Email')] : []), t('التواصل', 'Contact'),
-                  t('معاملات', 'Deals'), t('حاويات', 'Containers'), t('الإيراد', 'Revenue'), t('الربح', 'Profit'),
-                  t('الهامش', 'Margin'), t('آخر معاملة', 'Last deal'), ''].map((h, i) => (
+                  t('معاملات', 'Deals'), t('حاويات', 'Containers'), t('الإيراد', 'Revenue'),
+                  ...(seesMoney ? [t('الربح', 'Profit'), t('الهامش', 'Margin')] : []), t('آخر معاملة', 'Last deal'), ''].map((h, i) => (
                   <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -182,8 +185,8 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
                     <td className="px-3 py-2.5 tabular-nums">{money(p.deals)}</td>
                     <td className="px-3 py-2.5 tabular-nums">{money(p.containers)}</td>
                     <td className="px-3 py-2.5 tabular-nums text-emerald-700">{money(p.revenue)}</td>
-                    <td className={`px-3 py-2.5 tabular-nums font-semibold ${p.profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{money(p.profit)}</td>
-                    <td className="px-3 py-2.5 tabular-nums text-slate-600">{p.revenue ? `${margin}%` : '—'}</td>
+                    {seesMoney && <td className={`px-3 py-2.5 tabular-nums font-semibold ${p.profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{money(p.profit)}</td>}
+                    {seesMoney && <td className="px-3 py-2.5 tabular-nums text-slate-600">{p.revenue ? `${margin}%` : '—'}</td>}
                     <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{dt(p.lastDealAt)}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1">

@@ -16,6 +16,9 @@ import ScrollX from '@/components/system/ScrollX';
 import CustomsContracts from '@/components/customs/CustomsContracts';
 import { useAuth } from '@/context/AuthContext';
 import { canEditSection } from '@/lib/sections';
+import ClearanceTasks from '@/components/customs/ClearanceTasks';
+import { getCustomsTranslations } from '@/lib/translations';
+import { stageName } from '@/lib/customsPipeline';
 
 const money = (n?: number) => (Number(n) || 0).toLocaleString('en-US');
 const dt = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
@@ -46,6 +49,9 @@ export default function CustomsPartyProfile() {
   if (loading) return <Spinner />;
   if (!d) return null;
   const p = d.party; const T = d.totals;
+  // الربحُ والهامش للإدارة وحدَها — الخادمُ لا يرسلهما لغيرها (`money`).
+  const seesMoney = !!d.money;
+  const stageText = (c: any) => (c.cancelled ? t('ملغاة', 'Cancelled') : c.isCompleted ? t('مغلقة', 'Closed') : stageName(getCustomsTranslations(lang).stages, c.pipeline?.next || c.stage, c.cargoType));
   const isAgent = p.kind === 'agent';
 
   const Stat = ({ label, value, accent, hint }: { label: string; value: any; accent?: string; hint?: string }) => (
@@ -62,11 +68,11 @@ export default function CustomsPartyProfile() {
     { header: t('البوليصة', 'BL'), key: 'blNumber', width: 18 },
     { header: isAgent ? t('العميل', 'Customer') : t('وكيل الشحن', 'Agent'), key: isAgent ? 'customerName' : 'shippingAgent', width: 22 },
     { header: t('الميناء', 'Port'), key: 'port', width: 12 },
-    { header: t('المرحلة', 'Stage'), key: 'stage', width: 18 },
+    { header: t('المرحلة', 'Stage'), key: 'stage', width: 30, transform: (_v: any, r: any) => stageText(r) },
     { header: t('حاويات', 'Containers'), key: 'containerCount', width: 10 },
     { header: t('الإيراد', 'Revenue'), key: 'revenue.totalInvoiced', width: 14 },
     { header: t('التكلفة', 'Cost'), key: 'costs.total', width: 14 },
-    { header: t('الربح', 'Profit'), key: 'revenue.profit', width: 14 },
+    ...(seesMoney ? [{ header: t('الربح', 'Profit'), key: 'revenue.profit', width: 14 }] : []),
     { header: t('التاريخ', 'Date'), key: 'createdAt', width: 14, transform: (v: any) => dt(v) },
   ];
 
@@ -114,19 +120,19 @@ export default function CustomsPartyProfile() {
         {!p.email && !p.phone && <span className="text-slate-400">{t('لا بيانات تواصل مسجَّلة', 'No contact details recorded')}</span>}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+      <div className={`grid grid-cols-2 sm:grid-cols-4 gap-3 ${seesMoney ? 'lg:grid-cols-7' : 'lg:grid-cols-5'}`}>
         <Stat label={t('معاملات', 'Deals')} value={money(T.deals)} hint={T.cancelled ? t(`${T.cancelled} ملغاة`, `${T.cancelled} cancelled`) : undefined} />
         <Stat label={t('حاويات', 'Containers')} value={money(T.containers)} />
         <Stat label={t('الإيراد', 'Revenue')} value={money(T.revenue)} accent="text-emerald-600" />
         <Stat label={t('التكلفة', 'Cost')} value={money(T.cost)} accent="text-slate-700" />
-        <Stat label={t('الربح', 'Profit')} value={money(T.profit)} accent={T.profit >= 0 ? 'text-emerald-600' : 'text-red-600'} />
-        <Stat label={t('الهامش', 'Margin')} value={`${T.margin}%`} accent={T.margin >= 0 ? 'text-emerald-600' : 'text-red-600'} />
+        {seesMoney && <Stat label={t('الربح', 'Profit')} value={money(T.profit)} accent={T.profit >= 0 ? 'text-emerald-600' : 'text-red-600'} />}
+        {seesMoney && <Stat label={t('الهامش', 'Margin')} value={`${T.margin}%`} accent={T.margin >= 0 ? 'text-emerald-600' : 'text-red-600'} />}
         {/* «لم تُفوتَر» أوّلُ ما يُسأل عنه في ملفّ عميل. */}
         <Stat label={t('لم تُفوتَر', 'Uninvoiced')} value={money(T.uninvoiced)} accent={T.uninvoiced ? 'text-amber-600' : undefined} />
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Stat label={t('متوسط الربح للمعاملة', 'Avg profit / deal')} value={money(T.avgProfit)} />
+      <div className={`grid grid-cols-2 gap-3 ${seesMoney ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
+        {seesMoney && <Stat label={t('متوسط الربح للمعاملة', 'Avg profit / deal')} value={money(T.avgProfit)} />}
         <Stat label={t('إجمالي الوزن', 'Total weight')} value={money(T.weight)} />
         <Stat label={t('أول معاملة', 'First deal')} value={dt(T.firstDealAt)} />
         <Stat label={t('آخر معاملة', 'Last deal')} value={dt(T.lastDealAt)} />
@@ -144,7 +150,7 @@ export default function CustomsPartyProfile() {
                 <Tooltip formatter={(v: any) => money(v as number)} />
                 <Legend />
                 <Bar dataKey="revenue" name={t('الإيراد', 'Revenue')} fill="#10b981" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="profit" name={t('الربح', 'Profit')} fill="#f37121" radius={[3, 3, 0, 0]} />
+                {seesMoney && <Bar dataKey="profit" name={t('الربح', 'Profit')} fill="#f37121" radius={[3, 3, 0, 0]} />}
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -171,7 +177,7 @@ export default function CustomsPartyProfile() {
               <tr>
                 {[t('المرجع', 'Ref'), t('البوليصة', 'BL'), isAgent ? t('العميل', 'Customer') : t('الوكيل', 'Agent'),
                   t('الميناء', 'Port'), t('المرحلة', 'Stage'), t('حاويات', 'Cntrs'), t('الإيراد', 'Revenue'),
-                  t('التكلفة', 'Cost'), t('الربح', 'Profit'), t('التاريخ', 'Date')].map((h, i) => (
+                  t('التكلفة', 'Cost'), ...(seesMoney ? [t('الربح', 'Profit')] : []), t('التاريخ', 'Date')].map((h, i) => (
                   <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -184,11 +190,11 @@ export default function CustomsPartyProfile() {
                   <td className="px-3 py-2.5 font-mono text-slate-600 whitespace-nowrap">{c.blNumber || '—'}</td>
                   <td className="px-3 py-2.5 text-slate-700 max-w-[180px] truncate">{isAgent ? c.customerName : c.shippingAgent}</td>
                   <td className="px-3 py-2.5 text-slate-600">{c.port || '—'}</td>
-                  <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{c.stage || '—'}</td>
+                  <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap max-w-[16rem] truncate">{stageText(c)}</td>
                   <td className="px-3 py-2.5 tabular-nums">{c.containerCount || 0}</td>
                   <td className="px-3 py-2.5 tabular-nums text-emerald-700">{money(c.revenue?.totalInvoiced)}</td>
                   <td className="px-3 py-2.5 tabular-nums text-slate-600">{money(c.costs?.total)}</td>
-                  <td className={`px-3 py-2.5 tabular-nums font-semibold ${(c.revenue?.profit || 0) >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{money(c.revenue?.profit)}</td>
+                  {seesMoney && <td className={`px-3 py-2.5 tabular-nums font-semibold ${(c.revenue?.profit || 0) >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{money(c.revenue?.profit)}</td>}
                   <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{dt(c.createdAt)}</td>
                 </tr>
               ))}
@@ -199,6 +205,9 @@ export default function CustomsPartyProfile() {
 
       {/* عقودُنا معه — تُقرأ في ملفّه، والمصدرُ صفحةُ العقود نفسُها. */}
       <CustomsContracts ar={ar} canEdit={canEdit} party={{ _id: p._id, name: p.name, kind: p.kind }} notify={notify} embedded />
+
+      {/* مهامُّ خطّة العمل (JP) المربوطةُ بهذا الطرف. */}
+      <ClearanceTasks kind={p.kind} refId={String(p._id)} ar={ar} />
     </div>
   );
 }

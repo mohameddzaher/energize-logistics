@@ -15,6 +15,18 @@ export interface JpProject {
   createdByName?: string; createdAt?: string;
 }
 export interface JpComment { _id: string; by?: string; byName: string; text: string; at: string }
+/** ما تتعلّق به المهمّة — معاملةٌ أو طرفٌ من أطرافها. الأنواعُ يقولها الخادمُ لكلّ قسم. */
+export interface JpLink { kind: string; ref: string; label?: string }
+export const LINK_WORDS: Record<string, { ar: string; en: string }> = {
+  clearance: { ar: 'معاملة', en: 'Transaction' },
+  customer: { ar: 'عميل', en: 'Customer' },
+  agent: { ar: 'وكيل شحن', en: 'Shipping agent' },
+  carrier: { ar: 'ناقل', en: 'Carrier' },
+};
+/** أين يُفتَح ما رُبطت به المهمّة. */
+export const linkHref = (l: JpLink) => (l.kind === 'clearance' ? `/system/customs/${l.ref}`
+  : ['customer', 'agent', 'carrier'].includes(l.kind) ? `/system/customs/parties/${l.ref}` : '');
+
 export interface JpTask {
   _id: string; kind: 'task' | 'request'; title: string; details?: string; action: JpAction; contact?: string;
   project?: { _id: string; name: string } | null;
@@ -29,10 +41,13 @@ export interface JpTask {
   fromManagement?: boolean;
   handedTo?: { _id: string; name: string; state: string }[];
   canHandDown?: boolean;
+  links?: JpLink[];
 }
 export interface JpMe {
   scope: JpScope; section: string; canManage: boolean; sectionAr: string; sectionEn: string;
   me: string; team: JpMember[]; projects: JpProject[];
+  /** أنواعُ ما تُربَط به المهمّةُ في هذا القسم — فارغةٌ لقسمٍ بلا روابط. */
+  linkKinds?: string[];
 }
 
 export const ACTION_WORDS: Record<Exclude<JpAction, ''>, { ar: string; en: string }> = {

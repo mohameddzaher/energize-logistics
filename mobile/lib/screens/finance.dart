@@ -530,7 +530,7 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
           child: Row(children: [
             // ── و«فواتير العملاء» وجهٌ آخر لنفس القسم ────────────────────────
             // الأربعةُ الأولى **ما ندفعه** (طلباتُ صرفٍ من التخليص)، وهذه **ما
-            // نقبضه**: فاتورةٌ تُصدَر عند إقفال المعاملة ببنودها ومجاميعها
+            // نقبضه**: فاتورةٌ تُصدَر للعميل ببنودها ومجاميعها — قبل إنهاء المعاملة
             // (راجع backend/utils/customsInvoice). ولا تُقرآن في شاشتين.
             for (final t in const [('pending', 'بانتظار الدفع', 'Awaiting'), ('paid', 'مدفوعة', 'Paid'), ('returned', 'مُعادة', 'Returned'), ('rejected', 'مرفوضة', 'Rejected'), ('invoices', 'فواتير العملاء', 'Customer invoices')])
               Padding(
@@ -548,6 +548,11 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
           ]),
         ),
         const SizedBox(height: 6),
+        if (_tab == 'invoices' && !_loading && ((_counts['awaitingTransportInvoice'] ?? 0) as num) > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Chip2(tr('${_counts['awaitingTransportInvoice']} فاتورة بانتظار فاتورة النقل', '${_counts['awaitingTransportInvoice']} awaiting the transport invoice'), T.danger, icon: Icons.error_outline),
+          ),
         if (_loading)
           const Padding(padding: EdgeInsets.all(14), child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
         else if (_rows.isEmpty)
@@ -570,9 +575,15 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
                       Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800))),
                       Text('${r['invoiceNumber'] ?? ''}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: T.orange)),
                     ]),
+                    // فُوترت ولم تصل فاتورةُ نقلها: المعاملةُ لم تُنهَ بعد.
+                    if (r['awaitingTransportInvoice'] == true)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Chip2(tr('بانتظار فاتورة النقل', 'Awaiting transport invoice'), T.danger, icon: Icons.error_outline),
+                      ),
                     const SizedBox(height: 2),
                     Text([
-                      if ((r['refNumber'] ?? '').toString().isNotEmpty) '${r['refNumber']}',
+                      if ((r['refNumber'] ?? '').toString().isNotEmpty) '${tr('رقم المعاملة', 'Transaction no.')} ${r['refNumber']}',
                       if ((r['declarationNumber'] ?? '').toString().isNotEmpty) '${tr('بيان', 'Decl')} ${r['declarationNumber']}',
                     ].join(' · '), style: const TextStyle(fontSize: 11, color: T.inkSoft)),
                     const SizedBox(height: 6),

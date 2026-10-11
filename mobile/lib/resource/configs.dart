@@ -780,65 +780,63 @@ final hrLeaveTypesCfg = ResourceConfig(
 );
 
 // ── التخليص الجمركي ──────────────────────────────────────────────────────────
+String _customsCountLabel(Map<String, dynamic> v) =>
+    v['cargoType'] == 'vehicles' ? tr('عدد السيّارات', 'Vehicles') : tr('عدد الحاويات', 'Containers');
+
 final customsCfg = ResourceConfig(
-  filterField: 'stage',
+  // (لا شرائحَ تصفيةٍ بالمرحلة: المراحلُ لم تعد خطًّا، و«أين تقف كلُّ معاملة»
+  //  تُقرأ وتُصفّى في لوحة القسم.)
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => CustomsDetailScreen(clearanceId: (r['_id'] ?? '').toString(), ref: (r['refNumber'] ?? '').toString()))),
   arTitle: 'التخليص الجمركي', enTitle: 'Customs Clearance', icon: Icons.directions_boat_outlined,
   endpoint: '/api/customs-clearance', listKey: 'clearances', liveEvent: 'customs:updated',
   // القائمةُ تحمل ما يُعرَض فقط، والنموذجُ يعدّل حقولًا ليست فيها (قيمةُ الفاتورة،
   // تاريخُ البيان، الملاحظة) — فتُقرأ المعاملةُ كاملةً قبل التعبئة.
   editFullKey: 'clearance',
-  searchFields: const ['refNumber', 'customerName', 'blNumber', 'declarationNumber', 'exporterCompany', 'city'],
+  searchFields: const ['refNumber', 'customerName', 'blNumber', 'declarationNumber', 'exporterCompany', 'city', 'saleInvoiceNumber'],
   // رقمُ البوليصة أوّلًا: به تُعرَف المعاملةُ في القسم — ورقمُها المرجعيُّ بعده.
   titleOf: (r) => _s(r, 'blNumber').isNotEmpty ? '${_s(r, 'blNumber')} — ${_s(r, 'customerName')}' : _s(r, 'customerName'),
   subtitleOf: (r) => [
-    if (_s(r, 'refNumber').isNotEmpty) _s(r, 'refNumber'),
+    if (_s(r, 'refNumber').isNotEmpty) '${tr('رقم المعاملة', 'Transaction no.')}: ${_s(r, 'refNumber')}',
     if (_s(r, 'shippingAgent').isNotEmpty) _s(r, 'shippingAgent'),
     // آخرُ ملاحظةٍ كُتبت على المعاملة — كعمود «ملاحظات» في الموقع.
     if ((r['lastNote'] is Map) && '${r['lastNote']['text'] ?? ''}'.isNotEmpty) '📝 ${r['lastNote']['text']}',
   ].join(' · '),
-  chipsOf: (r) => [
-    switch (_s(r, 'stage')) {
-      'papers_received' => ('استلام الأوراق', T.inkSoft),
-      'declaration_paid' => ('سداد البيان', T.info),
-      'do_requested' => ('طلب إذن التسليم', T.info),
-      'do_linked' => ('ربط إذن التسليم', T.cyan),
-      'port_fees_paid' => ('سداد أجور الموانئ', T.cyan),
-      'unloading_fees_paid' => ('سداد أجور التفريغ', T.cyan),
-      'transport_order' => ('أمر نقل', T.violet),
-      'containers_transported' => ('نقل الحاويات', T.violet),
-      'unloaded_stored' => ('التفريغ والتخزين', T.warn),
-      'containers_returned' => ('إرجاع الحاويات', T.warn),
-      'invoiced' => ('تمت الفوترة', T.success),
-      _ => (_s(r, 'stage'), T.inkFaint),
-    },
-    if (r['containerCount'] != null) ('${r['containerCount']} حاوية', T.navy),
-    (_s(r, 'branch') == 'dammam' ? 'الدمام' : 'جدة', T.inkSoft),
-  ],
+  chipsOf: (r) {
+    // النسبةُ والمرحلةُ التاليةُ من الخادم (pipeline) — لا تُشتقّان من `stage`.
+    final p = r['pipeline'] is Map ? r['pipeline'] as Map : const {};
+    final next = '${p['next'] ?? ''}';
+    final vehicles = _s(r, 'cargoType') == 'vehicles';
+    final billing = r['billing'] is Map ? '${r['billing']['invoiceStatus'] ?? ''}' : '';
+    return [
+      // فُوترت ولم تصل فاتورةُ نقلها — بالأحمر وأوّلًا، حتى لا تُنسى.
+      if (r['awaitingTransportInvoice'] == true) (tr('بانتظار فاتورة النقل', 'Awaiting transport invoice'), T.danger),
+      if (r['cancelled'] == true) (tr('ملغاة', 'Cancelled'), T.danger)
+      else if (r['isCompleted'] == true) (tr('مُقفلة', 'Closed'), T.success)
+      else if (next.isNotEmpty) (customsStageLabel(next, _s(r, 'cargoType')), T.info),
+      if (p['percent'] != null) ('${p['percent']}%', T.cyan),
+      if (_s(r, 'saleInvoiceNumber').isNotEmpty) (tr('مفوترة', 'Invoiced'), T.success)
+      else (billing.isNotEmpty ? billing : tr('غير مفوترة', 'Not invoiced'), T.inkSoft),
+      if (r['containerCount'] != null) ('${r['containerCount']} ${vehicles ? tr('سيّارة', 'vehicles') : tr('حاوية', 'containers')}', T.navy),
+      (_s(r, 'branch') == 'dammam' ? tr('الدمام', 'Dammam') : tr('جدة', 'Jeddah'), T.inkSoft),
+    ];
+  },
   fields: const [
-    // خاناتُ بيانات المعاملة كما في الموقع: البوليصةُ والعميلُ والحاوياتُ ووكيلُ
+    // خاناتُ بيانات المعاملة كما في الموقع: البوليصةُ والعميلُ والوحداتُ ووكيلُ
     // الشحن والبندُ الجمركيّ — وما عداها رُفع بطلب القسم.
+    // (المرحلةُ ليست منها: تُعلَّم من شاشة المعاملة بقواعدها — PATCH /:id/stage،
+    //  والخادمُ يُهمل `stage` في جسم الحفظ.)
     FieldSpec('blNumber', 'رقم البوليصة BL', 'BL number'),
     FieldSpec('customerName', 'اسم العميل', 'Customer', required: true),
-    FieldSpec('containerCount', 'عدد الحاويات', 'Containers', type: FieldType.number),
+    FieldSpec('cargoType', 'نوع المعاملة', 'Transaction type', type: FieldType.select, options: [
+      ('containers', 'حاويات', 'Containers'), ('vehicles', 'سيّارات', 'Vehicles'),
+    ]),
+    // الخادمُ يفتح لكلّ وحدةٍ خانتَها بهذا العدد (syncUnits).
+    FieldSpec('containerCount', 'عدد الحاويات', 'Containers', type: FieldType.number, labelOf: _customsCountLabel),
     FieldSpec('shippingAgent', 'وكيل الشحن', 'Shipping agent'),
     FieldSpec('hsCode', 'البند الجمركي HS', 'HS code'),
     FieldSpec('declarationNumber', 'رقم البيان الجمركي', 'Declaration no.'),
     FieldSpec('branch', 'الفرع', 'Branch', type: FieldType.select, options: [
       ('jeddah', 'جدة', 'Jeddah'), ('dammam', 'الدمام', 'Dammam'),
-    ]),
-    FieldSpec('stage', 'المرحلة', 'Stage', type: FieldType.select, options: [
-      ('papers_received', 'استلام الأوراق', 'Papers received'),
-      ('declaration_paid', 'طباعة البيان وسداده', 'Declaration paid'),
-      ('do_requested', 'طلب إذن التسليم', 'DO requested'),
-      ('do_linked', 'ربط إذن التسليم', 'DO linked'),
-      ('port_fees_paid', 'سداد أجور الموانئ', 'Port fees paid'),
-      ('unloading_fees_paid', 'سداد أجور التفريغ', 'Unloading fees paid'),
-      ('transport_order', 'أمر نقل', 'Transport order'),
-      ('containers_transported', 'نقل الحاويات', 'Containers moved'),
-      ('unloaded_stored', 'التفريغ والتخزين', 'Unloaded & stored'),
-      ('containers_returned', 'إرجاع الحاويات', 'Containers returned'),
-      ('invoiced', 'عمل الفواتير', 'Invoiced'),
     ]),
     FieldSpec('declarationDate', 'تاريخ البيان', 'Declaration date', type: FieldType.date),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),

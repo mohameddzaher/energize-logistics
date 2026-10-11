@@ -1,6 +1,9 @@
 const CustomsClearance = require('../models/CustomsClearance');
 const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
-const { recomputeTotals, COST_KEYS, MARGIN_KEYS } = require('../models/CustomsClearance');
+const {
+  recomputeTotals, COST_KEYS, MARGIN_KEYS, pipelineOf, readStages, lockReason, hasTransportInvoice,
+  syncUnits, TRANSPORT_LEGS, CARGO_TYPES, VEHICLE_KINDS,
+} = require('../models/CustomsClearance');
 const cache = require('../utils/ttlCache');
 const { parseMonth, parseYear } = require('../utils/period');
 const logAudit = require('../utils/auditLogger');
@@ -9,7 +12,7 @@ const { createNotification } = require('../services/notificationService');
 
 // Scalar fields a client may set on create/update.
 const EDITABLE = [
-  'branch', 'stage', 'cancelled', 'assignedTo', 'customerName', 'customer',
+  'branch', 'cancelled', 'cargoType', 'assignedTo', 'customerName', 'customer',
   'shippingAgent', 'shippingAgentEmail', 'blNumber', 'invoiceNumber', 'invoiceDate',
   'port', 'invoiceType', 'containerCount', 'totalWeight', 'invoiceValue', 'currency',
   'exporterCompany', 'countryOfOrigin', 'hsCode', 'saberNumber', 'notes',
@@ -18,8 +21,8 @@ const EDITABLE = [
   'declarationNumber', 'declarationDate', 'papersReceivedDate',
   'unloadingAppointment', 'unloadingLocation', 'doNumber', 'exitPermitNumber',
   'returnDeadline', 'returnFreeDays',
-  // ما أُنجز من المراحل صراحةً — لا مشتقًّا من موضع الحاليّة.
-  'stagesDone',
+  // (المراحلُ لا تُكتب من هنا: لها قواعدُ — طريقان يتنافيان ومراحلُ تُغلَق —
+  //  فتمرّ من `setStage` وحدَها. راجع PATCH /:id/stage.)
   // ربطُ المعاملة بملفَّي العميل والوكيل.
   'customerParty', 'agentParty',
   // المعاملةُ القادمة: علمُها وتاريخُها المرتقَب.
@@ -67,15 +70,38 @@ function pick(body, existing) {
     out[group] = merged;
   }
 
+  if (out.cargoType !== undefined && !CARGO_TYPES.includes(out.cargoType)) delete out.cargoType;
+
   if (Array.isArray(body.containers)) {
+    const ymd = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : '');
     out.containers = body.containers
       .filter((r) => r && typeof r === 'object')
       .map((r) => ({
-        containerNumber: String(r.containerNumber || '').trim(),
+        containerNumber: String(r.containerNumber || '').trim().slice(0, 60),
         exitPermit: Number.isFinite(Number(r.exitPermit)) ? Number(r.exitPermit) : 0,
         declaration: String(r.declaration || '').trim(),
         notes: String(r.notes || '').trim(),
+        returnDate: ymd(r.returnDate),
+        // بيانٌ واحدٌ لكلّ مرحلةِ نقل — الأخيرُ يغلب إن تكرّر المفتاح.
+        moves: TRANSPORT_LEGS.map((leg) => (Array.isArray(r.moves) ? r.moves : []).filter((m) => m && m.leg === leg).pop())
+          .filter(Boolean)
+          .map((m) => ({
+            leg: m.leg,
+            vehicleKind: VEHICLE_KINDS.includes(m.vehicleKind) ? m.vehicleKind : '',
+            ref: String(m.ref || '').trim().slice(0, 80),
+          }))
+          .filter((m) => m.vehicleKind || m.ref),
       }));
+  }
+  // ── والخاناتُ بعدد الوحدات ───────────────────────────────────────────────
+  // العددُ يُكتب عند الإنشاء ويُعدَّل بعده؛ وفي الحالين تُفتَح لكلّ حاويةٍ
+  // خانتُها. وما كُتب فيه رقمٌ لا يسقط بتصغير العدد (راجع syncUnits).
+  if (out.containerCount !== undefined || out.containers) {
+    const count = out.containerCount !== undefined
+      ? out.containerCount
+      : ((existing && existing.containerCount) || (out.containers || []).length);
+    out.containers = syncUnits(out.containers || (existing && existing.containers) || [], count);
+    out.containerCount = out.containers.length;
   }
 
   // Derive totals from whichever cost/revenue values will end up stored.
@@ -120,6 +146,8 @@ const DISPLAY_FIELDS = [
   'containerCount', 'declarationNumber', 'periodYear', 'periodMonth', 'createdAt',
   'cancelled', 'isCompleted', 'returnDeadline', 'returnFreeDays',
   'customerParty', 'agentParty',
+  // نوعُ المعاملة، ورقمُ فاتورة العميل — به تُقرأ «حالة الفاتورة» في الجدول.
+  'cargoType', 'saleInvoiceNumber',
   // سطرُ الهاتف يعرض الشركةَ المصدّرة ويبحث فيها (configs.dart · customsCfg).
   'exporterCompany',
   // ── وصندوقُ بحثِ الويب يعمل في المتصفّح ────────────────────────────────
@@ -136,7 +164,23 @@ const SEARCH_ONLY = [
   'doNumber', 'exitPermitNumber', 'saberNumber', 'hsCode',
   'countryOfOrigin', 'legacySerial', 'notes', 'carrierName', 'unloadingLocation', 'assignedTo',
 ];
-const LIST_FIELDS = [...DISPLAY_FIELDS, ...DISPLAY_NESTED, ...SEARCH_ONLY, 'notesLog'].join(' ');
+// تُقرأ ليُحسَب منها ولا تُرسَل: منها نسبةُ المراحل وهل تنتظر فاتورةَ النقل.
+const DERIVE_ONLY = ['stagesDone', 'transportRoute', 'pipelineVersion', 'stageDone.doInvoicePaid', 'transportInvoiceReceived'];
+const LIST_FIELDS = [...DISPLAY_FIELDS, ...DISPLAY_NESTED, ...SEARCH_ONLY, ...DERIVE_ONLY, 'notesLog'].join(' ');
+
+/**
+ * ── الأرباحُ للإدارة لا للفريق ─────────────────────────────────────────────
+ * صاحبُ الشركة قالها: التحليلاتُ والأرباحُ شأنٌ إداريٌّ لا يخصّ فريقَ القسم.
+ * فمديرُ النظام ومديرُ القسم يريان الربحَ والهامش، وغيرُهما لا يصله الرقمُ
+ * أصلًا — يُحذَف هنا في الخادم، لا يُخفى في الشاشة.
+ */
+const MONEY_ROLES = ['super_admin', 'customs_manager'];
+const seesMoney = (req) => MONEY_ROLES.includes(req.user && req.user.role);
+// ربحُ المعاملة الواحدة: للإدارة، وللماليّة التي تراجعها من شاشتها.
+const PROFIT_ROLES = [...MONEY_ROLES, 'cfo', 'accounting_manager', 'accountant'];
+/** فُوترت ولم تُنهَ: تنتظر فاتورةَ النقل. */
+const awaitsTransportInvoice = (c) => !!c.saleInvoiceNumber && !c.isCompleted && !c.cancelled
+  && !(c.transportInvoiceReceived || hasTransportInvoice(c));
 
 /**
  * صفُّ القائمة كما يعبر الشبكة.
@@ -146,7 +190,7 @@ const LIST_FIELDS = [...DISPLAY_FIELDS, ...DISPLAY_NESTED, ...SEARCH_ONLY, 'note
  * يقرؤها بـ`?.` أو `|| ''` — فالغائبُ والفارغُ عنده سواء. أمّا الصفرُ والـ
  * `false` فيُرسَلان: «٠ حاوية» رقمٌ يُقرأ، و«غير مقفولة» حالةٌ تُرسَم.
  */
-function toWire(r) {
+function toWire(r, money = true) {
   const out = { _id: r._id };
   for (const k of DISPLAY_FIELDS) {
     const v = r[k];
@@ -155,15 +199,20 @@ function toWire(r) {
   if (r.costs) out.costs = { total: r.costs.total };
   if (r.revenue) {
     out.revenue = {
-      clearanceFee: r.revenue.clearanceFee, totalInvoiced: r.revenue.totalInvoiced, profit: r.revenue.profit,
+      clearanceFee: r.revenue.clearanceFee, totalInvoiced: r.revenue.totalInvoiced,
+      ...(money ? { profit: r.revenue.profit } : {}),
     };
   }
+  // النسبةُ والمرحلةُ التاليةُ محسوبتان بقاعدة المعاملة نفسِها (pipelineOf).
+  const p = pipelineOf(r);
+  out.pipeline = { percent: p.percent, done: p.done, total: p.total, next: p.next };
+  if (awaitsTransportInvoice(r)) out.awaitingTransportInvoice = true;
   const billing = {};
   if (r.billing && r.billing.invoiceStatus) billing.invoiceStatus = r.billing.invoiceStatus;
   if (r.billing && r.billing.ourInvoiceNumber) billing.ourInvoiceNumber = r.billing.ourInvoiceNumber;
   if (Object.keys(billing).length) out.billing = billing;
   // «أُرجعت» علمٌ يُرفع لا حالةٌ تُنقل: الشاشةُ تقرأ `stageDone?.containersReturned`.
-  if (r.stageDone && r.stageDone.containersReturned) out.stageDone = { containersReturned: true };
+  if ((r.stageDone && r.stageDone.containersReturned) || (r.stagesDone || []).includes('containers_returned')) out.stageDone = { containersReturned: true };
   if (r.lastNote) out.lastNote = r.lastNote;
   out.notesCount = r.notesCount;
   return out;
@@ -185,6 +234,8 @@ exports.getClearances = async (req, res) => {
       customerParty: 'customerParty', agentParty: 'agentParty',
     };
     for (const [k, path] of Object.entries(eq)) if (q[k]) filter[path] = q[k];
+    // ما سبق الحقلَ بلا نوعٍ وهو حاويات — فالحاوياتُ «ليست سيّارات» لا «تساوي حاويات».
+    if (CARGO_TYPES.includes(q.cargoType)) filter.cargoType = q.cargoType === 'vehicles' ? 'vehicles' : { $ne: 'vehicles' };
     // ── والقادمةُ لا تُخلَط بالجارية ─────────────────────────────────────
     // كلُّ ما يُقرأ في هذه الشاشة معاملاتٌ وقعت: عددُها، وربحُها، وما تأخّر
     // منها. فصفٌّ لم يصل بعدُ يُفسد كلَّ عدٍّ فيها. ولها قائمتُها: `upcoming=true`.
@@ -245,7 +296,8 @@ exports.getClearances = async (req, res) => {
     }
 
     // والتقليمُ بعد البحث لا قبلَه: البحثُ يقرأ ما لا يُرسَل.
-    res.json({ clearances: list.map(toWire) });
+    const money = seesMoney(req);
+    res.json({ clearances: list.map((r) => toWire(r, money)) });
   } catch (error) {
     console.error('getClearances error:', error);
     res.status(500).json({ message: 'Failed to load clearances' });
@@ -286,7 +338,9 @@ exports.getClearance = async (req, res) => {
   try {
     const clearance = await CustomsClearance.findById(req.params.id).populate('customer', 'name');
     if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
-    res.json({ clearance });
+    // الوثيقةُ تخرج بلا ربحها (راجع toJSON في النموذج)، ومَن يحقّ له يأخذه هنا.
+    const profit = PROFIT_ROLES.includes(req.user.role) ? Number(clearance.revenue && clearance.revenue.profit) || 0 : undefined;
+    res.json({ clearance, ...(profit !== undefined ? { profit } : {}) });
   } catch (error) {
     // معرّف مش صالح = «مش موجود»، مش عطل سيرفر. رابط قديم أو مقطوع كان بيرجع
     // 500 وكأن السيستم واقع.
@@ -337,6 +391,13 @@ exports.updateClearance = async (req, res) => {
   try {
     const existing = await CustomsClearance.findById(req.params.id).lean();
     if (!existing) return res.status(404).json({ message: 'Clearance not found' });
+    // ── تطبيقٌ قديمٌ يغيّر المرحلةَ من هنا ───────────────────────────────────
+    // المراحلُ صارت تُعلَّم من `PATCH /:id/stage` بقواعدها، و`stage` هنا لا
+    // تُكتب. فنسخةٌ قديمةٌ من التطبيق كانت ستُجاب «تمّ» ولم يُكتب شيء — وذلك
+    // أسوأُ من الرفض. فيُقال لها صراحةً. (شاشةُ الويب لا ترسل `stage` أصلًا.)
+    if (req.body.stage !== undefined && req.body.stage !== existing.stage) {
+      return res.status(400).json({ message: 'المراحلُ تُعلَّم من شاشتها الجديدة — حدِّث التطبيق إلى آخر نسخة.', code: 'STAGE_VIA_ENDPOINT' });
+    }
     const data = pick(req.body, existing);
     data.lastModifiedBy = req.user._id;
     await attachPartyFields(data);
@@ -345,21 +406,6 @@ exports.updateClearance = async (req, res) => {
 
     await logAudit({ user: req.user._id, action: 'update_customs_clearance', entity: 'CustomsClearance', entityId: clearance._id, changes: { after: { refNumber: clearance.refNumber, stage: clearance.stage } }, ipAddress: req.ip });
     try { emitToAll('customs:updated', { clearance }); } catch (e) {}
-
-    // Stage advance → notify the transaction's creator (unless they advanced it).
-    if (data.stage && existing.stage !== clearance.stage
-      && clearance.createdBy && String(clearance.createdBy) !== String(req.user._id)) {
-      try {
-        await createNotification({
-          recipient: clearance.createdBy,
-          type: 'status_changed',
-          title: 'تحديث معاملة تخليص',
-          message: `${clearance.refNumber} — المرحلة: ${clearance.stage}`,
-          relatedEntity: 'CustomsClearance',
-          relatedEntityId: clearance._id,
-        });
-      } catch (e) {}
-    }
 
     res.json({ clearance });
   } catch (error) {
@@ -376,6 +422,8 @@ exports.updateClearance = async (req, res) => {
  */
 exports.getAnalytics = async (req, res) => {
   try {
+    // الأرباحُ والتحليلاتُ للإدارة وحدَها — ولا يفتحها ختمُ قسمٍ ولا تأشيرةُ صفحة.
+    if (!seesMoney(req)) return res.status(403).json({ message: 'تحليلاتُ القسم لمدير النظام ومدير القسم', code: 'CUSTOMS_ANALYTICS_MANAGERS' });
     const q = req.query || {};
     const { year, from, to } = q;
     // والقادمةُ خارجَ الأرقام: لم تقع بعدُ فلا إيرادَ لها ولا تكلفة.
@@ -618,6 +666,27 @@ exports.updateAttachment = async (req, res) => {
   }
 };
 
+/**
+ * ملفٌّ واحدٌ على القرص قد يُذكَر في أكثر من موضع (مرفقاتُ المعاملة، إدخالُ
+ * مرحلةِ سداد، بندُ فاتورة). فلا يُمحى من القرص ما دام مذكورًا في أحدها.
+ */
+const fileStillUsed = (clearance, url) => !!url && (
+  (clearance.attachments || []).some((a) => a.fileUrl === url)
+  || (clearance.paymentStages || []).some((p) => p.fileUrl === url || (p.proofFiles || []).some((f) => f.fileUrl === url))
+  || (clearance.saleItems || []).some((x) => x.fileUrl === url)
+  || (clearance.transportInvoice && clearance.transportInvoice.fileUrl === url));
+const dropIfUnused = (clearance, urls) => {
+  for (const u of new Set(urls.filter(Boolean))) if (!fileStillUsed(clearance, u)) { try { deleteStoredFile(u); } catch (_) { /* */ } }
+};
+
+/**
+ * حذفُ مرفق — ومعه ما يشير إليه.
+ *
+ * كان الملفُّ يُحذَف من «مرفقات المعاملة» ويبقى إدخالُه في «مراحل السداد»
+ * يشير إلى ملفٍّ لم يعد موجودًا (والعكس: يُحذَف الإدخالُ وتبقى ورقتُه في
+ * المرفقات). وهما وجهان لشيءٍ واحد: فحذفُ أحدهما حذفٌ للآخر. والشاشةُ تقول
+ * ذلك قبل الضغط.
+ */
 exports.deleteAttachment = async (req, res) => {
   try {
     const clearance = await CustomsClearance.findById(req.params.id);
@@ -626,15 +695,31 @@ exports.deleteAttachment = async (req, res) => {
     if (!att) return res.status(404).json({ message: 'Attachment not found' });
 
     const url = att.fileUrl;
+    const name = att.title || att.fileName;
     att.deleteOne();
+    // وكلُّ ذكرٍ آخرَ للملفّ نفسِه في المرفقات.
+    for (const other of clearance.attachments.filter((a) => a.fileUrl === url)) other.deleteOne();
+    const removedStages = [];
+    for (const p of [...(clearance.paymentStages || [])]) {
+      if (p.fileUrl === url) { removedStages.push(p.label || p.key); p.deleteOne(); continue; }
+      if ((p.proofFiles || []).some((f) => f.fileUrl === url)) p.proofFiles = p.proofFiles.filter((f) => f.fileUrl !== url);
+    }
+    // بندُ الفاتورة يبقى بسعره — يُرفَع عنه مرفقُه وحدَه.
+    for (const x of clearance.saleItems || []) {
+      if (x.fileUrl === url) Object.assign(x, { fileUrl: '', fileName: '', mimeType: '', size: 0 });
+    }
+    if (clearance.transportInvoice && clearance.transportInvoice.fileUrl === url) {
+      Object.assign(clearance.transportInvoice, { fileUrl: '', fileName: '', mimeType: '', size: 0, receivedAt: null, receivedBy: null, receivedByName: '' });
+    }
     clearance.lastModifiedBy = req.user._id;
     await clearance.save();
-    deleteStoredFile(url);
+    dropIfUnused(clearance, [url]);
+    cache.clear('customs:');
 
-    await logAudit({ user: req.user._id, action: 'delete_customs_attachment', entity: 'CustomsClearance', entityId: clearance._id, changes: { before: { fileName: att.fileName } }, ipAddress: req.ip });
+    await logAudit({ user: req.user._id, action: 'delete_customs_attachment', entity: 'CustomsClearance', entityId: clearance._id, changes: { before: { fileName: name, paymentStages: removedStages } }, ipAddress: req.ip });
     try { emitToAll('customs:updated', { clearance }); } catch (e) {}
 
-    res.json({ clearance });
+    res.json({ clearance, removedStages });
   } catch (error) {
     res.status(500).json({ message: error.message || 'Failed to delete attachment' });
   }
@@ -693,10 +778,17 @@ exports.listParties = async (req, res) => {
       } },
     ]);
     const stats = new Map(agg.map((a) => [String(a._id), a]));
+    const money = seesMoney(req);
     res.json({
+      // الربحُ للإدارة وحدَها — راجع MONEY_ROLES.
+      money,
       parties: parties.map((p) => {
         const s = stats.get(String(p._id)) || {};
-        return { ...p, deals: s.deals || 0, revenue: Math.round(s.revenue || 0), profit: Math.round(s.profit || 0), containers: s.containers || 0, lastDealAt: s.last || null };
+        return {
+          ...p, deals: s.deals || 0, revenue: Math.round(s.revenue || 0),
+          ...(money ? { profit: Math.round(s.profit || 0) } : {}),
+          containers: s.containers || 0, lastDealAt: s.last || null,
+        };
       }),
     });
   } catch (e) {
@@ -767,7 +859,8 @@ exports.getPartyProfile = async (req, res) => {
     const field = partyField(party.kind);
 
     const deals = await CustomsClearance.find({ [field]: party._id })
-      .select('-documents -attachments -containers -paymentStages').sort({ createdAt: -1 }).lean();
+      .select('-documents -attachments -containers -paymentStages -stageLog -saleItems').sort({ createdAt: -1 }).lean();
+    const money = seesMoney(req);
 
     const live = deals.filter((d) => !d.cancelled);
     const sum = (f) => Math.round(live.reduce((t, d) => t + (Number(f(d)) || 0), 0));
@@ -796,27 +889,36 @@ exports.getPartyProfile = async (req, res) => {
 
     res.json({
       party,
+      money,
       totals: {
         deals: live.length,
         cancelled: deals.length - live.length,
         containers: sum((d) => d.containerCount),
         weight: sum((d) => d.totalWeight),
-        revenue, cost, profit,
-        margin: revenue ? Math.round((profit / revenue) * 1000) / 10 : 0,
-        avgProfit: live.length ? Math.round(profit / live.length) : 0,
+        revenue, cost,
+        ...(money ? {
+          profit,
+          margin: revenue ? Math.round((profit / revenue) * 1000) / 10 : 0,
+          avgProfit: live.length ? Math.round(profit / live.length) : 0,
+        } : {}),
         firstDealAt: deals.length ? deals[deals.length - 1].createdAt : null,
         lastDealAt: deals.length ? deals[0].createdAt : null,
         // ما لم يُفوتَر بعد — أوّلُ ما يُسأل عنه في ملفّ عميل.
         uninvoiced: live.filter((d) => (d.billing?.invoiceStatus || 'not_invoiced') !== 'invoiced').length,
       },
       byMonth: Object.values(byMonth).sort((a, b) => a.key.localeCompare(b.key))
-        .map((b) => ({ ...b, revenue: Math.round(b.revenue), profit: Math.round(b.profit) })),
+        .map((b) => ({ ...b, revenue: Math.round(b.revenue), profit: money ? Math.round(b.profit) : undefined })),
       byStage: tally((d) => d.stage),
       byPort: tally((d) => d.port),
       byCounterparty: tally((d) => (party.kind === 'customer' ? d.shippingAgent : d.customerName)),
       // عقودُنا معه — تُقرأ في ملفّه لا في شاشةٍ أخرى. راجع CustomsContract.
       contracts: await CustomsContract.find({ party: party._id }).sort({ createdAt: -1 }).lean(),
-      deals,
+      deals: deals.map((d) => {
+        const p = pipelineOf(d);
+        const out = { ...d, pipeline: { percent: p.percent, next: p.next } };
+        if (!money && out.revenue) out.revenue = { ...out.revenue, profit: undefined, transportNet: undefined };
+        return out;
+      }),
     });
   } catch (e) {
     console.error('getPartyProfile error:', e);
@@ -1215,6 +1317,8 @@ exports.addPaymentStage = async (req, res) => {
       });
     }
 
+    // فاتورةُ النقل وصلت لمعاملةٍ فُوترت؟ فهي تُنهى الآن — راجع settleClosure.
+    if (key === REQUIRED_STAGE_KEY && stored) settleClosure(clearance, req);
     clearance.lastModifiedBy = req.user._id;
     await clearance.save();
     await logAudit({
@@ -1273,6 +1377,7 @@ exports.updatePaymentStage = async (req, res) => {
       }
     }
 
+    if (entry.key === REQUIRED_STAGE_KEY && req.body.dataUrl) settleClosure(clearance, req);
     clearance.lastModifiedBy = req.user._id;
     await clearance.save();
     try { emitToAll('customs:updated', { clearance }); } catch (e) {}
@@ -1283,7 +1388,7 @@ exports.updatePaymentStage = async (req, res) => {
   }
 };
 
-/** حذفُ إدخال. ورقتُه تبقى في مرفقات المعاملة — الورقةُ وقعت ولا تُنكَر. */
+/** حذفُ إدخال — وورقتُه تُحذَف معه من مرفقات المعاملة (راجع deleteAttachment). */
 exports.deletePaymentStage = async (req, res) => {
   try {
     const clearance = await CustomsClearance.findById(req.params.id);
@@ -1291,12 +1396,15 @@ exports.deletePaymentStage = async (req, res) => {
     const entry = clearance.paymentStages.id(req.params.entryId);
     if (!entry) return res.status(404).json({ message: 'الإدخال غير موجود' });
     const label = entry.label;
+    const urls = [entry.fileUrl, ...(entry.proofFiles || []).map((f) => f.fileUrl)].filter(Boolean);
     entry.deleteOne();
+    for (const a of clearance.attachments.filter((x) => urls.includes(x.fileUrl))) a.deleteOne();
     clearance.lastModifiedBy = req.user._id;
     await clearance.save();
+    dropIfUnused(clearance, urls);
     await logAudit({
       user: req.user._id, action: 'delete_customs_payment_stage', entity: 'CustomsClearance',
-      entityId: clearance._id, changes: { before: { stage: label } }, ipAddress: req.ip,
+      entityId: clearance._id, changes: { before: { stage: label, files: urls.length } }, ipAddress: req.ip,
     });
     try { emitToAll('customs:updated', { clearance }); } catch (e) {}
     cache.clear('customs:');
@@ -1386,7 +1494,7 @@ exports.listClearanceInvoices = async (req, res) => {
     const rows = await CustomsClearance.find(f)
       .sort({ saleInvoiceAt: -1 })
       .limit(Math.min(500, Math.max(1, Number(req.query.limit) || 200)))
-      .select('refNumber customerName declarationNumber billOfLading saleInvoiceNumber saleInvoiceAt saleVatRate saleItems paymentStages isCompleted completedAt')
+      .select('refNumber blNumber customerName declarationNumber billOfLading saleInvoiceNumber saleInvoiceAt saleVatRate saleItems paymentStages isCompleted completedAt cancelled transportInvoice transportInvoiceReceived')
       .lean();
     const { buildClearanceInvoice } = require('../utils/customsInvoice');
     const invoices = rows.map((c) => {
@@ -1395,7 +1503,9 @@ exports.listClearanceInvoices = async (req, res) => {
         _id: c._id, refNumber: c.refNumber, customerName: c.customerName || '',
         declarationNumber: c.declarationNumber || '', billOfLading: c.billOfLading || '',
         invoiceNumber: c.saleInvoiceNumber, invoiceAt: c.saleInvoiceAt,
-        completedAt: c.completedAt,
+        completedAt: c.completedAt, isCompleted: !!c.isCompleted, blNumber: c.blNumber || '',
+        // فُوترت ولم تصل فاتورةُ نقلها — تُلوَّن بالأحمر عند الماليّة أيضًا.
+        awaitingTransportInvoice: awaitsTransportInvoice(c),
         lines: inv.lines.length, passThrough: inv.passThrough, billed: inv.billed, totals: inv.totals,
       };
     });
@@ -1406,15 +1516,199 @@ exports.listClearanceInvoices = async (req, res) => {
         net: Math.round((a.net + i.totals.net) * 100) / 100,
         vat: Math.round((a.vat + i.totals.vat) * 100) / 100,
         grand: Math.round((a.grand + i.totals.grand) * 100) / 100,
-      }), { count: 0, net: 0, vat: 0, grand: 0 }),
+        awaitingTransportInvoice: a.awaitingTransportInvoice + (i.awaitingTransportInvoice ? 1 : 0),
+      }), { count: 0, net: 0, vat: 0, grand: 0, awaitingTransportInvoice: 0 }),
     });
   } catch (error) {
     return sendMongooseError(res, error, 'تعذّر تحميل الفواتير');
   }
 };
 
+const whoIs = (req) => [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.name || '';
+
+/**
+ * ── الإنهاءُ يتبع فاتورةَ النقل ────────────────────────────────────────────
+ * معاملةٌ صدرت فاتورتُها ووصلت فاتورةُ نقلها (أو قيل إنّها لا تُنتظَر) انتهت:
+ * لا يبقى فيها عملٌ ولا ورقٌ منتظَر. فتُنهى في اللحظة التي يجتمع فيها الأمران
+ * — لا بضغطةٍ ثالثةٍ تُنسى فتبقى المعاملةُ مفتوحةً وهي منتهية.
+ * تُنادى قبل الحفظ؛ وتردّ هل أنهتها.
+ */
+function settleClosure(clearance, req) {
+  if (clearance.isCompleted || clearance.cancelled || !clearance.saleInvoiceNumber) return false;
+  if (!hasTransportInvoice(clearance)) return false;
+  clearance.isCompleted = true;
+  clearance.completedAt = new Date();
+  clearance.completedBy = req.user._id;
+  clearance.completedByName = whoIs(req);
+  return true;
+}
+
+/** يكتب بنودَ فاتورة العميل من جسم الطلب. يردّ نصَّ الخطأ أو null. */
+async function writeSaleItems(clearance, sent, req) {
+  const allowed = await saleItemDefs();
+  const byKey = new Map(allowed.map((x) => [x.key, x]));
+  const prev = new Map((clearance.saleItems || []).map((x) => [x.key, x]));
+  const built = [];
+  for (const raw of sent) {
+    const key = String(raw?.key || '').trim();
+    const def = byKey.get(key);
+    if (!def) return `بندٌ غير معروف: «${key || '—'}»`;
+    const amount = Number(raw?.amount);
+    // بندٌ بلا سعرٍ في فاتورةٍ تذهب إلى الماليّة مبلغٌ يُطالَب به ولا يُعرَف.
+    if (!Number.isFinite(amount) || amount < 0) return `اكتب سعرَ «${def.nameAr}»`;
+    const item = {
+      key, label: def.nameAr || key, amount: Math.round(amount * 100) / 100,
+      note: String(raw?.note || '').trim(),
+      addedBy: req.user._id, addedByName: whoIs(req), addedAt: new Date(),
+    };
+    if (raw?.file) {
+      try {
+        const saved = saveUploadFile(raw.file, 'customs', raw.fileName || def.nameAr);
+        Object.assign(item, { fileUrl: saved.fileUrl, fileName: saved.fileName, mimeType: saved.mimeType, size: saved.size });
+        // والمرفقُ يُوجَد مع بقيّة ورق المعاملة كذلك — مكانٌ واحدٌ لكلّ الورق.
+        clearance.attachments.push({
+          title: `فاتورة العميل — ${item.label}`,
+          fileUrl: saved.fileUrl, fileName: saved.fileName, mimeType: saved.mimeType, size: saved.size,
+          uploadedBy: req.user._id, uploadedByName: whoIs(req), uploadedAt: new Date(),
+        });
+      } catch (err) { return `مرفقُ «${def.nameAr}»: ${err.message}`; }
+    } else {
+      // ما أُرفِق في إصدارٍ سابقٍ يبقى: إعادةُ الإصدار لتصحيح سعرٍ لا تُسقط الورق.
+      const old = prev.get(key);
+      const src = raw?.fileUrl ? raw : old;
+      if (src?.fileUrl) {
+        Object.assign(item, {
+          fileUrl: String(src.fileUrl), fileName: String(src.fileName || ''),
+          mimeType: String(src.mimeType || ''), size: Number(src.size) || 0,
+        });
+      }
+    }
+    built.push(item);
+  }
+  clearance.saleItems = built;
+  return null;
+}
+
+/**
+ * PATCH /:id/invoice — إصدارُ فاتورة العميل (الفوترة).
+ *
+ * ── وفاتورةُ النقل ليست شرطًا ──────────────────────────────────────────────
+ * كان الإصدارُ لا يمرّ قبل «فاتورة النقل» بسعرها ومرفقها. وهي تتأخّر عند
+ * الناقل، فتتأخّر معها فاتورةُ العميل كلُّها. فصار: تُصدَر الفاتورةُ بما هو
+ * معروف، وتذهب إلى الماليّة كأيّ فاتورة، وتبقى المعاملةُ معلَّمةً بالأحمر
+ * «بانتظار فاتورة النقل» حتى تُرفَق — فتُنهى عندها.
+ */
+exports.issueInvoice = async (req, res) => {
+  try {
+    const clearance = await CustomsClearance.findById(req.params.id);
+    if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
+    if (clearance.cancelled) return res.status(400).json({ message: 'المعاملةُ ملغاة — لا تُفوتَر' });
+    if (clearance.upcoming) return res.status(400).json({ message: 'معاملةٌ قادمةٌ لم تبدأ — حوِّلها إلى جاريةٍ أوّلًا' });
+
+    const sent = Array.isArray(req.body.saleItems) ? req.body.saleItems : [];
+    const err = await writeSaleItems(clearance, sent, req);
+    if (err) return res.status(400).json({ message: err });
+    const hasPassThrough = (clearance.paymentStages || []).some((p) => Number(p.amount) > 0);
+    if (!clearance.saleItems.length && !hasPassThrough) {
+      return res.status(400).json({ message: 'فاتورةٌ بلا بنود — اكتب سعرَ بندٍ واحدٍ على الأقلّ' });
+    }
+
+    clearance.saleVatRate = 0.15;
+    const first = !clearance.saleInvoiceNumber;
+    if (first) {
+      clearance.saleInvoiceNumber = await nextSaleInvoiceNumber();
+      clearance.saleInvoiceAt = new Date();
+    }
+    // ── و«حالة الفاتورة» تتبع الإصدار ──────────────────────────────────────
+    // كانت خانةً تُكتب بيدٍ فتقول «غير مفوتر» لمعاملةٍ صدرت فاتورتُها.
+    const { todayKey } = require('../utils/companyDay');
+    if (!clearance.billing) clearance.billing = {};
+    clearance.billing.invoiceStatus = 'مفوترة';
+    if (!clearance.billing.ourInvoiceNumber) clearance.billing.ourInvoiceNumber = clearance.saleInvoiceNumber;
+    if (!clearance.billing.invoicedAt) clearance.billing.invoicedAt = todayKey();
+    // والمرحلةُ الأخيرةُ في الدورة هي الفاتورةُ نفسُها.
+    const { done, route } = readStages(clearance);
+    done.add('invoiced');
+    clearance.stagesDone = CustomsClearance.STAGES.filter((k) => done.has(k));
+    clearance.transportRoute = route;
+    clearance.pipelineVersion = 2;
+    clearance.stage = 'invoiced';
+    if (first) clearance.stageLog.push({ key: 'invoiced', done: true, by: req.user._id, byName: whoIs(req), at: new Date() });
+
+    const closed = settleClosure(clearance, req);
+    clearance.lastModifiedBy = req.user._id;
+    await clearance.save();
+    await logAudit({
+      user: req.user._id, action: closed ? 'complete_customs_clearance' : 'invoice_customs_clearance',
+      entity: 'CustomsClearance', entityId: clearance._id,
+      changes: { after: { refNumber: clearance.refNumber, invoice: clearance.saleInvoiceNumber, awaitingTransportInvoice: !closed } }, ipAddress: req.ip,
+    });
+    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
+    cache.clear('customs:'); try { cache.clear('finance:'); } catch (_) { /* */ }
+    res.json({ clearance, closed, awaitingTransportInvoice: !closed });
+  } catch (error) {
+    return sendMongooseError(res, error, 'تعذّر إصدار الفاتورة');
+  }
+};
+
+/**
+ * POST /:id/transport-invoice — وصلت فاتورةُ النقل (أو لا تُنتظَر).
+ *   { dataUrl, fileName, date? }      تُرفَق، وتظهر في مرفقات المعاملة
+ *   { notRequired: true, note? }      نُقلت بسيّارات الشركة — لا فاتورةَ ناقل
+ * ومتى كانت المعاملةُ مفوترةً أُنهيت في الحال.
+ */
+exports.receiveTransportInvoice = async (req, res) => {
+  try {
+    const clearance = await CustomsClearance.findById(req.params.id);
+    if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
+    if (!clearance.transportInvoice) clearance.transportInvoice = {};
+    const t = clearance.transportInvoice;
+    if (req.body.notRequired === true) {
+      t.notRequired = true;
+      t.note = String(req.body.note || '').trim().slice(0, 300);
+    } else {
+      if (!req.body.dataUrl) return res.status(400).json({ message: 'أرفِق فاتورةَ النقل' });
+      const date = String(req.body.date || '').trim();
+      if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ message: 'التاريخ غير صالح' });
+      let stored;
+      try { stored = saveUploadFile(req.body.dataUrl, 'customs', req.body.fileName || 'فاتورة النقل'); }
+      catch (e) { return res.status(400).json({ message: e.message }); }
+      const old = t.fileUrl;
+      Object.assign(t, stored, { date, notRequired: false });
+      for (const a of clearance.attachments.filter((x) => old && x.fileUrl === old)) a.deleteOne();
+      clearance.attachments.push({
+        ...stored, title: 'فاتورة النقل', stage: '',
+        uploadedBy: req.user._id, uploadedByName: whoIs(req), uploadedAt: new Date(),
+      });
+      if (old) dropIfUnused(clearance, [old]);
+    }
+    t.receivedAt = new Date(); t.receivedBy = req.user._id; t.receivedByName = whoIs(req);
+    const closed = settleClosure(clearance, req);
+    clearance.lastModifiedBy = req.user._id;
+    await clearance.save();
+    await logAudit({
+      user: req.user._id, action: closed ? 'complete_customs_clearance' : 'update_customs_clearance',
+      entity: 'CustomsClearance', entityId: clearance._id,
+      changes: { after: { refNumber: clearance.refNumber, transportInvoice: t.notRequired ? 'not required' : t.fileName } }, ipAddress: req.ip,
+    });
+    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
+    cache.clear('customs:'); try { cache.clear('finance:'); } catch (_) { /* */ }
+    res.json({ clearance, closed });
+  } catch (error) {
+    return sendMongooseError(res, error, 'تعذّر حفظ فاتورة النقل');
+  }
+};
+
+/**
+ * PATCH /:id/complete — إعادةُ الفتح، أو الإنهاءُ بيدٍ لمعاملةٍ اكتملت شروطُها.
+ * (الإنهاءُ يقع وحدَه عند اجتماع الفاتورة وفاتورة النقل — راجع settleClosure؛
+ *  وهذا لما أُعيد فتحُه ثمّ أُريد إنهاؤه ثانيةً.)
+ */
 exports.completeClearance = async (req, res) => {
   try {
+    // تطبيقٌ قديمٌ يرسل البنودَ مع الإقفال: هو إصدارُ فاتورة.
+    if (req.body.completed !== false && Array.isArray(req.body.saleItems)) return exports.issueInvoice(req, res);
+
     const clearance = await CustomsClearance.findById(req.params.id);
     if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
 
@@ -1425,87 +1719,16 @@ exports.completeClearance = async (req, res) => {
       clearance.completedBy = null;
       clearance.completedByName = '';
     } else {
-      const stages = await allowedStages();
-      const def = stages.find((s) => s.key === REQUIRED_STAGE_KEY);
-      const name = def?.nameAr || 'فاتورة النقل';
-      const ok = (clearance.paymentStages || []).some(
-        (p) => p.key === REQUIRED_STAGE_KEY && String(p.date || '').trim() && String(p.fileUrl || '').trim(),
-      );
-      if (!ok) {
-        return res.status(400).json({
-          message: `لا تُقفَل المعاملة قبل «${name}»: أضِفها بتاريخٍ ومرفقٍ معًا ثمّ أعِد المحاولة.`,
-          missingStage: REQUIRED_STAGE_KEY,
-        });
+      if (!clearance.saleInvoiceNumber) {
+        return res.status(400).json({ message: 'أصدِر فاتورةَ العميل أوّلًا — ثمّ تُنهى المعاملةُ حين تُرفَق فاتورةُ النقل.', code: 'NOT_INVOICED' });
       }
-      // ── والإقفالُ يكتب فاتورةَ العميل ───────────────────────────────────
-      // مراحلُ السداد ما دفعناه؛ وهنا يُسأل عن **سعر البيع** لكلّ بند: فاتورةُ
-      // النقل والرسومُ وحجزُ الموعد. والقاعدةُ في utils/customsInvoice:
-      // بنودُ السداد كما هي + بنودُ البيع × ١٫١٥.
-      const sent = Array.isArray(req.body.saleItems) ? req.body.saleItems : null;
-      if (sent) {
-        const allowed = await saleItemDefs();
-        const byKey = new Map(allowed.map((x) => [x.key, x]));
-        const built = [];
-        for (const raw of sent) {
-          const key = String(raw?.key || '').trim();
-          const def = byKey.get(key);
-          if (!def) return res.status(400).json({ message: `بندٌ غير معروف: «${key || '—'}»` });
-          const amount = Number(raw?.amount);
-          // ── والسعرُ مطلوبٌ لا اختياريّ ───────────────────────────────────
-          // بندٌ بلا سعرٍ في فاتورةٍ تذهب إلى الماليّة يعني مبلغًا يُطالَب به
-          // ولا يُعرَف. فمن أدرج البندَ أدرج سعرَه.
-          if (!Number.isFinite(amount) || amount < 0) {
-            return res.status(400).json({ message: `اكتب سعرَ «${def.nameAr}»` });
-          }
-          const item = {
-            key, label: def.nameAr || key, amount: Math.round(amount * 100) / 100,
-            note: String(raw?.note || '').trim(),
-            addedBy: req.user._id,
-            addedByName: [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || '',
-            addedAt: new Date(),
-          };
-          if (raw?.file) {
-            try {
-              const saved = saveUploadFile(raw.file, 'customs', raw.fileName || def.nameAr);
-              Object.assign(item, {
-                fileUrl: saved.fileUrl, fileName: saved.fileName, mimeType: saved.mimeType, size: saved.size,
-              });
-              // والمرفقُ يُوجَد مع بقيّة ورق المعاملة كذلك — مكانٌ واحدٌ لكلّ الورق.
-              clearance.attachments.push({
-                title: `فاتورة العميل — ${item.label}`,
-                fileUrl: saved.fileUrl, fileName: saved.fileName,
-                mimeType: saved.mimeType, size: saved.size,
-                uploadedBy: req.user._id,
-              });
-            } catch (err) {
-              return res.status(400).json({ message: `مرفقُ «${def.nameAr}»: ${err.message}` });
-            }
-          } else if (raw?.fileUrl) {
-            Object.assign(item, {
-              fileUrl: String(raw.fileUrl), fileName: String(raw.fileName || ''),
-              mimeType: String(raw.mimeType || ''), size: Number(raw.size) || 0,
-            });
-          }
-          built.push(item);
-        }
-        if (!built.some((x) => x.key === REQUIRED_STAGE_KEY)) {
-          return res.status(400).json({
-            message: 'فاتورةُ العميل تحتاج سعرَ «فاتورة النقل» على الأقلّ',
-            missingSaleItem: REQUIRED_STAGE_KEY,
-          });
-        }
-        clearance.saleItems = built;
-        clearance.saleVatRate = 0.15;
-        if (!clearance.saleInvoiceNumber) {
-          clearance.saleInvoiceNumber = await nextSaleInvoiceNumber();
-          clearance.saleInvoiceAt = new Date();
-        }
+      if (!hasTransportInvoice(clearance)) {
+        return res.status(400).json({ message: 'تُنهى المعاملةُ حين تُرفَق «فاتورة النقل» — أرفِقها أو قل إنّها لا تُنتظَر.', missingStage: REQUIRED_STAGE_KEY });
       }
-
       clearance.isCompleted = true;
       clearance.completedAt = new Date();
       clearance.completedBy = req.user._id;
-      clearance.completedByName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.name || '';
+      clearance.completedByName = whoIs(req);
     }
 
     clearance.lastModifiedBy = req.user._id;
@@ -1519,12 +1742,302 @@ exports.completeClearance = async (req, res) => {
     cache.clear('customs:');
     res.json({ clearance });
   } catch (error) {
-    return sendMongooseError(res, error, 'تعذّر إقفال المعاملة');
+    return sendMongooseError(res, error, 'تعذّر إنهاء المعاملة');
+  }
+};
+
+/**
+ * PATCH /:id/stage — تعليمُ مرحلةٍ أو رفعُ علامتها. { key, done }
+ *
+ * القواعدُ هنا لا في الشاشة — وهي ثلاث:
+ *   · مرحلتا الميناء تتنافيان: تعليمُ إحداهما يختار الطريقَ ويُغلِق الأخرى.
+ *   · ما ليس من طريق المعاملة مُغلَق: لا تفريغَ ولا تخزينَ لمن نقل إلى العميل
+ *     مباشرةً، ولا إرجاعَ حاوياتٍ في معاملة سيّارات.
+ *   · «إصدار الفاتورة» لا تُعلَّم بيد: تُعلَّم بإصدارها.
+ */
+exports.setStage = async (req, res) => {
+  try {
+    const clearance = await CustomsClearance.findById(req.params.id);
+    if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
+    const key = String(req.body.key || '');
+    if (!CustomsClearance.STAGES.includes(key)) return res.status(400).json({ message: 'مرحلةٌ غير معروفة' });
+    const on = req.body.done !== false;
+    if (key === 'invoiced') {
+      return res.status(400).json({ message: 'هذه المرحلةُ تُعلَّم بإصدار الفاتورة — من «إصدار الفاتورة» أعلى الصفحة.', code: 'STAGE_AUTO' });
+    }
+
+    const before = clearance.stage;
+    let { done, route } = readStages(clearance);
+    const isPortLeg = key === 'transport_to_yard' || key === 'transport_to_customer';
+    if (on) {
+      const reason = lockReason(key, route, clearance.cargoType);
+      if (reason) return res.status(400).json({ message: `هذه المرحلةُ مُغلَقة: ${reason}`, code: 'STAGE_LOCKED' });
+      done.add(key);
+      if (isPortLeg) route = key === 'transport_to_yard' ? 'yard' : 'customer';
+    } else {
+      done.delete(key);
+      // رفعُ علامةِ الطريق يفتح الاختيارَ من جديد — وما بُني عليه يسقط معه.
+      if (isPortLeg) { route = ''; done.delete('unloaded_stored'); done.delete('yard_to_customer'); }
+    }
+    clearance.stagesDone = CustomsClearance.STAGES.filter((k) => done.has(k));
+    clearance.transportRoute = route;
+    clearance.pipelineVersion = 2;
+    // «أين هي الآن»: ما عُلِّم للتوّ، أو آخرُ ما بقي معلَّمًا إن رُفعت علامة.
+    const lastDone = [...CustomsClearance.STAGES].reverse().find((k) => done.has(k) && !lockReason(k, route, clearance.cargoType));
+    clearance.stage = on ? key : (lastDone || 'papers_received');
+    clearance.stageLog.push({ key, done: on, by: req.user._id, byName: whoIs(req), at: new Date() });
+    if (clearance.stageLog.length > 300) clearance.stageLog = clearance.stageLog.slice(-300);
+    clearance.lastModifiedBy = req.user._id;
+    await clearance.save();
+    cache.clear('customs:');
+
+    await logAudit({ user: req.user._id, action: 'update_customs_clearance', entity: 'CustomsClearance', entityId: clearance._id, changes: { after: { refNumber: clearance.refNumber, stage: key, done: on } }, ipAddress: req.ip });
+    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
+    res.json({ clearance });
+
+    // مَن أنشأ المعاملةَ يُخبَر بتقدّمها — إن لم يكن هو مَن علّم.
+    if (on && before !== clearance.stage && clearance.createdBy && String(clearance.createdBy) !== String(req.user._id)) {
+      try {
+        const { CUSTOMS_STAGE_AR } = require('../config/customsStages');
+        await createNotification({
+          recipient: clearance.createdBy, type: 'status_changed', title: 'تحديث معاملة تخليص',
+          message: `${clearance.blNumber || clearance.refNumber} — ${CUSTOMS_STAGE_AR[key] || key}`,
+          relatedEntity: 'CustomsClearance', relatedEntityId: clearance._id,
+        });
+      } catch (e) { /* الإشعارُ زيادة */ }
+    }
+  } catch (error) {
+    if (res.headersSent) return undefined;
+    return sendMongooseError(res, error, 'تعذّر تعليم المرحلة');
+  }
+};
+
+/**
+ * GET /release-sheets?numbers=a,b — أيُّ أرقام كشوف التخريج موجودٌ في سير عمل
+ * التشغيل. الرقمُ يُكتب في خانة الحاوية حين تُنقَل بسيّارة الشركة، وهو نفسُه
+ * `reportNumber` هناك: فيُقال للموظّف في الحال أمرتبطٌ هو أم لا.
+ */
+exports.releaseSheets = async (req, res) => {
+  try {
+    const numbers = [...new Set(String(req.query.numbers || '').split(',').map((x) => x.trim()).filter(Boolean))].slice(0, 300);
+    if (!numbers.length) return res.json({ found: {} });
+    const OperationsWorkflow = require('../models/OperationsWorkflow');
+    const rows = await OperationsWorkflow.find({ reportNumber: { $in: numbers } }).select('reportNumber').lean();
+    res.json({ found: Object.fromEntries(rows.map((r) => [r.reportNumber, String(r._id)])) });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر التحقّق من كشوف التخريج' });
   }
 };
 
 module.exports.REQUIRED_STAGE_KEY = REQUIRED_STAGE_KEY;
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  لوحةُ القسم — التشغيلُ لا الأرباح
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * GET /dashboard — ما يحتاجه الفريقُ ليعمل: كم معاملةً قادمةً ومفتوحةً ومغلقة،
+ * وأين تقف كلٌّ منها، ومع كم عميلٍ نعمل الآن، وما الذي ينتظر فاتورةَ نقله،
+ * وحركةُ كلّ فردٍ في الفريق. **ولا رقمَ ماليًّا فيها**: الأرباحُ والإيراداتُ في
+ * «تحليلات قسم التخليص» وهي للإدارة وحدَها.
+ *
+ * الفلاتر: customerParty, agentParty, carrierParty, branch, cargoType, member
+ * (مَن أنشأ), from/to (تاريخُ الإنشاء). وكلُّ بطاقةٍ تُحسَب على ما بقي بعدها —
+ * فمَن اختار عميلًا قرأ قادمَه ومفتوحَه ومغلقَه هو.
+ *
+ * والصفوفُ تُرسَل مع الأرقام: كلُّ بطاقةٍ تُضغَط فتُصفّي الجدولَ تحتها، بلا
+ * نداءٍ ثانٍ ولا رقمٍ لا يُعرَف ممّ تكوّن.
+ */
+exports.getDashboard = async (req, res) => {
+  try {
+    const q = req.query || {};
+    const mongoose = require('mongoose');
+    const { todayKey, startOfDay, endOfDay, DAY_MS } = require('../utils/companyDay');
+    const { stageLabel } = require('../config/customsStages');
+    const User = require('../models/User');
+    const { JpTask } = require('../models/JpModels');
+    const { JP_SECTIONS } = require('../config/jpSections');
+    const jp = JP_SECTIONS.customs;
+    const isManager = req.user.role === 'super_admin' || jp.managerRoles.includes(req.user.role);
+
+    const filter = {};
+    for (const k of ['customerParty', 'agentParty', 'carrierParty']) {
+      if (q[k] && mongoose.isValidObjectId(q[k])) filter[k] = q[k];
+    }
+    if (q.branch === 'jeddah' || q.branch === 'dammam') filter.branch = q.branch;
+    if (CARGO_TYPES.includes(q.cargoType)) filter.cargoType = q.cargoType === 'vehicles' ? 'vehicles' : { $ne: 'vehicles' };
+    if (q.member && mongoose.isValidObjectId(q.member)) filter.createdBy = q.member;
+    if (q.from || q.to) {
+      filter.createdAt = {};
+      if (q.from) filter.createdAt.$gte = startOfDay(q.from);
+      filter.createdAt.$lte = q.to ? endOfDay(q.to) : new Date();
+    }
+
+    const ck = `customs:dash:${isManager ? 'm' : String(req.user._id)}:${JSON.stringify(Object.keys(q).sort().map((k) => [k, q[k]]))}`;
+    const body = await cache.wrap(ck, 30000, async () => {
+      const since = new Date(Date.now() - 30 * DAY_MS);
+      const oid = (v) => new mongoose.Types.ObjectId(String(v));
+      const aggMatch = { ...filter };
+      for (const k of ['customerParty', 'agentParty', 'carrierParty', 'createdBy']) if (aggMatch[k]) aggMatch[k] = oid(aggMatch[k]);
+      // فلترُ «مَن أنشأ» لا يُطبَّق على حركة الفريق: الحركةُ تُقرأ لكلّ فردٍ على حدة.
+      const actMatch = { ...aggMatch }; delete actMatch.createdBy;
+      const act = (path, by, at) => CustomsClearance.aggregate([
+        { $match: { ...actMatch, [`${path}.0`]: { $exists: true } } },
+        { $project: { [path]: 1 } }, { $unwind: `$${path}` },
+        { $match: { [`${path}.${at}`]: { $gte: since } } },
+        { $group: { _id: `$${path}.${by}`, n: { $sum: 1 }, last: { $max: `$${path}.${at}` } } },
+      ]);
+      const jpVisible = { scope: 'section', section: 'customs' };
+      if (!isManager) jpVisible.$or = [{ assignedTo: req.user._id }, { createdBy: req.user._id }];
+
+      const [rows, users, notes, pays, ticks, pendingPay, tasks] = await Promise.all([
+        CustomsClearance.find(filter)
+          .select('refNumber blNumber customerName customerParty shippingAgent agentParty carrierName carrierParty branch cargoType containerCount '
+            + 'stage stagesDone transportRoute pipelineVersion stageDone.doInvoicePaid stageDone.containersReturned saleInvoiceNumber saleInvoiceAt '
+            + 'transportInvoiceReceived isCompleted completedAt completedBy cancelled upcoming expectedDate returnDeadline createdAt createdBy updatedAt declarationNumber port')
+          .sort({ createdAt: -1 }).lean(),
+        User.find({ role: { $in: jp.memberRoles }, isActive: { $ne: false } }).select('firstName lastName role').lean(),
+        act('notesLog', 'by', 'at'),
+        act('paymentStages', 'addedBy', 'addedAt'),
+        act('stageLog', 'by', 'at'),
+        CustomsClearance.aggregate([
+          { $match: { ...aggMatch, cancelled: { $ne: true }, 'paymentStages.payStatus': 'pending' } },
+          { $project: { paymentStages: 1 } }, { $unwind: '$paymentStages' },
+          { $match: { 'paymentStages.payStatus': 'pending' } },
+          { $group: { _id: '$_id', n: { $sum: 1 } } },
+        ]),
+        JpTask.find(jpVisible).select('status deadlineAt assignedTo links title').lean(),
+      ]);
+
+      const today = todayKey();
+      const soon = new Date(startOfDay(today).getTime() + 7 * DAY_MS).toISOString().slice(0, 10);
+      const pendingBy = new Map(pendingPay.map((x) => [String(x._id), x.n]));
+      const now = Date.now();
+      const taskState = (t) => (t.status === 'done' ? 'done' : (t.deadlineAt && new Date(t.deadlineAt).getTime() < now ? 'overdue' : 'open'));
+      const tasksByClearance = new Map();
+      for (const t of tasks) {
+        if (t.status === 'done') continue;
+        for (const l of t.links || []) {
+          if (l.kind !== 'clearance') continue;
+          tasksByClearance.set(String(l.ref), (tasksByClearance.get(String(l.ref)) || 0) + 1);
+        }
+      }
+      const nameOf = (u) => (u ? [u.firstName, u.lastName].filter(Boolean).join(' ').trim() : '');
+      const userName = new Map(users.map((u) => [String(u._id), nameOf(u)]));
+
+      const out = rows.map((c) => {
+        const p = pipelineOf(c);
+        const bucket = c.cancelled ? 'cancelled' : c.upcoming ? 'upcoming' : c.isCompleted ? 'closed' : 'open';
+        const returned = p.steps.some((s) => s.key === 'containers_returned' && s.done) || !!(c.stageDone && c.stageDone.containersReturned);
+        const needsReturn = bucket === 'open' && c.cargoType !== 'vehicles' && !returned;
+        const d = String(c.returnDeadline || '').slice(0, 10);
+        const row = {
+          _id: c._id, refNumber: c.refNumber, blNumber: c.blNumber || '', customerName: c.customerName || '',
+          customerParty: c.customerParty || null, shippingAgent: c.shippingAgent || '', carrierName: c.carrierName || '',
+          branch: c.branch, cargoType: c.cargoType === 'vehicles' ? 'vehicles' : 'containers', units: Number(c.containerCount) || 0,
+          bucket, percent: p.percent, next: bucket === 'open' ? p.next : '',
+          nextLabel: bucket === 'open' && p.next ? stageLabel(p.next, c.cargoType) : '',
+          route: p.route,
+          createdAt: c.createdAt, createdBy: c.createdBy || null, createdByName: userName.get(String(c.createdBy || '')) || '',
+          expectedDate: c.expectedDate || '', completedAt: c.completedAt || null,
+          invoiceNumber: c.saleInvoiceNumber || '',
+          // «فُوترت» تشمل ما فُوتر قبل النظام (مرحلتُه معلَّمةٌ بلا رقمِ فاتورةٍ هنا).
+          invoiced: !!c.saleInvoiceNumber || p.steps.some((s) => s.key === 'invoiced' && s.done),
+          awaitingTransportInvoice: awaitsTransportInvoice(c),
+          returnDeadline: d,
+          returnState: !needsReturn || !d ? '' : (d < today ? 'overdue' : d <= soon ? 'due' : ''),
+          pendingPayments: pendingBy.get(String(c._id)) || 0,
+          openTasks: tasksByClearance.get(String(c._id)) || 0,
+        };
+        if (bucket === 'upcoming' && row.expectedDate) row.expectedState = row.expectedDate < today ? 'overdue' : '';
+        return row;
+      });
+
+      const open = out.filter((r) => r.bucket === 'open');
+      const count = (f) => out.filter(f).length;
+      const customersOf = (list) => new Set(list.map((r) => String(r.customerParty || r.customerName || '')).filter(Boolean));
+
+      // أين تقف المفتوحةُ: بالمرحلة التي تنتظرها كلٌّ منها.
+      const stageOrder = CustomsClearance.STAGES;
+      const byNext = new Map();
+      for (const r of open) {
+        const k = r.next || 'done';
+        const e = byNext.get(k) || { key: k, label: k === 'done' ? 'اكتملت مراحلُها — تنتظر الإنهاء' : stageLabel(k), count: 0, units: 0 };
+        e.count += 1; e.units += r.units; byNext.set(k, e);
+      }
+      const byStage = [...byNext.values()].sort((a, b) => (a.key === 'done' ? 99 : stageOrder.indexOf(a.key)) - (b.key === 'done' ? 99 : stageOrder.indexOf(b.key)));
+
+      const custMap = new Map();
+      for (const r of out) {
+        if (r.bucket === 'cancelled') continue;
+        const k = String(r.customerParty || r.customerName || '—');
+        const e = custMap.get(k) || { key: k, party: r.customerParty || null, name: r.customerName || '—', upcoming: 0, open: 0, closed: 0, awaiting: 0, units: 0 };
+        e[r.bucket] += 1; if (r.awaitingTransportInvoice) e.awaiting += 1; if (r.bucket === 'open') e.units += r.units;
+        custMap.set(k, e);
+      }
+
+      // ── الفريق: ما على كلّ فردٍ الآن، وما فعله في ثلاثين يومًا ─────────────
+      const idx = (list) => new Map(list.map((x) => [String(x._id), x]));
+      const N = idx(notes); const P = idx(pays); const S = idx(ticks);
+      const monthStart = startOfDay(`${today.slice(0, 7)}-01`).getTime();
+      // الأرقامُ على المعاملات كلِّها لا على ما صفّاه فلترُ «مَن أنشأ».
+      const scope = filter.createdBy
+        ? await CustomsClearance.find((({ createdBy, ...rest }) => rest)(filter)).select('createdBy completedBy completedAt isCompleted cancelled upcoming').lean()
+          .then((all) => all.map((c) => ({ ...c, bucket: c.cancelled ? 'cancelled' : c.upcoming ? 'upcoming' : c.isCompleted ? 'closed' : 'open' })))
+        : rows.map((c, i) => ({ createdBy: c.createdBy, completedBy: c.completedBy, completedAt: c.completedAt, bucket: out[i].bucket }));
+      const team = users.map((u) => {
+        const id = String(u._id);
+        const mine = tasks.filter((t) => String(t.assignedTo) === id);
+        const last = [N.get(id)?.last, P.get(id)?.last, S.get(id)?.last].filter(Boolean).map((d) => new Date(d).getTime());
+        return {
+          _id: u._id, name: nameOf(u), role: u.role, isManager: jp.managerRoles.includes(u.role),
+          openCreated: scope.filter((c) => String(c.createdBy || '') === id && c.bucket === 'open').length,
+          upcomingCreated: scope.filter((c) => String(c.createdBy || '') === id && c.bucket === 'upcoming').length,
+          closedThisMonth: scope.filter((c) => String(c.completedBy || '') === id && c.completedAt && new Date(c.completedAt).getTime() >= monthStart).length,
+          stages30: S.get(id)?.n || 0, notes30: N.get(id)?.n || 0, payments30: P.get(id)?.n || 0,
+          tasksOpen: mine.filter((t) => taskState(t) !== 'done').length,
+          tasksOverdue: mine.filter((t) => taskState(t) === 'overdue').length,
+          lastActivityAt: last.length ? new Date(Math.max(...last)) : null,
+        };
+      }).sort((a, b) => (b.stages30 + b.notes30 + b.payments30) - (a.stages30 + a.notes30 + a.payments30));
+
+      return {
+        today,
+        counts: {
+          total: count((r) => r.bucket !== 'cancelled'),
+          upcoming: count((r) => r.bucket === 'upcoming'),
+          upcomingOverdue: count((r) => r.bucket === 'upcoming' && r.expectedState === 'overdue'),
+          open: open.length,
+          closed: count((r) => r.bucket === 'closed'),
+          cancelled: count((r) => r.bucket === 'cancelled'),
+          awaitingTransportInvoice: count((r) => r.awaitingTransportInvoice),
+          notInvoiced: open.filter((r) => !r.invoiced).length,
+          activeCustomers: customersOf(open).size,
+          customers: customersOf(out.filter((r) => r.bucket !== 'cancelled')).size,
+          openUnits: open.reduce((a, r) => a + r.units, 0),
+          openContainers: open.filter((r) => r.cargoType === 'containers').reduce((a, r) => a + r.units, 0),
+          openVehicles: open.filter((r) => r.cargoType === 'vehicles').reduce((a, r) => a + r.units, 0),
+          returnOverdue: count((r) => r.returnState === 'overdue'),
+          returnDue: count((r) => r.returnState === 'due'),
+          pendingPayments: open.reduce((a, r) => a + r.pendingPayments, 0),
+          withPendingPayments: open.filter((r) => r.pendingPayments > 0).length,
+          tasksOpen: tasks.filter((t) => taskState(t) !== 'done').length,
+          tasksOverdue: tasks.filter((t) => taskState(t) === 'overdue').length,
+          closedThisMonth: out.filter((r) => r.bucket === 'closed' && r.completedAt && new Date(r.completedAt).getTime() >= monthStart).length,
+        },
+        byStage,
+        byCustomer: [...custMap.values()].sort((a, b) => b.open - a.open || b.upcoming - a.upcoming || b.closed - a.closed),
+        byBranch: ['jeddah', 'dammam'].map((b) => ({ key: b, upcoming: count((r) => r.branch === b && r.bucket === 'upcoming'), open: count((r) => r.branch === b && r.bucket === 'open'), closed: count((r) => r.branch === b && r.bucket === 'closed') })),
+        team,
+        rows: out,
+      };
+    });
+    res.json({ ...body, canManage: isManager, canSeeAnalytics: seesMoney(req) });
+  } catch (e) {
+    console.error('customs getDashboard:', e);
+    res.status(500).json({ message: 'تعذّر تحميل لوحة القسم' });
+  }
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  الملاحظات — سطرٌ يُضاف، وآخرُه يُقرأ في الجدول

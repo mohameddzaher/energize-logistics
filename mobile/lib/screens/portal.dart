@@ -4,6 +4,7 @@ import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'customs_detail.dart' show customsStageLabel;
 import 'package:printing/printing.dart';
 
 /// بوابة العميل / المورد — the mobile half of the customer portal.
@@ -27,19 +28,24 @@ const _statusLabels = <String, (String, String, Color)>{
   'cancelled': ('ملغاة', 'Cancelled', Color(0xFF64748B)),
 };
 
-const _customsStages = <(String, String, String)>[
-  ('papers_received', 'استلام الأوراق', 'Papers received'),
-  ('declaration_paid', 'سداد البيان الجمركي', 'Declaration paid'),
-  ('do_requested', 'طلب إذن التسليم', 'Delivery order requested'),
-  ('do_linked', 'ربط إذن التسليم', 'Delivery order linked'),
-  ('port_fees_paid', 'سداد أجور الموانئ', 'Port fees paid'),
-  ('unloading_fees_paid', 'سداد أجور التفريغ', 'Unloading fees paid'),
-  ('transport_order', 'أمر النقل', 'Transport order'),
-  ('containers_transported', 'نقل الحاويات', 'Containers transported'),
-  ('unloaded_stored', 'التفريغ والتخزين', 'Unloaded & stored'),
-  ('containers_returned', 'إرجاع الحاويات', 'Containers returned'),
-  ('invoiced', 'الفوترة', 'Invoiced'),
-];
+/// A customs file as the server computed it: its `pipeline` minus the steps
+/// locked for this file (a route not taken, container return on a vehicles
+/// file). Without a pipeline only the current stage text is known.
+({List<Map<String, dynamic>> steps, String cargo, String label, double pct, String count}) _customsProgress(Map<String, dynamic> c) {
+  final p = c['pipeline'] is Map ? Map<String, dynamic>.from(c['pipeline']) : const <String, dynamic>{};
+  final cargo = '${c['cargoType'] ?? p['cargoType'] ?? 'containers'}';
+  final steps = [
+    for (final s in (p['steps'] is List ? p['steps'] as List : const []))
+      if (s is Map && s['locked'] != true) Map<String, dynamic>.from(s),
+  ];
+  final stage = '${c['stage'] ?? ''}';
+  return (
+    steps: steps, cargo: cargo,
+    label: stage.isEmpty ? '—' : customsStageLabel(stage, cargo),
+    pct: (_n(p['percent']) / 100).clamp(0, 1).toDouble(),
+    count: p.isEmpty ? '' : '${_n(p['done']).round()}/${_n(p['total']).round()}',
+  );
+}
 
 num _n(dynamic v) => v is num ? v : 0;
 String _money(dynamic v) => _n(v).round().toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
@@ -60,7 +66,6 @@ Widget _statusChip(dynamic status) {
   return Chip2(tr(s.$1, s.$2), s.$3);
 }
 
-int _stageIndex(String? stage) => _customsStages.indexWhere((s) => s.$1 == stage);
 
 /// The portal shell: one screen with a tab per service the partner actually has.
 class PortalScreen extends StatefulWidget {
@@ -521,7 +526,8 @@ class _CustomsTabState extends State<_CustomsTab> {
   }
 
   void _open(Map<String, dynamic> c) {
-    final idx = _stageIndex(c['stage']?.toString());
+    final pr = _customsProgress(c);
+    final vehicles = pr.cargo == 'vehicles';
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -532,8 +538,7 @@ class _CustomsTabState extends State<_CustomsTab> {
             Text((c['refNumber'] ?? c['blNumber'] ?? '—').toString(),
                 style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
             const SizedBox(height: 6),
-            Text('${tr('المرحلة', 'Stage')} ${idx + 1}/${_customsStages.length} — '
-                '${idx >= 0 ? tr(_customsStages[idx].$2, _customsStages[idx].$3) : '—'}',
+            Text('${tr('المرحلة', 'Stage')}${pr.count.isEmpty ? '' : ' ${pr.count}'} — ${pr.label}',
                 style: const TextStyle(fontSize: 12.5, color: T.orange, fontWeight: FontWeight.w700)),
             const SizedBox(height: 14),
             ...[
@@ -543,7 +548,7 @@ class _CustomsTabState extends State<_CustomsTab> {
               (tr('إذن التسليم', 'Delivery order'), c['doNumber']),
               (tr('تصريح الخروج', 'Exit permit'), c['exitPermitNumber']),
               (tr('الميناء', 'Port'), c['port']),
-              (tr('عدد الحاويات', 'Containers'), c['containerCount']),
+              (vehicles ? tr('عدد السيّارات', 'Vehicles') : tr('عدد الحاويات', 'Containers'), c['containerCount']),
               (tr('الوزن الإجمالي', 'Total weight'), c['totalWeight']),
               (tr('قيمة الفاتورة', 'Invoice value'), c['invoiceValue']),
               (tr('الشركة المصدّرة', 'Exporter'), c['exporterCompany']),
@@ -564,15 +569,16 @@ class _CustomsTabState extends State<_CustomsTab> {
             const SizedBox(height: 14),
             Text(tr('مسار التخليص', 'Clearance pipeline'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
             const SizedBox(height: 8),
-            ..._customsStages.asMap().entries.map((e) {
-              final passed = idx >= e.key;
+            if (pr.steps.isEmpty) Text(pr.label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+            ...pr.steps.map((e) {
+              final passed = e['done'] == true;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Row(children: [
                   Icon(passed ? Icons.check_circle : Icons.radio_button_unchecked,
                       size: 16, color: passed ? T.success : T.inkFaint),
                   const SizedBox(width: 8),
-                  Expanded(child: Text(tr(e.value.$2, e.value.$3),
+                  Expanded(child: Text(customsStageLabel('${e['key']}', pr.cargo),
                       style: TextStyle(fontSize: 12.5, color: passed ? T.ink : T.inkFaint,
                           fontWeight: passed ? FontWeight.w600 : FontWeight.w400))),
                 ]),
@@ -604,8 +610,7 @@ class _CustomsTabState extends State<_CustomsTab> {
         itemCount: _rows.length,
         itemBuilder: (ctx, i) {
           final c = _rows[i];
-          final idx = _stageIndex(c['stage']?.toString());
-          final pct = idx < 0 ? 0.0 : (idx + 1) / _customsStages.length;
+          final pr = _customsProgress(c);
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Pressable(
@@ -615,16 +620,16 @@ class _CustomsTabState extends State<_CustomsTab> {
                   Row(children: [
                     Expanded(child: Text((c['refNumber'] ?? c['blNumber'] ?? '—').toString(),
                         style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
-                    Chip2('${_n(c['containerCount']).round()} ${tr('حاوية', 'ctnr')}', T.violet),
+                    Chip2('${_n(c['containerCount']).round()} ${pr.cargo == 'vehicles' ? tr('سيّارة', 'veh') : tr('حاوية', 'ctnr')}', T.violet),
                   ]),
                   const SizedBox(height: 6),
-                  Text(idx >= 0 ? tr(_customsStages[idx].$2, _customsStages[idx].$3) : '—',
+                  Text(pr.label,
                       style: const TextStyle(fontSize: 12, color: T.orange, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 8),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
-                      value: pct, minHeight: 5,
+                      value: pr.pct, minHeight: 5,
                       backgroundColor: T.line,
                       valueColor: const AlwaysStoppedAnimation(T.orange),
                     ),

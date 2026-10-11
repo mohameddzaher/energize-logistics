@@ -12,6 +12,7 @@ import { useRef, useState } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
+import { ordinals, downloadName } from '@/lib/customsPipeline';
 import { Paperclip, FileText, Image as ImageIcon, Trash2, Download, Loader2 } from 'lucide-react';
 
 export interface ClearanceAttachment {
@@ -30,9 +31,13 @@ const MAX_BYTES = 20 * 1024 * 1024;
 const kb = (n?: number) => (n ? `${Math.max(1, Math.round(n / 1024))} KB` : '');
 
 export default function ClearanceAttachments({
-  clearanceId, items, stages, stageLabel, canEdit, onChange,
+  clearanceId, refNumber, items, stages, stageLabel, canEdit, onChange, paymentFiles,
 }: {
   clearanceId: string;
+  /** رقمُ البوليصة أو المعاملة — به يُسمّى الملفُّ عند تنزيله. */
+  refNumber?: string;
+  /** روابطُ الملفّات التي يملكها إدخالٌ في «مراحل السداد» — حذفُها حذفٌ له. */
+  paymentFiles?: string[];
   items: ClearanceAttachment[];
   stages: string[];
   stageLabel: (s: string) => string;
@@ -42,12 +47,16 @@ export default function ClearanceAttachments({
   const { lang } = useLanguage();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
-  const { notify } = useDialog();
+  const { notify, confirm } = useDialog();
   const ref = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState('');
 
   const list = Array.isArray(items) ? items : [];
+  // ما تكرّر اسمُه يُرقَّم: «سداد أجور الموانئ (١)» و«(٢)» — لا اسمان متطابقان
+  // لا يُعرَف أيُّهما أيّ.
+  const nums = ordinals(list, (a) => a.title || a.fileName || '');
+  const numOf = (a: ClearanceAttachment) => nums[list.indexOf(a)] || 0;
 
   // المجموعاتُ مرتّبةٌ بترتيب الدورة نفسِه، والعامُّ آخرًا.
   const groups: [string, ClearanceAttachment[]][] = [
@@ -96,7 +105,16 @@ export default function ClearanceAttachments({
   };
 
   const remove = async (att: ClearanceAttachment) => {
-    if (!window.confirm(t(`حذف «${att.title || att.fileName}» نهائيًّا؟`, `Delete “${att.title || att.fileName}” permanently?`))) return;
+    const n = numOf(att);
+    const name = `${att.title || att.fileName}${n ? ` (${n})` : ''}`;
+    const owned = (paymentFiles || []).includes(att.fileUrl);
+    if (!(await confirm({
+      title: t(`حذف «${name}» نهائيًّا؟`, `Delete “${name}” permanently?`),
+      message: owned
+        ? t('هذا الملفُّ مرفقُ إدخالٍ في «مراحل السداد» — سيُحذَف الإدخالُ معه.', 'This file belongs to a payment-stage entry — that entry is removed with it.')
+        : t('يُحذَف الملفُّ من المعاملة ولا يُستعاد.', 'The file is removed from the transaction and cannot be restored.'),
+      confirmLabel: t('حذف', 'Delete'), tone: 'danger',
+    }))) return;
     try {
       const d = await api.delete<any>(`/api/customs-clearance/${clearanceId}/attachments/${att._id}`);
       if (d?.clearance) onChange(d.clearance);
@@ -106,9 +124,10 @@ export default function ClearanceAttachments({
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold">
+        <h3 className="text-[14px] font-bold text-slate-900 flex items-center gap-2">
+          <span className="w-7 h-7 rounded-lg bg-[#f37121]/10 text-[#f37121] flex items-center justify-center"><Paperclip className="w-4 h-4" /></span>
           {t('مرفقات المعاملة', 'Transaction attachments')}
-          <span className="ms-2 text-slate-400 text-xs font-normal">{list.length}</span>
+          <span className="text-slate-400 text-xs font-normal">{list.length}</span>
         </h3>
         {canEdit && (
           <div className="flex items-center gap-2">
@@ -152,6 +171,11 @@ export default function ClearanceAttachments({
                     ) : (
                       <span className="flex-1 min-w-0 truncate text-[13px] font-semibold text-slate-800">{a.title || a.fileName}</span>
                     )}
+                    {numOf(a) > 0 && (
+                      <span className="shrink-0 rounded bg-slate-200 px-1.5 py-0.5 text-[10.5px] font-bold text-slate-700" title={t('تكرّر هذا الاسم — هذا رقمُه بين أمثاله', 'Repeated title — its number among them')}>
+                        {numOf(a)}
+                      </span>
+                    )}
                     <span className="text-[11px] text-slate-400 shrink-0 hidden sm:inline">{kb(a.size)}</span>
                     {a.uploadedByName ? <span className="text-[11px] text-slate-400 shrink-0 hidden md:inline">{a.uploadedByName}</span> : null}
                     {canEdit && (
@@ -161,7 +185,8 @@ export default function ClearanceAttachments({
                         {stages.map((s) => <option key={s} value={s}>{stageLabel(s)}</option>)}
                       </select>
                     )}
-                    <a href={a.fileUrl} target="_blank" rel="noopener noreferrer" download={a.fileName || undefined}
+                    <a href={a.fileUrl} target="_blank" rel="noopener noreferrer"
+                      download={downloadName(refNumber, a.title || a.fileName, numOf(a), a.fileName, a.fileUrl)}
                       className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-white shrink-0" title={t('تنزيل', 'Download')}>
                       <Download className="w-4 h-4" />
                     </a>

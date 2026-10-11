@@ -56,6 +56,7 @@ import '../screens/ops_private.dart';
 import '../screens/b2c_wallet.dart';
 import '../screens/light_transport_housing.dart';
 import '../screens/my_profile.dart';
+import '../screens/customs_dashboard.dart';
 import '../screens/customs_guide.dart';
 import '../screens/cash_wallet.dart';
 import '../screens/wallet_dashboard.dart';
@@ -446,7 +447,10 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'Customs', arTitle: 'التخليص الجمركي', enTitle: 'Customs', icon: Icons.directions_boat_outlined,
       roles: const [..._admins, 'operations_manager', 'customs_manager', 'customs_officer'],
       pages: [
-        AppPage('التحليلات', 'Analytics', Icons.insights_outlined, (c) => SectionDashScreen(spec: customsDashSpec), path: '/system/customs/analytics'),
+        // لوحةُ القسم للفريق كلِّه وبلا أرقامٍ ماليّة؛ والتحليلاتُ (الأرباح) للإدارة
+        // وحدَها — الخادمُ يردّ غيرَ مدير النظام ومدير القسم بـ٤٠٣.
+        AppPage('لوحة القسم', 'Section Dashboard', Icons.space_dashboard_outlined, (c) => const CustomsDashboardScreen(), path: '/system/customs/dashboard'),
+        if (role == 'super_admin' || role == 'customs_manager') AppPage('تحليلات قسم التخليص', 'Customs Analytics', Icons.insights_outlined, (c) => SectionDashScreen(spec: customsDashSpec), path: '/system/customs/analytics'),
         AppPage('الدليل', 'Guide', Icons.menu_book_outlined, (c) => const CustomsGuideScreen(), path: '/system/customs'),
         AppPage('التخليص الجمركي', 'Clearances', Icons.directions_boat_outlined, (c) => ResourceScreen(config: customsCfg), path: '/system/customs'),
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: customsCustomersCfg), path: '/system/customs/customers'),

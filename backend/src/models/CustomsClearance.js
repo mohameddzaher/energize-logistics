@@ -1,27 +1,72 @@
 const mongoose = require('mongoose');
 
-// The 11 ordered stages of a customs-clearance transaction (دورة التخليص الجمركى).
-// Kept here so the controller/validation and the frontend pipeline share one source.
+/**
+ * ── مراحلُ دورة التخليص ────────────────────────────────────────────────────
+ * كانت إحدى عشرةَ مرحلةً على خطٍّ واحد. والدورةُ ليست خطًّا: بعد «أمر النقل»
+ * تتفرّع — إمّا من الميناء إلى الساحة (فيتبعها التفريغُ والتخزين ثمّ نقلٌ ثانٍ
+ * إلى العميل) وإمّا من الميناء إلى العميل مباشرةً (فلا تفريغَ ولا تخزين).
+ * ومعاملةُ السيّارات لا إرجاعَ حاوياتٍ فيها أصلًا.
+ *
+ * فالقائمةُ هنا كلُّ ما قد يقع، و`pipelineOf` أدناه تقول ما يَلزم **هذه**
+ * المعاملةَ منها وما أُغلِق عليها — ومنها تُحسَب النسبة، فلا تُعاقَب معاملةٌ
+ * على مرحلةٍ ليست من طريقها.
+ */
 const STAGES = [
   'papers_received',        // استلام الأوراق
-  'declaration_paid',       // طباعة البيان الجمركى و سداده
-  'do_requested',           // إرسال أوراق الوكيل و طلب فاتورة إذن التسليم
+  'declaration_paid',       // سداد البيان الجمركي
+  'do_requested',           // طلب فاتورة إذن التسليم
+  'do_invoice_paid',        // سداد فاتورة إذن التسليم
   'do_linked',              // ربط إذن التسليم
-  'port_fees_paid',         // طباعة فاتورة أجور الموانى و سدادها
-  'unloading_fees_paid',    // طباعة فاتورة أجور التفريغ و سدادها
-  'transport_order',        // عمل أمر نقل
-  'containers_transported', // نقل الحاويات الى العميل او الساحة
-  'unloaded_stored',        // التفريغ و التخزين
-  'containers_returned',    // إرجاع الحاويات الى الوكيل
-  'invoiced',               // عمل الفواتير
+  'port_fees_paid',         // سداد أجور الموانئ
+  'unloading_fees_paid',    // سداد أجور التفريغ
+  'transport_order',        // أمر النقل
+  'transport_to_yard',      // النقل من الميناء إلى الساحة
+  'transport_to_customer',  // النقل من الميناء إلى العميل
+  'unloaded_stored',        // التفريغ والتخزين (طريقُ الساحة وحدَه)
+  'yard_to_customer',       // النقل من الساحة إلى العميل (طريقُ الساحة وحدَه)
+  'containers_returned',    // إرجاع الحاويات (لا في معاملات السيّارات)
+  'invoiced',               // إصدار الفاتورة — تُعلَّم بإصدارها لا بيد
 ];
+// مفتاحُ ما قبل التفريع: «نقل الحاويات إلى العميل أو الساحة». يبقى مقبولًا في
+// `stage` لأنّ معاملاتٍ قديمةً واقفةٌ عليه، ويُقرأ بمعناه الجديد في `pipelineOf`.
+const LEGACY_STAGES = ['containers_transported'];
+// الترتيبُ الخطّيُّ القديم — به تُقرأ معاملةٌ تحمل مرحلتَها الحاليّةَ بلا علامات.
+const LINEAR_V1 = [
+  'papers_received', 'declaration_paid', 'do_requested', 'do_linked', 'port_fees_paid',
+  'unloading_fees_paid', 'transport_order', 'containers_transported', 'unloaded_stored',
+  'containers_returned', 'invoiced',
+];
+// المراحلُ التي هي نقلٌ — لكلٍّ منها بيانُ سيّاراته (راجع containers.moves).
+const TRANSPORT_LEGS = ['transport_to_yard', 'transport_to_customer', 'yard_to_customer'];
+const CARGO_TYPES = ['containers', 'vehicles'];
+const VEHICLE_KINDS = ['energize', 'external'];
 
 const customsClearanceSchema = new mongoose.Schema(
   {
     refNumber: { type: String, unique: true, index: true },
 
     branch: { type: String, enum: ['jeddah', 'dammam'], default: 'jeddah', index: true },
-    stage: { type: String, enum: STAGES, default: 'papers_received', index: true },
+    stage: { type: String, enum: [...STAGES, ...LEGACY_STAGES], default: 'papers_received', index: true },
+    /**
+     * ── نوعُ المعاملة: حاوياتٌ أم سيّارات ────────────────────────────────────
+     * يُختار عند الإنشاء. والدورةُ واحدةٌ في الحالين إلّا «إرجاع الحاويات»:
+     * السيّارةُ تُسلَّم ولا يعود منها شيءٌ إلى الوكيل، فتُغلَق تلك المرحلةُ من
+     * أوّل يوم. و`containerCount` عددُ الوحدات في الحالين.
+     */
+    cargoType: { type: String, enum: CARGO_TYPES, default: 'containers', index: true },
+    // أيُّ الطريقين سلكت بعد أمر النقل — يُكتب حين تُعلَّم إحدى مرحلتَي الميناء.
+    transportRoute: { type: String, enum: ['', 'yard', 'customer'], default: '' },
+    // ٢ = عُلِّمت مراحلُها بالقائمة الجديدة. وما دونه يُقرأ بقاعدة القديم.
+    // بلا قيمةٍ افتراضيّة عمدًا: الافتراضيُّ يُكتب على القديم عند قراءته.
+    pipelineVersion: { type: Number },
+    // مَن علّم أيَّ مرحلةٍ ومتى — به تُقرأ حركةُ الفريق في لوحة القسم.
+    stageLog: [{
+      key: { type: String, default: '' },
+      done: { type: Boolean, default: true },
+      by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      byName: { type: String, default: '' },
+      at: { type: Date, default: Date.now },
+    }],
     // ── وكلُّ مرحلةٍ تُعلَّم وحدَها ─────────────────────────────────────────
     // كانت المراحلُ المنجزةُ تُشتقّ من موضع الحاليّة: مَن اختار الثامنةَ عُدَّت
     // السبعُ قبلها منجزةً وإن لم تجرِ واحدةٌ منها. والدورةُ لا تسير دائمًا على
@@ -319,12 +364,49 @@ const customsClearanceSchema = new mongoose.Schema(
     // Container-level detail (Sheet2 grain)
     containers: [
       {
-        containerNumber: { type: String, trim: true }, // الحاوية
+        containerNumber: { type: String, trim: true }, // رقمُ الحاوية (أو هيكلِ السيّارة)
         exitPermit: { type: Number, default: 0 },      // تصريح خروج
         declaration: { type: String, trim: true },     // البيان
         notes: { type: String, trim: true },
+        // تاريخُ إرجاع هذه الحاوية إلى الوكيل — لكلّ حاويةٍ تاريخُها.
+        returnDate: { type: String, trim: true, default: '' }, // YYYY-MM-DD
+        /**
+         * بيانُ نقلها في كلّ مرحلةِ نقل: بسيّارةِ الشركة فيُكتب رقمُ كشف
+         * التخريج (وهو `reportNumber` في سير عمل التشغيل)، أو بسيّارةٍ
+         * خارجيّةٍ فيُكتب رقمُ فاتورتها.
+         */
+        moves: [{
+          _id: false,
+          leg: { type: String, enum: TRANSPORT_LEGS },
+          vehicleKind: { type: String, enum: [...VEHICLE_KINDS, ''], default: '' },
+          ref: { type: String, trim: true, default: '' },
+        }],
       },
     ],
+
+    /**
+     * ── فاتورةُ النقل: تُفوتَر المعاملةُ بدونها وتُنهى بها ────────────────────
+     * كان الإقفالُ والفوترةُ فعلًا واحدًا لا يمرّ قبل فاتورة النقل، وهي تتأخّر
+     * عند الناقل أسابيع — فتبقى المعاملةُ بلا فاتورةٍ للعميل وعملُها منتهٍ.
+     * ففُصِلا: الفاتورةُ تصدر متى اكتمل العمل وتذهب إلى الماليّة، والمعاملةُ
+     * تُنهى حين تصل فاتورةُ النقل وتُرفَق. وما بينهما يُعَدّ ويُلوَّن بالأحمر
+     * في لوحة القسم حتى لا يُنسى.
+     */
+    transportInvoice: {
+      fileUrl: { type: String, default: '' },
+      fileName: { type: String, trim: true, default: '' },
+      mimeType: { type: String, trim: true, default: '' },
+      size: { type: Number, default: 0 },
+      date: { type: String, trim: true, default: '' },
+      // نُقلت بسيّارات الشركة فلا فاتورةَ ناقلٍ تُنتظَر — يُقال صراحةً.
+      notRequired: { type: Boolean, default: false },
+      note: { type: String, trim: true, default: '' },
+      receivedAt: { type: Date, default: null },
+      receivedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      receivedByName: { type: String, trim: true, default: '' },
+    },
+    // مشتقٌّ يُحفَظ عند كلّ حفظ (راجع hasTransportInvoice) ليُفلتَر به في القاعدة.
+    transportInvoiceReceived: { type: Boolean, default: false, index: true },
 
     // ── مرفقاتُ المعاملة ────────────────────────────────────────────────────
     // ورقُ التخليص هو المعاملة: البوليصة والبيان وفاتورة إذن التسليم وإيصال
@@ -364,8 +446,124 @@ const customsClearanceSchema = new mongoose.Schema(
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     lastModifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
-  { timestamps: true }
+  // `pipeline` (المراحلُ كما تَلزم هذه المعاملة ونسبتُها) تخرج مع كلّ جواب.
+  // و`revenue.profit` لا تخرج في جوابٍ ولا في بثٍّ حيّ: الربحُ للإدارة والماليّة،
+  // والمعاملةُ تُرسَل إلى كلّ من فتح شاشتَها ويُبَثّ تحديثُها للجميع. فمَن يحقّ
+  // له الرقمُ يأخذه في حقلٍ على حدة (راجع getClearance)، لا مدفونًا في الوثيقة.
+  {
+    timestamps: true,
+    id: false,
+    toJSON: {
+      virtuals: true,
+      transform(doc, ret) {
+        if (ret.revenue && typeof ret.revenue === 'object') delete ret.revenue.profit;
+        return ret;
+      },
+    },
+  }
 );
+
+/**
+ * وصلت فاتورةُ النقل؟ ثلاثةُ أبوابٍ تُدخلها: خانتُها الخاصّة، أو إدخالُ «فاتورة
+ * النقل» في مراحل السداد بمرفقه، أو بندُها في فاتورة العميل بمرفقه.
+ */
+function hasTransportInvoice(c) {
+  if (!c) return false;
+  const t = c.transportInvoice || {};
+  if (t.notRequired || t.fileUrl) return true;
+  if ((c.paymentStages || []).some((p) => p && p.key === 'transportInvoice' && p.fileUrl)) return true;
+  return (c.saleItems || []).some((x) => x && x.key === 'transportInvoice' && x.fileUrl);
+}
+
+/** لماذا أُغلِقت هذه المرحلةُ على هذه المعاملة — أو '' إن كانت من طريقها. */
+function lockReason(key, route, cargoType) {
+  if (key === 'containers_returned' && cargoType === 'vehicles') return 'معاملةُ سيّاراتٍ — لا إرجاعَ حاوياتٍ فيها';
+  if (key === 'transport_to_customer' && route === 'yard') return 'اختير النقلُ من الميناء إلى الساحة';
+  if (key === 'transport_to_yard' && route === 'customer') return 'اختير النقلُ من الميناء إلى العميل';
+  if (key === 'unloaded_stored' || key === 'yard_to_customer') {
+    if (route === 'customer') return 'النقلُ إلى العميل مباشرةً — لا تفريغَ ولا تخزين';
+    if (route !== 'yard') return 'تُتاح بعد اختيار «النقل من الميناء إلى الساحة»';
+  }
+  return '';
+}
+
+/**
+ * ما عُلِّم من المراحل والطريقُ المسلوك — بقاعدةٍ واحدةٍ للجديد والقديم.
+ *
+ * المعاملاتُ التي عُلِّمت قبل التفريع تحمل «نقل الحاويات» مفتاحًا واحدًا، ولا
+ * تحمل «سداد فاتورة إذن التسليم» أصلًا. فتُقرأ بما يدلّ عليه ما بعدها: مَن
+ * فرّغ وخزّن مرّ بالساحة، ومَن ربط الإذنَ سدّد فاتورتَه. ولا يُكتب ذلك في
+ * القاعدة إلّا عند أوّل تعليمٍ جديد (راجع setStage) — القراءةُ لا تُعدِّل.
+ */
+function readStages(c) {
+  const done = new Set((c && c.stagesDone) || []);
+  let route = (c && c.transportRoute) || '';
+  if (c && c.pipelineVersion !== 2) {
+    // ── وأقدمُ من ذلك: مرحلةٌ بلا علامات ───────────────────────────────────
+    // ما استُورد من الماستر (وما أُدخل قبل أن تُعلَّم المراحلُ واحدةً واحدة)
+    // يحمل مرحلتَه وحدَها و`stagesDone` فارغة. والمرحلةُ في الماستر آخرُ ما
+    // **بلغته** المعاملة («فُوترت»، «أُرجعت الحاويات») — فهي وما قبلها مُنجَز.
+    // وإلّا عُدَّت معاملةٌ بلغت الفوترةَ واقفةً عند «استلام الأوراق» بصفرٍ في المئة.
+    if (!done.size && c.stage && c.stage !== 'papers_received') {
+      const at = LINEAR_V1.indexOf(c.stage);
+      for (let i = 0; i <= at; i += 1) done.add(LINEAR_V1[i]);
+    }
+    if (done.has('containers_transported') && !route) {
+      route = done.has('unloaded_stored') ? 'yard' : 'customer';
+      done.add(route === 'yard' ? 'transport_to_yard' : 'transport_to_customer');
+      if (route === 'yard' && (done.has('containers_returned') || done.has('invoiced'))) done.add('yard_to_customer');
+    }
+    if (done.has('do_linked') || (c.stageDone && c.stageDone.doInvoicePaid)) done.add('do_invoice_paid');
+  }
+  done.delete('containers_transported');
+  if (!route) {
+    if (done.has('transport_to_yard')) route = 'yard';
+    else if (done.has('transport_to_customer')) route = 'customer';
+  }
+  // الفاتورةُ الصادرةُ هي المرحلةُ نفسُها — لا علامةٌ ثانيةٌ تُنسى.
+  if (c && c.saleInvoiceNumber) done.add('invoiced');
+  return { done, route };
+}
+
+/**
+ * مراحلُ المعاملة كما تَلزمها: لكلٍّ منها أمُنجزةٌ هي أم مُغلَقة، ومعها النسبة.
+ * والنسبةُ على ما يَلزم وحدَه؛ وما دام الطريقُ لم يُختَر فمرحلتا الميناء خانةٌ
+ * واحدة (ستُنجَز إحداهما وتُغلَق الأخرى).
+ */
+function pipelineOf(c) {
+  const { done, route } = readStages(c);
+  const cargoType = (c && c.cargoType) || 'containers';
+  const steps = STAGES.map((key) => {
+    const reason = lockReason(key, route, cargoType);
+    return { key, done: !reason && done.has(key), locked: !!reason, ...(reason ? { reason } : {}) };
+  });
+  const open = steps.filter((s) => !s.locked);
+  const total = open.length - (route ? 0 : 1);
+  const doneCount = open.filter((s) => s.done).length;
+  const next = open.find((s) => !s.done);
+  return {
+    route, cargoType, steps, done: doneCount, total,
+    percent: total ? Math.min(100, Math.round((doneCount / total) * 100)) : 0,
+    next: next ? next.key : '',
+  };
+}
+
+customsClearanceSchema.virtual('pipeline').get(function pipelineVirtual() { return pipelineOf(this); });
+
+/**
+ * صفوفُ الوحدات (حاوياتٍ أو سيّارات) بعدد المعاملة: تُزاد خاناتٌ فارغةٌ حتى
+ * العدد، ويُحذَف الفارغُ الزائدُ من آخرها. وما كُتب فيه شيءٌ لا يُحذَف بتصغير
+ * العدد — يبقى ويُصحَّح العددُ إليه.
+ */
+function syncUnits(rows, count) {
+  const list = (Array.isArray(rows) ? rows : []).map((r) => ({ ...(r && r.toObject ? r.toObject() : r) }));
+  const want = Math.max(0, Math.min(300, Math.round(Number(count) || 0)));
+  const filled = (r) => !!(r && (String(r.containerNumber || '').trim() || String(r.returnDate || '').trim()
+    || String(r.notes || '').trim() || String(r.declaration || '').trim() || Number(r.exitPermit) > 0 || (r.moves || []).some((m) => m && (m.ref || m.vehicleKind))));
+  while (list.length > want && !filled(list[list.length - 1])) list.pop();
+  while (list.length < want) list.push({ containerNumber: '', returnDate: '', moves: [] });
+  return list;
+}
 
 customsClearanceSchema.index({ createdAt: -1 });
 customsClearanceSchema.index({ blNumber: 1 });
@@ -434,6 +632,13 @@ function recomputeTotals(doc) {
 
 customsClearanceSchema.pre('save', function (next) {
   recomputeTotals(this);
+  this.transportInvoiceReceived = hasTransportInvoice(this);
+  if (this.isNew) {
+    this.pipelineVersion = 2;
+    // المعاملةُ تُنشأ بعدد وحداتها، فتُفتَح لها خاناتُها من أوّل يوم.
+    const rows = syncUnits(this.containers, this.containerCount);
+    if (rows.length !== (this.containers || []).length) this.containers = rows;
+  }
   next();
 });
 
@@ -488,6 +693,15 @@ customsClearanceSchema.post(/^find.*[UD]/, bustCustomsList); // findOneAndUpdate
 
 module.exports = mongoose.model('CustomsClearance', customsClearanceSchema);
 module.exports.STAGES = STAGES;
+module.exports.LEGACY_STAGES = LEGACY_STAGES;
+module.exports.TRANSPORT_LEGS = TRANSPORT_LEGS;
+module.exports.CARGO_TYPES = CARGO_TYPES;
+module.exports.VEHICLE_KINDS = VEHICLE_KINDS;
+module.exports.pipelineOf = pipelineOf;
+module.exports.readStages = readStages;
+module.exports.lockReason = lockReason;
+module.exports.hasTransportInvoice = hasTransportInvoice;
+module.exports.syncUnits = syncUnits;
 module.exports.COST_KEYS = COST_KEYS;
 module.exports.MARGIN_KEYS = MARGIN_KEYS;
 module.exports.recomputeTotals = recomputeTotals;

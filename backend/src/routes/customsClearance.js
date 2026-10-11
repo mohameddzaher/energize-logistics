@@ -16,6 +16,10 @@ router.use(authenticate);
 router.get('/', ctrl.getClearances);
 // Must stay ABOVE '/:id' or the param route swallows it.
 router.get('/analytics', ctrl.getAnalytics);
+// لوحةُ القسم التشغيليّة — للفريق كلِّه، وبلا أرقامٍ ماليّة.
+router.get('/dashboard', ctrl.getDashboard);
+// أرقامُ كشوف التخريج: أيُّها موجودٌ في سير عمل التشغيل.
+router.get('/release-sheets', ctrl.releaseSheets);
 router.get('/filters', ctrl.getFilterOptions);
 
 // ── أطرافُ التخليص: العملاءُ ووكلاءُ الشحن ─────────────────────────────────
@@ -63,8 +67,13 @@ router.delete('/:id', authorize('super_admin', 'admin', 'customs_manager', 'cust
 router.post('/:id/payment-stages', authorize(...EDIT_ROLES), ctrl.addPaymentStage);
 router.put('/:id/payment-stages/:entryId', authorize(...EDIT_ROLES), ctrl.updatePaymentStage);
 router.delete('/:id/payment-stages/:entryId', authorize(...EDIT_ROLES), ctrl.deletePaymentStage);
-// الإقفال — لا يمرّ قبل «فاتورة النقل» بتاريخٍ ومرفق. راجع completeClearance.
+// الفوترةُ والإنهاءُ فعلان: الفاتورةُ تصدر بلا انتظار فاتورة النقل، والمعاملةُ
+// تُنهى حين تُرفَق. راجع issueInvoice و settleClosure.
+router.patch('/:id/invoice', authorize(...EDIT_ROLES), ctrl.issueInvoice);
+router.post('/:id/transport-invoice', authorize(...EDIT_ROLES), ctrl.receiveTransportInvoice);
 router.patch('/:id/complete', authorize(...EDIT_ROLES), ctrl.completeClearance);
+// تعليمُ مرحلةٍ من دورة التخليص — بقواعدها (طريقان يتنافيان، ومراحلُ تُغلَق).
+router.patch('/:id/stage', authorize(...EDIT_ROLES), ctrl.setStage);
 // تحويلُ معاملةٍ قادمةٍ إلى جارية.
 router.patch('/:id/activate', authorize(...EDIT_ROLES), ctrl.activateClearance);
 // قرارُ الإدارة الماليّة على طلبِ صرف — لها وحدَها.

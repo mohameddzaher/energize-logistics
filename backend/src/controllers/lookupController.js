@@ -91,6 +91,7 @@ exports.updateLookup = async (req, res) => {
     if (!canManage(item.type, req.user.role)) return res.status(403).json({ message: 'Insufficient permissions' });
 
     const { nameEn, nameAr, color, isActive, order } = req.body;
+    const nameBefore = item.nameAr;
     if (nameEn !== undefined) item.nameEn = String(nameEn).trim() || item.nameEn;
     if (nameAr !== undefined) item.nameAr = String(nameAr).trim() || item.nameAr;
     if (color !== undefined) item.color = color || undefined;
@@ -99,6 +100,12 @@ exports.updateLookup = async (req, res) => {
     await item.save();
 
     await logAudit({ user: req.user._id, action: 'update_lookup', entity: 'Lookup', entityId: item._id, changes: { after: { nameEn: item.nameEn } }, ipAddress: req.ip }).catch(() => {});
+    // الاسمُ الملقوطُ على ما سُجِّل من قبل يتبع الاسمَ الجديد — فالتعديلُ من
+    // الإعدادات يسري في الحال وعلى ما مضى (راجع services/customsLookupSync).
+    if (nameBefore !== item.nameAr) {
+      await require('../services/customsLookupSync')
+        .lookupRenamed({ type: item.type, key: item.key, from: nameBefore, to: item.nameAr }).catch(() => {});
+    }
     emit('lookup:changed', { type: item.type });
     res.json({ item });
   } catch (error) {

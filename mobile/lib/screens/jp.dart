@@ -5,10 +5,12 @@ import '../config.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../ui/api_picker.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/file_upload.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'customs_detail.dart';
 
 /// خطّةُ العمل (JP) — نظيرُ `JpBoard` و`JpDashboard` في الموقع.
 ///
@@ -73,6 +75,15 @@ const _actions = {
   'email': ('بريد إلكتروني', 'Email', Icons.mail_outline),
   'meeting': ('اجتماع', 'Meeting', Icons.groups_outlined),
   'other': ('أخرى', 'Other', Icons.more_horiz),
+};
+
+/// ما تُربَط به المهمّة — في قسمٍ يُعلن `linkKinds` (التخليصُ وحدَه الآن):
+/// معاملةٌ بعينها أو طرفٌ من أطرافها. والخادمُ يتحقّق ويلتقط الاسم.
+const _linkKinds = {
+  'clearance': ('معاملة', 'Transaction', Icons.directions_boat_outlined),
+  'customer': ('عميل', 'Customer', Icons.people_outline),
+  'agent': ('وكيل شحن', 'Shipping agent', Icons.anchor_outlined),
+  'carrier': ('ناقل', 'Carrier', Icons.local_shipping_outlined),
 };
 
 String _span(Duration d) {
@@ -406,6 +417,9 @@ class _JpScreenState extends State<JpScreen> {
     final contact = (t['contact'] ?? '').toString();
     final files = List<Map<String, dynamic>>.from(t['attachments'] ?? []);
     final handed = List<Map<String, dynamic>>.from(t['handedTo'] ?? []);
+    final links = List.from(_me?['linkKinds'] ?? const []).isEmpty
+        ? const <Map<String, dynamic>>[]
+        : List<Map<String, dynamic>>.from((t['links'] ?? const []).map((e) => Map<String, dynamic>.from(e)));
     return AppCard(
       topAccent: t['state'] == 'overdue' ? T.danger : done ? T.success : null,
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -430,6 +444,18 @@ class _JpScreenState extends State<JpScreen> {
             if (t['fromManagement'] == true) Chip2(tr('من خطّة الإدارة', 'From management'), T.violet),
             if (act != null) Chip2(tr(act.$1, act.$2), T.info, icon: act.$3),
           ]),
+          if (links.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final l in links) () {
+              final k = _linkKinds[l['kind']];
+              final label = (l['label'] ?? '').toString();
+              final chip = Chip2('${k == null ? '' : '${tr(k.$1, k.$2)}: '}$label', T.navy, icon: k?.$3);
+              // شريحةُ المعاملة تفتح المعاملةَ نفسَها.
+              return l['kind'] != 'clearance' ? chip : InkWell(
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CustomsDetailScreen(clearanceId: _id(l['ref']), ref: label.split(' · ').first))),
+                child: chip,
+              );
+            }(),
+          ])),
           if (contact.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: InkWell(
             onTap: () {
               final digits = contact.replaceAll(RegExp(r'[^\d+]'), '');
@@ -485,8 +511,11 @@ class _JpFormState extends State<_JpForm> {
   String _assignee = '', _action = '', _project = '', _dueKind = '', _dueDate = '';
   bool _more = false, _saving = false, _dueTouched = false;
   PickedFile? _file;
+  // روابطُ المهمّة: {kind, ref, label} — الاسمُ للعرض، والخادمُ يلتقط اسمَه هو.
+  final List<Map<String, dynamic>> _links = [];
 
   bool get _editing => widget.task != null;
+  List<String> get _kinds => List.from(widget.me['linkKinds'] ?? const []).map((e) => e.toString()).toList();
   bool get _canManage => widget.me['canManage'] == true;
 
   @override
@@ -501,7 +530,25 @@ class _JpFormState extends State<_JpForm> {
       _assignee = _id(t['assignedTo']); _project = t['project'] is Map ? t['project']['_id'].toString() : '';
       if (t['deadlineKind'] == 'date' && t['deadlineAt'] != null) { _dueKind = 'date'; _dueDate = _ymd(DateTime.parse(t['deadlineAt'].toString()).toLocal()); }
       _more = _details.text.isNotEmpty || _action.isNotEmpty || _contact.text.isNotEmpty;
+      for (final l in List.from(t['links'] ?? const [])) {
+        _links.add({'kind': l['kind'], 'ref': _id(l['ref']), 'label': l['label'] ?? ''});
+      }
     }
+  }
+
+  Future<void> _addLink(String kind) async {
+    final clearance = kind == 'clearance';
+    String label(Map<String, dynamic> r) => clearance
+        ? [r['blNumber'] ?? r['refNumber'], r['customerName']].where((x) => (x ?? '').toString().isNotEmpty).join(' · ')
+        : (r['name'] ?? '').toString();
+    final k = _linkKinds[kind]!;
+    final picked = await pickFromApi(context,
+        endpoint: clearance ? '/api/customs-clearance' : '/api/customs-clearance/parties?kind=$kind',
+        listKey: clearance ? 'clearances' : 'parties', label: label, title: tr(k.$1, k.$2));
+    if (picked == null || !mounted) return;
+    final ref = (picked['_id'] ?? '').toString();
+    if (ref.isEmpty || _links.any((l) => l['kind'] == kind && l['ref'] == ref)) return;
+    setState(() => _links.add({'kind': kind, 'ref': ref, 'label': label(picked)}));
   }
 
   Map<String, dynamic> _dueBody() => _dueKind == 'date' ? {'deadlineKind': 'date', 'deadlineDate': _dueDate}
@@ -519,6 +566,7 @@ class _JpFormState extends State<_JpForm> {
         'action': _action, 'contact': _contact.text.trim(), 'project': _project.isEmpty ? null : _project,
         // موعدٌ بالساعات لا يُعاد عدُّه عند التعديل ما لم يُغيَّر.
         if (!_editing || _dueTouched) ..._dueBody(),
+        if (_kinds.isNotEmpty) 'links': [for (final l in _links) {'kind': l['kind'], 'ref': l['ref']}],
       };
       if (_editing) {
         await Api.instance.patch('/api/jp/tasks/${widget.task!['_id']}', body);
@@ -584,6 +632,23 @@ class _JpFormState extends State<_JpForm> {
             onChanged: (v) => setState(() { _dueKind = v.trim().isEmpty ? '' : 'hours'; _dueTouched = true; }),
           )),
         ]),
+        if (_kinds.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(tr('مرتبطةٌ بـ (اختياري)', 'Linked to (optional)'), style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+          const SizedBox(height: 6),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final l in _links) InputChip(
+              avatar: Icon(_linkKinds[l['kind']]?.$3 ?? Icons.link, size: 16),
+              label: Text('${l['label']}', style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+              onDeleted: () => setState(() => _links.remove(l)),
+            ),
+            for (final kind in _kinds) if (_linkKinds[kind] != null && _links.length < 8) ActionChip(
+              avatar: const Icon(Icons.add, size: 16),
+              label: Text(tr(_linkKinds[kind]!.$1, _linkKinds[kind]!.$2), style: const TextStyle(fontSize: 12)),
+              onPressed: () => _addLink(kind),
+            ),
+          ]),
+        ],
         TextButton.icon(
           onPressed: () => setState(() => _more = !_more),
           icon: Icon(_more ? Icons.expand_less : Icons.expand_more),

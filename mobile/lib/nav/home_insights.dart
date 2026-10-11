@@ -95,11 +95,13 @@ const _bd = HomeInsight('نظرة تطوير الأعمال', 'BD snapshot', '/a
   HomeKpi('مناقصات قريبة', 'Tenders due', 'totals.tendersDueSoon', Icons.gavel_outlined, T.orange),
 ]);
 
-const _customs = HomeInsight('نظرة التخليص', 'Customs snapshot', '/api/customs-clearance/analytics', 'customs:updated', [
-  HomeKpi('التخليصات', 'Clearances', 'totals.clearances', Icons.directions_boat_outlined, T.navy),
-  HomeKpi('الحاويات', 'Containers', 'totals.containers', Icons.view_in_ar_outlined, T.info),
-  HomeKpi('الإيرادات', 'Revenue', 'totals.totalRevenue', Icons.payments_outlined, T.success, money: true),
-  HomeKpi('صافي الربح', 'Net profit', 'totals.netProfit', Icons.trending_up_rounded, T.orange, money: true),
+// من لوحة القسم التشغيليّة لا من التحليلات: التحليلاتُ (الإيراد والربح) للإدارة
+// وحدَها، والمخلّصُ يُرَدّ عنها بـ٤٠٣ — فكانت نظرتُه تُرسَم أصفارًا.
+const _customs = HomeInsight('نظرة التخليص', 'Customs snapshot', '/api/customs-clearance/dashboard', 'customs:updated', [
+  HomeKpi('معاملات مفتوحة', 'Open', 'counts.open', Icons.directions_boat_outlined, T.navy),
+  HomeKpi('معاملات قادمة', 'Upcoming', 'counts.upcoming', Icons.schedule_outlined, T.info),
+  HomeKpi('بانتظار فاتورة النقل', 'Awaiting transport invoice', 'counts.awaitingTransportInvoice', Icons.error_outline, T.danger),
+  HomeKpi('متأخّرة الإرجاع', 'Return overdue', 'counts.returnOverdue', Icons.assignment_return_outlined, T.warn),
 ]);
 
 const _executive = HomeInsight('النظرة التنفيذية', 'Executive snapshot', '/api/analytics/executive', 'executive:changed', [

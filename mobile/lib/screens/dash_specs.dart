@@ -322,8 +322,10 @@ final accountingDashSpec = DashSpec(
   ],
 );
 
+// للإدارة وحدَها (مدير النظام ومدير القسم) — الخادمُ يردّ غيرَهما بـ٤٠٣، والدرجُ
+// لا يعرضها لهم. ولوحةُ الفريق التشغيليّة شاشةٌ أخرى: customs_dashboard.dart.
 final customsDashSpec = DashSpec(
-  arTitle: 'تحليلات التخليص', enTitle: 'Customs Analytics',
+  arTitle: 'تحليلات قسم التخليص', enTitle: 'Customs Analytics',
   endpoint: '/api/customs-clearance/analytics', liveEvent: 'customs:updated',
   stats: const [
     DashStat('التخليصات', 'Clearances', 'totals.clearances', Icons.directions_boat_outlined, T.navy),

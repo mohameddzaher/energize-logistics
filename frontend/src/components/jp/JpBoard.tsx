@@ -22,9 +22,10 @@ import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import {
-  type JpScope, type JpMe, type JpTask, type JpProject, type JpAction,
+  type JpScope, type JpMe, type JpTask, type JpProject, type JpAction, type JpLink,
   ACTION_WORDS, deadlineLine, TONE_CLASS, fileToDataUrl, contactHref, qs, jpId,
 } from '@/lib/jp';
+import { LinkChips, LinkPicker } from '@/components/jp/JpLinks';
 import { Spinner, PageHeader, Modal, Field, TextInput, TextArea, Select, PrimaryButton } from '@/components/hr/HRKit';
 import {
   CalendarCheck, Plus, Check, Paperclip, Trash2, Pencil, FolderKanban, Clock, ChevronDown,
@@ -86,14 +87,15 @@ function DuePicker({ value, onChange, ar }: { value: Due; onChange: (d: Due) => 
 interface Draft {
   title: string; assignedTo: string; due: Due; details: string; action: JpAction; contact: string; project: string;
   files: { dataUrl: string; fileName: string }[];
+  links: JpLink[];
 }
-const blankDraft = (assignedTo = '', project = ''): Draft => ({
-  title: '', assignedTo, due: NO_DUE, details: '', action: '', contact: '', project, files: [],
+const blankDraft = (assignedTo = '', project = '', links: JpLink[] = []): Draft => ({
+  title: '', assignedTo, due: NO_DUE, details: '', action: '', contact: '', project, files: [], links,
 });
 
 /** حقولُ «تفاصيل أكثر» — يقرؤها سطرُ الإضافة ونافذةُ التعديل. */
-function MoreFields({ d, set, projects, ar, allowFiles }: {
-  d: Draft; set: (p: Partial<Draft>) => void; projects: JpProject[]; ar: boolean; allowFiles: boolean;
+function MoreFields({ d, set, projects, ar, allowFiles, linkKinds = [] }: {
+  d: Draft; set: (p: Partial<Draft>) => void; projects: JpProject[]; ar: boolean; allowFiles: boolean; linkKinds?: string[];
 }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const pick = async (list: FileList | null) => {
@@ -103,6 +105,11 @@ function MoreFields({ d, set, projects, ar, allowFiles }: {
   };
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {linkKinds.length > 0 && (
+        <Field label={t('تتعلّق بـ (اختياري): معاملة، عميل، وكيل شحن، ناقل', 'Related to (optional): transaction, customer, agent, carrier')} span2>
+          <LinkPicker kinds={linkKinds} value={d.links} onChange={(links) => set({ links })} ar={ar} />
+        </Field>
+      )}
       <Field label={t('تفاصيل (اختياري)', 'Details (optional)')} span2>
         <TextArea rows={2} value={d.details} onChange={(e) => set({ details: e.target.value })} placeholder={t('ما المطلوب بالتحديد؟', 'What exactly is needed?')} />
       </Field>
@@ -215,6 +222,8 @@ function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onA
             {task.fromManagement && <span className="px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 font-medium">{t('من خطّة الإدارة', 'From management plan')}</span>}
           </div>
 
+          {!!task.links?.length && <div className="mt-2"><LinkChips links={task.links} ar={ar} /></div>}
+
           {(task.action || task.contact) && (
             <div className="mt-2 inline-flex flex-wrap items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[12.5px] text-slate-700">
               {task.action && <span className="inline-flex items-center gap-1 font-semibold">{ACTION_ICON[task.action]}{ar ? ACTION_WORDS[task.action as Exclude<JpAction, ''>].ar : ACTION_WORDS[task.action as Exclude<JpAction, ''>].en}</span>}
@@ -305,11 +314,20 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
   // فتحُ مشروعٍ يغيّر الرابط (`?project=`): زرُّ الرجوع يعود منه، والرابطُ يُرسَل.
   const router = useRouter();
   const pathname = usePathname() || '';
-  const project = useSearchParams()?.get('project') || '';
+  const search = useSearchParams();
+  const project = search?.get('project') || '';
+  // ── مهمّةٌ تبدأ من صفحة ما تخصّه ───────────────────────────────────────────
+  // `?link=clearance:<id>`: جاء من معاملةٍ (أو ملفّ طرف) ليكتب مهمّةً عليها —
+  // فيُفتَح النموذجُ مربوطًا بها، وتُعرَض مهامُّها وحدَها.
+  const linkParam = search?.get('link') || '';
+  const [linkKind, linkRef] = linkParam.includes(':') ? linkParam.split(':') : ['', ''];
+  // رُفع القيدُ («عرض مهامّ القسم كلِّها»): المهمّةُ التاليةُ لا تبقى مربوطةً به.
+  useEffect(() => { if (!linkRef) setDraft((d) => (d.links.length ? { ...d, links: [] } : d)); }, [linkRef]);
   const setProject = useCallback((id: string) => { router.push(id ? `${pathname}?project=${id}` : pathname); }, [router, pathname]);
 
   const [me, setMe] = useState<JpMe | null>(null);
   const [denied, setDenied] = useState('');
+  const [linkLabel, setLinkLabel] = useState('');
   const [tasks, setTasks] = useState<JpTask[]>([]);
   const [counts, setCounts] = useState({ all: 0, open: 0, overdue: 0, done: 0, mine: 0, sent: 0 });
   const [projects, setProjects] = useState<JpProject[]>([]);
@@ -348,6 +366,20 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
       // المديرُ يبدأ على الكلّ: هو يتابع الفريق. والموظّفُ على ما عليه.
       setBox(d.canManage ? 'all' : 'mine');
       setDraft(blankDraft(d.canManage ? '' : d.me));
+      if (linkKind && linkRef && (d.linkKinds || []).includes(linkKind)) {
+        setBox('all'); setStatus(''); setMore(true);
+        setDraft((x) => ({ ...x, links: [{ kind: linkKind, ref: linkRef, label: '' }] }));
+        // واسمُ ما رُبط به يُقرأ ليُعرَض — الرابطُ يحمل المعرّفَ وحدَه.
+        const named = linkKind === 'clearance'
+          ? api.get<{ clearance: { blNumber?: string; refNumber?: string; customerName?: string } }>(`/api/customs-clearance/${linkRef}`)
+            .then((r) => [r.clearance?.blNumber || r.clearance?.refNumber, r.clearance?.customerName].filter(Boolean).join(' · '))
+          : api.get<{ party: { name?: string } }>(`/api/customs-clearance/parties/${linkRef}`).then((r) => r.party?.name || '');
+        named.then((label) => {
+          if (!alive || !label) return;
+          setLinkLabel(label);
+          setDraft((x) => ({ ...x, links: x.links.map((l) => (l.ref === linkRef && !l.label ? { ...l, label } : l)) }));
+        }).catch(() => {});
+      }
     }).catch((e: { message?: string }) => { if (alive) { setDenied(e?.message || t('تعذّر التحميل', 'Could not load')); setLoading(false); } });
     return () => { alive = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -360,6 +392,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
       const p = new URLSearchParams(q);
       // داخل المشروع تُعرَض مهامُّه كلُّها (ممّا يراه السائل) لا صندوقٌ منها.
       p.set('box', project ? 'all' : box);
+      if (linkKind && linkRef) { p.set('linkKind', linkKind); p.set('linkRef', linkRef); }
       if (status) p.set('status', status);
       if (project) p.set('project', project);
       if (assignee) p.set('assignee', assignee);
@@ -375,7 +408,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
       if (isCurrent(token)) setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me, q, box, status, project, assignee]);
+  }, [me, q, box, status, project, assignee, linkKind, linkRef]);
   useEffect(() => { load(); }, [load]);
   // داخل المشروع تُعرَض كلُّ حالاته أوّلًا: ما تمّ جزءٌ من صورته.
   useEffect(() => { setStatus(project ? '' : 'open'); }, [project]);
@@ -398,10 +431,11 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
       await api.post('/api/jp/tasks', {
         scope, section, title: draft.title, assignedTo: draft.assignedTo, details: draft.details,
         action: draft.action, contact: draft.contact, project: draft.project || project || undefined,
-        files: draft.files, ...dueBody(draft.due),
+        files: draft.files, links: draft.links.map((l) => ({ kind: l.kind, ref: l.ref })), ...dueBody(draft.due),
       });
       // يبقى المُسنَد إليه والمشروع: من يكتب خمسَ مهامَّ لشخصٍ واحد لا يختاره خمسَ مرّات.
-      setDraft((d) => ({ ...blankDraft(d.assignedTo, d.project), due: d.due }));
+      // وما جاء مربوطًا من صفحة معاملةٍ يبقى مربوطًا بها.
+      setDraft((d) => ({ ...blankDraft(d.assignedTo, d.project, linkRef ? d.links : []), due: d.due }));
       titleRef.current?.focus();
       load();
     } catch (e) { say(e); } finally { setSaving(false); }
@@ -411,7 +445,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
     setEditing(task);
     setEditDraft({
       title: task.title, assignedTo: jpId(task.assignedTo), details: task.details || '', action: task.action,
-      contact: task.contact || '', project: task.project?._id || '', files: [],
+      contact: task.contact || '', project: task.project?._id || '', files: [], links: task.links || [],
       due: task.deadlineKind === 'date' && task.deadlineAt ? { kind: 'date', date: ymd(new Date(task.deadlineAt)), hours: '' }
         // موعدٌ بالساعات لا يُعاد عدُّه عند فتح التعديل: يبقى كما هو ما لم يُغيَّر.
         : NO_DUE,
@@ -425,6 +459,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
       await api.patch(`/api/jp/tasks/${editing._id}`, {
         title: editDraft.title, assignedTo: editDraft.assignedTo, details: editDraft.details, action: editDraft.action,
         contact: editDraft.contact, project: editDraft.project || null, ...(keepHours ? {} : dueBody(editDraft.due)),
+        links: editDraft.links.map((l) => ({ kind: l.kind, ref: l.ref })),
       });
       setEditing(null); load();
     } catch (e) { say(e); } finally { setSaving(false); }
@@ -533,6 +568,17 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         )}
       </PageHeader>
 
+      {/* جاء من صفحة معاملةٍ أو طرف: تُعرَض مهامُّه وحدَها حتى يُرفَع القيد. */}
+      {!!linkRef && !!linkKind && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#f37121]/30 bg-[#f37121]/5 px-4 py-2.5 text-[13px]">
+          <span className="text-slate-600">{t('تُعرَض المهامُّ المربوطةُ بـ', 'Showing tasks linked to')}</span>
+          <LinkChips links={[{ kind: linkKind, ref: linkRef, label: linkLabel }]} ar={ar} />
+          <button type="button" onClick={() => router.push(pathname)} className="ms-auto text-[12.5px] font-semibold text-[#f37121] hover:underline">
+            {t('عرض مهامّ القسم كلِّها', 'Show all section tasks')}
+          </button>
+        </div>
+      )}
+
       {/* ── سطرُ الإضافة ──────────────────────────────────────────────────── */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
         <div className="flex flex-col lg:flex-row gap-2.5">
@@ -558,7 +604,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
           <ChevronDown className={`w-4 h-4 transition-transform ${more ? 'rotate-180' : ''}`} />
           {more ? t('إخفاء التفاصيل', 'Hide details') : t('تفاصيل أكثر: طريقة التواصل، مشروع، مرفق', 'More: contact method, project, attachment')}
         </button>
-        {more && <MoreFields d={draft} set={patchDraft} projects={current ? [] : projects} ar={ar} allowFiles />}
+        {more && <MoreFields d={draft} set={patchDraft} projects={current ? [] : projects} ar={ar} allowFiles linkKinds={me.linkKinds} />}
         {current && <p className="text-[12px] text-slate-500">{t(`تُضاف إلى مشروع «${current.name}».`, `Added to project “${current.name}”.`)}</p>}
       </div>
 
@@ -730,7 +776,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         <Field label={editing?.deadlineKind === 'hours' ? t('الموعد — اتركه كما هو أو اختر جديدًا', 'Deadline — leave as is or pick a new one') : t('الموعد', 'Deadline')}>
           <DuePicker value={editDraft.due} onChange={(due) => patchEdit({ due })} ar={ar} />
         </Field>
-        <MoreFields d={editDraft} set={patchEdit} projects={projects} ar={ar} allowFiles={false} />
+        <MoreFields d={editDraft} set={patchEdit} projects={projects} ar={ar} allowFiles={false} linkKinds={me?.linkKinds} />
       </Modal>
 
       {/* ── المشروع ───────────────────────────────────────────────────────── */}

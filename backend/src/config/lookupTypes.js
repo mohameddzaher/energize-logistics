@@ -563,13 +563,13 @@ const REGISTRY = [
     // لها تاريخٌ ومرفق (راجع `completeClearance`). فمفتاحُها يُقرأ في الشيفرة،
     // ولذلك تبقى موجودةً ولو أُعيدت تسميتُها — والاسمُ وحدَه هو ما يُعدَّل.
     ['customs_payment_stage', 'مراحل السداد', 'Payment Stages', [
-      { key: 'doInvoiceEmailed', nameAr: 'ميل فاتورة إذن التسليم', nameEn: 'DO invoice emailed' },
+      { key: 'doInvoiceEmailed', nameAr: 'مراسلة الوكيل بطلب فاتورة إذن التسليم', nameEn: 'DO invoice emailed' },
       { key: 'doInvoicePaid', nameAr: 'سداد فاتورة إذن التسليم', nameEn: 'DO invoice paid' },
-      { key: 'doLinkEmailed', nameAr: 'ميل ربط إذن التسليم', nameEn: 'DO link emailed' },
+      { key: 'doLinkEmailed', nameAr: 'مراسلة الوكيل بطلب ربط إذن التسليم', nameEn: 'DO link emailed' },
       { key: 'dutyPaid', nameAr: 'سداد الرسوم الجمركية', nameEn: 'Customs duty paid' },
-      { key: 'portFeesPaid', nameAr: 'سداد الموانى', nameEn: 'Port fees paid' },
-      { key: 'unloadingFeesPaid', nameAr: 'سداد التفريغ', nameEn: 'Unloading paid' },
-      { key: 'containersReturned', nameAr: 'الإرجاع', nameEn: 'Containers returned' },
+      { key: 'portFeesPaid', nameAr: 'سداد أجور الموانئ', nameEn: 'Port fees paid' },
+      { key: 'unloadingFeesPaid', nameAr: 'سداد أجور التفريغ', nameEn: 'Unloading paid' },
+      { key: 'containersReturned', nameAr: 'إرجاع الحاويات', nameEn: 'Containers returned' },
       { key: 'returnInvoiceDate', nameAr: 'فاتورة الإرجاع', nameEn: 'Return invoice' },
       { key: 'transportInvoice', nameAr: 'فاتورة النقل', nameEn: 'Transport invoice' },
       // تحت «فاتورة النقل» مباشرةً: حجزُ الموعد بندٌ يُدفَع ويُفوتَر كغيره.
@@ -752,6 +752,33 @@ const ensureDefaultLookups = async () => {
           isSystem: true,
         });
       }
+    }
+  }
+  await applyDefaultRenames();
+};
+
+/**
+ * ── اسمٌ افتراضيٌّ صُحِّح ──────────────────────────────────────────────────
+ * البذرُ لا يكتب فوق ما في القاعدة، فتصحيحُ اسمٍ في القائمة أعلاه لا يبلغ صفًّا
+ * بُذِر من قبل. فيُذكَر التصحيحُ هنا: الصفُّ الذي ما زال يحمل الاسمَ القديمَ
+ * **حرفًا بحرف** يأخذ الجديد (ومعه لقطاتُه — راجع services/customsLookupSync)،
+ * وما غيّره مديرُ القسم بيده من الإعدادات لا يُمسّ. تُنفَّذ مرّةً ثمّ لا تجد
+ * ما تغيّره.
+ */
+const DEFAULT_RENAMES = [
+  // أسماءٌ عامّيّةٌ أو ناقصةٌ في مراحل سداد التخليص — بطلب صاحب الشركة: فصحى.
+  ['customs_payment_stage', 'doInvoiceEmailed', 'ميل فاتورة إذن التسليم', 'مراسلة الوكيل بطلب فاتورة إذن التسليم'],
+  ['customs_payment_stage', 'doLinkEmailed', 'ميل ربط إذن التسليم', 'مراسلة الوكيل بطلب ربط إذن التسليم'],
+  ['customs_payment_stage', 'portFeesPaid', 'سداد الموانى', 'سداد أجور الموانئ'],
+  ['customs_payment_stage', 'unloadingFeesPaid', 'سداد التفريغ', 'سداد أجور التفريغ'],
+  ['customs_payment_stage', 'containersReturned', 'الإرجاع', 'إرجاع الحاويات'],
+];
+const applyDefaultRenames = async () => {
+  const Lookup = require('../models/Lookup');
+  for (const [type, key, from, to] of DEFAULT_RENAMES) {
+    const r = await Lookup.updateOne({ type, key, nameAr: from }, { $set: { nameAr: to } });
+    if (r.modifiedCount) {
+      await require('../services/customsLookupSync').lookupRenamed({ type, key, from, to }).catch(() => {});
     }
   }
 };

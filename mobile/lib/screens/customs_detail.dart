@@ -8,9 +8,11 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/file_upload.dart';
+import 'jp.dart' show jpDeadline;
 
-/// تفاصيل التخليص الجمركي — مسار الـ١١ مرحلة (تقدّم بلمسة)، مهام الإنجاز
-/// (stageDone) بتواريخها، مستندات البوليصة وأوراق الوكيل، وملخص التكاليف.
+/// تفاصيل التخليص الجمركي — دورةُ المراحل كما يحسبها الخادم (`pipeline`)،
+/// الوحداتُ (حاوياتٍ أو سيّارات) وبيانُ نقلها، إصدارُ الفاتورة وفاتورةُ النقل،
+/// مهامُّ الإنجاز بتواريخها، المستندات، مراحلُ السداد، والتكاليف.
 class CustomsDetailScreen extends StatefulWidget {
   final String clearanceId;
   final String ref;
@@ -19,25 +21,69 @@ class CustomsDetailScreen extends StatefulWidget {
   State<CustomsDetailScreen> createState() => _CustomsDetailScreenState();
 }
 
-/// المراحل الـ١١ بالترتيب.
+/// مراحلُ الدورة بالترتيب — المفاتيحُ من STAGES في الخادم
+/// (models/CustomsClearance) والأسماءُ من config/customsStages.
+///
+/// والدورةُ ليست خطًّا: بعد «أمر النقل» طريقان يتنافيان، ومراحلُ تُغلَق على
+/// معاملةٍ دون أخرى. فما يُنجَز وما يُغلَق يُقرأ من `pipeline.steps` لا من هنا.
 const customsStages = [
   ('papers_received', 'استلام الأوراق', 'Papers received'),
-  ('declaration_paid', 'طباعة البيان وسداده', 'Declaration paid'),
-  ('do_requested', 'طلب إذن التسليم', 'DO requested'),
+  ('declaration_paid', 'سداد البيان الجمركي', 'Customs declaration paid'),
+  ('do_requested', 'طلب فاتورة إذن التسليم', 'DO invoice requested'),
+  ('do_invoice_paid', 'سداد فاتورة إذن التسليم', 'DO invoice paid'),
   ('do_linked', 'ربط إذن التسليم', 'DO linked'),
   ('port_fees_paid', 'سداد أجور الموانئ', 'Port fees paid'),
   ('unloading_fees_paid', 'سداد أجور التفريغ', 'Unloading fees paid'),
   ('transport_order', 'أمر النقل', 'Transport order'),
-  ('containers_transported', 'نقل الحاويات', 'Containers transported'),
-  ('unloaded_stored', 'التفريغ والتخزين', 'Unloaded & stored'),
+  ('transport_to_yard', 'نقل الحاويات من الميناء إلى الساحة', 'Containers: port to yard'),
+  ('transport_to_customer', 'نقل الحاويات من الميناء إلى العميل', 'Containers: port to customer'),
+  ('unloaded_stored', 'التفريغ والتخزين', 'Unloading & storage'),
+  ('yard_to_customer', 'نقل الحاويات من الساحة إلى العميل', 'Containers: yard to customer'),
   ('containers_returned', 'إرجاع الحاويات', 'Containers returned'),
-  ('invoiced', 'عمل الفواتير', 'Invoiced'),
+  ('invoiced', 'إصدار الفاتورة', 'Invoice issued'),
 ];
 
+// مفتاحُ ما قبل تفريع النقل — باقٍ في `stage` على معاملاتٍ قديمة.
+const _legacyStage = ('containers_transported', 'نقل الحاويات', 'Containers transported');
+
+/// اسمُ المرحلة — و«الحاويات» فيه تصير «السيّارات» في معاملة السيّارات.
+String customsStageLabel(String key, [String cargoType = 'containers']) {
+  final hit = [...customsStages, _legacyStage].where((s) => s.$1 == key);
+  if (hit.isEmpty) return key;
+  final (_, ar, en) = hit.first;
+  if (cargoType != 'vehicles') return tr(ar, en);
+  return tr(ar.replaceFirst('الحاويات', 'السيّارات'), en.replaceFirst('Containers', 'Vehicles'));
+}
+
+/// رابطُ الملفّ باسمٍ يُعرَف به عند التنزيل: «{البوليصة} - {العنوان}[ (n)].{ext}».
+/// الخادمُ يكرّم `dl` على `/api/uploads/...` فيردّ الملفَّ بهذا الاسم؛ والرقمُ (n)
+/// يُعطى حين يتكرّر العنوانُ نفسُه وحدَه.
+String customsFileUrl(dynamic fileUrl, {required String base, required String title, int n = 0, dynamic fileName}) {
+  final u = '${fileUrl ?? ''}';
+  if (!u.contains('/api/uploads/')) return u;
+  String extOf(String v) => RegExp(r'\.([A-Za-z0-9]{1,5})$').firstMatch(v.split('?').first)?.group(1)?.toLowerCase() ?? '';
+  final ext = extOf('${fileName ?? ''}').isNotEmpty ? extOf('${fileName ?? ''}') : extOf(u);
+  final name = '${[base, title].where((x) => x.trim().isNotEmpty).join(' - ')}${n > 0 ? ' ($n)' : ''}'
+      .replaceAll(RegExp(r'[\\/:*?"<>|]'), '').trim();
+  if (name.isEmpty) return u;
+  return '$u${u.contains('?') ? '&' : '?'}dl=${Uri.encodeComponent(ext.isEmpty ? name : '$name.$ext')}';
+}
+
+/// حالةُ طلب الصرف عند الماليّة — اسمُها ولونُها.
+(String, Color) customsPayStatus(dynamic status) => switch ('${status ?? 'pending'}') {
+      'paid' => (tr('تمّ الدفع', 'Paid'), T.success),
+      'returned' => (tr('أُعيد للتصحيح', 'Returned for correction'), T.info),
+      'rejected' => (tr('مرفوض', 'Rejected'), T.danger),
+      _ => (tr('بانتظار الدفع', 'Awaiting payment'), T.warn),
+    };
+
+// المراحلُ التي هي نقلٌ — لكلٍّ منها بيانُ سيّارتها على كلّ وحدة (containers.moves).
+const _transportLegs = ['transport_to_yard', 'transport_to_customer', 'yard_to_customer'];
+
 const _stageDoneItems = [
-  ('doInvoiceEmailed', 'ميل فاتورة إذن التسليم', 'DO invoice emailed'),
+  ('doInvoiceEmailed', 'إرسال بريد فاتورة إذن التسليم', 'DO invoice emailed'),
   ('doInvoicePaid', 'سداد فاتورة إذن التسليم', 'DO invoice paid'),
-  ('doLinkEmailed', 'ميل ربط إذن التسليم', 'DO link emailed'),
+  ('doLinkEmailed', 'إرسال بريد ربط إذن التسليم', 'DO link emailed'),
   ('dutyPaid', 'سداد الرسوم الجمركية', 'Duty paid'),
   ('portFeesPaid', 'سداد الموانئ', 'Port fees paid'),
   ('unloadingFeesPaid', 'سداد التفريغ', 'Unloading fees paid'),
@@ -78,7 +124,7 @@ const _costItems = [
   ('returnInvoice', 'فاتورة الإرجاع', 'Return invoice'),
 ];
 
-/// بنود الهامش — مجموعُها هو الربح، والفاتورة = المصروفات + الهامش.
+/// بنود الإيراد — ما يُضاف فوق المصروفات، والفاتورة = المصروفات + هذه البنود.
 const _marginItems = [
   ('transportSelling', 'سعر النقل', 'Transport price'),
   ('clearanceFee', 'أجور التخليص', 'Clearance fee'),
@@ -92,6 +138,11 @@ const _marginItems = [
 ];
 
 Map<String, dynamic> _m(dynamic v) => v is Map ? Map<String, dynamic>.from(v) : {};
+List<Map<String, dynamic>> _maps(dynamic v) =>
+    v is List ? [for (final e in v) if (e is Map) Map<String, dynamic>.from(e)] : [];
+
+String _arDigits(int n) =>
+    Lang.instance.ar ? '$n'.split('').map((d) => '٠١٢٣٤٥٦٧٨٩'[int.parse(d)]).join() : '$n';
 
 class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
   Map<String, dynamic>? _c;
@@ -99,19 +150,38 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
   bool _loading = true;
   String? _error;
   bool _saving = false;
+  // أرقامُ كشوف التخريج الموجودةُ في سير عمل التشغيل — null ما لم يُسأل الخادم.
+  Map<String, dynamic>? _sheets;
+  String _sheetsKey = '';
+  // مهامُّ خطّة العمل المرتبطةُ بالمعاملة — null: القسمُ لا يُعرَض (٤٠٣ أو تعذّر).
+  List<Map<String, dynamic>>? _tasks;
+  // تعريفاتُ مراحل السداد من إعدادات القسم (`customs_payment_stage`) — أسماؤها
+  // تُقرأ منها وحدَها، فتغييرُ اسمٍ هناك يظهر هنا في الحال.
+  List<Map<String, dynamic>> _payDefs = const [];
   late final void Function() _onLive;
+  late final void Function() _onJp;
+  late final void Function(dynamic) _onLookup;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadTasks();
     _onLive = () => _load();
+    _onJp = () => _loadTasks();
+    _onLookup = (p) { if (p is Map && p['type'] == 'customs_payment_stage') _loadPayDefs(); };
+    _loadPayDefs();
     Live.instance.on('customs:updated', _onLive);
+    Live.instance.on('jp:changed', _onJp);
+    Live.instance.onData('lookup:changed', _onLookup);
   }
 
   @override
   void dispose() {
     Live.instance.off('customs:updated', _onLive);
+    Live.instance.off('jp:changed', _onJp);
+    Live.instance.offData('lookup:changed', _onLookup);
+    _note.dispose();
     super.dispose();
   }
 
@@ -124,39 +194,207 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
         _loading = false;
         _error = null;
       });
+      _checkSheets();
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
   }
 
-  Future<void> _patch(Map<String, dynamic> body, String okMsg) async {
-    if (_saving) return;
+  Future<void> _loadPayDefs() async {
+    try {
+      final d = await Api.instance.get('/api/lookups?type=customs_payment_stage&active=true');
+      if (mounted) setState(() => _payDefs = _maps(d['items']));
+    } catch (_) {
+      // تبقى الإدخالاتُ مقروءةً بأسمائها المحفوظة؛ والإضافةُ تنتظر التعريفات.
+    }
+  }
+
+  Future<void> _loadTasks() async {
+    try {
+      final d = await Api.instance.get(
+          '/api/jp/tasks?scope=section&section=customs&linkKind=clearance&linkRef=${widget.clearanceId}');
+      if (mounted) setState(() => _tasks = _maps(d['tasks']));
+    } catch (_) {
+      // الخطّةُ لفريق القسم ومديره — ومَن ليس منهم لا يرى قسمَها هنا أصلًا.
+      if (mounted) setState(() => _tasks = null);
+    }
+  }
+
+  /// رقمُ كشف التخريج يُكتب على الوحدة حين تُنقَل بسيّارة الشركة، وهو نفسُه في
+  /// سير عمل التشغيل — فيُقال أمرتبطٌ هو أم لا. والتلميحُ زيادة: تعذُّره لا يُعلَن.
+  Future<void> _checkSheets() async {
+    final refs = <String>{
+      for (final u in _maps(_c?['containers']))
+        for (final mv in _maps(u['moves']))
+          if (mv['vehicleKind'] == 'energize' && '${mv['ref'] ?? ''}'.trim().isNotEmpty) '${mv['ref']}'.trim(),
+    };
+    final key = (refs.toList()..sort()).join(',');
+    if (key == _sheetsKey) return;
+    if (refs.isEmpty) { _sheetsKey = ''; if (mounted) setState(() => _sheets = null); return; }
+    try {
+      final d = await Api.instance.get('/api/customs-clearance/release-sheets?numbers=${Uri.encodeQueryComponent(key)}');
+      if (mounted) setState(() { _sheets = _m(d['found']); _sheetsKey = key; });
+    } catch (_) {}
+  }
+
+  void _say(String msg) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  /// نداءُ كتابةٍ واحد: يُنفَّذ، تُعاد القراءة، وتُعرَض رسالةُ الخادم إن رفض.
+  /// يردّ جسمَ الردّ، أو null إن تعذّر.
+  Future<dynamic> _send(Future<dynamic> Function() call, {String? ok}) async {
+    if (_saving) return null;
     setState(() => _saving = true);
     try {
-      await Api.instance.put('/api/customs-clearance/${widget.clearanceId}', body);
+      final r = await call();
       await _load();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(okMsg)));
+      if (ok != null) _say(ok);
+      return r ?? const {};
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      _say(e.toString());
+      return null;
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<void> _patch(Map<String, dynamic> body, String okMsg) =>
+      _send(() => Api.instance.put('/api/customs-clearance/${widget.clearanceId}', body), ok: okMsg);
+
+  Future<bool> _confirm(String title, String body, {required String action, bool danger = true}) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(
+            style: danger ? FilledButton.styleFrom(backgroundColor: T.danger) : null,
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(action),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  /// تعليمُ مرحلةٍ أو رفعُ علامتها — والقواعدُ في الخادم (PATCH /:id/stage):
+  /// ما يُرفَض يعود برسالته فتُعرَض كما هي.
+  Future<void> _setStage(String key, bool done) async {
+    if (!done && (key == 'transport_to_yard' || key == 'transport_to_customer')) {
+      final ok = await _confirm(
+        tr('رفع علامة المرحلة', 'Untick stage'),
+        tr('رفعُ علامة هذه المرحلة يعيد فتح اختيار طريق النقل، ويرفع ما بُني عليه من مراحل الساحة.',
+            'Unticking reopens the route choice and clears the yard stages built on it.'),
+        action: tr('رفع العلامة', 'Untick'),
+      );
+      if (!ok) return;
+    }
+    await _send(
+      () => Api.instance.patch('/api/customs-clearance/${widget.clearanceId}/stage', {'key': key, 'done': done}),
+      ok: tr('تم تحديث المرحلة', 'Stage updated'),
+    );
+  }
+
+  /// إصدارُ فاتورة العميل. وفاتورةُ النقل ليست شرطًا لها: تصدر الفاتورةُ بما هو
+  /// معروف، وتُنهى المعاملةُ وحدَها حين تُرفَق فاتورةُ النقل.
+  Future<void> _issueInvoice() async {
+    if (_saving) return;
+    List<Map<String, dynamic>> defs;
+    setState(() => _saving = true);
+    try {
+      final d = await Api.instance.get('/api/customs-clearance/${widget.clearanceId}/invoice');
+      defs = _maps(d['saleItemDefs']);
+    } catch (e) {
+      _say(e.toString());
+      return;
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+    if (!mounted) return;
+    final items = await showModalBottomSheet<List<Map<String, dynamic>>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _InvoiceSheet(
+        defs: defs, existing: _maps(_c?['saleItems']),
+        transportReceived: _c?['transportInvoiceReceived'] == true,
+      ),
+    );
+    if (items == null) return;
+    final r = await _send(() =>
+        Api.instance.patch('/api/customs-clearance/${widget.clearanceId}/invoice', {'saleItems': items}));
+    if (r == null) return;
+    final no = '${_m(_m(r)['clearance'])['saleInvoiceNumber'] ?? ''}';
+    _say(_m(r)['closed'] == true
+        ? tr('صدرت الفاتورة $no وأُنهيت المعاملة', 'Invoice $no issued — transaction closed')
+        : tr('صدرت الفاتورة $no — بانتظار فاتورة النقل', 'Invoice $no issued — awaiting the transport invoice'));
+  }
+
+  Future<void> _attachTransportInvoice() async {
+    final picked = await pickFileAsDataUrl();
+    if (picked == null || !mounted) return;
+    final r = await _send(() => Api.instance.post('/api/customs-clearance/${widget.clearanceId}/transport-invoice',
+        {'dataUrl': picked.dataUrl, 'fileName': picked.fileName}));
+    if (r == null) return;
+    _say(_m(r)['closed'] == true
+        ? tr('أُرفقت فاتورة النقل وأُنهيت المعاملة', 'Transport invoice attached — transaction closed')
+        : tr('أُرفقت فاتورة النقل', 'Transport invoice attached'));
+  }
+
+  Future<void> _noTransportInvoice() async {
+    final ok = await _confirm(
+      tr('لا فاتورة نقل لهذه المعاملة', 'No transport invoice'),
+      tr('تُسجَّل المعاملةُ على أنّها لا تنتظر فاتورةَ ناقل، فتُنهى في الحال.',
+          'The transaction is recorded as not awaiting a carrier invoice and closes at once.'),
+      action: tr('تأكيد', 'Confirm'),
+      danger: false,
+    );
+    if (!ok) return;
+    final r = await _send(() => Api.instance
+        .post('/api/customs-clearance/${widget.clearanceId}/transport-invoice', {'notRequired': true}));
+    if (r != null && _m(r)['closed'] == true) _say(tr('أُنهيت المعاملة', 'Transaction closed'));
+  }
+
+  Future<void> _reopen() async {
+    final ok = await _confirm(
+      tr('إعادة فتح المعاملة', 'Reopen transaction'),
+      tr('تعود المعاملةُ إلى قوائم المتابعة، وتبقى فاتورتُها كما صدرت.',
+          'The transaction returns to the follow-up lists; its invoice stays as issued.'),
+      action: tr('إعادة الفتح', 'Reopen'),
+      danger: false,
+    );
+    if (!ok) return;
+    await _send(
+      () => Api.instance.patch('/api/customs-clearance/${widget.clearanceId}/complete', {'completed': false}),
+      ok: tr('أُعيد فتح المعاملة', 'Transaction reopened'),
+    );
+  }
+
+  /// بيانُ وحدةٍ واحدة: رقمُها وتاريخُ إرجاعها وسيّارةُ كلّ مرحلةِ نقلٍ أُنجزت.
+  /// والحفظُ بالمصفوفة كاملةً — الخادمُ يكتب `containers` كما تصله.
+  Future<void> _editUnit(int i, List<Map<String, dynamic>> units, List<String> legs, String cargo) async {
+    final next = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _UnitSheet(unit: units[i], index: i, cargo: cargo, legs: legs),
+    );
+    if (next == null) return;
+    final all = [...units]..[i] = next;
+    await _patch({'containers': all}, tr('حُفظت بيانات الوحدة', 'Unit saved'));
   }
 
   /// ملاحظةٌ جديدة — تُضاف إلى السجلّ ولا تمحو ما قبلها.
   Future<void> _addNote() async {
     final text = _note.text.trim();
     if (text.isEmpty) return;
-    setState(() => _saving = true);
-    try {
-      await Api.instance.post('/api/customs-clearance/${widget.clearanceId}/notes', {'text': text});
-      _note.clear();
-      await _load();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('أُضيفت الملاحظة', 'Note added'))));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-    }
-    if (mounted) setState(() => _saving = false);
+    final r = await _send(
+      () => Api.instance.post('/api/customs-clearance/${widget.clearanceId}/notes', {'text': text}),
+      ok: tr('أُضيفت الملاحظة', 'Note added'),
+    );
+    if (r != null) _note.clear();
   }
 
   String _when(dynamic v) {
@@ -179,24 +417,41 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final c = _c ?? {};
-    final stageIndex = customsStages.indexWhere((s) => s.$1 == c['stage']);
+    // ── الدورةُ كما حسبها الخادم ───────────────────────────────────────────
+    // ما أُنجز وما أُغلِق والنسبةُ تُقرأ من `pipeline` — لا تُشتقّ هنا: القاعدةُ
+    // (طريقان يتنافيان، ومراحلُ ليست من طريق المعاملة) واحدةٌ في الخادم.
+    final pipeline = _m(c['pipeline']);
+    final steps = _maps(pipeline['steps']);
+    final cargo = (c['cargoType'] ?? 'containers').toString();
+    final vehicles = cargo == 'vehicles';
+    final nextKey = (pipeline['next'] ?? '').toString();
+    final doneLegs = [for (final s in steps) if (_transportLegs.contains(s['key']) && s['done'] == true) '${s['key']}'];
+    final units = _maps(c['containers']);
     final stageDone = _m(c['stageDone']);
     final stageDates = _m(c['stageDates']);
     final costs = _m(c['costs']);
     final documents = _m(c['documents']);
-    final notes = List<Map<String, dynamic>>.from(c['notesLog'] ?? const []);
+    final notes = _maps(c['notesLog']);
     final revenue = _m(c['revenue']);
-    final attachments = List<Map<String, dynamic>>.from(
-        (c['attachments'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
+    final attachments = _maps(c['attachments']);
+    final payments = _maps(c['paymentStages']);
     final totalCost = _costItems.fold<num>(0, (s, it) => s + _nz(costs, it.$1));
-    // ── وسعرُ النقل يُعرَض ولا يُجمَع ───────────────────────────────────────
-    // هو إجماليُّ ما نأخذه من العميل، وصافيه (transportNet) هو الداخلُ في
-    // الربح — فجمعُهما معًا يحسب النقلَ مرّتين. نفسُ قاعدة MARGIN_KEYS في
-    // الخادم (models/CustomsClearance).
-    final profit = _marginItems
-        .where((it) => it.$1 != 'transportSelling')
-        .fold<num>(0, (s, it) => s + _nz(revenue, it.$1));
-    final invoiced = totalCost + profit;
+    final invoiceNo = (c['saleInvoiceNumber'] ?? '').toString();
+    final cancelled = c['cancelled'] == true;
+    final completed = c['isCompleted'] == true;
+    // فُوترت ولم تُنهَ: تنتظر فاتورةَ النقل (awaitsTransportInvoice في الخادم).
+    final awaiting = invoiceNo.isNotEmpty && !completed && !cancelled && c['transportInvoiceReceived'] != true;
+    // أوّلُ اسمِ كلّ ملفٍّ يُنزَّل: رقمُ البوليصة، وإلّا رقمُ المعاملة.
+    final fileBase = '${c['blNumber'] ?? ''}'.trim().isNotEmpty ? '${c['blNumber']}'.trim() : '${c['refNumber'] ?? widget.ref}';
+    String attTitle(Map<String, dynamic> a) {
+      final t = '${a['title'] ?? ''}'.trim();
+      if (t.isNotEmpty) return t;
+      final st = '${a['stage'] ?? ''}';
+      return st.isNotEmpty ? customsStageLabel(st, cargo) : '${a['fileName'] ?? ''}'.replaceAll(RegExp(r'\.[^.]+$'), '');
+    }
+    final attTotals = <String, int>{};
+    for (final a in attachments) { attTotals[attTitle(a)] = (attTotals[attTitle(a)] ?? 0) + 1; }
+    final attSeen = <String, int>{};
 
     return AppScaffold(
       title: Text('${tr('تخليص', 'Clearance')} ${widget.ref}'),
@@ -205,26 +460,90 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
-                  onRefresh: _load,
+                  onRefresh: () { _sheetsKey = ''; _loadTasks(); return _load(); },
                   child: ListView(padding: const EdgeInsets.all(14), children: [
                     // ── معلومات أساسية ──
                     FadeSlideIn(
                       child: AppCard(
-                        topAccent: c['cancelled'] == true ? T.danger : T.navy,
+                        topAccent: cancelled ? T.danger : completed ? T.success : T.navy,
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text((c['customerName'] ?? '—').toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                           const SizedBox(height: 8),
                           Wrap(spacing: 6, runSpacing: 6, children: [
                             if ((c['blNumber'] ?? '').toString().isNotEmpty) Chip2('BL: ${c['blNumber']}', T.navy),
                             Chip2(c['branch'] == 'dammam' ? tr('الدمام', 'Dammam') : tr('جدة', 'Jeddah'), T.info),
-                            if (c['containerCount'] != null) Chip2('${c['containerCount']} ${tr('حاوية', 'containers')}', T.violet),
+                            if (c['containerCount'] != null)
+                              Chip2('${c['containerCount']} ${vehicles ? tr('سيّارة', 'vehicles') : tr('حاوية', 'containers')}', T.violet),
                             if ((c['shippingAgent'] ?? '').toString().isNotEmpty) Chip2(c['shippingAgent'].toString(), T.cyan, icon: Icons.directions_boat_outlined),
-                            if (c['cancelled'] == true) Chip2(tr('ملغى', 'Cancelled'), T.danger),
+                            if (invoiceNo.isNotEmpty) Chip2('${tr('مفوترة', 'Invoiced')} · $invoiceNo', T.navy, icon: Icons.receipt_long_outlined),
+                            if (completed) Chip2(tr('مُقفلة', 'Closed'), T.success),
+                            if (cancelled) Chip2(tr('ملغاة', 'Cancelled'), T.danger),
                           ]),
                         ]),
                       ),
                     ),
                     const SizedBox(height: 12),
+                    // ── بانتظار فاتورة النقل ──
+                    // بالأحمر حتى لا تُنسى: الفاتورةُ صدرت والمعاملةُ لم تُنهَ.
+                    if (awaiting) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: T.danger.withValues(alpha: 0.07),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: T.danger.withValues(alpha: 0.45)),
+                        ),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            const Icon(Icons.error_outline, color: T.danger, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                tr('صدرت الفاتورة $invoiceNo — بانتظار فاتورة النقل', 'Invoice $invoiceNo issued — awaiting the transport invoice'),
+                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: T.danger),
+                              ),
+                            ),
+                          ]),
+                          const SizedBox(height: 8),
+                          Wrap(spacing: 8, runSpacing: 4, children: [
+                            FilledButton.icon(
+                              style: FilledButton.styleFrom(backgroundColor: T.danger),
+                              onPressed: _saving ? null : _attachTransportInvoice,
+                              icon: const Icon(Icons.attach_file_rounded, size: 16),
+                              label: Text(tr('إرفاق فاتورة النقل', 'Attach transport invoice')),
+                            ),
+                            TextButton(
+                              onPressed: _saving ? null : _noTransportInvoice,
+                              child: Text(tr('لا فاتورة نقل لهذه المعاملة', 'No transport invoice for this one'),
+                                  style: const TextStyle(color: T.danger)),
+                            ),
+                          ]),
+                        ]),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    // ── الفوترة والإنهاء فعلان ──
+                    if (completed)
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: OutlinedButton.icon(
+                          onPressed: _saving ? null : _reopen,
+                          icon: const Icon(Icons.lock_open_outlined, size: 16),
+                          label: Text(tr('إعادة الفتح', 'Reopen')),
+                        ),
+                      )
+                    else if (!cancelled && c['upcoming'] != true)
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: _saving ? null : _issueInvoice,
+                          icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                          label: Text(invoiceNo.isEmpty
+                              ? tr('إصدار الفاتورة', 'Issue invoice')
+                              : tr('تعديل بنود الفاتورة $invoiceNo', 'Edit invoice $invoiceNo')),
+                        ),
+                      ),
+                    if (completed || (!cancelled && c['upcoming'] != true)) const SizedBox(height: 12),
                     // ── مسار المراحل ──
                     FadeSlideIn(
                       delayMs: 40,
@@ -233,43 +552,64 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                           Row(children: [
                             Text(tr('مسار التخليص', 'Clearance pipeline'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                             const Spacer(),
-                            Text('${stageIndex + 1}/${customsStages.length}', style: const TextStyle(fontWeight: FontWeight.w800, color: T.navy)),
+                            Text('${pipeline['done'] ?? 0}/${pipeline['total'] ?? 0} · ${pipeline['percent'] ?? 0}%',
+                                style: const TextStyle(fontWeight: FontWeight.w800, color: T.navy)),
                           ]),
+                          const SizedBox(height: 8),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: LinearProgressIndicator(
+                              value: (_nz(pipeline, 'percent') / 100).clamp(0, 1).toDouble(), minHeight: 6,
+                              backgroundColor: T.inkFaint.withValues(alpha: 0.12), color: T.success),
+                          ),
                           const SizedBox(height: 10),
-                          ...customsStages.asMap().entries.map((e) {
-                            final done = e.key <= stageIndex;
-                            final current = e.key == stageIndex;
+                          ...steps.asMap().entries.map((e) {
+                            final key = '${e.value['key']}';
+                            final done = e.value['done'] == true;
+                            final locked = e.value['locked'] == true;
+                            final isNext = key == nextKey && !completed && !cancelled;
+                            // «إصدار الفاتورة» لا تُعلَّم بيد: تُعلَّم بإصدارها.
+                            final VoidCallback? onTap = _saving || locked || cancelled
+                                ? null
+                                : key == 'invoiced'
+                                    ? (done || c['upcoming'] == true ? null : _issueInvoice)
+                                    : () => _setStage(key, !done);
                             return InkWell(
-                              onTap: _saving || current ? null : () => _patch({'stage': e.value.$1}, tr('تم تحديث المرحلة', 'Stage updated')),
+                              onTap: onTap,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 3),
-                                child: Row(children: [
+                                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                   Column(children: [
                                     Container(
                                       width: 22, height: 22,
                                       decoration: BoxDecoration(
-                                        color: done ? T.success : Colors.transparent,
+                                        color: done ? T.success : locked ? T.inkFaint.withValues(alpha: 0.15) : Colors.transparent,
                                         shape: BoxShape.circle,
-                                        border: Border.all(color: done ? T.success : T.inkFaint, width: 2),
+                                        border: Border.all(color: done ? T.success : locked ? Colors.transparent : T.inkFaint, width: 2),
                                       ),
-                                      child: done ? const Icon(Icons.check, size: 13, color: Colors.white) : null,
+                                      child: done
+                                          ? const Icon(Icons.check, size: 13, color: Colors.white)
+                                          : locked ? const Icon(Icons.lock_outline, size: 12, color: T.inkFaint) : null,
                                     ),
-                                    if (e.key < customsStages.length - 1)
+                                    if (e.key < steps.length - 1)
                                       Container(width: 2, height: 20, color: done ? T.success.withValues(alpha: 0.4) : T.inkFaint.withValues(alpha: 0.25)),
                                   ]),
                                   const SizedBox(width: 10),
                                   Expanded(
-                                    child: Text(
-                                      tr(e.value.$2, e.value.$3),
-                                      style: TextStyle(
-                                        fontSize: 12.5,
-                                        fontWeight: current ? FontWeight.w900 : FontWeight.w600,
-                                        color: current ? T.navy : done ? T.ink : T.inkSoft,
+                                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                      Text(
+                                        customsStageLabel(key, cargo),
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: isNext ? FontWeight.w900 : FontWeight.w600,
+                                          color: locked ? T.inkFaint : isNext ? T.navy : done ? T.ink : T.inkSoft,
+                                        ),
                                       ),
-                                    ),
+                                      if (locked && '${e.value['reason'] ?? ''}'.isNotEmpty)
+                                        Text('${e.value['reason']}', style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                                    ]),
                                   ),
-                                  if (current) Chip2(tr('الحالية', 'Current'), T.navy),
-                                  if (!done && !current) const Icon(Icons.chevron_left, size: 18, color: T.inkFaint),
+                                  if (isNext) Chip2(tr('التالية', 'Next'), T.navy),
                                 ]),
                               ),
                             );
@@ -278,6 +618,23 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
+                    // ── الوحدات: حاوياتٌ أو سيّارات ──
+                    // خانةٌ لكلّ وحدةٍ بعدد المعاملة (يفتحها الخادم — syncUnits)،
+                    // تُلمَس فيُكتب رقمُها وتاريخُ إرجاعها وبيانُ نقلها.
+                    if (units.isNotEmpty) ...[
+                      FadeSlideIn(
+                        delayMs: 60,
+                        child: AppCard(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text('${vehicles ? tr('السيّارات', 'Vehicles') : tr('الحاويات', 'Containers')} (${units.length})',
+                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                            const SizedBox(height: 8),
+                            for (final e in units.asMap().entries) _unitCard(e.key, units, doneLegs, cargo),
+                          ]),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     // ── مهام الإنجاز ──
                     FadeSlideIn(
                       delayMs: 80,
@@ -389,6 +746,24 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
+                    // ── مهامّ خطّة العمل المرتبطة بالمعاملة ──
+                    if (_tasks != null) ...[
+                      AppCard(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(children: [
+                            Text(tr('مهامّ خطّة العمل', 'Work-plan tasks'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                            const Spacer(),
+                            if (_tasks!.isNotEmpty) Text('${_tasks!.length}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                          ]),
+                          const SizedBox(height: 6),
+                          if (_tasks!.isEmpty)
+                            Text(tr('لا مهامّ مرتبطة بهذه المعاملة', 'No tasks linked to this transaction'),
+                                style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+                          for (final t in _tasks!) _taskRow(t),
+                        ]),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     // ── التكاليف ──
                     FadeSlideIn(
                       delayMs: 120,
@@ -417,17 +792,18 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // ── الهامش والفاتورة ──
+                    // ── الإيراد والفاتورة ──
                     // في التخليص لا تُباع الرسوم بل تُمرَّر: ما دُفع للموانى
-                    // والجمارك يُسترد كما هو، والربحُ هو ما أُضيف فوقه. لذلك
-                    // الفاتورةُ محسوبةٌ لا مكتوبة: مصروفات + هامش.
+                    // والجمارك يُسترد كما هو. والفاتورةُ محسوبةٌ لا مكتوبة.
+                    // (صافي الربح وهامشُه رُفعا من تفاصيل المعاملة بطلب صاحب
+                    //  الشركة — موضعُهما «تحليلات قسم التخليص» وهي للإدارة.)
                     FadeSlideIn(
                       delayMs: 140,
                       child: AppCard(
                         topAccent: T.navy,
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Row(children: [
-                            Text(tr('الهامش والفاتورة', 'Margin & invoice'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                            Text(tr('الإيراد والفاتورة', 'Revenue & invoice'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                             const Spacer(),
                             IconButton(icon: const Icon(Icons.edit_outlined, size: 18, color: T.navy), onPressed: () => _editMargin(revenue)),
                           ]),
@@ -438,23 +814,32 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                               Text('${_money(_nz(revenue, it.$1))} ${tr('ر.س', 'SAR')}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
                             ]),
                           )),
-                          const Divider(height: 18),
-                          Row(children: [
-                            Text(tr('صافي الربح', 'Net profit'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
-                            const Spacer(),
-                            Text('${_money(profit)} ${tr('ر.س', 'SAR')}',
-                                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: profit >= 0 ? T.success : T.danger)),
-                          ]),
-                          const SizedBox(height: 4),
-                          Row(children: [
-                            Text(tr('إجمالي الفاتورة', 'Total invoiced'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
-                            const Spacer(),
-                            Text('${_money(invoiced)} ${tr('ر.س', 'SAR')}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: T.navy)),
-                          ]),
+                          if (revenue['totalInvoiced'] != null) ...[
+                            const Divider(height: 18),
+                            Row(children: [
+                              Text(tr('إجمالي الفاتورة', 'Total invoiced'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+                              const Spacer(),
+                              Text('${_money(revenue['totalInvoiced'])} ${tr('ر.س', 'SAR')}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: T.navy)),
+                            ]),
+                          ],
                         ]),
                       ),
                     ),
                     const SizedBox(height: 12),
+                    // ── مراحل السداد ──
+                    // إدخالٌ لكلّ مرّة: المرحلةُ نفسُها قد تُسدَّد على دفعات،
+                    // فتُرقَّم ليُعرَف أيُّها هذا.
+                    if (payments.isNotEmpty || _payDefs.isNotEmpty) ...[
+                      AppCard(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('${tr('مراحل السداد', 'Payment stages')} (${payments.length})',
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                          const SizedBox(height: 6),
+                          ..._paymentGroups(payments, fileBase),
+                        ]),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     // ── المرفقات ──
                     // ورقُ كلِّ مرحلةٍ موسومًا بها، يُفتح ويُنزَّل من الجوّال
                     // كما من الويب: من في الميناء أحوجُ إليه ممّن في المكتب.
@@ -475,8 +860,11 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                             ),
                           ...attachments.map((att) {
                             final st = (att['stage'] ?? '').toString();
-                            final meta = customsStages.where((x) => x.$1 == st).toList();
-                            final stLabel = meta.isEmpty ? tr('عامّ', 'General') : tr(meta.first.$2, meta.first.$3);
+                            final stLabel = st.isEmpty ? tr('عامّ', 'General') : customsStageLabel(st, cargo);
+                            final title = attTitle(att);
+                            final nth = attSeen[title] = (attSeen[title] ?? 0) + 1;
+                            final url = customsFileUrl(att['fileUrl'], base: fileBase, title: title,
+                                n: (attTotals[title] ?? 0) > 1 ? nth : 0, fileName: att['fileName']);
                             return Padding(
                               padding: const EdgeInsets.symmetric(vertical: 4),
                               child: Row(children: [
@@ -490,7 +878,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                                   ]),
                                 ),
                                 IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.download_rounded, size: 18, color: T.navy),
-                                    tooltip: tr('فتح/تنزيل', 'Open / download'), onPressed: () => _openAttachment(att)),
+                                    tooltip: tr('فتح/تنزيل', 'Open / download'), onPressed: () => _openFile(url)),
                                 IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.delete_outline, size: 18, color: T.danger),
                                     onPressed: _saving ? null : () => _deleteAttachment(att)),
                               ]),
@@ -502,6 +890,198 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                     const SizedBox(height: 20),
                   ]),
                 ),
+    );
+  }
+
+  /// بطاقةُ الوحدة على هيئة حاوية: لوحةٌ برقمها، وتحتها ما كُتب عنها.
+  Widget _unitCard(int i, List<Map<String, dynamic>> units, List<String> doneLegs, String cargo) {
+    final vehicles = cargo == 'vehicles';
+    final u = units[i];
+    final number = '${u['containerNumber'] ?? ''}'.trim();
+    final returnDate = '${u['returnDate'] ?? ''}';
+    final moves = _maps(u['moves']);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: _saving ? null : () => _editUnit(i, units, doneLegs, cargo),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: T.navy, width: 2),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Container(
+              color: T.navy,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: Row(children: [
+                Icon(vehicles ? Icons.directions_car_filled_outlined : Icons.view_week_outlined, size: 15, color: Colors.white),
+                const SizedBox(width: 6),
+                Text('${vehicles ? tr('سيّارة', 'Vehicle') : tr('حاوية', 'Container')} ${_arDigits(i + 1)}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w700)),
+                const Spacer(),
+                Text(number.isEmpty ? tr('بلا رقم', 'No number') : number,
+                    textDirection: TextDirection.ltr,
+                    style: TextStyle(color: number.isEmpty ? Colors.white54 : Colors.white, fontSize: 13.5, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                const SizedBox(width: 6),
+                const Icon(Icons.edit_outlined, size: 14, color: Colors.white70),
+              ]),
+            ),
+            if (!vehicles || doneLegs.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  if (!vehicles)
+                    Text('${tr('تاريخ الإرجاع', 'Return date')}: ${returnDate.isEmpty ? '—' : returnDate}',
+                        style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                  for (final leg in doneLegs) _moveLine(leg, moves.where((x) => x['leg'] == leg).firstOrNull, cargo),
+                ]),
+              ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _moveLine(String leg, Map<String, dynamic>? move, String cargo) {
+    final kind = '${move?['vehicleKind'] ?? ''}';
+    final ref = '${move?['ref'] ?? ''}'.trim();
+    final linked = kind == 'energize' && ref.isNotEmpty && _sheets != null ? _sheets!.containsKey(ref) : null;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(customsStageLabel(leg, cargo), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+        Text(
+          kind.isEmpty
+              ? tr('لم تُحدَّد السيّارة', 'Vehicle not set')
+              : kind == 'energize'
+                  ? '${tr('سيّارة تنشيط', 'Energize vehicle')} · ${tr('رقم كشف التخريج', 'Release sheet')}: ${ref.isEmpty ? '—' : ref}'
+                  : '${tr('سيّارة خارجيّة', 'External vehicle')} · ${tr('رقم الفاتورة', 'Invoice no.')}: ${ref.isEmpty ? '—' : ref}',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: kind.isEmpty ? T.warn : T.ink),
+        ),
+        if (linked != null)
+          Text(
+            linked ? tr('مرتبط بسير عمل التشغيل', 'Linked to the operations workflow') : tr('غير موجود في سير عمل التشغيل', 'Not found in the operations workflow'),
+            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: linked ? T.success : T.danger),
+          ),
+      ]),
+    );
+  }
+
+  Widget _taskRow(Map<String, dynamic> t) {
+    final dl = jpDeadline(t);
+    final done = t['status'] == 'done';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(done ? Icons.check_circle : Icons.radio_button_unchecked, size: 17, color: done ? T.success : T.inkFaint),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${t['title'] ?? ''}',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, decoration: done ? TextDecoration.lineThrough : null)),
+            Text('${t['assignedToName'] ?? ''} · ${dl.$1}', style: TextStyle(fontSize: 11, color: dl.$2)),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  /// الإدخالاتُ تحت تعريف مرحلتها: الاسمُ من التعريف الحيّ، وما حُذف تعريفُه
+  /// يبقى مقروءًا باسمه المحفوظ على الإدخال — بلا «إضافة».
+  List<Widget> _paymentGroups(List<Map<String, dynamic>> payments, String fileBase) {
+    final known = {for (final d in _payDefs) '${d['key']}'};
+    final groups = <(String?, String, List<Map<String, dynamic>>)>[
+      for (final d in _payDefs)
+        ('${d['key']}', tr('${d['nameAr'] ?? d['nameEn'] ?? d['key']}', '${d['nameEn'] ?? d['nameAr'] ?? d['key']}'),
+            payments.where((p) => '${p['key']}' == '${d['key']}').toList()),
+    ];
+    for (final p in payments.where((p) => !known.contains('${p['key']}'))) {
+      final name = '${p['label'] ?? p['key'] ?? ''}';
+      final hit = groups.where((g) => g.$1 == null && g.$2 == name).firstOrNull;
+      if (hit != null) { hit.$3.add(p); } else { groups.add((null, name, [p])); }
+    }
+    return [
+      for (final g in groups) ...[
+        Row(children: [
+          Expanded(child: Text(g.$2, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: g.$3.isEmpty ? T.inkSoft : T.ink))),
+          if (g.$1 != null)
+            TextButton.icon(
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+              onPressed: _saving ? null : () => _editPayment(g.$2, key: g.$1),
+              icon: const Icon(Icons.add, size: 16),
+              label: Text(tr('إضافة', 'Add')),
+            ),
+        ]),
+        for (final e in g.$3.asMap().entries) _paymentEntry(e.value, g.$2, g.$3.length > 1 ? e.key + 1 : 0, fileBase),
+        const Divider(height: 10),
+      ],
+    ];
+  }
+
+  Widget _paymentEntry(Map<String, dynamic> p, String stage, int ordinal, String fileBase) {
+    final (statusLabel, statusColor) = customsPayStatus(p['payStatus']);
+    final proofs = _maps(p['proofFiles']);
+    final proofTitle = '$stage - ${tr('إثبات الدفع', 'Payment proof')}';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsetsDirectional.fromSTEB(10, 6, 2, 6),
+      decoration: BoxDecoration(color: T.canvas, borderRadius: BorderRadius.circular(10)),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Wrap(spacing: 6, runSpacing: 4, children: [
+              if (ordinal > 0) Chip2(tr('الدفعة ${_arDigits(ordinal)}', 'Payment $ordinal'), T.navy),
+              Chip2(statusLabel, statusColor),
+            ]),
+            const SizedBox(height: 3),
+            Text([
+              if ('${p['date'] ?? ''}'.isNotEmpty) '${p['date']}',
+              if (p['amount'] != null) '${_money(p['amount'])} ${tr('ر.س', 'SAR')}',
+              if ('${p['note'] ?? ''}'.isNotEmpty) '${p['note']}',
+            ].join(' · '), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+            if ('${p['decisionNote'] ?? ''}'.isNotEmpty)
+              Text('${tr('ملاحظة الماليّة', 'Finance note')}: ${p['decisionNote']}', style: TextStyle(fontSize: 11.5, color: statusColor)),
+            if ('${p['fileUrl'] ?? ''}'.isNotEmpty || proofs.isNotEmpty)
+              Wrap(spacing: 4, children: [
+                if ('${p['fileUrl'] ?? ''}'.isNotEmpty)
+                  TextButton.icon(
+                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: EdgeInsets.zero),
+                    onPressed: () => _openFile(customsFileUrl(p['fileUrl'], base: fileBase, title: stage, n: ordinal, fileName: p['fileName'])),
+                    icon: const Icon(Icons.attach_file, size: 14),
+                    label: Text(tr('المرفق', 'File'), style: const TextStyle(fontSize: 11.5)),
+                  ),
+                for (final f in proofs.asMap().entries)
+                  TextButton.icon(
+                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: EdgeInsets.zero),
+                    onPressed: () => _openFile(customsFileUrl(f.value['fileUrl'], base: fileBase, title: proofTitle,
+                        n: proofs.length > 1 ? f.key + 1 : ordinal, fileName: f.value['fileName'])),
+                    icon: const Icon(Icons.verified_outlined, size: 14, color: T.success),
+                    label: Text(tr('إثبات الدفع', 'Payment proof'), style: const TextStyle(fontSize: 11.5, color: T.success)),
+                  ),
+              ]),
+          ]),
+        ),
+        IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.edit_outlined, size: 17, color: T.navy),
+            tooltip: tr('تعديل', 'Edit'), onPressed: _saving ? null : () => _editPayment(stage, entry: p)),
+        IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.delete_outline, size: 18, color: T.danger),
+            onPressed: _saving ? null : () => _deletePayment(p, stage, ordinal)),
+      ]),
+    );
+  }
+
+  /// إضافةُ إدخالٍ إلى مرحلة سداد (`key`) أو تعديلُ إدخالٍ قائم (`entry`).
+  Future<void> _editPayment(String stage, {String? key, Map<String, dynamic>? entry}) async {
+    final body = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _PaymentSheet(stage: stage, entry: entry),
+    );
+    if (body == null) return;
+    final path = '/api/customs-clearance/${widget.clearanceId}/payment-stages';
+    await _send(
+      () => entry == null ? Api.instance.post(path, {'key': key, ...body}) : Api.instance.put('$path/${entry['_id']}', body),
+      ok: entry == null ? tr('أُضيف الإدخال', 'Entry added') : tr('حُفظ الإدخال', 'Entry saved'),
     );
   }
 
@@ -527,7 +1107,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
           padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(tr('تعديل بنود الهامش', 'Edit margin lines'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              Text(tr('تعديل بنود الإيراد', 'Edit revenue lines'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
               const SizedBox(height: 4),
               Text(tr('الفاتورة تُحسب: المصروفات + هذه البنود. وصافي النقل = سعر النقل − سعر المورد.',
                       'The invoice is derived: costs + these lines. Transport net = price − supplier.'),
@@ -544,7 +1124,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                   onPressed: () {
                     final body = {'revenue': {for (final it in _editableMargin) it.$1: num.tryParse(ctrls[it.$1]!.text) ?? 0}};
                     Navigator.pop(c);
-                    _patch(body, tr('حُفظ الهامش', 'Margin saved'));
+                    _patch(body, tr('حُفظت البنود', 'Lines saved'));
                   },
                   child: Text(tr('حفظ', 'Save')),
                 ),
@@ -562,6 +1142,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     final picked = await pickFileAsDataUrl();
     if (picked == null || !mounted) return;
     final title = TextEditingController(text: picked.fileName.replaceAll(RegExp(r'\.[^.]+$'), ''));
+    final cargo = (_c?['cargoType'] ?? 'containers').toString();
     String stage = (_c?['stage'] ?? '').toString();
     final ok = await showDialog<bool>(
       context: context,
@@ -579,7 +1160,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
               decoration: InputDecoration(labelText: tr('المرحلة', 'Stage')),
               items: [
                 DropdownMenuItem(value: '', child: Text(tr('مرفق عامّ', 'General'))),
-                ...customsStages.map((x) => DropdownMenuItem(value: x.$1, child: Text(tr(x.$2, x.$3), overflow: TextOverflow.ellipsis))),
+                ...customsStages.map((x) => DropdownMenuItem(value: x.$1, child: Text(customsStageLabel(x.$1, cargo), overflow: TextOverflow.ellipsis))),
               ],
               onChanged: (v) => setSt(() => stage = v ?? ''),
             ),
@@ -592,55 +1173,58 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
       ),
     );
     if (ok != true) return;
-    setState(() => _saving = true);
-    try {
-      await Api.instance.post('/api/customs-clearance/${widget.clearanceId}/attachments', {
+    await _send(
+      () => Api.instance.post('/api/customs-clearance/${widget.clearanceId}/attachments', {
         'files': [
           {'dataUrl': picked.dataUrl, 'fileName': picked.fileName, 'title': title.text.trim(), 'stage': stage},
         ],
-      });
-      await _load();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('أُرفق الملفّ', 'File attached'))));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+      }),
+      ok: tr('أُرفق الملفّ', 'File attached'),
+    );
   }
 
-  /// المرفقُ يُقدَّم على `/api/uploads/...` من الخادم نفسِه، فيُفتح بمتصفّح
+  /// الملفُّ يُقدَّم على `/api/uploads/...` من الخادم نفسِه، فيُفتح بمتصفّح
   /// الجهاز فينزّله أو يعرضه — لا حاجة لتنزيلٍ داخل التطبيق.
-  Future<void> _openAttachment(Map<String, dynamic> att) async {
-    final u = (att['fileUrl'] ?? '').toString();
+  Future<void> _openFile(String fileUrl) async {
+    final u = fileUrl;
     if (u.isEmpty) return;
     final uri = Uri.parse(u.startsWith('http') ? u : '${AppConfig.apiBase}$u');
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تعذّر فتح الملفّ', 'Could not open the file'))));
+      _say(tr('تعذّر فتح الملفّ', 'Could not open the file'));
     }
   }
 
+  /// حذفُ المرفق يحذف معه إدخالَ مرحلة السداد الذي يملكه (removedStages في
+  /// الردّ) — فيُقال قبل الحذف لا بعده.
   Future<void> _deleteAttachment(Map<String, dynamic> att) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: Text(tr('حذف المرفق', 'Delete attachment')),
-        content: Text('${att['title'] ?? att['fileName'] ?? ''}'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
-        ],
-      ),
+    final url = '${att['fileUrl'] ?? ''}';
+    final owned = url.isNotEmpty && _maps(_c?['paymentStages']).any((p) => p['fileUrl'] == url);
+    final name = '${att['title'] ?? att['fileName'] ?? ''}';
+    final ok = await _confirm(
+      tr('حذف المرفق', 'Delete attachment'),
+      owned
+          ? tr('«$name»\nيُحذَف معه إدخالُه في مراحل السداد.', '"$name"\nIts payment-stage entry is deleted with it.')
+          : name,
+      action: tr('حذف', 'Delete'),
     );
-    if (ok != true) return;
-    setState(() => _saving = true);
-    try {
-      await Api.instance.delete('/api/customs-clearance/${widget.clearanceId}/attachments/${att['_id']}');
-      await _load();
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-    } finally {
-      if (mounted) setState(() => _saving = false);
+    if (!ok) return;
+    final r = await _send(() => Api.instance.delete('/api/customs-clearance/${widget.clearanceId}/attachments/${att['_id']}'));
+    final removed = r == null ? const [] : (_m(r)['removedStages'] as List? ?? const []);
+    if (removed.isNotEmpty) {
+      _say(tr('حُذف المرفق ومعه من مراحل السداد: ${removed.join('، ')}', 'Deleted, with payment stage: ${removed.join(', ')}'));
     }
+  }
+
+  Future<void> _deletePayment(Map<String, dynamic> p, String stage, int ordinal) async {
+    final hasFile = '${p['fileUrl'] ?? ''}'.isNotEmpty || (p['proofFiles'] as List? ?? const []).isNotEmpty;
+    final name = '$stage${ordinal > 0 ? ' — ${tr('الدفعة ${_arDigits(ordinal)}', 'Payment $ordinal')}' : ''}';
+    final ok = await _confirm(
+      tr('حذف إدخال السداد', 'Delete payment entry'),
+      hasFile ? tr('«$name»\nيُحذَف معه مرفقُه.', '"$name"\nIts attachment is deleted with it.') : name,
+      action: tr('حذف', 'Delete'),
+    );
+    if (!ok) return;
+    await _send(() => Api.instance.delete('/api/customs-clearance/${widget.clearanceId}/payment-stages/${p['_id']}'));
   }
 
   Future<void> _editCosts(Map<String, dynamic> costs) async {
@@ -673,6 +1257,341 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
               ),
             ]),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// ورقةُ الوحدة: رقمُها، تاريخُ إرجاعها (للحاويات وحدَها)، ولكلّ مرحلةِ نقلٍ
+/// أُنجزت أيُّ سيّارةٍ نقلتها — سيّارةُ الشركة برقم كشف التخريج، أو خارجيّةٌ
+/// برقم فاتورتها. تردّ الصفَّ معدَّلًا، والحفظُ عند مَن فتحها.
+class _UnitSheet extends StatefulWidget {
+  final Map<String, dynamic> unit;
+  final int index;
+  final String cargo;
+  final List<String> legs;
+  const _UnitSheet({required this.unit, required this.index, required this.cargo, required this.legs});
+  @override
+  State<_UnitSheet> createState() => _UnitSheetState();
+}
+
+class _UnitSheetState extends State<_UnitSheet> {
+  late final TextEditingController _number = TextEditingController(text: '${widget.unit['containerNumber'] ?? ''}');
+  late final TextEditingController _notes = TextEditingController(text: '${widget.unit['notes'] ?? ''}');
+  late String _returnDate = '${widget.unit['returnDate'] ?? ''}';
+  final Map<String, String> _kind = {};
+  final Map<String, TextEditingController> _ref = {};
+
+  bool get _vehicles => widget.cargo == 'vehicles';
+
+  @override
+  void initState() {
+    super.initState();
+    final moves = _maps(widget.unit['moves']);
+    for (final leg in widget.legs) {
+      final mv = moves.where((x) => x['leg'] == leg).firstOrNull;
+      _kind[leg] = '${mv?['vehicleKind'] ?? ''}';
+      _ref[leg] = TextEditingController(text: '${mv?['ref'] ?? ''}');
+    }
+  }
+
+  @override
+  void dispose() {
+    _number.dispose();
+    _notes.dispose();
+    for (final c in _ref.values) { c.dispose(); }
+    super.dispose();
+  }
+
+  void _done() {
+    // بيانُ مرحلةٍ رُفعت علامتُها يبقى كما هو — لا يُمحى لأنّه غاب عن الورقة.
+    final others = _maps(widget.unit['moves']).where((x) => !widget.legs.contains(x['leg']));
+    Navigator.pop(context, <String, dynamic>{
+      ...widget.unit,
+      'containerNumber': _number.text.trim(),
+      'notes': _notes.text.trim(),
+      'returnDate': _vehicles ? '${widget.unit['returnDate'] ?? ''}' : _returnDate,
+      'moves': [
+        ...others,
+        for (final leg in widget.legs) {'leg': leg, 'vehicleKind': _kind[leg] ?? '', 'ref': _ref[leg]!.text.trim()},
+      ],
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${_vehicles ? tr('سيّارة', 'Vehicle') : tr('حاوية', 'Container')} ${_arDigits(widget.index + 1)}',
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _number,
+              textDirection: TextDirection.ltr,
+              textCapitalization: TextCapitalization.characters,
+              decoration: InputDecoration(labelText: _vehicles ? tr('رقم الهيكل', 'Chassis no.') : tr('رقم الحاوية', 'Container no.')),
+            ),
+            if (!_vehicles) ...[
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.event_outlined, size: 18),
+                    label: Text('${tr('تاريخ الإرجاع', 'Return date')}: ${_returnDate.isEmpty ? tr('اختر التاريخ', 'Pick date') : _returnDate}'),
+                    onPressed: () async {
+                      final d = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.tryParse(_returnDate) ?? DateTime.now(),
+                        firstDate: DateTime(2020), lastDate: DateTime(2100),
+                      );
+                      if (d != null) setState(() => _returnDate = d.toIso8601String().split('T').first);
+                    },
+                  ),
+                ),
+                if (_returnDate.isNotEmpty)
+                  IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => setState(() => _returnDate = '')),
+              ]),
+            ],
+            for (final leg in widget.legs) ...[
+              const SizedBox(height: 14),
+              Text(customsStageLabel(leg, widget.cargo), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              Wrap(spacing: 8, children: [
+                for (final k in const [('energize', 'سيّارة تنشيط', 'Energize vehicle'), ('external', 'سيّارة خارجيّة', 'External vehicle')])
+                  ChoiceChip(
+                    label: Text(tr(k.$2, k.$3), style: const TextStyle(fontSize: 12)),
+                    selected: _kind[leg] == k.$1,
+                    onSelected: (_) => setState(() => _kind[leg] = _kind[leg] == k.$1 ? '' : k.$1),
+                  ),
+              ]),
+              if ((_kind[leg] ?? '').isNotEmpty) ...[
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _ref[leg],
+                  textDirection: TextDirection.ltr,
+                  decoration: InputDecoration(
+                      labelText: _kind[leg] == 'energize' ? tr('رقم كشف التخريج', 'Release sheet no.') : tr('رقم الفاتورة', 'Invoice no.')),
+                ),
+              ],
+            ],
+            if (widget.legs.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Text(tr('بيانُ النقل يُكتب بعد تعليم مرحلة النقل في مسار التخليص.', 'Transport details open once a transport stage is ticked.'),
+                    style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+              ),
+            const SizedBox(height: 12),
+            TextField(controller: _notes, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
+            const SizedBox(height: 16),
+            SizedBox(width: double.infinity, child: FilledButton(onPressed: _done, child: Text(tr('حفظ', 'Save')))),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// ورقةُ إدخال السداد: تاريخٌ ومبلغٌ وملاحظةٌ وملفّ — ولا يُسجَّل إدخالٌ بلا تاريخٍ
+/// ولا ملفّ. تردّ جسمَ الطلب، والإرسالُ عند مَن فتحها.
+class _PaymentSheet extends StatefulWidget {
+  final String stage;
+  final Map<String, dynamic>? entry;
+  const _PaymentSheet({required this.stage, this.entry});
+  @override
+  State<_PaymentSheet> createState() => _PaymentSheetState();
+}
+
+class _PaymentSheetState extends State<_PaymentSheet> {
+  late String _date = '${widget.entry?['date'] ?? ''}';
+  late final TextEditingController _amount = TextEditingController(text: widget.entry?['amount'] == null ? '' : '${widget.entry!['amount']}');
+  late final TextEditingController _noteCtrl = TextEditingController(text: '${widget.entry?['note'] ?? ''}');
+  PickedFile? _file;
+
+  bool get _hadFile => '${widget.entry?['fileUrl'] ?? ''}'.isNotEmpty;
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    _noteCtrl.dispose();
+    super.dispose();
+  }
+
+  void _done() {
+    void say(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+    final text = _amount.text.trim();
+    final amount = text.isEmpty ? null : num.tryParse(text);
+    if (text.isNotEmpty && (amount == null || amount < 0)) return say(tr('اكتب المبلغ رقمًا صحيحًا', 'Enter a valid amount'));
+    if (_date.isEmpty && _file == null && !_hadFile) return say(tr('اختر تاريخًا أو أرفِق ملفًّا', 'Pick a date or attach a file'));
+    Navigator.pop(context, <String, dynamic>{
+      'date': _date, 'amount': amount, 'note': _noteCtrl.text.trim(),
+      if (_file != null) ...{'dataUrl': _file!.dataUrl, 'fileName': _file!.fileName},
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(widget.entry == null ? tr('إضافة إدخال سداد', 'Add payment entry') : tr('تعديل إدخال السداد', 'Edit payment entry'),
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            Text(widget.stage, style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.event_outlined, size: 18),
+                  label: Text('${tr('التاريخ', 'Date')}: ${_date.isEmpty ? tr('اختر التاريخ', 'Pick date') : _date}'),
+                  onPressed: () async {
+                    final d = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.tryParse(_date) ?? DateTime.now(),
+                      firstDate: DateTime(2020), lastDate: DateTime(2100),
+                    );
+                    if (d != null) setState(() => _date = d.toIso8601String().split('T').first);
+                  },
+                ),
+              ),
+              if (_date.isNotEmpty) IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => setState(() => _date = '')),
+            ]),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _amount,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              textDirection: TextDirection.ltr,
+              decoration: InputDecoration(labelText: tr('المبلغ (اختياري)', 'Amount (optional)')),
+            ),
+            const SizedBox(height: 10),
+            TextField(controller: _noteCtrl, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظة', 'Note'))),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final f = await pickFileAsDataUrl();
+                if (f != null && mounted) setState(() => _file = f);
+              },
+              icon: const Icon(Icons.attach_file, size: 18),
+              label: Text(
+                _file?.fileName ?? (_hadFile ? tr('استبدال الملفّ المرفق', 'Replace the attached file') : tr('إرفاق ملفّ (اختياري)', 'Attach a file (optional)')),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(width: double.infinity, child: FilledButton(onPressed: _done, child: Text(tr('حفظ', 'Save')))),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// ورقةُ إصدار الفاتورة: بنودُ البيع من إعدادات القسم (`saleItemDefs`) بسعرها
+/// ومرفقها. تردّ البنودَ التي كُتب سعرُها، والإصدارُ عند مَن فتحها.
+class _InvoiceSheet extends StatefulWidget {
+  final List<Map<String, dynamic>> defs;
+  final List<Map<String, dynamic>> existing;
+  // وصلت فاتورةُ النقل من بابٍ آخر (خانتُها أو مراحلُ السداد) — فلا تنبيه.
+  final bool transportReceived;
+  const _InvoiceSheet({required this.defs, required this.existing, required this.transportReceived});
+  @override
+  State<_InvoiceSheet> createState() => _InvoiceSheetState();
+}
+
+class _InvoiceSheetState extends State<_InvoiceSheet> {
+  final Map<String, TextEditingController> _amount = {};
+  final Map<String, PickedFile> _file = {};
+
+  Map<String, dynamic>? _old(String key) => widget.existing.where((x) => x['key'] == key).firstOrNull;
+  bool _hasFile(String key) => _file[key] != null || '${_old(key)?['fileUrl'] ?? ''}'.isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    for (final d in widget.defs) {
+      final key = '${d['key']}';
+      final old = _old(key);
+      _amount[key] = TextEditingController(text: old == null ? '' : '${old['amount'] ?? ''}');
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _amount.values) { c.dispose(); }
+    super.dispose();
+  }
+
+  void _done() {
+    final items = <Map<String, dynamic>>[];
+    for (final d in widget.defs) {
+      final key = '${d['key']}';
+      final text = _amount[key]!.text.trim();
+      if (text.isEmpty) continue;
+      final amount = num.tryParse(text);
+      if (amount == null || amount < 0) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('اكتب سعرَ «${d['nameAr']}» رقمًا صحيحًا', 'Enter a valid amount for "${d['nameEn'] ?? d['nameAr']}"'))));
+        return;
+      }
+      items.add({
+        'key': key, 'amount': amount,
+        if (_file[key] != null) ...{'file': _file[key]!.dataUrl, 'fileName': _file[key]!.fileName},
+      });
+    }
+    Navigator.pop(context, items);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('إصدار الفاتورة', 'Issue invoice'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            const SizedBox(height: 4),
+            Text(tr('اكتب سعرَ كلّ بندٍ يدخل الفاتورة، وأرفِق ورقتَه إن وُجدت. ما تُرك سعرُه فارغًا لا يدخلها.',
+                    'Enter the price of each line on the invoice and attach its paper if any. Lines left empty are left out.'),
+                style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+            const SizedBox(height: 12),
+            for (final d in widget.defs) ...[
+              Row(children: [
+                Expanded(
+                  child: TextField(
+                    controller: _amount['${d['key']}'],
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    textDirection: TextDirection.ltr,
+                    decoration: InputDecoration(labelText: tr('${d['nameAr'] ?? d['key']}', '${d['nameEn'] ?? d['nameAr'] ?? d['key']}')),
+                  ),
+                ),
+                IconButton(
+                  tooltip: _file['${d['key']}']?.fileName ?? tr('إرفاق', 'Attach'),
+                  icon: Icon(_hasFile('${d['key']}') ? Icons.task_outlined : Icons.attach_file_rounded,
+                      size: 20, color: _hasFile('${d['key']}') ? T.success : T.inkSoft),
+                  onPressed: () async {
+                    final p = await pickFileAsDataUrl();
+                    if (p != null && mounted) setState(() => _file['${d['key']}'] = p);
+                  },
+                ),
+              ]),
+              // فاتورةُ النقل ليست شرطًا للإصدار — لكنّ غيابَها يُقال هنا.
+              if (d['key'] == 'transportInvoice' && !widget.transportReceived && !_hasFile('transportInvoice'))
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(tr('فاتورة النقل لم تُستلَم بعد — تُرفَق لاحقًا فتُنهى المعاملة', 'Transport invoice not received yet — attach it later and the transaction closes'),
+                      style: const TextStyle(fontSize: 11.5, color: T.danger, fontWeight: FontWeight.w700)),
+                ),
+              const SizedBox(height: 8),
+            ],
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(onPressed: _done, child: Text(tr('إصدار الفاتورة', 'Issue invoice'))),
+            ),
+          ]),
         ),
       ),
     );

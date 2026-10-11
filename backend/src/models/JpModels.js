@@ -84,6 +84,21 @@ const jpTaskSchema = new mongoose.Schema({
     at: { type: Date, default: Date.now },
   }],
 
+  /**
+   * ── بماذا تتعلّق المهمّة ────────────────────────────────────────────────
+   * «تابِع فاتورةَ النقل» لا تُفهَم إلّا بمعاملتها، و«كلِّم العميل» بعميلها.
+   * فتُربَط المهمّةُ بما تخصّه — معاملةٍ أو عميلٍ أو وكيلِ شحنٍ أو ناقل —
+   * فتُفتَح منه وتُقرأ فيه. والأنواعُ المسموحةُ لكلّ قسمٍ في
+   * controllers/jpController (LINK_KINDS)؛ والاسمُ يُلقَط وقتَ الربط ليُعرَض
+   * بلا قراءةٍ ثانية.
+   */
+  links: [{
+    _id: false,
+    kind: { type: String, required: true },
+    ref: { type: mongoose.Schema.Types.ObjectId, required: true },
+    label: { type: String, trim: true, default: '' },
+  }],
+
   // ── مهمّةٌ نزلت من الإدارة العليا ────────────────────────────────────────
   // مديرُ القسم يُسند ما كُلِّف به إلى أحد موظّفيه: فتُنشأ مهمّةُ قسمٍ عاديّةٌ
   // باسمه هو، وهذا الرابطُ يصلها بأصلها. **ولا يخرج إلى الموظّف أبدًا** — هو
@@ -94,6 +109,7 @@ jpTaskSchema.index({ scope: 1, section: 1, status: 1, deadlineAt: 1 });
 jpTaskSchema.index({ assignedTo: 1, status: 1 });
 jpTaskSchema.index({ createdBy: 1 });
 jpTaskSchema.index({ project: 1 });
+jpTaskSchema.index({ 'links.ref': 1 });
 
 const JpProject = mongoose.models.JpProject || mongoose.model('JpProject', jpProjectSchema);
 const JpTask = mongoose.models.JpTask || mongoose.model('JpTask', jpTaskSchema);

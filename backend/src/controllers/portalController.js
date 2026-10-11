@@ -152,12 +152,25 @@ async function customsFor(identity) {
       { customerName: { $nin: [null, ''] } },
     ],
   })
-    .select('refNumber branch stage cancelled customerName customer shippingAgent blNumber invoiceNumber invoiceDate port containerCount totalWeight invoiceValue currency exporterCompany countryOfOrigin hsCode declarationNumber declarationDate doNumber exitPermitNumber unloadingAppointment unloadingLocation stageDates stageDone documents agentPapers costs createdAt updatedAt')
+    .select('refNumber branch stage cancelled customerName customer shippingAgent blNumber invoiceNumber invoiceDate port containerCount totalWeight invoiceValue currency exporterCompany countryOfOrigin hsCode declarationNumber declarationDate doNumber exitPermitNumber unloadingAppointment unloadingLocation stageDates stageDone documents agentPapers costs createdAt updatedAt cargoType isCompleted stagesDone transportRoute pipelineVersion saleInvoiceNumber')
     .sort({ createdAt: -1 })
     .limit(FLEET_LIMIT)
     .lean();
   const ids = new Set(identity.financeIds);
-  return rows.filter((r) => (r.customer && ids.has(String(r.customer))) || nameKey(r.customerName) === identity.key);
+  // ── والعميلُ يرى مراحلَ معاملته كما هي ───────────────────────────────────
+  // الدورةُ تتفرّع (ساحةٌ أو عميلٌ مباشرة، وسيّاراتٌ بلا إرجاع)، فالمرحلةُ
+  // الحاليّةُ وحدَها لا تقول ما مضى وما بقي. فتُرسَل المراحلُ محسوبةً بقاعدة
+  // القسم نفسِها (pipelineOf) — بلا سببِ الإغلاق الداخليّ ولا الحقولِ الخام.
+  return rows
+    .filter((r) => (r.customer && ids.has(String(r.customer))) || nameKey(r.customerName) === identity.key)
+    .map(({ stagesDone, transportRoute, pipelineVersion, saleInvoiceNumber, ...r }) => {
+      const p = CustomsClearance.pipelineOf({ ...r, stagesDone, transportRoute, pipelineVersion, saleInvoiceNumber });
+      return {
+        ...r,
+        cargoType: p.cargoType,
+        pipeline: { ...p, steps: p.steps.map(({ key, done, locked }) => ({ key, done, locked })) },
+      };
+    });
 }
 
 async function financeFor(identity) {

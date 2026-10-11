@@ -16,9 +16,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
-import CloseWithInvoice from '@/components/customs/CloseWithInvoice';
+import { useSocket } from '@/hooks/useSocket';
+import { downloadName } from '@/lib/customsPipeline';
 import {
-  Plus, Paperclip, Trash2, Loader2, Check, CalendarDays, Lock, Unlock, AlertTriangle, Clock3,
+  Plus, Paperclip, Trash2, Loader2, Check, CalendarDays, Lock, Unlock, AlertTriangle, Clock3, Receipt,
 } from 'lucide-react';
 
 export interface StageEntry {
@@ -45,9 +46,17 @@ const fmtDate = (d?: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d)
   ? d.split('-').reverse().join('/') : (d || '—'));
 
 export default function PaymentStages({
-  clearanceId, entries, completed, completedByName, completedAt, canEdit, ar, onChanged,
+  clearanceId, refNumber, entries, completed, completedByName, completedAt, canEdit, ar, onChanged,
+  invoiceNumber, awaitingTransport, onIssueInvoice,
 }: {
   clearanceId: string;
+  /** رقمُ البوليصة أو المعاملة — به يُسمّى الملفُّ عند تنزيله. */
+  refNumber?: string;
+  /** رقمُ فاتورة العميل إن صدرت، وهل تنتظر المعاملةُ فاتورةَ النقل. */
+  invoiceNumber?: string;
+  awaitingTransport?: boolean;
+  /** نافذةُ إصدار الفاتورة تُفتَح من الصفحة — زرُّها هنا وفي الترويسة واحد. */
+  onIssueInvoice: () => void;
   entries: StageEntry[];
   completed?: boolean;
   completedByName?: string;
@@ -62,10 +71,13 @@ export default function PaymentStages({
   const [busy, setBusy] = useState('');
   const [openKey, setOpenKey] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadDefs = useCallback(() => {
     api.get<{ items: StageDef[] }>('/api/lookups?type=customs_payment_stage&active=true')
       .then((d) => setDefs(d.items || [])).catch(() => {});
   }, []);
+  useEffect(() => { loadDefs(); }, [loadDefs]);
+  // تعديلٌ في إعدادات القسم (اسمٌ، ترتيبٌ، بندٌ جديد) يظهر هنا في الحال.
+  useSocket('lookup:changed', useCallback((p: any) => { if (p?.type === 'customs_payment_stage') loadDefs(); }, [loadDefs]));
 
   // الإدخالاتُ مجموعةً تحت مرحلتها، بترتيب الإعدادات لا بترتيب الإضافة.
   const grouped = useMemo(() => {
@@ -83,14 +95,15 @@ export default function PaymentStages({
     return [...known, ...orphans];
   }, [entries, defs]);
 
-  const readyToClose = useMemo(
-    () => (entries || []).some((e) => e.key === REQUIRED_KEY && e.date && e.fileUrl),
-    [entries],
-  );
-
   const remove = async (entryId: string) => {
-    if (!(await confirm(t('حذف هذا الإدخال؟ الملفُّ يبقى في مرفقات المعاملة.',
-                          'Delete this entry? The file stays in the transaction attachments.')))) return;
+    const e = (entries || []).find((x) => x._id === entryId);
+    if (!(await confirm({
+      title: t('حذف هذا الإدخال؟', 'Delete this entry?'),
+      message: e?.fileUrl
+        ? t('يُحذَف الإدخالُ ومعه مرفقُه من «مرفقات المعاملة» — وهما شيءٌ واحد.', 'The entry and its file in the transaction attachments are both removed.')
+        : t('يُحذَف الإدخالُ نهائيًّا.', 'The entry is removed permanently.'),
+      confirmLabel: t('حذف', 'Delete'), tone: 'danger',
+    }))) return;
     setBusy(entryId);
     try {
       const d = await api.delete<any>(`/api/customs-clearance/${clearanceId}/payment-stages/${entryId}`);
@@ -99,15 +112,13 @@ export default function PaymentStages({
     setBusy('');
   };
 
-  const [closeOpen, setCloseOpen] = useState(false);
-
   const setComplete = async (value: boolean) => {
     setBusy('complete');
     try {
       const d = await api.patch<any>(`/api/customs-clearance/${clearanceId}/complete`, { completed: value });
       onChanged(d.clearance);
-      notify(value ? t('أُقفلت المعاملة', 'Transaction closed') : t('أُعيد فتحُ المعاملة', 'Reopened'), 'success');
-    } catch (e: any) { notify(e?.message || t('تعذّر الإقفال', 'Failed'), 'error'); }
+      notify(value ? t('أُنهيت المعاملة', 'Transaction closed') : t('أُعيد فتحُ المعاملة', 'Reopened'), 'success');
+    } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Failed'), 'error'); }
     setBusy('');
   };
 
@@ -140,7 +151,7 @@ export default function PaymentStages({
                   {label}
                   {isRequired && (
                     <span className="ms-1.5 text-[10.5px] font-normal text-[#f37121]">
-                      {t('مطلوبة لإقفال المعاملة', 'required to close')}
+                      {t('بها تُنهى المعاملة', 'closes the transaction')}
                     </span>
                   )}
                   {list.length > 1 && (
@@ -160,8 +171,14 @@ export default function PaymentStages({
 
               {!!list.length && (
                 <ul className="space-y-1 border-t border-slate-200/70 px-3 py-2">
-                  {list.map((e) => (
+                  {list.map((e, n) => (
                     <li key={e._id} className="flex flex-wrap items-center gap-2 text-xs">
+                      {/* المرحلةُ الواحدةُ تتكرّر — فيُقال أيُّ مرّةٍ هذه. */}
+                      {list.length > 1 && (
+                        <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10.5px] font-bold text-slate-700">
+                          {t(`الدفعة ${n + 1}`, `#${n + 1}`)}
+                        </span>
+                      )}
                       <CalendarDays className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                       <span className="font-mono font-semibold text-slate-700">{fmtDate(e.date)}</span>
                       {e.amount != null && (
@@ -171,8 +188,10 @@ export default function PaymentStages({
                       )}
                       {e.fileUrl ? (
                         <a href={e.fileUrl} target="_blank" rel="noreferrer"
+                          download={downloadName(refNumber, label, list.length > 1 ? n + 1 : 0, e.fileName, e.fileUrl)}
+                          title={e.fileName || ''}
                           className="inline-flex items-center gap-1 font-semibold text-blue-600 hover:underline">
-                          <Paperclip className="h-3 w-3" />{e.fileName || t('مرفق', 'file')}
+                          <Paperclip className="h-3 w-3" />{label}{list.length > 1 ? ` (${n + 1})` : ''}
                         </a>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-amber-600">
@@ -223,13 +242,15 @@ export default function PaymentStages({
         )}
       </div>
 
-      {/* ── إقفالُ المعاملة ─────────────────────────────────────────────────
-          فعلٌ صريحٌ لا حالةٌ تُستنتَج، وشرطُه معلَنٌ قبل الضغط لا بعده. */}
-      <div className={`rounded-lg border p-3 ${completed ? 'border-green-300 bg-green-50' : 'border-slate-200 bg-white'}`}>
+      {/* ── الفاتورةُ ثمّ الإنهاء ───────────────────────────────────────────
+          فعلان لا واحد: الفاتورةُ تصدر متى اكتمل العمل، والمعاملةُ تُنهى حين
+          تصل فاتورةُ النقل. والحالةُ تُقال هنا قبل الضغط لا بعده. */}
+      <div className={`rounded-lg border p-3 ${completed ? 'border-green-300 bg-green-50' : awaitingTransport ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`}>
         {completed ? (
           <div className="flex flex-wrap items-center gap-2">
             <Lock className="h-4 w-4 text-green-700" />
-            <span className="text-sm font-bold text-green-800">{t('المعاملة مقفولة', 'Transaction closed')}</span>
+            <span className="text-sm font-bold text-green-800">{t('المعاملة مغلقة', 'Transaction closed')}</span>
+            {invoiceNumber && <span className="text-[11px] font-semibold text-green-800"><bdi>{invoiceNumber}</bdi></span>}
             {completedByName && (
               <span className="text-[11px] text-green-700/80">
                 {completedByName}{completedAt ? ` · ${new Date(completedAt).toLocaleDateString('en-GB')}` : ''}
@@ -242,33 +263,44 @@ export default function PaymentStages({
               </button>
             )}
           </div>
+        ) : invoiceNumber ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Receipt className={`h-4 w-4 ${awaitingTransport ? 'text-red-600' : 'text-slate-600'}`} />
+            <span className="text-sm font-bold text-slate-800">{t('صدرت الفاتورة', 'Invoice issued')} <bdi>{invoiceNumber}</bdi></span>
+            {awaitingTransport && (
+              <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10.5px] font-bold text-white">
+                {t('بانتظار فاتورة النقل', 'Awaiting transport invoice')}
+              </span>
+            )}
+            {canEdit && (
+              <button type="button" onClick={onIssueInvoice}
+                className="ms-auto inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:text-[#f37121]">
+                <Receipt className="h-3.5 w-3.5" />{t('تعديل الفاتورة', 'Edit invoice')}
+              </button>
+            )}
+            {canEdit && !awaitingTransport && (
+              <button type="button" onClick={() => setComplete(true)} disabled={busy === 'complete'}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">
+                {busy === 'complete' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Lock className="h-3.5 w-3.5" />}
+                {t('إنهاء المعاملة', 'Close transaction')}
+              </button>
+            )}
+          </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-slate-700">{t('إنهاء المعاملة', 'Close the transaction')}</span>
-            <span className={`text-[11px] ${readyToClose ? 'text-green-700' : 'text-amber-600'}`}>
-              {readyToClose
-                ? t('فاتورة النقل مُرفقة بتاريخها ✓', 'Transport invoice on file with its date ✓')
-                : t('تحتاج «فاتورة النقل» بتاريخٍ ومرفقٍ معًا', 'Needs “Transport invoice” with both a date and a file')}
+            <span className="text-sm font-semibold text-slate-700">{t('فاتورة العميل', 'Customer invoice')}</span>
+            <span className="text-[11px] text-slate-500">
+              {t('تصدر بلا انتظار فاتورة النقل — وتُنهى المعاملةُ حين تُرفَق.', 'Issued without waiting for the transport invoice — the transaction closes once it is attached.')}
             </span>
             {canEdit && (
-              // ── والإقفالُ يسأل عن أسعار البيع ───────────────────────────
-              // مراحلُ السداد ما دفعناه؛ والإقفالُ هو لحظةُ قول ما نفوتره.
-              // راجع components/customs/CloseWithInvoice.
-              <button type="button" onClick={() => setCloseOpen(true)} disabled={busy === 'complete' || !readyToClose}
-                className="ms-auto inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-4 py-2 text-xs font-bold text-white disabled:opacity-40">
-                {busy === 'complete' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Lock className="h-3.5 w-3.5" />}
-                {t('إنهاء المعاملة وإصدار الفاتورة', 'Close & issue invoice')}
+              <button type="button" onClick={onIssueInvoice}
+                className="ms-auto inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-4 py-2 text-xs font-bold text-white">
+                <Receipt className="h-3.5 w-3.5" />{t('إصدار الفاتورة', 'Issue invoice')}
               </button>
             )}
           </div>
         )}
       </div>
-
-      <CloseWithInvoice
-        open={closeOpen} onClose={() => setCloseOpen(false)}
-        clearanceId={clearanceId} stages={entries as any} ar={ar}
-        onDone={onChanged} notify={notify}
-      />
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { canEditSection } from '@/lib/sections';
-import { ArrowLeft, ArrowRight, Check, Loader2, Ship, FileText, Ban, RotateCcw, ChevronRight, Plus, Trash2, Lock, Unlock } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Loader2, Ship, FileText, Ban, RotateCcw, Trash2, Lock, Unlock, Receipt, Container } from 'lucide-react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import ExportMenu, { type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
@@ -16,17 +16,16 @@ import ClearanceAttachments from '@/components/customs/ClearanceAttachments';
 import { SearchableSelect } from '@/components/hr/HRKit';
 import ClearanceNotes from '@/components/customs/ClearanceNotes';
 import PaymentStages from '@/components/customs/PaymentStages';
-
-const STAGE_ORDER = [
-  'papers_received', 'declaration_paid', 'do_requested', 'do_linked', 'port_fees_paid',
-  'unloading_fees_paid', 'transport_order', 'containers_transported', 'unloaded_stored',
-  'containers_returned', 'invoiced',
-];
+import CloseWithInvoice from '@/components/customs/CloseWithInvoice';
+import TransportInvoiceBanner from '@/components/customs/TransportInvoice';
+import ContainerUnits from '@/components/customs/ContainerUnits';
+import ClearanceTasks from '@/components/customs/ClearanceTasks';
+import { stageName, unitWord, type Pipeline } from '@/lib/customsPipeline';
 
 export default function CustomsDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { notify } = useDialog();
+  const { notify, confirm } = useDialog();
   const { user } = useAuth();
   const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs'); // matrix edit grants count too
   const { lang, isRTL } = useLanguage();
@@ -43,14 +42,20 @@ export default function CustomsDetailPage() {
   // فيسقط المكوّنُ كلُّه بخطأ React #310 («رُسمت خطّافاتٌ أكثرُ من المرّة
   // السابقة») — شاشةٌ بيضاء لا يُفهَم سببُها. فموضعُها هنا لا هناك.
   const [activating, setActivating] = useState(false);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [stageBusy, setStageBusy] = useState('');
 
   // الحذفُ لمدير القسم وموظّفه — يطابق حارسَ المسار في الخادم.
   const canDelete = ['super_admin', 'admin', 'customs_manager', 'customs_officer'].includes(user?.role || '');
 
   const removeClearance = async () => {
-    if (!window.confirm(lang === 'ar'
-      ? `حذف المعاملة ${c?.refNumber || ''} نهائيًّا؟ تُحذف معها مراحلُها ومستنداتُها. ولو كانت ملغاةً فحسب فالأصحّ تركُها ملغاة.`
-      : `Permanently delete clearance ${c?.refNumber || ''}? Its stages and documents go with it. If it was merely cancelled, leave it cancelled.`)) return;
+    if (!(await confirm({
+      title: lang === 'ar' ? `حذف المعاملة ${c?.blNumber || c?.refNumber || ''} نهائيًّا؟` : `Permanently delete clearance ${c?.blNumber || c?.refNumber || ''}?`,
+      message: lang === 'ar'
+        ? 'تُحذَف معها مراحلُها ومستنداتُها ولا تُستعاد. وإن كانت ملغاةً فحسب فالأصحّ تركُها ملغاة.'
+        : 'Its stages and documents go with it and cannot be restored. If it was merely cancelled, leave it cancelled.',
+      confirmLabel: lang === 'ar' ? 'حذف' : 'Delete', tone: 'danger',
+    }))) return;
     try { await api.delete(`/api/customs-clearance/${params?.id}`); router.push('/system/customs'); }
     catch (e: any) { notify(e.message, 'error'); }
   };
@@ -74,7 +79,11 @@ export default function CustomsDetailPage() {
       api.get<{ parties: any[] }>('/api/customs-clearance/parties?kind=agent'),
     ]).then(([cu, ag]) => setParties({ customers: cu.parties || [], agents: ag.parties || [] })).catch(() => {});
   }, []);
-  useSocket('customs:updated', useCallback((d: any) => { if (d?.clearance?._id === params.id) setC(d.clearance); }, [params.id]));
+  useSocket('customs:updated', useCallback((d: any) => {
+    if (d?.clearance?._id === params.id) setC(d.clearance);
+    // اسمُ بندٍ عُدِّل في إعدادات القسم: يُعاد قراءةُ المعاملة ليظهر الجديد.
+    else if (d?.renamed) fetchOne();
+  }, [params.id, fetchOne]));
 
   // Persist a partial change immediately (gives the "automatic / instant" feel).
   const patch = async (partial: any) => {
@@ -92,7 +101,10 @@ export default function CustomsDetailPage() {
     };
     setC(optimistic);
     try {
-      const data = await api.put<any>(`/api/customs-clearance/${c._id}`, optimistic);
+      // المراحلُ لا تُكتب من هنا (لها `PATCH /stage`) — فلا تُرسَل، كي لا يُرفَض
+      // تعديلُ حقلٍ لأنّ زميلًا علّم مرحلةً في اللحظة نفسِها.
+      const { stage: _s, stagesDone: _d, pipeline: _p, stageLog: _l, ...body } = optimistic;
+      const data = await api.put<any>(`/api/customs-clearance/${c._id}`, body);
       if (data?.clearance) setC(data.clearance);
     } catch (e: any) {
       // The page saves silently as you type — a silent revert here means the
@@ -112,10 +124,26 @@ export default function CustomsDetailPage() {
   }
   if (!c) return null;
 
-  const currentIdx = STAGE_ORDER.indexOf(c.stage);
-  const doneCount = STAGE_ORDER.filter((k) => ((c as any).stagesDone || []).includes(k)).length;
   const Back = isRTL ? ArrowRight : ArrowLeft;
   const ar = lang === 'ar';
+  // ── المراحلُ كما يراها الخادم ───────────────────────────────────────────
+  // أيُّها يَلزم هذه المعاملة، وأيُّها أُغلِق عليها، وكم النسبة: قاعدةٌ واحدةٌ في
+  // الخادم (pipelineOf) — والشاشةُ ترسم ما وصلها ولا تعيد حسابَه.
+  const pipeline: Pipeline = (c as any).pipeline || { route: '', cargoType: 'containers', steps: [], done: 0, total: 0, percent: 0, next: '' };
+  const cargo = pipeline.cargoType;
+  const sName = (k: string) => stageName(T.stages, k, cargo);
+  const invoiceNumber: string = (c as any).saleInvoiceNumber || '';
+  const awaitingTransport = !!invoiceNumber && !c.isCompleted && !c.cancelled && !(c as any).transportInvoiceReceived;
+
+  const setStage = async (key: string, done: boolean) => {
+    if (!canEdit || stageBusy) return;
+    setStageBusy(key);
+    try {
+      const d = await api.patch<any>(`/api/customs-clearance/${c._id}/stage`, { key, done });
+      if (d?.clearance) setC(d.clearance);
+    } catch (e: any) { notify(e?.message || (ar ? 'تعذّر تعليم المرحلة' : 'Could not update the stage'), 'error'); }
+    setStageBusy('');
+  };
 
   // --- master-spreadsheet field groups -------------------------------------
   // (قائمةُ مراحل السداد كانت هنا مكتوبةً بثمانيةِ أسطر. صارت تُقرأ من إعدادات
@@ -183,12 +211,20 @@ export default function CustomsDetailPage() {
   // مرآتُها لتُقرأ في اللحظة قبل الحفظ.
   const transportNet = Math.round((n(c.revenue?.transportSelling) - n(c.costs?.transport)) * 100) / 100;
   const revVal = (k: string) => (k === 'transportNet' ? transportNet : n(c.revenue?.[k]));
-  const profit = Math.round(MARGIN_FIELDS.reduce((a, [k]) => a + revVal(k), 0) * 100) / 100;
-  const invoiced = Math.round((costsTotal + profit) * 100) / 100;
-  const margin = invoiced ? (profit / invoiced) * 100 : 0;
+  // مجموعُ بنود الهامش يدخل إجماليَّ الفاتورة. ولا يُعرَض وحدَه هنا: «صافي الربح»
+  // و«هامش الربح» رُفعا من تفاصيل المعاملة — هما في تحليلات القسم، للإدارة.
+  const marginSum = Math.round(MARGIN_FIELDS.reduce((a, [k]) => a + revVal(k), 0) * 100) / 100;
+  const invoiced = Math.round((costsTotal + marginSum) * 100) / 100;
   const sar = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 2 });
 
-  const containers: any[] = Array.isArray(c.containers) ? c.containers : [];
+  // معاملةٌ قديمةٌ تحمل العددَ بلا خانات: تُفتَح لها خاناتُها هنا للعرض، وتُحفَظ
+  // مع أوّل ما يُكتب فيها (الخادمُ يفعل الشيءَ نفسَه عند الحفظ — syncUnits).
+  const containers: any[] = (() => {
+    const rows = Array.isArray(c.containers) ? [...c.containers] : [];
+    const want = Math.min(300, Math.max(0, Number(c.containerCount) || 0));
+    while (rows.length < want) rows.push({ containerNumber: '', returnDate: '', moves: [] });
+    return rows;
+  })();
   const setContainers = (rows: any[]) => patch({ containers: rows });
   const updateContainer = (i: number, key: string, v: any) =>
     setContainers(containers.map((r, idx) => (idx === i ? { ...r, [key]: v } : r)));
@@ -211,13 +247,14 @@ export default function CustomsDetailPage() {
       kv(T.blNumber, c.blNumber), kv(T.customerName, c.customerName),
       kv(T.invoiceNumber, c.invoiceNumber), kv(T.invoiceDate, c.invoiceDate ? String(c.invoiceDate).slice(0, 10) : ''),
       kv(T.port, c.port), kv(T.invoiceType, c.invoiceType),
-      kv(T.containerCount, c.containerCount), kv(T.totalWeight, c.totalWeight),
+      kv(ar ? 'نوع المعاملة' : 'Type', cargo === 'vehicles' ? (ar ? 'سيّارات' : 'Vehicles') : (ar ? 'حاويات' : 'Containers')),
+      kv(ar ? `عدد ${unitWord(cargo, true)}` : `${unitWord(cargo, false)} count`, c.containerCount), kv(T.totalWeight, c.totalWeight),
       kv(T.invoiceValue, c.invoiceValue), kv(T.currency, c.currency),
       kv(T.exporterCompany, c.exporterCompany), kv(T.countryOfOrigin, c.countryOfOrigin),
       kv(T.hsCode, c.hsCode), kv(T.saberNumber, c.saberNumber), kv(T.assignedTo, c.assignedTo),
       kv(T.branch, c.branch === 'dammam' ? T.dammam : T.jeddah),
       kv(T.shippingAgent, c.shippingAgent), kv(T.shippingAgentEmail, c.shippingAgentEmail),
-      kv(ar ? 'المرحلة الحالية' : 'Current stage', c.cancelled ? T.cancelled : (T.stages[c.stage] || c.stage)),
+      kv(ar ? 'المرحلة الحالية' : 'Current stage', c.cancelled ? T.cancelled : sName(c.stage)),
       kv(ar ? 'رقم البيان' : 'Declaration no.', c.declarationNumber),
       kv(ar ? 'تاريخ البيان' : 'Declaration date', c.declarationDate),
       kv(ar ? 'تاريخ استلام الورق' : 'Papers received', c.papersReceivedDate),
@@ -239,12 +276,11 @@ export default function CustomsDetailPage() {
       { header: ar ? 'المرحلة' : 'Stage', key: 'stage', width: 30 },
       { header: ar ? 'الحالة' : 'State', key: 'state', width: 18 },
     ],
-    rows: STAGE_ORDER.map((sKey, i) => ({
+    rows: pipeline.steps.map((st, i) => ({
       index: i + 1,
-      stage: T.stages[sKey] || sKey,
-      state: i < currentIdx ? (ar ? 'مكتملة' : 'Done')
-        : (i === currentIdx && !c.cancelled) ? (ar ? 'المرحلة الحالية' : 'Current')
-          : (ar ? 'لم تبدأ' : 'Not started'),
+      stage: sName(st.key),
+      state: st.locked ? (ar ? 'غير مطلوبة' : 'Not applicable')
+        : st.done ? (ar ? 'مكتملة' : 'Done') : (ar ? 'لم تُنجَز' : 'Pending'),
     })),
   };
 
@@ -278,13 +314,13 @@ export default function CustomsDetailPage() {
     notify(ar ? 'عادت إلى المعاملات القادمة' : 'Back in upcoming', 'success');
   };
 
-  const closeTransaction = async (value: boolean) => {
+  const reopen = async () => {
     setClosing(true);
     try {
-      const d = await api.patch<any>(`/api/customs-clearance/${params?.id}/complete`, { completed: value });
+      const d = await api.patch<any>(`/api/customs-clearance/${params?.id}/complete`, { completed: false });
       setC(d.clearance);
-      notify(value ? (ar ? 'أُقفلت المعاملة' : 'Closed') : (ar ? 'أُعيد فتحُ المعاملة' : 'Reopened'), 'success');
-    } catch (e: any) { notify(e?.message || (ar ? 'تعذّر الإقفال' : 'Failed'), 'error'); }
+      notify(ar ? 'أُعيد فتحُ المعاملة' : 'Reopened', 'success');
+    } catch (e: any) { notify(e?.message || (ar ? 'تعذّر الحفظ' : 'Failed'), 'error'); }
     setClosing(false);
   };
   const checklistCols: ExportColumn[] = [
@@ -359,20 +395,27 @@ export default function CustomsDetailPage() {
       { label: ar ? 'حالة الفاتورة' : 'Invoice status', amount: c.billing?.invoiceStatus || '—' },
       { label: ar ? 'رقم فاتورتنا' : 'Our invoice no.', amount: c.billing?.ourInvoiceNumber || '—' },
       { label: ar ? 'تاريخ الفوترة' : 'Invoiced at', amount: c.billing?.invoicedAt || '—' },
-      { label: ar ? 'صافي الربح' : 'Net profit', amount: profit },
-      { label: ar ? 'هامش الربح %' : 'Margin %', amount: Math.round(margin * 10) / 10 },
     ],
   };
 
   const containersSheet: ExportSheet = {
-    name: ar ? 'الحاويات' : 'Containers',
+    name: unitWord(cargo, ar),
     columns: [
-      { header: ar ? 'رقم الحاوية' : 'Container no.', key: 'containerNumber', width: 20 },
-      { header: ar ? 'تصريح الخروج' : 'Exit permit', key: 'exitPermit', width: 16 },
-      { header: ar ? 'البيان' : 'Declaration', key: 'declaration', width: 18 },
-      { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 34 },
+      { header: '#', key: 'index', width: 6 },
+      { header: cargo === 'vehicles' ? (ar ? 'رقم الهيكل' : 'Chassis no.') : (ar ? 'رقم الحاوية' : 'Container no.'), key: 'containerNumber', width: 20 },
+      ...pipeline.steps.filter((st) => st.done && ['transport_to_yard', 'transport_to_customer', 'yard_to_customer'].includes(st.key)).flatMap((st) => [
+        { header: `${sName(st.key)} — ${ar ? 'السيّارة' : 'Truck'}`, key: `kind_${st.key}`, width: 22 },
+        { header: `${sName(st.key)} — ${ar ? 'رقم الكشف / الفاتورة' : 'Sheet / invoice no.'}`, key: `ref_${st.key}`, width: 22 },
+      ]),
+      ...(cargo === 'vehicles' ? [] : [{ header: ar ? 'تاريخ الإرجاع' : 'Return date', key: 'returnDate', width: 16 }]),
     ],
-    rows: containers,
+    rows: containers.map((r, i) => ({
+      index: i + 1, containerNumber: r.containerNumber || '—', returnDate: r.returnDate || '—',
+      ...Object.fromEntries((r.moves || []).flatMap((m: any) => [
+        [`kind_${m.leg}`, m.vehicleKind === 'energize' ? (ar ? 'سيّارة تنشيط' : 'Energize') : m.vehicleKind === 'external' ? (ar ? 'سيّارة خارجيّة' : 'External') : '—'],
+        [`ref_${m.leg}`, m.ref || '—'],
+      ])),
+    })),
   };
 
   const attachmentsSheet: ExportSheet = {
@@ -385,7 +428,7 @@ export default function CustomsDetailPage() {
     ],
     rows: (c.attachments || []).map((a: any) => ({
       title: a.title || a.fileName || '—',
-      stage: a.stage ? (T.stages[a.stage] || a.stage) : (ar ? 'عامّ' : 'General'),
+      stage: a.stage ? sName(a.stage) : (ar ? 'عامّ' : 'General'),
       by: a.uploadedByName || '—',
       at: a.uploadedAt ? String(a.uploadedAt).slice(0, 10) : '—',
     })),
@@ -413,7 +456,12 @@ export default function CustomsDetailPage() {
               <span className="text-[13px] font-semibold text-slate-400"><bdi>{c.refNumber}</bdi></span>
               {c.isCompleted && (
                 <span className="rounded-md bg-green-100 px-2 py-0.5 text-[11px] font-bold text-green-700">
-                  {ar ? 'مقفولة' : 'Closed'}
+                  {ar ? 'مغلقة' : 'Closed'}
+                </span>
+              )}
+              {!!invoiceNumber && !c.isCompleted && (
+                <span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${awaitingTransport ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                  {ar ? 'مفوترة' : 'Invoiced'} · <bdi>{invoiceNumber}</bdi>
                 </span>
               )}
               {/* معاملةٌ لم تقع بعد — تُقرأ في الترويسة قبل أن يُبنى عليها رقم. */}
@@ -423,7 +471,9 @@ export default function CustomsDetailPage() {
                 </span>
               )}
             </h1>
-            <p className="text-slate-500 text-sm">{c.branch === 'dammam' ? T.dammam : T.jeddah} · {c.cancelled ? T.cancelled : (T.stages[c.stage] || c.stage)}</p>
+            <p className="text-slate-500 text-sm">
+              {c.branch === 'dammam' ? T.dammam : T.jeddah} · {cargo === 'vehicles' ? (ar ? 'سيّارات' : 'Vehicles') : (ar ? 'حاويات' : 'Containers')} · {c.cancelled ? T.cancelled : sName(c.stage)}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -446,23 +496,25 @@ export default function CustomsDetailPage() {
           )}
           <ExportMenu fileName={`customs-${c.refNumber || c.blNumber || c._id}`} lang={lang as 'ar' | 'en'}
             options={[{ key: 'full', label: ar ? 'ملف المعاملة كاملًا' : 'The whole clearance', sheets: exportSheets }]} />
-          {/* ── إنهاءُ المعاملة من الترويسة ───────────────────────────────
-              وهو نفسُه الموجود أسفلَ مراحل السداد — طُلب في الموضعين، ولأنّ
-              مَن أنهى العملَ يكون في أعلى الصفحة لا في آخرها. والشرطُ يحرسه
-              الخادمُ لا الزرّ: «فاتورة النقل» بتاريخٍ ومرفق. */}
-          {canEdit && !c.cancelled && (
+          {/* ── إصدارُ الفاتورة من الترويسة ───────────────────────────────
+              وهو نفسُه الموجود أسفلَ مراحل السداد — نافذةٌ واحدةٌ تُفتَح من
+              الموضعين، لأنّ مَن أنهى العملَ يكون في أعلى الصفحة لا في آخرها.
+              والفاتورةُ تصدر بلا انتظار فاتورة النقل؛ والمعاملةُ تُنهى حين
+              تُرفَق (راجع الشريطَ الأحمر أدناه). */}
+          {canEdit && !c.cancelled && !(c as any).upcoming && (
             c.isCompleted
               ? (
-                <button type="button" onClick={() => closeTransaction(false)} disabled={closing}
+                <button type="button" onClick={reopen} disabled={closing}
                   className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:text-[#f37121]">
                   <Unlock className="w-4 h-4" /> {ar ? 'إعادة الفتح' : 'Reopen'}
                 </button>
               )
               : (
-                <button type="button" onClick={() => closeTransaction(true)} disabled={closing}
-                  className="flex items-center gap-1.5 rounded-lg bg-[#f37121] px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-[#e06010] disabled:opacity-60">
-                  {closing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-                  {ar ? 'إنهاء المعاملة' : 'Close transaction'}
+                <button type="button" onClick={() => setInvoiceOpen(true)}
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold transition-colors ${invoiceNumber
+                    ? 'bg-slate-100 text-slate-700 hover:text-[#f37121]' : 'bg-[#f37121] text-white hover:bg-[#e06010]'}`}>
+                  <Receipt className="w-4 h-4" />
+                  {invoiceNumber ? (ar ? 'تعديل الفاتورة' : 'Edit invoice') : (ar ? 'إصدار الفاتورة' : 'Issue invoice')}
                 </button>
               )
           )}
@@ -483,71 +535,82 @@ export default function CustomsDetailPage() {
         </div>
       </div>
 
+      {/* فُوترت ولم تصل فاتورةُ نقلها — أحمرُ في رأس الصفحة حتى تُرفَق. */}
+      {awaitingTransport && (
+        <TransportInvoiceBanner clearanceId={String(c._id)} invoiceNumber={invoiceNumber} canEdit={canEdit} ar={ar} onChanged={setC} />
+      )}
+
       {/* ── مراحلُ التخليص ───────────────────────────────────────────────
-          كانت بطاقةً سوداءَ وسط صفحةٍ فاتحة، والمرحلةُ المنجَزةُ فيها رماديّةٌ
-          كغيرها. صارت فاتحةً كبقيّة الصفحة: المنجَزُ أخضرُ بعلامته، والحاليّةُ
-          برتقاليّةٌ بحلقةٍ حولها، وما لم يبدأ رماديٌّ هادئ — ومعها شريطُ تقدّمٍ
-          يقول «كم أُنجز من كم» قبل قراءة المربّعات. */}
+          الدورةُ ليست خطًّا واحدًا: بعد «أمر النقل» طريقان يتنافيان — إلى
+          الساحة (فيتبعه التفريغُ والتخزين ثمّ نقلٌ إلى العميل) أو إلى العميل
+          مباشرةً. وما ليس من طريق المعاملة يُغلَق عليها ولا يدخل نسبتَها.
+          والقاعدةُ في الخادم؛ والضغطُ هنا طلبٌ يجيبه بما صارت إليه المراحل. */}
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h3 className="text-[14px] font-bold text-slate-900 flex items-center gap-2">
             <span className="w-7 h-7 rounded-lg bg-[#f37121]/10 text-[#f37121] flex items-center justify-center"><Ship className="w-4 h-4" /></span>
             {T.progress}
           </h3>
-          <div className="flex items-center gap-3">
-            <span className="text-[12px] text-slate-500 tabular-nums">
-              {doneCount}/{STAGE_ORDER.length} · {Math.round((doneCount / STAGE_ORDER.length) * 100)}%
-            </span>
-            {canEdit && currentIdx < STAGE_ORDER.length - 1 && !c.cancelled && (
-              <button type="button" onClick={() => patch({ stage: STAGE_ORDER[currentIdx + 1] })}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#f37121] text-white text-xs font-semibold hover:bg-[#e06010] transition-colors">
-                {T.advanceStage} <ChevronRight className={`w-3.5 h-3.5 ${isRTL ? 'rotate-180' : ''}`} />
-              </button>
-            )}
-          </div>
+          <span className="text-[12px] text-slate-500 tabular-nums">
+            {pipeline.done}/{pipeline.total} · {pipeline.percent}%
+          </span>
         </div>
         <div className="h-2 rounded-full bg-slate-100 overflow-hidden mb-4">
-          <div className="h-full rounded-full bg-emerald-500 transition-all duration-500" style={{ width: `${(doneCount / STAGE_ORDER.length) * 100}%` }} />
+          <div className="h-full rounded-full bg-emerald-500 transition-all duration-500" style={{ width: `${pipeline.percent}%` }} />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-          {/* ── كلُّ مرحلةٍ تُعلَّم وحدَها ────────────────────────────────────
-              كان المُنجَزُ يُشتقّ من موضع الحاليّة (`i < currentIdx`): مَن اختار
-              الثامنةَ عُدَّت السبعُ قبلها منجزةً وإن لم تجرِ واحدةٌ منها. والدورةُ
-              لا تسير دائمًا على ترتيبها — قد يُدفَع رسمٌ قبل وصول الأوراق، وقد
-              تُتخطّى مرحلةٌ أصلًا. فالضغطُ يُعلِّم المرحلةَ نفسَها لا ما قبلها،
-              والضغطُ ثانيةً يُلغيها. */}
-          {STAGE_ORDER.map((s, i) => {
-            const done = ((c as any).stagesDone || []).includes(s);
-            const cur = c.stage === s && !c.cancelled;
-            const toggle = () => {
-              const set = new Set<string>(((c as any).stagesDone || []) as string[]);
-              if (set.has(s)) set.delete(s); else set.add(s);
-              // الإنجازُ وجعلُها الحاليّةَ فعلٌ واحدٌ في ذهن المستخدم؛ فصلُهما
-              // يعني ضغطتين لكلّ خطوة.
-              patch({ stagesDone: [...set], stage: s } as any);
+          {pipeline.steps.map((st, i) => {
+            const next = pipeline.next === st.key && !c.cancelled;
+            // «إصدار الفاتورة» لا تُعلَّم بيد: تفتح نافذةَ الفاتورة.
+            const auto = st.key === 'invoiced';
+            const onClick = () => {
+              if (auto) { if (!st.done) setInvoiceOpen(true); return; }
+              setStage(st.key, !st.done);
             };
             return (
-              <button key={s} type="button" disabled={!canEdit} onClick={toggle}
-                title={canEdit ? (ar ? 'اضغط للتعليم أو إلغائه' : 'Click to tick or untick') : ''}
-                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-start border transition-all ${canEdit ? 'cursor-pointer' : 'cursor-default'} ${
-                  cur
-                    ? 'border-[#f37121] bg-[#f37121]/10 text-[#b4471a] ring-1 ring-[#f37121]/40 font-semibold'
-                    : done
+              <button key={st.key} type="button" disabled={!canEdit || st.locked || stageBusy === st.key || (auto && st.done)} onClick={onClick}
+                title={st.locked ? (ar ? st.reason : 'Not applicable to this transaction')
+                  : auto ? (ar ? 'تُعلَّم بإصدار الفاتورة' : 'Ticked by issuing the invoice')
+                    : canEdit ? (ar ? 'اضغط للتعليم أو إلغائه' : 'Click to tick or untick') : ''}
+                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-start border transition-all ${
+                  st.locked
+                    ? 'border-dashed border-slate-200 bg-slate-50/60 text-slate-300 cursor-not-allowed'
+                    : st.done
                       ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-                      : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white'
-                }`}>
+                      : next
+                        ? 'border-[#f37121] bg-[#f37121]/10 text-[#b4471a] ring-1 ring-[#f37121]/40 font-semibold'
+                        : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white'
+                } ${canEdit && !st.locked ? 'cursor-pointer' : ''}`}>
                 <span className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold ${
-                  done ? 'bg-emerald-500 text-white' : cur ? 'bg-[#f37121] text-white' : 'bg-white border border-slate-200 text-slate-400'
+                  st.locked ? 'bg-slate-100 text-slate-300'
+                    : st.done ? 'bg-emerald-500 text-white' : next ? 'bg-[#f37121] text-white' : 'bg-white border border-slate-200 text-slate-400'
                 }`}>
-                  {done ? <Check className="w-3.5 h-3.5" /> : i + 1}
+                  {stageBusy === st.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    : st.locked ? <Lock className="w-3 h-3" /> : st.done ? <Check className="w-3.5 h-3.5" /> : i + 1}
                 </span>
-                <span className="truncate">{T.stages[s]}</span>
-                {cur && !done && <span className="ms-auto text-[10px] font-bold text-[#f37121]">{ar ? 'الآن' : 'now'}</span>}
+                <span className="min-w-0">
+                  <span className={`block truncate ${st.locked ? 'line-through decoration-slate-300' : ''}`}>{sName(st.key)}</span>
+                  {st.locked && <span className="block truncate text-[10.5px] no-underline">{ar ? st.reason : 'Not applicable'}</span>}
+                </span>
+                {next && !st.done && <span className="ms-auto shrink-0 text-[10px] font-bold text-[#f37121]">{ar ? 'التالية' : 'next'}</span>}
               </button>
             );
           })}
         </div>
+        {!pipeline.route && (
+          <p className="mt-3 text-[12px] text-slate-500">
+            {ar
+              ? 'بعد «أمر النقل» يُختار أحدُ الطريقين: إلى الساحة (ويتبعه التفريغُ والتخزين ثمّ النقلُ إلى العميل) أو إلى العميل مباشرةً. تعليمُ أحدهما يُغلِق الآخر.'
+              : 'After the transport order pick one route: to the yard (then unloading & storage, then on to the customer) or straight to the customer. Ticking one locks the other.'}
+          </p>
+        )}
       </section>
+
+      {/* ── الحاوياتُ بعددها — حاويةٌ لكلّ حاوية ──────────────────────────── */}
+      <Card icon={<Container className="w-4 h-4" />}
+        title={`${unitWord(cargo, ar)} (${containers.length})`}>
+        <ContainerUnits units={containers} pipeline={pipeline} stages={T.stages} canEdit={canEdit} ar={ar} onSave={setContainers} />
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* ── البيانُ والمواعيدُ أوّلًا ───────────────────────────────────────
@@ -617,7 +680,12 @@ export default function CustomsDetailPage() {
               emptyLabel={ar ? 'لا نتائج — أضِفه من صفحة العملاء' : 'No match — add from customers page'}
               options={parties.customers.map((p) => ({ value: p._id, label: p.name }))} />
           </div>
-          <FieldInput label={T.containerCount} type="number" value={c.containerCount} onSave={(v) => patch({ containerCount: Number(v) || 0 })} disabled={!canEdit} />
+          {/* نوعُ المعاملة يُختار عند الإنشاء ويُصحَّح من هنا: السيّاراتُ لا
+              إرجاعَ حاوياتٍ فيها، فتُغلَق تلك المرحلةُ عليها. */}
+          <FieldSelect label={ar ? 'نوع المعاملة' : 'Transaction type'} value={cargo} disabled={!canEdit}
+            options={[['containers', ar ? 'حاويات' : 'Containers'], ['vehicles', ar ? 'سيّارات' : 'Vehicles']]}
+            onSave={(v) => patch({ cargoType: v } as any)} />
+          <FieldInput label={cargo === 'vehicles' ? (ar ? 'عدد السيّارات' : 'Vehicles') : T.containerCount} type="number" value={c.containerCount} onSave={(v) => patch({ containerCount: Number(v) || 0 })} disabled={!canEdit} />
           <div>
             <label className="text-slate-500 text-xs mb-1 block">{T.shippingAgent}</label>
             <SearchableSelect value={String((c as any).agentParty || '')} searchAfter={0} disabled={!canEdit}
@@ -654,6 +722,10 @@ export default function CustomsDetailPage() {
         <Card title={ar ? 'مراحل السداد' : 'Payment milestones'}>
           <PaymentStages
             clearanceId={String(c._id)}
+            refNumber={c.blNumber || c.refNumber}
+            invoiceNumber={invoiceNumber}
+            awaitingTransport={awaitingTransport}
+            onIssueInvoice={() => setInvoiceOpen(true)}
             entries={(c as any).paymentStages || []}
             completed={(c as any).isCompleted}
             completedByName={(c as any).completedByName}
@@ -705,33 +777,32 @@ export default function CustomsDetailPage() {
           <p className="mt-2 text-slate-500 text-xs">
             {ar ? 'الفاتورة محسوبة: إجمالي المصروفات + بنود الهامش. عدّل البنود يتغيّر الرقم.' : 'Invoice is derived: total costs + margin lines. Edit a line and it follows.'}
           </p>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <div className="rounded-lg bg-slate-100 px-4 py-3">
-              <p className="text-slate-500 text-xs">{ar ? 'صافي الربح' : 'Net profit'}</p>
-              <p className={`font-bold text-lg ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{sar(profit)}</p>
-            </div>
-            <div className="rounded-lg bg-slate-100 px-4 py-3">
-              <p className="text-slate-500 text-xs">{ar ? 'هامش الربح' : 'Margin'}</p>
-              <p className={`font-bold text-lg ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{margin.toFixed(1)}%</p>
-            </div>
-          </div>
         </Card>
       </div>
 
       {/* مرفقات المعاملة — ورقُ كلِّ مرحلةٍ موسومًا بها */}
       <ClearanceAttachments
         clearanceId={c._id}
+        refNumber={c.blNumber || c.refNumber}
         items={c.attachments || []}
-        stages={STAGE_ORDER}
-        stageLabel={(sKey) => T.stages[sKey] || sKey}
+        stages={pipeline.steps.filter((st) => !st.locked).map((st) => st.key)}
+        stageLabel={sName}
+        paymentFiles={((c as any).paymentStages || []).map((p: any) => p.fileUrl).filter(Boolean)}
         canEdit={canEdit}
         onChange={setC}
       />
 
-      {/* ── بلوكُ الحاويات أُزيل ──────────────────────────────────────────
-          المعاملةُ تُنشأ ومعها عددُ حاوياتها، وجدولُ تسجيلِ كلّ حاويةٍ برقمها
-          لم يكن يُملأ. وحقلُ «عدد الحاويات» يبقى — وهو ما يُسأل عنه ويُجمَع
-          في التقارير. الكودُ محفوظٌ في تاريخ المستودع إن عاد الطلبُ عليه. */}
+      {/* مهامُّ خطّة العمل (JP) المربوطةُ بهذه المعاملة — تُقرأ هنا وتُضاف من هنا. */}
+      <ClearanceTasks kind="clearance" refId={String(c._id)} ar={ar} />
+
+      {/* نافذةُ الفاتورة واحدة — تُفتَح من الترويسة ومن مراحل السداد ومن مرحلتها. */}
+      <CloseWithInvoice
+        open={invoiceOpen} onClose={() => setInvoiceOpen(false)}
+        clearanceId={String(c._id)} stages={(c as any).paymentStages || []} ar={ar}
+        transportReceived={!!(c as any).transportInvoiceReceived}
+        onDone={setC} notify={notify}
+      />
+
     </div>
   );
 }

@@ -9,7 +9,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { canEditSection } from '@/lib/sections';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Ship, Plus, Search, X, Check, Trash2, Loader2, ScrollText, Container, BarChart3, MessageSquarePlus, Bell, CalendarClock, CalendarPlus, ArrowRight } from 'lucide-react';
+import { Ship, Plus, Search, X, Check, Trash2, Loader2, ScrollText, Container, Car, BarChart3, MessageSquarePlus, Bell, CalendarClock, CalendarPlus, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { getCustomsTranslations } from '@/lib/translations';
@@ -20,6 +20,7 @@ import ManagedSelect from '@/components/system/ManagedSelect';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
 import { SlidersHorizontal } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
+import { stageName } from '@/lib/customsPipeline';
 
 /**
  * صفُّ الجدول — وهو أقلُّ من المعاملة.
@@ -57,6 +58,13 @@ interface Clearance {
   // آخرُ ملاحظةٍ فقط تصل مع الجدول — والسجلُّ داخل المعاملة.
   lastNote?: { text: string; byName?: string; at?: string } | null;
   notesCount?: number;
+  cargoType?: 'containers' | 'vehicles';
+  /** رقمُ فاتورة العميل إن صدرت — به تُقرأ «حالة الفاتورة». */
+  saleInvoiceNumber?: string;
+  /** فُوترت ولم تصل فاتورةُ نقلها — تُلوَّن بالأحمر. */
+  awaitingTransportInvoice?: boolean;
+  /** نسبةُ المراحل والمرحلةُ التالية — محسوبتان في الخادم (pipelineOf). */
+  pipeline?: { percent: number; done: number; total: number; next: string };
 }
 
 const MONTH_LABELS: [string, string][] = [
@@ -65,18 +73,13 @@ const MONTH_LABELS: [string, string][] = [
   ['سبتمبر', 'September'], ['أكتوبر', 'October'], ['نوفمبر', 'November'], ['ديسمبر', 'December'],
 ];
 
-const STAGE_ORDER = [
-  'papers_received', 'declaration_paid', 'do_requested', 'do_linked', 'port_fees_paid',
-  'unloading_fees_paid', 'transport_order', 'containers_transported', 'unloaded_stored',
-  'containers_returned', 'invoiced',
-];
-
-function stageBadge(stage: string, cancelled: boolean) {
+// لونُ الشارة بنسبة ما أُنجز من مراحل المعاملة — لا بموضعها في قائمةٍ ثابتة:
+// المراحلُ تتفرّع، فموضعُ المرحلة لا يقول كم بقي.
+function stageBadge(percent: number, cancelled: boolean) {
   if (cancelled) return 'bg-slate-500/20 text-slate-600';
-  if (stage === 'invoiced') return 'bg-green-500/20 text-green-600';
-  const idx = STAGE_ORDER.indexOf(stage);
-  if (idx >= 7) return 'bg-blue-500/20 text-blue-600';
-  if (idx >= 3) return 'bg-amber-500/20 text-amber-700';
+  if (percent >= 100) return 'bg-green-500/20 text-green-600';
+  if (percent >= 60) return 'bg-blue-500/20 text-blue-600';
+  if (percent >= 25) return 'bg-amber-500/20 text-amber-700';
   return 'bg-[#f37121]/20 text-[#f37121]';
 }
 
@@ -84,6 +87,8 @@ function stageBadge(stage: string, cancelled: boolean) {
 const EMPTY = {
   branch: 'jeddah', blNumber: '', customerName: '', customerParty: '',
   shippingAgent: '', agentParty: '',
+  // نوعُ المعاملة يُختار عند الإنشاء: حاوياتٌ أو سيّارات — وعليه تُبنى مراحلُها.
+  cargoType: 'containers',
   containerCount: 0,
 };
 
@@ -91,6 +96,8 @@ export default function CustomsPage() {
   const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const router = useRouter();
+  // الأرباحُ لمدير النظام ومدير القسم وحدَهما — والخادمُ لا يرسلها لغيرهما.
+  const seesMoney = ['super_admin', 'customs_manager'].includes(user?.role || '');
   const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs'); // matrix edit grants count too
   // الحذفُ لمدير القسم وموظّفه — يطابق حارسَ المسار في الخادم.
   const canDelete = ['super_admin', 'admin', 'customs_manager', 'customs_officer'].includes(user?.role || '');
@@ -212,7 +219,19 @@ export default function CustomsPage() {
   };
 
   const years = Array.from(new Set(list.map((c) => c.periodYear).filter(Boolean) as number[])).sort((a, b) => b - a);
-  const invoiceStatuses = Array.from(new Set(list.map((c) => (c.billing?.invoiceStatus || '').trim()).filter(Boolean))).sort();
+  // ── حالةُ الفاتورة تتبع إصدارَها ────────────────────────────────────────
+  // كانت خانةً تُكتب بيدٍ فتقول «غير مفوتر» لمعاملةٍ صدرت فاتورتُها. فما صدرت
+  // فاتورتُه من النظام «مفوترة» برقمها، وما سبق النظامَ يُقرأ نصُّه كما هو.
+  const invoiceState = (c: Clearance): { text: string; number: string } => {
+    if (c.saleInvoiceNumber) return { text: ar ? 'مفوترة' : 'Invoiced', number: c.saleInvoiceNumber };
+    return { text: (c.billing?.invoiceStatus || '').trim(), number: c.billing?.ourInvoiceNumber || '' };
+  };
+  const invoiceStatuses = Array.from(new Set(list.map((c) => invoiceState(c).text).filter(Boolean))).sort();
+  const awaitingCount = list.filter((c) => c.awaitingTransportInvoice).length;
+  const stageText = (c: Clearance) => (c.cancelled ? T.cancelled
+    : c.isCompleted ? (ar ? 'مغلقة' : 'Closed')
+      : c.pipeline?.next ? `${ar ? 'تنتظر' : 'Next'}: ${stageName(T.stages, c.pipeline.next, c.cargoType)}`
+        : stageName(T.stages, c.stage, c.cargoType));
 
   // ── حالةُ إرجاع الحاويات ────────────────────────────────────────────────
   // تجاوزُ آخر موعدِ إرجاعٍ ليس تأخيرًا إداريًّا: هو عدّادُ أرضياتٍ يفتح ويأكل
@@ -242,14 +261,15 @@ export default function CustomsPage() {
       .some((v) => v && String(v).toLowerCase().includes(s))) return false;
     if (fYear && String(c.periodYear || '') !== fYear) return false;
     if (fMonth && String(c.periodMonth || '') !== fMonth) return false;
-    if (fInvoice === '__none') { if ((c.billing?.invoiceStatus || '').trim()) return false; }
-    else if (fInvoice && (c.billing?.invoiceStatus || '').trim() !== fInvoice) return false;
+    if (fInvoice === '__none') { if (invoiceState(c).text) return false; }
+    else if (fInvoice === '__awaiting') { if (!c.awaitingTransportInvoice) return false; }
+    else if (fInvoice && invoiceState(c).text !== fInvoice) return false;
     if (fReturn && returnState(c) !== fReturn) return false;
     if (fCustomer && String((c as any).customerParty || '') !== fCustomer) return false;
     if (fAgent && String((c as any).agentParty || '') !== fAgent) return false;
     if (fPort && (c.port || '') !== fPort) return false;
     if (fBranch && (c.branch || '') !== fBranch) return false;
-    if (fStage && (c.stage || '') !== fStage) return false;
+    if (fStage && (c.isCompleted || c.cancelled || (c.pipeline?.next || '') !== fStage)) return false;
     // المدى بتاريخ الإنشاء — ويُقاس بيوم الرياض كما في الخادم.
     if (fFrom || fTo) {
       const d = c.createdAt ? String(c.createdAt).slice(0, 10) : '';
@@ -261,7 +281,14 @@ export default function CustomsPage() {
   });
 
   const money = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  const withReturn = (c: Clearance) => ({ ...c, _returnState: RETURN_LABEL[returnState(c)][ar ? 0 : 1] });
+  const withReturn = (c: Clearance) => ({
+    ...c, _returnState: RETURN_LABEL[returnState(c)][ar ? 0 : 1],
+    _invoiceState: invoiceState(c).text ? `${invoiceState(c).text}${c.awaitingTransportInvoice ? (ar ? ' — بانتظار فاتورة النقل' : ' — awaiting transport invoice') : ''}` : (ar ? 'غير مفوترة' : 'Not invoiced'),
+    _invoiceNumber: invoiceState(c).number || '—',
+    _stage: stageText(c),
+    _cargo: c.cargoType === 'vehicles' ? (ar ? 'سيّارات' : 'Vehicles') : (ar ? 'حاويات' : 'Containers'),
+    _percent: `${c.pipeline?.percent ?? 0}%`,
+  });
 
   const exportColumns: ExportColumn[] = [
     { header: T.blNumber, key: 'blNumber', width: 18, transform: (v) => v || '—' },
@@ -273,17 +300,19 @@ export default function CustomsPage() {
     { header: ar ? 'السنة' : 'Year', key: 'periodYear', width: 10, transform: (v) => v || '—' },
     { header: ar ? 'وكيل الشحن' : 'Shipping agent', key: 'shippingAgent', width: 20, transform: (v) => v || '—' },
     { header: ar ? 'رقم البيان' : 'Declaration no.', key: 'declarationNumber', width: 16, transform: (v) => v || '—' },
-    { header: T.containerCount, key: 'containerCount', width: 14, transform: (v) => v || 0 },
+    { header: ar ? 'نوع المعاملة' : 'Type', key: '_cargo', width: 12 },
+    { header: ar ? 'العدد' : 'Units', key: 'containerCount', width: 10, transform: (v) => v || 0 },
     { header: ar ? 'إجمالي المصروفات' : 'Total costs', key: 'costs.total', width: 16, transform: money },
     { header: ar ? 'أجور التخليص' : 'Clearance fee', key: 'revenue.clearanceFee', width: 16, transform: money },
     { header: ar ? 'إجمالي الفاتورة' : 'Total invoiced', key: 'revenue.totalInvoiced', width: 16, transform: money },
-    { header: ar ? 'صافي الربح' : 'Net profit', key: 'revenue.profit', width: 14, transform: money },
+    ...(seesMoney ? [{ header: ar ? 'صافي الربح' : 'Net profit', key: 'revenue.profit', width: 14, transform: money } as ExportColumn] : []),
     { header: ar ? 'أيّام السماح للإرجاع' : 'Return free days', key: 'returnFreeDays', width: 16, transform: (v) => v || '—' },
     { header: ar ? 'آخر موعد إرجاع' : 'Return deadline', key: 'returnDeadline', width: 16, transform: (v) => v || '—' },
     { header: ar ? 'حالة الإرجاع' : 'Return state', key: '_returnState', width: 16 },
-    { header: ar ? 'حالة الفاتورة' : 'Invoice status', key: 'billing.invoiceStatus', width: 16, transform: (v) => v || '—' },
-    { header: ar ? 'رقم فاتورتنا' : 'Our invoice no.', key: 'billing.ourInvoiceNumber', width: 16, transform: (v) => v || '—' },
-    { header: T.stage, key: 'stage', width: 20, transform: (v, r) => (r.cancelled ? T.cancelled : r.isCompleted ? (lang === 'ar' ? 'مقفولة' : 'Closed') : T.stages[v] || v) },
+    { header: ar ? 'حالة الفاتورة' : 'Invoice status', key: '_invoiceState', width: 30 },
+    { header: ar ? 'رقم فاتورتنا' : 'Our invoice no.', key: '_invoiceNumber', width: 16 },
+    { header: T.stage, key: '_stage', width: 36 },
+    { header: ar ? 'نسبة المراحل' : 'Progress', key: '_percent', width: 12 },
   ];
   // المعاملات كلّها تصل دفعةً واحدة وفلاتر السنة والشهر وحالة الفاتورة والبحث
   // تعمل في المتصفّح؛ فمن صدّر وهو على فلتر شهرٍ واحد كان يحمل ملفًّا يسمّيه سجلَّ السنة.
@@ -389,7 +418,8 @@ export default function CustomsPage() {
         <select value={fInvoice} onChange={(e) => setFInvoice(e.target.value)} className="cc-filter" aria-label={ar ? 'حالة الفاتورة' : 'Invoice status'}>
           <option value="">{ar ? 'جميع حالات الفاتورة' : 'All invoice statuses'}</option>
           {invoiceStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
-          <option value="__none">{ar ? 'غير مفوتر' : 'Not invoiced'}</option>
+          <option value="__awaiting">{ar ? `مفوترة بانتظار فاتورة النقل${awaitingCount ? ` (${awaitingCount})` : ''}` : `Invoiced — awaiting transport invoice${awaitingCount ? ` (${awaitingCount})` : ''}`}</option>
+          <option value="__none">{ar ? 'غير مفوترة' : 'Not invoiced'}</option>
         </select>
         <select value={fReturn} onChange={(e) => setFReturn(e.target.value)} className="cc-filter" aria-label={ar ? 'حالة الإرجاع' : 'Return state'}>
           <option value="">{ar ? 'جميع حالات الإرجاع' : 'All return states'}</option>
@@ -417,8 +447,8 @@ export default function CustomsPage() {
         </select>
         <select value={fStage} onChange={(e) => setFStage(e.target.value)} className="cc-filter" aria-label={ar ? 'المرحلة' : 'Stage'}>
           <option value="">{ar ? 'جميع المراحل' : 'All stages'}</option>
-          {[...new Set(list.map((c) => c.stage).filter(Boolean) as string[])].map((v) => (
-            <option key={v} value={v}>{(T.stages as any)?.[v] || v}</option>
+          {[...new Set(list.map((c) => c.pipeline?.next).filter(Boolean) as string[])].map((v) => (
+            <option key={v} value={v}>{`${ar ? 'تنتظر' : 'Next'}: ${(T.stages as any)?.[v] || v}`}</option>
           ))}
         </select>
         <div className="sm:col-span-2 lg:col-span-4 flex items-center gap-2">
@@ -438,7 +468,7 @@ export default function CustomsPage() {
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.customerName}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.branch}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'الفترة' : 'Period'}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.containerCount}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'الحاويات / السيّارات' : 'Units'}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'إجمالي الفاتورة' : 'Invoiced'}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'الإرجاع' : 'Return'}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'حالة الفاتورة' : 'Invoice status'}</th>
@@ -461,7 +491,9 @@ export default function CustomsPage() {
                     {c.periodMonth ? `${MONTH_LABELS[c.periodMonth - 1][ar ? 0 : 1]} ${c.periodYear || ''}`.trim() : (c.periodYear || '—')}
                   </td>
                   <td className="px-4 py-3 text-slate-700">
-                    <span className="inline-flex items-center gap-1"><Container className="w-3.5 h-3.5 text-slate-700" />{c.containerCount || 0}</span>
+                    <span className="inline-flex items-center gap-1" title={c.cargoType === 'vehicles' ? (ar ? 'سيّارات' : 'Vehicles') : (ar ? 'حاويات' : 'Containers')}>
+                      {c.cargoType === 'vehicles' ? <Car className="w-3.5 h-3.5 text-slate-700" /> : <Container className="w-3.5 h-3.5 text-slate-700" />}{c.containerCount || 0}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                     {money(c.revenue?.totalInvoiced) ? money(c.revenue?.totalInvoiced).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}
@@ -472,20 +504,30 @@ export default function CustomsPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    {(c.billing?.invoiceStatus || '').trim()
-                      ? <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-700">{c.billing?.invoiceStatus}</span>
-                      : <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-600">{ar ? 'غير مفوتر' : 'Not invoiced'}</span>}
+                    {/* فُوترت ولم تصل فاتورةُ نقلها: حمراءُ حتى تُرفَق. */}
+                    {c.awaitingTransportInvoice
+                      ? (
+                        <span className="inline-flex flex-col items-start gap-0.5">
+                          <span className="px-2 py-1 rounded-full text-xs font-bold bg-red-600 text-white whitespace-nowrap">{ar ? 'بانتظار فاتورة النقل' : 'Awaiting transport invoice'}</span>
+                          <span className="text-[11px] text-slate-500 whitespace-nowrap">{ar ? 'مفوترة' : 'Invoiced'} · <bdi>{c.saleInvoiceNumber}</bdi></span>
+                        </span>
+                      )
+                      : invoiceState(c).text
+                        ? <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-700 whitespace-nowrap">{invoiceState(c).text}{c.saleInvoiceNumber ? <> · <bdi>{c.saleInvoiceNumber}</bdi></> : null}</span>
+                        : <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-600 whitespace-nowrap">{ar ? 'غير مفوترة' : 'Not invoiced'}</span>}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      c.isCompleted && !c.cancelled ? 'bg-green-500/20 text-green-700' : stageBadge(c.stage, c.cancelled)}`}>
-                      {/* «مقفولة» تسبق المرحلة: المعاملةُ المقفولة خرجت من
-                          دورة الإجراءات، فعرضُ مرحلتها الأخيرة يُقرأ عملًا
-                          ما زال جاريًا. */}
-                      {c.cancelled ? T.cancelled
-                        : c.isCompleted ? (lang === 'ar' ? 'مقفولة' : 'Closed')
-                        : T.stages[c.stage] || c.stage}
+                    {/* «مغلقة» تسبق المرحلة: المعاملةُ المغلقة خرجت من دورة
+                        الإجراءات. وللمفتوحة تُقال المرحلةُ التي تنتظرها ونسبةُ
+                        ما أُنجز — لا آخرُ ما عُلِّم. */}
+                    <span className={`inline-block max-w-[15rem] truncate align-middle px-2 py-1 rounded-full text-xs font-medium ${
+                      c.isCompleted && !c.cancelled ? 'bg-green-500/20 text-green-700' : stageBadge(c.pipeline?.percent ?? 0, c.cancelled)}`}
+                      title={stageText(c)}>
+                      {stageText(c)}
                     </span>
+                    {!c.cancelled && !c.isCompleted && (
+                      <span className="ms-1.5 text-[11px] tabular-nums text-slate-400">{c.pipeline?.percent ?? 0}%</span>
+                    )}
                   </td>
                   {/* ── الملاحظةُ الأخيرة، وتُكتب من هنا ─────────────────────
                       عمودٌ يقول آخرَ ما قيل عن المعاملة بلا فتحها، وزرٌّ يكتب
@@ -575,7 +617,19 @@ export default function CustomsPage() {
                     emptyLabel={ar ? 'لا نتائج — أضِفه من صفحة الوكلاء' : 'No match — add from agents page'}
                     options={parties.agents.map((p) => ({ value: p._id, label: p.name, hint: p.email || '' }))} />
                 </Field>
-                <Field label={T.containerCount}><input type="number" className="cc-input" value={form.containerCount} onChange={(e) => setForm((f: any) => ({ ...f, containerCount: Number(e.target.value) }))} /></Field>
+                {/* ── نوعُ المعاملة وعددُ وحداتها ───────────────────────────────
+                    حاوياتٌ أو سيّارات — يُختار هنا لأنّ دورةَ المعاملة تُبنى
+                    عليه: السيّاراتُ لا إرجاعَ حاوياتٍ فيها. والعددُ يفتح لكلّ
+                    حاويةٍ خانتَها داخل المعاملة. */}
+                <Field label={ar ? 'نوع المعاملة' : 'Transaction type'}>
+                  <select value={form.cargoType} onChange={(e) => setForm((f: any) => ({ ...f, cargoType: e.target.value }))} className="cc-input">
+                    <option value="containers">{ar ? 'حاويات' : 'Containers'}</option>
+                    <option value="vehicles">{ar ? 'سيّارات' : 'Vehicles'}</option>
+                  </select>
+                </Field>
+                <Field label={form.cargoType === 'vehicles' ? (ar ? 'عدد السيّارات' : 'Number of vehicles') : T.containerCount}>
+                  <input type="number" min={0} className="cc-input" value={form.containerCount} onChange={(e) => setForm((f: any) => ({ ...f, containerCount: Number(e.target.value) }))} />
+                </Field>
                 {/* التاريخُ المرتقَب هو كلُّ الفرق بين معاملةٍ قادمةٍ وجارية —
                     وعليه يقوم التنبيه، فلا تُحفَظ القادمةُ بدونه. */}
                 {creatingUpcoming && (

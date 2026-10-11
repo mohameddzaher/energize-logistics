@@ -464,10 +464,16 @@
       "en": "Customers"
     },
     {
+      "key": "/system/customs/dashboard",
+      "section": "Customs",
+      "ar": "لوحة القسم",
+      "en": "Section Dashboard"
+    },
+    {
       "key": "/system/customs/analytics",
       "section": "Customs",
-      "ar": "التحليلات",
-      "en": "Analytics"
+      "ar": "تحليلات قسم التخليص",
+      "en": "Customs Analytics"
     },
     {
       "key": "/system/customs",

@@ -150,6 +150,43 @@ function readDeadline(body) {
   return { deadlineKind: '', deadlineHours: null, deadlineAt: null };
 }
 
+/**
+ * ── بماذا تُربَط المهمّة ────────────────────────────────────────────────────
+ * لكلّ قسمٍ أنواعُ ما يُربَط به، ومن أين يُقرأ اسمُه. والتخليصُ أوّلُها:
+ * معاملةٌ، أو أحدُ أطرافها الثلاثة. قسمٌ ليس هنا لا روابطَ لمهامّه.
+ */
+const partyLink = (kind) => async (id) => {
+  const p = await require('../models/CustomsParty').findOne({ _id: id, kind }).select('name').lean();
+  return p ? p.name : null;
+};
+const LINK_KINDS = {
+  customs: {
+    clearance: async (id) => {
+      const c = await require('../models/CustomsClearance').findById(id).select('refNumber blNumber customerName').lean();
+      return c ? [c.blNumber || c.refNumber, c.customerName].filter(Boolean).join(' · ') : null;
+    },
+    customer: partyLink('customer'),
+    agent: partyLink('agent'),
+    carrier: partyLink('carrier'),
+  },
+};
+
+/** روابطُ المهمّة من جسم الطلب — `undefined` إن لم تُرسَل (فلا تُمسّ عند التعديل). */
+async function readLinks(body, w) {
+  if (body.links === undefined) return undefined;
+  const kinds = (w.scope === 'section' && LINK_KINDS[w.section]) || {};
+  const out = [];
+  for (const l of (Array.isArray(body.links) ? body.links : []).slice(0, 8)) {
+    const kind = String(l?.kind || '');
+    if (!Object.hasOwn(kinds, kind) || !mongoose.isValidObjectId(l?.ref)) continue;
+    if (out.some((x) => x.kind === kind && String(x.ref) === String(l.ref))) continue;
+    const label = await kinds[kind](l.ref);
+    if (label === null) throw bad('ما رُبطت به المهمّةُ غير موجود');
+    out.push({ kind, ref: l.ref, label });
+  }
+  return out;
+}
+
 const fail = (res, e, fallback) => res.status(e?.name === 'ValidationError' || e?.status === 400 ? 400 : 500)
   .json({ message: e?.status === 400 || e?.name === 'ValidationError' ? e.message : fallback });
 const bad = (msg) => Object.assign(new Error(msg), { status: 400 });
@@ -175,6 +212,8 @@ exports.me = async (req, res) => {
       team,
       projects,
       actions: ACTIONS.filter(Boolean),
+      // ما يصحّ ربطُ المهمّة به في هذا القسم — فارغةٌ لقسمٍ بلا روابط.
+      linkKinds: Object.keys((w.scope === 'section' && LINK_KINDS[w.section]) || {}),
     });
   } catch (e) { fail(res, e, 'تعذّر تحميل الخطّة'); }
 };
@@ -200,7 +239,11 @@ exports.listTasks = async (req, res) => {
 
     const f = visible(req, w);
     const and = [];
-    const { box, status, project, assignee, kind } = req.query;
+    const { box, status, project, assignee, kind, linkKind, linkRef } = req.query;
+    // مهامُّ معاملةٍ بعينها أو طرفٍ بعينه — تُقرأ في صفحته بقاعدة الرؤية نفسِها.
+    if (linkRef && mongoose.isValidObjectId(linkRef)) {
+      and.push({ links: { $elemMatch: { ref: new mongoose.Types.ObjectId(String(linkRef)), ...(linkKind ? { kind: String(linkKind) } : {}) } } });
+    }
     if (box === 'mine') and.push({ assignedTo: req.user._id });
     else if (box === 'sent') and.push({ createdBy: req.user._id, assignedTo: { $ne: req.user._id } });
     if (kind === 'task' || kind === 'request') and.push({ kind });
@@ -281,8 +324,10 @@ exports.createTask = async (req, res) => {
     }
     const action = ACTIONS.includes(String(req.body.action || '')) ? String(req.body.action || '') : '';
     const deadline = readDeadline(req.body) || {};
+    const links = (await readLinks(req.body, w)) || [];
 
     const doc = await JpTask.create({
+      links,
       scope: w.scope, section: w.section,
       // المديرُ يكلِّف، وغيرُه يطلب — يحدّده من كتب لا ما أُرسِل.
       kind: w.canManage ? 'task' : 'request',
@@ -344,6 +389,8 @@ exports.updateTask = async (req, res) => {
     }
     const deadline = readDeadline(b);
     if (deadline) Object.assign(t, deadline);
+    const links = await readLinks(b, w);
+    if (links) t.links = links;
     await t.save();
     if (reassigned) await notify(t.assignedTo, req.user._id, 'مهمّةٌ أُسنِدت إليك', `${t.title} — من ${nameOf(req.user)}`, t._id);
     broadcast(w);

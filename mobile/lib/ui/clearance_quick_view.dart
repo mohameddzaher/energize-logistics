@@ -4,6 +4,7 @@ import '../config.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../screens/customs_detail.dart' show customsFileUrl, customsPayStatus, customsStageLabel;
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -23,17 +24,6 @@ Future<void> showClearanceQuickView(BuildContext context, String id) {
   );
 }
 
-const _stageOrder = [
-  'papers_received', 'declaration_paid', 'do_requested', 'do_linked', 'port_fees_paid',
-  'unloading_fees_paid', 'transport_order', 'containers_transported', 'unloaded_stored',
-  'containers_returned', 'invoiced',
-];
-const _stageAr = {
-  'papers_received': 'استلام الأوراق', 'declaration_paid': 'سداد البيان', 'do_requested': 'طلب إذن التسليم',
-  'do_linked': 'ربط إذن التسليم', 'port_fees_paid': 'سداد الموانئ', 'unloading_fees_paid': 'سداد التفريغ',
-  'transport_order': 'أمر النقل', 'containers_transported': 'نقل الحاويات', 'unloaded_stored': 'التفريغ والتخزين',
-  'containers_returned': 'إرجاع الحاويات', 'invoiced': 'الفوترة',
-};
 const _costs = [
   ('deliveryOrder', 'قيمة إذن التسليم', 'Delivery order'), ('customsDuty', 'الرسوم الجمركية', 'Customs duty'),
   ('portFees', 'أجور الموانى', 'Port fees'), ('unloadingFees', 'أجور التفريغ', 'Unloading fees'),
@@ -55,6 +45,8 @@ const _margin = [
 num _n(dynamic v) => v is num ? v : num.tryParse('${v ?? ''}') ?? 0;
 String _money(dynamic v) =>
     _n(v).toStringAsFixed(_n(v) % 1 == 0 ? 0 : 2).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
+String _arDigits(int n) =>
+    Lang.instance.ar ? '$n'.split('').map((d) => '٠١٢٣٤٥٦٧٨٩'[int.parse(d)]).join() : '$n';
 String _date(dynamic v) {
   final s = '${v ?? ''}';
   if (s.isEmpty) return '';
@@ -76,6 +68,9 @@ class _QuickView extends StatefulWidget {
 
 class _QuickViewState extends State<_QuickView> {
   Map<String, dynamic>? _c;
+  // صافي الربح يأتي بجوار المعاملة لا فيها، ولمن يحقّ له وحدَه — فغيابُه هو
+  // الحارس: لا قائمةَ أدوارٍ تُكرَّر هنا.
+  num? _profit;
   String? _error;
   int _seq = 0;
   late final void Function(dynamic) _onLive;
@@ -102,7 +97,11 @@ class _QuickViewState extends State<_QuickView> {
     try {
       final d = await Api.instance.get('/api/customs-clearance/${widget.id}');
       if (!mounted || mine != _seq) return;
-      setState(() { _c = Map<String, dynamic>.from(d['clearance'] ?? const {}); _error = null; });
+      setState(() {
+        _c = Map<String, dynamic>.from(d['clearance'] ?? const {});
+        _profit = d['profit'] is num ? d['profit'] as num : null;
+        _error = null;
+      });
     } catch (e) {
       if (mounted && mine == _seq) setState(() => _error = e.toString());
     }
@@ -140,18 +139,36 @@ class _QuickViewState extends State<_QuickView> {
     }
     final costs = Map<String, dynamic>.from(c['costs'] ?? const {});
     final rev = Map<String, dynamic>.from(c['revenue'] ?? const {});
-    final done = List<String>.from((c['stagesDone'] ?? const []).map((e) => '$e'));
-    final doneCount = _stageOrder.where(done.contains).length;
-    final profit = _n(rev['profit']);
+    // الدورةُ كما حسبها الخادم (pipelineOf): ما أُنجز وما أُغلِق والنسبة.
+    final pipeline = Map<String, dynamic>.from(c['pipeline'] ?? const {});
+    final steps = List<Map<String, dynamic>>.from((pipeline['steps'] ?? const []).map((e) => Map<String, dynamic>.from(e)));
+    final cargo = '${c['cargoType'] ?? 'containers'}';
+    final vehicles = cargo == 'vehicles';
+    final invoiceNo = '${c['saleInvoiceNumber'] ?? ''}';
+    final awaiting = invoiceNo.isNotEmpty && c['isCompleted'] != true && c['cancelled'] != true && c['transportInvoiceReceived'] != true;
     final stages = List<Map<String, dynamic>>.from((c['paymentStages'] ?? const []).map((e) => Map<String, dynamic>.from(e)))
       ..sort((a, b) => '${b['date'] ?? b['addedAt'] ?? ''}'.compareTo('${a['date'] ?? a['addedAt'] ?? ''}'));
+    // المرحلةُ نفسُها قد تُسدَّد على دفعات — تُرقَّم بترتيب إضافتها.
+    final payOrdinal = <dynamic, int>{};
+    final payCount = <String, int>{};
+    for (final s in (c['paymentStages'] ?? const [])) {
+      final k = '${s['key'] ?? s['label'] ?? ''}';
+      payOrdinal[s['_id']] = payCount[k] = (payCount[k] ?? 0) + 1;
+    }
     final containers = List<Map<String, dynamic>>.from((c['containers'] ?? const []).map((e) => Map<String, dynamic>.from(e)));
     final atts = List<Map<String, dynamic>>.from((c['attachments'] ?? const []).map((e) => Map<String, dynamic>.from(e)));
+    final fileBase = '${c['blNumber'] ?? ''}'.trim().isNotEmpty ? '${c['blNumber']}'.trim() : '${c['refNumber'] ?? ''}';
+    String payName(Map<String, dynamic> s) => '${s['label'] ?? s['key'] ?? ''}';
+    int payNth(Map<String, dynamic> s) => (payCount['${s['key'] ?? s['label'] ?? ''}'] ?? 0) > 1 ? (payOrdinal[s['_id']] ?? 0) : 0;
+    String attTitle(Map<String, dynamic> a) => '${a['title'] ?? ''}'.isNotEmpty
+        ? '${a['title']}' : '${a['fileName'] ?? ''}'.replaceAll(RegExp(r'\.[^.]+$'), '');
+    final attTotals = <String, int>{};
+    for (final a in atts) { attTotals[attTitle(a)] = (attTotals[attTitle(a)] ?? 0) + 1; }
     final status = c['cancelled'] == true
         ? tr('ملغاة', 'Cancelled')
         : c['isCompleted'] == true
             ? tr('مُقفلة', 'Closed')
-            : c['upcoming'] == true ? tr('قادمة', 'Upcoming') : tr(_stageAr['${c['stage']}'] ?? '${c['stage']}', '${c['stage']}');
+            : c['upcoming'] == true ? tr('قادمة', 'Upcoming') : customsStageLabel('${c['stage']}', cargo);
 
     return ListView(padding: const EdgeInsets.fromLTRB(14, 8, 14, 24), children: [
       Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: T.inkFaint.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(4)))),
@@ -168,7 +185,7 @@ class _QuickViewState extends State<_QuickView> {
         for (final x in [
           (tr('المصروفات', 'Costs'), costs['total'], T.ink),
           (tr('الفاتورة', 'Invoiced'), rev['totalInvoiced'], T.ink),
-          (tr('الربح', 'Profit'), profit, profit < 0 ? T.danger : T.success),
+          if (_profit != null) (tr('صافي الربح', 'Net profit'), _profit, _profit! < 0 ? T.danger : T.success),
         ])
           Expanded(
             child: Padding(
@@ -184,41 +201,59 @@ class _QuickViewState extends State<_QuickView> {
             ),
           ),
       ]),
+      if (awaiting)
+        Container(
+          margin: const EdgeInsets.only(top: 12),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: T.danger.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: T.danger.withValues(alpha: 0.45)),
+          ),
+          child: Text(tr('صدرت الفاتورة $invoiceNo — بانتظار فاتورة النقل', 'Invoice $invoiceNo issued — awaiting the transport invoice'),
+              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: T.danger)),
+        ),
       _section(tr('مراحل المعاملة', 'Progress'), [
         ClipRRect(
           borderRadius: BorderRadius.circular(6),
-          child: LinearProgressIndicator(value: doneCount / _stageOrder.length, minHeight: 7,
+          child: LinearProgressIndicator(value: (_n(pipeline['percent']) / 100).clamp(0, 1).toDouble(), minHeight: 7,
               backgroundColor: T.inkFaint.withValues(alpha: 0.12), color: T.success),
         ),
         const SizedBox(height: 8),
         Wrap(spacing: 5, runSpacing: 5, children: [
-          for (final s in _stageOrder)
-            Chip2(tr(_stageAr[s] ?? s, s), c['stage'] == s ? T.warn : done.contains(s) ? T.success : T.inkFaint),
+          // المُغلَقةُ ليست من طريق هذه المعاملة — تُرسَم بقفلٍ لا بلون التأخّر.
+          for (final s in steps)
+            Chip2(customsStageLabel('${s['key']}', cargo),
+                s['locked'] == true ? T.inkFaint : s['done'] == true ? T.success : pipeline['next'] == s['key'] ? T.warn : T.inkSoft,
+                icon: s['locked'] == true ? Icons.lock_outline : s['done'] == true ? Icons.check : null),
         ]),
-      ], trailing: '$doneCount/${_stageOrder.length}'),
+      ], trailing: '${pipeline['done'] ?? 0}/${pipeline['total'] ?? 0}'),
       _section(tr('بيانات المعاملة', 'Details'), [
         _kv(tr('رقم البوليصة', 'BL'), '${c['blNumber'] ?? ''}'),
         _kv(tr('الوكيل الملاحي', 'Shipping agent'), '${c['shippingAgent'] ?? ''}'),
         _kv(tr('الميناء', 'Port'), '${c['port'] ?? ''}'),
-        _kv(tr('الحاويات', 'Containers'), '${c['containerCount'] ?? containers.length}'),
+        _kv(tr('نوع المعاملة', 'Type'), vehicles ? tr('سيّارات', 'Vehicles') : tr('حاويات', 'Containers')),
+        _kv(vehicles ? tr('عدد السيّارات', 'Vehicles') : tr('عدد الحاويات', 'Containers'), '${c['containerCount'] ?? containers.length}'),
         _kv(tr('الشهر', 'Period'), c['periodYear'] != null ? '${c['periodYear']}-${'${c['periodMonth'] ?? ''}'.padLeft(2, '0')}' : ''),
         _kv(tr('رقم البيان', 'Declaration'), '${c['declarationNumber'] ?? ''}'),
         _kv(tr('إذن التسليم', 'DO number'), '${c['doNumber'] ?? ''}'),
         _kv(tr('موعد التفريغ', 'Unloading'), [_date(c['unloadingAppointment']), '${c['unloadingLocation'] ?? ''}'].where((e) => e.isNotEmpty).join(' · ')),
         _kv(tr('آخر موعد للإرجاع', 'Return deadline'), _date(c['returnDeadline'])),
-        _kv(tr('الفوترة', 'Invoicing'), [
-          '${(c['billing'] ?? const {})['invoiceStatus'] ?? ''}',
-          '${(c['billing'] ?? const {})['ourInvoiceNumber'] ?? ''}',
-        ].where((e) => e.isNotEmpty).join(' · ')),
+        _kv(tr('الفوترة', 'Invoicing'), invoiceNo.isNotEmpty
+            ? [tr('مفوترة', 'Invoiced'), invoiceNo, if (awaiting) tr('بانتظار فاتورة النقل', 'awaiting transport invoice')].join(' · ')
+            : [
+                '${(c['billing'] ?? const {})['invoiceStatus'] ?? ''}'.isEmpty ? tr('غير مفوترة', 'Not invoiced') : '${(c['billing'] ?? const {})['invoiceStatus']}',
+                '${(c['billing'] ?? const {})['ourInvoiceNumber'] ?? ''}',
+              ].where((e) => e.isNotEmpty).join(' · ')),
       ]),
       _section(tr('المصروفات', 'Costs'), [
         for (final k in _costs.where((k) => _n(costs[k.$1]) != 0)) _kv(tr(k.$2, k.$3), _money(costs[k.$1])),
         if (_costs.every((k) => _n(costs[k.$1]) == 0)) Text(tr('لا مصروفات مسجّلة', 'No costs'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
       ], trailing: _money(costs['total'])),
-      _section(tr('الإيراد والهامش', 'Revenue & margin'), [
+      _section(tr('الإيراد', 'Revenue'), [
         for (final k in _margin.where((k) => _n(rev[k.$1]) != 0)) _kv(tr(k.$2, k.$3), _money(rev[k.$1])),
         if (_margin.every((k) => _n(rev[k.$1]) == 0)) Text(tr('لا إيراد مسجّل', 'No revenue'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
-      ], trailing: _money(profit)),
+      ]),
       _section(tr('مراحل السداد وطلبات الصرف', 'Payment stages'), [
         if (stages.isEmpty) Text(tr('لا مراحل سداد بعد', 'None yet'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
         for (final s in stages)
@@ -229,7 +264,11 @@ class _QuickViewState extends State<_QuickView> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Expanded(child: Text('${s['label'] ?? s['key'] ?? ''}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800))),
-                Chip2(_payLabel('${s['payStatus'] ?? 'pending'}'), _payColor('${s['payStatus'] ?? 'pending'}')),
+                if ((payCount['${s['key'] ?? s['label'] ?? ''}'] ?? 0) > 1) ...[
+                  Chip2(tr('الدفعة ${_arDigits(payOrdinal[s['_id']] ?? 1)}', 'Payment ${payOrdinal[s['_id']] ?? 1}'), T.navy),
+                  const SizedBox(width: 5),
+                ],
+                Chip2(customsPayStatus(s['payStatus']).$1, customsPayStatus(s['payStatus']).$2),
               ]),
               const SizedBox(height: 3),
               Text([
@@ -241,19 +280,19 @@ class _QuickViewState extends State<_QuickView> {
               if ('${s['fileUrl'] ?? ''}'.isNotEmpty || (s['proofFiles'] ?? const []).isNotEmpty)
                 Wrap(spacing: 8, children: [
                   if ('${s['fileUrl'] ?? ''}'.isNotEmpty)
-                    TextButton.icon(onPressed: () => _open('${s['fileUrl']}'), icon: const Icon(Icons.attach_file, size: 14),
+                    TextButton.icon(onPressed: () => _open(customsFileUrl(s['fileUrl'], base: fileBase, title: payName(s), n: payNth(s), fileName: s['fileName'])), icon: const Icon(Icons.attach_file, size: 14),
                         label: Text('${s['fileName'] ?? tr('المرفق', 'file')}', style: const TextStyle(fontSize: 11))),
                   for (final f in (s['proofFiles'] ?? const []))
-                    TextButton.icon(onPressed: () => _open('${f['fileUrl'] ?? ''}'), icon: const Icon(Icons.verified_outlined, size: 14, color: T.success),
+                    TextButton.icon(onPressed: () => _open(customsFileUrl(f['fileUrl'], base: fileBase, title: '${payName(s)} - ${tr('إثبات الدفع', 'Payment proof')}', n: payNth(s), fileName: f['fileName'])), icon: const Icon(Icons.verified_outlined, size: 14, color: T.success),
                         label: Text('${f['fileName'] ?? tr('إثبات الدفع', 'proof')}', style: const TextStyle(fontSize: 11, color: T.success))),
                 ]),
             ]),
           ),
       ], trailing: '${stages.length}'),
       if (containers.isNotEmpty)
-        _section(tr('الحاويات', 'Containers'), [
+        _section(vehicles ? tr('السيّارات', 'Vehicles') : tr('الحاويات', 'Containers'), [
           Wrap(spacing: 5, runSpacing: 5, children: [
-            for (final k in containers) Chip2('${k['containerNumber'] ?? '—'}', T.inkSoft),
+            for (final k in containers) Chip2('${k['containerNumber'] ?? ''}'.isEmpty ? '—' : '${k['containerNumber']}', T.inkSoft),
           ]),
         ], trailing: '${containers.length}'),
       if (atts.isNotEmpty)
@@ -266,22 +305,13 @@ class _QuickViewState extends State<_QuickView> {
               title: Text('${a['title'] ?? ''}'.isNotEmpty ? '${a['title']}' : '${a['fileName'] ?? tr('مرفق', 'file')}',
                   style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
               trailing: Text(_date(a['uploadedAt']), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
-              onTap: () => _open('${a['fileUrl'] ?? ''}'),
+              onTap: () {
+                final t = attTitle(a);
+                final nth = atts.where((x) => attTitle(x) == t).toList().indexOf(a) + 1;
+                _open(customsFileUrl(a['fileUrl'], base: fileBase, title: t, n: (attTotals[t] ?? 0) > 1 ? nth : 0, fileName: a['fileName']));
+              },
             ),
         ], trailing: '${atts.length}'),
     ]);
   }
 }
-
-String _payLabel(String s) => switch (s) {
-      'paid' => tr('مدفوع', 'Paid'),
-      'returned' => tr('مُعاد', 'Returned'),
-      'rejected' => tr('مرفوض', 'Rejected'),
-      _ => tr('بانتظار الدفع', 'Awaiting'),
-    };
-Color _payColor(String s) => switch (s) {
-      'paid' => T.success,
-      'returned' => T.info,
-      'rejected' => T.danger,
-      _ => T.warn,
-    };

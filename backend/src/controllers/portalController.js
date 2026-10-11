@@ -152,7 +152,7 @@ async function customsFor(identity) {
       { customerName: { $nin: [null, ''] } },
     ],
   })
-    .select('refNumber branch stage cancelled customerName customer shippingAgent blNumber invoiceNumber invoiceDate port containerCount totalWeight invoiceValue currency exporterCompany countryOfOrigin hsCode declarationNumber declarationDate doNumber exitPermitNumber unloadingAppointment unloadingLocation stageDates stageDone documents agentPapers costs createdAt updatedAt cargoType isCompleted stagesDone transportRoute pipelineVersion saleInvoiceNumber')
+    .select('refNumber branch stage cancelled customerName customer shippingAgent blNumber invoiceNumber invoiceDate port containerCount totalWeight invoiceValue currency exporterCompany countryOfOrigin hsCode declarationNumber declarationDate doNumber exitPermitNumber unloadingAppointment unloadingLocation stageDates stageDone documents agentPapers costs createdAt updatedAt cargoType isCompleted stagesDone transportRoute pipelineVersion saleInvoiceNumber containers.route containers.stagesDone')
     .sort({ createdAt: -1 })
     .limit(FLEET_LIMIT)
     .lean();
@@ -163,12 +163,16 @@ async function customsFor(identity) {
   // القسم نفسِها (pipelineOf) — بلا سببِ الإغلاق الداخليّ ولا الحقولِ الخام.
   return rows
     .filter((r) => (r.customer && ids.has(String(r.customer))) || nameKey(r.customerName) === identity.key)
-    .map(({ stagesDone, transportRoute, pipelineVersion, saleInvoiceNumber, ...r }) => {
-      const p = CustomsClearance.pipelineOf({ ...r, stagesDone, transportRoute, pipelineVersion, saleInvoiceNumber });
+    .map(({ stagesDone, transportRoute, pipelineVersion, saleInvoiceNumber, containers, ...r }) => {
+      const p = CustomsClearance.pipelineOf({ ...r, containers, stagesDone, transportRoute, pipelineVersion, saleInvoiceNumber });
       return {
         ...r,
         cargoType: p.cargoType,
-        pipeline: { ...p, steps: p.steps.map(({ key, done, locked }) => ({ key, done, locked })) },
+        pipeline: {
+          ...p,
+          steps: p.steps.map(({ key, done, locked, unitsDone, unitsOf }) => ({ key, done, locked, ...(unitsOf ? { unitsDone, unitsOf } : {}) })),
+          units: undefined,
+        },
       };
     });
 }

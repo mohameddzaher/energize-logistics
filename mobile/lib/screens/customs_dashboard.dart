@@ -218,7 +218,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
     return Pressable(
       onTap: () => _open(r),
       child: AppCard(
-        topAccent: awaiting || r['returnState'] == 'overdue' ? T.danger : null,
+        topAccent: awaiting || r['returnState'] == 'overdue' || (r['unitsState'] is Map && _i(r['unitsState']['late']) > 0) ? T.danger : null,
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(bl.isNotEmpty ? '$bl — ${r['customerName'] ?? ''}' : '${r['customerName'] ?? '—'}',
@@ -243,6 +243,8 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
             Chip2('${_i(r['units'])} ${vehicles ? tr('سيّارة', 'vehicles') : tr('حاوية', 'containers')}', T.violet),
             if ('${r['invoiceNumber'] ?? ''}'.isNotEmpty) Chip2('${tr('مفوترة', 'Invoiced')} · ${r['invoiceNumber']}', T.success),
             if (awaiting) Chip2(tr('بانتظار فاتورة النقل', 'Awaiting transport invoice'), T.danger, icon: Icons.error_outline),
+            if (r['unitsState'] is Map && _i(r['unitsState']['late']) > 0)
+              Chip2(tr('${_i(r['unitsState']['late'])} حاوية متأخّرة الإرجاع', '${_i(r['unitsState']['late'])} containers late to return'), T.danger, icon: Icons.error_outline),
             if (r['returnState'] == 'overdue') Chip2('${tr('تأخّر الإرجاع', 'Return overdue')} · ${r['returnDeadline']}', T.danger)
             else if (r['returnState'] == 'due') Chip2('${tr('الإرجاع قريب', 'Return due')} · ${r['returnDeadline']}', T.warn),
             if (_i(r['pendingPayments']) > 0) Chip2(tr('${r['pendingPayments']} طلب صرف معلّق', '${r['pendingPayments']} pending payments'), T.warn),
@@ -329,6 +331,25 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
               sub: tr('في ${_i(n['withPendingPayments'])} معاملة', 'in ${_i(n['withPendingPayments'])} transactions')),
           _card(tr('مهامّ JP', 'JP tasks'), _i(n['tasksOpen']), T.cyan, Icons.event_available_outlined, (r) => _i(r['openTasks']) > 0,
               sub: _i(n['tasksOverdue']) > 0 ? tr('${n['tasksOverdue']} متأخّرة', '${n['tasksOverdue']} late') : null),
+        ],
+      ),
+      // ── أين الوحداتُ نفسُها ──
+      // من النقل فما بعده تُتابَع كلُّ حاويةٍ على حدة، فالعدُّ هنا بالوحدات لا
+      // بالمعاملات — وكلُّ بطاقةٍ تفتح المعاملاتِ التي فيها من ذلك شيء.
+      _head(tr('الحاويات والسيّارات في المعاملات المفتوحة', 'Containers & vehicles in open transactions')),
+      GridView.count(
+        crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+        crossAxisSpacing: 10, mainAxisSpacing: 10, childAspectRatio: 2.1,
+        children: [
+          for (final x in [
+            ('atPort', 'unitsAtPort', tr('ما زالت في الميناء', 'Still at the port'), T.navy, Icons.anchor_outlined),
+            ('inYard', 'unitsInYard', tr('في الساحة', 'In the yard'), T.info, Icons.warehouse_outlined),
+            ('delivered', 'unitsDelivered', tr('سُلِّمت للعميل', 'Delivered to customer'), T.success, Icons.local_shipping_outlined),
+            ('notReturned', 'unitsNotReturned', tr('حاويات لم تُرجَع', 'Containers not returned'), T.warn, Icons.assignment_return_outlined),
+            ('late', 'unitsLate', tr('حاويات فات موعد إرجاعها', 'Containers past return date'), T.danger, Icons.error_outline),
+          ])
+            _card(x.$3, _i(n[x.$2]), x.$4, x.$5,
+                (r) => r['bucket'] == 'open' && r['unitsState'] is Map && _i(r['unitsState'][x.$1]) > 0),
         ],
       ),
       // ── أين تقف المفتوحة ──

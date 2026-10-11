@@ -40,6 +40,8 @@ const LINEAR_V1 = [
 const TRANSPORT_LEGS = ['transport_to_yard', 'transport_to_customer', 'yard_to_customer'];
 // مرحلتا الميناء — يُختار أحدُهما، ويُبدَّل بينهما بضغطة.
 const PORT_LEGS = ['transport_to_yard', 'transport_to_customer'];
+// ومن أوّل النقل تُعلَّم المراحلُ لكلّ وحدة (حاويةٍ أو سيّارة) — راجع pipelineOf.
+const UNIT_STAGES = ['transport_to_yard', 'transport_to_customer', 'unloaded_stored', 'yard_to_customer', 'containers_returned'];
 const CARGO_TYPES = ['containers', 'vehicles'];
 const VEHICLE_KINDS = ['energize', 'external'];
 
@@ -370,6 +372,10 @@ const customsClearanceSchema = new mongoose.Schema(
         exitPermit: { type: Number, default: 0 },      // تصريح خروج
         declaration: { type: String, trim: true },     // البيان
         notes: { type: String, trim: true },
+        // أيَّ الطريقين سلكت هذه الوحدة، وما أُنجز من مراحلها — لكلّ وحدةٍ
+        // مراحلُها من أوّل النقل. تُكتب من `PATCH /:id/stage` وحدَه.
+        route: { type: String, enum: ['', 'yard', 'customer'], default: '' },
+        stagesDone: { type: [String], default: [] },
         // تاريخُ إرجاع هذه الحاوية إلى الوكيل — لكلّ حاويةٍ تاريخُها.
         returnDate: { type: String, trim: true, default: '' }, // YYYY-MM-DD
         /**
@@ -500,7 +506,7 @@ function lockReason(key, route, cargoType) {
 function readStages(c) {
   const done = new Set((c && c.stagesDone) || []);
   let route = (c && c.transportRoute) || '';
-  if (c && c.pipelineVersion !== 2) {
+  if (c && !(c.pipelineVersion >= 2)) {
     // ── وأقدمُ من ذلك: مرحلةٌ بلا علامات ───────────────────────────────────
     // ما استُورد من الماستر (وما أُدخل قبل أن تُعلَّم المراحلُ واحدةً واحدة)
     // يحمل مرحلتَه وحدَها و`stagesDone` فارغة. والمرحلةُ في الماستر آخرُ ما
@@ -533,25 +539,101 @@ function readStages(c) {
  * واحدة (ستُنجَز إحداهما وتُغلَق الأخرى).
  */
 function pipelineOf(c) {
-  const { done, route } = readStages(c);
+  const { done, route, units } = readUnits(c);
   const cargoType = (c && c.cargoType) || 'containers';
-  const steps = STAGES.map((key) => {
-    const reason = lockReason(key, route, cargoType);
+  const step = (key, r, has) => {
+    const reason = lockReason(key, r, cargoType);
     return {
-      key, done: !reason && done.has(key), locked: !!reason, ...(reason ? { reason } : {}),
+      key, done: !reason && has(key), locked: !!reason, ...(reason ? { reason } : {}),
       // الطريقُ الآخرُ ليس بابًا موصدًا: يُضغَط فيتحوّل الاختيارُ إليه (راجع setStage).
       ...(reason && PORT_LEGS.includes(key) ? { switchable: true } : {}),
     };
-  });
-  const open = steps.filter((s) => !s.locked);
-  const total = open.length - (route ? 0 : 1);
-  const doneCount = open.filter((s) => s.done).length;
-  const next = open.find((s) => !s.done);
-  return {
-    route, cargoType, steps, done: doneCount, total,
-    percent: total ? Math.min(100, Math.round((doneCount / total) * 100)) : 0,
-    next: next ? next.key : '',
   };
+  const tally = (steps, r) => {
+    const open = steps.filter((s) => !s.locked);
+    const total = Math.max(1, open.length - (r ? 0 : 1));
+    const n = open.filter((s) => s.done).length;
+    const next = open.find((s) => !s.done);
+    return { done: n, total, percent: Math.min(100, Math.round((n / total) * 100)), next: next ? next.key : '' };
+  };
+
+  // ── معاملةٌ بلا وحدات: المراحلُ كلُّها على المعاملة ───────────────────────
+  if (!units) {
+    const steps = STAGES.map((key) => step(key, route, (k) => done.has(k)));
+    return { route, cargoType, perUnit: false, steps, units: [], ...tally(steps, route) };
+  }
+
+  // ── ومن أوّل النقل: لكلّ حاويةٍ مراحلُها ──────────────────────────────────
+  // ثلاثُ حاوياتٍ في بوليصةٍ واحدة لا تسير معًا دائمًا: واحدةٌ إلى العميل
+  // اليوم، واثنتان إلى الساحة، وإحداهما تُرجَع قبل أختها. فمراحلُ النقل وما
+  // بعده تُعلَّم لكلّ وحدةٍ، ومرحلةُ المعاملة هي جمعُها: «أُنجزت» حين تُنجزها
+  // كلُّ وحدةٍ تَلزمها، ومعها كم أنجزها من كم.
+  const unitViews = units.map((u, index) => {
+    const steps = UNIT_STAGES.map((key) => step(key, u.route, (k) => u.done.has(k)));
+    return { index, route: u.route, steps, ...tally(steps, u.route) };
+  });
+  const steps = STAGES.map((key) => {
+    if (!UNIT_STAGES.includes(key)) return { key, done: done.has(key), locked: false };
+    const per = unitViews.map((v) => v.steps.find((x) => x.key === key));
+    const open = per.filter((x) => !x.locked);
+    const n = open.filter((x) => x.done).length;
+    if (!open.length) {
+      const reasons = [...new Set(per.map((x) => x.reason))];
+      return {
+        key, perUnit: true, done: false, locked: true, unitsDone: 0, unitsOf: 0,
+        reason: reasons.length === 1 ? reasons[0] : 'لا تَلزم أيًّا من وحدات المعاملة',
+        ...(PORT_LEGS.includes(key) ? { switchable: true } : {}),
+      };
+    }
+    return { key, perUnit: true, done: n === open.length, locked: false, unitsDone: n, unitsOf: open.length };
+  });
+  // النسبة: مراحلُ المعاملة بوزنها، ومراحلُ الوحدات بمتوسّط ما أنجزته كلٌّ منها.
+  const base = steps.filter((x) => !x.perUnit);
+  const baseDone = base.filter((x) => x.done).length;
+  const span = Math.max(...unitViews.map((v) => v.total));
+  const frac = unitViews.reduce((a, v) => a + v.done / v.total, 0) / unitViews.length;
+  const total = base.length + span;
+  const order = STAGES.find((key) => {
+    const x = steps.find((y) => y.key === key);
+    return x.perUnit ? unitViews.some((v) => v.next === key) : !x.done;
+  });
+  const routes = [...new Set(unitViews.map((v) => v.route))];
+  return {
+    route: routes.length === 1 ? routes[0] : '', mixedRoutes: routes.length > 1,
+    cargoType, perUnit: true, steps, units: unitViews,
+    done: baseDone + Math.floor(span * frac + 1e-9), total,
+    percent: Math.min(100, Math.round(((baseDone + span * frac) / total) * 100)),
+    next: order || '',
+  };
+}
+
+/**
+ * وحداتُ المعاملة ومراحلُ كلٍّ منها.
+ *
+ * ما عُلِّم قبل أن تصير المراحلُ لكلّ وحدة (`pipelineVersion` دون ٣) مكتوبٌ على
+ * المعاملة كلِّها — فيُقرأ على وحداتها جميعًا: «نُقلت الحاويات» يومَها كانت
+ * تعني كلَّها. ولا يُكتب ذلك في القاعدة إلّا عند أوّل تعليمٍ لوحدة (setStage).
+ * ومعاملةٌ بلا عددِ وحداتٍ تبقى مراحلُها عليها (`units: null`).
+ */
+function readUnits(c) {
+  const { done, route } = readStages(c);
+  const rows = [...((c && c.containers) || [])];
+  const want = Math.max(0, Math.min(300, Math.round(Number(c && c.containerCount) || 0)));
+  while (rows.length < want) rows.push({});
+  if (!rows.length) return { done, route, units: null };
+  const own = c.pipelineVersion === 3;
+  const units = rows.map((r) => {
+    const mine = new Set(((r && r.stagesDone) || []).filter((k) => UNIT_STAGES.includes(k)));
+    let ur = (r && r.route) || '';
+    if (!own) {
+      for (const k of UNIT_STAGES) if (done.has(k)) mine.add(k);
+      if (!ur) ur = route;
+    }
+    if (!ur) ur = mine.has('transport_to_yard') ? 'yard' : mine.has('transport_to_customer') ? 'customer' : '';
+    return { route: ur, done: mine };
+  });
+  if (own) for (const k of UNIT_STAGES) done.delete(k);
+  return { done, route, units };
 }
 
 customsClearanceSchema.virtual('pipeline').get(function pipelineVirtual() { return pipelineOf(this); });
@@ -565,7 +647,8 @@ function syncUnits(rows, count) {
   const list = (Array.isArray(rows) ? rows : []).map((r) => ({ ...(r && r.toObject ? r.toObject() : r) }));
   const want = Math.max(0, Math.min(300, Math.round(Number(count) || 0)));
   const filled = (r) => !!(r && (String(r.containerNumber || '').trim() || String(r.returnDate || '').trim()
-    || String(r.notes || '').trim() || String(r.declaration || '').trim() || Number(r.exitPermit) > 0 || (r.moves || []).some((m) => m && (m.ref || m.vehicleKind))));
+    || String(r.notes || '').trim() || String(r.declaration || '').trim() || Number(r.exitPermit) > 0
+    || r.route || (r.stagesDone || []).length || (r.moves || []).some((m) => m && (m.ref || m.vehicleKind))));
   while (list.length > want && !filled(list[list.length - 1])) list.pop();
   while (list.length < want) list.push({ containerNumber: '', returnDate: '', moves: [] });
   return list;
@@ -705,6 +788,9 @@ module.exports.CARGO_TYPES = CARGO_TYPES;
 module.exports.VEHICLE_KINDS = VEHICLE_KINDS;
 module.exports.pipelineOf = pipelineOf;
 module.exports.readStages = readStages;
+module.exports.readUnits = readUnits;
+module.exports.UNIT_STAGES = UNIT_STAGES;
+module.exports.PORT_LEGS = PORT_LEGS;
 module.exports.lockReason = lockReason;
 module.exports.hasTransportInvoice = hasTransportInvoice;
 module.exports.syncUnits = syncUnits;

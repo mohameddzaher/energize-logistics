@@ -5,11 +5,24 @@
  * الخادم وحدَه: `pipelineOf` في backend/src/models/CustomsClearance. والشاشةُ
  * ترسم ما وصلها — فلا تُكتب القاعدةُ مرّتين فتختلفان.
  */
-export interface PipelineStep { key: string; done: boolean; locked: boolean; reason?: string; /** الطريقُ الآخر: يُضغَط فيتحوّل الاختيارُ إليه. */ switchable?: boolean }
+export interface PipelineStep {
+  key: string; done: boolean; locked: boolean; reason?: string;
+  /** الطريقُ الآخر: يُضغَط فيتحوّل الاختيارُ إليه. */
+  switchable?: boolean;
+  /** مرحلةٌ تُعلَّم لكلّ وحدة — وهذه جمعُها: كم وحدةً أنجزتها من كم تَلزمها. */
+  perUnit?: boolean; unitsDone?: number; unitsOf?: number;
+}
+/** مراحلُ وحدةٍ واحدة (حاويةٍ أو سيّارة) من أوّل النقل. */
+export interface UnitPipeline {
+  index: number; route: '' | 'yard' | 'customer'; steps: PipelineStep[];
+  done: number; total: number; percent: number; next: string;
+}
 export interface Pipeline {
   route: '' | 'yard' | 'customer';
   cargoType: 'containers' | 'vehicles';
   steps: PipelineStep[];
+  /** هل للمعاملة وحداتٌ تُتابَع كلٌّ على حدة — و`units` مراحلُ كلٍّ منها. */
+  perUnit?: boolean; units?: UnitPipeline[]; mixedRoutes?: boolean;
   done: number; total: number; percent: number; next: string;
 }
 

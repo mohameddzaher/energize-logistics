@@ -223,7 +223,8 @@ class _QuickViewState extends State<_QuickView> {
         Wrap(spacing: 5, runSpacing: 5, children: [
           // المُغلَقةُ ليست من طريق هذه المعاملة — تُرسَم بقفلٍ لا بلون التأخّر.
           for (final s in steps)
-            Chip2(customsStageLabel('${s['key']}', cargo),
+            // مرحلةُ الوحدات تحمل عدّادَها: كم وحدةً أنجزتها من كم.
+            Chip2('${customsStageLabel('${s['key']}', cargo)}${s['unitsOf'] != null && s['locked'] != true ? ' ${_n(s['unitsDone']).round()}/${_n(s['unitsOf']).round()}' : ''}',
                 s['locked'] == true ? T.inkFaint : s['done'] == true ? T.success : pipeline['next'] == s['key'] ? T.warn : T.inkSoft,
                 icon: s['locked'] == true ? Icons.lock_outline : s['done'] == true ? Icons.check : null),
         ]),

@@ -1,7 +1,8 @@
 const CustomsClearance = require('../models/CustomsClearance');
 const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const {
-  recomputeTotals, COST_KEYS, MARGIN_KEYS, pipelineOf, readStages, lockReason, hasTransportInvoice,
+  recomputeTotals, COST_KEYS, MARGIN_KEYS, pipelineOf, readStages, readUnits, lockReason, hasTransportInvoice,
+  UNIT_STAGES, PORT_LEGS,
   syncUnits, TRANSPORT_LEGS, CARGO_TYPES, VEHICLE_KINDS,
 } = require('../models/CustomsClearance');
 const cache = require('../utils/ttlCache');
@@ -76,7 +77,11 @@ function pick(body, existing) {
     const ymd = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : '');
     out.containers = body.containers
       .filter((r) => r && typeof r === 'object')
-      .map((r) => ({
+      .map((r, i) => ({
+        // مراحلُ الوحدة وطريقُها لا تُكتب من هنا (لها `PATCH /:id/stage`): يُحفَظ
+        // ما في القاعدة لهذه الخانة أيًّا كان ما أرسلته الشاشة.
+        route: (existing && existing.containers && existing.containers[i] && existing.containers[i].route) || '',
+        stagesDone: (existing && existing.containers && existing.containers[i] && existing.containers[i].stagesDone) || [],
         containerNumber: String(r.containerNumber || '').trim().slice(0, 60),
         exitPermit: Number.isFinite(Number(r.exitPermit)) ? Number(r.exitPermit) : 0,
         declaration: String(r.declaration || '').trim(),
@@ -165,7 +170,8 @@ const SEARCH_ONLY = [
   'countryOfOrigin', 'legacySerial', 'notes', 'carrierName', 'unloadingLocation', 'assignedTo',
 ];
 // تُقرأ ليُحسَب منها ولا تُرسَل: منها نسبةُ المراحل وهل تنتظر فاتورةَ النقل.
-const DERIVE_ONLY = ['stagesDone', 'transportRoute', 'pipelineVersion', 'stageDone.doInvoicePaid', 'transportInvoiceReceived'];
+const DERIVE_ONLY = ['stagesDone', 'transportRoute', 'pipelineVersion', 'stageDone.doInvoicePaid', 'transportInvoiceReceived',
+  'containers.route', 'containers.stagesDone'];
 const LIST_FIELDS = [...DISPLAY_FIELDS, ...DISPLAY_NESTED, ...SEARCH_ONLY, ...DERIVE_ONLY, 'notesLog'].join(' ');
 
 /**
@@ -1631,7 +1637,7 @@ exports.issueInvoice = async (req, res) => {
     done.add('invoiced');
     clearance.stagesDone = CustomsClearance.STAGES.filter((k) => done.has(k));
     clearance.transportRoute = route;
-    clearance.pipelineVersion = 2;
+    if (!(clearance.pipelineVersion >= 2)) clearance.pipelineVersion = 2;
     clearance.stage = 'invoiced';
     if (first) clearance.stageLog.push({ key: 'invoiced', done: true, by: req.user._id, byName: whoIs(req), at: new Date() });
 
@@ -1767,33 +1773,92 @@ exports.setStage = async (req, res) => {
     }
 
     const before = clearance.stage;
-    let { done, route } = readStages(clearance);
-    const isPortLeg = key === 'transport_to_yard' || key === 'transport_to_customer';
-    if (on) {
-      // ── الطريقُ يُبدَّل بضغطة ───────────────────────────────────────────
-      // مَن علّم «إلى الساحة» ثمّ ضغط «إلى العميل» يريد التحويلَ لا رسالةَ
-      // رفض: تُرفَع علامةُ الأوّل وما بُني عليه، ويُعلَّم الثاني.
-      if (isPortLeg && route && lockReason(key, route, clearance.cargoType)) {
-        done.delete('transport_to_yard'); done.delete('transport_to_customer');
-        done.delete('unloaded_stored'); done.delete('yard_to_customer');
-        route = '';
+    const read = readUnits(clearance);
+    let { done, route } = read;
+    const cargo = clearance.cargoType;
+    let unitNote = '';
+
+    if (UNIT_STAGES.includes(key) && read.units) {
+      // ── مرحلةُ وحدة: لحاويةٍ بعينها، أو للكلّ معًا ───────────────────────
+      // `unit`: رقمُ الخانة (من صفر) أو 'all'. وغيابُه «الكلّ» — فتطبيقٌ لا يعرف
+      // الوحداتِ يعلّم المعاملةَ كلَّها كما كان.
+      const all = req.body.unit === undefined || req.body.unit === null || req.body.unit === 'all';
+      const idx = all ? -1 : Number(req.body.unit);
+      if (!all && !(Number.isInteger(idx) && idx >= 0 && idx < read.units.length)) {
+        return res.status(400).json({ message: 'وحدةٌ غير موجودةٍ في هذه المعاملة' });
       }
-      const reason = lockReason(key, route, clearance.cargoType);
-      if (reason) return res.status(400).json({ message: `هذه المرحلةُ غيرُ متاحة: ${reason}`, code: 'STAGE_LOCKED' });
-      done.add(key);
-      if (isPortLeg) route = key === 'transport_to_yard' ? 'yard' : 'customer';
+      const units = read.units.map((u) => ({ route: u.route, done: new Set(u.done) }));
+      const targets = all ? units : [units[idx]];
+      const touched = new Set();
+      let applied = 0; let refusal = '';
+      for (const u of targets) {
+        if (on) {
+          // الطريقُ يُبدَّل بضغطة: تُرفَع علامةُ الأوّل وما بُني عليه، ويُعلَّم الثاني.
+          if (PORT_LEGS.includes(key) && u.route && lockReason(key, u.route, cargo)) {
+            for (const k of ['transport_to_yard', 'transport_to_customer', 'unloaded_stored', 'yard_to_customer']) u.done.delete(k);
+            u.route = '';
+          }
+          const reason = lockReason(key, u.route, cargo);
+          if (reason) { refusal = reason; continue; }
+          if (!u.done.has(key)) touched.add(u);
+          u.done.add(key);
+          if (PORT_LEGS.includes(key)) u.route = key === 'transport_to_yard' ? 'yard' : 'customer';
+        } else {
+          u.done.delete(key);
+          if (PORT_LEGS.includes(key)) { u.route = ''; u.done.delete('unloaded_stored'); u.done.delete('yard_to_customer'); }
+        }
+        applied += 1;
+      }
+      if (!applied) return res.status(400).json({ message: `هذه المرحلةُ غيرُ متاحة: ${refusal}`, code: 'STAGE_LOCKED' });
+
+      // تُكتب مراحلُ كلّ وحدةٍ في خانتها — ومعها ما كان على المعاملة كلِّها.
+      const { todayKey } = require('../utils/companyDay');
+      const rows = syncUnits(clearance.containers, Math.max(Number(clearance.containerCount) || 0, units.length));
+      units.forEach((u, i) => {
+        rows[i].route = u.route;
+        rows[i].stagesDone = UNIT_STAGES.filter((k) => u.done.has(k));
+        // الإرجاعُ الذي عُلِّم الآن بلا تاريخٍ يُؤرَّخ بيومه.
+        if (on && key === 'containers_returned' && touched.has(u) && !rows[i].returnDate) rows[i].returnDate = todayKey();
+      });
+      clearance.containers = rows;
+      clearance.containerCount = rows.length;
+      for (const k of UNIT_STAGES) done.delete(k);
+      const routes = [...new Set(units.map((u) => u.route))];
+      route = routes.length === 1 ? routes[0] : '';
+      clearance.stagesDone = CustomsClearance.STAGES.filter((k) => done.has(k));
+      clearance.transportRoute = route;
+      clearance.pipelineVersion = 3;
+      clearance.stage = key;
+      unitNote = all ? 'all' : String(idx);
     } else {
-      done.delete(key);
-      // رفعُ علامةِ الطريق يفتح الاختيارَ من جديد — وما بُني عليه يسقط معه.
-      if (isPortLeg) { route = ''; done.delete('unloaded_stored'); done.delete('yard_to_customer'); }
+      const isPortLeg = PORT_LEGS.includes(key);
+      if (on) {
+        // الطريقُ يُبدَّل بضغطة — راجع ما فوق.
+        if (isPortLeg && route && lockReason(key, route, cargo)) {
+          for (const k of ['transport_to_yard', 'transport_to_customer', 'unloaded_stored', 'yard_to_customer']) done.delete(k);
+          route = '';
+        }
+        const reason = lockReason(key, route, cargo);
+        if (reason) return res.status(400).json({ message: `هذه المرحلةُ غيرُ متاحة: ${reason}`, code: 'STAGE_LOCKED' });
+        done.add(key);
+        if (isPortLeg) route = key === 'transport_to_yard' ? 'yard' : 'customer';
+      } else {
+        done.delete(key);
+        // رفعُ علامةِ الطريق يفتح الاختيارَ من جديد — وما بُني عليه يسقط معه.
+        if (isPortLeg) { route = ''; done.delete('unloaded_stored'); done.delete('yard_to_customer'); }
+      }
+      // مرحلةُ المعاملة (ما قبل النقل) في معاملةٍ لها وحدات: ما على الوحدات يبقى
+      // حيث هو — مكتوبًا عليها (٣) أو موروثًا من المعاملة (دون ذلك).
+      const keepUnits = read.units && clearance.pipelineVersion !== 3;
+      const legacy = keepUnits ? readStages(clearance).done : null;
+      clearance.stagesDone = CustomsClearance.STAGES.filter((k) => done.has(k) || (legacy && UNIT_STAGES.includes(k) && legacy.has(k)));
+      if (!read.units || keepUnits) clearance.transportRoute = keepUnits ? readStages(clearance).route : route;
+      if (!(clearance.pipelineVersion >= 2)) clearance.pipelineVersion = 2;
+      // «أين هي الآن»: ما عُلِّم للتوّ، أو آخرُ ما بقي معلَّمًا إن رُفعت علامة.
+      const lastDone = [...CustomsClearance.STAGES].reverse().find((k) => done.has(k) && !lockReason(k, route, cargo));
+      clearance.stage = on ? key : (lastDone || 'papers_received');
     }
-    clearance.stagesDone = CustomsClearance.STAGES.filter((k) => done.has(k));
-    clearance.transportRoute = route;
-    clearance.pipelineVersion = 2;
-    // «أين هي الآن»: ما عُلِّم للتوّ، أو آخرُ ما بقي معلَّمًا إن رُفعت علامة.
-    const lastDone = [...CustomsClearance.STAGES].reverse().find((k) => done.has(k) && !lockReason(k, route, clearance.cargoType));
-    clearance.stage = on ? key : (lastDone || 'papers_received');
-    clearance.stageLog.push({ key, done: on, by: req.user._id, byName: whoIs(req), at: new Date() });
+    clearance.stageLog.push({ key: unitNote ? `${key}#${unitNote}` : key, done: on, by: req.user._id, byName: whoIs(req), at: new Date() });
     if (clearance.stageLog.length > 300) clearance.stageLog = clearance.stageLog.slice(-300);
     clearance.lastModifiedBy = req.user._id;
     await clearance.save();
@@ -1901,7 +1966,7 @@ exports.getDashboard = async (req, res) => {
       const [rows, users, notes, pays, ticks, pendingPay, tasks] = await Promise.all([
         CustomsClearance.find(filter)
           .select('refNumber blNumber customerName customerParty shippingAgent agentParty carrierName carrierParty branch cargoType containerCount '
-            + 'stage stagesDone transportRoute pipelineVersion stageDone.doInvoicePaid stageDone.containersReturned saleInvoiceNumber saleInvoiceAt '
+            + 'containers.route containers.stagesDone stage stagesDone transportRoute pipelineVersion stageDone.doInvoicePaid stageDone.containersReturned saleInvoiceNumber saleInvoiceAt '
             + 'transportInvoiceReceived isCompleted completedAt completedBy cancelled upcoming expectedDate returnDeadline createdAt createdBy updatedAt declarationNumber port')
           .sort({ createdAt: -1 }).lean(),
         User.find({ role: { $in: jp.memberRoles }, isActive: { $ne: false } }).select('firstName lastName role').lean(),
@@ -1939,6 +2004,23 @@ exports.getDashboard = async (req, res) => {
         const returned = p.steps.some((s) => s.key === 'containers_returned' && s.done) || !!(c.stageDone && c.stageDone.containersReturned);
         const needsReturn = bucket === 'open' && c.cargoType !== 'vehicles' && !returned;
         const d = String(c.returnDeadline || '').slice(0, 10);
+        // ── أين كلُّ حاوية ───────────────────────────────────────────────────
+        // المعاملةُ تُعَدّ بوحداتها: كم ما زال في الميناء، وكم في الساحة، وكم
+        // سُلِّم، وكم لم يُرجَع — وكم من ذلك فات موعدُ إرجاعه.
+        const U = { total: 0, atPort: 0, inYard: 0, delivered: 0, returned: 0, notReturned: 0, late: 0 };
+        if (bucket === 'open') {
+          for (const u of p.units || []) {
+            const has = (k) => u.steps.some((s) => s.key === k && s.done);
+            U.total += 1;
+            if (has('transport_to_customer') || has('yard_to_customer')) U.delivered += 1;
+            else if (has('transport_to_yard')) U.inYard += 1;
+            else U.atPort += 1;
+            if (c.cargoType !== 'vehicles') {
+              if (has('containers_returned')) U.returned += 1;
+              else { U.notReturned += 1; if (d && d < today) U.late += 1; }
+            }
+          }
+        }
         const row = {
           _id: c._id, refNumber: c.refNumber, blNumber: c.blNumber || '', customerName: c.customerName || '',
           customerParty: c.customerParty || null, shippingAgent: c.shippingAgent || '', carrierName: c.carrierName || '',
@@ -1952,7 +2034,7 @@ exports.getDashboard = async (req, res) => {
           // «فُوترت» تشمل ما فُوتر قبل النظام (مرحلتُه معلَّمةٌ بلا رقمِ فاتورةٍ هنا).
           invoiced: !!c.saleInvoiceNumber || p.steps.some((s) => s.key === 'invoiced' && s.done),
           awaitingTransportInvoice: awaitsTransportInvoice(c),
-          returnDeadline: d,
+          returnDeadline: d, unitsState: U,
           returnState: !needsReturn || !d ? '' : (d < today ? 'overdue' : d <= soon ? 'due' : ''),
           pendingPayments: pendingBy.get(String(c._id)) || 0,
           openTasks: tasksByClearance.get(String(c._id)) || 0,
@@ -2025,6 +2107,11 @@ exports.getDashboard = async (req, res) => {
           openUnits: open.reduce((a, r) => a + r.units, 0),
           openContainers: open.filter((r) => r.cargoType === 'containers').reduce((a, r) => a + r.units, 0),
           openVehicles: open.filter((r) => r.cargoType === 'vehicles').reduce((a, r) => a + r.units, 0),
+          unitsAtPort: open.reduce((a, r) => a + r.unitsState.atPort, 0),
+          unitsInYard: open.reduce((a, r) => a + r.unitsState.inYard, 0),
+          unitsDelivered: open.reduce((a, r) => a + r.unitsState.delivered, 0),
+          unitsNotReturned: open.reduce((a, r) => a + r.unitsState.notReturned, 0),
+          unitsLate: open.reduce((a, r) => a + r.unitsState.late, 0),
           returnOverdue: count((r) => r.returnState === 'overdue'),
           returnDue: count((r) => r.returnState === 'due'),
           pendingPayments: open.reduce((a, r) => a + r.pendingPayments, 0),

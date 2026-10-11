@@ -34,6 +34,8 @@ interface Row {
   createdAt: string; createdBy: string | null; createdByName: string; expectedDate: string; expectedState?: string;
   completedAt: string | null; invoiceNumber: string; invoiced: boolean; awaitingTransportInvoice: boolean;
   returnDeadline: string; returnState: '' | 'overdue' | 'due'; pendingPayments: number; openTasks: number;
+  /** أين وحداتُ المعاملة (حاوياتُها أو سيّاراتُها) — لكلّ وحدةٍ مراحلُها من أوّل النقل. */
+  unitsState: { total: number; atPort: number; inYard: number; delivered: number; returned: number; notReturned: number; late: number };
 }
 interface Member {
   _id: string; name: string; role: string; isManager: boolean; openCreated: number; upcomingCreated: number;
@@ -60,6 +62,10 @@ const VIEWS: Record<string, (r: Row) => boolean> = {
   returnDue: (r) => r.returnState === 'due',
   pendingPayments: (r) => r.bucket === 'open' && r.pendingPayments > 0,
   withTasks: (r) => r.openTasks > 0,
+  unitsAtPort: (r) => r.bucket === 'open' && r.unitsState?.atPort > 0,
+  unitsInYard: (r) => r.bucket === 'open' && r.unitsState?.inYard > 0,
+  unitsNotReturned: (r) => r.bucket === 'open' && r.unitsState?.notReturned > 0,
+  unitsLate: (r) => r.bucket === 'open' && r.unitsState?.late > 0,
   cancelled: (r) => r.bucket === 'cancelled',
 };
 
@@ -127,6 +133,8 @@ export default function CustomsDashboardPage() {
     notInvoiced: ['مفتوحة لم تُفوتَر', 'Open, not invoiced'], returnOverdue: ['متأخّرة الإرجاع', 'Return overdue'],
     returnDue: ['يقترب موعد إرجاعها', 'Return due soon'], pendingPayments: ['لها طلبات صرف معلّقة', 'With pending payment requests'],
     withTasks: ['عليها مهامّ مفتوحة', 'With open tasks'], cancelled: ['الملغاة', 'Cancelled'],
+    unitsAtPort: ['لها وحدات ما زالت في الميناء', 'With units still at the port'], unitsInYard: ['لها وحدات في الساحة', 'With units in the yard'],
+    unitsNotReturned: ['لها حاويات لم تُرجَع', 'With containers not returned'], unitsLate: ['لها حاويات فات موعد إرجاعها', 'With containers past the return deadline'],
   };
 
   const bucketBadge = (r: Row) => {
@@ -150,6 +158,11 @@ export default function CustomsDashboardPage() {
     { header: t('رقم الفاتورة', 'Invoice no.'), key: 'invoiceNumber', width: 14, transform: (v) => v || '—' },
     { header: t('فاتورة النقل', 'Transport invoice'), key: 'awaitingTransportInvoice', width: 16, transform: (v, r) => (v ? t('لم تُستلَم', 'Not received') : (r as Row).invoiceNumber ? t('مستلَمة', 'Received') : '—') },
     { header: t('آخر موعد إرجاع', 'Return deadline'), key: 'returnDeadline', width: 14, transform: (v) => v || '—' },
+    { header: t('في الميناء', 'At port'), key: 'unitsState.atPort', width: 10 },
+    { header: t('في الساحة', 'In yard'), key: 'unitsState.inYard', width: 10 },
+    { header: t('سُلِّمت', 'Delivered'), key: 'unitsState.delivered', width: 10 },
+    { header: t('لم تُرجَع', 'Not returned'), key: 'unitsState.notReturned', width: 10 },
+    { header: t('متأخّرة الإرجاع', 'Late to return'), key: 'unitsState.late', width: 12 },
     { header: t('أنشأها', 'Created by'), key: 'createdByName', width: 18 },
     { header: t('تاريخ الإنشاء', 'Created'), key: 'createdAt', width: 14, transform: (v) => String(v || '').slice(0, 10) },
   ];
@@ -226,6 +239,26 @@ export default function CustomsDashboardPage() {
         <Mini on={view === 'withTasks'} onClick={() => pick('withTasks')} icon={<CalendarCheck className="h-4 w-4" />} tone={C.tasksOverdue ? 'red' : undefined}
           label={t('مهامّ خطّة العمل المفتوحة', 'Open work-plan tasks')} value={C.tasksOpen}
           hint={C.tasksOverdue ? t(`${C.tasksOverdue} متأخّرة`, `${C.tasksOverdue} overdue`) : ''} />
+      </div>
+
+      {/* ── الحاوياتُ واحدةً واحدة ─────────────────────────────────────────────
+          المعاملةُ لا تقول أين حاوياتُها: ثلاثٌ في بوليصةٍ قد تكون واحدةٌ منها
+          سُلِّمت واثنتان في الساحة. فتُعَدّ الوحداتُ نفسُها — في المعاملات
+          المفتوحة — بمواضعها، وما لم يُرجَع منها وما فات موعدُ إرجاعه. */}
+      <div>
+        <p className="mb-2 text-[12.5px] font-bold text-slate-700">{t('الحاوياتُ والسيّاراتُ في المعاملات المفتوحة', 'Containers & vehicles in open transactions')} <span className="font-normal text-slate-400">({C.openUnits})</span></p>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          <Mini on={view === 'unitsAtPort'} onClick={() => pick('unitsAtPort')} icon={<Container className="h-4 w-4" />}
+            label={t('ما زالت في الميناء', 'Still at the port')} value={C.unitsAtPort} hint={t('لم تُنقَل بعد', 'Not moved yet')} />
+          <Mini on={view === 'unitsInYard'} onClick={() => pick('unitsInYard')} icon={<Container className="h-4 w-4" />}
+            label={t('في الساحة', 'In the yard')} value={C.unitsInYard} hint={t('لم تُنقَل إلى العميل بعد', 'Not yet moved to the customer')} />
+          <Mini onClick={() => pick('open')} icon={<Container className="h-4 w-4" />}
+            label={t('سُلِّمت للعميل', 'Delivered to customer')} value={C.unitsDelivered} />
+          <Mini on={view === 'unitsNotReturned'} onClick={() => pick('unitsNotReturned')} icon={<RotateCcw className="h-4 w-4" />}
+            label={t('حاويات لم تُرجَع', 'Containers not returned')} value={C.unitsNotReturned} hint={t('ناقصةُ الإرجاع إلى الوكيل', 'Still to go back to the agent')} />
+          <Mini on={view === 'unitsLate'} onClick={() => pick('unitsLate')} icon={<AlertTriangle className="h-4 w-4" />} tone={C.unitsLate ? 'red' : undefined}
+            label={t('حاويات فات موعد إرجاعها', 'Containers past return deadline')} value={C.unitsLate} hint={t('متأخّرة — أرضيّاتٌ تُحسَب', 'Late — demurrage accrues')} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
@@ -422,7 +455,12 @@ export default function CustomsDashboardPage() {
                     </td>
                     <td className="px-3 py-2.5">
                       <span className="flex flex-wrap gap-1">
-                        {r.returnState === 'overdue' && <Flag cls="bg-red-100 text-red-700" text={t('متأخّرة الإرجاع', 'Return overdue')} />}
+                        {r.unitsState?.late > 0
+                          ? <Flag cls="bg-red-100 text-red-700" text={t(`${r.unitsState.late} حاوية متأخّرة الإرجاع`, `${r.unitsState.late} late to return`)} />
+                          : r.returnState === 'overdue' && <Flag cls="bg-red-100 text-red-700" text={t('متأخّرة الإرجاع', 'Return overdue')} />}
+                        {r.bucket === 'open' && r.unitsState?.total > 0 && r.unitsState.notReturned > 0 && r.unitsState.returned > 0 && (
+                          <Flag cls="bg-slate-100 text-slate-700" text={t(`أُرجعت ${r.unitsState.returned} من ${r.unitsState.returned + r.unitsState.notReturned}`, `${r.unitsState.returned}/${r.unitsState.returned + r.unitsState.notReturned} returned`)} />
+                        )}
                         {r.returnState === 'due' && <Flag cls="bg-amber-100 text-amber-800" text={t('يقترب الإرجاع', 'Return due')} />}
                         {r.pendingPayments > 0 && <Flag cls="bg-slate-100 text-slate-700" text={t(`${r.pendingPayments} طلب صرف`, `${r.pendingPayments} payment req.`)} />}
                         {r.openTasks > 0 && <Flag cls="bg-violet-50 text-violet-700" text={t(`${r.openTasks} مهمّة`, `${r.openTasks} tasks`)} />}

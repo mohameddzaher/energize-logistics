@@ -155,6 +155,8 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
   String _sheetsKey = '';
   // مهامُّ خطّة العمل المرتبطةُ بالمعاملة — null: القسمُ لا يُعرَض (٤٠٣ أو تعذّر).
   List<Map<String, dynamic>>? _tasks;
+  // أيُّ وحدةٍ تُعرَض مراحلُها في «النقل وما بعده» — ‎-1: الكلُّ معًا.
+  int _unitSel = -1;
   // تعريفاتُ مراحل السداد من إعدادات القسم (`customs_payment_stage`) — أسماؤها
   // تُقرأ منها وحدَها، فتغييرُ اسمٍ هناك يظهر هنا في الحال.
   List<Map<String, dynamic>> _payDefs = const [];
@@ -283,7 +285,10 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
 
   /// تعليمُ مرحلةٍ أو رفعُ علامتها — والقواعدُ في الخادم (PATCH /:id/stage):
   /// ما يُرفَض يعود برسالته فتُعرَض كما هي.
-  Future<void> _setStage(String key, bool done) async {
+  ///
+  /// `unit`: رقمُ صفّ الوحدة (من صفر) أو 'all' لمراحل النقل وما بعده — وهي
+  /// تُتابَع لكلّ حاويةٍ على حدة. والمراحلُ التي قبل النقل تُرسَل بلا `unit`.
+  Future<void> _setStage(String key, bool done, {Object? unit}) async {
     if (!done && (key == 'transport_to_yard' || key == 'transport_to_customer')) {
       final ok = await _confirm(
         tr('رفع علامة المرحلة', 'Untick stage'),
@@ -294,7 +299,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
       if (!ok) return;
     }
     await _send(
-      () => Api.instance.patch('/api/customs-clearance/${widget.clearanceId}/stage', {'key': key, 'done': done}),
+      () => Api.instance.patch('/api/customs-clearance/${widget.clearanceId}/stage', {'key': key, 'done': done, if (unit != null) 'unit': unit}),
       ok: tr('تم تحديث المرحلة', 'Stage updated'),
     );
   }
@@ -425,7 +430,6 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     final cargo = (c['cargoType'] ?? 'containers').toString();
     final vehicles = cargo == 'vehicles';
     final nextKey = (pipeline['next'] ?? '').toString();
-    final doneLegs = [for (final s in steps) if (_transportLegs.contains(s['key']) && s['done'] == true) '${s['key']}'];
     final units = _maps(c['containers']);
     final stageDone = _m(c['stageDone']);
     final stageDates = _m(c['stageDates']);
@@ -441,6 +445,30 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     final completed = c['isCompleted'] == true;
     // فُوترت ولم تُنهَ: تنتظر فاتورةَ النقل (awaitsTransportInvoice في الخادم).
     final awaiting = invoiceNo.isNotEmpty && !completed && !cancelled && c['transportInvoiceReceived'] != true;
+    // من النقل فما بعده تُتابَع المراحلُ لكلّ وحدة: `units[i].steps` مراحلُها هي،
+    // و`steps` في مستوى المعاملة مجموعُها (unitsDone/unitsOf).
+    final perUnit = pipeline['perUnit'] == true;
+    final pUnits = _maps(pipeline['units']);
+    Map<String, dynamic>? pUnit(int i) => pUnits.where((u) => u['index'] == i).firstOrNull;
+    // مراحلُ النقل المنجَزةُ لهذه الوحدة — عنها يُسأل أيُّ سيّارةٍ نقلتها.
+    List<String> doneLegs(int i) => [
+          for (final s in (perUnit ? _maps(pUnit(i)?['steps']) : steps))
+            if (_transportLegs.contains(s['key']) && s['done'] == true) '${s['key']}',
+        ];
+    final sel = perUnit && pUnit(_unitSel) != null ? _unitSel : -1;
+    final baseSteps = perUnit ? steps.where((x) => x['perUnit'] != true && x['key'] != 'invoiced').toList() : steps;
+    final unitSteps = !perUnit ? const <Map<String, dynamic>>[]
+        : sel < 0 ? steps.where((x) => x['perUnit'] == true).toList() : _maps(pUnit(sel)?['steps']);
+    final lastSteps = perUnit ? steps.where((x) => x['key'] == 'invoiced').toList() : const <Map<String, dynamic>>[];
+    Widget stepRow(Map<String, dynamic> st, {required bool last, Object? unit, String? next}) => _stepRow(
+          st, cargo: cargo, last: last, unit: unit,
+          isNext: '${st['key']}' == (next ?? nextKey) && !completed && !cancelled,
+          enabled: !cancelled, canInvoice: c['upcoming'] != true,
+        );
+    String unitName(int i) {
+      final no = i < units.length ? '${units[i]['containerNumber'] ?? ''}'.trim() : '';
+      return no.isNotEmpty ? no : '${vehicles ? tr('السيّارة', 'Vehicle') : tr('الحاوية', 'Container')} ${_arDigits(i + 1)}';
+    }
     // أوّلُ اسمِ كلّ ملفٍّ يُنزَّل: رقمُ البوليصة، وإلّا رقمُ المعاملة.
     final fileBase = '${c['blNumber'] ?? ''}'.trim().isNotEmpty ? '${c['blNumber']}'.trim() : '${c['refNumber'] ?? widget.ref}';
     String attTitle(Map<String, dynamic> a) {
@@ -563,59 +591,34 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                               backgroundColor: T.inkFaint.withValues(alpha: 0.12), color: T.success),
                           ),
                           const SizedBox(height: 10),
-                          ...steps.asMap().entries.map((e) {
-                            final key = '${e.value['key']}';
-                            final done = e.value['done'] == true;
-                            final locked = e.value['locked'] == true;
-                            final isNext = key == nextKey && !completed && !cancelled;
-                            // «إصدار الفاتورة» لا تُعلَّم بيد: تُعلَّم بإصدارها.
-                            // الطريقُ الآخرُ يُضغَط فيتحوّل الاختيارُ إليه — لا بابٌ موصد.
-                            final switchable = e.value['switchable'] == true;
-                            final VoidCallback? onTap = _saving || (locked && !switchable) || cancelled
-                                ? null
-                                : key == 'invoiced'
-                                    ? (done || c['upcoming'] == true ? null : _issueInvoice)
-                                    : () => _setStage(key, !done);
-                            return InkWell(
-                              onTap: onTap,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 3),
-                                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Column(children: [
-                                    Container(
-                                      width: 22, height: 22,
-                                      decoration: BoxDecoration(
-                                        color: done ? T.success : locked ? T.inkFaint.withValues(alpha: 0.15) : Colors.transparent,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: done ? T.success : locked ? Colors.transparent : T.inkFaint, width: 2),
-                                      ),
-                                      child: done
-                                          ? const Icon(Icons.check, size: 13, color: Colors.white)
-                                          : locked && !switchable ? const Icon(Icons.lock_outline, size: 12, color: T.inkFaint) : null,
-                                    ),
-                                    if (e.key < steps.length - 1)
-                                      Container(width: 2, height: 20, color: done ? T.success.withValues(alpha: 0.4) : T.inkFaint.withValues(alpha: 0.25)),
-                                  ]),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                      Text(
-                                        customsStageLabel(key, cargo),
-                                        style: TextStyle(
-                                          fontSize: 12.5,
-                                          fontWeight: isNext ? FontWeight.w900 : FontWeight.w600,
-                                          color: locked ? T.inkFaint : isNext ? T.navy : done ? T.ink : T.inkSoft,
-                                        ),
-                                      ),
-                                      if (locked && '${e.value['reason'] ?? ''}'.isNotEmpty)
-                                        Text('${e.value['reason']}', style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
-                                    ]),
-                                  ),
-                                  if (isNext) Chip2(tr('التالية', 'Next'), T.navy),
-                                ]),
+                          for (final e in baseSteps.asMap().entries)
+                            stepRow(e.value, last: !perUnit && e.key == baseSteps.length - 1),
+                          if (perUnit) ...[
+                            const SizedBox(height: 10),
+                            Text(vehicles ? tr('النقلُ وما بعده — لكلّ سيّارة', 'Transport onward — per vehicle') : tr('النقلُ وما بعده — لكلّ حاوية', 'Transport onward — per container'),
+                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                            if (pipeline['mixedRoutes'] == true)
+                              Text(tr('الوحداتُ سلكت طرقًا مختلفة — اختر وحدةً لترى مراحلَها.', 'Units took different routes — pick one to see its stages.'),
+                                  style: const TextStyle(fontSize: 11, color: T.warn)),
+                            const SizedBox(height: 6),
+                            Wrap(spacing: 6, runSpacing: 2, children: [
+                              ChoiceChip(
+                                label: Text(tr('الكلّ معًا', 'All together'), style: const TextStyle(fontSize: 12)),
+                                selected: sel < 0,
+                                onSelected: (_) => setState(() => _unitSel = -1),
                               ),
-                            );
-                          }),
+                              for (final u in pUnits)
+                                ChoiceChip(
+                                  label: Text('${unitName(_nz(u, 'index').toInt())} · ${_nz(u, 'percent').toInt()}%', style: const TextStyle(fontSize: 12)),
+                                  selected: sel == u['index'],
+                                  onSelected: (_) => setState(() => _unitSel = _nz(u, 'index').toInt()),
+                                ),
+                            ]),
+                            const SizedBox(height: 8),
+                            for (final st in unitSteps)
+                              stepRow(st, last: false, unit: sel < 0 ? 'all' : sel, next: sel < 0 ? null : '${pUnit(sel)?['next'] ?? ''}'),
+                            for (final st in lastSteps) stepRow(st, last: true),
+                          ],
                         ]),
                       ),
                     ),
@@ -631,7 +634,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                             Text('${vehicles ? tr('السيّارات', 'Vehicles') : tr('الحاويات', 'Containers')} (${units.length})',
                                 style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                             const SizedBox(height: 8),
-                            for (final e in units.asMap().entries) _unitCard(e.key, units, doneLegs, cargo),
+                            for (final e in units.asMap().entries) _unitCard(e.key, units, doneLegs(e.key), cargo, perUnit ? pUnit(e.key) : null),
                           ]),
                         ),
                       ),
@@ -895,9 +898,76 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     );
   }
 
+  /// سطرُ مرحلةٍ في المسار. `unit` تُرسَل مع التعليم لمراحل الوحدات ('all' أو
+  /// رقمُ الصفّ)؛ والمجموعُ يحمل عدّادَه (unitsDone/unitsOf).
+  Widget _stepRow(Map<String, dynamic> st, {
+    required String cargo, required bool last, required bool isNext, required bool enabled, required bool canInvoice, Object? unit,
+  }) {
+    final key = '${st['key']}';
+    final done = st['done'] == true;
+    final locked = st['locked'] == true;
+    // الطريقُ الآخرُ يُضغَط فيتحوّل الاختيارُ إليه — لا بابٌ موصد.
+    final switchable = st['switchable'] == true;
+    final of = st['unitsOf'] == null ? 0 : _nz(st, 'unitsOf').toInt();
+    final got = _nz(st, 'unitsDone').toInt();
+    final partial = of > 0 && got > 0 && got < of;
+    // «إصدار الفاتورة» لا تُعلَّم بيد: تُعلَّم بإصدارها.
+    final VoidCallback? onTap = _saving || (locked && !switchable) || !enabled
+        ? null
+        : key == 'invoiced'
+            ? (done || !canInvoice ? null : _issueInvoice)
+            : () => _setStage(key, !done, unit: st['perUnit'] == true || unit is int ? unit : null);
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Column(children: [
+            Container(
+              width: 22, height: 22,
+              decoration: BoxDecoration(
+                color: done ? T.success : partial ? T.warn.withValues(alpha: 0.18) : locked ? T.inkFaint.withValues(alpha: 0.15) : Colors.transparent,
+                shape: BoxShape.circle,
+                border: Border.all(color: done ? T.success : partial ? T.warn : locked ? Colors.transparent : T.inkFaint, width: 2),
+              ),
+              child: done
+                  ? const Icon(Icons.check, size: 13, color: Colors.white)
+                  : locked && !switchable ? const Icon(Icons.lock_outline, size: 12, color: T.inkFaint) : null,
+            ),
+            if (!last)
+              Container(width: 2, height: 20, color: done ? T.success.withValues(alpha: 0.4) : T.inkFaint.withValues(alpha: 0.25)),
+          ]),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                customsStageLabel(key, cargo),
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: isNext ? FontWeight.w900 : FontWeight.w600,
+                  color: locked ? T.inkFaint : isNext ? T.navy : done ? T.ink : T.inkSoft,
+                ),
+              ),
+              if (locked && '${st['reason'] ?? ''}'.isNotEmpty)
+                Text('${st['reason']}', style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+            ]),
+          ),
+          if (of > 0 && !locked) Chip2('$got/$of', done ? T.success : partial ? T.warn : T.inkFaint),
+          if (isNext) ...[const SizedBox(width: 4), Chip2(tr('التالية', 'Next'), T.navy)],
+        ]),
+      ),
+    );
+  }
+
   /// بطاقةُ الوحدة على هيئة حاوية: لوحةٌ برقمها، وتحتها ما كُتب عنها.
-  Widget _unitCard(int i, List<Map<String, dynamic>> units, List<String> doneLegs, String cargo) {
+  Widget _unitCard(int i, List<Map<String, dynamic>> units, List<String> doneLegs, String cargo, Map<String, dynamic>? progress) {
     final vehicles = cargo == 'vehicles';
+    // حالُ الوحدة من مراحلها هي (pipeline.units[i]).
+    final waiting = '${progress?['next'] ?? ''}';
+    final returned = _maps(progress?['steps']).any((x) => x['key'] == 'containers_returned' && x['done'] == true);
+    final state = progress == null ? null
+        : waiting.isNotEmpty ? ('${tr('تنتظر', 'Waiting')}: ${customsStageLabel(waiting, cargo)}', T.warn)
+        : returned ? (tr('أُرجعت', 'Returned'), T.success) : (tr('اكتملت', 'Complete'), T.success);
     final u = units[i];
     final number = '${u['containerNumber'] ?? ''}'.trim();
     final returnDate = '${u['returnDate'] ?? ''}';
@@ -929,10 +999,15 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                 const Icon(Icons.edit_outlined, size: 14, color: Colors.white70),
               ]),
             ),
-            if (!vehicles || doneLegs.isNotEmpty)
+            if (!vehicles || doneLegs.isNotEmpty || state != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  if (state != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 3),
+                      child: Text(state.$1, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: state.$2)),
+                    ),
                   if (!vehicles)
                     Text('${tr('تاريخ الإرجاع', 'Return date')}: ${returnDate.isEmpty ? '—' : returnDate}',
                         style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),

@@ -14,7 +14,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
-import { TRANSPORT_LEGS, stageName, unitWord, type Pipeline } from '@/lib/customsPipeline';
+import { TRANSPORT_LEGS, stageName, unitWord, type Pipeline, type UnitPipeline } from '@/lib/customsPipeline';
 import { Car, CalendarDays, Link2, Truck, AlertTriangle, Check } from 'lucide-react';
 
 export interface UnitMove { leg: string; vehicleKind: '' | 'energize' | 'external'; ref: string }
@@ -39,11 +39,14 @@ export default function ContainerUnits({
   const t = (a: string, e: string) => (ar ? a : e);
   const cargo = pipeline?.cargoType || 'containers';
   const vehicles = cargo === 'vehicles';
-  // مراحلُ النقل التي عُلِّمت — لها وحدَها يُسأل عن السيّارة.
-  const legs = useMemo(
-    () => (pipeline?.steps || []).filter((s) => (TRANSPORT_LEGS as readonly string[]).includes(s.key) && s.done).map((s) => s.key),
-    [pipeline],
-  );
+  // مراحلُ النقل التي أنجزتها كلُّ وحدة — لها وحدَها يُسأل عن السيّارة. والوحداتُ
+  // لا تسير معًا دائمًا، فلكلٍّ منها مراحلُها (ومعاملةٌ بلا وحداتٍ مُتابَعةٍ تأخذ
+  // مراحلَ المعاملة كلِّها).
+  const legsOf = (i: number): string[] => {
+    const steps = pipeline?.units?.[i]?.steps || pipeline?.steps || [];
+    return steps.filter((s) => (TRANSPORT_LEGS as readonly string[]).includes(s.key) && s.done).map((s) => s.key);
+  };
+  const anyLeg = units.some((_, i) => legsOf(i).length > 0);
 
   // أرقامُ كشوف التخريج المكتوبة: أيُّها موجودٌ في سير عمل التشغيل.
   const sheetNumbers = useMemo(() => [...new Set(units.flatMap((u) => (u.moves || [])
@@ -58,12 +61,6 @@ export default function ContainerUnits({
   }, [sheetNumbers]);
 
   const setUnit = (i: number, next: Unit) => onSave(units.map((u, idx) => (idx === i ? next : u)));
-  const setLegKind = (leg: string, kind: 'energize' | 'external') => onSave(units.map((u) => withMove(u, leg, { vehicleKind: kind })));
-  const legKind = (leg: string) => {
-    const kinds = new Set(units.map((u) => moveOf(u, leg).vehicleKind).filter(Boolean));
-    return kinds.size === 1 ? [...kinds][0] : '';
-  };
-
   if (!units.length) {
     return (
       <p className="py-6 text-center text-sm text-slate-400">
@@ -75,31 +72,10 @@ export default function ContainerUnits({
 
   return (
     <div className="space-y-4">
-      {/* ── بأيّ سيّارةٍ نُقلت — لكلّ مرحلةِ نقلٍ عُلِّمت ───────────────────── */}
-      {legs.length > 0 ? (
-        <div className="space-y-2">
-          {legs.map((leg) => {
-            const kind = legKind(leg);
-            return (
-              <div key={leg} className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                <Truck className="h-4 w-4 shrink-0 text-[#f37121]" />
-                <span className="text-[13px] font-semibold text-slate-800">{stageName(stages, leg, cargo)}</span>
-                <div className="ms-auto flex overflow-hidden rounded-lg border border-slate-200 bg-white text-[12px] font-semibold">
-                  {([['energize', 'سيّارة تنشيط', 'Energize truck'], ['external', 'سيّارة خارجيّة', 'External truck']] as const).map(([k, a, e]) => (
-                    <button key={k} type="button" disabled={!canEdit} onClick={() => setLegKind(leg, k)}
-                      className={`px-3 py-1.5 transition-colors ${kind === k ? 'bg-[#f37121] text-white' : 'text-slate-600 hover:bg-slate-50'} disabled:cursor-default`}>
-                      {ar ? a : e}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
+      {!anyLeg && (
         <p className="rounded-lg bg-slate-50 px-3 py-2 text-[12px] text-slate-500">
-          {t('بيانُ النقل (سيّارة تنشيط أو سيّارة خارجيّة) يُفتَح حين تُعلَّم مرحلةُ نقلٍ في مراحل التخليص.',
-             'Transport details open once a transport stage is ticked in the pipeline.')}
+          {t('بيانُ النقل (سيّارة تنشيط أو سيّارة خارجيّة) يُفتَح في خانة كلّ وحدةٍ حين تُعلَّم لها مرحلةُ نقلٍ في مراحل التخليص.',
+             'Transport details open in each unit once a transport stage is ticked for it.')}
         </p>
       )}
 
@@ -107,7 +83,7 @@ export default function ContainerUnits({
         {units.map((u, i) => (
           // المفتاحُ موضعُ الخانة لا معرّفُها: المعرّفُ يتجدّد مع كلّ حفظ، فلو كان
           // هو المفتاحَ لأُعيد بناءُ الخانة بعد كلّ حقلٍ وضاع التركيزُ من الذي يليه.
-          <UnitBox key={i} index={i} unit={u} legs={legs} vehicles={vehicles} cargo={cargo}
+          <UnitBox key={i} index={i} unit={u} legs={legsOf(i)} flow={pipeline?.units?.[i]} vehicles={vehicles} cargo={cargo}
             stages={stages} found={found} canEdit={canEdit} ar={ar} onChange={(next) => setUnit(i, next)} />
         ))}
       </div>
@@ -117,14 +93,15 @@ export default function ContainerUnits({
 
 /** حاويةٌ واحدة — مرسومةً حاويةً: أضلاعُها المموَّجة، وبابُها، ولوحةُ بياناتها. */
 function UnitBox({
-  index, unit, legs, vehicles, cargo, stages, found, canEdit, ar, onChange,
+  index, unit, legs, flow, vehicles, cargo, stages, found, canEdit, ar, onChange,
 }: {
-  index: number; unit: Unit; legs: string[]; vehicles: boolean; cargo: string;
+  index: number; unit: Unit; legs: string[]; flow?: UnitPipeline; vehicles: boolean; cargo: string;
   stages: Record<string, string>; found: Record<string, string>;
   canEdit: boolean; ar: boolean; onChange: (u: Unit) => void;
 }) {
   const t = (a: string, e: string) => (ar ? a : e);
-  const returned = !vehicles && !!unit.returnDate;
+  // «أُرجعت» من مرحلتها (الخادمُ يؤرّخها بيومها عند التعليم) — أو من تاريخٍ كُتب.
+  const returned = !vehicles && (!!flow?.steps.some((s) => s.key === 'containers_returned' && s.done) || (!flow && !!unit.returnDate));
   // الحاويةُ التي أُرجعت تخضرّ: تُرى من بعيدٍ بلا قراءة تاريخ.
   const shell = returned ? ['#15803d', '#166534'] : vehicles ? ['#334155', '#1e293b'] : ['#ea6a1c', '#c9530f'];
   return (
@@ -134,7 +111,13 @@ function UnitBox({
       <div className="flex items-center gap-2 px-3 py-1.5 text-white" style={{ background: shell[1] }}>
         {vehicles ? <Car className="h-4 w-4" /> : <span className="grid h-4 w-5 grid-cols-3 gap-px opacity-80">{[0, 1, 2].map((k) => <i key={k} className="bg-white/70" />)}</span>}
         <span className="text-[12px] font-bold">{unitWord(cargo, ar, false)} {index + 1}</span>
-        {returned && <span className="ms-auto inline-flex items-center gap-1 rounded bg-white/20 px-1.5 py-0.5 text-[10.5px] font-bold"><Check className="h-3 w-3" />{t('أُرجعت', 'Returned')}</span>}
+        {returned
+          ? <span className="ms-auto inline-flex items-center gap-1 rounded bg-white/20 px-1.5 py-0.5 text-[10.5px] font-bold"><Check className="h-3 w-3" />{t('أُرجعت', 'Returned')}</span>
+          : flow && (
+            <span className="ms-auto max-w-[60%] truncate rounded bg-white/20 px-1.5 py-0.5 text-[10.5px] font-semibold" title={flow.next ? stageName(stages, flow.next, cargo) : ''}>
+              {flow.percent >= 100 ? t('اكتملت', 'Done') : flow.next ? `${t('تنتظر', 'Next')}: ${stageName(stages, flow.next, cargo)}` : `${flow.percent}%`}
+            </span>
+          )}
       </div>
       {/* لوحةُ البيانات — بيضاءُ على جسم الحاوية ليُقرأ ما فيها */}
       <div className="m-2 space-y-2 rounded bg-white/95 p-2.5">
@@ -144,14 +127,25 @@ function UnitBox({
           onSave={(v) => onChange({ ...unit, containerNumber: v.trim().toUpperCase() })} />
         {legs.map((leg) => {
           const m = moveOf(unit, leg);
-          if (!m.vehicleKind) return null;
           const energize = m.vehicleKind === 'energize';
           const id = energize && m.ref ? found[m.ref.trim()] : '';
           return (
-            <div key={leg}>
-              <Field label={`${energize ? t('رقم كشف التخريج', 'Release sheet no.') : t('رقم الفاتورة', 'Invoice no.')} · ${stageName(stages, leg, cargo)}`}
-                value={m.ref} disabled={!canEdit} mono
-                onSave={(v) => onChange(withMove(unit, leg, { ref: v.trim() }))} />
+            <div key={leg} className="rounded border border-slate-200 bg-slate-50 p-2">
+              <p className="mb-1.5 flex items-center gap-1 text-[11px] font-bold text-slate-700"><Truck className="h-3.5 w-3.5 text-[#f37121]" />{stageName(stages, leg, cargo)}</p>
+              {/* بأيّ سيّارةٍ نُقلت هذه الوحدةُ في هذه المرحلة. */}
+              <div className="mb-1.5 flex overflow-hidden rounded border border-slate-200 bg-white text-[11.5px] font-semibold">
+                {([['energize', 'سيّارة تنشيط', 'Energize truck'], ['external', 'سيّارة خارجيّة', 'External truck']] as const).map(([k, a, e]) => (
+                  <button key={k} type="button" disabled={!canEdit} onClick={() => onChange(withMove(unit, leg, { vehicleKind: k }))}
+                    className={`flex-1 px-2 py-1 transition-colors ${m.vehicleKind === k ? 'bg-[#f37121] text-white' : 'text-slate-600 hover:bg-slate-50'} disabled:cursor-default`}>
+                    {ar ? a : e}
+                  </button>
+                ))}
+              </div>
+              {!!m.vehicleKind && (
+                <Field label={energize ? t('رقم كشف التخريج', 'Release sheet no.') : t('رقم الفاتورة', 'Invoice no.')}
+                  value={m.ref} disabled={!canEdit} mono
+                  onSave={(v) => onChange(withMove(unit, leg, { ref: v.trim() }))} />
+              )}
               {energize && !!m.ref && (id ? (
                 <Link href={`/system/operations/${id}`} className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:underline">
                   <Link2 className="h-3 w-3" />{t('مرتبطٌ بسير عمل التشغيل', 'Linked to operations workflow')}

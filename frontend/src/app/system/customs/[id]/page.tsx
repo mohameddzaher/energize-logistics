@@ -44,6 +44,8 @@ export default function CustomsDetailPage() {
   const [activating, setActivating] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [stageBusy, setStageBusy] = useState('');
+  // مراحلُ النقل وما بعده: للكلّ معًا، أو لوحدةٍ بعينها (رقمُ خانتها).
+  const [unitSel, setUnitSel] = useState<'all' | number>('all');
 
   // الحذفُ لمدير القسم وموظّفه — يطابق حارسَ المسار في الخادم.
   const canDelete = ['super_admin', 'admin', 'customs_manager', 'customs_officer'].includes(user?.role || '');
@@ -136,11 +138,11 @@ export default function CustomsDetailPage() {
   const invoiceNumber: string = (c as any).saleInvoiceNumber || '';
   const awaitingTransport = !!invoiceNumber && !c.isCompleted && !c.cancelled && !(c as any).transportInvoiceReceived;
 
-  const setStage = async (key: string, done: boolean) => {
+  const setStage = async (key: string, done: boolean, unit?: 'all' | number) => {
     if (!canEdit || stageBusy) return;
     setStageBusy(key);
     try {
-      const d = await api.patch<any>(`/api/customs-clearance/${c._id}/stage`, { key, done });
+      const d = await api.patch<any>(`/api/customs-clearance/${c._id}/stage`, { key, done, ...(unit !== undefined ? { unit } : {}) });
       if (d?.clearance) setC(d.clearance);
     } catch (e: any) { notify(e?.message || (ar ? 'تعذّر تعليم المرحلة' : 'Could not update the stage'), 'error'); }
     setStageBusy('');
@@ -559,14 +561,20 @@ export default function CustomsDetailPage() {
         <div className="h-2 rounded-full bg-slate-100 overflow-hidden mb-4">
           <div className="h-full rounded-full bg-emerald-500 transition-all duration-500" style={{ width: `${pipeline.percent}%` }} />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-          {pipeline.steps.map((st, i) => {
-            const next = pipeline.next === st.key && !c.cancelled;
+        {(() => {
+          const units = pipeline.units || [];
+          const perUnit = !!pipeline.perUnit && units.length > 0;
+          const sel = perUnit && unitSel !== 'all' && unitSel < units.length ? unitSel : 'all';
+          const numberOf = (key: string) => pipeline.steps.findIndex((x) => x.key === key) + 1;
+          // زرُّ مرحلةٍ واحدة — للمعاملة، أو للكلّ معًا، أو لوحدةٍ بعينها.
+          const stepButton = (st: typeof pipeline.steps[number], unit?: 'all' | number) => {
+            const next = (unit === undefined || unit === 'all' ? pipeline.next : units[unit as number]?.next) === st.key && !c.cancelled;
             // «إصدار الفاتورة» لا تُعلَّم بيد: تفتح نافذةَ الفاتورة.
             const auto = st.key === 'invoiced';
+            const partial = !!st.perUnit && !st.done && (st.unitsDone || 0) > 0;
             const onClick = () => {
               if (auto) { if (!st.done) setInvoiceOpen(true); return; }
-              setStage(st.key, !st.done);
+              setStage(st.key, !st.done, unit);
             };
             return (
               <button key={st.key} type="button" disabled={!canEdit || (st.locked && !st.switchable) || stageBusy === st.key || (auto && st.done)} onClick={onClick}
@@ -581,16 +589,18 @@ export default function CustomsDetailPage() {
                     ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
                     : st.done
                       ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                      : partial
+                        ? 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
                       : next
                         ? 'border-[#f37121] bg-[#f37121]/10 text-[#b4471a] ring-1 ring-[#f37121]/40 font-semibold'
                         : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white'
                 } ${canEdit && !st.locked ? 'cursor-pointer' : ''}`}>
                 <span className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold ${
-                  st.locked ? 'bg-slate-100 text-slate-300'
-                    : st.done ? 'bg-emerald-500 text-white' : next ? 'bg-[#f37121] text-white' : 'bg-white border border-slate-200 text-slate-400'
+                  st.locked ? 'bg-slate-200 text-slate-400'
+                    : st.done ? 'bg-emerald-500 text-white' : partial ? 'bg-amber-400 text-white' : next ? 'bg-[#f37121] text-white' : 'bg-white border border-slate-200 text-slate-400'
                 }`}>
                   {stageBusy === st.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    : st.locked && !st.switchable ? <Lock className="w-3 h-3" /> : st.done ? <Check className="w-3.5 h-3.5" /> : i + 1}
+                    : st.locked && !st.switchable ? <Lock className="w-3 h-3" /> : st.done ? <Check className="w-3.5 h-3.5" /> : numberOf(st.key)}
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate">{sName(st.key)}</span>
@@ -600,18 +610,66 @@ export default function CustomsDetailPage() {
                     </span>
                   )}
                 </span>
-                {next && !st.done && <span className="ms-auto shrink-0 text-[10px] font-bold text-[#f37121]">{ar ? 'التالية' : 'next'}</span>}
+                {/* كم وحدةً أنجزت هذه المرحلةَ من كم تَلزمها. */}
+                {st.perUnit && !st.locked && (
+                  <span className={`ms-auto shrink-0 rounded-full px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums ${st.done ? 'bg-emerald-100 text-emerald-700' : partial ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-600'}`}>
+                    {st.unitsDone}/{st.unitsOf}
+                  </span>
+                )}
+                {next && !st.done && !st.perUnit && <span className="ms-auto shrink-0 text-[10px] font-bold text-[#f37121]">{ar ? 'التالية' : 'next'}</span>}
               </button>
             );
-          })}
-        </div>
-        {!pipeline.route && (
-          <p className="mt-3 text-[12px] text-slate-500">
-            {ar
-              ? 'بعد «أمر النقل» يُختار أحدُ الطريقين: إلى الساحة (ويتبعه التفريغُ والتخزين ثمّ النقلُ إلى العميل) أو إلى العميل مباشرةً. ويُبدَّل بينهما بالضغط على الآخر.'
-              : 'After the transport order pick one route: to the yard (then unloading & storage, then on to the customer) or straight to the customer. Click the other one to switch.'}
-          </p>
-        )}
+          };
+          if (!perUnit) {
+            return <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">{pipeline.steps.map((st) => stepButton(st))}</div>;
+          }
+          const base = pipeline.steps.filter((st) => !st.perUnit && st.key !== 'invoiced');
+          const invoice = pipeline.steps.find((st) => st.key === 'invoiced');
+          const shown = sel === 'all' ? pipeline.steps.filter((st) => st.perUnit) : units[sel as number].steps;
+          return (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">{base.map((st) => stepButton(st))}</div>
+
+              {/* ── ومن أوّل النقل: لكلّ حاويةٍ مراحلُها ──────────────────────
+                  الحاوياتُ لا تسير معًا دائمًا: واحدةٌ إلى العميل اليوم واثنتان
+                  إلى الساحة. فيُختار هنا: الكلّ معًا، أو حاويةٌ بعينها تُكمَل
+                  مراحلُها وحدَها. */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
+                  <span className="me-1 text-[12px] font-bold text-slate-700">
+                    {ar ? `النقلُ وما بعده — لكلّ ${cargo === 'vehicles' ? 'سيّارة' : 'حاوية'}:` : `Transport onward — per ${cargo === 'vehicles' ? 'vehicle' : 'container'}:`}
+                  </span>
+                  <button type="button" onClick={() => setUnitSel('all')}
+                    className={`rounded-lg px-2.5 py-1 text-[12px] font-bold transition-colors ${sel === 'all' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-slate-300'}`}>
+                    {ar ? 'الكلّ معًا' : 'All together'}
+                  </button>
+                  {units.map((u) => {
+                    const row = containers[u.index] || {};
+                    return (
+                      <button key={u.index} type="button" onClick={() => setUnitSel(u.index)}
+                        title={row.containerNumber || ''}
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-semibold transition-colors ${
+                          sel === u.index ? 'bg-[#f37121] text-white' : u.percent >= 100 ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-slate-300'}`}>
+                        <bdi>{row.containerNumber || `${unitWord(cargo, ar, false)} ${u.index + 1}`}</bdi>
+                        <span className={`tabular-nums text-[10.5px] ${sel === u.index ? 'text-white/85' : 'text-slate-400'}`}>{u.percent}%</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">{shown.map((st) => stepButton(st, sel))}</div>
+                <p className="mt-2 text-[11.5px] text-slate-500">
+                  {sel === 'all'
+                    ? (ar ? 'التعليمُ هنا يسري على الوحدات كلِّها. والرقمُ بجانب المرحلة: كم وحدةً أنجزتها من كم تَلزمها. اختر وحدةً لتُكمِل مراحلَها وحدَها.'
+                      : 'Ticking here applies to every unit. The figure shows how many units have done the stage. Pick a unit to progress it on its own.')
+                    : (ar ? 'التعليمُ هنا لهذه الوحدة وحدَها — والطريقُ يُبدَّل بالضغط على الآخر.'
+                      : 'Ticking here applies to this unit only — click the other route to switch.')}
+                </p>
+              </div>
+
+              {invoice && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">{stepButton(invoice)}</div>}
+            </div>
+          );
+        })()}
       </section>
 
       {/* ── الحاوياتُ بعددها — حاويةٌ لكلّ حاوية ──────────────────────────── */}

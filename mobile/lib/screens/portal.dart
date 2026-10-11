@@ -578,7 +578,7 @@ class _CustomsTabState extends State<_CustomsTab> {
                   Icon(passed ? Icons.check_circle : Icons.radio_button_unchecked,
                       size: 16, color: passed ? T.success : T.inkFaint),
                   const SizedBox(width: 8),
-                  Expanded(child: Text(customsStageLabel('${e['key']}', pr.cargo),
+                  Expanded(child: Text('${customsStageLabel('${e['key']}', pr.cargo)}${e['unitsOf'] != null ? ' (${_n(e['unitsDone']).round()}/${_n(e['unitsOf']).round()})' : ''}',
                       style: TextStyle(fontSize: 12.5, color: passed ? T.ink : T.inkFaint,
                           fontWeight: passed ? FontWeight.w600 : FontWeight.w400))),
                 ]),

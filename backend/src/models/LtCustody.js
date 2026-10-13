@@ -5,7 +5,7 @@
  * يُحسَب عند القراءة ولا يُخزَّن، فلا يختلف رقمٌ عن قيوده.
  *
  * ── من أين يأتي الوارد ──────────────────────────────────────────────────────
- *   الكاش    ← الكارت · الورشة · البنك
+ *   الكاش    ← الكارت · الورشة · البنك · مندوب (يردّ مالًا: برقم إقامته كالصادر)
  *   الكارت   ← البنك
  *   الورشة   ← الصيانة
  *
@@ -23,7 +23,7 @@ const mongoose = require('mongoose');
 
 const ACCOUNTS = ['cash', 'card', 'workshop'];
 // مصادرُ الوارد المسموحةُ لكلّ حساب.
-const IN_SOURCES = { cash: ['card', 'workshop', 'bank'], card: ['bank'], workshop: ['maintenance'] };
+const IN_SOURCES = { cash: ['card', 'workshop', 'bank', 'rep'], card: ['bank'], workshop: ['maintenance'] };
 // الحساباتُ التي تصرف إلى الكاش.
 const TO_CASH = ['card', 'workshop'];
 
@@ -35,7 +35,7 @@ const ltCustodySchema = new mongoose.Schema({
   date: { type: String, required: true, index: true },
 
   // الوارد: من أين.
-  source: { type: String, enum: ['card', 'workshop', 'bank', 'maintenance', 'opening', ''], default: '' },
+  source: { type: String, enum: ['card', 'workshop', 'bank', 'maintenance', 'rep', 'opening', ''], default: '' },
 
   // الصادر: إلى مَن. `cash` تحويلٌ إلى حساب الكاش، وغيرُه متحمِّل.
   target: { type: String, enum: ['rep', 'company', 'cash', ''], default: '' },
@@ -47,6 +47,23 @@ const ltCustodySchema = new mongoose.Schema({
   employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
   // البيان: ما الصرف (للشركة يُكتب دائمًا، وللمندوب اختياريّ).
   detail: { type: String, trim: true, default: '', maxlength: 500 },
+
+  // مرفقاتُ القيد — فاتورةٌ أو إيصالٌ أو صورةُ تحويل. اختياريّة، وقد تتعدّد.
+  attachments: {
+    type: [{
+      title: { type: String, trim: true, default: '' },
+      fileUrl: { type: String, required: true },
+      fileName: { type: String, default: '' },
+      mimeType: { type: String, default: '' },
+      size: { type: Number, default: 0 },
+      uploadedByName: { type: String, default: '' },
+      uploadedAt: { type: Date, default: Date.now },
+    }],
+    default: [],
+  },
+  // آخرُ تعديلٍ على قيدٍ مسجَّل — لأهل المال ومدير النظام وحدَهم.
+  editedByName: { type: String, default: '' },
+  editedAt: { type: Date, default: null },
 
   // قيدا التحويل يحملان المعرّفَ نفسَه.
   transferId: { type: mongoose.Schema.Types.ObjectId, default: null, index: true },

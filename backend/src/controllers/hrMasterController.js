@@ -138,6 +138,8 @@ function buildFilter(q) {
   // بالضبط، وحالةُ التوظيف (على رأس العمل / منتهي) فلترٌ لا نطاق.
   // `scope=master` يُبقي القراءةَ القديمة لمن يحتاجها.
   if (q.scope === 'master') f.inCurrentMaster = true;
+  // ما أُنشئ من قسمٍ آخر (سجلّ النقل الخفيف) — راجع `createdVia` في models/Employee.
+  if (q.createdVia) f.createdVia = String(q.createdVia);
   // حالة التوظيف تُقرأ من `employment`. كان اسمها `status`، وهو الاسم نفسه الذي
   // تستعمله صفحة المجموعة لحالة الخانة (مطلوب/غير مطلوب) — فكان «جدة + على رأس
   // العمل» يصل إلى الجدول فيُقرأ «حالة خانة اسمها active» فيُرجع صفرًا. الاسم

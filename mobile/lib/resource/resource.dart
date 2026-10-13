@@ -74,6 +74,9 @@ class ResourceConfig {
   final bool canDelete;
   /// عند ضبطها: نقرة الصف تفتح ملفًا كاملًا بدل ورقة التحرير (والتحرير من أيقونة القلم).
   final void Function(BuildContext, Map<String, dynamic>)? onOpen;
+  /// عند ضبطها: زرُّ الإضافة يفتح نموذجًا خاصًّا بدل النموذج العامّ، ويردّ `true`
+  /// إن حُفظ فتُعاد قراءةُ القائمة. لإضافةٍ معها ما لا يحمله النموذجُ العامّ (ملفّات).
+  final Future<bool?> Function(BuildContext)? onCreate;
   /// اسم حقل (من نوع select) تُبنى منه شرائح التصفية أعلى القائمة (الكل + كل خيار بعدّاده).
   final String? filterField;
   /// حقول يُتاح الفرز بها إضافةً للاسم (name, ar, en) — (fieldName, arLabel, enLabel).
@@ -112,7 +115,7 @@ class ResourceConfig {
     required this.searchFields, required this.fields, required this.titleOf,
     this.subtitleOf, this.chipsOf,
     this.canCreate = true, this.canEdit = true, this.canDelete = true,
-    this.onOpen, this.filterField, this.sortFields = const [], this.rowActions,
+    this.onOpen, this.onCreate, this.filterField, this.sortFields = const [], this.rowActions,
     this.serverSearch = false, this.editFullKey, this.hijriDates = false,
   });
 
@@ -501,7 +504,9 @@ class _ResourceScreenState extends State<ResourceScreen> {
           ? FloatingActionButton.extended(
               backgroundColor: T.navy,
               foregroundColor: Colors.white,
-              onPressed: () => _openForm(),
+              onPressed: cfg.onCreate == null
+                  ? () => _openForm()
+                  : () async { if (await cfg.onCreate!(context) == true && mounted) _load(); },
               icon: const Icon(Icons.add),
               label: Text(tr('إضافة', 'Add')),
             )

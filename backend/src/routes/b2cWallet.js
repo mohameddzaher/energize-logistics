@@ -13,7 +13,7 @@ const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 const c = require('../controllers/b2cWalletController');
 
-const ALL = ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead'];
+const ALL = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'];
 
 router.use(authenticate);
 // العهدةُ لمديري المشاريع — ومشرفُ المناديب لا عهدةَ له هنا.

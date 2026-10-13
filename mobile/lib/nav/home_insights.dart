@@ -128,6 +128,7 @@ const _roleInsight = <String, HomeInsight>{
   'sales_manager': _sales,
   'sales_rep': _sales,
   'b2c_manager': _b2c,
+  'b2c_deputy': _b2c,
   'b2c_project_lead': _b2c,
   // مشرفُ المناديب بلا لوحة القسم — صفحتُه التفقّد (seedRepSupervisorPermissions).
   'it_manager': _it,

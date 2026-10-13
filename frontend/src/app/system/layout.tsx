@@ -528,40 +528,42 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/ls2/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Location Solutions', visible: (u) => jpManager(u, 'Location Solutions') && !jpTop(u) },
     { href: '/system/ls2/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Location Solutions' },
     // B2C
-    { href: '/system/b2c/dashboard', label: L.b2cDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
+    { href: '/system/b2c/dashboard', label: L.b2cDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
     // تحليلُ الأوردرات: ما كان في اللوحة — نُقل إلى صفحته، واللوحةُ صارت
     // الصورةَ الكاملةَ للقسم (ناسٌ ومركباتٌ وسكنٌ) لا تقريرَ طلباتٍ وحدَه.
-    { href: '/system/b2c/orders-analysis', label: L.b2cOrdersAnalysis, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
-    { href: '/system/b2c/reps-performance', label: L.b2cRepsPerformance, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
-    { href: '/system/b2c/daily-entry', label: L.b2cDailyEntry, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
+    { href: '/system/b2c/orders-analysis', label: L.b2cOrdersAnalysis, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
+    { href: '/system/b2c/reps-performance', label: L.b2cRepsPerformance, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
+    { href: '/system/b2c/daily-entry', label: L.b2cDailyEntry, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
     // ── تفقّد بداية الدوام ─────────────────────────────────────────────
     // شاشتان: واحدةٌ يقف عليها المشرفُ كلَّ صباح، وواحدةٌ تقرأ منها الإدارة.
     // وكلتاهما مفتوحتان لأدوار القسم — والذي يحكم مَن يرى أيَّ مندوبٍ هو
     // `B2CRep.supervisor` في الخادم لا هذه القائمة.
-    { href: '/system/b2c/duty/start', label: lang === 'ar' ? 'تفقّد بداية الدوام' : 'Duty Start Check', icon: <Camera className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
-    { href: '/system/b2c/duty', label: lang === 'ar' ? 'سجلّ التفقّد والتحليل' : 'Duty Register', icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
+    { href: '/system/b2c/duty/start', label: lang === 'ar' ? 'تفقّد بداية الدوام' : 'Duty Start Check', icon: <Camera className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
+    { href: '/system/b2c/duty', label: lang === 'ar' ? 'سجلّ التفقّد والتحليل' : 'Duty Register', icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
     // ── سجلُّ القسم كلُّه لا مناديبَ التقارير وحدَهم ────────────────────────
     // «مناديب المبيعات» كانت تعرض مَن له تقريرُ طلبات، فلا يظهر فيها مشرفٌ ولا
     // ميكانيكيٌّ ولا عاملُ نظافة — وهم أحدَ عشرَ من مئةٍ وواحدٍ وستّين.
-    { href: '/system/b2c/light-transport', label: L.b2cLightTransport, icon: <Truck className="w-5 h-5" />, roles: ['cfo', 'accounting_manager', 'accountant', 'super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
+    { href: '/system/b2c/light-transport', label: L.b2cLightTransport, icon: <Truck className="w-5 h-5" />, roles: ['cfo', 'accounting_manager', 'accountant', 'super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
     // مخزنُ القسم: أصنافُه ورصيدُه وحركاتُه — مفصولٌ عن مخزن النقل الثقيل في
     // القاعدة، وشاشتُه هي شاشتُه نفسُها (آليّةُ المخزن واحدة).
-    { href: '/system/b2c/light-transport/store', label: lang === 'ar' ? 'مخزن النقل الخفيف' : 'Light Transport Store', icon: <Boxes className="w-5 h-5" />, roles: ['cfo', 'accounting_manager', 'accountant', 'super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
-    { href: '/system/b2c/orders', label: L.b2cOrders, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
-    { href: '/system/b2c/projects', label: L.b2cProjects, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
+    { href: '/system/b2c/light-transport/store', label: lang === 'ar' ? 'مخزن النقل الخفيف' : 'Light Transport Store', icon: <Boxes className="w-5 h-5" />, roles: ['cfo', 'accounting_manager', 'accountant', 'super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
+    { href: '/system/b2c/orders', label: L.b2cOrders, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
+    { href: '/system/b2c/projects', label: L.b2cProjects, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
     // عهدةُ القسم: الكاش وكارت المشتريات والورشة — واردُ كلٍّ وصادرُه ورصيدُه.
-    { href: '/system/b2c/light-transport/custody', label: lang === 'ar' ? 'عهدة النقل الخفيف' : 'Light Transport Custody', icon: <Wallet className="w-5 h-5" />, roles: ['cfo', 'accounting_manager', 'accountant', 'super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
+    { href: '/system/b2c/light-transport/custody', label: lang === 'ar' ? 'عهدة النقل الخفيف' : 'Light Transport Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'], section: 'B2C' },
+    // مركباتُ مشاريع القسم من سجلّ المركبات نفسِه: القائدُ الفعليّ والتفويض.
+    { href: '/system/b2c/vehicles', label: lang === 'ar' ? 'مركبات النقل الخفيف' : 'Light Transport Vehicles', icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'], section: 'B2C' },
     // ── ويُبلَّغ القسمُ الموارد البشريّة بما رآه في الميدان ─────────────────
     // المندوبُ يعود إلى العمل اليومَ ويبلغ الخبرُ الموارد البشريّة بعد أيّام،
     // فيبقى في النظام «منتهيًا» ولا يُصدَر له أمرُ تشغيل. ومشرفُ المناديب
     // التشغيليُّ أوّلُ من يراه، فله هذه الشاشة.
-    { href: '/system/b2c/hr-requests', label: lang === 'ar' ? 'طلبات الموارد البشرية' : 'HR Requests', icon: <Send className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor'], section: 'B2C' },
-    { href: '/system/b2c/settings', label: L.b2cSettings, icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
-    { href: '/system/b2c/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead']), section: 'B2C', restrict: true },
+    { href: '/system/b2c/hr-requests', label: lang === 'ar' ? 'طلبات الموارد البشرية' : 'HR Requests', icon: <Send className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor'], section: 'B2C' },
+    { href: '/system/b2c/settings', label: L.b2cSettings, icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
+    { href: '/system/b2c/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead']), section: 'B2C', restrict: true },
     { href: '/system/b2c/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'B2C', visible: (u) => jpMember(u, 'B2C') },
     { href: '/system/b2c/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'B2C', visible: (u) => jpManager(u, 'B2C') },
     { href: '/system/b2c/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'B2C', visible: (u) => jpManager(u, 'B2C') && !jpTop(u) },
-    { href: '/system/b2c/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
+    { href: '/system/b2c/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
     // Remote (work-from-home)
     { href: '/system/remote/dashboard', label: L.remoteDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'dashboard' },
     { href: '/system/remote/attendance', label: L.remoteAttendance, icon: <Clock className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'attendance' },

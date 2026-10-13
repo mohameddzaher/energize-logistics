@@ -577,6 +577,7 @@ export default function UsersPage() {
     moderator: T.moderator, client: T.clientRole,
     purchasing: lang === 'ar' ? 'المشتريات' : 'Purchasing',
     b2c_manager: lang === 'ar' ? 'مدير B2C' : 'B2C Manager',
+    b2c_deputy: lang === 'ar' ? 'نائب مدير قطاع الأفراد' : 'B2C Deputy Manager',
     b2c_project_lead: lang === 'ar' ? 'مدير مشروع B2C' : 'B2C Project Lead',
     b2c_rep_supervisor: lang === 'ar' ? 'مشرف المناديب التشغيلي' : 'B2C Ops Rep Supervisor',
     b2c_inspection_supervisor: lang === 'ar' ? 'مشرف المناديب التفقدي' : 'B2C Inspection Supervisor',

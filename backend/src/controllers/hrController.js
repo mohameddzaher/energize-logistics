@@ -51,6 +51,9 @@ const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() :
  * حتى يُحدِّثها أحدٌ بيده. وهذا ما تفعله `emit()` في hrMasterController بالضبط،
  * فالكتابتان تصيران متكافئتين أيًّا كان بابُ التعديل.
  */
+// تُصدَّر: مَن يكتب ملفَّ موظّفٍ من خارج هذا المتحكِّم (سجلّ النقل الخفيف) يمسح
+// الذاكراتِ نفسَها ويبثّ الأحداثَ نفسَها — لا نسخةً منها تفترق.
+exports._bustEmployeeCaches = () => bustEmployeeCaches();
 const bustEmployeeCaches = () => {
   try {
     const cache = require('../utils/ttlCache');
@@ -219,7 +222,7 @@ exports.listEmployees = async (req, res) => {
       // يُضاف إلى الفلترة يبقى ساقطًا هنا حتى يتذكّره أحد — وأثرُه صامت.
       .select(['firstName lastName arabicName employeeNumber jobTitle department employmentStatus',
         'phone email iqamaNumber nationalId nationality photo workLocation branchName',
-        'project branch directManager user createdAt',
+        'project branch directManager user createdAt createdVia',
         ...master._DATE_FILTERABLE].join(' '))
       .populate('user', 'firstName lastName email role')
       .populate('directManager', 'firstName lastName email')
@@ -231,7 +234,9 @@ exports.listEmployees = async (req, res) => {
     // بجانب التاريخ، فمقارنتها في قاعدة البيانات تقارن نوعين مختلفين.
     const pred = master._dateRangePred(req.query);
     const employees = pred ? rows.filter(pred) : rows;
-    res.json({ employees });
+    // كم ملفًّا أُنشئ من قسم الأفراد — رقمُ الزرّ «موظفون جدد من قسم الأفراد».
+    const fromB2c = await Employee.countDocuments({ isHrRecord: { $ne: false }, createdVia: 'b2c' });
+    res.json({ employees, fromB2c });
   } catch (error) {
     console.error('listEmployees error:', error);
     res.status(500).json({ message: 'Failed to load employees' });

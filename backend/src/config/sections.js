@@ -126,7 +126,7 @@ const SECTIONS = [
   {
     key: 'B2C',
     apiPrefixes: ['/api/b2c', '/api/b2c-wallet'],
-    defaultRoles: ['admin', 'it_manager', 'b2c_manager', 'b2c_project_lead'],
+    defaultRoles: ['admin', 'it_manager', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'],
   },
   {
     key: 'Remote',

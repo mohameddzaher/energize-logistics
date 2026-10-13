@@ -23,16 +23,17 @@ const mongoose = require('mongoose');
  * مشرفُ المناديب يقف على رجاله؛ ومديرُ المشروع ومديرُ القطاع يقفان مقامَه
  * حين يغيب، ويُسنَد إليهما مباشرةً في المشاريع الصغيرة.
  */
-const SUPERVISOR_ROLES = ['b2c_rep_supervisor', 'b2c_inspection_supervisor', 'b2c_project_lead', 'b2c_manager'];
+const SUPERVISOR_ROLES = ['b2c_rep_supervisor', 'b2c_inspection_supervisor', 'b2c_project_lead', 'b2c_manager', 'b2c_deputy'];
 
 /** ترتيبُ العرض: الأقربُ إلى الميدان أوّلًا. */
 const ROLE_ORDER = {
-  b2c_rep_supervisor: 0, b2c_inspection_supervisor: 1, b2c_project_lead: 2, b2c_manager: 3,
+  b2c_rep_supervisor: 0, b2c_inspection_supervisor: 1, b2c_project_lead: 2, b2c_deputy: 3, b2c_manager: 4,
 };
 const ROLE_AR = {
   b2c_rep_supervisor: 'مشرف تشغيلي',
   b2c_inspection_supervisor: 'مشرف تفقدي',
   b2c_project_lead: 'مدير مشروع',
+  b2c_deputy: 'نائب مدير القطاع',
   b2c_manager: 'مدير القطاع',
 };
 

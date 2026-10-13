@@ -593,31 +593,104 @@ async function applySupervisor(doc, body, res) {
   return true;
 }
 
+/**
+ * ── وإضافةُ موظّفٍ هنا تُنشئ ملفَّه في الموارد البشريّة ──────────────────────
+ *
+ * كان الصفُّ يُنشأ في سجلّ القسم وحدَه إن لم تكن هويّتُه في الموارد البشريّة:
+ * رجلٌ يعمل ولا ملفَّ له، ولا يظهر في الموظّفين ولا الماستر ولا الانتهاءات حتى
+ * يتذكّر أحدٌ أن يسجّله هناك مرّةً ثانية. وما يُطلَب مرّتين يُنسى مرّة.
+ *
+ * فالقسمُ يكتب ما يعرفه — الاسم والإقامة وتاريخا التعيين والميلاد والمشروع
+ * والمدينة ونوع التعاقد والسجلّ — ومستنداتِه، ويُنشأ ملفُّه في الموارد البشريّة
+ * في الطلب نفسِه معلَّمًا بمصدره (`createdVia: 'b2c'`) وقسمُه «B2C». والموارد
+ * البشريّة تجده بزرٍّ في صفحة الموظّفين وتُكمل الباقي.
+ *
+ * body: حقولُ السجلّ + { dateOfBirth, files: [{ dataUrl, fileName, title }] }
+ */
+const FREELANCE_RX = /فري|حر|free/i;
 exports.createEmployee = async (req, res) => {
   try {
-    const idNumber = S(req.body.idNumber);
+    const idNumber = S(req.body.idNumber).replace(/\s+/g, '');
     if (!idNumber) return res.status(400).json({ message: 'رقمُ الهويّة مطلوب' });
-    if (!S(req.body.name)) return res.status(400).json({ message: 'الاسمُ مطلوب' });
+    const name = S(req.body.name);
+    if (!name) return res.status(400).json({ message: 'الاسمُ مطلوب' });
     const dup = await LightTransportEmployee.findOne({ idNumber });
     if (dup) return res.status(400).json({ message: `الهويّةُ ${idNumber} مسجَّلةٌ بالفعل لـ${dup.name}` });
 
+    // المستنداتُ تُحفَظ قبل أيّ كتابة: ملفٌّ مرفوضٌ لا يترك موظّفًا نصفَ مُنشأ.
+    const { saveUploadFile } = require('../utils/fileStore');
+    const stored = [];
+    try {
+      for (const f of Array.isArray(req.body.files) ? req.body.files.slice(0, 15) : []) {
+        if (!f?.dataUrl) continue;
+        if (!S(f.title)) return res.status(400).json({ message: 'اكتب اسمَ كلّ مستندٍ مرفق' });
+        stored.push({ ...saveUploadFile(f.dataUrl, 'employees', f.fileName || ''), title: S(f.title).slice(0, 150) });
+      }
+    } catch (e) { return res.status(400).json({ message: 'نوعُ الملفّ غير مدعوم (صورة أو PDF أو Word أو Excel) أو حجمُه أكبر من ٢٠ ميغابايت' }); }
+
     const doc = new LightTransportEmployee({ idNumber, createdBy: req.user?._id });
     for (const k of EDITABLE) if (req.body[k] !== undefined) doc[k] = req.body[k];
+    doc.name = name;
     if (!(await applySupervisor(doc, req.body, res))) return undefined;
-    // ويُربَط بملفّ الموارد البشريّة إن كانت هويّتُه هناك — بلا سؤال.
-    const hr = await Employee.findOne({ $or: [{ nationalId: idNumber }, { iqamaNumber: idNumber }] }).select('_id').lean();
-    if (hr) doc.employee = hr._id;
     await applyHousing(doc, req.body.housing, req.body.housingRoom, res);
     if (res.headersSent) return undefined;
-    doc.history.push({ kind: 'created', by: req.user?._id, byName: byName(req.user), note: hr ? 'أُنشئ ومُرتبطٌ بملفّ الموارد البشريّة' : 'أُنشئ في القسم — لا ملفَّ له في الموارد البشريّة' });
+
+    // يُربَط بملفّه إن كانت هويّتُه في الموارد البشريّة، وإلّا يُنشأ له ملفّ.
+    let hr = await Employee.findOne({ $or: [{ nationalId: idNumber }, { iqamaNumber: idNumber }] });
+    let hrCreated = false;
+    if (!hr) {
+      const parts = name.split(/\s+/);
+      const type = S(req.body.contractTypeAr);
+      const { applyEmploymentType, FREELANCER, SPONSORED } = require('../utils/employmentType');
+      const isSaudi = /^1\d{9}$/.test(idNumber);
+      const day = (v) => (/^\d{4}-\d{2}-\d{2}/.test(S(v)) ? S(v).slice(0, 10) : '');
+      hr = new Employee({
+        firstName: parts[0], lastName: parts.slice(1).join(' ') || '—', arabicName: name,
+        idType: isSaudi ? 'national_id' : 'iqama',
+        ...(isSaudi ? { nationalId: idNumber } : { iqamaNumber: idNumber }),
+        nationality: S(req.body.nationalityAr), phone: S(req.body.phone),
+        hireDate: day(req.body.hireDate) || undefined, dateOfBirth: day(req.body.dateOfBirth) || undefined,
+        department: 'B2C', project: S(req.body.projectAr), workLocation: S(req.body.cityAr), branchName: S(req.body.cityAr),
+        jobTitle: S(req.body.jobTitleAr), registerNumber: S(req.body.registerNumber),
+        employmentStatus: 'active', isHrRecord: true, createdVia: 'b2c', createdBy: req.user?._id,
+      });
+      if (type) {
+        const set = applyEmploymentType(FREELANCE_RX.test(type) ? FREELANCER : SPONSORED);
+        hr.employmentType = set.employmentType; hr.isFreelancer = set.isFreelancer;
+        if (!hr.fieldStatus || typeof hr.fieldStatus.set !== 'function') hr.fieldStatus = new Map();
+        for (const [k, v] of Object.entries(set)) if (k.startsWith('fieldStatus.') && v) hr.fieldStatus.set(k.slice('fieldStatus.'.length), v);
+      }
+      await hr.save();
+      hrCreated = true;
+    }
+    doc.employee = hr._id;
+    doc.history.push({ kind: 'created', by: req.user?._id, byName: byName(req.user), note: hrCreated ? 'أُنشئ في القسم، وأُنشئ ملفُّه في الموارد البشريّة' : 'أُنشئ ومُرتبطٌ بملفّ الموارد البشريّة' });
     await doc.save();
+
+    if (stored.length) {
+      const EmployeeDocument = require('../models/EmployeeDocument');
+      await EmployeeDocument.insertMany(stored.map((f) => ({
+        employee: hr._id, title: f.title, category: 'other', fileUrl: f.fileUrl, fileName: f.fileName, mimeType: f.mimeType, size: f.size, uploadedBy: req.user?._id,
+      })));
+    }
     if (doc.supervisorUser) await syncRepSupervisor(doc.name, doc.supervisorUser, { ltId: doc._id });
-    logAudit({ user: req.user, action: 'create_lt_employee', entity: 'LightTransportEmployee', entityId: doc._id, changes: { after: { name: doc.name, idNumber } }, ipAddress: req.ip }).catch(() => {});
+    logAudit({ user: req.user, action: 'create_lt_employee', entity: 'LightTransportEmployee', entityId: doc._id, changes: { after: { name: doc.name, idNumber, hrFileCreated: hrCreated, documents: stored.length } }, ipAddress: req.ip }).catch(() => {});
+    if (hrCreated) {
+      logAudit({ user: req.user, action: 'create_employee', entity: 'Employee', entityId: hr._id, changes: { after: { name, idNumber, from: 'سجلّ النقل الخفيف (قسم الأفراد)' } }, ipAddress: req.ip }).catch(() => {});
+    }
+    // الموارد البشريّة تسمع في الحال: الموظّفون والماستر والتحليلات والانتهاءات.
+    try { require('./hrController')._bustEmployeeCaches(); } catch (e) { /* */ }
+    if (hrCreated) {
+      try {
+        const { notifySection } = require('../services/notificationService');
+        await notifySection('HR', { title: 'موظف جديد من قسم الأفراد', message: `${name} — أضافه ${byName(req.user) || 'قسم الأفراد'}. أكمِل بياناتِه.`, relatedEntity: 'Employee', relatedEntityId: hr._id });
+      } catch (e) { /* الإشعارُ تيسيرٌ لا شرط */ }
+    }
     emit('lt:updated', {});
-    return res.status(201).json({ employee: doc.toObject() });
+    return res.status(201).json({ employee: doc.toObject(), hrEmployee: hr._id, hrCreated, documents: stored.length });
   } catch (e) {
     console.error('lt createEmployee:', e);
-    return res.status(500).json({ message: 'تعذّر إنشاء الموظّف' });
+    return require('../utils/mongooseError').sendMongooseError(res, e, 'تعذّر إنشاء الموظّف');
   }
 };
 
@@ -927,3 +1000,120 @@ module.exports.optionsOf = optionsOf;
 module.exports.totalsOf = totalsOf;
 module.exports.decorate = decorate;
 module.exports.applyHousing = applyHousing;
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  مركباتُ النقل الخفيف — مركباتُ مشاريع القسم من سجلّ المركبات نفسِه
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * قسمُ الأفراد يدير مشاريعَ (كيتا، هنقرستيشن، أمازون، نينجا) تعمل على مركباتٍ
+ * مسجَّلةٍ في قسم المركبات. والتفويضُ وقائدُ المركبة الفعليُّ يتغيّران في الميدان
+ * كلَّ يوم، فمن يعرفهما هو القسمُ لا قسمُ المركبات.
+ *
+ * فهذه نافذةٌ على **السجلّ نفسِه** (`VehicleMaster`) — لا نسخةٌ منه: ما يُعدَّل
+ * هنا يُكتب هناك ويُبَثّ لقسم المركبات في الحال، وما يُعدَّل هناك يُقرأ هنا.
+ * وما يُعدَّل من هنا محصورٌ في أعمدة التشغيل (المشروع والمدينة والقائد الفعليّ
+ * والتفويض)؛ اللوحةُ والرقمُ التسلسليّ ووثائقُ المركبة تبقى لقسم المركبات.
+ */
+const LT_VEHICLE_PROJECTS = /^(كيتا|هنجرستيشن|هنقرستيشن|امازون|أمازون|نينجا)$/;
+const ltVehicleScope = () => ({
+  isActive: { $ne: false },
+  $or: [{ sectorAr: /خفيف/ }, { departmentAr: LT_VEHICLE_PROJECTS }],
+});
+const ymd = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
+const ltVehicleRow = (v) => {
+  const a = v.authorizedPerson || {}; const d = v.actualDriver || {};
+  const start = ymd(a.startDate); const end = ymd(a.expiryDate);
+  const today = require('../utils/companyDay').todayKey();
+  return {
+    _id: v._id, serialNumber: v.serialNumber || '', project: v.departmentAr || '', city: v.cityAr || '', plateNumber: v.plateNumber || '',
+    driverId: d.idNumber || '', driverName: d.name || '',
+    authorizedId: a.iqamaNumber || '', authorizedName: a.name || '', authorizedPhone: a.phone || '',
+    authStart: start, authEnd: end, authNumber: a.authorizationNumber || '',
+    // المدّةُ مشتقّة: من البداية إلى النهاية، بالأيّام.
+    durationDays: start && end ? Math.round((new Date(end) - new Date(start)) / 86400000) : null,
+    daysLeft: end ? Math.round((new Date(end) - new Date(today)) / 86400000) : null,
+    sector: v.sectorAr || '', updatedAt: v.updatedAt,
+  };
+};
+const LT_VEHICLE_SELECT = 'serialNumber departmentAr cityAr plateNumber sectorAr actualDriver authorizedPerson updatedAt';
+/** مَن يعدّل: مديرُ القطاع ونائبُه ومديرُ النظام (وأهلُ المال كما في كلّ ما يُفتَح لهم). */
+const LT_VEHICLE_EDIT = ['super_admin', 'b2c_manager', 'b2c_deputy', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
+exports.LT_VEHICLE_EDIT = LT_VEHICLE_EDIT;
+
+// GET /vehicles
+exports.listVehicles = async (req, res) => {
+  try {
+    const { VehicleMaster } = require('../models/VehicleMaster');
+    const rows = await VehicleMaster.find(ltVehicleScope()).select(LT_VEHICLE_SELECT).sort({ departmentAr: 1, plateNumber: 1 }).lean();
+    const vehicles = rows.map(ltVehicleRow);
+    const count = (f) => vehicles.filter(f).length;
+    res.json({
+      vehicles,
+      summary: {
+        total: vehicles.length,
+        noAuthorization: count((v) => !v.authorizedName && !v.authNumber),
+        expired: count((v) => v.daysLeft != null && v.daysLeft < 0),
+        expiringSoon: count((v) => v.daysLeft != null && v.daysLeft >= 0 && v.daysLeft <= 30),
+        noDriver: count((v) => !v.driverName),
+      },
+      canEdit: LT_VEHICLE_EDIT.includes(req.user?.role),
+    });
+  } catch (e) {
+    console.error('lt vehicles:', e);
+    res.status(500).json({ message: 'تعذّر تحميل مركبات القسم' });
+  }
+};
+
+// PUT /vehicles/:id — أعمدةُ التشغيل وحدَها.
+exports.updateVehicle = async (req, res) => {
+  try {
+    if (!LT_VEHICLE_EDIT.includes(req.user?.role)) return res.status(403).json({ message: 'تعديلُ مركبات القسم لمدير القطاع ونائبه' });
+    const { VehicleMaster } = require('../models/VehicleMaster');
+    const v = await VehicleMaster.findOne({ _id: req.params.id, ...ltVehicleScope() });
+    if (!v) return res.status(404).json({ message: 'المركبةُ ليست من مركبات القسم' });
+    const b = req.body || {};
+    const before = ltVehicleRow(v.toObject());
+    const text = (x) => S(x).slice(0, 150);
+    const dateOf = (x, label) => {
+      if (x === '' || x === null) return null;
+      const d = new Date(`${S(x).slice(0, 10)}T00:00:00.000Z`);
+      if (!/^\d{4}-\d{2}-\d{2}/.test(S(x)) || Number.isNaN(d.getTime())) { const err = new Error(`${label} غير صحيح`); err.bad = true; throw err; }
+      return d;
+    };
+    const $set = {};
+    if (b.project !== undefined) $set.departmentAr = text(b.project);
+    if (b.city !== undefined) $set.cityAr = text(b.city);
+    if (b.driverId !== undefined) $set['actualDriver.idNumber'] = text(b.driverId).replace(/\s+/g, '');
+    if (b.driverName !== undefined) $set['actualDriver.name'] = text(b.driverName);
+    if (b.authorizedId !== undefined) $set['authorizedPerson.iqamaNumber'] = text(b.authorizedId).replace(/\s+/g, '');
+    if (b.authorizedName !== undefined) $set['authorizedPerson.name'] = text(b.authorizedName);
+    if (b.authorizedPhone !== undefined) $set['authorizedPerson.phone'] = text(b.authorizedPhone);
+    if (b.authNumber !== undefined) $set['authorizedPerson.authorizationNumber'] = text(b.authNumber);
+    if (b.authStart !== undefined) $set['authorizedPerson.startDate'] = dateOf(b.authStart, 'تاريخُ بداية التفويض');
+    if (b.authEnd !== undefined) $set['authorizedPerson.expiryDate'] = dateOf(b.authEnd, 'تاريخُ نهاية التفويض');
+    if (!Object.keys($set).length) return res.status(400).json({ message: 'لا حقولَ للتعديل' });
+    const s0 = $set['authorizedPerson.startDate'] !== undefined ? $set['authorizedPerson.startDate'] : v.authorizedPerson?.startDate;
+    const e0 = $set['authorizedPerson.expiryDate'] !== undefined ? $set['authorizedPerson.expiryDate'] : v.authorizedPerson?.expiryDate;
+    if (s0 && e0 && new Date(e0) < new Date(s0)) return res.status(400).json({ message: 'نهايةُ التفويض قبل بدايته' });
+    // تاريخٌ كُتب يرفع علامةَ «مطلوب/لا يوجد» عن التفويض — صار له تاريخ.
+    if ($set['authorizedPerson.expiryDate']) $set['authorizedPerson.statusCode'] = '';
+
+    const saved = await VehicleMaster.findByIdAndUpdate(v._id, { $set }, { new: true, runValidators: true }).select(LT_VEHICLE_SELECT).lean();
+    const after = ltVehicleRow(saved);
+    const changedKeys = Object.keys(after).filter((k) => !['updatedAt', 'daysLeft'].includes(k) && String(before[k] ?? '') !== String(after[k] ?? ''));
+    logAudit({
+      user: req.user, action: 'lt_vehicle_update', entity: 'VehicleMaster', entityId: v._id,
+      changes: { details: `مركبة ${after.plateNumber} — من قسم الأفراد`, before: Object.fromEntries(changedKeys.map((k) => [k, before[k]])), after: Object.fromEntries(changedKeys.map((k) => [k, after[k]])) },
+      ipAddress: req.ip,
+    }).catch(() => {});
+    // قسمُ المركبات يسمع في الحال (ذاكرتُه تُمسَح قبل الإعلان)، والقسمُ نفسُه كذلك.
+    try { const cache = require('../utils/ttlCache'); for (const k of ['vreg:', 'lt:', 'dash:vehicles:', 'reports:doc:vehicle:', 'reports:opts:vehicle:']) cache.clear(k); } catch (e) { /* */ }
+    emit('vreg:updated', {});
+    emit('lt:updated', {});
+    res.json({ vehicle: after });
+  } catch (e) {
+    if (e.bad) return res.status(400).json({ message: e.message });
+    console.error('lt vehicle update:', e);
+    return require('../utils/mongooseError').sendMongooseError(res, e, 'تعذّر تعديل المركبة');
+  }
+};

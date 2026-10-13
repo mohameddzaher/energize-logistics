@@ -12,7 +12,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
-import { Users, Plus, Edit, UserMinus, RotateCcw, Trash2 } from 'lucide-react';
+import { Users, Plus, Edit, UserMinus, RotateCcw, Trash2, UserPlus } from 'lucide-react';
 import {
   isHRStaff, Employee, EMPLOYMENT_STATUS, empName,
 } from '@/lib/hr';
@@ -54,6 +54,12 @@ export default function HREmployeesPage() {
   // هناك يُفلتَر به هنا بلا تعريفٍ ثانٍ يشيخ.
   const [filters, setFilters] = useState<FilterValues>(() =>
     Object.fromEntries([...(searchParams?.entries() || [])].filter(([k]) => k !== 'q' && k !== 'status')));
+  // ── ما أضافه قسمُ الأفراد من سجلّ النقل الخفيف ─────────────────────────────
+  // يُنشأ الملفُّ هناك ببياناتٍ قليلة، وتُكمله الموارد البشريّة. فزرٌّ يجمعهم:
+  // ضغطةٌ تفلتر القائمةَ بهم، وضغطةٌ ثانيةٌ تعيدها.
+  const [fromB2c, setFromB2c] = useState(0);
+  const b2cOnly = filters.createdVia === 'b2c';
+  const toggleB2c = () => setFilters((p) => { const n = { ...p }; if (n.createdVia === 'b2c') delete n.createdVia; else n.createdVia = 'b2c'; return n; });
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
   /**
@@ -83,9 +89,10 @@ export default function HREmployeesPage() {
       if (debouncedSearch.trim()) qs.set('q', debouncedSearch.trim());
       if (statusFilter) qs.set('status', statusFilter);
       for (const [k, v] of Object.entries(filters)) if (v !== '' && v != null) qs.set(k, String(v));
-      const d = await api.get<{ employees: Employee[] }>(`/api/hr/employees?${qs}`);
+      const d = await api.get<{ employees: Employee[]; fromB2c?: number }>(`/api/hr/employees?${qs}`);
       if (!guard.isCurrent(mine)) return;
       setEmployees(d.employees || []);
+      setFromB2c(d.fromB2c || 0);
     } catch {}
     if (guard.isCurrent(mine)) setLoading(false);
   }, [debouncedSearch, statusFilter, JSON.stringify(filters), guard]);
@@ -222,6 +229,15 @@ export default function HREmployeesPage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Users className="w-5 h-5" />} title={tx.pageTitle} subtitle={`${employees.length} ${tx.employeesUnit}`}>
+        {(fromB2c > 0 || b2cOnly) && (
+          <button type="button" onClick={toggleB2c}
+            title={ar ? 'موظفون أضافهم قسم الأفراد من سجلّ النقل الخفيف — أكمِل بياناتهم' : 'Employees added by the B2C section — complete their files'}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold transition-colors ${b2cOnly ? 'bg-[#12325c] text-white' : 'bg-amber-100 text-amber-800 hover:bg-amber-200'}`}>
+            <UserPlus className="w-4 h-4" />
+            {ar ? 'موظفون جدد من قسم الأفراد (B2C)' : 'New from B2C'}
+            <span className={`rounded-full px-1.5 py-0.5 text-[11px] tabular-nums ${b2cOnly ? 'bg-white/20' : 'bg-amber-600 text-white'}`}>{fromB2c}</span>
+          </button>
+        )}
         <ExportMenu fileName="employees" lang={ar ? 'ar' : 'en'} variant="subtle" label={tx.exportExcel} options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.addEmployee}</PrimaryButton>
       </PageHeader>

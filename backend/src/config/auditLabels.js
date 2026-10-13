@@ -19,6 +19,8 @@
 const ACTION_AR = {
   // قيودُ شبكة الأمان (middleware/auditTrail) — فعلٌ لم يقيّده متحكّمُه بتفصيله.
   undo_collection: 'رجوع عن تحصيل',
+  lt_vehicle_update: 'تعديل مركبة من قسم الأفراد',
+  lt_custody_update: 'تعديل قيد في عهدة النقل الخفيف',
   lt_custody_entry: 'قيد في عهدة النقل الخفيف', lt_custody_delete: 'حذف قيد من عهدة النقل الخفيف',
   api_create: 'إضافة / تنفيذ إجراء', api_update: 'تعديل', api_delete: 'حذف',
   // حركاتُ أصول النقل الثقيل (الكاوتش والتيدرات والسطحات).

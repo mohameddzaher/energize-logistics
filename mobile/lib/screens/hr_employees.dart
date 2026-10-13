@@ -32,6 +32,11 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
   // الفلتر المتقدّم — نفس لغة لوحة الموارد البشرية في الموقع حرفيًّا، فالسؤال
   // الذي تسأله من المتصفّح تسأله من الهاتف وتحصل على العدد نفسه.
   Map<String, String> _filters = {};
+  // ── ما أضافه قسمُ الأفراد من سجلّ النقل الخفيف ────────────────────────────
+  // يُنشأ الملفُّ هناك ببياناتٍ قليلة، وتُكمله الموارد البشريّة. فزرٌّ يجمعهم:
+  // ضغطةٌ تفلتر القائمةَ بهم، وضغطةٌ ثانيةٌ تعيدها.
+  int _fromB2c = 0;
+  bool _b2cOnly = false;
   Timer? _debounce;
   final _qCtrl = TextEditingController();
 
@@ -59,11 +64,13 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
       final params = <String>[];
       if (_qCtrl.text.trim().isNotEmpty) params.add('q=${Uri.encodeComponent(_qCtrl.text.trim())}');
       if (_status.isNotEmpty) params.add('status=$_status');
+      if (_b2cOnly) params.add('createdVia=b2c');
       _filters.forEach((k, v) { if (v.isNotEmpty) params.add('$k=${Uri.encodeComponent(v)}'); });
       final d = await Api.instance.get('/api/hr/employees${params.isEmpty ? '' : '?${params.join('&')}'}');
       if (!mounted) return;
       setState(() {
         _rows = List<Map<String, dynamic>>.from(d['employees'] ?? []);
+        _fromB2c = ((d['fromB2c'] ?? 0) as num).toInt();
         _loading = false;
         _error = null;
       });
@@ -142,6 +149,28 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
             ),
           ]),
         ),
+        if (_fromB2c > 0 || _b2cOnly)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Tooltip(
+                message: tr('موظفون أضافهم قسم الأفراد من سجلّ النقل الخفيف — أكمِل بياناتهم', 'Employees added by the B2C section — complete their files'),
+                child: FilterChip(
+                  selected: _b2cOnly,
+                  showCheckmark: false,
+                  onSelected: (_) { setState(() { _b2cOnly = !_b2cOnly; _loading = true; }); _load(); },
+                  avatar: Icon(Icons.person_add_alt_outlined, size: 16, color: _b2cOnly ? Colors.white : T.warn),
+                  label: Text('${tr('موظفون جدد من قسم الأفراد (B2C)', 'New from B2C')} · $_fromB2c'),
+                  labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _b2cOnly ? Colors.white : T.warn),
+                  selectedColor: T.navy,
+                  backgroundColor: T.warn.withValues(alpha: 0.12),
+                  side: BorderSide.none,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                ),
+              ),
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
           child: SingleChildScrollView(
@@ -185,7 +214,7 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
                           ? EmptyState(
                               icon: Icons.people_alt_outlined,
                               title: tr('لا يوجد موظفون مطابقون', 'No matching employees'),
-                              subtitle: (_status.isNotEmpty || _filters.isNotEmpty)
+                              subtitle: (_status.isNotEmpty || _filters.isNotEmpty || _b2cOnly)
                                   ? tr(
                                       'فيه فلاتر شغّالة والبحث بيتم جوّاها — امسحها وابحث في كل الموظفين.',
                                       'Filters are active and the search runs inside them — clear them to search everyone.')

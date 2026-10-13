@@ -32,7 +32,7 @@ const jpManagerRoles = <String, List<String>>{
   'it': ['it_manager'],
   'administration': ['administration_manager'],
   'contracts': ['contracts_manager'],
-  'b2c': ['b2c_manager'],
+  'b2c': ['b2c_manager', 'b2c_deputy'],
   'remote': ['remote_manager'],
   'hr': ['hr_manager'],
   'crm': ['crm_manager'],

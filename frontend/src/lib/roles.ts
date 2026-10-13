@@ -310,6 +310,12 @@ export const SECTION_ROLES: SectionRoles[] = [
     },
     "staff": [
       {
+        "key": "b2c_deputy",
+        "ar": "نائب مدير قطاع الأفراد",
+        "en": "B2C Deputy Manager",
+        "distinct": "له صلاحيّاتُ مدير القطاع في القسم كلِّه، ويعلو مديري المشاريع."
+      },
+      {
         "key": "b2c_project_lead",
         "ar": "مدير مشروع - أفراد",
         "en": "B2C Project Lead"

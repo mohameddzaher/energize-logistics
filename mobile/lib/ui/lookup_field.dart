@@ -37,6 +37,8 @@ class LookupField extends StatefulWidget {
   final String? hint;
   final List<String> fallback;
   final VoidCallback? onChanged;
+  /// قائمةٌ يملكها قسمٌ آخر: القيمةُ المكتوبةُ تُقبَل في الخانة ولا تُضاف إلى قائمته.
+  final bool noAdd;
   const LookupField({
     super.key,
     required this.type,
@@ -45,6 +47,7 @@ class LookupField extends StatefulWidget {
     this.hint,
     this.fallback = const [],
     this.onChanged,
+    this.noAdd = false,
   });
 
   @override
@@ -77,7 +80,7 @@ class _LookupFieldState extends State<LookupField> {
     widget.controller.text = picked.value;
     widget.onChanged?.call();
     setState(() {});
-    if (picked.isNew && picked.value.isNotEmpty) {
+    if (picked.isNew && picked.value.isNotEmpty && !widget.noAdd) {
       // تظهر في القائمة فورًا لمن كتبها، وتُحفَظ فيها إن سُمح له.
       setState(() => _options = [..._options, picked.value]);
       try {

@@ -29,7 +29,7 @@ import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilt
 import ManagedSelect from '@/components/system/ManagedSelect';
 import ScrollX from '@/components/system/ScrollX';
 import { LEAD, LEAD_CELL } from '@/components/vehicles/stickyLead';
-import { Truck, Plus, Pencil, RotateCcw, UserMinus, ExternalLink } from 'lucide-react';
+import { Truck, Plus, Pencil, RotateCcw, UserMinus, ExternalLink, X } from 'lucide-react';
 import {
   getLTEmployees, updateLTEmployee, createLTEmployee, deactivateLTEmployee, ltTotalsOf,
   LT_COLUMNS, statusCls, KIND_AR, KIND_EN, canEditLT, fmtDate,
@@ -54,6 +54,12 @@ function LightTransportEmployeesInner() {
   const [options, setOptions] = useState<LTOptions>({ project: [], city: [], jobTitle: [], contractType: [], register: [], vehicleType: [], supervisor: [], supervisorsUnlinked: [], housing: [] });
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Partial<LTEmployee> | null>(null);
+  // ── إضافةُ موظّفٍ تُنشئ ملفَّه في الموارد البشريّة ─────────────────────────
+  // فهي لمدير القطاع ونائبه ومدير النظام وأهل المال — يطابق حارسَ المسار في
+  // routes/lightTransport. ومعها مستنداتُه: اسمٌ لكلّ ملفّ، وقد تتعدّد.
+  // role-only: إنشاءُ ملفٍّ في الموارد البشريّة لا يُفتَح بمنح القسم؛ الخادمُ يحرسه بـ`authorize.strict`.
+  const canAdd = ['super_admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'].includes(String(user?.role || ''));
+  const [docs, setDocs] = useState<NewDoc[]>([]);
   const [saving, setSaving] = useState(false);
 
   // ── الفلاتر ───────────────────────────────────────────────────────────────
@@ -187,9 +193,15 @@ function LightTransportEmployeesInner() {
       delete body.dutySupervisorName;
       body.dutySupervisorUser = dutySupervisorIdOf(editing) || '';
       if (editing._id) await updateLTEmployee(editing._id, body);
-      else await createLTEmployee(body);
+      else {
+        const ready = docs.filter((x) => x.file);
+        if (ready.some((x) => !x.title.trim())) { notify(t('اكتب اسمَ كلّ مستندٍ مرفق', 'Name every attached document'), 'error'); setSaving(false); return; }
+        body.files = await Promise.all(ready.map(async (x) => ({ title: x.title.trim(), fileName: x.file!.name, dataUrl: await readAsDataUrl(x.file!) })));
+        const r: any = await createLTEmployee(body);
+        if (r?.hrCreated) notify(t('أُنشئ ملفُّه في الموارد البشريّة — وصلهم إشعارٌ لإكمال بياناته.', 'His HR file was created — HR has been notified to complete it.'), 'success');
+      }
       notify(t('حُفظ', 'Saved'), 'success');
-      setEditing(null);
+      setEditing(null); setDocs([]);
       load();
     } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
     setSaving(false);
@@ -249,7 +261,7 @@ function LightTransportEmployeesInner() {
         title={t('موظفون النقل الخفيف', 'Light-transport employees')}
         subtitle={t(`${serverTotal} موظفًا — المندوبون والإداريون معًا`, `${serverTotal} employees — reps and admin together`)}>
         <ExportMenu fileName="light-transport" lang={ar ? 'ar' : 'en'} variant="subtle" label={t('تصدير Excel', 'Export')} options={exportOptions} />
-        {canEdit && <PrimaryButton onClick={() => setEditing({})}><Plus className="w-4 h-4" /> {t('إضافة موظف', 'Add employee')}</PrimaryButton>}
+        {canAdd && <PrimaryButton onClick={() => { setDocs([]); setEditing({}); }}><Plus className="w-4 h-4" /> {t('إضافة موظف', 'Add employee')}</PrimaryButton>}
       </PageHeader>
 
       {/* ── الكاردات تُفلتِر، لا تُخبِر وحدَها ──────────────────────────────────
@@ -642,6 +654,13 @@ function LightTransportEmployeesInner() {
                 aria-label={t('تاريخ التعيين', 'Hire date')}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm [color-scheme:light]" />
             </Field>
+            {!editing._id && (
+              <Field label={t('تاريخ الميلاد', 'Date of birth')}>
+                <input type="date" value={String((editing as any).dateOfBirth || '')} onChange={(ev) => setEditing((p) => ({ ...p!, dateOfBirth: ev.target.value } as any))}
+                  aria-label={t('تاريخ الميلاد', 'Date of birth')}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm [color-scheme:light]" />
+              </Field>
+            )}
             <Field label={t('السكن', 'Housing')}>
               <Select value={(editing.housing as any)?._id || (editing as any).housing || ''}
                 onChange={(ev: any) => setEditing((p) => ({ ...p!, housing: ev.target.value } as any))}>
@@ -657,6 +676,34 @@ function LightTransportEmployeesInner() {
                 <TextInput value={editing.notesAr || ''} onChange={(ev) => setEditing((p) => ({ ...p!, notesAr: ev.target.value }))} />
               </Field>
             </div>
+            {!editing._id && (
+              <div className="md:col-span-2 rounded-xl border border-slate-200 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[13px] font-bold text-slate-800">{t('مستندات الموظف', 'Employee documents')}</p>
+                  <button type="button" onClick={() => setDocs((p) => [...p, { id: Date.now() + Math.random(), title: '', file: null }])}
+                    className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1.5 text-[12.5px] font-semibold text-slate-700 hover:bg-slate-200">
+                    <Plus className="w-3.5 h-3.5" /> {t('إضافة مستند', 'Add document')}
+                  </button>
+                </div>
+                <p className="mt-0.5 text-[11.5px] text-slate-500">{t('تُحفَظ في ملفّه بالموارد البشريّة (صورة الإقامة، الجواز، العقد…). اختياريّة، وقد تتعدّد.', 'Saved to his HR file (iqama, passport, contract…). Optional; add as many as needed.')}</p>
+                {docs.map((x) => (
+                  <div key={x.id} className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-center">
+                    <TextInput value={x.title} placeholder={t('اسم المستند — مثل: صورة الإقامة', 'Document name — e.g. Iqama copy')}
+                      onChange={(ev) => setDocs((p) => p.map((y) => (y.id === x.id ? { ...y, title: ev.target.value } : y)))} />
+                    <input type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                      onChange={(ev) => { const file = ev.target.files?.[0] || null; setDocs((p) => p.map((y) => (y.id === x.id ? { ...y, file, title: y.title || (file ? file.name.replace(/\.[^.]+$/, '') : '') } : y))); }}
+                      className="text-[12.5px] text-slate-600 file:me-2 file:rounded-md file:border-0 file:bg-slate-100 file:px-2.5 file:py-1.5 file:text-[12px] file:font-semibold" />
+                    <button type="button" onClick={() => setDocs((p) => p.filter((y) => y.id !== x.id))} title={t('إزالة', 'Remove')} className="justify-self-end p-1 text-slate-300 hover:text-red-600"><X className="w-4 h-4" /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!editing._id && (
+              <p className="md:col-span-2 text-[11.5px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                {t('عند الحفظ يُنشأ ملفُّه في الموارد البشريّة (قسم B2C) إن لم يكن له ملفّ، وتُكمل الموارد البشريّة بقيّةَ بياناته.',
+                   'On save his HR file is created (department B2C) if he has none; HR completes the rest.')}
+              </p>
+            )}
             {/* المركبةُ تُسنَد بأمر تشغيل لا من هنا: الإسنادُ فعلٌ له تاريخٌ
                 وتفويضٌ يُنقَل، لا خانةٌ تُكتب. */}
             <p className="md:col-span-2 text-[11.5px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
@@ -673,6 +720,12 @@ function LightTransportEmployeesInner() {
     </div>
   );
 }
+
+/** مستندٌ جديدٌ في استمارة الإضافة: اسمُه وملفُّه. */
+type NewDoc = { id: number; title: string; file: File | null };
+const readAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+  const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(new Error('read')); r.readAsDataURL(file);
+});
 
 /**
  * خليّةُ تاريخِ وثيقة: التاريخُ وحالتُه.

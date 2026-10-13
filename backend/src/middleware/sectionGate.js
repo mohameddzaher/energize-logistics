@@ -11,7 +11,7 @@
 //                              a role that isn't in a route's legacy list.
 // Resolver errors fail OPEN (fall through to legacy authorize) to avoid locking
 // users out on a transient DB issue.
-const { getOverride } = require('../utils/permissions');
+const { getOverride, liftFinance } = require('../utils/permissions');
 const { getSection, defaultAccess } = require('../config/sections');
 const { FULL_ACCESS_ROLES } = require('../config/constants');
 
@@ -56,7 +56,7 @@ const sectionGate = (sectionKey) => {
       if (exempt && exempt(req)) {
         try {
           const g = await getOverride(req.user.role, sectionKey);
-          const a = g == null ? defaultAccess(req.user.role, sectionKey) : g;
+          const a = g == null ? liftFinance(req.user.role, defaultAccess(req.user.role, sectionKey)) : g;
           if (a === 'view' || a === 'edit') req.sectionAccess = a;
         } catch (e) { /* الاستثناءُ يمضي بلا ختم */ }
         return next();
@@ -68,7 +68,7 @@ const sectionGate = (sectionKey) => {
         // «مدير القسم وموظفوه ليهم قسمهم» (config/roles.js) تشتغل فعلاً على الـ
         // API، مش تفضل تزيّن الشريط الجانبي بس: من غيره كان الدور الجديد يفتح
         // القسم في القائمة وياخد 403 من كل endpoint جواه.
-        const fallback = defaultAccess(req.user.role, sectionKey);
+        const fallback = liftFinance(req.user.role, defaultAccess(req.user.role, sectionKey));
         // **زيادة بس، مش تضييق**: لو الافتراضي 'none' ما بنرفضش هنا — سايبين
         // قوائم authorize القديمة تقرّر زي ما كانت. كده مفيش حد بيخسر وصول
         // كان عنده.

@@ -19,6 +19,7 @@ const roleLabels = {
   'client': ('عميل', 'Client'),
   'procurement_staff': ('مشتريات الورشة', 'Purchasing'),
   'b2c_manager': ('رئيس B2C', 'B2C Head'),
+  'b2c_deputy': ('نائب مدير قطاع الأفراد', 'B2C Deputy Manager'),
   'b2c_project_lead': ('مدير مشروع B2C', 'B2C PM'),
   'b2c_rep_supervisor': ('مشرف المناديب التشغيلي', 'Ops Rep Supervisor'),
   'b2c_inspection_supervisor': ('مشرف المناديب التفقدي', 'Inspection Supervisor'),

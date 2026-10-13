@@ -75,10 +75,22 @@ const getOverrides = async (role) => (await getSaved(role)).overrides;
 
 // Gate use: the explicit override for one section, or null when the role has no
 // saved override for it (→ caller falls through to legacy authorize).
+/**
+ * ── ما فُتح لأهل المال فُتح كاملًا ──────────────────────────────────────────
+ * المحاسبُ ومديرُ الحسابات والمديرُ الماليّ: القسمُ الذي يُفتَح لأحدهم — ولو
+ * «عرضًا» — يكتب فيه كما يكتب مديرُ النظام. هم من يُسأل عن الرقم إن اختلف، ومن
+ * لا يملك تصحيحَه لا يصحّ أن يُسأل عنه (راجع config/financeAuthority).
+ *
+ * وهو رفعٌ لما مُنح لا منحٌ جديد: «لا شيء» تبقى لا شيء، فما لم يُفتَح لهم لا
+ * يُفتَح بهذا. ولا يجعلهم مديري نظام: المستخدمون والصلاحيّاتُ بحارسٍ `strict`.
+ */
+const liftFinance = (role, access) =>
+  (access === 'view' && require('../config/financeAuthority').isFinanceFull(role) ? 'edit' : access);
+
 const getOverride = async (role, sectionKey) => {
   if (FULL_ACCESS_ROLES.includes(role)) return 'edit';
   const overrides = await getOverrides(role);
-  if (Object.prototype.hasOwnProperty.call(overrides, sectionKey)) return overrides[sectionKey];
+  if (Object.prototype.hasOwnProperty.call(overrides, sectionKey)) return liftFinance(role, overrides[sectionKey]);
   // ── والدورُ المصنوعُ لا يرث ────────────────────────────────────────────────
   // الدورُ المكتوبُ في الشيفرة له قسمُه افتراضيًّا وقوائمُ `authorize` تعرفه،
   // فسكوتُ المصفوفة عنه يعني «كما كان». والمصنوعُ لا ماضيَ له: سكوتُها عنه
@@ -98,9 +110,9 @@ const getOverride = async (role, sectionKey) => {
 const resolveSections = (role, overrides, custom) => {
   const out = {};
   for (const k of SECTION_KEYS) {
-    out[k] = Object.prototype.hasOwnProperty.call(overrides || {}, k)
+    out[k] = liftFinance(role, Object.prototype.hasOwnProperty.call(overrides || {}, k)
       ? overrides[k]
-      : (custom ? 'none' : defaultAccess(role, k));
+      : (custom ? 'none' : defaultAccess(role, k)));
   }
   return out;
 };
@@ -237,6 +249,7 @@ const hasSuperAdminPowers = async (role) => {
 };
 
 module.exports = {
+  liftFinance,
   invalidate, getOverride, effectivePermissions, effectivePages, homePageFor,
   sectionForPath, getOverrides, isCustomRole, inheritsNothing, customRoleKeys, hasSuperAdminPowers,
   resolveSections, pageFollowsSection, explicitlyGrantedPages, explicitlyGrantedSet,

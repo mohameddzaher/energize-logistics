@@ -30,7 +30,7 @@ const vehicleList = (type, nameAr, nameEn, seed) => ({
 });
 
 
-const B2C_LOOKUP_ROLES = ['b2c_manager', 'b2c_project_lead', 'it_manager'];
+const B2C_LOOKUP_ROLES = ['b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager'];
 /**
  * قائمةٌ من قوائم النقل الخفيف. تُخزَّن بالاسم العربيّ لا بالمفتاح: الحقولُ
  * تحمل النصَّ العربيَّ منذ الاستيراد وتقرؤه الفلاتر والتصديرات، والمقصودُ حصرُ
@@ -682,7 +682,7 @@ const REGISTRY = [
     module: 'b2c',
     nameEn: 'Rider Vehicle Condition',
     nameAr: 'حالة مركبة المندوب',
-    roles: ['b2c_manager', 'b2c_project_lead'],
+    roles: ['b2c_manager', 'b2c_deputy', 'b2c_project_lead'],
     storeLabel: true,
     seed: [
       { key: 'good', nameAr: 'سليمة', nameEn: 'Good', color: '#16a34a' },
@@ -705,7 +705,7 @@ const REGISTRY = [
     ]],
   ].map(([type, nameAr, nameEn, seed]) => ({
     type, module: 'ls2', nameAr, nameEn,
-    roles: ['location_manager', 'location_staff', 'operations_manager', 'it_manager', 'it_specialist', 'vehicles_manager', 'procurement_staff', 'b2c_manager', 'b2c_project_lead'],
+    roles: ['location_manager', 'location_staff', 'operations_manager', 'it_manager', 'it_specialist', 'vehicles_manager', 'procurement_staff', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'],
     storeLabel: true, seed,
   })),
 ];

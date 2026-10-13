@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../config.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/file_upload.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -16,7 +19,10 @@ import '../ui/widgets.dart';
 /// ما يُسمَح به ولا تعيد كتابتَه. مطابقةٌ لشاشة الموقع
 /// `/system/b2c/light-transport/custody`.
 
-const _editRoles = {'super_admin', 'admin', 'b2c_manager', 'b2c_project_lead', 'it_manager', 'cfo', 'accounting_manager', 'accountant'};
+// يطابق حارسَ المسار في الخادم (`CUSTODY_ROLES` في ltCustodyController): مديرُ
+// القطاع ونائبُه ومديرُ النظام وأهلُ المال. العهدةُ مالٌ لا تُفتَح بمنح القسم.
+// وتعديلُ قيدٍ مسجَّلٍ وحذفُه يقرّرهما الخادم (`canEdit` / `canDelete` في الجواب).
+const _editRoles = {'super_admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'};
 
 const _accounts = [
   ('cash', 'الكاش', 'Cash', Icons.payments_outlined),
@@ -37,6 +43,16 @@ String _money(dynamic v) {
 }
 String _date(dynamic v) { final s = (v ?? '').toString(); return s.length >= 10 ? s.substring(0, 10).split('-').reversed.join('/') : '—'; }
 String _ymd(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+List<Map<String, dynamic>> _attachments(Map? e) =>
+    [for (final a in (e?['attachments'] as List? ?? const [])) Map<String, dynamic>.from(a as Map)];
+
+/// الملفُّ يُقدَّم على `/api/uploads/...` من الخادم نفسِه، فيُفتح بتطبيقٍ خارجيّ.
+void _openFile(dynamic fileUrl) {
+  final u = (fileUrl ?? '').toString();
+  if (u.isEmpty) return;
+  launchUrl(Uri.parse(u.startsWith('http') ? u : '${AppConfig.apiBase}$u'), mode: LaunchMode.externalApplication);
+}
 
 class LtCustodyScreen extends StatefulWidget {
   const LtCustodyScreen({super.key});
@@ -89,13 +105,11 @@ class _LtCustodyScreenState extends State<LtCustodyScreen> {
     }
   }
 
-  bool get _canEdit {
-    final auth = context.read<AuthProvider>();
-    return _editRoles.contains(auth.role) || auth.canEditSection('B2C');
-  }
+  bool get _canCreate => _editRoles.contains(context.read<AuthProvider>().role);
 
   String _party(Map e) {
     if (e['source'] == 'opening') return _w('opening');
+    if (e['source'] == 'rep') return '${tr('من المندوب', 'From rep')}: ${e['repName'] ?? ''}';
     if (e['direction'] == 'in') return '${tr('من', 'From')} ${_w(e['source'])}';
     if (e['target'] == 'rep') return '${tr('مندوب', 'Rep')}: ${e['repName'] ?? ''}';
     if (e['target'] == 'company') return tr('الشركة', 'Company');
@@ -122,14 +136,18 @@ class _LtCustodyScreenState extends State<LtCustodyScreen> {
     catch (err) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err.toString()))); }
   }
 
-  Future<void> _open(String direction) async {
+  // وبـ`entry` يصير النموذجُ تعديلًا لقيدٍ مسجَّل — على حسابِ القيد لا الحسابِ المعروض.
+  Future<void> _open(String direction, {Map<String, dynamic>? entry}) async {
     final rules = Map<String, dynamic>.from(_d!['rules'] as Map);
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (c) => _EntrySheet(account: _account, direction: direction, rules: rules, today: (_d!['today'] ?? _ymd(DateTime.now())).toString()),
+      builder: (c) => _EntrySheet(
+        account: (entry?['account'] ?? _account).toString(), direction: direction, rules: rules,
+        today: (_d!['today'] ?? _ymd(DateTime.now())).toString(), entry: entry,
+      ),
     );
     if (saved == true) _load();
   }
@@ -143,23 +161,24 @@ class _LtCustodyScreenState extends State<LtCustodyScreen> {
   @override
   Widget build(BuildContext context) {
     final d = _d;
-    final canEdit = _canEdit;
+    final canCreate = _canCreate;
     return AppScaffold(
       title: Text(tr('عهدة النقل الخفيف', 'Light Transport Custody')),
       body: d == null
           ? (_error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _error = null); _load(); })
               : ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 90), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()]))
-          : RefreshIndicator(onRefresh: _load, child: _body(d, canEdit)),
+          : RefreshIndicator(onRefresh: _load, child: _body(d, canCreate)),
     );
   }
 
-  Widget _body(Map<String, dynamic> d, bool canEdit) {
+  Widget _body(Map<String, dynamic> d, bool canCreate) {
     final balances = Map<String, dynamic>.from(d['balances'] as Map);
     final rules = Map<String, dynamic>.from(d['rules'] as Map);
     final entries = List<Map<String, dynamic>>.from((d['entries'] as List).map((e) => Map<String, dynamic>.from(e as Map)));
     final shown = Map<String, dynamic>.from(d['shown'] as Map);
     final canDelete = d['canDelete'] == true;
+    final canEdit = d['canEdit'] == true;
     final sources = List.from((rules['inSources'] as Map)[_account] ?? const []);
     final toCash = List.from(rules['toCash'] ?? const []).contains(_account);
     return ListView(padding: const EdgeInsets.all(14), children: [
@@ -175,7 +194,7 @@ class _LtCustodyScreenState extends State<LtCustodyScreen> {
         '${tr('واردُه من', 'In from')}: ${sources.map(_w).join(tr('، ', ', '))}${toCash ? tr(' · ويصرف إلى الكاش', ' · can pay out to cash') : ''}',
         style: const TextStyle(fontSize: 11, color: T.inkFaint),
       ),
-      if (canEdit) ...[
+      if (canCreate) ...[
         const SizedBox(height: 10),
         Row(children: [
           Expanded(child: FilledButton.icon(
@@ -220,10 +239,11 @@ class _LtCustodyScreenState extends State<LtCustodyScreen> {
         final color = isIn ? T.success : T.danger;
         final sub = [
           _date(e['date']),
-          if (e['target'] == 'rep') ...[e['repIdNumber'], e['repNationality'], e['repProject']],
+          if (e['target'] == 'rep' || e['source'] == 'rep') ...[e['repIdNumber'], e['repNationality'], e['repProject']],
           if (e['transferId'] != null) tr('تحويل', 'transfer'),
           e['createdByName'],
         ].where((x) => x != null && x.toString().isNotEmpty).join(' · ');
+        final files = _attachments(e);
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: AppCard(
@@ -239,9 +259,20 @@ class _LtCustodyScreenState extends State<LtCustodyScreen> {
                 Text(_party(e), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
                 if ((e['detail'] ?? '').toString().isNotEmpty) Text(e['detail'].toString(), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
                 Text(sub, style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                if (files.isNotEmpty) Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Wrap(spacing: 4, runSpacing: 4, children: [
+                    for (final a in files) _FileChip(label: (a['title'] ?? a['fileName'] ?? '').toString(), onTap: () => _openFile(a['fileUrl'])),
+                  ]),
+                ),
               ])),
               Text('${isIn ? '+' : '−'}${_money(e['amount'])}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5, color: color)),
-              if (canDelete) IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.delete_outline, size: 18, color: T.inkFaint), onPressed: () => _delete(e)),
+              if (canEdit && e['source'] != 'opening') IconButton(
+                visualDensity: VisualDensity.compact, tooltip: tr('تعديل القيد', 'Edit entry'),
+                icon: const Icon(Icons.edit_outlined, size: 18, color: T.inkFaint),
+                onPressed: () => _open(isIn ? 'in' : 'out', entry: e),
+              ),
+              if (canDelete) IconButton(visualDensity: VisualDensity.compact, tooltip: tr('حذف القيد', 'Delete entry'), icon: const Icon(Icons.delete_outline, size: 18, color: T.inkFaint), onPressed: () => _delete(e)),
             ]),
           ),
         );
@@ -277,31 +308,87 @@ class _LtCustodyScreenState extends State<LtCustodyScreen> {
   }
 }
 
+/// مرفقٌ يُضغَط فيُفتَح — وبـ`onRemove` تظهر علامةُ الإزالة (في النموذج وحدَه).
+class _FileChip extends StatelessWidget {
+  final String label;
+  final VoidCallback? onTap;
+  final VoidCallback? onRemove;
+  final Color color;
+  const _FileChip({required this.label, this.onTap, this.onRemove, this.color = T.navy});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.attach_file, size: 12, color: color),
+          const SizedBox(width: 3),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 150),
+            child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+          ),
+          if (onRemove != null) ...[
+            const SizedBox(width: 4),
+            InkWell(onTap: onRemove, child: const Icon(Icons.close, size: 14, color: T.inkFaint)),
+          ],
+        ]),
+      ),
+    );
+  }
+}
+
 /// نموذجُ القيد: واردٌ (من أين) أو صادرٌ (إلى مَن) — بأقلّ ما يُكتب.
+///
+/// وبـ`entry` يصير تعديلًا لقيدٍ مسجَّل: يُصحَّح المبلغُ واليومُ والبيانُ والمندوبُ
+/// والمرفقات. ونوعُ القيد لا يتغيّر — ما كُتب في غير موضعه يُحذَف ويُكتب من جديد.
 class _EntrySheet extends StatefulWidget {
   final String account, direction, today;
   final Map<String, dynamic> rules;
-  const _EntrySheet({required this.account, required this.direction, required this.rules, required this.today});
+  final Map<String, dynamic>? entry;
+  const _EntrySheet({required this.account, required this.direction, required this.rules, required this.today, this.entry});
   @override
   State<_EntrySheet> createState() => _EntrySheetState();
 }
 
 class _EntrySheetState extends State<_EntrySheet> {
-  final _amount = TextEditingController();
-  final _id = TextEditingController();
-  final _detail = TextEditingController();
-  late String _date = widget.today;
+  late final _amount = TextEditingController(text: widget.entry == null ? '' : _num(widget.entry!['amount']).toString());
+  late final _id = TextEditingController(text: (widget.entry?['repIdNumber'] ?? '').toString());
+  late final _detail = TextEditingController(text: (widget.entry?['detail'] ?? '').toString());
+  late String _date = _entryDate ?? widget.today;
   late final List<String> _sources = List<String>.from((widget.rules['inSources'] as Map)[widget.account] ?? const []);
   late final List<String> _targets = ['rep', 'company', if (List.from(widget.rules['toCash'] ?? const []).contains(widget.account)) 'cash'];
-  late String _source = _sources.length == 1 ? _sources.first : '';
-  String _target = 'rep';
+  late String _source = (widget.entry?['source'] ?? (_sources.length == 1 ? _sources.first : '')).toString();
+  late String _target = (widget.entry?['target'] ?? 'rep').toString();
   Map<String, dynamic>? _rep;
   String _repState = '';
+  final List<PickedFile> _files = [];
+  final Set<String> _removed = {};
   bool _saving = false;
   Timer? _timer;
   int _seq = 0;
 
   bool get _isIn => widget.direction == 'in';
+  bool get _editing => widget.entry != null;
+  // المندوبُ يُسأل عنه في الصادر إلى مندوب، وفي واردِ الكاش من مندوب.
+  bool get _needsRep => _isIn ? _source == 'rep' : _target == 'rep';
+  String? get _entryDate {
+    final s = (widget.entry?['date'] ?? '').toString();
+    return s.length >= 10 ? s.substring(0, 10) : null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // قيدُ مندوبٍ يُفتَح للتعديل: تُجلَب بياناتُه برقمه المسجَّل كما لو كُتب الآن.
+    if (_editing && _needsRep && _id.text.trim().length >= 8) {
+      _repState = 'loading';
+      _fetchRep(_id.text.trim(), ++_seq, Duration.zero);
+    }
+  }
 
   @override
   void dispose() { _timer?.cancel(); _amount.dispose(); _id.dispose(); _detail.dispose(); super.dispose(); }
@@ -313,7 +400,11 @@ class _EntrySheetState extends State<_EntrySheet> {
     final mine = ++_seq;
     setState(() { _rep = null; _repState = id.length < 8 ? '' : 'loading'; });
     if (id.length < 8) return;
-    _timer = Timer(const Duration(milliseconds: 350), () async {
+    _fetchRep(id, mine, const Duration(milliseconds: 350));
+  }
+
+  void _fetchRep(String id, int mine, Duration wait) {
+    _timer = Timer(wait, () async {
       try {
         final r = await Api.instance.get('/api/light-transport/custody/rep?id=${Uri.encodeQueryComponent(id)}');
         if (mounted && mine == _seq) setState(() { _rep = Map<String, dynamic>.from(r['rep'] as Map); _repState = ''; });
@@ -323,23 +414,45 @@ class _EntrySheetState extends State<_EntrySheet> {
     });
   }
 
+  // تغييرُ النوع يُسقط المندوبَ المعروض: رقمُه يُعاد البحثُ به إن بقي مطلوبًا.
+  void _retype(VoidCallback change) {
+    setState(change);
+    if (_needsRep && _rep == null && _id.text.trim().isNotEmpty) _lookup(_id.text);
+  }
+
   void _say(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+
+  Future<void> _addFile() async {
+    final f = await pickFileAsDataUrl();
+    if (f != null && mounted) setState(() => _files.add(f));
+  }
 
   Future<void> _save() async {
     final amount = num.tryParse(_amount.text.trim()) ?? 0;
     final detail = _detail.text.trim();
     if (amount <= 0) return _say(tr('اكتب المبلغ', 'Enter the amount'));
     if (_isIn && _source.isEmpty) return _say(tr('اختر مصدرَ الوارد', 'Pick where it came from'));
-    if (!_isIn && _target == 'rep' && _rep == null) return _say(tr('اكتب رقمَ إقامة المندوب', 'Enter the rep’s ID number'));
+    if (_needsRep && _rep == null) return _say(tr('اكتب رقمَ إقامة المندوب', 'Enter the rep’s ID number'));
     if (!_isIn && _target == 'company' && detail.isEmpty) return _say(tr('اكتب البيان: ما الصرف؟', 'Enter what it was spent on'));
     setState(() => _saving = true);
+    // الاسمُ بلا امتداده عنوانًا — كما في الموقع.
+    final sent = [
+      for (final f in _files) {'fileName': f.fileName, 'title': f.fileName.replaceFirst(RegExp(r'\.[^.]+$'), ''), 'dataUrl': f.dataUrl},
+    ];
     try {
-      await Api.instance.post('/api/light-transport/custody', {
-        'account': widget.account, 'direction': widget.direction, 'amount': amount, 'date': _date, 'detail': detail,
-        if (_isIn) 'source': _source,
-        if (!_isIn) 'target': _target,
-        if (!_isIn && _target == 'rep') 'repIdNumber': _rep!['idNumber'],
-      });
+      if (_editing) {
+        await Api.instance.put('/api/light-transport/custody/${widget.entry!['_id']}', {
+          'amount': amount, 'date': _date, 'detail': detail, 'files': sent, 'removeAttachments': _removed.toList(),
+          if (_needsRep) 'repIdNumber': _rep!['idNumber'],
+        });
+      } else {
+        await Api.instance.post('/api/light-transport/custody', {
+          'account': widget.account, 'direction': widget.direction, 'amount': amount, 'date': _date, 'detail': detail, 'files': sent,
+          if (_isIn) 'source': _source,
+          if (!_isIn) 'target': _target,
+          if (_needsRep) 'repIdNumber': _rep!['idNumber'],
+        });
+      }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) { setState(() => _saving = false); _say(e.toString()); }
@@ -357,15 +470,21 @@ class _EntrySheetState extends State<_EntrySheet> {
     final acc = _w(widget.account);
     final transfer = _isIn ? (_source == 'card' || _source == 'workshop') : _target == 'cash';
     final needDetail = !_isIn && _target == 'company';
+    final kept = _attachments(widget.entry).where((a) => !_removed.contains(a['_id'].toString())).toList();
+    // المرفقاتُ للصادر (فاتورة، إيصال، صورة تحويل) — ولواردِ المندوب كذلك.
+    final canAttach = !_isIn || _source == 'rep' || _attachments(widget.entry).isNotEmpty;
     return SafeArea(
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).viewInsets.bottom + 16),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(_isIn ? tr('وارد إلى $acc', 'In to $acc') : tr('صادر من $acc', 'Out from $acc'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          Text(
+            _editing ? tr('تعديل قيد — $acc', 'Edit entry — $acc') : _isIn ? tr('وارد إلى $acc', 'In to $acc') : tr('صادر من $acc', 'Out from $acc'),
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+          ),
           const SizedBox(height: 12),
           Row(children: [
             Expanded(child: TextField(
-              controller: _amount, autofocus: true,
+              controller: _amount, autofocus: !_editing,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(labelText: tr('المبلغ (ر.س) *', 'Amount (SAR) *')),
             )),
@@ -377,16 +496,22 @@ class _EntrySheetState extends State<_EntrySheet> {
             Text(tr('الوارد من *', 'In from *'), style: const TextStyle(fontSize: 12, color: T.inkSoft, fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
             Wrap(spacing: 6, children: [
-              for (final s in _sources) ChoiceChip(label: Text(_w(s)), selected: _source == s, onSelected: (_) => setState(() => _source = s)),
+              for (final s in _sources)
+                ChoiceChip(label: Text(_w(s)), selected: _source == s, onSelected: _editing ? null : (_) => _retype(() => _source = s)),
             ]),
           ] else ...[
             Text(tr('المتحمِّل *', 'Bearer *'), style: const TextStyle(fontSize: 12, color: T.inkSoft, fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
             Wrap(spacing: 6, children: [
               for (final k in _targets)
-                ChoiceChip(label: Text(k == 'cash' ? tr('إلى الكاش', 'To cash') : _w(k)), selected: _target == k, onSelected: (_) => setState(() => _target = k)),
+                ChoiceChip(label: Text(k == 'cash' ? tr('إلى الكاش', 'To cash') : _w(k)), selected: _target == k, onSelected: _editing ? null : (_) => _retype(() => _target = k)),
             ]),
-            if (_target == 'rep') ...[
+          ],
+          if (_editing) Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(tr('نوعُ القيد لا يُعدَّل — ما كُتب في غير موضعه يُحذَف ويُكتب من جديد.', 'The entry type cannot change — delete and re-enter it instead.'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+          ),
+          if (_needsRep) ...[
               const SizedBox(height: 10),
               TextField(
                 controller: _id, onChanged: _lookup, keyboardType: TextInputType.number, textDirection: TextDirection.ltr,
@@ -411,7 +536,6 @@ class _EntrySheetState extends State<_EntrySheet> {
                   if (_rep!['status'] == 'terminated') Text(tr('تنبيه: منتهي الخدمة في الموارد البشريّة.', 'Note: service ended in HR.'), style: const TextStyle(fontSize: 11.5, color: T.danger, fontWeight: FontWeight.w700)),
                 ]),
               ),
-            ],
           ],
           if (transfer) Padding(
             padding: const EdgeInsets.only(top: 10),
@@ -429,8 +553,24 @@ class _EntrySheetState extends State<_EntrySheet> {
               hintText: needDetail ? tr('مثال: فاتورة كهرباء السكن · صرف مياه · صيانة مكيّف', 'e.g. electricity bill · water · AC repair') : null,
             ),
           ),
+          if (canAttach) ...[
+            const SizedBox(height: 12),
+            Text(tr('مرفقات (اختياري) — فاتورة، إيصال، صورة تحويل', 'Attachments (optional) — invoice, receipt, transfer slip'), style: const TextStyle(fontSize: 12, color: T.inkSoft, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              for (final a in kept)
+                _FileChip(
+                  label: (a['title'] ?? a['fileName'] ?? '').toString(),
+                  onTap: () => _openFile(a['fileUrl']),
+                  onRemove: () => setState(() => _removed.add(a['_id'].toString())),
+                ),
+              for (final f in _files)
+                _FileChip(label: f.fileName, color: T.success, onRemove: () => setState(() => _files.remove(f))),
+              ActionChip(avatar: const Icon(Icons.add, size: 16), label: Text(tr('إرفاق ملف', 'Attach file')), onPressed: _saving ? null : _addFile),
+            ]),
+          ],
           const SizedBox(height: 14),
-          SizedBox(width: double.infinity, child: FilledButton(onPressed: _saving ? null : _save, child: Text(tr('تسجيل', 'Record')))),
+          SizedBox(width: double.infinity, child: FilledButton(onPressed: _saving ? null : _save, child: Text(_editing ? tr('حفظ التعديل', 'Save changes') : tr('تسجيل', 'Record')))),
         ]),
       ),
     );

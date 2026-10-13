@@ -39,7 +39,7 @@ const { SUPERVISOR_ROLES } = require('../utils/b2cSupervisors');
  * والمراجعةُ لمن يملكها).
  */
 const FULL_VIEW_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist',
-  'b2c_manager', 'b2c_project_lead'];
+  'b2c_manager', 'b2c_deputy', 'b2c_project_lead'];
 const canSeeAll = (u) => FULL_VIEW_ROLES.includes(u?.role || '');
 
 /** مفتاحُ اليوم بتوقيت الرياض — لا بتوقيت الخادم ولا بتوقيت متصفّح المستخدم. */
@@ -392,7 +392,7 @@ exports.submit = async (req, res) => {
 
     // ما لا يُخرَج يُعلَم به فورًا: مركبةٌ بها تلفٌ أو مندوبٌ مُنع من العمل.
     if (doc.hasDamage || outcome === 'blocked') {
-      const heads = await User.find({ role: { $in: ['b2c_manager', 'super_admin'] }, isActive: true })
+      const heads = await User.find({ role: { $in: ['b2c_manager', 'b2c_deputy', 'super_admin'] }, isActive: true })
         .select('_id').lean();
       await Promise.all(heads.map((h) => createNotification({
         recipient: h._id, type: 'system_alert',
@@ -762,7 +762,7 @@ exports.supervisors = async (req, res) => {
       (await User.find({ _id: { $in: missing } }).select('firstName lastName role').lean())
         .forEach((u) => byId.set(String(u._id), u));
     }
-    const ORDER = { b2c_rep_supervisor: 0, b2c_inspection_supervisor: 1, b2c_project_lead: 2, b2c_manager: 3 };
+    const ORDER = { b2c_rep_supervisor: 0, b2c_inspection_supervisor: 1, b2c_project_lead: 2, b2c_deputy: 3, b2c_manager: 4 };
     const supervisors = [...byId.values()].map((u) => ({
       _id: u._id,
       name: [u.firstName, u.lastName].filter(Boolean).join(' ') || '—',

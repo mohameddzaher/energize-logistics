@@ -474,7 +474,7 @@ async function light(p, user) {
   });
   // والرصيدُ الافتتاحيّ ليس واردَ الفترة: هو ما بدأ به الدفتر.
   const real = entries.filter((e) => !e.transferId && e.source !== 'opening');
-  const partyOf = (e) => (e.source === 'opening' ? 'رصيد افتتاحي' : e.direction === 'in' ? `من ${WORD[e.source] || ''}`
+  const partyOf = (e) => (e.source === 'opening' ? 'رصيد افتتاحي' : e.source === 'rep' ? `من المندوب ${e.repName || ''}` : e.direction === 'in' ? `من ${WORD[e.source] || ''}`
     : e.target === 'rep' ? `مندوب: ${e.repName || ''}` : e.target === 'company' ? 'الشركة' : `إلى ${WORD[e.target] || ''}`);
   /**
    * ── والمشروعُ يُقرأ من سجلّ النقل الخفيف ──────────────────────────────────

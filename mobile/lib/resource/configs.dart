@@ -9,6 +9,7 @@ import '../screens/fleet_customer_profile.dart';
 import '../screens/customer_registry_profile.dart';
 import '../screens/bd_opportunity_detail.dart';
 import '../screens/marketing_campaign_detail.dart';
+import '../screens/light_transport_add.dart';
 import '../screens/light_transport_profile.dart';
 import 'resource.dart';
 
@@ -1669,7 +1670,14 @@ final customsContractsCfg = ResourceConfig(
 // والإنسانُ في الموارد البشريّة والمركبةُ في سجلّ المركبات — لا يُنسَخ منهما شيء
 // (راجع backend/models/LightTransport). فالحالةُ المعروضةُ تأتي مشتقّةً من
 // الخادم في `workStatusShown`، ولا تُحسَب هنا مرّةً ثانية.
-final lightTransportCfg = ResourceConfig(
+//
+// ── والإضافةُ تُنشئ ملفًّا في الموارد البشريّة ───────────────────────────────
+// فهي لمدير القطاع ونائبه ومدير النظام وأهل المال (`canAdd` — يطابق حارسَ
+// المسار `authorize.strict` في routes/lightTransport)، وبنموذجها الخاصّ: معها
+// مستنداتُ الموظّف، والنموذجُ العامّ لا يحمل ملفّات.
+ResourceConfig lightTransportCfg({required bool canAdd}) => ResourceConfig(
+  canCreate: canAdd,
+  onCreate: showLtAddEmployee,
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(
       builder: (_) => LightTransportProfileScreen(id: (r['_id'] ?? '').toString()))),
   arTitle: 'موظفون النقل الخفيف', enTitle: 'Light-transport Employees',

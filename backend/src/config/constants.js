@@ -116,6 +116,8 @@ module.exports = {
     // مشرفا المناديب يتبعان مديرَ المشروع الذي يوزّع عليهما المناديب، لا مديرَ القطاع.
     h.b2c_rep_supervisor = 'b2c_project_lead';
     h.b2c_inspection_supervisor = 'b2c_project_lead';
+    // ومديرو المشاريع يتبعون نائبَ مدير القطاع إن وُجد (orgChart يصعد إلى المدير إن لم يوجد).
+    h.b2c_project_lead = 'b2c_deputy';
     return h;
   })(),
 

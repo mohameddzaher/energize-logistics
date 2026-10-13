@@ -12,7 +12,7 @@ const authorize = require('../middleware/rbac');
 // authenticate + sectionGate('B2C') مطبَّقان عند التركيب في server.js.
 // أدوارُ القسم أوّلًا، ومن مُنح القسمَ من مصفوفة الصلاحيّات يمرّ بـ`authorize`
 // نفسِها (هي تقرأ `req.sectionAccess`) — راجع middleware/sectionGate.
-const EDIT = ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead', 'it_manager', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
+const EDIT = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
 
 // لوحةُ القسم — نداءٌ واحدٌ يحسب الموظّفين والمركبات والسكن معًا.
 router.get('/overview', c.overview);
@@ -20,7 +20,12 @@ router.get('/overview', c.overview);
 router.get('/supervisors', c.supervisors);
 router.get('/employees', c.listEmployees);
 router.get('/employees/:id', c.getEmployee);
-router.post('/employees', authorize(...EDIT), c.createEmployee);
+// إضافةُ موظّفٍ تُنشئ ملفَّه في الموارد البشريّة — فهي لمدير القطاع ونائبه ومدير
+// النظام (وأهل المال)، لا لكلّ مَن مُنح القسم.
+router.post('/employees', authorize.strict('super_admin', 'b2c_manager', 'b2c_deputy', ...require('../config/financeAuthority').FINANCE_FULL_ROLES), c.createEmployee);
+// مركباتُ مشاريع القسم — نافذةٌ على سجلّ المركبات نفسِه (راجع المتحكِّم).
+router.get('/vehicles', c.listVehicles);
+router.put('/vehicles/:id', authorize.strict(...c.LT_VEHICLE_EDIT), c.updateVehicle);
 router.put('/employees/:id', authorize(...EDIT), c.updateEmployee);
 // لا حذفَ لموظّف — يُعطَّل السجلّ ويبقى أثرُه، كقاعدة الموارد البشريّة.
 router.post('/employees/:id/deactivate', authorize(...EDIT), c.deactivateEmployee);
@@ -30,10 +35,14 @@ router.post('/employees/assign-supervisors', authorize(...EDIT), c.assignSupervi
 // ── عهدةُ النقل الخفيف: الكاش وكارت المشتريات والورشة ──────────────────────
 // قيودُ واردٍ وصادر، والتحويلُ بين حسابين قيدان بضغطة — راجع models/LtCustody.
 const custody = require('../controllers/ltCustodyController');
-router.get('/custody', custody.list);
-router.get('/custody/rep', custody.lookupRep);
-router.post('/custody', authorize(...EDIT), custody.create);
-router.delete('/custody/:id', authorize(...EDIT), custody.remove);
+// قائمتُها وحدَها تقرّر (`strict`): منحُ القسم يفتح القسمَ لمديري المشاريع ومشرفيه،
+// والعهدةُ مالٌ لا تُفتَح إلّا لمدير القطاع ونائبه ومدير النظام وأهل المال.
+const CUSTODY = authorize.strict(...custody.CUSTODY_ROLES);
+router.get('/custody', CUSTODY, custody.list);
+router.get('/custody/rep', CUSTODY, custody.lookupRep);
+router.post('/custody', CUSTODY, custody.create);
+router.put('/custody/:id', CUSTODY, custody.update);      // والمتحكِّمُ يحصره في مدير النظام وأهل المال
+router.delete('/custody/:id', CUSTODY, custody.remove);
 
 router.get('/housing', c.listHousing);
 router.post('/housing', authorize(...EDIT), c.saveHousing);

@@ -1160,6 +1160,12 @@
       "en": "Light Transport Custody"
     },
     {
+      "key": "/system/b2c/vehicles",
+      "section": "B2C",
+      "ar": "مركبات النقل الخفيف",
+      "en": "Light Transport Vehicles"
+    },
+    {
       "key": "/system/b2c/hr-requests",
       "section": "B2C",
       "ar": "طلبات الموارد البشرية",

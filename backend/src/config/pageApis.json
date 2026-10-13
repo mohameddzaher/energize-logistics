@@ -1569,6 +1569,13 @@
       ],
       "wildcard": false
     },
+    "/system/b2c/vehicles": {
+      "apis": [
+        "/api/light-transport/vehicles",
+        "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
     "/system/b2c/hr-requests": {
       "apis": [
         "/api/hr/employees-search",

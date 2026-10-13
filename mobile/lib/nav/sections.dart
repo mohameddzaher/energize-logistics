@@ -41,6 +41,7 @@ import '../screens/ls2_dashboard.dart';
 import '../screens/b2c_daily.dart';
 import '../screens/b2c_duty.dart';
 import '../screens/b2c_duty_register.dart';
+import '../screens/b2c_vehicles.dart';
 import '../screens/ops_platform.dart';
 import '../screens/ls2_fleet_assets.dart';
 import '../screens/admin_suite.dart';
@@ -117,6 +118,11 @@ class AppSection {
 
 const _admins = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 
+/// عهدةُ النقل الخفيف ومركباتُه وإضافةُ موظّفيه: لمدير القطاع ونائبه ومدير
+/// النظام وأهل المال — بالدور وحدَه لا بمنح القسم، كحارس الخادم
+/// (`authorize.strict` في routes/lightTransport) وسطورِ القائمة في الموقع.
+const _ltOwners = ['super_admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'];
+
 /// ترتيبُ الأقسام في الشاشة — هو نفسُه في الموقع (SECTION_ORDER في layout.tsx).
 /// سلسلةُ العمل كما تجري: التشغيل، ثمّ الطلبات والمنصّة، ثمّ التحصيل، ثمّ
 /// الأسطول وتتبّعه، ثمّ ما يُسنِد ذلك كلَّه.
@@ -146,6 +152,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     canEdit: customerEditRoles.contains(role) || auth.canEditSection('Shipment Orders'),
     canDelete: customerRemoveRoles.contains(role) || auth.canEditSection('Shipment Orders'),
   );
+  final ltEmployeesCfg = lightTransportCfg(canAdd: _ltOwners.contains(role));
   // الهدفُ يضعه المدير، أو دورٌ من خارج فريق القسم مُنح «تعديلَه» (canSetTargets في الخادم).
   const salesTeam = ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'];
   final canSetTargets = const ['super_admin', 'admin', 'sales_manager'].contains(role)
@@ -540,7 +547,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'B2C', arTitle: 'B2C', enTitle: 'B2C', icon: Icons.storefront_outlined,
       // الباك يخدم داتا B2C لـ super_admin/admin + رؤوس B2C فقط؛ فمنستعرضهاش لـ IT
       // (كانوا بيشوفوا القسم ببيانات صفر) — نطابق النطاق تمامًا.
-      roles: const ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead'],
+      roles: const ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const SectionDashScreen(spec: b2cDashSpec), path: '/system/b2c/dashboard'),
         AppPage('المشاريع', 'Projects', Icons.folder_special_outlined, (c) => ResourceScreen(config: b2cProjectsCfg), path: '/system/b2c/projects'),
@@ -562,14 +569,16 @@ List<AppSection> sectionsFor(AuthProvider auth) {
                 ),
             path: '/system/b2c/light-transport/store'),
         // عهدةُ القسم: الكاش وكارت المشتريات والورشة — حلّت محلَّ «عهد المشاريع».
-        AppPage('عهدة النقل الخفيف', 'Light Transport Custody', Icons.account_balance_wallet_outlined, (c) => const LtCustodyScreen(), path: '/system/b2c/light-transport/custody'),
+        if (_ltOwners.contains(role)) AppPage('عهدة النقل الخفيف', 'Light Transport Custody', Icons.account_balance_wallet_outlined, (c) => const LtCustodyScreen(), path: '/system/b2c/light-transport/custody'),
+        // مركباتُ مشاريع القسم — نافذةٌ على سجلّ المركبات نفسِه: القائدُ الفعليّ والتفويض.
+        if (_ltOwners.contains(role)) AppPage('مركبات النقل الخفيف', 'Light Transport Vehicles', Icons.local_shipping_outlined, (c) => const B2cVehiclesScreen(), path: '/system/b2c/vehicles'),
         // ويُبلِّغ القسمُ الموارد البشريّة بما رآه في الميدان — الجانبُ المُرسِل.
         AppPage('طلبات الموارد البشرية', 'HR Requests', Icons.send_outlined, (c) => const StaffRequestsScreen(side: 'section', section: 'B2C'), path: '/system/b2c/hr-requests'),
         // ── سجلُّ القسم كلِّه لا مناديبَ التقارير وحدَهم ────────────────────
         // «مناديب المبيعات» كانت تقرأ `B2CRep` — وهم مَن لهم تقاريرُ طلبات،
         // فلا يظهر فيها مشرفٌ ولا ميكانيكيٌّ ولا عاملُ نظافة: أحدَ عشرَ من
         // مئةٍ وواحدٍ وستّين. وتلك الصفحةُ صارت «تحليل الأوردرات» على الويب.
-        AppPage('موظفون النقل الخفيف', 'Light-transport Employees', Icons.two_wheeler_outlined, (c) => ResourceScreen(config: lightTransportCfg), path: '/system/b2c/light-transport'),
+        AppPage('موظفون النقل الخفيف', 'Light-transport Employees', Icons.two_wheeler_outlined, (c) => ResourceScreen(config: ltEmployeesCfg), path: '/system/b2c/light-transport'),
         AppPage('أوامر التشغيل', 'Operating Orders', Icons.assignment_ind_outlined, (c) => ResourceScreen(config: lightTransportOrdersCfg), path: '/system/b2c/orders'),
         AppPage('تحليل الأوردرات', 'Orders Analysis', Icons.insights_outlined, (c) => SectionDashScreen(spec: b2cOrdersDashSpec), path: '/system/b2c/orders-analysis'),
         // السكنُ والقوائمُ المنسدلة — كما في «إعدادات القسم» على الويب.

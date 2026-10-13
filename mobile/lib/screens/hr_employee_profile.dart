@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/api.dart';
+import '../services/auth.dart';
 import '../services/hijri.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
@@ -274,6 +276,32 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
   }
 
   // إعادة تفعيل موظف منتهي الخدمة.
+  /// حذفُ السجلّ نهائيًّا — لسجلٍّ أُدخل خطأً أو مكرَّرًا، لا لمن ترك العمل.
+  /// والخادمُ يرفض مَن في عهدته شيءٌ أو تفويضُ مركبة (EXIT_BLOCKED) برسالته.
+  Future<void> _deleteEmployee() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('حذف سجلّ «$_name» نهائيًّا؟', 'Delete the record of "$_name" permanently?')),
+        content: Text(tr(
+          'يُحذَف السجلُّ ومستنداتُه وتجديداتُه ولا يظهر في أيّ قائمة. لمن ترك العمل استعمل «إنهاء الخدمة» — الحذفُ لسجلٍّ أُدخل خطأً أو مكرَّرًا. تُحفَظ نسخةٌ منه في سجلّ المراجعة.',
+          'The record, its documents and renewals are deleted and it disappears from every list. For someone who left, use "End of service" — deletion is for a record entered by mistake or duplicated. A copy is kept in the audit log.',
+        )),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف نهائيّ', 'Delete permanently'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.delete('/api/hr/employees/${widget.employeeId}');
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   Future<void> _reactivate() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -451,6 +479,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                 if (v == 'upload') _uploadDocument();
                 if (v == 'terminate') _terminate();
                 if (v == 'reactivate') _reactivate();
+                if (v == 'delete') _deleteEmployee();
               },
               itemBuilder: (c) => [
                 PopupMenuItem(value: 'renew', child: Row(children: [
@@ -470,6 +499,12 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                   PopupMenuItem(value: 'reactivate', child: Row(children: [
                     const Icon(Icons.restart_alt_rounded, size: 18, color: T.success), const SizedBox(width: 10),
                     Text(tr('إعادة تفعيل', 'Reactivate')),
+                  ])),
+                // الحذفُ لمدير النظام وحدَه — والخادمُ يردّ غيرَه بـ٤٠٥.
+                if (context.read<AuthProvider>().role == 'super_admin')
+                  PopupMenuItem(value: 'delete', child: Row(children: [
+                    const Icon(Icons.delete_forever_outlined, size: 18, color: T.danger), const SizedBox(width: 10),
+                    Text(tr('حذف السجلّ نهائيًّا', 'Delete record permanently'), style: const TextStyle(color: T.danger)),
                   ])),
               ],
             ),

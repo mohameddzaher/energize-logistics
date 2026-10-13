@@ -18,6 +18,7 @@
 /** فعلٌ بعينه → جملتُه. */
 const ACTION_AR = {
   // قيودُ شبكة الأمان (middleware/auditTrail) — فعلٌ لم يقيّده متحكّمُه بتفصيله.
+  undo_collection: 'رجوع عن تحصيل',
   api_create: 'إضافة / تنفيذ إجراء', api_update: 'تعديل', api_delete: 'حذف',
   // حركاتُ أصول النقل الثقيل (الكاوتش والتيدرات والسطحات).
   ls2_asset_mounted: 'تركيب', ls2_asset_removed: 'إنزال', ls2_asset_transferred: 'نقل', ls2_asset_registered: 'تسجيل أصل',

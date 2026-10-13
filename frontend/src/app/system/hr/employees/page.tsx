@@ -12,7 +12,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
-import { Users, Plus, Edit, UserMinus, RotateCcw } from 'lucide-react';
+import { Users, Plus, Edit, UserMinus, RotateCcw, Trash2 } from 'lucide-react';
 import {
   isHRStaff, Employee, EMPLOYMENT_STATUS, empName,
 } from '@/lib/hr';
@@ -128,6 +128,27 @@ export default function HREmployeesPage() {
    */
   const openFileToEndService = (e: Employee) => {
     router.push(`/system/hr/employees/${e._id}`);
+  };
+
+  /**
+   * ── والحذفُ النهائيّ لمدير النظام وحدَه ──────────────────────────────────
+   * لسجلٍّ أُدخل خطأً أو مكرَّرًا. يُسأل عنه صراحةً ويُقال ما يذهب معه، والسجلُّ
+   * كلُّه يُحفَظ في سجلّ المراجعة قبل محوه. ومَن بيده عهدةٌ أو تفويضُ مركبةٍ
+   * يُرفَض حذفُه برسالةٍ تقول السبب.
+   */
+  const removeForGood = async (e: Employee) => {
+    if (!(await confirm({
+      title: ar ? `حذف سجلّ «${empName(e, lang)}» نهائيًّا؟` : `Permanently delete “${empName(e, lang)}”?`,
+      message: ar
+        ? 'يُحذَف السجلُّ ومستنداتُه وتجديداتُه ولا يظهر في أيّ قائمة. لمن ترك العمل استعمل «إنهاء الخدمة» — الحذفُ لسجلٍّ أُدخل خطأً أو مكرَّرًا. تُحفَظ نسخةٌ منه في سجلّ المراجعة.'
+        : 'The record, its documents and renewals are removed. For someone who left, use “End service” — delete is for a record entered by mistake or duplicated. A copy is kept in the audit log.',
+      confirmLabel: ar ? 'حذف نهائيّ' : 'Delete permanently', tone: 'danger',
+    }))) return;
+    try {
+      await api.delete(`/api/hr/employees/${e._id}`);
+      notify(ar ? 'حُذف السجلّ' : 'Record deleted', 'success');
+      load();
+    } catch (err: any) { notify(err?.message || (ar ? 'تعذّر الحذف' : 'Delete failed'), 'error'); }
   };
 
   const exportColumns: ExportColumn[] = [
@@ -295,6 +316,14 @@ export default function HREmployeesPage() {
                         className="p-1.5 rounded-lg text-slate-700 hover:text-amber-600 hover:bg-slate-100"
                         title={ar ? 'إنهاء الخدمة — من ملفّ الموظّف' : 'End service — in the employee file'}>
                         <UserMinus className="w-4 h-4" />
+                      </button>
+                    )}
+                    {/* الحذفُ لمدير النظام وحدَه — والخادمُ يحرسه بدوره لا بمنح القسم. */}
+                    {user?.role === 'super_admin' && (
+                      <button type="button" onClick={() => removeForGood(e)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"
+                        title={ar ? 'حذف السجلّ نهائيًّا (مدير النظام)' : 'Delete the record permanently (system admin)'}>
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     )}
                   </div>

@@ -83,9 +83,11 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
     return Lang.instance.ar ? (ar.isNotEmpty ? ar : en) : (en.isNotEmpty ? en : ar);
   }
 
-  void _open(Map<String, dynamic> e) {
-    Navigator.push(context, MaterialPageRoute(
+  Future<void> _open(Map<String, dynamic> e) async {
+    final deleted = await Navigator.push<bool>(context, MaterialPageRoute(
         builder: (c) => HrEmployeeProfileScreen(employeeId: e['_id'].toString())));
+    // حُذف السجلُّ من ملفّه: القائمةُ تُعاد قراءتُها فلا يبقى صفُّه.
+    if (deleted == true && mounted) _load();
   }
 
   @override

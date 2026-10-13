@@ -1338,7 +1338,21 @@ final collectionsCashInvoicesCfg = ResourceConfig(
         lookupLabel: (r) => _s(r, 'nameAr'), lookupValue: (r) => _s(r, 'nameAr')),
   ],
   sortFields: const [('ageDays', 'العمر', 'Age')],
+  rowActions: (r) => [
+    if (_s(r, 'collectionDate').isNotEmpty || ((r['collectedAmount'] is num) && (r['collectedAmount'] as num) > 0))
+      _uncollectAction((r) => {'ids': [_s(r, '_id')]}),
+  ],
 );
+
+/// «لم تُحصَّل» — الرجوعُ عن تحصيلٍ سُجِّل: بسببٍ مكتوب، ويُقيَّد باسم صاحبه.
+/// الفاتورةُ الضريبيّةُ تُعرَف برقمها، والكشفُ النقديُّ بمعرّفه في سير العمل.
+ResourceAction _uncollectAction(Map<String, dynamic> Function(Map<String, dynamic>) target) => ResourceAction(
+      icon: Icons.undo_rounded, ar: 'لم تُحصَّل', en: 'Not collected', color: T.danger,
+      confirmAr: 'يُمحى تاريخُ التحصيل ومبلغُه من الكشوف ومن سير عمل التشغيل وتعود غيرَ محصَّلة — يُقيَّد باسمك وسببك.',
+      confirmEn: 'The collection date and amount are cleared from the reports and the operations workflow, and it returns to not collected — recorded under your name and reason.',
+      reasonKey: 'reason', reasonAr: 'سبب الرجوع عن التحصيل', reasonEn: 'Reason for undoing the collection',
+      request: (r) => ('POST', '/api/collections-dept/invoices/uncollect', target(r)),
+    );
 
 final collectionsTaxInvoicesCfg = ResourceConfig(
   arTitle: 'الفواتير الضريبية', enTitle: 'Tax Invoices', icon: Icons.receipt_long_outlined,
@@ -1355,6 +1369,10 @@ final collectionsTaxInvoicesCfg = ResourceConfig(
     if (r['fullyCollected'] == true) ('محصَّلة', T.success) else ('لم تُحصَّل', T.danger),
   ],
   fields: const [],
+  rowActions: (r) => [
+    if (r['fullyCollected'] == true || _s(r, 'collectionDate').isNotEmpty)
+      _uncollectAction((r) => {'invoiceNumber': _s(r, 'invoiceNumber')}),
+  ],
 );
 
 /// لونُ العمر — الأقدمُ أشدّ. الرقمُ وحدَه لا يقول خطرَه.

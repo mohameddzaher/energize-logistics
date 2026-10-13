@@ -120,7 +120,10 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   const activeCount = [age, customer, branch, from, to, detail].filter(Boolean).length + colCount;
 
   // ── تسجيلُ التحصيل ────────────────────────────────────────────────────────
-  const [collecting, setCollecting] = useState<{ label: string; invoiceNumber?: string; ids?: string[]; needAmount: boolean } | null>(null);
+  const [collecting, setCollecting] = useState<{ label: string; invoiceNumber?: string; ids?: string[]; needAmount: boolean; collected?: boolean } | null>(null);
+  // «لم تُحصَّل»: الرجوعُ عن تحصيلٍ سُجِّل خطأً — بسببٍ يُكتب.
+  const [undoReason, setUndoReason] = useState('');
+  const [undoOpen, setUndoOpen] = useState(false);
   // ── والتسليمُ خطوةٌ قبل التحصيل ───────────────────────────────────────────
   // الفاتورةُ تُرسَل وتُستلَم ويُوقَّع عليها، ومن يومئذٍ تُعَدُّ المدّةُ المتّفق
   // عليها. وكانت الشاشةُ تسجّل التحصيل وحدَه، فيبقى «متى وصلت العميل؟» بلا
@@ -202,12 +205,13 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   }, [kind]);
 
   const openCollect = (r: any) => {
+    setUndoOpen(false); setUndoReason('');
     const today = new Date().toISOString().slice(0, 10);
     if (isCash) {
-      setCollecting({ label: r.reportNumber, ids: [r._id], needAmount: true });
+      setCollecting({ label: r.reportNumber, ids: [r._id], needAmount: true, collected: !!r.collectionDate || Number(r.collectedAmount) > 0 });
       setCollectForm({ collectionDate: r.collectionDate?.slice(0, 10) || today, collectedAmount: r.collectedAmount ? String(r.collectedAmount) : '' });
     } else {
-      setCollecting({ label: r.invoiceNumber, invoiceNumber: r.invoiceNumber, needAmount: false });
+      setCollecting({ label: r.invoiceNumber, invoiceNumber: r.invoiceNumber, needAmount: false, collected: !!r.fullyCollected || !!r.collectionDate || /collected/i.test(String(r.status || '')) });
       setCollectForm({ collectionDate: r.collectionDate?.slice(0, 10) || today, collectedAmount: '' });
     }
   };
@@ -267,6 +271,24 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       });
       notify(r?.message || t('سُجِّل التحصيل', 'Collection recorded'));
       setCollecting(null);
+      load();
+    } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
+    setSaving(false);
+  };
+
+  /**
+   * «لم تُحصَّل» — يرفع التحصيلَ عن الفاتورة (أو الكشف النقديّ): يُمحى تاريخُه
+   * ومبلغُه من كشوف التشغيل وتعود في دفتر التحصيل غيرَ محصَّلة. بسببٍ مكتوب.
+   */
+  const saveUndo = async () => {
+    if (undoReason.trim().length < 3) { notify(t('اكتب سببَ الرجوع عن التحصيل', 'Enter the reason'), 'error'); return; }
+    setSaving(true);
+    try {
+      const r = await api.post<{ message: string }>('/api/collections-dept/invoices/uncollect', {
+        invoiceNumber: collecting?.invoiceNumber, ids: collecting?.ids, reason: undoReason.trim(),
+      });
+      notify(r?.message || t('رُفع التحصيل', 'Collection undone'));
+      setCollecting(null); setUndoOpen(false); setUndoReason('');
       load();
     } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
     setSaving(false);
@@ -765,6 +787,42 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
             {t('يُسجَّل التاريخ على كشوف هذه الفاتورة كلِّها — تحصيلُها تحصيلٌ لما فيها.',
               'The date is written to every report under this invoice.')}
           </p>
+        )}
+        {/* ── لم تُحصَّل ────────────────────────────────────────────────────
+            سُجِّلت محصَّلةً ولم يُقبَض مالُها (شيكٌ رُدّ، أو ضغطةٌ على الصفّ
+            الخطأ): يُرفَع عنها التحصيلُ هنا، فتعود إلى المطالبات والأعمار،
+            ويُمحى التاريخُ من سير عمل التشغيل أيضًا. */}
+        {collecting?.collected && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50/60 p-3">
+            {!undoOpen ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="flex-1 text-[12.5px] text-red-800">
+                  {t('مسجَّلةٌ محصَّلة. إن لم يُقبَض مالُها فعلًا فارفع عنها التحصيل.', 'Recorded as collected. If the money was not actually received, undo it.')}
+                </p>
+                <button type="button" onClick={() => setUndoOpen(true)}
+                  className="rounded-lg bg-white px-3 py-1.5 text-[12.5px] font-bold text-red-700 ring-1 ring-red-200 hover:bg-red-100">
+                  {t('لم تُحصَّل', 'Not collected')}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-[12.5px] font-bold text-red-800">{t('الرجوع عن التحصيل — اكتب السبب', 'Undo collection — give the reason')}</p>
+                <TextInput value={undoReason} onChange={(e) => setUndoReason(e.target.value)}
+                  placeholder={t('مثال: الشيك رُدّ · سُجِّل على فاتورةٍ أخرى خطأً', 'e.g. cheque bounced · recorded on the wrong invoice')} />
+                <p className="text-[11.5px] text-red-700/80">
+                  {t('يُمحى تاريخُ التحصيل ومبلغُه من الكشوف (ومن سير عمل التشغيل) وتعود في دفتر التحصيل غيرَ محصَّلة. يُقيَّد ذلك باسمك وسببك.',
+                     'The collection date and amount are cleared from the reports (and the operations workflow) and the ledger shows it as not collected. Recorded under your name with the reason.')}
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button type="button" onClick={() => setUndoOpen(false)} className="px-3 py-1.5 text-[12.5px] text-slate-500">{t('تراجع', 'Back')}</button>
+                  <button type="button" onClick={saveUndo} disabled={saving}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-[12.5px] font-bold text-white disabled:opacity-50">
+                    {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}{t('تأكيد: لم تُحصَّل', 'Confirm: not collected')}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </Modal>
     </div>

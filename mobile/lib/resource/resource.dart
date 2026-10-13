@@ -133,9 +133,14 @@ class ResourceAction {
   final String? confirmEn;
   /// طلب جاهز: (method 'PATCH'|'PUT'|'POST'|'DELETE', path, body?).
   final (String, String, Map<String, dynamic>?) Function(Map<String, dynamic>)? request;
+  /// إجراءٌ لا يمرّ بلا سبب: يُسأل عنه في نافذة التأكيد (ثلاثةُ أحرفٍ على الأقلّ)
+  /// ويُرسَل في جسم الطلب تحت هذا المفتاح. وعنوانُ خانته `reasonAr`/`reasonEn`.
+  final String? reasonKey;
+  final String? reasonAr;
+  final String? reasonEn;
   const ResourceAction({
     required this.icon, required this.ar, required this.en, required this.color,
-    this.confirmAr, this.confirmEn, this.request,
+    this.confirmAr, this.confirmEn, this.request, this.reasonKey, this.reasonAr, this.reasonEn,
   });
   String get label => tr(ar, en);
 }
@@ -326,6 +331,8 @@ class _ResourceScreenState extends State<ResourceScreen> {
   // قائمة الإجراءات السريعة (ثلاث نقاط) على الصف — تشمل «تعديل» و«حذف» تلقائيًا.
   Widget _rowActionsMenu(Map<String, dynamic> row) {
     final acts = cfg.rowActions!(row);
+    // صفٌّ لا إجراءَ له لا يُرسَم له زرٌّ يفتح قائمةً فارغة.
+    if (acts.isEmpty && !cfg.canEdit && !cfg.canDelete) return const SizedBox.shrink();
     return PopupMenuButton<int>(
       icon: const Icon(Icons.more_vert, color: T.inkFaint),
       onSelected: (idx) {
@@ -357,7 +364,37 @@ class _ResourceScreenState extends State<ResourceScreen> {
   }
 
   Future<void> _runAction(ResourceAction a, Map<String, dynamic> row) async {
-    if (a.confirmAr != null) {
+    String? reason;
+    if (a.reasonKey != null) {
+      final ctrl = TextEditingController();
+      String? err;
+      reason = await showDialog<String>(
+        context: context,
+        builder: (c) => StatefulBuilder(builder: (c, setD) => AlertDialog(
+          title: Text(a.label),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (a.confirmAr != null) Text(tr(a.confirmAr!, a.confirmEn ?? a.confirmAr!), style: const TextStyle(fontSize: 13)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: ctrl, autofocus: true, maxLines: 2,
+              decoration: InputDecoration(labelText: '${tr(a.reasonAr ?? 'السبب', a.reasonEn ?? 'Reason')} *', errorText: err),
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c), child: Text(tr('إلغاء', 'Cancel'))),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: a.color),
+              onPressed: () {
+                if (ctrl.text.trim().length < 3) { setD(() => err = tr('اكتب السبب', 'Enter the reason')); return; }
+                Navigator.pop(c, ctrl.text.trim());
+              },
+              child: Text(tr('تأكيد', 'Confirm')),
+            ),
+          ],
+        )),
+      );
+      if (reason == null) return;
+    } else if (a.confirmAr != null) {
       final ok = await showDialog<bool>(
         context: context,
         builder: (c) => AlertDialog(
@@ -374,12 +411,18 @@ class _ResourceScreenState extends State<ResourceScreen> {
     final req = a.request?.call(row);
     if (req == null) return;
     try {
-      final (method, path, body) = req;
-      switch (method) {
-        case 'POST': await Api.instance.post(path, body ?? {});
-        case 'PUT': await Api.instance.put(path, body ?? {});
-        case 'PATCH': await Api.instance.patch(path, body ?? {});
-        case 'DELETE': await Api.instance.delete(path);
+      final (method, path, sent) = req;
+      final body = {...?sent, if (reason != null) a.reasonKey!: reason};
+      final dynamic res = switch (method) {
+        'POST' => await Api.instance.post(path, body),
+        'PUT' => await Api.instance.put(path, body),
+        'PATCH' => await Api.instance.patch(path, body),
+        'DELETE' => await Api.instance.delete(path),
+        _ => null,
+      };
+      // رسالةُ الخادم تُعرَض إن أرسلها («أُعيدت ٣ كشوف غيرَ محصَّلة»).
+      if (mounted && res is Map && '${res['message'] ?? ''}'.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${res['message']}')));
       }
       _load();
     } catch (e) {

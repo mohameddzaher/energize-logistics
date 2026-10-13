@@ -1664,10 +1664,61 @@ const syncInvoiceLedger = async (invoiceNumber, { deliveryDate, collectionDate }
   if (!inv) return null;
   const collected = collectionDate !== undefined ? collectionDate : inv.collectionDate;
   const delivered = deliveryDate !== undefined ? deliveryDate : inv.deliveryDate;
-  $set.status = collected ? 'Collected' : (delivered ? 'Delivered' : (inv.status || ''));
+  // ورفعُ تاريخ التحصيل يردّ الفاتورةَ مفتوحة: لا تبقى «محصَّلة» بلا تاريخ.
+  const wasCollected = /collected/i.test(String(inv.status || ''));
+  $set.status = collected ? 'Collected' : (delivered ? 'Delivered' : (wasCollected ? '' : (inv.status || '')));
   await CollectionInvoice.updateOne({ _id: inv._id }, { $set });
   return inv._id;
 };
+
+/**
+ * ── وتاريخُ التحصيل يُكتب من صفحة التشغيل أيضًا ─────────────────────────────
+ *
+ * قسمُ التحصيل يسجّل من شاشتَيه فيُكتب الكشفُ والدفترُ معًا. لكنّ العمودَ نفسَه
+ * مفتوحٌ في «سير عمل التشغيل»: من كتب التاريخَ هناك أو محاه غيّر الكشفَ وحدَه،
+ * وبقي الدفترُ — وهو ما تقرؤه الأعمارُ واللوحةُ وملفُّ العميل — على ما كان.
+ * فالشاشتان تقولان شيئين عن فاتورةٍ واحدة.
+ *
+ * فتُنادى هذه بعد كلّ حفظٍ في التشغيل غيّر تاريخَ التحصيل أو تسليمِ العميل:
+ *   · الكاش: صفُّ الشحنة في الدفتر يتبع كشفَه مباشرةً.
+ *   · الضريبيّ: الفاتورةُ تغطّي كشوفًا عدّة — «محصَّلة» حين يحمل كلُّ كشوفها
+ *     تاريخًا، و«غير محصَّلة» حين يُرفَع التاريخُ عن أحدها بعد أن كانت محصَّلة.
+ * `rows`: الكشوفُ بعد الحفظ؛ `changed`: ما تغيّر في كلٍّ منها.
+ */
+const syncLedgerFromWorkflows = async (rows, changed = { collectionDate: true }) => {
+  const list = (Array.isArray(rows) ? rows : [rows]).filter(Boolean);
+  if (!list.length || !(changed.collectionDate || changed.deliveryDate)) return;
+  const pickDates = (w) => ({
+    ...(changed.collectionDate ? { collectionDate: w.collectionDate || null } : {}),
+    ...(changed.deliveryDate ? { deliveryDate: w.deliveryDate || null } : {}),
+  });
+  // الكاش: كلُّ كشفٍ وصفُّه.
+  for (const w of list) await syncCashLedger({ _id: w._id }, pickDates(w));
+  // الضريبيّ: مرّةً لكلّ رقم فاتورة.
+  const numbers = [...new Set(list.map((w) => String(w.invoiceNumber || '').trim()).filter((n) => n && !NO_INVOICE_RX.test(n)))];
+  for (const no of numbers) {
+    const sheets = await OperationsWorkflow.find({ invoiceNumber: no, ...NOT_CANCELLED }).select('collectionDate deliveryDate').lean();
+    if (!sheets.length) continue;
+    const dates = {};
+    if (changed.collectionDate) {
+      // تاريخٌ مُحي من كشفٍ ← الفاتورةُ غيرُ محصَّلة. تاريخٌ كُتب ← محصَّلةٌ إن
+      // اكتملت كشوفُها. وإن كُتب على بعضها فقط فلا يُمسّ الدفتر: قد يكون محصَّلًا
+      // من مصدره (دفترُ القسم) وكشوفُه في التشغيل بلا تواريخ — وهو الغالب.
+      const cleared = list.some((w) => String(w.invoiceNumber || '').trim() === no && !w.collectionDate);
+      if (cleared) dates.collectionDate = null;
+      else if (sheets.every((x) => !!x.collectionDate)) dates.collectionDate = new Date(Math.max(...sheets.map((x) => new Date(x.collectionDate).getTime())));
+    }
+    if (!Object.keys(dates).length && !changed.deliveryDate) continue;
+    if (changed.deliveryDate) {
+      const got = sheets.map((s) => s.deliveryDate).filter(Boolean);
+      dates.deliveryDate = got.length ? new Date(Math.max(...got.map((d) => new Date(d).getTime()))) : null;
+    }
+    await syncInvoiceLedger(no, dates);
+  }
+  cache.clear(CACHE_PREFIX); cache.clear('cdr:');
+  try { require('./collectionsLedgerController').invalidate(); } catch (_) { /* */ }
+};
+exports.syncLedgerFromWorkflows = syncLedgerFromWorkflows;
 
 /**
  * ── والشحنةُ النقديّةُ لها صفٌّ في الدفتر أيضًا ─────────────────────────────
@@ -1868,6 +1919,62 @@ exports.recordCollection = async (req, res) => {
         : `سُجِّل التحصيل على ${r.modifiedCount} كشفًا`,
     });
   } catch (e) { sendMongooseError(res, e, 'تعذّر تسجيل التحصيل'); }
+};
+
+/**
+ * «لم تُحصَّل» — POST /invoices/uncollect   { invoiceNumber | ids, reason }
+ *
+ * يُسجَّل التحصيلُ أحيانًا على ما لم يُقبَض: شيكٌ رُدّ، أو وعدٌ قُيِّد قبضًا، أو
+ * ضغطةٌ على الصفّ الخطأ. وكان تصحيحُه غيرَ ممكنٍ من شاشة التحصيل — فتبقى
+ * الفاتورةُ «محصَّلةً» خارجةً من الأعمار والمطالبات ومالُها عند العميل.
+ *
+ * فيُرفَع التحصيلُ عنها: التاريخُ والمبلغُ من الكشوف (وهي ما تقرؤه صفحةُ سير
+ * عمل التشغيل)، والحالةُ في دفتر التحصيل — الوجهان معًا كما يُسجَّلان معًا.
+ * والسببُ مطلوبٌ ويُقيَّد مع ما كان مسجَّلًا: الرجوعُ عن قبضٍ فعلٌ يُسأل عنه.
+ */
+exports.undoCollection = async (req, res) => {
+  try {
+    const reason = String(req.body.reason || '').trim();
+    if (reason.length < 3) return res.status(400).json({ message: 'اكتب سببَ الرجوع عن التحصيل', fields: { reason: 'مطلوب' } });
+    const invoiceNumber = String(req.body.invoiceNumber || '').trim();
+    const ids = Array.isArray(req.body.ids) ? req.body.ids.filter((x) => mongoose.isValidObjectId(x)) : [];
+    if (!invoiceNumber && !ids.length) return res.status(400).json({ message: 'حدِّد فاتورةً أو كشوفًا' });
+    const filter = invoiceNumber ? { invoiceNumber, ...NOT_CANCELLED } : { _id: { $in: ids } };
+
+    const before = await OperationsWorkflow.find(filter).select('reportNumber collectionDate collectedAmount').lean();
+    const CollectionInvoice = require('../models/CollectionInvoice');
+    const ledgerBefore = invoiceNumber
+      ? await CollectionInvoice.findOne({ invoiceNumber, kind: 'tax' }).select('status collectionDate').lean() : null;
+    const wasCollected = before.some((w) => w.collectionDate || Number(w.collectedAmount) > 0)
+      || (ledgerBefore && (ledgerBefore.collectionDate || /collected/i.test(String(ledgerBefore.status || ''))));
+    if (!wasCollected) return res.status(400).json({ message: 'ليست مسجَّلةً محصَّلةً أصلًا — لا شيءَ يُرجَع عنه' });
+
+    const r = await OperationsWorkflow.updateMany(filter, { $set: { collectionDate: null, collectedAmount: 0, lastModifiedBy: req.user._id } });
+    await syncInvoiceLedger(invoiceNumber, { collectionDate: null });
+    if (!invoiceNumber) await syncCashLedger(filter, { collectionDate: null });
+    cache.clear('wf:');
+    cache.clear(CACHE_PREFIX); cache.clear('cdr:');
+    try { require('./collectionsLedgerController').invalidate(); } catch (_) {}
+
+    await logAudit({
+      user: req.user._id, action: 'undo_collection', entity: 'OperationsWorkflow',
+      entityId: ids.length === 1 ? ids[0] : null, entityKey: invoiceNumber || undefined,
+      changes: {
+        details: `رجوعٌ عن تحصيل ${invoiceNumber ? `الفاتورة ${invoiceNumber}` : `${before.length} كشفًا`} — ${reason}`,
+        before: before.map((w) => ({ reportNumber: w.reportNumber, collectionDate: w.collectionDate, collectedAmount: w.collectedAmount })),
+        ledgerBefore, reason,
+      },
+      ipAddress: req.ip,
+    });
+    try { emitToAll('workflow:updated', { bulk: true, collection: true }); } catch (_) {}
+
+    res.json({
+      updated: r.modifiedCount || 0,
+      message: invoiceNumber
+        ? `رُفع التحصيلُ عن الفاتورة ${invoiceNumber} — عادت غيرَ محصَّلة`
+        : `رُفع التحصيلُ عن ${r.modifiedCount} كشفًا — عادت غيرَ محصَّلة`,
+    });
+  } catch (e) { sendMongooseError(res, e, 'تعذّر الرجوع عن التحصيل'); }
 };
 
 /** قيمُ فلاتر صفحتَي الفواتير — مبنيّةٌ من البيانات نفسِها. */

@@ -1206,6 +1206,18 @@ exports.updateWorkflow = async (req, res) => {
       if (workflow.username) ensureCollectionsParty(workflow.username, { paymentType: workflow.paymentType, source: 'operations_workflow' }).catch(() => {});
     }
 
+    // ── ودفترُ التحصيل يتبع الكشف ────────────────────────────────────────
+    // تاريخُ التحصيل أو تسليمِ العميل كُتب أو مُحي من هنا: يتبعه صفُّه في دفتر
+    // التحصيل، فلا تقول شاشتا القسمين شيئين عن فاتورةٍ واحدة.
+    {
+      const moved = (k) => filteredBody[k] !== undefined && String(before[k] || '') !== String(workflow[k] || '');
+      const changed = { collectionDate: moved('collectionDate'), deliveryDate: moved('deliveryDate') };
+      if (changed.collectionDate || changed.deliveryDate) {
+        await require('./collectionsDeptController').syncLedgerFromWorkflows(workflow, changed)
+          .catch((e) => console.error('ledger sync (workflow update):', e.message));
+      }
+    }
+
     // ── وتاريخُ التحصيل لا يُنشئ دفعةً في مكانٍ آخر ──────────────────────
     // كان إثباتُ تاريخ التحصيل يقيّد `Payment` ويحدّث فاتورةً ورصيدَ عميل في
     // ورك فلو لم يعد يجري. والتاريخُ في الكشف هو الإثبات: قسمُ التحصيل يقرأ
@@ -1654,6 +1666,17 @@ exports.bulkUpdate = async (req, res) => {
         const touched = perRow.filter((t) => Object.prototype.hasOwnProperty.call(t.patch, 'invoiceNumber')).map((t) => t._id);
         const fresh = await OperationsWorkflow.find({ _id: { $in: touched } }).lean();
         for (const w of fresh) await ensureLedgerInvoice(w);
+      }
+      // ودفترُ التحصيل يتبع ما كُتب جماعيًّا من تاريخ تحصيلٍ أو تسليم — كما في المفرد.
+      {
+        const has = (k) => perRow.some((t) => Object.prototype.hasOwnProperty.call(t.patch, k));
+        const changed = { collectionDate: has('collectionDate'), deliveryDate: has('deliveryDate') };
+        if (changed.collectionDate || changed.deliveryDate) {
+          const touched = perRow.filter((t) => ['collectionDate', 'deliveryDate'].some((k) => Object.prototype.hasOwnProperty.call(t.patch, k))).map((t) => t._id);
+          const fresh = await OperationsWorkflow.find({ _id: { $in: touched } }).select('invoiceNumber collectionDate deliveryDate').lean();
+          await require('./collectionsDeptController').syncLedgerFromWorkflows(fresh, changed)
+            .catch((e) => console.error('ledger sync (workflow bulk):', e.message));
+        }
       }
       try { emitToAll('workflow:bulkImported', { bulkUpdate: true, updated }); } catch (e) {}
       logAudit({

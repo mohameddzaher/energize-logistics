@@ -459,11 +459,65 @@ exports.updateEmployee = async (req, res) => {
  * الطلبُ يُصنَع بلا واجهة.
  */
 exports.deleteEmployee = async (req, res) => {
-  return res.status(405).json({
-    code: 'EMPLOYEE_DELETE_DISABLED',
-    message: 'حذفُ الموظّف غير متاح — السجلُّ يبقى. مَن ترك العمل تُنهى خدمتُه '
-      + 'من ملفّه («إنهاء الخدمة»)، فيبقى عقدُه ومستنداتُه وأثرُ عهدته.',
-  });
+  /**
+   * ── ويُفتَح لمدير النظام وحدَه ──────────────────────────────────────────
+   * صاحبُ الشركة طلبه (٢٠٢٦/١٠/١٣): سجلٌّ أُدخل خطأً أو مكرَّرًا لا معنى لإبقائه
+   * «منتهيَ الخدمة». فيُحذَف — لكن بيدٍ واحدة: مديرُ النظام بدوره، لا بمنحِ قسمٍ
+   * ولا بتأشيرة صفحة (المسارُ يحرسه `authorize` الذي يفتح لمن مُنح القسم،
+   * فالحارسُ هنا في المتحكّم). ولغيره الجوابُ القديم: أنهِ الخدمة.
+   *
+   * والحذفُ يُبقي أثرَه: السجلُّ كلُّه يُحفَظ في سجلّ المراجعة قبل محوه،
+   * فيُعرَف مَن حذف مَن ومتى، ويُستعاد منه إن لزم.
+   */
+  if (req.user.role !== 'super_admin') {
+    return res.status(405).json({
+      code: 'EMPLOYEE_DELETE_DISABLED',
+      message: 'حذفُ الموظّف لمدير النظام وحدَه. مَن ترك العمل تُنهى خدمتُه '
+        + 'من ملفّه («إنهاء الخدمة»)، فيبقى عقدُه ومستنداتُه وأثرُ عهدته.',
+    });
+  }
+  try {
+    const employee = await Employee.findById(req.params.id);
+    if (!employee) return res.status(404).json({ message: 'Employee not found' });
+
+    // ── ولا يُحذف مَن بيده عهدةٌ أو تفويضُ مركبة ────────────────────────────
+    // الحذفُ يمحو السجلّ فتبقى العهدةُ مسجَّلةً على اسمٍ لا وجودَ له. وقع ذلك
+    // فعلًا: حُذف سجلٌّ فبقيت أجهزتُه في سجلّ تقنية المعلومات باسمٍ فارغ.
+    const { employeeExitBlockers, returnEmployeeAssetsToStore } = require('../utils/employeeExit');
+    const blockers = await employeeExitBlockers(employee._id);
+    if (blockers.blocked && req.query.returnCustody !== 'true') {
+      return res.status(400).json({
+        code: 'EXIT_BLOCKED',
+        message: `لا يمكن الحذف: ${blockers.reasons.join(' و')}. سلِّم العهدة وأنهِ التفويض أوّلًا.`,
+        assets: blockers.assets,
+        authorizations: blockers.authorizations,
+        canAutoReturnAssets: blockers.assets > 0 && blockers.authorizations === 0,
+      });
+    }
+    const returned = blockers.assets
+      ? await returnEmployeeAssetsToStore(employee._id, { note: `أُعيدت للمستودع عند حذف سجلّ ${fullName(employee)}` })
+      : 0;
+
+    const snapshot = employee.toObject();
+    const docs = await EmployeeDocument.find({ employee: employee._id }).select('fileUrl title type').lean();
+    // القيدُ قبل المحو: لو تعذّر المحوُ بقي الأثر، ولو تمّ بقيت النسخة.
+    await logAudit({
+      user: req.user, action: 'delete_employee', entity: 'Employee', entityId: employee._id,
+      changes: { before: snapshot, details: `حُذف سجلُّ ${fullName(employee)} — ${docs.length} مستندًا`, documents: docs.map((d) => d.title || d.type || '') },
+      ipAddress: req.ip,
+    });
+    if (employee.user) await User.updateOne({ _id: employee.user }, { $unset: { linkedEmployee: 1 } });
+    docs.forEach((d) => deleteStoredFile(d.fileUrl));
+    await EmployeeDocument.deleteMany({ employee: employee._id });
+    await EmployeeRenewal.deleteMany({ employee: employee._id });
+    await employee.deleteOne();
+    bustEmployeeCaches();
+    await notifyHR({ title: 'Employee removed', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
+    res.json({ message: 'Employee deleted', assetsReturnedToStore: returned });
+  } catch (error) {
+    console.error('deleteEmployee error:', error);
+    res.status(500).json({ message: 'Failed to delete employee' });
+  }
 };
 
 // ── Document renewals (iqama / license / insurance ...) ──────────────────────

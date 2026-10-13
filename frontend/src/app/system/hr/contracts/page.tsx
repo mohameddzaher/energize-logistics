@@ -8,7 +8,7 @@ import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import { FileText, Plus, Edit, Ban, Check, Trash2, RefreshCw } from 'lucide-react';
-import { isHRStaff, Contract, Employee, CONTRACT_STATUS, empName, today } from '@/lib/hr';
+import { isHRStaff, Contract, Employee, CONTRACT_STATUS, contractBadge, empName, today } from '@/lib/hr';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal, Field, TextInput, Select, SearchableSelect, TextArea, Loader2 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getHrContractsTranslations } from '@/lib/translations';
@@ -189,7 +189,7 @@ export default function ContractsPage() {
       annualLeave: (c: Contract) => c.annualLeaveText || `${c.annualLeaveDays} ${tx.daysShort}`,
       probation: (c: Contract) => c.probationText || (c.probationMonths ? `${c.probationMonths} ${ar ? 'شهر' : 'mo'}` : ''),
       cr: (c: Contract) => c.sponsorRegistration || '',
-      status: (c: Contract) => { const m: any = (CONTRACT_STATUS as any)[c.status]; return m ? (ar ? m.ar : m.en) : String(c.status || ''); },
+      status: (c: Contract) => { const m = contractBadge(c); return m ? (ar ? m.ar : m.en) : String(c.status || ''); },
     };
   }, [ar, lang, tx.typeUnlimited, tx.typeFixed, tx.daysShort]);
 
@@ -362,7 +362,7 @@ export default function ContractsPage() {
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.annualLeaveText || `${c.annualLeaveDays} ${tx.daysShort}`}</td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.probationText || (c.probationMonths ? `${c.probationMonths} ${ar ? 'شهر' : 'mo'}` : '—')}</td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.sponsorRegistration || '—'}</td>
-                <td className="px-4 py-3 whitespace-nowrap"><Badge style={CONTRACT_STATUS[c.status]} lang={lang} /></td>
+                <td className="px-4 py-3 whitespace-nowrap"><Badge style={contractBadge(c)} lang={lang} /></td>
               </tr>
             ))}
           </tbody>

@@ -278,6 +278,32 @@ employeeSchema.pre('save', function clearSatisfiedStatuses(next) {
   next();
 });
 
+/**
+ * ── وخاناتُ العقد تُكتب في العقد نفسِه ──────────────────────────────────────
+ * نهايةُ العقد وبدايتُه ورقمُه صورةٌ من العقد الساري (راجع utils/contractStatus).
+ * فمن عدّلها هنا — من الماستر، أو «تجديد» في صفحة الانتهاءات، أو تجديدٍ جماعيّ —
+ * يُكتب تعديلُه في العقد، وإلّا عرضت الانتهاءاتُ تاريخًا وتبويبُ العقود آخر.
+ *
+ * وهو خطّافٌ على الحفظ لا سطرٌ في كلّ متحكِّم: أبوابُ التعديل أربعةٌ اليوم
+ * وتزيد، ومن ينسى السطرَ يعيد العطبَ صامتًا. والمزامنةُ من العقد تكتب
+ * بـ`updateOne` فلا تمرّ من هنا — فلا دوران.
+ */
+const CONTRACT_MIRROR = ['contractStartDate', 'contractEndDate', 'qiwaContractNumber'];
+employeeSchema.pre('save', function noteContractFields(next) {
+  if (!this.isNew) {
+    const changed = CONTRACT_MIRROR.filter((k) => this.isModified(k));
+    if (changed.length) this.$locals.contractFields = Object.fromEntries(changed.map((k) => [k, this[k]]));
+  }
+  next();
+});
+employeeSchema.post('save', async function pushContractFields(doc) {
+  const fields = doc.$locals && doc.$locals.contractFields;
+  if (!fields) return;
+  doc.$locals.contractFields = null;
+  try { await require('../utils/contractStatus').pushEmployeeContractFields(doc._id, fields); }
+  catch (e) { console.error('employee → contract:', e.message); }
+});
+
 employeeSchema.index({ firstName: 1, lastName: 1 });
 employeeSchema.index({ iqamaNumber: 1 });
 employeeSchema.index({ nationalId: 1 });

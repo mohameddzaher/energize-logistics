@@ -45,21 +45,53 @@ const normaliseContractStatus = (text) => {
 };
 
 /** العقدُ الحاكم: السارِي، وإلّا آخرُ ما أُنشئ. */
+const GOVERNING_FIELDS = 'status startDate endDate contractNumber type';
 async function governingContract(employeeId) {
   const Contract = require('../models/Contract');
   const active = await Contract.findOne({ employee: employeeId, status: 'active' })
-    .sort({ createdAt: -1 }).select('status').lean();
+    .sort({ createdAt: -1 }).select(GOVERNING_FIELDS).lean();
   if (active) return active;
-  return Contract.findOne({ employee: employeeId }).sort({ createdAt: -1 }).select('status').lean();
+  return Contract.findOne({ employee: employeeId }).sort({ createdAt: -1 }).select(GOVERNING_FIELDS).lean();
+}
+
+const day = (v) => {
+  if (!v) return '';
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? '' : v.toISOString().slice(0, 10);
+  return String(v).trim().slice(0, 10);
+};
+
+/**
+ * ── وتاريخا العقد ورقمُه صورةٌ منه كذلك ─────────────────────────────────────
+ *
+ * نهايةُ العقد مكتوبةٌ في موضعين: على العقد (`Contract.endDate`) تقرؤه صفحةُ
+ * العقود وتبويبُ العقود في ملفّ الموظّف، وعلى الموظّف (`contractEndDate`) تقرؤه
+ * صفحةُ الانتهاءات والماستر. وكانت الحالةُ وحدَها تُنقَل بينهما: فمن جُدِّد
+ * عقدُه سنةً من صفحة العقود بقي في «الانتهاءات» منتهيًا بتاريخه القديم — تسعةَ
+ * عشرَ موظّفًا كانوا كذلك، وسبعةَ عشرَ لهم عقدٌ بنهايةٍ ولا يظهرون في
+ * الانتهاءات أصلًا لأنّ خانتَهم فارغة.
+ *
+ * فالعقدُ الحاكم هو المصدر، وخاناتُ الموظّف صورةٌ منه تُحدَّث مع كلّ كتابةٍ على
+ * العقد. والعكسُ في models/Employee: من عدّل الخانةَ أو جدّدها من الماستر كُتب
+ * تعديلُه في العقد الساري نفسِه (pushEmployeeContractFields).
+ *
+ * ورقمُ العقد لا يُمحى بفراغ: عقدٌ لم يُكتب رقمُه لا يمسح رقمًا في الملفّ.
+ */
+function mirrorOf(c) {
+  const set = { contractStartDate: day(c.startDate), contractEndDate: day(c.endDate) };
+  if (String(c.contractNumber || '').trim()) set.qiwaContractNumber = String(c.contractNumber).trim();
+  return set;
 }
 
 /**
- * يكتب «حالة العقد» على الموظّف من عقده الحاكم.
+ * يكتب «حالة العقد» وتاريخَيه ورقمَه على الموظّف من عقده الحاكم.
  *
- * ولا يمسّ من لا عقدَ له: خانتُه جاءت من ملفّ الاستيراد وهي كلُّ ما يُعرَف عنه،
+ * ولا يمسّ من لا عقدَ له: خاناتُه جاءت من ملفّ الاستيراد وهي كلُّ ما يُعرَف عنه،
  * ومحوُها لأنّنا لا نجد عقدًا في النظام يفقد معلومةً ولا يصحّح شيئًا.
  *
- * @returns {Promise<string|null>} اللفظُ المكتوب، أو `null` إن لم يُكتب شيء.
+ * يكتب بـ`updateOne` عمدًا: لا يوقظ خطّافَ الحفظ في models/Employee، فلا تدور
+ * الكتابةُ بين الموضعين.
+ *
+ * @returns {Promise<string|null>} لفظُ الحالة المكتوب، أو `null` إن لم يُكتب شيء.
  */
 async function syncEmployeeContractStatus(employeeId) {
   if (!employeeId) return null;
@@ -67,10 +99,33 @@ async function syncEmployeeContractStatus(employeeId) {
   const c = await governingContract(employeeId);
   if (!c) return null;
   const text = CONTRACT_STATUS_AR[c.status] || c.status || '';
-  await Employee.updateOne({ _id: employeeId }, { $set: { contractStatusText: text } });
+  await Employee.updateOne({ _id: employeeId }, { $set: { contractStatusText: text, ...mirrorOf(c) } });
   return text;
+}
+
+/**
+ * العكس: خاناتُ العقد عُدِّلت على الموظّف (الماستر، التجديد، الاستيراد) فتُكتب
+ * في عقده **الساري**. ومن لا عقدَ سارٍ له لا يُنشأ له عقدٌ هنا ولا يُمَسّ عقدُه
+ * المفسوخ: الخانةُ تبقى كلَّ ما يُعرَف.
+ *
+ * @param {object} fields  ما تغيّر فقط: contractStartDate / contractEndDate / qiwaContractNumber
+ */
+async function pushEmployeeContractFields(employeeId, fields) {
+  if (!employeeId || !fields) return false;
+  const Contract = require('../models/Contract');
+  const set = {};
+  if ('contractEndDate' in fields) set.endDate = day(fields.contractEndDate);
+  // بدايةُ العقد إلزاميّةٌ على العقد: فراغُها في الملفّ لا يمحوها هناك.
+  if ('contractStartDate' in fields && day(fields.contractStartDate)) set.startDate = day(fields.contractStartDate);
+  if ('qiwaContractNumber' in fields) set.contractNumber = String(fields.qiwaContractNumber || '').trim();
+  if (!Object.keys(set).length) return false;
+  const active = await Contract.findOne({ employee: employeeId, status: 'active' }).sort({ createdAt: -1 }).select('_id').lean();
+  if (!active) return false;
+  await Contract.updateOne({ _id: active._id }, { $set: set });
+  return true;
 }
 
 module.exports = {
   CONTRACT_STATUS_AR, NORMALISE, normaliseContractStatus, governingContract, syncEmployeeContractStatus,
+  pushEmployeeContractFields, mirrorOf,
 };

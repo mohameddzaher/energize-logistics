@@ -15,7 +15,7 @@ import {
   isHRStaff, Employee, Contract, LeaveRequest, Asset, HRRequest, LeaveBalance,
   EmployeeDocument, EmployeeRenewal, AuditEntry,
   empName, userName, fmtDateTime, leaveTypeLabel, expiryBadge,
-  EMPLOYMENT_STATUS, CONTRACT_STATUS, LEAVE_STATUS, REQUEST_STATUS, assetTypeLabel, conditionLabel,
+  EMPLOYMENT_STATUS, CONTRACT_STATUS, contractBadge, LEAVE_STATUS, REQUEST_STATUS, assetTypeLabel, conditionLabel,
   RENEWAL_TYPES, DOCUMENT_CATEGORIES, renewalTypeLabel, docCategoryLabel, auditActionLabel,
 } from '@/lib/hr';
 import {
@@ -660,7 +660,7 @@ export default function EmployeeProfilePage() {
                   <Td className="text-slate-900">{c.type === 'unlimited' ? tx.contractUnlimited : tx.contractFixed}</Td>
                   <DateTds v={c.startDate} /><DateTds v={c.endDate} />
                   <Td>{c.annualLeaveDays} {tx.dayUnit}</Td><Td>{(c.basicSalary || 0).toLocaleString()}</Td>
-                  <Td><Badge style={CONTRACT_STATUS[c.status]} lang={lang} /></Td>
+                  <Td><Badge style={contractBadge(c)} lang={lang} /></Td>
                   {staff && <Td><button type="button" onClick={() => { setEditingContract(c); setShowContract(true); }} className="p-1 rounded text-slate-500 hover:text-[#f37121]" title={ar ? 'تعديل' : 'Edit'}><Edit className="w-4 h-4" /></button></Td>}
                 </Tr>
               ))}</tbody>

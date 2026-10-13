@@ -270,6 +270,21 @@ export const CONTRACT_STATUS: Record<string, { bg: string; text: string; en: str
   active: { bg: 'bg-green-500/20', text: 'text-green-700', en: 'Active', ar: 'ساري' },
   expired: { bg: 'bg-gray-500/20', text: 'text-gray-600', en: 'Expired', ar: 'منتهي' },
   terminated: { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Terminated', ar: 'مفسوخ' },
+  renewed: { bg: 'bg-sky-500/20', text: 'text-sky-700', en: 'Renewed', ar: 'مجدَّد' },
+};
+/**
+ * ما يُعرَض للعقد — لا ما هو مخزَّنٌ فيه وحدَه.
+ *
+ * «ساري» حالةٌ تُكتب يومَ يُنشأ العقد ولا يغيّرها مرورُ الوقت: عقدٌ انقضت مدّتُه
+ * ولم يُجدَّد يبقى «ساري» في تبويب العقود، وصفحةُ الانتهاءات تقول عنه «منتهي».
+ * والاثنان يقرآن العقدَ نفسَه. فالعرضُ يقرأ التاريخَ مع الحالة.
+ */
+export const CONTRACT_LAPSED = { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Term ended — not renewed', ar: 'انتهت مدّته — لم يُجدَّد' };
+export const contractBadge = (c?: { status?: string; endDate?: string | null } | null) => {
+  if (!c) return null;
+  const end = String(c.endDate || '').slice(0, 10);
+  if (c.status === 'active' && end && end < new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' })) return CONTRACT_LAPSED;
+  return CONTRACT_STATUS[c.status || ''] || null;
 };
 
 export const REQUEST_CATEGORIES: { key: string; en: string; ar: string }[] = [

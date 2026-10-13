@@ -38,6 +38,8 @@ const emit = () => {
   try { cache.clear('hr:employees:'); cache.clear('dash:hr:'); } catch (e) { /* */ }
   try { emitToAll('hr:master', {}); } catch (e) { /* */ }
   try { emitToAll('hr:employee', {}); } catch (e) { /* */ }
+  // وخاناتُ العقد تُكتب في العقد نفسِه (models/Employee) — فصفحةُ العقود تسمع.
+  try { emitToAll('hr:contract', {}); } catch (e) { /* */ }
 };
 const filled = (v) => !(v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length));
 const rx = (s) => new RegExp(String(s).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');

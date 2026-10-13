@@ -69,4 +69,15 @@ contractSchema.index({ employee: 1, status: 1 });
 contractSchema.index({ status: 1 });
 contractSchema.index({ endDate: 1 });
 
+/**
+ * ── وكلُّ حفظٍ للعقد يُحدِّث صورتَه في ملفّ الموظّف ──────────────────────────
+ * الحالةُ والتاريخان والرقمُ تُقرأ في الماستر والانتهاءات من خاناتٍ على الموظّف
+ * (راجع utils/contractStatus). والمتحكِّماتُ تنادي المزامنةَ بعد كلّ كتابة،
+ * وهذا شبكةُ الأمان لما لا يمرّ بها: سكربتُ استيرادٍ أو بابٌ يُضاف غدًا.
+ */
+contractSchema.post('save', async function mirrorToEmployee(doc) {
+  try { await require('../utils/contractStatus').syncEmployeeContractStatus(doc.employee); }
+  catch (e) { console.error('contract → employee:', e.message); }
+});
+
 module.exports = mongoose.model('Contract', contractSchema);

@@ -58,7 +58,10 @@ const bustEmployeeCaches = () => {
     cache.clear('dash:hr:');
     cache.clear('hrm:');
   } catch (e) {}
-  try { emitToAll('hr:master', {}); } catch (e) {}
+  // الثلاثةُ معًا: الانتهاءاتُ والماستر تسمع `hr:master`، وملفُّ الموظّف وقائمتُه
+  // `hr:employee`، وصفحةُ العقود `hr:contract` — وكتابةٌ واحدةٌ تغيّر ما تعرضه
+  // الثلاث. فمن جدّد عقدًا رأى زميلُه ملفَّ الموظّف والانتهاءاتِ يتغيّران معًا.
+  for (const ev of ['hr:master', 'hr:employee', 'hr:contract']) { try { emitToAll(ev, {}); } catch (e) {} }
 };
 
 // All active HR back-office users — the reviewers/recipients for HR events.

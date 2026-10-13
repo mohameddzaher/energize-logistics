@@ -601,7 +601,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                               _info(tr('الجوال', 'Mobile'), _emp['mobileNumber'] ?? _emp['phone'], ltr: true),
                               _info(tr('البريد', 'Email'), _emp['email'], ltr: true),
                               _info(tr('انتهاء الجواز', 'Passport expiry'), _date(_emp['passportExpiry'])),
-                              _info(tr('انتهاء العقد', 'Contract expiry'), _date(_emp['contractExpiry'])),
+                              _info(tr('انتهاء العقد', 'Contract expiry'), _date(_emp['contractEndDate'])),
                             ]),
                           ),
                         ),
@@ -613,7 +613,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Row(children: [
                             Expanded(child: Text((c0['contractType'] ?? c0['type'] ?? tr('عقد', 'Contract')).toString(), style: const TextStyle(fontWeight: FontWeight.w800))),
-                            Chip2((c0['status'] ?? '—').toString(), c0['status'] == 'active' ? T.success : T.inkFaint),
+                            _contractChip(c0),
                           ]),
                           const SizedBox(height: 6),
                           Text('${_date(c0['startDate'])} ← ${_date(c0['endDate'])}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
@@ -1018,4 +1018,22 @@ class _EmployeeVehiclesTabState extends State<_EmployeeVehiclesTab> with Automat
       ]),
     );
   }
+}
+
+/// حالةُ العقد كما تُعرَض: «ساري» المخزَّنةُ لا يغيّرها مرورُ الوقت، فعقدٌ انقضت
+/// مدّتُه ولم يُجدَّد يُعرَض بما هو عليه — مطابقٌ لـ`contractBadge` في الموقع.
+Widget _contractChip(Map c) {
+  final status = (c['status'] ?? '').toString();
+  final end = (c['endDate'] ?? '').toString();
+  final today = DateTime.now().toUtc().add(const Duration(hours: 3)).toIso8601String().substring(0, 10);
+  if (status == 'active' && end.length >= 10 && end.substring(0, 10).compareTo(today) < 0) {
+    return Chip2(tr('انتهت مدّته — لم يُجدَّد', 'Term ended — not renewed'), T.danger);
+  }
+  return switch (status) {
+    'active' => Chip2(tr('ساري', 'Active'), T.success),
+    'expired' => Chip2(tr('منتهي', 'Expired'), T.inkFaint),
+    'terminated' => Chip2(tr('مفسوخ', 'Terminated'), T.danger),
+    'renewed' => Chip2(tr('مجدَّد', 'Renewed'), T.navy),
+    _ => Chip2(status.isEmpty ? '—' : status, T.inkFaint),
+  };
 }

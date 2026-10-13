@@ -35,7 +35,7 @@ const ltCustodySchema = new mongoose.Schema({
   date: { type: String, required: true, index: true },
 
   // الوارد: من أين.
-  source: { type: String, enum: ['card', 'workshop', 'bank', 'maintenance', ''], default: '' },
+  source: { type: String, enum: ['card', 'workshop', 'bank', 'maintenance', 'opening', ''], default: '' },
 
   // الصادر: إلى مَن. `cash` تحويلٌ إلى حساب الكاش، وغيرُه متحمِّل.
   target: { type: String, enum: ['rep', 'company', 'cash', ''], default: '' },

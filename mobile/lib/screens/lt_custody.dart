@@ -26,7 +26,7 @@ const _accounts = [
 
 const _word = {
   'cash': ('الكاش', 'Cash'), 'card': ('الكارت', 'Card'), 'workshop': ('الورشة', 'Workshop'),
-  'bank': ('البنك', 'Bank'), 'maintenance': ('الصيانة', 'Maintenance'), 'rep': ('مندوب', 'Rep'), 'company': ('الشركة', 'Company'),
+  'bank': ('البنك', 'Bank'), 'maintenance': ('الصيانة', 'Maintenance'), 'rep': ('مندوب', 'Rep'), 'company': ('الشركة', 'Company'), 'opening': ('رصيد افتتاحي', 'Opening balance'),
 };
 String _w(dynamic k) { final x = _word[k?.toString()]; return x == null ? (k ?? '').toString() : tr(x.$1, x.$2); }
 
@@ -95,6 +95,7 @@ class _LtCustodyScreenState extends State<LtCustodyScreen> {
   }
 
   String _party(Map e) {
+    if (e['source'] == 'opening') return _w('opening');
     if (e['direction'] == 'in') return '${tr('من', 'From')} ${_w(e['source'])}';
     if (e['target'] == 'rep') return '${tr('مندوب', 'Rep')}: ${e['repName'] ?? ''}';
     if (e['target'] == 'company') return tr('الشركة', 'Company');

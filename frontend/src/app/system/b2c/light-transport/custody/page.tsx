@@ -50,7 +50,7 @@ const ACCOUNTS: { key: Account; ar: string; en: string; Icon: any; tone: string 
 ];
 const WORD: Record<string, [string, string]> = {
   cash: ['الكاش', 'Cash'], card: ['الكارت', 'Card'], workshop: ['الورشة', 'Workshop'],
-  bank: ['البنك', 'Bank'], maintenance: ['الصيانة', 'Maintenance'], rep: ['مندوب', 'Rep'], company: ['الشركة', 'Company'],
+  bank: ['البنك', 'Bank'], maintenance: ['الصيانة', 'Maintenance'], rep: ['مندوب', 'Rep'], company: ['الشركة', 'Company'], opening: ['رصيد افتتاحي', 'Opening balance'],
 };
 const money = (n?: number) => (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2 });
 const fmt = (d?: string) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '—');
@@ -91,6 +91,7 @@ export default function LightCustodyPage() {
 
   // من أين / إلى أين — كما تُقرأ في الجدول والتصدير.
   const party = useCallback((e: Entry) => {
+    if (e.source === 'opening') return w('opening');
     if (e.direction === 'in') return `${ar ? 'من' : 'From'} ${w(e.source)}`;
     if (e.target === 'rep') return `${ar ? 'مندوب' : 'Rep'}: ${e.repName || ''}`;
     if (e.target === 'company') return ar ? 'الشركة' : 'Company';

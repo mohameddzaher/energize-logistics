@@ -462,7 +462,7 @@ async function light(p, user) {
   const bikeIds = new Set(bikes.map((b) => String(b._id)));
   const claims = allClaims.filter((c) => c.vehicleSectorAr === 'النقل الخفيف' || (c.vehicle && bikeIds.has(String(c.vehicle))));
   const ACC = { cash: 'الكاش', card: 'الكارت (كارت المشتريات)', workshop: 'الورشة' };
-  const WORD = { cash: 'الكاش', card: 'الكارت', workshop: 'الورشة', bank: 'البنك', maintenance: 'الصيانة' };
+  const WORD = { cash: 'الكاش', card: 'الكارت', workshop: 'الورشة', bank: 'البنك', maintenance: 'الصيانة', opening: 'رصيد افتتاحي' };
   const accounts = Object.keys(ACC).map((k) => {
     const of = (d) => allByAccount.find((x) => x._id.a === k && x._id.d === d)?.total || 0;
     const mine = entries.filter((e) => e.account === k);
@@ -472,8 +472,9 @@ async function light(p, user) {
       totalIn: of('in'), totalOut: of('out'), balance: of('in') - of('out'),
     };
   });
-  const real = entries.filter((e) => !e.transferId);
-  const partyOf = (e) => (e.direction === 'in' ? `من ${WORD[e.source] || ''}`
+  // والرصيدُ الافتتاحيّ ليس واردَ الفترة: هو ما بدأ به الدفتر.
+  const real = entries.filter((e) => !e.transferId && e.source !== 'opening');
+  const partyOf = (e) => (e.source === 'opening' ? 'رصيد افتتاحي' : e.direction === 'in' ? `من ${WORD[e.source] || ''}`
     : e.target === 'rep' ? `مندوب: ${e.repName || ''}` : e.target === 'company' ? 'الشركة' : `إلى ${WORD[e.target] || ''}`);
   /**
    * ── والمشروعُ يُقرأ من سجلّ النقل الخفيف ──────────────────────────────────

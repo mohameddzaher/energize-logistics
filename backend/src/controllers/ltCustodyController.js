@@ -82,7 +82,7 @@ exports.list = async (req, res) => {
     if (ACCOUNTS.includes(q.account)) f.account = q.account;
     if (q.direction === 'in' || q.direction === 'out') f.direction = q.direction;
     if (['rep', 'company', 'cash'].includes(q.target)) f.target = q.target;
-    if (['card', 'workshop', 'bank', 'maintenance'].includes(q.source)) f.source = q.source;
+    if (['card', 'workshop', 'bank', 'maintenance', 'opening'].includes(q.source)) f.source = q.source;
     if (YMD.test(q.from || '') || YMD.test(q.to || '')) {
       f.date = {};
       if (YMD.test(q.from || '')) f.date.$gte = q.from;
@@ -175,7 +175,8 @@ exports.create = async (req, res) => {
 };
 
 const ACC_AR = { cash: 'الكاش', card: 'الكارت', workshop: 'الورشة' };
-const SRC_AR = { card: 'الكارت', workshop: 'الورشة', bank: 'البنك', maintenance: 'الصيانة' };
+// «opening» رصيدٌ افتتاحيّ: يُكتب بالسكربت مرّةً (setLtCustodyOpening) ولا يُختار من الشاشة.
+const SRC_AR = { card: 'الكارت', workshop: 'الورشة', bank: 'البنك', maintenance: 'الصيانة', opening: 'رصيد افتتاحي' };
 function describe(list) {
   // الصادرُ أوّلًا: «من … إلى …» تُقرأ صحيحةً بأيّ ترتيبٍ جاء به الطرفان.
   const entries = [...list].sort((a, b) => (a.direction === 'out' ? -1 : 1) - (b.direction === 'out' ? -1 : 1));

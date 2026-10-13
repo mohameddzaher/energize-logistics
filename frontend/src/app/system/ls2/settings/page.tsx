@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
+import { useSocket } from '@/hooks/useSocket';
 import {
   Settings as SettingsIcon, Save, RotateCcw, Plus, Trash2, ListChecks, Bell,
   Activity, Thermometer, Gauge, Zap, GripVertical, Check, AlertTriangle,
@@ -83,6 +84,9 @@ export default function Ls2SettingsPage() {
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
+  // ما يُكتب في القسم — من هذه الشاشة أو من غيرها — يظهر هنا في الحال. ونبضُ
+  // القياس عن بُعد (يحمل `vehicles`) لا يُعيد التحميل: يتكرّر كلَّ دقيقةٍ ولا يغيّر ما هنا.
+  useSocket('ls2:updated', useCallback((d: any) => { if (d?.settings) load(); }, [load]));
 
   // Warn before leaving with edits still in the form.
   const cleanWindows = (): AlertBeforeMap => Object.fromEntries(

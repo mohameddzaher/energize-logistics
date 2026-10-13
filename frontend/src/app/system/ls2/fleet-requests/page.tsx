@@ -17,6 +17,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
+import { isLs2Admin } from '@/lib/ls2';
 import { Spinner, PageHeader, ErrorNotice, PrimaryButton, StatCard, TextArea } from '@/components/hr/HRKit';
 import { ShieldQuestion, Check, X, Truck, Clock, AlertTriangle, User as UserIcon } from 'lucide-react';
 
@@ -56,7 +57,9 @@ export default function Ls2FleetRequestsPage() {
   const [note, setNote] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState('');
 
-  const canDecide = !!user && DECIDE_ROLES.includes(user.role);
+  // القرارُ لمن يملك تعديلَ القسم — بدوره أو بمنحٍ من مصفوفة الصلاحيّات. كانت
+  // قائمةَ أسماءٍ وحدَها، فمَن مُنح القسمَ فتح الصفحةَ ولم يجد زرَّي القرار.
+  const canDecide = !!user && (DECIDE_ROLES.includes(user.role) || isLs2Admin(user));
 
   const load = useCallback(async () => {
     try {

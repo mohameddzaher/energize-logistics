@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
+import { useSocket } from '@/hooks/useSocket';
 import {
   Target, Search, ChevronDown, ChevronRight, Loader2, Gauge, Timer,
   PackageCheck, TrendingUp, RefreshCw, Zap,
@@ -101,6 +102,9 @@ export default function Ls2DriverPerformancePage() {
     setLoading(false);
   }, [range.from, range.to, deep]);
   useEffect(() => { load(); }, [load]);
+  // ما يُكتب في القسم — من هذه الشاشة أو من غيرها — يظهر هنا في الحال. ونبضُ
+  // القياس عن بُعد (يحمل `vehicles`) لا يُعيد التحميل: يتكرّر كلَّ دقيقةٍ ولا يغيّر ما هنا.
+  useSocket('ls2:updated', useCallback((d: any) => { if (d?.vehicles === undefined) load(); }, [load]));
 
   const toggle = async (name: string) => {
     if (open === name) { setOpen(null); return; }

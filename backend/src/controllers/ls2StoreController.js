@@ -3,7 +3,8 @@ const cache = require('../utils/ttlCache');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 
-const emit = () => { try { emitToAll('ls2:store', {}); } catch (e) {} cache.clear('ls2store:'); };
+// المسحُ قبل الإعلان، وللقسم كلِّه: حركةُ مخزنٍ تُقرأ في لوحة القسم وملفّ المركبة أيضًا.
+const emit = () => { require('../utils/ls2Touch').touchLs2({ store: true }); };
 
 /**
  * مخزنُ الطلب: الثقيلُ افتراضًا، والخفيفُ حين يُطلَب صراحةً.

@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
+import { useSocket } from '@/hooks/useSocket';
 import {
   FileBarChart, RefreshCw, Search, Droplet, Loader2, Truck, ChevronUp, ChevronDown,
   ExternalLink, AlertTriangle, Wrench, Route, Gauge,
@@ -72,6 +73,9 @@ export default function Ls2ReportsPage() {
     setLoading(false);
   }, [range.from, range.to]);
   useEffect(() => { loadFleet(); }, [loadFleet]);
+  // ما يُكتب في القسم — من هذه الشاشة أو من غيرها — يظهر هنا في الحال. ونبضُ
+  // القياس عن بُعد (يحمل `vehicles`) لا يُعيد التحميل: يتكرّر كلَّ دقيقةٍ ولا يغيّر ما هنا.
+  useSocket('ls2:updated', useCallback((d: any) => { if (d?.vehicles === undefined) loadFleet(); }, [loadFleet]));
   // A new period invalidates every fuel figure already loaded.
   useEffect(() => { setFuel({}); }, [range.from, range.to]);
 

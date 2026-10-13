@@ -20,7 +20,7 @@ class Ls2FleetRequestsScreen extends StatefulWidget {
 }
 
 const _decideRoles = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'location_manager',
+  'super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'location_manager', 'vehicles_manager',
 ];
 
 class _Ls2FleetRequestsScreenState extends State<Ls2FleetRequestsScreen> {
@@ -103,8 +103,10 @@ class _Ls2FleetRequestsScreenState extends State<Ls2FleetRequestsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final role = context.watch<AuthProvider>().role;
-    final canDecide = _decideRoles.contains(role);
+    final auth = context.watch<AuthProvider>();
+    final role = auth.role;
+    // القرارُ لمن يملك تعديلَ القسم — بدوره أو بمنحٍ من مصفوفة الصلاحيّات.
+    final canDecide = _decideRoles.contains(role) || auth.canEditSection('Location Solutions');
 
     return AppScaffold(
       title: Text(tr('طلبات الأسطول', 'Fleet Requests')),

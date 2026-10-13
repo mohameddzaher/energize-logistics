@@ -27,13 +27,15 @@ const tireSensors = require('../services/ls2TireSensors');
 let emitTimer = null;
 function emitAssetsChanged() {
   cache.clear('ls2assets:');
+  // وما يُشتقّ من الأصول في بقيّة القسم (لوحتُه وقائمةُ مركباته وتقاريرُه).
+  require('../utils/ls2Touch').clearLs2Derived();
   // عمود «الفرد اللي عليها سينسور» في شاشتَي الأسطول يقرأ مواضع هذا السجل.
   // بدون إسقاط ذاكرته يظلّ الفنيّ دقيقةً كاملة يرى تسجيله كأنه لم يحدث.
   tireSensors.clearLayoutCache();
   if (emitTimer) return;
   emitTimer = setTimeout(() => {
     emitTimer = null;
-    try { emitToAll('ls2:updated', { at: Date.now(), assets: true }); } catch (e) { /* socket down ≠ failed save */ }
+    try { emitToAll('ls2:updated', { at: Date.now(), assets: true }); emitToAll('ls2:store', {}); } catch (e) { /* socket down ≠ failed save */ }
   }, 300);
 }
 

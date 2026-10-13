@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
+import { useSocket } from '@/hooks/useSocket';
 import { UserSquare, Search, FileDown, Loader2, ChevronRight, ChevronDown, RefreshCw } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import RangePicker from '@/components/ls2/RangePicker';
@@ -50,6 +51,9 @@ export default function Ls2DriversPage() {
     setLoading(false);
   }, [range.from, range.to]);
   useEffect(() => { load(); }, [load]);
+  // ما يُكتب في القسم — من هذه الشاشة أو من غيرها — يظهر هنا في الحال. ونبضُ
+  // القياس عن بُعد (يحمل `vehicles`) لا يُعيد التحميل: يتكرّر كلَّ دقيقةٍ ولا يغيّر ما هنا.
+  useSocket('ls2:updated', useCallback((d: any) => { if (d?.vehicles === undefined) load(); }, [load]));
 
   // السواقين: مين ماشي على مركبة حاليًا، ومين اتنقل بين أكتر من عربية في الفترة،
   // ومين ما مشيش خالص — دي الأسئلة اللي بتتسأل على الكشف ده.

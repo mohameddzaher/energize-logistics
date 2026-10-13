@@ -183,8 +183,10 @@ module.exports = {
   LS2_STAFF_ROLES: [
     'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_staff',
     'procurement_staff', 'location_manager', 'location_staff',
+    // مديرُ المركبات والتفاويض يعمل في القسم (طلبُ صاحب الشركة ٢٠٢٦/١٠/١٣).
+    'vehicles_manager',
   ],
-  LS2_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'location_manager'],
+  LS2_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'location_manager', 'vehicles_manager'],
   // Core roles that see the section in their sidebar (others can still reach the
   // data via direct link / embeds but it isn't pinned to their nav).
   LS2_SECTION_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'location_manager', 'location_staff'],

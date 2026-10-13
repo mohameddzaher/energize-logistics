@@ -16,6 +16,8 @@ const reports = require('../services/ls2Reports');
 const tireSensors = require('../services/ls2TireSensors');
 const cfg = require('../config/ls2Config');
 const cache = require('../utils/ttlCache');
+// كتابةٌ هنا تمسح ذاكرةَ القسم كلِّه — ومعها ملخّصُ الأصول والمخزن (راجع utils/ls2Touch).
+const clearLs2All = () => { cache.clear('ls2:'); require('../utils/ls2Touch').clearLs2Derived(); };
 const { emitToAll } = require('../websocket/socketManager');
 
 const CACHE_TTL = 15000; // = دورة التحديث (poll) 15ث — البيانات لا تتغيّر أسرع من كده
@@ -545,7 +547,7 @@ exports.refreshIdentity = async (req, res) => {
   try {
     const { syncIdentity } = require('../services/ls2Identity');
     const n = await syncIdentity();
-    cache.clear('ls2:');
+    clearLs2All();
     res.json({ ok: true, synced: n });
   } catch (error) {
     fail(res, error, 'Failed to sync identity');
@@ -608,7 +610,7 @@ exports.markServiced = async (req, res) => {
       unitId, plate: v.plate, action: 'serviced', odometerKm: odo, serviceType, notes,
       performedBy: req.user._id, performedByName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
     });
-    cache.clear('ls2:');
+    clearLs2All();
     emitToAll('ls2:updated', { at: Date.now(), serviced: unitId });
     res.status(201).json({ vehicle: v, log });
   } catch (error) {
@@ -798,7 +800,7 @@ exports.createRepair = async (req, res) => {
       performedBy: req.user._id,
       performedByName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
     });
-    cache.clear('ls2:');
+    clearLs2All();
     emitToAll('ls2:updated', { at: Date.now(), repair: unitId });
     res.status(201).json({ item });
   } catch (error) {
@@ -813,7 +815,7 @@ exports.updateRepair = async (req, res) => {
     for (const k of allowed) if (req.body[k] !== undefined) set[k] = req.body[k];
     const item = await Ls2Repair.findByIdAndUpdate(req.params.repairId, { $set: set }, { new: true });
     if (!item) return res.status(404).json({ message: 'Repair not found' });
-    cache.clear('ls2:');
+    clearLs2All();
     emitToAll('ls2:updated', { at: Date.now(), repair: item.unitId });
     res.json({ item });
   } catch (error) {
@@ -825,7 +827,7 @@ exports.deleteRepair = async (req, res) => {
   try {
     const item = await Ls2Repair.findByIdAndDelete(req.params.repairId);
     if (!item) return res.status(404).json({ message: 'Repair not found' });
-    cache.clear('ls2:');
+    clearLs2All();
     emitToAll('ls2:updated', { at: Date.now(), repair: item.unitId });
     res.json({ ok: true });
   } catch (error) {
@@ -912,7 +914,7 @@ exports.registerServiceInterval = async (req, res) => {
     // in the modal waiting for it. The tick's own ls2:updated emit refreshes
     // every open screen when the mirror catches up.
     if (synced) { require('../jobs/ls2Poll').tick().catch(() => {}); }
-    cache.clear('ls2:');
+    clearLs2All();
     emitToAll('ls2:updated', { at: Date.now(), serviced: unitId, intervalId });
 
     const fresh = await Ls2Vehicle.findOne({ unitId }).lean();
@@ -973,7 +975,7 @@ exports.resolveDeferral = async (req, res) => {
     }
     await log.save();
 
-    cache.clear('ls2:');
+    clearLs2All();
     emitToAll('ls2:updated', { at: Date.now(), resolvedDeferral: unitId });
 
     const v = await Ls2Vehicle.findOne({ unitId }).lean();
@@ -1336,7 +1338,7 @@ exports.updateVehicleMeta = async (req, res) => {
     if (!Object.keys(set).length) return res.status(400).json({ message: 'Nothing to update' });
     const v = await Ls2Vehicle.findOneAndUpdate({ unitId }, { $set: set }, { new: true });
     if (!v) return res.status(404).json({ message: 'Vehicle not found' });
-    cache.clear('ls2:');
+    clearLs2All();
     emitToAll('ls2:updated', { at: Date.now(), meta: unitId });
     res.json({ vehicle: v });
   } catch (error) {
@@ -1373,7 +1375,7 @@ exports.updateSettings = async (req, res) => {
     s.updatedBy = req.user._id;
     s.markModified('thresholds'); s.markModified('maintenance'); s.markModified('checklists'); s.markModified('alertBefore');
     await s.save();
-    cache.clear('ls2:');
+    clearLs2All();
     emitToAll('ls2:updated', { at: Date.now(), settings: true });
     res.json({ thresholds: s.thresholds, maintenance: s.maintenance, checklists: s.checklists || {}, alertBefore: s.alertBefore || {} });
   } catch (error) {

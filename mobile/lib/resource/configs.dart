@@ -1339,10 +1339,15 @@ final collectionsCashInvoicesCfg = ResourceConfig(
   ],
   sortFields: const [('ageDays', 'العمر', 'Age')],
   rowActions: (r) => [
-    if (_s(r, 'collectionDate').isNotEmpty || ((r['collectedAmount'] is num) && (r['collectedAmount'] as num) > 0))
+    if (collectionsCanEdit && (_s(r, 'collectionDate').isNotEmpty || ((r['collectedAmount'] is num) && (r['collectedAmount'] as num) > 0)))
       _uncollectAction((r) => {'ids': [_s(r, '_id')]}),
   ],
 );
+
+/// مَن يكتب في فواتير التحصيل — يضبطه `sectionsFor` من دور المستخدم ومنحِ القسم
+/// (EDIT_ROLES في routes/collectionsDept). القراءةُ أوسعُ من الكتابة هنا، فلا
+/// يُعرَض «لم تُحصَّل» لمن سيرفضه الخادم.
+bool collectionsCanEdit = true;
 
 /// «لم تُحصَّل» — الرجوعُ عن تحصيلٍ سُجِّل: بسببٍ مكتوب، ويُقيَّد باسم صاحبه.
 /// الفاتورةُ الضريبيّةُ تُعرَف برقمها، والكشفُ النقديُّ بمعرّفه في سير العمل.
@@ -1370,7 +1375,7 @@ final collectionsTaxInvoicesCfg = ResourceConfig(
   ],
   fields: const [],
   rowActions: (r) => [
-    if (r['fullyCollected'] == true || _s(r, 'collectionDate').isNotEmpty)
+    if (collectionsCanEdit && (r['fullyCollected'] == true || _s(r, 'collectionDate').isNotEmpty))
       _uncollectAction((r) => {'invoiceNumber': _s(r, 'invoiceNumber')}),
   ],
 );

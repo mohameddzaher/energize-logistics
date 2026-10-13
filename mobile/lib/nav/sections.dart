@@ -135,6 +135,9 @@ const _sectionOrder = <String>[
 
 List<AppSection> sectionsFor(AuthProvider auth) {
   final role = auth.role;
+  // الكتابةُ في فواتير التحصيل: أدوارُ الخادم نفسُها، أو منحُ القسم «تعديل».
+  collectionsCanEdit = const [..._admins, 'collections_manager', 'collections_staff', 'cfo', 'accounting_manager'].contains(role)
+      || auth.canEditSection('Collections');
   // ── سجلُّ العملاء: شاشةٌ واحدةٌ في التشغيل وطلبات الشحنات والمبيعات ────────
   // مَن يعدّل ومَن يزيل بقاعدة الويب نفسِها (canEditCustomers / canRemoveCustomers)
   // وحارسِ `/api/customer-registry`: المندوبُ يقرأ ولا يكتب.

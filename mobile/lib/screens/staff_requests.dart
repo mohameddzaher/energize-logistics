@@ -436,9 +436,10 @@ class _StaffRequestsScreenState extends State<StaffRequestsScreen> {
           IconButton(
             tooltip: tr('افتح ملفَّه', 'Open profile'),
             icon: const Icon(Icons.manage_accounts_outlined, size: 18),
+            // الملفُّ قد يُحذَف أو تتغيّر حالتُه هناك — فتُعاد قراءةُ القائمة عند العودة.
             onPressed: () => Navigator.push(context, MaterialPageRoute(
               builder: (_) => HrEmployeeProfileScreen(employeeId: s['employee'].toString()),
-            )),
+            )).then((_) { if (mounted) _load(); }),
           ),
         if (hrSide && dec == 'pending') ...[
           IconButton(

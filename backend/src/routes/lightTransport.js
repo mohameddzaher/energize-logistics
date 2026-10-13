@@ -27,6 +27,14 @@ router.post('/employees/:id/deactivate', authorize(...EDIT), c.deactivateEmploye
 // إسنادُ مشرفٍ تشغيليٍّ أو مشرفِ تفقّدٍ لعدّة موظّفين دفعةً واحدة.
 router.post('/employees/assign-supervisors', authorize(...EDIT), c.assignSupervisors);
 
+// ── عهدةُ النقل الخفيف: الكاش وكارت المشتريات والورشة ──────────────────────
+// قيودُ واردٍ وصادر، والتحويلُ بين حسابين قيدان بضغطة — راجع models/LtCustody.
+const custody = require('../controllers/ltCustodyController');
+router.get('/custody', custody.list);
+router.get('/custody/rep', custody.lookupRep);
+router.post('/custody', authorize(...EDIT), custody.create);
+router.delete('/custody/:id', authorize(...EDIT), custody.remove);
+
 router.get('/housing', c.listHousing);
 router.post('/housing', authorize(...EDIT), c.saveHousing);
 router.put('/housing/:id', authorize(...EDIT), c.saveHousing);

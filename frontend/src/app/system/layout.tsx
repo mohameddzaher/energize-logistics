@@ -547,7 +547,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/b2c/light-transport/store', label: lang === 'ar' ? 'مخزن النقل الخفيف' : 'Light Transport Store', icon: <Boxes className="w-5 h-5" />, roles: ['cfo', 'accounting_manager', 'accountant', 'super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/orders', label: L.b2cOrders, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/projects', label: L.b2cProjects, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
-    { href: '/system/b2c/custody', label: lang === 'ar' ? 'العهدة' : 'Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
+    // عهدةُ القسم: الكاش وكارت المشتريات والورشة — واردُ كلٍّ وصادرُه ورصيدُه.
+    { href: '/system/b2c/light-transport/custody', label: lang === 'ar' ? 'عهدة النقل الخفيف' : 'Light Transport Custody', icon: <Wallet className="w-5 h-5" />, roles: ['cfo', 'accounting_manager', 'accountant', 'super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_project_lead'], section: 'B2C' },
     // ── ويُبلَّغ القسمُ الموارد البشريّة بما رآه في الميدان ─────────────────
     // المندوبُ يعود إلى العمل اليومَ ويبلغ الخبرُ الموارد البشريّة بعد أيّام،
     // فيبقى في النظام «منتهيًا» ولا يُصدَر له أمرُ تشغيل. ومشرفُ المناديب

@@ -53,7 +53,7 @@ import '../screens/ls2_drivers.dart';
 import '../screens/marketing_activities.dart';
 import '../screens/ops_workflows.dart';
 import '../screens/ops_private.dart';
-import '../screens/b2c_wallet.dart';
+import '../screens/lt_custody.dart';
 import '../screens/light_transport_housing.dart';
 import '../screens/my_profile.dart';
 import '../screens/customs_dashboard.dart';
@@ -558,7 +558,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
                   vehiclesKind: 'light',
                 ),
             path: '/system/b2c/light-transport/store'),
-        AppPage('عهد المشاريع', 'Custody', Icons.account_balance_wallet_outlined, (c) => const B2cWalletScreen(), path: '/system/b2c/custody'),
+        // عهدةُ القسم: الكاش وكارت المشتريات والورشة — حلّت محلَّ «عهد المشاريع».
+        AppPage('عهدة النقل الخفيف', 'Light Transport Custody', Icons.account_balance_wallet_outlined, (c) => const LtCustodyScreen(), path: '/system/b2c/light-transport/custody'),
         // ويُبلِّغ القسمُ الموارد البشريّة بما رآه في الميدان — الجانبُ المُرسِل.
         AppPage('طلبات الموارد البشرية', 'HR Requests', Icons.send_outlined, (c) => const StaffRequestsScreen(side: 'section', section: 'B2C'), path: '/system/b2c/hr-requests'),
         // ── سجلُّ القسم كلِّه لا مناديبَ التقارير وحدَهم ────────────────────

@@ -1547,11 +1547,10 @@
       ],
       "wildcard": false
     },
-    "/system/b2c/custody": {
+    "/system/b2c/light-transport/custody": {
       "apis": [
-        "/api/b2c-wallet",
-        "/api/b2c-wallet/managers",
-        "/api/b2c-wallet/me"
+        "/api/light-transport/custody",
+        "/api/light-transport/custody/rep"
       ],
       "wildcard": false
     },

@@ -442,26 +442,39 @@ async function customs(p, user) {
 //  ماليات النقل الخفيف — مناديب الأفراد ودرّاجاتهم
 // ═══════════════════════════════════════════════════════════════════════════
 async function light(p, user) {
-  const B2CWalletEntry = require('../models/B2CWalletEntry');
+  // العهدةُ تُقرأ من دفتر «عهدة النقل الخفيف» (الكاش والكارت والورشة) — وقد حلّ
+  // محلَّ عُهَد مديري المشاريع. والتحويلُ بين حسابين قيدان، فلا يُحسَب في
+  // «الوارد» و«المصروف»: هو مالٌ انتقل لا مالٌ دخل أو خرج.
+  const LtCustodyEntry = require('../models/LtCustody');
   const { VehicleMaster } = require('../models/VehicleMaster');
   const VehicleClaim = require('../models/VehicleClaim');
-  const User = require('../models/User');
-  const [managers, periodByPm, entries, bikes, allClaims] = await Promise.all([
-    callController('../controllers/b2cWalletController', 'managers', {}, user),
-    B2CWalletEntry.aggregate([
-      { $match: { createdAt: { $gte: p.fromDate, $lte: p.toDate } } },
-      { $group: { _id: '$projectManager', in: { $sum: { $cond: [{ $eq: ['$direction', 'in'] }, '$amount', 0] } }, out: { $sum: { $cond: [{ $eq: ['$direction', 'out'] }, '$amount', 0] } }, n: { $sum: 1 } } },
+  const ymd = (d) => new Date(d).toISOString().slice(0, 10);
+  const inPeriod = { date: { $gte: p.from || ymd(p.fromDate), $lte: p.to || ymd(p.toDate) } };
+  const [allByAccount, entries, bikes, allClaims] = await Promise.all([
+    LtCustodyEntry.aggregate([
+      { $group: { _id: { a: '$account', d: '$direction' }, total: { $sum: '$amount' } } },
     ]),
-    B2CWalletEntry.find({ createdAt: { $gte: p.fromDate, $lte: p.toDate } }).populate('projectManager', 'firstName lastName').sort({ createdAt: -1 }).limit(2000).lean(),
+    LtCustodyEntry.find(inPeriod).sort({ date: -1, createdAt: -1 }).limit(2000).lean(),
     VehicleMaster.find({ sectorAr: /خفيف/, isActive: { $ne: false } }).select('plateNumber departmentAr registrationTypeAr insurance.premiumSar insurance.premiumStatusAr insurance.companyAr fuelCard.limitSar').lean(),
     VehicleClaim.find({ isActive: { $ne: false } }).select('claimId vehicle vehiclePlate vehiclePlateKey vehicleSectorAr accidentDate claim statusAr').lean(),
   ]);
   // المطالبةُ تُنسب للدرّاجة بالمركبة نفسِها: سبعٌ وعشرون مطالبةً بلا قطاعٍ مكتوب.
   const bikeIds = new Set(bikes.map((b) => String(b._id)));
   const claims = allClaims.filter((c) => c.vehicleSectorAr === 'النقل الخفيف' || (c.vehicle && bikeIds.has(String(c.vehicle))));
-  const byPm = new Map(periodByPm.map((x) => [String(x._id), x]));
-  const pms = managers?.managers || [];
-  void User;
+  const ACC = { cash: 'الكاش', card: 'الكارت (كارت المشتريات)', workshop: 'الورشة' };
+  const WORD = { cash: 'الكاش', card: 'الكارت', workshop: 'الورشة', bank: 'البنك', maintenance: 'الصيانة' };
+  const accounts = Object.keys(ACC).map((k) => {
+    const of = (d) => allByAccount.find((x) => x._id.a === k && x._id.d === d)?.total || 0;
+    const mine = entries.filter((e) => e.account === k);
+    return {
+      key: k, name: ACC[k],
+      periodIn: sum(mine.filter((e) => e.direction === 'in'), 'amount'), periodOut: sum(mine.filter((e) => e.direction === 'out'), 'amount'),
+      totalIn: of('in'), totalOut: of('out'), balance: of('in') - of('out'),
+    };
+  });
+  const real = entries.filter((e) => !e.transferId);
+  const partyOf = (e) => (e.direction === 'in' ? `من ${WORD[e.source] || ''}`
+    : e.target === 'rep' ? `مندوب: ${e.repName || ''}` : e.target === 'company' ? 'الشركة' : `إلى ${WORD[e.target] || ''}`);
   /**
    * ── والمشروعُ يُقرأ من سجلّ النقل الخفيف ──────────────────────────────────
    * كان يُقرأ من `departmentAr` على المركبة، وهي خانةٌ فارغةٌ في ثمانٍ وثلاثين
@@ -488,9 +501,9 @@ async function light(p, user) {
   const premium = sum(bikes, (b) => b.insurance?.premiumSar);
   return {
     cards: [
-      card('custodyIn', 'عُهَد مُسلَّمة في الفترة', 'Custody given (period)', sum(periodByPm, 'in'), { tone: 'warn', href: '/system/b2c/custody' }),
-      card('custodyOut', 'مصروف من العُهَد في الفترة', 'Custody spent (period)', sum(periodByPm, 'out'), { tone: 'bad', href: '/system/b2c/custody' }),
-      card('custodyBalance', 'أرصدة العُهَد القائمة', 'Open custody balances', sum(pms, 'balance'), { href: '/system/b2c/custody' }),
+      card('custodyIn', 'وارد العهدة في الفترة', 'Custody in (period)', sum(real.filter((e) => e.direction === 'in'), 'amount'), { tone: 'warn', href: '/system/b2c/light-transport/custody' }),
+      card('custodyOut', 'مصروف العهدة في الفترة', 'Custody spent (period)', sum(real.filter((e) => e.direction === 'out'), 'amount'), { tone: 'bad', href: '/system/b2c/light-transport/custody' }),
+      card('custodyBalance', 'أرصدة العهدة القائمة', 'Open custody balances', sum(accounts, 'balance'), { href: '/system/b2c/light-transport/custody' }),
       card('premium', 'أقساط تأمين الدرّاجات', 'Motorcycle insurance premiums', premium, { tone: 'bad', href: '/system/vehicles/registry/insurance/vehicles' }),
       card('claims', 'تقديرات حوادث الدرّاجات', 'Motorcycle claim estimates', sum(claims, (c) => c.claim?.estimatedAmountSar), { tone: 'bad', href: '/system/vehicles/registry/claims' }),
       card('recovery', 'المتوقّع استرداده', 'Expected recovery', sum(claims, (c) => c.claim?.expectedRecoverySar), { tone: 'good' }),
@@ -498,9 +511,9 @@ async function light(p, user) {
     ],
     tables: [
       {
-        key: 'managers', ar: 'عُهَد مديري المشاريع', en: 'Project managers custody',
-        columns: [col('name', 'مدير المشروع', 'Project manager'), col('periodIn', 'مُسلَّم في الفترة', 'Given (period)', 'money'), col('periodOut', 'مصروف في الفترة', 'Spent (period)', 'money'), col('totalIn', 'إجمالي المُسلَّم', 'Total given', 'money'), col('totalOut', 'إجمالي المصروف', 'Total spent', 'money'), col('balance', 'الرصيد', 'Balance', 'money')],
-        rows: pms.map((m) => ({ _href: '/system/b2c/custody', name: `${m.firstName || ''} ${m.lastName || ''}`.trim(), periodIn: round(byPm.get(String(m._id))?.in), periodOut: round(byPm.get(String(m._id))?.out), totalIn: round(m.totalIn), totalOut: round(m.totalOut), balance: round(m.balance) })),
+        key: 'managers', ar: 'عهدة النقل الخفيف حسب الحساب', en: 'Light-transport custody by account',
+        columns: [col('name', 'الحساب', 'Account'), col('periodIn', 'وارد الفترة', 'In (period)', 'money'), col('periodOut', 'صادر الفترة', 'Out (period)', 'money'), col('totalIn', 'إجمالي الوارد', 'Total in', 'money'), col('totalOut', 'إجمالي الصادر', 'Total out', 'money'), col('balance', 'الرصيد', 'Balance', 'money')],
+        rows: accounts.map((x) => ({ _href: '/system/b2c/light-transport/custody', name: x.name, periodIn: round(x.periodIn), periodOut: round(x.periodOut), totalIn: round(x.totalIn), totalOut: round(x.totalOut), balance: round(x.balance) })),
       },
       {
         key: 'projects', ar: 'الدرّاجات والأقساط حسب المشروع', en: 'Vehicles and premiums by project',
@@ -508,9 +521,9 @@ async function light(p, user) {
         rows: [...byProject.values()].map((r) => ({ ...r, premium: round(r.premium) })).sort((x, y) => y.vehicles - x.vehicles),
       },
       {
-        key: 'entries', ar: 'حركات العُهَد', en: 'Custody entries',
-        columns: [col('date', 'التاريخ', 'Date', 'date'), col('pm', 'مدير المشروع', 'Project manager'), col('direction', 'الاتجاه', 'Direction'), col('amount', 'المبلغ', 'Amount', 'money'), col('method', 'الطريقة', 'Method'), col('reason', 'السبب', 'Reason')],
-        rows: entries.map((e) => ({ date: e.createdAt, pm: `${e.projectManager?.firstName || ''} ${e.projectManager?.lastName || ''}`.trim(), direction: e.direction === 'in' ? 'تسليم' : 'صرف', amount: round(e.amount), method: { cash: 'نقدي', bank_transfer: 'تحويل', other: 'أخرى' }[e.method] || '', reason: e.reason || '' })),
+        key: 'entries', ar: 'حركات العهدة', en: 'Custody entries',
+        columns: [col('date', 'التاريخ', 'Date', 'date'), col('account', 'الحساب', 'Account'), col('direction', 'الحركة', 'Movement'), col('amount', 'المبلغ', 'Amount', 'money'), col('party', 'من / إلى', 'From / to'), col('detail', 'البيان', 'Detail')],
+        rows: entries.map((e) => ({ date: e.date, account: WORD[e.account] || '', direction: e.direction === 'in' ? 'وارد' : 'صادر', amount: round(e.amount), party: partyOf(e), detail: e.detail || '' })),
       },
       {
         key: 'claims', ar: 'حوادث الدرّاجات', en: 'Motorcycle claims',

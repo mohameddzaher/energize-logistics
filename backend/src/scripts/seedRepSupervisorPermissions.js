@@ -21,7 +21,7 @@ const PLAN = {
     home: '/system/b2c/daily-entry',
     open: [
       '/system/b2c/daily-entry', '/system/b2c/orders', '/system/b2c/reps-performance',
-      '/system/b2c/custody', '/system/b2c/light-transport', '/system/b2c/light-transport/store',
+      '/system/b2c/light-transport/custody', '/system/b2c/light-transport', '/system/b2c/light-transport/store',
       '/system/b2c/duty/start', '/system/b2c/duty',
       // ويُبلِّغ الموارد البشريّة بما رآه في الميدان — هو أوّلُ من يرى عودةَ
       // المندوب أو تركَه.

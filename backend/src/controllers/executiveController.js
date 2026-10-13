@@ -172,7 +172,7 @@ async function build(user) {
         kpi('مناديب تحت الإشراف', 'Supervised riders', duty?.totals?.expected, { href: '/system/b2c/reps' }),
         kpi('تفقّد اليوم', 'Checked today', duty?.totals?.checks, { href: '/system/b2c/duty' }),
         kpi('التزام التفقّد اليوم ٪', 'Check compliance today %', duty?.totals?.compliance, { format: 'pct', tone: 'auto', href: '/system/b2c/duty' }),
-        money('أرصدة العُهَد', 'Custody balances', card(fLight, 'custodyBalance'), { href: '/system/b2c/custody' }),
+        money('أرصدة العُهَد', 'Custody balances', card(fLight, 'custodyBalance'), { href: '/system/b2c/light-transport/custody' }),
         kpi('مركبات النقل الخفيف', 'Light vehicles', card(fLight, 'bikes')),
       ],
     },

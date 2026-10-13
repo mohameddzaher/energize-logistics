@@ -19,6 +19,7 @@
 const ACTION_AR = {
   // قيودُ شبكة الأمان (middleware/auditTrail) — فعلٌ لم يقيّده متحكّمُه بتفصيله.
   undo_collection: 'رجوع عن تحصيل',
+  lt_custody_entry: 'قيد في عهدة النقل الخفيف', lt_custody_delete: 'حذف قيد من عهدة النقل الخفيف',
   api_create: 'إضافة / تنفيذ إجراء', api_update: 'تعديل', api_delete: 'حذف',
   // حركاتُ أصول النقل الثقيل (الكاوتش والتيدرات والسطحات).
   ls2_asset_mounted: 'تركيب', ls2_asset_removed: 'إنزال', ls2_asset_transferred: 'نقل', ls2_asset_registered: 'تسجيل أصل',
@@ -184,6 +185,7 @@ const ENTITY_LABELS = {
   FleetVehicleLog: ['سجل سيارة أسطول', 'Fleet vehicle log'], FleetDriverExpense: ['مصروف سائق', 'Driver expense'],
   MaintenanceRequest: ['طلب صيانة', 'Maintenance request'], InventoryItem: ['صنف مستودع', 'Store item'],
   WorkshopPurchaseRequest: ['طلب شراء ورشة', 'Workshop purchase request'], WorkshopTask: ['مهمة ورشة', 'Workshop task'],
+  LtCustodyEntry: ['عهدة النقل الخفيف', 'Light transport custody'],
   Ls2StoreMovement: ['حركة مستودع', 'Store movement'], Ls2Asset: ['كاوتش / تيدر / سطحة', 'Tyre / trailer / flatbed'],
   WalletTransaction: ['حركة عهدة', 'Wallet transaction'], DailyWallet: ['يومية عهدة', 'Wallet day'],
   CustomsClearance: ['معاملة تخليص', 'Customs clearance'], CustomsContract: ['عقد تخليص', 'Customs contract'],

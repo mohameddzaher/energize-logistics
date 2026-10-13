@@ -1148,10 +1148,10 @@
       "en": "Projects"
     },
     {
-      "key": "/system/b2c/custody",
+      "key": "/system/b2c/light-transport/custody",
       "section": "B2C",
-      "ar": "العهدة",
-      "en": "Custody"
+      "ar": "عهدة النقل الخفيف",
+      "en": "Light Transport Custody"
     },
     {
       "key": "/system/b2c/hr-requests",

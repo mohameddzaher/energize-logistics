@@ -104,7 +104,7 @@ export default function CustomsPage() {
   const seesMoney = ['super_admin', 'customs_manager'].includes(user?.role || '');
   const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs'); // matrix edit grants count too
   // الحذفُ لمدير القسم وموظّفه — يطابق حارسَ المسار في الخادم.
-  const canDelete = ['super_admin', 'admin', 'customs_manager', 'customs_officer'].includes(user?.role || '');
+  const canDelete = ['super_admin', 'admin', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs');
   const { lang } = useLanguage();
   const T = getCustomsTranslations(lang);
 

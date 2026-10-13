@@ -476,10 +476,14 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base }
   const [reason, setReason] = useState('');
   const [qty, setQty] = useState<Record<string, string>>(
     () => Object.fromEntries(items.map((i) => [i._id, '1'])));
+  // الواردُ بسعر قطعته — يبدأ بسعر كلّ صنفٍ المسجَّل.
+  const [price, setPrice] = useState<Record<string, string>>(
+    () => Object.fromEntries(items.map((i) => [i._id, i.unitPrice ? String(i.unitPrice) : ''])));
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const n = (id: string) => Math.max(1, Number(qty[id]) || 1);
+  const unpriced = isIn ? items.filter((i) => !(Number(price[i._id]) > 0)) : [];
   const short = isIn ? [] : items.filter((i) => i.quantity < n(i._id));
   const totalQty = items.reduce((a, i) => a + n(i._id), 0);
 
@@ -488,7 +492,7 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base }
     try {
       const r = await api.post<any>(`${base}/bulk-movement`, {
         type: kind,
-        lines: items.map((i) => ({ item: i._id, quantity: n(i._id) })),
+        lines: items.map((i) => ({ item: i._id, quantity: n(i._id), ...(isIn ? { unitPrice: Number(price[i._id]) } : {}) })),
         vehiclePlate: plate.trim(), reason: reason.trim(),
       });
       notify(t(
@@ -553,6 +557,12 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base }
                     <input type="number" min={1} value={qty[i._id] ?? '1'}
                       onChange={(e) => setQty((q) => ({ ...q, [i._id]: e.target.value }))}
                       className="w-20 px-2 py-1 rounded-lg border border-slate-300 text-[13px] text-center tabular-nums" />
+                    {isIn && (
+                      <input type="number" min={0} step="0.01" value={price[i._id] ?? ''} placeholder={t('سعر القطعة', 'Unit price')}
+                        title={t('سعر القطعة الواحدة', 'Unit price')}
+                        onChange={(e) => setPrice((p) => ({ ...p, [i._id]: e.target.value }))}
+                        className={`w-24 px-2 py-1 rounded-lg border text-[13px] text-center tabular-nums ${Number(price[i._id]) > 0 ? 'border-slate-300' : 'border-rose-400 bg-rose-50'}`} />
+                    )}
                     <span className={`text-[11.5px] font-bold tabular-nums whitespace-nowrap ${bad ? 'text-rose-700' : 'text-slate-700'}`}>
                       → {Math.max(0, after)}
                     </span>
@@ -570,7 +580,12 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base }
         </div>
 
         <div className="px-5 py-4">
-          <button onClick={submit} disabled={busy || !items.length || short.length > 0}
+          {unpriced.length > 0 && (
+            <p className="text-[12px] text-rose-700 font-semibold mb-2">
+              {t(`اكتب سعر القطعة الواحدة لـ ${unpriced.length} صنف`, `Enter the unit price for ${unpriced.length} item(s)`)}
+            </p>
+          )}
+          <button onClick={submit} disabled={busy || !items.length || short.length > 0 || unpriced.length > 0}
             className="w-full py-2.5 rounded-lg text-white text-sm font-semibold disabled:opacity-40"
             style={{ background: accent }}>
             {busy ? t('جارٍ التسجيل…', 'Recording…')
@@ -651,14 +666,17 @@ function MovementModal({ move, plates, ar, onClose, onDone, base }: { move: { it
   const { notify } = useDialog();
   const isIn = move.type === 'in';
   const [qty, setQty] = useState('1');
+  // سعرُ القطعة في هذا الوارد — يبدأ بسعر الصنف المسجَّل ويُصحَّح إن تغيّر.
+  const [price, setPrice] = useState(move.item.unitPrice ? String(move.item.unitPrice) : '');
   const [plate, setPlate] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const submit = async () => {
     const q = Number(qty);
     if (!q || q <= 0) { notify(ar ? 'أدخل كمية صحيحة' : 'Enter a quantity', 'error'); return; }
+    if (isIn && !(Number(price) > 0)) { notify(ar ? 'اكتب سعر القطعة الواحدة' : 'Enter the unit price', 'error'); return; }
     setBusy(true);
-    try { await api.post(`${base}/${move.item._id}/movement`, { type: move.type, quantity: q, vehiclePlate: plate, reason }); notify(ar ? 'تم التسجيل' : 'Recorded', 'success'); onDone(); }
+    try { await api.post(`${base}/${move.item._id}/movement`, { type: move.type, quantity: q, vehiclePlate: plate, reason, ...(isIn ? { unitPrice: Number(price) } : {}) }); notify(ar ? 'تم التسجيل' : 'Recorded', 'success'); onDone(); }
     catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setBusy(false); }
   };
   const inp = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm';
@@ -672,6 +690,15 @@ function MovementModal({ move, plates, ar, onClose, onDone, base }: { move: { it
         <p className="text-sm text-slate-500 mb-4">{move.item.name} · {ar ? 'الرصيد الحالي' : 'current'}: <b>{move.item.quantity}</b> {move.item.unit}</p>
         <div className="space-y-3">
           <div><label className="block text-xs font-semibold text-slate-600 mb-1">{ar ? 'الكمية' : 'Quantity'} *</label><input type="number" min={1} value={qty} onChange={(e) => setQty(e.target.value)} className={inp} autoFocus /></div>
+          {isIn && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">{ar ? 'سعر القطعة الواحدة (ر.س)' : 'Unit price (SAR)'} *</label>
+              <input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className={inp} />
+              {Number(price) > 0 && Number(qty) > 0 && (
+                <p className="mt-1 text-[11.5px] text-slate-500">{ar ? 'قيمة الوارد' : 'Total'}: <b>{(Number(price) * Number(qty)).toLocaleString('en-US', { maximumFractionDigits: 2 })}</b></p>
+              )}
+            </div>
+          )}
           <PlatePicker plates={plates} value={plate} onChange={setPlate} ar={ar}
             label={isIn ? (ar ? 'واردة من مركبة (اختياري)' : 'In from vehicle (optional)') : (ar ? 'صادرة على مركبة' : 'Out to vehicle')} />
           <div><label className="block text-xs font-semibold text-slate-600 mb-1">{ar ? 'ملاحظة / سبب' : 'Reason'}</label><input value={reason} onChange={(e) => setReason(e.target.value)} className={inp} /></div>
@@ -689,6 +716,7 @@ function ItemFormModal({ item, ar, onClose, onSaved, base }: { item: Item | null
   const set = (k: string, v: any) => setF((p: any) => ({ ...p, [k]: v }));
   const save = async () => {
     if (!f.name?.trim()) { notify(ar ? 'اسم الصنف مطلوب' : 'Name required', 'error'); return; }
+    if (!item && !(Number(f.unitPrice) > 0)) { notify(ar ? 'اكتب سعر القطعة الواحدة' : 'Enter the unit price', 'error'); return; }
     setBusy(true);
     try {
       if (item) await api.put(`${base}/${item._id}`, f);
@@ -708,7 +736,7 @@ function ItemFormModal({ item, ar, onClose, onSaved, base }: { item: Item | null
           <div><L>{ar ? 'الكود' : 'Code'}</L><input className={inp} value={f.code || ''} onChange={(e) => set('code', e.target.value)} /></div>
           {!item && <div><L>{ar ? 'الرصيد الابتدائي' : 'Initial qty'}</L><input type="number" className={inp} value={f.quantity} onChange={(e) => set('quantity', Number(e.target.value))} /></div>}
           <div><L>{ar ? 'الوحدة' : 'Unit'}</L><input className={inp} value={f.unit} onChange={(e) => set('unit', e.target.value)} /></div>
-          <div><L>{ar ? 'السعر للقطعة' : 'Unit price'}</L><input type="number" className={inp} value={f.unitPrice} onChange={(e) => set('unitPrice', Number(e.target.value))} /></div>
+          <div><L>{ar ? 'سعر القطعة الواحدة (ر.س) *' : 'Unit price (SAR) *'}</L><input type="number" min={0} step="0.01" className={inp} value={f.unitPrice || ''} onChange={(e) => set('unitPrice', e.target.value === '' ? 0 : Number(e.target.value))} /></div>
           <div><L>{ar ? 'حد التنبيه (نقص)' : 'Min qty (low alert)'}</L><input type="number" className={inp} value={f.minQuantity || 0} onChange={(e) => set('minQuantity', Number(e.target.value))} /></div>
           <div className="md:col-span-2"><L>{ar ? 'ملاحظات' : 'Notes'}</L><textarea className={inp} rows={2} value={f.notes || ''} onChange={(e) => set('notes', e.target.value)} /></div>
         </div>

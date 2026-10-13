@@ -38,6 +38,8 @@ const storeMovementSchema = new mongoose.Schema({
   itemName: { type: String, default: '' },                    // لقطة الاسم
   type: { type: String, enum: ['in', 'out'], required: true, index: true },
   quantity: { type: Number, required: true },
+  // سعرُ القطعة الواحدة في هذا الوارد — به يُعرَف بكم دخلت، ومنه يُحدَّث سعرُ الصنف.
+  unitPrice: { type: Number, default: null },
   vehiclePlate: { type: String, default: '' },                // صادر على / وارد من (اختياري)
   reason: { type: String, default: '' },
   balanceAfter: { type: Number, default: 0 },                 // الرصيد بعد الحركة

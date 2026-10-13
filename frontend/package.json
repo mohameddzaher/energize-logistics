@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "prebuild": "node scripts/checkHooks.cjs"
+    "prebuild": "node scripts/checkHooks.cjs && node scripts/checkRoleGates.cjs"
   },
   "dependencies": {
     "@emailjs/browser": "^4.4.1",

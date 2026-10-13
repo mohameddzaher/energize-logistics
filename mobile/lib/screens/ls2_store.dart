@@ -358,6 +358,12 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     final qtyC = TextEditingController(text: '1');
     final plateC = TextEditingController();
     final reasonC = TextEditingController();
+    // سعرُ القطعة الواحدة في هذا الوارد — يبدأ بسعر الصنف المسجَّل، والخادمُ
+    // يحدّث به سعرَ الصنف. ولا واردَ بلا سعر (PRICE_REQUIRED).
+    final stored = it['unitPrice'] is num ? it['unitPrice'] as num : num.tryParse('${it['unitPrice'] ?? ''}') ?? 0;
+    final priceC = TextEditingController(text: stored > 0 ? '$stored' : '');
+    // الخطأُ يُكتب تحت الخانة: شريطُ التنبيه يظهر خلف الورقة المفتوحة فلا يُرى.
+    final priceErr = ValueNotifier<String?>(null);
     final ok = await showModalBottomSheet<bool>(
       context: context, isScrollControlled: true, backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -370,6 +376,29 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
           const SizedBox(height: 14),
           TextField(controller: qtyC, keyboardType: TextInputType.number, autofocus: true, decoration: InputDecoration(labelText: tr('الكمية', 'Quantity'))),
           const SizedBox(height: 10),
+          if (isIn) ...[
+            ValueListenableBuilder<String?>(
+              valueListenable: priceErr,
+              builder: (_, err, __) => TextField(
+                controller: priceC,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => priceErr.value = null,
+                decoration: InputDecoration(labelText: tr('سعر القطعة الواحدة (ر.س) *', 'Price per piece (SAR) *'), errorText: err),
+              ),
+            ),
+            ListenableBuilder(
+              listenable: Listenable.merge([qtyC, priceC]),
+              builder: (_, __) {
+                final total = (num.tryParse(qtyC.text.trim()) ?? 0) * (num.tryParse(priceC.text.trim()) ?? 0);
+                return Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text('${tr('إجمالي الوارد', 'Receipt total')}: ${_money(total)} ${tr('ر.س', 'SAR')}',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.inkSoft)),
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+          ],
           // ── المركبةُ تُنتقى من قائمةٍ تُبحَث، ومشروعُها يُقال تحتها ─────────
           StatefulBuilder(builder: (c2, setS) {
             final hit = _plates.firstWhere(
@@ -427,7 +456,14 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
           const SizedBox(height: 14),
           SizedBox(width: double.infinity, child: FilledButton(
             style: FilledButton.styleFrom(backgroundColor: isIn ? T.success : T.orange),
-            onPressed: () => Navigator.pop(c, true), child: Text(tr('تسجيل الحركة', 'Record')))),
+            onPressed: () {
+              if (isIn && (num.tryParse(priceC.text.trim()) ?? 0) <= 0) {
+                priceErr.value = tr('اكتب سعر القطعة الواحدة', 'Enter the price per piece');
+                return;
+              }
+              Navigator.pop(c, true);
+            },
+            child: Text(tr('تسجيل الحركة', 'Record')))),
         ]),
       ),
     );
@@ -435,7 +471,10 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     final qty = num.tryParse(qtyC.text.trim()) ?? 0;
     if (qty <= 0) return;
     try {
-      await Api.instance.post('${widget.base}/${it['_id']}/movement', {'type': type, 'quantity': qty, 'vehiclePlate': plateC.text.trim(), 'reason': reasonC.text.trim()});
+      await Api.instance.post('${widget.base}/${it['_id']}/movement', {
+        'type': type, 'quantity': qty, 'vehiclePlate': plateC.text.trim(), 'reason': reasonC.text.trim(),
+        if (isIn) 'unitPrice': num.tryParse(priceC.text.trim()) ?? 0,
+      });
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم التسجيل', 'Recorded'))));
       _load();
     } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
@@ -447,8 +486,9 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     final cat = TextEditingController(text: item?['category']?.toString() ?? '');
     final qty = TextEditingController(text: item?['quantity']?.toString() ?? '0');
     final unit = TextEditingController(text: item?['unit']?.toString() ?? 'قطعة');
-    final price = TextEditingController(text: item?['unitPrice']?.toString() ?? '0');
+    final price = TextEditingController(text: item?['unitPrice']?.toString() ?? '');
     final minQ = TextEditingController(text: item?['minQuantity']?.toString() ?? '0');
+    final priceErr = ValueNotifier<String?>(null);
     final saved = await showModalBottomSheet<bool>(
       context: context, isScrollControlled: true, backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -467,13 +507,24 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
             Expanded(child: TextField(controller: unit, decoration: InputDecoration(labelText: tr('الوحدة', 'Unit')))),
           ]),
           const SizedBox(height: 10),
-          Row(children: [
-            Expanded(child: TextField(controller: price, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('السعر', 'Price')))),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(flex: 3, child: ValueListenableBuilder<String?>(
+              valueListenable: priceErr,
+              builder: (_, err, __) => TextField(controller: price, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => priceErr.value = null,
+                  decoration: InputDecoration(labelText: tr('سعر القطعة الواحدة (ر.س) *', 'Price per piece (SAR) *'), errorText: err)),
+            )),
             const SizedBox(width: 10),
-            Expanded(child: TextField(controller: minQ, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('حد التنبيه', 'Min qty')))),
+            Expanded(flex: 2, child: TextField(controller: minQ, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('حد التنبيه', 'Min qty')))),
           ]),
           const SizedBox(height: 14),
-          SizedBox(width: double.infinity, child: FilledButton.icon(icon: const Icon(Icons.save_outlined, size: 18), onPressed: () => Navigator.pop(c, true), label: Text(tr('حفظ', 'Save')))),
+          SizedBox(width: double.infinity, child: FilledButton.icon(icon: const Icon(Icons.save_outlined, size: 18), label: Text(tr('حفظ', 'Save')), onPressed: () {
+            // صنفٌ جديدٌ بلا سعرٍ يرفضه الخادم — فيُقال هنا والنموذجُ مفتوح.
+            if (item == null && (num.tryParse(price.text.trim()) ?? 0) <= 0) {
+              priceErr.value = tr('اكتب سعر القطعة الواحدة', 'Enter the price per piece');
+              return;
+            }
+            Navigator.pop(c, true);
+          })),
         ])),
       ),
     );
@@ -578,6 +629,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                       subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text([
                           '${isIn ? '+' : '−'}${m['quantity']}',
+                          if (isIn && m['unitPrice'] is num) '${tr('سعر القطعة', 'unit price')} ${_money(m['unitPrice'])} ${tr('ر.س', 'SAR')}',
                           if ((m['vehiclePlate'] ?? '').toString().isNotEmpty) '${tr('عربية', 'vehicle')} ${m['vehiclePlate']}',
                           if ((m['reason'] ?? '').toString().isNotEmpty) m['reason'].toString(),
                         ].join(' · '), style: const TextStyle(fontSize: 11.5)),

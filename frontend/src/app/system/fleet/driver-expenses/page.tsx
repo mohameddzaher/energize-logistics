@@ -57,6 +57,7 @@ export default function DriverExpensesPage() {
   const { notify, confirm } = useDialog();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
+  // role-only: صرفُ مال — للماليّة ومدير الأسطول بأدوارهم.
   const canPay = PAY_ROLES.includes(user?.role || '');
 
   const [mode, setMode] = useState<'all' | 'day' | 'range' | 'month'>('month');

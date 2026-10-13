@@ -25,6 +25,9 @@ const SUPPRESSED = process.env.AUDIT_SUPPRESS === '1';
 const logAudit = async ({
   user, action, entity, entityId, entityKey, changes, ipAddress, bySystem, details, ip,
 }) => {
+  // قُيِّد في هذا الطلب شيء — فلا تكتب شبكةُ الأمان قيدَها العامّ فوقه
+  // (راجع middleware/auditTrail). يُرفَع العلَمُ قبل الكتابة: المحاولةُ هي المعيار.
+  try { require('./auditContext').mark(); } catch (_) { /* خارجَ طلب */ }
   if (SUPPRESSED) return;
   try {
     // الفاعلُ إمّا إنسانٌ وإمّا النظامُ صراحةً. وغيابُهما معًا خطأُ نداءٍ: يُقيَّد

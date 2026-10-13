@@ -13,6 +13,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
+import { canEditSection } from '@/lib/sections';
 import { Spinner, PageHeader, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
 import ReferenceDataManager from '@/components/system/ReferenceDataManager';
 import { Settings, Tags, BellRing, Save } from 'lucide-react';
@@ -57,7 +58,8 @@ export default function VehiclesSettingsPage() {
   const { notify } = useDialog();
 
   const role = String((user as any)?.role || '');
-  const canEdit = ['super_admin', 'admin', 'vehicles_manager'].includes(role);
+  // مَن مُنح القسمَ «تعديل» يعدّل إعداداتِه — الخادمُ يقبله، فالشاشةُ لا تُخفي عنه الزرّ.
+  const canEdit = ['super_admin', 'admin', 'vehicles_manager'].includes(role) || canEditSection((user as any)?.permissions, 'Vehicles');
 
   const [tab, setTab] = useState<Tab>('lists');
   const [alerts, setAlerts] = useState<Record<string, AlertCfg> | null>(null);

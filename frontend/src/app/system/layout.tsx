@@ -85,6 +85,7 @@ const CONTRACTS_ROLES = ['super_admin', 'admin', 'contracts_manager', 'it_manage
 // قائمةَ الأدوار بجانبه كانت تحجبه. القاعدةُ التي تحرس وحدَها لا يجوز أن تكون
 // خاطئة.
 const EXTERNAL_ROLES = ['client', 'partner', 'customer_portal', 'vendor_portal'];
+// role-only: ليست بوّابةَ فعل: تفرّق الموظّفَ عن العميل والمورّد.
 const isInternal = (role?: string | null) => !!role && !EXTERNAL_ROLES.includes(role);
 
 // قسمُ التحصيل. القسمُ مُدارٌ بمصفوفة الصلاحيّات، فهذه القائمةُ توثيقٌ لمن

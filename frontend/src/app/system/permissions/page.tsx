@@ -65,6 +65,7 @@ export default function PermissionsPage() {
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
   const tx = getPermissionsTranslations(lang);
+  // role-only: مصفوفةُ الصلاحيّات نفسُها — مَن يضبطها لا يُمنَحها منها.
   const isSuper = ['super_admin', 'it_manager', 'it_specialist'].includes(user?.role || '');
   // صنعُ الأنواع لصاحب النظام وحدَه — نوعٌ جديدٌ بابٌ جديدٌ في البيت.
   const canMakeRoles = user?.role === 'super_admin';

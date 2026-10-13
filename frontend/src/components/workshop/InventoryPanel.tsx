@@ -151,6 +151,7 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
   const [issuesSearch, setIssuesSearch] = useState('');
   const [issuesLoading, setIssuesLoading] = useState(false);
 
+  // role-only: مستودعُ الورشة ليس قسمًا في مصفوفة الصلاحيّات — يحرسه الخادمُ بالأسماء نفسِها (الثلاثةُ التالية كذلك).
   const canEdit = user && ['super_admin', 'workshop_manager', 'procurement_staff'].includes(user.role);
   const canDelete = user && ['super_admin', 'workshop_manager'].includes(user.role);
   const canApprove = user && ['super_admin', 'workshop_manager'].includes(user.role);

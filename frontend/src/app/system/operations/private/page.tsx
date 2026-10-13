@@ -131,6 +131,7 @@ export default function OperationsPrivatePage() {
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // role-only: شاشةُ أسعار البيع — مقيّدةٌ بالأسماء عمدًا (restrict في القائمة).
   const allowed = ROLES.includes(String(user?.role || ''));
   const hasColFilters = Object.keys(colFilters).length > 0;
 

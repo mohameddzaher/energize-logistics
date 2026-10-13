@@ -83,4 +83,32 @@ ls2TireAssetSchema.pre('save', function deriveIsSpare(next) {
   next();
 });
 
+/**
+ * ── رقمُ التيدر يتبع موضعَ الفردة — لا يُكتب بيد ───────────────────────────
+ *
+ * `trailerNumber` كان يُكتب عند الاستيراد ثمّ لا يمسّه شيء: فردةٌ تُنقل من
+ * تيدر ٣٩ إلى استبن عربيّةٍ أخرى وتبقى «على تيدر ٣٩» في سجلّها. فتقول صفحةُ
+ * التيدرات إنّها على التيدر، وتقول صفحةُ الكاوتشات إنّها على عربيّة ٨٢٠٠ —
+ * والتيدرُ نفسُه واقفٌ لا عربيّةَ تحته. وموضعان لحقيقةٍ واحدةٍ يختلفان حتمًا.
+ *
+ * فالموضعُ هو الحقيقة، والتيدرُ يُشتقّ منه عند كلّ حفظ:
+ *   · فردةٌ غيرُ مركّبة، أو مركّبةٌ على الرأس أو استبنًا ← لا تيدرَ لها.
+ *   · فردةٌ في قسم التيدر على عربيّة ← تيدرُها هو المركّبُ على تلك العربيّة الآن.
+ *   · فردةٌ في قسم التيدر بلا عربيّة ← واقفةٌ مع تيدرها، فيبقى رقمُه كما هو.
+ */
+const TRAILER_SECTION = /تيدر|تريل/;
+ls2TireAssetSchema.statics.isTrailerSection = (section) => TRAILER_SECTION.test(String(section || ''));
+ls2TireAssetSchema.pre('save', async function deriveTrailer(next) {
+  try {
+    if (this.status !== 'mounted' || !TRAILER_SECTION.test(String(this.section || ''))) {
+      this.trailerNumber = null;
+    } else if (this.plateKey) {
+      const Ls2Trailer = mongoose.models.Ls2Trailer || require('./Ls2Trailer');
+      const tr = await Ls2Trailer.findOne({ currentPlateKey: this.plateKey }).select('trailerNumber').lean();
+      this.trailerNumber = tr ? tr.trailerNumber : null;
+    }
+    next();
+  } catch (e) { next(e); }
+});
+
 module.exports = mongoose.models.Ls2TireAsset || mongoose.model('Ls2TireAsset', ls2TireAssetSchema);

@@ -18,6 +18,7 @@ const Ls2Vehicle = require('../models/Ls2Vehicle');
 const { plateKey, vehiclePlateKey } = require('../utils/plateKey');
 const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
+const logAudit = require('../utils/auditLogger');
 const tireSensors = require('../services/ls2TireSensors');
 
 // Any asset mutation must reach the screens that mirror this registry live (the
@@ -65,13 +66,32 @@ async function clearSensorNotice(...keys) {
   }
 }
 
+const ENTITY_AR = { tire: 'كاوتش', trailer: 'تيدر', flatbed: 'سطحة' };
 async function logEvent(req, data) {
   emitAssetsChanged(); // every logged movement is a change some open screen shows
-  return Ls2AssetEvent.create({
+  const ev = await Ls2AssetEvent.create({
     ...data,
     performedBy: req.user?._id || null,
     performedByName: req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : '',
   });
+  // ── وحركةُ الأصل تُقيَّد في سجلّ المراجعة أيضًا ─────────────────────────
+  // `Ls2AssetEvent` تاريخُ الأصل نفسِه، يُقرأ في ملفّه. وسجلُّ المراجعة سؤالٌ
+  // آخر: «ماذا فعل فلانٌ في القسم هذا الشهر؟» — وكان يجيب «لا شيء» لمن ركّب
+  // ونزّل ونقل مئةَ فردة، لأنّ هذه الحركات لم تكن تُكتب فيه أصلًا.
+  if (req.user) {
+    const where = (plate, pos) => [plate, pos].filter(Boolean).join(' · ');
+    logAudit({
+      user: req.user, action: `ls2_asset_${data.action || 'changed'}`, entity: 'Ls2Asset', entityId: data.refId,
+      changes: { details: [
+        `${ENTITY_AR[data.entityType] || data.entityType || ''} ${data.label || ''}`.trim(),
+        where(data.fromPlate, data.fromPosition) ? `من ${where(data.fromPlate, data.fromPosition)}` : '',
+        where(data.toPlate, data.toPosition) ? `إلى ${where(data.toPlate, data.toPosition)}` : '',
+        data.reason || '', data.notes || '',
+      ].filter(Boolean).join(' — ') },
+      ipAddress: req.ip,
+    });
+  }
+  return ev;
 }
 
 // ---- Overview --------------------------------------------------------------
@@ -751,6 +771,7 @@ exports.createTrailer = async (req, res) => {
       entityType: 'trailer', refId: trailer._id, label: trailer.trailerNumber,
       action: key ? 'mounted' : 'registered', toPlate: plate, toPlateKey: key, notes,
     });
+    await require('../services/ls2TireTrailers').resyncTireTrailers();
     res.status(201).json({ trailer });
   } catch (e) {
     res.status(500).json({ message: e.message });
@@ -878,6 +899,8 @@ exports.moveTrailer = async (req, res) => {
     });
     moved = await carryTrailerTires(req, trailer, toPlate, toKey, when, live?.odometerKm, reason);
 
+    // التيدرُ تحرّك: رقمُه على فِرَد العربيّتين يتبع ما صار — راجع services/ls2TireTrailers.
+    await require('../services/ls2TireTrailers').resyncTireTrailers();
     await clearSensorNotice(from.key, toKey);
     emitAssetsChanged();
     res.json({
@@ -1082,6 +1105,7 @@ exports.importAssets = async (req, res) => {
       // tire_sensor_change notice was waiting for.
       await clearSensorNotice(key);
     }
+    await require('../services/ls2TireTrailers').resyncTireTrailers();
     res.json({ ok: true, summary });
   } catch (e) {
     res.status(500).json({ message: e.message });

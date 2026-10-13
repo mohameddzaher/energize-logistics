@@ -143,6 +143,9 @@ app.use(mongoSanitize());
 // ردّ ما جاء من أصلٍ غريب على كل ما يغيّر حالة — قبل أن يبلغ أيّ مسار.
 app.use(csrfGuard);
 
+// شبكةُ أمان سجلّ المراجعة: كلُّ كتابةٍ ناجحةٍ في قسمٍ تُقيَّد ولو نسيها متحكّمُها.
+app.use(require('./middleware/auditTrail'));
+
 // Static serving of uploaded files (employee documents). Mounted under
 // /api/uploads so the frontend's /api/* proxy forwards it (same-origin). Placed
 // BEFORE the rate limiter so viewing files doesn't consume the API quota.

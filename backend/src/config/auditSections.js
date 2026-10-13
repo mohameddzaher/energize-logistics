@@ -128,11 +128,24 @@ const ENTITY_SECTION = {
   Branch: 'system', Lookup: 'system', System: 'system', PartnerAccount: 'system',
 };
 
-const sectionOf = (entity) => ENTITY_SECTION[entity] || 'other';
+/**
+ * قيودُ شبكة الأمان (middleware/auditTrail) تُكتب بكيان `Api:<اسم القسم في النظام>`
+ * — فتُنسَب إلى قسمها هنا بلا سطرٍ لكلّ قسم.
+ */
+const apiEntityOf = (key) => { const s = SECTIONS.find((x) => x.key === key); return s && s.sys ? `Api:${s.sys}` : null; };
+const sectionOfApiEntity = (entity) => {
+  if (!String(entity || '').startsWith('Api:')) return null;
+  const s = SECTIONS.find((x) => x.sys === String(entity).slice(4));
+  return s ? s.key : null;
+};
+
+const sectionOf = (entity) => ENTITY_SECTION[entity] || sectionOfApiEntity(entity) || 'other';
 
 /** كلُّ كياناتِ قسمٍ ما — يُبنى منها شرطُ `$in` في الاستعلام. */
-const entitiesOfSection = (key) =>
-  Object.keys(ENTITY_SECTION).filter((e) => ENTITY_SECTION[e] === key);
+const entitiesOfSection = (key) => [
+  ...Object.keys(ENTITY_SECTION).filter((e) => ENTITY_SECTION[e] === key),
+  ...(apiEntityOf(key) ? [apiEntityOf(key)] : []),
+];
 
 const SECTION_KEYS = SECTIONS.map((s) => s.key);
 

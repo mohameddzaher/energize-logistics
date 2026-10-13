@@ -86,7 +86,13 @@ exports.dashboard = async (req, res) => {
 
 exports.createItem = async (req, res) => {
   try {
-    const it = await Ls2StoreItem.create({ ...pick(req.body), warehouse: whOf(req), isActive: true });
+    const data = pick(req.body);
+    if (!String(data.name || '').trim()) return res.status(400).json({ message: 'اسم الصنف مطلوب' });
+    // ── والقطعةُ تُضاف بسعرها ─────────────────────────────────────────────
+    // صنفٌ بلا سعرٍ قيمتُه في المخزن صفر مهما كان رصيدُه — فيُجمَع المخزنُ كلُّه
+    // برقمٍ أقلَّ ممّا فيه، ولا يُعرَف كم كلّفت القطعةُ حين تُصرَف على عربيّة.
+    if (!(Number(data.unitPrice) > 0)) return res.status(400).json({ message: 'اكتب سعر القطعة الواحدة', code: 'PRICE_REQUIRED' });
+    const it = await Ls2StoreItem.create({ ...data, warehouse: whOf(req), isActive: true });
     emit();
     res.status(201).json({ item: it });
   } catch (e) { res.status(500).json({ message: 'Failed to create item' }); }
@@ -118,9 +124,18 @@ exports.addMovement = async (req, res) => {
     if (type === 'out' && qty > item.quantity) {
       return res.status(400).json({ message: `الكمية المطلوبة (${qty}) أكبر من الرصيد المتاح (${item.quantity})` });
     }
+    // الواردُ يدخل بسعر قطعته: ما كُتب الآن، أو سعرُ الصنف المسجَّل إن لم يتغيّر.
+    let price = null;
+    if (type === 'in') {
+      price = req.body.unitPrice !== undefined && req.body.unitPrice !== '' && req.body.unitPrice !== null
+        ? Number(req.body.unitPrice) : Number(item.unitPrice);
+      if (!(price > 0)) return res.status(400).json({ message: `اكتب سعر القطعة الواحدة من «${item.name}»`, code: 'PRICE_REQUIRED' });
+      item.unitPrice = price;
+    }
     item.quantity += type === 'in' ? qty : -qty;
     await item.save();
     const mv = await Ls2StoreMovement.create({
+      unitPrice: price,
       item: item._id, itemName: item.name, warehouse: item.warehouse || 'heavy', type, quantity: qty,
       vehiclePlate: (req.body.vehiclePlate || '').trim(), reason: (req.body.reason || '').trim(),
       balanceAfter: item.quantity, performedBy: req.user?._id, performedByName: req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : '',
@@ -180,6 +195,7 @@ exports.addBulkMovement = async (req, res) => {
     // الصنف المكرَّر في الاختيار تُجمَع كمياته، فلا يُقاس كل سطر وحده على الرصيد.
     const wanted = new Map();
     const errors = [];
+    const prices = new Map();
     raw.forEach((l, i) => {
       const id = String(l.item || l.id || l);
       const q = l.quantity === undefined || l.quantity === null || l.quantity === ''
@@ -190,6 +206,7 @@ exports.addBulkMovement = async (req, res) => {
         return;
       }
       wanted.set(id, asLines ? (wanted.get(id) || 0) + q : q);
+      if (l && typeof l === 'object' && l.unitPrice !== undefined && l.unitPrice !== '' && l.unitPrice !== null) prices.set(id, Number(l.unitPrice));
     });
 
     const items = await Ls2StoreItem.find({ _id: { $in: [...wanted.keys()] } });
@@ -200,6 +217,12 @@ exports.addBulkMovement = async (req, res) => {
       // الوارد لا يُقيَّد برصيد؛ الصادر وحده هو الذي يَنقص.
       if (type === 'out' && (Number(it.quantity) || 0) < total) {
         errors.push({ id, name: it.name, message: `${it.name}: الرصيد ${it.quantity} والمطلوب ${total}` });
+      }
+      // الواردُ بسعر قطعته: المكتوبُ في السطر، أو سعرُ الصنف المسجَّل.
+      if (type === 'in') {
+        const p = prices.has(id) ? prices.get(id) : Number(it.unitPrice);
+        if (!(p > 0)) errors.push({ id, name: it.name, message: `${it.name}: اكتب سعر القطعة الواحدة` });
+        else prices.set(id, p);
       }
     }
     if (errors.length) {
@@ -213,8 +236,10 @@ exports.addBulkMovement = async (req, res) => {
     for (const [id, qty] of wanted) {
       const it = found.get(id);
       it.quantity += type === 'in' ? qty : -qty;
+      if (type === 'in') it.unitPrice = prices.get(id);
       await it.save();
       movements.push({
+        unitPrice: type === 'in' ? prices.get(id) : null,
         item: it._id, itemName: it.name, warehouse: it.warehouse || 'heavy', type, quantity: qty,
         vehiclePlate, reason, balanceAfter: it.quantity, ...actor(req),
       });

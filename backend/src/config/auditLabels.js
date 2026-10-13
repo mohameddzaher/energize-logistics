@@ -17,6 +17,13 @@
 
 /** فعلٌ بعينه → جملتُه. */
 const ACTION_AR = {
+  // قيودُ شبكة الأمان (middleware/auditTrail) — فعلٌ لم يقيّده متحكّمُه بتفصيله.
+  api_create: 'إضافة / تنفيذ إجراء', api_update: 'تعديل', api_delete: 'حذف',
+  // حركاتُ أصول النقل الثقيل (الكاوتش والتيدرات والسطحات).
+  ls2_asset_mounted: 'تركيب', ls2_asset_removed: 'إنزال', ls2_asset_transferred: 'نقل', ls2_asset_registered: 'تسجيل أصل',
+  ls2_asset_updated: 'تعديل بيانات أصل', ls2_asset_retired: 'إخراج من الخدمة', ls2_asset_to_repair: 'إرسال إلى المصنع',
+  ls2_asset_from_repair: 'رجوع من المصنع', ls2_asset_scrapped: 'تحويل إلى سكراب', ls2_asset_damaged: 'تسجيل تالف',
+  ls2_asset_to_store: 'إنزال إلى المخزن',
   // الدخول والحسابات
   login: 'تسجيل دخول',
   logout: 'تسجيل خروج',
@@ -176,7 +183,7 @@ const ENTITY_LABELS = {
   FleetVehicleLog: ['سجل سيارة أسطول', 'Fleet vehicle log'], FleetDriverExpense: ['مصروف سائق', 'Driver expense'],
   MaintenanceRequest: ['طلب صيانة', 'Maintenance request'], InventoryItem: ['صنف مستودع', 'Store item'],
   WorkshopPurchaseRequest: ['طلب شراء ورشة', 'Workshop purchase request'], WorkshopTask: ['مهمة ورشة', 'Workshop task'],
-  Ls2StoreMovement: ['حركة مستودع', 'Store movement'], Ls2Asset: ['أصل مستودع', 'Store asset'],
+  Ls2StoreMovement: ['حركة مستودع', 'Store movement'], Ls2Asset: ['كاوتش / تيدر / سطحة', 'Tyre / trailer / flatbed'],
   WalletTransaction: ['حركة عهدة', 'Wallet transaction'], DailyWallet: ['يومية عهدة', 'Wallet day'],
   CustomsClearance: ['معاملة تخليص', 'Customs clearance'], CustomsContract: ['عقد تخليص', 'Customs contract'],
   B2C: ['بيانات قطاع الأفراد', 'B2C data'], B2CProject: ['مشروع قطاع الأفراد', 'B2C project'],
@@ -211,6 +218,12 @@ const humanise = (k) => String(k || '')
   .toLowerCase();
 
 const entityLabel = (e, lang = 'ar') => {
+  // قيدُ شبكة الأمان: «إجراء في <القسم>».
+  if (String(e || '').startsWith('Api:')) {
+    const { SECTION_LABELS_AR } = require('./sections');
+    const sys = String(e).slice(4);
+    return lang === 'en' ? `${sys} action` : `إجراء في ${SECTION_LABELS_AR[sys] || sys}`;
+  }
   const m = ENTITY_LABELS[e];
   if (!m) return lang === 'en' ? humanise(e) : String(e || '');
   return lang === 'en' ? m[1] : m[0];

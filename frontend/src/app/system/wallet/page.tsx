@@ -156,6 +156,7 @@ export default function WalletPage() {
    * لمدير النظام. والخادمُ هو المانعُ (`mayWriteIntoClosedDay`) وهذا إخفاءٌ
    * لا يُغني عنه.
    */
+  // role-only: الكتابةُ في يومٍ مقفل سلطةٌ ماليّة يحرسها الخادمُ بالأسماء نفسِها.
   const canWriteClosedDay = ['super_admin', 'admin', 'operations_manager', ...FINANCE_FULL_ROLES].includes(user?.role || '')
     || !!(user as any)?.superAdminPowers;
   // ── ومَن لا يُقفَل على فرعٍ يختار الفرعَ الذي ينظر فيه ────────────────────

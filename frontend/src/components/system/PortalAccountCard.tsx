@@ -53,6 +53,7 @@ export default function PortalAccountCard({
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPw, setShowPw] = useState(false);
   const [openForm, setOpenForm] = useState(false);
+  // role-only: حساباتُ الشركاء — يطابق ACCOUNT_ADMIN_ROLES في الخادم.
   const canManage = !!user && ADMIN_ROLES.includes(user.role);
 
   const load = useCallback(async () => {

@@ -48,7 +48,7 @@ export default function CustomsDetailPage() {
   const [unitSel, setUnitSel] = useState<'all' | number>('all');
 
   // الحذفُ لمدير القسم وموظّفه — يطابق حارسَ المسار في الخادم.
-  const canDelete = ['super_admin', 'admin', 'customs_manager', 'customs_officer'].includes(user?.role || '');
+  const canDelete = ['super_admin', 'admin', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs');
 
   const removeClearance = async () => {
     if (!(await confirm({

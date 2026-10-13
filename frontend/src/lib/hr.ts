@@ -279,7 +279,7 @@ export const CONTRACT_STATUS: Record<string, { bg: string; text: string; en: str
  * ولم يُجدَّد يبقى «ساري» في تبويب العقود، وصفحةُ الانتهاءات تقول عنه «منتهي».
  * والاثنان يقرآن العقدَ نفسَه. فالعرضُ يقرأ التاريخَ مع الحالة.
  */
-export const CONTRACT_LAPSED = { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Term ended — not renewed', ar: 'انتهت مدّته — لم يُجدَّد' };
+export const CONTRACT_LAPSED = { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Expired', ar: 'منتهي' };
 export const contractBadge = (c?: { status?: string; endDate?: string | null } | null) => {
   if (!c) return null;
   const end = String(c.endDate || '').slice(0, 10);

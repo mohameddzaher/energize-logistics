@@ -75,6 +75,13 @@ contractSchema.index({ endDate: 1 });
  * (راجع utils/contractStatus). والمتحكِّماتُ تنادي المزامنةَ بعد كلّ كتابة،
  * وهذا شبكةُ الأمان لما لا يمرّ بها: سكربتُ استيرادٍ أو بابٌ يُضاف غدًا.
  */
+// المدّةُ هي الحَكَم: ما عدّى موعدُه «منتهي»، وما مُدَّ موعدُه عاد «ساري».
+contractSchema.pre('save', function statusFollowsTerm(next) {
+  const { isLapsed } = require('../utils/contractStatus');
+  if (this.status === 'active' && isLapsed(this.endDate)) this.status = 'expired';
+  else if (this.status === 'expired' && !this.isNew && this.isModified('endDate') && !this.isModified('status') && !isLapsed(this.endDate)) this.status = 'active';
+  next();
+});
 contractSchema.post('save', async function mirrorToEmployee(doc) {
   try { await require('../utils/contractStatus').syncEmployeeContractStatus(doc.employee); }
   catch (e) { console.error('contract → employee:', e.message); }

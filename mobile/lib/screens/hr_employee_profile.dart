@@ -1027,7 +1027,7 @@ Widget _contractChip(Map c) {
   final end = (c['endDate'] ?? '').toString();
   final today = DateTime.now().toUtc().add(const Duration(hours: 3)).toIso8601String().substring(0, 10);
   if (status == 'active' && end.length >= 10 && end.substring(0, 10).compareTo(today) < 0) {
-    return Chip2(tr('انتهت مدّته — لم يُجدَّد', 'Term ended — not renewed'), T.danger);
+    return Chip2(tr('منتهي', 'Expired'), T.danger);
   }
   return switch (status) {
     'active' => Chip2(tr('ساري', 'Active'), T.success),

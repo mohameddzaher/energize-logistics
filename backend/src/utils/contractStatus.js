@@ -119,13 +119,70 @@ async function pushEmployeeContractFields(employeeId, fields) {
   if ('contractStartDate' in fields && day(fields.contractStartDate)) set.startDate = day(fields.contractStartDate);
   if ('qiwaContractNumber' in fields) set.contractNumber = String(fields.qiwaContractNumber || '').trim();
   if (!Object.keys(set).length) return false;
-  const active = await Contract.findOne({ employee: employeeId, status: 'active' }).sort({ createdAt: -1 }).select('_id').lean();
-  if (!active) return false;
-  await Contract.updateOne({ _id: active._id }, { $set: set });
+  // السارِي، وإلّا المنتهي بمرور مدّته: «تجديدٌ» من صفحة الانتهاءات لعقدٍ انقضى
+  // يُكتب فيه ويعيده ساريًا. والمفسوخُ والمجدَّد لا يُمَسّان.
+  const target = await Contract.findOne({ employee: employeeId, status: 'active' }).sort({ createdAt: -1 }).select('_id status endDate').lean()
+    || await Contract.findOne({ employee: employeeId, status: 'expired' }).sort({ createdAt: -1 }).select('_id status endDate').lean();
+  if (!target) return false;
+  const end = 'endDate' in set ? set.endDate : day(target.endDate);
+  set.status = isLapsed(end) ? 'expired' : 'active';
+  await Contract.updateOne({ _id: target._id }, { $set: set });
+  if (set.status !== target.status) await syncEmployeeContractStatus(employeeId);
   return true;
+}
+
+/**
+ * ── والعقدُ الذي انقضت مدّتُه «منتهي» ───────────────────────────────────────
+ * «ساري» كانت تُكتب يومَ يُنشأ العقد ولا يغيّرها مرورُ الوقت: خمسةَ عشرَ عقدًا
+ * انقضت مدّتُها وبقيت «ساري»، والانتهاءاتُ تقول عنها «منتهي». فالتاريخُ هو
+ * الحَكَم: ما عدّى موعدُه منتهٍ، وما مُدَّ موعدُه عاد ساريًا.
+ *
+ * وهو في ثلاثة مواضع: عند حفظ العقد (models/Contract)، وعند الكتابة من ملفّ
+ * الموظّف (أعلاه)، ودورةٌ كلَّ ساعةٍ لما ينقضي وحدَه دون أن يمسّه أحد (server).
+ */
+const todayKey = () => require('./companyDay').todayKey();
+const isLapsed = (endDate) => { const e = day(endDate); return !!e && e < todayKey(); };
+
+async function expireLapsedContracts() {
+  const Contract = require('../models/Contract');
+  const rows = await Contract.find({ status: 'active', endDate: { $nin: ['', null], $lt: todayKey() } }).select('_id employee').lean();
+  if (!rows.length) return 0;
+  await Contract.updateMany({ _id: { $in: rows.map((r) => r._id) } }, { $set: { status: 'expired' } });
+  for (const id of new Set(rows.map((r) => String(r.employee)))) {
+    // eslint-disable-next-line no-await-in-loop
+    await syncEmployeeContractStatus(id);
+  }
+  try {
+    const cache = require('./ttlCache');
+    cache.clear('hrm:'); cache.clear('hr:employees:'); cache.clear('dash:hr:');
+    const { emitToAll } = require('../websocket/socketManager');
+    for (const ev of ['hr:master', 'hr:employee', 'hr:contract']) emitToAll(ev, {});
+  } catch (e) { /* */ }
+  return rows.length;
+}
+
+/**
+ * العقدُ الجاري لكلّ موظّف: السارِي، وإلّا المنتهي بمرور مدّته. شروطُه (الراتب،
+ * الإجازة) تبقى ما يُحاسَب عليه الموظّفُ حتى يُجدَّد — انقضاءُ المدّة لا يُصفِّر
+ * راتبَه في الماليّة ولا رصيدَ إجازته.
+ */
+async function currentContractOf(employeeId) {
+  const Contract = require('../models/Contract');
+  return await Contract.findOne({ employee: employeeId, status: 'active' }).sort({ createdAt: -1 }).lean()
+    || Contract.findOne({ employee: employeeId, status: 'expired' }).sort({ createdAt: -1 }).lean();
+}
+async function currentContractsByEmployee(select = '') {
+  const Contract = require('../models/Contract');
+  const rows = await Contract.find({ status: { $in: ['active', 'expired'] } }).sort({ createdAt: -1 }).select(`employee status ${select}`).lean();
+  const out = new Map();
+  for (const c of rows) {
+    const k = String(c.employee); const cur = out.get(k);
+    if (!cur || (cur.status !== 'active' && c.status === 'active')) out.set(k, c);
+  }
+  return out;
 }
 
 module.exports = {
   CONTRACT_STATUS_AR, NORMALISE, normaliseContractStatus, governingContract, syncEmployeeContractStatus,
-  pushEmployeeContractFields, mirrorOf,
+  pushEmployeeContractFields, mirrorOf, isLapsed, expireLapsedContracts, currentContractOf, currentContractsByEmployee,
 };

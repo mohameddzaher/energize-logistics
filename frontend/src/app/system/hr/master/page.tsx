@@ -49,7 +49,12 @@ function HrMasterInner() {
 
   // التراخيص وحدها تأتي من الداشبورد العامّ، وهي لا تتحرّك مع الفلتر — فتُقرأ
   // مرّةً واحدة عند فتح الصفحة، لا مع كل ضغطةٍ على فلتر.
-  useEffect(() => { api.get<any>('/api/hr/dashboard').then(setOps).catch(() => {}); }, []);
+  // كانت تُقرأ مرّةً عند الفتح: يُنشأ عقدٌ فيبقى «بلا عقد» على رقمه حتى تُعاد
+  // الصفحة. فتسمع ما تسمعه بقيّةُ اللوحة.
+  const loadOps = useCallback(() => { api.get<any>('/api/hr/dashboard').then(setOps).catch(() => {}); }, []);
+  useEffect(() => { loadOps(); }, [loadOps]);
+  useSocket('hr:master', loadOps);
+  const [contractList, setContractList] = useState<'' | 'noContract' | 'lapsedContracts'>('');
 
   // ── وتحليلُ الأقسام يقرأ الفلترَ نفسَه ───────────────────────────────────
   // فلو قُصرت اللوحةُ على جدة كانت أرقامُ الأقسام أرقامَ جدة — ولا يبقى في
@@ -259,6 +264,47 @@ function HrMasterInner() {
             <Big label={t('تراخيص منتهية', 'Licences expired')} value={ops.summary.licensesExpiredCount} c="#dc2626"
               onClick={() => router.push('/system/hr/licenses')} />
           </div>
+        </section>
+      )}
+
+      {/* ── العقود التي تحتاج انتباهًا ───────────────────────────────────────
+          مَن على قوّة العمل (غير الفريلانسر) ولا عقدَ له في النظام، ومَن انقضت
+          مدّةُ عقده ولم يُجدَّد. يخرج الموظّفُ من القائمة لحظةَ يُنشأ عقدُه أو يُجدَّد. */}
+      {ops?.summary && (ops.summary.noContractCount > 0 || ops.summary.lapsedContractsCount > 0) && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-bold text-slate-800">{t('عقود تحتاج انتباهًا', 'Contracts needing attention')}</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <Big label={t('موظفون بلا عقد مسجَّل', 'Employees with no contract')} value={ops.summary.noContractCount} c="#dc2626"
+              onClick={() => setContractList((v) => (v === 'noContract' ? '' : 'noContract'))} />
+            <Big label={t('عقود منتهية لم تُجدَّد', 'Expired contracts, not renewed')} value={ops.summary.lapsedContractsCount} c="#f59e0b"
+              onClick={() => setContractList((v) => (v === 'lapsedContracts' ? '' : 'lapsedContracts'))} />
+          </div>
+          {contractList && (
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="max-h-80 overflow-y-auto">
+                <table className="w-full text-[13px]">
+                  <thead className="sticky top-0"><tr className="bg-slate-900 text-slate-300">
+                    <th className="px-3 py-2 text-start font-semibold">{t('الرقم الوظيفي', 'Emp. no.')}</th>
+                    <th className="px-3 py-2 text-start font-semibold">{t('الموظف', 'Employee')}</th>
+                    <th className="px-3 py-2 text-start font-semibold">{t('القسم', 'Department')}</th>
+                    <th className="px-3 py-2 text-start font-semibold">{t('المسمّى', 'Job title')}</th>
+                    {contractList === 'lapsedContracts' && <th className="px-3 py-2 text-start font-semibold">{t('انتهى في', 'Ended on')}</th>}
+                  </tr></thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(ops[contractList] || []).map((e: any) => (
+                      <tr key={e._id} className="cursor-pointer hover:bg-slate-50" onClick={() => router.push(`/system/hr/employees/${e._id}`)}>
+                        <td className="px-3 py-2 tabular-nums text-slate-600">{e.employeeNumber || '—'}</td>
+                        <td className="px-3 py-2 font-semibold text-slate-900">{e.name}</td>
+                        <td className="px-3 py-2 text-slate-600">{e.department || '—'}</td>
+                        <td className="px-3 py-2 text-slate-600">{e.jobTitle || '—'}</td>
+                        {contractList === 'lapsedContracts' && <td className="px-3 py-2 font-semibold text-red-600">{String(e.endDate || '').slice(0, 10).split('-').reverse().join('/') || '—'}</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </section>
       )}
 

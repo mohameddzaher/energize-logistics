@@ -436,6 +436,14 @@ if (!DOCS_ONLY) connectDB().then(async () => {
   await ensureShipmentOrderDefaults();
   const { ensureFleetDefaults } = require('./controllers/fleetController');
   await ensureFleetDefaults();
+  // العقدُ الذي انقضت مدّتُه يصير «منتهي» وحدَه — عند الإقلاع ثمّ كلَّ ساعة.
+  // راجع utils/contractStatus.expireLapsedContracts (آمنٌ أن يعمل في العاملَين).
+  {
+    const { expireLapsedContracts } = require('./utils/contractStatus');
+    const run = () => expireLapsedContracts().then((n) => { if (n) console.log(`[contracts] ${n} lapsed → expired`); }).catch((e) => console.error('[contracts] expire:', e.message));
+    run();
+    setInterval(run, 60 * 60 * 1000).unref();
+  }
   // Drop the legacy singleton_1 index on the B2C sheet sync collection so the new
   // (project, branch) compound unique index can take over. No-op on fresh installs.
   await migrateB2CSheetIndex();

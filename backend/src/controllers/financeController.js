@@ -583,10 +583,11 @@ async function hr() {
     Employee.find({ employmentStatus: { $ne: 'terminated' }, isHrRecord: { $ne: false } })
       .select('firstName lastName arabicName employeeNumber department jobTitle branch branchName basicSalary allowances employmentStatus')
       .populate('branch', 'name').lean(),
-    Contract.find({ status: 'active' }).select('employee basicSalary allowances endDate type').lean(),
+    // السارِي، وإلّا المنتهي بمرور مدّته — شروطُه تبقى ما يُدفَع حتى يُجدَّد.
+    require('../utils/contractStatus').currentContractsByEmployee('basicSalary allowances endDate type'),
     Asset.find({ issuedBySection: 'hr' }).select('name value status telecom.package').lean(),
   ]);
-  const byEmp = new Map(contracts.map((c) => [String(c.employee), c]));
+  const byEmp = contracts;
   const rows = employees.map((e) => {
     const c = byEmp.get(String(e._id));
     const basic = Number(c?.basicSalary ?? e.basicSalary) || 0;

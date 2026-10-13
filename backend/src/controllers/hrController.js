@@ -132,8 +132,8 @@ const notifyUser = async (userId, { title, message, relatedEntity, relatedEntity
   if (event) { try { emitToUser(String(userId), event, { id: String(relatedEntityId || '') }); } catch (e) {} }
 };
 
-const getActiveContract = (employeeId) =>
-  Contract.findOne({ employee: employeeId, status: 'active' }).sort({ createdAt: -1 }).lean();
+// السارِي، وإلّا المنتهي بمرور مدّته: انقضاءُ المدّة لا يُصفِّر رصيدَ الإجازة.
+const getActiveContract = (employeeId) => require('../utils/contractStatus').currentContractOf(employeeId);
 
 // Lazily provision + link an employee profile for the current login. See the
 // shared util for details. Used so any staff login (incl. the demo super admin)
@@ -2244,6 +2244,20 @@ exports.getDashboard = async (req, res) => {
       CompanyLicense.find({}).select('name category location expiryDate').lean(),
     ]);
 
+    // ── موظّفون بلا عقدٍ مسجَّل، وآخرون عقدُهم انقضى ولم يُجدَّد ─────────────────
+    // مَن على قوّة العمل وليس فريلانسر ولا عقدَ له في النظام أصلًا: يُعَدّ هنا حتى
+    // يُنشأ عقدُه — فيخرج من العدّ في الحال (إنشاءُ العقد يمسح ذاكرةَ اللوحة ويبثّ).
+    const current = await require('../utils/contractStatus').currentContractsByEmployee('endDate');
+    const anyContract = new Set((await Contract.distinct('employee')).map(String));
+    const workforce = await Employee.find({ ...HR_ONLY, employmentStatus: { $ne: 'terminated' }, employmentType: { $ne: 'freelancer' } })
+      .select('firstName lastName arabicName employeeNumber department jobTitle employmentType').sort({ employeeNumber: 1 }).lean();
+    const person = (e, extra = {}) => ({ _id: e._id, employeeNumber: e.employeeNumber, name: e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim(), department: e.department || '', jobTitle: e.jobTitle || '', ...extra });
+    const noContract = workforce.filter((e) => !anyContract.has(String(e._id))).map((e) => person(e));
+    const lapsedContracts = workforce
+      .filter((e) => current.get(String(e._id))?.status === 'expired')
+      .map((e) => person(e, { endDate: current.get(String(e._id)).endDate || '' }))
+      .sort((a, b) => String(a.endDate).localeCompare(String(b.endDate)));
+
     // Licenses about to lapse (or already expired), soonest first.
     const expiringLicenses = (licensesAll || [])
       .filter((l) => l.expiryDate && l.expiryDate <= in60)
@@ -2276,7 +2290,10 @@ exports.getDashboard = async (req, res) => {
         licensesTotal: (licensesAll || []).length,
         licensesExpiringCount: expiringLicenses.length,
         licensesExpiredCount: expiringLicenses.filter((l) => l.expired).length,
+        noContractCount: noContract.length,
+        lapsedContractsCount: lapsedContracts.length,
       },
+      noContract, lapsedContracts,
       byStatus: byStatusAgg.map((r) => ({ status: r._id || 'unknown', count: r.count })),
       byDepartment: byDeptAgg.map((r) => ({ name: r._id, count: r.count })),
       byProject: byProjectAgg.map((r) => ({ name: r._id, count: r.count })),

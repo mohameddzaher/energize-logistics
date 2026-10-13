@@ -6,6 +6,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'hr_employee_profile.dart';
 
 /// لوحة الموارد البشرية — native: the headline numbers, department split and
 /// the expiring-documents list, from the same endpoint the web dashboard uses.
@@ -86,6 +87,21 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                         const SizedBox(width: 10),
                         Expanded(child: FadeSlideIn(delayMs: 280, child: StatCard(label: tr('عهد بعهدة الموظفين', 'Assigned assets'), value: s['assignedAssets'] ?? 0, color: T.cyan, icon: Icons.devices_other_outlined))),
                       ]),
+                      // ── العقود التي تحتاج انتباهًا — مطابقٌ للوحة الموقع ──
+                      if (((s['noContractCount'] ?? 0) as num) > 0 || ((s['lapsedContractsCount'] ?? 0) as num) > 0) ...[
+                        const SizedBox(height: 10),
+                        Row(children: [
+                          Expanded(child: Pressable(
+                            onTap: () => _showContractList(context, tr('موظفون بلا عقد مسجَّل', 'Employees with no contract'), List.from(_d?['noContract'] ?? const [])),
+                            child: StatCard(label: tr('بلا عقد مسجَّل', 'No contract'), value: s['noContractCount'] ?? 0, color: T.danger, icon: Icons.description_outlined),
+                          )),
+                          const SizedBox(width: 10),
+                          Expanded(child: Pressable(
+                            onTap: () => _showContractList(context, tr('عقود منتهية لم تُجدَّد', 'Expired contracts, not renewed'), List.from(_d?['lapsedContracts'] ?? const [])),
+                            child: StatCard(label: tr('عقود منتهية لم تُجدَّد', 'Expired, not renewed'), value: s['lapsedContractsCount'] ?? 0, color: T.warn, icon: Icons.event_busy_outlined),
+                          )),
+                        ]),
+                      ],
                       const SizedBox(height: 14),
                       // By department
                       FadeSlideIn(
@@ -156,4 +172,40 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                 ),
     );
   }
+}
+
+void _showContractList(BuildContext context, String title, List rows) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (c) => DraggableScrollableSheet(
+      expand: false, initialChildSize: 0.7, maxChildSize: 0.92,
+      builder: (c, scroll) => Column(children: [
+        Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 8), child: Row(children: [
+          Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
+          Chip2('${rows.length}', T.navy),
+        ])),
+        Expanded(child: ListView.separated(
+          controller: scroll,
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 20),
+          itemCount: rows.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (c, i) {
+            final e = Map<String, dynamic>.from(rows[i] as Map);
+            final end = (e['endDate'] ?? '').toString();
+            return ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text((e['name'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              subtitle: Text([e['employeeNumber'], e['department'], e['jobTitle']].where((x) => x != null && x.toString().isNotEmpty).join(' · '), style: const TextStyle(fontSize: 11.5)),
+              trailing: end.length >= 10 ? Text(end.substring(0, 10).split('-').reversed.join('/'), style: const TextStyle(color: T.danger, fontWeight: FontWeight.w700, fontSize: 12)) : const Icon(Icons.chevron_left, size: 18),
+              onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => HrEmployeeProfileScreen(employeeId: e['_id'].toString()))),
+            );
+          },
+        )),
+      ]),
+    ),
+  );
 }

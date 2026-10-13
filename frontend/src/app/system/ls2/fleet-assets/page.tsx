@@ -34,6 +34,7 @@ import VehicleAssetSheet from '@/components/ls2/VehicleAssetSheet';
 import TireActions, { type TireActionHandlers } from '@/components/ls2/TireActions';
 import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
 import ScrollX from '@/components/system/ScrollX';
+import ManagedSelect from '@/components/system/ManagedSelect';
 
 // ---- Types mirroring /api/ls2/assets ---------------------------------------
 interface Flatbed { _id: string; numbering: number | null; plate: string; plateKey: string; batch: string; brand: string; currentTrailerNumber: string | null; notes: string; tireCount: number; unitId: number | null; driver: string; odometerKm: number | null }
@@ -1482,6 +1483,12 @@ function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
   const isEdit = !!tire;
   const [serial, setSerial] = useState(tire?.serial || '');
   const [tireNumber, setTireNumber] = useState(tire?.tireNumber || '');
+  // رقمُ الفردة يُولَّد: التالي بعد أكبر رقمٍ مسجَّلٍ في الكاوتش. والخادمُ يعيد
+  // حسابَه عند الحفظ — قد يسبق زميلٌ بفردة.
+  useEffect(() => {
+    if (isEdit) return;
+    api.get<{ tireNumber: string }>('/api/ls2/assets/tires/next-number').then((d) => setTireNumber(d.tireNumber || '')).catch(() => {});
+  }, [isEdit]);
   const [type, setType] = useState(tire?.type || '');
   const [size, setSize] = useState(tire?.size || '');
   const [condition, setCondition] = useState<'new' | 'used'>(tire?.condition === 'used' ? 'used' : 'new');
@@ -1500,7 +1507,7 @@ function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
         await api.patch(`/api/ls2/assets/tires/${tire!._id}`, { serial: serial.trim(), tireNumber, type, size, sensor, notes });
       } else {
         await api.post('/api/ls2/assets/tires', {
-          serial: serial.trim(), tireNumber, type, size, sensor, notes, condition,
+          serial: serial.trim(), type, size, sensor, notes, condition,
           ...(mountPlate ? { plate: mountPlate, positionNumber: posN, positionLabel: pos.label, section: pos.section } : {}),
         });
       }
@@ -1519,17 +1526,20 @@ function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
           </div>
           <div>
             <label className={labelCls}>{ar ? 'رقم الفردة' : 'Tire number'}</label>
-            <input value={tireNumber} onChange={(e) => setTireNumber(e.target.value)} className={inputCls} />
+            {isEdit
+              ? <input value={tireNumber} onChange={(e) => setTireNumber(e.target.value)} className={inputCls} />
+              : <input value={tireNumber} readOnly disabled title={ar ? 'يُولَّد تلقائيًّا بعد آخر رقمٍ مسجَّل' : 'Generated after the last registered number'} className={`${inputCls} bg-slate-50 text-slate-500`} placeholder={ar ? 'تلقائي' : 'Auto'} />}
+            {!isEdit && <p className="mt-1 text-[11px] text-slate-400">{ar ? 'يُولَّد تلقائيًّا بعد آخر رقم.' : 'Generated automatically.'}</p>}
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>{ar ? 'النوع / الماركة' : 'Type / brand'}</label>
-            <input value={type} onChange={(e) => setType(e.target.value)} placeholder="Michelin / Bridgestone / Conti / China" className={inputCls} />
+            <ManagedSelect type="ls2_tire_brand" storeLabel value={type} onChange={setType} placeholder={ar ? 'اختر الماركة' : 'Pick a brand'} />
           </div>
           <div>
             <label className={labelCls}>{ar ? 'المقاس' : 'Size'}</label>
-            <input value={size} onChange={(e) => setSize(e.target.value)} placeholder="315/80 R22.5" className={inputCls} dir="ltr" />
+            <ManagedSelect type="ls2_tire_size" storeLabel value={size} onChange={setSize} placeholder={ar ? 'اختر المقاس' : 'Pick a size'} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">

@@ -15,6 +15,7 @@ export default function Ls2StorePage() {
   return (
     <StoreScreen scope={{
       base: '/api/ls2/store',
+      suppliersBase: '/api/ls2/suppliers',
       titleAr: 'مخزن النقل الثقيل', titleEn: 'Heavy Transport Store',
       subtitleAr: 'قطع الغيار — الرصيد والحركات', subtitleEn: 'Spare parts — stock & movements',
       /**

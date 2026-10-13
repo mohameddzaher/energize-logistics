@@ -75,6 +75,7 @@ router.get('/assets/vehicle/:plate', assets.getVehicleAssets);
 // خط زمني واحد للعربية: كاوتش + قطع غيار + إصلاحات + صيانة
 router.get('/assets/vehicle/:plate/history', assets.getVehicleHistory);
 router.post('/assets/import', ADMIN, assets.importAssets); // workshop JSON, idempotent
+router.get('/assets/tires/next-number', assets.nextTireNumber);   // قبل /assets/tires/:id
 router.post('/assets/tires', ADMIN, assets.createTire);
 router.patch('/assets/tires/:id', oid, ADMIN, assets.updateTire);
 router.get('/assets/tires/:id/profile', oid, assets.getTireProfile);   // حياة الفردة كاملةً
@@ -88,6 +89,12 @@ router.get('/store', store.listItems);
 router.get('/store/dashboard', store.dashboard);
 router.get('/store/movements', store.listMovements);
 router.post('/store', ADMIN, store.createItem);
+router.post('/store/bulk-create', ADMIN, store.createItemsBulk);   // فاتورةُ شراءٍ بعدّة أصناف
+// الموردون — مَن تُشترى منه القطع. قبل /store/:id كي لا تُلتقَط كمعرّف.
+router.get('/suppliers', store.listSuppliers);
+router.post('/suppliers', ADMIN, store.createSupplier);
+router.put('/suppliers/:id', oid, ADMIN, store.updateSupplier);
+router.delete('/suppliers/:id', oid, ADMIN, store.deleteSupplier);
 router.put('/store/:id', oid, ADMIN, store.updateItem);
 router.delete('/store/:id', oid, ADMIN, store.deleteItem);
 // حركة جماعية (صادر أو وارد) لعدة أصناف بكميات مختلفة — تُسجَّل قبل /store/:id

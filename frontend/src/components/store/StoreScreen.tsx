@@ -38,16 +38,45 @@ export interface PlateRow {
 const plateKeyOf = (v: unknown) => String(v ?? '').replace(/[^0-9A-Za-z\u0621-\u064A]/g, '').toUpperCase();
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
-import { Boxes, Plus, ArrowDownToLine, ArrowUpFromLine, Edit, Trash2, X, Save, History, Search, Undo2 } from 'lucide-react';
+import { ListPlus, Boxes, Plus, ArrowDownToLine, ArrowUpFromLine, Edit, Trash2, X, Save, History, Search, Undo2 } from 'lucide-react';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { type Lang } from '@/lib/ls2';
 import ScrollX from '@/components/system/ScrollX';
+import PeriodFilter from '@/components/system/PeriodFilter';
+import ManagedSelect from '@/components/system/ManagedSelect';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
+import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 
-type Item = { _id: string; code?: string; name: string; category?: string; categoryAr?: string; groupAr?: string; quantity: number; unit: string; unitPrice: number; minQuantity?: number; compatibleModels?: string[]; notes?: string; status: 'ok' | 'low' | 'out'; value: number };
+/** موردٌ كما يردّه `/suppliers`. */
+export type Supplier = { _id: string; name: string; phone?: string; city?: string; taxNumber?: string; notes?: string; items?: number; purchases?: number; units?: number; total?: number; lastPurchase?: string };
+const dmy = (d?: string) => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : '—');
+const todayYmd = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+
+/**
+ * خانةُ المورد: يُختار من القائمة، أو يُكتب اسمٌ جديدٌ فيُضاف مع الحفظ نفسِه.
+ * القيمةُ معرّفُ المورد أو الاسمُ المكتوب — والخادمُ يميّز بينهما.
+ */
+function SupplierSelect({ suppliers, value, onChange, ar }: { suppliers: Supplier[]; value: string; onChange: (v: string) => void; ar: boolean }) {
+  return (
+    <SearchableSelect value={value} onChange={onChange} searchAfter={0}
+      placeholder={ar ? 'اختر المورد أو اكتب اسمًا جديدًا' : 'Pick a supplier or type a new one'}
+      searchPlaceholder={ar ? 'ابحث أو اكتب اسمَ موردٍ جديد…' : 'Search or type a new supplier…'}
+      emptyLabel={ar ? '— بلا مورد —' : '— none —'}
+      options={[
+        ...(value && !suppliers.some((x) => x._id === value) ? [{ value, label: `${value} ${ar ? '(جديد)' : '(new)'}` }] : []),
+        ...suppliers.map((x) => ({ value: x._id, label: x.name })),
+      ]}
+      allowCustom customHint={(typed) => (ar ? `إضافة «${typed}» موردًا جديدًا` : `Add “${typed}” as a new supplier`)} />
+  );
+}
+const supplierBody = (v: string) => (/^[0-9a-f]{24}$/i.test(v) ? { supplier: v } : { supplier: '', supplierName: v });
+
+type Item = { _id: string; supplier?: string | null; supplierName?: string; purchaseDate?: string; createdAt?: string; code?: string; name: string; category?: string; categoryAr?: string; groupAr?: string; quantity: number; unit: string; unitPrice: number; minQuantity?: number; compatibleModels?: string[]; notes?: string; status: 'ok' | 'low' | 'out'; value: number };
 type Cat = { key: string; ar: string; count: number };
 type Movement = {
   _id: string; item: string; itemName: string; type: 'in' | 'out'; quantity: number;
   vehiclePlate?: string; reason?: string; balanceAfter: number; performedByName?: string; createdAt: string;
+  date?: string; supplierName?: string; unitPrice?: number | null; total?: number | null; unit?: string;
   // التراجع — السيرفر هو اللي بيقرر الحركة دي ينفع يترجع فيها ولا لأ، فالواجهة
   // ما تعيدش بناء القاعدة دي عندها.
   reversed?: boolean; reversedByName?: string; reversalReason?: string;
@@ -65,6 +94,12 @@ const STATUS: Record<string, { ar: string; en: string; cls: string }> = {
 export type StoreScope = {
   /** مسارُ نقاط المخزن — «/api/ls2/store» أو «/api/light-transport/store». */
   base: string;
+  /**
+   * مسارُ نقاط الموردين — يُكتب نصًّا صريحًا في صفحة كلّ مخزن: خريطةُ «صفحة ← نقاط»
+   * تُبنى من النصوص المكتوبة، ومسارٌ يُشتقّ بالحساب لا تراه فيُرفَض لمن فُتحت له
+   * الصفحةُ وحدَها (راجع page-api-map).
+   */
+  suppliersBase: string;
   titleAr: string;
   titleEn: string;
   subtitleAr: string;
@@ -121,18 +156,42 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
   });
   const [editItem, setEditItem] = useState<Item | null>(null);
   const [addNew, setAddNew] = useState(false);
+  const [addMany, setAddMany] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [movements, setMovements] = useState<Movement[]>([]);
+  // يومُ الشراء (يومٌ / شهرٌ / فترة) والمورد — يُفلتَران في الخادم.
+  const [period, setPeriod] = useState<{ from: string; to: string }>({ from: '', to: '' });
+  const [supplierF, setSupplierF] = useState('');
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const supBase = scope.suppliersBase;
+  const loadSuppliers = useCallback(() => {
+    api.get<{ suppliers: Supplier[] }>(supBase).then((d) => setSuppliers(d.suppliers || [])).catch(() => {});
+  }, [supBase]);
+  useEffect(() => { loadSuppliers(); }, [loadSuppliers]);
+  useSocket('ls2:store', loadSuppliers);
+  // فلاترُ سجلّ الحركات — في الخادم كذلك، فالسجلُّ أطولُ من أن يُجلَب كلُّه.
+  const [logF, setLogF] = useState<{ type: string; from: string; to: string; q: string; supplier: string }>({ type: '', from: '', to: '', q: '', supplier: '' });
+  const itemsReq = useLatestRequest();
+  const logReq = useLatestRequest();
 
   const load = useCallback(async () => {
+    // الطلبُ الأوسعُ أبطأ، فيصل بعد الأضيق ويكتب فوقه — راجع useLatestRequest.
+    const token = itemsReq.begin();
+    const qs = new URLSearchParams();
+    if (q.trim()) qs.set('q', q.trim());
+    if (period.from) qs.set('from', period.from);
+    if (period.to) qs.set('to', period.to);
+    if (supplierF) qs.set('supplier', supplierF);
     try {
       const [d, dash] = await Promise.all([
-        api.get<{ items: Item[] }>(`${scope.base}${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`),
+        api.get<{ items: Item[] }>(`${scope.base}${qs.toString() ? `?${qs}` : ''}`),
         api.get<{ totals: any }>(`${scope.base}/dashboard`),
       ]);
+      if (!itemsReq.isCurrent(token)) return;
       setItems(d.items || []); setTotals(dash.totals); setCats((dash as any).byCategory || []);
-    } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setLoading(false); }
-  }, [q, notify]);
+    } catch (e: any) { if (itemsReq.isCurrent(token)) notify(e?.message || 'Failed', 'error'); } finally { setLoading(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, period.from, period.to, supplierF, notify]);
 
   useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t); }, [load]);
   useSocket('ls2:store', useCallback(() => load(), [load]));
@@ -147,8 +206,15 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
   }, [scope.plateSource.url]);
 
   const loadLog = useCallback(async () => {
-    try { const d = await api.get<{ movements: Movement[] }>(`${scope.base}/movements?limit=300`); setMovements(d.movements || []); } catch { /* keep */ }
-  }, []);
+    const token = logReq.begin();
+    const qs = new URLSearchParams({ limit: '1000' });
+    Object.entries(logF).forEach(([k, v]) => { if (v) qs.set(k, v); });
+    try {
+      const d = await api.get<{ movements: Movement[] }>(`${scope.base}/movements?${qs}`);
+      if (logReq.isCurrent(token)) setMovements(d.movements || []);
+    } catch { /* keep */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logF]);
   useEffect(() => { if (showLog) loadLog(); }, [showLog, loadLog]);
   useSocket('ls2:store', useCallback(() => { if (showLog) loadLog(); }, [showLog, loadLog]));
 
@@ -158,8 +224,8 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
     && (!priceMin || (i.unitPrice || 0) >= Number(priceMin))
     && (!priceMax || (i.unitPrice || 0) <= Number(priceMax))
   ), [items, statusF, catF, priceMin, priceMax]);
-  const anyFilter = statusF || catF || priceMin || priceMax || q;
-  const resetFilters = () => { setStatusF(''); setCatF(''); setPriceMin(''); setPriceMax(''); setQ(''); };
+  const anyFilter = statusF || catF || priceMin || priceMax || q || period.from || period.to || supplierF;
+  const resetFilters = () => { setStatusF(''); setCatF(''); setPriceMin(''); setPriceMax(''); setQ(''); setPeriod({ from: '', to: '' }); setSupplierF(''); };
 
   const del = async (it: Item) => {
     if (!(await confirm(ar ? `حذف الصنف «${it.name}»؟` : `Delete "${it.name}"?`))) return;
@@ -172,20 +238,27 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
     { header: ar ? 'الكود' : 'Code', key: 'code', width: 14 },
     { header: ar ? 'الصنف' : 'Item', key: 'name', width: 34 },
     { header: ar ? 'التصنيف' : 'Category', key: 'categoryAr', transform: (v, r) => v || r.category || '', width: 18 },
-    { header: ar ? 'الرصيد' : 'Qty', key: 'quantity', width: 10 },
+    { header: ar ? 'تاريخ الشراء' : 'Purchase date', key: 'purchaseDate', transform: (v) => (v ? dmy(v) : ''), width: 13 },
+    { header: ar ? 'المورد' : 'Supplier', key: 'supplierName', width: 24 },
+    { header: ar ? 'العدد' : 'Qty', key: 'quantity', width: 10 },
     { header: ar ? 'الوحدة' : 'Unit', key: 'unit', width: 10 },
     { header: ar ? 'الحد الأدنى' : 'Min qty', key: 'minQuantity', width: 11 },
-    { header: ar ? 'سعر الوحدة' : 'Unit price', key: 'unitPrice', width: 13 },
-    { header: ar ? 'القيمة' : 'Value', key: 'value', width: 13 },
+    { header: ar ? 'سعر القطعة الواحدة' : 'Unit price', key: 'unitPrice', width: 16 },
+    { header: ar ? 'الإجمالي (العدد × السعر)' : 'Total (qty × price)', key: 'value', width: 20 },
     { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => (ar ? STATUS[v]?.ar : STATUS[v]?.en) || v, width: 12 },
     { header: ar ? 'الموديلات المتوافقة' : 'Compatible models', key: 'compatibleModels', transform: (v) => (v || []).join('، '), width: 30 },
     { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 30 },
   ];
   const movementCols: ExportColumn[] = [
-    { header: ar ? 'التاريخ' : 'Date', key: 'createdAt', transform: (v) => (v ? new Date(v).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : ''), width: 18 },
+    { header: ar ? 'التاريخ' : 'Date', key: 'date', transform: (v) => (v ? dmy(v) : ''), width: 13 },
+    { header: ar ? 'سُجِّلت في' : 'Recorded at', key: 'createdAt', transform: (v) => (v ? new Date(v).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : ''), width: 18 },
     { header: ar ? 'الصنف' : 'Item', key: 'itemName', width: 34 },
     { header: ar ? 'الحركة' : 'Type', key: 'type', transform: (v) => (ar ? (v === 'in' ? 'وارد' : 'صادر') : (v === 'in' ? 'In' : 'Out')), width: 10 },
     { header: ar ? 'الكمية' : 'Qty', key: 'quantity', width: 10 },
+    { header: ar ? 'الوحدة' : 'Unit', key: 'unit', width: 10 },
+    { header: ar ? 'المورد' : 'Supplier', key: 'supplierName', width: 24 },
+    { header: ar ? 'سعر القطعة' : 'Unit price', key: 'unitPrice', transform: (v) => (v == null ? '' : v), width: 13 },
+    { header: ar ? 'الإجمالي' : 'Total', key: 'total', transform: (v) => (v == null ? '' : v), width: 13 },
     { header: ar ? 'المركبة' : 'Vehicle', key: 'vehiclePlate', width: 14 },
     { header: ar ? 'السبب' : 'Reason', key: 'reason', width: 30 },
     { header: ar ? 'الرصيد بعدها' : 'Balance after', key: 'balanceAfter', width: 14 },
@@ -209,6 +282,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
             ]}
           />
           {canEdit && <button onClick={() => setAddNew(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#e5651a] text-white text-sm"><Plus className="w-4 h-4" /> {ar ? 'صنف جديد' : 'Add item'}</button>}
+          {canEdit && <button onClick={() => setAddMany(true)} title={ar ? 'فاتورةُ شراءٍ واحدةٌ فيها عدّةُ أصناف' : 'One purchase with several items'} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#12325c] hover:bg-[#0d2646] text-white text-sm"><ListPlus className="w-4 h-4" /> {ar ? 'إضافة عدّة أصناف' : 'Add several items'}</button>}
         </div>
       </PageHeader>
 
@@ -242,12 +316,20 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
             <span className="text-slate-300">—</span>
             <input type="number" value={priceMax} onChange={(e) => setPriceMax(e.target.value)} placeholder={ar ? 'إلى' : '≤'} className="w-20 px-2 py-2 rounded-lg border border-slate-200 text-sm" />
           </div>
+          <select value={supplierF} onChange={(e) => setSupplierF(e.target.value)} className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white max-w-[190px]">
+            <option value="">{ar ? 'كل الموردين' : 'All suppliers'}</option>
+            {suppliers.map((x) => <option key={x._id} value={x._id}>{x.name}</option>)}
+          </select>
+          <span className="flex items-center gap-1.5 text-xs text-slate-500">{ar ? 'تاريخ الشراء' : 'Purchase date'}
+            <PeriodFilter ar={ar} from={period.from} to={period.to} onChange={(a, b) => setPeriod({ from: a, to: b })} />
+          </span>
           {anyFilter && <button onClick={resetFilters} className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs">{ar ? 'مسح' : 'Reset'} <X className="w-3 h-3" /></button>}
           <span className="text-xs text-slate-400 ms-auto">{shown.length} {ar ? 'صنف' : 'items'}</span>
         </div>
       </div>
 
-      {showLog && <MovementsLog movements={movements} ar={ar} canEdit={!!canEdit} plates={plates} base={scope.base} onChanged={() => { loadLog(); load(); }} />}
+      {showLog && <MovementsLog movements={movements} ar={ar} canEdit={!!canEdit} plates={plates} base={scope.base} onChanged={() => { loadLog(); load(); }}
+        f={logF} setF={setLogF} suppliers={suppliers} />}
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <ScrollX>
@@ -266,7 +348,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
                       })} />
                   </th>
                 )}
-                {[ar ? 'الصنف' : 'Item', ar ? 'التصنيف' : 'Category', ar ? 'الرصيد' : 'Qty', ar ? 'السعر' : 'Price', ar ? 'القيمة' : 'Value', ar ? 'الحالة' : 'Status', ar ? 'حركة' : 'Move', ''].map((h) => <th key={h} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>)}
+                {[ar ? 'الصنف' : 'Item', ar ? 'التصنيف' : 'Category', ar ? 'تاريخ الشراء' : 'Purchased', ar ? 'المورد' : 'Supplier', ar ? 'العدد' : 'Qty', ar ? 'سعر القطعة' : 'Unit price', ar ? 'الإجمالي' : 'Total', ar ? 'الحالة' : 'Status', ar ? 'حركة' : 'Move', ''].map((h) => <th key={h} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>)}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -284,6 +366,8 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
                     {(it.compatibleModels?.length || it.code) ? <p className="text-[11px] text-slate-400">{it.code}{it.compatibleModels?.length ? ` · ${it.compatibleModels.join('، ')}` : ''}</p> : null}
                   </td>
                   <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{it.categoryAr || it.category || '—'}</td>
+                  <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{it.purchaseDate ? dmy(it.purchaseDate) : '—'}</td>
+                  <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{it.supplierName || '—'}</td>
                   <td className="px-3 py-2 font-bold text-slate-800">{it.quantity} <span className="text-[10px] font-normal text-slate-400">{it.unit}</span></td>
                   <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{money(it.unitPrice)}</td>
                   <td className="px-3 py-2 text-emerald-700 font-semibold whitespace-nowrap">{money(it.value)}</td>
@@ -306,7 +390,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
                   </td>
                 </tr>
               ))}
-              {shown.length === 0 && <tr><td colSpan={8} className="px-3 py-10 text-center text-slate-400">{ar ? 'لا توجد أصناف مطابقة' : 'No items'}</td></tr>}
+              {shown.length === 0 && <tr><td colSpan={11} className="px-3 py-10 text-center text-slate-400">{ar ? 'لا توجد أصناف مطابقة' : 'No items'}</td></tr>}
             </tbody>
           </table>
         </ScrollX>
@@ -330,16 +414,18 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
         </SelectionBar>
       )}
 
-      {move && <MovementModal move={move} plates={plates} ar={ar} base={scope.base} onClose={() => setMove(null)} onDone={() => { setMove(null); load(); }} />}
+      {move && <MovementModal suppliers={suppliers} move={move} plates={plates} ar={ar} base={scope.base} onClose={() => setMove(null)} onDone={() => { setMove(null); load(); }} />}
       {bulkKind && (
         <BulkOutModal
+          suppliers={suppliers}
           base={scope.base}
           items={items.filter((x) => picked.has(x._id))} plates={plates} ar={ar} kind={bulkKind}
           onClose={() => setBulkKind(null)}
           onDone={() => { setBulkKind(null); setPicked(new Set()); load(); }}
         />
       )}
-      {(addNew || editItem) && <ItemFormModal item={editItem} ar={ar} base={scope.base} onClose={() => { setAddNew(false); setEditItem(null); }} onSaved={() => { setAddNew(false); setEditItem(null); load(); }} />}
+      {(addNew || editItem) && <ItemFormModal suppliers={suppliers} item={editItem} ar={ar} base={scope.base} onClose={() => { setAddNew(false); setEditItem(null); }} onSaved={() => { setAddNew(false); setEditItem(null); load(); loadSuppliers(); }} />}
+      {addMany && <BulkCreateModal suppliers={suppliers} ar={ar} base={scope.base} onClose={() => setAddMany(false)} onSaved={() => { setAddMany(false); load(); loadSuppliers(); }} />}
     </div>
   );
 }
@@ -348,40 +434,94 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
 //
 // الحركة الملغية بتفضل ظاهرة ومشطوبة، مش بتختفي: الرصيد اتغيّر فعلاً وقتها،
 // وإخفاء السطر معناه إن اللي بيراجع المخزن مش هيفهم الرقم جه منين.
-function MovementsLog({ movements, ar, canEdit, plates, onChanged, base }: {
+function MovementsLog({ movements, ar, canEdit, onChanged, base, f, setF, suppliers }: {
   movements: Movement[]; ar: boolean; canEdit: boolean; plates: PlateRow[]; onChanged: () => void; base: string;
+  f: { type: string; from: string; to: string; q: string; supplier: string };
+  setF: (fn: (p: any) => any) => void; suppliers: Supplier[];
 }) {
   const [undoing, setUndoing] = useState<Movement | null>(null);
-
-  const head = [ar ? 'التاريخ' : 'Date', ar ? 'الصنف' : 'Item', ar ? 'الحركة' : 'Type', ar ? 'الكمية' : 'Qty',
-    ar ? 'العربية' : 'Vehicle', ar ? 'الرصيد بعدها' : 'Balance', ar ? 'بواسطة' : 'By', ''];
+  // فلاترُ الأعمدة على طريقة إكسل — آخرُ ما يُطبَّق، بعد فلاتر الخادم.
+  const cf = useColumnFilters<Movement>();
+  const getters: Record<string, (m: Movement) => any> = {
+    month: (m) => String(m.date || '').slice(0, 7),
+    item: (m) => m.itemName,
+    type: (m) => (m.type === 'in' ? (ar ? 'وارد' : 'In') : (ar ? 'صادر' : 'Out')),
+    supplier: (m) => m.supplierName || '',
+    vehicle: (m) => m.vehiclePlate || '',
+    by: (m) => m.performedByName || '',
+  };
+  const rows = cf.apply(movements, getters);
+  const active = [f.type, f.from, f.to, f.q, f.supplier].filter(Boolean).length;
+  const th = (k: string | null, label: string) => (
+    <th key={label} className="px-3 py-2 text-start font-semibold whitespace-nowrap">
+      <span className="inline-flex items-center gap-1">{label}{k ? cf.header(k, movements, getters[k], ar) : null}</span>
+    </th>
+  );
+  const live = rows.filter((m) => !m.reversed && !m.isReversal);
+  const sum = (type: 'in' | 'out') => live.filter((m) => m.type === type).reduce((a, m) => a + (Number(m.total) || 0), 0);
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
       <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 font-bold text-sm text-slate-800 flex items-center justify-between gap-2">
-        <span>{ar ? 'سجل الحركات' : 'Movement log'} ({movements.length})</span>
+        <span>{ar ? 'سجل الحركات' : 'Movement log'} ({rows.length})
+          <span className="ms-3 text-[12px] font-semibold text-emerald-700">{ar ? 'قيمة الوارد' : 'In value'}: {money(sum('in'))}</span>
+        </span>
         {canEdit && <span className="text-[11px] font-normal text-slate-400">{ar ? 'الحركة المسجّلة لا تُعدَّل — الغلط يتصحّح بتراجع مسجَّل باسمك' : 'A recorded movement is never edited — mistakes are reversed, on the record'}</span>}
       </div>
-      <ScrollX className="max-h-96 overflow-y-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-100 text-slate-500 text-xs sticky top-0"><tr>{head.map((h, i) => <th key={i} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr></thead>
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2.5">
+        <div className="relative">
+          <Search className="w-4 h-4 text-slate-400 absolute top-1/2 -translate-y-1/2 start-2.5" />
+          <input value={f.q} onChange={(e) => setF((p) => ({ ...p, q: e.target.value }))} placeholder={ar ? 'الصنف / المورد / المركبة / السبب…' : 'item / supplier / vehicle / reason…'} className="ps-8 pe-3 py-2 rounded-lg border border-slate-200 text-sm w-60 max-w-full" />
+        </div>
+        <select value={f.type} onChange={(e) => setF((p) => ({ ...p, type: e.target.value }))} className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+          <option value="">{ar ? 'وارد وصادر' : 'In & out'}</option>
+          <option value="in">{ar ? 'وارد' : 'In'}</option>
+          <option value="out">{ar ? 'صادر' : 'Out'}</option>
+        </select>
+        <select value={f.supplier} onChange={(e) => setF((p) => ({ ...p, supplier: e.target.value }))} className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white max-w-[190px]">
+          <option value="">{ar ? 'كل الموردين' : 'All suppliers'}</option>
+          {suppliers.map((x) => <option key={x._id} value={x._id}>{x.name}</option>)}
+        </select>
+        <PeriodFilter ar={ar} from={f.from} to={f.to} onChange={(a, b) => setF((p) => ({ ...p, from: a, to: b }))} />
+        {active > 0 && <button type="button" onClick={() => setF(() => ({ type: '', from: '', to: '', q: '', supplier: '' }))} className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs">{ar ? `مسح (${active})` : `Reset (${active})`} <X className="w-3 h-3" /></button>}
+        <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
+      </div>
+      <ScrollX className="max-h-[28rem] overflow-y-auto">
+        <table className="w-full min-w-[1100px] text-sm">
+          <thead className="bg-slate-100 text-slate-500 text-xs sticky top-0 z-10"><tr>
+            {th('month', ar ? 'التاريخ' : 'Date')}
+            {th('item', ar ? 'الصنف' : 'Item')}
+            {th('type', ar ? 'الحركة' : 'Type')}
+            {th(null, ar ? 'الكمية' : 'Qty')}
+            {th('supplier', ar ? 'المورد' : 'Supplier')}
+            {th(null, ar ? 'سعر القطعة' : 'Unit price')}
+            {th(null, ar ? 'الإجمالي' : 'Total')}
+            {th('vehicle', ar ? 'المركبة' : 'Vehicle')}
+            {th(null, ar ? 'الرصيد بعدها' : 'Balance')}
+            {th('by', ar ? 'بواسطة' : 'By')}
+            <th className="px-3 py-2" />
+          </tr></thead>
           <tbody className="divide-y divide-slate-100">
-            {movements.map((m) => (
+            {rows.map((m) => (
               <tr key={m._id} className={`hover:bg-slate-50 ${m.reversed ? 'bg-slate-50/60 text-slate-400' : ''}`}>
-                <td className="px-3 py-1.5 text-slate-400 whitespace-nowrap text-xs">{new Date(m.createdAt).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                <td className="px-3 py-1.5 text-slate-500 whitespace-nowrap text-xs">{dmy(m.date)}</td>
                 <td className="px-3 py-1.5 font-medium text-slate-700">
                   <span className={m.reversed ? 'line-through' : ''}>{m.itemName}</span>
                   <span className="block text-[10px] leading-tight">
                     {m.reversed && <span className="text-red-500">{ar ? 'مُلغاة' : 'reversed'}{m.reversedByName ? ` · ${m.reversedByName}` : ''}</span>}
                     {m.isReversal && <span className="text-amber-600">{ar ? 'حركة تراجع' : 'reversal entry'}</span>}
                     {m.reversed && m.reversalReason && <span className="block text-slate-400">{m.reversalReason}</span>}
+                    {!m.reversed && !m.isReversal && m.reason ? <span className="text-slate-400">{m.reason}</span> : null}
                   </span>
                 </td>
                 <td className="px-3 py-1.5"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${m.reversed ? 'bg-slate-200 text-slate-500' : m.type === 'in' ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-[#f37121]'}`}>{m.type === 'in' ? (ar ? 'وارد' : 'In') : (ar ? 'صادر' : 'Out')}</span></td>
-                <td className={`px-3 py-1.5 font-bold ${m.reversed ? 'line-through' : ''}`} style={{ color: m.reversed ? '#94a3b8' : m.type === 'in' ? '#059669' : '#f37121' }}>{m.type === 'in' ? '+' : '−'}{m.quantity}</td>
+                <td className={`px-3 py-1.5 font-bold whitespace-nowrap ${m.reversed ? 'line-through' : ''}`} style={{ color: m.reversed ? '#94a3b8' : m.type === 'in' ? '#059669' : '#f37121' }}>{m.type === 'in' ? '+' : '−'}{m.quantity} <span className="text-[10px] font-normal text-slate-400">{m.unit}</span></td>
+                <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{m.supplierName || '—'}</td>
+                <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{m.unitPrice != null ? money(m.unitPrice) : '—'}</td>
+                <td className="px-3 py-1.5 font-semibold text-emerald-700 whitespace-nowrap">{m.total != null ? money(m.total) : '—'}</td>
                 <td className="px-3 py-1.5 text-slate-500 whitespace-nowrap">{m.vehiclePlate || '—'}</td>
                 <td className="px-3 py-1.5 text-slate-600">{m.balanceAfter}</td>
-                <td className="px-3 py-1.5 text-slate-400 text-xs">{m.performedByName || '—'}</td>
+                <td className="px-3 py-1.5 text-slate-400 text-xs whitespace-nowrap">{m.performedByName || '—'}</td>
                 <td className="px-3 py-1.5">
                   {canEdit && m.canReverse && (
                     <button type="button" onClick={() => setUndoing(m)}
@@ -393,7 +533,7 @@ function MovementsLog({ movements, ar, canEdit, plates, onChanged, base }: {
                 </td>
               </tr>
             ))}
-            {movements.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-slate-400">{ar ? 'لا حركات بعد' : 'No movements'}</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={11} className="px-3 py-6 text-center text-slate-400">{ar ? 'لا حركاتَ في هذا العرض' : 'No movements in this view'}</td></tr>}
           </tbody>
         </table>
       </ScrollX>
@@ -465,7 +605,8 @@ function ReverseModal({ m, ar, onClose, onDone, base }: { m: Movement; ar: boole
 // الرصيد المتوقَّع بعد الحركة يظهر بجانب كل سطر قبل التأكيد — فلا يُفاجأ أحد
 // بالنتيجة بعد الحفظ. والصنف الذي لا يكفي رصيده يُعلَّم بالأحمر، والعملية كلها
 // ترفض إن بقي واحد منها ناقصًا.
-function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base }: {
+function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base, suppliers }: {
+  suppliers: Supplier[];
   items: Item[]; plates: PlateRow[]; ar: boolean; kind?: 'in' | 'out';
   onClose: () => void; onDone: () => void; base: string;
 }) {
@@ -474,6 +615,8 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base }
   const t = (a: string, e: string) => (ar ? a : e);
   const [plate, setPlate] = useState('');
   const [reason, setReason] = useState('');
+  const [supplier, setSupplier] = useState('');
+  const [date, setDate] = useState(todayYmd());
   const [qty, setQty] = useState<Record<string, string>>(
     () => Object.fromEntries(items.map((i) => [i._id, '1'])));
   // الواردُ بسعر قطعته — يبدأ بسعر كلّ صنفٍ المسجَّل.
@@ -494,6 +637,7 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base }
         type: kind,
         lines: items.map((i) => ({ item: i._id, quantity: n(i._id), ...(isIn ? { unitPrice: Number(price[i._id]) } : {}) })),
         vehiclePlate: plate.trim(), reason: reason.trim(),
+        ...(isIn ? { date, ...(supplier ? supplierBody(supplier) : {}) } : {}),
       });
       notify(t(
         `${isIn ? 'سُجِّل وارد' : 'سُجِّل صادر'} ${r?.summary?.items ?? items.length} صنف · ${r?.summary?.totalQty ?? totalQty} قطعة`,
@@ -526,6 +670,18 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base }
         </p>
 
         <div className="px-5 space-y-3">
+          {isIn && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">{ar ? 'المورد' : 'Supplier'}</label>
+                <SupplierSelect suppliers={suppliers} value={supplier} onChange={setSupplier} ar={ar} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">{ar ? 'تاريخ الشراء' : 'Purchase date'}</label>
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inp} />
+              </div>
+            </div>
+          )}
           <PlatePicker plates={plates} value={plate} onChange={setPlate} ar={ar}
             label={isIn ? t('واردة من مركبة (اختياري)', 'In from vehicle (optional)') : t('صادرة على مركبة', 'Out to vehicle')} />
           <div>
@@ -662,7 +818,7 @@ function PlatePicker({ plates, value, onChange, ar, label }: {
   );
 }
 
-function MovementModal({ move, plates, ar, onClose, onDone, base }: { move: { item: Item; type: 'in' | 'out' }; plates: PlateRow[]; ar: boolean; onClose: () => void; onDone: () => void; base: string }) {
+function MovementModal({ move, plates, ar, onClose, onDone, base, suppliers }: { suppliers: Supplier[]; move: { item: Item; type: 'in' | 'out' }; plates: PlateRow[]; ar: boolean; onClose: () => void; onDone: () => void; base: string }) {
   const { notify } = useDialog();
   const isIn = move.type === 'in';
   const [qty, setQty] = useState('1');
@@ -670,13 +826,15 @@ function MovementModal({ move, plates, ar, onClose, onDone, base }: { move: { it
   const [price, setPrice] = useState(move.item.unitPrice ? String(move.item.unitPrice) : '');
   const [plate, setPlate] = useState('');
   const [reason, setReason] = useState('');
+  const [supplier, setSupplier] = useState(move.item.supplier || '');
+  const [date, setDate] = useState(todayYmd());
   const [busy, setBusy] = useState(false);
   const submit = async () => {
     const q = Number(qty);
     if (!q || q <= 0) { notify(ar ? 'أدخل كمية صحيحة' : 'Enter a quantity', 'error'); return; }
     if (isIn && !(Number(price) > 0)) { notify(ar ? 'اكتب سعر القطعة الواحدة' : 'Enter the unit price', 'error'); return; }
     setBusy(true);
-    try { await api.post(`${base}/${move.item._id}/movement`, { type: move.type, quantity: q, vehiclePlate: plate, reason, ...(isIn ? { unitPrice: Number(price) } : {}) }); notify(ar ? 'تم التسجيل' : 'Recorded', 'success'); onDone(); }
+    try { await api.post(`${base}/${move.item._id}/movement`, { type: move.type, quantity: q, vehiclePlate: plate, reason, ...(isIn ? { unitPrice: Number(price), date, ...(supplier ? supplierBody(supplier) : {}) } : {}) }); notify(ar ? 'تم التسجيل' : 'Recorded', 'success'); onDone(); }
     catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setBusy(false); }
   };
   const inp = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm';
@@ -699,6 +857,18 @@ function MovementModal({ move, plates, ar, onClose, onDone, base }: { move: { it
               )}
             </div>
           )}
+          {isIn && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">{ar ? 'المورد' : 'Supplier'}</label>
+                <SupplierSelect suppliers={suppliers} value={supplier} onChange={setSupplier} ar={ar} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">{ar ? 'تاريخ الشراء' : 'Purchase date'}</label>
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inp} />
+              </div>
+            </div>
+          )}
           <PlatePicker plates={plates} value={plate} onChange={setPlate} ar={ar}
             label={isIn ? (ar ? 'واردة من مركبة (اختياري)' : 'In from vehicle (optional)') : (ar ? 'صادرة على مركبة' : 'Out to vehicle')} />
           <div><label className="block text-xs font-semibold text-slate-600 mb-1">{ar ? 'ملاحظة / سبب' : 'Reason'}</label><input value={reason} onChange={(e) => setReason(e.target.value)} className={inp} /></div>
@@ -709,9 +879,14 @@ function MovementModal({ move, plates, ar, onClose, onDone, base }: { move: { it
   );
 }
 
-function ItemFormModal({ item, ar, onClose, onSaved, base }: { item: Item | null; ar: boolean; onClose: () => void; onSaved: () => void; base: string }) {
+const formLabel = 'block text-xs font-semibold text-slate-600 mb-1';
+const formInput = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm';
+
+function ItemFormModal({ item, ar, onClose, onSaved, base, suppliers }: { item: Item | null; ar: boolean; onClose: () => void; onSaved: () => void; base: string; suppliers: Supplier[] }) {
   const { notify } = useDialog();
-  const [f, setF] = useState<any>(item || { name: '', category: '', quantity: 0, unit: 'قطعة', unitPrice: 0, minQuantity: 0, code: '', notes: '' });
+  const [f, setF] = useState<any>(item
+    ? { ...item, supplier: item.supplier || '', purchaseDate: item.purchaseDate || '' }
+    : { name: '', category: '', quantity: 1, unit: 'قطعة', unitPrice: 0, minQuantity: 0, code: '', notes: '', supplier: '', purchaseDate: todayYmd() });
   const [busy, setBusy] = useState(false);
   const set = (k: string, v: any) => setF((p: any) => ({ ...p, [k]: v }));
   const save = async () => {
@@ -719,28 +894,132 @@ function ItemFormModal({ item, ar, onClose, onSaved, base }: { item: Item | null
     if (!item && !(Number(f.unitPrice) > 0)) { notify(ar ? 'اكتب سعر القطعة الواحدة' : 'Enter the unit price', 'error'); return; }
     setBusy(true);
     try {
-      if (item) await api.put(`${base}/${item._id}`, f);
-      else await api.post(base, f);
+      const body = {
+        name: f.name, category: f.category, code: f.code, unit: f.unit, unitPrice: f.unitPrice, minQuantity: f.minQuantity, notes: f.notes,
+        purchaseDate: f.purchaseDate, ...(f.supplier ? supplierBody(String(f.supplier)) : { supplier: '', supplierName: '' }),
+        ...(item ? {} : { quantity: f.quantity }),
+      };
+      if (item) await api.put(`${base}/${item._id}`, body);
+      else await api.post(base, body);
       notify(ar ? 'تم الحفظ' : 'Saved', 'success'); onSaved();
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setBusy(false); }
   };
-  const inp = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm';
-  const L = ({ children }: { children: React.ReactNode }) => <label className="block text-xs font-semibold text-slate-600 mb-1">{children}</label>;
+  const total = (Number(f.quantity) || 0) * (Number(f.unitPrice) || 0);
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4"><h3 className="font-bold text-lg">{item ? (ar ? 'تعديل صنف' : 'Edit item') : (ar ? 'صنف جديد' : 'New item')}</h3><button onClick={onClose}><X className="w-5 h-5 text-slate-400" /></button></div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="md:col-span-2"><L>{ar ? 'اسم الصنف' : 'Name'} *</L><input className={inp} value={f.name} onChange={(e) => set('name', e.target.value)} /></div>
-          <div><L>{ar ? 'التصنيف' : 'Category'}</L><input className={inp} value={f.category || ''} onChange={(e) => set('category', e.target.value)} /></div>
-          <div><L>{ar ? 'الكود' : 'Code'}</L><input className={inp} value={f.code || ''} onChange={(e) => set('code', e.target.value)} /></div>
-          {!item && <div><L>{ar ? 'الرصيد الابتدائي' : 'Initial qty'}</L><input type="number" className={inp} value={f.quantity} onChange={(e) => set('quantity', Number(e.target.value))} /></div>}
-          <div><L>{ar ? 'الوحدة' : 'Unit'}</L><input className={inp} value={f.unit} onChange={(e) => set('unit', e.target.value)} /></div>
-          <div><L>{ar ? 'سعر القطعة الواحدة (ر.س) *' : 'Unit price (SAR) *'}</L><input type="number" min={0} step="0.01" className={inp} value={f.unitPrice || ''} onChange={(e) => set('unitPrice', e.target.value === '' ? 0 : Number(e.target.value))} /></div>
-          <div><L>{ar ? 'حد التنبيه (نقص)' : 'Min qty (low alert)'}</L><input type="number" className={inp} value={f.minQuantity || 0} onChange={(e) => set('minQuantity', Number(e.target.value))} /></div>
-          <div className="md:col-span-2"><L>{ar ? 'ملاحظات' : 'Notes'}</L><textarea className={inp} rows={2} value={f.notes || ''} onChange={(e) => set('notes', e.target.value)} /></div>
+          <div className="md:col-span-2"><label className={formLabel}>{ar ? 'اسم الصنف' : 'Name'} *</label><input className={formInput} value={f.name} onChange={(e) => set('name', e.target.value)} autoFocus /></div>
+          <div><label className={formLabel}>{ar ? 'التصنيف' : 'Category'}</label><input className={formInput} value={f.category || ''} onChange={(e) => set('category', e.target.value)} /></div>
+          <div><label className={formLabel}>{ar ? 'الكود' : 'Code'}</label><input className={formInput} value={f.code || ''} onChange={(e) => set('code', e.target.value)} /></div>
+          <div className="md:col-span-2">
+            <label className={formLabel}>{ar ? 'المورد' : 'Supplier'}</label>
+            <SupplierSelect suppliers={suppliers} value={String(f.supplier || '')} onChange={(v) => set('supplier', v)} ar={ar} />
+          </div>
+          <div><label className={formLabel}>{ar ? 'تاريخ الشراء' : 'Purchase date'}</label><input type="date" className={formInput} value={f.purchaseDate || ''} onChange={(e) => set('purchaseDate', e.target.value)} /></div>
+          <div><label className={formLabel}>{ar ? 'الوحدة' : 'Unit'}</label><ManagedSelect type="ls2_store_unit" storeLabel value={f.unit || ''} onChange={(v) => set('unit', v)} placeholder={ar ? 'قطعة / لتر…' : 'Piece / litre…'} /></div>
+          {!item && <div><label className={formLabel}>{ar ? 'العدد' : 'Quantity'}</label><input type="number" min={0} className={formInput} value={f.quantity} onChange={(e) => set('quantity', e.target.value === '' ? '' : Number(e.target.value))} /></div>}
+          <div><label className={formLabel}>{ar ? 'سعر القطعة الواحدة (ر.س) *' : 'Unit price (SAR) *'}</label><input type="number" min={0} step="0.01" className={formInput} value={f.unitPrice || ''} onChange={(e) => set('unitPrice', e.target.value === '' ? 0 : Number(e.target.value))} /></div>
+          <div><label className={formLabel}>{ar ? 'حد التنبيه (نقص)' : 'Min qty (low alert)'}</label><input type="number" className={formInput} value={f.minQuantity || 0} onChange={(e) => set('minQuantity', Number(e.target.value))} /></div>
+          {!item && total > 0 && <p className="md:col-span-2 rounded-lg bg-emerald-50 px-3 py-2 text-[13px] text-emerald-800">{ar ? 'الإجمالي' : 'Total'}: <b>{total.toLocaleString('en-US', { maximumFractionDigits: 2 })}</b> {ar ? 'ر.س' : 'SAR'}</p>}
+          <div className="md:col-span-2"><label className={formLabel}>{ar ? 'ملاحظات' : 'Notes'}</label><textarea className={formInput} rows={2} value={f.notes || ''} onChange={(e) => set('notes', e.target.value)} /></div>
         </div>
-        <div className="flex justify-end gap-2 mt-5"><button onClick={onClose} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button><button onClick={save} disabled={busy} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] text-white text-sm disabled:opacity-60"><Save className="w-4 h-4" /> {ar ? 'حفظ' : 'Save'}</button></div>
+        <div className="flex justify-end gap-2 mt-5"><button onClick={onClose} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button><button onClick={save} disabled={busy} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#e5651a] text-white text-sm font-semibold disabled:opacity-50"><Save className="w-4 h-4" />{ar ? 'حفظ' : 'Save'}</button></div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * إضافةُ عدّة أصنافٍ دفعةً واحدة — فاتورةُ شراءٍ فيها عشرةُ أصنافٍ تُكتب في جدولٍ
+ * واحد: الموردُ ويومُ الشراء مرّةً فوقه، ولكلّ صنفٍ سطر. والخادمُ يقبل الدفعةَ
+ * كلَّها أو يرفضها كلَّها بأرقام الأسطر الناقصة.
+ */
+type NewRow = { id: number; name: string; category: string; code: string; quantity: string; unit: string; unitPrice: string };
+let rowSeq = 1;
+const blankRow = (): NewRow => ({ id: rowSeq++, name: '', category: '', code: '', quantity: '1', unit: 'قطعة', unitPrice: '' });
+
+function BulkCreateModal({ ar, onClose, onSaved, base, suppliers }: { ar: boolean; onClose: () => void; onSaved: () => void; base: string; suppliers: Supplier[] }) {
+  const { notify } = useDialog();
+  const [supplier, setSupplier] = useState('');
+  const [date, setDate] = useState(todayYmd());
+  const [rows, setRows] = useState<NewRow[]>(() => [blankRow(), blankRow(), blankRow()]);
+  const [errors, setErrors] = useState<Record<number, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [units, setUnits] = useState<string[]>(['قطعة', 'لتر']);
+  useEffect(() => {
+    api.get<{ items: { nameAr: string }[] }>('/api/lookups?type=ls2_store_unit&active=true')
+      .then((d) => { const u = (d.items || []).map((x) => x.nameAr).filter(Boolean); if (u.length) setUnits(u); }).catch(() => {});
+  }, []);
+  const setRow = (id: number, k: keyof NewRow, v: string) => setRows((p) => p.map((r) => (r.id === id ? { ...r, [k]: v } : r)));
+  // السطرُ الفارغُ تمامًا لا يُرسَل: ثلاثةُ أسطرٍ تُفتَح جاهزةً ولا يُلزَم بملئها.
+  const filled = rows.filter((r) => r.name.trim() || r.unitPrice || r.code.trim());
+  const total = filled.reduce((a, r) => a + (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0), 0);
+
+  const save = async () => {
+    if (!filled.length) { notify(ar ? 'اكتب صنفًا واحدًا على الأقل' : 'Enter at least one item', 'error'); return; }
+    setBusy(true); setErrors({});
+    try {
+      const r = await api.post<any>(`${base}/bulk-create`, {
+        purchaseDate: date, ...(supplier ? supplierBody(supplier) : {}),
+        items: filled.map((x) => ({ name: x.name.trim(), category: x.category.trim(), code: x.code.trim(), quantity: Number(x.quantity) || 0, unit: x.unit, unitPrice: Number(x.unitPrice) || 0 })),
+      });
+      notify(ar ? `أُضيف ${r?.summary?.count ?? filled.length} صنفًا` : `Added ${r?.summary?.count ?? filled.length} items`, 'success');
+      onSaved();
+    } catch (e: any) {
+      const list: { line: number; message: string }[] = e?.data?.errors || e?.errors || [];
+      if (list.length) setErrors(Object.fromEntries(list.map((x) => [filled[x.line - 1]?.id, x.message])));
+      notify(e?.message || 'Failed', 'error');
+    } finally { setBusy(false); }
+  };
+  const cell = 'w-full px-2 py-1.5 rounded-md border border-slate-200 text-[13px]';
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-5xl p-5 max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1"><h3 className="font-bold text-lg">{ar ? 'إضافة عدّة أصناف' : 'Add several items'}</h3><button onClick={onClose}><X className="w-5 h-5 text-slate-400" /></button></div>
+        <p className="mb-4 text-[12.5px] text-slate-500">{ar ? 'الموردُ وتاريخُ الشراء يُكتبان مرّةً ويُطبَّقان على كلّ الأسطر. تُحفَظ الدفعةُ كلُّها أو لا يُحفَظ منها شيء.' : 'Supplier and date apply to every row. The batch is saved whole or not at all.'}</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div><label className={formLabel}>{ar ? 'المورد' : 'Supplier'}</label><SupplierSelect suppliers={suppliers} value={supplier} onChange={setSupplier} ar={ar} /></div>
+          <div><label className={formLabel}>{ar ? 'تاريخ الشراء' : 'Purchase date'}</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={formInput} /></div>
+        </div>
+        <ScrollX className="mt-4">
+          <table className="w-full min-w-[820px] text-sm">
+            <thead><tr className="bg-slate-900 text-slate-300 text-xs">
+              {['#', ar ? 'اسم الصنف *' : 'Name *', ar ? 'التصنيف' : 'Category', ar ? 'الكود' : 'Code', ar ? 'العدد' : 'Qty', ar ? 'الوحدة' : 'Unit', ar ? 'سعر القطعة *' : 'Unit price *', ar ? 'الإجمالي' : 'Total', ''].map((h) => <th key={h} className="px-2 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {rows.map((r, i) => (
+                <tr key={r.id} className={errors[r.id] ? 'bg-red-50' : ''}>
+                  <td className="px-2 py-1.5 text-slate-400 tabular-nums">{i + 1}</td>
+                  <td className="px-2 py-1.5 min-w-[14rem]">
+                    <input className={cell} value={r.name} onChange={(e) => setRow(r.id, 'name', e.target.value)} />
+                    {errors[r.id] && <p className="mt-0.5 text-[11px] font-semibold text-red-600">{errors[r.id]}</p>}
+                  </td>
+                  <td className="px-2 py-1.5"><input className={cell} value={r.category} onChange={(e) => setRow(r.id, 'category', e.target.value)} /></td>
+                  <td className="px-2 py-1.5 w-28"><input className={cell} value={r.code} onChange={(e) => setRow(r.id, 'code', e.target.value)} /></td>
+                  <td className="px-2 py-1.5 w-20"><input type="number" min={0} className={cell} value={r.quantity} onChange={(e) => setRow(r.id, 'quantity', e.target.value)} /></td>
+                  <td className="px-2 py-1.5 w-24">
+                    <select className={cell} value={r.unit} onChange={(e) => setRow(r.id, 'unit', e.target.value)}>
+                      {[...new Set([r.unit, ...units])].map((u) => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-2 py-1.5 w-28"><input type="number" min={0} step="0.01" className={cell} value={r.unitPrice} onChange={(e) => setRow(r.id, 'unitPrice', e.target.value)} /></td>
+                  <td className="px-2 py-1.5 w-24 font-semibold text-emerald-700 tabular-nums">{((Number(r.quantity) || 0) * (Number(r.unitPrice) || 0)).toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                  <td className="px-2 py-1.5">{rows.length > 1 && <button type="button" onClick={() => setRows((p) => p.filter((x) => x.id !== r.id))} className="p-1 text-slate-300 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ScrollX>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button type="button" onClick={() => setRows((p) => [...p, blankRow()])} className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"><Plus className="w-4 h-4" />{ar ? 'سطر آخر' : 'Another row'}</button>
+          <span className="text-[13px] text-slate-600">{filled.length} {ar ? 'صنف' : 'items'} · {ar ? 'الإجمالي' : 'Total'}: <b className="text-emerald-700">{total.toLocaleString('en-US', { maximumFractionDigits: 2 })}</b></span>
+          <span className="ms-auto flex gap-2">
+            <button onClick={onClose} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+            <button onClick={save} disabled={busy} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#e5651a] text-white text-sm font-semibold disabled:opacity-50"><Save className="w-4 h-4" />{ar ? `حفظ (${filled.length})` : `Save (${filled.length})`}</button>
+          </span>
+        </div>
       </div>
     </div>
   );

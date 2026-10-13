@@ -3,6 +3,7 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/lookup_field.dart';
 import '../ui/theme.dart';
 import '../ui/tire_states.dart';
 import '../ui/widgets.dart';
@@ -440,6 +441,14 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     final position = TextEditingController();
     String sensor = 'unknown';
     bool isSpare = false;
+    // ── رقمُ الكاوتش يولّده الخادم ──────────────────────────────────────────
+    // يُعرَض هنا الرقمُ التالي للقراءة وحسب، ولا يُرسَل: الخادمُ يعيّنه عند
+    // الحفظ بعد آخر رقمٍ مسجَّل، فلا يتكرّر رقمٌ كتبه اثنان في اللحظة نفسِها.
+    try {
+      final d = await Api.instance.get('/api/ls2/assets/tires/next-number');
+      tireNumber.text = (d['tireNumber'] ?? '').toString();
+    } catch (_) {/* تبقى الخانةُ «تلقائي» والخادمُ يعيّن الرقم */}
+    if (!mounted) return;
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -450,16 +459,22 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(tr('تسجيل كاوتش جديد', 'Register new tire'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
               const SizedBox(height: 12),
-              Row(children: [
-                Expanded(child: TextField(controller: serial, decoration: InputDecoration(labelText: tr('السيريال *', 'Serial *')))),
-                const SizedBox(width: 10),
-                Expanded(child: TextField(controller: tireNumber, decoration: InputDecoration(labelText: tr('رقم الكاوتش', 'Tire #')))),
-              ]),
+              TextField(controller: serial, decoration: InputDecoration(labelText: tr('السيريال *', 'Serial *'))),
               const SizedBox(height: 10),
+              TextField(
+                controller: tireNumber, readOnly: true, enabled: false,
+                decoration: InputDecoration(
+                  labelText: tr('رقم الكاوتش', 'Tire #'),
+                  hintText: tr('تلقائي', 'Auto'),
+                  helperText: tr('يُولَّد تلقائيًّا بعد آخر رقم.', 'Generated after the last number.'),
+                ),
+              ),
+              const SizedBox(height: 10),
+              // الماركةُ والمقاسُ من القوائم المرجعيّة — وتُقبَل قيمةٌ تُكتب.
               Row(children: [
-                Expanded(child: TextField(controller: type, decoration: InputDecoration(labelText: tr('النوع', 'Type')))),
+                Expanded(child: LookupField(type: 'ls2_tire_brand', controller: type, label: tr('النوع / الماركة', 'Type / brand'), hint: tr('اختر الماركة', 'Pick a brand'))),
                 const SizedBox(width: 10),
-                Expanded(child: TextField(controller: size, decoration: InputDecoration(labelText: tr('المقاس', 'Size')))),
+                Expanded(child: LookupField(type: 'ls2_tire_size', controller: size, label: tr('المقاس', 'Size'), hint: tr('اختر المقاس', 'Pick a size'))),
               ]),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
@@ -495,7 +510,6 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                     try {
                       await Api.instance.post('/api/ls2/assets/tires', {
                         'serial': serial.text.trim(),
-                        'tireNumber': tireNumber.text.trim(),
                         'type': type.text.trim(),
                         'size': size.text.trim(),
                         'sensor': sensor,

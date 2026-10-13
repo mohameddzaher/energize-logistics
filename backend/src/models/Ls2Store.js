@@ -23,6 +23,11 @@ const storeItemSchema = new mongoose.Schema({
   unit: { type: String, default: 'قطعة' },                     // الوحدة
   unitPrice: { type: Number, default: 0 },                     // السعر للقطعة (ر.س)
   minQuantity: { type: Number, default: 0 },                   // عتبة النقص (تنبيه عند/تحتها)
+  // ── من أين اشتُري ومتى ───────────────────────────────────────────────────
+  // آخرُ توريدٍ للصنف: موردُه ويومُ شرائه. والتفصيلُ لكلّ توريدٍ في حركته.
+  supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'Ls2Supplier', default: null, index: true },
+  supplierName: { type: String, default: '' },                 // لقطةُ الاسم
+  purchaseDate: { type: String, default: '', index: true },    // YYYY-MM-DD
   compatibleModels: { type: [String], default: [] },
   notes: { type: String, default: '' },
   isActive: { type: Boolean, default: true, index: true },
@@ -40,6 +45,11 @@ const storeMovementSchema = new mongoose.Schema({
   quantity: { type: Number, required: true },
   // سعرُ القطعة الواحدة في هذا الوارد — به يُعرَف بكم دخلت، ومنه يُحدَّث سعرُ الصنف.
   unitPrice: { type: Number, default: null },
+  // الواردُ من مورد: مَن ويومَ الشراء. و`date` يومُ الحركة كما يُفلتَر به السجلّ
+  // (يومُ الشراء للوارد، ويومُ التسجيل لغيره) — لا لحظةُ الإدخال في النظام.
+  supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'Ls2Supplier', default: null, index: true },
+  supplierName: { type: String, default: '' },
+  date: { type: String, default: '', index: true },           // YYYY-MM-DD
   vehiclePlate: { type: String, default: '' },                // صادر على / وارد من (اختياري)
   reason: { type: String, default: '' },
   balanceAfter: { type: Number, default: 0 },                 // الرصيد بعد الحركة
@@ -59,7 +69,23 @@ const storeMovementSchema = new mongoose.Schema({
 }, { timestamps: true });
 storeMovementSchema.index({ createdAt: -1 });
 
+// ── الموردون ───────────────────────────────────────────────────────────────────
+// مَن تُشترى منه قطعُ الغيار. لكلّ مخزنٍ موردوه (`warehouse`)، والاسمُ لا يتكرّر
+// داخل المخزن الواحد بعد طيّ الهمزات والمسافات (`nameKey`).
+const supplierSchema = new mongoose.Schema({
+  warehouse: { type: String, enum: ['heavy', 'light'], default: 'heavy', index: true },
+  name: { type: String, required: true, trim: true },
+  nameKey: { type: String, default: '', index: true },
+  phone: { type: String, default: '', trim: true },
+  taxNumber: { type: String, default: '', trim: true },
+  city: { type: String, default: '', trim: true },
+  notes: { type: String, default: '' },
+  isActive: { type: Boolean, default: true, index: true },
+  createdByName: { type: String, default: '' },
+}, { timestamps: true });
+
 module.exports = {
+  Ls2Supplier: mongoose.models.Ls2Supplier || mongoose.model('Ls2Supplier', supplierSchema),
   Ls2StoreItem: mongoose.models.Ls2StoreItem || mongoose.model('Ls2StoreItem', storeItemSchema),
   Ls2StoreMovement: mongoose.models.Ls2StoreMovement || mongoose.model('Ls2StoreMovement', storeMovementSchema),
 };

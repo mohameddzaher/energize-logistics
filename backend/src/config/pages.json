@@ -698,6 +698,12 @@
       "en": "Store"
     },
     {
+      "key": "/system/ls2/suppliers",
+      "section": "Location Solutions",
+      "ar": "الموردون",
+      "en": "Suppliers"
+    },
+    {
       "key": "/system/ls2/repairs",
       "section": "Location Solutions",
       "ar": "الصيانة الاستثنائية",

@@ -17,6 +17,7 @@ export default function LightTransportStorePage() {
   return (
     <StoreScreen scope={{
       base: '/api/light-transport/store',
+      suppliersBase: '/api/light-transport/suppliers',
       titleAr: 'مخزن النقل الخفيف', titleEn: 'Light Transport Store',
       subtitleAr: 'قطع الغيار والمستلزمات — الرصيد والحركات', subtitleEn: 'Parts & supplies — stock & movements',
       /**

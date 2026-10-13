@@ -268,9 +268,26 @@ exports.getVehicleAssets = async (req, res) => {
 // بإنه يسجّل الفردة «مستعملة». التحقق الوحيد الباقي هو التحقق المادي: الحالة
 // والموضع الفاضي — مش درجة الفردة.
 
+/**
+ * ── رقمُ الفردة يُولَّد ولا يُكتب ───────────────────────────────────────────
+ * كان خانةً حرّة: فيُكتب رقمٌ مستعمَلٌ فتصير فردتان برقمٍ واحد، أو يُقفَز عن
+ * أرقام. فالرقمُ التالي هو أكبرُ رقمٍ مسجَّلٍ في الكاوتش + ١ — يُعرَض في
+ * الاستمارة قبل الحفظ ويُحسَب ثانيةً عند الحفظ (قد يسبقه زميلٌ بفردة).
+ */
+async function nextTireNumber() {
+  const rows = await Ls2TireAsset.find({ tireNumber: { $regex: /^\s*\d+\s*$/ } }).select('tireNumber').lean();
+  let max = 0;
+  for (const r of rows) { const n = Number(String(r.tireNumber).trim()); if (Number.isSafeInteger(n) && n > max) max = n; }
+  return String(max + 1);
+}
+exports.nextTireNumber = async (req, res) => {
+  try { res.json({ tireNumber: await nextTireNumber() }); }
+  catch (e) { res.status(500).json({ message: 'تعذّر توليد رقم الفردة' }); }
+};
+
 exports.createTire = async (req, res) => {
   try {
-    const { serial, tireNumber = '', type = '', size = '', sensor = 'unknown', condition, plate = null, positionNumber = null, positionLabel = '', section = '', notes = '', isSpare = false } = req.body;
+    const { serial, tireNumber: sentNumber = '', type = '', size = '', sensor = 'unknown', condition, plate = null, positionNumber = null, positionLabel = '', section = '', notes = '', isSpare = false } = req.body;
     if (!serial || !String(serial).trim()) return res.status(400).json({ message: 'Serial required' });
     const exists = await Ls2TireAsset.findOne({ serial: String(serial).trim() });
     if (exists) return res.status(409).json({ message: 'Serial already registered', tire: exists });
@@ -279,6 +296,7 @@ exports.createTire = async (req, res) => {
     // grade 'new' unless the workshop says otherwise; a tire registered already
     // on a truck is ordinary 'used'.
     const grade = ['new', 'used'].includes(condition) ? condition : (key ? 'used' : 'new');
+    const tireNumber = String(sentNumber || '').trim() || await nextTireNumber();
     const tire = await Ls2TireAsset.create({
       serial: String(serial).trim(), tireNumber, type, size, sensor, notes,
       condition: grade,

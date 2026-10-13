@@ -1,4 +1,5 @@
-const { Ls2StoreItem, Ls2StoreMovement } = require('../models/Ls2Store');
+const { Ls2StoreItem, Ls2StoreMovement, Ls2Supplier } = require('../models/Ls2Store');
+const { todayKey } = require('../utils/companyDay');
 const cache = require('../utils/ttlCache');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
@@ -27,6 +28,35 @@ const catAr = (c) => CATEGORY_AR[c] || c || 'غير مصنّف';
 
 const ITEM_FIELDS = ['code', 'name', 'category', 'groupAr', 'quantity', 'unit', 'unitPrice', 'minQuantity', 'compatibleModels', 'notes'];
 const pick = (body) => { const o = {}; ITEM_FIELDS.forEach((f) => { if (body[f] !== undefined) o[f] = body[f]; }); return o; };
+/** التعديلُ لا يكتب الرصيد: الرصيدُ يتغيّر بحركةٍ وحدَها. */
+const pickEdit = (body) => { const o = pick(body); delete o.quantity; return o; };
+
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+const dayOf = (v) => (YMD.test(String(v || '').trim()) ? String(v).trim() : '');
+const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const foldName = (s) => String(s || '').trim().toLowerCase()
+  .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/[\u064B-\u0652\u0640]/g, '').replace(/\s+/g, ' ');
+
+/**
+ * الموردُ كما يصل من الشاشة: معرّفُه (اختيارٌ من القائمة) أو اسمٌ جديدٌ يُكتب في
+ * الخانة نفسِها — فيُنشأ ويُختار في الطلب ذاتِه. ويردّ `null` إن لم يُذكر مورد.
+ */
+async function resolveSupplier(req, raw, rawName) {
+  const wh = whOf(req);
+  const id = String(raw || '').trim();
+  if (/^[0-9a-f]{24}$/i.test(id)) {
+    const s = await Ls2Supplier.findOne({ _id: id, ...whFilter(wh) }).select('name').lean();
+    if (s) return { supplier: s._id, supplierName: s.name };
+  }
+  const name = String(rawName || (/^[0-9a-f]{24}$/i.test(id) ? '' : id) || '').trim().slice(0, 120);
+  if (!name) return null;
+  const nameKey = foldName(name);
+  let s = await Ls2Supplier.findOne({ nameKey, ...whFilter(wh) });
+  if (s && s.isActive === false) { s.isActive = true; await s.save(); }
+  if (!s) s = await Ls2Supplier.create({ name, nameKey, warehouse: wh, createdByName: actorName(req) });
+  return { supplier: s._id, supplierName: s.name };
+}
+const actorName = (req) => (req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : '');
 
 // حالة الصنف: نافد (0) / منخفض (≤ الحد) / متوفر.
 const statusOf = (it) => (it.quantity <= 0 ? 'out' : (it.minQuantity > 0 && it.quantity <= it.minQuantity ? 'low' : 'ok'));
@@ -40,9 +70,14 @@ exports.listItems = async (req, res) => {
 
     const filter = { isActive: { $ne: false }, ...whFilter(whOf(req)) };
     if (req.query.category) filter.category = req.query.category;
+    if (/^[0-9a-f]{24}$/i.test(String(req.query.supplier || ''))) filter.supplier = req.query.supplier;
+    // يومُ الشراء: يومٌ أو شهرٌ أو فترة. وما لا تاريخَ شراءٍ له (أصنافُ ما قبل
+    // الخانة) لا يدخل فلترًا زمنيًّا — فلا يُنسَب إلى يومٍ لم يُشترَ فيه.
+    const from = dayOf(req.query.from); const to = dayOf(req.query.to);
+    if (from || to) filter.purchaseDate = { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : { $ne: '' }) };
     if (req.query.q && req.query.q.trim()) {
       const rx = new RegExp(req.query.q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      filter.$or = [{ name: rx }, { code: rx }, { category: rx }, { compatibleModels: rx }];
+      filter.$or = [{ name: rx }, { code: rx }, { category: rx }, { compatibleModels: rx }, { supplierName: rx }];
     }
     const items = (await Ls2StoreItem.find(filter).sort({ name: 1 }).limit(3000).lean())
       .map((it) => ({ ...it, categoryAr: catAr(it.category), status: statusOf(it), value: Math.round((Number(it.quantity) || 0) * (Number(it.unitPrice) || 0) * 100) / 100 }));
@@ -92,15 +127,94 @@ exports.createItem = async (req, res) => {
     // صنفٌ بلا سعرٍ قيمتُه في المخزن صفر مهما كان رصيدُه — فيُجمَع المخزنُ كلُّه
     // برقمٍ أقلَّ ممّا فيه، ولا يُعرَف كم كلّفت القطعةُ حين تُصرَف على عربيّة.
     if (!(Number(data.unitPrice) > 0)) return res.status(400).json({ message: 'اكتب سعر القطعة الواحدة', code: 'PRICE_REQUIRED' });
-    const it = await Ls2StoreItem.create({ ...data, warehouse: whOf(req), isActive: true });
+    const [it] = await createItems(req, [req.body]);
     emit();
     res.status(201).json({ item: it });
-  } catch (e) { res.status(500).json({ message: 'Failed to create item' }); }
+  } catch (e) { console.error('ls2 store create', e); res.status(500).json({ message: 'Failed to create item' }); }
+};
+
+/**
+ * ينشئ الأصنافَ ومعها حركةُ واردِها الأولى.
+ *
+ * كان الصنفُ يُنشأ برصيده ولا حركةَ له: قطعٌ في المخزن لا يقول السجلُّ من أين
+ * جاءت ولا بكم ولا متى. فالعددُ عند الإنشاء واردٌ كأيّ وارد — بمورده وسعره
+ * ويوم شرائه — يُقرأ في سجلّ الحركات ويُعكَس كغيره.
+ */
+async function createItems(req, rows) {
+  const wh = whOf(req);
+  const who = { performedBy: req.user?._id, performedByName: actorName(req) };
+  const out = [];
+  for (const b of rows) {
+    const data = pick(b);
+    const qty = Math.max(0, Number(data.quantity) || 0);
+    // eslint-disable-next-line no-await-in-loop
+    const sup = await resolveSupplier(req, b.supplier, b.supplierName);
+    const purchaseDate = dayOf(b.purchaseDate) || todayKey();
+    // eslint-disable-next-line no-await-in-loop
+    const it = await Ls2StoreItem.create({
+      ...data, name: String(data.name).trim(), quantity: qty, unitPrice: r2(data.unitPrice),
+      ...(sup || {}), purchaseDate, warehouse: wh, isActive: true,
+    });
+    if (qty > 0) {
+      // eslint-disable-next-line no-await-in-loop
+      await Ls2StoreMovement.create({
+        item: it._id, itemName: it.name, warehouse: wh, type: 'in', quantity: qty, unitPrice: it.unitPrice,
+        ...(sup || {}), date: purchaseDate, reason: 'إضافة صنف جديد', balanceAfter: qty, ...who,
+      });
+    }
+    out.push(it);
+  }
+  return out;
+}
+
+/**
+ * POST /store/bulk-create { items: [...], supplier?, supplierName?, purchaseDate? }
+ *
+ * فاتورةُ شراءٍ واحدةٌ فيها عشرةُ أصناف: تُكتب في جدولٍ واحدٍ بموردها ويومها بدل
+ * عشر استماراتٍ يُعاد فيها الموردُ والتاريخُ عشرَ مرّات. والمشترَكُ يُكتب مرّةً
+ * فوق الجدول، وما كُتب في السطر يُقدَّم عليه.
+ *
+ * الكلُّ أو لا شيء: سطرٌ ناقصٌ يرفض الدفعةَ كلَّها بأرقام الأسطر — دفعةٌ نصفُها
+ * دخل لا يعرف كاتبُها أيَّ نصف.
+ */
+exports.createItemsBulk = async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!rows.length) return res.status(400).json({ message: 'أضف صنفًا واحدًا على الأقل' });
+    if (rows.length > 200) return res.status(400).json({ message: 'الحدّ الأقصى ٢٠٠ صنف في المرّة الواحدة' });
+    const errors = [];
+    const seen = new Set();
+    rows.forEach((b, i) => {
+      const line = i + 1; const name = String(b?.name || '').trim();
+      if (!name) errors.push({ line, message: 'اسم الصنف مطلوب' });
+      else if (seen.has(foldName(name))) errors.push({ line, message: `«${name}» مكرَّر في الجدول` });
+      seen.add(foldName(name));
+      if (!(Number(b?.unitPrice) > 0)) errors.push({ line, message: 'اكتب سعر القطعة الواحدة' });
+      if (!(Number(b?.quantity) >= 0)) errors.push({ line, message: 'العدد غير صحيح' });
+    });
+    if (errors.length) return res.status(400).json({ message: 'رُفضت الدفعة — لم يُضَف أيّ صنف', errors });
+    const shared = { supplier: req.body.supplier, supplierName: req.body.supplierName, purchaseDate: req.body.purchaseDate };
+    const items = await createItems(req, rows.map((b) => ({
+      ...b,
+      supplier: b.supplier || (b.supplierName ? '' : shared.supplier),
+      supplierName: b.supplierName || (b.supplier ? '' : shared.supplierName),
+      purchaseDate: b.purchaseDate || shared.purchaseDate,
+    })));
+    logAudit({ user: req.user, action: 'store_items_bulk_create', entity: 'Ls2StoreItem', entityId: items[0]._id, changes: { after: { count: items.length, names: items.map((i) => i.name).slice(0, 30) } }, ipAddress: req.ip }).catch(() => {});
+    emit();
+    res.status(201).json({ items, summary: { count: items.length, value: r2(items.reduce((a, i) => a + i.quantity * i.unitPrice, 0)) } });
+  } catch (e) { console.error('ls2 store bulk create', e); res.status(500).json({ message: 'تعذّر إضافة الأصناف' }); }
 };
 
 exports.updateItem = async (req, res) => {
   try {
-    const it = await Ls2StoreItem.findByIdAndUpdate(req.params.id, { $set: pick(req.body) }, { new: true });
+    const set = pickEdit(req.body);
+    if (req.body.supplier !== undefined || req.body.supplierName !== undefined) {
+      const sup = await resolveSupplier(req, req.body.supplier, req.body.supplierName);
+      Object.assign(set, sup || { supplier: null, supplierName: '' });
+    }
+    if (req.body.purchaseDate !== undefined) set.purchaseDate = dayOf(req.body.purchaseDate);
+    const it = await Ls2StoreItem.findByIdAndUpdate(req.params.id, { $set: set }, { new: true });
     if (!it) return res.status(404).json({ message: 'Not found' });
     emit();
     res.json({ item: it });
@@ -132,10 +246,14 @@ exports.addMovement = async (req, res) => {
       if (!(price > 0)) return res.status(400).json({ message: `اكتب سعر القطعة الواحدة من «${item.name}»`, code: 'PRICE_REQUIRED' });
       item.unitPrice = price;
     }
+    // الواردُ من مورد: يُكتب على الحركة، ويصير آخرَ توريدٍ للصنف.
+    const sup = type === 'in' ? await resolveSupplier(req, req.body.supplier, req.body.supplierName) : null;
+    const date = dayOf(req.body.date) || todayKey();
+    if (type === 'in') { if (sup) Object.assign(item, sup); item.purchaseDate = date; }
     item.quantity += type === 'in' ? qty : -qty;
     await item.save();
     const mv = await Ls2StoreMovement.create({
-      unitPrice: price,
+      unitPrice: price, ...(sup || {}), date,
       item: item._id, itemName: item.name, warehouse: item.warehouse || 'heavy', type, quantity: qty,
       vehiclePlate: (req.body.vehiclePlate || '').trim(), reason: (req.body.reason || '').trim(),
       balanceAfter: item.quantity, performedBy: req.user?._id, performedByName: req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : '',
@@ -191,6 +309,8 @@ exports.addBulkMovement = async (req, res) => {
     const fallback = Math.max(1, Number(req.body?.quantityEach) || 1);
     const vehiclePlate = (req.body?.vehiclePlate || '').trim();
     const reason = (req.body?.reason || '').trim();
+    const sup = type === 'in' ? await resolveSupplier(req, req.body?.supplier, req.body?.supplierName) : null;
+    const date = dayOf(req.body?.date) || todayKey();
 
     // الصنف المكرَّر في الاختيار تُجمَع كمياته، فلا يُقاس كل سطر وحده على الرصيد.
     const wanted = new Map();
@@ -236,10 +356,10 @@ exports.addBulkMovement = async (req, res) => {
     for (const [id, qty] of wanted) {
       const it = found.get(id);
       it.quantity += type === 'in' ? qty : -qty;
-      if (type === 'in') it.unitPrice = prices.get(id);
+      if (type === 'in') { it.unitPrice = prices.get(id); if (sup) Object.assign(it, sup); it.purchaseDate = date; }
       await it.save();
       movements.push({
-        unitPrice: type === 'in' ? prices.get(id) : null,
+        unitPrice: type === 'in' ? prices.get(id) : null, ...(sup || {}), date,
         item: it._id, itemName: it.name, warehouse: it.warehouse || 'heavy', type, quantity: qty,
         vehiclePlate, reason, balanceAfter: it.quantity, ...actor(req),
       });
@@ -320,7 +440,7 @@ exports.reverseMovement = async (req, res) => {
       type: mv.type === 'in' ? 'out' : 'in', quantity: mv.quantity,
       vehiclePlate: mv.vehiclePlate,
       reason: `تراجع عن ${mv.type === 'in' ? 'وارد' : 'صادر'} ${mv.quantity} — ${reason}`,
-      balanceAfter: after, reversalOf: mv._id, ...who,
+      balanceAfter: after, reversalOf: mv._id, date: todayKey(), ...who,
     });
 
     mv.reversed = true;
@@ -346,8 +466,28 @@ exports.listMovements = async (req, res) => {
     const filter = { ...whFilter(whOf(req)) };
     if (req.query.item) filter.item = req.query.item;
     if (req.query.type) filter.type = req.query.type;
-    const limit = Math.min(Number(req.query.limit) || 200, 1000);
-    const movements = await Ls2StoreMovement.find(filter).sort({ createdAt: -1 }).limit(limit).lean();
+    if (/^[0-9a-f]{24}$/i.test(String(req.query.supplier || ''))) filter.supplier = req.query.supplier;
+    // اليومُ يومُ الحركة (`date`)، وما سُجِّل قبل الخانة يُقرأ من لحظة تسجيله.
+    const from = dayOf(req.query.from); const to = dayOf(req.query.to);
+    if (from || to) {
+      const span = { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) };
+      const at = { ...(from ? { $gte: new Date(`${from}T00:00:00+03:00`) } : {}), ...(to ? { $lte: new Date(`${to}T23:59:59.999+03:00`) } : {}) };
+      filter.$and = [{ $or: [{ date: span }, { date: { $in: ['', null] }, createdAt: at }] }];
+    }
+    if (req.query.q && String(req.query.q).trim()) {
+      const rx = new RegExp(String(req.query.q).trim().slice(0, 60).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      (filter.$and = filter.$and || []).push({ $or: [{ itemName: rx }, { vehiclePlate: rx }, { reason: rx }, { supplierName: rx }, { performedByName: rx }] });
+    }
+    const limit = Math.min(Number(req.query.limit) || 200, 3000);
+    const rows = await Ls2StoreMovement.find(filter).sort({ createdAt: -1 }).limit(limit).lean();
+    // الوحدةُ من الصنف، والقيمةُ عددٌ × سعر — للوارد الذي كُتب سعرُه.
+    const units = new Map((await Ls2StoreItem.find({ _id: { $in: [...new Set(rows.map((m) => String(m.item)))] } }).select('unit code').lean()).map((i) => [String(i._id), i]));
+    const movements = rows.map((m) => ({
+      ...m,
+      date: m.date || new Date(new Date(m.createdAt).getTime() + 3 * 3600 * 1000).toISOString().slice(0, 10),
+      unit: units.get(String(m.item))?.unit || '', itemCode: units.get(String(m.item))?.code || '',
+      total: m.unitPrice != null ? r2(m.quantity * m.unitPrice) : null,
+    }));
     // الواجهة محتاجة تعرف: ده ينفع يترجع فيه؟ وده تراجع عن إيه؟ من غير ما تعيد
     // بناء القاعدة دي في مكانين.
     const byId = new Map(movements.map((m) => [String(m._id), m]));
@@ -363,4 +503,89 @@ exports.listMovements = async (req, res) => {
       })),
     });
   } catch (e) { res.status(500).json({ message: 'Failed to load movements' }); }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  الموردون
+// ═══════════════════════════════════════════════════════════════════════════
+// GET /suppliers — ومع كلٍّ ما اشتُري منه: كم صنفًا، وكم توريدًا، وبكم.
+exports.listSuppliers = async (req, res) => {
+  try {
+    const wh = whOf(req);
+    const [rows, agg, itemAgg] = await Promise.all([
+      Ls2Supplier.find({ isActive: { $ne: false }, ...whFilter(wh) }).sort({ name: 1 }).lean(),
+      Ls2StoreMovement.aggregate([
+        { $match: { ...whFilter(wh), type: 'in', supplier: { $ne: null }, reversed: { $ne: true }, reversalOf: null } },
+        { $group: { _id: '$supplier', purchases: { $sum: 1 }, units: { $sum: '$quantity' }, total: { $sum: { $multiply: ['$quantity', { $ifNull: ['$unitPrice', 0] }] } }, last: { $max: '$date' } } },
+      ]),
+      Ls2StoreItem.aggregate([
+        { $match: { ...whFilter(wh), isActive: { $ne: false }, supplier: { $ne: null } } },
+        { $group: { _id: '$supplier', items: { $sum: 1 } } },
+      ]),
+    ]);
+    const a = new Map(agg.map((x) => [String(x._id), x])); const b = new Map(itemAgg.map((x) => [String(x._id), x.items]));
+    res.json({
+      suppliers: rows.map((s) => ({
+        ...s, items: b.get(String(s._id)) || 0,
+        purchases: a.get(String(s._id))?.purchases || 0, units: a.get(String(s._id))?.units || 0,
+        total: r2(a.get(String(s._id))?.total), lastPurchase: a.get(String(s._id))?.last || '',
+      })),
+    });
+  } catch (e) { console.error('ls2 suppliers', e); res.status(500).json({ message: 'تعذّر تحميل الموردين' }); }
+};
+
+const SUPPLIER_FIELDS = ['name', 'phone', 'taxNumber', 'city', 'notes'];
+exports.createSupplier = async (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    if (!name) return res.status(400).json({ message: 'اسم المورد مطلوب' });
+    const wh = whOf(req); const nameKey = foldName(name);
+    const dup = await Ls2Supplier.findOne({ nameKey, ...whFilter(wh) });
+    if (dup && dup.isActive !== false) return res.status(409).json({ message: `المورد «${dup.name}» مسجَّل من قبل`, supplier: dup });
+    const data = Object.fromEntries(SUPPLIER_FIELDS.filter((f) => req.body[f] !== undefined).map((f) => [f, String(req.body[f] || '').trim()]));
+    // محذوفٌ بالاسم نفسِه يُعاد بدل أن يُنشأ توأمُه — فتبقى مشترياتُه القديمةُ معه.
+    const s = dup ? await Ls2Supplier.findByIdAndUpdate(dup._id, { $set: { ...data, isActive: true } }, { new: true })
+      : await Ls2Supplier.create({ ...data, name, nameKey, warehouse: wh, createdByName: actorName(req) });
+    logAudit({ user: req.user, action: 'store_supplier_create', entity: 'Ls2Supplier', entityId: s._id, changes: { after: { name: s.name } }, ipAddress: req.ip }).catch(() => {});
+    emit();
+    res.status(201).json({ supplier: s });
+  } catch (e) { console.error('ls2 supplier create', e); res.status(500).json({ message: 'تعذّر إضافة المورد' }); }
+};
+
+exports.updateSupplier = async (req, res) => {
+  try {
+    const s = await Ls2Supplier.findOne({ _id: req.params.id, ...whFilter(whOf(req)) });
+    if (!s) return res.status(404).json({ message: 'المورد غير موجود' });
+    const before = { name: s.name, phone: s.phone };
+    for (const f of SUPPLIER_FIELDS) if (req.body[f] !== undefined) s[f] = String(req.body[f] || '').trim();
+    if (!s.name) return res.status(400).json({ message: 'اسم المورد مطلوب' });
+    const nameKey = foldName(s.name);
+    if (nameKey !== s.nameKey) {
+      const dup = await Ls2Supplier.findOne({ nameKey, _id: { $ne: s._id }, isActive: { $ne: false }, ...whFilter(whOf(req)) });
+      if (dup) return res.status(409).json({ message: `المورد «${dup.name}» مسجَّل من قبل` });
+      s.nameKey = nameKey;
+    }
+    await s.save();
+    // الاسمُ لقطةٌ على الصنف والحركة — تتبعه حين يُصحَّح، وإلّا بقي الجدولُ على القديم.
+    if (before.name !== s.name) {
+      await Promise.all([
+        Ls2StoreItem.updateMany({ supplier: s._id }, { $set: { supplierName: s.name } }),
+        Ls2StoreMovement.updateMany({ supplier: s._id }, { $set: { supplierName: s.name } }),
+      ]);
+    }
+    logAudit({ user: req.user, action: 'store_supplier_update', entity: 'Ls2Supplier', entityId: s._id, changes: { before, after: { name: s.name, phone: s.phone } }, ipAddress: req.ip }).catch(() => {});
+    emit();
+    res.json({ supplier: s });
+  } catch (e) { console.error('ls2 supplier update', e); res.status(500).json({ message: 'تعذّر تعديل المورد' }); }
+};
+
+// الحذفُ إخفاءٌ: مشترياتُه السابقةُ تبقى باسمه في السجلّ.
+exports.deleteSupplier = async (req, res) => {
+  try {
+    const s = await Ls2Supplier.findOneAndUpdate({ _id: req.params.id, ...whFilter(whOf(req)) }, { $set: { isActive: false } }, { new: true });
+    if (!s) return res.status(404).json({ message: 'المورد غير موجود' });
+    logAudit({ user: req.user, action: 'store_supplier_delete', entity: 'Ls2Supplier', entityId: s._id, changes: { before: { name: s.name } }, ipAddress: req.ip }).catch(() => {});
+    emit();
+    res.json({ message: 'deleted' });
+  } catch (e) { res.status(500).json({ message: 'تعذّر حذف المورد' }); }
 };

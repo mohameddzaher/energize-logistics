@@ -441,6 +441,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/ls2/maintenance', label: lang === 'ar' ? 'الصيانة' : 'Maintenance', icon: <Wrench className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/fleet-assets', label: lang === 'ar' ? 'السطحات والكاوتشات' : 'Fleet Assets', icon: <Container className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/store', label: lang === 'ar' ? 'مخزن النقل الثقيل' : 'Store', icon: <Boxes className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
+    // مَن تُشترى منه قطعُ الغيار — ويُضاف كذلك من خانة «المورد» في استمارة الصنف.
+    { href: '/system/ls2/suppliers', label: lang === 'ar' ? 'الموردون' : 'Suppliers', icon: <Truck className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/repairs', label: lang === 'ar' ? 'الصيانة الاستثنائية' : 'Exceptional Repairs', icon: <Hammer className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     // «أحتاج هذه الشاحنةَ وصيانتُها متأخّرة» — طلبُ إدارة الأسطول، وقرارُه هنا.
     { href: '/system/ls2/fleet-requests', label: lang === 'ar' ? 'طلبات الأسطول' : 'Fleet Requests', icon: <ShieldQuestion className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },

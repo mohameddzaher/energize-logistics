@@ -958,12 +958,14 @@
     },
     "/system/ls2/fleet-assets": {
       "apis": [
+        "/api/lookups/types",
         "/api/ls2/assets/events",
         "/api/ls2/assets/flatbeds",
         "/api/ls2/assets/import",
         "/api/ls2/assets/overview",
         "/api/ls2/assets/sensor-check",
         "/api/ls2/assets/tires",
+        "/api/ls2/assets/tires/next-number",
         "/api/ls2/assets/trailers",
         "/api/ls2/assets/vehicle"
       ],
@@ -971,7 +973,17 @@
     },
     "/system/ls2/store": {
       "apis": [
+        "/api/lookups/types",
         "/api/ls2/store",
+        "/api/ls2/suppliers",
+        "/api/ls2/vehicles"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/suppliers": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/ls2/suppliers",
         "/api/ls2/vehicles"
       ],
       "wildcard": false
@@ -1417,6 +1429,7 @@
     },
     "/system/ls2/settings": {
       "apis": [
+        "/api/lookups/types",
         "/api/ls2/settings",
         "/api/ls2/vehicles"
       ],
@@ -1529,6 +1542,8 @@
       "apis": [
         "/api/light-transport/orders/options",
         "/api/light-transport/store",
+        "/api/light-transport/suppliers",
+        "/api/lookups/types",
         "/api/ls2/vehicles"
       ],
       "wildcard": false

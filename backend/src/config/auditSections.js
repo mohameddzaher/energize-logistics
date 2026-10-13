@@ -110,7 +110,7 @@ const ENTITY_SECTION = {
   LightTransportEmployee: 'b2c', LightTransportOrder: 'b2c', LtCustodyEntry: 'b2c',
   // لوكيشن سوليوشن — الورشة والمستودع
   WorkshopPurchaseRequest: 'ls2', WorkshopTask: 'ls2', MaintenanceRequest: 'ls2',
-  InventoryItem: 'ls2', Ls2StoreMovement: 'ls2', Ls2Asset: 'ls2',
+  InventoryItem: 'ls2', Ls2StoreMovement: 'ls2', Ls2Asset: 'ls2', Ls2StoreItem: 'ls2', Ls2Supplier: 'ls2',
   // العقود
   Contract: 'contracts',
   // إدارة العلاقات

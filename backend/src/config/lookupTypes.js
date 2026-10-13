@@ -692,6 +692,22 @@ const REGISTRY = [
     ],
   },
 
+  // ── قوائمُ ورشة النقل الثقيل والمخزنين ─────────────────────────────────────
+  // ماركةُ الكاوتش ومقاسُه ووحدةُ الصنف كانت خاناتٍ حرّة: «ميشلان» و«Michelin»
+  // و«ميشلين» ثلاثُ ماركاتٍ في التقرير. فصارت قوائمَ تُدار من إعدادات القسم،
+  // ويُضاف إليها من الخانة نفسِها. ومخزنُ النقل الخفيف يقرأ قائمةَ الوحدات ذاتَها.
+  ...[
+    ['ls2_tire_brand', 'ماركات الكاوتش', 'Tyre brands', []],
+    ['ls2_tire_size', 'مقاسات الكاوتش', 'Tyre sizes', []],
+    ['ls2_store_unit', 'وحدات أصناف المخزن', 'Store units', [
+      { key: 'piece', nameAr: 'قطعة', nameEn: 'Piece' },
+      { key: 'litre', nameAr: 'لتر', nameEn: 'Litre' },
+    ]],
+  ].map(([type, nameAr, nameEn, seed]) => ({
+    type, module: 'ls2', nameAr, nameEn,
+    roles: ['location_manager', 'location_staff', 'operations_manager', 'it_manager', 'it_specialist', 'vehicles_manager', 'procurement_staff', 'b2c_manager', 'b2c_project_lead'],
+    storeLabel: true, seed,
+  })),
 ];
 
 const byType = (type) => REGISTRY.find((r) => r.type === type) || null;

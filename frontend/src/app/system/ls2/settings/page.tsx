@@ -13,9 +13,10 @@ import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import {
   Settings as SettingsIcon, Save, RotateCcw, Plus, Trash2, ListChecks, Bell,
-  Activity, Thermometer, Gauge, Zap, GripVertical, Check, AlertTriangle,
+  Activity, Thermometer, Gauge, Zap, GripVertical, Check, AlertTriangle, List,
 } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import ReferenceDataManager from '@/components/system/ReferenceDataManager';
 import {
   ls2Text, isLs2Admin, THRESHOLD_GROUPS, thresholdField, fmtNum, serviceTemplateKey,
   type Lang, type ChecklistTemplates, type AlertBeforeMap, type ServiceInterval, type Vehicle,
@@ -44,7 +45,7 @@ function fleetServices(items: Vehicle[]): ServiceInterval[] {
   return [...groups.values()].sort((a, b) => serviceOrder(a.name) - serviceOrder(b.name) || (a.intervalKm || 0) - (b.intervalKm || 0));
 }
 
-type Tab = 'thresholds' | 'checklists';
+type Tab = 'thresholds' | 'checklists' | 'lists';
 
 const GROUP_ICONS: Record<string, any> = { tires: Activity, engine: Thermometer, load: Gauge, power: Zap };
 
@@ -134,6 +135,8 @@ export default function Ls2SettingsPage() {
   const TABS: { key: Tab; label: string; icon: any; badge?: string }[] = [
     { key: 'thresholds', label: t.alertThresholds, icon: Bell },
     { key: 'checklists', label: t.periodicServices, icon: ListChecks, badge: taskCount ? String(taskCount) : undefined },
+    // قوائمُ القسم المنسدلة: ماركاتُ الكاوتش ومقاساتُه ووحداتُ أصناف المخزن.
+    { key: 'lists', label: ar ? 'القوائم المنسدلة' : 'Dropdown lists', icon: List },
   ];
 
   return (
@@ -205,6 +208,8 @@ export default function Ls2SettingsPage() {
             </button>
           </div>
         )}
+
+        {tab === 'lists' && <ReferenceDataManager module="ls2" embedded />}
 
         {/* ---- Our own per-service checklists ---- */}
         {tab === 'checklists' && (

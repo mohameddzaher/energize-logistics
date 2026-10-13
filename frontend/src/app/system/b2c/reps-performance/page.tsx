@@ -36,7 +36,7 @@ export default function RepsPerformancePage() {
   const T = getB2CTranslations(lang);
   const tx = getB2cRepsPerformanceTranslations(lang);
   // role-only: مسحُ بياناتٍ لا يُستعاد — للمدير بدوره، لا بمنحٍ من المصفوفة.
-  const canCleanup = user && ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy'].includes(user.role);
+  const canCleanup = user && ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'].includes(user.role);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);

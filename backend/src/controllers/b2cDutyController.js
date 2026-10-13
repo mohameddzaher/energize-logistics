@@ -39,7 +39,9 @@ const { SUPERVISOR_ROLES } = require('../utils/b2cSupervisors');
  * والمراجعةُ لمن يملكها).
  */
 const FULL_VIEW_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist',
-  'b2c_manager', 'b2c_deputy', 'b2c_project_lead'];
+  'b2c_manager', 'b2c_deputy', 'b2c_project_lead',
+  // أهلُ المال يرون القسمَ كلَّه كما يراه مديرُ النظام — لا مناديبَ مشرفٍ بعينه.
+  ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
 const canSeeAll = (u) => FULL_VIEW_ROLES.includes(u?.role || '');
 
 /** مفتاحُ اليوم بتوقيت الرياض — لا بتوقيت الخادم ولا بتوقيت متصفّح المستخدم. */

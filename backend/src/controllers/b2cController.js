@@ -23,7 +23,9 @@ const { emitToAll } = require('../websocket/socketManager');
 const pad2 = (n) => String(n).padStart(2, '0');
 const buildDateKey = (year, month, day) => `${year}-${pad2(month)}-${pad2(day)}`;
 
-const isB2CHead = (user) => user?.role === 'b2c_manager' || user?.role === 'b2c_deputy' || user?.role === 'super_admin' || user?.role === 'admin';
+// وأهلُ المال: القسمُ مفتوحٌ لهم، وما فُتح لهم يملكون فيه ما يملكه مديرُ النظام
+// (راجع config/financeAuthority) — فلا يُقرؤون «عضوًا» يرى مشاريعَه وحدَها.
+const isB2CHead = (user) => require('../config/financeAuthority').isFinanceFull(user?.role) || user?.role === 'b2c_manager' || user?.role === 'b2c_deputy' || user?.role === 'super_admin' || user?.role === 'admin';
 // Project managers currently have the same visibility/permissions as heads.
 const isB2CMember = (user) => isB2CHead(user) || user?.role === 'b2c_project_lead';
 

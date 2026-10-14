@@ -99,7 +99,8 @@ async function syncEmployeeContractStatus(employeeId) {
   const c = await governingContract(employeeId);
   if (!c) return null;
   const text = CONTRACT_STATUS_AR[c.status] || c.status || '';
-  await Employee.updateOne({ _id: employeeId }, { $set: { contractStatusText: text, ...mirrorOf(c) } });
+  // وللموظّف عقدٌ = الموارد البشريّة علمت به وكتبت عقدَه (راجع `hrPending`).
+  await Employee.updateOne({ _id: employeeId }, { $set: { contractStatusText: text, hrPending: false, ...mirrorOf(c) } });
   return text;
 }
 

@@ -176,6 +176,11 @@ const employeeSchema = new mongoose.Schema(
     // والإقامة والمشروع…)، والموارد البشريّة تُكمل الباقي. فيُعلَّم الملفُّ
     // بمصدره (`b2c`) لتجد الموارد البشريّة ما أُضيف من هناك بضغطة.
     createdVia: { type: String, trim: true, default: '', index: true },
+    // ── وهل علمت به الموارد البشريّة؟ ───────────────────────────────────────
+    // الزرُّ «موظفون جدد من قسم الأفراد» تنبيهٌ لا سجلّ: يقول «أُنشئ ملفٌّ فانتبهوا».
+    // فمتى عدّلت الموارد البشريّة أيَّ شيءٍ في الملفّ فقد علمت، ويخرج من التنبيه
+    // وحدَه — بلا زرّ «تمّت المراجعة» يُنسى. يُرفَع في خطّاف الحفظ أدناه.
+    hrPending: { type: Boolean, default: false, index: true },
 
     // هل الموظف ده في ملف الماستر الحالي؟
     // ٣٧٨ صف في الماستر = الملف الوظيفي الحالي (منهم ٣٢١ على رأس العمل والباقي
@@ -293,6 +298,13 @@ employeeSchema.pre('save', function clearSatisfiedStatuses(next) {
  * وتزيد، ومن ينسى السطرَ يعيد العطبَ صامتًا. والمزامنةُ من العقد تكتب
  * بـ`updateOne` فلا تمرّ من هنا — فلا دوران.
  */
+// أيُّ حفظٍ لملفٍّ قائمٍ هو يدُ الموارد البشريّة عليه (قسمُ الأفراد يكتب في سجلّه
+// هو، لا هنا) — فيُرفَع التنبيه. راجع `hrPending`.
+employeeSchema.pre('save', function clearHrPending(next) {
+  if (!this.isNew && this.hrPending && this.modifiedPaths().some((p) => p !== 'hrPending' && p !== 'updatedAt')) this.hrPending = false;
+  next();
+});
+
 const CONTRACT_MIRROR = ['contractStartDate', 'contractEndDate', 'qiwaContractNumber'];
 employeeSchema.pre('save', function noteContractFields(next) {
   if (!this.isNew) {

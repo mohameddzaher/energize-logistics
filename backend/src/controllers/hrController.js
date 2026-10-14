@@ -235,7 +235,7 @@ exports.listEmployees = async (req, res) => {
     const pred = master._dateRangePred(req.query);
     const employees = pred ? rows.filter(pred) : rows;
     // كم ملفًّا أُنشئ من قسم الأفراد — رقمُ الزرّ «موظفون جدد من قسم الأفراد».
-    const fromB2c = await Employee.countDocuments({ isHrRecord: { $ne: false }, createdVia: 'b2c' });
+    const fromB2c = await Employee.countDocuments({ isHrRecord: { $ne: false }, createdVia: 'b2c', hrPending: true });
     res.json({ employees, fromB2c });
   } catch (error) {
     console.error('listEmployees error:', error);
@@ -848,6 +848,8 @@ exports.uploadDocument = async (req, res) => {
       expiryDate: expiryDate || undefined, notes: notes || '',
       uploadedBy: req.user._id, ...stored,
     });
+    // مستندٌ رفعته الموارد البشريّة = علمت بالموظّف — يخرج من «جدد من قسم الأفراد».
+    if (employee.hrPending) await Employee.updateOne({ _id: employee._id }, { $set: { hrPending: false } });
     await logAudit({ user: req.user._id, action: 'add_employee_document', entity: 'Employee', entityId: employee._id, changes: { after: { title: doc.title } }, ipAddress: req.ip });
     // رفعُ مستند: مسكُ دفاتر، وهو في السجلّ.
     await refreshHR({ relatedEntityId: employee._id, event: 'hr:employee' });

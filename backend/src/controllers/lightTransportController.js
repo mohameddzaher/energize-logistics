@@ -652,7 +652,7 @@ exports.createEmployee = async (req, res) => {
         hireDate: day(req.body.hireDate) || undefined, dateOfBirth: day(req.body.dateOfBirth) || undefined,
         department: 'B2C', project: S(req.body.projectAr), workLocation: S(req.body.cityAr), branchName: S(req.body.cityAr),
         jobTitle: S(req.body.jobTitleAr), registerNumber: S(req.body.registerNumber),
-        employmentStatus: 'active', isHrRecord: true, createdVia: 'b2c', createdBy: req.user?._id,
+        employmentStatus: 'active', isHrRecord: true, createdVia: 'b2c', hrPending: true, createdBy: req.user?._id,
       });
       if (type) {
         const set = applyEmploymentType(FREELANCE_RX.test(type) ? FREELANCER : SPONSORED);

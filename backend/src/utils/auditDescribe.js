@@ -270,16 +270,43 @@ function subjectOf(changes, log, ctx) {
  *   rows:      ما يُعرَض — كلُّ صفٍّ { key, label, before, after, kind, text }
  *   unchanged: بقيّةُ اللقطة التي لم تتغيّر (للعرض الموسَّع فقط)
  */
+/** كلماتُ المسار — للعنوان لا للتوجيه. ما لا يُعرَف يُكتب كما هو مفصولًا. */
+const ROUTE_WORDS = {
+  shipments: ['شحنة', 'Shipment'], followups: ['متابعة', 'Follow-up'], drivers: ['سائق', 'Driver'], trucks: ['شاحنة', 'Truck'],
+  vehicles: ['مركبة', 'Vehicle'], events: ['حدث', 'Event'], swap: ['تبديل', 'Swap'], seat: ['تسكين', 'Seat'], waybills: ['بوليصة', 'Waybill'],
+  repairs: ['إصلاح', 'Repair'], service: ['خدمة', 'Service'], 'register-service': ['تسجيل خدمة', 'Service registration'], settings: ['الإعدادات', 'Settings'],
+  store: ['المخزن', 'Store'], movement: ['حركة', 'Movement'], assets: ['الأصول', 'Assets'], tires: ['كاوتش', 'Tyre'], trailers: ['تريلة', 'Trailer'],
+  flatbeds: ['سطحة', 'Flatbed'], move: ['نقل', 'Move'], status: ['الحالة', 'Status'], orders: ['طلب', 'Order'], customers: ['عميل', 'Customer'],
+  documents: ['مستند', 'Document'], attachments: ['مرفق', 'Attachment'], notes: ['ملاحظة', 'Note'], comments: ['تعليق', 'Comment'], tasks: ['مهمة', 'Task'],
+};
+function routeLabel(details, entity, lang) {
+  const i = lang === 'en' ? 1 : 0;
+  const route = details.replace(/^[A-Z]+\s+/, '');
+  const segs = route.split('/').filter((x) => x && x !== 'api' && !x.startsWith(':'));
+  const words = segs.slice(1).map((x) => (ROUTE_WORDS[x] ? ROUTE_WORDS[x][i] : x.replace(/-/g, ' ')));
+  const section = String(entity || '').startsWith('Api:') ? systemSectionLabel(entity.slice(4), lang) : '';
+  return [section, ...words].filter(Boolean).join(' › ');
+}
+
 function describe(log, ctx = {}) {
   const lang = ctx.lang === 'en' ? 'en' : 'ar';
   const c = { lang, refs: ctx.refs || {}, subjectHint: ctx.subjectHint || '' };
   const ar = lang === 'ar';
   const entity = log.entity || '';
   const action = String(log.action || '');
-  const ch = log.changes;
+  let ch = log.changes;
   const out = { kind: 'none', subject: '', summary: '', rows: [], unchanged: [], bulkCount: null };
   const subj = subjectOf(ch, log, c);
   out.subject = subj.text;
+  // ── قيدُ شبكة الأمان يُقرأ بما فُعل لا بمساره ──────────────────────────────
+  // كان يُعرَض كما خُزِّن: «POST /api/fleet/shipments/:id/followups · path: … ·
+  // sent: contact time: …». فالعنوانُ يُبنى من المسار بكلماتٍ (القسم › الشحنة ›
+  // متابعة)، والتفصيلُ هو ما أُرسل — حقلًا حقلًا بأسمائه العربيّة.
+  if (/^api_/.test(action) && isPlain(ch)) {
+    out.subject = routeLabel(String(ch.details || ''), entity, lang) || out.subject;
+    ch = isPlain(ch.sent) ? ch.sent : {};
+    if (!Object.keys(ch).length) return out;
+  }
   if (!isPlain(ch) || !Object.keys(ch).length) return out;
 
   const L = (k) => fieldLabel(k, entity, lang);

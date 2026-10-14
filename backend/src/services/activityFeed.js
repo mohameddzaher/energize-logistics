@@ -24,7 +24,10 @@ const { describe } = require('../utils/auditDescribe');
 const { emitToAll } = require('../websocket/socketManager');
 
 /** ما لا يُعَدّ فعلًا على النظام. */
-const SKIP = /^(login|logout|failed_login|refresh_token|change_password|reset_password|update_profile|view_|read_|export_|reveal_)/;
+// وقيودُ شبكة الأمان (`api_*`) لا تصير أخبارًا في الجرس: هي ضمانٌ ألّا يمرّ فعلٌ
+// بلا أثرٍ في سجلّ المراجعة، لا خبرٌ لأحد — متابعةُ شحنةٍ كلَّ ثلاث ساعات لكلّ
+// شاحنة كانت تملأ الجرسَ بسطورٍ تقنيّة. تبقى في السجلّ مقروءةً (utils/auditDescribe).
+const SKIP = /^(login|logout|failed_login|refresh_token|change_password|reset_password|update_profile|view_|read_|export_|reveal_|api_)/;
 
 /** قسمُ سجلّ المراجعة ← مفتاحُ القسم في مصفوفة الصلاحيّات. */
 const SYS_OF = Object.fromEntries(SECTIONS.map((s) => [s.key, s.sys || null]));

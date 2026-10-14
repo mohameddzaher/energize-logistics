@@ -286,6 +286,13 @@ const WORKFLOW_FIELDS = {
  * أهونُ من إخفاء تغييرٍ وقع.
  */
 const FIELD_LABELS = {
+  // ── حقولُ ما تقيّده شبكةُ الأمان (middleware/auditTrail) كما أُرسل ──────────
+  // كانت تُقرأ بأسمائها البرمجيّة: «contact time»، «current location».
+  contactTime: ['وقت التواصل', 'Contact time'], currentLocation: ['الموقع الحالي', 'Current location'],
+  fromCity: ['من مدينة', 'From city'], toCity: ['إلى مدينة', 'To city'], loadDate: ['تاريخ التحميل', 'Load date'],
+  expectedArrival: ['الوصول المتوقّع', 'Expected arrival'], rentType: ['نوع الإيجار', 'Rent type'],
+  loadType: ['نوع الحمولة', 'Load type'], fullRent: ['الإيجار الكامل', 'Full rent'], customerType: ['نوع العميل', 'Customer type'],
+  driverExpense: ['مصروف السائق', 'Driver expense'], fridayBonus: ['بدل الجمعة', 'Friday bonus'],
   rep: ['المندوب', 'Rep'], employee: ['الموظف', 'Employee'], employeeName: ['الموظف', 'Employee'],
   name: ['الاسم', 'Name'], nameAr: ['الاسم بالعربية', 'Arabic name'], nameEn: ['الاسم بالإنجليزية', 'English name'],
   englishName: ['الاسم بالإنجليزية', 'English name'], firstName: ['الاسم الأول', 'First name'],

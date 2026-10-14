@@ -14,6 +14,7 @@ import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 import { Users, Ship, Mail, Phone, MapPin, FileText, ArrowRight } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
+import PartyAttachments from '@/components/customs/PartyAttachments';
 import CustomsContracts from '@/components/customs/CustomsContracts';
 import { useAuth } from '@/context/AuthContext';
 import { canEditSection } from '@/lib/sections';
@@ -110,8 +111,8 @@ export default function CustomsPartyProfile() {
     <div className="space-y-4 pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={isAgent ? <Ship className="w-6 h-6 text-[#f37121]" /> : <Users className="w-6 h-6 text-[#f37121]" />}
         title={p.name}
-        subtitle={isAgent ? t('وكيل شحن', 'Shipping agent') : t('عميل تخليص', 'Customs customer')}>
-        <button type="button" onClick={() => router.push(isAgent ? '/system/customs/agents' : '/system/customs/customers')}
+        subtitle={isAgent ? t('وكيل شحن', 'Shipping agent') : p.kind === 'carrier' ? t('ناقل', 'Carrier') : t('عميل تخليص', 'Customs customer')}>
+        <button type="button" onClick={() => router.push(isAgent ? '/system/customs/agents' : p.kind === 'carrier' ? '/system/customs/carriers' : '/system/customs/customers')}
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
           <ArrowRight className="w-4 h-4" /> {t('رجوع', 'Back')}
         </button>
@@ -126,6 +127,13 @@ export default function CustomsPartyProfile() {
         {p.commercialRegister && <span className="text-slate-600">{t('السجل التجاري', 'CR')}: <b className="font-mono">{p.commercialRegister}</b></span>}
         {p.taxNumber && <span className="text-slate-600">{t('الرقم الضريبي', 'Tax')}: <b className="font-mono">{p.taxNumber}</b></span>}
         {!p.email && !p.phone && <span className="text-slate-400">{t('لا بيانات تواصل مسجَّلة', 'No contact details recorded')}</span>}
+      </div>
+
+      {/* مرفقاتُ الطرف — سجلُّه وشهادتُه وعقدُه؛ تُقرأ كذلك من كلّ معاملةٍ هو طرفٌ فيها. */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <p className="text-sm font-bold text-slate-800 mb-2">{t('المرفقات', 'Attachments')}</p>
+        <PartyAttachments partyId={p._id} items={p.attachments || []} canEdit={canEdit} ar={ar}
+          onChanged={(items) => setD((x: any) => ({ ...x, party: { ...x.party, attachments: items } }))} />
       </div>
 
       <div className={`grid grid-cols-2 sm:grid-cols-4 gap-3 ${seesMoney ? 'lg:grid-cols-7' : 'lg:grid-cols-5'}`}>

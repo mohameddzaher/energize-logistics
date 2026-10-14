@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import ExportMenu, { type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import { getCustomsTranslations, getCustomsIdExtraTranslations } from '@/lib/translations';
+import ClearanceParties from '@/components/customs/ClearanceParties';
 import ClearanceAttachments from '@/components/customs/ClearanceAttachments';
 import { SearchableSelect } from '@/components/hr/HRKit';
 import ClearanceNotes from '@/components/customs/ClearanceNotes';
@@ -405,15 +406,24 @@ export default function CustomsDetailPage() {
     name: unitWord(cargo, ar),
     columns: [
       { header: '#', key: 'index', width: 6 },
-      { header: cargo === 'vehicles' ? (ar ? 'رقم الهيكل' : 'Chassis no.') : (ar ? 'رقم الحاوية' : 'Container no.'), key: 'containerNumber', width: 20 },
+      { header: cargo === 'vehicles' ? (ar ? 'رقم السيارة' : 'Vehicle no.') : (ar ? 'رقم الحاوية' : 'Container no.'), key: 'containerNumber', width: 20 },
       ...pipeline.steps.filter((st) => st.done && ['transport_to_yard', 'transport_to_customer', 'yard_to_customer'].includes(st.key)).flatMap((st) => [
         { header: `${sName(st.key)} — ${ar ? 'السيّارة' : 'Truck'}`, key: `kind_${st.key}`, width: 22 },
         { header: `${sName(st.key)} — ${ar ? 'رقم الكشف / الفاتورة' : 'Sheet / invoice no.'}`, key: `ref_${st.key}`, width: 22 },
       ]),
-      ...(cargo === 'vehicles' ? [] : [{ header: ar ? 'تاريخ الإرجاع' : 'Return date', key: 'returnDate', width: 16 }]),
+      ...(cargo === 'vehicles' ? [] : [
+        { header: ar ? 'تاريخ الإرجاع' : 'Return date', key: 'returnDate', width: 16 },
+        { header: ar ? 'مكان الإرجاع' : 'Returned to', key: 'returnDepot', width: 20 },
+        { header: ar ? 'إيصال الإرجاع' : 'Return receipt', key: 'returnReceipt', width: 18 },
+        { header: ar ? 'سيّارة الإرجاع' : 'Return truck', key: 'returnKind', width: 16 },
+        { header: ar ? 'رقم الكشف / الفاتورة (الإرجاع)' : 'Return sheet / invoice', key: 'returnRef', width: 22 },
+        { header: ar ? 'ملاحظات الإرجاع' : 'Return notes', key: 'returnNotes', width: 28 },
+      ]),
     ],
     rows: containers.map((r, i) => ({
       index: i + 1, containerNumber: r.containerNumber || '—', returnDate: r.returnDate || '—',
+      returnDepot: r.returnDepot || '—', returnReceipt: r.returnReceipt || '—', returnRef: r.returnRef || '—', returnNotes: r.returnNotes || '—',
+      returnKind: r.returnVehicleKind === 'energize' ? (ar ? 'سيّارة تنشيط' : 'Energize') : r.returnVehicleKind === 'external' ? (ar ? 'سيّارة خارجيّة' : 'External') : '—',
       ...Object.fromEntries((r.moves || []).flatMap((m: any) => [
         [`kind_${m.leg}`, m.vehicleKind === 'energize' ? (ar ? 'سيّارة تنشيط' : 'Energize') : m.vehicleKind === 'external' ? (ar ? 'سيّارة خارجيّة' : 'External') : '—'],
         [`ref_${m.leg}`, m.ref || '—'],
@@ -857,6 +867,9 @@ export default function CustomsDetailPage() {
           </p>
         </Card>
       </div>
+
+      {/* العميلُ والوكيلُ والناقل: بياناتُهم ومرفقاتُهم من ملفّاتهم */}
+      <ClearanceParties clearanceId={c._id} canEdit={canEdit} ar={ar} />
 
       {/* مرفقات المعاملة — ورقُ كلِّ مرحلةٍ موسومًا بها */}
       <ClearanceAttachments

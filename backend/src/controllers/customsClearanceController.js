@@ -87,6 +87,11 @@ function pick(body, existing) {
         declaration: String(r.declaration || '').trim(),
         notes: String(r.notes || '').trim(),
         returnDate: ymd(r.returnDate),
+        returnDepot: String(r.returnDepot || '').trim().slice(0, 120),
+        returnReceipt: String(r.returnReceipt || '').trim().slice(0, 80),
+        returnVehicleKind: VEHICLE_KINDS.includes(r.returnVehicleKind) ? r.returnVehicleKind : '',
+        returnRef: String(r.returnRef || '').trim().slice(0, 80),
+        returnNotes: String(r.returnNotes || '').trim().slice(0, 500),
         // بيانٌ واحدٌ لكلّ مرحلةِ نقل — الأخيرُ يغلب إن تكرّر المفتاح.
         moves: TRANSPORT_LEGS.map((leg) => (Array.isArray(r.moves) ? r.moves : []).filter((m) => m && m.leg === leg).pop())
           .filter(Boolean)
@@ -171,7 +176,9 @@ const SEARCH_ONLY = [
 ];
 // تُقرأ ليُحسَب منها ولا تُرسَل: منها نسبةُ المراحل وهل تنتظر فاتورةَ النقل.
 const DERIVE_ONLY = ['papersReceivedDate', 'declarationDate', 'stagesDone', 'transportRoute', 'pipelineVersion', 'stageDone.doInvoicePaid', 'transportInvoiceReceived',
-  'containers.route', 'containers.stagesDone'];
+  'containers.route', 'containers.stagesDone',
+  // أرقامُ الحاويات (أو السيّارات) — يُبحَث بها ويُرسَل منها سطرٌ واحد (راجع toWire).
+  'containers.containerNumber'];
 const LIST_FIELDS = [...DISPLAY_FIELDS, ...DISPLAY_NESTED, ...SEARCH_ONLY, ...DERIVE_ONLY, 'notesLog'].join(' ');
 
 /**
@@ -240,6 +247,10 @@ function toWire(r, money = true) {
   if ((r.stageDone && r.stageDone.containersReturned) || (r.stagesDone || []).includes('containers_returned')) out.stageDone = { containersReturned: true };
   if (r.lastNote) out.lastNote = r.lastNote;
   out.notesCount = r.notesCount;
+  // أرقامُ الوحدات سطرًا واحدًا: صندوقُ البحث في الويب يصفّي في المتصفّح، فلا
+  // يجد حاويةً لم تصله. كانت «البحث بالحاوية لا يعمل».
+  const nums = (r.containers || []).map((x) => String((x && x.containerNumber) || '').trim()).filter(Boolean);
+  if (nums.length) out.containerNumbers = nums.join(' ');
   return out;
 }
 
@@ -317,6 +328,7 @@ exports.getClearances = async (req, res) => {
         c.declarationNumber, c.doNumber, c.exitPermitNumber, c.saberNumber, c.hsCode,
         c.exporterCompany, c.countryOfOrigin, c.city, c.legacySerial, c.notes, c.lastNote?.text, c.carrierName,
         c.billing && c.billing.ourInvoiceNumber, c.unloadingLocation, c.assignedTo,
+        ...(c.containers || []).map((x) => x && x.containerNumber),
       ].some(has));
     }
 
@@ -879,7 +891,8 @@ exports.createParty = async (req, res) => {
 
 exports.updateParty = async (req, res) => {
   try {
-    const { kind, _id, __v, ...body } = req.body;
+    // المرفقاتُ لها نقاطُها — لا تُكتب من هنا فوق ما رُفع.
+    const { kind, _id, __v, attachments, ...body } = req.body;
     const party = await CustomsParty.findByIdAndUpdate(req.params.id, { $set: body }, { new: true });
     if (!party) return res.status(404).json({ message: 'غير موجود' });
     // الاسمُ مخزَّنٌ نصًّا في المعاملات أيضًا (تقرؤه التصديرات) — يُحدَّث معه
@@ -2371,4 +2384,85 @@ exports.deleteContractFile = async (req, res) => {
     try { emitToAll('customs:contract', { id: String(doc._id) }); } catch (_) { /* */ }
     res.json({ contract: withState(doc.toObject()) });
   } catch (e) { sendMongooseError(res, e, 'تعذّر حذف الملف'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  مرفقاتُ الأطراف — العميلُ والوكيلُ والناقل
+// ═══════════════════════════════════════════════════════════════════════════
+const partyCardOf = (p) => ({
+  _id: p._id, kind: p.kind, name: p.name, phone: p.phone, email: p.email, contactPerson: p.contactPerson,
+  commercialRegister: p.commercialRegister, taxNumber: p.taxNumber, address: p.address, city: p.city, notes: p.notes,
+  attachments: p.attachments || [],
+});
+
+/**
+ * GET /:id/parties-card — بطاقاتُ أطراف المعاملة (العميل والوكيل والناقل):
+ * بياناتُهم ومرفقاتُهم، تُقرأ في صفحة المعاملة بلا فتح ملفّ كلٍّ منهم.
+ */
+exports.getClearanceParties = async (req, res) => {
+  try {
+    const c = await CustomsClearance.findById(req.params.id).select('customerParty agentParty carrierParty customerName shippingAgent carrierName').lean();
+    if (!c) return res.status(404).json({ message: 'Clearance not found' });
+    const ids = [c.customerParty, c.agentParty, c.carrierParty].filter(Boolean);
+    const rows = await CustomsParty.find({ _id: { $in: ids } }).lean();
+    const by = new Map(rows.map((p) => [String(p._id), partyCardOf(p)]));
+    const pick = (id, kind, name) => (id && by.get(String(id))) || (name ? { kind, name, attachments: [], unlinked: true } : null);
+    res.json({
+      customer: pick(c.customerParty, 'customer', c.customerName),
+      agent: pick(c.agentParty, 'agent', c.shippingAgent),
+      carrier: pick(c.carrierParty, 'carrier', c.carrierName),
+    });
+  } catch (e) { res.status(500).json({ message: 'تعذّر تحميل الأطراف' }); }
+};
+
+// POST /parties/:id/attachments { files: [{ dataUrl, fileName, title }] }
+exports.addPartyAttachments = async (req, res) => {
+  try {
+    const party = await CustomsParty.findById(req.params.id);
+    if (!party) return res.status(404).json({ message: 'غير موجود' });
+    const incoming = Array.isArray(req.body.files) ? req.body.files : [];
+    if ((party.attachments || []).length + incoming.length > 40) return res.status(400).json({ message: 'لا يُرفَق أكثر من ٤٠ ملفًّا للطرف' });
+    const added = [];
+    for (const f of incoming) {
+      if (!f || !f.dataUrl) continue;
+      let stored;
+      try { stored = saveUploadFile(f.dataUrl, 'customs', f.fileName || ''); }
+      catch (e) { return res.status(400).json({ message: 'نوعُ الملفّ غير مدعوم أو حجمُه أكبر من ٢٠ ميغابايت' }); }
+      added.push({ ...stored, title: String(f.title || f.fileName || '').trim().slice(0, 200), uploadedByName: [req.user.firstName, req.user.lastName].filter(Boolean).join(' '), uploadedAt: new Date() });
+    }
+    if (!added.length) return res.status(400).json({ message: 'لا ملفّات' });
+    party.attachments.push(...added);
+    await party.save();
+    logAudit({ user: req.user, action: 'customs_party_attach', entity: 'CustomsParty', entityId: party._id, changes: { details: `${party.name}: ${added.map((a) => a.title).join('، ')}` }, ipAddress: req.ip }).catch(() => {});
+    cache.clear('customs:');
+    try { emitToAll('customs:updated', { party: String(party._id) }); } catch (e) { /* */ }
+    res.status(201).json({ party: partyCardOf(party.toObject()) });
+  } catch (e) { return sendMongooseError(res, e, 'تعذّر رفع الملفّات'); }
+};
+
+// PUT /parties/:id/attachments/:attId { title } · DELETE /parties/:id/attachments/:attId
+exports.updatePartyAttachment = async (req, res) => {
+  try {
+    const party = await CustomsParty.findById(req.params.id);
+    const a = party && party.attachments.id(req.params.attId);
+    if (!a) return res.status(404).json({ message: 'غير موجود' });
+    a.title = String(req.body.title || '').trim().slice(0, 200);
+    await party.save();
+    try { emitToAll('customs:updated', { party: String(party._id) }); } catch (e) { /* */ }
+    res.json({ party: partyCardOf(party.toObject()) });
+  } catch (e) { return sendMongooseError(res, e, 'تعذّر الحفظ'); }
+};
+exports.deletePartyAttachment = async (req, res) => {
+  try {
+    const party = await CustomsParty.findById(req.params.id);
+    const a = party && party.attachments.id(req.params.attId);
+    if (!a) return res.status(404).json({ message: 'غير موجود' });
+    const gone = { title: a.title, fileUrl: a.fileUrl };
+    a.deleteOne();
+    await party.save();
+    try { require('../utils/fileStore').deleteStoredFile(gone.fileUrl); } catch (e) { /* الملفُّ يبقى إن تعذّر حذفُه */ }
+    logAudit({ user: req.user, action: 'customs_party_detach', entity: 'CustomsParty', entityId: party._id, changes: { details: `${party.name}: ${gone.title}` }, ipAddress: req.ip }).catch(() => {});
+    try { emitToAll('customs:updated', { party: String(party._id) }); } catch (e) { /* */ }
+    res.json({ party: partyCardOf(party.toObject()) });
+  } catch (e) { return sendMongooseError(res, e, 'تعذّر الحذف'); }
 };

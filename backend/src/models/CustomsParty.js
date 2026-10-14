@@ -33,6 +33,20 @@ const customsPartySchema = new mongoose.Schema({
   address: { type: String, trim: true, default: '' },
   city: { type: String, trim: true, default: '' },
   notes: { type: String, trim: true, default: '' },
+  // مرفقاتُ الطرف — سجلُّه التجاريّ وشهادتُه الضريبيّة وعقدُه وتفويضُه. تُرفَق
+  // مرّةً في ملفّه وتُقرأ من كلّ معاملةٍ هو طرفٌ فيها، لا تُعاد في كلّ معاملة.
+  attachments: {
+    type: [{
+      title: { type: String, trim: true, default: '' },
+      fileUrl: { type: String, required: true },
+      fileName: { type: String, default: '' },
+      mimeType: { type: String, default: '' },
+      size: { type: Number, default: 0 },
+      uploadedByName: { type: String, default: '' },
+      uploadedAt: { type: Date, default: Date.now },
+    }],
+    default: [],
+  },
   isActive: { type: Boolean, default: true, index: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });

@@ -34,3 +34,23 @@ Future<PickedFile?> pickFileAsDataUrl() async {
   final dataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
   return PickedFile(dataUrl, f.name, bytes.length);
 }
+
+/// كـ`pickFileAsDataUrl` لكن يُختار فيه أكثرُ من ملفٍّ معًا. قائمةٌ فارغةٌ لو أُلغي.
+Future<List<PickedFile>> pickFilesAsDataUrls() async {
+  final res = await FilePicker.platform.pickFiles(
+    withData: true,
+    allowMultiple: true,
+    type: FileType.custom,
+    allowedExtensions: const ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'doc', 'docx', 'xls', 'xlsx'],
+  );
+  if (res == null) return const [];
+  return [
+    for (final f in res.files)
+      if (f.bytes != null)
+        PickedFile(
+          'data:${_mime[(f.extension ?? '').toLowerCase()] ?? 'application/octet-stream'};base64,${base64Encode(f.bytes!)}',
+          f.name,
+          f.bytes!.length,
+        ),
+  ];
+}

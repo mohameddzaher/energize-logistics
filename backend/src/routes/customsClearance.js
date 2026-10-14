@@ -29,6 +29,9 @@ router.post('/parties', authorize(...EDIT_ROLES), ctrl.createParty);
 router.get('/parties/:id', ctrl.getPartyProfile);
 router.put('/parties/:id', authorize(...EDIT_ROLES), ctrl.updateParty);
 router.delete('/parties/:id', authorize('super_admin', 'admin', 'customs_manager'), ctrl.deleteParty);
+router.post('/parties/:id/attachments', authorize(...EDIT_ROLES), ctrl.addPartyAttachments);
+router.put('/parties/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.updatePartyAttachment);
+router.delete('/parties/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.deletePartyAttachment);
 // ── العقود: قبل `/:id` كذلك ────────────────────────────────────────────────
 // ── نقاطُ المجموعة قبل `/:id` ─────────────────────────────────────────────
 const FINANCE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant'];
@@ -83,6 +86,7 @@ router.patch('/:id/payment-stages/:entryId/decision', authorize(...FINANCE_ROLES
 router.post('/:id/notes', authorize(...EDIT_ROLES), ctrl.addNote);
 router.delete('/:id/notes/:noteId', authorize(...EDIT_ROLES), ctrl.deleteNote);
 
+router.get('/:id/parties-card', ctrl.getClearanceParties);   // العميل والوكيل والناقل ومرفقاتُهم
 router.post('/:id/attachments', authorize(...EDIT_ROLES), ctrl.addAttachments);
 router.put('/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.updateAttachment);
 router.delete('/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.deleteAttachment);

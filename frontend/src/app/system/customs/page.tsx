@@ -262,7 +262,8 @@ export default function CustomsPage() {
 
   const filtered = list.filter((c) => {
     const s = search.toLowerCase();
-    if (s && ![c.refNumber, c.blNumber, c.customerName, c.shippingAgent, c.invoiceNumber, c.port, c.declarationNumber, c.billing?.ourInvoiceNumber]
+    // وأرقامُ الحاويات (أو السيّارات) — كان البحثُ بالحاوية لا يجد شيئًا.
+    if (s && ![c.refNumber, c.blNumber, c.customerName, c.shippingAgent, c.invoiceNumber, c.port, c.declarationNumber, c.billing?.ourInvoiceNumber, (c as any).containerNumbers]
       .some((v) => v && String(v).toLowerCase().includes(s))) return false;
     if (fYear && String(c.periodYear || '') !== fYear) return false;
     if (fMonth && String(c.periodMonth || '') !== fMonth) return false;

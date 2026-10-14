@@ -5,6 +5,7 @@ import '../ui/theme.dart';
 import '../screens/crm_company_profile.dart';
 import '../screens/contracts_vendor_profile.dart';
 import '../screens/customs_detail.dart';
+import '../screens/customs_party.dart';
 import '../screens/fleet_customer_profile.dart';
 import '../screens/customer_registry_profile.dart';
 import '../screens/bd_opportunity_detail.dart';
@@ -793,7 +794,8 @@ final customsCfg = ResourceConfig(
   // القائمةُ تحمل ما يُعرَض فقط، والنموذجُ يعدّل حقولًا ليست فيها (قيمةُ الفاتورة،
   // تاريخُ البيان، الملاحظة) — فتُقرأ المعاملةُ كاملةً قبل التعبئة.
   editFullKey: 'clearance',
-  searchFields: const ['refNumber', 'customerName', 'blNumber', 'declarationNumber', 'exporterCompany', 'city', 'saleInvoiceNumber'],
+  // `containerNumbers`: أرقامُ الوحدات مضمومةً بمسافة — يُبحث بها عن المعاملة برقم حاويتها.
+  searchFields: const ['refNumber', 'customerName', 'blNumber', 'declarationNumber', 'exporterCompany', 'city', 'saleInvoiceNumber', 'containerNumbers'],
   // رقمُ البوليصة أوّلًا: به تُعرَف المعاملةُ في القسم — ورقمُها المرجعيُّ بعده.
   titleOf: (r) => _s(r, 'blNumber').isNotEmpty ? '${_s(r, 'blNumber')} — ${_s(r, 'customerName')}' : _s(r, 'customerName'),
   subtitleOf: (r) => [
@@ -1580,6 +1582,9 @@ ResourceConfig _customsPartyCfg(String kind, String ar, String en, IconData icon
       arTitle: ar, enTitle: en, icon: icon,
       endpoint: '/api/customs-clearance/parties', listKey: 'parties', listQuery: 'kind=$kind',
       updateMethod: 'PUT', liveEvent: 'customs:updated',
+      // نقرةُ الصفّ تفتح ملفَّه (بياناتُه ومرفقاتُه)، والتحريرُ من أيقونة القلم.
+      onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(
+          builder: (_) => CustomsPartyScreen(partyId: _s(r, '_id'), name: _s(r, 'name')))),
       searchFields: const ['name', 'email', 'phone', 'contactPerson', 'city', 'commercialRegister', 'taxNumber'],
       titleOf: (r) => _s(r, 'name'),
       subtitleOf: (r) => [_s(r, 'contactPerson'), _s(r, 'phone'), _s(r, 'city')].where((x) => x.isNotEmpty).join(' · '),

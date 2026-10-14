@@ -104,7 +104,7 @@ const ENTITY_SECTION = {
   // طلبات الشحنات
   ShipmentOrder: 'shipment-orders',
   // التخليص الجمركي
-  CustomsClearance: 'customs', CustomsContract: 'customs',
+  CustomsClearance: 'customs', CustomsContract: 'customs', CustomsParty: 'customs',
   // قطاع الأفراد — ومنه النقلُ الخفيف: شاشتُه داخل القسم وصلاحيّتُه صلاحيّتُه
   B2C: 'b2c', B2CRep: 'b2c', B2CProject: 'b2c', B2CDutyCheck: 'b2c', B2CWalletEntry: 'b2c',
   LightTransportEmployee: 'b2c', LightTransportOrder: 'b2c', LtCustodyEntry: 'b2c',

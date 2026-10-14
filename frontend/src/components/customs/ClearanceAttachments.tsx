@@ -13,7 +13,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import { ordinals, downloadName } from '@/lib/customsPipeline';
-import { Paperclip, FileText, Image as ImageIcon, Trash2, Download, Loader2 } from 'lucide-react';
+import { Paperclip, FileText, Image as ImageIcon, Trash2, Download, Loader2, Eye } from 'lucide-react';
 
 export interface ClearanceAttachment {
   _id?: string;
@@ -169,7 +169,8 @@ export default function ClearanceAttachments({
                       <input defaultValue={a.title || a.fileName || ''} onBlur={(e) => rename(a, e.target.value)}
                         className="flex-1 min-w-0 bg-transparent text-[13px] font-semibold text-slate-800 focus:outline-none" />
                     ) : (
-                      <span className="flex-1 min-w-0 truncate text-[13px] font-semibold text-slate-800">{a.title || a.fileName}</span>
+                      <a href={a.fileUrl} target="_blank" rel="noopener noreferrer" title={t('فتح الملف', 'Open file')}
+                        className="flex-1 min-w-0 truncate text-[13px] font-semibold text-slate-800 hover:text-[#12325c] hover:underline">{a.title || a.fileName}</a>
                     )}
                     {numOf(a) > 0 && (
                       <span className="shrink-0 rounded bg-slate-200 px-1.5 py-0.5 text-[10.5px] font-bold text-slate-700" title={t('تكرّر هذا الاسم — هذا رقمُه بين أمثاله', 'Repeated title — its number among them')}>
@@ -185,6 +186,11 @@ export default function ClearanceAttachments({
                         {stages.map((s) => <option key={s} value={s}>{stageLabel(s)}</option>)}
                       </select>
                     )}
+                    {/* فتحٌ في المتصفّح (الصورةُ وPDF تُعرَضان) — والتنزيلُ بجانبه باسمه المرتَّب. */}
+                    <a href={a.fileUrl} target="_blank" rel="noopener noreferrer"
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-[#12325c] hover:bg-white shrink-0" title={t('فتح', 'Open')}>
+                      <Eye className="w-4 h-4" />
+                    </a>
                     <a href={a.fileUrl} target="_blank" rel="noopener noreferrer"
                       download={downloadName(refNumber, a.title || a.fileName, numOf(a), a.fileName, a.fileUrl)}
                       className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-white shrink-0" title={t('تنزيل', 'Download')}>

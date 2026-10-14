@@ -9,6 +9,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/file_upload.dart';
 import 'jp.dart' show jpDeadline;
+import 'customs_party.dart';
 
 /// تفاصيل التخليص الجمركي — دورةُ المراحل كما يحسبها الخادم (`pipeline`)،
 /// الوحداتُ (حاوياتٍ أو سيّارات) وبيانُ نقلها، إصدارُ الفاتورة وفاتورةُ النقل،
@@ -848,6 +849,8 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
+                    // ── أطرافُ المعاملة: بياناتُهم ومرفقاتُهم من ملفّاتهم ──
+                    CustomsClearanceParties(clearanceId: widget.clearanceId),
                     // ── المرفقات ──
                     // ورقُ كلِّ مرحلةٍ موسومًا بها، يُفتح ويُنزَّل من الجوّال
                     // كما من الويب: من في الميناء أحوجُ إليه ممّن في المكتب.
@@ -879,14 +882,21 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                                 const Icon(Icons.description_outlined, size: 17, color: T.navy),
                                 const SizedBox(width: 8),
                                 Expanded(
-                                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                    Text((att['title'] ?? att['fileName'] ?? '—').toString(),
-                                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                    Text(stLabel, style: const TextStyle(fontSize: 11, color: T.inkFaint)),
-                                  ]),
+                                  // لمسُ العنوان يفتح الملفَّ للعرض — كالعين بجانبه.
+                                  child: InkWell(
+                                    onTap: () => customsOpenFile(context, att['fileUrl']),
+                                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                      Text((att['title'] ?? att['fileName'] ?? '—').toString(),
+                                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: T.navy), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                      Text(stLabel, style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                                    ]),
+                                  ),
                                 ),
-                                IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.download_rounded, size: 18, color: T.navy),
-                                    tooltip: tr('فتح/تنزيل', 'Open / download'), onPressed: () => _openFile(url)),
+                                // فتحٌ للعرض (الصورةُ وPDF تُعرَضان) — والتنزيلُ بجانبه باسمه المرتَّب.
+                                IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.visibility_outlined, size: 18, color: T.navy),
+                                    tooltip: tr('فتح', 'Open'), onPressed: () => customsOpenFile(context, att['fileUrl'])),
+                                IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.download_rounded, size: 18, color: T.orange),
+                                    tooltip: tr('تنزيل', 'Download'), onPressed: () => _openFile(url)),
                                 IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.delete_outline, size: 18, color: T.danger),
                                     onPressed: _saving ? null : () => _deleteAttachment(att)),
                               ]),
@@ -973,7 +983,6 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
         : returned ? (tr('أُرجعت', 'Returned'), T.success) : (tr('اكتملت', 'Complete'), T.success);
     final u = units[i];
     final number = '${u['containerNumber'] ?? ''}'.trim();
-    final returnDate = '${u['returnDate'] ?? ''}';
     final moves = _maps(u['moves']);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -1011,15 +1020,52 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       padding: const EdgeInsets.only(bottom: 3),
                       child: Text(state.$1, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: state.$2)),
                     ),
-                  if (!vehicles)
-                    Text('${tr('تاريخ الإرجاع', 'Return date')}: ${returnDate.isEmpty ? '—' : returnDate}',
-                        style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                  if (!vehicles) _returnBox(u),
                   for (final leg in doneLegs) _moveLine(leg, moves.where((x) => x['leg'] == leg).firstOrNull, cargo),
                 ]),
               ),
           ]),
         ),
       ),
+    );
+  }
+
+  /// إرجاعُ الحاوية: التاريخُ ومعه ما يُسأل عنه حين يطالب الوكيلُ بغرامة —
+  /// المكانُ والإيصالُ والسيّارةُ ورقمُ كشفها أو فاتورتها.
+  Widget _returnBox(Map<String, dynamic> u) {
+    String s(String k) => '${u[k] ?? ''}'.trim();
+    final date = s('returnDate');
+    final kind = s('returnVehicleKind');
+    final ref = s('returnRef');
+    final returned = date.isNotEmpty;
+    Widget row(String label, String value) => Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text.rich(TextSpan(children: [
+            TextSpan(text: '$label: ', style: const TextStyle(color: T.inkFaint)),
+            TextSpan(text: value.isEmpty ? '—' : value, style: const TextStyle(fontWeight: FontWeight.w700, color: T.ink)),
+          ]), style: const TextStyle(fontSize: 11.5)),
+        );
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: (returned ? T.success : T.inkFaint).withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: (returned ? T.success : T.inkFaint).withValues(alpha: 0.3)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.undo_rounded, size: 14, color: T.orange),
+          const SizedBox(width: 4),
+          Text(tr('إرجاع الحاوية', 'Container return'), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+        ]),
+        row(tr('تاريخ الإرجاع', 'Return date'), date),
+        if (s('returnDepot').isNotEmpty) row(tr('مكان الإرجاع', 'Returned to'), s('returnDepot')),
+        if (s('returnReceipt').isNotEmpty) row(tr('رقم إيصال الإرجاع (EIR)', 'Return receipt (EIR)'), s('returnReceipt')),
+        if (kind.isNotEmpty)
+          row(kind == 'energize' ? tr('سيّارة تنشيط · رقم كشف التخريج', 'Energize truck · Release sheet') : tr('سيّارة خارجيّة · رقم الفاتورة', 'External truck · Invoice no.'), ref),
+        if (s('returnNotes').isNotEmpty) row(tr('ملاحظات الإرجاع', 'Return notes'), s('returnNotes')),
+      ]),
     );
   }
 
@@ -1360,6 +1406,12 @@ class _UnitSheetState extends State<_UnitSheet> {
   late final TextEditingController _number = TextEditingController(text: '${widget.unit['containerNumber'] ?? ''}');
   late final TextEditingController _notes = TextEditingController(text: '${widget.unit['notes'] ?? ''}');
   late String _returnDate = '${widget.unit['returnDate'] ?? ''}';
+  // تفاصيلُ إرجاع الحاوية: أين، وبأيّ إيصال، وبأيّ سيّارة.
+  late final TextEditingController _returnDepot = TextEditingController(text: '${widget.unit['returnDepot'] ?? ''}');
+  late final TextEditingController _returnReceipt = TextEditingController(text: '${widget.unit['returnReceipt'] ?? ''}');
+  late final TextEditingController _returnRef = TextEditingController(text: '${widget.unit['returnRef'] ?? ''}');
+  late final TextEditingController _returnNotes = TextEditingController(text: '${widget.unit['returnNotes'] ?? ''}');
+  late String _returnKind = '${widget.unit['returnVehicleKind'] ?? ''}';
   final Map<String, String> _kind = {};
   final Map<String, TextEditingController> _ref = {};
 
@@ -1380,6 +1432,10 @@ class _UnitSheetState extends State<_UnitSheet> {
   void dispose() {
     _number.dispose();
     _notes.dispose();
+    _returnDepot.dispose();
+    _returnReceipt.dispose();
+    _returnRef.dispose();
+    _returnNotes.dispose();
     for (final c in _ref.values) { c.dispose(); }
     super.dispose();
   }
@@ -1392,6 +1448,14 @@ class _UnitSheetState extends State<_UnitSheet> {
       'containerNumber': _number.text.trim(),
       'notes': _notes.text.trim(),
       'returnDate': _vehicles ? '${widget.unit['returnDate'] ?? ''}' : _returnDate,
+      // الإرجاعُ للحاويات وحدَها — والسيّارةُ تحمل ما كان فيها كما هو.
+      if (!_vehicles) ...{
+        'returnDepot': _returnDepot.text.trim(),
+        'returnReceipt': _returnReceipt.text.trim().toUpperCase(),
+        'returnVehicleKind': _returnKind,
+        'returnRef': _returnRef.text.trim(),
+        'returnNotes': _returnNotes.text.trim(),
+      },
       'moves': [
         ...others,
         for (final leg in widget.legs) {'leg': leg, 'vehicleKind': _kind[leg] ?? '', 'ref': _ref[leg]!.text.trim()},
@@ -1413,7 +1477,7 @@ class _UnitSheetState extends State<_UnitSheet> {
               controller: _number,
               textDirection: TextDirection.ltr,
               textCapitalization: TextCapitalization.characters,
-              decoration: InputDecoration(labelText: _vehicles ? tr('رقم الهيكل', 'Chassis no.') : tr('رقم الحاوية', 'Container no.')),
+              decoration: InputDecoration(labelText: _vehicles ? tr('رقم السيارة', 'Vehicle no.') : tr('رقم الحاوية', 'Container no.')),
             ),
             if (!_vehicles) ...[
               const SizedBox(height: 10),
@@ -1435,6 +1499,35 @@ class _UnitSheetState extends State<_UnitSheet> {
                 if (_returnDate.isNotEmpty)
                   IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => setState(() => _returnDate = '')),
               ]),
+              const SizedBox(height: 8),
+              TextField(controller: _returnDepot, decoration: InputDecoration(labelText: tr('مكان الإرجاع (الساحة / المحطة)', 'Returned to (depot)'))),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _returnReceipt,
+                textDirection: TextDirection.ltr,
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(labelText: tr('رقم إيصال الإرجاع (EIR)', 'Return receipt (EIR)')),
+              ),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, children: [
+                for (final k in const [('energize', 'سيّارة تنشيط', 'Energize truck'), ('external', 'سيّارة خارجيّة', 'External truck')])
+                  ChoiceChip(
+                    label: Text(tr(k.$2, k.$3), style: const TextStyle(fontSize: 12)),
+                    selected: _returnKind == k.$1,
+                    onSelected: (_) => setState(() => _returnKind = _returnKind == k.$1 ? '' : k.$1),
+                  ),
+              ]),
+              if (_returnKind.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _returnRef,
+                  textDirection: TextDirection.ltr,
+                  decoration: InputDecoration(
+                      labelText: _returnKind == 'energize' ? tr('رقم كشف التخريج', 'Release sheet no.') : tr('رقم الفاتورة', 'Invoice no.')),
+                ),
+              ],
+              const SizedBox(height: 8),
+              TextField(controller: _returnNotes, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظات الإرجاع', 'Return notes'))),
             ],
             for (final leg in widget.legs) ...[
               const SizedBox(height: 14),

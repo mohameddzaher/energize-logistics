@@ -19,6 +19,7 @@
 const ACTION_AR = {
   // قيودُ شبكة الأمان (middleware/auditTrail) — فعلٌ لم يقيّده متحكّمُه بتفصيله.
   undo_collection: 'رجوع عن تحصيل',
+  customs_party_attach: 'إرفاق ملف لطرف في التخليص', customs_party_detach: 'حذف مرفق طرف في التخليص',
   lt_vehicle_update: 'تعديل مركبة من قسم الأفراد',
   lt_custody_update: 'تعديل قيد في عهدة النقل الخفيف',
   lt_custody_entry: 'قيد في عهدة النقل الخفيف', lt_custody_delete: 'حذف قيد من عهدة النقل الخفيف',
@@ -192,7 +193,7 @@ const ENTITY_LABELS = {
   LtCustodyEntry: ['عهدة النقل الخفيف', 'Light transport custody'],
   Ls2StoreMovement: ['حركة مستودع', 'Store movement'], Ls2StoreItem: ['صنف مخزن', 'Store item'], Ls2Supplier: ['مورد', 'Supplier'], Ls2Asset: ['كاوتش / تيدر / سطحة', 'Tyre / trailer / flatbed'],
   WalletTransaction: ['حركة عهدة', 'Wallet transaction'], DailyWallet: ['يومية عهدة', 'Wallet day'],
-  CustomsClearance: ['معاملة تخليص', 'Customs clearance'], CustomsContract: ['عقد تخليص', 'Customs contract'],
+  CustomsClearance: ['معاملة تخليص', 'Customs clearance'], CustomsParty: ['طرف في التخليص', 'Customs party'], CustomsContract: ['عقد تخليص', 'Customs contract'],
   B2C: ['بيانات قطاع الأفراد', 'B2C data'], B2CProject: ['مشروع قطاع الأفراد', 'B2C project'],
   B2CRep: ['مندوب', 'B2C rep'], B2CDutyCheck: ['تفقّد بداية الدوام', 'Duty check'],
   B2CWalletEntry: ['قيد عهدة مشروع', 'B2C wallet entry'],

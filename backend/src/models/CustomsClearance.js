@@ -378,6 +378,14 @@ const customsClearanceSchema = new mongoose.Schema(
         stagesDone: { type: [String], default: [] },
         // تاريخُ إرجاع هذه الحاوية إلى الوكيل — لكلّ حاويةٍ تاريخُها.
         returnDate: { type: String, trim: true, default: '' }, // YYYY-MM-DD
+        // ── وتفاصيلُ الإرجاع ─────────────────────────────────────────────────
+        // التاريخُ وحدَه لا يجيب عمّا يُسأل عنه حين يطالب الوكيلُ بغرامة: أين
+        // أُرجعت، وبأيّ إيصال، وبأيّ سيّارة. فلكلّ حاويةٍ بيانُ إرجاعها.
+        returnDepot: { type: String, trim: true, default: '' },    // مكانُ الإرجاع (الساحة / المحطة)
+        returnReceipt: { type: String, trim: true, default: '' },  // رقمُ إيصال الإرجاع (EIR)
+        returnVehicleKind: { type: String, enum: ['', 'energize', 'external'], default: '' },
+        returnRef: { type: String, trim: true, default: '' },      // رقمُ كشف التخريج أو فاتورة السيّارة الخارجيّة
+        returnNotes: { type: String, trim: true, default: '' },
         /**
          * بيانُ نقلها في كلّ مرحلةِ نقل: بسيّارةِ الشركة فيُكتب رقمُ كشف
          * التخريج (وهو `reportNumber` في سير عمل التشغيل)، أو بسيّارةٍ
@@ -647,6 +655,7 @@ function syncUnits(rows, count) {
   const list = (Array.isArray(rows) ? rows : []).map((r) => ({ ...(r && r.toObject ? r.toObject() : r) }));
   const want = Math.max(0, Math.min(300, Math.round(Number(count) || 0)));
   const filled = (r) => !!(r && (String(r.containerNumber || '').trim() || String(r.returnDate || '').trim()
+    || String(r.returnDepot || '').trim() || String(r.returnReceipt || '').trim() || String(r.returnRef || '').trim()
     || String(r.notes || '').trim() || String(r.declaration || '').trim() || Number(r.exitPermit) > 0
     || r.route || (r.stagesDone || []).length || (r.moves || []).some((m) => m && (m.ref || m.vehicleKind))));
   while (list.length > want && !filled(list[list.length - 1])) list.pop();

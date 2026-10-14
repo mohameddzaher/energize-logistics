@@ -15,10 +15,14 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
 import { TRANSPORT_LEGS, stageName, unitWord, type Pipeline, type UnitPipeline } from '@/lib/customsPipeline';
-import { Car, CalendarDays, Link2, Truck, AlertTriangle, Check } from 'lucide-react';
+import { Car, CalendarDays, Link2, Truck, AlertTriangle, Check, Undo2 } from 'lucide-react';
 
 export interface UnitMove { leg: string; vehicleKind: '' | 'energize' | 'external'; ref: string }
-export interface Unit { _id?: string; containerNumber?: string; returnDate?: string; notes?: string; moves?: UnitMove[] }
+export interface Unit {
+  _id?: string; containerNumber?: string; returnDate?: string; notes?: string; moves?: UnitMove[];
+  // تفاصيلُ إرجاع الحاوية: أين، وبأيّ إيصال، وبأيّ سيّارة.
+  returnDepot?: string; returnReceipt?: string; returnVehicleKind?: '' | 'energize' | 'external'; returnRef?: string; returnNotes?: string;
+}
 
 const moveOf = (u: Unit, leg: string): UnitMove => (u.moves || []).find((m) => m.leg === leg) || { leg, vehicleKind: '', ref: '' };
 const withMove = (u: Unit, leg: string, patch: Partial<UnitMove>): Unit => {
@@ -121,7 +125,7 @@ function UnitBox({
       </div>
       {/* لوحةُ البيانات — بيضاءُ على جسم الحاوية ليُقرأ ما فيها */}
       <div className="m-2 space-y-2 rounded bg-white/95 p-2.5">
-        <Field label={vehicles ? t('رقم الهيكل', 'Chassis no.') : t('رقم الحاوية', 'Container no.')}
+        <Field label={vehicles ? t('رقم السيارة', 'Vehicle no.') : t('رقم الحاوية', 'Container no.')}
           value={unit.containerNumber || ''} disabled={!canEdit} mono
           placeholder={vehicles ? '' : 'MSKU1234567'}
           onSave={(v) => onChange({ ...unit, containerNumber: v.trim().toUpperCase() })} />
@@ -159,9 +163,38 @@ function UnitBox({
           );
         })}
         {!vehicles && (
-          <Field label={t('تاريخ إرجاع الحاوية', 'Return date')} type="date" icon
-            value={unit.returnDate || ''} disabled={!canEdit}
-            onSave={(v) => onChange({ ...unit, returnDate: v })} />
+          // ── إرجاعُ الحاوية: التاريخُ ومعه ما يُسأل عنه حين يطالب الوكيلُ بغرامة ──
+          <div className={`rounded border p-2 ${returned ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
+            <p className="mb-1.5 flex items-center gap-1 text-[11px] font-bold text-slate-700"><Undo2 className="h-3.5 w-3.5 text-[#f37121]" />{t('إرجاع الحاوية', 'Container return')}</p>
+            <div className="space-y-1.5">
+              <Field label={t('تاريخ الإرجاع', 'Return date')} type="date" icon
+                value={unit.returnDate || ''} disabled={!canEdit}
+                onSave={(v) => onChange({ ...unit, returnDate: v })} />
+              <Field label={t('مكان الإرجاع (الساحة / المحطة)', 'Returned to (depot)')}
+                value={unit.returnDepot || ''} disabled={!canEdit}
+                onSave={(v) => onChange({ ...unit, returnDepot: v.trim() })} />
+              <Field label={t('رقم إيصال الإرجاع (EIR)', 'Return receipt (EIR)')} mono
+                value={unit.returnReceipt || ''} disabled={!canEdit}
+                onSave={(v) => onChange({ ...unit, returnReceipt: v.trim().toUpperCase() })} />
+              <div className="flex overflow-hidden rounded border border-slate-200 bg-white text-[11.5px] font-semibold">
+                {([['energize', 'سيّارة تنشيط', 'Energize truck'], ['external', 'سيّارة خارجيّة', 'External truck']] as const).map(([k, a, e]) => (
+                  <button key={k} type="button" disabled={!canEdit}
+                    onClick={() => onChange({ ...unit, returnVehicleKind: unit.returnVehicleKind === k ? '' : k })}
+                    className={`flex-1 px-2 py-1 transition-colors ${unit.returnVehicleKind === k ? 'bg-[#f37121] text-white' : 'text-slate-600 hover:bg-slate-50'} disabled:cursor-default`}>
+                    {ar ? a : e}
+                  </button>
+                ))}
+              </div>
+              {!!unit.returnVehicleKind && (
+                <Field label={unit.returnVehicleKind === 'energize' ? t('رقم كشف التخريج', 'Release sheet no.') : t('رقم الفاتورة', 'Invoice no.')}
+                  value={unit.returnRef || ''} disabled={!canEdit} mono
+                  onSave={(v) => onChange({ ...unit, returnRef: v.trim() })} />
+              )}
+              <Field label={t('ملاحظات الإرجاع', 'Return notes')}
+                value={unit.returnNotes || ''} disabled={!canEdit}
+                onSave={(v) => onChange({ ...unit, returnNotes: v.trim() })} />
+            </div>
+          </div>
         )}
       </div>
     </div>

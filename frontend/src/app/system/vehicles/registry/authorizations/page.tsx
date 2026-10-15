@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { UserCheck, UserMinus, UserPlus, X, Save, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
 import { EmployeePicker } from '@/components/vehicles/EmployeePicker';
+import IqamaPersonInfo from '@/components/vehicles/IqamaPersonInfo';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import { empName } from '@/lib/hr';
 import { useAuth } from '@/context/AuthContext';
@@ -43,7 +44,7 @@ const COLUMNS: DocColumn[] = [
 // لا يُقرأ: اسمٌ بلا رقمِ تفويضٍ ولا مدّة لا يُثبِت صفةَ السائق أمام أحد.
 const FIELDS: DocField[] = [
   { path: 'authorizedPerson.name', ar: 'اسم المفوَّض', en: 'Authorised person', wide: true },
-  { path: 'authorizedPerson.iqamaNumber', ar: 'رقم الإقامة', en: 'Iqama number', mono: true },
+  { path: 'authorizedPerson.iqamaNumber', ar: 'رقم الإقامة', en: 'Iqama number', mono: true, personInfo: true },
   // جوالُه في ورقة التفويض نفسِها — أوّلُ ما يُطلَب حين يقع شيءٌ في الطريق.
   { path: 'authorizedPerson.phone', ar: 'جوال المفوَّض', en: 'Authorised phone', mono: true },
   // المسمّى قائمةٌ تُدار من إعدادات القسم: «سائق نقل ثقيل» في سبعٍ وخمسين مركبة
@@ -226,6 +227,7 @@ function AssignModal({ v, ar, onClose, onDone }: {
             <div><L>{t('رقم الإقامة', 'Iqama number')}</L>
               <input className={`${inp} font-mono`} dir="ltr" value={f.iqamaNumber}
                 onChange={(e) => setF((p) => ({ ...p, iqamaNumber: e.target.value }))} />
+              <IqamaPersonInfo idNumber={f.iqamaNumber} ar={ar} />
             </div>
             <div><L>{t('المسمّى الوظيفي', 'Job title')}</L>
               <ManagedSelect storeLabel type="vehicle_job_title" value={f.jobTitleAr}

@@ -2588,7 +2588,7 @@ exports.personLookup = async (req, res) => {
       Employee.find({
         $or: [{ firstName: rx }, { lastName: rx }, { arabicName: rx },
           ...(digits.length >= 4 ? [{ iqamaNumber: new RegExp(digits) }, { nationalId: new RegExp(digits) }] : [])],
-      }).select('firstName lastName arabicName iqamaNumber nationalId phone mobile employeeNumber jobTitle department employmentStatus hireDate')
+      }).select('firstName lastName arabicName iqamaNumber nationalId phone mobile employeeNumber jobTitle department employmentStatus hireDate dateOfBirth')
         .limit(12).lean(),
       LightTransportEmployee.find({
         $or: [{ name: rx }, ...(digits.length >= 4 ? [{ idNumber: new RegExp(digits) }] : [])],
@@ -2616,6 +2616,8 @@ exports.personLookup = async (req, res) => {
         departmentAr: e.department || '',
         employmentStatus: e.employmentStatus || '',
         hireDate: e.hireDate || null,
+        // تاريخُ الميلاد من ملفّه — يُعرَض تحت رقم الإقامة في التفويض وبطاقة السائق.
+        dateOfBirth: e.dateOfBirth || '',
         employeeId: String(e._id),
       }, 'hr');
     }

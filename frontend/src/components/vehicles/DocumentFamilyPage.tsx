@@ -42,6 +42,7 @@ const EMPTY_SET: Set<string> = new Set();
 import { VReg, DOC_TYPES, daysText, STATE_META, publicState, canEditVehicles, canAdminVehicles, isSharedPaper } from '@/lib/vehicleRegistry';
 import { flexIncludes } from '@/lib/flexMatch';
 import ManagedSelect from '@/components/system/ManagedSelect';
+import IqamaPersonInfo from '@/components/vehicles/IqamaPersonInfo';
 import PersonLookup, { type FoundPerson } from '@/components/vehicles/PersonLookup';
 import HijriGregorianField from '@/components/vehicles/HijriGregorianField';
 import ScrollX from '@/components/system/ScrollX';
@@ -84,6 +85,8 @@ export type DocField = {
    * عربيٌّ منذ أوّل استيراد وتقرؤه الفلاتر والتصديرات.
    */
   lookup?: string;
+  /** رقمُ إقامة: يُعرَض تحته تاريخُ ميلاد صاحبه وجوالُه (IqamaPersonInfo). */
+  personInfo?: boolean;
 };
 
 /** قراءةُ مسارٍ منقوط. `?.` لا يكفي هنا لأن المسار نصٌّ لا يُعرَف إلا وقت التشغيل. */
@@ -1037,6 +1040,8 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, pers
                             {...(fl.mono ? { dir: 'ltr' } : {})} />
                         )
                       )}
+                      {/* رقمُ إقامةٍ يُعرَّف صاحبُه تحته: تاريخُ ميلاده وجوالُه. */}
+                      {fl.personInfo && <IqamaPersonInfo idNumber={vals[fl.path]} ar={ar} />}
                     </>
                   )}
                 </div>

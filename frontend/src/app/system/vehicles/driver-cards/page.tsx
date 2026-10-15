@@ -12,6 +12,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { canEditSection } from '@/lib/sections';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, SearchableSelect, Loader2 } from '@/components/hr/HRKit';
+import IqamaPersonInfo from '@/components/vehicles/IqamaPersonInfo';
 import PersonLookup from '@/components/vehicles/PersonLookup';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
@@ -458,7 +459,10 @@ export default function DriverCardsPage() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label={t('رقم الهوية *', 'ID number *')}>
-            <TextInput value={editing?.idNumber || ''} onChange={(e) => setEditing((p) => ({ ...p, idNumber: e.target.value }))} /></Field>
+            <TextInput value={editing?.idNumber || ''} onChange={(e) => setEditing((p) => ({ ...p, idNumber: e.target.value }))} />
+            {/* تاريخُ ميلاده وجوالُه تحت الرقم — ويملآن الخانتين إن كانتا فارغتين. */}
+            <IqamaPersonInfo idNumber={editing?.idNumber} ar={ar}
+              onFound={(pp) => setEditing((p) => ({ ...p, dateOfBirth: p?.dateOfBirth || pp.dateOfBirth || '', absherPhone: p?.absherPhone || pp.absherPhone || pp.phone || '' }))} /></Field>
           <Field label={t('الاسم', 'Name')}>
             <TextInput value={editing?.name || ''} onChange={(e) => setEditing((p) => ({ ...p, name: e.target.value }))} /></Field>
           {/* الربطُ بالموظّف يجعل تجديدَ البطاقة يُحدِّث ملفَّه معه. */}

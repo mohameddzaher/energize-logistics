@@ -56,8 +56,11 @@ class DocEditField {
   /// «إعدادات القسم ← القوائم المنسدلة». يُخزَّن الاسمُ العربيّ لا المفتاح،
   /// لأنّ المخزَّن نصٌّ عربيٌّ منذ أوّل استيراد وتقرؤه الفلاتر والتصديرات.
   final String? lookup;
+
+  /// رقمُ إقامة: يُعرَض تحته تاريخُ ميلاد صاحبه وجوالُه (`IqamaPersonInfo`).
+  final bool personInfo;
   const DocEditField(this.path, this.ar, this.en,
-      {this.kind = 'text', this.on = 'open', this.off = '', this.mono = false, this.lookup});
+      {this.kind = 'text', this.on = 'open', this.off = '', this.mono = false, this.lookup, this.personInfo = false});
 }
 
 /// شريحةُ تصفيةٍ محلّيةٍ فوق الصفوف المحمَّلة.
@@ -591,12 +594,15 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                 }
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: TextField(
-                    controller: ctrls[f.path],
-                    keyboardType: f.kind == 'number' ? TextInputType.number : TextInputType.text,
-                    textDirection: f.mono ? TextDirection.ltr : null,
-                    decoration: InputDecoration(labelText: tr(f.ar, f.en)),
-                  ),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    TextField(
+                      controller: ctrls[f.path],
+                      keyboardType: f.kind == 'number' ? TextInputType.number : TextInputType.text,
+                      textDirection: f.mono ? TextDirection.ltr : null,
+                      decoration: InputDecoration(labelText: tr(f.ar, f.en)),
+                    ),
+                    if (f.personInfo && ctrls[f.path] != null) IqamaPersonInfo(controller: ctrls[f.path]!),
+                  ]),
                 );
               }),
               Text(
@@ -1267,7 +1273,7 @@ final vehicleAuthorizationFamily = DocFamily(
   // بلا رقمِ تفويضٍ ولا مدّة لا يُثبِت صفةَ السائق أمام أحد.
   editable: const [
     DocEditField('authorizedPerson.name', 'اسم المفوَّض', 'Authorised person'),
-    DocEditField('authorizedPerson.iqamaNumber', 'رقم الإقامة', 'Iqama number', mono: true),
+    DocEditField('authorizedPerson.iqamaNumber', 'رقم الإقامة', 'Iqama number', mono: true, personInfo: true),
     // المسمّى قائمةٌ لا خانةٌ حرّة: «سائق نقل ثقيل» في سبعٍ وخمسين مركبة
     // و«مندوب توصيل» في ثلاثٍ وعشرين — والخانةُ الحرّة تجعلها عشرين مسمًّى.
     DocEditField('authorizedPerson.jobTitleAr', 'المسمّى الوظيفي لقائد المركبة', 'Driver job title',
@@ -1403,3 +1409,82 @@ final vehicleInspectionFamily = DocFamily(
     DocEditField('inspection.expiryDateHijri', 'تاريخ انتهاء الفحص (هجري)', 'Inspection expiry (Hijri)', mono: true),
   ],
 );
+
+/// ما يُعرَف عن صاحب رقم الإقامة — تاريخُ ميلاده وجوالُه — تحت الخانة لحظةَ
+/// يُكتب الرقم. يُقرأ من `person-lookup` (الموارد البشريّة وسجلّ النقل الخفيف
+/// وبطاقات السائقين) ويُطابَق بالرقم كاملًا. مطابقٌ لـ`IqamaPersonInfo` في الموقع.
+class IqamaPersonInfo extends StatefulWidget {
+  final TextEditingController controller;
+  const IqamaPersonInfo({super.key, required this.controller});
+  @override
+  State<IqamaPersonInfo> createState() => _IqamaPersonInfoState();
+}
+
+class _IqamaPersonInfoState extends State<IqamaPersonInfo> {
+  Map<String, dynamic>? _p;
+  String _state = '';
+  String _id = '';
+  int _seq = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_changed);
+    _changed();
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_changed);
+    super.dispose();
+  }
+
+  void _changed() {
+    final id = widget.controller.text.replaceAll(RegExp(r'\s+'), '');
+    if (id == _id) return;
+    _id = id;
+    final mine = ++_seq;
+    if (!RegExp(r'^\d{8,}$').hasMatch(id)) {
+      if (mounted) setState(() { _p = null; _state = ''; });
+      return;
+    }
+    if (mounted) setState(() { _p = null; _state = 'loading'; });
+    Future.delayed(const Duration(milliseconds: 350), () async {
+      if (mine != _seq) return;
+      try {
+        final d = await Api.instance.get('/api/vehicle-registry/person-lookup?q=${Uri.encodeQueryComponent(id)}');
+        if (!mounted || mine != _seq) return;
+        final people = List.from((d is Map ? d['people'] : null) ?? const []);
+        final hit = people.cast<Map>().where((x) => '${x['idNumber'] ?? ''}'.replaceAll(RegExp(r'\s+'), '') == id).toList();
+        setState(() { _p = hit.isEmpty ? null : Map<String, dynamic>.from(hit.first); _state = hit.isEmpty ? 'missing' : ''; });
+      } catch (_) {
+        if (mounted && mine == _seq) setState(() => _state = 'missing');
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_state == 'loading') {
+      return Padding(padding: const EdgeInsets.only(top: 4), child: Text(tr('يُبحَث عن صاحب الرقم…', 'Looking up…'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)));
+    }
+    if (_state == 'missing') {
+      return Padding(padding: const EdgeInsets.only(top: 4), child: Text(tr('لا بياناتَ لهذا الرقم في الموارد البشريّة ولا في بطاقات السائقين.', 'No record for this number.'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)));
+    }
+    final p = _p;
+    if (p == null) return const SizedBox.shrink();
+    final dob = '${p['dateOfBirth'] ?? ''}';
+    final phone = '${p['phone'] ?? ''}'.isNotEmpty ? '${p['phone']}' : '${p['absherPhone'] ?? ''}';
+    return Container(
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(color: T.success.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: T.success.withValues(alpha: 0.3))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('${p['name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5)),
+        const SizedBox(height: 2),
+        Text('${tr('تاريخ الميلاد', 'Date of birth')}: ${dob.length >= 10 ? dob.substring(0, 10).split('-').reversed.join('/') : tr('غير مسجَّل', 'not recorded')}', style: const TextStyle(fontSize: 12)),
+        Text('${tr('الجوال', 'Mobile')}: ${phone.isEmpty ? tr('غير مسجَّل', 'not recorded') : phone}', style: const TextStyle(fontSize: 12)),
+      ]),
+    );
+  }
+}

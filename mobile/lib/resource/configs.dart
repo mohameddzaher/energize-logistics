@@ -801,6 +801,9 @@ final customsCfg = ResourceConfig(
   subtitleOf: (r) => [
     if (_s(r, 'refNumber').isNotEmpty) '${tr('رقم المعاملة', 'Transaction no.')}: ${_s(r, 'refNumber')}',
     if (_s(r, 'shippingAgent').isNotEmpty) _s(r, 'shippingAgent'),
+    // عمودا الجدول في الموقع: رقمُ البيان وتاريخُ التفريغ.
+    if (_s(r, 'declarationNumber').isNotEmpty) '${tr('رقم البيان', 'Declaration no.')}: ${_s(r, 'declarationNumber')}',
+    if (_s(r, 'unloadingAppointment').isNotEmpty) '${tr('تاريخ التفريغ', 'Unloading date')}: ${_s(r, 'unloadingAppointment').length >= 10 ? _s(r, 'unloadingAppointment').substring(0, 10).split('-').reversed.join('/') : _s(r, 'unloadingAppointment')}',
     // آخرُ ملاحظةٍ كُتبت على المعاملة — كعمود «ملاحظات» في الموقع.
     if ((r['lastNote'] is Map) && '${r['lastNote']['text'] ?? ''}'.isNotEmpty) '📝 ${r['lastNote']['text']}',
   ].join(' · '),

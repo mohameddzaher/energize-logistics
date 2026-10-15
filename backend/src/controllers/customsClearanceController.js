@@ -154,6 +154,8 @@ function pick(body, existing) {
 const DISPLAY_FIELDS = [
   'refNumber', 'blNumber', 'customerName', 'shippingAgent', 'port', 'stage', 'branch', 'city',
   'containerCount', 'declarationNumber', 'periodYear', 'periodMonth', 'createdAt',
+  // عمودا الجدول: رقمُ البيان وتاريخُ التفريغ (موعدُ التفريغ في المعاملة).
+  'unloadingAppointment',
   'cancelled', 'isCompleted', 'returnDeadline', 'returnFreeDays',
   'customerParty', 'agentParty',
   // نوعُ المعاملة، ورقمُ فاتورة العميل — به تُقرأ «حالة الفاتورة» في الجدول.

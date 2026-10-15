@@ -39,6 +39,7 @@ interface Clearance {
   cancelled: boolean;
   isCompleted?: boolean;
   blNumber?: string;
+  unloadingAppointment?: string;
   customerName?: string;
   shippingAgent?: string;
   port?: string;
@@ -292,6 +293,9 @@ export default function CustomsPage() {
   // الخليّة نفسِها.
   const colGetters: Record<string, (c: Clearance) => any> = {
     bl: (c) => c.blNumber, ref: (c) => c.refNumber, customer: (c) => c.customerName,
+    decl: (c) => c.declarationNumber || '',
+    // الشهرُ لا اليوم: قائمةُ الفلتر تبقى قصيرةً تُقرأ.
+    unloading: (c) => String(c.unloadingAppointment || '').slice(0, 7),
     branch: (c) => (c.branch === 'dammam' ? T.dammam : T.jeddah),
     period: (c) => (c.periodMonth ? `${MONTH_LABELS[c.periodMonth - 1][ar ? 0 : 1]} ${c.periodYear || ''}`.trim() : (c.periodYear || '')),
     units: (c) => `${c.cargoType === 'vehicles' ? (ar ? 'سيّارات' : 'Vehicles') : (ar ? 'حاويات' : 'Containers')} · ${c.containerCount || 0}`,
@@ -324,6 +328,7 @@ export default function CustomsPage() {
     { header: ar ? 'السنة' : 'Year', key: 'periodYear', width: 10, transform: (v) => v || '—' },
     { header: ar ? 'وكيل الشحن' : 'Shipping agent', key: 'shippingAgent', width: 20, transform: (v) => v || '—' },
     { header: ar ? 'رقم البيان' : 'Declaration no.', key: 'declarationNumber', width: 16, transform: (v) => v || '—' },
+    { header: ar ? 'تاريخ التفريغ' : 'Unloading date', key: 'unloadingAppointment', width: 14, transform: (v) => (v ? String(v).slice(0, 10) : '—') },
     { header: ar ? 'نوع المعاملة' : 'Type', key: '_cargo', width: 12 },
     { header: ar ? 'العدد' : 'Units', key: 'containerCount', width: 10, transform: (v) => v || 0 },
     { header: ar ? 'إجمالي المصروفات' : 'Total costs', key: 'costs.total', width: 16, transform: money },
@@ -487,13 +492,15 @@ export default function CustomsPage() {
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <ScrollX>
-          <table className="w-full text-sm min-w-[1160px]">
+          <table className="w-full text-sm min-w-[1380px]">
             <thead>
               <tr className="bg-slate-900">
                 {/* رقمُ البوليصة قبل رقم المعاملة: به تُعرَف المعاملةُ في القسم. */}
                 {th('bl', T.blNumber)}
                 {th('ref', T.refNumber)}
                 {th('customer', T.customerName)}
+                {th('decl', ar ? 'رقم البيان' : 'Declaration no.')}
+                {th('unloading', ar ? 'تاريخ التفريغ' : 'Unloading date')}
                 {th('branch', T.branch)}
                 {th('period', ar ? 'الفترة' : 'Period')}
                 {th('units', ar ? 'الحاويات / السيّارات' : 'Units')}
@@ -507,13 +514,15 @@ export default function CustomsPage() {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {shownRows.length === 0 ? (
-                <tr><td colSpan={canDelete ? 12 : 11} className="text-center text-slate-800 py-12">{T.noClearances}</td></tr>
+                <tr><td colSpan={canDelete ? 14 : 13} className="text-center text-slate-800 py-12">{T.noClearances}</td></tr>
               ) : shownRows.map((c) => (
                 <tr key={c._id} onClick={() => router.push(`/system/customs/${c._id}`)}
                   className="bg-white hover:bg-slate-50 transition-colors cursor-pointer">
                   <td className="px-4 py-3 text-slate-900 font-semibold">{c.blNumber || '—'}</td>
                   <td className="px-4 py-3 text-slate-600">{c.refNumber}</td>
                   <td className="px-4 py-3 text-slate-700">{c.customerName || '—'}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap"><bdi>{c.declarationNumber || '—'}</bdi></td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.unloadingAppointment ? String(c.unloadingAppointment).slice(0, 10).split('-').reverse().join('/') : '—'}</td>
                   <td className="px-4 py-3 text-slate-700">{c.branch === 'dammam' ? T.dammam : T.jeddah}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                     {c.periodMonth ? `${MONTH_LABELS[c.periodMonth - 1][ar ? 0 : 1]} ${c.periodYear || ''}`.trim() : (c.periodYear || '—')}

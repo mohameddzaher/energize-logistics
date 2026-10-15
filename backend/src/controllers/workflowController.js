@@ -365,7 +365,8 @@ async function ensureLedgerInvoice(workflow) {
       party: party?._id || undefined,
       partyCode: party?.code || '',
       partyName: workflow.username || '',
-      invoiceDate: workflow.invoiceDate || workflow.paymentDate || workflow.reportDate || new Date(),
+      // يومُ كتابة رقمها إن لم يُكتب لها تاريخ — لا تاريخُ السداد ولا الكشف (راجع stampInvoiceDate).
+      invoiceDate: workflow.invoiceDate || new Date(`${require('../utils/companyDay').todayKey()}T00:00:00.000Z`),
       net: Number(workflow.netInvoice) || 0,
       vat: Number(workflow.tax) || 0,
       total: Number(workflow.totalInvoice) || 0,
@@ -1101,6 +1102,27 @@ exports.createWorkflow = async (req, res) => {
 };
 
 // PUT /api/workflows/:id
+/**
+ * ── تاريخُ الفاتورة يومُ كتابة رقمها ────────────────────────────────────────
+ * حين يُكتب رقمُ الفاتورة لأوّل مرّةٍ ولا تاريخَ لها، يُكتب تاريخُها يومَ الكتابة
+ * (بتوقيت الشركة) — ويبقى يُعدَّل باليد بعد ذلك كأيّ خانة.
+ *
+ * و«تاريخُ التسليم للعميل» غيرُه ولا يُشتقّ منه أبدًا: الفاتورةُ تُصدَر اليومَ
+ * وتُسلَّم للعميل بعد أيّامٍ أو أسابيع. يكتبه المستخدمُ بيده — هنا أو في قسم
+ * التحصيل — وما كُتب في أحدهما يظهر في الآخر في الحال (مزامنةُ الدفتر في الحفظ
+ * وزرُّ «تسليم» في التحصيل).
+ */
+function stampInvoiceDate(patch, current) {
+  if (!Object.prototype.hasOwnProperty.call(patch, 'invoiceNumber')) return;
+  const was = String((current && current.invoiceNumber) || '').trim();
+  const now = String(patch.invoiceNumber || '').trim();
+  if (!now || was) return;
+  const sent = Object.prototype.hasOwnProperty.call(patch, 'invoiceDate') && patch.invoiceDate;
+  if (sent || (current && current.invoiceDate)) return;
+  patch.invoiceDate = new Date(`${require('../utils/companyDay').todayKey()}T00:00:00.000Z`);
+}
+exports._stampInvoiceDate = stampInvoiceDate;
+
 exports.updateWorkflow = async (req, res) => {
   try {
     const workflow = await OperationsWorkflow.findById(req.params.id);
@@ -1134,6 +1156,8 @@ exports.updateWorkflow = async (req, res) => {
         message: `صلاحيّتك لا تسمح بتعديل: ${rejected.join('، ')} — لم يُحفظ شيء.`,
       });
     }
+
+    stampInvoiceDate(filteredBody, workflow);
 
     // ── تاريخ السداد لا يُسجَّل قبل استلام السند ──────────────────────────────
     // السداد إقرارٌ بوصول المال، ولا يصل قبل استلام سند التسليم. تسجيله قبله
@@ -1634,6 +1658,7 @@ exports.bulkUpdate = async (req, res) => {
       // ونوعُ الدفع يُملأ لكلّ صفٍّ من ملفّ عميله — والدفعةُ الواحدة تضمّ
       // عملاءَ شتّى، فقاعدةٌ واحدةٌ للجميع تكتب فاتورةً على عميل كاش.
       await fillPaymentTypeFromCustomer(rowPatch, r);
+      stampInvoiceDate(rowPatch, r);
       const own = applyBillingRules(rowPatch, r);
       if (own.blocked.length && !Object.keys(own.patch).length) {
         skipped.push({ reportNumber: r.reportNumber, reason: 'كشف نقديّ — لا فاتورة له' });

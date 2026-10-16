@@ -54,7 +54,7 @@ import '../screens/ls2_drivers.dart';
 import '../screens/marketing_activities.dart';
 import '../screens/ops_workflows.dart';
 import '../screens/ops_private.dart';
-import '../screens/lt_custody.dart';
+import '../screens/custody_ledger.dart';
 import '../screens/light_transport_housing.dart';
 import '../screens/my_profile.dart';
 import '../screens/customs_dashboard.dart';
@@ -122,6 +122,10 @@ const _admins = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 /// النظام وأهل المال — بالدور وحدَه لا بمنح القسم، كحارس الخادم
 /// (`authorize.strict` في routes/lightTransport) وسطورِ القائمة في الموقع.
 const _ltOwners = ['super_admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'];
+
+/// عهدةُ النقل الثقيل: لمدير لوكيشن سوليوشن ومدير النظام وأهل المال — بالدور
+/// وحدَه، كحارس الخادم (`authorize.strict` في routes/htCustody).
+const _htOwners = ['super_admin', 'location_manager', 'cfo', 'accounting_manager', 'accountant'];
 
 /// ترتيبُ الأقسام في الشاشة — هو نفسُه في الموقع (SECTION_ORDER في layout.tsx).
 /// سلسلةُ العمل كما تجري: التشغيل، ثمّ الطلبات والمنصّة، ثمّ التحصيل، ثمّ
@@ -361,6 +365,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الإصلاحات', 'Repairs', Icons.home_repair_service_outlined, (c) => ResourceScreen(config: ls2RepairsCfg), path: '/system/ls2/store'),
         AppPage('أصول الأسطول', 'Fleet Assets', Icons.tire_repair_outlined, (c) => const Ls2FleetAssetsScreen(), path: '/system/ls2/fleet-assets'),
         AppPage('مخزن النقل الثقيل', 'Store', Icons.inventory_2_outlined, (c) => const Ls2StoreScreen(), path: '/system/ls2/store'),
+        if (_htOwners.contains(role)) AppPage('عهدة النقل الثقيل', 'Heavy Transport Custody', Icons.account_balance_wallet_outlined, (c) => const HtCustodyScreen(), path: '/system/ls2/custody'),
         // مَن تُشترى منه قطعُ الغيار — للمخزن الثقيل وحدَه.
         AppPage('الموردون', 'Suppliers', Icons.storefront_outlined, (c) => const Ls2SuppliersScreen(), path: '/system/ls2/suppliers'),
         AppPage('السائقون (تتبع)', 'Drivers', Icons.badge_outlined, (c) => const Ls2DriversScreen(), path: '/system/ls2/drivers'),

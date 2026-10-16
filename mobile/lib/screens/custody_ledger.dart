@@ -12,17 +12,53 @@ import '../ui/file_upload.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// عهدةُ النقل الخفيف — الكاش، وكارت المشتريات، والورشة.
+/// دفترُ العهدة — الكاش، وكارت المشتريات، والورشة. شاشةٌ واحدةٌ لعهدتين:
+/// النقلُ الخفيف (`LtCustodyScreen`) والنقلُ الثقيل (`HtCustodyScreen`)، مطابقةٌ
+/// لـ`components/system/CustodyLedger` في الموقع. وما يختلف بينهما في `CustodyCfg`.
 ///
 /// ثلاثةُ حساباتٍ في أعلى الشاشة، ولكلٍّ واردُه وصادرُه ورصيدُه. والقواعدُ في
-/// الخادم (`/api/light-transport/custody`) وتصل هنا في `rules`: الشاشةُ ترسم
-/// ما يُسمَح به ولا تعيد كتابتَه. مطابقةٌ لشاشة الموقع
-/// `/system/b2c/light-transport/custody`.
+/// الخادم وتصل هنا في `rules`: الشاشةُ ترسم ما يُسمَح به ولا تعيد كتابتَه.
+/// والثقيلُ يزيد السيّارة: الواردُ أو الصادرُ يُنسب — اختيارًا — إلى شاحنةٍ من
+/// أسطول لوكيشن سوليوشن، تُختار من قائمةٍ فيها بحث.
+class CustodyCfg {
+  final String api, event, titleAr, titleEn, repAr, repEn, missingAr, missingEn;
+  /// يطابق حارسَ المسار في الخادم (`CUSTODY_ROLES`). العهدةُ مالٌ لا تُفتَح بمنح
+  /// القسم، وتعديلُ قيدٍ مسجَّلٍ وحذفُه يقرّرهما الخادم (`canEdit` / `canDelete`).
+  final Set<String> roles;
+  final bool vehicles;
+  const CustodyCfg({
+    required this.api, required this.event, required this.titleAr, required this.titleEn,
+    required this.repAr, required this.repEn, required this.missingAr, required this.missingEn,
+    required this.roles, this.vehicles = false,
+  });
+}
 
-// يطابق حارسَ المسار في الخادم (`CUSTODY_ROLES` في ltCustodyController): مديرُ
-// القطاع ونائبُه ومديرُ النظام وأهلُ المال. العهدةُ مالٌ لا تُفتَح بمنح القسم.
-// وتعديلُ قيدٍ مسجَّلٍ وحذفُه يقرّرهما الخادم (`canEdit` / `canDelete` في الجواب).
-const _editRoles = {'super_admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'};
+class LtCustodyScreen extends StatelessWidget {
+  const LtCustodyScreen({super.key});
+  static const cfg = CustodyCfg(
+    api: '/api/light-transport/custody', event: 'lt:custody',
+    titleAr: 'عهدة النقل الخفيف', titleEn: 'Light Transport Custody',
+    repAr: 'مندوب', repEn: 'Rep',
+    missingAr: 'لا مندوبَ بهذا الرقم في الموارد البشريّة ولا في سجلّ النقل الخفيف.', missingEn: 'No rep with this number in HR or the light-transport register.',
+    roles: {'super_admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'},
+  );
+  @override
+  Widget build(BuildContext context) => const CustodyLedgerScreen(cfg: cfg);
+}
+
+class HtCustodyScreen extends StatelessWidget {
+  const HtCustodyScreen({super.key});
+  static const cfg = CustodyCfg(
+    api: '/api/ls2/custody', event: 'ht:custody',
+    titleAr: 'عهدة النقل الثقيل', titleEn: 'Heavy Transport Custody',
+    repAr: 'موظف', repEn: 'Employee',
+    missingAr: 'لا موظّفَ بهذا الرقم في الموارد البشريّة.', missingEn: 'No employee with this number in HR.',
+    roles: {'super_admin', 'location_manager', 'cfo', 'accounting_manager', 'accountant'},
+    vehicles: true,
+  );
+  @override
+  Widget build(BuildContext context) => const CustodyLedgerScreen(cfg: cfg);
+}
 
 const _accounts = [
   ('cash', 'الكاش', 'Cash', Icons.payments_outlined),
@@ -32,9 +68,13 @@ const _accounts = [
 
 const _word = {
   'cash': ('الكاش', 'Cash'), 'card': ('الكارت', 'Card'), 'workshop': ('الورشة', 'Workshop'),
-  'bank': ('البنك', 'Bank'), 'maintenance': ('الصيانة', 'Maintenance'), 'rep': ('مندوب', 'Rep'), 'company': ('الشركة', 'Company'), 'opening': ('رصيد افتتاحي', 'Opening balance'),
+  'bank': ('البنك', 'Bank'), 'maintenance': ('الصيانة', 'Maintenance'), 'company': ('الشركة', 'Company'), 'opening': ('رصيد افتتاحي', 'Opening balance'),
 };
-String _w(dynamic k) { final x = _word[k?.toString()]; return x == null ? (k ?? '').toString() : tr(x.$1, x.$2); }
+String _w(dynamic k, [CustodyCfg? cfg]) {
+  if (k == 'rep') return cfg == null ? tr('مندوب', 'Rep') : tr(cfg.repAr, cfg.repEn);
+  final x = _word[k?.toString()]; return x == null ? (k ?? '').toString() : tr(x.$1, x.$2);
+}
+String _car(Map e) => ((e['vehiclePlate'] ?? '').toString().isNotEmpty ? e['vehiclePlate'] : (e['vehicleName'] ?? '')).toString();
 
 num _num(dynamic v) => (v is num) ? v : num.tryParse(v?.toString() ?? '') ?? 0;
 String _money(dynamic v) {
@@ -54,13 +94,17 @@ void _openFile(dynamic fileUrl) {
   launchUrl(Uri.parse(u.startsWith('http') ? u : '${AppConfig.apiBase}$u'), mode: LaunchMode.externalApplication);
 }
 
-class LtCustodyScreen extends StatefulWidget {
-  const LtCustodyScreen({super.key});
+class CustodyLedgerScreen extends StatefulWidget {
+  final CustodyCfg cfg;
+  const CustodyLedgerScreen({super.key, required this.cfg});
   @override
-  State<LtCustodyScreen> createState() => _LtCustodyScreenState();
+  State<CustodyLedgerScreen> createState() => _CustodyLedgerScreenState();
 }
 
-class _LtCustodyScreenState extends State<LtCustodyScreen> {
+class _CustodyLedgerScreenState extends State<CustodyLedgerScreen> {
+  CustodyCfg get cfg => widget.cfg;
+  String _vehicle = '';
+  List<Map<String, dynamic>> _cars = const [];
   Map<String, dynamic>? _d;
   String _account = 'cash';
   String _direction = '';
@@ -76,12 +120,21 @@ class _LtCustodyScreenState extends State<LtCustodyScreen> {
     super.initState();
     _load();
     _onLive = () => _load();
-    Live.instance.on('lt:custody', _onLive);
+    Live.instance.on(cfg.event, _onLive);
+    if (cfg.vehicles) _loadCars();
+  }
+
+  // سيّاراتُ الأسطول للقائمة — مرّةً واحدة.
+  Future<void> _loadCars() async {
+    try {
+      final r = await Api.instance.get('${cfg.api}/vehicles');
+      if (mounted) setState(() => _cars = [for (final v in (r['vehicles'] as List? ?? const [])) Map<String, dynamic>.from(v as Map)]);
+    } catch (_) {}
   }
 
   @override
   void dispose() {
-    Live.instance.off('lt:custody', _onLive);
+    Live.instance.off(cfg.event, _onLive);
     _debounce?.cancel();
     super.dispose();
   }
@@ -92,12 +145,13 @@ class _LtCustodyScreenState extends State<LtCustodyScreen> {
     final p = <String, String>{
       'account': _account,
       if (_direction.isNotEmpty) 'direction': _direction,
+      if (_vehicle.isNotEmpty) 'vehicle': _vehicle,
       if (_q.trim().isNotEmpty) 'q': _q.trim(),
       if (_range != null) 'from': _ymd(_range!.start),
       if (_range != null) 'to': _ymd(_range!.end),
     };
     try {
-      final d = await Api.instance.get('/api/light-transport/custody?${Uri(queryParameters: p).query}');
+      final d = await Api.instance.get('${cfg.api}?${Uri(queryParameters: p).query}');
       if (!mounted || mine != _seq) return;
       setState(() { _d = Map<String, dynamic>.from(d as Map); _error = null; });
     } catch (e) {
@@ -105,13 +159,13 @@ class _LtCustodyScreenState extends State<LtCustodyScreen> {
     }
   }
 
-  bool get _canCreate => _editRoles.contains(context.read<AuthProvider>().role);
+  bool get _canCreate => cfg.roles.contains(context.read<AuthProvider>().role);
 
   String _party(Map e) {
     if (e['source'] == 'opening') return _w('opening');
-    if (e['source'] == 'rep') return '${tr('من المندوب', 'From rep')}: ${e['repName'] ?? ''}';
+    if (e['source'] == 'rep') return '${tr('من', 'From')} ${_w('rep', cfg)}: ${e['repName'] ?? ''}';
     if (e['direction'] == 'in') return '${tr('من', 'From')} ${_w(e['source'])}';
-    if (e['target'] == 'rep') return '${tr('مندوب', 'Rep')}: ${e['repName'] ?? ''}';
+    if (e['target'] == 'rep') return '${_w('rep', cfg)}: ${e['repName'] ?? ''}';
     if (e['target'] == 'company') return tr('الشركة', 'Company');
     return '${tr('إلى', 'To')} ${_w(e['target'])}';
   }
@@ -132,7 +186,7 @@ class _LtCustodyScreenState extends State<LtCustodyScreen> {
       ),
     );
     if (ok != true) return;
-    try { await Api.instance.delete('/api/light-transport/custody/${e['_id']}'); _load(); }
+    try { await Api.instance.delete('${cfg.api}/${e['_id']}'); _load(); }
     catch (err) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err.toString()))); }
   }
 
@@ -145,6 +199,7 @@ class _LtCustodyScreenState extends State<LtCustodyScreen> {
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (c) => _EntrySheet(
+        cfg: cfg, cars: _cars,
         account: (entry?['account'] ?? _account).toString(), direction: direction, rules: rules,
         today: (_d!['today'] ?? _ymd(DateTime.now())).toString(), entry: entry,
       ),
@@ -163,7 +218,7 @@ class _LtCustodyScreenState extends State<LtCustodyScreen> {
     final d = _d;
     final canCreate = _canCreate;
     return AppScaffold(
-      title: Text(tr('عهدة النقل الخفيف', 'Light Transport Custody')),
+      title: Text(tr(cfg.titleAr, cfg.titleEn)),
       body: d == null
           ? (_error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _error = null); _load(); })
@@ -191,7 +246,7 @@ class _LtCustodyScreenState extends State<LtCustodyScreen> {
       ]),
       const SizedBox(height: 6),
       Text(
-        '${tr('واردُه من', 'In from')}: ${sources.map(_w).join(tr('، ', ', '))}${toCash ? tr(' · ويصرف إلى الكاش', ' · can pay out to cash') : ''}',
+        '${tr('واردُه من', 'In from')}: ${sources.map((x) => _w(x, cfg)).join(tr('، ', ', '))}${toCash ? tr(' · ويصرف إلى الكاش', ' · can pay out to cash') : ''}',
         style: const TextStyle(fontSize: 11, color: T.inkFaint),
       ),
       if (canCreate) ...[
@@ -211,7 +266,7 @@ class _LtCustodyScreenState extends State<LtCustodyScreen> {
       // ── الفلاتر ───────────────────────────────────────────────────────────
       TextField(
         onChanged: (v) { _q = v; _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 350), _load); },
-        decoration: InputDecoration(hintText: tr('اسم المندوب، رقم الإقامة، البيان…', 'Rep name, ID no., detail…'), prefixIcon: const Icon(Icons.search), isDense: true),
+        decoration: InputDecoration(hintText: cfg.vehicles ? tr('الاسم، رقم الإقامة، اللوحة، البيان…', 'Name, ID no., plate, detail…') : tr('اسم المندوب، رقم الإقامة، البيان…', 'Rep name, ID no., detail…'), prefixIcon: const Icon(Icons.search), isDense: true),
       ),
       const SizedBox(height: 8),
       Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -223,6 +278,14 @@ class _LtCustodyScreenState extends State<LtCustodyScreen> {
           onPressed: _pickRange,
         ),
         if (_range != null) IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.close, size: 18), onPressed: () { setState(() => _range = null); _load(); }),
+        if (cfg.vehicles) ActionChip(
+          avatar: const Icon(Icons.local_shipping_outlined, size: 16),
+          label: Text(_vehicle.isEmpty ? tr('كلّ السيارات', 'All vehicles') : _carLabelOf(_cars, _vehicle)),
+          onPressed: () async {
+            final v = await pickCustodyVehicle(context, _cars, current: _vehicle, noneLabel: tr('كلّ السيارات', 'All vehicles'));
+            if (v != null) { setState(() => _vehicle = v); _load(); }
+          },
+        ),
       ]),
       const SizedBox(height: 10),
       Row(children: [
@@ -240,6 +303,7 @@ class _LtCustodyScreenState extends State<LtCustodyScreen> {
         final sub = [
           _date(e['date']),
           if (e['target'] == 'rep' || e['source'] == 'rep') ...[e['repIdNumber'], e['repNationality'], e['repProject']],
+          if (_car(e).isNotEmpty) '🚚 ${_car(e)}',
           if (e['transferId'] != null) tr('تحويل', 'transfer'),
           e['createdByName'],
         ].where((x) => x != null && x.toString().isNotEmpty).join(' · ');
@@ -346,10 +410,12 @@ class _FileChip extends StatelessWidget {
 /// وبـ`entry` يصير تعديلًا لقيدٍ مسجَّل: يُصحَّح المبلغُ واليومُ والبيانُ والمندوبُ
 /// والمرفقات. ونوعُ القيد لا يتغيّر — ما كُتب في غير موضعه يُحذَف ويُكتب من جديد.
 class _EntrySheet extends StatefulWidget {
+  final CustodyCfg cfg;
+  final List<Map<String, dynamic>> cars;
   final String account, direction, today;
   final Map<String, dynamic> rules;
   final Map<String, dynamic>? entry;
-  const _EntrySheet({required this.account, required this.direction, required this.rules, required this.today, this.entry});
+  const _EntrySheet({required this.cfg, required this.cars, required this.account, required this.direction, required this.rules, required this.today, this.entry});
   @override
   State<_EntrySheet> createState() => _EntrySheetState();
 }
@@ -363,6 +429,11 @@ class _EntrySheetState extends State<_EntrySheet> {
   late final List<String> _targets = ['rep', 'company', if (List.from(widget.rules['toCash'] ?? const []).contains(widget.account)) 'cash'];
   late String _source = (widget.entry?['source'] ?? (_sources.length == 1 ? _sources.first : '')).toString();
   late String _target = (widget.entry?['target'] ?? 'rep').toString();
+  late String _vehicle = widget.entry?['vehicleUnitId'] == null ? '' : widget.entry!['vehicleUnitId'].toString();
+  CustodyCfg get cfg => widget.cfg;
+  // السيّارةُ على كلّ واردٍ وصادر — إلّا التحويلَ بين حسابين: مالٌ انتقل لا سيّارةَ له.
+  bool get _transfer => _isIn ? (_source == 'card' || _source == 'workshop') : _target == 'cash';
+  bool get _withCar => cfg.vehicles && !_transfer && widget.entry?['transferId'] == null;
   Map<String, dynamic>? _rep;
   String _repState = '';
   final List<PickedFile> _files = [];
@@ -406,7 +477,7 @@ class _EntrySheetState extends State<_EntrySheet> {
   void _fetchRep(String id, int mine, Duration wait) {
     _timer = Timer(wait, () async {
       try {
-        final r = await Api.instance.get('/api/light-transport/custody/rep?id=${Uri.encodeQueryComponent(id)}');
+        final r = await Api.instance.get('${cfg.api}/rep?id=${Uri.encodeQueryComponent(id)}');
         if (mounted && mine == _seq) setState(() { _rep = Map<String, dynamic>.from(r['rep'] as Map); _repState = ''; });
       } catch (_) {
         if (mounted && mine == _seq) setState(() => _repState = 'missing');
@@ -432,7 +503,7 @@ class _EntrySheetState extends State<_EntrySheet> {
     final detail = _detail.text.trim();
     if (amount <= 0) return _say(tr('اكتب المبلغ', 'Enter the amount'));
     if (_isIn && _source.isEmpty) return _say(tr('اختر مصدرَ الوارد', 'Pick where it came from'));
-    if (_needsRep && _rep == null) return _say(tr('اكتب رقمَ إقامة المندوب', 'Enter the rep’s ID number'));
+    if (_needsRep && _rep == null) return _say(tr('اكتب رقمَ إقامة ${cfg.repAr}', 'Enter the ${cfg.repEn.toLowerCase()}’s ID number'));
     if (!_isIn && _target == 'company' && detail.isEmpty) return _say(tr('اكتب البيان: ما الصرف؟', 'Enter what it was spent on'));
     setState(() => _saving = true);
     // الاسمُ بلا امتداده عنوانًا — كما في الموقع.
@@ -441,16 +512,18 @@ class _EntrySheetState extends State<_EntrySheet> {
     ];
     try {
       if (_editing) {
-        await Api.instance.put('/api/light-transport/custody/${widget.entry!['_id']}', {
+        await Api.instance.put('${cfg.api}/${widget.entry!['_id']}', {
           'amount': amount, 'date': _date, 'detail': detail, 'files': sent, 'removeAttachments': _removed.toList(),
           if (_needsRep) 'repIdNumber': _rep!['idNumber'],
+          if (_withCar) 'vehicleUnitId': _vehicle,
         });
       } else {
-        await Api.instance.post('/api/light-transport/custody', {
+        await Api.instance.post(cfg.api, {
           'account': widget.account, 'direction': widget.direction, 'amount': amount, 'date': _date, 'detail': detail, 'files': sent,
           if (_isIn) 'source': _source,
           if (!_isIn) 'target': _target,
           if (_needsRep) 'repIdNumber': _rep!['idNumber'],
+          if (_withCar && _vehicle.isNotEmpty) 'vehicleUnitId': _vehicle,
         });
       }
       if (mounted) Navigator.pop(context, true);
@@ -468,6 +541,7 @@ class _EntrySheetState extends State<_EntrySheet> {
   @override
   Widget build(BuildContext context) {
     final acc = _w(widget.account);
+    String w(String k) => _w(k, cfg);
     final transfer = _isIn ? (_source == 'card' || _source == 'workshop') : _target == 'cash';
     final needDetail = !_isIn && _target == 'company';
     final kept = _attachments(widget.entry).where((a) => !_removed.contains(a['_id'].toString())).toList();
@@ -504,7 +578,7 @@ class _EntrySheetState extends State<_EntrySheet> {
             const SizedBox(height: 6),
             Wrap(spacing: 6, children: [
               for (final k in _targets)
-                ChoiceChip(label: Text(k == 'cash' ? tr('إلى الكاش', 'To cash') : _w(k)), selected: _target == k, onSelected: _editing ? null : (_) => _retype(() => _target = k)),
+                ChoiceChip(label: Text(k == 'cash' ? tr('إلى الكاش', 'To cash') : w(k)), selected: _target == k, onSelected: _editing ? null : (_) => _retype(() => _target = k)),
             ]),
           ],
           if (_editing) Padding(
@@ -515,10 +589,10 @@ class _EntrySheetState extends State<_EntrySheet> {
               const SizedBox(height: 10),
               TextField(
                 controller: _id, onChanged: _lookup, keyboardType: TextInputType.number, textDirection: TextDirection.ltr,
-                decoration: InputDecoration(labelText: tr('رقم إقامة المندوب *', 'Rep ID number *'), hintText: '2xxxxxxxxx'),
+                decoration: InputDecoration(labelText: tr('رقم إقامة ${cfg.repAr} *', '${cfg.repEn} ID number *'), hintText: '2xxxxxxxxx'),
               ),
               if (_repState == 'loading') Padding(padding: const EdgeInsets.only(top: 6), child: Text(tr('يُبحَث في الموارد البشريّة…', 'Looking up HR…'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint))),
-              if (_repState == 'missing') Padding(padding: const EdgeInsets.only(top: 6), child: Text(tr('لا مندوبَ بهذا الرقم في الموارد البشريّة ولا في سجلّ النقل الخفيف.', 'No rep with this number in HR or the light-transport register.'), style: const TextStyle(fontSize: 11.5, color: T.danger, fontWeight: FontWeight.w700))),
+              if (_repState == 'missing') Padding(padding: const EdgeInsets.only(top: 6), child: Text(tr(cfg.missingAr, cfg.missingEn), style: const TextStyle(fontSize: 11.5, color: T.danger, fontWeight: FontWeight.w700))),
               if (_rep != null) Container(
                 width: double.infinity,
                 margin: const EdgeInsets.only(top: 8),
@@ -545,6 +619,19 @@ class _EntrySheetState extends State<_EntrySheet> {
               style: const TextStyle(fontSize: 11.5, color: T.inkSoft),
             ),
           ),
+          if (_withCar) ...[
+            const SizedBox(height: 10),
+            Text(tr('السيارة (اختياري) — من سيارات لوكيشن سوليوشن', 'Vehicle (optional) — from the Location Solutions fleet'), style: const TextStyle(fontSize: 12, color: T.inkSoft, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.local_shipping_outlined, size: 18),
+              label: Align(alignment: AlignmentDirectional.centerStart, child: Text(_vehicle.isEmpty ? tr('بدون سيارة', 'No vehicle') : _carLabelOf(widget.cars, _vehicle, fallback: _car(widget.entry ?? const {})))),
+              onPressed: () async {
+                final v = await pickCustodyVehicle(context, widget.cars, current: _vehicle, noneLabel: tr('بدون سيارة', 'No vehicle'));
+                if (v != null) setState(() => _vehicle = v);
+              },
+            ),
+          ],
           const SizedBox(height: 10),
           TextField(
             controller: _detail,
@@ -578,3 +665,83 @@ class _EntrySheetState extends State<_EntrySheet> {
 }
 
 String _dateLabel(String ymd) => _date(ymd);
+
+String _carLabelOf(List<Map<String, dynamic>> cars, String unitId, {String fallback = ''}) {
+  for (final v in cars) {
+    if (v['unitId'].toString() == unitId) return _car({'vehiclePlate': v['plate'], 'vehicleName': v['name']});
+  }
+  return fallback.isNotEmpty ? fallback : '#$unitId';
+}
+
+/// قائمةُ سيّارات الأسطول وفيها بحث — باللوحة أو الاسم أو السائق. تردّ رقمَ الوحدة،
+/// أو '' لـ«بدون سيارة / الكلّ»، أو null إن أُغلقت بلا اختيار.
+Future<String?> pickCustodyVehicle(BuildContext context, List<Map<String, dynamic>> cars, {required String current, required String noneLabel}) {
+  return showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (c) => _VehiclePicker(cars: cars, current: current, noneLabel: noneLabel),
+  );
+}
+
+class _VehiclePicker extends StatefulWidget {
+  final List<Map<String, dynamic>> cars;
+  final String current, noneLabel;
+  const _VehiclePicker({required this.cars, required this.current, required this.noneLabel});
+  @override
+  State<_VehiclePicker> createState() => _VehiclePickerState();
+}
+
+class _VehiclePickerState extends State<_VehiclePicker> {
+  String _q = '';
+  // الطيُّ العربيّ كما في الموقع: «احمد» تجد «أحمد».
+  static String _fold(String s) => s.toLowerCase()
+      .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').replaceAll('ؤ', 'و').replaceAll('ئ', 'ي')
+      .replaceAll(RegExp(r'\s+'), ' ').trim();
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _fold(_q);
+    final shown = q.isEmpty ? widget.cars : widget.cars.where((v) =>
+        _fold('${v['plate'] ?? ''} ${v['name'] ?? ''} ${v['driver'] ?? ''}').contains(q)).toList();
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.7,
+          child: Column(children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+              child: TextField(
+                autofocus: true,
+                onChanged: (v) => setState(() => _q = v),
+                decoration: InputDecoration(hintText: tr('ابحث باللوحة أو الاسم أو السائق…', 'Search plate, name or driver…'), prefixIcon: const Icon(Icons.search), isDense: true),
+              ),
+            ),
+            Expanded(child: ListView(children: [
+              ListTile(
+                dense: true,
+                title: Text(widget.noneLabel, style: TextStyle(fontWeight: FontWeight.w700, color: widget.current.isEmpty ? T.orange : T.inkSoft)),
+                onTap: () => Navigator.pop(context, ''),
+              ),
+              for (final v in shown)
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.local_shipping_outlined, size: 20),
+                  title: Text(_car({'vehiclePlate': v['plate'], 'vehicleName': v['name']}),
+                      style: TextStyle(fontWeight: FontWeight.w700, color: v['unitId'].toString() == widget.current ? T.orange : T.navy)),
+                  subtitle: Text([
+                    if ((v['name'] ?? '') != (v['plate'] ?? '')) v['name'],
+                    v['driver'],
+                  ].where((x) => x != null && x.toString().isNotEmpty).join(' · '), style: const TextStyle(fontSize: 11.5)),
+                  onTap: () => Navigator.pop(context, v['unitId'].toString()),
+                ),
+              if (shown.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Center(child: Text(tr('لا نتائج', 'No matches'), style: const TextStyle(color: T.inkFaint)))),
+            ])),
+          ]),
+        ),
+      ),
+    );
+  }
+}

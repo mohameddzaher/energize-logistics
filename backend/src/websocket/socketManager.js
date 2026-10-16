@@ -160,9 +160,9 @@ const FINANCE_DEPTS = [
   [/^it:/, ['it', 'hr']],
   [/^collections:/, ['collections']],
   [/^(vreg:|vehicle:)/, ['vehicles', 'light']],
-  [/^ls2:(store|repair)/, ['fleet']],
+  [/^(ls2:(store|repair)|ht:custody)/, ['fleet']],
 ];
-const FINANCE_EVENTS = /^(wallet:|workflow:|collections:|fleet:|shipmentOrders:|customs:|b2c:wallet|lt:custody|marketing:|bd:|hr:(contract|employee|asset|master)|it:|vreg:|vehicle:|ls2:(store|repair)|procurement:|performance:|accounting:)/;
+const FINANCE_EVENTS = /^(wallet:|workflow:|collections:|fleet:|shipmentOrders:|customs:|b2c:wallet|lt:custody|marketing:|bd:|hr:(contract|employee|asset|master)|it:|vreg:|vehicle:|ls2:(store|repair)|ht:custody|procurement:|performance:|accounting:)/;
 let financeTimer = null;
 let financePending = new Set();
 const financeTouch = (event) => {

@@ -304,10 +304,45 @@ async function collections(p, user) {
 // ═══════════════════════════════════════════════════════════════════════════
 //  ماليات إدارة الأسطول
 // ═══════════════════════════════════════════════════════════════════════════
+/**
+ * عهدةُ النقل الثقيل في ماليات الأسطول — كعهدة النقل الخفيف في ماليّاته: وارد
+ * الفترة ومصروفُها والرصيدُ القائم، وجدولٌ بالحسابات الثلاثة. والتحويلُ بين
+ * حسابين والرصيدُ الافتتاحيّ ليسا واردًا ولا مصروفًا.
+ */
+async function htCustody(p) {
+  const HtCustodyEntry = require('../models/HtCustody');
+  const ymd = (d) => new Date(d).toISOString().slice(0, 10);
+  const inPeriod = { date: { $gte: p.from || ymd(p.fromDate), $lte: p.to || ymd(p.toDate) } };
+  const [allByAccount, entries] = await Promise.all([
+    HtCustodyEntry.aggregate([{ $group: { _id: { a: '$account', d: '$direction' }, total: { $sum: '$amount' } } }]),
+    HtCustodyEntry.find(inPeriod).select('account direction amount transferId source').lean(),
+  ]);
+  const ACC = { cash: 'الكاش', card: 'الكارت (كارت المشتريات)', workshop: 'الورشة' };
+  const HREF = '/system/ls2/custody';
+  const accounts = Object.keys(ACC).map((k) => {
+    const of = (d) => allByAccount.find((x) => x._id.a === k && x._id.d === d)?.total || 0;
+    const mine = entries.filter((e) => e.account === k);
+    return { name: ACC[k], periodIn: sum(mine.filter((e) => e.direction === 'in'), 'amount'), periodOut: sum(mine.filter((e) => e.direction === 'out'), 'amount'), totalIn: of('in'), totalOut: of('out'), balance: of('in') - of('out') };
+  });
+  const real = entries.filter((e) => !e.transferId && e.source !== 'opening');
+  return {
+    cards: [
+      card('htCustodyIn', 'وارد عهدة النقل الثقيل في الفترة', 'Heavy custody in (period)', sum(real.filter((e) => e.direction === 'in'), 'amount'), { tone: 'warn', href: HREF }),
+      card('htCustodyOut', 'مصروف عهدة النقل الثقيل في الفترة', 'Heavy custody spent (period)', sum(real.filter((e) => e.direction === 'out'), 'amount'), { tone: 'bad', href: HREF }),
+      card('htCustodyBalance', 'أرصدة عهدة النقل الثقيل', 'Heavy custody balances', sum(accounts, 'balance'), { href: HREF }),
+    ],
+    tables: [{
+      key: 'htCustody', ar: 'عهدة النقل الثقيل حسب الحساب', en: 'Heavy-transport custody by account',
+      columns: [col('name', 'الحساب', 'Account'), col('periodIn', 'وارد الفترة', 'In (period)', 'money'), col('periodOut', 'صادر الفترة', 'Out (period)', 'money'), col('totalIn', 'إجمالي الوارد', 'Total in', 'money'), col('totalOut', 'إجمالي الصادر', 'Total out', 'money'), col('balance', 'الرصيد', 'Balance', 'money')],
+      rows: accounts.map((x) => ({ _href: HREF, name: x.name, periodIn: round(x.periodIn), periodOut: round(x.periodOut), totalIn: round(x.totalIn), totalOut: round(x.totalOut), balance: round(x.balance) })),
+    }],
+  };
+}
+
 async function fleet(p, user) {
   const Ls2Repair = require('../models/Ls2Repair');
   const Ls2ServiceLog = require('../models/Ls2ServiceLog');
-  const [loads, expenses, vlog, store, repairs, services] = await Promise.all([
+  const [loads, expenses, vlog, store, repairs, services, hc] = await Promise.all([
     callController('../controllers/fleetController', 'getLoadsAnalysis', { from: p.from, to: p.to }, user),
     callController('../controllers/fleetController', 'getDriverExpenses', { from: p.from, to: p.to }, user),
     callController('../controllers/fleetController', 'getVehicleLogsSummary', { from: p.from, to: p.to }, user),
@@ -315,6 +350,7 @@ async function fleet(p, user) {
     Ls2Repair.find({ repairDate: { $gte: p.fromDate, $lte: p.toDate } }).select('plate title category cost repairDate workshop status').sort({ repairDate: -1 }).lean(),
     Ls2ServiceLog.find({ $or: [{ serviceDate: { $gte: p.fromDate, $lte: p.toDate } }, { serviceDate: null, createdAt: { $gte: p.fromDate, $lte: p.toDate } }] })
       .select('plate serviceType intervalName cost serviceDate createdAt').lean(),
+    htCustody(p),
   ]);
   const T = loads?.totals || {};
   const E = expenses?.summary || {};
@@ -333,6 +369,7 @@ async function fleet(p, user) {
       card('net', 'الصافي بعد التكاليف', 'Net after costs', (T.income || 0) - (T.driverExpense || 0) - logCost - repairCost - serviceCost, { tone: 'good' }),
       card('storeValue', 'قيمة مخزون قطع الغيار', 'Spare-parts stock value', store?.totals?.totalValue, { href: '/system/ls2/store' }),
       card('loads', 'الحمولات', 'Loads', T.loads, { format: 'number' }),
+      ...hc.cards,
     ],
     tables: [
       {
@@ -359,6 +396,7 @@ async function fleet(p, user) {
         columns: [col('name', 'المشرف', 'Supervisor'), col('loads', 'الحمولات', 'Loads', 'number'), col('income', 'الإيراد', 'Income', 'money'), col('driverExpense', 'مصروف السائقين', 'Driver expense', 'money')],
         rows: (loads?.bySupervisor || []).map((r) => ({ name: r.name, loads: r.loads, income: round(r.income), driverExpense: round(r.driverExpense) })),
       },
+      ...hc.tables,
       {
         key: 'repairs', ar: 'الإصلاحات في الفترة', en: 'Repairs in period',
         columns: [col('date', 'التاريخ', 'Date', 'date'), col('plate', 'الشاحنة', 'Truck'), col('title', 'الإصلاح', 'Repair'), col('category', 'الفئة', 'Category'), col('workshop', 'الورشة', 'Workshop'), col('cost', 'التكلفة', 'Cost', 'money')],

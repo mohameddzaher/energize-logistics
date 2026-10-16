@@ -309,6 +309,8 @@ app.use('/api/section-work', sectionWorkRoutes);
 app.use('/api/jp', require('./routes/jp'));
 app.use('/api/b2c-wallet', authenticate, sectionGate('B2C'), b2cWalletRoutes);
 app.use('/api/crm-vendors', authenticate, sectionGate('CRM'), crmVendorRoutes);
+// عهدةُ النقل الثقيل قبل موجّه القسم: ذاك يحصر نقاطه في أدوار القسم، والعهدةُ لأهل المال أيضًا.
+app.use('/api/ls2/custody', authenticate, sectionGate('Location Solutions'), require('./routes/htCustody'));
 app.use('/api/ls2', authenticate, sectionGate('Location Solutions'), ls2Routes);
 app.use('/api/shipment-orders', authenticate, sectionGate('Shipment Orders'), shipmentOrderRoutes);
 // ── سجلُّ العملاء يُقرأ من ثلاثة أقسام ──────────────────────────────────────

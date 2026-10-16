@@ -971,6 +971,12 @@
       ],
       "wildcard": false
     },
+    "/system/ls2/custody": {
+      "apis": [
+        "/api/ls2/custody"
+      ],
+      "wildcard": false
+    },
     "/system/ls2/store": {
       "apis": [
         "/api/lookups/types",
@@ -1564,8 +1570,7 @@
     },
     "/system/b2c/light-transport/custody": {
       "apis": [
-        "/api/light-transport/custody",
-        "/api/light-transport/custody/rep"
+        "/api/light-transport/custody"
       ],
       "wildcard": false
     },

@@ -692,6 +692,12 @@
       "en": "Fleet Assets"
     },
     {
+      "key": "/system/ls2/custody",
+      "section": "Location Solutions",
+      "ar": "عهدة النقل الثقيل",
+      "en": "Heavy Transport Custody"
+    },
+    {
       "key": "/system/ls2/store",
       "section": "Location Solutions",
       "ar": "مخزن النقل الثقيل",

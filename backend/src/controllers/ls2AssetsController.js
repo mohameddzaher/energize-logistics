@@ -814,12 +814,36 @@ exports.createTrailer = async (req, res) => {
 // body: { toPlate | null, displacedTo: 'standing'|'swap', reason, notes, date }
 
 /** ينقل كاوتش تيدر معيّن للوحة جديدة (أو يفضّيها لو التيدر وقف)، ويسجّل كل فردة. */
-async function carryTrailerTires(req, trailer, toPlate, toKey, when, odometerKm, reason) {
-  const tires = await Ls2TireAsset.find({ trailerNumber: trailer.trailerNumber, status: 'mounted' });
+/**
+ * فِرَدُ التيدر — تُجمَع **قبل** أن يتحرّك أيُّ تيدر.
+ *
+ * ── لماذا قبل ─────────────────────────────────────────────────────────────
+ * رقمُ التيدر على الفردة يُشتقّ عند حفظها من «أيُّ تيدرٍ على هذه العربيّة الآن»
+ * (deriveTrailer في models/Ls2TireAsset). وفي التبديل كان التيدرُ المُزاح يُركَّب
+ * على العربيّة الأولى وفِرَدُه تُحفَظ هناك **والتيدرُ الأوّل لم يغادرها بعد** —
+ * فتيدران على لوحةٍ واحدة، والفِرَدُ تأخذ رقمَ أيّهما صادف، فتُجمَع بعدها مع
+ * فِرَد التيدر الأوّل وتمشي معه. النتيجة: كاوتشُ التيدرين كلُّه على عربيّةٍ
+ * واحدة، والعربيّةُ الأخرى بلا كاوتش (بلاغُ الورشة ٢٠٢٦/١٠/١٧).
+ *
+ * ── ومن موضعها لا من رقمها وحده ─────────────────────────────────────────
+ * فردةٌ في قسم التيدر على عربيّة التيدر هي على التيدر، ولو خلا رقمُه منها
+ * (سُجّلت قبل تسجيل التيدر). كانت تُترَك على العربيّة القديمة.
+ */
+async function trailerTires(trailer) {
+  const or = [{ trailerNumber: trailer.trailerNumber }];
+  if (trailer.currentPlateKey) {
+    or.push({ plateKey: trailer.currentPlateKey, section: { $regex: 'تيدر|تريل' }, trailerNumber: { $in: [null, ''] } });
+  }
+  return Ls2TireAsset.find({ status: 'mounted', $or: or });
+}
+
+/** ينقل فِرَداً جُمعت مسبقًا (`trailerTires`) إلى حيث صار تيدرُها. يُنادى بعد تركيب التيدرات كلِّها. */
+async function carryTrailerTires(req, trailer, tires, toPlate, toKey, when, odometerKm, reason) {
   for (const ti of tires) {
     const from = { plate: ti.plate, key: ti.plateKey, pos: posLabel(ti) };
     if (String(from.key || '') === String(toKey || '')) continue;
-    ti.set({ plate: toPlate || null, plateKey: toKey || null });
+    // والرقمُ يُكتب صراحةً: فردةٌ تمشي مع تيدرٍ يصير واقفًا لا عربيّةَ لها يشتقّ منها.
+    ti.set({ plate: toPlate || null, plateKey: toKey || null, trailerNumber: trailer.trailerNumber });
     await ti.save();
     await logEvent(req, {
       entityType: 'tire', refId: ti._id, label: ti.serial, action: 'transferred',
@@ -884,13 +908,17 @@ exports.moveTrailer = async (req, res) => {
 
     const live = toKey ? await vehicleByKey(toKey) : null;
     let moved = 0; let occupantMoved = 0;
+    // فِرَدُ كلِّ تيدرٍ تُعرَف وهو في مكانه — قبل أيِّ حركة. راجع `trailerTires`.
+    const ownTires = await trailerTires(trailer);
+    const occupantTires = occupant ? await trailerTires(occupant) : [];
+    const occDest = occupant && displacedTo === 'swap' ? { plate: from.plate, key: from.key } : { plate: null, key: null };
 
     // ① نفضّي العربية القديمة من التيدر ده
     if (from.key) await Ls2Flatbed.updateOne({ plateKey: from.key }, { currentTrailerNumber: null });
 
     // ② التيدر اللي على العربية المستقبِلة يروح مكانه المحدّد — **بكاوتشه**
     if (occupant) {
-      const dest = displacedTo === 'swap' ? { plate: from.plate, key: from.key } : { plate: null, key: null };
+      const dest = occDest;
       await seatTrailer(occupant, dest.plate, dest.key);
       await logEvent(req, {
         entityType: 'trailer', refId: occupant._id, label: occupant.trailerNumber,
@@ -901,9 +929,6 @@ exports.moveTrailer = async (req, res) => {
           ? `تبديل مع التيدر ${trailer.trailerNumber}`
           : `نزل ووقف لوحده لتركيب التيدر ${trailer.trailerNumber} مكانه`),
       });
-      const occLive = dest.key ? await vehicleByKey(dest.key) : null;
-      occupantMoved = await carryTrailerTires(req, occupant, dest.plate, dest.key, when,
-        occLive?.odometerKm, reason || `مشيت مع التيدر ${occupant.trailerNumber}`);
     }
 
     // ③ التيدر نفسه
@@ -915,7 +940,14 @@ exports.moveTrailer = async (req, res) => {
       toPlate: toPlate || null, toPlateKey: toKey, date: when,
       odometerKm: live?.odometerKm ?? null, reason, notes,
     });
-    moved = await carryTrailerTires(req, trailer, toPlate, toKey, when, live?.odometerKm, reason);
+
+    // ④ والكاوتش بعد أن استقرّ كلُّ تيدرٍ في مكانه — كلُّ فردةٍ مع تيدرها.
+    if (occupant) {
+      const occLive = occDest.key ? await vehicleByKey(occDest.key) : null;
+      occupantMoved = await carryTrailerTires(req, occupant, occupantTires, occDest.plate, occDest.key, when,
+        occLive?.odometerKm, reason || `مشيت مع التيدر ${occupant.trailerNumber}`);
+    }
+    moved = await carryTrailerTires(req, trailer, ownTires, toPlate, toKey, when, live?.odometerKm, reason);
 
     // التيدرُ تحرّك: رقمُه على فِرَد العربيّتين يتبع ما صار — راجع services/ls2TireTrailers.
     await require('../services/ls2TireTrailers').resyncTireTrailers();

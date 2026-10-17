@@ -13,6 +13,9 @@ import '../ui/live_shot.dart';
 /// وهي الأولى بالهاتف لا بالحاسوب: المشرفُ واقفٌ في المحطّة أمام الدرّاجة، لا
 /// جالسٌ خلف مكتب. والصورةُ تُلتقَط من الكاميرا ولا تُرفَع من المعرض — راجع
 /// `ui/live_shot.dart`.
+///
+/// قائمتان كالموقع: المناديبُ والدبّاباتُ. التفقّدُ يقع على أيٍّ منهما، والاثنان
+/// مربوطان في الخادم: تفقّدُ دبّابٍ له راكبٌ يظهر «تمّ» عند الراكب، والعكس.
 class B2cDutyScreen extends StatefulWidget {
   const B2cDutyScreen({super.key});
   @override
@@ -40,7 +43,9 @@ bool get _isThursday => DateTime.now().weekday == DateTime.thursday;
 
 class _B2cDutyScreenState extends State<B2cDutyScreen> {
   List<Map<String, dynamic>> _reps = [];
-  int _done = 0;
+  List<Map<String, dynamic>> _bikes = [];
+  String _mode = 'reps';
+  String _q = '';
   bool _loading = true;
   String? _error;
   late final void Function() _onLive;
@@ -65,7 +70,7 @@ class _B2cDutyScreenState extends State<B2cDutyScreen> {
       if (!mounted) return;
       setState(() {
         _reps = List<Map<String, dynamic>>.from(d['reps'] ?? []);
-        _done = (d['done'] ?? 0) as int;
+        _bikes = List<Map<String, dynamic>>.from(d['bikes'] ?? []);
         _loading = false;
         _error = null;
       });
@@ -74,12 +79,12 @@ class _B2cDutyScreenState extends State<B2cDutyScreen> {
     }
   }
 
-  Future<void> _open(Map<String, dynamic> rep) async {
+  Future<void> _open(Map<String, dynamic> rep, {String? bikeId, bool bikeOnly = false}) async {
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _CheckSheet(rep: rep),
+      builder: (_) => _CheckSheet(rep: rep, bikeId: bikeId, bikeOnly: bikeOnly),
     );
     if (saved == true) {
       _load();
@@ -91,10 +96,35 @@ class _B2cDutyScreenState extends State<B2cDutyScreen> {
     }
   }
 
+  // فتحُ دبّاب: براكبه إن عُرف (فيُكتب التفقّدُ عليه أيضًا)، أو وحدَه.
+  void _openBike(Map<String, dynamic> b) {
+    final vehicle = {'plate': b['plate'], 'typeAr': 'دراجة آلية', 'typeKey': 'motorcycle'};
+    final riderId = (b['rider'] as Map?)?['_id'];
+    final rider = riderId == null ? null : _reps.where((r) => r['_id'] == riderId).firstOrNull;
+    final rep = rider != null
+        ? {...rider, 'vehicle': vehicle, 'check': b['check'] ?? rider['check']}
+        : {'_id': '', 'englishName': tr('دبّاب ${b['plate']}', 'Bike ${b['plate']}'), 'vehicle': vehicle, 'check': b['check']};
+    _open(rep, bikeId: '${b['_id']}', bikeOnly: rider == null);
+  }
+
+  static String _fold(String v) => v.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
+  bool _hit(List<dynamic> hay) {
+    final term = _fold(_q.trim());
+    if (term.isEmpty) return true;
+    if (hay.any((x) => _fold('${x ?? ''}').contains(term))) return true;
+    final digits = term.replaceAll(RegExp(r'\D'), '');
+    return digits.length >= 3 && hay.any((x) => '${x ?? ''}'.replaceAll(RegExp(r'\D'), '').contains(digits));
+  }
+
   @override
   Widget build(BuildContext context) {
-    final pending = _reps.where((r) => r['check'] == null).toList();
-    final done = _reps.where((r) => r['check'] != null).toList();
+    final bikesMode = _mode == 'bikes';
+    final list = bikesMode
+        ? _bikes.where((b) => _hit([b['plate'], (b['rider'] as Map?)?['name'], (b['rider'] as Map?)?['idNumber'], b['authorizedName'], b['cityAr'], b['departmentAr']])).toList()
+        : _reps.where((r) => _hit([r['englishName'], r['arabicName'], r['repId'], r['idNumber'], (r['vehicle'] as Map?)?['plate'], r['ownerName'], (r['branch'] as Map?)?['name']])).toList();
+    final pending = list.where((r) => r['check'] == null).toList();
+    final done = list.where((r) => r['check'] != null).toList();
+    Widget rowOf(Map<String, dynamic> r) => bikesMode ? _bikeRow(r) : _row(r);
     return AppScaffold(
       title: Text(tr('تفقّد بداية الدوام', 'Duty start check')),
       body: _loading
@@ -105,7 +135,7 @@ class _B2cDutyScreenState extends State<B2cDutyScreen> {
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: _reps.isEmpty
+                  child: _reps.isEmpty && _bikes.isEmpty
                       ? ListView(children: [
                           const SizedBox(height: 70),
                           EmptyState(
@@ -118,23 +148,60 @@ class _B2cDutyScreenState extends State<B2cDutyScreen> {
                       : ListView(
                           padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
                           children: [
+                            // التفقّدُ بالمندوب أو بالدبّاب.
                             Row(children: [
-                              _stat(tr('مندوبوك', 'Riders'), _reps.length, T.navy),
+                              for (final m in [
+                                ('reps', tr('المناديب (${_reps.length})', 'Riders (${_reps.length})'), Icons.person_outline),
+                                ('bikes', tr('الدبّابات (${_bikes.length})', 'Bikes (${_bikes.length})'), Icons.two_wheeler),
+                              ]) ...[
+                                Expanded(child: _mode == m.$1
+                                    ? FilledButton.icon(
+                                        style: FilledButton.styleFrom(backgroundColor: T.orange),
+                                        onPressed: () {}, icon: Icon(m.$3, size: 18), label: Text(m.$2))
+                                    : OutlinedButton.icon(
+                                        onPressed: () => setState(() => _mode = m.$1), icon: Icon(m.$3, size: 18), label: Text(m.$2))),
+                                if (m.$1 == 'reps') const SizedBox(width: 8),
+                              ],
+                            ]),
+                            const SizedBox(height: 10),
+                            TextField(
+                              onChanged: (v) => setState(() => _q = v),
+                              decoration: InputDecoration(
+                                isDense: true, prefixIcon: const Icon(Icons.search),
+                                hintText: bikesMode
+                                    ? tr('ابحث باللوحة أو الراكب أو المفوَّض…', 'Search plate, rider or authorised person…')
+                                    : tr('ابحث بالاسم أو الهوية أو اللوحة…', 'Search name, ID or plate…'),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Row(children: [
+                              _stat(bikesMode ? tr('الدبّابات', 'Bikes') : tr('المناديب', 'Riders'), list.length, T.navy),
                               const SizedBox(width: 8),
-                              _stat(tr('تمّ', 'Done'), _done, T.success),
+                              _stat(tr('تمّ', 'Done'), done.length, T.success),
                               const SizedBox(width: 8),
                               _stat(tr('بقي', 'Left'), pending.length, pending.isEmpty ? T.inkFaint : T.warn),
                             ]),
+                            if (bikesMode) Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                tr('تفقّدُ دبّابٍ له راكبٌ في السجلّ أو مفوَّضٌ عليه يُسجَّل على المندوب أيضًا.',
+                                   'Checking a bike with a known rider also counts for the rider.'),
+                                style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                            ),
                             const SizedBox(height: 14),
                             if (pending.isNotEmpty) ...[
                               _header(tr('بانتظار التفقّد', 'Awaiting check'), pending.length),
-                              ...pending.map((r) => _row(r)),
+                              ...pending.map(rowOf),
                               const SizedBox(height: 12),
                             ],
                             if (done.isNotEmpty) ...[
                               _header(tr('تمّ اليوم', 'Done today'), done.length),
-                              ...done.map((r) => _row(r)),
+                              ...done.map(rowOf),
                             ],
+                            if (list.isEmpty) Padding(
+                              padding: const EdgeInsets.all(30),
+                              child: Center(child: Text(tr('لا نتائج', 'No results'), style: const TextStyle(color: T.inkFaint))),
+                            ),
                           ],
                         ),
                 ),
@@ -154,6 +221,53 @@ class _B2cDutyScreenState extends State<B2cDutyScreen> {
         padding: const EdgeInsets.only(bottom: 8),
         child: Text('$s ($n)', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: T.inkSoft)),
       );
+
+  Widget _bikeRow(Map<String, dynamic> b) {
+    final check = b['check'] as Map<String, dynamic>?;
+    final meta = check != null ? _outcomes[check['outcome']] : null;
+    final photos = check == null ? const [] : (check['photos'] as List? ?? const []);
+    final rider = (b['rider'] as Map?)?['name'];
+    final auth = '${b['authorizedName'] ?? ''}';
+    final who = rider != null ? '$rider' : (auth.isNotEmpty ? '${tr('مفوَّض', 'Authorised')}: $auth' : tr('بلا راكب في السجلّ', 'No rider on record'));
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _openBike(b),
+        child: AppCard(
+          topAccent: check == null ? T.warn : null,
+          child: Row(children: [
+            if (photos.isNotEmpty)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(9),
+                child: Image.network('${AppConfig.apiBase}${photos.first['fileUrl']}', width: 44, height: 44, fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported_outlined, size: 20, color: T.inkFaint)),
+              )
+            else
+              Container(
+                width: 44, height: 44,
+                decoration: BoxDecoration(color: T.inkFaint.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(9)),
+                child: const Icon(Icons.two_wheeler, size: 18, color: T.inkFaint),
+              ),
+            const SizedBox(width: 10),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${b['plate']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+              Text([who, b['cityAr']].where((x) => x != null && '$x'.isNotEmpty).join(' · '),
+                  style: const TextStyle(fontSize: 11, color: T.inkFaint), maxLines: 1, overflow: TextOverflow.ellipsis),
+            ])),
+            if (meta != null)
+              Chip2(tr(meta.$1, meta.$2), meta.$4)
+            else
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(color: T.orange, borderRadius: BorderRadius.circular(8)),
+                child: Text(tr('تفقّد', 'Check'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 11.5)),
+              ),
+          ]),
+        ),
+      ),
+    );
+  }
 
   Widget _row(Map<String, dynamic> rep) {
     final check = rep['check'] as Map<String, dynamic>?;
@@ -211,8 +325,11 @@ class _B2cDutyScreenState extends State<B2cDutyScreen> {
 
 /// ورقةُ التفقّد: الحالةُ، ثمّ الصورةُ إن خرجت مركبة، ثمّ التفاصيل.
 class _CheckSheet extends StatefulWidget {
-  const _CheckSheet({required this.rep});
+  const _CheckSheet({required this.rep, this.bikeId, this.bikeOnly = false});
   final Map<String, dynamic> rep;
+  /// فُتح من قائمة الدبّابات: الدبّابُ معروف. و`bikeOnly` = لا راكبَ معروفًا له.
+  final String? bikeId;
+  final bool bikeOnly;
   @override
   State<_CheckSheet> createState() => _CheckSheetState();
 }
@@ -229,19 +346,23 @@ class _CheckSheetState extends State<_CheckSheet> {
       _shots.where((s) => s.$1 == kind).length +
       ((widget.rep['check'] as Map?)?['photos'] as List? ?? const [])
           .where((p) => '${(p as Map)['kind'] ?? 'vehicle'}' == kind).length;
-  List<String> get _lacking => _kinds.keys.where((k) => _countOf(k) == 0).toList();
+  /// دبّابٌ بلا راكبٍ معروف: صورةُ الدبّاب والبوكس — لا مندوبَ يُصوَّر.
+  Map<String, (String, String, IconData)> get _needed =>
+      widget.bikeOnly ? (Map.of(_kinds)..remove('rep')) : _kinds;
+  List<String> get _lacking => _needed.keys.where((k) => _countOf(k) == 0).toList();
   /// الأنواعُ المعروضة اليوم: الثلاثةُ دائمًا، والإعلانيُّ يوم الخميس.
   Map<String, (String, String, IconData)> get _shownKinds =>
-      _isThursday ? {..._kinds, _adKind: _adMeta} : _kinds;
+      _isThursday ? {..._needed, _adKind: _adMeta} : _needed;
 
   @override
   void initState() {
     super.initState();
     final c = widget.rep['check'] as Map<String, dynamic>?;
+    _plate.text = '${(widget.rep['vehicle'] as Map?)?['plate'] ?? ''}';
     if (c != null) {
       _outcome = '${c['outcome'] ?? 'started'}';
       _notes.text = '${c['notes'] ?? ''}';
-      _plate.text = '${c['vehiclePlate'] ?? ''}';
+      if (widget.bikeId == null && '${c['vehiclePlate'] ?? ''}'.isNotEmpty) _plate.text = '${c['vehiclePlate']}';
       _vehicle = '${c['vehicleType'] ?? 'motorcycle'}';
     }
   }
@@ -269,7 +390,8 @@ class _CheckSheetState extends State<_CheckSheet> {
     setState(() => _saving = true);
     try {
       await Api.instance.post('/api/b2c/duty', {
-        'rep': widget.rep['_id'],
+        if ('${widget.rep['_id'] ?? ''}'.isNotEmpty) 'ltEmployee': widget.rep['_id'],
+        if (widget.bikeId != null) 'vehicle': widget.bikeId,
         'outcome': _outcome,
         'vehicleType': _vehicle,
         'vehiclePlate': _plate.text.trim(),
@@ -304,6 +426,14 @@ class _CheckSheetState extends State<_CheckSheet> {
             color: T.inkFaint.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(2)))),
           const SizedBox(height: 12),
           Text('$name', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+          if (widget.bikeId != null) Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              widget.bikeOnly
+                  ? tr('دبّابٌ بلا راكبٍ معروف — يُتفقَّد وحدَه: صورة الدبّاب والبوكس.', 'No known rider — bike and box photos only.')
+                  : tr('يُسجَّل التفقّد على الدبّاب وعلى راكبه معًا.', 'Recorded on the bike and its rider together.'),
+              style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+          ),
           const SizedBox(height: 12),
 
           Row(children: _outcomes.entries.map((e) {
@@ -406,6 +536,8 @@ class _CheckSheetState extends State<_CheckSheet> {
             const SizedBox(width: 8),
             Expanded(child: TextField(
               controller: _plate,
+              // الدبّابُ المفتوحُ من قائمته لوحتُه معروفةٌ لا تُكتب.
+              readOnly: widget.bikeId != null,
               decoration: InputDecoration(labelText: tr('اللوحة', 'Plate')),
             )),
           ]),

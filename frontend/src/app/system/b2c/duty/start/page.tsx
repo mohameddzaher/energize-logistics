@@ -2,8 +2,9 @@
 /**
  * تفقُّد بداية الدوام — شاشةُ المشرف.
  *
- * قائمةُ مندوبيه هو، وأمام كلٍّ زرٌّ واحد. ولا يُفتَح غيرُ مندوبيه: الخادمُ
- * يبني القائمةَ من `B2CRep.supervisor` ويردّ من حاول غيرَها.
+ * قائمتان: المناديبُ (سجلُّ النقل الخفيف) والدبّاباتُ (سجلُّ المركبات). والتفقّدُ
+ * يقع على أيٍّ منهما، والاثنان مربوطان في الخادم: تفقّدُ دبّابٍ له راكبٌ (لوحتُه
+ * في السجلّ أو مفوَّضٌ عليه) يظهر «تمّ» عند الراكب، وتفقّدُ مندوبٍ يظهر على دبّابه.
  *
  * والصورةُ تُلتقَط من الكاميرا ولا تُرفَع — راجع `components/b2c/LiveCamera`.
  */
@@ -61,6 +62,13 @@ interface Rep {
   idNumber?: string;
 }
 
+/** دبّابٌ من سجلّ المركبات — ومعه راكبُه إن عُرف. راجع `myReps` في الخادم. */
+interface BikeRowT {
+  _id: string; plate: string; sectorAr?: string; cityAr?: string; departmentAr?: string;
+  authorizedName?: string; rider: { _id: string; name: string; idNumber?: string } | null; check: Check | null;
+}
+type Opened = { rep: Rep; bikeId?: string; bikeOnly?: boolean };
+
 const OUTCOME_META: Record<Outcome, { ar: string; en: string; cls: string; Icon: any }> = {
   started: { ar: 'بدأ الدوام', en: 'Started', cls: 'bg-emerald-100 text-emerald-700 border-emerald-300', Icon: CheckCircle2 },
   absent: { ar: 'لم يحضر', en: 'Absent', cls: 'bg-slate-200 text-slate-700 border-slate-300', Icon: UserX },
@@ -78,9 +86,12 @@ export default function DutyStartPage() {
     mineDone?: number; mineTotal?: number; carsExcluded?: number; unassigned?: number;
     /** دبّاباتُ القسم — تُختار منها اللوحةُ لمن لا صلةَ لصفّه بالسجلّ. */
     vehicleOptions?: { plate: string; typeAr: string; rider: string }[];
+    bikes?: BikeRowT[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [open, setOpen] = useState<Rep | null>(null);
+  const [open, setOpen] = useState<Opened | null>(null);
+  // التفقّدُ بالمندوب أو بالدبّاب — والاثنان مربوطان في الخادم.
+  const [mode, setMode] = useState<'reps' | 'bikes'>('reps');
   /**
    * ── «مناديبي» أو «الكلّ» ────────────────────────────────────────────────
    * الإسنادُ باقٍ: لكلّ مندوبٍ مشرفُه، وهو ما يُسأل عنه. لكنّ أيَّ مشرفٍ يتفقّد
@@ -92,7 +103,12 @@ export default function DutyStartPage() {
   const [q, setQ] = useState('');
 
   const load = useCallback(async () => {
-    try { setData(await api.get('/api/b2c/duty/my-reps')); } catch { setData(null); }
+    try {
+      const d: any = await api.get('/api/b2c/duty/my-reps');
+      setData(d);
+      // مشرفٌ لا مناديبَ مُسنَدةً له كانت الشاشةُ تفتح عليه فارغةً — فتفتح على الكلّ.
+      if (!d?.mineTotal) setScope('all');
+    } catch { setData(null); }
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -122,6 +138,27 @@ export default function DutyStartPage() {
   }, [all, scope, q]);
   const pending = useMemo(() => reps.filter((r) => !r.check), [reps]);
   const done = useMemo(() => reps.filter((r) => r.check), [reps]);
+  const bikes = useMemo(() => {
+    const term = fold(q.trim());
+    const digits = term.replace(/\D/g, '');
+    return (data?.bikes || []).filter((b) => {
+      if (!term) return true;
+      const hay = [b.plate, b.rider?.name, b.rider?.idNumber, b.authorizedName, b.cityAr, b.departmentAr];
+      if (hay.some((x) => fold(String(x || '')).includes(term))) return true;
+      return digits.length >= 3 && hay.some((x) => String(x || '').replace(/\D/g, '').includes(digits));
+    });
+  }, [data, q]);
+  const bikesPending = useMemo(() => bikes.filter((b) => !b.check), [bikes]);
+  const bikesDone = useMemo(() => bikes.filter((b) => b.check), [bikes]);
+  // فتحُ دبّاب: براكبه إن عُرف (فيُكتب التفقّدُ عليه أيضًا)، أو وحدَه.
+  const openBike = (b: BikeRowT) => {
+    const vehicle = { plate: b.plate, typeAr: 'دراجة آلية', typeKey: 'motorcycle' };
+    const riderRep = b.rider ? all.find((r) => r._id === b.rider!._id) : null;
+    const rep: Rep = riderRep
+      ? { ...riderRep, vehicle, check: b.check || riderRep.check }
+      : { _id: '', englishName: `${ar ? 'دبّاب' : 'Bike'} ${b.plate}`, vehicle, check: b.check };
+    setOpen({ rep, bikeId: b._id, bikeOnly: !riderRep });
+  };
 
   if (loading) return <div className="p-10 text-center text-slate-500">{t('جارٍ التحميل…', 'Loading…')}</div>;
 
@@ -157,9 +194,21 @@ export default function DutyStartPage() {
         </Link>
       </div>
 
+      {/* التفقّدُ بالمندوب أو بالدبّاب. */}
+      <div className="grid grid-cols-2 gap-2">
+        {([['reps', t(`المناديب (${data?.total ?? 0})`, `Riders (${data?.total ?? 0})`), User],
+          ['bikes', t(`الدبّابات (${data?.bikes?.length ?? 0})`, `Bikes (${data?.bikes?.length ?? 0})`), Bike]] as const).map(([k, label, Icon]) => (
+          <button key={k} type="button" onClick={() => setMode(k)}
+            className={`flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[13px] font-bold ${mode === k
+              ? 'border-[#f37121] bg-[#f37121] text-white' : 'border-slate-200 bg-white text-slate-600'}`}>
+            <Icon className="h-4 w-4" />{label}
+          </button>
+        ))}
+      </div>
+
       {/* نطاقُ العرض: رجالي أوّلًا — والعدّادان يخصّان المعروضَ لا السجلَّ كلَّه. */}
       <div className="flex flex-wrap items-center gap-2">
-        {([['mine', t(`تفقّدي أنا (${data?.mineTotal ?? 0})`, `My duty riders (${data?.mineTotal ?? 0})`)],
+        {mode === 'reps' && ([['mine', t(`تفقّدي أنا (${data?.mineTotal ?? 0})`, `My duty riders (${data?.mineTotal ?? 0})`)],
           ['all', t(`كل المناديب (${data?.total ?? 0})`, `All riders (${data?.total ?? 0})`)]] as const).map(([k, label]) => (
           <button key={k} type="button" onClick={() => setScope(k as 'mine' | 'all')}
             className={`rounded-lg border px-3 py-1.5 text-[12px] font-semibold ${scope === k
@@ -168,10 +217,38 @@ export default function DutyStartPage() {
           </button>
         ))}
         <input value={q} onChange={(e) => setQ(e.target.value)}
-          placeholder={t('ابحث بالاسم أو الهوية أو الإقامة أو اللوحة أو المشرف…', 'Search name, ID, iqama, plate or supervisor…')}
+          placeholder={mode === 'bikes'
+            ? t('ابحث باللوحة أو الراكب أو المفوَّض أو المدينة…', 'Search plate, rider, authorised person or city…')
+            : t('ابحث بالاسم أو الهوية أو الإقامة أو اللوحة أو المشرف…', 'Search name, ID, iqama, plate or supervisor…')}
           className="min-w-[200px] flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-[12.5px]" />
       </div>
 
+      {mode === 'bikes' ? (
+        <>
+          <div className="grid grid-cols-3 gap-3">
+            <Stat label={t('الدبّابات المعروضة', 'Bikes shown')} value={bikes.length} />
+            <Stat label={t('تمّ تفقّدها', 'Checked')} value={bikesDone.length} tone="text-emerald-600" />
+            <Stat label={t('بقي', 'Remaining')} value={bikesPending.length} tone={bikesPending.length ? 'text-amber-600' : 'text-slate-400'} />
+          </div>
+          <p className="text-[11px] text-slate-500">
+            {t('تفقّدُ دبّابٍ له راكبٌ في السجلّ أو مفوَّضٌ عليه يُسجَّل على المندوب أيضًا — ويظهر «تمّ» في القائمتين.',
+               'Checking a bike with a known rider (register plate or authorisation) also counts for the rider — it shows as done in both lists.')}
+          </p>
+          {!!bikesPending.length && (
+            <Section title={t('بانتظار التفقّد', 'Awaiting check')} count={bikesPending.length}>
+              {bikesPending.map((b) => <BikeItem key={b._id} bike={b} ar={ar} onClick={() => openBike(b)} />)}
+            </Section>
+          )}
+          {!!bikesDone.length && (
+            <Section title={t('تمّ اليوم', 'Done today')} count={bikesDone.length}>
+              {bikesDone.map((b) => <BikeItem key={b._id} bike={b} ar={ar} onClick={() => openBike(b)} />)}
+            </Section>
+          )}
+          {!bikes.length && (
+            <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500 shadow-sm">{t('لا نتائج', 'No results')}</div>
+          )}
+        </>
+      ) : (<>
       <div className="grid grid-cols-3 gap-3">
         <Stat label={scope === 'mine' ? t('مندوبوك', 'Your riders') : t('المعروضون', 'Shown')} value={reps.length} />
         <Stat label={t('تمّ تفقّدهم', 'Checked')} value={done.length} tone="text-emerald-600" />
@@ -196,18 +273,19 @@ export default function DutyStartPage() {
       {!!pending.length && (
         <Section title={t('بانتظار التفقّد', 'Awaiting check')} count={pending.length}>
           {pending.map((r) => (
-            <RepRow key={r._id} rep={r} ar={ar} onClick={() => setOpen(r)} />
+            <RepRow key={r._id} rep={r} ar={ar} onClick={() => setOpen({ rep: r })} />
           ))}
         </Section>
       )}
 
       {!!done.length && (
         <Section title={t('تمّ اليوم', 'Done today')} count={done.length}>
-          {done.map((r) => <RepRow key={r._id} rep={r} ar={ar} onClick={() => setOpen(r)} />)}
+          {done.map((r) => <RepRow key={r._id} rep={r} ar={ar} onClick={() => setOpen({ rep: r })} />)}
         </Section>
       )}
+      </>)}
 
-      {open && <CheckModal rep={open} ar={ar} plates={data?.vehicleOptions || []} onClose={() => setOpen(null)} onSaved={() => { setOpen(null); load(); notify(t('سُجّل التفقّد', 'Check recorded'), 'success'); }} />}
+      {open && <CheckModal rep={open.rep} bikeId={open.bikeId} bikeOnly={open.bikeOnly} ar={ar} plates={data?.vehicleOptions || []} onClose={() => setOpen(null)} onSaved={() => { setOpen(null); load(); notify(t('سُجّل التفقّد', 'Check recorded'), 'success'); }} />}
     </div>
   );
 }
@@ -225,6 +303,29 @@ const Section = ({ title, count, children }: { title: string; count: number; chi
     <div className="space-y-2">{children}</div>
   </div>
 );
+
+function BikeItem({ bike, ar, onClick }: { bike: BikeRowT; ar: boolean; onClick: () => void }) {
+  const m = bike.check ? OUTCOME_META[bike.check.outcome] : null;
+  const who = bike.rider?.name || (bike.authorizedName ? `${ar ? 'مفوَّض' : 'Authorised'}: ${bike.authorizedName}` : '');
+  return (
+    <button type="button" onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-start shadow-sm hover:border-[#f37121]/50">
+      {bike.check?.photos?.[0]
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={bike.check.photos[0].fileUrl} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" />
+        : <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-400"><Bike className="h-4 w-4" /></span>}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-mono text-[13.5px] font-semibold text-slate-900"><bdi>{bike.plate}</bdi></span>
+        <span className="block truncate text-[11px] text-slate-500">
+          {[who || (ar ? 'بلا راكب في السجلّ' : 'No rider on record'), bike.cityAr, bike.departmentAr].filter(Boolean).join(' · ')}
+        </span>
+      </span>
+      {m
+        ? <span className={`shrink-0 rounded-md border px-2 py-1 text-[11px] font-semibold ${m.cls}`}>{ar ? m.ar : m.en}</span>
+        : <span className="shrink-0 rounded-md bg-[#f37121] px-3 py-1.5 text-[11px] font-bold text-white">{ar ? 'تفقّد' : 'Check'}</span>}
+    </button>
+  );
+}
 
 function RepRow({ rep, ar, onClick }: { rep: Rep; ar: boolean; onClick: () => void }) {
   const m = rep.check ? OUTCOME_META[rep.check.outcome] : null;
@@ -291,8 +392,12 @@ function PhotoViewer({ shot, ar, onClose }: { shot: { dataUrl: string; label: st
   );
 }
 
-function CheckModal({ rep, ar, plates, onClose, onSaved }: {
+function CheckModal({ rep, bikeId, bikeOnly, ar, plates, onClose, onSaved }: {
   rep: Rep; ar: boolean;
+  /** تفقّدٌ فُتح من قائمة الدبّابات: الدبّابُ معروفٌ ولوحتُه لا تُغيَّر. */
+  bikeId?: string;
+  /** دبّابٌ لا راكبَ معروفًا له — فلا صورةَ مندوب. */
+  bikeOnly?: boolean;
   /** دبّاباتُ القسم بلوحاتها وراكبها في السجلّ. */
   plates: { plate: string; typeAr: string; rider: string }[];
   onClose: () => void; onSaved: () => void;
@@ -301,7 +406,9 @@ function CheckModal({ rep, ar, plates, onClose, onSaved }: {
   const t = (a: string, e: string) => (ar ? a : e);
   const [outcome, setOutcome] = useState<Outcome>(rep.check?.outcome || 'started');
   const [shots, setShots] = useState<KindShot[]>([]);
-  const [kind, setKind] = useState<PhotoKind>('rep');
+  const [kind, setKind] = useState<PhotoKind>(bikeOnly ? 'vehicle' : 'rep');
+  // دبّابٌ بلا راكبٍ معروف: صورةُ الدبّاب والبوكس — لا مندوبَ يُصوَّر. والخادمُ يقضي بالشيء نفسِه.
+  const NEEDED = bikeOnly ? REQUIRED_KINDS.filter((k) => k.key !== 'rep') : REQUIRED_KINDS;
   // المحفوظُ أوّلًا (تفقّدٌ يُعدَّل)، ثمّ سجلُّ القسم، ثمّ الافتراضُ الشائع.
   const [vehicleType, setVehicleType] = useState(
     rep.check?.vehicleType || rep.vehicle?.typeKey || 'motorcycle');
@@ -332,9 +439,9 @@ function CheckModal({ rep, ar, plates, onClose, onSaved }: {
   const countOf = (k: PhotoKind) => shots.filter((s) => s.kind === k).length
     + (rep.check?.photos || []).filter((p) => (p.kind || 'vehicle') === k).length;
   const adDay = isThursday();
-  const PHOTO_KINDS = adDay ? [...REQUIRED_KINDS, AD_KIND] : REQUIRED_KINDS;
+  const PHOTO_KINDS = adDay ? [...NEEDED, AD_KIND] : NEEDED;
   // المطلوبُ للحفظ هو الثلاثةُ وحدَها — والإعلانيّ زيادةٌ لا شرط.
-  const lacking = REQUIRED_KINDS.filter((k) => !countOf(k.key));
+  const lacking = NEEDED.filter((k) => !countOf(k.key));
   /**
    * ── ومَن لم يخرج يُسأل: لماذا ─────────────────────────────────────────────
    * «بدأ الدوام» تشهد له ثلاثُ صور. و«لم يحضر»/«مُنع من الخروج» ليس لهما شاهدٌ
@@ -351,7 +458,7 @@ function CheckModal({ rep, ar, plates, onClose, onSaved }: {
     try {
       await api.post('/api/b2c/duty', {
         // الموضوعُ صفُّ سجلّ النقل الخفيف — كشفُ مناديبنا. راجع `myReps`.
-        ltEmployee: rep._id, outcome, vehicleType, vehiclePlate: plate,
+        ltEmployee: rep._id || undefined, vehicle: bikeId || undefined, outcome, vehicleType, vehiclePlate: plate,
         notes,
         photos: shots, location: loc || undefined,
       });
@@ -364,7 +471,14 @@ function CheckModal({ rep, ar, plates, onClose, onSaved }: {
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-0 sm:items-center sm:p-4" onClick={onClose}>
       <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-4 sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
         <p className="mb-1 text-sm font-bold text-slate-900">{ar ? (rep.arabicName || rep.englishName) : rep.englishName}</p>
-        <p className="mb-3 text-[11px] text-slate-500">{[rep.repId, rep.branch?.name].filter(Boolean).join(' · ')}</p>
+        <p className="mb-3 text-[11px] text-slate-500">{[rep.repId, rep.branch?.name, bikeId ? rep.vehicle?.plate : ''].filter(Boolean).join(' · ')}</p>
+        {bikeId && (
+          <p className="-mt-2 mb-3 text-[11px] text-slate-500">
+            {bikeOnly
+              ? t('دبّابٌ بلا راكبٍ معروفٍ في السجلّ — يُتفقَّد وحدَه: صورة الدبّاب والبوكس.', 'No known rider — the bike is checked on its own: bike and box photos.')
+              : t('يُسجَّل التفقّد على الدبّاب وعلى راكبه معًا.', 'The check is recorded on the bike and its rider together.')}
+          </p>
+        )}
 
         <div className="mb-3 grid grid-cols-3 gap-2">
           {(Object.keys(OUTCOME_META) as Outcome[]).map((k) => {
@@ -413,7 +527,7 @@ function CheckModal({ rep, ar, plates, onClose, onSaved }: {
                 setShots((p) => [...p, { ...s, kind }]);
                 // بعد الالتقاط ينتقل إلى أوّل نوعٍ لم يُصوَّر بعد.
                 // الإعلانيُّ يتكرّر، فلا يُقفَز عنه بعد أوّل لقطة.
-                const next = kind === 'ad' ? null : REQUIRED_KINDS.find((k) => k.key !== kind && !countOf(k.key));
+                const next = kind === 'ad' ? null : NEEDED.find((k) => k.key !== kind && !countOf(k.key));
                 if (next) setKind(next.key);
               }}
               onOpen={(sh) => setPreview({
@@ -533,7 +647,7 @@ function CheckModal({ rep, ar, plates, onClose, onSaved }: {
           </Field>
         </div>
         {/* من أين جاءت اللوحة، وكيف تُغيَّر — يُقال صراحةً لا يُخمَّن. */}
-        {rep.vehicle?.plate && (
+        {rep.vehicle?.plate && !bikeId && (
           <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
             <Bike className="h-3 w-3" />
             {plateLocked

@@ -112,6 +112,44 @@ const vehicleTypeKey = (typeAr) => {
   return v ? 'other' : '';
 };
 
+/**
+ * ── الدبّاباتُ: من سجلّ المركبات ─────────────────────────────────────────────
+ *
+ * التفقّدُ يقع على المندوب أو على الدبّاب. والدبّاباتُ كلُّ ما نوعُ تسجيله
+ * «دراجة» في سجلّ المركبات، إلّا المسروقَ (لا يخرج من محطّة).
+ *
+ * والربطُ بينهما من السجلّين لا من الشاشة: راكبُ الدبّاب هو المندوبُ الذي لوحتُه
+ * في سجلّ النقل الخفيف لوحةُ الدبّاب، فإن لم يكن فالمفوَّضُ عليه (برقم إقامته).
+ * والمفتاحُ `registryPlateKey` — به كُتب `VehicleMaster.plateKey`، وفيه الحروفُ مع
+ * الأرقام: «أ س ل 5546» و«ب س ل 5546» دبّابان لا واحد.
+ */
+const { registryPlateKey } = require('../utils/plateKey');
+const bikeKey = (v) => v.plateKey || registryPlateKey(v.plateNumber) || '';
+async function dutyBikes() {
+  const { VehicleMaster } = require('../models/VehicleMaster');
+  return VehicleMaster.find({ registrationTypeAr: /دراج/, sectorAr: { $ne: 'مسروق' }, isActive: { $ne: false } })
+    .select('plateNumber plateKey sectorAr departmentAr cityAr authorizedPerson.name authorizedPerson.iqamaNumber').lean();
+}
+/** يبني دالّةَ «راكبُ هذا الدبّاب» من صفوف المناديب (غير قائدي السيّارات). */
+function riderFinder(reps) {
+  const byPlate = new Map();
+  const byId = new Map();
+  for (const e of reps) {
+    const k = registryPlateKey(e.vehiclePlate);
+    if (k && !byPlate.has(k)) byPlate.set(k, e);
+    if (e.idNumber) byId.set(String(e.idNumber).trim(), e);
+  }
+  return (bike) => byPlate.get(bikeKey(bike))
+    || byId.get(String(bike.authorizedPerson?.iqamaNumber || '').trim())
+    || null;
+}
+const riderReps = async () => {
+  const { LightTransportEmployee } = require('../models/LightTransport');
+  const all = await LightTransportEmployee.find({ isActive: { $ne: false }, staffKind: 'rep' })
+    .select('name idNumber vehiclePlate vehicleTypeAr').lean();
+  return all.filter((e) => vehicleTypeKey(e.vehicleTypeAr) !== 'car');
+};
+
 exports.myReps = async (req, res) => {
   try {
     const dateKey = validKey(req.query.date) ? req.query.date : dayKeyOf();
@@ -142,12 +180,22 @@ exports.myReps = async (req, res) => {
     const rows = all.filter((e) => vehicleTypeKey(e.vehicleTypeAr) !== 'car');
     const carsExcluded = all.length - rows.length;
 
-    const checks = rows.length
-      ? await B2CDutyCheck.find({ dateKey, ltEmployee: { $in: rows.map((r) => r._id) } })
-        .select('ltEmployee outcome checkedAt photos conditionAr hasDamage damageNotes notes vehicleType vehiclePlate supervisorName')
-        .lean()
-      : [];
-    const byEmp = new Map(checks.map((c) => [String(c.ltEmployee), c]));
+    // تفقّداتُ اليوم كلُّها: ما وقع على مندوبٍ وما وقع على دبّاب — يُقرأ كلٌّ
+    // من الجهتين، فتفقّدُ الدبّاب يظهر على راكبه وتفقّدُ المندوب على دبّابه.
+    const [checks, bikes] = await Promise.all([
+      B2CDutyCheck.find({ dateKey })
+        .select('ltEmployee vehicle vehicleKey outcome checkedAt photos conditionAr hasDamage damageNotes notes vehicleType vehiclePlate supervisorName')
+        .lean(),
+      dutyBikes(),
+    ]);
+    const byEmp = new Map(checks.filter((c) => c.ltEmployee).map((c) => [String(c.ltEmployee), c]));
+    const byVeh = new Map();
+    for (const c of checks) {
+      const k = c.vehicleKey || registryPlateKey(c.vehiclePlate);
+      if (k && !byVeh.has(k)) byVeh.set(k, c);
+    }
+    const repCheck = (e) => byEmp.get(String(e._id)) || byVeh.get(registryPlateKey(e.vehiclePlate)) || null;
+    const riderOf = riderFinder(rows);
 
     // دبّاباتُ القسم — تُعرَض قائمةً لمن لا لوحةَ في صفّه بعد.
     const vehicleOptions = all
@@ -188,18 +236,29 @@ exports.myReps = async (req, res) => {
           opsSupervisorName: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(' ') : (e.supervisorName || ''),
           hasDutySupervisor: !!(e.dutySupervisorUser),
           mine: mineOf(e),
-          check: byEmp.get(String(e._id)) || null,
+          check: repCheck(e),
         };
       }),
+      // الدبّاباتُ — يُتفقَّد أيٌّ منها مباشرةً، ومعه راكبُه إن عُرف.
+      bikes: bikes.map((b) => {
+        const rider = riderOf(b);
+        return {
+          _id: String(b._id),
+          plate: b.plateNumber || '',
+          sectorAr: b.sectorAr || '',
+          cityAr: b.cityAr || '',
+          departmentAr: b.departmentAr || '',
+          authorizedName: b.authorizedPerson?.name || '',
+          rider: rider ? { _id: String(rider._id), name: rider.name || '', idNumber: rider.idNumber || '' } : null,
+          check: byVeh.get(bikeKey(b)) || (rider ? byEmp.get(String(rider._id)) : null) || null,
+        };
+      }).sort((a, b) => a.plate.localeCompare(b.plate, 'ar')),
       // «كم أنجزتُ من رجالي» — المقياسُ الذي يُسأل عنه المشرف.
       mineTotal: rows.filter(mineOf).length,
-      mineDone: checks.filter((c) => {
-        const e = rows.find((x) => String(x._id) === String(c.ltEmployee));
-        return e && mineOf(e);
-      }).length,
+      mineDone: rows.filter((e) => mineOf(e) && repCheck(e)).length,
       // ومن لا مشرفَ تفقّدٍ له لا يقع في قائمة أحد — يُقال عددُه صراحةً.
       unassigned: rows.filter((e) => !e.dutySupervisorUser).length,
-      done: checks.length,
+      done: rows.filter(repCheck).length,
       total: rows.length,
     });
   } catch (e) { res.status(500).json({ message: 'تعذّر تحميل مندوبيك' }); }
@@ -252,13 +311,38 @@ const assertOwnsRep = async (req, repId, ltId) => {
 exports.submit = async (req, res) => {
   const saved = [];
   try {
-    const { rep: repId, ltEmployee: ltId, outcome = 'started', photos = [] } = req.body;
-    if (!repId && !ltId) return res.status(400).json({ message: 'اختر المندوب' });
+    const { rep: repId, outcome = 'started', photos = [] } = req.body;
+    let ltId = req.body.ltEmployee;
+    if (!repId && !ltId && !req.body.vehicle) return res.status(400).json({ message: 'اختر المندوب أو الدبّاب' });
     if (!['started', 'absent', 'blocked'].includes(outcome)) {
       return res.status(400).json({ message: 'حالة غير معروفة' });
     }
-    const own = await assertOwnsRep(req, repId, ltId);
+
+    /**
+     * ── الدبّابُ وراكبُه: صفٌّ واحد ────────────────────────────────────────────
+     * جاء الطلبُ بدبّاب: يُعرَف راكبُه (لوحتُه في سجلّ النقل الخفيف، أو المفوَّضُ
+     * عليه) فيصير التفقّدُ تفقّدَه أيضًا. وجاء بمندوب: يُعرَف دبّابُه من لوحته.
+     * ودبّابٌ لا راكبَ له يُتفقَّد وحدَه.
+     */
+    const { VehicleMaster } = require('../models/VehicleMaster');
+    let bike = null;
+    if (req.body.vehicle) {
+      if (!mongoose.isValidObjectId(req.body.vehicle)) return res.status(400).json({ message: 'الدبّاب غير معروف' });
+      bike = await VehicleMaster.findById(req.body.vehicle)
+        .select('plateNumber plateKey registrationTypeAr sectorAr authorizedPerson.iqamaNumber').lean();
+      if (!bike) return res.status(404).json({ message: 'الدبّاب غير موجود في سجلّ المركبات' });
+      if (!ltId && !repId) {
+        const rider = riderFinder(await riderReps())(bike);
+        if (rider) ltId = rider._id;
+      }
+    }
+    const own = (ltId || repId) ? await assertOwnsRep(req, repId, ltId) : { bikeOnly: true };
     if (own.error) return res.status(own.error).json({ message: own.message });
+    if (!bike && own.emp) {
+      const k = registryPlateKey(String(req.body.vehiclePlate || '').trim() || own.emp.vehiclePlate);
+      if (k) bike = await VehicleMaster.findOne({ plateKey: k }).select('plateNumber plateKey registrationTypeAr').lean();
+    }
+    const subjectName = own.emp?.name || own.rep?.englishName || (bike ? `دبّاب ${bike.plateNumber}` : '');
 
     /**
      * ── ومَن لم يخرج يُسأل: لماذا ────────────────────────────────────────────
@@ -282,6 +366,21 @@ exports.submit = async (req, res) => {
     const dateKey = validKey(req.body.date) && canSeeAll(req.user) ? req.body.date : dayKeyOf();
     const { year, month, day, date } = partsOf(dateKey);
 
+    // صفُّ اليوم إن وُجد — بالمندوب أو بالدبّاب. وإن وُجد الاثنان صفّين (تُفقّد
+    // الدبّابُ وحدَه ثمّ عُرف راكبُه) يُضمّ صفُّ الدبّاب إلى صفّ المندوب.
+    const [byRep, bikeRow] = await Promise.all([
+      own.emp ? B2CDutyCheck.findOne({ ltEmployee: own.emp._id, dateKey })
+        : own.rep ? B2CDutyCheck.findOne({ rep: own.rep._id, dateKey }) : null,
+      bike ? B2CDutyCheck.findOne({ vehicle: bike._id, dateKey }) : null,
+    ]);
+    // دبّابٌ يتبادله رجلان: تُفقّد مع الأوّل، فلا يُكتب الثاني فوقه — يُسجَّل
+    // الثاني وحدَه بلا ربطٍ بالدبّاب (صفٌّ للدبّاب في اليوم، والفهرسُ يقضي بذلك).
+    const bikeTaken = !!(bikeRow && bikeRow.ltEmployee && own.emp && String(bikeRow.ltEmployee) !== String(own.emp._id));
+    const byBike = bikeTaken ? null : bikeRow;
+    if (bikeTaken) bike = null;
+    const existing = byRep || byBike;
+    const merged = byRep && byBike && String(byRep._id) !== String(byBike._id) ? byBike : null;
+
     // بدءُ الدوام يحتاج الصورَ الثلاث: المندوب والدبّاب والبوكس. وما حُفظ
     // صباحًا يُحسب — التصحيحُ لا يُلزم بإعادة التقاط ما التُقط.
     // الواجهةُ القديمة (قبل التقسيم) لا ترسل `kind` — تُقبَل منها صورةٌ واحدة
@@ -290,12 +389,14 @@ exports.submit = async (req, res) => {
     if (outcome === 'started' && legacyClient) {
       // تكفي الصورةُ المرسلة.
     } else if (outcome === 'started') {
-      const prior = await B2CDutyCheck.findOne({ rep: repId, dateKey }).select('photos.kind').lean();
       const have = new Set([
-        ...(prior?.photos || []).map((p) => p.kind || 'vehicle'),
+        ...(existing?.photos || []).map((p) => p.kind || 'vehicle'),
+        ...(merged?.photos || []).map((p) => p.kind || 'vehicle'),
         ...photos.map((p) => p?.kind).filter((k) => PHOTO_KINDS.includes(k)),
       ]);
-      const lacking = REQUIRED_PHOTO_KINDS.filter((k) => !have.has(k));
+      // دبّابٌ لا راكبَ معروفًا له: صورةُ الدبّاب والبوكس — لا مندوبَ يُصوَّر.
+      const required = own.bikeOnly ? REQUIRED_PHOTO_KINDS.filter((k) => k !== 'rep') : REQUIRED_PHOTO_KINDS;
+      const lacking = required.filter((k) => !have.has(k));
       if (lacking.length) {
         return res.status(400).json({ message: `لا بدّ من ${lacking.map((k) => PHOTO_KIND_AR[k]).join(' و')} لتسجيل بدء الدوام` });
       }
@@ -327,17 +428,19 @@ exports.submit = async (req, res) => {
     const doc = {
       // الموضوعُ: صفُّ السجلّ. و`rep` يُكتب فقط إن جاء الطلبُ بحساب تطبيق
       // (نسخةٌ قديمة) — فلا يُخلَق ربطٌ لم يُطلَب.
-      ltEmployee: own.emp ? own.emp._id : (own.rep.ltEmployee || null),
-      rep: own.emp ? undefined : own.rep._id,
+      ltEmployee: own.emp ? own.emp._id : (own.rep?.ltEmployee || null),
+      rep: own.rep && !own.emp ? own.rep._id : undefined,
+      vehicle: bike ? bike._id : undefined,
+      vehicleKey: bike ? bikeKey(bike) : undefined,
       supervisor: req.user._id,
       supervisorName: [me?.firstName, me?.lastName].filter(Boolean).join(' '),
-      branch: own.emp ? null : (own.rep.branch || null),
-      project: own.emp ? null : (own.rep.project || null),
+      branch: own.rep && !own.emp ? (own.rep.branch || null) : null,
+      project: own.rep && !own.emp ? (own.rep.project || null) : null,
       date, dateKey, year, month, day,
       checkedAt: new Date(),
       outcome,
-      vehicleType: req.body.vehicleType || '',
-      vehiclePlate: String(req.body.vehiclePlate || '').trim(),
+      vehicleType: req.body.vehicleType || (bike ? 'motorcycle' : ''),
+      vehiclePlate: String(req.body.vehiclePlate || '').trim() || (bike ? bike.plateNumber : ''),
       conditionAr: String(req.body.conditionAr || '').trim(),
       hasDamage: !!req.body.hasDamage,
       damageNotes: String(req.body.damageNotes || '').trim(),
@@ -352,12 +455,11 @@ exports.submit = async (req, res) => {
     };
 
     // التصحيحُ يُعدِّل صفَّ اليوم ولا يضيف ثانيًا — راجع الفهرس الفريد.
-    const existing = await B2CDutyCheck.findOne(
-      own.emp ? { ltEmployee: own.emp._id, dateKey } : { rep: own.rep._id, dateKey });
+    if (merged) await B2CDutyCheck.deleteOne({ _id: merged._id });
     let check;
     if (existing) {
       // الصورُ تُضاف ولا تُمحى: صورةُ الصباح حجّةٌ لا تُستبدَل بأخرى بعد الحادث.
-      doc.photos = [...(existing.photos || []), ...saved];
+      doc.photos = [...(existing.photos || []), ...(merged?.photos || []), ...saved];
       Object.assign(existing, doc);
       check = await existing.save();
     } else {
@@ -377,7 +479,7 @@ exports.submit = async (req, res) => {
      */
     // والربطُ بحساب التطبيق يُحفَظ إن جاء الطلبُ منه ولوحتُه معروفةٌ في السجلّ —
     // خدمةٌ للنسخة القديمة وحدَها؛ والشاشةُ الجديدة موضوعُها صفُّ السجلّ أصلًا.
-    if (!own.emp && !own.rep.ltEmployee && doc.vehiclePlate) {
+    if (own.rep && !own.emp && !own.rep.ltEmployee && doc.vehiclePlate) {
       try {
         const { LightTransportEmployee: LTE2 } = require('../models/LightTransport');
         const hit = await LTE2.find({ isActive: { $ne: false }, vehiclePlate: doc.vehiclePlate })
@@ -389,7 +491,7 @@ exports.submit = async (req, res) => {
     await logAudit({
       user: req.user._id, action: existing ? 'update_b2c_duty_check' : 'create_b2c_duty_check',
       entity: 'B2CDutyCheck', entityId: check._id,
-      changes: { after: { rep: (own.emp?.name || own.rep.englishName), dateKey, outcome } }, ipAddress: req.ip,
+      changes: { after: { rep: subjectName, vehicle: doc.vehiclePlate || undefined, dateKey, outcome } }, ipAddress: req.ip,
     });
 
     // ما لا يُخرَج يُعلَم به فورًا: مركبةٌ بها تلفٌ أو مندوبٌ مُنع من العمل.
@@ -399,7 +501,7 @@ exports.submit = async (req, res) => {
       await Promise.all(heads.map((h) => createNotification({
         recipient: h._id, type: 'system_alert',
         title: outcome === 'blocked' ? 'مندوب مُنع من الخروج' : 'تلف في مركبة مندوب',
-        message: `${own.emp?.name || own.rep.englishName || ''} — ${doc.damageNotes || doc.conditionAr || ''}`.trim(),
+        message: `${subjectName || ''} — ${doc.damageNotes || doc.conditionAr || ''}`.trim(),
         relatedEntity: 'B2CDutyCheck', relatedEntityId: check._id,
       }).catch(() => {})));
     }
@@ -410,7 +512,7 @@ exports.submit = async (req, res) => {
   } catch (e) {
     // ملفٌّ كُتب ثمّ فشل الحفظ لا يُترَك يتيمًا على القرص.
     saved.forEach((f) => { try { deleteStoredFile(f.fileUrl); } catch (x) { /* */ } });
-    if (e?.code === 11000) return res.status(409).json({ message: 'سُجِّل تفقّدٌ لهذا المندوب اليوم' });
+    if (e?.code === 11000) return res.status(409).json({ message: 'سُجِّل تفقّدٌ لهذا المندوب أو الدبّاب اليوم — افتحه من القائمة' });
     return sendMongooseError(res, e, 'تعذّر حفظ التفقّد');
   }
 };

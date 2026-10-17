@@ -72,8 +72,10 @@ const KINDS: { key: PhotoKind; ar: string; en: string }[] = [
 const kindOf = (p: { kind?: PhotoKind }) => p.kind || 'vehicle';
 
 /** اسمُ المندوب — من صفّ السجلّ، وإلّا من حساب التطبيق القديم. */
+// وتفقّدُ دبّابٍ لا راكبَ معروفًا له يُقرأ بلوحته.
 const nameOf = (r: Row, ar: boolean) => r.ltEmployee?.name
-  || (ar ? (r.rep?.arabicName || r.rep?.englishName) : r.rep?.englishName) || '—';
+  || (ar ? (r.rep?.arabicName || r.rep?.englishName) : r.rep?.englishName)
+  || (r.vehiclePlate ? (ar ? `دبّاب ${r.vehiclePlate}` : `Bike ${r.vehiclePlate}`) : '') || '—';
 
 /**
  * اسمُ المسؤول عن تفقّده — **مشرف التفقّد**، لا التشغيليّ.

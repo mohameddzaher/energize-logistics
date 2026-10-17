@@ -59,6 +59,15 @@ const b2cDutyCheckSchema = new mongoose.Schema(
      */
     ltEmployee: { type: mongoose.Schema.Types.ObjectId, ref: 'LightTransportEmployee', index: true },
     rep: { type: mongoose.Schema.Types.ObjectId, ref: 'B2CRep', index: true },
+    /**
+     * ── أو الدبّابُ نفسُه ──────────────────────────────────────────────────────
+     * التفقّدُ يقع على المندوب أو على الدبّاب — والاثنان مربوطان: تفقّدُ دبّابٍ
+     * راكبُه مندوبٌ في السجلّ (أو مفوَّضٌ عليه) يُكتب على المندوب أيضًا، وتفقّدُ
+     * مندوبٍ يُكتب على دبّابه. فيظهر «تمّ» في الجهتين من صفٍّ واحد.
+     * `vehicle` صفُّ سجلّ المركبات، و`vehicleKey` مفتاحُ لوحته (registryPlateKey).
+     */
+    vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', index: true },
+    vehicleKey: { type: String, trim: true, index: true },
     // المشرفُ الذي وقف على الخروج — لا الذي يملك المندوبَ في السجلّ. فقد يقوم
     // غيرُه مقامَه يومًا، والمحاسبةُ تكون على من فعل لا على من كان مسؤولًا.
     supervisor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
@@ -147,6 +156,10 @@ b2cDutyCheckSchema.index(
   { unique: true, partialFilterExpression: { rep: { $type: 'objectId' } }, name: 'rep_1_dateKey_1_partial' },
 );
 // شاشةُ الإدارة تُفتَح على يومٍ ثمّ تُصفّى بالمشرف أو الفرع أو المشروع.
+b2cDutyCheckSchema.index(
+  { vehicle: 1, dateKey: 1 },
+  { unique: true, partialFilterExpression: { vehicle: { $type: 'objectId' } }, name: 'vehicle_1_dateKey_1_partial' },
+);
 b2cDutyCheckSchema.index({ dateKey: 1, supervisor: 1 });
 b2cDutyCheckSchema.index({ dateKey: 1, branch: 1 });
 b2cDutyCheckSchema.index({ dateKey: 1, outcome: 1 });

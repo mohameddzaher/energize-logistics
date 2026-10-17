@@ -157,6 +157,9 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
       final en = (rep['englishName'] ?? '').toString();
       if (en.isNotEmpty) return en;
     }
+    // وتفقّدُ دبّابٍ لا راكبَ معروفًا له يُقرأ بلوحته.
+    final plate = (r['vehiclePlate'] ?? '').toString();
+    if (plate.isNotEmpty) return tr('دبّاب $plate', 'Bike $plate');
     return '—';
   }
 

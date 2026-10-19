@@ -607,11 +607,18 @@ const REGISTRY = [
       { key: 'dutyPaid', nameAr: 'سداد الرسوم الجمركية', nameEn: 'Customs duty paid' },
       { key: 'portFeesPaid', nameAr: 'سداد أجور الموانئ', nameEn: 'Port fees paid' },
       { key: 'unloadingFeesPaid', nameAr: 'سداد أجور التفريغ', nameEn: 'Unloading paid' },
-      { key: 'containersReturned', nameAr: 'إرجاع الحاويات', nameEn: 'Containers returned' },
-      { key: 'returnInvoiceDate', nameAr: 'فاتورة الإرجاع', nameEn: 'Return invoice' },
-      { key: 'transportInvoice', nameAr: 'فاتورة النقل', nameEn: 'Transport invoice' },
-      // تحت «فاتورة النقل» مباشرةً: حجزُ الموعد بندٌ يُدفَع ويُفوتَر كغيره.
+      // «إرجاع الحاويات» و«فاتورة الإرجاع» أُزيلتا بطلب القسم وحلّ محلَّهما
+      // «التمديد»؛ و«فاتورة النقل» صارت ثلاثةَ أجزاء — راجع REMOVED_DEFAULTS.
+      { key: 'extension', nameAr: 'التمديد', nameEn: 'Extension' },
+      { key: 'transportPortToCustomer', nameAr: 'فاتورة النقل من الميناء إلى العميل', nameEn: 'Transport: port → customer' },
+      { key: 'transportPortToYard', nameAr: 'فاتورة النقل من الميناء إلى الساحة', nameEn: 'Transport: port → yard' },
+      { key: 'transportYardToCustomer', nameAr: 'فاتورة النقل من الساحة إلى العميل', nameEn: 'Transport: yard → customer' },
       { key: 'appointmentBooking', nameAr: 'حجز الموعد', nameEn: 'Appointment booking' },
+      { key: 'inspection', nameAr: 'أجور الكشف', nameEn: 'Inspection fees' },
+      { key: 'exitPermit', nameAr: 'تصريح الخروج (الأرضيات)', nameEn: 'Exit permit (demurrage)' },
+      { key: 'consolidator', nameAr: 'الدامج', nameEn: 'Consolidator' },
+      { key: 'commissions', nameAr: 'عمولات', nameEn: 'Commissions' },
+      { key: 'labourExpenses', nameAr: 'مصاريف عمال', nameEn: 'Labour expenses' },
     ]],
     /**
      * ── بنودُ فاتورة العميل ─────────────────────────────────────────────────
@@ -810,6 +817,27 @@ const ensureDefaultLookups = async () => {
     }
   }
   await applyDefaultRenames();
+  await applyRemovedDefaults();
+};
+
+/**
+ * ── قيمٌ مبذورةٌ أُزيلت ─────────────────────────────────────────────────────
+ * تُعلَّم محذوفةً (شاهدةُ قبر) فتختفي من القائمة ولا يعيدها البذر. والإدخالاتُ
+ * القديمةُ التي تحملها في المعاملات تبقى مقروءةً كما هي — الاسمُ ملقوطٌ فيها.
+ * لا تمسّ إلّا الصفَّ المبذور (`isSystem`) — ما أضافه المديرُ بيده بمفتاحٍ آخر يبقى.
+ */
+const REMOVED_DEFAULTS = [
+  // بطلب قسم التخليص (٢٠٢٦-١٠-١٩): الإرجاعُ وفاتورتُه يحلّ محلَّهما «التمديد»،
+  // و«فاتورة النقل» صارت ثلاثةَ أجزاءٍ لكلٍّ منها بندُه في التكاليف.
+  ['customs_payment_stage', 'containersReturned'],
+  ['customs_payment_stage', 'returnInvoiceDate'],
+  ['customs_payment_stage', 'transportInvoice'],
+];
+const applyRemovedDefaults = async () => {
+  const Lookup = require('../models/Lookup');
+  for (const [type, key] of REMOVED_DEFAULTS) {
+    await Lookup.updateOne({ type, key, isSystem: true, deleted: { $ne: true } }, { $set: { deleted: true, isActive: false } }).catch(() => {});
+  }
 };
 
 /**

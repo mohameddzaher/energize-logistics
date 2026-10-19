@@ -24,6 +24,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { X, Loader2, Paperclip, Receipt, AlertTriangle, Check, Clock3 } from 'lucide-react';
 import api from '@/lib/api';
+import { TRANSPORT_STAGE_KEYS } from '@/lib/customsPipeline';
 
 export interface SaleDef { key: string; nameAr: string; nameEn: string }
 export interface StageEntry { key: string; label: string; amount: number | null; date?: string; payStatus?: string }
@@ -31,7 +32,8 @@ export interface StageEntry { key: string; label: string; amount: number | null;
 const money = (n: number) => (Math.round((n || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2 });
 const VAT = 0.15;
 
-const TRANSPORT_KEY = 'transportInvoice';
+// فاتورةُ النقل: بندُها القديم أو أيُّ جزءٍ من أجزاء النقل الثلاثة — راجع TRANSPORT_STAGE_KEYS.
+const isTransportKey = (k: string) => TRANSPORT_STAGE_KEYS.has(k);
 
 export default function CloseWithInvoice({
   open, onClose, clearanceId, stages, ar, onDone, notify, transportReceived,
@@ -100,7 +102,9 @@ export default function CloseWithInvoice({
     };
   }, [rows, stages, defs, ar]);
   // فاتورةُ النقل حاضرةٌ الآن؟ وصلت من قبل، أو أُرفقت في هذه النافذة.
-  const transportHere = !!transportReceived || !!rows[TRANSPORT_KEY]?.file || !!kept[TRANSPORT_KEY];
+  const transportHere = !!transportReceived
+    || Object.entries(rows).some(([k, v]) => isTransportKey(k) && !!v?.file)
+    || Object.keys(kept).some((k) => isTransportKey(k) && !!kept[k]);
 
   const save = async () => {
     const saleItems = Object.entries(rows)
@@ -178,7 +182,7 @@ export default function CloseWithInvoice({
                       تُصدَر الفاتورةُ بدونها، ويُقال ذلك هنا قبل الضغط: ما
                       الذي سيقع للمعاملة إن أُرفقت الآن، وما الذي يقع إن لم
                       تُرفَق. */}
-                  {d.key === TRANSPORT_KEY && (transportHere ? (
+                  {isTransportKey(d.key) && (transportHere ? (
                     <p className="mt-2 flex items-center gap-1.5 text-[11.5px] font-semibold text-emerald-700">
                       <Check className="h-3.5 w-3.5" />
                       {t('فاتورةُ النقل مُرفقة — ستُنهى المعاملةُ مع إصدار الفاتورة.', 'Transport invoice on file — the transaction closes with the invoice.')}

@@ -41,6 +41,25 @@ const customsContractSchema = new mongoose.Schema({
   autoRenew: { type: Boolean, default: false },
   status: { type: String, enum: ['draft', 'active', 'expired', 'terminated'], default: 'active', index: true },
   scope: { type: String, trim: true, default: '' },        // ما يغطّيه العقد
+  /**
+   * ── أسعارُ العقد مع العميل ───────────────────────────────────────────────
+   * تُكتب مرّةً هنا وتُملأ منها «الإيرادات والفوترة» في كلّ معاملةٍ لهذا
+   * العميل (utils/customsContractPricing) — وتبقى هناك قابلةً للتعديل.
+   *   · أجورُ التخليص للحاوية الواحدة، وتُضرَب في عدد حاويات المعاملة.
+   *   · النقلُ من الميناء إلى العميل بحسب الوجهة: «جدة → الرياض ٢٠٠٠».
+   *   · النقلُ من الميناء إلى الساحة، ومن الساحة إلى العميل.
+   * والفارغُ (null) غيرُ متّفقٍ عليه فلا يُملأ منه شيء — لا يُقرأ صفرًا.
+   */
+  pricing: {
+    clearanceFeePerContainer: { type: Number, default: null },
+    portToYard: { type: Number, default: null },
+    yardToCustomer: { type: Number, default: null },
+    routes: [{
+      from: { type: String, trim: true, default: '' },
+      to: { type: String, trim: true, default: '' },
+      price: { type: Number, default: null },
+    }],
+  },
   notes: { type: String, trim: true, default: '' },
   attachments: [attachmentSchema],
 

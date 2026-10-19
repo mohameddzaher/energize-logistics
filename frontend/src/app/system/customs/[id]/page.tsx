@@ -82,6 +82,22 @@ export default function CustomsDetailPage() {
       api.get<{ parties: any[] }>('/api/customs-clearance/parties?kind=agent'),
     ]).then(([cu, ag]) => setParties({ customers: cu.parties || [], agents: ag.parties || [] })).catch(() => {});
   }, []);
+  // ── عقدُ العميل الساري وأسعارُه ───────────────────────────────────────────
+  // يُقرأ لشريط «من عقد العميل» في الإيرادات، ويُعاد حين يتغيّر العميلُ أو عددُ
+  // الحاويات (أجورُ التخليص للحاوية الواحدة). `undefined` = لم يُقرأ بعد.
+  const [contractInfo, setContractInfo] = useState<any>(undefined);
+  const [contractBusy, setContractBusy] = useState(false);
+  const custKey = String(c?.customerParty || '');
+  const countKey = Number(c?.containerCount) || 0;
+  useEffect(() => {
+    if (!params?.id || !c?._id) return;
+    if (!custKey) { setContractInfo(null); return; }
+    let alive = true;
+    api.get<{ contract: any }>(`/api/customs-clearance/${params.id}/contract-pricing`)
+      .then((d) => { if (alive) setContractInfo(d.contract || null); })
+      .catch(() => { if (alive) setContractInfo(null); });
+    return () => { alive = false; };
+  }, [params?.id, c?._id, custKey, countKey]);
   useSocket('customs:updated', useCallback((d: any) => {
     // حمولةٌ بلا مراحلها المحسوبة (نسخةٌ قديمةٌ من الخادم) لا تُعتمَد: تُعاد القراءة.
     if (d?.clearance?._id === params.id) { if (d.clearance.pipeline) setC(d.clearance); else fetchOne(); }
@@ -161,11 +177,12 @@ export default function CustomsDetailPage() {
     ['portFees', 'أجور الموانى', 'Port fees'],
     ['unloadingFees', 'أجور التفريغ', 'Unloading fees'],
     ['inspection', 'أجور الكشف', 'Inspection'],
-    // ── سعرُ النقل من المورد ──────────────────────────────────────────────
-    // ما ندفعه للناقل: «كلّمنا ناقلًا فقال ١٥٠٠». وهو تكلفةٌ لا إيراد، ومنه
-    // يُطرَح سعرُ بيعنا فيظهر الربح (راجع `transportNet` في الإيرادات).
-    ['transport', 'سعر النقل من المورد', 'Transport — supplier price'],
-    ['transportToYard', 'النقل إلى الساحة', 'Transport to yard'],
+    // ── النقلُ بأجزائه الثلاثة ─────────────────────────────────────────────
+    // ما ندفعه للناقل في كلّ جزء: «كلّمنا ناقلًا فقال ١٥٠٠». وهو تكلفةٌ لا
+    // إيراد، ومنه يُطرَح سعرُ بيعنا للجزء نفسِه فيظهر صافيه في الإيرادات.
+    ['transport', 'النقل من الميناء إلى العميل', 'Transport: port → customer'],
+    ['transportToYard', 'النقل من الميناء إلى الساحة', 'Transport: port → yard'],
+    ['transportYardToCustomer', 'النقل من الساحة إلى العميل', 'Transport: yard → customer'],
     ['appointmentBooking', 'حجز الموعد', 'Appointment booking'],
     ['storage', 'تخزين', 'Storage'],
     ['yardFees', 'أجور الساحة', 'Yard fees'],
@@ -175,6 +192,7 @@ export default function CustomsDetailPage() {
     ['extension', 'تمديد', 'Extension'],
     ['consolidator', 'الدامج', 'Consolidator'],
     ['commissions', 'عمولات', 'Commissions'],
+    ['labourExpenses', 'مصاريف عمال', 'Labour expenses'],
     ['extraFees', 'أجور إضافية', 'Extra fees'],
     ['returnInvoice', 'فاتورة الإرجاع', 'Return invoice'],
   ];
@@ -188,23 +206,41 @@ export default function CustomsDetailPage() {
     ['storageNet', 'صافي التخزين', 'Storage net'],
     ['securityScan', 'فحص أمنى', 'Security scan'],
     ['labour', 'عمال', 'Labour'],
+    // يُحسب ولا يُكتب: سعرُ النقل من الساحة إلى العميل ناقصَ تكلفتِه.
+    ['yardToCustomerNet', 'صافي النقل من الساحة إلى العميل', 'Yard-to-customer net'],
   ];
   // بنودٌ تُسجَّل ولا تدخل الجمع مباشرةً: «سعر النقل» هو ما نأخذه من العميل
   // (يدخل الربحَ عبر صافيه)، وصافي نقل الساحة عمودٌ مساعدٌ خارج صيغة الماستر.
   const REVENUE_EXTRA: [string, string, string][] = [
-    ['transportSelling', 'سعر النقل', 'Transport price'],
+    ['transportSelling', 'سعر النقل من الميناء إلى العميل', 'Price: port → customer'],
+    ['transportToYardSelling', 'سعر النقل من الميناء إلى الساحة', 'Price: port → yard'],
+    ['yardToCustomerSelling', 'سعر النقل من الساحة إلى العميل', 'Price: yard → customer'],
     ['yardTransportNet', 'صافي نقل الساحة', 'Yard transport net'],
   ];
   // ── وترتيبُ القراءة: السعرُ ثمّ صافيه ──────────────────────────────────────
   // «سعر النقل» يُكتب و«صافي النقل» يُقرأ تحته محسوبًا، فيرى الموظّفُ أثرَ ما
   // كتبه في اللحظة. والحقولُ المحسوبةُ لا تُفتَح للكتابة أصلًا.
-  const COMPUTED_REVENUE = new Set(['transportNet']);
+  // و«صافي النقل إلى الساحة» محسوبٌ متى كُتب سعرُه؛ وفي المعاملات القديمة (سعرٌ
+  // فارغ) يبقى خانةً تُكتب كما كان — الخادمُ لا يمسّه حينئذٍ.
+  const yardSellRaw = c.revenue?.transportToYardSelling;
+  const yardSellSet = yardSellRaw !== null && yardSellRaw !== undefined && yardSellRaw !== '' && Number.isFinite(Number(yardSellRaw));
+  const COMPUTED_REVENUE = new Set(['transportNet', 'yardToCustomerNet', ...(yardSellSet ? ['transportToYardNet'] : [])]);
+  // خاناتٌ فراغُها معنًى («لم يُكتب السعرُ بعد») لا صفر.
+  const NULLABLE_REVENUE = new Set(['transportToYardSelling']);
+  const COMPUTED_HINT: Record<string, [string, string]> = {
+    transportNet: ['السعر − تكلفة النقل', 'price − cost'],
+    transportToYardNet: ['السعر − تكلفة النقل', 'price − cost'],
+    yardToCustomerNet: ['السعر − تكلفة النقل', 'price − cost'],
+  };
+  const fieldOf = (k: string): [string, string, string] =>
+    [...MARGIN_FIELDS, ...REVENUE_EXTRA].find(([x]) => x === k) || [k, k, k];
   const REVENUE_FIELDS: [string, string, string][] = [
-    ['transportSelling', 'سعر النقل', 'Transport price'],
-    ['transportNet', 'صافي النقل', 'Transport net'],
-    ...MARGIN_FIELDS.filter(([k]) => k !== 'transportNet'),
-    ...REVENUE_EXTRA.filter(([k]) => k !== 'transportSelling'),
-  ];
+    'clearanceFee',
+    'transportSelling', 'transportNet',
+    'transportToYardSelling', 'transportToYardNet',
+    'yardToCustomerSelling', 'yardToCustomerNet',
+    'yardNet', 'storageNet', 'securityScan', 'labour', 'yardTransportNet',
+  ].map(fieldOf);
 
   const n = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
   const costsTotal = Math.round(COST_FIELDS.reduce((a, [k]) => a + n(c.costs?.[k]), 0) * 100) / 100;
@@ -214,7 +250,34 @@ export default function CustomsDetailPage() {
   // ولا أحدَ يعرف أيُّهما الصحيح. والقاعدةُ في الخادم (recomputeTotals)، وهذه
   // مرآتُها لتُقرأ في اللحظة قبل الحفظ.
   const transportNet = Math.round((n(c.revenue?.transportSelling) - n(c.costs?.transport)) * 100) / 100;
-  const revVal = (k: string) => (k === 'transportNet' ? transportNet : n(c.revenue?.[k]));
+  const yardToCustomerNet = Math.round((n(c.revenue?.yardToCustomerSelling) - n(c.costs?.transportYardToCustomer)) * 100) / 100;
+  const transportToYardNet = yardSellSet
+    ? Math.round((n(yardSellRaw) - n(c.costs?.transportToYard)) * 100) / 100
+    : n(c.revenue?.transportToYardNet);
+  const revVal = (k: string) => (k === 'transportNet' ? transportNet
+    : k === 'yardToCustomerNet' ? yardToCustomerNet
+    : k === 'transportToYardNet' ? transportToYardNet
+    : n(c.revenue?.[k]));
+
+  // ── أسعارُ العقد ← الإيرادات ────────────────────────────────────────────
+  // «تعبئة من العقد» تكتب أسعارَ العقد في خانات الإيراد كلِّها (ولو عُدِّلت)،
+  // واختيارُ وجهةٍ يكتب سعرَها في «سعر النقل من الميناء إلى العميل».
+  const contractRoutes: { from: string; to: string; price: number | null }[] = contractInfo?.pricing?.routes || [];
+  const routeIdx = contractInfo?.route
+    ? contractRoutes.findIndex((rt) => rt.from === contractInfo.route.from && rt.to === contractInfo.route.to)
+    : -1;
+  const applyContract = async (route?: { from: string; to: string }) => {
+    if (!canEdit || contractBusy) return;
+    setContractBusy(true);
+    try {
+      const d = await api.post<any>(`/api/customs-clearance/${c._id}/apply-contract`, route ? { from: route.from, to: route.to } : {});
+      if (d?.contract !== undefined) setContractInfo(d.contract);
+      // الردُّ بلا مراحلَ محسوبة: تُعاد القراءة كي لا تُمحى من الشاشة.
+      if (d?.clearance?.pipeline) setC(d.clearance); else fetchOne();
+      notify(ar ? 'عُبّئت الإيرادات من العقد' : 'Revenue filled from the contract', 'success');
+    } catch (e: any) { notify(e?.message || (ar ? 'تعذّرت التعبئة من العقد' : 'Could not fill from the contract'), 'error'); }
+    setContractBusy(false);
+  };
   // مجموعُ بنود الهامش يدخل إجماليَّ الفاتورة. ولا يُعرَض وحدَه هنا: «صافي الربح»
   // و«هامش الربح» رُفعا من تفاصيل المعاملة — هما في تحليلات القسم، للإدارة.
   const marginSum = Math.round(MARGIN_FIELDS.reduce((a, [k]) => a + revVal(k), 0) * 100) / 100;
@@ -265,6 +328,8 @@ export default function CustomsDetailPage() {
       kv(ar ? 'موعد التفريغ' : 'Unloading appointment', c.unloadingAppointment),
       kv(ar ? 'مكان التفريغ' : 'Unloading location', c.unloadingLocation),
       kv(ar ? 'رقم إذن التسليم' : 'DO number', c.doNumber),
+      kv(ar ? 'آخر موعد إرجاع' : 'Return deadline', c.returnDeadline),
+      kv(ar ? 'تاريخ تحمّل الأرضيات' : 'Demurrage start date', c.demurrageStartDate),
       kv(ar ? 'رقم تصريح الخروج' : 'Exit permit no.', c.exitPermitNumber),
       kv(ar ? 'المدينة' : 'City', c.city),
       kv(ar ? 'الشهر' : 'Month', c.periodMonth ? MONTH_LABELS[Number(c.periodMonth) - 1][ar ? 0 : 1] : ''),
@@ -717,6 +782,8 @@ export default function CustomsDetailPage() {
           <FieldInput label={ar ? 'رقم إذن التسليم' : 'DO number'} value={c.doNumber} onSave={(v) => patch({ doNumber: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'أيّام السماح للإرجاع' : 'Return free days'} type="number" value={c.returnFreeDays ?? 0} onSave={(v) => patch({ returnFreeDays: Number(v) || 0 })} disabled={!canEdit} />
           <FieldInput label={ar ? 'آخر موعد إرجاع' : 'Return deadline'} type="date" value={c.returnDeadline} onSave={(v) => patch({ returnDeadline: v })} disabled={!canEdit} />
+          {/* اليومُ الذي تبدأ فيه الأرضياتُ على الحاويات — بجانب موعد الإرجاع. */}
+          <FieldInput label={ar ? 'تاريخ تحمّل الأرضيات' : 'Demurrage start date'} type="date" value={c.demurrageStartDate ? String(c.demurrageStartDate).slice(0, 10) : ''} onSave={(v) => patch({ demurrageStartDate: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'المدينة' : 'City'} value={c.city} onSave={(v) => patch({ city: v })} disabled={!canEdit} />
           <FieldSelect label={ar ? 'الشهر' : 'Month'} value={String(c.periodMonth || '')} disabled={!canEdit}
             options={[['', '—'], ...Array.from({ length: 12 }, (_, i) => [String(i + 1), MONTH_LABELS[i][ar ? 0 : 1]] as [string, string])]}
@@ -835,10 +902,45 @@ export default function CustomsDetailPage() {
             <span className="text-slate-300 text-sm">{ar ? 'إجمالي المصروفات' : 'Total costs'}</span>
             <span className="text-white font-bold text-lg">{sar(costsTotal)} <span className="text-slate-400 text-xs font-normal">{ar ? 'ر.س' : 'SAR'}</span></span>
           </div>
+          <p className="mt-2 text-slate-500 text-xs">
+            {ar ? 'تُملأ البنود تلقائيًّا بمبلغ مرحلة السداد حين تؤكّد الإدارة المالية الدفع، وتبقى قابلة للتعديل.'
+              : 'Lines fill automatically with the payment-stage amount once Finance confirms payment, and stay editable.'}
+          </p>
         </Card>
 
         {/* Revenue & billing */}
         <Card title={ar ? 'الإيرادات والفوترة' : 'Revenue & billing'}>
+          {/* ── من عقد العميل ─────────────────────────────────────────────
+              أسعارُ العقد تُملأ هنا تلقائيًّا عند الإنشاء وتغيُّر العميل أو عدد
+              الحاويات، وتبقى قابلةً للتعديل. والتعبئةُ يدويًّا من هنا أيضًا. */}
+          {contractInfo !== undefined && (
+            contractInfo ? (
+              <div className="mb-4 rounded-lg border border-[#f37121]/30 bg-[#f37121]/5 p-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <FileText className="w-4 h-4 text-[#f37121]" />
+                  <span className="text-[12.5px] font-semibold text-slate-800">
+                    {ar ? 'من عقد العميل:' : 'From the customer contract:'} <bdi>{contractInfo.title || contractInfo.contractNumber || '—'}</bdi>
+                  </span>
+                  {canEdit && (
+                    <button type="button" onClick={() => applyContract()} disabled={contractBusy}
+                      className="ms-auto inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-3 py-1.5 text-[11.5px] font-bold text-white hover:bg-[#e06010] disabled:opacity-50">
+                      {contractBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                      {ar ? 'تعبئة من العقد' : 'Fill from contract'}
+                    </button>
+                  )}
+                </div>
+                {contractRoutes.length > 0 && (
+                  <FieldSelect label={ar ? 'وجهة النقل من الميناء إلى العميل' : 'Port → customer route'}
+                    value={routeIdx >= 0 ? String(routeIdx) : ''} disabled={!canEdit || contractBusy}
+                    options={[['', '—'], ...contractRoutes.map((rt, i) => [String(i),
+                      `${rt.from || '—'} → ${rt.to || '—'} · ${rt.price != null ? sar(Number(rt.price)) : '—'}`] as [string, string])]}
+                    onSave={(v) => { if (v !== '') applyContract(contractRoutes[Number(v)]); }} />
+                )}
+              </div>
+            ) : (
+              <p className="mb-4 text-[12px] text-slate-400">{ar ? 'لا يوجد عقد ساري بأسعار لهذا العميل' : 'No active contract with prices for this customer'}</p>
+            )
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {REVENUE_FIELDS.map(([key, arLabel, enLabel]) => (COMPUTED_REVENUE.has(key) ? (
               <div key={key}>
@@ -846,9 +948,21 @@ export default function CustomsDetailPage() {
                 <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                   <span className="text-sm font-bold text-slate-900 tabular-nums">{sar(revVal(key))}</span>
                   <span className="text-[10px] text-slate-400">
-                    {ar ? 'سعر النقل − سعر المورد' : 'price − supplier'}
+                    {ar ? (COMPUTED_HINT[key] || ['', ''])[0] : (COMPUTED_HINT[key] || ['', ''])[1]}
                   </span>
                 </div>
+              </div>
+            ) : NULLABLE_REVENUE.has(key) ? (
+              <FieldInput key={key} label={ar ? arLabel : enLabel} type="number"
+                value={c.revenue?.[key] === null || c.revenue?.[key] === undefined ? '' : c.revenue[key]}
+                onSave={(v) => patch({ revenue: { [key]: v === '' ? null : (Number(v) || 0) } })} disabled={!canEdit} />
+            ) : key === 'clearanceFee' ? (
+              <div key={key}>
+                <FieldInput label={ar ? arLabel : enLabel} type="number" value={c.revenue?.[key] ?? 0}
+                  onSave={(v) => patch({ revenue: { [key]: Number(v) || 0 } })} disabled={!canEdit} />
+                <p className="mt-1 text-[10.5px] text-slate-400">
+                  {ar ? 'أجور التخليص = سعر الحاوية في العقد × عدد الحاويات' : 'Clearance fee = contract price per container × container count'}
+                </p>
               </div>
             ) : (
               <FieldInput key={key} label={ar ? arLabel : enLabel} type="number" value={c.revenue?.[key] ?? 0}

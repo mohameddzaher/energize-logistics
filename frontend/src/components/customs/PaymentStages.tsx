@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
-import { downloadName } from '@/lib/customsPipeline';
+import { downloadName, AMOUNT_REQUIRED_STAGE_KEYS, TRANSPORT_STAGE_KEYS } from '@/lib/customsPipeline';
 import {
   Plus, Paperclip, Trash2, Loader2, Check, CalendarDays, Lock, Unlock, AlertTriangle, Clock3, Receipt,
 } from 'lucide-react';
@@ -41,7 +41,6 @@ export const PAY_BADGE: Record<string, { ar: string; en: string; cls: string }> 
 };
 interface StageDef { _id: string; key: string; nameAr?: string; nameEn?: string }
 
-const REQUIRED_KEY = 'transportInvoice';
 const fmtDate = (d?: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d)
   ? d.split('-').reverse().join('/') : (d || '—'));
 
@@ -132,7 +131,8 @@ export default function PaymentStages({
       <div className="space-y-2">
         {grouped.map(({ def, list }) => {
           const label = ar ? (def.nameAr || def.nameEn || def.key) : (def.nameEn || def.nameAr || def.key);
-          const isRequired = def.key === REQUIRED_KEY;
+          // أيُّ مرحلةِ نقلٍ بمرفقها تُنهي المعاملة — لا «فاتورة النقل» وحدَها.
+          const isRequired = TRANSPORT_STAGE_KEYS.has(def.key);
           return (
             <div key={def.key} className={`rounded-lg border ${isRequired ? 'border-[#f37121]/40 bg-[#f37121]/5' : 'border-slate-200 bg-slate-50'}`}>
               <div className="flex items-center gap-2 px-3 py-2">
@@ -229,6 +229,7 @@ export default function PaymentStages({
 
               {openKey === def.key && canEdit && (
                 <AddEntry clearanceId={clearanceId} stageKey={def.key} ar={ar}
+                  amountRequired={AMOUNT_REQUIRED_STAGE_KEYS.has(def.key)}
                   onDone={(cl) => { onChanged(cl); setOpenKey(null); }}
                   onCancel={() => setOpenKey(null)} />
               )}
@@ -307,8 +308,13 @@ export default function PaymentStages({
 
 /** نموذجُ إدخالٍ واحد: تاريخٌ ومبلغٌ وملاحظةٌ وملفّ. */
 function AddEntry({
-  clearanceId, stageKey, ar, onDone, onCancel,
-}: { clearanceId: string; stageKey: string; ar: boolean; onDone: (cl: any) => void; onCancel: () => void }) {
+  clearanceId, stageKey, ar, amountRequired, onDone, onCancel,
+}: {
+  clearanceId: string; stageKey: string; ar: boolean;
+  /** مرحلةٌ تُكتب في التكاليف عند الدفع — فلا تُضاف بلا مبلغ. */
+  amountRequired?: boolean;
+  onDone: (cl: any) => void; onCancel: () => void;
+}) {
   const { notify } = useDialog();
   const t = (a: string, e: string) => (ar ? a : e);
   const [date, setDate] = useState('');
@@ -317,6 +323,7 @@ function AddEntry({
   const [file, setFile] = useState<{ dataUrl: string; fileName: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const amountOk = !amountRequired || (amount.trim() !== '' && Number.isFinite(Number(amount)) && Number(amount) > 0);
 
   const pick = useCallback((f: File | null) => {
     if (!f) return;
@@ -329,6 +336,10 @@ function AddEntry({
   const save = async () => {
     if (!date && !file) {
       notify(t('اختر تاريخًا أو ارفع ملفًّا', 'Pick a date or attach a file'), 'error');
+      return;
+    }
+    if (!amountOk) {
+      notify(t('اكتب المبلغ — هذه المرحلةُ طلبُ صرفٍ ولا تُضاف بلا مبلغ', 'Enter the amount — this stage is a payment request'), 'error');
       return;
     }
     setSaving(true);
@@ -352,9 +363,12 @@ function AddEntry({
             className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs [color-scheme:light]" />
         </label>
         <label className="block">
-          <span className="mb-1 block text-[10.5px] font-semibold text-slate-500">{t('المبلغ (اختياري)', 'Amount (optional)')}</span>
-          <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
-            className="w-24 rounded-lg border border-slate-200 px-2 py-1.5 text-xs" />
+          <span className="mb-1 block text-[10.5px] font-semibold text-slate-500">{amountRequired
+              ? <>{t('المبلغ (إلزامي)', 'Amount (required)')} <span className="text-red-600">*</span></>
+              : t('المبلغ (اختياري)', 'Amount (optional)')}
+          </span>
+          <input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} required={amountRequired}
+            className={`w-24 rounded-lg border px-2 py-1.5 text-xs ${amountRequired && !amountOk ? 'border-red-300' : 'border-slate-200'}`} />
         </label>
         <label className="block flex-1 min-w-[8rem]">
           <span className="mb-1 block text-[10.5px] font-semibold text-slate-500">{t('ملاحظة', 'Note')}</span>
@@ -369,7 +383,7 @@ function AddEntry({
         <input ref={inputRef} type="file" className="hidden"
           accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
           onChange={(e) => pick(e.target.files?.[0] || null)} />
-        <button type="button" onClick={save} disabled={saving}
+        <button type="button" onClick={save} disabled={saving || !amountOk}
           className="inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-3 py-2 text-[11px] font-bold text-white disabled:opacity-50">
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
           {t('حفظ', 'Save')}

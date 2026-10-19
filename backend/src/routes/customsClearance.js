@@ -67,6 +67,9 @@ router.delete('/:id', authorize('super_admin', 'admin', 'customs_manager', 'cust
 // ── مراحلُ السداد ──────────────────────────────────────────────────────────
 // إدخالٌ لكلّ مرّة: المرحلةُ نفسُها تُضاف مرّاتٍ (الرسومُ على دفعتين، الإرجاعُ
 // لحاويتين). والقائمةُ التي تُختار منها من إعدادات القسم.
+// أسعارُ عقد العميل: قراءتُها لشاشة المعاملة، و«تعبئة من العقد».
+router.get('/:id/contract-pricing', ctrl.getContractPricing);
+router.post('/:id/apply-contract', authorize(...EDIT_ROLES), ctrl.applyContractPricing);
 router.post('/:id/payment-stages', authorize(...EDIT_ROLES), ctrl.addPaymentStage);
 router.put('/:id/payment-stages/:entryId', authorize(...EDIT_ROLES), ctrl.updatePaymentStage);
 router.delete('/:id/payment-stages/:entryId', authorize(...EDIT_ROLES), ctrl.deletePaymentStage);

@@ -4,7 +4,9 @@ const {
   recomputeTotals, COST_KEYS, MARGIN_KEYS, pipelineOf, readStages, readUnits, lockReason, hasTransportInvoice,
   UNIT_STAGES, PORT_LEGS,
   syncUnits, TRANSPORT_LEGS, CARGO_TYPES, VEHICLE_KINDS,
+  STAGE_COST, TRANSPORT_STAGE_KEYS, DERIVED_REVENUE, applyPaidCosts,
 } = require('../models/CustomsClearance');
+const contractPricing = require('../utils/customsContractPricing');
 const cache = require('../utils/ttlCache');
 const { parseMonth, parseYear } = require('../utils/period');
 const logAudit = require('../utils/auditLogger');
@@ -22,7 +24,7 @@ const EDITABLE = [
   'legacySerial', 'periodMonth', 'periodYear', 'city',
   'declarationNumber', 'declarationDate', 'papersReceivedDate',
   'unloadingAppointment', 'unloadingLocation', 'doNumber', 'exitPermitNumber',
-  'returnDeadline', 'returnFreeDays',
+  'returnDeadline', 'returnFreeDays', 'demurrageStartDate',
   // (المراحلُ لا تُكتب من هنا: لها قواعدُ — طريقان يتنافيان ومراحلُ تُغلَق —
   //  فتمرّ من `setStage` وحدَها. راجع PATCH /:id/stage.)
   // ربطُ المعاملة بملفَّي العميل والوكيل.
@@ -42,11 +44,14 @@ const NESTED = {
   // totalInvoiced/profit مشتقّتان — لا تُقبلان من العميل مهما أرسل. ومثلُهما
   // `transportNet`: صارت فرقَ سعرِ النقل عن سعر المورد (recomputeTotals)،
   // فقبولُها من الشاشة يفتح بابَ رقمٍ يخالف بنودَه.
-  revenue: [...MARGIN_KEYS.filter((k) => k !== 'transportNet'), 'transportSelling', 'yardTransportNet'],
+  revenue: [...MARGIN_KEYS.filter((k) => !DERIVED_REVENUE.includes(k)), 'transportSelling', 'yardTransportNet',
+    'transportToYardSelling', 'yardToCustomerSelling'],
   billing: ['invoiceStatus', 'ourInvoiceNumber', 'invoicedAt'],
 };
 
 const NUMERIC_NESTED = new Set(['costs', 'revenue']);
+// خاناتٌ فراغُها معنًى لا صفر: «لم يُكتب السعرُ بعد» (راجع recomputeTotals).
+const NULLABLE_NESTED = new Set(['revenue.transportToYardSelling']);
 
 /**
  * Build an update payload from a request body.
@@ -67,6 +72,7 @@ function pick(body, existing) {
     for (const k of keys) {
       const v = incoming[k] !== undefined ? incoming[k] : base[k];
       if (v === undefined) continue;
+      if (NULLABLE_NESTED.has(`${group}.${k}`) && (v === null || v === '')) { merged[k] = null; continue; }
       merged[k] = NUMERIC_NESTED.has(group) ? (Number.isFinite(Number(v)) ? Number(v) : 0) : v;
     }
     out[group] = merged;
@@ -394,6 +400,11 @@ exports.createClearance = async (req, res) => {
     const data = pick(req.body, null);
     data.createdBy = req.user._id;
     await attachPartyFields(data);
+    // أسعارُ عقد العميل تملأ الإيرادات من أوّل لحظة (وتبقى قابلةً للتعديل).
+    if (data.customerParty) {
+      const contract = await contractPricing.activeCustomerContract(data.customerParty).catch(() => null);
+      if (contract) contractPricing.fillRevenue(data, {}, contract);
+    }
     const clearance = await CustomsClearance.create(data);
 
     await logAudit({ user: req.user._id, action: 'create_customs_clearance', entity: 'CustomsClearance', entityId: clearance._id, changes: { after: { refNumber: clearance.refNumber } }, ipAddress: req.ip });
@@ -441,6 +452,21 @@ exports.updateClearance = async (req, res) => {
     const data = pick(req.body, existing);
     data.lastModifiedBy = req.user._id;
     await attachPartyFields(data);
+    // ── تغيّر العميلُ أو عددُ الحاويات؟ فأسعارُ العقد تتبعه ────────────────────
+    // أجورُ التخليص للحاوية، فحاويةٌ زائدةٌ أجرةٌ زائدة. ولا يُكتب إلّا فيما بقي
+    // على قيمة العقد — ما عدّله الموظّفُ بيده يبقى (راجع fillRevenue).
+    const partyChanged = data.customerParty !== undefined && String(data.customerParty || '') !== String(existing.customerParty || '');
+    const countChanged = data.containerCount !== undefined && Number(data.containerCount) !== Number(existing.containerCount || 0);
+    if (partyChanged || countChanged) {
+      const partyId = data.customerParty !== undefined ? data.customerParty : existing.customerParty;
+      const contract = await contractPricing.activeCustomerContract(partyId).catch(() => null);
+      if (contract && contractPricing.fillRevenue(data, existing, contract)) {
+        const merged = { costs: { ...(existing.costs || {}), ...(data.costs || {}) }, revenue: data.revenue };
+        recomputeTotals(merged);
+        data.costs = merged.costs;
+        data.revenue = merged.revenue;
+      }
+    }
     const clearance = await CustomsClearance.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true });
     if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
 
@@ -1270,12 +1296,16 @@ exports.decidePaymentStage = async (req, res) => {
       catch (e) { return res.status(400).json({ message: e.message }); }
     }
 
+    const wasPaid = entry.payStatus === 'paid';
     entry.payStatus = decision;
     entry.decisionNote = String(req.body.note || '').trim().slice(0, 500);
     entry.decidedBy = req.user._id;
     entry.decidedByName = who;
     entry.decidedAt = new Date();
     if (stored.length) entry.proofFiles = [...(entry.proofFiles || []), ...stored];
+
+    // «تمّ الدفع» يكتب المبلغَ في بنده من التكاليف — راجع STAGE_COST.
+    if (STAGE_COST[entry.key]) applyPaidCosts(clearance, [entry.key], wasPaid || decision === 'paid');
 
     // وإثباتُ الدفع يُوجَد مع ورق المعاملة كذلك — حيث يبحث عنه من لا يعرف
     // من أيّ مرحلةٍ جاء (نفسُ قاعدة مرفق الإدخال).
@@ -1372,13 +1402,20 @@ exports.addPaymentStage = async (req, res) => {
     if (!date && !stored) {
       return res.status(400).json({ message: 'اختر تاريخًا أو ارفع ملفًّا — الإدخال الفارغ لا يُسجَّل' });
     }
+    // ── والمبلغُ إجباريٌّ لما يُدفَع ──────────────────────────────────────────
+    // المرحلةُ طلبُ صرفٍ إلى الإدارة الماليّة، ومنها يُكتب البندُ في التكاليف
+    // عند الدفع. فطلبٌ بلا مبلغٍ لا يُصرَف ولا يُكتب. (المراسلاتُ بلا مبلغ.)
+    const amountNum = req.body.amount != null && req.body.amount !== '' ? Number(req.body.amount) : null;
+    if (STAGE_COST[key] && !(Number.isFinite(amountNum) && amountNum > 0)) {
+      return res.status(400).json({ message: 'اكتب المبلغ — مرحلةُ السداد طلبُ صرفٍ ولا تُضاف بلا مبلغ', code: 'AMOUNT_REQUIRED' });
+    }
 
     const who = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.name || '';
     const entry = {
       key,
       label: def.nameAr || def.nameEn || key,
       date,
-      amount: req.body.amount != null && req.body.amount !== '' ? Number(req.body.amount) : null,
+      amount: amountNum,
       note: String(req.body.note || '').trim().slice(0, 500),
       ...(stored || {}),
       addedBy: req.user._id,
@@ -1399,7 +1436,7 @@ exports.addPaymentStage = async (req, res) => {
     }
 
     // فاتورةُ النقل وصلت لمعاملةٍ فُوترت؟ فهي تُنهى الآن — راجع settleClosure.
-    if (key === REQUIRED_STAGE_KEY && stored) settleClosure(clearance, req);
+    if (TRANSPORT_STAGE_KEYS.includes(key) && stored) settleClosure(clearance, req);
     clearance.lastModifiedBy = req.user._id;
     await clearance.save();
     await logAudit({
@@ -1430,7 +1467,13 @@ exports.updatePaymentStage = async (req, res) => {
       entry.date = d;
     }
     if (req.body.amount !== undefined) {
-      entry.amount = req.body.amount === '' || req.body.amount == null ? null : Number(req.body.amount);
+      const a = req.body.amount === '' || req.body.amount == null ? null : Number(req.body.amount);
+      if (STAGE_COST[entry.key] && !(Number.isFinite(a) && a > 0)) {
+        return res.status(400).json({ message: 'اكتب المبلغ — مرحلةُ السداد لا تبقى بلا مبلغ', code: 'AMOUNT_REQUIRED' });
+      }
+      entry.amount = a;
+      // مبلغُ مرحلةٍ مدفوعةٍ تغيّر؟ فبندُها في التكاليف يتبعه.
+      if (STAGE_COST[entry.key] && entry.payStatus === 'paid') applyPaidCosts(clearance, [entry.key], true);
     }
     if (req.body.note !== undefined) entry.note = String(req.body.note).trim().slice(0, 500);
 
@@ -1458,7 +1501,7 @@ exports.updatePaymentStage = async (req, res) => {
       }
     }
 
-    if (entry.key === REQUIRED_STAGE_KEY && req.body.dataUrl) settleClosure(clearance, req);
+    if (TRANSPORT_STAGE_KEYS.includes(entry.key) && req.body.dataUrl) settleClosure(clearance, req);
     clearance.lastModifiedBy = req.user._id;
     await clearance.save();
     try { emitToAll('customs:updated', { clearance }); } catch (e) {}
@@ -1478,7 +1521,10 @@ exports.deletePaymentStage = async (req, res) => {
     if (!entry) return res.status(404).json({ message: 'الإدخال غير موجود' });
     const label = entry.label;
     const urls = [entry.fileUrl, ...(entry.proofFiles || []).map((f) => f.fileUrl)].filter(Boolean);
+    const paidKey = entry.payStatus === 'paid' && STAGE_COST[entry.key] ? entry.key : '';
     entry.deleteOne();
+    // حُذف ما دُفع؟ فبندُه في التكاليف يعود إلى مجموع ما بقي مدفوعًا.
+    if (paidKey) applyPaidCosts(clearance, [paidKey], true);
     for (const a of clearance.attachments.filter((x) => urls.includes(x.fileUrl))) a.deleteOne();
     clearance.lastModifiedBy = req.user._id;
     await clearance.save();
@@ -2272,6 +2318,20 @@ exports.deleteNote = async (req, res) => {
 const CONTRACT_FIELDS = ['title', 'contractNumber', 'startDate', 'endDate', 'value', 'valueBasis',
   'paymentTermDays', 'autoRenew', 'status', 'scope', 'notes'];
 
+/** أسعارُ العقد كما تُحفَظ: أرقامٌ أو فراغ، ووجهاتٌ لها اسمٌ وسعر. */
+const cleanPricing = (p) => {
+  if (!p || typeof p !== 'object') return undefined;
+  const num = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Math.max(0, Number(v)));
+  return {
+    clearanceFeePerContainer: num(p.clearanceFeePerContainer),
+    portToYard: num(p.portToYard),
+    yardToCustomer: num(p.yardToCustomer),
+    routes: (Array.isArray(p.routes) ? p.routes : []).slice(0, 100)
+      .map((r) => ({ from: String(r?.from || '').trim().slice(0, 80), to: String(r?.to || '').trim().slice(0, 80), price: num(r?.price) }))
+      .filter((r) => r.from || r.to || r.price !== null),
+  };
+};
+
 /** العقدُ المنتهي يُقرأ منتهيًا وإن كُتب «ساري»: التاريخُ أصدقُ من الخانة. */
 const withState = (c) => {
   const end = c.endDate ? new Date(c.endDate) : null;
@@ -2307,6 +2367,7 @@ exports.createContract = async (req, res) => {
     const body = stripEmpty(req.body, CustomsContract.schema);
     const doc = await CustomsContract.create({
       ...Object.fromEntries(CONTRACT_FIELDS.map((f) => [f, body[f]]).filter(([, v]) => v !== undefined)),
+      ...(cleanPricing(req.body.pricing) ? { pricing: cleanPricing(req.body.pricing) } : {}),
       party: party._id,
       partyKind: party.kind,
       partyName: party.name,
@@ -2329,6 +2390,7 @@ exports.updateContract = async (req, res) => {
       doc.party = party._id; doc.partyKind = party.kind; doc.partyName = party.name;
     }
     for (const f of CONTRACT_FIELDS) if (req.body[f] !== undefined) doc[f] = req.body[f] === '' ? (doc.schema.path(f)?.instance === 'Number' ? null : '') : req.body[f];
+    if (req.body.pricing !== undefined) doc.pricing = cleanPricing(req.body.pricing) || {};
     doc.lastModifiedBy = req.user._id;
     await doc.save();
     try { emitToAll('customs:contract', { id: String(doc._id) }); } catch (_) { /* */ }
@@ -2470,4 +2532,52 @@ exports.deletePartyAttachment = async (req, res) => {
     try { emitToAll('customs:updated', { party: String(party._id) }); } catch (e) { /* */ }
     res.json({ party: partyCardOf(party.toObject()) });
   } catch (e) { return sendMongooseError(res, e, 'تعذّر الحذف'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  أسعارُ عقد العميل ← الإيرادات والفوترة
+// ═══════════════════════════════════════════════════════════════════════════
+/** GET /:id/contract-pricing — عقدُ العميل الساري ووجهاتُه وما يقوله لهذه المعاملة. */
+exports.getContractPricing = async (req, res) => {
+  try {
+    const c = await CustomsClearance.findById(req.params.id).select('customerParty containerCount city contractPricing').lean();
+    if (!c) return res.status(404).json({ message: 'Clearance not found' });
+    const contract = await contractPricing.activeCustomerContract(c.customerParty);
+    res.json({ contract: contractPricing.contractSummary(contract, c) });
+  } catch (e) {
+    console.error('getContractPricing:', e);
+    res.status(500).json({ message: 'تعذّر قراءة عقد العميل' });
+  }
+};
+
+/**
+ * POST /:id/apply-contract { from?, to? } — «تعبئة من العقد»: يكتب أسعارَ العقد
+ * في خانات الإيراد كلِّها (ولو عُدِّلت)، وباختيار الوجهة يُكتب سعرُها.
+ */
+exports.applyContractPricing = async (req, res) => {
+  try {
+    const clearance = await CustomsClearance.findById(req.params.id);
+    if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
+    const contract = await contractPricing.activeCustomerContract(clearance.customerParty);
+    if (!contract) return res.status(400).json({ message: 'لا يوجد عقدٌ ساري بأسعار لهذا العميل — أضِف الأسعار في عقده أوّلًا', code: 'NO_CONTRACT' });
+    const current = clearance.toObject();
+    const target = {};
+    const opts = { overwrite: true };
+    if (req.body.from !== undefined || req.body.to !== undefined) { opts.from = String(req.body.from || ''); opts.to = String(req.body.to || ''); }
+    contractPricing.fillRevenue(target, current, contract, opts);
+    clearance.revenue = { ...current.revenue, ...target.revenue };
+    clearance.contractPricing = target.contractPricing;
+    clearance.lastModifiedBy = req.user._id;
+    await clearance.save();
+    await logAudit({
+      user: req.user._id, action: 'update_customs_clearance', entity: 'CustomsClearance', entityId: clearance._id,
+      changes: { after: { refNumber: clearance.refNumber, contractPricing: contract.title, route: `${target.contractPricing.routeFrom} → ${target.contractPricing.routeTo}` } },
+      ipAddress: req.ip,
+    }).catch(() => {});
+    try { emitToAll('customs:updated', { clearance }); } catch (_) { /* */ }
+    cache.clear('customs:');
+    res.json({ clearance, contract: contractPricing.contractSummary(contract, clearance.toObject()) });
+  } catch (e) {
+    return sendMongooseError(res, e, 'تعذّر التعبئة من العقد');
+  }
 };

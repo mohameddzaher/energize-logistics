@@ -27,6 +27,12 @@ export type CustomsContract = {
   status: 'draft' | 'active' | 'expired' | 'terminated'; scope?: string; notes?: string;
   attachments?: { _id: string; fileUrl: string; fileName?: string; title?: string }[];
   state?: string; daysLeft?: number | null; createdByName?: string; createdAt?: string;
+  /** أسعارُ التعاقد مع العميل — تملأ «الإيرادات والفوترة» في معاملاته. */
+  pricing?: ContractPricing;
+};
+export type ContractPricing = {
+  clearanceFeePerContainer?: number | null; portToYard?: number | null; yardToCustomer?: number | null;
+  routes?: { from: string; to: string; price: number | null }[];
 };
 
 export const KIND_LABEL: Record<string, [string, string]> = {
@@ -44,6 +50,16 @@ const BASIS: [string, string, string][] = [
 ];
 const dt = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
 const money = (n?: number | null) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
+
+// الأسعارُ في النموذج نصوصٌ (الخانةُ الفارغةُ فراغٌ لا صفر)، وتُحوَّل عند الحفظ.
+const EMPTY_PRICING = { clearanceFeePerContainer: '', portToYard: '', yardToCustomer: '', routes: [] as { from: string; to: string; price: string }[] };
+const pricingToForm = (p?: ContractPricing) => ({
+  clearanceFeePerContainer: p?.clearanceFeePerContainer ?? '',
+  portToYard: p?.portToYard ?? '',
+  yardToCustomer: p?.yardToCustomer ?? '',
+  routes: (p?.routes || []).map((rt) => ({ from: rt.from || '', to: rt.to || '', price: rt.price ?? '' })),
+});
+const numOrNull = (v: any) => (v === '' || v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
 
 const EMPTY = { title: '', contractNumber: '', party: '', startDate: '', endDate: '', value: '', valueBasis: '', paymentTermDays: 0, status: 'active', scope: '', notes: '' };
 
@@ -79,15 +95,33 @@ export default function CustomsContracts({ ar, canEdit, party, parties, notify, 
   }, [party?._id, kindFilter]);
   useEffect(() => { load(); }, [load]);
 
+  // أسعارُ التعاقد للعميل وحدَه: الوكيلُ والناقلُ لا تُملأ منهما إيراداتُ المعاملة.
+  const partyKindOf = (ed: any) => party?.kind
+    || (parties || []).find((p) => p._id === ed?.party)?.kind || ed?.partyKind || '';
+  const isCustomerContract = !!editing && partyKindOf(editing) === 'customer';
+  const setPricing = (patchP: any) => setEditing((ed: any) => ({ ...ed, pricing: { ...EMPTY_PRICING, ...(ed?.pricing || {}), ...patchP } }));
+  const pricingForm = editing?.pricing || EMPTY_PRICING;
+
   const save = async () => {
-    const body = {
-      ...editing,
+    const { pricing: formPricing, ...rest } = editing;
+    const body: any = {
+      ...rest,
       party: party?._id || editing.party,
       value: editing.value === '' ? null : Number(editing.value),
       paymentTermDays: Number(editing.paymentTermDays) || 0,
       startDate: editing.startDate || null,
       endDate: editing.endDate || null,
     };
+    if (isCustomerContract && formPricing) {
+      body.pricing = {
+        clearanceFeePerContainer: numOrNull(formPricing.clearanceFeePerContainer),
+        portToYard: numOrNull(formPricing.portToYard),
+        yardToCustomer: numOrNull(formPricing.yardToCustomer),
+        routes: (formPricing.routes || [])
+          .map((rt: any) => ({ from: String(rt.from || '').trim(), to: String(rt.to || '').trim(), price: numOrNull(rt.price) }))
+          .filter((rt: any) => rt.from || rt.to || rt.price !== null),
+      };
+    }
     if (!body.title?.trim()) return notify(t('اكتب اسم العقد', 'Name the contract'), 'error');
     if (!body.party) return notify(t('اختر الطرف', 'Choose the party'), 'error');
     setSaving(true);
@@ -132,7 +166,7 @@ export default function CustomsContracts({ ar, canEdit, party, parties, notify, 
     catch (e: any) { notify(e?.message || t('تعذّر الحذف', 'Could not delete'), 'error'); }
   };
 
-  const openNew = () => setEditing({ ...EMPTY, party: party?._id || '' });
+  const openNew = () => setEditing({ ...EMPTY, party: party?._id || '', pricing: { ...EMPTY_PRICING } });
 
   // فلاترُ الأعمدة على طريقة إكسل — بالقيمة التي تُقرأ في الخليّة.
   const colGetters: Record<string, (c: CustomsContract) => any> = {
@@ -213,7 +247,7 @@ export default function CustomsContracts({ ar, canEdit, party, parties, notify, 
                 <td className="px-3 py-2.5 text-end whitespace-nowrap">
                   {canEdit && (
                     <span className="inline-flex items-center gap-1">
-                      <button type="button" onClick={() => setEditing({ ...EMPTY, ...c, startDate: (c.startDate || '').slice(0, 10), endDate: (c.endDate || '').slice(0, 10), value: c.value ?? '' })}
+                      <button type="button" onClick={() => setEditing({ ...EMPTY, ...c, startDate: (c.startDate || '').slice(0, 10), endDate: (c.endDate || '').slice(0, 10), value: c.value ?? '', pricing: pricingToForm(c.pricing) })}
                         className="p-1.5 rounded-md text-slate-500 hover:text-[#f37121] hover:bg-slate-100"><Pencil className="w-3.5 h-3.5" /></button>
                       <button type="button" onClick={() => remove(c)}
                         className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -293,6 +327,52 @@ export default function CustomsContracts({ ar, canEdit, party, parties, notify, 
           <Field label={t('ملاحظات', 'Notes')} span2>
             <TextInput value={editing.notes} onChange={(e: any) => setEditing({ ...editing, notes: e.target.value })} />
           </Field>
+          {/* ── أسعارُ التعاقد مع العميل ─────────────────────────────────
+              ما يُتّفق عليه مع العميل يُكتب هنا مرّةً، فيُملأ في إيرادات كلّ
+              معاملةٍ له بدل أن يُكتب في كلٍّ منها بيد. */}
+          {isCustomerContract && (
+            <div className="sm:col-span-2 rounded-xl border border-[#f37121]/30 bg-[#f37121]/5 p-3 space-y-3">
+              <p className="text-[13px] font-bold text-slate-900">{t('أسعار التعاقد مع العميل', 'Customer contract prices')}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Field label={t('أجور التخليص (للحاوية الواحدة)', 'Clearance fee (per container)')}>
+                  <TextInput type="number" value={pricingForm.clearanceFeePerContainer} onChange={(e: any) => setPricing({ clearanceFeePerContainer: e.target.value })} />
+                </Field>
+                <Field label={t('النقل من الميناء إلى الساحة', 'Transport: port → yard')}>
+                  <TextInput type="number" value={pricingForm.portToYard} onChange={(e: any) => setPricing({ portToYard: e.target.value })} />
+                </Field>
+                <Field label={t('النقل من الساحة إلى العميل', 'Transport: yard → customer')}>
+                  <TextInput type="number" value={pricingForm.yardToCustomer} onChange={(e: any) => setPricing({ yardToCustomer: e.target.value })} />
+                </Field>
+              </div>
+              <div className="space-y-2">
+                <p className="text-[12px] font-semibold text-slate-700">{t('النقل من الميناء إلى العميل', 'Transport: port → customer')}</p>
+                {(pricingForm.routes || []).map((rt: any, i: number) => (
+                  <div key={i} className="grid grid-cols-[1fr_1fr_7rem_auto] items-end gap-2">
+                    <Field label={t('من', 'From')}>
+                      <TextInput value={rt.from} onChange={(e: any) => setPricing({ routes: pricingForm.routes.map((x: any, j: number) => (j === i ? { ...x, from: e.target.value } : x)) })} />
+                    </Field>
+                    <Field label={t('إلى', 'To')}>
+                      <TextInput value={rt.to} onChange={(e: any) => setPricing({ routes: pricingForm.routes.map((x: any, j: number) => (j === i ? { ...x, to: e.target.value } : x)) })} />
+                    </Field>
+                    <Field label={t('السعر', 'Price')}>
+                      <TextInput type="number" value={rt.price} onChange={(e: any) => setPricing({ routes: pricingForm.routes.map((x: any, j: number) => (j === i ? { ...x, price: e.target.value } : x)) })} />
+                    </Field>
+                    <button type="button" title={t('حذف الوجهة', 'Remove route')}
+                      onClick={() => setPricing({ routes: pricingForm.routes.filter((_: any, j: number) => j !== i) })}
+                      className="mb-1 p-2 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                ))}
+                <button type="button" onClick={() => setPricing({ routes: [...(pricingForm.routes || []), { from: '', to: '', price: '' }] })}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-dashed border-slate-300 text-[12px] text-slate-600 hover:border-[#f37121] hover:text-[#f37121]">
+                  <Plus className="w-3.5 h-3.5" />{t('إضافة وجهة', 'Add route')}
+                </button>
+              </div>
+              <p className="text-[11.5px] text-slate-500">
+                {t('تُملأ هذه الأسعار تلقائيًّا في «الإيرادات والفوترة» لكل معاملة لهذا العميل، وتبقى قابلة للتعديل هناك.',
+                   'These prices fill «Revenue & billing» automatically on every transaction for this customer, and stay editable there.')}
+              </p>
+            </div>
+          )}
           {!editing._id && (
             <p className="sm:col-span-2 text-[12px] text-slate-500">
               {t('احفظ العقد أوّلًا ثمّ أرفق ملفَّه من الجدول.', 'Save the contract first, then attach its file from the table.')}

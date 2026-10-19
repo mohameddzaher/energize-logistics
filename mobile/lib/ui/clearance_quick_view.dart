@@ -27,17 +27,23 @@ Future<void> showClearanceQuickView(BuildContext context, String id) {
 const _costs = [
   ('deliveryOrder', 'قيمة إذن التسليم', 'Delivery order'), ('customsDuty', 'الرسوم الجمركية', 'Customs duty'),
   ('portFees', 'أجور الموانى', 'Port fees'), ('unloadingFees', 'أجور التفريغ', 'Unloading fees'),
-  ('inspection', 'أجور الكشف', 'Inspection'), ('transport', 'سعر النقل من المورد', 'Transport — supplier'),
-  ('transportToYard', 'النقل إلى الساحة', 'Transport to yard'), ('appointmentBooking', 'حجز الموعد', 'Appointment'),
+  ('inspection', 'أجور الكشف', 'Inspection'), ('transport', 'النقل من الميناء إلى العميل', 'Transport: port → customer'),
+  ('transportToYard', 'النقل من الميناء إلى الساحة', 'Transport: port → yard'),
+  ('transportYardToCustomer', 'النقل من الساحة إلى العميل', 'Transport: yard → customer'),
+  ('appointmentBooking', 'حجز الموعد', 'Appointment'),
   ('storage', 'تخزين', 'Storage'), ('yardFees', 'أجور الساحة', 'Yard fees'),
   ('exitPermit', 'تصريح الخروج (الأرضيات)', 'Exit permit'), ('demurrage', 'أرضيات', 'Demurrage'),
   ('extension', 'تمديد', 'Extension'), ('consolidator', 'الدامج', 'Consolidator'),
   ('commissions', 'عمولات', 'Commissions'), ('extraFees', 'أجور إضافية', 'Extra fees'),
-  ('returnInvoice', 'فاتورة الإرجاع', 'Return invoice'),
+  ('returnInvoice', 'فاتورة الإرجاع', 'Return invoice'), ('labourExpenses', 'مصاريف عمال', 'Labour expenses'),
 ];
 const _margin = [
-  ('clearanceFee', 'أجور التخليص', 'Clearance fee'), ('transportSelling', 'سعر النقل للعميل', 'Transport price'),
-  ('transportNet', 'صافي النقل', 'Transport net'), ('transportToYardNet', 'صافي النقل إلى الساحة', 'Yard transport net'),
+  ('clearanceFee', 'أجور التخليص', 'Clearance fee'),
+  ('transportSelling', 'سعر النقل من الميناء إلى العميل', 'Price: port → customer'), ('transportNet', 'صافي النقل', 'Transport net'),
+  ('transportToYardSelling', 'سعر النقل من الميناء إلى الساحة', 'Price: port → yard'),
+  ('transportToYardNet', 'صافي النقل إلى الساحة', 'Yard transport net'),
+  ('yardToCustomerSelling', 'سعر النقل من الساحة إلى العميل', 'Price: yard → customer'),
+  ('yardToCustomerNet', 'صافي النقل من الساحة إلى العميل', 'Yard-to-customer net'),
   ('yardNet', 'صافي الساحة', 'Yard net'), ('storageNet', 'صافي التخزين', 'Storage net'),
   ('securityScan', 'فحص أمني', 'Security scan'), ('labour', 'عمال', 'Labour'),
 ];
@@ -240,6 +246,7 @@ class _QuickViewState extends State<_QuickView> {
         _kv(tr('إذن التسليم', 'DO number'), '${c['doNumber'] ?? ''}'),
         _kv(tr('موعد التفريغ', 'Unloading'), [_date(c['unloadingAppointment']), '${c['unloadingLocation'] ?? ''}'].where((e) => e.isNotEmpty).join(' · ')),
         _kv(tr('آخر موعد للإرجاع', 'Return deadline'), _date(c['returnDeadline'])),
+        _kv(tr('تاريخ تحمّل الأرضيات', 'Demurrage start date'), _date(c['demurrageStartDate'])),
         _kv(tr('الفوترة', 'Invoicing'), invoiceNo.isNotEmpty
             ? [tr('مفوترة', 'Invoiced'), invoiceNo, if (awaiting) tr('بانتظار فاتورة النقل', 'awaiting transport invoice')].join(' · ')
             : [

@@ -6,6 +6,7 @@ import '../screens/crm_company_profile.dart';
 import '../screens/contracts_vendor_profile.dart';
 import '../screens/customs_detail.dart';
 import '../screens/customs_party.dart';
+import '../ui/customs_contract_pricing.dart';
 import '../screens/fleet_customer_profile.dart';
 import '../screens/customer_registry_profile.dart';
 import '../screens/bd_opportunity_detail.dart';
@@ -845,6 +846,8 @@ final customsCfg = ResourceConfig(
       ('jeddah', 'جدة', 'Jeddah'), ('dammam', 'الدمام', 'Dammam'),
     ]),
     FieldSpec('declarationDate', 'تاريخ البيان', 'Declaration date', type: FieldType.date),
+    // من هذا اليوم تُحسب الأرضياتُ على المعاملة — يُكتب بجانب آخر موعدٍ للإرجاع في الموقع.
+    FieldSpec('demurrageStartDate', 'تاريخ تحمّل الأرضيات', 'Demurrage start date', type: FieldType.date),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );
@@ -1622,6 +1625,14 @@ String _partyLabel(Map<String, dynamic> r) {
   return '${_s(r, 'name')} — $kind';
 }
 
+/// في العقد سعرٌ واحدٌ على الأقلّ متّفقٌ عليه.
+bool _hasContractPricing(Map<String, dynamic> r) {
+  final p = r['pricing'];
+  if (p is! Map) return false;
+  return p['clearanceFeePerContainer'] != null || p['portToYard'] != null || p['yardToCustomer'] != null
+      || (p['routes'] is List && (p['routes'] as List).isNotEmpty);
+}
+
 // ── عقودُ التخليص ────────────────────────────────────────────────────────────
 // عقدُنا مع عميلٍ أو وكيلٍ أو ناقل. ومرفقُ العقد يُرفع من الموقع — الهاتفُ
 // يقرأ العقدَ ويُنشئه ويعدّله، والورقةُ تُرفَع حيث تُمسح.
@@ -1646,6 +1657,16 @@ final customsContractsCfg = ResourceConfig(
     },
     if ((r['attachments'] is List) && (r['attachments'] as List).isNotEmpty)
       ('${(r['attachments'] as List).length} مرفق', T.cyan),
+    if (_s(r, 'partyKind') == 'customer' && _hasContractPricing(r)) (tr('بأسعار', 'Priced'), T.success),
+  ],
+  // أسعارُ العميل (أجورُ التخليص ووجهاتُ النقل) مصفوفةٌ متداخلة لا يكتبها النموذجُ
+  // العامّ — فلها ورقتُها، ولعقد العميل وحدَه.
+  rowActions: (r) => [
+    if (_s(r, 'partyKind') == 'customer')
+      const ResourceAction(
+        icon: Icons.price_change_outlined, ar: 'أسعار التعاقد مع العميل', en: 'Customer contract prices', color: T.navy,
+        run: editCustomsContractPricing,
+      ),
   ],
   fields: const [
     FieldSpec('title', 'اسم العقد', 'Contract name', required: true),

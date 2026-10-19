@@ -35,6 +35,11 @@ const buildClearanceInvoice = (clearance) => {
 
   // مفاتيحُ البنود التي لها سعرُ بيع — تُستثنى من جانب التكلفة كي لا تُحسب مرّتين.
   const overridden = new Set(sale.map((x) => String(x.key || '')).filter(Boolean));
+  // بندُ البيع «فاتورة النقل» يغطّي أجزاءَ النقل الثلاثة في مراحل السداد —
+  // سعرُ النقل للعميل واحدٌ، فلا تُضاف تكاليفُ أجزائه فوقه.
+  if (overridden.has('transportInvoice')) {
+    for (const k of ['transportPortToCustomer', 'transportPortToYard', 'transportYardToCustomer']) overridden.add(k);
+  }
 
   const lines = [];
   const warnings = [];

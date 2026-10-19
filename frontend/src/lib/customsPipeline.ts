@@ -72,3 +72,18 @@ export function downloadName(ref: string | undefined, title: string | undefined,
   const base = [clean(ref || ''), clean(title || '') || 'مرفق'].filter(Boolean).join(' - ');
   return `${base}${n ? ` (${n})` : ''}${ext ? `.${ext.toLowerCase()}` : ''}`;
 }
+
+// ── مراحلُ السداد: ما يُكتب منها في التكاليف، وما يُعدّ فاتورةَ نقل ─────────────
+// مرآةُ `STAGE_COST` و`TRANSPORT_STAGE_KEYS` في backend/src/models/CustomsClearance.
+// المرحلةُ من الأولى طلبُ صرفٍ لا يُضاف بلا مبلغ (والخادمُ يرفضه: AMOUNT_REQUIRED)،
+// وحين تؤكّد الإدارةُ الماليّة دفعَه يُكتب مبلغُه في بنده من التكاليف.
+export const AMOUNT_REQUIRED_STAGE_KEYS: ReadonlySet<string> = new Set([
+  'doInvoicePaid', 'dutyPaid', 'portFeesPaid', 'unloadingFeesPaid', 'extension',
+  'transportPortToCustomer', 'transportPortToYard', 'transportYardToCustomer',
+  'appointmentBooking', 'inspection', 'exitPermit', 'consolidator', 'commissions', 'labourExpenses',
+]);
+// «فاتورةُ النقل» التي تُنهى بها المعاملة: أيُّ مرحلةِ نقلٍ بمرفق — والقديمةُ
+// `transportInvoice` باقيةٌ لما سُجّل بها قبل تقسيم النقل إلى أجزائه الثلاثة.
+export const TRANSPORT_STAGE_KEYS: ReadonlySet<string> = new Set([
+  'transportInvoice', 'transportPortToCustomer', 'transportPortToYard', 'transportYardToCustomer',
+]);

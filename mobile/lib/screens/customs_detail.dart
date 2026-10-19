@@ -110,9 +110,11 @@ const _costItems = [
   ('portFees', 'أجور الموانئ', 'Port fees'),
   ('unloadingFees', 'أجور التفريغ', 'Unloading fees'),
   ('inspection', 'أجور الكشف', 'Inspection'),
-  // ما ندفعه للناقل — ومنه يُطرَح سعرُ بيعنا فيظهر صافي النقل.
-  ('transport', 'سعر النقل من المورد', 'Transport — supplier price'),
-  ('transportToYard', 'النقل إلى الساحة', 'Transport to yard'),
+  // ما ندفعه للناقل في كلّ جزءٍ من أجزاء النقل — ومنه يُطرَح سعرُ بيعنا
+  // للجزء نفسِه فيظهر صافيه.
+  ('transport', 'النقل من الميناء إلى العميل', 'Transport: port → customer'),
+  ('transportToYard', 'النقل من الميناء إلى الساحة', 'Transport: port → yard'),
+  ('transportYardToCustomer', 'النقل من الساحة إلى العميل', 'Transport: yard → customer'),
   ('appointmentBooking', 'حجز الموعد', 'Appointment booking'),
   ('storage', 'تخزين', 'Storage'),
   ('yardFees', 'أجور الساحة', 'Yard fees'),
@@ -123,20 +125,39 @@ const _costItems = [
   ('commissions', 'عمولات', 'Commissions'),
   ('extraFees', 'أجور إضافية', 'Extra fees'),
   ('returnInvoice', 'فاتورة الإرجاع', 'Return invoice'),
+  ('labourExpenses', 'مصاريف عمال', 'Labour expenses'),
 ];
 
-/// بنود الإيراد — ما يُضاف فوق المصروفات، والفاتورة = المصروفات + هذه البنود.
+/// بنود الإيراد — ما يُضاف فوق المصروفات، والفاتورة = المصروفات + الصوافي
+/// والأجور (MARGIN_KEYS في الخادم). وأسعارُ النقل للعميل تُعرَض بجانب صافيها
+/// ولا تُجمع وحدَها: الصافي هو ما يدخل الفاتورة فوق تكلفة الجزء.
 const _marginItems = [
-  ('transportSelling', 'سعر النقل', 'Transport price'),
   ('clearanceFee', 'أجور التخليص', 'Clearance fee'),
-  // يُحسب في الخادم: سعرُ النقل ناقصَ سعر المورد — لا يُكتب بيد.
+  ('transportSelling', 'سعر النقل من الميناء إلى العميل', 'Price: port → customer'),
+  // يُحسب في الخادم: سعرُ النقل ناقصَ تكلفته — لا يُكتب بيد.
   ('transportNet', 'صافي النقل', 'Transport net'),
+  ('transportToYardSelling', 'سعر النقل من الميناء إلى الساحة', 'Price: port → yard'),
   ('transportToYardNet', 'صافي النقل إلى الساحة', 'Transport-to-yard net'),
+  ('yardToCustomerSelling', 'سعر النقل من الساحة إلى العميل', 'Price: yard → customer'),
+  ('yardToCustomerNet', 'صافي النقل من الساحة إلى العميل', 'Yard-to-customer net'),
   ('yardNet', 'صافي الساحة', 'Yard net'),
   ('storageNet', 'صافي التخزين', 'Storage net'),
   ('securityScan', 'فحص أمني', 'Security scan'),
   ('labour', 'عمال', 'Labour'),
 ];
+
+/// مراحلُ السداد التي يُكتب مبلغُها في بند تكلفةٍ حين تؤكّد الماليّةُ الدفع
+/// (STAGE_COST في الخادم) — فلا تُضاف ولا تُعدَّل بلا مبلغ (AMOUNT_REQUIRED).
+const customsCostMappedStages = {
+  'doInvoicePaid', 'dutyPaid', 'portFeesPaid', 'unloadingFeesPaid', 'extension',
+  'transportPortToCustomer', 'transportPortToYard', 'transportYardToCustomer',
+  'appointmentBooking', 'inspection', 'exitPermit', 'consolidator', 'commissions', 'labourExpenses',
+};
+
+/// ما يُقرأ «فاتورةَ نقل» للإنهاء: البندُ القديم وأجزاءُ النقل الثلاثة بملفّها.
+const customsTransportInvoiceKeys = {
+  'transportInvoice', 'transportPortToCustomer', 'transportPortToYard', 'transportYardToCustomer',
+};
 
 Map<String, dynamic> _m(dynamic v) => v is Map ? Map<String, dynamic>.from(v) : {};
 List<Map<String, dynamic>> _maps(dynamic v) =>
@@ -161,6 +182,12 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
   // تعريفاتُ مراحل السداد من إعدادات القسم (`customs_payment_stage`) — أسماؤها
   // تُقرأ منها وحدَها، فتغييرُ اسمٍ هناك يظهر هنا في الحال.
   List<Map<String, dynamic>> _payDefs = const [];
+  // عقدُ العميل الساري بأسعاره (GET /:id/contract-pricing) — null: لا عقد،
+  // و`_contractKey` العميلُ وعددُ الوحدات اللذان قُرئ بهما، فلا يُعاد السؤالُ
+  // إلّا حين يتغيّر أحدُهما.
+  Map<String, dynamic>? _contract;
+  bool _contractLoaded = false;
+  String _contractKey = '';
   late final void Function() _onLive;
   late final void Function() _onJp;
   late final void Function(dynamic) _onLookup;
@@ -198,6 +225,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
         _error = null;
       });
       _checkSheets();
+      _loadContract();
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
@@ -220,6 +248,33 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     } catch (_) {
       // الخطّةُ لفريق القسم ومديره — ومَن ليس منهم لا يرى قسمَها هنا أصلًا.
       if (mounted) setState(() => _tasks = null);
+    }
+  }
+
+  /// أسعارُ عقد العميل لهذه المعاملة — تُقرأ من جديد حين يتغيّر العميلُ أو عددُ الوحدات.
+  Future<void> _loadContract({bool force = false}) async {
+    final key = '${_c?['customerParty'] ?? ''}|${_c?['containerCount'] ?? ''}';
+    if (!force && key == _contractKey && _contractLoaded) return;
+    _contractKey = key;
+    try {
+      final d = await Api.instance.get('/api/customs-clearance/${widget.clearanceId}/contract-pricing');
+      if (mounted) setState(() { _contract = d['contract'] is Map ? Map<String, dynamic>.from(d['contract']) : null; _contractLoaded = true; });
+    } catch (_) {
+      // الشريطُ زيادةٌ على البطاقة — تعذُّره لا يُعلَن، ويُعاد السؤالُ في القراءة التالية.
+      _contractKey = '';
+    }
+  }
+
+  /// «تعبئة من العقد»: يكتب الخادمُ أسعارَ العقد في خانات الإيراد كلِّها، وباختيار
+  /// وجهةٍ يُكتب سعرُ النقل من الميناء إلى العميل بحسبها.
+  Future<void> _applyContract({String? from, String? to}) async {
+    final r = await _send(
+      () => Api.instance.post('/api/customs-clearance/${widget.clearanceId}/apply-contract',
+          {if (from != null) 'from': from, if (to != null) 'to': to}),
+      ok: tr('عُبّئت الإيرادات من العقد', 'Revenue filled from the contract'),
+    );
+    if (r != null && mounted && _m(r)['contract'] is Map) {
+      setState(() => _contract = _m(_m(r)['contract']));
     }
   }
 
@@ -797,6 +852,10 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                             const Spacer(),
                             Text('${_money(totalCost)} ${tr('ر.س', 'SAR')}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: T.orange)),
                           ]),
+                          const SizedBox(height: 6),
+                          Text(tr('تُملأ البنود تلقائيًّا بمبلغ مرحلة السداد حين تؤكّد الإدارة المالية الدفع، وتبقى قابلة للتعديل.',
+                                  'Lines fill automatically with the payment-stage amount once Finance confirms payment, and stay editable.'),
+                              style: const TextStyle(fontSize: 11, color: T.inkFaint)),
                         ]),
                       ),
                     ),
@@ -814,15 +873,19 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                           Row(children: [
                             Text(tr('الإيراد والفاتورة', 'Revenue & invoice'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                             const Spacer(),
-                            IconButton(icon: const Icon(Icons.edit_outlined, size: 18, color: T.navy), onPressed: () => _editMargin(revenue)),
+                            IconButton(icon: const Icon(Icons.edit_outlined, size: 18, color: T.navy), onPressed: () => _editMargin(revenue, costs)),
                           ]),
-                          ..._marginItems.where((it) => _nz(revenue, it.$1) != 0).map((it) => Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 3),
-                            child: Row(children: [
-                              Expanded(child: Text(tr(it.$2, it.$3), style: const TextStyle(fontSize: 12.5))),
-                              Text('${_money(_nz(revenue, it.$1))} ${tr('ر.س', 'SAR')}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-                            ]),
-                          )),
+                          _contractStrip(canEditCustoms(context)),
+                          for (final it in _marginItems.where((it) => _nz(revenue, it.$1) != 0)) ...[
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 3),
+                              child: Row(children: [
+                                Expanded(child: Text(tr(it.$2, it.$3), style: const TextStyle(fontSize: 12.5))),
+                                Text('${_money(_nz(revenue, it.$1))} ${tr('ر.س', 'SAR')}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                              ]),
+                            ),
+                            if (it.$1 == 'clearanceFee') _clearanceFeeNote,
+                          ],
                           if (revenue['totalInvoiced'] != null) ...[
                             const Divider(height: 18),
                             Row(children: [
@@ -1201,7 +1264,9 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     final body = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _PaymentSheet(stage: stage, entry: entry),
+      builder: (_) => _PaymentSheet(
+          stage: stage, entry: entry,
+          amountRequired: customsCostMappedStages.contains(key ?? '${entry?['key'] ?? ''}')),
     );
     if (body == null) return;
     final path = '/api/customs-clearance/${widget.clearanceId}/payment-stages';
@@ -1211,53 +1276,179 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     );
   }
 
-  /// بنودُ الهامش التي تُكتب بيد — وصافي النقل ليس منها: هو سعرُ النقل ناقصَ
-  /// سعرِ المورد، يحسبه الخادمُ ولا يقبله من أحد (راجع recomputeTotals).
-  static const _editableMargin = [
-    ('transportSelling', 'سعر النقل', 'Transport price'),
-    ('clearanceFee', 'أجور التخليص', 'Clearance fee'),
-    ('transportToYardNet', 'صافي النقل إلى الساحة', 'Transport-to-yard net'),
-    ('yardNet', 'صافي الساحة', 'Yard net'),
-    ('storageNet', 'صافي التخزين', 'Storage net'),
-    ('securityScan', 'فحص أمني', 'Security scan'),
-    ('labour', 'عمال', 'Labour'),
-  ];
+  static final Widget _clearanceFeeNote = Padding(
+    padding: const EdgeInsets.only(bottom: 3),
+    child: Text(tr('أجور التخليص = سعر الحاوية في العقد × عدد الحاويات', 'Clearance fee = contract price per container × containers'),
+        style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+  );
 
-  Future<void> _editMargin(Map<String, dynamic> revenue) async {
-    final ctrls = {for (final it in _editableMargin) it.$1: TextEditingController(text: _nz(revenue, it.$1) == 0 ? '' : _nz(revenue, it.$1).toString())};
+  /// شريطُ عقد العميل أعلى «الإيراد والفاتورة»: اسمُ العقد، ووجهةُ النقل من الميناء
+  /// إلى العميل، وزرُّ «تعبئة من العقد». يُقرأ للجميع، ويُعمَل به لمن يعدّل وحدَه.
+  Widget _contractStrip(bool canEdit) {
+    if (!_contractLoaded) return const SizedBox.shrink();
+    final k = _contract;
+    if (k == null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text(tr('لا يوجد عقد ساري بأسعار لهذا العميل', 'No active contract with prices for this customer'),
+            style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+      );
+    }
+    final routes = _maps(_m(k['pricing'])['routes']);
+    final cur = _m(k['route']);
+    String rk(Map<String, dynamic> r) => '${r['from'] ?? ''}|${r['to'] ?? ''}';
+    final curKey = cur.isEmpty ? null : rk(cur);
+    final keys = {for (final r in routes) rk(r)};
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: T.navy.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: T.navy.withValues(alpha: 0.2)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.assignment_outlined, size: 16, color: T.navy),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text('${tr('من عقد العميل', 'From the customer contract')}: ${k['title'] ?? ''}',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: T.navy)),
+          ),
+        ]),
+        if (routes.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            // المفتاحُ يعيد بناءَ الخانة حين يتغيّر العقدُ أو وجهتُه من الخادم.
+            key: ValueKey('${k['_id']}|$curKey'),
+            initialValue: curKey != null && keys.contains(curKey) ? curKey : null,
+            isExpanded: true,
+            isDense: true,
+            decoration: InputDecoration(labelText: tr('وجهة النقل من الميناء إلى العميل', 'Port → customer route'), isDense: true),
+            items: [
+              for (final r in routes)
+                DropdownMenuItem(
+                  value: rk(r),
+                  child: Text('${r['from'] ?? ''} → ${r['to'] ?? ''}${r['price'] == null ? '' : ' · ${_money(r['price'])}'}',
+                      overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5)),
+                ),
+            ],
+            onChanged: !canEdit || _saving
+                ? null
+                : (v) {
+                    final r = routes.where((x) => rk(x) == v).firstOrNull;
+                    if (r != null) _applyContract(from: '${r['from'] ?? ''}', to: '${r['to'] ?? ''}');
+                  },
+          ),
+        ],
+        if (canEdit) ...[
+          const SizedBox(height: 6),
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: OutlinedButton.icon(
+              onPressed: _saving
+                  ? null
+                  : () => cur.isEmpty ? _applyContract() : _applyContract(from: '${cur['from'] ?? ''}', to: '${cur['to'] ?? ''}'),
+              icon: const Icon(Icons.download_done_outlined, size: 16),
+              label: Text(tr('تعبئة من العقد', 'Fill from contract')),
+            ),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  /// بنودُ الإيراد التي تُكتب بيد. والصوافي المحسوبة ليست منها: صافي النقل
+  /// = سعرُه ناقصَ تكلفته، يحسبه الخادمُ ولا يقبله من أحد (راجع recomputeTotals)؛
+  /// وصافي النقل إلى الساحة كذلك متى كُتب سعرُه، وإلّا بقي يُكتب كما كان.
+  Future<void> _editMargin(Map<String, dynamic> revenue, Map<String, dynamic> costs) async {
+    String init(String k) => _nz(revenue, k) == 0 ? '' : _nz(revenue, k).toString();
+    const plain = ['clearanceFee', 'transportSelling', 'yardToCustomerSelling', 'yardNet', 'storageNet', 'securityScan', 'labour'];
+    final ctrls = {for (final k in [...plain, 'transportToYardNet']) k: TextEditingController(text: init(k))};
+    // فارغٌ على المعاملات القديمة (null) — والفراغُ معنًى لا صفر.
+    final yardSell = TextEditingController(text: revenue['transportToYardSelling'] == null ? '' : '${revenue['transportToYardSelling']}');
+    String label(String k) {
+      final it = _marginItems.firstWhere((x) => x.$1 == k);
+      return tr(it.$2, it.$3);
+    }
+    num v(TextEditingController c) => num.tryParse(c.text.trim()) ?? 0;
+    Widget input(String k, {VoidCallback? onChanged, Widget? note}) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            TextField(
+              controller: ctrls[k], keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              onChanged: onChanged == null ? null : (_) => onChanged(),
+              decoration: InputDecoration(labelText: label(k)),
+            ),
+            if (note != null) note,
+          ]),
+        );
+    Widget computed(String k, num value) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: InputDecorator(
+            decoration: InputDecoration(labelText: '${label(k)} (${tr('محسوب', 'computed')})', filled: true, fillColor: T.canvas),
+            child: Text('${_money(value)} ${tr('ر.س', 'SAR')}', style: const TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        );
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (c) => SafeArea(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
-          child: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(tr('تعديل بنود الإيراد', 'Edit revenue lines'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-              const SizedBox(height: 4),
-              Text(tr('الفاتورة تُحسب: المصروفات + هذه البنود. وصافي النقل = سعر النقل − سعر المورد.',
-                      'The invoice is derived: costs + these lines. Transport net = price − supplier.'),
-                  style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
-              const SizedBox(height: 12),
-              ..._editableMargin.map((it) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: TextField(controller: ctrls[it.$1], keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr(it.$2, it.$3))),
-              )),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () {
-                    final body = {'revenue': {for (final it in _editableMargin) it.$1: num.tryParse(ctrls[it.$1]!.text) ?? 0}};
-                    Navigator.pop(c);
-                    _patch(body, tr('حُفظت البنود', 'Lines saved'));
-                  },
-                  child: Text(tr('حفظ', 'Save')),
-                ),
+      builder: (c) => StatefulBuilder(
+        builder: (c, setSt) {
+          void refresh() => setSt(() {});
+          final yardSet = yardSell.text.trim().isNotEmpty;
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+              child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(tr('تعديل بنود الإيراد', 'Edit revenue lines'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                  const SizedBox(height: 4),
+                  Text(tr('الفاتورة تُحسب: المصروفات + الأجور والصوافي. وصافي كلّ جزءٍ من النقل = سعره للعميل − تكلفته.',
+                          'The invoice is derived: costs + fees and nets. Each transport leg net = its price − its cost.'),
+                      style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                  const SizedBox(height: 12),
+                  input('clearanceFee', note: _clearanceFeeNote),
+                  input('transportSelling', onChanged: refresh),
+                  computed('transportNet', v(ctrls['transportSelling']!) - _nz(costs, 'transport')),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: TextField(
+                      controller: yardSell, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (_) => refresh(),
+                      decoration: InputDecoration(labelText: label('transportToYardSelling')),
+                    ),
+                  ),
+                  if (yardSet)
+                    computed('transportToYardNet', v(yardSell) - _nz(costs, 'transportToYard'))
+                  else
+                    input('transportToYardNet'),
+                  input('yardToCustomerSelling', onChanged: refresh),
+                  computed('yardToCustomerNet', v(ctrls['yardToCustomerSelling']!) - _nz(costs, 'transportYardToCustomer')),
+                  for (final k in const ['yardNet', 'storageNet', 'securityScan', 'labour']) input(k),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () {
+                        final sell = yardSell.text.trim();
+                        final body = {'revenue': {
+                          for (final k in plain) k: num.tryParse(ctrls[k]!.text.trim()) ?? 0,
+                          // الفراغُ يُرسَل '' فيعود null في الخادم — «لم يُكتب السعر».
+                          'transportToYardSelling': sell.isEmpty ? '' : (num.tryParse(sell) ?? ''),
+                          if (sell.isEmpty) 'transportToYardNet': num.tryParse(ctrls['transportToYardNet']!.text.trim()) ?? 0,
+                        }};
+                        Navigator.pop(c);
+                        _patch(body, tr('حُفظت البنود', 'Lines saved'));
+                      },
+                      child: Text(tr('حفظ', 'Save')),
+                    ),
+                  ),
+                ]),
               ),
-            ]),
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1573,7 +1764,9 @@ class _UnitSheetState extends State<_UnitSheet> {
 class _PaymentSheet extends StatefulWidget {
   final String stage;
   final Map<String, dynamic>? entry;
-  const _PaymentSheet({required this.stage, this.entry});
+  // مرحلةٌ يُكتب مبلغُها في بند تكلفةٍ عند تأكيد الدفع — فالمبلغُ فيها إلزاميّ.
+  final bool amountRequired;
+  const _PaymentSheet({required this.stage, this.entry, this.amountRequired = false});
   @override
   State<_PaymentSheet> createState() => _PaymentSheetState();
 }
@@ -1585,6 +1778,7 @@ class _PaymentSheetState extends State<_PaymentSheet> {
   PickedFile? _file;
 
   bool get _hadFile => '${widget.entry?['fileUrl'] ?? ''}'.isNotEmpty;
+  bool get _amountOk => !widget.amountRequired || (num.tryParse(_amount.text.trim()) ?? 0) > 0;
 
   @override
   void dispose() {
@@ -1598,6 +1792,7 @@ class _PaymentSheetState extends State<_PaymentSheet> {
     final text = _amount.text.trim();
     final amount = text.isEmpty ? null : num.tryParse(text);
     if (text.isNotEmpty && (amount == null || amount < 0)) return say(tr('اكتب المبلغ رقمًا صحيحًا', 'Enter a valid amount'));
+    if (!_amountOk) return say(tr('المبلغ إلزاميّ لهذه المرحلة', 'The amount is required for this stage'));
     if (_date.isEmpty && _file == null && !_hadFile) return say(tr('اختر تاريخًا أو أرفِق ملفًّا', 'Pick a date or attach a file'));
     Navigator.pop(context, <String, dynamic>{
       'date': _date, 'amount': amount, 'note': _noteCtrl.text.trim(),
@@ -1638,7 +1833,13 @@ class _PaymentSheetState extends State<_PaymentSheet> {
               controller: _amount,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               textDirection: TextDirection.ltr,
-              decoration: InputDecoration(labelText: tr('المبلغ (اختياري)', 'Amount (optional)')),
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: widget.amountRequired ? '${tr('المبلغ (إلزامي)', 'Amount (required)')} *' : tr('المبلغ (اختياري)', 'Amount (optional)'),
+                helperText: widget.amountRequired
+                    ? tr('يُكتب في بند التكلفة المقابل حين تؤكّد الإدارة المالية الدفع', 'Written into the matching cost line once Finance confirms payment')
+                    : null,
+              ),
             ),
             const SizedBox(height: 10),
             TextField(controller: _noteCtrl, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظة', 'Note'))),
@@ -1655,7 +1856,7 @@ class _PaymentSheetState extends State<_PaymentSheet> {
               ),
             ),
             const SizedBox(height: 14),
-            SizedBox(width: double.infinity, child: FilledButton(onPressed: _done, child: Text(tr('حفظ', 'Save')))),
+            SizedBox(width: double.infinity, child: FilledButton(onPressed: _amountOk ? _done : null, child: Text(tr('حفظ', 'Save')))),
           ]),
         ),
       ),
@@ -1751,7 +1952,8 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
                 ),
               ]),
               // فاتورةُ النقل ليست شرطًا للإصدار — لكنّ غيابَها يُقال هنا.
-              if (d['key'] == 'transportInvoice' && !widget.transportReceived && !_hasFile('transportInvoice'))
+              if (customsTransportInvoiceKeys.contains('${d['key']}') && !widget.transportReceived
+                  && !customsTransportInvoiceKeys.any(_hasFile))
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(tr('فاتورة النقل لم تُستلَم بعد — تُرفَق لاحقًا فتُنهى المعاملة', 'Transport invoice not received yet — attach it later and the transaction closes'),

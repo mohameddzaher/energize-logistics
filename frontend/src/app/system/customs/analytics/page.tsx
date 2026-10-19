@@ -122,13 +122,17 @@ export default function CustomsAnalyticsPage() {
   const I = d.insight || {};
   const COST_AR: Record<string, [string, string]> = {
     deliveryOrder: ['قيمة إذن التسليم', 'Delivery order'], customsDuty: ['الرسوم الجمركية', 'Customs duty'], portFees: ['أجور الموانئ', 'Port fees'],
-    unloadingFees: ['أجور التفريغ', 'Unloading fees'], inspection: ['أجور الكشف', 'Inspection'], transport: ['النقل (سعر المورّد)', 'Transport (supplier)'],
-    transportToYard: ['النقل إلى الساحة', 'Transport to yard'], appointmentBooking: ['حجز الموعد', 'Appointment booking'], storage: ['التخزين', 'Storage'],
+    unloadingFees: ['أجور التفريغ', 'Unloading fees'], inspection: ['أجور الكشف', 'Inspection'], transport: ['النقل من الميناء إلى العميل', 'Transport: port → customer'],
+    transportToYard: ['النقل من الميناء إلى الساحة', 'Transport: port → yard'],
+    transportYardToCustomer: ['النقل من الساحة إلى العميل', 'Transport: yard → customer'], labourExpenses: ['مصاريف عمال', 'Labour expenses'], appointmentBooking: ['حجز الموعد', 'Appointment booking'], storage: ['التخزين', 'Storage'],
     yardFees: ['أجور الساحة', 'Yard fees'], exitPermit: ['تصريح الخروج (الأرضيّات)', 'Exit permit (demurrage)'], demurrage: ['أرضيّات', 'Demurrage'],
     extension: ['تمديد', 'Extension'], consolidator: ['الدامج', 'Consolidator'], commissions: ['عمولات', 'Commissions'], extraFees: ['أجور إضافيّة', 'Extra fees'],
     returnInvoice: ['فاتورة الإرجاع', 'Return invoice'],
     clearanceFee: ['أجور التخليص', 'Clearance fee'], labour: ['عمّال', 'Labour'], yardNet: ['صافي الساحة', 'Yard net'], storageNet: ['صافي التخزين', 'Storage net'],
     transportToYardNet: ['صافي النقل إلى الساحة', 'Transport-to-yard net'], securityScan: ['فحص أمنيّ', 'Security scan'], transportNet: ['صافي النقل', 'Transport net'],
+    yardToCustomerNet: ['صافي النقل من الساحة إلى العميل', 'Yard-to-customer net'],
+    transportSelling: ['سعر النقل من الميناء إلى العميل', 'Price: port → customer'], transportToYardSelling: ['سعر النقل من الميناء إلى الساحة', 'Price: port → yard'],
+    yardToCustomerSelling: ['سعر النقل من الساحة إلى العميل', 'Price: yard → customer'],
   };
   const lineName = (k: string) => (COST_AR[k] ? (ar ? COST_AR[k][0] : COST_AR[k][1]) : k);
 

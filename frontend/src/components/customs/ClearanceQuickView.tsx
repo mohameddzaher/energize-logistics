@@ -28,8 +28,9 @@ const COSTS: [string, string, string][] = [
   ['portFees', 'أجور الموانى', 'Port fees'],
   ['unloadingFees', 'أجور التفريغ', 'Unloading fees'],
   ['inspection', 'أجور الكشف', 'Inspection'],
-  ['transport', 'سعر النقل من المورد', 'Transport — supplier'],
-  ['transportToYard', 'النقل إلى الساحة', 'Transport to yard'],
+  ['transport', 'النقل من الميناء إلى العميل', 'Transport: port → customer'],
+  ['transportToYard', 'النقل من الميناء إلى الساحة', 'Transport: port → yard'],
+  ['transportYardToCustomer', 'النقل من الساحة إلى العميل', 'Transport: yard → customer'],
   ['appointmentBooking', 'حجز الموعد', 'Appointment booking'],
   ['storage', 'تخزين', 'Storage'],
   ['yardFees', 'أجور الساحة', 'Yard fees'],
@@ -38,14 +39,18 @@ const COSTS: [string, string, string][] = [
   ['extension', 'تمديد', 'Extension'],
   ['consolidator', 'الدامج', 'Consolidator'],
   ['commissions', 'عمولات', 'Commissions'],
+  ['labourExpenses', 'مصاريف عمال', 'Labour expenses'],
   ['extraFees', 'أجور إضافية', 'Extra fees'],
   ['returnInvoice', 'فاتورة الإرجاع', 'Return invoice'],
 ];
 const MARGIN: [string, string, string][] = [
   ['clearanceFee', 'أجور التخليص', 'Clearance fee'],
-  ['transportSelling', 'سعر النقل للعميل', 'Transport price'],
+  ['transportSelling', 'سعر النقل من الميناء إلى العميل', 'Price: port → customer'],
   ['transportNet', 'صافي النقل', 'Transport net'],
+  ['transportToYardSelling', 'سعر النقل من الميناء إلى الساحة', 'Price: port → yard'],
   ['transportToYardNet', 'صافي النقل إلى الساحة', 'Transport-to-yard net'],
+  ['yardToCustomerSelling', 'سعر النقل من الساحة إلى العميل', 'Price: yard → customer'],
+  ['yardToCustomerNet', 'صافي النقل من الساحة إلى العميل', 'Yard-to-customer net'],
   ['yardNet', 'صافي الساحة', 'Yard net'],
   ['storageNet', 'صافي التخزين', 'Storage net'],
   ['securityScan', 'فحص أمني', 'Security scan'],
@@ -213,6 +218,7 @@ export default function ClearanceQuickView({ id, ar, onClose }: { id: string; ar
                 <Fact icon={Calendar} label={ar ? 'موعد التفريغ' : 'Unloading'} value={[fmtDate(c.unloadingAppointment), c.unloadingLocation].filter(Boolean).join(' · ')} />
                 <Fact icon={Hash} label={ar ? 'تصريح الخروج' : 'Exit permit'} value={c.exitPermitNumber} />
                 <Fact icon={Calendar} label={ar ? 'آخر موعد للإرجاع' : 'Return deadline'} value={fmtDate(c.returnDeadline)} />
+                <Fact icon={Calendar} label={ar ? 'تاريخ تحمّل الأرضيات' : 'Demurrage start date'} value={fmtDate(c.demurrageStartDate)} />
                 <Fact icon={Receipt} label={ar ? 'الفوترة' : 'Invoicing'} value={[c.billing?.invoiceStatus, c.billing?.ourInvoiceNumber].filter(Boolean).join(' · ')} />
                 <Fact icon={Building2} label={ar ? 'المخلّص' : 'Assigned to'} value={c.assignedTo} />
               </div>

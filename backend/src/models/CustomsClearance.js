@@ -154,6 +154,25 @@ const customsClearanceSchema = new mongoose.Schema(
     // تاريخًا. الرقمُ لا يُقحَم في خانة تاريخٍ ولا يُرمى: يُخزَّن هنا، ومنه
     // يُشتقُّ الموعدُ متى عُرف تاريخُ التفريغ.
     returnFreeDays: { type: Number, default: 0 },
+    // تاريخُ تحمّل الأرضيات — اليومُ الذي يبدأ فيه احتسابُ الأرضيات علينا.
+    demurrageStartDate: { type: String, trim: true, default: '' }, // YYYY-MM-DD
+
+    // ── ما مُلئ من عقد العميل ───────────────────────────────────────────────
+    // أيُّ عقدٍ وأيُّ وجهةٍ، وما كُتب منه في الإيرادات. فإن تغيّر عددُ الحاويات
+    // أو العميلُ أُعيد الملءُ لما بقي على قيمة العقد، ولا يُدهَس ما عدّله الموظّف.
+    contractPricing: {
+      contract: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomsContract', default: null },
+      contractTitle: { type: String, trim: true, default: '' },
+      routeFrom: { type: String, trim: true, default: '' },
+      routeTo: { type: String, trim: true, default: '' },
+      applied: {
+        clearanceFee: { type: Number, default: null },
+        transportSelling: { type: Number, default: null },
+        transportToYardSelling: { type: Number, default: null },
+        yardToCustomerSelling: { type: Number, default: null },
+      },
+      appliedAt: { type: Date, default: null },
+    },
 
     /**
      * ── معاملةٌ لم يحِن وقتُها بعد ────────────────────────────────────────
@@ -322,8 +341,14 @@ const customsClearanceSchema = new mongoose.Schema(
       customsDuty: { type: Number, default: 0 },        // الرسوم الجمركية
       portFees: { type: Number, default: 0 },           // اجور الموانى
       unloadingFees: { type: Number, default: 0 },      // اجور التفريغ
-      transport: { type: Number, default: 0 },          // اجور النقل (بالضريبة)
-      transportToYard: { type: Number, default: 0 },    // النقل الى الساحة (بالضريبة)
+      // ── النقلُ ثلاثةُ أجزاء ──────────────────────────────────────────────
+      // `transport` كان «سعر النقل من المورد» و`transportToYard` «النقل إلى
+      // الساحة»؛ صارا الجزأين الأوّلين بأسمائهما الجديدة (والقيمُ القديمة فيهما
+      // كما هي)، والجزءُ الثالث جديد. وثلاثتُها تُملأ من مراحل السداد عند الدفع.
+      transport: { type: Number, default: 0 },               // النقل من الميناء إلى العميل
+      transportToYard: { type: Number, default: 0 },         // النقل من الميناء إلى الساحة
+      transportYardToCustomer: { type: Number, default: 0 }, // النقل من الساحة إلى العميل
+      labourExpenses: { type: Number, default: 0 },          // مصاريف عمال
       appointmentBooking: { type: Number, default: 0 }, // حجز الموعد
       yardFees: { type: Number, default: 0 },           // اجور الساحه
       demurrage: { type: Number, default: 0 },          // ارضيات
@@ -349,6 +374,12 @@ const customsClearanceSchema = new mongoose.Schema(
       transportSelling: { type: Number, default: 0 },    // سعر بيع النقل (إجمالي، لا يدخل الهامش)
       transportNet: { type: Number, default: 0 },        // صافي النقل = سعر البيع − اجور النقل
       transportToYardNet: { type: Number, default: 0 },  // صافى النقل الى الساحة (بالضريبة)
+      // سعرُ النقل من الميناء إلى الساحة للعميل. فارغٌ (null) في المعاملات
+      // القديمة — وعندها يبقى الصافي كما كُتب؛ ومتى كُتب السعرُ صار الصافي
+      // فرقَه عن التكلفة كجارَيه. راجع recomputeTotals.
+      transportToYardSelling: { type: Number, default: null },
+      yardToCustomerSelling: { type: Number, default: 0 },  // سعر النقل من الساحة إلى العميل
+      yardToCustomerNet: { type: Number, default: 0 },      // صافيه (محسوب)
       yardTransportNet: { type: Number, default: 0 },    // صافي نقل الساحه (عمود مساعد، خارج الهامش)
       yardNet: { type: Number, default: 0 },             // صافى الساحه
       storageNet: { type: Number, default: 0 },          // صافى التخزين
@@ -487,7 +518,7 @@ function hasTransportInvoice(c) {
   if (!c) return false;
   const t = c.transportInvoice || {};
   if (t.notRequired || t.fileUrl) return true;
-  if ((c.paymentStages || []).some((p) => p && p.key === 'transportInvoice' && p.fileUrl)) return true;
+  if ((c.paymentStages || []).some((p) => p && TRANSPORT_STAGE_KEYS.includes(p.key) && p.fileUrl)) return true;
   return (c.saleItems || []).some((x) => x && x.key === 'transportInvoice' && x.fileUrl);
 }
 
@@ -675,7 +706,7 @@ const COST_KEYS = [
   'returnInvoice', 'deliveryOrder', 'customsDuty', 'portFees', 'unloadingFees',
   'inspection', 'transport', 'transportToYard', 'appointmentBooking', 'storage',
   'yardFees', 'exitPermit', 'demurrage', 'extension', 'consolidator', 'commissions',
-  'extraFees',
+  'extraFees', 'transportYardToCustomer', 'labourExpenses',
 ];
 
 // بنودُ الهامش التي يتكوّن منها revenue.profit. `transportSelling` ليس منها:
@@ -683,8 +714,62 @@ const COST_KEYS = [
 // النقلَ مرّتين. وكذلك yardTransportNet — عمودٌ مساعدٌ لا يدخل صيغةَ الربح.
 const MARGIN_KEYS = [
   'clearanceFee', 'labour', 'yardNet', 'storageNet',
-  'transportToYardNet', 'securityScan', 'transportNet',
+  'transportToYardNet', 'securityScan', 'transportNet', 'yardToCustomerNet',
 ];
+
+// صوافي النقل المحسوبة — لا تُقبَل من الشاشة.
+const DERIVED_REVENUE = ['transportNet', 'yardToCustomerNet'];
+
+/**
+ * ── مرحلةُ السداد ← بندُ التكلفة ───────────────────────────────────────────
+ * حين تقول الإدارةُ الماليّة «تمّ الدفع» على مرحلةٍ من هذه، يُكتب مجموعُ ما
+ * دُفع منها في بندها من «التكاليف» — فلا يُعاد كتابةُ الرقم بيدٍ مرّةً ثانية.
+ * ومرحلةٌ في هذه القائمة لا تُضاف بلا مبلغ. والمراسلاتُ (الميلات) ليست منها.
+ */
+const STAGE_COST = {
+  doInvoicePaid: 'deliveryOrder',
+  dutyPaid: 'customsDuty',
+  portFeesPaid: 'portFees',
+  unloadingFeesPaid: 'unloadingFees',
+  extension: 'extension',
+  transportPortToCustomer: 'transport',
+  transportPortToYard: 'transportToYard',
+  transportYardToCustomer: 'transportYardToCustomer',
+  appointmentBooking: 'appointmentBooking',
+  inspection: 'inspection',
+  exitPermit: 'exitPermit',
+  consolidator: 'consolidator',
+  commissions: 'commissions',
+  labourExpenses: 'labourExpenses',
+};
+
+// أجزاءُ فاتورة النقل الثلاثة — وأيٌّ منها بمرفقه يقوم مقامَ «فاتورة النقل»
+// القديمة في إنهاء المعاملة (راجع hasTransportInvoice).
+const TRANSPORT_STAGE_KEYS = ['transportInvoice', 'transportPortToCustomer', 'transportPortToYard', 'transportYardToCustomer'];
+
+/**
+ * يكتب في بند التكلفة مجموعَ المدفوع من مراحله. ولا يمسّ بندًا لا مبلغَ مدفوعًا
+ * فيه قطّ: المعاملاتُ القديمة كُتبت تكاليفُها بيدٍ ومراحلُها بلا مبالغ، فتصفيرُها
+ * محوٌ لما كُتب. يُعيد قائمةَ البنود التي تغيّرت.
+ */
+function applyPaidCosts(doc, onlyKeys, force = false) {
+  if (!doc) return [];
+  if (!doc.costs) doc.costs = {};
+  const fields = new Set(
+    (onlyKeys || Object.keys(STAGE_COST)).map((k) => STAGE_COST[k]).filter(Boolean)
+  );
+  const changed = [];
+  for (const field of fields) {
+    const keys = Object.keys(STAGE_COST).filter((k) => STAGE_COST[k] === field);
+    const rows = (doc.paymentStages || []).filter((p) => p && keys.includes(p.key) && p.payStatus === 'paid'
+      && p.amount !== null && p.amount !== undefined && p.amount !== '' && Number.isFinite(Number(p.amount)));
+    // `force`: إدخالٌ مدفوعٌ أُلغي دفعُه أو حُذف — فالبندُ يتبع ما بقي ولو صفرًا.
+    if (!rows.length && !force) continue;
+    const sum = r2(rows.reduce((a, p) => a + Number(p.amount), 0));
+    if (n(doc.costs[field]) !== sum) { doc.costs[field] = sum; changed.push(field); }
+  }
+  return changed;
+}
 
 const n = (v) => {
   const x = Number(v);
@@ -716,6 +801,12 @@ function recomputeTotals(doc) {
   // على رقمٍ كُتب سهوًا. والقاعدةُ واحدة: نأخذ من العميل ٢٠٠٠ وندفع للناقل
   // ١٥٠٠، فربحُنا من النقل ٥٠٠ — يُحسب حيث تُحسب بقيّةُ الأرقام المشتقّة.
   doc.revenue.transportNet = r2(n(doc.revenue.transportSelling) - n(doc.costs.transport));
+  // والجزآن الآخران على القاعدة نفسِها: سعرُ العميل ناقصَ ما ندفعه.
+  doc.revenue.yardToCustomerNet = r2(n(doc.revenue.yardToCustomerSelling) - n(doc.costs.transportYardToCustomer));
+  const yardSell = doc.revenue.transportToYardSelling;
+  if (yardSell !== null && yardSell !== undefined && yardSell !== '' && Number.isFinite(Number(yardSell))) {
+    doc.revenue.transportToYardNet = r2(n(yardSell) - n(doc.costs.transportToYard));
+  }
   let total = 0;
   for (const k of COST_KEYS) total += n(doc.costs[k]);
   total = r2(total);
@@ -806,3 +897,7 @@ module.exports.syncUnits = syncUnits;
 module.exports.COST_KEYS = COST_KEYS;
 module.exports.MARGIN_KEYS = MARGIN_KEYS;
 module.exports.recomputeTotals = recomputeTotals;
+module.exports.STAGE_COST = STAGE_COST;
+module.exports.TRANSPORT_STAGE_KEYS = TRANSPORT_STAGE_KEYS;
+module.exports.DERIVED_REVENUE = DERIVED_REVENUE;
+module.exports.applyPaidCosts = applyPaidCosts;

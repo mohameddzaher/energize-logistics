@@ -35,6 +35,7 @@ const NOTE = 'مطابقة شيت التحقيق 17/10/2026';
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI || process.env.MONGO_URI);
   const db = mongoose.connection.db;
+  require('../models/Employee'); // listSupervisors يقرأ ملفّاتِ المشرفين
   const { LightTransportEmployee } = require('../models/LightTransport');
   const B2CRep = require('../models/B2CRep');
   const B2CProject = require('../models/B2CProject');

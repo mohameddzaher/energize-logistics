@@ -306,7 +306,10 @@ const totalsOf = (allRows, { includeEnded = false } = {}) => {
     for (const r of rows) { const k = fn(r) || '—'; o[k] = (o[k] || 0) + 1; }
     return o;
   };
-  const working = (r) => !['إنهاء خدمة', 'متوقف'].includes(r.workStatusShown);
+  // «على رأس العمل» = حالتُه «يعمل» — الفلترُ نفسُه الذي يفتحه الكارت. كان «كلَّ
+  // مَن ليس منتهيًا ولا موقوفًا»، فدخل فيه مَن في إجازة: الكارتُ ١٦١ وفلترُه ١٥٧.
+  // والآن: يعمل + إجازة + متوقف = الإجمالي، كلٌّ في كارته.
+  const working = (r) => r.workStatusShown === 'يعمل';
   /**
    * ── الكفالةُ والفري لانسر: كارتان لا خانةُ فلترٍ وحدَها ────────────────────
    * «كم على الكفالة وكم فري لانسر» رقمان يُسألان أوّلَ ما تُفتَح الشاشة — وكانا
@@ -348,6 +351,7 @@ const totalsOf = (allRows, { includeEnded = false } = {}) => {
     working: count(working),
     notWorking: count((r) => !working(r)),
     onLeave: count((r) => r.workStatusShown === 'إجازة' || r.workStatusShown === 'اجازه'),
+    suspended: count((r) => r.workStatusShown === 'متوقف'),
     // صفرٌ ما لم يُسأل عنهم صراحةً بفلتر «إنهاء خدمة».
     terminated: count(isEnded),
     withVehicle: count((r) => !!r.vehicle),

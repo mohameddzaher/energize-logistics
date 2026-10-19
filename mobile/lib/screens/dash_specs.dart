@@ -224,6 +224,9 @@ const b2cDashSpec = DashSpec(
     DashStat('مناديب', 'Reps', 'employees.reps', Icons.two_wheeler_outlined, T.info),
     DashStat('إداريون', 'Admin', 'employees.admins', Icons.badge_outlined, T.violet),
     DashStat('على رأس العمل', 'Working', 'employees.working', Icons.check_circle_outline, T.success),
+    // على رأس العمل + في إجازة + موقوف = الموظفون — كالموقع.
+    DashStat('في إجازة', 'On leave', 'employees.onLeave', Icons.beach_access_outlined, T.info),
+    DashStat('موقوف', 'Suspended', 'employees.suspended', Icons.pause_circle_outline, T.warn),
     DashStat('مركبات', 'Vehicles', 'vehicles.total', Icons.directions_car_outlined, T.navy),
     DashStat('عليها راكب', 'With a rider', 'vehicles.withRider', Icons.person_pin_circle_outlined, T.success),
     // ما ينقص ويحتاج عملًا — لا ما هو قائم.

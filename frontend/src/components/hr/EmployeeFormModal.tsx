@@ -283,7 +283,14 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
           </p>
         </Field>
         <Field label={tx.directManager}><Select value={form.directManager} onChange={(e) => set('directManager', e.target.value)}><option value="">—</option>{managers.map((m) => <option key={m._id} value={m._id}>{m.firstName} {m.lastName}</option>)}</Select></Field>
-        <Field label={tx.employmentStatus}><Select value={form.employmentStatus} onChange={(e) => set('employmentStatus', e.target.value)}>{Object.entries(EMPLOYMENT_STATUS).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}</Select></Field>
+        {/* حالةُ التوظيف لا تُختار هنا: «يعمل» عند الإضافة، وتتغيّر بإنهاء الخدمة
+            (بحالةٍ من ثلاث) أو إعادة التفعيل من ملفّ الموظف. */}
+        <Field label={tx.employmentStatus}>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+            {ar ? (EMPLOYMENT_STATUS as any)[form.employmentStatus]?.ar || 'يعمل' : (EMPLOYMENT_STATUS as any)[form.employmentStatus]?.en || 'Active'}
+            <span className="block text-[11px] text-slate-400">{ar ? 'تتغيّر بإنهاء الخدمة أو إعادة التفعيل من ملف الموظف' : 'Changes via End Service / Reactivate on the profile'}</span>
+          </div>
+        </Field>
         <Field label={tx.basicSalary}><TextInput type="number" value={form.basicSalary} onChange={(e) => set('basicSalary', Number(e.target.value))} /></Field>
         <Field label={tx.allowances}><TextInput type="number" value={form.allowances} onChange={(e) => set('allowances', Number(e.target.value))} /></Field>
       </Section>

@@ -39,6 +39,9 @@ export interface Employee {
   branches?: (string | { _id: string; name?: string })[];
   employmentStatus?: 'active' | 'on_leave' | 'suspended' | 'terminated';
   terminatedAt?: string; terminationReason?: string;
+  /** «لا يعمل» وحالتُه: انتظار نقل الكفالة · شركة شقيقة · خروج نهائي. */
+  terminationKind?: '' | 'transfer_pending' | 'sister_company' | 'final_exit';
+  transferDeadline?: string | null;
   phone?: string; email?: string; address?: string; emergencyContactName?: string; emergencyContactPhone?: string;
   basicSalary?: number; allowances?: number;
   // Banking
@@ -261,10 +264,11 @@ export const REQUEST_STATUS: Record<string, { bg: string; text: string; en: stri
 };
 
 export const EMPLOYMENT_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {
-  active: { bg: 'bg-green-500/20', text: 'text-green-700', en: 'Active', ar: 'على رأس العمل' },
-  on_leave: { bg: 'bg-blue-500/20', text: 'text-blue-700', en: 'On Leave', ar: 'في إجازة' },
-  suspended: { bg: 'bg-amber-500/20', text: 'text-amber-700', en: 'Suspended', ar: 'موقوف' },
-  terminated: { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Terminated', ar: 'منتهي' },
+  // «حالة العمل»: يعمل أو لا يعمل — و«لا يعمل» هو إنهاءُ الخدمة بحالةٍ من ثلاث (workStatusText).
+  active: { bg: 'bg-green-500/20', text: 'text-green-700', en: 'Working', ar: 'يعمل' },
+  on_leave: { bg: 'bg-blue-500/20', text: 'text-blue-700', en: 'Working — on leave', ar: 'يعمل — إجازة' },
+  suspended: { bg: 'bg-amber-500/20', text: 'text-amber-700', en: 'Suspended (legacy)', ar: 'موقوف (قديم)' },
+  terminated: { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Not working', ar: 'لا يعمل' },
 };
 
 export const CONTRACT_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {

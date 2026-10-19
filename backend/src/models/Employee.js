@@ -55,6 +55,18 @@ const employeeSchema = new mongoose.Schema(
     },
     terminatedAt: { type: Date },
     terminationReason: { type: String, trim: true },
+    /**
+     * «لا يعمل» = إنهاءُ الخدمة، وله حالةٌ من ثلاث (صاحبُ الشركة، ٢٠٢٦/١٠/١٩):
+     *   transfer_pending  انتظار نقل الكفالة — شهرٌ تُنبَّه فيه الموارد البشريّة
+     *                     كلَّ يومٍ لإخراجه من النظام (فيذهب إلى الأرشيف)
+     *   sister_company    شركة شقيقة (داخل النظام)
+     *   final_exit        خروج نهائي (داخل النظام)
+     * راجع utils/hrEngagement (TERMINATION_KINDS) و jobs/hrTransferAlerts.
+     */
+    terminationKind: { type: String, enum: ['transfer_pending', 'sister_company', 'final_exit', ''], default: '' },
+    transferDeadline: { type: Date, default: null },
+    // آخرُ نافذةِ تنبيهٍ أُرسلت (اليوم + صباحًا/مساءً) — يمنع عاملَي الخادم من التكرار.
+    transferAlertKey: { type: String, default: '' },
 
     // Contact
     phone: { type: String, trim: true },

@@ -263,7 +263,7 @@ export default function B2CDashboardPage() {
           {d.reps.noContract > 0 && (
             <Link href={repsHref({ contractKind: 'none' })}
               className="-mt-1 inline-flex items-center gap-1 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1 text-[12px] font-semibold text-amber-800 hover:bg-amber-100">
-              {t(`${d.reps.noContract} مندوب بلا نوع عقد — اضغط لتحديده`, `${d.reps.noContract} reps with no contract type — click to set it`)}
+              {t(`${d.reps.noContract} مندوب غير محدد (كفالة أم فري لانسر) — اضغط لعرضهم`, `${d.reps.noContract} reps not set as sponsored or freelance — click to see them`)}
             </Link>
           )}
           {d.reps.projects.length > 0 && (
@@ -286,7 +286,7 @@ export default function B2CDashboardPage() {
                   {p.noContract > 0 && (
                     <Link href={repsHref({ project: p.project, contractKind: 'none' })}
                       className="block border-t border-slate-100 px-3 py-1 text-[10.5px] font-semibold text-amber-700 hover:bg-amber-50">
-                      {t(`${p.noContract} مندوب بلا نوع عقد — اضغط لتحديده`, `${p.noContract} reps with no contract type — click to set it`)}
+                      {t(`${p.noContract} غير محدد (كفالة أم فري لانسر) — اضغط لعرضهم`, `${p.noContract} not set — click to see them`)}
                     </Link>
                   )}
                 </div>

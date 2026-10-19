@@ -149,6 +149,8 @@ const decorate = (row, alerts = {}) => ({
     return (hr === 'terminated' || hr === 'suspended') ? 'hr' : 'section';
   })(),
   hrLinked: !!row.employee,
+  // نوعُ العقد كما يُعرَض ويُعَدّ: من الموارد البشريّة لمن له ملف — راجع contractKindOf.
+  contractTypeShown: ({ sponsored: 'كفالة', freelance: 'فري لانسر' })[contractKindOf(row)] || '',
   employeeNumber: row.employee && typeof row.employee === 'object' ? row.employee.employeeNumber : '',
 });
 
@@ -179,7 +181,7 @@ const supervisorFilter = (filter, value, field = 'supervisorUser') => {
 
 // ── قائمةُ الموظّفين ────────────────────────────────────────────────────────
 const LIST_POPULATE = [
-  { path: 'employee', select: 'employeeNumber arabicName firstName lastName employmentStatus phone' },
+  { path: 'employee', select: 'employeeNumber arabicName firstName lastName employmentStatus phone registerNumber' },
   { path: 'supervisor', select: 'arabicName firstName lastName employeeNumber' },
   { path: 'supervisorUser', select: 'firstName lastName email role' },
   { path: 'dutySupervisorUser', select: 'firstName lastName email role' },
@@ -318,10 +320,23 @@ async function endedRowIds() {
  * الكفالةُ والفري لانسر بالطيّ لا بالنصّ: الشيتُ يكتب «كفاله» و«كفالة» و«فري
  * لانسر» و«فريلانسر». وما لا نوعَ عقدٍ مكتوبًا له ليس أيًّا منهما.
  */
-const contractIs = (r, kind) => {
+/**
+ * ── وكفالةُ مَن له ملفٌّ في الموارد البشريّة من ملفّه ──────────────────────
+ * قاعدةُ صاحب الشركة (٢٠٢٦/١٠/١٩): على الكفالة / فريلانسر من «رقم السجل
+ * التجاري» في الموارد البشريّة (utils/hrEngagement). كان القسمُ يكتب خانتَه
+ * وحدَه، فبقيت فارغةً لسبعةٍ نوعُهم معروفٌ هناك («بلا نوع عقد»). وخانةُ القسم
+ * تبقى لمن لا ملفَّ له وحدَه.
+ */
+const ENG = require('../utils/hrEngagement');
+const contractKindOf = (r) => {
+  if (r.employee && typeof r.employee === 'object') {
+    const e = ENG.engagementOf(r.employee);
+    return e === 'sponsored' || e === 'freelance' ? e : '';
+  }
   const v = foldAr(String(r.contractTypeAr || '')).replace(/\s+/g, '');
-  return kind === 'freelance' ? v.includes('فريلانسر') : (!!v && !v.includes('فريلانسر'));
+  return v.includes('فريلانسر') ? 'freelance' : (v ? 'sponsored' : '');
 };
+const contractIs = (r, kind) => contractKindOf(r) === kind;
 
 /**
  * ── «إجماليُّ المناديب»: كفالة + فري لانسر + يوزرات ─────────────────────────

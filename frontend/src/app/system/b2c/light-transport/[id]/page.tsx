@@ -128,7 +128,7 @@ export default function LightTransportProfile() {
     [t('المشرف', 'Supervisor'), e.supervisorName],
     [t('انتهاء كارت التشغيل', 'Operating card expiry'), fmtDate(e.operatingCard?.expiryDate)],
     [t('انتهاء الفحص الدوري', 'Inspection expiry'), fmtDate(e.inspection?.expiryDate)],
-    [t('نوع التعاقد', 'Contract'), e.contractTypeAr],
+    [t('على الكفالة / فري لانسر', 'Sponsored / freelance'), (e as any).contractTypeShown || e.contractTypeAr],
     [t('رقم السجل', 'Register'), e.registerNumber],
     [t('حالة العمل', 'Status'), e.workStatusShown],
     [t('الجنسية', 'Nationality'), e.nationalityAr],
@@ -200,7 +200,7 @@ export default function LightTransportProfile() {
           <Row label={t('الجنسية', 'Nationality')}>{val(e.nationalityAr)}</Row>
           <Row label={t('الجوال', 'Phone')} mono>{val(e.phone)}</Row>
           <Row label={t('تاريخ التعيين', 'Hire date')} mono>{val(fmtDate(e.hireDate))}</Row>
-          <Row label={t('نوع التعاقد', 'Contract')}>{val(e.contractTypeAr)}</Row>
+          <Row label={t('على الكفالة / فري لانسر', 'Sponsored / freelance')}>{val((e as any).contractTypeShown || e.contractTypeAr)}</Row>
           {/* ── والسجلُّ الذي هو على كفالته ──────────────────────────────────
               الشركةُ لها أكثرُ من سجلٍّ تجاريّ، ومن ليس على كفالتنا لا سجلَّ له.
               وهو سؤالٌ يُسأل عند التفتيش وعند التأمين. */}

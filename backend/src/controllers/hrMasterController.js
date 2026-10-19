@@ -133,6 +133,7 @@ const ENG_EXPR = {
   s: { $regexMatch: { input: { $ifNull: ['$registerNumber', ''] }, regex: ENG.ENGAGEMENT_MATCH.sponsored.registerNumber.$regex } },
   f: { $regexMatch: { input: { $ifNull: ['$registerNumber', ''] }, regex: ENG.ENGAGEMENT_MATCH.freelance.registerNumber.$regex, options: 'i' } },
 };
+const LOCKED_FIELDS = new Set(['workStatusText', 'systemStatus', 'employmentStatus']);
 const CONTRACT_SCOPE = { $nor: [ENG.ENGAGEMENT_MATCH.freelance, ENG.ENGAGEMENT_MATCH.trainee] };
 function splitExprs(exprs) {
   const out = {};
@@ -181,7 +182,8 @@ function buildFilter(q) {
   if (employment === 'onduty') f.employmentStatus = { $in: ['active', 'on_leave'] };
   if (employment === 'leave') f.employmentStatus = 'on_leave';
   // «موقوف» في هذه الشركة = في مرحلة نقل الكفالة.
-  if (employment === 'transfer') f.employmentStatus = 'suspended';
+  // «في مرحلة نقل الكفالة» = لا يعمل بحالة «انتظار نقل الكفالة» (والموقوفُ القديم معه).
+  if (employment === 'transfer') f.$and.push({ $or: [{ employmentStatus: 'terminated', terminationKind: 'transfer_pending' }, { employmentStatus: 'suspended' }] });
   // ── و«على قوّة العمل» غيرُ «على رأس العمل» ───────────────────────────────
   // مَن في إجازةٍ أو موقوفٌ ليس «على رأس العمل» اليوم، لكنّه موظّفٌ قائمٌ
   // تُجدَّد إقامتُه ورخصتُه. و`inactive` تجمعه مع مَن انتهت خدمتُه، فلا تصلح
@@ -618,7 +620,10 @@ exports.overview = async (req, res) => {
         onDuty: { $in: ['$employmentStatus', ['active', 'on_leave']] },
         notActive: { $in: ['$employmentStatus', ['terminated', 'suspended']] },
         terminated: { $eq: ['$employmentStatus', 'terminated'] },
-        transfer: { $eq: ['$employmentStatus', 'suspended'] },
+        transfer: { $or: [
+          { $and: [{ $eq: ['$employmentStatus', 'terminated'] }, { $eq: ['$terminationKind', 'transfer_pending'] }] },
+          { $eq: ['$employmentStatus', 'suspended'] },
+        ] },
         outsideKingdom: { $eq: ['$isOutsideKingdom', true] },
         gosiRegistered: filledExpr('gosiNumber'),
         cashPayroll: { $eq: [{ $ifNull: ['$fieldStatus.ibanStatus', ''] }, 'cash_payroll'] },
@@ -1128,6 +1133,8 @@ exports.updateFields = async (req, res) => {
       const f = H.getField(k);
       if (!f) { rejected.push(k); continue; }
       if (f.derived) { rejected.push(k); continue; }
+      // «حالة العمل» و«حالة النظام» لا تُكتبان من خانة — بإنهاء الخدمة والخروج من النظام.
+      if (LOCKED_FIELDS.has(k)) { rejected.push(`${k} (تتغيّر بإنهاء الخدمة أو الخروج من النظام فقط)`); continue; }
       if (f.type === 'date') {
         if (v === '' || v === null) { emp[k] = null; applied[k] = null; continue; }
         // ── وسنةٌ هجريّةٌ كُتبت في الخانة الميلاديّة تُحوَّل ولا تُحفَظ كما هي ──

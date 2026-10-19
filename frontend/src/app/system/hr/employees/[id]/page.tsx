@@ -424,8 +424,12 @@ export default function EmployeeProfilePage() {
       {/* Termination banner */}
       {terminated && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
-          {ar ? 'انتهت خدمة هذا الموظف' : 'This employee’s service has ended'}
+          {/* «حالة العمل» كما تُكتب في كلّ شاشة: «لا يعمل — <حالته>». */}
+          {e.workStatusText && e.workStatusText !== 'يعمل' ? e.workStatusText : (ar ? 'انتهت خدمة هذا الموظف' : 'This employee’s service has ended')}
           {e.terminatedAt ? ` · ${bothDates(e.terminatedAt, ar)}` : ''}
+          {e.terminationKind === 'transfer_pending' && e.transferDeadline && !archived && (
+            <span className="font-bold">{ar ? ` · مهلة نقل الكفالة حتى ${bothDates(e.transferDeadline, ar)} — ثم «خروج من النظام»` : ` · transfer window until ${bothDates(e.transferDeadline, ar)} — then exit the system`}</span>
+          )}
           {e.terminationReason ? ` · ${e.terminationReason}` : ''}
         </div>
       )}
@@ -777,7 +781,7 @@ export default function EmployeeProfilePage() {
       <EmployeeFormModal open={showEdit} employee={e} onClose={() => setShowEdit(false)} onSaved={() => load()} />
       <ContractFormModal open={showContract} contract={editingContract} employeeId={String(e._id)} onClose={() => setShowContract(false)} onSaved={() => load()} />
       <RenewModal open={showRenew} employeeId={id} ar={ar} onClose={() => setShowRenew(false)} onDone={load} />
-      <TerminateModal open={showTerminate} employeeId={id} ar={ar} onClose={() => setShowTerminate(false)} onDone={load} />
+      <TerminateModal open={showTerminate} employeeId={id} ar={ar} onClose={() => setShowTerminate(false)} onDone={load} archivesNow={outOfSystem || freelance} />
       <DocModal open={showAddDoc || !!editDoc} doc={editDoc} employeeId={id} ar={ar} onClose={() => { setShowAddDoc(false); setEditDoc(null); }} onDone={load} />
     </div>
   );
@@ -839,8 +843,18 @@ function RenewModal({ open, employeeId, ar, onClose, onDone }: { open: boolean; 
 }
 
 // End of service.
-function TerminateModal({ open, employeeId, ar, onClose, onDone }: { open: boolean; employeeId: string; ar: boolean; onClose: () => void; onDone: () => void }) {
+/** «لا يعمل» وحالاتُه الثلاث — مطابقةٌ لـ TERMINATION_KINDS في الخادم (utils/hrEngagement). */
+const TERMINATION_KINDS: { key: string; ar: string; en: string; hint: string; hintEn: string }[] = [
+  { key: 'transfer_pending', ar: 'انتظار نقل الكفالة', en: 'Awaiting sponsorship transfer', hint: 'شهر واحد — وتنبيهاتٌ يومية لإخراجه من النظام', hintEn: 'One month — daily reminders to take him out of the system' },
+  { key: 'sister_company', ar: 'شركة شقيقة (داخل النظام)', en: 'Sister company (in system)', hint: '', hintEn: '' },
+  { key: 'final_exit', ar: 'خروج نهائي (داخل النظام)', en: 'Final exit (in system)', hint: '', hintEn: '' },
+];
+
+function TerminateModal({ open, employeeId, ar, onClose, onDone, archivesNow }: { open: boolean; employeeId: string; ar: boolean; onClose: () => void; onDone: () => void;
+  /** خارجَ النظام أو فريلانسر: إنهاءُ خدمته يؤرشفه فورًا، فلا يُسأل عن حالة. */
+  archivesNow?: boolean }) {
   const { notify } = useDialog();
+  const [kind, setKind] = useState('');
   const [reason, setReason] = useState('');
   const [contractStatus, setContractStatus] = useState('');
   // ملاحظةٌ حرّةٌ إلى جانب السبب المختار — التفصيلُ الذي لا تسعه قائمة.
@@ -859,7 +873,7 @@ function TerminateModal({ open, employeeId, ar, onClose, onDone }: { open: boole
   const [checking, setChecking] = useState(false);
   useEffect(() => {
     if (!open) return;
-    setReason(''); setDate(''); setContractStatus(''); setNote(''); setClearance(null); setChecking(true);
+    setKind(''); setReason(''); setDate(''); setContractStatus(''); setNote(''); setClearance(null); setChecking(true);
     api.get<any>(`/api/hr/employees/${employeeId}/clearance`)
       .then(setClearance).catch(() => setClearance(null))
       .finally(() => setChecking(false));
@@ -869,6 +883,7 @@ function TerminateModal({ open, employeeId, ar, onClose, onDone }: { open: boole
     setSaving(true);
     try {
       await api.post(`/api/hr/employees/${employeeId}/terminate`, {
+        kind: kind || undefined,
         reason: [reason, note.trim()].filter(Boolean).join(' — '),
         date: date || undefined,
         contractStatus: contractStatus || undefined,
@@ -882,10 +897,29 @@ function TerminateModal({ open, employeeId, ar, onClose, onDone }: { open: boole
     <Modal open={open} onClose={onClose} title={ar ? 'إنهاء الخدمة' : 'End Service'}
       footer={<>
         <button type="button" onClick={onClose} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
-        <button type="button" onClick={save} disabled={saving || blocked || checking}
+        <button type="button" onClick={save} disabled={saving || blocked || checking || (!archivesNow && !kind)}
           title={blocked ? (ar ? 'تُسوَّى البنود المعلّقة أولًا' : 'Settle the pending items first') : undefined}
           className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserX className="w-4 h-4" />}{ar ? 'تأكيد الإنهاء' : 'Confirm'}</button>
       </>}>
+      {/* ── حالة «لا يعمل» — شرطٌ للإنهاء (إلّا مَن يُؤرشَف فورًا) ──────────── */}
+      {archivesNow ? (
+        <p className="mb-3 rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-[12.5px] font-semibold text-slate-700">
+          {ar ? 'خارج النظام أو فريلانسر — بإنهاء خدمته ينتقل إلى الأرشيف فورًا.' : 'Out of the system or freelancer — ending his service moves him to the archive at once.'}
+        </p>
+      ) : (
+        <div className="mb-3 space-y-1.5">
+          <p className="text-[12px] font-bold text-slate-700">{ar ? 'حالة «لا يعمل» *' : '“Not working” status *'}</p>
+          {TERMINATION_KINDS.map((k) => (
+            <label key={k.key} className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 ${kind === k.key ? 'border-red-400 bg-red-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+              <input type="radio" name="terminationKind" className="mt-0.5 accent-red-600" checked={kind === k.key} onChange={() => setKind(k.key)} />
+              <span>
+                <span className="block text-[13px] font-semibold text-slate-800">{ar ? k.ar : k.en}</span>
+                {k.hint && <span className="block text-[11px] text-slate-500">{ar ? k.hint : k.hintEn}</span>}
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
       {checking && <p className="text-slate-400 text-sm">{ar ? 'جارٍ فحص إخلاء الطرف…' : 'Checking clearance…'}</p>}
       {/* ── إخلاءُ الطرف ────────────────────────────────────────────────────
           المنعُ بلا عنوانٍ يوقف العمل؛ والمنعُ مع العنوان يوجّهه. فمع كلّ بندٍ

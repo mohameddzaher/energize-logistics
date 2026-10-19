@@ -133,15 +133,28 @@ export default function ContractsPage() {
     setRenewSaving(false);
   };
 
-  const terminate = async (c: Contract) => {
-    const reason = (await prompt(tx.terminationReasonPrompt)) ?? '';
+  /**
+   * ── فسخُ العقد يُنهي الخدمة — فيُسأل عن حالة «لا يعمل» ───────────────────
+   * انتظار نقل الكفالة · شركة شقيقة · خروج نهائي. ومَن خارجَ النظام أو فريلانسر
+   * يُؤرشَف فورًا فلا يُسأل (الخادمُ يقضي بذلك أيضًا).
+   */
+  const [ending, setEnding] = useState<Contract | null>(null);
+  const [endKind, setEndKind] = useState('');
+  const [endReason, setEndReason] = useState('');
+  const [endSaving, setEndSaving] = useState(false);
+  const terminate = async (c: Contract) => { setEnding(c); setEndKind(''); setEndReason(''); };
+  const confirmEnd = async () => {
+    if (!ending) return;
+    setEndSaving(true);
     try {
-      await api.post(`/api/hr/contracts/${c._id}/terminate`, { reason });
+      await api.post(`/api/hr/contracts/${ending._id}/terminate`, { reason: endReason.trim(), kind: endKind || undefined });
+      setEnding(null);
       load();
     } catch (e: any) {
-      // The backend blocks termination while custody is outstanding.
+      // The backend blocks termination while custody is outstanding — or asks for the status.
       notify(e.message, 'error');
     }
+    setEndSaving(false);
   };
 
   /**
@@ -470,6 +483,29 @@ export default function ContractsPage() {
           </label>
         </div>
       </Modal>
+      {ending && (
+        <Modal open onClose={() => setEnding(null)} title={ar ? 'إنهاء العقد والخدمة' : 'End contract and service'}
+          footer={<>
+            <button type="button" onClick={() => setEnding(null)} className="px-4 py-2 text-slate-500 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+            <button type="button" onClick={confirmEnd} disabled={endSaving}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50">
+              {endSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}{ar ? 'تأكيد' : 'Confirm'}
+            </button>
+          </>}>
+          <div className="space-y-3">
+            <p className="text-[12.5px] text-slate-600">{ar ? 'فسخُ العقد يُنهي خدمة الموظف («لا يعمل»). اختر حالته — ومَن هو خارج النظام أو فريلانسر ينتقل إلى الأرشيف فورًا ولا يحتاج حالة.' : 'Ending the contract ends the service (“not working”). Pick the status — anyone out of the system or freelance goes straight to the archive.'}</p>
+            {[['transfer_pending', 'انتظار نقل الكفالة', 'Awaiting sponsorship transfer'], ['sister_company', 'شركة شقيقة (داخل النظام)', 'Sister company (in system)'], ['final_exit', 'خروج نهائي (داخل النظام)', 'Final exit (in system)']].map(([k, a, en]) => (
+              <label key={k} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-[13px] ${endKind === k ? 'border-red-400 bg-red-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                <input type="radio" name="endKind" className="accent-red-600" checked={endKind === k} onChange={() => setEndKind(k)} />
+                <span className="font-semibold text-slate-800">{ar ? a : en}</span>
+              </label>
+            ))}
+            <Field label={ar ? 'السبب (اختياري)' : 'Reason (optional)'}>
+              <TextInput value={endReason} onChange={(e) => setEndReason(e.target.value)} />
+            </Field>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

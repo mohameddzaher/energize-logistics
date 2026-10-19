@@ -35,6 +35,9 @@ const contractSchema = new mongoose.Schema(
     // والقيمُ القديمة تُطوى قبل التحقّق (أدناه)، وscripts/contractTwoStatuses يطوي المخزَّن.
     status: { type: String, enum: ['active', 'expired'], default: 'active' },
     terminatedAt: { type: Date },
+    // أُنهي مع إنهاء خدمة الموظّف — وبإعادة تفعيله يعود العقدُ إلى ما كان عليه.
+    endedByTermination: { type: Boolean, default: false },
+    statusBeforeTermination: { type: String, default: '' },
     terminationReason: { type: String, trim: true },
     // Set true only once all custody/assets are returned — termination is
     // blocked until then (enforced in the controller).

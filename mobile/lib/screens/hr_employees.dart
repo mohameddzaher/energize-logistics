@@ -18,10 +18,11 @@ class HrEmployeesScreen extends StatefulWidget {
 }
 
 const _empStatus = {
-  'active': ('على رأس العمل', 'Active', T.success),
-  'on_leave': ('في إجازة', 'On leave', T.info),
-  'suspended': ('موقوف', 'Suspended', T.warn),
-  'terminated': ('منتهي الخدمة', 'Terminated', T.danger),
+  // «حالة العمل»: يعمل أو لا يعمل (= إنهاءُ الخدمة بحالةٍ من ثلاث) — كالموقع.
+  'active': ('يعمل', 'Working', T.success),
+  'on_leave': ('يعمل — إجازة', 'Working — on leave', T.info),
+  'suspended': ('موقوف (قديم)', 'Suspended (legacy)', T.warn),
+  'terminated': ('لا يعمل', 'Not working', T.danger),
 };
 
 class _HrEmployeesScreenState extends State<HrEmployeesScreen> {

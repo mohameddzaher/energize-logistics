@@ -647,9 +647,18 @@ function LightTransportEmployeesInner() {
               <ManagedSelect storeLabel type="lt_job_title" value={editing.jobTitleAr || ''}
                 onChange={(v) => setEditing((p) => ({ ...p!, jobTitleAr: v }))} />
             </Field>
-            <Field label={t('نوع التعاقد', 'Contract type')}>
-              <ManagedSelect storeLabel type="lt_contract_type" value={editing.contractTypeAr || ''}
-                onChange={(v) => setEditing((p) => ({ ...p!, contractTypeAr: v }))} />
+            {/* على الكفالة / فري لانسر: لمن له ملفٌّ في الموارد البشريّة يُقرأ من «رقم
+                السجل التجاري» هناك ولا يُكتب هنا. ويُكتب هنا لمن لا ملفَّ له وحدَه. */}
+            <Field label={t('على الكفالة / فري لانسر', 'Sponsored / freelance')}>
+              {(editing as any).hrLinked ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                  {(editing as any).contractTypeShown || t('غير محدد', 'Not set')}
+                  <span className="block text-[11px] text-slate-500">{t('من «رقم السجل التجاري» في الموارد البشرية', 'From the commercial register number in HR')}</span>
+                </div>
+              ) : (
+                <ManagedSelect storeLabel type="lt_contract_type" value={editing.contractTypeAr || ''}
+                  onChange={(v) => setEditing((p) => ({ ...p!, contractTypeAr: v }))} />
+              )}
             </Field>
             <Field label={t('رقم السجل', 'Commercial register')}>
               <ManagedSelect storeLabel type="lt_register" value={editing.registerNumber || ''}

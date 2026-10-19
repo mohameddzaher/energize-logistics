@@ -25,6 +25,7 @@ const { startLs2Poll } = require('./jobs/ls2Poll');
 // Pre-computes Wialon trip metrics off-hours so driver/vehicle reports are instant.
 const { startLs2TripWarm } = require('./jobs/ls2TripWarm');
 const { startBusinessReviewSweep } = require('./jobs/businessReviewSweep');
+const { startHrTransferAlerts } = require('./jobs/hrTransferAlerts');
 const { startKeepAlive } = require('./jobs/keepAlive');
 
 // Route imports
@@ -479,6 +480,8 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     startLs2Poll();
     startLs2TripWarm();
     startBusinessReviewSweep();
+    // «انتظار نقل الكفالة»: تنبيهُ الموارد البشريّة مرّتين يوميًّا حتى الخروج من النظام.
+    startHrTransferAlerts();
     // لوحاتُ مؤشّرات CRM تُحسب في الخلف، فلا ينتظرها من يفتحها — راجع warmKpis.
     try { require('./controllers/crmKpiController').startKpiWarm(); } catch (e) { /* */ }
     // ملفّاتُ التصدير تُحذف بعد يوم — لقطةٌ للحظتها لا أرشيف.

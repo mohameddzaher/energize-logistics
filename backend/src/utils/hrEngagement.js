@@ -58,7 +58,29 @@ const ENGAGEMENT_MATCH = {
   trainee: { registerNumber: { $regex: TRAINEE_RX.source, $options: 'i' } },
 };
 
+/**
+ * «لا يعمل» وحالاتُه الثلاث — وكلُّها إنهاءُ خدمة. والموظّفُ خارجَ النظام أو
+ * الفريلانسرُ لا يُسأل عن حالة: إنهاءُ خدمته يؤرشفه فورًا.
+ */
+const TERMINATION_KINDS = {
+  transfer_pending: { ar: 'انتظار نقل الكفالة', en: 'Awaiting sponsorship transfer' },
+  sister_company: { ar: 'شركة شقيقة (داخل النظام)', en: 'Sister company (in system)' },
+  final_exit: { ar: 'خروج نهائي (داخل النظام)', en: 'Final exit (in system)' },
+};
+const TRANSFER_DAYS = 30;
+const WORKING = 'يعمل';
+const NOT_WORKING = 'لا يعمل';
+/** نصُّ «حالة العمل» كما يُكتب ويُعرَض — مشتقٌّ من الحالة لا يُكتب باليد. */
+function workStatusTextOf(e) {
+  if (e?.employmentStatus !== 'terminated') return WORKING;
+  const k = TERMINATION_KINDS[e?.terminationKind];
+  return k ? `${NOT_WORKING} — ${k.ar}` : NOT_WORKING;
+}
+/** إنهاءُ خدمته يؤرشفه فورًا — فلا يُسأل عن حالة. */
+const archivesOnTermination = (e) => String(e?.systemStatus || '').trim() === SYSTEM_OUT || engagementOf(e) === 'freelance';
+
 module.exports = {
+  TERMINATION_KINDS, TRANSFER_DAYS, WORKING, NOT_WORKING, workStatusTextOf, archivesOnTermination,
   SYSTEM_OUT, SYSTEM_IN, engagementOf, contractRequired, isArchived,
   ARCHIVED, NOT_ARCHIVED, withoutArchived, ENGAGEMENT_MATCH,
 };

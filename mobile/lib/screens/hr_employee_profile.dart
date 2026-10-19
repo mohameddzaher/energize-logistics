@@ -22,10 +22,11 @@ class HrEmployeeProfileScreen extends StatefulWidget {
 }
 
 const _empStatus = {
-  'active': ('على رأس العمل', 'Active', T.success),
-  'on_leave': ('في إجازة', 'On leave', T.info),
-  'suspended': ('موقوف', 'Suspended', T.warn),
-  'terminated': ('منتهي الخدمة', 'Terminated', T.danger),
+  // «حالة العمل»: يعمل أو لا يعمل (= إنهاءُ الخدمة بحالةٍ من ثلاث) — كالموقع.
+  'active': ('يعمل', 'Working', T.success),
+  'on_leave': ('يعمل — إجازة', 'Working — on leave', T.info),
+  'suspended': ('موقوف (قديم)', 'Suspended (legacy)', T.warn),
+  'terminated': ('لا يعمل', 'Not working', T.danger),
 };
 
 class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
@@ -239,13 +240,37 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     if (!mounted) return;
     final reason = TextEditingController();
     DateTime when = DateTime.now();
+    // «لا يعمل» وحالاتُه الثلاث — شرطٌ للإنهاء، إلّا مَن هو خارج النظام أو فريلانسر
+    // (يُؤرشَف فورًا). مطابقٌ للموقع ولـ TERMINATION_KINDS في الخادم.
+    final archivesNow = _outOfSystem || _freelance;
+    String kind = '';
+    const kinds = [
+      ('transfer_pending', 'انتظار نقل الكفالة', 'Awaiting sponsorship transfer'),
+      ('sister_company', 'شركة شقيقة (داخل النظام)', 'Sister company (in system)'),
+      ('final_exit', 'خروج نهائي (داخل النظام)', 'Final exit (in system)'),
+    ];
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => StatefulBuilder(
         builder: (c, setD) => AlertDialog(
           title: Text(tr('إنهاء خدمة الموظف', 'End of service')),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(controller: reason, decoration: InputDecoration(labelText: tr('السبب', 'Reason'))),
+          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (archivesNow)
+              Text(tr('خارج النظام أو فريلانسر — بإنهاء خدمته ينتقل إلى الأرشيف فورًا.', 'Out of the system or freelancer — ending his service archives him at once.'),
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: T.inkSoft))
+            else ...[
+              Text(tr('حالة «لا يعمل» *', '“Not working” status *'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
+              for (final k in kinds)
+                ListTile(
+                  dense: true, contentPadding: EdgeInsets.zero,
+                  onTap: () => setD(() => kind = k.$1),
+                  leading: Icon(kind == k.$1 ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: kind == k.$1 ? T.danger : T.inkFaint, size: 20),
+                  title: Text(tr(k.$2, k.$3), style: const TextStyle(fontSize: 13)),
+                  subtitle: k.$1 == 'transfer_pending' ? Text(tr('شهر واحد — وتنبيهات يومية لإخراجه من النظام', 'One month — daily reminders to exit the system'), style: const TextStyle(fontSize: 11)) : null,
+                ),
+            ],
+            const SizedBox(height: 6),
+            TextField(controller: reason, decoration: InputDecoration(labelText: tr('السبب (اختياري)', 'Reason (optional)'))),
             const SizedBox(height: 8),
             OutlinedButton.icon(
               icon: const Icon(Icons.calendar_month_outlined, size: 16),
@@ -255,10 +280,10 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                 if (d != null) setD(() => when = d);
               },
             ),
-          ]),
+          ])),
           actions: [
             TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
-            FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('إنهاء الخدمة', 'End service'))),
+            FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: (!archivesNow && kind.isEmpty) ? null : () => Navigator.pop(c, true), child: Text(tr('إنهاء الخدمة', 'End service'))),
           ],
         ),
       ),
@@ -266,6 +291,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     if (ok != true) return;
     try {
       await Api.instance.post('/api/hr/employees/${widget.employeeId}/terminate', {
+        if (kind.isNotEmpty) 'kind': kind,
         'reason': reason.text.trim(),
         'date': when.toIso8601String().split('T').first,
       });
@@ -594,7 +620,9 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                                       style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
                                 ]),
                               ),
-                              Chip2(tr(st.$1, st.$2), st.$3),
+                              // «لا يعمل» يحمل حالتَه: انتظار نقل الكفالة · شركة شقيقة · خروج نهائي.
+                              Chip2(_terminated && '${_emp['workStatusText'] ?? ''}'.contains('—') ? '${_emp['workStatusText']}' : tr(st.$1, st.$2), st.$3),
+                              if (_archived) Chip2(tr('في الأرشيف', 'Archived'), T.inkFaint, icon: Icons.archive_outlined),
                             ]),
                           ),
                         ),

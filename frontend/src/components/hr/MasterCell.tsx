@@ -28,6 +28,8 @@ export const displayValue = (f: MasterField, raw: any, ar: boolean) => {
   return raw || '—';
 };
 
+const LOCKED_KEYS = new Set(['workStatusText', 'systemStatus', 'employmentStatus']);
+
 export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSaved, notify, compact }: {
   id: string; f: MasterField; raw: any; st?: string; choices?: Choices; ar: boolean; canEdit: boolean;
   onSaved: () => void; notify: (m: string, tone?: any) => void; compact?: boolean;
@@ -41,8 +43,11 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
   const [mark, setMark] = useState('');
   const opts = (choices?.[f.key] || []).filter((o) => !(f.cashPayroll && o.value.toLowerCase() === CASH));
 
+  // «حالة العمل» و«حالة النظام» تُقرآن ولا تُكتبان من الخانة: تتغيّران بإنهاء
+  // الخدمة وإعادة التفعيل والخروج من النظام وحدَها (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
+  const locked = LOCKED_KEYS.has(f.key);
   const start = () => {
-    if (!canEdit) return;
+    if (!canEdit || locked) return;
     // التاريخ غير المقروء («مطلوب» مكتوبةً في خانة تاريخ) يُفتح فارغًا ليُصحَّح.
     // الهجريُّ يُعرَض ويُحرَّر نصًّا «yyyy-mm-dd» — لا حقلَ تاريخٍ أصليًّا
     // للتقويم الهجريّ في المتصفّح.

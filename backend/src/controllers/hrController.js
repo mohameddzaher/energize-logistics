@@ -222,7 +222,7 @@ exports.listEmployees = async (req, res) => {
       // بعد جلبها؛ الحقل غير المجلوب يبدو «بلا تاريخ» فيسقط من كل مدى بصمت.
       // ولذلك تُؤخَذ من مصدرها لا تُكتب هنا: كانت مكتوبةً بيدٍ، فكلُّ تاريخٍ
       // يُضاف إلى الفلترة يبقى ساقطًا هنا حتى يتذكّره أحد — وأثرُه صامت.
-      .select(['firstName lastName arabicName employeeNumber jobTitle department employmentStatus',
+      .select(['firstName lastName arabicName employeeNumber jobTitle department employmentStatus workStatusText terminationKind',
         'phone email iqamaNumber nationalId nationality photo workLocation branchName',
         'project branch directManager user createdAt createdVia',
         ...master._DATE_FILTERABLE].join(' '))
@@ -381,14 +381,16 @@ exports.updateEmployee = async (req, res) => {
       'qiwaContractNumber', 'gosiNumber', 'absherStatus', 'sponsorName', 'workPermitExpiry',
       // `branch` الفرع الأساسي، و`branches` الفروع الإضافية التي يعمل عليها
       // فعلًا — انظر models/Employee.
-      'jobTitle', 'department', 'hireDate', 'actualWorkStartDate', 'workLocation', 'branch', 'branches', 'employmentStatus',
+      'jobTitle', 'department', 'hireDate', 'actualWorkStartDate', 'workLocation', 'branch', 'branches',
       'phone', 'email', 'address', 'emergencyContactName', 'emergencyContactPhone',
       'basicSalary', 'allowances', 'directManager', 'notes',
       // Banking
       'iban', 'bank',
       // Extra HR-sheet fields
       'fileStatus', 'absherNumber', 'companyNumber', 'originCountryNumber', 'project', 'registerNumber',
-      'systemStatus', 'workStatusText', 'penaltyClause', 'iqamaProfession', 'classification',
+      // «حالة العمل» و«حالة النظام» ليستا هنا: تُكتبان بإنهاء الخدمة / إعادة التفعيل /
+      // الخروج من النظام وحدَها (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) — راجع utils/hrEngagement.
+      'penaltyClause', 'iqamaProfession', 'classification',
       'insuranceCompany', 'insuranceExpiry', 'socialInsuranceStatus', 'visaExpiry',
       'lastTravelDate', 'lastReturnDate',
       // Driving / vehicle eligibility
@@ -761,11 +763,28 @@ exports.terminateEmployee = async (req, res) => {
       });
     }
 
+    /**
+     * ── «لا يعمل» = إنهاءُ الخدمة، ولا بدّ من حالةٍ من ثلاث ──────────────────
+     * انتظار نقل الكفالة · شركة شقيقة · خروج نهائي (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
+     * ومَن هو خارجَ النظام أو فريلانسر لا يُسأل: إنهاءُ خدمته يؤرشفه فورًا.
+     */
+    const ENG = require('../utils/hrEngagement');
+    const kind = String(req.body.kind || '');
+    const archivesNow = ENG.archivesOnTermination(employee);
+    if (!archivesNow && !ENG.TERMINATION_KINDS[kind]) {
+      return res.status(400).json({ code: 'KIND_REQUIRED', message: 'اختر حالة «لا يعمل»: انتظار نقل الكفالة، أو شركة شقيقة، أو خروج نهائي' });
+    }
     const reason = req.body.reason || '';
     const when = req.body.date ? new Date(req.body.date) : new Date();
     employee.employmentStatus = 'terminated';
     employee.terminatedAt = when;
     employee.terminationReason = reason;
+    employee.terminationKind = archivesNow ? (ENG.TERMINATION_KINDS[kind] ? kind : '') : kind;
+    // انتظارُ نقل الكفالة شهرٌ واحد — تُنبَّه الموارد البشريّة فيه لإخراجه من النظام.
+    employee.transferDeadline = employee.terminationKind === 'transfer_pending'
+      ? new Date(when.getTime() + ENG.TRANSFER_DAYS * 86400000) : null;
+    employee.transferAlertKey = '';
+    employee.workStatusText = ENG.workStatusTextOf(employee);
     // ── وحالةُ العقد تُكتب هنا، لا تُترك لمن يفتح الملفّ بعد شهر ─────────────
     //
     // «حالة العقد» عمودٌ يُقرأ ليُعرَف موقفُ الموظّف، وكان يُملأ من ملفّ
@@ -780,10 +799,11 @@ exports.terminateEmployee = async (req, res) => {
     await employee.save();
 
     // Terminate the active contract too so both records agree.
+    // ويُعلَّم العقدُ بأنّ إنهاءَ الخدمة أنهاه — فإعادةُ التفعيل تعيده كما كان.
     await Contract.updateMany(
       { employee: employee._id, status: 'active' },
       // «مفسوخ» صار «منتهي» (حالتان لا غير) — والسببُ والتاريخُ في خانتيهما.
-      { $set: { status: 'expired', terminatedAt: when, terminationReason: reason, custodyReturned: true } }
+      { $set: { status: 'expired', terminatedAt: when, terminationReason: reason, custodyReturned: true, endedByTermination: true, statusBeforeTermination: 'active' } }
     );
     // وبعدها تُقرأ الحالةُ من العقد نفسِه — فإن كان له عقدٌ فهو الحَكَم، وما
     // كُتب أعلاه لا يبقى إلّا لمن لا عقدَ له في النظام.
@@ -810,7 +830,28 @@ exports.reactivateEmployee = async (req, res) => {
     employee.employmentStatus = 'active';
     employee.terminatedAt = undefined;
     employee.terminationReason = '';
+    employee.terminationKind = '';
+    employee.transferDeadline = null;
+    employee.transferAlertKey = '';
+    employee.workStatusText = require('../utils/hrEngagement').WORKING;
     await employee.save();
+    /**
+     * ── والعقدُ يعود كما كان قبل الإنهاء ─────────────────────────────────────
+     * ما أنهاه إنهاءُ الخدمة (`endedByTermination`) يعود إلى حالته السابقة —
+     * إلّا إن مضى موعدُ انتهائه في أثناء ذلك فيبقى «منتهيًا» بموعده لا بالفسخ.
+     */
+    const ended = await Contract.find({ employee: employee._id, endedByTermination: true });
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    for (const c of ended) {
+      const lapsed = c.endDate && new Date(c.endDate) < today;
+      c.status = lapsed ? 'expired' : (c.statusBeforeTermination || 'active');
+      c.terminatedAt = undefined;
+      c.terminationReason = '';
+      c.endedByTermination = false;
+      c.statusBeforeTermination = '';
+      await c.save(); // eslint-disable-line no-await-in-loop
+    }
+    if (ended.length) await syncEmployeeContractStatus(employee._id);
     bustEmployeeCaches();
     await logAudit({ user: req.user._id, action: 'reactivate_employee', entity: 'Employee', entityId: employee._id, changes: { after: { employmentStatus: 'active' } }, ipAddress: req.ip });
     await notifyHR({ title: 'Employee reactivated', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
@@ -1057,17 +1098,36 @@ exports.terminateContract = async (req, res) => {
       });
     }
 
+    // والفسخُ يُنهي خدمةَ الموظّف أيضًا — فيُسأل عن حالة «لا يعمل» كإنهاء الخدمة.
+    const ENG = require('../utils/hrEngagement');
+    const empDoc = await Employee.findById(contract.employee).select('systemStatus registerNumber employmentStatus');
+    const kind = String(req.body.kind || '');
+    const archivesNow = empDoc ? ENG.archivesOnTermination(empDoc) : true;
+    if (!archivesNow && !ENG.TERMINATION_KINDS[kind]) {
+      return res.status(400).json({ code: 'KIND_REQUIRED', message: 'فسخُ العقد يُنهي الخدمة — اختر حالة «لا يعمل»: انتظار نقل الكفالة، أو شركة شقيقة، أو خروج نهائي' });
+    }
+
     // الفسخُ يُنهي العقد: «منتهي»، وسببُه وتاريخُه في خانتيهما.
     contract.status = 'expired';
+    contract.endedByTermination = true;
+    contract.statusBeforeTermination = 'active';
     contract.terminatedAt = new Date();
     contract.terminationReason = req.body.reason || '';
     contract.custodyReturned = true;
     await contract.save();
 
     // Reflect on the employee record + notify in real time everywhere.
-    await Employee.findByIdAndUpdate(contract.employee, {
-      employmentStatus: 'terminated', terminatedAt: new Date(), terminationReason: req.body.reason || '',
-    });
+    {
+      const k = ENG.TERMINATION_KINDS[kind] ? kind : '';
+      const now = new Date();
+      await Employee.findByIdAndUpdate(contract.employee, {
+        employmentStatus: 'terminated', terminatedAt: now, terminationReason: req.body.reason || '',
+        terminationKind: k,
+        transferDeadline: k === 'transfer_pending' ? new Date(now.getTime() + ENG.TRANSFER_DAYS * 86400000) : null,
+        transferAlertKey: '',
+        workStatusText: ENG.workStatusTextOf({ employmentStatus: 'terminated', terminationKind: k }),
+      });
+    }
     // و«حالة العقد» تُشتقّ من العقد نفسِه — لا تُكتب هنا بلفظٍ ثانٍ يفترق عمّا
     // تعرضه صفحة العقود. راجع utils/contractStatus.
     await syncEmployeeContractStatus(contract.employee);

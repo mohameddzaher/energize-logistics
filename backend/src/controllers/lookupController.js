@@ -2,6 +2,7 @@ const Lookup = require('../models/Lookup');
 const { byType, canManage, typesForRole, REGISTRY } = require('../config/lookupTypes');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
+const DEPT = require('../utils/hrDepartments');
 
 const emit = (event, payload = {}) => { try { emitToAll(event, payload); } catch (e) {} };
 
@@ -53,11 +54,19 @@ exports.getLookups = async (req, res) => {
 // POST /api/lookups — create a row (also used by the inline "+ add" in dropdowns).
 exports.createLookup = async (req, res) => {
   try {
-    const { type, nameEn, nameAr, color } = req.body;
+    const { type, nameAr, color } = req.body;
+    // الاسمُ العربيُّ وحدَه يكفي: يُستعمل للإنجليزيّ إن لم يُكتب.
+    const nameEn = String(req.body.nameEn || '').trim() || String(nameAr || '').trim();
     const entry = byType(type);
     if (!entry) return res.status(400).json({ message: 'Unknown lookup type' });
     if (!canManage(type, req.user.role)) return res.status(403).json({ message: 'Insufficient permissions' });
     if (!nameEn || !nameEn.trim()) return res.status(400).json({ message: 'English name is required' });
+
+    // قسمان بالاسم نفسِه يُقرآن قسمًا واحدًا في كلّ ملفّ — فلا يُضاف الثاني.
+    if (type === DEPT.TYPE) {
+      const ar = String((nameAr && nameAr.trim()) || nameEn.trim());
+      if (await Lookup.exists({ type, nameAr: ar, deleted: { $ne: true } })) return res.status(409).json({ message: `القسم «${ar}» موجود بالفعل` });
+    }
 
     const key = await uniqueKey(type, nameEn);
     const count = await Lookup.countDocuments({ type });
@@ -74,6 +83,7 @@ exports.createLookup = async (req, res) => {
     });
 
     await logAudit({ user: req.user._id, action: 'create_lookup', entity: 'Lookup', entityId: item._id, changes: { after: { type, key, nameEn } }, ipAddress: req.ip }).catch(() => {});
+    if (type === DEPT.TYPE) DEPT.forget();
     emit('lookup:changed', { type });
     res.status(201).json({ item });
   } catch (error) {
@@ -92,6 +102,17 @@ exports.updateLookup = async (req, res) => {
 
     const { nameEn, nameAr, color, isActive, order } = req.body;
     const nameBefore = item.nameAr;
+    if (item.type === DEPT.TYPE) {
+      const next = nameAr !== undefined ? String(nameAr).trim() : '';
+      if (next && next !== nameBefore && await Lookup.exists({ type: item.type, nameAr: next, deleted: { $ne: true }, _id: { $ne: item._id } })) {
+        return res.status(409).json({ message: `القسم «${next}» موجود بالفعل` });
+      }
+      // إيقافُ القسم حذفٌ له من القائمة — فلا يُوقَف وفيه موظّفون.
+      if (isActive === false && item.isActive) {
+        const u = await DEPT.usage(nameBefore);
+        if (u.total) return res.status(409).json({ message: deptInUse(nameBefore, u) });
+      }
+    }
     if (nameEn !== undefined) item.nameEn = String(nameEn).trim() || item.nameEn;
     if (nameAr !== undefined) item.nameAr = String(nameAr).trim() || item.nameAr;
     if (color !== undefined) item.color = color || undefined;
@@ -105,6 +126,14 @@ exports.updateLookup = async (req, res) => {
     if (nameBefore !== item.nameAr) {
       await require('../services/customsLookupSync')
         .lookupRenamed({ type: item.type, key: item.key, from: nameBefore, to: item.nameAr }).catch(() => {});
+    }
+    // والقسمُ: اسمُه الجديدُ على ملفّات موظّفيه كلِّهم في الحال.
+    if (item.type === DEPT.TYPE) {
+      DEPT.forget();
+      if (nameBefore !== item.nameAr) {
+        const r = await DEPT.renamed(nameBefore, item.nameAr);
+        await logAudit({ user: req.user._id, action: 'rename_department', entity: 'Lookup', entityId: item._id, changes: { details: `«${nameBefore}» ← «${item.nameAr}» على ${r.touched} ملفّ`, before: { nameAr: nameBefore }, after: { nameAr: item.nameAr, employees: r.touched } }, ipAddress: req.ip }).catch(() => {});
+      }
     }
     emit('lookup:changed', { type: item.type });
     res.json({ item });
@@ -123,6 +152,11 @@ exports.deleteLookup = async (req, res) => {
     const item = await Lookup.findById(req.params.id);
     if (!item) return res.status(404).json({ message: 'Lookup not found' });
     if (!canManage(item.type, req.user.role)) return res.status(403).json({ message: 'Insufficient permissions' });
+    if (item.type === DEPT.TYPE) {
+      const u = await DEPT.usage(item.nameAr);
+      if (u.total) return res.status(409).json({ message: deptInUse(item.nameAr, u) });
+      DEPT.forget();
+    }
     if (item.isSystem) {
       // لا تُمحى من القاعدة بل تُعلَّم محذوفةً: المحوُ يعيدها البذرُ في أوّل
       // إقلاع، والشاهدةُ تُخبره ألّا يفعل.
@@ -142,6 +176,9 @@ exports.deleteLookup = async (req, res) => {
     res.status(500).json({ message: 'Failed to delete lookup' });
   }
 };
+
+// قسمٌ فيه موظّفون لا يُحذف ولا يُوقَف: يُنقَلون أوّلًا (أو يُغيَّر اسمُه بدلَ حذفه).
+const deptInUse = (name, u) => `لا يمكن حذف قسم «${name}»: عليه ${u.total} موظّف${u.archived ? ` (منهم ${u.archived} في الأرشيف)` : ''}. انقلهم إلى قسمٍ آخر أوّلًا، أو غيّر اسمَ القسم بدلَ حذفه.`;
 
 // Helper for other controllers: active rows for a type as {key,nameEn,nameAr,color}.
 // Falls back to [] (callers can default to their config list) on error.

@@ -176,45 +176,43 @@ const REGISTRY = [
    * «سامح» — وهو اسمُ رجلٍ لا قسم. فلا يُفلتَر القسمُ ولا يُعَدّ، ويُقرأ الملاكُ
    * موزَّعًا على أقسامٍ لا وجودَ لها.
    *
-   * والبذورُ أقسامُ النظام نفسُها (config/sections.js) — هي التي تُبنى عليها
-   * الصلاحيّاتُ والشاشات — ومعها ما يعمل فعلًا في الشركة ممّا ليس قسمًا في
-   * النظام. و«أخرى» تبقى ممكنةً بالكتابة: قائمةٌ تمنع الإدخالَ تُعطَّل لا تُتَّبع.
+   * والقائمةُ أقسامُ الشركة كما يعرفها أهلُها، لا أقسامُ النظام: لكلّ قسمٍ في
+   * النظام صفحةٌ، ولكنّ الموظّفين لا يُوزَّعون على الصفحات.
    */
   {
     type: 'hr_department',
     module: 'hr',
     nameEn: 'Departments',
     nameAr: 'الأقسام',
-    roles: ['hr_manager', 'hr_specialist'],
+    /**
+     * ── والقائمةُ يملكها المديرُ العامّ وحدَه (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) ──────
+     * القسمُ يُختار من القائمة في كلّ شاشة — الماستر وملفّ الموظّف والتطبيق —
+     * ولا يُكتب. وزيادةُ قسمٍ أو حذفُه أو تغييرُ اسمه من «البيانات المرجعيّة»
+     * للسوبر أدمن فقط. والاسمُ الجديدُ يسري على ملفّات موظّفيه (utils/hrDepartments)،
+     * والقسمُ الذي فيه موظّفون لا يُحذَف حتّى يُنقَلوا.
+     */
+    superOnly: true,
+    roles: [],
     storeLabel: true,
+    // أقسامُ الشركة كما هي في ملفّات الموظّفين بعد توحيدها (scripts/hrDepartmentsUnify.js):
+    // MD وCEO ← الإدارة · الكافيه ← الموارد البشرية · «ادارة B2C» ← B2C ·
+    // «بدون مشروع» ← بدون قسم. والمفاتيحُ القديمةُ باقيةٌ لأنّ تقييمَ الأداء يقرؤها.
     seed: [
-      { key: 'operations', nameEn: 'Operations', nameAr: 'التشغيل' },
-      { key: 'collections', nameEn: 'Collections', nameAr: 'التحصيل' },
+      { key: 'management', nameEn: 'Management', nameAr: 'الإدارة' },
+      { key: 'light_transport', nameEn: 'B2C', nameAr: 'B2C' },
       { key: 'heavy_transport', nameEn: 'Heavy Transport', nameAr: 'النقل الثقيل' },
-      // النقلُ الخفيف هو قطاعُ الأفراد نفسُه — مَن يُسجَّل فيه يدخل سجلَّ القسم.
-      { key: 'light_transport', nameEn: 'Light Transport (B2C)', nameAr: 'النقل الخفيف' },
-      { key: 'customs', nameEn: 'Customs', nameAr: 'التخليص الجمركي' },
-      { key: 'fleet', nameEn: 'Fleet Management', nameAr: 'إدارة الأسطول' },
-      { key: 'vehicles', nameEn: 'Vehicles', nameAr: 'المركبات والتفاويض' },
-      { key: 'maintenance', nameEn: 'Maintenance', nameAr: 'الصيانة' },
-      { key: 'hr', nameEn: 'Human Resources', nameAr: 'الموارد البشرية' },
-      { key: 'finance', nameEn: 'Finance', nameAr: 'الإدارة المالية' },
-      { key: 'accounting', nameEn: 'Accounting', nameAr: 'الحسابات' },
-      { key: 'procurement', nameEn: 'Procurement', nameAr: 'المشتريات' },
-      { key: 'crm', nameEn: 'CRM', nameAr: 'إدارة العلاقات' },
-      { key: 'sales', nameEn: 'Sales', nameAr: 'المبيعات' },
-      { key: 'marketing', nameEn: 'Marketing', nameAr: 'التسويق' },
-      { key: 'bd', nameEn: 'Business Development', nameAr: 'تطوير الأعمال' },
-      { key: 'it', nameEn: 'Software & IT', nameAr: 'تقنية المعلومات' },
-      { key: 'administration', nameEn: 'Administration', nameAr: 'الشؤون الإدارية' },
-      { key: 'contracts', nameEn: 'Contracts', nameAr: 'إدارة العقود' },
-      { key: 'location_solutions', nameEn: 'Location Solutions', nameAr: 'لوكيشن سوليوشن' },
-      { key: 'remote', nameEn: 'Remote Work', nameAr: 'العمل عن بُعد' },
-      { key: 'workshop', nameEn: 'Workshop', nameAr: 'الورشة' },
-      // ما يعمل فعلًا وليس قسمًا في النظام — مكتوبٌ في الملفّات ويُبقى عليه.
-      { key: 'saudization', nameEn: 'Saudization', nameAr: 'سعودة' },
+      { key: 'saudization', nameEn: 'Saudization', nameAr: 'التوطين' },
+      { key: 'operations', nameEn: 'Operations', nameAr: 'التشغيل' },
       { key: 'alignment', nameEn: 'Alignment', nameAr: 'مواءمة' },
-      { key: 'management', nameEn: 'Executive Management', nameAr: 'الإدارة العليا' },
+      { key: 'maintenance', nameEn: 'Maintenance', nameAr: 'الصيانة' },
+      { key: 'finance', nameEn: 'Finance', nameAr: 'المالية' },
+      { key: 'hr', nameEn: 'Human Resources', nameAr: 'الموارد البشرية' },
+      { key: 'customs', nameEn: 'Customs', nameAr: 'تخليص جمركي' },
+      { key: 'sales', nameEn: 'Sales', nameAr: 'المبيعات' },
+      { key: 'collections', nameEn: 'Collections', nameAr: 'التحصيل' },
+      { key: 'it', nameEn: 'IT', nameAr: 'IT' },
+      { key: 'marketing', nameEn: 'Marketing & Advertising', nameAr: 'التسويق والاعلان' },
+      { key: 'no_department', nameEn: 'No department', nameAr: 'بدون قسم' },
     ],
   },
   // ── وبقيّةُ خانات ملفّ الموظّف ذاتِ الاختيارات المحدودة ────────────────────
@@ -714,6 +712,7 @@ const byType = (type) => REGISTRY.find((r) => r.type === type) || null;
 // Roles allowed to create/update/delete a given type.
 const writeRolesFor = (type) => {
   const entry = byType(type);
+  if (entry && entry.superOnly) return ['super_admin'];
   return [...BASE_WRITE_ROLES, ...((entry && entry.roles) || [])];
 };
 

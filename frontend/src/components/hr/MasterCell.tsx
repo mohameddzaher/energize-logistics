@@ -18,7 +18,8 @@ import { useState } from 'react';
 import { Check, X } from 'lucide-react';
 import { updateEmployeeFields, statusMeta, statusLabel, fmtDate, toDateInput } from '@/lib/hrMaster';
 
-export type MasterField = { key: string; ar: string; en: string; type: string; choice?: boolean; cashPayroll?: boolean };
+// `strict`: قائمةٌ مغلقة (القسم) — لا «أخرى…» ولا كتابة. راجع utils/hrDepartments في الخادم.
+export type MasterField = { key: string; ar: string; en: string; type: string; choice?: boolean; cashPayroll?: boolean; strict?: boolean };
 export type Choices = Record<string, { value: string; count: number }[]>;
 
 const CASH = 'cash';
@@ -54,7 +55,7 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
     const v = f.type === 'date' ? toDateInput(raw) : String(raw ?? '');
     setVal(v);
     setMark('');
-    setFree(!!f.choice && !!v && v.toLowerCase() !== CASH && !opts.some((o) => o.value === v));
+    setFree(!f.strict && !!f.choice && !!v && v.toLowerCase() !== CASH && !opts.some((o) => o.value === v));
     setEditing(true);
   };
 
@@ -78,7 +79,7 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
             <option value="">{t('— اختر —', '— choose —')}</option>
             {f.cashPayroll && <option value={CASH}>{t('راتب نقدي', 'Cash payroll')}</option>}
             {opts.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
-            <option value="__other">{t('أخرى… (اكتب)', 'Other… (type)')}</option>
+            {!f.strict && <option value="__other">{t('أخرى… (اكتب)', 'Other… (type)')}</option>}
           </select>
         ) : (
           <input type={f.type === 'date' ? 'date' : 'text'} value={val} autoFocus

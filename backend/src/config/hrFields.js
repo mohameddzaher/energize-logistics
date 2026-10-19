@@ -63,7 +63,8 @@ const GROUPS = [
     fields: [
       { key: 'employerNumber', ar: 'رقم صاحب العمل', en: 'Employer no.', type: 'text' },
       { key: 'project', ar: 'وحدة العمل', en: 'Business unit', type: 'text', groupable: true },
-      { key: 'department', ar: 'القسم', en: 'Department', type: 'text', groupable: true },
+      // القسمُ من قائمة الأقسام وحدَها — لا «أخرى» ولا كتابة (utils/hrDepartments).
+      { key: 'department', ar: 'القسم', en: 'Department', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_department' },
       { key: 'branchName', ar: 'الفرع', en: 'Branch', type: 'text', groupable: true },
       { key: 'directManagerName', ar: 'المدير المباشر', en: 'Line manager', type: 'text', groupable: true },
       { key: 'jobTitle', ar: 'المسمى الوظيفي', en: 'Job title', type: 'text', groupable: true },

@@ -817,7 +817,6 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
     ('lastName', 'اسم العائلة', 'Last name'),
     ('arabicName', 'الاسم العربي', 'Arabic name'),
     ('jobTitle', 'المسمى الوظيفي', 'Job title'),
-    ('department', 'القسم', 'Department'),
     ('project', 'المشروع', 'Project'),
     ('mobileNumber', 'الجوال', 'Mobile'),
     ('email', 'البريد', 'Email'),
@@ -860,7 +859,8 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
       return RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(t) ? t.substring(0, 10) : t;
     }
     _d = {for (final f in _docs) f.$1: TextEditingController(text: asText(widget.employee?[f.$1]))};
-    for (final k in ['bank', 'socialInsuranceStatus', 'insuranceCompany', 'licenseType']) {
+    // القسمُ من قائمة الأقسام وحدَها (يضيفها السوبر أدمن) — لا يُكتب.
+    for (final k in ['department', 'bank', 'socialInsuranceStatus', 'insuranceCompany', 'licenseType']) {
       _pick[k] = (widget.employee?[k] ?? '').toString();
     }
     final fs = Map<String, dynamic>.from(widget.employee?['fieldStatus'] ?? {});
@@ -980,6 +980,7 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
                   padding: const EdgeInsets.only(bottom: 10),
                   child: TextField(controller: _c[f.$1], decoration: InputDecoration(labelText: tr(f.$2, f.$3))),
                 )),
+            Padding(padding: const EdgeInsets.only(bottom: 10), child: _choiceField('department', 'القسم', 'Department')),
             const SizedBox(height: 6),
             Text(tr('المستندات والبنك', 'Documents & bank'), style: const TextStyle(fontWeight: FontWeight.w800, color: T.orange)),
             const SizedBox(height: 8),

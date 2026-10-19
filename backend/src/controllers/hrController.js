@@ -350,6 +350,9 @@ exports.createEmployee = async (req, res) => {
     // خيارًا في قائمة. فكانت الاستمارةُ تُرفض لأنّ المستخدم **لم** يملأ حقلًا
     // اختياريًّا — ويُقال له «Failed to create employee» بلا سبب.
     const body = { ...stripEmpty(req.body, Employee.schema), createdBy: req.user._id };
+    // القسمُ من القائمة وحدَها — راجع utils/hrDepartments.
+    const deptErr = await require('../utils/hrDepartments').departmentError(body.department);
+    if (deptErr) return res.status(400).json({ message: deptErr });
     delete body.user; // linking is done from the Users screen, not here
     delete body.markStatus;
     const employee = new Employee(body);
@@ -402,6 +405,10 @@ exports.updateEmployee = async (req, res) => {
     ];
     // Capture a before/after diff of only the fields that actually change, so the
     // audit log (and the profile "history" tab) shows exactly what HR edited.
+    if (req.body.department !== undefined) {
+      const deptErr = await require('../utils/hrDepartments').departmentError(req.body.department, employee.department);
+      if (deptErr) return res.status(400).json({ message: deptErr });
+    }
     const before = {};
     const after = {};
     for (const f of fields) {

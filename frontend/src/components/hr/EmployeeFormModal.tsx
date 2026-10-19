@@ -8,6 +8,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import { Check } from 'lucide-react';
 import { Employee, EMPLOYMENT_STATUS } from '@/lib/hr';
+import ManagedSelect from '@/components/system/ManagedSelect';
 import { Modal, Field, TextInput, Select, TextArea, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
 import { getHrEmployeesTranslations } from '@/lib/translations';
 import { getVehiclesText } from '@/lib/vehicles';
@@ -250,7 +251,8 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
 
       <Section title={tx.sectionJob}>
         <Field label={tx.jobTitle}><TextInput value={form.jobTitle} onChange={(e) => set('jobTitle', e.target.value)} /></Field>
-        <Field label={tx.department}><TextInput value={form.department} onChange={(e) => set('department', e.target.value)} /></Field>
+        {/* القسمُ من القائمة وحدَها — يضيف السوبر أدمن الأقسام من البيانات المرجعيّة. */}
+        <Field label={tx.department}><ManagedSelect type="hr_department" storeLabel strict noAdd value={form.department} onChange={(v) => set('department', v)} /></Field>
         <DatePair label={tx.hireDate} value={form.hireDate || ''} onChange={(v) => set('hireDate', v)} ar={ar} />
         <DatePair label={tx.actualWorkStartDate} value={form.actualWorkStartDate || ''} onChange={(v) => set('actualWorkStartDate', v)} ar={ar} />
         <Field label={tx.workLocation}><TextInput value={form.workLocation} onChange={(e) => set('workLocation', e.target.value)} /></Field>

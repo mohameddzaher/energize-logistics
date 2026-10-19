@@ -1162,6 +1162,10 @@ exports.updateFields = async (req, res) => {
       if (f.derived) { rejected.push(k); continue; }
       // «حالة العمل» و«حالة النظام» لا تُكتبان من خانة — بإنهاء الخدمة والخروج من النظام.
       if (LOCKED_FIELDS.has(k)) { rejected.push(`${k} (تتغيّر بإنهاء الخدمة أو الخروج من النظام فقط)`); continue; }
+      if (k === 'department') {
+        const err = await require('../utils/hrDepartments').departmentError(v, emp.department);
+        if (err) return res.status(400).json({ message: err });
+      }
       if (f.type === 'date') {
         if (v === '' || v === null) { emp[k] = null; applied[k] = null; continue; }
         // ── وسنةٌ هجريّةٌ كُتبت في الخانة الميلاديّة تُحوَّل ولا تُحفَظ كما هي ──
@@ -1338,6 +1342,11 @@ exports.choices = async (req, res) => {
           counts.set(v, (counts.get(v) || 0) + 1);
         }
         out[f.key] = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([value, count]) => ({ value, count }));
+        // والقائمةُ المغلقة (القسم) من صفوفها هي بترتيبها — لا ممّا كُتب في الملفّات.
+        if (f.lookup === 'hr_department') {
+          const names = await require('../utils/hrDepartments').departmentNames();
+          out[f.key] = names.map((value) => ({ value, count: counts.get(value) || 0 }));
+        }
       }
       return { choices: out };
     });

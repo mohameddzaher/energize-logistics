@@ -157,6 +157,8 @@ function GroupInner() {
     try {
       const res = await getHrRecords(group, {
         q: q.trim(), field, status, state, withinDays: within, sort, dir,
+        // «غير نشط» هنا حالةُ خانة لا حالةُ توظيف — راجع legacyEmploymentStatus في الخادم.
+        statusKind: 'cell',
         includeExpired: includeExpired ? '1' : '0',
         // فلاتر القيم القادمة من بطاقات النظرة الشاملة (القسم، الجنسية، المدد…)
         ...filters,

@@ -93,7 +93,10 @@ const ALERT = { warnDays: 60, criticalDays: 30 };
  * والجدولُ الذي يفتحه يقرآن الشرطَ نفسَه بالبناء لا بالمصادفة.
  */
 const EXPIRY_SCOPE = { employment: 'current' };
-const hasEmploymentFilter = (q) => !!q.employment || ['active', 'inactive'].includes(q.status);
+// «غير نشط» حالةُ خانةٍ أيضًا (inactive) — فصفحةُ المجموعة تُرسل `statusKind=cell`
+// ولا تُقرأ حالتُها حالةَ توظيف. وبغيره كان «غير نشط ٢» يفتح كلَّ مَن ليس على رأس العمل.
+const legacyEmploymentStatus = (q) => (q.statusKind !== 'cell' && ['active', 'inactive'].includes(q.status) ? q.status : '');
+const hasEmploymentFilter = (q) => !!q.employment || !!legacyEmploymentStatus(q);
 const expiryScopeOf = (q) => (hasEmploymentFilter(q || {}) ? {} : EXPIRY_SCOPE);
 // ── والعمودُ المشتقُّ لا يُعَدّ ولا يُستعلَم ──────────────────────────────────
 // لكلّ تاريخٍ توأمٌ هجريٌّ في التعريف (راجع config/hrFields)، وهو **مشتقٌّ** لا
@@ -181,7 +184,7 @@ function buildFilter(q) {
   // تستعمله صفحة المجموعة لحالة الخانة (مطلوب/غير مطلوب) — فكان «جدة + على رأس
   // العمل» يصل إلى الجدول فيُقرأ «حالة خانة اسمها active» فيُرجع صفرًا. الاسم
   // القديم ما زال مقبولًا لأن روابط محفوظة تستعمله.
-  const employment = q.employment || (['active', 'inactive'].includes(q.status) ? q.status : '');
+  const employment = q.employment || legacyEmploymentStatus(q);
   if (employment === 'active') f.employmentStatus = 'active';
   // «ليس على رأس العمل» = مَن انتهت خدمتُه ومَن هو موقوفٌ في نقل الكفالة. ومَن
   // في إجازةٍ على رأس عمله — لا يُقرأ مغادرًا (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
@@ -862,7 +865,7 @@ exports.records = async (req, res) => {
     const field = req.query.field || '';
     // «active»/«inactive» حالة توظيف لا حالة خانة — تُطبَّق في buildFilter،
     // ولا يجوز أن تُقرأ هنا حالةَ خانةٍ لا وجود لها فتُفرِّغ الجدول.
-    const wantStatus = ['active', 'inactive'].includes(req.query.status) ? '' : (req.query.status || '');
+    const wantStatus = legacyEmploymentStatus(req.query) ? '' : (req.query.status || '');
     const wantState = req.query.state || '';
     const withinDays = req.query.withinDays === '' || req.query.withinDays == null ? null : Number(req.query.withinDays);
     // «ينتهي خلال ٣٠ يوم» كان بيرجّع المنتهي من سنة كمان، لأن -٣٦٥ أصغر من ٣٠.

@@ -143,11 +143,20 @@ function riderFinder(reps) {
     || byId.get(String(bike.authorizedPerson?.iqamaNumber || '').trim())
     || null;
 }
+/**
+ * منتهي الخدمة — في سجلّ القسم أو في الموارد البشريّة — لا يُتفقَّد ولا يُعَدّ،
+ * ولا يُنسَب إليه دبّاب. قاعدةُ كلّ الأقسام (راجع isEnded في lightTransportController).
+ */
+// وحالةُ العمل من الموارد البشريّة متى وُجد ملف — وإلّا آخرُ ما كُتب في السجلّ.
+const endedRep = (e) => (e.employee && typeof e.employee === 'object' && e.employee.employmentStatus
+  ? e.employee.employmentStatus === 'terminated'
+  : e.workStatusAr === 'إنهاء خدمة');
+
 const riderReps = async () => {
   const { LightTransportEmployee } = require('../models/LightTransport');
   const all = await LightTransportEmployee.find({ isActive: { $ne: false }, staffKind: 'rep' })
-    .select('name idNumber vehiclePlate vehicleTypeAr').lean();
-  return all.filter((e) => vehicleTypeKey(e.vehicleTypeAr) !== 'car');
+    .select('name idNumber vehiclePlate vehicleTypeAr workStatusAr employee').populate('employee', 'employmentStatus').lean();
+  return all.filter((e) => vehicleTypeKey(e.vehicleTypeAr) !== 'car' && !endedRep(e));
 };
 
 exports.myReps = async (req, res) => {
@@ -172,10 +181,12 @@ exports.myReps = async (req, res) => {
      * وهو لا شيءَ عليه.
      */
     const all = await LightTransportEmployee.find({ isActive: { $ne: false }, staffKind: 'rep' })
-      .select('name idNumber phone vehiclePlate vehicleTypeAr projectAr cityAr supervisorUser supervisorName dutySupervisorUser dutySupervisorName workStatusAr')
+      .select('name idNumber phone vehiclePlate vehicleTypeAr projectAr cityAr supervisorUser supervisorName dutySupervisorUser dutySupervisorName workStatusAr employee')
       .populate('supervisorUser', 'firstName lastName role')
       .populate('dutySupervisorUser', 'firstName lastName role')
-      .sort({ name: 1 }).lean();
+      .populate('employee', 'employmentStatus')
+      .sort({ name: 1 }).lean()
+      .then((list) => list.filter((e) => !endedRep(e)));
 
     const rows = all.filter((e) => vehicleTypeKey(e.vehicleTypeAr) !== 'car');
     const carsExcluded = all.length - rows.length;
@@ -281,9 +292,11 @@ const assertOwnsRep = async (req, repId, ltId) => {
 
   // الأصلُ: صفٌّ في سجلّ النقل الخفيف.
   const emp = await LightTransportEmployee.findById(id)
-    .select('name idNumber vehiclePlate vehicleTypeAr projectAr cityAr isActive staffKind').lean();
+    .select('name idNumber vehiclePlate vehicleTypeAr projectAr cityAr isActive staffKind workStatusAr employee')
+    .populate('employee', 'employmentStatus').lean();
   if (emp) {
     if (emp.isActive === false) return { error: 400, message: 'هذا المندوب خارج سجلّ القسم' };
+    if (endedRep(emp)) return { error: 400, message: 'هذا المندوب منتهي الخدمة — لا يُتفقَّد' };
     if (vehicleTypeKey(emp.vehicleTypeAr) === 'car') {
       return { error: 400, message: 'التفقّد للدبّابات — هذا الموظّف على سيّارة' };
     }
@@ -724,11 +737,12 @@ exports.analytics = async (req, res) => {
       // مناديبنا (سجلّ النقل الخفيف)، دبّاباتٍ لا سيّارات.
       (async () => {
         const { LightTransportEmployee } = require('../models/LightTransport');
+        // والمنتهي خدمتُه لا يُنتظَر تفقّدُه — فلا يدخل المقام. راجع `endedRep`.
         const rows = await LightTransportEmployee.find({ isActive: { $ne: false }, staffKind: 'rep', dutySupervisorUser: { $ne: null } })
-          .select('dutySupervisorUser vehicleTypeAr').lean();
+          .select('dutySupervisorUser vehicleTypeAr workStatusAr employee').populate('employee', 'employmentStatus').lean();
         const by = new Map();
         for (const e of rows) {
-          if (vehicleTypeKey(e.vehicleTypeAr) === 'car') continue;
+          if (vehicleTypeKey(e.vehicleTypeAr) === 'car' || endedRep(e)) continue;
           const k = String(e.dutySupervisorUser);
           by.set(k, (by.get(k) || 0) + 1);
         }
@@ -818,10 +832,11 @@ exports.missing = async (req, res) => {
     else if (mongoose.isValidObjectId(req.query.supervisor)) repScope.dutySupervisorUser = new mongoose.Types.ObjectId(String(req.query.supervisor));
 
     const allRows = await LightTransportEmployee.find(repScope)
-      .select('name idNumber vehiclePlate vehicleTypeAr cityAr dutySupervisorUser dutySupervisorName')
-      .populate('dutySupervisorUser', 'firstName lastName').lean();
+      .select('name idNumber vehiclePlate vehicleTypeAr cityAr dutySupervisorUser dutySupervisorName workStatusAr employee')
+      .populate('dutySupervisorUser', 'firstName lastName')
+      .populate('employee', 'employmentStatus').lean();
     const reps = allRows
-      .filter((e) => vehicleTypeKey(e.vehicleTypeAr) !== 'car')
+      .filter((e) => vehicleTypeKey(e.vehicleTypeAr) !== 'car' && !endedRep(e))
       .map((e) => ({
         _id: e._id, englishName: e.name, arabicName: e.name, repId: e.idNumber || '',
         vehiclePlate: e.vehiclePlate || '',
@@ -846,10 +861,12 @@ exports.supervisors = async (req, res) => {
       // عددُ مناديب كلِّ مشرف — من كشف القسم لا من حسابات التطبيق.
       (async () => {
         const { LightTransportEmployee } = require('../models/LightTransport');
+        // مَن على رأس العمل وحدَه، دبّاباتٍ لا سيّارات — كمقام التحليل نفسِه.
         const rows = await LightTransportEmployee.find({ isActive: { $ne: false }, staffKind: 'rep', dutySupervisorUser: { $ne: null } })
-          .select('dutySupervisorUser').lean();
+          .select('dutySupervisorUser vehicleTypeAr workStatusAr employee').populate('employee', 'employmentStatus').lean();
         const by = new Map();
         for (const e of rows) {
+          if (vehicleTypeKey(e.vehicleTypeAr) === 'car' || endedRep(e)) continue;
           const k = String(e.dutySupervisorUser);
           by.set(k, (by.get(k) || 0) + 1);
         }

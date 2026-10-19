@@ -213,15 +213,14 @@ export default function B2CDashboardPage() {
       <h2 className="text-[13px] font-extrabold text-slate-500 flex items-center gap-1.5 pt-1">
         <Users className="w-4 h-4" />{t('الموظفون', 'People')}
       </h2>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
         <Card label={t('الإجمالي', 'Total')} value={E.total} onClick={() => setF({})} on={!active.length} />
         <Card label={t('مناديب', 'Reps')} value={E.reps} accent="text-indigo-600" onClick={() => toggle('staffKind', 'rep')} on={f.staffKind === 'rep'} />
         <Card label={t('إداريون', 'Admin')} value={E.admins} accent="text-teal-600" onClick={() => toggle('staffKind', 'admin')} on={f.staffKind === 'admin'}
           hint={t('مشرف · فني · نظافة', 'supervisor, technician, cleaning')} />
         <Card label={t('على رأس العمل', 'Working')} value={E.working} accent="text-emerald-600" onClick={() => toggle('status', 'يعمل')} on={f.status === 'يعمل'} />
         <Card label={t('في إجازة', 'On leave')} value={E.onLeave} accent="text-sky-600" onClick={() => toggle('status', 'إجازة')} on={f.status === 'إجازة'} />
-        <Card label={t('أُنهيت خدمتهم', 'Service ended')} value={E.terminated} accent="text-red-600" onClick={() => toggle('status', 'إنهاء خدمة')} on={f.status === 'إنهاء خدمة'}
-          hint={t('من الموارد البشرية', 'from HR')} />
+        {/* ومَن انتهت خدمتُه لا يظهر في اللوحة أصلًا — مكانُه لوحةُ الموارد البشريّة. */}
       </div>
 
       {/* ── المركبات ─────────────────────────────────────────────────────────

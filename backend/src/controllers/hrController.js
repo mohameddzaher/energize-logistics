@@ -2303,6 +2303,12 @@ exports.getDashboard = async (req, res) => {
       noContract, lapsedContracts,
       byStatus: byStatusAgg.map((r) => ({ status: r._id || 'unknown', count: r.count })),
       byDepartment: byDeptAgg.map((r) => ({ name: r._id, count: r.count })),
+      // للوحاتِ غير الموارد البشريّة (النظرةُ التنفيذيّة): مَن على رأس العمل وحدَهم.
+      // ولوحةُ الموارد البشريّة تبقى على `byDepartment` — المنتهون من عملها.
+      activeByDepartment: (await Employee.aggregate([
+        { $match: { ...HR_ONLY, employmentStatus: { $ne: 'terminated' }, department: { $nin: [null, ''] } } },
+        { $group: { _id: '$department', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 },
+      ])).map((r) => ({ name: r._id, count: r.count })),
       byProject: byProjectAgg.map((r) => ({ name: r._id, count: r.count })),
       byNationality: byNationalityAgg.map((r) => ({ name: r._id, count: r.count })),
       recentHires: recentHiresRaw,

@@ -10,6 +10,10 @@ const { emitToAll } = require('../websocket/socketManager');
 // الثقيل. الأرقام وحدها تتصادم هنا: «ل أ 1080» دراجة و«أ ص ر 1080» تريلا —
 // ومفتاح الأرقام يقيّد حادثة الدراجة على التريلا. التفصيل في utils/plateKey.
 const { registryPlateKey: plateKey, flexSpaceRegex } = require('../utils/plateKey');
+const { endedStaff, idNumberEnded, employeeEnded } = require('../utils/endedStaff');
+// بطاقةُ سائقٍ انتهت خدمتُه في الموارد البشريّة: بمرجع ملفّه إن رُبطت، وإلّا
+// برقم هويّته. تبقى في القائمة، ولا تُعَدّ في رقمٍ ولا شريحةٍ ولا انتهاء.
+const cardEnded = (sets, c) => (c.employee ? employeeEnded(sets, c.employee) : idNumberEnded(sets, c.idNumber));
 
 /**
  * كلُّ تعديلٍ في القسم يبثّ ويُبطل الذاكرة — والتقريرُ منها.
@@ -938,7 +942,11 @@ async function driverCardSummary(alert) {
     const DriverCardModel = require('../models/DriverCard');
     const { startOfDay, todayKey } = require('../utils/companyDay');
     const today = startOfDay(todayKey());
-    const rows = await DriverCardModel.find({ isActive: { $ne: false } }).select('expiryDate').lean();
+    const [all, ended] = await Promise.all([
+      DriverCardModel.find({ isActive: { $ne: false } }).select('expiryDate employee idNumber').lean(),
+      endedStaff(),
+    ]);
+    const rows = all.filter((c) => !cardEnded(ended, c));
     const left = (d) => (d ? Math.round((startOfDay(d) - today) / 86400000) : null);
     // وثلاثُ شرائحَ لا اثنتان: «قريب» كانت ساقطةً هنا فتُحسَب مع «ساري»،
     // فيقول الملخَّصُ إنّ البطاقةَ سارية وشاشةُ الانتهاءات تقول «قريبة».
@@ -1588,7 +1596,11 @@ exports.overview = async (req, res) => {
     // خطأً على أنّه تابعٌ للفلتر. راجع buildExpiryRows.
     if (!filtered) {
       const DriverCard = require('../models/DriverCard');
-      const cards = await DriverCard.find({ isActive: { $ne: false } }).select('expiryDate cardNumber').lean();
+      const [allCards, ended] = await Promise.all([
+        DriverCard.find({ isActive: { $ne: false } }).select('expiryDate cardNumber employee idNumber').lean(),
+        endedStaff(),
+      ]);
+      const cards = allCards.filter((c) => !cardEnded(ended, c));
       const dcStates = { valid: 0, warning: 0, critical: 0, upcoming: 0, expired: 0, missing: 0, not_applicable: 0 };
       let dcNearest = null;
       for (const c of cards) {
@@ -1717,11 +1729,12 @@ const expiryMirror = require('../utils/changeStamp').mirror(VehicleMaster, EXPIR
 
 async function buildExpiryRows(query = {}) {
   const DriverCard = require('../models/DriverCard');
-  const [vehicles, cfg, cards] = await Promise.all([
+  const [vehicles, cfg, cards, ended] = await Promise.all([
     expiryMirror.rowsFor(buildFilter(query)),
     getConfig(),
     DriverCard.find({ isActive: { $ne: false } })
-      .select('name idNumber cardNumber cardType expiryDate logisticRegister').lean(),
+      .select('name idNumber cardNumber cardType expiryDate logisticRegister employee').lean(),
+    endedStaff(),
   ]);
   // ── السائقُ وبطاقتُه على كلّ صفِّ مركبة ─────────────────────────────────
   // كان «صاحبُ المستند» يُملأ للتفويض وحدَه، فخرج العمودُ فارغًا في تأمين
@@ -1781,6 +1794,8 @@ async function buildExpiryRows(query = {}) {
       // بلا رقمِ بطاقةٍ فهي «مطلوبة» لا «منتهية» — عملٌ ينتظر، وله عمودُه في
       // صفحة بطاقات السائقين. ولا تدخل شاشةَ الانتهاءات بلا تاريخٍ تنتهي فيه.
       if (!c.expiryDate) continue;
+      // ومَن انتهت خدمتُه لا تُنبَّه بطاقتُه: لن يُجدِّدها أحد.
+      if (cardEnded(ended, c)) continue;
       const st = VDOC.stateOf(c.expiryDate, '', cfg.alerts?.driverCard);
       rows.push({
         // ── ولا تُحشَر بيانات السائق في خانات المركبة ──────────────────────
@@ -3411,7 +3426,7 @@ exports.listDriverCards = async (req, res) => {
     }
     if (q.fidelity) filter['fidelity.status'] = q.fidelity === 'none' ? { $in: ['', null] } : q.fidelity;
     // عتباتُ البطاقة من إعدادات القسم — نفسُها التي تحسب بها شاشةُ الانتهاءات.
-    const cfg = await getConfig();
+    const [cfg, ended] = await Promise.all([getConfig(), endedStaff()]);
     let cards = await DriverCard.find(filter)
       .populate('employee', 'firstName lastName arabicName employeeNumber employmentStatus')
       .sort({ expiryDate: 1 }).lean();
@@ -3548,7 +3563,6 @@ exports.listDriverCards = async (req, res) => {
     // وكذلك نوعُ ما يقود: مشتقٌّ من مركباته لا مكتوبٌ في بطاقته.
     if (q.vehicleClass) cards = cards.filter((c) => c.vehicleClass === q.vehicleClass);
 
-    const count = (s) => cards.filter((c) => c.state === s).length;
     // ── والبطاقةُ تُعرَف برقمها، والفراغُ يعني «مطلوبة» ────────────────────────
     //
     // في السجلّ تسعةٌ وخمسون سائقًا وسبعٌ وخمسون بطاقة: اثنان لم تُستخرج
@@ -3563,13 +3577,18 @@ exports.listDriverCards = async (req, res) => {
       const n = String(c.cardNumber || '').trim();
       return !!n && !NO_CARD.test(n);
     };
-    cards = cards.map((c) => ({ ...c, hasCard: hasCard(c) }));
+    cards = cards.map((c) => ({ ...c, hasCard: hasCard(c), ...(cardEnded(ended, c) ? { ended: true } : {}) }));
     // وتُفلتَر بعد الاشتقاق كما تُفلتَر الشريحة.
     if (q.has === 'yes') cards = cards.filter((c) => c.hasCard);
     if (q.has === 'no') cards = cards.filter((c) => !c.hasCard);
 
+    // ── ومَن انتهت خدمتُه يبقى صفًّا ولا يُعَدّ ─────────────────────────────
+    // الموارد البشريّة أنهت خدمتَه، فلا يُحسَب في سائقي القسم ولا في شرائحه.
+    const listed = cards;
+    cards = listed.filter((c) => !c.ended);
+    const count = (s) => cards.filter((c) => c.state === s).length;
     res.json({
-      cards,
+      cards: listed,
       totals: {
         // الرقمُ الأوّل سائقون لا بطاقات — هو ما يُسأل عنه: كم سائقًا عندنا،
         // وكم منهم يحمل بطاقةً تخوّله القيادة.
@@ -3610,8 +3629,8 @@ exports.listDriverCards = async (req, res) => {
       },
       // قيمُ الفلاتر تُبنى من السجلّ لا تُكتب يدًا.
       options: {
-        logisticRegister: [...new Set(cards.map((c) => c.logisticRegister).filter(Boolean))],
-        cardType: [...new Set(cards.map((c) => c.cardType).filter(Boolean))],
+        logisticRegister: [...new Set(listed.map((c) => c.logisticRegister).filter(Boolean))],
+        cardType: [...new Set(listed.map((c) => c.cardType).filter(Boolean))],
         // بالرمز واسمِه معًا: الشاشةُ تعرض الاسمَ وتُرسل الرمز.
         vehicleClass: ['heavy', 'light', 'motorcycle', 'none']
           .map((k) => ({ code: k, ar: CLASS_AR[k], en: CLASS_EN[k] })),

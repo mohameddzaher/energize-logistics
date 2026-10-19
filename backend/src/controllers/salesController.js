@@ -6,6 +6,7 @@ const CrmCompany = require('../models/CrmCompany');
 const { emitToAll } = require('../websocket/socketManager');
 const { grantedBySection } = require('../utils/sectionAccess');
 const { createNotification } = require('../services/notificationService');
+const { endedStaff, userEnded } = require('../utils/endedStaff');
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
 const SALES_STAFF_ROLES = ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'];
@@ -63,12 +64,18 @@ const teamTargetOf = (targets) => {
 };
 // A rep is anyone who can own deals: sales + the admins/managers.
 const repFilter = { role: { $in: [...SALES_STAFF_ROLES, 'crm_manager', 'crm_specialist'] }, isActive: true };
+// وقائمةُ المناديب الحاليّين لا تضمّ من أنهت الموارد البشريّة خدمتَه — حسابُه
+// يبقى مفعّلًا بعد الإنهاء، فالفلترُ وحدَه لا يكفي.
+const currentReps = async (select) => {
+  const [all, ended] = await Promise.all([User.find(repFilter).select(select).sort({ firstName: 1 }).lean(), endedStaff()]);
+  return { reps: all.filter((r) => !userEnded(ended, r)), former: all.filter((r) => userEnded(ended, r)) };
+};
 
 // ── Options ──────────────────────────────────────────────────────────────────
 exports.getOptions = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
-    const reps = await User.find(repFilter).select('firstName lastName email role').sort({ firstName: 1 }).lean();
+    const { reps } = await currentReps('firstName lastName email role');
     res.json({ reps });
   } catch (error) {
     console.error('getOptions error:', error);
@@ -278,8 +285,8 @@ exports.getPerformance = async (req, res) => {
     const period = cleanPeriod(req.query.period);
     const { start, end } = periodRange(period);
 
-    const [reps, won, open, targets] = await Promise.all([
-      User.find(repFilter).select('firstName lastName email role').lean(),
+    const [{ reps, former }, won, open, targets] = await Promise.all([
+      currentReps('firstName lastName email role'),
       CrmDeal.aggregate([{ $match: { status: 'won', wonAt: { $gte: start, $lte: end } } }, { $group: { _id: '$owner', count: { $sum: 1 }, value: { $sum: '$value' } } }]),
       CrmDeal.aggregate([{ $match: { status: 'open' } }, { $group: { _id: '$owner', count: { $sum: 1 }, value: { $sum: '$value' } } }]),
       SalesTarget.find({ period }).lean(),
@@ -288,11 +295,15 @@ exports.getPerformance = async (req, res) => {
     const openMap = {}; open.forEach((o) => { openMap[String(o._id)] = o; });
     const tgtMap = {}; targets.forEach((t) => { if (t.rep) tgtMap[String(t.rep)] = t; });
 
-    const rows = reps.map((r) => {
+    // المنتهي لا يُعدّ مندوبًا حاليًّا — لكنّ ما كسبه في الشهر وما بقي باسمه من
+    // صفقاتٍ مفتوحة لا يسقط من المجموع: يظهر صفًّا «سابقًا» ما دام له رقم.
+    const gone = former.filter((r) => wonMap[String(r._id)] || openMap[String(r._id)]);
+    const rows = [...reps, ...gone.map((r) => ({ ...r, former: true }))].map((r) => {
       const w = wonMap[String(r._id)] || { count: 0, value: 0 };
       const o = openMap[String(r._id)] || { count: 0, value: 0 };
       const t = tgtMap[String(r._id)] || { amountTarget: 0, dealsTarget: 0 };
       return {
+        ...(r.former ? { former: true } : {}),
         rep: { _id: r._id, name: `${r.firstName} ${r.lastName}`, role: r.role },
         wonValue: round2(w.value), wonCount: w.count,
         openValue: round2(o.value), openCount: o.count,

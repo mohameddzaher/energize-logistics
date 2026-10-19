@@ -300,8 +300,8 @@ function LightTransportEmployeesInner() {
           onClick={() => repFilter('hasVehicle', 'no')} on={f.hasVehicle === 'no'} />
         <Stat label={t('في إجازة', 'On leave')} value={totals.onLeave} accent="text-sky-600"
           onClick={() => repFilter('status', 'إجازة')} on={f.status === 'إجازة'} />
-        <Stat label={t('أُنهيت خدمتهم', 'Service ended')} value={totals.terminated} accent="text-red-600"
-          onClick={() => repFilter('status', 'إنهاء خدمة')} on={f.status === 'إنهاء خدمة'} />
+        {/* «أُنهيت خدمتهم» ليس كارتًا هنا: المنتهي لا يُعَدّ في أرقام القسم — يبقى
+            صفُّه في الجدول ليُراجَع، ومكانُ عدِّه لوحةُ الموارد البشريّة. */}
         {/* ومن له ملفٌّ في الموارد البشريّة ومن يملكه القسم — فرقٌ يُسأل عنه. */}
         <Stat label={t('لهم ملفّ في الموارد البشرية', 'Have an HR file')} value={totals.hrLinked} accent="text-slate-900" />
         <Stat label={t('بلا ملفّ (القسم يملكهم)', 'Owned by the section')} value={totals.ownedHere} accent="text-violet-600" />
@@ -603,9 +603,18 @@ function LightTransportEmployeesInner() {
               <ManagedSelect storeLabel type="lt_vehicle_type" value={editing.vehicleTypeAr || ''}
                 onChange={(v) => setEditing((p) => ({ ...p!, vehicleTypeAr: v }))} />
             </Field>
+            {/* ── حالةُ العمل للقراءة هنا ────────────────────────────────────
+                تُكتب في الموارد البشريّة وحدَها (إنهاءُ الخدمة والإيقافُ والإجازة)،
+                ويقرؤها القسمُ من ملفّ الموظّف. راجع `shownStatus` في الخادم. */}
             <Field label={t('حالة العمل', 'Work status')}>
-              <ManagedSelect storeLabel type="lt_work_status" value={editing.workStatusAr || ''}
-                onChange={(v) => setEditing((p) => ({ ...p!, workStatusAr: v }))} />
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                {(editing as any).workStatusShown || editing.workStatusAr || '—'}
+              </div>
+              <p className="mt-1 text-[11px] text-slate-500">
+                {(editing as any).hrLinked
+                  ? t('تُعدَّل من الموارد البشرية فقط (حالة الموظف وإنهاء الخدمة).', 'Changed in HR only (employment status and termination).')
+                  : t('لا ملف له في الموارد البشرية — تُضبط حالته بعد فتح ملفه هناك.', 'No HR file — the status is set once HR opens his file.')}
+              </p>
             </Field>
             {/* ── المشرفُ حسابٌ يُختار، لا اسمٌ يُكتب ──────────────────────
                 القائمةُ حساباتُ الإشراف في القسم (مشرف مناديب · مدير مشروع ·

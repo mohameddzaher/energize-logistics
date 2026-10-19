@@ -8,6 +8,7 @@ const {
 const cache = require('../utils/ttlCache');
 const { parseMonth, parseYear } = require('../utils/period');
 const logAudit = require('../utils/auditLogger');
+const { endedStaff, userEnded } = require('../utils/endedStaff');
 const { emitToAll } = require('../websocket/socketManager');
 const { createNotification } = require('../services/notificationService');
 
@@ -2035,7 +2036,7 @@ exports.getDashboard = async (req, res) => {
       const jpVisible = { scope: 'section', section: 'customs' };
       if (!isManager) jpVisible.$or = [{ assignedTo: req.user._id }, { createdBy: req.user._id }];
 
-      const [rows, users, notes, pays, ticks, pendingPay, tasks] = await Promise.all([
+      const [rows, users, notes, pays, ticks, pendingPay, tasks, ended] = await Promise.all([
         CustomsClearance.find(filter)
           .select('refNumber blNumber customerName customerParty shippingAgent agentParty carrierName carrierParty branch cargoType containerCount '
             + 'containers.route containers.stagesDone stage stagesDone transportRoute pipelineVersion stageDone.doInvoicePaid stageDone.containersReturned saleInvoiceNumber saleInvoiceAt '
@@ -2058,6 +2059,7 @@ exports.getDashboard = async (req, res) => {
           { $group: { _id: '$_id', n: { $sum: 1 } } },
         ]),
         JpTask.find(jpVisible).select('status deadlineAt assignedTo links title').lean(),
+        endedStaff(),
       ]);
 
       const today = todayKey();
@@ -2155,7 +2157,8 @@ exports.getDashboard = async (req, res) => {
         ? await CustomsClearance.find((({ createdBy, ...rest }) => rest)(filter)).select('createdBy completedBy completedAt isCompleted cancelled upcoming').lean()
           .then((all) => all.map((c) => ({ ...c, bucket: c.cancelled ? 'cancelled' : c.upcoming ? 'upcoming' : c.isCompleted ? 'closed' : 'open' })))
         : rows.map((c, i) => ({ createdBy: c.createdBy, completedBy: c.completedBy, completedAt: c.completedAt, bucket: out[i].bucket }));
-      const team = users.map((u) => {
+      // من أنهت الموارد البشريّة خدمتَه لا يُعدّ في الفريق — واسمُه يبقى على ما أنشأه.
+      const team = users.filter((u) => !userEnded(ended, u)).map((u) => {
         const id = String(u._id);
         const mine = tasks.filter((t) => String(t.assignedTo) === id);
         const last = [N.get(id)?.last, P.get(id)?.last, S.get(id)?.last].filter(Boolean).map((d) => new Date(d).getTime());

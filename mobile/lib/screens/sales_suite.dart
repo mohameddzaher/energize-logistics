@@ -75,6 +75,11 @@ class _SalesPerformanceScreenState extends State<SalesPerformanceScreen> {
                                     CircleAvatar(radius: 16, backgroundColor: color.withValues(alpha: 0.12), child: Text('${i + 1}', style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 13))),
                                     const SizedBox(width: 10),
                                     Expanded(child: Text((rep['name'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+                                    // انتهت خدمتُه وبقي صفُّه لمبيعات الفترة — لا يُعَدّ في الفريق الحاليّ.
+                                    if (r['former'] == true) Padding(
+                                      padding: const EdgeInsetsDirectional.only(end: 6),
+                                      child: Chip2(tr('سابق', 'former'), T.inkFaint),
+                                    ),
                                     Text('${att.toStringAsFixed(0)}%', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: color)),
                                   ]),
                                   const SizedBox(height: 8),

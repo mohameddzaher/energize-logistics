@@ -153,7 +153,8 @@ async function build(user) {
         kpi('طلبات إجازة معلّقة', 'Pending leaves', hr?.summary?.pendingLeaves, { href: '/system/hr/leaves' }),
         kpi('تراخيص تنتهي', 'Licences expiring', hr?.summary?.licensesExpiringCount, { tone: 'warn', href: '/system/hr/licenses' }),
       ],
-      chart: { kind: 'bar', ar: 'الموظفون حسب القسم', data: (hr?.byDepartment || []).slice(0, 10).map((x) => ({ name: x.name, value: x.count })) },
+      // على رأس العمل وحدَهم — المنتهون في لوحة الموارد البشريّة لا هنا.
+      chart: { kind: 'bar', ar: 'الموظفون على رأس العمل حسب القسم', data: (hr?.activeByDepartment || hr?.byDepartment || []).slice(0, 10).map((x) => ({ name: x.name, value: x.count })) },
     },
     {
       key: 'customs', ar: 'التخليص الجمركي (هذه السنة)', en: 'Customs (this year)', color: 'amber', href: '/system/customs/analytics',

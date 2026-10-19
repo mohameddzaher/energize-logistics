@@ -67,7 +67,7 @@ async function checkClearance(employeeId) {
         .populate('vehicle', 'plateNumber make model').select('vehicle startDate').lean()
       : [],
     CompanyEmail ? CompanyEmail.find({ employee: id, status: 'active' }).select('address').lean() : [],
-    User ? User.find({ employee: id, isActive: true }).select('email role').lean() : [],
+    User ? User.find({ linkedEmployee: id, isActive: true }).select('email role').lean() : [],
     // آخرُ يوميّةٍ في المحفظة: الرصيدُ الختاميّ هو النقدُ الذي في يده الآن.
     DailyWallet
       ? DailyWallet.find({}).where('user').ne(null).select('user closingBalance date').sort({ date: -1 }).limit(0).lean()

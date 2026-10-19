@@ -26,6 +26,7 @@ const { saveUploadFile, deleteStoredFile } = require('../utils/fileStore');
 const { createNotification } = require('../services/notificationService');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
+const { endedStaff, userEnded } = require('../utils/endedStaff');
 
 const TOP_ROLES = ['super_admin'];
 const sameId = (a, b) => !!a && !!b && String(a._id || a) === String(b._id || b);
@@ -58,12 +59,17 @@ function who(req, src = {}) {
 /** فريقُ النطاق: من يصحّ الإسنادُ إليهم. */
 async function teamOf(w) {
   const base = { isActive: { $ne: false } };
-  const users = await User.find(base).select('firstName lastName role email').lean();
+  const [users, ended] = await Promise.all([
+    User.find(base).select('firstName lastName role email').lean(),
+    endedStaff(),
+  ]);
   const pick = w.scope === 'management'
     // مديرو الأقسام — ولا يدخل مديرُ النظام قائمةَ من يُسنَد إليهم.
     ? (u) => isManagerRole(u.role) && !TOP_ROLES.includes(u.role)
     : (u) => w.def.memberRoles.includes(u.role);
-  return users.filter(pick).map((u) => ({
+  // من أنهت الموارد البشريّة خدمتَه ليس من الفريق ولو بقي حسابُه مفعّلًا: لا يُسنَد
+  // إليه ولا يُعدّ في اللوحة. ومهامُّه القديمة تبقى — تُعدّ باسمه «سابقًا» هناك.
+  return users.filter((u) => pick(u) && !userEnded(ended, u)).map((u) => ({
     _id: u._id,
     name: nameOf(u),
     role: u.role,

@@ -80,7 +80,11 @@ export default function SalesPerformancePage() {
           <tbody className="divide-y divide-slate-200">
             {rows.length === 0 ? <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-800">—</td></tr> : rows.map((r) => (
               <tr key={r.rep._id} className="hover:bg-slate-100">
-                <td className="px-4 py-3 text-slate-900">{r.rep.name}</td>
+                <td className="px-4 py-3 text-slate-900">
+                  {r.rep.name}
+                  {/* انتهت خدمتُه وبقي صفُّه لأنّ مبيعات الفترة له — لا يُعَدّ في الفريق الحاليّ. */}
+                  {(r as any).former && <span className="ms-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10.5px] font-semibold text-slate-500">{lang === 'ar' ? 'سابق' : 'former'}</span>}
+                </td>
                 <td className="px-4 py-3 text-end text-green-600">{money(r.wonValue)} <span className="text-slate-700 text-xs">({r.wonCount})</span></td>
                 <td className="px-4 py-3 text-end text-slate-700">{money(r.target)}</td>
                 <td className="px-4 py-3 text-end">

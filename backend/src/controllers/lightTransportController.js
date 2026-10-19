@@ -96,17 +96,22 @@ const looksLikePlate = (t) => {
 };
 
 /** حالةُ التوظيف من الموارد البشريّة بلغة هذا القسم. */
-const HR_STATUS_AR = { terminated: 'إنهاء خدمة', suspended: 'متوقف', active: '', on_leave: 'إجازة' };
+const HR_STATUS_AR = { terminated: 'إنهاء خدمة', suspended: 'متوقف', active: 'يعمل', on_leave: 'إجازة' };
 
 /**
- * ── الحالةُ المعروضة ────────────────────────────────────────────────────────
- * حالةُ القسم هي الأصل، وتغلبها الموارد البشريّةُ حين تنفي: إنهاءُ خدمةٍ أو
- * إيقافٌ خبرٌ أقوى من أيّ خانةٍ هنا. أمّا ملفٌّ `active` فلا يمحو «إجازة» كتبها
- * القسم — الإجازةُ في الموارد البشريّة سجلُّ طلباتٍ لا حالةُ ملفّ.
+ * ── حالةُ العمل من الموارد البشريّة وحدَها ──────────────────────────────────
+ * قرارُ صاحب الشركة (٢٠٢٦/١٠/١٩): حالةُ العمل وإنهاءُ الخدمة يُكتبان في الموارد
+ * البشريّة ولا يُعدَّلان من هذا القسم. كان القسمُ يكتب حالتَه والموارد البشريّة
+ * تغلبها حين تنفي فقط — فقال القسمُ «إنهاء خدمة» لستّةٍ ما زالوا على رأس العمل
+ * في الموارد البشريّة، والمراجعون يقارنون الاثنين.
+ *
+ * فمَن له ملفٌّ في الموارد البشريّة: حالتُه حالةُ ملفّه. ومَن لا ملفَّ له
+ * (سُجّل قبل أن تُنشئ الإضافةُ من هنا ملفًّا) تُقرأ له آخرُ حالةٍ كُتبت — للقراءة،
+ * ولا تُعدَّل حتّى يُفتح له ملف.
  */
 const shownStatus = (row) => {
   const hr = row.employee && typeof row.employee === 'object' ? row.employee.employmentStatus : null;
-  if (hr === 'terminated' || hr === 'suspended') return HR_STATUS_AR[hr];
+  if (hr && HR_STATUS_AR[hr]) return HR_STATUS_AR[hr];
   return row.workStatusAr || '';
 };
 
@@ -256,15 +261,45 @@ exports.listEmployees = async (req, res) => {
     if (S(q.status)) rows = rows.filter((r) => r.workStatusShown === S(q.status));
     if (S(q.vehicleType)) rows = rows.filter((r) => typeKey(r.vehicleTypeShown) === typeKey(q.vehicleType));
 
-    res.json({ employees: rows, totals: totalsOf(rows), options: await optionsOf() });
+    res.json({ employees: rows, totals: totalsOf(rows, { includeEnded: S(q.status) === ENDED }), options: await optionsOf() });
   } catch (e) {
     console.error('lt listEmployees:', e);
     res.status(500).json({ message: 'تعذّر تحميل موظّفي النقل الخفيف' });
   }
 };
 
+/**
+ * ── منتهي الخدمة لا يظهر في اللوحة ─────────────────────────────────────────
+ * قاعدةُ صاحب الشركة (٢٠٢٦/١٠/١٩) في كلّ الأقسام عدا الموارد البشريّة: مَن
+ * انتهت خدمتُه لا يدخل رقمًا واحدًا من أرقام اللوحة — ولا كارتَ «أُنهيت خدمتهم»
+ * ولا توزيعَ الحالات. كان «الإداريّون ١٦» وواحدٌ منهم منتهٍ في الموارد
+ * البشريّة، والمراجِعُ يقارن بالموارد البشريّة فيجد ١٥. ويبقى صفُّه في قائمة
+ * الموظّفين يُبحَث عنه ويُراجَع ملفُّه — القائمةُ سجلٌّ، واللوحةُ أرقام.
+ * والمنتهي: «إنهاء خدمة» (من الموارد البشريّة) أو صفٌّ أُخرج من سجلّ القسم.
+ */
+const ENDED = 'إنهاء خدمة';
+const isEnded = (r) => r.workStatusShown === ENDED || r.isActive === false;
+exports.isEnded = isEnded;
+
+/**
+ * صفوفُ القسم لمن انتهت خدمتُه — ليُستثنَوا من عدِّ الساكنين. السكنُ سريرٌ يُعَدّ:
+ * منتهٍ بقي اسمُه على غرفةٍ يجعلها «مكتملة» ويردّ مَن يحتاجها. والحالةُ من
+ * الموارد البشريّة متى وُجد ملف، وإلّا آخرُ ما كُتب في السجلّ.
+ */
+async function endedRowIds() {
+  const { endedStaff } = require('../utils/endedStaff');
+  const sets = await endedStaff();
+  const rows = await LightTransportEmployee.find({
+    housing: { $ne: null },
+    $or: [{ employee: { $in: [...sets.ids].map((x) => new mongoose.Types.ObjectId(x)) } }, { employee: null, workStatusAr: ENDED }],
+  }).select('_id').lean();
+  return rows.map((r) => r._id);
+}
+
 /** الأعدادُ التي تُقرأ في الكاردات — محسوبةٌ على ما بعد الفلترة. */
-const totalsOf = (rows) => {
+const totalsOf = (allRows, { includeEnded = false } = {}) => {
+  // من فلتر على «إنهاء خدمة» صراحةً سأل عنهم — فيُعَدّون له.
+  const rows = includeEnded ? allRows : allRows.filter((r) => !isEnded(r));
   const count = (fn) => rows.filter(fn).length;
   const group = (fn) => {
     const o = {};
@@ -292,6 +327,9 @@ const totalsOf = (rows) => {
   };
   return {
     total: rows.length,
+    // وكلُّ صفوف القائمة (ومعها المنتهون) — للعلم لا للعدّ.
+    listed: allRows.length,
+    endedHidden: allRows.length - rows.length,
     sponsored: count((r) => contractIs(r, 'sponsored')),
     freelance: count((r) => contractIs(r, 'freelance')),
     // كارتُ تشغيلٍ أو فحصٌ منتهيان أو على وشك — الرجلُ يُوقَف لا المركبة.
@@ -310,7 +348,8 @@ const totalsOf = (rows) => {
     working: count(working),
     notWorking: count((r) => !working(r)),
     onLeave: count((r) => r.workStatusShown === 'إجازة' || r.workStatusShown === 'اجازه'),
-    terminated: count((r) => r.workStatusShown === 'إنهاء خدمة'),
+    // صفرٌ ما لم يُسأل عنهم صراحةً بفلتر «إنهاء خدمة».
+    terminated: count(isEnded),
     withVehicle: count((r) => !!r.vehicle),
     withoutVehicle: count((r) => !r.vehicle),
     hrLinked: count((r) => r.hrLinked),
@@ -426,8 +465,10 @@ exports.overview = async (req, res) => {
       // لو حُسبت من الصفوف المفلترة لقال الفلترُ على مشروعٍ إنّ مئةً وأربعين
       // مركبةً واقفة — وهي تعمل، لكن راكبَها ليس في هذا المشروع. والسؤالُ
       // «كم مركبةً واقفة؟» جوابُه واحدٌ لا يتغيّر بما أُظهِر على الشاشة.
+      // والمنتهي لا يُحسَب راكبًا: مركبتُه واقفةٌ وإن بقي اسمُه عليها في السجلّ.
       LightTransportEmployee.find({ isActive: { $ne: false }, vehicle: { $ne: null } })
-        .select('vehicle projectAr cityAr').lean(),
+        .select('vehicle projectAr cityAr workStatusAr employee').populate('employee', 'employmentStatus').lean()
+        .then((list) => list.filter((r) => shownStatus(r) !== ENDED)),
       LightTransportHousing.find({ isActive: { $ne: false } }).lean(),
       // قطاعُ النقل الخفيف في سجلّ المركبات — هو مصدرُ عددِ المركبات.
       VehicleMaster.find({ sectorAr: LIGHT_SECTOR, isActive: { $ne: false } })
@@ -438,6 +479,10 @@ exports.overview = async (req, res) => {
     let rows = rawRows.map((r) => decorate(r, alerts));
     if (S(q.status)) rows = rows.filter((r) => r.workStatusShown === S(q.status));
     if (S(q.vehicleType)) rows = rows.filter((r) => typeKey(r.vehicleTypeShown) === typeKey(q.vehicleType));
+    const listedRows = rows;
+    // أرقامُ اللوحة كلُّها على مَن هو في الخدمة — إلّا إن سأل الفلترُ عن المنتهين.
+    const includeEnded = S(q.status) === ENDED;
+    if (!includeEnded) rows = rows.filter((r) => !isEnded(r));
 
     // ── المركبات ──────────────────────────────────────────────────────────
     const ridden = new Set(allRidden.map((r) => String(r.vehicle)));
@@ -474,7 +519,7 @@ exports.overview = async (req, res) => {
     }
 
     res.json({
-      employees: totalsOf(rows),
+      employees: totalsOf(listedRows, { includeEnded }),
       vehicles: {
         total: vShown.length,
         // وإجماليُّ القطاع يبقى معروضًا كي يُعرَف أنّ المعروضَ جزءٌ منه.
@@ -553,7 +598,8 @@ exports.getEmployee = async (req, res) => {
 
 // `supervisorName` ليس منها: يُشتَقُّ من الحساب المختار — راجع `applySupervisor`.
 const EDITABLE = ['name', 'nationalityAr', 'phone', 'cityAr', 'projectAr', 'jobTitleAr', 'contractTypeAr',
-  'registerNumber', 'vehicleTypeAr', 'workStatusAr', 'housingRoom', 'notesAr', 'hireDate'];
+  // `workStatusAr` ليس منها: حالةُ العمل من الموارد البشريّة — راجع `shownStatus`.
+  'registerNumber', 'vehicleTypeAr', 'housingRoom', 'notesAr', 'hireDate'];
 
 /**
  * ── إسنادُ المشرف: حسابٌ يُختار، والباقي يُشتَقّ ────────────────────────────
@@ -714,7 +760,7 @@ async function applyHousing(doc, housingId, room, res) {
   if (sameRoom) return;                       // لا شيءَ يتغيّر، فلا حسابَ ولا خطر
 
   const occupants = await LightTransportEmployee.countDocuments({
-    housing: housing._id, isActive: { $ne: false }, _id: { $ne: doc._id },
+    housing: housing._id, isActive: { $ne: false }, _id: { $ne: doc._id, $nin: await endedRowIds() },
   });
   const capacity = (housing.rooms || []).reduce((n, r) => n + (Number(r.capacity) || 0), 0)
     || Number(housing.declaredCapacity) || 0;
@@ -736,7 +782,7 @@ async function applyHousing(doc, housingId, room, res) {
       return;
     }
     const inRoom = await LightTransportEmployee.countDocuments({
-      housing: housing._id, housingRoom: roomName, isActive: { $ne: false }, _id: { $ne: doc._id },
+      housing: housing._id, housingRoom: roomName, isActive: { $ne: false }, _id: { $ne: doc._id, $nin: await endedRowIds() },
     });
     if (Number(r.capacity) && inRoom >= Number(r.capacity)) {
       res.status(400).json({
@@ -762,7 +808,7 @@ exports.updateEmployee = async (req, res) => {
     // ── وكلُّ نقلٍ يُقيَّد ────────────────────────────────────────────────
     // «نقلتُه من مشروعٍ إلى مشروع» سؤالٌ يُسأل بعد شهور، وخانةٌ تُستبدَل لا
     // تحفظ جوابَه. فما يُغيَّر من هذه الأربعةِ يُكتب في سجلّ الموظّف بصاحبه.
-    const TRACKED = { projectAr: 'project', cityAr: 'city', workStatusAr: 'status' };
+    const TRACKED = { projectAr: 'project', cityAr: 'city' };
     for (const [field, kind] of Object.entries(TRACKED)) {
       if (req.body[field] !== undefined && S(req.body[field]) !== S(doc[field])) {
         doc.history.push({
@@ -903,7 +949,8 @@ exports.listHousing = async (req, res) => {
     const rows = await LightTransportHousing.find({}).sort({ name: 1 }).lean();
     // الإشغالُ محسوبٌ لا مكتوب: عددُ من يسكن الآن، لا رقمٌ يُحدَّث باليد.
     const counts = await LightTransportEmployee.aggregate([
-      { $match: { housing: { $ne: null }, isActive: { $ne: false } } },
+      // والمنتهي لا يشغل سريرًا — راجع `endedRowIds`.
+      { $match: { housing: { $ne: null }, isActive: { $ne: false }, _id: { $nin: await endedRowIds() } } },
       { $group: { _id: { h: '$housing', r: '$housingRoom' }, n: { $sum: 1 } } },
     ]);
     const perHousing = new Map(); const perRoom = new Map();
@@ -958,7 +1005,7 @@ exports.saveHousing = async (req, res) => {
       // «٥ من ٣». فيُرَدّ الطلبُ ويُنقَل السكّانُ أوّلًا.
       if (fields.rooms) {
         const occ = await LightTransportEmployee.aggregate([
-          { $match: { housing: doc._id, isActive: { $ne: false } } },
+          { $match: { housing: doc._id, isActive: { $ne: false }, _id: { $nin: await endedRowIds() } } },
           { $group: { _id: '$housingRoom', n: { $sum: 1 } } },
         ]);
         for (const o of occ) {

@@ -15,6 +15,7 @@ const CrmCompany = require('../models/CrmCompany');
 const CrmActivity = require('../models/CrmActivity');
 const CrmDeal = require('../models/CrmDeal');
 const { nameKey } = require('../utils/nameKey');
+const { endedStaff, idNumberEnded } = require('../utils/endedStaff');
 // Live GPS → "السيارة داخل نطاق جدة الآن" (and: reached its trip's destination).
 const { cityForPoint, sameCity } = require('../utils/saCities');
 
@@ -1312,7 +1313,7 @@ exports.getDashboard = async (req, res) => {
 
     const [
       byStatusAgg, today, week, bySupervisorAgg,
-      drivers, vehicles, followupsToday, needFollowUp,
+      allDrivers, vehicles, followupsToday, needFollowUp, ended,
     ] = await Promise.all([
       FleetShipment.aggregate([{ $match: shipScope }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
       FleetShipment.countDocuments({ ...shipScope, createdAt: { $gte: dayStart } }),
@@ -1322,7 +1323,7 @@ exports.getDashboard = async (req, res) => {
         { $group: { _id: '$supervisorName', n: { $sum: 1 } } },
         { $sort: { n: -1 } },
       ]),
-      FleetDriver.find({ isActive: { $ne: false }, ...drvScope }).select('working vehicle offReason').lean(),
+      FleetDriver.find({ isActive: { $ne: false }, ...drvScope }).select('working vehicle offReason iqama').lean(),
       FleetVehicle.countDocuments({ isActive: { $ne: false }, ...vehScope }),
       FleetEvent.countDocuments({ type: 'followup', createdAt: { $gte: dayStart } }),
       FleetShipment.find({
@@ -1330,7 +1331,11 @@ exports.getDashboard = async (req, res) => {
         status: { $in: IN_FLIGHT },
         $or: [{ lastContactAt: null }, { lastContactAt: { $lt: staleCut } }],
       }).select('waybillNumber customerName driverName vehiclePlate lastContactAt fromCity toCity').sort({ lastContactAt: 1 }).limit(20).lean(),
+      endedStaff(),
     ]);
+    // مَن انتهت خدمتُه في الموارد البشريّة لا يُعَدّ في اللوحة — لا في السائقين
+    // ولا في مقاعد المركبات. يبقى في القائمة؛ العددُ وحدَه يُسقطه.
+    const drivers = allDrivers.filter((d) => !idNumberEnded(ended, d.iqama));
 
     const byStatus = {};
     byStatusAgg.forEach((r) => { byStatus[r._id] = r.n; });
@@ -2156,7 +2161,7 @@ exports.getDriverKpis = async (req, res) => {
     if (scope) filter.$and.push({ vehicle: { $in: scope } });
     if (!filter.$and.length) delete filter.$and;
 
-    const [shipments, drivers, cfg] = await Promise.all([
+    const [shipments, drivers, cfg, ended] = await Promise.all([
       FleetShipment.find(filter)
         .select('_id waybillNumber driver driverName secondDriver secondDriverName vehiclePlate price fullRent driverExpense status loadDate createdAt lastContactAt expectedArrival customerName fromCity toCity')
         .lean(),
@@ -2164,7 +2169,11 @@ exports.getDriverKpis = async (req, res) => {
         .populate('vehicle', 'plate name')
         .lean(),
       getFleetConfig(),
+      endedStaff(),
     ]);
+    // مَن انتهت خدمتُه: صفُّه يبقى إن اشتغل في الفترة (حمولاتُه تاريخ)، لكنّه
+    // ليس من طاقم اليوم — فلا يُعَدّ عاطلًا ولا في عدد السائقين ولا الأهداف.
+    const isEnded = (d) => !!d && idNumberEnded(ended, d.iqama);
 
     // Follow-up compliance needs the call log, and only for in-flight loads that
     // were actually meant to be followed up.
@@ -2326,6 +2335,7 @@ exports.getDriverKpis = async (req, res) => {
         firstTrip: a.firstTrip, lastTrip: a.lastTrip,
         score, band: band.key, bandAr: band.ar, bandEn: band.en, bandColor: band.color,
         breakdown,
+        ...(isEnded(d) ? { ended: true } : {}),
       };
     });
 
@@ -2333,7 +2343,7 @@ exports.getDriverKpis = async (req, res) => {
     // list — "who did no work this month" is half the point of the page.
     const seen = new Set(items.map((i) => i._id).filter(Boolean));
     for (const d of drivers) {
-      if (seen.has(String(d._id)) || d.isActive === false) continue;
+      if (seen.has(String(d._id)) || d.isActive === false || isEnded(d)) continue;
       items.push({
         _id: String(d._id), name: d.name, phone: d.phone || '', iqama: d.iqama || '',
         nationality: d.nationality || '', working: d.working !== false, offReason: d.offReason || '',
@@ -2364,7 +2374,9 @@ exports.getDriverKpis = async (req, res) => {
     }
 
     items.sort((a, b) => b.score - a.score || b.income - a.income);
-    const active = items.filter((i) => i.trips > 0);
+    // العدّاداتُ للطاقم الحاليّ وحدَه؛ المجاميعُ (حمولات/دخل/مسافة) تبقى كما هي.
+    const roster = items.filter((i) => !i.ended);
+    const active = roster.filter((i) => i.trips > 0);
     const body = {
       period: { from: start, to: end, monthsInRange, preset: period.preset },
       weights: DRIVER_KPI_WEIGHTS,
@@ -2372,9 +2384,9 @@ exports.getDriverKpis = async (req, res) => {
       followUpTargetHours: FOLLOWUP_TARGET_HOURS,
       fridayBonusAmount: Number(cfg.fridayBonusAmount) || 0,
       summary: {
-        drivers: items.length,
+        drivers: roster.length,
         activeDrivers: active.length,
-        idleDrivers: items.length - active.length,
+        idleDrivers: roster.length - active.length,
         totalTrips: items.reduce((s, i) => s + i.trips, 0),
         totalIncome: items.reduce((s, i) => s + i.income, 0),
         totalExpense: items.reduce((s, i) => s + i.expense, 0),
@@ -2386,9 +2398,9 @@ exports.getDriverKpis = async (req, res) => {
         // كم من كيلومترات الأسطول وجد صاحبَه، وكم بقي بلا نسبة.
         kmAttributed: kmInfo.attributed,
         kmUnattributed: kmInfo.unattributed,
-        driversAchieved: items.filter((i) => i.achieved === true).length,
-        driversBelow: items.filter((i) => i.achieved === false).length,
-        driversNoTarget: items.filter((i) => i.achieved == null).length,
+        driversAchieved: roster.filter((i) => i.achieved === true).length,
+        driversBelow: roster.filter((i) => i.achieved === false).length,
+        driversNoTarget: roster.filter((i) => i.achieved == null).length,
         defaultDriverMonthlyLoads: Number(cfg.defaultDriverMonthlyLoads) || 0,
         defaultDriverMonthlyKm: Number(cfg.defaultDriverMonthlyKm) || 0,
       },

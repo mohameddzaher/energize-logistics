@@ -7,6 +7,7 @@ const VehicleAccident = require('../models/VehicleAccident');
 const Employee = require('../models/Employee');
 const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
+const { endedStaff } = require('../utils/endedStaff');
 
 // The vehicles dashboard runs ~14 aggregations and is the same for everyone.
 // Cache it briefly; any vehicle/authorization/accident write clears `veh:`.
@@ -501,6 +502,10 @@ exports.getDashboard = async (req, res) => {
     const now = today();
     const soon = new Date(); soon.setDate(soon.getDate() + 30);
     const soonStr = soon.toISOString().slice(0, 10);
+    // تفويضٌ بيد مَن انتهت خدمتُه في الموارد البشريّة لا يُعَدّ ساريًا ولا يُنبَّه
+    // بانتهائه — السجلُّ يبقى في القائمة، واللوحةُ تعدّ مَن هو على رأس العمل.
+    const { ids: endedIds } = await endedStaff();
+    const liveHolder = endedIds.size ? { employee: { $nin: [...endedIds] } } : {};
 
     const [
       byStatus, byType, byBranch, totalVehicles, activeAuths, openAccidents,
@@ -519,7 +524,7 @@ exports.getDashboard = async (req, res) => {
         { $sort: { count: -1 } },
       ]),
       Vehicle.countDocuments({}),
-      VehicleAuthorization.countDocuments({ status: 'active' }),
+      VehicleAuthorization.countDocuments({ status: 'active', ...liveHolder }),
       VehicleAccident.countDocuments({ status: { $in: ['reported', 'investigating'] } }),
       VehicleAccident.find({}).populate('vehicle', 'plateNumber').populate('employee', EMP_FIELDS).sort({ date: -1, createdAt: -1 }).limit(8).lean(),
       VehicleAuthorization.find({}).populate('vehicle', 'plateNumber').populate('employee', EMP_FIELDS).populate('transferredTo', EMP_FIELDS).sort({ createdAt: -1 }).limit(8).lean(),
@@ -529,7 +534,7 @@ exports.getDashboard = async (req, res) => {
       VehicleAccident.aggregate([{ $group: { _id: null, estimated: { $sum: '$estimatedCost' }, actual: { $sum: '$actualCost' } } }]),
       VehicleAccident.countDocuments({}),
       // Active authorizations whose document expires soon (or already expired).
-      VehicleAuthorization.find({ status: 'active', documentExpiry: { $ne: null, $lte: soonStr } })
+      VehicleAuthorization.find({ status: 'active', documentExpiry: { $ne: null, $lte: soonStr }, ...liveHolder })
         .populate('vehicle', 'plateNumber type')
         .populate('employee', EMP_FIELDS)
         .sort({ documentExpiry: 1 }).limit(20).lean(),

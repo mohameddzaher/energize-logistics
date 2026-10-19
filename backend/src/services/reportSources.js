@@ -1643,12 +1643,16 @@ const SECTION_REPORTS = [
     extra: async (query, lang, t) => {
       const { FleetShipment, FleetVehicle, FleetDriver } = require('../models/FleetModels');
       const { from, to } = resolvePeriod(query);
-      const [ships, vehicles, drivers] = await Promise.all([
+      const { endedStaff, idNumberEnded } = require('../utils/endedStaff');
+      const [ships, vehicles, driverRows, ended] = await Promise.all([
         FleetShipment.find({ $or: [{ loadDate: { $gte: from, $lte: to } }, { $and: [{ loadDate: null }, { createdAt: { $gte: from, $lte: to } }] }] })
           .select('price driverExpense status customerName vehiclePlate driverName').lean(),
         FleetVehicle.countDocuments({ isActive: { $ne: false } }),
-        FleetDriver.countDocuments({ isActive: { $ne: false } }),
+        FleetDriver.find({ isActive: { $ne: false } }).select('iqama').lean(),
+        endedStaff(),
       ]);
+      // مَن انتهت خدمتُه في الموارد البشريّة ليس من السائقين — كلوحة القسم.
+      const drivers = driverRows.filter((d) => !idNumberEnded(ended, d.iqama)).length;
       const live = ships.filter((s) => s.status !== 'cancelled');
       const income = live.reduce((s, x) => s + (Number(x.price) || 0), 0);
       const byCustomer = new Map();

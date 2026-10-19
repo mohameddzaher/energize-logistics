@@ -1,12 +1,18 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// الإدخال اليومي B2C — يوم واحد × كل المناديب: أدخل عدد الطلبات لكل مندوب
-/// واحفظ صفًا صفًا (صفر = لم يعمل، فارغ = لا بيانات)، كما في صفحة الويب.
+/// مدخلات الأوردرات — نظيرُ /system/b2c/daily-entry في الموقع (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
+///
+/// الأوردراتُ تُكتب على النظام لا في شيتات جوجل. لكلّ مندوبٍ سطرٌ: اسمُه ورقمُ إقامته
+/// ومشروعُه ومشرفُه، وخانةُ اليوم يُكتب فيها الرقم. وفوقها كروتُ الشيت: عددُ المناديب
+/// بالجهة، وملخّصُ التحقيق حسب المشرف والمشروع. ومديرُ المشروع والمشرفُ يرى مشاريعَه
+/// وحدَها (يحسمه الخادم)، وما يُكتب يصل تحليلَ الأوردرات ولوحةَ B2C في اللحظة.
 class B2cDailyEntryScreen extends StatefulWidget {
   const B2cDailyEntryScreen({super.key});
   @override
@@ -14,185 +20,234 @@ class B2cDailyEntryScreen extends StatefulWidget {
 }
 
 class _B2cDailyEntryScreenState extends State<B2cDailyEntryScreen> {
-  List<Map<String, dynamic>> _reps = [];
-  final Map<String, Map<String, dynamic>> _entries = {}; // repId → daily order
-  final Map<String, TextEditingController> _ctrls = {};
-  final Set<String> _saving = {};
-  bool _loading = true;
+  Map<String, dynamic>? _d;
   String? _error;
+  String _date = '';
   String _q = '';
-  DateTime _date = DateTime.now();
-
-  String get _dateKey =>
-      '${_date.year}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}';
+  String _project = '';
+  String _sup = '';
+  String _kind = '';
+  String _eval = '';
+  bool _missing = false;
+  final Map<String, TextEditingController> _ctrls = {};
+  final Set<String> _dirty = {};
+  final Map<String, String> _state = {}; // saving | saved | error
+  Timer? _debounce;
+  late final void Function() _onLive;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+    _onLive = () { _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 700), _load); };
+    for (final e in ['b2c:order:upserted', 'lt:updated', 'b2c:entry:scope']) { Live.instance.on(e, _onLive); }
+  }
+
+  @override
+  void dispose() {
+    for (final e in ['b2c:order:upserted', 'lt:updated', 'b2c:entry:scope']) { Live.instance.off(e, _onLive); }
+    _debounce?.cancel();
+    for (final c in _ctrls.values) { c.dispose(); }
+    super.dispose();
+  }
 
   Future<void> _load() async {
     try {
-      final results = await Future.wait([
-        Api.instance.get('/api/b2c/reps').catchError((_) => <String, dynamic>{}),
-        Api.instance.get('/api/b2c/daily-orders?dateFrom=$_dateKey&dateTo=$_dateKey'),
-      ]);
+      final d = Map<String, dynamic>.from(await Api.instance.get('/api/b2c/entry${_date.isEmpty ? '' : '?date=$_date'}') as Map);
       if (!mounted) return;
       setState(() {
-        _reps = List<Map<String, dynamic>>.from(results[0]['reps'] ?? []);
-        _entries.clear();
-        _ctrls.clear();
-        for (final o in List<Map<String, dynamic>>.from(results[1]['orders'] ?? [])) {
-          final rid = (o['rep'] is Map ? o['rep']['_id'] : o['rep'])?.toString();
-          if (rid != null) _entries[rid] = o;
+        _d = d; _error = null; _date = '${d['date']}';
+        for (final r in List<Map<String, dynamic>>.from(d['rows'] ?? [])) {
+          final id = '${r['lt']}';
+          final c = _ctrls.putIfAbsent(id, () => TextEditingController());
+          if (!_dirty.contains(id)) c.text = r['orders'] == null ? '' : '${r['orders']}';
         }
-        _loading = false;
-        _error = null;
       });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted) setState(() => _error = e.toString());
+    }
+  }
+
+  Future<void> _save(Map<String, dynamic> r) async {
+    final id = '${r['lt']}';
+    if (!_dirty.contains(id)) return;
+    final v = _ctrls[id]!.text.trim();
+    final prev = r['orders'] == null ? '' : '${r['orders']}';
+    if (v == prev) { _dirty.remove(id); return; }
+    setState(() => _state[id] = 'saving');
+    try {
+      await Api.instance.put('/api/b2c/entry', {'lt': id, 'dateKey': _date, 'orders': v.isEmpty ? null : int.parse(v)});
+      _dirty.remove(id);
+      if (mounted) setState(() => _state[id] = 'saved');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _state[id] = 'error');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
   String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
-
-  String _repName(Map<String, dynamic> r) {
-    final ar = (r['arabicName'] ?? '').toString();
-    return ar.isNotEmpty ? ar : (r['englishName'] ?? '—').toString();
+  String _shift(int days) {
+    final d = DateTime.parse(_date).add(Duration(days: days));
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
   }
 
-  TextEditingController _ctrl(Map<String, dynamic> rep) {
-    final id = (rep['_id'] ?? '').toString();
-    return _ctrls.putIfAbsent(id, () {
-      final v = _entries[id]?['orders'];
-      return TextEditingController(text: v == null ? '' : v.toString());
-    });
-  }
+  Color _evalColor(String e) => e == 'حقق' ? T.success : e == 'قريب' ? T.warn : e == 'بعيد' ? T.danger : T.inkFaint;
 
-  Future<void> _save(Map<String, dynamic> rep) async {
-    final id = (rep['_id'] ?? '').toString();
-    final text = _ctrl(rep).text.trim();
-    setState(() => _saving.add(id));
-    try {
-      await Api.instance.post('/api/b2c/daily-orders', {
-        'rep': id,
-        'dateKey': _dateKey,
-        'orders': text.isEmpty ? null : num.tryParse(text),
-      });
-      final d = await Api.instance.get('/api/b2c/daily-orders?dateFrom=$_dateKey&dateTo=$_dateKey&rep=$id');
-      if (mounted) {
-        final rows = List<Map<String, dynamic>>.from(d['orders'] ?? []);
-        setState(() { if (rows.isNotEmpty) _entries[id] = rows.first; });
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-    } finally {
-      if (mounted) setState(() => _saving.remove(id));
-    }
-  }
+  Widget _drop(String label, String value, List<String> opts, ValueChanged<String> on) => Padding(
+        padding: const EdgeInsetsDirectional.only(end: 6),
+        child: DropdownButton<String>(
+          value: value, isDense: true, underline: const SizedBox(),
+          items: [DropdownMenuItem(value: '', child: Text(label)), ...opts.map((o) => DropdownMenuItem(value: o, child: Text(o)))],
+          onChanged: (v) => setState(() => on(v ?? '')),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
-    final q = _fold(_q.trim());
-    final filtered = _reps.where((r) {
-      if (q.isEmpty) return true;
-      return _fold('${_repName(r)} ${r['repId'] ?? ''}').contains(q);
+    final d = _d;
+    if (d == null) {
+      return AppScaffold(title: Text(tr('مدخلات الأوردرات', 'Orders entry')),
+          body: _error != null ? ErrorRetry(message: _error!, onRetry: _load) : const Center(child: CircularProgressIndicator()));
+    }
+    final all = List<Map<String, dynamic>>.from(d['rows'] ?? []);
+    final cards = Map<String, dynamic>.from(d['cards'] ?? {});
+    final reps = Map<String, dynamic>.from(cards['reps'] ?? {});
+    final summary = List<Map<String, dynamic>>.from(d['summary'] ?? []);
+    final tot = Map<String, dynamic>.from(d['summaryTotal'] ?? {});
+    final needle = _fold(_q.trim());
+    final rows = all.where((r) {
+      final id = '${r['lt']}';
+      return (needle.isEmpty || _fold('${r['name']} ${r['idNumber']} ${r['projectAr']} ${r['supervisorName']}').contains(needle))
+          && (_project.isEmpty || r['projectAr'] == _project) && (_sup.isEmpty || r['supervisorName'] == _sup)
+          && (_kind.isEmpty || r['kind'] == _kind) && (_eval.isEmpty || r['evaluation'] == _eval)
+          && (!_missing || (_ctrls[id]?.text ?? '').isEmpty);
     }).toList();
-    final entered = _entries.values.where((e) => e['orders'] != null).length;
+    final projects = {for (final r in all) '${r['projectAr']}'}.toList();
+    final sups = {for (final r in all) if ('${r['supervisorName'] ?? ''}'.isNotEmpty) '${r['supervisorName']}'}.toList()..sort();
+    final scope = d['scope'];
+    final today = '${d['today']}';
 
     return AppScaffold(
-      title: Text(tr('الإدخال اليومي', 'Daily Entry')),
-      body: _loading
-          ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
-          : _error != null
-              ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
-              : Column(children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-                    child: Row(children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            final v = await showDatePicker(
-                              context: context,
-                              initialDate: _date,
-                              firstDate: DateTime(2024),
-                              lastDate: DateTime.now(),
-                            );
-                            if (v != null) { setState(() { _date = v; _loading = true; }); _load(); }
-                          },
-                          icon: const Icon(Icons.event, size: 17),
-                          label: Text(_dateKey, style: const TextStyle(fontWeight: FontWeight.w800)),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Chip2('$entered / ${_reps.length} ${tr('مُدخل', 'entered')}', entered == _reps.length && _reps.isNotEmpty ? T.success : T.warn),
-                    ]),
+      title: Text(tr('مدخلات الأوردرات', 'Orders entry')),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(padding: const EdgeInsets.all(12), children: [
+          if (scope is List) Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(tr('مشاريعك: ${scope.isEmpty ? 'لم يُسنَد لك مشروع بعد' : scope.join('، ')}', 'Your projects: ${scope.join(', ')}'),
+                style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+          ),
+          // ── اليوم ──
+          AppCard(child: Row(children: [
+            IconButton(icon: const Icon(Icons.chevron_right), onPressed: () { setState(() => _date = _shift(-1)); _load(); }),
+            Expanded(child: InkWell(
+              onTap: () async {
+                final p = await showDatePicker(context: context, initialDate: DateTime.parse(_date), firstDate: DateTime(2025), lastDate: DateTime.parse(today));
+                if (p != null) { setState(() => _date = '${p.year}-${p.month.toString().padLeft(2, '0')}-${p.day.toString().padLeft(2, '0')}'); _load(); }
+              },
+              child: Center(child: Text(_date.split('-').reversed.join('/'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
+            )),
+            IconButton(icon: const Icon(Icons.chevron_left), onPressed: _date.compareTo(today) >= 0 ? null : () { setState(() => _date = _shift(1)); _load(); }),
+          ])),
+          const SizedBox(height: 8),
+          // ── الكروت ──
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final c in [
+              (tr('إجمالي المناديب', 'Reps'), '${reps['total'] ?? 0}', ''),
+              ('كفالة', '${reps['كفالة'] ?? 0}', 'كفالة'),
+              ('فري لانسر', '${reps['فري لانسر'] ?? 0}', 'فري لانسر'),
+              ('يوزرات', '${reps['يوزرات'] ?? 0}', 'يوزرات'),
+            ])
+              ActionChip(
+                onPressed: () => setState(() => _kind = _kind == c.$3 ? '' : c.$3),
+                backgroundColor: _kind == c.$3 && c.$3.isNotEmpty ? T.orange : Colors.white,
+                label: Text('${c.$1}: ${c.$2}', style: TextStyle(fontWeight: FontWeight.w800, color: _kind == c.$3 && c.$3.isNotEmpty ? Colors.white : T.ink)),
+              ),
+          ]),
+          const SizedBox(height: 6),
+          Row(children: [
+            Expanded(child: StatCard(label: tr('أوردرات اليوم', 'Today'), value: cards['dayTotal'] ?? 0, color: T.orange, icon: Icons.local_mall_outlined)),
+            const SizedBox(width: 6),
+            Expanded(child: StatCard(label: tr('مُدخَل لهم', 'Entered'), value: cards['dayEntered'] ?? 0, color: T.navy, icon: Icons.edit_note)),
+            const SizedBox(width: 6),
+            Expanded(child: StatCard(label: tr('إجمالي الشهر', 'Month'), value: cards['periodTotal'] ?? 0, color: T.success, icon: Icons.summarize_outlined)),
+          ]),
+          const SizedBox(height: 8),
+          // ── ملخّص التحقيق ──
+          AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('ملخص التحقيق حسب المشرف والمشروع', 'Achievement by supervisor & project'), style: const TextStyle(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 6),
+            for (final s in summary)
+              InkWell(
+                onTap: () => setState(() { _sup = s['supervisor'] == '—' ? '' : '${s['supervisor']}'; _project = '${s['project']}'; }),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(children: [
+                    Expanded(child: Text('${s['supervisor']} · ${s['project']}', style: const TextStyle(fontSize: 12.5))),
+                    Text('${s['reps']}  ', style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+                    Text('${s['achieved']}', style: const TextStyle(fontSize: 12.5, color: T.success, fontWeight: FontWeight.w800)),
+                    const Text(' / '),
+                    Text('${s['near']}', style: const TextStyle(fontSize: 12.5, color: T.warn, fontWeight: FontWeight.w800)),
+                    const Text(' / '),
+                    Text('${s['far']}', style: const TextStyle(fontSize: 12.5, color: T.danger, fontWeight: FontWeight.w800)),
+                    SizedBox(width: 46, child: Text(s['rate'] == null ? '—' : '${((s['rate'] as num) * 100).round()}%', textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w800))),
+                  ]),
+                ),
+              ),
+            const Divider(),
+            Text(tr('الإجمالي: حقق ${tot['achieved']} · قريب ${tot['near']} · بعيد ${tot['far']} · ${tot['rate'] == null ? '—' : '${((tot['rate'] as num) * 100).round()}%'}', 'Total'),
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5)),
+          ])),
+          const SizedBox(height: 8),
+          // ── البحث والفلاتر ──
+          TextField(
+            onChanged: (v) => setState(() => _q = v),
+            decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('ابحث: اسم، رقم إقامة، مشروع، مشرف…', 'Search…')),
+          ),
+          SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+            _drop(tr('كل المشاريع', 'All projects'), _project, projects, (v) => _project = v),
+            _drop(tr('كل المشرفين', 'All supervisors'), _sup, sups, (v) => _sup = v),
+            _drop(tr('كل التقييمات', 'All evaluations'), _eval, const ['حقق', 'قريب', 'بعيد', 'شحنات', 'لا طلبات'], (v) => _eval = v),
+            FilterChip(label: Text(tr('لم يُدخَل', 'Not entered')), selected: _missing, onSelected: (v) => setState(() => _missing = v)),
+          ])),
+          Text(tr('${rows.length} مندوب', '${rows.length} reps'), style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+          const SizedBox(height: 6),
+          // ── المناديب: كلُّ سطرٍ بخانته ──
+          for (final r in rows)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: AppCard(child: Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${r['name']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+                  Text([r['idNumber'], r['projectAr'], r['supervisorName'], r['kind']].where((x) => '${x ?? ''}'.isNotEmpty).join(' · '),
+                      style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                  Text(tr('الشهر ${r['total']} · هدفه ${r['target'] ?? '—'} · ${r['pct'] == null ? '—' : '${((r['pct'] as num) * 100).round()}%'}', 'Month ${r['total']}'),
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _evalColor('${r['evaluation']}'))),
+                ])),
+                SizedBox(
+                  width: 76,
+                  child: TextField(
+                    controller: _ctrls['${r['lt']}'],
+                    enabled: r['ended'] != true,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    textInputAction: TextInputAction.next,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                    decoration: InputDecoration(isDense: true, hintText: r['unit'] == 'شحنة' ? tr('شحنات', 'Ship.') : '—',
+                        suffixIcon: _state['${r['lt']}'] == 'saving' ? const Padding(padding: EdgeInsets.all(10), child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)))
+                            : _state['${r['lt']}'] == 'saved' ? const Icon(Icons.check, size: 16, color: T.success)
+                            : _state['${r['lt']}'] == 'error' ? const Icon(Icons.error_outline, size: 16, color: T.danger) : null),
+                    onChanged: (v) { _dirty.add('${r['lt']}'); setState(() => _state.remove('${r['lt']}')); },
+                    onEditingComplete: () { _save(r); FocusScope.of(context).nextFocus(); },
+                    onTapOutside: (_) => _save(r),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
-                    child: TextField(
-                      onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(hintText: tr('ابحث عن المندوب…', 'Search rep…'), prefixIcon: const Icon(Icons.search)),
-                    ),
-                  ),
-                  Expanded(
-                    child: RefreshIndicator(
-                      onRefresh: _load,
-                      child: filtered.isEmpty
-                          ? EmptyState(icon: Icons.groups_outlined, title: tr('لا يوجد مناديب', 'No reps'))
-                          : ListView.separated(
-                              padding: const EdgeInsets.all(14),
-                              itemCount: filtered.length,
-                              separatorBuilder: (_, __) => const SizedBox(height: 8),
-                              itemBuilder: (c, i) {
-                                final rep = filtered[i];
-                                final id = (rep['_id'] ?? '').toString();
-                                final entry = _entries[id];
-                                final has = entry?['orders'] != null;
-                                return FadeSlideIn(
-                                  delayMs: (i * 12).clamp(0, 120),
-                                  child: AppCard(
-                                    topAccent: has ? T.success : null,
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                    child: Row(children: [
-                                      Expanded(
-                                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                          Text(_repName(rep), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
-                                          Text(
-                                            '${rep['repId'] ?? ''}'
-                                            '${entry?['project'] is Map ? ' · ${entry!['project']['name']}' : ''}',
-                                            style: const TextStyle(fontSize: 11.5, color: T.inkSoft),
-                                          ),
-                                        ]),
-                                      ),
-                                      SizedBox(
-                                        width: 78,
-                                        child: TextField(
-                                          controller: _ctrl(rep),
-                                          keyboardType: TextInputType.number,
-                                          textAlign: TextAlign.center,
-                                          decoration: const InputDecoration(
-                                            hintText: '—',
-                                            isDense: true,
-                                            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                                          ),
-                                          onSubmitted: (_) => _save(rep),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      _saving.contains(id)
-                                          ? const SizedBox(width: 34, height: 34, child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator(strokeWidth: 2)))
-                                          : IconButton(
-                                              icon: Icon(has ? Icons.check_circle : Icons.save_outlined, size: 21, color: has ? T.success : T.navy),
-                                              onPressed: () => _save(rep),
-                                            ),
-                                    ]),
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                  ),
-                ]),
+                ),
+              ])),
+            ),
+          if (rows.isEmpty) EmptyState(icon: Icons.inbox_outlined, title: scope is List && scope.isEmpty ? tr('لم يُسنَد لك مشروع بعد', 'No project assigned yet') : tr('لا نتائج', 'Nothing matches')),
+        ]),
+      ),
     );
   }
 }

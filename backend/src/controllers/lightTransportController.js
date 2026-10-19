@@ -902,6 +902,11 @@ exports.updateEmployee = async (req, res) => {
     // ── وكلُّ نقلٍ يُقيَّد ────────────────────────────────────────────────
     // «نقلتُه من مشروعٍ إلى مشروع» سؤالٌ يُسأل بعد شهور، وخانةٌ تُستبدَل لا
     // تحفظ جوابَه. فما يُغيَّر من هذه الأربعةِ يُكتب في سجلّ الموظّف بصاحبه.
+    // ── والمشروعُ لا يتغيّر من التعديل: «نقل مشروع» وحدَه، وممّن يملكه ──────
+    // (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) — POST /employees/:id/transfer-project.
+    if (req.body.projectAr !== undefined && S(req.body.projectAr) !== S(doc.projectAr) && S(doc.projectAr)) {
+      return res.status(403).json({ message: 'المشروع يتغيّر بـ«نقل مشروع» من صفحة المندوب — لنائب مدير قطاع الأفراد ومدير القسم والسوبر أدمن والأدمن' });
+    }
     const TRACKED = { projectAr: 'project', cityAr: 'city' };
     for (const [field, kind] of Object.entries(TRACKED)) {
       if (req.body[field] !== undefined && S(req.body[field]) !== S(doc[field])) {

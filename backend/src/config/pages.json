@@ -1112,16 +1112,10 @@
       "en": "Orders Analysis"
     },
     {
-      "key": "/system/b2c/reps-performance",
-      "section": "B2C",
-      "ar": "أداء المناديب",
-      "en": "Reps Performance"
-    },
-    {
       "key": "/system/b2c/daily-entry",
       "section": "B2C",
-      "ar": "إدخال يومي",
-      "en": "Daily Entry"
+      "ar": "مدخلات الأوردرات",
+      "en": "Orders Entry"
     },
     {
       "key": "/system/b2c/duty/start",

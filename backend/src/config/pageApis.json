@@ -1482,6 +1482,7 @@
     },
     "/system/b2c/dashboard": {
       "apis": [
+        "/api/b2c/entry",
         "/api/light-transport/overview"
       ],
       "wildcard": false
@@ -1498,25 +1499,9 @@
       ],
       "wildcard": false
     },
-    "/system/b2c/reps-performance": {
-      "apis": [
-        "/api/b2c/cleanup",
-        "/api/b2c/daily-orders/bulk",
-        "/api/b2c/google-sheet/configs",
-        "/api/b2c/projects",
-        "/api/b2c/reps/bulk-resolve",
-        "/api/b2c/reps/reconcile",
-        "/api/b2c/uploads",
-        "/api/branches"
-      ],
-      "wildcard": false
-    },
     "/system/b2c/daily-entry": {
       "apis": [
-        "/api/b2c/daily-orders",
-        "/api/b2c/projects",
-        "/api/b2c/reps",
-        "/api/branches"
+        "/api/b2c/entry"
       ],
       "wildcard": false
     },
@@ -1538,6 +1523,7 @@
     },
     "/system/b2c/light-transport": {
       "apis": [
+        "/api/b2c/entry/managers",
         "/api/light-transport/employees",
         "/api/light-transport/employees/assign-supervisors",
         "/api/lookups/types"

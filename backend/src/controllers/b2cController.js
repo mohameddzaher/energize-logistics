@@ -985,6 +985,13 @@ async function computeDashboard(req, filter, scope) {
   ]);
   const repMap2 = new Map(repsList.map((r) => [String(r._id), r]));
   const projMap2 = new Map(projsList.map((p) => [String(p._id), p]));
+  // ── مشاريعُ الشحنات (امازون: هدفٌ شهريّ ٠) لا تدخل عدَّ الطلبات ──────────────
+  // شحنةٌ ليست طلبًا، وجمعُهما يجعل «إجمالي الطلبات» رقمًا لا يُقرأ. فتُستثنى إلّا
+  // إن فُلترت بها وحدَها (صاحبُ الشركة، ٢٠٢٦/١٠/١٩ — utils/b2cEntry).
+  const shipmentIds = projsList.filter((p) => Number(p.monthlyTarget) === 0).map((p) => p._id);
+  if (shipmentIds.length && !filter.project) filter = { ...filter, project: { $nin: shipmentIds } };
+  // والهدفُ اليوميُّ للمندوب هدفُ مشروعه (الشهريّ ÷ ٣٠) — كما في شيت التحقيق.
+  const projDaily = (pid) => { const p = projMap2.get(String(pid)); return p && p.monthlyTarget ? p.monthlyTarget / 30 : null; };
   const branchMap2 = new Map(branchesList.map((b) => [String(b._id), b]));
 
   const workedExpr = { $and: [{ $eq: ['$worked', true] }, { $ne: ['$orders', null] }] };
@@ -1047,7 +1054,7 @@ async function computeDashboard(req, filter, scope) {
 
   const byRep = repAgg.map((r) => {
     const meta = repMap2.get(String(r._id)) || {};
-    const dailyTarget = meta.dailyTarget || repDefaults.dailyTarget;
+    const dailyTarget = projDaily(r.project) || meta.dailyTarget || repDefaults.dailyTarget;
     const br = branchMap2.get(String(r.branch));
     return {
       repId: r._id, englishName: meta.englishName, arabicName: meta.arabicName,

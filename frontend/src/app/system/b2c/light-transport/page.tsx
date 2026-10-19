@@ -29,6 +29,7 @@ import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilt
 import ManagedSelect from '@/components/system/ManagedSelect';
 import ScrollX from '@/components/system/ScrollX';
 import { LEAD, LEAD_CELL } from '@/components/vehicles/stickyLead';
+import ManagersProjects from '@/components/b2c/ManagersProjects';
 import { Truck, Plus, Pencil, RotateCcw, UserMinus, ExternalLink, X } from 'lucide-react';
 import {
   getLTEmployees, updateLTEmployee, createLTEmployee, deactivateLTEmployee, ltTotalsOf,
@@ -67,6 +68,9 @@ function LightTransportEmployeesInner() {
   const [options, setOptions] = useState<LTOptions>({ project: [], city: [], jobTitle: [], contractType: [], register: [], vehicleType: [], supervisor: [], supervisorsUnlinked: [], housing: [] });
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Partial<LTEmployee> | null>(null);
+  const [managersOpen, setManagersOpen] = useState(false);
+  // مشروعُ الصفّ قبل التعديل — لا يتغيّر من النموذج (راجع «نقل مشروع»).
+  const origProject = editing?._id ? String(rows.find((r) => r._id === editing._id)?.projectAr || '') : '';
   // ── إضافةُ موظّفٍ تُنشئ ملفَّه في الموارد البشريّة ─────────────────────────
   // فهي لمدير القطاع ونائبه ومدير النظام وأهل المال — يطابق حارسَ المسار في
   // routes/lightTransport. ومعها مستنداتُه: اسمٌ لكلّ ملفّ، وقد تتعدّد.
@@ -293,10 +297,16 @@ function LightTransportEmployeesInner() {
 
   return (
     <div className="space-y-4 pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
+      <ManagersProjects open={managersOpen} onClose={() => setManagersOpen(false)} ar={ar} />
       <PageHeader icon={<Truck className="w-6 h-6 text-[#f37121]" />}
         title={t('موظفون النقل الخفيف', 'Light-transport employees')}
         subtitle={t(`${serverTotal} موظفًا — المندوبون والإداريون معًا`, `${serverTotal} employees — reps and admin together`)}>
         <ExportMenu fileName="light-transport" lang={ar ? 'ar' : 'en'} variant="subtle" label={t('تصدير Excel', 'Export')} options={exportOptions} />
+        {/* مَن يرى أيَّ مشروعٍ في «مدخلات الأوردرات» — يُسنَد هنا لكلّ مشرفٍ ومديرِ مشروع. */}
+        <button type="button" onClick={() => setManagersOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-[#f37121]">
+          {t('مشاريع المشرفين', 'Supervisors’ projects')}
+        </button>
         {canAdd && <PrimaryButton onClick={() => { setDocs([]); setEditing({}); }}><Plus className="w-4 h-4" /> {t('إضافة موظف', 'Add employee')}</PrimaryButton>}
       </PageHeader>
 
@@ -635,9 +645,15 @@ function LightTransportEmployeesInner() {
                 تُضبَط من «إعدادات القسم»، ويُضاف إليها من موضعها بـ«+ إضافة».
                 الخانةُ الحرّةُ تكتب الواحدةَ بألف صيغة فتصير في التقارير عدّةَ
                 مشاريع وهي مشروعٌ واحد. */}
+            {/* والمشروعُ يُختار عند الإضافة؛ وبعدها لا يتغيّر إلّا بـ«نقل مشروع» من صفحة
+                المندوب، وممّن يملكه (صاحبُ الشركة، ٢٠٢٦/١٠/١٩). */}
             <Field label={t('المشروع', 'Project')}>
               <ManagedSelect storeLabel type="lt_project" value={editing.projectAr || ''}
+                disabled={!!editing._id && !!origProject}
                 onChange={(v) => setEditing((p) => ({ ...p!, projectAr: v }))} />
+              {!!editing._id && !!origProject && (
+                <p className="mt-1 text-[11px] text-slate-500">{t('لتغيير المشروع: «نقل مشروع» من صفحة المندوب', 'To change the project use “Transfer project” on the rep’s page')}</p>
+              )}
             </Field>
             <Field label={t('الفرع', 'Branch')}>
               <ManagedSelect storeLabel type="lt_city" value={editing.cityAr || ''}

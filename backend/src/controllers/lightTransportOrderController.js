@@ -281,6 +281,11 @@ exports.createOrder = async (req, res) => {
     if (!mongoose.isValidObjectId(S(b.ltEmployee))) return res.status(400).json({ message: 'اختر الموظّف' });
     const emp = await LightTransportEmployee.findById(S(b.ltEmployee));
     if (!emp) return res.status(404).json({ message: 'الموظّف غير موجود' });
+    // ── ونقلُ المشروع بأمر التشغيل كنقله من السجلّ: لمن يملكه وحدَه ──────────
+    // (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) — راجع utils/b2cEntry.canTransfer.
+    if (S(b.projectAr) && S(b.projectAr) !== S(emp.projectAr) && !require('../utils/b2cEntry').canTransfer(req.user)) {
+      return res.status(403).json({ message: 'نقلُ المندوب إلى مشروعٍ آخر لنائب مدير قطاع الأفراد ومدير القسم والسوبر أدمن والأدمن' });
+    }
 
     // ── ولا يُشغَّل من ليس على رأس العمل ─────────────────────────────────
     // حالةُ الموظّف في الموارد البشريّة خبرٌ قاطع؛ وأمرُ تشغيلٍ لمن ليس على

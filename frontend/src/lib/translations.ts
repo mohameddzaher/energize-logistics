@@ -53,7 +53,7 @@ const layout = {
     b2cOrders: 'Operating Orders',
     b2cSettings: 'Section Settings',
     b2cProjects: 'Projects',
-    b2cDailyEntry: 'Daily Entry',
+    b2cDailyEntry: 'Orders Entry',
     dispatchSheets: 'Dispatch Sheets',
     // Remote (work-from-home) section
     remoteAttendance: 'Attendance',
@@ -238,7 +238,7 @@ const layout = {
     b2cOrders: 'أوامر التشغيل',
     b2cSettings: 'إعدادات القسم',
     b2cProjects: 'المشاريع',
-    b2cDailyEntry: 'إدخال يومي',
+    b2cDailyEntry: 'مدخلات الأوردرات',
     dispatchSheets: 'كشوف التخريج',
     // Remote (work-from-home) section
     remoteAttendance: 'الحضور والانصراف',
@@ -7193,7 +7193,6 @@ export const NAV_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   '/system/workshop/inventory': 'inventory',
   '/system/complaints': 'complaints',
   '/system/b2c/dashboard': 'b2cDashboard',
-  '/system/b2c/reps-performance': 'b2cRepsPerformance',
   '/system/b2c/reps': 'b2cReps',
   '/system/b2c/projects': 'b2cProjects',
   '/system/b2c/daily-entry': 'b2cDailyEntry',

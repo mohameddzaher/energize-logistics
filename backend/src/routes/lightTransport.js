@@ -27,6 +27,9 @@ router.post('/employees', authorize.strict('super_admin', 'b2c_manager', 'b2c_de
 router.get('/vehicles', c.listVehicles);
 router.put('/vehicles/:id', authorize.strict(...c.LT_VEHICLE_EDIT), c.updateVehicle);
 router.put('/employees/:id', authorize(...EDIT), c.updateEmployee);
+// «نقل مشروع» — الطريقُ الوحيدُ لتغيير مشروع المندوب، ويحسم المتحكّمُ مَن يملكه
+// (نائب مدير القطاع، مدير القسم، السوبر أدمن، الأدمن — utils/b2cEntry.canTransfer).
+router.post('/employees/:id/transfer-project', authorize(...EDIT), require('../controllers/b2cEntryController').transferProject);
 // لا حذفَ لموظّف — يُعطَّل السجلّ ويبقى أثرُه، كقاعدة الموارد البشريّة.
 router.post('/employees/:id/deactivate', authorize(...EDIT), c.deactivateEmployee);
 // إسنادُ مشرفٍ تشغيليٍّ أو مشرفِ تفقّدٍ لعدّة موظّفين دفعةً واحدة.

@@ -535,8 +535,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // تحليلُ الأوردرات: ما كان في اللوحة — نُقل إلى صفحته، واللوحةُ صارت
     // الصورةَ الكاملةَ للقسم (ناسٌ ومركباتٌ وسكنٌ) لا تقريرَ طلباتٍ وحدَه.
     { href: '/system/b2c/orders-analysis', label: L.b2cOrdersAnalysis, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
-    { href: '/system/b2c/reps-performance', label: L.b2cRepsPerformance, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
-    { href: '/system/b2c/daily-entry', label: L.b2cDailyEntry, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
+    // «أداء المناديب» (رفعُ الإكسيل ومزامنةُ شيتات جوجل) أُلغيت (٢٠٢٦/١٠/١٩): الأوردراتُ
+    // تُكتب على النظام في «مدخلات الأوردرات» — ومديرُ المشروع والمشرف يرى مشاريعَه.
+    { href: '/system/b2c/daily-entry', label: L.b2cDailyEntry, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
     // ── تفقّد بداية الدوام ─────────────────────────────────────────────
     // شاشتان: واحدةٌ يقف عليها المشرفُ كلَّ صباح، وواحدةٌ تقرأ منها الإدارة.
     // وكلتاهما مفتوحتان لأدوار القسم — والذي يحكم مَن يرى أيَّ مندوبٍ هو

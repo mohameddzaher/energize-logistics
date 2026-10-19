@@ -7,6 +7,7 @@
  * قيمةٍ لا تُعرض.
  */
 import api from '@/lib/api';
+import { FINANCE_FULL_ROLES } from '@/lib/financeAuthority';
 
 export interface LTEmployee {
   _id: string;
@@ -414,6 +415,23 @@ export const LT_PINNED = ['plate'];
 export const canEditLT = (u?: { role?: string | null; permissions?: Record<string, string> | null } | null) =>
   ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager'].includes(String(u?.role || ''))
   || u?.permissions?.B2C === 'edit';
+
+/**
+ * «نقل مشروع» — الطريقُ الوحيدُ لتغيير مشروع المندوب (صاحبُ الشركة، ٢٠٢٦/١٠/١٩):
+ * نائبُ مدير قطاع الأفراد، ومديرُ القسم، والسوبر أدمن، والأدمن — وأهلُ المال كمدير
+ * النظام. ويحسمه الخادمُ أيضًا (utils/b2cEntry.canTransfer).
+ */
+export const canTransferLT = (u?: { role?: string | null } | null) =>
+  ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', ...FINANCE_FULL_ROLES].includes(String(u?.role || ''));
+export const transferLTProject = (id: string, projectAr: string, note: string) =>
+  api.post<{ ok: boolean; projectAr: string }>(`/api/light-transport/employees/${id}/transfer-project`, { projectAr, note });
+
+/** مشرفو القسم ومديرو مشاريعه — ومشاريعُ كلٍّ منهم (مَن يرى ماذا في مدخلات الأوردرات). */
+export type B2CManager = { _id: string; name: string; role: string; projects: string[] };
+export const getB2CManagers = () =>
+  api.get<{ managers: B2CManager[]; projects: string[]; canEdit: boolean }>('/api/b2c/entry/managers');
+export const setB2CManagerProjects = (userId: string, projects: string[]) =>
+  api.put<{ ok: boolean }>(`/api/b2c/entry/managers/${userId}`, { projects });
 
 /**
  * من يرى شاشاتِ القسم.

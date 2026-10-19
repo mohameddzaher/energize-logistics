@@ -81,6 +81,13 @@ export default function B2CDashboardPage() {
   useSocket('hr:employee', useCallback(() => load(), [load]));
   useSocket('vreg:updated', useCallback(() => load(), [load]));
 
+  // ── الأوردرات من «مدخلات الأوردرات» — تتحدّث مع كلّ إدخال (b2c:order:upserted) ──
+  const [ord, setOrd] = useState<any>(null);
+  const loadOrd = useCallback(() => { api.get<any>('/api/b2c/entry').then(setOrd).catch(() => {}); }, []);
+  useEffect(() => { loadOrd(); }, [loadOrd]);
+  useSocket('b2c:order:upserted', loadOrd);
+  useSocket('b2c:entry:scope', loadOrd);
+
   if (loading) return <Spinner />;
   if (!d) return <div className="p-8 text-slate-500">{t('تعذّر تحميل اللوحة', 'Could not load the board')}</div>;
 
@@ -197,6 +204,28 @@ export default function B2CDashboardPage() {
           <BarChart3 className="w-4 h-4" /> {t('تحليل الأوردرات', 'Orders analysis')}
         </Link>
       </PageHeader>
+
+      {/* ── الأوردرات: اليومُ والشهرُ والتحقيق — من مدخلات الأوردرات، حيّة ── */}
+      {ord && (
+        <Link href="/system/b2c/daily-entry" className="block rounded-xl border border-orange-200 bg-gradient-to-l from-orange-50 to-white p-3 shadow-sm hover:border-[#f37121]">
+          <p className="mb-2 text-[12.5px] font-extrabold text-slate-700">{t(`الأوردرات — ${ord.date}`, `Orders — ${ord.date}`)}</p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            {[
+              [t('أوردرات اليوم', 'Today'), ord.cards.dayTotal, 'text-[#f37121]'],
+              [t('مُدخَل لهم اليوم', 'Entered today'), `${ord.cards.dayEntered} / ${ord.cards.reps.total}`, 'text-slate-900'],
+              [t('إجمالي الشهر حتى اليوم', 'Month to date'), ord.cards.periodTotal, 'text-emerald-700'],
+              [t('حقق', 'Met'), ord.summaryTotal.achieved, 'text-emerald-700'],
+              [t('قريب / بعيد', 'Near / far'), `${ord.summaryTotal.near} / ${ord.summaryTotal.far}`, 'text-amber-700'],
+              [t('نسبة التحقيق', 'Achievement'), ord.summaryTotal.rate == null ? '—' : `${Math.round(ord.summaryTotal.rate * 100)}%`, 'text-slate-900'],
+            ].map(([l, v, c]) => (
+              <div key={String(l)} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <p className="text-[11px] text-slate-500">{l}</p>
+                <p className={`text-[20px] font-extrabold tabular-nums ${c}`}>{v}</p>
+              </div>
+            ))}
+          </div>
+        </Link>
+      )}
 
       {/* ── الفلاترُ الشغّالةُ معروضةٌ ومُزالةٌ واحدًا واحدًا ────────────────────
           الفلترُ الخفيُّ يجعل الرقمَ يُقرأ خطأً — فهي مكتوبةٌ، وكلُّ واحدٍ يُرفَع

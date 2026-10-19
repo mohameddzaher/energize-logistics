@@ -209,6 +209,15 @@ employeeSchema.pre('save', function (next) {
   this.$locals.projectToHr = !this.$locals.fromHr && !!this.employee && (this.isNew ? linkedWithProject : (this.isModified('projectAr') || linkedWithProject));
   next();
 });
+employeeSchema.pre('save', function (next) {
+  // ومشروعُ طلباته (`B2CRep`) يتبع مشروعَه ومدينتَه — utils/b2cEntry.
+  this.$locals.repSync = !this.isNew && (this.isModified('projectAr') || this.isModified('cityAr'));
+  next();
+});
+employeeSchema.post('save', async function (doc) {
+  if (!doc.$locals.repSync) return;
+  try { await require('../utils/b2cEntry').syncRepOf(doc); } catch (_) { /* */ }
+});
 employeeSchema.post('save', async function (doc) {
   if (!doc.$locals.projectToHr) return;
   try {

@@ -21,13 +21,14 @@ import { Spinner } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import {
   getLTEmployee, statusCls, KIND_AR, KIND_EN, HISTORY_KIND, fmtDate, canEditLT,
-  supervisorIdOf, DOC_CLS, DOC_AR, DOC_EN,
+  supervisorIdOf, DOC_CLS, DOC_AR, DOC_EN, canTransferLT,
   type LTEmployee, type LTOrder, type LTDoc,
 } from '@/lib/lightTransport';
 import {
   Truck, ArrowRight, User, Building2, Car, Home, History, ClipboardList, ChevronLeft, IdCard,
 } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
+import TransferProjectModal from '@/components/b2c/TransferProjectModal';
 
 const NEUTRAL = '#64748b';
 
@@ -63,6 +64,7 @@ export default function LightTransportProfile() {
   const [e, setE] = useState<LTEmployee | null>(null);
   const [orders, setOrders] = useState<LTOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [transfer, setTransfer] = useState(false);
 
   const load = useCallback(async () => {
     try { const d = await getLTEmployee(id); setE(d.employee); setOrders(d.orders || []); }
@@ -184,6 +186,13 @@ export default function LightTransportProfile() {
                   ],
                 }],
               }]} />
+            {/* «نقل مشروع» — لمن يملكه وحدَه، ومن هنا وحدَه (صاحبُ الشركة، ٢٠٢٦/١٠/١٩). */}
+            {canTransferLT(user as any) && (
+              <button type="button" onClick={() => setTransfer(true)}
+                className="flex items-center gap-1.5 rounded-lg bg-[#f37121] px-3 py-2 text-sm font-semibold text-white hover:bg-[#e06010]">
+                {t('نقل مشروع', 'Transfer project')}
+              </button>
+            )}
             <button type="button" onClick={() => router.push('/system/b2c/light-transport')}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-colors">
               <ArrowRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} /> {t('رجوع', 'Back')}
@@ -191,6 +200,8 @@ export default function LightTransportProfile() {
           </div>
         </div>
       </div>
+
+      <TransferProjectModal open={transfer} onClose={() => setTransfer(false)} id={String(e._id)} name={e.name} current={e.projectAr || ''} ar={ar} onDone={load} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3.5">
         <Section title={t('الموظف', 'The employee')} icon={<User className="w-4 h-4" />} accent="#f37121"

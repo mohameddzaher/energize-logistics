@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/api.dart';
+import '../services/auth.dart';
+import '../ui/hr_quick.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
@@ -75,6 +78,38 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
     super.dispose();
   }
 
+  /// «نقل مشروع» — الطريقُ الوحيدُ لتغيير مشروع المندوب، ولمن يملكه وحدَه (كالموقع).
+  static const _transferRoles = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'];
+  Future<void> _transfer(Map<String, dynamic> e) async {
+    final projects = (await loadLookupNamesHr('lt_project')).where((p) => p != _s(e, 'projectAr')).toList();
+    if (!mounted) return;
+    final to = await pickFromList(context, title: tr('نقل إلى مشروع', 'Move to project'), options: projects);
+    if (to == null || to.isEmpty || !mounted) return;
+    final note = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('نقل مشروع', 'Transfer project')),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(tr('«${_s(e, 'projectAr')}» ← «$to» — أوردراتُه من اليوم على المشروع الجديد.', 'Move to $to?')),
+          TextField(controller: note, decoration: InputDecoration(labelText: tr('السبب', 'Reason'))),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('نقل', 'Transfer'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.post('/api/light-transport/employees/${_s(e, '_id')}/transfer-project', {'projectAr': to, 'note': note.text.trim()});
+      await _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('نُقل إلى $to', 'Moved to $to'))));
+    } catch (err) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err.toString())));
+    }
+  }
+
   Future<void> _load() async {
     try {
       final d = await Api.instance.get('/api/light-transport/employees/${widget.id}') as Map<String, dynamic>;
@@ -113,6 +148,10 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
     final e = _e;
     return AppScaffold(
       title: Text(e == null ? tr('ملف الموظف', 'Employee') : _s(e, 'name')),
+      actions: [
+        if (e != null && _transferRoles.contains(context.read<AuthProvider>().role))
+          TextButton.icon(onPressed: () => _transfer(e), icon: const Icon(Icons.swap_horiz, color: Colors.white), label: Text(tr('نقل مشروع', 'Transfer'), style: const TextStyle(color: Colors.white))),
+      ],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 110), SizedBox(height: 10), Shimmer(height: 180), SizedBox(height: 10), Shimmer(height: 160),

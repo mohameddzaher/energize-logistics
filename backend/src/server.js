@@ -16,7 +16,7 @@ const authenticate = require('./middleware/auth');
 const sectionGate = require('./middleware/sectionGate');
 const { initializeSocket } = require('./websocket/socketManager');
 const { startWalletAutoCloseJob } = require('./jobs/walletAutoClose');
-const { startSyncScheduler: startB2CSheetSync, migrateLegacySingletonIndex: migrateB2CSheetIndex } = require('./services/b2cGoogleSheetSyncService');
+// مزامنةُ شيتات جوجل للأوردرات أُلغيت (٢٠٢٦/١٠/١٩) — الأوردراتُ تُكتب على النظام (b2cEntryController).
 const { startOpsPoll } = require('./jobs/opsPoll');
 const { startOpsReconcile } = require('./jobs/opsReconcile');
 const { startOpsCustomerSync } = require('./services/opsCustomerSyncService');
@@ -447,9 +447,6 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     run();
     setInterval(run, 60 * 60 * 1000).unref();
   }
-  // Drop the legacy singleton_1 index on the B2C sheet sync collection so the new
-  // (project, branch) compound unique index can take over. No-op on fresh installs.
-  await migrateB2CSheetIndex();
 
   // ── المهامّ المجدولة تعمل في نسخةٍ واحدة ────────────────────────────────────
   //
@@ -465,7 +462,6 @@ if (!DOCS_ONLY) connectDB().then(async () => {
   const runsJobs = instance === undefined || instance === '0';
   if (runsJobs) {
     startWalletAutoCloseJob();
-    startB2CSheetSync();
     startOpsPoll();
     // والاستطلاعُ يرى ما أُضيف وعُدِّل؛ وما حُذف حذفًا نهائيًّا لا يعود في أيّ
     // صفحةٍ فلا يراه أحد. فتُطابَق القائمتان مرّةً في اليوم.

@@ -123,6 +123,7 @@ const _admins = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 /// النظام وأهل المال — بالدور وحدَه لا بمنح القسم، كحارس الخادم
 /// (`authorize.strict` في routes/lightTransport) وسطورِ القائمة في الموقع.
 const _ltOwners = ['super_admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'];
+const _b2cSupervisors = ['b2c_rep_supervisor', 'b2c_inspection_supervisor'];
 
 /// عهدةُ النقل الثقيل: لمدير لوكيشن سوليوشن ومدير النظام وأهل المال — بالدور
 /// وحدَه، كحارس الخادم (`authorize.strict` في routes/htCustody).
@@ -555,11 +556,17 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'B2C', arTitle: 'B2C', enTitle: 'B2C', icon: Icons.storefront_outlined,
       // الباك يخدم داتا B2C لـ super_admin/admin + رؤوس B2C فقط؛ فمنستعرضهاش لـ IT
       // (كانوا بيشوفوا القسم ببيانات صفر) — نطابق النطاق تمامًا.
-      roles: const ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'],
-      pages: [
+      // والمشرفان (التشغيليّ والتفقّديّ) يدخلان القسمَ لصفحاتهما الثلاث وحدَها:
+      // مدخلاتُ الأوردرات في مشاريعهما، والتفقّد وسجلُّه — كالموقع.
+      roles: const ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'],
+      pages: _b2cSupervisors.contains(role) ? [
+        AppPage('مدخلات الأوردرات', 'Orders Entry', Icons.edit_calendar_outlined, (c) => const B2cDailyEntryScreen(), path: '/system/b2c/daily-entry'),
+        AppPage('تفقّد بداية الدوام', 'Duty Start Check', Icons.photo_camera_outlined, (c) => const B2cDutyScreen(), path: '/system/b2c/duty/start'),
+        AppPage('سجل التفقّد', 'Duty Register', Icons.fact_check_outlined, (c) => const B2cDutyRegisterScreen(), path: '/system/b2c/duty'),
+      ] : [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: b2cDashSpec), path: '/system/b2c/dashboard'),
         AppPage('المشاريع', 'Projects', Icons.folder_special_outlined, (c) => ResourceScreen(config: b2cProjectsCfg), path: '/system/b2c/projects'),
-        AppPage('الإدخال اليومي', 'Daily Entry', Icons.edit_calendar_outlined, (c) => const B2cDailyEntryScreen(), path: '/system/b2c/daily-entry'),
+        AppPage('مدخلات الأوردرات', 'Orders Entry', Icons.edit_calendar_outlined, (c) => const B2cDailyEntryScreen(), path: '/system/b2c/daily-entry'),
         // تفقُّد بداية الدوام — أوّلُ ما يُفتَح صباحًا، فيُوضَع قبل ما دونه.
         // والمشرفُ يفتحه واقفًا في المحطّة لا خلف مكتب، فالهاتفُ موضعُه الأصليّ.
         AppPage('تفقّد بداية الدوام', 'Duty Start Check', Icons.photo_camera_outlined, (c) => const B2cDutyScreen(), path: '/system/b2c/duty/start'),

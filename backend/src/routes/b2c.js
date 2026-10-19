@@ -10,11 +10,6 @@ const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 const { denyRepSupervisor: noSup } = require('../middleware/b2cGuards');
 
-// PUBLIC webhook for Google Apps Script — no JWT auth (Apps Script can't carry one).
-// Authentication is via the shared `secret` in the body or `X-Sync-Secret` header.
-// This MUST be declared BEFORE router.use(authenticate) so it bypasses auth.
-router.post('/google-sheet/webhook', b2cController.googleSheetWebhook);
-
 router.use(authenticate);
 
 // Project managers currently have the same access as heads.
@@ -34,12 +29,8 @@ router.delete('/projects/:id', noSup, authorize(...ADMIN_WRITE), b2cController.d
 // Reps
 router.get('/reps', authorize(...READ), b2cController.getReps);
 router.post('/reps', noSup, authorize(...WRITE), b2cController.createRep);
-router.post('/reps/bulk-resolve', noSup, authorize(...WRITE), b2cController.bulkResolveReps);
-router.post('/reps/reconcile', noSup, authorize(...ADMIN_WRITE), b2cController.reconcileReps);
 router.get('/reps/diagnose', authorize(...READ), b2cController.diagnoseReps);
 router.get('/system-diagnostic', authorize(...READ), b2cController.getSystemDiagnostic);
-router.get('/diagnose-sheet', authorize(...READ), b2cController.diagnoseSheetParse);
-router.get('/diagnose-sheet/:id', authorize(...READ), b2cController.diagnoseSheetParse);
 router.put('/reps/:id', noSup, authorize(...WRITE), b2cController.updateRep);
 router.delete('/reps/:id', noSup, authorize(...WRITE), b2cController.deleteRep);
 
@@ -58,11 +49,18 @@ router.get('/duty', authorize(...DUTY), duty.list);
 router.get('/duty/:id', authorize(...DUTY), duty.getOne);
 router.patch('/duty/:id/review', authorize(...READ), duty.review);
 
-// Daily orders
+// Daily orders — قراءةٌ فقط. الكتابةُ من «مدخلات الأوردرات» وحدَها (/entry).
 router.get('/daily-orders', authorize(...READ), b2cController.getDailyOrders);
-router.post('/daily-orders', noSup, authorize(...WRITE), b2cController.upsertDailyOrder);
-router.post('/daily-orders/bulk', noSup, authorize(...WRITE), b2cController.bulkUpsertDailyOrders);
-router.delete('/daily-orders/:id', noSup, authorize(...WRITE), b2cController.deleteDailyOrder);
+
+// ── مدخلات الأوردرات (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) ────────────────────────────
+// الأوردراتُ تُكتب على النظام لا في الشيتات. مديرُ المشروع والمشرفُ يرى مشاريعَه
+// ويكتب فيها، والإدارةُ الكلّ (يحسمه المتحكّم — utils/b2cEntry). راجع b2cEntryController.
+const entry = require('../controllers/b2cEntryController');
+const ENTRY = require('../utils/b2cEntry').ENTRY_ROLES;
+router.get('/entry', authorize(...ENTRY), entry.list);
+router.put('/entry', authorize(...ENTRY), entry.save);
+router.get('/entry/managers', authorize(...ENTRY), entry.managers);
+router.put('/entry/managers/:userId', authorize(...ENTRY), entry.setManagerProjects);
 
 // Dashboard / analytics
 router.get('/dashboard', authorize(...READ), b2cController.getDashboardSummary);
@@ -70,18 +68,9 @@ router.get('/months', authorize(...READ), b2cController.getMonthsAvailable);
 router.get('/reps/:id/profile', authorize(...READ), b2cController.getRepProfile);
 router.get('/evaluations', authorize(...READ), b2cController.getRepEvaluations);
 router.get('/day-details', authorize(...READ), b2cController.getDayDetails);
-router.get('/uploads', authorize(...READ), b2cController.getUploadHistory);
 
-// Cleanup — destructive; only super_admin and b2c_head can wipe data
-router.post('/cleanup', noSup, authorize(...ADMIN_WRITE), b2cController.cleanupB2CData);
-router.post('/cleanup-fake-reps', noSup, authorize(...ADMIN_WRITE), b2cController.cleanupFakeReps);
-
-// Google Sheet sync — list, CRUD, per-config sync trigger and setup script.
-router.get('/google-sheet/configs', authorize(...READ), b2cController.getSheetConfigs);
-router.post('/google-sheet/configs', noSup, authorize(...ADMIN_WRITE), b2cController.createSheetConfig);
-router.put('/google-sheet/configs/:id', noSup, authorize(...ADMIN_WRITE), b2cController.updateSheetConfig);
-router.delete('/google-sheet/configs/:id', noSup, authorize(...ADMIN_WRITE), b2cController.deleteSheetConfig);
-router.post('/google-sheet/configs/:id/sync-now', noSup, authorize(...ADMIN_WRITE), b2cController.syncSheetNow);
-router.get('/google-sheet/configs/:id/setup-script', authorize(...ADMIN_WRITE), b2cController.getSheetSetupScript);
+// ── شيتاتُ جوجل ورفعُ الإكسيل أُلغيا (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) ──────────────
+// كانا يكتبان الأوردرات ويعرّفان المندوبَ باسمه في الشيت ويدمجان المتشابهين.
+// النسخةُ الاحتياطيّةُ من الشيتات في backups/b2c-sheets-2026-10-19 على الخادم.
 
 module.exports = router;

@@ -44,6 +44,14 @@ router.post('/custody', CUSTODY, custody.create);
 router.put('/custody/:id', CUSTODY, custody.update);      // والمتحكِّمُ يحصره في مدير النظام وأهل المال
 router.delete('/custody/:id', CUSTODY, custody.remove);
 
+// ── تأجيرُ اليوزرات — يُعَدّ في «إجمالي المناديب» في لوحة القسم ──────────────
+const rentals = require('../controllers/ltUserRentalController');
+router.get('/user-rentals', rentals.list);
+router.post('/user-rentals', authorize(...EDIT), rentals.create);
+router.put('/user-rentals/:id', authorize(...EDIT), rentals.update);
+router.post('/user-rentals/:id/end', authorize(...EDIT), rentals.end);
+router.delete('/user-rentals/:id', authorize(...EDIT), rentals.remove);   // والمتحكِّمُ يحصره في الإدارة
+
 router.get('/housing', c.listHousing);
 router.post('/housing', authorize(...EDIT), c.saveHousing);
 router.put('/housing/:id', authorize(...EDIT), c.saveHousing);

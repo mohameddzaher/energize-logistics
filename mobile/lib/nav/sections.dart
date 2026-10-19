@@ -554,7 +554,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       // (كانوا بيشوفوا القسم ببيانات صفر) — نطابق النطاق تمامًا.
       roles: const ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'],
       pages: [
-        AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const SectionDashScreen(spec: b2cDashSpec), path: '/system/b2c/dashboard'),
+        AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: b2cDashSpec), path: '/system/b2c/dashboard'),
         AppPage('المشاريع', 'Projects', Icons.folder_special_outlined, (c) => ResourceScreen(config: b2cProjectsCfg), path: '/system/b2c/projects'),
         AppPage('الإدخال اليومي', 'Daily Entry', Icons.edit_calendar_outlined, (c) => const B2cDailyEntryScreen(), path: '/system/b2c/daily-entry'),
         // تفقُّد بداية الدوام — أوّلُ ما يُفتَح صباحًا، فيُوضَع قبل ما دونه.
@@ -584,6 +584,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         // فلا يظهر فيها مشرفٌ ولا ميكانيكيٌّ ولا عاملُ نظافة: أحدَ عشرَ من
         // مئةٍ وواحدٍ وستّين. وتلك الصفحةُ صارت «تحليل الأوردرات» على الويب.
         AppPage('موظفون النقل الخفيف', 'Light-transport Employees', Icons.two_wheeler_outlined, (c) => ResourceScreen(config: ltEmployeesCfg), path: '/system/b2c/light-transport'),
+        // تأجيرُ اليوزرات — يُعَدّ في «إجمالي المناديب» بلوحة القسم. مطابقٌ للموقع.
+        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'cfo', 'accounting_manager', 'accountant'].contains(role)) AppPage('تأجير اليوزرات', 'User Rentals', Icons.key_outlined, (c) => ResourceScreen(config: ltUserRentalsCfg(canWrite: true, canDelete: const ['super_admin', 'b2c_manager', 'b2c_deputy'].contains(role))), path: '/system/b2c/user-rentals'),
         AppPage('أوامر التشغيل', 'Operating Orders', Icons.assignment_ind_outlined, (c) => ResourceScreen(config: lightTransportOrdersCfg), path: '/system/b2c/orders'),
         AppPage('تحليل الأوردرات', 'Orders Analysis', Icons.insights_outlined, (c) => SectionDashScreen(spec: b2cOrdersDashSpec), path: '/system/b2c/orders-analysis'),
         // السكنُ والقوائمُ المنسدلة — كما في «إعدادات القسم» على الويب.

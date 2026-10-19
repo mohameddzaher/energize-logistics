@@ -22,6 +22,7 @@ import {
   Receipt, Banknote, Layers, Link2,
   Camera, Loader2,
   CheckCircle2, Info,
+  KeySquare,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { downloadExportJob } from '@/lib/backgroundExport';
@@ -545,6 +546,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // «مناديب المبيعات» كانت تعرض مَن له تقريرُ طلبات، فلا يظهر فيها مشرفٌ ولا
     // ميكانيكيٌّ ولا عاملُ نظافة — وهم أحدَ عشرَ من مئةٍ وواحدٍ وستّين.
     { href: '/system/b2c/light-transport', label: L.b2cLightTransport, icon: <Truck className="w-5 h-5" />, roles: ['cfo', 'accounting_manager', 'accountant', 'super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
+    { href: '/system/b2c/user-rentals', label: lang === 'ar' ? 'تأجير اليوزرات' : 'User Rentals', icon: <KeySquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'cfo', 'accounting_manager', 'accountant'], section: 'B2C' },
     // مخزنُ القسم: أصنافُه ورصيدُه وحركاتُه — مفصولٌ عن مخزن النقل الثقيل في
     // القاعدة، وشاشتُه هي شاشتُه نفسُها (آليّةُ المخزن واحدة).
     { href: '/system/b2c/light-transport/store', label: lang === 'ar' ? 'مخزن النقل الخفيف' : 'Light Transport Store', icon: <Boxes className="w-5 h-5" />, roles: ['cfo', 'accounting_manager', 'accountant', 'super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },

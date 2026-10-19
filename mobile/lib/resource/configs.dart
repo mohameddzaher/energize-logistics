@@ -1683,6 +1683,54 @@ final customsContractsCfg = ResourceConfig(
 // فهي لمدير القطاع ونائبه ومدير النظام وأهل المال (`canAdd` — يطابق حارسَ
 // المسار `authorize.strict` في routes/lightTransport)، وبنموذجها الخاصّ: معها
 // مستنداتُ الموظّف، والنموذجُ العامّ لا يحمل ملفّات.
+/// تأجيرُ اليوزرات — يوزرٌ على أحد مشاريعنا مؤجَّرٌ لشركةٍ أو لشخص. مطابقٌ لصفحة
+/// الموقع `/system/b2c/user-rentals`: التاريخُ يكتبه الخادمُ يومَ التسجيل، والتأجيرُ
+/// يُنهى ولا يُمحى (والحذفُ لتصحيح خطأٍ — لإدارة القطاع، والخادمُ يحرسه).
+ResourceConfig ltUserRentalsCfg({required bool canWrite, required bool canDelete}) => ResourceConfig(
+  arTitle: 'تأجير اليوزرات', enTitle: 'User Rentals',
+  icon: Icons.key_outlined,
+  endpoint: '/api/light-transport/user-rentals', listKey: 'items',
+  liveEvent: 'lt:*',
+  canCreate: canWrite, canEdit: canWrite, canDelete: canDelete,
+  searchFields: const ['renterName', 'idNumber', 'userAccount', 'projectAr'],
+  filterField: 'projectAr',
+  sortFields: const [('startDate', 'تاريخ التأجير', 'Rented on')],
+  titleOf: (r) => _s(r, 'renterName'),
+  subtitleOf: (r) => [
+    _s(r, 'projectAr'),
+    _s(r, 'renterType') == 'company' ? tr('شركة', 'Company') : tr('شخص', 'Person'),
+    _s(r, 'idNumber'),
+    _s(r, 'startDate').split('-').reversed.join('/'),
+  ].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    _s(r, 'status') == 'active' ? (tr('مؤجَّر', 'Active'), T.success) : (tr('منتهٍ', 'Ended'), T.inkFaint),
+  ],
+  fields: [
+    FieldSpec('projectAr', 'المشروع', 'Project', type: FieldType.lookup, required: true,
+        lookupEndpoint: '/api/lookups?type=lt_project&active=true',
+        lookupListKey: 'items', lookupQuery: 'limit=200',
+        lookupLabel: (r) => _s(r, 'nameAr'), lookupValue: (r) => _s(r, 'nameAr')),
+    const FieldSpec('renterType', 'مؤجَّر لـ', 'Rented to', type: FieldType.select, required: true, options: [
+      ('person', 'شخص', 'Person'),
+      ('company', 'شركة', 'Company'),
+    ]),
+    const FieldSpec('renterName', 'اسم الشركة أو الشخص', 'Company or person name', required: true),
+    const FieldSpec('idNumber', 'رقم الإقامة', 'Iqama number', required: true),
+    const FieldSpec('phone', 'الجوال', 'Phone'),
+    const FieldSpec('userAccount', 'اليوزر (اسم الحساب أو رقمه)', 'User account'),
+    const FieldSpec('notes', 'ملاحظات', 'Notes'),
+  ],
+  rowActions: (r) => [
+    if (canWrite && _s(r, 'status') == 'active')
+      ResourceAction(
+        icon: Icons.block_outlined, ar: 'إنهاء التأجير', en: 'End rental', color: T.warn,
+        confirmAr: 'يُسجَّل منتهيًا اليوم ويخرج من أرقام اللوحة، ويبقى في السجلّ.',
+        confirmEn: 'It is recorded as ended today, leaves the dashboard counts and stays in the register.',
+        request: (r) => ('POST', '/api/light-transport/user-rentals/${_s(r, '_id')}/end', <String, dynamic>{}),
+      ),
+  ],
+);
+
 ResourceConfig lightTransportCfg({required bool canAdd}) => ResourceConfig(
   canCreate: canAdd,
   onCreate: showLtAddEmployee,

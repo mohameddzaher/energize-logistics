@@ -29,8 +29,11 @@ import {
 import Link from 'next/link';
 import { statusCls, type LTTotals, type LTOptions } from '@/lib/lightTransport';
 
+interface RepsProject { project: string; sponsored: number; freelance: number; users: number; noContract: number; total: number }
 interface Overview {
   employees: LTTotals;
+  /** إجماليُّ المناديب: كفالة + فري لانسر + يوزرات مؤجَّرة — ولكلّ مشروع. */
+  reps?: { total: number; sponsored: number; freelance: number; users: number; noContract: number; projects: RepsProject[] };
   vehicles: {
     total: number; totalAll: number; withRider: number; idle: number; onActiveOrder: number;
     byType: Record<string, number>; byProject: Record<string, number>; byServiceStatus: Record<string, number>;
@@ -225,6 +228,50 @@ export default function B2CDashboardPage() {
           hint={t('من الموارد البشرية', 'from HR')} />
         {/* ومَن انتهت خدمتُه لا يظهر في اللوحة أصلًا — مكانُه لوحةُ الموارد البشريّة. */}
       </div>
+
+      {/* ── إجماليُّ المناديب: على الكفالة + فري لانسر + يوزرات ────────────────
+          المناديبُ على رأس العمل بنوع عقدهم، ومعهم اليوزراتُ المؤجَّرة (صفحة
+          «تأجير اليوزرات»). ثمّ الثلاثةُ لكلّ مشروع. والضغطُ يفلتر اللوحة. */}
+      {d.reps && (
+        <>
+          <h2 className="text-[13px] font-extrabold text-slate-500 flex items-center gap-1.5 pt-1">
+            {t('إجمالي المناديب', 'Total reps')}
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <Card label={t('إجمالي المناديب', 'Total reps')} value={d.reps.total} onClick={() => setF({})} on={!active.length}
+              hint={d.reps.noContract ? t(`منهم ${d.reps.noContract} بلا نوع عقد`, `${d.reps.noContract} with no contract type`) : undefined} />
+            <Card label={t('على الكفالة', 'Sponsored')} value={d.reps.sponsored} accent="text-indigo-600"
+              onClick={() => toggle('contractType', 'كفالة')} on={f.contractType === 'كفالة'} />
+            <Card label={t('فري لانسر', 'Freelance')} value={d.reps.freelance} accent="text-teal-600"
+              onClick={() => toggle('contractType', 'فري لانسر')} on={f.contractType === 'فري لانسر'} />
+            <Card label={t('يوزرات', 'Rented users')} value={d.reps.users} accent="text-[#f37121]"
+              onClick={() => router.push('/system/b2c/user-rentals')} hint={t('من تأجير اليوزرات', 'from user rentals')} />
+          </div>
+          {d.reps.projects.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
+              {d.reps.projects.map((p) => (
+                <div key={p.project} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <button type="button" onClick={() => toggle('project', p.project)}
+                    className={`flex w-full items-center justify-between px-3.5 py-2 text-[13px] font-bold ${f.project === p.project ? 'bg-[#f37121] text-white' : 'bg-slate-900 text-white hover:bg-slate-800'}`}>
+                    <span>{p.project}</span><span className="tabular-nums text-[12px] opacity-80">{p.total}</span>
+                  </button>
+                  <div className="grid grid-cols-3 divide-x divide-slate-100 rtl:divide-x-reverse text-center">
+                    {([['sponsored', t('كفالة', 'Sponsored')], ['freelance', t('فري لانسر', 'Freelance')], ['users', t('يوزرات', 'Users')]] as const).map(([k, label]) => (
+                      <div key={k} className="px-2 py-2">
+                        <p className="text-[10.5px] text-slate-500">{label}</p>
+                        <p className="text-[17px] font-extrabold tabular-nums text-slate-900">{p[k]}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {p.noContract > 0 && (
+                    <p className="border-t border-slate-100 px-3 py-1 text-[10.5px] text-amber-700">{t(`${p.noContract} بلا نوع عقد`, `${p.noContract} with no contract type`)}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
 
       {/* ── المركبات ─────────────────────────────────────────────────────────
           تُعَدّ من سجلّ المركبات لا من صفوف الموظّفين: مركبةٌ بلا راكبٍ لا تظهر

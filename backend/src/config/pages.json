@@ -1142,6 +1142,12 @@
       "en": "Light-transport Employees"
     },
     {
+      "key": "/system/b2c/user-rentals",
+      "section": "B2C",
+      "ar": "تأجير اليوزرات",
+      "en": "User Rentals"
+    },
+    {
       "key": "/system/b2c/light-transport/store",
       "section": "B2C",
       "ar": "مخزن النقل الخفيف",

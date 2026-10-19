@@ -1544,6 +1544,13 @@
       ],
       "wildcard": false
     },
+    "/system/b2c/user-rentals": {
+      "apis": [
+        "/api/light-transport/user-rentals",
+        "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
     "/system/b2c/light-transport/store": {
       "apis": [
         "/api/light-transport/orders/options",

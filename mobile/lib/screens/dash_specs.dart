@@ -215,11 +215,16 @@ final shipmentOrdersDashSpec = DashSpec(
 /// زاويةٌ من القسم لا القسمُ كلُّه — فلا يُقرأ فيها كم موظّفًا في فرعٍ، ولا كم
 /// مركبةً واقفة، ولا مَن على كفالة أيّ سجلّ، ولا مَن بلا سكن. وذلك التقريرُ
 /// انتقل إلى «تحليل الأوردرات» وبقي كما هو.
-const b2cDashSpec = DashSpec(
+final b2cDashSpec = DashSpec(
   arTitle: 'لوحة قسم الأفراد', enTitle: 'B2C Board',
   endpoint: '/api/light-transport/overview', liveEvent: 'lt:*',
-  lists: [],
-  stats: [
+  lists: [
+    // لكلّ مشروع: كفالة · فري لانسر · يوزرات — كجدول الموقع.
+    DashList('المناديب حسب المشروع', 'Reps by project', 'reps.projects', (r) => '${_s(r, 'project')} — ${_n(r['total'])}',
+        subtitle: (r) => '${tr('كفالة', 'Sponsored')} ${_n(r['sponsored'])} · ${tr('فري لانسر', 'Freelance')} ${_n(r['freelance'])} · ${tr('يوزرات', 'Users')} ${_n(r['users'])}'
+            '${((r['noContract'] as num?) ?? 0) > 0 ? ' · ${tr('بلا نوع عقد', 'no contract')} ${_n(r['noContract'])}' : ''}'),
+  ],
+  stats: const [
     DashStat('الموظفون', 'Employees', 'employees.total', Icons.groups_outlined, T.navy),
     DashStat('مناديب', 'Reps', 'employees.reps', Icons.two_wheeler_outlined, T.info),
     DashStat('إداريون', 'Admin', 'employees.admins', Icons.badge_outlined, T.violet),
@@ -227,6 +232,11 @@ const b2cDashSpec = DashSpec(
     // على رأس العمل + في إجازة + موقوف = الموظفون — كالموقع.
     DashStat('في إجازة', 'On leave', 'employees.onLeave', Icons.beach_access_outlined, T.info),
     DashStat('موقوف', 'Suspended', 'employees.suspended', Icons.pause_circle_outline, T.warn),
+    // إجماليُّ المناديب = كفالة + فري لانسر + يوزرات مؤجَّرة — كالموقع.
+    DashStat('إجمالي المناديب', 'Total reps', 'reps.total', Icons.groups_2_outlined, T.navy),
+    DashStat('على الكفالة', 'Sponsored', 'reps.sponsored', Icons.verified_user_outlined, T.info),
+    DashStat('فري لانسر', 'Freelance', 'reps.freelance', Icons.work_outline, T.violet),
+    DashStat('يوزرات', 'Rented users', 'reps.users', Icons.key_outlined, T.orange),
     DashStat('مركبات', 'Vehicles', 'vehicles.total', Icons.directions_car_outlined, T.navy),
     DashStat('عليها راكب', 'With a rider', 'vehicles.withRider', Icons.person_pin_circle_outlined, T.success),
     // ما ينقص ويحتاج عملًا — لا ما هو قائم.

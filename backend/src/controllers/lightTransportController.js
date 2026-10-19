@@ -296,6 +296,54 @@ async function endedRowIds() {
   return rows.map((r) => r._id);
 }
 
+/**
+ * الكفالةُ والفري لانسر بالطيّ لا بالنصّ: الشيتُ يكتب «كفاله» و«كفالة» و«فري
+ * لانسر» و«فريلانسر». وما لا نوعَ عقدٍ مكتوبًا له ليس أيًّا منهما.
+ */
+const contractIs = (r, kind) => {
+  const v = foldAr(String(r.contractTypeAr || '')).replace(/\s+/g, '');
+  return kind === 'freelance' ? v.includes('فريلانسر') : (!!v && !v.includes('فريلانسر'));
+};
+
+/**
+ * ── «إجماليُّ المناديب»: كفالة + فري لانسر + يوزرات ─────────────────────────
+ * طلبُ صاحب الشركة (٢٠٢٦/١٠/١٩): المناديبُ على رأس العمل بنوع عقدهم، ومعهم
+ * اليوزراتُ المؤجَّرة (تأجير اليوزرات) — والكلُّ لكلّ مشروع. والمندوبُ الذي لا
+ * نوعَ عقدٍ مكتوبًا له يُعَدّ وحدَه («بلا نوع عقد») فلا يختلّ الجمع.
+ * المشروعُ يُجمَع بالطيّ: «هنجرستيشن» و«هنقرستيشن» مشروعٌ واحد.
+ */
+async function repsBreakdown(rows, projectFilter) {
+  const rentals = await require('./ltUserRentalController').activeByProject();
+  const key = (p) => foldAr(String(p || '')).replace(/\s+/g, '').replace(/ق/g, 'ج');
+  const by = new Map();
+  const slot = (name) => {
+    const k = key(name) || '—';
+    if (!by.has(k)) by.set(k, { project: S(name) || '(غير محدد)', sponsored: 0, freelance: 0, users: 0, noContract: 0 });
+    return by.get(k);
+  };
+  const reps = rows.filter((r) => r.staffKind === 'rep');
+  for (const r of reps) {
+    const o = slot(r.projectAr);
+    if (contractIs(r, 'freelance')) o.freelance += 1;
+    else if (contractIs(r, 'sponsored')) o.sponsored += 1;
+    else o.noContract += 1;
+  }
+  for (const [p, n] of Object.entries(rentals)) {
+    if (projectFilter && key(p) !== key(projectFilter)) continue;
+    slot(p).users += n;
+  }
+  const projects = [...by.values()]
+    .map((o) => ({ ...o, total: o.sponsored + o.freelance + o.users + o.noContract }))
+    .filter((o) => o.total > 0)
+    .sort((a, b) => b.total - a.total);
+  const sum = (k) => projects.reduce((n, o) => n + o[k], 0);
+  return {
+    sponsored: sum('sponsored'), freelance: sum('freelance'), users: sum('users'), noContract: sum('noContract'),
+    total: sum('total'),
+    projects,
+  };
+}
+
 /** الأعدادُ التي تُقرأ في الكاردات — محسوبةٌ على ما بعد الفلترة. */
 const totalsOf = (allRows, { includeEnded = false } = {}) => {
   // من فلتر على «إنهاء خدمة» صراحةً سأل عنهم — فيُعَدّون له.
@@ -320,10 +368,6 @@ const totalsOf = (allRows, { includeEnded = false } = {}) => {
    * والمطابقةُ بالطيّ لا بالنصّ: الشيتُ يكتب «كفاله» و«كفالة» و«فري لانسر»
    * و«فريلانسر» — وأربعةُ أشكالٍ لمعنيَين تُنتِج كارتًا يقرأ صفرًا.
    */
-  const contractIs = (r, kind) => {
-    const v = foldAr(String(r.contractTypeAr || '')).replace(/\s+/g, '');
-    return kind === 'freelance' ? v.includes('فريلانسر') : (!!v && !v.includes('فريلانسر'));
-  };
   const docState = (r, key, want) => {
     const st = r[key]?.state;
     return want === 'gap' ? ['expired', 'critical'].includes(st) : st === want;
@@ -524,6 +568,7 @@ exports.overview = async (req, res) => {
 
     res.json({
       employees: totalsOf(listedRows, { includeEnded }),
+      reps: await repsBreakdown(rows, S(q.project)),
       vehicles: {
         total: vShown.length,
         // وإجماليُّ القطاع يبقى معروضًا كي يُعرَف أنّ المعروضَ جزءٌ منه.

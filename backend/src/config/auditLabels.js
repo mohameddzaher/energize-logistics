@@ -24,6 +24,7 @@ const ACTION_AR = {
   lt_custody_update: 'تعديل قيد في عهدة النقل الخفيف',
   lt_custody_entry: 'قيد في عهدة النقل الخفيف', lt_custody_delete: 'حذف قيد من عهدة النقل الخفيف',
   ht_custody_update: 'تعديل قيد في عهدة النقل الثقيل',
+  lt_user_rental_create: 'تأجير يوزر', lt_user_rental_update: 'تعديل تأجير يوزر', lt_user_rental_end: 'إنهاء تأجير يوزر', lt_user_rental_delete: 'حذف تأجير يوزر',
   ht_custody_entry: 'قيد في عهدة النقل الثقيل', ht_custody_delete: 'حذف قيد من عهدة النقل الثقيل',
   api_create: 'إضافة / تنفيذ إجراء', api_update: 'تعديل', api_delete: 'حذف',
   // حركاتُ أصول النقل الثقيل (الكاوتش والتيدرات والسطحات).
@@ -194,6 +195,7 @@ const ENTITY_LABELS = {
   WorkshopPurchaseRequest: ['طلب شراء ورشة', 'Workshop purchase request'], WorkshopTask: ['مهمة ورشة', 'Workshop task'],
   LtCustodyEntry: ['عهدة النقل الخفيف', 'Light transport custody'],
   HtCustodyEntry: ['عهدة النقل الثقيل', 'Heavy transport custody'],
+  LtUserRental: ['تأجير اليوزرات', 'User rentals'],
   Ls2StoreMovement: ['حركة مستودع', 'Store movement'], Ls2StoreItem: ['صنف مخزن', 'Store item'], Ls2Supplier: ['مورد', 'Supplier'], Ls2Asset: ['كاوتش / تيدر / سطحة', 'Tyre / trailer / flatbed'],
   WalletTransaction: ['حركة عهدة', 'Wallet transaction'], DailyWallet: ['يومية عهدة', 'Wallet day'],
   CustomsClearance: ['معاملة تخليص', 'Customs clearance'], CustomsParty: ['طرف في التخليص', 'Customs party'], CustomsContract: ['عقد تخليص', 'Customs contract'],

@@ -144,6 +144,9 @@ router.get('/leaves', authorize(...STAFF), hr.listLeaves);
 // تقييدُ إجازةٍ وقعت فعلًا — قبل المسار ذي المعامل وإلّا ابتلعه `/:id`.
 router.post('/leaves/backdated', authorize(...STAFF), hr.createBackdatedLeave);
 router.get('/leaves/:id', hr.getLeave); // single leave + signatures (for the PDF); access checked in controller
+// تصحيحُ السجلّ من الموارد البشريّة: تعديلُ التاريخ/النوع/السبب، أو حذفُ الإجازة.
+router.put('/leaves/:id', authorize(...STAFF), hr.updateLeave);
+router.delete('/leaves/:id', authorize(...STAFF), hr.deleteLeave);
 
 router.get('/requests', authorize(...STAFF), hr.listRequests);
 router.patch('/requests/:id/status', authorize(...STAFF), hr.updateRequestStatus);

@@ -1658,6 +1658,119 @@ exports.createBackdatedLeave = async (req, res) => {
   }
 };
 
+/**
+ * تعديلُ إجازة موظّفٍ وحذفُها — من «طلبات الإجازات» للموارد البشريّة.
+ *
+ * صاحبُ الطلب لا يعدّل بعد أوّل إجراء (updateMyLeave). أمّا الموارد البشريّة
+ * فهي من تصحّح السجلّ: تاريخٌ كُتب خطأً، نوعٌ اختير غلطًا، أو قيدٌ رجعيٌّ
+ * مكرَّر. الحالةُ ومحطّةُ السلسلة لا تُمَسّان هنا — التعديلُ تصحيحُ بيانات لا
+ * قرار؛ والرصيدُ يُحسب من الإجازات المعتمدة نفسِها فيتبع التعديلَ وحده.
+ */
+exports.updateLeave = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const leave = await LeaveRequest.findById(req.params.id);
+    if (!leave) return res.status(404).json({ message: 'الطلب غير موجود' });
+
+    const before = { leaveType: String(leave.leaveType), startDate: leave.startDate, endDate: leave.endDate, days: leave.days, reason: leave.reason };
+    const { leaveType, startDate, endDate, reason } = req.body;
+    const oldType = await LeaveType.findById(leave.leaveType).select('affectsBalance').lean();
+    let newType = oldType;
+    if (leaveType && String(leaveType) !== String(leave.leaveType)) {
+      if (!mongoose.isValidObjectId(leaveType)) return res.status(400).json({ message: 'نوع إجازة غير صالح' });
+      newType = await LeaveType.findById(leaveType).lean();
+      if (!newType) return res.status(400).json({ message: 'نوع إجازة غير صالح' });
+      leave.leaveType = leaveType;
+      leave.leaveTypeCode = newType.code;
+    }
+    if (startDate) leave.startDate = startDate;
+    if (endDate) leave.endDate = endDate;
+    if (String(leave.endDate) < String(leave.startDate)) return res.status(400).json({ message: 'تاريخ النهاية قبل تاريخ البداية' });
+    const days = leaveDays(leave.startDate, leave.endDate);
+    if (!days || days < 1) return res.status(400).json({ message: 'مدّة الإجازة غير صالحة' });
+    if (reason !== undefined) leave.reason = String(reason || '').trim();
+
+    // لا تُقيَّد إجازتان على نفس الأيّام — والطلبُ نفسُه لا يتداخل مع نفسه.
+    if (['approved', ...chain.OPEN_STATUSES].includes(leave.status)) {
+      const clash = await LeaveRequest.findOne({
+        _id: { $ne: leave._id }, employee: leave.employee,
+        status: { $in: ['approved', ...chain.OPEN_STATUSES] },
+        startDate: { $lte: leave.endDate }, endDate: { $gte: leave.startDate },
+      }).select('startDate endDate').lean();
+      if (clash) return res.status(400).json({ message: `تتداخل مع إجازةٍ مسجّلة (${clash.startDate} → ${clash.endDate})` });
+    }
+
+    // اللقطةُ تبقى «ما كان عليه الحال حين طُلبت»، ويُصحَّح منها ما يخصّ المدّة.
+    const oldDays = leave.days || 0;
+    leave.days = days;
+    if (leave.balanceSnapshot && typeof leave.balanceSnapshot.remainingAfter === 'number') {
+      const oldCut = (oldType?.affectsBalance ?? true) ? oldDays : 0;
+      const newCut = (newType?.affectsBalance ?? true) ? days : 0;
+      leave.balanceSnapshot.requested = days;
+      leave.balanceSnapshot.remainingAfter = Math.round((leave.balanceSnapshot.remainingAfter + oldCut - newCut) * 100) / 100;
+    }
+
+    await leave.save();
+    await logAudit({
+      user: req.user._id, action: 'update_leave', entity: 'LeaveRequest', entityId: leave._id,
+      changes: { before, after: { leaveType: String(leave.leaveType), startDate: leave.startDate, endDate: leave.endDate, days: leave.days, reason: leave.reason } },
+      ipAddress: req.ip,
+    });
+    if (leave.requester && String(leave.requester) !== String(req.user._id)) {
+      await notifyUser(leave.requester, {
+        title: 'عُدِّلت إجازتك',
+        message: `عدّلت الموارد البشريّة إجازتك إلى ${leave.days} يوم (${leave.startDate} → ${leave.endDate}).`,
+        relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave',
+      });
+    }
+    if (leave.manager) { try { emitToUser(String(leave.manager), 'hr:leave', { id: String(leave._id) }); } catch (e) {} }
+    try { emitToAll('hr:leave', { id: String(leave._id) }); } catch (e) {}
+
+    const populated = await populateLeave(LeaveRequest.findById(leave._id)).select(NO_SIG).lean();
+    res.json({ leave: populated });
+  } catch (error) {
+    console.error('updateLeave error:', error);
+    return sendMongooseError(res, error, 'تعذّر تعديل الإجازة');
+  }
+};
+
+exports.deleteLeave = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const leave = await LeaveRequest.findById(req.params.id);
+    if (!leave) return res.status(404).json({ message: 'الطلب غير موجود' });
+    const emp = await Employee.findById(leave.employee).select('firstName lastName arabicName').lean();
+    const files = [
+      ...(leave.attachments || []),
+      ...['managerDecision', 'hrDecision', 'financeDecision', 'executiveDecision'].flatMap((k) => leave[k]?.attachments || []),
+      ...(leave.thread || []).flatMap((m) => m.attachments || []),
+    ].map((a) => a.fileUrl).filter(Boolean);
+    const { requester, manager, startDate, endDate, days, status } = leave;
+
+    await leave.deleteOne();
+    for (const url of files) { try { deleteStoredFile(url); } catch (e) {} }
+
+    await logAudit({
+      user: req.user._id, action: 'delete_leave', entity: 'LeaveRequest', entityId: leave._id,
+      changes: { before: { employee: emp ? (emp.arabicName || `${emp.firstName || ''} ${emp.lastName || ''}`.trim()) : String(leave.employee), startDate, endDate, days, status } },
+      ipAddress: req.ip,
+    });
+    if (requester && String(requester) !== String(req.user._id)) {
+      await notifyUser(requester, {
+        title: 'حُذفت إجازة من ملفّك',
+        message: `حذفت الموارد البشريّة إجازة ${days} يوم (${startDate} → ${endDate}).`,
+        relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave',
+      });
+    }
+    if (manager) { try { emitToUser(String(manager), 'hr:leave', {}); } catch (e) {} }
+    try { emitToAll('hr:leave', {}); } catch (e) {}
+    res.json({ message: 'حُذفت الإجازة' });
+  } catch (error) {
+    console.error('deleteLeave error:', error);
+    res.status(500).json({ message: 'تعذّر حذف الإجازة' });
+  }
+};
+
 exports.decideLeave = async (req, res) => {
   try {
     const { decision, note, signatureId } = req.body;

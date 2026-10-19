@@ -6,7 +6,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
-import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History, RefreshCw } from 'lucide-react';
+import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History, RefreshCw, Pencil, Trash2 } from 'lucide-react';
 import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, leaveTypeLabel } from '@/lib/hr';
 import DatePair from '@/components/hr/DatePair';
 import { bothDates, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
@@ -25,7 +25,7 @@ const BG = 'bg-white group-hover:bg-slate-100';
 export default function HRLeavesPage() {
   // الإجراءات، الرقم الوظيفيّ، الاسم، الهويّة — ثابتةٌ على اليمين.
   const pin = usePinnedColumns(4);
-  const { notify } = useDialog();
+  const { notify, confirm } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -59,6 +59,10 @@ export default function HRLeavesPage() {
   const [mySigs, setMySigs] = useState<Signature[]>([]);
   const [signWith, setSignWith] = useState('');
   const [pdfBusy, setPdfBusy] = useState('');
+  // ── تعديلُ إجازةٍ وحذفُها — تصحيحُ السجلّ لا قرارٌ فيه ───────────────────
+  const [editing, setEditing] = useState<LeaveRequest | null>(null);
+  const [editForm, setEditForm] = useState<any>({ leaveType: '', startDate: '', endDate: '', reason: '' });
+  const [editSaving, setEditSaving] = useState(false);
   const t = (en: string, a: string) => (ar ? a : en);
 
   const load = useCallback(async () => {
@@ -102,6 +106,59 @@ export default function HRLeavesPage() {
     if (!showBack || employees.length) return;
     loadPickers();
   }, [showBack, employees.length, loadPickers]);
+  // نافذةُ التعديل تحتاج الأنواعَ وحدَها، لا قائمةَ الموظّفين.
+  useEffect(() => {
+    if (!editing || types.length) return;
+    api.get<{ leaveTypes: any[] }>('/api/hr/leave-types').then((d) => setTypes(d.leaveTypes || []))
+      .catch((e: any) => notify(e?.message || (ar ? 'تعذّر تحميل أنواع الإجازات' : 'Could not load the leave types'), 'error'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, types.length]);
+
+  const openEdit = (l: LeaveRequest) => {
+    setEditing(l);
+    setEditForm({
+      leaveType: (l.leaveType as any)?._id || l.leaveType || '',
+      startDate: String(l.startDate || '').slice(0, 10),
+      endDate: String(l.endDate || '').slice(0, 10),
+      reason: l.reason || '',
+    });
+  };
+  const editDays = (() => {
+    const { startDate, endDate } = editForm;
+    if (!startDate || !endDate || endDate < startDate) return 0;
+    return Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1;
+  })();
+  const saveEdit = async () => {
+    if (!editing) return;
+    if (!editForm.leaveType || !editDays) {
+      notify(ar ? 'اختر نوع الإجازة وتاريخين صحيحين' : 'Pick the leave type and valid dates', 'error');
+      return;
+    }
+    setEditSaving(true);
+    try {
+      await api.put(`/api/hr/leaves/${editing._id}`, editForm);
+      notify(ar ? 'عُدِّلت الإجازة' : 'Leave updated', 'success');
+      setEditing(null);
+      load();
+    } catch (e: any) { notify(e?.message || (ar ? 'تعذّر التعديل' : 'Could not update'), 'error'); }
+    setEditSaving(false);
+  };
+  const removeLeave = async (l: LeaveRequest) => {
+    const ok = await confirm({
+      title: ar ? 'حذف الإجازة؟' : 'Delete this leave?',
+      message: ar
+        ? `تُحذف إجازة ${empName(l.employee, lang)} (${l.days} يوم، ${String(l.startDate).slice(0, 10)} → ${String(l.endDate).slice(0, 10)}) نهائيًّا، ويعود ما خُصم بها إلى رصيده.`
+        : `${empName(l.employee, lang)}'s leave (${l.days} day(s)) is deleted permanently and any deducted days return to the balance.`,
+      confirmLabel: ar ? 'حذف' : 'Delete',
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/api/hr/leaves/${l._id}`);
+      notify(ar ? 'حُذفت الإجازة' : 'Leave deleted', 'success');
+      if (review?._id === l._id) setReview(null);
+      load();
+    } catch (e: any) { notify(e?.message || (ar ? 'تعذّر الحذف' : 'Could not delete'), 'error'); }
+  };
 
   const days = (() => {
     const { startDate, endDate } = backForm;
@@ -310,7 +367,7 @@ export default function HRLeavesPage() {
       <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-            <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>PDF</th>
+            <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الإجراءات' : 'Actions'}</th>
             <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الرقم الوظيفي' : 'Emp. no.'}</th>
             <th {...pin.th(2, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colEmployee}</th>
             <th {...pin.th(3, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الهوية / الإقامة' : 'ID / Iqama'}</th>
@@ -335,9 +392,17 @@ export default function HRLeavesPage() {
               return (
                 <tr key={l._id} className="group border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => openReview(l)}>
                   <td {...pin.td(0, 'px-4 py-3', BG)}>
-                    <button type="button" title={t('Download PDF', 'تحميل PDF')} onClick={(e) => { e.stopPropagation(); downloadPdf(l._id); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-slate-600 text-xs">
-                      {pdfBusy === l._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} PDF
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button type="button" title={t('Download PDF', 'تحميل PDF')} onClick={(e) => { e.stopPropagation(); downloadPdf(l._id); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-slate-600 text-xs">
+                        {pdfBusy === l._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} PDF
+                      </button>
+                      <button type="button" title={t('Edit', 'تعديل')} onClick={(e) => { e.stopPropagation(); openEdit(l); }} className="p-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-600">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button type="button" title={t('Delete', 'حذف')} onClick={(e) => { e.stopPropagation(); removeLeave(l); }} className="p-1.5 rounded-lg bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </td>
                   <td {...pin.td(1, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{(l.employee as any)?.employeeNumber || '—'}</td>
                   <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-medium whitespace-nowrap', BG)}>
@@ -372,6 +437,49 @@ export default function HRLeavesPage() {
           </tbody>
         </table>
       </ScrollX>
+
+      <Modal open={!!editing} onClose={() => setEditing(null)}
+        title={ar ? 'تعديل الإجازة' : 'Edit leave'}
+        footer={<>
+          <button type="button" onClick={() => setEditing(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+          <PrimaryButton onClick={saveEdit} disabled={editSaving || !editDays}>
+            {editSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {ar ? 'حفظ' : 'Save'}
+          </PrimaryButton>
+        </>}>
+        {editing && (
+          <div className="space-y-3 text-sm">
+            <p className="text-slate-900 font-semibold">{empName(editing.employee, lang)}</p>
+            <p className="text-slate-500 text-xs">
+              {ar
+                ? 'تصحيحٌ للسجلّ: الحالة ومراحل الموافقة لا تتغيّر، والرصيد يُعاد حسابه تلقائيًّا.'
+                : 'A record correction: status and approvals stay as they are; the balance is recalculated.'}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <label className="text-slate-500 text-xs mb-1 block">{ar ? 'نوع الإجازة' : 'Leave type'}</label>
+                <SearchableSelect
+                  value={editForm.leaveType}
+                  onChange={(v) => setEditForm((f: any) => ({ ...f, leaveType: v }))}
+                  placeholder={ar ? '— اختر نوع الإجازة —' : '— pick the leave type —'}
+                  searchPlaceholder={ar ? 'ابحث…' : 'search…'}
+                  options={types.map((ty) => ({ value: ty._id, label: ar ? ty.nameAr : ty.nameEn }))}
+                />
+              </div>
+              <DatePair label={FROM_LABEL} ar={ar} inputClassName="[color-scheme:light]"
+                value={editForm.startDate} onChange={(v) => setEditForm((f: any) => ({ ...f, startDate: v }))} />
+              <DatePair label={TO_LABEL} ar={ar} inputClassName="[color-scheme:light]" min={editForm.startDate || undefined}
+                value={editForm.endDate} onChange={(v) => setEditForm((f: any) => ({ ...f, endDate: v }))} />
+            </div>
+            {!!editDays && (
+              <p className="text-slate-900 text-sm font-semibold">{ar ? `المدّة: ${editDays} يوم` : `Duration: ${editDays} day(s)`}</p>
+            )}
+            <div>
+              <label className="text-slate-500 text-xs mb-1 block">{ar ? 'السبب / ملاحظة' : 'Reason / note'}</label>
+              <TextArea rows={2} value={editForm.reason} onChange={(e: any) => setEditForm((f: any) => ({ ...f, reason: e.target.value }))} />
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={!!review} onClose={() => setReview(null)} title={tx.reviewTitle}
         footer={actionable(review) ? <div className="flex flex-wrap items-center justify-end gap-2">
@@ -461,9 +569,15 @@ export default function HRLeavesPage() {
                 </div>
               </div>
             )}
-            <div className="border-t border-slate-200 pt-3">
+            <div className="border-t border-slate-200 pt-3 flex flex-wrap gap-2">
               <button type="button" onClick={() => downloadPdf(review._id)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
                 {pdfBusy === review._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />} {t('Download PDF sheet', 'تحميل ورقة الإجازة PDF')}
+              </button>
+              <button type="button" onClick={() => { const l = review; setReview(null); openEdit(l); }} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-700 text-sm">
+                <Pencil className="w-4 h-4" /> {t('Edit', 'تعديل')}
+              </button>
+              <button type="button" onClick={() => removeLeave(review)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 text-sm">
+                <Trash2 className="w-4 h-4" /> {t('Delete', 'حذف')}
               </button>
             </div>
           </div>

@@ -297,6 +297,124 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
     }
   }
 
+  /// تعديلُ إجازةٍ — تصحيحٌ للسجلّ: النوع والتاريخان والسبب، والحالة كما هي.
+  Future<void> _edit(Map<String, dynamic> l) async {
+    List<Map<String, dynamic>> types = [];
+    try {
+      final b = await Api.instance.get('/api/hr/leave-types');
+      types = List<Map<String, dynamic>>.from(((b as Map)['leaveTypes'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      return;
+    }
+    if (!mounted) return;
+    String? typeId = l['leaveType'] is Map ? l['leaveType']['_id']?.toString() : l['leaveType']?.toString();
+    if (!types.any((t) => t['_id'] == typeId)) typeId = null;
+    DateTime? start = DateTime.tryParse((l['startDate'] ?? '').toString());
+    DateTime? end = DateTime.tryParse((l['endDate'] ?? '').toString());
+    final reason = TextEditingController(text: (l['reason'] ?? '').toString());
+    int days() => (start == null || end == null || end!.isBefore(start!)) ? 0 : end!.difference(start!).inDays + 1;
+    String fmt(DateTime? d) => d == null ? '—' : '${d.day}/${d.month}/${d.year}';
+
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => StatefulBuilder(builder: (c, setSt) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(tr('تعديل الإجازة', 'Edit leave'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              const SizedBox(height: 4),
+              Text(tr('تصحيحٌ للسجلّ: الحالة ومراحل الموافقة لا تتغيّر، والرصيد يُعاد حسابه تلقائيًّا.',
+                      'A record correction: status and approvals stay; the balance is recalculated.'),
+                  style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: typeId,
+                isExpanded: true,
+                decoration: InputDecoration(labelText: tr('نوع الإجازة', 'Leave type')),
+                items: types.map((t) => DropdownMenuItem(
+                  value: t['_id'] as String,
+                  child: Text(tr('${t['nameAr']}', '${t['nameEn']}'), overflow: TextOverflow.ellipsis),
+                )).toList(),
+                onChanged: (v) => setSt(() => typeId = v),
+              ),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(child: OutlinedButton(
+                  onPressed: () async {
+                    final d = await showDatePicker(context: c, initialDate: start ?? DateTime.now(),
+                        firstDate: DateTime(DateTime.now().year - 5), lastDate: DateTime(DateTime.now().year + 2));
+                    if (d != null) setSt(() { start = d; if (end != null && end!.isBefore(d)) end = d; });
+                  },
+                  child: Text('${tr('من', 'From')}: ${fmt(start)}${start == null ? '' : '\n${hijriHint(start, ar: Lang.instance.ar)}'}', textAlign: TextAlign.center),
+                )),
+                const SizedBox(width: 8),
+                Expanded(child: OutlinedButton(
+                  onPressed: start == null ? null : () async {
+                    final d = await showDatePicker(context: c, initialDate: (end != null && !end!.isBefore(start!)) ? end! : start!,
+                        firstDate: start!, lastDate: DateTime(DateTime.now().year + 2));
+                    if (d != null) setSt(() => end = d);
+                  },
+                  child: Text('${tr('إلى', 'To')}: ${fmt(end)}${end == null ? '' : '\n${hijriHint(end, ar: Lang.instance.ar)}'}', textAlign: TextAlign.center),
+                )),
+              ]),
+              if (days() > 0) ...[
+                const SizedBox(height: 8),
+                Text('${tr('المدّة', 'Duration')}: ${days()} ${tr('يوم', 'day(s)')}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+              ],
+              const SizedBox(height: 10),
+              TextField(controller: reason, maxLines: 2, decoration: InputDecoration(labelText: tr('السبب / ملاحظة', 'Reason / note'))),
+              const SizedBox(height: 12),
+              SizedBox(width: double.infinity, child: FilledButton(
+                onPressed: (typeId == null || days() == 0) ? null : () => Navigator.pop(c, true),
+                child: Text(tr('حفظ', 'Save')),
+              )),
+            ]),
+          ),
+        ),
+      )),
+    );
+    if (ok != true) return;
+    String iso(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    try {
+      await Api.instance.put('/api/hr/leaves/${l['_id']}', {
+        'leaveType': typeId,
+        'startDate': iso(start!),
+        'endDate': iso(end!),
+        'reason': reason.text.trim(),
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('عُدِّلت الإجازة', 'Leave updated'))));
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  Future<void> _delete(Map<String, dynamic> l, String emp) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('حذف الإجازة؟', 'Delete this leave?')),
+        content: Text(tr('تُحذف إجازة $emp (${l['days'] ?? '—'} يوم) نهائيًّا، ويعود ما خُصم بها إلى رصيده.',
+            "$emp's leave (${l['days'] ?? '—'} day(s)) is deleted permanently; deducted days return to the balance.")),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.delete('/api/hr/leaves/${l['_id']}');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('حُذفت الإجازة', 'Leave deleted'))));
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
@@ -365,6 +483,18 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                                       Row(children: [
                                         Expanded(child: Text(emp.toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
                                         Chip2(tr(st.$1, st.$2), st.$3),
+                                        IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          tooltip: tr('تعديل', 'Edit'),
+                                          icon: const Icon(Icons.edit_outlined, size: 18, color: T.inkSoft),
+                                          onPressed: () => _edit(l),
+                                        ),
+                                        IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          tooltip: tr('حذف', 'Delete'),
+                                          icon: const Icon(Icons.delete_outline, size: 18, color: T.danger),
+                                          onPressed: () => _delete(l, emp.toString()),
+                                        ),
                                       ]),
                                       const SizedBox(height: 4),
                                       Text('$type · ${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',

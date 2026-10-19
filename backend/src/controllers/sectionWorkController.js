@@ -177,11 +177,13 @@ const complaints = makeHandlers(SectionComplaint, 'subject', ['subject', 'descri
  */
 async function assignees(req, res) {
   try {
-    const users = await User.find({ isActive: true, role: { $ne: 'client' } })
+    // المؤرشَفُ لا يُختار ولا يُسنَد إليه — كأنّه حُذف.
+    const archSets = await require('../utils/endedStaff').endedStaff();
+    const users = (await User.find({ isActive: true, role: { $ne: 'client' } })
       .select('firstName lastName role')
       .sort({ firstName: 1 })
       .limit(500)
-      .lean();
+      .lean()).filter((u) => !require('../utils/endedStaff').userArchived(archSets, u));
 
     const sectionKey = SECTION_KEY_OF[String(req.query.section || '')];
     if (!sectionKey) return res.json({ users });

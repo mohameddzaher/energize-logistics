@@ -16,6 +16,9 @@ const CrmActivity = require('../models/CrmActivity');
 const CrmDeal = require('../models/CrmDeal');
 const { nameKey } = require('../utils/nameKey');
 const { endedStaff, idNumberEnded } = require('../utils/endedStaff');
+// المؤرشَفُ (انتهت خدمتُه وخرج من النظام) يختفي من كلّ قائمةٍ هنا كأنّه حُذف — برقم إقامته.
+const { notArchivedIdNumber } = require('../utils/archivedHidden');
+const noArchDrv = async () => notArchivedIdNumber(await endedStaff(), 'iqama');
 // Live GPS → "السيارة داخل نطاق جدة الآن" (and: reached its trip's destination).
 const { cityForPoint, sameCity } = require('../utils/saCities');
 
@@ -779,7 +782,7 @@ exports.listDrivers = async (req, res) => {
         { vehicle: { $exists: false } },
       ];
     }
-    const drivers = await FleetDriver.find(dFilter)
+    const drivers = await FleetDriver.find({ ...dFilter, ...(await noArchDrv()) })
       .populate('vehicle', 'plate trailerType gpsType')
       .sort({ name: 1 })
       .limit(1000)
@@ -891,7 +894,7 @@ exports.listVehicles = async (req, res) => {
     if (scope) vFilter._id = { $in: scope };
     const [vehicles, drivers] = await Promise.all([
       FleetVehicle.find(vFilter).sort({ plate: 1 }).limit(500).lean(),
-      FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null } })
+      FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null }, ...(await noArchDrv()) })
         .select('name phone working vehicle seat').sort({ seat: 1, name: 1 }).lean(),
     ]);
     // ── والترتيبُ هو الرتبة ────────────────────────────────────────────────
@@ -1446,7 +1449,7 @@ exports.getBoard = async (req, res) => {
         .sort({ createdAt: -1 })
         .select('vehicle status fromCity toCity expectedArrival loadDate waybillNumber customerName driverName lastContactAt')
         .lean(),
-      FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null } }).select('name vehicle working').lean(),
+      FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null }, ...(await noArchDrv()) }).select('name vehicle working').lean(),
       Ls2Vehicle.find({}).select('plate name maintenanceStatus kmToService nextServiceName odometerKm position status').lean(),
     ]);
 
@@ -1559,8 +1562,10 @@ exports.getBoard = async (req, res) => {
 // The people the manager can assign trucks to.
 exports.listSupervisors = async (req, res) => {
   try {
-    const users = await User.find({ role: { $in: ['fleet_supervisor', 'fleet_manager'] }, isActive: { $ne: false } })
-      .select('firstName lastName email role').lean();
+    // المؤرشَفُ لا يُختار ولا يُسنَد إليه — كأنّه حُذف.
+    const archSets = await endedStaff();
+    const users = (await User.find({ role: { $in: ['fleet_supervisor', 'fleet_manager'] }, isActive: { $ne: false } })
+      .select('firstName lastName email role').lean()).filter((u) => !require('../utils/endedStaff').userArchived(archSets, u));
     users.sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
     res.json({ users });
   } catch (error) {
@@ -2488,7 +2493,7 @@ exports.getArrivals = async (req, res) => {
         { $sort: { createdAt: -1 } },
         { $group: { _id: '$vehicle', last: { $first: { waybillNumber: '$waybillNumber', toCity: '$toCity', status: '$status', customerName: '$customerName', at: EFFECTIVE_DATE_EXPR } } } },
       ]) : [],
-      idleIds.length ? FleetDriver.find({ vehicle: { $in: idleIds }, isActive: { $ne: false } }).select('name phone working vehicle').lean() : [],
+      idleIds.length ? FleetDriver.find({ vehicle: { $in: idleIds }, isActive: { $ne: false }, ...(await noArchDrv()) }).select('name phone working vehicle').lean() : [],
     ]);
     const lastByVehicle = new Map(lastTrips.map((r) => [String(r._id), r.last]));
     const drvByVehicle = new Map();
@@ -2617,7 +2622,7 @@ exports.getVehicleAnalytics = async (req, res) => {
         .select('waybillNumber customer customerName customerType driverName secondDriverName supervisorName supervisor fromCity toCity loadType price fullRent driverExpense status loadDate expectedArrival createdAt')
         .limit(1000).lean(),
       getFleetConfig(),
-      FleetDriver.find({ vehicle: vehicle._id, isActive: { $ne: false } }).select('name phone working offReason').lean(),
+      FleetDriver.find({ vehicle: vehicle._id, isActive: { $ne: false }, ...(await noArchDrv()) }).select('name phone working offReason').lean(),
       FleetShipment.findOne({ vehicle: vehicle._id, status: { $in: ARRIVAL_ACTIVE } })
         .sort({ createdAt: -1 })
         .select('waybillNumber status fromCity toCity expectedArrival customerName loadDate').lean(),
@@ -3204,7 +3209,7 @@ exports.getFleetHealth = async (req, res) => {
           'tires tireCount maxTireTempC minTireTempC maxTirePressurePsi minTirePressurePsi tireFaults tiresCarriedOver',
           'maintenanceStatus kmToService nextServiceName lastServiceKm',
         ].join(' ')).lean(),
-      FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null } })
+      FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null }, ...(await noArchDrv()) })
         .select('name phone working vehicle').lean(),
       // المفتوحةُ وحدَها: التنبيهُ المُغلَق عملٌ انتهى، وعرضُه يخلط ما يجب فعلُه
       // اليومَ بما فُعل الأسبوعَ الماضي.

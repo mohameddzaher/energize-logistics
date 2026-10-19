@@ -597,8 +597,13 @@ async function driverOptions(q) {
   const [units, assigns, fleetDrivers] = await Promise.all([
     Ls2Vehicle.find({ driver: { $nin: [null, ''] } }).select('driver plate').lean(),
     Ls2DriverAssignment.find({}).select('driver').lean(),
-    FleetDriver.find(q ? { name: nameRegex(q) } : {}).select('name phone vehicle working').populate('vehicle', 'plate').lean(),
+    FleetDriver.find(q ? { name: nameRegex(q) } : {}).select('name phone vehicle working iqama').populate('vehicle', 'plate').lean(),
   ]);
+  // السائقُ المؤرشَف لا يُختار موضوعًا لتقرير — كأنّه حُذف. يُعرَف برقم إقامته في
+  // سجلّ الأسطول، ويسقط اسمُه معه من كلّ مصدر (أسماءُ الشاحنات نصٌّ بلا رقم).
+  const archSets = await require('../utils/endedStaff').endedStaff();
+  const { idNumberArchived } = require('../utils/endedStaff');
+  const goneKeys = new Set(fleetDrivers.filter((d) => idNumberArchived(archSets, d.iqama)).map((d) => nameKey(d.name)).filter(Boolean));
   const byKey = new Map();
   const add = (name, detail) => {
     const k = nameKey(name);
@@ -609,7 +614,7 @@ async function driverOptions(q) {
   for (const u of units) add(u.driver, u.plate);
   for (const a of assigns) add(a.driver, '');
   for (const d of fleetDrivers) add(d.name, [d.vehicle?.plate, d.phone].filter(Boolean).join(' · '));
-  let out = [...byKey.values()];
+  let out = [...byKey.values()].filter((o) => !goneKeys.has(nameKey(o.name)));
   if (q) {
     const k = nameKey(q);
     out = out.filter((o) => nameKey(o.name).includes(k));
@@ -1433,7 +1438,8 @@ async function employeeOptions(q) {
   const filter = q
     ? { $or: [{ firstName: nameRegex(q) }, { lastName: nameRegex(q) }, { arabicName: nameRegex(q) }, { employeeNumber: nameRegex(q) }, { iqamaNumber: nameRegex(q) }] }
     : {};
-  const rows = await Employee.find(filter)
+  // المؤرشَفُ لا يُختار موضوعًا لتقرير — كأنّه حُذف.
+  const rows = await Employee.find(require('../utils/hrEngagement').withoutArchived(filter))
     .select('firstName lastName arabicName employeeNumber jobTitle department employmentStatus').limit(500).lean();
   return rows.map((e) => ({
     id: String(e._id),
@@ -2560,8 +2566,10 @@ async function buildCarrierReport(id, query, lang) {
 // مندوبُ النقل الخفيف — ملفُّه ومركبتُه وتفقّداتُه
 async function riderOptions(q) {
   const { LightTransportEmployee } = require('../models/LightTransport');
+  // المندوبُ المؤرشَف لا يُختار موضوعًا لتقرير — كأنّه حُذف.
+  const AH = require('../utils/archivedHidden');
   const rows = await LightTransportEmployee
-    .find({ isActive: { $ne: false }, ...(q ? { $or: [{ name: nameRegex(q) }, { idNumber: nameRegex(q) }, { vehiclePlate: nameRegex(q) }] } : {}) })
+    .find(AH.andAll({ isActive: { $ne: false }, ...(q ? { $or: [{ name: nameRegex(q) }, { idNumber: nameRegex(q) }, { vehiclePlate: nameRegex(q) }] } : {}) }, AH.notArchivedRow(await AH.endedStaff())))
     .select('name idNumber jobTitleAr cityAr projectAr vehiclePlate').sort({ name: 1 }).limit(400).lean();
   return rows.map((e) => ({
     id: String(e._id),

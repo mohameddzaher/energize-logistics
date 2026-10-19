@@ -35,7 +35,22 @@ async function load() {
   const users = ids.size
     ? await User.find({ linkedEmployee: { $in: [...ids] } }).select('_id').lean()
     : [];
-  return { ids, idNumbers, userIds: new Set(users.map((u) => String(u._id))) };
+  /**
+   * ── والأرشيفُ أشدّ: كأنّه حُذف ──────────────────────────────────────────
+   * المنتهي لا يُعَدّ في اللوحات ويبقى في القوائم للمراجعة. والمؤرشَفُ (انتهت
+   * خدمتُه وخرج من النظام، أو فريلانسرٌ منتهٍ) لا يظهر في أيّ صفحةٍ ولا قائمةٍ ولا
+   * منسدلة — إلّا صفحةَ الأرشيف (صاحبُ الشركة، ٢٠٢٦/١٠/١٩). راجع utils/hrEngagement.
+   */
+  const { ARCHIVED } = require('./hrEngagement');
+  const arch = await Employee.find(ARCHIVED).select('_id iqamaNumber nationalId').lean();
+  const archivedIds = new Set(arch.map((e) => String(e._id)));
+  const archivedIdNumbers = new Set();
+  for (const e of arch) for (const n of [e.iqamaNumber, e.nationalId]) { const k = String(n || '').replace(/\s+/g, ''); if (k) archivedIdNumbers.add(k); }
+  const archivedUsers = archivedIds.size ? await User.find({ linkedEmployee: { $in: [...archivedIds] } }).select('_id').lean() : [];
+  return {
+    ids, idNumbers, userIds: new Set(users.map((u) => String(u._id))),
+    archivedIds, archivedIdNumbers, archivedUserIds: new Set(archivedUsers.map((u) => String(u._id))),
+  };
 }
 
 /** { ids, idNumbers, userIds } — مجموعاتٌ من النصوص. */
@@ -52,4 +67,12 @@ const employeeEnded = (sets, ref) => {
 /** حسابُ دخولٍ مربوطٌ بملفّ منتهٍ؟ */
 const userEnded = (sets, user) => !!user && sets.userIds.has(String(user._id || user));
 
-module.exports = { endedStaff, idNumberEnded, employeeEnded, userEnded };
+/** مؤرشَف؟ بمرجع الملفّ (أو الوثيقة المأهولة) أو برقم الهويّة. */
+// بالمعرِّف دائمًا: الوثيقةُ المأهولة قد لا تحمل الحقولَ التي يُعرَف بها الأرشيف.
+const employeeArchived = (sets, ref) => !!ref && sets.archivedIds.has(String(ref._id || ref));
+const idNumberArchived = (sets, n) => !!n && sets.archivedIdNumbers.has(String(n).replace(/\s+/g, ''));
+const userArchived = (sets, user) => !!user && sets.archivedUserIds.has(String(user._id || user));
+/** شرطُ استعلامٍ يُسقط المؤرشَفين من مجموعةٍ تحمل مرجعَ الملفّ في `field`. */
+const notArchivedRef = (sets, field = 'employee') => ({ [field]: { $nin: [...sets.archivedIds].map((x) => new (require('mongoose').Types.ObjectId)(x)) } });
+
+module.exports = { endedStaff, idNumberEnded, employeeEnded, userEnded, employeeArchived, idNumberArchived, userArchived, notArchivedRef };

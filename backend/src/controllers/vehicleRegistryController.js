@@ -10,10 +10,14 @@ const { emitToAll } = require('../websocket/socketManager');
 // الثقيل. الأرقام وحدها تتصادم هنا: «ل أ 1080» دراجة و«أ ص ر 1080» تريلا —
 // ومفتاح الأرقام يقيّد حادثة الدراجة على التريلا. التفصيل في utils/plateKey.
 const { registryPlateKey: plateKey, flexSpaceRegex } = require('../utils/plateKey');
-const { endedStaff, idNumberEnded, employeeEnded } = require('../utils/endedStaff');
+const { endedStaff, idNumberEnded, employeeEnded, employeeArchived, idNumberArchived } = require('../utils/endedStaff');
 // بطاقةُ سائقٍ انتهت خدمتُه في الموارد البشريّة: بمرجع ملفّه إن رُبطت، وإلّا
 // برقم هويّته. تبقى في القائمة، ولا تُعَدّ في رقمٍ ولا شريحةٍ ولا انتهاء.
 const cardEnded = (sets, c) => (c.employee ? employeeEnded(sets, c.employee) : idNumberEnded(sets, c.idNumber));
+// والمؤرشَفُ أشدّ: بطاقتُه لا تظهر صفًّا أصلًا — كأنّه حُذف (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
+const cardArchived = (sets, c) => (c.employee ? employeeArchived(sets, c.employee) : idNumberArchived(sets, c.idNumber));
+// المفوَّضُ على ورقة المركبة مؤرشَف؟ (برقم إقامته — لا مرجعَ ملفٍّ على الورقة)
+const holderArchived = (sets, v) => idNumberArchived(sets, v?.authorizedPerson?.iqamaNumber);
 
 /**
  * كلُّ تعديلٍ في القسم يبثّ ويُبطل الذاكرة — والتقريرُ منها.
@@ -660,7 +664,9 @@ exports.list = async (req, res) => {
     const ltByVehicle = new Map();
     if (ltVehicleIds.length) {
       const { LightTransportEmployee } = require('../models/LightTransport');
-      const riders = await LightTransportEmployee.find({ vehicle: { $in: ltVehicleIds }, isActive: { $ne: false } })
+      // راكبٌ مؤرشَف لا يُسمّى على المركبة — كأنّه حُذف.
+      const AH = require('../utils/archivedHidden');
+      const riders = await LightTransportEmployee.find(AH.andAll({ vehicle: { $in: ltVehicleIds }, isActive: { $ne: false } }, AH.notArchivedRow(await endedStaff())))
         .select('vehicle name idNumber cityAr projectAr supervisorName dutySupervisorName').lean();
       for (const r of riders) ltByVehicle.set(String(r.vehicle), r);
     }
@@ -1376,6 +1382,16 @@ exports.filterOptions = async (req, res) => {
         ? (perActivePlain.get(d.key) || sharedPlain.get(d.key) || [])
         : tallyDerived(perActive.get(d.key) || shared, d),
     })).filter((f) => f.values.length);
+    // ── وأسماءُ المفوَّضين المؤرشَفين لا تُعرَض خيارًا ──────────────────────
+    const archSets = await endedStaff();
+    if (archSets.archivedIdNumbers.size) {
+      const gone = await VehicleMaster.find({ 'authorizedPerson.iqamaNumber': { $in: [...archSets.archivedIdNumbers] } })
+        .select('authorizedPerson.name authorizedPerson.iqamaNumber').lean();
+      const goneVals = new Set(gone.flatMap((v) => [S(v.authorizedPerson?.name), S(v.authorizedPerson?.iqamaNumber)]).filter(Boolean));
+      for (const f of filters) {
+        if (f.key === 'authorizedPerson' || f.key === 'authorizedPersonIqama') f.values = f.values.filter((x) => !goneVals.has(S(x.value)));
+      }
+    }
     const body = { filters };
     // ── عشرون ثانيةً كانت تعني «بارد» في كلّ مرّة ────────────────────────────
     // اللوحةُ تُفتح مرّةً كلّ بضع دقائق، فينتهي الكاشُ قبل الفتحة التالية دائمًا
@@ -1744,7 +1760,7 @@ async function buildExpiryRows(query = {}) {
   const rows = [];
   const cardOf = (v) => {
     const iq = String(v.authorizedPerson?.iqamaNumber || '').trim();
-    return iq ? cardById.get(iq) : null;
+    return iq && !holderArchived(ended, v) ? cardById.get(iq) : null;
   };
   for (const v of vehicles) {
     for (const dt of DOC_TYPES) {
@@ -1767,7 +1783,8 @@ async function buildExpiryRows(query = {}) {
         reference: dt.numberPath ? String(getPath(v, dt.numberPath) || '') : '',
         company: dt.key === 'insurance' ? v.insurance?.companyAr : dt.key === 'gps' ? v.gps?.provider : '',
         // المفوَّضُ على المركبة — لكلّ مستنداتها لا للتفويض وحدَه (راجع أعلاه).
-        holder: String(v.authorizedPerson?.name || ''),
+        // والمفوَّضُ المؤرشَف لا يُسمّى — الصفُّ للمركبة وورقتِها.
+        holder: holderArchived(ended, v) ? '' : String(v.authorizedPerson?.name || ''),
         driverCardNumber: String(cardOf(v)?.cardNumber || ''),
       });
     }
@@ -2312,7 +2329,7 @@ const S = (v) => String(v ?? '').trim();
 
 exports.registers = async (req, res) => {
   try {
-    const cfg = await getConfig();
+    const [cfg, archSets] = await Promise.all([getConfig(), endedStaff()]);
     const vehicles = await VehicleMaster.find({ isActive: { $ne: false } }).select(AGG_FIELDS).lean();
 
     /** حالة أسوأ مستند على المركبة — بها نعرف «كم مركبة عند هذا المالك متعثّرة». */
@@ -2332,6 +2349,8 @@ exports.registers = async (req, res) => {
       for (const v of vehicles) {
         const k = def.key(v);
         if (!k) continue;
+        // سجلُّ المفوَّضين أسماءُ ناس: المؤرشَفُ لا يُدرَج فيه.
+        if (name === 'authorizedPersons' && holderArchived(archSets, v)) continue;
         if (!groups.has(k)) groups.set(k, []);
         groups.get(k).push(v);
       }
@@ -2549,9 +2568,12 @@ async function suggestDriver(doc) {
 
     const { LightTransportEmployee } = require('../models/LightTransport');
     let lt = null;
-    if (doc.vehicle) lt = await LightTransportEmployee.findOne({ vehicle: doc.vehicle, isActive: { $ne: false } }).select('name idNumber').lean();
+    // ولا يُقترَح مؤرشَفٌ سائقًا — كأنّه حُذف.
+    const AH = require('../utils/archivedHidden');
+    const archSets = await endedStaff();
+    if (doc.vehicle) lt = await LightTransportEmployee.findOne(AH.andAll({ vehicle: doc.vehicle, isActive: { $ne: false } }, AH.notArchivedRow(archSets))).select('name idNumber').lean();
     if (!lt && key) {
-      const rows = await LightTransportEmployee.find({ vehiclePlate: { $nin: ['', null] }, isActive: { $ne: false } })
+      const rows = await LightTransportEmployee.find(AH.andAll({ vehiclePlate: { $nin: ['', null] }, isActive: { $ne: false } }, AH.notArchivedRow(archSets)))
         .select('name idNumber vehiclePlate').lean();
       lt = rows.find((r) => plateKey(r.vehiclePlate) === key) || null;
     }
@@ -2561,7 +2583,7 @@ async function suggestDriver(doc) {
       ? await VehicleMaster.findById(doc.vehicle).select('authorizedPerson').lean()
       : (key ? (await VehicleMaster.find({}).select('plateNumber authorizedPerson').lean())
         .find((x) => plateKey(x.plateNumber) === key) : null);
-    if (v?.authorizedPerson?.name) {
+    if (v?.authorizedPerson?.name && !holderArchived(archSets, v)) {
       doc.driverNameAr = v.authorizedPerson.name;
       doc.driverIdNumber = S(v.authorizedPerson.iqamaNumber);
       return true;
@@ -2599,8 +2621,12 @@ exports.personLookup = async (req, res) => {
     const rx = arabicSearchRegex(q);
     const digits = q.replace(/\D/g, '');
 
+    // المؤرشَفُ لا يُقترَح في أيّ خانة — كأنّه حُذف.
+    const { NOT_ARCHIVED } = require('../utils/hrEngagement');
+    const archSets = await endedStaff();
     const [emps, lts, cards] = await Promise.all([
       Employee.find({
+        ...NOT_ARCHIVED,
         $or: [{ firstName: rx }, { lastName: rx }, { arabicName: rx },
           ...(digits.length >= 4 ? [{ iqamaNumber: new RegExp(digits) }, { nationalId: new RegExp(digits) }] : [])],
       }).select('firstName lastName arabicName iqamaNumber nationalId phone mobile employeeNumber jobTitle department employmentStatus hireDate dateOfBirth')
@@ -2637,12 +2663,14 @@ exports.personLookup = async (req, res) => {
       }, 'hr');
     }
     for (const e of lts) {
+      if (e.employee ? employeeArchived(archSets, e.employee) : idNumberArchived(archSets, e.idNumber)) continue;
       put(e.idNumber, {
         name: e.name, phone: e.phone || '', jobTitleAr: e.jobTitleAr || '',
         projectAr: e.projectAr || '', cityAr: e.cityAr || '', vehiclePlate: e.vehiclePlate || '',
       }, 'light_transport');
     }
     for (const c of cards) {
+      if (idNumberArchived(archSets, c.idNumber)) continue;
       put(c.idNumber, {
         name: c.name, absherPhone: c.absherPhone || '', cardNumber: c.cardNumber || '',
         cardExpiryDate: c.expiryDate || null, transportTypeAr: c.transportTypeAr || '',
@@ -2661,9 +2689,12 @@ exports.personLookup = async (req, res) => {
 /** لوحاتُ السجلّ للاختيار — بديلُ كتابة اللوحة بالأيدي في نماذج القسم. */
 exports.plateOptions = async (req, res) => {
   try {
-    const rows = await VehicleMaster.find({ isActive: { $ne: false } })
+    const [rows, archSets] = await Promise.all([VehicleMaster.find({ isActive: { $ne: false } })
       .select('plateNumber serialNumber registrationTypeAr sectorAr brandAr modelAr ownerCompanyAr authorizedPerson actualDriver')
-      .sort({ plateNumber: 1 }).limit(2000).lean();
+      .sort({ plateNumber: 1 }).limit(2000).lean(), endedStaff()]);
+    // اللوحةُ تبقى للاختيار؛ واسمُ المؤرشَف عليها لا يُقترَح.
+    const hideA = (v) => holderArchived(archSets, v);
+    const hideD = (v) => idNumberArchived(archSets, v.actualDriver?.idNumber);
     res.json({
       // ── ونوعُ المركبة ليس نوعَ تسجيلها ──────────────────────────────────
       // كانت القائمةُ تعرض `registrationTypeAr` تحت اسم «النوع»، وهي رخصةُ
@@ -2678,10 +2709,10 @@ exports.plateOptions = async (req, res) => {
         registrationTypeAr: v.registrationTypeAr || '',
         ownerCompanyAr: v.ownerCompanyAr || '',
         sectorAr: v.sectorAr || '',
-        authorizedName: v.authorizedPerson?.name || '',
-        authorizedId: v.authorizedPerson?.iqamaNumber || '',
-        actualDriverName: v.actualDriver?.name || '',
-        actualDriverId: v.actualDriver?.idNumber || '',
+        authorizedName: hideA(v) ? '' : (v.authorizedPerson?.name || ''),
+        authorizedId: hideA(v) ? '' : (v.authorizedPerson?.iqamaNumber || ''),
+        actualDriverName: hideD(v) ? '' : (v.actualDriver?.name || ''),
+        actualDriverId: hideD(v) ? '' : (v.actualDriver?.idNumber || ''),
       })),
     });
   } catch (e) {
@@ -3018,11 +3049,13 @@ exports.listCorporatePolicies = async (req, res) => {
     // ويُحسب الإجماليُّ من عدد المشمولين فعلًا — لا من عددٍ مكتوبٍ في الاسم
     // يصدق يومَ كُتب ويكذب بعد أوّل تعيين.
     const needsDrivers = rows.some((p) => p.coversDrivers);
+    // المؤرشَفُ لا يُعَدّ مشمولًا بالوثيقة ولا يُسمّى فيها.
+    const archSets = needsDrivers ? await endedStaff() : null;
     const cards = needsDrivers
-      ? await DriverCard.find({ isActive: { $ne: false } })
+      ? (await DriverCard.find({ isActive: { $ne: false } })
         .select('idNumber name cardNumber expiryDate fidelity employee')
         .populate('employee', 'employeeNumber arabicName')
-        .sort({ name: 1 }).lean()
+        .sort({ name: 1 }).lean()).filter((c) => !cardArchived(archSets, c))
       : [];
 
     const body = {
@@ -3430,6 +3463,8 @@ exports.listDriverCards = async (req, res) => {
     let cards = await DriverCard.find(filter)
       .populate('employee', 'firstName lastName arabicName employeeNumber employmentStatus')
       .sort({ expiryDate: 1 }).lean();
+    // بطاقةُ المؤرشَف لا تُعرَض ولا تُعَدّ — والمنتهي يبقى صفًّا (تحت).
+    cards = cards.filter((c) => !cardArchived(ended, c));
 
     // ── التفاويضُ تُقرأ مع البطاقة ────────────────────────────────────────────
     //

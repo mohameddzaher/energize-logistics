@@ -563,7 +563,11 @@ exports.listCustody = async (req, res) => {
     // المفتاح لا يحمل فلاتر الواجهة: المخزَّن هو السجل الخام، والفلترة تجري
     // فوقه في كل طلب. وكتابات Asset تُبطل البادئة 'it:custody' من الـ hooks.
     const cache = require('../utils/ttlCache');
-    const rows = await cache.wrap(`it:custody:rows:${scope || ''}:${employee || ''}`, 20000, runQuery);
+    const rawRows = await cache.wrap(`it:custody:rows:${scope || ''}:${employee || ''}`, 20000, runQuery);
+    // عهدةُ المؤرشَف لا تُعرَض ولا تُعَدّ — كأنّه حُذف؛ وعهدُ ملفٍّ بعينه (من الأرشيف) تبقى.
+    const { endedStaff, employeeArchived } = require('../utils/endedStaff');
+    const archSets = employee ? null : await endedStaff();
+    const rows = archSets ? rawRows.filter((a) => !employeeArchived(archSets, a.employee)) : rawRows;
 
     const wantedBucket = BUCKET_KEYS.includes(bucket) ? bucket : '';
     // `otherType` هو الفلتر الثاني داخل «أخرى»، و`type` يبقى مقبولاً لأن روابط
@@ -1215,7 +1219,8 @@ exports.listEmployees = async (req, res) => {
       const r = rx(req.query.q);
       filter.$or = [{ firstName: r }, { lastName: r }, { arabicName: r }, { employeeNumber: r }, { iqamaNumber: r }];
     }
-    const employees = await Employee.find(filter)
+    // المؤرشَفُ لا تُسلَّم له عهدة ولا يُختار — كأنّه حُذف.
+    const employees = await Employee.find(require('../utils/hrEngagement').withoutArchived(filter))
       .select(EMP_FIELDS)
       .sort({ firstName: 1 })
       .limit(2000)
@@ -1262,7 +1267,9 @@ exports.listAssignees = async (req, res) => {
       .sort({ firstName: 1 })
       .limit(500)
       .lean();
-    res.json({ users });
+    // المؤرشَفُ لا يُختار ولا يُسنَد إليه — كأنّه حُذف.
+    const archSets = await require('../utils/endedStaff').endedStaff();
+    res.json({ users: users.filter((u) => !require('../utils/endedStaff').userArchived(archSets, u)) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load assignees' });
   }

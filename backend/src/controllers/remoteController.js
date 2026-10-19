@@ -315,9 +315,12 @@ exports.listThreads = async (req, res) => {
   try {
     if (!staffReq(req)) return res.status(403).json({ message: 'Insufficient permissions' });
     const ids = await scopeEmployeeIds(req.user);
-    const employees = await User.find(
+    const { endedStaff, userArchived } = require('../utils/endedStaff');
+    const [allEmps, archSets] = await Promise.all([User.find(
       ids === null ? { role: 'remote_employee' } : { _id: { $in: ids } }
-    ).select('firstName lastName email').lean();
+    ).select('firstName lastName email').lean(), endedStaff()]);
+    // حسابُ المؤرشَف لا محادثةَ له في القائمة — كأنّه حُذف.
+    const employees = allEmps.filter((u) => !userArchived(archSets, u));
 
     const threads = await Promise.all(
       employees.map(async (emp) => {

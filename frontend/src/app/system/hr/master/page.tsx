@@ -197,17 +197,21 @@ function HrMasterInner() {
 
       <div className={refreshing ? 'opacity-50 transition-opacity pointer-events-none space-y-5' : 'transition-opacity space-y-5'}>
       {/* الأرقام الكبيرة */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2.5">
-        {/* ── وكلُّ كارتٍ نصفان: على الكفالة · فريلانسر ───────────────────────
-            النوعُ من «رقم السجل التجاري» (رقمُ سجلٍّ = على الكفالة، «فري لانسر»
-            = فريلانسر — راجع utils/hrEngagement). والضغطُ على نصفٍ يفتح أصحابه.
-            والمؤرشَفُ خارجَ كلّ رقمٍ هنا إلّا كارتَ «الأرشيف». */}
-        <Big label={t('الموظفون', 'Employees')} value={d.totals.employees} c="#f37121"
-          sub={countActive(filters) > 0 ? t(`من ${d.totals.roster}`, `of ${d.totals.roster}`) : undefined}
-          halves={H('employees')} onHalf={(k) => drill({ engagement: k })} ar={ar}
-          onClick={() => open('identity')} />
-        {/* «حالة العمل» ثلاث: يعمل · شركة شقيقة · لا يعمل — ولكلٍّ كارت (utils/hrEngagement).
-            «يعمل» يشمل مَن في إجازة، والضغطُ على نصفٍ يقول كم يعمل وكم في إجازة. */}
+      {/* ── الموظفون المطابقون: العددُ وحدَه في صفّه ───────────────────────── */}
+      <div role="button" tabIndex={0} onClick={() => open('identity')}
+        onKeyDown={(e) => { if (e.key === 'Enter') open('identity'); }}
+        className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm hover:border-slate-300">
+        <span>
+          <span className="block text-[13px] font-bold text-slate-700">{countActive(filters) > 0 ? t('الموظفون المطابقون للفلتر', 'Employees matching the filter') : t('إجمالي عدد الموظفين', 'Total employees')}</span>
+          {countActive(filters) > 0 && <span className="block text-[11px] text-slate-400">{t(`من ${d.totals.roster} في الملف الوظيفي`, `of ${d.totals.roster} on the roster`)}</span>}
+        </span>
+        <span className="text-3xl font-extrabold tabular-nums text-[#f37121]">{d.totals.employees}</span>
+      </div>
+
+      {/* ── «حالة العمل»: خمسةٌ مجموعُها إجماليُّ الموظفين ──────────────────────
+          يعمل · لا يعمل (داخل النظام، بلا حالةٍ محدّدة) · لا يعمل — انتظار نقل
+          الكفالة · لا يعمل — خروج نهائي · شركة شقيقة. والأرشيفُ خارجَ الإجماليّ. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
         <Big label={t('يعمل', 'Working')} value={d.totals.active} c="#16a34a"
           halves={H('active')} onHalf={(k) => setDutyHalf((v) => (v === k ? '' : k))} activeHalf={dutyHalf} ar={ar}
           onClick={() => drill({ employment: 'working' })}
@@ -223,24 +227,33 @@ function HrMasterInner() {
               </button>
             </span>
           ) : undefined} />
-        {/* شركة شقيقة — موظّفٌ عاديٌّ على كفالتنا، ليس إنهاءَ خدمة. */}
-        <Big label={t('شركة شقيقة', 'Sister company')} value={d.totals.sister ?? 0} c="#0d9488"
-          halves={H('sister')} onHalf={(k) => drill({ employment: 'sister', engagement: k })} ar={ar}
-          onClick={() => drill({ employment: 'sister' })} />
-        {/* «لا يعمل» داخلَ النظام = انتهت خدمتُه وينتظر «خروج من النظام» (ثمّ الأرشيف).
-            وخارجَ النظام يذهب إلى الأرشيف فورًا فلا يُعَدّ هنا. */}
-        <Big label={t('لا يعمل — داخل النظام', 'Not working — in system')} value={d.totals.notActive} c="#94a3b8"
-          sub={t(`ينتظر الخروج من النظام`, 'awaiting system exit')}
-          halves={H('notActive')} onHalf={(k) => drill({ employment: 'inactive', engagement: k })} ar={ar}
-          onClick={() => drill({ employment: 'inactive' })} />
-        {/* حالتا «لا يعمل»: انتظار نقل الكفالة (يُفتَح على الإقامات ليُرى انتهاؤها) · خروج نهائي. */}
+        <Big label={t('لا يعمل — داخل النظام', 'Not working — in system')} value={d.totals.noKind ?? 0} c="#94a3b8"
+          sub={t('بلا حالة محدّدة · ينتظر الخروج من النظام', 'no status set · awaiting system exit')}
+          halves={H('noKind')} onHalf={(k) => drill({ employment: 'nokind', engagement: k })} ar={ar}
+          onClick={() => drill({ employment: 'nokind' })} />
         <Big label={t('لا يعمل — انتظار نقل الكفالة', 'Not working — awaiting transfer')} value={d.totals.transfer ?? 0} c="#d97706"
           halves={H('transfer')} onHalf={(k) => open('iqama', { employment: 'transfer', engagement: k })} ar={ar}
           onClick={() => open('iqama', { employment: 'transfer' })} />
         <Big label={t('لا يعمل — خروج نهائي', 'Not working — final exit')} value={d.totals.finalExit ?? 0} c="#b91c1c"
-          sub={d.totals.noKind ? t(`و${d.totals.noKind} بلا حالة`, `+${d.totals.noKind} with no status`) : undefined}
           halves={H('finalExit')} onHalf={(k) => drill({ employment: 'final_exit', engagement: k })} ar={ar}
           onClick={() => drill({ employment: 'final_exit' })} />
+        <Big label={t('شركة شقيقة', 'Sister company')} value={d.totals.sister ?? 0} c="#0d9488"
+          halves={H('sister')} onHalf={(k) => drill({ employment: 'sister', engagement: k })} ar={ar}
+          onClick={() => drill({ employment: 'sister' })} />
+      </div>
+      {/* والمجموعُ يُقال صراحةً — فلا يُحسب بالعين. */}
+      {(() => {
+        const sum = (d.totals.active || 0) + (d.totals.noKind || 0) + (d.totals.transfer || 0) + (d.totals.finalExit || 0) + (d.totals.sister || 0);
+        return (
+          <p className={`-mt-1 text-[11px] ${sum === d.totals.employees ? 'text-slate-400' : 'font-semibold text-red-600'}`}>
+            {t(`المجموع ${sum} = إجمالي الموظفين ${d.totals.employees}`, `Sum ${sum} = total employees ${d.totals.employees}`)}
+          </p>
+        );
+      })()}
+
+      <hr className="border-slate-200" />
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
         <Big label={t('الأرشيف', 'Archive')} value={d.totals.archived ?? 0} c="#475569"
           halves={H('archived')} onHalf={() => router.push('/system/hr/archive')} ar={ar}
           onClick={() => router.push('/system/hr/archive')} />
@@ -256,7 +269,6 @@ function HrMasterInner() {
         <Big label={t('خارج المملكة', 'Outside kingdom')} value={d.totals.outsideKingdom} c="#64748b"
           halves={H('outsideKingdom')} onHalf={(k) => drill({ outsideKingdom: '1', engagement: k })} ar={ar}
           onClick={() => drill({ outsideKingdom: '1' })} />
-        {/* الفريلانسر من «رقم السجل التجاري» — لا من خانة «النوع». */}
         <Big label={t('فريلانسر', 'Freelancers')} value={d.totals.freelancers} c="#0f172a"
           onClick={() => drill({ engagement: 'freelance' })} />
       </div>

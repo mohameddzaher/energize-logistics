@@ -149,7 +149,10 @@ exports.getReps = async (req, res) => {
       return res.json({ reps: [] });
     }
 
-    const reps = await B2CRep.find(filter)
+    // مندوبٌ صفُّه في النقل الخفيف لمؤرشَف لا يُعرَض — كأنّه حُذف.
+    const AH = require('../utils/archivedHidden');
+    const goneLt = await AH.archivedLtRowIds(await AH.endedStaff());
+    const reps = await B2CRep.find(goneLt.length ? AH.andAll(filter, { ltEmployee: { $nin: goneLt } }) : filter)
       .populate('project', 'name code color monthlyTarget dailyTarget expectedWorkingDays')
       .populate('branch', 'name code city')
       .populate('supervisor', 'firstName lastName role')

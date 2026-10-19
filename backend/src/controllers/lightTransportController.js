@@ -263,7 +263,9 @@ exports.listEmployees = async (req, res) => {
       filter.$or = or;
     }
 
-    let rows = await LightTransportEmployee.find(filter)
+    // المؤرشَفُ لا صفَّ له هنا — كأنّه حُذف؛ والمنتهي يبقى صفًّا (تحت).
+    const { endedStaff, notArchivedRow, andAll } = require('../utils/archivedHidden');
+    let rows = await LightTransportEmployee.find(andAll(filter, notArchivedRow(await endedStaff())))
       .populate(LIST_POPULATE).sort({ name: 1 }).lean();
     const alerts = await docAlerts();
     rows = rows.map((r) => decorate(r, alerts));
@@ -547,8 +549,11 @@ exports.overview = async (req, res) => {
       if (S(q.hiredTo)) filter.hireDate.$lte = new Date(`${S(q.hiredTo)}T23:59:59.999Z`);
     }
 
+    // المؤرشَفُ لا يُعَدّ ولا يُدرَج — كأنّه حُذف.
+    const { endedStaff, notArchivedRow, andAll } = require('../utils/archivedHidden');
+    const archSets = await endedStaff();
     const [rawRows, allRidden, housing, vehicles, orders] = await Promise.all([
-      LightTransportEmployee.find(filter).populate(LIST_POPULATE).lean(),
+      LightTransportEmployee.find(andAll(filter, notArchivedRow(archSets))).populate(LIST_POPULATE).lean(),
       // ── «واقفة» تُقاس على السجلّ كلِّه لا على المفلتَر ────────────────────
       // لو حُسبت من الصفوف المفلترة لقال الفلترُ على مشروعٍ إنّ مئةً وأربعين
       // مركبةً واقفة — وهي تعمل، لكن راكبَها ليس في هذا المشروع. والسؤالُ

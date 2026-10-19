@@ -46,8 +46,10 @@ exports.listAssignees = async (req, res) => {
       role: 'administration_staff',
       status: { $ne: 'inactive' },
     }).select('firstName lastName email role').sort({ firstName: 1 }).lean();
+    // المؤرشَفُ لا يُختار ولا يُسنَد إليه — كأنّه حُذف.
+    const archSets = await require('../utils/endedStaff').endedStaff();
     res.json({
-      users: users.map((u) => ({
+      users: users.filter((u) => !require('../utils/endedStaff').userArchived(archSets, u)).map((u) => ({
         _id: u._id,
         name: `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email,
         role: u.role,

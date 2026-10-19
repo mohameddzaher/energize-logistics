@@ -73,6 +73,8 @@ const bustEmployeeCaches = () => {
 // The FULL_ACCESS roles (IT) see the same pages, so they get the same realtime
 // refreshes; leaving them out kept their screens stale until manual reload.
 const { FULL_ACCESS_ROLES } = require('../config/constants');
+// المؤرشَفُ يختفي من كلّ قائمةٍ هنا كأنّه حُذف — إلّا ملفَّه حين يُفتح من الأرشيف.
+const { endedStaff, notArchivedRef, notArchivedUserRef, andAll, withoutArchivedRef } = require('../utils/archivedHidden');
 const hrStaffIds = async () => {
   const roles = [...new Set([...HR_STAFF_ROLES, ...FULL_ACCESS_ROLES])];
   const staff = await User.find({ role: { $in: roles }, isActive: true }).select('_id').lean();
@@ -265,7 +267,8 @@ exports.searchEmployees = async (req, res) => {
     // بالمستند الكامل، وهو ما كان يُجلَب فتتجمّد القائمةُ عند فتحها.
     const asked = Number(req.query.limit);
     const limit = Number.isFinite(asked) ? Math.min(Math.max(asked, 1), 2000) : 25;
-    const employees = await Employee.find(filter)
+    // المؤرشَفُ لا يُربَط بحسابٍ ولا يظهر في منسدلة — كأنّه حُذف.
+    const employees = await Employee.find(require('../utils/hrEngagement').withoutArchived(filter))
       .select('firstName lastName arabicName iqamaNumber nationalId employeeNumber jobTitle department user employmentStatus')
       .sort({ firstName: 1 })
       .limit(limit)
@@ -1053,7 +1056,8 @@ exports.listContracts = async (req, res) => {
     // `employee.department` — ولم يكن بين الأعمدة المجلوبة. فكلُّ عقدٍ قُرئ
     // قسمُه فراغًا، وصار الفلترُ قيمةً واحدةً «—» لثلاثمئةِ عقد: موجودٌ في
     // اللوحة ولا يُختار منه شيء. ومعه الفرعُ ووحدةُ العمل وحالةُ التوظيف.
-    const contracts = await Contract.find(filter)
+    // سجلُّ العقود لا يحمل المؤرشَفين؛ وعقودُ ملفٍّ بعينه (من الأرشيف) تبقى.
+    const contracts = await Contract.find(req.query.employee ? filter : await withoutArchivedRef(filter))
       .populate({ path: 'employee', select: 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber jobTitle department branchName project employmentStatus' })
       .sort({ createdAt: -1 })
       .limit(2000)
@@ -1271,7 +1275,8 @@ const populateLeave = (q) => q
  */
 exports.listLeaveInbox = async (req, res) => {
   try {
-    const leaves = await populateLeave(LeaveRequest.find(chain.inboxFilter(req.user)))
+    // طلبُ مؤرشَفٍ لا ينتظر أحدًا — خرج من النظام.
+    const leaves = await populateLeave(LeaveRequest.find(await withoutArchivedRef(chain.inboxFilter(req.user))))
       .select(NO_SIG).sort({ createdAt: 1 }).limit(500).lean();
     res.json({
       leaves: leaves.map((l) => ({ ...l, myStage: l.currentStage })),
@@ -1285,7 +1290,7 @@ exports.listLeaveInbox = async (req, res) => {
 /** كم طلبًا ينتظرني — للشارة في القائمة. لا يُحمَّل الطلبُ نفسُه. */
 exports.leaveInboxCount = async (req, res) => {
   try {
-    res.json({ count: await LeaveRequest.countDocuments(chain.inboxFilter(req.user)) });
+    res.json({ count: await LeaveRequest.countDocuments(await withoutArchivedRef(chain.inboxFilter(req.user))) });
   } catch (error) {
     res.json({ count: 0 });
   }
@@ -1297,7 +1302,8 @@ exports.listLeaves = async (req, res) => {
     const filter = {};
     if (req.query.status) filter.status = req.query.status;
     if (req.query.employee) filter.employee = req.query.employee;
-    const leaves = await populateLeave(LeaveRequest.find(filter)).select(NO_SIG).sort({ createdAt: -1 }).limit(1000).lean();
+    // القائمةُ العامّة بلا مؤرشَفين؛ وإجازاتُ ملفٍّ بعينه تبقى.
+    const leaves = await populateLeave(LeaveRequest.find(req.query.employee ? filter : await withoutArchivedRef(filter))).select(NO_SIG).sort({ createdAt: -1 }).limit(1000).lean();
     res.json({ leaves });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load leave requests' });
@@ -1339,7 +1345,7 @@ exports.listMyLeaves = async (req, res) => {
 // Leave requests from the current user's direct reports awaiting their action.
 exports.listTeamLeaves = async (req, res) => {
   try {
-    const leaves = await populateLeave(LeaveRequest.find({ manager: req.user._id })).select(NO_SIG).sort({ createdAt: -1 }).lean();
+    const leaves = await populateLeave(LeaveRequest.find(await withoutArchivedRef({ manager: req.user._id }))).select(NO_SIG).sort({ createdAt: -1 }).lean();
     res.json({ leaves });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load team leaves' });
@@ -1879,7 +1885,9 @@ exports.listRequests = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const filter = {};
     if (req.query.status) filter.status = req.query.status;
-    const requests = await populateRequest(HRRequest.find(filter)).sort({ updatedAt: -1 }).limit(1000).lean();
+    // طلباتُ المؤرشَف تختفي: بملفّه أو بحساب دخوله.
+    const sets = await endedStaff();
+    const requests = await populateRequest(HRRequest.find(andAll(filter, notArchivedRef(sets, 'employee'), notArchivedUserRef(sets, 'requester')))).sort({ updatedAt: -1 }).limit(1000).lean();
     res.json({ requests });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load requests' });
@@ -2008,7 +2016,8 @@ exports.listAssets = async (req, res) => {
     const filter = { employee: { $ne: null }, status: { $ne: 'in_stock' } };
     if (req.query.employee) filter.employee = req.query.employee;
     if (req.query.status && req.query.status !== 'in_stock') filter.status = req.query.status;
-    const assets = await Asset.find(filter)
+    // عهدُ المؤرشَف لا تظهر في السجلّ العامّ؛ وعهدُ ملفٍّ بعينه تبقى.
+    const assets = await Asset.find(req.query.employee ? filter : await withoutArchivedRef(filter))
       .populate('employee', 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber')
       .populate('assignedBy', 'firstName lastName')
       .sort({ createdAt: -1 })
@@ -2327,6 +2336,9 @@ exports.getDashboard = async (req, res) => {
     const today = new Date().toISOString().slice(0, 10);
     const in60 = addDays(60);
     const in90 = addDays(90);
+    // والطلباتُ والعهدُ والعقودُ المنتهية بلا مؤرشَفين — كالأعداد فوقها.
+    const sets = await endedStaff();
+    const noArch = notArchivedRef(sets, 'employee');
 
     const [
       totalEmployees, activeEmployees, onLeaveCount, suspendedCount, terminatedCount,
@@ -2339,11 +2351,11 @@ exports.getDashboard = async (req, res) => {
       Employee.countDocuments({ ...HR_ONLY, employmentStatus: 'on_leave' }),
       Employee.countDocuments({ ...HR_ONLY, employmentStatus: 'suspended' }),
       Employee.countDocuments({ ...HR_ONLY, employmentStatus: 'terminated' }),
-      LeaveRequest.countDocuments({ status: { $in: ['pending_manager', 'pending_hr'] } }),
-      HRRequest.countDocuments({ status: { $in: ['open', 'in_progress'] } }),
+      LeaveRequest.countDocuments(andAll({ status: { $in: ['pending_manager', 'pending_hr'] } }, noArch)),
+      HRRequest.countDocuments(andAll({ status: { $in: ['open', 'in_progress'] } }, noArch, notArchivedUserRef(sets, 'requester'))),
       // Employee-held custody only — IT store items are `in_stock`/employee null.
-      Asset.countDocuments({ status: 'assigned', employee: { $ne: null } }),
-      Contract.find({ status: 'active', endDate: { $gte: today, $lte: in90 } }).populate('employee', 'firstName lastName arabicName').sort({ endDate: 1 }).limit(50).lean(),
+      Asset.countDocuments(andAll({ status: 'assigned', employee: { $ne: null } }, noArch)),
+      Contract.find(andAll({ status: 'active', endDate: { $gte: today, $lte: in90 } }, noArch)).populate('employee', 'firstName lastName arabicName').sort({ endDate: 1 }).limit(50).lean(),
       Employee.aggregate([{ $match: HR_ONLY }, { $group: { _id: '$employmentStatus', count: { $sum: 1 } } }]),
       Employee.aggregate([{ $match: { ...HR_ONLY, department: { $nin: [null, ''] } } }, { $group: { _id: '$department', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 }]),
       Employee.aggregate([{ $match: { ...HR_ONLY, project: { $nin: [null, ''] } } }, { $group: { _id: '$project', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 }]),
@@ -2461,7 +2473,8 @@ exports.getOptions = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const Branch = require('../models/Branch');
     const [managers, branches] = await Promise.all([
-      User.find({ isActive: true, role: { $ne: 'client' } }).select('firstName lastName email role').sort({ firstName: 1 }).lean(),
+      // المديرُ المؤرشَف لا يُختار — كأنّه حُذف.
+      endedStaff().then((sets) => User.find(andAll({ isActive: true, role: { $ne: 'client' } }, notArchivedUserRef(sets, '_id'))).select('firstName lastName email role').sort({ firstName: 1 }).lean()),
       Branch.find({}).select('name').sort({ name: 1 }).lean().catch(() => []),
     ]);
     res.json({ managers, branches });
@@ -2473,7 +2486,8 @@ exports.getOptions = async (req, res) => {
 // Does this user manage anyone? Drives the "Team" tabs in self-service pages.
 exports.getMyTeam = async (req, res) => {
   try {
-    const reports = await User.find({ manager: req.user._id }).select('firstName lastName email role linkedEmployee').lean();
+    const sets = await endedStaff();
+    const reports = await User.find(andAll({ manager: req.user._id }, notArchivedUserRef(sets, '_id'))).select('firstName lastName email role linkedEmployee').lean();
     res.json({ hasTeam: reports.length > 0, teamCount: reports.length, team: reports });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load team' });

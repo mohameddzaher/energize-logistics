@@ -115,8 +115,10 @@ exports.getOptions = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const { activeByType } = require('./lookupController');
     const [owners, industries, sources, companyTypes, companySizes] = await Promise.all([
-      User.find({ role: { $in: CRM_STAFF_ROLES }, isActive: true })
-        .select('firstName lastName email role').sort({ firstName: 1 }).lean(),
+      // المؤرشَفُ لا يُختار ولا يُسنَد إليه — كأنّه حُذف.
+      Promise.all([User.find({ role: { $in: CRM_STAFF_ROLES }, isActive: true })
+        .select('firstName lastName email role').sort({ firstName: 1 }).lean(), require('../utils/endedStaff').endedStaff()])
+        .then(([us, archSets]) => us.filter((u) => !require('../utils/endedStaff').userArchived(archSets, u))),
       activeByType('crm_industry'),
       activeByType('crm_source'),
       activeByType('crm_company_type'),

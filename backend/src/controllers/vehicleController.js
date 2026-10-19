@@ -7,7 +7,8 @@ const VehicleAccident = require('../models/VehicleAccident');
 const Employee = require('../models/Employee');
 const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
-const { endedStaff } = require('../utils/endedStaff');
+const { endedStaff, employeeArchived } = require('../utils/endedStaff');
+const { notArchivedRef, andAll } = require('../utils/archivedHidden');
 
 // The vehicles dashboard runs ~14 aggregations and is the same for everyone.
 // Cache it briefly; any vehicle/authorization/accident write clears `veh:`.
@@ -58,7 +59,8 @@ exports.searchEmployees = async (req, res) => {
         { iqamaNumber: rx }, { employeeNumber: rx }, { vehiclePlate: rx },
       ];
     }
-    const employees = await Employee.find(filter).select(EMP_FIELDS).sort({ firstName: 1 }).limit(50).lean();
+    // المؤرشَفُ لا يُفوَّض ولا يُختار — كأنّه حُذف.
+    const employees = await Employee.find(require('../utils/hrEngagement').withoutArchived(filter)).select(EMP_FIELDS).sort({ firstName: 1 }).limit(50).lean();
     res.json({ employees });
   } catch (error) {
     res.status(500).json({ message: 'Failed to search employees' });
@@ -84,6 +86,12 @@ exports.listVehicles = async (req, res) => {
     let vehicles = await require('../utils/changeStamp').freshWrap(ck, 5 * 60 * 1000,
       [Vehicle, VehicleAuthorization, Employee, require('../models/Branch')], () =>
         populateVehicle(Vehicle.find(filter)).sort({ plateNumber: 1 }).limit(5000).lean());
+    // المركبةُ تبقى؛ وحاملُها المؤرشَف لا يُعرَض اسمُه — كأنّه حُذف.
+    const sets = await endedStaff();
+    if (sets.archivedIds.size) {
+      vehicles = vehicles.map((v) => (employeeArchived(sets, v.currentEmployee)
+        ? { ...v, currentEmployee: null, currentAuthorization: null } : v));
+    }
     if (q && q.trim()) {
       // المطابقةُ في الذاكرة كانت `includes` حرفيّةً: مسافةٌ زائدةٌ في اللوحة أو
       // همزةٌ ناقصةٌ في الاسم تُخرج الصفَّ من النتيجة وهو أمام عين الباحث.
@@ -190,7 +198,9 @@ exports.listAuthorizations = async (req, res) => {
     if (status) filter.status = status;
     if (employee) filter.employee = employee;
     if (vehicle) filter.vehicle = vehicle;
-    const authorizations = await VehicleAuthorization.find(filter)
+    // سجلُّ التفاويض بلا مؤرشَفين؛ وتفاويضُ ملفٍّ بعينه (من الأرشيف) تبقى.
+    const sets = employee ? null : await endedStaff();
+    const authorizations = await VehicleAuthorization.find(sets ? andAll(filter, notArchivedRef(sets, 'employee')) : filter)
       .populate('vehicle', 'plateNumber type make model')
       .populate('employee', EMP_FIELDS)
       .populate('transferredTo', EMP_FIELDS)
@@ -504,7 +514,8 @@ exports.getDashboard = async (req, res) => {
     const soonStr = soon.toISOString().slice(0, 10);
     // تفويضٌ بيد مَن انتهت خدمتُه في الموارد البشريّة لا يُعَدّ ساريًا ولا يُنبَّه
     // بانتهائه — السجلُّ يبقى في القائمة، واللوحةُ تعدّ مَن هو على رأس العمل.
-    const { ids: endedIds } = await endedStaff();
+    const archSets = await endedStaff();
+    const { ids: endedIds } = archSets;
     const liveHolder = endedIds.size ? { employee: { $nin: [...endedIds] } } : {};
 
     const [
@@ -527,7 +538,7 @@ exports.getDashboard = async (req, res) => {
       VehicleAuthorization.countDocuments({ status: 'active', ...liveHolder }),
       VehicleAccident.countDocuments({ status: { $in: ['reported', 'investigating'] } }),
       VehicleAccident.find({}).populate('vehicle', 'plateNumber').populate('employee', EMP_FIELDS).sort({ date: -1, createdAt: -1 }).limit(8).lean(),
-      VehicleAuthorization.find({}).populate('vehicle', 'plateNumber').populate('employee', EMP_FIELDS).populate('transferredTo', EMP_FIELDS).sort({ createdAt: -1 }).limit(8).lean(),
+      VehicleAuthorization.find(notArchivedRef(archSets, 'employee')).populate('vehicle', 'plateNumber').populate('employee', EMP_FIELDS).populate('transferredTo', EMP_FIELDS).sort({ createdAt: -1 }).limit(8).lean(),
       VehicleAccident.aggregate([{ $group: { _id: '$severity', count: { $sum: 1 } } }]),
       VehicleAccident.aggregate([{ $group: { _id: '$faultParty', count: { $sum: 1 } } }]),
       VehicleAccident.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),

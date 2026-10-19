@@ -134,8 +134,11 @@ exports.listOrders = async (req, res) => {
  */
 exports.orderOptions = async (req, res) => {
   try {
+    // المؤرشَفُ لا يُختار في أمر تشغيل — كأنّه حُذف.
+    const AH = require('../utils/archivedHidden');
+    const archSets = await AH.endedStaff();
     const [employees, vehicles, housings] = await Promise.all([
-      LightTransportEmployee.find({ isActive: { $ne: false } })
+      LightTransportEmployee.find(AH.andAll({ isActive: { $ne: false } }, AH.notArchivedRow(archSets)))
         .select('name idNumber jobTitleAr staffKind projectAr cityAr vehiclePlate supervisorName supervisorUser')
         .sort({ name: 1 }).lean(),
       // النقلُ الخفيفُ دراجاتٌ ومركباتٌ خاصّة، لا شاحنات — فالقائمةُ تُضيَّق

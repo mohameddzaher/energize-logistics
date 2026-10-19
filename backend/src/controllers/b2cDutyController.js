@@ -884,7 +884,10 @@ exports.supervisors = async (req, res) => {
         .forEach((u) => byId.set(String(u._id), u));
     }
     const ORDER = { b2c_rep_supervisor: 0, b2c_inspection_supervisor: 1, b2c_project_lead: 2, b2c_deputy: 3, b2c_manager: 4 };
-    const supervisors = [...byId.values()].map((u) => ({
+    // المشرفُ المؤرشَف لا يُعرَض ولو بقي مناديبُه مسندين إليه — كأنّه حُذف.
+    const { endedStaff, userArchived } = require('../utils/endedStaff');
+    const archSets = await endedStaff();
+    const supervisors = [...byId.values()].filter((u) => !userArchived(archSets, u)).map((u) => ({
       _id: u._id,
       name: [u.firstName, u.lastName].filter(Boolean).join(' ') || '—',
       role: u.role,

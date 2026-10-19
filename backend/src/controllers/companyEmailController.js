@@ -80,7 +80,8 @@ exports.searchEmployees = async (req, res) => {
       const r = rx(req.query.q);
       filter.$or = [{ firstName: r }, { lastName: r }, { arabicName: r }, { employeeNumber: r }, { department: r }];
     }
-    const employees = await Employee.find(filter)
+    // المؤرشَفُ لا يُربَط بصندوق — كأنّه حُذف.
+    const employees = await Employee.find(require('../utils/hrEngagement').withoutArchived(filter))
       .select('firstName lastName arabicName employeeNumber department jobTitle employmentStatus')
       .sort({ firstName: 1 }).limit(60).lean();
     res.json({

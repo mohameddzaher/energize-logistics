@@ -152,7 +152,10 @@ async function crewIndex() {
   const { flexNormalize } = require('../utils/plateKey');
   const [vehicles, drivers] = await Promise.all([
     FleetModels.FleetVehicle.find({ isActive: { $ne: false } }).select('plate').lean(),
-    FleetModels.FleetDriver.find({ isActive: { $ne: false } }).select('name phone vehicle working').lean(),
+    // المؤرشَفُ ليس من طاقم أحد — كأنّه حُذف (برقم إقامته).
+    (async () => FleetModels.FleetDriver.find({ isActive: { $ne: false },
+      ...require('../utils/archivedHidden').notArchivedIdNumber(await require('../utils/endedStaff').endedStaff(), 'iqama') })
+      .select('name phone vehicle working').lean())(),
   ]);
 
   const plateOf = new Map(vehicles.map((v) => [String(v._id), plateKey(v.plate)]));
@@ -334,8 +337,10 @@ async function assignmentSnapshot() {
   const [vehicles, drivers, sups] = await Promise.all([
     FleetVehicle.find({ isActive: { $ne: false } }).sort({ plate: 1 })
       .select('plate name trailerType gpsType brand color supervisor supervisorName notes monthlyTarget updatedAt').lean(),
-    FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null } })
-      .select('name phone working offReason vehicle').lean(),
+    // المؤرشَفُ لا يُعرَض سائقًا على شاحنة — كأنّه حُذف.
+    (async () => FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null },
+      ...require('../utils/archivedHidden').notArchivedIdNumber(await require('../utils/endedStaff').endedStaff(), 'iqama') })
+      .select('name phone working offReason vehicle').lean())(),
     User.find({ role: { $in: ['fleet_supervisor', 'fleet_manager'] }, isActive: { $ne: false } })
       .select('firstName lastName email phone role').lean(),
   ]);

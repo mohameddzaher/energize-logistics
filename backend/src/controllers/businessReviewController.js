@@ -59,10 +59,13 @@ async function notify(userId, { title, message, entity, entityId }) {
  */
 exports.getMeta = async (req, res) => {
   try {
-    const users = await User.find({ isActive: true, role: { $ne: 'client' } })
+    const { endedStaff, userArchived } = require('../utils/endedStaff');
+    const [allUsers, archSets] = await Promise.all([User.find({ isActive: true, role: { $ne: 'client' } })
       .select('firstName lastName role linkedEmployee')
       .populate('linkedEmployee', 'department jobTitle')
-      .sort({ firstName: 1 }).lean();
+      .sort({ firstName: 1 }).lean(), endedStaff()]);
+    // المؤرشَفُ لا يُدعى ولا يُكلَّف — كأنّه حُذف.
+    const users = allUsers.filter((u) => !userArchived(archSets, u));
 
     // Participants are derived from the ROLE RULE, not from a stored list — add
     // a `x_manager` role tomorrow and its holders appear here with no code change.

@@ -113,8 +113,11 @@ const nameSkeleton = (name) => {
 const listSupervisors = async () => {
   const User = mongoose.model('User');
   const Employee = mongoose.model('Employee');
-  const users = await User.find({ role: { $in: SUPERVISOR_ROLES }, isActive: { $ne: false } })
-    .select('firstName lastName email role linkedEmployee').lean();
+  // المشرفُ المؤرشَف لا يُختار ولا يُعرَض — كأنّه حُذف.
+  const { endedStaff, userArchived } = require('./endedStaff');
+  const [all, sets] = await Promise.all([User.find({ role: { $in: SUPERVISOR_ROLES }, isActive: { $ne: false } })
+    .select('firstName lastName email role linkedEmployee').lean(), endedStaff()]);
+  const users = all.filter((u) => !userArchived(sets, u));
   const empIds = users.map((u) => u.linkedEmployee).filter(Boolean);
   const emps = empIds.length
     ? await Employee.find({ _id: { $in: empIds } }).select('arabicName firstName lastName employeeNumber').lean()

@@ -96,7 +96,24 @@ const NOTE = 'مطابقة شيت التحقيق 17/10/2026';
   const tally = { found: 0, created: 0, project: 0, supervisor: 0, kind: 0, linked: 0, relinked: 0, newRep: 0, noHistory: 0, amazonDays: 0 };
   const notes = []; const supProjects = {};
   const usedReps = new Set();
-  for (const r of reps) {
+  // ── المطابقةُ على دفعتين ──────────────────────────────────────────────────
+  // الأولى: الاسمُ والمجموعُ معًا لكلّ المناديب. والثانية لمن بقي: المجموعُ وحدَه
+  // إن لم يطابقه غيرُ حسابٍ واحدٍ لم يُؤخَذ. بدفعةٍ واحدةٍ كان مندوبٌ يأخذ حسابَ
+  // آخرَ تساوى مجموعاهما قبل أن يصل صاحبُه إليه.
+  const sumOfRep = (x) => sums.get(String(x._id)) || 0;
+  const ltOfSheet = (r) => (r.id && ltById.get(r.id)) || (!r.id && ltByName.get(fold(r.name))) || null;
+  const namesOfSheet = (r) => { const lt = ltOfSheet(r); return [fold(r.name), lt ? fold(lt.name) : ''].filter(Boolean); };
+  const hitName = (x, r) => namesOfSheet(r).some((n) => [fold(x.englishName), fold(x.arabicName)].includes(n));
+  const assigned = new Map();
+  for (const pass of [1, 2]) {
+    for (const [i, r] of reps.entries()) {
+      if (assigned.has(i) || r.base == null || !r.base || !projOf[r.project]) continue;
+      const pool = repsAll.filter((x) => String(x.project) === String(projOf[r.project]._id) && !usedReps.has(String(x._id)) && sumOfRep(x) === r.base);
+      const pick = pass === 1 ? pool.find((x) => hitName(x, r)) : (pool.length === 1 ? pool[0] : null);
+      if (pick) { assigned.set(i, pick); usedReps.add(String(pick._id)); }
+    }
+  }
+  for (const [ri, r] of reps.entries()) {
     const proj = projOf[r.project];
     if (!proj) { notes.push(`✗ مشروع غير معروف «${r.project}» — ${r.name}`); continue; }
     let lt = (r.id && ltById.get(r.id)) || (!r.id && ltByName.get(fold(r.name))) || null;
@@ -135,18 +152,15 @@ const NOTE = 'مطابقة شيت التحقيق 17/10/2026';
       if (doc && doc.isModified()) await doc.save();
     }
     // حسابُ الطلبات.
-    const inProj = repsAll.filter((x) => String(x.project) === String(proj._id) && !usedReps.has(String(x._id)));
-    const base = r.base == null ? null : r.base;
-    const sumOf = (x) => sums.get(String(x._id)) || 0;
-    const nameHit = (x) => [fold(x.englishName), fold(x.arabicName)].includes(fold(r.name)) || (lt && [fold(x.englishName), fold(x.arabicName)].includes(fold(lt.name)));
-    let pick = null;
-    if (base) {
-      pick = inProj.find((x) => sumOf(x) === base && nameHit(x))
-        || (inProj.filter((x) => sumOf(x) === base).length === 1 ? inProj.find((x) => sumOf(x) === base) : null);
+    let pick = assigned.get(ri) || null;
+    if (!pick) {
+      const inProj = repsAll.filter((x) => String(x.project) === String(proj._id) && !usedReps.has(String(x._id)));
+      pick = inProj.find((x) => lt && String(x.ltEmployee) === String(lt._id)) || inProj.find((x) => hitName(x, r)) || null;
+      if (pick) usedReps.add(String(pick._id));
     }
-    if (!pick) pick = inProj.find((x) => lt && String(x.ltEmployee) === String(lt._id)) || inProj.find(nameHit) || null;
+    const base = r.base == null ? null : r.base;
+    const sumOf = sumOfRep;
     if (pick) {
-      usedReps.add(String(pick._id));
       if (base && sumOf(pick) !== base) notes.push(`≠ ${r.name} [${r.project}]: الشيت ${base} · النظام ${sumOf(pick)} (${pick.englishName})`);
       if (String(pick.ltEmployee || '') !== String(lt._id)) tally[pick.ltEmployee ? 'relinked' : 'linked'] += 1;
       if (APPLY) {

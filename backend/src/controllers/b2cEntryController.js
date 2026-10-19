@@ -116,6 +116,19 @@ exports.list = async (req, res) => {
     const tot = summary.reduce((t, s) => ({ reps: t.reps + s.reps, achieved: t.achieved + s.achieved, near: t.near + s.near, far: t.far + s.far, shipments: t.shipments + s.shipments, total: t.total + s.total }), { reps: 0, achieved: 0, near: 0, far: 0, shipments: 0, total: 0 });
     tot.rate = (tot.achieved + tot.near + tot.far) ? tot.achieved / (tot.achieved + tot.near + tot.far) : null;
 
+    // ── صفحةُ الإدخال لا تحمل التقرير ─────────────────────────────────────────
+    // صاحبُ الشركة (٢٠٢٦/١٠/١٩): مَن يُدخل الأوردرات يرى المندوبَ ورقمَ إقامته
+    // ومشروعَه وخانةَ اليوم لا غير. والإجماليّاتُ والأهدافُ والتقييمُ والمشرفون تقريرٌ
+    // للوحة B2C (`report=1`) — لمن يقرأ اللوحةَ وحدَه.
+    const REPORT_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'];
+    const report = req.query.report === '1' && (REPORT_ROLES.includes(req.user?.role) || E.isEntryHead(req.user));
+    if (!report) {
+      return res.json({
+        date, today: riyadhToday(), scope,
+        rows: out.map((r) => ({ lt: r.lt, idNumber: r.idNumber, name: r.name, projectAr: r.projectAr, status: r.status, ended: r.ended, orders: r.orders, unit: r.unit }))
+          .sort((x, y) => x.projectAr.localeCompare(y.projectAr, 'ar') || x.name.localeCompare(y.name, 'ar')),
+      });
+    }
     res.json({
       date, from, to, today: riyadhToday(), rows: out, cards, summary, summaryTotal: tot,
       projects: P.rows.map((p) => ({ nameAr: S(p.nameAr || p.name), monthlyTarget: p.monthlyTarget || 0, dailyTarget: p.monthlyTarget ? Math.round(p.monthlyTarget / E.MONTH_DAYS) : 0 })),
@@ -239,4 +252,41 @@ exports.transferProject = async (req, res) => {
     console.error('transferProject', e);
     res.status(500).json({ message: 'تعذّر نقل المشروع' });
   }
+};
+
+/**
+ * أوردراتُ المندوب موزّعةً على مشاريعه — لملفّه (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
+ *
+ * المندوبُ قد يعمل في أكثرَ من مشروعٍ في الشهر الواحد. والأوردرُ يحمل مشروعَه يومَ
+ * كُتب، فلا يتحرّك ماضيه إذا نُقل: كيتا من ١ إلى ١٢ ثمّ نينجا من ١٣. فيُقرأ هنا من
+ * الأوردرات نفسِها — لكلّ شهرٍ مشاريعُه، ولكلّ مشروعٍ أوّلُ يومٍ وآخرُه وأيّامُه ومجموعُه.
+ */
+exports.repOrders = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ message: 'المندوب غير معروف' });
+    const B2CRep = require('../models/B2CRep');
+    const B2CDailyOrder = require('../models/B2CDailyOrder');
+    const reps = await B2CRep.find({ ltEmployee: req.params.id }).select('_id').lean();
+    if (!reps.length) return res.json({ months: [] });
+    const P = await E.projects();
+    const rows = await B2CDailyOrder.aggregate([
+      { $match: { rep: { $in: reps.map((r) => r._id) }, orders: { $ne: null } } },
+      { $group: {
+        _id: { y: '$year', m: '$month', p: '$project' },
+        total: { $sum: '$orders' }, days: { $sum: { $cond: [{ $gt: ['$orders', 0] }, 1, 0] } },
+        from: { $min: '$dateKey' }, to: { $max: '$dateKey' },
+      } },
+      { $sort: { '_id.y': -1, '_id.m': -1, from: 1 } },
+    ]);
+    const months = [];
+    for (const r of rows) {
+      const key = `${r._id.y}-${String(r._id.m).padStart(2, '0')}`;
+      let m = months.find((x) => x.month === key);
+      if (!m) { m = { month: key, total: 0, projects: [] }; months.push(m); }
+      const proj = P.byId.get(String(r._id.p));
+      m.projects.push({ project: S(proj?.nameAr || proj?.name) || '—', unit: proj && !proj.monthlyTarget ? 'شحنة' : 'طلب', total: r.total, days: r.days, from: r.from, to: r.to });
+      m.total += r.total;
+    }
+    res.json({ months: months.slice(0, 12) });
+  } catch (e) { res.status(500).json({ message: 'تعذّر تحميل أوردرات المندوب' }); }
 };

@@ -5,6 +5,7 @@ import '../ui/widgets.dart';
 import '../resource/configs.dart' show lightTransportCfg;
 import '../resource/resource.dart' show ResourceScreen;
 import 'section_dash.dart';
+import 'b2c_orders_report.dart';
 
 /// مواصفات لوحات الأقسام — كل قسم يعرّف بطاقاته وتوزيعاته وقوائمه فوق
 /// SectionDashScreen العامة. الأسماء تطابق استجابة كل /dashboard في الخادم.
@@ -260,6 +261,8 @@ void _openRepsOfProject(BuildContext context, Map<String, dynamic> r) {
 final b2cDashSpec = DashSpec(
   arTitle: 'لوحة قسم الأفراد', enTitle: 'B2C Board',
   endpoint: '/api/light-transport/overview', liveEvent: 'lt:*',
+  // تقريرُ تحقيق المناديب — ما كان في رأس الشيت، حيًّا من مدخلات الأوردرات.
+  header: (d) => const B2cOrdersReportCard(),
   lists: [
     // لكلّ مشروع: كفالة · فري لانسر · يوزرات — كجدول الموقع.
     DashList('المناديب حسب المشروع', 'Reps by project', 'reps.projects', (r) => '${_s(r, 'project')} — ${_n(r['total'])}',

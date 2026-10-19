@@ -1734,8 +1734,10 @@ ResourceConfig ltUserRentalsCfg({required bool canWrite, required bool canDelete
 
 /// `listQuery` يفتح السجلَّ مفلترًا — أرقامُ «إجمالي المناديب» في لوحة القسم
 /// تفتح أصحابَها (staffKind/project/contractKind/inService)، كرابط الموقع.
-ResourceConfig lightTransportCfg({required bool canAdd, String listQuery = '', String? arTitle, String? enTitle}) => ResourceConfig(
+ResourceConfig lightTransportCfg({required bool canAdd, bool canTransfer = false, String listQuery = '', String? arTitle, String? enTitle}) => ResourceConfig(
   canCreate: canAdd,
+  // «نقل المشروع» من القائمة نفسِها — لمن يملكه وحدَه (كالموقع).
+  rowActions: canTransfer ? (r) => [const ResourceAction(icon: Icons.swap_horiz, ar: 'نقل المشروع', en: 'Transfer project', color: T.orange, run: transferLtProject)] : null,
   listQuery: listQuery,
   onCreate: showLtAddEmployee,
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(

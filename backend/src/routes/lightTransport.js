@@ -20,6 +20,8 @@ router.get('/overview', c.overview);
 router.get('/supervisors', c.supervisors);
 router.get('/employees', c.listEmployees);
 router.get('/employees/:id', c.getEmployee);
+// أوردراتُه موزّعةً على مشاريعه شهرًا شهرًا — لملفّه (b2cEntryController.repOrders).
+router.get('/employees/:id/orders', require('../controllers/b2cEntryController').repOrders);
 // إضافةُ موظّفٍ تُنشئ ملفَّه في الموارد البشريّة — فهي لمدير القطاع ونائبه ومدير
 // النظام (وأهل المال)، لا لكلّ مَن مُنح القسم.
 router.post('/employees', authorize.strict('super_admin', 'b2c_manager', 'b2c_deputy', ...require('../config/financeAuthority').FINANCE_FULL_ROLES), c.createEmployee);

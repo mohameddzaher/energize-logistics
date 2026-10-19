@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import OrdersReport from '@/components/b2c/OrdersReport';
 import { useLanguage } from '@/context/LanguageContext';
 import { getB2CTranslations, getB2cDashboardTranslations } from '@/lib/translations';
 import { useSocket } from '@/hooks/useSocket';
@@ -494,6 +495,9 @@ export default function B2CDashboard() {
           </button>
         </div>
       </div>
+
+      {/* تقريرُ تحقيق المناديب (الجهات، التوزيع، التحقيق حسب المشرف والمشروع) — حيٌّ من مدخلات الأوردرات */}
+      <OrdersReport url="/api/b2c/entry" />
 
       {/* Filters bar */}
       <AnimatePresence>

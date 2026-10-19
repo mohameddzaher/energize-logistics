@@ -21,7 +21,7 @@ import { Spinner } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import {
   getLTEmployee, statusCls, KIND_AR, KIND_EN, HISTORY_KIND, fmtDate, canEditLT,
-  supervisorIdOf, DOC_CLS, DOC_AR, DOC_EN, canTransferLT,
+  supervisorIdOf, DOC_CLS, DOC_AR, DOC_EN, canTransferLT, getLTRepOrders, type LTRepMonth,
   type LTEmployee, type LTOrder, type LTDoc,
 } from '@/lib/lightTransport';
 import {
@@ -73,6 +73,12 @@ export default function LightTransportProfile() {
   }, [id]);
   useEffect(() => { load(); }, [load]);
   useSocket('lt:updated', useCallback(() => load(), [load]));
+  // أوردراتُه حسب المشروع — تتحدّث مع كلّ إدخالٍ ومع كلّ نقل.
+  const [months, setMonths] = useState<LTRepMonth[]>([]);
+  const loadOrders = useCallback(() => { if (id) getLTRepOrders(id).then((d) => setMonths(d.months || [])).catch(() => {}); }, [id]);
+  useEffect(() => { loadOrders(); }, [loadOrders]);
+  useSocket('b2c:order:upserted', loadOrders);
+  useSocket('lt:updated', loadOrders);
   useSocket('hr:employee', useCallback(() => load(), [load]));
 
   if (loading) return <Spinner />;
@@ -190,7 +196,7 @@ export default function LightTransportProfile() {
             {canTransferLT(user as any) && (
               <button type="button" onClick={() => setTransfer(true)}
                 className="flex items-center gap-1.5 rounded-lg bg-[#f37121] px-3 py-2 text-sm font-semibold text-white hover:bg-[#e06010]">
-                {t('نقل مشروع', 'Transfer project')}
+                {t('نقل المشروع', 'Transfer project')}
               </button>
             )}
             <button type="button" onClick={() => router.push('/system/b2c/light-transport')}
@@ -327,6 +333,33 @@ export default function LightTransportProfile() {
             </table>
           </ScrollX>
         )}
+      </section>
+
+      {/* ── أوردراتُه حسب المشروع ─────────────────────────────────────────────
+          المندوبُ قد يعمل في أكثرَ من مشروعٍ في الشهر الواحد، والأوردرُ يبقى على
+          مشروعه يومَ كُتب — فلا يتحرّك ماضيه إذا نُقل. */}
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+          <p className="font-extrabold text-slate-900 text-[14.5px]">{t('الأوردرات حسب المشروع', 'Orders by project')}</p>
+        </div>
+        {months.length ? (
+          <div className="divide-y divide-slate-100">
+            {months.map((m) => (
+              <div key={m.month} className="px-4 py-2.5">
+                <p className="text-[13px] font-bold text-slate-800">{m.month.split('-').reverse().join('/')} <span className="ms-2 text-slate-500 font-semibold">{t(`الإجمالي ${m.total}`, `Total ${m.total}`)}</span></p>
+                <div className="mt-1.5 flex flex-wrap gap-2">
+                  {m.projects.map((p) => (
+                    <span key={`${p.project}${p.from}`} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[12.5px]">
+                      <b className="text-slate-900">{p.project}</b>
+                      <span className="text-slate-500"> · {t(`من ${p.from.slice(8)}/${p.from.slice(5, 7)} إلى ${p.to.slice(8)}/${p.to.slice(5, 7)}`, `${p.from} → ${p.to}`)} · {t(`${p.days} يومًا`, `${p.days} days`)} · </span>
+                      <b className="tabular-nums text-[#f37121]">{p.total}</b> {p.unit === 'شحنة' ? t('شحنة', 'shipments') : t('أوردر', 'orders')}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : <p className="px-4 py-6 text-center text-sm text-slate-400">{t('لا توجد أوردرات مسجَّلة لهذا المندوب', 'No orders recorded')}</p>}
       </section>
 
       {/* ── سجلُّ النقل ──────────────────────────────────────────────────────

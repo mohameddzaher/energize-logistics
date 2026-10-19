@@ -67,6 +67,7 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
     // ما يمسّ القسمَ أو ملفَّ الموارد البشريّة يمسّ ما يُعرَض هنا.
     Live.instance.on('lt:*', _onLive);
     Live.instance.on('hr:employee', _onLive);
+    Live.instance.on('b2c:order:upserted', _onLive);
   }
 
   void _onLive() { if (mounted) _load(); }
@@ -75,46 +76,26 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
   void dispose() {
     Live.instance.off('lt:*', _onLive);
     Live.instance.off('hr:employee', _onLive);
+    Live.instance.off('b2c:order:upserted', _onLive);
     super.dispose();
   }
 
-  /// «نقل مشروع» — الطريقُ الوحيدُ لتغيير مشروع المندوب، ولمن يملكه وحدَه (كالموقع).
-  static const _transferRoles = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'];
+  /// «نقل المشروع» — الطريقُ الوحيدُ لتغيير مشروع المندوب، ولمن يملكه وحدَه (كالموقع).
   Future<void> _transfer(Map<String, dynamic> e) async {
-    final projects = (await loadLookupNamesHr('lt_project')).where((p) => p != _s(e, 'projectAr')).toList();
-    if (!mounted) return;
-    final to = await pickFromList(context, title: tr('نقل إلى مشروع', 'Move to project'), options: projects);
-    if (to == null || to.isEmpty || !mounted) return;
-    final note = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: Text(tr('نقل مشروع', 'Transfer project')),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(tr('«${_s(e, 'projectAr')}» ← «$to» — أوردراتُه من اليوم على المشروع الجديد.', 'Move to $to?')),
-          TextField(controller: note, decoration: InputDecoration(labelText: tr('السبب', 'Reason'))),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('نقل', 'Transfer'))),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    try {
-      await Api.instance.post('/api/light-transport/employees/${_s(e, '_id')}/transfer-project', {'projectAr': to, 'note': note.text.trim()});
-      await _load();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('نُقل إلى $to', 'Moved to $to'))));
-    } catch (err) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err.toString())));
-    }
+    if (await transferLtProject(context, e)) await _load();
   }
+
+  List _months = const [];
 
   Future<void> _load() async {
     try {
       final d = await Api.instance.get('/api/light-transport/employees/${widget.id}') as Map<String, dynamic>;
+      // أوردراتُه موزّعةً على مشاريعه شهرًا شهرًا — من الأوردرات نفسِها (كالموقع).
+      List months = const [];
+      try { months = ((await Api.instance.get('/api/light-transport/employees/${widget.id}/orders'))['months'] as List?) ?? const []; } catch (_) {}
       if (!mounted) return;
       setState(() {
+        _months = months;
         _e = (d['employee'] as Map?)?.cast<String, dynamic>();
         _orders = (d['orders'] as List?) ?? const [];
         _error = null;
@@ -149,8 +130,8 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
     return AppScaffold(
       title: Text(e == null ? tr('ملف الموظف', 'Employee') : _s(e, 'name')),
       actions: [
-        if (e != null && _transferRoles.contains(context.read<AuthProvider>().role))
-          TextButton.icon(onPressed: () => _transfer(e), icon: const Icon(Icons.swap_horiz, color: Colors.white), label: Text(tr('نقل مشروع', 'Transfer'), style: const TextStyle(color: Colors.white))),
+        if (e != null && ltTransferRoles.contains(context.read<AuthProvider>().role))
+          TextButton.icon(onPressed: () => _transfer(e), icon: const Icon(Icons.swap_horiz, color: Colors.white), label: Text(tr('نقل المشروع', 'Transfer'), style: const TextStyle(color: Colors.white))),
       ],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [
@@ -273,6 +254,26 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
                     ),
                     const SizedBox(height: 10),
 
+                    // ── الأوردرات حسب المشروع ─────────────────────────────────
+                    // المندوبُ قد يعمل في أكثرَ من مشروعٍ في الشهر، والأوردرُ يبقى على
+                    // مشروعه يومَ كُتب — فلا يتحرّك ماضيه إذا نُقل.
+                    AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(tr('الأوردرات حسب المشروع', 'Orders by project'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 6),
+                      if (_months.isEmpty) Text(tr('لا توجد أوردرات مسجَّلة لهذا المندوب', 'No orders recorded'), style: const TextStyle(color: T.inkFaint, fontSize: 12.5)),
+                      for (final m in _months) ...[
+                        Text('${'${m['month']}'.split('-').reversed.join('/')} — ${tr('الإجمالي', 'Total')} ${m['total']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                        for (final p in (m['projects'] as List? ?? const []))
+                          Padding(
+                            padding: const EdgeInsetsDirectional.only(start: 8, top: 2, bottom: 2),
+                            child: Text('${p['project']} · ${tr('من', 'from')} ${'${p['from']}'.substring(8)}/${'${p['from']}'.substring(5, 7)} ${tr('إلى', 'to')} ${'${p['to']}'.substring(8)}/${'${p['to']}'.substring(5, 7)} · ${p['days']} ${tr('يومًا', 'days')} · ${p['total']} ${p['unit'] == 'شحنة' ? tr('شحنة', 'shipments') : tr('أوردر', 'orders')}',
+                                style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+                          ),
+                        const SizedBox(height: 6),
+                      ],
+                    ])),
+                    const SizedBox(height: 10),
+
                     // ── سجلُّ النقل ─────────────────────────────────────────
                     // كلُّ تغييرٍ في مشروعٍ أو فرعٍ أو مشرفٍ أو مركبةٍ أو سكنٍ
                     // أو حالةٍ يُقيَّد بصاحبه ووقته — وهو ما يُقرأ حين يُسأل
@@ -331,5 +332,42 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
                   ]),
                 ),
     );
+  }
+}
+
+/// مَن يملك «نقل المشروع» — نائبُ مدير القطاع ومديرُ القسم والسوبر أدمن والأدمن (وأهلُ المال).
+const ltTransferRoles = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'];
+
+/// «نقل المشروع» — من ملفّ المندوب ومن قائمة موظفي النقل الخفيف. يُرجع true إن نُقل.
+/// ومن يومه تُكتب أوردراتُه على مشروعه الجديد، ويظهر عند مديري ذلك المشروع في الحال.
+Future<bool> transferLtProject(BuildContext context, Map<String, dynamic> e) async {
+  String s(String k) => (e[k] ?? '').toString();
+  final projects = (await loadLookupNamesHr('lt_project')).where((p) => p != s('projectAr')).toList();
+  if (!context.mounted) return false;
+  final to = await pickFromList(context, title: tr('نقل ${s('name')} إلى مشروع', 'Move to project'), options: projects);
+  if (to == null || to.isEmpty || !context.mounted) return false;
+  final note = TextEditingController();
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (c) => AlertDialog(
+      title: Text(tr('نقل المشروع', 'Transfer project')),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text(tr('«${s('projectAr')}» ← «$to». أوردراتُه من اليوم تُكتب على المشروع الجديد.', 'Move to $to?')),
+        TextField(controller: note, decoration: InputDecoration(labelText: tr('السبب (يُكتب في سجلّه)', 'Reason'))),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+        FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('نقل', 'Transfer'))),
+      ],
+    ),
+  );
+  if (ok != true || !context.mounted) return false;
+  try {
+    await Api.instance.post('/api/light-transport/employees/${s('_id')}/transfer-project', {'projectAr': to, 'note': note.text.trim()});
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('نُقل إلى $to', 'Moved to $to'))));
+    return true;
+  } catch (err) {
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err.toString())));
+    return false;
   }
 }

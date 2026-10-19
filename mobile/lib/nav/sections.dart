@@ -1,3 +1,4 @@
+import '../screens/light_transport_profile.dart' show ltTransferRoles;
 import '../screens/jp.dart';
 import 'package:flutter/material.dart';
 import '../services/auth.dart';
@@ -158,7 +159,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     canEdit: customerEditRoles.contains(role) || auth.canEditSection('Shipment Orders'),
     canDelete: customerRemoveRoles.contains(role) || auth.canEditSection('Shipment Orders'),
   );
-  final ltEmployeesCfg = lightTransportCfg(canAdd: _ltOwners.contains(role));
+  final ltEmployeesCfg = lightTransportCfg(canAdd: _ltOwners.contains(role), canTransfer: ltTransferRoles.contains(role));
   // الهدفُ يضعه المدير، أو دورٌ من خارج فريق القسم مُنح «تعديلَه» (canSetTargets في الخادم).
   const salesTeam = ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'];
   final canSetTargets = const ['super_admin', 'admin', 'sales_manager'].contains(role)

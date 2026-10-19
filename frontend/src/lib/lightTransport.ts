@@ -426,6 +426,10 @@ export const canTransferLT = (u?: { role?: string | null } | null) =>
 export const transferLTProject = (id: string, projectAr: string, note: string) =>
   api.post<{ ok: boolean; projectAr: string }>(`/api/light-transport/employees/${id}/transfer-project`, { projectAr, note });
 
+/** أوردراتُ المندوب موزّعةً على مشاريعه شهرًا شهرًا — من الأوردرات نفسِها لا من مشروعه الحاليّ. */
+export type LTRepMonth = { month: string; total: number; projects: { project: string; unit: string; total: number; days: number; from: string; to: string }[] };
+export const getLTRepOrders = (id: string) => api.get<{ months: LTRepMonth[] }>(`/api/light-transport/employees/${id}/orders`);
+
 /** مشرفو القسم ومديرو مشاريعه — ومشاريعُ كلٍّ منهم (مَن يرى ماذا في مدخلات الأوردرات). */
 export type B2CManager = { _id: string; name: string; role: string; projects: string[] };
 export const getB2CManagers = () =>

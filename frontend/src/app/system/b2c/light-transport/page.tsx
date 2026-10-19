@@ -30,10 +30,11 @@ import ManagedSelect from '@/components/system/ManagedSelect';
 import ScrollX from '@/components/system/ScrollX';
 import { LEAD, LEAD_CELL } from '@/components/vehicles/stickyLead';
 import ManagersProjects from '@/components/b2c/ManagersProjects';
-import { Truck, Plus, Pencil, RotateCcw, UserMinus, ExternalLink, X } from 'lucide-react';
+import TransferProjectModal from '@/components/b2c/TransferProjectModal';
+import { Truck, Plus, Pencil, RotateCcw, UserMinus, ExternalLink, X, ArrowLeftRight } from 'lucide-react';
 import {
   getLTEmployees, updateLTEmployee, createLTEmployee, deactivateLTEmployee, ltTotalsOf,
-  LT_COLUMNS, statusCls, KIND_AR, KIND_EN, canEditLT, fmtDate,
+  LT_COLUMNS, statusCls, KIND_AR, KIND_EN, canEditLT, canTransferLT, fmtDate,
   supervisorIdOf, dutySupervisorIdOf, assignLTSupervisors, serverFilters,
   DOC_CLS, DOC_AR, DOC_EN,
   type LTEmployee, type LTOptions, type LTDoc,
@@ -69,6 +70,7 @@ function LightTransportEmployeesInner() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Partial<LTEmployee> | null>(null);
   const [managersOpen, setManagersOpen] = useState(false);
+  const [transferring, setTransferring] = useState<LTEmployee | null>(null);
   // مشروعُ الصفّ قبل التعديل — لا يتغيّر من النموذج (راجع «نقل مشروع»).
   const origProject = editing?._id ? String(rows.find((r) => r._id === editing._id)?.projectAr || '') : '';
   // ── إضافةُ موظّفٍ تُنشئ ملفَّه في الموارد البشريّة ─────────────────────────
@@ -298,6 +300,10 @@ function LightTransportEmployeesInner() {
   return (
     <div className="space-y-4 pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       <ManagersProjects open={managersOpen} onClose={() => setManagersOpen(false)} ar={ar} />
+      {transferring && (
+        <TransferProjectModal open onClose={() => setTransferring(null)} id={String(transferring._id)} name={transferring.name}
+          current={transferring.projectAr || ''} ar={ar} onDone={() => load()} />
+      )}
       <PageHeader icon={<Truck className="w-6 h-6 text-[#f37121]" />}
         title={t('موظفون النقل الخفيف', 'Light-transport employees')}
         subtitle={t(`${serverTotal} موظفًا — المندوبون والإداريون معًا`, `${serverTotal} employees — reps and admin together`)}>
@@ -587,6 +593,11 @@ function LightTransportEmployeesInner() {
                           aria-label={e.name} />
                         <button type="button" onClick={() => setEditing(e)} title={t('تعديل', 'Edit')}
                           className="p-1.5 rounded-lg text-slate-600 hover:text-[#f37121] hover:bg-slate-100"><Pencil className="w-4 h-4" /></button>
+                        {/* «نقل المشروع» من الجدول نفسِه — لمن يملكه وحدَه. */}
+                        {canTransferLT(user as any) && (
+                          <button type="button" onClick={() => setTransferring(e)} title={t('نقل المشروع', 'Transfer project')}
+                            className="p-1.5 rounded-lg text-slate-600 hover:text-[#f37121] hover:bg-slate-100"><ArrowLeftRight className="w-4 h-4" /></button>
+                        )}
                         <button type="button" onClick={() => router.push(`/system/b2c/light-transport/${e._id}`)} title={t('الملفّ', 'Profile')}
                           className="p-1.5 rounded-lg text-slate-600 hover:text-[#f37121] hover:bg-slate-100"><ExternalLink className="w-4 h-4" /></button>
                         <button type="button" onClick={() => deactivate(e)} title={t('إخراج من القسم', 'Remove from section')}

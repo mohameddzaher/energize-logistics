@@ -32,7 +32,7 @@ export default function TransferProjectModal({ open, onClose, id, name, current,
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setBusy(false); }
   };
   return (
-    <Modal open={open} onClose={onClose} title={t('نقل مشروع', 'Transfer project')}
+    <Modal open={open} onClose={onClose} title={t('نقل المشروع', 'Transfer project')}
       footer={<PrimaryButton onClick={submit} disabled={!to || to === current || busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowLeftRight className="h-4 w-4" />}{t('نقل', 'Transfer')}</PrimaryButton>}>
       <p className="mb-3 text-sm text-slate-600">{t(`${name} — المشروع الحالي: «${current || '—'}»`, `${name} — current project: “${current || '—'}”`)}</p>
       <Field label={t('المشروع الجديد', 'New project')}>

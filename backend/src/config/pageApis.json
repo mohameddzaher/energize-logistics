@@ -1491,6 +1491,7 @@
       "apis": [
         "/api/b2c/dashboard",
         "/api/b2c/day-details",
+        "/api/b2c/entry",
         "/api/b2c/evaluations",
         "/api/b2c/months",
         "/api/b2c/projects",

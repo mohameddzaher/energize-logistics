@@ -141,9 +141,11 @@ class ResourceAction {
   final String? reasonKey;
   final String? reasonAr;
   final String? reasonEn;
+  /// إجراءٌ بشاشته — يُختار فيه قبل الإرسال (مثلُ «نقل المشروع»). يُرجع true إن تغيّر شيء.
+  final Future<bool> Function(BuildContext, Map<String, dynamic>)? run;
   const ResourceAction({
     required this.icon, required this.ar, required this.en, required this.color,
-    this.confirmAr, this.confirmEn, this.request, this.reasonKey, this.reasonAr, this.reasonEn,
+    this.confirmAr, this.confirmEn, this.request, this.reasonKey, this.reasonAr, this.reasonEn, this.run,
   });
   String get label => tr(ar, en);
 }
@@ -367,6 +369,11 @@ class _ResourceScreenState extends State<ResourceScreen> {
   }
 
   Future<void> _runAction(ResourceAction a, Map<String, dynamic> row) async {
+    if (a.run != null) {
+      final changed = await a.run!(context, row);
+      if (changed && mounted) await _load();
+      return;
+    }
     String? reason;
     if (a.reasonKey != null) {
       final ctrl = TextEditingController();

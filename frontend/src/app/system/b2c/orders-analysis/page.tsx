@@ -125,6 +125,8 @@ export default function B2CDashboard() {
   const [selectedRepId, setSelectedRepId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'evaluation' | 'analytics'>('overview');
+  // مشاريعُ «إجمالي الطلبات» المختارة — فارغةٌ = كلُّها. يُختار أكثرُ من واحد.
+  const [totalProjects, setTotalProjects] = useState<string[]>([]);
 
   const fetchOptions = useCallback(async () => {
     try {
@@ -382,15 +384,12 @@ export default function B2CDashboard() {
     rows: [
       { label: ar ? 'النطاق' : 'Scope', value: scope },
       { label: T.totalOrders, value: d?.kpis?.totalOrders ?? 0 },
+      ...(d?.byProject || []).map((p: any) => ({ label: `${T.totalOrders} — ${p.name}`, value: p.totalOrders ?? 0 })),
       { label: T.activeReps, value: d?.kpis?.repsActive ?? 0 },
-      { label: T.workingDays, value: d?.kpis?.totalWorkingDays ?? 0 },
-      { label: T.avgDailyRate, value: Number(d?.kpis?.avgDailyRate || 0).toFixed(1) },
       { label: T.avgPerformance, value: formatPct(d?.kpis?.avgPerformance || 0) },
       { label: T.aboveTarget, value: d?.kpis?.aboveTargetReps ?? 0 },
       { label: T.onTrack, value: d?.kpis?.onTrackReps ?? 0 },
       { label: T.belowTarget, value: d?.kpis?.belowTargetReps ?? 0 },
-      { label: T.teamCapacity, value: d?.kpis?.teamCapacity ?? 0 },
-      { label: T.capacityUsed, value: formatPct(d?.kpis?.capacityUsedPercent || 0) },
       { label: T.bestRep, value: d?.kpis?.bestRep?.englishName || '—' },
       { label: T.bestDay, value: d?.kpis?.bestDay?.dateKey || '—' },
       { label: tx.totalDaysOff, value: d?.kpis?.totalDaysOff ?? 0 },
@@ -641,10 +640,14 @@ export default function B2CDashboard() {
         <>
           {/* KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <KpiCard title={T.totalOrders} value={k!.totalOrders.toLocaleString()} icon={<Target className="w-5 h-5" />} color="#f37121" />
+            {/* «أيام العمل» و«متوسط الطلبات اليومي» و«الطاقة المستخدمة» رُفعت بطلب
+                صاحب الشركة (٢٠٢٦/١٠/١٩). والإجماليُّ صار بطاقةً بمشاريعها. */}
+            <ProjectsTotalCard
+              ar={lang === 'ar'} title={T.totalOrders} total={k!.totalOrders}
+              projects={projects} byProject={dashboard.byProject || []} byDay={dashboard.byDay || []}
+              selected={totalProjects} onToggle={(id) => setTotalProjects((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))}
+              onClear={() => setTotalProjects([])} />
             <KpiCard title={T.activeReps} value={k!.repsActive} icon={<UsersIcon className="w-5 h-5" />} color="#3b82f6" />
-            <KpiCard title={T.workingDays} value={k!.totalWorkingDays} icon={<CalendarDays className="w-5 h-5" />} color="#8b5cf6" />
-            <KpiCard title={T.avgDailyRate} value={k!.avgDailyRate.toFixed(1)} icon={<TrendingUp className="w-5 h-5" />} color="#10b981" />
             <KpiCard title={T.avgPerformance} value={`${k!.avgPerformance.toFixed(1)}%`} icon={<BarChart3 className="w-5 h-5" />} color={performanceColor(k!.avgPerformance)} />
             <KpiCard title={T.aboveTarget} value={k!.aboveTargetReps} icon={<ArrowUp className="w-5 h-5" />} color="#10b981" />
             <KpiCard title={T.onTrack} value={k!.onTrackReps} icon={<Minus className="w-5 h-5" />} color="#f59e0b" />
@@ -734,8 +737,8 @@ export default function B2CDashboard() {
             );
           })()}
 
-          {/* Best/Worst/Capacity */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Best rep / best day */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <HighlightCard
               title={T.bestRep}
               value={k!.bestRep?.englishName || '—'}
@@ -750,13 +753,6 @@ export default function B2CDashboard() {
               subtitle={k!.bestDay ? `${k!.bestDay.totalOrders} ${T.totalOrders.toLowerCase()}` : ''}
               icon={<CalendarDays className="w-5 h-5" />}
               color="#3b82f6"
-            />
-            <HighlightCard
-              title={T.capacityUsed}
-              value={`${k!.capacityUsedPercent.toFixed(1)}%`}
-              subtitle={`${k!.totalOrders.toLocaleString()} / ${k!.teamCapacity.toLocaleString()}`}
-              icon={<BarChart3 className="w-5 h-5" />}
-              color={performanceColor(k!.capacityUsedPercent)}
             />
           </div>
 
@@ -991,6 +987,66 @@ export default function B2CDashboard() {
 }
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
+
+/**
+ * ── إجماليُّ الطلبات بمشاريعه ───────────────────────────────────────────────
+ * الرقمُ الكبير، وتحته «حتى تاريخ» آخرِ يومٍ فيه طلبات (لا نهايةُ الشهر: الأيامُ
+ * القادمة مكتوبةٌ في الشيت بأصفار). وتحته بطاقةٌ صغيرةٌ لكلّ مشروع بعدد طلباته؛
+ * الضغطُ يختار مشروعًا أو أكثر فيصير الإجماليُّ مجموعَ المختار وحدَه.
+ * والأرقامُ من `byProject` تحت فلاتر الصفحة نفسِها — فلا يخالف الإجماليُّ مشاريعَه.
+ */
+function ProjectsTotalCard({ ar, title, total, projects, byProject, byDay, selected, onToggle, onClear }: {
+  ar: boolean; title: string; total: number;
+  projects: Array<{ _id: string; name: string; nameAr?: string; color?: string }>;
+  byProject: Array<{ projectId: string; name: string; color?: string; totalOrders: number }>;
+  byDay: Array<{ dateKey: string; totalOrders: number }>;
+  selected: string[]; onToggle: (id: string) => void; onClear: () => void;
+}) {
+  const rows = [
+    ...byProject.map((p) => ({ id: String(p.projectId), name: p.name, color: p.color, orders: p.totalOrders || 0 })),
+    // ومشروعٌ نشطٌ بلا طلباتٍ في المعروض يظهر بصفر — لا يختفي.
+    ...projects.filter((p) => !byProject.some((b) => String(b.projectId) === String(p._id)))
+      .map((p) => ({ id: String(p._id), name: (ar && p.nameAr) || p.name, color: p.color, orders: 0 })),
+  ];
+  const shownTotal = selected.length ? rows.filter((r) => selected.includes(r.id)).reduce((n, r) => n + r.orders, 0) : total;
+  const last = byDay.filter((d) => (d.totalOrders || 0) > 0).map((d) => d.dateKey).sort().pop();
+  const fmtDate = (k?: string) => (k ? k.split('-').reverse().join('/') : '—');
+  return (
+    <div className="col-span-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+            {title}{selected.length ? (ar ? ` — ${selected.length} مشروع مختار` : ` — ${selected.length} selected`) : ''}
+          </p>
+          <p className="mt-1 text-2xl font-bold text-slate-900 tabular-nums">{shownTotal.toLocaleString()}</p>
+          <p className="text-[11.5px] text-slate-500">{ar ? `حتى تاريخ ${fmtDate(last)}` : `Up to ${fmtDate(last)}`}</p>
+        </div>
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: '#f3712120', color: '#f37121' }}>
+          <Target className="h-5 w-5" />
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {rows.map((r) => {
+          const on = selected.includes(r.id);
+          return (
+            <button key={r.id} type="button" onClick={() => onToggle(r.id)}
+              className={`rounded-lg border px-2.5 py-2 text-start transition-colors ${on ? 'border-[#f37121] bg-orange-50' : 'border-slate-200 bg-slate-50 hover:border-slate-300'}`}>
+              <span className="flex items-center gap-1.5 truncate text-[11.5px] font-semibold text-slate-600">
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: r.color || '#94a3b8' }} />{r.name}
+              </span>
+              <span className={`mt-0.5 block text-[15px] font-bold tabular-nums ${on ? 'text-[#f37121]' : 'text-slate-900'}`}>{r.orders.toLocaleString()}</span>
+            </button>
+          );
+        })}
+      </div>
+      {selected.length > 0 && (
+        <button type="button" onClick={onClear} className="mt-2 text-[11.5px] font-semibold text-[#f37121] hover:underline">
+          {ar ? 'كل المشاريع' : 'All projects'}
+        </button>
+      )}
+    </div>
+  );
+}
 
 function KpiCard({ title, value, icon, color, onClick }: { title: string; value: any; icon: React.ReactNode; color: string; onClick?: () => void }) {
   return (

@@ -51,6 +51,8 @@ class DashSpec {
   final List<DashStat> stats;
   final List<DashBreakdown> breakdowns;
   final List<DashList> lists;
+  /// بطاقةٌ خاصّةٌ فوق الأرقام (مثلًا: إجماليُّ الطلبات بمشاريعه) — تُبنى من الجواب.
+  final Widget Function(Map<String, dynamic> data)? header;
   const DashSpec({
     required this.arTitle,
     required this.enTitle,
@@ -59,6 +61,7 @@ class DashSpec {
     required this.stats,
     this.breakdowns = const [],
     this.lists = const [],
+    this.header,
   });
 }
 
@@ -258,6 +261,7 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(padding: const EdgeInsets.all(14), children: [
+                    if (spec.header != null) ...[spec.header!(_data!), const SizedBox(height: 10)],
                     GridView.count(
                       crossAxisCount: 2,
                       shrinkWrap: true,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
+import '../ui/widgets.dart';
 import 'section_dash.dart';
 
 /// مواصفات لوحات الأقسام — كل قسم يعرّف بطاقاته وتوزيعاته وقوائمه فوق
@@ -239,10 +240,10 @@ const b2cDashSpec = DashSpec(
 final b2cOrdersDashSpec = DashSpec(
   arTitle: 'تحليل الأوردرات', enTitle: 'Orders Analysis',
   endpoint: '/api/b2c/dashboard', liveEvent: 'b2c:*',
+  // الإجماليُّ بمشاريعه فوق الأرقام — مثلُ الموقع. و«المتوسط اليومي» رُفع (٢٠٢٦/١٠/١٩).
+  header: (d) => B2cProjectsTotal(data: d),
   stats: const [
-    DashStat('إجمالي الطلبات', 'Total orders', 'kpis.totalOrders', Icons.shopping_basket_outlined, T.navy),
     DashStat('مناديب نشطون', 'Active reps', 'kpis.repsActive', Icons.groups_outlined, T.info),
-    DashStat('متوسط يومي', 'Avg daily', 'kpis.avgDailyRate', Icons.speed_outlined, T.violet),
     DashStat('متوسط الأداء %', 'Avg performance %', 'kpis.avgPerformance', Icons.percent_rounded, T.orange),
     DashStat('فوق الهدف', 'Above target', 'kpis.aboveTargetReps', Icons.trending_up_rounded, T.success),
     DashStat('تحت الهدف', 'Below target', 'kpis.belowTargetReps', Icons.trending_down_rounded, T.danger),
@@ -421,3 +422,68 @@ const executiveDashSpec = DashSpec(
 
 String _topDriverTitle(Map<String, dynamic> r) => (r['name'] ?? r['_id'] ?? r['driver'] ?? '—').toString();
 String _topDriverSub(Map<String, dynamic> r) => '${r['trips'] ?? 0} ${tr('رحلة', 'trips')}';
+
+
+/// إجماليُّ الطلبات بمشاريعه — مطابقٌ لبطاقة الموقع (`ProjectsTotalCard`).
+/// الرقمُ، وتحته «حتى تاريخ» آخرِ يومٍ فيه طلبات، وتحته بطاقةٌ لكلّ مشروع؛
+/// الضغطُ يختار مشروعًا أو أكثر فيصير الإجماليُّ مجموعَ المختار.
+class B2cProjectsTotal extends StatefulWidget {
+  final Map<String, dynamic> data;
+  const B2cProjectsTotal({super.key, required this.data});
+  @override
+  State<B2cProjectsTotal> createState() => _B2cProjectsTotalState();
+}
+
+class _B2cProjectsTotalState extends State<B2cProjectsTotal> {
+  final Set<String> _sel = {};
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.data;
+    final projects = [for (final p in (d['byProject'] as List? ?? const [])) Map<String, dynamic>.from(p as Map)];
+    final all = ((d['kpis'] as Map?)?['totalOrders'] as num?) ?? 0;
+    final shown = _sel.isEmpty
+        ? all
+        : projects.where((p) => _sel.contains('${p['projectId']}')).fold<num>(0, (n, p) => n + ((p['totalOrders'] as num?) ?? 0));
+    final days = [for (final x in (d['byDay'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)]
+        .where((x) => ((x['totalOrders'] as num?) ?? 0) > 0).map((x) => '${x['dateKey']}').toList()..sort();
+    final last = days.isEmpty ? '—' : days.last.split('-').reversed.join('/');
+    return AppCard(
+      topAccent: T.orange,
+      padding: const EdgeInsets.all(12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('${tr('إجمالي الطلبات', 'Total orders')}${_sel.isEmpty ? '' : tr(' — ${_sel.length} مشروع مختار', ' — ${_sel.length} selected')}',
+            style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.inkSoft)),
+        const SizedBox(height: 4),
+        Text(_n(shown), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: T.ink)),
+        Text(tr('حتى تاريخ $last', 'Up to $last'), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+        const SizedBox(height: 10),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final p in projects)
+            InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () => setState(() {
+                final id = '${p['projectId']}';
+                _sel.contains(id) ? _sel.remove(id) : _sel.add(id);
+              }),
+              child: Container(
+                width: 104,
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+                decoration: BoxDecoration(
+                  color: _sel.contains('${p['projectId']}') ? T.orange.withValues(alpha: 0.08) : const Color(0xFFF8FAFC),
+                  border: Border.all(color: _sel.contains('${p['projectId']}') ? T.orange : const Color(0xFFE2E8F0)),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${p['name'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: T.inkSoft)),
+                  Text(_n(p['totalOrders']), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: _sel.contains('${p['projectId']}') ? T.orange : T.ink)),
+                ]),
+              ),
+            ),
+        ]),
+        if (_sel.isNotEmpty)
+          TextButton(onPressed: () => setState(_sel.clear), child: Text(tr('كل المشاريع', 'All projects'))),
+      ]),
+    );
+  }
+}

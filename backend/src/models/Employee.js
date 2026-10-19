@@ -34,6 +34,10 @@ const employeeSchema = new mongoose.Schema(
     // Job
     jobTitle: { type: String, trim: true },
     department: { type: String, trim: true },
+    // ── الفئةُ الوظيفيّة: إداري · سائق · فني (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) ──────────
+    // لموظّفي B2C والنقل الثقيل وحدَهم — قسمان فيهما الثلاثة معًا، ويُسأل «كم إداريًّا
+    // في النقل الثقيل؟». من قائمةٍ مغلقة (utils/hrLists ← hr_staff_category).
+    staffCategory: { type: String, trim: true, default: '', index: true },
     hireDate: { type: String }, // YYYY-MM-DD
     // Actual first day on the job (تاريخ مباشرة العمل). Distinct from hireDate/
     // contract dates — survives contract renewals so we always know when the
@@ -354,5 +358,14 @@ employeeSchema.post('save', function () {
 });
 employeeSchema.index({ directManager: 1 });
 employeeSchema.index({ vehiclePlate: 1 });
+
+// ── والفئةُ الوظيفيّة تسقط إذا خرج الموظّفُ من قسميها (B2C · النقل الثقيل) ──
+employeeSchema.pre('save', async function () {
+  if (!this.isModified('department') || !this.staffCategory) return;
+  try {
+    const deps = await require('../utils/hrLists').categoryDepartments();
+    if (!deps.includes(String(this.department || '').trim())) this.staffCategory = '';
+  } catch (_) { /* */ }
+});
 
 module.exports = mongoose.model('Employee', employeeSchema);

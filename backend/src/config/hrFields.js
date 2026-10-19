@@ -67,6 +67,8 @@ const GROUPS = [
       { key: 'project', ar: 'المشروع', en: 'Project', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_project' },
       // القسمُ من قائمة الأقسام وحدَها — لا «أخرى» ولا كتابة (utils/hrLists).
       { key: 'department', ar: 'القسم', en: 'Department', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_department' },
+      // لموظّفي B2C والنقل الثقيل وحدَهم: إداري · سائق · فني (utils/hrLists.categoryError).
+      { key: 'staffCategory', ar: 'الفئة الوظيفية', en: 'Staff category', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_staff_category' },
       // «الفرع» في ملفّ الاستيراد هو المدينة (جدة، مكة…) — فاسمُه في كلّ شاشةٍ «المدينة».
       { key: 'branchName', ar: 'المدينة', en: 'City', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_work_location' },
       { key: 'directManagerName', ar: 'المدير المباشر', en: 'Line manager', type: 'text', groupable: true },

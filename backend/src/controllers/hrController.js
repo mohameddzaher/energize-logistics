@@ -351,7 +351,8 @@ exports.createEmployee = async (req, res) => {
     // اختياريًّا — ويُقال له «Failed to create employee» بلا سبب.
     const body = { ...stripEmpty(req.body, Employee.schema), createdBy: req.user._id };
     // القسمُ والجنسيّةُ والمدينةُ والمشروعُ من قوائمها وحدَها — راجع utils/hrLists.
-    const listErr = await require('../utils/hrLists').bodyError(body);
+    const listErr = await require('../utils/hrLists').bodyError(body)
+      || await require('../utils/hrLists').categoryError(body.department, body.staffCategory);
     if (listErr) return res.status(400).json({ message: listErr });
     delete body.user; // linking is done from the Users screen, not here
     delete body.markStatus;
@@ -387,7 +388,7 @@ exports.updateEmployee = async (req, res) => {
       'qiwaContractNumber', 'gosiNumber', 'absherStatus', 'sponsorName', 'workPermitExpiry',
       // `branch` الفرع الأساسي، و`branches` الفروع الإضافية التي يعمل عليها
       // فعلًا — انظر models/Employee.
-      'jobTitle', 'department', 'hireDate', 'actualWorkStartDate', 'workLocation', 'branchName', 'branch', 'branches',
+      'jobTitle', 'department', 'staffCategory', 'hireDate', 'actualWorkStartDate', 'workLocation', 'branchName', 'branch', 'branches',
       'phone', 'email', 'address', 'emergencyContactName', 'emergencyContactPhone',
       'basicSalary', 'allowances', 'directManager', 'notes',
       // Banking
@@ -408,7 +409,9 @@ exports.updateEmployee = async (req, res) => {
     {
       const LISTS = require('../utils/hrLists');
       const listErr = await LISTS.bodyError(req.body, employee)
-        || (req.body.project !== undefined ? await LISTS.projectError(employee, req.body.project) : null);
+        || (req.body.project !== undefined ? await LISTS.projectError(employee, req.body.project) : null)
+        || (req.body.staffCategory !== undefined && String(req.body.staffCategory || '') !== String(employee.staffCategory || '')
+          ? await LISTS.categoryError(req.body.department ?? employee.department, req.body.staffCategory) : null);
       if (listErr) return res.status(400).json({ message: listErr });
     }
     const projectBefore = employee.project || '';

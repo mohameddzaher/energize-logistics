@@ -216,6 +216,20 @@ const REGISTRY = [
     ],
   },
   /**
+   * ── الفئةُ الوظيفيّة لموظّفي B2C والنقل الثقيل ─────────────────────────────
+   * ثلاثٌ لا غير — والقائمةُ للسوبر أدمن وحدَه كقائمة الأقسام.
+   */
+  {
+    type: 'hr_staff_category',
+    module: 'hr', nameEn: 'Staff categories', nameAr: 'الفئات الوظيفية',
+    superOnly: true, roles: [], storeLabel: true,
+    seed: [
+      { key: 'admin', nameEn: 'Administrative', nameAr: 'إداري' },
+      { key: 'driver', nameEn: 'Driver', nameAr: 'سائق' },
+      { key: 'technician', nameEn: 'Technician', nameAr: 'فني' },
+    ],
+  },
+  /**
    * ── سجلّاتُنا التجاريّة ────────────────────────────────────────────────────
    * «على كفالتنا» = على سجلٍّ منها. منها يُختار السجلُّ عند تحويل فريلانسر إلى
    * كفالتنا (POST /employees/:id/sponsor). والسجلّاتُ يملكها السوبر أدمن.

@@ -20,7 +20,7 @@ export const EMPTY_EMPLOYEE = {
   firstName: '', lastName: '', arabicName: '', employeeNumber: '', gender: '', dateOfBirth: '', nationality: '',
   idType: 'iqama', iqamaNumber: '', iqamaExpiry: '', nationalId: '', passportNumber: '', passportExpiry: '',
   qiwaContractNumber: '', gosiNumber: '', absherStatus: '', sponsorName: '', workPermitExpiry: '',
-  jobTitle: '', department: '', hireDate: '', actualWorkStartDate: '', workLocation: '', branchName: '', branch: '', branches: [] as string[], employmentStatus: 'active',
+  jobTitle: '', department: '', staffCategory: '', hireDate: '', actualWorkStartDate: '', workLocation: '', branchName: '', branch: '', branches: [] as string[], employmentStatus: 'active',
   phone: '', email: '', address: '', emergencyContactName: '', emergencyContactPhone: '',
   basicSalary: 0, allowances: 0, directManager: '', notes: '',
   iban: '', bank: '', project: '', registerNumber: '', absherNumber: '', companyNumber: '', originCountryNumber: '',
@@ -256,6 +256,10 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         <Field label={tx.jobTitle}><TextInput value={form.jobTitle} onChange={(e) => set('jobTitle', e.target.value)} /></Field>
         {/* القسمُ من القائمة وحدَها — يضيف السوبر أدمن الأقسام من البيانات المرجعيّة. */}
         <Field label={tx.department}><ManagedSelect type="hr_department" storeLabel strict noAdd value={form.department} onChange={(v) => set('department', v)} /></Field>
+        {/* الفئةُ الوظيفيّة لموظّفي B2C والنقل الثقيل وحدَهم — إداري · سائق · فني. */}
+        {['B2C', 'النقل الثقيل'].includes(form.department) && (
+          <Field label={ar ? 'الفئة الوظيفية' : 'Staff category'}><ManagedSelect type="hr_staff_category" storeLabel strict noAdd value={form.staffCategory || ''} onChange={(v) => set('staffCategory', v)} /></Field>
+        )}
         <DatePair label={tx.hireDate} value={form.hireDate || ''} onChange={(v) => set('hireDate', v)} ar={ar} />
         <DatePair label={tx.actualWorkStartDate} value={form.actualWorkStartDate || ''} onChange={(v) => set('actualWorkStartDate', v)} ar={ar} />
         <Field label={ar ? 'المدينة' : 'City'}><SearchableSelect value={form.branchName || ''} onChange={(v) => set('branchName', v)} placeholder={ar ? '— اختر —' : '— choose —'} searchPlaceholder={ar ? 'ابحث…' : 'Search…'} searchAfter={0}

@@ -1,6 +1,6 @@
 'use client';
 /**
- * شريطُ الفلترة السريعة — القسم · المدينة · حالة العمل · المشروع · الجنسية.
+ * شريطُ الفلترة السريعة — القسم · الفئة الوظيفية · المدينة · حالة العمل · المشروع · الجنسية.
  *
  * صاحبُ الشركة (٢٠٢٦/١٠/١٩): «فلتر القسم واضح… ولو اخترت قسم اللوحة تتعدل
  * أرقامها كلها» — وكذلك المدينة وحالة العمل والمشروع والجنسية، في اللوحة والماستر
@@ -21,6 +21,8 @@ type Def = { key: string; values: Opt[] };
 
 export const QUICK_KEYS: { key: string; ar: string; en: string }[] = [
   { key: 'department', ar: 'القسم', en: 'Department' },
+  // إداري · سائق · فني — لموظّفي B2C والنقل الثقيل.
+  { key: 'staffCategory', ar: 'الفئة الوظيفية', en: 'Staff category' },
   { key: 'branchName', ar: 'المدينة', en: 'City' },
   { key: 'workStatusText', ar: 'حالة العمل', en: 'Work status' },
   { key: 'project', ar: 'المشروع', en: 'Project' },

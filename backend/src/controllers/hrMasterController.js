@@ -1199,7 +1199,8 @@ exports.updateFields = async (req, res) => {
       // القسمُ والجنسيّةُ والمدينةُ والمشروعُ من قوائمها وحدَها — راجع utils/hrLists.
       {
         const LISTS = require('../utils/hrLists');
-        const err = await LISTS.fieldError(k, v, emp[k]) || (k === 'project' ? await LISTS.projectError(emp, v) : null);
+        const err = await LISTS.fieldError(k, v, emp[k]) || (k === 'project' ? await LISTS.projectError(emp, v) : null)
+          || (k === 'staffCategory' ? await LISTS.categoryError(incoming.department ?? emp.department, v) : null);
         if (err) return res.status(400).json({ message: err });
       }
       if (f.type === 'date') {

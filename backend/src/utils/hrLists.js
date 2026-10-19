@@ -28,6 +28,7 @@ const FIELD_LISTS = {
   branchName: ['hr_work_location'],
   workLocation: ['hr_work_location'],
   project: ['hr_project', 'lt_project'],
+  staffCategory: ['hr_staff_category'],
 };
 /** قائمةٌ → خاناتُ الملفّ التي تحمل أسماءَها. */
 const LIST_FIELDS = Object.entries(FIELD_LISTS).reduce((m, [field, types]) => {
@@ -56,8 +57,8 @@ const forget = () => {
   try { cache.clear('hrlists:'); cache.clear('hrdept:'); cache.clear('hrm:choices'); } catch (_) { /* */ }
 };
 
-const LABELS = { department: 'القسم', nationality: 'الجنسية', branchName: 'المدينة', workLocation: 'مكان العمل', project: 'المشروع' };
-const MANAGER = { department: 'السوبر أدمن', nationality: 'الموارد البشريّة', branchName: 'الموارد البشريّة', workLocation: 'الموارد البشريّة', project: 'الموارد البشريّة (ومشاريع B2C من قسم B2C)' };
+const LABELS = { staffCategory: 'الفئة الوظيفية', department: 'القسم', nationality: 'الجنسية', branchName: 'المدينة', workLocation: 'مكان العمل', project: 'المشروع' };
+const MANAGER = { staffCategory: 'السوبر أدمن', department: 'السوبر أدمن', nationality: 'الموارد البشريّة', branchName: 'الموارد البشريّة', workLocation: 'الموارد البشريّة', project: 'الموارد البشريّة (ومشاريع B2C من قسم B2C)' };
 
 /**
  * رسالةُ رفضٍ إن لم تكن القيمةُ من القائمة، وإلّا null.
@@ -167,7 +168,26 @@ const projectFromB2C = (projectAr) => {
   return v === B2C_UNSET ? '' : v;
 };
 
+/**
+ * ── الفئةُ الوظيفيّة لقسمين وحدَهما ──────────────────────────────────────────
+ * B2C والنقل الثقيل — يُعرفان بمفتاحيهما في قائمة الأقسام (light_transport ·
+ * heavy_transport) لا باسميهما، فلا يُبطلُ تغييرُ الاسم القاعدة.
+ */
+const categoryDepartments = () => cache.wrap('hrlists:catdeps', 30000, async () => {
+  const Lookup = require('../models/Lookup');
+  const rows = await Lookup.find({ type: 'hr_department', key: { $in: ['light_transport', 'heavy_transport'] }, deleted: { $ne: true } }).select('nameAr').lean();
+  return rows.map((r) => String(r.nameAr || '').trim()).filter(Boolean);
+});
+async function categoryError(department, value) {
+  const v = String(value ?? '').trim();
+  if (!v) return null;
+  const deps = await categoryDepartments();
+  if (deps.includes(String(department || '').trim())) return null;
+  return `الفئة الوظيفية لموظفي ${deps.join(' و')} فقط`;
+}
+
 module.exports = {
+  categoryDepartments, categoryError,
   FIELD_LISTS, LIST_FIELDS, isHrList, NO_DEPARTMENT, B2C_UNSET,
   namesOf, optionsFor, forget, fieldError, bodyError, usage, renamed, bust,
   projectError, projectToB2C, projectFromB2C,

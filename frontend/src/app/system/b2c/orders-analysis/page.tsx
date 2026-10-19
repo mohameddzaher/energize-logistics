@@ -1576,6 +1576,38 @@ function DailyCardsSection({
         <span className="text-slate-500 text-xs">{days.length} {tx.daysUnit}</span>
       </div>
 
+      {/* ── طلباتُ الشهر يومًا بيوم — رسمٌ صغيرٌ قبل الكروت ─────────────────
+          عمودٌ لكلّ يوم، والرقمُ عند المرور. للشهر المفتوح (أو آخرِ شهرٍ في
+          المدى إن كانت الشاشةُ على عدّة أشهر). الأيامُ القادمة أصفارٌ في الشيت
+          فتظهر أعمدةً فارغة — لا تُخفى، فيُرى أين وصل الشهر. */}
+      {(() => {
+        const [mk, mdays] = sortedMonths[sortedMonths.length - 1] || [];
+        if (!mk) return null;
+        const data = (mdays as any[]).map((d) => ({ day: Number(d.dateKey.slice(8, 10)), dateKey: d.dateKey, orders: d.totalOrders || 0 }));
+        return (
+          <div className="bg-white border border-slate-200 rounded-xl px-3 pt-3 pb-1 shadow-sm">
+            <p className="mb-1 text-[12px] font-semibold text-slate-600">
+              {lang === 'ar' ? `الطلبات يوميًا — ${monthLabel(mk)}` : `Orders per day — ${monthLabel(mk)}`}
+            </p>
+            <div className="h-28" dir="ltr">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data} margin={{ top: 4, right: 4, left: 4, bottom: 0 }} barCategoryGap={2}>
+                  <CartesianGrid vertical={false} stroke="#e2e8f0" strokeDasharray="0" />
+                  <XAxis dataKey="day" tickLine={false} axisLine={false} interval={0} tick={{ fontSize: 9, fill: '#94a3b8' }} />
+                  <YAxis hide />
+                  <Tooltip cursor={{ fill: '#f1f5f9' }}
+                    formatter={(v: any) => [Number(v).toLocaleString(), lang === 'ar' ? 'طلب' : 'orders']}
+                    labelFormatter={(_: any, p: any) => p?.[0]?.payload?.dateKey?.split('-').reverse().join('/') || ''}
+                    contentStyle={{ fontSize: 12, borderRadius: 8, borderColor: '#e2e8f0' }} />
+                  <Bar dataKey="orders" fill="#f37121" radius={[4, 4, 0, 0]} maxBarSize={16}
+                    onClick={(e: any) => e?.dateKey && onDayClick(e.dateKey)} style={{ cursor: 'pointer' }} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        );
+      })()}
+
       {sortedMonths.map(([monthKey, daysOfMonth]) => (
         <div key={monthKey} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           {!isSingleMonth && (

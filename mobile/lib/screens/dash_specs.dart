@@ -486,7 +486,50 @@ class _B2cProjectsTotalState extends State<B2cProjectsTotal> {
         ]),
         if (_sel.isNotEmpty)
           TextButton(onPressed: () => setState(_sel.clear), child: Text(tr('كل المشاريع', 'All projects'))),
+        ..._dailyBars(d),
       ]),
     );
+  }
+
+  /// طلباتُ آخر شهرٍ في المعروض يومًا بيوم — أعمدةٌ صغيرة كرسم الموقع. الضغطُ
+  /// المطوَّل على عمودٍ يقول يومَه وعددَه. والأيامُ القادمة أصفارٌ فتبقى فارغة.
+  List<Widget> _dailyBars(Map<String, dynamic> d) {
+    final all = [for (final x in (d['byDay'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)];
+    if (all.isEmpty) return const [];
+    final months = all.map((x) => '${x['dateKey']}'.substring(0, 7)).toSet().toList()..sort();
+    final month = months.last;
+    final days = all.where((x) => '${x['dateKey']}'.startsWith(month)).toList()
+      ..sort((a, b) => '${a['dateKey']}'.compareTo('${b['dateKey']}'));
+    final max = days.fold<num>(0, (m, x) => ((x['totalOrders'] as num?) ?? 0) > m ? (x['totalOrders'] as num) : m);
+    return [
+      const SizedBox(height: 12),
+      Text(tr('الطلبات يوميًا — ${month.split('-').reversed.join('/')}', 'Orders per day — ${month.split('-').reversed.join('/')}'),
+          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.inkSoft)),
+      const SizedBox(height: 6),
+      SizedBox(
+        height: 70,
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            for (final x in days)
+              Expanded(child: Tooltip(
+                triggerMode: TooltipTriggerMode.tap,
+                message: '${'${x['dateKey']}'.split('-').reversed.join('/')} · ${_n(x['totalOrders'])} ${tr('طلب', 'orders')}',
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 1),
+                  child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                    Container(
+                      height: max > 0 ? 56 * (((x['totalOrders'] as num?) ?? 0) / max) : 0,
+                      decoration: const BoxDecoration(color: T.orange, borderRadius: BorderRadius.vertical(top: Radius.circular(3))),
+                    ),
+                    const SizedBox(height: 2),
+                    Text('${int.parse('${x['dateKey']}'.substring(8, 10))}', style: const TextStyle(fontSize: 7, color: T.inkFaint)),
+                  ]),
+                ),
+              )),
+          ]),
+        ),
+      ),
+    ];
   }
 }

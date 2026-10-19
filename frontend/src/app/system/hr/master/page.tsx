@@ -253,10 +253,8 @@ function HrMasterInner() {
 
       <hr className="border-slate-200" />
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-        <Big label={t('الأرشيف', 'Archive')} value={d.totals.archived ?? 0} c="#475569"
-          halves={H('archived')} onHalf={() => router.push('/system/hr/archive')} ar={ar}
-          onClick={() => router.push('/system/hr/archive')} />
+      {/* والأرشيفُ ليس هنا — صفحتُه وحدَها (صاحبُ الشركة، ٢٠٢٦/١٠/١٩). */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
         <Big label={t('خانات مطلوبة', 'Required fields')} value={d.totals.required} c="#dc2626"
           halves={H('required')} onHalf={(k) => open('required', { status: 'required', engagement: k })} ar={ar}
           onClick={() => open('required', { status: 'required' })} />

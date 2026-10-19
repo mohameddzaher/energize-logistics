@@ -7,7 +7,6 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'hr_employee_profile.dart';
-import 'hr_archive.dart';
 
 /// لوحة الموارد البشرية — native: the headline numbers, department split and
 /// the expiring-documents list, from the same endpoint the web dashboard uses.
@@ -152,8 +151,7 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                               'Sum = total employees ${mt['employees'] ?? 0}'), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
                         ),
                         const Divider(height: 20),
-                        _halfCard(tr('الأرشيف', 'Archive'), mt['archived'], mt, 'archived', T.inkFaint,
-                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HrArchiveScreen()))),
+                        // والأرشيفُ ليس هنا — صفحتُه وحدَها في قسم الموارد البشريّة.
                       ],
                       // ── العقود التي تحتاج انتباهًا — مطابقٌ للوحة الموقع ──
                       if (((s['noContractCount'] ?? 0) as num) > 0 || ((s['lapsedContractsCount'] ?? 0) as num) > 0) ...[

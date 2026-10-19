@@ -10,7 +10,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import {
   ArrowLeft, ArrowRight, Edit, RefreshCw, UserX, UserCheck, Plus, Trash2, FileText, ExternalLink, Check, Paperclip,
-  Archive, Undo2,
+  Archive, Undo2, Building2,
 } from 'lucide-react';
 import {
   isHRStaff, Employee, Contract, LeaveRequest, Asset, HRRequest, LeaveBalance,
@@ -106,6 +106,14 @@ export default function EmployeeProfilePage() {
   useSocket('vehicle:authorization', useCallback(() => loadVehicles(), [loadVehicles]));
   useSocket('vehicle:accident', useCallback(() => loadVehicles(), [loadVehicles]));
 
+  const toggleSister = async () => {
+    const toSister = !(e as any).sisterCompany;
+    if (!(await confirm(toSister
+      ? (ar ? 'حالة العمل: شركة شقيقة؟ يبقى موظفًا عاديًا على الكفالة.' : 'Work status: sister company? He stays a regular sponsored employee.')
+      : (ar ? 'إرجاع حالة العمل إلى «يعمل»؟' : 'Set the work status back to “working”?')))) return;
+    try { await api.post(`/api/hr/employees/${id}/work-status`, { status: toSister ? 'sister_company' : 'working' }); load(); }
+    catch (err: any) { notify(err.message, 'error'); }
+  };
   const exitSystem = async () => {
     if (!(await confirm(ar ? 'خروج هذا الموظف من النظام؟ ينتقل إلى الأرشيف ولا يظهر في أي شاشة أو رقم آخر.' : 'Exit this employee from the system? He moves to the archive and disappears from every other screen and number.'))) return;
     try { await api.post(`/api/hr/employees/${id}/exit-system`, {}); notify(ar ? 'نُقل إلى الأرشيف' : 'Moved to the archive', 'success'); load(); }
@@ -401,6 +409,11 @@ export default function EmployeeProfilePage() {
             {terminated
               ? <ActionBtn onClick={reactivate} icon={<UserCheck className="w-4 h-4" />} label={ar ? 'إعادة تفعيل' : 'Reactivate'} />
               : <ActionBtn onClick={() => setShowTerminate(true)} icon={<UserX className="w-4 h-4" />} label={ar ? 'إنهاء الخدمة' : 'End Service'} danger />}
+            {/* «يعمل» ↔ «شركة شقيقة» — والثالثةُ «لا يعمل» هي إنهاءُ الخدمة. */}
+            {!terminated && (
+              <ActionBtn onClick={toggleSister} icon={<Building2 className="w-4 h-4" />}
+                label={(e as any).sisterCompany ? (ar ? 'إرجاعه: يعمل' : 'Back to working') : (ar ? 'شركة شقيقة' : 'Sister company')} />
+            )}
             {/* لا يظهر إلّا بعد إنهاء الخدمة، ولغير الفريلانسر. */}
             {terminated && !archived && (
               <ActionBtn onClick={exitSystem} icon={<Archive className="w-4 h-4" />} label={ar ? 'خروج من النظام' : 'Exit the system'} danger />
@@ -846,8 +859,7 @@ function RenewModal({ open, employeeId, ar, onClose, onDone }: { open: boolean; 
 /** «لا يعمل» وحالاتُه الثلاث — مطابقةٌ لـ TERMINATION_KINDS في الخادم (utils/hrEngagement). */
 const TERMINATION_KINDS: { key: string; ar: string; en: string; hint: string; hintEn: string }[] = [
   { key: 'transfer_pending', ar: 'انتظار نقل الكفالة', en: 'Awaiting sponsorship transfer', hint: 'شهر واحد — وتنبيهاتٌ يومية لإخراجه من النظام', hintEn: 'One month — daily reminders to take him out of the system' },
-  { key: 'sister_company', ar: 'شركة شقيقة (داخل النظام)', en: 'Sister company (in system)', hint: '', hintEn: '' },
-  { key: 'final_exit', ar: 'خروج نهائي (داخل النظام)', en: 'Final exit (in system)', hint: '', hintEn: '' },
+  { key: 'final_exit', ar: 'خروج نهائي', en: 'Final exit', hint: '', hintEn: '' },
 ];
 
 function TerminateModal({ open, employeeId, ar, onClose, onDone, archivesNow }: { open: boolean; employeeId: string; ar: boolean; onClose: () => void; onDone: () => void;

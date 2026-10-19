@@ -246,8 +246,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     String kind = '';
     const kinds = [
       ('transfer_pending', 'انتظار نقل الكفالة', 'Awaiting sponsorship transfer'),
-      ('sister_company', 'شركة شقيقة (داخل النظام)', 'Sister company (in system)'),
-      ('final_exit', 'خروج نهائي (داخل النظام)', 'Final exit (in system)'),
+      ('final_exit', 'خروج نهائي', 'Final exit'),
     ];
     final ok = await showDialog<bool>(
       context: context,
@@ -355,6 +354,15 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
   bool get _freelance => RegExp(r'فري\s*لانس|فريلانس|freelanc', caseSensitive: false).hasMatch('${_emp['registerNumber'] ?? ''}');
   bool get _outOfSystem => '${_emp['systemStatus'] ?? ''}'.trim() == 'خارج النظام';
   bool get _archived => _terminated && (_outOfSystem || _freelance);
+
+  Future<void> _setWorkStatus(String status) async {
+    try {
+      await Api.instance.post('/api/hr/employees/${widget.employeeId}/work-status', {'status': status});
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
 
   Future<void> _systemAction(bool exit) async {
     final ok = await showDialog<bool>(
@@ -536,6 +544,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                 if (v == 'terminate') _terminate();
                 if (v == 'reactivate') _reactivate();
                 if (v == 'exit') _systemAction(true);
+                if (v == 'sister') _setWorkStatus(_emp['sisterCompany'] == true ? 'working' : 'sister_company');
                 if (v == 'return') _systemAction(false);
                 if (v == 'delete') _deleteEmployee();
               },
@@ -557,6 +566,12 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                   PopupMenuItem(value: 'reactivate', child: Row(children: [
                     const Icon(Icons.restart_alt_rounded, size: 18, color: T.success), const SizedBox(width: 10),
                     Text(tr('إعادة تفعيل', 'Reactivate')),
+                  ])),
+                // «يعمل» ↔ «شركة شقيقة» — والثالثةُ «لا يعمل» هي إنهاءُ الخدمة. كالموقع.
+                if (!_terminated)
+                  PopupMenuItem(value: 'sister', child: Row(children: [
+                    const Icon(Icons.apartment_outlined, size: 18, color: T.cyan), const SizedBox(width: 10),
+                    Text(_emp['sisterCompany'] == true ? tr('إرجاعه: يعمل', 'Back to working') : tr('شركة شقيقة', 'Sister company')),
                   ])),
                 if (_terminated && !_archived)
                   PopupMenuItem(value: 'exit', child: Row(children: [
@@ -621,7 +636,8 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                                 ]),
                               ),
                               // «لا يعمل» يحمل حالتَه: انتظار نقل الكفالة · شركة شقيقة · خروج نهائي.
-                              Chip2(_terminated && '${_emp['workStatusText'] ?? ''}'.contains('—') ? '${_emp['workStatusText']}' : tr(st.$1, st.$2), st.$3),
+                              Chip2(_terminated && '${_emp['workStatusText'] ?? ''}'.contains('—') ? '${_emp['workStatusText']}'
+                                  : (_emp['sisterCompany'] == true && !_terminated ? tr('شركة شقيقة', 'Sister company') : tr(st.$1, st.$2)), st.$3),
                               if (_archived) Chip2(tr('في الأرشيف', 'Archived'), T.inkFaint, icon: Icons.archive_outlined),
                             ]),
                           ),

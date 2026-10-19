@@ -784,6 +784,7 @@ exports.terminateEmployee = async (req, res) => {
     employee.transferDeadline = employee.terminationKind === 'transfer_pending'
       ? new Date(when.getTime() + ENG.TRANSFER_DAYS * 86400000) : null;
     employee.transferAlertKey = '';
+    employee.sisterCompany = false;
     employee.workStatusText = ENG.workStatusTextOf(employee);
     // ── وحالةُ العقد تُكتب هنا، لا تُترك لمن يفتح الملفّ بعد شهر ─────────────
     //
@@ -821,6 +822,40 @@ exports.terminateEmployee = async (req, res) => {
   }
 };
 
+/**
+ * POST /employees/:id/work-status { status: 'working' | 'sister_company' }
+ *
+ * «يعمل» ↔ «شركة شقيقة» لمن لم تنتهِ خدمتُه — والحالةُ الثالثة «لا يعمل» هي
+ * إنهاءُ الخدمة نفسُه (terminateEmployee). وخانةُ «حالة العمل» لا تُكتب باليد.
+ * والموقوفُ القديم يُحسم هنا أيضًا: يعمل أو شركة شقيقة.
+ */
+exports.setWorkStatus = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const ENG = require('../utils/hrEngagement');
+    const employee = await Employee.findById(req.params.id);
+    if (!employee) return res.status(404).json({ message: 'Employee not found' });
+    if (employee.employmentStatus === 'terminated') {
+      return res.status(400).json({ message: 'الموظف «لا يعمل» — أعِد تفعيله أولًا' });
+    }
+    const status = String(req.body.status || '');
+    if (!['working', 'sister_company'].includes(status)) return res.status(400).json({ message: 'اختر: يعمل أو شركة شقيقة' });
+    const before = employee.workStatusText || '';
+    employee.sisterCompany = status === 'sister_company';
+    if (employee.employmentStatus === 'suspended') employee.employmentStatus = 'active';
+    employee.workStatusText = ENG.workStatusTextOf(employee);
+    await employee.save();
+    bustEmployeeCaches();
+    await logAudit({ user: req.user._id, action: 'hr_work_status', entity: 'Employee', entityId: employee._id,
+      changes: { details: `حالة العمل: «${before}» → «${employee.workStatusText}»`, before: { workStatusText: before }, after: { workStatusText: employee.workStatusText } }, ipAddress: req.ip });
+    await notifyHR({ title: `حالة العمل: ${employee.workStatusText}`, message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
+    res.json({ employee });
+  } catch (error) {
+    console.error('setWorkStatus error:', error);
+    res.status(500).json({ message: 'تعذّر تغيير حالة العمل' });
+  }
+};
+
 // Re-activate a previously terminated/suspended employee.
 exports.reactivateEmployee = async (req, res) => {
   try {
@@ -833,6 +868,7 @@ exports.reactivateEmployee = async (req, res) => {
     employee.terminationKind = '';
     employee.transferDeadline = null;
     employee.transferAlertKey = '';
+    employee.sisterCompany = false;
     employee.workStatusText = require('../utils/hrEngagement').WORKING;
     await employee.save();
     /**

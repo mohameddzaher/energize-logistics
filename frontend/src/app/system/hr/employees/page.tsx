@@ -358,7 +358,9 @@ export default function HREmployeesPage() {
                 <td className="px-4 py-3 text-slate-700">{e.jobTitle || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{e.nationality || '—'}</td>
                 <td className="px-4 py-3 whitespace-nowrap">
-                  <Badge style={EMPLOYMENT_STATUS[e.employmentStatus || 'active']} lang={lang} />
+                  {(e as any).workStatusText === 'شركة شقيقة'
+                    ? <Badge style={{ bg: 'bg-teal-500/20', text: 'text-teal-700', ar: 'شركة شقيقة', en: 'Sister company' }} lang={lang} />
+                    : <Badge style={EMPLOYMENT_STATUS[e.employmentStatus || 'active']} lang={lang} />}
                   {/* حالةُ «لا يعمل» الثلاث: انتظار نقل الكفالة · شركة شقيقة · خروج نهائي. */}
                   {e.employmentStatus === 'terminated' && (e as any).workStatusText && String((e as any).workStatusText).includes('—') && (
                     <span className="block text-[10.5px] text-red-600 mt-0.5">{String((e as any).workStatusText).split('—')[1].trim()}</span>

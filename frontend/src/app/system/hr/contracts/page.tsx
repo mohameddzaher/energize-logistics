@@ -494,7 +494,7 @@ export default function ContractsPage() {
           </>}>
           <div className="space-y-3">
             <p className="text-[12.5px] text-slate-600">{ar ? 'فسخُ العقد يُنهي خدمة الموظف («لا يعمل»). اختر حالته — ومَن هو خارج النظام أو فريلانسر ينتقل إلى الأرشيف فورًا ولا يحتاج حالة.' : 'Ending the contract ends the service (“not working”). Pick the status — anyone out of the system or freelance goes straight to the archive.'}</p>
-            {[['transfer_pending', 'انتظار نقل الكفالة', 'Awaiting sponsorship transfer'], ['sister_company', 'شركة شقيقة (داخل النظام)', 'Sister company (in system)'], ['final_exit', 'خروج نهائي (داخل النظام)', 'Final exit (in system)']].map(([k, a, en]) => (
+            {[['transfer_pending', 'انتظار نقل الكفالة', 'Awaiting sponsorship transfer'], ['final_exit', 'خروج نهائي', 'Final exit']].map(([k, a, en]) => (
               <label key={k} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-[13px] ${endKind === k ? 'border-red-400 bg-red-50' : 'border-slate-200 hover:bg-slate-50'}`}>
                 <input type="radio" name="endKind" className="accent-red-600" checked={endKind === k} onChange={() => setEndKind(k)} />
                 <span className="font-semibold text-slate-800">{ar ? a : en}</span>

@@ -131,16 +131,21 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                       // ── كروتُ الموقع بنصفيها: على الكفالة · فريلانسر ──
                       if (mt != null) ...[
                         const SizedBox(height: 10),
-                        _halfCard(tr('على رأس العمل', 'On duty'), mt['active'], mt, 'active', T.success, onHalf: (k) {
+                        _halfCard(tr('يعمل', 'Working'), mt['active'], mt, 'active', T.success, onHalf: (k) {
                           final dd = ((mt['onDutyDetail'] as Map?)?[k] as Map?) ?? const {};
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
                             '${k == 'sponsored' ? tr('على الكفالة', 'Sponsored') : tr('فريلانسر', 'Freelance')}: ${tr('يعمل', 'working')} ${dd['working'] ?? 0} · ${tr('إجازة', 'on leave')} ${dd['leave'] ?? 0}')));
                         }),
                         const SizedBox(height: 8),
-                        _halfCard(tr('ليس على رأس العمل', 'Not on duty'), mt['notActive'], mt, 'notActive', T.inkSoft,
-                            sub: tr('منهم ${mt['terminated'] ?? 0} انتهت خدمتهم', '${mt['terminated'] ?? 0} ended')),
+                        _halfCard(tr('شركة شقيقة', 'Sister company'), mt['sister'], mt, 'sister', T.cyan),
                         const SizedBox(height: 8),
-                        _halfCard(tr('في مرحلة نقل الكفالة', 'Sponsorship transfer'), mt['transfer'], mt, 'transfer', T.warn),
+                        _halfCard(tr('لا يعمل — داخل النظام', 'Not working — in system'), mt['notActive'], mt, 'notActive', T.inkSoft,
+                            sub: tr('ينتظر الخروج من النظام', 'awaiting system exit')),
+                        const SizedBox(height: 8),
+                        _halfCard(tr('لا يعمل — انتظار نقل الكفالة', 'Not working — awaiting transfer'), mt['transfer'], mt, 'transfer', T.warn),
+                        const SizedBox(height: 8),
+                        _halfCard(tr('لا يعمل — خروج نهائي', 'Not working — final exit'), mt['finalExit'], mt, 'finalExit', T.danger,
+                            sub: ((mt['noKind'] ?? 0) as num) > 0 ? tr('و${mt['noKind']} بلا حالة', '+${mt['noKind']} with no status') : null),
                         const SizedBox(height: 8),
                         _halfCard(tr('الأرشيف', 'Archive'), mt['archived'], mt, 'archived', T.inkFaint,
                             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HrArchiveScreen()))),

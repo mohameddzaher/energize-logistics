@@ -206,13 +206,14 @@ function HrMasterInner() {
           sub={countActive(filters) > 0 ? t(`من ${d.totals.roster}`, `of ${d.totals.roster}`) : undefined}
           halves={H('employees')} onHalf={(k) => drill({ engagement: k })} ar={ar}
           onClick={() => open('identity')} />
-        {/* «على رأس العمل» = يعمل + في إجازة. والضغطُ على نصفٍ يقول كم يعمل وكم في إجازة. */}
-        <Big label={t('على رأس العمل', 'On duty')} value={d.totals.active} c="#16a34a"
+        {/* «حالة العمل» ثلاث: يعمل · شركة شقيقة · لا يعمل — ولكلٍّ كارت (utils/hrEngagement).
+            «يعمل» يشمل مَن في إجازة، والضغطُ على نصفٍ يقول كم يعمل وكم في إجازة. */}
+        <Big label={t('يعمل', 'Working')} value={d.totals.active} c="#16a34a"
           halves={H('active')} onHalf={(k) => setDutyHalf((v) => (v === k ? '' : k))} activeHalf={dutyHalf} ar={ar}
-          onClick={() => drill({ employment: 'onduty' })}
+          onClick={() => drill({ employment: 'working' })}
           detail={dutyHalf && d.totals.onDutyDetail ? (
             <span className="mt-1.5 flex flex-wrap gap-1.5 text-[10.5px]">
-              <button type="button" onClick={(e) => { e.stopPropagation(); drill({ employment: 'active', engagement: dutyHalf }); }}
+              <button type="button" onClick={(e) => { e.stopPropagation(); drill({ employment: 'working', engagement: dutyHalf }); }}
                 className="rounded bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-700 hover:bg-emerald-100">
                 {t(`يعمل ${d.totals.onDutyDetail[dutyHalf].working}`, `Working ${d.totals.onDutyDetail[dutyHalf].working}`)}
               </button>
@@ -222,15 +223,24 @@ function HrMasterInner() {
               </button>
             </span>
           ) : undefined} />
-        {/* «ليس على رأس العمل» = منتهية خدمتُه + في مرحلة نقل الكفالة — بلا إجازة. */}
-        <Big label={t('ليس على رأس العمل', 'Not on duty')} value={d.totals.notActive} c="#94a3b8"
-          sub={d.totals.terminated != null ? t(`منهم ${d.totals.terminated} انتهت خدمتهم`, `${d.totals.terminated} ended`) : undefined}
+        {/* شركة شقيقة — موظّفٌ عاديٌّ على كفالتنا، ليس إنهاءَ خدمة. */}
+        <Big label={t('شركة شقيقة', 'Sister company')} value={d.totals.sister ?? 0} c="#0d9488"
+          halves={H('sister')} onHalf={(k) => drill({ employment: 'sister', engagement: k })} ar={ar}
+          onClick={() => drill({ employment: 'sister' })} />
+        {/* «لا يعمل» داخلَ النظام = انتهت خدمتُه وينتظر «خروج من النظام» (ثمّ الأرشيف).
+            وخارجَ النظام يذهب إلى الأرشيف فورًا فلا يُعَدّ هنا. */}
+        <Big label={t('لا يعمل — داخل النظام', 'Not working — in system')} value={d.totals.notActive} c="#94a3b8"
+          sub={t(`ينتظر الخروج من النظام`, 'awaiting system exit')}
           halves={H('notActive')} onHalf={(k) => drill({ employment: 'inactive', engagement: k })} ar={ar}
           onClick={() => drill({ employment: 'inactive' })} />
-        {/* «موقوف» هنا = في مرحلة نقل الكفالة — ويُفتَح على الإقامات ليُرى تاريخُ انتهائها. */}
-        <Big label={t('في مرحلة نقل الكفالة', 'Sponsorship transfer')} value={d.totals.transfer ?? 0} c="#d97706"
+        {/* حالتا «لا يعمل»: انتظار نقل الكفالة (يُفتَح على الإقامات ليُرى انتهاؤها) · خروج نهائي. */}
+        <Big label={t('لا يعمل — انتظار نقل الكفالة', 'Not working — awaiting transfer')} value={d.totals.transfer ?? 0} c="#d97706"
           halves={H('transfer')} onHalf={(k) => open('iqama', { employment: 'transfer', engagement: k })} ar={ar}
           onClick={() => open('iqama', { employment: 'transfer' })} />
+        <Big label={t('لا يعمل — خروج نهائي', 'Not working — final exit')} value={d.totals.finalExit ?? 0} c="#b91c1c"
+          sub={d.totals.noKind ? t(`و${d.totals.noKind} بلا حالة`, `+${d.totals.noKind} with no status`) : undefined}
+          halves={H('finalExit')} onHalf={(k) => drill({ employment: 'final_exit', engagement: k })} ar={ar}
+          onClick={() => drill({ employment: 'final_exit' })} />
         <Big label={t('الأرشيف', 'Archive')} value={d.totals.archived ?? 0} c="#475569"
           halves={H('archived')} onHalf={() => router.push('/system/hr/archive')} ar={ar}
           onClick={() => router.push('/system/hr/archive')} />

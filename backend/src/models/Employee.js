@@ -65,6 +65,9 @@ const employeeSchema = new mongoose.Schema(
      */
     terminationKind: { type: String, enum: ['transfer_pending', 'sister_company', 'final_exit', ''], default: '' },
     transferDeadline: { type: Date, default: null },
+    // «شركة شقيقة» — حالةُ عملٍ لا إنهاءُ خدمة: موظّفٌ قائمٌ على كفالتنا يعمل لدى
+    // شركةٍ شقيقة، ويُعامَل في كلّ قسمٍ كموظّفٍ عاديّ. راجع utils/hrEngagement.
+    sisterCompany: { type: Boolean, default: false, index: true },
     // آخرُ نافذةِ تنبيهٍ أُرسلت (اليوم + صباحًا/مساءً) — يمنع عاملَي الخادم من التكرار.
     transferAlertKey: { type: String, default: '' },
 

@@ -33,7 +33,7 @@ export interface HrOverview {
   // الوظيفيّ يُعرض بجانبه ليُعرف من أيٍّ اقتُطع.
   totals: { employees: number; active: number; notActive: number; terminated?: number; roster: number; filtered: number; required: number; expiringSoon: number; outsideKingdom: number; freelancers: number; cashPayroll: number; gosiRegistered: number;
     /** في مرحلة نقل الكفالة (الموقوف) والأرشيف. */
-    transfer?: number; archived?: number;
+    transfer?: number; archived?: number; finalExit?: number; noKind?: number; sister?: number;
     /** نصفا كلّ كارت: على الكفالة · فريلانسر — من «رقم السجل التجاري». */
     halves?: Record<string, { sponsored: number; freelance: number }>;
     onDutyDetail?: Record<'sponsored' | 'freelance', { working: number; leave: number }>;

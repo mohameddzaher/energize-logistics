@@ -59,20 +59,26 @@ const ENGAGEMENT_MATCH = {
 };
 
 /**
- * «لا يعمل» وحالاتُه الثلاث — وكلُّها إنهاءُ خدمة. والموظّفُ خارجَ النظام أو
- * الفريلانسرُ لا يُسأل عن حالة: إنهاءُ خدمته يؤرشفه فورًا.
+ * ── «حالة العمل» ثلاث: يعمل · شركة شقيقة · لا يعمل (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) ──
+ *   يعمل         على رأس عمله.
+ *   شركة شقيقة   موظّفٌ عاديٌّ على كفالتنا يعمل لدى شركةٍ شقيقة — ليس إنهاءَ خدمة،
+ *                ويُعامَل في كلّ قسمٍ كموظّف (`sisterCompany` على ملفٍّ قائم).
+ *   لا يعمل      = إنهاءُ الخدمة، وحالتُه إحدى اثنتين:
+ *                  انتظار نقل الكفالة · خروج نهائي.
+ * ثمّ: خارجَ النظام (أو فريلانسر) ← الأرشيف فورًا؛ داخلَ النظام ← ينتظر «خروج من
+ * النظام» ثمّ الأرشيف.
  */
 const TERMINATION_KINDS = {
   transfer_pending: { ar: 'انتظار نقل الكفالة', en: 'Awaiting sponsorship transfer' },
-  sister_company: { ar: 'شركة شقيقة (داخل النظام)', en: 'Sister company (in system)' },
-  final_exit: { ar: 'خروج نهائي (داخل النظام)', en: 'Final exit (in system)' },
+  final_exit: { ar: 'خروج نهائي', en: 'Final exit' },
 };
+const SISTER = 'شركة شقيقة';
 const TRANSFER_DAYS = 30;
 const WORKING = 'يعمل';
 const NOT_WORKING = 'لا يعمل';
 /** نصُّ «حالة العمل» كما يُكتب ويُعرَض — مشتقٌّ من الحالة لا يُكتب باليد. */
 function workStatusTextOf(e) {
-  if (e?.employmentStatus !== 'terminated') return WORKING;
+  if (e?.employmentStatus !== 'terminated') return e?.sisterCompany ? SISTER : WORKING;
   const k = TERMINATION_KINDS[e?.terminationKind];
   return k ? `${NOT_WORKING} — ${k.ar}` : NOT_WORKING;
 }
@@ -80,7 +86,7 @@ function workStatusTextOf(e) {
 const archivesOnTermination = (e) => String(e?.systemStatus || '').trim() === SYSTEM_OUT || engagementOf(e) === 'freelance';
 
 module.exports = {
-  TERMINATION_KINDS, TRANSFER_DAYS, WORKING, NOT_WORKING, workStatusTextOf, archivesOnTermination,
+  TERMINATION_KINDS, TRANSFER_DAYS, WORKING, NOT_WORKING, SISTER, workStatusTextOf, archivesOnTermination,
   SYSTEM_OUT, SYSTEM_IN, engagementOf, contractRequired, isArchived,
   ARCHIVED, NOT_ARCHIVED, withoutArchived, ENGAGEMENT_MATCH,
 };

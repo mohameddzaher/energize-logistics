@@ -24,6 +24,7 @@ const ACTION_AR = {
   lt_custody_update: 'تعديل قيد في عهدة النقل الخفيف',
   lt_custody_entry: 'قيد في عهدة النقل الخفيف', lt_custody_delete: 'حذف قيد من عهدة النقل الخفيف',
   ht_custody_update: 'تعديل قيد في عهدة النقل الثقيل',
+  hr_work_status: 'تغيير حالة العمل', hr_work_status_derived: 'حالة العمل من الحالة (تصحيح)',
   hr_exit_system: 'خروج من النظام (أرشيف)', hr_return_system: 'إعادة إلى النظام من الأرشيف',
   lt_user_rental_create: 'تأجير يوزر', lt_user_rental_update: 'تعديل تأجير يوزر', lt_user_rental_end: 'إنهاء تأجير يوزر', lt_user_rental_delete: 'حذف تأجير يوزر',
   ht_custody_entry: 'قيد في عهدة النقل الثقيل', ht_custody_delete: 'حذف قيد من عهدة النقل الثقيل',

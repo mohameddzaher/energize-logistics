@@ -181,9 +181,12 @@ function buildFilter(q) {
   // «على رأس العمل» بمعناه في اللوحة: يعمل أو في إجازة.
   if (employment === 'onduty') f.employmentStatus = { $in: ['active', 'on_leave'] };
   if (employment === 'leave') f.employmentStatus = 'on_leave';
-  // «موقوف» في هذه الشركة = في مرحلة نقل الكفالة.
-  // «في مرحلة نقل الكفالة» = لا يعمل بحالة «انتظار نقل الكفالة» (والموقوفُ القديم معه).
-  if (employment === 'transfer') f.$and.push({ $or: [{ employmentStatus: 'terminated', terminationKind: 'transfer_pending' }, { employmentStatus: 'suspended' }] });
+  // ── «حالة العمل» الثلاث وحالتا «لا يعمل» — كروتُ اللوحة (راجع utils/hrEngagement) ──
+  if (employment === 'working') f.$and.push({ employmentStatus: { $in: ['active', 'on_leave'] }, sisterCompany: { $ne: true } });
+  if (employment === 'sister') f.$and.push({ employmentStatus: { $ne: 'terminated' }, sisterCompany: true });
+  if (employment === 'transfer') f.$and.push({ employmentStatus: 'terminated', terminationKind: 'transfer_pending' });
+  if (employment === 'final_exit') f.$and.push({ employmentStatus: 'terminated', terminationKind: 'final_exit' });
+  if (employment === 'nokind') f.$and.push({ employmentStatus: 'terminated', terminationKind: { $nin: ['transfer_pending', 'final_exit'] } });
   // ── و«على قوّة العمل» غيرُ «على رأس العمل» ───────────────────────────────
   // مَن في إجازةٍ أو موقوفٌ ليس «على رأس العمل» اليوم، لكنّه موظّفٌ قائمٌ
   // تُجدَّد إقامتُه ورخصتُه. و`inactive` تجمعه مع مَن انتهت خدمتُه، فلا تصلح
@@ -615,15 +618,16 @@ exports.overview = async (req, res) => {
       docStateCounts(Employee, docMatch, H.GROUPS, ALERT),
       boolCounts(Employee, match, splitExprs({
         all: true,
-        active: { $eq: ['$employmentStatus', 'active'] },
-        onLeave: { $eq: ['$employmentStatus', 'on_leave'] },
-        onDuty: { $in: ['$employmentStatus', ['active', 'on_leave']] },
+        // «يعمل» بلا الشركة الشقيقة؛ والشقيقةُ كارتُها وحدَها.
+        active: { $and: [{ $eq: ['$employmentStatus', 'active'] }, { $ne: ['$sisterCompany', true] }] },
+        onLeave: { $and: [{ $eq: ['$employmentStatus', 'on_leave'] }, { $ne: ['$sisterCompany', true] }] },
+        onDuty: { $and: [{ $in: ['$employmentStatus', ['active', 'on_leave']] }, { $ne: ['$sisterCompany', true] }] },
+        sister: { $and: [{ $ne: ['$employmentStatus', 'terminated'] }, { $eq: ['$sisterCompany', true] }] },
+        finalExit: { $and: [{ $eq: ['$employmentStatus', 'terminated'] }, { $eq: ['$terminationKind', 'final_exit'] }] },
+        noKind: { $and: [{ $eq: ['$employmentStatus', 'terminated'] }, { $not: [{ $in: [{ $ifNull: ['$terminationKind', ''] }, ['transfer_pending', 'final_exit']] }] }] },
         notActive: { $in: ['$employmentStatus', ['terminated', 'suspended']] },
         terminated: { $eq: ['$employmentStatus', 'terminated'] },
-        transfer: { $or: [
-          { $and: [{ $eq: ['$employmentStatus', 'terminated'] }, { $eq: ['$terminationKind', 'transfer_pending'] }] },
-          { $eq: ['$employmentStatus', 'suspended'] },
-        ] },
+        transfer: { $and: [{ $eq: ['$employmentStatus', 'terminated'] }, { $eq: ['$terminationKind', 'transfer_pending'] }] },
         outsideKingdom: { $eq: ['$isOutsideKingdom', true] },
         gosiRegistered: filledExpr('gosiNumber'),
         cashPayroll: { $eq: [{ $ifNull: ['$fieldStatus.ibanStatus', ''] }, 'cash_payroll'] },
@@ -743,12 +747,16 @@ exports.overview = async (req, res) => {
       // «ليس على رأس العمل» = منتهية خدمتُه + في مرحلة نقل الكفالة — بلا إجازة.
       notActive: sums.notActive,
       terminated: sums.terminated,
-      // «في مرحلة نقل الكفالة» = الموقوف.
+      // «لا يعمل» داخلَ النظام (ينتظر الخروج) بحالتيه — والأرشيفُ كارتُه وحدَه.
       transfer: sums.transfer,
+      finalExit: sums.finalExit,
+      noKind: sums.noKind,
+      sister: sums.sister,
       archived: archived.all,
       halves: {
         employees: halfOf('all'), active: halfOf('onDuty'), notActive: halfOf('notActive'),
         transfer: halfOf('transfer'), outsideKingdom: halfOf('outsideKingdom'), gosiRegistered: halfOf('gosiRegistered'),
+        finalExit: halfOf('finalExit'), sister: halfOf('sister'),
         archived: { sponsored: archived.all__s || 0, freelance: archived.all__f || 0 },
         required: { sponsored: requiredOf(reqS), freelance: requiredOf(reqF, 'contract') },
         expiringSoon: { sponsored: attentionOf(stS), freelance: attentionOf(stF, 'contract') },

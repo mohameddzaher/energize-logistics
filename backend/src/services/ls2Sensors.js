@@ -39,10 +39,12 @@ function evalExpr(expr, params) {
 
 // Parse the unit display name — "1080 RXA سعيد اقبال" → { plate:'1080 RXA', driver:'سعيد اقبال' }.
 // The plate is the leading "<digits> <2-4 latin letters>"; the rest is the driver.
+// والفاصلُ بين الأرقام والحروف مسافةٌ أو شَرطة: «3965-DEA خليل» (أُضيفت هكذا
+// ٢٠٢٦/١٠/١٨) كانت تُقرأ لوحةً فارغةً وسائقًا اسمُه «3965-DEA خليل».
 function parseName(nm) {
   if (!nm) return { plate: '', driver: '' };
-  const m = String(nm).match(/^\s*(\d{3,5}\s*[A-Za-z]{1,4})\s*(.*)$/);
-  if (m) return { plate: m[1].replace(/\s+/g, ' ').trim(), driver: (m[2] || '').trim() };
+  const m = String(nm).match(/^\s*(\d{3,5})[\s-]*([A-Za-z]{1,4})(?![A-Za-z])[\s-]*(.*)$/);
+  if (m) return { plate: `${m[1]} ${m[2].toUpperCase()}`, driver: (m[3] || '').trim() };
   return { plate: '', driver: String(nm).trim() };
 }
 

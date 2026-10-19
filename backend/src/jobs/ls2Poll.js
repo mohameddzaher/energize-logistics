@@ -415,6 +415,10 @@ async function tick() {
     // Slow identity sync (first tick, then every ~30 min).
     if (tickCount % IDENTITY_EVERY_TICKS === 0) {
       syncIdentity().catch((e) => { if (process.env.NODE_ENV !== 'production') console.log('[ls2Poll] identity sync error:', e.message); });
+      // وكلُّ شاحنةٍ جديدة تأخذ سطحتَها في سجلّ الأصول — راجع services/ls2FleetRegister.
+      require('../services/ls2FleetRegister').ensureFlatbeds()
+        .then((c) => { if (c.length) console.log(`[ls2Poll] added ${c.length} new truck(s) to the asset register: ${c.map((f) => f.plate).join(', ')}`); })
+        .catch((e) => console.log('[ls2Poll] ensureFlatbeds error:', e.message));
     }
     tickCount += 1;
   } catch (e) {

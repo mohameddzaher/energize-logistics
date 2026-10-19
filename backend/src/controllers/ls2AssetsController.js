@@ -102,6 +102,8 @@ async function logEvent(req, data) {
 exports.getOverview = async (req, res) => {
   try {
     const body = await cache.wrap('ls2assets:overview', 20000, async () => {
+      // شاحنةٌ جديدة في لوكيشن سوليوشن تظهر هنا دون انتظار المستطلِع — راجع services/ls2FleetRegister.
+      await require('../services/ls2FleetRegister').ensureFlatbeds().catch(() => {});
       const [flatbeds, trailers, tires] = await Promise.all([
         Ls2Flatbed.find().sort({ numbering: 1 }).lean(),
         Ls2Trailer.find().sort({ trailerNumber: 1 }).lean(),

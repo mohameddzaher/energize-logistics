@@ -14,7 +14,7 @@
 // المجموعة وحدَها لشخصٍ واحد مجتمعةً — لا استمارة الموظّف كلَّها، فتلك في ملفّه
 // وتكرارها هنا يُفرغ هذه الصفحات من معناها — و«تفريغ» تمحو بيانات هذه المجموعة
 // عنده وحدَه. ولا شيء منها يحذف موظّفًا: انظر components/hr/HrGroupModals.
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams, useParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -149,6 +149,9 @@ function GroupInner() {
   // بعدها مباشرةً — أو وصله تحديثٌ من السوكِت — كان الردُّ الأوسعُ يصل أخيرًا
   // فيكتب الجدولَ كلَّه تحت عدّادٍ مضغوط. راجع hooks/useLatestRequest.
   const guard = useLatestRequest();
+  // الضغطُ على رقمٍ في بطاقة حقلٍ يُنزل إلى أصحابه في الجدول فورًا — لا يتركهم
+  // تحت عشرات البطاقات فيُظنّ أنّ الضغطة لم تفعل شيئًا.
+  const tableRef = useRef<HTMLDivElement>(null);
   const load = useCallback(async () => {
     const mine = guard.begin();
     try {
@@ -321,13 +324,29 @@ function GroupInner() {
               <div className="flex flex-wrap gap-1">
                 {STATUS_KEYS.map((k) => (s[k] > 0) && (
                   <button key={k}
-                    onClick={() => { setField(f.key); setStatus(status === k && field === f.key ? '' : k); }}
+                    onClick={() => {
+                      const off = status === k && field === f.key;
+                      setField(f.key); setStatus(off ? '' : k);
+                      if (!off) setTimeout(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
+                    }}
                     className={`px-1.5 py-0.5 rounded text-[10.5px] font-semibold ${statusMeta(k).bg} ${
                       field === f.key && status === k ? 'ring-2 ring-offset-1 ring-[#f37121]' : ''}`}>
                     {statusLabel(k, ar)} {s[k]}
                   </button>
                 ))}
               </div>
+              {/* ── وأصحابُ الرقم المضغوط تحته: اسمٌ يفتح ملفَّ الموظّف مباشرةً ── */}
+              {field === f.key && status && rows.length > 0 && rows.length <= 40 && (
+                <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-1">
+                  {rows.map((r) => (
+                    <button key={r._id} onClick={() => router.push(`/system/hr/employees/${r._id}`)}
+                      title={t('فتح ملف الموظف', 'Open employee file')}
+                      className="px-2 py-0.5 rounded-full bg-slate-100 hover:bg-orange-100 hover:text-[#c2410c] text-[11.5px] font-semibold text-slate-700">
+                      {r.employeeNumber ? `${r.employeeNumber} · ` : ''}{r.name}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}
@@ -361,7 +380,7 @@ function GroupInner() {
         </div>
       )}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm flex flex-wrap items-center gap-2">
+      <div ref={tableRef} className="scroll-mt-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm flex flex-wrap items-center gap-2">
         <div className="relative">
           <Search className="w-4 h-4 text-slate-400 absolute top-1/2 -translate-y-1/2 start-2.5" />
           <input value={q} onChange={(e) => setQ(e.target.value)}

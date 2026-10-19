@@ -4,7 +4,7 @@
  *   node src/scripts/hrDepartmentsUnify.js            ← عرضٌ فقط
  *   node src/scripts/hrDepartmentsUnify.js --apply
  *
- *   MD · CEO          ← الإدارة
+ *   MD · CEO · ادارة  ← الإدارة
  *   الكافية           ← الموارد البشرية
  *   ادارة B2C         ← B2C
  *   بدون مشروع        ← بدون قسم
@@ -23,7 +23,7 @@ const { byType } = require('../config/lookupTypes');
 
 const APPLY = process.argv.includes('--apply');
 const MOVES = {
-  MD: 'الإدارة', CEO: 'الإدارة',
+  MD: 'الإدارة', CEO: 'الإدارة', 'ادارة': 'الإدارة', 'اداره': 'الإدارة', 'إدارة': 'الإدارة',
   'الكافية': 'الموارد البشرية', 'الكافيه': 'الموارد البشرية',
   'ادارة B2C': 'B2C', 'إدارة B2C': 'B2C',
   'بدون مشروع': 'بدون قسم', 'غير مطلوب': 'بدون قسم',

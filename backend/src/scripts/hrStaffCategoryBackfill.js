@@ -21,7 +21,7 @@ const fromTitle = (t) => {
   const s = S(t);
   if (/^سائق/.test(s)) return 'سائق';
   if (/ميكانيكي|^فني/.test(s)) return 'فني';
-  if (/مشرف|مدير|مساعد|معقب|مسؤول المتابعة/.test(s)) return 'إداري';
+  if (/مشرف|مدير|مساعد|معقب|مسؤول المتابعة|^[اإ]دار/.test(s)) return 'إداري';
   return '';
 };
 const fromLt = (r) => {

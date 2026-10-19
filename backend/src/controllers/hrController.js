@@ -880,6 +880,12 @@ exports.reactivateEmployee = async (req, res) => {
     employee.transferAlertKey = '';
     employee.sisterCompany = false;
     employee.workStatusText = require('../utils/hrEngagement').WORKING;
+    // ── ومن الأرشيف يعود داخلَ النظام ──────────────────────────────────────
+    // مَن أُخرج من النظام ثمّ أُعيد إلى الخدمة يعمل لدينا — فلا يبقى «خارج
+    // النظام» على رأس عمله. والفريلانسرُ لم يكن على النظام أصلًا فلا يُمَسّ.
+    const ENG = require('../utils/hrEngagement');
+    const systemBefore = employee.systemStatus || '';
+    if (String(systemBefore).trim() === ENG.SYSTEM_OUT && ENG.engagementOf(employee) !== 'freelance') employee.systemStatus = ENG.SYSTEM_IN;
     await employee.save();
     /**
      * ── والعقدُ يعود كما كان قبل الإنهاء ─────────────────────────────────────
@@ -899,7 +905,7 @@ exports.reactivateEmployee = async (req, res) => {
     }
     if (ended.length) await syncEmployeeContractStatus(employee._id);
     bustEmployeeCaches();
-    await logAudit({ user: req.user._id, action: 'reactivate_employee', entity: 'Employee', entityId: employee._id, changes: { after: { employmentStatus: 'active' } }, ipAddress: req.ip });
+    await logAudit({ user: req.user._id, action: 'reactivate_employee', entity: 'Employee', entityId: employee._id, changes: { after: { employmentStatus: 'active', ...(employee.systemStatus !== systemBefore ? { systemStatus: employee.systemStatus } : {}) }, ...(employee.systemStatus !== systemBefore ? { before: { systemStatus: systemBefore } } : {}) }, ipAddress: req.ip });
     await notifyHR({ title: 'Employee reactivated', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
     res.json({ employee });
   } catch (error) {

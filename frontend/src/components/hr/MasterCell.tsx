@@ -15,7 +15,9 @@
  * سجلّ المركبات (utils/driverCardSync).
  */
 import { useState } from 'react';
-import { Check, X } from 'lucide-react';
+import { Check, X, UserCheck } from 'lucide-react';
+import { useDialog } from '@/components/system/DialogProvider';
+import api from '@/lib/api';
 import { updateEmployeeFields, statusMeta, statusLabel, fmtDate, toDateInput } from '@/lib/hrMaster';
 
 // `strict`: قائمةٌ مغلقة (القسم) — لا «أخرى…» ولا كتابة. راجع utils/hrDepartments في الخادم.
@@ -47,6 +49,21 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
   // «حالة العمل» و«حالة النظام» تُقرآن ولا تُكتبان من الخانة: تتغيّران بإنهاء
   // الخدمة وإعادة التفعيل والخروج من النظام وحدَها (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
   const locked = LOCKED_KEYS.has(f.key);
+  const { confirm } = useDialog();
+  // ── و«لا يعمل» تُرجَع من خانتها ────────────────────────────────────────────
+  // الخانةُ مقفلة، لكنّ مَن يقرأ «لا يعمل» في الماستر يريد أن يُرجعه من مكانه:
+  // زرُّ «إعادته للخدمة» هو إعادةُ التفعيل نفسُها (العقدُ يعود، ومن الأرشيف يعود
+  // داخلَ النظام) — لا كتابةٌ في الخانة (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
+  const reinstatable = canEdit && f.key === 'workStatusText' && /^لا يعمل/.test(String(raw || ''));
+  const reinstate = async () => {
+    if (!(await confirm({ message: t('إعادة هذا الموظف إلى الخدمة؟ تصير حالته «يعمل» ويعود عقده كما كان.', 'Return this employee to service? Status becomes “working” and the contract is restored.'), confirmLabel: t('إعادته للخدمة', 'Reinstate') }))) return;
+    setBusy(true);
+    try {
+      await api.post(`/api/hr/employees/${id}/reactivate`, {});
+      notify(t('عاد إلى الخدمة', 'Back in service'), 'success');
+      onSaved();
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setBusy(false); }
+  };
   const start = () => {
     if (!canEdit || locked) return;
     // التاريخ غير المقروء («مطلوب» مكتوبةً في خانة تاريخ) يُفتح فارغًا ليُصحَّح.
@@ -120,6 +137,18 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
         title={canEdit ? t('اضغط للتعديل', 'Click to edit') : ''}>
         {statusLabel(st, ar)}
       </button>
+    );
+  }
+  if (reinstatable) {
+    return (
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+        <span className="text-[13px] text-slate-900">{displayValue(f, raw, ar)}</span>
+        <button type="button" onClick={reinstate} disabled={busy}
+          title={t('إعادة الموظف إلى الخدمة', 'Return the employee to service')}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold disabled:opacity-50">
+          <UserCheck className="w-3.5 h-3.5" />{t('إعادته للخدمة', 'Reinstate')}
+        </button>
+      </span>
     );
   }
   return (

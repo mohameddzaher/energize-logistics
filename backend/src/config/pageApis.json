@@ -1734,6 +1734,7 @@
     "/system/hr/master": {
       "apis": [
         "/api/hr/dashboard",
+        "/api/hr/employees",
         "/api/hr/forms",
         "/api/hr/master/by-department",
         "/api/hr/master/choices",
@@ -1748,6 +1749,7 @@
     },
     "/system/hr/master/grid": {
       "apis": [
+        "/api/hr/employees",
         "/api/hr/master/choices",
         "/api/hr/master/employees",
         "/api/hr/master/grid",

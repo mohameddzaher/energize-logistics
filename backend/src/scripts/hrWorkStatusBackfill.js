@@ -29,7 +29,7 @@ const kindFromText = (t) => {
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI || process.env.MONGO_URI);
   const rows = await Employee.find({ isHrRecord: { $ne: false } })
-    .select('arabicName firstName lastName employeeNumber employmentStatus workStatusText terminationKind terminatedAt').lean();
+    .select('arabicName firstName lastName employeeNumber employmentStatus workStatusText terminationKind terminatedAt sisterCompany').lean();
   const ops = []; const tally = {}; const suspended = []; const audits = []; const conflicts = [];
   const nm = (e) => `${e.employeeNumber || '—'} ${e.arabicName || `${e.firstName} ${e.lastName}`}`;
   for (const e of rows) {

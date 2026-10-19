@@ -199,6 +199,8 @@ export default function Ls2FleetAssetsPage() {
   const [statusTire, setStatusTire] = useState<TireAsset | null>(null);   // نقل بين الحالات
   const [addTire, setAddTire] = useState(false);
   const [moveTrailer, setMoveTrailer] = useState<Trailer | null>(null);
+  // العكس: تُفتَح العربيةُ ويُختار التيدرُ الذي عليها — مَن في الورشة يعرف أيَّ تيدرٍ تحت أيّ رأس.
+  const [hitchTruck, setHitchTruck] = useState<Flatbed | null>(null);
   // التيدرُ يُفتح على كاوتشاته: ضغطةٌ على رقمه تعرض فرداته وأمام كلٍّ إجراءاتُها.
   const [trailerTires, setTrailerTires] = useState<Trailer | null>(null);
   const [addTrailer, setAddTrailer] = useState(false);
@@ -417,9 +419,11 @@ export default function Ls2FleetAssetsPage() {
   };
   const doMoveTrailer = async (trailer: Trailer, body: any) => {
     setBusy(true);
-    try { await api.post(`/api/ls2/assets/trailers/${trailer._id}/move`, body); await load(); setRefreshKey((k) => k + 1); setMoveTrailer(null); }
+    let ok = false;
+    try { await api.post(`/api/ls2/assets/trailers/${trailer._id}/move`, body); await load(); setRefreshKey((k) => k + 1); setMoveTrailer(null); ok = true; }
     catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
+    return ok;
   };
 
   if (!isLs2Staff(user)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
@@ -513,9 +517,18 @@ export default function Ls2FleetAssetsPage() {
                     <td className="px-4 py-3 text-slate-600">{f.batch || '—'}</td>
                     <td className="px-4 py-3 text-slate-600">{f.brand || '—'}</td>
                     <td className="px-4 py-3">
-                      {f.currentTrailerNumber
-                        ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{ar ? `تيدر ${f.currentTrailerNumber}` : `Trailer ${f.currentTrailerNumber}`}</span>
-                        : <span className="text-slate-300 text-xs">—</span>}
+                      <span className="inline-flex items-center gap-1.5">
+                        {f.currentTrailerNumber
+                          ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{ar ? `تيدر ${f.currentTrailerNumber}` : `Trailer ${f.currentTrailerNumber}`}</span>
+                          : <span className="text-slate-300 text-xs">—</span>}
+                        {admin && (
+                          <button type="button" onClick={() => setHitchTruck(f)}
+                            title={ar ? 'اختر التيدر المركّب على هذه العربية' : 'Choose the trailer on this truck'}
+                            className="text-[11px] font-medium text-[#f37121] hover:underline">
+                            {f.currentTrailerNumber ? (ar ? 'تغيير' : 'Change') : (ar ? 'تركيب تيدر' : 'Hitch trailer')}
+                          </button>
+                        )}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-slate-600">{f.driver || '—'}</td>
                     {/* الرقم ده كان مجرد عدد — بقى مدخل. الضغط عليه بيفتح الكاوتش
@@ -946,6 +959,10 @@ export default function Ls2FleetAssetsPage() {
           onClose={() => { setAddTire(false); setEditTire(null); }}
           onSaved={() => { setAddTire(false); setEditTire(null); load(); setRefreshKey((k) => k + 1); }}
         />
+      )}
+      {hitchTruck && (
+        <HitchTruckModal flatbed={hitchTruck} trailers={trailers} ar={ar} busy={busy} onClose={() => setHitchTruck(null)}
+          onSubmit={async (tr, body) => { if (await doMoveTrailer(tr, body)) setHitchTruck(null); }} />
       )}
       {moveTrailer && <MoveTrailerModal trailer={moveTrailer} flatbeds={flatbeds} ar={ar} busy={busy} onClose={() => setMoveTrailer(null)} onSubmit={(body) => doMoveTrailer(moveTrailer, body)} />}
       {addTrailer && (
@@ -1586,6 +1603,93 @@ function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
 }
 
 // ---- Move trailer -----------------------------------------------------------
+/**
+ * تركيبُ تيدرٍ على عربية — من جهة العربية.
+ *
+ * الحركةُ نفسُها التي تُفتَح من التيدر (`/trailers/:id/move`): التيدرُ المختار
+ * يُنقَل بكاوتشه إلى هذه العربية. وإن كان عليها تيدرٌ فمصيرُه يُسأل عنه كما هناك:
+ * يقف وحدَه، أو يأخذ مكانَ المختار على عربيّته (تبديل).
+ */
+function HitchTruckModal({ flatbed, trailers, ar, busy, onClose, onSubmit }: {
+  flatbed: Flatbed; trailers: Trailer[]; ar: boolean; busy: boolean; onClose: () => void;
+  onSubmit: (trailer: Trailer, body: any) => void;
+}) {
+  const [pick, setPick] = useState('');
+  const [reason, setReason] = useState('');
+  const [displacedTo, setDisplacedTo] = useState<'standing' | 'swap'>('standing');
+  const current = trailers.find((t) => t.trailerNumber === flatbed.currentTrailerNumber) || null;
+  const chosen = trailers.find((t) => t._id === pick) || null;
+  const canSwap = !!current && !!chosen?.currentPlate;
+  const options = trailers
+    .filter((t) => t._id !== current?._id)
+    .sort((a, b) => (a.currentPlate ? 1 : 0) - (b.currentPlate ? 1 : 0) || String(a.trailerNumber).localeCompare(String(b.trailerNumber), undefined, { numeric: true }))
+    .map((t) => ({
+      value: t._id,
+      label: ar ? `تيدر ${t.trailerNumber}` : `Trailer ${t.trailerNumber}`,
+      hint: t.currentPlate ? (ar ? `مركّب على ${t.currentPlate}` : `on ${t.currentPlate}`) : (ar ? 'واقف لوحده' : 'standing alone'),
+    }));
+  return (
+    <Modal title={ar ? `التيدر على العربية ${flatbed.plate}` : `Trailer on ${flatbed.plate}`} onClose={onClose}>
+      <div className="space-y-3">
+        <p className="text-xs text-slate-500">
+          {current ? (ar ? `حاليًا عليها التيدر ${current.trailerNumber}` : `Currently carries trailer ${current.trailerNumber}`)
+            : (ar ? 'لا تيدر عليها حاليًا' : 'No trailer on it now')}
+        </p>
+        <div>
+          <label className={labelCls}>{ar ? 'التيدر الذي يُركَّب عليها' : 'Trailer to hitch'}</label>
+          <SearchSelect value={pick} onChange={(v) => { setPick(v); setDisplacedTo('standing'); }} options={options} ar={ar}
+            placeholder={ar ? '— اختر التيدر —' : '— choose trailer —'} searchPlaceholder={ar ? 'ابحث برقم التيدر أو العربية…' : 'Search trailer or truck…'} />
+        </div>
+        <p className="text-[11.5px] text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+          {ar ? 'التيدر بيتنقل بكاوتشه — كل فردة عليه بتتنقل معاه وبتتسجّل في التاريخ.'
+              : 'The trailer moves with its tires — each one is carried and logged.'}
+        </p>
+        {current && chosen && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 space-y-1.5">
+            <p className="text-xs text-amber-800 font-semibold">
+              {ar ? `التيدر ${current.trailerNumber} اللي عليها دلوقتي يروح فين؟` : `Where does trailer ${current.trailerNumber} go?`}
+            </p>
+            {([
+              { key: 'standing' as const, ar: 'يقف لوحده بكاوتشه (من غير عربية)', en: 'Stands alone with its tires' },
+              { key: 'swap' as const,
+                ar: `يروح مكان التيدر ${chosen.trailerNumber} على ${chosen.currentPlate || '—'} (تبديل كامل)`,
+                en: `Takes trailer ${chosen.trailerNumber}'s place on ${chosen.currentPlate || '—'} (full swap)` },
+            ]).map((o) => (
+              <label key={o.key}
+                className={`flex items-start gap-2 px-2 py-1.5 rounded-md border cursor-pointer ${
+                  o.key === 'swap' && !canSwap ? 'opacity-40 cursor-not-allowed border-transparent'
+                    : displacedTo === o.key ? 'bg-white border-[#f37121]' : 'border-transparent hover:bg-white/70'}`}>
+                <input type="radio" name="hitchDisplacedTo" className="mt-0.5 accent-[#f37121]"
+                  disabled={o.key === 'swap' && !canSwap}
+                  checked={displacedTo === o.key} onChange={() => setDisplacedTo(o.key)} />
+                <span className="text-[11.5px] text-slate-800 font-medium">{ar ? o.ar : o.en}</span>
+              </label>
+            ))}
+          </div>
+        )}
+        <div>
+          <label className={labelCls}>{ar ? 'السبب' : 'Reason'}</label>
+          <input value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls} />
+        </div>
+        <button type="button" disabled={busy || !chosen}
+          onClick={() => chosen && onSubmit(chosen, { toPlate: flatbed.plate, reason, displacedTo })}
+          className="w-full py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-40">
+          {!chosen ? (ar ? 'اختر التيدر' : 'Choose a trailer')
+            : current && displacedTo === 'swap' ? (ar ? 'تبديل التيدرين' : 'Swap the two trailers')
+            : (ar ? `تركيب التيدر ${chosen.trailerNumber}` : `Hitch trailer ${chosen.trailerNumber}`)}
+        </button>
+        {current && (
+          <button type="button" disabled={busy}
+            onClick={() => onSubmit(current, { toPlate: null, reason: reason || (ar ? 'إنزال من العربية' : 'Unhitched') })}
+            className="w-full py-2 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-50 disabled:opacity-40">
+            {ar ? `إنزال التيدر ${current.trailerNumber} فقط (يقف لوحده)` : `Just unhitch trailer ${current.trailerNumber}`}
+          </button>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 function MoveTrailerModal({ trailer, flatbeds, ar, busy, onClose, onSubmit }: {
   trailer: Trailer; flatbeds: Flatbed[]; ar: boolean; busy: boolean; onClose: () => void; onSubmit: (body: any) => void;
 }) {

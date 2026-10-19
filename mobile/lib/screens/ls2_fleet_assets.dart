@@ -324,6 +324,13 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                             Row(children: [
                               Expanded(child: Text('${tr('سطحة', 'Flatbed')} $plate', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
                               if (f['numbering'] != null) Chip2('#${f['numbering']}', T.navy),
+                              // التيدرُ الذي تحت هذا الرأس — يُختار من العربية نفسِها.
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                onPressed: () => _hitchTruck(f),
+                                icon: const Icon(Icons.rv_hookup_outlined, size: 19, color: T.orange),
+                                tooltip: tr('تركيب / تغيير التيدر', 'Hitch / change trailer'),
+                              ),
                               IconButton(
                                 visualDensity: VisualDensity.compact,
                                 onPressed: () => _editFlatbed(f),
@@ -1245,8 +1252,115 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
       )),
     );
     if (ok != true) return;
-    await _post('/api/ls2/assets/trailers/${t['_id']}/move', {'toPlate': plate.text.trim().isEmpty ? null : plate.text.trim()},
-        plate.text.trim().isEmpty ? tr('تم فكّ التيدر', 'Trailer unhitched') : tr('تم نقل التيدر', 'Trailer moved'));
+    final to = plate.text.trim();
+    // العربيةُ المستقبِلة عليها تيدر؟ يُسأل عن مصيره كالموقع — وإلّا ردّ الخادمُ الحركة.
+    String? fate;
+    if (to.isNotEmpty) {
+      final target = _l(_d?['flatbeds']).where((x) => (x['plate'] ?? '').toString() == to).firstOrNull;
+      final occ = (target?['currentTrailerNumber'] ?? '').toString();
+      if (occ.isNotEmpty && occ != '${t['trailerNumber']}') {
+        fate = await _askFate(occ, '${t['trailerNumber']}', (t['currentPlate'] ?? '').toString());
+        if (fate == null) return;
+      }
+    }
+    await _post('/api/ls2/assets/trailers/${t['_id']}/move', {'toPlate': to.isEmpty ? null : to, if (fate != null) 'displacedTo': fate},
+        to.isEmpty ? tr('تم فكّ التيدر', 'Trailer unhitched') : tr('تم نقل التيدر', 'Trailer moved'));
+  }
+
+  /// مصيرُ التيدر الذي على العربية المستقبِلة: يقف وحدَه، أو يأخذ مكانَ الداخل على
+  /// عربيّته (تبديل) — والتبديلُ لا يصحّ إن كان الداخلُ واقفًا بلا عربية.
+  Future<String?> _askFate(String occupant, String incoming, String incomingPlate) {
+    return showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('التيدر $occupant اللي على العربية يروح فين؟', 'Where does trailer $occupant go?')),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          OutlinedButton(onPressed: () => Navigator.pop(c, 'standing'),
+              child: Text(tr('يقف لوحده بكاوتشه', 'Stands alone with its tires'))),
+          const SizedBox(height: 8),
+          FilledButton(
+            onPressed: incomingPlate.isEmpty ? null : () => Navigator.pop(c, 'swap'),
+            child: Text(incomingPlate.isEmpty
+                ? tr('التبديل غير متاح — التيدر $incoming واقف لوحده', 'Swap unavailable — trailer $incoming stands alone')
+                : tr('تبديل: يروح على $incomingPlate مكان التيدر $incoming', 'Swap: goes to $incomingPlate in place of $incoming')),
+          ),
+        ]),
+        actions: [TextButton(onPressed: () => Navigator.pop(c), child: Text(tr('إلغاء', 'Cancel')))],
+      ),
+    );
+  }
+
+  /// من جهة العربية: أيُّ تيدرٍ عليها. الحركةُ نفسُها (`/trailers/:id/move`) — التيدرُ
+  /// المختار يُنقَل إليها بكاوتشه، والذي كان عليها يُسأل عن مصيره.
+  Future<void> _hitchTruck(Map<String, dynamic> f) async {
+    final plate = (f['plate'] ?? '').toString();
+    final cur = (f['currentTrailerNumber'] ?? '').toString();
+    final trailers = _l(_d?['trailers']).where((t) => '${t['trailerNumber']}' != cur).toList()
+      ..sort((a, b) => ((a['currentPlate'] ?? '').toString().isEmpty ? 0 : 1) - ((b['currentPlate'] ?? '').toString().isEmpty ? 0 : 1));
+    final picked = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) {
+        String q = '';
+        return StatefulBuilder(builder: (c, setS) {
+          final fq = _fold(q.trim());
+          final list = trailers.where((t) => fq.isEmpty || _fold('${t['trailerNumber']} ${t['currentPlate'] ?? ''}').contains(fq)).toList();
+          return SafeArea(child: Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(c).viewInsets.bottom),
+            child: SizedBox(
+              height: MediaQuery.of(c).size.height * 0.7,
+              child: Column(children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 4),
+                  child: Text(cur.isEmpty
+                      ? tr('تركيب تيدر على العربية $plate', 'Hitch a trailer to $plate')
+                      : tr('العربية $plate عليها التيدر $cur — اختر التيدر الجديد', '$plate carries trailer $cur — choose the new one'),
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: TextField(autofocus: true, onChanged: (v) => setS(() => q = v),
+                      decoration: InputDecoration(hintText: tr('ابحث برقم التيدر أو العربية…', 'Search trailer or truck…'), prefixIcon: const Icon(Icons.search))),
+                ),
+                if (cur.isNotEmpty) ListTile(
+                  leading: const Icon(Icons.download_outlined, color: T.warn),
+                  title: Text(tr('إنزال التيدر $cur فقط (يقف لوحده)', 'Just unhitch trailer $cur')),
+                  onTap: () => Navigator.pop(c, <String, dynamic>{'_unhitch': true}),
+                ),
+                Expanded(child: ListView.builder(
+                  itemCount: list.length,
+                  itemBuilder: (c, i) {
+                    final t = list[i];
+                    final on = (t['currentPlate'] ?? '').toString();
+                    return ListTile(
+                      leading: const Icon(Icons.rv_hookup_outlined, color: T.navy),
+                      title: Text('${tr('تيدر', 'Trailer')} ${t['trailerNumber']}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: Text(on.isEmpty ? tr('واقف لوحده', 'Standing alone') : tr('مركّب على $on', 'On $on')),
+                      onTap: () => Navigator.pop(c, t),
+                    );
+                  },
+                )),
+              ]),
+            ),
+          ));
+        });
+      },
+    );
+    if (picked == null) return;
+    if (picked['_unhitch'] == true) {
+      final current = _l(_d?['trailers']).where((t) => '${t['trailerNumber']}' == cur).firstOrNull;
+      if (current == null) return;
+      await _post('/api/ls2/assets/trailers/${current['_id']}/move', {'toPlate': null, 'reason': tr('إنزال من العربية', 'Unhitched')},
+          tr('تم إنزال التيدر', 'Trailer unhitched'));
+      return;
+    }
+    String? fate;
+    if (cur.isNotEmpty) {
+      fate = await _askFate(cur, '${picked['trailerNumber']}', (picked['currentPlate'] ?? '').toString());
+      if (fate == null) return;
+    }
+    await _post('/api/ls2/assets/trailers/${picked['_id']}/move', {'toPlate': plate, if (fate != null) 'displacedTo': fate},
+        tr('تم تركيب التيدر ${picked['trailerNumber']} على $plate', 'Trailer ${picked['trailerNumber']} hitched to $plate'));
   }
 
   // ── تعديل سطحة (ترقيم/دفعة/ماركة/ملاحظات) ──

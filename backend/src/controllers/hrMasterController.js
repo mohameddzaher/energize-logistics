@@ -54,10 +54,18 @@ const rx = (s) => new RegExp(String(s).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\
  * أما «غير مطلوب» و«راتب نقدي» فيبقيان كما هما: هما قرارٌ إداريّ لا نقصُ بيانات،
  * ولا تنقضهما قيمةٌ موجودة.
  */
+// خاناتُ العقد — لا تُطلَب من الفريلانسر ولا المتدرّب (لا عقدَ لهما).
+const CONTRACT_KEYS = new Set((H.GROUPS.find((g) => g.key === 'contract')?.fields || []).filter((f) => !f.derived).map((f) => f.key));
 const statusOf = (emp, fieldKey) => {
   // القيمةُ تُقرأ بـ`H.valueOf` لا من العمود مباشرةً: «رقم الهوية/الإقامة»
   // عمودان، والقراءةُ من أحدهما تجعل السعوديَّ صاحبَ الرقم «ناقصًا».
   const val = H.valueOf(emp, fieldKey);
+  // ── والفريلانسرُ والمتدرّبُ لا عقدَ لهما ──────────────────────────────────
+  // خانةُ عقدٍ عندهما «غير مطلوب» ما لم تُملأ — قاعدةٌ واحدةٌ تقرؤها اللوحةُ
+  // وصفحاتُ المجموعات معًا، فلا تقول اللوحةُ ١٨ وتعدّ الصفحةُ عقودَ الفريلانسر.
+  if (CONTRACT_KEYS.has(fieldKey) && !require('../utils/hrEngagement').contractRequired(emp)) {
+    return filled(val) ? 'filled' : 'not_required';
+  }
   const st = emp.fieldStatus?.[H.statusKeyOf(fieldKey)];
   if (st === 'required' && filled(val)) return 'filled';
   if (st) return st;
@@ -380,7 +388,8 @@ async function findEmployees(q, select) {
   // الأعمدةُ التي تقرأ منها الحقولُ المشتقّة تُجرّ دائمًا — راجع H.READ_DEPS.
   // خمسةُ استعلاماتٍ هنا تختار أعمدةً بعينها، ونسيانُ العمود في واحدٍ منها
   // يجعل الشاشة تقول «لا يوجد» عن رقمٍ مكتوب.
-  if (select) query = query.select([select, ...H.READ_DEPS].join(' '));
+  // و«رقم السجل التجاري» دائمًا: منه يُعرَف مَن لا عقدَ له — راجع statusOf.
+  if (select) query = query.select([select, ...H.READ_DEPS, 'registerNumber'].join(' '));
   // بلا hint: إجبار المخطِّط على فهرسٍ بعينه يجعل كل استعلام يفشل إن لم يكن
   // ذلك الفهرس موجودًا على العنقود — وهو ما كان يحدث هنا حرفيًّا. الفهارس
   // تُنشأ بـ scripts/addHrIndexes.js ويختار المخطِّط منها ما يناسب كل استعلام.
@@ -775,7 +784,9 @@ exports.overview = async (req, res) => {
       roster: rosterTotal,
       // اللي الفلتر الحالي بيعرضه — الأرقام اللي تحت كلها محسوبة عليه.
       filtered: employeeCount,
-      required: groups.reduce((n, g) => n + g.required, 0),
+      // «خانات مطلوبة» = مجموعُ «مطلوب» على الحقول بلا تكرار (حقلٌ في مجموعتين يُعَدّ
+      // مرّة) وبلا التوائم الهجريّة — وهو بالضبط مجموعُ بطاقات صفحة «البيانات المطلوبة».
+      required: (() => { const seen = new Set(); let n = 0; for (const g of groups) for (const f of g.fields) { if (seen.has(f.key)) continue; seen.add(f.key); n += f.required || 0; } return n; })(),
       expiringSoon: groups.reduce((n, g) => n + (g.needsAttention || 0), 0),
       outsideKingdom: sums.outsideKingdom,
       // الفريلانسر من «رقم السجل التجاري» — لا من خانة «النوع» القديمة.
@@ -883,7 +894,8 @@ exports.records = async (req, res) => {
         values, statuses,
         state: doc?.state || null, daysRemaining: doc?.days ?? null,
         // «ناقص إيه عند الشخص ده» — بالاسم، عشان الشاشة ما تحسبهاش تاني.
-        missing: g.fields.filter((f) => statuses[f.key] === 'required').map((f) => ({ key: f.key, ar: f.ar })),
+        // والتوأمُ الهجريُّ ليس خانةً ثانية: نقصُه نقصُ أصله، فلا يُذكر مرّتين.
+        missing: g.fields.filter((f) => !f.derived && statuses[f.key] === 'required').map((f) => ({ key: f.key, ar: f.ar })),
       };
     });
 

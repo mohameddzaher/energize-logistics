@@ -287,7 +287,10 @@ const REQUIRED_GROUP = {
   // كلُّ الحقول، بلا تكرارٍ للمفتاح الواحد بين مجموعتين.
   get fields() {
     const seen = new Set();
+    // والتوائمُ الهجريّة خارجَها: نقصُ الهجريّ نقصُ أصله، وبطاقتُه تعدّه مرّةً ثانية
+    // فلا يساوي مجموعُ البطاقات رقمَ «خانات مطلوبة» في اللوحة.
     return GROUPS.flatMap((g) => g.fields.map((f) => ({ ...f, groupAr: g.ar, groupKey: g.key })))
+      .filter((f) => !f.derived)
       .filter((f) => (seen.has(f.key) ? false : seen.add(f.key)));
   },
 };

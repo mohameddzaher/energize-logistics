@@ -30,7 +30,8 @@ const kindFromText = (t) => {
   await mongoose.connect(process.env.MONGODB_URI || process.env.MONGO_URI);
   const rows = await Employee.find({ isHrRecord: { $ne: false } })
     .select('arabicName firstName lastName employeeNumber employmentStatus workStatusText terminationKind terminatedAt').lean();
-  const ops = []; const tally = {}; const suspended = [];
+  const ops = []; const tally = {}; const suspended = []; const audits = []; const conflicts = [];
+  const nm = (e) => `${e.employeeNumber || '—'} ${e.arabicName || `${e.firstName} ${e.lastName}`}`;
   for (const e of rows) {
     const set = {};
     if (e.employmentStatus === 'terminated' && !e.terminationKind) {
@@ -44,7 +45,17 @@ const kindFromText = (t) => {
     const want = ENG.workStatusTextOf({ ...e, ...set });
     if (String(e.workStatusText || '') !== want) set.workStatusText = want;
     if (e.employmentStatus === 'suspended') suspended.push(`${e.employeeNumber || '—'} ${e.arabicName || `${e.firstName} ${e.lastName}`}`);
+    // على رأس العمل والنصُّ القديم يقول غيرَ ذلك — تقرّر فيه الموارد البشريّة.
+    if (e.employmentStatus !== 'terminated' && /لا يعمل|خروج|استقال|انهاء|إنهاء/.test(String(e.workStatusText || ''))) conflicts.push(`${nm(e)} — «${e.workStatusText}»`);
     if (Object.keys(set).length) {
+      // النصُّ القديم لا يضيع: يُحفَظ في سجلّ الموظّف (تبويب «السجلّ»).
+      if (String(e.workStatusText || '').trim()) {
+        audits.push({
+          bySystem: true, userName: 'النظام', action: 'hr_work_status_derived', entity: 'Employee', entityId: e._id,
+          changes: { details: `حالة العمل صارت من الحالة: «${e.workStatusText}» → «${want}»`, before: { workStatusText: e.workStatusText }, after: { workStatusText: want, ...(set.terminationKind ? { terminationKind: set.terminationKind } : {}) } },
+          createdAt: new Date(),
+        });
+      }
       const k = `«${e.workStatusText || ''}» → «${want}»`;
       tally[k] = (tally[k] || 0) + 1;
       ops.push({ updateOne: { filter: { _id: e._id }, update: { $set: set } } });
@@ -53,8 +64,10 @@ const kindFromText = (t) => {
   console.log(`employees: ${rows.length} | to update: ${ops.length}`);
   for (const [k, n] of Object.entries(tally).sort((a, b) => b[1] - a[1])) console.log(`  ${String(n).padStart(4)}  ${k}`);
   if (suspended.length) console.log(`\nموقوفون (حالة قديمة) — تقرّر فيهم الموارد البشريّة: ${suspended.join(' · ')}`);
+  if (conflicts.length) console.log(`\nعلى رأس العمل والنصُّ القديم يقول غير ذلك (${conflicts.length}):\n  ${conflicts.join('\n  ')}`);
   if (!APPLY) { console.log('\n(عرضٌ فقط — أضِف --apply للتنفيذ)'); process.exit(0); }
   if (ops.length) await Employee.bulkWrite(ops);
+  if (audits.length) await mongoose.connection.db.collection('auditlogs').insertMany(audits);
   try { require('../utils/ttlCache').clear('hrm:'); require('../utils/ttlCache').clear('hr:'); } catch (_) { /* */ }
   console.log(`\nApplied: ${ops.length}`);
   process.exit(0);

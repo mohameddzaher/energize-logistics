@@ -9,6 +9,7 @@ import api from '@/lib/api';
 import { Check } from 'lucide-react';
 import { Employee, EMPLOYMENT_STATUS } from '@/lib/hr';
 import ManagedSelect from '@/components/system/ManagedSelect';
+import { SearchableSelect } from '@/components/hr/HRKit';
 import { Modal, Field, TextInput, Select, TextArea, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
 import { getHrEmployeesTranslations } from '@/lib/translations';
 import { getVehiclesText } from '@/lib/vehicles';
@@ -19,7 +20,7 @@ export const EMPTY_EMPLOYEE = {
   firstName: '', lastName: '', arabicName: '', employeeNumber: '', gender: '', dateOfBirth: '', nationality: '',
   idType: 'iqama', iqamaNumber: '', iqamaExpiry: '', nationalId: '', passportNumber: '', passportExpiry: '',
   qiwaContractNumber: '', gosiNumber: '', absherStatus: '', sponsorName: '', workPermitExpiry: '',
-  jobTitle: '', department: '', hireDate: '', actualWorkStartDate: '', workLocation: '', branch: '', branches: [] as string[], employmentStatus: 'active',
+  jobTitle: '', department: '', hireDate: '', actualWorkStartDate: '', workLocation: '', branchName: '', branch: '', branches: [] as string[], employmentStatus: 'active',
   phone: '', email: '', address: '', emergencyContactName: '', emergencyContactPhone: '',
   basicSalary: 0, allowances: 0, directManager: '', notes: '',
   iban: '', bank: '', project: '', registerNumber: '', absherNumber: '', companyNumber: '', originCountryNumber: '',
@@ -224,7 +225,9 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         <Field label={tx.employeeNumber}><TextInput value={form.employeeNumber} onChange={(e) => set('employeeNumber', e.target.value)} /></Field>
         <Field label={tx.gender}><Select value={form.gender} onChange={(e) => set('gender', e.target.value)}><option value="">—</option><option value="male">{tx.male}</option><option value="female">{tx.female}</option></Select></Field>
         <DatePair label={tx.dateOfBirth} value={form.dateOfBirth || ''} onChange={(v) => set('dateOfBirth', v)} ar={ar} />
-        <Field label={tx.nationality}><TextInput value={form.nationality} onChange={(e) => set('nationality', e.target.value)} /></Field>
+        {/* الجنسيّةُ والمدينةُ والمشروعُ قوائمُ مغلقةٌ فيها بحث — utils/hrLists في الخادم. */}
+        <Field label={tx.nationality}><SearchableSelect value={form.nationality || ''} onChange={(v) => set('nationality', v)} placeholder={ar ? '— اختر —' : '— choose —'} searchPlaceholder={ar ? 'ابحث…' : 'Search…'} searchAfter={0}
+          options={[...(form.nationality && !(choices.nationality || []).some((o) => o.value === form.nationality) ? [{ value: form.nationality, label: form.nationality }] : []), ...(choices.nationality || []).map((o) => ({ value: o.value, label: o.value }))]} /></Field>
       </Section>
 
       <Section title={tx.sectionIdentity}>
@@ -255,7 +258,10 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         <Field label={tx.department}><ManagedSelect type="hr_department" storeLabel strict noAdd value={form.department} onChange={(v) => set('department', v)} /></Field>
         <DatePair label={tx.hireDate} value={form.hireDate || ''} onChange={(v) => set('hireDate', v)} ar={ar} />
         <DatePair label={tx.actualWorkStartDate} value={form.actualWorkStartDate || ''} onChange={(v) => set('actualWorkStartDate', v)} ar={ar} />
-        <Field label={tx.workLocation}><TextInput value={form.workLocation} onChange={(e) => set('workLocation', e.target.value)} /></Field>
+        <Field label={ar ? 'المدينة' : 'City'}><SearchableSelect value={form.branchName || ''} onChange={(v) => set('branchName', v)} placeholder={ar ? '— اختر —' : '— choose —'} searchPlaceholder={ar ? 'ابحث…' : 'Search…'} searchAfter={0}
+          options={[...(form.branchName && !(choices.branchName || []).some((o) => o.value === form.branchName) ? [{ value: form.branchName, label: form.branchName }] : []), ...(choices.branchName || []).map((o) => ({ value: o.value, label: o.value }))]} /></Field>
+        <Field label={tx.workLocation}><SearchableSelect value={form.workLocation || ''} onChange={(v) => set('workLocation', v)} placeholder={ar ? '— اختر —' : '— choose —'} searchPlaceholder={ar ? 'ابحث…' : 'Search…'} searchAfter={0}
+          options={[...(form.workLocation && !(choices.workLocation || []).some((o) => o.value === form.workLocation) ? [{ value: form.workLocation, label: form.workLocation }] : []), ...(choices.workLocation || []).map((o) => ({ value: o.value, label: o.value }))]} /></Field>
         <Field label={tx.branch}><Select value={form.branch} onChange={(e) => set('branch', e.target.value)}><option value="">—</option>{branches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}</Select></Field>
         {/* ── فروع إضافية ────────────────────────────────────────────────────
             موظّفون يعملون على أكثر من فرع فعلًا. حصرُهم في واحد كان يُخفيهم من
@@ -309,7 +315,8 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
       <Section title={vtx.sectionBankingDocs}>
         <Field label={vtx.iban}><TextInput value={form.iban} onChange={(e) => set('iban', e.target.value)} /></Field>
         <DocInput k="bank" label={vtx.bank} cash form={form} set={set} mark={marks['bank'] || ''} setMark={setMark} choices={choices} ar={ar} />
-        <Field label={vtx.project2}><TextInput value={form.project} onChange={(e) => set('project', e.target.value)} /></Field>
+        <Field label={ar ? 'المشروع' : 'Project'}><SearchableSelect value={form.project || ''} onChange={(v) => set('project', v)} placeholder={ar ? '— اختر —' : '— choose —'} searchPlaceholder={ar ? 'ابحث…' : 'Search…'} searchAfter={0}
+          options={[...(form.project && !(choices.project || []).some((o) => o.value === form.project) ? [{ value: form.project, label: form.project }] : []), ...(choices.project || []).map((o) => ({ value: o.value, label: o.value }))]} /></Field>
         <Field label={vtx.registerNumber}><TextInput value={form.registerNumber} onChange={(e) => set('registerNumber', e.target.value)} /></Field>
         <Field label={vtx.absherNumber}><TextInput value={form.absherNumber} onChange={(e) => set('absherNumber', e.target.value)} /></Field>
         <DocInput k="iqamaProfession" label={vtx.iqamaProfession} form={form} set={set} mark={marks['iqamaProfession'] || ''} setMark={setMark} choices={choices} ar={ar} />

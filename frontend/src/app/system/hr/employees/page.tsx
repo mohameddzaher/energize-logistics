@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
+import HrQuickFilters from '@/components/hr/HrQuickFilters';
 import FilterPanel, { countActive, type FilterValues } from '@/components/system/FilterPanel';
 import { ColumnFilter } from '@/components/ColumnFilter';
 import { HR_DATE_FIELDS, HR_NUM_RANGES } from '@/lib/hrMaster';
@@ -267,6 +268,11 @@ export default function HREmployeesPage() {
             resultLabel={ar ? 'الموظفون المطابقون' : 'Matching employees'}
           />
         </div>
+      </div>
+
+      {/* القسم · المدينة · حالة العمل · المشروع · الجنسية — الفلترُ نفسُه الذي تقرؤه اللوحةُ والجدول. */}
+      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+        <HrQuickFilters optionsUrl="/api/hr/master/filters" optionsParams={{ scope: 'all' }} value={filters} onChange={setFilters} ar={ar} />
       </div>
 
       <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">

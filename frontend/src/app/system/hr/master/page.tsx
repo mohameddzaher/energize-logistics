@@ -16,6 +16,7 @@ import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import {
   Users, CalendarClock, ChevronLeft, TriangleAlert, ClipboardList, Search, BarChart3,
 } from 'lucide-react';
+import HrQuickFilters from '@/components/hr/HrQuickFilters';
 import FilterPanel, { countActive, type FilterValues } from '@/components/system/FilterPanel';
 import { stateMeta, statusMeta,
   getHrOverview, STATUS_META, STATE_META, statusLabel, stateLabel, HR_DATE_FIELDS, HR_NUM_RANGES, HR_EMPLOYMENT_LABELS,
@@ -53,7 +54,9 @@ function HrMasterInner() {
   // مرّةً واحدة عند فتح الصفحة، لا مع كل ضغطةٍ على فلتر.
   // كانت تُقرأ مرّةً عند الفتح: يُنشأ عقدٌ فيبقى «بلا عقد» على رقمه حتى تُعاد
   // الصفحة. فتسمع ما تسمعه بقيّةُ اللوحة.
-  const loadOps = useCallback(() => { api.get<any>('/api/hr/dashboard').then(setOps).catch(() => {}); }, []);
+  // وبلا عقد / عقودٌ منتهية تُحسَب على فلتر اللوحة (والتراخيصُ للشركة كلِّها).
+  const opsQs = new URLSearchParams(Object.entries(filters).filter(([, v]) => v !== '' && v != null) as [string, string][]).toString();
+  const loadOps = useCallback(() => { api.get<any>(`/api/hr/dashboard${opsQs ? `?${opsQs}` : ''}`).then(setOps).catch(() => {}); }, [opsQs]);
   useEffect(() => { loadOps(); }, [loadOps]);
   useSocket('hr:master', loadOps);
   const [contractList, setContractList] = useState<'' | 'noContract' | 'lapsedContracts'>('');
@@ -156,6 +159,14 @@ function HrMasterInner() {
           </button>
         </div>
       </PageHeader>
+
+      {/* ── الفلترةُ السريعة: كلُّ رقمٍ تحتها يُحسَب عليها ───────────────────────
+          القسم والمدينة وحالة العمل والمشروع والجنسية — في الفلتر نفسِه الذي
+          تقرؤه لوحةُ الفلترة الكاملة تحته والخادم. راجع HrQuickFilters. */}
+      <div className="rounded-xl border border-orange-200 bg-gradient-to-l from-orange-50 to-white p-3 shadow-sm">
+        <p className="mb-2 text-[12px] font-bold text-slate-500">{t('فلترة اللوحة — كل الأرقام تتعدّل حسب اختيارك', 'Filter the dashboard — every number follows your choice')}</p>
+        <HrQuickFilters optionsUrl="/api/hr/master/filters" value={filters} onChange={setFilters} ar={ar} />
+      </div>
 
       {/* شريط الفلترة — كل ما تحته محسوب عليه */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">

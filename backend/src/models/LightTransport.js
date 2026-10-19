@@ -196,6 +196,29 @@ const DRIVER_TITLES = ['سائق', 'سايق', 'driver'];
  * فالاشتقاقُ لا يقع إلّا إن كان الحقلُ حاضرًا — والغيابُ يعني «لا خبرَ عندي»
  * لا «فارغ».
  */
+/**
+ * ── مشروعُ موظّف B2C في ملفّه بالموارد البشريّة ───────────────────────────────
+ * المشروعُ يملكه سجلُّ B2C، وملفُّ الموظّف يقرؤه (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
+ * فكلُّ حفظٍ يغيّر المشروعَ — أو يربط الصفَّ بملفّه أوّلَ مرّة — يكتبه في الملفّ.
+ * وما جاء من الملفّ نفسِه (`$locals.fromHr`) لا يُعاد إليه. راجع utils/hrLists.
+ */
+employeeSchema.pre('save', function (next) {
+  // الربطُ وحدَه لا يمحو مشروعًا في الملفّ: يُنقَل إن كان في السجلّ مشروع. أمّا
+  // تغييرُ المشروع في السجلّ — ولو تفريغُه — فيُنقَل كما هو.
+  const linkedWithProject = this.isModified('employee') && !!String(this.projectAr || '').trim() && this.projectAr !== '(غير محدد)';
+  this.$locals.projectToHr = !this.$locals.fromHr && !!this.employee && (this.isNew ? linkedWithProject : (this.isModified('projectAr') || linkedWithProject));
+  next();
+});
+employeeSchema.post('save', async function (doc) {
+  if (!doc.$locals.projectToHr) return;
+  try {
+    const LISTS = require('../utils/hrLists');
+    const Employee = mongoose.model('Employee');
+    const want = LISTS.projectFromB2C(doc.projectAr);
+    const r = await Employee.updateOne({ _id: doc.employee, project: { $ne: want } }, { $set: { project: want } });
+    if (r.modifiedCount) LISTS.bust({ projectFromB2C: String(doc.employee) });
+  } catch (_) { /* المزامنةُ لا تُسقط حفظَ السجلّ */ }
+});
 employeeSchema.pre('save', function (next) {
   if (this.jobTitleAr === undefined && !this.isNew) return next();
   const j = String(this.jobTitleAr || '').trim().toLowerCase();

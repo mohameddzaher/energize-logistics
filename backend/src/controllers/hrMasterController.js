@@ -1135,6 +1135,40 @@ exports.grid = async (req, res) => {
  * تكتب في حقل مالهاش دعوة بيه. وحالة «مطلوب» بتتشال لوحدها في pre-save بتاع
  * الموديل، فالعدّاد في الداشبورد بينقص من غير أي خطوة زيادة.
  */
+/**
+ * GET /api/hr/master/employees/:id/fields — كلُّ خانات الماستر لموظّفٍ واحد.
+ *
+ * ملفُّ الموظّف كان يعرض بعضَها (بريدُ الشركة وجوالُها لم يكونا فيه)، فيُقال
+ * عن بيانٍ مكتوبٍ في الماستر إنّه غيرُ موجود. والآن يعرض الملفُّ المجموعاتِ نفسَها
+ * بالخانات نفسِها والحالاتِ نفسِها، ويكتب بالطريق نفسِه (`updateFields`) — فما
+ * يُعدَّل هنا يُرى هناك فورًا، والعكس (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
+ */
+exports.employeeFields = async (req, res) => {
+  try {
+    const emp = await Employee.findById(req.params.id).lean();
+    if (!emp) return res.status(404).json({ message: 'الموظف غير موجود' });
+    let b2cProject = false;
+    try {
+      const { LightTransportEmployee } = require('../models/LightTransport');
+      b2cProject = !!(await LightTransportEmployee.exists({ employee: emp._id }));
+    } catch (_) { /* */ }
+    const seen = new Set();
+    const groups = H.GROUPS.filter((g) => !g.virtual).map((g) => ({
+      key: g.key, ar: g.ar, en: g.en, icon: g.icon,
+      fields: g.fields.filter((f) => !seen.has(f.key) && seen.add(f.key)).map((f) => {
+        const base = f.type === 'hijri' ? f.of : f.key;
+        const raw = f.type === 'hijri' ? (H.valueOf(emp, base) ? toHijri(H.valueOf(emp, base)) : null) : (H.valueOf(emp, f.key) ?? null);
+        return {
+          ...f, value: raw, status: statusOf(emp, base),
+          locked: LOCKED_FIELDS.has(f.key) || !!f.derived,
+          ...(f.key === 'project' && b2cProject ? { note: 'من سجل B2C — ويُكتب فيه' } : {}),
+        };
+      }),
+    }));
+    res.json({ groups, b2cProject });
+  } catch (e) { res.status(500).json({ message: 'تعذّر تحميل بيانات الموظف' }); }
+};
+
 exports.updateFields = async (req, res) => {
   try {
     const incoming = req.body.fields || {};
@@ -1162,8 +1196,10 @@ exports.updateFields = async (req, res) => {
       if (f.derived) { rejected.push(k); continue; }
       // «حالة العمل» و«حالة النظام» لا تُكتبان من خانة — بإنهاء الخدمة والخروج من النظام.
       if (LOCKED_FIELDS.has(k)) { rejected.push(`${k} (تتغيّر بإنهاء الخدمة أو الخروج من النظام فقط)`); continue; }
-      if (k === 'department') {
-        const err = await require('../utils/hrDepartments').departmentError(v, emp.department);
+      // القسمُ والجنسيّةُ والمدينةُ والمشروعُ من قوائمها وحدَها — راجع utils/hrLists.
+      {
+        const LISTS = require('../utils/hrLists');
+        const err = await LISTS.fieldError(k, v, emp[k]) || (k === 'project' ? await LISTS.projectError(emp, v) : null);
         if (err) return res.status(400).json({ message: err });
       }
       if (f.type === 'date') {
@@ -1230,6 +1266,8 @@ exports.updateFields = async (req, res) => {
     }
 
     await emp.save();   // pre-save بيشيل «مطلوب» عن أي حقل اتملى
+    // ومشروعُ موظّف B2C يُكتب في سجلّه هناك أيضًا — راجع utils/hrLists.
+    if (applied.project !== undefined) await require('../utils/hrLists').projectToB2C(emp, emp.project).catch(() => {});
 
     // ── وبطاقةُ السائق تُكتب في سجلّ المركبات ─────────────────────────────
     // السجلُّ هناك هو المرجع؛ ما يُعدَّل هنا يُكتب فيه ثمّ تعود لقطتُه منه.
@@ -1342,9 +1380,10 @@ exports.choices = async (req, res) => {
           counts.set(v, (counts.get(v) || 0) + 1);
         }
         out[f.key] = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([value, count]) => ({ value, count }));
-        // والقائمةُ المغلقة (القسم) من صفوفها هي بترتيبها — لا ممّا كُتب في الملفّات.
-        if (f.lookup === 'hr_department') {
-          const names = await require('../utils/hrDepartments').departmentNames();
+        // والقائمةُ المغلقة (القسم، الجنسيّة، المدينة، المشروع) من صفوفها هي
+        // بترتيبها — لا ممّا كُتب في الملفّات. راجع utils/hrLists.
+        if (f.strict) {
+          const names = await require('../utils/hrLists').optionsFor(f.key);
           out[f.key] = names.map((value) => ({ value, count: counts.get(value) || 0 }));
         }
       }

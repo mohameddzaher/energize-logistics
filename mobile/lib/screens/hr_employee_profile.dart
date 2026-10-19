@@ -9,6 +9,8 @@ import '../ui/app_scaffold.dart';
 import '../ui/file_upload.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/hr_quick.dart';
+import 'hr_all_fields.dart';
 
 /// ملف الموظف الكامل — the same profile the web opens: identity + job data,
 /// contracts, leaves, custody assets, documents & renewals — in tabs, with
@@ -364,6 +366,24 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     }
   }
 
+  /// مَن ليس على كفالتنا (فريلانسر، متدرّب، غير محدّد) — رقمُ سجلّه ليس سجلًّا تجاريًّا.
+  bool get _notSponsored => !RegExp(r'^\s*\d{6,}\s*$').hasMatch('${_emp['registerNumber'] ?? ''}');
+
+  /// تحويلٌ إلى كفالتنا: يُختار سجلٌّ من سجلّاتنا التجاريّة — كالموقع.
+  Future<void> _sponsor() async {
+    final regs = await loadLookupNamesHr('hr_register');
+    if (!mounted) return;
+    final r = await pickFromList(context, title: tr('على أي سجل من سجلاتنا؟', 'Which of our registers?'), options: regs);
+    if (r == null || r.isEmpty) return;
+    try {
+      await Api.instance.post('/api/hr/employees/${widget.employeeId}/sponsor', {'registerNumber': r});
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('صار على كفالتنا — السجل $r', 'Now sponsored — register $r'))));
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   Future<void> _systemAction(bool exit) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -529,7 +549,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     final balance = _d?['balance'] as Map<String, dynamic>?;
 
     return DefaultTabController(
-      length: 7,
+      length: 8,
       child: AppScaffold(
         title: Text(_loading ? tr('ملف الموظف', 'Employee') : _name),
         actions: [
@@ -544,6 +564,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                 if (v == 'terminate') _terminate();
                 if (v == 'reactivate') _reactivate();
                 if (v == 'exit') _systemAction(true);
+                if (v == 'sponsor') _sponsor();
                 if (v == 'sister') _setWorkStatus(_emp['sisterCompany'] == true ? 'working' : 'sister_company');
                 if (v == 'return') _systemAction(false);
                 if (v == 'delete') _deleteEmployee();
@@ -566,6 +587,11 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                   PopupMenuItem(value: 'reactivate', child: Row(children: [
                     const Icon(Icons.restart_alt_rounded, size: 18, color: T.success), const SizedBox(width: 10),
                     Text(tr('إعادة تفعيل', 'Reactivate')),
+                  ])),
+                if (!_terminated && _notSponsored)
+                  PopupMenuItem(value: 'sponsor', child: Row(children: [
+                    const Icon(Icons.verified_outlined, size: 18, color: T.navy), const SizedBox(width: 10),
+                    Text(tr('تحويل على كفالتنا', 'Move to our sponsorship')),
                   ])),
                 // «يعمل» ↔ «شركة شقيقة» — والثالثةُ «لا يعمل» هي إنهاءُ الخدمة. كالموقع.
                 if (!_terminated)
@@ -599,6 +625,8 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
           unselectedLabelColor: Colors.white60,
           tabs: [
             Tab(text: tr('البيانات', 'Info')),
+            // كلُّ خانات الماستر — نظيرُ «البيانات» في الموقع لفريق الموارد البشريّة.
+            Tab(text: tr('كل البيانات', 'All data')),
             Tab(text: '${tr('العقود', 'Contracts')} (${contracts.length})'),
             Tab(text: '${tr('الإجازات', 'Leaves')} (${leaves.length})'),
             Tab(text: '${tr('العهد', 'Custody')} (${assets.length})'),
@@ -694,6 +722,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                       ]),
                     ),
                     // ── العقود ──
+                    HrAllFieldsTab(employeeId: widget.employeeId, canEdit: true),
                     _listTab(contracts, Icons.description_outlined, tr('لا توجد عقود', 'No contracts'), (c0) {
                       return AppCard(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -817,11 +846,9 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
     ('lastName', 'اسم العائلة', 'Last name'),
     ('arabicName', 'الاسم العربي', 'Arabic name'),
     ('jobTitle', 'المسمى الوظيفي', 'Job title'),
-    ('project', 'المشروع', 'Project'),
     ('mobileNumber', 'الجوال', 'Mobile'),
     ('email', 'البريد', 'Email'),
     ('iqamaNumber', 'رقم الإقامة', 'Iqama'),
-    ('nationality', 'الجنسية', 'Nationality'),
   ];
 
   // ── المستندات: قيمةٌ، أو حالةٌ تقول لماذا لا قيمة — كاستمارة الموقع ────────
@@ -860,7 +887,7 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
     }
     _d = {for (final f in _docs) f.$1: TextEditingController(text: asText(widget.employee?[f.$1]))};
     // القسمُ من قائمة الأقسام وحدَها (يضيفها السوبر أدمن) — لا يُكتب.
-    for (final k in ['department', 'bank', 'socialInsuranceStatus', 'insuranceCompany', 'licenseType']) {
+    for (final k in ['department', 'nationality', 'branchName', 'project', 'bank', 'socialInsuranceStatus', 'insuranceCompany', 'licenseType']) {
       _pick[k] = (widget.employee?[k] ?? '').toString();
     }
     final fs = Map<String, dynamic>.from(widget.employee?['fieldStatus'] ?? {});
@@ -980,7 +1007,13 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
                   padding: const EdgeInsets.only(bottom: 10),
                   child: TextField(controller: _c[f.$1], decoration: InputDecoration(labelText: tr(f.$2, f.$3))),
                 )),
-            Padding(padding: const EdgeInsets.only(bottom: 10), child: _choiceField('department', 'القسم', 'Department')),
+            // القسمُ والجنسيّةُ والمدينةُ والمشروعُ قوائمُ مغلقةٌ فيها بحث (utils/hrLists في الخادم).
+            for (final k in const [('department', 'القسم', 'Department'), ('nationality', 'الجنسية', 'Nationality'), ('branchName', 'المدينة', 'City'), ('project', 'المشروع', 'Project')])
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: PickField(label: tr(k.$2, k.$3), value: _pick[k.$1] ?? '', options: _choices[k.$1] ?? const [],
+                    onChanged: (v) => setState(() => _pick[k.$1] = v)),
+              ),
             const SizedBox(height: 6),
             Text(tr('المستندات والبنك', 'Documents & bank'), style: const TextStyle(fontWeight: FontWeight.w800, color: T.orange)),
             const SizedBox(height: 8),

@@ -350,9 +350,9 @@ exports.createEmployee = async (req, res) => {
     // خيارًا في قائمة. فكانت الاستمارةُ تُرفض لأنّ المستخدم **لم** يملأ حقلًا
     // اختياريًّا — ويُقال له «Failed to create employee» بلا سبب.
     const body = { ...stripEmpty(req.body, Employee.schema), createdBy: req.user._id };
-    // القسمُ من القائمة وحدَها — راجع utils/hrDepartments.
-    const deptErr = await require('../utils/hrDepartments').departmentError(body.department);
-    if (deptErr) return res.status(400).json({ message: deptErr });
+    // القسمُ والجنسيّةُ والمدينةُ والمشروعُ من قوائمها وحدَها — راجع utils/hrLists.
+    const listErr = await require('../utils/hrLists').bodyError(body);
+    if (listErr) return res.status(400).json({ message: listErr });
     delete body.user; // linking is done from the Users screen, not here
     delete body.markStatus;
     const employee = new Employee(body);
@@ -387,7 +387,7 @@ exports.updateEmployee = async (req, res) => {
       'qiwaContractNumber', 'gosiNumber', 'absherStatus', 'sponsorName', 'workPermitExpiry',
       // `branch` الفرع الأساسي، و`branches` الفروع الإضافية التي يعمل عليها
       // فعلًا — انظر models/Employee.
-      'jobTitle', 'department', 'hireDate', 'actualWorkStartDate', 'workLocation', 'branch', 'branches',
+      'jobTitle', 'department', 'hireDate', 'actualWorkStartDate', 'workLocation', 'branchName', 'branch', 'branches',
       'phone', 'email', 'address', 'emergencyContactName', 'emergencyContactPhone',
       'basicSalary', 'allowances', 'directManager', 'notes',
       // Banking
@@ -405,10 +405,13 @@ exports.updateEmployee = async (req, res) => {
     ];
     // Capture a before/after diff of only the fields that actually change, so the
     // audit log (and the profile "history" tab) shows exactly what HR edited.
-    if (req.body.department !== undefined) {
-      const deptErr = await require('../utils/hrDepartments').departmentError(req.body.department, employee.department);
-      if (deptErr) return res.status(400).json({ message: deptErr });
+    {
+      const LISTS = require('../utils/hrLists');
+      const listErr = await LISTS.bodyError(req.body, employee)
+        || (req.body.project !== undefined ? await LISTS.projectError(employee, req.body.project) : null);
+      if (listErr) return res.status(400).json({ message: listErr });
     }
+    const projectBefore = employee.project || '';
     const before = {};
     const after = {};
     for (const f of fields) {
@@ -433,6 +436,8 @@ exports.updateEmployee = async (req, res) => {
     }
     applyMarks(employee, req.body.markStatus);
     await employee.save();
+    // ومشروعُ موظّف B2C يُكتب في سجلّه هناك أيضًا — راجع utils/hrLists.
+    if ((employee.project || '') !== projectBefore) await require('../utils/hrLists').projectToB2C(employee, employee.project).catch(() => {});
     // بطاقةُ السائق تُكتب في سجلّ المركبات (المرجع) إن عُدِّلت هنا — راجع utils/driverCardSync.
     if (['driverCardNumber', 'driverCardExpiry', 'driverCardType'].some((k) => req.body[k] !== undefined)) {
       try { await require('../utils/driverCardSync').pushEmployeeToCard(employee, { userId: req.user?._id, emit: false }); } catch (e) { console.error('HR profile → driver card:', e.message); }
@@ -863,6 +868,54 @@ exports.setWorkStatus = async (req, res) => {
   } catch (error) {
     console.error('setWorkStatus error:', error);
     res.status(500).json({ message: 'تعذّر تغيير حالة العمل' });
+  }
+};
+
+/**
+ * POST /api/hr/employees/:id/sponsor — تحويلُ فريلانسر (أو متدرّب) إلى كفالتنا.
+ *
+ * «على كفالتنا» معناه: على سجلٍّ تجاريٍّ من سجلّاتنا (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
+ * فيُختار السجلّ من قائمة سجلّاتنا (`hr_register`) ويُكتب في «رقم السجل التجاري»
+ * — وهو الذي يُقرأ منه النوعُ في كلّ شاشة (utils/hrEngagement). ومعه:
+ *   · النوعُ «على الكفالة» وحقولُ العقد تعود مطلوبةً (utils/employmentType)؛
+ *   · «داخل النظام» — مَن على سجلّنا على نظامنا؛
+ *   · وصفُّه في سجلّ B2C إن كان له صفٌّ: السجلُّ ونوعُ التعاقد «كفالة».
+ */
+exports.sponsorEmployee = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const ENG = require('../utils/hrEngagement');
+    const employee = await Employee.findById(req.params.id);
+    if (!employee) return res.status(404).json({ message: 'Employee not found' });
+    if (employee.employmentStatus === 'terminated') return res.status(400).json({ message: 'الموظف «لا يعمل» — أعِد تفعيله أولًا' });
+    if (ENG.engagementOf(employee) === 'sponsored') return res.status(400).json({ message: 'الموظف على كفالتنا بالفعل' });
+    const register = String(req.body.registerNumber || '').trim();
+    const ours = await require('../utils/hrLists').namesOf('hr_register');
+    if (!ours.includes(register)) return res.status(400).json({ message: `اختر سجلًّا تجاريًّا من سجلّاتنا: ${ours.join('، ')}` });
+    const before = { registerNumber: employee.registerNumber || '', employmentType: employee.employmentType || '', systemStatus: employee.systemStatus || '' };
+    const set = require('../utils/employmentType').applyEmploymentType('sponsored');
+    employee.registerNumber = register;
+    employee.employmentType = set.employmentType;
+    employee.isFreelancer = false;
+    for (const f of require('../utils/employmentType').CONTRACT_FIELDS) {
+      if (employee.fieldStatus?.get?.(`${f}Status`) === 'not_required') employee.fieldStatus.delete(`${f}Status`);
+    }
+    employee.systemStatus = ENG.SYSTEM_IN;
+    await employee.save();
+    try {
+      const { LightTransportEmployee } = require('../models/LightTransport');
+      const row = await LightTransportEmployee.findOne({ employee: employee._id });
+      if (row) { row.registerNumber = register; row.contractTypeAr = 'كفالة'; row.$locals.fromHr = true; await row.save(); emitToAll('lt:updated', {}); }
+    } catch (_) { /* سجلُّ B2C لا يُسقط التحويل */ }
+    bustEmployeeCaches();
+    require('../utils/hrLists').bust({ sponsored: String(employee._id) });
+    await logAudit({ user: req.user._id, action: 'hr_sponsor', entity: 'Employee', entityId: employee._id,
+      changes: { details: `تحويل إلى كفالتنا على السجل ${register}`, before, after: { registerNumber: register, employmentType: employee.employmentType, systemStatus: employee.systemStatus } }, ipAddress: req.ip });
+    await notifyHR({ title: `تحويل إلى كفالتنا: السجل ${register}`, message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
+    res.json({ employee });
+  } catch (error) {
+    console.error('sponsorEmployee error:', error);
+    res.status(500).json({ message: 'تعذّر التحويل إلى الكفالة' });
   }
 };
 
@@ -2345,6 +2398,10 @@ exports.getDashboard = async (req, res) => {
     const _hit = cache.get(_ck);
     if (_hit !== undefined) return res.json(_hit);
     const _send = res.json.bind(res);
+    // ── وفلترُ اللوحة (القسم، المدينة، حالة العمل، المشروع، الجنسية…) يحكم كلَّ
+    // رقمٍ عن الموظّفين هنا — كما يحكم النظرةَ الشاملة (`buildFilter` نفسُه).
+    const filtered = Object.keys(req.query || {}).length > 0;
+    const HRQ = filtered ? { ...HR_ONLY, $and: [require('./hrMasterController')._buildFilter({ ...req.query })] } : HR_ONLY;
     res.json = (b) => { if (res.statusCode < 300) cache.set(_ck, b, 30000); return _send(b); };
     const today = new Date().toISOString().slice(0, 10);
     const in60 = addDays(60);
@@ -2359,23 +2416,23 @@ exports.getDashboard = async (req, res) => {
       byStatusAgg, byDeptAgg, byProjectAgg, byNationalityAgg, recentHiresRaw, docFieldEmployees,
       licensesAll,
     ] = await Promise.all([
-      Employee.countDocuments(HR_ONLY),
-      Employee.countDocuments({ ...HR_ONLY, employmentStatus: 'active' }),
-      Employee.countDocuments({ ...HR_ONLY, employmentStatus: 'on_leave' }),
-      Employee.countDocuments({ ...HR_ONLY, employmentStatus: 'suspended' }),
-      Employee.countDocuments({ ...HR_ONLY, employmentStatus: 'terminated' }),
+      Employee.countDocuments(HRQ),
+      Employee.countDocuments({ ...HRQ, employmentStatus: 'active' }),
+      Employee.countDocuments({ ...HRQ, employmentStatus: 'on_leave' }),
+      Employee.countDocuments({ ...HRQ, employmentStatus: 'suspended' }),
+      Employee.countDocuments({ ...HRQ, employmentStatus: 'terminated' }),
       LeaveRequest.countDocuments(andAll({ status: { $in: ['pending_manager', 'pending_hr'] } }, noArch)),
       HRRequest.countDocuments(andAll({ status: { $in: ['open', 'in_progress'] } }, noArch, notArchivedUserRef(sets, 'requester'))),
       // Employee-held custody only — IT store items are `in_stock`/employee null.
       Asset.countDocuments(andAll({ status: 'assigned', employee: { $ne: null } }, noArch)),
       Contract.find(andAll({ status: 'active', endDate: { $gte: today, $lte: in90 } }, noArch)).populate('employee', 'firstName lastName arabicName').sort({ endDate: 1 }).limit(50).lean(),
-      Employee.aggregate([{ $match: HR_ONLY }, { $group: { _id: '$employmentStatus', count: { $sum: 1 } } }]),
-      Employee.aggregate([{ $match: { ...HR_ONLY, department: { $nin: [null, ''] } } }, { $group: { _id: '$department', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 }]),
-      Employee.aggregate([{ $match: { ...HR_ONLY, project: { $nin: [null, ''] } } }, { $group: { _id: '$project', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 }]),
-      Employee.aggregate([{ $match: { ...HR_ONLY, nationality: { $nin: [null, ''] } } }, { $group: { _id: '$nationality', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 10 }]),
-      Employee.find({ ...HR_ONLY, hireDate: { $nin: [null, ''] } }).select('firstName lastName arabicName jobTitle hireDate').sort({ hireDate: -1 }).limit(8).lean(),
+      Employee.aggregate([{ $match: HRQ }, { $group: { _id: '$employmentStatus', count: { $sum: 1 } } }]),
+      Employee.aggregate([{ $match: { ...HRQ, department: { $nin: [null, ''] } } }, { $group: { _id: '$department', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 }]),
+      Employee.aggregate([{ $match: { ...HRQ, project: { $nin: [null, ''] } } }, { $group: { _id: '$project', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 }]),
+      Employee.aggregate([{ $match: { ...HRQ, nationality: { $nin: [null, ''] } } }, { $group: { _id: '$nationality', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 10 }]),
+      Employee.find({ ...HRQ, hireDate: { $nin: [null, ''] } }).select('firstName lastName arabicName jobTitle hireDate').sort({ hireDate: -1 }).limit(8).lean(),
       // Pull only the fields we scan for expiry, for the whole active-ish workforce.
-      Employee.find({ ...HR_ONLY, employmentStatus: { $ne: 'terminated' } })
+      Employee.find({ ...HRQ, employmentStatus: { $ne: 'terminated' } })
         .select('firstName lastName arabicName iqamaNumber ' + EXPIRY_DOCS.map((d) => d.field).join(' '))
         .limit(5000).lean(),
       // Company licenses & subscriptions — few rows, pull all and compute in JS.
@@ -2391,7 +2448,9 @@ exports.getDashboard = async (req, res) => {
     const { contractRequired } = require('../utils/hrEngagement');
     const current = await require('../utils/contractStatus').currentContractsByEmployee('endDate');
     const anyContract = new Set((await Contract.distinct('employee')).map(String));
-    const workforce = (await Employee.find({ ...HR_ONLY, employmentStatus: { $ne: 'terminated' } })
+    // وفلترُ اللوحة (القسم، المدينة، حالة العمل، المشروع، الجنسية…) يحكم هذين الرقمين
+    // أيضًا — هما عن موظّفين، فيُعَدّان على مَن تعرضه اللوحة. والتراخيصُ للشركة لا تُفلتَر.
+    const workforce = (await Employee.find({ ...HRQ, employmentStatus: { $ne: 'terminated' } })
       .select('firstName lastName arabicName employeeNumber department jobTitle employmentType registerNumber').sort({ employeeNumber: 1 }).lean())
       .filter(contractRequired);
     const person = (e, extra = {}) => ({ _id: e._id, employeeNumber: e.employeeNumber, name: e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim(), department: e.department || '', jobTitle: e.jobTitle || '', ...extra });
@@ -2442,7 +2501,7 @@ exports.getDashboard = async (req, res) => {
       // للوحاتِ غير الموارد البشريّة (النظرةُ التنفيذيّة): مَن على رأس العمل وحدَهم.
       // ولوحةُ الموارد البشريّة تبقى على `byDepartment` — المنتهون من عملها.
       activeByDepartment: (await Employee.aggregate([
-        { $match: { ...HR_ONLY, employmentStatus: { $ne: 'terminated' }, department: { $nin: [null, ''] } } },
+        { $match: { ...HRQ, employmentStatus: { $ne: 'terminated' }, department: { $nin: [null, ''] } } },
         { $group: { _id: '$department', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 },
       ])).map((r) => ({ name: r._id, count: r.count })),
       byProject: byProjectAgg.map((r) => ({ name: r._id, count: r.count })),

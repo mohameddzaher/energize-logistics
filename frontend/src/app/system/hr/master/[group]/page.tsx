@@ -35,6 +35,7 @@ import { stateMeta, statusMeta,
 } from '@/lib/hrMaster';
 import SelectionBar from '@/components/ls2/SelectionBar';
 import { canEditSection } from '@/lib/sections';
+import HrQuickFilters from '@/components/hr/HrQuickFilters';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
 import { HR_DATE_FIELDS, HR_NUM_RANGES, HR_EMPLOYMENT_LABELS } from '@/lib/hrMaster';
 import MasterNav from '@/components/hr/MasterNav';
@@ -292,7 +293,8 @@ function GroupInner() {
       </PageHeader>
 
       {/* الفلتر — يشمل ما جاء محمولًا من النظرة الشاملة، ظاهرًا وقابلًا للرفع */}
-      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
+      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm space-y-2.5">
+        <HrQuickFilters optionsUrl="/api/hr/master/filters" value={filters} onChange={setFilters} ar={ar} />
         <FilterPanel
           optionsUrl="/api/hr/master/filters"
           value={filters}

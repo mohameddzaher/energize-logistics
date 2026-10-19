@@ -6,6 +6,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/hr_quick.dart';
 import 'hr_employee_profile.dart';
 
 /// لوحة الموارد البشرية — native: the headline numbers, department split and
@@ -40,6 +41,7 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
   }
 
   Map<String, dynamic>? _m;
+  Map<String, String> _filters = {};
 
   /// كارتٌ برقمه، وتحته نصفاه: على الكفالة · فريلانسر (من «رقم السجل التجاري»).
   Widget _halfCard(String label, dynamic value, Map<String, dynamic> mt, String key, Color c,
@@ -77,10 +79,14 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
 
   Future<void> _load() async {
     try {
-      final d = await Api.instance.get('/api/hr/dashboard');
+      // فلترُ اللوحة (القسم، المدينة، حالة العمل، المشروع، الجنسية) يُرسَل مع الطلبين —
+      // فيُحسَب عليه كلُّ رقمٍ عن الموظّفين، كالموقع. راجع ui/hr_quick.dart.
+      final q = [for (final e in _filters.entries) if (e.value.isNotEmpty) '${e.key}=${Uri.encodeComponent(e.value)}'].join('&');
+      final qs = q.isEmpty ? '' : '?$q';
+      final d = await Api.instance.get('/api/hr/dashboard$qs');
       // كروتُ اللوحة بنصفيها (على الكفالة · فريلانسر) — من نظرة الموارد البشريّة نفسِها.
       Map<String, dynamic>? m;
-      try { m = Map<String, dynamic>.from(await Api.instance.get('/api/hr/master/overview') as Map); } catch (_) {}
+      try { m = Map<String, dynamic>.from(await Api.instance.get('/api/hr/master/overview$qs') as Map); } catch (_) {}
       if (!mounted) return;
       setState(() { _d = Map<String, dynamic>.from(d); _m = m; _loading = false; _error = null; });
     } catch (e) {
@@ -108,6 +114,14 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(14),
                     children: [
+                      // ── الفلترةُ السريعة: كلُّ رقمٍ تحتها يُحسَب عليها ──
+                      AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(tr('فلترة اللوحة — كل الأرقام تتعدّل حسب اختيارك', 'Filter — every number follows your choice'),
+                            style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.inkFaint)),
+                        const SizedBox(height: 6),
+                        HrQuickFilters(value: _filters, onChanged: (v) { setState(() => _filters = v); _load(); }),
+                      ])),
+                      const SizedBox(height: 10),
                       Row(children: [
                         Expanded(child: FadeSlideIn(child: StatCard(label: tr('إجمالي الموظفين', 'Employees'), value: s['totalEmployees'] ?? 0, color: T.navy, icon: Icons.groups_outlined))),
                         const SizedBox(width: 10),

@@ -2,7 +2,7 @@ const Lookup = require('../models/Lookup');
 const { byType, canManage, typesForRole, REGISTRY } = require('../config/lookupTypes');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
-const DEPT = require('../utils/hrDepartments');
+const LISTS = require('../utils/hrLists');
 
 const emit = (event, payload = {}) => { try { emitToAll(event, payload); } catch (e) {} };
 
@@ -62,10 +62,10 @@ exports.createLookup = async (req, res) => {
     if (!canManage(type, req.user.role)) return res.status(403).json({ message: 'Insufficient permissions' });
     if (!nameEn || !nameEn.trim()) return res.status(400).json({ message: 'English name is required' });
 
-    // قسمان بالاسم نفسِه يُقرآن قسمًا واحدًا في كلّ ملفّ — فلا يُضاف الثاني.
-    if (type === DEPT.TYPE) {
+    // بندان بالاسم نفسِه يُقرآن بندًا واحدًا في كلّ ملفّ — فلا يُضاف الثاني.
+    if (LISTS.isHrList(type)) {
       const ar = String((nameAr && nameAr.trim()) || nameEn.trim());
-      if (await Lookup.exists({ type, nameAr: ar, deleted: { $ne: true } })) return res.status(409).json({ message: `القسم «${ar}» موجود بالفعل` });
+      if (await Lookup.exists({ type, nameAr: ar, deleted: { $ne: true } })) return res.status(409).json({ message: `«${ar}» موجود بالفعل في القائمة` });
     }
 
     const key = await uniqueKey(type, nameEn);
@@ -83,7 +83,7 @@ exports.createLookup = async (req, res) => {
     });
 
     await logAudit({ user: req.user._id, action: 'create_lookup', entity: 'Lookup', entityId: item._id, changes: { after: { type, key, nameEn } }, ipAddress: req.ip }).catch(() => {});
-    if (type === DEPT.TYPE) DEPT.forget();
+    if (LISTS.isHrList(type)) LISTS.forget();
     emit('lookup:changed', { type });
     res.status(201).json({ item });
   } catch (error) {
@@ -102,15 +102,15 @@ exports.updateLookup = async (req, res) => {
 
     const { nameEn, nameAr, color, isActive, order } = req.body;
     const nameBefore = item.nameAr;
-    if (item.type === DEPT.TYPE) {
+    if (LISTS.isHrList(item.type)) {
       const next = nameAr !== undefined ? String(nameAr).trim() : '';
       if (next && next !== nameBefore && await Lookup.exists({ type: item.type, nameAr: next, deleted: { $ne: true }, _id: { $ne: item._id } })) {
-        return res.status(409).json({ message: `القسم «${next}» موجود بالفعل` });
+        return res.status(409).json({ message: `«${next}» موجود بالفعل في القائمة` });
       }
-      // إيقافُ القسم حذفٌ له من القائمة — فلا يُوقَف وفيه موظّفون.
+      // إيقافُ البند حذفٌ له من القائمة — فلا يُوقَف وعليه موظّفون.
       if (isActive === false && item.isActive) {
-        const u = await DEPT.usage(nameBefore);
-        if (u.total) return res.status(409).json({ message: deptInUse(nameBefore, u) });
+        const u = await LISTS.usage(item.type, nameBefore);
+        if (u.total) return res.status(409).json({ message: inUse(nameBefore, u) });
       }
     }
     if (nameEn !== undefined) item.nameEn = String(nameEn).trim() || item.nameEn;
@@ -127,12 +127,13 @@ exports.updateLookup = async (req, res) => {
       await require('../services/customsLookupSync')
         .lookupRenamed({ type: item.type, key: item.key, from: nameBefore, to: item.nameAr }).catch(() => {});
     }
-    // والقسمُ: اسمُه الجديدُ على ملفّات موظّفيه كلِّهم في الحال.
-    if (item.type === DEPT.TYPE) {
-      DEPT.forget();
+    // وقوائمُ ملفّ الموظّف (القسم، الجنسيّة، المدينة، المشروع): الاسمُ الجديدُ على
+    // ملفّات أصحابه كلِّهم في الحال — راجع utils/hrLists.
+    if (LISTS.isHrList(item.type)) {
+      LISTS.forget();
       if (nameBefore !== item.nameAr) {
-        const r = await DEPT.renamed(nameBefore, item.nameAr);
-        await logAudit({ user: req.user._id, action: 'rename_department', entity: 'Lookup', entityId: item._id, changes: { details: `«${nameBefore}» ← «${item.nameAr}» على ${r.touched} ملفّ`, before: { nameAr: nameBefore }, after: { nameAr: item.nameAr, employees: r.touched } }, ipAddress: req.ip }).catch(() => {});
+        const r = await LISTS.renamed(item.type, nameBefore, item.nameAr);
+        await logAudit({ user: req.user._id, action: 'rename_hr_list_item', entity: 'Lookup', entityId: item._id, changes: { details: `«${nameBefore}» ← «${item.nameAr}» على ${r.touched} ملفّ`, before: { nameAr: nameBefore }, after: { nameAr: item.nameAr, employees: r.touched } }, ipAddress: req.ip }).catch(() => {});
       }
     }
     emit('lookup:changed', { type: item.type });
@@ -152,10 +153,10 @@ exports.deleteLookup = async (req, res) => {
     const item = await Lookup.findById(req.params.id);
     if (!item) return res.status(404).json({ message: 'Lookup not found' });
     if (!canManage(item.type, req.user.role)) return res.status(403).json({ message: 'Insufficient permissions' });
-    if (item.type === DEPT.TYPE) {
-      const u = await DEPT.usage(item.nameAr);
-      if (u.total) return res.status(409).json({ message: deptInUse(item.nameAr, u) });
-      DEPT.forget();
+    if (LISTS.isHrList(item.type)) {
+      const u = await LISTS.usage(item.type, item.nameAr);
+      if (u.total) return res.status(409).json({ message: inUse(item.nameAr, u) });
+      LISTS.forget();
     }
     if (item.isSystem) {
       // لا تُمحى من القاعدة بل تُعلَّم محذوفةً: المحوُ يعيدها البذرُ في أوّل
@@ -177,8 +178,8 @@ exports.deleteLookup = async (req, res) => {
   }
 };
 
-// قسمٌ فيه موظّفون لا يُحذف ولا يُوقَف: يُنقَلون أوّلًا (أو يُغيَّر اسمُه بدلَ حذفه).
-const deptInUse = (name, u) => `لا يمكن حذف قسم «${name}»: عليه ${u.total} موظّف${u.archived ? ` (منهم ${u.archived} في الأرشيف)` : ''}. انقلهم إلى قسمٍ آخر أوّلًا، أو غيّر اسمَ القسم بدلَ حذفه.`;
+// بندٌ عليه موظّفون لا يُحذف ولا يُوقَف: يُنقَلون أوّلًا (أو يُغيَّر اسمُه بدلَ حذفه).
+const inUse = (name, u) => `لا يمكن حذف «${name}»: عليه ${u.total} موظّف${u.archived ? ` (منهم ${u.archived} في الأرشيف)` : ''}. انقلهم إلى غيره أوّلًا، أو غيّر الاسمَ بدلَ الحذف.`;
 
 // Helper for other controllers: active rows for a type as {key,nameEn,nameAr,color}.
 // Falls back to [] (callers can default to their config list) on error.

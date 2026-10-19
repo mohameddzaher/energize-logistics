@@ -188,7 +188,7 @@ const REGISTRY = [
      * ── والقائمةُ يملكها المديرُ العامّ وحدَه (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) ──────
      * القسمُ يُختار من القائمة في كلّ شاشة — الماستر وملفّ الموظّف والتطبيق —
      * ولا يُكتب. وزيادةُ قسمٍ أو حذفُه أو تغييرُ اسمه من «البيانات المرجعيّة»
-     * للسوبر أدمن فقط. والاسمُ الجديدُ يسري على ملفّات موظّفيه (utils/hrDepartments)،
+     * للسوبر أدمن فقط. والاسمُ الجديدُ يسري على ملفّات موظّفيه (utils/hrLists)،
      * والقسمُ الذي فيه موظّفون لا يُحذَف حتّى يُنقَلوا.
      */
     superOnly: true,
@@ -213,6 +213,33 @@ const REGISTRY = [
       { key: 'it', nameEn: 'IT', nameAr: 'IT' },
       { key: 'marketing', nameEn: 'Marketing & Advertising', nameAr: 'التسويق والاعلان' },
       { key: 'no_department', nameEn: 'No department', nameAr: 'بدون قسم' },
+    ],
+  },
+  /**
+   * ── سجلّاتُنا التجاريّة ────────────────────────────────────────────────────
+   * «على كفالتنا» = على سجلٍّ منها. منها يُختار السجلُّ عند تحويل فريلانسر إلى
+   * كفالتنا (POST /employees/:id/sponsor). والسجلّاتُ يملكها السوبر أدمن.
+   */
+  {
+    type: 'hr_register',
+    module: 'hr', nameEn: 'Our commercial registers', nameAr: 'سجلاتنا التجارية',
+    superOnly: true, roles: [], storeLabel: true,
+    seed: ['7025667531', '7038387267', '7041762761', '7053403049', '7012953373', '7040732641', '7001621395']
+      .map((n) => ({ key: `cr_${n}`, nameEn: n, nameAr: n })),
+  },
+  /**
+   * ── مشاريعُ الموظّفين (غيرُ مشاريع B2C) ────────────────────────────────────
+   * مشروعُ موظّف B2C يُختار من `lt_project` ويملكه قسمُ B2C. وهذه لبقيّة الموظّفين.
+   * وخيارُ «المشروع» في ملفّ الموظّف القائمتان معًا (utils/hrLists).
+   */
+  {
+    type: 'hr_project',
+    module: 'hr', nameEn: 'Projects', nameAr: 'المشاريع',
+    roles: ['hr_manager', 'hr_specialist'], storeLabel: true,
+    seed: [
+      { key: 'heavy_transport', nameEn: 'Heavy Transport', nameAr: 'النقل الثقيل' },
+      { key: 'customer_service', nameEn: 'Customer Service', nameAr: 'خدمة عملاء' },
+      { key: 'branches', nameEn: 'Branches', nameAr: 'الفروع' },
     ],
   },
   // ── وبقيّةُ خانات ملفّ الموظّف ذاتِ الاختيارات المحدودة ────────────────────

@@ -48,6 +48,7 @@ router.delete('/forms/:id', authorize(...STAFF), hrForms.remove);
 // لأنّه أخصُّ منه في الشكل ولا يتداخلان.
 router.get('/master/grid', authorize(...STAFF), hrm.grid);
 router.get('/master/records/:group', authorize(...STAFF), hrm.records);
+router.get('/master/employees/:id/fields', authorize(...STAFF), hrm.employeeFields);
 router.patch('/master/employees/:id/fields', authorize(...STAFF), hrm.updateFields);
 // التجديد — فرديًّا وجماعيًّا. `renew-bulk` قبل أي مسار فيه معرّف حتى لا يُقرأ
 // «renew-bulk» على أنه معرّف موظف.
@@ -113,6 +114,7 @@ router.post('/employees/:id/terminate', authorize(...STAFF), hr.terminateEmploye
 router.post('/employees/:id/reactivate', authorize(...STAFF), hr.reactivateEmployee);
 // «يعمل» ↔ «شركة شقيقة» — و«لا يعمل» هو إنهاءُ الخدمة. راجع setWorkStatus.
 router.post('/employees/:id/work-status', authorize(...STAFF), hr.setWorkStatus);
+router.post('/employees/:id/sponsor', authorize(...STAFF), hr.sponsorEmployee);
 // ── الأرشيف: إنهاءُ الخدمة ← خروجٌ من النظام ← الأرشيف. راجع hrArchiveController.
 const hrArchive = require('../controllers/hrArchiveController');
 router.get('/archive', authorize(...STAFF), hrArchive.list);

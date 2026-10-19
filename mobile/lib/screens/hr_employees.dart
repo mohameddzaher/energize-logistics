@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../ui/filter_sheet.dart';
+import '../ui/hr_quick.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
@@ -149,6 +150,15 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
               ),
             ),
           ]),
+        ),
+        // القسم · المدينة · حالة العمل · المشروع · الجنسية — الفلترُ نفسُه (ui/hr_quick.dart).
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+          child: HrQuickFilters(
+            value: _filters,
+            params: const {'scope': 'all'},
+            onChanged: (v) { setState(() { _filters = v; _loading = true; }); _load(); },
+          ),
         ),
         if (_fromB2c > 0 || _b2cOnly)
           Padding(

@@ -10,8 +10,9 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import {
   ArrowLeft, ArrowRight, Edit, RefreshCw, UserX, UserCheck, Plus, Trash2, FileText, ExternalLink, Check, Paperclip,
-  Archive, Undo2, Building2,
+  Archive, Undo2, Building2, BadgeCheck,
 } from 'lucide-react';
+import EmployeeMasterFields from '@/components/hr/EmployeeMasterFields';
 import {
   isHRStaff, Employee, Contract, LeaveRequest, Asset, HRRequest, LeaveBalance,
   EmployeeDocument, EmployeeRenewal, AuditEntry,
@@ -81,6 +82,11 @@ export default function EmployeeProfilePage() {
   const [editingContract, setEditingContract] = useState<Contract | null>(null);
   const [showRenew, setShowRenew] = useState(false);
   const [showTerminate, setShowTerminate] = useState(false);
+  // ── تحويلُ فريلانسر إلى كفالتنا: يُختار سجلٌّ من سجلّاتنا التجاريّة ──────────
+  const [sponsorOpen, setSponsorOpen] = useState(false);
+  const [registers, setRegisters] = useState<string[]>([]);
+  const [register, setRegister] = useState('');
+  const [sponsoring, setSponsoring] = useState(false);
   const [showAddDoc, setShowAddDoc] = useState(false);
   const [editDoc, setEditDoc] = useState<EmployeeDocument | null>(null);
 
@@ -123,6 +129,22 @@ export default function EmployeeProfilePage() {
     if (!(await confirm(ar ? 'إعادته إلى النظام؟ يخرج من الأرشيف.' : 'Return him to the system? He leaves the archive.'))) return;
     try { await api.post(`/api/hr/employees/${id}/return-system`, {}); load(); }
     catch (err: any) { notify(err.message, 'error'); }
+  };
+  const openSponsor = async () => {
+    setRegister(''); setSponsorOpen(true);
+    try {
+      const d = await api.get<{ items: { nameAr: string }[] }>('/api/lookups?type=hr_register&active=true');
+      setRegisters((d.items || []).map((x) => x.nameAr));
+    } catch { setRegisters([]); }
+  };
+  const sponsor = async () => {
+    if (!register) return;
+    setSponsoring(true);
+    try {
+      await api.post(`/api/hr/employees/${id}/sponsor`, { registerNumber: register });
+      notify(ar ? `صار على كفالتنا — السجل ${register}` : `Now sponsored — register ${register}`, 'success');
+      setSponsorOpen(false); load();
+    } catch (err: any) { notify(err.message, 'error'); } finally { setSponsoring(false); }
   };
   const reactivate = async () => {
     if (!(await confirm(ar ? 'إعادة تفعيل هذا الموظف؟' : 'Reactivate this employee?'))) return;
@@ -414,6 +436,10 @@ export default function EmployeeProfilePage() {
               <ActionBtn onClick={toggleSister} icon={<Building2 className="w-4 h-4" />}
                 label={(e as any).sisterCompany ? (ar ? 'إرجاعه: يعمل' : 'Back to working') : (ar ? 'شركة شقيقة' : 'Sister company')} />
             )}
+            {/* مَن ليس على كفالتنا (فريلانسر، متدرّب، غير محدّد) يُحوَّل إليها على سجلٍّ من سجلّاتنا. */}
+            {!terminated && !/^\s*\d{6,}\s*$/.test(String(e.registerNumber || '')) && (
+              <ActionBtn onClick={openSponsor} icon={<BadgeCheck className="w-4 h-4" />} label={ar ? 'تحويل على كفالتنا' : 'Move to our sponsorship'} />
+            )}
             {/* لا يظهر إلّا بعد إنهاء الخدمة، ولغير الفريلانسر. */}
             {terminated && !archived && (
               <ActionBtn onClick={exitSystem} icon={<Archive className="w-4 h-4" />} label={ar ? 'خروج من النظام' : 'Exit the system'} danger />
@@ -492,7 +518,24 @@ export default function EmployeeProfilePage() {
 
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
-      {tab === 'overview' && <Overview e={e} lang={lang} tx={tx} vtx={vtx} />}
+      {/* فريقُ الموارد البشريّة يرى كلَّ بيانات الماستر ويعدّلها من هنا — والموظّفُ نفسُه يرى الملخّص. */}
+      {tab === 'overview' && (staff
+        ? <EmployeeMasterFields id={String(e._id)} fieldsUrl={`/api/hr/master/employees/${e._id}/fields`} choicesUrl="/api/hr/master/choices" canEdit={staff} ar={ar} />
+        : <Overview e={e} lang={lang} tx={tx} vtx={vtx} />)}
+
+      <Modal open={sponsorOpen} onClose={() => setSponsorOpen(false)} title={ar ? 'تحويل على كفالتنا' : 'Move to our sponsorship'}
+        footer={<PrimaryButton onClick={sponsor} disabled={!register || sponsoring}>{sponsoring ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{ar ? 'تحويل' : 'Move'}</PrimaryButton>}>
+        <p className="mb-3 text-sm text-slate-600">
+          {ar ? 'على كفالتنا = على سجلٍّ تجاريٍّ من سجلّاتنا. اختر السجل — يصير «على الكفالة» و«داخل النظام»، ويُطلَب له عقد.'
+            : 'Sponsored = on one of our commercial registers. Pick the register — he becomes sponsored and inside the system, and a contract becomes required.'}
+        </p>
+        <Field label={ar ? 'السجل التجاري' : 'Commercial register'}>
+          <Select value={register} onChange={(ev) => setRegister(ev.target.value)}>
+            <option value="">{ar ? '— اختر السجل —' : '— choose —'}</option>
+            {registers.map((r) => <option key={r} value={r}>{r}</option>)}
+          </Select>
+        </Field>
+      </Modal>
 
       {tab === 'documents' && (
         <div className="space-y-4">

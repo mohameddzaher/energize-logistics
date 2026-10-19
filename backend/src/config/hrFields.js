@@ -41,7 +41,8 @@ const GROUPS = [
         alsoSearch: ['nationalId'], deps: ['idType', 'nationalId'] },
       { key: 'idType', ar: 'نوع الهوية', en: 'ID type', type: 'text', groupable: true },
       { key: 'gender', ar: 'الجنس', en: 'Gender', type: 'text', groupable: true },
-      { key: 'nationality', ar: 'الجنسية', en: 'Nationality', type: 'text', groupable: true },
+      // الجنسيّةُ والمدينةُ والمشروعُ قوائمُ مغلقة أيضًا (`strict`) — utils/hrLists.
+      { key: 'nationality', ar: 'الجنسية', en: 'Nationality', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_nationality' },
       { key: 'dateOfBirth', ar: 'تاريخ الميلاد', en: 'Date of birth', type: 'date' },
     ],
   },
@@ -62,10 +63,12 @@ const GROUPS = [
     key: 'employment', ar: 'بيانات التوظيف', en: 'Employment', icon: 'briefcase',
     fields: [
       { key: 'employerNumber', ar: 'رقم صاحب العمل', en: 'Employer no.', type: 'text' },
-      { key: 'project', ar: 'وحدة العمل', en: 'Business unit', type: 'text', groupable: true },
-      // القسمُ من قائمة الأقسام وحدَها — لا «أخرى» ولا كتابة (utils/hrDepartments).
+      // موظّفُ B2C مشروعُه من سجلّه هناك، ويُكتب فيه (models/LightTransport، utils/hrLists).
+      { key: 'project', ar: 'المشروع', en: 'Project', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_project' },
+      // القسمُ من قائمة الأقسام وحدَها — لا «أخرى» ولا كتابة (utils/hrLists).
       { key: 'department', ar: 'القسم', en: 'Department', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_department' },
-      { key: 'branchName', ar: 'الفرع', en: 'Branch', type: 'text', groupable: true },
+      // «الفرع» في ملفّ الاستيراد هو المدينة (جدة، مكة…) — فاسمُه في كلّ شاشةٍ «المدينة».
+      { key: 'branchName', ar: 'المدينة', en: 'City', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_work_location' },
       { key: 'directManagerName', ar: 'المدير المباشر', en: 'Line manager', type: 'text', groupable: true },
       { key: 'jobTitle', ar: 'المسمى الوظيفي', en: 'Job title', type: 'text', groupable: true },
       // رقم السجلّ التجاريّ كان هنا، وانتقل إلى مجموعة «السجل والتأمينات

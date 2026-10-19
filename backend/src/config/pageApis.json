@@ -1803,6 +1803,7 @@
         "/api/hr/documents",
         "/api/hr/employees",
         "/api/hr/master/choices",
+        "/api/hr/master/employees",
         "/api/hr/master/filters",
         "/api/hr/options",
         "/api/lookups/types",

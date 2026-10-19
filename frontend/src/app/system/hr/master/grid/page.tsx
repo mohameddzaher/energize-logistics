@@ -246,15 +246,36 @@ export default function HrMasterGridPage() {
     if (!ok) notify(t('المتصفّح منع نافذة الطباعة', 'The browser blocked the print window'), 'error');
   };
 
-  // قيمُ عمودٍ للفلتر — تُشتقّ من الصفحة المعروضة (الفلترُ يُطبَّق في الخادم).
-  const optionsFor = (key: string): ColumnFilterOption[] => {
-    const m = new Map<string, number>();
-    for (const r of rows) {
+  /**
+   * ── قيمُ عمودٍ للفلتر: من كلّ الموظّفين المطابقين، لا من الصفحة ────────────
+   * كانت تُعَدّ من الخمسين المعروضين: «داخل النظام ٣٧ · — ٨ · خارج ٥» عددُ
+   * الصفحة الأولى وحدَها. فمن اختار «—» ردّ الخادمُ كلَّ مَن خانتُه فارغةٌ في
+   * الشركة، فعُرض أوّلُ خمسين منهم، فقالت القائمةُ «— ٥٠» — وكأنّ الفلتر كذب.
+   *
+   * فتُحسَب عند فتح القمع: كلُّ الموظّفين المطابقين لبقيّة الفلاتر (لا لفلتر هذا
+   * العمود نفسِه — كإكسل: ترى قيمَ العمود كلَّها وتختار منها)، وبدالّة العرض
+   * نفسِها (`cellOf`)، فما يُعَدّ هو ما يظهر في الخانة.
+   */
+  const [colOpts, setColOpts] = useState<Record<string, ColumnFilterOption[]>>({});
+  const [colLoading, setColLoading] = useState<string>('');
+  useEffect(() => { setColOpts({}); }, [q, colFilters]);
+  const loadColOptions = async (key: string) => {
+    if (colOpts[key]) return;
+    setColLoading(key);
+    try {
+      const p = new URLSearchParams({ page: '1', limit: '100000' });
+      if (q.trim()) p.set('q', q.trim());
+      for (const [k, vals] of Object.entries(colFilters)) if (k !== key) for (const v of vals) p.append(k, v);
+      const d = await api.get<any>(`/api/hr/master/grid?${p.toString()}`);
       const c = allCols.find((x) => x.key === key);
-      const v = c ? String(cellOf(r, c) ?? '') : '';
-      m.set(v || '—', (m.get(v || '—') || 0) + 1);
-    }
-    return [...m.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count);
+      const m = new Map<string, number>();
+      for (const r of (d.rows || [])) {
+        const v = c ? String(cellOf(r, c) ?? '') : '';
+        m.set(v || '—', (m.get(v || '—') || 0) + 1);
+      }
+      setColOpts((prev) => ({ ...prev, [key]: [...m.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count) }));
+    } catch { /* القمعُ يبقى بلا قيم، والجدولُ كما هو */ }
+    setColLoading('');
   };
 
   if (loading) return <Spinner />;
@@ -316,7 +337,9 @@ export default function HrMasterGridPage() {
                           if (set.size) n[c.key] = set; else delete n[c.key];
                           return n;
                         })}
-                        options={optionsFor(c.key) || EMPTY_OPTS}
+                        options={colOpts[c.key] || EMPTY_OPTS}
+                        onOpen={() => loadColOptions(c.key)}
+                        loading={colLoading === c.key}
                         lang={ar ? 'ar' : 'en'}
                       />
                     </span>

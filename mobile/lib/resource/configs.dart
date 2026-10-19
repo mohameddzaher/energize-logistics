@@ -1512,7 +1512,8 @@ final hrContractsCfg = ResourceConfig(
     [_s(r, 'startDate'), _s(r, 'endDate')].where((x) => x.isNotEmpty).map((x) => bothDates(x, ar: Lang.instance.ar)).join(' → '),
   ].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
-    if (_s(r, 'status').isNotEmpty) (_s(r, 'status'), r['status'] == 'active' ? T.success : T.inkFaint),
+    // ساري أو منتهي لا غير — كشارة الموقع، لا مفتاحُ القاعدة.
+    if (_s(r, 'status').isNotEmpty) (r['status'] == 'active' ? 'ساري' : 'منتهي', r['status'] == 'active' ? T.success : T.inkFaint),
     // «غير مطلوب» حالةٌ سليمة لا صفرٌ ناقص — تُكتب كما هي.
     if (_s(r, 'annualLeaveText').isNotEmpty) (_s(r, 'annualLeaveText'), T.warn)
     else if (r['annualLeaveDays'] != null) ('إجازة ${r['annualLeaveDays']}', T.cyan),
@@ -1731,12 +1732,15 @@ ResourceConfig ltUserRentalsCfg({required bool canWrite, required bool canDelete
   ],
 );
 
-ResourceConfig lightTransportCfg({required bool canAdd}) => ResourceConfig(
+/// `listQuery` يفتح السجلَّ مفلترًا — أرقامُ «إجمالي المناديب» في لوحة القسم
+/// تفتح أصحابَها (staffKind/project/contractKind/inService)، كرابط الموقع.
+ResourceConfig lightTransportCfg({required bool canAdd, String listQuery = '', String? arTitle, String? enTitle}) => ResourceConfig(
   canCreate: canAdd,
+  listQuery: listQuery,
   onCreate: showLtAddEmployee,
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(
       builder: (_) => LightTransportProfileScreen(id: (r['_id'] ?? '').toString()))),
-  arTitle: 'موظفون النقل الخفيف', enTitle: 'Light-transport Employees',
+  arTitle: arTitle ?? 'موظفون النقل الخفيف', enTitle: enTitle ?? 'Light-transport Employees',
   icon: Icons.two_wheeler_outlined,
   endpoint: '/api/light-transport/employees', listKey: 'employees',
   liveEvent: 'lt:*',

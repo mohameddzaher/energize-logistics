@@ -1364,6 +1364,12 @@
       "en": "Employees"
     },
     {
+      "key": "/system/hr/archive",
+      "section": "HR",
+      "ar": "الأرشيف",
+      "en": "Archive"
+    },
+    {
       "key": "/system/hr/contracts",
       "section": "HR",
       "ar": "العقود",

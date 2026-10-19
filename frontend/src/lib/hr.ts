@@ -65,7 +65,8 @@ export interface Contract {
   startDate: string; endDate?: string; durationMonths?: number;
   annualLeaveDays: number;
   jobTitle?: string; basicSalary?: number; allowances?: number; probationMonths?: number;
-  status: 'active' | 'expired' | 'terminated';
+  // ساري أو منتهي لا غير — «مفسوخ» منتهٍ وسببُه في terminationReason.
+  status: 'active' | 'expired';
   terminatedAt?: string; terminationReason?: string; custodyReturned?: boolean;
   notes?: string; createdAt?: string;
   // ما جاء في ملفّ عقود الموظفين — العقدُ ورقةٌ لها بياناتٌ لا تعيش في ملفّ
@@ -269,8 +270,18 @@ export const EMPLOYMENT_STATUS: Record<string, { bg: string; text: string; en: s
 export const CONTRACT_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {
   active: { bg: 'bg-green-500/20', text: 'text-green-700', en: 'Active', ar: 'ساري' },
   expired: { bg: 'bg-gray-500/20', text: 'text-gray-600', en: 'Expired', ar: 'منتهي' },
-  terminated: { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Terminated', ar: 'مفسوخ' },
-  renewed: { bg: 'bg-sky-500/20', text: 'text-sky-700', en: 'Renewed', ar: 'مجدَّد' },
+};
+// ── حالتان لا أربع (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) ──────────────────────────────
+// «مفسوخ» و«مجدَّد» القديمان يُقرآن «منتهي» — والخادمُ يطويهما قبل أن يصلا.
+
+/**
+ * أيُطلَب لهذا الموظّف عقد؟ الفريلانسرُ والمتدرّبُ لا عقدَ لهما — تاريخُ مباشرةٍ
+ * فقط — فلا يُقال عن أحدهما «بلا عقد» ولا «لا عقد ساري له». ويُقرأ من «رقم
+ * السجل» كما في الخادم (utils/hrEngagement)، لا من «النوع».
+ */
+export const contractRequired = (e?: { registerNumber?: string } | null) => {
+  const r = String(e?.registerNumber ?? '').trim();
+  return !(/فري\s*لانس|فريلانس|freelanc/i.test(r) || /تدريب|متدرب|trainee/i.test(r));
 };
 /**
  * ما يُعرَض للعقد — لا ما هو مخزَّنٌ فيه وحدَه.
@@ -284,7 +295,8 @@ export const contractBadge = (c?: { status?: string; endDate?: string | null } |
   if (!c) return null;
   const end = String(c.endDate || '').slice(0, 10);
   if (c.status === 'active' && end && end < new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' })) return CONTRACT_LAPSED;
-  return CONTRACT_STATUS[c.status || ''] || null;
+  if (!c.status) return null;
+  return CONTRACT_STATUS[c.status === 'active' ? 'active' : 'expired'];
 };
 
 export const REQUEST_CATEGORIES: { key: string; en: string; ar: string }[] = [

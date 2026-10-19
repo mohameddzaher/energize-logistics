@@ -55,6 +55,7 @@ import '../screens/marketing_activities.dart';
 import '../screens/ops_workflows.dart';
 import '../screens/ops_private.dart';
 import '../screens/custody_ledger.dart';
+import '../screens/hr_archive.dart';
 import '../screens/light_transport_housing.dart';
 import '../screens/my_profile.dart';
 import '../screens/customs_dashboard.dart';
@@ -339,6 +340,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       pages: [
         AppPage('لوحة الموارد البشرية', 'HR Dashboard', Icons.space_dashboard_outlined, (c) => const HrDashboardScreen(), path: '/system/hr/master'),
         AppPage('الموظفون', 'Employees', Icons.people_alt_outlined, (c) => const HrEmployeesScreen(), path: '/system/hr/employees'),
+        // الأرشيف — مَن انتهت خدمتُه وخرج من النظام، والفريلانسرُ المنتهي. كالموقع.
+        AppPage('الأرشيف', 'Archive', Icons.archive_outlined, (c) => const HrArchiveScreen(), path: '/system/hr/archive'),
         AppPage('طلبات الإجازات', 'Leave Requests', Icons.event_available_outlined, (c) => const HrLeavesScreen(), path: '/system/hr/leaves'),
         AppPage('طلبات الموظفين', 'Employee Requests', Icons.mark_email_unread_outlined, (c) => const HrRequestsScreen(), path: '/system/hr/requests'),
         // طلباتُ الأقسام — الجانبُ المستقبِل. راجع screens/staff_requests.dart.

@@ -86,6 +86,16 @@ export default function B2CDashboardPage() {
 
   const E = d.employees; const V = d.vehicles;
 
+  /**
+   * روابطُ «إجمالي المناديب»: فلاترُ اللوحة + المناديب + ما ضُغط عليه.
+   * و`inService=1` لأنّ اللوحة لا تعدّ المنتهين — إلّا إن فُلترت عليهم صراحةً.
+   * و«(غير محدد)» يُرسَل كما هو: الخادمُ يفهمه «بلا مشروع».
+   */
+  const repsHref = (extra: Record<string, string>) => `/system/b2c/light-transport?${qsOf({
+    ...f, staffKind: 'rep', inService: f.status === 'إنهاء خدمة' ? '' : '1', ...extra,
+  })}`;
+  const usersHref = (project: string) => `/system/b2c/user-rentals${project && project !== '(غير محدد)' ? `?project=${encodeURIComponent(project)}` : ''}`;
+
   const Card = ({ label, value, of, accent, onClick, on, hint }: {
     label: string; value: any; of?: number; accent?: string; onClick?: () => void; on?: boolean; hint?: string;
   }) => (
@@ -230,23 +240,32 @@ export default function B2CDashboardPage() {
       </div>
 
       {/* ── إجماليُّ المناديب: على الكفالة + فري لانسر + يوزرات ────────────────
-          المناديبُ على رأس العمل بنوع عقدهم، ومعهم اليوزراتُ المؤجَّرة (صفحة
-          «تأجير اليوزرات»). ثمّ الثلاثةُ لكلّ مشروع. والضغطُ يفلتر اللوحة. */}
+          المناديبُ في الخدمة بنوع عقدهم، ومعهم اليوزراتُ المؤجَّرة (صفحة
+          «تأجير اليوزرات»). ثمّ الثلاثةُ لكلّ مشروع. وكلُّ رقمٍ هنا يفتح أصحابَه:
+          الناسُ في سجلّ الموظّفين واليوزراتُ في صفحتها — والرابطُ يحمل فلاترَ
+          اللوحة ومعها `inService=1`، فتعرض القائمةُ مَن عُدّوا بأعيانهم. */}
       {d.reps && (
         <>
           <h2 className="text-[13px] font-extrabold text-slate-500 flex items-center gap-1.5 pt-1">
             {t('إجمالي المناديب', 'Total reps')}
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            <Card label={t('إجمالي المناديب', 'Total reps')} value={d.reps.total} onClick={() => setF({})} on={!active.length}
-              hint={d.reps.noContract ? t(`منهم ${d.reps.noContract} بلا نوع عقد`, `${d.reps.noContract} with no contract type`) : undefined} />
+            <Card label={t('إجمالي المناديب', 'Total reps')} value={d.reps.total} onClick={() => router.push(repsHref({}))}
+              hint={d.reps.users ? t(`منهم ${d.reps.users} يوزر مؤجَّر`, `incl. ${d.reps.users} rented users`) : undefined} />
             <Card label={t('على الكفالة', 'Sponsored')} value={d.reps.sponsored} accent="text-indigo-600"
-              onClick={() => toggle('contractType', 'كفالة')} on={f.contractType === 'كفالة'} />
+              onClick={() => router.push(repsHref({ contractKind: 'sponsored' }))} />
             <Card label={t('فري لانسر', 'Freelance')} value={d.reps.freelance} accent="text-teal-600"
-              onClick={() => toggle('contractType', 'فري لانسر')} on={f.contractType === 'فري لانسر'} />
+              onClick={() => router.push(repsHref({ contractKind: 'freelance' }))} />
             <Card label={t('يوزرات', 'Rented users')} value={d.reps.users} accent="text-[#f37121]"
-              onClick={() => router.push('/system/b2c/user-rentals')} hint={t('من تأجير اليوزرات', 'from user rentals')} />
+              onClick={() => router.push(usersHref(f.project || ''))} hint={t('من تأجير اليوزرات', 'from user rentals')} />
           </div>
+          {/* مَن لا نوعَ عقدٍ له لا يدخل الكفالةَ ولا الفري لانسر — فيُفتَح ليُصحَّح. */}
+          {d.reps.noContract > 0 && (
+            <Link href={repsHref({ contractKind: 'none' })}
+              className="-mt-1 inline-flex items-center gap-1 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1 text-[12px] font-semibold text-amber-800 hover:bg-amber-100">
+              {t(`${d.reps.noContract} مندوب بلا نوع عقد — اضغط لتحديده`, `${d.reps.noContract} reps with no contract type — click to set it`)}
+            </Link>
+          )}
           {d.reps.projects.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
               {d.reps.projects.map((p) => (
@@ -257,14 +276,18 @@ export default function B2CDashboardPage() {
                   </button>
                   <div className="grid grid-cols-3 divide-x divide-slate-100 rtl:divide-x-reverse text-center">
                     {([['sponsored', t('كفالة', 'Sponsored')], ['freelance', t('فري لانسر', 'Freelance')], ['users', t('يوزرات', 'Users')]] as const).map(([k, label]) => (
-                      <div key={k} className="px-2 py-2">
+                      <Link key={k} href={k === 'users' ? usersHref(p.project) : repsHref({ project: p.project, contractKind: k })}
+                        className="block px-2 py-2 hover:bg-orange-50">
                         <p className="text-[10.5px] text-slate-500">{label}</p>
                         <p className="text-[17px] font-extrabold tabular-nums text-slate-900">{p[k]}</p>
-                      </div>
+                      </Link>
                     ))}
                   </div>
                   {p.noContract > 0 && (
-                    <p className="border-t border-slate-100 px-3 py-1 text-[10.5px] text-amber-700">{t(`${p.noContract} بلا نوع عقد`, `${p.noContract} with no contract type`)}</p>
+                    <Link href={repsHref({ project: p.project, contractKind: 'none' })}
+                      className="block border-t border-slate-100 px-3 py-1 text-[10.5px] font-semibold text-amber-700 hover:bg-amber-50">
+                      {t(`${p.noContract} مندوب بلا نوع عقد — اضغط لتحديده`, `${p.noContract} reps with no contract type — click to set it`)}
+                    </Link>
                   )}
                 </div>
               ))}

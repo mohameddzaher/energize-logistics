@@ -43,6 +43,8 @@ function HrMasterInner() {
   // بغير ذلك يذهب مع أوّل انتقال: تفلتر، تفتح رقمًا، ترجع بزرّ المتصفّح فتجد
   // اللوحة كما كانت أوّل مرّة وقد ضاع ما بنيتَه. وفي العنوان يعمل الرجوع
   // والتقدّم، ويبقى ما اخترتَه إن حدّثتَ الصفحة، ويمكن نسخ الرابط ومشاركته.
+  // النصفُ المفتوح من «على رأس العمل» — يُري كم يعمل وكم في إجازة.
+  const [dutyHalf, setDutyHalf] = useState<'' | 'sponsored' | 'freelance'>('');
   const [filters, setFilters] = useState<FilterValues>(() =>
     Object.fromEntries([...(sp?.entries() || [])]));
   const onlyActive = filters.employment === 'active';
@@ -133,6 +135,8 @@ function HrMasterInner() {
     router.push(`/system/hr/master/expiring${p ? `?${p}` : ''}`);
   };
 
+  // نصفا كلّ كارت (على الكفالة · فريلانسر) — من الخادم. راجع Big.
+  const H = (k: string) => ((d as any)?.totals?.halves?.[k] ?? null) as { sponsored: number; freelance: number } | null;
   if (loading) return <Spinner />;
   if (!d) return <div className="text-slate-500 p-8">{t('تعذّر التحميل', 'Could not load')}</div>;
 
@@ -193,44 +197,58 @@ function HrMasterInner() {
 
       <div className={refreshing ? 'opacity-50 transition-opacity pointer-events-none space-y-5' : 'transition-opacity space-y-5'}>
       {/* الأرقام الكبيرة */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-8 gap-2.5">
-        {/* كل رقم هنا محسوب على ما يعرضه الفلتر. «الموظفون» يحمل تحته إجمالي
-            الملفّ الوظيفيّ ليُعرف من أيٍّ اقتُطع هذا العدد. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2.5">
+        {/* ── وكلُّ كارتٍ نصفان: على الكفالة · فريلانسر ───────────────────────
+            النوعُ من «رقم السجل التجاري» (رقمُ سجلٍّ = على الكفالة، «فري لانسر»
+            = فريلانسر — راجع utils/hrEngagement). والضغطُ على نصفٍ يفتح أصحابه.
+            والمؤرشَفُ خارجَ كلّ رقمٍ هنا إلّا كارتَ «الأرشيف». */}
         <Big label={t('الموظفون', 'Employees')} value={d.totals.employees} c="#f37121"
           sub={countActive(filters) > 0 ? t(`من ${d.totals.roster}`, `of ${d.totals.roster}`) : undefined}
+          halves={H('employees')} onHalf={(k) => drill({ engagement: k })} ar={ar}
           onClick={() => open('identity')} />
-        <Big label={t('على رأس العمل', 'Active')} value={d.totals.active} c="#16a34a"
-          onClick={() => drill({ employment: 'active' })} />
-        {/* ── والعنوانُ يقول ما يعدّه الرقم ────────────────────────────────
-            الرقمُ كلُّ مَن ليس على رأس العمل: مَن انتهت خدمتُه ومعه مَن في إجازةٍ
-            أو موقوف. وكان عنوانُه «منتهي خدماته» — ١١٢ والمنتهيةُ خدمتُهم ١٠٤،
-            فثمانيةٌ في إجازةٍ يُقرؤون مغادرين. والسطرُ الصغيرُ يفصل بينهما. */}
-        <Big label={t('ليس على رأس العمل', 'Not active')} value={d.totals.notActive} c="#94a3b8"
+        {/* «على رأس العمل» = يعمل + في إجازة. والضغطُ على نصفٍ يقول كم يعمل وكم في إجازة. */}
+        <Big label={t('على رأس العمل', 'On duty')} value={d.totals.active} c="#16a34a"
+          halves={H('active')} onHalf={(k) => setDutyHalf((v) => (v === k ? '' : k))} activeHalf={dutyHalf} ar={ar}
+          onClick={() => drill({ employment: 'onduty' })}
+          detail={dutyHalf && d.totals.onDutyDetail ? (
+            <span className="mt-1.5 flex flex-wrap gap-1.5 text-[10.5px]">
+              <button type="button" onClick={(e) => { e.stopPropagation(); drill({ employment: 'active', engagement: dutyHalf }); }}
+                className="rounded bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-700 hover:bg-emerald-100">
+                {t(`يعمل ${d.totals.onDutyDetail[dutyHalf].working}`, `Working ${d.totals.onDutyDetail[dutyHalf].working}`)}
+              </button>
+              <button type="button" onClick={(e) => { e.stopPropagation(); drill({ employment: 'leave', engagement: dutyHalf }); }}
+                className="rounded bg-sky-50 px-1.5 py-0.5 font-semibold text-sky-700 hover:bg-sky-100">
+                {t(`إجازة ${d.totals.onDutyDetail[dutyHalf].leave}`, `On leave ${d.totals.onDutyDetail[dutyHalf].leave}`)}
+              </button>
+            </span>
+          ) : undefined} />
+        {/* «ليس على رأس العمل» = منتهية خدمتُه + في مرحلة نقل الكفالة — بلا إجازة. */}
+        <Big label={t('ليس على رأس العمل', 'Not on duty')} value={d.totals.notActive} c="#94a3b8"
           sub={d.totals.terminated != null ? t(`منهم ${d.totals.terminated} انتهت خدمتهم`, `${d.totals.terminated} ended`) : undefined}
+          halves={H('notActive')} onHalf={(k) => drill({ employment: 'inactive', engagement: k })} ar={ar}
           onClick={() => drill({ employment: 'inactive' })} />
-        {/* ── ويفتح الناقصَ كلَّه لا ناقصَ مجموعةٍ واحدة ────────────────────
-            الرقمُ يُجمَع من المجموعات كلِّها — خمسةَ عشرَ في الجواز وخمسةٌ في
-            الإقامة وخمسةٌ في العقد وواحدٌ في الاتصال — وكان الضغطُ يفتح مجموعةَ
-            «الهوية» وحدَها وفيها صفر. فتُقرأ الشاشةُ فارغةً ويُظنّ الرقمُ كذبًا
-            وهو صحيح. و«المطلوب» مجموعةٌ تجمعها (راجع REQUIRED_GROUP). */}
-        {/* ── والعنوانُ يقول وحدةَ العدّ ───────────────────────────────────
-            الرقمُ مجموعُ **الخانات** الناقصة عبر الموظّفين كلِّهم، والضغطةُ
-            تفتح **الموظّفين** الذين فيهم نقص. فكان الكارتُ يقول 189 وتُفتَح
-            18 صفًّا، فيُقرأ عطبًا وهو صحيح: ثمانيةَ عشرَ موظّفًا تنقصهم مئةٌ
-            وتسعٌ وثمانون خانة. «خانة» في العنوان تُنهي اللبس بكلمة. */}
+        {/* «موقوف» هنا = في مرحلة نقل الكفالة — ويُفتَح على الإقامات ليُرى تاريخُ انتهائها. */}
+        <Big label={t('في مرحلة نقل الكفالة', 'Sponsorship transfer')} value={d.totals.transfer ?? 0} c="#d97706"
+          halves={H('transfer')} onHalf={(k) => open('iqama', { employment: 'transfer', engagement: k })} ar={ar}
+          onClick={() => open('iqama', { employment: 'transfer' })} />
+        <Big label={t('الأرشيف', 'Archive')} value={d.totals.archived ?? 0} c="#475569"
+          halves={H('archived')} onHalf={() => router.push('/system/hr/archive')} ar={ar}
+          onClick={() => router.push('/system/hr/archive')} />
         <Big label={t('خانات مطلوبة', 'Required fields')} value={d.totals.required} c="#dc2626"
+          halves={H('required')} onHalf={(k) => open('required', { status: 'required', engagement: k })} ar={ar}
           onClick={() => open('required', { status: 'required' })} />
         <Big label={t('مستندات منتهية أو قريبة الانتهاء', 'Expired or expiring documents')} value={d.totals.expiringSoon} c="#ea580c"
+          halves={H('expiringSoon')} ar={ar}
           onClick={openExpiring} />
-        {/* ── والضغطةُ تحمل فلترَ الكارت ───────────────────────────────────
-            الرقمُ عددُ من له رقمٌ تأمينيٌّ مكتوب (368)، وكانت الضغطةُ تفتح
-            المجموعةَ كلَّها (439) — كارتٌ يقول رقمًا ويفتح غيرَه. */}
         <Big label={t('مسجّل بالتأمينات', 'GOSI registered')} value={d.totals.gosiRegistered} c="#0ea5e9"
+          halves={H('gosiRegistered')} onHalf={(k) => open('socialInsurance', { field: 'gosiNumber', status: 'filled', engagement: k })} ar={ar}
           onClick={() => open('socialInsurance', { field: 'gosiNumber', status: 'filled' })} />
         <Big label={t('خارج المملكة', 'Outside kingdom')} value={d.totals.outsideKingdom} c="#64748b"
+          halves={H('outsideKingdom')} onHalf={(k) => drill({ outsideKingdom: '1', engagement: k })} ar={ar}
           onClick={() => drill({ outsideKingdom: '1' })} />
-        <Big label={t('عمل حر', 'Freelancers')} value={d.totals.freelancers} c="#0f172a"
-          onClick={() => drill({ freelancer: '1' })} />
+        {/* الفريلانسر من «رقم السجل التجاري» — لا من خانة «النوع». */}
+        <Big label={t('فريلانسر', 'Freelancers')} value={d.totals.freelancers} c="#0f172a"
+          onClick={() => drill({ engagement: 'freelance' })} />
       </div>
 
       {/* الشغل اليوميّ — محسوبٌ على الموظفين المطابقين وحدهم */}
@@ -285,7 +303,7 @@ function HrMasterInner() {
                 <table className="w-full text-[13px]">
                   <thead className="sticky top-0"><tr className="bg-slate-900 text-slate-300">
                     <th className="px-3 py-2 text-start font-semibold">{t('الرقم الوظيفي', 'Emp. no.')}</th>
-                    <th className="px-3 py-2 text-start font-semibold">{t('الموظف', 'Employee')}</th>
+                    <th className="w-56 px-3 py-2 text-start font-semibold">{t('الموظف', 'Employee')}</th>
                     <th className="px-3 py-2 text-start font-semibold">{t('القسم', 'Department')}</th>
                     <th className="px-3 py-2 text-start font-semibold">{t('المسمّى', 'Job title')}</th>
                     {contractList === 'lapsedContracts' && <th className="px-3 py-2 text-start font-semibold">{t('انتهى في', 'Ended on')}</th>}
@@ -294,7 +312,7 @@ function HrMasterInner() {
                     {(ops[contractList] || []).map((e: any) => (
                       <tr key={e._id} className="cursor-pointer hover:bg-slate-50" onClick={() => router.push(`/system/hr/employees/${e._id}`)}>
                         <td className="px-3 py-2 tabular-nums text-slate-600">{e.employeeNumber || '—'}</td>
-                        <td className="px-3 py-2 font-semibold text-slate-900">{e.name}</td>
+                        <td className="max-w-[14rem] truncate px-3 py-2 font-semibold text-slate-900" title={e.name}>{e.name}</td>
                         <td className="px-3 py-2 text-slate-600">{e.department || '—'}</td>
                         <td className="px-3 py-2 text-slate-600">{e.jobTitle || '—'}</td>
                         {contractList === 'lapsedContracts' && <td className="px-3 py-2 font-semibold text-red-600">{String(e.endDate || '').slice(0, 10).split('-').reverse().join('/') || '—'}</td>}
@@ -397,21 +415,43 @@ function HrMasterInner() {
   );
 }
 
-function Big({ label, value, c, onClick, sub }: {
+type Half = 'sponsored' | 'freelance';
+function Big({ label, value, c, onClick, sub, halves, onHalf, activeHalf, detail, ar }: {
   label: string; value: any; c: string; onClick?: () => void;
   /** سطرٌ صغير تحت الرقم — يُستعمل لإجمالي الملفّ بجانب الرقم المفلتر. */
   sub?: string;
+  /** نصفا الرقم: على الكفالة · فريلانسر — وكلٌّ يُضغَط وحدَه. */
+  halves?: { sponsored: number; freelance: number } | null;
+  onHalf?: (k: Half) => void;
+  activeHalf?: string;
+  detail?: React.ReactNode;
+  ar?: boolean;
 }) {
-  const inner = (
-    <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm h-full">
+  // الكارتُ div يُضغَط لا button: داخله أزرارُ النصفين، والزرُّ داخل زرٍّ لا يصحّ.
+  return (
+    <div role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined} onClick={onClick}
+      onKeyDown={(e) => { if (onClick && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onClick(); } }}
+      className={`bg-white border border-slate-200 rounded-xl p-3 shadow-sm h-full text-start ${onClick ? 'cursor-pointer hover:border-slate-300' : ''}`}>
       <div className="flex items-baseline gap-1.5">
         <p className="text-xl font-extrabold leading-none" style={{ color: c }}>{value}</p>
         {sub && <span className="text-[10px] text-slate-400 font-semibold tabular-nums">{sub}</span>}
       </div>
       <p className="text-[10.5px] text-slate-500 mt-1.5 leading-tight">{label}</p>
+      {halves && (
+        <span className="mt-2 grid grid-cols-2 gap-1 border-t border-slate-100 pt-1.5">
+          {(['sponsored', 'freelance'] as const).map((k) => (
+            <button key={k} type="button" disabled={!onHalf}
+              onClick={(e) => { e.stopPropagation(); onHalf?.(k); }}
+              className={`rounded-md px-1.5 py-1 text-start transition-colors ${activeHalf === k ? 'bg-slate-900 text-white' : 'bg-slate-50 hover:bg-slate-100 text-slate-700'} disabled:cursor-default`}>
+              <span className="block text-[9.5px] leading-tight opacity-75">{k === 'sponsored' ? (ar ? 'على الكفالة' : 'Sponsored') : (ar ? 'فريلانسر' : 'Freelance')}</span>
+              <span className="block text-[13px] font-extrabold tabular-nums leading-tight">{halves[k] ?? 0}</span>
+            </button>
+          ))}
+        </span>
+      )}
+      {detail}
     </div>
   );
-  return onClick ? <button onClick={onClick} className="text-start hover:opacity-90 w-full">{inner}</button> : <div>{inner}</div>;
 }
 
 // كارت مستند: حالات التاريخ فوق، وحالة الحقول تحت.

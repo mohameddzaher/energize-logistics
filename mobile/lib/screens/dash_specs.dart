@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../resource/configs.dart' show lightTransportCfg;
+import '../resource/resource.dart' show ResourceScreen;
 import 'section_dash.dart';
 
 /// مواصفات لوحات الأقسام — كل قسم يعرّف بطاقاته وتوزيعاته وقوائمه فوق
@@ -215,6 +217,46 @@ final shipmentOrdersDashSpec = DashSpec(
 /// زاويةٌ من القسم لا القسمُ كلُّه — فلا يُقرأ فيها كم موظّفًا في فرعٍ، ولا كم
 /// مركبةً واقفة، ولا مَن على كفالة أيّ سجلّ، ولا مَن بلا سكن. وذلك التقريرُ
 /// انتقل إلى «تحليل الأوردرات» وبقي كما هو.
+/// ── وكلُّ رقمٍ في «المناديب حسب المشروع» يفتح أصحابَه ──────────────────────
+/// كالموقع: يُختار النوعُ (كفالة · فري لانسر · بلا نوع عقد · الكلّ) فيُفتَح سجلُّ
+/// الموظّفين بالفلتر نفسِه الذي عدّت به اللوحة — المناديبُ في الخدمة، والمشروعُ
+/// مطويًّا («هنقرستيشن» = «هنجرستيشن») ونوعُ العقد مطويًّا في الخادم.
+/// واليوزراتُ لا تُفتَح من هنا: صفحتُها على الجوّال بلا فلترِ مشروع بعد.
+void _openRepsOfProject(BuildContext context, Map<String, dynamic> r) {
+  final project = _s(r, 'project');
+  void open(String kind, String ar, String en) {
+    Navigator.pop(context);
+    final q = [
+      'staffKind=rep', 'inService=1', 'project=${Uri.encodeQueryComponent(project)}',
+      if (kind.isNotEmpty) 'contractKind=$kind',
+    ].join('&');
+    Navigator.push(context, MaterialPageRoute(builder: (_) => ResourceScreen(
+        config: lightTransportCfg(canAdd: false, listQuery: q, arTitle: '$project — $ar', enTitle: '$project — $en'))));
+  }
+  final noContract = ((r['noContract'] as num?) ?? 0) > 0;
+  showModalBottomSheet(
+    context: context,
+    builder: (_) => SafeArea(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        ListTile(title: Text(project, style: const TextStyle(fontWeight: FontWeight.w800))),
+        ListTile(leading: const Icon(Icons.verified_user_outlined, color: T.info),
+            title: Text('${tr('على الكفالة', 'Sponsored')} — ${_n(r['sponsored'])}'),
+            onTap: () => open('sponsored', 'على الكفالة', 'Sponsored')),
+        ListTile(leading: const Icon(Icons.work_outline, color: T.violet),
+            title: Text('${tr('فري لانسر', 'Freelance')} — ${_n(r['freelance'])}'),
+            onTap: () => open('freelance', 'فري لانسر', 'Freelance')),
+        if (noContract)
+          ListTile(leading: const Icon(Icons.help_outline, color: T.warn),
+              title: Text('${tr('بلا نوع عقد — اضغط لتحديده', 'No contract type — tap to set it')} — ${_n(r['noContract'])}'),
+              onTap: () => open('none', 'بلا نوع عقد', 'No contract type')),
+        ListTile(leading: const Icon(Icons.groups_2_outlined, color: T.navy),
+            title: Text(tr('كل المناديب', 'All reps')),
+            onTap: () => open('', 'المناديب', 'Reps')),
+      ]),
+    ),
+  );
+}
+
 final b2cDashSpec = DashSpec(
   arTitle: 'لوحة قسم الأفراد', enTitle: 'B2C Board',
   endpoint: '/api/light-transport/overview', liveEvent: 'lt:*',
@@ -222,7 +264,8 @@ final b2cDashSpec = DashSpec(
     // لكلّ مشروع: كفالة · فري لانسر · يوزرات — كجدول الموقع.
     DashList('المناديب حسب المشروع', 'Reps by project', 'reps.projects', (r) => '${_s(r, 'project')} — ${_n(r['total'])}',
         subtitle: (r) => '${tr('كفالة', 'Sponsored')} ${_n(r['sponsored'])} · ${tr('فري لانسر', 'Freelance')} ${_n(r['freelance'])} · ${tr('يوزرات', 'Users')} ${_n(r['users'])}'
-            '${((r['noContract'] as num?) ?? 0) > 0 ? ' · ${tr('بلا نوع عقد', 'no contract')} ${_n(r['noContract'])}' : ''}'),
+            '${((r['noContract'] as num?) ?? 0) > 0 ? ' · ${tr('بلا نوع عقد', 'no contract')} ${_n(r['noContract'])}' : ''}',
+        onTap: _openRepsOfProject),
   ],
   stats: const [
     DashStat('الموظفون', 'Employees', 'employees.total', Icons.groups_outlined, T.navy),

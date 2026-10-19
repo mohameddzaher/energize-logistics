@@ -198,10 +198,18 @@ exports.listEmployees = async (req, res) => {
     const q = req.query || {};
     const filter = {};
     if (q.active !== 'all') filter.isActive = { $ne: false };
-    for (const [key, field] of [['project', 'projectAr'], ['city', 'cityAr'], ['jobTitle', 'jobTitleAr'],
+    for (const [key, field] of [['city', 'cityAr'], ['jobTitle', 'jobTitleAr'],
       ['contractType', 'contractTypeAr'], ['register', 'registerNumber'],
       ['staffKind', 'staffKind']]) {
       if (S(q[key])) filter[field] = S(q[key]);
+    }
+    // المشروعُ بالطيّ كما تعدّه اللوحة (`projectKey`): «هنقرستيشن» يفتح
+    // «هنجرستيشن» أيضًا — وإلّا قال الكارتُ عددًا وفتح الرابطُ نصفَه.
+    // و«(غير محدد)» اسمُ اللوحة لمن لا مشروعَ مكتوبًا له — فيفتح الفارغين.
+    if (S(q.project)) {
+      const want = S(q.project) === '(غير محدد)' ? '' : projectKey(q.project);
+      const names = (await LightTransportEmployee.distinct('projectAr')).filter((n) => projectKey(n) === want);
+      filter.projectAr = { $in: want ? names : [...names, null, ''] };
     }
     supervisorFilter(filter, q.supervisor);
     supervisorFilter(filter, q.dutySupervisor, 'dutySupervisorUser');
@@ -260,6 +268,16 @@ exports.listEmployees = async (req, res) => {
     // الحالةُ ونوعُ المركبة يُفلتَران بعد الاشتقاق: كلٌّ منهما مركّبٌ من سجلَّين.
     if (S(q.status)) rows = rows.filter((r) => r.workStatusShown === S(q.status));
     if (S(q.vehicleType)) rows = rows.filter((r) => typeKey(r.vehicleTypeShown) === typeKey(q.vehicleType));
+    /**
+     * ── وأرقامُ «إجمالي المناديب» تُفتَح بأصحابها ─────────────────────────────
+     * نوعُ العقد بالطيّ نفسِه الذي يعدّ به `repsBreakdown` (`contractIs`)، و«none»
+     * لمن لا نوعَ عقدٍ مكتوبًا له. و`inService=1` يُسقِط المنتهين كما تُسقطهم
+     * اللوحة — فالقائمةُ المفتوحة من رقمٍ تعرض الذين عُدّوا فيه بأعيانهم.
+     */
+    const ck = S(q.contractKind);
+    if (ck === 'sponsored' || ck === 'freelance') rows = rows.filter((r) => contractIs(r, ck));
+    if (ck === 'none') rows = rows.filter((r) => !contractIs(r, 'sponsored') && !contractIs(r, 'freelance'));
+    if (q.inService === '1') rows = rows.filter((r) => !isEnded(r));
 
     res.json({ employees: rows, totals: totalsOf(rows, { includeEnded: S(q.status) === ENDED }), options: await optionsOf() });
   } catch (e) {
@@ -312,9 +330,10 @@ const contractIs = (r, kind) => {
  * نوعَ عقدٍ مكتوبًا له يُعَدّ وحدَه («بلا نوع عقد») فلا يختلّ الجمع.
  * المشروعُ يُجمَع بالطيّ: «هنجرستيشن» و«هنقرستيشن» مشروعٌ واحد.
  */
+const projectKey = (p) => foldAr(String(p || '')).replace(/\s+/g, '').replace(/ق/g, 'ج');
 async function repsBreakdown(rows, projectFilter) {
   const rentals = await require('./ltUserRentalController').activeByProject();
-  const key = (p) => foldAr(String(p || '')).replace(/\s+/g, '').replace(/ق/g, 'ج');
+  const key = projectKey;
   const by = new Map();
   const slot = (name) => {
     const k = key(name) || '—';
@@ -491,10 +510,16 @@ exports.overview = async (req, res) => {
   try {
     const q = req.query || {};
     const filter = { isActive: { $ne: false } };
-    for (const [key, field] of [['project', 'projectAr'], ['city', 'cityAr'], ['jobTitle', 'jobTitleAr'],
+    for (const [key, field] of [['city', 'cityAr'], ['jobTitle', 'jobTitleAr'],
       ['contractType', 'contractTypeAr'], ['register', 'registerNumber'],
       ['staffKind', 'staffKind']]) {
       if (S(q[key])) filter[field] = S(q[key]);
+    }
+    // المشروعُ بالطيّ كقائمة الموظّفين (`projectKey`) — فلا يفتح الكارتُ غيرَ ما عدّه.
+    if (S(q.project)) {
+      const want = S(q.project) === '(غير محدد)' ? '' : projectKey(q.project);
+      const names = (await LightTransportEmployee.distinct('projectAr')).filter((n) => projectKey(n) === want);
+      filter.projectAr = { $in: want ? names : [...names, null, ''] };
     }
     supervisorFilter(filter, q.supervisor);
     supervisorFilter(filter, q.dutySupervisor, 'dutySupervisorUser');

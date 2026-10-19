@@ -111,6 +111,11 @@ router.post('/employees/:id/renew', authorize(...STAFF), hr.renewDocument);
 router.get('/employees/:id/clearance', authorize(...STAFF), hr.employeeClearance);
 router.post('/employees/:id/terminate', authorize(...STAFF), hr.terminateEmployee);
 router.post('/employees/:id/reactivate', authorize(...STAFF), hr.reactivateEmployee);
+// ── الأرشيف: إنهاءُ الخدمة ← خروجٌ من النظام ← الأرشيف. راجع hrArchiveController.
+const hrArchive = require('../controllers/hrArchiveController');
+router.get('/archive', authorize(...STAFF), hrArchive.list);
+router.post('/employees/:id/exit-system', authorize(...STAFF), hrArchive.exitSystem);
+router.post('/employees/:id/return-system', authorize(...STAFF), hrArchive.returnSystem);
 router.get('/employees/:id/audit', authorize(...STAFF), hr.getEmployeeAudit);
 
 // Employee documents (file uploads — base64 data URL in JSON).

@@ -11,10 +11,11 @@
  * وواحدٌ عقدُه سارٍ وخانتُه تقول «تم انهاء العقد».
  *
  * فالعقدُ هو المصدر — هو المستند، والخانةُ صورةٌ منه تُحدَّث كلّما تغيّر. ومفرداتُ
- * صفحة العقود هي المعتمدة (`CONTRACT_STATUS` في lib/hr): ساري · منتهي · مفسوخ.
+ * صفحة العقود هي المعتمدة (`CONTRACT_STATUS` في lib/hr): ساري · منتهي — لا ثالث
+ * (صاحبُ الشركة، ٢٠٢٦/١٠/١٩). «مفسوخ» منتهٍ، والمجدَّدُ ساري.
  *
  * ── والعقدُ الحاكم واحدٌ من عدّة ────────────────────────────────────────────
- * للموظّف عقودٌ متتابعة: يُجدَّد فيصير القديمُ `renewed` والجديدُ `active`. فما
+ * للموظّف عقودٌ متتابعة: يُجدَّد فيصير القديمُ `expired` والجديدُ `active`. فما
  * يُقرأ في ملفّه هو السارِي إن وُجد، وإلّا فآخرُ ما أُنشئ — لا أوّلُ ما تجده
  * قاعدةُ البيانات.
  */
@@ -23,20 +24,27 @@
 const CONTRACT_STATUS_AR = {
   active: 'ساري',
   expired: 'منتهي',
-  terminated: 'مفسوخ',
-  renewed: 'مجدَّد',
+  // ما لم تطله الهجرةُ بعد (scripts/contractTwoStatuses) يُقرأ بلفظ الحالتين.
+  terminated: 'منتهي',
+  renewed: 'منتهي',
 };
+
+/** الحالةُ كما تُعرَض: `active` أو `expired` وحدَهما — والقديمُ المخزَّن يُطوى. */
+const twoStatus = (s) => (s === 'active' ? 'active' : s ? 'expired' : '');
 
 /**
  * ألفاظُ ملفّ الاستيراد ← الألفاظ المعتمدة.
  *
- * الملفُّ كتب «تم انهاء العقد» و«غير ساري»، وهما «مفسوخ» و«منتهي» بعينهما.
- * ويبقى «لا يوجد» كما هو: ليس حالةَ عقدٍ بل نفيُ وجوده.
+ * الملفُّ كتب «تم انهاء العقد» و«غير ساري»، وكلاهما «منتهي» — و«مفسوخ» كذلك
+ * منذ صارت الحالتان اثنتين. ويبقى «لا يوجد» كما هو: ليس حالةَ عقدٍ بل نفيُ وجوده.
  */
 const NORMALISE = {
-  'تم انهاء العقد': 'مفسوخ',
-  'تم إنهاء العقد': 'مفسوخ',
+  'تم انهاء العقد': 'منتهي',
+  'تم إنهاء العقد': 'منتهي',
   'غير ساري': 'منتهي',
+  'مفسوخ': 'منتهي',
+  'مجدَّد': 'ساري',
+  'مجدد': 'ساري',
 };
 
 const normaliseContractStatus = (text) => {
@@ -106,8 +114,8 @@ async function syncEmployeeContractStatus(employeeId) {
 
 /**
  * العكس: خاناتُ العقد عُدِّلت على الموظّف (الماستر، التجديد، الاستيراد) فتُكتب
- * في عقده **الساري**. ومن لا عقدَ سارٍ له لا يُنشأ له عقدٌ هنا ولا يُمَسّ عقدُه
- * المفسوخ: الخانةُ تبقى كلَّ ما يُعرَف.
+ * في عقده **الساري**. ومن لا عقدَ سارٍ له لا يُنشأ له عقدٌ هنا: الخانةُ تبقى كلَّ
+ * ما يُعرَف.
  *
  * @param {object} fields  ما تغيّر فقط: contractStartDate / contractEndDate / qiwaContractNumber
  */
@@ -121,9 +129,10 @@ async function pushEmployeeContractFields(employeeId, fields) {
   if ('qiwaContractNumber' in fields) set.contractNumber = String(fields.qiwaContractNumber || '').trim();
   if (!Object.keys(set).length) return false;
   // السارِي، وإلّا المنتهي بمرور مدّته: «تجديدٌ» من صفحة الانتهاءات لعقدٍ انقضى
-  // يُكتب فيه ويعيده ساريًا. والمفسوخُ والمجدَّد لا يُمَسّان.
+  // يُكتب فيه ويعيده ساريًا.
   const target = await Contract.findOne({ employee: employeeId, status: 'active' }).sort({ createdAt: -1 }).select('_id status endDate').lean()
-    || await Contract.findOne({ employee: employeeId, status: 'expired' }).sort({ createdAt: -1 }).select('_id status endDate').lean();
+    // والمُنهى بفسخٍ لا يُكتب فيه: لم ينقضِ بمدّته فلا يعيده موعدٌ جديد.
+    || await Contract.findOne({ employee: employeeId, status: 'expired', terminatedAt: null }).sort({ createdAt: -1 }).select('_id status endDate').lean();
   if (!target) return false;
   const end = 'endDate' in set ? set.endDate : day(target.endDate);
   set.status = isLapsed(end) ? 'expired' : 'active';
@@ -184,6 +193,6 @@ async function currentContractsByEmployee(select = '') {
 }
 
 module.exports = {
-  CONTRACT_STATUS_AR, NORMALISE, normaliseContractStatus, governingContract, syncEmployeeContractStatus,
+  CONTRACT_STATUS_AR, twoStatus, NORMALISE, normaliseContractStatus, governingContract, syncEmployeeContractStatus,
   pushEmployeeContractFields, mirrorOf, isLapsed, expireLapsedContracts, currentContractOf, currentContractsByEmployee,
 };

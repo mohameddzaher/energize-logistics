@@ -64,6 +64,30 @@ export default function UserRentalsPage() {
 
   const projects = useMemo(() => Object.entries(d?.counts.byProject || {}).sort((a, b) => b[1] - a[1]), [d]);
 
+  /**
+   * ── والمشروعُ يُورَث من رابط اللوحة (?project=) ─────────────────────────
+   * خليّةُ «يوزرات» في «إجمالي المناديب» تفتح هذه الصفحةَ على مشروعها. واللوحةُ
+   * تطوي «هنقرستيشن» و«هنجرستيشن» مشروعًا واحدًا، فإن لم يطابق الاسمُ حرفيًّا
+   * مشروعًا هنا يُؤخذ أوّلُ ما يطابقه مطويًّا — مرّةً واحدةً عند الفتح.
+   */
+  const [urlProject, setUrlProject] = useState('');
+  useEffect(() => {
+    try {
+      const p = new URLSearchParams(window.location.search).get('project') || '';
+      if (p) { setProject(p); setUrlProject(p); }
+    } catch { /* بلا رابطٍ تُفتح الصفحةُ على الكلّ */ }
+  }, []);
+  useEffect(() => {
+    if (!urlProject || !d) return;
+    const fold = (v: string) => v.replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ق/g, 'ج').replace(/\s+/g, '');
+    const names = Object.keys(d.counts.byProject || {});
+    if (!names.includes(urlProject)) {
+      const hit = names.find((n) => fold(n) === fold(urlProject));
+      if (hit) setProject(hit);
+    }
+    setUrlProject('');
+  }, [d, urlProject]);
+
   const save = async () => {
     if (!form) return;
     if (!form.projectAr) { notify(t('اختر المشروع', 'Pick the project'), 'error'); return; }

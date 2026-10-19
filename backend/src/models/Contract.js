@@ -29,10 +29,11 @@ const contractSchema = new mongoose.Schema(
     allowances: { type: Number, default: 0 },
     probationMonths: { type: Number, default: 3 },
 
-    // «مجدَّد» غيرُ «منتهٍ» وغيرُ «منهًى»: العقدُ لم يُترك ينتهي ولم تُقطَع
-    // الخدمةُ به — خلَفه آخر. وخلطُه بـ«منتهٍ» يجعل تقاريرَ العقود المنتهية
-    // تعدّ عقودًا جُدِّدت في يومها.
-    status: { type: String, enum: ['active', 'expired', 'terminated', 'renewed'], default: 'active' },
+    // ── حالتان لا أربع (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) ─────────────────────────────
+    // ساري أو منتهي، ولا ثالثَ لهما. «مفسوخ» منتهٍ، والمجدَّدُ ساري — عقدُه الجديد.
+    // وسببُ الإنهاء وتاريخُه يبقيان في خانتيهما أدناه: المعلومةُ لا تضيع بتوحيد اللفظ.
+    // والقيمُ القديمة تُطوى قبل التحقّق (أدناه)، وscripts/contractTwoStatuses يطوي المخزَّن.
+    status: { type: String, enum: ['active', 'expired'], default: 'active' },
     terminatedAt: { type: Date },
     terminationReason: { type: String, trim: true },
     // Set true only once all custody/assets are returned — termination is
@@ -75,11 +76,18 @@ contractSchema.index({ endDate: 1 });
  * (راجع utils/contractStatus). والمتحكِّماتُ تنادي المزامنةَ بعد كلّ كتابة،
  * وهذا شبكةُ الأمان لما لا يمرّ بها: سكربتُ استيرادٍ أو بابٌ يُضاف غدًا.
  */
+// عقدٌ قديمٌ «مفسوخ» أو «مجدَّد» لم تطله الهجرةُ بعد يُطوى عند أوّل حفظ —
+// وإلّا رفضه التحقّقُ فلا يُعدَّل عقدٌ قديمٌ أصلًا. والمجدَّدُ خلَفه عقدٌ ساري، فهو منتهٍ.
+contractSchema.pre('validate', function twoStatuses(next) {
+  if (this.status === 'terminated' || this.status === 'renewed') this.status = 'expired';
+  next();
+});
 // المدّةُ هي الحَكَم: ما عدّى موعدُه «منتهي»، وما مُدَّ موعدُه عاد «ساري».
 contractSchema.pre('save', function statusFollowsTerm(next) {
   const { isLapsed } = require('../utils/contractStatus');
   if (this.status === 'active' && isLapsed(this.endDate)) this.status = 'expired';
-  else if (this.status === 'expired' && !this.isNew && this.isModified('endDate') && !this.isModified('status') && !isLapsed(this.endDate)) this.status = 'active';
+  // والمُنهى بفسخٍ (`terminatedAt`) لا يعيده مدُّ الموعد: كان «مفسوخًا» قبل أن تصير الحالتان اثنتين.
+  else if (this.status === 'expired' && !this.terminatedAt && !this.isNew && this.isModified('endDate') && !this.isModified('status') && !isLapsed(this.endDate)) this.status = 'active';
   next();
 });
 contractSchema.post('save', async function mirrorToEmployee(doc) {

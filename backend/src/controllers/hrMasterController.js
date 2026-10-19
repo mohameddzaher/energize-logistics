@@ -127,9 +127,37 @@ const asBool = (v) => {
   return null;
 };
 
+const ENG = require('../utils/hrEngagement');
+/** لكلّ عدّادٍ توأمان: `__s` على الكفالة و`__f` فريلانسر — في التجميعة نفسِها. */
+const ENG_EXPR = {
+  s: { $regexMatch: { input: { $ifNull: ['$registerNumber', ''] }, regex: ENG.ENGAGEMENT_MATCH.sponsored.registerNumber.$regex } },
+  f: { $regexMatch: { input: { $ifNull: ['$registerNumber', ''] }, regex: ENG.ENGAGEMENT_MATCH.freelance.registerNumber.$regex, options: 'i' } },
+};
+const CONTRACT_SCOPE = { $nor: [ENG.ENGAGEMENT_MATCH.freelance, ENG.ENGAGEMENT_MATCH.trainee] };
+function splitExprs(exprs) {
+  const out = {};
+  for (const [k, e] of Object.entries(exprs)) {
+    const base = e === true ? { $literal: true } : e;
+    out[k] = base;
+    out[`${k}__s`] = { $and: [base, ENG_EXPR.s] };
+    out[`${k}__f`] = { $and: [base, ENG_EXPR.f] };
+  }
+  return out;
+}
+
 function buildFilter(q) {
   // سجلات حسابات الدخول التلقائية مش موظفين — بتخرج من كل عدّاد وكل قايمة هنا.
   const f = { isHrRecord: { $ne: false } };
+  // ── والأرشيفُ خارجَ كلّ شاشة إلّا صفحتَه ────────────────────────────────
+  // مَن أُنهيت خدمتُه وأُخرج من النظام (أو فريلانسرٌ أُنهيت خدمتُه) لا يظهر في
+  // رقمٍ ولا قائمة — إلّا بـ`archived=1` (صفحةُ الأرشيف). راجع utils/hrEngagement.
+  f.$and = [q.archived === '1' ? ENG.ARCHIVED : ENG.NOT_ARCHIVED];
+  // على الكفالة / فريلانسر / متدرّب / غير محدّد — من «رقم السجل التجاري».
+  const eng = String(q.engagement || '');
+  if (ENG.ENGAGEMENT_MATCH[eng]) f.$and.push(ENG.ENGAGEMENT_MATCH[eng]);
+  if (eng === 'none') f.$and.push({ $nor: Object.values(ENG.ENGAGEMENT_MATCH) });
+  // مجموعةُ العقود لا تخصّ الفريلانسر ولا المتدرّب — لا عقدَ لهما، فلا يُعدّان «ناقصين».
+  if (q.contractScope === '1') f.$and.push(CONTRACT_SCOPE);
   // ── الماستر يشمل كلَّ موظّف ─────────────────────────────────────────────
   // كان النطاقُ الافتراضيّ «مَن في ملفّ الماستر المستورَد» (`inCurrentMaster`)،
   // وهي علامةٌ يضعها الاستيرادُ وحدَه. فكلُّ موظّفٍ أُضيف من صفحة الموظّفين بعد
@@ -146,7 +174,14 @@ function buildFilter(q) {
   // القديم ما زال مقبولًا لأن روابط محفوظة تستعمله.
   const employment = q.employment || (['active', 'inactive'].includes(q.status) ? q.status : '');
   if (employment === 'active') f.employmentStatus = 'active';
-  if (employment === 'inactive') f.employmentStatus = { $ne: 'active' };
+  // «ليس على رأس العمل» = مَن انتهت خدمتُه ومَن هو موقوفٌ في نقل الكفالة. ومَن
+  // في إجازةٍ على رأس عمله — لا يُقرأ مغادرًا (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
+  if (employment === 'inactive') f.employmentStatus = { $in: ['terminated', 'suspended'] };
+  // «على رأس العمل» بمعناه في اللوحة: يعمل أو في إجازة.
+  if (employment === 'onduty') f.employmentStatus = { $in: ['active', 'on_leave'] };
+  if (employment === 'leave') f.employmentStatus = 'on_leave';
+  // «موقوف» في هذه الشركة = في مرحلة نقل الكفالة.
+  if (employment === 'transfer') f.employmentStatus = 'suspended';
   // ── و«على قوّة العمل» غيرُ «على رأس العمل» ───────────────────────────────
   // مَن في إجازةٍ أو موقوفٌ ليس «على رأس العمل» اليوم، لكنّه موظّفٌ قائمٌ
   // تُجدَّد إقامتُه ورخصتُه. و`inactive` تجمعه مع مَن انتهت خدمتُه، فلا تصلح
@@ -576,16 +611,33 @@ exports.overview = async (req, res) => {
       statusCounts(Employee, match, allKeys),
       valueDistributions(Employee, match, groupableKeys),
       docStateCounts(Employee, docMatch, H.GROUPS, ALERT),
-      boolCounts(Employee, match, {
+      boolCounts(Employee, match, splitExprs({
+        all: true,
         active: { $eq: ['$employmentStatus', 'active'] },
+        onLeave: { $eq: ['$employmentStatus', 'on_leave'] },
+        onDuty: { $in: ['$employmentStatus', ['active', 'on_leave']] },
+        notActive: { $in: ['$employmentStatus', ['terminated', 'suspended']] },
         terminated: { $eq: ['$employmentStatus', 'terminated'] },
+        transfer: { $eq: ['$employmentStatus', 'suspended'] },
         outsideKingdom: { $eq: ['$isOutsideKingdom', true] },
-        freelancers: { $eq: ['$isFreelancer', true] },
         gosiRegistered: filledExpr('gosiNumber'),
         cashPayroll: { $eq: [{ $ifNull: ['$fieldStatus.ibanStatus', ''] }, 'cash_payroll'] },
-      }),
+      })),
     ]);
     const employeeCount = sums.total;
+    // ── ومجموعةُ العقود تُعَدّ على مَن يُطلَب له عقد ─────────────────────────
+    // الفريلانسرُ والمتدرّبُ لا عقدَ لهما (صاحبُ الشركة، ٢٠٢٦/١٠/١٩): لا تُعَدّ
+    // خاناتُ عقدهما «مطلوبة» ولا عقدُهما «منتهيًا أو ناقصًا».
+    const contractGroup = H.GROUPS.find((g) => g.key === 'contract');
+    if (contractGroup) {
+      const cKeys = storedFields(contractGroup).map((x) => x.key);
+      const [cCounts, cStates] = await Promise.all([
+        statusCounts(Employee, { $and: [match, CONTRACT_SCOPE] }, cKeys),
+        docStateCounts(Employee, { $and: [docMatch, CONTRACT_SCOPE] }, [contractGroup], ALERT),
+      ]);
+      for (const k of cKeys) counts[k] = cCounts[k] || {};
+      if (cStates.contract) states.contract = cStates.contract;
+    }
 
     // مُعرِّفاتُ الموظّفين المطابقين — تحتاجها عدّاداتُ الإجازات والطلبات والعهد.
     //
@@ -651,19 +703,56 @@ exports.overview = async (req, res) => {
     // عددها ٧٢ فتقرأ «الموظفون ٣٧٨» فوق أرقامٍ كلّها محسوبة على الـ٧٢ — لوحةٌ
     // نصفها يجيب عن سؤالك ونصفها يجيب عن سؤالٍ آخر، ولا شيء يقول أيّهما أيّ.
     // إجمالي الملفّ يبقى متاحًا: يُرفَع الفلتر فيظهر.
-    const rosterFilter = { isHrRecord: { $ne: false } };
+    const rosterFilter = { isHrRecord: { $ne: false }, $and: [ENG.NOT_ARCHIVED] };
     // لا تقييدَ بملفّ الاستيراد — راجع buildFilter.
     if (req.query.scope === 'master') rosterFilter.inCurrentMaster = true;
     const rosterTotal = await Employee.countDocuments(rosterFilter);
-    const activeCount = sums.active;
+
+    /**
+     * ── وكلُّ كارتٍ نصفان: على الكفالة · فريلانسر ─────────────────────────
+     * طلبُ صاحب الشركة (٢٠٢٦/١٠/١٩). النوعُ من «رقم السجل التجاري» (راجع
+     * utils/hrEngagement): الرقمُ الكبير، وتحته كم منهم على الكفالة وكم فريلانسر.
+     * والمتدرّبُ وغيرُ المحدَّد في الرقم الكبير وليسا في أيٍّ من النصفين.
+     * والخاناتُ الناقصة والمستنداتُ تُعَدّ لكلّ نوعٍ بالعدّ نفسِه على نصفه.
+     */
+    const halfOf = (name) => ({ sponsored: sums[`${name}__s`] || 0, freelance: sums[`${name}__f`] || 0 });
+    const [reqS, reqF, stS, stF, archived] = await Promise.all([
+      statusCounts(Employee, { $and: [match, ENG.ENGAGEMENT_MATCH.sponsored] }, allKeys),
+      statusCounts(Employee, { $and: [match, ENG.ENGAGEMENT_MATCH.freelance] }, allKeys),
+      docStateCounts(Employee, { $and: [docMatch, ENG.ENGAGEMENT_MATCH.sponsored] }, H.GROUPS, ALERT),
+      docStateCounts(Employee, { $and: [docMatch, ENG.ENGAGEMENT_MATCH.freelance] }, H.GROUPS, ALERT),
+      boolCounts(Employee, { isHrRecord: { $ne: false }, ...ENG.ARCHIVED }, splitExprs({ all: true })),
+    ]);
+    // ونصفُ الفريلانسر بلا مجموعة العقود — لا عقدَ له.
+    const requiredOf = (c, skip = '') => H.GROUPS.filter((g) => g.key !== skip).reduce((n, g) => n + g.fields.reduce((m, f) => m + (f.derived ? 0 : ((c[f.of || f.key] || {}).required || 0)), 0), 0);
+    const attentionOf = (st, skip = '') => H.GROUPS.filter((g) => g.document && g.key !== skip).reduce((n, g) => {
+      const x = (st[g.key] || {}).states || {};
+      return n + (x.expired || 0) + (x.critical || 0) + (x.warning || 0);
+    }, 0);
+    const activeCount = sums.onDuty;
 
     const totals = {
       employees: employeeCount,
+      // «على رأس العمل» = يعمل + في إجازة؛ وتفصيلُه في `onDutyDetail`.
       active: activeCount,
-      notActive: employeeCount - activeCount,
-      // «ليس على رأس العمل» يجمع مَن انتهت خدمتُه ومَن في إجازةٍ أو موقوف —
-      // والثاني ليس مغادرًا. فيُرسَل عددُ المنتهية خدمتُهم وحدَه بجانبه.
+      // «ليس على رأس العمل» = منتهية خدمتُه + في مرحلة نقل الكفالة — بلا إجازة.
+      notActive: sums.notActive,
       terminated: sums.terminated,
+      // «في مرحلة نقل الكفالة» = الموقوف.
+      transfer: sums.transfer,
+      archived: archived.all,
+      halves: {
+        employees: halfOf('all'), active: halfOf('onDuty'), notActive: halfOf('notActive'),
+        transfer: halfOf('transfer'), outsideKingdom: halfOf('outsideKingdom'), gosiRegistered: halfOf('gosiRegistered'),
+        archived: { sponsored: archived.all__s || 0, freelance: archived.all__f || 0 },
+        required: { sponsored: requiredOf(reqS), freelance: requiredOf(reqF, 'contract') },
+        expiringSoon: { sponsored: attentionOf(stS), freelance: attentionOf(stF, 'contract') },
+      },
+      // الضغطُ على نصفٍ من «على رأس العمل»: كم يعمل وكم في إجازة.
+      onDutyDetail: {
+        sponsored: { working: sums.active__s || 0, leave: sums.onLeave__s || 0 },
+        freelance: { working: sums.active__f || 0, leave: sums.onLeave__f || 0 },
+      },
       // إجمالي الملفّ الوظيفيّ — تعرضه الشاشة بجانب الرقم المفلتر ليُعرف من أيٍّ
       // اقتُطع، لا لتحلّ محلّه.
       roster: rosterTotal,
@@ -672,7 +761,8 @@ exports.overview = async (req, res) => {
       required: groups.reduce((n, g) => n + g.required, 0),
       expiringSoon: groups.reduce((n, g) => n + (g.needsAttention || 0), 0),
       outsideKingdom: sums.outsideKingdom,
-      freelancers: sums.freelancers,
+      // الفريلانسر من «رقم السجل التجاري» — لا من خانة «النوع» القديمة.
+      freelancers: sums.all__f || 0,
       cashPayroll: sums.cashPayroll,
       gosiRegistered: sums.gosiRegistered,
     };
@@ -736,7 +826,7 @@ exports.records = async (req, res) => {
 
     // iqamaNumber يُرجَع دائمًا وإن لم يكن من حقول المجموعة — كل جدول في القسم
     // يعرض الموظف وبجانبه رقم هويته، وهو ما يبحث الناس به.
-    const employees = await findEmployees(req.query,
+    const employees = await findEmployees(req.params.group === 'contract' ? { ...req.query, contractScope: '1' } : req.query,
       [...new Set(['employeeNumber', 'arabicName', 'firstName', 'lastName', 'iqamaNumber',
         'department', 'branchName', 'project', 'employmentStatus', 'workStatusText', 'fieldStatus',
         ...DATE_FILTERABLE, ...storedFields(g).map((f) => f.key)])].join(' '));

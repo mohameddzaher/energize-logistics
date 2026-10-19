@@ -1531,7 +1531,7 @@ async function buildEmployeeReport(id, query, lang) {
         [t('الراتب الأساسي', 'Basic salary'), active.basicSalary != null ? money(active.basicSalary) : null],
         [t('البدلات', 'Allowances'), active.allowances != null ? money(active.allowances) : null],
         [t('رصيد الإجازة السنوية', 'Annual leave'), active.annualLeaveDays ? `${active.annualLeaveDays} ${t('يوم', 'days')}` : null],
-        [t('حالة العقد', 'Contract status'), active.status],
+        [t('حالة العقد', 'Contract status'), require('../utils/contractStatus').twoStatus(active.status) === 'active' ? t('ساري', 'Active') : t('منتهي', 'Expired')],
       ],
     });
   }

@@ -427,8 +427,8 @@ export default function ContractsPage() {
         <div className="space-y-3">
           <p className="text-[13px] text-slate-500">
             {ar
-              ? 'يُقفَل العقد الحالي بحالة «مجدَّد» ولا يُحذف، ويُنشأ عقدٌ يليه ويُقيَّد التجديد في سجلّ الموظف.'
-              : 'The current contract is closed as “renewed” (not deleted), a successor is created, and the renewal is recorded in the employee’s history.'}
+              ? 'يُقفَل العقد الحالي «منتهيًا» ولا يُحذف، ويُنشأ عقدٌ ساري يليه ويُقيَّد التجديد في سجلّ الموظف.'
+              : 'The current contract is closed as “expired” (not deleted), an active successor is created, and the renewal is recorded in the employee’s history.'}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <DatePair label={ar ? 'تاريخ بداية العقد الجديد *' : 'New start date *'} ar={ar}

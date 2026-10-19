@@ -1809,6 +1809,13 @@
       ],
       "wildcard": false
     },
+    "/system/hr/archive": {
+      "apis": [
+        "/api/hr/archive",
+        "/api/hr/employees"
+      ],
+      "wildcard": false
+    },
     "/system/hr/contracts": {
       "apis": [
         "/api/hr/contracts",

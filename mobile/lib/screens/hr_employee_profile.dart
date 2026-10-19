@@ -323,6 +323,36 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     }
   }
 
+  // ── الأرشيف: إنهاءُ الخدمة ← خروجٌ من النظام ← الأرشيف — كالموقع ─────────
+  // والفريلانسرُ لا خروجَ له: إنهاءُ خدمته يؤرشفه (utils/hrEngagement في الخادم).
+  bool get _terminated => _emp['employmentStatus'] == 'terminated';
+  bool get _freelance => RegExp(r'فري\s*لانس|فريلانس|freelanc', caseSensitive: false).hasMatch('${_emp['registerNumber'] ?? ''}');
+  bool get _outOfSystem => '${_emp['systemStatus'] ?? ''}'.trim() == 'خارج النظام';
+  bool get _archived => _terminated && (_outOfSystem || _freelance);
+
+  Future<void> _systemAction(bool exit) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(exit ? tr('خروج من النظام', 'Exit the system') : tr('إعادة إلى النظام', 'Return to the system')),
+        content: Text(exit
+            ? tr('ينتقل الموظف إلى الأرشيف ولا يظهر في أي شاشة أو رقم آخر.', 'The employee moves to the archive and disappears from every other screen and number.')
+            : tr('يعود داخل النظام ويخرج من الأرشيف.', 'He returns to the system and leaves the archive.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: exit ? T.danger : T.success), onPressed: () => Navigator.pop(c, true), child: Text(tr('تأكيد', 'Confirm'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.post('/api/hr/employees/${widget.employeeId}/${exit ? 'exit-system' : 'return-system'}', {});
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   String get _name {
     final ar = (_emp['arabicName'] ?? '').toString();
     final en = '${_emp['firstName'] ?? ''} ${_emp['lastName'] ?? ''}'.trim();
@@ -479,6 +509,8 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                 if (v == 'upload') _uploadDocument();
                 if (v == 'terminate') _terminate();
                 if (v == 'reactivate') _reactivate();
+                if (v == 'exit') _systemAction(true);
+                if (v == 'return') _systemAction(false);
                 if (v == 'delete') _deleteEmployee();
               },
               itemBuilder: (c) => [
@@ -499,6 +531,16 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                   PopupMenuItem(value: 'reactivate', child: Row(children: [
                     const Icon(Icons.restart_alt_rounded, size: 18, color: T.success), const SizedBox(width: 10),
                     Text(tr('إعادة تفعيل', 'Reactivate')),
+                  ])),
+                if (_terminated && !_archived)
+                  PopupMenuItem(value: 'exit', child: Row(children: [
+                    const Icon(Icons.archive_outlined, size: 18, color: T.danger), const SizedBox(width: 10),
+                    Text(tr('خروج من النظام', 'Exit the system')),
+                  ])),
+                if (_archived && _outOfSystem)
+                  PopupMenuItem(value: 'return', child: Row(children: [
+                    const Icon(Icons.unarchive_outlined, size: 18, color: T.success), const SizedBox(width: 10),
+                    Text(tr('إعادة إلى النظام', 'Return to the system')),
                   ])),
                 // الحذفُ لمدير النظام وحدَه — والخادمُ يردّ غيرَه بـ٤٠٥.
                 if (context.read<AuthProvider>().role == 'super_admin')
@@ -1029,11 +1071,7 @@ Widget _contractChip(Map c) {
   if (status == 'active' && end.length >= 10 && end.substring(0, 10).compareTo(today) < 0) {
     return Chip2(tr('منتهي', 'Expired'), T.danger);
   }
-  return switch (status) {
-    'active' => Chip2(tr('ساري', 'Active'), T.success),
-    'expired' => Chip2(tr('منتهي', 'Expired'), T.inkFaint),
-    'terminated' => Chip2(tr('مفسوخ', 'Terminated'), T.danger),
-    'renewed' => Chip2(tr('مجدَّد', 'Renewed'), T.navy),
-    _ => Chip2(status.isEmpty ? '—' : status, T.inkFaint),
-  };
+  // حالتان لا غير (٢٠٢٦/١٠/١٩): ساري أو منتهي — «مفسوخ» و«مجدَّد» القديمان منتهيان.
+  if (status.isEmpty) return const Chip2('—', T.inkFaint);
+  return status == 'active' ? Chip2(tr('ساري', 'Active'), T.success) : Chip2(tr('منتهي', 'Expired'), T.inkFaint);
 }

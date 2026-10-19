@@ -33,11 +33,24 @@ import { Truck, Plus, Pencil, RotateCcw, UserMinus, ExternalLink, X } from 'luci
 import {
   getLTEmployees, updateLTEmployee, createLTEmployee, deactivateLTEmployee, ltTotalsOf,
   LT_COLUMNS, statusCls, KIND_AR, KIND_EN, canEditLT, fmtDate,
-  supervisorIdOf, dutySupervisorIdOf, assignLTSupervisors, serverFilters, isFreelance, hasContract,
+  supervisorIdOf, dutySupervisorIdOf, assignLTSupervisors, serverFilters,
   DOC_CLS, DOC_AR, DOC_EN,
   type LTEmployee, type LTOptions, type LTDoc,
 } from '@/lib/lightTransport';
 
+/** أسماءُ مفاتيح الفلترة في شرائح «الفلاتر الشغّالة». */
+const CHIP_KEY_AR: Record<string, string> = {
+  project: 'المشروع', city: 'الفرع', jobTitle: 'الوظيفة', contractType: 'نوع التعاقد', register: 'السجل',
+  vehicleType: 'نوع المركبة', supervisor: 'المشرف', dutySupervisor: 'مشرف التفقد', staffKind: 'النوع',
+  status: 'الحالة', housing: 'السكن', hasVehicle: 'المركبة', hiredFrom: 'التعيين من', hiredTo: 'التعيين إلى',
+  contractKind: 'العقد', doc: 'الوثيقة', inService: 'الخدمة',
+};
+const CHIP_KEY_EN: Record<string, string> = {
+  project: 'Project', city: 'Branch', jobTitle: 'Job', contractType: 'Contract', register: 'Register',
+  vehicleType: 'Vehicle type', supervisor: 'Supervisor', dutySupervisor: 'Duty supervisor', staffKind: 'Kind',
+  status: 'Status', housing: 'Housing', hasVehicle: 'Vehicle', hiredFrom: 'Hired from', hiredTo: 'Hired to',
+  contractKind: 'Contract', doc: 'Document', inService: 'Service',
+};
 
 function LightTransportEmployeesInner() {
   const { user } = useAuth();
@@ -78,7 +91,9 @@ function LightTransportEmployeesInner() {
     const keys = ['project', 'city', 'jobTitle', 'contractType', 'register', 'vehicleType',
       'supervisor', 'dutySupervisor', 'staffKind', 'status', 'housing', 'hasVehicle', 'hiredFrom', 'hiredTo',
       // مشتقّان يُحسَبان على الصفوف لا على القاعدة — راجع `LOCAL_KEYS`.
-      'contractKind', 'doc'];
+      'contractKind', 'doc',
+      // من أرقام «إجمالي المناديب» في اللوحة: في الخدمة وحدَهم — راجع `listEmployees`.
+      'inService'];
     const init: Record<string, string> = {};
     for (const k of keys) { const v = sp?.get(k); if (v) init[k] = v; }
     return init;
@@ -106,7 +121,9 @@ function LightTransportEmployeesInner() {
     // إجماليَّه فوقه. فتُقرأ الردودُ بترتيب طلبها لا بترتيب وصولها.
     const token = guard.begin();
     try {
-      const d = await getLTEmployees({ ...serverFilters(f), q: dq });
+      // نوعُ العقد يُفلتَر في الخادم بطيِّ العدّ نفسِه (`contractIs`) — فما تقوله
+      // اللوحةُ وما تعرضه القائمةُ واحد، ومعه «none» لمن لا نوعَ عقدٍ له.
+      const d = await getLTEmployees({ ...serverFilters(f), ...(f.contractKind ? { contractKind: f.contractKind } : {}), q: dq });
       if (!guard.isCurrent(token)) return;
       setRows(d.employees || []);
       setServerTotal(d.totals?.total || (d.employees || []).length);
@@ -131,8 +148,6 @@ function LightTransportEmployeesInner() {
    * القاعدة بنصٍّ حرفيٍّ لقال الكارتُ ١٠٩ وردّ الجدولُ ٩٥ بلا تفسير.
    */
   const localFiltered = useMemo(() => rows.filter((r) => {
-    if (f.contractKind === 'sponsored' && !(hasContract(r) && !isFreelance(r))) return false;
-    if (f.contractKind === 'freelance' && !isFreelance(r)) return false;
     if (f.doc) {
       const [which, band] = f.doc.split('-');
       const d = which === 'card' ? r.operatingCard : r.inspection;
@@ -141,7 +156,7 @@ function LightTransportEmployeesInner() {
       if (band === 'soon' && !['warning', 'upcoming'].includes(st)) return false;
     }
     return true;
-  }), [rows, f.contractKind, f.doc]);
+  }), [rows, f.doc]);
 
   /**
    * ── والإسنادُ يقع على مجموعة ──────────────────────────────────────────────
@@ -246,6 +261,27 @@ function LightTransportEmployeesInner() {
     </button>
   );
 
+  /** قيمةُ الفلتر كما تُقرأ: لا معرِّفَ مشرفٍ ولا مفتاحَ إنجليزيٍّ في الشريحة. */
+  const chipValue = (k: string, v: string) => {
+    if (k === 'contractKind') return ar ? ({ sponsored: 'على الكفالة', freelance: 'فري لانسر', none: 'بلا نوع عقد' } as Record<string, string>)[v] || v
+      : ({ sponsored: 'Sponsored', freelance: 'Freelance', none: 'No contract type' } as Record<string, string>)[v] || v;
+    if (k === 'staffKind') {
+      const m: Record<string, string> = ar ? { ...KIND_AR, driver: 'سائق', unknown: 'بلا وظيفة' } : { ...KIND_EN, driver: 'Driver', unknown: 'No job title' };
+      return m[v] || v;
+    }
+    if (k === 'doc') {
+      const m: Record<string, string> = ar
+        ? { 'card-gap': 'كارت تشغيل منتهي/حرج', 'card-soon': 'كارت تشغيل قريب', 'inspection-gap': 'فحص منتهي/حرج', 'inspection-soon': 'فحص قريب' }
+        : { 'card-gap': 'Operating card expired/critical', 'card-soon': 'Operating card due soon', 'inspection-gap': 'Inspection expired/critical', 'inspection-soon': 'Inspection due soon' };
+      return m[v] || v;
+    }
+    if (k === 'inService') return t('بلا المنتهين', 'excluding ended');
+    if (k === 'hasVehicle') return v === 'yes' ? t('له مركبة', 'has a vehicle') : t('بلا مركبة', 'no vehicle');
+    if (k === 'housing') return v === 'none' ? t('بلا سكن', 'unhoused') : options.housing.find((h) => h._id === v)?.name || v;
+    if (k === 'supervisor' || k === 'dutySupervisor') return v === 'none' ? t('بلا مشرف', 'none') : options.supervisor.find((x) => x._id === v)?.name || v;
+    return v;
+  };
+
   /** قائمةُ اختيارٍ واحدةُ الشكل — قيمُها من السجلّ نفسِه. */
   const Filter = ({ k, label, list }: { k: string; label: string; list: string[] }) => (
     <select value={f[k] || ''} onChange={(e) => setF((p) => ({ ...p, [k]: e.target.value }))} aria-label={label}
@@ -336,6 +372,26 @@ function LightTransportEmployeesInner() {
         <Stat label={t('بلا مشرف تفقد', 'No duty supervisor')} value={totals.noDutySupervisor} accent="text-red-600"
           onClick={() => repFilter('dutySupervisor', 'none')} on={f.dutySupervisor === 'none'} />
       </div>
+
+      {/* ── الفلاترُ الشغّالةُ مكتوبةً ──────────────────────────────────────────
+          من فُتحت له القائمةُ من رقمٍ في اللوحة يرى لماذا هي أقصر — وكلُّ فلترٍ
+          يُرفَع بضغطة. الفلترُ الخفيُّ يجعل الجدولَ يُقرأ ناقصًا. */}
+      {Object.entries(f).some(([, v]) => v) && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#f37121]/30 bg-[#f37121]/5 px-3 py-2.5">
+          <span className="text-[12px] font-bold text-slate-700">{t('الفلاتر الشغّالة:', 'Active filters:')}</span>
+          {Object.entries(f).filter(([, v]) => v).map(([k, v]) => (
+            <button key={k} type="button" onClick={() => setF((p) => ({ ...p, [k]: '' }))}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white border border-slate-200 text-[12px] font-semibold text-slate-700 hover:border-red-300 hover:text-red-600">
+              <span className="text-slate-400 font-normal">{(ar ? CHIP_KEY_AR : CHIP_KEY_EN)[k] || k}:</span>
+              {chipValue(k, v)} <X className="w-3 h-3 text-slate-400" />
+            </button>
+          ))}
+          <button type="button" onClick={clearFilters}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#f37121]/10 text-[#f37121] text-[12px] font-bold">
+            <RotateCcw className="w-3.5 h-3.5" /> {t('مسح الكل', 'Clear all')}
+          </button>
+        </div>
+      )}
 
       {/* ── الفلاتر ───────────────────────────────────────────────────────── */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-wrap gap-2.5 items-center">

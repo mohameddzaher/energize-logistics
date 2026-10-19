@@ -42,7 +42,10 @@ class DashList {
   final String ar, en, path;
   final String Function(Map<String, dynamic>) title;
   final String Function(Map<String, dynamic>)? subtitle;
-  const DashList(this.ar, this.en, this.path, this.title, {this.subtitle});
+  /// ما يفتحه الضغطُ على السطر — وبدونه تُعرَض تفاصيلُه كما هي.
+  /// (لوحةُ الأفراد: المشروعُ يفتح مناديبَه في سجلّ الموظّفين — كالموقع.)
+  final void Function(BuildContext context, Map<String, dynamic> row)? onTap;
+  const DashList(this.ar, this.en, this.path, this.title, {this.subtitle, this.onTap});
 }
 
 class DashSpec {
@@ -329,7 +332,7 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
                               Text(tr(l.ar, l.en), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                               const SizedBox(height: 6),
                               ...rows.take(8).map((r) => Pressable(
-                                onTap: () => _openDetails(l.title(r), r),
+                                onTap: () => l.onTap != null ? l.onTap!(context, r) : _openDetails(l.title(r), r),
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(vertical: 6),
                                   child: Row(children: [

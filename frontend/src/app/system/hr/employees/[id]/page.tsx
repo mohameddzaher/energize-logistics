@@ -10,12 +10,13 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import {
   ArrowLeft, ArrowRight, Edit, RefreshCw, UserX, UserCheck, Plus, Trash2, FileText, ExternalLink, Check, Paperclip,
+  Archive, Undo2,
 } from 'lucide-react';
 import {
   isHRStaff, Employee, Contract, LeaveRequest, Asset, HRRequest, LeaveBalance,
   EmployeeDocument, EmployeeRenewal, AuditEntry,
   empName, userName, fmtDateTime, leaveTypeLabel, expiryBadge,
-  EMPLOYMENT_STATUS, CONTRACT_STATUS, contractBadge, LEAVE_STATUS, REQUEST_STATUS, assetTypeLabel, conditionLabel,
+  EMPLOYMENT_STATUS, CONTRACT_STATUS, contractBadge, contractRequired, LEAVE_STATUS, REQUEST_STATUS, assetTypeLabel, conditionLabel,
   RENEWAL_TYPES, DOCUMENT_CATEGORIES, renewalTypeLabel, docCategoryLabel, auditActionLabel,
 } from '@/lib/hr';
 import {
@@ -105,6 +106,16 @@ export default function EmployeeProfilePage() {
   useSocket('vehicle:authorization', useCallback(() => loadVehicles(), [loadVehicles]));
   useSocket('vehicle:accident', useCallback(() => loadVehicles(), [loadVehicles]));
 
+  const exitSystem = async () => {
+    if (!(await confirm(ar ? 'خروج هذا الموظف من النظام؟ ينتقل إلى الأرشيف ولا يظهر في أي شاشة أو رقم آخر.' : 'Exit this employee from the system? He moves to the archive and disappears from every other screen and number.'))) return;
+    try { await api.post(`/api/hr/employees/${id}/exit-system`, {}); notify(ar ? 'نُقل إلى الأرشيف' : 'Moved to the archive', 'success'); load(); }
+    catch (err: any) { notify(err.message, 'error'); }
+  };
+  const returnSystem = async () => {
+    if (!(await confirm(ar ? 'إعادته إلى النظام؟ يخرج من الأرشيف.' : 'Return him to the system? He leaves the archive.'))) return;
+    try { await api.post(`/api/hr/employees/${id}/return-system`, {}); load(); }
+    catch (err: any) { notify(err.message, 'error'); }
+  };
   const reactivate = async () => {
     if (!(await confirm(ar ? 'إعادة تفعيل هذا الموظف؟' : 'Reactivate this employee?'))) return;
     try { await api.post(`/api/hr/employees/${id}/reactivate`, {}); load(); } catch (e: any) { notify(e.message, 'error'); }
@@ -117,6 +128,11 @@ export default function EmployeeProfilePage() {
   const b = data.balance;
   const assignedAssets = data.assets.filter((a) => a.status === 'assigned');
   const terminated = e.employmentStatus === 'terminated';
+  // ── الأرشيف: إنهاءُ الخدمة ← خروجٌ من النظام ← الأرشيف ─────────────────────
+  // والفريلانسرُ لا خروجَ له: إنهاءُ خدمته يؤرشفه (راجع utils/hrEngagement).
+  const freelance = /فري\s*لانس|فريلانس|freelanc/i.test(String(e.registerNumber || ''));
+  const outOfSystem = String(e.systemStatus || '').trim() === 'خارج النظام';
+  const archived = terminated && (outOfSystem || freelance);
 
   // ── تصدير ملفّ الموظف ────────────────────────────────────────────────────
   // نصُّ الحالة يُقرأ من نفس خرائط الشارات المعروضة، فلا يخرج في الملفّ مفتاحٌ
@@ -385,10 +401,26 @@ export default function EmployeeProfilePage() {
             {terminated
               ? <ActionBtn onClick={reactivate} icon={<UserCheck className="w-4 h-4" />} label={ar ? 'إعادة تفعيل' : 'Reactivate'} />
               : <ActionBtn onClick={() => setShowTerminate(true)} icon={<UserX className="w-4 h-4" />} label={ar ? 'إنهاء الخدمة' : 'End Service'} danger />}
+            {/* لا يظهر إلّا بعد إنهاء الخدمة، ولغير الفريلانسر. */}
+            {terminated && !archived && (
+              <ActionBtn onClick={exitSystem} icon={<Archive className="w-4 h-4" />} label={ar ? 'خروج من النظام' : 'Exit the system'} danger />
+            )}
+            {archived && outOfSystem && (
+              <ActionBtn onClick={returnSystem} icon={<Undo2 className="w-4 h-4" />} label={ar ? 'إعادة إلى النظام' : 'Return to the system'} />
+            )}
           </>)}
         </div>
       </div>
 
+      {/* شارةُ الأرشيف — الملفُّ للقراءة، ولا يظهر صاحبُه في غير صفحة الأرشيف. */}
+      {archived && (
+        <div className="flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-100 p-3 text-sm font-semibold text-slate-700">
+          <Archive className="h-4 w-4" />
+          {freelance
+            ? (ar ? 'في الأرشيف — فريلانسر انتهت خدمته' : 'Archived — freelancer whose service ended')
+            : (ar ? 'في الأرشيف — انتهت خدمته وخرج من النظام' : 'Archived — service ended and out of the system')}
+        </div>
+      )}
       {/* Termination banner */}
       {terminated && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
@@ -413,13 +445,14 @@ export default function EmployeeProfilePage() {
           </p>
         </div>
       )}
-      {!terminated && data.contracts.length > 0 && data.contracts.every((c: any) => c.status === 'terminated') && (
+      {/* والفريلانسرُ والمتدرّبُ لا عقدَ لهما أصلًا — فلا يُنبَّه عنهما «لا عقد ساري». */}
+      {!terminated && contractRequired(e) && data.contracts.length > 0 && !data.contracts.some((c: any) => c.status === 'active') && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900">
           <b>{ar ? 'تنبيه: الحالتان لا تتّفقان' : 'Heads up: the two records disagree'}</b>
           <p className="mt-1 text-[13px]">
             {ar
               ? 'الموظف على رأس العمل ولا عقد ساري له — كل عقوده منتهية. جدِّد العقد أو صحِّح حالة التوظيف.'
-              : 'The employee is active but has no live contract — all of them are terminated. Renew the contract or correct the employment status.'}
+              : 'The employee is active but has no live contract — all of them have expired. Renew the contract or correct the employment status.'}
           </p>
         </div>
       )}
@@ -895,13 +928,13 @@ function TerminateModal({ open, employeeId, ar, onClose, onDone }: { open: boole
           placeholder={ar ? 'اختر السبب…' : 'Select a reason…'} />
       </Field>
       {/* ── وحالةُ العقد تُحدَّد هنا ────────────────────────────────────────
-          هي عمودٌ يُقرأ في قائمة «ليس على رأس العمل» ليُعرَف أمفسوخٌ عقدُه أم
-          ساري. وكان لا يكتبه أحدٌ عند الإنهاء، فيبقى فارغًا. يُقترَح «تم انهاء
-          العقد» ويُترك للمستخدم أن يغيّره. */}
+          هي عمودٌ يُقرأ في قائمة «ليس على رأس العمل» ليُعرَف أمنتهٍ عقدُه أم
+          ساري. وكان لا يكتبه أحدٌ عند الإنهاء، فيبقى فارغًا. يُقترَح «منتهي»
+          ويُترك للمستخدم أن يغيّره. */}
       <Field label={ar ? 'حالة العقد بعد الإنهاء' : 'Contract status after ending'}>
         <ManagedSelect storeLabel type="hr_contract_status" value={contractStatus}
           onChange={(v) => setContractStatus(v)}
-          placeholder={ar ? 'تم انهاء العقد (الافتراضي)' : 'Contract ended (default)'} />
+          placeholder={ar ? 'منتهي (الافتراضي)' : 'Expired (default)'} />
       </Field>
       <Field label={ar ? 'ملاحظة (اختياري)' : 'Note (optional)'}>
         <TextArea rows={2} value={note} onChange={(ev) => setNote(ev.target.value)}

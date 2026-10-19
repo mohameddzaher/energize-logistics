@@ -7,6 +7,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'hr_employee_profile.dart';
+import 'hr_archive.dart';
 
 /// لوحة الموارد البشرية — native: the headline numbers, department split and
 /// the expiring-documents list, from the same endpoint the web dashboard uses.
@@ -39,11 +40,50 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
     super.dispose();
   }
 
+  Map<String, dynamic>? _m;
+
+  /// كارتٌ برقمه، وتحته نصفاه: على الكفالة · فريلانسر (من «رقم السجل التجاري»).
+  Widget _halfCard(String label, dynamic value, Map<String, dynamic> mt, String key, Color c,
+      {String? sub, VoidCallback? onTap, void Function(String)? onHalf}) {
+    final h = ((mt['halves'] as Map?)?[key] as Map?) ?? const {};
+    Widget half(String k, String name) => Expanded(child: InkWell(
+          onTap: onHalf == null ? null : () => onHalf(k),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(8)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(name, style: const TextStyle(fontSize: 10, color: T.inkFaint)),
+              Text('${h[k] ?? 0}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: T.ink)),
+            ]),
+          ),
+        ));
+    return Pressable(
+      onTap: onTap,
+      child: AppCard(
+        topAccent: c,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Text('${value ?? 0}', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: c)),
+            const SizedBox(width: 8),
+            Expanded(child: Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: T.inkSoft))),
+          ]),
+          if (sub != null) Text(sub, style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+          const SizedBox(height: 6),
+          Row(children: [half('sponsored', tr('على الكفالة', 'Sponsored')), const SizedBox(width: 6), half('freelance', tr('فريلانسر', 'Freelance'))]),
+        ]),
+      ),
+    );
+  }
+
   Future<void> _load() async {
     try {
       final d = await Api.instance.get('/api/hr/dashboard');
+      // كروتُ اللوحة بنصفيها (على الكفالة · فريلانسر) — من نظرة الموارد البشريّة نفسِها.
+      Map<String, dynamic>? m;
+      try { m = Map<String, dynamic>.from(await Api.instance.get('/api/hr/master/overview') as Map); } catch (_) {}
       if (!mounted) return;
-      setState(() { _d = Map<String, dynamic>.from(d); _loading = false; _error = null; });
+      setState(() { _d = Map<String, dynamic>.from(d); _m = m; _loading = false; _error = null; });
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
@@ -52,6 +92,7 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final s = _d?['summary'] as Map<String, dynamic>?;
+    final mt = (_m?['totals'] as Map?)?.cast<String, dynamic>();
     final byDept = List<Map<String, dynamic>>.from(_d?['byDepartment'] ?? []);
     final docs = List<Map<String, dynamic>>.from(_d?['expiringDocs'] ?? []);
 
@@ -87,6 +128,23 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                         const SizedBox(width: 10),
                         Expanded(child: FadeSlideIn(delayMs: 280, child: StatCard(label: tr('عهد بعهدة الموظفين', 'Assigned assets'), value: s['assignedAssets'] ?? 0, color: T.cyan, icon: Icons.devices_other_outlined))),
                       ]),
+                      // ── كروتُ الموقع بنصفيها: على الكفالة · فريلانسر ──
+                      if (mt != null) ...[
+                        const SizedBox(height: 10),
+                        _halfCard(tr('على رأس العمل', 'On duty'), mt['active'], mt, 'active', T.success, onHalf: (k) {
+                          final dd = ((mt['onDutyDetail'] as Map?)?[k] as Map?) ?? const {};
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+                            '${k == 'sponsored' ? tr('على الكفالة', 'Sponsored') : tr('فريلانسر', 'Freelance')}: ${tr('يعمل', 'working')} ${dd['working'] ?? 0} · ${tr('إجازة', 'on leave')} ${dd['leave'] ?? 0}')));
+                        }),
+                        const SizedBox(height: 8),
+                        _halfCard(tr('ليس على رأس العمل', 'Not on duty'), mt['notActive'], mt, 'notActive', T.inkSoft,
+                            sub: tr('منهم ${mt['terminated'] ?? 0} انتهت خدمتهم', '${mt['terminated'] ?? 0} ended')),
+                        const SizedBox(height: 8),
+                        _halfCard(tr('في مرحلة نقل الكفالة', 'Sponsorship transfer'), mt['transfer'], mt, 'transfer', T.warn),
+                        const SizedBox(height: 8),
+                        _halfCard(tr('الأرشيف', 'Archive'), mt['archived'], mt, 'archived', T.inkFaint,
+                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HrArchiveScreen()))),
+                      ],
                       // ── العقود التي تحتاج انتباهًا — مطابقٌ للوحة الموقع ──
                       if (((s['noContractCount'] ?? 0) as num) > 0 || ((s['lapsedContractsCount'] ?? 0) as num) > 0) ...[
                         const SizedBox(height: 10),

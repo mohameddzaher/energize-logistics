@@ -4,7 +4,9 @@ const User = require('../models/User');
 const Employee = require('../models/Employee');
 const Contract = require('../models/Contract');
 // «حالة العقد» على الموظّف صورةٌ من عقده تُحدَّث كلّما تغيّر — راجع utils/contractStatus.
-const { syncEmployeeContractStatus } = require('../utils/contractStatus');
+const { syncEmployeeContractStatus, twoStatus } = require('../utils/contractStatus');
+// العقدُ ساري أو منتهي لا غير — وما لم تطله الهجرةُ يُقرأ كذلك قبل أن يخرج.
+const asTwo = (c) => (c ? { ...c, status: twoStatus(c.status) } : c);
 const LeaveType = require('../models/LeaveType');
 const LeaveRequest = require('../models/LeaveRequest');
 const HRRequest = require('../models/HRRequest');
@@ -306,7 +308,7 @@ exports.getEmployee = async (req, res) => {
 
     res.json({
       employee,
-      contracts,
+      contracts: contracts.map(asTwo),
       activeContract: balanceData.contract || null,
       balance: balanceData.balance,
       leaves,
@@ -626,7 +628,7 @@ exports.employeeClearance = async (req, res) => {
  * POST /contracts/:id/renew — تجديدُ عقدٍ كما تُجدَّد الإقامة.
  *
  * ── ماذا يجري ───────────────────────────────────────────────────────────────
- * العقدُ القائم يُقفَل بـ«مجدَّد» ولا يُحذَف — تسلسلُ عقود الموظّف هو تاريخُ
+ * العقدُ القائم يُقفَل «منتهيًا» ولا يُحذَف — تسلسلُ عقود الموظّف هو تاريخُ
  * عمله. ويُنشأ عقدٌ يليه بتواريخه الجديدة، ويُقيَّد التجديدُ في سجلّ تجديدات
  * الموظّف (`EmployeeRenewal`) فيُقرأ في ملفّه بجانب تجديد الإقامة والرخصة.
  *
@@ -661,7 +663,8 @@ exports.renewContract = async (req, res) => {
     const { balance } = await computeEmployeeBalance(old.employee, new Date());
     const carried = carryOver ? Math.max(0, Number(balance.available) || 0) : 0;
 
-    old.status = 'renewed';
+    // حالتان لا غير: القديمُ منتهٍ، والجديدُ ساري — و`renewedFrom` يحفظ التسلسل.
+    old.status = 'expired';
     old.endDate = old.endDate || startDate;
     await old.save();
 
@@ -773,13 +776,14 @@ exports.terminateEmployee = async (req, res) => {
     // فالإنهاءُ يكتبها بنفسه. وما أرسلته الشاشةُ يُقدَّم — قائمةُ
     // `hr_contract_status` قد تحمل صيغةً أدقَّ لهذه الحالة — وإلّا فالنصُّ
     // المعتمَد في الملفّ منذ أوّل استيراد.
-    employee.contractStatusText = String(req.body.contractStatus || '').trim() || 'مفسوخ';
+    employee.contractStatusText = String(req.body.contractStatus || '').trim() || 'منتهي';
     await employee.save();
 
     // Terminate the active contract too so both records agree.
     await Contract.updateMany(
       { employee: employee._id, status: 'active' },
-      { $set: { status: 'terminated', terminatedAt: when, terminationReason: reason, custodyReturned: true } }
+      // «مفسوخ» صار «منتهي» (حالتان لا غير) — والسببُ والتاريخُ في خانتيهما.
+      { $set: { status: 'expired', terminatedAt: when, terminationReason: reason, custodyReturned: true } }
     );
     // وبعدها تُقرأ الحالةُ من العقد نفسِه — فإن كان له عقدٌ فهو الحَكَم، وما
     // كُتب أعلاه لا يبقى إلّا لمن لا عقدَ له في النظام.
@@ -962,7 +966,11 @@ exports.listContracts = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const filter = {};
     if (req.query.employee) filter.employee = req.query.employee;
-    if (req.query.status) filter.status = req.query.status;
+    // «منتهي» يشمل ما لم تطله الهجرةُ من «مفسوخ» و«مجدَّد».
+    if (req.query.status) {
+      const st = twoStatus(String(req.query.status));
+      filter.status = st === 'active' ? 'active' : { $in: ['expired', 'terminated', 'renewed'] };
+    }
     // ── والقسمُ يُجلَب مع الموظّف ─────────────────────────────────────────────
     // لوحةُ الفلترة في صفحة العقود فيها «القسم» منذ البداية، وتقرؤه من
     // `employee.department` — ولم يكن بين الأعمدة المجلوبة. فكلُّ عقدٍ قُرئ
@@ -973,7 +981,7 @@ exports.listContracts = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(2000)
       .lean();
-    res.json({ contracts });
+    res.json({ contracts: contracts.map(asTwo) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load contracts' });
   }
@@ -1049,7 +1057,8 @@ exports.terminateContract = async (req, res) => {
       });
     }
 
-    contract.status = 'terminated';
+    // الفسخُ يُنهي العقد: «منتهي»، وسببُه وتاريخُه في خانتيهما.
+    contract.status = 'expired';
     contract.terminatedAt = new Date();
     contract.terminationReason = req.body.reason || '';
     contract.custodyReturned = true;
@@ -2205,7 +2214,8 @@ const EXPIRY_DOCS = require('../config/hrFields').DOCUMENT_GROUPS.map((g) => ({
 // كان النطاقُ `inCurrentMaster: true` — علامةٌ لا يضعها إلّا سكربتُ الاستيراد،
 // فكلُّ موظّفٍ أُضيف في النظام بعده لا يُعدّ في اللوحة. الشيتُ مصدرُ الإدخال
 // الأوّل فقط، وبعده النظامُ هو المرجع: الموظّفُ موظّفٌ بسجلّه لا بمصدره.
-const HR_ONLY = { isHrRecord: { $ne: false } };
+// والمؤرشَفُ خارجَ هذه اللوحة كلِّها — مكانُه صفحةُ الأرشيف (utils/hrEngagement).
+const HR_ONLY = { isHrRecord: { $ne: false }, ...require('../utils/hrEngagement').NOT_ARCHIVED };
 
 exports.getDashboard = async (req, res) => {
   try {
@@ -2252,12 +2262,17 @@ exports.getDashboard = async (req, res) => {
     ]);
 
     // ── موظّفون بلا عقدٍ مسجَّل، وآخرون عقدُهم انقضى ولم يُجدَّد ─────────────────
-    // مَن على قوّة العمل وليس فريلانسر ولا عقدَ له في النظام أصلًا: يُعَدّ هنا حتى
+    // مَن على قوّة العمل ويُطلَب له عقدٌ ولا عقدَ له في النظام أصلًا: يُعَدّ هنا حتى
     // يُنشأ عقدُه — فيخرج من العدّ في الحال (إنشاءُ العقد يمسح ذاكرةَ اللوحة ويبثّ).
+    //
+    // والفريلانسرُ والمتدرّبُ لا عقدَ لهما أصلًا — لا «بلا عقد» ولا «عقدٌ منتهٍ».
+    // ويُقرآن من «رقم السجل» لا من `employmentType` (راجع utils/hrEngagement).
+    const { contractRequired } = require('../utils/hrEngagement');
     const current = await require('../utils/contractStatus').currentContractsByEmployee('endDate');
     const anyContract = new Set((await Contract.distinct('employee')).map(String));
-    const workforce = await Employee.find({ ...HR_ONLY, employmentStatus: { $ne: 'terminated' }, employmentType: { $ne: 'freelancer' } })
-      .select('firstName lastName arabicName employeeNumber department jobTitle employmentType').sort({ employeeNumber: 1 }).lean();
+    const workforce = (await Employee.find({ ...HR_ONLY, employmentStatus: { $ne: 'terminated' } })
+      .select('firstName lastName arabicName employeeNumber department jobTitle employmentType registerNumber').sort({ employeeNumber: 1 }).lean())
+      .filter(contractRequired);
     const person = (e, extra = {}) => ({ _id: e._id, employeeNumber: e.employeeNumber, name: e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim(), department: e.department || '', jobTitle: e.jobTitle || '', ...extra });
     const noContract = workforce.filter((e) => !anyContract.has(String(e._id))).map((e) => person(e));
     const lapsedContracts = workforce
@@ -2337,7 +2352,7 @@ exports.getMyProfile = async (req, res) => {
       Asset.find({ employee: id, status: { $ne: 'in_stock' } }).sort({ createdAt: -1 }).lean(),
       computeEmployeeBalance(id),
     ]);
-    res.json({ employee, contracts, activeContract: balanceData.contract || null, balance: balanceData.balance, leaves, assets });
+    res.json({ employee, contracts: contracts.map(asTwo), activeContract: balanceData.contract || null, balance: balanceData.balance, leaves, assets });
   } catch (error) {
     console.error('getMyProfile error:', error);
     res.status(500).json({ message: 'Failed to load your profile' });

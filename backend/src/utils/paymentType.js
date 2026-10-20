@@ -120,6 +120,7 @@ const reachesCollections = (workflow = {}) => {
 };
 
 module.exports = {
+  NO_INVOICE_RX,
   derivePaymentType, derivePaymentTypeFor, paymentTypeReason,
   hasTaxInvoice, methodIsCash, mayAutoSet,
   AUTO_RULE_FROM, underNewRule, reachesCollections,

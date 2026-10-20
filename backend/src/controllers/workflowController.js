@@ -5,7 +5,7 @@ const { startOfDay, endOfDay, DAY_MS: COMPANY_DAY_MS } = require('../utils/compa
 const { flexSpaceRegex } = require('../utils/plateKey');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll, emitPerRole } = require('../websocket/socketManager');
-const { derivePaymentTypeFor, hasTaxInvoice } = require('../utils/paymentType');
+const { derivePaymentTypeFor, hasTaxInvoice, NO_INVOICE_RX } = require('../utils/paymentType');
 const XLSX = require('xlsx');
 const fs = require('fs');
 const path = require('path');
@@ -335,49 +335,103 @@ async function fillPaymentTypeFromCustomer(patch, current = {}) {
  * فيُنشأ القيدُ عند أوّل كتابةٍ ولا يُلمَس بعدها: ما بعده — تسليمٌ وتحصيلٌ وحالة —
  * عملُ قسم التحصيل على الفاتورة نفسِها، ولا يجوز أن تدهسه كتابةٌ على كشف.
  */
-async function ensureLedgerInvoice(workflow) {
-  try {
-    const no = String(workflow.invoiceNumber || '').trim();
-    if (!no || !hasTaxInvoice(workflow)) return null;
-    const CollectionInvoice = require('../models/CollectionInvoice');
-    // ── والقيدُ منسوبٌ إلى طرفه ────────────────────────────────────────────
-    // الأعمارُ والتنبيهاتُ وأداءُ المحصّلين تربط الفاتورةَ بطرفها بالمعرّف
-    // والكود (`party` / `partyCode`). وكان القيدُ المولودُ من كشفٍ يحمل الاسمَ
-    // وحده — ولا يملأ الطرفَ إلّا سكربتُ الاستيراد — فكلُّ فاتورةٍ كُتبت في
-    // النظام بعد الاستيراد غائبةٌ عن المديونيّة. والطرفُ يُنشأ إن لم يوجد.
-    let party = null;
-    try {
-      const { ensureCollectionsParty } = require('../utils/ensureCollectionsParty');
-      party = await ensureCollectionsParty(workflow.username, { paymentType: 'tax', source: 'operations_workflow' });
-    } catch (_) { /* */ }
-    const existing = await CollectionInvoice.findOne({ invoiceNumber: no }).select('_id party').lean();
-    if (existing) {
-      // قيدٌ قائمٌ لا يُلمَس — إلّا طرفًا ناقصًا يُكمَّل ولا يُبدَّل.
-      if (!existing.party && party?._id) {
-        await CollectionInvoice.updateOne({ _id: existing._id, party: null }, { $set: { party: party._id, partyCode: party.code || '' } });
-        try { require('./collectionsLedgerController').invalidate(); } catch (_) {}
-      }
-      return null;
-    }
-    await CollectionInvoice.create({
-      invoiceNumber: no,
-      kind: 'tax',
-      party: party?._id || undefined,
-      partyCode: party?.code || '',
-      partyName: workflow.username || '',
-      // يومُ كتابة رقمها إن لم يُكتب لها تاريخ — لا تاريخُ السداد ولا الكشف (راجع stampInvoiceDate).
-      invoiceDate: workflow.invoiceDate || new Date(`${require('../utils/companyDay').todayKey()}T00:00:00.000Z`),
-      net: Number(workflow.netInvoice) || 0,
-      vat: Number(workflow.tax) || 0,
-      total: Number(workflow.totalInvoice) || 0,
-      // مصدرُ القيد يُقال: قيدٌ وُلد من كشفٍ غيرُ قيدٍ جاء من دفتر الشركة.
-      sheetCode: 'workflow',
-      status: '',
-    });
-    try { require('./collectionsLedgerController').invalidate(); } catch (_) {}
-    return no;
-  } catch (_) { return null; }
+async function ensureLedgerInvoice(workflow, previousNumber = '') {
+  const numbers = [workflow && workflow.invoiceNumber, previousNumber];
+  return syncOpsInvoices(numbers);
 }
+
+/**
+ * ── والقيدُ المولودُ من كشفٍ يتبع كشوفَه ──────────────────────────────────
+ *
+ * كان القيدُ يُنشأ مرّةً ثمّ لا يُلمَس. فظهر في التحصيل شيئان خاطئان:
+ *   · رقمٌ صُحِّح على الكشف (١٢١٣ ← غيرُه) بقي قيدُه القديمُ فاتورةً بلا كشف؛
+ *   · ورقمٌ كُتب قبل مبالغه بقيت فاتورتُه صفرًا وإن اكتملت مبالغُ الكشف بعده.
+ *
+ * فالقيدُ الذي وُلد من كشف (`sheetCode: 'workflow'`) يُعاد حسابُه من كشوفه في
+ * كلّ تعديل: مبلغُه مجموعُ إجماليّاتها، وطرفُه عميلُها، وكشوفُه أرقامُها. وإن لم
+ * يبقَ تحته كشفٌ ولم يعمل عليه التحصيلُ بعدُ (لا تسليمَ ولا تحصيل) أُزيل.
+ * أمّا قيدُ دفتر الشركة فلا يُلمَس إلّا طرفًا ناقصًا يُكمَّل — كما كان.
+ * وما بعد الإنشاء من تسليمٍ وتحصيلٍ وحالةٍ عملُ قسم التحصيل لا يُمَسّ هنا.
+ */
+async function syncOpsInvoices(rawNumbers) {
+  const CollectionInvoice = require('../models/CollectionInvoice');
+  const numbers = [...new Set((rawNumbers || []).map((n) => String(n || '').trim())
+    .filter((n) => n && !NO_INVOICE_RX.test(n)))];
+  let touched = 0;
+  for (const no of numbers) {
+    try {
+      const reports = await OperationsWorkflow.find({
+        invoiceNumber: no,
+        executionStatus: { $nin: ['ملغي', 'ملغى', 'ملغاة', 'cancelled', 'canceled', 'Cancelled'] },
+      }).select('reportNumber username invoiceNumber invoiceDate netInvoice tax totalInvoice paymentType').lean();
+      const taxReports = reports.filter((w) => w.paymentType !== 'cash' && hasTaxInvoice(w));
+      // الضريبيُّ وحدَه: رقمُ الشحنة النقديّة تسلسلٌ آخر قد يوافق رقمَ فاتورة.
+      const existing = await CollectionInvoice.findOne({ invoiceNumber: no, kind: 'tax' });
+
+      if (!taxReports.length) {
+        if (existing && existing.sheetCode === 'workflow' && !existing.collectionDate && !existing.deliveryDate
+          && !/collected|delivered/i.test(existing.status || '')) {
+          await CollectionInvoice.deleteOne({ _id: existing._id });
+          touched += 1;
+        }
+        continue;
+      }
+
+      const first = taxReports[0];
+      let party = null;
+      try {
+        const { ensureCollectionsParty } = require('../utils/ensureCollectionsParty');
+        party = await ensureCollectionsParty(first.username, { paymentType: 'tax', source: 'operations_workflow' });
+      } catch (_) { /* */ }
+      const sum = (k) => Math.round(taxReports.reduce((a, w) => a + (Number(w[k]) || 0), 0) * 100) / 100;
+      const dates = taxReports.map((w) => w.invoiceDate).filter(Boolean).map((d) => new Date(d).getTime());
+
+      if (!existing) {
+        await CollectionInvoice.create({
+          invoiceNumber: no,
+          kind: 'tax',
+          party: party?._id || undefined,
+          partyCode: party?.code || '',
+          partyName: first.username || '',
+          // يومُ كتابة رقمها إن لم يُكتب لها تاريخ — لا تاريخُ السداد ولا الكشف (راجع stampInvoiceDate).
+          invoiceDate: dates.length ? new Date(Math.min(...dates)) : new Date(`${require('../utils/companyDay').todayKey()}T00:00:00.000Z`),
+          total: sum('totalInvoice'),
+          reportNumbers: taxReports.map((w) => String(w.reportNumber || '')).filter(Boolean),
+          // مصدرُ القيد يُقال: قيدٌ وُلد من كشفٍ غيرُ قيدٍ جاء من دفتر الشركة.
+          sheetCode: 'workflow',
+          source: 'operations_workflow',
+          status: '',
+        });
+        touched += 1;
+        continue;
+      }
+
+      const $set = {};
+      if (!existing.party && party?._id) { $set.party = party._id; $set.partyCode = party.code || ''; }
+      if (existing.sheetCode === 'workflow') {
+        $set.total = sum('totalInvoice');
+        $set.partyName = first.username || existing.partyName;
+        if (party?._id) { $set.party = party._id; $set.partyCode = party.code || ''; }
+        $set.reportNumbers = taxReports.map((w) => String(w.reportNumber || '')).filter(Boolean);
+        if (dates.length) $set.invoiceDate = new Date(Math.min(...dates));
+      }
+      if (Object.keys($set).length) {
+        await CollectionInvoice.updateOne({ _id: existing._id }, { $set });
+        touched += 1;
+      }
+    } catch (e) {
+      console.error('[ledger] تعذّرت مزامنة الفاتورة', no, e.message);
+    }
+  }
+  if (touched) {
+    try { require('./collectionsLedgerController').invalidate(); } catch (_) {}
+    try { cache.clear('collections-dept:'); cache.clear('cdr:'); } catch (_) {}
+  }
+  return touched;
+}
+
+// الحقولُ التي إن تغيّرت على كشفٍ تغيّر بها قيدُ فاتورته.
+const LEDGER_FIELDS = ['invoiceNumber', 'netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'paymentType', 'username', 'executionStatus'];
 
 function applyBillingRules(patch, current = {}) {
   const nextType = Object.prototype.hasOwnProperty.call(patch, 'paymentType')
@@ -1224,7 +1278,7 @@ exports.updateWorkflow = async (req, res) => {
     Object.assign(workflow, filteredBody);
     await workflow.save();
     // رقمُ فاتورةٍ كُتب الآن يصنع قيدَه، فتصل الشاشةَ الضريبيّة فورًا.
-    if (filteredBody.invoiceNumber !== undefined) await ensureLedgerInvoice(workflow);
+    if (LEDGER_FIELDS.some((k) => filteredBody[k] !== undefined)) await ensureLedgerInvoice(workflow, before.invoiceNumber);
     if (filteredBody.username !== undefined || filteredBody.paymentType !== undefined) {
       const { ensureCollectionsParty } = require('../utils/ensureCollectionsParty');
       if (workflow.username) ensureCollectionsParty(workflow.username, { paymentType: workflow.paymentType, source: 'operations_workflow' }).catch(() => {});
@@ -1625,7 +1679,7 @@ exports.bulkUpdate = async (req, res) => {
 
     const wantsPayment = keys.includes('paymentDate') && patch.paymentDate && String(patch.paymentDate).trim();
     const rows = await OperationsWorkflow.find({ _id: { $in: ids } })
-      .select('reportNumber applicationStatus paymentType username lockedBy lockedByName lockedAt').lean();
+      .select('reportNumber applicationStatus paymentType username lockedBy lockedByName lockedAt invoiceNumber').lean();
 
     // ── والقواعدُ تُطبَّق صفًّا صفًّا ──────────────────────────────────────
     // نوعُ الدفع يختلف من كشفٍ لآخر، فالتعديلُ الواحد لا ينتج تعديلًا واحدًا:
@@ -1687,10 +1741,14 @@ exports.bulkUpdate = async (req, res) => {
       cache.clear('wf:');
       // رقمُ فاتورةٍ كُتب جماعيًّا يصنع قيدَه في الدفتر كما يصنعه التعديلُ
       // المفرد — وإلّا غابت هذه الفواتيرُ عن التحصيل كلِّه. راجع ensureLedgerInvoice.
-      if (perRow.some((t) => Object.prototype.hasOwnProperty.call(t.patch, 'invoiceNumber'))) {
-        const touched = perRow.filter((t) => Object.prototype.hasOwnProperty.call(t.patch, 'invoiceNumber')).map((t) => t._id);
-        const fresh = await OperationsWorkflow.find({ _id: { $in: touched } }).lean();
-        for (const w of fresh) await ensureLedgerInvoice(w);
+      {
+        const hit = perRow.filter((t) => LEDGER_FIELDS.some((k) => Object.prototype.hasOwnProperty.call(t.patch, k)));
+        if (hit.length) {
+          // الرقمُ القديمُ والجديدُ معًا: قيدُ القديم يُعاد حسابُه أو يُزال.
+          const oldNo = new Map(rows.map((r) => [String(r._id), r.invoiceNumber]));
+          const fresh = await OperationsWorkflow.find({ _id: { $in: hit.map((t) => t._id) } }).select('invoiceNumber').lean();
+          await syncOpsInvoices([...fresh.map((w) => w.invoiceNumber), ...hit.map((t) => oldNo.get(String(t._id)))]);
+        }
       }
       // ودفترُ التحصيل يتبع ما كُتب جماعيًّا من تاريخ تحصيلٍ أو تسليم — كما في المفرد.
       {
@@ -2116,3 +2174,4 @@ module.exports.buildWorkflowFilter = buildWorkflowFilter;
 module.exports.canSeeMoney = canSeeMoney;
 module.exports.fieldsForRole = fieldsForRole;
 module.exports.stripMoneyFor = stripMoneyFor;
+module.exports.syncOpsInvoices = syncOpsInvoices;

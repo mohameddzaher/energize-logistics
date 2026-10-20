@@ -56,6 +56,9 @@ class DashSpec {
   final List<DashList> lists;
   /// بطاقةٌ خاصّةٌ فوق الأرقام (مثلًا: إجماليُّ الطلبات بمشاريعه) — تُبنى من الجواب.
   final Widget Function(Map<String, dynamic> data)? header;
+  /// بطاقةٌ تحت الأرقام — لما يُقرأ بعدها (مثلًا: تقريرُ تحقيق المناديب تحت أرقام
+  /// الموظفين والمركبات في لوحة B2C).
+  final Widget Function(Map<String, dynamic> data)? afterStats;
   const DashSpec({
     required this.arTitle,
     required this.enTitle,
@@ -65,6 +68,7 @@ class DashSpec {
     this.breakdowns = const [],
     this.lists = const [],
     this.header,
+    this.afterStats,
   });
 }
 
@@ -296,6 +300,7 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
                         );
                       }).toList(),
                     ),
+                    if (spec.afterStats != null) ...[const SizedBox(height: 10), spec.afterStats!(_data!)],
                     ...spec.breakdowns.map((b) {
                       final rows = _rows(b.path);
                       if (rows.isEmpty) return const SizedBox.shrink();

@@ -35,7 +35,14 @@ export default function B2cVehiclesPage() {
   const { notify } = useDialog();
   const [d, setD] = useState<Payload | null>(null);
   const [q, setQ] = useState('');
-  const [state, setState] = useState<'' | 'noAuthorization' | 'expired' | 'expiringSoon' | 'noDriver'>('');
+  const [state, setState] = useState<'' | 'noAuthorization' | 'expired' | 'expiringSoon' | 'noDriver' | 'withDriver' | 'activeOrder'>('');
+  // اللوحةُ تفتح هذه الصفحة على رقمٍ بعينه (`?state=`) — فتُعرض مركباتُه لا الكلّ.
+  useEffect(() => {
+    try {
+      const v = new URLSearchParams(window.location.search).get('state') || '';
+      if (['noAuthorization', 'expired', 'expiringSoon', 'noDriver', 'withDriver', 'activeOrder'].includes(v)) setState(v as any);
+    } catch { /* */ }
+  }, []);
   const [editing, setEditing] = useState<Row | null>(null);
   const cf = useColumnFilters<Row>();
 
@@ -60,6 +67,9 @@ export default function B2cVehiclesPage() {
       if (state === 'expired' && !(r.daysLeft != null && r.daysLeft < 0)) return false;
       if (state === 'expiringSoon' && !(r.daysLeft != null && r.daysLeft >= 0 && r.daysLeft <= 30)) return false;
       if (state === 'noDriver' && r.driverName) return false;
+      if (state === 'withDriver' && !r.driverName) return false;
+      // أمرُ التشغيل السارِي = تفويضٌ قائمٌ لم ينتهِ.
+      if (state === 'activeOrder' && !((r.authorizedName || r.authNumber) && (r.daysLeft == null || r.daysLeft >= 0))) return false;
       return !k || [r.plateNumber, r.serialNumber, r.project, r.city, r.driverName, r.driverId, r.authorizedName, r.authorizedId, r.authorizedPhone, r.authNumber]
         .some((v) => String(v || '').toLowerCase().includes(k));
     });
@@ -110,6 +120,14 @@ export default function B2cVehiclesPage() {
         {card('expiringSoon', t('ينتهي خلال ٣٠ يومًا', 'Expiring in 30 days'), d.summary.expiringSoon, 'text-amber-600')}
         {card('noDriver', t('بلا قائدٍ فعليّ', 'No actual driver'), d.summary.noDriver, 'text-slate-600')}
       </div>
+      {/* فلترٌ جاء من اللوحة ولا كرتَ له هنا — يُقال صراحةً ويُرفَع بضغطة. */}
+      {(state === 'withDriver' || state === 'activeOrder') && (
+        <button type="button" onClick={() => setState('')}
+          className="inline-flex items-center gap-1 rounded-lg border border-[#f37121]/30 bg-[#f37121]/5 px-2.5 py-1 text-[12px] font-semibold text-[#f37121]">
+          {state === 'withDriver' ? t('عليها راكب', 'With a rider') : t('عليها أمر تشغيل سارٍ', 'Under an active order')}
+          <span className="text-slate-400">×</span>
+        </button>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
         <div className="relative">

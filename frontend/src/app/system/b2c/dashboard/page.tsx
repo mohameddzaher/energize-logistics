@@ -200,9 +200,6 @@ export default function B2CDashboardPage() {
         </Link>
       </PageHeader>
 
-      {/* ── تقريرُ تحقيق المناديب — ما كان في رأس الشيت، حيًّا من مدخلات الأوردرات ── */}
-      <OrdersReport url="/api/b2c/entry" />
-
       {/* ── الفلاترُ الشغّالةُ معروضةٌ ومُزالةٌ واحدًا واحدًا ────────────────────
           الفلترُ الخفيُّ يجعل الرقمَ يُقرأ خطأً — فهي مكتوبةٌ، وكلُّ واحدٍ يُرفَع
           بضغطة، ومعها زرٌّ ينقل الفلترَ نفسَه إلى القائمة. */}
@@ -308,16 +305,26 @@ export default function B2CDashboardPage() {
         <Car className="w-4 h-4" />{t('المركبات', 'Vehicles')}
         <span className="font-normal text-slate-400">{t('من سجلّ المركبات — قطاع النقل الخفيف', 'from the vehicle registry — light-transport sector')}</span>
       </h2>
+      {/* كلُّ رقمٍ يفتح أصحابَه: أرقامُ المركبات تفتح صفحةَ المركبات مفلترةً عليها،
+          وأرقامُ الموظّفين تُفلتر اللوحةَ كبقيّة الكروت. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-        <Card label={t('المعروضة', 'Shown')} value={V.total} of={V.totalAll !== V.total ? V.totalAll : undefined} />
-        <Card label={t('عليها راكب', 'With a rider')} value={V.withRider} accent="text-emerald-600" />
+        <Card label={t('المعروضة', 'Shown')} value={V.total} of={V.totalAll !== V.total ? V.totalAll : undefined}
+          onClick={() => router.push('/system/b2c/vehicles')} />
+        <Card label={t('عليها راكب', 'With a rider')} value={V.withRider} accent="text-emerald-600"
+          onClick={() => router.push('/system/b2c/vehicles?state=withDriver')} />
         <Card label={t('واقفة بلا راكب', 'Idle — no rider')} value={V.idle} accent="text-amber-600"
-          onClick={() => toggle('hasVehicle', 'no')} on={f.hasVehicle === 'no'} />
-        <Card label={t('عليها أمر تشغيل سارٍ', 'Under an active order')} value={V.onActiveOrder} accent="text-indigo-600" />
+          onClick={() => router.push('/system/b2c/vehicles?state=noDriver')} />
+        <Card label={t('عليها أمر تشغيل سارٍ', 'Under an active order')} value={V.onActiveOrder} accent="text-indigo-600"
+          onClick={() => router.push('/system/b2c/vehicles?state=activeOrder')} />
         <Card label={t('لهم مركبة', 'Employees with a vehicle')} value={E.withVehicle} accent="text-slate-900"
           onClick={() => toggle('hasVehicle', 'yes')} on={f.hasVehicle === 'yes'} />
-        <Card label={t('بلا مركبة', 'Employees without one')} value={E.withoutVehicle} accent="text-amber-600" />
+        <Card label={t('بلا مركبة', 'Employees without one')} value={E.withoutVehicle} accent="text-amber-600"
+          onClick={() => toggle('hasVehicle', 'no')} on={f.hasVehicle === 'no'} />
       </div>
+
+      {/* ── تقريرُ تحقيق المناديب — تحت أرقام الموظّفين والمركبات (طلبُ صاحب الشركة،
+          ٢٠٢٦/١٠/٢٠)، حيًّا من مدخلات الأوردرات ── */}
+      <OrdersReport url="/api/b2c/entry" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         <Breakdown title={t('بالمشروع', 'By project')} icon={<Truck className="w-4 h-4" />} data={E.byProject} filterKey="project" accent="#f37121" />

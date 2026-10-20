@@ -261,8 +261,8 @@ void _openRepsOfProject(BuildContext context, Map<String, dynamic> r) {
 final b2cDashSpec = DashSpec(
   arTitle: 'لوحة قسم الأفراد', enTitle: 'B2C Board',
   endpoint: '/api/light-transport/overview', liveEvent: 'lt:*',
-  // تقريرُ تحقيق المناديب — ما كان في رأس الشيت، حيًّا من مدخلات الأوردرات.
-  header: (d) => const B2cOrdersReportCard(),
+  // تقريرُ تحقيق المناديب — تحت أرقام الموظفين والمركبات (كالموقع، ٢٠٢٦/١٠/٢٠).
+  afterStats: (d) => const B2cOrdersReportCard(),
   lists: [
     // لكلّ مشروع: كفالة · فري لانسر · يوزرات — كجدول الموقع.
     DashList('المناديب حسب المشروع', 'Reps by project', 'reps.projects', (r) => '${_s(r, 'project')} — ${_n(r['total'])}',

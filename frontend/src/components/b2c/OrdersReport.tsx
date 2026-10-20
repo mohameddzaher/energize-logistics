@@ -7,9 +7,10 @@
  * وأهدافهم وتقييمهم. يُقرأ من مدخلات الأوردرات (GET …/entry?report=1) ويتحدّث مع
  * كلّ إدخال. وصفحةُ الإدخال نفسُها لا تحمل شيئًا منه.
  *
- * والأرقامُ تفتح ما وراءها: الضغطُ على مشروعٍ أو جهةٍ أو تقييمٍ يُفلتر جدولَ المناديب.
+ * والأرقامُ تفتح ما وراءها: كلُّ رقمٍ في الكروت والجدولين يُفلتر جدولَ المناديب على مَن
+ * عُدّوا فيه بأعيانهم، ثمّ ينزل إليه. و«بلا مشرف» / «بلا مشروع» فلترٌ لا مسحُ فلتر.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -35,6 +36,10 @@ const EVAL_CLS: Record<string, string> = {
 };
 const pctTxt = (p: number | null) => (p == null ? '—' : `${Math.round(p * 100)}%`);
 const dm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+// «بلا مشرف» و«بلا مشروع» فلترٌ له قيمة — لا فراغٌ يمسح الفلتر فيعرض الجميع.
+const NONE = '__none__';
+// حالاتُ الكروت العلويّة: كلُّ كرتٍ يفتح مناديبَه في الجدول.
+type CardState = '' | 'entered' | 'notEntered' | 'hasOrders' | 'onLeave';
 const fold = (s: string) => String(s || '').toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
 
 function Card({ label, value, sub, onClick, active, tone = '#12325c' }: { label: string; value: React.ReactNode; sub?: string; onClick?: () => void; active?: boolean; tone?: string }) {
@@ -57,6 +62,12 @@ export default function OrdersReport({ url }: { url: string }) {
   const [fSup, setFSup] = useState('');
   const [fKind, setFKind] = useState('');
   const [fEval, setFEval] = useState('');
+  const [fState, setFState] = useState<CardState>('');
+  // ما يُعَدّ في الكروت والملخّص هم مَن على رأس العمل — فالضغطُ عليها يعرضهم وحدَهم،
+  // لا المنتهين معهم، وإلّا لم يطابق عددُ الجدول الرقمَ الذي ضُغط.
+  const [onlyWorking, setOnlyWorking] = useState(false);
+  const tableRef = useRef<HTMLDivElement>(null);
+  const reveal = () => setTimeout(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
 
   const load = useCallback(() => {
     const p = new URLSearchParams({ report: '1' });
@@ -73,13 +84,28 @@ export default function OrdersReport({ url }: { url: string }) {
     if (!d) return [];
     const needle = fold(q.trim());
     return d.rows.filter((r) => (!needle || fold(`${r.name} ${r.idNumber} ${r.projectAr} ${r.supervisorName}`).includes(needle))
-      && (!fProject || r.projectAr === fProject) && (!fSup || r.supervisorName === fSup) && (!fKind || r.kind === fKind) && (!fEval || r.evaluation === fEval));
-  }, [d, q, fProject, fSup, fKind, fEval]);
+      && (!onlyWorking || !r.ended)
+      && (!fProject || (fProject === NONE ? !r.projectAr : r.projectAr === fProject))
+      && (!fSup || (fSup === NONE ? !r.supervisorName : r.supervisorName === fSup))
+      && (!fKind || r.kind === fKind) && (!fEval || r.evaluation === fEval)
+      && (!fState
+        || (fState === 'entered' && r.orders != null)
+        || (fState === 'notEntered' && !r.ended && r.orders == null)
+        || (fState === 'hasOrders' && r.total > 0)
+        || (fState === 'onLeave' && r.status === 'إجازة')));
+  }, [d, q, fProject, fSup, fKind, fEval, fState, onlyWorking]);
 
   if (!d) return null;
   const sups = [...new Set(d.rows.map((r) => r.supervisorName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'));
-  const anyFilter = !!(q || fProject || fSup || fKind || fEval);
-  const clear = () => { setQ(''); setFProject(''); setFSup(''); setFKind(''); setFEval(''); };
+  const anyFilter = !!(q || fProject || fSup || fKind || fEval || fState || onlyWorking);
+  const clear = () => { setQ(''); setFProject(''); setFSup(''); setFKind(''); setFEval(''); setFState(''); setOnlyWorking(false); };
+  // ضغطُ رقمٍ = فلترٌ واحدٌ واضح: يمسح ما قبله، ويعرض مَن عُدّوا فيه، وينزل إليهم.
+  const pick = (next: { project?: string; sup?: string; kind?: string; evaluation?: string; state?: CardState }) => {
+    setQ(''); setFProject(next.project ?? ''); setFSup(next.sup ?? ''); setFKind(next.kind ?? '');
+    setFEval(next.evaluation ?? ''); setFState(next.state ?? ''); setOnlyWorking(next.state !== 'entered' && next.state !== 'hasOrders');
+    reveal();
+  };
+  const keyOf = (v: string, none: string) => (!v || v === none ? NONE : v);
   const cols: ExportColumn[] = [
     { header: 'رقم الإقامة', key: 'idNumber', width: 14 }, { header: 'الاسم', key: 'name', width: 28 },
     { header: 'المشروع', key: 'projectAr', width: 14 }, { header: 'المشرف', key: 'supervisorName', width: 22 }, { header: 'الجهة', key: 'kind', width: 12 },
@@ -103,12 +129,16 @@ export default function OrdersReport({ url }: { url: string }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-8">
-        <Card label="إجمالي المناديب" value={d.cards.reps.total} onClick={() => setFKind('')} active={!fKind && !anyFilter} />
-        {KINDS.map((k) => <Card key={k} label={k} value={d.cards.reps[k] || 0} onClick={() => setFKind(fKind === k ? '' : k)} active={fKind === k} tone="#334155" />)}
-        <Card label={`أوردرات يوم ${dm(d.date)}`} value={d.cards.dayTotal} sub={`أُدخلت لـ ${d.cards.dayEntered} مندوبًا`} tone="#f37121" />
-        <Card label="لم تُدخَل أوردراتهم" value={d.rows.filter((r) => !r.ended && r.orders == null).length} sub={`يوم ${dm(d.date)}`} tone="#dc2626" />
-        <Card label={`إجمالي ${dm(d.from)} – ${dm(d.to)}`} value={d.cards.periodTotal} tone="#16a34a" />
-        <Card label="في إجازة" value={d.cards.onLeave} tone="#0284c7" />
+        <Card label="إجمالي المناديب" value={d.cards.reps.total} onClick={() => pick({})} active={onlyWorking && !fKind && !fProject && !fSup && !fEval && !fState} />
+        {KINDS.map((k) => <Card key={k} label={k} value={d.cards.reps[k] || 0} onClick={() => (fKind === k ? clear() : pick({ kind: k }))} active={fKind === k} tone="#334155" />)}
+        <Card label={`أوردرات يوم ${dm(d.date)}`} value={d.cards.dayTotal} sub={`أُدخلت لـ ${d.cards.dayEntered} مندوبًا`} tone="#f37121"
+          onClick={() => (fState === 'entered' ? clear() : pick({ state: 'entered' }))} active={fState === 'entered'} />
+        <Card label="لم تُدخَل أوردراتهم" value={d.rows.filter((r) => !r.ended && r.orders == null).length} sub={`يوم ${dm(d.date)}`} tone="#dc2626"
+          onClick={() => (fState === 'notEntered' ? clear() : pick({ state: 'notEntered' }))} active={fState === 'notEntered'} />
+        <Card label={`إجمالي ${dm(d.from)} – ${dm(d.to)}`} value={d.cards.periodTotal} tone="#16a34a"
+          onClick={() => (fState === 'hasOrders' ? clear() : pick({ state: 'hasOrders' }))} active={fState === 'hasOrders'} />
+        <Card label="في إجازة" value={d.cards.onLeave} tone="#0284c7"
+          onClick={() => (fState === 'onLeave' ? clear() : pick({ state: 'onLeave' }))} active={fState === 'onLeave'} />
       </div>
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
@@ -119,9 +149,9 @@ export default function OrdersReport({ url }: { url: string }) {
             <tbody className="divide-y divide-slate-100">
               {d.cards.byProject.map((p) => (
                 <tr key={p.project}>
-                  <td className="py-1.5 text-start"><button type="button" onClick={() => setFProject(fProject === p.project ? '' : p.project)} className={`font-bold ${fProject === p.project ? 'text-[#f37121]' : 'text-slate-800 hover:text-[#f37121]'}`}>{p.project}</button></td>
-                  <td className="font-bold tabular-nums">{p.total}</td>
-                  {KINDS.map((k) => <td key={k}><button type="button" onClick={() => { setFProject(p.project); setFKind(k); }} className="tabular-nums hover:text-[#f37121]">{p[k] || 0}</button></td>)}
+                  <td className="py-1.5 text-start"><button type="button" onClick={() => pick({ project: keyOf(p.project, '') })} className={`font-bold ${fProject === keyOf(p.project, '') && !fKind ? 'text-[#f37121]' : 'text-slate-800 hover:text-[#f37121]'}`}>{p.project || 'بلا مشروع'}</button></td>
+                  <td className="font-bold tabular-nums"><button type="button" onClick={() => pick({ project: keyOf(p.project, '') })} className="tabular-nums hover:text-[#f37121]">{p.total}</button></td>
+                  {KINDS.map((k) => <td key={k}><button type="button" onClick={() => pick({ project: keyOf(p.project, ''), kind: k })} className={`tabular-nums hover:text-[#f37121] ${fProject === keyOf(p.project, '') && fKind === k ? 'font-bold text-[#f37121]' : ''}`}>{p[k] || 0}</button></td>)}
                 </tr>
               ))}
             </tbody>
@@ -135,19 +165,26 @@ export default function OrdersReport({ url }: { url: string }) {
             </tr></thead>
             <tbody className="divide-y divide-slate-100">
               {d.summary.map((s) => (
-                <tr key={`${s.supervisor}|${s.project}`} className="cursor-pointer hover:bg-slate-50" onClick={() => { setFSup(s.supervisor === '—' ? '' : s.supervisor); setFProject(s.project); setFEval(''); }}>
-                  <td className="py-1.5 text-start font-semibold text-slate-800">{s.supervisor === '—' ? 'بلا مشرف' : s.supervisor}</td><td>{s.project}</td><td className="tabular-nums">{s.reps}</td>
+                <tr key={`${s.supervisor}|${s.project}`}
+                  className={`cursor-pointer hover:bg-slate-50 ${fSup === keyOf(s.supervisor, '—') && fProject === keyOf(s.project, '') ? 'bg-orange-50' : ''}`}
+                  onClick={() => pick({ sup: keyOf(s.supervisor, '—'), project: keyOf(s.project, '') })}>
+                  <td className="py-1.5 text-start font-semibold text-slate-800">{s.supervisor === '—' ? 'بلا مشرف' : s.supervisor}</td><td>{s.project || 'بلا مشروع'}</td><td className="tabular-nums">{s.reps}</td>
                   {(['achieved', 'near', 'far'] as const).map((k, i) => (
-                    <td key={k}><button type="button" onClick={(e) => { e.stopPropagation(); setFSup(s.supervisor === '—' ? '' : s.supervisor); setFProject(s.project); setFEval(['حقق', 'قريب', 'بعيد'][i]); }}
+                    <td key={k}><button type="button" onClick={(e) => { e.stopPropagation(); pick({ sup: keyOf(s.supervisor, '—'), project: keyOf(s.project, ''), evaluation: ['حقق', 'قريب', 'بعيد'][i] }); }}
                       className={`tabular-nums hover:underline ${['text-emerald-700', 'text-amber-700', 'text-red-700'][i]}`}>{s[k]}</button></td>
                   ))}
-                  <td className="font-bold tabular-nums">{pctTxt(s.rate)}</td><td className="tabular-nums">{s.shipments || '—'}</td>
+                  <td className="font-bold tabular-nums">{pctTxt(s.rate)}</td>
+                  <td className="tabular-nums">{s.shipments
+                    ? <button type="button" onClick={(e) => { e.stopPropagation(); pick({ sup: keyOf(s.supervisor, '—'), project: keyOf(s.project, ''), evaluation: 'شحنات' }); }} className="hover:underline">{s.shipments}</button>
+                    : '—'}</td>
                 </tr>
               ))}
               <tr className="bg-slate-50 font-extrabold">
-                <td className="py-1.5 text-start" colSpan={2}>الإجمالي</td><td className="tabular-nums">{d.summaryTotal.reps}</td>
-                <td className="tabular-nums text-emerald-700">{d.summaryTotal.achieved}</td><td className="tabular-nums text-amber-700">{d.summaryTotal.near}</td>
-                <td className="tabular-nums text-red-700">{d.summaryTotal.far}</td><td className="tabular-nums">{pctTxt(d.summaryTotal.rate)}</td><td className="tabular-nums">{d.summaryTotal.shipments || '—'}</td>
+                <td className="py-1.5 text-start" colSpan={2}>الإجمالي</td>
+                <td className="tabular-nums"><button type="button" onClick={() => pick({})} className="hover:underline">{d.summaryTotal.reps}</button></td>
+                <td className="tabular-nums text-emerald-700"><button type="button" onClick={() => pick({ evaluation: 'حقق' })} className="hover:underline">{d.summaryTotal.achieved}</button></td>
+                <td className="tabular-nums text-amber-700"><button type="button" onClick={() => pick({ evaluation: 'قريب' })} className="hover:underline">{d.summaryTotal.near}</button></td>
+                <td className="tabular-nums text-red-700"><button type="button" onClick={() => pick({ evaluation: 'بعيد' })} className="hover:underline">{d.summaryTotal.far}</button></td><td className="tabular-nums">{pctTxt(d.summaryTotal.rate)}</td><td className="tabular-nums">{d.summaryTotal.shipments || '—'}</td>
               </tr>
             </tbody>
           </table>
@@ -155,16 +192,18 @@ export default function OrdersReport({ url }: { url: string }) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+      <div ref={tableRef} className="flex scroll-mt-20 flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <div className="relative">
           <Search className="absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ابحث بالاسم أو رقم الإقامة أو المشروع أو المشرف" className="w-72 max-w-full rounded-lg border border-slate-200 py-2 pe-3 ps-8 text-sm" />
         </div>
         <select value={fProject} onChange={(e) => setFProject(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm">
-          <option value="">جميع المشاريع</option>{[...new Set(d.rows.map((r) => r.projectAr))].map((p) => <option key={p} value={p}>{p}</option>)}
+          <option value="">جميع المشاريع</option>{[...new Set(d.rows.map((r) => r.projectAr).filter(Boolean))].map((p) => <option key={p} value={p}>{p}</option>)}
+          {d.rows.some((r) => !r.projectAr) && <option value={NONE}>بلا مشروع</option>}
         </select>
         <select value={fSup} onChange={(e) => setFSup(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm">
           <option value="">جميع المشرفين</option>{sups.map((s) => <option key={s} value={s}>{s}</option>)}
+          {d.rows.some((r) => !r.supervisorName) && <option value={NONE}>بلا مشرف</option>}
         </select>
         <select value={fKind} onChange={(e) => setFKind(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm">
           <option value="">جميع الجهات</option>{KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
@@ -172,6 +211,12 @@ export default function OrdersReport({ url }: { url: string }) {
         <select value={fEval} onChange={(e) => setFEval(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm">
           <option value="">جميع التقييمات</option>{EVALS.map((k) => <option key={k} value={k}>{k}</option>)}
         </select>
+        {fState && (
+          <span className="rounded-lg bg-orange-50 px-2 py-1 text-[12px] font-semibold text-[#f37121]">
+            {{ entered: `أُدخلت أوردراتهم يوم ${dm(d.date)}`, notEntered: `لم تُدخَل أوردراتهم يوم ${dm(d.date)}`, hasOrders: 'لهم أوردرات في الفترة', onLeave: 'في إجازة' }[fState]}
+          </span>
+        )}
+        {onlyWorking && <span className="rounded-lg bg-slate-100 px-2 py-1 text-[12px] font-semibold text-slate-600">على رأس العمل</span>}
         {anyFilter && <button type="button" onClick={clear} className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-slate-500 hover:text-slate-800"><X className="h-3.5 w-3.5" />مسح الفلاتر</button>}
         <span className="ms-auto text-[12.5px] font-semibold text-slate-700">{rows.length} مندوبًا</span>
       </div>

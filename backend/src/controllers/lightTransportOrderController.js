@@ -139,7 +139,7 @@ exports.orderOptions = async (req, res) => {
     const archSets = await AH.endedStaff();
     const [employees, vehicles, housings] = await Promise.all([
       LightTransportEmployee.find(AH.andAll({ isActive: { $ne: false } }, AH.notArchivedRow(archSets)))
-        .select('name idNumber jobTitleAr staffKind projectAr cityAr vehiclePlate supervisorName supervisorUser')
+        .select('name idNumber jobTitleAr staffKind projectAr cityAr vehicle vehiclePlate supervisorName supervisorUser')
         .sort({ name: 1 }).lean(),
       // النقلُ الخفيفُ دراجاتٌ ومركباتٌ خاصّة، لا شاحنات — فالقائمةُ تُضيَّق
       // بنوع التسجيل، وإلّا ظهرت الشاحناتُ الثقيلةُ في نافذةِ مندوب توصيل.
@@ -152,7 +152,7 @@ exports.orderOptions = async (req, res) => {
       employees: employees.map((e) => ({
         _id: String(e._id), name: e.name, idNumber: e.idNumber, jobTitleAr: e.jobTitleAr,
         staffKind: e.staffKind, projectAr: e.projectAr, cityAr: e.cityAr,
-        vehiclePlate: e.vehiclePlate, supervisorName: e.supervisorName,
+        vehicle: e.vehicle ? String(e.vehicle) : '', vehiclePlate: e.vehiclePlate, supervisorName: e.supervisorName,
         supervisorUser: e.supervisorUser ? String(e.supervisorUser) : '',
       })),
       vehicles: vehicles.map((v) => ({
@@ -162,6 +162,9 @@ exports.orderOptions = async (req, res) => {
         // ومن بيده التفويضُ الآن — يُرى قبل النقل فلا يُنقل ما هو منقول.
         authorizedName: v.authorizedPerson?.name || '',
         authorizedId: v.authorizedPerson?.iqamaNumber || '',
+        // والقائدُ الفعليّ (مَن عليه في هذا القسم) — هو ما يُسأل عنه عند أمر التشغيل.
+        driverId: (() => { const d = employees.find((e) => String(e.vehicle || '') === String(v._id)); return d ? String(d._id) : ''; })(),
+        driverName: (() => { const d = employees.find((e) => String(e.vehicle || '') === String(v._id)); return d ? d.name : ''; })(),
       })),
       housing: housings.map((h) => ({
         _id: String(h._id), name: h.name,
@@ -314,16 +317,60 @@ exports.createOrder = async (req, res) => {
       if (!mongoose.isValidObjectId(S(b.vehicle))) return res.status(400).json({ message: 'مركبةٌ غير معروفة' });
       vehicle = await VehicleMaster.findById(S(b.vehicle));
       if (!vehicle) return res.status(404).json({ message: 'المركبةُ غير موجودة في سجلّ المركبات' });
-      // ── ومركبةٌ واحدةٌ لراكبٍ واحد ────────────────────────────────────
-      // مركبةٌ في أمرين ساريين تعني اثنين يقودانها، ومخالفةً لا يُعرَف صاحبُها.
-      const busy = await LightTransportOrder.findOne({
-        vehicle: vehicle._id, status: 'active', ltEmployee: { $ne: emp._id },
-      }).select('employeeName').lean();
-      if (busy) {
-        return res.status(400).json({
-          code: 'VEHICLE_BUSY',
-          message: `المركبة ${vehicle.plateNumber} عليها أمرُ تشغيلٍ سارٍ لـ${busy.employeeName} — أغلِقه أوّلًا`,
+      // ── ومركبةٌ واحدةٌ لقائدٍ فعليٍّ واحد (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠) ────────
+      // القائدُ الفعليُّ هو مَن عليه أمرُ التشغيل — لا المفوَّض (التفويضُ قد يكون
+      // باسم غيره). فإن كان على المركبة قائدٌ آخر لا يُقبل الأمرُ حتى يُقال أين
+      // يذهب: إلى مركبةٍ أخرى، أو بلا مركبة. فلا يكون للمركبة قائدان.
+      const current = await LightTransportEmployee.findOne({ vehicle: vehicle._id, _id: { $ne: emp._id } })
+        || await LightTransportEmployee.findOne({
+          _id: (await LightTransportOrder.findOne({ vehicle: vehicle._id, status: { $in: ['active', 'hold'] }, ltEmployee: { $ne: emp._id } }).select('ltEmployee').lean())?.ltEmployee || null,
         });
+      if (current) {
+        const decision = S(b.currentDriverTo); // 'none' | معرّفُ مركبة
+        if (!decision) {
+          return res.status(409).json({
+            code: 'VEHICLE_HAS_DRIVER',
+            driver: { _id: String(current._id), name: current.name, idNumber: current.idNumber },
+            message: `المركبة ${vehicle.plateNumber} قائدُها الفعليّ ${current.name} — حدِّد: ينتقل إلى مركبةٍ أخرى أم يبقى بلا مركبة.`,
+          });
+        }
+        let toVehicle = null;
+        if (decision !== 'none') {
+          if (!mongoose.isValidObjectId(decision)) return res.status(400).json({ message: 'مركبةُ القائد الحاليّ غير معروفة' });
+          toVehicle = await VehicleMaster.findById(decision);
+          if (!toVehicle) return res.status(404).json({ message: 'المركبةُ الأخرى غير موجودة' });
+          if (String(toVehicle._id) === String(vehicle._id)) return res.status(400).json({ message: 'اختر مركبةً غيرَ هذه للقائد الحاليّ' });
+          const toTaken = await LightTransportEmployee.findOne({ vehicle: toVehicle._id, _id: { $nin: [current._id, emp._id] } }).select('name').lean();
+          if (toTaken) return res.status(400).json({ message: `المركبة ${toVehicle.plateNumber} قائدُها ${toTaken.name} — اختر مركبةً بلا قائد` });
+        }
+        // أمرُ القائد الحاليّ يُغلَق، ويُفتح له أمرٌ على مركبته الجديدة إن اختيرت.
+        await LightTransportOrder.updateMany({ ltEmployee: current._id, status: { $in: ['active', 'hold'] } },
+          { $set: { status: 'ended', endDate: D(b.startDate) || new Date(), endReasonAr: `نُقلت مركبتُه ${vehicle.plateNumber} إلى ${emp.name}` } });
+        if (toVehicle) {
+          const lastN = await LightTransportOrder.findOne({ orderNumber: /^LT-/ }).sort({ orderNumber: -1 }).select('orderNumber').lean();
+          const nn = lastN ? (Number(String(lastN.orderNumber).replace('LT-', '')) || 0) + 1 : 1;
+          await LightTransportOrder.create({
+            orderNumber: `LT-${String(nn).padStart(5, '0')}`,
+            ltEmployee: current._id, employeeName: current.name, employeeIdNumber: current.idNumber,
+            vehicle: toVehicle._id, vehiclePlate: toVehicle.plateNumber, vehicleTypeAr: toVehicle.registrationTypeAr,
+            projectAr: current.projectAr, cityAr: current.cityAr,
+            supervisorUser: current.supervisorUser || null, supervisorName: current.supervisorName,
+            housing: current.housing, housingRoom: current.housingRoom,
+            startDate: D(b.startDate) || new Date(), status: 'active',
+            notesAr: `انتقل من ${vehicle.plateNumber} — أمرُ تشغيل ${emp.name}`,
+            createdBy: req.user?._id, createdByName: byName(req.user),
+          });
+        }
+        current.history.push({
+          kind: 'vehicle', by: req.user?._id, byName: byName(req.user),
+          fromValue: S(vehicle.plateNumber), toValue: toVehicle ? S(toVehicle.plateNumber) : '',
+          note: toVehicle ? `نُقل إلى ${toVehicle.plateNumber} — مركبتُه أُعطيت لـ${emp.name}` : `صار بلا مركبة — مركبتُه أُعطيت لـ${emp.name}`,
+        });
+        current.vehicle = toVehicle ? toVehicle._id : null;
+        current.vehiclePlate = toVehicle ? toVehicle.plateNumber : '';
+        if (toVehicle?.registrationTypeAr) current.vehicleTypeAr = toVehicle.registrationTypeAr;
+        current.vehicleHold = { at: null, reason: '' };
+        await current.save();
       }
     }
 
@@ -334,7 +381,7 @@ exports.createOrder = async (req, res) => {
     }
 
     // الأمرُ السابقُ يُغلَق ولا يُمحى.
-    const previous = await LightTransportOrder.findOne({ ltEmployee: emp._id, status: 'active' });
+    const previous = await LightTransportOrder.findOne({ ltEmployee: emp._id, status: { $in: ['active', 'hold'] } });
     if (previous) {
       previous.status = 'ended';
       previous.endDate = D(b.startDate) || new Date();

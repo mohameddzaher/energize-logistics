@@ -407,8 +407,9 @@ exports.submit = async (req, res) => {
         ...(merged?.photos || []).map((p) => p.kind || 'vehicle'),
         ...photos.map((p) => p?.kind).filter((k) => PHOTO_KINDS.includes(k)),
       ]);
-      // دبّابٌ لا راكبَ معروفًا له: صورةُ الدبّاب والبوكس — لا مندوبَ يُصوَّر.
-      const required = own.bikeOnly ? REQUIRED_PHOTO_KINDS.filter((k) => k !== 'rep') : REQUIRED_PHOTO_KINDS;
+      // الصورُ الثلاث في كلّ حال — ولو لم يكن الراكبُ مفوَّضًا أو معروفًا مسبقًا:
+      // مَن يُخرج الدبّابَ اليومَ يُصوَّر (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠).
+      const required = REQUIRED_PHOTO_KINDS;
       const lacking = required.filter((k) => !have.has(k));
       if (lacking.length) {
         return res.status(400).json({ message: `لا بدّ من ${lacking.map((k) => PHOTO_KIND_AR[k]).join(' و')} لتسجيل بدء الدوام` });

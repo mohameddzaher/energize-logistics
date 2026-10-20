@@ -24,6 +24,8 @@ export interface LTEmployee {
   registerNumber?: string;
   vehicleTypeAr?: string;
   vehiclePlate?: string;
+  /** انتهت خدمتُه والمركبةُ ما زالت معه — أمرُه معلَّق حتى تُستلم أو تُسلَّم لغيره. */
+  vehicleHold?: { at?: string | null; reason?: string };
   /**
    * بطاقةُ التشغيل والفحصُ الدوريُّ — من سجلّ المركبة، بحالتهما محسوبةً
    * بعتبات قسم المركبات. راجع `docOf` في الخادم.
@@ -198,7 +200,7 @@ export interface LTOrder {
   vehiclePlate?: string; vehicleTypeAr?: string;
   projectAr?: string; cityAr?: string; supervisorName?: string;
   housing?: { _id: string; name?: string } | string | null; housingRoom?: string;
-  startDate?: string; endDate?: string | null; status: 'active' | 'ended'; endReasonAr?: string;
+  startDate?: string; endDate?: string | null; status: 'active' | 'hold' | 'ended'; endReasonAr?: string;
   authorizationMoved?: boolean; authorizationNumber?: string;
   authorizationStart?: string | null; authorizationEnd?: string | null;
   notesAr?: string; createdByName?: string; createdAt?: string;
@@ -399,8 +401,8 @@ export const deleteLTHousing = (id: string) => api.delete(`/api/light-transport/
 export const getLTOrders = (q: Record<string, string> = {}) =>
   api.get<{ orders: LTOrder[]; totals: { total: number; active: number; ended: number; authorizationMoved: number } }>(`/api/light-transport/orders${qs(q) ? `?${qs(q)}` : ''}`);
 export const getLTOrderOptions = () => api.get<{
-  employees: { _id: string; name: string; idNumber: string; jobTitleAr?: string; staffKind?: string; projectAr?: string; cityAr?: string; vehiclePlate?: string; supervisorName?: string; supervisorUser?: string }[];
-  vehicles: { _id: string; plateNumber: string; serialNumber?: string; typeAr?: string; brand?: string; authorizedName?: string; authorizedId?: string }[];
+  employees: { _id: string; name: string; idNumber: string; jobTitleAr?: string; staffKind?: string; projectAr?: string; cityAr?: string; vehicle?: string; vehiclePlate?: string; supervisorName?: string; supervisorUser?: string }[];
+  vehicles: { _id: string; plateNumber: string; serialNumber?: string; typeAr?: string; brand?: string; authorizedName?: string; authorizedId?: string; driverId?: string; driverName?: string }[];
   housing: { _id: string; name: string; rooms: { name: string; kind: string; capacity: number }[] }[];
   supervisors: LTSupervisor[];
 }>(`/api/light-transport/orders/options`);
@@ -453,8 +455,9 @@ export const HISTORY_KIND: Record<string, { ar: string; en: string }> = {
 export type LTCol = { key: string; ar: string; en: string; get: (e: LTEmployee) => any; width?: number; mono?: boolean };
 
 export const LT_COLUMNS: LTCol[] = [
-  { key: 'plate', ar: 'رقم اللوحة', en: 'Plate', get: (e) => e.vehiclePlate || '', width: 14, mono: true },
-  { key: 'name', ar: 'الاسم', en: 'Name', get: (e) => e.name, width: 30 },
+  { key: 'plate', ar: 'رقم اللوحة', en: 'Plate', get: (e) => (e.vehiclePlate ? `${e.vehiclePlate}${e.vehicleHold?.at ? ' — معلّقة' : ''}` : ''), width: 14, mono: true },
+  // مَن على المركبة هنا هو قائدُها الفعليّ في سجلّ المركبات — يُكتب هناك تلقائيًّا.
+  { key: 'name', ar: 'الاسم (القائد الفعلي)', en: 'Name (actual driver)', get: (e) => e.name, width: 30 },
   { key: 'idNumber', ar: 'رقم الهوية', en: 'ID number', get: (e) => e.idNumber, width: 14, mono: true },
   { key: 'jobTitleAr', ar: 'الوظيفة', en: 'Job', get: (e) => e.jobTitleAr || '', width: 12 },
   { key: 'staffKind', ar: 'النوع', en: 'Kind', get: (e) => KIND_AR[e.staffKind || ''] || '', width: 10 },

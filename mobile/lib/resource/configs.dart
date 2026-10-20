@@ -1887,7 +1887,7 @@ final lightTransportOrdersCfg = ResourceConfig(
     _s(r, 'orderNumber'), _s(r, 'vehiclePlate'), _s(r, 'projectAr'), _s(r, 'cityAr'),
   ].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
-    (r['status'] == 'active' ? 'سارٍ' : 'مُغلَق', r['status'] == 'active' ? T.success : T.inkFaint),
+    (r['status'] == 'active' ? 'سارٍ' : r['status'] == 'hold' ? 'معلَّق' : 'مُغلَق', r['status'] == 'active' ? T.success : r['status'] == 'hold' ? T.warn : T.inkFaint),
     // ── والورقةُ باسم غيرِ الراكب تُعرَض ──────────────────────────────────
     // أربعٌ وعشرون مركبةً مفوَّضةٌ لشخصٍ وقائدُها الفعليُّ آخر. وهي ليست خطأً
     // يُصحَّح بلا سؤال، لكنّها لا تُكتشف — إن لم تُعرَض — إلّا عند مخالفة.

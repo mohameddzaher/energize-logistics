@@ -473,6 +473,14 @@ function applyBillingRules(patch, current = {}) {
   }
   delete patch.__derivedPaymentType;
 
+  // ── الضريبةُ لا تُكتب، وإجماليُّ الضريبيّ لا يُكتب ───────────────────────────
+  // تُحسب من الصافي (deriveInvoiceTotals). فما أرسلته شاشةٌ فيهما يُسقَط — وفي
+  // الكاش يبقى الإجماليُّ مكتوبًا بيد (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠).
+  if (!Object.prototype.hasOwnProperty.call(patch, 'netInvoice')) {
+    delete patch.tax;
+    if (nextType !== 'cash') delete patch.totalInvoice;
+  }
+
   const blocked = [];
   if (nextType === 'cash') {
     // ── «الكاش ملهاش رقم فاتورة» ────────────────────────────────────────────

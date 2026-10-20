@@ -408,7 +408,8 @@ function CheckModal({ rep, bikeId, bikeOnly, ar, plates, onClose, onSaved }: {
   const [shots, setShots] = useState<KindShot[]>([]);
   const [kind, setKind] = useState<PhotoKind>(bikeOnly ? 'vehicle' : 'rep');
   // دبّابٌ بلا راكبٍ معروف: صورةُ الدبّاب والبوكس — لا مندوبَ يُصوَّر. والخادمُ يقضي بالشيء نفسِه.
-  const NEEDED = bikeOnly ? REQUIRED_KINDS.filter((k) => k.key !== 'rep') : REQUIRED_KINDS;
+  // الصورُ الثلاث في كلّ حال: المندوبُ والدبّابُ والبوكس (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠).
+  const NEEDED = REQUIRED_KINDS;
   // المحفوظُ أوّلًا (تفقّدٌ يُعدَّل)، ثمّ سجلُّ القسم، ثمّ الافتراضُ الشائع.
   const [vehicleType, setVehicleType] = useState(
     rep.check?.vehicleType || rep.vehicle?.typeKey || 'motorcycle');
@@ -475,7 +476,7 @@ function CheckModal({ rep, bikeId, bikeOnly, ar, plates, onClose, onSaved }: {
         {bikeId && (
           <p className="-mt-2 mb-3 text-[11px] text-slate-500">
             {bikeOnly
-              ? t('دبّابٌ بلا راكبٍ معروفٍ في السجلّ — يُتفقَّد وحدَه: صورة الدبّاب والبوكس.', 'No known rider — the bike is checked on its own: bike and box photos.')
+              ? t('دبّابٌ بلا راكبٍ معروفٍ في السجلّ — الصورُ الثلاث مطلوبة: المندوبُ الذي أخرجه، والدبّاب، والبوكس.', 'No known rider — all three photos are required: the rider taking it out, the bike and the box.')
               : t('يُسجَّل التفقّد على الدبّاب وعلى راكبه معًا.', 'The check is recorded on the bike and its rider together.')}
           </p>
         )}

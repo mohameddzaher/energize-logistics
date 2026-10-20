@@ -1566,10 +1566,27 @@ export default function OperationsWorkflowPage() {
                         // مبلغُ السداد لكشفٍ دفعته المحفظة هو ما كتبه موظّفُ العهدة — يُعدَّل
                         // من قيد المحفظة لا من هنا (والخادمُ يفرض ذلك أيضًا).
                         const fromWallet = field === 'paymentAmount' && !!(wf as any).paidFromWallet;
-                        const isSystemPulled = (systemPulledFields.has(field as string) && wf.reportNumber) || !owns(field) || fromWallet;
+                        // ── الضريبةُ وإجماليُّها يُحسبان من الصافي ─────────────────────
+                        // الضريبةُ لا تُكتب أبدًا (صافٍ × ١٥٪)، والإجماليُّ لا يُكتب في الكشف
+                        // الضريبيّ (صافٍ + ضريبة). وفي الكاش يُكتب الإجماليُّ (صاحبُ الشركة،
+                        // ٢٠٢٦/١٠/٢٠). والخادمُ يشتقّهما كذلك — راجع applyBillingRules.
+                        const rowType = String((editData as any)?.paymentType ?? wf.paymentType ?? '');
+                        const derivedTax = field === 'tax' || (field === 'totalInvoice' && rowType !== 'cash');
+                        const isSystemPulled = (systemPulledFields.has(field as string) && wf.reportNumber) || !owns(field) || fromWallet || derivedTax;
+                        if (derivedTax && isEditing && rowType !== 'cash') {
+                          const net = Number((editData as any).netInvoice ?? wf.netInvoice) || 0;
+                          const vat = Math.round(net * 0.15 * 100) / 100;
+                          const val = field === 'tax' ? vat : Math.round((net + vat) * 100) / 100;
+                          return (
+                            <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={(e) => e.stopPropagation()}
+                              title={lang === 'ar' ? 'تُحسب من صافي الفاتورة — لا تُكتب' : 'Computed from the net — not typed'}>
+                              <span className={`${spanCls(field, color)} opacity-70`}>{formatMoney(val)}</span>
+                            </td>
+                          );
+                        }
                         return (
                           <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isSystemPulled ? (e) => e.stopPropagation() : cellClick(field)}
-                            title={!owns(field) ? noPermMsg : fromWallet ? 'من المحفظة — يُعدَّل من قيد المشتريات في المحفظة' : isSystemPulled ? 'البيانات المسحوبة من النظام لا تُعدّل' : undefined}>
+                            title={!owns(field) ? noPermMsg : fromWallet ? 'من المحفظة — يُعدَّل من قيد المشتريات في المحفظة' : derivedTax ? (lang === 'ar' ? 'تُحسب من صافي الفاتورة — لا تُكتب' : 'Computed from the net — not typed') : isSystemPulled ? 'البيانات المسحوبة من النظام لا تُعدّل' : undefined}>
                             {isEditing && !isSystemPulled ? <input type="number" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value ? Number(e.target.value) : ''}))} /> : <span className={`${spanCls(field, color)}${isSystemPulled && wf.reportNumber && !fromWallet ? ' opacity-60' : ''}`}>{formatMoney((wf as any)[field])}{fromWallet && <span className="ms-1 text-[10px] font-semibold text-emerald-600">{lang === 'ar' ? 'محفظة' : 'wallet'}</span>}</span>}
                           </td>
                         );

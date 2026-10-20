@@ -165,6 +165,13 @@ const employeeSchema = new mongoose.Schema({
   // المركبةُ التي يعمل عليها الآن — إشارةٌ إلى سجلّ المركبات لا نسخةٌ منه.
   vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null, index: true },
   vehiclePlate: { type: String, trim: true, default: '' },
+  // ── معلَّقٌ لا مُلغى (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠) ────────────────────────────
+  // مَن انتهت خدمتُه وما زالت معه مركبة لا تُنزَل عنه آليًّا: يُعلَّق أمرُه ويُنبَّه
+  // القسمُ ليتّخذ إجراءً (يستلم المركبة أو يسلّمها لغيره). راجع utils/ltVehicleRelease.
+  vehicleHold: {
+    at: { type: Date, default: null },
+    reason: { type: String, trim: true, default: '' },
+  },
 
   housing: { type: mongoose.Schema.Types.ObjectId, ref: 'LightTransportHousing', default: null, index: true },
   housingRoom: { type: String, trim: true, default: '' },
@@ -213,6 +220,31 @@ employeeSchema.pre('save', function (next) {
   // ومشروعُ طلباته (`B2CRep`) يتبع مشروعَه ومدينتَه — utils/b2cEntry.
   this.$locals.repSync = !this.isNew && (this.isModified('projectAr') || this.isModified('cityAr'));
   next();
+});
+// ── القائدُ الفعليّ واحدٌ في القسمين ───────────────────────────────────────
+// مَن على المركبة في هذا السجلّ هو «القائدُ الفعليّ» في سجلّ المركبات
+// (`VehicleMaster.actualDriver`) — يُكتب هناك كلّما تغيّرت مركبتُه، ويُرفَع عن
+// المركبة التي تركها. والتفويضُ شيءٌ آخر لا يمسّه هذا (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠).
+employeeSchema.pre('save', function (next) {
+  this.$locals.driverSync = this.isModified('vehicle') || (!!this.vehicle && (this.isModified('name') || this.isModified('idNumber')));
+  next();
+});
+employeeSchema.post('save', async function (doc) {
+  if (!doc.$locals.driverSync) return;
+  try {
+    const VM = mongoose.model('VehicleMaster');
+    const id = String(doc.idNumber || '').replace(/\s+/g, '');
+    if (id) {
+      // المركبةُ التي تركها: يُرفَع اسمُه عنها (ولا يُمسّ قائدٌ غيرُه).
+      await VM.updateMany(
+        { 'actualDriver.idNumber': id, ...(doc.vehicle ? { _id: { $ne: doc.vehicle } } : {}) },
+        { $set: { 'actualDriver.idNumber': '', 'actualDriver.name': '' } },
+      );
+    }
+    if (doc.vehicle) {
+      await VM.updateOne({ _id: doc.vehicle }, { $set: { 'actualDriver.idNumber': id, 'actualDriver.name': String(doc.name || '').trim() } });
+    }
+  } catch (_) { /* المزامنةُ لا تُسقط حفظَ السجلّ */ }
 });
 employeeSchema.post('save', async function (doc) {
   if (!doc.$locals.repSync) return;
@@ -269,7 +301,8 @@ const orderSchema = new mongoose.Schema({
 
   startDate: { type: Date, default: Date.now, index: true },
   endDate: { type: Date, default: null },
-  status: { type: String, enum: ['active', 'ended'], default: 'active', index: true },
+  // hold: معلَّقٌ لأنّ خدمةَ صاحبه انتهت والمركبةُ ما زالت معه — ينتظر إجراءً.
+  status: { type: String, enum: ['active', 'hold', 'ended'], default: 'active', index: true },
   endReasonAr: { type: String, trim: true, default: '' },
 
   /**

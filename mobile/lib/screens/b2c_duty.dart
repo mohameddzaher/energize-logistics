@@ -348,7 +348,7 @@ class _CheckSheetState extends State<_CheckSheet> {
           .where((p) => '${(p as Map)['kind'] ?? 'vehicle'}' == kind).length;
   /// دبّابٌ بلا راكبٍ معروف: صورةُ الدبّاب والبوكس — لا مندوبَ يُصوَّر.
   Map<String, (String, String, IconData)> get _needed =>
-      widget.bikeOnly ? (Map.of(_kinds)..remove('rep')) : _kinds;
+      _kinds; // الصورُ الثلاث في كلّ حال — كالموقع والخادم.
   List<String> get _lacking => _needed.keys.where((k) => _countOf(k) == 0).toList();
   /// الأنواعُ المعروضة اليوم: الثلاثةُ دائمًا، والإعلانيُّ يوم الخميس.
   Map<String, (String, String, IconData)> get _shownKinds =>
@@ -430,7 +430,7 @@ class _CheckSheetState extends State<_CheckSheet> {
             padding: const EdgeInsets.only(top: 4),
             child: Text(
               widget.bikeOnly
-                  ? tr('دبّابٌ بلا راكبٍ معروف — يُتفقَّد وحدَه: صورة الدبّاب والبوكس.', 'No known rider — bike and box photos only.')
+                  ? tr('دبّابٌ بلا راكبٍ معروف — الصورُ الثلاث مطلوبة: المندوب والدبّاب والبوكس.', 'No known rider — rider, bike and box photos are all required.')
                   : tr('يُسجَّل التفقّد على الدبّاب وعلى راكبه معًا.', 'Recorded on the bike and its rider together.'),
               style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
           ),

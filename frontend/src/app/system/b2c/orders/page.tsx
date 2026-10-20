@@ -65,7 +65,7 @@ const GETTERS: Record<string, (o: LTOrderRow) => any> = {
   housing: (o) => (typeof o.housing === 'object' && o.housing ? o.housing.name || '' : ''),
   startDate: (o) => fmtDate(o.startDate),
   endDate: (o) => fmtDate(o.endDate),
-  status: (o) => (o.status === 'active' ? 'سارٍ' : 'مُغلَق'),
+  status: (o) => (o.status === 'active' ? 'سارٍ' : o.status === 'hold' ? 'معلَّق' : 'مُغلَق'),
   authorization: (o) => (o.authorizationMoved ? 'نُقل' : ''),
   authorizedNow: (o) => (o as any).authorizedNowName || '',
   createdByName: (o) => o.createdByName || '',
@@ -178,11 +178,21 @@ function OrdersInner() {
     setSaving(false);
   };
 
-  const submit = async () => {
+  const [driverAsk, setDriverAsk] = useState<{ name: string; plate: string; to: string } | null>(null);
+  const submit = async (driverTo?: string) => {
     if (!creating?.ltEmployee) { notify(t('اختر الموظف', 'Pick the employee'), 'error'); return; }
+    const body = driverTo !== undefined ? { ...creating, currentDriverTo: driverTo } : creating;
+    // ── والمركبةُ لقائدٍ فعليٍّ واحد ──────────────────────────────────────
+    // إن كان على المركبة المختارة قائدٌ غيرُ الموظّف، يُسأل أين يذهب: إلى مركبةٍ
+    // أخرى أم بلا مركبة — قبل الإرسال (والخادمُ يرفض بدون الجواب).
+    const veh = opts?.vehicles.find((v) => v._id === creating.vehicle);
+    if (veh?.driverId && veh.driverId !== creating.ltEmployee && !body.currentDriverTo) {
+      setDriverAsk({ name: veh.driverName || '', plate: veh.plateNumber, to: 'none' });
+      return;
+    }
     setSaving(true);
     try {
-      await createLTOrder(creating);
+      await createLTOrder(body);
       notify(t('صدر أمر التشغيل', 'Operating order created'), 'success');
       setCreating(null);
       load();
@@ -323,7 +333,7 @@ function OrdersInner() {
                           <button type="button" onClick={() => openMove(o)} title={t('نقل تفويض المركبة', 'Move the vehicle authorisation')}
                             className="p-1.5 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-slate-100"><ArrowLeftRight className="w-4 h-4" /></button>
                         )}
-                        {o.status === 'active' && (
+                        {(o.status === 'active' || o.status === 'hold') && (
                           <button type="button" onClick={() => end(o)} title={t('إنزال وإغلاق الأمر', 'Take off & close')}
                             className="p-1.5 rounded-lg text-slate-600 hover:text-red-600 hover:bg-slate-100"><Square className="w-4 h-4" /></button>
                         )}
@@ -335,8 +345,9 @@ function OrdersInner() {
                     if (k === 'status') {
                       return (
                         <td key={k} className="px-3 py-2.5">
-                          <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${o.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                            {o.status === 'active' ? t('سارٍ', 'Active') : t('مُغلَق', 'Ended')}
+                          <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${o.status === 'active' ? 'bg-emerald-100 text-emerald-700' : o.status === 'hold' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}
+                            title={o.status === 'hold' ? t('انتهت خدمةُ صاحبه والمركبةُ ما زالت معه — استلمها أو سلّمها لغيره', 'Holder’s service ended; vehicle still with him') : ''}>
+                            {o.status === 'active' ? t('سارٍ', 'Active') : o.status === 'hold' ? t('معلَّق', 'On hold') : t('مُغلَق', 'Ended')}
                           </span>
                         </td>
                       );
@@ -422,6 +433,30 @@ function OrdersInner() {
       )}
 
       {creating && opts && (
+        <>
+        <Modal open={!!driverAsk} onClose={() => setDriverAsk(null)} title={t('للمركبة قائدٌ فعليّ', 'This vehicle has a driver')}>
+          {driverAsk && (
+            <div className="space-y-3 text-sm">
+              <p className="text-slate-700">
+                {t(`المركبة ${driverAsk.plate} قائدُها الفعليّ ${driverAsk.name}. أين يذهب؟`, `${driverAsk.plate} is driven by ${driverAsk.name}. Where does he go?`)}
+              </p>
+              <Select value={driverAsk.to} onChange={(ev: any) => setDriverAsk((d) => (d ? { ...d, to: ev.target.value } : d))}>
+                <option value="none">{t('يبقى بلا مركبة', 'No vehicle')}</option>
+                {(opts?.vehicles || []).filter((v) => !v.driverId && v._id !== creating?.vehicle).map((v) => (
+                  <option key={v._id} value={v._id}>{t('ينتقل إلى', 'Moves to')} {v.plateNumber}{v.typeAr ? ` · ${v.typeAr}` : ''}</option>
+                ))}
+              </Select>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setDriverAsk(null)} className="px-3 py-2 text-slate-500">{t('إلغاء', 'Cancel')}</button>
+                <PrimaryButton onClick={() => {
+                  const to = driverAsk.to;
+                  setDriverAsk(null);
+                  submit(to);
+                }}>{t('متابعة', 'Continue')}</PrimaryButton>
+              </div>
+            </div>
+          )}
+        </Modal>
         <Modal open onClose={() => setCreating(null)} title={t('إنشاء أمر تشغيل', 'New operating order')}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {/* ── والموظّفون من هذا القسم وحدَه ──────────────────────────────
@@ -434,6 +469,9 @@ function OrdersInner() {
                   const e2 = opts.employees.find((x) => x._id === v);
                   setCreating((p: any) => ({
                     ...p, ltEmployee: v,
+                    // قائدٌ فعليٌّ على مركبة؟ فالأمرُ يأخذ مركبتَه معه (ويُغيَّر إن أُريد نقلُه).
+                    vehicle: e2?.vehicle || p.vehicle || '',
+                    currentDriverTo: '',
                     projectAr: p.projectAr || e2?.projectAr || '',
                     cityAr: p.cityAr || e2?.cityAr || '',
                     // مشرفُ الموظّف الحاضرُ هو المقترَح — والأمرُ ينقله إن غُيّر.
@@ -450,10 +488,10 @@ function OrdersInner() {
             <Field label={t('المركبة', 'Vehicle')}>
               <SearchableSelect
                 value={creating.vehicle}
-                onChange={(v: string) => setCreating((p: any) => ({ ...p, vehicle: v }))}
+                onChange={(v: string) => setCreating((p: any) => ({ ...p, vehicle: v, currentDriverTo: '' }))}
                 options={opts.vehicles.map((v) => ({
                   value: v._id,
-                  label: `${v.plateNumber}${v.typeAr ? ` · ${v.typeAr}` : ''}${v.authorizedName ? ` — ${t('مفوَّضة لـ', 'authorised to ')}${v.authorizedName}` : ''}`,
+                  label: `${v.plateNumber}${v.typeAr ? ` · ${v.typeAr}` : ''}${v.driverName ? ` — ${t('قائدها الفعلي', 'driver')} ${v.driverName}` : ` — ${t('بلا قائد', 'no driver')}`}`,
                 }))}
                 placeholder={t('ابحث برقم اللوحة…', 'search by plate…')} />
             </Field>
@@ -533,9 +571,10 @@ function OrdersInner() {
           </div>
           <div className="flex justify-end gap-2 mt-4">
             <button type="button" onClick={() => setCreating(null)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm">{t('إلغاء', 'Cancel')}</button>
-            <PrimaryButton onClick={submit} disabled={saving}>{t('إصدار الأمر', 'Create order')}</PrimaryButton>
+            <PrimaryButton onClick={() => submit()} disabled={saving}>{t('إصدار الأمر', 'Create order')}</PrimaryButton>
           </div>
         </Modal>
+        </>
       )}
     </div>
   );

@@ -14,12 +14,12 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import {
   MEDIAGO_API, MG_LIMITS, STATUS_TONE, availabilityText, fmtDateTime, issueText, vocabLabel,
-  type Can, type MgFull, type Vocab,
+  type Can, type MgFull, type MgRow, type Vocab,
 } from '@/lib/mediago';
 import {
   X, Loader2, Film, Image as ImageIcon, Trash2, Send, Bike, MonitorPlay,
   MapPin, Clock, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Paperclip, User as UserIcon,
-  Upload, Camera, Check,
+  Upload, Camera, Check, Pencil, ExternalLink, Play, Maximize2,
 } from 'lucide-react';
 import LiveCamera, { type Shot } from '@/components/b2c/LiveCamera';
 
@@ -282,14 +282,28 @@ const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5
 // والصورُ في آخر النموذج: يُكتب البلاغُ أوّلًا ثمّ يُوثَّق.
 const EMPTY = { moto: { vehicle: '', motorcycleNumber: '', hint: '' } as MotoValue, screenNumber: '', issue: '', issueOther: '', availability: '', availabilityOther: '' };
 
-export function CreateComplaintModal({ open, onClose, meta, onCreated, tx, ar = true }: {
-  open: boolean; onClose: () => void; meta: Vocab | null; onCreated: (id: string) => void; tx: Tx; ar?: boolean;
+// ── والنموذجُ نفسُه للتعديل ────────────────────────────────────────────────
+// `editing` يملؤه من البلاغ ويُرسَل PUT؛ والمرفقاتُ لا تُعدَّل من هنا — تُضاف من
+// التفصيل.
+const fromComplaint = (c: MgRow) => ({
+  moto: { vehicle: c.vehicle ? String(c.vehicle) : '', motorcycleNumber: c.motorcycleNumber || '', hint: [c.serialNumber && `#${c.serialNumber}`, c.project].filter(Boolean).join(' · ') },
+  screenNumber: c.screenNumber || '', issue: c.issue || '', issueOther: c.issueOther || '',
+  availability: c.availability || '', availabilityOther: c.availabilityOther || '',
+});
+
+export function CreateComplaintModal({ open, onClose, meta, onCreated, tx, ar = true, editing = null, onSaved }: {
+  open: boolean; onClose: () => void; meta: Vocab | null; onCreated?: (id: string) => void; tx: Tx; ar?: boolean;
+  /** بلاغٌ يُعدَّل — بدلَ إنشاء جديد. */
+  editing?: MgRow | null;
+  onSaved?: (item: MgFull) => void;
 }) {
   const { notify } = useDialog();
   const [f, setF] = useState(EMPTY);
   const [files, setFiles] = useState<LocalFile[]>([]);
   const [saving, setSaving] = useState(false);
-  useEffect(() => { if (open) { setF(EMPTY); setFiles([]); } }, [open]);
+  // يُملأ عند الفتح وحدَه — تحديثٌ حيٌّ للبلاغ أثناء التعديل لا يمسح ما كُتب.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (open) { setF(editing ? fromComplaint(editing) : EMPTY); setFiles([]); } }, [open, editing?._id]);
   const set = <K extends keyof typeof EMPTY>(k: K, v: (typeof EMPTY)[K]) => setF((o) => ({ ...o, [k]: v }));
 
   const missing = useMemo(() => {
@@ -305,6 +319,22 @@ export function CreateComplaintModal({ open, onClose, meta, onCreated, tx, ar = 
   const submit = async () => {
     if (missing.length) { notify(`${tx('أكمل', 'Complete')}: ${missing.join('، ')}`, 'error'); return; }
     setSaving(true);
+    if (editing) {
+      try {
+        const r = await api.put<{ item: MgFull }>(`${MEDIAGO_API}/${editing._id}`, {
+          vehicle: f.moto.vehicle || undefined, motorcycleNumber: f.moto.motorcycleNumber.trim(),
+          screenNumber: f.screenNumber.trim(),
+          issue: f.issue, issueOther: f.issueOther.trim(),
+          availability: f.availability, availabilityOther: f.availabilityOther.trim(),
+        });
+        notify(tx(`حُفظ تعديل ${r.item.ref}`, `${r.item.ref} updated`), 'success');
+        onSaved?.(r.item);
+      } catch (e: any) {
+        notify(e?.message || tx('تعذّر الحفظ', 'Save failed'), 'error');
+      }
+      setSaving(false);
+      return;
+    }
     try {
       const r = await api.post<{ item: { _id: string; ref: string } }>(MEDIAGO_API, {
         vehicle: f.moto.vehicle || undefined, motorcycleNumber: f.moto.motorcycleNumber.trim(),
@@ -314,7 +344,7 @@ export function CreateComplaintModal({ open, onClose, meta, onCreated, tx, ar = 
         files: files.map((x) => ({ dataUrl: x.dataUrl, fileName: x.fileName })),
       });
       notify(tx(`رُفع البلاغ ${r.item.ref}`, `Complaint ${r.item.ref} submitted`), 'success');
-      onCreated(r.item._id);
+      onCreated?.(r.item._id);
     } catch (e: any) {
       notify(e?.message || tx('تعذّر الحفظ', 'Save failed'), 'error');
     }
@@ -329,7 +359,7 @@ export function CreateComplaintModal({ open, onClose, meta, onCreated, tx, ar = 
           <div className="flex items-center gap-3">
             <span className="rounded-lg bg-white/10 p-2 text-[#f37121]"><MonitorPlay className="h-[18px] w-[18px]" /></span>
             <span className="leading-tight">
-              <span className="block text-[15px] font-bold">{tx('بلاغ عطل شاشة', 'Screen fault report')}</span>
+              <span className="block text-[15px] font-bold">{editing ? tx(`تعديل البلاغ ${editing.ref}`, `Edit complaint ${editing.ref}`) : tx('بلاغ عطل شاشة', 'Screen fault report')}</span>
               <span className="block text-[11px] text-slate-400">Media Go · {tx('الصيانة في إنرجايز', 'Serviced at Energize')}</span>
             </span>
           </div>
@@ -364,11 +394,13 @@ export function CreateComplaintModal({ open, onClose, meta, onCreated, tx, ar = 
             </Q>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <Q ar="صورة العطل" en="Photo of the Fault" hint={tx('اختياري', 'Optional')}>
-              <MediaPicker files={files} onChange={setFiles} tx={tx} ar={ar} />
-            </Q>
-          </div>
+          {!editing && (
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <Q ar="صورة العطل" en="Photo of the Fault" hint={tx('اختياري', 'Optional')}>
+                <MediaPicker files={files} onChange={setFiles} tx={tx} ar={ar} />
+              </Q>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-3">
@@ -380,7 +412,7 @@ export function CreateComplaintModal({ open, onClose, meta, onCreated, tx, ar = 
             <button type="button" onClick={submit} disabled={saving}
               className="inline-flex items-center gap-1.5 rounded-xl bg-[#f37121] px-5 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#e0621a] disabled:opacity-60">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 rtl:-scale-x-100" />}
-              {saving ? tx('جارٍ الرفع…', 'Uploading…') : tx('رفع البلاغ', 'Submit')}
+              {saving ? tx('جارٍ الحفظ…', 'Saving…') : editing ? tx('حفظ التعديل', 'Save changes') : tx('رفع البلاغ', 'Submit')}
             </button>
           </div>
         </div>
@@ -430,7 +462,19 @@ function InfoCell({ icon, ar, en, mode, children }: { icon: ReactNode; ar: strin
   );
 }
 
-export function ComplaintDetailModal({ id, onClose, mode, onChanged }: { id: string; onClose: () => void; mode: Mode; onChanged: () => void }) {
+/**
+ * تفصيلُ البلاغ — بشكلين ومحتوى واحد:
+ *   • `modal`: نافذةٌ في الوسط لموظّفينا، تُفتَح بضغطةٍ على البلاغ، ومنها «فتح كصفحة».
+ *   • `page`: صفحةٌ كاملة (/system/b2c/mediago-complaints/[id]) — هي ما يراه حسابُ
+ *     Media Go: معرضٌ كبير، وكتلُ معلوماتٍ واضحة، والمسارُ والمحادثةُ بجانبها.
+ * الأقسامُ عناصرُ JSX تُبنى في الرسم لا مكوّناتٌ تُعرَّف داخله (inline-components-remount).
+ */
+export function ComplaintDetail({ id, mode, variant, onClose, onChanged }: {
+  id: string; mode: Mode; variant: 'modal' | 'page';
+  /** إغلاقُ النافذة أو الرجوعُ إلى القائمة. */
+  onClose: () => void;
+  onChanged?: () => void;
+}) {
   const tx = useMemo(() => makeTx(mode), [mode]);
   const ar = mode !== 'en';
   const { notify, confirm, prompt } = useDialog();
@@ -442,25 +486,35 @@ export function ComplaintDetailModal({ id, onClose, mode, onChanged }: { id: str
   const [busy, setBusy] = useState('');
   const [more, setMore] = useState<LocalFile[]>([]);
   const [view, setView] = useState<number | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [gone, setGone] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     try {
       const r = await api.get<{ item: MgFull; meta: Vocab; can: Can }>(`${MEDIAGO_API}/${id}`);
       setD(r.item); setMeta(r.meta); setCan(r.can); setErr('');
-    } catch (e: any) { setErr(e?.message || 'Failed'); }
+    } catch (e: any) {
+      if (e?.status === 404) setGone(true);
+      setErr(e?.message || 'Failed');
+    }
   }, [id]);
   useEffect(() => { setD(null); load(); }, [load]);
-  // Escape يغلق النافذة — إلّا والعارضُ مفتوحٌ فوقها، فهو يغلق نفسَه أوّلًا.
+  // Escape يغلق النافذة — إلّا والعارضُ أو نموذجُ التعديل مفتوحٌ فوقها.
   useEffect(() => {
-    const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && view === null) onClose(); };
+    if (variant !== 'modal') return undefined;
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && view === null && !editing) onClose(); };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
-  }, [view, onClose]);
-  useSocket('mediago:complaint', useCallback((p: { id?: string }) => { if (!p?.id || p.id === id) load(); }, [id, load]));
+  }, [view, editing, onClose, variant]);
+  useSocket('mediago:complaint', useCallback((p: { id?: string; action?: string }) => {
+    if (p?.id && p.id !== id) return;
+    if (p?.action === 'deleted') { setGone(true); setD(null); return; }
+    load();
+  }, [id, load]));
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest' }); }, [d?.replies?.length]);
 
-  const after = (item: MgFull) => { setD(item); onChanged(); };
+  const after = (item: MgFull) => { setD(item); onChanged?.(); };
 
   const setStatus = async (status: string) => {
     if (!d) return;
@@ -491,153 +545,236 @@ export function ComplaintDetailModal({ id, onClose, mode, onChanged }: { id: str
   };
   const remove = async () => {
     if (!d) return;
-    const ok = await confirm({ title: tx('حذف البلاغ', 'Delete complaint'), message: tx(`حذف ${d.ref} نهائيًّا مع مرفقاته؟`, `Delete ${d.ref} and its files permanently?`), tone: 'danger', confirmLabel: tx('حذف', 'Delete') });
+    const ok = await confirm({ title: tx('حذف البلاغ', 'Delete complaint'), message: tx(`حذف ${d.ref} نهائيًّا مع مرفقاته؟ لا يمكن التراجع.`, `Delete ${d.ref} and its files permanently? This cannot be undone.`), tone: 'danger', confirmLabel: tx('حذف', 'Delete') });
     if (!ok) return;
-    try { await api.delete(`${MEDIAGO_API}/${d._id}`); onChanged(); onClose(); }
+    try { await api.delete(`${MEDIAGO_API}/${d._id}`); notify(tx(`حُذف ${d.ref}`, `${d.ref} deleted`), 'success'); onChanged?.(); onClose(); }
     catch (e: any) { notify(e?.message || tx('تعذّر الحذف', 'Delete failed'), 'error'); }
   };
 
   const partner = mode === 'partner';
+  const page = variant === 'page';
   const statusButtons = (can?.statuses || []).filter((s) => s !== d?.status && !(partner && d?.status === 'closed'));
+
+  // ── الأقسام ───────────────────────────────────────────────────────────────
+  const header = (
+    <div className={`flex flex-wrap items-start justify-between gap-3 bg-slate-900 px-5 py-4 text-white ${page ? 'rounded-2xl shadow-sm' : ''}`}>
+      <div className="flex min-w-0 items-start gap-3">
+        {page && (
+          <button type="button" onClick={onClose} className="mt-1 rounded-lg bg-white/10 p-2 hover:bg-white/20" aria-label="Back" title={tx('رجوع', 'Back')}>
+            <ChevronRight className="h-4 w-4 ltr:rotate-180" />
+          </button>
+        )}
+        <div className="min-w-0">
+          <p className="text-[12px] text-slate-400">{d ? fmtDateTime(d.createdAt, ar) : ''}{d?.createdByName ? ` · ${tx('رُفع بواسطة', 'Reported by')} ${d.createdByName}` : ''}</p>
+          <h2 className="mt-0.5 flex flex-wrap items-center gap-2 text-[20px] font-extrabold tracking-wide">
+            <span dir="ltr">{d?.ref || '…'}</span>
+            {d && <StatusPill status={d.status} meta={meta} mode={mode} />}
+          </h2>
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5">
+        {d && can?.edit && (
+          <button type="button" onClick={() => setEditing(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-[12.5px] font-semibold hover:bg-white/20">
+            <Pencil className="h-3.5 w-3.5" />{tx('تعديل', 'Edit')}
+          </button>
+        )}
+        {d && can?.delete && (
+          <button type="button" onClick={remove} className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-[12.5px] font-semibold text-red-200 hover:bg-red-500/80 hover:text-white">
+            <Trash2 className="h-3.5 w-3.5" />{tx('حذف', 'Delete')}
+          </button>
+        )}
+        {!page && d && !partner && (
+          <a href={`/system/b2c/mediago-complaints/${d._id}`} className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-[12.5px] font-semibold hover:bg-white/20">
+            <ExternalLink className="h-3.5 w-3.5" />{tx('فتح كصفحة', 'Open as page')}
+          </a>
+        )}
+        {!page && <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 hover:text-white" aria-label="Close"><X className="h-5 w-5" /></button>}
+      </div>
+    </div>
+  );
+
+  const info = d && (
+    <div className={`grid grid-cols-2 gap-2.5 ${page ? 'lg:grid-cols-3' : 'sm:grid-cols-4'}`}>
+      <InfoCell icon={<Bike className="h-3.5 w-3.5" />} ar="رقم الدبّاب" en="Motorcycle" mode={mode}>
+        <span dir="auto">{d.motorcycleNumber}</span>
+        {(d.serialNumber || d.project) && <span className="block text-[11px] font-medium text-slate-500">{[d.serialNumber && `#${d.serialNumber}`, d.project].filter(Boolean).join(' · ')}</span>}
+      </InfoCell>
+      <InfoCell icon={<MonitorPlay className="h-3.5 w-3.5" />} ar="رقم الشاشة" en="Screen" mode={mode}>{d.screenNumber || '—'}</InfoCell>
+      <div className={page ? 'col-span-2 lg:col-span-1' : 'col-span-2'}>
+        <InfoCell icon={<AlertTriangle className="h-3.5 w-3.5" />} ar="المشكلة" en="Issue" mode={mode}>
+          {d.issue === 'other' ? <>{vocabLabel(meta, 'issue', 'other', vLang(mode))}: <span className="font-semibold">{d.issueOther}</span></> : issueText(meta, d, vLang(mode))}
+        </InfoCell>
+      </div>
+      <InfoCell icon={<MapPin className="h-3.5 w-3.5" />} ar="موقع الصيانة" en="Location" mode={mode}>{vocabLabel(meta, 'location', d.location, vLang(mode))}</InfoCell>
+      <InfoCell icon={<Clock className="h-3.5 w-3.5" />} ar="وقت التوفّر" en="Available" mode={mode}>{availabilityText(meta, d, vLang(mode))}</InfoCell>
+      {page && <InfoCell icon={<CheckCircle2 className="h-3.5 w-3.5" />} ar="تاريخ الإصلاح" en="Fixed at" mode={mode}>{d.fixedAt ? fmtDateTime(d.fixedAt, ar) : '—'}</InfoCell>}
+    </div>
+  );
+
+  const first = d?.files?.[0];
+  const media = d && (
+    <section className="rounded-xl border border-slate-200 bg-white p-3">
+      <h3 className="mb-2 flex items-center gap-1.5 text-[13px] font-bold text-slate-800"><ImageIcon className="h-4 w-4 text-[#f37121]" /><Bi ar={`صور العطل (${d.files.length})`} en={`Fault media (${d.files.length})`} mode={mode} /></h3>
+      {!d.files.length ? <p className="text-[12.5px] text-slate-500">{tx('لا مرفقات', 'No attachments')}</p> : page && first ? (
+        // في الصفحة: الأولى كبيرةً وما بعدها شريطٌ تحتها.
+        <div className="space-y-2">
+          <button type="button" onClick={() => setView(0)} className="group relative block w-full overflow-hidden rounded-xl bg-slate-900">
+            {first.kind === 'video'
+              ? <><video src={`${first.fileUrl}#t=0.5`} muted preload="metadata" className="aspect-video w-full object-contain" /><span className="absolute inset-0 flex items-center justify-center"><span className="rounded-full bg-black/60 p-4 text-white"><Play className="h-7 w-7" /></span></span></>
+              // eslint-disable-next-line @next/next/no-img-element
+              : <img src={first.fileUrl} alt={first.fileName || ''} className="aspect-video w-full object-contain transition group-hover:scale-[1.01]" />}
+            <span className="absolute bottom-2 end-2 inline-flex items-center gap-1 rounded-md bg-black/55 px-2 py-0.5 text-[11px] text-white"><Maximize2 className="h-3 w-3" />{tx('عرض', 'View')}</span>
+          </button>
+          {d.files.length > 1 && (
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+              {d.files.slice(1).map((f, i) => (
+                <button key={f._id || i} type="button" onClick={() => setView(i + 1)} className="relative aspect-square overflow-hidden rounded-lg bg-slate-900">
+                  {f.kind === 'video'
+                    ? <><video src={`${f.fileUrl}#t=0.5`} muted preload="metadata" className="h-full w-full object-cover opacity-80" /><span className="absolute inset-0 flex items-center justify-center"><Play className="h-5 w-5 text-white" /></span></>
+                    // eslint-disable-next-line @next/next/no-img-element
+                    : <img src={f.fileUrl} alt={f.fileName || ''} className="h-full w-full object-cover" />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+          {d.files.map((f, i) => (
+            <button key={f._id || i} type="button" onClick={() => setView(i)} className="group relative aspect-square overflow-hidden rounded-lg bg-slate-900">
+              {f.kind === 'video'
+                ? <><video src={`${f.fileUrl}#t=0.5`} muted preload="metadata" className="h-full w-full object-cover opacity-80" /><span className="absolute inset-0 flex items-center justify-center"><span className="rounded-full bg-black/60 p-2 text-white"><Film className="h-5 w-5" /></span></span></>
+                // eslint-disable-next-line @next/next/no-img-element
+                : <img src={f.fileUrl} alt={f.fileName || ''} className="h-full w-full object-cover transition group-hover:scale-105" />}
+            </button>
+          ))}
+        </div>
+      )}
+      {can?.create && d.files.length < MG_LIMITS.maxFiles && (
+        <div className="mt-3 border-t border-slate-100 pt-3">
+          <MediaPicker files={more} onChange={setMore} tx={tx} ar={ar} room={MG_LIMITS.maxFiles - d.files.length} />
+          {!!more.length && (
+            <button type="button" onClick={upload} disabled={busy === 'files'} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-[12.5px] font-bold text-white disabled:opacity-60">
+              {busy === 'files' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}{tx('رفع المرفقات', 'Upload files')}
+            </button>
+          )}
+        </div>
+      )}
+    </section>
+  );
+
+  const status = d && !!statusButtons.length && (
+    <section className="rounded-xl border border-slate-200 bg-white p-3">
+      <h3 className="mb-2 text-[13px] font-bold text-slate-800"><Bi ar="تحديث الحالة" en="Update status" mode={mode} /></h3>
+      <div className="flex flex-wrap gap-2">
+        {statusButtons.map((s) => (
+          <button key={s} type="button" disabled={!!busy} onClick={() => setStatus(s)}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-bold ring-1 transition hover:brightness-95 disabled:opacity-60 ${(STATUS_TONE[s] || STATUS_TONE.closed).pill}`}>
+            {busy === `s:${s}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : s === 'fixed' ? <CheckCircle2 className="h-3.5 w-3.5" /> : <span className={`h-2 w-2 rounded-full ${(STATUS_TONE[s] || STATUS_TONE.closed).dot}`} />}
+            {vocabLabel(meta, 'status', s, vLang(mode))}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+
+  const timeline = d && (
+    <section className="rounded-xl border border-slate-200 bg-white p-3">
+      <h3 className="mb-2 text-[13px] font-bold text-slate-800"><Bi ar="مسار البلاغ" en="Timeline" mode={mode} /></h3>
+      <ol className="space-y-2 border-s-2 border-slate-100 ps-3">
+        {d.statusHistory.map((h, i) => (
+          <li key={i} className="relative">
+            <span className={`absolute -start-[19px] top-1.5 h-2.5 w-2.5 rounded-full ring-2 ring-white ${(STATUS_TONE[h.status] || STATUS_TONE.closed).dot}`} />
+            <p className="text-[12.5px] font-bold text-slate-800">{vocabLabel(meta, 'status', h.status, vLang(mode))}</p>
+            <p className="text-[11px] text-slate-500">{h.side === 'mediago' ? 'Media Go' : 'Energize'}{h.byName ? ` · ${h.byName}` : ''} · {fmtDateTime(h.at, ar)}</p>
+            {h.note && <p className="mt-0.5 text-[12px] text-slate-600">{h.note}</p>}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+
+  const composer = d && (
+    <div className="flex items-end gap-2">
+      <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={2} maxLength={2000} dir="auto"
+        placeholder={tx('اكتب ردًّا…', 'Write a reply…')}
+        onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendReply(); }}
+        className="min-h-[44px] flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-[#f37121]/60 focus:outline-none focus:ring-2 focus:ring-[#f37121]/20" />
+      <button type="button" onClick={sendReply} disabled={!reply.trim() || busy === 'reply'}
+        className="inline-flex h-11 items-center gap-1.5 rounded-xl bg-[#f37121] px-4 text-sm font-bold text-white hover:bg-[#e0621a] disabled:opacity-50">
+        {busy === 'reply' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 rtl:-scale-x-100" />}
+      </button>
+    </div>
+  );
+
+  const thread = d && (
+    <section className="rounded-xl border border-slate-200 bg-white p-3">
+      <h3 className="mb-2 text-[13px] font-bold text-slate-800"><Bi ar={`الردود (${d.replies.length})`} en={`Replies (${d.replies.length})`} mode={mode} /></h3>
+      <div className={`space-y-2 ${page ? 'max-h-[55vh] overflow-y-auto pe-1' : ''}`}>
+        {d.replies.map((r, i) => {
+          const mine = (r.side === 'mediago') === partner;
+          return (
+            <div key={r._id || i} className={`flex ${mine ? 'justify-start' : 'justify-end'}`}>
+              <div className={`max-w-[85%] rounded-2xl px-3 py-2 ${r.side === 'mediago' ? 'bg-violet-50 text-violet-950 ring-1 ring-violet-100' : 'bg-orange-50 text-slate-900 ring-1 ring-orange-100'}`}>
+                <p className="mb-0.5 flex items-center gap-1 text-[10.5px] font-bold text-slate-500"><UserIcon className="h-3 w-3" />{r.side === 'mediago' ? 'Media Go' : 'Energize'}{r.byName ? ` · ${r.byName}` : ''}</p>
+                <p className="whitespace-pre-wrap text-[13px]" dir="auto">{r.text}</p>
+                <p className="mt-0.5 text-[10px] text-slate-400">{fmtDateTime(r.at, ar)}</p>
+              </div>
+            </div>
+          );
+        })}
+        {!d.replies.length && <p className="text-[12.5px] text-slate-500">{tx('لا ردود بعد', 'No replies yet')}</p>}
+        <div ref={endRef} />
+      </div>
+      {page && <div className="mt-3 border-t border-slate-100 pt-3">{composer}</div>}
+    </section>
+  );
+
+  const missingView = (
+    <div className="flex flex-1 flex-col items-center justify-center gap-2 p-10 text-center text-slate-500">
+      {gone ? <><Trash2 className="h-6 w-6 text-slate-300" /><p>{tx('هذا البلاغ لم يعد موجودًا', 'This complaint no longer exists')}</p></> : (err || <Loader2 className="h-6 w-6 animate-spin" />)}
+    </div>
+  );
+
+  const editor = d && (
+    <CreateComplaintModal open={editing} onClose={() => setEditing(false)} meta={meta} tx={tx} ar={ar}
+      editing={d} onSaved={(item) => { setEditing(false); after(item); }} />
+  );
+  const lightbox = d && view !== null && <Lightbox files={d.files} index={view} onClose={() => setView(null)} onIndex={setView} />;
+
+  if (page) {
+    return (
+      <div className="w-full space-y-4 pb-10" dir={ar ? 'rtl' : 'ltr'}>
+        {header}
+        {!d ? <div className="rounded-2xl border border-slate-200 bg-white">{missingView}</div> : (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+            <div className="space-y-4 lg:col-span-3">{media}{info}</div>
+            <div className="space-y-4 lg:col-span-2">{status}{thread}{timeline}</div>
+          </div>
+        )}
+        {editor}{lightbox}
+      </div>
+    );
+  }
 
   return (
     // ── نافذةٌ في الوسط لا لوحةٌ جانبيّة ─────────────────────────────────────
-    // تُفتَح بضغطةٍ على البلاغ وحدَها، وتتّسع لصوره ومحادثته.
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-3 backdrop-blur-sm sm:p-6" onClick={onClose}>
       <div role="dialog" aria-modal="true" className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-2xl" onClick={(e) => e.stopPropagation()} dir={ar ? 'rtl' : 'ltr'}>
-        <div className="flex items-start justify-between gap-3 bg-slate-900 px-5 py-4 text-white">
-          <div className="min-w-0">
-            <p className="text-[12px] text-white/70">{d ? fmtDateTime(d.createdAt, ar) : ''}</p>
-            <h2 className="flex items-center gap-2 text-[19px] font-extrabold tracking-wide">
-              <span dir="ltr">{d?.ref || '…'}</span>
-              {d && <StatusPill status={d.status} meta={meta} mode={mode} />}
-            </h2>
-            {d?.createdByName && <p className="mt-0.5 text-[11.5px] text-white/70">{tx('رُفع بواسطة', 'Reported by')}: {d.createdByName}</p>}
-          </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1.5 hover:bg-white/10" aria-label="Close"><X className="h-5 w-5" /></button>
-        </div>
-
-        {!d ? (
-          <div className="flex flex-1 items-center justify-center text-slate-500">{err || <Loader2 className="h-6 w-6 animate-spin" />}</div>
-        ) : (
+        {header}
+        {!d ? missingView : (
           <div className="min-h-[40vh] flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-              <InfoCell icon={<Bike className="h-3.5 w-3.5" />} ar="رقم الدبّاب" en="Motorcycle" mode={mode}>
-                <span dir="auto">{d.motorcycleNumber}</span>
-                {(d.serialNumber || d.project) && <span className="block text-[11px] font-medium text-slate-500">{[d.serialNumber && `#${d.serialNumber}`, d.project].filter(Boolean).join(' · ')}</span>}
-              </InfoCell>
-              <InfoCell icon={<MonitorPlay className="h-3.5 w-3.5" />} ar="رقم الشاشة" en="Screen" mode={mode}>{d.screenNumber || '—'}</InfoCell>
-              <div className="col-span-2">
-                <InfoCell icon={<AlertTriangle className="h-3.5 w-3.5" />} ar="المشكلة" en="Issue" mode={mode}>
-                  {d.issue === 'other' ? <>{vocabLabel(meta, 'issue', 'other', vLang(mode))}: <span className="font-semibold">{d.issueOther}</span></> : issueText(meta, d, vLang(mode))}
-                </InfoCell>
-              </div>
-              <InfoCell icon={<MapPin className="h-3.5 w-3.5" />} ar="موقع الصيانة" en="Location" mode={mode}>{vocabLabel(meta, 'location', d.location, vLang(mode))}</InfoCell>
-              <InfoCell icon={<Clock className="h-3.5 w-3.5" />} ar="وقت التوفّر" en="Available" mode={mode}>{availabilityText(meta, d, vLang(mode))}</InfoCell>
-            </div>
-
-            {/* الصورُ والمقاطع */}
-            <section className="rounded-xl border border-slate-200 bg-white p-3">
-              <h3 className="mb-2 flex items-center gap-1.5 text-[13px] font-bold text-slate-800"><ImageIcon className="h-4 w-4 text-[#f37121]" /><Bi ar={`صور العطل (${d.files.length})`} en={`Fault media (${d.files.length})`} mode={mode} /></h3>
-              {d.files.length ? (
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-                  {d.files.map((f, i) => (
-                    <button key={f._id || i} type="button" onClick={() => setView(i)} className="group relative aspect-square overflow-hidden rounded-lg bg-slate-900">
-                      {f.kind === 'video'
-                        ? <><video src={`${f.fileUrl}#t=0.5`} muted preload="metadata" className="h-full w-full object-cover opacity-80" /><span className="absolute inset-0 flex items-center justify-center"><span className="rounded-full bg-black/60 p-2 text-white"><Film className="h-5 w-5" /></span></span></>
-                        : <img src={f.fileUrl} alt={f.fileName || ''} className="h-full w-full object-cover transition group-hover:scale-105" />}
-                    </button>
-                  ))}
-                </div>
-              ) : <p className="text-[12.5px] text-slate-500">{tx('لا مرفقات', 'No attachments')}</p>}
-              {can?.create && d.files.length < MG_LIMITS.maxFiles && (
-                <div className="mt-3 border-t border-slate-100 pt-3">
-                  <MediaPicker files={more} onChange={setMore} tx={tx} ar={ar} room={MG_LIMITS.maxFiles - d.files.length} />
-                  {!!more.length && (
-                    <button type="button" onClick={upload} disabled={busy === 'files'} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-[#12325c] px-3 py-1.5 text-[12.5px] font-bold text-white disabled:opacity-60">
-                      {busy === 'files' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}{tx('رفع المرفقات', 'Upload files')}
-                    </button>
-                  )}
-                </div>
-              )}
-            </section>
-
-            {/* الحالة */}
-            {!!statusButtons.length && (
-              <section className="rounded-xl border border-slate-200 bg-white p-3">
-                <h3 className="mb-2 text-[13px] font-bold text-slate-800"><Bi ar="تحديث الحالة" en="Update status" mode={mode} /></h3>
-                <div className="flex flex-wrap gap-2">
-                  {statusButtons.map((s) => (
-                    <button key={s} type="button" disabled={!!busy} onClick={() => setStatus(s)}
-                      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-bold ring-1 transition hover:brightness-95 disabled:opacity-60 ${(STATUS_TONE[s] || STATUS_TONE.closed).pill}`}>
-                      {busy === `s:${s}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : s === 'fixed' ? <CheckCircle2 className="h-3.5 w-3.5" /> : <span className={`h-2 w-2 rounded-full ${(STATUS_TONE[s] || STATUS_TONE.closed).dot}`} />}
-                      {vocabLabel(meta, 'status', s, vLang(mode))}
-                    </button>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* السجلّ */}
-            <section className="rounded-xl border border-slate-200 bg-white p-3">
-              <h3 className="mb-2 text-[13px] font-bold text-slate-800"><Bi ar="مسار البلاغ" en="Timeline" mode={mode} /></h3>
-              <ol className="space-y-2 border-s-2 border-slate-100 ps-3">
-                {d.statusHistory.map((h, i) => (
-                  <li key={i} className="relative">
-                    <span className={`absolute -start-[19px] top-1.5 h-2.5 w-2.5 rounded-full ring-2 ring-white ${(STATUS_TONE[h.status] || STATUS_TONE.closed).dot}`} />
-                    <p className="text-[12.5px] font-bold text-slate-800">{vocabLabel(meta, 'status', h.status, vLang(mode))}</p>
-                    <p className="text-[11px] text-slate-500">{h.side === 'mediago' ? 'Media Go' : 'Energize'}{h.byName ? ` · ${h.byName}` : ''} · {fmtDateTime(h.at, ar)}</p>
-                    {h.note && <p className="mt-0.5 text-[12px] text-slate-600">{h.note}</p>}
-                  </li>
-                ))}
-              </ol>
-            </section>
-
-            {/* المحادثة */}
-            <section className="rounded-xl border border-slate-200 bg-white p-3">
-              <h3 className="mb-2 text-[13px] font-bold text-slate-800"><Bi ar={`الردود (${d.replies.length})`} en={`Replies (${d.replies.length})`} mode={mode} /></h3>
-              <div className="space-y-2">
-                {d.replies.map((r, i) => {
-                  const mine = (r.side === 'mediago') === partner;
-                  return (
-                    <div key={r._id || i} className={`flex ${mine ? 'justify-start' : 'justify-end'}`}>
-                      <div className={`max-w-[85%] rounded-2xl px-3 py-2 ${r.side === 'mediago' ? 'bg-violet-50 text-violet-950 ring-1 ring-violet-100' : 'bg-orange-50 text-slate-900 ring-1 ring-orange-100'}`}>
-                        <p className="mb-0.5 flex items-center gap-1 text-[10.5px] font-bold text-slate-500"><UserIcon className="h-3 w-3" />{r.side === 'mediago' ? 'Media Go' : 'Energize'}{r.byName ? ` · ${r.byName}` : ''}</p>
-                        <p className="whitespace-pre-wrap text-[13px]" dir="auto">{r.text}</p>
-                        <p className="mt-0.5 text-[10px] text-slate-400">{fmtDateTime(r.at, ar)}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-                {!d.replies.length && <p className="text-[12.5px] text-slate-500">{tx('لا ردود بعد', 'No replies yet')}</p>}
-                <div ref={endRef} />
-              </div>
-            </section>
+            {info}{media}{status}{timeline}{thread}
           </div>
         )}
-
-        {d && (
-          <div className="border-t border-slate-200 bg-white p-3">
-            <div className="flex items-end gap-2">
-              <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={2} maxLength={2000} dir="auto"
-                placeholder={tx('اكتب ردًّا…', 'Write a reply…')}
-                onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendReply(); }}
-                className="min-h-[44px] flex-1 resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
-              <button type="button" onClick={sendReply} disabled={!reply.trim() || busy === 'reply'}
-                className="inline-flex h-11 items-center gap-1.5 rounded-lg bg-[#f37121] px-4 text-sm font-bold text-white hover:bg-[#e0621a] disabled:opacity-50">
-                {busy === 'reply' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 rtl:-scale-x-100" />}
-              </button>
-            </div>
-            {can?.delete && (
-              <button type="button" onClick={remove} className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-red-600 hover:underline">
-                <Trash2 className="h-3.5 w-3.5" />{tx('حذف البلاغ', 'Delete complaint')}
-              </button>
-            )}
-          </div>
-        )}
-        {d && view !== null && <Lightbox files={d.files} index={view} onClose={() => setView(null)} onIndex={setView} />}
+        {d && <div className="border-t border-slate-200 bg-white p-3">{composer}</div>}
+        {editor}{lightbox}
       </div>
     </div>
   );
 }
 
+/** النافذةُ — الاسمُ القديم يبقى لمن يستعمله. */
+export function ComplaintDetailModal({ id, onClose, mode, onChanged }: { id: string; onClose: () => void; mode: Mode; onChanged: () => void }) {
+  return <ComplaintDetail id={id} mode={mode} variant="modal" onClose={onClose} onChanged={onChanged} />;
+}

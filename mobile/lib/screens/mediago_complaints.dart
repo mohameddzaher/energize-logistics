@@ -41,11 +41,15 @@ String _availOf(Map? meta, Map r, bool partner) =>
     r['availability'] == 'other' && '${r['availabilityOther'] ?? ''}'.isNotEmpty ? '${r['availabilityOther']}' : _vocab(meta, 'availability', '${r['availability']}', partner);
 
 Color _statusColor(String s) => switch (s) {
-      'new' => T.info,
+      // «جديدة» بلون الشريط الجانبيّ في الموقع (slate-900) لا بالأزرق.
+      'new' => _slate,
       'in_progress' => T.warn,
       'fixed' => T.success,
-      _ => T.inkSoft,
+      _ => T.inkFaint,
     };
+
+/// لونُ الشريط الجانبيّ في الموقع (slate-900) — رأسُ شاشات Media Go كلِّها.
+const _slate = Color(0xFF0F172A);
 
 String _when(dynamic iso) {
   final d = DateTime.tryParse('${iso ?? ''}');
@@ -124,8 +128,13 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
     }
   }
 
+  // حسابُ Media Go يفتح البلاغَ صفحةً كاملة؛ وموظّفونا لوحةً من الأسفل.
   void _open(String id) async {
-    await showMediaGoDetail(context, id, partner: _partner);
+    if (_partner) {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => MediaGoDetailScreen(id: id, partner: true, fullPage: true)));
+    } else {
+      await showMediaGoDetail(context, id, partner: _partner);
+    }
     _load();
   }
 
@@ -195,7 +204,7 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
           // اللافتة
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(gradient: T.navyGradient, borderRadius: BorderRadius.circular(18)),
+            decoration: BoxDecoration(color: _slate, borderRadius: BorderRadius.circular(18)),
             child: Row(children: [
               Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(14)),
                   child: const Icon(Icons.connected_tv_outlined, color: Colors.white)),
@@ -213,7 +222,7 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
           SizedBox(
             height: 40,
             child: ListView(scrollDirection: Axis.horizontal, children: [
-              statusChip('', _bx(partner, 'الكل', 'All'), (d['grandTotal'] ?? 0) as num, T.navy),
+              statusChip('', _bx(partner, 'الكل', 'All'), (d['grandTotal'] ?? 0) as num, _slate),
               for (final s in statuses)
                 statusChip('${s['key']}', partner ? '${s['ar']} / ${s['en']}' : tr('${s['ar']}', '${s['en']}'), (sc['${s['key']}'] ?? 0) as num, _statusColor('${s['key']}')),
             ]),
@@ -258,8 +267,8 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
             height: 130,
             child: Stack(fit: StackFit.expand, children: [
               cover.isNotEmpty
-                  ? Image.network(_url(cover), fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: T.navy))
-                  : Container(decoration: const BoxDecoration(gradient: T.navyGradient), child: const Icon(Icons.connected_tv_outlined, color: Colors.white38, size: 40)),
+                  ? Image.network(_url(cover), fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: _slate))
+                  : Container(color: _slate, child: const Icon(Icons.connected_tv_outlined, color: Colors.white38, size: 40)),
               PositionedDirectional(top: 8, end: 8, child: Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)), child: _StatusPill(status, meta, partner))),
               PositionedDirectional(bottom: 8, start: 10, child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -325,6 +334,7 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
     final auth = context.read<AuthProvider>();
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: _slate,
         title: const Text('Media Go'),
         actions: [
           IconButton(
@@ -354,7 +364,9 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
 class MediaGoDetailScreen extends StatefulWidget {
   final String id;
   final bool partner;
-  const MediaGoDetailScreen({super.key, required this.id, this.partner = false});
+  /// صفحةٌ كاملة (حسابُ Media Go) بدلَ اللوحة المنزلقة.
+  final bool fullPage;
+  const MediaGoDetailScreen({super.key, required this.id, this.partner = false, this.fullPage = false});
   @override
   State<MediaGoDetailScreen> createState() => _MediaGoDetailScreenState();
 }
@@ -449,6 +461,13 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
     await _run('files', () => Api.instance.postLong('$_api/${widget.id}/files', {'files': picked.map((f) => f.toJson()).toList()}));
   }
 
+  Future<void> _edit() async {
+    final it = _item;
+    if (it == null) return;
+    final saved = await Navigator.push<Map<String, dynamic>>(context, MaterialPageRoute(builder: (_) => MediaGoCreateScreen(meta: _meta, editing: it)));
+    if (saved != null && mounted) setState(() => _item = saved);
+  }
+
   Future<void> _delete() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -508,7 +527,7 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
         Expanded(
           child: ListView(padding: const EdgeInsets.all(14), children: [
             Row(children: [
-              Text('${it['ref']}', textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: T.navy)),
+              Text('${it['ref']}', textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: _slate)),
               const SizedBox(width: 10),
               _StatusPill('${it['status']}', _meta, partner),
             ]),
@@ -531,17 +550,33 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
             Text(_bx(partner, 'صور العطل (${files.length})', 'Fault media (${files.length})'), style: const TextStyle(fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
             if (files.isEmpty) Text(_bx(partner, 'لا مرفقات', 'No attachments'), style: const TextStyle(color: T.inkSoft)),
-            if (files.isNotEmpty)
+            // في الصفحة: الأولى كبيرةً بعرض الشاشة، وما بعدها شبكةٌ تحتها.
+            if (files.isNotEmpty && widget.fullPage) ...[
+              GestureDetector(
+                onTap: () => _viewFile(files, 0),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: AspectRatio(
+                    aspectRatio: 16 / 10,
+                    child: (files[0] as Map)['kind'] == 'video'
+                        ? Container(color: _slate, child: const Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 56)))
+                        : Container(color: _slate, child: Image.network(_url('${(files[0] as Map)['fileUrl']}'), fit: BoxFit.contain, errorBuilder: (_, __, ___) => Container(color: T.line))),
+                  ),
+                ),
+              ),
+              if (files.length > 1) const SizedBox(height: 6),
+            ],
+            if (files.isNotEmpty && (!widget.fullPage || files.length > 1))
               GridView.count(
                 crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 6, crossAxisSpacing: 6,
                 children: [
-                  for (var i = 0; i < files.length; i++)
+                  for (var i = widget.fullPage ? 1 : 0; i < files.length; i++)
                     GestureDetector(
                       onTap: () => _viewFile(files, i),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(10),
                         child: (files[i] as Map)['kind'] == 'video'
-                            ? Container(color: T.navy, child: const Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 40)))
+                            ? Container(color: _slate, child: const Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 40)))
                             : Image.network(_url('${(files[i] as Map)['fileUrl']}'), fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: T.line)),
                       ),
                     ),
@@ -605,8 +640,6 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
                   ]),
                 ),
               ),
-            if (_can?['delete'] == true)
-              TextButton.icon(onPressed: _delete, icon: const Icon(Icons.delete_outline, color: T.danger), label: Text(tr('حذف البلاغ', 'Delete complaint'), style: const TextStyle(color: T.danger))),
           ]),
         ),
         SafeArea(
@@ -630,6 +663,20 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
         ),
       ]);
     }
+    // تعديلٌ وحذفٌ لمن يملكهما (مدير النظام والإدارة العليا ورأسا القسم) — يقولها الخادم في `can`.
+    final actions = <Widget>[
+      if (it != null && _can?['edit'] == true)
+        IconButton(tooltip: tr('تعديل', 'Edit'), icon: const Icon(Icons.edit_outlined), onPressed: _edit),
+      if (it != null && _can?['delete'] == true)
+        IconButton(tooltip: tr('حذف', 'Delete'), icon: const Icon(Icons.delete_outline), onPressed: _delete),
+    ];
+    if (widget.fullPage) {
+      return Scaffold(
+        backgroundColor: T.canvas,
+        appBar: AppBar(backgroundColor: _slate, title: Text(it == null ? 'Media Go' : '${it['ref']}'), actions: actions),
+        body: body,
+      );
+    }
     // ── لوحةٌ تنزلق من الأسفل، بمِرسالها الخاصّ كي تظهر الرسائلُ فوقها ──
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
@@ -638,9 +685,9 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
           backgroundColor: T.canvas,
           appBar: AppBar(
             automaticallyImplyLeading: false,
-            backgroundColor: T.navy,
+            backgroundColor: _slate,
             title: Text(it == null ? 'Media Go' : '${it['ref']}'),
-            actions: [IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context))],
+            actions: [...actions, IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context))],
           ),
           body: body,
         ),
@@ -768,7 +815,9 @@ Future<List<MgPicked>> pickMediaFiles(BuildContext context, {required String sou
 // ═════════════════════════════════════════════════════════════════════════
 class MediaGoCreateScreen extends StatefulWidget {
   final Map? meta;
-  const MediaGoCreateScreen({super.key, this.meta});
+  /// بلاغٌ يُعدَّل بدلَ إنشاء جديد — يُرجع البلاغَ بعد الحفظ.
+  final Map<String, dynamic>? editing;
+  const MediaGoCreateScreen({super.key, this.meta, this.editing});
   @override
   State<MediaGoCreateScreen> createState() => _MediaGoCreateScreenState();
 }
@@ -790,6 +839,18 @@ class _MediaGoCreateScreenState extends State<MediaGoCreateScreen> {
   void initState() {
     super.initState();
     _meta = widget.meta;
+    final e = widget.editing;
+    if (e != null) {
+      _vehicle = '${e['vehicle'] ?? ''}';
+      if (_vehicle == 'null') _vehicle = '';
+      _moto.text = '${e['motorcycleNumber'] ?? ''}';
+      _vehicleHint = [if ('${e['serialNumber'] ?? ''}'.isNotEmpty) '#${e['serialNumber']}', '${e['project'] ?? ''}'].where((x) => x.isNotEmpty).join(' · ');
+      _screen.text = '${e['screenNumber'] ?? ''}';
+      _issue = '${e['issue'] ?? ''}';
+      _issueOther.text = '${e['issueOther'] ?? ''}';
+      _availability = '${e['availability'] ?? ''}';
+      _availOther.text = '${e['availabilityOther'] ?? ''}';
+    }
     if (_meta == null) {
       Api.instance.get('$_api/meta').then((d) { if (mounted) setState(() => _meta = (d as Map)['meta'] as Map?); }).catchError((_) {});
     }
@@ -829,6 +890,26 @@ class _MediaGoCreateScreenState extends State<MediaGoCreateScreen> {
       return;
     }
     setState(() => _saving = true);
+    final e = widget.editing;
+    if (e != null) {
+      try {
+        final r = await Api.instance.put('$_api/${e['_id']}', {
+          if (_vehicle.isNotEmpty) 'vehicle': _vehicle,
+          'motorcycleNumber': _moto.text.trim(),
+          'screenNumber': _screen.text.trim(),
+          'issue': _issue, 'issueOther': _issueOther.text.trim(),
+          'availability': _availability, 'availabilityOther': _availOther.text.trim(),
+        });
+        if (!mounted) return;
+        final item = Map<String, dynamic>.from((r as Map)['item'] as Map);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('حُفظ تعديل ${item['ref']}', '${item['ref']} updated'))));
+        Navigator.pop(context, item);
+      } catch (err) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err is ApiException ? err.message : err.toString())));
+      }
+      if (mounted) setState(() => _saving = false);
+      return;
+    }
     try {
       final r = await Api.instance.postLong(_api, {
         if (_vehicle.isNotEmpty) 'vehicle': _vehicle,
@@ -921,7 +1002,7 @@ class _MediaGoCreateScreenState extends State<MediaGoCreateScreen> {
   Widget build(BuildContext context) {
     final dec = InputDecoration(filled: true, fillColor: Colors.white, isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)));
     return Scaffold(
-      appBar: AppBar(title: Text(tr('بلاغ عطل شاشة', 'Screen fault report'))),
+      appBar: AppBar(backgroundColor: _slate, title: Text(widget.editing != null ? tr('تعديل ${widget.editing!['ref']}', 'Edit ${widget.editing!['ref']}') : tr('بلاغ عطل شاشة', 'Screen fault report'))),
       body: _meta == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 100), children: [
@@ -953,7 +1034,8 @@ class _MediaGoCreateScreenState extends State<MediaGoCreateScreen> {
                 ])),
               ]),
               // الصورُ في آخر النموذج — رفعٌ من الجهاز أو تصويرٌ الآن، وكلاهما متعدّد.
-              _card([
+              // وفي التعديل لا تُعرَض: المرفقاتُ تُضاف من التفصيل.
+              if (widget.editing == null) _card([
                 _q('صورة العطل', 'Photo of the Fault', child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
                     Expanded(child: OutlinedButton.icon(
@@ -978,7 +1060,7 @@ class _MediaGoCreateScreenState extends State<MediaGoCreateScreen> {
                           ClipRRect(
                             borderRadius: BorderRadius.circular(10),
                             child: _files[i].video
-                                ? Container(width: 72, height: 72, color: T.navy, child: const Icon(Icons.videocam, color: Colors.white))
+                                ? Container(width: 72, height: 72, color: _slate, child: const Icon(Icons.videocam, color: Colors.white))
                                 : Image.memory(base64Decode(_files[i].dataUrl.split(',').last), width: 72, height: 72, fit: BoxFit.cover),
                           ),
                           PositionedDirectional(top: 2, end: 2, child: InkWell(
@@ -1001,7 +1083,7 @@ class _MediaGoCreateScreenState extends State<MediaGoCreateScreen> {
             style: FilledButton.styleFrom(backgroundColor: T.orange),
             onPressed: _saving ? null : _submit,
             icon: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send_rounded),
-            label: Text(_saving ? tr('جارٍ الرفع…', 'Uploading…') : tr('رفع البلاغ', 'Submit')),
+            label: Text(_saving ? tr('جارٍ الحفظ…', 'Saving…') : widget.editing != null ? tr('حفظ التعديل', 'Save changes') : tr('رفع البلاغ', 'Submit')),
           ),
         ),
       ),
@@ -1064,7 +1146,7 @@ class _MotoSheetState extends State<_MotoSheet> {
                     itemBuilder: (_, i) {
                       final o = _items[i];
                       return ListTile(
-                        leading: const Icon(Icons.two_wheeler_outlined, color: T.navy),
+                        leading: const Icon(Icons.two_wheeler_outlined, color: _slate),
                         title: Text('${(o['plateNumber'] ?? '').toString().isEmpty ? '—' : o['plateNumber']}', style: const TextStyle(fontWeight: FontWeight.w800)),
                         subtitle: Text([if ('${o['serialNumber'] ?? ''}'.isNotEmpty) '#${o['serialNumber']}', '${o['project'] ?? ''}', '${o['driverName'] ?? ''}'].where((x) => x.isNotEmpty).join(' · ')),
                         onTap: () => Navigator.pop(context, o),

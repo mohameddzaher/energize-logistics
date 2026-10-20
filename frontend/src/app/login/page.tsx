@@ -33,6 +33,15 @@ function LoginForm() {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const loggedInUser = await login(email, password);
+        // ── المتصفّحُ يُعرض عليه حفظُ كلمة المرور ──────────────────────────────
+        // الدخولُ يتمّ بلا إعادة تحميل، فقد لا يعرف المتصفّحُ أنّه نجح فلا يسأل
+        // «حفظ كلمة المرور؟». فيُقال له صراحةً (Credential Management) حيث يُدعَم.
+        try {
+          const W = window as any;
+          if (W.PasswordCredential && navigator.credentials?.store) {
+            await navigator.credentials.store(new W.PasswordCredential({ id: email, password, name: email }));
+          }
+        } catch { /* المتصفّحُ يقرّر وحده — لا يمنع الدخول */ }
         router.push(returnTo || landingFor(loggedInUser));
         return;
       } catch (err: any) {
@@ -66,7 +75,7 @@ function LoginForm() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} method="post" action="/login" autoComplete="on" className="space-y-5">
             {error && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
@@ -79,9 +88,13 @@ function LoginForm() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
               <input
                 type="email"
+                id="email"
+                name="email"
+                autoComplete="username"
+                inputMode="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -91,10 +104,13 @@ function LoginForm() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
+                  id="password"
+                  name="password"
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required

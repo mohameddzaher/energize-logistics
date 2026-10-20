@@ -7,14 +7,14 @@ export const MEDIAGO_ROLE = 'mediago_account';
 
 export type VocabItem = { key: string; ar: string; en: string };
 export type Vocab = { issue: VocabItem[]; location: VocabItem[]; availability: VocabItem[]; status: VocabItem[] };
-export type Can = { partner: boolean; create: boolean; delete: boolean; reply: boolean; statuses: string[] };
+export type Can = { partner: boolean; create: boolean; delete: boolean; edit?: boolean; reply: boolean; statuses: string[] };
 
 export type MgFile = { _id?: string; fileUrl: string; fileName?: string; mimeType?: string; size?: number; kind: 'image' | 'video'; uploadedAt?: string };
 export type MgHistory = { status: string; note?: string; byName?: string; side: 'energize' | 'mediago'; at: string };
 export type MgReply = { _id?: string; text: string; byName?: string; side: 'energize' | 'mediago'; at: string };
 
 export type MgRow = {
-  _id: string; ref: string; seq: number;
+  _id: string; ref: string; seq: number; vehicle?: string | null;
   motorcycleNumber: string; plateNumber: string; serialNumber: string; project: string;
   screenNumber: string;
   issue: string; issueOther: string;
@@ -48,10 +48,11 @@ export const availabilityText = (meta: Vocab | null | undefined, r: Pick<MgRow, 
 
 /** ألوانُ الحالات — واحدةٌ في البطاقات والجدول والتفصيل. */
 export const STATUS_TONE: Record<string, { pill: string; dot: string; accent: string }> = {
-  new: { pill: 'bg-sky-50 text-sky-700 ring-sky-200', dot: 'bg-sky-500', accent: 'text-sky-600' },
+  // «جديدة» بلون الشريط الجانبيّ (slate-900) لا بالأزرق — هويّةُ النظام.
+  new: { pill: 'bg-slate-100 text-slate-900 ring-slate-300', dot: 'bg-slate-900', accent: 'text-slate-900' },
   in_progress: { pill: 'bg-amber-50 text-amber-700 ring-amber-200', dot: 'bg-amber-500', accent: 'text-amber-600' },
   fixed: { pill: 'bg-emerald-50 text-emerald-700 ring-emerald-200', dot: 'bg-emerald-500', accent: 'text-emerald-600' },
-  closed: { pill: 'bg-slate-100 text-slate-600 ring-slate-200', dot: 'bg-slate-400', accent: 'text-slate-500' },
+  closed: { pill: 'bg-white text-slate-500 ring-slate-200', dot: 'bg-slate-300', accent: 'text-slate-400' },
 };
 
 export const fmtDateTime = (iso?: string | null, ar = true) => {

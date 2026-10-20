@@ -44,7 +44,9 @@ const LIMITS = { image: 8 * MB, video: 15 * MB, request: 18 * MB };
 /** مَن يرفع البلاغ: رؤوسُ القسم ومديرو مشاريعه ومشرفوه — ومن مُنح القسمَ «تعديلًا». */
 const CREATE_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'];
 /** والحذفُ فعلٌ لا يُستعاد: لمدير القطاع ونائبه ومدير النظام وحدَهم. */
-const DELETE_ROLES = ['super_admin', 'b2c_manager', 'b2c_deputy'];
+// والإدارةُ العليا معهم (طلبُ صاحب الشركة) — ومن يحذف يعدّل: القائمةُ نفسُها.
+const DELETE_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy'];
+const EDIT_ROLES = DELETE_ROLES;
 /** ما تقوله Media Go عن البلاغ — لا تفتحه من جديد ولا تغلقه. */
 const PARTNER_STATUSES = ['in_progress', 'fixed'];
 
@@ -65,6 +67,7 @@ const abilities = (req) => {
     partner,
     create: canCreate(req),
     delete: DELETE_ROLES.includes(req.user?.role),
+    edit: EDIT_ROLES.includes(req.user?.role),
     reply: true,
     statuses: partner ? PARTNER_STATUSES : MEDIAGO_VOCAB.status.map((s) => s.key),
   };
@@ -156,7 +159,7 @@ async function notifyOurSide(doc, { type, title, message }) {
 
 // ── الصفّ كما يُعرَض ─────────────────────────────────────────────────────────
 const listRow = (d) => ({
-  _id: d._id, ref: d.ref, seq: d.seq,
+  _id: d._id, ref: d.ref, seq: d.seq, vehicle: d.vehicle || null,
   motorcycleNumber: d.motorcycleNumber, plateNumber: d.plateNumber || '', serialNumber: d.serialNumber || '', project: d.project || '',
   screenNumber: d.screenNumber || '',
   issue: d.issue, issueOther: d.issueOther || '',
@@ -273,6 +276,67 @@ exports.getOne = async (req, res) => {
 };
 
 // ── رفعُ بلاغ ───────────────────────────────────────────────────────────────
+// ── حقولُ البلاغ نفسُه — يقرؤها الإنشاءُ والتعديلُ معًا ─────────────────────
+async function readFields(b) {
+  const keys = (g) => MEDIAGO_VOCAB[g].map((x) => x.key);
+  const issue = S(b.issue); const availability = S(b.availability);
+  const problems = [];
+  if (!keys('issue').includes(issue)) problems.push('المشكلة / Issue');
+  if (issue === 'other' && !S(b.issueOther)) problems.push('وصف المشكلة / Describe the issue');
+  if (!keys('availability').includes(availability)) problems.push('وقت التوفّر / Availability');
+  if (availability === 'other' && !S(b.availabilityOther)) problems.push('الوقت المناسب / Preferred time');
+  let vehicle = null;
+  if (b.vehicle && mongoose.Types.ObjectId.isValid(String(b.vehicle))) {
+    vehicle = await VehicleMaster.findById(b.vehicle).select('plateNumber serialNumber departmentAr').lean();
+  }
+  const motorcycleNumber = S(b.motorcycleNumber) || (vehicle ? (vehicle.plateNumber || vehicle.serialNumber) : '');
+  if (!motorcycleNumber) problems.push('رقم الدبّاب / Motorcycle number');
+  return {
+    problems,
+    fields: {
+      vehicle: vehicle?._id || null,
+      motorcycleNumber: motorcycleNumber.slice(0, 60),
+      plateNumber: vehicle?.plateNumber || '', serialNumber: vehicle?.serialNumber || '', project: vehicle?.departmentAr || '',
+      screenNumber: S(b.screenNumber).slice(0, 60),
+      issue, issueOther: issue === 'other' ? S(b.issueOther).slice(0, 500) : '',
+      // موقعُ الصيانة إنرجايز دائمًا — لا يُقرأ من الطلب.
+      location: 'energize',
+      availability, availabilityOther: availability === 'other' ? S(b.availabilityOther).slice(0, 200) : '',
+    },
+  };
+}
+
+// ── تعديلُ البلاغ — مدير النظام والإدارة العليا ورأسا القسم ───────────────────
+const EDIT_FIELDS = ['vehicle', 'motorcycleNumber', 'plateNumber', 'serialNumber', 'project', 'screenNumber', 'issue', 'issueOther', 'location', 'availability', 'availabilityOther'];
+exports.update = async (req, res) => {
+  try {
+    const doc = await MediaGoComplaint.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'البلاغ غير موجود / Complaint not found' });
+    const { problems, fields } = await readFields(req.body || {});
+    if (problems.length) return res.status(400).json({ message: `حقول مطلوبة: ${problems.join('، ')}`, fields: problems });
+    const val = (v) => (v == null ? '' : String(v));
+    const before = {}; const after = {};
+    for (const k of EDIT_FIELDS) {
+      if (val(doc[k]) !== val(fields[k])) { before[k] = doc[k] ?? null; after[k] = fields[k]; doc[k] = fields[k]; }
+    }
+    if (!Object.keys(after).length) return res.json({ item: fullRow(doc.toObject()), unchanged: true });
+    await doc.save();
+    await logAudit({
+      user: req.user, action: 'update', entity: 'MediaGoComplaint', entityId: doc._id,
+      changes: { before, after }, details: `${doc.ref} — ${Object.keys(after).join(', ')}`,
+    });
+    announce(doc._id, 'updated');
+    await notifyPartner({
+      type: 'general', id: doc._id,
+      title: `عُدِّل البلاغ ${doc.ref} / Complaint ${doc.ref} updated`,
+      message: `${doc.motorcycleNumber} — ${label('issue', doc.issue)} / ${label('issue', doc.issue, 'en')}`,
+    });
+    res.json({ item: fullRow(doc.toObject()) });
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
 exports.create = async (req, res) => {
   if (!canCreate(req)) return res.status(403).json({ message: 'رفع البلاغات لقسم الأفراد' });
   const b = req.body || {};
@@ -433,3 +497,4 @@ exports.remove = async (req, res) => {
 
 exports.CREATE_ROLES = CREATE_ROLES;
 exports.DELETE_ROLES = DELETE_ROLES;
+exports.EDIT_ROLES = EDIT_ROLES;

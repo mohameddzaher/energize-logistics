@@ -11,6 +11,7 @@
  * والبطاقاتُ تُعَدّ بكلّ الفلاتر إلّا فلترِ الحالة، فلا تقفز تحت الضغطة.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -54,7 +55,6 @@ function ComplaintCard({ r, data, mode, onOpen }: { r: MgRow; data: MgList; mode
         <div className="mt-auto grid grid-cols-2 gap-x-2 gap-y-1 text-[11.5px] text-slate-600">
           <span className="inline-flex items-center gap-1 truncate"><Bike className="h-3.5 w-3.5 shrink-0 text-slate-400" /><span className="truncate font-semibold" dir="auto">{r.motorcycleNumber}</span></span>
           <span className="inline-flex items-center gap-1 truncate"><MonitorPlay className="h-3.5 w-3.5 shrink-0 text-slate-400" /><span className="truncate">{r.screenNumber || '—'}</span></span>
-          <span className="inline-flex items-center gap-1 truncate"><MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" /><span className="truncate">{vocabLabel(data.meta, 'location', r.location, 'en')}</span></span>
           <span className="inline-flex items-center gap-1 truncate"><Clock className="h-3.5 w-3.5 shrink-0 text-slate-400" /><span className="truncate" dir="ltr">{availabilityText(data.meta, r, 'en')}</span></span>
         </div>
         <div className="flex items-center justify-between border-t border-slate-100 pt-2 text-[11px] text-slate-400">
@@ -69,6 +69,7 @@ function ComplaintCard({ r, data, mode, onOpen }: { r: MgRow; data: MgList; mode
 export default function MediaGoComplaintsPage() {
   const { lang, isRTL } = useLanguage();
   const { user } = useAuth();
+  const router = useRouter();
   const [data, setData] = useState<MgList | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState('');
@@ -83,9 +84,13 @@ export default function MediaGoComplaintsPage() {
   useEffect(() => {
     try {
       const id = new URLSearchParams(window.location.search).get('id');
-      if (id && /^[0-9a-f]{24}$/i.test(id)) setOpenId(id);
+      if (id && /^[0-9a-f]{24}$/i.test(id)) {
+        // حسابُ Media Go يقرأ البلاغَ صفحةً؛ وموظّفونا في النافذة.
+        if (String(user?.role || '') === MEDIAGO_ROLE) router.replace(`/system/b2c/mediago-complaints/${id}`);
+        else setOpenId(id);
+      }
     } catch (_) { /* */ }
-  }, []);
+  }, [user?.role, router]);
   useEffect(() => { const h = setTimeout(() => setQd(q.trim()), 300); return () => clearTimeout(h); }, [q]);
 
   const guard = useLatestRequest();
@@ -158,7 +163,8 @@ export default function MediaGoComplaintsPage() {
   return (
     <div className="w-full space-y-4 pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* الرأس — للشريك لافتةٌ تحمل الاسمين، ولنا رأسُ القسم */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-l from-[#12325c] via-[#173f73] to-[#1d4f8f] p-5 text-white shadow-md">
+      {/* بلون الشريط الجانبيّ نفسِه (slate-900) — والبرتقاليُّ وحدَه للإبراز. */}
+      <div className="relative overflow-hidden rounded-2xl bg-slate-900 p-5 text-white shadow-md">
         <div className="pointer-events-none absolute -end-10 -top-16 h-48 w-48 rounded-full bg-[#f37121]/25 blur-2xl" />
         <div className="relative flex flex-wrap items-center gap-4">
           <span className="rounded-2xl bg-white/15 p-3"><MonitorPlay className="h-7 w-7" /></span>
@@ -237,8 +243,9 @@ export default function MediaGoComplaintsPage() {
           <p className="font-semibold text-slate-600"><Bi ar={anyFilter ? 'لا بلاغات مطابقة' : 'لا بلاغات بعد'} en={anyFilter ? 'No matching complaints' : 'No complaints yet'} mode={mode} /></p>
         </div>
       ) : partner ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {data.items.map((r) => <ComplaintCard key={r._id} r={r} data={data} mode={mode} onOpen={() => setOpenId(r._id)} />)}
+        // حسابُ Media Go يفتح البلاغَ صفحةً كاملة لا نافذة.
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {data.items.map((r) => <ComplaintCard key={r._id} r={r} data={data} mode={mode} onOpen={() => router.push(`/system/b2c/mediago-complaints/${r._id}`)} />)}
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -260,7 +267,7 @@ export default function MediaGoComplaintsPage() {
               <tbody className="divide-y divide-slate-100">
                 {data.items.map((r) => (
                   <tr key={r._id} onClick={() => setOpenId(r._id)} className="cursor-pointer hover:bg-orange-50/40">
-                    <td className="whitespace-nowrap px-3 py-2 font-bold text-[#12325c]" dir="ltr">{r.ref}</td>
+                    <td className="whitespace-nowrap px-3 py-2 font-bold text-slate-900" dir="ltr">{r.ref}</td>
                     <td className="whitespace-nowrap px-3 py-2 font-semibold text-slate-900">
                       <span dir="auto">{r.motorcycleNumber}</span>
                       {r.project && <span className="ms-1.5 text-[11px] font-normal text-slate-400">{r.project}</span>}

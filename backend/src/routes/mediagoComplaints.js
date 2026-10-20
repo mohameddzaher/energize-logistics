@@ -30,6 +30,7 @@ router.get('/:id', authorize(...READ), c.getOne);
 router.post('/:id/files', authorize(...c.CREATE_ROLES), c.addFiles);
 router.patch('/:id/status', authorize(...READ), c.setStatus);
 router.post('/:id/replies', authorize(...READ), c.reply);
+router.put('/:id', authorize.strict(...c.EDIT_ROLES), c.update);
 router.delete('/:id', authorize.strict(...c.DELETE_ROLES), c.remove);
 
 // لا يعبر شيءٌ من هنا إلى موجّه القسم: ما لم يُعرَف هنا غيرُ موجود.

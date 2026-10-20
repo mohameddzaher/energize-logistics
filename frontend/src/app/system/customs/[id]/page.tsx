@@ -12,7 +12,6 @@ import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import ExportMenu, { type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import { getCustomsTranslations, getCustomsIdExtraTranslations } from '@/lib/translations';
-import ClearanceParties from '@/components/customs/ClearanceParties';
 import ClearanceAttachments from '@/components/customs/ClearanceAttachments';
 import { SearchableSelect } from '@/components/hr/HRKit';
 import ClearanceNotes from '@/components/customs/ClearanceNotes';
@@ -982,8 +981,8 @@ export default function CustomsDetailPage() {
         </Card>
       </div>
 
-      {/* العميلُ والوكيلُ والناقل: بياناتُهم ومرفقاتُهم من ملفّاتهم */}
-      <ClearanceParties clearanceId={c._id} canEdit={canEdit} ar={ar} />
+      {/* بياناتُ العميل والوكيل والناقل ومرفقاتُهم لا تُعرض هنا — مكانُها ملفُّ كلّ
+          طرفٍ في صفحته (العملاء · وكلاء الشحن · الناقلون) — صاحبُ الشركة، ٢٠٢٦/١٠/٢٠. */}
 
       {/* مرفقات المعاملة — ورقُ كلِّ مرحلةٍ موسومًا بها */}
       <ClearanceAttachments

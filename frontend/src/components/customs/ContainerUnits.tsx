@@ -7,9 +7,9 @@
  * ذلك يُكتب في ملاحظةٍ أو في ورقةٍ جانبيّة.
  *
  * فتُرسَم الحاوياتُ بعددها، ولكلّ حاويةٍ خانتُها. وبيانُ النقل يظهر حين تُعلَّم
- * مرحلةُ نقلٍ في دورة التخليص: بسيّارة تنشيط فيُكتب «رقم كشف التخريج» (وهو
- * نفسُه في سير عمل التشغيل، فيُقال في الحال أمرتبطٌ هو أم لا)، أو بسيّارةٍ
- * خارجيّةٍ فيُكتب «رقم الفاتورة».
+ * مرحلةُ نقلٍ في دورة التخليص: بسيّارة تنشيط أو بسيّارةٍ خارجيّة، وفي الحالين
+ * يُكتب «رقم كشف التخريج» — فالخارجيّةُ يُعمل لها كشفُ تخريجٍ في سير عمل التشغيل
+ * كذلك (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠)، فيُقال في الحال أمرتبطٌ هو أم لا. ولا «رقم فاتورة».
  */
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -54,7 +54,7 @@ export default function ContainerUnits({
 
   // أرقامُ كشوف التخريج المكتوبة: أيُّها موجودٌ في سير عمل التشغيل.
   const sheetNumbers = useMemo(() => [...new Set(units.flatMap((u) => (u.moves || [])
-    .filter((m) => m.vehicleKind === 'energize' && m.ref).map((m) => m.ref.trim())))].sort().join(','), [units]);
+    .filter((m) => m.vehicleKind && m.ref).map((m) => m.ref.trim())))].sort().join(','), [units]);
   const [found, setFound] = useState<Record<string, string>>({});
   useEffect(() => {
     if (!sheetNumbers) { setFound({}); return; }
@@ -131,8 +131,7 @@ function UnitBox({
           onSave={(v) => onChange({ ...unit, containerNumber: v.trim().toUpperCase() })} />
         {legs.map((leg) => {
           const m = moveOf(unit, leg);
-          const energize = m.vehicleKind === 'energize';
-          const id = energize && m.ref ? found[m.ref.trim()] : '';
+          const id = m.ref ? found[m.ref.trim()] : '';
           return (
             <div key={leg} className="rounded border border-slate-200 bg-slate-50 p-2">
               <p className="mb-1.5 flex items-center gap-1 text-[11px] font-bold text-slate-700"><Truck className="h-3.5 w-3.5 text-[#f37121]" />{stageName(stages, leg, cargo)}</p>
@@ -146,11 +145,11 @@ function UnitBox({
                 ))}
               </div>
               {!!m.vehicleKind && (
-                <Field label={energize ? t('رقم كشف التخريج', 'Release sheet no.') : t('رقم الفاتورة', 'Invoice no.')}
+                <Field label={t('رقم كشف التخريج', 'Release sheet no.')}
                   value={m.ref} disabled={!canEdit} mono
                   onSave={(v) => onChange(withMove(unit, leg, { ref: v.trim() }))} />
               )}
-              {energize && !!m.ref && (id ? (
+              {!!m.vehicleKind && !!m.ref && (id ? (
                 <Link href={`/system/operations/${id}`} className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:underline">
                   <Link2 className="h-3 w-3" />{t('مرتبطٌ بسير عمل التشغيل', 'Linked to operations workflow')}
                 </Link>
@@ -186,7 +185,7 @@ function UnitBox({
                 ))}
               </div>
               {!!unit.returnVehicleKind && (
-                <Field label={unit.returnVehicleKind === 'energize' ? t('رقم كشف التخريج', 'Release sheet no.') : t('رقم الفاتورة', 'Invoice no.')}
+                <Field label={t('رقم كشف التخريج', 'Release sheet no.')}
                   value={unit.returnRef || ''} disabled={!canEdit} mono
                   onSave={(v) => onChange({ ...unit, returnRef: v.trim() })} />
               )}

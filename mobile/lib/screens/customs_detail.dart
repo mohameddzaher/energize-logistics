@@ -912,8 +912,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
-                    // ── أطرافُ المعاملة: بياناتُهم ومرفقاتُهم من ملفّاتهم ──
-                    CustomsClearanceParties(clearanceId: widget.clearanceId),
+                    // أطرافُ المعاملة لا تُعرض هنا — ملفّاتُهم في صفحاتهم (العملاء · الوكلاء · الناقلون).
                     // ── المرفقات ──
                     // ورقُ كلِّ مرحلةٍ موسومًا بها، يُفتح ويُنزَّل من الجوّال
                     // كما من الويب: من في الميناء أحوجُ إليه ممّن في المكتب.
@@ -1126,7 +1125,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
         if (s('returnDepot').isNotEmpty) row(tr('مكان الإرجاع', 'Returned to'), s('returnDepot')),
         if (s('returnReceipt').isNotEmpty) row(tr('رقم إيصال الإرجاع (EIR)', 'Return receipt (EIR)'), s('returnReceipt')),
         if (kind.isNotEmpty)
-          row(kind == 'energize' ? tr('سيّارة تنشيط · رقم كشف التخريج', 'Energize truck · Release sheet') : tr('سيّارة خارجيّة · رقم الفاتورة', 'External truck · Invoice no.'), ref),
+          row(kind == 'energize' ? tr('سيّارة تنشيط · رقم كشف التخريج', 'Energize truck · Release sheet') : tr('سيّارة خارجيّة · رقم كشف التخريج', 'External truck · Release sheet'), ref),
         if (s('returnNotes').isNotEmpty) row(tr('ملاحظات الإرجاع', 'Return notes'), s('returnNotes')),
       ]),
     );
@@ -1145,7 +1144,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
               ? tr('لم تُحدَّد السيّارة', 'Vehicle not set')
               : kind == 'energize'
                   ? '${tr('سيّارة تنشيط', 'Energize vehicle')} · ${tr('رقم كشف التخريج', 'Release sheet')}: ${ref.isEmpty ? '—' : ref}'
-                  : '${tr('سيّارة خارجيّة', 'External vehicle')} · ${tr('رقم الفاتورة', 'Invoice no.')}: ${ref.isEmpty ? '—' : ref}',
+                  : '${tr('سيّارة خارجيّة', 'External vehicle')} · ${tr('رقم كشف التخريج', 'Release sheet')}: ${ref.isEmpty ? '—' : ref}',
           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: kind.isEmpty ? T.warn : T.ink),
         ),
         if (linked != null)
@@ -1714,7 +1713,7 @@ class _UnitSheetState extends State<_UnitSheet> {
                   controller: _returnRef,
                   textDirection: TextDirection.ltr,
                   decoration: InputDecoration(
-                      labelText: _returnKind == 'energize' ? tr('رقم كشف التخريج', 'Release sheet no.') : tr('رقم الفاتورة', 'Invoice no.')),
+                      labelText: tr('رقم كشف التخريج', 'Release sheet no.')),
                 ),
               ],
               const SizedBox(height: 8),
@@ -1738,7 +1737,7 @@ class _UnitSheetState extends State<_UnitSheet> {
                   controller: _ref[leg],
                   textDirection: TextDirection.ltr,
                   decoration: InputDecoration(
-                      labelText: _kind[leg] == 'energize' ? tr('رقم كشف التخريج', 'Release sheet no.') : tr('رقم الفاتورة', 'Invoice no.')),
+                      labelText: tr('رقم كشف التخريج', 'Release sheet no.')),
                 ),
               ],
             ],

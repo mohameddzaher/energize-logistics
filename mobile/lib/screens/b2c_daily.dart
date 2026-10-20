@@ -81,6 +81,22 @@ class _B2cDailyEntryScreenState extends State<B2cDailyEntryScreen> {
     }
   }
 
+  /// أمازون حضورٌ لا أوردرات: الأصلُ «حضر»، والنقرُ يقلبه — تحديثٌ متفائلٌ يُرَدّ عند الخطأ.
+  Future<void> _toggleAttendance(Map<String, dynamic> r) async {
+    final id = '${r['lt']}';
+    if (_state[id] == 'saving') return;
+    final prev = r['present'] != false;
+    setState(() { r['present'] = !prev; _state[id] = 'saving'; });
+    try {
+      await Api.instance.put('/api/b2c/attendance', {'lt': id, 'dateKey': _date, 'present': !prev});
+      if (mounted) setState(() => _state[id] = 'saved');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { r['present'] = prev; _state[id] = 'error'; });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
   String _shift(int days) {
     final d = DateTime.parse(_date).add(Duration(days: days));
@@ -149,7 +165,12 @@ class _B2cDailyEntryScreenState extends State<B2cDailyEntryScreen> {
                   Text([r['idNumber'], r['projectAr'], if ('${r['status']}' != 'يعمل') r['status']].where((x) => '${x ?? ''}'.isNotEmpty).join(' · '),
                       style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
                 ])),
-                SizedBox(
+                if (r['mode'] == 'attendance') AttendanceToggle(
+                  present: r['present'] != false,
+                  busy: _state['${r['lt']}'] == 'saving',
+                  enabled: r['ended'] != true,
+                  onTap: () => _toggleAttendance(r),
+                ) else SizedBox(
                   width: 84,
                   child: TextField(
                     controller: _ctrls['${r['lt']}'],
@@ -170,6 +191,41 @@ class _B2cDailyEntryScreenState extends State<B2cDailyEntryScreen> {
               ])),
             ),
           if (rows.isEmpty) EmptyState(icon: Icons.inbox_outlined, title: scope is List && scope.isEmpty ? tr('لم يُسنَد إليك مشروعٌ بعد', 'No project assigned yet') : tr('لا توجد نتائج مطابقة', 'No matches')),
+        ]),
+      ),
+    );
+  }
+}
+
+/// زرُّ الحضور: ✓ حضر / ✗ لم يحضر — يُستعمَل في المدخلات وفي متابعة أمازون.
+class AttendanceToggle extends StatelessWidget {
+  final bool present;
+  final bool busy;
+  final bool enabled;
+  final VoidCallback onTap;
+  const AttendanceToggle({super.key, required this.present, required this.onTap, this.busy = false, this.enabled = true});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = present ? T.success : T.danger;
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: enabled && !busy ? onTap : null,
+      child: Container(
+        width: 100,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        decoration: BoxDecoration(
+          color: c.withValues(alpha: enabled ? 0.12 : 0.05),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: c.withValues(alpha: 0.4)),
+        ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          busy
+              ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: c))
+              : Icon(present ? Icons.check : Icons.close, size: 16, color: c),
+          const SizedBox(width: 4),
+          Text(present ? tr('حضر', 'Present') : tr('لم يحضر', 'Absent'),
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: c)),
         ]),
       ),
     );

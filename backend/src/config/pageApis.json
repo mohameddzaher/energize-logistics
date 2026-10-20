@@ -1502,7 +1502,15 @@
     },
     "/system/b2c/daily-entry": {
       "apis": [
-        "/api/b2c/entry"
+        "/api/b2c/attendance",
+        "/api/b2c/entry",
+        "/api/b2c/order-sheets"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/amazon-attendance": {
+      "apis": [
+        "/api/b2c/attendance"
       ],
       "wildcard": false
     },

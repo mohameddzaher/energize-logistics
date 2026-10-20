@@ -473,6 +473,8 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     }, 45 * 1000);
     startOpsCustomerSync();
     startOpsWorkflowSync();
+    // شيتاتُ أوردرات B2C (جوجل شيت لكلّ مشروع) — كلَّ دقيقة. راجع services/b2cOrderSheetSync.
+    try { require('./services/b2cOrderSheetSync').startB2cOrderSheetSync(); } catch (e) { console.error('[b2c-sheets] start:', e.message); }
     startLs2Poll();
     startLs2TripWarm();
     startBusinessReviewSweep();

@@ -538,6 +538,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // «أداء المناديب» (رفعُ الإكسيل ومزامنةُ شيتات جوجل) أُلغيت (٢٠٢٦/١٠/١٩): الأوردراتُ
     // تُكتب على النظام في «مدخلات الأوردرات» — ومديرُ المشروع والمشرف يرى مشاريعَه.
     { href: '/system/b2c/daily-entry', label: L.b2cDailyEntry, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
+    // متابعةُ مناديب أمازون (حضورٌ لا أوردرات) — الخادمُ يحسم مَن يفتحها (مدير مشروع أمازون ومسؤولو القسم).
+    { href: '/system/b2c/amazon-attendance', label: L.b2cAmazonAttendance, icon: <UserCheck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
     // ── تفقّد بداية الدوام ─────────────────────────────────────────────
     // شاشتان: واحدةٌ يقف عليها المشرفُ كلَّ صباح، وواحدةٌ تقرأ منها الإدارة.
     // وكلتاهما مفتوحتان لأدوار القسم — والذي يحكم مَن يرى أيَّ مندوبٍ هو

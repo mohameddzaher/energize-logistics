@@ -13,7 +13,7 @@ import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
-import { CalendarClock } from 'lucide-react';
+import { CalendarClock, Search, X } from 'lucide-react';
 import { stateMeta, getHrExpiring, STATE_META, stateLabel, fmtDate, daysText } from '@/lib/hrMaster';
 import { hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import MasterNav from '@/components/hr/MasterNav';
@@ -21,6 +21,18 @@ import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import ScrollX from '@/components/system/ScrollX';
 
 const QUICK = [7, 15, 30, 60, 90, 180];
+// فلاترُ الصفحة — قوائمُها من الخادم بعدد مستندات كلّ قيمة (راجع hrMaster.expiring).
+const FACETS: { key: string; ar: string; en: string }[] = [
+  { key: 'registerNumber', ar: 'السجل', en: 'Register' },
+  { key: 'engagement', ar: 'نوع التعاقد', en: 'Engagement' },
+  { key: 'department', ar: 'القسم', en: 'Department' },
+  { key: 'project', ar: 'المشروع', en: 'Project' },
+  { key: 'nationality', ar: 'الجنسية', en: 'Nationality' },
+  { key: 'branchName', ar: 'الفرع', en: 'Branch' },
+];
+const ENGAGEMENT_LABEL: Record<string, [string, string]> = {
+  sponsored: ['على الكفالة', 'Sponsored'], freelance: ['فري لانسر', 'Freelance'], trainee: ['متدرّب', 'Trainee'], none: ['غير محدّد', 'Not set'],
+};
 
 function ExpiringInner() {
   // الرقم الوظيفيّ والاسم والهويّة ثابتةٌ على اليمين — راجع usePinnedColumns.
@@ -46,6 +58,12 @@ function ExpiringInner() {
   const [filters, setFilters] = useState<Record<string, string>>(() =>
     Object.fromEntries([...(sp?.entries() || [])].filter(([k, v]) => !CTRL.includes(k) && v !== '')));
   const hasFilters = Object.keys(filters).length > 0;
+  const [q, setQ] = useState(sp?.get('q') || '');
+  const setFacet = (k: string, v: string) => setFilters((f) => {
+    const n = { ...f };
+    if (v) n[k] = v; else delete n[k];
+    return n;
+  });
   // المدّةُ والمستندُ والحالةُ ثلاثةُ مفاتيحَ تتغيّر تباعًا، ومعها تحديثُ السوكِت:
   // أوسعُ الطلبات أبطؤها، فيصل أخيرًا ويكتب فوق الأضيق. راجع useLatestRequest.
   const guard = useLatestRequest();
@@ -59,6 +77,7 @@ function ExpiringInner() {
     try {
       const res = await getHrExpiring({
         ...filters,
+        ...(q.trim() ? { q: q.trim() } : {}),
         withinDays: within === '' ? undefined : within,
         doc, state, includeExpired: includeExpired ? '1' : '0',
       });
@@ -66,9 +85,14 @@ function ExpiringInner() {
       setD(res);
     } catch (e: any) { if (guard.isCurrent(mine)) notify(e?.message || 'Failed', 'error'); }
     if (guard.isCurrent(mine)) setLoading(false);
-  }, [within, doc, state, includeExpired, JSON.stringify(filters), notify, guard]);
+  }, [within, doc, state, includeExpired, JSON.stringify(filters), q, notify, guard]);
   useEffect(() => { const h = setTimeout(load, 250); return () => clearTimeout(h); }, [load]);
-  useSocket('hr:master', useCallback(() => { load(); }, [load]));
+  // ── ويسمع كلَّ كتابةٍ تخصّه ───────────────────────────────────────────────
+  // تعديلُ ملفّ موظّف، أو تجديدُ مستند، أو عقد — كلُّها تغيّر تاريخًا هنا.
+  const live = useCallback(() => { load(); }, [load]);
+  useSocket('hr:master', live);
+  useSocket('hr:employee', live);
+  useSocket('hr:contract', live);
 
   const rows = d?.rows || [];
   const EXPIRY_LABEL = t('تاريخ الانتهاء', 'Expiry date');
@@ -88,7 +112,7 @@ function ExpiringInner() {
   // الشاشة تفتح على مدّةٍ افتراضيّة (٦٠ يومًا) — أي أنّها مفلترة قبل أن يلمسها
   // أحد. فمَن صدّر ظانًّا أنّه أخذ كلّ الانتهاءات كان يأخذ نافذةً ضيّقة بلا أن
   // يُنبَّه؛ و«الكلّ» هنا يعيد النداء بلا مدّةٍ ولا مستندٍ ولا حالة.
-  const hasActiveFilters = within !== '' || !!doc || !!state || !includeExpired || hasFilters;
+  const hasActiveFilters = within !== '' || !!doc || !!state || !includeExpired || hasFilters || !!q.trim();
   const fetchAllExpiring = async () => {
     const full = await getHrExpiring({ includeExpired: '1' });
     return [{ name: t('الانتهاءات', 'Expiries'), rows: full.rows || [], columns: cols }];
@@ -118,7 +142,7 @@ function ExpiringInner() {
       {hasFilters && (
         <div className="flex items-center justify-between gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5">
           <p className="text-[13px] font-semibold text-sky-900">
-            {t('المعروض مقصور على فلتر النظرة الشاملة', 'Limited to the overview filter')}
+            {t('المعروض مقصور على الفلاتر المختارة', 'Limited to the selected filters')}
           </p>
           <button type="button" onClick={() => setFilters({})}
             className="text-[12px] font-medium text-sky-800 hover:text-sky-950 underline">
@@ -128,6 +152,37 @@ function ExpiringInner() {
       )}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+        {/* ── الفلاتر: بحثٌ وقوائمُ بعدد مستندات كلّ قيمة ── */}
+        <div className="flex flex-wrap items-center gap-2 pb-3 border-b border-slate-100">
+          <div className="relative">
+            <Search className="absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input value={q} onChange={(e) => setQ(e.target.value)}
+              placeholder={t('ابحث بالاسم أو رقم الهوية أو الرقم الوظيفي', 'Name, ID or employee no.')}
+              className="w-64 max-w-full rounded-lg border border-slate-200 py-2 pe-3 ps-8 text-sm" />
+          </div>
+          {FACETS.map((fc) => {
+            const opts = d?.options?.[fc.key] || [];
+            const cur = filters[fc.key] || '';
+            return (
+              <select key={fc.key} value={cur} onChange={(e) => setFacet(fc.key, e.target.value)}
+                className={`rounded-lg border px-2.5 py-2 text-sm bg-white max-w-[13rem] ${cur ? 'border-[#f37121] text-slate-900 font-semibold' : 'border-slate-200 text-slate-700'}`}>
+                <option value="">{t(`كل ${fc.ar === 'السجل' ? 'السجلات' : fc.ar}`, `All — ${fc.en}`)}</option>
+                {cur && !opts.some((o) => o.value === cur) && <option value={cur}>{cur}</option>}
+                {opts.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {fc.key === 'engagement' ? (ENGAGEMENT_LABEL[o.value]?.[ar ? 0 : 1] || o.value) : (o.value === '—' ? t('(فارغ)', '(blank)') : o.value)} ({o.count})
+                  </option>
+                ))}
+              </select>
+            );
+          })}
+          {(hasFilters || q) && (
+            <button type="button" onClick={() => { setFilters({}); setQ(''); }}
+              className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-slate-500 hover:text-slate-800">
+              <X className="h-3.5 w-3.5" />{t('مسح الفلاتر', 'Clear filters')}
+            </button>
+          )}
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-semibold text-slate-700">{t('ينتهي خلال', 'Expiring within')}</span>
           <input type="number" min={0} max={3650} value={within} onChange={(e) => setWithin(e.target.value)}
@@ -148,9 +203,11 @@ function ExpiringInner() {
         </div>
         <div className="flex flex-wrap gap-1.5 pt-1 border-t border-slate-100">
           {(d?.byDoc || []).map((x) => (
-            <button key={x.key} onClick={() => setDoc(doc === x.key ? '' : x.key)}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border ${doc === x.key ? 'bg-[#12325c] text-white border-[#12325c]' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-400'}`}>
-              {ar ? x.ar : x.en} <b>{x.count}</b>
+            // أرقامُها لا تتبع المستندَ المختارَ ولا الحالة — فلا تتغيّر ولا تهتزّ حين تُضغط.
+            <button key={x.key} type="button" onClick={() => setDoc(doc === x.key ? '' : x.key)}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${doc === x.key ? 'bg-[#12325c] text-white border-[#12325c]' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-400'}`}>
+              {ar ? x.ar : x.en}
+              <b className="inline-block min-w-[2.25rem] text-center tabular-nums">{x.count}</b>
             </button>
           ))}
         </div>
@@ -160,16 +217,24 @@ function ExpiringInner() {
         {(['expired', 'critical', 'warning', 'valid'] as const).map((k) => (
           <button key={k} onClick={() => setState(state === k ? '' : k)}
             className={`text-start bg-white border rounded-xl p-3 shadow-sm ${state === k ? 'border-[#f37121] ring-1 ring-[#f37121]/30' : 'border-slate-200 hover:border-slate-300'}`}>
-            <p className="text-2xl font-extrabold leading-none" style={{ color: stateMeta(k).color }}>{d?.summary?.[k] ?? 0}</p>
+            <p className="text-2xl font-extrabold leading-none tabular-nums" style={{ color: stateMeta(k).color }}>{d?.summary?.[k] ?? 0}</p>
             <p className="text-[11.5px] text-slate-600 mt-1.5 font-medium">{stateLabel(k, ar)}</p>
           </button>
         ))}
-        <div className="bg-slate-900 rounded-xl p-3 text-white">
-          <p className="text-2xl font-extrabold leading-none">{d?.summary?.total ?? 0}</p>
-          <p className="text-[11px] text-slate-300 mt-1.5">{t('الإجمالي', 'Total')}</p>
-        </div>
+        {/* الإجماليُّ = مجموعُ الحالات الأربع = رقمُ المستند المختار فوق. ضغطُه يرفع فلترَ الحالة. */}
+        <button type="button" onClick={() => setState('')}
+          className={`text-start bg-slate-900 rounded-xl p-3 text-white ${!state ? 'ring-2 ring-[#f37121]/50' : ''}`}>
+          <p className="text-2xl font-extrabold leading-none tabular-nums">{d?.summary?.total ?? 0}</p>
+          <p className="text-[11px] text-slate-300 mt-1.5">
+            {t('الإجمالي', 'Total')}{doc ? ` — ${(d?.byDoc || []).find((x) => x.key === doc)?.[ar ? 'ar' : 'en'] || ''}` : ''}
+          </p>
+        </button>
       </div>
 
+      <p className="text-[12.5px] font-semibold text-slate-600">
+        {t(`المعروض: ${d?.shown ?? rows.length}`, `Shown: ${d?.shown ?? rows.length}`)}
+        {(d?.shown ?? 0) > rows.length && <span className="text-slate-400"> {t(`(أوّل ${rows.length})`, `(first ${rows.length})`)}</span>}
+      </p>
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <ScrollX>
           <table className="w-full text-sm">

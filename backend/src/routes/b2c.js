@@ -61,6 +61,16 @@ router.get('/entry', authorize(...ENTRY), entry.list);
 router.put('/entry', authorize(...ENTRY), entry.save);
 router.get('/entry/managers', authorize(...ENTRY), entry.managers);
 router.put('/entry/managers/:userId', authorize(...ENTRY), entry.setManagerProjects);
+// شيتاتُ الأوردرات (جوجل شيت لكلّ مشروع) — تُقرأ كلَّ دقيقة. راجع b2cOrderSheetController.
+const orderSheets = require('../controllers/b2cOrderSheetController');
+router.get('/order-sheets', authorize(...ENTRY), orderSheets.list);
+router.post('/order-sheets', authorize(...ENTRY), orderSheets.create);
+router.delete('/order-sheets/:id', authorize(...ENTRY), orderSheets.remove);
+router.post('/order-sheets/:id/sync', authorize(...ENTRY), orderSheets.syncNow);
+// متابعةُ مناديب أمازون — الحضور (الغيابُ وحدَه يُكتب). راجع b2cAttendanceController.
+const attendance = require('../controllers/b2cAttendanceController');
+router.get('/attendance', authorize(...ENTRY), attendance.list);
+router.put('/attendance', authorize(...ENTRY), attendance.save);
 
 // Dashboard / analytics
 router.get('/dashboard', authorize(...READ), b2cController.getDashboardSummary);

@@ -86,6 +86,21 @@ exports.list = async (req, res) => {
     }
     out.sort((x, y) => (x.projectAr.localeCompare(y.projectAr, 'ar')) || (y.total - x.total));
 
+    // ── أمازون: حضورٌ لا أوردرات ────────────────────────────────────────────
+    // صفُّ مشروعٍ بلا هدف أوردرات يُدخَل فيه الحضورُ (حاضرٌ ما لم يُعلَّم غائبًا).
+    // راجع b2cAttendanceController.
+    {
+      const A = require('./b2cAttendanceController');
+      const attProj = await A.attendanceProjects();
+      const isAtt = (p) => attProj.some((n) => E.fold(n) === E.fold(p));
+      const attIds = out.filter((r) => isAtt(r.projectAr)).map((r) => r.lt);
+      const absent = attIds.length ? await A.absentOn(attIds, date) : new Set();
+      for (const r of out) {
+        r.mode = isAtt(r.projectAr) ? 'attendance' : 'orders';
+        if (r.mode === 'attendance') r.present = !absent.has(String(r.lt)) && r.status !== 'إجازة';
+      }
+    }
+
     // ── الكروت — كالشيت ────────────────────────────────────────────────────
     const working = out.filter((r) => !r.ended);
     const count = (rows, f) => rows.filter(f).length;
@@ -125,7 +140,7 @@ exports.list = async (req, res) => {
     if (!report) {
       return res.json({
         date, today: riyadhToday(), scope,
-        rows: out.map((r) => ({ lt: r.lt, idNumber: r.idNumber, name: r.name, projectAr: r.projectAr, status: r.status, ended: r.ended, orders: r.orders, unit: r.unit }))
+        rows: out.map((r) => ({ lt: r.lt, idNumber: r.idNumber, name: r.name, projectAr: r.projectAr, status: r.status, ended: r.ended, orders: r.orders, unit: r.unit, mode: r.mode, present: r.present }))
           .sort((x, y) => x.projectAr.localeCompare(y.projectAr, 'ar') || x.name.localeCompare(y.name, 'ar')),
       });
     }

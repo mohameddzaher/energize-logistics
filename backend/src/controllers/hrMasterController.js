@@ -1299,6 +1299,22 @@ exports.updateFields = async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════
 //  الانتهاءات عبر كل المستندات
 // ═══════════════════════════════════════════════════════════════════════════
+/**
+ * ── الأرقامُ لا تتحرّك تحت مَن يضغطها ─────────────────────────────────────
+ *
+ * كانت أرقامُ المستندات (الإقامات ١٨٣، الجوازات ٧…) تُحسب **بعد** تطبيق المستند
+ * والحالة المختارَين: يُضغط «الإقامات» فتصير البقيّةُ أصفارًا، ويُضغط «حرج»
+ * فتتغيّر أرقامُ المستندات — والأزرارُ تهتزّ لأنّ عرضَها يتبع أرقامها.
+ *
+ * فكلُّ مجموعةِ أرقامٍ تُحسب **بدون فلترها هي** (عدٌّ بالأوجه):
+ *   · أرقامُ المستندات: بالمدّة والفلاتر — بلا المستند ولا الحالة.
+ *   · كروتُ الحالة: بالمدّة والفلاتر والمستند — بلا الحالة. ومجموعُها = رقمُ
+ *     المستند المختار فوقها.
+ *   · الجدول: بكلّ شيء.
+ * وقوائمُ الفلاتر (السجلّ، القسم، المشروع…) تُبنى من الموظّفين أنفسِهم بعدد ما
+ * لكلّ قيمةٍ من مستنداتٍ في المدّة — فلا تُعرض قيمةٌ تفتح جدولًا فارغًا بلا سبب.
+ */
+const EXPIRY_FACETS = ['registerNumber', 'department', 'project', 'nationality', 'branchName'];
 exports.expiring = async (req, res) => {
   try {
     const ck = `hrm:exp:${JSON.stringify(req.query || {})}`;
@@ -1306,47 +1322,88 @@ exports.expiring = async (req, res) => {
     if (cached !== undefined) return res.json(cached);
     const withinDays = req.query.withinDays === '' || req.query.withinDays == null ? null : Math.max(0, Number(req.query.withinDays) || 0);
     const wanted = (req.query.doc || '').split(',').map((x) => x.trim()).filter(Boolean);
-    const docs = wanted.length ? H.DOCUMENT_GROUPS.filter((g) => wanted.includes(g.key)) : H.DOCUMENT_GROUPS;
     const includeExpired = req.query.includeExpired !== '0';
     const wantState = req.query.state || '';
+    const multi = (v) => String(v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+    // فلاترُ الصفحة تُطبَّق هنا في الذاكرة (لتُحسب قوائمُها بلاها)؛ وما سواها
+    // (فلترُ النظرة الشاملة المحمول في الرابط) يذهب إلى الاستعلام كما كان.
+    const facetWant = Object.fromEntries(EXPIRY_FACETS.map((k) => [k, multi(req.query[k])]));
+    const engWant = String(req.query.engagement || '');
+    const needle = String(req.query.q || '').trim().toLowerCase();
+    const baseQuery = { ...req.query };
+    for (const k of [...EXPIRY_FACETS, 'engagement', 'q']) delete baseQuery[k];
 
     // النطاقُ نفسُه الذي عُدَّ به رقمُ الشريط — راجع EXPIRY_SCOPE.
     const scope = expiryScopeOf(req.query);
-    const employees = await findEmployees({ ...req.query, ...scope },
-      [...new Set(['employeeNumber', 'arabicName', 'firstName', 'lastName', 'iqamaNumber',
-        'department', 'branchName', 'fieldStatus', ...DATE_FILTERABLE,
+    const employees = await findEmployees({ ...baseQuery, ...scope },
+      [...new Set(['employeeNumber', 'arabicName', 'firstName', 'lastName', 'iqamaNumber', 'nationalId', 'idType',
+        'department', 'branchName', 'project', 'nationality', 'registerNumber', 'fieldStatus', 'isFreelancer',
+        'employmentType', ...DATE_FILTERABLE,
         ...H.DOCUMENT_GROUPS.map((g) => g.expiryField)])].join(' '));
 
-    const rows = [];
+    const blankKey = (v) => (String(v ?? '').trim() || '—');
+    const engOf = (e) => { try { return ENG.engagementOf(e) || 'none'; } catch (_) { return 'none'; } };
+    const passes = (e, skip) => {
+      for (const k of EXPIRY_FACETS) {
+        if (k === skip || !facetWant[k].length) continue;
+        if (!facetWant[k].includes(blankKey(e[k]))) return false;
+      }
+      if (skip !== 'engagement' && engWant && engOf(e) !== engWant) return false;
+      if (needle) {
+        const hay = `${e.arabicName || ''} ${e.firstName || ''} ${e.lastName || ''} ${e.employeeNumber || ''} ${H.valueOf(e, 'iqamaNumber') || ''}`.toLowerCase();
+        if (!hay.includes(needle)) return false;
+      }
+      return true;
+    };
+
+    // كلُّ مستندٍ في المدّة لكلّ موظّف — قبل المستند والحالة.
+    const all = [];
     for (const e of employees) {
-      for (const g of docs) {
+      for (const g of H.DOCUMENT_GROUPS) {
         const stCode = statusOf(e, g.expiryField);
         const st = H.stateOf(e[g.expiryField], stCode === 'filled' ? '' : stCode, ALERT);
         if (st.state === 'not_applicable' || st.state === 'missing') continue;
         if (!includeExpired && st.state === 'expired') continue;
-        // «يحتاج انتباهًا» تجمع الثلاثَ حالات — راجع records.
-        if (wantState === 'attention') { if (!['expired', 'critical', 'warning'].includes(st.state)) continue; }
-        else if (wantState && st.state !== wantState) continue;
         if (withinDays !== null && st.days > withinDays) continue;
-        rows.push({
-          employeeId: e._id, employeeNumber: e.employeeNumber,
-          name: e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim(),
-          iqamaNumber: H.valueOf(e, 'iqamaNumber') || '',
-          department: e.department, branchName: e.branchName,
-          docKey: g.key, docAr: g.ar, docEn: g.en, expiryField: g.expiryField,
-          expiryDate: e[g.expiryField], daysRemaining: st.days, state: st.state,
-        });
+        all.push({ e, g, st });
       }
     }
+    const stateOk = (st) => (wantState === 'attention' ? ['expired', 'critical', 'warning'].includes(st) : (!wantState || st === wantState));
+    const docOk = (g) => !wanted.length || wanted.includes(g.key);
+
+    const inFilters = all.filter((x) => passes(x.e));
+    const byDocCount = {};
+    for (const x of inFilters) byDocCount[x.g.key] = (byDocCount[x.g.key] || 0) + 1;
+    const summary = { total: 0, expired: 0, critical: 0, warning: 0, valid: 0 };
+    for (const x of inFilters) if (docOk(x.g)) { summary[x.st.state] = (summary[x.st.state] || 0) + 1; summary.total += 1; }
+
+    const rows = inFilters.filter((x) => docOk(x.g) && stateOk(x.st.state)).map(({ e, g, st }) => ({
+      employeeId: e._id, employeeNumber: e.employeeNumber,
+      name: e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim(),
+      iqamaNumber: H.valueOf(e, 'iqamaNumber') || '',
+      department: e.department, branchName: e.branchName, project: e.project || '', registerNumber: e.registerNumber || '',
+      docKey: g.key, docAr: g.ar, docEn: g.en, expiryField: g.expiryField,
+      expiryDate: e[g.expiryField], daysRemaining: st.days, state: st.state,
+    }));
     rows.sort((a, b) => (a.daysRemaining ?? 1e9) - (b.daysRemaining ?? 1e9));
 
-    const summary = { total: rows.length, expired: 0, critical: 0, warning: 0, valid: 0 };
-    const byDoc = {};
-    for (const r of rows) { summary[r.state] = (summary[r.state] || 0) + 1; byDoc[r.docKey] = (byDoc[r.docKey] || 0) + 1; }
+    // قوائمُ الفلاتر: لكلّ قيمةٍ عددُ مستنداتها (المستندُ والحالةُ المختاران محسوبان).
+    const options = {};
+    for (const k of [...EXPIRY_FACETS, 'engagement']) {
+      const counts = new Map();
+      for (const x of all) {
+        if (!docOk(x.g) || !stateOk(x.st.state) || !passes(x.e, k)) continue;
+        const v = k === 'engagement' ? engOf(x.e) : blankKey(x.e[k]);
+        counts.set(v, (counts.get(v) || 0) + 1);
+      }
+      options[k] = [...counts.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'ar'))
+        .map(([value, count]) => ({ value, count }));
+    }
 
     const body = {
-      rows: rows.slice(0, 2000), summary,
-      byDoc: H.DOCUMENT_GROUPS.map((g) => ({ key: g.key, ar: g.ar, en: g.en, count: byDoc[g.key] || 0 })),
+      rows: rows.slice(0, 3000), shown: rows.length, summary,
+      byDoc: H.DOCUMENT_GROUPS.map((g) => ({ key: g.key, ar: g.ar, en: g.en, count: byDocCount[g.key] || 0 })),
+      options,
       withinDays,
       alert: ALERT, expiryScope: scope,
     };

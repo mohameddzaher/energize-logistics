@@ -177,7 +177,8 @@ export const getHrRecords = (group: string, q: Record<string, any> = {}) =>
   }>(`/api/hr/master/records/${group}${qs(q) ? `?${qs(q)}` : ''}`);
 
 export const getHrExpiring = (q: Record<string, any> = {}) =>
-  api.get<{ rows: any[]; summary: Record<string, number>; byDoc: { key: string; ar: string; en: string; count: number }[]; withinDays: number | null;
+  api.get<{ rows: any[]; shown?: number; summary: Record<string, number>; byDoc: { key: string; ar: string; en: string; count: number }[]; withinDays: number | null;
+    options?: Record<string, { value: string; count: number }[]>;
     alert?: { warnDays: number; criticalDays: number }; expiryScope?: Record<string, string> }>(
     `/api/hr/master/expiring${qs(q) ? `?${qs(q)}` : ''}`);
 

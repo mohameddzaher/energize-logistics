@@ -13,7 +13,7 @@ const b2cDailyOrderSchema = new mongoose.Schema(
     day: { type: Number, required: true },   // 1-31
     orders: { type: Number, default: null }, // null = not entered yet, 0 = worked but no orders
     worked: { type: Boolean, default: true }, // false means rep was off
-    source: { type: String, enum: ['manual', 'excel'], default: 'manual' },
+    source: { type: String, enum: ['manual', 'excel', 'sheet'], default: 'manual' },
     enteredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     notes: { type: String, trim: true },
     // Trace info — only set on Excel uploads. Lets the user inspect which row in which

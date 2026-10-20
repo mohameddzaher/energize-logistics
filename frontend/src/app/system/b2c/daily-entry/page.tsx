@@ -17,15 +17,41 @@ import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import { CalendarDays, ChevronRight, ChevronLeft, Search, Check, Loader2, AlertCircle } from 'lucide-react';
+import { CalendarDays, ChevronRight, ChevronLeft, Search, Check, Loader2, AlertCircle, X, Sheet } from 'lucide-react';
+import OrderSheetsPanel from '@/components/b2c/OrderSheetsPanel';
 
-type Row = { lt: string; idNumber: string; name: string; projectAr: string; status: string; ended: boolean; orders: number | null; unit: string };
+type Row = { lt: string; idNumber: string; name: string; projectAr: string; status: string; ended: boolean; orders: number | null; unit: string;
+  /** أمازون: حضورٌ لا أوردرات — `present` افتراضُه «حضر». */
+  mode?: 'orders' | 'attendance'; present?: boolean };
 type Data = { date: string; today: string; rows: Row[]; scope: string[] | null };
 
 const shift = (iso: string, days: number) => {
   const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10);
 };
 const fold = (s: string) => String(s || '').toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+
+// ── حضورُ مندوب أمازون — زرٌّ يقلب «حضر» ⇄ «لم يحضر» (مكوّنٌ خارج الصفحة أيضًا) ──
+function AttendanceCell({ row, state, onToggle, ar }: {
+  row: Row; state?: 'saving' | 'saved' | 'error'; onToggle: () => void; ar: boolean;
+}) {
+  const present = row.present !== false;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <button type="button" onClick={onToggle} disabled={row.ended || state === 'saving'}
+        title={ar ? 'اضغط للتبديل' : 'Click to toggle'}
+        className={`inline-flex w-24 items-center justify-center gap-1 rounded-md border px-2 py-1.5 text-[13px] font-bold disabled:opacity-60
+          ${present ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'}`}>
+        {present ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+        {present ? (ar ? 'حضر' : 'Present') : (ar ? 'لم يحضر' : 'Absent')}
+      </button>
+      <span className="w-4">
+        {state === 'saving' && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />}
+        {state === 'saved' && <Check className="h-3.5 w-3.5 text-emerald-600" />}
+        {state === 'error' && <AlertCircle className="h-3.5 w-3.5 text-red-600" />}
+      </span>
+    </span>
+  );
+}
 
 // ── خانةُ اليوم — مكوّنٌ خارج الصفحة كي لا تُهدَم مع كلّ ضغطة (inline-components-remount) ──
 function OrderCell({ row, value, state, onChange, onCommit, onNav, inputRef }: {
@@ -70,6 +96,7 @@ export default function B2COrderEntryPage() {
   const dirty = useRef<Set<string>>(new Set());
   const [state, setState] = useState<Record<string, 'saving' | 'saved' | 'error'>>({});
   const inputs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const [sheetsOpen, setSheetsOpen] = useState(false);
 
   const guard = useLatestRequest();
   const load = useCallback(async () => {
@@ -96,6 +123,26 @@ export default function B2COrderEntryPage() {
   useSocket('lt:updated', soon);
   useSocket('b2c:entry:scope', soon);
   useSocket('hr:employee', soon);
+  useSocket('b2c:attendance', soon);
+
+  // حضورُ أمازون: يُقلَب في الحال ويُعاد إن رفضه الخادم.
+  const toggleAttendance = useCallback(async (lt: string) => {
+    if (!d) return;
+    const row = d.rows.find((r) => r.lt === lt);
+    if (!row) return;
+    const next = row.present === false;
+    const setPresent = (v: boolean) => setD((old) => (old ? { ...old, rows: old.rows.map((r) => (r.lt === lt ? { ...r, present: v } : r)) } : old));
+    setPresent(next);
+    setState((s) => ({ ...s, [lt]: 'saving' }));
+    try {
+      await api.put('/api/b2c/attendance', { lt, dateKey: d.date, present: next });
+      setState((s) => ({ ...s, [lt]: 'saved' }));
+    } catch (e: any) {
+      setPresent(!next);
+      setState((s) => ({ ...s, [lt]: 'error' }));
+      notify(e?.message || t('تعذّر الحفظ', 'Save failed'), 'error');
+    }
+  }, [d, notify]);
 
   const save = useCallback(async (lt: string) => {
     if (!d || !dirty.current.has(lt)) return;
@@ -118,7 +165,7 @@ export default function B2COrderEntryPage() {
     const needle = fold(q.trim());
     return d.rows.filter((r) => (!needle || fold(`${r.name} ${r.idNumber} ${r.projectAr}`).includes(needle)) && (!fProject || r.projectAr === fProject));
   }, [d, q, fProject]);
-  const order = rows.map((r) => r.lt);
+  const order = rows.filter((r) => r.mode !== 'attendance').map((r) => r.lt);
   const nav = (lt: string, dir: 1 | -1) => {
     const next = order[order.indexOf(lt) + dir];
     if (next) { const el = inputs.current.get(next); el?.focus(); el?.select(); }
@@ -158,6 +205,13 @@ export default function B2COrderEntryPage() {
           </select>
         )}
         <span className="ms-auto text-[12.5px] font-semibold text-slate-600">{rows.length} {t('مندوبًا', 'reps')}</span>
+        {/* مسؤولو القسم وحدَهم (نطاقُهم كلُّ المشاريع) — والخادمُ يرفض غيرَهم أيضًا */}
+        {d.scope === null && (
+          <button type="button" onClick={() => setSheetsOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-[12.5px] font-semibold text-emerald-800 hover:bg-emerald-100">
+            <Sheet className="h-4 w-4" />{t('شيتات جوجل', 'Google Sheets')}
+          </button>
+        )}
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -182,10 +236,14 @@ export default function B2COrderEntryPage() {
                 </td>
                 <td className="px-3 py-1.5 text-center">{r.projectAr}</td>
                 <td className="bg-orange-50/40 px-3 py-1 text-center">
+                  {r.mode === 'attendance' ? (
+                    <AttendanceCell row={r} state={state[r.lt]} ar={ar} onToggle={() => toggleAttendance(r.lt)} />
+                  ) : (
                   <OrderCell row={r} value={vals[r.lt] ?? ''} state={state[r.lt]}
                     inputRef={(el) => { if (el) inputs.current.set(r.lt, el); else inputs.current.delete(r.lt); }}
                     onChange={(v) => { dirty.current.add(r.lt); setVals((s) => ({ ...s, [r.lt]: v })); setState((s) => { const n = { ...s }; delete n[r.lt]; return n; }); }}
                     onCommit={() => save(r.lt)} onNav={(dir) => nav(r.lt, dir)} />
+                  )}
                 </td>
               </tr>
             ))}
@@ -199,6 +257,7 @@ export default function B2COrderEntryPage() {
           </tbody>
         </table>
       </div>
+      {d.scope === null && <OrderSheetsPanel open={sheetsOpen} onClose={() => setSheetsOpen(false)} ar={ar} />}
     </div>
   );
 }

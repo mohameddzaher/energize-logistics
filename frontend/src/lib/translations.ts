@@ -54,6 +54,7 @@ const layout = {
     b2cSettings: 'Section Settings',
     b2cProjects: 'Projects',
     b2cDailyEntry: 'Orders Entry',
+    b2cAmazonAttendance: 'Amazon Reps Attendance',
     dispatchSheets: 'Dispatch Sheets',
     // Remote (work-from-home) section
     remoteAttendance: 'Attendance',
@@ -239,6 +240,7 @@ const layout = {
     b2cSettings: 'إعدادات القسم',
     b2cProjects: 'المشاريع',
     b2cDailyEntry: 'مدخلات الأوردرات',
+    b2cAmazonAttendance: 'متابعة مناديب أمازون',
     dispatchSheets: 'كشوف التخريج',
     // Remote (work-from-home) section
     remoteAttendance: 'الحضور والانصراف',
@@ -7196,6 +7198,7 @@ export const NAV_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   '/system/b2c/reps': 'b2cReps',
   '/system/b2c/projects': 'b2cProjects',
   '/system/b2c/daily-entry': 'b2cDailyEntry',
+  '/system/b2c/amazon-attendance': 'b2cAmazonAttendance',
   '/system/remote/attendance': 'remoteAttendance',
   '/system/remote/dashboard': 'remoteDashboard',
   '/system/remote/leave': 'remoteLeave',

@@ -343,6 +343,19 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// ── الهدفُ اليوميُّ لمشروع B2C — نصًّا، لشيتات الأوردرات ─────────────────────
+// ملفُّ جوجل شيت لكلّ مشروع يقرأ هدفَه من هنا (IMPORTDATA) فتتلوّن خاناتُ الأيّام
+// أخضرَ أو أحمرَ على الهدف المكتوب في «المشاريع» — ويتبعه إن تغيّر. رقمٌ واحدٌ
+// لا سرَّ فيه، فلا مصادقة (جوجل لا يحمل توكنًا). راجع services/b2cOrderSheetSync.
+app.get('/api/public/b2c-target', async (req, res) => {
+  try {
+    const E = require('./utils/b2cEntry');
+    const p = (await E.projects()).rows.find((x) => [x.name, x.nameAr, x.code].some((n) => E.fold(n) === E.fold(req.query.project)));
+    const daily = p ? (Number(p.dailyTarget) || Math.round((Number(p.monthlyTarget) || 0) / 30)) : 0;
+    res.set('Cache-Control', 'no-store').type('text/plain').send(String(daily));
+  } catch (e) { res.type('text/plain').send('0'); }
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ message: 'Route not found' });

@@ -48,6 +48,8 @@ export interface LTEmployee {
   workStatusAr?: string;
   /** الحالةُ كما تُقرأ: حالةُ القسم، تغلبها الموارد البشريّةُ حين تنفي. */
   workStatusShown?: string;
+  /** نوعُ العقد كما يعدّه الخادم (`contractKindOf`): كفالة · فري لانسر · يوزرات · فارغ. */
+  contractTypeShown?: string;
   /** نوعُ المركبة من سجلّها متى كانت مربوطةً — مفردةٌ واحدةٌ للاثنين. */
   vehicleTypeShown?: string;
   statusSource?: 'hr' | 'section';
@@ -90,8 +92,12 @@ export const foldContract = (v?: string) => String(v || '')
 export const isFreelance = (r: { contractTypeAr?: string }) => foldContract(r.contractTypeAr).includes('فريلانسر');
 export const hasContract = (r: { contractTypeAr?: string }) => !!foldContract(r.contractTypeAr);
 
-/** مفاتيحُ الفلترة المشتقّة — تُحسَب في الشاشة ولا تُرسَل إلى الخادم. */
-export const LOCAL_KEYS = ['contractKind', 'doc'] as const;
+/**
+ * مفاتيحُ الفلترة التي تُحسَب في الشاشة ولا تُرسَل إلى الخادم: المشتقّان (نوعُ
+ * العقد، حالةُ الوثيقة) ومفاتيحُ الكروت كلُّها. فالكروتُ تُعَدّ بالأوجه — كلُّ
+ * مجموعةٍ بلا فلترها (`ltFacetedTotals`) — وذلك يحتاج الصفوفَ قبل فلتر الكارت.
+ */
+export const LOCAL_KEYS = ['contractKind', 'doc', 'staffKind', 'status', 'hasVehicle', 'housing', 'dutySupervisor'] as const;
 export const serverFilters = (f: Record<string, string>) => {
   const o: Record<string, string> = {};
   for (const [k, v] of Object.entries(f)) if (v && !LOCAL_KEYS.includes(k as any)) o[k] = v;
@@ -235,14 +241,19 @@ export function ltTotalsOf(rows: LTEmployee[]): LTTotals {
     for (const r of reps) { const k = fn(r) || '—'; o[k] = (o[k] || 0) + 1; }
     return o;
   };
-  // «على رأس العمل» = ليس منتهيَ الخدمة ولا موقوفًا — والإجازةُ عملٌ موقوتٌ لا انتهاء.
-  const working = (r: LTEmployee) => !['إنهاء خدمة', 'متوقف'].includes(String(r.workStatusShown || ''));
+  // «على رأس العمل» = حالتُه «يعمل» — الفلترُ نفسُه الذي يفتحه الكارت (وتعريفُ
+  // الخادم في `totalsOf`). كان «ليس منتهيًا ولا موقوفًا» فدخلت الإجازة: الكارتُ
+  // ١٧٥ وضغطُه يفتح ١٧١ ثمّ يصير هو نفسُه ١٧١.
+  const working = (r: LTEmployee) => r.workStatusShown === 'يعمل';
   const gap = (d?: LTDoc) => !!d && ['expired', 'critical'].includes(d.state);
   const soon = (d?: LTDoc) => !!d && ['warning', 'upcoming'].includes(d.state);
   return {
     total: rows.length,
-    sponsored: count((r) => hasContract(r) && !isFreelance(r)),
-    freelance: count(isFreelance),
+    // بنوع العقد كما يعدّه الخادم ويفلتر به (`contractKindOf`): ملفُّ الموارد البشريّة
+    // لمن له ملف، واليوزرُ ليس كفالة. كانت خانةُ القسم تُطوى هنا: ١١٤ على الكفالة
+    // وضغطُها يفتح ١٠١ — الثلاثةَ عشرَ يوزرًا كانوا يُعَدّون كفالة.
+    sponsored: count((r) => r.contractTypeShown === 'كفالة'),
+    freelance: count((r) => r.contractTypeShown === 'فري لانسر'),
     noDutySupervisor: count((r) => !dutySupervisorIdOf(r)),
     cardGap: count((r) => gap(r.operatingCard)),
     cardSoon: count((r) => soon(r.operatingCard)),
@@ -276,6 +287,78 @@ export function ltTotalsOf(rows: LTEmployee[]): LTTotals {
     bySupervisor: group((r) => r.supervisorName),
     byStatus: group((r) => r.workStatusShown),
   };
+}
+
+const ENDED = 'إنهاء خدمة';
+/** أهذا معرِّفُ حساب؟ — المشرفُ يُفلتَر بحسابه، أو باسمه المكتوب لمن لا حسابَ له. */
+const looksLikeId = (v: string) => /^[0-9a-f]{24}$/i.test(v);
+
+/**
+ * أيمرّ الصفُّ بفلاتر الكروت — كلِّها، أو عدا `skip`؟
+ *
+ * بالمعنى نفسِه الذي يطبّقها به الخادمُ في `listEmployees` (الحالةُ المعروضة،
+ * نوعُ العقد كما يعدّه، المشرفُ بحسابه أو باسمه) — فما يقوله الكارتُ هو ما
+ * يفتحه. و«بلا وظيفة» تفتح مَن تعدّهم بطاقتُها (بلا نوعٍ أو بلا وظيفةٍ مكتوبة).
+ */
+export function ltPasses(r: LTEmployee, f: Record<string, string>, skip?: string): boolean {
+  const on = (k: string) => k !== skip && !!f[k];
+  if (on('staffKind')) {
+    const kind = r.staffKind || 'rep';
+    if (f.staffKind === 'unknown' ? !(kind === 'unknown' || !String((r as any).jobTitleAr || '').trim()) : kind !== f.staffKind) return false;
+  }
+  if (on('status') && r.workStatusShown !== f.status) return false;
+  if (on('hasVehicle') && (f.hasVehicle === 'yes' ? !r.vehicle : f.hasVehicle === 'no' ? !!r.vehicle : false)) return false;
+  if (on('housing')) {
+    const h = r.housing ? String((r.housing as any)._id || r.housing) : '';
+    if (f.housing === 'none' ? !!h : h !== f.housing) return false;
+  }
+  if (on('contractKind')) {
+    const want = ({ sponsored: 'كفالة', freelance: 'فري لانسر', users: 'يوزرات', none: '' } as Record<string, string>)[f.contractKind];
+    if (want !== undefined && (r.contractTypeShown || '') !== want) return false;
+  }
+  if (on('doc')) {
+    const [which, band] = f.doc.split('-');
+    const st = (which === 'card' ? r.operatingCard : r.inspection)?.state || 'missing';
+    if (band === 'gap' && !['expired', 'critical'].includes(st)) return false;
+    if (band === 'soon' && !['warning', 'upcoming'].includes(st)) return false;
+  }
+  if (on('dutySupervisor')) {
+    const v = f.dutySupervisor;
+    const id = dutySupervisorIdOf(r);
+    if (v === 'none' ? !!id : looksLikeId(v) ? id !== v : (r.dutySupervisorName || '') !== v) return false;
+  }
+  return true;
+}
+
+/**
+ * ── الأرقامُ لا تتحرّك تحت مَن يضغطها ─────────────────────────────────────
+ *
+ * كانت الكروتُ تُعَدّ على الصفوف بعد كلّ فلتر — ومنها فلترُ الكارت المضغوط: يُضغط
+ * «مناديب» فيصير «إداريون» و«سائقون» أصفارًا، ويُضغط «لهم مركبة» فيصير «بلا
+ * مركبة» صفرًا. فكلُّ مجموعةٍ تُعَدّ بكلّ الفلاتر **عدا فلترَها** (القاعدةُ نفسُها
+ * في لوحة القسم وانتهاءات الموارد البشريّة): مجموعُها يبقى، والمضغوطُ على رقمه.
+ * «الإجمالي» وما لا يُضغَط بكلّ شيء — هو عددُ صفوف الجدول بلا المنتهين.
+ *
+ * والمنتهي لا يُعَدّ (قاعدةُ الأقسام عدا الموارد البشريّة) — إلّا إن فُلتر عليه
+ * صراحةً بحالة «إنهاء خدمة»؛ وصفُّه يبقى في الجدول ليُراجَع.
+ */
+export function ltFacetedTotals(rows: LTEmployee[], f: Record<string, string>): LTTotals {
+  const base = f.status === ENDED ? rows : rows.filter((r) => r.workStatusShown !== ENDED);
+  const pass = (skip?: string) => base.filter((r) => ltPasses(r, f, skip));
+  const t = ltTotalsOf(pass()) as any;
+  const over = (k: string, keys: string[]) => {
+    if (!f[k]) return;
+    const o = ltTotalsOf(pass(k)) as any;
+    for (const key of keys) t[key] = o[key];
+  };
+  over('staffKind', ['reps', 'admins', 'drivers', 'unknownKind']);
+  over('status', ['working', 'notWorking', 'onLeave', 'terminated', 'byStatus']);
+  over('hasVehicle', ['withVehicle', 'withoutVehicle']);
+  over('housing', ['housed', 'unhoused']);
+  over('contractKind', ['sponsored', 'freelance']);
+  over('doc', ['cardGap', 'cardSoon', 'inspectionGap', 'inspectionSoon']);
+  over('dutySupervisor', ['noDutySupervisor']);
+  return t as LTTotals;
 }
 
 const qs = (o: Record<string, string>) =>

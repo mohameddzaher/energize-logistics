@@ -5,7 +5,7 @@ const { startOfDay, endOfDay, DAY_MS: COMPANY_DAY_MS } = require('../utils/compa
 const { flexSpaceRegex } = require('../utils/plateKey');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll, emitPerRole } = require('../websocket/socketManager');
-const { derivePaymentTypeFor, hasTaxInvoice, NO_INVOICE_RX } = require('../utils/paymentType');
+const { derivePaymentTypeFor, hasTaxInvoice, NO_INVOICE_RX, isUnified, hasIssuedInvoice } = require('../utils/paymentType');
 const XLSX = require('xlsx');
 const fs = require('fs');
 const path = require('path');
@@ -300,6 +300,16 @@ function deriveInvoiceTotals(patch, current) {
 async function fillPaymentTypeFromCustomer(patch, current = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, 'paymentType')) return null;
   if (String(current.paymentTypeSource || '') === 'manual') return null;
+  // ── والموحَّدُ على صفة عميله لا يُشتقّ من جديد ─────────────────────────
+  // إلّا أن تُكتب له الآن فاتورةٌ ضريبيّةٌ حقيقيّة — راجع isUnified.
+  if (isUnified(current)) {
+    const merged = { ...current, ...patch };
+    if (!hasIssuedInvoice(merged) || String(current.paymentType || '') === 'tax') return null;
+    patch.paymentType = 'tax';
+    patch.paymentTypeSource = 'unified';
+    patch.__derivedPaymentType = true;
+    return 'tax';
+  }
 
   const name = patch.username !== undefined ? patch.username : current.username;
   if (!name) return null;
@@ -538,13 +548,21 @@ const FILTERABLE_COLUMNS = new Set([
   'branchDeliveryDate', 'deliveryDate',
   'accountingReview', 'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice',
   'invoiceDate', 'collectionDate', 'stage',
+  // ── وأعمدةٌ كانت تُعرض بقائمةٍ ولا يقبلها الخادم ─────────────────────────
+  // «نوع الدفع» و«مبلغ السداد» و«وجهة الكشف النهائية» و«مبلغ التحصيل» و«مسؤول
+  // البيانات» أُضيفت إلى الجدول ولم تُضَف هنا، فكان كلُّ فتحٍ لقائمتها يُردّ ٤٠٠
+  // وتُعرض فارغةً بلا رسالة: «نوع الدفع لا يفلتر شيئًا».
+  'paymentAmount', 'paymentType', 'finalReportDestination', 'collectedAmount',
+  // الحقلُ الخام (تعرضه الصفحةُ الخاصّة كما هو)، والعمودُ المعروضُ في سير العمل —
+  // الاسمُ ثمّ مسجّلُ المحفظة ثمّ مصدرُ الاستيراد. راجع utils/dataOwnerIndex.
+  'paymentDateByName', 'dataOwnerShown',
 ]);
 
 // القيمة تصل من المتصفح نصًّا دائمًا، والحقل في القاعدة رقمٌ أو تاريخ. المقارنة
 // بين نوعين مختلفين في BSON لا تُطابق شيئًا أبدًا، فالفلترة على «قيمة الشراء» أو
 // «تاريخ السداد» كانت سترجع صفرًا من الصفوف بلا رسالة خطأ — لذلك يُعاد كل نوعٍ
 // إلى نوعه قبل بناء الشرط.
-const NUMERIC_COLUMNS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice']);
+const NUMERIC_COLUMNS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice', 'paymentAmount', 'collectedAmount']);
 const DATE_COLUMNS = new Set(['reportDate', 'paymentDate', 'sendingDate', 'branchDeliveryDate', 'deliveryDate', 'invoiceDate', 'collectionDate']);
 
 /**
@@ -572,6 +590,9 @@ const isDayString = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v);
  * تكرارًا، ويُطلب الباقي بالبحث داخل القائمة فيُنفَّذ على الخادم.
  */
 const MAX_FILTER_VALUES = 500;
+
+/** نمطٌ يطابق القيمةَ بعينها مع ما حولها من مسافات — راجع columnFilters. */
+const trimInsensitive = (v) => new RegExp(`^\\s*${String(v).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`);
 
 const decodeColumnValue = (field, v) => {
   if (NUMERIC_COLUMNS.has(field)) { const n = Number(v); return Number.isNaN(n) ? undefined : n; }
@@ -604,6 +625,8 @@ function columnFilters(query, skipField, allowMoney = true) {
     // الخانة الفارغة فئةٌ حقيقية يُسأل عنها («الكشوف التي لم تُفوتر بعد»)، وهي في
     // القاعدة ثلاث صور: حقلٌ غير موجود، وnull، ونصٌّ فارغ — والثلاثة يجب أن يردّها
     // اختيارٌ واحد، وإلا بدا للمستخدم أن صفوفًا اختفت.
+    // «مسؤول البيانات» عمودٌ يُحسب من ثلاثة مصادر لا حقلٌ واحد — راجع utils/dataOwnerIndex.
+    if (field === 'dataOwnerShown') { conds.push(require('../utils/dataOwnerIndex').ownerCondition(vals)); continue; }
     const wantsBlank = vals.some((v) => v === '');
     const rest = vals.filter((v) => v !== '');
 
@@ -626,8 +649,19 @@ function columnFilters(query, skipField, allowMoney = true) {
       continue;
     }
 
-    const list = rest.map((v) => decodeColumnValue(field, v)).filter((v) => v !== undefined);
-    if (wantsBlank) list.push('', null);
+    // ── والنصُّ يُطابَق بلا مسافات طرفيه ──────────────────────────────────────
+    // المزامنةُ تكتب بخطّ تجميعٍ فلا يمرّ عليها `trim` في المخطّط، فيُخزَّن
+    // «الدمام » و«محمد الخولي » و«13  » كما جاءت من المنصّة — بجانب صيغها
+    // المقصوصة في صفوفٍ أخرى. والخانتان تُقرآن في الجدول شيئًا واحدًا.
+    // و Mongoose يقصّ القيمةَ في الاستعلام (`trim` يسري على الشرط أيضًا)،
+    // فكان اختيارُ «الدمام » من القائمة يبحث عن «الدمام» ويُرجع صفرًا من تسعةِ
+    // آلافٍ وثلاثِمئةٍ وواحدٍ وخمسين كشفًا. فكلُّ قيمةٍ نصّيّةٍ نمطٌ مثبَّتٌ يقبل
+    // المسافاتِ حولها (والنمطُ لا يقصّه أحد)، والقائمةُ تجمع الصيغتين سطرًا واحدًا
+    // (راجع filterOptions).
+    const textual = !NUMERIC_COLUMNS.has(field);
+    const list = rest.map((v) => decodeColumnValue(field, v)).filter((v) => v !== undefined)
+      .map((v) => (textual && typeof v === 'string' ? trimInsensitive(v) : v));
+    if (wantsBlank) list.push('', null, ...(textual ? [/^\s*$/] : []));
     if (list.length) conds.push({ [field]: { $in: list } });
   }
   return conds;
@@ -712,7 +746,8 @@ exports.getWorkflows = async (req, res) => {
       const rec = recorders.get(rn);
       if (rec) { w.dataOwnerShown = rec; w.dataOwnerFrom = 'wallet'; continue; }
       if (w.externalSource) {
-        w.dataOwnerShown = w.externalSource === 'ops_upl' ? 'منقول من منصّة الأوبريشن' : `مستورَد (${w.externalSource})`;
+        // النصُّ نفسُه الذي تُبنى عليه قائمةُ الفلتر — راجع utils/dataOwnerIndex.
+        w.dataOwnerShown = require('../utils/dataOwnerIndex').importLabel(w.externalSource);
         w.dataOwnerFrom = 'import';
         continue;
       }
@@ -999,6 +1034,23 @@ exports.filterOptions = async (req, res) => {
     const hit = cache.get(key);
     if (hit !== undefined) return res.json(hit);
 
+    // «مسؤول البيانات» يُعَدّ بالمصادر الثلاثة التي تملأ خانتَه — راجع utils/dataOwnerIndex.
+    if (field === 'dataOwnerShown') {
+      const owner = require('../utils/dataOwnerIndex');
+      await owner.ensure();
+      const base = buildWorkflowFilter(req.query, field, money);
+      const q = String(req.query.q || '').trim().toLowerCase();
+      let values = (await owner.ownerOptions(OperationsWorkflow, base))
+        .filter((o) => !q || o.value.toLowerCase().includes(q))
+        .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value, 'ar'));
+      const distinct = values.length;
+      const truncated = values.length > MAX_FILTER_VALUES;
+      if (truncated) values = values.slice(0, MAX_FILTER_VALUES);
+      const body = { filters: [{ key: field, values, truncated, distinct }] };
+      cache.set(key, body, 20000);
+      return res.json(body);
+    }
+
     const match = buildWorkflowFilter(req.query, field, money);
     // البحث داخل القائمة يُنفَّذ هنا لا في المتصفح، لأن المتصفح لا يملك إلا القيم
     // التي بلغت السقف: البحث عن رقم كشفٍ ليس ضمن الخمسمئة الأكثر تكرارًا كان
@@ -1050,9 +1102,11 @@ exports.filterOptions = async (req, res) => {
     const merged = new Map();
     for (const r of (agg?.values || [])) {
       const id = r._id;
+      // والنصُّ يُجمَع مقصوصًا: «الدمام » و«الدمام» سطرٌ واحدٌ كما في الجدول، وفلترُه
+      // يطابق الصيغتين (راجع columnFilters).
       const value = id === null || id === undefined || id === ''
         ? ''
-        : (id instanceof Date ? id.toISOString() : String(id));
+        : (id instanceof Date ? id.toISOString() : (typeof id === 'string' ? id.trim() : String(id)));
       merged.set(value, (merged.get(value) || 0) + r.count);
     }
     // والدمجُ لا يُفسد ترتيبَ القاعدة: يُعاد الترتيبُ بنفس القاعدة التي فوق.
@@ -1679,7 +1733,9 @@ exports.bulkUpdate = async (req, res) => {
 
     const wantsPayment = keys.includes('paymentDate') && patch.paymentDate && String(patch.paymentDate).trim();
     const rows = await OperationsWorkflow.find({ _id: { $in: ids } })
-      .select('reportNumber applicationStatus paymentType username lockedBy lockedByName lockedAt invoiceNumber').lean();
+      // `paymentTypeSource` وما يُشتقّ منه النوع: بدونها يُقرأ كلُّ صفٍّ «غيرَ يدويّ
+      // وغيرَ موحَّد» فيُعاد اشتقاقُ ما اختارته يدٌ أو وُحِّد — راجع fillPaymentTypeFromCustomer.
+      .select('reportNumber applicationStatus paymentType paymentTypeSource paymentMethod reportDate tax netInvoice username lockedBy lockedByName lockedAt invoiceNumber').lean();
 
     // ── والقواعدُ تُطبَّق صفًّا صفًّا ──────────────────────────────────────
     // نوعُ الدفع يختلف من كشفٍ لآخر، فالتعديلُ الواحد لا ينتج تعديلًا واحدًا:

@@ -226,18 +226,25 @@ function HrMasterInner() {
         <Big label={t('يعمل', 'Working')} value={d.totals.active} c="#16a34a"
           halves={H('active')} onHalf={(k) => setDutyHalf((v) => (v === k ? '' : k))} activeHalf={dutyHalf} ar={ar}
           onClick={() => drill({ employment: 'working' })}
-          detail={dutyHalf && d.totals.onDutyDetail ? (
-            <span className="mt-1.5 flex flex-wrap gap-1.5 text-[10.5px]">
-              <button type="button" onClick={(e) => { e.stopPropagation(); drill({ employment: 'working', engagement: dutyHalf }); }}
-                className="rounded bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-700 hover:bg-emerald-100">
-                {t(`يعمل ${d.totals.onDutyDetail[dutyHalf].working}`, `Working ${d.totals.onDutyDetail[dutyHalf].working}`)}
-              </button>
-              <button type="button" onClick={(e) => { e.stopPropagation(); drill({ employment: 'leave', engagement: dutyHalf }); }}
-                className="rounded bg-sky-50 px-1.5 py-0.5 font-semibold text-sky-700 hover:bg-sky-100">
-                {t(`إجازة ${d.totals.onDutyDetail[dutyHalf].leave}`, `On leave ${d.totals.onDutyDetail[dutyHalf].leave}`)}
-              </button>
-            </span>
-          ) : undefined} />
+          // ── وسطرُ التفصيل محجوزٌ مكانُه ─────────────────────────────────────
+          // كان يظهر حين يُضغَط نصفٌ فيطول الكارتُ ويطول صفُّ الكروت الخمسة معه
+          // فتقفز الشاشةُ تحت يد المستخدم. فالسطرُ قائمٌ دائمًا ومخفيٌّ حتى يُختار.
+          detail={d.totals.onDutyDetail ? (() => {
+            const half = dutyHalf || 'sponsored';
+            const x = d.totals.onDutyDetail[half] || { working: 0, leave: 0 };
+            return (
+              <span className={`mt-1.5 flex flex-wrap gap-1.5 text-[10.5px] tabular-nums ${dutyHalf ? '' : 'invisible'}`} aria-hidden={!dutyHalf}>
+                <button type="button" tabIndex={dutyHalf ? 0 : -1} onClick={(e) => { e.stopPropagation(); drill({ employment: 'working', engagement: half }); }}
+                  className="rounded bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-700 hover:bg-emerald-100">
+                  {t(`يعمل ${x.working}`, `Working ${x.working}`)}
+                </button>
+                <button type="button" tabIndex={dutyHalf ? 0 : -1} onClick={(e) => { e.stopPropagation(); drill({ employment: 'leave', engagement: half }); }}
+                  className="rounded bg-sky-50 px-1.5 py-0.5 font-semibold text-sky-700 hover:bg-sky-100">
+                  {t(`إجازة ${x.leave}`, `On leave ${x.leave}`)}
+                </button>
+              </span>
+            );
+          })() : undefined} />
         <Big label={t('لا يعمل — داخل النظام', 'Not working — in system')} value={d.totals.noKind ?? 0} c="#94a3b8"
           sub={t('بلا حالة محدّدة · ينتظر الخروج من النظام', 'no status set · awaiting system exit')}
           halves={H('noKind')} onHalf={(k) => drill({ employment: 'nokind', engagement: k })} ar={ar}
@@ -464,7 +471,7 @@ function Big({ label, value, c, onClick, sub, halves, onHalf, activeHalf, detail
       onKeyDown={(e) => { if (onClick && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onClick(); } }}
       className={`bg-white border border-slate-200 rounded-xl p-3 shadow-sm h-full text-start ${onClick ? 'cursor-pointer hover:border-slate-300' : ''}`}>
       <div className="flex items-baseline gap-1.5">
-        <p className="text-xl font-extrabold leading-none" style={{ color: c }}>{value}</p>
+        <p className="text-xl font-extrabold leading-none tabular-nums" style={{ color: c }}>{value}</p>
         {sub && <span className="text-[10px] text-slate-400 font-semibold tabular-nums">{sub}</span>}
       </div>
       <p className="text-[10.5px] text-slate-500 mt-1.5 leading-tight">{label}</p>

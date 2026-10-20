@@ -113,7 +113,9 @@ export default function DepartmentAnalysis({
               {rows.map((r) => {
                 const dept = r.department || '';
                 const q = dept ? { department: dept } : { department: '—' };
-                const on = active === dept;
+                // الجدولُ يُعَدّ بلا فلتر القسم (الخادم)، فيبقى كلُّ قسمٍ صفًّا والمختارُ
+                // — واحدًا أو أكثر من الفلترة السريعة — مُعلَّمًا بينها.
+                const on = !!active && String(active).split(',').includes(dept);
                 return (
                   <tr key={dept || '—'} className={`border-b border-slate-100 ${on ? 'bg-[#f37121]/5' : 'hover:bg-slate-50'}`}>
                     <td className="px-3 py-2 whitespace-nowrap">

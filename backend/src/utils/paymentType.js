@@ -59,6 +59,51 @@ const hasTaxInvoice = (w = {}) => {
 };
 
 /**
+ * ── وفاتورةٌ صادرةٌ بدليلٍ لا يكتبه النظامُ نفسُه ─────────────────────────────
+ *
+ * `hasTaxInvoice` تقرأ «الصافي» دليلًا أيضًا. لكنّ الصافيَ يكتبه المسارُ النقديُّ
+ * نفسُه (`deriveCashTotals`: مبلغُ السداد يُنسَخ إلى الصافي والإجماليّ، والضريبةُ
+ * صفر) — فكشفٌ نقديٌّ له مبلغُ سدادٍ «يبدو» مفوتَرًا ضريبيًّا. وفي القاعدة
+ * ثلاثُمئةٍ وثمانيةٌ وستّون كشفًا صافيها يساوي مبلغَ سدادها وضريبتُها صفر ولا رقمَ
+ * فاتورةٍ لها، وكلُّها صارت «ضريبيًّا» لهذا السبب وحدَه.
+ *
+ * فما يُبنى على قرارٍ صريح (توحيدُ عميلٍ من صفحة «أنواع الدفع») لا يُنقَض إلّا
+ * بدليلٍ لا يصنعه النظام: رقمُ فاتورةٍ حقيقيّ، أو ضريبةٌ محسوبة — والضريبةُ لا
+ * تُحسب إلّا لفوترةٍ ضريبيّة (`deriveInvoiceTotals`)، والنقديُّ يكتبها صفرًا.
+ *
+ * (`hasTaxInvoice` نفسُها باقيةٌ كما هي للاشتقاق التلقائيّ: تضييقُها يُعيد تصنيفَ
+ *  تلك الكشوف دفعةً واحدةً في أوّل مزامنة — قرارٌ لا أثرٌ جانبيّ.)
+ */
+// الفارغُ والمسافاتُ والعناصرُ النائبة — «ليس رقمَ فاتورة».
+const NOT_AN_INVOICE_RX = /^\s*(0|no\s*inv|بدون|لا\s*يوجد|-|—|ىى)?\s*$/i;
+const hasIssuedInvoice = (w = {}) => Number(w.tax) > 0
+  || !NOT_AN_INVOICE_RX.test(String(w.invoiceNumber == null ? '' : w.invoiceNumber));
+/** الشرطُ نفسُه استعلامًا (لـ`find`/`updateMany`). */
+const ISSUED_INVOICE_QUERY = { $or: [
+  { tax: { $gt: 0 } },
+  { invoiceNumber: { $ne: null, $not: NOT_AN_INVOICE_RX } },
+] };
+/** والشرطُ نفسُه تعبيرًا (لـ`$group` و`$cond` وخطوط التحديث). */
+const ISSUED_INVOICE_EXPR = { $or: [
+  { $gt: [{ $ifNull: ['$tax', 0] }, 0] },
+  { $not: [{ $regexMatch: { input: { $toString: { $ifNull: ['$invoiceNumber', ''] } }, regex: NOT_AN_INVOICE_RX } }] },
+] };
+
+/**
+ * ── مَن يقرّر نوعَ الكشف، ومَن لا يُنقَض قرارُه ────────────────────────────
+ *
+ *  • `manual`  — اختارته يدٌ على هذا الكشف بعينه. لا يمسّه شيءٌ بعدها.
+ *  • `unified` — وحّده أحدٌ على صفة عميله من صفحة «أنواع الدفع»، بعد أن رأى العدد.
+ *    قرارٌ صريحٌ على العميل يعلو الاشتقاقَ (طريقةَ دفع المنصّة وصفةَ العميل)،
+ *    ولا يعلو فاتورةً ضريبيّةً تصدر بعده (`hasIssuedInvoice`).
+ *  • `auto`    — مشتقٌّ، ويُعاد اشتقاقُه في كلّ مزامنة.
+ *
+ * كان التوحيدُ يكتب `auto` — فتأتي المزامنةُ بعد دقيقةٍ فتشتقّ من جديد وتعيد
+ * الكشوفَ إلى ما كانت عليه، ويعود عددُ «المخالف» كما كان.
+ */
+const isUnified = (w) => String(w?.paymentTypeSource || '') === 'unified';
+
+/**
  * النوعُ المشتقُّ تلقائيًّا لكشفٍ بعينه.
  *
  * @param {object} workflow      الكشف — يُقرأ منه `paymentMethod` ودليلُ الفاتورة
@@ -83,6 +128,7 @@ const derivePaymentType = (paymentMethod, customerType) =>
  */
 const paymentTypeReason = (workflow = {}, customerType) => {
   if (String(workflow.paymentTypeSource || '') === 'manual') return 'manual';
+  if (isUnified(workflow)) return hasIssuedInvoice(workflow) ? 'invoice' : 'customer';
   if (hasTaxInvoice(workflow)) return 'invoice';
   const t = String(customerType || '').trim().toLowerCase();
   return t === 'cash' || t === 'tax' ? 'customer' : '';
@@ -120,7 +166,8 @@ const reachesCollections = (workflow = {}) => {
 };
 
 module.exports = {
-  NO_INVOICE_RX,
+  NO_INVOICE_RX, NOT_AN_INVOICE_RX,
+  hasIssuedInvoice, ISSUED_INVOICE_QUERY, ISSUED_INVOICE_EXPR, isUnified,
   derivePaymentType, derivePaymentTypeFor, paymentTypeReason,
   hasTaxInvoice, methodIsCash, mayAutoSet,
   AUTO_RULE_FROM, underNewRule, reachesCollections,

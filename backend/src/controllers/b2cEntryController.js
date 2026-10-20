@@ -99,6 +99,37 @@ exports.list = async (req, res) => {
         r.mode = isAtt(r.projectAr) ? 'attendance' : 'orders';
         if (r.mode === 'attendance') r.present = !absent.has(String(r.lt)) && r.status !== 'إجازة';
       }
+      // ── وتقييمُ أمازون بأيّام الحضور لا بالأوردرات ───────────────────────────
+      // هدفُ أمازون أن يعمل المندوبُ «أيّامَ» المشروع في الشهر (٢٦ في صفحة
+      // المشاريع)، لا أن يسلّم عددًا. فالمحقَّقُ أيّامُ حضوره في الفترة (كلُّ يومٍ
+      // انقضى ناقصَ ما عُلِّم فيه غائبًا)، والهدفُ نصيبُ الفترة من أيّام الشهر.
+      if (attIds.length) {
+        const B2CAttendance = require('../models/B2CAttendance');
+        const end = to < riyadhToday() ? to : riyadhToday();
+        const absRows = await B2CAttendance.find({ lt: { $in: attIds }, present: false, dateKey: { $gte: from, $lte: end } }).select('lt').lean();
+        const absCount = new Map();
+        for (const x of absRows) absCount.set(String(x.lt), (absCount.get(String(x.lt)) || 0) + 1);
+        const dayMs = 86400000;
+        const span = (a, b) => (b < a ? 0 : Math.round((new Date(`${b}T00:00:00Z`) - new Date(`${a}T00:00:00Z`)) / dayMs) + 1);
+        const monthDays = new Date(Date.UTC(Number(from.slice(0, 4)), Number(from.slice(5, 7)), 0)).getUTCDate();
+        const ltById = new Map(lts.map((l) => [String(l._id), l]));
+        for (const r of out) {
+          if (r.mode !== 'attendance') continue;
+          const proj = P.of(r.projectAr);
+          const goal = Number(proj?.expectedWorkingDays) || 26;
+          const hired = ltById.get(String(r.lt))?.hireDate;
+          const start = hired && E.dayKey(hired) > from ? E.dayKey(hired) : from;
+          const elapsed = span(start, end);
+          const presentDays = Math.max(0, elapsed - (absCount.get(String(r.lt)) || 0));
+          const target = Math.round((goal * span(from, end)) / monthDays);
+          const pct = target ? presentDays / target : null;
+          Object.assign(r, {
+            total: presentDays, workedDays: presentDays, target, pct, unit: 'يوم',
+            evaluation: pct == null ? 'لا طلبات' : pct >= 1 ? 'حقق' : pct >= 0.8 ? 'قريب' : 'بعيد',
+            expected: span(from, end) ? Math.min(monthDays, Math.round((presentDays / span(from, end)) * monthDays)) : 0,
+          });
+        }
+      }
     }
 
     // ── الكروت — كالشيت ────────────────────────────────────────────────────
@@ -114,7 +145,8 @@ exports.list = async (req, res) => {
       })),
       dayTotal: out.reduce((s, r) => s + (r.orders || 0), 0),
       dayEntered: count(out, (r) => r.orders != null),
-      periodTotal: out.reduce((s, r) => s + r.total, 0),
+      // أيّامُ حضور أمازون ليست أوردرات — لا تدخل مجموعَها.
+      periodTotal: out.reduce((s, r) => s + (r.mode === 'attendance' ? 0 : r.total), 0),
       onLeave: count(out, (r) => r.status === 'إجازة'),
     };
     // ملخّصُ التحقيق حسب المشرف والمشروع.

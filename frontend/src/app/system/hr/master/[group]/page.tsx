@@ -333,7 +333,7 @@ function GroupInner() {
                       setField(f.key); setStatus(off ? '' : k);
                       if (!off) setTimeout(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
                     }}
-                    className={`px-1.5 py-0.5 rounded text-[10.5px] font-semibold ${statusMeta(k).bg} ${
+                    className={`px-1.5 py-0.5 rounded text-[10.5px] font-semibold tabular-nums ${statusMeta(k).bg} ${
                       field === f.key && status === k ? 'ring-2 ring-offset-1 ring-[#f37121]' : ''}`}>
                     {statusLabel(k, ar)} {s[k]}
                   </button>
@@ -377,7 +377,7 @@ function GroupInner() {
           {(['expired', 'critical', 'warning', 'valid', 'missing', 'not_applicable'] as const).map((k) => (
             <button key={k} onClick={() => setState(state === k ? '' : k)}
               className={`text-start bg-white border rounded-xl p-3 shadow-sm ${state === k ? 'border-[#f37121] ring-1 ring-[#f37121]/30' : 'border-slate-200 hover:border-slate-300'}`}>
-              <p className="text-xl font-extrabold leading-none" style={{ color: stateMeta(k).color }}>{d.summary.states[k]}</p>
+              <p className="text-xl font-extrabold leading-none tabular-nums" style={{ color: stateMeta(k).color }}>{d.summary.states[k]}</p>
               <p className="text-[11px] text-slate-600 mt-1.5 leading-tight font-medium">{stateLabel(k, ar)}</p>
             </button>
           ))}

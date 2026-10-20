@@ -101,9 +101,11 @@ const operationsWorkflowSchema = new mongoose.Schema(
     // تلقائيًّا مهما تغيّرت صفةُ العميل. وبدون هذا الحقل لا سبيلَ إلى التفريق
     // بين اختيارٍ مقصودٍ وقيمةٍ اشتُقّت، فيدهس الاشتقاقُ قرارَ الإنسان في أوّل
     // تحديثٍ لصفحة أنواع الدفع. راجع utils/paymentType.
+    // و«unified» = وُحِّد على صفة عميله من صفحة «أنواع الدفع» — قرارٌ صريحٌ لا
+    // تنقضه المزامنة (راجع isUnified في utils/paymentType).
     paymentTypeSource: {
       type: String,
-      enum: ['', 'manual', 'auto'],
+      enum: ['', 'manual', 'auto', 'unified'],
       default: '',
     },
     finalReportDestination: { type: String, trim: true },    // وجهه الكشف النهائي

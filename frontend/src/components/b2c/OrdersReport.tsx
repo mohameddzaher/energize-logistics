@@ -188,7 +188,7 @@ export default function OrdersReport({ url }: { url: string }) {
               </tr>
             </tbody>
           </table>
-          <p className="mt-2 text-[10.5px] text-slate-400">حقّق: بلغ هدفه · قريب: من ٨٠٪ إلى ما دون هدفه · بعيد: دون ٨٠٪. الهدف = الهدف اليومي للمشروع × أيام الاحتساب (الأيام التي فيها أوردرات).</p>
+          <p className="mt-2 text-[10.5px] text-slate-400">حقّق: بلغ هدفه · قريب: من ٨٠٪ إلى ما دون هدفه · بعيد: دون ٨٠٪. الهدف = الهدف اليومي للمشروع × أيام الاحتساب (الأيام التي فيها أوردرات). وأمازون بأيّام الحضور: هدفُها أيّامُ المشروع في الشهر (٢٦) بنسبة ما انقضى منه.</p>
         </div>
       </div>
 
@@ -238,9 +238,9 @@ export default function OrdersReport({ url }: { url: string }) {
                 <td className="px-2 py-1.5 text-center text-[12.5px]">{r.projectAr}</td>
                 <td className="whitespace-nowrap px-2 py-1.5 text-center text-[12.5px] text-slate-600">{r.supervisorName || '—'}</td>
                 <td className="px-2 py-1.5 text-center text-[12px] text-slate-600">{r.kind}</td>
-                <td className="px-2 py-1.5 text-center font-bold tabular-nums">{r.total}</td>
+                <td className="px-2 py-1.5 text-center font-bold tabular-nums">{r.total}{r.unit === 'يوم' && <span className="ms-1 text-[10.5px] font-normal text-slate-400">يوم حضور</span>}</td>
                 <td className="px-2 py-1.5 text-center tabular-nums">{r.workedDays}</td>
-                <td className="px-2 py-1.5 text-center tabular-nums">{r.target ?? '—'}</td>
+                <td className="px-2 py-1.5 text-center tabular-nums">{r.target ?? '—'}{r.unit === 'يوم' && r.target != null && <span className="ms-1 text-[10.5px] text-slate-400">يوم</span>}</td>
                 <td className="px-2 py-1.5 text-center tabular-nums">{pctTxt(r.pct)}</td>
                 <td className="px-2 py-1.5 text-center"><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${EVAL_CLS[r.evaluation] || ''}`}>{r.evaluation}</span></td>
                 <td className="px-2 py-1.5 text-center tabular-nums text-slate-600">{r.unit === 'شحنة' ? '—' : r.expected}</td>

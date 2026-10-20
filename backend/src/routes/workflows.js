@@ -14,6 +14,8 @@ const { FINANCE_FULL_ROLES } = require('../config/financeAuthority');
 const validate = require('../middleware/validate');
 
 router.use(authenticate);
+// فلترُ «مسؤول البيانات» يقرأ مشترياتِ المحفظة — تُحمَّل قبل بناء الشرط. راجع utils/dataOwnerIndex.
+router.use(require('../utils/dataOwnerIndex').preload);
 
 // All workflow-related roles. Finance/collections staff (cfo, accounting_manager,
 // accountant) are included so they can open the operations page, see the

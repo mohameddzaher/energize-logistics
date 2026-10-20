@@ -12,7 +12,7 @@ const upl = require('./uplClient');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
 const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
-const { derivePaymentTypeFor } = require('../utils/paymentType');
+const { derivePaymentTypeFor, ISSUED_INVOICE_EXPR, NO_INVOICE_RX } = require('../utils/paymentType');
 
 
 const SOURCE = 'ops_upl';
@@ -225,42 +225,54 @@ async function upsertShipments(ships) {
                   set.sellingValue,
                 ],
               },
-              // ── ولا يُبدَّل نوعٌ مكتوبٌ أصلًا ────────────────────────────
-              // يُملأ الفارغُ وحدَه. واختيارُ اليد لا يُمسّ أبدًا (`manual`)،
-              // والمشتقُّ سابقًا يبقى كما هو: قلبُ نوعِ كشفٍ قديمٍ يغيّر أين
-              // يُفوتَر وأين يُحصَّل، وذلك قرارٌ يُتّخذ من صفحة «أنواع الدفع»
-              // بعددٍ معروضٍ قبله، لا أثرٌ جانبيٌّ لمزامنةٍ تجري كلَّ دقيقة.
+              // (كان هنا «لا يُبدَّل نوعٌ مكتوبٌ — يُملأ الفارغُ وحدَه». لم يعد
+              //  كذلك منذ a40ad1c6: المشتقُّ يُعاد اشتقاقُه في كلّ دورة، ولا يثبت
+              //  إلّا اختيارُ اليد والتوحيد — راجع ما يلي.)
               // ── صفةُ العميل تحكم، وتعلوها فاتورةٌ صادرةٌ واختيارُ يد ────────
               // كشفٌ يحمل رقمَ فاتورةٍ أو ضريبةً محسوبة فقد فُوتِر ضريبيًّا فعلًا،
               // والورقةُ التي خرجت للعميل أقوى من صفةٍ عامّة.
+              //
+              // ── والتوحيدُ قرارٌ لا يُشتقّ فوقه ──────────────────────────────
+              // كشفٌ وُحِّد على صفة عميله (`unified`) يبقى على ما وُحِّد عليه،
+              // إلّا أن تصدر له فاتورةٌ ضريبيّةٌ حقيقيّة بعدها. كان التوحيدُ
+              // يكتب `auto` فتعيد هذه الخطوةُ اشتقاقَه في الدورة التالية —
+              // ثمانُمئةٍ وثلاثةٌ وعشرون كشفًا لعملاءَ ضريبيّين قالت المنصّةُ عنها
+              // «cash» عادت كاشًا بعد كلّ توحيد، ويعود «المخالف» كما كان.
+              // راجع isUnified في utils/paymentType.
               paymentType: derived ? {
-                $cond: [
-                  { $eq: [{ $ifNull: ['$paymentTypeSource', ''] }, 'manual'] },
-                  { $ifNull: ['$paymentType', ''] },
-                  {
-                    $cond: [
-                      {
+                $switch: {
+                  branches: [
+                    { case: { $eq: [{ $ifNull: ['$paymentTypeSource', ''] }, 'manual'] }, then: { $ifNull: ['$paymentType', ''] } },
+                    {
+                      case: { $eq: [{ $ifNull: ['$paymentTypeSource', ''] }, 'unified'] },
+                      then: { $cond: [ISSUED_INVOICE_EXPR, 'tax', { $ifNull: ['$paymentType', ''] }] },
+                    },
+                    {
+                      case: {
                         $or: [
                           { $gt: [{ $ifNull: ['$tax', 0] }, 0] },
                           { $gt: [{ $ifNull: ['$netInvoice', 0] }, 0] },
                           {
                             $and: [
                               { $ne: [{ $ifNull: ['$invoiceNumber', ''] }, ''] },
-                              { $not: [{ $regexMatch: { input: { $toString: { $ifNull: ['$invoiceNumber', ''] } }, regex: '^\\s*(no\\s*inv|بدون|لا\\s*يوجد|-|—|ىى)\\s*$', options: 'i' } }] },
+                              // النمطُ نفسُه الذي تقرؤه `hasTaxInvoice` — وفيه «0» الذي يكتبه
+                              // القفلُ النقديّ؛ كان مكتوبًا هنا نسخةً بلا «0» فتقرؤه المزامنةُ
+                              // فاتورةً ولا تقرؤه الشاشة.
+                              { $not: [{ $regexMatch: { input: { $toString: { $ifNull: ['$invoiceNumber', ''] } }, regex: NO_INVOICE_RX } }] },
                             ],
                           },
                         ],
                       },
-                      'tax',
-                      derived,
-                    ],
-                  },
-                ],
+                      then: 'tax',
+                    },
+                  ],
+                  default: derived,
+                },
               } : { $ifNull: ['$paymentType', ''] },
               paymentTypeSource: derived ? {
                 $cond: [
-                  { $eq: [{ $ifNull: ['$paymentTypeSource', ''] }, 'manual'] },
-                  'manual',
+                  { $in: [{ $ifNull: ['$paymentTypeSource', ''] }, ['manual', 'unified']] },
+                  '$paymentTypeSource',
                   'auto',
                 ],
               } : { $ifNull: ['$paymentTypeSource', ''] },

@@ -533,26 +533,62 @@ exports.supervisors = async (req, res) => {
  * والمركباتُ تُعَدّ من سجلّ المركبات لا من صفوف الموظّفين: مركبةٌ لا راكبَ لها
  * لا تظهر في صفوفهم، وهي أوّلُ ما يُسأل عنه («كام مركبة واقفة؟»).
  */
+/**
+ * ── الأرقامُ لا تتحرّك تحت مَن يضغطها ───────────────────────────────────────
+ *
+ * كانت كلُّ أرقام اللوحة تُحسَب **بعد** كلّ الفلاتر، ومنها فلترُ الكارت المضغوط
+ * نفسُه: يُضغط «مناديب ١٧٥» فيصير «إداريون» صفرًا، ويُضغط «كيتا» في «بالمشروع»
+ * فيختفي كلُّ مشروعٍ سواه — والقائمةُ تُعاد ترتيبًا بأعدادٍ جديدة فتهتزّ.
+ *
+ * فكلُّ مجموعةِ كروتٍ تُحسَب **بكلّ الفلاتر عدا فلترَها هي** (عدٌّ بالأوجه —
+ * القاعدةُ نفسُها في انتهاءات الموارد البشريّة، راجع `hrMasterController.expiring`):
+ *   · مناديب / إداريون / سائقون / بلا وظيفة: بلا `staffKind`.
+ *   · على رأس العمل / إجازة / موقوف وتقسيمةُ الحالة: بلا `status`.
+ *   · لهم مركبة / بلا مركبة: بلا `hasVehicle`.   · لهم سكن / بلا سكن وإشغالُ السكن: بلا `housing`.
+ *   · كلُّ تقسيمة (المشروع، الفرع، الوظيفة، نوع التعاقد، السجل، المشرف، نوع المركبة): بلا مفتاحها.
+ *   · «الإجمالي» وما لا يُضغَط: بكلّ شيء — هو عددُ ما يفتحه «اعرض القائمة».
+ * فمجموعُ كروتِ المجموعة يبقى إجماليَّها، والمضغوطُ يبقى على رقمه.
+ *
+ * ولذلك تُطبَّق هذه المفاتيحُ هنا في الذاكرة لا في الاستعلام، بالمعنى نفسِه الذي
+ * يطبّقها به `listEmployees` (الطيُّ في المشروع، الحسابُ أو الاسمُ في المشرف…).
+ */
+const OVERVIEW_FACETS = ['city', 'jobTitle', 'contractType', 'register', 'staffKind', 'project',
+  'supervisor', 'housing', 'hasVehicle', 'status', 'vehicleType'];
+const facetTest = (q) => {
+  const tests = {};
+  const eq = (key, field) => { if (S(q[key])) tests[key] = (r) => S(r[field]) === S(q[key]); };
+  eq('city', 'cityAr'); eq('jobTitle', 'jobTitleAr'); eq('contractType', 'contractTypeAr');
+  eq('register', 'registerNumber'); eq('staffKind', 'staffKind');
+  if (S(q.project)) {
+    const want = S(q.project) === '(غير محدد)' ? '' : projectKey(q.project);
+    tests.project = (r) => projectKey(r.projectAr) === want;
+  }
+  if (S(q.supervisor)) {
+    const v = S(q.supervisor);
+    const idOf = (x) => S(x && typeof x === 'object' ? x._id : x);
+    if (v === 'none') tests.supervisor = (r) => !r.supervisorUser;
+    else if (mongoose.isValidObjectId(v)) tests.supervisor = (r) => idOf(r.supervisorUser) === v;
+    else tests.supervisor = (r) => S(r.supervisorName) === v;
+  }
+  if (S(q.housing)) {
+    const v = S(q.housing);
+    tests.housing = v === 'none' ? (r) => !r.housing : (r) => S(r.housing && (r.housing._id || r.housing)) === v;
+  }
+  if (q.hasVehicle === 'yes') tests.hasVehicle = (r) => !!r.vehicle;
+  if (q.hasVehicle === 'no') tests.hasVehicle = (r) => !r.vehicle;
+  if (S(q.status)) tests.status = (r) => r.workStatusShown === S(q.status);
+  if (S(q.vehicleType)) tests.vehicleType = (r) => typeKey(r.vehicleTypeShown) === typeKey(q.vehicleType);
+  /** يمرّ الصفُّ بكلّ الفلاتر — عدا `skip` إن سُمّي. */
+  return (r, skip) => Object.entries(tests).every(([k, fn]) => k === skip || fn(r));
+};
+exports._facetTest = facetTest;
+
 exports.overview = async (req, res) => {
   try {
     const q = req.query || {};
+    // في الاستعلام ما ليس كارتًا يُضغَط وحدَه؛ والأوجهُ تُطبَّق بعد الجلب (راجع أعلاه).
     const filter = { isActive: { $ne: false } };
-    for (const [key, field] of [['city', 'cityAr'], ['jobTitle', 'jobTitleAr'],
-      ['contractType', 'contractTypeAr'], ['register', 'registerNumber'],
-      ['staffKind', 'staffKind']]) {
-      if (S(q[key])) filter[field] = S(q[key]);
-    }
-    // المشروعُ بالطيّ كقائمة الموظّفين (`projectKey`) — فلا يفتح الكارتُ غيرَ ما عدّه.
-    if (S(q.project)) {
-      const want = S(q.project) === '(غير محدد)' ? '' : projectKey(q.project);
-      const names = (await LightTransportEmployee.distinct('projectAr')).filter((n) => projectKey(n) === want);
-      filter.projectAr = { $in: want ? names : [...names, null, ''] };
-    }
-    supervisorFilter(filter, q.supervisor);
     supervisorFilter(filter, q.dutySupervisor, 'dutySupervisorUser');
-    if (S(q.housing)) filter.housing = S(q.housing) === 'none' ? null : S(q.housing);
-    if (q.hasVehicle === 'yes') filter.vehicle = { $ne: null };
-    if (q.hasVehicle === 'no') filter.vehicle = null;
     if (S(q.hiredFrom) || S(q.hiredTo)) {
       filter.hireDate = {};
       if (S(q.hiredFrom)) filter.hireDate.$gte = new Date(S(q.hiredFrom));
@@ -579,13 +615,15 @@ exports.overview = async (req, res) => {
       LightTransportOrder.find({ status: 'active' }).select('vehicle ltEmployee').lean(),
     ]);
     const alerts = await docAlerts();
-    let rows = rawRows.map((r) => decorate(r, alerts));
-    if (S(q.status)) rows = rows.filter((r) => r.workStatusShown === S(q.status));
-    if (S(q.vehicleType)) rows = rows.filter((r) => typeKey(r.vehicleTypeShown) === typeKey(q.vehicleType));
-    const listedRows = rows;
+    const decorated = rawRows.map((r) => decorate(r, alerts));
+    const passes = facetTest(q);
+    const listedRows = decorated.filter((r) => passes(r));
     // أرقامُ اللوحة كلُّها على مَن هو في الخدمة — إلّا إن سأل الفلترُ عن المنتهين.
     const includeEnded = S(q.status) === ENDED;
-    if (!includeEnded) rows = rows.filter((r) => !isEnded(r));
+    const live = (list) => (includeEnded ? list : list.filter((r) => !isEnded(r)));
+    const rows = live(listedRows);
+    /** صفوفُ مجموعةِ كروتٍ: كلُّ الفلاتر عدا فلترِها — راجع OVERVIEW_FACETS. */
+    const without = (k) => (S(q[k]) ? decorated.filter((r) => passes(r, k)) : listedRows);
 
     // ── المركبات ──────────────────────────────────────────────────────────
     const ridden = new Set(allRidden.map((r) => String(r.vehicle)));
@@ -600,40 +638,66 @@ exports.overview = async (req, res) => {
      * كيتا؟» سؤالٌ عن المركبات. فما يخصّ المركبةَ من الفلاتر يُطبَّق عليها —
      * المشروعُ والفرعُ ونوعُ المركبة — وما يخصّ الإنسانَ وحدَه لا يُطبَّق.
      */
-    const vShown = vehicles.filter((v) => {
+    const vMatch = (v, skip) => {
       const id = String(v._id);
-      if (S(q.project) && (ltProjectByVehicle.get(id) || v.departmentAr) !== S(q.project)) return false;
-      if (S(q.city) && ltCityByVehicle.get(id) && ltCityByVehicle.get(id) !== S(q.city)) return false;
-      if (S(q.vehicleType) && typeKey(v.registrationTypeAr) !== typeKey(q.vehicleType)) return false;
-      if (q.hasVehicle === 'no') return !ridden.has(id);
+      if (skip !== 'project' && S(q.project) && (ltProjectByVehicle.get(id) || v.departmentAr) !== S(q.project)) return false;
+      if (skip !== 'city' && S(q.city) && ltCityByVehicle.get(id) && ltCityByVehicle.get(id) !== S(q.city)) return false;
+      if (skip !== 'vehicleType' && S(q.vehicleType) && typeKey(v.registrationTypeAr) !== typeKey(q.vehicleType)) return false;
+      if (skip !== 'hasVehicle' && q.hasVehicle === 'no') return !ridden.has(id);
       return true;
-    });
-    const vGroup = (fn) => {
+    };
+    const vShown = vehicles.filter((v) => vMatch(v));
+    // «عليها راكب / واقفة» قسمةُ المركبات نفسِها: لا يصفّرها «بلا مركبة» (فلترُ
+    // الموظّفين) — كان ضغطُه يجعل «عليها راكب» صفرًا و«المعروضة» = «واقفة».
+    const vSplit = vehicles.filter((v) => vMatch(v, 'hasVehicle'));
+    const vGroup = (list, fn) => {
       const o = {};
-      for (const v of vShown) { const k = fn(v) || '—'; o[k] = (o[k] || 0) + 1; }
+      for (const v of list) { const k = fn(v) || '—'; o[k] = (o[k] || 0) + 1; }
       return o;
     };
 
+    // إشغالُ السكن بلا فلتر السكن: ضغطُ سكنٍ في الجدول لا يصفّر الآخرين.
+    const housingRows = live(without('housing'));
     const housedIn = {};
-    for (const r of rows) { if (r.housing) { const k = String(r.housing._id); housedIn[k] = (housedIn[k] || 0) + 1; } }
+    for (const r of housingRows) { if (r.housing) { const k = String(r.housing._id); housedIn[k] = (housedIn[k] || 0) + 1; } }
     const roomOcc = {};
-    for (const r of rows) {
+    for (const r of housingRows) {
       if (r.housing && r.housingRoom) { const k = `${String(r.housing._id)}|${r.housingRoom}`; roomOcc[k] = (roomOcc[k] || 0) + 1; }
     }
 
+    // الإجمالُ وما لا يُضغَط بكلّ الفلاتر؛ وكلُّ مجموعةٍ تُضغَط بلا فلترها.
+    const employees = totalsOf(listedRows, { includeEnded });
+    const facet = (k, keys) => {
+      if (!S(q[k])) return;
+      const t = totalsOf(without(k), { includeEnded });
+      for (const key of keys) employees[key] = t[key];
+    };
+    facet('staffKind', ['reps', 'admins', 'drivers', 'unknownKind']);
+    facet('status', ['working', 'notWorking', 'onLeave', 'suspended', 'terminated', 'byStatus']);
+    facet('hasVehicle', ['withVehicle', 'withoutVehicle']);
+    facet('housing', ['housed', 'unhoused']);
+    facet('project', ['byProject']); facet('city', ['byCity']); facet('jobTitle', ['byJob']);
+    facet('contractType', ['byContract']); facet('register', ['byRegister']);
+    facet('supervisor', ['bySupervisor']); facet('vehicleType', ['byVehicleType']);
+
+    // «إجماليُّ المناديب» بالفلاتر كلِّها؛ وبطاقاتُ المشاريع تحته بلا فلتر المشروع —
+    // ضغطُ مشروعٍ كان يُخفي البقيّة. والمختارُ منها يساوي الإجماليَّ فوقه.
+    const reps = await repsBreakdown(rows, S(q.project));
+    if (S(q.project)) reps.projects = (await repsBreakdown(live(without('project')), '')).projects;
+
     res.json({
-      employees: totalsOf(listedRows, { includeEnded }),
-      reps: await repsBreakdown(rows, S(q.project)),
+      employees,
+      reps,
       vehicles: {
-        total: vShown.length,
+        total: vSplit.length,
         // وإجماليُّ القطاع يبقى معروضًا كي يُعرَف أنّ المعروضَ جزءٌ منه.
         totalAll: vehicles.length,
-        withRider: vShown.filter((v) => ridden.has(String(v._id))).length,
-        idle: vShown.filter((v) => !ridden.has(String(v._id))).length,
-        onActiveOrder: vShown.filter((v) => onOrder.has(String(v._id))).length,
-        byType: vGroup((v) => v.registrationTypeAr),
-        byProject: vGroup((v) => ltProjectByVehicle.get(String(v._id)) || v.departmentAr),
-        byServiceStatus: vGroup((v) => v.serviceStatusAr),
+        withRider: vSplit.filter((v) => ridden.has(String(v._id))).length,
+        idle: vSplit.filter((v) => !ridden.has(String(v._id))).length,
+        onActiveOrder: vSplit.filter((v) => onOrder.has(String(v._id))).length,
+        byType: vGroup(vehicles.filter((v) => vMatch(v, 'vehicleType')), (v) => v.registrationTypeAr),
+        byProject: vGroup(vShown, (v) => ltProjectByVehicle.get(String(v._id)) || v.departmentAr),
+        byServiceStatus: vGroup(vShown, (v) => v.serviceStatusAr),
       },
       housing: housing.map((h) => {
         const cap = (h.rooms || []).reduce((n, r) => n + (Number(r.capacity) || 0), 0) || Number(h.declaredCapacity) || 0;
@@ -657,12 +721,12 @@ exports.overview = async (req, res) => {
       gaps: {
         workingWithoutVehicle: rows.filter((r) => !r.vehicle
           && !['إنهاء خدمة', 'متوقف'].includes(r.workStatusShown)).length,
-        idleVehicles: vShown.filter((v) => !ridden.has(String(v._id))).length,
+        idleVehicles: vSplit.filter((v) => !ridden.has(String(v._id))).length,
         noRegister: rows.filter((r) => !S(r.registerNumber)
           && !['إنهاء خدمة'].includes(r.workStatusShown)).length,
         noContractType: rows.filter((r) => !S(r.contractTypeAr)).length,
         noSupervisor: rows.filter((r) => r.staffKind === 'rep' && !S(r.supervisorName)).length,
-        unhoused: rows.filter((r) => !r.housing).length,
+        unhoused: housingRows.filter((r) => !r.housing).length,
         noHrFile: rows.filter((r) => !r.hrLinked).length,
         // الورقةُ باسم غيرِ الراكب — تُقرأ من سجلّ المركبات لا من الصفّ.
         authorizationMismatch: (() => {

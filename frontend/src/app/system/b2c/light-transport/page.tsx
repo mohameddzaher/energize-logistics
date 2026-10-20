@@ -33,7 +33,7 @@ import ManagersProjects from '@/components/b2c/ManagersProjects';
 import TransferProjectModal from '@/components/b2c/TransferProjectModal';
 import { Truck, Plus, Pencil, RotateCcw, UserMinus, ExternalLink, X, ArrowLeftRight } from 'lucide-react';
 import {
-  getLTEmployees, updateLTEmployee, createLTEmployee, deactivateLTEmployee, ltTotalsOf,
+  getLTEmployees, updateLTEmployee, createLTEmployee, deactivateLTEmployee, ltFacetedTotals, ltPasses,
   LT_COLUMNS, statusCls, KIND_AR, KIND_EN, canEditLT, canTransferLT, fmtDate,
   supervisorIdOf, dutySupervisorIdOf, assignLTSupervisors, serverFilters,
   DOC_CLS, DOC_AR, DOC_EN,
@@ -53,6 +53,34 @@ const CHIP_KEY_EN: Record<string, string> = {
   status: 'Status', housing: 'Housing', hasVehicle: 'Vehicle', hiredFrom: 'Hired from', hiredTo: 'Hired to',
   contractKind: 'Contract', doc: 'Document', inService: 'Service',
 };
+
+/**
+ * ── الكارتُ وقائمةُ الفلتر خارجَ جسم الصفحة ─────────────────────────────────
+ * كانا يُعرَّفان داخل الصفحة فيصيران مكوِّنًا جديدًا في كلّ رسمة: تُهدَم الكروتُ
+ * وتُبنى مع كلّ ضغطةٍ وكلّ ردّ، وتُغلَق القائمةُ المفتوحةُ تحت يد المستخدم إن وصل
+ * تحديثٌ من السوكِت. راجع ذاكرة «inline components remount».
+ */
+function Stat({ label, value, accent, onClick, on }: { label: string; value: any; accent?: string; onClick?: () => void; on?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} disabled={!onClick}
+      className={`text-start bg-white border rounded-xl px-3.5 py-2.5 shadow-sm transition-all ${
+        on ? 'border-[#f37121] ring-2 ring-[#f37121]/20' : 'border-slate-200'} ${onClick ? 'hover:border-[#f37121]/50 cursor-pointer' : ''}`}>
+      <p className="text-[11px] text-slate-500 leading-tight">{label}</p>
+      <p className={`text-[19px] font-bold tabular-nums ${accent || 'text-slate-900'}`}>{value}</p>
+    </button>
+  );
+}
+
+/** قائمةُ اختيارٍ واحدةُ الشكل — قيمُها من السجلّ نفسِه. */
+function Filter({ value, onChange, label, list }: { value: string; onChange: (v: string) => void; label: string; list: string[] }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} aria-label={label}
+      className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800">
+      <option value="">{label}</option>
+      {list.map((v) => <option key={v} value={v}>{v}</option>)}
+    </select>
+  );
+}
 
 function LightTransportEmployeesInner() {
   const { user } = useAuth();
@@ -127,9 +155,9 @@ function LightTransportEmployeesInner() {
     // إجماليَّه فوقه. فتُقرأ الردودُ بترتيب طلبها لا بترتيب وصولها.
     const token = guard.begin();
     try {
-      // نوعُ العقد يُفلتَر في الخادم بطيِّ العدّ نفسِه (`contractIs`) — فما تقوله
-      // اللوحةُ وما تعرضه القائمةُ واحد، ومعه «none» لمن لا نوعَ عقدٍ له.
-      const d = await getLTEmployees({ ...serverFilters(f), ...(f.contractKind ? { contractKind: f.contractKind } : {}), q: dq });
+      // مفاتيحُ الكروت لا تُرسَل (`LOCAL_KEYS`): تُطبَّق هنا بمعنى الخادم نفسِه
+      // (`ltPasses`)، لتُعَدّ كلُّ مجموعةٍ بلا فلترها — راجع `ltFacetedTotals`.
+      const d = await getLTEmployees({ ...serverFilters(f), q: dq });
       if (!guard.isCurrent(token)) return;
       setRows(d.employees || []);
       setServerTotal(d.totals?.total || (d.employees || []).length);
@@ -138,31 +166,25 @@ function LightTransportEmployeesInner() {
       if (guard.isCurrent(token)) notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error');
     }
     if (guard.isCurrent(token)) setLoading(false);
+    // ضغطُ كارتٍ لا يطلب من الخادم شيئًا: مفاتيحُ الكروت محلّيّة، فيتبدّل الجدولُ
+    // في مكانه بلا ردٍّ ينتظره ولا رسمةٍ وسيطة.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(f), dq, guard]);
+  }, [JSON.stringify(serverFilters(f)), dq, guard]);
   useEffect(() => { load(); }, [load]);
   useSocket('lt:updated', useCallback(() => load(), [load]));
   // وما يمسّ ملفَّ الموارد البشريّة يمسّ الحالةَ المعروضةَ هنا.
   useSocket('hr:employee', useCallback(() => load(), [load]));
 
   /**
-   * ── فلترانِ يُحسَبان هنا لا في القاعدة ──────────────────────────────────────
+   * ── فلاترُ الكروت تُحسَب هنا لا في القاعدة ──────────────────────────────────
    *
-   * «على الكفالة / فري لانسر» و«كارتٌ منتهي» مشتقّان: الأوّلُ يُطوى ليُطابِق
-   * «كفاله» و«كفالة»، والثاني حالةٌ محسوبةٌ بعتباتٍ لا خانةٌ في الصفّ. وحسابُهما
-   * في الشاشة يضمن أنّ الكارتَ والجدولَ يقرآن الشيءَ نفسَه — ولو فُلتِرا في
-   * القاعدة بنصٍّ حرفيٍّ لقال الكارتُ ١٠٩ وردّ الجدولُ ٩٥ بلا تفسير.
+   * «على الكفالة / فري لانسر» و«كارتٌ منتهي» مشتقّان، وبقيّةُ الكروت (النوع،
+   * الحالة، المركبة، السكن، مشرف التفقّد) تُعَدّ كلُّ مجموعةٍ منها بلا فلترها —
+   * وذلك يحتاج الصفوفَ قبل فلتر الكارت. فتُطبَّق كلُّها بـ`ltPasses`، بالمعنى
+   * الذي يطبّقها به الخادم، فيقرأ الكارتُ والجدولُ الشيءَ نفسَه.
    */
-  const localFiltered = useMemo(() => rows.filter((r) => {
-    if (f.doc) {
-      const [which, band] = f.doc.split('-');
-      const d = which === 'card' ? r.operatingCard : r.inspection;
-      const st = d?.state || 'missing';
-      if (band === 'gap' && !['expired', 'critical'].includes(st)) return false;
-      if (band === 'soon' && !['warning', 'upcoming'].includes(st)) return false;
-    }
-    return true;
-  }), [rows, f.doc]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const localFiltered = useMemo(() => rows.filter((r) => ltPasses(r, f)), [rows, JSON.stringify(f)]);
 
   /**
    * ── والإسنادُ يقع على مجموعة ──────────────────────────────────────────────
@@ -183,9 +205,10 @@ function LightTransportEmployeesInner() {
     return o;
   }, []);
   const shown = cf.apply(localFiltered, getters);
-  // والأعدادُ من الصفوف المعروضة — فيتحرّك الكارتُ مع فلتر العمود كما يتحرّك
-  // مع الشرائح، ولا يبقى رقمان لشيءٍ واحد. راجع `ltTotalsOf`.
-  const totals = useMemo(() => ltTotalsOf(shown), [shown]);
+  // والأعدادُ تتبع فلترَ العمود كما تتبع الشرائح — لكنّ كلَّ مجموعةِ كروتٍ تُعَدّ
+  // بلا فلترها هي، فلا يتحرّك الرقمُ المضغوطُ ولا جيرانُه. راجع `ltFacetedTotals`.
+  const colFiltered = cf.apply(rows, getters);
+  const totals = ltFacetedTotals(colFiltered, f);
 
   const exportColumns: ExportColumn[] = LT_COLUMNS.map((c) => ({
     header: ar ? c.ar : c.en, key: c.key, width: c.width || 16,
@@ -258,15 +281,6 @@ function LightTransportEmployeesInner() {
 
   if (loading) return <Spinner />;
 
-  const Stat = ({ label, value, accent, onClick, on }: { label: string; value: any; accent?: string; onClick?: () => void; on?: boolean }) => (
-    <button type="button" onClick={onClick} disabled={!onClick}
-      className={`text-start bg-white border rounded-xl px-3.5 py-2.5 shadow-sm transition-all ${
-        on ? 'border-[#f37121] ring-2 ring-[#f37121]/20' : 'border-slate-200'} ${onClick ? 'hover:border-[#f37121]/50 cursor-pointer' : ''}`}>
-      <p className="text-[11px] text-slate-500 leading-tight">{label}</p>
-      <p className={`text-[19px] font-bold tabular-nums ${accent || 'text-slate-900'}`}>{value}</p>
-    </button>
-  );
-
   /** قيمةُ الفلتر كما تُقرأ: لا معرِّفَ مشرفٍ ولا مفتاحَ إنجليزيٍّ في الشريحة. */
   const chipValue = (k: string, v: string) => {
     if (k === 'contractKind') return ar ? ({ sponsored: 'على الكفالة', freelance: 'فري لانسر', users: 'يوزرات', none: 'بلا نوع عقد' } as Record<string, string>)[v] || v
@@ -288,14 +302,6 @@ function LightTransportEmployeesInner() {
     return v;
   };
 
-  /** قائمةُ اختيارٍ واحدةُ الشكل — قيمُها من السجلّ نفسِه. */
-  const Filter = ({ k, label, list }: { k: string; label: string; list: string[] }) => (
-    <select value={f[k] || ''} onChange={(e) => setF((p) => ({ ...p, [k]: e.target.value }))} aria-label={label}
-      className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800">
-      <option value="">{label}</option>
-      {list.map((v) => <option key={v} value={v}>{v}</option>)}
-    </select>
-  );
 
   return (
     <div className="space-y-4 pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -415,12 +421,12 @@ function LightTransportEmployeesInner() {
           <SearchInput value={q} onChange={setQ}
             placeholder={t('اسم · هوية · لوحة · مشرف · مشروع · سجل…', 'name, ID, plate, supervisor, project, register…')} />
         </div>
-        <Filter k="project" label={t('كل المشاريع', 'All projects')} list={options.project} />
-        <Filter k="city" label={t('كل الفروع', 'All branches')} list={options.city} />
-        <Filter k="jobTitle" label={t('كل الوظائف', 'All jobs')} list={options.jobTitle} />
-        <Filter k="contractType" label={t('كل أنواع التعاقد', 'All contracts')} list={options.contractType} />
-        <Filter k="register" label={t('كل السجلات', 'All registers')} list={options.register} />
-        <Filter k="vehicleType" label={t('كل أنواع المركبات', 'All vehicle types')} list={options.vehicleType} />
+        <Filter value={f.project || ''} onChange={(v) => setF((p) => ({ ...p, project: v }))} label={t('كل المشاريع', 'All projects')} list={options.project} />
+        <Filter value={f.city || ''} onChange={(v) => setF((p) => ({ ...p, city: v }))} label={t('كل الفروع', 'All branches')} list={options.city} />
+        <Filter value={f.jobTitle || ''} onChange={(v) => setF((p) => ({ ...p, jobTitle: v }))} label={t('كل الوظائف', 'All jobs')} list={options.jobTitle} />
+        <Filter value={f.contractType || ''} onChange={(v) => setF((p) => ({ ...p, contractType: v }))} label={t('كل أنواع التعاقد', 'All contracts')} list={options.contractType} />
+        <Filter value={f.register || ''} onChange={(v) => setF((p) => ({ ...p, register: v }))} label={t('كل السجلات', 'All registers')} list={options.register} />
+        <Filter value={f.vehicleType || ''} onChange={(v) => setF((p) => ({ ...p, vehicleType: v }))} label={t('كل أنواع المركبات', 'All vehicle types')} list={options.vehicleType} />
         {/* ── وفلترُ المشرف بالحساب لا بالاسم ─────────────────────────────
             المشرفُ صار حسابًا على النظام، فالفلترُ بمعرِّفه — فلا يفترق صفٌّ
             عن صفٍّ لأنّ الاسمَ كُتب بصيغتين. ومن كُتب في السجلّ ولا حسابَ له
@@ -451,8 +457,8 @@ function LightTransportEmployeesInner() {
         </select>
         {/* قائمةُ الحالات من الصفوف كلِّها لا من تجميع المناديب: التجميعُ صار
             عنهم وحدَهم، فحالةٌ لا يحملها إلّا إداريٌّ تسقط من القائمة فلا تُفلتَر. */}
-        <Filter k="status" label={t('كل الحالات', 'All statuses')}
-          list={[...new Set(shown.map((r) => String(r.workStatusShown || '')).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'))} />
+        <Filter value={f.status || ''} onChange={(v) => setF((p) => ({ ...p, status: v }))} label={t('كل الحالات', 'All statuses')}
+          list={[...new Set(rows.map((r) => String(r.workStatusShown || '')).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'))} />
         <select value={f.housing || ''} onChange={(e) => setF((p) => ({ ...p, housing: e.target.value }))} aria-label={t('السكن', 'Housing')}
           className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800">
           <option value="">{t('كل السكن', 'All housing')}</option>
@@ -471,7 +477,15 @@ function LightTransportEmployeesInner() {
           </button>
         )}
         <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
-        <span className="text-xs text-slate-500">{t(`${shown.length} من ${serverTotal}`, `${shown.length} of ${serverTotal}`)}</span>
+        <span className="text-xs text-slate-500 tabular-nums">{t(`${shown.length} من ${serverTotal}`, `${shown.length} of ${serverTotal}`)}</span>
+        {/* المنتهون صفوفٌ تُراجَع لا أرقامٌ تُعَدّ — فيُقال كم منهم في الجدول، كي لا
+            يُقرأ فرقُ ما بين «الإجمالي» وعددِ الصفوف خطأً. */}
+        {f.status !== 'إنهاء خدمة' && shown.some((r) => r.workStatusShown === 'إنهاء خدمة') && (
+          <span className="text-xs text-slate-400 tabular-nums">
+            {t(`منهم ${shown.filter((r) => r.workStatusShown === 'إنهاء خدمة').length} منتهي الخدمة — لا يُعَدّون في الكروت`,
+               `${shown.filter((r) => r.workStatusShown === 'إنهاء خدمة').length} of them ended — not counted in the cards`)}
+          </span>
+        )}
       </div>
 
       {/* شريطُ المعلَّم: عددُه، وكم منه خارجَ الفلتر الحاليّ، وزرُّ الإسناد. */}

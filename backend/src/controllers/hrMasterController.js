@@ -1661,11 +1661,17 @@ exports.renewBulk = async (req, res) => {
  */
 exports.byDepartment = async (req, res) => {
   try {
-    const key = `hrm:bydept:${JSON.stringify(req.query || {})}`;
+    // ── والجدولُ لا يُفلتَر بقسمه ─────────────────────────────────────────────
+    // اسمُ القسم في الجدول يُضغَط فيقصر اللوحةَ عليه — فكان الجدولُ نفسُه ينكمش
+    // إلى صفٍّ واحد ويختفي كلُّ قسمٍ سواه، ولا يُنتقَل إلى قسمٍ آخر إلّا برفع
+    // الأوّل. فيُعَدّ بكلّ الفلاتر **عدا القسم** (عدٌّ بالأوجه، كـ`expiring`):
+    // الأقسامُ كلُّها باقية، والمختارُ مُعلَّمٌ بينها ورقمُه رقمُ اللوحة.
+    const { department: _ownFacet, ...facetQuery } = req.query || {};
+    const key = `hrm:bydept:${JSON.stringify(facetQuery)}`;
     const hit = cache.get(key);
     if (hit !== undefined) return res.json(hit);
 
-    const match = await matchFor(req.query);
+    const match = await matchFor(facetQuery);
     const allKeys = storedKeys();
     // ── و«ناقص» تُقرأ بالقاعدة نفسِها التي تقرؤها اللوحة ────────────────────
     // `statusExpr` هو تعريفُ حالة الخانة في القاعدة (راجع utils/hrCounts):

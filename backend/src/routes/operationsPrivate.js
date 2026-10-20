@@ -22,6 +22,7 @@ const ROLES = [
 ];
 
 router.use(authenticate);
+router.use(require('../utils/dataOwnerIndex').preload);
 router.use(authorize(...ROLES));
 
 router.get('/', ctrl.list);

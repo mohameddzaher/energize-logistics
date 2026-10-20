@@ -27,6 +27,13 @@ const toLatin = (s) => String(s ?? '').replace(AR_DIGITS, (c) => String('٠١٢�
 const foldAr = (s) => String(s || '').replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ').trim();
 const idKey = (v) => toLatin(v).replace(/\s+/g, '').toUpperCase();
 const pad = (n) => String(n).padStart(2, '0');
+// ── الشهورُ التي تُقرأ ───────────────────────────────────────────────────────
+// الشهورُ قبل أكتوبر ٢٠٢٦ في الملفّ للرجوع إليها: نُقلت من الشيتات القديمة
+// بأسماء المناديب وحساباتِهم القديمة (أكثرُها بلا رقم إقامة)، فقراءتُها تكتب
+// الرقمَ نفسَه على حسابٍ ثانٍ ويُعَدّ مرّتين. والنظامُ يُدخَل فيه من أكتوبر.
+const SYNC_FROM = '2026-10';
+// صفُّ الإجماليّات في أسفل كلّ ورقة — ليس مندوبًا.
+const TOTAL_ROW = /اجمال|إجمال|total/i;
 const riyadhToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date());
 
 /** معرّفُ الملف من رابطه أو كما هو. */
@@ -108,6 +115,7 @@ function parseWorkbook(buf, today) {
     const [y, m] = ym;
     const month = `${y}-${pad(m)}`;
     if (month > nowMonth) continue; // شهرٌ لم يأتِ — لا شيءَ فيه يُقرأ
+    if (month < SYNC_FROM) continue; // شهرٌ للرجوع إليه — راجع SYNC_FROM
     const aoa = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null, blankrows: false });
     if (aoa.length < 2) continue;
     const header = aoa[0] || [];
@@ -119,7 +127,7 @@ function parseWorkbook(buf, today) {
     let rows = 0;
     for (let r = 1; r < aoa.length; r++) {
       const id = idKey(aoa[r]?.[0]);
-      if (!id) continue;
+      if (!id || id === '—' || TOTAL_ROW.test(id) || TOTAL_ROW.test(String(aoa[r]?.[1] ?? ''))) continue;
       rows += 1;
       rowsSeen.add(`${id}|${month}`);
       for (const [c, d] of dayCols) {

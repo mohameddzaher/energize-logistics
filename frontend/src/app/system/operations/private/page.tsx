@@ -55,9 +55,10 @@ const FILTERABLE = new Set([
   'branchDeliveryDate', 'deliveryDate',
   'accountingReview', 'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice',
   'invoiceDate', 'collectionDate', 'stage',
+  'paymentAmount', 'paymentType', 'finalReportDestination', 'collectedAmount', 'paymentDateByName',
 ]);
 const DATE_FIELDS = new Set(['reportDate', 'paymentDate', 'sendingDate', 'branchDeliveryDate', 'deliveryDate', 'invoiceDate', 'collectionDate']);
-const NUM_FIELDS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice']);
+const NUM_FIELDS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice', 'paymentAmount', 'collectedAmount']);
 
 type DateMode = 'range' | 'month' | 'day';
 type Priced = '' | 'yes' | 'no';
@@ -296,6 +297,8 @@ export default function OperationsPrivatePage() {
     if (field === 'stage') return (v: any) => stageLabels[v] || v;
     if (field === 'executionStatus' || field === 'applicationStatus') return trStatus;
     if (field === 'paymentMethod') return trPayment;
+    // «cash»/«tax» تُقرأ كما في الخانة.
+    if (field === 'paymentType') return (v: any) => (v ? payType(v) : '');
     if (DATE_FIELDS.has(field)) return (v: any) => {
       const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''));
       return m ? `${m[3]}/${m[2]}/${m[1]}` : fmtDate(String(v || ''));

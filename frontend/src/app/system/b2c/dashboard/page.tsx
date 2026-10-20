@@ -12,6 +12,8 @@
  * «أريد أن أعرف كم على الكفالة، ثمّ أُضيف سجلًّا معيّنًا فيقول تسعة — فأريد
  * التسعةَ أنفسَهم.» فكلُّ كارتٍ يُضغَط فيصير فلترًا، والفلاترُ تتراكم، وكلُّ
  * الأعداد تُعاد محسوبةً على ما بقي — فلا يقول كارتٌ رقمًا ويقول الجدولُ غيرَه.
+ * إلّا مجموعةَ الكارت المضغوط نفسِها: تُحسَب بلا فلترها (الخادم، راجع
+ * `OVERVIEW_FACETS`)، فلا يصير «إداريون» صفرًا حين يُضغَط «مناديب».
  * وزرُّ «اعرض القائمة» ينقل الفلترَ نفسَه إلى سجلّ الموظّفين.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -53,6 +55,84 @@ interface Overview {
 
 const qsOf = (o: Record<string, string>) =>
   Object.entries(o).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+
+/**
+ * ── الكارتُ والتقسيمةُ خارجَ جسم الصفحة ─────────────────────────────────────
+ * كانا يُعرَّفان داخل الصفحة، فيصير كلٌّ منهما مكوِّنًا جديدًا في كلّ رسمة: يُهدَم
+ * ما تحته ويُبنى من جديد مع كلّ ضغطةٍ وكلّ ردٍّ — وهو بعضُ «الاهتزاز» الذي يُرى.
+ * راجع ذاكرة «inline components remount».
+ */
+function Card({ label, value, of, accent, onClick, on, hint }: {
+    label: string; value: any; of?: number; accent?: string; onClick?: () => void; on?: boolean; hint?: string;
+  }) {
+  return (
+    <button type="button" onClick={onClick} disabled={!onClick}
+      className={`text-start bg-white border rounded-xl px-3.5 py-3 shadow-sm transition-all ${
+        on ? 'border-[#f37121] ring-2 ring-[#f37121]/20' : 'border-slate-200'} ${onClick ? 'hover:border-[#f37121]/50 cursor-pointer' : ''}`}>
+      <p className="text-[11px] text-slate-500 leading-tight">{label}</p>
+      <p className={`text-[21px] font-extrabold tabular-nums leading-tight ${accent || 'text-slate-900'}`}>
+        {value}{of != null && <span className="text-[12px] font-normal text-slate-400"> / {of}</span>}
+      </p>
+      {hint && <p className="text-[10.5px] text-slate-400 mt-0.5">{hint}</p>}
+    </button>
+  );
+}
+
+/**
+ * تقسيمةٌ تُقرأ وتُضغَط: كلُّ سطرٍ عددٌ وشريطٌ ونسبة، وضغطُه يفلتر عليه.
+ * والصفرُ لا يُعرَض — سطرٌ بصفرٍ يزحم ولا يُخبر. وأعدادُها تأتي من الخادم بلا
+ * فلترها هي، فلا تنكمش إلى السطر المضغوط ولا يُعاد ترتيبُها تحته؛ والتعادلُ
+ * يُحسَم بالاسم كي لا يتبادل سطران مكانَيهما بين ردّين.
+ */
+function Breakdown({ title, icon, data, filterKey, accent = '#f37121', hrefBase, f, toggle }: {
+    title: string; icon: React.ReactNode; data: Record<string, number>; filterKey?: string; accent?: string; hrefBase?: string;
+    f: Record<string, string>; toggle: (k: string, v: string) => void;
+  }) {
+    const rows = Object.entries(data || {}).filter(([k, v]) => v > 0 && k !== '—')
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ar'));
+    const max = rows.length ? rows[0][1] : 1;
+    const totalOf = rows.reduce((n, [, v]) => n + v, 0);
+    if (!rows.length) return null;
+    return (
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="h-1" style={{ background: accent }} />
+        <div className="px-4 pt-3 pb-3">
+          <h3 className="font-extrabold text-slate-900 text-[13.5px] flex items-center gap-1.5 mb-2.5">
+            <span style={{ color: accent }}>{icon}</span>{title}
+            <span className="text-slate-400 font-normal text-[11.5px]">({totalOf})</span>
+          </h3>
+          <div className="space-y-1.5">
+            {rows.map(([k, v]) => {
+              const on = filterKey ? f[filterKey] === k : false;
+              const inner = (
+                <>
+                  <span className="flex items-center justify-between gap-2 text-[12.5px]">
+                    <span className={`truncate ${on ? 'font-bold text-[#f37121]' : 'text-slate-700'}`}>{k}</span>
+                    <span className="tabular-nums font-bold text-slate-900 shrink-0">
+                      {v}<span className="text-slate-400 font-normal text-[10.5px]"> · {Math.round((v / totalOf) * 100)}%</span>
+                    </span>
+                  </span>
+                  <span className="mt-1 block h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <span className="block h-full rounded-full" style={{ width: `${(v / max) * 100}%`, background: on ? '#f37121' : accent }} />
+                  </span>
+                </>
+              );
+              return filterKey ? (
+                <button key={k} type="button" onClick={() => toggle(filterKey, k)}
+                  className={`w-full text-start rounded-lg px-2 py-1.5 transition-colors ${on ? 'bg-[#f37121]/10' : 'hover:bg-slate-50'}`}>
+                  {inner}
+                </button>
+              ) : hrefBase ? (
+                <Link key={k} href={`${hrefBase}${encodeURIComponent(k)}`} className="block rounded-lg px-2 py-1.5 hover:bg-slate-50">{inner}</Link>
+              ) : (
+                <div key={k} className="px-2 py-1.5">{inner}</div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
 export default function B2CDashboardPage() {
   const { lang, isRTL } = useLanguage();
@@ -96,72 +176,6 @@ export default function B2CDashboardPage() {
   const repsHref = (extra: Record<string, string>) => `/system/b2c/light-transport?${qsOf({
     ...f, staffKind: 'rep', inService: f.status === 'إنهاء خدمة' ? '' : '1', ...extra,
   })}`;
-
-  const Card = ({ label, value, of, accent, onClick, on, hint }: {
-    label: string; value: any; of?: number; accent?: string; onClick?: () => void; on?: boolean; hint?: string;
-  }) => (
-    <button type="button" onClick={onClick} disabled={!onClick}
-      className={`text-start bg-white border rounded-xl px-3.5 py-3 shadow-sm transition-all ${
-        on ? 'border-[#f37121] ring-2 ring-[#f37121]/20' : 'border-slate-200'} ${onClick ? 'hover:border-[#f37121]/50 cursor-pointer' : ''}`}>
-      <p className="text-[11px] text-slate-500 leading-tight">{label}</p>
-      <p className={`text-[21px] font-extrabold tabular-nums leading-tight ${accent || 'text-slate-900'}`}>
-        {value}{of != null && <span className="text-[12px] font-normal text-slate-400"> / {of}</span>}
-      </p>
-      {hint && <p className="text-[10.5px] text-slate-400 mt-0.5">{hint}</p>}
-    </button>
-  );
-
-  /**
-   * تقسيمةٌ تُقرأ وتُضغَط: كلُّ سطرٍ عددٌ وشريطٌ ونسبة، وضغطُه يفلتر عليه.
-   * والصفرُ لا يُعرَض — سطرٌ بصفرٍ يزحم ولا يُخبر.
-   */
-  const Breakdown = ({ title, icon, data, filterKey, accent = '#f37121', hrefBase }: {
-    title: string; icon: React.ReactNode; data: Record<string, number>; filterKey?: string; accent?: string; hrefBase?: string;
-  }) => {
-    const rows = Object.entries(data || {}).filter(([k, v]) => v > 0 && k !== '—').sort((a, b) => b[1] - a[1]);
-    const max = rows.length ? rows[0][1] : 1;
-    const totalOf = rows.reduce((n, [, v]) => n + v, 0);
-    if (!rows.length) return null;
-    return (
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="h-1" style={{ background: accent }} />
-        <div className="px-4 pt-3 pb-3">
-          <h3 className="font-extrabold text-slate-900 text-[13.5px] flex items-center gap-1.5 mb-2.5">
-            <span style={{ color: accent }}>{icon}</span>{title}
-            <span className="text-slate-400 font-normal text-[11.5px]">({totalOf})</span>
-          </h3>
-          <div className="space-y-1.5">
-            {rows.map(([k, v]) => {
-              const on = filterKey ? f[filterKey] === k : false;
-              const inner = (
-                <>
-                  <span className="flex items-center justify-between gap-2 text-[12.5px]">
-                    <span className={`truncate ${on ? 'font-bold text-[#f37121]' : 'text-slate-700'}`}>{k}</span>
-                    <span className="tabular-nums font-bold text-slate-900 shrink-0">
-                      {v}<span className="text-slate-400 font-normal text-[10.5px]"> · {Math.round((v / totalOf) * 100)}%</span>
-                    </span>
-                  </span>
-                  <span className="mt-1 block h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                    <span className="block h-full rounded-full" style={{ width: `${(v / max) * 100}%`, background: on ? '#f37121' : accent }} />
-                  </span>
-                </>
-              );
-              return filterKey ? (
-                <button key={k} type="button" onClick={() => toggle(filterKey, k)}
-                  className={`w-full text-start rounded-lg px-2 py-1.5 transition-colors ${on ? 'bg-[#f37121]/10' : 'hover:bg-slate-50'}`}>
-                  {inner}
-                </button>
-              ) : hrefBase ? (
-                <Link key={k} href={`${hrefBase}${encodeURIComponent(k)}`} className="block rounded-lg px-2 py-1.5 hover:bg-slate-50">{inner}</Link>
-              ) : (
-                <div key={k} className="px-2 py-1.5">{inner}</div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-    );
-  };
 
   // ما يُصدَّر: التقسيماتُ كلُّها في ورقةٍ واحدةٍ مسطَّحة — تُلصَق في بريدٍ أو تُطبع.
   const flat = [
@@ -327,18 +341,18 @@ export default function B2CDashboardPage() {
       <OrdersReport url="/api/b2c/entry" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-        <Breakdown title={t('بالمشروع', 'By project')} icon={<Truck className="w-4 h-4" />} data={E.byProject} filterKey="project" accent="#f37121" />
-        <Breakdown title={t('بالفرع', 'By branch')} icon={<Home className="w-4 h-4" />} data={E.byCity} filterKey="city" accent="#0891b2" />
-        <Breakdown title={t('بالوظيفة', 'By job')} icon={<Users className="w-4 h-4" />} data={E.byJob} filterKey="jobTitle" accent="#7c3aed" />
-        <Breakdown title={t('بنوع التعاقد', 'By contract')} icon={<Users className="w-4 h-4" />} data={E.byContract} filterKey="contractType" accent="#16a34a" />
+        <Breakdown f={f} toggle={toggle} title={t('بالمشروع', 'By project')} icon={<Truck className="w-4 h-4" />} data={E.byProject} filterKey="project" accent="#f37121" />
+        <Breakdown f={f} toggle={toggle} title={t('بالفرع', 'By branch')} icon={<Home className="w-4 h-4" />} data={E.byCity} filterKey="city" accent="#0891b2" />
+        <Breakdown f={f} toggle={toggle} title={t('بالوظيفة', 'By job')} icon={<Users className="w-4 h-4" />} data={E.byJob} filterKey="jobTitle" accent="#7c3aed" />
+        <Breakdown f={f} toggle={toggle} title={t('بنوع التعاقد', 'By contract')} icon={<Users className="w-4 h-4" />} data={E.byContract} filterKey="contractType" accent="#16a34a" />
         {/* ── والسجلُّ التجاريُّ الذي يكفلهم ───────────────────────────────────
             الشركةُ لها أكثرُ من سجلّ، ومن ليس على كفالتنا لا سجلَّ له. وهو
             سؤالٌ يُسأل عند التفتيش وعند التأمين. */}
-        <Breakdown title={t('بالسجل التجاري (الكفالة)', 'By commercial register')} icon={<Users className="w-4 h-4" />} data={E.byRegister} filterKey="register" accent="#ca8a04" />
-        <Breakdown title={t('بحالة العمل', 'By work status')} icon={<Users className="w-4 h-4" />} data={E.byStatus} filterKey="status" accent="#dc2626" />
-        <Breakdown title={t('بالمشرف', 'By supervisor')} icon={<Users className="w-4 h-4" />} data={E.bySupervisor} filterKey="supervisor" accent="#0ea5e9" />
-        <Breakdown title={t('بنوع المركبة', 'By vehicle type')} icon={<Car className="w-4 h-4" />} data={V.byType} filterKey="vehicleType" accent="#4f46e5" />
-        <Breakdown title={t('مركبات بحالة التشغيل', 'Vehicles by service status')} icon={<Car className="w-4 h-4" />} data={V.byServiceStatus} accent="#64748b" />
+        <Breakdown f={f} toggle={toggle} title={t('بالسجل التجاري (الكفالة)', 'By commercial register')} icon={<Users className="w-4 h-4" />} data={E.byRegister} filterKey="register" accent="#ca8a04" />
+        <Breakdown f={f} toggle={toggle} title={t('بحالة العمل', 'By work status')} icon={<Users className="w-4 h-4" />} data={E.byStatus} filterKey="status" accent="#dc2626" />
+        <Breakdown f={f} toggle={toggle} title={t('بالمشرف', 'By supervisor')} icon={<Users className="w-4 h-4" />} data={E.bySupervisor} filterKey="supervisor" accent="#0ea5e9" />
+        <Breakdown f={f} toggle={toggle} title={t('بنوع المركبة', 'By vehicle type')} icon={<Car className="w-4 h-4" />} data={V.byType} filterKey="vehicleType" accent="#4f46e5" />
+        <Breakdown f={f} toggle={toggle} title={t('مركبات بحالة التشغيل', 'Vehicles by service status')} icon={<Car className="w-4 h-4" />} data={V.byServiceStatus} accent="#64748b" />
       </div>
 
       {/* ── ما يحتاج عملًا ────────────────────────────────────────────────────

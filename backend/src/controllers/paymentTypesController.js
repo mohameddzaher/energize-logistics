@@ -13,7 +13,7 @@
  */
 const CollectionsParty = require('../models/CollectionsParty');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
-const { derivePaymentTypeFor } = require('../utils/paymentType');
+const { derivePaymentTypeFor, ISSUED_INVOICE_QUERY, ISSUED_INVOICE_EXPR } = require('../utils/paymentType');
 const logAudit = require('../utils/auditLogger');
 const cache = require('../utils/ttlCache');
 const { flexSpaceRegex } = require('../utils/plateKey');
@@ -49,6 +49,14 @@ exports.list = async (req, res) => {
         // ويُعرَض عددًا يُطلب إصلاحُه ثمّ لا يتحرّك.
         cashAuto: { $sum: { $cond: [{ $and: [{ $eq: ['$paymentType', 'cash'] }, { $ne: ['$paymentTypeSource', 'manual'] }] }, 1, 0] } },
         taxAuto: { $sum: { $cond: [{ $and: [{ $eq: ['$paymentType', 'tax'] }, { $ne: ['$paymentTypeSource', 'manual'] }] }, 1, 0] } },
+        // ── وما صدرت له فاتورةٌ ضريبيّة ليس «مخالفًا» لعميلٍ كاش ─────────────
+        // التوحيدُ لا يمسّه (هكذا يَعِد مربّعُ التأكيد، وهكذا صار يفعل)، والمزامنةُ
+        // تعيده ضريبيًّا لو مُسّ. فعدُّه مخالفًا رقمٌ يُطلب إصلاحُه ثمّ لا يتحرّك —
+        // وهو ما كان يعود بعد كلّ توحيد.
+        taxAutoNoInvoice: { $sum: { $cond: [{ $and: [
+          { $eq: ['$paymentType', 'tax'] }, { $ne: ['$paymentTypeSource', 'manual'] },
+          { $not: [ISSUED_INVOICE_EXPR] },
+        ] }, 1, 0] } },
         methodCash: { $sum: { $cond: [{ $regexMatch: { input: { $ifNull: ['$paymentMethod', ''] }, regex: /^cash$/i } }, 1, 0] } },
         value: { $sum: { $ifNull: ['$sellingValue', 0] } },
       } },
@@ -62,19 +70,19 @@ exports.list = async (req, res) => {
       else {
         prev.reports += c.reports; prev.cash += c.cash; prev.tax += c.tax;
         prev.manual += c.manual; prev.methodCash += c.methodCash; prev.value += c.value;
-        prev.cashAuto += c.cashAuto; prev.taxAuto += c.taxAuto;
+        prev.cashAuto += c.cashAuto; prev.taxAuto += c.taxAuto; prev.taxAutoNoInvoice += c.taxAutoNoInvoice;
       }
     }
 
     const rows = parties.map((p) => {
       const c = byKey.get(p.nameKey || fold(p.name))
-        || { reports: 0, cash: 0, tax: 0, manual: 0, methodCash: 0, value: 0, cashAuto: 0, taxAuto: 0 };
+        || { reports: 0, cash: 0, tax: 0, manual: 0, methodCash: 0, value: 0, cashAuto: 0, taxAuto: 0, taxAutoNoInvoice: 0 };
       // ── «مخالف» = كشفٌ نوعُه غيرُ صفة عميله ─────────────────────────────────
       // ويُقاس على صفة العميل وحدَها لا على قاعدة الاشتقاق: قاعدةُ «طريقةُ الدفع
       // نقديّة» تصلح لملء الفارغ حيث لا دليل، ولا تصلح لنقض دليلٍ قائم — نوعُ
       // الكشف المكتوب جاء من عمود «ض / غ ض» في شيت المتابعة، وهو قولٌ صريحٌ عن
       // هذه الحمولة بعينها.
-      const conflicts = p.paymentType === 'cash' ? c.taxAuto : (p.paymentType === 'tax' ? c.cashAuto : 0);
+      const conflicts = p.paymentType === 'cash' ? c.taxAutoNoInvoice : (p.paymentType === 'tax' ? c.cashAuto : 0);
       return {
         _id: p._id, name: p.name, code: p.code || '',
         paymentType: p.paymentType || '',
@@ -178,6 +186,28 @@ async function applyToCustomer(party, { onlyEmpty = true } = {}) {
 }
 
 /**
+ * شرطُ كشوف العميل التي يقلبها التوحيد — يقرؤه زرُّ «توحيد» وسكربتُ
+ * reapplyPaymentTypeUnify معًا. `null` إن لم يكن للعميل كشوف.
+ */
+async function unifyFilter(party) {
+  const type = String(party.paymentType || '');
+  const key = party.nameKey || fold(party.name || '');
+  const names = await OperationsWorkflow.distinct('username', { username: { $nin: [null, ''] } });
+  const mine = names.filter((n) => fold(n) === key);
+  if (!mine.length) return null;
+  return {
+    username: { $in: mine },
+    paymentType: { $nin: ['', null, type] },
+    paymentTypeSource: { $ne: 'manual' },
+    // ── ولا يُمسّ ما صدرت له فاتورةٌ ضريبيّة ──────────────────────────────
+    // مربّعُ التأكيد يَعِد بذلك ولم يكن يفعله: كان يقلب كشوفًا عليها أرقامُ
+    // فواتيرَ صدرت إلى «كاش»، فتراها المزامنةُ في دورتها التالية فاتورةً
+    // وتعيدها «ضريبيًّا» — مئةٌ وأربعةٌ وثلاثون كشفًا لعملاءِ كاشٍ عادت كذلك.
+    ...(type === 'cash' ? { $nor: [ISSUED_INVOICE_QUERY] } : {}),
+  };
+}
+
+/**
  * POST /api/workflows/payment-types/:id/unify — كشوفُ العميل تُوحَّد على صفته.
  *
  * ── ولماذا فعلٌ مستقلٌّ عن ملء الفراغ ───────────────────────────────────────
@@ -205,22 +235,16 @@ exports.unifyCustomer = async (req, res) => {
       return res.status(400).json({ message: 'لا صفةَ لهذا العميل — اختر «كاش» أو «ضريبي» أوّلًا' });
     }
 
-    const key = party.nameKey || fold(party.name || '');
-    const names = await OperationsWorkflow.distinct('username', { username: { $nin: [null, ''] } });
-    const mine = names.filter((n) => fold(n) === key);
-    if (!mine.length) return res.json({ changed: 0, skippedManual: 0 });
-
-    const filter = {
-      username: { $in: mine },
-      paymentType: { $nin: ['', null, type] },
-      paymentTypeSource: { $ne: 'manual' },
-    };
+    const filter = await unifyFilter(party);
+    if (!filter) return res.json({ changed: 0, skippedManual: 0 });
     const preview = req.body?.preview === true;
     const willChange = await OperationsWorkflow.countDocuments(filter);
     if (preview) return res.json({ preview: true, willChange, type });
 
     const r = await OperationsWorkflow.updateMany(filter, {
-      $set: { paymentType: type, paymentTypeSource: 'auto', lastModifiedBy: req.user._id },
+      // `unified` لا `auto`: المزامنةُ تعيد اشتقاقَ كلِّ `auto` في كلّ دورة، فكان
+      // التوحيدُ يُمحى بعد دقيقة ويعود عددُ «المخالف» كما كان. راجع isUnified.
+      $set: { paymentType: type, paymentTypeSource: 'unified', lastModifiedBy: req.user._id },
     });
     const changed = r.modifiedCount || 0;
 
@@ -258,10 +282,12 @@ exports.applyAll = async (req, res) => {
     const rows = await OperationsWorkflow.find({})
       .select('username paymentType paymentTypeSource paymentMethod invoiceNumber tax netInvoice').lean();
 
-    const ops = []; let skippedManual = 0; let unknown = 0;
+    const ops = []; let skippedManual = 0; let skippedUnified = 0; let unknown = 0;
     const moves = {};
     for (const w of rows) {
       if (String(w.paymentTypeSource || '') === 'manual') { skippedManual += 1; continue; }
+      // ما وُحِّد على صفة عميله قرارٌ على ذلك العميل — لا يمحوه تمريرٌ عامّ.
+      if (!onlyEmpty && String(w.paymentTypeSource || '') === 'unified' && w.paymentType) { skippedUnified += 1; continue; }
       const t = typeByKey.get(fold(w.username || ''));
       if (t === undefined) { unknown += 1; continue; }
       if (onlyEmpty && w.paymentType) continue;
@@ -272,7 +298,7 @@ exports.applyAll = async (req, res) => {
       ops.push({ updateOne: { filter: { _id: w._id }, update: { $set: { paymentType: next, paymentTypeSource: 'auto' } } } });
     }
 
-    if (preview) return res.json({ preview: true, wouldChange: ops.length, skippedManual, unknown, moves });
+    if (preview) return res.json({ preview: true, wouldChange: ops.length, skippedManual, skippedUnified, unknown, moves });
 
     let changed = 0;
     for (let i = 0; i < ops.length; i += 500) {
@@ -285,10 +311,11 @@ exports.applyAll = async (req, res) => {
     }).catch(() => {});
     cache.clear('wf:'); cache.clear('wfparty:'); cache.clear('colledger:');
     try { require('../websocket/socketManager').emitToAll('workflow:updated', { bulk: true, paymentType: true }); } catch (_) {}
-    res.json({ changed, skippedManual, unknown, moves });
+    res.json({ changed, skippedManual, skippedUnified, unknown, moves });
   } catch (e) {
     res.status(500).json({ message: 'تعذّر تطبيق أنواع الدفع', error: e.message });
   }
 };
 
 exports.applyToCustomer = applyToCustomer;
+exports.unifyFilter = unifyFilter;

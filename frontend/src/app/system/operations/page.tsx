@@ -103,7 +103,7 @@ const EMPTY_SET = new Set<string>();
 const EMPTY_OPTIONS: ColumnFilterOption[] = [];
 // Columns whose filter-dropdown labels should be formatted as dates / money.
 const DATE_FIELDS = new Set(['reportDate', 'paymentDate', 'sendingDate', 'branchDeliveryDate', 'deliveryDate', 'invoiceDate', 'collectionDate']);
-const NUM_FIELDS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice']);
+const NUM_FIELDS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice', 'paymentAmount', 'collectedAmount']);
 
 // ── أعمدة التصدير ────────────────────────────────────────────────────────────
 // مكتوبةٌ هنا لا مشتقّةٌ من ترتيب الجدول، ليبقى الملفُّ ثابتَ الشكل.
@@ -835,6 +835,9 @@ export default function OperationsWorkflowPage() {
     if (field === 'stage') return (v: any) => stageLabels[v] || v;
     if (field === 'executionStatus' || field === 'applicationStatus') return trStatus;
     if (field === 'paymentMethod') return trPayment;
+    // المخزَّن «cash»/«tax» والمعروضُ في الخانة «كاش»/«ضريبي» — والقائمةُ تقول ما تقوله الخانة.
+    if (field === 'paymentType') return (v: any) => (v === 'cash' ? (lang === 'ar' ? 'كاش' : 'Cash')
+      : v === 'tax' ? (lang === 'ar' ? 'ضريبي' : 'Tax') : String(v || ''));
     // الخادم يجمّع التواريخ بيوم الرياض ويردّها «YYYY-MM-DD». إعادةُ تفسيرها
     // بمنطقة المتصفح تُنقص يومًا لمن يفتح الصفحة غربَ غرينتش، فتُعرض كما هي.
     if (DATE_FIELDS.has(field)) return (v: any) => {
@@ -1330,9 +1333,11 @@ export default function OperationsWorkflowPage() {
                     عن صفٍّ فيُعرف صاحبُه بلا فتح سجلّ التعديلات — وهو غيرُ مَن
                     سجّل المشتريات في العهدة اليوميّة. يُكتب في الخادم ولا يُعدَّل
                     بيدٍ هنا (راجع paymentDateBy). */}
-                {ColHead('paymentDateByName' as any, lang === 'ar' ? 'مسؤول البيانات' : 'Data owner', 'text-purple-300')}
-                {/* الفلترُ يبقى على `paymentDateByName` — هو الحقلُ الموجودُ في
-                    القاعدة؛ والمعروضُ أوسعُ منه (المحفظةُ والمنقول). */}
+                {ColHead('dataOwnerShown', lang === 'ar' ? 'مسؤول البيانات' : 'Data owner', 'text-purple-300')}
+                {/* الفلترُ على المعروض لا على `paymentDateByName` وحدَه: الخانةُ
+                    تُملأ من الاسم ثمّ مسجّلِ المحفظة ثمّ مصدرِ الاستيراد، وكانت
+                    القائمةُ على الحقل الخام «(فارغ)» لثمانيةٍ وثلاثين ألفًا مكتوبٌ
+                    فيها اسم. راجع backend/src/utils/dataOwnerIndex. */}
                 {ColHead('payingBranch', T.thPayingBranch, 'text-purple-300')}
                 {/* ما دُفع للمورّد، وبأيّ صفةٍ يُفوتَر العميل. والنوعُ هو ما
                     يقرّر شكلَ بقيّة الصفّ: نقديٌّ لا يُفوتَر، وضريبيٌّ يُفوتَر. */}

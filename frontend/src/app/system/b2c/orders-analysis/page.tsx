@@ -1059,7 +1059,7 @@ function KpiCard({ title, value, icon, color, onClick }: { title: string; value:
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
           <p className="text-slate-500 text-[11px] font-medium uppercase tracking-wide truncate">{title}</p>
-          <p className="text-slate-900 text-xl font-bold mt-1">{value}</p>
+          <p className="text-slate-900 text-xl font-bold mt-1 tabular-nums">{value}</p>
         </div>
         <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${color}20`, color }}>
           {icon}
@@ -1132,7 +1132,7 @@ function EvaluationsView({ evaluations, T, lang, onRepClick }: any) {
               grade === g ? 'border-[#f37121] bg-[#f37121]/10' : 'border-slate-200 bg-white hover:border-slate-300'
             }`}>
             <p className="text-2xl font-bold" style={{ color: gradeColor(g) }}>{g}</p>
-            <p className="text-slate-500 text-xs mt-1">{count} {tx.repsUnit}</p>
+            <p className="text-slate-500 text-xs mt-1 tabular-nums">{count} {tx.repsUnit}</p>
           </button>
         ))}
       </div>

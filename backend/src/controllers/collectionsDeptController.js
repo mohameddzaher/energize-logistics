@@ -1929,12 +1929,11 @@ exports.recordCollection = async (req, res) => {
  *
  * فيُرفَع التحصيلُ عنها: التاريخُ والمبلغُ من الكشوف (وهي ما تقرؤه صفحةُ سير
  * عمل التشغيل)، والحالةُ في دفتر التحصيل — الوجهان معًا كما يُسجَّلان معًا.
- * والسببُ مطلوبٌ ويُقيَّد مع ما كان مسجَّلًا: الرجوعُ عن قبضٍ فعلٌ يُسأل عنه.
+ * والسببُ اختياريٌّ (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠) — ويُقيَّد إن كُتب، ومعه ما كان مسجَّلًا.
  */
 exports.undoCollection = async (req, res) => {
   try {
     const reason = String(req.body.reason || '').trim();
-    if (reason.length < 3) return res.status(400).json({ message: 'اكتب سببَ الرجوع عن التحصيل', fields: { reason: 'مطلوب' } });
     const invoiceNumber = String(req.body.invoiceNumber || '').trim();
     const ids = Array.isArray(req.body.ids) ? req.body.ids.filter((x) => mongoose.isValidObjectId(x)) : [];
     if (!invoiceNumber && !ids.length) return res.status(400).json({ message: 'حدِّد فاتورةً أو كشوفًا' });
@@ -2003,3 +2002,34 @@ exports.invoiceFilterOptions = async (req, res) => {
 
 exports.AGE_BANDS = AGE_BANDS;
 exports.NO_INVOICE_TOKENS = NO_INVOICE_TOKENS;
+
+/**
+ * تعديلُ قيمة فاتورةٍ ضريبيّة — PUT /invoices/tax/:invoiceNumber/amount { total, reason? }
+ *
+ * الدفترُ يحمل إجماليَّ الفاتورة كما جاء من ورقة التحصيل أو من كشوفها. وتُصحَّح
+ * القيمةُ هنا (مثلًا تسويةٌ بالسالب)، فتُقفَل على ما كُتب (`totalLocked`): لا
+ * يعيد حسابَها مجموعُ الكشوف بعد ذلك. ويُقيَّد التعديلُ بالقيمتين وكاتبه.
+ */
+exports.updateTaxInvoiceAmount = async (req, res) => {
+  try {
+    const CollectionInvoice = require('../models/CollectionInvoice');
+    const no = String(req.params.invoiceNumber || '').trim();
+    const total = Number(req.body.total);
+    if (!no) return res.status(400).json({ message: 'رقم الفاتورة مطلوب' });
+    if (!Number.isFinite(total)) return res.status(400).json({ message: 'اكتب القيمة رقمًا (ويجوز بالسالب)' });
+    const inv = await CollectionInvoice.findOne({ kind: 'tax', invoiceNumber: no });
+    if (!inv) return res.status(404).json({ message: 'لا فاتورة بهذا الرقم' });
+    const before = inv.total;
+    inv.total = Math.round(total * 100) / 100;
+    inv.totalLocked = true;
+    await inv.save();
+    await logAudit({
+      user: req.user._id, action: 'update_tax_invoice_amount', entity: 'CollectionInvoice', entityId: inv._id, entityKey: no,
+      changes: { before: { total: before }, after: { total: inv.total, reason: String(req.body.reason || '').trim() } }, ipAddress: req.ip,
+    });
+    cache.clear(CACHE_PREFIX); cache.clear('cdr:');
+    try { require('./collectionsLedgerController').invalidate(); } catch (_) { /* */ }
+    try { emitToAll('workflow:updated', { bulk: true, ledger: true }); } catch (_) { /* */ }
+    res.json({ invoiceNumber: no, total: inv.total, before });
+  } catch (e) { sendMongooseError(res, e, 'تعذّر تعديل القيمة'); }
+};

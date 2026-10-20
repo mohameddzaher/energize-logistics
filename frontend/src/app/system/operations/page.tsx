@@ -246,7 +246,11 @@ export default function OperationsWorkflowPage() {
   // السنداتُ تصل دفعةً بتاريخٍ واحدٍ وفرعٍ واحد، وكان يُفتح كلُّ صفٍّ ليُكتب
   // فيه التاريخُ نفسُه — مئةُ فرصةِ خطأٍ لعملٍ واحد.
   const [showBulkPay, setShowBulkPay] = useState(false);
-  const [bulkPay, setBulkPay] = useState({ paymentDate: '', payingBranch: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '', operationsReview: '' });
+  const [bulkPay, setBulkPay] = useState({ paymentDate: '', payingBranch: '', paymentType: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '', operationsReview: '' });
+  // ── «كلُّ نتائج الفلتر» لا صفحةُ الخمسين وحدَها ─────────────────────────────
+  // الجدولُ صفحاتٌ من خمسين؛ والتحديدُ يطال الصفحةَ المعروضة. فإن اختير هذا
+  // أُرسلت شروطُ الجدول نفسُها، ويستخرج الخادمُ منها كلَّ ما يطابق (حتى ١٠٠٠).
+  const [allMatching, setAllMatching] = useState(false);
   const [bulkPaying, setBulkPaying] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ message: string; skipped: { reportNumber: string; reason: string }[] } | null>(null);
   // فلاتر الأعمدة على طريقة إكسل: اسم العمود ← مجموعة القيم الخام المسموح بها.
@@ -444,7 +448,7 @@ export default function OperationsWorkflowPage() {
 
   // اختيارُ الصفوف يُلغى مع كل تغيّر في الفلاتر أو الصفحة: الصفوف المؤشَّرة لم تعد
   // معروضة، وحذفٌ جماعيّ يقع على صفوفٍ لا يراها المستخدم.
-  useEffect(() => { setSelectedIds(new Set()); }, [stageFilter, search, page, dateFrom, dateTo, showPendingOnly, colFilters]);
+  useEffect(() => { setSelectedIds(new Set()); setAllMatching(false); }, [stageFilter, search, page, dateFrom, dateTo, showPendingOnly, colFilters]);
 
   const setColFilter = (field: string, set: Set<string>) => {
     // الفلترة تُغيّر عدد الصفحات كلّه، والبقاءُ على الصفحة السابعة بعد فلترٍ نتيجته
@@ -671,12 +675,20 @@ export default function OperationsWorkflowPage() {
     if (!Object.keys(fields).length) return;
     setBulkPaying(true); setBulkResult(null);
     try {
+      // شروطُ الجدول كما يقرؤها الخادم: القيمُ المكرَّرة (`cf_x=a&cf_x=b`) مصفوفة.
+      const query: Record<string, string | string[]> = {};
+      buildParams().forEach((v, k) => {
+        const cur = query[k];
+        query[k] = cur === undefined ? v : Array.isArray(cur) ? [...cur, v] : [cur, v];
+      });
       const r = await api.post<{ message: string; skipped?: { reportNumber: string; reason: string }[] }>(
-        '/api/workflows/bulk-update', { ids: Array.from(selectedIds), fields });
+        '/api/workflows/bulk-update', allMatching
+          ? { allMatching: true, query, fields }
+          : { ids: Array.from(selectedIds), fields });
       setBulkResult({ message: r.message, skipped: r.skipped || [] });
       if (!(r.skipped || []).length) {
-        setShowBulkPay(false); setSelectedIds(new Set());
-        setBulkPay({ paymentDate: '', payingBranch: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '', operationsReview: '' });
+        setShowBulkPay(false); setSelectedIds(new Set()); setAllMatching(false);
+        setBulkPay({ paymentDate: '', payingBranch: '', paymentType: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '', operationsReview: '' });
       }
       fetchWorkflows(true);
     } catch (err: any) { setBulkResult({ message: err.message, skipped: [] }); }
@@ -937,15 +949,24 @@ export default function OperationsWorkflowPage() {
             <div className="relative">
               <button type="button" onClick={() => { setShowBulkPay((p) => !p); setBulkResult(null); }}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium transition-colors">
-                <CheckSquare className="w-4 h-4" /> {lang === 'ar' ? 'تسجيل سداد' : 'Record payment'} ({selectedIds.size})
+                <CheckSquare className="w-4 h-4" /> {lang === 'ar' ? 'تسجيل سداد' : 'Record payment'} ({allMatching ? total : selectedIds.size})
               </button>
               {showBulkPay && (
                 <div className="absolute top-full mt-2 end-0 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-4 w-[340px] max-w-[calc(100vw-2rem)] overflow-visible" onClick={(e) => e.stopPropagation()}>
-                  <p className="text-sm font-bold text-slate-900 mb-1">
-                    {lang === 'ar' ? `تطبيق على ${selectedIds.size} كشفًا` : `Apply to ${selectedIds.size} rows`}
-                  </p>
+                  {/* على المحدَّد في هذه الصفحة، أم على كلّ نتائج الفلتر في كلّ الصفحات. */}
+                  <p className="text-sm font-bold text-slate-900 mb-1.5">{lang === 'ar' ? 'يُطبَّق على' : 'Apply to'}</p>
+                  <div className="mb-2 flex overflow-hidden rounded-lg border border-slate-200 text-[12px] font-semibold">
+                    <button type="button" onClick={() => setAllMatching(false)}
+                      className={`flex-1 px-2 py-1.5 ${!allMatching ? 'bg-purple-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+                      {lang === 'ar' ? `المحدَّد (${selectedIds.size})` : `Selected (${selectedIds.size})`}
+                    </button>
+                    <button type="button" onClick={() => setAllMatching(true)} disabled={total <= selectedIds.size}
+                      className={`flex-1 px-2 py-1.5 disabled:opacity-40 ${allMatching ? 'bg-purple-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+                      {lang === 'ar' ? `كل نتائج الفلتر (${total})` : `All filter results (${total})`}
+                    </button>
+                  </div>
                   <p className="text-[11px] text-slate-500 mb-3">
-                    {lang === 'ar' ? 'ما تتركه فارغًا لا يُغيَّر.' : 'Blank fields are left unchanged.'}
+                    {lang === 'ar' ? 'غيِّر ما تريد فقط — ما تتركه فارغًا لا يُغيَّر.' : 'Change only what you need — blank fields are left unchanged.'}
                   </p>
                   <div className="space-y-2.5">
                     <div>
@@ -958,6 +979,17 @@ export default function OperationsWorkflowPage() {
                       <ManagedSelect type="workflow_paying_branch" storeLabel noAdd value={bulkPay.payingBranch}
                         onChange={(v) => setBulkPay((p) => ({ ...p, payingBranch: v }))}
                         placeholder={lang === 'ar' ? 'اختر الفرع' : 'Pick branch'} />
+                    </div>
+                    {/* نوعُ الدفع — يُختار لكشوفٍ بعينها (اختيارُ يدٍ يثبت ولا يعيد الاشتقاقُ كتابتَه). */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'نوع الدفع' : 'Payment type'}</label>
+                      <select value={bulkPay.paymentType} onChange={(e) => setBulkPay((p) => ({ ...p, paymentType: e.target.value }))}
+                        title={lang === 'ar' ? 'نوع الدفع' : 'Payment type'}
+                        className="w-full px-2 py-2 rounded-lg border border-slate-300 text-sm bg-white">
+                        <option value="">{lang === 'ar' ? '— لا يُغيَّر —' : '— leave unchanged —'}</option>
+                        <option value="cash">{lang === 'ar' ? 'كاش' : 'Cash'}</option>
+                        <option value="tax">{lang === 'ar' ? 'ضريبي' : 'Tax'}</option>
+                      </select>
                     </div>
                     {/* ── ووجهةُ الكشف النهائيّة مع الفرع المسدِّد ─────────
                         سؤالان متجاوران يُجابان في الجلسة الواحدة: مَن سدّد،

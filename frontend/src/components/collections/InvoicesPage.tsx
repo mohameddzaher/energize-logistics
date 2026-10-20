@@ -76,7 +76,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
-  const { notify } = useDialog();
+  const { notify, prompt } = useDialog();
   const router = useRouter();
   const canEdit = canEditCollections(user);
   const isCash = kind === 'cash';
@@ -278,10 +278,9 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
 
   /**
    * «لم تُحصَّل» — يرفع التحصيلَ عن الفاتورة (أو الكشف النقديّ): يُمحى تاريخُه
-   * ومبلغُه من كشوف التشغيل وتعود في دفتر التحصيل غيرَ محصَّلة. بسببٍ مكتوب.
+   * ومبلغُه من كشوف التشغيل وتعود في دفتر التحصيل غيرَ محصَّلة. والسببُ اختياريّ.
    */
   const saveUndo = async () => {
-    if (undoReason.trim().length < 3) { notify(t('اكتب سببَ الرجوع عن التحصيل', 'Enter the reason'), 'error'); return; }
     setSaving(true);
     try {
       const r = await api.post<{ message: string }>('/api/collections-dept/invoices/uncollect', {
@@ -292,6 +291,26 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       load();
     } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
     setSaving(false);
+  };
+
+  /**
+   * تعديلُ قيمة فاتورةٍ ضريبيّة — تصحيحٌ في الدفتر (ويجوز بالسالب)، ويُقفَل على ما كُتب.
+   */
+  const editAmount = async (r: any) => {
+    const v = await prompt({
+      title: t(`تعديل قيمة الفاتورة ${r.invoiceNumber}`, `Edit invoice ${r.invoiceNumber} amount`),
+      message: t(`القيمة الحالية ${Number(r.value || 0).toLocaleString('en-US')} — اكتب القيمة الجديدة (ويجوز بالسالب).`, `Current ${r.value} — enter the new amount (negative allowed).`),
+      defaultValue: String(r.value ?? ''),
+      confirmLabel: t('حفظ', 'Save'),
+    } as any);
+    if (v === null || v === undefined || String(v).trim() === '') return;
+    const total = Number(String(v).replace(/,/g, '').trim());
+    if (!Number.isFinite(total)) { notify(t('اكتب رقمًا', 'Enter a number'), 'error'); return; }
+    try {
+      await api.put(`/api/collections-dept/invoices/tax/${encodeURIComponent(r.invoiceNumber)}/amount`, { total });
+      notify(t('عُدِّلت القيمة', 'Amount updated'));
+      load();
+    } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
   };
 
   /** قيمُ عمودٍ من الخادم — تحت الفلاتر القائمة عدا فلترِ العمود نفسِه. */
@@ -713,6 +732,13 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                             {(isCash ? r.collectionDate : r.fullyCollected) ? t('تعديل', 'Edit') : t('تحصيل', 'Collect')}
                           </button>
                         )}
+                        {canEdit && !isCash && (
+                          <button type="button" onClick={() => editAmount(r)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold hover:bg-slate-200"
+                            title={t('تصحيح قيمة الفاتورة في الدفتر', 'Correct the invoice amount')}>
+                            {t('تعديل القيمة', 'Edit amount')}
+                          </button>
+                        )}
                         {!isCash && (
                           <button type="button" onClick={() => openInvoice(r.invoiceNumber)}
                             title={t('فتح الفاتورة', 'Open invoice')} className="p-1 text-slate-300 hover:text-[#f37121]">
@@ -806,11 +832,11 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
               </div>
             ) : (
               <div className="space-y-2">
-                <p className="text-[12.5px] font-bold text-red-800">{t('الرجوع عن التحصيل — اكتب السبب', 'Undo collection — give the reason')}</p>
+                <p className="text-[12.5px] font-bold text-red-800">{t('الرجوع عن التحصيل — السبب (اختياري)', 'Undo collection — reason (optional)')}</p>
                 <TextInput value={undoReason} onChange={(e) => setUndoReason(e.target.value)}
                   placeholder={t('مثال: الشيك رُدّ · سُجِّل على فاتورةٍ أخرى خطأً', 'e.g. cheque bounced · recorded on the wrong invoice')} />
                 <p className="text-[11.5px] text-red-700/80">
-                  {t('يُمحى تاريخُ التحصيل ومبلغُه من الكشوف (ومن سير عمل التشغيل) وتعود في دفتر التحصيل غيرَ محصَّلة. يُقيَّد ذلك باسمك وسببك.',
+                  {t('يُمحى تاريخُ التحصيل ومبلغُه من الكشوف (ومن سير عمل التشغيل) وتعود في دفتر التحصيل غيرَ محصَّلة. يُقيَّد ذلك باسمك (وسببك إن كتبته).',
                      'The collection date and amount are cleared from the reports (and the operations workflow) and the ledger shows it as not collected. Recorded under your name with the reason.')}
                 </p>
                 <div className="flex justify-end gap-2">

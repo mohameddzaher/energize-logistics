@@ -69,7 +69,9 @@ router.get('/invoices/tax', authorize(...READ_ROLES), ctrl.taxInvoices);
 // الرقمُ قد يحمل شرطاتٍ ومسافات — يُلتقط كما هو.
 router.get('/invoices/tax/:invoiceNumber', authorize(...READ_ROLES), ctrl.taxInvoiceDetail);
 router.post('/invoices/collect', authorize(...EDIT_ROLES), ctrl.recordCollection);
-// «لم تُحصَّل»: رجوعٌ عن تحصيلٍ سُجِّل خطأً — بسببٍ مكتوب.
+// تصحيحُ قيمة فاتورةٍ ضريبيّة (ويجوز بالسالب) — وتُقفَل على ما كُتب.
+router.put('/invoices/tax/:invoiceNumber/amount', authorize(...EDIT_ROLES), ctrl.updateTaxInvoiceAmount);
+// «لم تُحصَّل»: رجوعٌ عن تحصيلٍ سُجِّل خطأً — والسببُ اختياريّ.
 router.post('/invoices/uncollect', authorize(...EDIT_ROLES), ctrl.undoCollection);
 // التسليمُ خطوةٌ قبل التحصيل: منها تُعَدُّ المدّةُ المتّفق عليها.
 router.post('/invoices/deliver', authorize(...EDIT_ROLES), ctrl.recordDelivery);

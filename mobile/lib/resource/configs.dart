@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/api.dart';
 import '../services/hijri.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
@@ -1358,13 +1359,13 @@ final collectionsCashInvoicesCfg = ResourceConfig(
 /// يُعرَض «لم تُحصَّل» لمن سيرفضه الخادم.
 bool collectionsCanEdit = true;
 
-/// «لم تُحصَّل» — الرجوعُ عن تحصيلٍ سُجِّل: بسببٍ مكتوب، ويُقيَّد باسم صاحبه.
+/// «لم تُحصَّل» — الرجوعُ عن تحصيلٍ سُجِّل: السببُ اختياريّ، ويُقيَّد باسم صاحبه.
 /// الفاتورةُ الضريبيّةُ تُعرَف برقمها، والكشفُ النقديُّ بمعرّفه في سير العمل.
 ResourceAction _uncollectAction(Map<String, dynamic> Function(Map<String, dynamic>) target) => ResourceAction(
       icon: Icons.undo_rounded, ar: 'لم تُحصَّل', en: 'Not collected', color: T.danger,
       confirmAr: 'يُمحى تاريخُ التحصيل ومبلغُه من الكشوف ومن سير عمل التشغيل وتعود غيرَ محصَّلة — يُقيَّد باسمك وسببك.',
       confirmEn: 'The collection date and amount are cleared from the reports and the operations workflow, and it returns to not collected — recorded under your name and reason.',
-      reasonKey: 'reason', reasonAr: 'سبب الرجوع عن التحصيل', reasonEn: 'Reason for undoing the collection',
+      reasonKey: 'reason', reasonAr: 'سبب الرجوع عن التحصيل', reasonEn: 'Reason for undoing the collection', reasonOptional: true,
       request: (r) => ('POST', '/api/collections-dept/invoices/uncollect', target(r)),
     );
 
@@ -1386,6 +1387,32 @@ final collectionsTaxInvoicesCfg = ResourceConfig(
   rowActions: (r) => [
     if (collectionsCanEdit && (r['fullyCollected'] == true || _s(r, 'collectionDate').isNotEmpty))
       _uncollectAction((r) => {'invoiceNumber': _s(r, 'invoiceNumber')}),
+    // تصحيحُ قيمة الفاتورة في الدفتر (ويجوز بالسالب) — كالموقع.
+    if (collectionsCanEdit)
+      ResourceAction(
+        icon: Icons.edit_note_rounded, ar: 'تعديل القيمة', en: 'Edit amount', color: T.navy,
+        run: (ctx, r) async {
+          final ctrl = TextEditingController(text: '${r['value'] ?? ''}');
+          final v = await showDialog<String>(
+            context: ctx,
+            builder: (c) => AlertDialog(
+              title: Text('${tr('تعديل قيمة الفاتورة', 'Edit invoice amount')} ${_s(r, 'invoiceNumber')}'),
+              content: TextField(controller: ctrl, autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
+                  decoration: InputDecoration(labelText: tr('القيمة الجديدة (ويجوز بالسالب)', 'New amount (negative allowed)'))),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(c), child: Text(tr('إلغاء', 'Cancel'))),
+                FilledButton(onPressed: () => Navigator.pop(c, ctrl.text.trim()), child: Text(tr('حفظ', 'Save'))),
+              ],
+            ),
+          );
+          if (v == null || v.isEmpty) return false;
+          final n = num.tryParse(v.replaceAll(',', ''));
+          if (n == null) return false;
+          await Api.instance.put('/api/collections-dept/invoices/tax/${Uri.encodeComponent(_s(r, 'invoiceNumber'))}/amount', {'total': n});
+          return true;
+        },
+      ),
   ],
 );
 

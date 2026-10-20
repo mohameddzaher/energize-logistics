@@ -141,11 +141,14 @@ class ResourceAction {
   final String? reasonKey;
   final String? reasonAr;
   final String? reasonEn;
+  /// السببُ يُسأل عنه ولا يُشترط (مثلُ «لم تُحصَّل» — صاحبُ الشركة، ٢٠٢٦/١٠/٢٠).
+  final bool reasonOptional;
   /// إجراءٌ بشاشته — يُختار فيه قبل الإرسال (مثلُ «نقل المشروع»). يُرجع true إن تغيّر شيء.
   final Future<bool> Function(BuildContext, Map<String, dynamic>)? run;
   const ResourceAction({
     required this.icon, required this.ar, required this.en, required this.color,
     this.confirmAr, this.confirmEn, this.request, this.reasonKey, this.reasonAr, this.reasonEn, this.run,
+    this.reasonOptional = false,
   });
   String get label => tr(ar, en);
 }
@@ -387,7 +390,7 @@ class _ResourceScreenState extends State<ResourceScreen> {
             const SizedBox(height: 10),
             TextField(
               controller: ctrl, autofocus: true, maxLines: 2,
-              decoration: InputDecoration(labelText: '${tr(a.reasonAr ?? 'السبب', a.reasonEn ?? 'Reason')} *', errorText: err),
+              decoration: InputDecoration(labelText: a.reasonOptional ? '${tr(a.reasonAr ?? 'السبب', a.reasonEn ?? 'Reason')} ${tr('(اختياري)', '(optional)')}' : '${tr(a.reasonAr ?? 'السبب', a.reasonEn ?? 'Reason')} *', errorText: err),
             ),
           ]),
           actions: [
@@ -395,7 +398,7 @@ class _ResourceScreenState extends State<ResourceScreen> {
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: a.color),
               onPressed: () {
-                if (ctrl.text.trim().length < 3) { setD(() => err = tr('اكتب السبب', 'Enter the reason')); return; }
+                if (!a.reasonOptional && ctrl.text.trim().length < 3) { setD(() => err = tr('اكتب السبب', 'Enter the reason')); return; }
                 Navigator.pop(c, ctrl.text.trim());
               },
               child: Text(tr('تأكيد', 'Confirm')),

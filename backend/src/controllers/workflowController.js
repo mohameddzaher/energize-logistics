@@ -418,8 +418,22 @@ async function syncOpsInvoices(rawNumbers) {
 
       const $set = {};
       if (!existing.party && party?._id) { $set.party = party._id; $set.partyCode = party.code || ''; }
-      if (existing.sheetCode === 'workflow') {
-        $set.total = sum('totalInvoice');
+      // ── رقمٌ محجوزٌ في الدفتر صار فاتورةً على كشوف ───────────────────────────
+      // دفترُ التحصيل يحمل أرقامًا محجوزةً في التسلسل (`unused`) لا تُعرض ولا تُعَدّ.
+      // فإن كُتب الرقمُ على كشوفٍ ضريبيّة صار فاتورةً حقيقيّة — وكان يبقى محجوزًا
+      // صفرًا مخفيًّا: ٥٨ فاتورةً (١٢١٤٦–١٢٢٠٨) لم تصل التحصيل (٢٠٢٦/١٠/٢٠). فيُفتح
+      // ويُعامَل معاملةَ ما وُلد من كشف: مبلغُه وطرفُه وكشوفُه منها.
+      const wasReserved = existing.unused === true;
+      if (wasReserved) {
+        $set.unused = false;
+        if (existing.sheetCode !== 'workflow') {
+          const clash = await CollectionInvoice.exists({ kind: 'tax', invoiceNumber: no, sheetCode: 'workflow' });
+          if (!clash) $set.sheetCode = 'workflow';
+        }
+        $set.source = 'operations_workflow';
+      }
+      if (existing.sheetCode === 'workflow' || wasReserved) {
+        if (!existing.totalLocked) $set.total = sum('totalInvoice');
         $set.partyName = first.username || existing.partyName;
         if (party?._id) { $set.party = party._id; $set.partyCode = party.code || ''; }
         $set.reportNumbers = taxReports.map((w) => String(w.reportNumber || '')).filter(Boolean);
@@ -1738,9 +1752,21 @@ exports.updateApplicationStatus = async (req, res) => {
  */
 exports.bulkUpdate = async (req, res) => {
   try {
-    const ids = Array.isArray(req.body.ids) ? req.body.ids.filter((x) => mongoose.isValidObjectId(x)) : [];
-    if (!ids.length) return res.status(400).json({ message: 'لم تُحدَّد أيُّ كشوف.' });
     const CAP = 1000;
+    let ids = Array.isArray(req.body.ids) ? req.body.ids.filter((x) => mongoose.isValidObjectId(x)) : [];
+    // ── «كلُّ نتائج الفلتر» لا صفحةُ الخمسين وحدَها ─────────────────────────
+    // الجدولُ يعرض خمسين في الصفحة، والفلترُ قد يُخرج أربعَ صفحات. فتُرسَل شروطُ
+    // الجدول نفسُها (`query`) ويُستخرج منها كلُّ ما يطابق — بالدالّة التي يقرأ بها
+    // الجدولُ صفوفَه، فلا يُكتب على ما لا يراه صاحبُ الفلتر.
+    if (req.body.allMatching && req.body.query && typeof req.body.query === 'object') {
+      const q = Object.fromEntries(Object.entries(req.body.query).filter(([k]) => !['page', 'limit', 'sort', 'order'].includes(k)));
+      if (q.cf_dataOwnerShown !== undefined) await require('../utils/dataOwnerIndex').ensure().catch(() => {});
+      const filter = buildWorkflowFilter(q, undefined, canSeeMoney(req.user.role));
+      const found = await OperationsWorkflow.find(filter).select('_id').limit(CAP + 1).lean();
+      if (found.length > CAP) return res.status(400).json({ message: `نتائجُ الفلتر أكثرُ من ${CAP} كشف — ضيِّق الفلتر ثمّ أعِد.` });
+      ids = found.map((x) => x._id);
+    }
+    if (!ids.length) return res.status(400).json({ message: 'لم تُحدَّد أيُّ كشوف.' });
     if (ids.length > CAP) return res.status(400).json({ message: `الحدُّ الأقصى ${CAP} كشفًا في المرّة.` });
 
     const patch = filterFieldsByRole(req.body.fields || {}, req.user.role, await fieldsForRole(req.user.role));

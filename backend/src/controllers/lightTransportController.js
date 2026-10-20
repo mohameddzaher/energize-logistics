@@ -1018,6 +1018,8 @@ exports.updateEmployee = async (req, res) => {
     if (String(doc.supervisorUser || '') !== beforeSupUser) await syncRepSupervisor(doc.name, doc.supervisorUser, { ltId: doc._id });
     logAudit({ user: req.user, action: 'update_lt_employee', entity: 'LightTransportEmployee', entityId: doc._id, changes: { after: Object.keys(req.body) }, ipAddress: req.ip }).catch(() => {});
     emit('lt:updated', {});
+    // حالةٌ صارت «إنهاء خدمة»؟ تُنزَل المركبة — راجع utils/ltVehicleRelease.
+    require('../utils/ltVehicleRelease').after();
     return res.json({ employee: doc.toObject() });
   } catch (e) {
     console.error('lt updateEmployee:', e);

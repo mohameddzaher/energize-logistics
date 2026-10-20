@@ -494,6 +494,8 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     }, 45 * 1000);
     startOpsCustomerSync();
     startOpsWorkflowSync();
+    // مركباتُ النقل الخفيف: المنتهي لا يبقى راكبًا، والمفوَّضُ بلا مركبةٍ يُسنَد إليه — كلَّ ساعة.
+    try { require('./utils/ltVehicleRelease').startHourly(); } catch (e) { console.error('[lt-release] start:', e.message); }
     // شيتاتُ أوردرات B2C (جوجل شيت لكلّ مشروع) — كلَّ دقيقة. راجع services/b2cOrderSheetSync.
     try { require('./services/b2cOrderSheetSync').startB2cOrderSheetSync(); } catch (e) { console.error('[b2c-sheets] start:', e.message); }
     startLs2Poll();

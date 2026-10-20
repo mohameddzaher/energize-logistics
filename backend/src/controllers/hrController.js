@@ -833,6 +833,8 @@ exports.terminateEmployee = async (req, res) => {
     await notifyHR({ title: 'Employee terminated', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
     try { emitToUser(String(req.user._id), 'hr:contract', { id: String(employee._id) }); } catch (e) {}
     if (employee.user) await notifyUser(employee.user, { title: 'Contract ended', message: 'Your employment has been terminated.', relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
+    // مَن انتهت خدمتُه لا يبقى راكبًا في النقل الخفيف — راجع utils/ltVehicleRelease.
+    require('../utils/ltVehicleRelease').after();
     res.json({ employee });
   } catch (error) {
     console.error('terminateEmployee error:', error);

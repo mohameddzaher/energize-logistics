@@ -1583,14 +1583,14 @@ export default function OperationsWorkflowPage() {
                           return (
                             <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={(e) => e.stopPropagation()}
                               title={lang === 'ar' ? 'تُحسب من صافي الفاتورة — لا تُكتب' : 'Computed from the net — not typed'}>
-                              <span className={`${spanCls(field, color)} opacity-70`}>{formatMoney(val)}</span>
+                              <span className={spanCls(field, color)}>{formatMoney(val)}</span>
                             </td>
                           );
                         }
                         return (
                           <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isSystemPulled ? (e) => e.stopPropagation() : cellClick(field)}
                             title={!owns(field) ? noPermMsg : fromWallet ? 'من المحفظة — يُعدَّل من قيد المشتريات في المحفظة' : derivedTax ? (lang === 'ar' ? 'تُحسب من صافي الفاتورة — لا تُكتب' : 'Computed from the net — not typed') : isSystemPulled ? 'البيانات المسحوبة من النظام لا تُعدّل' : undefined}>
-                            {isEditing && !isSystemPulled ? <input type="number" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value ? Number(e.target.value) : ''}))} /> : <span className={`${spanCls(field, color)}${isSystemPulled && wf.reportNumber && !fromWallet ? ' opacity-60' : ''}`}>{formatMoney((wf as any)[field])}{fromWallet && <span className="ms-1 text-[10px] font-semibold text-emerald-600">{lang === 'ar' ? 'محفظة' : 'wallet'}</span>}</span>}
+                            {isEditing && !isSystemPulled ? <input type="number" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value ? Number(e.target.value) : ''}))} /> : <span className={`${spanCls(field, color)}${isSystemPulled && wf.reportNumber && !fromWallet && !derivedTax ? ' opacity-60' : ''}`}>{formatMoney((wf as any)[field])}{fromWallet && <span className="ms-1 text-[10px] font-semibold text-emerald-600">{lang === 'ar' ? 'محفظة' : 'wallet'}</span>}</span>}
                           </td>
                         );
                       };

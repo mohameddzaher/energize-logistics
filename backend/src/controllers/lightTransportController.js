@@ -150,7 +150,7 @@ const decorate = (row, alerts = {}) => ({
   })(),
   hrLinked: !!row.employee,
   // نوعُ العقد كما يُعرَض ويُعَدّ: من الموارد البشريّة لمن له ملف — راجع contractKindOf.
-  contractTypeShown: ({ sponsored: 'كفالة', freelance: 'فري لانسر' })[contractKindOf(row)] || '',
+  contractTypeShown: ({ sponsored: 'كفالة', freelance: 'فري لانسر', users: 'يوزرات' })[contractKindOf(row)] || '',
   employeeNumber: row.employee && typeof row.employee === 'object' ? row.employee.employeeNumber : '',
 });
 
@@ -279,8 +279,8 @@ exports.listEmployees = async (req, res) => {
      * اللوحة — فالقائمةُ المفتوحة من رقمٍ تعرض الذين عُدّوا فيه بأعيانهم.
      */
     const ck = S(q.contractKind);
-    if (ck === 'sponsored' || ck === 'freelance') rows = rows.filter((r) => contractIs(r, ck));
-    if (ck === 'none') rows = rows.filter((r) => !contractIs(r, 'sponsored') && !contractIs(r, 'freelance'));
+    if (ck === 'sponsored' || ck === 'freelance' || ck === 'users') rows = rows.filter((r) => contractIs(r, ck));
+    if (ck === 'none') rows = rows.filter((r) => !contractKindOf(r));
     if (q.inService === '1') rows = rows.filter((r) => !isEnded(r));
 
     res.json({ employees: rows, totals: totalsOf(rows, { includeEnded: S(q.status) === ENDED }), options: await optionsOf() });
@@ -331,6 +331,10 @@ async function endedRowIds() {
  */
 const ENG = require('../utils/hrEngagement');
 const contractKindOf = (r) => {
+  // ── واليوزرُ المؤجَّرُ ليس كفالة ─────────────────────────────────────────────
+  // كانت كلُّ خانةٍ مكتوبةٍ غيرِ «فريلانسر» تُقرأ «كفالة»، فعُدَّ يوزراتُ نينجا
+  // الثلاثةَ عشرَ على الكفالة: ١١٤ في اللوحة و٩٨ في شيت التقرير (٢٠٢٦/١٠/٢٠).
+  if (/يوزر/.test(String(r.contractTypeAr || ''))) return 'users';
   if (r.employee && typeof r.employee === 'object') {
     const e = ENG.engagementOf(r.employee);
     return e === 'sponsored' || e === 'freelance' ? e : '';
@@ -357,11 +361,17 @@ async function repsBreakdown(rows, projectFilter) {
     if (!by.has(k)) by.set(k, { project: S(name) || '(غير محدد)', sponsored: 0, freelance: 0, users: 0, noContract: 0 });
     return by.get(k);
   };
-  const reps = rows.filter((r) => r.staffKind === 'rep');
+  // ── على رأس العمل وحدَهم ────────────────────────────────────────────────
+  // كانت تُعَدّ صفوفُ القسم كلُّها، ومنها ستّةُ فري لانسر «إنهاء خدمة» بلا ملفٍّ
+  // في الموارد البشريّة: ٦٢ في اللوحة و٥٦ في الشيت. والمنتهي لا يُعَدّ هنا كما
+  // لا يُعَدّ في كروت الموظّفين (totalsOf).
+  const reps = rows.filter((r) => (r.staffKind === 'rep' || contractIs(r, 'users')) && !isEnded(r));
   for (const r of reps) {
     const o = slot(r.projectAr);
-    if (contractIs(r, 'freelance')) o.freelance += 1;
-    else if (contractIs(r, 'sponsored')) o.sponsored += 1;
+    const k = contractKindOf(r);
+    if (k === 'freelance') o.freelance += 1;
+    else if (k === 'sponsored') o.sponsored += 1;
+    else if (k === 'users') o.users += 1;
     else o.noContract += 1;
   }
   for (const [p, n] of Object.entries(rentals)) {

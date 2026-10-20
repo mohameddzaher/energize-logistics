@@ -96,7 +96,6 @@ export default function B2CDashboardPage() {
   const repsHref = (extra: Record<string, string>) => `/system/b2c/light-transport?${qsOf({
     ...f, staffKind: 'rep', inService: f.status === 'إنهاء خدمة' ? '' : '1', ...extra,
   })}`;
-  const usersHref = (project: string) => `/system/b2c/user-rentals${project && project !== '(غير محدد)' ? `?project=${encodeURIComponent(project)}` : ''}`;
 
   const Card = ({ label, value, of, accent, onClick, on, hint }: {
     label: string; value: any; of?: number; accent?: string; onClick?: () => void; on?: boolean; hint?: string;
@@ -258,8 +257,9 @@ export default function B2CDashboardPage() {
               onClick={() => router.push(repsHref({ contractKind: 'sponsored' }))} />
             <Card label={t('فري لانسر', 'Freelance')} value={d.reps.freelance} accent="text-teal-600"
               onClick={() => router.push(repsHref({ contractKind: 'freelance' }))} />
+            {/* اليوزراتُ صفوفٌ في سجلّ القسم بنوع عقد «يوزرات» (ومعها ما في صفحة التأجير). */}
             <Card label={t('يوزرات', 'Rented users')} value={d.reps.users} accent="text-[#f37121]"
-              onClick={() => router.push(usersHref(f.project || ''))} hint={t('من تأجير اليوزرات', 'from user rentals')} />
+              onClick={() => router.push(repsHref({ contractKind: 'users' }))} />
           </div>
           {/* مَن لا نوعَ عقدٍ له لا يدخل الكفالةَ ولا الفري لانسر — فيُفتَح ليُصحَّح. */}
           {d.reps.noContract > 0 && (
@@ -278,7 +278,7 @@ export default function B2CDashboardPage() {
                   </button>
                   <div className="grid grid-cols-3 divide-x divide-slate-100 rtl:divide-x-reverse text-center">
                     {([['sponsored', t('كفالة', 'Sponsored')], ['freelance', t('فري لانسر', 'Freelance')], ['users', t('يوزرات', 'Users')]] as const).map(([k, label]) => (
-                      <Link key={k} href={k === 'users' ? usersHref(p.project) : repsHref({ project: p.project, contractKind: k })}
+                      <Link key={k} href={repsHref({ project: p.project, contractKind: k })}
                         className="block px-2 py-2 hover:bg-orange-50">
                         <p className="text-[10.5px] text-slate-500">{label}</p>
                         <p className="text-[17px] font-extrabold tabular-nums text-slate-900">{p[k]}</p>

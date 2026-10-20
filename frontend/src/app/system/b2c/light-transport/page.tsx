@@ -269,7 +269,7 @@ function LightTransportEmployeesInner() {
 
   /** قيمةُ الفلتر كما تُقرأ: لا معرِّفَ مشرفٍ ولا مفتاحَ إنجليزيٍّ في الشريحة. */
   const chipValue = (k: string, v: string) => {
-    if (k === 'contractKind') return ar ? ({ sponsored: 'على الكفالة', freelance: 'فري لانسر', none: 'بلا نوع عقد' } as Record<string, string>)[v] || v
+    if (k === 'contractKind') return ar ? ({ sponsored: 'على الكفالة', freelance: 'فري لانسر', users: 'يوزرات', none: 'بلا نوع عقد' } as Record<string, string>)[v] || v
       : ({ sponsored: 'Sponsored', freelance: 'Freelance', none: 'No contract type' } as Record<string, string>)[v] || v;
     if (k === 'staffKind') {
       const m: Record<string, string> = ar ? { ...KIND_AR, driver: 'سائق', unknown: 'بلا وظيفة' } : { ...KIND_EN, driver: 'Driver', unknown: 'No job title' };

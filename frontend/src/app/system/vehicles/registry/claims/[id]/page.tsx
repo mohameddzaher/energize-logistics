@@ -23,7 +23,7 @@ import { Spinner } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import ClaimAttachments from '@/components/vehicles/ClaimAttachments';
 import {
-  getClaim, getClaimAudit, money, fmtDate, canEditVehicles,
+  getClaim, getClaimAudit, money, fmtDate, canEditVehicles, canEditClaims,
 } from '@/lib/vehicleRegistry';
 import { auditActionLabel } from '@/lib/hr';
 import {
@@ -78,7 +78,8 @@ export default function ClaimDetailPage() {
   const closed = c.statusCode === 'closed';
   const est = Number(c.claim?.estimatedAmountSar) || 0;
   const rec = Number(c.claim?.expectedRecoverySar) || 0;
-  const gap = c.claim?.recoveryGapSar != null ? Number(c.claim.recoveryGapSar) : est - rec;
+  // الفرقُ عند الإقفال وحدَه — يحسبه الخادم (claimDifference).
+  const gap = c.claim?.recoveryGapSar != null ? Number(c.claim.recoveryGapSar) : null;
 
   const val = (x: unknown) => (x === null || x === undefined || x === ''
     ? <span className="text-slate-300 font-normal">—</span> : (x as React.ReactNode));
@@ -140,7 +141,7 @@ export default function ClaimDetailPage() {
     [t('رقم المطالبة', 'Claim number'), c.claim?.claimNumber],
     [t('المقدَّر', 'Estimated'), est || ''],
     [t('متوقع استرداده', 'Expected recovery'), rec || ''],
-    [t('الفارق', 'Gap'), gap || ''],
+    [t('الفرق', 'Difference'), gap ?? ''],
     [t('الحالة', 'Status'), closed ? t('مقفولة', 'Closed') : t('قيد المتابعة', 'Open')],
     [t('الملاحظات', 'Notes'), c.claim?.notesAr],
     [t('المرفقات', 'Attachments'), (c.attachments || []).length],
@@ -196,7 +197,7 @@ export default function ClaimDetailPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Kpi label={t('المقدَّر (ر.س)', 'Estimated (SAR)')} value={money(est)} accent="text-slate-900" />
         <Kpi label={t('متوقع استرداده', 'Expected recovery')} value={money(rec)} accent="text-emerald-700" />
-        <Kpi label={t('الفارق علينا', 'Gap on us')} value={money(gap)} accent={gap > 0 ? 'text-red-600' : 'text-slate-900'} />
+        <Kpi label={t('الفرق', 'Difference')} value={gap == null ? t('يُحسب عند الإقفال', 'On close') : money(gap)} accent={gap != null && gap > 0 ? 'text-red-600' : 'text-slate-900'} />
         <Kpi label={t('المرفقات', 'Attachments')} value={String((c.attachments || []).length)} accent="text-slate-900" />
       </div>
 
@@ -252,7 +253,7 @@ export default function ClaimDetailPage() {
         <Section title={t('الأرقام', 'The money')} icon={<Banknote className="w-4 h-4" />} accent="#16a34a">
           <Row label={t('المقدَّر', 'Estimated')} mono>{val(est ? `${money(est)} ${t('ر.س', 'SAR')}` : null)}</Row>
           <Row label={t('متوقع استرداده', 'Expected recovery')} mono>{val(rec ? `${money(rec)} ${t('ر.س', 'SAR')}` : null)}</Row>
-          <Row label={t('الفارق علينا', 'Gap on us')} mono>{val(gap ? `${money(gap)} ${t('ر.س', 'SAR')}` : null)}</Row>
+          <Row label={t('الفرق', 'Difference')} mono>{val(gap != null ? `${money(gap)} ${t('ر.س', 'SAR')}` : (closed ? null : t('يُحسب عند الإقفال', 'Computed on close')))}</Row>
         </Section>
 
         {!!c.claim?.notesAr && (
@@ -263,7 +264,7 @@ export default function ClaimDetailPage() {
       </div>
 
       {/* الورقُ الذي تُبنى عليه الأرقام. */}
-      <ClaimAttachments claimId={id} attachments={c.attachments || []} canEdit={canEdit}
+      <ClaimAttachments claimId={id} attachments={c.attachments || []} canEdit={canEdit} canManage={canEditClaims(user)}
         onChange={(claim) => setC(claim)} />
 
       {/* ردودُ الشركة — سجلٌّ يُضاف إليه ولا يُمحى، الأحدثُ أوّلًا. */}

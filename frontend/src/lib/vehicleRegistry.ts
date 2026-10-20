@@ -469,6 +469,14 @@ export const canEditVehicles = (user: any): boolean =>
 export const canAdminVehicles = (user: any): boolean =>
   !!user && (ADMIN_ROLES.includes(user.role) || (user.role !== 'client' && canEditSection(user?.permissions, 'Vehicles')));
 
+/**
+ * تعديلُ الحوادث وحذفُها — للإدارة والمدير الماليّ ومدير الحسابات وحدَهم (صاحبُ
+ * الشركة، ٢٠٢٦/١٠/٢٠). والخادمُ يحرسها بـ`authorize.strict` فلا يفتحها منحُ قسم.
+ * وتسجيلُ حادثٍ جديدٍ وإرفاقُ ورقه يبقيان لمن يعدّل في القسم (canEditVehicles).
+ */
+export const CLAIM_EDIT_ROLES = ['super_admin', 'admin', 'cfo', 'accounting_manager'];
+export const canEditClaims = (user: any): boolean => !!user && CLAIM_EDIT_ROLES.includes(user.role);
+
 // ── الحوادث: إنشاء وتعديل وحذف ───────────────────────────────────────────────
 export const createClaim = (body: any) => api.post<{ claim: any }>('/api/vehicle-registry/claims', body);
 export const updateClaim = (id: string, body: any) => api.put<{ claim: any }>(`/api/vehicle-registry/claims/${id}`, body);

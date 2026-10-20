@@ -117,6 +117,7 @@ Future<List<String>> loadLookupNamesHr(String type) async {
 const hrQuickKeys = [
   ('department', 'القسم', 'Department'),
   ('staffCategory', 'الفئة الوظيفية', 'Staff category'),
+  ('registerNumber', 'السجل التجاري', 'Commercial register'),
   ('branchName', 'المدينة', 'City'),
   ('workStatusText', 'حالة العمل', 'Work status'),
   ('project', 'المشروع', 'Project'),

@@ -36,10 +36,12 @@ const sizeText = (n?: number) => {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-export default function ClaimAttachments({ claimId, attachments, canEdit, onChange }: {
+export default function ClaimAttachments({ claimId, attachments, canEdit, canManage = canEdit, onChange }: {
   claimId: string;
   attachments: ClaimAttachment[];
   canEdit: boolean;
+  /** تعديلُ اسم المرفق وحذفُه — للإدارة والماليّة وحدَهم (canEditClaims). */
+  canManage?: boolean;
   onChange: (claim: any) => void;
 }) {
   const { lang } = useLanguage();
@@ -146,7 +148,7 @@ export default function ClaimAttachments({ claimId, attachments, canEdit, onChan
                 <li key={a._id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
                   <FileText className="w-4 h-4 text-slate-400 shrink-0" />
                   <div className="min-w-0 flex-1">
-                    {canEdit ? (
+                    {canManage ? (
                       // يُعدَّل الاسمُ في موضعه: لا نافذةَ لتصحيح كلمة.
                       <input defaultValue={a.title || a.fileName || ''}
                         onBlur={(e) => rename(a, e.target.value)}
@@ -164,7 +166,7 @@ export default function ClaimAttachments({ claimId, attachments, canEdit, onChan
                     className="px-2 py-1 rounded-lg text-[11.5px] font-bold text-slate-500 hover:text-[#f37121] hover:bg-white shrink-0">
                     {t('فتح', 'Open')}
                   </a>
-                  {canEdit && (
+                  {canManage && (
                     <button type="button" onClick={() => remove(a)} title={t('حذف', 'Delete')}
                       className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 shrink-0">
                       <Trash2 className="w-3.5 h-3.5" />

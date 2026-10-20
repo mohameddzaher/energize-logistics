@@ -29,6 +29,7 @@ const FIELD_LISTS = {
   workLocation: ['hr_work_location'],
   project: ['hr_project', 'lt_project'],
   staffCategory: ['hr_staff_category'],
+  registerNumber: ['hr_register', 'hr_register_kind'],
 };
 /** قائمةٌ → خاناتُ الملفّ التي تحمل أسماءَها. */
 const LIST_FIELDS = Object.entries(FIELD_LISTS).reduce((m, [field, types]) => {
@@ -57,8 +58,8 @@ const forget = () => {
   try { cache.clear('hrlists:'); cache.clear('hrdept:'); cache.clear('hrm:choices'); } catch (_) { /* */ }
 };
 
-const LABELS = { staffCategory: 'الفئة الوظيفية', department: 'القسم', nationality: 'الجنسية', branchName: 'المدينة', workLocation: 'مكان العمل', project: 'المشروع' };
-const MANAGER = { staffCategory: 'السوبر أدمن', department: 'السوبر أدمن', nationality: 'الموارد البشريّة', branchName: 'الموارد البشريّة', workLocation: 'الموارد البشريّة', project: 'الموارد البشريّة (ومشاريع B2C من قسم B2C)' };
+const LABELS = { registerNumber: 'رقم السجل التجاري', staffCategory: 'الفئة الوظيفية', department: 'القسم', nationality: 'الجنسية', branchName: 'المدينة', workLocation: 'مكان العمل', project: 'المشروع' };
+const MANAGER = { registerNumber: 'السوبر أدمن', staffCategory: 'السوبر أدمن', department: 'السوبر أدمن', nationality: 'الموارد البشريّة', branchName: 'الموارد البشريّة', workLocation: 'الموارد البشريّة', project: 'الموارد البشريّة (ومشاريع B2C من قسم B2C)' };
 
 /**
  * رسالةُ رفضٍ إن لم تكن القيمةُ من القائمة، وإلّا null.

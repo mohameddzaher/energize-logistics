@@ -82,7 +82,19 @@ const GROUPS = [
       { key: 'hireDate', ar: 'تاريخ التعيين', en: 'Hire date', type: 'date' },
       { key: 'isOutsideKingdom', ar: 'خارج المملكة', en: 'Outside kingdom', type: 'bool', groupable: true },
       // النوعُ بجانب المهنة في كلّ شاشة: على الكفالة أم عملٌ حرّ.
-      { key: 'employmentType', ar: 'النوع', en: 'Engagement type', type: 'text', groupable: true, lookup: 'hr_employment_type' },
+      // ── والنوعُ يُقرأ من السجلّ التجاريّ لا يُكتب ─────────────────────────────
+      // كان خانةً مستقلّةً قلّما مُلئت، فيقول ملفُّ الفريلانسر «لا يوجد». والنوعُ
+      // صفةُ السجلّ: «فري لانسر» أو «تدريب» أو رقمُ سجلٍّ = على الكفالة (عليه).
+      { key: 'employmentType', ar: 'النوع', en: 'Engagement type', type: 'text', derived: true, deps: ['registerNumber'],
+        readFrom: (e) => {
+          const r = String(e?.registerNumber ?? '').trim();
+          if (!r) return null;
+          const k = require('../utils/hrEngagement').engagementOf(e);
+          if (k === 'freelance') return 'فري لانسر';
+          if (k === 'trainee') return 'تدريب';
+          if (k === 'sponsored') return `على الكفالة — السجل ${r}`;
+          return r;
+        } },
       { key: 'isFreelancer', ar: 'عمل حر', en: 'Freelancer', type: 'bool', groupable: true },
     ],
   },
@@ -102,7 +114,8 @@ const GROUPS = [
       // الشركة تُوظِّف على أكثر من سجلٍّ تجاريّ، والموظّف مسجَّلٌ على واحدٍ بعينه.
       // وهو الذي تُبنى عليه أسئلةُ الجهات: «كم على السجلّ الفلانيّ؟» فبغير حقلٍ
       // قابلٍ للفلترة كان الجواب يُعَدّ باليد من ملفٍّ خارج النظام.
-      { key: 'registerNumber', ar: 'رقم السجل التجاري', en: 'Commercial register', type: 'text', groupable: true },
+      // يُختار من «السجلات التجارية» ولا يُكتب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠) — راجع utils/hrLists.
+      { key: 'registerNumber', ar: 'رقم السجل التجاري', en: 'Commercial register', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_register' },
       // حالة التأمينات تسعُ ثلاثَ قيمٍ لا رابعَ لها («نشط»، «غير نشط»)، والثالثة
       // ليست قيمةً بل قرارٌ إداريّ يُكتب عَلَمَ حالةٍ («غير مطلوب») — انظر تحت.
       // وقابليّتُها للفلترة هي بيت القصيد: «مَن ليس نشطًا في التأمينات؟» سؤالٌ

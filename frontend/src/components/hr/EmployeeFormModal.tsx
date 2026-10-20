@@ -321,7 +321,16 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         <DocInput k="bank" label={vtx.bank} cash form={form} set={set} mark={marks['bank'] || ''} setMark={setMark} choices={choices} ar={ar} />
         <Field label={ar ? 'المشروع' : 'Project'}><SearchableSelect value={form.project || ''} onChange={(v) => set('project', v)} placeholder={ar ? '— اختر —' : '— choose —'} searchPlaceholder={ar ? 'ابحث…' : 'Search…'} searchAfter={0}
           options={[...(form.project && !(choices.project || []).some((o) => o.value === form.project) ? [{ value: form.project, label: form.project }] : []), ...(choices.project || []).map((o) => ({ value: o.value, label: o.value }))]} /></Field>
-        <Field label={vtx.registerNumber}><TextInput value={form.registerNumber} onChange={(e) => set('registerNumber', e.target.value)} /></Field>
+        {/* يُختار ولا يُكتب: سجلّاتُنا ومعها «فري لانسر» و«تدريب» — ومنه يُعرف النوع. */}
+        <Field label={vtx.registerNumber}>
+          <Select value={form.registerNumber || ''} onChange={(e) => set('registerNumber', e.target.value)}>
+            <option value="">—</option>
+            {form.registerNumber && !(choices.registerNumber || []).some((o: any) => o.value === form.registerNumber) && (
+              <option value={form.registerNumber}>{form.registerNumber}</option>
+            )}
+            {(choices.registerNumber || []).map((o: any) => <option key={o.value} value={o.value}>{o.value}</option>)}
+          </Select>
+        </Field>
         <Field label={vtx.absherNumber}><TextInput value={form.absherNumber} onChange={(e) => set('absherNumber', e.target.value)} /></Field>
         <DocInput k="iqamaProfession" label={vtx.iqamaProfession} form={form} set={set} mark={marks['iqamaProfession'] || ''} setMark={setMark} choices={choices} ar={ar} />
         <Field label={vtx.penaltyClause}><TextInput type="number" value={form.penaltyClause} onChange={(e) => set('penaltyClause', Number(e.target.value))} /></Field>

@@ -16,6 +16,10 @@ const authorize = require('../middleware/rbac');
 const EDIT = ['super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
   'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
 const ADMIN = ['super_admin', 'admin', 'vehicles_manager', 'hr_manager'];
+// ── تعديلُ الحوادث وحذفُها للإدارة والماليّة وحدَهم (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠) ──
+// `strict`: لا يفتحه منحُ قسمٍ ولا تأشيرةُ صفحة — القائمةُ هي كلُّ شيء. وتسجيلُ
+// حادثٍ جديدٍ وإرفاقُ ورقه يبقيان لفريق المركبات.
+const CLAIM_EDIT = ['super_admin', 'admin', 'cfo', 'accounting_manager'];
 
 router.get('/dashboard', c.dashboard);
 // نظرة شاملة: كارت لكل عمود، وكله بيوصّل لصفحة مفلترة.
@@ -40,12 +44,12 @@ router.get('/claims', c.listClaims);
 router.get('/claims/:id', c.getClaim);
 router.get('/claims/:id/audit', c.getClaimAudit);
 router.post('/claims', authorize(...EDIT), c.createClaim);
-router.put('/claims/:id', authorize(...EDIT), c.updateClaim);
-router.delete('/claims/:id', authorize(...ADMIN), c.deleteClaim);
+router.put('/claims/:id', authorize.strict(...CLAIM_EDIT), c.updateClaim);
+router.delete('/claims/:id', authorize.strict(...CLAIM_EDIT), c.deleteClaim);
 // ورقُ المطالبة: تقريرُ نجم وصورُ الضرر وعرضُ الورشة وخطابُ الشركة.
 router.post('/claims/:id/attachments', authorize(...EDIT), c.addClaimAttachments);
-router.put('/claims/:id/attachments/:attId', authorize(...EDIT), c.renameClaimAttachment);
-router.delete('/claims/:id/attachments/:attId', authorize(...EDIT), c.deleteClaimAttachment);
+router.put('/claims/:id/attachments/:attId', authorize.strict(...CLAIM_EDIT), c.renameClaimAttachment);
+router.delete('/claims/:id/attachments/:attId', authorize.strict(...CLAIM_EDIT), c.deleteClaimAttachment);
 // تجديد أكتر من مستند مرة واحدة بنفس التاريخ
 router.post('/renew-bulk', authorize(...EDIT), c.renewBulk);
 // وثيقةٌ واحدةٌ تغطّي مئةً وثمانيًا وتسعين مركبة تُجدَّد بفعلٍ واحد لا بمئةٍ

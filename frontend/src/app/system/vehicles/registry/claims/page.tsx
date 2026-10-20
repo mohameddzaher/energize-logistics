@@ -21,7 +21,7 @@ import { useAuth } from '@/context/AuthContext';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import {
-  getClaims, money, fmtDate, canEditVehicles, canAdminVehicles,
+  getClaims, money, fmtDate, canEditVehicles, canEditClaims,
   createClaim, updateClaim, deleteClaim,
 } from '@/lib/vehicleRegistry';
 import ScrollX from '@/components/system/ScrollX';
@@ -46,7 +46,7 @@ const COL_DEFS: [string, string, string][] = [
   ['insurer', 'شركة التأمين', 'Insurer'],
   ['estimated', 'مبلغ التقدير', 'Estimate amount'],
   ['recovery', 'المبلغ المسترد', 'Recovered amount'],
-  ['gap', 'الفجوة', 'Gap'],
+  ['gap', 'الفرق', 'Difference'],
   ['status', 'الحالة', 'Status'],
   ['lastReply', 'آخر رد', 'Last reply'],
   ['files', 'المرفقات', 'Files'],
@@ -64,12 +64,8 @@ const GETTERS: Record<string, (r: any) => any> = {
   estimateNo: (r) => r.reportOrEstimateNumber || '',
   reportedVia: (r) => r.reportedViaAr || '',
   claimNumber: (r) => r.claim?.claimNumber || '',
-  // الفجوةُ = المقدَّر ناقص المسترد — الرقمُ الذي يُسأل عنه، ولا يُحسَب بالعين.
-  gap: (r) => {
-    const e = Number(r.claim?.estimatedAmountSar);
-    const g = Number(r.claim?.expectedRecoverySar);
-    return Number.isFinite(e) && Number.isFinite(g) ? money(e - g) : '';
-  },
+  // الفرقُ = المقدَّر ناقص المسترد — ويُحسب عند الإقفال وحدَه (يحسبه الخادم).
+  gap: (r) => (r.claim?.recoveryGapSar != null ? money(r.claim.recoveryGapSar) : ''),
   files: (r) => (r.attachments?.length ? String(r.attachments.length) : ''),
   fault: (r) => (r.faultPercent == null ? '' : `${r.faultPercent}%`),
   insurer: (r) => r.claim?.insurerAr,
@@ -95,7 +91,9 @@ function ClaimsInner() {
   const canEdit = canEditVehicles(user);
   // عرضُ عمود الإجراءات يُقاس لتقف اللوحةُ بجانبه — راجع components/vehicles/stickyLead.
   const lead = useLeadOffset();
-  const canDelete = canAdminVehicles(user);
+  // التعديلُ والحذفُ للإدارة والماليّة وحدَهم؛ والتسجيلُ لفريق المركبات (canEdit).
+  const canManage = canEditClaims(user);
+  const canDelete = canManage;
   // null = مقفول · {} = حادث جديد · سجل = تعديل
   const [form, setForm] = useState<any | null>(null);
 
@@ -186,10 +184,9 @@ function ClaimsInner() {
     { header: t('رقم التقدير', 'Estimate no.'), key: 'reportOrEstimateNumber', width: 16 },
     { header: t('تم الإبلاغ عبر', 'Reported via'), key: 'reportedViaAr', width: 14 },
     { header: t('رقم المطالبة', 'Claim no.'), key: 'claim', transform: (v: any) => v?.claimNumber || '', width: 16 },
-    { header: t('الفجوة', 'Gap'), key: 'claim', width: 14,
+    { header: t('الفرق', 'Difference'), key: 'claim', width: 14,
       transform: (v: any) => {
-        const e = Number(v?.estimatedAmountSar); const g = Number(v?.expectedRecoverySar);
-        return Number.isFinite(e) && Number.isFinite(g) ? e - g : '';
+        return v?.recoveryGapSar != null ? v.recoveryGapSar : '';
       } },
     { header: t('عدد المرفقات', 'Attachments'), key: 'attachments', transform: (v: any) => (v?.length || 0), width: 12 },
     { header: t('سجّلها', 'Recorded by'), key: 'createdByName', width: 20 },
@@ -243,7 +240,7 @@ function ClaimsInner() {
         {/* كارتُ مبلغٍ لا قائمةَ صفوفٍ تحته — يبقى رقمًا يُقرأ. */}
         <Stat label={t('مبلغ التقدير (ر.س)', 'Estimate amount (SAR)')} value={money(d?.totals.estimatedSar)} c="#0ea5e9" />
         <Stat label={t('المبلغ المسترد (ر.س)', 'Recovered amount')} value={money(d?.totals.expectedRecoverySar)} c="#16a34a" />
-        <Stat label={t('الفجوة (ر.س)', 'Gap (SAR)')} value={money(d?.totals.gapSar)} c="#dc2626" />
+        <Stat label={t('الفرق — المقفلة (ر.س)', 'Difference — closed (SAR)')} value={money(d?.totals.gapSar)} c="#dc2626" />
         {/* «نايمة» = مفتوحة وعدّى عليها ٣٠ يوم من غير أي رد من التأمين. */}
         <Stat label={t('بدون رد من التأمين +٣٠ يوم', 'No insurer reply 30d+')} value={d?.totals.stale ?? 0} c="#ea580c"
           onClick={() => { setStale((v) => !v); setStatus(''); }} on={stale} />
@@ -317,7 +314,7 @@ function ClaimsInner() {
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
               <tr>
                 {/* الإجراءاتُ أوّلًا وثابتة — راجع components/vehicles/stickyLead. */}
-                {canEdit && (
+                {canManage && (
                   <th ref={lead.ref} className={`${LEAD} bg-slate-900 px-3 py-3 text-center font-bold whitespace-nowrap`}>
                     {t('إجراءات', 'Actions')}
                   </th>
@@ -326,7 +323,7 @@ function ClaimsInner() {
                   // اللوحةُ أوّلُ الأعمدة وتُثبَّت مع الإجراءات — هويّةُ الصفّ.
                   <th key={key}
                     className={`px-3 py-3 text-center font-bold whitespace-nowrap ${i === 0 ? `${LEAD_2} bg-slate-900` : ''}`}
-                    style={i === 0 ? { insetInlineStart: canEdit ? lead.offset : 0 } : undefined}>
+                    style={i === 0 ? { insetInlineStart: canManage ? lead.offset : 0 } : undefined}>
                     <span className="inline-flex items-center">
                       {t(arL, enL)}
                       {cf.header(key, allRows, GETTERS[key], ar)}
@@ -343,7 +340,7 @@ function ClaimsInner() {
                 const stale = r.statusCode !== 'closed' && staleDays != null && staleDays > 30;
                 return (
                   <tr key={r._id} className="group hover:bg-slate-50 text-center align-middle">
-                    {canEdit && (
+                    {canManage && (
                       <td className={`${LEAD_CELL} px-3 py-2.5 whitespace-nowrap`}>
                         <div className="flex items-center justify-center gap-1">
                           <button onClick={() => setForm(r)} title={t('تعديل', 'Edit')}
@@ -367,7 +364,7 @@ function ClaimsInner() {
                       </td>
                     )}
                     <td className={`${LEAD_2} px-3 py-2.5 bg-white group-hover:bg-slate-50`}
-                      style={{ insetInlineStart: canEdit ? lead.offset : 0 }}>
+                      style={{ insetInlineStart: canManage ? lead.offset : 0 }}>
                       {/* ── والاسمُ يفتح ملفَّ الحادثة لا ملفَّ المركبة ────────
                           كان يفتح المركبةَ، وهو الجوابُ عن سؤالٍ آخر: مَن يقف
                           على صفٍّ في هذا الجدول يريد الحادثةَ نفسَها — طرفَها
@@ -420,11 +417,11 @@ function ClaimsInner() {
                     <td className="px-3 py-2.5 text-slate-600 text-[12px]">{r.claim?.insurerAr || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-800 font-semibold whitespace-nowrap">{r.claim?.estimatedAmountSar ? money(r.claim.estimatedAmountSar) : '—'}</td>
                     <td className="px-3 py-2.5 text-emerald-700 font-semibold whitespace-nowrap">{r.claim?.expectedRecoverySar ? money(r.claim.expectedRecoverySar) : '—'}</td>
-                    {/* الفجوةُ محسوبةٌ لا مقروءة: ما لا يُسترَدّ هو ما نتحمّله. */}
+                    {/* الفرقُ يُحسب حين تُقفَل المطالبة (حين يُحصَّل المال) — وقبلها لا فرق. */}
                     <td className="px-3 py-2.5 whitespace-nowrap">
-                      {Number.isFinite(Number(r.claim?.estimatedAmountSar)) && Number.isFinite(Number(r.claim?.expectedRecoverySar))
-                        ? <span className="font-semibold text-red-600">{money(Number(r.claim.estimatedAmountSar) - Number(r.claim.expectedRecoverySar))}</span>
-                        : <span className="text-slate-300">—</span>}
+                      {r.claim?.recoveryGapSar != null
+                        ? <span className="font-semibold text-red-600">{money(r.claim.recoveryGapSar)}</span>
+                        : <span className="text-slate-300" title={r.statusCode !== 'closed' ? t('يُحسب عند الإقفال', 'Computed on close') : ''}>—</span>}
                     </td>
                     <td className="px-3 py-2.5">
                       <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
@@ -460,7 +457,7 @@ function ClaimsInner() {
                   </tr>
                 );
               })}
-              {!rows.length && <tr><td colSpan={COL_DEFS.length + (canEdit ? 1 : 0)} className="px-3 py-12 text-center text-slate-500">{t('لا توجد حوادث', 'No claims')}</td></tr>}
+              {!rows.length && <tr><td colSpan={COL_DEFS.length + (canManage ? 1 : 0)} className="px-3 py-12 text-center text-slate-500">{t('لا توجد حوادث', 'No claims')}</td></tr>}
             </tbody>
           </table>
         </ScrollX>
@@ -559,7 +556,8 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
   const set = (k: string, v: any) => setF((x) => ({ ...x, [k]: v }));
   const [busy, setBusy] = useState(false);
   const num = (v: any) => (v === '' || v == null ? null : Number(v));
-  const gap = num(f.estimatedAmountSar) != null && num(f.expectedRecoverySar) != null
+  // الفرقُ عند الإقفال وحدَه — مرآةُ claimDifference في الخادم.
+  const gap = f.statusCode === 'closed' && num(f.estimatedAmountSar) != null && num(f.expectedRecoverySar) != null
     ? Number(f.estimatedAmountSar) - Number(f.expectedRecoverySar) : null;
 
   const save = async () => {
@@ -773,9 +771,9 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
               <div><label className={lbl}>{t('المبلغ المسترد', 'Recovered amount')}</label>
                 <input type="number" value={f.expectedRecoverySar} onChange={(e) => set('expectedRecoverySar', e.target.value)} className={inp} /></div>
               <div>
-                <label className={lbl}>{t('الفجوة (محسوبة)', 'Gap (computed)')}</label>
+                <label className={lbl}>{t('الفرق (محسوب عند الإقفال)', 'Difference (computed on close)')}</label>
                 <div className={`${inp} bg-slate-50 font-bold ${gap && gap > 0 ? 'text-rose-700' : 'text-slate-700'}`}>
-                  {gap == null ? '—' : money(gap)}
+                  {gap == null ? (f.statusCode === 'closed' ? '—' : t('يُحسب عند الإقفال', 'On close')) : money(gap)}
                 </div>
               </div>
             </div>

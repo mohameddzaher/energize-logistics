@@ -219,6 +219,20 @@ const REGISTRY = [
    * ── الفئةُ الوظيفيّة لموظّفي B2C والنقل الثقيل ─────────────────────────────
    * ثلاثٌ لا غير — والقائمةُ للسوبر أدمن وحدَه كقائمة الأقسام.
    */
+  /**
+   * ── «فري لانسر» و«تدريب» — قيمتا «رقم السجل التجاري» لغير المكفولين ──────────
+   * الخانةُ تُختار ولا تُكتب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠): سجلّاتُنا (`hr_register`)
+   * ومعها هاتان. ومنها يُعرف نوعُ الموظّف (utils/hrEngagement).
+   */
+  {
+    type: 'hr_register_kind',
+    module: 'hr', nameEn: 'Non-sponsored register values', nameAr: 'قيم السجل لغير المكفولين',
+    superOnly: true, roles: [], storeLabel: true,
+    seed: [
+      { key: 'freelance', nameEn: 'Freelance', nameAr: 'فري لانسر' },
+      { key: 'trainee', nameEn: 'Training', nameAr: 'تدريب' },
+    ],
+  },
   {
     type: 'hr_staff_category',
     module: 'hr', nameEn: 'Staff categories', nameAr: 'الفئات الوظيفية',

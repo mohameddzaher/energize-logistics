@@ -2537,16 +2537,29 @@ const CLAIM_FIELDS = [
 const CLAIM_SUB = ['insurerAr', 'claimNumber', 'claimNumberStatus', 'notesAr',
   'lastNoteDate', 'lastInsurerUpdateDate', 'estimatedAmountSar', 'expectedRecoverySar'];
 
-/** يبني/يحدّث المستند من الجسم، وبيحسب الفجوة. */
+/**
+ * ── «الفرق» يُحسب عند الإقفال لا قبله ──────────────────────────────────────
+ * كان اسمُه «الفجوة» ويُحسب من أوّل يوم: المقدَّرُ ناقصَ المتوقَّع استردادُه —
+ * فتُقرأ المطالبةُ المفتوحةُ خسارةً وهي لم تُحصَّل بعد. وطلبُ صاحب الشركة
+ * (٢٠٢٦/١٠/٢٠): الفرقُ يُعرف حين يُحصَّل المال، أي حين تُقفَل المطالبة. فهو
+ * فارغٌ ما دامت مفتوحة، ويُحسب لحظةَ إقفالها.
+ */
+const claimDifference = (doc) => {
+  if (doc.statusCode !== 'closed') return null;
+  const est = Number(doc.claim?.estimatedAmountSar);
+  const rec = Number(doc.claim?.expectedRecoverySar);
+  return doc.claim?.estimatedAmountSar != null && doc.claim?.expectedRecoverySar != null
+    && Number.isFinite(est) && Number.isFinite(rec) ? Math.round(est - rec) : null;
+};
+exports._claimDifference = claimDifference;
+
+/** يبني/يحدّث المستند من الجسم، وبيحسب الفرق (عند الإقفال). */
 function applyClaim(doc, body) {
   for (const k of CLAIM_FIELDS) if (body[k] !== undefined) doc[k] = body[k] === '' ? doc[k] : body[k];
   const sub = body.claim || {};
   doc.claim = doc.claim || {};
   for (const k of CLAIM_SUB) if (sub[k] !== undefined) doc.claim[k] = sub[k];
-  // الفجوة = المقدَّر − المتوقع استرداده. محسوبة، مش متكتوبة — عشان ما تتناقضش.
-  const est = Number(doc.claim.estimatedAmountSar);
-  const rec = Number(doc.claim.expectedRecoverySar);
-  doc.claim.recoveryGapSar = Number.isFinite(est) && Number.isFinite(rec) ? Math.round(est - rec) : null;
+  doc.claim.recoveryGapSar = claimDifference(doc);
   if (doc.vehiclePlate) doc.vehiclePlateKey = plateKey(doc.vehiclePlate);
   return doc;
 }

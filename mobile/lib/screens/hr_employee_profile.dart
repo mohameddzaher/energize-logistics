@@ -887,7 +887,7 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
     }
     _d = {for (final f in _docs) f.$1: TextEditingController(text: asText(widget.employee?[f.$1]))};
     // القسمُ من قائمة الأقسام وحدَها (يضيفها السوبر أدمن) — لا يُكتب.
-    for (final k in ['department', 'staffCategory', 'nationality', 'branchName', 'project', 'bank', 'socialInsuranceStatus', 'insuranceCompany', 'licenseType']) {
+    for (final k in ['department', 'staffCategory', 'registerNumber', 'nationality', 'branchName', 'project', 'bank', 'socialInsuranceStatus', 'insuranceCompany', 'licenseType']) {
       _pick[k] = (widget.employee?[k] ?? '').toString();
     }
     final fs = Map<String, dynamic>.from(widget.employee?['fieldStatus'] ?? {});
@@ -1008,7 +1008,8 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
                   child: TextField(controller: _c[f.$1], decoration: InputDecoration(labelText: tr(f.$2, f.$3))),
                 )),
             // القسمُ والجنسيّةُ والمدينةُ والمشروعُ قوائمُ مغلقةٌ فيها بحث (utils/hrLists في الخادم).
-            for (final k in const [('department', 'القسم', 'Department'), ('staffCategory', 'الفئة الوظيفية', 'Staff category'), ('nationality', 'الجنسية', 'Nationality'), ('branchName', 'المدينة', 'City'), ('project', 'المشروع', 'Project')])
+            // ورقمُ السجل التجاري يُختار كذلك: سجلّاتُنا و«فري لانسر» و«تدريب» — ومنه يُعرف النوع.
+            for (final k in const [('department', 'القسم', 'Department'), ('staffCategory', 'الفئة الوظيفية', 'Staff category'), ('registerNumber', 'رقم السجل التجاري', 'Commercial register'), ('nationality', 'الجنسية', 'Nationality'), ('branchName', 'المدينة', 'City'), ('project', 'المشروع', 'Project')])
               // الفئةُ الوظيفيّة لموظّفي B2C والنقل الثقيل وحدَهم.
               if (k.$1 != 'staffCategory' || const ['B2C', 'النقل الثقيل'].contains(_pick['department'] ?? ''))
               Padding(

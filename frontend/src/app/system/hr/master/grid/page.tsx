@@ -30,6 +30,8 @@ import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import MasterNav from '@/components/hr/MasterNav';
+import HrQuickFilters from '@/components/hr/HrQuickFilters';
+import type { FilterValues } from '@/components/system/FilterPanel';
 import { Spinner, PageHeader, SearchInput } from '@/components/hr/HRKit';
 import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
 import { ColumnFilter, type ColumnFilterOption } from '@/components/ColumnFilter';
@@ -86,14 +88,27 @@ export default function HrMasterGridPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
+  // ── فلاترُ ظاهرة فوق الجدول ──────────────────────────────────────────────
+  // «فين الفلاتر؟» — كانت كلُّها مخبوءةً في رؤوس الأعمدة. فالشريطُ نفسُه الذي في
+  // اللوحة وصفحة الموظفين: القسم، الفئة الوظيفية، السجل التجاري، المدينة، حالة
+  // العمل، المشروع، الجنسية — بعدد كلّ قيمة، ويقرؤه الخادم كفلاتر الأعمدة.
+  const [quick, setQuick] = useState<FilterValues>({});
   const guard = useLatestRequest();
+  /** فلاترُ الشريط مُرسَلةً — ما لم يكن للعمود نفسِه فلترٌ من رأسه. */
+  const appendQuick = useCallback((p: URLSearchParams, skip = '') => {
+    for (const [k, v] of Object.entries(quick)) {
+      if (!v || k === skip || colFilters[k]) continue;
+      p.set(k, String(v));
+    }
+  }, [quick, colFilters]);
 
   const params = useCallback(() => {
     const p = new URLSearchParams({ page: String(page), limit: String(limit) });
     if (q.trim()) p.set('q', q.trim());
     for (const [k, vals] of Object.entries(colFilters)) for (const v of vals) p.append(k, v);
+    appendQuick(p);
     return p;
-  }, [page, limit, q, colFilters]);
+  }, [page, limit, q, colFilters, appendQuick]);
 
   const load = useCallback(async () => {
     const mine = guard.begin();
@@ -117,7 +132,7 @@ export default function HrMasterGridPage() {
     const id = setTimeout(load, 300);
     return () => clearTimeout(id);
   }, [load]);
-  useEffect(() => { setPage(1); }, [q, colFilters]);
+  useEffect(() => { setPage(1); }, [q, colFilters, quick]);
   // كلُّ تعديلٍ في أيّ شاشةٍ في القسم يصل هنا — والعكس. راجع hr:master.
   useSocket('hr:master', useCallback(() => { load(); loadChoices(); }, [load, loadChoices]));
   useSocket('hr:employee', useCallback(() => load(), [load]));
@@ -258,7 +273,7 @@ export default function HrMasterGridPage() {
    */
   const [colOpts, setColOpts] = useState<Record<string, ColumnFilterOption[]>>({});
   const [colLoading, setColLoading] = useState<string>('');
-  useEffect(() => { setColOpts({}); }, [q, colFilters]);
+  useEffect(() => { setColOpts({}); }, [q, colFilters, quick]);
   const loadColOptions = async (key: string) => {
     if (colOpts[key]) return;
     setColLoading(key);
@@ -266,6 +281,7 @@ export default function HrMasterGridPage() {
       const p = new URLSearchParams({ page: '1', limit: '100000' });
       if (q.trim()) p.set('q', q.trim());
       for (const [k, vals] of Object.entries(colFilters)) if (k !== key) for (const v of vals) p.append(k, v);
+      appendQuick(p, key);
       const d = await api.get<any>(`/api/hr/master/grid?${p.toString()}`);
       const c = allCols.find((x) => x.key === key);
       const m = new Map<string, number>();
@@ -304,6 +320,11 @@ export default function HrMasterGridPage() {
             { key: 'all', label: scope.all, resolve: fetchAllForExport },
           ]} />
       </PageHeader>
+
+      <div className="rounded-xl border border-orange-200 bg-gradient-to-l from-orange-50 to-white p-3 shadow-sm">
+        <p className="mb-2 text-[12px] font-bold text-slate-500">{t('فلترة الماستر — الجدول والعدد يتبعان اختيارك', 'Filter the master — the table and count follow your choice')}</p>
+        <HrQuickFilters optionsUrl="/api/hr/master/filters" value={quick} onChange={setQuick} ar={ar} />
+      </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex-1 min-w-[240px]">

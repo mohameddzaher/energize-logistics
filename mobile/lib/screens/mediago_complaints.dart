@@ -83,7 +83,6 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
   String _q = '';
   String _status = '';
   String _issue = '';
-  String _location = '';
   Timer? _debounce;
   int _seq = 0;
   late final void Function() _onLive;
@@ -115,7 +114,6 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
       if (_q.isNotEmpty) 'q=${Uri.encodeQueryComponent(_q)}',
       if (_status.isNotEmpty) 'status=$_status',
       if (_issue.isNotEmpty) 'issue=$_issue',
-      if (_location.isNotEmpty) 'location=$_location',
     ];
     try {
       final d = Map<String, dynamic>.from(await Api.instance.get('$_api${p.isEmpty ? '' : '?${p.join('&')}'}') as Map);
@@ -127,21 +125,21 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
   }
 
   void _open(String id) async {
-    await Navigator.push(context, MaterialPageRoute(builder: (_) => MediaGoDetailScreen(id: id, partner: _partner)));
+    await showMediaGoDetail(context, id, partner: _partner);
     _load();
   }
 
+  // بعد الرفع تُحدَّث القائمةُ ولا يُفتَح شيء — التفصيلُ بضغطةٍ على البلاغ وحدَها.
   Future<void> _create() async {
-    final id = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => MediaGoCreateScreen(meta: _d?['meta'] as Map?)));
+    await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => MediaGoCreateScreen(meta: _d?['meta'] as Map?)));
     await _load();
-    if (id != null && mounted) _open(id);
   }
 
   Future<void> _pickFilter(String group) async {
     final meta = _d?['meta'] as Map?;
     final items = List<Map>.from((meta?[group] as List?) ?? const []);
     final counts = Map<String, dynamic>.from((_d?['counts']?[group] as Map?) ?? const {});
-    final cur = group == 'issue' ? _issue : _location;
+    final cur = _issue;
     final picked = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
@@ -159,7 +157,7 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
       ),
     );
     if (picked == null) return;
-    setState(() { if (group == 'issue') { _issue = picked; } else { _location = picked; } });
+    setState(() => _issue = picked);
     _load();
   }
 
@@ -231,19 +229,12 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
             onChanged: (v) { _q = v.trim(); _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 350), _load); },
           ),
           const SizedBox(height: 8),
-          Row(children: [
-            Expanded(child: OutlinedButton.icon(
-              onPressed: () => _pickFilter('issue'),
-              icon: const Icon(Icons.report_problem_outlined, size: 18),
-              label: Text(_issue.isEmpty ? _bx(partner, 'المشكلة', 'Issue') : _vocab(meta, 'issue', _issue, partner), overflow: TextOverflow.ellipsis),
-            )),
-            const SizedBox(width: 8),
-            Expanded(child: OutlinedButton.icon(
-              onPressed: () => _pickFilter('location'),
-              icon: const Icon(Icons.place_outlined, size: 18),
-              label: Text(_location.isEmpty ? _bx(partner, 'الموقع', 'Location') : _vocab(meta, 'location', _location, partner), overflow: TextOverflow.ellipsis),
-            )),
-          ]),
+          // موقعُ الصيانة إنرجايز دائمًا — فلا فلترَ له.
+          OutlinedButton.icon(
+            onPressed: () => _pickFilter('issue'),
+            icon: const Icon(Icons.report_problem_outlined, size: 18),
+            label: Text(_issue.isEmpty ? _bx(partner, 'المشكلة', 'Issue') : _vocab(meta, 'issue', _issue, partner), overflow: TextOverflow.ellipsis),
+          ),
           const SizedBox(height: 12),
           if (items.isEmpty)
             EmptyState(icon: Icons.connected_tv_outlined, title: _bx(partner, 'لا بلاغات', 'No complaints'))
@@ -444,7 +435,16 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
 
   Future<void> _addFiles() async {
     final room = 5 - ((_item?['files'] as List?)?.length ?? 0);
-    final picked = await pickMediaFiles(context, room: room, partner: _partner);
+    final src = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        ListTile(leading: const Icon(Icons.upload_file_outlined), title: Text(_bx(_partner, 'رفع من الجهاز', 'Upload from device')), onTap: () => Navigator.pop(c, 'gallery')),
+        ListTile(leading: const Icon(Icons.photo_camera_outlined), title: Text(_bx(_partner, 'تصوير الآن', 'Capture now')), onTap: () => Navigator.pop(c, 'camera')),
+      ])),
+    );
+    if (src == null || !mounted) return;
+    final picked = await pickMediaFiles(context, source: src, room: room, partner: _partner);
     if (picked.isEmpty) return;
     await _run('files', () => Api.instance.postLong('$_api/${widget.id}/files', {'files': picked.map((f) => f.toJson()).toList()}));
   }
@@ -630,12 +630,33 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
         ),
       ]);
     }
-    return Scaffold(
-      appBar: AppBar(title: Text(it == null ? 'Media Go' : '${it['ref']}')),
-      body: body,
+    // ── لوحةٌ تنزلق من الأسفل، بمِرسالها الخاصّ كي تظهر الرسائلُ فوقها ──
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+      child: ScaffoldMessenger(
+        child: Scaffold(
+          backgroundColor: T.canvas,
+          appBar: AppBar(
+            automaticallyImplyLeading: false,
+            backgroundColor: T.navy,
+            title: Text(it == null ? 'Media Go' : '${it['ref']}'),
+            actions: [IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context))],
+          ),
+          body: body,
+        ),
+      ),
     );
   }
 }
+
+/// تفصيلُ البلاغ — لوحةٌ تُفتَح بضغطةٍ على البلاغ، لا صفحةٌ ولا تُفتَح وحدَها.
+Future<void> showMediaGoDetail(BuildContext context, String id, {bool partner = false}) => showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => FractionallySizedBox(heightFactor: 0.94, child: MediaGoDetailScreen(id: id, partner: partner)),
+    );
 
 class _Gallery extends StatelessWidget {
   final List<String> urls;
@@ -673,18 +694,22 @@ const _mime = {
 
 /// يختار صورًا أو مقاطع ويرجّعها جاهزةً للإرسال — بحدود الخادم نفسِها:
 /// صورةٌ حتى ٨ ميغا، مقطعٌ حتى ١٥، والمجموعُ ١٨ في المرّة الواحدة.
-Future<List<MgPicked>> pickMediaFiles(BuildContext context, {int room = 5, bool partner = false, int already = 0}) async {
+/// `source`: 'gallery' (صورٌ ومقاطعُ متعدّدة) أو 'camera' (صورةٌ بعد صورةٍ حتى
+/// الحدّ، أو مقطعٌ قصير).
+Future<List<MgPicked>> pickMediaFiles(BuildContext context, {required String source, int room = 5, bool partner = false, int already = 0}) async {
   if (room <= 0) return const [];
-  final src = await showModalBottomSheet<String>(
-    context: context,
-    showDragHandle: true,
-    builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      ListTile(leading: const Icon(Icons.photo_camera_outlined), title: Text(tr('التقاط صورة', 'Take a photo')), onTap: () => Navigator.pop(c, 'photo')),
-      ListTile(leading: const Icon(Icons.videocam_outlined), title: Text(tr('تصوير فيديو قصير', 'Record a short video')), onTap: () => Navigator.pop(c, 'video')),
-      ListTile(leading: const Icon(Icons.photo_library_outlined), title: Text(tr('من المعرض', 'From gallery')), onTap: () => Navigator.pop(c, 'gallery')),
-    ])),
-  );
-  if (src == null) return const [];
+  String? src = source;
+  if (source == 'camera') {
+    src = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        ListTile(leading: const Icon(Icons.photo_camera_outlined), title: Text(tr('صور', 'Photos')), subtitle: Text(tr('التقط أكثر من صورة', 'Take several photos')), onTap: () => Navigator.pop(c, 'photo')),
+        ListTile(leading: const Icon(Icons.videocam_outlined), title: Text(tr('فيديو قصير', 'Short video')), subtitle: Text(tr('حتى 20 ثانية', 'Up to 20 seconds')), onTap: () => Navigator.pop(c, 'video')),
+      ])),
+    );
+    if (src == null) return const [];
+  }
   final out = <MgPicked>[];
   String? problem;
   void add(List<int> bytes, String name) {
@@ -702,8 +727,24 @@ Future<List<MgPicked>> pickMediaFiles(BuildContext context, {int room = 5, bool 
 
   try {
     if (src == 'photo') {
-      final x = await ImagePicker().pickImage(source: ImageSource.camera, maxWidth: 1600, maxHeight: 1600, imageQuality: 82);
-      if (x != null) add(await x.readAsBytes(), x.name.toLowerCase().endsWith('.jpg') || x.name.toLowerCase().endsWith('.jpeg') ? x.name : '${x.name}.jpg');
+      // صورةٌ بعد صورة حتى يقول «تمّ» أو يبلغ الحدّ.
+      while (out.length < room && problem == null) {
+        final x = await ImagePicker().pickImage(source: ImageSource.camera, maxWidth: 1600, maxHeight: 1600, imageQuality: 82);
+        if (x == null) break;
+        add(await x.readAsBytes(), x.name.toLowerCase().endsWith('.jpg') || x.name.toLowerCase().endsWith('.jpeg') ? x.name : '${x.name}.jpg');
+        if (out.length >= room || !context.mounted) break;
+        final more = await showDialog<bool>(
+          context: context,
+          builder: (c) => AlertDialog(
+            content: Text(tr('التُقطت ${out.length} — صورة أخرى؟', '${out.length} taken — another photo?')),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('تمّ', 'Done'))),
+              TextButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('صورة أخرى', 'Another'))),
+            ],
+          ),
+        );
+        if (more != true) break;
+      }
     } else if (src == 'video') {
       final x = await ImagePicker().pickVideo(source: ImageSource.camera, maxDuration: const Duration(seconds: 20));
       if (x != null) add(await x.readAsBytes(), x.name.contains('.') ? x.name : '${x.name}.mp4');
@@ -741,7 +782,6 @@ class _MediaGoCreateScreenState extends State<MediaGoCreateScreen> {
   String _vehicle = '';
   String _vehicleHint = '';
   String _issue = '';
-  String _location = '';
   String _availability = '';
   final List<MgPicked> _files = [];
   bool _saving = false;
@@ -778,7 +818,6 @@ class _MediaGoCreateScreenState extends State<MediaGoCreateScreen> {
         if (_moto.text.trim().isEmpty) tr('رقم الدبّاب', 'Motorcycle number'),
         if (_issue.isEmpty) tr('المشكلة', 'Issue'),
         if (_issue == 'other' && _issueOther.text.trim().isEmpty) tr('وصف المشكلة', 'Issue description'),
-        if (_location.isEmpty) tr('موقع الصيانة', 'Maintenance location'),
         if (_availability.isEmpty) tr('وقت التوفّر', 'Availability'),
         if (_availability == 'other' && _availOther.text.trim().isEmpty) tr('الوقت المناسب', 'Preferred time'),
       ];
@@ -796,7 +835,6 @@ class _MediaGoCreateScreenState extends State<MediaGoCreateScreen> {
         'motorcycleNumber': _moto.text.trim(),
         'screenNumber': _screen.text.trim(),
         'issue': _issue, 'issueOther': _issueOther.text.trim(),
-        'location': _location,
         'availability': _availability, 'availabilityOther': _availOther.text.trim(),
         'files': _files.map((f) => f.toJson()).toList(),
       });
@@ -811,11 +849,11 @@ class _MediaGoCreateScreenState extends State<MediaGoCreateScreen> {
   }
 
   Widget _q(String ar, String en, {bool required = false, required Widget child}) => Padding(
-        padding: const EdgeInsets.only(bottom: 18),
+        padding: const EdgeInsets.only(bottom: 14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text.rich(TextSpan(children: [
-            TextSpan(text: ar, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
-            if (required) const TextSpan(text: ' *', style: TextStyle(color: T.danger, fontWeight: FontWeight.w800)),
+            TextSpan(text: ar, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+            if (required) const TextSpan(text: ' *', style: TextStyle(color: T.orange, fontWeight: FontWeight.w800)),
             TextSpan(text: '   $en', style: const TextStyle(color: T.inkFaint, fontSize: 11.5)),
           ])),
           const SizedBox(height: 8),
@@ -823,34 +861,60 @@ class _MediaGoCreateScreenState extends State<MediaGoCreateScreen> {
         ]),
       );
 
+  // ── خياراتٌ هادئة: شبكةٌ من عمودين، علامةٌ صغيرة، والإنجليزيّةُ ثانويّة ──
   Widget _choices(String group, String value, void Function(String) onPick) {
     final items = List<Map>.from((_meta?[group] as List?) ?? const []);
-    return Column(children: [
-      for (final o in items)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () => setState(() => onPick('${o['key']}')),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: value == o['key'] ? T.orange.withValues(alpha: 0.08) : Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: value == o['key'] ? T.orange : T.line, width: value == o['key'] ? 1.5 : 1),
+    return LayoutBuilder(builder: (context, box) {
+      final w = (box.maxWidth - 8) / 2;
+      return Wrap(spacing: 8, runSpacing: 8, children: [
+        for (final o in items)
+          SizedBox(
+            width: w,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => setState(() => onPick('${o['key']}')),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: value == o['key'] ? T.orange.withValues(alpha: 0.06) : Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: value == o['key'] ? T.orange.withValues(alpha: 0.6) : T.line),
+                ),
+                child: Row(children: [
+                  Container(
+                    width: 16, height: 16,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: value == o['key'] ? T.orange : Colors.white,
+                      border: Border.all(color: value == o['key'] ? T.orange : T.inkFaint),
+                    ),
+                    child: value == o['key'] ? const Icon(Icons.check, size: 11, color: Colors.white) : null,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${o['ar']}', maxLines: 2, overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12.5, fontWeight: value == o['key'] ? FontWeight.w700 : FontWeight.w500, color: T.ink)),
+                    Text('${o['en']}', maxLines: 1, overflow: TextOverflow.ellipsis, textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 10, color: T.inkFaint)),
+                  ])),
+                ]),
               ),
-              child: Row(children: [
-                Icon(value == o['key'] ? Icons.radio_button_checked : Icons.radio_button_off, size: 20, color: value == o['key'] ? T.orange : T.inkFaint),
-                const SizedBox(width: 10),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('${o['ar']}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                  Text('${o['en']}', textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
-                ])),
-              ]),
             ),
           ),
-        ),
-    ]);
+      ]);
+    });
+  }
+
+  Widget _card(List<Widget> children) => Container(
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: T.line)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+      );
+
+  Future<void> _addMedia(String source) async {
+    final more = await pickMediaFiles(context, source: source, room: 5 - _files.length, already: _files.fold(0, (n, f) => n + f.size));
+    if (more.isNotEmpty) setState(() => _files.addAll(more));
   }
 
   @override
@@ -861,62 +925,74 @@ class _MediaGoCreateScreenState extends State<MediaGoCreateScreen> {
       body: _meta == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 100), children: [
-              _q('رقم الدبّاب', 'Motorcycle Number', required: true, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                TextField(
-                  controller: _moto,
-                  onChanged: (_) => setState(() { _vehicle = ''; _vehicleHint = ''; }),
-                  decoration: dec.copyWith(
-                    prefixIcon: const Icon(Icons.two_wheeler_outlined),
-                    hintText: tr('اكتب الرقم أو اختر من السجلّ', 'Type the number or pick from the register'),
-                    suffixIcon: IconButton(icon: const Icon(Icons.search_rounded), tooltip: tr('من سجلّ المركبات', 'From the register'), onPressed: _pickMoto),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                if (_vehicle.isNotEmpty) Text('✓ ${tr('من سجلّ المركبات', 'From the vehicle register')}${_vehicleHint.isNotEmpty ? ' — $_vehicleHint' : ''}', style: const TextStyle(color: T.success, fontSize: 11.5, fontWeight: FontWeight.w700))
-                else if (_moto.text.trim().isNotEmpty) Text(tr('سيُحفظ كما كُتب (غير مربوط بالسجلّ)', 'Saved as typed (not linked)'), style: const TextStyle(color: T.inkSoft, fontSize: 11.5)),
-              ])),
-              _q('رقم الشاشة', 'Screen Number', child: TextField(controller: _screen, decoration: dec)),
-              _q('صورة العطل', 'Photo of the Fault', child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Wrap(spacing: 8, runSpacing: 8, children: [
-                  for (var i = 0; i < _files.length; i++)
-                    Stack(children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: _files[i].video
-                            ? Container(width: 80, height: 80, color: T.navy, child: const Icon(Icons.videocam, color: Colors.white))
-                            : Image.memory(base64Decode(_files[i].dataUrl.split(',').last), width: 80, height: 80, fit: BoxFit.cover),
-                      ),
-                      PositionedDirectional(top: 2, end: 2, child: InkWell(
-                        onTap: () => setState(() => _files.removeAt(i)),
-                        child: Container(padding: const EdgeInsets.all(2), decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle), child: const Icon(Icons.close, size: 14, color: Colors.white)),
-                      )),
-                    ]),
-                  if (_files.length < 5)
-                    InkWell(
-                      borderRadius: BorderRadius.circular(10),
-                      onTap: () async {
-                        final more = await pickMediaFiles(context, room: 5 - _files.length, already: _files.fold(0, (n, f) => n + f.size));
-                        if (more.isNotEmpty) setState(() => _files.addAll(more));
-                      },
-                      child: Container(
-                        width: 80, height: 80,
-                        decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: T.inkFaint)),
-                        child: const Icon(Icons.add_a_photo_outlined, color: T.inkSoft),
-                      ),
+              _card([
+                _q('رقم الدبّاب', 'Motorcycle Number', required: true, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  TextField(
+                    controller: _moto,
+                    onChanged: (_) => setState(() { _vehicle = ''; _vehicleHint = ''; }),
+                    decoration: dec.copyWith(
+                      prefixIcon: const Icon(Icons.two_wheeler_outlined),
+                      hintText: tr('اكتب الرقم أو اختر من السجلّ', 'Type the number or pick from the register'),
+                      suffixIcon: IconButton(icon: const Icon(Icons.search_rounded), tooltip: tr('من سجلّ المركبات', 'From the register'), onPressed: _pickMoto),
                     ),
-                ]),
-                const SizedBox(height: 6),
-                Text(tr('حتى 5 ملفات — صورة حتى 8 ميغا، فيديو قصير حتى 15 ميغا، والمجموع 18 ميغا', 'Up to 5 files — image ≤ 8 MB, short video ≤ 15 MB, 18 MB in total'), style: const TextStyle(fontSize: 11, color: T.inkSoft)),
-              ])),
-              _q('المشكلة', 'Issue', required: true, child: Column(children: [
-                _choices('issue', _issue, (k) => _issue = k),
-                if (_issue == 'other') TextField(controller: _issueOther, onChanged: (_) => setState(() {}), decoration: dec.copyWith(hintText: tr('صف المشكلة', 'Describe the issue'))),
-              ])),
-              _q('موقع الصيانة', 'Maintenance Location', required: true, child: _choices('location', _location, (k) => _location = k)),
-              _q('وقت توفّر الدبّاب في المقر', 'Time the Motorcycle Will Be Available', required: true, child: Column(children: [
-                _choices('availability', _availability, (k) => _availability = k),
-                if (_availability == 'other') TextField(controller: _availOther, onChanged: (_) => setState(() {}), decoration: dec.copyWith(hintText: tr('اكتب الوقت المناسب', 'Write the preferred time'))),
-              ])),
+                  ),
+                  const SizedBox(height: 4),
+                  if (_vehicle.isNotEmpty) Text('✓ ${tr('من سجلّ المركبات', 'From the vehicle register')}${_vehicleHint.isNotEmpty ? ' — $_vehicleHint' : ''}', style: const TextStyle(color: T.success, fontSize: 11.5, fontWeight: FontWeight.w700))
+                  else if (_moto.text.trim().isNotEmpty) Text(tr('سيُحفظ كما كُتب (غير مربوط بالسجلّ)', 'Saved as typed (not linked)'), style: const TextStyle(color: T.inkSoft, fontSize: 11.5)),
+                ])),
+                _q('رقم الشاشة', 'Screen Number', child: TextField(controller: _screen, decoration: dec)),
+              ]),
+              _card([
+                _q('المشكلة', 'Issue', required: true, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  _choices('issue', _issue, (k) => _issue = k),
+                  if (_issue == 'other') ...[const SizedBox(height: 8), TextField(controller: _issueOther, onChanged: (_) => setState(() {}), decoration: dec.copyWith(hintText: tr('صف المشكلة', 'Describe the issue')))],
+                ])),
+                _q('وقت توفّر الدبّاب في المقر', 'Time the Motorcycle Will Be Available', required: true, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  _choices('availability', _availability, (k) => _availability = k),
+                  if (_availability == 'other') ...[const SizedBox(height: 8), TextField(controller: _availOther, onChanged: (_) => setState(() {}), decoration: dec.copyWith(hintText: tr('اكتب الوقت المناسب', 'Write the preferred time')))],
+                ])),
+              ]),
+              // الصورُ في آخر النموذج — رفعٌ من الجهاز أو تصويرٌ الآن، وكلاهما متعدّد.
+              _card([
+                _q('صورة العطل', 'Photo of the Fault', child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(child: OutlinedButton.icon(
+                      onPressed: _files.length < 5 ? () => _addMedia('gallery') : null,
+                      icon: const Icon(Icons.upload_file_outlined, size: 18),
+                      label: Text(tr('رفع من الجهاز', 'Upload')),
+                      style: OutlinedButton.styleFrom(foregroundColor: T.ink, side: const BorderSide(color: T.line), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    )),
+                    const SizedBox(width: 8),
+                    Expanded(child: OutlinedButton.icon(
+                      onPressed: _files.length < 5 ? () => _addMedia('camera') : null,
+                      icon: const Icon(Icons.photo_camera_outlined, size: 18),
+                      label: Text(tr('تصوير الآن', 'Capture now')),
+                      style: OutlinedButton.styleFrom(foregroundColor: T.orange, backgroundColor: T.orange.withValues(alpha: 0.05), side: BorderSide(color: T.orange.withValues(alpha: 0.35)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    )),
+                  ]),
+                  if (_files.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Wrap(spacing: 8, runSpacing: 8, children: [
+                      for (var i = 0; i < _files.length; i++)
+                        Stack(children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: _files[i].video
+                                ? Container(width: 72, height: 72, color: T.navy, child: const Icon(Icons.videocam, color: Colors.white))
+                                : Image.memory(base64Decode(_files[i].dataUrl.split(',').last), width: 72, height: 72, fit: BoxFit.cover),
+                          ),
+                          PositionedDirectional(top: 2, end: 2, child: InkWell(
+                            onTap: () => setState(() => _files.removeAt(i)),
+                            child: Container(padding: const EdgeInsets.all(2), decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle), child: const Icon(Icons.close, size: 14, color: Colors.white)),
+                          )),
+                        ]),
+                    ]),
+                  ],
+                  const SizedBox(height: 6),
+                  Text(tr('${_files.length}/5 — صور أو فيديو قصير؛ الصورة حتى 8 ميغا، الفيديو حتى 15، والمجموع 18', '${_files.length}/5 — photos or a short video; image ≤ 8 MB, video ≤ 15 MB, 18 MB total'), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                ])),
+              ]),
+              Text(tr('الصيانة في إنرجايز', 'Serviced at Energize'), textAlign: TextAlign.center, style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
             ]),
       bottomNavigationBar: SafeArea(
         child: Padding(

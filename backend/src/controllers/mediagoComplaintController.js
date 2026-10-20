@@ -277,11 +277,13 @@ exports.create = async (req, res) => {
   if (!canCreate(req)) return res.status(403).json({ message: 'رفع البلاغات لقسم الأفراد' });
   const b = req.body || {};
   const keys = (g) => MEDIAGO_VOCAB[g].map((x) => x.key);
-  const issue = S(b.issue); const location = S(b.location); const availability = S(b.availability);
+  // ── موقعُ الصيانة إنرجايز دائمًا ─────────────────────────────────────────
+  // «هيرو مايل» ليست جهتَنا، فالسؤالُ أُزيل من النموذج ويُكتب الموقعُ هنا. وبقي
+  // الحقلُ في النموذج لتاريخ ما سبق، ويُعرَض للقراءة في التفصيل.
+  const issue = S(b.issue); const location = 'energize'; const availability = S(b.availability);
   const problems = [];
   if (!keys('issue').includes(issue)) problems.push('المشكلة / Issue');
   if (issue === 'other' && !S(b.issueOther)) problems.push('وصف المشكلة / Describe the issue');
-  if (!keys('location').includes(location)) problems.push('موقع الصيانة / Maintenance location');
   if (!keys('availability').includes(availability)) problems.push('وقت التوفّر / Availability');
   if (availability === 'other' && !S(b.availabilityOther)) problems.push('الوقت المناسب / Preferred time');
 

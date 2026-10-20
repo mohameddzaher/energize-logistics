@@ -23,7 +23,7 @@ import {
   MEDIAGO_API, MEDIAGO_ROLE, STATUS_TONE, availabilityText, fmtDateTime, issueText, vocabLabel,
   type MgList, type MgRow,
 } from '@/lib/mediago';
-import { Bi, ComplaintDrawer, CreateComplaintModal, StatusPill, makeTx, type Mode } from '@/components/b2c/MediaGoKit';
+import { Bi, ComplaintDetailModal, CreateComplaintModal, StatusPill, makeTx, type Mode } from '@/components/b2c/MediaGoKit';
 import { MonitorPlay, Plus, Search, Film, Image as ImageIcon, MessageCircle, MapPin, Clock, Bike, X, Lock } from 'lucide-react';
 
 type Filters = { status: string; issue: string; location: string; availability: string; from: string; to: string };
@@ -212,10 +212,6 @@ export default function MediaGoComplaintsPage() {
           <option value="">{tx('كل المشاكل', 'All issues')}</option>
           {data.meta.issue.map((o) => <option key={o.key} value={o.key}>{vocabLabel(data.meta, 'issue', o.key, vl)} ({optCount('issue', o.key)})</option>)}
         </select>
-        <select value={f.location} onChange={(e) => setFilter('location', e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm">
-          <option value="">{tx('كل المواقع', 'All locations')}</option>
-          {data.meta.location.map((o) => <option key={o.key} value={o.key}>{vocabLabel(data.meta, 'location', o.key, vl)} ({optCount('location', o.key)})</option>)}
-        </select>
         <select value={f.availability} onChange={(e) => setFilter('availability', e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm">
           <option value="">{tx('كل الأوقات', 'Any time')}</option>
           {data.meta.availability.map((o) => <option key={o.key} value={o.key}>{vocabLabel(data.meta, 'availability', o.key, vl)} ({optCount('availability', o.key)})</option>)}
@@ -254,7 +250,6 @@ export default function MediaGoComplaintsPage() {
                   <th className="px-3 py-2.5 text-start">{tx('رقم الدبّاب', 'Motorcycle')}</th>
                   <th className="px-3 py-2.5 text-start">{tx('الشاشة', 'Screen')}</th>
                   <th className="px-3 py-2.5 text-start">{tx('المشكلة', 'Issue')}</th>
-                  <th className="px-3 py-2.5 text-start">{tx('الموقع', 'Location')}</th>
                   <th className="px-3 py-2.5 text-start">{tx('وقت التوفّر', 'Available')}</th>
                   <th className="px-3 py-2.5">{tx('الحالة', 'Status')}</th>
                   <th className="px-3 py-2.5">{tx('مرفقات', 'Files')}</th>
@@ -272,7 +267,6 @@ export default function MediaGoComplaintsPage() {
                     </td>
                     <td className="px-3 py-2 text-slate-600">{r.screenNumber || '—'}</td>
                     <td className="max-w-[16rem] truncate px-3 py-2 text-slate-800" title={issueText(data.meta, r, vl)}>{issueText(data.meta, r, vl)}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-slate-600">{vocabLabel(data.meta, 'location', r.location, vl)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-slate-600">{availabilityText(data.meta, r, vl)}</td>
                     <td className="px-3 py-2 text-center"><StatusPill status={r.status} meta={data.meta} mode={mode} /></td>
                     <td className="px-3 py-2 text-center text-slate-600">
@@ -288,9 +282,10 @@ export default function MediaGoComplaintsPage() {
         </div>
       )}
 
-      <CreateComplaintModal open={creating} onClose={() => setCreating(false)} meta={data.meta} tx={tx}
-        onCreated={(id) => { setCreating(false); load(); setOpenId(id); }} />
-      {openId && <ComplaintDrawer id={openId} mode={mode} onClose={() => setOpenId('')} onChanged={soon} />}
+      {/* بعد الرفع تُحدَّث القائمةُ ولا يُفتَح شيء — التفصيلُ بضغطةٍ على البلاغ وحدَها. */}
+      <CreateComplaintModal open={creating} onClose={() => setCreating(false)} meta={data.meta} tx={tx} ar={mode !== 'en'}
+        onCreated={() => { setCreating(false); load(); }} />
+      {openId && <ComplaintDetailModal id={openId} mode={mode} onClose={() => setOpenId('')} onChanged={soon} />}
     </div>
   );
 }

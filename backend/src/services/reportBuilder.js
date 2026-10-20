@@ -199,12 +199,17 @@ function blockHtml(b, rtl) {
       if (!b.items?.length) return '';
       // A محضر اجتماع is signed. Printing it without somewhere to sign makes it
       // a printout rather than a record.
-      return `<div class="blk sigs">${b.items.map((i) => `
+      // `lead`: سطرُ ختامٍ يسبق التوقيع داخلَ الكتلة نفسِها — فلا يقع التوقيعُ
+      // وحدَه في صفحةٍ وخاتمتُه في التي قبلها.
+      const sigRow = `<div class="sigs">${b.items.map((i) => `
         <div class="sig">
           <div class="sig-line"></div>
           <div class="sig-name">${esc(i.name || '')}</div>
           <div class="sig-title">${esc(i.title || '')}</div>
         </div>`).join('')}</div>`;
+      return b.lead
+        ? `<div class="blk"><div class="note" style="background:#f8fafc;color:${INK};border:1px solid ${LINE};text-align:${startAlign};line-height:1.8">${esc(b.lead)}</div>${sigRow}</div>`
+        : sigRow.replace('class="sigs"', 'class="blk sigs"');
     }
 
     case 'callout': {
@@ -314,7 +319,7 @@ function documentHtml({ blocks, rtl, title, footerNote }) {
   .note { font-size: 10.5px; padding: 7px 10px; border-radius: 6px; margin-bottom: 7px; line-height: 1.5; }
 
   .sigs { display: flex; gap: 26px; margin-top: 26px; padding-top: 6px; }
-  .sig { flex: 1; text-align: center; }
+  .sig { flex: 1; max-width: 240px; text-align: center; }  /* توقيعٌ واحد لا يمتدّ عرضَ الصفحة */
   .sig-line { border-top: 1px solid #94a3b8; margin-bottom: 5px; height: 34px; }
   .sig-name { font-size: 11px; font-weight: 800; color: ${INK}; }
   .sig-title { font-size: 9.5px; color: ${MUTED}; margin-top: 1px; }

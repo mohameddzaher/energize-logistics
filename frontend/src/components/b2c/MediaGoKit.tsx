@@ -17,9 +17,11 @@ import {
   type Can, type MgFull, type Vocab,
 } from '@/lib/mediago';
 import {
-  X, Loader2, ImagePlus, Film, Image as ImageIcon, Trash2, Send, Bike, MonitorPlay,
+  X, Loader2, Film, Image as ImageIcon, Trash2, Send, Bike, MonitorPlay,
   MapPin, Clock, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Paperclip, User as UserIcon,
+  Upload, Camera, Check,
 } from 'lucide-react';
+import LiveCamera, { type Shot } from '@/components/b2c/LiveCamera';
 
 // ── اللغة: لغةُ القارئ، أو اللغتان للشريك ──────────────────────────────────
 export type Mode = 'ar' | 'en' | 'partner';
@@ -116,27 +118,66 @@ export function MotorcyclePicker({ value, onChange, tx }: { value: MotoValue; on
 }
 
 // ── المرفقات قبل الإرسال ────────────────────────────────────────────────────
+// طريقان، وكلاهما يُضيف أكثرَ من صورة: «رفع من الجهاز» (صور ومقاطع)، و«تصوير
+// الآن». والتصويرُ على الهاتف يفتح كاميرته (`capture`)، وعلى الحاسوب نافذةً
+// حيّةً من `LiveCamera` (مكوّنُ تفقّد بداية الدوام نفسُه) تلتقط صورةً بعد صورة.
 export type LocalFile = { dataUrl: string; fileName: string; size: number; mimeType: string; kind: 'image' | 'video' };
 const MB = 1024 * 1024;
+const isTouch = () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
 
-export function MediaPicker({ files, onChange, tx, room = MG_LIMITS.maxFiles }: { files: LocalFile[]; onChange: (f: LocalFile[]) => void; tx: Tx; room?: number }) {
+function CameraModal({ room, onShot, onClose, tx, ar }: { room: number; onShot: (s: Shot) => void; onClose: () => void; tx: Tx; ar: boolean }) {
+  const [taken, setTaken] = useState(0);
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-900 px-4 py-3 text-white">
+          <span className="text-[14px] font-bold">{tx('تصوير العطل', 'Capture the fault')}</span>
+          <button type="button" onClick={onClose} className="rounded-lg p-1 hover:bg-white/10" aria-label="Close"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="p-4">
+          <LiveCamera ar={ar} shots={[]} max={Math.max(1, room - taken)} disabled={taken >= room} onRemove={() => {}}
+            label={tx('التقاط صورة', 'Take photo')}
+            onShot={(s) => { onShot(s); setTaken((n) => n + 1); }} />
+          <div className="mt-3 flex items-center justify-between text-[12px] text-slate-500">
+            <span>{tx(`التُقطت ${taken} — المتبقّي ${Math.max(0, room - taken)}`, `${taken} taken — ${Math.max(0, room - taken)} left`)}</span>
+            <button type="button" onClick={onClose} className="rounded-lg bg-slate-900 px-4 py-1.5 text-[12.5px] font-bold text-white hover:bg-slate-800">{tx('تمّ', 'Done')}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function MediaPicker({ files, onChange, tx, room = MG_LIMITS.maxFiles, ar = true }: { files: LocalFile[]; onChange: (f: LocalFile[]) => void; tx: Tx; room?: number; ar?: boolean }) {
   const { notify } = useDialog();
-  const ref = useRef<HTMLInputElement>(null);
+  const upRef = useRef<HTMLInputElement>(null);
+  const camRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const total = files.reduce((n, f) => n + f.size, 0);
+  const [camera, setCamera] = useState(false);
+  // الدالّةُ تقرأ أحدثَ قائمةٍ — الكاميرا تضيف صورةً بعد صورةٍ قبل أن يُعاد الرسم.
+  const latest = useRef(files);
+  latest.current = files;
+  const left = room - files.length;
 
-  const add = async (list: FileList | null) => {
+  const accept = (cur: LocalFile[], f: { size: number; type: string; name: string }): string | null => {
+    if (cur.length >= room) return tx(`الحدّ ${room} ملفّات`, `At most ${room} files`);
+    const kind = f.type.startsWith('image/') ? 'image' : f.type.startsWith('video/') ? 'video' : null;
+    if (!kind) return tx(`«${f.name}» ليس صورة ولا فيديو`, `“${f.name}” is not an image or video`);
+    const cap = kind === 'video' ? MG_LIMITS.videoMB : MG_LIMITS.imageMB;
+    if (f.size > cap * MB) return tx(`«${f.name}» أكبر من ${cap} ميغا`, `“${f.name}” is larger than ${cap} MB`);
+    if (cur.reduce((n, x) => n + x.size, 0) + f.size > MG_LIMITS.requestMB * MB) {
+      return tx(`المجموع يتجاوز ${MG_LIMITS.requestMB} ميغا — أرفق الباقي بعد الحفظ`, `Over ${MG_LIMITS.requestMB} MB — add the rest after saving`);
+    }
+    return null;
+  };
+
+  const add = async (list: FileList | null, input: HTMLInputElement | null) => {
     if (!list?.length) return;
-    const next: LocalFile[] = [];
-    let sum = total;
+    const cur = [...latest.current];
     setBusy(true);
     for (const f of Array.from(list)) {
-      if (files.length + next.length >= room) { notify(tx(`الحدّ ${room} ملفّات`, `At most ${room} files`), 'error'); break; }
-      const kind: 'image' | 'video' | null = f.type.startsWith('image/') ? 'image' : f.type.startsWith('video/') ? 'video' : null;
-      if (!kind) { notify(tx(`«${f.name}» ليس صورة ولا فيديو`, `“${f.name}” is not an image or video`), 'error'); continue; }
-      const cap = kind === 'video' ? MG_LIMITS.videoMB : MG_LIMITS.imageMB;
-      if (f.size > cap * MB) { notify(tx(`«${f.name}» أكبر من ${cap} ميغا`, `“${f.name}” is larger than ${cap} MB`), 'error'); continue; }
-      if (sum + f.size > MG_LIMITS.requestMB * MB) { notify(tx(`مجموع المرفقات يتجاوز ${MG_LIMITS.requestMB} ميغا — أرفق الباقي بعد الحفظ`, `Attachments exceed ${MG_LIMITS.requestMB} MB — add the rest after saving`), 'error'); continue; }
+      const why = accept(cur, f);
+      if (why) { notify(why, 'error'); if (cur.length >= room) break; continue; }
       // eslint-disable-next-line no-await-in-loop
       const dataUrl = await new Promise<string>((res) => {
         const r = new FileReader();
@@ -144,55 +185,75 @@ export function MediaPicker({ files, onChange, tx, room = MG_LIMITS.maxFiles }: 
         r.onerror = () => res('');
         r.readAsDataURL(f);
       });
-      if (dataUrl) { next.push({ dataUrl, fileName: f.name, size: f.size, mimeType: f.type, kind }); sum += f.size; }
+      if (dataUrl) cur.push({ dataUrl, fileName: f.name, size: f.size, mimeType: f.type, kind: f.type.startsWith('video/') ? 'video' : 'image' });
     }
-    onChange([...files, ...next]);
+    onChange(cur);
     setBusy(false);
-    if (ref.current) ref.current.value = '';
+    if (input) input.value = '';
   };
 
+  const onShot = (s: Shot) => {
+    const size = Math.floor((s.dataUrl.length - s.dataUrl.indexOf(',') - 1) * 3 / 4);
+    const why = accept(latest.current, { size, type: 'image/jpeg', name: s.fileName });
+    if (why) { notify(why, 'error'); return; }
+    const next = [...latest.current, { dataUrl: s.dataUrl, fileName: s.fileName.replace(/^duty-/, 'fault-'), size, mimeType: 'image/jpeg', kind: 'image' as const }];
+    latest.current = next;
+    onChange(next);
+  };
+
+  const btn = 'inline-flex flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-[13px] font-semibold transition disabled:opacity-40';
   return (
-    <div>
-      <input ref={ref} type="file" multiple hidden accept="image/*,video/*" onChange={(e) => add(e.target.files)} />
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-        {files.map((f, i) => (
-          <div key={i} className="group relative aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
-            {f.kind === 'image'
-              ? <img src={f.dataUrl} alt={f.fileName} className="h-full w-full object-cover" />
-              : <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-slate-500"><Film className="h-6 w-6" /><span className="px-1 text-center text-[10px]">{Math.max(1, Math.round(f.size / MB))} MB</span></div>}
-            <button type="button" onClick={() => onChange(files.filter((_, j) => j !== i))}
-              className="absolute end-1 top-1 rounded-full bg-black/60 p-1 text-white opacity-90 hover:bg-red-600" aria-label="remove"><X className="h-3 w-3" /></button>
-          </div>
-        ))}
-        {files.length < room && (
-          <button type="button" disabled={busy} onClick={() => ref.current?.click()}
-            className="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-300 text-slate-500 hover:border-[#f37121] hover:text-[#f37121] disabled:opacity-50">
-            {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImagePlus className="h-5 w-5" />}
-            <span className="text-[10.5px] font-semibold">{tx('إضافة', 'Add')}</span>
-          </button>
-        )}
+    <div className="space-y-3">
+      <input ref={upRef} type="file" multiple hidden accept="image/*,video/*" onChange={(e) => add(e.target.files, e.target)} />
+      <input ref={camRef} type="file" multiple hidden accept="image/*" capture="environment" onChange={(e) => add(e.target.files, e.target)} />
+      <div className="flex gap-2">
+        <button type="button" disabled={busy || left <= 0} onClick={() => upRef.current?.click()}
+          className={`${btn} border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50`}>
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4 text-slate-500" />}{tx('رفع من الجهاز', 'Upload from device')}
+        </button>
+        <button type="button" disabled={busy || left <= 0} onClick={() => (isTouch() ? camRef.current?.click() : setCamera(true))}
+          className={`${btn} border-[#f37121]/30 bg-orange-50/60 text-[#c2541a] hover:bg-orange-50`}>
+          <Camera className="h-4 w-4" />{tx('تصوير الآن', 'Capture now')}
+        </button>
       </div>
-      <p className="mt-1.5 text-[11px] text-slate-500">
-        {tx(`حتى ${room} ملفّات — صورة حتى ${MG_LIMITS.imageMB} ميغا، فيديو حتى ${MG_LIMITS.videoMB} ميغا (مقطع قصير)، والمجموع ${MG_LIMITS.requestMB} ميغا في المرّة الواحدة`,
-          `Up to ${room} files — image ≤ ${MG_LIMITS.imageMB} MB, video ≤ ${MG_LIMITS.videoMB} MB (short clip), ${MG_LIMITS.requestMB} MB per upload`)}
+      {!!files.length && (
+        <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
+          {files.map((f, i) => (
+            <div key={i} className="group relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+              {f.kind === 'image'
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={f.dataUrl} alt={f.fileName} className="h-full w-full object-cover" />
+                : <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-slate-800 text-white/80"><Film className="h-5 w-5" /><span className="text-[10px]">{Math.max(1, Math.round(f.size / MB))} MB</span></div>}
+              <button type="button" onClick={() => onChange(files.filter((_, j) => j !== i))}
+                className="absolute end-1 top-1 rounded-full bg-slate-900/70 p-1 text-white hover:bg-red-600" aria-label="remove"><X className="h-3 w-3" /></button>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="text-[11px] text-slate-400">
+        {tx(`${files.length}/${room} — صور أو فيديو قصير؛ الصورة حتى ${MG_LIMITS.imageMB} ميغا، الفيديو حتى ${MG_LIMITS.videoMB} ميغا، والمجموع ${MG_LIMITS.requestMB} ميغا`,
+          `${files.length}/${room} — photos or a short video; image ≤ ${MG_LIMITS.imageMB} MB, video ≤ ${MG_LIMITS.videoMB} MB, ${MG_LIMITS.requestMB} MB in total`)}
       </p>
+      {camera && <CameraModal room={left} onShot={onShot} onClose={() => setCamera(false)} tx={tx} ar={ar} />}
     </div>
   );
 }
 
-// ── خيارٌ واحدٌ من قائمة، ببطاقات ─────────────────────────────────────────
-function ChoiceGrid({ items, value, onChange, cols = 'sm:grid-cols-2' }: { items: { key: string; ar: string; en: string }[]; value: string; onChange: (k: string) => void; cols?: string }) {
+// ── خيارٌ واحد — أقراصٌ هادئة بعلامةٍ صغيرة ───────────────────────────────
+function ChoiceGrid({ items, value, onChange }: { items: { key: string; ar: string; en: string }[]; value: string; onChange: (k: string) => void }) {
   return (
-    <div className={`grid grid-cols-1 gap-2 ${cols}`}>
+    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
       {items.map((o) => {
         const on = value === o.key;
         return (
-          <button key={o.key} type="button" onClick={() => onChange(o.key)}
-            className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-start transition ${on ? 'border-[#f37121] bg-orange-50 ring-1 ring-[#f37121]/40' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-            <span className={`mt-0.5 h-4 w-4 shrink-0 rounded-full border-2 ${on ? 'border-[#f37121] bg-[#f37121] shadow-[inset_0_0_0_2px_#fff]' : 'border-slate-300'}`} />
-            <span className="flex flex-col leading-tight">
-              <span className="text-[13px] font-semibold text-slate-800">{o.ar}</span>
-              <span className="text-[11px] text-slate-500" dir="ltr">{o.en}</span>
+          <button key={o.key} type="button" onClick={() => onChange(o.key)} aria-pressed={on}
+            className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 text-start transition ${on ? 'border-[#f37121]/60 bg-orange-50/50' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/60'}`}>
+            <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition ${on ? 'border-[#f37121] bg-[#f37121] text-white' : 'border-slate-300 bg-white'}`}>
+              {on && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+            </span>
+            <span className="min-w-0 leading-tight">
+              <span className={`block truncate text-[13px] ${on ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>{o.ar}</span>
+              <span className="block truncate text-[10.5px] text-slate-400" dir="ltr">{o.en}</span>
             </span>
           </button>
         );
@@ -201,23 +262,28 @@ function ChoiceGrid({ items, value, onChange, cols = 'sm:grid-cols-2' }: { items
   );
 }
 
-function Q({ ar, en, required, children }: { ar: string; en: string; required?: boolean; children: ReactNode }) {
+function Q({ ar, en, required, hint, children }: { ar: string; en: string; required?: boolean; hint?: string; children: ReactNode }) {
   return (
-    <div className="space-y-1.5">
-      <label className="flex flex-wrap items-baseline gap-x-2 text-[13.5px] font-bold text-slate-800">
-        <span>{ar}{required && <span className="text-red-600"> *</span>}</span>
-        <span className="text-[11.5px] font-medium text-slate-400" dir="ltr">{en}</span>
+    <div className="space-y-2">
+      <label className="flex flex-wrap items-baseline gap-x-2">
+        <span className="text-[13px] font-semibold text-slate-800">{ar}{required && <span className="text-[#f37121]"> *</span>}</span>
+        <span className="text-[11px] text-slate-400" dir="ltr">{en}</span>
+        {hint && <span className="ms-auto text-[11px] text-slate-400">{hint}</span>}
       </label>
       {children}
     </div>
   );
 }
 
-// ── نموذجُ رفع البلاغ — أسئلةُ نموذج Media Go نفسُها ─────────────────────
-const EMPTY = { moto: { vehicle: '', motorcycleNumber: '', hint: '' } as MotoValue, screenNumber: '', issue: '', issueOther: '', location: '', availability: '', availabilityOther: '' };
+const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#f37121]/60 focus:outline-none focus:ring-2 focus:ring-[#f37121]/20';
 
-export function CreateComplaintModal({ open, onClose, meta, onCreated, tx }: {
-  open: boolean; onClose: () => void; meta: Vocab | null; onCreated: (id: string) => void; tx: Tx;
+// ── نموذجُ رفع البلاغ — أسئلةُ نموذج Media Go نفسُها ─────────────────────
+// موقعُ الصيانة لا يُسأل: الصيانةُ عندنا دائمًا (إنرجايز)، والخادمُ يكتبه.
+// والصورُ في آخر النموذج: يُكتب البلاغُ أوّلًا ثمّ يُوثَّق.
+const EMPTY = { moto: { vehicle: '', motorcycleNumber: '', hint: '' } as MotoValue, screenNumber: '', issue: '', issueOther: '', availability: '', availabilityOther: '' };
+
+export function CreateComplaintModal({ open, onClose, meta, onCreated, tx, ar = true }: {
+  open: boolean; onClose: () => void; meta: Vocab | null; onCreated: (id: string) => void; tx: Tx; ar?: boolean;
 }) {
   const { notify } = useDialog();
   const [f, setF] = useState(EMPTY);
@@ -231,7 +297,6 @@ export function CreateComplaintModal({ open, onClose, meta, onCreated, tx }: {
     if (!f.moto.motorcycleNumber.trim()) m.push(tx('رقم الدبّاب', 'Motorcycle number'));
     if (!f.issue) m.push(tx('المشكلة', 'Issue'));
     if (f.issue === 'other' && !f.issueOther.trim()) m.push(tx('وصف المشكلة', 'Issue description'));
-    if (!f.location) m.push(tx('موقع الصيانة', 'Maintenance location'));
     if (!f.availability) m.push(tx('وقت التوفّر', 'Availability'));
     if (f.availability === 'other' && !f.availabilityOther.trim()) m.push(tx('الوقت المناسب', 'Preferred time'));
     return m;
@@ -245,7 +310,6 @@ export function CreateComplaintModal({ open, onClose, meta, onCreated, tx }: {
         vehicle: f.moto.vehicle || undefined, motorcycleNumber: f.moto.motorcycleNumber.trim(),
         screenNumber: f.screenNumber.trim(),
         issue: f.issue, issueOther: f.issueOther.trim(),
-        location: f.location,
         availability: f.availability, availabilityOther: f.availabilityOther.trim(),
         files: files.map((x) => ({ dataUrl: x.dataUrl, fileName: x.fileName })),
       });
@@ -259,58 +323,63 @@ export function CreateComplaintModal({ open, onClose, meta, onCreated, tx }: {
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-3 backdrop-blur-sm sm:items-center" onClick={onClose}>
-      <div className="my-6 w-full max-w-2xl overflow-hidden rounded-2xl bg-slate-50 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between bg-gradient-to-l from-[#12325c] to-[#1d4f8f] px-5 py-4 text-white">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-3 backdrop-blur-sm sm:items-center" onClick={onClose}>
+      <div className="my-6 w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between bg-slate-900 px-5 py-3.5 text-white">
           <div className="flex items-center gap-3">
-            <span className="rounded-xl bg-white/15 p-2"><MonitorPlay className="h-5 w-5" /></span>
-            <span className="flex flex-col leading-tight">
-              <span className="text-[16px] font-bold">بلاغ عطل شاشة — Media Go</span>
-              <span className="text-[11.5px] text-white/70" dir="ltr">Screen fault report</span>
+            <span className="rounded-lg bg-white/10 p-2 text-[#f37121]"><MonitorPlay className="h-[18px] w-[18px]" /></span>
+            <span className="leading-tight">
+              <span className="block text-[15px] font-bold">{tx('بلاغ عطل شاشة', 'Screen fault report')}</span>
+              <span className="block text-[11px] text-slate-400">Media Go · {tx('الصيانة في إنرجايز', 'Serviced at Energize')}</span>
             </span>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1.5 hover:bg-white/10" aria-label="Close"><X className="h-5 w-5" /></button>
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 hover:text-white" aria-label="Close"><X className="h-5 w-5" /></button>
         </div>
-        <div className="max-h-[75vh] space-y-5 overflow-y-auto p-5">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+        <div className="max-h-[72vh] space-y-6 overflow-y-auto bg-slate-50/60 px-5 py-5">
+          <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2">
             <Q ar="رقم الدبّاب" en="Motorcycle Number" required>
               <MotorcyclePicker value={f.moto} onChange={(v) => set('moto', v)} tx={tx} />
             </Q>
             <Q ar="رقم الشاشة" en="Screen Number">
-              <input value={f.screenNumber} onChange={(e) => set('screenNumber', e.target.value)} maxLength={60}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+              <input value={f.screenNumber} onChange={(e) => set('screenNumber', e.target.value)} maxLength={60} className={inputCls} />
             </Q>
           </div>
-          <Q ar="صورة العطل" en="Photo of the Fault">
-            <MediaPicker files={files} onChange={setFiles} tx={tx} />
-          </Q>
-          <Q ar="المشكلة" en="Issue" required>
-            <ChoiceGrid items={meta?.issue || []} value={f.issue} onChange={(k) => set('issue', k)} />
-            {f.issue === 'other' && (
-              <input autoFocus value={f.issueOther} onChange={(e) => set('issueOther', e.target.value)} maxLength={500}
-                placeholder={tx('صف المشكلة', 'Describe the issue')}
-                className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
-            )}
-          </Q>
-          <Q ar="موقع الصيانة" en="Maintenance Location" required>
-            <ChoiceGrid items={meta?.location || []} value={f.location} onChange={(k) => set('location', k)} />
-          </Q>
-          <Q ar="وقت توفّر الدبّاب في المقر" en="Time the Motorcycle Will Be Available" required>
-            <ChoiceGrid items={meta?.availability || []} value={f.availability} onChange={(k) => set('availability', k)} />
-            {f.availability === 'other' && (
-              <input value={f.availabilityOther} onChange={(e) => set('availabilityOther', e.target.value)} maxLength={200}
-                placeholder={tx('اكتب الوقت المناسب', 'Write the preferred time')}
-                className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
-            )}
-          </Q>
+
+          <div className="space-y-5 rounded-xl border border-slate-200 bg-white p-4">
+            <Q ar="المشكلة" en="Issue" required>
+              <ChoiceGrid items={meta?.issue || []} value={f.issue} onChange={(k) => set('issue', k)} />
+              {f.issue === 'other' && (
+                <input autoFocus value={f.issueOther} onChange={(e) => set('issueOther', e.target.value)} maxLength={500}
+                  placeholder={tx('صف المشكلة', 'Describe the issue')} className={inputCls} />
+              )}
+            </Q>
+            <div className="border-t border-slate-100" />
+            <Q ar="وقت توفّر الدبّاب في المقر" en="Time the Motorcycle Will Be Available" required>
+              <ChoiceGrid items={meta?.availability || []} value={f.availability} onChange={(k) => set('availability', k)} />
+              {f.availability === 'other' && (
+                <input value={f.availabilityOther} onChange={(e) => set('availabilityOther', e.target.value)} maxLength={200}
+                  placeholder={tx('اكتب الوقت المناسب', 'Write the preferred time')} className={inputCls} />
+              )}
+            </Q>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <Q ar="صورة العطل" en="Photo of the Fault" hint={tx('اختياري', 'Optional')}>
+              <MediaPicker files={files} onChange={setFiles} tx={tx} ar={ar} />
+            </Q>
+          </div>
         </div>
+
         <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-3">
-          <span className="text-[11.5px] text-slate-500">{missing.length ? `${tx('ناقص', 'Missing')}: ${missing.join('، ')}` : tx('جاهز للإرسال', 'Ready to submit')}</span>
+          <span className={`text-[11.5px] ${missing.length ? 'text-slate-400' : 'font-semibold text-emerald-600'}`}>
+            {missing.length ? `${tx('ناقص', 'Missing')}: ${missing.join('، ')}` : tx('جاهز للإرسال', 'Ready to submit')}
+          </span>
           <div className="flex gap-2">
-            <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">{tx('إلغاء', 'Cancel')}</button>
+            <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">{tx('إلغاء', 'Cancel')}</button>
             <button type="button" onClick={submit} disabled={saving}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-5 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#e0621a] disabled:opacity-60">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#f37121] px-5 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#e0621a] disabled:opacity-60">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 rtl:-scale-x-100" />}
               {saving ? tx('جارٍ الرفع…', 'Uploading…') : tx('رفع البلاغ', 'Submit')}
             </button>
           </div>
@@ -319,7 +388,6 @@ export function CreateComplaintModal({ open, onClose, meta, onCreated, tx }: {
     </div>
   );
 }
-
 // ── عارضُ الصور والمقاطع ────────────────────────────────────────────────────
 function Lightbox({ files, index, onClose, onIndex }: { files: MgFull['files']; index: number; onClose: () => void; onIndex: (i: number) => void }) {
   const f = files[index];
@@ -362,7 +430,7 @@ function InfoCell({ icon, ar, en, mode, children }: { icon: ReactNode; ar: strin
   );
 }
 
-export function ComplaintDrawer({ id, onClose, mode, onChanged }: { id: string; onClose: () => void; mode: Mode; onChanged: () => void }) {
+export function ComplaintDetailModal({ id, onClose, mode, onChanged }: { id: string; onClose: () => void; mode: Mode; onChanged: () => void }) {
   const tx = useMemo(() => makeTx(mode), [mode]);
   const ar = mode !== 'en';
   const { notify, confirm, prompt } = useDialog();
@@ -383,6 +451,12 @@ export function ComplaintDrawer({ id, onClose, mode, onChanged }: { id: string; 
     } catch (e: any) { setErr(e?.message || 'Failed'); }
   }, [id]);
   useEffect(() => { setD(null); load(); }, [load]);
+  // Escape يغلق النافذة — إلّا والعارضُ مفتوحٌ فوقها، فهو يغلق نفسَه أوّلًا.
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && view === null) onClose(); };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [view, onClose]);
   useSocket('mediago:complaint', useCallback((p: { id?: string }) => { if (!p?.id || p.id === id) load(); }, [id, load]));
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest' }); }, [d?.replies?.length]);
 
@@ -427,9 +501,11 @@ export function ComplaintDrawer({ id, onClose, mode, onChanged }: { id: string; 
   const statusButtons = (can?.statuses || []).filter((s) => s !== d?.status && !(partner && d?.status === 'closed'));
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-[2px]" onClick={onClose}>
-      <aside className="flex h-full w-full max-w-xl flex-col bg-slate-50 shadow-2xl" onClick={(e) => e.stopPropagation()} dir={ar ? 'rtl' : 'ltr'}>
-        <div className="flex items-start justify-between gap-3 bg-gradient-to-l from-[#12325c] to-[#1d4f8f] px-5 py-4 text-white">
+    // ── نافذةٌ في الوسط لا لوحةٌ جانبيّة ─────────────────────────────────────
+    // تُفتَح بضغطةٍ على البلاغ وحدَها، وتتّسع لصوره ومحادثته.
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-3 backdrop-blur-sm sm:p-6" onClick={onClose}>
+      <div role="dialog" aria-modal="true" className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-2xl" onClick={(e) => e.stopPropagation()} dir={ar ? 'rtl' : 'ltr'}>
+        <div className="flex items-start justify-between gap-3 bg-slate-900 px-5 py-4 text-white">
           <div className="min-w-0">
             <p className="text-[12px] text-white/70">{d ? fmtDateTime(d.createdAt, ar) : ''}</p>
             <h2 className="flex items-center gap-2 text-[19px] font-extrabold tracking-wide">
@@ -444,8 +520,8 @@ export function ComplaintDrawer({ id, onClose, mode, onChanged }: { id: string; 
         {!d ? (
           <div className="flex flex-1 items-center justify-center text-slate-500">{err || <Loader2 className="h-6 w-6 animate-spin" />}</div>
         ) : (
-          <div className="flex-1 space-y-4 overflow-y-auto p-4">
-            <div className="grid grid-cols-2 gap-2.5">
+          <div className="min-h-[40vh] flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
               <InfoCell icon={<Bike className="h-3.5 w-3.5" />} ar="رقم الدبّاب" en="Motorcycle" mode={mode}>
                 <span dir="auto">{d.motorcycleNumber}</span>
                 {(d.serialNumber || d.project) && <span className="block text-[11px] font-medium text-slate-500">{[d.serialNumber && `#${d.serialNumber}`, d.project].filter(Boolean).join(' · ')}</span>}
@@ -464,7 +540,7 @@ export function ComplaintDrawer({ id, onClose, mode, onChanged }: { id: string; 
             <section className="rounded-xl border border-slate-200 bg-white p-3">
               <h3 className="mb-2 flex items-center gap-1.5 text-[13px] font-bold text-slate-800"><ImageIcon className="h-4 w-4 text-[#f37121]" /><Bi ar={`صور العطل (${d.files.length})`} en={`Fault media (${d.files.length})`} mode={mode} /></h3>
               {d.files.length ? (
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
                   {d.files.map((f, i) => (
                     <button key={f._id || i} type="button" onClick={() => setView(i)} className="group relative aspect-square overflow-hidden rounded-lg bg-slate-900">
                       {f.kind === 'video'
@@ -476,7 +552,7 @@ export function ComplaintDrawer({ id, onClose, mode, onChanged }: { id: string; 
               ) : <p className="text-[12.5px] text-slate-500">{tx('لا مرفقات', 'No attachments')}</p>}
               {can?.create && d.files.length < MG_LIMITS.maxFiles && (
                 <div className="mt-3 border-t border-slate-100 pt-3">
-                  <MediaPicker files={more} onChange={setMore} tx={tx} room={MG_LIMITS.maxFiles - d.files.length} />
+                  <MediaPicker files={more} onChange={setMore} tx={tx} ar={ar} room={MG_LIMITS.maxFiles - d.files.length} />
                   {!!more.length && (
                     <button type="button" onClick={upload} disabled={busy === 'files'} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-[#12325c] px-3 py-1.5 text-[12.5px] font-bold text-white disabled:opacity-60">
                       {busy === 'files' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}{tx('رفع المرفقات', 'Upload files')}
@@ -560,7 +636,7 @@ export function ComplaintDrawer({ id, onClose, mode, onChanged }: { id: string; 
           </div>
         )}
         {d && view !== null && <Lightbox files={d.files} index={view} onClose={() => setView(null)} onIndex={setView} />}
-      </aside>
+      </div>
     </div>
   );
 }

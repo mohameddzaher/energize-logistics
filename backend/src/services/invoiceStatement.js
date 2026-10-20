@@ -37,12 +37,13 @@ const ymd = (s) => {
 const cellText = (v) => (v === null || v === undefined || v === '' ? '' : String(v));
 const list = (v) => (v === undefined ? [] : Array.isArray(v) ? v.map(String) : [String(v)]);
 
+// بأرقامٍ غربيّةٍ كبقيّة الورقة — لا «١٥» في سطرٍ و«15» في الذي يليه.
 const AGE_LABELS = {
-  '0_15': ['حتى ١٥ يومًا', 'Up to 15 days'],
-  '15_30': ['من ١٥ إلى ٣٠', '15 – 30 days'],
-  '30_45': ['من ٣٠ إلى ٤٥', '30 – 45 days'],
-  '45_60': ['من ٤٥ إلى ٦٠', '45 – 60 days'],
-  '60_plus': ['أكثر من ٦٠', 'Over 60 days'],
+  '0_15': ['حتى 15 يومًا', 'Up to 15 days'],
+  '15_30': ['من 15 إلى 30 يومًا', '15 – 30 days'],
+  '30_45': ['من 30 إلى 45 يومًا', '30 – 45 days'],
+  '45_60': ['من 45 إلى 60 يومًا', '45 – 60 days'],
+  '60_plus': ['أكثر من 60 يومًا', 'Over 60 days'],
 };
 /** الشريحةُ من عدد الأيّام — بحدود `ageCondition` نفسِها: [من، إلى). */
 const bandOf = (d) => {
@@ -58,39 +59,42 @@ const bandOf = (d) => {
  */
 function columnsOf(kind, t) {
   const C = (key, ar, en, extra = {}) => ({ key, header: t(ar, en), ...extra });
+  // العناوينُ بلغة العميل لا بلغة القسم: الكشفُ يُرسَل إليه. و`internal`
+  // عمودٌ يخصّنا (فرعُنا المسدِّد، مصدرُ المال، حالةُ الدفتر) فلا يُطبَع أبدًا،
+  // و`party` يُطوى حين يكون الكشفُ لعميلٍ واحد — اسمُه وكودُه في الترويسة.
   return kind === 'cash'
     ? [
-      C('reportNumber', 'رقم كشف التخريج', 'Report no.', { cf: 'reportNumber', w: 9 }),
-      C('customer', 'العميل', 'Customer', { cf: 'username', w: 17 }),
-      C('route', 'المسار', 'Route', { local: true, w: 14 }),
-      C('paymentDate', 'تاريخ السداد', 'Paid on', { cf: 'paymentDate', fmt: dt, w: 8 }),
-      C('payingBranch', 'الفرع المسدد', 'Paying branch', { cf: 'payingBranch', w: 8 }),
-      C('ageDays', 'العمر (يوم)', 'Age (days)', { local: true, end: true, w: 5 }),
-      C('value', 'قيمة الكشف', 'Value', { local: true, end: true, money: true, w: 9 }),
-      C('collectedAmount', 'مبلغ التحصيل', 'Collected', { local: true, end: true, money: true, w: 9 }),
-      C('deliveryDate', 'التسليم للعميل', 'To customer', { cf: 'deliveryDate', fmt: dt, w: 8 }),
-      C('collectionDetail', 'التفاصيل', 'Detail', { cf: 'collectionDetail', w: 8 }),
-      C('collectionDate', 'تاريخ التحصيل', 'Collected on', {
-        cf: 'collectionDate', w: 9,
-        fmt: (v, r) => (v ? dt(v) : r.collectedNoDate ? t('محصَّل — بلا تاريخ', 'Collected — no date') : t('لم يُحصَّل', 'open')),
+      C('reportNumber', 'رقم الكشف', 'Reference', { cf: 'reportNumber', w: 9 }),
+      C('customer', 'العميل', 'Customer', { cf: 'username', w: 17, party: true }),
+      C('route', 'المسار', 'Route', { local: true, w: 16 }),
+      C('paymentDate', 'التاريخ', 'Date', { cf: 'paymentDate', fmt: dt, w: 9 }),
+      C('payingBranch', 'الفرع المسدد', 'Paying branch', { cf: 'payingBranch', w: 8, internal: true }),
+      C('ageDays', 'العمر (يوم)', 'Age (days)', { local: true, end: true, w: 6 }),
+      C('value', 'القيمة', 'Amount', { local: true, end: true, money: true, w: 10 }),
+      C('collectedAmount', 'المبلغ المسدَّد', 'Paid amount', { local: true, end: true, money: true, w: 10 }),
+      C('deliveryDate', 'تاريخ الاستلام', 'Received on', { cf: 'deliveryDate', fmt: dt, w: 9 }),
+      C('collectionDetail', 'التفاصيل', 'Detail', { cf: 'collectionDetail', w: 8, internal: true }),
+      C('collectionDate', 'تاريخ السداد', 'Paid on', {
+        cf: 'collectionDate', w: 10,
+        fmt: (v, r) => (v ? dt(v) : r.collectedNoDate ? t('مسدَّد', 'Paid') : t('غير مسدَّد', 'Unpaid')),
         color: (r) => (r.collectionDate || r.collectedNoDate ? '#047857' : '#dc2626'),
       }),
     ]
     : [
-      C('invoiceNumber', 'رقم الفاتورة', 'Invoice no.', { cf: 'invoiceNumber', w: 9 }),
-      C('customer', 'العميل', 'Customer', { cf: 'partyName', w: 22 }),
-      C('partyCode', 'كود الحساب', 'Account code', { cf: 'partyCode', w: 9 }),
-      C('reports', 'عدد الكشوفات', 'Reports', { local: true, end: true, w: 6 }),
-      C('value', 'القيمة', 'Value', { local: true, end: true, money: true, w: 11 }),
-      C('invoiceDate', 'تاريخ الفاتورة', 'Invoice date', { cf: 'invoiceDate', fmt: dt, w: 9 }),
-      C('deliveryDate', 'التسليم للعميل', 'To customer', { cf: 'deliveryDate', fmt: dt, w: 9 }),
-      C('ageDays', 'العمر (يوم)', 'Age (days)', { local: true, end: true, w: 6 }),
-      C('collectionDate', 'تاريخ التحصيل', 'Collected on', {
-        cf: 'collectionDate', w: 9,
-        fmt: (v, r) => (r.fullyCollected ? dt(v) : t('لم تُحصَّل', 'open')),
+      C('invoiceNumber', 'رقم الفاتورة', 'Invoice no.', { cf: 'invoiceNumber', w: 10 }),
+      C('customer', 'العميل', 'Customer', { cf: 'partyName', w: 22, party: true }),
+      C('partyCode', 'كود الحساب', 'Account code', { cf: 'partyCode', w: 9, party: true }),
+      C('reports', 'عدد الكشوف', 'Waybills', { local: true, end: true, w: 7 }),
+      C('value', 'قيمة الفاتورة', 'Invoice amount', { local: true, end: true, money: true, w: 12 }),
+      C('invoiceDate', 'تاريخ الفاتورة', 'Invoice date', { cf: 'invoiceDate', fmt: dt, w: 10 }),
+      C('deliveryDate', 'تاريخ الاستلام', 'Received on', { cf: 'deliveryDate', fmt: dt, w: 10 }),
+      C('ageDays', 'العمر (يوم)', 'Age (days)', { local: true, end: true, w: 7 }),
+      C('collectionDate', 'تاريخ السداد', 'Paid on', {
+        cf: 'collectionDate', w: 10,
+        fmt: (v, r) => (r.fullyCollected ? (dt(v) || t('مسدَّدة', 'Paid')) : t('غير مسدَّدة', 'Unpaid')),
         color: (r) => (r.fullyCollected ? '#047857' : '#dc2626'),
       }),
-      C('status', 'الحالة', 'Status', { cf: 'status', w: 10 }),
+      C('status', 'الحالة', 'Status', { cf: 'status', w: 10, internal: true }),
     ];
 }
 
@@ -181,79 +185,46 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
     b.n += 1; b.v += Number(r.value) || 0;
   }
 
-  // ── الأعمدةُ المختارة على الشاشة ─────────────────────────────────────────
+  // ── الأعمدةُ المختارة على الشاشة — بلا ما يخصّنا ─────────────────────────
+  const singleParty = !!query.customer;
+  // «المبلغ المسدَّد» في الكاش لا يُكتب في أغلب الكشوف (يُعرَف السدادُ بتاريخه)؛
+  // عمودٌ كلُّه «—» يربك العميلَ أمام «مسدَّد» في الخانة المجاورة — فيُطوى حين يكون صفرًا كلَّه.
+  const noPaidAmounts = isCash && !rows.some((r) => Number(r.collectedAmount));
+  const printable = allCols.filter((c) => !c.internal && !(singleParty && c.party)
+    && !(noPaidAmounts && c.key === 'collectedAmount'));
   const wanted = String(query.cols || '').split(',').map((s) => s.trim()).filter(Boolean);
-  let cols = wanted.length ? allCols.filter((c) => wanted.includes(c.key)) : allCols;
-  if (!cols.length) cols = allCols;
-  // الأوّلُ مقفولٌ على الشاشة (لا يُخفى) — فيبقى في الورقة أيضًا.
+  let cols = wanted.length ? printable.filter((c) => wanted.includes(c.key)) : printable;
+  // رقمُ الفاتورة/الكشف مقفولٌ على الشاشة (لا يُخفى) — فيبقى في الورقة أيضًا.
   if (!cols.includes(allCols[0])) cols = [allCols[0], ...cols];
 
-  // ── الفلاترُ مكتوبةً ──────────────────────────────────────────────────────
-  const filters = [];
-  if (query.customer) filters.push([t('العميل', 'Customer'), String(query.customer)]);
-  if (query.branch) filters.push([t('الفرع المسدد', 'Paying branch'), String(query.branch)]);
-  if (query.from || query.to) {
-    filters.push([
-      isCash ? t('مدى تاريخ السداد', 'Payment date range') : t('مدى تاريخ الفاتورة', 'Invoice date range'),
-      `${t('من', 'From')} ${query.from ? ymd(query.from) : '…'} · ${t('إلى', 'to')} ${query.to ? ymd(query.to) : '…'}`,
-    ]);
-  }
-  if (query.age && AGE_LABELS[query.age]) filters.push([t('عمر الفاتورة', 'Invoice age'), t(...AGE_LABELS[query.age])]);
-  if (isCash && query.detail) filters.push([t('التفاصيل', 'Detail'), String(query.detail)]);
-  if (query.q) filters.push([t('البحث', 'Search'), String(query.q)]);
-  for (const c of allCols) {
-    const vals = c.cf ? list(query[`cf_${c.cf}`]) : [];
-    if (!vals.length) continue;
-    const shown = vals.map((v) => (v === '' ? t('(فارغ)', '(blank)') : c.fmt && /^\d{4}-\d{2}-\d{2}$/.test(v) ? ymd(v) : v));
-    filters.push([`${t('فلتر عمود', 'Column filter')} · ${c.header}`, shown.join(t('، ', ', '))]);
-  }
-  for (const { col, set } of local) {
-    filters.push([`${t('فلتر عمود', 'Column filter')} · ${col.header}`, [...set].map((v) => (v === '' ? t('(فارغ)', '(blank)') : v)).join(t('، ', ', '))]);
-  }
+  const today = dt(new Date());
 
-  const who = `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.email || '';
-  const now = new Date();
-  const stamp = now.toLocaleString('en-GB', { timeZone: TZ, dateStyle: 'short', timeStyle: 'short' });
-
-  const status = query.collected === 'yes' ? t('المحصَّل فقط', 'Collected only')
-    : query.collected === 'no' ? t('غير المحصَّل فقط', 'Not collected only') : t('الكل', 'All');
-  const scope = sel.length
-    ? t(`الصفوف المحدَّدة فقط (${count(rows.length)})`, `Selected rows only (${count(rows.length)})`)
-    : t('نتيجة الفلتر كاملةً — كل الصفحات', 'The whole filtered result — every page');
-
+  // ── الترويسة: لمن الكشف، ومتى، وعن أيّ فترة ──────────────────────────────
+  // لا شيءَ من أدوات القسم (حالةُ التحصيل، فلاترُ الأعمدة، النطاق، اسمُ مُصدِره):
+  // الكشفُ يُرسَل إلى العميل.
+  const codes = [...new Set(rows.map((r) => r.partyCode).filter(Boolean))];
   const head = [
     [t('العميل', 'Customer'), query.customer ? String(query.customer) : t('جميع العملاء', 'All customers')],
-    [t('حالة التحصيل', 'Collection status'), status],
-    ...filters.filter(([k]) => k !== t('العميل', 'Customer')),
-    [t('النطاق', 'Scope'), scope],
-    [t('تاريخ الإصدار', 'Issued on'), stamp],
-    [t('أصدره', 'Issued by'), who || '—'],
+    ...(singleParty && codes.length === 1 ? [[t('رقم الحساب', 'Account no.'), codes[0]]] : []),
+    ...(query.from || query.to ? [[t('فترة الكشف', 'Statement period'),
+      `${t('من', 'From')} ${query.from ? ymd(query.from) : '…'} · ${t('إلى', 'to')} ${query.to ? ymd(query.to) : today}`]] : []),
+    [t('تاريخ الكشف', 'Statement date'), today],
   ];
 
-  // ── البطاقات كما على الشاشة ──────────────────────────────────────────────
-  const statItems = isCash
-    ? [
-      { label: t('كشوف', 'Reports'), value: count(cards.count) },
-      { label: t('المحصَّل', 'Collected'), value: money2(cards.collected), accent: true },
-      { label: t('عدد المحصَّل', 'Collected count'), value: count(cards.collectedCount) },
-      { label: t('لم يُحصَّل بعد', 'Outstanding count'), value: count(cards.pendingCount) },
-    ]
-    : [
-      { label: t('فواتير', 'Invoices'), value: count(cards.count) },
-      { label: t('قيمة الفواتير', 'Invoiced value'), value: money2(cards.value), accent: true },
-      { label: t('محصَّلة بالكامل', 'Fully collected'), value: count(cards.fullyCollected) },
-      { label: t('لم تُحصَّل بعد', 'Still open'), value: count(cards.pending) },
-    ];
-
-  const balance = fullSet ? [
-    { label: isCash ? t('قيمة الكشوف', 'Reports value') : t('قيمة الفواتير', 'Invoiced value'), value: money2(cards.value) },
-    { label: t('قيمة المحصَّل', 'Collected value'), value: money2(r2((cards.value || 0) - openValue)) },
-    { label: t('الرصيد غير المحصَّل', 'Outstanding balance'), value: money2(openValue), accent: true },
-  ] : [];
-  if (isCash && fullSet) {
-    // في الكاش يكتب المحصِّلُ ما قبضه بيده — وقد يخالف قيمةَ الكشف.
-    balance.splice(2, 0, { label: t('المبالغ المقبوضة فعلًا', 'Amounts actually received'), value: money2(cards.collected) });
-  }
+  // ── ملخّصُ الحساب: ما يسأل عنه العميل ────────────────────────────────────
+  // عددٌ وقيمةٌ (بطاقتا الشاشة نفسُهما)، وما سُدِّد، وما بقي — ومع الباقي عددُ
+  // ما لم يُسدَّد (بطاقةُ «لم تُحصَّل بعد» على الشاشة). والمسدَّدُ = القيمة −
+  // المستحقّ، فيلتقي المجموعان على قيمة البطاقة بالهللة.
+  const pendingCount = isCash ? cards.pendingCount : cards.pending;
+  const summary = [
+    { label: isCash ? t('عدد الكشوف', 'Items') : t('عدد الفواتير', 'Invoices'), value: count(cards.count) },
+    { label: isCash ? t('إجمالي قيمة الكشوف', 'Total billed') : t('إجمالي قيمة الفواتير', 'Total billed'), value: money2(cards.value) },
+    ...(fullSet ? [
+      { label: t('المسدَّد', 'Paid'), value: money2(r2((cards.value || 0) - openValue)) },
+      { label: t('الرصيد المستحقّ', 'Balance due'), value: money2(openValue), accent: true,
+        sub: pendingCount ? t(`${isCash ? 'كشوف' : 'فواتير'} غير مسدَّدة: ${count(pendingCount)}`, `${count(pendingCount)} unpaid`) : t('لا مستحقّات', 'Nothing due') },
+    ] : []),
+  ];
 
   // ── الجدول ───────────────────────────────────────────────────────────────
   const printed = rows.slice(0, PRINT_ROW_CAP);
@@ -282,33 +253,26 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
   const blocks = [
     { kind: 'section', text: t('بيانات الكشف', 'Statement details') },
     { kind: 'kv', items: head, isolate: true },
-    { kind: 'section', text: t('الملخّص', 'Summary') },
-    { kind: 'stats', items: statItems },
-    ...(balance.length ? [{ kind: 'stats', items: balance }] : []),
-    ...(narrowed ? [{ kind: 'note', tone: 'warn', text: t(
-      'الأرقام أعلاه محسوبة على الصفوف الظاهرة بعد فلاتر الأعمدة المحلّية أو التحديد، لا على نتيجة الفلتر كلّها.',
-      'The figures above are computed on the rows left after the local column filters or the selection, not on the whole filtered result.') }] : []),
-    ...(truncatedAtCap && !narrowed ? [{ kind: 'note', tone: 'warn', text: t(
-      `النتيجة أكبر من ${count(rows.length)} صف — البطاقات للنتيجة كلّها، والجدول لأول ${count(rows.length)} صف. ضيّق الفلتر لكشفٍ كامل.`,
-      `The result exceeds ${count(rows.length)} rows — the cards cover all of it, the table the first ${count(rows.length)}. Narrow the filter for a full statement.`) }] : []),
+    { kind: 'section', text: t('ملخّص الحساب', 'Account summary') },
+    { kind: 'stats', items: summary },
   ];
 
   if (open.length) {
     blocks.push(
-      { kind: 'section', text: t('أعمار غير المحصَّل', 'Ageing of the outstanding') },
+      { kind: 'section', text: t('المستحقّات حسب العمر', 'Amounts due by age') },
       {
         kind: 'table',
-        head: [t('العمر', 'Age'), isCash ? t('عدد الكشوف', 'Reports') : t('عدد الفواتير', 'Invoices'), t('القيمة', 'Value')],
+        head: [t('عمر المستحقّ', 'Age'), isCash ? t('عدد الكشوف', 'Items') : t('عدد الفواتير', 'Invoices'), t('المبلغ المستحقّ', 'Amount due')],
         align: ['start', 'end', 'end'],
         widths: ['50%', '20%', '30%'],
-        rows: bands.map((b) => [t(...AGE_LABELS[b.k]), count(b.n), money2(r2(b.v))]),
+        rows: bands.filter((b) => b.n).map((b) => [t(...AGE_LABELS[b.k]), count(b.n), money2(r2(b.v))]),
         foot: [t('الإجمالي', 'Total'), count(bands.reduce((s, b) => s + b.n, 0)), money2(r2(bands.reduce((s, b) => s + b.v, 0)))],
       },
     );
   }
 
   blocks.push(
-    { kind: 'section', text: isCash ? t('تفصيل الكشوف', 'Reports in detail') : t('تفصيل الفواتير', 'Invoices in detail') },
+    { kind: 'section', text: t('تفاصيل الفواتير', 'Invoice details') },
     {
       kind: 'table',
       head: cols.map((c) => c.header),
@@ -318,19 +282,30 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
       foot,
       small: true,
       isolate: true,
-      emptyText: t('لا صفوف تطابق الفلتر.', 'No rows match the filter.'),
+      emptyText: t('لا فواتير في هذا الكشف.', 'No invoices in this statement.'),
     },
   );
   if (rows.length > printed.length) {
-    blocks.push({ kind: 'note', tone: 'warn', text: t(
-      `طُبع أوّل ${count(printed.length)} صف من ${count(rows.length)} — والإجماليّات للكلّ. ضيّق الفلتر لطباعة الباقي.`,
-      `Printed the first ${count(printed.length)} of ${count(rows.length)} rows — totals cover all. Narrow the filter to print the rest.`) });
+    blocks.push({ kind: 'note', text: t(
+      `يعرض الجدول أوّل ${count(printed.length)} من ${count(rows.length)} — والإجماليّات تشمل الكلّ.`,
+      `The table lists the first ${count(printed.length)} of ${count(rows.length)} — totals include all.`) });
   }
-  blocks.push({ kind: 'signatures', items: [
-    { name: who, title: t('أعدّه', 'Prepared by') },
-    { name: '', title: t('راجعه', 'Reviewed by') },
-    { name: '', title: t('اعتمده', 'Approved by') },
-  ] });
+
+  // ── خاتمةٌ للعميل لا توقيعاتُ مراجعةٍ داخليّة ───────────────────────────
+  // في كتلةٍ واحدةٍ مع خانة الختم، فلا تنفصلان على صفحتين.
+  blocks.push({
+    kind: 'signatures',
+    lead: [
+      openValue > 0 && fullSet
+        ? t(`نرجو التكرّم بسداد الرصيد المستحقّ البالغ ${money2(openValue)} ريال سعودي.`,
+          `Kindly settle the balance due of SAR ${money2(openValue)}.`)
+        : '',
+      t('في حال وجود أيّ ملاحظةٍ على هذا الكشف يُرجى التواصل مع إدارة التحصيل على الرقم 920031911 خلال 14 يومًا من تاريخه، وإلّا عُدَّ الكشف صحيحًا ومعتمدًا.',
+        'Should you have any query on this statement, please contact our Collections team on 920031911 within 14 days of its date; otherwise it will be deemed correct.'),
+      t('شاكرين لكم حسن تعاملكم.', 'Thank you for your business.'),
+    ].filter(Boolean).join(' '),
+    items: [{ name: t('إدارة التحصيل', 'Collections Department'), title: t('الختم والتوقيع', 'Stamp & signature') }],
+  });
 
   const kindLabel = isCash ? t('فواتير كاش', 'Cash invoices') : t('فواتير ضريبية', 'Tax invoices');
   const doc = {
@@ -338,7 +313,7 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
     subtitle: query.customer ? String(query.customer) : t('جميع العملاء', 'All customers'),
     blocks,
     lang: ar ? 'ar' : 'en',
-    footerNote: `${t('إنرجايز للخدمات اللوجستية', 'Energize Logistics')} · ${t('أصدره', 'Issued by')} ${who} · ${stamp}`,
+    footerNote: `${t('إنرجايز للخدمات اللوجستية', 'Energize Logistics')} · ${t('كشف حساب بتاريخ', 'Statement dated')} ${today}`,
   };
   return { doc, check: { cards, narrowed, rows: rows.length, printed: printed.length, openValue, screenTotals: data.totals, screenTotal: data.total } };
 }

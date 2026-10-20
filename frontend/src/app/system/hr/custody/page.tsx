@@ -44,7 +44,7 @@ export default function CustodyPage() {
   // Types/conditions are editable from Settings → Reference Data.
   const { types, conditions, typeLabel, conditionLabel } = useAssetVocab();
 
-  const [assets, setAssets] = useState<Asset[]>([]);
+  const [allAssets, setAssets] = useState<Asset[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -58,14 +58,17 @@ export default function CustodyPage() {
 
   const load = useCallback(async () => {
     try {
-      const qs = statusFilter ? `?status=${statusFilter}` : '';
-      const d = await api.get<{ assets: Asset[] }>(`/api/hr/assets${qs}`);
+      const d = await api.get<{ assets: Asset[] }>('/api/hr/assets');
       setAssets(d.assets || []);
     } catch {}
     setLoading(false);
-  }, [statusFilter]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
+  // ── الحالةُ تُفلتَر هنا لا في الخادم ───────────────────────────────────────
+  // كانت تُرسَل إلى الخادم، والرقمُ في رأس الصفحة يُعَدّ على ما رجع: يُختار
+  // «مُغلَق» فيقول الرأسُ «٠ مفتوح». فيُجلَب الكلُّ مرّةً ويُفلتَر الجدولُ وحدَه.
+  const assets = statusFilter ? allAssets.filter((a) => a.status === statusFilter) : allAssets;
   useSocket('hr:asset', useCallback(() => load(), [load]));
   useEffect(() => { api.get<{ employees: Employee[] }>('/api/hr/employees').then((d) => setEmployees(d.employees || [])).catch(() => {}); }, []);
 
@@ -146,7 +149,7 @@ export default function CustodyPage() {
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
-      <PageHeader icon={<Package className="w-5 h-5" />} title={tx.pageTitle} subtitle={`${assets.filter((a) => a.status === 'assigned').length} ${tx.assignedCount}`}>
+      <PageHeader icon={<Package className="w-5 h-5" />} title={tx.pageTitle} subtitle={`${allAssets.filter((a) => a.status === 'assigned').length} ${tx.assignedCount}`}>
         <ExportMenu fileName="custody" lang={ar ? 'ar' : 'en'} variant="subtle" label={tx.exportExcel} options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.addCustody}</PrimaryButton>
       </PageHeader>

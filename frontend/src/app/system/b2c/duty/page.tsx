@@ -17,6 +17,7 @@ import MonthPicker from '@/components/system/MonthPicker';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import Link from 'next/link';
 import {
@@ -153,6 +154,12 @@ export default function DutyRegisterPage() {
   const [missing, setMissing] = useState<any>(null);
   const [an, setAn] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  // ── والمعروضُ يبقى أثناء التحديث ─────────────────────────────────────────
+  // كان كلُّ تحميلٍ (تفقّدٌ جديدٌ من السوكِت، «عرض المزيد»، تغييرُ فلتر) يُخفي
+  // الجدولَ والصورَ والتحليلَ ويضع مكانها دوّارة — فتومض الشاشةُ كلُّها وترجع إلى
+  // أعلاها. فالدوّارةُ للتحميل الأوّل وحده، وما بعده يُبدَّل في مكانه.
+  const [loaded, setLoaded] = useState(false);
+  const guard = useLatestRequest();
   const [open, setOpen] = useState<Row | null>(null);
 
   /**
@@ -185,6 +192,7 @@ export default function DutyRegisterPage() {
   }, [from, to]);
 
   const load = useCallback(async () => {
+    const mine = guard.begin();
     setLoading(true);
     try {
       const [l, a, m] = await Promise.all([
@@ -198,10 +206,12 @@ export default function DutyRegisterPage() {
         // «لم يُتفقَّد أحد» عن يومٍ لم يأتِ. فإن كان اليومُ داخل المدى سُئل عنه.
         api.get<any>(`/api/b2c/duty/missing?date=${missingDate}${supervisor ? `&supervisor=${supervisor}` : ''}`).catch(() => null),
       ]);
+      if (!guard.isCurrent(mine)) return;
       setRows(l.rows || []); setTotal(l.total || 0); setAn(a); setMissing(m);
-    } catch { setRows([]); setTotal(0); }
-    setLoading(false);
-  }, [qs, pages, from, to, supervisor, missingDate]);
+    } catch { if (guard.isCurrent(mine)) { setRows([]); setTotal(0); } }
+    if (!guard.isCurrent(mine)) return;
+    setLoading(false); setLoaded(true);
+  }, [qs, pages, from, to, supervisor, missingDate, guard]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.get<any>('/api/b2c/duty/supervisors').then((d) => setSups(d.supervisors || [])).catch(() => {}); }, []);
@@ -363,9 +373,9 @@ export default function DutyRegisterPage() {
         </div>
       )}
 
-      {loading && <div className="py-8 text-center text-sm text-slate-500"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>}
+      {loading && !loaded && <div className="py-8 text-center text-sm text-slate-500"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>}
 
-      {!loading && tab === 'log' && (
+      {loaded && tab === 'log' && (
         <ScrollX className="rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300">
@@ -415,7 +425,7 @@ export default function DutyRegisterPage() {
         </ScrollX>
       )}
 
-      {!loading && tab === 'gallery' && (
+      {loaded && tab === 'gallery' && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {photos.map((p, i) => (
             <button key={i} type="button" onClick={() => setOpen(p.row)} className="group text-start">
@@ -432,7 +442,7 @@ export default function DutyRegisterPage() {
         </div>
       )}
 
-      {!loading && tab === 'missing' && (
+      {loaded && tab === 'missing' && (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="mb-3 text-xs text-slate-500">
             {t(`مندوبون نشطون لم يُسجَّل لهم تفقّد يوم ${missing?.dateKey || to}.`,
@@ -455,7 +465,7 @@ export default function DutyRegisterPage() {
         </div>
       )}
 
-      {!loading && tab === 'analysis' && an && (
+      {loaded && tab === 'analysis' && an && (
         <div className="space-y-4">
           <Panel title={t('التزام المشرفين', 'Supervisor compliance')} hint={t('نُفِّذ ÷ المطلوب خلال المدى', 'done ÷ due over the range')}>
             <table className="w-full text-sm">

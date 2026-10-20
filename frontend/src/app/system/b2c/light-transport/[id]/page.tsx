@@ -51,6 +51,44 @@ function DocValue({ doc, ar }: { doc?: LTDoc; ar: boolean }) {
   );
 }
 
+/**
+ * سطرُ البيانات والقسمُ خارجَ جسم الصفحة: داخلَه يصيران مكوِّنين جديدين في كلّ رسمة،
+ * فيُهدَم الملفُّ كلُّه ويُبنى مع كلّ تحديثٍ من السوكِت (ثلاثةُ مستمعين هنا).
+ */
+function Row({ label, children, mono }: { label: string; children: React.ReactNode; mono?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-[7px] border-b border-slate-100 last:border-0">
+      <span className="text-[12px] text-slate-500 shrink-0 leading-tight">{label}</span>
+      <span className={`text-[13.5px] font-semibold text-slate-900 text-end break-all leading-snug ${mono ? 'font-mono tracking-tight' : ''}`}>
+        {children}
+      </span>
+    </div>
+  );
+}
+
+function Section({ title, icon, accent, children, href, hrefLabel, isRTL }: {
+    title: string; icon: React.ReactNode; accent: string; children: React.ReactNode;
+    href?: string; hrefLabel?: string; isRTL: boolean;
+  }) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden flex flex-col">
+      <div className="h-1" style={{ background: accent }} />
+      <div className="px-4 pt-3.5 pb-1 flex items-center gap-2">
+        <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+          style={{ background: `${accent}1a`, color: accent }}>{icon}</span>
+        <h2 className="font-extrabold text-slate-900 text-[14.5px] tracking-tight">{title}</h2>
+      </div>
+      <div className="px-4 pb-3 flex-1">{children}</div>
+      {href && (
+        <Link href={href}
+          className="mx-4 mb-3 inline-flex items-center gap-1 self-start text-[11.5px] font-bold text-slate-500 hover:text-[#f37121] transition-colors">
+          {hrefLabel} <ChevronLeft className={`w-3.5 h-3.5 ${isRTL ? '' : 'rotate-180'}`} />
+        </Link>
+      )}
+    </section>
+  );
+}
+
 export default function LightTransportProfile() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -95,36 +133,6 @@ export default function LightTransportProfile() {
 
   const val = (x: unknown) => (x === null || x === undefined || x === ''
     ? <span className="text-slate-300 font-normal">—</span> : (x as React.ReactNode));
-
-  const Row = ({ label, children, mono }: { label: string; children: React.ReactNode; mono?: boolean }) => (
-    <div className="flex items-baseline justify-between gap-4 py-[7px] border-b border-slate-100 last:border-0">
-      <span className="text-[12px] text-slate-500 shrink-0 leading-tight">{label}</span>
-      <span className={`text-[13.5px] font-semibold text-slate-900 text-end break-all leading-snug ${mono ? 'font-mono tracking-tight' : ''}`}>
-        {children}
-      </span>
-    </div>
-  );
-
-  const Section = ({ title, icon, accent, children, href, hrefLabel }: {
-    title: string; icon: React.ReactNode; accent: string; children: React.ReactNode;
-    href?: string; hrefLabel?: string;
-  }) => (
-    <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden flex flex-col">
-      <div className="h-1" style={{ background: accent }} />
-      <div className="px-4 pt-3.5 pb-1 flex items-center gap-2">
-        <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-          style={{ background: `${accent}1a`, color: accent }}>{icon}</span>
-        <h2 className="font-extrabold text-slate-900 text-[14.5px] tracking-tight">{title}</h2>
-      </div>
-      <div className="px-4 pb-3 flex-1">{children}</div>
-      {href && (
-        <Link href={href}
-          className="mx-4 mb-3 inline-flex items-center gap-1 self-start text-[11.5px] font-bold text-slate-500 hover:text-[#f37121] transition-colors">
-          {hrefLabel} <ChevronLeft className={`w-3.5 h-3.5 ${isRTL ? '' : 'rotate-180'}`} />
-        </Link>
-      )}
-    </section>
-  );
 
   const flat = [
     [t('الاسم', 'Name'), e.name],
@@ -210,7 +218,7 @@ export default function LightTransportProfile() {
       <TransferProjectModal open={transfer} onClose={() => setTransfer(false)} id={String(e._id)} name={e.name} current={e.projectAr || ''} ar={ar} onDone={load} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3.5">
-        <Section title={t('الموظف', 'The employee')} icon={<User className="w-4 h-4" />} accent="#f37121"
+        <Section isRTL={isRTL} title={t('الموظف', 'The employee')} icon={<User className="w-4 h-4" />} accent="#f37121"
           href={e.employee ? `/system/hr/employees/${(e.employee as any)._id}` : undefined}
           hrefLabel={t('ملفّه في الموارد البشرية', 'His HR file')}>
           <Row label={t('رقم الهوية', 'ID number')} mono>{val(e.idNumber)}</Row>
@@ -229,7 +237,7 @@ export default function LightTransportProfile() {
           </Row>
         </Section>
 
-        <Section title={t('التشغيل', 'Deployment')} icon={<Building2 className="w-4 h-4" />} accent="#0891b2">
+        <Section isRTL={isRTL} title={t('التشغيل', 'Deployment')} icon={<Building2 className="w-4 h-4" />} accent="#0891b2">
           <Row label={t('الوظيفة', 'Job')}>{val(e.jobTitleAr)}</Row>
           <Row label={t('المشروع', 'Project')}>{val(e.projectAr)}</Row>
           <Row label={t('الفرع', 'Branch')}>{val(e.cityAr)}</Row>
@@ -247,7 +255,7 @@ export default function LightTransportProfile() {
           <Row label={t('حالة العمل', 'Status')}>{val(e.workStatusShown)}</Row>
         </Section>
 
-        <Section title={t('المركبة', 'Vehicle')} icon={<Car className="w-4 h-4" />} accent="#16a34a"
+        <Section isRTL={isRTL} title={t('المركبة', 'Vehicle')} icon={<Car className="w-4 h-4" />} accent="#16a34a"
           href={e.vehicle ? `/system/vehicles/registry/${e.vehicle._id}` : undefined}
           hrefLabel={t('ملفّ المركبة في سجلّ المركبات', 'Vehicle file in the registry')}>
           <Row label={t('رقم اللوحة', 'Plate')} mono>{val(e.vehiclePlate)}</Row>
@@ -267,7 +275,7 @@ export default function LightTransportProfile() {
           </Row>
         </Section>
 
-        <Section title={t('السكن', 'Housing')} icon={<Home className="w-4 h-4" />} accent={NEUTRAL}
+        <Section isRTL={isRTL} title={t('السكن', 'Housing')} icon={<Home className="w-4 h-4" />} accent={NEUTRAL}
           href="/system/b2c/settings" hrefLabel={t('إدارة السكن', 'Manage housing')}>
           <Row label={t('السكن', 'Housing')}>{val(e.housing?.name)}</Row>
           <Row label={t('الغرفة', 'Room')}>{val(e.housingRoom)}</Row>
@@ -275,7 +283,7 @@ export default function LightTransportProfile() {
         </Section>
 
         {!!e.notesAr && (
-          <Section title={t('ملاحظات', 'Notes')} icon={<IdCard className="w-4 h-4" />} accent={NEUTRAL}>
+          <Section isRTL={isRTL} title={t('ملاحظات', 'Notes')} icon={<IdCard className="w-4 h-4" />} accent={NEUTRAL}>
             <p className="text-[13px] text-slate-800 whitespace-pre-wrap leading-relaxed py-1">{e.notesAr}</p>
           </Section>
         )}

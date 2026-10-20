@@ -32,7 +32,7 @@ const mongoose = require('mongoose');
 const DEFAULT_FILE = path.join(__dirname, '../../../collection files/1-1-2026 to 19-9-2026.xlsx');
 const VAT_RATE = 0.15;
 const S = (v) => String(v ?? '').trim();
-const NO_INVOICE_RX = /^\s*(0|no\s*inv|بدون|لا\s*يوجد|-|—|ىى)\s*$/i;
+const { NO_INVOICE_RX } = require('../utils/paymentType');
 
 // التواريخُ تُقرأ بالرقم التسلسليّ لا بـ`cellDates` — تلك تُسقط يومًا على هذا
 // الجهاز. راجع xlsx-date-epoch-trap.

@@ -461,8 +461,18 @@ function applyBillingRules(patch, current = {}) {
 
   const blocked = [];
   if (nextType === 'cash') {
-    // الأعمدةُ مفتوحةٌ كلُّها — راجع deriveCashTotals. ولا يُقفَل شيءٌ ولا
-    // يُصفَّر: ما كان القفلُ يمنعه صار يُكتَب، وما كان يُصفِّره يُملأ بما دُفع.
+    // ── «الكاش ملهاش رقم فاتورة» ────────────────────────────────────────────
+    // قرارُ صاحب الشركة: النقديُّ يُكتب له صافٍ وتُحسب ضريبتُه، ولا رقمَ فاتورةٍ
+    // له — فرقمُ الفاتورة وحدَه دليلُ الضريبيّ (راجع hasTaxInvoice). فرقمٌ حقيقيٌّ
+    // يُكتب على كشفٍ يبقى نقديًّا (نوعُه مختارٌ بيدٍ أو موحَّد، فلم يقلبه الاشتقاق)
+    // يُرفض: إمّا أن يُغيَّر نوعُه إلى «ضريبي» أوّلًا، أو لا رقم.
+    if (Object.prototype.hasOwnProperty.call(patch, 'invoiceNumber') && hasTaxInvoice(patch)) {
+      delete patch.invoiceNumber;
+      blocked.push('invoiceNumber');
+    }
+    // والصافي إن كُتب بيدٍ تُحسب منه الضريبةُ والإجماليّ كما في الضريبيّ
+    // («ويتحسب الفات»)؛ وما لم يُكتب يُملأ بما دُفع — راجع deriveCashTotals.
+    if (Object.prototype.hasOwnProperty.call(patch, 'netInvoice')) deriveInvoiceTotals(patch, current);
     deriveCashTotals(patch, current);
   } else {
     // ── ومبلغُ التحصيل للنقديّ وحدَه ────────────────────────────────────────
@@ -591,8 +601,8 @@ const isDayString = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v);
  */
 const MAX_FILTER_VALUES = 500;
 
-/** نمطٌ يطابق القيمةَ بعينها مع ما حولها من مسافات — راجع columnFilters. */
-const trimInsensitive = (v) => new RegExp(`^\\s*${String(v).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`);
+/** نمطٌ يطابق القيمةَ بأيّ فراغٍ حولها أو فيها — راجع utils/colFilter. */
+const { textMatcher, BLANK_VALUES, normKey: colKey } = require('../utils/colFilter');
 
 const decodeColumnValue = (field, v) => {
   if (NUMERIC_COLUMNS.has(field)) { const n = Number(v); return Number.isNaN(n) ? undefined : n; }
@@ -634,7 +644,10 @@ function columnFilters(query, skipField, allowMoney = true) {
       // اليوم مدًى لا لحظة: `$eq` على منتصف ليل اليوم لا يطابق كشفًا سُجّل الثالثة
       // عصرًا من اليوم نفسه، فيختفي من نتيجة فلترٍ اختاره المستخدم بالاسم.
       const clauses = [];
-      if (wantsBlank) clauses.push({ [field]: { $in: ['', null] } });
+      // وتاريخٌ خارجَ ما يقدر مونجو أن يكتبه يومًا (سنة ٥٧٣٧١ في «تاريخ الارسال» —
+      // خطأُ إدخال) يقع في القائمة تحت «(فارغ)»، فيُرَدّ معه — وإلّا عدّته القائمةُ
+      // ولم يُرجعه الاختيار.
+      if (wantsBlank) clauses.push({ [field]: { $in: ['', null] } }, { [field]: { $gte: new Date('9999-12-31T21:00:00.000Z') } });
       for (const v of rest) {
         if (isDayString(v)) {
           const start = startOfDay(v);
@@ -660,8 +673,8 @@ function columnFilters(query, skipField, allowMoney = true) {
     // (راجع filterOptions).
     const textual = !NUMERIC_COLUMNS.has(field);
     const list = rest.map((v) => decodeColumnValue(field, v)).filter((v) => v !== undefined)
-      .map((v) => (textual && typeof v === 'string' ? trimInsensitive(v) : v));
-    if (wantsBlank) list.push('', null, ...(textual ? [/^\s*$/] : []));
+      .map((v) => (textual && typeof v === 'string' ? textMatcher(v) : v));
+    if (wantsBlank) list.push(...(textual ? BLANK_VALUES : ['', null]));
     if (list.length) conds.push({ [field]: { $in: list } });
   }
   return conds;
@@ -814,7 +827,9 @@ function buildWorkflowFilter(query, skipField, allowMoney = true) {
         { invoiceNumber: null }, { invoiceNumber: '' }, { invoiceNumber: { $exists: false } },
         { invoiceNumber: { $regex: '^\\s*(no\\s*inv|بدون|لا\\s*يوجد|-|—|ىى)\\s*$', $options: 'i' } },
       ],
-    }, { tax: { $gt: 0 } }];
+    }, { tax: { $gt: 0 } },
+    // والنقديُّ قد تُحسب ضريبتُه ولا رقمَ له بالقرار (راجع hasTaxInvoice) — فليس ثغرة.
+    { paymentType: { $ne: 'cash' } }];
   }
   // ── «فواتير لم تصل» = بلا تاريخ سداد، لا شيء غيره ──────────────────────────
   // كان الشرط يجمع غيابَ تاريخ السداد **ورقمِ الفاتورة** معًا، فكشفٌ سُدِّد ولم
@@ -1106,7 +1121,7 @@ exports.filterOptions = async (req, res) => {
       // يطابق الصيغتين (راجع columnFilters).
       const value = id === null || id === undefined || id === ''
         ? ''
-        : (id instanceof Date ? id.toISOString() : (typeof id === 'string' ? id.trim() : String(id)));
+        : (id instanceof Date ? id.toISOString() : (typeof id === 'string' ? colKey(id) : String(id)));
       merged.set(value, (merged.get(value) || 0) + r.count);
     }
     // والدمجُ لا يُفسد ترتيبَ القاعدة: يُعاد الترتيبُ بنفس القاعدة التي فوق.
@@ -1316,6 +1331,15 @@ exports.updateWorkflow = async (req, res) => {
     // في الحفظة نفسِها التي سُجّل فيها سدادُه — لا في تعديلٍ ثانٍ.
     await fillPaymentTypeFromCustomer(filteredBody, workflow.toObject());
     const billing = applyBillingRules(filteredBody, workflow.toObject());
+    // رقمُ فاتورةٍ على كشفٍ نقديّ يُرفض صراحةً ولو جاء مع غيره: إسقاطُه في صمتٍ
+    // وحفظُ الباقي يُقرأ «حُفظ الرقم» وهو لم يُحفظ.
+    if (billing.blocked.includes('invoiceNumber')) {
+      return res.status(400).json({
+        code: 'CASH_INVOICE_NUMBER',
+        fields: ['invoiceNumber'],
+        message: 'الكشف نقديّ — الكاش ليس له رقم فاتورة. غيّر نوع الدفع إلى «ضريبي» أوّلًا ثمّ اكتب الرقم.',
+      });
+    }
     if (billing.blocked.length && sentKeys.every((k) => billing.blocked.includes(k))) {
       return res.status(400).json({
         code: 'CASH_INVOICE_LOCKED',
@@ -1770,6 +1794,10 @@ exports.bulkUpdate = async (req, res) => {
       await fillPaymentTypeFromCustomer(rowPatch, r);
       stampInvoiceDate(rowPatch, r);
       const own = applyBillingRules(rowPatch, r);
+      if (own.blocked.includes('invoiceNumber')) {
+        skipped.push({ reportNumber: r.reportNumber, reason: 'كشف نقديّ — ليس له رقم فاتورة' });
+        continue;
+      }
       if (own.blocked.length && !Object.keys(own.patch).length) {
         skipped.push({ reportNumber: r.reportNumber, reason: 'كشف نقديّ — لا فاتورة له' });
         continue;

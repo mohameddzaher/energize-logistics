@@ -15,7 +15,7 @@
  * للمركبة مفوَّضان: واحدٌ يقرأه هذا القسمُ وآخرُ يقرأه قسمُ المركبات — وهو غلطٌ
  * يُكتشف عند المرور لا قبله. فالخيارُ هنا يكتب هناك ويُقيَّد في سجلّ المركبة.
  */
-import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -71,6 +71,18 @@ const GETTERS: Record<string, (o: LTOrderRow) => any> = {
   createdByName: (o) => o.createdByName || '',
 };
 
+/** الكارتُ خارجَ جسم الصفحة — داخلَه يصير مكوِّنًا جديدًا في كلّ رسمة فيُهدَم ويُبنى. */
+function Stat({ label, value, accent, onClick, on }: { label: string; value: any; accent?: string; onClick?: () => void; on?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} disabled={!onClick}
+      className={`text-start bg-white border rounded-xl px-3.5 py-2.5 shadow-sm transition-all ${
+        on ? 'border-[#f37121] ring-2 ring-[#f37121]/20' : 'border-slate-200'} ${onClick ? 'hover:border-[#f37121]/50 cursor-pointer' : ''}`}>
+      <p className="text-[11px] text-slate-500">{label}</p>
+      <p className={`text-[19px] font-bold tabular-nums ${accent || 'text-slate-900'}`}>{value}</p>
+    </button>
+  );
+}
+
 function OrdersInner() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
@@ -98,13 +110,16 @@ function OrdersInner() {
 
   const load = useCallback(async () => {
     try {
-      const d = await getLTOrders({ ...f, q: dq, employee: sp?.get('employee') || '' });
+      // الحالةُ لا تُرسَل: كروتُ «سارية / مُغلَقة» تُعَدّ بلا فلترها (تحت)، وذلك
+      // يحتاج الأوامرَ بحالتيها. فتُطبَّق الحالةُ هنا، وضغطُ الكارت لا يطلب شيئًا.
+      const { status: _ownFacet, ...serverF } = f;
+      const d = await getLTOrders({ ...serverF, q: dq, employee: sp?.get('employee') || '' });
       setOrders(d.orders || []);
       setServerTotal(d.totals?.total || (d.orders || []).length);
     } catch (e: any) { notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error'); }
     setLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(f), dq, sp]);
+  }, [JSON.stringify({ ...f, status: '' }), dq, sp]);
   useEffect(() => { load(); }, [load]);
   useSocket('lt:updated', useCallback(() => load(), [load]));
 
@@ -197,30 +212,32 @@ function OrdersInner() {
   };
 
   const cf = useColumnFilters<LTOrderRow>();
-  const shown = cf.apply(onlyMismatch ? orders.filter((o) => o.authorizationMismatch) : orders, GETTERS);
-  // الأعدادُ من المعروض لا من ردّ الخادم — فيتحرّك الكارتُ مع فلتر العمود أيضًا،
-  // ولا يبقى رقمان لشيءٍ واحد على شاشةٍ واحدة.
-  const totals = useMemo(() => ({
+  /**
+   * ── الأرقامُ لا تتحرّك تحت مَن يضغطها ───────────────────────────────────
+   * كانت الحالةُ تُفلتَر في الخادم والكروتُ تُعَدّ على ما رجع: يُضغط «سارية ١٥٥»
+   * فتصير «مُغلَقة» صفرًا. فكلُّ مجموعةٍ تُعَدّ بكلّ الفلاتر عدا فلترَها: «سارية /
+   * مُغلَقة» بلا الحالة (ومجموعُهما = الإجمالي بلا الحالة)، و«باسم غير الراكب»
+   * بلا فلترها. والإجماليُّ وما لا يُضغَط بكلّ شيء — هو عددُ صفوف الجدول.
+   * والأعدادُ تتبع فلترَ العمود كما تتبع الكروت.
+   */
+  const statusOk = (o: LTOrderRow) => !f.status || o.status === f.status;
+  const mismatchOk = (o: LTOrderRow) => !onlyMismatch || !!o.authorizationMismatch;
+  const colRows = cf.apply(orders, GETTERS);
+  const shown = colRows.filter((o) => statusOk(o) && mismatchOk(o));
+  const noStatus = colRows.filter(mismatchOk);
+  const totals = {
     total: shown.length,
-    active: shown.filter((o) => o.status === 'active').length,
-    ended: shown.filter((o) => o.status === 'ended').length,
+    active: noStatus.filter((o) => o.status === 'active').length,
+    ended: noStatus.filter((o) => o.status === 'ended').length,
     authorizationMoved: shown.filter((o) => o.authorizationMoved).length,
-    mismatch: shown.filter((o) => o.authorizationMismatch).length,
-  }), [shown]);
+    mismatch: colRows.filter((o) => statusOk(o) && o.authorizationMismatch).length,
+  };
   const exportColumns: ExportColumn[] = COL_DEFS.map(([k, a, e]) => ({
     header: ar ? a : e, key: k, width: 16, transform: (_: any, r: any) => GETTERS[k](r),
   }));
 
   if (loading) return <Spinner />;
 
-  const Stat = ({ label, value, accent, onClick, on }: { label: string; value: any; accent?: string; onClick?: () => void; on?: boolean }) => (
-    <button type="button" onClick={onClick} disabled={!onClick}
-      className={`text-start bg-white border rounded-xl px-3.5 py-2.5 shadow-sm transition-all ${
-        on ? 'border-[#f37121] ring-2 ring-[#f37121]/20' : 'border-slate-200'} ${onClick ? 'hover:border-[#f37121]/50 cursor-pointer' : ''}`}>
-      <p className="text-[11px] text-slate-500">{label}</p>
-      <p className={`text-[19px] font-bold tabular-nums ${accent || 'text-slate-900'}`}>{value}</p>
-    </button>
-  );
 
   const emp = opts?.employees.find((x) => x._id === creating?.ltEmployee);
   const veh = opts?.vehicles.find((x) => x._id === creating?.vehicle);

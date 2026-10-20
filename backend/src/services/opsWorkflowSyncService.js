@@ -12,7 +12,7 @@ const upl = require('./uplClient');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
 const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
-const { derivePaymentTypeFor, ISSUED_INVOICE_EXPR, NO_INVOICE_RX } = require('../utils/paymentType');
+const { derivePaymentTypeFor, ISSUED_INVOICE_EXPR } = require('../utils/paymentType');
 
 
 const SOURCE = 'ops_upl';
@@ -229,8 +229,8 @@ async function upsertShipments(ships) {
               //  كذلك منذ a40ad1c6: المشتقُّ يُعاد اشتقاقُه في كلّ دورة، ولا يثبت
               //  إلّا اختيارُ اليد والتوحيد — راجع ما يلي.)
               // ── صفةُ العميل تحكم، وتعلوها فاتورةٌ صادرةٌ واختيارُ يد ────────
-              // كشفٌ يحمل رقمَ فاتورةٍ أو ضريبةً محسوبة فقد فُوتِر ضريبيًّا فعلًا،
-              // والورقةُ التي خرجت للعميل أقوى من صفةٍ عامّة.
+              // كشفٌ يحمل رقمَ فاتورةٍ فقد فُوتِر ضريبيًّا فعلًا، والورقةُ التي خرجت
+              // للعميل أقوى من صفةٍ عامّة.
               //
               // ── والتوحيدُ قرارٌ لا يُشتقّ فوقه ──────────────────────────────
               // كشفٌ وُحِّد على صفة عميله (`unified`) يبقى على ما وُحِّد عليه،
@@ -247,24 +247,10 @@ async function upsertShipments(ships) {
                       case: { $eq: [{ $ifNull: ['$paymentTypeSource', ''] }, 'unified'] },
                       then: { $cond: [ISSUED_INVOICE_EXPR, 'tax', { $ifNull: ['$paymentType', ''] }] },
                     },
-                    {
-                      case: {
-                        $or: [
-                          { $gt: [{ $ifNull: ['$tax', 0] }, 0] },
-                          { $gt: [{ $ifNull: ['$netInvoice', 0] }, 0] },
-                          {
-                            $and: [
-                              { $ne: [{ $ifNull: ['$invoiceNumber', ''] }, ''] },
-                              // النمطُ نفسُه الذي تقرؤه `hasTaxInvoice` — وفيه «0» الذي يكتبه
-                              // القفلُ النقديّ؛ كان مكتوبًا هنا نسخةً بلا «0» فتقرؤه المزامنةُ
-                              // فاتورةً ولا تقرؤه الشاشة.
-                              { $not: [{ $regexMatch: { input: { $toString: { $ifNull: ['$invoiceNumber', ''] } }, regex: NO_INVOICE_RX } }] },
-                            ],
-                          },
-                        ],
-                      },
-                      then: 'tax',
-                    },
+                    // رقمُ فاتورةٍ حقيقيّ وحدَه يجعله ضريبيًّا — لا الصافي ولا الضريبة:
+                    // النقديُّ يُكتب له صافٍ (مبلغُ سداده) وقد تُحسب ضريبتُه، ولا رقمَ
+                    // له. قرارُ صاحب الشركة — راجع hasTaxInvoice في utils/paymentType.
+                    { case: ISSUED_INVOICE_EXPR, then: 'tax' },
                   ],
                   default: derived,
                 },

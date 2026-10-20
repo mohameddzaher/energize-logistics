@@ -56,16 +56,17 @@ export default function HRStockPage() {
   const [assigning, setAssigning] = useState<Asset | null>(null);
   const [assignForm, setAssignForm] = useState({ employee: '', assignedDate: '', condition: 'good', notes: '' });
 
+  // ── المخزنُ كلُّه يُقرأ مرّةً، والنوعُ والحالةُ يُفلتَران هنا ─────────────────
+  // كانا يُرسَلان إلى الخادم والكروتُ تُعَدّ على ما رجع: يُضغَط «التالف» فيصير
+  // «الأصناف» — وضغطُه يرفع الفلاتر ويفتح المخزنَ كلَّه — عددَ التالف وحدَه. رقمٌ
+  // يقول غيرَ ما يفتحه. فالكروتُ تُعَدّ بلا فلترها، وضغطُها لا يطلب شيئًا.
   const load = useCallback(async () => {
     try {
-      const qs = new URLSearchParams();
-      if (typeFilter) qs.set('type', typeFilter);
-      if (conditionFilter) qs.set('condition', conditionFilter);
-      const d = await api.get<{ items: Asset[] }>(`/api/hr/stock?${qs.toString()}`);
+      const d = await api.get<{ items: Asset[] }>('/api/hr/stock');
       setItems(d.items || []);
     } catch {}
     setLoading(false);
-  }, [typeFilter, conditionFilter]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
   useSocket('hr:asset', useCallback(() => load(), [load]));
@@ -106,7 +107,9 @@ export default function HRStockPage() {
     setSaving(false);
   };
 
-  const filtered = items.filter((a) => {
+  const ofType = items.filter((a) => !typeFilter || a.type === typeFilter);
+  const filtered = ofType.filter((a) => {
+    if (conditionFilter && a.condition !== conditionFilter) return false;
     const s = search.trim().toLowerCase();
     if (!s) return true;
     return [a.name, a.serialNumber, a.brand, a.model, a.specs, (a as any).location]
@@ -154,9 +157,11 @@ export default function HRStockPage() {
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
-  const totalUnits = items.reduce((s, a) => s + unitsOf(a), 0);
-  const totalValue = items.reduce((s, a) => s + (a.value || 0) * unitsOf(a), 0);
-  const damaged = items.filter((a) => a.condition === 'damaged').length;
+  // الوحداتُ والقيمةُ والتالفُ على النوع المختار بلا فلتر الحالة؛ و«الأصناف» —
+  // وضغطُه يرفع كلَّ فلتر — على المخزن كلِّه، فيقول عددَ ما يفتحه.
+  const totalUnits = ofType.reduce((s, a) => s + unitsOf(a), 0);
+  const totalValue = ofType.reduce((s, a) => s + (a.value || 0) * unitsOf(a), 0);
+  const damaged = ofType.filter((a) => a.condition === 'damaged').length;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>

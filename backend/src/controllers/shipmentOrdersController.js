@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const ShipmentOrder = require('../models/ShipmentOrder');
 const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
+const { textIn, mergeOptions, normKey } = require('../utils/colFilter');
 const { startOfDay, endOfDay } = require('../utils/companyDay');
 const ShipmentOrderCustomer = require('../models/ShipmentOrderCustomer');
 const ShipmentOrderField = require('../models/ShipmentOrderField');
@@ -283,16 +284,16 @@ const columnFilters = (query, skipKey = null) => {
     if (key === skipKey) continue;
     const raw = query[`col.${key}`];
     if (!raw) continue;
-    const vals = String(raw).split('\u0000').length > 1
-      ? String(raw).split('\u0000')
-      : String(raw).split(',');
-    const list = vals.map((v) => v.trim()).filter((v) => v !== '');
+    // القيمُ تصل معاملاتٍ مكرَّرة (مصفوفة). والنصُّ المفصولُ بفاصلة صيغةٌ قديمة
+    // تبقى مقبولة لرابطٍ محفوظ — وهي التي كانت تقطع اسمًا فيه فاصلة.
+    const vals = Array.isArray(raw) ? raw.map(String)
+      : (String(raw).includes('\u0000') ? String(raw).split('\u0000') : String(raw).split(','));
+    const list = vals.filter((v) => normKey(v) !== '');
     if (!list.length) continue;
-    const wantsBlank = list.includes('__blank__');
-    const plain = list.filter((v) => v !== '__blank__');
-    if (wantsBlank && plain.length) out[field] = { $in: [...plain, '', null] };
-    else if (wantsBlank) out[field] = { $in: ['', null] };
-    else out[field] = { $in: plain };
+    // القيمةُ تُطابَق بنمطٍ يقبل فراغَها كلَّه، و«(فارغ)» تشمل الفراغَ وحدَه —
+    // فما تعدّه القائمةُ هو ما يُرجعه الاختيار. راجع utils/colFilter.
+    const c = textIn(field, list.map((v) => (v === '__blank__' ? '' : v)));
+    if (c) out[field] = c[field];
   }
   return out;
 };
@@ -472,10 +473,11 @@ exports.orderFilterOptions = async (req, res) => {
     pipeline.push({ $sort: { count: -1 } }, { $limit: 400 });
 
     const rows = await ShipmentOrder.aggregate(pipeline);
-    res.json({
-      field: key,
-      values: rows.map((r) => ({ value: r._id === '' ? '__blank__' : r._id, count: r.count })),
-    });
+    // ما لا يفرّقه إلّا الفراغ سطرٌ واحد — والفراغُ وحدَه «(فارغ)».
+    const values = mergeOptions(rows.map((r) => ({ value: r._id, count: r.count })))
+      .sort((a, b) => b.count - a.count)
+      .map((o) => ({ value: o.value === '' ? '__blank__' : o.value, count: o.count }));
+    res.json({ field: key, values });
   } catch (error) {
     res.status(500).json({ message: 'تعذّر تحميل قيم العمود' });
   }

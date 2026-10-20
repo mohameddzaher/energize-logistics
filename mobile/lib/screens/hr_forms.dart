@@ -25,6 +25,8 @@ class _HrFormsScreenState extends State<HrFormsScreen> {
   List<Map<String, dynamic>> _items = [];
   List<Map<String, dynamic>> _cats = [];
   Map<String, dynamic> _counts = {};
+  // «الكل» = مجموعُ التصنيفات بلا فلترها (الخادم) — لا عددُ التصنيف المختار.
+  int _total = 0;
   bool _loading = true;
   String? _error;
   String _cat = '';
@@ -58,6 +60,7 @@ class _HrFormsScreenState extends State<HrFormsScreen> {
         _cats = List<Map<String, dynamic>>.from((d['categories'] as List? ?? const [])
             .map((e) => Map<String, dynamic>.from(e as Map)));
         _counts = Map<String, dynamic>.from(d['counts'] ?? {});
+        _total = (d['total'] as num?)?.toInt() ?? _items.length;
         _loading = false;
         _error = null;
       });
@@ -118,7 +121,7 @@ class _HrFormsScreenState extends State<HrFormsScreen> {
                           child: FilterChip(
                             selected: _cat.isEmpty,
                             onSelected: (_) => setState(() { _cat = ''; _loading = true; _load(); }),
-                            label: Text('${tr('الكل', 'All')} (${_items.length})'),
+                            label: Text('${tr('الكل', 'All')} ($_total)'),
                             labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _cat.isEmpty ? Colors.white : T.navy),
                             selectedColor: T.orange,
                             backgroundColor: T.navy.withValues(alpha: 0.08),

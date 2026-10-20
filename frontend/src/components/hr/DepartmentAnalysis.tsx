@@ -27,6 +27,22 @@ export interface DeptAnalysis { departments: DeptRow[]; fieldsPerEmployee: numbe
 
 type SortKey = keyof DeptRow;
 
+/**
+ * رقمٌ يُضغَط فيفتح صفوفَه، وصفرٌ لا يُضغَط — الضغطُ على صفرٍ يفتح جدولًا فارغًا
+ * فيُقرأ عطلًا. وهو خارجَ جسم الجدول: داخلَه يصير مكوِّنًا جديدًا في كلّ رسمة
+ * فتُهدَم خلايا الجدول كلُّها وتُبنى مع كلّ تحديث.
+ */
+function Cell({ n, q, tone = '', onOpen }: { n: number; q?: Record<string, string>; tone?: string; onOpen: (q: Record<string, string>) => void }) {
+  return (
+    <td className="px-3 py-2 text-end tabular-nums">
+      {n > 0 && q ? (
+        <button type="button" onClick={() => onOpen(q)}
+          className={`font-semibold hover:underline ${tone || 'text-slate-800'}`}>{n.toLocaleString('en-US')}</button>
+      ) : <span className={n > 0 ? (tone || 'text-slate-800') : 'text-slate-300'}>{n.toLocaleString('en-US')}</span>}
+    </td>
+  );
+}
+
 export default function DepartmentAnalysis({
   data, ar, onOpen, onFilter, active,
 }: {
@@ -62,17 +78,6 @@ export default function DepartmentAnalysis({
         {label}<ArrowUpDown className="w-3 h-3 opacity-50" />
       </button>
     </th>
-  );
-
-  // رقمٌ يُضغَط فيفتح صفوفَه، وصفرٌ لا يُضغَط — الضغطُ على صفرٍ يفتح جدولًا
-  // فارغًا فيُقرأ عطلًا.
-  const Cell = ({ n, q, tone = '' }: { n: number; q?: Record<string, string>; tone?: string }) => (
-    <td className="px-3 py-2 text-end tabular-nums">
-      {n > 0 && q ? (
-        <button type="button" onClick={() => onOpen(q)}
-          className={`font-semibold hover:underline ${tone || 'text-slate-800'}`}>{n.toLocaleString('en-US')}</button>
-      ) : <span className={n > 0 ? (tone || 'text-slate-800') : 'text-slate-300'}>{n.toLocaleString('en-US')}</span>}
-    </td>
   );
 
   const barColor = (pct: number) => (pct >= 99 ? 'bg-emerald-500' : pct >= 95 ? 'bg-amber-500' : 'bg-red-500');
@@ -124,10 +129,10 @@ export default function DepartmentAnalysis({
                         {dept || t('(بلا قسم)', '(no department)')}
                       </button>
                     </td>
-                    <Cell n={r.total} q={q} />
-                    <Cell n={r.active} q={{ ...q, employment: 'active' }} tone="text-emerald-700" />
-                    <Cell n={r.ended} q={{ ...q, employment: 'inactive' }} tone="text-slate-500" />
-                    <Cell n={r.contracts} q={q} />
+                    <Cell onOpen={onOpen} n={r.total} q={q} />
+                    <Cell onOpen={onOpen} n={r.active} q={{ ...q, employment: 'active' }} tone="text-emerald-700" />
+                    <Cell onOpen={onOpen} n={r.ended} q={{ ...q, employment: 'inactive' }} tone="text-slate-500" />
+                    <Cell onOpen={onOpen} n={r.contracts} q={q} />
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1.5 justify-end">
                         <span className="tabular-nums text-xs font-semibold text-slate-700">{r.completeness}%</span>
@@ -136,15 +141,15 @@ export default function DepartmentAnalysis({
                         </span>
                       </div>
                     </td>
-                    <Cell n={r.missing} q={{ ...q, status: 'required' }} tone="text-red-600" />
-                    <Cell n={r.peopleWithMissing} q={{ ...q, status: 'required' }} tone="text-red-600" />
-                    <Cell n={r.docsExpired} q={{ ...q, state: 'expired' }} tone="text-red-600" />
-                    <Cell n={r.docsSoon} q={{ ...q, state: 'attention' }} tone="text-amber-600" />
-                    <Cell n={r.leavesApproved} q={q} />
-                    <Cell n={r.leavesPending} q={q} tone="text-sky-700" />
-                    <Cell n={r.custody} q={q} />
-                    <Cell n={r.saudi} q={{ ...q, nationality: 'سعودي' }} />
-                    <Cell n={r.outside} q={{ ...q, outsideKingdom: '1' }} />
+                    <Cell onOpen={onOpen} n={r.missing} q={{ ...q, status: 'required' }} tone="text-red-600" />
+                    <Cell onOpen={onOpen} n={r.peopleWithMissing} q={{ ...q, status: 'required' }} tone="text-red-600" />
+                    <Cell onOpen={onOpen} n={r.docsExpired} q={{ ...q, state: 'expired' }} tone="text-red-600" />
+                    <Cell onOpen={onOpen} n={r.docsSoon} q={{ ...q, state: 'attention' }} tone="text-amber-600" />
+                    <Cell onOpen={onOpen} n={r.leavesApproved} q={q} />
+                    <Cell onOpen={onOpen} n={r.leavesPending} q={q} tone="text-sky-700" />
+                    <Cell onOpen={onOpen} n={r.custody} q={q} />
+                    <Cell onOpen={onOpen} n={r.saudi} q={{ ...q, nationality: 'سعودي' }} />
+                    <Cell onOpen={onOpen} n={r.outside} q={{ ...q, outsideKingdom: '1' }} />
                   </tr>
                 );
               })}

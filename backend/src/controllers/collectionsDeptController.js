@@ -19,6 +19,7 @@
 const mongoose = require('mongoose');
 const CollectionsParty = require('../models/CollectionsParty');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
+const { textIn, mergeOptions, textMatcher, normKey } = require('../utils/colFilter');
 const CollectionsFollowUp = require('../models/CollectionsFollowUp');
 const { FleetShipment } = require('../models/FleetModels');
 const ShipmentOrder = require('../models/ShipmentOrder');
@@ -758,7 +759,8 @@ exports.dashboard = async (req, res) => {
     const extra = {};
     if (req.query.customer) extra.username = flexSpaceRegex(String(req.query.customer));
     if (req.query.supplier) extra.carOwner = flexSpaceRegex(String(req.query.supplier));
-    if (req.query.branch) extra.branch = String(req.query.branch);
+    // والفرعُ يُطابَق بأيّ فراغٍ حوله («الدمام » في المنقول) — راجع utils/colFilter.
+    if (req.query.branch) extra.branch = textMatcher(String(req.query.branch));
     const dateMatch = { ...extra, ...(range ? { reportDate: range } : {}) };
 
     // شريحةُ العمر تُقاس على تاريخ الكشف — وهي شرائحُ لا تتداخل، فمجموعُها
@@ -984,7 +986,8 @@ exports.dashboardFilterOptions = async (req, res) => {
     res.json({
       customers: [...customers].sort().slice(0, 1000),
       suppliers: [...suppliers].sort().slice(0, 1000),
-      branches: [...branches].sort(),
+      // والصيغُ التي لا يفرّقها إلّا الفراغ فرعٌ واحد.
+      branches: [...new Set(branches.map(normKey).filter(Boolean))].sort(),
       receivablesOnly: only,
     });
   } catch (e) {
@@ -1041,10 +1044,8 @@ exports._internals = { statsByKind, FIELD_OF, VALUE_OF, CLOSED_BY, NOT_CANCELLED
  *
  * غيابُ القيمة ليس قيمة. فما يعني «لا فاتورة» يُقرأ كما لو كانت الخانةُ فارغة.
  */
-const NO_INVOICE_TOKENS = [
-  'no inv', 'no invoice', 'noinv', 'no-inv', 'none', 'n/a', 'na', '-', '—', '0',
-  'بدون', 'بدون فاتورة', 'لا يوجد', 'لا توجد', 'غير مفوتر', 'غير مفوترة',
-];
+// القائمةُ نفسُها التي يقرؤها اشتقاقُ نوع الدفع — في مكانٍ واحد (utils/paymentType):
+// كانت نسختان، وكان «n/a» رقمَ فاتورةٍ هناك وليس رقمًا هنا.
 /**
  * شرطُ «رقمُ فاتورةٍ حقيقيّ».
  *
@@ -1052,10 +1053,7 @@ const NO_INVOICE_TOKENS = [
  * الصيغ يدًا يُسقط ما لم يُتخيَّل منها — وقد أسقط الثانيةَ فعلًا حتى ظهرت في
  * الصفحة. فتُطابَق بتعبيرٍ واحدٍ يقبل الحالتين والفراغَ الزائد.
  */
-const NO_INVOICE_RX = new RegExp(
-  `^\\s*(?:${NO_INVOICE_TOKENS.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\s*$`,
-  'i',
-);
+const { NO_INVOICE_RX, NO_INVOICE_TOKENS } = require('../utils/paymentType');
 const REAL_INVOICE = { invoiceNumber: { $nin: [null, ''], $not: NO_INVOICE_RX } };
 
 const AGE_BANDS = {
@@ -1186,11 +1184,11 @@ function columnFilters(query, kind) {
       }
       if (or.length) and.push({ $or: or });
     } else {
-      const or = [];
-      const plain = values.filter(Boolean);
-      if (values.some((v) => !v)) or.push({ [field]: null }, { [field]: '' }, { [field]: { $exists: false } });
-      if (plain.length) or.push({ [field]: { $in: plain } });
-      if (or.length) and.push({ $or: or });
+      // ما تعرضه القائمةُ صيغةٌ مقروءةٌ تجمع ما لا يفرّقه إلّا الفراغ («الدمام»
+      // و«الدمام »)، فيُطابَق بنمطٍ يقبلها كلَّها — راجع utils/colFilter. وكان
+      // `$in` على النصّ، و Mongoose يقصّه، فيُرجع اختيارُ «الدمام » صفرًا.
+      const c = textIn(field, values);
+      if (c) and.push(c);
     }
   }
   return and;
@@ -1281,10 +1279,11 @@ exports.invoiceColumnOptions = async (req, res) => {
 
     const rows = await Model.aggregate(pipeline).allowDiskUse(true);
     const truncated = rows.length > LIMIT;
-    res.json({
-      values: rows.slice(0, LIMIT).map((r) => ({ value: String(r._id ?? ''), count: r.count })),
-      truncated,
-    });
+    // والصيغُ التي لا يفرّقها إلّا الفراغ سطرٌ واحد — بالترتيب الذي جاءت به.
+    const values = type === 'date'
+      ? rows.slice(0, LIMIT).map((r) => ({ value: String(r._id ?? ''), count: r.count }))
+      : mergeOptions(rows.slice(0, LIMIT).map((r) => ({ value: r._id, count: r.count })));
+    res.json({ values, truncated });
   } catch (e) {
     res.status(500).json({ message: 'تعذّر تحميل قيم العمود', error: e.message });
   }
@@ -1293,7 +1292,7 @@ exports.invoiceColumnOptions = async (req, res) => {
 function invoiceFilters(query, { ageField }) {
   const f = { ...NOT_CANCELLED };
   if (query.customer) f.username = flexSpaceRegex(String(query.customer));
-  if (query.branch) f.payingBranch = String(query.branch);
+  if (query.branch) f.payingBranch = textMatcher(String(query.branch));
   if (query.q) {
     // ── الرقمُ الكامل يُطلَب كاملًا ──────────────────────────────────────────
     // البحثُ عن «٩٧١٩» كان يُخرج ستّةَ صفوفٍ في فاتورتين: الفاتورةَ نفسَها،

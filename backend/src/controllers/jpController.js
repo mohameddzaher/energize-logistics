@@ -667,18 +667,28 @@ exports.dashboard = async (req, res) => {
     // ── فلاترُ اللوحة: موظّفٌ، مشروعٌ، نوعٌ، طريقةُ تواصل ─────────────────────
     // تُطبَّق على كلّ شيءٍ في اللوحة — البطاقاتُ والجداولُ والقائمة — فلا يُقرأ
     // رقمٌ على الفريق كلِّه فوق قائمةِ موظّفٍ واحد.
+    //
+    // ── إلّا الجدولَ الذي يُضغَط فيصير فلترًا ───────────────────────────────────
+    // اسمُ الموظّف في جدول الفريق واسمُ المشروع في المشروعات يُضغَطان فيفلتران
+    // اللوحة. فكان الجدولُ نفسُه يُعَدّ بعد فلتره: يُضغَط اسمٌ فيصير كلُّ مَن سواه
+    // أصفارًا ويُعاد ترتيبُ الجدول تحت اليد. فجدولُ الفريق يُعَدّ بكلّ الفلاتر
+    // **عدا الموظّف**، والمشروعاتُ **عدا المشروع** (عدٌّ بالأوجه)؛ وما سواهما
+    // بالفلاتر كلِّها. لذلك يُطبَّق الاثنان هنا في الذاكرة لا في الاستعلام.
     const { assignee, project: projectQ, kind: kindQ, action: actionQ } = req.query;
-    if (assignee && mongoose.isValidObjectId(assignee)) f.assignedTo = assignee;
-    if (projectQ === 'none') f.project = null;
-    else if (projectQ && mongoose.isValidObjectId(projectQ)) f.project = projectQ;
+    const idOf = (x) => String((x && x._id) || x || '');
+    const assigneeOk = assignee && mongoose.isValidObjectId(assignee)
+      ? (t) => idOf(t.assignedTo) === String(assignee) : () => true;
+    const projectOk = projectQ === 'none' ? (t) => !t.project
+      : projectQ && mongoose.isValidObjectId(projectQ) ? (t) => idOf(t.project) === String(projectQ) : () => true;
     if (kindQ === 'task' || kindQ === 'request') f.kind = kindQ;
     if (actionQ === 'none') f.action = '';
     else if (actionQ && ACTIONS.includes(actionQ)) f.action = actionQ;
-    const [tasks, team, projects] = await Promise.all([
+    const [allTasks, team, projects] = await Promise.all([
       POP(JpTask.find(f)).lean(),
       teamOf(w),
       JpProject.find({ scope: w.scope, section: w.section }).lean(),
     ]);
+    const tasks = allTasks.filter((t) => assigneeOk(t) && projectOk(t));
     const now = Date.now();
     const blank = () => ({ assigned: 0, open: 0, done: 0, overdue: 0, onTime: 0, late: 0, requestsMade: 0, hoursSum: 0, hoursN: 0 });
     const members = new Map(team.map((m) => [String(m._id), { ...m, ...blank() }]));
@@ -700,6 +710,19 @@ exports.dashboard = async (req, res) => {
       const onTime = s === 'done' && t.deadlineAt ? new Date(t.doneAt) <= new Date(t.deadlineAt) : null;
       if (onTime === true) totals.onTime += 1; if (onTime === false) totals.late += 1;
 
+      const a = t.action || 'none';
+      byAction[a] = byAction[a] || { action: a, total: 0, done: 0 };
+      byAction[a].total += 1; if (s === 'done') byAction[a].done += 1;
+
+      const ck = dayKey(t.createdAt); if (daily.has(ck)) daily.get(ck).created += 1;
+      if (t.doneAt) { const dk = dayKey(t.doneAt); if (daily.has(dk)) daily.get(dk).done += 1; }
+    }
+
+    // جدولُ الفريق: بكلّ الفلاتر عدا الموظّف — راجع أعلاه.
+    for (const t of allTasks) {
+      if (!projectOk(t)) continue;
+      const s = stateOf(t, now);
+      const onTime = s === 'done' && t.deadlineAt ? new Date(t.doneAt) <= new Date(t.deadlineAt) : null;
       const aid = String(t.assignedTo?._id || t.assignedTo);
       // من خرج من الفريق تبقى مهامُّه معدودةً باسمه — لا تسقط من الإجمالي.
       if (!members.has(aid)) members.set(aid, { _id: aid, name: nameOf(t.assignedTo) || '—', role: t.assignedTo?.role || '', roleAr: LABELS_AR[t.assignedTo?.role] || '', roleEn: LABELS_EN[t.assignedTo?.role] || '', former: true, ...blank() });
@@ -710,18 +733,16 @@ exports.dashboard = async (req, res) => {
       if (onTime === true) m.onTime += 1; if (onTime === false) m.late += 1;
       const cid = String(t.createdBy?._id || t.createdBy);
       if (t.kind === 'request' && members.has(cid)) members.get(cid).requestsMade += 1;
-
-      const a = t.action || 'none';
-      byAction[a] = byAction[a] || { action: a, total: 0, done: 0 };
-      byAction[a].total += 1; if (s === 'done') byAction[a].done += 1;
-
+    }
+    // والمشروعاتُ: بكلّ الفلاتر عدا المشروع.
+    for (const t of allTasks) {
+      if (!assigneeOk(t)) continue;
+      const s = stateOf(t, now);
+      const aid = String(t.assignedTo?._id || t.assignedTo);
       const pid = t.project ? String(t.project._id || t.project) : 'none';
       const pe = byProject.get(pid) || { total: 0, done: 0, overdue: 0, people: new Set() };
       pe.total += 1; if (s === 'done') pe.done += 1; if (s === 'overdue') pe.overdue += 1; pe.people.add(aid);
       byProject.set(pid, pe);
-
-      const ck = dayKey(t.createdAt); if (daily.has(ck)) daily.get(ck).created += 1;
-      if (t.doneAt) { const dk = dayKey(t.doneAt); if (daily.has(dk)) daily.get(dk).done += 1; }
     }
 
     const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : null);

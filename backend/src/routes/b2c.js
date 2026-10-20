@@ -64,6 +64,7 @@ router.put('/entry/managers/:userId', authorize(...ENTRY), entry.setManagerProje
 // شيتاتُ الأوردرات (جوجل شيت لكلّ مشروع) — تُقرأ كلَّ دقيقة. راجع b2cOrderSheetController.
 const orderSheets = require('../controllers/b2cOrderSheetController');
 router.get('/order-sheets', authorize(...ENTRY), orderSheets.list);
+router.get('/order-sheets/script', authorize(...ENTRY), orderSheets.script);
 router.post('/order-sheets', authorize(...ENTRY), orderSheets.create);
 router.delete('/order-sheets/:id', authorize(...ENTRY), orderSheets.remove);
 router.post('/order-sheets/:id/sync', authorize(...ENTRY), orderSheets.syncNow);

@@ -47,6 +47,7 @@ router.delete('/forms/:id', authorize(...STAFF), hrForms.remove);
 // الماستر: صفٌّ واحدٌ لكلّ موظّف بكلّ الأعمدة — يُسجَّل قبل `records/:group`
 // لأنّه أخصُّ منه في الشكل ولا يتداخلان.
 router.get('/master/grid', authorize(...STAFF), hrm.grid);
+router.get('/master/grid/options', authorize(...STAFF), hrm.gridOptions);
 router.get('/master/records/:group', authorize(...STAFF), hrm.records);
 router.get('/master/employees/:id/fields', authorize(...STAFF), hrm.employeeFields);
 router.patch('/master/employees/:id/fields', authorize(...STAFF), hrm.updateFields);

@@ -62,6 +62,7 @@ const DAY = 86400000;
 const daysUntil = (date) => (date ? Math.floor((new Date(date).getTime() - Date.now()) / DAY) : null);
 const getPath = (obj, path) => path.split('.').reduce((c, p) => (c == null ? c : c[p]), obj);
 
+const { textIn, mergeOptions, normKey } = require('../utils/colFilter');
 const _multi = (v) => (v == null ? [] : (Array.isArray(v) ? v : String(v).split(',')).map((x) => String(x).trim()).filter(Boolean));
 
 // مخزّن مؤقتًا — كان findOneAndUpdate (كتابة) على كل طلب = بطيء على Atlas المُقيَّد.
@@ -483,11 +484,10 @@ function buildFilter(q) {
     if (!vals.length) continue;
     // «—» تعني الخانة الفارغة، وهي فئةٌ حقيقية يُسأل عنها: «أي المركبات بلا
     // مالك مسجَّل؟» سؤالُ عملٍ لا نتيجةَ خطأ، فلا يجوز أن يسقط من الفلتر.
-    const wantsBlank = vals.includes('—');
-    const rest = vals.filter((x) => x !== '—');
-    if (wantsBlank && rest.length) and.push({ $or: [{ [field]: { $in: rest } }, { [field]: { $in: ['', null] } }, { [field]: { $exists: false } }] });
-    else if (wantsBlank) and.push({ $or: [{ [field]: { $in: ['', null] } }, { [field]: { $exists: false } }] });
-    else and.push({ [field]: { $in: rest } });
+    // والقيمةُ تُطابَق كما تُقرأ في القائمة — بأيّ فراغٍ حولها — و«—» تشمل الفراغَ
+    // وحدَه. كان `$in` على النصّ و Mongoose يقصّه. راجع utils/colFilter.
+    const c = textIn(field, vals.map((x) => (x === '—' ? '' : x)));
+    if (c) and.push(c);
   }
   // نواقص منصّة لوجستي: «أرِني المركبات التي ينقصها شرط» و«أرِني من ينقصه هذا
   // الشرط بعينه» — سؤالان مختلفان، وكلاهما قائمة عمل.
@@ -1352,10 +1352,12 @@ exports.filterOptions = async (req, res) => {
       const [r] = await VehicleMaster.aggregate([{ $match: filter }, { $facet: facet }]);
       const out = new Map();
       FILTER_DEFS.forEach((d, i) => {
-        out.set(d.key, ((r && r[`f${i}`]) || []).map((b) => ({
-          value: b._id === null || b._id === '' ? '—' : String(b._id),
-          count: b.count,
-        })));
+        // ما لا يفرّقه إلّا الفراغ سطرٌ واحد، والفراغُ وحدَه «—».
+        out.set(d.key, mergeOptions(((r && r[`f${i}`]) || []).map((b) => ({ value: b._id, count: b.count })),
+          // null يصل «—» (من $ifNull) والنصُّ الفارغ ''، وهما «—» واحدة.
+          { keyOf: (v) => { const k = normKey(v); return k === '—' ? '' : k; } })
+          .map((o) => ({ value: o.value === '' ? '—' : o.value, count: o.count }))
+          .sort((a, b) => b.count - a.count));
       });
       return out;
     };

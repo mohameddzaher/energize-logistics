@@ -70,3 +70,16 @@ exports.syncNow = async (req, res) => {
     res.status(400).json({ message: doc.lastError });
   }
 };
+
+/**
+ * GET /api/b2c/order-sheets/script — سكربتُ جوجل جاهزًا بمفتاحه.
+ * يُلصَق في script.google.com ويُشغَّل `setup` مرّةً. لمدير القسم ونائبه وحدَهم.
+ */
+exports.script = async (req, res) => {
+  if (guard(req, res)) return;
+  const fs = require('fs');
+  const path = require('path');
+  const token = await require('../models/B2COrderSheet').sheetsToken();
+  const code = fs.readFileSync(path.join(__dirname, '../templates/b2cOrderSheets.gs'), 'utf8').replace('__TOKEN__', token);
+  res.set('Content-Disposition', 'attachment; filename="energize-b2c-sheets.gs"').type('text/plain; charset=utf-8').send(code);
+};

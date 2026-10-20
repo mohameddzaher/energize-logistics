@@ -10,7 +10,7 @@ import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import { Modal } from '@/components/hr/HRKit';
-import { ExternalLink, Loader2, RefreshCw, Trash2, Link2, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
+import { ExternalLink, Loader2, RefreshCw, Trash2, Link2, AlertTriangle, CheckCircle2, XCircle, Download } from 'lucide-react';
 
 type Sheet = {
   _id: string; projectAr: string; sheetId: string; url: string; enabled: boolean;
@@ -42,6 +42,15 @@ export default function OrderSheetsPanel({ open, onClose, ar }: { open: boolean;
   // القراءةُ الدوريّة على الخادم تُغيّر «آخر قراءة» وعددَ التغييرات.
   useSocket('b2c:order:upserted', () => { if (open) load(); });
 
+  const downloadScript = async () => {
+    try {
+      const blob = await api.getBlob('/api/b2c/order-sheets/script');
+      const url = URL.createObjectURL(blob);
+      const el = document.createElement('a');
+      el.href = url; el.download = 'energize-b2c-sheets.gs'; el.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch (e: any) { notify(e?.message || t('تعذّر التحميل', 'Download failed'), 'error'); }
+  };
   const add = async () => {
     if (!project) { notify(t('اختر المشروع', 'Pick a project'), 'error'); return; }
     if (!url.trim()) { notify(t('الصق رابط الملف', 'Paste the sheet link'), 'error'); return; }
@@ -79,10 +88,21 @@ export default function OrderSheetsPanel({ open, onClose, ar }: { open: boolean;
   return (
     <Modal open={open} onClose={onClose} wide title={t('شيتات جوجل — ملفّ لكلّ مشروع', 'Google Sheets — one per project')}>
       <div className="space-y-4" dir={ar ? 'rtl' : 'ltr'}>
-        <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[12.5px] leading-6 text-blue-900">
-          {t('اجعل مشاركة الملف: أيّ شخصٍ لديه الرابط يستطيع العرض. يُقرأ الملف كلَّ دقيقة، وآخرُ تعديلٍ هو المعتمد.',
-            'Share the file as “Anyone with the link can view”. It is read every minute; the latest edit wins.')}
-        </p>
+        {/* ── الطريقةُ المعتمدة: سكربتُ جوجل يُنشئ الملفّات ويديرها ── */}
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[12.5px] leading-6 text-emerald-900">
+          <p className="font-bold">{t('سكربت جوجل — الملفّات يديرها النظام', 'Google script — the system manages the files')}</p>
+          <ol className="list-decimal ps-5">
+            <li>{t('حمِّل السكربت من الزرّ تحت (فيه مفتاحُ الربط).', 'Download the script below (it carries the link key).')}</li>
+            <li>{t('افتح script.google.com بحساب جوجل صاحب الفولدر ← مشروع جديد ← امسح ما فيه والصق السكربت ← احفظ.', 'Open script.google.com with the folder owner account → New project → paste → save.')}</li>
+            <li>{t('اختر الدالّة setup واضغط «تشغيل» ← وافق على الأذونات. (إن توقّف لطول الوقت شغّله ثانيةً فيكمل.)', 'Pick setup and press Run → allow permissions (re-run if it times out; it resumes).')}</li>
+          </ol>
+          <p>{t('يُنشئ ملفًّا لكلّ مشروع في الفولدر ويحدّثه كلَّ ٥ دقائق من النظام، ويرسل كلَّ رقمٍ يُكتب فيه إلى النظام فورًا، ويقفل كلَّ شيءٍ إلّا خانات الأيّام.',
+            'It creates one file per project, refreshes it every 5 minutes, sends each typed number instantly, and locks everything but the day cells.')}</p>
+          <button type="button" onClick={downloadScript}
+            className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-[12.5px] font-bold text-white hover:bg-emerald-700">
+            <Download className="h-3.5 w-3.5" />{t('تحميل سكربت جوجل', 'Download Google script')}
+          </button>
+        </div>
 
         {err && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700">{err}</p>}
         {!d && !err && <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>}

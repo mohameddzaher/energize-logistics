@@ -28,7 +28,7 @@ export default function HRRequestsPage() {
   const tx = getHrRequestsTranslations(lang);
   const staff = isHRStaff(user);
 
-  const [requests, setRequests] = useState<HRRequest[]>([]);
+  const [allRequests, setRequests] = useState<HRRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -42,13 +42,12 @@ export default function HRRequestsPage() {
 
   const load = useCallback(async () => {
     try {
-      const qs = statusFilter ? `?status=${statusFilter}` : '';
-      const d = await api.get<{ requests: HRRequest[] }>(`/api/hr/requests${qs}`);
+      const d = await api.get<{ requests: HRRequest[] }>('/api/hr/requests');
       setRequests(d.requests || []);
       setOpen((cur) => (cur ? d.requests.find((r) => r._id === cur._id) || cur : cur));
     } catch {}
     setLoading(false);
-  }, [statusFilter]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
   useSocket('hr:request', useCallback(() => load(), [load]));
@@ -68,8 +67,12 @@ export default function HRRequestsPage() {
     try { const d = await api.patch<{ request: HRRequest }>(`/api/hr/requests/${open._id}/status`, { status }); setOpen(d.request); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
+  // ── الحالةُ تُفلتَر هنا لا في الخادم ───────────────────────────────────────
+  // كانت تُرسَل إلى الخادم، والرقمُ في رأس الصفحة يُعَدّ على ما رجع: يُختار
+  // «مُغلَق» فيقول الرأسُ «٠ مفتوح». فيُجلَب الكلُّ مرّةً ويُفلتَر الجدولُ وحدَه.
+  const requests = statusFilter ? allRequests.filter((r) => r.status === statusFilter) : allRequests;
   const filtered = requests.filter((r) => !search.trim() || r.subject.toLowerCase().includes(search.toLowerCase()) || userName(r.requester).toLowerCase().includes(search.toLowerCase()));
-  const openCount = requests.filter((r) => r.status === 'open' || r.status === 'in_progress').length;
+  const openCount = allRequests.filter((r) => r.status === 'open' || r.status === 'in_progress').length;
 
   // «آخر تحديث الميلادي» لا تُقرأ — فالاسمُ الأساسيُّ «تاريخ آخر تحديث».
   const updatedLabels = pairLabels(ar ? 'تاريخ آخر تحديث' : 'Last updated', ar);

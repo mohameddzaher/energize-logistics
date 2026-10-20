@@ -32,7 +32,7 @@ export default function HRLeavesPage() {
   const tx = getHrLeavesTranslations(lang);
   const staff = isHRStaff(user);
 
-  const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
+  const [allLeaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -67,12 +67,15 @@ export default function HRLeavesPage() {
 
   const load = useCallback(async () => {
     try {
-      const qs = statusFilter ? `?status=${statusFilter}` : '';
-      const d = await api.get<{ leaves: LeaveRequest[] }>(`/api/hr/leaves${qs}`);
+      const d = await api.get<{ leaves: LeaveRequest[] }>('/api/hr/leaves');
       setLeaves(d.leaves || []);
     } catch {}
     setLoading(false);
-  }, [statusFilter]);
+  }, []);
+  // ── الحالةُ تُفلتَر هنا لا في الخادم ───────────────────────────────────────
+  // كانت تُرسَل إلى الخادم و«N قيد المراجعة» في رأس الصفحة يُعَدّ على ما رجع:
+  // يُختار «معتمدة» فيصير الرقمُ صفرًا. فيُجلَب الكلُّ ويُفلتَر الجدولُ وحدَه.
+  const leaves = statusFilter ? allLeaves.filter((l) => l.status === statusFilter) : allLeaves;
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.get<{ signatures: Signature[] }>('/api/auth/signatures').then((r) => setMySigs(r.signatures || [])).catch(() => {}); }, []);
@@ -228,7 +231,7 @@ export default function HRLeavesPage() {
   // كان الحسابُ محطّتين فقط، فما بلغ الحساباتِ أو الإدارةَ لم يُعدّ معلَّقًا وسقط
   // من العدّاد — يبدو منتهيًا وهو واقف.
   const OPEN = ['pending_manager', 'pending_hr', 'pending_finance', 'pending_executive', 'info_requested'];
-  const pendingCount = leaves.filter((l) => OPEN.includes(l.status)).length;
+  const pendingCount = allLeaves.filter((l) => OPEN.includes(l.status)).length;
   // ولا يبتّ من هنا إلا في محطّةٍ قائمة؛ الخادمُ يتحقّق أنّها محطّةُ القارئ.
   const actionable = (l: LeaveRequest | null) => !!l && ['pending_manager', 'pending_hr', 'pending_finance', 'pending_executive'].includes(l.status);
 

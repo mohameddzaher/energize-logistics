@@ -105,7 +105,9 @@ export default function HrMasterGridPage() {
   const params = useCallback(() => {
     const p = new URLSearchParams({ page: String(page), limit: String(limit) });
     if (q.trim()) p.set('q', q.trim());
-    for (const [k, vals] of Object.entries(colFilters)) for (const v of vals) p.append(k, v);
+    // `cf_<عمود>`: الخادمُ يفلتر على الخانة كما تُرسَم، في كلّ عمود — راجع
+    // hrMasterController.gridCell. (كان `<عمود>=` يُهمَل في كلّ عمودٍ غير «قابلٍ للفلترة».)
+    for (const [k, vals] of Object.entries(colFilters)) for (const v of vals) p.append(`cf_${k}`, v);
     appendQuick(p);
     return p;
   }, [page, limit, q, colFilters, appendQuick]);
@@ -278,18 +280,13 @@ export default function HrMasterGridPage() {
     if (colOpts[key]) return;
     setColLoading(key);
     try {
-      const p = new URLSearchParams({ page: '1', limit: '100000' });
+      // القيمُ يعدّها الخادمُ بالخانة التي يفلتر بها — فالعددُ هو ما يُرجعه الاختيار.
+      const p = new URLSearchParams({ field: key });
       if (q.trim()) p.set('q', q.trim());
-      for (const [k, vals] of Object.entries(colFilters)) if (k !== key) for (const v of vals) p.append(k, v);
+      for (const [k, vals] of Object.entries(colFilters)) if (k !== key) for (const v of vals) p.append(`cf_${k}`, v);
       appendQuick(p, key);
-      const d = await api.get<any>(`/api/hr/master/grid?${p.toString()}`);
-      const c = allCols.find((x) => x.key === key);
-      const m = new Map<string, number>();
-      for (const r of (d.rows || [])) {
-        const v = c ? String(cellOf(r, c) ?? '') : '';
-        m.set(v || '—', (m.get(v || '—') || 0) + 1);
-      }
-      setColOpts((prev) => ({ ...prev, [key]: [...m.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count) }));
+      const d = await api.get<any>(`/api/hr/master/grid/options?${p.toString()}`);
+      setColOpts((prev) => ({ ...prev, [key]: (d.values || []) as ColumnFilterOption[] }));
     } catch { /* القمعُ يبقى بلا قيم، والجدولُ كما هو */ }
     setColLoading('');
   };

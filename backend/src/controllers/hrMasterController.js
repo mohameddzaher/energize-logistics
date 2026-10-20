@@ -11,6 +11,7 @@
 const Employee = require('../models/Employee');
 const { startOfDay, endOfDay, daysUntil } = require('../utils/companyDay');
 const H = require('../config/hrFields');
+const { textIn, normKey } = require('../utils/colFilter');
 const cache = require('../utils/ttlCache');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
@@ -216,11 +217,12 @@ function buildFilter(q) {
   for (const k of FILTERABLE) {
     const vals = multi(q[k]);
     if (!vals.length) continue;
-    const wantsBlank = vals.includes('—');
-    const rest = vals.filter((x) => x !== '—');
-    if (wantsBlank && rest.length) f[k] = { $in: [...rest, '', null] };
-    else if (wantsBlank) f[k] = { $in: ['', null] };
-    else f[k] = { $in: rest };
+    // ── والقيمةُ تُطابَق كما تُقرأ ─────────────────────────────────────────
+    // كان `$in` على النصّ، و Mongoose يقصّه، والاستيرادُ كتب «جدة » بمسافة: فقائمةٌ
+    // تقول «جدة ٤٠» يُرجع اختيارُها ما كُتب بلا مسافةٍ وحدَه. فالقيمةُ نمطٌ يقبل
+    // فراغَها كلَّه، و«—» تشمل الفراغَ وحدَه — راجع utils/colFilter.
+    const c = textIn(k, vals.map((x) => (x === '—' ? '' : x)));
+    if (c) f[k] = c[k];
   }
   // الحقول المنطقية باسمها الحقيقيّ، كما ترسلها لوحة الفلترة.
   for (const field of BOOL_FILTERABLE) {
@@ -541,7 +543,7 @@ exports.filterOptions = async (req, res) => {
         const raw = r[key];
         const v = raw === true ? 'نعم'
           : isBool ? 'لا'
-            : (raw === false ? 'لا' : (filled(raw) ? String(raw) : '—'));
+            : (raw === false ? 'لا' : (normKey(Array.isArray(raw) ? raw.join(', ') : raw) || '—'));
         counts.set(v, (counts.get(v) || 0) + 1);
       }
       return [...counts.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count);
@@ -987,6 +989,136 @@ exports.records = async (req, res) => {
  * أحدَ عشرَ ثانية. خمسون صفًّا في الصفحة تُنقَل في أقلَّ من نصف ثانية —
  * والتصديرُ يجلبها صفحةً صفحةً حين يُطلَب، لا في كلّ فتحة.
  */
+
+// ── صفُّ الماستر كما يُرسَل، وخانتُه كما تُقرأ ─────────────────────────────────
+// يُبنى الصفُّ هنا مرّةً ويقرؤه الجدولُ وفلترُ الأعمدة معًا: الخانةُ التي يُفلتَر
+// بها هي النصُّ الذي يُرسَم بالحرف (راجع cellOf في صفحة الماستر — هذه نظيرتُها).
+function gridRow(e, custodyCount, allFields) {
+  const row = {
+    _id: e._id,
+    employeeNumber: e.employeeNumber,
+    name: e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim(),
+    employmentStatus: e.employmentStatus,
+    custodyCount: custodyCount || 0,
+    values: {},
+    statuses: {},
+  };
+  for (const k of allFields) {
+    const v = H.valueOf(e, k);
+    // الفارغُ لا يُرسَل: أربعةٌ وخمسون مفتاحًا لكلّ صفٍّ أكثرُها فارغ،
+    // ونقلُها يضاعف الحمولةَ على وصلةٍ تسلّم ٩٥ ك.ب/ث.
+    if (v !== null && v !== undefined && v !== '') row.values[k] = v;
+    const st = statusOf(e, k);
+    // و«مملوء» هي الحالُ الغالبة، فتُفهَم بالسكوت وتُرسَل ما سواها.
+    if (st !== 'filled') row.statuses[k] = st;
+  }
+  // ── والتوأمُ الهجريُّ يُشتقّ هنا، لا في المتصفّح ──────────────────────────
+  // لو حُسِب في الشاشة لحُسِب مرّةً في الويب ومرّةً في التطبيق بمكتبتين
+  // مختلفتين — فيختلف اليومُ بين الاثنين. المصدرُ واحدٌ: utils/hijri.
+  for (const f of hijriFields()) {
+    const g = row.values[f.of];
+    if (g) row.values[f.key] = toHijri(g);
+  }
+  return row;
+}
+
+/**
+ * نصُّ خانةٍ في الجدول — نظيرُ `cellOf` في صفحة الماستر سطرًا بسطر.
+ * والمنطقيُّ يُقرأ «نعم/لا» (والإنجليزيّة تقبلها `cellMatches`).
+ */
+function gridCell(row, key) {
+  if (key === 'employeeNumber') return row.employeeNumber || '—';
+  if (key === 'name') return row.name || '—';
+  if (key === 'custodyCount') return row.custodyCount || 0;
+  if (key === 'iqamaNumber') return row.values.iqamaNumber || row.values.nationalId || '';
+  // `<تاريخ>__days`: الأيّامُ حتى التاريخ بيوم الشركة — والفارغُ فارغٌ لا صفر.
+  const days = /^(.+)__days$/.exec(key);
+  if (days) {
+    const d = row.values[days[1]];
+    const x = d ? new Date(d) : null;
+    if (!x || Number.isNaN(x.getTime())) return '';
+    return require('../utils/companyDay').daysUntil(x);
+  }
+  // `<تاريخ>Hijri` الذي تولّده الشاشةُ حين لا يرسله الخادم.
+  if (row.values[key] === undefined) {
+    const h = /^(.+)Hijri$/.exec(key);
+    if (h && row.values[h[1]]) return toHijri(row.values[h[1]]) || '';
+  }
+  const v = row.values[key];
+  if (v === true) return 'نعم';
+  if (v === false) return 'لا';
+  return v ?? '';
+}
+const YES_NO = { yes: 'نعم', no: 'لا' };
+/** مفتاحُ الخانة المقروء — و«—» و«(فارغ)» شيءٌ واحد. */
+const cellKey = (row, key) => {
+  const k = normKey(gridCell(row, key));
+  return k === '—' ? '' : k;
+};
+/** القيمُ المختارة كما وصلت (بالعربيّة أو الإنجليزيّة) ← مفاتيحُ مقروءة. */
+const wantedKeys = (vals) => new Set(vals.map((v) => {
+  const k = normKey(v);
+  if (k === '—') return '';
+  return YES_NO[k.toLowerCase()] || k;
+}));
+/** `cf_<عمود>` من الاستعلام: { عمود: [قيم] } — القيمُ معاملاتٌ مكرَّرة لا مفصولةٌ بفاصلة. */
+const gridColFilters = (q, skip = '') => {
+  const out = {};
+  for (const [k, raw] of Object.entries(q || {})) {
+    if (!k.startsWith('cf_')) continue;
+    const key = k.slice(3);
+    if (!key || key === skip) continue;
+    const vals = (Array.isArray(raw) ? raw : [raw]).map((v) => String(v ?? ''));
+    if (vals.length) out[key] = wantedKeys(vals);
+  }
+  return out;
+};
+const passesCols = (row, cf) => Object.entries(cf).every(([key, want]) => want.has(cellKey(row, key)));
+
+/** جسمُ ردّ الماستر — صفحةٌ من الصفوف وتعريفُ الأعمدة. */
+function gridBody(out, total, page, limit) {
+  return {
+    rows: out,
+    total,
+    page,
+    limit,
+    pages: Math.max(1, Math.ceil(total / limit)),
+    // تعريفُ الأعمدة يُرسَل مع البيانات: الشاشةُ لا تعيد كتابته، وأيُّ حقلٍ
+    // يُضاف في `config/hrFields` يظهر هنا بلا تعديلٍ في الواجهة.
+    // ── والعناوينُ من القائمة المسطَّحة لا من المجموعات الخام ─────────────
+    // كانت تُبنى من `H.GROUPS` مباشرةً بـ`f.ar` كما كُتب. وهو مكتوبٌ لصفحة
+    // المجموعة، حيث اسمُ المجموعة فوقه: «تاريخ الانتهاء» واضحٌ داخل
+    // «الإقامات». وهنا تقف المجموعاتُ كلُّها في صفٍّ واحد، فيظهر «تاريخ
+    // الانتهاء الميلادي» **سبعَ مرّات** — ولا يُعرَف أيُّها أيّ، لا على
+    // الشاشة ولا في ملفّ الإكسل.
+    //
+    // و`ALL_FIELDS` هي القائمةُ نفسُها بعد تقييد ما تكرّر باسم مجموعته
+    // (راجع `qualifyDuplicateLabels` في config/hrFields)، وتحمل المجموعةَ
+    // معها. فصفحةُ المجموعة تُبقي عنوانَها القصير، والجدولُ المسطَّح يأخذ
+    // المقيَّد — من مصدرٍ واحد.
+    columns: H.ALL_FIELDS.map((f) => ({
+      key: f.key, ar: f.ar, en: f.en, type: f.type, group: f.group, groupAr: f.groupAr, groupEn: f.groupEn,
+      // `of` يقول للشاشةِ أيُّ تاريخٍ ميلاديٍّ هذا توأمُه الهجريّ — فتقرأ
+      // قيمتَه من أصله ولا تحوّل نصًّا هجريًّا مرّةً ثانية.
+      of: f.of || null,
+      choice: !!f.choice, cashPayroll: !!f.cashPayroll,
+    })),
+  };
+}
+
+/** عددُ العهد لكلّ موظّف — استعلامٌ واحدٌ لا واحدٌ لكلّ صفّ. */
+async function custodyCounts(ids) {
+  const custody = new Map();
+  if (!ids.length) return custody;
+  const Asset = require('../models/Asset');
+  const agg = await Asset.aggregate([
+    { $match: { employee: { $in: ids }, status: 'assigned' } },
+    { $group: { _id: '$employee', n: { $sum: 1 } } },
+  ]);
+  agg.forEach((a) => custody.set(String(a._id), a.n));
+  return custody;
+}
+
 exports.grid = async (req, res) => {
   try {
     const ck = `hrm:grid:${JSON.stringify(req.query || {})}`;
@@ -1034,6 +1166,22 @@ exports.grid = async (req, res) => {
     const sortKey = String(req.query.sort || 'employeeNumber');
     const dir = req.query.dir === 'desc' ? -1 : 1;
 
+    // ── فلاترُ الأعمدة على النصّ المعروض ─────────────────────────────────────
+    // كان القمعُ في كلّ عمودٍ يُرسل `<عمود>=<قيمة>`، والخادمُ لا يقرأ منها إلّا
+    // أعمدةَ `FILTERABLE`: فالتأشيرُ في «رقم الجواز» أو «تاريخ الانتهاء» أو «المدة
+    // بالأيام» لا يغيّر صفًّا ولا يقول لماذا. فصارت تصل `cf_<عمود>` وتُطبَّق على
+    // الخانة كما تُرسَم (gridCell) — والقائمةُ تُعَدّ بالدالّة نفسِها (gridOptions).
+    const cf = gridColFilters(req.query);
+    if (Object.keys(cf).length) {
+      const all = (await Employee.find(filter).select(select).sort({ [sortKey]: dir }).lean())
+        .filter((e) => !pred || pred(e));
+      const custodyAll = await custodyCounts(all.map((e) => e._id));
+      const built = all.map((e) => gridRow(e, custodyAll.get(String(e._id)) || 0, allFields)).filter((r) => passesCols(r, cf));
+      const body = gridBody(built.slice((page - 1) * limit, page * limit), built.length, page, limit);
+      cache.set(ck, body, 30000);
+      return res.json(body);
+    }
+
     let rows; let total;
     if (pred) {
       // شرطٌ لا يُعبَّر عنه في القاعدة: تُقرأ المطابقةُ ثمّ تُقصّ.
@@ -1050,78 +1198,56 @@ exports.grid = async (req, res) => {
     }
 
     // عددُ العهد لكلّ موظّفٍ في الصفحة — استعلامٌ واحدٌ لا واحدٌ لكلّ صفّ.
-    const Asset = require('../models/Asset');
-    const ids = rows.map((r) => r._id);
-    const custody = new Map();
-    if (ids.length) {
-      const agg = await Asset.aggregate([
-        { $match: { employee: { $in: ids }, status: 'assigned' } },
-        { $group: { _id: '$employee', n: { $sum: 1 } } },
-      ]);
-      agg.forEach((a) => custody.set(String(a._id), a.n));
-    }
+    const custody = await custodyCounts(rows.map((r) => r._id));
 
-    const out = rows.map((e) => {
-      const row = {
-        _id: e._id,
-        employeeNumber: e.employeeNumber,
-        name: e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim(),
-        employmentStatus: e.employmentStatus,
-        custodyCount: custody.get(String(e._id)) || 0,
-        values: {},
-        statuses: {},
-      };
-      for (const k of allFields) {
-        const v = H.valueOf(e, k);
-        // الفارغُ لا يُرسَل: أربعةٌ وخمسون مفتاحًا لكلّ صفٍّ أكثرُها فارغ،
-        // ونقلُها يضاعف الحمولةَ على وصلةٍ تسلّم ٩٥ ك.ب/ث.
-        if (v !== null && v !== undefined && v !== '') row.values[k] = v;
-        const st = statusOf(e, k);
-        // و«مملوء» هي الحالُ الغالبة، فتُفهَم بالسكوت وتُرسَل ما سواها.
-        if (st !== 'filled') row.statuses[k] = st;
-      }
-      // ── والتوأمُ الهجريُّ يُشتقّ هنا، لا في المتصفّح ──────────────────────
-      // لو حُسِب في الشاشة لحُسِب مرّةً في الويب ومرّةً في التطبيق بمكتبتين
-      // مختلفتين — فيختلف اليومُ بين الاثنين. المصدرُ واحدٌ: utils/hijri.
-      for (const f of hijriFields()) {
-        const g = row.values[f.of];
-        if (g) row.values[f.key] = toHijri(g);
-      }
-      return row;
-    });
+    const out = rows.map((e) => gridRow(e, custody.get(String(e._id)) || 0, allFields));
 
-    const body = {
-      rows: out,
-      total,
-      page,
-      limit,
-      pages: Math.max(1, Math.ceil(total / limit)),
-      // تعريفُ الأعمدة يُرسَل مع البيانات: الشاشةُ لا تعيد كتابته، وأيُّ حقلٍ
-      // يُضاف في `config/hrFields` يظهر هنا بلا تعديلٍ في الواجهة.
-      // ── والعناوينُ من القائمة المسطَّحة لا من المجموعات الخام ─────────────
-      // كانت تُبنى من `H.GROUPS` مباشرةً بـ`f.ar` كما كُتب. وهو مكتوبٌ لصفحة
-      // المجموعة، حيث اسمُ المجموعة فوقه: «تاريخ الانتهاء» واضحٌ داخل
-      // «الإقامات». وهنا تقف المجموعاتُ كلُّها في صفٍّ واحد، فيظهر «تاريخ
-      // الانتهاء الميلادي» **سبعَ مرّات** — ولا يُعرَف أيُّها أيّ، لا على
-      // الشاشة ولا في ملفّ الإكسل.
-      //
-      // و`ALL_FIELDS` هي القائمةُ نفسُها بعد تقييد ما تكرّر باسم مجموعته
-      // (راجع `qualifyDuplicateLabels` في config/hrFields)، وتحمل المجموعةَ
-      // معها. فصفحةُ المجموعة تُبقي عنوانَها القصير، والجدولُ المسطَّح يأخذ
-      // المقيَّد — من مصدرٍ واحد.
-      columns: H.ALL_FIELDS.map((f) => ({
-        key: f.key, ar: f.ar, en: f.en, type: f.type, group: f.group, groupAr: f.groupAr, groupEn: f.groupEn,
-        // `of` يقول للشاشةِ أيُّ تاريخٍ ميلاديٍّ هذا توأمُه الهجريّ — فتقرأ
-        // قيمتَه من أصله ولا تحوّل نصًّا هجريًّا مرّةً ثانية.
-        of: f.of || null,
-        choice: !!f.choice, cashPayroll: !!f.cashPayroll,
-      })),
-    };
+    const body = gridBody(out, total, page, limit);
     cache.set(ck, body, 30000);
     res.json(body);
   } catch (e) {
     console.error('hr grid', e);
     res.status(500).json({ message: 'تعذّر تحميل ماستر الموارد البشرية' });
+  }
+};
+
+/**
+ * GET /api/hr/master/grid/options?field=<عمود> — قيمُ قمعِ عمودٍ بعددها.
+ *
+ * كانت الشاشةُ تسحب الماستر كلَّه وتعدّ القيمَ بنفسها، ثمّ يفلتر الخادمُ بقاعدةٍ
+ * أخرى (أو لا يفلتر). فتُعَدّ هنا بالخانة التي يُفلتَر بها (gridCell)، تحت بقيّة
+ * الفلاتر عدا فلترِ العمود نفسِه — كإكسل.
+ */
+exports.gridOptions = async (req, res) => {
+  try {
+    const field = String(req.query.field || '');
+    if (!field) return res.status(400).json({ message: 'field مطلوب' });
+    const ck = `hrm:gridopts:${JSON.stringify(req.query || {})}`;
+    const hit = cache.get(ck);
+    if (hit !== undefined) return res.json(hit);
+    const allFields = storedKeys();
+    const select = [...new Set([
+      'employeeNumber', 'arabicName', 'firstName', 'lastName', 'employmentStatus',
+      'department', 'branchName', 'project', 'fieldStatus', 'employmentType', 'isFreelancer',
+      ...allFields, ...DATE_FILTERABLE,
+    ])].join(' ');
+    const pred = dateRangePred(req.query);
+    const all = (await Employee.find(buildFilter(req.query)).select(select).lean()).filter((e) => !pred || pred(e));
+    const custody = await custodyCounts(all.map((e) => e._id));
+    const cf = gridColFilters(req.query, field);
+    const m = new Map();
+    for (const e of all) {
+      const row = gridRow(e, custody.get(String(e._id)) || 0, allFields);
+      if (!passesCols(row, cf)) continue;
+      const k = cellKey(row, field) || '—';
+      m.set(k, (m.get(k) || 0) + 1);
+    }
+    const body = { values: [...m.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count) };
+    cache.set(ck, body, 30000);
+    res.json(body);
+  } catch (e) {
+    console.error('hr gridOptions', e);
+    res.status(500).json({ message: 'تعذّر تحميل قيم العمود' });
   }
 };
 

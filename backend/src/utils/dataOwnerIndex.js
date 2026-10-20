@@ -19,6 +19,7 @@
  * ثلاثون ثانية — عمرُ قائمة القيم نفسِها تقريبًا.
  */
 const { walletRecorderMap } = require('./walletPayment');
+const { normKey, textMatcher, BLANK_VALUES } = require('./colFilter');
 
 const MAX_AGE_MS = 30 * 1000;
 const OPS_LABEL = 'منقول من منصّة الأوبريشن';
@@ -47,7 +48,8 @@ async function load() {
   // الخريطةُ نفسُها التي يقرؤها الجدول — فلا يختلف الفلترُ عن الخانة في اسمٍ واحد.
   const map = await walletRecorderMap(raw);
   const byName = new Map();
-  for (const [rn, name] of map) {
+  for (const [rn, raw] of map) {
+    const name = normKey(raw);
     if (!byName.has(name)) byName.set(name, []);
     byName.get(name).push(rn);
   }
@@ -68,7 +70,7 @@ async function ensure(maxAgeMs = MAX_AGE_MS) {
 
 const current = () => snap || { byName: new Map(), rns: [], map: new Map() };
 
-const BLANK_NAME = { paymentDateByName: { $in: ['', null] } };
+const BLANK_NAME = { paymentDateByName: { $in: BLANK_VALUES } };
 
 /**
  * شرطُ الفلترة لقيمٍ اختارها المستخدم من قائمة «مسؤول البيانات».
@@ -78,14 +80,14 @@ function ownerCondition(values) {
   const { byName, rns } = current();
   const names = []; const sources = []; let blank = false;
   for (const v of values) {
-    if (v === '') { blank = true; continue; }
+    if (!normKey(v)) { blank = true; continue; }
     const src = sourceOfLabel(v);
     if (src) sources.push(src); else names.push(v);
   }
   const or = [];
   if (names.length) {
-    or.push({ paymentDateByName: { $in: names } });
-    const walletRns = names.flatMap((n) => byName.get(n) || []);
+    or.push({ paymentDateByName: { $in: names.map(textMatcher) } });
+    const walletRns = names.flatMap((n) => byName.get(normKey(n)) || []);
     if (walletRns.length) or.push({ $and: [BLANK_NAME, { reportNumber: { $in: walletRns } }] });
   }
   if (sources.length || blank) {
@@ -106,7 +108,7 @@ async function ownerOptions(OperationsWorkflow, match) {
   const and = (...c) => ({ $and: [match, ...c] });
   const [named, wallet, imported] = await Promise.all([
     OperationsWorkflow.aggregate([
-      { $match: and({ paymentDateByName: { $nin: ['', null] } }) },
+      { $match: and({ paymentDateByName: { $nin: BLANK_VALUES } }) },
       { $group: { _id: '$paymentDateByName', count: { $sum: 1 } } },
     ]),
     rns.length ? OperationsWorkflow.aggregate([
@@ -120,8 +122,8 @@ async function ownerOptions(OperationsWorkflow, match) {
   ]);
   const counts = new Map();
   const add = (k, n) => counts.set(k, (counts.get(k) || 0) + n);
-  for (const r of named) add(String(r._id || '').trim(), r.count);
-  for (const r of wallet) add(map.get(String(r._id || '').trim()) || '', r.count);
+  for (const r of named) add(normKey(r._id), r.count);
+  for (const r of wallet) add(normKey(map.get(String(r._id || '').trim())), r.count);
   for (const r of imported) add(importLabel(r._id), r.count);
   return [...counts.entries()].map(([value, count]) => ({ value, count }));
 }

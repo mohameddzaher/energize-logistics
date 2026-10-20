@@ -109,7 +109,14 @@ exports.list = async (req, res) => {
     if (req.query.mine === '1') f.createdBy = req.user?._id;
 
     const requests = await StaffStatusRequest.find(f).sort({ createdAt: -1 }).limit(500).lean();
+    // ── والعدّادُ على ما يراه السائلُ نفسُه، بلا فلتر الحالة ──────────────────
+    // كان يُعَدّ على الطلبات كلِّها في الشركة: شارةُ «المفتوحة» عند القسم تقول
+    // عددَ مفتوحات الأقسام كلِّها، وضغطُها يفتح طلباتِ قسمه وحده — رقمٌ يقول غيرَ
+    // ما يفتحه، ويُخبر بما لا يحقّ له أن يراه. فيُعَدّ بقاعدة الرؤية نفسِها،
+    // وبلا الحالة كي لا يتغيّر عددُ «المفتوحة» حين يُفتح تبويبُ «المنتهية».
+    const { status: _ownFacet, ...countF } = f;
     const counts = await StaffStatusRequest.aggregate([
+      { $match: countF },
       { $group: { _id: '$status', n: { $sum: 1 } } },
     ]);
     res.json({

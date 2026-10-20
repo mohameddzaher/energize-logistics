@@ -356,6 +356,14 @@ app.get('/api/public/b2c-target', async (req, res) => {
   } catch (e) { res.type('text/plain').send('0'); }
 });
 
+// شيتاتُ الأوردرات التي يديرها سكربتُ جوجل — بسرٍّ مشترك. راجع b2cSheetAppController.
+{
+  const sheetsApp = require('./controllers/b2cSheetAppController');
+  app.get('/api/public/b2c-sheets/layout', sheetsApp.layout);
+  app.post('/api/public/b2c-sheets/edit', sheetsApp.edit);
+  app.post('/api/public/b2c-sheets/register', sheetsApp.register);
+}
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ message: 'Route not found' });

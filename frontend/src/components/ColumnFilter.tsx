@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Filter, Loader2 } from 'lucide-react';
+import { colKey } from '@/lib/colKey';
 
 export type ColumnFilterOption = { value: string; count?: number };
 
@@ -75,8 +76,12 @@ export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen,
     return () => clearTimeout(t);
   }, [q, open, serverSearch]);
 
-  const values = useMemo(() => {
-    if (!open) return [] as { value: string; label: string; count?: number }[];
+  // كلُّ سطرٍ في القائمة يحمل القيمَ الخامَّ التي يمثّلها (`raws`): من الصفوف قد
+  // تكون «الدمام» و«الدمام » معًا — سطرٌ واحدٌ على الشاشة، واختيارُه يؤشّر الصيغتين،
+  // فيبقى التصفيةُ في كلّ صفحةٍ مطابقةً خامّةً كما كانت ولا ينقص منها صفّ.
+  type Entry = { value: string; label: string; count?: number; raws: string[] };
+  const values = useMemo((): Entry[] => {
+    if (!open) return [];
     const label = (value: string, raw: any) =>
       value === '' ? (ar ? '(فارغ)' : '(Blank)') : (format ? format(raw) : value);
 
@@ -84,19 +89,28 @@ export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen,
       const seen = new Set(options.map((o) => o.value));
       // القيمة المختارة تبقى ظاهرةً حتى لو خرجت من نتيجة الخادم (بعد بحثٍ أو بعد
       // تضييق بقيّة الفلاتر)، وإلا اختفى مربّعُها فتعذّر إلغاء اختيارها.
-      const pinned = [...selected].filter((v) => !seen.has(v)).map((v) => ({ value: v, label: label(v, v), count: undefined }));
+      const pinned = [...selected].filter((v) => !seen.has(v)).map((v) => ({ value: v, label: label(v, v), count: undefined, raws: [v] }));
       // الترتيب ترتيبُ الخادم: الأكثر تكرارًا أولًا — وهو ما يبحث عنه المستخدم غالبًا.
-      return [...pinned, ...options.map((o) => ({ value: o.value, label: label(o.value, o.value), count: o.count }))];
+      return [...pinned, ...options.map((o) => ({ value: o.value, label: label(o.value, o.value), count: o.count, raws: [o.value] }))];
     }
 
-    const map = new Map<string, string>();
+    const map = new Map<string, Entry>();
     for (const r of rows || []) {
       const raw = valueOf ? valueOf(r) : r?.[field];
       const value = raw === null || raw === undefined || raw === '' ? '' : String(raw);
-      if (!map.has(value)) map.set(value, label(value, raw));
+      const k = colKey(value);
+      const e = map.get(k);
+      if (!e) map.set(k, { value, label: k ? label(value, raw) : label('', raw), count: 1, raws: [value] });
+      else { e.count = (e.count || 0) + 1; if (!e.raws.includes(value)) e.raws.push(value); }
     }
-    return Array.from(map.entries())
-      .map(([value, lbl]) => ({ value, label: lbl, count: undefined }))
+    // ما اختير ولم يعد في الصفوف يبقى ظاهرًا ليُلغى اختيارُه.
+    for (const v of selected) {
+      if ([...map.values()].some((e) => e.raws.includes(v))) continue;
+      map.set(`\u0000${v}`, { value: v, label: label(v, v), count: undefined, raws: [v] });
+    }
+    // والعدُّ لا يُعرض هنا (كما كان): الصفوفُ قد تكون صفحةً لا الكلّ.
+    return Array.from(map.values())
+      .map((e) => ({ ...e, count: undefined }))
       .sort((a, b) => a.label.localeCompare(b.label, ar ? 'ar' : 'en', { numeric: true }));
   }, [open, options, rows, field, valueOf, ar, format, selected]);
 
@@ -104,13 +118,18 @@ export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen,
     ? values.filter((v) => v.label.toLowerCase().includes(q.trim().toLowerCase()))
     : values;
   const active = selected.size > 0;
-  const allShownSelected = shown.length > 0 && shown.every((v) => selected.has(v.value));
+  const isOn = (e: Entry) => e.raws.some((r) => selected.has(r));
+  const allShownSelected = shown.length > 0 && shown.every(isOn);
 
-  const toggle = (v: string) => { const n = new Set(selected); n.has(v) ? n.delete(v) : n.add(v); onChange(n); };
+  const toggle = (e: Entry) => {
+    const n = new Set(selected);
+    if (isOn(e)) e.raws.forEach((r) => n.delete(r)); else e.raws.forEach((r) => n.add(r));
+    onChange(n);
+  };
   const toggleAllShown = () => {
     const n = new Set(selected);
-    if (allShownSelected) shown.forEach((v) => n.delete(v.value));
-    else shown.forEach((v) => n.add(v.value));
+    if (allShownSelected) shown.forEach((e) => e.raws.forEach((r) => n.delete(r)));
+    else shown.forEach((e) => e.raws.forEach((r) => n.add(r)));
     onChange(n);
   };
 
@@ -169,7 +188,7 @@ export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen,
               <p className="text-xs text-slate-400 px-1 py-2">{ar ? 'لا توجد قيم' : 'No values'}</p>
             ) : shown.map((v) => (
               <label key={v.value} className="flex items-center gap-2 px-1 py-1 text-xs hover:bg-slate-100 rounded cursor-pointer">
-                <input type="checkbox" checked={selected.has(v.value)} onChange={() => toggle(v.value)} className="w-3.5 h-3.5 accent-[#f37121]" />
+                <input type="checkbox" checked={isOn(v)} onChange={() => toggle(v)} className="w-3.5 h-3.5 accent-[#f37121]" />
                 <span className="truncate flex-1" title={v.label}>{v.label}</span>
                 {v.count != null && <span className="text-[10px] text-slate-400 tabular-nums">{v.count.toLocaleString()}</span>}
               </label>

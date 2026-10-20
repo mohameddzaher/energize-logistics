@@ -40,54 +40,44 @@ const underNewRule = (workflow = {}) => {
 const methodIsCash = (paymentMethod) => /^\s*cash\s*$/i.test(String(paymentMethod || ''));
 
 /**
- * هل على هذا الكشف فاتورةٌ ضريبيّةٌ صادرة؟
+ * ── «الضريبيُّ لازم رقمُ فاتورة» ─────────────────────────────────────────────
  *
- * رقمُ فاتورةٍ أو ضريبةٌ محسوبة. والكشفُ النقديُّ تُصفَّر أعمدةُ فاتورته بالقفل
- * (راجع CASH_LOCKED_FIELDS)، فوجودُ أيٍّ منهما دليلٌ لا صدفة.
+ * قرارُ صاحب الشركة (٢٠٢٦/١٠/٢٠): «عادي لو كاش يتكتب صافي فاتورة ويتحسب الفات،
+ * لكن ملهاش رقم فاتورة. لكن الضريبي لازم رقم فاتورة».
+ *
+ * فالدليلُ على أنّ الكشفَ فُوتِر ضريبيًّا **رقمُ فاتورةٍ حقيقيّ وحدَه**. وكان
+ * الصافي والضريبةُ دليلين أيضًا — والصافي يكتبه المسارُ النقديُّ نفسُه
+ * (`deriveCashTotals`: مبلغُ السداد يُنسَخ إلى الصافي والإجماليّ)، فكان كلُّ كشفٍ
+ * نقديٍّ يُكتب له مبلغُ سدادٍ ينقلب «ضريبيًّا» في أوّل مزامنة: ثلاثُمئةٍ وثمانيةٌ
+ * وستّون كشفًا صافيها مبلغُ سدادها وضريبتُها صفر ولا رقمَ لها، كلُّها «ضريبي».
  */
 // ── وما ليس رقمَ فاتورة ─────────────────────────────────────────────────────
-// «no inv» و«بدون» يكتبها الناسُ في الشيت. و**«0»** يكتبها القفلُ النقديُّ نفسُه:
-// كشفٌ يصير كاشًا تُملأ أعمدةُ فاتورته بصفرٍ (راجع cashLockedValues في
-// workflowController) — فقراءتُها فاتورةً تقلب الكشفَ إلى ضريبيٍّ في أوّل حفظةٍ
-// بعدها، ثمّ يُقفل فيُكتب «0» من جديد. دورةٌ تُخرج الكشفَ من شاشة الكاش بلا سبب
-// ظاهر.
-const NO_INVOICE_RX = /^\s*(0|no\s*inv|بدون|لا\s*يوجد|-|—|ىى)\s*$/i;
-const hasTaxInvoice = (w = {}) => {
-  const no = String(w.invoiceNumber || '').trim();
-  if (no && !NO_INVOICE_RX.test(no)) return true;
-  return Number(w.tax) > 0 || Number(w.netInvoice) > 0;
-};
-
-/**
- * ── وفاتورةٌ صادرةٌ بدليلٍ لا يكتبه النظامُ نفسُه ─────────────────────────────
- *
- * `hasTaxInvoice` تقرأ «الصافي» دليلًا أيضًا. لكنّ الصافيَ يكتبه المسارُ النقديُّ
- * نفسُه (`deriveCashTotals`: مبلغُ السداد يُنسَخ إلى الصافي والإجماليّ، والضريبةُ
- * صفر) — فكشفٌ نقديٌّ له مبلغُ سدادٍ «يبدو» مفوتَرًا ضريبيًّا. وفي القاعدة
- * ثلاثُمئةٍ وثمانيةٌ وستّون كشفًا صافيها يساوي مبلغَ سدادها وضريبتُها صفر ولا رقمَ
- * فاتورةٍ لها، وكلُّها صارت «ضريبيًّا» لهذا السبب وحدَه.
- *
- * فما يُبنى على قرارٍ صريح (توحيدُ عميلٍ من صفحة «أنواع الدفع») لا يُنقَض إلّا
- * بدليلٍ لا يصنعه النظام: رقمُ فاتورةٍ حقيقيّ، أو ضريبةٌ محسوبة — والضريبةُ لا
- * تُحسب إلّا لفوترةٍ ضريبيّة (`deriveInvoiceTotals`)، والنقديُّ يكتبها صفرًا.
- *
- * (`hasTaxInvoice` نفسُها باقيةٌ كما هي للاشتقاق التلقائيّ: تضييقُها يُعيد تصنيفَ
- *  تلك الكشوف دفعةً واحدةً في أوّل مزامنة — قرارٌ لا أثرٌ جانبيّ.)
- */
+// «no inv» و«بدون» وأخواتُها يكتبها الناسُ في الشيت (في القاعدة اليومَ «no inv»
+// ألفٌ وستُّمئةٍ وأربعون مرّة). و**«0»** كان يكتبه القفلُ النقديُّ القديم. والقائمةُ
+// هي نفسُها التي يقرؤها قسمُ التحصيل (كانت هناك نسخةٌ أوسع — راجع
+// collectionsDeptController.NO_INVOICE_TOKENS)، فلا يكون رقمٌ «فاتورةً» هنا ولا يكونها هناك.
+const NO_INVOICE_TOKENS = [
+  '0', 'no inv', 'no invoice', 'noinv', 'no-inv', 'none', 'n/a', 'na', '-', '—', 'ىى',
+  'بدون', 'بدون فاتورة', 'لا يوجد', 'لا توجد', 'غير مفوتر', 'غير مفوترة',
+];
+const tokenAlt = NO_INVOICE_TOKENS
+  .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s*'))
+  .join('|');
+/** نصٌّ لا يكون رقمَ فاتورة (بلا الفارغ). */
+const NO_INVOICE_RX = new RegExp(`^\\s*(?:${tokenAlt})\\s*$`, 'i');
 // الفارغُ والمسافاتُ والعناصرُ النائبة — «ليس رقمَ فاتورة».
-const NOT_AN_INVOICE_RX = /^\s*(0|no\s*inv|بدون|لا\s*يوجد|-|—|ىى)?\s*$/i;
-const hasIssuedInvoice = (w = {}) => Number(w.tax) > 0
-  || !NOT_AN_INVOICE_RX.test(String(w.invoiceNumber == null ? '' : w.invoiceNumber));
+const NOT_AN_INVOICE_RX = new RegExp(`^\\s*(?:${tokenAlt})?\\s*$`, 'i');
+
+/** هل على هذا الكشف رقمُ فاتورةٍ حقيقيّ؟ — الدليلُ الوحيدُ على الضريبيّ. */
+const hasTaxInvoice = (w = {}) => !NOT_AN_INVOICE_RX.test(String(w.invoiceNumber == null ? '' : w.invoiceNumber));
+// الاسمُ الذي كتبه التوحيد — صار الشرطُ نفسَه، فهو هو.
+const hasIssuedInvoice = hasTaxInvoice;
 /** الشرطُ نفسُه استعلامًا (لـ`find`/`updateMany`). */
-const ISSUED_INVOICE_QUERY = { $or: [
-  { tax: { $gt: 0 } },
-  { invoiceNumber: { $ne: null, $not: NOT_AN_INVOICE_RX } },
-] };
+const ISSUED_INVOICE_QUERY = { invoiceNumber: { $ne: null, $not: NOT_AN_INVOICE_RX } };
 /** والشرطُ نفسُه تعبيرًا (لـ`$group` و`$cond` وخطوط التحديث). */
-const ISSUED_INVOICE_EXPR = { $or: [
-  { $gt: [{ $ifNull: ['$tax', 0] }, 0] },
-  { $not: [{ $regexMatch: { input: { $toString: { $ifNull: ['$invoiceNumber', ''] } }, regex: NOT_AN_INVOICE_RX } }] },
-] };
+const ISSUED_INVOICE_EXPR = {
+  $not: [{ $regexMatch: { input: { $toString: { $ifNull: ['$invoiceNumber', ''] } }, regex: NOT_AN_INVOICE_RX } }],
+};
 
 /**
  * ── مَن يقرّر نوعَ الكشف، ومَن لا يُنقَض قرارُه ────────────────────────────
@@ -166,7 +156,7 @@ const reachesCollections = (workflow = {}) => {
 };
 
 module.exports = {
-  NO_INVOICE_RX, NOT_AN_INVOICE_RX,
+  NO_INVOICE_TOKENS, NO_INVOICE_RX, NOT_AN_INVOICE_RX,
   hasIssuedInvoice, ISSUED_INVOICE_QUERY, ISSUED_INVOICE_EXPR, isUnified,
   derivePaymentType, derivePaymentTypeFor, paymentTypeReason,
   hasTaxInvoice, methodIsCash, mayAutoSet,

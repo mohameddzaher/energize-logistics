@@ -1504,7 +1504,8 @@
       "apis": [
         "/api/b2c/attendance",
         "/api/b2c/entry",
-        "/api/b2c/order-sheets"
+        "/api/b2c/order-sheets",
+        "/api/b2c/order-sheets/script"
       ],
       "wildcard": false
     },
@@ -1749,6 +1750,7 @@
         "/api/hr/master/employees",
         "/api/hr/master/filters",
         "/api/hr/master/grid",
+        "/api/hr/master/grid/options",
         "/api/hr/master/overview",
         "/api/reports"
       ],

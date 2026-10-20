@@ -48,6 +48,8 @@ export default function HrFormsPage() {
   const [items, setItems] = useState<FormItem[]>([]);
   const [cats, setCats] = useState<Cat[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  // «الكل» = مجموعُ التصنيفات بلا فلترها (الخادم) — لا عددُ التصنيف المختار.
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [cat, setCat] = useState('');
   const [q, setQ] = useState('');
@@ -65,11 +67,12 @@ export default function HrFormsPage() {
       if (cat) p.set('category', cat);
       if (q.trim()) p.set('q', q.trim());
       if (archived) p.set('includeArchived', '1');
-      const d = await api.get<{ items: FormItem[]; categories: Cat[]; counts: Record<string, number> }>(
+      const d = await api.get<{ items: FormItem[]; categories: Cat[]; counts: Record<string, number>; total?: number }>(
         `/api/hr/forms${p.toString() ? `?${p}` : ''}`);
       setItems(d.items || []);
       setCats(d.categories || []);
       setCounts(d.counts || {});
+      setTotal(d.total ?? (d.items || []).length);
     } catch (e: any) { notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error'); }
     setLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -161,12 +164,12 @@ export default function HrFormsPage() {
         </div>
         <button type="button" onClick={() => setCat('')}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${!cat ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
-          {t('الكل', 'All')} <span className="opacity-70">{items.length}</span>
+          {t('الكل', 'All')} <span className="opacity-70 tabular-nums">{total}</span>
         </button>
         {cats.map((c) => (
           <button key={c.key} type="button" onClick={() => setCat(c.key === cat ? '' : c.key)}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${cat === c.key ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
-            {ar ? c.ar : c.en} <span className="opacity-70">{counts[c.key] ?? 0}</span>
+            {ar ? c.ar : c.en} <span className="opacity-70 tabular-nums">{counts[c.key] ?? 0}</span>
           </button>
         ))}
         <label className="ms-auto flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer">

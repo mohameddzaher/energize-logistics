@@ -16,6 +16,7 @@ const cache = require('../utils/ttlCache');
 const { buildOpsAnalytics, periodTarget } = require('../utils/opsAnalytics');
 
 const S = (v) => String(v ?? '').trim();
+const { textIn, normKey } = require('../utils/colFilter');
 const DAY = 86400000;
 
 /** قائمةُ قيمٍ تُفلتَر بها — تُرسَل مفصولةً بفواصل. */
@@ -78,7 +79,10 @@ async function buildBody(per, query) {
       ['vendorType', 'vendorType'], ['opsRep', 'opsRep'], ['salesRep', 'salesRep'],
       ['client', 'clientName'], ['vendor', 'vendorName']]) {
       const vals = multi(query[qk]);
-      if (vals.length) match[field] = { $in: vals };
+      // القائمةُ تعرض القيمةَ مقصوصة («الدمام»)، والصفوفُ فيها «الدمام » أيضًا —
+      // فالقيمةُ نمطٌ يقبل فراغَها كلَّه. راجع utils/colFilter.
+      const c = vals.length ? textIn(field, vals) : null;
+      if (c) match[field] = c[field];
     }
 
     // ── ويُقرأ العامُ كلُّه مرّةً، لا مرّةً للفترة ومرّةً للسنة ─────────────
@@ -155,7 +159,8 @@ exports.filters = async (req, res) => {
       BranchReportRow.distinct('salesRep'),
       BranchReportRow.distinct('month'),
     ]);
-    const clean = (a) => a.map(S).filter(Boolean).sort();
+    // والصيغُ التي لا يفرّقها إلّا الفراغ اسمٌ واحد — كانت «جدة» تُعرض مرّتين.
+    const clean = (a) => [...new Set(a.map(normKey).filter(Boolean))].sort();
     const body = {
       branch: clean(branch), rentType: clean(rentType), payType: clean(payType),
       vendorType: clean(vendorType), opsRep: clean(opsRep), salesRep: clean(salesRep),

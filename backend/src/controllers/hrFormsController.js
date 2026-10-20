@@ -26,16 +26,21 @@ exports.list = async (req, res) => {
   try {
     const f = {};
     if (req.query.includeArchived !== '1') f.isActive = true;
-    if (req.query.category) f.category = String(req.query.category);
     if (req.query.q) {
       const rx = new RegExp(String(req.query.q).trim().slice(0, 80).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       f.$or = [{ title: rx }, { titleEn: rx }, { description: rx }, { fileName: rx }];
     }
-    const items = await HrFormTemplate.find(f).sort({ category: 1, title: 1 }).lean();
+    // ── أعدادُ التصنيفات بلا فلتر التصنيف ─────────────────────────────────────
+    // كانت تُعَدّ على ما بعد التصنيف المختار: يُضغَط «خطابات» فيصير كلُّ تصنيفٍ
+    // سواه صفرًا و«الكل» عددَ الخطابات. فتُعَدّ بالبحث والأرشيف وحدَهما، و«الكل»
+    // (`total`) مجموعُها — وهو ما يفتحه ضغطُه. والقائمةُ وحدَها بالتصنيف.
+    const cat = req.query.category ? String(req.query.category) : '';
+    const pool = await HrFormTemplate.find(f).sort({ category: 1, title: 1 }).lean();
+    const items = cat ? pool.filter((i) => i.category === cat) : pool;
     const counts = {};
     for (const c of CATEGORIES) counts[c.key] = 0;
-    items.forEach((i) => { counts[i.category] = (counts[i.category] || 0) + 1; });
-    res.json({ items, categories: CATEGORIES, counts, total: items.length });
+    pool.forEach((i) => { counts[i.category] = (counts[i.category] || 0) + 1; });
+    res.json({ items, categories: CATEGORIES, counts, total: pool.length });
   } catch (e) {
     res.status(500).json({ message: 'تعذّر تحميل النماذج' });
   }

@@ -175,7 +175,10 @@ function ShipmentOrdersInner() {
   const colParams = useCallback((into: URLSearchParams, skip?: string) => {
     Object.entries(colFilters).forEach(([k, set]) => {
       if (!set.size || k === skip) return;
-      into.set(`${COL_PREFIX}${k}`, [...set].join(','));
+      // كلُّ قيمةٍ معاملٌ مكرَّر لا مفصولةً بفاصلة: اسمُ عميلٍ فيه فاصلةٌ كان يصير
+      // اسمين لا يطابقان شيئًا. (راجع shipmentOrdersController.columnFilters.)
+      into.delete(`${COL_PREFIX}${k}`);
+      set.forEach((v) => into.append(`${COL_PREFIX}${k}`, v));
     });
   }, [colFilters]);
 

@@ -38,3 +38,24 @@ cellSchema.index({ sheet: 1, lt: 1, dateKey: 1 }, { unique: true });
 const B2COrderSheet = mongoose.models.B2COrderSheet || mongoose.model('B2COrderSheet', b2cOrderSheetSchema);
 const B2COrderSheetCell = mongoose.models.B2COrderSheetCell || mongoose.model('B2COrderSheetCell', cellSchema);
 module.exports = { B2COrderSheet, B2COrderSheetCell };
+
+/**
+ * مفتاحُ سكربت جوجل — يُولَّد في الخادم مرّةً ويُحفظ هنا، ولا يُكتب بيد أحد.
+ * يصل السكربتَ مضمَّنًا فيه حين يُحمَّل من «شيتات جوجل» (لمدير القسم ونائبه).
+ */
+const keySchema = new mongoose.Schema({ _id: { type: String, default: 'main' }, token: { type: String, required: true } }, { timestamps: true });
+const B2CSheetsKey = mongoose.models.B2CSheetsKey || mongoose.model('B2CSheetsKey', keySchema);
+let keyCache = { token: '', at: 0 };
+async function sheetsToken() {
+  if (keyCache.token && Date.now() - keyCache.at < 60000) return keyCache.token;
+  let doc = await B2CSheetsKey.findById('main').lean();
+  if (!doc) {
+    const token = require('crypto').randomBytes(24).toString('hex');
+    await B2CSheetsKey.updateOne({ _id: 'main' }, { $setOnInsert: { token } }, { upsert: true });
+    doc = await B2CSheetsKey.findById('main').lean();
+  }
+  keyCache = { token: doc.token, at: Date.now() };
+  return doc.token;
+}
+module.exports.B2CSheetsKey = B2CSheetsKey;
+module.exports.sheetsToken = sheetsToken;

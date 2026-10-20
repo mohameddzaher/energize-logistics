@@ -186,6 +186,7 @@
         "/api/collections-dept/invoices/deliver",
         "/api/collections-dept/invoices/detail",
         "/api/collections-dept/invoices/filters",
+        "/api/collections-dept/invoices/tax",
         "/api/collections-dept/invoices/uncollect",
         "/api/lookups/types",
         "/api/reports"

@@ -2293,3 +2293,147 @@ module.exports.canSeeMoney = canSeeMoney;
 module.exports.fieldsForRole = fieldsForRole;
 module.exports.stripMoneyFor = stripMoneyFor;
 module.exports.syncOpsInvoices = syncOpsInvoices;
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  رفعُ بيانات الفواتير من إكسل — POST /api/workflows/import-invoices
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * ورقةُ المبيعات من النظام المحاسبيّ (مثل «مبيعات حتي 16-10.xlsx»): لكلّ كشفٍ
+ * صفّ — «امر الشحن» هو رقمُ الكشف عندنا، ومعه السند ورقمُ الفاتورة وصافيها
+ * وضريبتُها وإجماليُّها وتاريخُها. فيُكتب كلُّ ذلك على كشفه دفعةً واحدة بدل
+ * كتابته صفًّا صفًّا (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠).
+ *
+ *   · الأعمدةُ تُقرأ بأسمائها لا بمواضعها، و«العميل» لا يُقرأ (العميلُ من الكشف).
+ *   · رقمُ كشفٍ تكرّر في الملفّ: الصفُّ الأخير هو المعتمد، وما في الملفّ يكتب
+ *     فوق ما في الكشف (الأحدثُ هو الأصحّ).
+ *   · كلُّ صفٍّ يمرّ بقواعد التعديل المفرد نفسِها: الصلاحيّة، والكشفُ المقفول
+ *     لدى غيرك، ونوعُ الدفع (الكاش لا رقمَ فاتورةٍ له)، واشتقاقُ الضريبة.
+ *   · ورقمُ الفاتورة الضريبيّ يصل التحصيلَ فورًا (syncOpsInvoices).
+ *   · `apply: false` يُرجع المعاينةَ وحدَها — ما سيُكتب وما لن يُكتب ولماذا.
+ */
+exports.importInvoices = async (req, res) => {
+  try {
+    const XLSX = require('xlsx');
+    const dataUrl = String(req.body.dataUrl || '');
+    const m = dataUrl.match(/^data:[^;]*;base64,(.*)$/);
+    if (!m) return res.status(400).json({ message: 'ارفع ملفّ إكسل' });
+    let wb;
+    try { wb = XLSX.read(Buffer.from(m[1], 'base64'), { type: 'buffer', cellDates: false }); }
+    catch (_) { return res.status(400).json({ message: 'الملفّ ليس إكسل صالحًا' }); }
+
+    const norm = (s) => String(s ?? '').replace(/[ \s]+/g, ' ').trim();
+    const fold = (s) => norm(s).replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, '');
+    const COLS = {
+      reportNumber: ['امرالشحن', 'رقمالكشف', 'رقمكشفالتخريج'],
+      documentNumber: ['السند', 'رقمالسند'],
+      invoiceNumber: ['رقمالفاتوره'],
+      netInvoice: ['اجماليالسعر', 'صافيالفاتوره'],
+      totalInvoice: ['المجموعالصافي', 'اجماليالفاتوره'],
+      tax: ['ضريبهالبند', 'الضريبه'],
+      invoiceDate: ['التاريخ', 'تاريخالفاتوره'],
+    };
+    const num = (v) => {
+      if (v === null || v === undefined || v === '') return undefined;
+      const n = Number(String(v).replace(/[٠-٩]/g, (c) => '٠١٢٣٤٥٦٧٨٩'.indexOf(c)).replace(/,/g, ''));
+      return Number.isFinite(n) ? Math.round(n * 100) / 100 : undefined;
+    };
+    const text = (v) => {
+      if (v === null || v === undefined) return '';
+      const s = typeof v === 'number' ? String(Math.round(v)) : norm(v);
+      return s.replace(/[٠-٩]/g, (c) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(c)));
+    };
+    // التاريخ رقمٌ تسلسليٌّ في إكسل — يُقرأ بأجزائه (لا cellDates: يفقد يومًا). راجع xlsx-date-epoch.
+    const date = (v) => {
+      if (v === null || v === undefined || v === '') return undefined;
+      if (typeof v === 'number') {
+        const p = XLSX.SSF.parse_date_code(v);
+        return p ? new Date(Date.UTC(p.y, p.m - 1, p.d)) : undefined;
+      }
+      const s = norm(v);
+      let mm = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (mm) return new Date(Date.UTC(+mm[1], +mm[2] - 1, +mm[3]));
+      mm = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/);
+      if (mm) return new Date(Date.UTC(+mm[3], +mm[2] - 1, +mm[1]));
+      return undefined;
+    };
+
+    // ── قراءةُ الصفوف من كلّ ورقةٍ فيها عمودُ «امر الشحن» ──
+    const byReport = new Map(); let fileRows = 0; const badRows = [];
+    for (const name of wb.SheetNames) {
+      const aoa = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null, blankrows: false });
+      const hi = aoa.findIndex((r) => (r || []).some((c) => COLS.reportNumber.includes(fold(c))));
+      if (hi < 0) continue;
+      const head = aoa[hi].map(fold);
+      const at = Object.fromEntries(Object.entries(COLS).map(([k, names]) => [k, head.findIndex((h) => names.includes(h))]));
+      for (let i = hi + 1; i < aoa.length; i++) {
+        const r = aoa[i] || [];
+        const rep = text(r[at.reportNumber]);
+        if (!rep) continue;
+        fileRows += 1;
+        const patch = {};
+        if (at.documentNumber >= 0 && text(r[at.documentNumber])) patch.documentNumber = text(r[at.documentNumber]);
+        if (at.invoiceNumber >= 0 && text(r[at.invoiceNumber])) patch.invoiceNumber = text(r[at.invoiceNumber]);
+        if (at.netInvoice >= 0 && num(r[at.netInvoice]) !== undefined) patch.netInvoice = num(r[at.netInvoice]);
+        if (at.tax >= 0 && num(r[at.tax]) !== undefined) patch.tax = num(r[at.tax]);
+        if (at.totalInvoice >= 0 && num(r[at.totalInvoice]) !== undefined) patch.totalInvoice = num(r[at.totalInvoice]);
+        if (at.invoiceDate >= 0 && date(r[at.invoiceDate])) patch.invoiceDate = date(r[at.invoiceDate]);
+        if (!Object.keys(patch).length) { badRows.push({ reportNumber: rep, reason: 'لا بيانات فاتورة في الصفّ' }); continue; }
+        byReport.set(rep, { patch, sheetRow: i + 1, sheet: name }); // الأخيرُ يغلب
+      }
+    }
+    if (!byReport.size) return res.status(400).json({ message: 'لم يُعثر على عمود «امر الشحن» أو لا صفوف فيه' });
+
+    const allowed = await fieldsForRole(req.user.role);
+    const reports = await OperationsWorkflow.find({ reportNumber: { $in: [...byReport.keys()] } })
+      .select('reportNumber applicationStatus paymentType paymentTypeSource paymentMethod reportDate tax netInvoice totalInvoice invoiceNumber invoiceDate documentNumber username lockedBy lockedByName lockedAt executionStatus').lean();
+    const found = new Map(reports.map((r) => [String(r.reportNumber).trim(), r]));
+
+    const notFound = []; const skipped = []; const unchanged = []; const plan = [];
+    for (const [rep, item] of byReport) {
+      const r = found.get(rep);
+      if (!r) { notFound.push(rep); continue; }
+      if (isLocked(r, req.user._id)) { skipped.push({ reportNumber: rep, reason: `قيد التعديل لدى ${r.lockedByName || 'مستخدم آخر'}` }); continue; }
+      const own = filterFieldsByRole({ ...item.patch }, req.user.role, allowed);
+      const refused = own.__rejected || [];
+      if (!Object.keys(own).length) { skipped.push({ reportNumber: rep, reason: `صلاحيّتك لا تسمح بـ: ${refused.join('، ')}` }); continue; }
+      await fillPaymentTypeFromCustomer(own, r);
+      stampInvoiceDate(own, r);
+      const billed = applyBillingRules(own, r);
+      if (billed.blocked.includes('invoiceNumber')) { skipped.push({ reportNumber: rep, reason: 'كشف نقديّ — لا رقم فاتورة له (غيِّر نوعه إلى ضريبي أوّلًا)' }); continue; }
+      const patch = billed.patch;
+      const diff = Object.keys(patch).filter((k) => {
+        const a = patch[k]; const b = r[k];
+        if (a instanceof Date || b instanceof Date) return String(a ? new Date(a).toISOString().slice(0, 10) : '') !== String(b ? new Date(b).toISOString().slice(0, 10) : '');
+        return String(a ?? '') !== String(b ?? '');
+      });
+      if (!diff.length) { unchanged.push(rep); continue; }
+      plan.push({ _id: r._id, reportNumber: rep, patch, before: Object.fromEntries(diff.map((k) => [k, r[k] ?? null])), oldInvoice: r.invoiceNumber, refused });
+    }
+
+    const summary = {
+      fileRows, reports: byReport.size, toUpdate: plan.length, unchanged: unchanged.length,
+      notFound, skipped, badRows,
+      sample: plan.slice(0, 15).map((p) => ({ reportNumber: p.reportNumber, before: p.before, after: Object.fromEntries(Object.keys(p.before).map((k) => [k, p.patch[k]])) })),
+    };
+    if (!req.body.apply) return res.json({ preview: true, ...summary });
+
+    // ── الكتابة ──
+    let updated = 0;
+    for (const p of plan) {
+      const r = await OperationsWorkflow.updateOne({ _id: p._id }, { $set: { ...p.patch, lastModifiedBy: req.user._id } });
+      updated += r.modifiedCount || 0;
+    }
+    cache.clear('wf:');
+    const fresh = await OperationsWorkflow.find({ _id: { $in: plan.map((p) => p._id) } }).select('invoiceNumber').lean();
+    await syncOpsInvoices([...fresh.map((w) => w.invoiceNumber), ...plan.map((p) => p.oldInvoice)]);
+    try { emitToAll('workflow:bulkImported', { importInvoices: true, updated }); } catch (_) { /* */ }
+    logAudit({
+      user: req.user, action: 'import_invoices', entity: 'OperationsWorkflow',
+      details: `رفع بيانات فواتير: ${updated} كشفًا من ${byReport.size} في الملفّ (${notFound.length} غير موجود، ${skipped.length} لم يُكتب)`, ip: req.ip,
+    });
+    return res.json({ preview: false, updated, ...summary });
+  } catch (e) {
+    console.error('importInvoices:', e);
+    res.status(500).json({ message: e.message || 'تعذّر رفع بيانات الفواتير' });
+  }
+};

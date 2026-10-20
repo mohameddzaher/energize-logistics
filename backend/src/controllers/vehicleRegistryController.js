@@ -612,26 +612,19 @@ exports.list = async (req, res) => {
     // `plateDigits` مع `plateLettersAr`: منهما تُبنى اللوحةُ بصيغة منصّة «تم»
     // في التصدير — الحروفُ ثلاثةُ مواضعَ دائمًا ثمّ الرقم. وبدونهما يخرج الملفُّ
     // باللوحة كما كُتبت، فلا تُطابِق شيئًا عند الرفع.
-    const LIST_FIELDS = 'plateNumber plateLettersAr plateDigits chassisNumber serialNumber sectorAr departmentAr cityAr'
-      + ' possessionStatusAr registrationTypeAr brandAr modelAr modelYear colorAr ownerNameAr commercialRegistration'
-      + ' authorizedPerson actualDriver logistiGaps serviceStatusAr serviceStatusCode tamStatusAr'
-      + ' insurance.policyNumber insurance.companyAr insurance.coverageTypeAr insurance.expiryDate'
-      + ' insurance.premiumSar insurance.premiumStatusAr insurance.statusCode'
-      + ' operatingCard.cardNumber operatingCard.expiryDate operatingCard.statusCode'
-      + ' vehicleLicense.expiryDate vehicleLicense.expiryDateHijri vehicleLicense.statusCode'
-      + ' inspection.statusAr inspection.expiryDate inspection.expiryDateHijri inspection.statusCode'
-      + ' fuelCard.provider fuelCard.cardNumber fuelCard.plateOnInvoiceAr fuelCard.statusAr fuelCard.statusCode'
-      + ' fuelCard.consumptionTypeAr fuelCard.limitSar fuelCard.limitStatus'
-      + ' gps.deviceId gps.serialImei gps.simNumber gps.deviceModel gps.provider gps.deviceStatusAr'
-      + ' gps.status gps.statusCode gps.expiryDate'
-      // ── والملاحظةُ تُقرأ مع الصفّ ─────────────────────────────────────────
-      // كانت ساقطةً من هذه القائمة، وحدَها. فتُكتب الملاحظةُ في «سجل المركبات»
-      // وتُحفَظ فعلًا (`PUT /:id` يمرّرها)، ثمّ يُعاد تحميلُ الجدول فتأتي الصفوفُ
-      // بلا `notesAr`: فعمودُ الملاحظات فارغٌ دائمًا، ونافذةُ التعديل — وهي
-      // تُغرَف من صفّ الجدول لا من قراءةٍ جديدة — تُفتح خاليةً. فيُقرأ ذلك
-      // «الملاحظةُ لم تُحفَظ» وهي محفوظةٌ في القاعدة ومعروضةٌ في البروفايل.
-      + ' notesAr'
-      + ' accidentCount missingItems insurancePolicy';
+    // ── القائمةُ تحمل كلَّ حقلٍ إلّا الثقيل — استثناءٌ لا قائمةُ أسماء ───────
+    //
+    // كانت قائمةً مكتوبةً بالأسماء، وكلُّ حقلٍ يُضاف إلى النموذج يولد خارجها في
+    // صمت. فـ«الشركة المالكة» تُختار في نافذة التعديل وتُحفَظ فعلًا في القاعدة،
+    // ثمّ يُعاد تحميلُ الجدول فتأتي الصفوفُ بلا `ownerCompanyAr`: العمودُ فارغ،
+    // وفلترُ العمود (إكسل) لا يجد قيمةً يعرضها، ونافذةُ التعديل — وهي تُغرَف من
+    // صفّ الجدول — تُفتَح خاليةً. فيُقرأ ذلك «لم يُحفَظ» وهو محفوظ (مركبة ٣٩٦٥،
+    // ٢٠٢٦/١٠/٢٠). والملاحظاتُ وقعت في الحفرة نفسِها من قبل.
+    //
+    // فيُستثنى ما هو ثقيلٌ حقًّا ولا يعرضه الجدول — سجلُّ التجديدات وسجلُّ
+    // الشريحة وأثرُ الاستيراد — ويصل كلُّ ما عداه. وما يُضاف إلى النموذج غدًا
+    // يصل الجدولَ بلا تذكُّرٍ من أحد.
+    const LIST_FIELDS = '-renewals -fuelCard.history -source_row -sourceFile -lastImportAt -__v';
     const [vehicles, total] = await Promise.all([
       VehicleMaster.find(filter).select(LIST_FIELDS).sort({ [sortBy]: sortDir }).skip((page - 1) * limit).limit(limit).lean(),
       VehicleMaster.countDocuments(filter),
@@ -834,6 +827,30 @@ const flattenPatch = (src, prefix = '', out = {}) => {
   return out;
 };
 
+/**
+ * ما تغيّر فعلًا بين وثيقتين على المسارات المرسَلة — للقيد وحدَه.
+ * النافذةُ ترسل الصفَّ كلَّه أحيانًا، فلا يُقيَّد ما أُرسل بل ما اختلف.
+ */
+const vehicleDiff = (before, after, paths) => {
+  const get = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
+  const norm = (x) => {
+    if (x === undefined || x === null || x === '') return '';
+    if (x instanceof Date) return x.toISOString();
+    if (typeof x === 'object') return JSON.stringify(x);
+    return String(x);
+  };
+  const out = { before: {}, after: {} };
+  for (const p of paths) {
+    if (Object.keys(out.after).length >= 40) break;
+    const a = get(before, p); const b = get(after, p);
+    if (norm(a) === norm(b)) continue;
+    out.before[p] = a ?? '';
+    out.after[p] = b ?? '';
+  }
+  return out;
+};
+exports._vehicleDiff = vehicleDiff;
+
 exports.update = async (req, res) => {
   try {
     const $set = flattenPatch(req.body);
@@ -843,12 +860,29 @@ exports.update = async (req, res) => {
     // تاريخ» لا يظهر في انتهاءٍ ولا تنبيه. والاشتقاقُ هنا لا في الشاشة: الشاشتان
     // اثنتان (الويب والهاتف) ومعهما الاستيراد — راجع utils/hijri.
     const { fillHijriPairs } = require('../utils/hijri');
-    const before = await VehicleMaster.findById(req.params.id).select('vehicleLicense inspection').lean();
-    const derived = fillHijriPairs($set, before || {});
+    // الوثيقةُ قبل التعديل كاملةً: منها يُشتقّ الهجريّ، ومنها يُكتب ما تغيّر.
+    const before = await VehicleMaster.findById(req.params.id).select('-renewals -fuelCard.history').lean();
+    if (!before) return res.status(404).json({ message: 'Vehicle not found' });
+    const derived = fillHijriPairs($set, before);
     const v = await VehicleMaster.findByIdAndUpdate(req.params.id, { $set }, { new: true, runValidators: true });
     if (!v) return res.status(404).json({ message: 'Vehicle not found' });
     if ($set.plateNumber) await syncAccidentCount(v.plateKey);
     emit('vreg:updated', {});
+    // ── والتعديلُ يُقيَّد حقلًا حقلًا ─────────────────────────────────────────
+    // لم يكن يُقيَّد أصلًا: `/api/vehicle-registry` خارجَ بادئات القسم في
+    // config/sections، فلا تلتقطه شبكةُ الأمان العامّة (middleware/auditTrail)
+    // ولا يكتب المتحكّمُ شيئًا. فحين قيل «حفظتُ ولم يُحفَظ» لم يكن في السجلّ ما
+    // يقول مَن حفظ ماذا ومتى. والقيدُ يحمل ما تغيّر وحده، قبلَه وبعدَه.
+    try {
+      const after = v.toObject();
+      const changes = vehicleDiff(before, after, Object.keys($set));
+      if (Object.keys(changes.after).length) {
+        await logAudit({
+          user: req.user?._id, action: 'update_vehicle', entity: 'VehicleMaster',
+          entityId: v._id, entityKey: v.plateNumber, changes, ipAddress: req.ip,
+        });
+      }
+    } catch (_) { /* القيدُ لا يُفشل الحفظ */ }
     // ويُقال ما اشتُقّ: الشاشةُ تُظهره فلا يُفاجأ أحدٌ بتاريخٍ لم يكتبه.
     res.json({ vehicle: v, ...(Object.keys(derived).length ? { derived } : {}) });
   } catch (e) {

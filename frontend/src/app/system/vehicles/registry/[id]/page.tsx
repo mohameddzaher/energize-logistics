@@ -409,6 +409,8 @@ export default function VehicleRegistryDetail() {
         </Section>
 
         <Section isRTL={isRTL} title={t('الملكية والحيازة', 'Ownership')} icon={<Building2 className="w-4 h-4" />} accent={NEUTRAL}>
+          {/* الشركةُ المالكة تُختار في نافذة التعديل ولم يكن لها سطرٌ هنا. */}
+          <Row label={t('الشركة المالكة', 'Owning company')}>{val(v.ownerCompanyAr)}</Row>
           <Row label={t('المالك', 'Owner')}>{val(v.ownerNameAr)}</Row>
           <Row label={t('السجل التجاري', 'Commercial reg.')} mono>{val(v.commercialRegistration)}</Row>
           <Row label={t('حالة الحيازة', 'Possession')}>{val(v.possessionStatusAr)}</Row>

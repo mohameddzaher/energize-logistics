@@ -24,7 +24,7 @@ const { subjectMeta } = require('../services/reportSources');
 const FULL = process.argv.includes('--full');
 // `--fix` يعالج ما يُعالَج بأمان: أن يُمنح المديرُ ما مُنحه موظّفوه.
 const FIX = process.argv.includes('--fix');
-const EXTERNAL = ['client'];
+const EXTERNAL = require('../config/scopedRoles').EXTERNAL_ROLES;
 
 const accessFor = async (role, key) => {
   if (FULL_ACCESS_ROLES.includes(role)) return 'edit';

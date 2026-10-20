@@ -64,6 +64,9 @@ router.delete('/follow-ups/:fuId', authorize(...EDIT_ROLES), ctrl.deleteFollowUp
 router.get('/invoices/filters', authorize(...READ_ROLES), ctrl.invoiceFilterOptions);
 // قيمُ عمودٍ واحدٍ لفلاتر الأعمدة — تُحسب في القاعدة لا من الصفحة المعروضة.
 router.get('/invoices/:kind/column-options', authorize(...READ_ROLES), ctrl.invoiceColumnOptions);
+// كشفُ حسابٍ PDF لما على الشاشة — قبل `/invoices/tax/:invoiceNumber`، وإلّا
+// قُرئت «statement» رقمَ فاتورة.
+router.get('/invoices/:kind/statement', authorize(...READ_ROLES), ctrl.invoiceStatement);
 router.get('/invoices/cash', authorize(...READ_ROLES), ctrl.cashInvoices);
 router.get('/invoices/tax', authorize(...READ_ROLES), ctrl.taxInvoices);
 // الرقمُ قد يحمل شرطاتٍ ومسافات — يُلتقط كما هو.

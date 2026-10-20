@@ -179,7 +179,7 @@ async function assignees(req, res) {
   try {
     // المؤرشَفُ لا يُختار ولا يُسنَد إليه — كأنّه حُذف.
     const archSets = await require('../utils/endedStaff').endedStaff();
-    const users = (await User.find({ isActive: true, role: { $ne: 'client' } })
+    const users = (await User.find({ isActive: true, role: { $nin: require('../config/scopedRoles').EXTERNAL_ROLES } })
       .select('firstName lastName role')
       .sort({ firstName: 1 })
       .limit(500)

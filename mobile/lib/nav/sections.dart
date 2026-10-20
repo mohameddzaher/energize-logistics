@@ -40,6 +40,7 @@ import '../screens/dash_specs.dart';
 import '../screens/remote_suite.dart';
 import '../screens/ls2_dashboard.dart';
 import '../screens/b2c_amazon_attendance.dart';
+import '../screens/mediago_complaints.dart';
 import '../screens/b2c_daily.dart';
 import '../screens/b2c_duty.dart';
 import '../screens/b2c_duty_register.dart';
@@ -564,6 +565,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       pages: _b2cSupervisors.contains(role) ? [
         AppPage('مدخلات الأوردرات', 'Orders Entry', Icons.edit_calendar_outlined, (c) => const B2cDailyEntryScreen(), path: '/system/b2c/daily-entry'),
         AppPage('متابعة مناديب أمازون', 'Amazon Reps Attendance', Icons.how_to_reg_outlined, (c) => const B2cAmazonAttendanceScreen(), path: '/system/b2c/amazon-attendance'),
+        // شكاوى Media Go — بلاغاتُ أعطال الشاشات على الدبّابات، يراها حسابُ Media Go ويردّ.
+        AppPage('شكاوى Media Go', 'Media Go Complaints', Icons.connected_tv_outlined, (c) => const MediaGoComplaintsScreen(), path: '/system/b2c/mediago-complaints'),
         AppPage('تفقّد بداية الدوام', 'Duty Start Check', Icons.photo_camera_outlined, (c) => const B2cDutyScreen(), path: '/system/b2c/duty/start'),
         AppPage('سجل التفقّد', 'Duty Register', Icons.fact_check_outlined, (c) => const B2cDutyRegisterScreen(), path: '/system/b2c/duty'),
       ] : [
@@ -571,6 +574,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('المشاريع', 'Projects', Icons.folder_special_outlined, (c) => ResourceScreen(config: b2cProjectsCfg), path: '/system/b2c/projects'),
         AppPage('مدخلات الأوردرات', 'Orders Entry', Icons.edit_calendar_outlined, (c) => const B2cDailyEntryScreen(), path: '/system/b2c/daily-entry'),
         AppPage('متابعة مناديب أمازون', 'Amazon Reps Attendance', Icons.how_to_reg_outlined, (c) => const B2cAmazonAttendanceScreen(), path: '/system/b2c/amazon-attendance'),
+        // شكاوى Media Go — بلاغاتُ أعطال الشاشات على الدبّابات، يراها حسابُ Media Go ويردّ.
+        AppPage('شكاوى Media Go', 'Media Go Complaints', Icons.connected_tv_outlined, (c) => const MediaGoComplaintsScreen(), path: '/system/b2c/mediago-complaints'),
         // تفقُّد بداية الدوام — أوّلُ ما يُفتَح صباحًا، فيُوضَع قبل ما دونه.
         // والمشرفُ يفتحه واقفًا في المحطّة لا خلف مكتب، فالهاتفُ موضعُه الأصليّ.
         AppPage('تفقّد بداية الدوام', 'Duty Start Check', Icons.photo_camera_outlined, (c) => const B2cDutyScreen(), path: '/system/b2c/duty/start'),
@@ -654,6 +659,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
   // A partner sees ONLY their portal — never a staff section, whatever the
   // permission matrix happens to say about their role.
   if (role == 'client') return all.where((s) => s.key == 'Portal').toList();
+  // وحسابُ Media Go لا قسمَ له: يدخل على شاشته مباشرةً (main.dart) ولا درجَ له.
+  if (role == mediagoRole) return const [];
   // ── والصفحاتُ تُصفّى داخل القسم ───────────────────────────────────────────
   // القسمُ يُفتَح، ثمّ تُحذَف منه الصفحاتُ التي أُغلقت لهذا الدور — والقسمُ الذي
   // لم تبقَ فيه صفحةٌ يسقط كلُّه، فبطاقةٌ تُفتَح على فراغٍ أسوأُ من غيابها.

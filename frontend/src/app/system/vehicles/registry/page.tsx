@@ -418,6 +418,31 @@ const Card = ({ title, extra, children }: { title: string; extra?: React.ReactNo
   </section>
 );
 
+/** قيمتان «فارغتان» واحدةٌ: لا يُعَدّ تغييرًا أن يصير `undefined` نصًّا فارغًا. */
+const same = (a: any, b: any) => {
+  const n = (x: any) => (x === undefined || x === null || x === '' ? '' : JSON.stringify(x));
+  return n(a) === n(b);
+};
+const isPlainObj = (x: any) => !!x && typeof x === 'object' && !Array.isArray(x);
+
+/**
+ * الفرقُ بين الصفّ كما فُتح وما في النافذة الآن — بعمقٍ واحد، لأنّ حقولَ المركبة
+ * إمّا خانةٌ في أعلاها وإمّا خانةٌ في مستندٍ (`insurance.companyAr`). والخادمُ
+ * يدمج الكائنَ الفرعيّ ولا يستبدله، فإرسالُ خانةٍ واحدةٍ منه آمن.
+ */
+const patchOf = (orig: any, cur: any) => {
+  const out: Record<string, any> = {};
+  for (const k of Object.keys(cur || {})) {
+    const a = orig?.[k]; const b = cur[k];
+    if (isPlainObj(b)) {
+      const sub: Record<string, any> = {};
+      for (const sk of Object.keys(b)) if (!same(a?.[sk], b[sk])) sub[sk] = b[sk];
+      if (Object.keys(sub).length) out[k] = sub;
+    } else if (!same(a, b)) out[k] = b;
+  }
+  return out;
+};
+
 function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onClose: () => void; onSaved: () => void }) {
   const { lang } = useLanguage();
   const ar = lang === 'ar';
@@ -470,9 +495,15 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
 
   const save = async () => {
     if (!f.plateNumber?.trim()) { notify(ar ? 'رقم اللوحة مطلوب' : 'Plate required', 'error'); return; }
+    // ── يُرسَل ما تغيّر وحدَه ────────────────────────────────────────────
+    // كانت النافذةُ ترسل الصفَّ كلَّه كما جاء من الجدول: كلُّ حقلٍ لم يُلمَس
+    // يُكتب فوق ما في القاعدة بقيمته القديمة — فتعديلٌ جرى في صفحةٍ أخرى بين
+    // فتح النافذة وحفظها يُمحى في صمت. والآن يُرسَل الفرقُ فقط.
+    const patch = vehicle ? patchOf(vehicle, f) : f;
+    if (vehicle && !Object.keys(patch).length) { notify(ar ? 'لا تغييرات للحفظ' : 'Nothing changed', 'info'); onClose(); return; }
     setSaving(true);
     try {
-      if (vehicle) await api.put(`/api/vehicle-registry/${vehicle._id}`, f);
+      if (vehicle) await api.put(`/api/vehicle-registry/${vehicle._id}`, patch);
       else await api.post('/api/vehicle-registry', f);
       notify(ar ? 'تم الحفظ' : 'Saved', 'success'); onSaved();
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setSaving(false); }
@@ -529,7 +560,10 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <div><L>{ar ? 'السجل التجاري' : 'Commercial register'}</L><input className={inp} value={f.commercialRegistration || ''} onChange={(e) => set('commercialRegistration', e.target.value)} /></div>
           {/* «حالة تم» عمودٌ في التقرير المطلوب وشرطٌ في منصّة لوجستي — كان
               يُقرأ في الجدول ولا يُصحَّح في أيّ مكان. */}
-          <div><L>{ar ? 'حالة تم' : 'Tam status'}</L><input className={inp} value={f.tamStatusAr || ''} onChange={(e) => set('tamStatusAr', e.target.value)} /></div>
+          {/* وقيمُها قائمةٌ لا كتابة: «مالك» أو «مستخدم» — القائمةُ نفسُها التي
+              تُكتب بها حالةُ الحيازة. خانةٌ حرّةٌ هنا كانت تُخرج «مالك » و«مالكة»
+              قيمتين في فلتر العمود لشيءٍ واحد. */}
+          <div><L>{ar ? 'حالة تم' : 'Tam status'}</L><ManagedSelect storeLabel type="vehicle_possession_status" value={f.tamStatusAr || ''} onChange={(v) => set('tamStatusAr', v)} /></div>
         </Card>
 
         <Card title={ar ? 'التأمين' : 'Insurance'}

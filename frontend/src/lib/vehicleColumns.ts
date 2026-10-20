@@ -201,6 +201,19 @@ export const REGISTRY_COLUMNS: VCol[] = [
   { key: 'inspectionDays', ar: 'الايام المتبقية علي انتهاء الفحص', en: 'Days to inspection expiry', get: (v) => daysLeft(v.inspection?.expiryDate), width: 16, type: 'number' },
 
   { key: 'notesAr', ar: 'الملاحظات', en: 'Notes', get: (v) => v.notesAr, width: 30 },
+
+  // ── وكلُّ خانةٍ في نافذة التعديل لها عمود ────────────────────────────────
+  // هذه تُكتب في النافذة ولم يكن لها عمودٌ في الجدول: تُعدَّل «حالة التشغيل»
+  // ويُحفَظ، ثمّ لا يُرى أثرُها في السجلّ ولا تُفلتَر من رأس عمود، فيُظنّ أنّ
+  // الحفظ لم يقع. وتُلحَق آخرَ القائمة لا في وسطها: ترتيبُ ما قبلها هو ترتيبُ
+  // التقرير المطلوب، والملفُّ يُقارَن بسابقه عمودًا بعمود.
+  { key: 'serviceStatusAr', ar: 'حالة التشغيل', en: 'Service status', get: (v) => v.serviceStatusAr, width: 14 },
+  { key: 'possessionStatusAr', ar: 'حالة الحيازة', en: 'Possession', get: (v) => v.possessionStatusAr, width: 12 },
+  { key: 'authJobTitle', ar: 'وظيفة المفوض', en: 'Authorised job title', get: (v) => v.authorizedPerson?.jobTitleAr, width: 18 },
+  { key: 'gpsDeviceId', ar: 'رقم جهاز GPS', en: 'GPS device id', get: (v) => v.gps?.deviceId, width: 16, mono: true },
+  { key: 'gpsSim', ar: 'رقم شريحة GPS', en: 'GPS SIM', get: (v) => v.gps?.simNumber, width: 16, mono: true },
+  { key: 'inspectionStatus', ar: 'حالة الفحص', en: 'Inspection status', get: (v) => v.inspection?.statusAr, width: 14 },
+  { key: 'premiumStatus', ar: 'حالة القسط', en: 'Premium status', get: (v) => v.insurance?.premiumStatusAr, width: 16 },
 ];
 
 export const BASE_COLUMN_KEYS = REGISTRY_COLUMNS.filter((c) => c.base).map((c) => c.key);

@@ -4,6 +4,7 @@ import 'services/auth.dart';
 import 'services/lang.dart';
 import 'screens/login.dart';
 import 'screens/home.dart';
+import 'screens/mediago_complaints.dart';
 import 'ui/theme.dart';
 
 void main() {
@@ -55,7 +56,12 @@ class _Gate extends StatelessWidget {
     // انتقال ناعم بين الدخول والداخل.
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 400),
-      child: auth.user == null ? const LoginScreen() : const HomeScreen(),
+      // حسابُ Media Go يرى شاشةً واحدة — هي بيتُه (backend/src/config/scopedRoles).
+      child: auth.user == null
+          ? const LoginScreen()
+          : auth.role == mediagoRole
+              ? const MediaGoComplaintsScreen(key: ValueKey('mediago-home'), partnerHome: true)
+              : const HomeScreen(),
     );
   }
 }

@@ -88,22 +88,23 @@ class Api {
   // للأبد فتفضل الشاشة «بتلف». مع المهلة يتحوّل لخطأ يظهر مع زر إعادة المحاولة.
   static const _timeout = Duration(seconds: 25);
 
-  Future<dynamic> _request(String method, String path, {Object? body, bool retried = false}) async {
+  Future<dynamic> _request(String method, String path, {Object? body, bool retried = false, Duration? timeout}) async {
+    final limit = timeout ?? _timeout;
     final uri = Uri.parse('${AppConfig.apiBase}$path');
     late http.Response res;
     final encoded = body == null ? null : jsonEncode(body);
     try {
       switch (method) {
         case 'GET':
-          res = await http.get(uri, headers: _headers()).timeout(_timeout);
+          res = await http.get(uri, headers: _headers()).timeout(limit);
         case 'POST':
-          res = await http.post(uri, headers: _headers(), body: encoded).timeout(_timeout);
+          res = await http.post(uri, headers: _headers(), body: encoded).timeout(limit);
         case 'PATCH':
-          res = await http.patch(uri, headers: _headers(), body: encoded).timeout(_timeout);
+          res = await http.patch(uri, headers: _headers(), body: encoded).timeout(limit);
         case 'PUT':
-          res = await http.put(uri, headers: _headers(), body: encoded).timeout(_timeout);
+          res = await http.put(uri, headers: _headers(), body: encoded).timeout(limit);
         case 'DELETE':
-          res = await http.delete(uri, headers: _headers()).timeout(_timeout);
+          res = await http.delete(uri, headers: _headers()).timeout(limit);
       }
     } on Exception {
       // انقطاع/مهلة/فشل شبكة — رسالة عربية واضحة بدل تعليق الشاشة.
@@ -112,7 +113,7 @@ class Api {
 
     if (res.statusCode == 401 && !retried && !path.startsWith('/api/auth/')) {
       if (await _refresh()) {
-        return _request(method, path, body: body, retried: true);
+        return _request(method, path, body: body, retried: true, timeout: timeout);
       }
       throw ApiException(401, 'انتهت الجلسة — سجّل الدخول من جديد');
     }
@@ -172,6 +173,10 @@ class Api {
 
   Future<dynamic> get(String path) => _request('GET', path);
   Future<dynamic> post(String path, [Object? body]) => _request('POST', path, body: body);
+  /// إرسالٌ يحمل مرفقاتٍ كبيرة (صورٌ ومقاطعُ base64) — عشراتُ الميغابايتات على
+  /// شبكة الهاتف لا تُرفع في خمسٍ وعشرين ثانية، فمهلتُها دقيقتان ونصف.
+  Future<dynamic> postLong(String path, [Object? body]) =>
+      _request('POST', path, body: body, timeout: const Duration(seconds: 150));
   Future<dynamic> patch(String path, [Object? body]) => _request('PATCH', path, body: body);
   Future<dynamic> put(String path, [Object? body]) => _request('PUT', path, body: body);
   Future<dynamic> delete(String path) => _request('DELETE', path);

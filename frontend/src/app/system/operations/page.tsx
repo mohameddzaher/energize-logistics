@@ -19,6 +19,7 @@ import { useLatestRequest } from '@/hooks/useLatestRequest';
 import {
   ClipboardList, Plus, Search, Filter, FilterX, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, AlertCircle, CheckSquare, Check, Receipt, AlertTriangle } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
+import InvoiceImportButton from '@/components/operations/InvoiceImportButton';
 
 interface Workflow {
   _id: string;
@@ -1071,6 +1072,8 @@ export default function OperationsWorkflowPage() {
               )}
             </div>
           )}
+          {/* رفعُ بيانات الفواتير من ورقة المبيعات — لمن يملك أعمدةَ الفاتورة. */}
+          {canViewFinancials && <InvoiceImportButton ar={lang === 'ar'} onDone={() => fetchWorkflows(true)} />}
           {/* ── التصدير: الزرّ الموحَّد لا زرٌّ تكتبه هذه الصفحة بيدها ───────
               كانت هذه الشاشة وحدها ترسم قائمتها الخاصّة، فبدت شريطَ نصٍّ بجانب
               أزرار بقيّة النظام. والزرّ الموحَّد يحمل الأيقونة والسهم والحالة

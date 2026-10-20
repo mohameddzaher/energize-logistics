@@ -18,6 +18,8 @@ const BY_ID: Record<string, (id: string) => string> = {
   Employee: (id) => `/system/hr/employees/${id}`,
   FleetShipment: (id) => `/system/fleet/${id}`,
   CustomsClearance: (id) => `/system/customs/${id}`,
+  // بلاغُ Media Go يُفتَح في قائمته، والمعرّفُ يفتح تفصيلَه — الشاشةُ واحدةٌ للطرفين.
+  MediaGoComplaint: (id) => `/system/b2c/mediago-complaints?id=${id}`,
 };
 
 /** الكياناتُ التي تُفتَح على شاشةِ قسمِها. */

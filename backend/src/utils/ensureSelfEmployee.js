@@ -14,7 +14,7 @@ async function ensureSelfEmployee(user) {
   if (!user) return null;
   const existing = user.linkedEmployee && (user.linkedEmployee._id || user.linkedEmployee);
   if (existing) return existing;
-  if (user.role === 'client') return null;
+  if (require('../config/scopedRoles').isExternalRole(user.role)) return null;
 
   // Reuse a profile already pointing at this login — or one HR registered
   // under the same email. Without the email match, an HR record entered

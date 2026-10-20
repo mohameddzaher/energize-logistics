@@ -102,7 +102,7 @@ module.exports = {
   // utils/orgChart.js بيحلّ المدير الفعلي وقت التشغيل.
   ROLE_HIERARCHY: (() => {
     const R = require('./roles');
-    const h = { super_admin: null, admin: 'super_admin', moderator: 'admin', employee: 'admin', client: null };
+    const h = { super_admin: null, admin: 'super_admin', moderator: 'admin', employee: 'admin', client: null, mediago_account: null };
     for (const s of R.SECTION_ROLES) {
       h[s.manager.key] = 'admin';
       for (const st of s.staff) h[st.key] = s.manager.key;

@@ -4,6 +4,7 @@
 // fetch a report as blocks, and open it as a PDF — used by the report centre and
 // by every "تقرير" button scattered across the profile pages.
 import api from '@/lib/api';
+import { openPdf, printPdf } from '@/utils/pdfActions';
 import type { ReportDoc } from '@/components/system/ReportView';
 
 export interface ReportSubject {
@@ -39,10 +40,14 @@ export const reportPdfPath = (subject: string, id: string, from: string, to: str
  * the access token needed refreshing.
  */
 export async function openReportPdf(subject: string, id: string, from: string, to: string, lang: 'ar' | 'en') {
-  const blob = await api.getBlob(reportPdfPath(subject, id, from, to, lang));
-  const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  // النافذةُ تُفتح لحظةَ الضغطة لا بعد وصول الملفّ — وإلّا حجبها المتصفّح
+  // فلا يظهر شيء. راجع utils/pdfActions.
+  return openPdf(api.getBlob(reportPdfPath(subject, id, from, to, lang)), `${subject}-report.pdf`, lang === 'ar');
+}
+
+/** يفتح حوارَ الطابعة على التقرير مباشرةً — بلا فتحه في لسانٍ أوّلًا. */
+export async function printReportPdf(subject: string, id: string, from: string, to: string, lang: 'ar' | 'en') {
+  return printPdf(api.getBlob(reportPdfPath(subject, id, from, to, lang)), `${subject}-report.pdf`, lang === 'ar');
 }
 
 /** A sensible default window: the last 12 months, which is how these are read. */

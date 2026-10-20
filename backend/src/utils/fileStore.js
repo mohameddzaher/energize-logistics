@@ -22,6 +22,14 @@ const EXT_BY_MIME = {
 };
 
 const ALLOWED_MIME = new Set(Object.keys(EXT_BY_MIME));
+
+// ── والفيديو لمن يطلبه صراحةً ────────────────────────────────────────────────
+// المستنداتُ لا فيديوَ فيها، فلا يُفتَح لها. وبلاغُ العطل (شاشةٌ تقطع، باورٌ
+// مفصول) يُفهَم من مقطعٍ قصيرٍ أكثرَ من صورة — فمن احتاجه مرّر `allowVideo`.
+const VIDEO_EXT_BY_MIME = {
+  'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm',
+  'video/3gpp': '3gp', 'video/x-m4v': 'm4v',
+};
 const MAX_BYTES = 20 * 1024 * 1024; // 20MB
 
 // Parse a data URL ("data:<mime>;base64,<data>") into { mimeType, buffer }.
@@ -33,17 +41,24 @@ const parseDataUrl = (dataUrl) => {
 
 // Save a base64 data URL under uploads/<subdir>.
 // Throws Error with a friendly message on validation failure.
-const saveUploadFile = (dataUrl, subdir, originalName = '') => {
+// `opts.allowVideo` يقبل مقاطعَ الفيديو، و`opts.maxBytes` يضيّق الحدَّ (لا يوسّعه).
+const saveUploadFile = (dataUrl, subdir, originalName = '', opts = {}) => {
   const parsed = parseDataUrl(dataUrl);
   if (!parsed) throw new Error('Invalid file data');
   const { mimeType, buffer } = parsed;
-  if (!ALLOWED_MIME.has(mimeType)) throw new Error('Unsupported file type. Use an image, PDF, Word or Excel file.');
-  if (buffer.length > MAX_BYTES) throw new Error('File too large (max 20MB).');
+  const isVideo = !!opts.allowVideo && Object.prototype.hasOwnProperty.call(VIDEO_EXT_BY_MIME, mimeType);
+  if (!ALLOWED_MIME.has(mimeType) && !isVideo) {
+    throw new Error(opts.allowVideo
+      ? 'Unsupported file type. Use an image or a video (mp4, mov, webm).'
+      : 'Unsupported file type. Use an image, PDF, Word or Excel file.');
+  }
+  const limit = Math.min(MAX_BYTES, Number(opts.maxBytes) || MAX_BYTES);
+  if (buffer.length > limit) throw new Error(`File too large (max ${Math.round(limit / 1024 / 1024)}MB).`);
 
   const safeSub = String(subdir || 'misc').replace(/[^a-z0-9_-]/gi, '');
   const dir = path.join(UPLOAD_ROOT, safeSub);
   ensureDir(dir);
-  const ext = EXT_BY_MIME[mimeType] || 'bin';
+  const ext = EXT_BY_MIME[mimeType] || VIDEO_EXT_BY_MIME[mimeType] || 'bin';
   const name = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}.${ext}`;
   fs.writeFileSync(path.join(dir, name), buffer);
 

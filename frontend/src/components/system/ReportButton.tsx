@@ -8,11 +8,11 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
-import { FileBarChart, Loader2, ExternalLink } from 'lucide-react';
-import { openReportPdf, defaultRange } from '@/lib/reports';
+import { FileBarChart, Loader2, ExternalLink, Printer } from 'lucide-react';
+import { openReportPdf, printReportPdf, defaultRange } from '@/lib/reports';
 
 export default function ReportButton({
-  subject, id, from, to, label, compact, onDark,
+  subject, id, from, to, label, compact, onDark, withPrint,
 }: {
   subject: 'vehicle' | 'tire' | 'driver' | 'customer' | 'vendor' | 'employee' | 'section';
   /**
@@ -26,6 +26,8 @@ export default function ReportButton({
   to?: string;
   label?: string;
   compact?: boolean;
+  /** زرُّ «طباعة» بجانبه: حوارُ الطابعة على التقرير مباشرةً، بلا فتحه أوّلًا. */
+  withPrint?: boolean;
 }) {
   const router = useRouter();
   const { lang } = useLanguage();
@@ -43,6 +45,18 @@ export default function ReportButton({
       notify(e?.message || (ar ? 'تعذّر إصدار التقرير' : 'Could not generate the report'), 'error');
     }
     setBusy(false);
+  };
+
+  const [printing, setPrinting] = useState(false);
+  const print = async () => {
+    if (!id) return;
+    setPrinting(true);
+    try {
+      await printReportPdf(subject, id, range.from, range.to, ar ? 'ar' : 'en');
+    } catch (e: any) {
+      notify(e?.message || (ar ? 'تعذّر إصدار التقرير' : 'Could not generate the report'), 'error');
+    }
+    setPrinting(false);
   };
 
   const goToCentre = () =>
@@ -74,6 +88,19 @@ export default function ReportButton({
         {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileBarChart className="w-4 h-4 text-[#f37121]" />}
         {label || (ar ? 'تقرير PDF' : 'PDF report')}
       </button>
+      {withPrint && (
+        <button
+          type="button"
+          onClick={print}
+          disabled={printing || !id}
+          title={ar ? 'طباعة مباشرة' : 'Print directly'}
+          className={`inline-flex items-center gap-1.5 text-sm px-2.5 py-1.5 border-s disabled:opacity-50 ${
+            onDark ? 'text-white hover:bg-white/15 border-white/20' : 'text-slate-700 hover:bg-slate-50 border-slate-200'}`}
+        >
+          {printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+          {ar ? 'طباعة' : 'Print'}
+        </button>
+      )}
       <button
         type="button"
         onClick={goToCentre}

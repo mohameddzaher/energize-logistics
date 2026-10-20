@@ -37,6 +37,11 @@ export const GLOBAL_ROLES: RoleDef[] = [
     "key": "client",
     "ar": "شريك خارجي",
     "en": "External Partner"
+  },
+  {
+    "key": "mediago_account",
+    "ar": "مدير حساب Media Go",
+    "en": "Media Go Account Manager"
   }
 ];
 

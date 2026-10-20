@@ -266,7 +266,7 @@ export default function PartyProfilePage() {
               title={t('إلى تاريخ', 'To')}
               className="px-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 text-[13px]" />
             <ReportButton subject="customer" id={p.name} from={stFrom || undefined} to={stTo || undefined}
-              label={t('كشف حساب PDF', 'Statement PDF')} />
+              label={t('كشف حساب PDF', 'Statement PDF')} withPrint />
           </div>
         )}
         <ExportMenu

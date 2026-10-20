@@ -5,6 +5,7 @@ const RolePermission = require('../models/RolePermission');
 const { SECTIONS, SECTION_KEYS, defaultAccess } = require('../config/sections');
 const { PAGES, PERSONAL_SECTIONS } = require('../config/pages');
 const { FULL_ACCESS_ROLES } = require('../config/constants');
+const { isScopedRole, scopeOf } = require('../config/scopedRoles');
 
 // ── والذاكرةُ مشتركةٌ بين العاملَين ──────────────────────────────────────────
 //
@@ -150,6 +151,11 @@ const effectivePermissions = async (role) => {
     for (const k of SECTION_KEYS) out[k] = 'edit';
     return out;
   }
+  // الدورُ المحصورُ لا قسمَ له — ولا تُقرأ له مصفوفة (config/scopedRoles).
+  if (isScopedRole(role)) {
+    for (const k of SECTION_KEYS) out[k] = 'none';
+    return out;
+  }
   return resolveSections(role, await getOverrides(role), await inheritsNothing(role));
 };
 
@@ -168,6 +174,13 @@ const effectivePages = async (role) => {
   const out = {};
   if (FULL_ACCESS_ROLES.includes(role)) {
     for (const p of PAGES) out[p.key] = true;
+    return out;
+  }
+  // وصفحاتُه ما كُتب له وحدَه، وكلُّ ما عداها مغلق — فيفتح `pageGate` نقاطَ
+  // شاشته ويغلق ما سواها، ولا يرى في الشريط غيرَها.
+  const scoped = scopeOf(role);
+  if (scoped) {
+    for (const p of PAGES) out[p.key] = scoped.pages.includes(p.key);
     return out;
   }
   const { pages } = await getSaved(role);
@@ -199,6 +212,7 @@ const effectivePages = async (role) => {
  */
 const explicitlyGrantedPages = async (role) => {
   if (FULL_ACCESS_ROLES.includes(role)) return [];
+  if (isScopedRole(role)) return [...scopeOf(role).pages];
   const { pages } = await getSaved(role);
   return Object.entries(pages || {}).filter(([, v]) => v).map(([k]) => k);
 };
@@ -209,6 +223,7 @@ const explicitlyGrantedSet = async (role) => new Set(await explicitlyGrantedPage
 /** أوّلُ شاشةٍ تُفتَح لصاحب هذا الدور، إن ضُبطت له واحدة. */
 const homePageFor = async (role) => {
   if (FULL_ACCESS_ROLES.includes(role)) return '';
+  if (isScopedRole(role)) return scopeOf(role).home;
   return (await getSaved(role)).homePage || '';
 };
 

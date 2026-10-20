@@ -4,6 +4,14 @@ const cookie = require('cookie');
 
 let io;
 
+// ── والحسابُ المحصورُ لا يسمع بثَّ الأقسام ──────────────────────────────────
+// البثُّ العامّ (`emitToAll`) يحمل صفوفَ الأقسام نفسَها — كشوفًا وقيودًا
+// وموظّفين. وحسابُ الشريك المحصور (config/scopedRoles) لا يرى من نظامنا إلّا
+// شاشتَه، فتُضمّ مقابسُه إلى غرفةٍ يُستثنى منها كلُّ بثٍّ عامّ، ويصلها ما
+// يُرسَل إلى دورها (`emitToRole`) أو إليه باسمه (`emitToUser`) فحسب.
+const SCOPED_ROOM = 'scoped-external';
+const broadcast = () => io.except(SCOPED_ROOM);
+
 const { isAllowedOrigin } = require('../config/cors');
 
 /**
@@ -98,6 +106,12 @@ const initializeSocket = (server) => {
     console.log(`User connected: ${socket.userId}`);
 
     socket.join(`user:${socket.userId}`);
+    if (socket.userRole) socket.join(`role:${socket.userRole}`);
+    if (require('../config/scopedRoles').isScopedRole(socket.userRole)) {
+      socket.join(SCOPED_ROOM);
+      // ولا ينضمّ إلى غرف اللوحات والعملاء والتشغيل — ما يُبَثّ فيها ليس له.
+      return;
+    }
 
     socket.on('join:dashboard', (role) => {
       socket.join(`dashboard:${role}`);
@@ -121,7 +135,7 @@ const initializeSocket = (server) => {
           { $set: { lockedBy: null, lockedByName: '', lockedAt: null } }
         ).then((result) => {
           if (result.modifiedCount > 0) {
-            io.emit('workflow:unlockAll', { userId: socket.userId });
+            broadcast().emit('workflow:unlockAll', { userId: socket.userId });
           }
         }).catch(() => {});
       } catch (e) {}
@@ -181,7 +195,7 @@ const financeTouch = (event) => {
       else for (const d of depts) cache.clear(`finance:${d}:`);
     } catch (e) { /* يكفي انتهاءُ المهلة */ }
     // `depts` غائبٌ = الكلّ. والصفحةُ التي لا تعرف الحقلَ تعيد القراءةَ كما كانت.
-    if (io) io.emit('finance:changed', { at: Date.now(), event: ev, ...(depts ? { depts } : {}) });
+    if (io) broadcast().emit('finance:changed', { at: Date.now(), event: ev, ...(depts ? { depts } : {}) });
     // ── والنافذةُ عشرُ ثوانٍ لا ثانيةٌ ونصف ─────────────────────────────────
     // مزامنةُ منصّة التشغيل تبثّ كلَّ خمسٍ أو ستّ ثوانٍ في ساعات العمل، وكلُّ
     // بثٍّ كان يوقظ كلَّ صفحةٍ ماليّةٍ مفتوحة. والحمولةُ نفسُها محفوظةٌ دقيقةً
@@ -201,7 +215,7 @@ const executiveTouch = (event) => {
   execTimer = setTimeout(() => {
     execTimer = null;
     try { require('../utils/ttlCache').clear('exec:'); } catch (e) { /* يكفي انتهاءُ المهلة */ }
-    if (io) io.emit('executive:changed', { at: Date.now(), event });
+    if (io) broadcast().emit('executive:changed', { at: Date.now(), event });
     // النظرةُ التنفيذيّة صورةُ الشركة كلِّها ومخزنُها دقيقة — نصفُ دقيقةٍ
     // تكفي، وكانت خمسَ ثوانٍ فتُعاد قراءتُها على الهاتف اثنتي عشرةَ مرّةً في
     // الدقيقة بلا رقمٍ جديد.
@@ -223,7 +237,7 @@ const plain = (data) => {
 };
 
 const emitToAll = (event, data) => {
-  if (io) io.emit(event, plain(data));
+  if (io) broadcast().emit(event, plain(data));
   financeTouch(event);
   executiveTouch(event);
 };
@@ -250,6 +264,7 @@ const emitPerRole = (event, buildPayload) => {
   if (!io) return;
   const cache = new Map();
   for (const socket of io.sockets.sockets.values()) {
+    if (socket.rooms && socket.rooms.has(SCOPED_ROOM)) continue;
     const role = socket.userRole || '';
     if (!cache.has(role)) cache.set(role, buildPayload(role));
     socket.emit(event, cache.get(role));
@@ -260,6 +275,11 @@ const emitToUser = (userId, event, data) => {
   if (io) io.to(`user:${userId}`).emit(event, data);
   financeTouch(event);
   executiveTouch(event);
+};
+
+/** إلى كلِّ متّصلٍ بهذا الدور — وهو طريقُ الحساب المحصور الوحيدُ إلى الحدث الحيّ. */
+const emitToRole = (role, event, data) => {
+  if (io) io.to(`role:${role}`).emit(event, plain(data));
 };
 
 const emitToDashboard = (role, event, data) => {
@@ -276,6 +296,7 @@ module.exports = {
   emitToAll,
   emitPerRole,
   emitToUser,
+  emitToRole,
   emitToDashboard,
   emitToCustomer,
 };

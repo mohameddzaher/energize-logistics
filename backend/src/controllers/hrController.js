@@ -2664,7 +2664,7 @@ exports.getOptions = async (req, res) => {
     const Branch = require('../models/Branch');
     const [managers, branches] = await Promise.all([
       // المديرُ المؤرشَف لا يُختار — كأنّه حُذف.
-      endedStaff().then((sets) => User.find(andAll({ isActive: true, role: { $ne: 'client' } }, notArchivedUserRef(sets, '_id'))).select('firstName lastName email role').sort({ firstName: 1 }).lean()),
+      endedStaff().then((sets) => User.find(andAll({ isActive: true, role: { $nin: require('../config/scopedRoles').EXTERNAL_ROLES } }, notArchivedUserRef(sets, '_id'))).select('firstName lastName email role').sort({ firstName: 1 }).lean()),
       Branch.find({}).select('name').sort({ name: 1 }).lean().catch(() => []),
     ]);
     res.json({ managers, branches });

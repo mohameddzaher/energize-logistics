@@ -1056,6 +1056,9 @@ exports._internals = { statsByKind, FIELD_OF, VALUE_OF, CLOSED_BY, NOT_CANCELLED
 const { NO_INVOICE_RX, NO_INVOICE_TOKENS } = require('../utils/paymentType');
 const REAL_INVOICE = { invoiceNumber: { $nin: [null, ''], $not: NO_INVOICE_RX } };
 
+/** أقصى ما يقرؤه كشفُ الحساب من صفوف — فوقه يُطلَب تضييقُ الفلتر. */
+const STATEMENT_ROW_CAP = 20000;
+
 const AGE_BANDS = {
   '0_15': [0, 15],
   '15_30': [15, 30],
@@ -1368,7 +1371,10 @@ exports.cashInvoices = async (req, res) => {
     }, ...columnFilters(req.query, 'cash')];
 
     const page = Math.max(1, Number(req.query.page) || 1);
-    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
+    // `req.allRows` يضعه كشفُ الحساب (services/invoiceStatement) وحدَه حين
+    // يستدعي هذه الدالّةَ في العمليّة نفسِها: الكشفُ يطبع النتيجةَ كلَّها لا
+    // صفحتَها. ولا يُقرأ من الاستعلام، فلا يطلب أحدٌ الدفترَ كلَّه بسطرٍ في الرابط.
+    const limit = req.allRows ? STATEMENT_ROW_CAP : Math.min(500, Math.max(1, Number(req.query.limit) || 100));
 
     const [rows, total, totals] = await Promise.all([
       OperationsWorkflow.find(filter)
@@ -1467,7 +1473,8 @@ exports.taxInvoices = async (req, res) => {
   try {
     const CollectionInvoice = require('../models/CollectionInvoice');
     const page = Math.max(1, Number(req.query.page) || 1);
-    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
+    // راجع `req.allRows` في cashInvoices.
+    const limit = req.allRows ? STATEMENT_ROW_CAP : Math.min(500, Math.max(1, Number(req.query.limit) || 100));
 
     // ── والدفترُ كلُّه فواتير ────────────────────────────────────────────────
     // كان يُستبعَد ما `kind` فيه «cash»، و`kind` صفةٌ استنتجناها من شكل كود
@@ -2001,6 +2008,7 @@ exports.invoiceFilterOptions = async (req, res) => {
 };
 
 exports.AGE_BANDS = AGE_BANDS;
+exports.STATEMENT_ROW_CAP = STATEMENT_ROW_CAP;
 exports.NO_INVOICE_TOKENS = NO_INVOICE_TOKENS;
 
 /**
@@ -2032,4 +2040,32 @@ exports.updateTaxInvoiceAmount = async (req, res) => {
     try { emitToAll('workflow:updated', { bulk: true, ledger: true }); } catch (_) { /* */ }
     res.json({ invoiceNumber: no, total: inv.total, before });
   } catch (e) { sendMongooseError(res, e, 'تعذّر تعديل القيمة'); }
+};
+
+/**
+ * كشفُ حسابٍ لما على شاشة الفواتير — `GET /invoices/:kind/statement`.
+ *
+ * يأخذ استعلامَ الشاشة كما هو (ومعه فلاترُ الأعمدة المحلّيّة `lf_*` والتحديدُ
+ * `sel` والأعمدةُ الظاهرة `cols`) ويُخرج PDF على ترويسة الشركة. وهو GET عمدًا:
+ * من له «عرض» القسم يُصدر الكشف، و sectionGate يمنع غيرَ GET عن صاحب العرض.
+ * و`?format=json` يردّ المستندَ وأرقامَ التحقّق بدل الملفّ.
+ */
+exports.invoiceStatement = async (req, res) => {
+  try {
+    const kind = req.params.kind === 'cash' ? 'cash' : req.params.kind === 'tax' ? 'tax' : null;
+    if (!kind) return res.status(404).json({ message: 'Unknown invoice kind' });
+    const lang = req.query.lang === 'en' ? 'en' : 'ar';
+    const { buildInvoiceStatement } = require('../services/invoiceStatement');
+    const { doc, check } = await buildInvoiceStatement(kind, req.query, req.user, lang);
+    if (req.query.format === 'json') return res.json({ ...doc, check });
+    const { renderReportPdf } = require('../services/reportBuilder');
+    const pdf = await renderReportPdf(doc);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="statement-${kind}-invoices-${Date.now()}.pdf"`);
+    res.send(pdf);
+  } catch (e) {
+    if (e.status && e.status >= 400 && e.status < 500) return res.status(e.status).json({ message: e.message });
+    console.error('invoice statement error:', e);
+    res.status(500).json({ message: 'تعذّر إصدار كشف الحساب', error: e.message });
+  }
 };

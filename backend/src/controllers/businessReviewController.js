@@ -60,7 +60,7 @@ async function notify(userId, { title, message, entity, entityId }) {
 exports.getMeta = async (req, res) => {
   try {
     const { endedStaff, userArchived } = require('../utils/endedStaff');
-    const [allUsers, archSets] = await Promise.all([User.find({ isActive: true, role: { $ne: 'client' } })
+    const [allUsers, archSets] = await Promise.all([User.find({ isActive: true, role: { $nin: require('../config/scopedRoles').EXTERNAL_ROLES } })
       .select('firstName lastName role linkedEmployee')
       .populate('linkedEmployee', 'department jobTitle')
       .sort({ firstName: 1 }).lean(), endedStaff()]);

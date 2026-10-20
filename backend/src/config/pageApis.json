@@ -53,6 +53,7 @@
         "/api/workflows/bulk-update",
         "/api/workflows/export",
         "/api/workflows/filters",
+        "/api/workflows/import-invoices",
         "/api/workflows/permissions",
         "/api/workflows/stats"
       ],
@@ -174,8 +175,7 @@
         "/api/collections-dept/invoices/filters",
         "/api/collections-dept/invoices/tax",
         "/api/collections-dept/invoices/uncollect",
-        "/api/lookups/types",
-        "/api/reports"
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -188,8 +188,7 @@
         "/api/collections-dept/invoices/filters",
         "/api/collections-dept/invoices/tax",
         "/api/collections-dept/invoices/uncollect",
-        "/api/lookups/types",
-        "/api/reports"
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -1507,6 +1506,12 @@
         "/api/b2c/entry",
         "/api/b2c/order-sheets",
         "/api/b2c/order-sheets/script"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/mediago-complaints": {
+      "apis": [
+        "/api/b2c/mediago-complaints"
       ],
       "wildcard": false
     },

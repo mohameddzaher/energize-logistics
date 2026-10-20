@@ -207,7 +207,10 @@ const ACCESS_LEVELS = ['none', 'view', 'edit'];
 // كل دور ينفع يتعيّن لمستخدم (super_admin ليه كل حاجة ضمنيًا فمستثنى من
 // التعديل). مصدرها config/roles.js — كانت مكتوبة بالإيد فكانت بتفضل ناقصة دور
 // أو اتنين بعد أي إضافة.
-const ALL_ROLES = require('./roles').ALL_ROLES.filter((r) => r !== 'super_admin');
+// والأدوارُ المحصورة (حسابُ Media Go) خارجَ المصفوفة: صلاحيّاتُها مكتوبةٌ في
+// config/scopedRoles.js ولا يفتح لها قسمًا شيءٌ من هنا.
+const ALL_ROLES = require('./roles').ALL_ROLES
+  .filter((r) => r !== 'super_admin' && !require('./scopedRoles').isScopedRole(r));
 
 const getSection = (key) => SECTIONS.find((s) => s.key === key);
 
@@ -217,6 +220,8 @@ const getSection = (key) => SECTIONS.find((s) => s.key === key);
 const { FULL_ACCESS_ROLES } = require('./constants');
 const defaultAccess = (role, sectionKey) => {
   if (FULL_ACCESS_ROLES.includes(role)) return 'edit';
+  // الدورُ المحصورُ لا قسمَ له: شاشتُه الواحدة في config/scopedRoles.js.
+  if (require('./scopedRoles').isScopedRole(role)) return 'none';
   const s = getSection(sectionKey);
   if (!s) return 'none';
   // مدير القسم وموظفوه بياخدوا قسمهم كامل، دايمًا. القاعدة دي فوق قوائم
@@ -226,7 +231,7 @@ const defaultAccess = (role, sectionKey) => {
   // A section marked `defaultAllRoles` is open to all STAFF by default — only
   // `client` (an outside partner, who has the portal instead) is excluded. This
   // is how a section stays reachable by roles that don't exist yet.
-  if (s.defaultAllRoles) return role === 'client' ? 'none' : 'edit';
+  if (s.defaultAllRoles) return require('./scopedRoles').isExternalRole(role) ? 'none' : 'edit';
   return s.defaultRoles.includes(role) ? 'edit' : 'none';
 };
 

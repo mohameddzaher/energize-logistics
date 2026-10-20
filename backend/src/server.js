@@ -223,6 +223,10 @@ app.use('/api/', generalLimiter);
 // تنادي هذه النقطة مغلقةً على هذا الدور، رُدَّت ٤٠٣. يُركَّب هنا — قبل حرّاس
 // الأقسام — لأنّه يشمل المسارات كلَّها، ويقرأ صاحبَ الطلب بنفسه بلا أن يردّ على
 // الأبواب العامّة. راجع middleware/pageGate.
+// ── وسياجُ الأدوار المحصورة قبله ────────────────────────────────────────────
+// حسابُ شريكٍ يرى شاشةً واحدة (Media Go) لا يصل إلّا نقاطَ تلك الشاشة —
+// قائمةُ سماحٍ لا منع. راجع config/scopedRoles و middleware/scopedRoleFence.
+app.use('/api/', require('./middleware/scopedRoleFence'));
 app.use('/api/', require('./middleware/pageGate'));
 
 // API Routes
@@ -285,6 +289,17 @@ app.use('/api/wallet', authenticate, sectionGate('Operations'), walletRoutes);
 app.use('/api/collections-dept', authenticate, sectionGate('Collections'), collectionsDeptRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/complaints', complaintRoutes);
+// ── شكاوى Media Go — قبل موجّه القسم ─────────────────────────────────────────
+// نقاطُ القسم يحرسها حارسُ «الأفراد» كعادتها. وحسابُ Media Go لا قسمَ له
+// (config/scopedRoles)، فيمرّ إلى قائمة أدوار المسار وحدَها — والسياجُ قبلها
+// قد حصره في هذه البادئة.
+{
+  const b2cGate = sectionGate('B2C');
+  const { isScopedRole } = require('./config/scopedRoles');
+  app.use('/api/b2c/mediago-complaints', authenticate,
+    (req, res, next) => (isScopedRole(req.user.role) ? next() : b2cGate(req, res, next)),
+    require('./routes/mediagoComplaints'));
+}
 app.use('/api/b2c', authenticate, sectionGate('B2C'), b2cRoutes);
 // النقلُ الخفيف: موظّفوه وسكنُهم وأوامرُ تشغيلهم — قسمُ B2C نفسُه يحرسه.
 app.use('/api/light-transport', authenticate, sectionGate('B2C'), lightTransportRoutes);

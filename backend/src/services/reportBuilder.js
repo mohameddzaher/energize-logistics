@@ -86,7 +86,8 @@ const isolate = (text) => String(text ?? '')
  *   { kind: 'section',  text }                              ترويسة قسم
  *   { kind: 'kv',       items: [[label, value], …] }         جدول بيانات
  *   { kind: 'stats',    items: [{label, value, accent}] }    بطاقات أرقام
- *   { kind: 'table',    head, rows, align, widths }          جدول
+ *   { kind: 'table',    head, rows, align, widths,           جدول
+ *                       foot?, small?, isolate? }            (سطرُ إجماليٍّ · خطٌّ أصغر · عزلُ الاتّجاه)
  *   { kind: 'bars',     items: [{label, value, max, text}] } رسم أعمدة أفقي
  *   { kind: 'timeline', label, items: [{title, sub, at}] }   خط زمني
  *   { kind: 'note',     text, tone }                         ملاحظة
@@ -113,7 +114,7 @@ function blockHtml(b, rtl) {
       return `<table class="blk kv">${b.items.map(([k, v], i) => `
         <tr class="${i % 2 ? 'alt' : ''}">
           <td class="k" style="text-align:${startAlign}">${esc(k)}</td>
-          <td class="v" style="text-align:${startAlign}">${esc(val(v))}</td>
+          <td class="v" style="text-align:${startAlign}">${b.isolate ? isolate(val(v)) : esc(val(v))}</td>
         </tr>`).join('')}</table>`;
 
     case 'stats':
@@ -141,13 +142,19 @@ function blockHtml(b, rtl) {
       const thead = head
         ? `<thead><tr>${head.map((h, i) => `<th style="text-align:${al(i)}">${esc(h)}</th>`).join('')}</tr></thead>`
         : '';
-      return `<table class="blk data">${cols}
+      // رقمُ كشفٍ مثل «INV-12» أو اسمٌ لاتينيٌّ داخل سطرٍ عربيّ يُعاد ترتيبُه
+      // بخوارزميّة الاتّجاه — فيُعزَل كلُّ خليّةٍ في اتّجاهها حين يُطلب.
+      const txt = (v) => (b.isolate ? `<span dir="auto" style="unicode-bidi:isolate">${esc(val(v))}</span>` : esc(val(v)));
+      const tr = (r, cls) => `<tr class="${cls}">${r.map((c, i) => {
+        const cell = (c && typeof c === 'object') ? c : { t: c };
+        const style = `text-align:${al(i)};${cell.color ? `color:${cell.color};font-weight:600` : ''}`;
+        return `<td style="${style}">${txt(cell.t)}</td>`;
+      }).join('')}</tr>`;
+      // سطرُ الإجماليّ آخرُ صفٍّ في الجسم لا `tfoot`: كرومُ يكرّر الـtfoot في
+      // ذيل كلّ صفحة، فيظهر «الإجماليّ» تحت كلّ صفحةٍ وهو إجماليُّ الكلّ.
+      return `<table class="blk data${b.small ? ' sm' : ''}">${cols}
         ${thead}
-        <tbody>${b.rows.map((r, ri) => `<tr class="${ri % 2 ? 'alt' : ''}">${r.map((c, i) => {
-          const cell = (c && typeof c === 'object') ? c : { t: c };
-          const style = `text-align:${al(i)};${cell.color ? `color:${cell.color};font-weight:600` : ''}`;
-          return `<td style="${style}">${esc(val(cell.t))}</td>`;
-        }).join('')}</tr>`).join('')}</tbody>
+        <tbody>${b.rows.map((r, ri) => tr(r, ri % 2 ? 'alt' : '')).join('')}${b.foot ? tr(b.foot, 'tot') : ''}</tbody>
       </table>`;
     }
 
@@ -283,6 +290,10 @@ function documentHtml({ blocks, rtl, title, footerNote }) {
   table.data { break-inside: auto; }
   table.data thead { display: table-header-group; }
   table.data tr { break-inside: avoid; }
+  table.data.sm { font-size: 8.6px; }
+  table.data.sm th { padding: 5px 4px; }
+  table.data.sm td { padding: 3.5px 4px; }
+  table.data tr.tot td { font-weight: 800; background: #fff7f0; border-top: 2px solid ${ORANGE}; }
 
   .bars { margin-bottom: 8px; }
   .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 10.5px; }
@@ -384,7 +395,7 @@ async function renderReportPdf(doc) {
       // bottom-aligns nothing for us, so the strip is pinned to the TOP of that
       // band — otherwise it prints straight on top of the letterhead's own
       // address block.
-      footerTemplate: `<div style="width:100%;height:${MARGIN.bottom};font-family:Tajawal,Arial,sans-serif;font-size:7.5px;
+      footerTemplate: `<div style="box-sizing:border-box;width:100%;height:${MARGIN.bottom};font-family:Tajawal,Arial,sans-serif;font-size:7.5px;
         color:#94a3b8;padding:${FOOTER_OFFSET} 16mm 0;display:flex;align-items:flex-start;justify-content:space-between;
         direction:${rtl ? 'rtl' : 'ltr'}">
         <span>${foot}</span>

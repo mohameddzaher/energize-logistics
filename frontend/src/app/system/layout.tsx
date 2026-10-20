@@ -24,6 +24,7 @@ import {
   CheckCircle2, Info,
   KeySquare,
   Archive,
+  MonitorPlay,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { downloadExportJob } from '@/lib/backgroundExport';
@@ -86,7 +87,14 @@ const CONTRACTS_ROLES = ['super_admin', 'admin', 'contracts_manager', 'it_manage
 // `isInternal` يصدق على الشريك الخارجيّ نفسِه — ولم يظهر العطلُ إلّا لأنّ
 // قائمةَ الأدوار بجانبه كانت تحجبه. القاعدةُ التي تحرس وحدَها لا يجوز أن تكون
 // خاطئة.
-const EXTERNAL_ROLES = ['client', 'partner', 'customer_portal', 'vendor_portal'];
+// وحسابُ Media Go شريكٌ خارجيٌّ أيضًا — يرى شاشةً واحدة (MEDIAGO_ROLE أدناه).
+const EXTERNAL_ROLES = ['client', 'partner', 'customer_portal', 'vendor_portal', 'mediago_account'];
+
+// ── الحسابُ المحصور ─────────────────────────────────────────────────────────
+// شريكٌ يرى صفحةً واحدةً من نظامنا (backend/src/config/scopedRoles): الشريطُ لا
+// يعرض غيرَها، وأيُّ مسارٍ آخر يُعاد إليها. والحارسُ الحقيقيُّ في الخادم
+// (middleware/scopedRoleFence) — هذا كي لا تُفتَح له شاشةٌ تردّها نقاطُها.
+const SCOPED_HOME: Record<string, string> = { mediago_account: '/system/b2c/mediago-complaints' };
 // role-only: ليست بوّابةَ فعل: تفرّق الموظّفَ عن العميل والمورّد.
 const isInternal = (role?: string | null) => !!role && !EXTERNAL_ROLES.includes(role);
 
@@ -208,6 +216,11 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   // back to their home page instead.
   useEffect(() => {
     if (loading || !user) return;
+    const scopedHome = SCOPED_HOME[user.role];
+    if (scopedHome) {
+      if (pathname !== scopedHome && !pathname.startsWith(`${scopedHome}/`)) router.replace(scopedHome);
+      return;
+    }
     const isRemoteRole = user.role === 'remote_employee' || user.role === 'remote_manager';
     if (isRemoteRole && !pathname.startsWith('/system/remote') && !pathname.startsWith('/system/hr')) {
       router.replace(homeRouteForRole(user.role));
@@ -539,6 +552,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // تُكتب على النظام في «مدخلات الأوردرات» — ومديرُ المشروع والمشرف يرى مشاريعَه.
     { href: '/system/b2c/daily-entry', label: L.b2cDailyEntry, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
     // متابعةُ مناديب أمازون (حضورٌ لا أوردرات) — الخادمُ يحسم مَن يفتحها (مدير مشروع أمازون ومسؤولو القسم).
+    // شكاوى Media Go — بلاغاتُ أعطال الشاشات على الدبّابات. يرفعها القسم، ويراها حسابُ
+    // Media Go (وحدَها) فيحدّث حالتَها ويردّ. حدودُ كلّ طرفٍ في الخادم.
+    { href: '/system/b2c/mediago-complaints', label: L.b2cMediaGoComplaints, icon: <MonitorPlay className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
     { href: '/system/b2c/amazon-attendance', label: L.b2cAmazonAttendance, icon: <UserCheck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
     // ── تفقّد بداية الدوام ─────────────────────────────────────────────
     // شاشتان: واحدةٌ يقف عليها المشرفُ كلَّ صباح، وواحدةٌ تقرأ منها الإدارة.
@@ -761,6 +777,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
 
   const filteredNav = navItems.filter((item) => {
     if (!user) return false;
+    // الحسابُ المحصورُ يرى صفحتَه وحدَها، مهما قالت بقيّةُ القواعد.
+    if (SCOPED_HOME[user.role]) return item.href === SCOPED_HOME[user.role];
     // ── الصفحةُ قبل القسم ──────────────────────────────────────────────────
     // طبقةٌ تحت مصفوفة الأقسام: قسمُ المركبات تسعَ عشرةَ صفحة، ومن مُنح القسمَ
     // كان يأخذها كلَّها. فما أُغلق من صفحاته يُغلَق هنا مهما قال القسم — وما

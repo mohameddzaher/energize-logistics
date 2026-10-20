@@ -277,6 +277,7 @@ async function buildVehicleReport(id, query, lang) {
       [t('اللون', 'Colour'), reg?.colorAr],
       [t('رقم الهيكل', 'VIN'), reg?.chassisNumber || ls2?.profile?.vin],
       [t('الرقم التسلسلي', 'Serial number'), reg?.serialNumber],
+      [t('الشركة المالكة', 'Owning company'), reg?.ownerCompanyAr],
       [t('المالك', 'Owner'), reg?.ownerNameAr],
       [t('حالة الحيازة', 'Possession'), reg?.possessionStatusAr],
       [t('حالة التشغيل', 'Service status'), reg?.serviceStatusAr],

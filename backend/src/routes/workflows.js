@@ -65,6 +65,8 @@ router.post('/bulk-delete', authorize('super_admin', ...FINANCE_FULL_ROLES), wor
 // مفتوحٌ لكلّ من يعدّل صفًّا واحدًا: الصلاحيّةُ تُفحص على مستوى **الحقل** داخل
 // النقطة نفسِها، فلا يكسب أحدٌ بالجملة ما لا يملكه بالمفرد.
 router.post('/bulk-update', authorize(...allWorkflowRoles), workflowController.bulkUpdate);
+// رفعُ بيانات الفواتير من إكسل (امر الشحن ← الكشف) — معاينةٌ ثمّ كتابة. راجع importInvoices.
+router.post('/import-invoices', authorize(...allWorkflowRoles), workflowController.importInvoices);
 
 // Bulk import (must be before /:id routes)
 router.post(

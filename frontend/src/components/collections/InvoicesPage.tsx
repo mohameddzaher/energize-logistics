@@ -27,8 +27,8 @@ import { ColumnFilter, type ColumnFilterOption } from '@/components/ColumnFilter
 import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import SearchSelect from '@/components/system/SearchSelect';
-import { printTable } from '@/utils/printTable';
-import { Banknote, Receipt, SlidersHorizontal, X, CheckCircle2, ChevronLeft, Truck, Printer } from 'lucide-react';
+import { openPdf, printPdf } from '@/utils/pdfActions';
+import { Banknote, Receipt, SlidersHorizontal, X, CheckCircle2, ChevronLeft, Truck, Printer, FileText } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
 
 const EMPTY_SET: Set<string> = new Set();
@@ -456,23 +456,35 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   // الأعمدةُ المختارة، والصفوفُ المحدَّدة إن حُدِّدت — وإلّا صفوفُ الفلتر كما
   // هي. وعدّادُ النطاق يقول العددَ صراحةً، فلا يظنّ أحدٌ أنّه أخذ ما لم يأخذ.
   const selectedRows = rows.filter((r) => selected.has(rowKey(r)));
-  const exportRows = selected.size ? selectedRows : rows;
-  const printNow = () => {
-    const ok = printTable({
-      title,
-      subtitle: [customer, branch].filter(Boolean).join(' · ') || undefined,
-      columns: cols.map((c) => ({ header: c.header, key: c.key, transform: c.transform, align: c.align })),
-      rows: exportRows as any,
-      ar,
-      meta: [
-        `${t('عدد الصفوف', 'Rows')}: ${exportRows.length}`,
-        selected.size ? t('المحدَّد فقط', 'Selected only') : t('نتيجة الفلتر', 'Filtered result'),
-        from || to ? `${t('المدى', 'Range')}: ${from || '…'} → ${to || '…'}` : '',
-        collected === 'yes' ? t('المحصَّل', 'Collected') : collected === 'no' ? t('غير المحصَّل', 'Not collected') : '',
-      ].filter(Boolean),
-    });
-    if (!ok) notify(t('المتصفّح منع فتح نافذة الطباعة — اسمح بالنوافذ المنبثقة لهذا الموقع.',
-      'The browser blocked the print window — allow pop-ups for this site.'), 'error');
+  // ── كشفُ الحساب: ما على الشاشة كلُّه، من الخادم ─────────────────────────
+  // كانت الطباعةُ تأخذ صفوفَ الصفحة المعروضة وحدَها (مئةً من آلاف) بلا
+  // البطاقات ولا ترويسة الشركة. فصار الكشفُ يُبنى في الخادم من الدالّة نفسِها
+  // التي تملأ الشاشة، بالفلاتر نفسِها — فبطاقاتُه هي بطاقاتُ الشاشة، وصفوفُه
+  // النتيجةُ كلُّها بكلّ صفحاتها. وما يُفلتَر هنا في المتصفّح (فلاترُ الأعمدة
+  // المحسوبة) والتحديدُ والأعمدةُ الظاهرة تُرسَل معه.
+  const [stBusy, setStBusy] = useState<'' | 'open' | 'print'>('');
+  const statementPath = () => {
+    const p = queryParams();
+    for (const [key, set] of Object.entries(cf.filters)) {
+      for (const v of set) p.append(`lf_${key}`, v);
+    }
+    if (selected.size) for (const k of selected) p.append('sel', k);
+    p.set('cols', cols.map((c) => c.key).join(','));
+    p.set('lang', ar ? 'ar' : 'en');
+    return `/api/collections-dept/invoices/${kind}/statement?${p.toString()}`;
+  };
+  const statement = async (mode: 'open' | 'print') => {
+    if (stBusy) return;
+    setStBusy(mode);
+    const fileName = `${isCash ? 'cash' : 'tax'}-invoices-statement.pdf`;
+    try {
+      // الطلبُ يبدأ والنافذةُ تُفتح في الضغطة نفسِها — راجع utils/pdfActions.
+      const load = api.getBlob(statementPath());
+      await (mode === 'print' ? printPdf(load, fileName, ar) : openPdf(load, fileName, ar));
+    } catch (e: any) {
+      notify(e?.message || t('تعذّر إصدار كشف الحساب', 'Could not issue the statement'), 'error');
+    }
+    setStBusy('');
   };
 
   const Stat = ({ label, value, accent }: { label: string; value: string | number; accent?: string }) => (
@@ -505,10 +517,19 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       >
         <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
         <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />
-        <button type="button" onClick={printNow}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 text-sm font-semibold"
-          title={t('طباعة أو حفظ PDF — بالأعمدة المختارة', 'Print or save as PDF — chosen columns')}>
-          <Printer className="w-4 h-4" />{t('طباعة PDF', 'Print PDF')}
+        <button type="button" onClick={() => statement('open')} disabled={!!stBusy}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 text-sm font-semibold disabled:opacity-60"
+          title={selected.size
+            ? t('كشف حساب PDF للصفوف المحدَّدة — بالأعمدة المختارة', 'Statement PDF of the selected rows — chosen columns')
+            : t('كشف حساب PDF لنتيجة الفلتر كاملةً (كل الصفحات) مع البطاقات — بالأعمدة المختارة', 'Statement PDF of the whole filtered result (every page) with the cards — chosen columns')}>
+          {stBusy === 'open' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+          {t('كشف حساب PDF', 'Statement PDF')}
+        </button>
+        <button type="button" onClick={() => statement('print')} disabled={!!stBusy}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 text-sm font-semibold disabled:opacity-60"
+          title={t('طباعة كشف الحساب على الطابعة مباشرة', 'Print the statement straight to the printer')}>
+          {stBusy === 'print' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+          {t('طباعة', 'Print')}
         </button>
         <ExportMenu
           fileName={`collections-${kind}-invoices`}

@@ -29,7 +29,7 @@ const cache = require('../utils/ttlCache');
  * صلاحيّات الأقسام (SUBJECT_SECTIONS أدناه) — وهي المكانُ الوحيد الذي يُضبط
  * منه الوصول. والشريكُ الخارجيّ وحدَه يُمنع: له بوابتُه.
  */
-const EXTERNAL_ROLES = ['client'];
+const { EXTERNAL_ROLES } = require('../config/scopedRoles');
 const canOpenReports = (role) => !!role && !EXTERNAL_ROLES.includes(role);
 
 

@@ -40,11 +40,13 @@ const money = (n: number) => Math.round(n || 0).toLocaleString('en-US');
  * والرقمُ بالحبر الداكن إلّا ما يستحقّ الإنذار، والمحتوى في الوسط.
  */
 function Card({
-  label, hint, node, tone, onClick, big, share, alarm,
+  label, hint, node, tone, onClick, big, share, alarm, unit = 'فاتورة',
 }: {
   label: string; hint?: string; node: Node; tone: string; onClick?: () => void; big?: boolean; share?: number;
   /** رقمٌ يُقرأ إنذارًا — يأخذ لونَه بدل الحبر. */
   alarm?: boolean;
+  /** وحدةُ العدّ: الضريبيُّ فواتير، والكاشُ كشوفُ تخريج. */
+  unit?: string;
 }) {
   const Comp: any = onClick ? 'button' : 'div';
   return (
@@ -60,7 +62,7 @@ function Card({
         {money(node?.value || 0)}
       </p>
       <p className="mt-0.5 text-[11.5px] text-slate-400 tabular-nums">
-        {(node?.count || 0).toLocaleString('en-US')} فاتورة
+        {(node?.count || 0).toLocaleString('en-US')} {unit}
         {share != null && share > 0 ? <span className="text-slate-300"> · </span> : null}
         {share != null && share > 0 ? `${share}%` : ''}
       </p>
@@ -90,7 +92,12 @@ export default function ReceivablesTree({
             className="w-full text-center px-4 pt-5 pb-4 hover:bg-slate-50/60 transition-colors">
             <p className="text-[12px] font-medium text-slate-500">{t('كلُّ ما لنا — غيرُ محصَّل', 'All outstanding')}</p>
             <p className="mt-1.5 text-[34px] leading-none font-bold tabular-nums tracking-tight text-slate-900">{money(tree.all.value)}</p>
-            <p className="mt-1.5 text-[11.5px] text-slate-400 tabular-nums">{(tree.all.count || 0).toLocaleString('en-US')} فاتورة</p>
+            {/* العدُّ نوعان لا يُجمعان: فواتيرُ ضريبيّة وكشوفُ تخريجٍ نقديّة. */}
+            <p className="mt-1.5 text-[11.5px] text-slate-400 tabular-nums">
+              {(tree.byKind.tax.count || 0).toLocaleString('en-US')} {t('فاتورة', 'invoices')}
+              <span className="text-slate-300"> · </span>
+              {(tree.byKind.cash.count || 0).toLocaleString('en-US')} {t('كشف تخريج', 'reports')}
+            </p>
           </button>
           {/* شريطُ النسبة: كم من الكلّ ضريبيٌّ وكم كاش — يُقرأ قبل الأرقام. */}
           <div className="mx-4 h-1.5 rounded-full bg-slate-100 overflow-hidden flex" aria-hidden>
@@ -99,9 +106,9 @@ export default function ReceivablesTree({
           </div>
           <div className="mt-3 grid grid-cols-2 border-t border-slate-100 divide-x divide-slate-100 rtl:divide-x-reverse">
             {([
-              ['tax', t('فواتير ضريبية', 'Tax invoices'), '#475569', t('المديونية الضريبية', 'Tax receivables')],
-              ['cash', t('فواتير كاش', 'Cash invoices'), '#14b8a6', t('المديونية الكاش', 'Cash receivables')],
-            ] as const).map(([k, label, tone, title]) => {
+              ['tax', t('فواتير', 'Invoices'), '#475569', t('المديونية الضريبية', 'Tax receivables'), t('فاتورة', 'invoices')],
+              ['cash', t('كاش', 'Cash'), '#14b8a6', t('المديونية الكاش', 'Cash receivables'), t('كشف تخريج', 'reports')],
+            ] as const).map(([k, label, tone, title, unit]) => {
               const n = tree.byKind[k];
               const share = pct(n, tree.all);
               return (
@@ -113,7 +120,7 @@ export default function ReceivablesTree({
                   </p>
                   <p className="mt-1 text-[20px] font-bold tabular-nums tracking-tight text-slate-900">{money(n.value)}</p>
                   <p className="mt-0.5 text-[11.5px] text-slate-400 tabular-nums">
-                    {(n.count || 0).toLocaleString('en-US')} فاتورة{share > 0 ? ` · ${share}%` : ''}
+                    {(n.count || 0).toLocaleString('en-US')} {unit}{share > 0 ? ` · ${share}%` : ''}
                   </p>
                 </button>
               );
@@ -204,11 +211,11 @@ export default function ReceivablesTree({
           </span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Card label={t('في موعده', 'Within term')} node={tree.cash.within} tone="#16a34a"
+          <Card label={t('في موعده', 'Within term')} node={tree.cash.within} unit={t('كشف تخريج', 'reports')} tone="#16a34a"
             onClick={() => onOpen({ kind: 'cash', dueState: 'within' }, t('كاش — في موعده', 'Cash — within term'))} />
-          <Card label={t('متأخر', 'Past due')} node={tree.cash.late} tone="#dc2626"
+          <Card label={t('متأخر', 'Past due')} node={tree.cash.late} unit={t('كشف تخريج', 'reports')} tone="#dc2626"
             onClick={() => onOpen({ kind: 'cash', dueState: 'late' }, t('كاش — متأخر', 'Cash — late'))} />
-          <Card label={t('بلا مدّة سداد', 'No term')} node={tree.cash.noterm} tone="#64748b"
+          <Card label={t('بلا مدّة سداد', 'No term')} node={tree.cash.noterm} unit={t('كشف تخريج', 'reports')} tone="#64748b"
             onClick={() => onOpen({ kind: 'cash', dueState: 'noterm' }, t('كاش — بلا مدّة', 'Cash — no term'))} />
         </div>
       </section>

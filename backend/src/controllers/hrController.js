@@ -355,6 +355,7 @@ exports.createEmployee = async (req, res) => {
       || await require('../utils/hrLists').categoryError(body.department, body.staffCategory);
     if (listErr) return res.status(400).json({ message: listErr });
     delete body.user; // linking is done from the Users screen, not here
+    delete body.vehiclePlate; // لقطةٌ من سجلّ المركبات — يكتبها التفويضُ وحدَه
     delete body.markStatus;
     const employee = new Employee(body);
     applyMarks(employee, req.body.markStatus);
@@ -401,7 +402,8 @@ exports.updateEmployee = async (req, res) => {
       'insuranceCompany', 'insuranceExpiry', 'socialInsuranceStatus', 'visaExpiry',
       'lastTravelDate', 'lastReturnDate',
       // Driving / vehicle eligibility
-      'vehiclePlate', 'licenseNumber', 'licenseType', 'licenseExpiry',
+      // `vehiclePlate` ليس هنا: لقطةٌ من سجلّ المركبات (التفويض) لا تُكتب من الاستمارة.
+      'licenseNumber', 'licenseType', 'licenseExpiry',
       'driverCardNumber', 'driverCardType', 'driverCardStatus', 'driverCardExpiry', 'workCard', 'ajeerStatus', 'ajeerExpiry',
     ];
     // Capture a before/after diff of only the fields that actually change, so the

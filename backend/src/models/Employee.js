@@ -136,7 +136,10 @@ const employeeSchema = new mongoose.Schema(
     lastReturnDate: { type: String },                // تاريخ الرجوع — YYYY-MM-DD
 
     // ── Driving / vehicle eligibility ────────────────────────────────────────
-    vehiclePlate: { type: String, trim: true },      // المركبه — current plate (denormalized; authoritative link is VehicleAuthorization)
+    // المركبه — لقطةٌ مشتقّةٌ لا تُكتب باليد: لوحاتُ ما يحمله في سجلّ المركبات
+    // (`VehicleMaster.authorizedPerson`)، يكتبها utils/vehicleAuthorization.refreshPlateSnapshot
+    // وحدَه بعد كلّ تفويضٍ أو نقلٍ أو تغيير لوحة. استمارةُ الموارد البشريّة تعرضها ولا تقبلها.
+    vehiclePlate: { type: String, trim: true },
     licenseNumber: { type: String, trim: true },     // رقم رخصة القيادة
     licenseType: { type: String, trim: true },       // نوع الرخصه (نقل ثقيل / دراجة الية ...)
     licenseExpiry: { type: String },                 // انتهاء الرخصه — YYYY-MM-DD
@@ -370,17 +373,70 @@ employeeSchema.index({ vehiclePlate: 1 });
 // برقم هويّته. فتصحيحُ الرقم في الموارد البشريّة وحدَها يقطع الربط: يختفي
 // تفويضُه من ملفّه ومن إخلاء طرفه، ويبقى على المركبة رقمٌ لا يعرفه أحد.
 // راجع utils/employeeIdentitySync.
+//
+// ── وبياناتُ الشخص تتبعه كذلك (الاسم · الجوال · الجنسيّة · المشروع · القسم · حالة
+// التوظيف): نسخُها في النقل الخفيف وبطاقة السائق وورقة التفويض والقائد الفعليّ
+// تُكتب من هنا — الرقمُ أوّلًا ثمّ البيانات، فتُطابَق النسخُ بالرقم الجديد.
+// راجع utils/employeeIdentitySync.pushPersonChange و utils/personRef.
 employeeSchema.post('init', function () {
   this.$locals.idsAtLoad = [this.iqamaNumber, this.nationalId].map((x) => String(x || '').trim());
+  this.$locals.personAtLoad = require('../utils/employeeIdentitySync').personSnapshot(this);
+});
+employeeSchema.pre('save', function (next) {
+  this.$locals.wasNew = this.isNew;
+  next();
 });
 employeeSchema.post('save', async function (doc) {
+  const sync = require('../utils/employeeIdentitySync');
   const before = doc.$locals && doc.$locals.idsAtLoad;
   const now = [doc.iqamaNumber, doc.nationalId].map((x) => String(x || '').trim());
-  if (!before || (before[0] === now[0] && before[1] === now[1])) return;
-  doc.$locals.idsAtLoad = now;
-  try { await require('../utils/employeeIdentitySync').pushIdChange(doc, before, now); }
-  catch (e) { console.error('employee id → vehicles/b2c:', e.message); }
+  if (before && (before[0] !== now[0] || before[1] !== now[1])) {
+    doc.$locals.idsAtLoad = now;
+    try { await sync.pushIdChange(doc, before, now); }
+    catch (e) { console.error('employee id → vehicles/b2c:', e.message); }
+  }
+  // حسابُ دخولٍ تلقائيّ ليس شخصًا في الموارد البشريّة — لا يكتب في نسخ أحد.
+  if (doc.isHrRecord === false) return;
+  const pBefore = doc.$locals && doc.$locals.personAtLoad;
+  const pNow = sync.personSnapshot(doc);
+  // ملفٌّ جديد: قد تكون له نسخٌ قائمةٌ برقم هويّته (أنشأه قسمُ الأفراد من صفّه).
+  const fields = pBefore ? sync.changedPersonFields(pBefore, pNow) : (doc.$locals && doc.$locals.wasNew ? sync.COPIED_FIELDS : []);
+  if (doc.$locals) doc.$locals.personAtLoad = pNow;
+  if (!fields.length) return;
+  try { await sync.pushPersonChange(doc, { fields }); }
+  catch (e) { console.error('employee person → copies:', e.message); }
 });
+// والكتابةُ بالاستعلام (`updateOne`/`updateMany`/`findOneAndUpdate`) لا تمرّ بالحفظ:
+// توحيدُ قوائم الجنسيّة والقسم والمشروع، ومزامنةُ المشروع من قسم الأفراد. فتُحفَظ
+// معرّفاتُ مَن تمسّه قبل الكتابة، ثمّ تُدفَع بياناتُه بعدها.
+const touchedPersonFields = (update) => {
+  if (!update) return [];
+  const keys = [];
+  for (const [k, v] of Object.entries(update)) {
+    if (k.startsWith('$') && v && typeof v === 'object') keys.push(...Object.keys(v));
+    else keys.push(k);
+  }
+  const { PERSON_FIELDS } = require('../utils/employeeIdentitySync');
+  return PERSON_FIELDS.filter((f) => keys.includes(f));
+};
+for (const op of ['updateOne', 'updateMany', 'findOneAndUpdate']) {
+  employeeSchema.pre(op, async function () {
+    const fields = touchedPersonFields(this.getUpdate());
+    if (!fields.length || this.getOptions().skipPersonSync) return;
+    this._personFields = fields;
+    this._personIds = await this.model.find(this.getFilter()).distinct('_id');
+  });
+  employeeSchema.post(op, async function () {
+    const ids = this._personIds || [];
+    if (!ids.length) return;
+    const sync = require('../utils/employeeIdentitySync');
+    try {
+      const rows = await this.model.find({ _id: { $in: ids }, isHrRecord: { $ne: false } }).lean();
+      for (const e of rows) await sync.pushPersonChange(e, { fields: this._personFields, emit: false }); // eslint-disable-line no-await-in-loop
+      if (rows.length) sync.announcePerson(rows[0]);
+    } catch (e) { console.error('employee person → copies (query):', e.message); }
+  });
+}
 
 // ── والفئةُ الوظيفيّة تسقط إذا خرج الموظّفُ من قسميها (B2C · النقل الثقيل) ──
 employeeSchema.pre('save', async function () {

@@ -121,6 +121,26 @@ const vehicleClaimSchema = new mongoose.Schema({
   lastModifiedByName: { type: String, trim: true, default: '' },
 }, { timestamps: true });
 
+/**
+ * ── الحادثُ يحمل مرجعَ مركبته لا لوحتَها وحدَها ─────────────────────────────
+ * اثنان وثلاثون حادثًا كانت لوحاتُها في سجلّ المركبات ولا مرجعَ لها، فلم تظهر في
+ * ملفّ المركبة. فيُحَلّ المرجعُ عند الإنشاء وعند تغيير اللوحة بالمفتاح الموحَّد
+ * (utils/vehicleRef — عربيّةً أو لاتينيّة)، ما لم يُختَر المرجعُ صراحةً.
+ */
+vehicleClaimSchema.pre('save', async function () {
+  const plate = String(this.vehiclePlate || '').trim();
+  const plateTouched = this.isNew || this.isModified('vehiclePlate');
+  if (!plateTouched || !plate) return;
+  const { registryPlateKey } = require('../utils/plateKey');
+  if (!this.vehiclePlateKey || this.isModified('vehiclePlate')) this.vehiclePlateKey = registryPlateKey(plate) || '';
+  const vehicleGiven = !!this.vehicle && (this.isNew || this.isModified('vehicle'));
+  if (vehicleGiven) return;
+  try {
+    const hit = await require('../utils/vehicleRef').resolve(plate, '_id plateKey');
+    if (hit) { this.vehicle = hit._id; if (hit.plateKey) this.vehiclePlateKey = hit.plateKey; } else if (!this.isNew) this.vehicle = null;
+  } catch (_) { /* الربطُ لا يُسقط الحفظ */ }
+});
+
 vehicleClaimSchema.index({ accidentDate: -1 });
 vehicleClaimSchema.index({ statusCode: 1, accidentDate: -1 });
 

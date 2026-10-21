@@ -160,6 +160,24 @@ b2cDutyCheckSchema.index(
   { vehicle: 1, dateKey: 1 },
   { unique: true, partialFilterExpression: { vehicle: { $type: 'objectId' } }, name: 'vehicle_1_dateKey_1_partial' },
 );
+/**
+ * ── والتفقّدُ الجديدُ يحمل مرجعَ المركبة إن عُرفت لوحتُها ─────────────────────
+ * المتحكِّمُ يحلّ الدبّابَ بمفتاح اللوحة العربيّ، فتسقط اللوحةُ المكتوبةُ لاتينيّةً
+ * أو بصيغةٍ أخرى — فكان ألفٌ ومئةٌ وواحدٌ وثمانون تفقّدًا بلوحةٍ بلا مرجع. فيُحَلّ
+ * هنا بالمفتاح الموحَّد (utils/vehicleRef). ولا يُربَط إن كان للمركبة صفٌّ في اليوم
+ * نفسِه: دبّابٌ يتبادله رجلان يُربَط بالأوّل وحدَه (الفهرسُ أدناه يقضي بذلك).
+ */
+b2cDutyCheckSchema.pre('save', async function () {
+  if (!this.isNew || this.vehicle || !String(this.vehiclePlate || '').trim()) return;
+  try {
+    const hit = await require('../utils/vehicleRef').resolve(this.vehiclePlate, '_id plateKey plateNumber');
+    if (!hit) return;
+    if (await this.constructor.exists({ vehicle: hit._id, dateKey: this.dateKey })) return;
+    this.vehicle = hit._id;
+    if (!this.vehicleKey) this.vehicleKey = hit.plateKey || require('../utils/plateKey').registryPlateKey(hit.plateNumber) || undefined;
+  } catch (_) { /* الربطُ لا يُسقط الحفظ */ }
+});
+
 b2cDutyCheckSchema.index({ dateKey: 1, supervisor: 1 });
 b2cDutyCheckSchema.index({ dateKey: 1, branch: 1 });
 b2cDutyCheckSchema.index({ dateKey: 1, outcome: 1 });

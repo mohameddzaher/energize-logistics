@@ -333,7 +333,8 @@ async function setHolder(vmOrId, holder, ctx = {}) {
     const ids = emp ? empIds(emp) : [];
     vm.authorizedPerson = {
       ...(vm.authorizedPerson?.toObject ? vm.authorizedPerson.toObject() : (vm.authorizedPerson || {})),
-      name: S(holder.name) || empName(emp),
+      // اسمُ الموارد البشريّة يغلب متى عُرف الموظّف — utils/personRef.
+      name: (emp && require('./personRef').canonicalName(emp)) || S(holder.name) || empName(emp),
       iqamaNumber: S(holder.idNumber) || ids[0] || '',
       jobTitleAr: holder.jobTitleAr !== undefined ? S(holder.jobTitleAr) : S(vm.authorizedPerson?.jobTitleAr),
       phone: holder.phone !== undefined ? S(holder.phone) : S(vm.authorizedPerson?.phone),
@@ -425,5 +426,5 @@ async function registryPlateKeys() {
 module.exports = {
   holderOf, employeeByIdNumber, legacyVehiclesOf, masterOfLegacy, syncLegacyFromMaster,
   syncPointers, announce, afterMasterWrite, setHolder, currentFor, registryPlateKeys, fold, empName, ymd,
-  plateSnapshotOk, refreshPlateSnapshot, currentPlatesOf,
+  plateSnapshotOk, refreshPlateSnapshot, currentPlatesOf, plateKeysOf,
 };

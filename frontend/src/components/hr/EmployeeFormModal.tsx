@@ -343,7 +343,12 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
       </Section>
 
       <Section title={vtx.sectionDriving}>
-        <Field label={vtx.vehiclePlate}><TextInput value={form.vehiclePlate} onChange={(e) => set('vehiclePlate', e.target.value)} /></Field>
+        {/* لقطةٌ من سجلّ المركبات (التفويض) — تُعرض ولا تُكتب هنا، وإلّا افترقت عن الورقة. */}
+        <Field label={vtx.vehiclePlate}>
+          <TextInput value={form.vehiclePlate || ''} readOnly disabled className="bg-slate-50 text-slate-600 cursor-not-allowed"
+            title={ar ? 'تُقرأ من سجل المركبات — تُعدَّل بالتفويض' : 'Read from the vehicle registry — change it through the authorisation'} />
+          <p className="mt-1 text-[11px] text-slate-500">{ar ? 'تُقرأ من سجل المركبات — تُعدَّل بالتفويض' : 'Read from the vehicle registry — change it through the authorisation'}</p>
+        </Field>
         <Field label={vtx.licenseNumber}><TextInput value={form.licenseNumber} onChange={(e) => set('licenseNumber', e.target.value)} /></Field>
         <DocInput k="licenseType" label={vtx.licenseType} form={form} set={set} mark={marks['licenseType'] || ''} setMark={setMark} choices={choices} ar={ar} />
         <DocInput k="licenseExpiry" label={vtx.licenseExpiry} type="date" form={form} set={set} mark={marks['licenseExpiry'] || ''} setMark={setMark} choices={choices} ar={ar} />

@@ -530,6 +530,49 @@ vehicleMasterSchema.post('findOneAndDelete', async function (doc) {
   } catch (e) { console.error('[vehicle-auth] delete sync:', e.message); }
 });
 
+// ── واللوحةُ ونوعُ التسجيل يصلان نسخَهما ────────────────────────────────────
+// صفُّ النقل الخفيف، وأمرُ التشغيل الساري، والحادث، ولقطةُ ملفّ الموظّف — كلُّها
+// تحمل اللوحةَ نصًّا للبحث والتاريخ. فإن صُحِّحت هنا كُتبت هناك، من أيّ بابٍ كانت
+// الكتابة. راجع utils/vehicleRef.pushVehicleChange.
+const IDENT = ['plateNumber', 'registrationTypeAr'];
+const touchesIdent = (update) => {
+  if (!update) return false;
+  const keys = [];
+  for (const [k, v] of Object.entries(update)) {
+    if (k.startsWith('$') && v && typeof v === 'object') keys.push(...Object.keys(v));
+    else keys.push(k);
+  }
+  return keys.some((k) => IDENT.includes(k));
+};
+const pushIdent = async (id, before) => {
+  try { await require('../utils/vehicleRef').pushVehicleChange(id, before); }
+  catch (e) { console.error('[vehicle-ref] push:', e.message); }
+};
+vehicleMasterSchema.post('init', function () {
+  this.$locals.identAtLoad = { plateNumber: this.plateNumber, registrationTypeAr: this.registrationTypeAr };
+});
+vehicleMasterSchema.pre('save', function (next) {
+  this.$locals.identBefore = !this.isNew && IDENT.some((k) => this.isModified(k)) ? this.$locals.identAtLoad : null;
+  next();
+});
+vehicleMasterSchema.post('save', async function (doc) {
+  const before = doc.$locals && doc.$locals.identBefore;
+  if (doc.$locals) {
+    doc.$locals.identBefore = null;
+    doc.$locals.identAtLoad = { plateNumber: doc.plateNumber, registrationTypeAr: doc.registrationTypeAr };
+  }
+  if (before) await pushIdent(doc._id, before);
+});
+for (const op of ['findOneAndUpdate', 'updateOne', 'updateMany']) {
+  vehicleMasterSchema.pre(op, async function () {
+    if (!touchesIdent(this.getUpdate())) return;
+    this._identBefore = await this.model.find(this.getFilter()).select('plateNumber registrationTypeAr').lean();
+  });
+  vehicleMasterSchema.post(op, async function () {
+    for (const v of this._identBefore || []) await pushIdent(v._id, { plateNumber: v.plateNumber, registrationTypeAr: v.registrationTypeAr }); // eslint-disable-line no-await-in-loop
+  });
+}
+
 module.exports = {
   VehicleMaster: mongoose.models.VehicleMaster || mongoose.model('VehicleMaster', vehicleMasterSchema),
   VehicleRegistryConfig: mongoose.models.VehicleRegistryConfig || mongoose.model('VehicleRegistryConfig', vehicleRegistryConfigSchema),

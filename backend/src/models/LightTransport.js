@@ -264,31 +264,63 @@ employeeSchema.post('save', async function (doc) {
  * — فتراها الموارد البشريّة في الملفّ والقائمة، وقسمُ المركبات على المركبة. ويُرفَع
  * اسمُه عن المركبة التي تركها. ثمّ تُمحى ذاكرةُ الأقسام الثلاثة قبل الإعلان.
  */
+// ── والراكبُ يُكتب على المركبة كلّما تغيّر ربطُه — لا حين تتغيّر حالتُه وحدَها ──
+// كانت `b2cRider` فارغةً على المركبات كلِّها ومئةٌ وستّون راكبًا مربوطون: لم تُكتب
+// إلّا عند تغيير الحالة. فصارت تُكتب عند كلّ تغييرٍ في المركبة أو الاسم أو النشاط،
+// ومن أيّ باب — الحفظ أو الكتابة بالاستعلام. (والسابقُ يُملأ بـ scripts/backfillPersonVehicleLinks.)
+async function syncRider(doc, { emit = true } = {}) {
+  const op = doc.isActive === false ? '' : String(doc.opStatus || '');
+  if (doc.employee) await mongoose.model('Employee').updateOne({ _id: doc.employee }, { $set: { b2cOpStatus: op } });
+  const VM = mongoose.model('VehicleMaster');
+  await VM.updateMany(
+    { 'b2cRider.lt': doc._id, ...(doc.vehicle && doc.isActive !== false ? { _id: { $ne: doc.vehicle } } : {}) },
+    { $set: { 'b2cRider.lt': null, 'b2cRider.name': '', 'b2cRider.opStatus': '' } }, { timestamps: false },
+  );
+  if (doc.vehicle && doc.isActive !== false) {
+    await VM.updateOne({ _id: doc.vehicle },
+      { $set: { 'b2cRider.lt': doc._id, 'b2cRider.name': String(doc.name || '').trim(), 'b2cRider.opStatus': op } }, { timestamps: false });
+  }
+  if (!emit) return;
+  const cache = require('../utils/ttlCache');
+  for (const p of ['lt:', 'hr:', 'hrm:', 'dash:', 'vreg:', 'reports:doc:']) { try { cache.clear(p); } catch (_) { /* */ } }
+  const { emitToAll } = require('../websocket/socketManager');
+  for (const ev of ['lt:updated', 'hr:employee', 'hr:master', 'vreg:updated']) { try { emitToAll(ev, { lt: String(doc._id) }); } catch (_) { /* */ } }
+}
+const RIDER_FIELDS = ['opStatus', 'vehicle', 'isActive', 'name', 'employee'];
 employeeSchema.pre('save', function (next) {
   this.$locals.opSync = this.isModified('opStatus') || this.isModified('vehicle') || this.isModified('isActive')
-    || (this.isNew && !!this.opStatus);
+    || (!!this.vehicle && this.isModified('name'))
+    || (this.isNew && (!!this.opStatus || !!this.vehicle));
   next();
 });
 employeeSchema.post('save', async function (doc) {
   if (!doc.$locals.opSync) return;
-  try {
-    const op = doc.isActive === false ? '' : String(doc.opStatus || '');
-    if (doc.employee) await mongoose.model('Employee').updateOne({ _id: doc.employee }, { $set: { b2cOpStatus: op } });
-    const VM = mongoose.model('VehicleMaster');
-    await VM.updateMany(
-      { 'b2cRider.lt': doc._id, ...(doc.vehicle && doc.isActive !== false ? { _id: { $ne: doc.vehicle } } : {}) },
-      { $set: { 'b2cRider.lt': null, 'b2cRider.name': '', 'b2cRider.opStatus': '' } }, { timestamps: false },
-    );
-    if (doc.vehicle && doc.isActive !== false) {
-      await VM.updateOne({ _id: doc.vehicle },
-        { $set: { 'b2cRider.lt': doc._id, 'b2cRider.name': String(doc.name || '').trim(), 'b2cRider.opStatus': op } }, { timestamps: false });
-    }
-    const cache = require('../utils/ttlCache');
-    for (const p of ['lt:', 'hr:', 'hrm:', 'dash:', 'vreg:', 'reports:doc:']) { try { cache.clear(p); } catch (_) { /* */ } }
-    const { emitToAll } = require('../websocket/socketManager');
-    for (const ev of ['lt:updated', 'hr:employee', 'hr:master', 'vreg:updated']) { try { emitToAll(ev, { lt: String(doc._id) }); } catch (_) { /* */ } }
-  } catch (_) { /* المزامنةُ لا تُسقط حفظَ السجلّ */ }
+  try { await syncRider(doc); } catch (_) { /* المزامنةُ لا تُسقط حفظَ السجلّ */ }
 });
+const touchedKeys = (update) => {
+  const keys = [];
+  for (const [k, v] of Object.entries(update || {})) {
+    if (k.startsWith('$') && v && typeof v === 'object') keys.push(...Object.keys(v));
+    else keys.push(k);
+  }
+  return keys;
+};
+for (const op of ['updateOne', 'updateMany', 'findOneAndUpdate']) {
+  employeeSchema.pre(op, async function () {
+    if (!touchedKeys(this.getUpdate()).some((k) => RIDER_FIELDS.includes(k))) return;
+    this._riderIds = await this.model.find(this.getFilter()).distinct('_id');
+  });
+  employeeSchema.post(op, async function () {
+    const ids = this._riderIds || [];
+    if (!ids.length) return;
+    try {
+      const rows = await this.model.find({ _id: { $in: ids } }).select('_id employee vehicle name opStatus isActive').lean();
+      for (const r of rows) await syncRider(r, { emit: false }); // eslint-disable-line no-await-in-loop
+      if (rows.length) await syncRider(rows[rows.length - 1]);
+    } catch (_) { /* */ }
+  });
+}
+employeeSchema.statics.syncRider = syncRider;
 employeeSchema.post('save', async function (doc) {
   if (!doc.$locals.repSync) return;
   try { await require('../utils/b2cEntry').syncRepOf(doc); } catch (_) { /* */ }

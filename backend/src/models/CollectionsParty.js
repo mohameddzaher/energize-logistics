@@ -73,8 +73,16 @@ const collectionsPartySchema = new mongoose.Schema({
   aliasKeys: [{ type: String, index: true }],
 
   // ── بياناتُ الحساب في سجلّ التحصيل ────────────────────────────────────────
-  collectionOfficer: { type: String, trim: true, default: '', index: true }, // موظّفُ التحصيل المسؤول
-  officer: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },            // حين يُربط باسمٍ في النظام
+  collectionOfficer: { type: String, trim: true, default: '', index: true }, // موظّفُ التحصيل المسؤول (اسمُه كما يُعرَض)
+  /**
+   * ── والمسؤولُ مستخدمٌ في النظام لا اسمٌ مكتوب ───────────────────────────
+   * `collectionOfficer` نصٌّ من دفتر التحصيل («Hossam»، «Orabi») لا يطابق
+   * مستخدمًا واحدًا — فلا يُعرَف «حساباتي» لمن يدخل، ولا يتبع الإسنادُ صاحبَه إن
+   * تغيّر اسمُه. فهذا المرجعُ هو الإسنادُ، والنصُّ يبقى للعرض والفلاتر ويُكتب
+   * منه. راجع utils/collectionsOfficer (المرجعُ مقدَّمٌ على النصّ).
+   */
+  collectionOfficerUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+  officer: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },            // قديم — لا يكتبه أحد
   hoLocation: { type: String, trim: true, default: '', index: true },        // فرعُ العميل
   grade: { type: String, trim: true, default: '', index: true },             // A1 … C3
   salesManagers: [{ type: String, trim: true }],                             // قد يتعامل معه أكثرُ من مندوب

@@ -22,6 +22,8 @@ const collectionTaskSchema = new mongoose.Schema({
   partyName: { type: String, trim: true, default: '' },
 
   // اسمُ الموظّف كما يُكتب في الورقة، ومعرّفُه حين يُربط بحسابٍ في النظام.
+  // والمعرّفُ يُحلّ من الاسم عند الإنشاء والتعديل (utils/collectionsOfficer)،
+  // وتُفلتَر المهامُّ به مع الاسم — فلا يضيع عملُ موظّفٍ كُتب اسمُه بصيغةٍ أخرى.
   officerName: { type: String, trim: true, default: '', index: true },
   officer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
 

@@ -149,6 +149,8 @@ async function resolveInlineVehicle(req, data) {
     defaultDriverPhone: data.driverPhone || '',
     createdBy: req.user._id,
   });
+  // شاحنةٌ لا مورّدَ لها ولوحتُها في سجلّنا = من أسطولنا، مربوطةٌ به.
+  if (!supplierId) await syncVehicleMaster(veh._id);
   data.vehicle = veh._id;
   emit('shipmentOrders:fleet', {});
 }
@@ -250,10 +252,14 @@ exports.getWaybillsPdf = async (req, res) => {
       // سجلُّها كلَّ أسبوع. راجع `plateKey` في models/ShipmentOrderVehicle.
       plates.length
         ? ShipmentOrderVehicle.find({ plateKey: { $in: plates } })
-          .select('plate plateKey brand color truckType').lean()
+          .select('plate plateKey brand color truckType vehicleMaster').populate('vehicleMaster', VEHICLE_MASTER_FIELDS).lean()
+          .then((rows) => rows.map(vehicleView))
         : [],
       names.length
-        ? ShipmentOrderDriver.find({ name: { $in: names } }).select('name residenceNumber nationality phone').lean()
+        ? ShipmentOrderDriver.find({ name: { $in: names } }).select('name residenceNumber nationality phone employee')
+          .populate('employee', EMPLOYEE_FIELDS).lean()
+          // يُطابَق بالاسم المكتوب على الطلب، ويُطبَع من الملفّ — فالاسمُ الأصليّ يبقى مفتاحًا.
+          .then((rows) => rows.map((d) => ({ ...driverView(d), name: d.name })))
         : [],
     ]);
     const vehByPlate = new Map(vehRows.map((v) => [v.plateKey || plateKeyOf(v.plate), v]));
@@ -1210,8 +1216,8 @@ const CUSTOMER_LIST_FIELDS = 'name phone email notes routes defaults';
 // وأوراقُه المالية تُقرأ من الصفّ: السجلُّ التجاريُّ والآيبانُ ومديرُه برقمه
 // هي ما يُطلَب عند أوّل دفعةٍ له، وكانت تُفتَح لها بطاقةٌ لكلّ مورّد.
 const SUPPLIER_LIST_FIELDS = 'name type phone email notes commercialRegister taxCard iban bankName managerName managerPhone paymentTerms';
-const VEHICLE_LIST_FIELDS = 'plate name truckType brand color supplier ownership defaultDriverName defaultDriverPhone operationCardNumber operationCardExpiry modelYear notes';
-const DRIVER_LIST_FIELDS = 'name phone nationality residenceNumber driverCardNumber driverCardExpiry supplier vehicle sponsorName notes';
+const VEHICLE_LIST_FIELDS = 'plate name truckType brand color supplier ownership vehicleMaster defaultDriverName defaultDriverPhone operationCardNumber operationCardExpiry modelYear notes';
+const DRIVER_LIST_FIELDS = 'name phone nationality residenceNumber driverCardNumber driverCardExpiry supplier vehicle employee sponsorName notes';
 const registryKey = (kind, req, extra = '') => `so:registry:${kind}:${String(req.query.q || '')}:${req.query.limit || ''}:${extra}`;
 
 // ── ملكيّةُ الشاحنة تُطلَب صريحةً ──────────────────────────────────────────
@@ -1337,6 +1343,67 @@ const coherentOwnership = (data) => {
   return data;
 };
 
+/**
+ * ── شاحنتُنا مرجعٌ إلى سجلّ المركبات، وسائقُنا إلى ملفّه ───────────────────
+ *
+ * قاعدةُ صاحب الشركة (٢٠٢٦/١٠/٢١): «سجلٌّ واحدٌ للمركبة وللشخص، والتعديلُ يظهر
+ * في كلّ مكان». فالشاحنةُ التي ليست لمورّدٍ تُحلّ بلوحتها إلى `VehicleMaster`
+ * (utils/vehicleRef — عربيّ↔لاتينيّ) — وما حُلّ فهو من أسطولنا يقينًا: اللوحةُ
+ * السعوديّةُ حروفًا وأرقامًا لا تتكرّر. والسائقُ يُحلّ برقم إقامته إلى ملفّه في
+ * الموارد البشريّة. ويُحلّ الاثنان عند كلّ إنشاءٍ وتعديل، لا في الاستيراد وحدَه.
+ */
+async function syncVehicleMaster(id) {
+  const v = await ShipmentOrderVehicle.findById(id).select('plate supplier ownership vehicleMaster').lean();
+  if (!v) return;
+  const set = {};
+  if (v.supplier || v.ownership === 'supplier') {
+    if (v.vehicleMaster) set.vehicleMaster = null; // شاحنةُ مورّدٍ ليست في سجلّنا
+  } else {
+    const hit = await require('../utils/vehicleRef').resolve(v.plate);
+    if (String(v.vehicleMaster || '') !== String(hit?._id || '')) set.vehicleMaster = hit ? hit._id : null;
+    if (hit && v.ownership !== 'ours') set.ownership = 'ours';
+  }
+  if (Object.keys(set).length) await ShipmentOrderVehicle.updateOne({ _id: id }, { $set: set });
+}
+
+async function syncDriverEmployee(id) {
+  const d = await ShipmentOrderDriver.findById(id).select('residenceNumber employee').lean();
+  if (!d) return;
+  const e = await require('../utils/personLookup').byIdNumber(d.residenceNumber, '_id');
+  if (String(d.employee || '') !== String(e?._id || '')) {
+    await ShipmentOrderDriver.updateOne({ _id: id }, { $set: { employee: e ? e._id : null } });
+  }
+}
+
+/** الشاحنةُ كما تُعرَض: هويّتُها من سجلّ المركبات إن كانت مربوطة. */
+const vehicleView = (v) => {
+  const m = v && v.vehicleMaster && typeof v.vehicleMaster === 'object' ? v.vehicleMaster : null;
+  if (!m) return v;
+  const year = m.modelYear ? String(m.modelYear) : '';
+  return {
+    ...v,
+    vehicleMaster: m._id,
+    registry: { _id: m._id, plateNumber: m.plateNumber || '', brand: m.brandAr || '', model: m.modelAr || '', modelYear: year, color: m.colorAr || '' },
+    name: [m.brandAr, m.modelAr].filter(Boolean).join(' ') || v.name,
+    brand: m.brandAr || v.brand, color: m.colorAr || v.color, modelYear: year || v.modelYear,
+  };
+};
+const VEHICLE_MASTER_FIELDS = 'plateNumber brandAr modelAr modelYear colorAr';
+
+/** السائقُ كما يُعرَض: اسمُه وجوالُه وجنسيّتُه من ملفّه إن كان موظّفَنا. */
+const driverView = (d) => {
+  const e = d && d.employee && typeof d.employee === 'object' ? d.employee : null;
+  if (!e) return d;
+  const { displayName } = require('../utils/personLookup');
+  return {
+    ...d,
+    employee: e._id,
+    hr: { _id: e._id, name: displayName(e), phone: e.phone || '', nationality: e.nationality || '', idNumber: e.iqamaNumber || e.nationalId || '' },
+    name: displayName(e) || d.name, phone: e.phone || d.phone, nationality: e.nationality || d.nationality,
+  };
+};
+const EMPLOYEE_FIELDS = 'firstName lastName arabicName phone nationality iqamaNumber nationalId';
+
 exports.listSuppliers = async (req, res) => {
   try {
     const { q } = req.query;
@@ -1436,12 +1503,13 @@ exports.listVehicles = async (req, res) => {
         ShipmentOrderVehicle.find(filter)
           .select(VEHICLE_LIST_FIELDS)
           .populate('supplier', 'name type')
+          .populate('vehicleMaster', VEHICLE_MASTER_FIELDS)
           .sort({ plate: 1 })
           .limit(askedLimit(req.query.limit, 1000, 5000))
           .lean(),
         ShipmentOrderVehicle.countDocuments(filter),
       ]);
-      return { vehicles, total };
+      return { vehicles: vehicles.map(vehicleView), total };
     });
     res.json(out);
   } catch (error) {
@@ -1515,7 +1583,9 @@ exports.fleetSummary = async (req, res) => {
 exports.createVehicle = async (req, res) => {
   try {
     if (!req.body.plate || !String(req.body.plate).trim()) return res.status(400).json({ message: 'Plate is required' });
-    const vehicle = await ShipmentOrderVehicle.create({ ...coherentOwnership(pick(req.body, VEHICLE_EDITABLE)), createdBy: req.user._id });
+    const created = await ShipmentOrderVehicle.create({ ...coherentOwnership(pick(req.body, VEHICLE_EDITABLE)), createdBy: req.user._id });
+    await syncVehicleMaster(created._id);
+    const vehicle = await ShipmentOrderVehicle.findById(created._id);
     emit('shipmentOrders:fleet', {});
     res.status(201).json({ vehicle });
   } catch (error) {
@@ -1525,8 +1595,10 @@ exports.createVehicle = async (req, res) => {
 
 exports.updateVehicle = async (req, res) => {
   try {
-    const vehicle = await ShipmentOrderVehicle.findByIdAndUpdate(req.params.id, coherentOwnership(pick(req.body, VEHICLE_EDITABLE)), { new: true });
-    if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
+    const updated = await ShipmentOrderVehicle.findByIdAndUpdate(req.params.id, coherentOwnership(pick(req.body, VEHICLE_EDITABLE)), { new: true });
+    if (!updated) return res.status(404).json({ message: 'Vehicle not found' });
+    await syncVehicleMaster(updated._id);
+    const vehicle = await ShipmentOrderVehicle.findById(updated._id);
     emit('shipmentOrders:fleet', {});
     res.json({ vehicle });
   } catch (error) {
@@ -1577,12 +1649,13 @@ exports.listDrivers = async (req, res) => {
             .select(DRIVER_LIST_FIELDS)
             .populate('supplier', 'name type')
             .populate('vehicle', 'plate name')
+            .populate('employee', EMPLOYEE_FIELDS)
             .sort({ name: 1 })
             .limit(askedLimit(req.query.limit, 500, 5000))
             .lean(),
           ShipmentOrderDriver.countDocuments(filter),
         ]);
-        return { drivers, total };
+        return { drivers: drivers.map(driverView), total };
       },
     );
     res.json(out);
@@ -1594,7 +1667,9 @@ exports.listDrivers = async (req, res) => {
 exports.createDriver = async (req, res) => {
   try {
     if (!req.body.name || !String(req.body.name).trim()) return res.status(400).json({ message: 'Driver name is required' });
-    const driver = await ShipmentOrderDriver.create({ ...pick(req.body, DRIVER_EDITABLE), createdBy: req.user._id });
+    const created = await ShipmentOrderDriver.create({ ...pick(req.body, DRIVER_EDITABLE), createdBy: req.user._id });
+    await syncDriverEmployee(created._id);
+    const driver = await ShipmentOrderDriver.findById(created._id);
     emit('shipmentOrders:fleet', {});
     res.status(201).json({ driver });
   } catch (error) {
@@ -1604,8 +1679,10 @@ exports.createDriver = async (req, res) => {
 
 exports.updateDriver = async (req, res) => {
   try {
-    const driver = await ShipmentOrderDriver.findByIdAndUpdate(req.params.id, pick(req.body, DRIVER_EDITABLE), { new: true });
-    if (!driver) return res.status(404).json({ message: 'Driver not found' });
+    const updated = await ShipmentOrderDriver.findByIdAndUpdate(req.params.id, pick(req.body, DRIVER_EDITABLE), { new: true });
+    if (!updated) return res.status(404).json({ message: 'Driver not found' });
+    await syncDriverEmployee(updated._id);
+    const driver = await ShipmentOrderDriver.findById(updated._id);
     emit('shipmentOrders:fleet', {});
     res.json({ driver });
   } catch (error) {
@@ -1834,18 +1911,25 @@ exports.ensureShipmentOrderDefaults = async () => {
     for (const v of live) {
       const plate = String(v.plate || '').trim() || String(v.name || '').trim();
       if (!plate) continue;
+      // ── ويُبحَث عنها بمفتاح لوحتها لا بنصّها ─────────────────────────
+      // كان البحثُ بالنصّ، فإذا جاءت الشاحنةُ نفسُها من المنصّة بصيغةٍ أخرى أُنشئت
+      // ثانيةً: ثمانٍ وخمسون شاحنةً من أسطولنا مكتوبةٌ مرّتين (٢٠٢٦/١٠/٢١).
+      const { registryPlateKey, formatPlate } = require('../utils/plateKey');
       // eslint-disable-next-line no-await-in-loop
-      const exists = await ShipmentOrderVehicle.findOne({ plate });
+      const exists = await ShipmentOrderVehicle.findOne({ $or: [{ plate }, { plateKey: registryPlateKey(formatPlate(plate)) || '-' }] }).select('_id').lean();
       if (!exists) {
         // eslint-disable-next-line no-await-in-loop
-        await ShipmentOrderVehicle.create({
+        const created = await ShipmentOrderVehicle.create({
           plate,
           name: '',
           truckType: 'سطحة', // the LS2 fleet is flatbed heavy trucks
-          supplier: null,     // ours
+          supplier: null,
+          ownership: 'ours',  // صريحًا: الغيابُ «لا أعلم» لا «ملكُنا»
           defaultDriverName: String(v.driver || '').trim(),
           notes: 'من لوكيشن سوليوشن',
         });
+        // eslint-disable-next-line no-await-in-loop
+        await syncVehicleMaster(created._id);
       }
     }
   } catch (e) {

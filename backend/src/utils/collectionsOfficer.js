@@ -68,17 +68,106 @@ async function collectionsManager() {
 
 const clean = (v) => String(v == null ? '' : v).trim();
 
-/** المسؤولُ الفعليّ لاسمٍ مكتوب: هو نفسُه، أو المديرُ إن كان فارغًا. */
-const effectiveOfficer = (raw, mgr) => clean(raw) || (mgr?.name || '');
+/**
+ * ── الإسنادُ مرجعٌ إلى مستخدم، والاسمُ المكتوبُ لقبُه ──────────────────────
+ *
+ * `CollectionsParty.collectionOfficerUser` هو الإسناد (٢٠٢٦/١٠/٢١)، و`collectionOfficer`
+ * يبقى نصًّا للعرض والفلاتر — «Orabi» لقبُ «ahmed orabi» في دفتر التحصيل، ولا
+ * يُستبدَل به اسمُه الكامل فتتغيّر الأسماءُ في كلّ لوحةٍ وكلّ رابطٍ محفوظ.
+ *
+ * فدليلُ الموظّفين: كلُّ مستخدمٍ نشطٍ في القسم (موظّفٌ أو مدير، بلا حسابات
+ * الاختبار)، ولقبُه = أكثرُ نصٍّ كُتب على حساباته، وإلّا اسمُه الأوّل.
+ */
+const DIR_KEY = 'cdr:dir';
+const ROLES = ['collections_staff', 'collections_manager'];
+const lower = (v) => clean(v).toLowerCase();
+const cap = (v) => { const x = clean(v); return x ? x[0].toUpperCase() + x.slice(1) : ''; };
+
+async function officerDirectory() {
+  return cache.wrap(DIR_KEY, MGR_TTL, async () => {
+    const User = require('../models/User');
+    const CollectionsParty = require('../models/CollectionsParty');
+    const [users, aliasRows] = await Promise.all([
+      User.find({ role: { $in: ROLES }, isActive: { $ne: false } }).select('firstName lastName email role').lean(),
+      CollectionsParty.aggregate([
+        { $match: { collectionOfficerUser: { $ne: null }, collectionOfficer: { $gt: '' } } },
+        { $group: { _id: { u: '$collectionOfficerUser', t: '$collectionOfficer' }, n: { $sum: 1 } } },
+        { $sort: { n: -1 } },
+      ]),
+    ]);
+    const alias = new Map();
+    for (const r of aliasRows) { const k = String(r._id.u); if (!alias.has(k)) alias.set(k, r._id.t); }
+    return users.filter((u) => !isTestEmail(u.email)).map((u) => ({
+      _id: String(u._id), name: fullName(u), email: u.email || '', role: u.role,
+      firstName: clean(u.firstName), lastName: clean(u.lastName),
+      label: alias.get(String(u._id)) || cap(u.firstName) || fullName(u),
+    })).sort((a, b) => a.label.localeCompare(b.label));
+  });
+}
+
+/**
+ * أيُّ مستخدمٍ يعنيه هذا الاسمُ المكتوب؟ لقبُه، أو اسمُه الكامل، أو اسمُه الأوّل
+ * أو الأخير **إن لم يشترك فيه اثنان**. والملتبسُ لا يُخمَّن: `null`.
+ */
+function userForName(name, dir = []) {
+  const n = lower(name);
+  if (!n) return null;
+  const hit = (pred) => { const xs = dir.filter(pred); return xs.length === 1 ? xs[0] : (xs.length > 1 ? 'ambiguous' : null); };
+  for (const pred of [
+    (u) => lower(u.label) === n,
+    (u) => lower(u.name) === n,
+    (u) => lower(u.firstName) === n || lower(u.lastName) === n,
+  ]) {
+    const r = hit(pred);
+    if (r === 'ambiguous') return null;
+    if (r) return r;
+  }
+  return null;
+}
+
+/** صاحبُ المرجع في الدليل، أو null. */
+const userById = (id, dir = []) => (id ? dir.find((u) => u._id === String(id)) || null : null);
+
+/**
+ * المسؤولُ الفعليّ: صاحبُ المرجع إن وُجد (بلقبه المكتوب إن كان لقبَه، وإلّا
+ * بلقبه في الدليل) — ثمّ الاسمُ المكتوب — ثمّ مديرُ القسم.
+ * `ref` و`dir` اختياريّان: من لا يمرّرهما يقرأ النصَّ كما كان.
+ */
+const effectiveOfficer = (raw, mgr, ref, dir) => {
+  const u = userById(ref, dir);
+  if (u) {
+    const t = clean(raw);
+    return t && userForName(t, dir)?._id === u._id ? t : u.label;
+  }
+  return clean(raw) || (mgr?.name || '');
+};
 /** أهذا الاسمُ الفعليّ آتٍ من المدير لا من إسنادٍ مكتوب؟ */
-const isDefaultOfficer = (raw) => !clean(raw);
+const isDefaultOfficer = (raw, ref) => !ref && !clean(raw);
+
+/**
+ * يحلّ ما يُرسَل في الإسناد إلى `{ user, text }`: معرّفُ مستخدمٍ من الدليل، أو
+ * اسمٌ مكتوب (عملاءُ قديمة) يُطابَق بـ`userForName`. والفراغُ رفعٌ للإسناد.
+ * الاسمُ الذي لا يطابق أحدًا يُقبَل نصًّا بلا مرجع — كما كان قبل المرجع.
+ */
+async function resolveAssignment({ userId, name } = {}) {
+  const dir = await officerDirectory();
+  const byId = userById(userId, dir);
+  if (byId) return { user: byId._id, text: byId.label };
+  const t = clean(name);
+  if (!t) return { user: null, text: '' };
+  const u = userForName(t, dir);
+  return { user: u ? u._id : null, text: u ? (lower(u.label) === lower(t) ? u.label : t) : t };
+}
+
+/** يُمسَح الدليلُ بعد كلّ إسناد — لقبُ موظّفٍ جديدٍ يظهر في الحال. */
+const invalidateDirectory = () => { try { cache.clear(DIR_KEY); } catch (_) { /* */ } };
 
 /**
  * شرطُ `CollectionsParty` لفلترٍ بأسماء المسؤولين الفعليّين.
  * اسمُ المدير يعني حساباتِه المكتوبةَ باسمه **وكلَّ حسابٍ بلا اسم**؛ و`none`
  * (الرابطُ القديم «بلا مسؤول») يُقرأ مديرًا كذلك — فلا يفتح رابطٌ محفوظٌ شيئًا آخر.
  */
-function officerCondition(values, mgr) {
+function officerCondition(values, mgr, dir) {
   const list = [].concat(values || []).flatMap((v) => String(v || '').split(',')).map(clean).filter(Boolean);
   if (!list.length) return null;
   const mgrName = clean(mgr?.name).toLowerCase();
@@ -86,7 +175,15 @@ function officerCondition(values, mgr) {
   const named = list.filter((v) => v !== 'none');
   const or = [];
   if (named.length) or.push({ collectionOfficer: { $in: named } });
-  if (wantsDefault) or.push({ collectionOfficer: { $in: ['', null] } }, { collectionOfficer: { $exists: false } });
+  // والمرجعُ يُفلتَر به كذلك: حسابٌ مُسنَدٌ إلى «Orabi» يظهر تحت لقبه ولو كُتب
+  // نصُّه بصيغةٍ أخرى. (يمرّر المنادي الدليلَ ليُحسَب هذا؛ وإلّا فالنصُّ وحدَه.)
+  const ids = dir ? named.map((n) => userForName(n, dir)?._id).filter(Boolean) : [];
+  if (ids.length) {
+    const mongoose = require('mongoose');
+    or.push({ collectionOfficerUser: { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) } });
+  }
+  // «بلا إسناد» = لا نصَّ ولا مرجع (`null` في Mongo يطابق الغائبَ أيضًا).
+  if (wantsDefault) or.push({ collectionOfficer: { $in: ['', null] }, collectionOfficerUser: null });
   return or.length === 1 ? or[0] : { $or: or };
 }
 
@@ -100,4 +197,5 @@ const withManager = (names, mgr) => {
 module.exports = {
   collectionsManager, pickManager, isTestEmail, effectiveOfficer, isDefaultOfficer,
   officerCondition, withManager, MGR_KEY,
+  officerDirectory, userForName, userById, resolveAssignment, invalidateDirectory, DIR_KEY,
 };

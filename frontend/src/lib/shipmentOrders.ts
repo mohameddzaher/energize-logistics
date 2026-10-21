@@ -171,6 +171,9 @@ export interface OrderDriver {
   sponsorName?: string;
   supplier?: OrderSupplier | string | null;
   vehicle?: OrderVehicle | string | null;
+  /** ملفُّه في الموارد البشريّة إن كان موظّفَنا — والاسمُ والجوالُ والجنسيّةُ منه. */
+  employee?: string | null;
+  hr?: { _id: string; name: string; phone?: string; nationality?: string; idNumber?: string } | null;
   notes?: string;
 }
 
@@ -194,6 +197,9 @@ export interface OrderVehicle {
    * ثمانٍ وخمسون. والغيابُ «لا أعلم» لا «ملكُنا».
    */
   ownership?: 'supplier' | 'ours' | 'unknown';
+  /** شاحنتُنا في سجلّ المركبات — والماركةُ واللونُ وسنةُ الصنع منه. */
+  vehicleMaster?: string | null;
+  registry?: { _id: string; plateNumber: string; brand?: string; model?: string; modelYear?: string; color?: string } | null;
   defaultDriverName?: string;
   defaultDriverPhone?: string;
   notes?: string;

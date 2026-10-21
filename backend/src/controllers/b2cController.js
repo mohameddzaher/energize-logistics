@@ -152,12 +152,47 @@ exports.getReps = async (req, res) => {
     // مندوبٌ صفُّه في النقل الخفيف لمؤرشَف لا يُعرَض — كأنّه حُذف.
     const AH = require('../utils/archivedHidden');
     const goneLt = await AH.archivedLtRowIds(await AH.endedStaff());
+    // «غير مرتبط» — حسابٌ لا صفَّ له في سجلّ النقل الخفيف، يُراجَع بيد القسم.
+    if (req.query.linked === 'false') filter.ltEmployee = null;
+    else if (req.query.linked === 'true') filter.ltEmployee = { $ne: null };
     const reps = await B2CRep.find(goneLt.length ? AH.andAll(filter, { ltEmployee: { $nin: goneLt } }) : filter)
       .populate('project', 'name code color monthlyTarget dailyTarget expectedWorkingDays')
       .populate('branch', 'name code city')
       .populate('supervisor', 'firstName lastName role')
+      .populate({ path: 'ltEmployee', select: 'name phone idNumber employee', populate: { path: 'employee', select: 'firstName lastName arabicName phone iqamaNumber nationalId' } })
       .sort({ englishName: 1 })
       .lean();
+
+    // ── الاسمُ والجوالُ من صاحبهما ─────────────────────────────────────────
+    // الحسابُ المربوطُ يُعرَض باسم صاحبه في الموارد البشريّة (ثمّ في السجلّ)، لا
+    // بما كتبه الشيتُ يومًا: تعديلُ الاسم في الملفّ يظهر هنا في اللحظة. وما كتبه
+    // الشيتُ يبقى في `englishName`/`arabicName` — هو اسمُ الحساب على التطبيق.
+    const { personOf } = require('../utils/b2cRepLink');
+    // ومراجعةُ الحسابات (`review=1`): آخرُ طلبٍ وعددُ الأيّام — ومن لم يعمل ستّين
+    // يومًا ولا صفَّ له يُقترَح إيقافُه. اقتراحٌ يُعرَض، لا إيقافٌ يُنفَّذ.
+    let activity = null;
+    if (req.query.review === '1' && reps.length) {
+      const rows = await B2CDailyOrder.aggregate([
+        { $match: { rep: { $in: reps.map((r) => r._id) }, orders: { $gt: 0 } } },
+        { $group: { _id: '$rep', last: { $max: '$dateKey' }, days: { $sum: 1 } } },
+      ]);
+      activity = new Map(rows.map((r) => [String(r._id), r]));
+    }
+    const cutoff = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
+    for (const r of reps) {
+      const lt = r.ltEmployee && typeof r.ltEmployee === 'object' ? r.ltEmployee : null;
+      r.person = personOf(r, lt);
+      r.displayName = r.person.name;
+      r.displayPhone = r.person.phone;
+      r.linkStatus = lt ? 'linked' : 'unlinked';
+      if (lt) r.ltEmployee = { _id: lt._id, name: lt.name, idNumber: lt.idNumber };
+      if (activity) {
+        const a = activity.get(String(r._id));
+        r.lastOrderDate = a?.last || null;
+        r.orderDays = a?.days || 0;
+        r.suggestDeactivate = !lt && r.isActive !== false && (!a || a.last < cutoff);
+      }
+    }
     const payload = { reps };
     cache.set(repsCacheKey, payload, B2C_LIST_TTL);
     res.json(payload);
@@ -172,7 +207,15 @@ exports.createRep = async (req, res) => {
 
     if (!englishName) return res.status(400).json({ message: 'English name is required' });
 
+    // ── يُربط بصاحبه ساعةَ إنشائه ──────────────────────────────────────────
+    // صفٌّ مختارٌ من السجلّ، أو رقمُ هويّةٍ، أو جوال، أو اسمٌ تامٌّ لا يلتبس —
+    // راجع utils/b2cRepLink. ومن لم يُعرَف صاحبُه يُنشأ «غير مرتبط» ويُراجَع.
+    const { linkAtCreate } = require('../utils/b2cRepLink');
+    const pickedLt = mongoose.isValidObjectId(req.body.ltEmployee) ? req.body.ltEmployee : null;
+    const ltEmployee = pickedLt || await linkAtCreate({ repId, arabicName, englishName, phone }, { idNumber: req.body.idNumber, phone });
+
     const rep = await B2CRep.create({
+      ltEmployee: ltEmployee || null,
       repId: repId || undefined,
       arabicName, englishName, phone,
       joiningDate: joiningDate || undefined,
@@ -204,8 +247,11 @@ exports.updateRep = async (req, res) => {
     const updates = { ...req.body };
     // «بلا مشرف» يصل نصًّا فارغًا من القائمة، و`''` لا يُحوَّل إلى مُعرِّف —
     // فيُردّ الحفظُ كلُّه بخطأ صبّ. والفراغُ هنا فعلٌ مقصود: يُكتب `null`.
-    for (const k of ['supervisor', 'project', 'branch']) {
+    for (const k of ['supervisor', 'project', 'branch', 'ltEmployee']) {
       if (updates[k] === '') updates[k] = null;
+    }
+    if (updates.ltEmployee && !mongoose.isValidObjectId(updates.ltEmployee)) {
+      return res.status(400).json({ message: 'صفّ السجلّ غير معروف' });
     }
     const rep = await B2CRep.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true })
       .populate('project', 'name code')
@@ -363,6 +409,15 @@ exports.bulkResolveReps = async (req, res) => {
 
     let actuallyCreated = 0;
     if (toCreate.length > 0) {
+      // والحسابُ الجديد يُربط بصاحبه في السجلّ إن عُرف يقينًا — utils/b2cRepLink.
+      try {
+        const RL = require('../utils/b2cRepLink');
+        const index = await RL.buildIndex();
+        for (const t of toCreate) {
+          const m = RL.matchRep(t.payload, index);
+          if (m && m.lt) t.payload.ltEmployee = m.lt;
+        }
+      } catch (_) { /* الربطُ لا يُسقط الإنشاء */ }
       const docs = toCreate.map((t) => t.payload);
       try {
         const created = await B2CRep.insertMany(docs, { ordered: false });

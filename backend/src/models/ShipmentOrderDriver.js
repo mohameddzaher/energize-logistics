@@ -26,6 +26,13 @@ const shipmentOrderDriverSchema = new mongoose.Schema(
     nationality: { type: String, trim: true, default: '' },
     /** رقمُ الإقامة — به يُعرَف الرجلُ حين يتشابه الاسم. */
     residenceNumber: { type: String, trim: true, default: '', index: true },
+    /**
+     * ── والسائقُ الذي هو موظّفُنا يُقرأ من ملفّه ─────────────────────────────
+     * قاعدةُ صاحب الشركة: «سجلٌّ واحدٌ للشخص». فمن كان رقمُ إقامته في الموارد
+     * البشريّة يُربط بملفّه هنا، ويُعرَض اسمُه وجوالُه وجنسيّتُه من هناك. وسائقو
+     * الناقلين الغرباءُ يبقون كما هم.
+     */
+    employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null, index: true },
 
     // ── بطاقةُ التشغيل: سائقٌ بطاقتُه منتهيةٌ لا يُحمَّل ─────────────────────
     // يُوقفه الطريقُ لا نحن، فمعرفةُ التاريخ قبل الإسناد توفّر حمولةً متعطّلة.

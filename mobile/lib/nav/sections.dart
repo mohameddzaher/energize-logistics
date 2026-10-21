@@ -616,6 +616,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('تحليل الأوردرات', 'Orders Analysis', Icons.insights_outlined, (c) => SectionDashScreen(spec: b2cOrdersDashSpec), path: '/system/b2c/orders-analysis'),
         // السكنُ والقوائمُ المنسدلة — كما في «إعدادات القسم» على الويب.
         AppPage('السكن', 'Housing', Icons.home_work_outlined, (c) => const LightTransportHousingScreen(), path: '/system/b2c/settings'),
+        // حساباتُ تطبيق التوصيل — تبويبٌ في «إعدادات القسم» على الويب: «غير مرتبط» يُراجَع.
+        AppPage('حسابات التطبيق', 'App accounts', Icons.sports_motorsports_outlined, (c) => ResourceScreen(config: b2cRepsCfg(canEdit: _ltOwners.contains(role))), path: '/system/b2c/settings'),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'B2C'), path: '/system/b2c/kpis'),
         if (jpMember(role, 'b2c')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'b2c'), path: '/system/b2c/jp'),
         if (jpManager(role, 'b2c')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'b2c'), path: '/system/b2c/jp-dashboard'),

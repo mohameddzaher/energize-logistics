@@ -18,12 +18,13 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, Select } from '@/components/hr/HRKit';
 import ReferenceDataManager from '@/components/system/ReferenceDataManager';
-import { Settings, Home, Tags, Plus, Pencil, Trash2, X } from 'lucide-react';
+import B2CAccountsReview from '@/components/system/B2CAccountsReview';
+import { Settings, Home, Tags, Plus, Pencil, Trash2, X, Smartphone } from 'lucide-react';
 import {
   getLTHousing, saveLTHousing, deleteLTHousing, canEditLT, type LTHousing, type LTRoom,
 } from '@/lib/lightTransport';
 
-type Tab = 'housing' | 'lists';
+type Tab = 'housing' | 'lists' | 'accounts';
 
 const KIND_LABEL: Record<string, { ar: string; en: string }> = {
   any: { ar: 'للجميع', en: 'Anyone' },
@@ -97,7 +98,7 @@ export default function B2CSettingsPage() {
         subtitle={t('السكن والقوائم المنسدلة — والتغيير يظهر في الشاشات فورًا', 'Housing and the dropdown lists — changes apply at once')} />
 
       <div className="flex items-center gap-2 flex-wrap">
-        {([['housing', 'السكن', 'Housing', Home], ['lists', 'القوائم المنسدلة', 'Dropdown lists', Tags]] as [Tab, string, string, any][])
+        {([['housing', 'السكن', 'Housing', Home], ['lists', 'القوائم المنسدلة', 'Dropdown lists', Tags], ['accounts', 'حسابات التطبيق', 'App accounts', Smartphone]] as [Tab, string, string, any][])
           .map(([k, a, e, Icon]) => (
             <button key={k} type="button" onClick={() => setTab(k)}
               className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold transition-colors ${
@@ -109,6 +110,9 @@ export default function B2CSettingsPage() {
 
       {/* القوائمُ المرجعيّةُ الخاصّةُ بهذا القسم وحدَه — لا قوائمُ النظام كلِّه. */}
       {tab === 'lists' && <ReferenceDataManager module="b2c" embedded />}
+
+      {/* حساباتُ تطبيق التوصيل: «غير مرتبط» يُراجَع ويُربط بصاحبه أو يُوقَف. */}
+      {tab === 'accounts' && <B2CAccountsReview ar={ar} canEdit={canEdit} />}
 
       {tab === 'housing' && (
         <div className="space-y-4">

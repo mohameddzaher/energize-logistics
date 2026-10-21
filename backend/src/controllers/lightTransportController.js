@@ -1073,6 +1073,7 @@ exports.updateEmployee = async (req, res) => {
     const beforeSupName = S(doc.supervisorName);
     const beforeSupUser = String(doc.supervisorUser || '');
     const beforeDutyName = S(doc.dutySupervisorName);
+    const beforeIdentity = `${S(doc.name)}|${S(doc.phone)}`;
     const beforeDutyUser = String(doc.dutySupervisorUser || '');
     for (const k of EDITABLE) if (req.body[k] !== undefined) doc[k] = req.body[k];
     if (!(await applySupervisor(doc, req.body, res))) return undefined;
@@ -1119,6 +1120,10 @@ exports.updateEmployee = async (req, res) => {
     doc.lastModifiedBy = req.user?._id;
     await doc.save();
     if (String(doc.supervisorUser || '') !== beforeSupUser) await syncRepSupervisor(doc.name, doc.supervisorUser, { ltId: doc._id });
+    // الاسمُ والجوالُ يتبعهما حسابُ تطبيق التوصيل — utils/b2cEntry.syncRepOf.
+    if (`${S(doc.name)}|${S(doc.phone)}` !== beforeIdentity) {
+      try { await require('../utils/b2cEntry').syncRepOf(doc); cache.clear('b2c:'); } catch (_) { /* */ }
+    }
     logAudit({ user: req.user, action: 'update_lt_employee', entity: 'LightTransportEmployee', entityId: doc._id, changes: { after: Object.keys(req.body) }, ipAddress: req.ip }).catch(() => {});
     emit('lt:updated', {});
     // حالةٌ صارت «إنهاء خدمة»؟ تُنزَل المركبة — راجع utils/ltVehicleRelease.

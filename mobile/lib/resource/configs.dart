@@ -972,25 +972,41 @@ final b2cProjectsCfg = ResourceConfig(
   ],
 );
 
-final b2cRepsCfg = ResourceConfig(
-  arTitle: 'مناديب B2C', enTitle: 'B2C Reps', icon: Icons.sports_motorsports_outlined,
-  endpoint: '/api/b2c/reps', listKey: 'reps', liveEvent: 'b2c:*',
-  searchFields: const ['arabicName', 'englishName', 'repId', 'phone'],
-  titleOf: (r) => _s(r, 'arabicName').isNotEmpty ? _s(r, 'arabicName') : _s(r, 'englishName'),
-  subtitleOf: (r) => [_s(r, 'repId'), _s(r, 'phone')].where((x) => x.isNotEmpty).join(' · '),
+// ── حساباتُ تطبيق التوصيل — مراجعةُ «غير المرتبط» ───────────────────────────
+// مطابقٌ لتبويب «حسابات التطبيق» في إعدادات القسم على الويب: الحسابُ المربوطُ
+// يُعرَض باسم صاحبه من ملفّه (`displayName` يحسبه الخادم)، و«غير مرتبط» يُراجَع
+// ويُوقَف بيد. و«مقترحٌ إيقافُه» اقتراحٌ لا إيقاف — لا طلبَ منذ ستّين يومًا.
+ResourceConfig b2cRepsCfg({required bool canEdit}) => ResourceConfig(
+  arTitle: 'حسابات التطبيق', enTitle: 'App accounts', icon: Icons.sports_motorsports_outlined,
+  endpoint: '/api/b2c/reps', listKey: 'reps', listQuery: 'review=1', liveEvent: 'b2c:*',
+  canCreate: false, canEdit: false, canDelete: false,
+  filterField: 'linkStatus',
+  filterOptions: const [('unlinked', 'غير مرتبط', 'Unlinked'), ('linked', 'مرتبط', 'Linked')],
+  searchFields: const ['displayName', 'arabicName', 'englishName', 'repId', 'displayPhone'],
+  titleOf: (r) => _s(r, 'englishName'),
+  subtitleOf: (r) => [
+    _s(r, 'linkStatus') == 'linked' ? _s(r, 'displayName') : _s(r, 'arabicName'),
+    _s(r, 'repId'),
+    _s(r, 'lastOrderDate').isNotEmpty ? tr('آخر طلب ${_s(r, 'lastOrderDate')}', 'last order ${_s(r, 'lastOrderDate')}') : tr('لا طلبات', 'no orders'),
+  ].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
-    if (r['monthlyTarget'] != null) ('هدف: ${r['monthlyTarget']}', T.navy),
+    if (_s(r, 'linkStatus') != 'linked') (tr('غير مرتبط', 'Unlinked'), T.warn),
+    if (r['suggestDeactivate'] == true) (tr('مقترحٌ إيقافُه', 'Suggest deactivate'), T.danger),
+    if (r['isActive'] == false) (tr('موقوف', 'Inactive'), T.navy),
   ],
-  fields: const [
-    FieldSpec('repId', 'رقم المندوب', 'Rep ID', required: true),
-    FieldSpec('arabicName', 'الاسم بالعربية', 'Arabic name', required: true),
-    FieldSpec('englishName', 'الاسم بالإنجليزية', 'English name'),
-    FieldSpec('phone', 'الجوال', 'Phone', type: FieldType.phone),
-    FieldSpec('joiningDate', 'تاريخ الانضمام', 'Joining date', type: FieldType.date),
-    FieldSpec('monthlyTarget', 'الهدف الشهري', 'Monthly target', type: FieldType.number),
-    FieldSpec('dailyTarget', 'الهدف اليومي', 'Daily target', type: FieldType.number),
-    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  rowActions: (r) => [
+    if (canEdit)
+      ResourceAction(
+        icon: r['isActive'] != false ? Icons.power_settings_new : Icons.play_circle_outline,
+        ar: r['isActive'] != false ? 'إيقاف الحساب' : 'تفعيل الحساب',
+        en: r['isActive'] != false ? 'Deactivate' : 'Reactivate',
+        color: r['isActive'] != false ? T.danger : T.success,
+        confirmAr: r['isActive'] != false ? 'يُوقَف الحساب؟ تبقى طلباتُه في التاريخ.' : 'يُعاد تفعيل الحساب؟',
+        confirmEn: r['isActive'] != false ? 'Deactivate this account? Its orders stay in the history.' : 'Reactivate this account?',
+        request: (row) => ('PUT', '/api/b2c/reps/${row['_id']}', {'isActive': !(row['isActive'] != false)}),
+      ),
   ],
+  fields: const [],
 );
 
 // ── طلبات الشحنات (التجربة المستقلة) ────────────────────────────────────────
@@ -1088,7 +1104,13 @@ final shipmentOrdersVehiclesCfg = ResourceConfig(
     if (sup is Map && (sup['name'] ?? '').toString().isNotEmpty) {
       return [((sup['name']).toString(), const Color(0xFF2563EB))];
     }
-    if (r['ownership'] == 'ours') return [(tr('أسطولنا', 'Our fleet'), T.success)];
+    // وشاحنتُنا المربوطةُ بسجلّ المركبات تُقال كذلك — ماركتُها ولونُها منه.
+    if (r['ownership'] == 'ours') {
+      return [
+        (tr('أسطولنا', 'Our fleet'), T.success),
+        if (r['registry'] is Map) (tr('سجلّ المركبات: ${_s(r['registry'] as Map<String, dynamic>, 'plateNumber')}', 'Register: ${_s(r['registry'] as Map<String, dynamic>, 'plateNumber')}'), T.navy),
+      ];
+    }
     return [(tr('مالكٌ غير مسجَّل', 'Owner not recorded'), T.inkFaint)];
   },
   fields: const [
@@ -1135,6 +1157,8 @@ final shipmentOrdersDriversCfg = ResourceConfig(
   ].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) {
     final out = <(String, Color)>[];
+    // موظّفُنا: الاسمُ والجوالُ والجنسيّةُ من ملفّه في الموارد البشريّة — كالويب.
+    if (r['hr'] is Map) out.add((tr('موظّف — من الموارد البشرية', 'Employee — from HR'), T.success));
     if (r['supplier'] is Map) out.add((_s(r['supplier'] as Map<String, dynamic>, 'name'), T.info));
     if (_s(r, 'nationality').isNotEmpty) out.add((_s(r, 'nationality'), T.navy));
     // ── وبطاقةُ التشغيل تُقال قبل الإسناد ────────────────────────────────────

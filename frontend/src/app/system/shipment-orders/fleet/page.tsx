@@ -475,7 +475,11 @@ export default function FleetPage() {
                     {v.supplier
                       ? <SmallBadge bg="bg-blue-500/15" text="text-blue-700" label={supplierName(v)} />
                       : v.ownership === 'ours'
-                        ? <SmallBadge bg="bg-emerald-500/15" text="text-emerald-700" label={ar ? 'أسطولنا' : 'Our fleet'} />
+                        ? <span className="inline-flex flex-col items-start gap-0.5">
+                            <SmallBadge bg="bg-emerald-500/15" text="text-emerald-700" label={ar ? 'أسطولنا' : 'Our fleet'} />
+                            {/* مربوطةٌ بسجلّ المركبات: الماركةُ واللونُ منه، وتعديلُهما هناك يظهر هنا. */}
+                            {v.registry && <span className="text-[11px] text-slate-500" title={ar ? 'من سجلّ المركبات' : 'From the vehicle register'}>{ar ? 'سجلّ المركبات: ' : 'Register: '}{v.registry.plateNumber}</span>}
+                          </span>
                         : <SmallBadge bg="bg-slate-400/20" text="text-slate-600" label={ar ? 'غير مسجَّل' : 'Not recorded'} />}
                   </td>
                   <td className="px-4 py-3 text-slate-700">{[v.defaultDriverName, v.defaultDriverPhone].filter(Boolean).join(' · ') || '—'}</td>
@@ -638,6 +642,8 @@ export default function FleetPage() {
                         </span>
                         <span className="min-w-0">
                           <span className="block font-bold text-slate-900 truncate">{d.name}</span>
+                          {/* موظّفُنا: الاسمُ والجوالُ من ملفّه في الموارد البشريّة. */}
+                          {d.hr ? <span className="block"><SmallBadge bg="bg-emerald-500/15" text="text-emerald-700" label={ar ? 'موظّف — من الموارد البشرية' : 'Employee — from HR'} /></span> : null}
                           {d.sponsorName ? <span className="block text-[11px] text-slate-500 truncate">{ar ? 'كفيله: ' : 'Sponsor: '}{d.sponsorName}</span> : null}
                         </span>
                       </div>

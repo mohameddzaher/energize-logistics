@@ -43,6 +43,14 @@ const shipmentOrderVehicleSchema = new mongoose.Schema(
     ownership: {
       type: String, enum: ['supplier', 'ours', 'unknown'], default: 'unknown', index: true,
     },
+    /**
+     * ── وشاحنتُنا مرجعٌ إلى سجلّ المركبات لا نسخة ───────────────────────────
+     * قاعدةُ صاحب الشركة: «المركبةُ سجلٌّ واحد». فما كان `ours` يُحلّ بلوحته إلى
+     * `VehicleMaster` (utils/vehicleRef — المفتاحُ الموحَّد عربيّ↔لاتينيّ)، وتُقرأ
+     * لوحتُه وماركتُه ولونُه وسنةُ صنعه من هناك: تعديلُها في السجلّ يظهر هنا.
+     * وشاحناتُ الموردين لا مرجعَ لها — ليست في سجلّنا.
+     */
+    vehicleMaster: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null, index: true },
     defaultDriverName: { type: String, trim: true, default: '' },
     defaultDriverPhone: { type: String, trim: true, default: '' },
     notes: { type: String, trim: true, default: '' },

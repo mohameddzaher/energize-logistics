@@ -105,6 +105,11 @@ async function syncRepOf(lt) {
   const set = {};
   if (proj) { set.project = proj._id; set.monthlyTarget = proj.monthlyTarget ?? 450; }
   if (branch) set.branch = branch;
+  // والاسمُ العربيُّ والجوالُ يتبعان صاحبَهما — كانا يُكتبان مرّةً من الشيت ثمّ
+  // لا يتحرّكان، فاختلف اسمُ مئةٍ واثنين وعشرين حسابًا عن سجلّه. واسمُ الحساب
+  // الإنجليزيُّ (`englishName`) اسمُه على التطبيق فلا يُمسّ.
+  if (S(lt.name)) set.arabicName = S(lt.name);
+  if (S(lt.phone)) set.phone = S(lt.phone);
   if (!Object.keys(set).length) return 0;
   const r = await B2CRep.updateMany({ ltEmployee: lt._id }, { $set: set });
   return r.modifiedCount || 0;

@@ -94,6 +94,16 @@ router.get('/pending-by-customer/:customerId', authorize(...allWorkflowRoles), w
 
 router.get('/:id', authorize(...allWorkflowRoles), workflowController.getWorkflow);
 
+// ── متابعاتُ الكشف ───────────────────────────────────────────────────────────
+// مَن يفتح الكشفَ يكتب عليه متابعة؛ والحذفُ لصاحبها أو للإدارة (داخل المتحكّم).
+// والسجلُّ نفسُه يُقرأ من صفحة معاملة التخليص ومن فاتورة التحصيل — راجع
+// controllers/workflowFollowUpController.
+router.param('fuId', objectIdParam());
+const followUps = require('../controllers/workflowFollowUpController').operations;
+router.get('/:id/follow-ups', authorize(...allWorkflowRoles), followUps.list);
+router.post('/:id/follow-ups', authorize(...allWorkflowRoles), followUps.create);
+router.delete('/:id/follow-ups/:fuId', authorize(...allWorkflowRoles), followUps.remove);
+
 // Create (all workflow roles — field-level permissions handled in controller)
 router.post(
   '/',

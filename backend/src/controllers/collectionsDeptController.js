@@ -1734,6 +1734,8 @@ exports.taxInvoiceDetail = async (req, res) => {
     const value = fromLedger ? r2(ledger.total) : sum('totalInvoice');
     const net = fromLedger ? r2(ledger.total / 1.15) : sum('netInvoice');
     const vat = fromLedger ? r2(ledger.total - ledger.total / 1.15) : sum('tax');
+    // عددُ متابعات كلّ كشف — سجلُّه الذي يكتبه التشغيلُ والتخليصُ والتحصيل.
+    const fuCounts = await require('./workflowFollowUpController').countsFor(rows.map((r) => r._id));
 
     res.json({
       invoiceNumber: number,
@@ -1749,7 +1751,10 @@ exports.taxInvoiceDetail = async (req, res) => {
       // من أين جاءت الفاتورة: من دفتر الشركة أم وُلدت من كشفٍ عندنا.
       inLedger: !!ledger,
       // كلُّ كشفٍ بمعاملته، والفاتورةُ بمعاملاتها مجموعةً — راجع services/customsOpsLink.
-      reports: rows.map((r) => ({ ...r, customsLink: undefined, customs: require('../services/customsOpsLink').linkView(r.customsLink) })),
+      reports: rows.map((r) => ({
+        ...r, customsLink: undefined, customs: require('../services/customsOpsLink').linkView(r.customsLink),
+        followUps: fuCounts.get(String(r._id)) || 0,
+      })),
       customs: (() => {
         const m = new Map();
         for (const r of rows) {

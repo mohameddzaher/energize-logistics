@@ -2133,7 +2133,10 @@ exports.releaseSheets = async (req, res) => {
  * التي كُتبت في خانات النقل ولم يصل كشفُها بعدُ من المنصّة تُذكر وحدَها
  * (`pendingRefs`) — فلا يُظنّ أنّ النقلةَ ضاعت.
  *
- * والمبالغُ لأهل المال في القسم وحدهم (MONEY_ROLES) كبقيّة أرقام المعاملة.
+ * وكلُّ كشفٍ يحمل `detail`: الكشفُ كلُّه كما يراه الدورُ في سير العمل
+ * (`stripRowFor`)، ومعه عددُ متابعاته ومرفقاتِ فاتورته. والتعديلُ لا يمرّ من
+ * هنا: الشاشةُ تحفظ من `PUT /api/workflows/:id` بقواعده كلِّها، و`access` يقول
+ * لها أيَّ الحقول تعرض قابلةً للتعديل.
  */
 exports.getOpsReports = async (req, res) => {
   try {
@@ -2142,8 +2145,11 @@ exports.getOpsReports = async (req, res) => {
     const clearance = await CustomsClearance.findById(req.params.id)
       .select('refNumber blNumber containers.containerNumber containers.moves containers.returnRef containers.returnVehicleKind').lean();
     if (!clearance) return res.status(404).json({ message: 'المعاملة غير موجودة' });
+    const wfc = require('./workflowController');
+    // الكشفُ كلُّه يُقرأ ثمّ يُحجب بقاعدة سير العمل نفسِها (`stripRowFor`) — لا
+    // بقائمةٍ تُكتب هنا فتفترق عنها.
     const rows = await OperationsWorkflow.find({ 'customsLink.clearance': clearance._id })
-      .select('reportNumber reportDate fromLocation toLocation carNumber driverName username applicationStatus executionStatus paymentType paymentSubtype invoiceNumber invoiceDate deliveryDate collectionDate cashCollectionStatus collectedAmount sellingValue totalInvoice documentNumber customsLink')
+      .select(`${wfc.FULL_FIELDS.join(' ')} cashCollectionStatus sellingValueSource customsLink stage lockedBy lockedByName lockedAt updatedAt`)
       .sort({ reportDate: 1, reportNumber: 1 }).lean();
 
     // حالُ الفاتورة الضريبيّة من دفتر التحصيل أوّلًا — هو ما يعمل عليه القسم.
@@ -2152,7 +2158,29 @@ exports.getOpsReports = async (req, res) => {
     const ledgerOf = new Map(ledger.map((i) => [String(i.invoiceNumber).trim(), i]));
     const NO_INV = /^\s*(no\s*inv|بدون|لا\s*يوجد|-|—)\s*$/i;
 
-    const money = seesMoney(req);
+    // ── والمبالغُ بقاعدة سير العمل لا بقاعدة القسم ────────────────────────────
+    // كان المبلغُ هنا لأهل المال في القسم (MONEY_ROLES)، فرأى مديرُ التخليص قيمةَ
+    // البيع وهي محجوبةٌ عنه في سير العمل نفسِه (SELLING_ROLES). والكشفُ كشفٌ
+    // واحد: ما لا يراه الدورُ هناك لا يراه هنا.
+    const role = req.user.role;
+    const money = wfc.canSeeMoney(role);
+    const selling = wfc.canSeeSelling(role);
+    const write = await wfc.canWriteWorkflows(role);
+    const ids = rows.map((r) => String(r._id));
+    const att = require('./collectionsAttachmentsController');
+    const [fuCounts, cashAtt, taxAtt] = await Promise.all([
+      require('./workflowFollowUpController').countsFor(ids),
+      att.countsFor('cash', rows.filter((r) => r.paymentType === 'cash').map((r) => String(r._id))),
+      att.countsFor('tax', nos),
+    ]);
+    const DETAIL = new Set([...wfc.FULL_FIELDS, 'stage', 'lockedByName', 'lockedAt', 'updatedAt', 'sellingValueSource']);
+    const detailOf = (r) => {
+      const plain = wfc.stripRowFor(role, { ...r });
+      const out = {};
+      for (const k of Object.keys(plain)) if (DETAIL.has(k)) out[k] = plain[k];
+      out.lockedBy = r.lockedBy ? String(r.lockedBy) : null;
+      return out;
+    };
     const reports = rows.map((r) => {
       const no = String(r.invoiceNumber || '').trim();
       const cash = r.paymentType === 'cash';
@@ -2177,7 +2205,15 @@ exports.getOpsReports = async (req, res) => {
         billing,
         via: (r.customsLink && r.customsLink.via) || '',
         containers: (r.customsLink && r.customsLink.containers) || [],
-        ...(money ? { sellingValue: Number(r.sellingValue) || 0, totalInvoice: Number(r.totalInvoice) || 0 } : {}),
+        executionStatus: r.executionStatus || '',
+        paymentSubtype: r.paymentSubtype || '',
+        documentNumber: r.documentNumber || '',
+        followUps: fuCounts.get(String(r._id)) || 0,
+        attachments: cash ? (cashAtt.get(String(r._id)) || 0) : (no ? (taxAtt.get(no) || 0) : 0),
+        ...(selling ? { sellingValue: Number(r.sellingValue) || 0 } : {}),
+        ...(money ? { totalInvoice: Number(r.totalInvoice) || 0 } : {}),
+        // الكشفُ كلُّه كما يراه هذا الدورُ في سير العمل — للصفّ المفتوح وللتعديل.
+        detail: detailOf(r),
       };
     });
 
@@ -2209,10 +2245,13 @@ exports.getOpsReports = async (req, res) => {
         total: reports.length,
         collected: count('collected'), invoiced: count('invoiced'),
         cashPending: count('cash_pending'), notInvoiced: count('not_invoiced'),
-        ...(money ? {
+        ...(selling ? {
           selling: Math.round(reports.reduce((a, r) => a + (r.sellingValue || 0), 0) * 100) / 100,
         } : {}),
       },
+      // ما يُعدَّل من الكشف من هنا: الحقولُ التي يقبلها `PUT /api/workflows/:id`
+      // من هذا الدور، وهل يصل إليها أصلًا (حارسُ قسم التشغيل). والحفظُ هناك.
+      access: { canEdit: write.canEdit, fields: write.canEdit ? write.fields : [], money, selling },
     });
   } catch (e) {
     console.error('customs ops reports', e);

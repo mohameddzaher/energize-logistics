@@ -5,7 +5,7 @@
  * الفاتورةُ الواحدة قد تضمّ كشوفًا عدّة، وذلك معتاد. والصفحةُ التي تعرضها صفًّا
  * واحدًا تقول «كم» ولا تقول «ممّ» — فهنا يُفتَح ما تحتها.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { Fragment, useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -19,6 +19,8 @@ import ScrollX from '@/components/system/ScrollX';
 import { AttachmentsPanel } from '@/components/collections/InvoiceAttachments';
 import CustomsLinkBadge, { type CustomsLinkView } from '@/components/customs/CustomsLinkBadge';
 import { useSocket } from '@/hooks/useSocket';
+import ReportFollowUps from '@/components/operations/ReportFollowUps';
+import { MessageSquareText } from 'lucide-react';
 
 interface Row {
   _id: string; reportNumber?: string; reportDate?: string; username?: string;
@@ -29,6 +31,8 @@ interface Row {
   collectedAmount?: number; collectionDate?: string; accountingReview?: string;
   /** معاملةُ التخليص التي يخدمها الكشف — راجع services/customsOpsLink. */
   customs?: CustomsLinkView | null;
+  /** عددُ متابعات الكشف — راجع components/operations/ReportFollowUps. */
+  followUps?: number;
 }
 interface Detail {
   invoiceNumber: string; customer: string; partyId?: string; partyCode?: string;
@@ -69,6 +73,12 @@ export default function TaxInvoiceDetailPage() {
   useEffect(() => { load(); }, [load]);
   // ربطُ كشوفها بالتخليص يتغيّر من التشغيل أو من صفحة المعاملة.
   useSocket('collections:changed', useCallback((d: any) => { if (d?.source === 'customs-link') load(); }, [load]));
+  // ومتابعاتُ كشوفها تُكتب من التشغيل والتخليص أيضًا — يتبعها العدد.
+  useSocket('workflow:followUps', useCallback((d: any) => {
+    if (!d?.invoiceNumber || d.invoiceNumber === invoiceNumber) load();
+  }, [invoiceNumber, load]));
+  // الكشفُ المفتوحُ على متابعاته.
+  const [openFu, setOpenFu] = useState('');
 
   const backToList = () => router.push('/system/collections-dept/invoices/tax');
 
@@ -216,6 +226,7 @@ export default function TaxInvoiceDetailPage() {
                     <span className="inline-flex items-center gap-1">{h}{cf.header(k, data.reports, RG[k], ar)}</span>
                   </th>
                 ))}
+                <th className="px-3 py-2 text-start font-semibold whitespace-nowrap">{t('المتابعة', 'Follow-up')}</th>
               </tr>
             </thead>
             <tbody>
@@ -224,7 +235,7 @@ export default function TaxInvoiceDetailPage() {
                   تُقال الحالُ ولا تُترك الصفحةُ فارغةً كأنّ شيئًا فُقد. */}
               {!shown.length && (
                 <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center text-sm text-slate-500">
+                  <td colSpan={12} className="px-4 py-8 text-center text-sm text-slate-500">
                     {data.inLedger
                       ? t('فاتورةٌ من دفتر التحصيل، لا كشوفَ تشغيلٍ مرتبطةً بها.',
                           'A ledger invoice with no linked operations reports.')
@@ -233,7 +244,8 @@ export default function TaxInvoiceDetailPage() {
                 </tr>
               )}
               {shown.map((r) => (
-                <tr key={r._id} className="border-b border-slate-100 hover:bg-slate-50">
+                <Fragment key={r._id}>
+                <tr className="border-b border-slate-100 hover:bg-slate-50">
                   {/* ورقمُ الكشف بابُ الكشف. */}
                   <td className="px-3 py-2 font-medium whitespace-nowrap">
                     <button type="button" onClick={() => router.push(`/system/operations/${r._id}`)}
@@ -253,7 +265,23 @@ export default function TaxInvoiceDetailPage() {
                   <td className={`px-3 py-2 whitespace-nowrap ${r.collectionDate ? 'text-emerald-700' : 'text-red-500'}`}>
                     {r.collectionDate ? dt(r.collectionDate) : t('لم يُحصَّل', 'open')}
                   </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <button type="button" onClick={() => setOpenFu(openFu === r._id ? '' : r._id)}
+                      className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs ${openFu === r._id ? 'border-[#f37121]/40 text-[#f37121]' : 'border-slate-200 text-slate-600 hover:text-slate-900'}`}>
+                      <MessageSquareText className="w-3.5 h-3.5" />{r.followUps || 0}
+                    </button>
+                  </td>
                 </tr>
+                {openFu === r._id && (
+                  <tr className="border-b border-slate-200 bg-slate-50/70">
+                    <td colSpan={12} className="px-4 py-3">
+                      <p className="mb-2 text-xs font-semibold text-slate-700">{t(`متابعات الكشف ${r.reportNumber || ''}`, `Follow-ups — ${r.reportNumber || ''}`)}</p>
+                      <ReportFollowUps compact ar={ar} workflowId={r._id}
+                        basePath={`/api/collections-dept/reports/${r._id}/follow-ups`} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
             <tfoot>
@@ -264,7 +292,7 @@ export default function TaxInvoiceDetailPage() {
                 <td className="px-3 py-2.5 tabular-nums">{money(totals.net)}</td>
                 <td className="px-3 py-2.5 tabular-nums">{money(totals.vat)}</td>
                 <td className="px-3 py-2.5 tabular-nums">{money(totals.value)}</td>
-                <td className="px-3 py-2.5" colSpan={2} />
+                <td className="px-3 py-2.5" colSpan={3} />
               </tr>
             </tfoot>
           </table>

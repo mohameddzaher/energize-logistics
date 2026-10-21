@@ -58,6 +58,14 @@ router.get('/:id', ctrl.getClearance);
 router.get('/:id/invoice', ctrl.getClearanceInvoice);
 // كشوفُ التشغيل المرتبطة بالمعاملة، بحال فوترتها وتحصيلها — راجع services/customsOpsLink.
 router.get('/:id/ops-reports', ctrl.getOpsReports);
+// متابعاتُ الكشف المرتبط — مَن يرى المعاملةَ يرى كشوفَها ويكتب عليها متابعة، والحذفُ
+// لصاحبها أو للإدارة. والكشفُ يجب أن يكون مربوطًا بهذه المعاملة نفسِها.
+router.param('reportId', objectIdParam());
+router.param('fuId', objectIdParam());
+const opsFollowUps = require('../controllers/workflowFollowUpController').customs;
+router.get('/:id/ops-reports/:reportId/follow-ups', opsFollowUps.list);
+router.post('/:id/ops-reports/:reportId/follow-ups', opsFollowUps.create);
+router.delete('/:id/ops-reports/:reportId/follow-ups/:fuId', opsFollowUps.remove);
 
 router.post('/', authorize(...EDIT_ROLES), ctrl.createClearance);
 router.put('/:id', authorize(...EDIT_ROLES), ctrl.updateClearance);

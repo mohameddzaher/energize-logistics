@@ -61,6 +61,16 @@ router.get('/parties/:id/follow-ups', authorize(...READ_ROLES), ctrl.listFollowU
 router.post('/parties/:id/follow-ups', authorize(...EDIT_ROLES), ctrl.createFollowUp);
 router.put('/follow-ups/:fuId', authorize(...EDIT_ROLES), ctrl.updateFollowUp);
 router.delete('/follow-ups/:fuId', authorize(...EDIT_ROLES), ctrl.deleteFollowUp);
+// ── ومتابعاتُ الكشف نفسِه ────────────────────────────────────────────────────
+// غيرُ متابعات الطرف أعلاه: سجلٌّ على الكشف يكتبه التشغيلُ والتخليصُ والتحصيل
+// معًا (راجع controllers/workflowFollowUpController). ومَن يقرأ الفاتورةَ يكتب
+// عليها متابعة، فالكتابةُ بقائمة القراءة؛ والحذفُ لصاحبها أو للإدارة.
+router.param('reportId', objectIdParam({ status: 400 }));
+router.param('rfuId', objectIdParam({ status: 400 }));
+const reportFollowUps = require('../controllers/workflowFollowUpController').collections;
+router.get('/reports/:reportId/follow-ups', authorize(...READ_ROLES), reportFollowUps.list);
+router.post('/reports/:reportId/follow-ups', authorize(...READ_ROLES), reportFollowUps.create);
+router.delete('/reports/:reportId/follow-ups/:rfuId', authorize(...READ_ROLES), reportFollowUps.remove);
 
 // ── الفواتير ──────────────────────────────────────────────────────────────
 // من هاتين الصفحتين يعمل القسم: الكاشُ بالكشف، والضريبيُّ بالفاتورة.

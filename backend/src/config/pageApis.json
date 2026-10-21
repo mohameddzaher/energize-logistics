@@ -181,6 +181,7 @@
         "/api/collections-dept/invoices/payments/remove",
         "/api/collections-dept/invoices/tax",
         "/api/collections-dept/invoices/uncollect",
+        "/api/collections-dept/reports",
         "/api/lookups/types"
       ],
       "wildcard": false
@@ -699,7 +700,8 @@
         "/api/customs-clearance/release-sheets",
         "/api/customs-clearance/upcoming-alerts",
         "/api/jp/tasks",
-        "/api/lookups/types"
+        "/api/lookups/types",
+        "/api/workflows"
       ],
       "wildcard": false
     },

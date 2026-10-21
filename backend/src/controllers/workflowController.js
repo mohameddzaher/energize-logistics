@@ -1809,6 +1809,17 @@ exports.updateWorkflow = async (req, res) => {
     if (kindMoved) {
       try { emitToAll('collections:changed', { source: 'workflow', field: 'paymentType', reportNumber: workflow.reportNumber }); } catch (e) { /* */ }
     }
+    // ── وصفحةُ معاملة التخليص تعرض الكشفَ كاملًا ──────────────────────────────
+    // وتُعدِّله من مكانها. و`workflow:updated` يُبثّ لكلّ دورٍ على هذا العامل
+    // وحدَه؛ فالخبرُ للمعاملة يُبثّ للجميع — بلا صفٍّ فيه، تجلب الصفحةُ ما يحقّ لقارئها.
+    // (لا ذاكرةَ تحمل «كشوف المعاملة» فتُمسح قبله: تُقرأ من القاعدة في كلّ طلب.)
+    {
+      const linkedTo = [before.customsLink && before.customsLink.clearance, populated.customsLink && populated.customsLink.clearance]
+        .filter(Boolean).map(String);
+      if (linkedTo.length) {
+        try { emitToAll('customs:opsLinks', { clearanceIds: [...new Set(linkedTo)], reportNumbers: [workflow.reportNumber], edited: true }); } catch (e) { /* */ }
+      }
+    }
     if (sellingChanged) announceSellingValue(workflow, sellingPush);
 
     // ما رُفض يُقال حتّى حين نجح غيرُه: الحفظُ الجزئيُّ الصامتُ يترك الموظّف
@@ -2827,6 +2838,37 @@ module.exports.fieldsForRole = fieldsForRole;
 module.exports.stripMoneyFor = stripMoneyFor;
 module.exports.canSeeSelling = canSeeSelling;
 module.exports.SELLING_ROLES = SELLING_ROLES;
+// والكشفُ يُعرض كاملًا في صفحة معاملة التخليص — بالحجب نفسِه وبالحقول نفسِها.
+module.exports.stripRowFor = stripRowFor;
+module.exports.FULL_FIELDS = FULL_FIELDS;
+
+/**
+ * هل يصل هذا الدورُ إلى `PUT /api/workflows/:id` ويُقبل منه حقلٌ واحدٌ على الأقلّ؟
+ *
+ * شاشةٌ أخرى (صفحةُ معاملة التخليص) تعرض زرَّ «تعديل» على الكشف، وتحفظ من
+ * النقطة نفسِها. فيُسأل هنا ما يسأله الطريقُ كلُّه: حارسُ قسم التشغيل
+ * (`sectionGate`) بمصفوفته وافتراضه — «عرض» لا يكتب و«لا شيء» يمنع — ثمّ
+ * قائمةُ الأدوار في المسار، ثمّ حقولُ الدور. فلا يظهر زرٌّ يُردّ كلَّ مرّة.
+ */
+async function canWriteWorkflows(role) {
+  const fields = await fieldsForRole(role);
+  if (!fields.length) return { canEdit: false, fields };
+  const { FULL_ACCESS_ROLES } = require('../config/constants');
+  if (FULL_ACCESS_ROLES.includes(role)) return { canEdit: true, fields };
+  try {
+    const { getOverride, liftFinance } = require('../utils/permissions');
+    const { defaultAccess } = require('../config/sections');
+    const saved = await getOverride(role, 'Operations');
+    const access = saved == null ? liftFinance(role, defaultAccess(role, 'Operations')) : saved;
+    if (access === 'edit') return { canEdit: true, fields };
+    // بلا منحٍ ولا افتراض: يقرّر سطرُ الأدوار في المسار — وأدوارُ الخريطة كلُّها فيه.
+    if (saved == null && access === 'none') return { canEdit: !!ROLE_FIELD_ACCESS[role], fields };
+    return { canEdit: false, fields };
+  } catch (e) {
+    return { canEdit: false, fields };
+  }
+}
+module.exports.canWriteWorkflows = canWriteWorkflows;
 module.exports.syncOpsInvoices = syncOpsInvoices;
 
 // ═══════════════════════════════════════════════════════════════════════════

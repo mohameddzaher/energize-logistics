@@ -68,6 +68,8 @@ export default function HrSettingsPage() {
     ['drivingLicense', 'رخصة القيادة', 'Driving licence'],
     ['medicalInsurance', 'التأمين الطبي', 'Medical insurance'],
     ['contract', 'العقد', 'Contract'],
+    ['visa', 'التأشيرة', 'Visa'],
+    ['ajeer', 'أجير', 'Ajeer'],
   ];
 
   return (

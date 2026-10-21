@@ -21,12 +21,15 @@ import api from '@/lib/api';
 import { updateEmployeeFields, statusMeta, statusLabel, fmtDate, toDateInput } from '@/lib/hrMaster';
 
 // `strict`: قائمةٌ مغلقة (القسم) — لا «أخرى…» ولا كتابة. راجع utils/hrDepartments في الخادم.
-export type MasterField = { key: string; ar: string; en: string; type: string; choice?: boolean; cashPayroll?: boolean; strict?: boolean };
+// `readOnly`: يُقرأ ولا يُكتب من الخانة (المركبة — لقطةٌ من سجلّ المركبات).
+export type MasterField = { key: string; ar: string; en: string; type: string; choice?: boolean; cashPayroll?: boolean; strict?: boolean; readOnly?: boolean };
 export type Choices = Record<string, { value: string; count: number }[]>;
 
 const CASH = 'cash';
 export const displayValue = (f: MasterField, raw: any, ar: boolean) => {
   if (f.type === 'date') return fmtDate(raw);
+  // المبلغُ بفواصل الآلاف — والصفرُ فراغٌ (قيمةُ المخطَّط الافتراضيّة).
+  if (f.type === 'number') return Number(raw) ? Number(raw).toLocaleString('en-US') : '—';
   if (f.cashPayroll && String(raw || '').trim().toLowerCase() === CASH) return ar ? 'راتب نقدي' : 'Cash payroll';
   return raw || '—';
 };
@@ -48,7 +51,7 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
 
   // «حالة العمل» و«حالة النظام» تُقرآن ولا تُكتبان من الخانة: تتغيّران بإنهاء
   // الخدمة وإعادة التفعيل والخروج من النظام وحدَها (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
-  const locked = LOCKED_KEYS.has(f.key);
+  const locked = LOCKED_KEYS.has(f.key) || !!f.readOnly;
   const { confirm } = useDialog();
   // ── و«لا يعمل» تُرجَع من خانتها ────────────────────────────────────────────
   // الخانةُ مقفلة، لكنّ مَن يقرأ «لا يعمل» في الماستر يريد أن يُرجعه من مكانه:
@@ -100,6 +103,7 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
           </select>
         ) : (
           <input type={f.type === 'date' ? 'date' : 'text'} value={val} autoFocus
+            inputMode={f.type === 'number' ? 'decimal' : undefined}
             dir={f.type === 'hijri' ? 'ltr' : undefined}
             placeholder={f.type === 'hijri' ? '1448-05-07' : undefined}
             title={f.type === 'hijri' ? t('اكتب التاريخ الهجري — يُحوَّل إلى ميلاديٍّ ويُحفَظ', 'Type the Hijri date — it is converted and stored as Gregorian') : undefined}
@@ -152,8 +156,8 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
     );
   }
   return (
-    <button type="button" onClick={start} disabled={!canEdit}
-      title={canEdit ? t('اضغط للتعديل', 'Click to edit') : ''}
+    <button type="button" onClick={start} disabled={!canEdit || !!f.readOnly}
+      title={f.readOnly ? t('يُقرأ من سجل المركبات', 'Read from the vehicle registry') : canEdit ? t('اضغط للتعديل', 'Click to edit') : ''}
       className="text-[13px] text-slate-900 hover:text-[#f37121] disabled:hover:text-slate-900 whitespace-nowrap">
       {displayValue(f, raw, ar)}
     </button>

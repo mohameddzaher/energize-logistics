@@ -74,7 +74,7 @@ export default function EmployeeMasterFields({ id, fieldsUrl, choicesUrl, canEdi
                   </span>
                   <span className="text-end">
                     <MasterCell id={id} f={f} raw={f.value} st={f.status} choices={choices} ar={ar}
-                      canEdit={canEdit && !(f.derived && f.type !== 'hijri')} onSaved={load} notify={notify} compact />
+                      canEdit={canEdit && !f.readOnly && !(f.derived && f.type !== 'hijri')} onSaved={load} notify={notify} compact />
                   </span>
                 </div>
               ))}

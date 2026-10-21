@@ -533,12 +533,12 @@ function GroupInner() {
 
       <HrGroupFormModal
         open={!!form} mode={form?.mode || 'create'} group={group} groupLabel={ar ? g.ar : g.en}
-        fields={g.fields} row={form?.row || null} ar={ar}
+        fields={g.fields.filter((f) => !f.readOnly)} row={form?.row || null} ar={ar}
         onClose={() => setForm(null)}
         onDone={() => { setForm(null); load(); }} />
 
       <HrGroupClearModal
-        open={!!clearing} groupLabel={ar ? g.ar : g.en} fields={g.fields} row={clearing} ar={ar}
+        open={!!clearing} groupLabel={ar ? g.ar : g.en} fields={g.fields.filter((f) => !f.readOnly)} row={clearing} ar={ar}
         onClose={() => setClearing(null)}
         onDone={() => { setClearing(null); load(); }} />
     </div>

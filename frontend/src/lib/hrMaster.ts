@@ -7,7 +7,8 @@ import api from '@/lib/api';
 export type StatusCode = 'required' | 'not_required' | 'none' | 'filled' | 'cash_payroll' | 'inactive' | 'unparseable';
 export type DocState = 'valid' | 'warning' | 'critical' | 'expired' | 'missing' | 'not_applicable';
 
-export interface FieldDef { key: string; ar: string; en: string; type: 'text' | 'date' | 'bool'; groupable?: boolean }
+// `number`: مبلغٌ (الراتب والبدلات)؛ `readOnly`: يُقرأ ولا يُكتب (المركبة من سجلّ المركبات).
+export interface FieldDef { key: string; ar: string; en: string; type: 'text' | 'date' | 'bool' | 'number'; groupable?: boolean; readOnly?: boolean }
 export interface FieldCard extends FieldDef {
   group: string; total: number;
   counts: Record<string, number>;
@@ -205,6 +206,7 @@ export const renewHrBulk = (body: {
 /** المجموعات التي لها تاريخ انتهاء، فيصحّ فيها التجديد. */
 export const RENEWABLE_GROUPS = new Set([
   'iqama', 'passport', 'contract', 'workPermit', 'medicalInsurance', 'healthCertificate', 'driverCard', 'drivingLicense',
+  'visa', 'ajeer',
 ]);
 
 /**

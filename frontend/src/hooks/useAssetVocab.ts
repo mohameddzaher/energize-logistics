@@ -8,7 +8,7 @@
 // on first paint and if the request fails, so no page ever shows a raw key.
 import { useEffect, useState, useMemo } from 'react';
 import api from '@/lib/api';
-import { CUSTODY_TYPES, CONDITIONS, IT_CUSTODY_EXCLUDED_TYPE_KEYS, Lang } from '@/lib/it';
+import { CUSTODY_TYPES, CONDITIONS, IT_CUSTODY_EXCLUDED_TYPE_KEYS, RETIRED_ASSET_TYPE_KEYS, Lang } from '@/lib/it';
 
 export interface VocabOption { key: string; en: string; ar: string }
 
@@ -48,18 +48,23 @@ export function useAssetVocab() {
   }, []);
 
   return useMemo(() => {
+    // النوعُ الملغى («ماوس وكيبورد») لا يُعرض خيارًا في أيّ قائمة، ويبقى اسمُه
+    // مقروءًا لصفٍّ قديمٍ لم يُقسَم — والخادمُ يرفض كتابتَه (config/itCustody).
+    const offered = types.filter((t) => !RETIRED_ASSET_TYPE_KEYS.includes(t.key));
     const label = (list: VocabOption[], key: string, lang: Lang) => {
-      const hit = list.find((o) => o.key === key);
+      const hit = list.find((o) => o.key === key)
+        // صفُّ المرجعيّات المعطَّل لا يعود من الخادم — فالاسمُ من الخريطة الثابتة.
+        || (CUSTODY_TYPES[key] ? { key, en: CUSTODY_TYPES[key].en, ar: CUSTODY_TYPES[key].ar } : undefined);
       // An unknown key means the row predates a rename — show the key rather
       // than an empty cell so it is obvious something needs fixing.
       if (!hit) return key || '—';
       return lang === 'ar' ? hit.ar : hit.en;
     };
     return {
-      types,
+      types: offered,
       conditions,
       // Vehicles and generic tools belong to other sections; IT never offers them.
-      itTypes: types.filter((t) => !IT_CUSTODY_EXCLUDED_TYPE_KEYS.includes(t.key)),
+      itTypes: offered.filter((t) => !IT_CUSTODY_EXCLUDED_TYPE_KEYS.includes(t.key)),
       typeLabel: (key: string, lang: Lang) => label(types, key, lang),
       conditionLabel: (key: string, lang: Lang) => label(conditions, key, lang),
     };

@@ -249,11 +249,11 @@ export interface CustodyBucket {
 
 export const CUSTODY_BUCKETS: CustodyBucket[] = [
   { key: 'laptops', ar: 'لابتوبات', en: 'Laptops', canonicalType: 'laptop', types: ['laptop', 'desktop'] },
-  // الماوسُ وحدَه والكيبوردُ وحدَه والطقمُ ثالثًا — نظيرُ config/itCustody في
-  // الخادم حرفًا: الفردُ لم يكن له تصنيفٌ فكان يُكتب طقمًا.
+  // الماوسُ وحدَه والكيبوردُ وحدَه، ولا طقم — نظيرُ config/itCustody في الخادم
+  // حرفًا. الطقمُ قُسم ماوسًا وكيبوردًا بقرار صاحب الشركة، والنوعُ القديم
+  // `keyboard_mouse` يُقرأ في دلو الكيبورد بشارته «ماوس وكيبورد» ولا يُكتب.
   { key: 'mice', ar: 'ماوس', en: 'Mouse', canonicalType: 'mouse', types: ['mouse'] },
-  { key: 'keyboards', ar: 'كيبورد', en: 'Keyboard', canonicalType: 'keyboard', types: ['keyboard'] },
-  { key: 'keyboard_mouse_sets', ar: 'طقم ماوس وكيبورد', en: 'Mouse + keyboard set', canonicalType: 'keyboard_mouse', types: ['keyboard_mouse'] },
+  { key: 'keyboards', ar: 'كيبورد', en: 'Keyboard', canonicalType: 'keyboard', types: ['keyboard', 'keyboard_mouse'] },
   { key: 'phones', ar: 'موبايلات', en: 'Phones', canonicalType: 'phone', types: ['phone', 'tablet'] },
   { key: 'monitors', ar: 'شاشات', en: 'Monitors', canonicalType: 'monitor', types: ['monitor'] },
   { key: 'other', ar: 'أخرى', en: 'Other', canonicalType: 'other', types: ['laptop_bag', 'charger', 'cable', 'headset', 'printer', 'router', 'access_card', 'accessory', 'other'] },
@@ -303,6 +303,10 @@ export const OTHER_BUCKET_TYPES =
 // أربعة وستين صفاً لا يملكها أحد فينا إلى كل عدّ وكل تقرير.
 // مطابقة لـ EXCLUDED_TYPES في backend/src/config/itCustody.js.
 export const IT_CUSTODY_EXCLUDED_TYPE_KEYS = ['vehicle', 'tool', 'sim'];
+
+// أنواعٌ تُقرأ ولا تُكتب — لا تُعرض خيارًا. مطابقة لـ RETIRED_TYPES في
+// backend/src/config/itCustody.js.
+export const RETIRED_ASSET_TYPE_KEYS = ['keyboard_mouse'];
 
 // The custody page never lists warehouse stock (that has its own page), so its
 // status filter must not offer `in_stock`.

@@ -27,7 +27,7 @@ const custodyTypes = {
   'monitor': ('شاشة', 'Monitor'),
   'keyboard': ('كيبورد', 'Keyboard'),
   'mouse': ('ماوس', 'Mouse'),
-  'keyboard_mouse': ('ماوس وكيبورد', 'Keyboard & mouse'),
+  'keyboard_mouse': ('ماوس وكيبورد', 'Keyboard & mouse'), // نوعٌ ملغًى — للصفوف القديمة وحدها
   'headset': ('سماعة رأس', 'Headset'),
   'printer': ('طابعة', 'Printer'),
   'router': ('راوتر', 'Router'),
@@ -63,10 +63,10 @@ class CustodyBucket {
 
 const custodyBuckets = <CustodyBucket>[
   CustodyBucket('laptops', 'لابتوبات', 'Laptops', 'laptop', ['laptop', 'desktop'], Icons.laptop_mac_rounded),
-  // الماوسُ وحدَه والكيبوردُ وحدَه والطقمُ ثالثًا — نظيرُ config/itCustody.
+  // الماوسُ وحدَه والكيبوردُ وحدَه، ولا طقم — نظيرُ config/itCustody. النوعُ
+  // القديم keyboard_mouse يُقرأ في دلو الكيبورد بشارته ولا يُكتب.
   CustodyBucket('mice', 'ماوس', 'Mouse', 'mouse', ['mouse'], Icons.mouse_rounded),
-  CustodyBucket('keyboards', 'كيبورد', 'Keyboard', 'keyboard', ['keyboard'], Icons.keyboard_rounded),
-  CustodyBucket('keyboard_mouse_sets', 'طقم ماوس وكيبورد', 'Mouse + keyboard set', 'keyboard_mouse', ['keyboard_mouse'], Icons.keyboard_alt_rounded),
+  CustodyBucket('keyboards', 'كيبورد', 'Keyboard', 'keyboard', ['keyboard', 'keyboard_mouse'], Icons.keyboard_rounded),
   CustodyBucket('phones', 'موبايلات', 'Phones', 'phone', ['phone', 'tablet'], Icons.smartphone_rounded),
   CustodyBucket('monitors', 'شاشات', 'Monitors', 'monitor', ['monitor'], Icons.monitor_rounded),
   CustodyBucket('other', 'أخرى', 'Other', 'other',

@@ -11,7 +11,7 @@ const User = require('../models/User');
 const AssetEvent = require('../models/AssetEvent');
 const {
   BUCKETS, BUCKET_KEYS, EXCLUDED_TYPES, bucketOf, typesInBucket,
-  deriveAssetName, normalizeBrand,
+  deriveAssetName, normalizeBrand, RETIRED_TYPES, retiredTypeError,
 } = require('../config/itCustody');
 const { emitToAll } = require('../websocket/socketManager');
 
@@ -218,7 +218,9 @@ exports.getDashboard = async (req, res) => {
     // "We're about to run out" — any IT type with fewer than 3 units on the
     // shelf, including the types that have hit zero and so never appear above.
     const LOW_STOCK_THRESHOLD = 3;
+    // النوعُ الملغى لا يُشترى ولا يُخزَّن، فلا يُنبَّه إلى نقصه.
     const lowStock = IT_CUSTODY_TYPES
+      .filter((key) => !RETIRED_TYPES[key])
       .map((key) => ({ key, count: stockMap.get(key) || 0 }))
       .filter((r) => r.count < LOW_STOCK_THRESHOLD)
       .sort((a, b) => a.count - b.count);
@@ -659,6 +661,8 @@ exports.createCustody = async (req, res) => {
     if (!req.body.employee && !holderName) {
       return res.status(400).json({ message: 'اختر الموظّف، أو اكتب اسم من استلمه إن لم يكن موظّفًا.' });
     }
+    const retired = retiredTypeError(req.body.type);
+    if (retired) return res.status(400).json({ message: retired });
     const data = pick(req.body, CUSTODY_EDITABLE);
     data.holderKind = req.body.employee ? 'employee' : 'external';
     if (!req.body.employee) data.employee = null;
@@ -690,6 +694,8 @@ exports.updateCustody = async (req, res) => {
   try {
     const item = await Asset.findById(req.params.id);
     if (!item) return res.status(404).json({ message: 'Custody item not found' });
+    const retired = retiredTypeError(req.body.type, item.type);
+    if (retired) return res.status(400).json({ message: retired });
     Object.assign(item, pick(req.body, CUSTODY_EDITABLE));
     // الاسم مشتقّ، فلا بد أن يتبع أي تعديل على النوع أو الماركة — وإلا بقي صنف
     // صار «شاشة Dell» معروضاً باسم «لابتوب Dell» الذي اشتُقّ له أول مرة.
@@ -1113,6 +1119,8 @@ exports.createStock = async (req, res) => {
     if (!req.body.type || !String(req.body.type).trim()) {
       return res.status(400).json({ message: 'Item type is required' });
     }
+    const retired = retiredTypeError(req.body.type);
+    if (retired) return res.status(400).json({ message: retired });
     const data = pick(req.body, STOCK_EDITABLE);
     data.brand = normalizeBrand(data.brand);
     data.name = deriveAssetName(data.type, data.brand);
@@ -1139,6 +1147,8 @@ exports.updateStock = async (req, res) => {
     if (item.status !== 'in_stock') {
       return res.status(400).json({ message: 'This item is no longer in stock — edit it from the custody page instead' });
     }
+    const retired = retiredTypeError(req.body.type, item.type);
+    if (retired) return res.status(400).json({ message: retired });
     Object.assign(item, pick(req.body, STOCK_EDITABLE));
     item.brand = normalizeBrand(item.brand);
     item.name = deriveAssetName(item.type, item.brand);

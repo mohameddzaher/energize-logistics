@@ -23,15 +23,18 @@ const BUCKETS = [
     canonicalType: 'laptop',
     types: ['laptop', 'desktop'],
   },
-  // ── والماوسُ دلوٌ وحدَه، والكيبوردُ وحدَه ────────────────────────────────────
+  // ── والماوسُ دلوٌ وحدَه، والكيبوردُ وحدَه — ولا طقم ──────────────────────
   // كانا دلوًا واحدًا «ماوس وكيبورد». وفي المستودع ماوساتٌ بلا كيبورد
   // وكيبورداتٌ بلا ماوس (٩ ماوسات و٣٢ كيبوردًا بأنواعها المفصّلة)، فمن أراد
   // «أضِف ماوسًا» لم يجد تصنيفًا له إلّا الذي يكتبه «ماوس وكيبورد» — فيصير
   // الصنفُ الفردُ مكتوبًا طقمًا، ولا يُعرَف كم ماوسًا عندنا.
   //
-  // والطقمُ يبقى دلوًا ثالثًا: خمسةَ عشرَ صنفًا مكتوبًا `keyboard_mouse` فعلًا
-  // («ماوس وكيبورد Logitech»…) — وضمُّها إلى أحد الفردين يجعل العدَّ كاذبًا في
-  // الاتّجاه الآخر.
+  // ثمّ بقي «طقم ماوس وكيبورد» دلوًا ثالثًا مدّةً، وقرّر صاحبُ الشركة أنّ
+  // الماوسَ والكيبوردَ غيرُ مرتبطين: يُسلَّم أحدُهما ويُرَدّ ويتلف وحدَه.
+  // فقُسم كلُّ طقمٍ ماوسًا وكيبوردًا (scripts/splitKeyboardMouseSets.js) وأُلغي
+  // الدلو. والنوعُ `keyboard_mouse` يبقى مقروءًا في دلو الكيبورد — لا يُكتب
+  // جديدًا (راجع RETIRED_TYPES) — حتى إن بقي صفٌّ قديمٌ لم يُقسَم ظهر في العدّ
+  // بشارة «ماوس وكيبورد» بدل أن يختفي.
   {
     key: 'mice',
     nameAr: 'ماوس',
@@ -44,14 +47,7 @@ const BUCKETS = [
     nameAr: 'كيبورد',
     nameEn: 'Keyboard',
     canonicalType: 'keyboard',
-    types: ['keyboard'],
-  },
-  {
-    key: 'keyboard_mouse_sets',
-    nameAr: 'طقم ماوس وكيبورد',
-    nameEn: 'Mouse + keyboard set',
-    canonicalType: 'keyboard_mouse',
-    types: ['keyboard_mouse'],
+    types: ['keyboard', 'keyboard_mouse'],
   },
   {
     key: 'phones',
@@ -80,6 +76,23 @@ const BUCKETS = [
 
 const BUCKET_KEYS = BUCKETS.map((b) => b.key);
 
+// أنواعٌ تُقرأ ولا تُكتب: صفوفُها القديمة تُعرض، ولا يُنشأ بها صنفٌ جديد ولا
+// يُحوَّل إليها صنف. والقيمةُ رسالةُ الرفض.
+const RETIRED_TYPES = {
+  keyboard_mouse: 'لم يعد «طقم ماوس وكيبورد» صنفًا — سجّل الماوس والكيبورد كلًّا وحده.',
+};
+
+/**
+ * رسالةُ الرفض إن كان الطلبُ يكتب نوعًا ملغًى، وإلّا null.
+ * `currentType` نوعُ الصنف قبل التعديل: تعديلُ صفٍّ قديمٍ دون تغيير نوعه مقبول.
+ */
+const retiredTypeError = (type, currentType) => {
+  const t = String(type || '').trim();
+  if (!t || !RETIRED_TYPES[t]) return null;
+  if (currentType && String(currentType).trim() === t) return null;
+  return RETIRED_TYPES[t];
+};
+
 // خريطة نوع ← دلو، تُبنى مرة واحدة: الاشتقاق يُستدعى لكل صف في كل تحميل.
 const TYPE_TO_BUCKET = new Map();
 BUCKETS.forEach((b) => b.types.forEach((t) => TYPE_TO_BUCKET.set(t, b.key)));
@@ -104,7 +117,7 @@ const TYPE_NAME_AR = {
   monitor: 'شاشة',
   keyboard: 'كيبورد',
   mouse: 'ماوس',
-  keyboard_mouse: 'ماوس وكيبورد',
+  keyboard_mouse: 'ماوس وكيبورد', // نوعٌ ملغًى — للصفوف القديمة وحدها
   headset: 'سماعة رأس',
   printer: 'طابعة',
   router: 'راوتر',
@@ -152,4 +165,6 @@ module.exports = {
   deriveAssetName,
   normalizeBrand,
   TYPE_NAME_AR,
+  RETIRED_TYPES,
+  retiredTypeError,
 };

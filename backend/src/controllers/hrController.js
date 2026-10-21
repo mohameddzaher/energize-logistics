@@ -2217,6 +2217,9 @@ exports.createAsset = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
     if (!req.body.employee || !req.body.name) return res.status(400).json({ message: 'Employee and name are required' });
+    // الطقمُ أُلغي صنفًا في الموارد البشريّة كما في تقنية المعلومات — config/itCustody.
+    const retired = require('../config/itCustody').retiredTypeError(req.body.type);
+    if (retired) return res.status(400).json({ message: retired });
     // ── عهدةُ الموارد البشريّة تُعلَّم بقسمها ───────────────────────────────
     // كانت تُحفظ بلا قسم، والنموذجُ يبدأ بنوع «حاسب محمول» — فسُجّلت شريحةٌ
     // باسم «SIM CARD» ونوعِ حاسب، فظهرت في عهد تقنية المعلومات (التي تُفرز
@@ -2245,6 +2248,9 @@ exports.updateAsset = async (req, res) => {
     // lists it, so reaching one by id means something went wrong upstream.
     if (asset.status === 'in_stock') return res.status(404).json({ message: 'Asset not found' });
     if (denyItOwned(req, res, asset)) return;
+    // الطقمُ أُلغي صنفًا في الموارد البشريّة كما في تقنية المعلومات — config/itCustody.
+    const retired = require('../config/itCustody').retiredTypeError(req.body.type, asset.type);
+    if (retired) return res.status(400).json({ message: retired });
     ['name', 'type', 'serialNumber', 'brand', 'model', 'condition', 'value', 'assignedDate', 'notes'].forEach((f) => {
       if (req.body[f] !== undefined) asset[f] = req.body[f];
     });
@@ -2346,6 +2352,9 @@ exports.createStock = async (req, res) => {
     if (!req.body.name || !String(req.body.name).trim()) {
       return res.status(400).json({ message: 'Item name is required' });
     }
+    // الطقمُ أُلغي صنفًا في الموارد البشريّة كما في تقنية المعلومات — config/itCustody.
+    const retired = require('../config/itCustody').retiredTypeError(req.body.type);
+    if (retired) return res.status(400).json({ message: retired });
     const data = pickFields(req.body, HR_STOCK_EDITABLE);
     if (data.quantity === undefined || Number(data.quantity) < 1) data.quantity = 1;
     data.status = 'in_stock';
@@ -2366,6 +2375,9 @@ exports.updateStock = async (req, res) => {
     // Scoped to the HR shelf, so this can never reach an IT store item.
     const item = await Asset.findOne({ _id: req.params.id, ...HR_STORE });
     if (!item) return res.status(404).json({ message: 'Stock item not found' });
+    // الطقمُ أُلغي صنفًا في الموارد البشريّة كما في تقنية المعلومات — config/itCustody.
+    const retired = require('../config/itCustody').retiredTypeError(req.body.type, item.type);
+    if (retired) return res.status(400).json({ message: retired });
     Object.assign(item, pickFields(req.body, HR_STOCK_EDITABLE));
     await item.save();
     res.json({ item });

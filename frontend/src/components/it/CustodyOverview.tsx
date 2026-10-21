@@ -14,7 +14,6 @@ const BUCKET_ICON: Record<string, React.ElementType> = {
   laptops: Laptop,
   mice: Mouse,
   keyboards: Keyboard,
-  keyboard_mouse_sets: Keyboard,
   phones: Smartphone,
   monitors: Monitor,
   other: Package,

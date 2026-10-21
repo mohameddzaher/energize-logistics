@@ -4,6 +4,7 @@ import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/customs_link.dart';
+import '../ui/report_follow_ups.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -504,6 +505,15 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                 setState(() { final i = _rows.indexWhere((r) => r['_id'] == wf['_id']); if (i >= 0) _rows[i] = wf; });
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('حُفظ الربط', 'Link saved'))));
               },
+            ),
+            // متابعاتُ الكشف — السجلُّ نفسُه الذي يكتبه التخليصُ والتحصيل (كالويب).
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Text(tr('متابعات الكشف', 'Report follow-ups'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                const SizedBox(height: 6),
+                ReportFollowUpsView(workflowId: '${w['_id']}', basePath: '/api/workflows/${w['_id']}/follow-ups'),
+              ]),
             ),
             if (_myFields.contains('paymentType'))
               Align(

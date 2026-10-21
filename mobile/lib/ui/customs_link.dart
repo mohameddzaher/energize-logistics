@@ -303,8 +303,11 @@ class _CustomsLinkedReportsState extends State<CustomsLinkedReports> {
   Map<String, dynamic>? _d;
   String? _error;
   int _seq = 0;
+  // الكشوفُ المفتوحة على تفاصيلها — كالصفّ المفتوح في الموقع (LinkedOpsReports).
+  final Set<String> _open = {};
   late final void Function(dynamic) _onLinks;
   late final void Function() _onChanged;
+  late final void Function(dynamic) _onFollowUps;
 
   @override
   void initState() {
@@ -315,15 +318,71 @@ class _CustomsLinkedReportsState extends State<CustomsLinkedReports> {
       if (ids == null || ids.contains(widget.clearanceId)) _load();
     };
     _onChanged = () => _load();
+    // عددُ المتابعات على الكشف المطويّ — تُكتب من التشغيل والتحصيل أيضًا.
+    _onFollowUps = (p) {
+      if (p is! Map || '${p['clearanceId'] ?? ''}' == widget.clearanceId) _load();
+    };
     Live.instance.onData('customs:opsLinks', _onLinks);
     Live.instance.on('collections:changed', _onChanged);
+    Live.instance.onData('workflow:followUps', _onFollowUps);
   }
 
   @override
   void dispose() {
     Live.instance.offData('customs:opsLinks', _onLinks);
     Live.instance.off('collections:changed', _onChanged);
+    Live.instance.offData('workflow:followUps', _onFollowUps);
     super.dispose();
+  }
+
+  Future<void> _edit(Map<String, dynamic> r, List<String> fields) async {
+    final detail = (r['detail'] as Map?) ?? const {};
+    final msg = await editOpsReport(context, workflowId: '${r['_id']}', detail: detail, fields: fields);
+    if (msg == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    _load();
+  }
+
+  /// الكشفُ المفتوح: حالُه بكلمة، وحقولُه كما يراها الدور، وتعديلُه، ومتابعاتُه.
+  Widget _expanded(Map<String, dynamic> r, Map access) {
+    final detail = (r['detail'] as Map?) ?? const {};
+    final fields = List<String>.from((access['fields'] as List?) ?? const []);
+    final me = '${context.read<AuthProvider>().user?['_id'] ?? ''}';
+    final lockedAt = DateTime.tryParse('${detail['lockedAt'] ?? ''}');
+    final lockedByOther = detail['lockedBy'] != null && '${detail['lockedBy']}' != me
+        && (lockedAt == null || DateTime.now().difference(lockedAt).inMinutes < 5);
+    final canEdit = access['canEdit'] == true && !lockedByOther
+        && visibleSections(detail).any((s) => s.$3.any((f) => fields.contains(f.$1)));
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Divider(height: 18),
+      Wrap(spacing: 6, runSpacing: 4, children: [
+        if ('${r['paymentType'] ?? ''}'.isNotEmpty) Chip2(opsPaymentKindLabel(opsPaymentKindOf(r)), T.navy),
+        if ('${r['invoiceNumber'] ?? ''}'.isNotEmpty)
+          Chip2('${tr('فاتورة', 'Invoice')} ${r['invoiceNumber']}${_date(r['invoiceDate']).isNotEmpty ? ' · ${_date(r['invoiceDate'])}' : ''}', T.violet),
+        if (_date(r['deliveryDate']).isNotEmpty) Chip2('${tr('سُلِّمت للعميل', 'Delivered')} ${_date(r['deliveryDate'])}', T.inkSoft),
+        if (_date(r['collectionDate']).isNotEmpty) Chip2('${tr('حُصِّل', 'Collected')} ${_date(r['collectionDate'])}', T.success),
+        Chip2('${tr('مرفقات الفاتورة', 'Invoice attachments')} ${r['attachments'] ?? 0}', T.inkFaint, icon: Icons.attach_file_rounded),
+        if (lockedByOther)
+          Chip2(tr('يعدّله ${detail['lockedByName'] ?? 'مستخدمٌ آخر'}', 'Being edited by ${detail['lockedByName'] ?? 'another user'}'), T.danger, icon: Icons.lock_outline),
+      ]),
+      OpsReportFields(detail: detail),
+      if (canEdit)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: OutlinedButton.icon(
+            onPressed: () => _edit(r, fields),
+            icon: const Icon(Icons.edit_outlined, size: 16),
+            label: Text(tr('تعديل الكشف', 'Edit report')),
+          ),
+        ),
+      const SizedBox(height: 10),
+      Text(tr('المتابعة', 'Follow-up'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 6),
+      ReportFollowUpsView(
+        workflowId: '${r['_id']}',
+        basePath: '/api/customs-clearance/${widget.clearanceId}/ops-reports/${r['_id']}/follow-ups',
+      ),
+    ]);
   }
 
   Future<void> _load() async {
@@ -375,8 +434,22 @@ class _CustomsLinkedReportsState extends State<CustomsLinkedReports> {
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(color: T.canvas, borderRadius: BorderRadius.circular(10)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              InkWell(
+                onTap: () => setState(() { final id = '${r['_id']}'; if (!_open.remove(id)) _open.add(id); }),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
+                Icon(_open.contains('${r['_id']}') ? Icons.expand_less : Icons.expand_more, size: 18, color: T.inkFaint),
+                const SizedBox(width: 4),
                 Expanded(child: Text('${r['reportNumber']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
+                if ((r['followUps'] ?? 0) is num && (r['followUps'] as num) > 0)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(end: 6),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.chat_bubble_outline, size: 13, color: T.inkSoft),
+                      const SizedBox(width: 2),
+                      Text('${r['followUps']}', style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+                    ]),
+                  ),
                 Builder(builder: (_) {
                   final b = _billing['${r['billing']}'] ?? _billing['not_invoiced']!;
                   return Chip2(tr(b.$1, b.$2), b.$3);
@@ -394,6 +467,9 @@ class _CustomsLinkedReportsState extends State<CustomsLinkedReports> {
               if (r['sellingValue'] != null)
                 Text('${tr('قيمة البيع', 'Selling')}: ${r['sellingValue']}', style: const TextStyle(fontSize: 11, color: T.inkSoft)),
               Text(customsViaLabel(r['via']), style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                ]),
+              ),
+              if (_open.contains('${r['_id']}')) _expanded(r, (_d?['access'] as Map?) ?? const {}),
             ]),
           ),
         for (final p in pending)

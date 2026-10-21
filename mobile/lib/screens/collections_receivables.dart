@@ -6,6 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/customs_link.dart';
+import '../ui/report_follow_ups.dart';
 import 'collection_attachments.dart';
 import '../resource/configs.dart' show collectionsCanEdit;
 
@@ -557,7 +558,22 @@ class _ReceivableDetailScreenState extends State<_ReceivableDetailScreen> {
               Text('${tr('كشوف الفاتورة', 'Invoice reports')} (${reports.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
               const SizedBox(height: 6),
               for (final x in reports)
-                Padding(
+                InkWell(
+                  // الكشفُ يُضغط فتُفتح متابعاتُه — السجلُّ نفسُه في التشغيل والتخليص.
+                  onTap: () => showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    useSafeArea: true,
+                    builder: (_) => FractionallySizedBox(
+                      heightFactor: 0.8,
+                      child: ListView(padding: const EdgeInsets.all(16), children: [
+                        Text('${tr('متابعات الكشف', 'Report follow-ups')} ${x['reportNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                        const SizedBox(height: 10),
+                        ReportFollowUpsView(workflowId: '${x['_id']}', basePath: '/api/collections-dept/reports/${x['_id']}/follow-ups'),
+                      ]),
+                    ),
+                  ),
+                  child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 5),
                   child: Row(children: [
                     Expanded(
@@ -568,8 +584,18 @@ class _ReceivableDetailScreenState extends State<_ReceivableDetailScreen> {
                           Padding(padding: const EdgeInsets.only(top: 3), child: CustomsLinkChip(x['customs'], compact: true)),
                       ]),
                     ),
+                    if ((x['followUps'] ?? 0) is num && (x['followUps'] as num) > 0)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(end: 8),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          const Icon(Icons.chat_bubble_outline, size: 13, color: T.inkSoft),
+                          const SizedBox(width: 2),
+                          Text('${x['followUps']}', style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+                        ]),
+                      ),
                     Text(_money(x['totalInvoice'] ?? x['sellingValue']), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
                   ]),
+                  ),
                 ),
             ]),
           ),

@@ -405,10 +405,14 @@ export default function B2CDashboardPage() {
             </div>
           </div>
           <div className={BOX}>
-            <div className="text-center px-4 pt-4 pb-3">
+            {/* الإجماليُّ فوق كبقيّة الكروت، وأقسامُه الثلاثة تحته مجموعُها هو. */}
+            <Link href={vehiclesOf()} className="block text-center px-4 pt-4 pb-3 hover:bg-slate-50/60 transition-colors">
               <p className="text-[12px] font-medium text-slate-500">{t('التفويض', 'Authorisation')}</p>
-              <p className="mt-1 text-[11px] text-slate-400">{t('من «المفوَّض بالقيادة» في سجلّ المركبات', 'From the authorised person in the vehicle register')}</p>
-            </div>
+              <p className="mt-1 text-[28px] leading-none font-bold tabular-nums tracking-tight text-slate-900">
+                {num(B.vehicles.auth.authorized + B.vehicles.auth.expired + B.vehicles.auth.none)}
+              </p>
+              <p className="mt-1 text-[11px] text-slate-400">{t('حسب «المفوَّض بالقيادة» في سجلّ المركبات', 'By the authorised person in the vehicle register')}</p>
+            </Link>
             <div className="grid grid-cols-3 border-t border-slate-100 divide-x divide-slate-100 rtl:divide-x-reverse">
               <Half label={t('مفوَّض', 'Authorised')} value={B.vehicles.auth.authorized} of={B.vehicles.total} tone="#16a34a" href={vehiclesOf({ auth: 'authorized' })} />
               <Half label={t('تفويض منتهٍ', 'Expired')} value={B.vehicles.auth.expired} of={B.vehicles.total} tone="#d97706" href={vehiclesOf({ auth: 'expired' })} />

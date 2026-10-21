@@ -54,14 +54,15 @@ function AttendanceCell({ row, state, onToggle, ar }: {
 }
 
 // ── خانةُ اليوم — مكوّنٌ خارج الصفحة كي لا تُهدَم مع كلّ ضغطة (inline-components-remount) ──
-function OrderCell({ row, value, state, onChange, onCommit, onNav, inputRef }: {
-  row: Row; value: string; state?: 'saving' | 'saved' | 'error';
+function OrderCell({ row, value, state, onChange, onCommit, onNav, inputRef, head }: {
+  row: Row; value: string; state?: 'saving' | 'saved' | 'error'; head: boolean;
   onChange: (v: string) => void; onCommit: () => void; onNav: (dir: 1 | -1) => void;
   inputRef: (el: HTMLInputElement | null) => void;
 }) {
   return (
     <span className="inline-flex items-center gap-1.5">
-      <input ref={inputRef} inputMode="numeric" value={value} disabled={row.ended}
+      {/* مسؤولو القسم يصحّحون أيَّ سجلٍّ مضى — حتّى لمن انتهت خدمتُه (٢٠٢٦/١٠/٢١) */}
+      <input ref={inputRef} inputMode="numeric" value={value} disabled={row.ended && !head}
         onChange={(e) => onChange(e.target.value.replace(/[^\d]/g, ''))}
         onBlur={onCommit}
         onKeyDown={(e) => {
@@ -124,6 +125,8 @@ export default function B2COrderEntryPage() {
   useSocket('b2c:entry:scope', soon);
   useSocket('hr:employee', soon);
   useSocket('b2c:attendance', soon);
+  // ترتيبُ المناديب كما رتّبه مسؤولو القسم للشيت — من النظام أو بسحب الصفوف فيه.
+  useSocket('b2c:sheet-order', soon);
 
   // حضورُ أمازون: يُقلَب في الحال ويُعاد إن رفضه الخادم.
   const toggleAttendance = useCallback(async (lt: string) => {
@@ -239,7 +242,7 @@ export default function B2COrderEntryPage() {
                   {r.mode === 'attendance' ? (
                     <AttendanceCell row={r} state={state[r.lt]} ar={ar} onToggle={() => toggleAttendance(r.lt)} />
                   ) : (
-                  <OrderCell row={r} value={vals[r.lt] ?? ''} state={state[r.lt]}
+                  <OrderCell row={r} value={vals[r.lt] ?? ''} state={state[r.lt]} head={d.scope === null}
                     inputRef={(el) => { if (el) inputs.current.set(r.lt, el); else inputs.current.delete(r.lt); }}
                     onChange={(v) => { dirty.current.add(r.lt); setVals((s) => ({ ...s, [r.lt]: v })); setState((s) => { const n = { ...s }; delete n[r.lt]; return n; }); }}
                     onCommit={() => save(r.lt)} onNav={(dir) => nav(r.lt, dir)} />

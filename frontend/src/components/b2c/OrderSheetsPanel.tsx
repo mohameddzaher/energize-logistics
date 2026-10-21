@@ -5,18 +5,153 @@
  * يُفتح من «مدخلات الأوردرات» لمسؤولي القسم وحدَهم (الخادمُ يرفض غيرَهم).
  * والخادمُ يقرأ كلَّ ملفٍّ كلَّ دقيقة؛ وما يتغيّر يصل الجدولَ عبر `b2c:order:upserted`.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import { Modal } from '@/components/hr/HRKit';
-import { ExternalLink, Loader2, RefreshCw, Trash2, Link2, AlertTriangle, CheckCircle2, XCircle, Download } from 'lucide-react';
+import { ExternalLink, Loader2, RefreshCw, Trash2, Link2, AlertTriangle, CheckCircle2, XCircle, Download, Save, GripVertical, ArrowUp, ArrowDown } from 'lucide-react';
 
 type Sheet = {
   _id: string; projectAr: string; sheetId: string; url: string; enabled: boolean;
   lastSyncAt: string | null; lastOkAt: string | null; lastError: string; lastChanges: number; unknownIds: string[];
 };
-type Data = { sheets: Sheet[]; projects: string[] };
+type Data = { sheets: Sheet[]; projects: string[]; sheetProjects?: string[]; headEmails?: string[] };
+type OrderRow = { lt: string; id: string; name: string; sup: string };
+type OrderData = { project: string; month: string; rows: OrderRow[]; saved: boolean; updatedAt: string | null; updatedBy: string; source: string };
+
+/**
+ * بريدُ جوجل لمسؤولي القسم — يُضافون محرّرين لحماية كلّ ورقة في الشيتات الثلاثة
+ * (يكتبون في أيّ يومٍ من أيّ شهر ويسحبون الصفوفَ ليرتّبوا المناديب).
+ */
+function HeadEmails({ initial, ar, onSaved }: { initial: string[]; ar: boolean; onSaved: () => void }) {
+  const t = (a: string, e: string) => (ar ? a : e);
+  const { notify } = useDialog();
+  const joined = initial.join('\n');
+  const [text, setText] = useState(joined);
+  const [busy, setBusy] = useState(false);
+  // المحفوظُ تغيّر (حفظٌ هنا أو من مسؤولٍ آخر) — لا كلُّ إعادة تحميلٍ للوحة.
+  useEffect(() => { setText(joined); }, [joined]);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const emails = text.split(/[\s,،;]+/).map((x) => x.trim()).filter(Boolean);
+      await api.put('/api/b2c/order-sheets/heads', { emails });
+      notify(t('حُفظ البريد — يُطبَّق في الشيتات خلال دقائق', 'Saved — applied to the sheets within minutes'), 'success');
+      onSaved();
+    } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Save failed'), 'error'); }
+    setBusy(false);
+  };
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3">
+      <p className="text-[13px] font-bold text-slate-800">{t('بريد جوجل لمسؤولي القسم', 'Section heads’ Google emails')}</p>
+      <p className="mt-0.5 text-[12px] leading-5 text-slate-500">
+        {t('بريدُ مدير القسم ونائبه والإدارة (حساب جوجل) — بريدٌ في كلّ سطر. يُشارَك معهم ملفُّ كلّ مشروع، ويكتبون في أيّ يومٍ من أيّ شهر (والشهورُ قبل أكتوبر 2026 لهم وحدَهم)، ويسحبون الصفوفَ ليرتّبوا المناديب.',
+          'Google accounts of the manager, deputy and admins — one per line. They can edit any day of any month and drag rows to reorder reps.')}
+      </p>
+      <textarea value={text} onChange={(e) => setText(e.target.value)} dir="ltr" rows={3}
+        placeholder="name@gmail.com"
+        className="mt-2 w-full rounded-lg border border-slate-200 px-2.5 py-2 font-mono text-[12.5px]" />
+      <button type="button" onClick={save} disabled={busy}
+        className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-[#12325c] px-3 py-1.5 text-[12.5px] font-bold text-white hover:bg-[#0d2647] disabled:opacity-50">
+        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}{t('حفظ البريد', 'Save emails')}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * ترتيبُ المناديب في شيت المشروع — يسري على كلّ شهور الشيت وعلى «مدخلات الأوردرات».
+ * سحبٌ وإفلات، أو أسهمُ أعلى/أسفل، ثمّ «حفظ الترتيب».
+ */
+function RepOrder({ projects, ar }: { projects: string[]; ar: boolean }) {
+  const t = (a: string, e: string) => (ar ? a : e);
+  const { notify } = useDialog();
+  const [project, setProject] = useState(projects[0] || '');
+  const [d, setD] = useState<OrderData | null>(null);
+  const [rows, setRows] = useState<OrderRow[]>([]);
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [drag, setDrag] = useState<number | null>(null);
+  const latest = useRef(0);
+
+  const load = useCallback(async () => {
+    if (!project) return;
+    const n = ++latest.current;
+    try {
+      const res = await api.get<OrderData>(`/api/b2c/order-sheets/order?project=${encodeURIComponent(project)}`);
+      if (n !== latest.current) return;
+      setD(res); setRows(res.rows); setDirty(false);
+    } catch (e: any) { if (n === latest.current) notify(e?.message || t('تعذّر التحميل', 'Load failed'), 'error'); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project]);
+  useEffect(() => { load(); }, [load]);
+  // ترتيبٌ حُفظ من الشيت أو من مسؤولٍ آخر — يُعاد تحميلُه ما لم يكن هنا تعديلٌ لم يُحفظ.
+  useSocket('b2c:sheet-order', () => { if (!dirty) load(); });
+
+  const move = (from: number, to: number) => {
+    if (to < 0 || to >= rows.length || from === to) return;
+    setRows((r) => { const n = r.slice(); const [x] = n.splice(from, 1); n.splice(to, 0, x); return n; });
+    setDirty(true);
+  };
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.put('/api/b2c/order-sheets/order', { project, lts: rows.map((r) => r.lt) });
+      notify(t('حُفظ الترتيب — يظهر في الشيت خلال ٥ دقائق', 'Order saved — the sheet updates within 5 minutes'), 'success');
+      setDirty(false);
+      load();
+    } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Save failed'), 'error'); }
+    setBusy(false);
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-[13px] font-bold text-slate-800">{t('ترتيب المناديب', 'Reps order')}</p>
+        <select value={project} onChange={(e) => setProject(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm">
+          {projects.map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <span className="ms-auto flex items-center gap-1.5">
+          {dirty && <button type="button" onClick={load} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-50">{t('تراجع', 'Revert')}</button>}
+          <button type="button" onClick={save} disabled={!dirty || busy}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-3 py-1.5 text-[12.5px] font-bold text-white hover:bg-[#e06010] disabled:opacity-50">
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}{t('حفظ الترتيب', 'Save order')}
+          </button>
+        </span>
+      </div>
+      <p className="mt-1 text-[12px] leading-5 text-slate-500">
+        {t('اسحب الصفّ أو استعمل الأسهم. الترتيبُ واحدٌ للمشروع: يسري على كلّ شهور الشيت وعلى «مدخلات الأوردرات»، ومَن يُضاف جديدًا يأتي في الآخر. ويُغيَّر أيضًا بسحب الصفوف في الشيت نفسه.',
+          'Drag a row or use the arrows. One order per project, applied to every month of the sheet and to Orders entry. New reps go last.')}
+        {d?.updatedAt && <> {t('آخر تعديل', 'Last change')}: <b className="tabular-nums">{fmtTime(d.updatedAt)}</b>{d.source === 'sheet' ? t(' (من الشيت)', ' (from the sheet)') : d.updatedBy ? ` — ${d.updatedBy}` : ''}</>}
+      </p>
+      {!d && <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>}
+      {d && (
+        <ol className="mt-2 max-h-[22rem] divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
+          {rows.map((r, i) => (
+            <li key={r.lt} draggable
+              onDragStart={() => setDrag(i)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => { e.preventDefault(); if (drag !== null) move(drag, i); setDrag(null); }}
+              onDragEnd={() => setDrag(null)}
+              className={`flex items-center gap-2 px-2 py-1.5 text-[13px] ${drag === i ? 'bg-orange-50' : 'bg-white hover:bg-slate-50'}`}>
+              <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-slate-400" />
+              <span className="w-7 text-center text-[12px] tabular-nums text-slate-400">{i + 1}</span>
+              <span className="min-w-0 flex-1 truncate font-semibold text-slate-900">{r.name}</span>
+              <span className="hidden w-28 truncate text-[12px] tabular-nums text-slate-500 sm:block">{r.id}</span>
+              <span className="hidden w-32 truncate text-[12px] text-slate-500 sm:block">{r.sup}</span>
+              <button type="button" onClick={() => move(i, i - 1)} disabled={i === 0} title={t('أعلى', 'Up')}
+                className="rounded p-1 text-slate-600 hover:bg-slate-100 disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" /></button>
+              <button type="button" onClick={() => move(i, i + 1)} disabled={i === rows.length - 1} title={t('أسفل', 'Down')}
+                className="rounded p-1 text-slate-600 hover:bg-slate-100 disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" /></button>
+            </li>
+          ))}
+          {!rows.length && <li className="py-6 text-center text-[12.5px] text-slate-500">{t('لا مناديب في هذا المشروع هذا الشهر', 'No reps this month')}</li>}
+        </ol>
+      )}
+    </div>
+  );
+}
 
 const fmtTime = (iso: string | null) => (iso
   ? new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -98,11 +233,25 @@ export default function OrderSheetsPanel({ open, onClose, ar }: { open: boolean;
           </ol>
           <p>{t('يُنشئ ملفًّا لكلّ مشروع في الفولدر ويحدّثه كلَّ ٥ دقائق من النظام، ويرسل كلَّ رقمٍ يُكتب فيه إلى النظام فورًا، ويقفل كلَّ شيءٍ إلّا خانات الأيّام.',
             'It creates one file per project, refreshes it every 5 minutes, sends each typed number instantly, and locks everything but the day cells.')}</p>
+          <p className="mt-1.5 font-bold">{t('ما يستطيعه كلٌّ في الشيت', 'Who can do what in the sheet')}</p>
+          <ul className="list-disc ps-5">
+            <li>{t('المشرفون: عددُ الأوردرات في خانات الأيّام من أكتوبر 2026 فقط.', 'Supervisors: order counts in day cells from October 2026 only.')}</li>
+            <li>{t('مسؤولو القسم (بريدُهم تحت): أيُّ يومٍ مضى من أيِّ شهر — والشهورُ القديمة لهم وحدَهم — ويصل التعديلُ النظامَ فورًا.', 'Section heads (emails below): any past day of any month — old months are theirs only — reaching the system instantly.')}</li>
+            <li>{t('ومسؤولو القسم يرتّبون المناديب بسحب الصفّ من رقمه على اليمين، أو من «ترتيب المناديب» هنا — فيسري على كلّ الشهور وعلى «مدخلات الأوردرات».', 'Heads reorder reps by dragging rows in the sheet, or from “Reps order” here.')}</li>
+            <li>{t('الأسماءُ وأرقامُ الإقامة والمشرفون والمشاريع من النظام وحدَه — ما يُكتب فوقها في الشيت يُعاد من النظام.', 'Names, IDs, supervisors and projects come from the system only — overwritten in the sheet.')}</li>
+          </ul>
+          <p className="mt-1.5 rounded-md bg-amber-100/70 px-2 py-1 text-amber-900">
+            {t('إصدار ٢٠٢٦/١٠/٢١: من ثبّت السكربت قبل هذا التاريخ يحمّله من جديد، ويلصقه مكانَ القديم في مشروع script.google.com نفسِه، ويحفظ، ثمّ يشغّل setup مرّةً.',
+              'Version 2026-10-21: if installed before, download again, replace the code in the same Apps Script project, save, and run setup once.')}
+          </p>
           <button type="button" onClick={downloadScript}
             className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-[12.5px] font-bold text-white hover:bg-emerald-700">
             <Download className="h-3.5 w-3.5" />{t('تحميل سكربت جوجل', 'Download Google script')}
           </button>
         </div>
+
+        {d && <HeadEmails initial={d.headEmails || []} ar={ar} onSaved={load} />}
+        {d && (d.sheetProjects || []).length > 0 && <RepOrder projects={d.sheetProjects || []} ar={ar} />}
 
         {err && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700">{err}</p>}
         {!d && !err && <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>}

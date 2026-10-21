@@ -65,6 +65,10 @@ router.put('/entry/managers/:userId', authorize(...ENTRY), entry.setManagerProje
 const orderSheets = require('../controllers/b2cOrderSheetController');
 router.get('/order-sheets', authorize(...ENTRY), orderSheets.list);
 router.get('/order-sheets/script', authorize(...ENTRY), orderSheets.script);
+// ترتيبُ المناديب في الشيت وبريدُ مسؤولي القسم (محرّرو الحماية) — للمسؤولين وحدَهم.
+router.get('/order-sheets/order', authorize(...ENTRY), orderSheets.getOrder);
+router.put('/order-sheets/order', authorize(...ENTRY), orderSheets.saveOrder);
+router.put('/order-sheets/heads', authorize(...ENTRY), orderSheets.setHeads);
 router.post('/order-sheets', authorize(...ENTRY), orderSheets.create);
 router.delete('/order-sheets/:id', authorize(...ENTRY), orderSheets.remove);
 router.post('/order-sheets/:id/sync', authorize(...ENTRY), orderSheets.syncNow);

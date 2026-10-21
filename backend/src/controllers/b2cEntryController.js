@@ -170,10 +170,20 @@ exports.list = async (req, res) => {
     const REPORT_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'];
     const report = req.query.report === '1' && (REPORT_ROLES.includes(req.user?.role) || E.isEntryHead(req.user));
     if (!report) {
+      // ترتيبُ المناديب كما رتّبه مسؤولو القسم لشيت المشروع (٢٠٢٦/١٠/٢١) — فيُدخِل
+      // مَن يُدخل هنا بالترتيب الذي في الشيت، ومَن ليس في الترتيب بعدهم بالاسم.
+      const { B2CSheetOrder } = require('../models/B2COrderSheet');
+      const pos = new Map();
+      for (const o of await B2CSheetOrder.find({}).select('order').lean()) {
+        (o.order || []).forEach((id, i) => pos.set(`${o._id}:${id}`, i));
+      }
+      const at = (r) => { const p = P.of(r.projectAr); const k = p && `${p._id}:${r.lt}`; return k && pos.has(k) ? pos.get(k) : Infinity; };
       return res.json({
         date, today: riyadhToday(), scope,
         rows: out.map((r) => ({ lt: r.lt, idNumber: r.idNumber, name: r.name, projectAr: r.projectAr, status: r.status, ended: r.ended, orders: r.orders, unit: r.unit, mode: r.mode, present: r.present }))
-          .sort((x, y) => x.projectAr.localeCompare(y.projectAr, 'ar') || x.name.localeCompare(y.name, 'ar')),
+          .sort((x, y) => x.projectAr.localeCompare(y.projectAr, 'ar')
+            || (at(x) === at(y) ? 0 : at(x) < at(y) ? -1 : 1)
+            || x.name.localeCompare(y.name, 'ar')),
       });
     }
     res.json({
@@ -206,10 +216,15 @@ exports.save = async (req, res) => {
     const B2CDailyOrder = require('../models/B2CDailyOrder');
     const [y, m, d] = dateKey.split('-').map(Number);
     const before = await B2CDailyOrder.findOne({ rep: rep._id, dateKey }).lean();
+    // يومٌ مضى قبل نقل المندوب يُكتب على مشروعه ذلك اليوم (سجلُّ نقله) لا على مشروعه
+    // اليوم — فيظهر في شيت المشروع الذي كان فيه، كما يُكتب من الشيت.
+    const dayProject = (await E.projects()).of(E.projectTimeline(lt)(dateKey));
+    // ورقمُ اليوم واحدٌ للرجل: ما في حساباته الأخرى ذلك اليوم يُمحى (آخرُ تعديلٍ هو المعتمد).
+    await E.clearOtherAccounts(lt, rep._id, dateKey);
     const entry = await B2CDailyOrder.findOneAndUpdate(
       { rep: rep._id, dateKey },
       {
-        $set: { orders, worked: orders !== null && orders > 0, source: 'manual', enteredBy: req.user._id, project: rep.project, branch: rep.branch },
+        $set: { orders, worked: orders !== null && orders > 0, source: 'manual', enteredBy: req.user._id, project: dayProject?._id || rep.project, branch: rep.branch },
         $setOnInsert: { date: new Date(`${dateKey}T00:00:00.000Z`), year: y, month: m, day: d },
       },
       { upsert: true, new: true },

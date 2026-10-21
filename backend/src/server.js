@@ -371,6 +371,8 @@ app.get('/api/public/b2c-target', async (req, res) => {
   app.get('/api/public/b2c-sheets/layout', sheetsApp.layout);
   app.post('/api/public/b2c-sheets/edit', sheetsApp.edit);
   app.post('/api/public/b2c-sheets/register', sheetsApp.register);
+  app.get('/api/public/b2c-sheets/stamps', sheetsApp.stamps);
+  app.post('/api/public/b2c-sheets/order', sheetsApp.order);
 }
 
 // 404 handler

@@ -13,6 +13,12 @@
  *   GET  /api/public/b2c-sheets/layout?project=Keeta&months=2026-10,2026-11|all&token=
  *   POST /api/public/b2c-sheets/edit      { token, project, edits: [{ month, id, day, value }] }
  *   POST /api/public/b2c-sheets/register  { token, project, spreadsheetId, url }
+ *   GET  /api/public/b2c-sheets/stamps?project=&token=   بصمةُ كلّ شهر (ما تغيّر يُعاد رسمُه)
+ *   POST /api/public/b2c-sheets/order     { token, project, month, ids: [iqama] }
+ *
+ * ومسؤولو القسم (٢٠٢٦/١٠/٢١): بريدُ جوجل لهم يُحفظ هنا ويصل السكربتَ مع التخطيط،
+ * فيُضافون محرّرين لحماية كلّ ورقة — يكتبون في أيّ يومٍ من أيّ شهر (والقديمةُ لهم
+ * وحدَهم)، ويسحبون الصفوفَ فيُحفظ ترتيبُ المناديب (B2CSheetOrder) ويسري على النظام كلِّه.
  *
  * والمصادقةُ بمفتاحٍ يولّده الخادم (models/B2COrderSheet ← sheetsToken) ويصل السكربتَ
  * مضمَّنًا فيه حين يُحمَّل من النظام — جوجل لا يحمل جلسة.
@@ -60,21 +66,84 @@ function monthsOf(q) {
   return S(q).split(',').map((x) => x.trim()).filter((x) => /^\d{4}-\d{2}$/.test(x));
 }
 
+/** مشروعُ المندوب في كلّ يوم — utils/b2cEntry.projectTimeline. */
+const projectTimeline = E.projectTimeline;
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ترتيبُ المناديب وبريدُ مسؤولي القسم (صاحبُ الشركة، ٢٠٢٦/١٠/٢١)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** الترتيبُ المحفوظ للمشروع — معرّفاتُ صفوف السجلّ بالترتيب. */
+async function orderOf(projectId) {
+  const { B2CSheetOrder } = require('../models/B2COrderSheet');
+  return B2CSheetOrder.findById(projectId).lean();
+}
+
 /**
- * مشروعُ المندوب في كلّ يوم — من سجلّ نقله (`history` بـ kind: project).
- * يُرجع دالّةً: dateKey → اسمُ المشروع في ذلك اليوم.
+ * دمجُ ترتيبٍ جزئيّ (مناديبُ شهرٍ واحد) في ترتيب المشروع كلِّه: مَن أُرسلوا يأخذون
+ * الخاناتِ التي كانوا فيها بالترتيب الجديد، والباقون في أماكنهم، والجددُ في الآخر.
  */
-function projectTimeline(lt) {
-  const moves = (lt.history || []).filter((h) => h.kind === 'project' && h.at)
-    .map((h) => ({ day: riyadhDay(h.at), from: S(h.fromValue), to: S(h.toValue) }))
-    .sort((a, b) => a.day.localeCompare(b.day));
-  return (dk) => {
-    if (!moves.length) return S(lt.projectAr);
-    // النقلُ نافذٌ من يومه: يومُ النقل في المشروع الجديد.
-    let cur = moves[0].from || S(lt.projectAr);
-    for (const mv of moves) { if (mv.day <= dk) cur = mv.to; else break; }
-    return cur;
-  };
+function mergeOrder(global, part) {
+  const seen = new Set();
+  const P = part.map(String).filter((id) => id && !seen.has(id) && seen.add(id));
+  const G = (global || []).map(String);
+  const has = new Set(G);
+  for (const id of P) if (!has.has(id)) { G.push(id); has.add(id); }
+  const inP = new Set(P);
+  let k = 0;
+  return G.map((id) => (inP.has(id) ? P[k++] : id));
+}
+
+async function saveOrder(project, ltIds, { user = null, source = '' } = {}) {
+  const { B2CSheetOrder } = require('../models/B2COrderSheet');
+  const cur = await orderOf(project._id);
+  const order = mergeOrder(cur?.order, ltIds);
+  await B2CSheetOrder.updateOne({ _id: project._id }, { $set: { order, updatedBy: user, source } }, { upsert: true });
+  cache.clear('b2c:');
+  try { require('../websocket/socketManager').emitToAll('b2c:sheet-order', { project: project.nameAr, source }); } catch (_) { /* */ }
+  return order;
+}
+
+/** بريدُ جوجل لمسؤولي القسم — محرّرو الحماية في الشيتات. */
+async function headEmails() {
+  const { B2CSheetsKey, sheetsToken } = require('../models/B2COrderSheet');
+  await sheetsToken();
+  const doc = await B2CSheetsKey.findById('main').select('headEmails headEmailsAt').lean();
+  return { emails: (doc?.headEmails || []).filter(Boolean), at: doc?.headEmailsAt || null };
+}
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+async function setHeadEmails(list) {
+  const { B2CSheetsKey, sheetsToken } = require('../models/B2COrderSheet');
+  await sheetsToken();
+  const emails = [...new Set((Array.isArray(list) ? list : String(list || '').split(/[\s,،;]+/))
+    .map((x) => S(x).toLowerCase()).filter(Boolean))];
+  const bad = emails.filter((x) => !EMAIL.test(x));
+  if (bad.length) { const e = new Error(`بريدٌ غير صحيح: ${bad.join('، ')}`); e.status = 400; throw e; }
+  await B2CSheetsKey.updateOne({ _id: 'main' }, { $set: { headEmails: emails, headEmailsAt: new Date() } });
+  return emails;
+}
+
+/**
+ * بصمةُ كلّ شهر — تتغيّر إذا تغيّر فيه رقمٌ (على النظام أو من الشيت)، أو تغيّر ترتيبُ
+ * المشروع، أو بريدُ المسؤولين. فيعيد السكربتُ رسمَ الشهور القديمة التي تغيّرت وحدَها
+ * (والشهرُ الماضي والحاليّ والقادم يُرسَم كلَّ مرّة).
+ */
+async function monthStamps(project) {
+  const B2CDailyOrder = require('../models/B2CDailyOrder');
+  const agg = await B2CDailyOrder.aggregate([
+    { $match: { dateKey: { $gte: `${FIRST_MONTH}-01`, $lte: `${LAST_MONTH}-31` } } },
+    { $group: { _id: { $substrBytes: ['$dateKey', 0, 7] }, at: { $max: '$updatedAt' }, n: { $sum: 1 } } },
+  ]);
+  const by = new Map(agg.map((a) => [a._id, a]));
+  const ord = await orderOf(project._id);
+  const em = await headEmails();
+  const tail = `${ord?.updatedAt ? new Date(ord.updatedAt).getTime() : 0}.${em.at ? new Date(em.at).getTime() : 0}`;
+  const out = {};
+  for (const mk of monthsOf('all')) {
+    const a = by.get(mk);
+    out[mk] = `${a ? `${new Date(a.at || 0).getTime()}.${a.n}` : '0'}.${tail}`;
+  }
+  return { stamps: out, headEmails: em.emails };
 }
 
 /** بياناتُ الشهور كلُّها لمشروعٍ واحد. */
@@ -87,6 +156,9 @@ async function buildLayout(project, months) {
   const P = await E.projects();
   const pid = String(project._id);
   const now = today();
+  const ord = await orderOf(project._id);
+  const pos = new Map((ord?.order || []).map((id, i) => [String(id), i]));
+  const { stamps, headEmails } = await monthStamps(project);
 
   const lts = (await LightTransportEmployee.find({ $or: [{ staffKind: 'rep' }, { contractTypeAr: /يوزر/ }] })
     .populate('employee', 'employmentStatus')
@@ -112,7 +184,7 @@ async function buildLayout(project, months) {
     const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
     const rows = new Map();
     const rowFor = (key, base) => { if (!rows.has(key)) rows.set(key, { ...base, cells: {} }); return rows.get(key); };
-    const person = (l) => rowFor(`lt:${l._id}`, { id: S(l.idNumber), name: S(l.name), sup: S(l.supervisorName), editable: true });
+    const person = (l) => rowFor(`lt:${l._id}`, { lt: String(l._id), id: S(l.idNumber), name: S(l.name), sup: S(l.supervisorName), editable: true });
     const inMonth = orders.filter((o) => o.dateKey.startsWith(mk));
 
     if (mk < SYNC_FROM) {
@@ -164,11 +236,16 @@ async function buildLayout(project, months) {
         }
       }
     }
-    const list = [...rows.values()].sort((a, b) => (a.id === '—') - (b.id === '—') || a.sup.localeCompare(b.sup, 'ar') || a.name.localeCompare(b.name, 'ar'));
-    out[mk] = { days, editable: mk >= SYNC_FROM, rows: list };
+    // الترتيبُ المحفوظ أوّلًا (يرتّبه مسؤولو القسم)، ثمّ مَن ليس فيه بالمشرف فالاسم،
+    // والحساباتُ القديمةُ بلا صاحبٍ في الآخر. ومَن نُقل يبقى في مكانه بخانات «في X».
+    const at = (r) => (r.lt && pos.has(r.lt) ? pos.get(r.lt) : Infinity);
+    const list = [...rows.values()].sort((a, b) => (a.id === '—') - (b.id === '—')
+      || (at(a) === at(b) ? 0 : at(a) < at(b) ? -1 : 1)
+      || a.sup.localeCompare(b.sup, 'ar') || a.name.localeCompare(b.name, 'ar'));
+    out[mk] = { days, editable: mk >= SYNC_FROM, stamp: stamps[mk] || '', rows: list };
   }
   const daily = Number(project.dailyTarget) || Math.round((Number(project.monthlyTarget) || 0) / 30);
-  return { project: project.nameAr, key: project.name, dailyTarget: daily, today: now, months: out };
+  return { project: project.nameAr, key: project.name, dailyTarget: daily, today: now, headEmails, months: out };
 }
 
 exports.layout = async (req, res) => {
@@ -202,16 +279,21 @@ exports.edit = async (req, res) => {
       const dk = `${month}-${pad(day)}`;
       const r = { month, day, id: S(e.id), ok: false };
       results.push(r);
-      if (!/^\d{4}-\d{2}$/.test(month) || month < SYNC_FROM || !(day >= 1 && day <= 31)) { r.reason = 'month'; continue; }
+      // الشهورُ قبل أكتوبر 2026 لا يكتب فيها إلّا مسؤولو القسم — حمايةُ أوراقها في
+      // الشيت لهم وحدَهم (بريدُهم في «شيتات جوجل»)، فما يصل منها هنا منهم.
+      if (!/^\d{4}-\d{2}$/.test(month) || month < FIRST_MONTH || month > LAST_MONTH || !(day >= 1 && day <= 31)) { r.reason = 'month'; continue; }
+      const old = month < SYNC_FROM;
       if (dk > now) { r.reason = 'future'; continue; }
       const raw = e.value;
       const value = raw === '' || raw === null || raw === undefined ? null : Number(String(raw).replace(AR_DIGITS, (c) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(c))));
       if (value !== null && (!Number.isInteger(value) || value < 0 || value > 2000)) { r.reason = 'value'; continue; }
       const lt = ltByKey.get(idKey(e.id));
       if (!lt) { r.reason = 'rep'; continue; }
-      // لا يُكتب يومٌ كان فيه المندوبُ في مشروعٍ آخر.
-      if (E.fold(projectTimeline(lt)(dk)) !== E.fold(project.nameAr)) { r.reason = 'other-project'; continue; }
+      // لا يُكتب يومٌ كان فيه المندوبُ في مشروعٍ آخر. (والشهورُ القديمةُ تُعرض بمشروع
+      // الأوردر نفسِه لا بسجلّ النقل — سجلُّ النقل لا يبلغها.)
+      if (!old && E.fold(projectTimeline(lt)(dk)) !== E.fold(project.nameAr)) { r.reason = 'other-project'; continue; }
       const rep = await E.ensureRep(lt, null);
+      await E.clearOtherAccounts(lt, rep._id, dk, old ? { projectId: project._id, byName: true } : {});
       const [y, m, d] = dk.split('-').map(Number);
       await B2CDailyOrder.findOneAndUpdate(
         { rep: rep._id, dateKey: dk },
@@ -251,5 +333,46 @@ exports.register = async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 };
 
+/** بصماتُ الشهور كلِّها — ليعيد السكربتُ رسمَ ما تغيّر منها وحدَه. */
+exports.stamps = async (req, res) => {
+  try {
+    if (await guard(req, res)) return;
+    const project = await projectOf(req.query.project);
+    if (!project || !project.monthlyTarget) return res.status(404).json({ message: 'project' });
+    res.json(await monthStamps(project));
+  } catch (e) { res.status(500).json({ message: e.message }); }
+};
+
+/**
+ * ترتيبٌ جديدٌ من الشيت — سحبَ أحدُ مسؤولي القسم صفوفَ شهرٍ فيه. والسحبُ لا يقدر عليه
+ * غيرُهم: الورقةُ محميّةٌ ومحرّروها بريدُهم وحدَه. يُرسل السكربتُ أرقامَ الإقامة بترتيبها.
+ *   POST /api/public/b2c-sheets/order  { token, project, month, ids: [iqama] }
+ */
+exports.order = async (req, res) => {
+  try {
+    if (await guard(req, res)) return;
+    const project = await projectOf(req.body.project);
+    if (!project) return res.status(404).json({ message: 'project' });
+    const ids = (Array.isArray(req.body.ids) ? req.body.ids : []).map(idKey).filter((x) => x && x !== '—');
+    if (!ids.length) return res.status(400).json({ message: 'ids' });
+    const { LightTransportEmployee } = require('../models/LightTransport');
+    const lts = await LightTransportEmployee.find({ idNumber: { $nin: ['', null] } }).select('idNumber').lean();
+    const byKey = new Map(lts.map((l) => [idKey(l.idNumber), String(l._id)]));
+    const ltIds = ids.map((k) => byKey.get(k)).filter(Boolean);
+    const order = await saveOrder(project, ltIds, { source: 'sheet' });
+    res.json({ ok: true, matched: ltIds.length, unknown: ids.length - ltIds.length, size: order.length });
+  } catch (e) {
+    console.error('b2c sheets order', e);
+    res.status(500).json({ message: e.message });
+  }
+};
+
 exports._buildLayout = buildLayout;
 exports._projectTimeline = projectTimeline;
+exports._mergeOrder = mergeOrder;
+exports.projectOf = projectOf;
+exports.orderOf = orderOf;
+exports.saveOrder = saveOrder;
+exports.headEmails = headEmails;
+exports.setHeadEmails = setHeadEmails;
+exports.today = today;

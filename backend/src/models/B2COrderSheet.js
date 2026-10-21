@@ -43,7 +43,14 @@ module.exports = { B2COrderSheet, B2COrderSheetCell };
  * مفتاحُ سكربت جوجل — يُولَّد في الخادم مرّةً ويُحفظ هنا، ولا يُكتب بيد أحد.
  * يصل السكربتَ مضمَّنًا فيه حين يُحمَّل من «شيتات جوجل» (لمدير القسم ونائبه).
  */
-const keySchema = new mongoose.Schema({ _id: { type: String, default: 'main' }, token: { type: String, required: true } }, { timestamps: true });
+const keySchema = new mongoose.Schema({
+  _id: { type: String, default: 'main' },
+  token: { type: String, required: true },
+  // بريدُ جوجل لمسؤولي القسم (المدير ونائبه والإدارة) — يُضافون محرّرين للحماية في كلّ
+  // ورقة: يكتبون في أيّ خانة يومٍ في أيّ شهر، ويسحبون الصفوفَ ليرتّبوا المناديب.
+  headEmails: [{ type: String, trim: true, lowercase: true }],
+  headEmailsAt: { type: Date, default: null },
+}, { timestamps: true });
 const B2CSheetsKey = mongoose.models.B2CSheetsKey || mongoose.model('B2CSheetsKey', keySchema);
 let keyCache = { token: '', at: 0 };
 async function sheetsToken() {
@@ -58,4 +65,18 @@ async function sheetsToken() {
   return doc.token;
 }
 module.exports.B2CSheetsKey = B2CSheetsKey;
+
+/**
+ * ترتيبُ المناديب في شيت المشروع — واحدٌ للمشروع يسري على كلّ شهوره (صاحبُ الشركة،
+ * ٢٠٢٦/١٠/٢١): مَن يُدخل الأوردرات يريد المناديبَ بترتيبٍ يعرفه. يغيّره مسؤولو القسم
+ * من «شيتات جوجل» في النظام أو بسحب الصفوف في الشيت نفسه.
+ * `order` معرّفاتُ صفوف سجلّ النقل الخفيف بالترتيب؛ ومَن ليس فيها يأتي بعدها.
+ */
+const orderSchema = new mongoose.Schema({
+  _id: { type: mongoose.Schema.Types.ObjectId, ref: 'B2CProject' },
+  order: [{ type: String }],
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  source: { type: String, default: '' },
+}, { timestamps: true });
+module.exports.B2CSheetOrder = mongoose.models.B2CSheetOrder || mongoose.model('B2CSheetOrder', orderSchema);
 module.exports.sheetsToken = sheetsToken;

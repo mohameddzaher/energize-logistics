@@ -127,9 +127,49 @@ function evaluate({ total, workedDays, project }) {
 
 const dayKey = (d) => new Date(d).toISOString().slice(0, 10);
 const isoDate = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(S(v)) ? S(v) : null);
+const riyadhDay = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date(d));
+
+/**
+ * مشروعُ المندوب في كلّ يوم — من سجلّ نقله (`history` بـ kind: project).
+ * يُرجع دالّةً: dateKey → اسمُ المشروع في ذلك اليوم.
+ */
+function projectTimeline(lt) {
+  const moves = (lt.history || []).filter((h) => h.kind === 'project' && h.at)
+    .map((h) => ({ day: riyadhDay(h.at), from: S(h.fromValue), to: S(h.toValue) }))
+    .sort((a, b) => a.day.localeCompare(b.day));
+  return (dk) => {
+    if (!moves.length) return S(lt.projectAr);
+    // النقلُ نافذٌ من يومه: يومُ النقل في المشروع الجديد.
+    let cur = moves[0].from || S(lt.projectAr);
+    for (const mv of moves) { if (mv.day <= dk) cur = mv.to; else break; }
+    return cur;
+  };
+}
+
+/**
+ * رقمُ اليوم واحدٌ للرجل — والآخرُ هو المعتمد. قد يكون للمندوب أكثرُ من حساب طلبات
+ * (من الشيتات القديمة)، والشيتُ والمدخلاتُ يجمعان حساباتِه في خانة اليوم. فإذا كُتب
+ * رقمٌ في حسابٍ مُحي ما في حساباته الأخرى ذلك اليوم، وإلّا جُمع القديمُ مع الجديد.
+ * `projectId` يحصر المحوَ في مشروعٍ واحد (الشهورُ القديمة تُعرض بمشروع الأوردر).
+ * `byName` يشمل حساباتٍ بلا ربطٍ باسمه (الشهورُ القديمة تنسبها إليه باسمه).
+ */
+async function clearOtherAccounts(lt, keepRepId, dateKey, { projectId = null, byName = false } = {}) {
+  const B2CRep = require('../models/B2CRep');
+  const B2CDailyOrder = require('../models/B2CDailyOrder');
+  const or = [{ ltEmployee: lt._id }];
+  if (byName && S(lt.name)) or.push({ ltEmployee: null });
+  let reps = await B2CRep.find({ $or: or, _id: { $ne: keepRepId } }).select('_id ltEmployee arabicName englishName').lean();
+  reps = reps.filter((r) => r.ltEmployee || fold(r.arabicName || r.englishName) === fold(lt.name));
+  if (!reps.length) return 0;
+  const q = { rep: { $in: reps.map((r) => r._id) }, dateKey, orders: { $ne: null } };
+  if (projectId) q.project = projectId;
+  const r = await B2CDailyOrder.updateMany(q, { $set: { orders: null, worked: false } });
+  return r.modifiedCount || 0;
+}
 
 module.exports = {
   NEAR, MONTH_DAYS, ENDED, TRANSFER_ROLES, ENTRY_ROLES,
   isEntryHead, canTransfer, projects, branchFor, scopeOf, inScope, ensureRep, syncRepOf, evaluate, fold, dayKey, isoDate,
+  projectTimeline, clearOtherAccounts, riyadhDay,
   oid: (v) => new mongoose.Types.ObjectId(String(v)),
 };

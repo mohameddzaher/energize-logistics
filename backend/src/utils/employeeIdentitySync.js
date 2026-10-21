@@ -43,7 +43,7 @@ async function pushIdChange(emp, beforeIds, nowIds) {
   if (changed) {
     try {
       const cache = require('./ttlCache');
-      for (const k of ['vreg:', 'lt:', 'hrm:', 'hr:employees:']) cache.clear(k);
+      for (const k of ['vreg:', 'lt:', 'hrm:', 'hr:employees:', 'fleet:']) cache.clear(k);
       const { emitToAll } = require('../websocket/socketManager');
       emitToAll('vreg:updated', {}); emitToAll('lt:updated', {}); emitToAll('hr:employee', { id: String(emp._id) });
     } catch (_) { /* */ }
@@ -80,7 +80,7 @@ const COPIED_FIELDS = ['firstName', 'lastName', 'arabicName', 'phone', 'national
 function announcePerson(emp) {
   try {
     const cache = require('./ttlCache');
-    for (const k of ['vreg:', 'lt:', 'hrm:', 'hr:employees:', 'dash:hr:', 'dash:vehicles:', 'b2c:', 'reports:doc:']) cache.clear(k);
+    for (const k of ['vreg:', 'lt:', 'hrm:', 'hr:employees:', 'dash:hr:', 'dash:vehicles:', 'b2c:', 'reports:doc:', 'fleet:']) cache.clear(k);
   } catch (_) { /* */ }
   try {
     const { emitToAll } = require('../websocket/socketManager');

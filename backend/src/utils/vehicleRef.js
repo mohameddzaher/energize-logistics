@@ -108,7 +108,7 @@ async function pushVehicleChange(id, before = {}, { emit = true } = {}) {
   if (emit) {
     try {
       const cache = require('./ttlCache');
-      for (const k of ['vreg:', 'lt:', 'veh:', 'vehicles:list', 'hrm:', 'hr:employees:', 'b2c:', 'dash:vehicles:', 'reports:doc:vehicle:', 'reports:opts:vehicle:']) cache.clear(k);
+      for (const k of ['vreg:', 'lt:', 'veh:', 'vehicles:list', 'hrm:', 'hr:employees:', 'b2c:', 'dash:vehicles:', 'reports:doc:vehicle:', 'reports:opts:vehicle:', 'fleet:']) cache.clear(k);
     } catch (_) { /* */ }
     try {
       const { emitToAll } = require('../websocket/socketManager');

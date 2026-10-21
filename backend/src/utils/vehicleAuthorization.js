@@ -290,7 +290,7 @@ function announce(result = {}) {
   try {
     const cache = require('./ttlCache');
     for (const k of ['vreg:', 'lt:', 'veh:', 'vehicles:list', 'hrm:', 'hr:employees:', 'dash:hr:', 'dash:vehicles:',
-      'reports:doc:vehicle:', 'reports:opts:vehicle:', 'reports:doc:employee:']) cache.clear(k);
+      'reports:doc:vehicle:', 'reports:opts:vehicle:', 'reports:doc:employee:', 'fleet:']) cache.clear(k);
   } catch (_) { /* */ }
   try {
     const { emitToAll } = require('../websocket/socketManager');

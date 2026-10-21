@@ -47,6 +47,8 @@ const emit = (event, payload = {}) => {
   cache.clear('lt:');
   cache.clear('reports:doc:vehicle:');
   cache.clear('reports:opts:vehicle:');
+  // الأسطولُ يقرأ هويّةَ شاحناته ومستنداتِها من هنا (utils/fleetIdentity).
+  cache.clear('fleet:');
   try { emitToAll(event, payload); } catch (e) {}
   // قسمُ النقل الخفيف يقرأ مركباتِ قطاعه من هنا — فيُوقَظ مع كلّ تغيير.
   try { emitToAll('lt:updated', { from: 'vehicles' }); } catch (e) {}

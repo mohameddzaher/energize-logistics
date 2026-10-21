@@ -62,6 +62,8 @@ const bustEmployeeCaches = () => {
     cache.clear('hr:employees:');
     cache.clear('dash:hr:');
     cache.clear('hrm:');
+    // الأسطولُ يقرأ اسمَ السائق وحالتَه من الملفّ (utils/fleetIdentity).
+    cache.clear('fleet:');
   } catch (e) {}
   // الثلاثةُ معًا: الانتهاءاتُ والماستر تسمع `hr:master`، وملفُّ الموظّف وقائمتُه
   // `hr:employee`، وصفحةُ العقود `hr:contract` — وكتابةٌ واحدةٌ تغيّر ما تعرضه

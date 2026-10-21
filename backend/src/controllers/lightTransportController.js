@@ -1402,11 +1402,7 @@ module.exports.applyHousing = applyHousing;
  * وما يُعدَّل من هنا محصورٌ في أعمدة التشغيل (المشروع والمدينة والقائد الفعليّ
  * والتفويض)؛ اللوحةُ والرقمُ التسلسليّ ووثائقُ المركبة تبقى لقسم المركبات.
  */
-const LT_VEHICLE_PROJECTS = /^(كيتا|هنجرستيشن|هنقرستيشن|امازون|أمازون|نينجا)$/;
-const ltVehicleScope = () => ({
-  isActive: { $ne: false },
-  $or: [{ sectorAr: /خفيف/ }, { departmentAr: LT_VEHICLE_PROJECTS }],
-});
+// ونطاقُ المركبات واحدٌ مع اللوحة: `BOARD.vehicleScope` (قطاعُه أو مشاريعُه وما عليه راكبُه).
 const ymd = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
 const ltVehicleRow = (v) => {
   const a = v.authorizedPerson || {}; const d = v.actualDriver || {};
@@ -1421,12 +1417,35 @@ const ltVehicleRow = (v) => {
     durationDays: start && end ? Math.round((new Date(end) - new Date(start)) / 86400000) : null,
     daysLeft: end ? Math.round((new Date(end) - new Date(today)) / 86400000) : null,
     sector: v.sectorAr || '', updatedAt: v.updatedAt,
+    // ── وما يديره القسمُ من بيانات المركبة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────
+    serviceStatus: v.serviceStatusAr || '', color: v.colorAr || '', notes: v.notesAr || '',
+    registrationType: v.registrationTypeAr || '',
+    operatingCardNumber: v.operatingCard?.cardNumber || '', operatingCardEnd: ymd(v.operatingCard?.expiryDate),
+    insuranceEnd: ymd(v.insurance?.expiryDate), licenseEnd: ymd(v.vehicleLicense?.expiryDate),
+    inspectionEnd: ymd(v.inspection?.expiryDate),
   };
 };
-const LT_VEHICLE_SELECT = 'serialNumber departmentAr cityAr plateNumber sectorAr actualDriver authorizedPerson updatedAt';
+const LT_VEHICLE_SELECT = 'serialNumber departmentAr cityAr plateNumber sectorAr actualDriver authorizedPerson updatedAt '
+  + 'serviceStatusAr colorAr notesAr registrationTypeAr operatingCard.cardNumber operatingCard.expiryDate insurance.expiryDate '
+  + 'vehicleLicense.expiryDate inspection.expiryDate';
 /** مَن يعدّل: مديرُ القطاع ونائبُه ومديرُ النظام (وأهلُ المال كما في كلّ ما يُفتَح لهم). */
 const LT_VEHICLE_EDIT = ['super_admin', 'b2c_manager', 'b2c_deputy', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
 exports.LT_VEHICLE_EDIT = LT_VEHICLE_EDIT;
+/** مَن يعدّل سجلَّ المركبات نفسَه (routes/vehicleRegistry EDIT) — وحدَه يغيّر اللوحة من هنا. */
+const REGISTRY_EDIT = ['super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
+  'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
+
+// GET /people?q= — منسدلةُ الأشخاص لمركبات القسم: موظّفو النقل الخفيف أوّلًا ثمّ
+// الموارد البشريّة. ما تعرضه هو ما يقبله التعديل — utils/vehiclePerson.
+exports.people = async (req, res) => {
+  try {
+    const people = await require('../utils/vehiclePerson').options({ scope: 'lt', q: req.query.q });
+    res.json({ people });
+  } catch (e) {
+    console.error('lt people:', e);
+    res.status(500).json({ message: 'تعذّر تحميل قائمة الموظّفين' });
+  }
+};
 
 // GET /vehicles
 /**
@@ -1442,7 +1461,7 @@ exports.listVehicles = async (req, res) => {
     const q = req.query || {};
     const decorated = await boardRows({ isActive: { $ne: false } });
     const riderRows = decorated.filter((r) => r.vehicle && !isEnded(r));
-    let vrows = await vehicleRows(riderRows, 'updatedAt', await heldRows());
+    let vrows = await vehicleRows(riderRows, LT_VEHICLE_SELECT, await heldRows());
     const people = BOARD.personTests(q, { typeKey, contractKindOf });
     const vpass = BOARD.vehicleTests(q, people, { typeKey });
     vrows = vrows.filter((v) => vpass(v));
@@ -1509,10 +1528,12 @@ exports.updateVehicle = async (req, res) => {
   try {
     if (!LT_VEHICLE_EDIT.includes(req.user?.role)) return res.status(403).json({ message: 'تعديلُ مركبات القسم لمدير القطاع ونائبه' });
     const { VehicleMaster } = require('../models/VehicleMaster');
-    const v = await VehicleMaster.findOne({ _id: req.params.id, ...ltVehicleScope() });
+    // مركباتُ القسم كما تعدّها اللوحة: قطاعُه أو مشاريعُه، وما عليه راكبٌ من سجلّه.
+    const ridden = await LightTransportEmployee.distinct('vehicle', { isActive: { $ne: false }, vehicle: { $ne: null } });
+    const v = await VehicleMaster.findOne({ _id: req.params.id, ...BOARD.vehicleScope(ridden) });
     if (!v) return res.status(404).json({ message: 'المركبةُ ليست من مركبات القسم' });
     const b = req.body || {};
-    const before = ltVehicleRow(v.toObject());
+    const before = ltVehicleRow((await VehicleMaster.findById(v._id).select(LT_VEHICLE_SELECT).lean()) || {});
     const text = (x) => S(x).slice(0, 150);
     const dateOf = (x, label) => {
       if (x === '' || x === null) return null;
@@ -1523,22 +1544,80 @@ exports.updateVehicle = async (req, res) => {
     const $set = {};
     if (b.project !== undefined) $set.departmentAr = text(b.project);
     if (b.city !== undefined) $set.cityAr = text(b.city);
-    if (b.driverId !== undefined) $set['actualDriver.idNumber'] = text(b.driverId).replace(/\s+/g, '');
-    if (b.driverName !== undefined) $set['actualDriver.name'] = text(b.driverName);
-    if (b.authorizedId !== undefined) $set['authorizedPerson.iqamaNumber'] = text(b.authorizedId).replace(/\s+/g, '');
-    if (b.authorizedName !== undefined) $set['authorizedPerson.name'] = text(b.authorizedName);
-    if (b.authorizedPhone !== undefined) $set['authorizedPerson.phone'] = text(b.authorizedPhone);
+    // ── وما يديره القسمُ من بيانات المركبة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────
+    // يُكتب في سجلّ المركبات نفسِه وبطريقه (findByIdAndUpdate) فتجري خطّافاتُه:
+    // الاشتقاقُ، ومرآةُ التفويض، ونقلُ اللوحة إلى نسخها.
+    if (b.serviceStatus !== undefined) $set.serviceStatusAr = text(b.serviceStatus);
+    if (b.color !== undefined) $set.colorAr = text(b.color);
+    if (b.notes !== undefined) $set.notesAr = S(b.notes).slice(0, 1000);
+    if (b.operatingCardNumber !== undefined) $set['operatingCard.cardNumber'] = text(b.operatingCardNumber).replace(/\s+/g, '');
+    for (const [k, p, label] of [['operatingCardEnd', 'operatingCard.expiryDate', 'تاريخُ انتهاء بطاقة التشغيل'],
+      ['insuranceEnd', 'insurance.expiryDate', 'تاريخُ انتهاء التأمين'], ['licenseEnd', 'vehicleLicense.expiryDate', 'تاريخُ انتهاء الاستمارة'],
+      ['inspectionEnd', 'inspection.expiryDate', 'تاريخُ انتهاء الفحص الدوري']]) {
+      if (b[k] !== undefined) {
+        $set[p] = dateOf(b[k], label);
+        // تاريخٌ كُتب يرفع علامةَ «مطلوب/لا يوجد» عن المستند — صار له تاريخ.
+        if ($set[p]) $set[p.replace('expiryDate', 'statusCode')] = '';
+      }
+    }
+    // اللوحةُ هويّةُ المركبة: يعدّلها مَن يعدّل سجلَّ المركبات وحدَه.
+    if (b.plateNumber !== undefined && text(b.plateNumber) !== S(v.plateNumber)) {
+      if (!REGISTRY_EDIT.includes(req.user?.role)) return res.status(403).json({ message: 'اللوحةُ تُعدَّل من قسم المركبات' });
+      if (!text(b.plateNumber)) return res.status(400).json({ message: 'اللوحةُ لا تُترك فارغة' });
+      $set.plateNumber = text(b.plateNumber);
+    }
     if (b.authNumber !== undefined) $set['authorizedPerson.authorizationNumber'] = text(b.authNumber);
     if (b.authStart !== undefined) $set['authorizedPerson.startDate'] = dateOf(b.authStart, 'تاريخُ بداية التفويض');
     if (b.authEnd !== undefined) $set['authorizedPerson.expiryDate'] = dateOf(b.authEnd, 'تاريخُ نهاية التفويض');
-    if (!Object.keys($set).length) return res.status(400).json({ message: 'لا حقولَ للتعديل' });
+
+    /**
+     * ── القائدُ الفعليّ والمفوَّض: يُختاران من الموظّفين ولا يُكتبان ────────────
+     * القائدُ الفعليّ = راكبُ المركبة من سجلّ القسم (utils/ltRider) — يُغيَّر بربط
+     * صفّه بها لا بكتابة اسمٍ عليها. والمفوَّضُ ورقةٌ تُكتب بـ`setHolder`
+     * (utils/vehicleAuthorization) فيتبعها سجلُّ الإسناد. واسمٌ لا يطابق موظّفًا
+     * يُرفض برسالةٍ واضحة (utils/vehiclePerson).
+     */
+    const VP = require('../utils/vehiclePerson');
+    const driverSent = ['driverLt', 'driverId', 'driverName'].some((k) => b[k] !== undefined);
+    let rider;
+    if (driverSent) {
+      rider = await VP.resolvePerson({ ltId: b.driverLt, idNumber: b.driverId, name: b.driverName }, { needLt: true, label: 'القائد الفعلي' });
+    }
+    const authSent = ['authorizedEmployee', 'authorizedLt', 'authorizedId', 'authorizedName'].some((k) => b[k] !== undefined);
+    let holder;
+    if (authSent) {
+      holder = await VP.resolvePerson({ employeeId: b.authorizedEmployee, ltId: b.authorizedLt, idNumber: b.authorizedId, name: b.authorizedName }, { label: 'المفوَّض' });
+    }
+    const holderChanged = authSent && (holder ? holder.idNumber !== S(v.authorizedPerson?.iqamaNumber) || holder.name !== S(v.authorizedPerson?.name) : !!(S(v.authorizedPerson?.name) || S(v.authorizedPerson?.iqamaNumber)));
+    if (!Object.keys($set).length && !driverSent && !authSent) return res.status(400).json({ message: 'لا حقولَ للتعديل' });
     const s0 = $set['authorizedPerson.startDate'] !== undefined ? $set['authorizedPerson.startDate'] : v.authorizedPerson?.startDate;
     const e0 = $set['authorizedPerson.expiryDate'] !== undefined ? $set['authorizedPerson.expiryDate'] : v.authorizedPerson?.expiryDate;
     if (s0 && e0 && new Date(e0) < new Date(s0)) return res.status(400).json({ message: 'نهايةُ التفويض قبل بدايته' });
     // تاريخٌ كُتب يرفع علامةَ «مطلوب/لا يوجد» عن التفويض — صار له تاريخ.
     if ($set['authorizedPerson.expiryDate']) $set['authorizedPerson.statusCode'] = '';
 
-    const saved = await VehicleMaster.findByIdAndUpdate(v._id, { $set }, { new: true, runValidators: true }).select(LT_VEHICLE_SELECT).lean();
+    // ورقةُ تفويضٍ لشخصٍ آخر تُكتب كاملةً بـ`setHolder` — رقمُها ومدّتُها معها.
+    if (holderChanged) {
+      const auth = {};
+      for (const k of Object.keys($set)) if (k.startsWith('authorizedPerson.')) { auth[k.slice(17)] = $set[k]; delete $set[k]; }
+      const VA = require('../utils/vehicleAuthorization');
+      await VA.setHolder(v._id, holder ? {
+        employee: holder.employee || null, name: holder.name, idNumber: holder.idNumber, phone: holder.phone,
+        jobTitleAr: holder.jobTitleAr || undefined,
+        authorizationNumber: auth.authorizationNumber !== undefined ? auth.authorizationNumber : S(v.authorizedPerson?.authorizationNumber),
+        startDate: auth.startDate !== undefined ? auth.startDate : (v.authorizedPerson?.startDate || null),
+        expiryDate: auth.expiryDate !== undefined ? auth.expiryDate : (v.authorizedPerson?.expiryDate || null),
+      } : null, { userId: req.user?._id, byName: byName(req.user), note: holder ? 'فُوِّضت المركبة من مركبات النقل الخفيف' : undefined, reason: holder ? '' : 'من مركبات النقل الخفيف' });
+    }
+    if (Object.keys($set).length) {
+      const { fillHijriPairs } = require('../utils/hijri');
+      fillHijriPairs($set, v.toObject());
+      await VehicleMaster.findByIdAndUpdate(v._id, { $set }, { new: true, runValidators: true });
+    }
+    if (driverSent) {
+      await require('../utils/ltRider').setRider(v._id, rider ? rider.ltId : null, { user: req.user, announce: false });
+    }
+    const saved = await VehicleMaster.findById(v._id).select(LT_VEHICLE_SELECT).lean();
     const after = ltVehicleRow(saved);
     const changedKeys = Object.keys(after).filter((k) => !['updatedAt', 'daysLeft'].includes(k) && String(before[k] ?? '') !== String(after[k] ?? ''));
     logAudit({
@@ -1547,12 +1626,14 @@ exports.updateVehicle = async (req, res) => {
       ipAddress: req.ip,
     }).catch(() => {});
     // قسمُ المركبات يسمع في الحال (ذاكرتُه تُمسَح قبل الإعلان)، والقسمُ نفسُه كذلك.
-    try { const cache = require('../utils/ttlCache'); for (const k of ['vreg:', 'lt:', 'dash:vehicles:', 'reports:doc:vehicle:', 'reports:opts:vehicle:']) cache.clear(k); } catch (e) { /* */ }
+    try { const cache = require('../utils/ttlCache'); for (const k of ['vreg:', 'lt:', 'veh:', 'vehicles:list', 'hr:', 'hrm:', 'dash:', 'reports:doc:', 'reports:opts:vehicle:']) cache.clear(k); } catch (e) { /* */ }
     emit('vreg:updated', {});
     emit('lt:updated', {});
+    emit('hr:employee', {});
     res.json({ vehicle: after });
   } catch (e) {
     if (e.bad) return res.status(400).json({ message: e.message });
+    if (e.status) return res.status(e.status).json({ message: e.message });
     console.error('lt vehicle update:', e);
     return require('../utils/mongooseError').sendMongooseError(res, e, 'تعذّر تعديل المركبة');
   }

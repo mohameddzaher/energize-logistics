@@ -789,12 +789,27 @@ exports.create = async (req, res) => {
         body[b] = { ...(body[b] || {}), [f]: val };
       }
     } catch (e) { /* التسجيلُ يمضي */ }
+    // المفوَّضُ يُختار من الموظّفين، والقائدُ الفعليُّ مرآةٌ لا تُكتب — راجع personPatch.
+    if (body.actualDriver && (String(body.actualDriver.name || '').trim() || String(body.actualDriver.idNumber || '').trim())) {
+      return res.status(400).json({ message: 'القائدُ الفعليّ لا يُكتب هنا — يُختار من «مركبات النقل الخفيف» فيُربط الراكبُ بالمركبة' });
+    }
+    delete body.actualDriver;
+    if (body.authorizedPerson && typeof body.authorizedPerson === 'object') {
+      const a = body.authorizedPerson;
+      const holder = await require('../utils/vehiclePerson').resolvePerson(
+        { employeeId: a.employeeId, ltId: a.ltId, idNumber: a.iqamaNumber, name: a.name }, { label: 'المفوَّض' });
+      const { employeeId, ltId, ...rest } = a; // eslint-disable-line no-unused-vars
+      body.authorizedPerson = holder
+        ? { ...rest, name: holder.name, iqamaNumber: holder.idNumber, phone: holder.phone, jobTitleAr: rest.jobTitleAr || holder.jobTitleAr }
+        : { ...rest, name: '', iqamaNumber: '', phone: '' };
+    }
     const v = await VehicleMaster.create({ ...body, isActive: true });
     // مفتاحُ اللوحة يُشتقّ في الحفظ (models/VehicleMaster) — فتُعدّ حوادثُها المسجَّلة.
     await syncAccidentCount(v.plateKey);
     emit('vreg:updated', {});
     res.status(201).json({ vehicle: v });
   } catch (e) {
+    if (e.bad) return res.status(400).json({ message: e.message });
     if (await badInput(e, res)) return;
     return sendMongooseError(res, e, 'Failed to create vehicle');
   }
@@ -865,9 +880,19 @@ exports.update = async (req, res) => {
     // الوثيقةُ قبل التعديل كاملةً: منها يُشتقّ الهجريّ، ومنها يُكتب ما تغيّر.
     const before = await VehicleMaster.findById(req.params.id).select('-renewals -fuelCard.history').lean();
     if (!before) return res.status(404).json({ message: 'Vehicle not found' });
+    const person = await personPatch($set, before);
     const derived = fillHijriPairs($set, before);
-    const v = await VehicleMaster.findByIdAndUpdate(req.params.id, { $set }, { new: true, runValidators: true });
+    let v = Object.keys($set).length
+      ? await VehicleMaster.findByIdAndUpdate(req.params.id, { $set }, { new: true, runValidators: true })
+      : await VehicleMaster.findById(req.params.id);
     if (!v) return res.status(404).json({ message: 'Vehicle not found' });
+    if (person.holderChange) {
+      const r = await require('../utils/vehicleAuthorization').setHolder(v._id, person.holder, {
+        userId: req.user?._id, byName: `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim(),
+        note: person.holder ? 'فُوِّضت المركبة من سجل المركبات' : undefined, reason: person.holder ? '' : 'من سجل المركبات',
+      });
+      v = r.vehicle;
+    }
     if ($set.plateNumber) await syncAccidentCount(v.plateKey);
     emit('vreg:updated', {});
     // ── والتعديلُ يُقيَّد حقلًا حقلًا ─────────────────────────────────────────
@@ -888,8 +913,69 @@ exports.update = async (req, res) => {
     // ويُقال ما اشتُقّ: الشاشةُ تُظهره فلا يُفاجأ أحدٌ بتاريخٍ لم يكتبه.
     res.json({ vehicle: v, ...(Object.keys(derived).length ? { derived } : {}) });
   } catch (e) {
+    if (e.bad) return res.status(400).json({ message: e.message });
     if (await badInput(e, res)) return;
     return sendMongooseError(res, e, 'Failed to update vehicle');
+  }
+};
+
+/**
+ * ── خاناتُ الشخص على المركبة: تُختار ولا تُكتب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ────
+ * المفوَّضُ يُرسَل مرجعًا (`authorizedPerson.employeeId` / `ltId`) أو رقمَ هويّة،
+ * فيُحسَم بـ utils/vehiclePerson (والاسمُ وحدَه إن طابق موظّفًا واحدًا)، ويُكتب
+ * بـ`setHolder` فيتبعه سجلُّ الإسناد. واسمٌ لا يطابق موظّفًا يُرفض. والجوالُ
+ * من ملفّ الشخص لا من الخانة.
+ * والقائدُ الفعليّ (`actualDriver`) مرآةٌ لراكب المركبة من سجلّ النقل الخفيف —
+ * لا يُكتب من هنا؛ يُختار من «مركبات النقل الخفيف» (utils/ltRider).
+ * يُعدّل `$set` في مكانه ويردّ `{ holderChange, holder }`.
+ */
+async function personPatch($set, before) {
+  const S2 = (x) => String(x == null ? '' : x).trim();
+  const out = { holderChange: false, holder: null };
+  for (const k of Object.keys($set)) {
+    if (!k.startsWith('actualDriver')) continue;
+    const cur = k === 'actualDriver' ? before.actualDriver : before.actualDriver?.[k.split('.')[1]];
+    if (JSON.stringify(cur ?? '') === JSON.stringify($set[k] ?? '') || (typeof $set[k] === 'string' && S2(cur) === S2($set[k]))) { delete $set[k]; continue; }
+    throw Object.assign(new Error('القائدُ الفعليّ لا يُكتب هنا — يُختار من «مركبات النقل الخفيف» فيُربط الراكبُ بالمركبة'), { bad: true });
+  }
+  const ap = before.authorizedPerson || {};
+  const sent = (f) => $set[`authorizedPerson.${f}`] !== undefined;
+  const refSent = sent('employeeId') || sent('ltId');
+  const nameChanged = sent('name') && S2($set['authorizedPerson.name']) !== S2(ap.name);
+  const idChanged = sent('iqamaNumber') && S2($set['authorizedPerson.iqamaNumber']).replace(/\s+/g, '') !== S2(ap.iqamaNumber).replace(/\s+/g, '');
+  const input = {
+    employeeId: $set['authorizedPerson.employeeId'], ltId: $set['authorizedPerson.ltId'],
+    idNumber: sent('iqamaNumber') ? $set['authorizedPerson.iqamaNumber'] : ap.iqamaNumber,
+    name: sent('name') ? $set['authorizedPerson.name'] : ap.name,
+  };
+  for (const f of ['employeeId', 'ltId', 'name', 'iqamaNumber', 'phone']) delete $set[`authorizedPerson.${f}`];
+  if (!refSent && !nameChanged && !idChanged) return out;
+  const holder = await require('../utils/vehiclePerson').resolvePerson(input, { label: 'المفوَّض' });
+  if (holder && holder.idNumber === S2(ap.iqamaNumber) && holder.name === S2(ap.name)) return out;
+  // الورقةُ كاملةً لشخصٍ آخر: رقمُها ومدّتُها ومسمّاه — ممّا أُرسل وإلّا ممّا كان.
+  const take = (f) => { const k = `authorizedPerson.${f}`; const val = $set[k] !== undefined ? $set[k] : ap[f]; delete $set[k]; return val; };
+  out.holderChange = true;
+  if (!holder) { for (const k of Object.keys($set)) if (k.startsWith('authorizedPerson.')) delete $set[k]; return out; }
+  out.holder = {
+    employee: holder.employee || null, name: holder.name, idNumber: holder.idNumber, phone: holder.phone,
+    jobTitleAr: take('jobTitleAr') || holder.jobTitleAr || '',
+    authorizationNumber: take('authorizationNumber') || '',
+    startDate: take('startDate') || null,
+    expiryDate: take('expiryDate') || null,
+  };
+  delete $set['authorizedPerson.statusCode'];
+  return out;
+}
+exports._personPatch = personPatch;
+
+// GET /people?q= — منسدلةُ خانة المفوَّض. ما تعرضه هو ما يقبله الحفظ.
+exports.people = async (req, res) => {
+  try {
+    const people = await require('../utils/vehiclePerson').options({ scope: 'hr', q: req.query.q });
+    res.json({ people });
+  } catch (e) {
+    console.error('vreg people:', e);
+    res.status(500).json({ message: 'تعذّر تحميل قائمة الموظّفين' });
   }
 };
 
@@ -3837,12 +3923,20 @@ exports.authorizationAction = async (req, res) => {
     }
 
     // ── الإسناد: تُكتب الورقة، ويُفتَح إسنادٌ إن عُرف الموظّف ────────────────
-    const name = String(req.body?.name || '').trim();
-    if (!name) return res.status(400).json({ message: 'اسم المفوَّض مطلوب' });
-    const iq = String(req.body?.iqamaNumber || '').trim();
+    // ── والمفوَّضُ يُختار من الموظّفين — utils/vehiclePerson ──────────────────
+    // مرجعٌ (`employeeId`/`ltId`) أو رقمُ هويّة؛ والاسمُ وحدَه إن طابق موظّفًا واحدًا.
+    let holder;
+    try {
+      holder = await require('../utils/vehiclePerson').resolvePerson({
+        employeeId: req.body?.employeeId, ltId: req.body?.ltId, idNumber: req.body?.iqamaNumber, name: req.body?.name,
+      }, { label: 'المفوَّض' });
+    } catch (err) { return res.status(400).json({ message: err.message }); }
+    if (!holder) return res.status(400).json({ message: 'اختر المفوَّض من قائمة الموظّفين' });
+    const name = holder.name;
+    const iq = holder.idNumber;
     const r = await VA.setHolder(v, {
-      name, idNumber: iq,
-      jobTitleAr: String(req.body?.jobTitleAr || '').trim(),
+      employee: holder.employee || null, name, idNumber: iq, phone: holder.phone,
+      jobTitleAr: String(req.body?.jobTitleAr || '').trim() || holder.jobTitleAr,
       authorizationNumber: String(req.body?.authorizationNumber || '').trim(),
       startDate: req.body?.startDate || null,
       expiryDate: req.body?.expiryDate || null,

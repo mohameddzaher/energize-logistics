@@ -37,6 +37,8 @@ router.post('/insurance-policies/:id/renew', authorize(...EDIT), c.renewInsuranc
 
 // بحثُ الأشخاص ولوحاتُ السجلّ — تُملأ بهما نماذجُ القسم بدل الكتابة بالأيدي.
 router.get('/person-lookup', c.personLookup);
+// منسدلةُ الأشخاص لخانات المفوَّض — الموارد البشريّة ثمّ مَن لا ملفَّ له من النقل الخفيف.
+router.get('/people', c.people);
 router.get('/plate-options', c.plateOptions);
 router.get('/claims', c.listClaims);
 // ملفُّ المطالبة الواحدة وسجلُّها — قبل `/:id` العامّ أدناه، وإلّا قُرئ

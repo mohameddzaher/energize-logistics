@@ -27,6 +27,8 @@ router.get('/employees/:id/orders', require('../controllers/b2cEntryController')
 router.post('/employees', authorize.strict('super_admin', 'b2c_manager', 'b2c_deputy', ...require('../config/financeAuthority').FINANCE_FULL_ROLES), c.createEmployee);
 // مركباتُ مشاريع القسم — نافذةٌ على سجلّ المركبات نفسِه (راجع المتحكِّم).
 router.get('/vehicles', c.listVehicles);
+// منسدلةُ الأشخاص (القائد الفعلي والمفوَّض) — موظّفو القسم أوّلًا ثمّ الموارد البشريّة.
+router.get('/people', c.people);
 router.put('/vehicles/:id', authorize.strict(...c.LT_VEHICLE_EDIT), c.updateVehicle);
 router.put('/employees/:id', authorize(...EDIT), c.updateEmployee);
 // «نقل مشروع» — الطريقُ الوحيدُ لتغيير مشروع المندوب، ويحسم المتحكّمُ مَن يملكه

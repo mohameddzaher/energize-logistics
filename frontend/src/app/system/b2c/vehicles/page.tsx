@@ -139,7 +139,7 @@ export default function B2cVehiclesPage() {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <ScrollX className="max-h-[40rem]">
+        <ScrollX>
           <table className="w-full min-w-[1500px] text-[13px]">
             <thead className="bg-slate-900 text-slate-300 text-xs sticky top-0 z-10"><tr>
               {th(null, t('الرقم التسلسلي', 'Serial no.'))}

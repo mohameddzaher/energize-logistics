@@ -86,15 +86,14 @@ const SELLING_FIELDS = FIELD_GROUPS.selling;
 const FULL_FIELDS = [...ALL_FIELDS, ...SELLING_FIELDS];
 
 // ── مَن يرى قيمةَ البيع ويكتبها ─────────────────────────────────────────────
-// القائمةُ بأسمائها كما قالها صاحبُ الشركة (٢٠٢٦/١٠/٢١): مديرُ التشغيل،
-// والمبيعات، ومديرُ النظام، والإدارة، والمديرُ الماليّ، ومديرُ الحسابات،
-// والمحاسب، ومديرُ التحصيل وفريقُه. ومَن ليس فيها لا تصله القيمةُ من الخادم
-// أصلًا (`stripRowFor`) ولا يفلتر بها ولا تخرج في ملفّه — ولا يكتبها.
-// وفريقُ تقنية المعلومات معهم — رؤيةً وكتابةً (صاحبُ الشركة، ٢٠٢٦/١٠/٢١).
+// القائمةُ بأسمائها كما قالها صاحبُ الشركة (٢٠٢٦/١٠/٢١، آخرَ مرّة): مديرُ
+// النظام، والإدارة، والمديرُ الماليّ، ومديرُ الحسابات، ومديرُ التحصيل وفريقُه،
+// والمحاسب، ومديرُ التشغيل — و«المديرُ العامّ» إن أُنشئ له دور (`general_manager`).
+// والمبيعاتُ وتقنيةُ المعلومات خرجا منها. ومَن ليس فيها لا تصله القيمةُ من
+// الخادم أصلًا (`stripRowFor`) ولا يفلتر بها ولا تخرج في ملفّه — ولا يكتبها.
 const SELLING_ROLES = [
-  'super_admin', 'admin', 'operations_manager', 'sales_manager', 'sales_rep',
-  'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff',
-  'it_manager', 'it_specialist',
+  'super_admin', 'admin', 'cfo', 'accounting_manager', 'accountant',
+  'collections_manager', 'collections_staff', 'operations_manager', 'general_manager',
 ];
 
 const ROLE_FIELD_ACCESS = {
@@ -106,8 +105,6 @@ const ROLE_FIELD_ACCESS = {
   admin: FULL_FIELDS,
   // ── والمبيعاتُ تملك قيمةَ البيع وحدَها ─────────────────────────────────
   // تفتح سير العمل لتسعّر الكشف، ولا تكتب في غيره ولا ترى أعمدةَ الفاتورة.
-  sales_manager: SELLING_FIELDS,
-  sales_rep: SELLING_FIELDS,
   employee: FIELD_GROUPS.collections,
   // ── والمحاسبةُ تسجّل السدادَ كما تسجّل الفاتورة ──────────────────────────
   // كانت تملك مجموعةَ الفاتورة وحدَها، فيكتب المحاسبُ تاريخَ السداد ويضغط
@@ -128,8 +125,8 @@ const ROLE_FIELD_ACCESS = {
   collections_staff: FULL_FIELDS,
   // تقنيةُ المعلومات في `FULL_ACCESS_ROLES` — بلا حاجزٍ في كلّ قسمٍ آخر،
   // إلّا قيمةَ البيع: ليست في القائمة التي سمّاها صاحبُ الشركة.
-  it_manager: FULL_FIELDS,
-  it_specialist: FULL_FIELDS,
+  it_manager: ALL_FIELDS,
+  it_specialist: ALL_FIELDS,
 };
 // الخريطةُ والقائمةُ تقولان شيئًا واحدًا — يُفحص عند التحميل كي لا تفترقا.
 for (const [r, f] of Object.entries(ROLE_FIELD_ACCESS)) {

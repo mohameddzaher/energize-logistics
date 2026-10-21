@@ -400,10 +400,6 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: salesDashSpec), path: '/system/sales/dashboard'),
         // العملاء — سجلُّ «التشغيل» و«طلبات الشحنات» نفسُه: بابٌ ثالثٌ لا نسخةٌ ثالثة.
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: customersCfg), path: '/system/sales/customers'),
-        // سيرُ عمل التشغيل لقيمة البيع — كما في شريط الويب (للمبيعات وحدَها؛
-        // الخادمُ يحجب عنها ما سوى قيمة البيع من مال).
-        if (role == 'sales_manager' || role == 'sales_rep')
-          AppPage('سير عمل التشغيل', 'Operations Workflow', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen(), path: '/system/operations'),
         AppPage('مسار البيع', 'Pipeline', Icons.view_kanban_outlined, (c) => const SalesPipelineScreen(), path: '/system/sales/pipeline'),
         AppPage('الأهداف', 'Targets', Icons.track_changes_outlined, (c) => ResourceScreen(config: salesTargetsCfg(canEdit: canSetTargets)), path: '/system/sales/targets'),
         AppPage('الأداء', 'Performance', Icons.leaderboard_outlined, (c) => const SalesPerformanceScreen(), path: '/system/sales/performance'),

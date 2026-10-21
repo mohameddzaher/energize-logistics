@@ -33,15 +33,13 @@ router.use(require('../utils/dataOwnerIndex').preload);
 // أي بلا حاجزٍ في كلّ قسمٍ آخر؛ وهذا المسارُ بلا `sectionGate` فلا يشملهما
 // المنحُ الديناميّ الذي يفتحه لهما في غيره.
 //
-// ── والمبيعاتُ معهم لقيمة البيع ──────────────────────────────────────────
-// قسمُ المبيعات يسعّر الكشف: يرى «قيمة البيع» ويكتبها (وحدَها — راجع
-// ROLE_FIELD_ACCESS في المتحكّم)، ولا تصله أعمدةُ الفاتورة.
+// والمبيعاتُ خرجت منهم: دخلتها لقيمة البيع وحدَها، ثمّ قُصرت القيمةُ على
+// المال والتحصيل والتشغيل (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). راجع SELLING_ROLES.
 const allWorkflowRoles = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
   'employee', 'operations_manager', 'operations_staff',
   'moderator', 'cfo', 'accounting_manager', 'accountant',
   'collections_manager', 'collections_staff',
-  'sales_manager', 'sales_rep',
 ];
 
 // List & export

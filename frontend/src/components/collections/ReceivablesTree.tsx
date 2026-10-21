@@ -73,15 +73,39 @@ export default function ReceivablesTree({
       {/* ① كم علينا — والقسمةُ الأولى: ضريبيٌّ ونقديّ */}
       <section className="space-y-2">
         <h2 className="text-sm font-bold text-slate-800">{t('إجمالي المديونية', 'Total receivables')}</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-          <Card big label={t('كلُّ ما لنا — غيرُ محصَّل', 'All outstanding')} node={tree.all} tone="#0f172a"
-            onClick={() => onOpen({}, t('كلُّ المديونية', 'All receivables'))} />
-          <Card label={t('فواتير ضريبية', 'Tax invoices')} node={tree.byKind.tax} tone="#2563eb"
-            share={pct(tree.byKind.tax, tree.all)}
-            onClick={() => onOpen({ kind: 'tax' }, t('المديونية الضريبية', 'Tax receivables'))} />
-          <Card label={t('فواتير كاش', 'Cash invoices')} node={tree.byKind.cash} tone="#0d9488"
-            share={pct(tree.byKind.cash, tree.all)}
-            onClick={() => onOpen({ kind: 'cash' }, t('المديونية الكاش', 'Cash receivables'))} />
+        {/* كارتٌ واحدٌ طويل: الإجماليُّ فوق، وتحته نصفاه — ضريبيٌّ وكاش —
+            ومجموعُهما هو الإجماليُّ نفسُه (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). */}
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden" style={{ borderTopWidth: 3, borderTopColor: '#0f172a' }}>
+          <button type="button" onClick={() => onOpen({}, t('كلُّ المديونية', 'All receivables'))}
+            className="w-full text-start p-3.5 hover:bg-slate-50 transition-colors">
+            <p className="text-[11.5px] text-slate-500 flex items-center gap-1">
+              {t('كلُّ ما لنا — غيرُ محصَّل', 'All outstanding')}<ChevronRight className="w-3 h-3 opacity-40" />
+            </p>
+            <p className="text-2xl font-extrabold tabular-nums text-slate-900">{money(tree.all.value)}</p>
+            <p className="text-[11px] text-slate-500 tabular-nums">{(tree.all.count || 0).toLocaleString('en-US')} فاتورة</p>
+          </button>
+          <div className="grid grid-cols-2 border-t border-slate-200 divide-x divide-slate-200 rtl:divide-x-reverse">
+            {([
+              ['tax', t('فواتير ضريبية', 'Tax invoices'), '#2563eb', t('المديونية الضريبية', 'Tax receivables')],
+              ['cash', t('فواتير كاش', 'Cash invoices'), '#0d9488', t('المديونية الكاش', 'Cash receivables')],
+            ] as const).map(([k, label, tone, title]) => {
+              const n = tree.byKind[k];
+              const share = pct(n, tree.all);
+              return (
+                <button key={k} type="button" onClick={() => onOpen({ kind: k }, title)}
+                  className="text-start p-3.5 hover:bg-slate-50 transition-colors">
+                  <p className="text-[11.5px] text-slate-500 flex items-center gap-1">
+                    <span className="inline-block w-2 h-2 rounded-full" style={{ background: tone }} />
+                    {label}<ChevronRight className="w-3 h-3 opacity-40" />
+                  </p>
+                  <p className="text-lg font-extrabold tabular-nums" style={{ color: tone }}>{money(n.value)}</p>
+                  <p className="text-[11px] text-slate-500 tabular-nums">
+                    {(n.count || 0).toLocaleString('en-US')} فاتورة{share > 0 ? ` · ${share}%` : ''}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </section>
 

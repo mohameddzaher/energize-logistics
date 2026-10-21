@@ -71,11 +71,12 @@ function makeCustodyController(cfg) {
     const n = Number(unitId);
     if (!Number.isFinite(n)) return false;
     const Ls2Vehicle = require('../models/Ls2Vehicle');
-    const v = await Ls2Vehicle.findOne({ unitId: n }).select('unitId plate name').lean();
+    const v = await Ls2Vehicle.findOne({ unitId: n }).select('unitId plate name vehicleMaster').lean();
     if (!v) return false;
-    return { vehicleUnitId: v.unitId, vehiclePlate: v.plate || '', vehicleName: v.name || '' };
+    // ومركبتُها في سجلّ المركبات — مرجعٌ لا نسخة (services/ls2VehicleLink).
+    return { vehicleUnitId: v.unitId, vehiclePlate: v.plate || '', vehicleName: v.name || '', vehicleMaster: v.vehicleMaster || null };
   }
-  const NO_VEHICLE = { vehicleUnitId: null, vehiclePlate: '', vehicleName: '' };
+  const NO_VEHICLE = { vehicleUnitId: null, vehiclePlate: '', vehicleName: '', vehicleMaster: null };
 
   // GET /custody/vehicles — قائمةُ السيّارات للمنسدلة: الأسطولُ كلُّه، مرتَّبًا باللوحة.
   async function listVehicles(req, res) {

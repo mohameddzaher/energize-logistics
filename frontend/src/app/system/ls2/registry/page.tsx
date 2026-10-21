@@ -20,6 +20,7 @@ import {
   type Lang, type Vehicle, type DateRange, type VehicleFuel,
 } from '@/lib/ls2';
 import ScrollX from '@/components/system/ScrollX';
+import { RegistryIdentityCard, RegistryConflictsPanel, ConflictFlag } from '@/components/ls2/RegistryIdentity';
 
 export default function Ls2RegistryPage() {
   const { user } = useAuth();
@@ -45,13 +46,15 @@ export default function Ls2RegistryPage() {
   }, [range.from, range.to]);
   useEffect(() => { load(); }, [load]);
   useSocket('ls2:updated', useCallback(() => load(), [load]));
+  // الهويّةُ والمستنداتُ من سجلّ المركبات: تعديلٌ هناك يظهر هنا في الحال.
+  useSocket('vreg:updated', useCallback(() => load(), [load]));
   // A new period invalidates the loaded fuel figures.
   useEffect(() => { setFuel({}); }, [range.from, range.to]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return items;
-    return items.filter((v) => `${v.plate} ${v.driver} ${v.name} ${v.profile?.brand || ''} ${v.profile?.vin || ''} ${v.profile?.simIccid || ''}`.toLowerCase().includes(s));
+    return items.filter((v) => `${v.plate} ${v.registry?.plateNumber || ''} ${v.driver} ${v.name} ${v.registry?.brand || ''} ${v.registry?.chassisNumber || ''} ${v.profile?.brand || ''} ${v.profile?.vin || ''} ${v.profile?.simIccid || ''}`.toLowerCase().includes(s));
   }, [items, q]);
 
   const toggle = (id: number) => setOpen((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -77,17 +80,23 @@ export default function Ls2RegistryPage() {
   const totalKm = filtered.reduce((s, v) => s + (v.periodKm || 0), 0);
 
   const exportColumns: ExportColumn[] = [
-    { header: lang === 'ar' ? 'اللوحة' : 'Plate', key: 'plate', transform: (v) => v ?? '', width: 14 },
+    { header: lang === 'ar' ? 'اللوحة (السجلّ)' : 'Plate (registry)', key: 'registry.plateNumber', transform: (v) => v ?? '', width: 14 },
+    { header: lang === 'ar' ? 'اللوحة (الجهاز)' : 'Plate (device)', key: 'plate', transform: (v) => v ?? '', width: 14 },
+    { header: lang === 'ar' ? 'الماركة (السجلّ)' : 'Brand (registry)', key: 'registry.brand', transform: (v) => v ?? '', width: 14 },
+    { header: lang === 'ar' ? 'الطراز (السجلّ)' : 'Model (registry)', key: 'registry.model', transform: (v) => v ?? '', width: 14 },
+    { header: lang === 'ar' ? 'سنة الصنع (السجلّ)' : 'Year (registry)', key: 'registry.modelYear', transform: (v) => v ?? '', width: 12 },
+    { header: lang === 'ar' ? 'رقم الشاسيه (السجلّ)' : 'Chassis (registry)', key: 'registry.chassisNumber', transform: (v) => v ?? '', width: 22 },
+    { header: lang === 'ar' ? 'القطاع' : 'Sector', key: 'registry.sector', transform: (v) => v ?? '', width: 14 },
     { header: lang === 'ar' ? 'السائق' : 'Driver', key: 'driver', transform: (v) => v ?? '', width: 22 },
-    { header: lang === 'ar' ? 'الماركة' : 'Brand', key: 'profile.brand', transform: (v) => v ?? '', width: 16 },
-    { header: lang === 'ar' ? 'سنة الصنع' : 'Model year', key: 'profile.modelYear', transform: (v) => v ?? '', width: 12 },
+    { header: lang === 'ar' ? 'الماركة (حسب الجهاز)' : 'Brand (device)', key: 'profile.brand', transform: (v) => v ?? '', width: 16 },
+    { header: lang === 'ar' ? 'سنة الصنع (حسب الجهاز)' : 'Model year (device)', key: 'profile.modelYear', transform: (v) => v ?? '', width: 12 },
     { header: lang === 'ar' ? 'النوع' : 'Type', key: 'profile.vehicleType', transform: (v) => v ?? '', width: 16 },
     { header: lang === 'ar' ? 'ماركة الكاوتش' : 'Tire brand', key: 'tireBrand', transform: (v) => v ?? '', width: 16 },
     // «٧ / ٥ / ٢» كنصٍّ واحد، وعمودٌ مستقلٌّ للصامت: الأول يقول أين وصل التسليح،
     // والثاني يقول أين يوجد حسّاسٌ يحتاج استبدالًا لا تركيبًا.
     { header: lang === 'ar' ? 'حساسات الكاوتش (يعمل/بدون/استبن)' : 'Tire sensors (ok/none/spare)', key: 'tireSensors.label', transform: (v) => v ?? '', width: 26 },
     { header: lang === 'ar' ? 'حساس مركّب لا يبثّ' : 'Fitted but silent', key: 'tireSensors.silent', transform: (v) => v ?? '', width: 16 },
-    { header: lang === 'ar' ? 'رقم الشاسيه' : 'VIN', key: 'profile.vin', transform: (v) => v ?? '', width: 22 },
+    { header: lang === 'ar' ? 'رقم الشاسيه (حسب الجهاز)' : 'VIN (device)', key: 'profile.vin', transform: (v) => v ?? '', width: 22 },
     { header: lang === 'ar' ? 'شريحة الاتصال' : 'SIM ICCID', key: 'profile.simIccid', transform: (v) => v ?? '', width: 22 },
     { header: lang === 'ar' ? 'تاريخ التركيب' : 'Install date', key: 'profile.installDate', transform: (v) => v ?? '', width: 14 },
     { header: lang === 'ar' ? 'العداد (كم)' : 'Odometer (km)', key: 'odometerKm', transform: (v) => v ?? '', width: 14 },
@@ -109,6 +118,8 @@ export default function Ls2RegistryPage() {
           ]}
         />
       </PageHeader>
+
+      <RegistryConflictsPanel lang={lang as Lang} />
 
       <RangePicker value={range} onChange={setRange} lang={lang as Lang} labelFrom={t.from} labelTo={t.to} />
 
@@ -150,8 +161,12 @@ export default function Ls2RegistryPage() {
                   <Fragment key={v.unitId}>
                     <tr className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => toggle(v.unitId)}>
                       <td className="px-3 py-3 text-slate-700">{isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} />}</td>
-                      <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap" onClick={(e) => { e.stopPropagation(); router.push(`/system/ls2/${v.unitId}`); }}>{v.plate || v.name}</td>
-                      <td className="px-4 py-3 text-slate-800 whitespace-nowrap text-xs">{v.profile?.brand || '—'}{v.profile?.modelYear ? ` · ${v.profile.modelYear}` : ''}</td>
+                      <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap" onClick={(e) => { e.stopPropagation(); router.push(`/system/ls2/${v.unitId}`); }}>
+                        {/* اللوحةُ كما في سجلّ المركبات، وكما يكتبها الجهازُ تحتها */}
+                        <span className="flex items-center gap-1.5">{v.registry?.plateNumber || v.plate || v.name}<ConflictFlag v={v} lang={lang as Lang} /></span>
+                        {v.registry?.plateNumber && v.plate ? <span className="block text-[10px] text-slate-400 font-normal">{v.plate}</span> : null}
+                      </td>
+                      <td className="px-4 py-3 text-slate-800 whitespace-nowrap text-xs">{v.registry ? `${[v.registry.brand, v.registry.model].filter(Boolean).join(' ') || '—'}${v.registry.modelYear ? ` · ${v.registry.modelYear}` : ''}` : `${v.profile?.brand || '—'}${v.profile?.modelYear ? ` · ${v.profile.modelYear}` : ''}`}</td>
                       <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{v.driver || '—'}</td>
                       <td className="px-4 py-3"><span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${st.bg} ${st.text}`}><span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{lang === 'ar' ? st.ar : st.en}</span></td>
                       <td className="px-4 py-3 text-end tabular-nums text-slate-800">{fmtKm(v.odometerKm)}</td>
@@ -166,8 +181,9 @@ export default function Ls2RegistryPage() {
                     {isOpen && (
                       <tr className="bg-slate-50/60 border-b border-slate-100">
                         <td colSpan={10} className="px-6 py-3">
+                          <div className="mb-3 pb-3 border-b border-slate-200"><RegistryIdentityCard v={v} lang={lang as Lang} /></div>
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 text-xs">
-                            <Info label={t.vin} value={v.profile?.vin} mono />
+                            <Info label={`${t.vin} (${lang === 'ar' ? 'حسب الجهاز' : 'per device'})`} value={v.profile?.vin} mono />
                             <Info label={t.simIccid} value={v.profile?.simIccid} mono />
                             <Info label={t.installDate} value={v.profile?.installDate} />
                             <Info label={t.lsUnitId} value={v.profile?.lsUnitId} mono />

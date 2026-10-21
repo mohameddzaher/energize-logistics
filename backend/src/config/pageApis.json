@@ -930,9 +930,11 @@
         "/api/ls2/assets/tires",
         "/api/ls2/assets/vehicle",
         "/api/ls2/dashboard",
+        "/api/ls2/registry-conflicts",
         "/api/ls2/repairs",
         "/api/ls2/settings",
-        "/api/ls2/vehicles"
+        "/api/ls2/vehicles",
+        "/api/ls2/vehicles/:unitId/tire-sensors"
       ],
       "wildcard": false
     },
@@ -944,7 +946,9 @@
     },
     "/system/ls2/registry": {
       "apis": [
-        "/api/ls2/vehicles"
+        "/api/ls2/registry-conflicts",
+        "/api/ls2/vehicles",
+        "/api/ls2/vehicles/:unitId/tire-sensors"
       ],
       "wildcard": false
     },
@@ -1009,6 +1013,7 @@
       "apis": [
         "/api/lookups/types",
         "/api/ls2/store",
+        "/api/ls2/store/unknown-plates",
         "/api/ls2/suppliers",
         "/api/ls2/vehicles"
       ],

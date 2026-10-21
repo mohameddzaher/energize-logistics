@@ -14,6 +14,7 @@ const Ls2DriverAssignment = require('../models/Ls2DriverAssignment');
 const Ls2OdometerDaily = require('../models/Ls2OdometerDaily');
 const reports = require('../services/ls2Reports');
 const tireSensors = require('../services/ls2TireSensors');
+const { attachRegistry } = require('../services/ls2VehicleLink');
 const cfg = require('../config/ls2Config');
 const cache = require('../utils/ttlCache');
 // كتابةٌ هنا تمسح ذاكرةَ القسم كلِّه — ومعها ملخّصُ الأصول والمخزن (راجع utils/ls2Touch).
@@ -330,6 +331,13 @@ exports.listVehicles = async (req, res) => {
     // تقرأ الرقم نفسه من مصدرٍ واحد، فلا يختلف «٧ / ٥ / ٢» من شاشةٍ لأخرى.
     const withCov = await tireSensors.attachToVehicles(rawVehicles);
     let vehicles = withCov.map((v) => listRow(v, v.tireSensors, include));
+    // ── الهويّةُ من سجلّ المركبات ─────────────────────────────────────────────
+    // اللوحةُ والماركةُ والسنةُ والشاسيه والقطاعُ والمستندات من السجلّ، وما في
+    // `profile` «حسب الجهاز». تُقرأ خارج الذاكرة المؤقّتة: تعديلٌ في السجلّ يظهر
+    // في الطلب التالي (services/ls2VehicleLink).
+    // والمقارنةُ بملفّ الجهاز كاملًا لا بالمقتطَف الذي يُرسَل في الصفّ.
+    const reg = await attachRegistry(withCov.map((v) => ({ vehicleMaster: v.vehicleMaster || null, profile: v.profile })));
+    vehicles = vehicles.map((r, i) => ({ ...r, vehicleMaster: withCov[i].vehicleMaster || null, registry: reg[i].registry, conflicts: reg[i].conflicts }));
 
     // Optional: attach per-vehicle distance for a period (fleet mileage view).
     const { from, to } = req.query;
@@ -380,6 +388,9 @@ exports.getVehicle = async (req, res) => {
     const trips = await cache.wrap('ls2:whereabouts', 20000, liveTripsByPlateKey).catch(() => new Map());
     const vehicle = await tireSensors.attachToVehicle(withMaintenance(v));
     vehicle.whereabouts = trips.get(vehiclePlateKey(v)) || IDLE;
+    const [withReg] = await attachRegistry([{ vehicleMaster: v.vehicleMaster, profile: v.profile }]);
+    vehicle.registry = withReg.registry;
+    vehicle.conflicts = withReg.conflicts;
     res.json({ vehicle, alerts, serviceLog, driverHistory });
   } catch (error) {
     fail(res, error, 'Failed to load vehicle');
@@ -539,6 +550,35 @@ exports.getVehicleTrack = async (req, res) => {
     res.json(payload);
   } catch (error) {
     fail(res, error, 'Failed to load track');
+  }
+};
+
+// ---- تعارضات البيانات: الجهاز ↔ سجلّ المركبات ------------------------------
+/**
+ * GET /registry-conflicts — كلُّ شاحنةٍ يقول جهازُها غيرَ ما يقوله سجلُّ المركبات
+ * في سنة الصنع أو رقم الشاسيه، وكلُّ وحدةٍ لم تُربط بمركبةٍ في السجلّ أصلًا.
+ * القائمةُ لمن يصحّح السجلّ: السجلُّ هو المرجع، والجهازُ شاهدٌ عليه.
+ */
+exports.registryConflicts = async (req, res) => {
+  try {
+    const units = await Ls2Vehicle.find({}).select('unitId plate name profile.vin profile.modelYear profile.brand profile.registrationPlate vehicleMaster').lean();
+    const rows = await attachRegistry(units);
+    const { unitPlate } = require('../services/ls2VehicleLink');
+    const items = [];
+    const unlinked = [];
+    for (const r of rows) {
+      const base = { unitId: r.unitId, plate: r.plate || unitPlate(r) || r.name, registryPlate: r.registry?.plateNumber || '', vehicleMaster: r.vehicleMaster || null };
+      if (!r.registry) { unlinked.push(base); continue; }
+      if (r.conflicts.year) items.push({ ...base, field: 'year', registry: r.conflicts.year.registry, device: r.conflicts.year.device });
+      if (r.conflicts.vin) items.push({ ...base, field: 'vin', registry: r.conflicts.vin.registry, device: r.conflicts.vin.device, partial: !!r.conflicts.vin.partial });
+    }
+    items.sort((a, b) => a.field.localeCompare(b.field) || String(a.plate).localeCompare(String(b.plate)));
+    res.json({
+      items, unlinked,
+      counts: { year: items.filter((i) => i.field === 'year').length, vin: items.filter((i) => i.field === 'vin').length, vinPartial: items.filter((i) => i.partial).length, unlinked: unlinked.length, units: units.length },
+    });
+  } catch (error) {
+    fail(res, error, 'Failed to load conflicts');
   }
 };
 

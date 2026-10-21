@@ -15,6 +15,8 @@ const ls2FlatbedSchema = new mongoose.Schema({
   brand: { type: String, default: '' },                    // سينو ترك / ميرسيدس / مان
   currentTrailerNumber: { type: String, default: null },   // التيدر المركّب حاليًا
   notes: { type: String, default: '' },
+  // مركبتُها في سجلّ المركبات — من شاحنتها لا من أرقامها وحدها (services/ls2VehicleLink).
+  vehicleMaster: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null, index: true },
 }, { timestamps: true });
 
 module.exports = mongoose.models.Ls2Flatbed || mongoose.model('Ls2Flatbed', ls2FlatbedSchema);

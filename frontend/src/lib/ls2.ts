@@ -157,6 +157,23 @@ export interface Vehicle {
   // راجع backend/src/utils/fleetWhereabouts.js: الحقيقةُ هناك ولا تُنسَخ هنا.
   whereabouts?: Whereabouts;
   profile?: VehicleProfile;
+  // ── مركبتُها في سجلّ المركبات ─────────────────────────────────────────────
+  // الهويّةُ (اللوحة والماركة والسنة والشاسيه والقطاع) والمستنداتُ من السجلّ،
+  // وما في `profile` «حسب الجهاز». راجع backend/src/services/ls2VehicleLink.js.
+  vehicleMaster?: string | null;
+  registry?: Ls2Registry | null;
+  conflicts?: Ls2Conflicts;
+}
+
+export interface Ls2RegistryDoc { expiryDate: string | null; state: string; days: number | null }
+export interface Ls2Registry {
+  _id: string; plateNumber: string; brand: string; model: string; modelYear: number | null;
+  chassisNumber: string; sector: string; serviceStatus: string; authorizedPerson: string;
+  docs: Record<'vehicleLicense' | 'inspection' | 'insurance' | 'operatingCard' | 'authorization', Ls2RegistryDoc>;
+}
+export interface Ls2Conflicts {
+  year?: { registry: string; device: string };
+  vin?: { registry: string; device: string; partial?: boolean };
 }
 
 /** موضعُ الشاحنة ووجهتُها كما يقرؤها قسمُ إدارة الأسطول. */

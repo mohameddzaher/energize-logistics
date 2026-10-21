@@ -45,6 +45,7 @@ router.patch('/alerts/:id/ack', oid, ls2.acknowledgeAlert);
 
 router.get('/mileage', ls2.getMileage); // fleet distance over a period
 router.post('/identity/refresh', ADMIN, ls2.refreshIdentity); // re-pull VIN/brand/SIM…
+router.get('/registry-conflicts', ls2.registryConflicts); // الجهاز ↔ سجلّ المركبات: سنة الصنع ورقم الشاسيه
 
 // Reports — the whole fleet, or one truck in full, over any period.
 router.get('/service-types', ls2.getServiceTypes); // the real 4 service types, for the workshop
@@ -88,6 +89,7 @@ router.post('/assets/tires/:id/status', oid, ADMIN, assets.setTireStatus); // ن
 router.get('/store', store.listItems);
 router.get('/store/dashboard', store.dashboard);
 router.get('/store/movements', store.listMovements);
+router.get('/store/unknown-plates', store.unknownPlates); // لوحاتٌ على حركاتٍ لا مركبةَ لها في السجلّ
 router.post('/store', ADMIN, store.createItem);
 router.post('/store/bulk-create', ADMIN, store.createItemsBulk);   // فاتورةُ شراءٍ بعدّة أصناف
 // الموردون — مَن تُشترى منه القطع. قبل /store/:id كي لا تُلتقَط كمعرّف.

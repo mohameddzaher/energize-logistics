@@ -32,11 +32,14 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
     _load();
     _onLive = () => _load();
     Live.instance.on('ls2:updated', _onLive);
+    // اللوحةُ كما في سجلّ المركبات — تعديلُها هناك يظهر هنا في الحال.
+    Live.instance.on('vreg:updated', _onLive);
   }
 
   @override
   void dispose() {
     Live.instance.off('ls2:updated', _onLive);
+    Live.instance.off('vreg:updated', _onLive);
     _debounce?.cancel();
     super.dispose();
   }
@@ -142,7 +145,7 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
                                     topAccent: color,
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                       Row(children: [
-                                        Text(v['name'] ?? v['plate'] ?? '', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                                        Text(((v['registry'] is Map ? v['registry']['plateNumber'] : null) ?? v['name'] ?? v['plate'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                                         const SizedBox(width: 6),
                                         if (v['status'] == 'offline') const Icon(Icons.wifi_off_rounded, size: 15, color: T.danger),
                                         const Spacer(),

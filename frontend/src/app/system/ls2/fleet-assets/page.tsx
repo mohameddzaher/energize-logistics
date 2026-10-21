@@ -37,7 +37,7 @@ import ScrollX from '@/components/system/ScrollX';
 import ManagedSelect from '@/components/system/ManagedSelect';
 
 // ---- Types mirroring /api/ls2/assets ---------------------------------------
-interface Flatbed { _id: string; numbering: number | null; plate: string; plateKey: string; batch: string; brand: string; currentTrailerNumber: string | null; notes: string; tireCount: number; unitId: number | null; driver: string; odometerKm: number | null }
+interface Flatbed { _id: string; numbering: number | null; plate: string; plateKey: string; batch: string; brand: string; currentTrailerNumber: string | null; notes: string; tireCount: number; unitId: number | null; driver: string; odometerKm: number | null; vehicleMaster?: string | null; registryPlate?: string }
 interface Trailer { _id: string; trailerNumber: string; currentPlate: string | null; currentPlateKey?: string | null; status: string; notes: string }
 interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; size?: string; sensor: 'yes' | 'no' | 'unknown'; condition?: 'new' | 'used'; conditionPercent?: number | null; status: string; plate: string | null; positionNumber: number | null; positionLabel: string; section: string; plateKey?: string | null; isSpare?: boolean; trailerNumber?: string | null; notes: string }
 interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; odometerKm: number | null; reason: string; notes: string; performedByName: string }
@@ -230,6 +230,8 @@ export default function Ls2FleetAssetsPage() {
     if (tab === 'history') loadEvents();
     if (tab === 'sensors') loadSensors();
   }, [load, loadEvents, loadSensors, tab]));
+  // لوحةُ كلّ سطحةٍ كما في سجلّ المركبات — تعديلُها هناك يظهر هنا في الحال.
+  useSocket('vreg:updated', useCallback(() => { load(); }, [load]));
 
   const refreshAll = () => { setLoading(true); load(); if (tab === 'history') loadEvents(); if (tab === 'sensors') loadSensors(); };
 
@@ -252,7 +254,7 @@ export default function Ls2FleetAssetsPage() {
     { key: 'noTrailer', label: ar ? 'من غير تيدر' : 'No trailer', tone: 'violet', test: (f: any) => !f.currentTrailerNumber },
     { key: 'noGps', label: ar ? 'خارج نظام التتبّع' : 'Not on GPS', tone: 'slate', test: (f: any) => f.unitId == null },
   ], [ar]);
-  const flatbedSearch = useCallback((f: any) => [f.plate, f.batch, f.brand, f.currentTrailerNumber, f.numbering, f.driver], []);
+  const flatbedSearch = useCallback((f: any) => [f.plate, f.registryPlate, f.batch, f.brand, f.currentTrailerNumber, f.numbering, f.driver], []);
   const flatbedF = useChipFilter(flatbeds, FLATBED_CHIPS, flatbedFilter, q, flatbedSearch);
   const fFlatbeds = flatbedF.shown;
   // التيدرات: السؤال اليومي «مين واقف ومين مركّب» ماكانش ليه فلتر — بحث نصّي وبس.
@@ -513,7 +515,11 @@ export default function Ls2FleetAssetsPage() {
                 {fFlatbeds.map((f) => (
                   <tr key={f._id} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="px-4 py-3 tabular-nums text-slate-500">{f.numbering ?? '—'}</td>
-                    <td className="px-4 py-3 font-medium text-slate-800">{f.plate}</td>
+                    <td className="px-4 py-3 font-medium text-slate-800">
+                      {f.plate}
+                      {/* ولوحتُها في سجلّ المركبات — الرقمُ هنا ترقيمُ الورشة */}
+                      {f.registryPlate ? <span className="block text-[10px] text-slate-400 font-normal">{f.registryPlate}</span> : null}
+                    </td>
                     <td className="px-4 py-3 text-slate-600">{f.batch || '—'}</td>
                     <td className="px-4 py-3 text-slate-600">{f.brand || '—'}</td>
                     <td className="px-4 py-3">

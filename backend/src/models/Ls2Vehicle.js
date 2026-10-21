@@ -118,6 +118,11 @@ const ls2VehicleSchema = new mongoose.Schema({
   sensorChangeNotice: { type: mongoose.Schema.Types.Mixed, default: null }, // { from, to, at, expiresAt }
 
   lastSyncedAt: { type: Date },
+
+  // ── مركبتُها في سجلّ المركبات — المرجعُ لا النسخة ─────────────────────────
+  // تُربط عند مزامنة الهويّة بالمفتاح الموحَّد للّوحة (services/ls2VehicleLink)،
+  // والهويّةُ والمستنداتُ تُقرأ من هناك عند العرض. وما في `profile` هو «حسب الجهاز».
+  vehicleMaster: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null, index: true },
 }, { timestamps: true });
 
 module.exports = mongoose.models.Ls2Vehicle || mongoose.model('Ls2Vehicle', ls2VehicleSchema);

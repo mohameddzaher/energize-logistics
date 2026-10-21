@@ -90,11 +90,14 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     // موردٌ يُضاف من شاشة «الموردون» أو مع صنفٍ جديدٍ يُعلَن بالحدث نفسِه.
     _onLive = () { _load(); _loadSuppliers(); };
     Live.instance.on('ls2:store', _onLive);
+    // لوحاتُ المركبات ووصفُها من سجلّ المركبات — تعديلٌ هناك يظهر هنا في الحال.
+    Live.instance.on('vreg:updated', _loadPlates);
   }
 
   @override
   void dispose() {
     Live.instance.off('ls2:store', _onLive);
+    Live.instance.off('vreg:updated', _loadPlates);
     _debounce?.cancel();
     super.dispose();
   }
@@ -149,12 +152,19 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
       } else {
         // النقطةُ تردّ `items` لا `vehicles` — وكانت القائمةُ تخرج فارغةً بلا خطأ.
         final d = await Api.instance.get('/api/ls2/vehicles');
-        final rows = List<Map<String, dynamic>>.from(d['items'] ?? []).map((v) => {
-              'plate': (v['plate'] ?? '').toString(),
-              'project': '',
-              'rider': (v['driverName'] ?? '').toString(),
-              'city': '',
-              'detail': [v['name'], v['brand']].where((x) => (x ?? '').toString().isNotEmpty).join(' '),
+        // والوصفُ من سجلّ المركبات: لوحتُها هناك وماركتُها وطرازُها (كما في الموقع).
+        final rows = List<Map<String, dynamic>>.from(d['items'] ?? []).map((v) {
+              final reg = v['registry'] is Map ? Map<String, dynamic>.from(v['registry']) : <String, dynamic>{};
+              final prof = v['profile'] is Map ? Map<String, dynamic>.from(v['profile']) : <String, dynamic>{};
+              final detail = [reg['plateNumber'], (reg['brand'] ?? '').toString().isNotEmpty ? reg['brand'] : prof['brand'], reg['model']]
+                  .where((x) => (x ?? '').toString().isNotEmpty).join(' · ');
+              return <String, dynamic>{
+                'plate': (v['plate'] ?? '').toString(),
+                'project': '',
+                'rider': (v['driver'] ?? '').toString(),
+                'city': '',
+                'detail': detail.isNotEmpty ? detail : (v['name'] ?? '').toString(),
+              };
             }).where((r) => r['plate'].toString().isNotEmpty).toList();
         if (mounted) setState(() => _plates = rows);
       }
@@ -1293,11 +1303,13 @@ class _LogSheetState extends State<_LogSheet> {
     super.initState();
     _fetch();
     Live.instance.on('ls2:store', _fetch);
+    Live.instance.on('vreg:updated', _fetch);
   }
 
   @override
   void dispose() {
     Live.instance.off('ls2:store', _fetch);
+    Live.instance.off('vreg:updated', _fetch);
     _debounce?.cancel();
     _qC.dispose();
     super.dispose();
@@ -1351,7 +1363,9 @@ class _LogSheetState extends State<_LogSheet> {
         Text([
           _dmy(m['date'] ?? m['createdAt']),
           if ((m['supplierName'] ?? '').toString().isNotEmpty) '${tr('المورد', 'supplier')}: ${m['supplierName']}',
-          if ((m['vehiclePlate'] ?? '').toString().isNotEmpty) '${tr('مركبة', 'vehicle')} ${m['vehiclePlate']}',
+          if ((m['vehiclePlate'] ?? '').toString().isNotEmpty) '${tr('مركبة', 'vehicle')} ${m['vehiclePlate']}'
+              // ولوحتُها في سجلّ المركبات حين تختلف كتابتُها
+              '${(m['vehicleRegistryPlate'] ?? '').toString().isNotEmpty && m['vehicleRegistryPlate'] != m['vehiclePlate'] ? ' (${m['vehicleRegistryPlate']})' : ''}',
           if ((m['performedByName'] ?? '').toString().isNotEmpty) m['performedByName'].toString(),
           if ((m['reason'] ?? '').toString().isNotEmpty) m['reason'].toString(),
         ].join(' · '), style: const TextStyle(fontSize: 11)),
@@ -1419,6 +1433,12 @@ class _LogSheetState extends State<_LogSheet> {
                 },
               ),
               ..._periodChips(context, _from, _to, (a, b) => _set(() { _from = a; _to = b; })),
+              // «لوحات غير معروفة» — مخزنُ النقل الثقيل وحدَه (راجع /store/unknown-plates).
+              if (widget.base == '/api/ls2/store')
+                _fchip(tr('لوحات غير معروفة', 'Unknown plates'), false, () async {
+                  final p = await showModalBottomSheet<String>(context: context, isScrollControlled: true, builder: (_) => const _UnknownPlatesSheet());
+                  if (p != null && mounted) { _qC.text = p; _run(); }
+                }),
             ]),
           ),
           const Divider(height: 12),
@@ -1433,6 +1453,80 @@ class _LogSheetState extends State<_LogSheet> {
                     )),
         ]),
       ),
+    );
+  }
+}
+
+/// لوحاتٌ كُتبت على حركاتٍ ولا مركبةَ لها في سجلّ المركبات — لوحةٌ بكتابةٍ لا
+/// تُطابَق، أو اسمُ موردٍ أو ورشةٍ كُتب مكانَها. الضغطُ على لوحةٍ يفلتر السجلَّ بها.
+class _UnknownPlatesSheet extends StatefulWidget {
+  const _UnknownPlatesSheet();
+  @override
+  State<_UnknownPlatesSheet> createState() => _UnknownPlatesSheetState();
+}
+
+class _UnknownPlatesSheetState extends State<_UnknownPlatesSheet> {
+  List<Map<String, dynamic>> _plates = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    Live.instance.on('ls2:store', _load);
+    Live.instance.on('vreg:updated', _load);
+  }
+
+  @override
+  void dispose() {
+    Live.instance.off('ls2:store', _load);
+    Live.instance.off('vreg:updated', _load);
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final d = await Api.instance.get('/api/ls2/store/unknown-plates');
+      if (!mounted) return;
+      setState(() { _plates = List<Map<String, dynamic>>.from(d['plates'] ?? []); _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      expand: false, initialChildSize: 0.7, maxChildSize: 0.95,
+      builder: (c, scroll) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+          child: Text('${tr('لوحات غير معروفة', 'Unknown plates')} (${_plates.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(tr('ما كُتب في خانة المركبة ولا مركبةَ له في سجلّ المركبات. اضغط لوحةً لترى حركاتها.', 'Text in the vehicle field that matches no vehicle in the registry. Tap one to filter the log.'),
+              style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+        ),
+        const Divider(height: 14),
+        Expanded(child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _plates.isEmpty
+                ? EmptyState(icon: Icons.check_circle_outline, title: tr('كلُّ اللوحات معروفة', 'Every plate is known'))
+                : ListView.separated(
+                    controller: scroll, padding: const EdgeInsets.symmetric(horizontal: 14),
+                    itemCount: _plates.length, separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (_, i) {
+                      final p = _plates[i];
+                      return ListTile(
+                        dense: true, contentPadding: EdgeInsets.zero,
+                        title: Text((p['plate'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                        subtitle: Text('${p['movements']} ${tr('حركة', 'movements')}${(p['last'] ?? '').toString().isNotEmpty ? ' · ${tr('آخرها', 'last')} ${p['last']}' : ''}', style: const TextStyle(fontSize: 11)),
+                        onTap: () => Navigator.pop(context, (p['plate'] ?? '').toString()),
+                      );
+                    },
+                  )),
+      ]),
     );
   }
 }

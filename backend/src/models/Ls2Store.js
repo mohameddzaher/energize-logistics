@@ -51,6 +51,8 @@ const storeMovementSchema = new mongoose.Schema({
   supplierName: { type: String, default: '' },
   date: { type: String, default: '', index: true },           // YYYY-MM-DD
   vehiclePlate: { type: String, default: '' },                // صادر على / وارد من (اختياري)
+  // مركبتُها في سجلّ المركبات إن عُرفت — النصُّ يبقى كما كُتب (services/ls2VehicleLink).
+  vehicleMaster: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null, index: true },
   reason: { type: String, default: '' },
   balanceAfter: { type: Number, default: 0 },                 // الرصيد بعد الحركة
   performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

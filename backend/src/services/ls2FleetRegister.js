@@ -59,6 +59,8 @@ async function ensureFlatbeds() {
     }
   }
   if (created.length) {
+    // السطحةُ الجديدة تُربط بمركبتها في السجلّ من شاحنتها (services/ls2VehicleLink).
+    try { await require('./ls2VehicleLink').linkLs2Fleet(); } catch (_) { /* يُعاد عند المزامنة التالية */ }
     try { require('../utils/ttlCache').clear('ls2assets'); } catch (_) { /* */ }
     try { require('./ls2TireSensors').clearLayoutCache(); } catch (_) { /* */ }
     try { require('../utils/ls2Touch').clearLs2Derived(); } catch (_) { /* */ }

@@ -38,7 +38,7 @@ export interface PlateRow {
 const plateKeyOf = (v: unknown) => String(v ?? '').replace(/[^0-9A-Za-z\u0621-\u064A]/g, '').toUpperCase();
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
-import { ListPlus, Boxes, Plus, ArrowDownToLine, ArrowUpFromLine, Edit, Trash2, X, Save, History, Search, Undo2 } from 'lucide-react';
+import { ListPlus, Boxes, Plus, ArrowDownToLine, ArrowUpFromLine, Edit, Trash2, X, Save, History, Search, Undo2, HelpCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { type Lang } from '@/lib/ls2';
 import ScrollX from '@/components/system/ScrollX';
@@ -75,7 +75,7 @@ type Item = { _id: string; supplier?: string | null; supplierName?: string; purc
 type Cat = { key: string; ar: string; count: number };
 type Movement = {
   _id: string; item: string; itemName: string; type: 'in' | 'out'; quantity: number;
-  vehiclePlate?: string; reason?: string; balanceAfter: number; performedByName?: string; createdAt: string;
+  vehiclePlate?: string; vehicleRegistryPlate?: string; reason?: string; balanceAfter: number; performedByName?: string; createdAt: string;
   date?: string; supplierName?: string; unitPrice?: number | null; total?: number | null; unit?: string;
   // التراجع — السيرفر هو اللي بيقرر الحركة دي ينفع يترجع فيها ولا لأ، فالواجهة
   // ما تعيدش بناء القاعدة دي عندها.
@@ -121,6 +121,11 @@ export type StoreScope = {
   canEdit: (user: any) => boolean;
   /** اسمُ ملفّ التصدير. */
   fileName: string;
+  /**
+   * «لوحاتٌ غير معروفة» — لوحاتٌ كُتبت على حركاتٍ ولا مركبةَ لها في سجلّ
+   * المركبات. اختياريّ: يُعرض مع سجلّ الحركات حيث يُمرَّر.
+   */
+  unknownPlatesUrl?: string;
 };
 
 export default function StoreScreen({ scope }: { scope: StoreScope }) {
@@ -198,12 +203,13 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
   // `/api/ls2/vehicles` يردّ `items` لا `vehicles` — فقائمةُ اللوحات هنا كانت
   // فارغةً دائمًا منذ أوّل يوم، ولا خطأَ يظهر: مفتاحٌ غيرُ موجودٍ يعطي قائمةً فارغة.
   // لوحاتُ المركبات التي يُصرَف عليها — من سجلّ القسم نفسِه لا من سجلٍّ آخر.
-  useEffect(() => {
+  const loadPlates = useCallback(() => {
     api.get<any>(scope.plateSource.url)
       .then((d) => setPlates(scope.plateSource.rows(d) || []))
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope.plateSource.url]);
+  useEffect(() => { loadPlates(); }, [loadPlates]);
 
   const loadLog = useCallback(async () => {
     const token = logReq.begin();
@@ -217,6 +223,9 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
   }, [logF]);
   useEffect(() => { if (showLog) loadLog(); }, [showLog, loadLog]);
   useSocket('ls2:store', useCallback(() => { if (showLog) loadLog(); }, [showLog, loadLog]));
+  // المركبةُ سجلٌّ واحد: لوحتُها في سجلّ المركبات تُقرأ مع كلّ حركة، فتعديلٌ هناك
+  // يظهر في قائمة اللوحات وفي السجلّ في الحال.
+  useSocket('vreg:updated', useCallback(() => { loadPlates(); if (showLog) loadLog(); }, [loadPlates, showLog, loadLog]));
 
   const shown = useMemo(() => items.filter((i) =>
     (!statusF || i.status === statusF)
@@ -327,6 +336,8 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
           <span className="text-xs text-slate-400 ms-auto">{shown.length} {ar ? 'صنف' : 'items'}</span>
         </div>
       </div>
+
+      {showLog && scope.unknownPlatesUrl && <UnknownPlates url={scope.unknownPlatesUrl} ar={ar} onPick={(plate) => setLogF((f) => ({ ...f, q: plate }))} />}
 
       {showLog && <MovementsLog movements={movements} ar={ar} canEdit={!!canEdit} plates={plates} base={scope.base} onChanged={() => { loadLog(); load(); }}
         f={logF} setF={setLogF} suppliers={suppliers} />}
@@ -519,7 +530,11 @@ function MovementsLog({ movements, ar, canEdit, onChanged, base, f, setF, suppli
                 <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{m.supplierName || '—'}</td>
                 <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{m.unitPrice != null ? money(m.unitPrice) : '—'}</td>
                 <td className="px-3 py-1.5 font-semibold text-emerald-700 whitespace-nowrap">{m.total != null ? money(m.total) : '—'}</td>
-                <td className="px-3 py-1.5 text-slate-500 whitespace-nowrap">{m.vehiclePlate || '—'}</td>
+                <td className="px-3 py-1.5 text-slate-500 whitespace-nowrap">
+                  {m.vehiclePlate || '—'}
+                  {/* ولوحتُها في سجلّ المركبات حين تختلف كتابتُها */}
+                  {m.vehicleRegistryPlate && m.vehicleRegistryPlate !== m.vehiclePlate ? <span className="block text-[10px] text-slate-400">{m.vehicleRegistryPlate}</span> : null}
+                </td>
                 <td className="px-3 py-1.5 text-slate-600">{m.balanceAfter}</td>
                 <td className="px-3 py-1.5 text-slate-400 text-xs whitespace-nowrap">{m.performedByName || '—'}</td>
                 <td className="px-3 py-1.5">
@@ -1021,6 +1036,44 @@ function BulkCreateModal({ ar, onClose, onSaved, base, suppliers }: { ar: boolea
           </span>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * ── لوحاتٌ غير معروفة ────────────────────────────────────────────────────────
+ * كلُّ ما كُتب في خانة المركبة ولا مركبةَ له في سجلّ المركبات: لوحةٌ بكتابةٍ
+ * لا تُطابَق، أو اسمُ موردٍ أو ورشةٍ كُتب مكانَ اللوحة. تُحلّ في الخادم عند كلّ
+ * طلب، فما يُصحَّح في السجلّ يخرج من القائمة في الحال. والضغطُ على لوحةٍ يفلتر
+ * السجلَّ بها ليُرى أين كُتبت.
+ */
+function UnknownPlates({ url, ar, onPick }: { url: string; ar: boolean; onPick: (plate: string) => void }) {
+  const [data, setData] = useState<{ plates: { plate: string; movements: number; last: string }[]; total: number; movements: number } | null>(null);
+  const [open, setOpen] = useState(false);
+  const load = useCallback(() => { api.get<any>(url).then(setData).catch(() => {}); }, [url]);
+  useEffect(() => { load(); }, [load]);
+  useSocket('ls2:store', load);
+  useSocket('vreg:updated', load);
+  if (!data || !data.total) return null;
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-white shadow-sm overflow-hidden">
+      <button type="button" onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between gap-2 px-4 py-2.5 bg-amber-50 text-amber-900 text-sm">
+        <span className="flex items-center gap-2 font-semibold"><HelpCircle className="w-4 h-4" />{ar ? 'لوحات غير معروفة' : 'Unknown plates'}</span>
+        <span className="flex items-center gap-2 text-xs">{data.total} {ar ? 'لوحة' : 'plates'} · {data.movements} {ar ? 'حركة' : 'movements'}{open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}</span>
+      </button>
+      {open && (
+        <div className="p-3">
+          <p className="text-xs text-slate-500 mb-2">{ar ? 'ما كُتب في خانة المركبة ولا مركبةَ له في سجلّ المركبات — لوحةٌ بكتابةٍ أخرى، أو اسمُ موردٍ أو ورشةٍ كُتب مكانَها. اضغط لوحةً لترى حركاتها.' : 'Text in the vehicle field that matches no vehicle in the registry. Click one to filter the log by it.'}</p>
+          <div className="flex flex-wrap gap-1.5 max-h-56 overflow-y-auto">
+            {data.plates.map((p) => (
+              <button key={p.plate} type="button" onClick={() => onPick(p.plate)} title={p.last ? `${ar ? 'آخر حركة' : 'Last'}: ${p.last}` : ''}
+                className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-amber-100 text-xs text-slate-700">
+                {p.plate} <span className="text-slate-400">×{p.movements}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

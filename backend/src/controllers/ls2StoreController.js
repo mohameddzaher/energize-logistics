@@ -3,6 +3,7 @@ const { todayKey } = require('../utils/companyDay');
 const cache = require('../utils/ttlCache');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
+const { resolveLs2Plate, resolveLs2Plates } = require('../services/ls2VehicleLink');
 
 // المسحُ قبل الإعلان، وللقسم كلِّه: حركةُ مخزنٍ تُقرأ في لوحة القسم وملفّ المركبة أيضًا.
 const emit = () => { require('../utils/ls2Touch').touchLs2({ store: true }); };
@@ -251,11 +252,14 @@ exports.addMovement = async (req, res) => {
     const date = dayOf(req.body.date) || todayKey();
     if (type === 'in') { if (sup) Object.assign(item, sup); item.purchaseDate = date; }
     item.quantity += type === 'in' ? qty : -qty;
+    // اللوحةُ تُكتب نصًّا كما يعرفها أهلُ الورشة، وتُحلّ إلى مركبتها في السجلّ إن عُرفت.
+    const vehiclePlate = (req.body.vehiclePlate || '').trim();
+    const vehicleMaster = await resolveLs2Plate(vehiclePlate, { heavy: (item.warehouse || 'heavy') === 'heavy' }).catch(() => null);
     await item.save();
     const mv = await Ls2StoreMovement.create({
       unitPrice: price, ...(sup || {}), date,
       item: item._id, itemName: item.name, warehouse: item.warehouse || 'heavy', type, quantity: qty,
-      vehiclePlate: (req.body.vehiclePlate || '').trim(), reason: (req.body.reason || '').trim(),
+      vehiclePlate, vehicleMaster, reason: (req.body.reason || '').trim(),
       balanceAfter: item.quantity, performedBy: req.user?._id, performedByName: req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : '',
     });
     emit();
@@ -352,6 +356,13 @@ exports.addBulkMovement = async (req, res) => {
       });
     }
 
+    // مركبةُ اللوحة في السجلّ: بالأرقام وحدها في مخزن النقل الثقيل فقط (أسطولُنا
+    // فريدٌ بأرقامه)، وبالحروف في المخزنين — راجع services/ls2VehicleLink.
+    const vmFor = {};
+    for (const wh of new Set(items.map((it) => it.warehouse || 'heavy'))) {
+      // eslint-disable-next-line no-await-in-loop
+      vmFor[wh] = await resolveLs2Plate(vehiclePlate, { heavy: wh === 'heavy' }).catch(() => null);
+    }
     const movements = [];
     for (const [id, qty] of wanted) {
       const it = found.get(id);
@@ -361,7 +372,7 @@ exports.addBulkMovement = async (req, res) => {
       movements.push({
         unitPrice: type === 'in' ? prices.get(id) : null, ...(sup || {}), date,
         item: it._id, itemName: it.name, warehouse: it.warehouse || 'heavy', type, quantity: qty,
-        vehiclePlate, reason, balanceAfter: it.quantity, ...actor(req),
+        vehiclePlate, vehicleMaster: vmFor[it.warehouse || 'heavy'] || null, reason, balanceAfter: it.quantity, ...actor(req),
       });
     }
     const created = await Ls2StoreMovement.insertMany(movements);
@@ -438,7 +449,7 @@ exports.reverseMovement = async (req, res) => {
     const rev = await Ls2StoreMovement.create({
       item: item._id, itemName: item.name, warehouse: item.warehouse || 'heavy',
       type: mv.type === 'in' ? 'out' : 'in', quantity: mv.quantity,
-      vehiclePlate: mv.vehiclePlate,
+      vehiclePlate: mv.vehiclePlate, vehicleMaster: mv.vehicleMaster || null,
       reason: `تراجع عن ${mv.type === 'in' ? 'وارد' : 'صادر'} ${mv.quantity} — ${reason}`,
       balanceAfter: after, reversalOf: mv._id, date: todayKey(), ...who,
     });
@@ -482,8 +493,13 @@ exports.listMovements = async (req, res) => {
     const rows = await Ls2StoreMovement.find(filter).sort({ createdAt: -1 }).limit(limit).lean();
     // الوحدةُ من الصنف، والقيمةُ عددٌ × سعر — للوارد الذي كُتب سعرُه.
     const units = new Map((await Ls2StoreItem.find({ _id: { $in: [...new Set(rows.map((m) => String(m.item)))] } }).select('unit code').lean()).map((i) => [String(i._id), i]));
+    // ولوحةُ المركبة كما في سجلّ المركبات — تُقرأ منه الآن، فتعديلُها هناك يظهر هنا.
+    const vmIds = [...new Set(rows.map((m) => m.vehicleMaster && String(m.vehicleMaster)).filter(Boolean))];
+    const { VehicleMaster } = require('../models/VehicleMaster');
+    const regPlate = new Map(vmIds.length ? (await VehicleMaster.find({ _id: { $in: vmIds } }).select('plateNumber').lean()).map((v) => [String(v._id), v.plateNumber]) : []);
     const movements = rows.map((m) => ({
       ...m,
+      vehicleRegistryPlate: m.vehicleMaster ? regPlate.get(String(m.vehicleMaster)) || '' : '',
       date: m.date || new Date(new Date(m.createdAt).getTime() + 3 * 3600 * 1000).toISOString().slice(0, 10),
       unit: units.get(String(m.item))?.unit || '', itemCode: units.get(String(m.item))?.code || '',
       total: m.unitPrice != null ? r2(m.quantity * m.unitPrice) : null,
@@ -503,6 +519,26 @@ exports.listMovements = async (req, res) => {
       })),
     });
   } catch (e) { res.status(500).json({ message: 'Failed to load movements' }); }
+};
+
+// ── لوحاتٌ غير معروفة ─────────────────────────────────────────────────────────
+//
+// GET /store/unknown-plates — كلُّ لوحةٍ كُتبت على حركةٍ ولا مركبةَ لها في سجلّ
+// المركبات: كم حركةً، وآخرُ يوم. تُحلّ من جديدٍ عند كلّ طلب، فما يُضاف إلى السجلّ
+// يخرج من القائمة في الحال — والقائمةُ هي ما يحتاج تصحيحًا هنا أو هناك.
+exports.unknownPlates = async (req, res) => {
+  try {
+    const wh = whOf(req);
+    const agg = await Ls2StoreMovement.aggregate([
+      { $match: { ...whFilter(wh), vehiclePlate: { $nin: ['', null] }, vehicleMaster: null } },
+      { $group: { _id: '$vehiclePlate', movements: { $sum: 1 }, last: { $max: { $ifNull: ['$date', ''] } } } },
+    ]);
+    const resolved = await resolveLs2Plates(agg.map((a) => a._id), { heavy: wh === 'heavy' });
+    const plates = agg.filter((a) => !resolved.get(String(a._id).trim()))
+      .map((a) => ({ plate: a._id, movements: a.movements, last: a.last || '' }))
+      .sort((a, b) => b.movements - a.movements || String(a.plate).localeCompare(String(b.plate)));
+    res.json({ plates, total: plates.length, movements: plates.reduce((s, p) => s + p.movements, 0) });
+  } catch (e) { res.status(500).json({ message: 'تعذّر تحميل اللوحات غير المعروفة' }); }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

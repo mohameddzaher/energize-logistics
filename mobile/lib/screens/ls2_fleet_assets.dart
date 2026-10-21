@@ -47,11 +47,14 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     _load();
     _onLive = () => _load();
     Live.instance.on('ls2:updated', _onLive);
+    // لوحةُ كلّ سطحةٍ في سجلّ المركبات — تعديلُها هناك يظهر هنا في الحال.
+    Live.instance.on('vreg:updated', _onLive);
   }
 
   @override
   void dispose() {
     Live.instance.off('ls2:updated', _onLive);
+    Live.instance.off('vreg:updated', _onLive);
     super.dispose();
   }
 
@@ -291,7 +294,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     final q = _fold(_qFlat.trim());
     final list = flatbeds.where((f) {
       if (q.isEmpty) return true;
-      return [f['plate'], f['numbering'], f['brand'], f['batch'], f['currentTrailerNumber'], f['driver']]
+      return [f['plate'], f['registryPlate'], f['numbering'], f['brand'], f['batch'], f['currentTrailerNumber'], f['driver']]
           .any((x) => _fold((x ?? '').toString()).contains(q));
     }).toList();
     return Column(children: [
@@ -322,7 +325,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                           topAccent: T.navy,
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Row(children: [
-                              Expanded(child: Text('${tr('سطحة', 'Flatbed')} $plate', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+                              Expanded(child: Text('${tr('سطحة', 'Flatbed')} $plate${(f['registryPlate'] ?? '').toString().isNotEmpty ? ' · ${f['registryPlate']}' : ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
                               if (f['numbering'] != null) Chip2('#${f['numbering']}', T.navy),
                               // التيدرُ الذي تحت هذا الرأس — يُختار من العربية نفسِها.
                               IconButton(

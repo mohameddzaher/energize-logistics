@@ -30,6 +30,7 @@ import VehicleServiceRecord from '@/components/ls2/VehicleServiceRecord';
 import VehicleAssets from '@/components/ls2/VehicleAssets';
 import TireSensorCell from '@/components/ls2/TireSensorCell';
 import ScrollX from '@/components/system/ScrollX';
+import { RegistryIdentityCard, ConflictFlag } from '@/components/ls2/RegistryIdentity';
 
 interface Detail { vehicle: Vehicle; alerts: Alert[]; serviceLog: any[] }
 
@@ -90,6 +91,8 @@ export default function Ls2VehicleDetailPage() {
   };
   useEffect(() => { load(); }, [load]);
   useSocket('ls2:updated', useCallback(() => load(), [load]));
+  // الهويّةُ والمستنداتُ من سجلّ المركبات — تعديلٌ هناك يظهر هنا في الحال.
+  useSocket('vreg:updated', useCallback(() => load(), [load]));
 
   // Distance for the chosen period (snapshots) + the daily trend series.
   const loadDistance = useCallback(async () => {
@@ -188,9 +191,14 @@ export default function Ls2VehicleDetailPage() {
       [t.totalFuelUsed, v.totalFuelUsedL != null ? `${fmtNum(v.totalFuelUsedL)} L` : ''],
       [t.tireBrand, v.tireBrand],
       [t.tireSensorsCol, v.tireSensors?.label],
-      [t.brand, [v.profile?.brand, v.profile?.modelYear].filter(Boolean).join(' · ')],
+      [ar ? 'اللوحة (السجلّ)' : 'Plate (registry)', v.registry?.plateNumber],
+      [ar ? 'الماركة والطراز (السجلّ)' : 'Brand & model (registry)', [v.registry?.brand, v.registry?.model].filter(Boolean).join(' · ')],
+      [ar ? 'سنة الصنع (السجلّ)' : 'Year (registry)', v.registry?.modelYear],
+      [ar ? 'رقم الشاسيه (السجلّ)' : 'Chassis (registry)', v.registry?.chassisNumber],
+      [ar ? 'القطاع' : 'Sector', v.registry?.sector],
+      [`${t.brand} (${ar ? 'حسب الجهاز' : 'per device'})`, [v.profile?.brand, v.profile?.modelYear].filter(Boolean).join(' · ')],
       [t.vehicleType, v.profile?.vehicleType],
-      [t.vin, v.profile?.vin],
+      [`${t.vin} (${ar ? 'حسب الجهاز' : 'per device'})`, v.profile?.vin],
       [t.simIccid, v.profile?.simIccid],
       [t.installDate, v.profile?.installDate],
       [t.lsUnitId, v.profile?.lsUnitId],
@@ -280,7 +288,8 @@ export default function Ls2VehicleDetailPage() {
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <button type="button" onClick={() => router.back()} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800"><ArrowLeft className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} /> {lang === 'ar' ? 'رجوع' : 'Back'}</button>
 
-      <PageHeader icon={<Truck className="w-5 h-5" />} title={`${v.plate || v.name}`} subtitle={v.driver}>
+      <PageHeader icon={<Truck className="w-5 h-5" />} title={`${v.registry?.plateNumber || v.plate || v.name}`} subtitle={[v.registry?.plateNumber && v.plate ? v.plate : '', v.driver].filter(Boolean).join(' · ')}>
+        <ConflictFlag v={v} lang={lang as Lang} />
         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${st.bg} ${st.text}`}><span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{lang === 'ar' ? st.ar : st.en}</span>
         <span className="text-xs text-slate-400">{t.lastSeen}: {timeAgo(v.lastMessageAt, lang as Lang)}</span>
         <button type="button" onClick={downloadPdf} disabled={pdfBusy}
@@ -323,11 +332,13 @@ export default function Ls2VehicleDetailPage() {
             <p className="text-[11px] text-slate-600 mt-0.5">{lang === 'ar' ? 'السائق الحالي على المركبة' : 'Currently on this vehicle'}</p>
           </div>
         </div>
+        {/* الهويّةُ من سجلّ المركبات، وما يقوله الجهازُ تحتها «حسب الجهاز» */}
+        <div className="pt-3 mb-3 border-t border-slate-100"><RegistryIdentityCard v={v} lang={lang as Lang} /></div>
         {v.profile && (v.profile.vin || v.profile.brand || v.profile.simIccid) && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 text-sm pt-3 border-t border-slate-100">
-            <IdField label={t.brand} value={[v.profile.brand, v.profile.modelYear].filter(Boolean).join(' · ')} />
+            <IdField label={`${t.brand} (${ar ? 'حسب الجهاز' : 'per device'})`} value={[v.profile.brand, v.profile.modelYear].filter(Boolean).join(' · ')} />
             <IdField label={t.vehicleType} value={v.profile.vehicleType} />
-            <IdField label={t.vin} value={v.profile.vin} mono />
+            <IdField label={`${t.vin} (${ar ? 'حسب الجهاز' : 'per device'})`} value={v.profile.vin} mono />
             <IdField label={t.simIccid} value={v.profile.simIccid} mono />
             <IdField label={t.installDate} value={v.profile.installDate} />
             <IdField label={t.lsUnitId} value={v.profile.lsUnitId} mono />

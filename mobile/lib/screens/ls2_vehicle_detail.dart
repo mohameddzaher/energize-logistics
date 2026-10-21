@@ -72,11 +72,14 @@ class _Ls2VehicleDetailScreenState extends State<Ls2VehicleDetailScreen> {
     _load();
     _onLive = () => _load();
     Live.instance.on('ls2:updated', _onLive);
+    // الهويّةُ والمستنداتُ من سجلّ المركبات — تعديلٌ هناك يظهر هنا في الحال.
+    Live.instance.on('vreg:updated', _onLive);
   }
 
   @override
   void dispose() {
     Live.instance.off('ls2:updated', _onLive);
+    Live.instance.off('vreg:updated', _onLive);
     super.dispose();
   }
 
@@ -351,12 +354,15 @@ class _OverviewTab extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
+        // ── الهويّةُ من سجلّ المركبات، والجهازُ «حسب الجهاز» ─────────────────
+        FadeSlideIn(delayMs: 100, child: _RegistryCard(registry: _m(v['registry']), conflicts: _m(v['conflicts']), profile: profile)),
+        const SizedBox(height: 12),
         FadeSlideIn(
           delayMs: 120,
           child: AppCard(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                Expanded(child: Text(tr('بيانات المركبة', 'Vehicle profile'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+                Expanded(child: Text(tr('بيانات المركبة — حسب الجهاز', 'Vehicle profile — per device'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
                 TextButton.icon(
                   onPressed: () => _editTireBrand(context),
                   icon: const Icon(Icons.edit_outlined, size: 15),
@@ -386,6 +392,91 @@ class _OverviewTab extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 20),
+      ]),
+    );
+  }
+}
+
+/// هويّةُ الشاحنة من سجلّ المركبات (VehicleMaster) — مثلُ RegistryIdentityCard
+/// في الموقع: اللوحةُ والماركةُ والطرازُ والسنةُ والشاسيه والقطاعُ والمستندات،
+/// وسنةُ الجهاز وشاسيهه تحتهما «حسب الجهاز» وعلَمٌ حيث يختلفان.
+class _RegistryCard extends StatelessWidget {
+  final Map<String, dynamic> registry;
+  final Map<String, dynamic> conflicts;
+  final Map<String, dynamic> profile;
+  const _RegistryCard({required this.registry, required this.conflicts, required this.profile});
+
+  static const _docs = [
+    ('vehicleLicense', 'رخصة السير', 'Vehicle license'),
+    ('inspection', 'الفحص الدوري', 'Inspection'),
+    ('insurance', 'التأمين', 'Insurance'),
+    ('operatingCard', 'بطاقة التشغيل', 'Operating card'),
+    ('authorization', 'التفويض', 'Authorisation'),
+  ];
+  static const _states = {
+    'expired': ('منتهي', 'Expired', T.danger),
+    'critical': ('حرج', 'Critical', Color(0xFFEA580C)),
+    'warning': ('تحذير', 'Warning', T.warn),
+    'upcoming': ('قريب', 'Upcoming', Color(0xFF0EA5E9)),
+    'valid': ('ساري', 'Valid', T.success),
+    'missing': ('مطلوب — بلا تاريخ', 'Needed — no date', T.inkFaint),
+    'not_applicable': ('غير مطلوب', 'Not applicable', T.inkSoft),
+  };
+
+  String _s(dynamic v) => (v ?? '').toString();
+
+  Widget _line(String label, String value, {String? device, bool warn = false}) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Text('$label: ', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+            Expanded(child: Text(value.isEmpty ? '—' : value, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: warn ? T.warn : T.ink))),
+          ]),
+          if ((device ?? '').isNotEmpty)
+            Text('${tr('حسب الجهاز', 'per device')}: $device', style: TextStyle(fontSize: 11, color: warn ? T.warn : T.inkFaint)),
+        ]),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    if (registry.isEmpty) {
+      return AppCard(
+        child: Text(tr('هذه الوحدة غير مربوطة بمركبةٍ في سجلّ المركبات — لوحتُها لا تطابق أيّ لوحةٍ هناك.', 'This unit is not linked to a vehicle in the registry.'),
+            style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+      );
+    }
+    final yc = conflicts['year'] is Map ? Map<String, dynamic>.from(conflicts['year']) : null;
+    final vc = conflicts['vin'] is Map ? Map<String, dynamic>.from(conflicts['vin']) : null;
+    final partial = vc?['partial'] == true;
+    final docs = registry['docs'] is Map ? Map<String, dynamic>.from(registry['docs']) : <String, dynamic>{};
+    return AppCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.storage_rounded, size: 16, color: T.navy),
+          const SizedBox(width: 6),
+          Expanded(child: Text(tr('من سجلّ المركبات', 'From the vehicle registry'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+          if (yc != null || (vc != null && !partial)) Chip2(tr('تعارض', 'Mismatch'), T.warn, icon: Icons.warning_amber_rounded),
+        ]),
+        const SizedBox(height: 6),
+        _line(tr('اللوحة', 'Plate'), _s(registry['plateNumber'])),
+        _line(tr('الماركة والطراز', 'Brand & model'), [registry['brand'], registry['model']].where((x) => _s(x).isNotEmpty).join(' · '), device: _s(profile['brand'])),
+        _line(tr('سنة الصنع', 'Model year'), _s(registry['modelYear']),
+            device: _s(profile['modelYear']).isEmpty ? null : '${profile['modelYear']}${yc != null ? tr(' — يخالف السجلّ', ' — differs') : ''}', warn: yc != null),
+        _line(tr('رقم الشاسيه', 'Chassis no.'), _s(registry['chassisNumber']),
+            device: _s(profile['vin']).isEmpty ? null : '${profile['vin']}${vc != null ? (partial ? tr(' — جزئيّ', ' — partial') : tr(' — يخالف السجلّ', ' — differs')) : ''}', warn: vc != null && !partial),
+        _line(tr('القطاع', 'Sector'), _s(registry['sector'])),
+        if (_s(registry['authorizedPerson']).isNotEmpty) _line(tr('المفوَّض', 'Authorised person'), _s(registry['authorizedPerson'])),
+        const SizedBox(height: 4),
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          for (final d in _docs)
+            if (docs[d.$1] is Map)
+              Builder(builder: (_) {
+                final doc = Map<String, dynamic>.from(docs[d.$1]);
+                final st = _states[_s(doc['state'])] ?? (_s(doc['state']), _s(doc['state']), T.inkFaint);
+                final date = _s(doc['expiryDate']);
+                return Chip2('${tr(d.$2, d.$3)}: ${date.length >= 10 ? date.substring(0, 10) : tr(st.$1, st.$2)}', st.$3);
+              }),
+        ]),
       ]),
     );
   }

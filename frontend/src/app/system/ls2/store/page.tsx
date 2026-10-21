@@ -25,12 +25,14 @@ export default function Ls2StorePage() {
        */
       plateSource: {
         url: '/api/ls2/vehicles',
+        // والوصفُ من سجلّ المركبات: لوحتُها هناك وماركتُها وطرازُها.
         rows: (d: any) => (d.items || []).map((v: any) => ({
           plate: v.plate,
-          rider: v.driverName || '',
-          detail: [v.name, v.brand].filter(Boolean).join(' '),
+          rider: v.driver || '',
+          detail: [v.registry?.plateNumber, v.registry?.brand || v.profile?.brand, v.registry?.model].filter(Boolean).join(' · ') || v.name,
         })),
       },
+      unknownPlatesUrl: '/api/ls2/store/unknown-plates',
       canSee: isLs2Staff, canEdit: isLs2Admin,
       fileName: 'ls2-store',
     }} />

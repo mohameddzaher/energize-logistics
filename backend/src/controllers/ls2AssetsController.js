@@ -146,6 +146,14 @@ exports.getOverview = async (req, res) => {
         },
       };
     });
+    // ولوحةُ كلّ سطحةٍ كما في سجلّ المركبات — تُقرأ خارج الذاكرة المؤقّتة، فتعديلُها
+    // هناك يظهر هنا في الطلب التالي.
+    const vmIds = [...new Set(body.flatbeds.map((f) => f.vehicleMaster && String(f.vehicleMaster)).filter(Boolean))];
+    if (vmIds.length) {
+      const { VehicleMaster } = require('../models/VehicleMaster');
+      const regs = new Map((await VehicleMaster.find({ _id: { $in: vmIds } }).select('plateNumber').lean()).map((v) => [String(v._id), v.plateNumber]));
+      return res.json({ ...body, flatbeds: body.flatbeds.map((f) => ({ ...f, registryPlate: f.vehicleMaster ? regs.get(String(f.vehicleMaster)) || '' : '' })) });
+    }
     res.json(body);
   } catch (e) {
     res.status(500).json({ message: e.message });
@@ -974,6 +982,8 @@ exports.createFlatbed = async (req, res) => {
     const exists = await Ls2Flatbed.findOne({ plateKey: key });
     if (exists) return res.status(409).json({ message: 'Flatbed already registered' });
     const flatbed = await Ls2Flatbed.create({ plate, plateKey: key, numbering, batch, brand, notes });
+    // ومركبتُها في سجلّ المركبات — من شاحنتها (services/ls2VehicleLink).
+    await require('../services/ls2VehicleLink').linkLs2Fleet().catch(() => {});
     await logEvent(req, { entityType: 'flatbed', refId: flatbed._id, label: flatbed.plate, action: 'registered' });
     res.status(201).json({ flatbed });
   } catch (e) {

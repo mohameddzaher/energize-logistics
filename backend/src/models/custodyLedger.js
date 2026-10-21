@@ -67,6 +67,8 @@ function buildCustodySchema({ vehicles = false } = {}) {
       vehicleUnitId: { type: Number, default: null, index: true },
       vehiclePlate: { type: String, trim: true, default: '' },
       vehicleName: { type: String, trim: true, default: '' },
+      // ومركبتُها في سجلّ المركبات — تُحلّ من الوحدة (Ls2Vehicle.vehicleMaster).
+      vehicleMaster: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null, index: true },
     });
   }
   schema.index({ account: 1, date: -1, createdAt: -1 });

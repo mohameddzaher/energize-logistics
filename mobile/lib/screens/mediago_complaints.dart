@@ -305,12 +305,43 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
                 Text(_when(r['createdAt']), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
                 const Spacer(),
                 if ((r['replyCount'] ?? 0) > 0) Row(children: [const Icon(Icons.chat_bubble_outline, size: 14, color: T.violet), const SizedBox(width: 3), Text('${r['replyCount']}', style: const TextStyle(color: T.violet, fontWeight: FontWeight.w700, fontSize: 12))]),
+                // التعديلُ والحذفُ من البطاقة نفسِها — بالصلاحية نفسِها التي في التفصيل.
+                if (_d?['can']?['edit'] == true)
+                  IconButton(visualDensity: VisualDensity.compact, tooltip: tr('تعديل', 'Edit'), icon: const Icon(Icons.edit_outlined, size: 20), onPressed: () => _editRow(r)),
+                if (_d?['can']?['delete'] == true)
+                  IconButton(visualDensity: VisualDensity.compact, tooltip: tr('حذف', 'Delete'), icon: const Icon(Icons.delete_outline, size: 20, color: T.danger), onPressed: () => _deleteRow(r)),
               ]),
             ]),
           ),
         ]),
       ),
     );
+  }
+
+  Future<void> _editRow(Map<String, dynamic> r) async {
+    final saved = await Navigator.push<Map<String, dynamic>>(context, MaterialPageRoute(builder: (_) => MediaGoCreateScreen(meta: _d?['meta'] as Map?, editing: r)));
+    if (saved != null) _load();
+  }
+
+  Future<void> _deleteRow(Map<String, dynamic> r) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('حذف البلاغ', 'Delete complaint')),
+        content: Text(tr('حذف ${r['ref']} نهائيًّا مع مرفقاته؟', 'Delete ${r['ref']} and its files permanently?')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          TextButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'), style: const TextStyle(color: T.danger))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.delete('$_api/${r['_id']}');
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
+    }
   }
 
   Widget _meta(IconData i, String t) => Row(mainAxisSize: MainAxisSize.min, children: [

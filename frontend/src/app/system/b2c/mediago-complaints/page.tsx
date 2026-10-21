@@ -16,6 +16,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
+import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import { Spinner, StatCard } from '@/components/hr/HRKit';
 import ScrollX from '@/components/system/ScrollX';
@@ -25,7 +26,7 @@ import {
   type MgList, type MgRow,
 } from '@/lib/mediago';
 import { Bi, ComplaintDetailModal, CreateComplaintModal, StatusPill, makeTx, type Mode } from '@/components/b2c/MediaGoKit';
-import { MonitorPlay, Plus, Search, Film, Image as ImageIcon, MessageCircle, MapPin, Clock, Bike, X, Lock } from 'lucide-react';
+import { MonitorPlay, Plus, Search, Film, Image as ImageIcon, MessageCircle, MapPin, Clock, Bike, X, Lock, Pencil, Trash2 } from 'lucide-react';
 
 type Filters = { status: string; issue: string; location: string; availability: string; from: string; to: string };
 const NO_FILTERS: Filters = { status: '', issue: '', location: '', availability: '', from: '', to: '' };
@@ -79,6 +80,8 @@ export default function MediaGoComplaintsPage() {
   const [f, setF] = useState<Filters>(NO_FILTERS);
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<string>('');
+  const [editRow, setEditRow] = useState<MgRow | null>(null);
+  const { notify, confirm } = useDialog();
 
   // الإشعارُ يفتح البلاغَ بمعرّفه في الرابط (lib/notificationLink).
   useEffect(() => {
@@ -118,6 +121,14 @@ export default function MediaGoComplaintsPage() {
   const partner = data ? data.can.partner : String(user?.role || '') === MEDIAGO_ROLE;
   const mode: Mode = partner ? 'partner' : (lang === 'ar' ? 'ar' : 'en');
   const tx = useMemo(() => makeTx(mode), [mode]);
+
+  // التعديلُ والحذفُ من صفّ الجدول نفسِه — الصلاحيةُ نفسُها التي في التفصيل (`can`).
+  const removeRow = async (r: MgRow) => {
+    const ok = await confirm({ title: tx('حذف البلاغ', 'Delete complaint'), message: tx(`حذف ${r.ref} نهائيًّا مع مرفقاته؟ لا يمكن التراجع.`, `Delete ${r.ref} and its files permanently? This cannot be undone.`), tone: 'danger', confirmLabel: tx('حذف', 'Delete') });
+    if (!ok) return;
+    try { await api.delete(`${MEDIAGO_API}/${r._id}`); notify(tx(`حُذف ${r.ref}`, `${r.ref} deleted`), 'success'); load(); }
+    catch (e: any) { notify(e?.message || tx('تعذّر الحذف', 'Delete failed'), 'error'); }
+  };
   const ar = lang === 'ar';
 
   const setFilter = (k: keyof Filters, v: string) => setF((o) => ({ ...o, [k]: o[k] === v && k === 'status' ? '' : v }));
@@ -262,6 +273,7 @@ export default function MediaGoComplaintsPage() {
                   <th className="px-3 py-2.5">{tx('مرفقات', 'Files')}</th>
                   <th className="px-3 py-2.5">{tx('ردود', 'Replies')}</th>
                   <th className="px-3 py-2.5 text-start">{tx('التاريخ', 'Date')}</th>
+                  {(data.can.edit || data.can.delete) && <th className="px-3 py-2.5">{tx('إجراءات', 'Actions')}</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -281,6 +293,18 @@ export default function MediaGoComplaintsPage() {
                     </td>
                     <td className={`px-3 py-2 text-center font-semibold ${r.replyCount ? 'text-violet-600' : 'text-slate-300'}`}>{r.replyCount}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-[12px] text-slate-500">{fmtDateTime(r.createdAt, ar)}<span className="block text-[11px] text-slate-400">{r.createdByName}</span></td>
+                    {(data.can.edit || data.can.delete) && (
+                      <td className="whitespace-nowrap px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                        {data.can.edit && (
+                          <button type="button" onClick={() => setEditRow(r)} title={tx('تعديل', 'Edit')}
+                            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"><Pencil className="h-4 w-4" /></button>
+                        )}
+                        {data.can.delete && (
+                          <button type="button" onClick={() => removeRow(r)} title={tx('حذف', 'Delete')}
+                            className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -292,6 +316,8 @@ export default function MediaGoComplaintsPage() {
       {/* بعد الرفع تُحدَّث القائمةُ ولا يُفتَح شيء — التفصيلُ بضغطةٍ على البلاغ وحدَها. */}
       <CreateComplaintModal open={creating} onClose={() => setCreating(false)} meta={data.meta} tx={tx} ar={mode !== 'en'}
         onCreated={() => { setCreating(false); load(); }} />
+      <CreateComplaintModal open={!!editRow} onClose={() => setEditRow(null)} meta={data.meta} tx={tx} ar={mode !== 'en'}
+        editing={editRow} onSaved={() => { setEditRow(null); load(); }} />
       {openId && <ComplaintDetailModal id={openId} mode={mode} onClose={() => setOpenId('')} onChanged={soon} />}
     </div>
   );

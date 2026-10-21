@@ -472,6 +472,59 @@ vehicleMasterSchema.post('findOneAndUpdate', async function (doc) {
 });
 vehicleMasterSchema.statics.deriveVehicle = deriveVehicle;
 
+// ── والتفويضُ يتبعه سجلُّ الإسناد، من أيّ بابٍ كُتب ─────────────────────────
+// الورقةُ (`authorizedPerson`) هي المرجع، وسجلُّ الإسناد القديم الذي يقرؤه ملفُّ
+// الموظّف وإخلاءُ طرفه مرآةٌ لها. كانت أبوابٌ كثيرةٌ تكتب الورقةَ ولا تمسّ
+// المرآة — تعديلُ مركبات القسم من B2C، وأوامرُ التشغيل، والتعديلُ العامّ —
+// فبقي الموظّفُ «مفوَّضًا» في ملفّه والمركبةُ بلا مفوَّض. فصارت المزامنةُ هنا
+// في النموذج: كلُّ كتابةٍ في الورقة تُتبَع، ولا يحتاج بابٌ جديدٌ أن يتذكّرها.
+// راجع utils/vehicleAuthorization. و`$locals.skipAuthSync` لمن يزامن صراحةً.
+const touchesAuth = (update) => {
+  if (!update) return false;
+  const keys = [];
+  for (const [k, v] of Object.entries(update)) {
+    if (k.startsWith('$') && v && typeof v === 'object') keys.push(...Object.keys(v));
+    else keys.push(k);
+  }
+  return keys.some((k) => k === 'authorizedPerson' || k.startsWith('authorizedPerson.'));
+};
+const syncAuth = (id, ctx) => require('../utils/vehicleAuthorization').afterMasterWrite(id, ctx || {});
+
+vehicleMasterSchema.pre('save', function (next) {
+  this.$locals.authChanged = this.isNew
+    ? !!(this.authorizedPerson?.name || this.authorizedPerson?.iqamaNumber)
+    : this.isModified('authorizedPerson');
+  next();
+});
+vehicleMasterSchema.post('save', async function (doc) {
+  if (doc.$locals?.authChanged && !doc.$locals?.skipAuthSync) await syncAuth(doc._id, doc.$locals.authCtx);
+  if (doc.$locals) doc.$locals.skipAuthSync = false;
+});
+vehicleMasterSchema.post('findOneAndUpdate', async function (doc) {
+  if (!doc || this.getOptions().skipAuthSync || !touchesAuth(this.getUpdate())) return;
+  await syncAuth(doc._id, this.getOptions().authCtx);
+});
+// `updateOne`/`updateMany` لا تُعيد المستند — فتُحفظ المعرّفاتُ قبل الكتابة.
+for (const op of ['updateOne', 'updateMany']) {
+  vehicleMasterSchema.pre(op, async function () {
+    if (this.getOptions().skipAuthSync || !touchesAuth(this.getUpdate())) return;
+    this._authIds = await this.model.find(this.getFilter()).distinct('_id');
+  });
+  vehicleMasterSchema.post(op, async function () {
+    for (const id of this._authIds || []) await syncAuth(id, this.getOptions().authCtx);
+  });
+}
+// ومركبةٌ حُذفت من السجلّ لا يبقى إسنادُها ساريًا في ملفّ أحد.
+vehicleMasterSchema.post('findOneAndDelete', async function (doc) {
+  if (!doc) return;
+  try {
+    const VA = require('../utils/vehicleAuthorization');
+    const r = await VA.syncLegacyFromMaster({ ...(doc.toObject ? doc.toObject() : doc), authorizedPerson: {} },
+      { reason: 'حُذفت المركبة من سجل المركبات' });
+    VA.announce(r);
+  } catch (e) { console.error('[vehicle-auth] delete sync:', e.message); }
+});
+
 module.exports = {
   VehicleMaster: mongoose.models.VehicleMaster || mongoose.model('VehicleMaster', vehicleMasterSchema),
   VehicleRegistryConfig: mongoose.models.VehicleRegistryConfig || mongoose.model('VehicleRegistryConfig', vehicleRegistryConfigSchema),

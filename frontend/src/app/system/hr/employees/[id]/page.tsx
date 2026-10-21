@@ -33,7 +33,7 @@ import { getHrEmployeesIdTranslations } from '@/lib/translations';
 import B2cOpBadge from '@/components/b2c/B2cOpBadge';
 import {
   VehicleAuthorization, VehicleAccident, AUTH_STATUS, ACCIDENT_SEVERITY, ACCIDENT_STATUS,
-  vehicleTypeLabel, plateOf, faultPartyLabel, getVehiclesText,
+  vehicleTypeLabel, plateOf, faultPartyLabel, getVehiclesText, authStatusKey, vehicleHref,
 } from '@/lib/vehicles';
 
 interface Profile {
@@ -65,6 +65,8 @@ export default function EmployeeProfilePage() {
   const [tab, setTab] = useState('overview');
   const [vehicleData, setVehicleData] = useState<{
     current: VehicleAuthorization | null;
+    // كلُّ ما بيده الآن — من ورقة التفويض في سجلّ المركبات (المرجع).
+    currents?: VehicleAuthorization[];
     authorizations: VehicleAuthorization[];
     accidents: VehicleAccident[];
     // ما هو مقيَّدٌ عليه في سجلّ المركبات: التفويضُ الورقيُّ وشريحةُ بترو اب.
@@ -112,6 +114,9 @@ export default function EmployeeProfilePage() {
   useSocket('hr:contract', useCallback(() => load(), [load]));
   useSocket('vehicle:authorization', useCallback(() => loadVehicles(), [loadVehicles]));
   useSocket('vehicle:accident', useCallback(() => loadVehicles(), [loadVehicles]));
+  // التفويضُ يُكتب أيضًا من سجلّ المركبات ومن مركبات B2C — فيصل هنا في الحال.
+  useSocket('vreg:updated', useCallback(() => loadVehicles(), [loadVehicles]));
+  useSocket('lt:updated', useCallback(() => loadVehicles(), [loadVehicles]));
 
   const toggleSister = async () => {
     const toSister = !(e as any).sisterCompany;
@@ -632,17 +637,23 @@ export default function EmployeeProfilePage() {
         <div className="space-y-4">
           <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
             <h3 className="text-[#f37121] text-sm font-semibold mb-3">{vtx.empCurrentVehicle}</h3>
-            {vehicleData?.current ? (
-              <div className="flex items-center justify-between gap-4 flex-wrap">
-                <div>
-                  <Link href={`/system/vehicles/${typeof vehicleData.current.vehicle === 'object' ? (vehicleData.current.vehicle as any)?._id : vehicleData.current.vehicle}`} className="text-slate-900 font-bold text-lg hover:text-[#f37121]">{plateOf(vehicleData.current.vehicle)}</Link>
-                  <p className="text-slate-500 text-sm mt-1">
-                    {vehicleTypeLabel(typeof vehicleData.current.vehicle === 'object' ? (vehicleData.current.vehicle as any)?.type : '', lang)}
-                    {' · '}{vtx.since} {bothDates(vehicleData.current.startDate, ar)}
-                    {vehicleData.current.authorizationType ? ` · ${vehicleData.current.authorizationType}` : ''}
-                  </p>
-                </div>
-                <Badge style={AUTH_STATUS[vehicleData.current.status]} lang={lang} />
+            {/* الحاليُّ من ورقة التفويض في سجلّ المركبات — ما تقرؤه المركبات و B2C نفسُه. */}
+            {(vehicleData?.currents ?? (vehicleData?.current ? [vehicleData.current] : [])).length ? (
+              <div className="space-y-3">
+                {(vehicleData?.currents ?? [vehicleData!.current!]).map((c) => (
+                  <div key={c._id} className="flex items-center justify-between gap-4 flex-wrap">
+                    <div>
+                      <Link href={vehicleHref(c.registryId, typeof c.vehicle === 'object' ? (c.vehicle as any)?._id : c.vehicle)} className="text-slate-900 font-bold text-lg hover:text-[#f37121]">{plateOf(c.vehicle)}</Link>
+                      <p className="text-slate-500 text-sm mt-1">
+                        {vehicleTypeLabel(typeof c.vehicle === 'object' ? (c.vehicle as any)?.type : '', lang)}
+                        {c.startDate ? <>{' · '}{vtx.since} {bothDates(c.startDate, ar)}</> : null}
+                        {c.authorizationType ? ` · ${c.authorizationType}` : ''}
+                        {c.documentNumber ? ` · ${c.documentNumber}` : ''}
+                      </p>
+                    </div>
+                    <Badge style={AUTH_STATUS[c.status]} lang={lang} />
+                  </div>
+                ))}
               </div>
             ) : <p className="text-slate-400 text-sm">{vtx.empNoCurrentVehicle}</p>}
           </div>
@@ -706,10 +717,10 @@ export default function EmployeeProfilePage() {
               <ol className={`relative ${isRTL ? 'border-r pr-5' : 'border-l pl-5'} border-slate-200 space-y-5`}>
                 {vehicleData.authorizations.map((a) => (
                   <li key={a._id} className="relative">
-                    <span className={`absolute ${isRTL ? '-right-[27px]' : '-left-[27px]'} top-1 w-3 h-3 rounded-full ${a.status === 'active' ? 'bg-green-500' : a.status === 'revoked' ? 'bg-red-500' : 'bg-blue-500'}`} />
+                    <span className={`absolute ${isRTL ? '-right-[27px]' : '-left-[27px]'} top-1 w-3 h-3 rounded-full ${a.stale ? 'bg-slate-400' : a.status === 'active' ? 'bg-green-500' : a.status === 'revoked' ? 'bg-red-500' : 'bg-blue-500'}`} />
                     <div className="flex items-center gap-2 flex-wrap">
                       <Link href={`/system/vehicles/${typeof a.vehicle === 'object' ? (a.vehicle as any)?._id : a.vehicle}`} className="text-slate-900 font-medium hover:text-[#f37121]">{plateOf(a.vehicle)}</Link>
-                      <Badge style={AUTH_STATUS[a.status]} lang={lang} />
+                      <Badge style={AUTH_STATUS[authStatusKey(a)]} lang={lang} />
                     </div>
                     <p className="text-slate-500 text-xs mt-1">{vtx.period}: {bothDates(a.startDate, ar)} → {a.endDate ? bothDates(a.endDate, ar) : (ar ? 'حتى الآن' : 'now')}</p>
                     {a.revokedReason && <p className="text-slate-500 text-xs">{vtx.revokedReason}: {a.revokedReason}</p>}

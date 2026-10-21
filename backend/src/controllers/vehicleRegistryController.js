@@ -3413,15 +3413,9 @@ exports.deleteVehicleDocument = async (req, res) => {
  * والحروفُ تبقى في المفتاح ولا تُسقَط: «ل أ 1080» دراجةٌ و«أ ص ر 1080» تريلا،
  * وإسقاطُ الحروف يجعلهما واحدة — أحدَ عشرَ تصادمًا في الملفّ الحاليّ.
  */
-const samePlate = (p) => {
-  if (p == null) return null;
-  const west = String(p).replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
-    .replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/[ىئ]/g, 'ي').replace(/ؤ/g, 'و');
-  const digits = (west.match(/\d+/g) || []).join('');
-  const letters = (west.match(/[\u0621-\u064AA-Za-z]/g) || []).map((c) => c.toUpperCase()).sort().join('');
-  const k = `${digits}|${letters}`;
-  return k === '|' ? null : k;
-};
+// والقاعدةُ صارت في utils/plateKey (`orderlessPlateKey`) — تقرؤها خدمةُ التفويض
+// أيضًا، ونسختان منها تفترقان يومًا فيربط أحدُهما ما لا يربطه الآخر.
+const samePlate = require('../utils/plateKey').orderlessPlateKey;
 
 const DriverCard = require('../models/DriverCard');
 const VehicleAuthorization = require('../models/VehicleAuthorization');
@@ -3544,7 +3538,7 @@ exports.listDriverCards = async (req, res) => {
         ? VehicleAuthorization.find({ employee: { $in: empIds }, status: 'active' })
           // سجلُّ الإسناد يشير إلى `Vehicle` القديم لا إلى سجلّ المركبات، وفيه
           // التصنيفُ باسمين آخرين: `type` و`department` («النقل الثقيل»).
-          .populate('vehicle', 'plateNumber type department')
+          .populate('vehicle', 'plateNumber type department master')
           .select('employee vehicle startDate documentExpiry').lean()
         : [],
       idNumbers.length
@@ -3555,7 +3549,13 @@ exports.listDriverCards = async (req, res) => {
 
     const byEmp = new Map(); const byIqama = new Map();
     const push = (map, k, v) => { if (!map.has(k)) map.set(k, []); map.get(k).push(v); };
+    // ── والإسنادُ القديم لا يُقرأ لمركبةٍ لها ورقةٌ في السجلّ ───────────────
+    // الورقةُ هي المرجع (utils/vehicleAuthorization): إسنادٌ «ساري» على مركبةٍ
+    // أُلغيت ورقتُها أو نُقلت لغيره ليس تفويضًا — كان يظهر هنا بديلًا لمن لا
+    // ورقةَ له، فيُقرأ السائقُ مفوَّضًا على دبّابٍ أُلغي تفويضُه.
+    const regKeys = auths.length ? await require('../utils/vehicleAuthorization').registryPlateKeys() : new Set();
     for (const a of auths) {
+      if (a.vehicle?.master || regKeys.has(samePlate(a.vehicle?.plateNumber))) continue;
       push(byEmp, String(a.employee), {
         _id: String(a._id),
         source: 'assignment',
@@ -3806,117 +3806,60 @@ exports.authorizationAction = async (req, res) => {
       return res.status(400).json({ message: 'الإجراء إمّا «إلغاء» أو «تفويض»' });
     }
     const byName = `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim();
-    const today = new Date().toISOString().slice(0, 10);
-
-    // ── الجسرُ بين السجلَّين هو اللوحة ─────────────────────────────────────
-    // `VehicleAuthorization` تشير إلى `Vehicle` لا إلى `VehicleMaster`، وليس
-    // بينهما مفتاحٌ مشترك إلّا رقمُ اللوحة. ويُطابَق بالمفتاح المطويّ لا بالنصّ:
-    // اللوحةُ تُكتب بمسافتين هنا وبواحدةٍ هناك.
-    // و`samePlate` لا `plateKey`: السجلّان يكتبان اللوحة الواحدة معكوسةً
-    // («أ ص ي 5034» هنا و«5034 أ ص ي» هناك)، فيُرتَّب الحرفُ ألفبائيًّا ويُفصَل
-    // عن الرقم — راجع تعليقَ `samePlate` أعلاه.
-    const Vehicle = require('../models/Vehicle');
-    const key = samePlate(v.plateNumber);
-    let linkedIds = [];
-    if (key) {
-      const all = await Vehicle.find({}).select('plateNumber').lean();
-      linkedIds = all.filter((x) => samePlate(x.plateNumber) === key).map((x) => x._id);
-    }
+    // ── السجلّان يُكتبان من موضعٍ واحد ─────────────────────────────────────
+    // الورقةُ ثمّ سجلُّ الإسناد يتبعها — utils/vehicleAuthorization. كان هذا
+    // البابُ يكتب الاثنين بيده وحدَه، وغيرُه يكتب الورقة فقط؛ فصار الكلُّ يمرّ
+    // بالخدمة نفسِها، والربطُ باللوحة فيها (مسافةٌ أو مسافتان، أيُّ ترتيب).
+    const VA = require('../utils/vehicleAuthorization');
 
     if (action === 'revoke') {
       const who = String(v.authorizedPerson?.name || '').trim();
       const reason = String(req.body?.reason || '').trim().slice(0, 500);
-
-      // ① سجلُّ الإسناد يُغلَق ولا يُحذَف — تاريخُ المركبة يُقرأ منه.
-      let closed = 0;
-      if (linkedIds.length) {
-        const r = await VehicleAuthorization.updateMany(
-          { vehicle: { $in: linkedIds }, status: 'active' },
-          {
-            $set: {
-              status: 'revoked', endDate: today, endReason: 'revoked',
-              revokedReason: reason || 'أُلغي من صفحة التفاويض', endedBy: req.user?._id || null,
-            },
-          },
-        );
-        closed = r.modifiedCount || 0;
-      }
-
-      // ② وورقةُ المركبة تُفرَّغ — المركبةُ تبقى، والتفويضُ وحدَه يزول.
-      v.authorizedPerson = {
-        name: '', iqamaNumber: '', jobTitleAr: '', authorizationNumber: '',
-        startDate: null, expiryDate: null, statusCode: '',
-      };
-      await v.save();
-
+      const r = await VA.setHolder(v, null, {
+        userId: req.user?._id, byName, reason: reason || 'أُلغي من صفحة التفاويض',
+      });
       await logAudit({
         user: req.user?._id, action: 'revoke_vehicle_authorization', entity: 'VehicleMaster',
         entityId: v._id,
-        changes: { after: { plateNumber: v.plateNumber, previousHolder: who, closedAssignments: closed, reason } },
+        changes: { after: { plateNumber: v.plateNumber, previousHolder: who, closedAssignments: r.closed, reason } },
         ipAddress: req.ip,
       });
       emit('vreg:updated', {});
       return res.json({
-        message: closed
-          ? `أُلغي التفويض عن ${v.plateNumber}${who ? ` (${who})` : ''} — وأُغلق ${closed} إسنادًا في ملفّ الموظّف.`
+        message: r.closed
+          ? `أُلغي التفويض عن ${v.plateNumber}${who ? ` (${who})` : ''} — وأُغلق ${r.closed} إسنادًا في ملفّ الموظّف.`
           : `أُلغي التفويض عن ${v.plateNumber}${who ? ` (${who})` : ''}.`,
-        closedAssignments: closed,
-        vehicle: v,
+        closedAssignments: r.closed,
+        vehicle: r.vehicle,
       });
     }
 
     // ── الإسناد: تُكتب الورقة، ويُفتَح إسنادٌ إن عُرف الموظّف ────────────────
     const name = String(req.body?.name || '').trim();
     if (!name) return res.status(400).json({ message: 'اسم المفوَّض مطلوب' });
-    v.authorizedPerson = {
-      ...(v.authorizedPerson ? v.authorizedPerson.toObject?.() || v.authorizedPerson : {}),
-      name,
-      iqamaNumber: String(req.body?.iqamaNumber || '').trim(),
+    const iq = String(req.body?.iqamaNumber || '').trim();
+    const r = await VA.setHolder(v, {
+      name, idNumber: iq,
       jobTitleAr: String(req.body?.jobTitleAr || '').trim(),
       authorizationNumber: String(req.body?.authorizationNumber || '').trim(),
       startDate: req.body?.startDate || null,
       expiryDate: req.body?.expiryDate || null,
-      statusCode: '',
-    };
-    await v.save();
-
+    }, { userId: req.user?._id, byName, note: 'فُوِّضت المركبة من صفحة التفاويض' });
     // ── والموظّفُ يُربط برقم إقامته ────────────────────────────────────────
-    // هو المفتاحُ الوحيد الذي لا يتكرّر بين السجلَّين — والاسمُ يُكتب بصيغٍ شتّى.
-    // فإن عُرف فُتح الإسنادُ فيظهر في ملفّه؛ وإن لم يُعرَف بقيت الورقةُ وحدَها
-    // ويُقال ذلك صراحةً بدل أن يُظَنّ الربطُ قد تمّ.
-    let opened = 0; let note = '';
-    const iq = String(req.body?.iqamaNumber || '').trim();
-    if (iq && linkedIds.length) {
-      const Employee = require('../models/Employee');
-      const emp = await Employee.findOne({
-        $or: [{ iqamaNumber: iq }, { nationalId: iq }],
-      }).select('_id').lean();
-      if (emp) {
-        await VehicleAuthorization.updateMany(
-          { vehicle: { $in: linkedIds }, status: 'active' },
-          { $set: { status: 'transferred', endDate: today, endReason: 'transferred', transferredTo: emp._id, endedBy: req.user?._id || null } },
-        );
-        await VehicleAuthorization.create({
-          vehicle: linkedIds[0], employee: emp._id, status: 'active',
-          startDate: req.body?.startDate || today,
-          documentNumber: String(req.body?.authorizationNumber || '').trim(),
-          documentExpiry: req.body?.expiryDate || undefined,
-          createdBy: req.user?._id || null,
-        });
-        opened = 1;
-      } else note = ' (لم يُعثَر على موظّفٍ بهذا الرقم، فلم يُفتح إسنادٌ في ملفّه)';
-    } else if (!iq) note = ' (بلا رقم إقامة لا يُربط بملفّ موظّف)';
+    // وإن لم يُعرَف بقيت الورقةُ وحدَها ويُقال ذلك صراحةً بدل أن يُظَنّ الربطُ قد تمّ.
+    const linked = !r.unlinkedHolder;
+    const note = linked ? '' : (iq ? ' (لم يُعثَر على موظّفٍ بهذا الرقم، فلم يُفتح إسنادٌ في ملفّه)' : ' (بلا رقم إقامة لا يُربط بملفّ موظّف)');
 
     await logAudit({
       user: req.user?._id, action: 'assign_vehicle_authorization', entity: 'VehicleMaster',
-      entityId: v._id, changes: { after: { plateNumber: v.plateNumber, name, iqamaNumber: iq, linked: !!opened } },
+      entityId: v._id, changes: { after: { plateNumber: v.plateNumber, name, iqamaNumber: iq, linked } },
       ipAddress: req.ip,
     });
     emit('vreg:updated', {});
-    return res.json({ message: `فُوِّضت ${v.plateNumber} إلى ${name}${note}`, linked: !!opened, vehicle: v });
+    return res.json({ message: `فُوِّضت ${v.plateNumber} إلى ${name}${note}`, linked, vehicle: r.vehicle });
   } catch (e) {
     console.error('authorizationAction error:', e);
-    return res.status(500).json({ message: e.message || 'تعذّر تنفيذ الإجراء' });
+    return sendMongooseError(res, e, 'تعذّر تنفيذ الإجراء');
   }
 };
 

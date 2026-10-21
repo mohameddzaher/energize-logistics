@@ -152,18 +152,19 @@ const plateKey = (p) => {
       authorizationNumber: paper.authNumber || '',
       authorizationStart: paper.authStart || null,
       authorizationEnd: paper.authEnd || null,
+      // لا عبارةَ «من الشيت» — النظامُ هو المرجع بعد الاستيراد (utils/importLabels).
       notesAr: mismatch
-        ? `التفويضُ باسم ${paper.authName || paper.authId} والقائدُ الفعليُّ ${e.name} — من شيت المركبات`
-        : 'أُنشئ من واقع الداتا (شيت المركبات)',
-      createdByName: 'استيراد شيت القسم',
+        ? `التفويضُ باسم ${paper.authName || paper.authId} والقائدُ الفعليُّ ${e.name}`
+        : '',
+      createdByName: 'النظام',
     });
     n += 1;
     created += 1;
     await LightTransportEmployee.updateOne({ _id: e._id }, {
       $push: {
         history: {
-          kind: 'order', byName: 'استيراد شيت القسم', toValue: order.orderNumber,
-          note: `الحالةُ القائمةُ عند الاستيراد — المركبة ${e.vehicle.plateNumber}`,
+          kind: 'order', byName: 'النظام', toValue: order.orderNumber,
+          note: `المركبة ${e.vehicle.plateNumber}`,
           at: new Date(),
         },
       },

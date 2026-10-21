@@ -364,6 +364,24 @@ employeeSchema.post('save', function () {
 employeeSchema.index({ directManager: 1 });
 employeeSchema.index({ vehiclePlate: 1 });
 
+// ── رقمُ الهويّة مفتاحُ الربط مع المركبات و B2C — فإن صُحِّح هنا صُحِّح هناك ──
+// ورقةُ التفويض على المركبة (`VehicleMaster.authorizedPerson.iqamaNumber`)،
+// والقائدُ الفعليّ، وبطاقةُ السائق، وصفُّ النقل الخفيف — كلُّها تعرف الموظّفَ
+// برقم هويّته. فتصحيحُ الرقم في الموارد البشريّة وحدَها يقطع الربط: يختفي
+// تفويضُه من ملفّه ومن إخلاء طرفه، ويبقى على المركبة رقمٌ لا يعرفه أحد.
+// راجع utils/employeeIdentitySync.
+employeeSchema.post('init', function () {
+  this.$locals.idsAtLoad = [this.iqamaNumber, this.nationalId].map((x) => String(x || '').trim());
+});
+employeeSchema.post('save', async function (doc) {
+  const before = doc.$locals && doc.$locals.idsAtLoad;
+  const now = [doc.iqamaNumber, doc.nationalId].map((x) => String(x || '').trim());
+  if (!before || (before[0] === now[0] && before[1] === now[1])) return;
+  doc.$locals.idsAtLoad = now;
+  try { await require('../utils/employeeIdentitySync').pushIdChange(doc, before, now); }
+  catch (e) { console.error('employee id → vehicles/b2c:', e.message); }
+});
+
 // ── والفئةُ الوظيفيّة تسقط إذا خرج الموظّفُ من قسميها (B2C · النقل الثقيل) ──
 employeeSchema.pre('save', async function () {
   if (!this.isModified('department') || !this.staffCategory) return;

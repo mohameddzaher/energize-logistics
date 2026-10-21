@@ -35,10 +35,11 @@ const fold = (x) => String(x || '')
  */
 async function vehiclesHeldBy(employee, VehicleMaster) {
   if (!VehicleMaster || !employee) return [];
-  const iqama = String(employee.iqamaNumber || employee.nationalId || '').trim();
+  // العمودان معًا: المقيمُ في `iqamaNumber` والسعوديُّ في `nationalId`.
+  const ids = [employee.iqamaNumber, employee.nationalId].map((x) => String(x || '').trim()).filter(Boolean);
   const name = fold(`${employee.firstName || ''} ${employee.lastName || ''}`.trim() || employee.fullName || '');
   const or = [];
-  if (iqama) or.push({ 'authorizedPerson.iqamaNumber': iqama });
+  if (ids.length) or.push({ 'authorizedPerson.iqamaNumber': { $in: ids } });
   if (!or.length && !name) return [];
   const rows = await VehicleMaster.find(or.length ? { $or: or } : {})
     .select('plateNumber authorizedPerson fuelCard.cardNumber ownerNameAr').lean();
@@ -55,44 +56,39 @@ async function checkClearance(employeeId) {
   const M = (n) => { try { return mongoose.model(n); } catch (e) { return null; } };
 
   const Asset = M('Asset');
-  const VehicleAuthorization = M('VehicleAuthorization');
   const CompanyEmail = M('CompanyEmail');
   const User = M('User');
-  const DailyWallet = M('DailyWallet');
 
-  const [assets, auths, emails, logins, wallet] = await Promise.all([
+  const [assets, emails, logins] = await Promise.all([
     Asset ? Asset.find({ employee: id, status: 'assigned' }).select('name assetTag category').lean() : [],
-    VehicleAuthorization
-      ? VehicleAuthorization.find({ employee: id, status: 'active' })
-        .populate('vehicle', 'plateNumber make model').select('vehicle startDate').lean()
-      : [],
     CompanyEmail ? CompanyEmail.find({ employee: id, status: 'active' }).select('address').lean() : [],
     User ? User.find({ linkedEmployee: id, isActive: true }).select('email role').lean() : [],
-    // آخرُ يوميّةٍ في المحفظة: الرصيدُ الختاميّ هو النقدُ الذي في يده الآن.
-    DailyWallet
-      ? DailyWallet.find({}).where('user').ne(null).select('user closingBalance date').sort({ date: -1 }).limit(0).lean()
-        .then(() => null).catch(() => null)
-      : null,
   ]);
 
-  // ── ومركباتُ السجلّ: التفويضُ الورقيُّ وشريحةُ الوقود ──────────────────────
+  // ── ومركباتُ السجلّ: التفويضُ وشريحةُ الوقود ─────────────────────────────
   const Employee = M('Employee');
   const VehicleMaster = M('VehicleMaster');
-  let held = [];
+  let held = []; let auths = [];
   try {
-    const emp = Employee ? await Employee.findById(id).select('firstName lastName fullName iqamaNumber nationalId').lean() : null;
+    const emp = Employee ? await Employee.findById(id).select('firstName lastName fullName arabicName iqamaNumber nationalId').lean() : null;
     held = await vehiclesHeldBy(emp, VehicleMaster);
-  } catch (_) { held = []; }
+    // ── التفويضُ من مصدره الواحد ──────────────────────────────────────────
+    // كانت هنا قراءتان تمنعان كلٌّ على حدة: الورقةُ على المركبة، وسجلُّ الإسناد
+    // القديم. فمن أُلغي تفويضُه من المركبات أو B2C وبقي إسنادُه القديم مفتوحًا
+    // («ق أ 4719» و«ق أ 4723») قيل له «أَلغِ التفويضَ أوّلًا» وهو ملغى.
+    // والآن يُسأل `currentFor` وحدَه: الورقةُ هي المرجع، والإسنادُ القديم لا
+    // يُقرأ إلّا لمركبةٍ لا ورقةَ لها في السجلّ — راجع utils/vehicleAuthorization.
+    if (emp) auths = await require('../utils/vehicleAuthorization').currentFor(emp);
+  } catch (_) { held = []; auths = []; }
 
   const blockers = []; const warnings = [];
 
-  const paperAuths = held.filter((v) => v.authorizedPerson?.authorizationNumber || v.authorizedPerson?.expiryDate);
-  if (paperAuths.length) {
+  if (auths.length) {
     blockers.push({
-      kind: 'vehicle_authorization_paper', section: 'المركبات', sectionEn: 'Vehicles',
-      ar: `تفويض مثبت على مركبة (${paperAuths.length})`, en: `${paperAuths.length} authorisation(s) recorded on a vehicle`,
-      items: paperAuths.map((v) => [v.plateNumber, v.authorizedPerson?.authorizationNumber].filter(Boolean).join(' — ')),
-      actionAr: 'يُلغى التفويض من سجل المركبات — ومعه تعود شريحة بترو اب إلينا، فهي على مركبة الشركة أصلًا.',
+      kind: 'vehicle_authorization', section: 'المركبات', sectionEn: 'Vehicles',
+      ar: `تفويض مركبة ساري (${auths.length})`, en: `${auths.length} active vehicle authorisation(s)`,
+      items: auths.map((a) => [a.plateNumber, a.authorizationNumber].filter(Boolean).join(' — ') || 'مركبة'),
+      actionAr: 'يُلغى التفويض أو يُنقل لموظّف آخر من قسم المركبات (أو من مركبات B2C) قبل الإنهاء — ومعه تعود شريحة بترو اب إلينا.',
     });
   }
 
@@ -116,17 +112,6 @@ async function checkClearance(employeeId) {
       ar: `عهدة لم تُسلَّم (${assets.length})`, en: `${assets.length} custody item(s) not returned`,
       items: assets.map((a) => a.assetTag ? `${a.name} — ${a.assetTag}` : a.name),
       actionAr: 'تُسلَّم العهدة أو تُنقَل من صفحة العهد قبل الإنهاء.',
-    });
-  }
-  if (auths.length) {
-    blockers.push({
-      kind: 'vehicle_authorization', section: 'المركبات', sectionEn: 'Vehicles',
-      ar: `تفويض مركبة ساري (${auths.length})`, en: `${auths.length} active vehicle authorisation(s)`,
-      items: auths.map((a) => {
-        const v = a.vehicle || {};
-        return [v.plateNumber, [v.make, v.model].filter(Boolean).join(' ')].filter(Boolean).join(' — ') || 'مركبة';
-      }),
-      actionAr: 'يُلغى التفويض أو يُنقل لموظّف آخر من قسم المركبات قبل الإنهاء.',
     });
   }
   if (emails.length) {

@@ -126,6 +126,9 @@ const docOf = (vehicle, key, alerts) => {
 
 const decorate = (row, alerts = {}) => ({
   ...row,
+  // عبارةُ «أُضيف من شيت المركبات…» من الاستيراد ليست ملاحظةً — النظامُ هو المرجع.
+  notesAr: require('../utils/importLabels').stripImportNote(row.notesAr),
+  ...(Array.isArray(row.history) ? { history: row.history.map(require('../utils/importLabels').cleanHistoryEntry) } : {}),
   workStatusShown: shownStatus(row),
   // «كارتُ التشغيل والفحصُ» — من مركبته، بحالتهما لا بتاريخهما وحدَه.
   operatingCard: docOf(row.vehicle, 'operatingCard', alerts),

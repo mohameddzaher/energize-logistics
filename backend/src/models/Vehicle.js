@@ -43,6 +43,12 @@ const vehicleSchema = new mongoose.Schema(
 
     accidentCount: { type: Number, default: 0 },
 
+    // ── المركبةُ نفسُها في سجلّ المركبات (الورقة، وهي المرجع) ─────────────────
+    // هذا السجلُّ صار مرآةً لسجلّ المركبات في التفويض — راجع
+    // utils/vehicleAuthorization. يُثبَّت الربطُ هنا حين يُعرف باللوحة، فلا
+    // يُعاد تخمينُه من نصٍّ يُكتب بمسافةٍ أو بمسافتين.
+    master: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null, index: true },
+
     notes: { type: String, trim: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },

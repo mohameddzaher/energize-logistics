@@ -185,3 +185,28 @@ module.exports.numberSearchRegex = numberSearchRegex;
 module.exports.flexSpaceRegex = flexSpaceRegex;
 module.exports.flexNormalize = flexNormalize;
 module.exports.flexIncludes = flexIncludes;
+
+/**
+ * ── «أهما مركبةٌ واحدة؟» — مفتاحٌ لا يبالي بالترتيب ولا بالمسافات ─────────────
+ *
+ * سجلُّ المركبات (`VehicleMaster`) وسجلُّ الإسناد القديم (`Vehicle`) يكتبان
+ * اللوحةَ الواحدة بصيغتين: «أ ص ي 5034» هنا و«5034 أ ص ي» هناك، و«ق أ 4723»
+ * هنا و«ق أ  4723» بمسافتين هناك. فتُرتَّب الحروفُ ألفبائيًّا وتُفصَل عن الأرقام
+ * وتُطوى الهمزاتُ والتاءُ المربوطة.
+ *
+ * والحروفُ تبقى في المفتاح: «ل أ 4719» و«ق أ 4719» دبّابان مختلفان، و«ل أ 1080»
+ * دراجةٌ و«أ ص ر 1080» تريلا — وإسقاطُها يجعلهما واحدة.
+ *
+ * كانت نسختُه في vehicleRegistryController (`samePlate`) وحدَها، فنُقلت هنا
+ * لأنّ خدمةَ التفويض (utils/vehicleAuthorization) تربط بها السجلَّين أيضًا.
+ */
+const orderlessPlateKey = (p) => {
+  if (p == null) return null;
+  const west = String(p).replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+    .replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/[ىئ]/g, 'ي').replace(/ؤ/g, 'و');
+  const digits = (west.match(/\d+/g) || []).join('');
+  const letters = (west.match(/[ء-يA-Za-z]/g) || []).map((c) => c.toUpperCase()).sort().join('');
+  const k = `${digits}|${letters}`;
+  return k === '|' ? null : k;
+};
+module.exports.orderlessPlateKey = orderlessPlateKey;

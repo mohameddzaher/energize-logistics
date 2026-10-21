@@ -291,7 +291,7 @@ const readSheet = (file, sheetName, headerRow) => {
       nationalityAr: '',
       supervisorName: '',
       hireDate: null,
-      notesAr: 'أُضيف من شيت المركبات — قائدٌ فعليٌّ لا صفَّ له في شيت الموظفين',
+      notesAr: '', // لا عبارةَ «من الشيت» — راجع utils/importLabels
       fromVehicleSheet: true,
     });
   }
@@ -378,7 +378,7 @@ const readSheet = (file, sheetName, headerRow) => {
     if (!existing) {
       const doc = new LightTransportEmployee({
         ...d,
-        history: [{ kind: 'created', byName: 'استيراد شيت القسم', note: 'أُنشئ من شيت مشروع B2C' }],
+        history: [{ kind: 'created', byName: 'النظام' }],
       });
       await doc.save();
       created += 1;

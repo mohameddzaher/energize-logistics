@@ -191,7 +191,8 @@ async function run() {
           vehicle: veh._id, employee: emp._id,
           startDate: fields.hireDate || new Date().toISOString().slice(0, 10),
           authorizationType: 'تفويض قيادة',
-          notes: 'مستورد من شيت الموارد البشرية',
+          // لا عبارةَ «مستورد من الشيت»: الاستيرادُ بدايةٌ فقط والنظامُ هو المرجع
+          // بعده، والعبارةُ كانت تُقرأ في ملفّ الموظّف كأنّها صفةٌ للتفويض.
         });
         await Vehicle.findByIdAndUpdate(veh._id, { currentAuthorization: auth._id, currentEmployee: emp._id, status: 'authorized' });
         auths++;

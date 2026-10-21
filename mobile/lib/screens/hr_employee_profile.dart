@@ -1063,7 +1063,21 @@ class _EmployeeVehiclesTabState extends State<_EmployeeVehiclesTab> with Automat
   bool get wantKeepAlive => true;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+    // التفويضُ يُكتب من المركبات ومن مركبات B2C ومن صفحة المركبة — فيصل هنا في الحال.
+    for (final e in _liveEvents) { Live.instance.on(e, _onLive); }
+  }
+
+  static const _liveEvents = ['vehicle:authorization', 'vehicle:accident', 'vreg:updated', 'lt:updated', 'hr:employee'];
+  void _onLive() => _load();
+
+  @override
+  void dispose() {
+    for (final e in _liveEvents) { Live.instance.off(e, _onLive); }
+    super.dispose();
+  }
 
   Future<void> _load() async {
     try {
@@ -1086,24 +1100,33 @@ class _EmployeeVehiclesTabState extends State<_EmployeeVehiclesTab> with Automat
     super.build(context);
     if (_loading) return ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 90), SizedBox(height: 10), Shimmer(height: 90)]);
     if (_error != null) return ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); });
-    final current = _d?['current'];
+    // الحاليُّ من ورقة التفويض في سجلّ المركبات (المرجع) — كما في الموقع.
+    final currents = _d?['currents'] is List
+        ? List<Map<String, dynamic>>.from(_d!['currents'])
+        : (_d?['current'] is Map ? [Map<String, dynamic>.from(_d!['current'])] : <Map<String, dynamic>>[]);
     final auths = List<Map<String, dynamic>>.from(_d?['authorizations'] ?? []);
     final accidents = List<Map<String, dynamic>>.from(_d?['accidents'] ?? []);
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(padding: const EdgeInsets.all(14), children: [
-        if (current is Map) AppCard(
+        if (currents.isNotEmpty) AppCard(
           topAccent: T.success,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(tr('التفويض الحالي', 'Current authorization'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-            const SizedBox(height: 6),
-            Row(children: [
-              const Icon(Icons.local_shipping_outlined, size: 18, color: T.navy),
-              const SizedBox(width: 8),
-              Text(_plate(current['vehicle']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-              const Spacer(),
-              Chip2(tr('نشط', 'Active'), T.success),
-            ]),
+            for (final current in currents) ...[
+              const SizedBox(height: 6),
+              Row(children: [
+                const Icon(Icons.local_shipping_outlined, size: 18, color: T.navy),
+                const SizedBox(width: 8),
+                Text(_plate(current['vehicle']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                if ((current['documentNumber'] ?? '').toString().isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Flexible(child: Text(current['documentNumber'].toString(), style: const TextStyle(fontSize: 11.5, color: T.inkSoft), overflow: TextOverflow.ellipsis)),
+                ],
+                const Spacer(),
+                Chip2(tr('نشط', 'Active'), T.success),
+              ]),
+            ],
           ]),
         ),
         const SizedBox(height: 12),
@@ -1118,7 +1141,10 @@ class _EmployeeVehiclesTabState extends State<_EmployeeVehiclesTab> with Automat
                   Expanded(child: Text(_plate(a['vehicle']), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
                   Text('${_dt(a['startDate'])} → ${a['endDate'] != null ? _dt(a['endDate']) : '…'}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
                   const SizedBox(width: 8),
-                  Chip2(a['status'] == 'active' ? tr('نشط', 'Active') : tr('منتهٍ', 'Ended'), a['status'] == 'active' ? T.success : T.inkFaint),
+                  // «ساري» في السجلّ القديم وتخالفه ورقةُ التفويض: ليس ساريًا.
+                  a['stale'] == true
+                      ? Chip2(tr('غير سارٍ', 'Not current'), T.inkFaint)
+                      : Chip2(a['status'] == 'active' ? tr('نشط', 'Active') : tr('منتهٍ', 'Ended'), a['status'] == 'active' ? T.success : T.inkFaint),
                 ]),
               ),
             )),

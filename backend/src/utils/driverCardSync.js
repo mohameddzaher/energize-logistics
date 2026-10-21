@@ -22,15 +22,25 @@ const CARD_FIELDS_ON_EMPLOYEE = ['driverCardNumber', 'driverCardType', 'driverCa
 
 const clean = (v) => String(v ?? '').trim();
 
+// الإبطالُ قبل الإعلان: كان الحدثُ يُرسَل ثمّ تُمسَح الذاكرة، فيجلب المستمعُ
+// الأسرعُ القائمةَ القديمة ويبقى متأخّرًا تغييرًا واحدًا.
 function emitAll() {
-  try {
-    const { emitToAll } = require('../websocket/socketManager');
-    emitToAll('hr:master', {}); emitToAll('hr:employee', {}); emitToAll('vreg:updated', {});
-  } catch (_) { /* */ }
   try {
     const cache = require('./ttlCache');
     cache.clear('hrm:'); cache.clear('hr:employees:'); cache.clear('dash:hr:'); cache.clear('vreg:');
   } catch (_) { /* */ }
+  try {
+    const { emitToAll } = require('../websocket/socketManager');
+    emitToAll('hr:master', {}); emitToAll('hr:employee', {}); emitToAll('vreg:updated', {});
+  } catch (_) { /* */ }
+}
+
+// جانبُ المركبات وحدَه — حين يُعلن المتحكّمُ (الموارد البشريّة) جانبَه بنفسه.
+// كانت كتابةُ البطاقة من الموارد البشريّة تُنادى بـ`emit: false` فلا تعلم بها
+// صفحةُ بطاقات السائقين حتى تُفتح من جديد.
+function emitVehicles() {
+  try { require('./ttlCache').clear('vreg:'); } catch (_) { /* */ }
+  try { require('../websocket/socketManager').emitToAll('vreg:updated', {}); } catch (_) { /* */ }
 }
 
 async function employeeOfCard(card) {
@@ -137,7 +147,7 @@ async function pushEmployeeToCard(emp, { userId = null, emit = true } = {}) {
   }
   // ثمّ تعود لقطةُ الملفّ من السجلّ — فيبقى الطرفان على قيمةٍ واحدة.
   await pushCardToEmployee(card, { emit: false });
-  if (emit) emitAll();
+  if (emit) emitAll(); else emitVehicles();
   return { card: card._id };
 }
 

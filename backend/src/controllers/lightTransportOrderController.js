@@ -102,6 +102,9 @@ exports.listOrders = async (req, res) => {
       const holderName = S(o.vehicle?.authorizedPerson?.name);
       return {
         ...o,
+        // «أُنشئ من واقع الداتا (شيت المركبات)» من الاستيراد لا يُعرَض — راجع utils/importLabels.
+        notesAr: require('../utils/importLabels').stripImportNote(o.notesAr),
+        createdByName: o.createdByName === 'استيراد شيت القسم' ? '' : o.createdByName,
         authorizedNowName: holderName,
         authorizedNowId: holderId,
         authorizationNumberNow: S(o.vehicle?.authorizedPerson?.authorizationNumber),

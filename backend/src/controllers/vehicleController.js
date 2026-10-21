@@ -26,7 +26,7 @@ const isAdmin = (user, req) => ADMIN.includes(user.role) || (req && req.sectionA
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-const EMP_FIELDS = 'firstName lastName arabicName employeeNumber iqamaNumber jobTitle department phone';
+const EMP_FIELDS = 'firstName lastName arabicName employeeNumber iqamaNumber nationalId jobTitle department phone';
 
 const populateVehicle = (q) =>
   q.populate('branch', 'name')
@@ -34,7 +34,8 @@ const populateVehicle = (q) =>
     .populate({ path: 'currentAuthorization', populate: { path: 'employee', select: EMP_FIELDS } });
 
 // Every vehicle mutation flows through emit() → also drop the cached dashboard.
-const emit = (event, payload) => { try { emitToAll(event, payload); } catch (e) {} cache.clear('veh:'); };
+// الإبطالُ قبل الإعلان — وإلّا جلب المستمعُ اللوحةَ القديمةَ من الذاكرة.
+const emit = (event, payload) => { cache.clear('veh:'); try { emitToAll(event, payload); } catch (e) {} };
 
 // Sync a vehicle's denormalized pointers to its single active authorization.
 const syncVehiclePointers = async (vehicleId) => {
@@ -43,6 +44,60 @@ const syncVehiclePointers = async (vehicleId) => {
     ? { currentAuthorization: active._id, currentEmployee: active.employee, status: 'authorized' }
     : { $unset: { currentAuthorization: 1, currentEmployee: 1 }, status: 'parked' });
 };
+
+// ── الورقةُ تعلو المرآة — في الكتابة وفي العرض ───────────────────────────────
+// هذا السجلُّ (`Vehicle` + `VehicleAuthorization`) مرآةٌ لسجلّ المركبات في
+// التفويض — راجع utils/vehicleAuthorization. والتفويضُ من هذه الصفحة (تُفتح من
+// ملفّ الموظّف في الموارد البشريّة) يُكتب في الورقة أوّلًا ثمّ يتبعها الإسناد،
+// ولا يُكتب الإسنادُ وحدَه إلّا لمركبةٍ قديمةٍ لا ورقةَ لها في السجلّ.
+// وفي العرض: مركبةٌ أُلغيت ورقتُها لا تُعرض «مفوَّضةً لفلان»، وإسنادٌ «ساري»
+// تخالفه الورقةُ يُعلَّم `stale` ولا يُقرأ ساريًا (حتى يُشغَّل سكربتُ المطابقة).
+const VA = require('../utils/vehicleAuthorization');
+const { orderlessPlateKey } = require('../utils/plateKey');
+const { stripImportNote } = require('../utils/importLabels');
+
+const idsOf = (e) => [e?.iqamaNumber, e?.nationalId].map((x) => String(x || '').trim()).filter(Boolean);
+const sameHolder = (h, e) => !!(h && e && typeof e === 'object'
+  && ((h.idNumber && idsOf(e).includes(h.idNumber))
+    || (!h.idNumber && h.name && [VA.fold(VA.empName(e)), VA.fold(e.arabicName)].includes(VA.fold(h.name)))));
+const actorName = (req) => `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim();
+const EMP_FULL = 'firstName lastName arabicName iqamaNumber nationalId vehiclePlate';
+
+async function registryIndex() {
+  const { VehicleMaster } = require('../models/VehicleMaster');
+  const regs = await VehicleMaster.find({}).select('plateNumber authorizedPerson').lean();
+  const byKey = new Map(); const byId = new Map();
+  for (const r of regs) { byKey.set(orderlessPlateKey(r.plateNumber), r); byId.set(String(r._id), r); }
+  return (v) => (v ? (v.master && byId.get(String(v.master))) || byKey.get(orderlessPlateKey(v.plateNumber)) || null : null);
+}
+
+function overlayVehicle(v, reg) {
+  if (!reg) return v;
+  const h = VA.holderOf(reg);
+  const out = {
+    ...v,
+    registryId: String(reg._id),
+    registryHolder: h ? { name: h.name, idNumber: h.idNumber, authorizationNumber: h.authorizationNumber,
+      startDate: VA.ymd(h.startDate), expiryDate: VA.ymd(h.expiryDate) } : null,
+  };
+  const ce = v.currentEmployee;
+  if (!h) {
+    if (v.status === 'authorized') out.status = 'parked';
+    out.currentEmployee = null; out.currentAuthorization = null;
+  } else if (ce && !sameHolder(h, ce)) {
+    out.currentEmployee = null; out.currentAuthorization = null;
+  } else if (!['authorized', 'maintenance', 'out_of_service'].includes(v.status)) {
+    out.status = 'authorized';
+  }
+  return out;
+}
+
+/** سطرُ الإسناد للعرض: بلا عبارة الاستيراد، و«ساري» تخالفه الورقة يُعلَّم. */
+function presentAuth(a, reg) {
+  const out = { ...a, notes: stripImportNote(a.notes) || undefined };
+  if (a.status === 'active' && reg && !sameHolder(VA.holderOf(reg), a.employee)) out.stale = true;
+  return out;
+}
 
 // Lightweight employee search for the authorize/transfer/accident pickers.
 // Vehicle staff (which includes Accounting roles) can't call the HR endpoints,
@@ -73,19 +128,23 @@ exports.listVehicles = async (req, res) => {
     const { q, type, status, branch, project } = req.query;
     const filter = {};
     if (type) filter.type = type;
-    if (status) filter.status = status;
     if (branch) filter.branch = branch;
     if (project) filter.project = project;
     // Cache the populated list (search 'q' is applied in-memory below) so the
     // whole team loading the vehicles page at once hits one query; Vehicle writes
     // clear 'vehicles:list' via the model post-hooks.
-    const ck = `vehicles:list:${type || ''}:${status || ''}:${branch || ''}:${project || ''}`;
+    // والحالةُ تُفلتَر بعد قراءة الورقة لا قبلها: «مفوَّضة» في المرآة قد تكون
+    // ملغاةً في سجلّ المركبات.
+    const ck = `vehicles:list:${type || ''}::${branch || ''}:${project || ''}`;
     // الصلاحيةُ بختم ما تُبنى منه القائمة (المركبة والتفويض والموظف والفرع) لا
     // بعشرين ثانية: كانت تنتهي قبل الفتحة التالية فيدفع كلُّ فاتحٍ ثلاثَ ثوانٍ.
     // راجع utils/changeStamp.
     let vehicles = await require('../utils/changeStamp').freshWrap(ck, 5 * 60 * 1000,
       [Vehicle, VehicleAuthorization, Employee, require('../models/Branch')], () =>
         populateVehicle(Vehicle.find(filter)).sort({ plateNumber: 1 }).limit(5000).lean());
+    const regOf = await registryIndex();
+    vehicles = vehicles.map((v) => overlayVehicle(v, regOf(v)));
+    if (status) vehicles = vehicles.filter((v) => v.status === status);
     // المركبةُ تبقى؛ وحاملُها المؤرشَف لا يُعرَض اسمُه — كأنّه حُذف.
     const sets = await endedStaff();
     if (sets.archivedIds.size) {
@@ -99,7 +158,8 @@ exports.listVehicles = async (req, res) => {
         v.plateNumber, v.make, v.model, v.type, v.branch, v.project, v.chassisNumber,
         v.currentEmployee && `${v.currentEmployee.firstName || ''} ${v.currentEmployee.lastName || ''} ${v.currentEmployee.arabicName || ''}`,
         v.currentEmployee && v.currentEmployee.employeeNumber,
-        v.currentEmployee && v.currentEmployee.iqamaNumber));
+        v.currentEmployee && v.currentEmployee.iqamaNumber,
+        v.registryHolder && v.registryHolder.name));
     }
     res.json({ vehicles });
   } catch (error) {
@@ -112,8 +172,11 @@ exports.getVehicle = async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.isValidObjectId(id)) return res.status(400).json({ message: 'Invalid id' });
-    const vehicle = await populateVehicle(Vehicle.findById(id)).lean();
-    if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
+    const raw = await populateVehicle(Vehicle.findById(id)).lean();
+    if (!raw) return res.status(404).json({ message: 'Vehicle not found' });
+    const regDoc = await VA.masterOfLegacy(raw);
+    const reg = regDoc && regDoc.toObject ? regDoc.toObject() : regDoc;
+    const vehicle = overlayVehicle(raw, reg);
 
     const [authorizations, accidents] = await Promise.all([
       VehicleAuthorization.find({ vehicle: id })
@@ -129,7 +192,7 @@ exports.getVehicle = async (req, res) => {
         .sort({ date: -1, createdAt: -1 }).lean(),
     ]);
 
-    res.json({ vehicle, authorizations, accidents });
+    res.json({ vehicle, authorizations: authorizations.map((a) => presentAuth(a, reg)), accidents });
   } catch (error) {
     console.error('getVehicle error:', error);
     res.status(500).json({ message: 'Failed to load vehicle' });
@@ -220,8 +283,20 @@ exports.authorizeVehicle = async (req, res) => {
     if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
     const { employee, startDate, authorizationType, documentNumber, documentExpiry, issuedBy, notes } = req.body;
     if (!employee || !mongoose.isValidObjectId(employee)) return res.status(400).json({ message: 'Employee is required' });
-    const emp = await Employee.findById(employee).select('_id');
+    const emp = await Employee.findById(employee).select(EMP_FULL).lean();
     if (!emp) return res.status(404).json({ message: 'Employee not found' });
+
+    // للمركبة ورقةٌ في سجلّ المركبات؟ تُكتب هي، ويتبعها الإسناد.
+    const vm = await VA.masterOfLegacy(vehicle);
+    if (vm) {
+      const h = VA.holderOf(vm);
+      if (h) return res.status(400).json({ message: `Vehicle is already authorized to ${h.name || h.idNumber} — transfer it instead`, code: 'ALREADY_AUTHORIZED' });
+      const r = await VA.setHolder(vm, {
+        employee: emp, authorizationNumber: documentNumber, startDate: startDate || null, expiryDate: documentExpiry || null,
+      }, { userId: req.user._id, byName: actorName(req), meta: { authorizationType, issuedBy, notes }, note: 'فُوِّضت المركبة من صفحة المركبة' });
+      const created = await VehicleAuthorization.findOne({ vehicle: { $in: r.vehicles }, employee: emp._id, status: 'active' }).sort({ createdAt: -1 });
+      return res.status(201).json({ authorization: created });
+    }
 
     const existing = await VehicleAuthorization.findOne({ vehicle: vehicle._id, status: 'active' });
     if (existing) return res.status(400).json({ message: 'Vehicle already has an active authorization — transfer it instead', code: 'ALREADY_AUTHORIZED' });
@@ -251,8 +326,23 @@ exports.transferVehicle = async (req, res) => {
     if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
     const { employee, startDate, authorizationType, documentNumber, documentExpiry, issuedBy, notes } = req.body;
     if (!employee || !mongoose.isValidObjectId(employee)) return res.status(400).json({ message: 'New employee is required' });
-    const emp = await Employee.findById(employee).select('_id');
+    const emp = await Employee.findById(employee).select(EMP_FULL).lean();
     if (!emp) return res.status(404).json({ message: 'Employee not found' });
+
+    const vm = await VA.masterOfLegacy(vehicle);
+    if (vm) {
+      const h = VA.holderOf(vm);
+      if (!h) return res.status(400).json({ message: 'Vehicle has no active authorization to transfer — authorize it instead', code: 'NOT_AUTHORIZED' });
+      if (sameHolder(h, emp)) return res.status(400).json({ message: 'Vehicle is already authorized to this employee' });
+      const r = await VA.setHolder(vm, {
+        employee: emp, authorizationNumber: documentNumber, startDate: startDate || today(), expiryDate: documentExpiry || null,
+      }, {
+        userId: req.user._id, byName: actorName(req), meta: { authorizationType, issuedBy, notes },
+        note: `نُقل التفويض من ${h.name || h.idNumber} من صفحة المركبة`,
+      });
+      const created = await VehicleAuthorization.findOne({ vehicle: { $in: r.vehicles }, employee: emp._id, status: 'active' }).sort({ createdAt: -1 });
+      return res.status(201).json({ authorization: created });
+    }
 
     const active = await VehicleAuthorization.findOne({ vehicle: vehicle._id, status: 'active' });
     if (!active) return res.status(400).json({ message: 'Vehicle has no active authorization to transfer — authorize it instead', code: 'NOT_AUTHORIZED' });
@@ -296,6 +386,22 @@ exports.revokeVehicle = async (req, res) => {
     const vehicle = await Vehicle.findById(req.params.id);
     if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
     const { endDate, revokedReason } = req.body;
+
+    const vm = await VA.masterOfLegacy(vehicle);
+    if (vm) {
+      let r;
+      if (VA.holderOf(vm)) {
+        r = await VA.setHolder(vm, null, { userId: req.user._id, byName: actorName(req), reason: revokedReason || '' });
+      } else {
+        // الورقةُ ملغاةٌ أصلًا وبقي إسنادٌ مفتوح: يُغلَق ليتبعها.
+        r = await VA.syncLegacyFromMaster(vm.toObject(), { userId: req.user._id, reason: revokedReason || '', at: endDate });
+        VA.announce(r);
+        if (!r.closed) return res.status(400).json({ message: 'Vehicle has no active authorization to revoke', code: 'NOT_AUTHORIZED' });
+      }
+      const last = await VehicleAuthorization.findOne({ vehicle: { $in: r.vehicles }, status: { $ne: 'active' } }).sort({ updatedAt: -1 });
+      return res.json({ authorization: last });
+    }
+
     const active = await VehicleAuthorization.findOne({ vehicle: vehicle._id, status: 'active' });
     if (!active) return res.status(400).json({ message: 'Vehicle has no active authorization to revoke', code: 'NOT_AUTHORIZED' });
 
@@ -325,6 +431,25 @@ exports.updateAuthorization = async (req, res) => {
     const fields = ['startDate', 'endDate', 'authorizationType', 'documentNumber', 'documentExpiry', 'issuedBy', 'revokedReason', 'notes'];
     for (const f of fields) if (req.body[f] !== undefined) auth[f] = req.body[f];
     await auth.save();
+    // والإسنادُ الساري مرآةُ الورقة: رقمُه ومدّتُه يُكتبان فيها أيضًا، وإلّا
+    // أعادتهما المزامنةُ التالية إلى ما في الورقة.
+    if (auth.status === 'active') {
+      const [vehicle, emp] = await Promise.all([
+        Vehicle.findById(auth.vehicle).lean(), Employee.findById(auth.employee).select(EMP_FULL).lean(),
+      ]);
+      const vm = vehicle ? await VA.masterOfLegacy(vehicle) : null;
+      if (vm && sameHolder(VA.holderOf(vm), emp)) {
+        const $set = {};
+        if (req.body.documentNumber !== undefined) $set['authorizedPerson.authorizationNumber'] = String(req.body.documentNumber || '').trim();
+        if (req.body.startDate !== undefined) $set['authorizedPerson.startDate'] = req.body.startDate || null;
+        if (req.body.documentExpiry !== undefined) $set['authorizedPerson.expiryDate'] = req.body.documentExpiry || null;
+        if (Object.keys($set).length) {
+          const { VehicleMaster } = require('../models/VehicleMaster');
+          await VehicleMaster.updateOne({ _id: vm._id }, { $set }, { skipAuthSync: true });
+        }
+      }
+      VA.announce({ vehicles: [String(auth.vehicle)], employees: [String(auth.employee)] });
+    }
     emit('vehicle:authorization', { vehicle: String(auth.vehicle) });
     res.json({ authorization: auth });
   } catch (error) {
@@ -339,7 +464,20 @@ exports.deleteAuthorization = async (req, res) => {
     const auth = await VehicleAuthorization.findById(req.params.authId);
     if (!auth) return res.status(404).json({ message: 'Authorization not found' });
     const vehicleId = auth.vehicle;
+    const wasActive = auth.status === 'active';
+    const empId = auth.employee;
     await auth.deleteOne();
+    // حذفُ الإسناد الساري يُلغي التفويضَ في الورقة إن كانت باسم صاحبه — وإلّا
+    // أعادته المزامنةُ التالية كأنّه لم يُحذف.
+    if (wasActive) {
+      const [vehicle, emp] = await Promise.all([
+        Vehicle.findById(vehicleId).lean(), Employee.findById(empId).select(EMP_FULL).lean(),
+      ]);
+      const vm = vehicle ? await VA.masterOfLegacy(vehicle) : null;
+      if (vm && sameHolder(VA.holderOf(vm), emp)) {
+        await VA.setHolder(vm, null, { userId: req.user._id, byName: actorName(req), reason: 'حُذف الإسناد من صفحة المركبة' });
+      }
+    }
     await syncVehiclePointers(vehicleId);
     emit('vehicle:authorization', { vehicle: String(vehicleId) });
     res.json({ message: 'Authorization deleted' });
@@ -440,17 +578,43 @@ exports.getEmployeeHistory = async (req, res) => {
   try {
     const { employeeId } = req.params;
     if (!mongoose.isValidObjectId(employeeId)) return res.status(400).json({ message: 'Invalid id' });
-    const [authorizations, accidents] = await Promise.all([
+    const [rawAuths, accidents, holderEmp, regOf] = await Promise.all([
       VehicleAuthorization.find({ employee: employeeId })
-        .populate('vehicle', 'plateNumber type make model status')
+        .populate('vehicle', 'plateNumber type make model status master')
         .populate('transferredTo', EMP_FIELDS)
         .populate('transferredFrom', EMP_FIELDS)
         .sort({ createdAt: -1 }).lean(),
       VehicleAccident.find({ employee: employeeId })
         .populate('vehicle', 'plateNumber type make model')
         .sort({ date: -1, createdAt: -1 }).lean(),
+      Employee.findById(employeeId).select(EMP_FULL).lean(),
+      registryIndex(),
     ]);
-    const current = authorizations.find((a) => a.status === 'active') || null;
+    // ── «المركبة الحاليّة» من الورقة، والسجلُّ تاريخٌ ───────────────────────
+    // كان الحاليُّ أوّلَ إسنادٍ «ساري» في سجلّ الحركة — فظهر «ق أ 4723 مُفوَّضة
+    // لـ MD Rakib Hossen» وقد أُلغي تفويضُها من B2C. الآن يُسأل `currentFor`
+    // (الورقةُ هي المرجع)، والإسنادُ الذي تخالفه الورقةُ يُعلَّم `stale`.
+    // (`employee` هنا معرّفٌ لا مستند — فيُقارَن بملفّه هو، ثمّ يُعاد كما كان.)
+    const authorizations = rawAuths.map((a) => ({ ...presentAuth({ ...a, employee: holderEmp }, regOf(a.vehicle)), employee: a.employee }));
+    const held = holderEmp ? await VA.currentFor(holderEmp) : [];
+    const currents = held.map((h) => {
+      const log = rawAuths.find((a) => a.status === 'active'
+        && orderlessPlateKey(a.vehicle?.plateNumber) === orderlessPlateKey(h.plateNumber));
+      return {
+        _id: log ? String(log._id) : `registry:${h.registryId}`,
+        status: 'active',
+        source: h.source,
+        registryId: h.registryId || null,
+        vehicle: log?.vehicle || { _id: h.legacyVehicleId || null, plateNumber: h.plateNumber, type: /دراج/.test(h.registrationTypeAr) ? 'motorcycle' : '' },
+        startDate: h.startDate || log?.startDate || null,
+        documentNumber: h.authorizationNumber || log?.documentNumber || '',
+        documentExpiry: h.expiryDate || log?.documentExpiry || '',
+        authorizationType: log?.authorizationType || '',
+        registrationTypeAr: h.registrationTypeAr || '',
+        sectorAr: h.sectorAr || '', projectAr: h.projectAr || '',
+      };
+    });
+    const current = currents[0] || null;
 
     // ── وما هو مقيَّدٌ عليه في سجلّ المركبات ─────────────────────────────────
     // التفاويضُ في موضعين: سجلُّ الحركة هذا، وورقةٌ مثبتةٌ على المركبة نفسِها في
@@ -496,7 +660,7 @@ exports.getEmployeeHistory = async (req, res) => {
       }));
     } catch (e) { registry = []; }
 
-    res.json({ current, authorizations, accidents, registry });
+    res.json({ current, currents, authorizations, accidents, registry });
   } catch (error) {
     console.error('getEmployeeHistory error:', error);
     res.status(500).json({ message: 'Failed to load employee vehicle history' });

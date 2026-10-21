@@ -35,6 +35,9 @@ export interface Vehicle {
   currentAuthorization?: VehicleAuthorization | string | null;
   accidentCount?: number;
   notes?: string; createdAt?: string;
+  // ورقةُ التفويض في سجلّ المركبات (المرجع) — تُعرض بدل المرآة حين تخالفها.
+  registryId?: string;
+  registryHolder?: { name: string; idNumber: string; authorizationNumber: string; startDate: string; expiryDate: string } | null;
 }
 
 export interface VehicleAuthorization {
@@ -51,6 +54,11 @@ export interface VehicleAuthorization {
   notes?: string;
   createdBy?: any; endedBy?: any;
   createdAt?: string; updatedAt?: string;
+  // «ساري» في سجلّ الإسناد وتخالفه ورقةُ التفويض في سجلّ المركبات — لا يُقرأ ساريًا.
+  stale?: boolean;
+  // التفويضُ الحاليّ يُقرأ من سجلّ المركبات: معرّفُ المركبة هناك.
+  registryId?: string | null;
+  source?: 'registry' | 'legacy';
 }
 
 export interface VehicleAccident {
@@ -90,7 +98,15 @@ export const AUTH_STATUS: Record<string, Styled> = {
   active: { bg: 'bg-green-500/20', text: 'text-green-600', en: 'Active', ar: 'سارٍ' },
   transferred: { bg: 'bg-blue-500/20', text: 'text-blue-600', en: 'Transferred', ar: 'تم نقله' },
   revoked: { bg: 'bg-red-500/20', text: 'text-red-600', en: 'Revoked', ar: 'ملغى' },
+  // إسنادٌ قديمٌ تخالفه ورقةُ التفويض في سجلّ المركبات — ليس ساريًا.
+  stale: { bg: 'bg-slate-500/20', text: 'text-slate-600', en: 'Not current (vehicle registry)', ar: 'غير سارٍ — حسب سجل المركبات' },
 };
+
+/** حالةُ سطر الإسناد كما تُعرض: «ساري» تخالفه الورقةُ يُقرأ «غير سارٍ». */
+export const authStatusKey = (a: { status: string; stale?: boolean }) => (a.stale ? 'stale' : a.status);
+/** رابطُ المركبة: صفحتُها في سجلّ المركبات إن كانت فيه، وإلّا الصفحةُ القديمة. */
+export const vehicleHref = (registryId: string | null | undefined, legacyId: string | null | undefined) =>
+  (registryId ? `/system/vehicles/registry/${registryId}` : legacyId ? `/system/vehicles/${legacyId}` : '#');
 
 export const ACCIDENT_SEVERITY: Record<string, Styled> = {
   minor: { bg: 'bg-slate-500/20', text: 'text-slate-600', en: 'Minor', ar: 'بسيط' },

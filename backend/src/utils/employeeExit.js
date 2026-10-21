@@ -23,12 +23,16 @@
  */
 async function employeeExitBlockers(employeeId) {
   const Asset = require('../models/Asset');
-  const VehicleAuthorization = require('../models/VehicleAuthorization');
+  // التفويضُ من مصدره الواحد (utils/vehicleAuthorization): ورقةُ المركبة، والإسنادُ
+  // القديم لمركبةٍ لا ورقةَ لها فقط. كان يُعَدّ الإسنادُ «الساري» وحدَه، فمُنع
+  // إنهاءُ خدمة مَن أُلغي تفويضُه من المركبات أو B2C وبقي إسنادُه مفتوحًا.
+  const { currentFor } = require('./vehicleAuthorization');
 
-  const [assets, authorizations] = await Promise.all([
+  const [assets, held] = await Promise.all([
     Asset.countDocuments({ employee: employeeId, status: 'assigned' }),
-    VehicleAuthorization.countDocuments({ employee: employeeId, status: 'active' }),
+    currentFor(employeeId),
   ]);
+  const authorizations = held.length;
 
   const reasons = [];
   if (assets) reasons.push(`${assets} عهدة لم تُسلَّم`);

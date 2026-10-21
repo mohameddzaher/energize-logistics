@@ -1850,15 +1850,25 @@ ResourceConfig ltUserRentalsCfg({required bool canWrite, required bool canDelete
   titleOf: (r) => _s(r, 'renterName'),
   subtitleOf: (r) => [
     _s(r, 'projectAr'),
+    // اليوزرُ صفُّه في «موظفي النقل الخفيف» — الرابطُ بكروت اللوحة (كالموقع).
+    if (r['rep'] is Map) '${tr('اليوزر', 'User')}: ${[(r['rep'] as Map)['name'], (r['rep'] as Map)['vehiclePlate']].where((x) => (x ?? '').toString().isNotEmpty).join(' · ')}',
     _s(r, 'renterType') == 'company' ? tr('شركة', 'Company') : tr('شخص', 'Person'),
     _s(r, 'idNumber'),
     _s(r, 'startDate').split('-').reversed.join('/'),
   ].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
     _s(r, 'status') == 'active' ? (tr('مؤجَّر', 'Active'), T.success) : (tr('منتهٍ', 'Ended'), T.inkFaint),
+    if (r['rep'] == null) (tr('غير مربوط بيوزر', 'Not linked'), T.warn),
   ],
   fields: [
-    FieldSpec('projectAr', 'المشروع', 'Project', type: FieldType.lookup, required: true,
+    // يُختار اليوزرُ من موظّفي النقل الخفيف فيُربط التأجيرُ بكروت اللوحة: مشروعُه
+    // يتبعه، ونوعُ عقده «يوزرات» ما دام مؤجَّرًا (backend utils/ltRental).
+    FieldSpec('ltEmployee', 'اليوزر (من موظفي النقل الخفيف)', 'User (light-transport staff)', type: FieldType.lookup,
+        lookupEndpoint: '/api/light-transport/people?only=lt', lookupListKey: 'people',
+        lookupLabel: (r) => [_s(r, 'name'), _s(r, 'idNumber'), _s(r, 'projectAr')].where((x) => x.isNotEmpty).join(' · '),
+        lookupValue: (r) => _s(r, 'ltId')),
+    // ومع اليوزر المربوط يُؤخذ مشروعُه من صفّه (الخادمُ يكتبه) — فلا يُطلَب هنا.
+    FieldSpec('projectAr', 'المشروع', 'Project', type: FieldType.lookup,
         lookupEndpoint: '/api/lookups?type=lt_project&active=true',
         lookupListKey: 'items', lookupQuery: 'limit=200',
         lookupLabel: (r) => _s(r, 'nameAr'), lookupValue: (r) => _s(r, 'nameAr')),

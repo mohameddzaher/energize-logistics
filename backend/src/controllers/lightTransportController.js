@@ -1439,7 +1439,9 @@ const REGISTRY_EDIT = ['super_admin', 'admin', 'vehicles_manager', 'vehicles_sta
 // الموارد البشريّة. ما تعرضه هو ما يقبله التعديل — utils/vehiclePerson.
 exports.people = async (req, res) => {
   try {
-    const people = await require('../utils/vehiclePerson').options({ scope: 'lt', q: req.query.q });
+    const all = await require('../utils/vehiclePerson').options({ scope: 'lt', q: req.query.q });
+    // `only=lt` للقائد الفعليّ وليوزر التأجير — من موظّفي القسم وحدَهم (منتقي التطبيق لا يفلتر).
+    const people = req.query.only === 'lt' ? all.filter((p) => p.source === 'lt') : all;
     res.json({ people });
   } catch (e) {
     console.error('lt people:', e);

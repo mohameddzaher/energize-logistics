@@ -812,6 +812,8 @@ class _B2cBoardCards extends StatelessWidget {
             onTap: () => open(tr('مركبات القسم', 'Section vehicles'), const {'_v': '1'})),
         _BRow([
           _BHalf(tr('عليها راكب', 'With a rider'), _bi(v['withRider']), () => open(tr('عليها راكب', 'With a rider'), const {'_v': '1', 'vstate': 'withRider'})),
+          // منتهي الخدمة والمركبةُ ما زالت معه — لا راكبٌ ولا واقفة (كالموقع).
+          _BHalf(tr('بانتظار التسليم', 'Awaiting hand-over'), _bi(v['hold']), () => open(tr('بانتظار التسليم', 'Awaiting hand-over'), const {'_v': '1', 'vstate': 'hold'})),
           _BHalf(tr('واقفة', 'Idle'), _bi(v['idle']), () => open(tr('واقفة بلا راكب', 'Idle'), const {'_v': '1', 'vstate': 'idle'})),
         ]),
         _BRow([

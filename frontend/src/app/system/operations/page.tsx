@@ -508,7 +508,20 @@ export default function OperationsWorkflowPage() {
     if (filtered || page !== 1) return;
     setWorkflows((p) => [wf, ...p]);
   }, [search, dateFrom, dateTo, showPendingOnly, colFilters, page]);
-  const handleUpdated = useCallback((wf: Workflow) => { setWorkflows((p) => p.map((w) => w._id === wf._id ? wf : w)); }, []);
+  // ── صفٌّ كاملٌ يُستبدَل، وإشعارٌ مختصرٌ يُعيد التحميل ─────────────────────
+  // بعضُ البثّ يحمل الصفَّ كلَّه (تعديلٌ من الشاشة)، وبعضُه إشعارٌ قصير:
+  // `{ _id, fromWallet }` من المحفظة أو `{ bulk: true }` من التحصيل. كان القصيرُ
+  // يُوضَع مكانَ الصفّ فيفرغ الصفُّ على الشاشة حتّى التحديث، و`bulk` لا يحدّث
+  // شيئًا. فالقصيرُ يُعيد تحميلَ الصفحة في الخلفية — مجمَّعًا، فدفعةُ إشعاراتٍ = تحميلٌ واحد.
+  const refetchSoon = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleUpdated = useCallback((wf: Workflow) => {
+    if (wf && wf._id && (wf as any).reportNumber !== undefined) {
+      setWorkflows((p) => p.map((w) => w._id === wf._id ? wf : w));
+      return;
+    }
+    if (refetchSoon.current) clearTimeout(refetchSoon.current);
+    refetchSoon.current = setTimeout(() => fetchWorkflows(true), 600);
+  }, [fetchWorkflows]);
   const handleDeleted = useCallback((d: { _id: string }) => {
     setWorkflows((p) => p.filter((w) => w._id !== d._id));
     setTotal((t) => Math.max(0, t - 1));

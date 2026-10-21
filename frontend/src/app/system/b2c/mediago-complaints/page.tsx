@@ -26,7 +26,7 @@ import {
   type MgList, type MgRow,
 } from '@/lib/mediago';
 import { Bi, ComplaintDetailModal, CreateComplaintModal, StatusPill, makeTx, type Mode } from '@/components/b2c/MediaGoKit';
-import { MonitorPlay, Plus, Search, Film, Image as ImageIcon, MessageCircle, MapPin, Clock, Bike, X, Lock, Pencil, Trash2 } from 'lucide-react';
+import { MonitorPlay, Plus, Search, Film, Image as ImageIcon, MessageCircle, MapPin, Clock, Bike, X, Lock, Pencil, Trash2, LayoutGrid, Rows3 } from 'lucide-react';
 
 type Filters = { status: string; issue: string; location: string; availability: string; from: string; to: string };
 const NO_FILTERS: Filters = { status: '', issue: '', location: '', availability: '', from: '', to: '' };
@@ -80,6 +80,12 @@ export default function MediaGoComplaintsPage() {
   const [f, setF] = useState<Filters>(NO_FILTERS);
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<string>('');
+  // ── وحسابُ Media Go يختار العرض: بطاقاتٌ أو جدولٌ كالذي عندنا ──────────────
+  // (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). اختيارٌ لكلّ متصفّح — راحةٌ لا بيانات.
+  const [view, setView] = useState<'grid' | 'table'>('grid');
+  // يُقرأ بعد التركيب لا قبله: الصفحةُ تُرسَم على الخادم أوّلًا ولا تخزينَ هناك.
+  useEffect(() => { try { if (localStorage.getItem('mg:view') === 'table') setView('table'); } catch { /* */ } }, []);
+  const pickView = (v: 'grid' | 'table') => { setView(v); try { localStorage.setItem('mg:view', v); } catch { /* */ } };
   const [editRow, setEditRow] = useState<MgRow | null>(null);
   // يومٌ بعينه أو فترة — واليومُ هو فترةٌ أوّلُها آخرُها، فالخادمُ لا يفرّق.
   const [dateMode, setDateMode] = useState<'day' | 'range'>('day');
@@ -263,6 +269,17 @@ export default function MediaGoComplaintsPage() {
           </button>
         )}
         <span className="ms-auto text-[12.5px] font-semibold text-slate-600">{data.total} {tx('بلاغ', 'complaints')}</span>
+        {partner && (
+          <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 text-[12px] font-semibold">
+            {(['grid', 'table'] as const).map((v) => (
+              <button key={v} type="button" onClick={() => pickView(v)}
+                className={`inline-flex items-center gap-1 px-2.5 py-1.5 ${view === v ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+                {v === 'grid' ? <LayoutGrid className="h-3.5 w-3.5" /> : <Rows3 className="h-3.5 w-3.5" />}
+                {v === 'grid' ? tx('بطاقات', 'Cards') : tx('جدول', 'Table')}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* القائمة — بطاقاتٌ للشريك، وجدولٌ لنا */}
@@ -271,7 +288,7 @@ export default function MediaGoComplaintsPage() {
           <MonitorPlay className="mx-auto mb-2 h-10 w-10 text-slate-300" />
           <p className="font-semibold text-slate-600"><Bi ar={anyFilter ? 'لا بلاغات مطابقة' : 'لا بلاغات بعد'} en={anyFilter ? 'No matching complaints' : 'No complaints yet'} mode={mode} /></p>
         </div>
-      ) : partner ? (
+      ) : partner && view === 'grid' ? (
         // حسابُ Media Go يفتح البلاغَ صفحةً كاملة لا نافذة.
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {data.items.map((r) => <ComplaintCard key={r._id} r={r} data={data} mode={mode} onOpen={() => router.push(`/system/b2c/mediago-complaints/${r._id}`)} />)}
@@ -296,7 +313,7 @@ export default function MediaGoComplaintsPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {data.items.map((r) => (
-                  <tr key={r._id} onClick={() => setOpenId(r._id)} className="cursor-pointer hover:bg-orange-50/40">
+                  <tr key={r._id} onClick={() => (partner ? router.push(`/system/b2c/mediago-complaints/${r._id}`) : setOpenId(r._id))} className="cursor-pointer hover:bg-orange-50/40">
                     <td className="whitespace-nowrap px-3 py-2 font-bold text-slate-900" dir="ltr">{r.ref}</td>
                     <td className="whitespace-nowrap px-3 py-2 font-semibold text-slate-900">
                       <span dir="auto">{r.motorcycleNumber}</span>

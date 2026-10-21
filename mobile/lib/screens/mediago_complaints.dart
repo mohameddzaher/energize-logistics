@@ -90,6 +90,8 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
   // يومٌ بعينه = فترةٌ أوّلُها آخرُها (yyyy-MM-dd) — والخادمُ يعدّ اليومَ بتوقيت السعوديّة.
   String _from = '';
   String _to = '';
+  // عرضُ القائمة: بطاقاتٌ أو صفوفٌ مضغوطة كالجدول — يختاره المستخدم.
+  bool _table = false;
   Timer? _debounce;
   int _seq = 0;
   late final void Function() _onLive;
@@ -294,11 +296,26 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
               label: Text(_dateLabel, overflow: TextOverflow.ellipsis, textDirection: _from.isEmpty ? null : TextDirection.ltr),
             )),
           ]),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: SegmentedButton<bool>(
+              showSelectedIcon: false,
+              segments: [
+                ButtonSegment(value: false, icon: const Icon(Icons.grid_view_rounded, size: 16), label: Text(_bx(partner, 'بطاقات', 'Cards'))),
+                ButtonSegment(value: true, icon: const Icon(Icons.table_rows_outlined, size: 16), label: Text(_bx(partner, 'جدول', 'Table'))),
+              ],
+              selected: {_table},
+              onSelectionChanged: (v) => setState(() => _table = v.first),
+            ),
+          ),
+          const SizedBox(height: 8),
           if (items.isEmpty)
             EmptyState(icon: Icons.connected_tv_outlined, title: _bx(partner, 'لا بلاغات', 'No complaints'))
           else
-            for (final r in items) Padding(padding: const EdgeInsets.only(bottom: 12), child: _card(r, meta, partner)),
+            ...(_table
+                ? [for (final r in items) _row(r, meta, partner)]
+                : [for (final r in items) Padding(padding: const EdgeInsets.only(bottom: 12), child: _card(r, meta, partner))]),
         ],
       ),
     );
@@ -367,6 +384,23 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
       ),
     );
   }
+
+  /// صفٌّ مضغوطٌ كصفّ الجدول: المرجعُ والدبّابُ والمشكلةُ والحالةُ والتاريخ.
+  Widget _row(Map<String, dynamic> r, Map? meta, bool partner) => Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: T.line)),
+        child: ListTile(
+          dense: true,
+          onTap: () => _open('${r['_id']}'),
+          title: Row(children: [
+            Text('${r['ref']}', textDirection: TextDirection.ltr, style: const TextStyle(fontWeight: FontWeight.w800)),
+            const SizedBox(width: 8),
+            Expanded(child: Text('${r['motorcycleNumber']}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600))),
+            _StatusPill('${r['status']}', meta, partner),
+          ]),
+          subtitle: Text('${_issueOf(meta, r, partner)} · ${_when(r['createdAt'])}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5)),
+        ),
+      );
 
   Future<void> _editRow(Map<String, dynamic> r) async {
     final saved = await Navigator.push<Map<String, dynamic>>(context, MaterialPageRoute(builder: (_) => MediaGoCreateScreen(meta: _d?['meta'] as Map?, editing: r)));

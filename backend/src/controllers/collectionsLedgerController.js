@@ -699,9 +699,16 @@ exports.team = async (req, res) => {
 // PUT /api/collections-dept/ledger/team/assign — مَن يتولّى هذه الحسابات
 exports.assignOfficer = async (req, res) => {
   try {
-    const { parties, officer } = req.body || {};
+    const { parties, officer, officerUser } = req.body || {};
     if (!Array.isArray(parties) || !parties.length) return res.status(400).json({ message: 'اختر حسابًا واحدًا على الأقلّ' });
-    const r = await CollectionsParty.updateMany({ _id: { $in: parties } }, { $set: { collectionOfficer: String(officer || '').trim() } });
+    // الإسنادُ إلى حسابٍ لا إلى اسمٍ يُكتب: يُحلّ الاسمُ (أو المعرّفُ) إلى مستخدمه،
+    // ويبقى النصُّ للعرض — كما كُتب إن كُتب («التخليص الجمركي» مثلًا)، وإلّا اسمُ الحساب.
+    const { resolveAssignment } = require('../utils/collectionsOfficer');
+    const a = await resolveAssignment({ userId: officerUser, name: officer });
+    const text = String(officer || '').trim() || a.text || '';
+    const r = await CollectionsParty.updateMany({ _id: { $in: parties } }, {
+      $set: { collectionOfficer: text, collectionOfficerUser: text ? (a.user || null) : null },
+    });
     exports.invalidate();
     res.json({ ok: true, updated: r.modifiedCount });
   } catch (e) { res.status(500).json({ message: 'تعذّر إسنادُ الحسابات' }); }

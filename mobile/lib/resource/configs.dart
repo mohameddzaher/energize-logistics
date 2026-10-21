@@ -63,6 +63,7 @@ Color _docColor(dynamic d) {
 final fleetDriversCfg = ResourceConfig(
   arTitle: 'السائقون', enTitle: 'Drivers', icon: Icons.badge_outlined,
   endpoint: '/api/fleet/drivers', listKey: 'drivers', liveEvent: 'fleet:updated',
+  extraLiveEvents: const ['hr:employee', 'vreg:updated'],
   // اسمُ الزميل يُبحَث به أيضًا: من يكتب اسمَ سائقٍ يريد صفَّه وصفَّ من يشاركه
   // الشاحنة. والخادمُ يرسل `mate` مع كلّ صفّ، فالبحثُ المحليُّ يقرؤه بنقطة.
   searchFields: const ['name', 'phone', 'iqama', 'mate.name'],
@@ -70,6 +71,7 @@ final fleetDriversCfg = ResourceConfig(
   subtitleOf: (r) => [_s(r, 'phone'), _s(r, 'iqama')].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
     r['working'] != false ? ('يعمل', T.success) : ('متوقف', T.inkFaint),
+    r['hrLinked'] == true ? ('من الموارد البشرية', T.info) : ('غير مرتبط بموظف', T.warn),
     if (r['onSponsorship'] == true) ('على الكفالة', T.info),
     if (r['vehicle'] is Map) (_s(r['vehicle'] as Map<String, dynamic>, 'plate'), T.navy),
     // ── ورتبتُه على الشاحنة ────────────────────────────────────────────────
@@ -85,6 +87,16 @@ final fleetDriversCfg = ResourceConfig(
   ],
   // تبديل سريع لحالة العمل/الكفالة من قائمة الصف دون فتح النموذج.
   rowActions: (r) => [
+    // ── وربطُه بملفّه في الموارد البشريّة ───────────────────────────────────
+    // السائقُ المربوطُ يُقرأ اسمُه وجوالُه وهويّتُه من ملفّه؛ وغيرُ المربوط
+    // (أكثرُهم مكتوبٌ باسمه الأوّل) يُربط من هنا كما في صفحة الموقع.
+    ResourceAction(
+      icon: Icons.link_rounded,
+      ar: r['hrLinked'] == true ? 'تغيير الموظف المرتبط' : 'ربط بموظف',
+      en: r['hrLinked'] == true ? 'Change linked employee' : 'Link to employee',
+      color: T.navy,
+      run: (ctx, row) => openFleetDriverLink(ctx, row),
+    ),
     ResourceAction(
       icon: r['working'] != false ? Icons.pause_circle_outline : Icons.play_circle_outline,
       ar: r['working'] != false ? 'إيقاف عن العمل' : 'إعادة للعمل',
@@ -1981,3 +1993,106 @@ final lightTransportOrdersCfg = ResourceConfig(
   fields: const [],
   canCreate: false, canEdit: false, canDelete: false,
 );
+
+
+/// نافذةُ «ربط بموظف» لسائق الأسطول — المقترحون من الخادم (النقل الثقيل والأسطول
+/// أوّلًا، والأقربُ اسمًا وهويّةً)، وبحثٌ في الملفّات كلّها، وفكُّ الربط.
+Future<bool> openFleetDriverLink(BuildContext ctx, Map<String, dynamic> row) async {
+  final id = '${row['_id']}';
+  final picked = await showModalBottomSheet<Map<String, dynamic>>(
+    context: ctx,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (c) => _FleetDriverLinkSheet(driverId: id, driverName: _s(row, 'name'), linked: row['hrLinked'] == true),
+  );
+  if (picked == null) return false;
+  try {
+    await Api.instance.patch('/api/fleet/drivers/$id/employee', {'employee': picked['_id']});
+    if (ctx.mounted) {
+      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(picked['_id'] == null ? tr('فُكّ الربط', 'Unlinked') : tr('رُبط بـ ${picked['name']}', 'Linked to ${picked['name']}'))));
+    }
+    return true;
+  } catch (e) {
+    if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : '$e')));
+    return false;
+  }
+}
+
+class _FleetDriverLinkSheet extends StatefulWidget {
+  final String driverId;
+  final String driverName;
+  final bool linked;
+  const _FleetDriverLinkSheet({required this.driverId, required this.driverName, required this.linked});
+  @override
+  State<_FleetDriverLinkSheet> createState() => _FleetDriverLinkSheetState();
+}
+
+class _FleetDriverLinkSheetState extends State<_FleetDriverLinkSheet> {
+  List<Map<String, dynamic>> _rows = const [];
+  bool _loading = true;
+  String _q = '';
+  int _seq = 0;
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    final mine = ++_seq;
+    setState(() => _loading = true);
+    try {
+      final d = await Api.instance.get('/api/fleet/drivers/hr-candidates?driver=${widget.driverId}${_q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(_q)}'}');
+      if (!mounted || mine != _seq) return;
+      setState(() { _rows = List<Map<String, dynamic>>.from((d as Map)['candidates'] ?? const []); _loading = false; });
+    } catch (_) {
+      if (mounted && mine == _seq) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.8,
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(tr('ربط «${widget.driverName}» بموظف', 'Link "${widget.driverName}" to an employee'),
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TextField(
+              decoration: InputDecoration(prefixIcon: const Icon(Icons.search), isDense: true, hintText: tr('ابحث بالاسم أو رقم الهوية', 'Search name or ID'),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+              onSubmitted: (v) { _q = v.trim(); _load(); },
+            ),
+          ),
+          if (widget.linked)
+            TextButton.icon(onPressed: () => Navigator.pop(context, <String, dynamic>{'_id': null}),
+                icon: const Icon(Icons.link_off, color: T.danger), label: Text(tr('فكّ الربط', 'Unlink'), style: const TextStyle(color: T.danger))),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : ListView.separated(
+                    itemCount: _rows.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (_, i) {
+                      final e = _rows[i];
+                      final taken = e['linkedTo'] is Map;
+                      return ListTile(
+                        enabled: !taken,
+                        title: Text('${e['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                        subtitle: Text([_s(e, 'idNumber'), _s(e, 'department'), _s(e, 'jobTitle'),
+                          if (taken) tr('مربوط بـ ${(e['linkedTo'] as Map)['name']}', 'linked to ${(e['linkedTo'] as Map)['name']}')]
+                            .where((x) => x.isNotEmpty).join(' · '), style: const TextStyle(fontSize: 12)),
+                        trailing: const Icon(Icons.chevron_left),
+                        onTap: taken ? null : () => Navigator.pop(context, e),
+                      );
+                    },
+                  ),
+          ),
+        ]),
+      ),
+    );
+  }
+}

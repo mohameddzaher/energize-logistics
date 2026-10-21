@@ -45,6 +45,7 @@ import ManagedSelect from '@/components/system/ManagedSelect';
 import IqamaPersonInfo from '@/components/vehicles/IqamaPersonInfo';
 import PersonLookup, { type FoundPerson } from '@/components/vehicles/PersonLookup';
 import HijriGregorianField from '@/components/vehicles/HijriGregorianField';
+import PersonSelect from '@/components/system/PersonSelect';
 import ScrollX from '@/components/system/ScrollX';
 
 /** عمودٌ واحد: كيف يُقرأ من المركبة، وكيف يُسمّى، وكيف يُرسَم. */
@@ -87,6 +88,14 @@ export type DocField = {
   lookup?: string;
   /** رقمُ إقامة: يُعرَض تحته تاريخُ ميلاد صاحبه وجوالُه (IqamaPersonInfo). */
   personInfo?: boolean;
+  /**
+   * ── خانةُ شخص: تُختار من الموظّفين ولا تُكتب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────
+   * منسدلةٌ بالبحث (PersonSelect) تملأ الاسمَ وتملأ معه مساراتِ الهويّة والجوال
+   * والمسمّى — والخادمُ يرفض اسمًا لا يطابق موظّفًا (backend utils/vehiclePerson).
+   */
+  person?: { idPath: string; phonePath?: string; jobPath?: string };
+  /** تُقرأ ولا تُكتب — تُملأ من خانة الشخص. */
+  readOnly?: boolean;
 };
 
 /** قراءةُ مسارٍ منقوط. `?.` لا يكفي هنا لأن المسار نصٌّ لا يُعرَف إلا وقت التشغيل. */
@@ -1021,7 +1030,22 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, pers
                         {ar ? fl.ar : fl.en}
                         {fl.hint && <span className="font-normal text-slate-400"> ({fl.hint})</span>}
                       </label>
-                      {fl.lookup ? (
+                      {fl.person ? (
+                        <PersonSelect endpoint="/api/vehicle-registry/people" ar={ar}
+                          clearLabel={t('بلا — يُلغى', 'None — clears it')}
+                          idNumber={String(vals[fl.person.idPath] ?? '')} name={String(vals[fl.path] ?? '')}
+                          onChange={(p) => setVals((prev) => {
+                            const ps = fl.person!;
+                            const next = { ...prev, [fl.path]: p?.name || '', [ps.idPath]: p?.idNumber || '' };
+                            if (ps.phonePath) next[ps.phonePath] = p?.phone || '';
+                            if (ps.jobPath && p?.jobTitleAr && !prev[ps.jobPath]) next[ps.jobPath] = p.jobTitleAr;
+                            return next;
+                          })} />
+                      ) : fl.readOnly ? (
+                        <input readOnly value={vals[fl.path] ?? ''} tabIndex={-1}
+                          className={`${inp} bg-slate-50 text-slate-500 ${fl.mono ? 'font-mono' : ''}`}
+                          {...(fl.mono ? { dir: 'ltr' } : {})} />
+                      ) : fl.lookup ? (
                         <ManagedSelect storeLabel type={fl.lookup} value={vals[fl.path] ?? ''}
                           onChange={(v) => setVals((p) => ({ ...p, [fl.path]: v }))}
                           placeholder={t('اختر…', 'Select…')} />

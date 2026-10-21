@@ -32,6 +32,7 @@ import ScrollX from '@/components/system/ScrollX';
 // ميلاديّةً وحدَها فيحوّل بيده أو بهاتفه ثمّ يكتب — وكلُّ تحويلٍ بيدٍ خطأٌ ينتظر.
 // والمحفوظُ واحدٌ لا اثنان: الميلاديُّ يُخزَّن، والهجريُّ واجهةُ إدخالٍ وقراءة.
 import HijriGregorianField from '@/components/vehicles/HijriGregorianField';
+import PersonSelect from '@/components/system/PersonSelect';
 
 const EDIT_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
 
@@ -671,9 +672,20 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
         <Card title={ar ? 'التفويض بالقيادة' : 'Driving authorisation'}
           extra={<ReqToggle ar={ar} label={ar ? 'هل نطلبه؟' : 'Do we need it?'}
             code={f.authorizedPerson?.statusCode || ''} onChange={(v) => setSub('authorizedPerson', 'statusCode', v)} />}>
-          <div><L>{ar ? 'اسم المفوَّض' : 'Authorised person'}</L><input className={inp} value={f.authorizedPerson?.name || ''} onChange={(e) => setSub('authorizedPerson', 'name', e.target.value)} /></div>
+          {/* المفوَّضُ يُختار من الموظّفين (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢): إقامتُه وجوالُه من ملفّه. */}
+          <div><L>{ar ? 'اسم المفوَّض' : 'Authorised person'}</L>
+            <PersonSelect endpoint="/api/vehicle-registry/people" ar={ar} clearLabel={ar ? 'بلا تفويض' : 'No authorisation'}
+              idNumber={f.authorizedPerson?.iqamaNumber || ''} name={f.authorizedPerson?.name || ''}
+              onChange={(p) => setF((prev: any) => ({
+                ...prev,
+                authorizedPerson: {
+                  ...(prev.authorizedPerson || {}), name: p?.name || '', iqamaNumber: p?.idNumber || '', phone: p?.phone || '',
+                  jobTitleAr: prev.authorizedPerson?.jobTitleAr || p?.jobTitleAr || '',
+                },
+              }))} />
+          </div>
           <div><L>{ar ? 'الوظيفة' : 'Job title'}</L><ManagedSelect storeLabel type="vehicle_job_title" value={f.authorizedPerson?.jobTitleAr || ''} onChange={(v) => setSub('authorizedPerson', 'jobTitleAr', v)} /></div>
-          <div><L>{ar ? 'رقم الإقامة' : 'Iqama number'}</L><input className={inp} value={f.authorizedPerson?.iqamaNumber || ''} onChange={(e) => setSub('authorizedPerson', 'iqamaNumber', e.target.value)} /></div>
+          <div><L>{ar ? 'رقم الإقامة' : 'Iqama number'}</L><input className={`${inp} bg-slate-50 text-slate-500`} readOnly tabIndex={-1} value={f.authorizedPerson?.iqamaNumber || ''} /></div>
           <div><L>{ar ? 'رقم التفويض' : 'Authorisation no.'}</L><input className={inp} value={f.authorizedPerson?.authorizationNumber || ''} onChange={(e) => setSub('authorizedPerson', 'authorizationNumber', e.target.value)} /></div>
           <div><L>{ar ? 'بداية التفويض' : 'Auth. start'}</L><HijriGregorianField value={(f.authorizedPerson?.startDate || '').slice(0, 10)} onChange={(v) => setSub('authorizedPerson', 'startDate', v || null)} ar={ar} inp={inp} /></div>
           <div><L>{ar ? 'نهاية التفويض' : 'Auth. expiry'}</L><HijriGregorianField value={(f.authorizedPerson?.expiryDate || '').slice(0, 10)} onChange={(v) => setSub('authorizedPerson', 'expiryDate', v || null)} ar={ar} inp={inp} /></div>

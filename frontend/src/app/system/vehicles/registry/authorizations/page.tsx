@@ -8,10 +8,9 @@
 import { useState } from 'react';
 import { UserCheck, UserMinus, UserPlus, X, Save, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
-import { EmployeePicker } from '@/components/vehicles/EmployeePicker';
+import PersonSelect, { type Person } from '@/components/system/PersonSelect';
 import IqamaPersonInfo from '@/components/vehicles/IqamaPersonInfo';
 import ManagedSelect from '@/components/system/ManagedSelect';
-import { empName } from '@/lib/hr';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -43,10 +42,13 @@ const COLUMNS: DocColumn[] = [
 // ورقةُ التفويض كاملةً: مَن، وبأيّ إقامة، وبأيّ رقم، ومن متى إلى متى. وناقصُها
 // لا يُقرأ: اسمٌ بلا رقمِ تفويضٍ ولا مدّة لا يُثبِت صفةَ السائق أمام أحد.
 const FIELDS: DocField[] = [
-  { path: 'authorizedPerson.name', ar: 'اسم المفوَّض', en: 'Authorised person', wide: true },
-  { path: 'authorizedPerson.iqamaNumber', ar: 'رقم الإقامة', en: 'Iqama number', mono: true, personInfo: true },
+  // المفوَّضُ يُختار من الموظّفين (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢): إقامتُه وجوالُه من ملفّه
+  // لا يُكتبان — والخادمُ يرفض اسمًا لا يطابق موظّفًا.
+  { path: 'authorizedPerson.name', ar: 'اسم المفوَّض', en: 'Authorised person', wide: true,
+    person: { idPath: 'authorizedPerson.iqamaNumber', phonePath: 'authorizedPerson.phone', jobPath: 'authorizedPerson.jobTitleAr' } },
+  { path: 'authorizedPerson.iqamaNumber', ar: 'رقم الإقامة', en: 'Iqama number', mono: true, personInfo: true, readOnly: true },
   // جوالُه في ورقة التفويض نفسِها — أوّلُ ما يُطلَب حين يقع شيءٌ في الطريق.
-  { path: 'authorizedPerson.phone', ar: 'جوال المفوَّض', en: 'Authorised phone', mono: true },
+  { path: 'authorizedPerson.phone', ar: 'جوال المفوَّض', en: 'Authorised phone', mono: true, readOnly: true },
   // المسمّى قائمةٌ تُدار من إعدادات القسم: «سائق نقل ثقيل» في سبعٍ وخمسين مركبة
   // و«مندوب توصيل» في ثلاثٍ وعشرين — وخانةٌ حرّةٌ تجعلها عشرين مسمًّى بعد شهر.
   { path: 'authorizedPerson.jobTitleAr', ar: 'المسمّى الوظيفي لقائد المركبة', en: 'Driver job title', lookup: 'vehicle_job_title' },
@@ -103,20 +105,8 @@ export default function Page() {
         onDone={(msg) => { notify(msg, 'success'); assigning.reload(); setAssigning(null); }} />
     )}
     <DocumentFamilyPage
-      /* ── والمفوَّضُ يُبحَث عنه فتُملأ ورقتُه ──────────────────────────────
-         اسمُه وإقامتُه وجوالُه مكتوبةٌ في الموارد البشريّة وبطاقات السائقين —
-         فتُقرأ منها بدل أن تُكتب بالأيدي فتُكتب بصيغتين. */
-      personFill={{
-        label: t('ابحث عن المفوَّض فتُملأ ورقته', 'Find the authorised person'),
-        hint: t('بالاسم أو رقم الهوية أو الإقامة — والكتابة اليدوية تبقى متاحة.',
-                'By name, national ID or iqama — typing by hand still works.'),
-        map: (p) => ({
-          'authorizedPerson.name': p.name || '',
-          'authorizedPerson.iqamaNumber': p.idNumber || '',
-          'authorizedPerson.phone': p.absherPhone || p.phone || '',
-          ...(p.jobTitleAr ? { 'authorizedPerson.jobTitleAr': p.jobTitleAr } : {}),
-        }),
-      }}
+      /* المفوَّضُ يُختار من منسدلة الموظّفين في خانته نفسِها (DocField.person) —
+         فتأتي إقامتُه وجوالُه من ملفّه، ولا يُكتب اسمٌ بيد. */
       docKey="authorization"
       // ── ولا زرَّ «مسح البيانات» هنا ────────────────────────────────────────
       // هو الذي أوقع في الخطأ: اسمُه يقول إنّه يمسح، والمستخدمُ يريد أن يُلغي،
@@ -164,32 +154,26 @@ function AssignModal({ v, ar, onClose, onDone }: {
   v: VReg; ar: boolean; onClose: () => void; onDone: (msg: string) => void;
 }) {
   const t = (a: string, e: string) => (ar ? a : e);
-  const [emp, setEmp] = useState<any>(null);
+  const [emp, setEmp] = useState<Person | null>(null);
   const [f, setF] = useState({
     name: '', iqamaNumber: '', jobTitleAr: '', authorizationNumber: '', startDate: '', expiryDate: '',
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
-  const pick = (_id: string, e: any) => {
+  // الموظّفُ يُختار من المنسدلة — موظّفو الموارد البشريّة ومَن لا ملفَّ له من النقل الخفيف.
+  const pick = (e: Person | null) => {
     setEmp(e);
     if (!e) { setF((p) => ({ ...p, name: '', iqamaNumber: '' })); return; }
-    setF((p) => ({
-      ...p,
-      name: empName(e, ar ? 'ar' : 'en'),
-      // رقمُ الهويّة عمودان بحسب نوعها — يُقرأ الموجودُ منهما. راجع
-      // ملاحظةَ «رقم الهوية عمودان لا عمود» في config/hrFields.
-      iqamaNumber: e.iqamaNumber || e.nationalId || '',
-      jobTitleAr: p.jobTitleAr || e.jobTitle || '',
-    }));
+    setF((p) => ({ ...p, name: e.name, iqamaNumber: e.idNumber, jobTitleAr: p.jobTitleAr || e.jobTitleAr || '' }));
   };
 
   const save = async () => {
-    if (!f.name.trim()) { setErr(t('اختر الموظّف', 'Pick the employee')); return; }
+    if (!emp) { setErr(t('اختر الموظّف', 'Pick the employee')); return; }
     setSaving(true); setErr('');
     try {
       const r = await api.post<{ message: string }>(`/api/vehicle-registry/${v._id}/authorization`, {
-        action: 'assign', ...f,
+        action: 'assign', ...f, employeeId: emp.employeeId, ltId: emp.ltId,
       });
       onDone(r?.message || t('تمّ التفويض', 'Authorised'));
     } catch (e: any) { setErr(e?.message || t('تعذّر التفويض', 'Could not authorise')); }
@@ -215,18 +199,17 @@ function AssignModal({ v, ar, onClose, onDone }: {
         <div className="space-y-3">
           <div>
             <L>{t('الموظّف *', 'Employee *')}</L>
-            <EmployeePicker value={emp?._id || ''} onChange={pick} lang={ar ? 'ar' : 'en'}
-              placeholder={t('ابحث بالاسم أو الرقم الوظيفي…', 'Search by name or number…')} />
+            <PersonSelect endpoint="/api/vehicle-registry/people" ar={ar} idNumber={emp?.idNumber || ''} onChange={pick} />
             {emp && (
               <p className="mt-1 text-[11.5px] text-emerald-700">
-                {[emp.employeeNumber, emp.iqamaNumber || emp.nationalId].filter(Boolean).join(' · ')}
+                {[emp.idNumber, emp.phone, emp.projectAr].filter(Boolean).join(' · ')}
               </p>
             )}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div><L>{t('رقم الإقامة', 'Iqama number')}</L>
-              <input className={`${inp} font-mono`} dir="ltr" value={f.iqamaNumber}
-                onChange={(e) => setF((p) => ({ ...p, iqamaNumber: e.target.value }))} />
+              {/* من ملفّ الموظّف المختار — لا يُكتب. */}
+              <input className={`${inp} font-mono bg-slate-50 text-slate-500`} dir="ltr" value={f.iqamaNumber} readOnly tabIndex={-1} />
               <IqamaPersonInfo idNumber={f.iqamaNumber} ar={ar} />
             </div>
             <div><L>{t('المسمّى الوظيفي', 'Job title')}</L>
@@ -257,7 +240,7 @@ function AssignModal({ v, ar, onClose, onDone }: {
 
         <div className="flex justify-end gap-2 mt-4">
           <button onClick={onClose} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm">{t('إلغاء', 'Cancel')}</button>
-          <button onClick={save} disabled={saving || !f.name.trim()}
+          <button onClick={save} disabled={saving || !emp}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f14] text-white text-sm font-semibold disabled:opacity-60">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {t('تفويض', 'Authorise')}
           </button>

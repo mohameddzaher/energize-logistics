@@ -17,6 +17,18 @@
  * حد يملا الحقل بنشيلها، فالعدّاد بينقص لوحده.
  */
 
+/**
+ * حقلٌ رقميّ: الصفرُ فراغ. أعمدةُ المبالغ في المخطَّط `default: 0`، فالصفرُ فيها
+ * لم يكتبه أحد — يُقرأ null فيُعَدّ «لا يوجد» لا «مُدخَلًا» (ويوافقه
+ * `filledExpr` في utils/hrCounts).
+ */
+function numberField(key, ar, en, extra = {}) {
+  return {
+    key, ar, en, type: 'number', ...extra,
+    readFrom: (e) => { const n = Number(e?.[key]); return Number.isFinite(n) && n !== 0 ? n : null; },
+  };
+}
+
 const GROUPS = [
   {
     key: 'identity', ar: 'الهوية والبيانات الشخصية', en: 'Identity', icon: 'user',
@@ -51,9 +63,14 @@ const GROUPS = [
     fields: [
       { key: 'email', ar: 'البريد الشخصي', en: 'Personal email', type: 'text', groupable: true },
       { key: 'companyEmail', ar: 'بريد الشركة', en: 'Company email', type: 'text' },
+      // الجوالُ الشخصيّ — ويُنسَخ إلى سجلّ النقل الخفيف وورقة التفويض (utils/employeeIdentitySync).
+      { key: 'phone', ar: 'رقم الجوال', en: 'Mobile', type: 'text' },
       { key: 'absherNumber', ar: 'جوال أبشر', en: 'Absher phone', type: 'text', groupable: true },
+      { key: 'absherStatus', ar: 'حالة أبشر', en: 'Absher status', type: 'text', groupable: true, choice: true },
       { key: 'companyNumber', ar: 'جوال الشركة', en: 'Company phone', type: 'text' },
       { key: 'originCountryNumber', ar: 'جوال بلد الإقامة', en: 'Home-country phone', type: 'text' },
+      { key: 'emergencyContactName', ar: 'اسم جهة اتصال الطوارئ', en: 'Emergency contact name', type: 'text' },
+      { key: 'emergencyContactPhone', ar: 'جوال جهة اتصال الطوارئ', en: 'Emergency contact phone', type: 'text' },
       // العنوان الوطنيّ رمزٌ مكانيّ لا نصٌّ حرّ («JDBE3757»)، فالفلترة به تجمع
       // ساكني المبنى الواحد — وهو سؤالٌ يُسأل عند السكن المشترك والنقل.
       { key: 'address', ar: 'العنوان الوطني', en: 'National address', type: 'text', groupable: true },
@@ -71,8 +88,13 @@ const GROUPS = [
       { key: 'staffCategory', ar: 'الفئة الوظيفية', en: 'Staff category', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_staff_category' },
       // «الفرع» في ملفّ الاستيراد هو المدينة (جدة، مكة…) — فاسمُه في كلّ شاشةٍ «المدينة».
       { key: 'branchName', ar: 'المدينة', en: 'City', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_work_location' },
+      // مكانُ العمل من قائمة المدن نفسِها (hr_work_location) — قائمةٌ مغلقة كالمدينة.
+      { key: 'workLocation', ar: 'مكان العمل', en: 'Work location', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_work_location' },
       { key: 'directManagerName', ar: 'المدير المباشر', en: 'Line manager', type: 'text', groupable: true },
       { key: 'jobTitle', ar: 'المسمى الوظيفي', en: 'Job title', type: 'text', groupable: true },
+      { key: 'sponsorName', ar: 'الكفيل', en: 'Sponsor', type: 'text', groupable: true, choice: true },
+      { key: 'classification', ar: 'التصنيف', en: 'Classification', type: 'text', groupable: true, choice: true },
+      { key: 'fileStatus', ar: 'حالة الملف', en: 'File status', type: 'text', groupable: true, choice: true },
       // رقم السجلّ التجاريّ كان هنا، وانتقل إلى مجموعة «السجل والتأمينات
       // الاجتماعية» تحت — لأنّه والتأمينات وجهان لتسجيلٍ واحد، لا حقلان.
       // ولا يجوز أن يُذكر في مجموعتين: `getField` تُرجع أولاهما، وتُبنى منه
@@ -80,6 +102,14 @@ const GROUPS = [
       { key: 'workStatusText', ar: 'حالة العمل', en: 'Work status', type: 'text', groupable: true },
       { key: 'systemStatus', ar: 'داخل النظام', en: 'In system', type: 'text', groupable: true },
       { key: 'hireDate', ar: 'تاريخ التعيين', en: 'Hire date', type: 'date' },
+      // اليومُ الأوّل فعلًا في العمل — يبقى بعد تجديد العقود (models/Employee).
+      { key: 'actualWorkStartDate', ar: 'تاريخ مباشرة العمل', en: 'Work start date', type: 'date' },
+      // ── المركبةُ تُقرأ ولا تُكتب ─────────────────────────────────────────────
+      // لقطةٌ من سجلّ المركبات (`VehicleMaster.authorizedPerson`) يكتبها
+      // utils/vehicleAuthorization.refreshPlateSnapshot وحدَه. فتُعرَض هنا وتُعَدّ،
+      // والخادمُ يرفض كتابتَها (`readOnly`) — التفويضُ يُغيَّر من سجلّ المركبات.
+      { key: 'vehiclePlate', ar: 'المركبة (من سجل المركبات)', en: 'Vehicle (from registry)', type: 'text', readOnly: true },
+      { key: 'notes', ar: 'ملاحظات', en: 'Notes', type: 'text' },
       { key: 'isOutsideKingdom', ar: 'خارج المملكة', en: 'Outside kingdom', type: 'bool', groupable: true },
       // النوعُ بجانب المهنة في كلّ شاشة: على الكفالة أم عملٌ حرّ.
       // ── والنوعُ يُقرأ من السجلّ التجاريّ لا يُكتب ─────────────────────────────
@@ -136,6 +166,18 @@ const GROUPS = [
     ],
   },
   {
+    // ── الراتبُ والبدلات ──────────────────────────────────────────────────────
+    // لقطةٌ للعرض والتعديل — العقدُ الساري هو المرجع. والصفرُ في هذه الأعمدة
+    // قيمةُ المخطَّط الافتراضيّة لا مبلغٌ مكتوب، فيُقرأ فراغًا (`numberField`)
+    // وإلّا عُدَّ كلُّ موظّفٍ «مُدخَلًا» براتبٍ لم يكتبه أحد.
+    key: 'compensation', ar: 'الراتب والبدلات', en: 'Salary & allowances', icon: 'wallet',
+    fields: [
+      numberField('basicSalary', 'الراتب الأساسي', 'Basic salary'),
+      numberField('allowances', 'البدلات', 'Allowances'),
+      numberField('penaltyClause', 'الشرط الجزائي', 'Penalty clause'),
+    ],
+  },
+  {
     key: 'iqama', ar: 'الإقامات', en: 'Iqama', icon: 'id', document: true,
     expiryField: 'iqamaExpiry',
     fields: [
@@ -155,6 +197,8 @@ const GROUPS = [
       // تُقرأ. وتاريخُ الانتهاء الميلاديُّ هو الأصل: عليه تُبنى التنبيهاتُ
       // والتجديد.
       { key: 'iqamaProfession', ar: 'المهنة في الإقامة', en: 'Iqama occupation', type: 'text', groupable: true },
+      // ملاحظةٌ لا مستند: لا تُعلَّم «مطلوبة» عند إنشاء الموظّف (`optional`).
+      { key: 'iqamaProfessionRequirements', ar: 'متطلبات المهنة في الإقامة', en: 'Occupation requirements', type: 'text', optional: true },
     ],
   },
   {
@@ -194,6 +238,34 @@ const GROUPS = [
     expiryField: 'workPermitExpiry',
     fields: [
       { key: 'workPermitExpiry', ar: 'تاريخ الانتهاء', en: 'Expiry', type: 'date' },
+      // ولا رقمَ لرخصة العمل في ملفّ الموظّف — لا عمودَ له في المخطَّط.
+    ],
+  },
+  {
+    // ── التأشيرات وأجير: مستندان لا يحملهما كلُّ موظّف ──────────────────────────
+    // لهما تاريخُ انتهاءٍ يُتابَع، فيدخلان شاشةَ الانتهاءات وعدّاداتِ اللوحة
+    // كبقيّة المستندات. لكنّ أكثرَ الموظّفين لا تأشيرةَ لهم ولا أجير، فلا يُعلَّم
+    // الفارغُ منهما «مطلوبًا» عند إنشاء الموظّف (`optional`) — وإلّا امتلأت قائمةُ
+    // الشغل بمن لا يحتاجهما. ومن يحتاجه يُعلَّم «مطلوبًا» بيده.
+    key: 'visa', ar: 'التأشيرات', en: 'Visas', icon: 'passport', document: true, optional: true,
+    expiryField: 'visaExpiry',
+    fields: [
+      { key: 'visaExpiry', ar: 'تاريخ الانتهاء', en: 'Expiry', type: 'date' },
+    ],
+  },
+  {
+    key: 'ajeer', ar: 'أجير', en: 'Ajeer', icon: 'license', document: true, optional: true,
+    expiryField: 'ajeerExpiry',
+    fields: [
+      { key: 'ajeerStatus', ar: 'حالة أجير', en: 'Ajeer status', type: 'text', groupable: true, choice: true },
+      { key: 'ajeerExpiry', ar: 'تاريخ الانتهاء', en: 'Expiry', type: 'date' },
+    ],
+  },
+  {
+    // كارتُ العمل نصٌّ واحد — لا تاريخَ انتهاءٍ له في المخطَّط، فليس مستندًا يُتابَع.
+    key: 'workCard', ar: 'كارت العمل', en: 'Work card', icon: 'card',
+    fields: [
+      { key: 'workCard', ar: 'كارت العمل', en: 'Work card', type: 'text', groupable: true },
     ],
   },
   {
@@ -202,7 +274,11 @@ const GROUPS = [
     fields: [
       { key: 'insuranceCompany', ar: 'شركة التأمين', en: 'Insurer', type: 'text', groupable: true, choice: true },
       { key: 'insuranceClass', ar: 'فئة التأمين', en: 'Class', type: 'text', groupable: true, choice: true },
+      // رقمُ الوثيقة والسجلُّ المسجَّل تحته (models/Employee).
+      { key: 'medicalInsuranceNumber', ar: 'رقم وثيقة التأمين', en: 'Policy no.', type: 'text' },
+      { key: 'medicalInsuranceRegister', ar: 'سجل التأمين الطبي', en: 'Insurance register', type: 'text', groupable: true, choice: true },
       { key: 'insuranceExpiry', ar: 'تاريخ الانتهاء', en: 'Expiry', type: 'date' },
+      { key: 'insuranceRequirements', ar: 'متطلبات التأمين', en: 'Insurance requirements', type: 'text', optional: true },
     ],
   },
   {
@@ -219,6 +295,8 @@ const GROUPS = [
     fields: [
       { key: 'driverCardStatus', ar: 'توفّر البطاقة', en: 'Availability', type: 'text', groupable: true },
       { key: 'driverCardNumber', ar: 'رقم البطاقة', en: 'Card no.', type: 'text' },
+      // نوعُها (سنوية · مقيدة…) يُكتب في بطاقة السائق نفسِها — utils/driverCardSync.
+      { key: 'driverCardType', ar: 'نوع البطاقة', en: 'Card type', type: 'text', groupable: true, choice: true },
       { key: 'driverCardExpiry', ar: 'تاريخ الانتهاء', en: 'Expiry', type: 'date' },
     ],
   },
@@ -226,8 +304,17 @@ const GROUPS = [
     key: 'drivingLicense', ar: 'رخص القيادة', en: 'Driving licences', icon: 'license', document: true,
     expiryField: 'licenseExpiry',
     fields: [
+      { key: 'licenseNumber', ar: 'رقم الرخصة', en: 'Licence no.', type: 'text' },
       { key: 'licenseType', ar: 'نوع الرخصة', en: 'Licence type', type: 'text', groupable: true, choice: true },
       { key: 'licenseExpiry', ar: 'تاريخ الانتهاء', en: 'Expiry', type: 'date' },
+    ],
+  },
+  {
+    // آخرُ رحلةٍ معروفة — سفرٌ وعودة.
+    key: 'travel', ar: 'السفر', en: 'Travel', icon: 'plane',
+    fields: [
+      { key: 'lastTravelDate', ar: 'تاريخ السفر', en: 'Travel date', type: 'date' },
+      { key: 'lastReturnDate', ar: 'تاريخ العودة', en: 'Return date', type: 'date' },
     ],
   },
 ];

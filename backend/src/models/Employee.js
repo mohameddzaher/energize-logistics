@@ -290,9 +290,10 @@ employeeSchema.pre('save', function defaultRequiredDocs(next) {
     if (!this.fieldStatus || typeof this.fieldStatus.set !== 'function') this.fieldStatus = new Map();
     const empty = (v) => v === null || v === undefined || v === '' || (v instanceof Date && isNaN(v));
     for (const g of H.DOCUMENT_GROUPS) {
-      if (skipGroups.has(g.key)) continue;
+      // التأشيرةُ وأجير لا يحملهما كلُّ موظّف (`optional`) — لا تُطلَب من الجميع.
+      if (skipGroups.has(g.key) || g.optional) continue;
       for (const f of g.fields) {
-        if (/Hijri$/.test(f.key)) continue;
+        if (/Hijri$/.test(f.key) || f.optional || f.readOnly) continue;
         const sk = H.statusKeyOf(f.key);
         if (this.fieldStatus.get(sk)) continue;
         if (empty(H.valueOf(this, f.key))) this.fieldStatus.set(sk, 'required');

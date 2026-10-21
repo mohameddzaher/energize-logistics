@@ -588,6 +588,9 @@ const GROUP_DOC_TYPE = {
   healthCertificate: 'healthCert',
   driverCard: 'driverCard',
   drivingLicense: 'license',
+  // مجموعتا التأشيرات وأجير (config/hrFields) — اسمُ المجموعة اسمُ المستند.
+  visa: 'visa',
+  ajeer: 'ajeer',
 };
 exports._RENEWAL_FIELDS = RENEWAL_FIELDS;
 exports._GROUP_DOC_TYPE = GROUP_DOC_TYPE;

@@ -51,7 +51,9 @@ function valueExpr(key) {
 /** أمملوءٌ هو؟ — الفارغُ نصًّا والصفرُ الفارغُ وnull سواء. */
 function filledExpr(key) {
   const v = valueExpr(key);
-  return { $not: [{ $in: [v, ['', null, []]] }] };
+  // والحقلُ الرقميّ صفرُه فراغ — قيمةُ المخطَّط الافتراضيّة (راجع numberField في config/hrFields).
+  const empties = H.getField(key)?.type === 'number' ? ['', null, [], 0] : ['', null, []];
+  return { $not: [{ $in: [v, empties] }] };
 }
 
 /** حالةُ الحقل كتعبيرِ تجميع. */

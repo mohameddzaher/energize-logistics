@@ -29,4 +29,6 @@ module.exports.DEFAULT_ALERTS = {
   drivingLicense: 30,
   medicalInsurance: 30,
   contract: 30,
+  visa: 30,
+  ajeer: 30,
 };

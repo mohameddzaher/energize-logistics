@@ -1297,7 +1297,7 @@ exports.employeeFields = async (req, res) => {
         const raw = f.type === 'hijri' ? (H.valueOf(emp, base) ? toHijri(H.valueOf(emp, base)) : null) : (H.valueOf(emp, f.key) ?? null);
         return {
           ...f, value: raw, status: statusOf(emp, base),
-          locked: LOCKED_FIELDS.has(f.key) || !!f.derived,
+          locked: LOCKED_FIELDS.has(f.key) || !!f.derived || !!f.readOnly,
           ...(f.key === 'project' && b2cProject ? { note: 'من سجل B2C — ويُكتب فيه' } : {}),
         };
       }),
@@ -1331,6 +1331,8 @@ exports.updateFields = async (req, res) => {
       const f = H.getField(k);
       if (!f) { rejected.push(k); continue; }
       if (f.derived) { rejected.push(k); continue; }
+      // «المركبة» لقطةٌ من سجلّ المركبات — تُغيَّر بالتفويض هناك لا من هنا.
+      if (f.readOnly) { rejected.push(`${k} (يُقرأ من سجل المركبات)`); continue; }
       // «حالة العمل» و«حالة النظام» لا تُكتبان من خانة — بإنهاء الخدمة والخروج من النظام.
       if (LOCKED_FIELDS.has(k)) { rejected.push(`${k} (تتغيّر بإنهاء الخدمة أو الخروج من النظام فقط)`); continue; }
       // القسمُ والجنسيّةُ والمدينةُ والمشروعُ من قوائمها وحدَها — راجع utils/hrLists.
@@ -1366,6 +1368,13 @@ exports.updateFields = async (req, res) => {
         applied[k] = emp[k];
       } else if (f.type === 'bool') {
         emp[k] = v === true || v === 'true' || v === '1'; applied[k] = emp[k];
+      } else if (f.type === 'number') {
+        // المبلغُ رقمٌ في المخطَّط: الأرقامُ العربيّة تُقرأ، والفواصلُ تُحذف، والفارغُ صفر
+        // (قيمةُ المخطَّط الافتراضيّة، وتُقرأ فراغًا — راجع numberField في config/hrFields).
+        const txt = String(v ?? '').trim().replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/[,،\s]/g, '');
+        const n = txt === '' ? 0 : Number(txt);
+        if (!Number.isFinite(n)) { rejected.push(`${k} (رقمٌ غير صحيح)`); continue; }
+        emp[k] = n; applied[k] = n;
       } else {
         // ويُكتب في العمود الموافق لنوع الهويّة — وإلّا كُتب رقمُ السعوديّ في
         // خانة الإقامة، فيقرؤه الماستر ولا يقرؤه ملفُّ الموظّف.

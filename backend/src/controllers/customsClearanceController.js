@@ -8,6 +8,7 @@ const {
 } = require('../models/CustomsClearance');
 const contractPricing = require('../utils/customsContractPricing');
 const cache = require('../utils/ttlCache');
+const { searchKey } = require('../utils/arabicSearch');
 const { parseMonth, parseYear } = require('../utils/period');
 const logAudit = require('../utils/auditLogger');
 const { endedStaff, userEnded } = require('../utils/endedStaff');
@@ -178,17 +179,103 @@ const DISPLAY_FIELDS = [
 // تُرسَل بعد انتقاءٍ داخليّ — لا الوثيقةُ الفرعيّة كلُّها (راجع toWire).
 const DISPLAY_NESTED = ['billing.invoiceStatus', 'billing.ourInvoiceNumber', 'stageDone.containersReturned',
   'costs.total', 'revenue.clearanceFee', 'revenue.totalInvoiced', 'revenue.profit'];
-// تُقرأ للبحث وحدَه ولا تُرسَل. ومَن أضاف حقلًا هنا فليضِفه إلى قائمة البحث أسفل.
-const SEARCH_ONLY = [
-  'doNumber', 'exitPermitNumber', 'saberNumber', 'hsCode',
-  'countryOfOrigin', 'legacySerial', 'notes', 'carrierName', 'unloadingLocation', 'assignedTo',
-];
+// (كانت هنا قائمةُ «تُقرأ للبحث وحدَه». البحثُ صار له فهرسُه — راجع
+//  SEARCH_INDEX_FIELDS أسفل — فلا يُقرأ في القائمة إلّا ما يُعرَض أو يُحسَب منه.)
 // تُقرأ ليُحسَب منها ولا تُرسَل: منها نسبةُ المراحل وهل تنتظر فاتورةَ النقل.
 const DERIVE_ONLY = ['papersReceivedDate', 'declarationDate', 'stagesDone', 'transportRoute', 'pipelineVersion', 'stageDone.doInvoicePaid', 'transportInvoiceReceived',
   'containers.route', 'containers.stagesDone',
   // أرقامُ الحاويات (أو السيّارات) — يُبحَث بها ويُرسَل منها سطرٌ واحد (راجع toWire).
   'containers.containerNumber'];
-const LIST_FIELDS = [...DISPLAY_FIELDS, ...DISPLAY_NESTED, ...SEARCH_ONLY, ...DERIVE_ONLY, 'notesLog'].join(' ');
+const LIST_FIELDS = [...DISPLAY_FIELDS, ...DISPLAY_NESTED, ...DERIVE_ONLY, 'notesLog'].join(' ');
+
+/**
+ * ── البحثُ بأيّ شيءٍ مكتوبٍ على المعاملة ────────────────────────────────────
+ * صاحبُ الشركة: «البحث يقبل كلّ حاجة — رقم الحاوية، رقم البوليصة… في كلّ
+ * صفحات التخليص». والورقةُ التي في يد الموظّف قد تحمل أيَّ رقم: البيان، إذنَ
+ * التسليم، تصريحَ الخروج، سابر، إيصالَ إرجاع الحاوية، رقمَ فاتورتنا أو فاتورة
+ * الوكيل — والمعاملةُ هي المجهول.
+ *
+ * فللبحث فهرسٌ واحدٌ تقرؤه الشاشاتُ كلُّها (القائمة، ولوحةُ القسم، وصفحاتُ
+ * العملاء والوكلاء والناقلين، والهاتف): لكلّ معاملةٍ سطرٌ مطويٌّ واحد من كلّ
+ * نصٍّ فيها، ويُسأل «هل يحتوي». والطيُّ (searchKey) يُسقط المسافاتِ والشرطات
+ * ويوحّد صورَ الحروف العربيّة والأرقامَ العربيّة — فـ«MSKU 123 4567»
+ * و«msku-1234567» رقمٌ واحد، و«مؤسسة» و«موسسه» اسمٌ واحد.
+ *
+ * ومَن أضاف حقلًا نصّيًّا إلى المعاملة فليُضِفه هنا وفي `searchValuesOf`.
+ */
+const SEARCH_INDEX_FIELDS = [
+  'refNumber', 'blNumber', 'customerName', 'shippingAgent', 'shippingAgentEmail', 'carrierName',
+  'customerParty', 'agentParty', 'carrierParty',
+  'invoiceNumber', 'saleInvoiceNumber', 'billing.ourInvoiceNumber', 'billing.invoiceStatus',
+  'port', 'city', 'branch', 'declarationNumber', 'doNumber', 'exitPermitNumber', 'saberNumber', 'hsCode',
+  'exporterCompany', 'countryOfOrigin', 'currency', 'invoiceType', 'legacySerial', 'notes', 'assignedTo',
+  'unloadingLocation', 'contractPricing.contractTitle', 'contractPricing.routeFrom', 'contractPricing.routeTo',
+  // الحاوياتُ (أو السيّارات): رقمُها وبيانُها وإرجاعُها ورقمُ كشف كلّ نقلة.
+  'containers.containerNumber', 'containers.declaration', 'containers.notes', 'containers.returnDepot',
+  'containers.returnReceipt', 'containers.returnRef', 'containers.returnNotes', 'containers.moves.ref',
+  // طلباتُ الصرف وبنودُ البيع وفاتورةُ النقل والمرفقاتُ والملاحظاتُ كلُّها.
+  'paymentStages.label', 'paymentStages.note', 'paymentStages.decisionNote', 'paymentStages.fileName',
+  'saleItems.label', 'saleItems.note', 'transportInvoice.note', 'transportInvoice.fileName',
+  'attachments.title', 'attachments.fileName', 'notesLog.text', 'notesLog.byName',
+].join(' ');
+const BRANCH_NAMES = { jeddah: 'جدة Jeddah', dammam: 'الدمام Dammam' };
+
+/** كلُّ نصٍّ يُبحَث فيه من المعاملة — وأسماءُ أطرافها كما في سجلّ الأطراف. */
+function searchValuesOf(c, partyName = () => '') {
+  const list = (a) => (Array.isArray(a) ? a : []);
+  return [
+    c.refNumber, c.blNumber, c.customerName, c.shippingAgent, c.shippingAgentEmail, c.carrierName,
+    partyName(c.customerParty), partyName(c.agentParty), partyName(c.carrierParty),
+    c.invoiceNumber, c.saleInvoiceNumber, c.billing && c.billing.ourInvoiceNumber, c.billing && c.billing.invoiceStatus,
+    c.port, c.city, BRANCH_NAMES[c.branch], c.declarationNumber, c.doNumber, c.exitPermitNumber, c.saberNumber, c.hsCode,
+    c.exporterCompany, c.countryOfOrigin, c.currency, c.invoiceType, c.legacySerial, c.notes, c.assignedTo,
+    c.unloadingLocation,
+    c.contractPricing && c.contractPricing.contractTitle, c.contractPricing && c.contractPricing.routeFrom,
+    c.contractPricing && c.contractPricing.routeTo,
+    ...list(c.containers).flatMap((x) => (x ? [x.containerNumber, x.declaration, x.notes, x.returnDepot,
+      x.returnReceipt, x.returnRef, x.returnNotes, ...list(x.moves).map((m) => m && m.ref)] : [])),
+    ...list(c.paymentStages).flatMap((x) => (x ? [x.label, x.note, x.decisionNote, x.fileName] : [])),
+    ...list(c.saleItems).flatMap((x) => (x ? [x.label, x.note] : [])),
+    c.transportInvoice && c.transportInvoice.note, c.transportInvoice && c.transportInvoice.fileName,
+    ...list(c.attachments).flatMap((x) => (x ? [x.title, x.fileName] : [])),
+    ...list(c.notesLog).flatMap((x) => (x ? [x.text, x.byName] : [])),
+  ];
+}
+
+// فاصلٌ لا يُكتب في صندوق بحث: لا يطابق نصٌّ آخرَ حقلٍ وأوّلَ الذي يليه.
+const SEP = '\u0001';
+
+/** الفهرسُ نفسُه — يُبنى مرّةً لكلّ ثلاثين ثانية، ويُمحى مع كلّ كتابةٍ في القسم. */
+const searchIndex = () => cache.wrap('customs:search-index', 30000, async () => {
+  const [rows, parties] = await Promise.all([
+    CustomsClearance.find({}).select(SEARCH_INDEX_FIELDS).lean(),
+    require('../models/CustomsParty').find({}).select('name').lean(),
+  ]);
+  const names = new Map(parties.map((p) => [String(p._id), p.name || '']));
+  const partyName = (id) => (id ? names.get(String(id)) || '' : '');
+  return rows.map((c) => ({
+    id: String(c._id),
+    parties: [c.customerParty, c.agentParty, c.carrierParty].filter(Boolean).map(String),
+    blob: searchValuesOf(c, partyName)
+      .filter((v) => v != null && v !== '')
+      .map(searchKey).filter(Boolean).join(SEP),
+  }));
+});
+
+/**
+ * المعاملاتُ التي يطابقها نصُّ البحث. يطابق النصُّ كاملًا مطويًّا («MSKU 123
+ * 4567» = «MSKU1234567»)، أو كلُّ كلمةٍ فيه على حدة («ميرسك جدة»: وكيلٌ وفرع).
+ * `null` إن لم يكن في النصّ ما يُبحث به.
+ */
+async function searchClearances(text) {
+  const raw = String(text || '').trim().slice(0, 120);
+  const whole = searchKey(raw);
+  if (!whole) return null;
+  const words = raw.split(/\s+/).map(searchKey).filter(Boolean);
+  const idx = await searchIndex();
+  return idx.filter((r) => r.blob.includes(whole) || (words.length > 1 && words.every((w) => r.blob.includes(w))));
+}
+exports._search = { searchValuesOf, searchClearances, SEARCH_INDEX_FIELDS };
 
 /**
  * ── الأرباحُ للإدارة لا للفريق ─────────────────────────────────────────────
@@ -306,7 +393,19 @@ exports.getClearances = async (req, res) => {
       }];
     }
 
-    const ck = `customs:list:${JSON.stringify(Object.keys(q).sort().reduce((o, k) => (k === 'search' ? o : (o[k] = q[k], o)), {}))}`;
+    // ── نصُّ البحث: `search` من الويب، و`q` من الهاتف (serverSearch) ────────
+    const search = String(q.search || q.q || '').trim();
+    // `ids=1`: المعرّفاتُ المطابقة وحدَها، بلا صفوف. تقرؤها الشاشاتُ التي تصفّي
+    // في المتصفّح (القائمة، لوحةُ القسم، صفحاتُ الأطراف) فتبقى فلاترُها وعدّاداتُها
+    // كما هي ويتّسع بحثُها لكلّ ما في المعاملة. ولا يُقيَّد بالقادمة ولا بغيرها:
+    // كلُّ شاشةٍ تقاطعه مع ما عندها.
+    if (q.ids === '1' || q.ids === 'true') {
+      const hits = (await searchClearances(search)) || [];
+      return res.json({ ids: hits.map((h) => h.id), parties: [...new Set(hits.flatMap((h) => h.parties))] });
+    }
+
+    const SKIP = new Set(['search', 'q', 'limit']);
+    const ck = `customs:list:${JSON.stringify(Object.keys(q).sort().reduce((o, k) => (SKIP.has(k) ? o : (o[k] = q[k], o)), {}))}`;
     // نستبعد الحقول الثقيلة من القائمة — المرفقاتُ وحدَها قد تبلغ أربعين سطرًا
     // في المعاملة الواحدة، والقائمةُ لا تعرض منها شيئًا. تُحمَّل عند فتح
     // المعاملة فقط. يقلّل النقل بشكل كبير على Atlas المُقيَّد.
@@ -325,23 +424,16 @@ exports.getClearances = async (req, res) => {
     });
 
     // ── والبحثُ بأيّ اسمٍ أو أيّ رقم ─────────────────────────────────────────
-    // كان يقرأ ستّةَ حقول. والورقةُ التي في اليد قد تحمل رقمَ البيان أو رقمَ
-    // الإذن أو رقمَ سابر أو الحاوية — والمعاملةُ هي المجهول. فيُقرأ كلُّ ما
-    // يُكتب في الجدول، وتُطوى فروقُ الرسم والمسافات كما في بقيّة النظام.
-    const search = String(q.search || '').trim();
+    // من الفهرس — راجع SEARCH_INDEX_FIELDS. ويُطبَّق قبل الإرسال، فالعددُ عددُ
+    // ما طابق لا عددُ القائمة.
     if (search) {
-      const rx = partyRx(search);
-      const has = (v) => v != null && v !== '' && rx.test(String(v));
-      list = list.filter((c) => [
-        c.refNumber, c.blNumber, c.customerName, c.shippingAgent, c.invoiceNumber, c.port,
-        c.declarationNumber, c.doNumber, c.exitPermitNumber, c.saberNumber, c.hsCode,
-        c.exporterCompany, c.countryOfOrigin, c.city, c.legacySerial, c.notes, c.lastNote?.text, c.carrierName,
-        c.billing && c.billing.ourInvoiceNumber, c.unloadingLocation, c.assignedTo,
-        ...(c.containers || []).map((x) => x && x.containerNumber),
-      ].some(has));
+      const hits = await searchClearances(search);
+      if (hits) {
+        const keep = new Set(hits.map((h) => h.id));
+        list = list.filter((c) => keep.has(String(c._id)));
+      }
     }
 
-    // والتقليمُ بعد البحث لا قبلَه: البحثُ يقرأ ما لا يُرسَل.
     const money = seesMoney(req);
     res.json({ clearances: list.map((r) => toWire(r, money)) });
   } catch (error) {
@@ -838,13 +930,16 @@ const CustomsParty = require('../models/CustomsParty');
 const CustomsContract = require('../models/CustomsContract');
 const { fold: foldName } = require('../models/CustomsParty');
 
-/** بحثٌ لا يبالي بالمسافات ولا بفروق الرسم العربيّ — كما في بقيّة النظام. */
+/**
+ * بحثٌ لا يبالي بالمسافات ولا بالشرطات ولا بفروق الرسم العربيّ — كما في بقيّة
+ * النظام. «050-123 4567» و«0501234567» رقمٌ واحد، و«أ» تجد «ا» والعكس.
+ */
 const partyRx = (s) => {
-  const bare = String(s || '').replace(/\s+/g, '');
+  const bare = searchKey(s);
   if (!bare) return null;
   const cls = { ا: '[اأإآٱ]', ه: '[هة]', ي: '[يىئ]', و: '[وؤ]' };
   const parts = [...bare].map((ch) => cls[ch] || ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  return new RegExp(parts.join('\\s*'), 'i');
+  return new RegExp(parts.join('[\\s\\-_./\\\\,:#ـ]*'), 'i');
 };
 
 // ── ثلاثةُ أدوار، وحقلٌ في المعاملة لكلٍّ ──────────────────────────────────
@@ -865,6 +960,13 @@ exports.listParties = async (req, res) => {
       // يُبحَث بالاسم وبكلّ رقمٍ في الملفّ — «أيّ اسمٍ أو أيّ رقم».
       filter.$or = [{ name: rx }, { email: rx }, { phone: rx }, { contactPerson: rx },
         { commercialRegister: rx }, { taxNumber: rx }, { city: rx }];
+      // `deep=1` (صفحةُ الأطراف): ويُوجَد الطرفُ بما في معاملاته كذلك — رقمِ حاويةٍ
+      // أو بوليصةٍ أو بيان. ولا يُطلب في قوائم الاختيار: هناك يُكتب الاسم.
+      if (req.query.deep === '1') {
+        const hits = (await searchClearances(q)) || [];
+        const ids = [...new Set(hits.flatMap((h) => h.parties))];
+        if (ids.length) filter.$or.push({ _id: { $in: ids } });
+      }
     }
     const parties = await CustomsParty.find(filter).sort({ name: 1 }).lean();
 

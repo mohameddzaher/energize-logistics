@@ -651,6 +651,7 @@
     },
     "/system/customs/dashboard": {
       "apis": [
+        "/api/customs-clearance",
         "/api/customs-clearance/dashboard",
         "/api/customs-clearance/filters"
       ],
@@ -678,18 +679,21 @@
     },
     "/system/customs/customers": {
       "apis": [
+        "/api/customs-clearance",
         "/api/customs-clearance/parties"
       ],
       "wildcard": false
     },
     "/system/customs/agents": {
       "apis": [
+        "/api/customs-clearance",
         "/api/customs-clearance/parties"
       ],
       "wildcard": false
     },
     "/system/customs/carriers": {
       "apis": [
+        "/api/customs-clearance",
         "/api/customs-clearance/parties"
       ],
       "wildcard": false

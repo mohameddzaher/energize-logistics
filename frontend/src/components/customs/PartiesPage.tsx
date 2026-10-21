@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
+import { useCustomsSearch, matchesSearch, searchKey } from '@/components/customs/useCustomsSearch';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { canEditSection } from '@/lib/sections';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, Loader2 } from '@/components/hr/HRKit';
@@ -66,17 +67,16 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
   }, [kind]);
   useEffect(() => { load(); }, [load]);
 
-  // البحثُ في المتصفّح: القائمةُ عشراتٌ لا آلاف، ونداءُ الخادم لكلّ حرفٍ إسرافٌ
-  // على عنقودٍ مقيَّد. والطيُّ هو الطيُّ نفسُه المستعمَل في الخادم.
-  const fold = (v: any) => String(v ?? '')
-    .replace(/[أإآٱ]/g, 'ا').replace(/[ةه]/g, 'ه').replace(/[ىئي]/g, 'ي')
-    .replace(/\s+/g, '').toLowerCase();
+  // البحثُ في المتصفّح: القائمةُ عشراتٌ لا آلاف. والطيُّ هو الطيُّ نفسُه
+  // المستعمَل في الخادم (searchKey): المسافاتُ والشرطاتُ وصورُ الحروف سواء.
+  // ويُوجَد الطرفُ كذلك بما في معاملاته — رقمِ حاويةٍ أو بوليصةٍ أو بيان: الخادمُ
+  // يجيب بأطراف المعاملات المطابقة (راجع useCustomsSearch).
+  const hits = useCustomsSearch(q, rows);
   const searched = useMemo(() => {
-    const n = fold(q);
-    if (!n) return rows;
-    return rows.filter((r) => [r.name, r.email, r.phone, r.contactPerson, r.commercialRegister, r.taxNumber, r.city]
-      .some((v) => fold(v).includes(n)));
-  }, [rows, q]);
+    if (!searchKey(q)) return rows;
+    return rows.filter((r) => matchesSearch(q, [r.name, r.email, r.phone, r.contactPerson, r.commercialRegister, r.taxNumber, r.city])
+      || !!hits?.parties.has(String(r._id)));
+  }, [rows, q, hits]);
 
   // فلاترُ الأعمدة (على طريقة إكسل) — آخرُ ما يُطبَّق، بعد البحث.
   const colGetters: Record<string, (p: Party) => any> = {
@@ -156,7 +156,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
 
       <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
       <SearchInput value={q} onChange={setQ}
-        placeholder={t('بحث بالاسم أو البريد أو الجوال أو السجل التجاري أو الرقم الضريبي…', 'name, email, phone, CR, tax number…')} />
+        placeholder={t('ابحث بالاسم أو الجوال أو البريد أو السجل أو الرقم الضريبي — أو برقم حاويةٍ أو بوليصةٍ من معاملاته…', 'Name, phone, email, CR, tax no. — or a container / BL number from their deals…')} />
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <ScrollX>

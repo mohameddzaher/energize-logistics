@@ -796,7 +796,13 @@ final customsCfg = ResourceConfig(
   // القائمةُ تحمل ما يُعرَض فقط، والنموذجُ يعدّل حقولًا ليست فيها (قيمةُ الفاتورة،
   // تاريخُ البيان، الملاحظة) — فتُقرأ المعاملةُ كاملةً قبل التعبئة.
   editFullKey: 'clearance',
-  // `containerNumbers`: أرقامُ الوحدات مضمومةً بمسافة — يُبحث بها عن المعاملة برقم حاويتها.
+  // ── البحثُ في الخادم بكلّ ما في المعاملة ─────────────────────────────────
+  // الصفُّ مقلَّم: لا بيانُ كلّ حاوية ولا إيصالُ إرجاعها ولا طلباتُ الصرف ولا
+  // الملاحظاتُ كلُّها. فيُرسَل النصُّ (`q=`) ويجيب فهرسُ الخادم — كما في الموقع
+  // (راجع SEARCH_INDEX_FIELDS). `searchFields` يبقى لمن يقرأ الإعداد لا للتصفية.
+  serverSearch: true,
+  searchHint: ('ابحث بأيّ رقمٍ أو اسم: المعاملة، الحاوية، البوليصة، البيان، الفاتورة، العميل، الوكيل…',
+      'Any number or name: ref, container, BL, declaration, invoice, customer, agent…'),
   searchFields: const ['refNumber', 'customerName', 'blNumber', 'declarationNumber', 'exporterCompany', 'city', 'saleInvoiceNumber', 'containerNumbers'],
   // رقمُ البوليصة أوّلًا: به تُعرَف المعاملةُ في القسم — ورقمُها المرجعيُّ بعده.
   titleOf: (r) => _s(r, 'blNumber').isNotEmpty ? '${_s(r, 'blNumber')} — ${_s(r, 'customerName')}' : _s(r, 'customerName'),
@@ -1614,7 +1620,12 @@ final auditCfg = ResourceConfig(
 // فالإعدادُ واحدٌ يُستنسَخ بالدور لا ثلاثةُ إعداداتٍ تفترق عند أوّل تعديل.
 ResourceConfig _customsPartyCfg(String kind, String ar, String en, IconData icon) => ResourceConfig(
       arTitle: ar, enTitle: en, icon: icon,
-      endpoint: '/api/customs-clearance/parties', listKey: 'parties', listQuery: 'kind=$kind',
+      // `deep=1` + البحثُ في الخادم: يُوجَد الطرفُ كذلك برقم حاويةٍ أو بوليصةٍ من
+      // معاملاته — كصفحة الأطراف في الموقع.
+      endpoint: '/api/customs-clearance/parties', listKey: 'parties', listQuery: 'kind=$kind&deep=1',
+      serverSearch: true,
+      searchHint: ('ابحث بالاسم أو الجوال أو السجل — أو برقم حاويةٍ أو بوليصةٍ من معاملاته…',
+          'Name, phone, CR — or a container / BL number from their deals…'),
       updateMethod: 'PUT', liveEvent: 'customs:updated',
       // نقرةُ الصفّ تفتح ملفَّه (بياناتُه ومرفقاتُه)، والتحريرُ من أيقونة القلم.
       onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(

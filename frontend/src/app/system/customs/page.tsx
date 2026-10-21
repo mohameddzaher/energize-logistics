@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
+import { useCustomsSearch, matchesSearch } from '@/components/customs/useCustomsSearch';
 import { canEditSection } from '@/lib/sections';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Ship, Plus, Search, X, Check, Trash2, Loader2, ScrollText, Container, Car, BarChart3, MessageSquarePlus, Bell, CalendarClock, CalendarPlus, ArrowRight } from 'lucide-react';
@@ -132,6 +133,8 @@ export default function CustomsPage() {
   const [alerts, setAlerts] = useState<{ count: number; days: number; items: any[]; upcoming: UpcomingItem[]; total: number }>({ count: 0, days: 2, items: [], upcoming: [], total: 0 });
   const [showAlerts, setShowAlerts] = useState(false);
   const [search, setSearch] = useState('');
+  // الخادمُ يجيب بما لا يحمله الصفّ — ويُعاد السؤالُ كلَّما أُعيدت قراءةُ القائمة.
+  const searchHits = useCustomsSearch(search, list);
   const [fYear, setFYear] = useState('');
   const [fMonth, setFMonth] = useState('');
   const [fInvoice, setFInvoice] = useState('');
@@ -262,10 +265,12 @@ export default function CustomsPage() {
   const overdueCount = list.filter((c) => returnState(c) === 'overdue').length;
 
   const filtered = list.filter((c) => {
-    const s = search.toLowerCase();
-    // وأرقامُ الحاويات (أو السيّارات) — كان البحثُ بالحاوية لا يجد شيئًا.
-    if (s && ![c.refNumber, c.blNumber, c.customerName, c.shippingAgent, c.invoiceNumber, c.port, c.declarationNumber, c.billing?.ourInvoiceNumber, (c as any).containerNumbers]
-      .some((v) => v && String(v).toLowerCase().includes(s))) return false;
+    // البحثُ بكلّ ما في المعاملة: ما في الصفّ يُطابَق هنا فورًا، والباقي
+    // (بيانُ كلّ حاوية، الإرجاع، طلباتُ الصرف، الملاحظاتُ…) يجيب عنه الخادم.
+    if (search.trim() && !matchesSearch(search, [c.refNumber, c.blNumber, c.customerName, c.shippingAgent, c.invoiceNumber, c.port,
+      c.declarationNumber, c.billing?.ourInvoiceNumber, (c as any).saleInvoiceNumber, (c as any).exporterCompany, (c as any).city,
+      (c as any).containerNumbers, c.lastNote?.text])
+      && !searchHits?.ids.has(String(c._id))) return false;
     if (fYear && String(c.periodYear || '') !== fYear) return false;
     if (fMonth && String(c.periodMonth || '') !== fMonth) return false;
     if (fInvoice === '__none') { if (invoiceState(c).text) return false; }

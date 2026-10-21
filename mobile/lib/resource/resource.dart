@@ -108,6 +108,9 @@ class ResourceConfig {
   /// اختياريٌّ كي لا يتغيّر نموذجُ قسمٍ لم يطلبه.
   final bool hijriDates;
 
+  /// تلميحُ صندوق البحث (عربيّ، إنجليزيّ) — يقول بماذا يُبحث. وبدونه «ابحث…».
+  final (String, String)? searchHint;
+
   const ResourceConfig({
     required this.arTitle, required this.enTitle, required this.icon,
     required this.endpoint, this.writeEndpoint, required this.listKey,
@@ -116,7 +119,7 @@ class ResourceConfig {
     this.subtitleOf, this.chipsOf,
     this.canCreate = true, this.canEdit = true, this.canDelete = true,
     this.onOpen, this.onCreate, this.filterField, this.sortFields = const [], this.rowActions,
-    this.serverSearch = false, this.editFullKey, this.hijriDates = false,
+    this.serverSearch = false, this.editFullKey, this.hijriDates = false, this.searchHint,
   });
 
   String get title => tr(arTitle, enTitle);
@@ -537,7 +540,8 @@ class _ResourceScreenState extends State<ResourceScreen> {
                         if (cfg.serverSearch) _searchDebounced();
                       },
                       decoration: InputDecoration(
-                        hintText: tr('ابحث…', 'Search…'),
+                        hintText: cfg.searchHint != null ? tr(cfg.searchHint!.$1, cfg.searchHint!.$2) : tr('ابحث…', 'Search…'),
+                        hintMaxLines: 2,
                         prefixIcon: const Icon(Icons.search),
                         suffixText: '${filtered.length}',
                       ),

@@ -41,4 +41,22 @@ const searchOr = (fields, s) => {
   return fields.map((f) => ({ [f]: rx }));
 };
 
-module.exports = { arabicSearchRegex, searchOr, westernDigits };
+/**
+ * مفتاحُ مقارنةٍ للبحث في الذاكرة: يُطوى النصُّ ونصُّ البحث بالطيّ نفسِه ثمّ
+ * يُسأل «هل يحتوي هذا ذاك».
+ *
+ * وفوق ما يطويه `arabicSearchRegex` تسقط الفواصلُ كلُّها لا المسافاتُ وحدَها:
+ * رقمُ الحاوية يُكتب «MSKU 123 4567» و«MSKU-1234567» و«MSKU1234567»، ورقمُ
+ * البوليصة يُنسخ من الإيميل بشرطةٍ ومن الورقة بلا شرطة — وهو رقمٌ واحد.
+ */
+const searchKey = (s) => westernDigits(String(s == null ? '' : s))
+  .toLowerCase()
+  .replace(/[ً-ْٰـ]/g, '')
+  .replace(/[أإآٱ]/g, 'ا')
+  .replace(/ة/g, 'ه')
+  .replace(/[ىئ]/g, 'ي')
+  .replace(/ؤ/g, 'و')
+  // المسافاتُ والشرطاتُ والنقاطُ والشُّرَط المائلة وما شابهها.
+  .replace(/[\s\-_./\\,:;#|'"()[\]{}–—]+/g, '');
+
+module.exports = { arabicSearchRegex, searchOr, westernDigits, searchKey };

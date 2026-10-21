@@ -87,6 +87,9 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
   String _q = '';
   String _status = '';
   String _issue = '';
+  // يومٌ بعينه = فترةٌ أوّلُها آخرُها (yyyy-MM-dd) — والخادمُ يعدّ اليومَ بتوقيت السعوديّة.
+  String _from = '';
+  String _to = '';
   Timer? _debounce;
   int _seq = 0;
   late final void Function() _onLive;
@@ -118,6 +121,8 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
       if (_q.isNotEmpty) 'q=${Uri.encodeQueryComponent(_q)}',
       if (_status.isNotEmpty) 'status=$_status',
       if (_issue.isNotEmpty) 'issue=$_issue',
+      if (_from.isNotEmpty) 'from=$_from',
+      if (_to.isNotEmpty) 'to=$_to',
     ];
     try {
       final d = Map<String, dynamic>.from(await Api.instance.get('$_api${p.isEmpty ? '' : '?${p.join('&')}'}') as Map);
@@ -167,6 +172,43 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
     );
     if (picked == null) return;
     setState(() => _issue = picked);
+    _load();
+  }
+
+  static String _ymd(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  String get _dateLabel {
+    if (_from.isEmpty && _to.isEmpty) return _bx(_partner, 'التاريخ', 'Date');
+    if (_from == _to) return _from;
+    return '${_from.isEmpty ? '…' : _from} → ${_to.isEmpty ? '…' : _to}';
+  }
+
+  Future<void> _pickDate() async {
+    final mode = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.today_outlined), title: Text(_bx(_partner, 'يوم محدد', 'A specific day')), onTap: () => Navigator.pop(c, 'day')),
+          ListTile(leading: const Icon(Icons.date_range_outlined), title: Text(_bx(_partner, 'فترة', 'A date range')), onTap: () => Navigator.pop(c, 'range')),
+          if (_from.isNotEmpty || _to.isNotEmpty)
+            ListTile(leading: const Icon(Icons.clear), title: Text(_bx(_partner, 'كل التواريخ', 'Any date')), onTap: () => Navigator.pop(c, 'clear')),
+        ]),
+      ),
+    );
+    if (mode == null || !mounted) return;
+    final now = DateTime.now();
+    if (mode == 'clear') {
+      setState(() { _from = ''; _to = ''; });
+    } else if (mode == 'day') {
+      final d = await showDatePicker(context: context, firstDate: DateTime(2024), lastDate: now, initialDate: DateTime.tryParse(_from) ?? now);
+      if (d == null) return;
+      setState(() { _from = _ymd(d); _to = _ymd(d); });
+    } else {
+      final r = await showDateRangePicker(context: context, firstDate: DateTime(2024), lastDate: now);
+      if (r == null) return;
+      setState(() { _from = _ymd(r.start); _to = _ymd(r.end); });
+    }
     _load();
   }
 
@@ -239,11 +281,19 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
           ),
           const SizedBox(height: 8),
           // موقعُ الصيانة إنرجايز دائمًا — فلا فلترَ له.
-          OutlinedButton.icon(
-            onPressed: () => _pickFilter('issue'),
-            icon: const Icon(Icons.report_problem_outlined, size: 18),
-            label: Text(_issue.isEmpty ? _bx(partner, 'المشكلة', 'Issue') : _vocab(meta, 'issue', _issue, partner), overflow: TextOverflow.ellipsis),
-          ),
+          Row(children: [
+            Expanded(child: OutlinedButton.icon(
+              onPressed: () => _pickFilter('issue'),
+              icon: const Icon(Icons.report_problem_outlined, size: 18),
+              label: Text(_issue.isEmpty ? _bx(partner, 'المشكلة', 'Issue') : _vocab(meta, 'issue', _issue, partner), overflow: TextOverflow.ellipsis),
+            )),
+            const SizedBox(width: 8),
+            Expanded(child: OutlinedButton.icon(
+              onPressed: _pickDate,
+              icon: Icon(Icons.event_outlined, size: 18, color: _from.isEmpty && _to.isEmpty ? null : T.orange),
+              label: Text(_dateLabel, overflow: TextOverflow.ellipsis, textDirection: _from.isEmpty ? null : TextDirection.ltr),
+            )),
+          ]),
           const SizedBox(height: 12),
           if (items.isEmpty)
             EmptyState(icon: Icons.connected_tv_outlined, title: _bx(partner, 'لا بلاغات', 'No complaints'))

@@ -186,7 +186,15 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
   }
 
   // ── الأعمدةُ المختارة على الشاشة — بلا ما يخصّنا ─────────────────────────
-  const singleParty = !!query.customer;
+  // العميلُ من الصفوف نفسِها لا من خانة البحث وحدَها: فلترُ عمود «العميل» على
+  // عميلٍ واحد كان يُخرج «جميع العملاء» في الترويسة وعمودَ العميل في الجدول.
+  // والمسافاتُ تُوحَّد قبل المقارنة: الاسمُ نفسُه محفوظٌ بمسافةٍ مزدوجة أو غيرِ
+  // منكسرة (NBSP) في بعض الفواتير، فكان العميلُ الواحدُ يُقرأ عميلَين.
+  const partyNames = [...new Set(rows.map((r) => cellText(r.customer).replace(/[\s\u00a0\u200b-\u200f]+/g, ' ').trim()).filter((x) => x && x !== '—'))];
+  // والاسمُ كما في السجلّ لا كما كُتب في البحث (قد يُكتب جزءٌ منه). وبحثٌ يطابق
+  // أكثرَ من عميل = كشفٌ لعدّة عملاء، فيبقى عمودُ العميل.
+  const partyName = partyNames.length === 1 ? partyNames[0] : (!rows.length && query.customer ? String(query.customer) : '');
+  const singleParty = !!partyName;
   // «المبلغ المسدَّد» في الكاش لا يُكتب في أغلب الكشوف (يُعرَف السدادُ بتاريخه)؛
   // عمودٌ كلُّه «—» يربك العميلَ أمام «مسدَّد» في الخانة المجاورة — فيُطوى حين يكون صفرًا كلَّه.
   const noPaidAmounts = isCash && !rows.some((r) => Number(r.collectedAmount));
@@ -204,7 +212,7 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
   // الكشفُ يُرسَل إلى العميل.
   const codes = [...new Set(rows.map((r) => r.partyCode).filter(Boolean))];
   const head = [
-    [t('العميل', 'Customer'), query.customer ? String(query.customer) : t('جميع العملاء', 'All customers')],
+    [t('العميل', 'Customer'), partyName || t('جميع العملاء', 'All customers')],
     ...(singleParty && codes.length === 1 ? [[t('رقم الحساب', 'Account no.'), codes[0]]] : []),
     ...(query.from || query.to ? [[t('فترة الكشف', 'Statement period'),
       `${t('من', 'From')} ${query.from ? ymd(query.from) : '…'} · ${t('إلى', 'to')} ${query.to ? ymd(query.to) : today}`]] : []),
@@ -296,10 +304,6 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
   blocks.push({
     kind: 'signatures',
     lead: [
-      openValue > 0 && fullSet
-        ? t(`نرجو التكرّم بسداد الرصيد المستحقّ البالغ ${money2(openValue)} ريال سعودي.`,
-          `Kindly settle the balance due of SAR ${money2(openValue)}.`)
-        : '',
       t('في حال وجود أيّ ملاحظةٍ على هذا الكشف يُرجى التواصل مع إدارة التحصيل على الرقم 920031911 خلال 14 يومًا من تاريخه، وإلّا عُدَّ الكشف صحيحًا ومعتمدًا.',
         'Should you have any query on this statement, please contact our Collections team on 920031911 within 14 days of its date; otherwise it will be deemed correct.'),
       t('شاكرين لكم حسن تعاملكم.', 'Thank you for your business.'),
@@ -310,7 +314,7 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
   const kindLabel = isCash ? t('فواتير كاش', 'Cash invoices') : t('فواتير ضريبية', 'Tax invoices');
   const doc = {
     title: t(`كشف حساب — ${kindLabel}`, `Statement of account — ${kindLabel}`),
-    subtitle: query.customer ? String(query.customer) : t('جميع العملاء', 'All customers'),
+    subtitle: partyName || t('جميع العملاء', 'All customers'),
     blocks,
     lang: ar ? 'ar' : 'en',
     footerNote: `${t('إنرجايز للخدمات اللوجستية', 'Energize Logistics')} · ${t('كشف حساب بتاريخ', 'Statement dated')} ${today}`,

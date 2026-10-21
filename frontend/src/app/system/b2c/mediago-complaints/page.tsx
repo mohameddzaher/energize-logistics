@@ -81,6 +81,8 @@ export default function MediaGoComplaintsPage() {
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<string>('');
   const [editRow, setEditRow] = useState<MgRow | null>(null);
+  // يومٌ بعينه أو فترة — واليومُ هو فترةٌ أوّلُها آخرُها، فالخادمُ لا يفرّق.
+  const [dateMode, setDateMode] = useState<'day' | 'range'>('day');
   const { notify, confirm } = useDialog();
 
   // الإشعارُ يفتح البلاغَ بمعرّفه في الرابط (lib/notificationLink).
@@ -189,7 +191,7 @@ export default function MediaGoComplaintsPage() {
             ) : (
               <>
                 <h1 className="text-[21px] font-extrabold leading-tight">{tx('شكاوى Media Go', 'Media Go Complaints')}</h1>
-                <p className="text-[13px] text-white/75">{tx('بلاغات أعطال شاشات Media Go على الدبّابات — تُرفع من هنا ويراها حساب Media Go ويردّ عليها', 'Screen fault reports on our motorcycles — Media Go sees, updates and replies to them')}</p>
+                <p className="text-[13px] text-white/75">{tx('بلاغات أعطال شاشات Media Go على الدبّابات', 'Screen fault reports on our motorcycles')}</p>
               </>
             )}
           </div>
@@ -233,12 +235,28 @@ export default function MediaGoComplaintsPage() {
           <option value="">{tx('كل الأوقات', 'Any time')}</option>
           {data.meta.availability.map((o) => <option key={o.key} value={o.key}>{vocabLabel(data.meta, 'availability', o.key, vl)} ({optCount('availability', o.key)})</option>)}
         </select>
-        <label className="inline-flex items-center gap-1 text-[12px] text-slate-500">{tx('من', 'From')}
-          <input type="date" value={f.from} onChange={(e) => setFilter('from', e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
-        </label>
-        <label className="inline-flex items-center gap-1 text-[12px] text-slate-500">{tx('إلى', 'To')}
-          <input type="date" value={f.to} onChange={(e) => setFilter('to', e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
-        </label>
+        <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 text-[12px] font-semibold">
+          {(['day', 'range'] as const).map((m) => (
+            <button key={m} type="button"
+              onClick={() => { setDateMode(m); if (m === 'day' && f.from !== f.to) setF((o) => ({ ...o, from: '', to: '' })); }}
+              className={`px-2.5 py-1.5 ${dateMode === m ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+              {m === 'day' ? tx('يوم محدد', 'Day') : tx('فترة', 'Range')}
+            </button>
+          ))}
+        </div>
+        {dateMode === 'day' ? (
+          <input type="date" value={f.from === f.to ? f.from : ''} onChange={(e) => setF((o) => ({ ...o, from: e.target.value, to: e.target.value }))}
+            className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm" aria-label={tx('اليوم', 'Day')} />
+        ) : (
+          <>
+            <label className="inline-flex items-center gap-1 text-[12px] text-slate-500">{tx('من', 'From')}
+              <input type="date" value={f.from} max={f.to || undefined} onChange={(e) => setFilter('from', e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
+            </label>
+            <label className="inline-flex items-center gap-1 text-[12px] text-slate-500">{tx('إلى', 'To')}
+              <input type="date" value={f.to} min={f.from || undefined} onChange={(e) => setFilter('to', e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
+            </label>
+          </>
+        )}
         {anyFilter && (
           <button type="button" onClick={() => { setF(NO_FILTERS); setQ(''); }} className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[12.5px] font-semibold text-slate-600 hover:bg-slate-100">
             <X className="h-3.5 w-3.5" />{tx('مسح الفلاتر', 'Clear')}

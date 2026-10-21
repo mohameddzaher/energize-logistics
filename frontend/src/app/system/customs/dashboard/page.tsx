@@ -15,6 +15,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
+import { useCustomsSearch, matchesSearch } from '@/components/customs/useCustomsSearch';
 import api from '@/lib/api';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import PeriodFilter from '@/components/system/PeriodFilter';
@@ -90,6 +91,7 @@ export default function CustomsDashboardPage() {
   const [view, setView] = useState('open');
   const [stage, setStage] = useState('');
   const [search, setSearch] = useState('');
+  const searchHits = useCustomsSearch(search, d);
   const tableRef = useRef<HTMLDivElement>(null);
   const { begin, isCurrent } = useLatestRequest();
 
@@ -118,11 +120,14 @@ export default function CustomsDashboardPage() {
   const base = useMemo(() => {
     if (!d) return [];
     const test = VIEWS[view] || VIEWS.all;
-    const s = search.trim().toLowerCase();
+    // البحثُ بكلّ ما في المعاملة: ما في الصفّ هنا، والباقي (الحاوياتُ، الإذنُ،
+    // الإرجاعُ، طلباتُ الصرف، الملاحظات…) من فهرس الخادم — راجع useCustomsSearch.
     return d.rows.filter((r) => test(r)
       && (!stage || (r.bucket === 'open' && (r.next || 'done') === stage))
-      && (!s || [r.blNumber, r.refNumber, r.customerName, r.shippingAgent, r.invoiceNumber, r.createdByName, r.declarationNumber].some((v) => v && String(v).toLowerCase().includes(s))));
-  }, [d, view, stage, search]);
+      && (!search.trim() || matchesSearch(search, [r.blNumber, r.refNumber, r.customerName, r.shippingAgent, r.invoiceNumber,
+        r.createdByName, r.declarationNumber, (r as any).carrierName, (r as any).port])
+        || !!searchHits?.ids.has(String(r._id))));
+  }, [d, view, stage, search, searchHits]);
   // فلاترُ الأعمدة (على طريقة إكسل) آخرُ ما يُطبَّق — على ما تركته البطاقةُ والبحث.
   const cf = useColumnFilters<Row>();
 
@@ -315,8 +320,9 @@ export default function CustomsDashboardPage() {
             </div>
             <div className="relative">
               <Search className="absolute start-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('بحث…', 'Search…')}
-                className="w-44 rounded-lg border border-slate-200 bg-white py-1.5 pe-2 ps-8 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('حاوية، بوليصة، بيان، معاملة، عميل…', 'Container, BL, declaration, ref, customer…')}
+                title={t('ابحث بأيّ رقمٍ أو اسمٍ في المعاملة', 'Search any number or name on the transaction')}
+                className="w-64 rounded-lg border border-slate-200 bg-white py-1.5 pe-2 ps-8 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
             </div>
             <ExportMenu fileName={`customs-dashboard-${view}`} lang={ar ? 'ar' : 'en'} variant="subtle"
               options={[{ key: 'shown', label: t('المعروض', 'Shown'), sheets: [{ name: ar ? VIEW_TITLE[view][0] : VIEW_TITLE[view][1], rows, columns: exportCols }] }]} />

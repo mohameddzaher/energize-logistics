@@ -160,15 +160,15 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
         return (
           <button key={c.k} type="button" onClick={() => show(c.k)}
             title={t('اعرض القائمة', 'Show the list')}
-            className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3.5 text-start shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-slate-50/60">
+            className="flex w-full h-full min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 sm:px-5 py-3.5 text-start shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-slate-50/60">
             <Icon className="h-4 w-4 shrink-0 text-slate-400" />
             <div className="flex flex-col items-start">
-              <span className="text-2xl font-bold tabular-nums tracking-tight text-slate-900">{c.n.toLocaleString('en-US')}</span>
+              <span className="text-xl sm:text-2xl font-bold tabular-nums tracking-tight text-slate-900">{c.n.toLocaleString('en-US')}</span>
               <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
                 <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: c.n ? TONE[c.tone] : '#cbd5e1' }} />
                 {c.title}
               </span>
-              <span className="max-w-[260px] text-[10px] leading-tight text-slate-400">{c.sub}</span>
+              <span className="text-[10.5px] leading-snug text-slate-400">{c.sub}</span>
             </div>
           </button>
         );

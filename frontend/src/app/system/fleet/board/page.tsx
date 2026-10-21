@@ -88,6 +88,9 @@ export default function FleetBoardPage() {
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:updated', useCallback(() => load(), [load]));
   useSocket('ls2:updated', useCallback(() => load(), [load]));
+  // الشاحنةُ من سجلّ المركبات والسائقُ من الموارد البشريّة: يُعاد الجلبُ متى تغيّر أحدُهما.
+  useSocket('vreg:updated', useCallback(() => load(), [load]));
+  useSocket('hr:employee', useCallback(() => load(), [load]));
   // Belt-and-braces: the board is the operations command view — even if the
   // socket drops, it must never sit stale for long.
   useEffect(() => {

@@ -58,6 +58,9 @@ export default function FleetAssignPage() {
   }, []);
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:vehicles', useCallback(() => load(), [load]));
+  // الشاحنةُ من سجلّ المركبات والسائقُ من الموارد البشريّة: يُعاد الجلبُ متى تغيّر أحدُهما.
+  useSocket('vreg:updated', useCallback(() => load(), [load]));
+  useSocket('hr:employee', useCallback(() => load(), [load]));
 
   const filtered = useMemo(() => {
     let r = vehicles;

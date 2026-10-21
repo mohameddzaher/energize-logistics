@@ -89,6 +89,9 @@ export default function FleetHealthPage() {
     return () => clearInterval(id);
   }, [load]);
   useSocket('ls2:vehicles', useCallback(() => load(true), [load]));
+  // الشاحنةُ من سجلّ المركبات والسائقُ من الموارد البشريّة: يُعاد الجلبُ متى تغيّر أحدُهما.
+  useSocket('vreg:updated', useCallback(() => load(true), [load]));
+  useSocket('hr:employee', useCallback(() => load(true), [load]));
 
   const shown = useMemo(() => {
     const f = foldAr(q.trim());

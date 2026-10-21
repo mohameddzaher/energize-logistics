@@ -22,7 +22,7 @@ import PeriodFilter, { PeriodBanner, periodParams, periodFromParams, type Period
 import { useFleetLookups } from '@/hooks/useFleetLookups';
 import {
   type FleetVehicleAnalytics, fleetStatus, fleetStatusLabel, fmtD, fmtDT,
-  canViewFleet, money, shipmentCustomerId, type Lang,
+  canViewFleet, money, shipmentCustomerId, type Lang, REGISTRY_DOC_STATE,
 } from '@/lib/fleet';
 import { Car, ArrowLeft, Route, Users, Target, PackageSearch, Wrench, ExternalLink } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
@@ -58,6 +58,9 @@ function VehicleAnalyticsInner() {
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:updated', useCallback(() => load(), [load]));
   useSocket('fleet:vehicles', useCallback(() => load(), [load]));
+  // الهويّةُ والمستنداتُ من سجلّ المركبات، والسائقون من الموارد البشريّة.
+  useSocket('vreg:updated', useCallback(() => load(), [load]));
+  useSocket('hr:employee', useCallback(() => load(), [load]));
 
   useEffect(() => {
     const qs = new URLSearchParams(params).toString();
@@ -122,6 +125,43 @@ function VehicleAnalyticsInner() {
           <ArrowLeft className="w-4 h-4" /> {ar ? 'كل السيارات' : 'All vehicles'}
         </Link>
       </PageHeader>
+
+      {/* ── هويّتُها ومستنداتُها من سجلّ المركبات ─────────────────────────────
+          سجلٌّ واحدٌ لكلّ مركبة: ما يُصحَّح في قسم المركبات يظهر هنا في اللحظة. */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm text-sm space-y-3">
+        {v.registry ? (
+          <>
+            <div className="flex flex-wrap gap-x-6 gap-y-1">
+              {([
+                [ar ? 'اللوحة في السجل' : 'Registry plate', v.registry.plateNumber],
+                [ar ? 'الماركة' : 'Brand', v.registry.brand],
+                [ar ? 'الطراز' : 'Model', v.registry.model],
+                [ar ? 'سنة الصنع' : 'Year', v.registry.year],
+                [ar ? 'اللون' : 'Colour', v.registry.color],
+                [ar ? 'رقم الهيكل' : 'Chassis', v.registry.chassis],
+              ] as [string, any][]).map(([k, val]) => (
+                <span key={k}><span className="text-slate-500 text-xs">{k}: </span><span className="text-slate-800 font-medium">{val || '—'}</span></span>
+              ))}
+              <Link href={`/system/vehicles/registry/${v.registry._id}`} className="text-[#f37121] text-xs hover:underline inline-flex items-center gap-1">
+                <ExternalLink className="w-3 h-3" /> {ar ? 'فتح في سجل المركبات' : 'Open in vehicle registry'}
+              </Link>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {v.registry.docs.map((doc) => {
+                const st = REGISTRY_DOC_STATE[doc.state] || REGISTRY_DOC_STATE.missing;
+                return (
+                  <span key={doc.key} className={`px-2 py-1 rounded-lg text-[11px] font-semibold ${st.cls}`}>
+                    {ar ? doc.ar : doc.en}: {doc.expiryDate ? fmtD(doc.expiryDate) : '—'} · {st[ar ? 'ar' : 'en']}
+                    {doc.days != null && doc.state !== 'valid' ? ` (${doc.days} ${ar ? 'يوم' : 'd'})` : ''}
+                  </span>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <span className="text-amber-700 text-xs">{ar ? 'هذه السيارة غير مربوطة بسجل المركبات بعد.' : 'This vehicle is not linked to the vehicle registry yet.'}</span>
+        )}
+      </div>
 
       {/* حالة السيارة الآن — التحليل يخصّ فترةً مضت، وهذا السطر يخصّ اللحظة. */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">

@@ -23,7 +23,7 @@ import {
   Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea, Select, SmallBadge, StatCard, ErrorNotice, SearchableSelect,
 } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
-import { FleetVehicle, FleetDriver, TRAILER_TYPES, GPS_TYPES, foldAr, canEditFleet, canAdminFleet, seatsOf } from '@/lib/fleet';
+import { FleetVehicle, FleetDriver, TRAILER_TYPES, GPS_TYPES, foldAr, canEditFleet, canAdminFleet, seatsOf, REGISTRY_DOC_STATE, worstRegistryDoc, type FleetRegistryDoc } from '@/lib/fleet';
 import ScrollX from '@/components/system/ScrollX';
 import { useColumnFilters } from '@/hooks/useColumnFilters';
 
@@ -34,8 +34,17 @@ const VEHICLE_COLUMNS = [
   { header: 'Description', key: 'name', width: 22 },
   { header: 'Trailer type', key: 'trailerType', width: 14 },
   { header: 'GPS', key: 'gpsType', width: 8 },
+  // الهويّةُ من سجلّ المركبات — الخادمُ يقرأ الماركةَ واللونَ من هناك.
+  { header: 'Registry plate', key: 'registry', transform: (v: any) => v?.plateNumber || '', width: 16 },
   { header: 'Brand', key: 'brand', width: 14 },
+  { header: 'Model', key: 'registry', transform: (v: any) => v?.model || '', width: 14 },
+  { header: 'Year', key: 'registry', transform: (v: any) => v?.year || '', width: 8 },
+  { header: 'Chassis', key: 'registry', transform: (v: any) => v?.chassis || '', width: 20 },
   { header: 'Color', key: 'color', width: 12 },
+  ...['insurance', 'operatingCard', 'vehicleLicense', 'inspection', 'authorization'].map((k) => ({
+    header: `${k} expiry`, key: 'registry', width: 14,
+    transform: (v: any) => { const d = (v?.docs || []).find((x: any) => x.key === k); return d?.expiryDate ? String(d.expiryDate).slice(0, 10) : ''; },
+  })),
   // بالرتبة لا مجموعةً: ملفٌّ يقول «أحمد + خالد» لا يقول مَن الأوّل.
   { header: 'First driver', key: 'drivers', transform: (v: any) => (v || []).find((d: any) => (d.seat || 1) === 1)?.name || '', width: 24 },
   { header: 'Second driver', key: 'drivers', transform: (v: any) => (v || []).find((d: any) => d.seat === 2)?.name || '', width: 24 },
@@ -114,6 +123,10 @@ export default function FleetVehiclesPage() {
   useSocket('fleet:vehicles', useCallback(() => load(), [load]));
   // Driver moves change the chips on this page too.
   useSocket('fleet:drivers', useCallback(() => load(), [load]));
+  // ── والهويّةُ من سجلّين آخرين: يُعاد الجلبُ متى تغيّرا ──────────────────
+  // الماركةُ والمستنداتُ من سجلّ المركبات، واسمُ السائق وحالتُه من الموارد البشريّة.
+  useSocket('vreg:updated', useCallback(() => load(), [load]));
+  useSocket('hr:employee', useCallback(() => load(), [load]));
 
   /**
    * ── والمقعدان يُكتبان في نداءٍ واحد ──────────────────────────────────────
@@ -213,7 +226,8 @@ export default function FleetVehiclesPage() {
     const s = foldAr(search.trim());
     if (!s) return true;
     const names = (v.drivers || []).map((d) => d.name).join(' ');
-    return [v.plate, v.name, v.trailerType, names].some((x) => foldAr(String(x || '')).includes(s));
+    return [v.plate, v.name, v.trailerType, names, v.registry?.plateNumber, v.brand, v.registry?.model, v.registry?.chassis]
+      .some((x) => foldAr(String(x || '')).includes(s));
   });
 
   // قمعُ الأعمدة — القيمُ كما تُقرأ في الصفّ. راجع hooks/useColumnFilters.
@@ -326,6 +340,8 @@ export default function FleetVehiclesPage() {
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className={th}>{cf.head('plate', ar ? 'اللوحة' : 'Plate')}</th>
+            <th className={th}>{ar ? 'الهوية (سجل المركبات)' : 'Identity (registry)'}</th>
+            <th className={th}>{ar ? 'المستندات' : 'Documents'}</th>
             <th className={th}>{cf.head('trailerType', ar ? 'نوع التيدر' : 'Trailer type')}</th>
             <th className={th}>{cf.head('maintenance', ar ? 'الصيانة' : 'Maintenance')}</th>
             <th className={th}>{cf.head('gps', 'GPS')}</th>
@@ -344,6 +360,37 @@ export default function FleetVehiclesPage() {
                 <td className="px-4 py-3 whitespace-nowrap">
                   <Link href={`/system/fleet/vehicles/${v._id}`} className="text-[#f37121] font-bold font-mono hover:underline">{formatPlate(v.plate)}</Link>
                   {v.name && <span className="block text-xs text-slate-500">{v.name}</span>}
+                </td>
+                {/* ── هويّتُها من سجلّ المركبات لا من نسخةٍ هنا ─────────────────
+                    سجلٌّ واحدٌ لكلّ مركبة: ما يُصحَّح هناك يظهر هنا في اللحظة. */}
+                <td className="px-4 py-3 whitespace-nowrap text-xs">
+                  {v.registry ? (
+                    <span className="inline-flex flex-col">
+                      <span className="text-slate-800 font-medium">
+                        {[v.registry.brand, v.registry.model, v.registry.year].filter(Boolean).join(' · ') || '—'}
+                      </span>
+                      <span className="text-slate-500">
+                        {[v.registry.plateNumber, v.registry.color].filter(Boolean).join(' · ')}
+                        {v.registry.chassis ? <span className="font-mono" dir="ltr"> · {v.registry.chassis}</span> : null}
+                      </span>
+                    </span>
+                  ) : (
+                    <SmallBadge bg="bg-amber-500/15" text="text-amber-700" label={ar ? 'غير مربوطة بسجل المركبات' : 'Not in registry'} />
+                  )}
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  {(() => {
+                    const w = worstRegistryDoc(v.registry?.docs);
+                    if (!w) return <span className="text-slate-300">—</span>;
+                    const st = REGISTRY_DOC_STATE[w.state] || REGISTRY_DOC_STATE.missing;
+                    const tip = ((v.registry?.docs || []) as FleetRegistryDoc[]).map((d) => `${ar ? d.ar : d.en}: ${d.expiryDate ? String(d.expiryDate).slice(0, 10) : '—'} (${(REGISTRY_DOC_STATE[d.state] || st)[ar ? 'ar' : 'en']})`).join('\n');
+                    return (
+                      <span title={tip} className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold ${st.cls}`}>
+                        {w.state === 'valid' ? (ar ? 'كلها سارية' : 'All valid') : `${ar ? w.ar : w.en}: ${st[ar ? 'ar' : 'en']}`}
+                        {w.days != null && w.state !== 'valid' && <span className="font-normal opacity-80">{w.days} {ar ? 'يوم' : 'd'}</span>}
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{v.trailerType || '—'}</td>
                 {/* ── الصيانة من لوكيشن سوليوشن ──────────────────────────────
@@ -428,7 +475,7 @@ export default function FleetVehiclesPage() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={9} className="text-center text-slate-500 py-12">
+              <tr><td colSpan={11} className="text-center text-slate-500 py-12">
                 {vehicles.length === 0
                   ? (ar ? 'لا توجد سيارات بعد.' : 'No vehicles yet.')
                   : (ar ? 'لا نتائج مطابقة للبحث.' : 'No matches.')}
@@ -531,10 +578,19 @@ export default function FleetVehiclesPage() {
           </PrimaryButton>
         </>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label={ar ? 'رقم اللوحة *' : 'Plate *'}><TextInput value={form.plate} onChange={(e) => setForm((f: any) => ({ ...f, plate: e.target.value }))} /></Field>
+          {/* اللوحةُ هويّةُ المركبة في سجلّ المركبات: تُصحَّح هناك متى رُبطت. */}
+          <Field label={ar ? 'رقم اللوحة *' : 'Plate *'}>
+            <TextInput value={form.plate} disabled={!!editing?.linked} onChange={(e) => setForm((f: any) => ({ ...f, plate: e.target.value }))} />
+          </Field>
           <Field label={ar ? 'الوصف' : 'Description'}><TextInput value={form.name} onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))} /></Field>
           <Field label={ar ? 'الماركة' : 'Brand'}><TextInput value={form.brand} onChange={(e) => setForm((f: any) => ({ ...f, brand: e.target.value }))} /></Field>
           <Field label={ar ? 'اللون' : 'Color'}><TextInput value={form.color} onChange={(e) => setForm((f: any) => ({ ...f, color: e.target.value }))} /></Field>
+          <p className="sm:col-span-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+            {editing?.linked
+              ? (ar ? `الماركة واللون يُحفظان في سجل المركبات (${editing.registry?.plateNumber || editing.plate}) فيظهران في كل الأقسام. اللوحة والطراز والهيكل والمستندات تُعدَّل من سجل المركبات.`
+                : `Brand and colour are saved to the vehicle registry (${editing.registry?.plateNumber || editing.plate}) and show in every section. Plate, model, chassis and documents are edited in the registry.`)
+              : (ar ? 'تُربط السيارة بسجل المركبات باللوحة، وإن لم تكن فيه أُضيفت إليه.' : 'The vehicle is linked to the registry by plate, and added to it if missing.')}
+          </p>
           <Field label={ar ? 'نوع التيدر' : 'Trailer type'}>
             <Select value={form.trailerType} onChange={(e) => setForm((f: any) => ({ ...f, trailerType: e.target.value }))}>
               <option value="">—</option>

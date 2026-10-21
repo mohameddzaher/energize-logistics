@@ -70,6 +70,9 @@ function ArrivalsInner() {
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:updated', useCallback(() => load(), [load]));
   useSocket('fleet:vehicles', useCallback(() => load(), [load]));
+  // الشاحنةُ من سجلّ المركبات والسائقُ من الموارد البشريّة: يُعاد الجلبُ متى تغيّر أحدُهما.
+  useSocket('vreg:updated', useCallback(() => load(), [load]));
+  useSocket('hr:employee', useCallback(() => load(), [load]));
 
   // `replace` لا `push`: ضغطةُ فلترٍ لا تستحقّ خطوةً في تاريخ المتصفّح.
   useEffect(() => {

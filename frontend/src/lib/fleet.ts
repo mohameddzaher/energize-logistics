@@ -15,13 +15,19 @@ export interface FleetVehicle {
   supervisor?: string | null;   // المشرف المسؤول — يعيّنه مدير القسم
   supervisorName?: string;
   notes?: string;
+  /** مرجعُها في سجلّ المركبات — الهويّةُ والمستنداتُ تُقرأ من هناك. */
+  vehicleMaster?: string | null;
+  /** مربوطةٌ بسجلّ المركبات؟ (`registry` غيرُ فارغ) */
+  linked?: boolean;
+  /** صورتُها من سجلّ المركبات — تُرسَل مع القائمة، والماركةُ واللونُ أعلاه منها. */
+  registry?: FleetRegistryView | null;
   /**
    * السائقون عليها، **مرتَّبين بالمقعد**: الأوّلُ ثمّ الثاني.
    *
    * والترتيبُ من الخادم لا من الواجهة: ثلاثُ شاشاتٍ تقرأ `drivers[0]` على
    * أنّه السائقُ الأوّل — ونموذجُ الشحنة يُجلسه في خانة «السائق الأساسي».
    */
-  drivers?: { _id: string; name: string; phone?: string; working?: boolean; seat?: 1 | 2 }[];
+  drivers?: { _id: string; name: string; phone?: string; working?: boolean; seat?: 1 | 2; hrLinked?: boolean; offSource?: string }[];
   // إثراء حي وقت الاختيار: أين هي الآن، وماذا تحمل بالفعل، وهل وصلت وجهتها.
   live?: { city: string | null; status?: string | null; lastMessageAt?: string | null } | null;
   /** حالة الصيانة من لوكيشن سوليوشن — تُقرأ مع الموقع لأنّ القرار يحتاجهما معًا. */
@@ -58,6 +64,28 @@ export const seatsOf = (v?: Pick<FleetVehicle, 'drivers'> | null) => {
   ] as const;
 };
 
+/** مستندٌ من مستندات المركبة في سجلّ المركبات، بحالته المحسوبة هناك. */
+export interface FleetRegistryDoc {
+  key: string; ar: string; en: string;
+  expiryDate: string | null;
+  state: 'valid' | 'upcoming' | 'warning' | 'critical' | 'expired' | 'missing' | 'not_applicable' | string;
+  days: number | null;
+}
+export interface FleetRegistryView {
+  _id: string;
+  plateNumber: string;
+  brand: string; model: string; year: number | null; chassis: string; color: string;
+  sector?: string; serviceStatus?: string;
+  docs: FleetRegistryDoc[];
+}
+
+/** ملفُّ السائق في الموارد البشريّة كما يُرسَل مع القائمة. */
+export interface FleetDriverHr {
+  _id: string; name: string; employeeNumber?: string;
+  employmentStatus: 'active' | 'on_leave' | 'suspended' | 'terminated' | string;
+  department?: string; jobTitle?: string; onLeave?: boolean;
+}
+
 export interface FleetDriver {
   _id: string;
   name: string;
@@ -69,6 +97,12 @@ export interface FleetDriver {
   working: boolean;       // حالة السائق: يعمل أم لا
   offReason?: '' | 'sick' | 'leave' | 'other'; // سبب التوقف — مرضية/إجازة/أخرى
   offNote?: string;
+  /** 'hr' حين تقول الموارد البشريّة إنّه لا يعمل (إجازة/إيقاف/إنهاء خدمة). */
+  offSource?: '' | 'hr';
+  /** مرجعُه في الموارد البشريّة — الاسمُ والجوالُ والإقامةُ والجنسيّةُ والإيبانُ منه. */
+  employee?: string | null;
+  hrLinked?: boolean;
+  hr?: FleetDriverHr | null;
   onSponsorship: boolean; // على الكفالة أم لا
   vehicle?: FleetVehicle | string | null;
   /**
@@ -343,4 +377,25 @@ export const shipmentCustomerId = (s: FleetShipment): string | null => {
   const c = s.customer as any;
   if (!c) return null;
   return typeof c === 'string' ? c : (c._id || null);
+};
+
+/**
+ * حالةُ مستند المركبة كما تُقرأ في الأسطول — الألوانُ والأسماءُ نفسُها في سجلّ
+ * المركبات (config/vehicleDocuments)، فلا تقول شاشتان لوثيقةٍ واحدةٍ حالتين.
+ */
+export const REGISTRY_DOC_STATE: Record<string, { ar: string; en: string; cls: string }> = {
+  expired: { ar: 'منتهي', en: 'Expired', cls: 'bg-red-500/15 text-red-700' },
+  critical: { ar: 'حرج', en: 'Critical', cls: 'bg-orange-500/15 text-orange-700' },
+  warning: { ar: 'تحذير', en: 'Warning', cls: 'bg-amber-500/15 text-amber-700' },
+  upcoming: { ar: 'قريب', en: 'Upcoming', cls: 'bg-sky-500/15 text-sky-700' },
+  valid: { ar: 'ساري', en: 'Valid', cls: 'bg-emerald-500/15 text-emerald-700' },
+  missing: { ar: 'بلا تاريخ', en: 'No date', cls: 'bg-slate-500/15 text-slate-600' },
+  not_applicable: { ar: 'غير مطلوب', en: 'N/A', cls: 'bg-slate-500/10 text-slate-500' },
+};
+/** أسوأُ مستندٍ في المركبة — للخلية المختصرة في الجدول. */
+export const worstRegistryDoc = (docs?: FleetRegistryDoc[] | null): FleetRegistryDoc | null => {
+  const rank: Record<string, number> = { expired: 5, critical: 4, warning: 3, upcoming: 2, missing: 1, valid: 0, not_applicable: -1 };
+  let worst: FleetRegistryDoc | null = null;
+  for (const d of docs || []) if (!worst || (rank[d.state] ?? 0) > (rank[worst.state] ?? 0)) worst = d;
+  return worst;
 };

@@ -110,6 +110,22 @@ function CreateFleetShipmentInner() {
     try { const c = await api.get<{ customers: FleetCustomer[] }>('/api/fleet/customers'); setCustomers(c.customers || []); } catch { /* noop */ }
   }, []);
   useSocket('fleet:customers', reloadCustomers);
+  // والشاحنةُ والسائق كذلك: ماركتُها ولونُها من سجلّ المركبات، واسمُه وإقامتُه
+  // من الموارد البشريّة — وهي ما تُكتب في البوليصة، فتُقرأ كما هي الآن.
+  const reloadCrew = useCallback(async () => {
+    try {
+      const [v, d] = await Promise.all([
+        api.get<{ vehicles: FleetVehicle[] }>('/api/fleet/vehicles'),
+        api.get<{ drivers: FleetDriver[] }>('/api/fleet/drivers'),
+      ]);
+      setVehicles(v.vehicles || []);
+      setDrivers(d.drivers || []);
+    } catch { /* noop */ }
+  }, []);
+  useSocket('fleet:vehicles', reloadCrew);
+  useSocket('fleet:drivers', reloadCrew);
+  useSocket('vreg:updated', reloadCrew);
+  useSocket('hr:employee', reloadCrew);
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
   const vehicle = useMemo(() => vehicles.find((v) => v._id === vehicleId) || null, [vehicles, vehicleId]);

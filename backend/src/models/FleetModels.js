@@ -26,7 +26,21 @@ const fleetVehicleSchema = new mongoose.Schema({
   supervisorName: { type: String, trim: true, default: '' },
   notes: { type: String, trim: true, default: '' },
   isActive: { type: Boolean, default: true },
+  /**
+   * ── والشاحنةُ في سجلّ المركبات واحدة ───────────────────────────────────
+   * هويّتُها (اللوحةُ الرسميّة والماركةُ والطرازُ والسنةُ والهيكلُ واللون)
+   * ومستنداتُها وانتهاؤها تُقرأ من `VehicleMaster` بهذا المرجع — لا من نسخةٍ
+   * هنا (صاحبُ الشركة، ٢٠٢٦/١٠/٢١: «سجلٌّ واحدٌ لكلّ مركبة»). و`brand`/`color`
+   * أعلاه احتياطٌ لغير المربوط. يُحَلّ عند الإنشاء بالمفتاح الموحَّد للّوحة
+   * (utils/vehicleRef)، وراجع utils/fleetIdentity.
+   */
+  vehicleMaster: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null },
 }, { timestamps: true });
+// مركبةُ السجلّ الواحدة لا تكون شاحنتين في الأسطول — هكذا وُلد تكرارُ 3965/3966.
+fleetVehicleSchema.index(
+  { vehicleMaster: 1 },
+  { unique: true, partialFilterExpression: { vehicleMaster: { $type: 'objectId' } } },
+);
 
 // ── Drivers: ~70 people across the 57 trucks — one or two per vehicle ───────
 const fleetDriverSchema = new mongoose.Schema({
@@ -78,8 +92,21 @@ const fleetDriverSchema = new mongoose.Schema({
   monthlyKmTarget: { type: Number, default: null },
   notes: { type: String, trim: true, default: '' },
   isActive: { type: Boolean, default: true },
+  /**
+   * ── والسائقُ في الموارد البشريّة ملفٌّ واحد ────────────────────────────
+   * الاسمُ والجوالُ ورقمُ الهويّة والجنسيّةُ والإيبان تُقرأ من `Employee` متى
+   * رُبط، وحالةُ عمله تتبع إجازتَه وإنهاءَ خدمته هناك. والنصوصُ أعلاه احتياطٌ
+   * لِمَن لم يُربط بعد (أسماءٌ أولى كـ«حمزه» جاءت من لوكيشن سوليوشن). راجع
+   * utils/fleetIdentity و«ربط بموظف» في صفحة السائقين.
+   */
+  employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
 }, { timestamps: true });
 fleetDriverSchema.index({ name: 1 });
+// الموظّفُ الواحد سائقٌ واحدٌ في الأسطول — بين القائمين؛ المُزالُ يبقى بمرجعه للتاريخ.
+fleetDriverSchema.index(
+  { employee: 1 },
+  { unique: true, partialFilterExpression: { employee: { $type: 'objectId' }, isActive: true } },
+);
 fleetDriverSchema.index({ vehicle: 1, seat: 1 }); // every board/list joins drivers by seat
 
 // ── Customers of the fleet section (separate register from the trial's) ─────

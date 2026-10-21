@@ -46,6 +46,9 @@ router.delete('/shipments/:id', authorize(...ADMIN_ROLES), fleet.deleteShipment)
 
 // Drivers — assignment changes route through the two-seat rule in the controller
 router.get('/drivers', fleet.listDrivers);
+// «ربط بموظف»: مرشّحو الموارد البشريّة للسائق، وربطُه بملفّه أو فكُّه.
+router.get('/drivers/hr-candidates', authorize(...EDIT_ROLES), fleet.driverHrCandidates);
+router.patch('/drivers/:id/employee', authorize(...EDIT_ROLES), fleet.setDriverEmployee);
 router.post('/drivers', authorize(...EDIT_ROLES), fleet.createDriver);
 router.put('/drivers/:id', authorize(...EDIT_ROLES), fleet.updateDriver);
 router.delete('/drivers/:id', authorize(...ADMIN_ROLES), fleet.deleteDriver);

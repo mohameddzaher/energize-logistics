@@ -9,16 +9,20 @@ const { createNotification } = require('../services/notificationService');
 // The fleet's trucks ARE the Location Solutions trucks — the maintenance state
 // on the board comes from that mirror, joined by normalized plate digits.
 const Ls2Vehicle = require('../models/Ls2Vehicle');
-const { plateKey, vehiclePlateKey } = require('../utils/plateKey');
+const { plateKey, vehiclePlateKey, canonicalPlateKey } = require('../utils/plateKey');
 // عملاء الأسطول وشركات الـCRM سجلّان مستقلّان يجمعهما الاسم المطبَّع وحده.
 const CrmCompany = require('../models/CrmCompany');
 const CrmActivity = require('../models/CrmActivity');
 const CrmDeal = require('../models/CrmDeal');
 const { nameKey } = require('../utils/nameKey');
-const { endedStaff, idNumberEnded } = require('../utils/endedStaff');
-// المؤرشَفُ (انتهت خدمتُه وخرج من النظام) يختفي من كلّ قائمةٍ هنا كأنّه حُذف — برقم إقامته.
-const { notArchivedIdNumber } = require('../utils/archivedHidden');
-const noArchDrv = async () => notArchivedIdNumber(await endedStaff(), 'iqama');
+const { endedStaff, idNumberEnded, employeeEnded } = require('../utils/endedStaff');
+// المؤرشَفُ (انتهت خدمتُه وخرج من النظام) يختفي من كلّ قائمةٍ هنا كأنّه حُذف —
+// بمرجع ملفّه إن رُبط السائق، وإلّا برقم إقامته المكتوب.
+const { notArchivedRow } = require('../utils/archivedHidden');
+const noArchDrv = async () => notArchivedRow(await endedStaff(), 'employee', 'iqama');
+// الشاحنةُ من سجلّ المركبات والسائقُ من ملفّ الموارد البشريّة — راجع utils/fleetIdentity.
+const FI = require('../utils/fleetIdentity');
+const vehicleRef = require('../utils/vehicleRef');
 // Live GPS → "السيارة داخل نطاق جدة الآن" (and: reached its trip's destination).
 const { cityForPoint, sameCity } = require('../utils/saCities');
 
@@ -213,7 +217,8 @@ const seatDriver = async (driverId, vehicleId, seat = null) => {
 const resolveAssignments = async (req, data, existing = null) => {
   const notes = [];
   if (data.vehicle !== undefined) {
-    const veh = data.vehicle ? await FleetVehicle.findById(data.vehicle).lean() : null;
+    // الماركةُ واللونُ في اللقطة من سجلّ المركبات — ما يُطبع اليومَ هو ما في السجلّ.
+    const veh = data.vehicle ? await FI.vehicleIdentity(await FleetVehicle.findById(data.vehicle).lean()) : null;
     data.vehiclePlate = veh?.plate || '';
     data.trailerType = veh?.trailerType || '';
     data.gpsType = veh?.gpsType || '';
@@ -240,6 +245,8 @@ const resolveAssignments = async (req, data, existing = null) => {
     const seated = await seatDriver(data[key], vehicleId, key === 'driver' ? 1 : 2);
     if (seated?.moved) notes.push(seated.moved);
     if (seated?.driver) {
+      // واسمُه وجوالُه وإقامتُه وجنسيّتُه من ملفّه في الموارد البشريّة إن رُبط.
+      seated.driver = await FI.driverIdentity(seated.driver);
       if (key === 'driver') {
         data.driverName = seated.driver.name;
         data.driverPhone = seated.driver.phone || '';
@@ -401,7 +408,8 @@ exports.listShipments = async (req, res) => {
     // مش مخزّنة على الشحنة نفسها لكن البوليصة محتاجاها فتطلع فاضية.
     const driverIds = [...new Set(shipments.map((s) => s.driver).filter(Boolean).map(String))];
     if (driverIds.length) {
-      const drivers = await FleetDriver.find({ _id: { $in: driverIds } }).select('iqama phone nationality').lean();
+      const drivers = await FleetDriver.find({ _id: { $in: driverIds } }).select('iqama phone nationality employee').lean()
+        .then(FI.decorateDrivers);
       const dmap = new Map(drivers.map((d) => [String(d._id), d]));
       for (const s of shipments) {
         const d = s.driver ? dmap.get(String(s.driver)) : null;
@@ -414,7 +422,8 @@ exports.listShipments = async (req, res) => {
     }
     const vehIds = [...new Set(shipments.filter((s) => !s.vehicleBrand && !s.vehicleColor).map((s) => s.vehicle).filter(Boolean).map(String))];
     if (vehIds.length) {
-      const vehs = await FleetVehicle.find({ _id: { $in: vehIds } }).select('brand color').lean();
+      const vehs = await FleetVehicle.find({ _id: { $in: vehIds } }).select('brand color vehicleMaster').lean()
+        .then(FI.decorateVehicles);
       const vmap = new Map(vehs.map((v) => [String(v._id), v]));
       for (const s of shipments) {
         const v = s.vehicle ? vmap.get(String(s.vehicle)) : null;
@@ -787,6 +796,8 @@ exports.listDrivers = async (req, res) => {
       .sort({ name: 1 })
       .limit(1000)
       .lean();
+    // الاسمُ والجوالُ والإقامةُ والجنسيّةُ والإيبانُ وحالةُ العمل — من ملفّه متى رُبط.
+    await FI.decorateDrivers(drivers);
     drivers.forEach((d) => { d.seat = d.vehicle ? (d.seat || 1) : null; });
 
     // ── ومَن يشاركه الشاحنة؟ ─────────────────────────────────────────────
@@ -822,20 +833,57 @@ exports.listDrivers = async (req, res) => {
   }
 };
 
+/**
+ * ── ربطُ السائق بملفّه في الموارد البشريّة ─────────────────────────────────
+ * الموظّفُ موجود، وغيرُ مؤرشَف، وليس سائقًا قائمًا آخرَ في الأسطول. ويُنسَخ ما
+ * في الملفّ إلى النصّ المخزَّن عند الربط — احتياطٌ يبقى صحيحًا إن فُكّ الربط.
+ * يرمي خطأً بـ`status` يُعاد للمستخدم كما هو.
+ */
+async function attachEmployee(driver, employeeId) {
+  const Employee = require('../models/Employee');
+  const fail = (status, message) => { const e = new Error(message); e.status = status; throw e; };
+  if (!mongoose.Types.ObjectId.isValid(employeeId)) fail(400, 'معرّف الموظف غير صالح');
+  const emp = await Employee.findById(employeeId).select(FI.HR_SELECT).lean();
+  if (!emp) fail(404, 'الموظف غير موجود في الموارد البشرية');
+  const sets = await endedStaff();
+  if (sets.archivedIds.has(String(emp._id))) fail(400, 'هذا الموظف مؤرشف — لا يُربط');
+  const other = await FleetDriver.findOne({ employee: emp._id, isActive: { $ne: false }, _id: { $ne: driver._id } })
+    .select('name').lean();
+  if (other) fail(409, `هذا الموظف مربوط بالسائق «${other.name}» — افكك ربطه أولاً`);
+  driver.employee = emp._id;
+  const name = FI.hrName(emp);
+  if (name) driver.name = name;
+  if (emp.phone) driver.phone = emp.phone;
+  if (FI.hrIdNumber(emp)) driver.iqama = FI.hrIdNumber(emp);
+  if (emp.nationality) driver.nationality = emp.nationality;
+  if (emp.iban) driver.iban = emp.iban;
+  return emp;
+}
+
 exports.createDriver = async (req, res) => {
   try {
-    if (!req.body.name || !String(req.body.name).trim()) return res.status(400).json({ message: 'Driver name is required' });
+    const employeeId = req.body.employee || null;
+    if (!employeeId && (!req.body.name || !String(req.body.name).trim())) return res.status(400).json({ message: 'Driver name is required' });
     const data = pick(req.body, DRIVER_EDITABLE);
     const vehicleId = data.vehicle;
     const seat = Number(data.seat) || null;
     delete data.vehicle;
     delete data.seat;
-    const driver = await FleetDriver.create(data);
+    const driver = new FleetDriver({ name: '—', ...data });
+    // ومَن كُتب رقمُ هويّته ولم يُختَر ملفُّه يُربط بالملفّ الذي يحمل الرقم —
+    // إن كان واحدًا بعينه ولم يُربط بسائقٍ غيره.
+    let link = employeeId;
+    if (!link && data.iqama) {
+      const hit = await FI.employeeByIdNumber(data.iqama);
+      if (hit && !(await FleetDriver.exists({ employee: hit._id, isActive: { $ne: false } }))) link = hit._id;
+    }
+    if (link) await attachEmployee(driver, link);
+    await driver.save();
     if (vehicleId) await seatDriver(driver._id, vehicleId, seat);
     emit('fleet:drivers', {});
     res.status(201).json({ driver });
   } catch (error) {
-    if (error.status === 400) return res.status(400).json({ message: error.message });
+    if (error.status) return res.status(error.status).json({ message: error.message });
     res.status(500).json({ message: 'Failed to create the driver' });
   }
 };
@@ -845,6 +893,9 @@ exports.updateDriver = async (req, res) => {
     const driver = await FleetDriver.findById(req.params.id);
     if (!driver) return res.status(404).json({ message: 'Driver not found' });
     const data = pick(req.body, DRIVER_EDITABLE);
+    // المربوطُ بملفّه: الاسمُ والجوالُ والإقامةُ والجنسيّةُ والإيبانُ تُصحَّح في
+    // الموارد البشريّة لا هنا — وإلّا عادت النسخةُ تخالف الأصل.
+    if (driver.employee) FI.HR_OWNED_DRIVER_FIELDS.forEach((f) => { delete data[f]; });
     // Vehicle moves go through the two-seat rule, not a raw write.
     if (data.vehicle !== undefined || data.seat !== undefined) {
       const toVehicle = data.vehicle !== undefined ? (data.vehicle || null) : driver.vehicle;
@@ -863,6 +914,102 @@ exports.updateDriver = async (req, res) => {
   } catch (error) {
     if (error.status === 400) return res.status(400).json({ message: error.message });
     res.status(500).json({ message: 'Failed to update the driver' });
+  }
+};
+
+/**
+ * PATCH /api/fleet/drivers/:id/employee  { employee: id | null }
+ * «ربط بموظف» — يربط السائقَ بملفّه في الموارد البشريّة أو يفكّ الربط.
+ */
+exports.setDriverEmployee = async (req, res) => {
+  try {
+    const driver = await FleetDriver.findById(req.params.id);
+    if (!driver) return res.status(404).json({ message: 'Driver not found' });
+    const before = driver.employee ? String(driver.employee) : '';
+    const target = req.body?.employee || null;
+    if (target) await attachEmployee(driver, target);
+    else driver.employee = null;
+    await driver.save();
+    emit('fleet:drivers', {});
+    emit('fleet:vehicles', {});
+    await logAudit({
+      user: req.user, action: target ? 'link_employee' : 'unlink_employee', entity: 'FleetDriver', entityId: driver._id,
+      changes: { employee: { from: before || null, to: target ? String(target) : null } }, ipAddress: req.ip,
+    });
+    const [row] = await FI.decorateDrivers([driver.toObject()]);
+    res.json({ driver: row });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ message: error.message });
+    if (error.code === 11000) return res.status(409).json({ message: 'هذا الموظف مربوط بسائق آخر' });
+    res.status(500).json({ message: 'Failed to link the driver' });
+  }
+};
+
+/**
+ * GET /api/fleet/drivers/hr-candidates?driver=<id>&q=
+ * مرشّحو «ربط بموظف»: موظّفو النقل الثقيل وإدارة الأسطول أوّلًا، مرتّبين بقرب
+ * أسمائهم من اسم السائق المكتوب، ومَن يطابق رقمَ هويّته في الرأس. وبالبحث (`q`)
+ * يُفتَّش الملفُّ كلُّه بالاسم أو رقم الهويّة أو الرقم الوظيفي.
+ */
+exports.driverHrCandidates = async (req, res) => {
+  try {
+    const Employee = require('../models/Employee');
+    const Lookup = require('../models/Lookup');
+    const { NOT_ARCHIVED } = require('../utils/hrEngagement');
+    const { arabicSearchRegex, westernDigits } = require('../utils/arabicSearch');
+    const driver = mongoose.Types.ObjectId.isValid(req.query.driver)
+      ? await FleetDriver.findById(req.query.driver).select('name iqama employee').lean() : null;
+    const q = String(req.query.q || '').trim();
+
+    const deps = (await Lookup.find({ type: 'hr_department', key: { $in: ['heavy_transport', 'fleet'] }, deleted: { $ne: true } })
+      .select('nameAr').lean()).map((r) => String(r.nameAr || '').trim()).filter(Boolean);
+    if (!deps.length) deps.push('النقل الثقيل', 'إدارة الأسطول');
+
+    let filter;
+    if (q) {
+      const rx = arabicSearchRegex(q);
+      const digits = westernDigits(q).replace(/\s+/g, '');
+      filter = { $or: [
+        { firstName: rx }, { lastName: rx }, { arabicName: rx }, { employeeNumber: rx },
+        ...(digits ? [{ iqamaNumber: digits }, { nationalId: digits }] : []),
+      ] };
+    } else {
+      filter = { department: { $in: deps } };
+    }
+    const rows = await Employee.find({ $and: [filter, NOT_ARCHIVED] }).select(FI.HR_SELECT).limit(q ? 60 : 400).lean();
+    // ومَن له رقمُ الهويّة المكتوب على السائق يُضمّ ولو كان في قسمٍ آخر.
+    if (driver?.iqama) {
+      const hit = await Employee.find({ $and: [{ $or: [{ iqamaNumber: driver.iqama }, { nationalId: driver.iqama }] }, NOT_ARCHIVED] })
+        .select(FI.HR_SELECT).lean();
+      for (const h of hit) if (!rows.some((r) => String(r._id) === String(h._id))) rows.push(h);
+    }
+    const taken = await FleetDriver.find({ employee: { $in: rows.map((r) => r._id) }, isActive: { $ne: false } })
+      .select('name employee').lean();
+    const takenBy = new Map(taken.map((t) => [String(t.employee), t]));
+
+    const tokens = (s) => String(s || '').split(/\s+/).map(nameKey).filter((t) => t.length > 1);
+    const want = tokens(driver?.name);
+    const out = rows.map((e) => {
+      const name = FI.hrName(e);
+      const have = new Set(tokens(name));
+      let score = want.filter((t) => have.has(t)).length * 10;
+      if (driver?.iqama && FI.hrIdNumber(e) === String(driver.iqama).trim()) score += 100;
+      if (deps.includes(String(e.department || '').trim())) score += 3;
+      if (/سائق/.test(String(e.staffCategory || '') + String(e.jobTitle || ''))) score += 2;
+      if (e.employmentStatus === 'terminated') score -= 20;
+      const t = takenBy.get(String(e._id));
+      const mine = t && driver && String(t._id) === String(driver._id);
+      return {
+        _id: e._id, name, idNumber: FI.hrIdNumber(e), employeeNumber: e.employeeNumber || '',
+        department: e.department || '', jobTitle: e.jobTitle || '', phone: e.phone || '',
+        nationality: e.nationality || '', employmentStatus: e.employmentStatus || 'active',
+        linkedTo: t && !mine ? { _id: t._id, name: t.name } : null,
+        score,
+      };
+    }).sort((a, b) => (b.score - a.score) || a.name.localeCompare(b.name, 'ar')).slice(0, 50);
+    res.json({ candidates: out, departments: deps });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load HR candidates' });
   }
 };
 
@@ -893,9 +1040,11 @@ exports.listVehicles = async (req, res) => {
     const scope = await supervisorVehicleIds(req);
     if (scope) vFilter._id = { $in: scope };
     const [vehicles, drivers] = await Promise.all([
-      FleetVehicle.find(vFilter).sort({ plate: 1 }).limit(500).lean(),
+      // الهويّةُ والمستنداتُ من سجلّ المركبات، والسائقُ من ملفّه — راجع utils/fleetIdentity.
+      FleetVehicle.find(vFilter).sort({ plate: 1 }).limit(500).lean().then(FI.decorateVehicles),
       FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null }, ...(await noArchDrv()) })
-        .select('name phone working vehicle seat').sort({ seat: 1, name: 1 }).lean(),
+        .select('name phone working vehicle seat employee iqama offReason').sort({ seat: 1, name: 1 }).lean()
+        .then(FI.decorateDrivers),
     ]);
     // ── والترتيبُ هو الرتبة ────────────────────────────────────────────────
     // `drivers[0]` يُقرأ في ثلاث شاشاتٍ على أنّه السائقُ الأوّل — ونموذجُ
@@ -905,6 +1054,7 @@ exports.listVehicles = async (req, res) => {
       const k = String(d.vehicle);
       (byVehicle[k] = byVehicle[k] || []).push({
         _id: d._id, name: d.name, phone: d.phone, working: d.working, seat: d.seat || 1,
+        hrLinked: !!d.hrLinked, offSource: d.offSource || '',
       });
     });
     Object.values(byVehicle).forEach((list) => list.sort((a, b) => a.seat - b.seat));
@@ -965,21 +1115,99 @@ exports.listVehicles = async (req, res) => {
   }
 };
 
+/**
+ * ── الماركةُ واللونُ يُكتبان في سجلّ المركبات ─────────────────────────────
+ * متى رُبطت الشاحنةُ بالسجلّ صار تعديلُ هويّتها من الأسطول تعديلًا في السجلّ
+ * نفسه — عبر النموذج (`findByIdAndUpdate`) فتجري خطّافاتُه، ثمّ يُعلَن كما يُعلن
+ * قسمُ المركبات. فلا تبقى نسختان تختلفان.
+ */
+async function writeRegistryIdentity(vmId, body) {
+  const set = {};
+  if (body.brand !== undefined) set.brandAr = String(body.brand || '').trim();
+  if (body.color !== undefined) set.colorAr = String(body.color || '').trim();
+  if (!Object.keys(set).length) return false;
+  const { VehicleMaster } = require('../models/VehicleMaster');
+  const before = await VehicleMaster.findById(vmId).select('brandAr colorAr').lean();
+  if (!before) return false;
+  Object.keys(set).forEach((k) => { if (String(before[k] || '') === set[k]) delete set[k]; });
+  if (!Object.keys(set).length) return false;
+  await VehicleMaster.findByIdAndUpdate(vmId, { $set: set }, { new: true });
+  FI.announceRegistry();
+  return true;
+}
+
+/**
+ * مركبةُ السجلّ لهذه اللوحة — تُحَلّ بالمفتاح الموحَّد، وإن لم تكن في السجلّ
+ * أُنشئت فيه (شاحنةٌ لنا لا تكون خارج سجلّ المركبات).
+ */
+async function ensureRegistryVehicle(plate, body = {}) {
+  const hit = await vehicleRef.resolve(plate);
+  if (hit) return { id: hit._id, created: false };
+  const { VehicleMaster } = require('../models/VehicleMaster');
+  const vm = await VehicleMaster.create({
+    plateNumber: plate,
+    brandAr: String(body.brand || '').trim(),
+    colorAr: String(body.color || '').trim(),
+    sectorAr: 'النقل الثقيل',
+    sectorCode: 'heavy_transport',
+    departmentAr: 'النقل الثقيل',
+    notesAr: 'أُضيفت من إدارة الأسطول',
+  });
+  return { id: vm._id, created: true };
+}
+
 exports.createVehicle = async (req, res) => {
   try {
     if (!req.body.plate || !String(req.body.plate).trim()) return res.status(400).json({ message: 'Plate is required' });
-    const vehicle = await FleetVehicle.create(pick(req.body, VEHICLE_EDITABLE));
+    const data = pick(req.body, VEHICLE_EDITABLE);
+    // ── شاحنةٌ واحدةٌ في الأسطول لكلّ مركبةٍ في السجلّ ──────────────────────
+    // «3966 DEA» و«3966 -DEA» كانتا صفّين لشاحنةٍ واحدة. فاللوحةُ تُقابَل
+    // بالمفتاح الموحَّد قبل الإنشاء: إن كانت موجودةً قائمةً رُفض التكرار، وإن
+    // كانت مُزالةً أُعيدت هي بدل أن يولد صفٌّ ثانٍ.
+    const key = vehicleRef.canonicalPlateKey(data.plate);
+    const same = key ? (await FleetVehicle.find({}).select('plate isActive').lean())
+      .find((v) => vehicleRef.canonicalPlateKey(v.plate) === key) : null;
+    if (same && same.isActive !== false) {
+      return res.status(409).json({ message: `الشاحنة ${same.plate} مسجّلة في الأسطول بالفعل` });
+    }
+    const reg = await ensureRegistryVehicle(data.plate, data);
+    if (!reg.created) await writeRegistryIdentity(reg.id, data);
+    else FI.announceRegistry();
+    delete data.brand; delete data.color;
+    let vehicle;
+    if (same) {
+      vehicle = await FleetVehicle.findByIdAndUpdate(same._id, { $set: { ...data, plate: same.plate, isActive: true, vehicleMaster: reg.id } }, { new: true });
+    } else {
+      vehicle = await FleetVehicle.create({ ...data, vehicleMaster: reg.id });
+    }
     emit('fleet:vehicles', {});
     res.status(201).json({ vehicle });
   } catch (error) {
+    if (error.code === 11000) return res.status(409).json({ message: 'هذه المركبة مسجّلة في الأسطول بالفعل' });
     res.status(500).json({ message: 'Failed to create the vehicle' });
   }
 };
 
 exports.updateVehicle = async (req, res) => {
   try {
-    const vehicle = await FleetVehicle.findByIdAndUpdate(req.params.id, pick(req.body, VEHICLE_EDITABLE), { new: true });
-    if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
+    const current = await FleetVehicle.findById(req.params.id).select('plate vehicleMaster').lean();
+    if (!current) return res.status(404).json({ message: 'Vehicle not found' });
+    const data = pick(req.body, VEHICLE_EDITABLE);
+    if (current.vehicleMaster) {
+      // اللوحةُ هويّةُ المركبة في السجلّ: تُصحَّح هناك لا هنا.
+      if (data.plate !== undefined
+        && vehicleRef.canonicalPlateKey(data.plate) !== vehicleRef.canonicalPlateKey(current.plate)) {
+        return res.status(400).json({ message: 'اللوحة تُعدَّل من سجل المركبات — هذه الشاحنة مربوطة به' });
+      }
+      delete data.plate;
+      await writeRegistryIdentity(current.vehicleMaster, data);
+      delete data.brand; delete data.color;
+    } else if (data.plate !== undefined) {
+      // غيرُ المربوط يُربط متى صارت لوحتُه في السجلّ.
+      const hit = await vehicleRef.resolve(data.plate);
+      if (hit && !(await FleetVehicle.exists({ vehicleMaster: hit._id, _id: { $ne: current._id } }))) data.vehicleMaster = hit._id;
+    }
+    const vehicle = await FleetVehicle.findByIdAndUpdate(req.params.id, data, { new: true });
     emit('fleet:vehicles', {});
     res.json({ vehicle });
   } catch (error) {
@@ -1326,7 +1554,8 @@ exports.getDashboard = async (req, res) => {
         { $group: { _id: '$supervisorName', n: { $sum: 1 } } },
         { $sort: { n: -1 } },
       ]),
-      FleetDriver.find({ isActive: { $ne: false }, ...drvScope }).select('working vehicle offReason iqama').lean(),
+      FleetDriver.find({ isActive: { $ne: false }, ...drvScope }).select('working vehicle offReason iqama employee').lean()
+        .then(FI.decorateDrivers),
       FleetVehicle.countDocuments({ isActive: { $ne: false }, ...vehScope }),
       FleetEvent.countDocuments({ type: 'followup', createdAt: { $gte: dayStart } }),
       FleetShipment.find({
@@ -1338,7 +1567,8 @@ exports.getDashboard = async (req, res) => {
     ]);
     // مَن انتهت خدمتُه في الموارد البشريّة لا يُعَدّ في اللوحة — لا في السائقين
     // ولا في مقاعد المركبات. يبقى في القائمة؛ العددُ وحدَه يُسقطه.
-    const drivers = allDrivers.filter((d) => !idNumberEnded(ended, d.iqama));
+    // والمربوطُ يُعرَف انتهاؤه بملفّه، وغيرُه برقم إقامته المكتوب.
+    const drivers = allDrivers.filter((d) => !(d.employee ? employeeEnded(ended, d.employee) : idNumberEnded(ended, d.iqama)));
 
     const byStatus = {};
     byStatusAgg.forEach((r) => { byStatus[r._id] = r.n; });
@@ -1383,22 +1613,42 @@ exports.ensureFleetDefaults = async () => {
   try {
     const Ls2Vehicle = require('../models/Ls2Vehicle');
     const live = await Ls2Vehicle.find({}).select('plate name driver').lean();
+    // ── والشاحنةُ تُعرَف بمفتاحها الموحَّد لا بنصّ لوحتها ──────────────────
+    // كانت تُقابَل بالنصّ حرفًا بحرف، فلمّا كُتبت «3966 -DEA» في لوكيشن
+    // سوليوشن و«3966 DEA» هنا وُلد صفٌّ ثانٍ للشاحنة نفسها عند الإقلاع.
+    const known = new Map();
+    for (const f of await FleetVehicle.find({}).select('plate').lean()) {
+      const k = canonicalPlateKey(f.plate);
+      if (k && !known.has(k)) known.set(k, f._id);
+    }
     for (const v of live) {
       const plate = String(v.plate || '').trim() || String(v.name || '').trim();
       if (!plate) continue;
       try {
-        // Upserts, not find-then-create: two processes seeding at once (server
-        // boot + a script) raced the find and tripped the unique index.
-        // eslint-disable-next-line no-await-in-loop
-        await FleetVehicle.updateOne(
-          { plate },
-          { $setOnInsert: { plate, trailerType: 'سطحة', gpsType: 'LS', notes: 'من لوكيشن سوليوشن' } },
-          { upsert: true },
-        );
-        // eslint-disable-next-line no-await-in-loop
-        const veh = await FleetVehicle.findOne({ plate }).select('_id').lean();
+        const key = canonicalPlateKey(plate);
+        let vehId = key ? known.get(key) : null;
+        // سائقُ لوكيشن سوليوشن يُنسَخ مع شاحنته يومَ تولد هنا فقط: بعدها يُربط
+        // بملفّه ويُقرأ اسمُه الكامل من الموارد البشريّة، فلو قوبل كلَّ إقلاعٍ
+        // باسمه الأوّل («حمزه») لوُلد له صفٌّ ثانٍ.
+        const isNew = !vehId;
+        if (!vehId) {
+          // Upserts, not find-then-create: two processes seeding at once (server
+          // boot + a script) raced the find and tripped the unique index.
+          // eslint-disable-next-line no-await-in-loop
+          const reg = await vehicleRef.resolve(plate);
+          // eslint-disable-next-line no-await-in-loop
+          await FleetVehicle.updateOne(
+            { plate },
+            { $setOnInsert: { plate, trailerType: 'سطحة', gpsType: 'LS', notes: 'من لوكيشن سوليوشن', vehicleMaster: reg?._id || null } },
+            { upsert: true },
+          );
+          // eslint-disable-next-line no-await-in-loop
+          vehId = (await FleetVehicle.findOne({ plate }).select('_id').lean())?._id || null;
+          if (key && vehId) known.set(key, vehId);
+        }
+        const veh = vehId ? { _id: vehId } : null;
         const driverName = String(v.driver || '').trim();
-        if (driverName && veh) {
+        if (driverName && veh && isNew) {
           // eslint-disable-next-line no-await-in-loop
           await FleetDriver.updateOne(
             { name: driverName },
@@ -1449,7 +1699,8 @@ exports.getBoard = async (req, res) => {
         .sort({ createdAt: -1 })
         .select('vehicle status fromCity toCity expectedArrival loadDate waybillNumber customerName driverName lastContactAt')
         .lean(),
-      FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null }, ...(await noArchDrv()) }).select('name vehicle working').lean(),
+      FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null }, ...(await noArchDrv()) }).select('name vehicle working employee').lean()
+        .then(FI.decorateDrivers),
       Ls2Vehicle.find({}).select('plate name maintenanceStatus kmToService nextServiceName odometerKm position status').lean(),
     ]);
 
@@ -2172,13 +2423,14 @@ exports.getDriverKpis = async (req, res) => {
         .lean(),
       FleetDriver.find(scope ? { $or: [{ vehicle: { $in: scope } }, { vehicle: null }] } : {})
         .populate('vehicle', 'plate name')
-        .lean(),
+        .lean()
+        .then(FI.decorateDrivers),
       getFleetConfig(),
       endedStaff(),
     ]);
     // مَن انتهت خدمتُه: صفُّه يبقى إن اشتغل في الفترة (حمولاتُه تاريخ)، لكنّه
     // ليس من طاقم اليوم — فلا يُعَدّ عاطلًا ولا في عدد السائقين ولا الأهداف.
-    const isEnded = (d) => !!d && idNumberEnded(ended, d.iqama);
+    const isEnded = (d) => !!d && (d.employee ? employeeEnded(ended, d.employee) : idNumberEnded(ended, d.iqama));
 
     // Follow-up compliance needs the call log, and only for in-flight loads that
     // were actually meant to be followed up.
@@ -2493,7 +2745,8 @@ exports.getArrivals = async (req, res) => {
         { $sort: { createdAt: -1 } },
         { $group: { _id: '$vehicle', last: { $first: { waybillNumber: '$waybillNumber', toCity: '$toCity', status: '$status', customerName: '$customerName', at: EFFECTIVE_DATE_EXPR } } } },
       ]) : [],
-      idleIds.length ? FleetDriver.find({ vehicle: { $in: idleIds }, isActive: { $ne: false }, ...(await noArchDrv()) }).select('name phone working vehicle').lean() : [],
+      idleIds.length ? FleetDriver.find({ vehicle: { $in: idleIds }, isActive: { $ne: false }, ...(await noArchDrv()) }).select('name phone working vehicle employee').lean()
+        .then(FI.decorateDrivers) : [],
     ]);
     const lastByVehicle = new Map(lastTrips.map((r) => [String(r._id), r.last]));
     const drvByVehicle = new Map();
@@ -2576,7 +2829,13 @@ exports.getVehicleAnalytics = async (req, res) => {
 
     const cacheKey = `fleet:vehicle-analytics:${req.params.id}:${JSON.stringify(req.query || {})}`;
     const cached = cache.get(cacheKey);
-    if (cached !== undefined) return res.json(cached);
+    // الهويّةُ والمستنداتُ تُقرأ من السجلّ في كلّ طلب — لا تُخزَّن مع الأرقام،
+    // فتعديلُها في قسم المركبات يظهر هنا في اللحظة.
+    if (cached !== undefined) {
+      await FI.decorateVehicles([cached.vehicle]);
+      return res.json(cached);
+    }
+    await FI.decorateVehicles([vehicle]);
 
     const period = resolvePeriod(req.query);
     const { start, end } = period;
@@ -2622,7 +2881,8 @@ exports.getVehicleAnalytics = async (req, res) => {
         .select('waybillNumber customer customerName customerType driverName secondDriverName supervisorName supervisor fromCity toCity loadType price fullRent driverExpense status loadDate expectedArrival createdAt')
         .limit(1000).lean(),
       getFleetConfig(),
-      FleetDriver.find({ vehicle: vehicle._id, isActive: { $ne: false }, ...(await noArchDrv()) }).select('name phone working offReason').lean(),
+      FleetDriver.find({ vehicle: vehicle._id, isActive: { $ne: false }, ...(await noArchDrv()) }).select('name phone working offReason employee').lean()
+        .then(FI.decorateDrivers),
       FleetShipment.findOne({ vehicle: vehicle._id, status: { $in: ARRIVAL_ACTIVE } })
         .sort({ createdAt: -1 })
         .select('waybillNumber status fromCity toCity expectedArrival customerName loadDate').lean(),
@@ -2658,8 +2918,19 @@ exports.getVehicleAnalytics = async (req, res) => {
       const digitsRx = digits ? new RegExp(`(^|\\D)${digits}(\\D|$)`) : plateRx;
 
       const [ls2v, tires, services, repairs, issued] = await Promise.all([
-        Ls2Vehicle.findOne({ $or: [{ plateKey: vKey }, { plate: plateRx }] })
-          .select('plate name unitId maintenanceStatus kmToService nextServiceName nextServiceKm odometerKm lastMessageAt status services').lean().catch(() => null),
+        // ‏`Ls2Vehicle` لا يحمل `plateKey` — كان الشرطُ يسأل عن حقلٍ غير موجود فلا
+        // يطابق إلّا بالنصّ. فتُقابَل الوحدةُ بمرجع سجلّ المركبات إن حملته، ثمّ
+        // بالمفتاح الموحَّد للّوحة، ثمّ بأرقامها (اللوحةُ هناك قد تحمل اسمَ السائق).
+        Ls2Vehicle.find({})
+          .select('plate name unitId maintenanceStatus kmToService nextServiceName nextServiceKm odometerKm lastMessageAt status services vehicleMaster').lean()
+          .then((all) => {
+            const canon = canonicalPlateKey(vehicle.plate);
+            return all.find((lv) => vehicle.vehicleMaster && lv.vehicleMaster && String(lv.vehicleMaster) === String(vehicle.vehicleMaster))
+              || all.find((lv) => canon && canonicalPlateKey(lv.plate) === canon)
+              || all.find((lv) => vehiclePlateKey(lv) === vKey)
+              || null;
+          })
+          .catch(() => null),
         Ls2TireAsset.countDocuments({ plateKey: vKey, status: 'mounted' }).catch(() => 0),
         Ls2ServiceLog.find({ plate: plateRx }).sort({ createdAt: -1 }).limit(10)
           .select('plate createdAt items note byName odometerKm').lean().catch(() => []),
@@ -3210,7 +3481,8 @@ exports.getFleetHealth = async (req, res) => {
           'maintenanceStatus kmToService nextServiceName lastServiceKm',
         ].join(' ')).lean(),
       FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null }, ...(await noArchDrv()) })
-        .select('name phone working vehicle').lean(),
+        .select('name phone working vehicle employee').lean()
+        .then(FI.decorateDrivers),
       // المفتوحةُ وحدَها: التنبيهُ المُغلَق عملٌ انتهى، وعرضُه يخلط ما يجب فعلُه
       // اليومَ بما فُعل الأسبوعَ الماضي.
       Ls2Alert.find({ status: 'open' })

@@ -10,7 +10,8 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
-import { Users, Plus, Pencil, Trash2, Check, Loader2, UserMinus } from 'lucide-react';
+import { Users, Plus, Pencil, Trash2, Check, Loader2, UserMinus, Link2, Unlink } from 'lucide-react';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import {
   Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea,
   Select, SearchableSelect, SmallBadge, ErrorNotice,
@@ -26,8 +27,16 @@ const EMPTY = { name: '', phone: '', iqama: '', iban: '', nationality: '', worki
 const vehId = (d: FleetDriver) => (typeof d.vehicle === 'object' && d.vehicle ? d.vehicle._id : (d.vehicle || ''));
 const vehPlate = (d: FleetDriver) => (typeof d.vehicle === 'object' && d.vehicle ? d.vehicle.plate : '');
 
+/** مرشّحٌ من الموارد البشريّة لـ«ربط بموظف». */
+type HrCandidate = {
+  _id: string; name: string; idNumber: string; employeeNumber: string; department: string;
+  jobTitle: string; phone: string; employmentStatus: string; linkedTo: { _id: string; name: string } | null; score: number;
+};
+
 const DRIVER_COLUMNS = [
   { header: 'Driver', key: 'name', width: 24 },
+  { header: 'HR linked', key: 'hrLinked', transform: (v: any) => (v ? 'Yes' : 'No'), width: 10 },
+  { header: 'Employee no.', key: 'hr', transform: (v: any) => v?.employeeNumber || '', width: 12 },
   { header: 'Phone', key: 'phone', width: 16 },
   { header: 'Iqama', key: 'iqama', width: 16 },
   { header: 'IBAN', key: 'iban', width: 30 },
@@ -83,6 +92,49 @@ export default function FleetDriversPage() {
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:drivers', useCallback(() => load(), [load]));
   useSocket('fleet:vehicles', useCallback(() => load(), [load]));
+  // الاسمُ والجوالُ والإقامةُ وحالةُ العمل من ملفّ الموارد البشريّة: يُعاد الجلبُ متى تغيّر.
+  useSocket('hr:employee', useCallback(() => load(), [load]));
+  useSocket('vreg:updated', useCallback(() => load(), [load]));
+
+  // ── «ربط بموظف» ──────────────────────────────────────────────────────────
+  // السائقُ سجلٌّ واحدٌ في النظام: ملفُّه في الموارد البشريّة. ومَن لم يُربط
+  // آليًّا (برقم الهويّة أو الاسم الكامل) يُربط من هنا — والمقترَحون أوّلًا
+  // موظّفو النقل الثقيل الأقربُ أسماؤهم إلى اسمه المكتوب.
+  const [linking, setLinking] = useState<FleetDriver | null>(null);
+  const [linkQ, setLinkQ] = useState('');
+  const [candidates, setCandidates] = useState<HrCandidate[]>([]);
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [linkSaving, setLinkSaving] = useState('');
+  const linkGuard = useLatestRequest();
+  useEffect(() => {
+    if (!linking) return;
+    const token = linkGuard.begin();
+    setLinkLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const qs = new URLSearchParams({ driver: linking._id, ...(linkQ.trim() ? { q: linkQ.trim() } : {}) });
+        const r = await api.get<{ candidates: HrCandidate[] }>(`/api/fleet/drivers/hr-candidates?${qs}`);
+        if (linkGuard.isCurrent(token)) setCandidates(r.candidates || []);
+      } catch (e: any) { if (linkGuard.isCurrent(token)) notify(e.message, 'error'); }
+      if (linkGuard.isCurrent(token)) setLinkLoading(false);
+    }, linkQ ? 300 : 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linking, linkQ]);
+  const openLink = (d: FleetDriver) => { setLinkQ(''); setCandidates([]); setLinking(d); };
+  const linkTo = async (employeeId: string | null) => {
+    if (!linking) return;
+    setLinkSaving(employeeId || 'unlink');
+    try {
+      await api.patch(`/api/fleet/drivers/${linking._id}/employee`, { employee: employeeId });
+      notify(employeeId
+        ? (ar ? 'رُبط السائق بملفّه في الموارد البشرية.' : 'Driver linked to his HR file.')
+        : (ar ? 'فُكّ ربط السائق.' : 'Driver unlinked.'), 'success');
+      setLinking(null);
+      await load();
+    } catch (e: any) { notify(e.message, 'error'); }
+    setLinkSaving('');
+  };
 
   // The seat hint tells the mover whether the target truck is already full
   // BEFORE the server has to say no.
@@ -194,6 +246,8 @@ export default function FleetDriversPage() {
     if (statusFilter === 'off' && d.working) return false;
     if (statusFilter === 'sick' && d.offReason !== 'sick') return false;
     if (statusFilter === 'leave' && d.offReason !== 'leave') return false;
+    if (statusFilter === 'linked' && !d.hrLinked) return false;
+    if (statusFilter === 'unlinked' && d.hrLinked) return false;
     if (assignFilter === 'assigned' && !vehId(d)) return false;
     if (assignFilter === 'unassigned' && vehId(d)) return false;
     // «مين شغّال لوحده ومين معاه تاني؟» — سؤالٌ يُسأل عند التوزيع.
@@ -255,6 +309,8 @@ export default function FleetDriversPage() {
             <option value="off">{ar ? 'لا يعمل' : 'Not working'}</option>
             <option value="sick">{ar ? 'إجازة مرضية' : 'Sick leave'}</option>
             <option value="leave">{ar ? 'إجازة' : 'On leave'}</option>
+            <option value="linked">{ar ? 'مربوط بالموارد البشرية' : 'Linked to HR'}</option>
+            <option value="unlinked">{ar ? 'غير مربوط بالموارد البشرية' : 'Not linked to HR'}</option>
           </Select>
         </div>
         <div className="w-44 grow sm:grow-0">
@@ -287,15 +343,22 @@ export default function FleetDriversPage() {
           <tbody>
             {filtered.map((d) => (
               <tr key={d._id} className={`border-b border-slate-200/70 hover:bg-slate-50 ${rowBusy === d._id ? 'opacity-50' : ''}`}>
-                <td className="px-4 py-3 text-slate-900 font-semibold whitespace-nowrap">{d.name}</td>
+                <td className="px-4 py-3 text-slate-900 font-semibold whitespace-nowrap">
+                  {d.name}
+                  {/* من ملفّه في الموارد البشريّة، أو نصٌّ مكتوبٌ هنا ينتظر الربط. */}
+                  {d.hrLinked
+                    ? <span className="block text-[10.5px] font-normal text-emerald-700">{ar ? 'من الموارد البشرية' : 'From HR'}{d.hr?.employeeNumber ? ` · ${d.hr.employeeNumber}` : ''}</span>
+                    : <span className="block text-[10.5px] font-normal text-amber-700">{ar ? 'غير مربوط بموظف' : 'Not linked to an employee'}</span>}
+                </td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap" dir="ltr">{d.phone || '—'}</td>
                 <td className="px-4 py-3 text-slate-700 font-mono">{d.iqama || '—'}</td>
                 <td className="px-4 py-3">
                   {/* The badge itself is the toggle — one click flips يعمل/لا يعمل. */}
-                  <button type="button" disabled={!editor || rowBusy === d._id}
-                    onClick={() => editor && toggle(d, 'working')}
-                    className={editor ? 'cursor-pointer' : 'cursor-default'}
-                    title={editor ? (ar ? 'اضغط لتغيير الحالة' : 'Click to toggle') : undefined}>
+                  {/* ما تقوله الموارد البشريّة (إجازة/إيقاف/إنهاء خدمة) لا يُبدَّل من هنا. */}
+                  <button type="button" disabled={!editor || rowBusy === d._id || d.offSource === 'hr'}
+                    onClick={() => editor && d.offSource !== 'hr' && toggle(d, 'working')}
+                    className={editor && d.offSource !== 'hr' ? 'cursor-pointer' : 'cursor-default'}
+                    title={d.offSource === 'hr' ? (d.offNote || (ar ? 'من الموارد البشرية' : 'From HR')) : editor ? (ar ? 'اضغط لتغيير الحالة' : 'Click to toggle') : undefined}>
                     {d.working
                       ? <SmallBadge bg="bg-emerald-500/15" text="text-emerald-700" label={ar ? 'يعمل' : 'Working'} />
                       : <SmallBadge bg="bg-slate-500/15" text="text-slate-600" label={ar ? 'لا يعمل' : 'Not working'} />}
@@ -304,6 +367,7 @@ export default function FleetDriversPage() {
                   {!d.working && d.offReason && (
                     <span className="ms-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-500/15 text-orange-700">
                       {d.offReason === 'sick' ? (ar ? 'مرضية' : 'Sick') : d.offReason === 'leave' ? (ar ? 'إجازة' : 'On leave') : (ar ? 'سبب آخر' : 'Other')}
+                      {d.offSource === 'hr' ? (ar ? ' · الموارد البشرية' : ' · HR') : ''}
                     </span>
                   )}
                 </td>
@@ -379,6 +443,13 @@ export default function FleetDriversPage() {
                         <UserMinus className="w-4 h-4" />
                       </button>
                     )}
+                    {editor && (
+                      <button type="button" onClick={() => openLink(d)}
+                        className={`p-1.5 rounded-lg hover:bg-slate-100 ${d.hrLinked ? 'text-emerald-600 hover:text-emerald-700' : 'text-amber-600 hover:text-[#f37121]'}`}
+                        title={d.hrLinked ? (ar ? 'الربط بالموارد البشرية' : 'HR link') : (ar ? 'ربط بموظف' : 'Link to employee')}>
+                        <Link2 className="w-4 h-4" />
+                      </button>
+                    )}
                     {editor && <button type="button" onClick={() => openEdit(d)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}><Pencil className="w-4 h-4" /></button>}
                     {admin && <button type="button" onClick={() => remove(d)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={ar ? 'إزالة' : 'Remove'}><Trash2 className="w-4 h-4" /></button>}
                   </div>
@@ -405,18 +476,26 @@ export default function FleetDriversPage() {
           </PrimaryButton>
         </>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label={ar ? 'الاسم *' : 'Name *'} span2><TextInput value={form.name} onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))} /></Field>
-          <Field label={ar ? 'الجوال' : 'Phone'}><TextInput value={form.phone} onChange={(e) => setForm((f: any) => ({ ...f, phone: e.target.value }))} /></Field>
-          <Field label={ar ? 'رقم الإقامة' : 'Iqama'}><TextInput value={form.iqama} onChange={(e) => setForm((f: any) => ({ ...f, iqama: e.target.value }))} /></Field>
+          {/* المربوطُ بملفّه: الاسمُ والجوالُ والإقامةُ والإيبانُ والجنسيّةُ تُصحَّح في
+              الموارد البشريّة فتظهر في كلّ قسم — لا نسخةَ هنا تخالفها. */}
+          {editing?.hrLinked && (
+            <p className="sm:col-span-2 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+              {ar ? 'هذا السائق مربوط بملفّه في الموارد البشرية — الاسم والجوال والإقامة والإيبان والجنسية تُعدَّل من ملفّه هناك.'
+                : 'This driver is linked to his HR file — name, phone, iqama, IBAN and nationality are edited there.'}
+            </p>
+          )}
+          <Field label={ar ? 'الاسم *' : 'Name *'} span2><TextInput value={form.name} disabled={!!editing?.hrLinked} onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))} /></Field>
+          <Field label={ar ? 'الجوال' : 'Phone'}><TextInput value={form.phone} disabled={!!editing?.hrLinked} onChange={(e) => setForm((f: any) => ({ ...f, phone: e.target.value }))} /></Field>
+          <Field label={ar ? 'رقم الإقامة' : 'Iqama'}><TextInput value={form.iqama} disabled={!!editing?.hrLinked} onChange={(e) => setForm((f: any) => ({ ...f, iqama: e.target.value }))} /></Field>
           {/* ── الإيبان يُكتب هنا مرّةً ─────────────────────────────────────
               مصاريفُ السوّاق تُحوَّل إليه، وصفحتُها تقرؤه من هنا لا من سطر
               الحمولة — يُكتب مرّةً ويُصحَّح مرّةً، بدل أن يُنسَخ في كلّ كشف
               فيُخطئ رقمٌ واحدٌ فيذهب المالُ إلى حسابٍ آخر. */}
           <Field label={ar ? 'رقم الإيبان (لتحويل المصاريف)' : 'IBAN (for expense transfers)'}>
-            <TextInput value={form.iban} dir="ltr" placeholder="SA00 0000 0000 0000 0000 0000"
+            <TextInput value={form.iban} dir="ltr" placeholder="SA00 0000 0000 0000 0000 0000" disabled={!!editing?.hrLinked}
               onChange={(e) => setForm((f: any) => ({ ...f, iban: e.target.value.toUpperCase() }))} />
           </Field>
-          <Field label={ar ? 'الجنسية' : 'Nationality'}><TextInput value={form.nationality} onChange={(e) => setForm((f: any) => ({ ...f, nationality: e.target.value }))} /></Field>
+          <Field label={ar ? 'الجنسية' : 'Nationality'}><TextInput value={form.nationality} disabled={!!editing?.hrLinked} onChange={(e) => setForm((f: any) => ({ ...f, nationality: e.target.value }))} /></Field>
           <Field label={ar ? 'الحالة' : 'Status'}>
             <Select value={form.working ? 'yes' : 'no'} onChange={(e) => setForm((f: any) => ({ ...f, working: e.target.value === 'yes' }))}>
               <option value="yes">{ar ? 'يعمل' : 'Working'}</option>
@@ -439,6 +518,68 @@ export default function FleetDriversPage() {
           </Field>
         </div>
       </Modal>
+      {/* «ربط بموظف» — يُختار ملفُّه في الموارد البشريّة، فيُقرأ منه الاسمُ والجوالُ
+          والإقامةُ والجنسيّةُ والإيبانُ وحالةُ العمل في كلّ شاشات الأسطول. */}
+      <Modal open={!!linking} onClose={() => setLinking(null)}
+        title={linking ? (ar ? `ربط «${linking.name}» بموظف` : `Link “${linking.name}” to an employee`) : ''}
+        footer={<>
+          {linking?.hrLinked && (
+            <button type="button" onClick={() => linkTo(null)} disabled={!!linkSaving}
+              className="me-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-red-600 hover:bg-red-50 text-sm">
+              {linkSaving === 'unlink' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlink className="w-4 h-4" />}
+              {ar ? 'فك الربط' : 'Unlink'}
+            </button>
+          )}
+          <button type="button" onClick={() => setLinking(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إغلاق' : 'Close'}</button>
+        </>}>
+        <div className="space-y-3">
+          {linking?.hrLinked && linking.hr && (
+            <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+              {ar ? `مربوط الآن بـ ${linking.hr.name}${linking.hr.employeeNumber ? ` (${linking.hr.employeeNumber})` : ''}.` : `Currently linked to ${linking.hr.name}.`}
+            </p>
+          )}
+          <SearchInput value={linkQ} onChange={setLinkQ}
+            placeholder={ar ? 'ابحث بالاسم أو رقم الهوية أو الرقم الوظيفي…' : 'Search name, ID number or employee no.…'} />
+          <p className="text-[11px] text-slate-500">
+            {linkQ.trim()
+              ? (ar ? 'نتائج البحث في كل ملفات الموارد البشرية.' : 'Searching every HR file.')
+              : (ar ? 'المقترحون: موظفو النقل الثقيل وإدارة الأسطول، الأقرب اسمًا أولًا.' : 'Suggested: heavy-transport and fleet staff, closest names first.')}
+          </p>
+          <div className="max-h-[50vh] overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-lg">
+            {linkLoading && candidates.length === 0 && <div className="py-6 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-slate-400" /></div>}
+            {!linkLoading && candidates.length === 0 && (
+              <p className="text-center text-sm text-slate-500 py-6">{ar ? 'لا يوجد موظفون مطابقون.' : 'No matching employees.'}</p>
+            )}
+            {candidates.map((c) => {
+              const current = linking?.hr?._id === c._id;
+              return (
+                <div key={c._id} className="flex items-center gap-3 px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-900 truncate">{c.name}</p>
+                    <p className="text-[11px] text-slate-500 truncate">
+                      {[c.idNumber, c.employeeNumber, c.department, c.jobTitle].filter(Boolean).join(' · ')}
+                      {c.employmentStatus === 'terminated' ? (ar ? ' · انتهت خدمته' : ' · terminated') : ''}
+                    </p>
+                    {c.linkedTo && (
+                      <p className="text-[11px] text-amber-700">{ar ? `مربوط بالسائق «${c.linkedTo.name}»` : `Linked to driver “${c.linkedTo.name}”`}</p>
+                    )}
+                  </div>
+                  {current ? (
+                    <SmallBadge bg="bg-emerald-500/15" text="text-emerald-700" label={ar ? 'المربوط حاليًا' : 'Current'} />
+                  ) : (
+                    <button type="button" onClick={() => linkTo(c._id)} disabled={!!linkSaving || !!c.linkedTo}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#f37121] text-white text-xs font-semibold disabled:opacity-40">
+                      {linkSaving === c._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />}
+                      {ar ? 'ربط' : 'Link'}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </Modal>
+
       {/* لماذا يُنزَل؟ — the reason feeds the dashboard's sick/leave counts. */}
       <Modal open={!!benching} onClose={() => setBenching(null)}
         title={benching ? (ar ? `إنزال «${benching.name}» من السيارة` : `Bench “${benching.name}”`) : ''}

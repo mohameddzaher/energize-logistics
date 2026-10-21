@@ -196,6 +196,9 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
     })();
   }, []);
   useSocket('fleet:updated', useCallback(() => load(), [load]));
+  // الشاحنةُ من سجلّ المركبات والسائقُ من الموارد البشريّة: يُعاد الجلبُ متى تغيّر أحدُهما.
+  useSocket('vreg:updated', useCallback(() => load(), [load]));
+  useSocket('hr:employee', useCallback(() => load(), [load]));
   // الرابطُ يُكتب ولا يُنتقَل إليه: `router.replace` تنقّلٌ كامل يعيد تركيب
   // الشجرة مع كلّ ضغطةِ فلتر — بطيءٌ وحدَه، وحلقةٌ لا تنتهي حين تصير الشاشةُ
   // تبويبًا. و`history.replaceState` تكتب الرابطَ ولا تفعل شيئًا سواه.

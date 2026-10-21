@@ -93,7 +93,7 @@ const ENTITY_SECTION = {
   // العمليات — والسعرُ الخاصّ عمودٌ في كشف التشغيل نفسِه، والسائقون سجلُّها
   OperationsWorkflow: 'operations', PrivateSellingPrice: 'operations', Driver: 'operations',
   // التحصيل
-  CollectionsParty: 'collections', CollectionsFollowUp: 'collections',
+  CollectionsParty: 'collections', CollectionsFollowUp: 'collections', CollectionAttachment: 'collections',
   // المركبات — السجلّ ووثائقه وبطاقات السائقين ووثائق تأمين الشركة
   VehicleMaster: 'vehicles', VehicleInsurancePolicy: 'vehicles',
   VehicleRegistryConfig: 'vehicles', DriverCard: 'vehicles', CorporatePolicy: 'vehicles',

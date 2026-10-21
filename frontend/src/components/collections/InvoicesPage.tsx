@@ -30,6 +30,7 @@ import SearchSelect from '@/components/system/SearchSelect';
 import { openPdf, printPdf } from '@/utils/pdfActions';
 import { Banknote, Receipt, SlidersHorizontal, X, CheckCircle2, ChevronLeft, Truck, Printer, FileText } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
+import { AttachmentsButton } from '@/components/collections/InvoiceAttachments';
 
 const EMPTY_SET: Set<string> = new Set();
 const EMPTY_OPTIONS: ColumnFilterOption[] = [];
@@ -46,6 +47,8 @@ interface CashRow {
   /** الدفترُ يقول «محصَّل» ولا يعرف يومَه — يُقال كما هو لا «لم يُحصَّل». */
   collectedNoDate?: boolean;
   ageDays: number | null;
+  /** عددُ مرفقات الكشف — راجع InvoiceAttachments. */
+  attachments?: number;
 }
 interface TaxRow {
   invoiceNumber: string; customer: string; partyId?: string; value: number; net: number; vat: number;
@@ -54,6 +57,7 @@ interface TaxRow {
   collectionDate: string | null; ageDays: number | null;
   /** كودُ الحساب في دفتر التحصيل، وحالتُه كما يقولها الدفتر. */
   partyCode?: string; status?: string;
+  attachments?: number;
 }
 
 /**
@@ -198,6 +202,15 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
 
   // التحصيلُ يُكتب على الكشف، فأيُّ تعديلٍ هناك يُحدِّث هنا في لحظته.
   useSocket('workflow:updated', useCallback(() => { load(true); }, [load]));
+
+  // ── وعددُ المرفقات يتحدّث في مكانه ─────────────────────────────────────────
+  // الخبرُ يحمل العددَ الجديد، فلا تُعاد قراءةُ الصفحة كلِّها لأجل مشبك.
+  const setAttachCount = useCallback((key: string, n: number) => {
+    setRows((prev) => prev.map((r: any) => ((isCash ? String(r._id) : String(r.invoiceNumber)) === key ? { ...r, attachments: n } : r)));
+  }, [isCash]);
+  useSocket('collections:attachments', useCallback((d: any) => {
+    if (d?.kind === kind && d?.key) setAttachCount(String(d.key), Number(d.count) || 0);
+  }, [kind, setAttachCount]));
 
   useEffect(() => {
     api.get<{ customers: string[]; branches: string[] }>(`/api/collections-dept/invoices/filters?kind=${kind}`)
@@ -351,6 +364,15 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     align?: 'start' | 'end' | 'center';
     cell?: (r: any) => React.ReactNode;
   };
+  // ── المرفقات: مشبكٌ وعدد، ويفتح نافذةَ ملفّات الصفّ ──────────────────────
+  // ويُصدَّر العددُ في Excel عمودًا باسمه («عدد المرفقات»).
+  const attachCol: Col = {
+    header: t('المرفقات', 'Files'), key: 'attachments', width: 12, type: 'number', align: 'center',
+    cell: (r) => (
+      <AttachmentsButton kind={kind} invKey={rowKey(r)} label={isCash ? r.reportNumber : r.invoiceNumber}
+        count={r.attachments || 0} onCount={(n) => setAttachCount(rowKey(r), n)} />
+    ),
+  };
   const allCols: Col[] = isCash
     ? [
       { header: t('رقم كشف التخريج', 'Report no.'), key: 'reportNumber', width: 18, filter: 'reportNumber',
@@ -374,6 +396,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       { header: t('تاريخ التحصيل', 'Collected on'), key: 'collectionDate', width: 14, type: 'date', filter: 'collectionDate',
         transform: (v: any, r: any) => (v ? dt(v) : (r?.collectedNoDate ? t('محصَّل — بلا تاريخ', 'Collected — no date') : '')),
         cell: (r) => collectedCell(r) },
+      attachCol,
     ]
     : [
       { header: t('رقم الفاتورة', 'Invoice no.'), key: 'invoiceNumber', width: 18, filter: 'invoiceNumber',
@@ -397,6 +420,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
           </span>
         ) },
       { header: t('الحالة', 'Status'), key: 'status', width: 14, filter: 'status' },
+      attachCol,
     ];
 
   // ── وكلُّ عمودٍ يُفلتَر، بأحد فلترين ─────────────────────────────────────
@@ -405,7 +429,8 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   // والمسار — محسوبٌ لا مخزَّن، فلا يُسأل عنه الخادم: يُفلتَر هنا على المعروض.
   // وكلاهما يظهر قمعًا واحدًا في رأس العمود، فلا يعرف القارئُ أيُّهما.
   const cf = useColumnFilters<any>();
-  const localGetters = Object.fromEntries(allCols.filter((c) => !c.filter).map((c) => [c.key,
+  // (عمودُ المرفقات بلا فلتر: عددٌ يتغيّر حيًّا، وكشفُ الحساب لا يعرفه.)
+  const localGetters = Object.fromEntries(allCols.filter((c) => !c.filter && c.key !== 'attachments').map((c) => [c.key,
     (r: any) => (c.transform ? c.transform(r[c.key], r) : r[c.key])]));
   const shown = cf.apply(rows, localGetters);
 
@@ -456,6 +481,8 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   // الأعمدةُ المختارة، والصفوفُ المحدَّدة إن حُدِّدت — وإلّا صفوفُ الفلتر كما
   // هي. وعدّادُ النطاق يقول العددَ صراحةً، فلا يظنّ أحدٌ أنّه أخذ ما لم يأخذ.
   const selectedRows = rows.filter((r) => selected.has(rowKey(r)));
+  // في Excel يُسمّى العمودُ بما فيه: عدد.
+  const exportCols = cols.map((c) => (c.key === 'attachments' ? { ...c, header: t('عدد المرفقات', 'Attachments count') } : c));
   // ── كشفُ الحساب: ما على الشاشة كلُّه، من الخادم ─────────────────────────
   // كانت الطباعةُ تأخذ صفوفَ الصفحة المعروضة وحدَها (مئةً من آلاف) بلا
   // البطاقات ولا ترويسة الشركة. فصار الكشفُ يُبنى في الخادم من الدالّة نفسِها
@@ -546,9 +573,9 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
             ...(selected.size ? [{
               key: 'selected',
               label: t(`المحدَّد (${selected.size})`, `Selected (${selected.size})`),
-              sheets: [{ name: title, rows: selectedRows as any, columns: cols }],
+              sheets: [{ name: title, rows: selectedRows as any, columns: exportCols }],
             }] : []),
-            { key: 'shown', label: t('المعروض بعد الفلتر', 'Shown (filtered)'), sheets: [{ name: title, rows: rows as any, columns: cols }] },
+            { key: 'shown', label: t('المعروض بعد الفلتر', 'Shown (filtered)'), sheets: [{ name: title, rows: rows as any, columns: exportCols }] },
           ]}
         />
       </PageHeader>
@@ -688,7 +715,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                     <span className="inline-flex items-center">
                       {c.header}
                       {/* لا حقلَ في القاعدة → قمعٌ محلّيٌّ على المعروض. */}
-                      {!c.filter && cf.header(c.key, rows, localGetters[c.key], ar)}
+                      {!c.filter && localGetters[c.key] && cf.header(c.key, rows, localGetters[c.key], ar)}
                       {c.filter && (
                         <ColumnFilter
                           field={c.filter}
@@ -735,7 +762,8 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                         })} />
                     </td>
                     {cols.map((c) => (
-                      <td key={c.key} className={`px-3 py-2.5 ${c.align === 'end' ? 'text-end' : ''} ${c.key === 'route' || c.key === 'customer' ? '' : 'whitespace-nowrap'} ${c.key === 'collectionDetail' ? 'min-w-[150px]' : ''}`}>
+                      <td key={c.key} className={`px-3 py-2.5 ${c.align === 'end' ? 'text-end' : ''} ${c.key === 'route' || c.key === 'customer' ? '' : 'whitespace-nowrap'} ${c.key === 'collectionDetail' ? 'min-w-[150px]' : ''} ${c.align === 'center' ? 'text-center' : ''}`}
+                        onClick={c.key === 'attachments' ? (e) => e.stopPropagation() : undefined}>
                         {c.cell ? c.cell(r) : (
                           <span className="text-slate-600">
                             {(c.transform ? c.transform(r[c.key], r) : r[c.key]) || '—'}

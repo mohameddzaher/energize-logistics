@@ -83,6 +83,16 @@ router.put('/invoices/detail', authorize(...EDIT_ROLES), ctrl.setCollectionDetai
 // وصفُّ الكاش يُحفَظ كما يحفظه التطبيق أيَّ صفّ: PUT على معرّفه.
 router.put('/invoices/cash/:id', authorize(...EDIT_ROLES), ctrl.updateCashInvoice);
 
+// ── مرفقاتُ الفواتير ──────────────────────────────────────────────────────
+// قارئُ الفواتير يرى الملفّاتِ وينزّلها، وكاتبُها يرفع. والحذفُ لمن رفع الملفَّ
+// أو لمدير القسم — يحرسه المتحكِّم لا قائمةُ الأدوار (راجع رأسه).
+// «counts» قبل `/:key`، وإلّا قُرئت رقمَ فاتورة.
+const att = require('../controllers/collectionsAttachmentsController');
+router.get('/attachments/:kind/counts', authorize(...READ_ROLES), att.counts);
+router.get('/attachments/:kind/:key', authorize(...READ_ROLES), att.list(EDIT_ROLES));
+router.post('/attachments/:kind/:key', authorize(...EDIT_ROLES), att.upload);
+router.delete('/attachments/:kind/:key/:fileId', authorize(...EDIT_ROLES), att.remove);
+
 // ── دفترُ التحصيل ──────────────────────────────────────────────────────────
 // سجلُّ الحسابات بأعماره، ودفترُ الفواتير، والتنبيهاتُ والخطّةُ والتقييم.
 // مبنيٌّ على `CollectionInvoice` لا على كشوف التشغيل — انظر رأسَ المتحكِّم.

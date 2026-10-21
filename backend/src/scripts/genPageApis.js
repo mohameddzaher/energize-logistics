@@ -209,6 +209,15 @@ function build() {
     return out;
   };
 
+  // ── وشاشةٌ تُفتَح من صفحةٍ ليست تحت مجلّدها ─────────────────────────────
+  // ملفُّ العميل/المورّد (`collections-dept/parties/[id]`) يُفتَح من صفحتَي
+  // «العملاء» و«الموردين»، ومجلّدُه ليس تحت أيٍّ منهما — فلا يضمّه `subPages`.
+  // فكانت نداءاتُه (ومنها مرفقاتُ الفواتير) تُردّ ٤٠٣ لدورٍ لا يملك غيرَهما.
+  const OPENED_FROM = {
+    '/system/collections-dept/customers': ['collections-dept/parties'],
+    '/system/collections-dept/suppliers': ['collections-dept/parties'],
+  };
+
   for (const p of PAGES) {
     // مسارُ الصفحة → ملفُّها. المسارُ ذو المعامل (`[id]`) يقابله مجلَّدٌ باسمه.
     const rel = p.key.replace(/^\/system\/?/, '');
@@ -217,7 +226,7 @@ function build() {
 
     const apis = new Set();
     let wildcard = false;
-    const entries = [file, ...subPages(path.join(APP, rel))];
+    const entries = [file, ...subPages(path.join(APP, rel)), ...(OPENED_FROM[p.key] || []).flatMap((d) => subPages(path.join(APP, d)))];
     for (const entry of entries) {
       for (const [f, names] of fileClosure(entry)) {
         const got = apisIn(scopedSource(f, names));

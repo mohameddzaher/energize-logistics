@@ -16,6 +16,7 @@ import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import { Receipt, ArrowRight } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
+import { AttachmentsPanel } from '@/components/collections/InvoiceAttachments';
 
 interface Row {
   _id: string; reportNumber?: string; reportDate?: string; username?: string;
@@ -239,6 +240,9 @@ export default function TaxInvoiceDetailPage() {
           </table>
         </ScrollX>
       </div>
+
+      {/* ورقُ الفاتورة: النسخةُ الموقَّعة وإيصالُ الاستلام وما يُطالَب به. */}
+      <AttachmentsPanel kind="tax" invKey={data.invoiceNumber} />
     </div>
   );
 }

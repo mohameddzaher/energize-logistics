@@ -24,6 +24,7 @@ import {
 } from 'recharts';
 import { Users, Truck, ArrowRight, Phone, Building2, Plus, Trash2, CheckCircle2, MessageSquare, Receipt, Printer } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
+import { AttachmentsButton, useAttachmentCounts } from '@/components/collections/InvoiceAttachments';
 
 interface Report {
   _id: string; reportNumber?: string; reportDate?: string;
@@ -147,6 +148,8 @@ export default function PartyProfilePage() {
   // وهو خطأ React #310 الذي يُسقط الشاشةَ كلَّها برقمٍ لا يقول شيئًا.
   const invCf = useColumnFilters<any>();
   const repCf = useColumnFilters<any>();
+  // مرفقاتُ فواتير الطرف — نداءٌ واحدٌ للمعروض كلِّه (قبل أيّ رجوعٍ مبكّر: خطّاف).
+  const invAtt = useAttachmentCounts('tax', (data?.money?.invoices || []).map((i: any) => String(i.invoiceNumber || '')));
 
   if (loading && !data) return <Spinner />;
   if (!data) return null;
@@ -442,11 +445,12 @@ export default function PartyProfilePage() {
                       <span className="inline-flex items-center gap-1">{h}{invCf.header(k, invBase, IG[k], ar)}</span>
                     </th>
                   ))}
+                  <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">{t('المرفقات', 'Files')}</th>
                 </tr>
               </thead>
               <tbody>
                 {shownInvoices.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">
                     {t('لا فواتير غير محصَّلة', 'No unpaid invoices')}
                   </td></tr>
                 ) : shownInvoices.map((i) => (
@@ -465,6 +469,10 @@ export default function PartyProfilePage() {
                     </td>
                     <td className="px-3 py-2 tabular-nums text-slate-500 whitespace-nowrap">
                       {i.ageDays == null ? '—' : `${i.ageDays} ${t('يوم', 'd')}`}
+                    </td>
+                    <td className="px-3 py-2 text-center whitespace-nowrap">
+                      <AttachmentsButton kind="tax" invKey={i.invoiceNumber} label={i.invoiceNumber}
+                        count={invAtt.counts[i.invoiceNumber] || 0} onCount={(n) => invAtt.setOne(i.invoiceNumber, n)} />
                     </td>
                   </tr>
                 ))}

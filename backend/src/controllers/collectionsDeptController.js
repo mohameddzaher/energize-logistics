@@ -1340,6 +1340,12 @@ function invoiceFilters(query, { ageField }) {
  * ولا يُعرَض «مبلغ السداد» هنا: ذاك ما دُفع للمورّد، وما يُحصَّل من العميل رقمٌ
  * آخر يكتبه المحصِّل بيده حين يقبضه.
  */
+/**
+ * عددُ مرفقات صفوف الصفحة — راجع controllers/collectionsAttachmentsController.
+ * وكشفُ الحساب (`req.allRows`) يمرّ من هنا أيضًا؛ تجميعٌ على الفهرس لا يُثقله.
+ */
+const attachmentCounts = (kind, keys) => require('./collectionsAttachmentsController').countsFor(kind, keys);
+
 exports.cashInvoices = async (req, res) => {
   try {
     // ── والكشفُ النقديُّ يُحصَّل سواءٌ عرفنا ما دفعناه فيه أم لا ────────────
@@ -1415,7 +1421,11 @@ exports.cashInvoices = async (req, res) => {
 
     const now = Date.now();
     const t = totals[0] || { collected: 0, collectedCount: 0 };
-    const partyIds = await partyIdsByName(rows.map((w) => w.username));
+    // عددُ مرفقات الصفحة كلِّها في تجميعٍ واحد — لا نداءٌ لكلّ صفّ.
+    const [partyIds, attCounts] = await Promise.all([
+      partyIdsByName(rows.map((w) => w.username)),
+      attachmentCounts('cash', rows.map((w) => String(w._id))),
+    ]);
     res.json({
       invoices: rows.map((w) => ({
         _id: w._id,
@@ -1445,6 +1455,7 @@ exports.cashInvoices = async (req, res) => {
         deliveryDate: w.deliveryDate || null,
         collectionDetail: w.collectionDetail || '',
         ageDays: w.paymentDate ? Math.floor((now - new Date(w.paymentDate).getTime()) / 86400000) : null,
+        attachments: attCounts.get(String(w._id)) || 0,
       })),
       total,
       page,
@@ -1529,7 +1540,10 @@ exports.taxInvoices = async (req, res) => {
 
     const t = totalsAgg[0] || { value: 0, invoices: 0, fullyCollected: 0 };
     const now = Date.now();
-    const partyIds = await partyIdsByName(rows.map((r) => r.partyName));
+    const [partyIds, attCounts] = await Promise.all([
+      partyIdsByName(rows.map((r) => r.partyName)),
+      attachmentCounts('tax', nums),
+    ]);
 
     res.json({
       invoices: rows.map((i) => {
@@ -1557,6 +1571,7 @@ exports.taxInvoices = async (req, res) => {
           collectionDate: i.collectionDate || null,
           status: i.status || '',
           ageDays: i.invoiceDate ? Math.floor((now - new Date(i.invoiceDate).getTime()) / 86400000) : null,
+          attachments: attCounts.get(String(i.invoiceNumber || '').trim()) || 0,
         };
       }),
       total,

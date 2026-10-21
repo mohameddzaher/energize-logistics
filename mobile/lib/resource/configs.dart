@@ -7,6 +7,7 @@ import '../screens/crm_company_profile.dart';
 import '../screens/contracts_vendor_profile.dart';
 import '../screens/customs_detail.dart';
 import '../screens/customs_party.dart';
+import '../screens/collection_attachments.dart';
 import '../ui/customs_contract_pricing.dart';
 import '../screens/fleet_customer_profile.dart';
 import '../screens/customer_registry_profile.dart';
@@ -1322,7 +1323,7 @@ final collectionsLedgerCfg = ResourceConfig(
 final collectionsCashInvoicesCfg = ResourceConfig(
   arTitle: 'فواتير الكاش', enTitle: 'Cash Invoices', icon: Icons.payments_outlined,
   endpoint: '/api/collections-dept/invoices/cash', listKey: 'invoices',
-  liveEvent: 'workflow:updated', serverSearch: true,
+  liveEvent: 'workflow:updated', extraLiveEvents: const ['collections:attachments'], serverSearch: true,
   canCreate: false, canDelete: false,
   filterField: 'collected',
   searchFields: const ['reportNumber', 'customer', 'payingBranch'],
@@ -1337,6 +1338,7 @@ final collectionsCashInvoicesCfg = ResourceConfig(
     // التسليمُ خطوةٌ قبل التحصيل — ومنه تُعَدُّ مهلةُ العميل.
     if (_s(r, 'deliveryDate').isEmpty) ('لم تُسلَّم', T.warn) else ('سُلِّمت', T.info),
     if (_s(r, 'collectionDetail').isNotEmpty) (_s(r, 'collectionDetail'), T.navy),
+    if (_attachCount(r) > 0) ('${_attachCount(r)} مرفقات', T.orange),
   ],
   // ── والتحصيلُ حاجتان: مبلغٌ وتاريخ ─────────────────────────────────────
   // النقديُّ يقبضه المحصِّلُ في يده فيكتب ما قبض — لا يُشتقّ من مبلغ السداد،
@@ -1355,6 +1357,7 @@ final collectionsCashInvoicesCfg = ResourceConfig(
   ],
   sortFields: const [('ageDays', 'العمر', 'Age')],
   rowActions: (r) => [
+    _attachmentsAction('cash', (r) => _s(r, '_id'), (r) => _s(r, 'reportNumber')),
     if (collectionsCanEdit && (_s(r, 'collectionDate').isNotEmpty || ((r['collectedAmount'] is num) && (r['collectedAmount'] as num) > 0)))
       _uncollectAction((r) => {'ids': [_s(r, '_id')]}),
   ],
@@ -1378,7 +1381,7 @@ ResourceAction _uncollectAction(Map<String, dynamic> Function(Map<String, dynami
 final collectionsTaxInvoicesCfg = ResourceConfig(
   arTitle: 'الفواتير الضريبية', enTitle: 'Tax Invoices', icon: Icons.receipt_long_outlined,
   endpoint: '/api/collections-dept/invoices/tax', listKey: 'invoices',
-  liveEvent: 'workflow:updated', serverSearch: true,
+  liveEvent: 'workflow:updated', extraLiveEvents: const ['collections:attachments'], serverSearch: true,
   canCreate: false, canEdit: false, canDelete: false,
   searchFields: const ['invoiceNumber', 'customer'],
   titleOf: (r) => _s(r, 'invoiceNumber'),
@@ -1388,9 +1391,11 @@ final collectionsTaxInvoicesCfg = ResourceConfig(
     ('${r['reports'] ?? 0} كشف', T.navy),
     if (r['ageDays'] != null) ('${r['ageDays']} يوم', _ageColor(r['ageDays'])),
     if (r['fullyCollected'] == true) ('محصَّلة', T.success) else ('لم تُحصَّل', T.danger),
+    if (_attachCount(r) > 0) ('${_attachCount(r)} مرفقات', T.orange),
   ],
   fields: const [],
   rowActions: (r) => [
+    _attachmentsAction('tax', (r) => _s(r, 'invoiceNumber'), (r) => _s(r, 'invoiceNumber')),
     if (collectionsCanEdit && (r['fullyCollected'] == true || _s(r, 'collectionDate').isNotEmpty))
       _uncollectAction((r) => {'invoiceNumber': _s(r, 'invoiceNumber')}),
     // تصحيحُ قيمة الفاتورة في الدفتر (ويجوز بالسالب) — كالموقع.
@@ -1421,6 +1426,17 @@ final collectionsTaxInvoicesCfg = ResourceConfig(
       ),
   ],
 );
+
+/// عددُ مرفقات الفاتورة كما يردّه الخادمُ مع الصفّ.
+int _attachCount(Map<String, dynamic> r) => (r['attachments'] is num) ? (r['attachments'] as num).toInt() : 0;
+
+/// «المرفقات» — تفتح ملفّاتِ الفاتورة: فتحٌ وتنزيل، ورفعٌ وحذفٌ لمن يملكهما
+/// (يقرّره الخادم). الضريبيّةُ برقمها، والنقديّةُ بمعرّف كشفها — كالموقع.
+ResourceAction _attachmentsAction(String kind, String Function(Map<String, dynamic>) keyOf, String Function(Map<String, dynamic>) labelOf) =>
+    ResourceAction(
+      icon: Icons.attach_file_rounded, ar: 'المرفقات', en: 'Attachments', color: T.orange,
+      run: (ctx, r) => openCollectionAttachments(ctx, kind: kind, key: keyOf(r), label: labelOf(r)),
+    );
 
 /// لونُ العمر — الأقدمُ أشدّ. الرقمُ وحدَه لا يقول خطرَه.
 Color _ageColor(dynamic d) {

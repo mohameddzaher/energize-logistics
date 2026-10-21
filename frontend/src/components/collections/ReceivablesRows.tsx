@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import ScrollX from '@/components/system/ScrollX';
+import { AttachmentsButton, useAttachmentCounts } from '@/components/collections/InvoiceAttachments';
 
 export interface Row {
   _id: string; invoiceNumber: string; kind: string; total: number;
@@ -44,6 +45,8 @@ export default function ReceivablesRows({
   const { notify } = useDialog();
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>([]);
+  // مرفقاتُ الفواتير المعروضة — نداءٌ واحد (المفتاحُ رقمُ الفاتورة في الدفتر).
+  const att = useAttachmentCounts('tax', open ? rows.map((r) => String(r.invoiceNumber || '')) : []);
   const [total, setTotal] = useState(0);
   const [value, setValue] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -120,6 +123,7 @@ export default function ReceivablesRows({
                     <th className="text-end font-semibold px-3 py-2.5">{t('التأخير', 'Late by')}</th>
                     <th className="text-start font-semibold px-3 py-2.5">{t('موظف التحصيل', 'Officer')}</th>
                     <th className="text-start font-semibold px-3 py-2.5">{t('الحالة', 'Issue')}</th>
+                    <th className="text-center font-semibold px-3 py-2.5">{t('المرفقات', 'Files')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -173,6 +177,10 @@ export default function ReceivablesRows({
                               onClick={() => router.push(`/system/collections-dept/parties/${r.party}`)}
                               className="px-1.5 py-1 ms-1 rounded-md border border-slate-200 text-slate-500 hover:border-[#f37121] hover:text-[#f37121]"><ExternalLink className="w-3.5 h-3.5" /></button>
                           )}
+                        </td>
+                        <td className="px-3 py-2 text-center whitespace-nowrap">
+                          <AttachmentsButton kind="tax" invKey={r.invoiceNumber} label={r.invoiceNumber}
+                            count={att.counts[r.invoiceNumber] || 0} onCount={(n) => att.setOne(r.invoiceNumber, n)} />
                         </td>
                       </tr>
                     );

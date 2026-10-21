@@ -24,6 +24,7 @@ import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/componen
 import { printTable } from '@/utils/printTable';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import ScrollX from '@/components/system/ScrollX';
+import { AttachmentsButton, useAttachmentCounts } from '@/components/collections/InvoiceAttachments';
 
 export default function LedgerInvoicesPage() {
   const { lang, isRTL } = useLanguage();
@@ -32,6 +33,7 @@ export default function LedgerInvoicesPage() {
   const L = exportScopeLabels(ar);
 
   const [rows, setRows] = useState<LedgerInvoice[]>([]);
+  const att = useAttachmentCounts('tax', rows.map((r) => String(r.invoiceNumber || '')));
   const [bands, setBands] = useState<AgeBand[]>([]);
   const [opts, setOpts] = useState<{ statuses: string[]; kinds: string[]; officers: string[] }>({ statuses: [], kinds: [], officers: [] });
   const [sum, setSum] = useState(0);
@@ -140,6 +142,13 @@ export default function LedgerInvoicesPage() {
         ? <span className="inline-flex items-center gap-1 text-xs text-slate-500" title={r.reportNumbers.join(', ')}><Link2 className="w-3 h-3" />{r.reportNumbers.length}</span>
         : <span className="text-xs text-slate-500">—</span>) },
     { header: ar ? 'ملاحظات' : 'Comments', key: 'comments', width: 32 },
+    // ── مرفقاتُ الفاتورة — العددُ للصفوف المحمَّلة (راجع useAttachmentCounts) ──
+    { header: ar ? 'المرفقات' : 'Files', key: 'attachments', width: 12, align: 'center',
+      transform: (_v: any, r: any) => att.counts[r.invoiceNumber] || 0,
+      cell: (r) => (
+        <AttachmentsButton kind="tax" invKey={r.invoiceNumber} label={r.invoiceNumber}
+          count={att.counts[r.invoiceNumber] || 0} onCount={(n) => att.setOne(r.invoiceNumber, n)} />
+      ) },
   ];
 
   // ── القيمةُ التي يُفلتَر عليها هي القيمةُ التي تُقرأ ──────────────────────
@@ -271,7 +280,8 @@ export default function LedgerInvoicesPage() {
                 resolve: async () => {
                   const p = params(); p.append('page', '1'); p.append('limit', '5000');
                   const d = await api.get<any>(`/api/collections-dept/ledger/invoices?${p.toString()}`);
-                  return [{ name: ar ? 'الفواتير' : 'Invoices', rows: d.rows || [], columns: cols }];
+                  // العددُ معروفٌ للصفحة المحمَّلة وحدَها — فلا يُصدَّر صفرًا كاذبًا لغيرها.
+                  return [{ name: ar ? 'الفواتير' : 'Invoices', rows: d.rows || [], columns: cols.filter((c) => c.key !== 'attachments') }];
                 } },
             ]} />
         </div>

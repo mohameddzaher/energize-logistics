@@ -64,6 +64,8 @@ class ResourceConfig {
   final String listQuery;     // extra query for the LIST GET only (e.g. 'all=1') — kept off endpoint so /:id actions stay clean
   final String updateMethod;  // 'PUT' | 'PATCH'
   final String liveEvent;     // 'fleet:updated'
+  /// أخبارٌ أخرى تُعيد قراءةَ القائمة (مثلُ عدد مرفقات فاتورة التحصيل).
+  final List<String> extraLiveEvents;
   final List<String> searchFields;
   final List<FieldSpec> fields;
   final String Function(Map<String, dynamic>) titleOf;
@@ -115,6 +117,7 @@ class ResourceConfig {
     required this.arTitle, required this.enTitle, required this.icon,
     required this.endpoint, this.writeEndpoint, required this.listKey,
     this.listQuery = '', this.updateMethod = 'PUT', required this.liveEvent,
+    this.extraLiveEvents = const [],
     required this.searchFields, required this.fields, required this.titleOf,
     this.subtitleOf, this.chipsOf,
     this.canCreate = true, this.canEdit = true, this.canDelete = true,
@@ -210,12 +213,14 @@ class _ResourceScreenState extends State<ResourceScreen> {
     _load();
     _onLive = () => _load();
     Live.instance.on(cfg.liveEvent, _onLive);
+    for (final e in cfg.extraLiveEvents) { Live.instance.on(e, _onLive); }
   }
 
   @override
   void dispose() {
     _searchTimer?.cancel();
     Live.instance.off(cfg.liveEvent, _onLive);
+    for (final e in cfg.extraLiveEvents) { Live.instance.off(e, _onLive); }
     super.dispose();
   }
 

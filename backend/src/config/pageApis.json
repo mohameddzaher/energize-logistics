@@ -159,6 +159,7 @@
     },
     "/system/collections-dept/dashboard": {
       "apis": [
+        "/api/collections-dept/attachments",
         "/api/collections-dept/dashboard",
         "/api/collections-dept/invoices/filters",
         "/api/collections-dept/parties",
@@ -169,6 +170,7 @@
     },
     "/system/collections-dept/invoices/tax": {
       "apis": [
+        "/api/collections-dept/attachments",
         "/api/collections-dept/invoices",
         "/api/collections-dept/invoices/collect",
         "/api/collections-dept/invoices/deliver",
@@ -182,6 +184,7 @@
     },
     "/system/collections-dept/invoices/cash": {
       "apis": [
+        "/api/collections-dept/attachments",
         "/api/collections-dept/invoices",
         "/api/collections-dept/invoices/collect",
         "/api/collections-dept/invoices/deliver",
@@ -202,6 +205,7 @@
     },
     "/system/collections-dept/ledger": {
       "apis": [
+        "/api/collections-dept/attachments",
         "/api/collections-dept/ledger/invoices",
         "/api/collections-dept/ledger/invoices/filters",
         "/api/reports"
@@ -233,6 +237,8 @@
     },
     "/system/collections-dept/customers": {
       "apis": [
+        "/api/collections-dept/attachments",
+        "/api/collections-dept/follow-ups",
         "/api/collections-dept/ledger/invoices/filters",
         "/api/collections-dept/ledger/team/assign",
         "/api/collections-dept/parties",
@@ -243,6 +249,8 @@
     },
     "/system/collections-dept/suppliers": {
       "apis": [
+        "/api/collections-dept/attachments",
+        "/api/collections-dept/follow-ups",
         "/api/collections-dept/ledger/invoices/filters",
         "/api/collections-dept/ledger/team/assign",
         "/api/collections-dept/parties",

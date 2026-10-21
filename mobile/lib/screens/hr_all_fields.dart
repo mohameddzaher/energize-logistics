@@ -72,6 +72,10 @@ class _HrAllFieldsTabState extends State<HrAllFieldsTab> with AutomaticKeepAlive
       return '—';
     }
     if (f['type'] == 'bool') return v == true ? tr('نعم', 'Yes') : tr('لا', 'No');
+    if (f['type'] == 'number' && v is num) {
+      final s = (v == v.roundToDouble() ? v.toInt() : v).toString();
+      return s.replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
+    }
     if (f['type'] == 'date') return '$v'.length >= 10 ? '$v'.substring(0, 10).split('-').reversed.join('/') : '$v';
     if (f['cashPayroll'] == true && '$v'.toLowerCase() == 'cash') return tr('راتب نقدي', 'Cash payroll');
     return '$v';
@@ -104,6 +108,8 @@ class _HrAllFieldsTabState extends State<HrAllFieldsTab> with AutomaticKeepAlive
         builder: (dc) => AlertDialog(
           title: Text(label),
           content: TextField(controller: c, autofocus: true,
+              // المبلغُ (الراتب والبدلات) رقمٌ — لوحةُ أرقام، والخادمُ يقرأ الأرقامَ العربيّة.
+              keyboardType: f['type'] == 'number' ? const TextInputType.numberWithOptions(decimal: true) : null,
               decoration: InputDecoration(hintText: f['type'] == 'hijri' ? '1448-05-07' : null)),
           actions: [
             TextButton(onPressed: () => Navigator.pop(dc), child: Text(tr('إلغاء', 'Cancel'))),

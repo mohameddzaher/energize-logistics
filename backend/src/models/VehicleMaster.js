@@ -23,6 +23,9 @@ const vehicleMasterSchema = new mongoose.Schema({
   // اللوحة بعد توحيد الهمزات وإزالة المسافات — مفتاح الربط بالحوادث، لأن نفس
   // اللوحة بتتكتب «أ س ي» و«ا س ي» في ملفات مختلفة.
   plateKey: { type: String, default: '', index: true },
+  // ومفتاحُ اللوحة عربيّةً أو لاتينيّة — به تلتقي المركبةُ بنفسها في الأسطول
+  // ولوكيشن سوليوشن وطلبات الشحنات. مشتقٌّ عند كلّ حفظ (راجع canonicalPlateKey).
+  canonKey: { type: String, default: '', index: true },
   plateLettersAr: { type: String, default: '' },
   plateDigits: { type: String, default: '' },
   chassisNumber: { type: String, trim: true, index: true },
@@ -415,6 +418,8 @@ function deriveVehicle(v) {
   const out = {};
   const key = registryPlateKey(v.plateNumber) || '';
   if (key && key !== v.plateKey) out.plateKey = key;
+  const canon = require('../utils/plateKey').canonicalPlateKey(v.plateNumber) || '';
+  if (canon && canon !== v.canonKey) out.canonKey = canon;
 
   const prev = (v.missingItems || []).map((m) => ({ item: m.item, docKey: m.docKey, reason: m.reason }));
   // بالأسماء نفسِها التي كتبها الاستيراد، وإلّا انقسم فلترُ «البند» على اسمين.

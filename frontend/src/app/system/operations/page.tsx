@@ -10,6 +10,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { getOperationsTranslations } from '@/lib/translations';
 import { SHIPMENT_STATUSES, PAYMENT_METHODS } from '@/lib/ops';
 import api from '@/lib/api';
+import { PAYMENT_CHOICES, paymentFamily, paymentKindLabel, paymentKindOf } from '@/lib/paymentKind';
 import { startBackgroundExport, type ExportJob } from '@/lib/backgroundExport';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import DateRangeFilter, { DateField } from '@/components/system/DateRangeFilter';
@@ -76,7 +77,10 @@ interface Workflow {
   deliveryDate: string;
   accountingReview: string;
   paymentAmount: number;
-  paymentType: '' | 'cash' | 'tax';
+  // العائلةُ (cash | tax) — وفي نسخة التعديل قد تحمل أحدَ الأنواع الأربعة قبل الحفظ.
+  paymentType: string;
+  /** النوعُ المختار: «آجل - فاتورة» و«آجل - كاش» و«نقدي - 3PL» و«نقدي - HT» — راجع lib/paymentKind. */
+  paymentSubtype?: string;
   collectedAmount: number;
   invoiceNumber: string;
   netInvoice: number;
@@ -142,6 +146,7 @@ const EXPORT_COLUMNS = [
   { header: 'تاريخ السداد', key: 'paymentDate', width: 12 },
   { header: 'مسؤول البيانات', key: 'dataOwnerShown', width: 22 },
   { header: 'فرع السداد', key: 'payingBranch', width: 14 },
+  { header: 'نوع الدفع', key: 'paymentType', width: 14 },
   { header: 'وجهة الكشف النهائية', key: 'finalReportDestination', width: 18 },
   { header: 'رقم المستند', key: 'documentNumber', width: 14 },
   { header: 'تاريخ الإرسال', key: 'sendingDate', width: 12 },
@@ -799,6 +804,7 @@ export default function OperationsWorkflowPage() {
     executionStatus: trStatus(w.executionStatus),
     applicationStatus: trStatus(w.applicationStatus),
     paymentMethod: trPayment(w.paymentMethod),
+    paymentType: paymentKindLabel(paymentKindOf(w), lang === 'ar'),
     operationsReview: w.operationsReview ? (lang === 'ar' ? 'تمّت' : 'Done') : '',
     accountingReview: w.accountingReview ? (lang === 'ar' ? 'تمّت' : 'Done') : '',
   });
@@ -901,9 +907,9 @@ export default function OperationsWorkflowPage() {
     if (field === 'stage') return (v: any) => stageLabels[v] || v;
     if (field === 'executionStatus' || field === 'applicationStatus') return trStatus;
     if (field === 'paymentMethod') return trPayment;
-    // المخزَّن «cash»/«tax» والمعروضُ في الخانة «كاش»/«ضريبي» — والقائمةُ تقول ما تقوله الخانة.
-    if (field === 'paymentType') return (v: any) => (v === 'cash' ? (lang === 'ar' ? 'كاش' : 'Cash')
-      : v === 'tax' ? (lang === 'ar' ? 'ضريبي' : 'Tax') : String(v || ''));
+    // المخزَّنُ مفتاحٌ والمعروضُ اسمُه — الستُّ كلُّها (الأنواعُ الأربعة، و«ضريبي»/«كاش»
+    // لما بقي بلا نوع). والقائمةُ تقول ما تقوله الخانة.
+    if (field === 'paymentType') return (v: any) => paymentKindLabel(v, lang === 'ar') || String(v || '');
     // الخادم يجمّع التواريخ بيوم الرياض ويردّها «YYYY-MM-DD». إعادةُ تفسيرها
     // بمنطقة المتصفح تُنقص يومًا لمن يفتح الصفحة غربَ غرينتش، فتُعرض كما هي.
     if (DATE_FIELDS.has(field)) return (v: any) => {
@@ -1006,8 +1012,8 @@ export default function OperationsWorkflowPage() {
                         title={lang === 'ar' ? 'نوع الدفع' : 'Payment type'}
                         className="w-full px-2 py-2 rounded-lg border border-slate-300 text-sm bg-white">
                         <option value="">{lang === 'ar' ? '— لا يُغيَّر —' : '— leave unchanged —'}</option>
-                        <option value="cash">{lang === 'ar' ? 'كاش' : 'Cash'}</option>
-                        <option value="tax">{lang === 'ar' ? 'ضريبي' : 'Tax'}</option>
+                        {/* الأربعةُ وحدَها — «ضريبي»/«كاش» لا يُختاران بعد اليوم (راجع lib/paymentKind). */}
+                        {PAYMENT_CHOICES.map((k) => <option key={k} value={k}>{paymentKindLabel(k, lang === 'ar')}</option>)}
                       </select>
                     </div>
                     {/* ── ووجهةُ الكشف النهائيّة مع الفرع المسدِّد ─────────
@@ -1635,7 +1641,8 @@ export default function OperationsWorkflowPage() {
                         // الضريبةُ لا تُكتب أبدًا (صافٍ × ١٥٪)، والإجماليُّ لا يُكتب في الكشف
                         // الضريبيّ (صافٍ + ضريبة). وفي الكاش يُكتب الإجماليُّ (صاحبُ الشركة،
                         // ٢٠٢٦/١٠/٢٠). والخادمُ يشتقّهما كذلك — راجع applyBillingRules.
-                        const rowType = String((editData as any)?.paymentType ?? wf.paymentType ?? '');
+                        // العائلةُ لا النوع: «نقدي - 3PL» كاشٌ في هذه القاعدة.
+                        const rowType = paymentFamily(paymentKindOf(isEditing ? (editData as any) : wf));
                         const derivedTax = field === 'tax' || (field === 'totalInvoice' && rowType !== 'cash');
                         const isSystemPulled = (systemPulledFields.has(field as string) && wf.reportNumber) || !owns(field) || fromWallet || derivedTax;
                         if (derivedTax && isEditing && rowType !== 'cash') {
@@ -1692,18 +1699,23 @@ export default function OperationsWorkflowPage() {
                             : (lang === 'ar'
                               ? 'يُكتب لكل كشف على حدة — العميل قد يحاسب كاشًا في حمولة وضريبيًّا في أخرى'
                               : 'Set per report — a customer may settle one load in cash and another by invoice')}>
-                          {isEditing && owns('paymentType') ? (
-                            <select title={T.thPaymentType} className={ic}
-                              value={(editData as any).paymentType || ''}
-                              onChange={(e) => setEditData((prev) => ({ ...prev, paymentType: e.target.value as Workflow['paymentType'] }))}>
-                              <option value="">{lang === 'ar' ? '— اختر —' : '— select —'}</option>
-                              <option value="cash">{lang === 'ar' ? 'كاش' : 'Cash'}</option>
-                              <option value="tax">{lang === 'ar' ? 'ضريبي' : 'Tax'}</option>
-                            </select>
-                          ) : (
+                          {isEditing && owns('paymentType') ? (() => {
+                            // الأربعةُ تُختار؛ و«ضريبي»/«كاش» القائمُ يُرى في القائمة ولا يُختار.
+                            const cur = paymentKindOf(editData as any);
+                            return (
+                              <select title={T.thPaymentType} className={ic}
+                                value={cur}
+                                onChange={(e) => setEditData((prev) => ({ ...prev, paymentType: e.target.value }))}>
+                                <option value="" disabled>{lang === 'ar' ? '— اختر —' : '— select —'}</option>
+                                {(cur === 'cash' || cur === 'tax') && (
+                                  <option value={cur} disabled>{paymentKindLabel(cur, lang === 'ar')}</option>
+                                )}
+                                {PAYMENT_CHOICES.map((k) => <option key={k} value={k}>{paymentKindLabel(k, lang === 'ar')}</option>)}
+                              </select>
+                            );
+                          })() : (
                             <span className={spanCls('paymentType', 'text-purple-700')}>
-                              {wf.paymentType === 'cash' ? (lang === 'ar' ? 'كاش' : 'Cash')
-                                : wf.paymentType === 'tax' ? (lang === 'ar' ? 'ضريبي' : 'Tax') : '-'}
+                              {paymentKindLabel(paymentKindOf(wf), lang === 'ar') || '-'}
                             </span>
                           )}
                         </td>

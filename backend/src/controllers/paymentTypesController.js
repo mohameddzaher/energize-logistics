@@ -13,7 +13,9 @@
  */
 const CollectionsParty = require('../models/CollectionsParty');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
-const { derivePaymentTypeFor, ISSUED_INVOICE_QUERY, ISSUED_INVOICE_EXPR } = require('../utils/paymentType');
+const {
+  derivePaymentTypeFor, ISSUED_INVOICE_QUERY, ISSUED_INVOICE_EXPR, subtypeAfterAuto, TAX_SUBTYPE,
+} = require('../utils/paymentType');
 const logAudit = require('../utils/auditLogger');
 const cache = require('../utils/ttlCache');
 const { flexSpaceRegex } = require('../utils/plateKey');
@@ -137,11 +139,12 @@ exports.update = async (req, res) => {
       ipAddress: req.ip,
     }).catch(() => {});
     cache.clear('wf:'); cache.clear('wfparty:');
-    cache.clear('colledger:');
+    cache.clear('colledger:'); cache.clear('collections-dept:'); cache.clear('cdr:');
     // نوعُ الكشوف تغيّر: تحصيلُ المحفظة يتبعه (قبل البثّ — راجع utils/walletCollection).
     await require('../utils/walletCollection').resyncAllWalletCollections({ user: req.user, reason: 'تغيّر نوع الدفع' })
       .catch((e) => console.error('wallet cash-collection (payment types):', e.message));
     try { require('../websocket/socketManager').emitToAll('workflow:updated', { bulk: true, paymentType: true }); } catch (_) {}
+    try { require('../websocket/socketManager').emitToAll('collections:changed', { source: 'payment-types' }); } catch (_) {}
 
     res.json({ party: { _id: party._id, name: party.name, paymentType: party.paymentType }, ...applied });
   } catch (e) {
@@ -166,7 +169,7 @@ async function applyToCustomer(party, { onlyEmpty = true } = {}) {
   if (!mine.length) return { changed: 0, skippedManual: 0 };
 
   const rows = await OperationsWorkflow.find({ username: { $in: mine } })
-    .select('paymentType paymentTypeSource paymentMethod invoiceNumber tax netInvoice').lean();
+    .select('paymentType paymentSubtype paymentTypeSource paymentMethod invoiceNumber tax netInvoice').lean();
 
   const ops = []; let skippedManual = 0; let remaining = 0;
   for (const w of rows) {
@@ -178,7 +181,8 @@ async function applyToCustomer(party, { onlyEmpty = true } = {}) {
     // ويُقال كم كشفًا بقي مختلفًا — ليكون التحويلُ قرارًا يُرى عددُه لا أثرًا
     // جانبيًّا لتغيير صفةٍ في صفحة.
     if (onlyEmpty && w.paymentType) { remaining += 1; continue; }
-    ops.push({ updateOne: { filter: { _id: w._id }, update: { $set: { paymentType: next, paymentTypeSource: 'auto' } } } });
+    // والنوعُ يتبع العائلةَ المنقولة — راجع subtypeAfterAuto.
+    ops.push({ updateOne: { filter: { _id: w._id }, update: { $set: { paymentType: next, paymentSubtype: subtypeAfterAuto(w.paymentType, next, w.paymentSubtype), paymentTypeSource: 'auto' } } } });
   }
   let changed = 0;
   for (let i = 0; i < ops.length; i += 500) {
@@ -247,7 +251,12 @@ exports.unifyCustomer = async (req, res) => {
     const r = await OperationsWorkflow.updateMany(filter, {
       // `unified` لا `auto`: المزامنةُ تعيد اشتقاقَ كلِّ `auto` في كلّ دورة، فكان
       // التوحيدُ يُمحى بعد دقيقة ويعود عددُ «المخالف» كما كان. راجع isUnified.
-      $set: { paymentType: type, paymentTypeSource: 'unified', lastModifiedBy: req.user._id },
+      // والشرطُ لا يطابق إلّا كشوفًا تنتقل عائلتُها: إلى الضريبيّ تأخذ «آجل - فاتورة»
+      // (الضريبيُّ الوحيد)، وإلى الكاش بلا نوع — يختار إنسانٌ من الثلاثة.
+      $set: {
+        paymentType: type, paymentSubtype: type === 'tax' ? TAX_SUBTYPE : '',
+        paymentTypeSource: 'unified', lastModifiedBy: req.user._id,
+      },
     });
     const changed = r.modifiedCount || 0;
 
@@ -256,10 +265,13 @@ exports.unifyCustomer = async (req, res) => {
       entityKey: party.name, changes: { after: { paymentType: type, changed } }, ipAddress: req.ip,
     }).catch(() => {});
     cache.clear('wf:'); cache.clear('wfparty:'); cache.clear('colledger:');
+    // ولوحةُ التحصيل تقسم بالأنواع — تُمسح قبل البثّ.
+    cache.clear('collections-dept:'); cache.clear('cdr:');
     // نوعُ الكشوف تغيّر: تحصيلُ المحفظة يتبعه (قبل البثّ — راجع utils/walletCollection).
     await require('../utils/walletCollection').resyncAllWalletCollections({ user: req.user, reason: 'تغيّر نوع الدفع' })
       .catch((e) => console.error('wallet cash-collection (payment types):', e.message));
     try { require('../websocket/socketManager').emitToAll('workflow:updated', { bulk: true, paymentType: true }); } catch (_) {}
+    try { require('../websocket/socketManager').emitToAll('collections:changed', { source: 'payment-types' }); } catch (_) {}
 
     res.json({ changed, type, message: `وُحِّد ${changed} كشفًا على «${type === 'cash' ? 'كاش' : 'ضريبي'}»` });
   } catch (e) {
@@ -286,7 +298,7 @@ exports.applyAll = async (req, res) => {
     }
 
     const rows = await OperationsWorkflow.find({})
-      .select('username paymentType paymentTypeSource paymentMethod invoiceNumber tax netInvoice').lean();
+      .select('username paymentType paymentSubtype paymentTypeSource paymentMethod invoiceNumber tax netInvoice').lean();
 
     const ops = []; let skippedManual = 0; let skippedUnified = 0; let unknown = 0;
     const moves = {};
@@ -301,7 +313,7 @@ exports.applyAll = async (req, res) => {
       const cur = w.paymentType || '';
       if (next === cur) continue;
       moves[`${cur || 'فارغ'} → ${next || 'فارغ'}`] = (moves[`${cur || 'فارغ'} → ${next || 'فارغ'}`] || 0) + 1;
-      ops.push({ updateOne: { filter: { _id: w._id }, update: { $set: { paymentType: next, paymentTypeSource: 'auto' } } } });
+      ops.push({ updateOne: { filter: { _id: w._id }, update: { $set: { paymentType: next, paymentSubtype: subtypeAfterAuto(cur, next, w.paymentSubtype), paymentTypeSource: 'auto' } } } });
     }
 
     if (preview) return res.json({ preview: true, wouldChange: ops.length, skippedManual, skippedUnified, unknown, moves });
@@ -316,10 +328,13 @@ exports.applyAll = async (req, res) => {
       changes: { after: { changed, onlyEmpty, moves } }, ipAddress: req.ip,
     }).catch(() => {});
     cache.clear('wf:'); cache.clear('wfparty:'); cache.clear('colledger:');
+    // ولوحةُ التحصيل تقسم بالأنواع — تُمسح قبل البثّ.
+    cache.clear('collections-dept:'); cache.clear('cdr:');
     // نوعُ الكشوف تغيّر: تحصيلُ المحفظة يتبعه (قبل البثّ — راجع utils/walletCollection).
     await require('../utils/walletCollection').resyncAllWalletCollections({ user: req.user, reason: 'تغيّر نوع الدفع' })
       .catch((e) => console.error('wallet cash-collection (payment types):', e.message));
     try { require('../websocket/socketManager').emitToAll('workflow:updated', { bulk: true, paymentType: true }); } catch (_) {}
+    try { require('../websocket/socketManager').emitToAll('collections:changed', { source: 'payment-types' }); } catch (_) {}
     res.json({ changed, skippedManual, skippedUnified, unknown, moves });
   } catch (e) {
     res.status(500).json({ message: 'تعذّر تطبيق أنواع الدفع', error: e.message });

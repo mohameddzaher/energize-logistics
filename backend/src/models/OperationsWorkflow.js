@@ -100,6 +100,16 @@ const operationsWorkflowSchema = new mongoose.Schema(
       enum: ['', 'cash', 'tax'],
       default: '',
     },
+    // ── والنوعُ المختارُ داخل العائلة ────────────────────────────────────────
+    // «آجل - فاتورة» (ضريبيّ)، و«آجل - كاش» و«نقدي - 3PL» و«نقدي - HT» (كاش).
+    // `paymentType` يبقى العائلةَ التي تقرؤها القواعدُ كلُّها، وهذا ما يُعرَض
+    // في العمود متى وُجد. والفارغُ = كشفٌ قائمٌ على «ضريبي»/«كاش» كما كان.
+    // راجع PAYMENT_SUBTYPES في utils/paymentType.
+    paymentSubtype: {                                        // نوع الدفع (التفصيل)
+      type: String,
+      enum: ['', 'deferred_cash', 'deferred_invoice', 'cash_3pl', 'cash_ht'],
+      default: '',
+    },
 
     // ── ومَن كتب النوع ───────────────────────────────────────────────────────
     // «manual» تعني أنّ موظّفًا اختاره على هذا الكشف بعينه، فلا يُغيَّر بعده
@@ -231,6 +241,8 @@ const operationsWorkflowSchema = new mongoose.Schema(
 // صفحتا الفواتير تُبنيان على هذين: الكاشُ بنوع الدفع، والضريبيُّ برقم
 // الفاتورة الذي يجمع أكثرَ من كشفٍ تحت صفٍّ واحد.
 operationsWorkflowSchema.index({ paymentType: 1, paymentDate: -1 });
+// لوحةُ التحصيل تقرأ الأنواعَ الأربعة (collectionsReceivablesController.subtypeCards).
+operationsWorkflowSchema.index({ paymentSubtype: 1, paymentType: 1 });
 // ── والنقديُّ غيرُ المحصَّل يُسأل عنه في كلّ فتحةِ شاشة ────────────────────
 // صفحةُ أعمار الديون تسأل: أيُّ الكشوف النقديّة لم تُحصَّل بعد؟ ولم يكن لهذا
 // السؤال فهرسٌ — الفهرسُ الوحيد على النوع وتاريخِ السداد، والسؤالُ على النوع

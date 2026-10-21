@@ -47,7 +47,7 @@ const APPLY = process.argv.includes('--apply');
     customers += 1; reports += n;
     lines.push(`  ${party.name} → ${wanted}: ${n}`);
     if (APPLY) {
-      const r = await OperationsWorkflow.updateMany(filter, { $set: { paymentType: wanted, paymentTypeSource: 'unified' } });
+      const r = await OperationsWorkflow.updateMany(filter, { $set: { paymentType: wanted, paymentSubtype: wanted === 'tax' ? 'deferred_invoice' : '', paymentTypeSource: 'unified' } });
       changed += r.modifiedCount || 0;
     }
   }

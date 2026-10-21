@@ -5,7 +5,10 @@ const { startOfDay, endOfDay, DAY_MS: COMPANY_DAY_MS } = require('../utils/compa
 const { flexSpaceRegex } = require('../utils/plateKey');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll, emitPerRole } = require('../websocket/socketManager');
-const { derivePaymentTypeFor, hasTaxInvoice, NO_INVOICE_RX, isUnified, hasIssuedInvoice, ISSUED_INVOICE_QUERY } = require('../utils/paymentType');
+const {
+  derivePaymentTypeFor, hasTaxInvoice, NO_INVOICE_RX, isUnified, hasIssuedInvoice, ISSUED_INVOICE_QUERY,
+  normalizePaymentChoice, paymentKindCondition, PAYMENT_KIND_EXPR, paymentKindLabel,
+} = require('../utils/paymentType');
 const XLSX = require('xlsx');
 const fs = require('fs');
 const path = require('path');
@@ -29,7 +32,8 @@ const FIELD_GROUPS = {
     'operationsReview',
   ],
   manual_moderator: [
-    'paymentDate', 'payingBranch', 'paymentAmount', 'paymentType',
+    // `paymentSubtype` يتبع `paymentType` حيث كان: مَن يختار النوعَ يختار تفصيلَه.
+    'paymentDate', 'payingBranch', 'paymentAmount', 'paymentType', 'paymentSubtype',
     'finalReportDestination', 'documentNumber', 'sendingDate', 'branchDeliveryDate', 'deliveryDate',
   ],
   // ── ومراجعةُ الحسابات مجموعةٌ بذاتها ────────────────────────────────────
@@ -351,6 +355,8 @@ function deriveInvoiceTotals(patch, current) {
  */
 async function fillPaymentTypeFromCustomer(patch, current = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, 'paymentType')) return null;
+  // واختيارُ أحد الأنواع الأربعة اختيارٌ للنوع — لا يُشتقّ فوقه.
+  if (Object.prototype.hasOwnProperty.call(patch, 'paymentSubtype')) return null;
   if (String(current.paymentTypeSource || '') === 'manual') return null;
   // ── والموحَّدُ على صفة عميله لا يُشتقّ من جديد ─────────────────────────
   // إلّا أن تُكتب له الآن فاتورةٌ ضريبيّةٌ حقيقيّة — راجع isUnified.
@@ -510,6 +516,11 @@ async function syncOpsInvoices(rawNumbers) {
 const LEDGER_FIELDS = ['invoiceNumber', 'netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'paymentType', 'username', 'executionStatus'];
 
 function applyBillingRules(patch, current = {}) {
+  // ── النوعُ المختارُ يكتب عائلتَه أوّلًا ──────────────────────────────────
+  // «نقدي - 3PL» يصل هنا `paymentType` = 'cash_3pl'، فيصير النوعُ `cash_3pl`
+  // والعائلةُ `cash` — ثمّ تسري قواعدُ الكاش كلُّها على العائلة كما كانت.
+  // والانتقالُ الآليُّ إلى الضريبيّ يأخذ «آجل - فاتورة». راجع utils/paymentType.
+  normalizePaymentChoice(patch, current);
   const nextType = Object.prototype.hasOwnProperty.call(patch, 'paymentType')
     ? patch.paymentType
     : current.paymentType;
@@ -724,6 +735,8 @@ function columnFilters(query, skipField, allowMoney = true, allowSelling = true)
     // اختيارٌ واحد، وإلا بدا للمستخدم أن صفوفًا اختفت.
     // «مسؤول البيانات» عمودٌ يُحسب من ثلاثة مصادر لا حقلٌ واحد — راجع utils/dataOwnerIndex.
     if (field === 'dataOwnerShown') { conds.push(require('../utils/dataOwnerIndex').ownerCondition(vals)); continue; }
+    // «نوع الدفع» يعرض ستَّ قيم: الأنواعَ الأربعة، و«ضريبي»/«كاش» لما بقي بلا نوع.
+    if (field === 'paymentType') { conds.push(paymentKindCondition(vals)); continue; }
     if (field === 'invoiceState') {
       const cs = vals.map((v) => INVOICE_STATE_COND[v]).filter(Boolean);
       if (cs.length) conds.push(cs.length === 1 ? cs[0] : { $or: cs });
@@ -799,7 +812,7 @@ const LIST_FIELDS = [
   'purchaseValue', 'sellingValue', 'loadingTime', 'driverRentalType', 'reference',
   'driverName', 'driverPhone', 'truckType', 'truckSize', 'loadType', 'quantity',
   'representativeName', 'operationsReview',
-  'paymentDate', 'payingBranch', 'paymentAmount', 'paymentType',
+  'paymentDate', 'payingBranch', 'paymentAmount', 'paymentType', 'paymentSubtype',
   // مسؤولُ البيانات يُقرأ في الجدول — وبغيره يظهر بعد الحفظ ثمّ يختفي في أوّل
   // تحديثٍ حيّ، لأنّ الصفَّ يعود من القائمة بلا هذا الحقل.
   'paymentDateByName', 'paymentDateAt',
@@ -1211,7 +1224,8 @@ exports.filterOptions = async (req, res) => {
     // التي بلغت السقف: البحث عن رقم كشفٍ ليس ضمن الخمسمئة الأكثر تكرارًا كان
     // يُرجع «لا توجد قيم» والقيمة موجودة في القاعدة.
     const q = String(req.query.q || '').trim();
-    if (q && !NUMERIC_COLUMNS.has(field) && !DATE_COLUMNS.has(field)) {
+    // (ونوعُ الدفع ستُّ قيمٍ تُقرأ أسماؤها لا مفاتيحُها — لا بحثَ فيها.)
+    if (q && field !== 'paymentType' && !NUMERIC_COLUMNS.has(field) && !DATE_COLUMNS.has(field)) {
       const rx = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
       const prev = match[field];
       // الشرط القائم على العمود قد يكون قيمةً مفردة (اختيار المرحلة من الشريط
@@ -1237,7 +1251,9 @@ exports.filterOptions = async (req, res) => {
       { $match: match },
       {
         $group: {
-          _id: isDate ? { $dateToString: { format: '%Y-%m-%d', date: `$${field}`, timezone: TZ } } : `$${field}`,
+          // ونوعُ الدفع يُجمَّع بما تعرضه الخانة: النوعُ إن وُجد، وإلّا العائلة.
+          _id: isDate ? { $dateToString: { format: '%Y-%m-%d', date: `$${field}`, timezone: TZ } }
+            : (field === 'paymentType' ? PAYMENT_KIND_EXPR : `$${field}`),
           count: { $sum: 1 },
         },
       },
@@ -1415,6 +1431,12 @@ async function pushSellingValue(workflow, value) {
 exports._pushSellingValue = pushSellingValue;
 
 /** مَن يقرأ `sellingValue` ويحفظ ما قرأ — يُمسح قبل أيّ بثّ. */
+/** ذاكرةُ قسم التحصيل (اللوحة والشجرة والدفتر) — تُمسح قبل أيّ بثٍّ يقرؤها. */
+function invalidateCollectionsReaders() {
+  try { require('./collectionsDeptController').invalidate(); } catch (_) { /* */ }
+  try { require('./collectionsLedgerController').invalidate(); } catch (_) { /* */ }
+}
+
 function invalidateSellingReaders() {
   for (const p of ['wf:', 'collections-dept:', 'cdr:', 'colledger:', 'opsprivate:', 'ops:']) {
     try { cache.clear(p); } catch (_) { /* */ }
@@ -1597,6 +1619,15 @@ exports.updateWorkflow = async (req, res) => {
         .catch((e) => console.error('wallet cash-collection (workflow update):', e.message));
     }
 
+    // ── ونوعُ الدفع يتبعه قسمُ التحصيل في الحال ────────────────────────────
+    // لوحةُ التحصيل تقسم المديونيّةَ بالأنواع الأربعة (راجع
+    // collectionsReceivablesController.subtypeCards)، وتقرأ من ذاكرةٍ مؤقّتة.
+    // فتُمسح الذاكرةُ **قبل** البثّ أدناه — وإلّا قرأ المستمعُ القديمَ وتأخّر
+    // خطوةً (announce-before-invalidate).
+    const kindMoved = String(before.paymentType || '') !== String(workflow.paymentType || '')
+      || String(before.paymentSubtype || '') !== String(workflow.paymentSubtype || '');
+    if (kindMoved) invalidateCollectionsReaders();
+
     // ── وتاريخُ التحصيل لا يُنشئ دفعةً في مكانٍ آخر ──────────────────────
     // كان إثباتُ تاريخ التحصيل يقيّد `Payment` ويحدّث فاتورةً ورصيدَ عميل في
     // ورك فلو لم يعد يجري. والتاريخُ في الكشف هو الإثبات: قسمُ التحصيل يقرأ
@@ -1622,6 +1653,10 @@ exports.updateWorkflow = async (req, res) => {
     // خطوةً (راجع announce-before-invalidate).
     if (sellingChanged) invalidateSellingReaders();
     try { emitPerRole('workflow:updated', (r) => stripRowFor(r, populated)); } catch (e) { console.error('WebSocket emit error:', e); }
+    // `emitPerRole` لا يعبر إلى العامل الآخر — فخبرُ التحصيل يُبثّ للجميع.
+    if (kindMoved) {
+      try { emitToAll('collections:changed', { source: 'workflow', field: 'paymentType', reportNumber: workflow.reportNumber }); } catch (e) { /* */ }
+    }
     if (sellingChanged) {
       try { emitToAll('collections:changed', { source: 'workflow', field: 'sellingValue', reportNumber: workflow.reportNumber }); } catch (e) { /* */ }
       if (sellingPush && sellingPush.platform) {
@@ -2015,7 +2050,7 @@ exports.bulkUpdate = async (req, res) => {
     const rows = await OperationsWorkflow.find({ _id: { $in: ids } })
       // `paymentTypeSource` وما يُشتقّ منه النوع: بدونها يُقرأ كلُّ صفٍّ «غيرَ يدويّ
       // وغيرَ موحَّد» فيُعاد اشتقاقُ ما اختارته يدٌ أو وُحِّد — راجع fillPaymentTypeFromCustomer.
-      .select('reportNumber applicationStatus paymentType paymentTypeSource paymentMethod reportDate tax netInvoice username lockedBy lockedByName lockedAt invoiceNumber').lean();
+      .select('reportNumber applicationStatus paymentType paymentSubtype paymentTypeSource paymentMethod reportDate tax netInvoice username lockedBy lockedByName lockedAt invoiceNumber').lean();
 
     // ── والقواعدُ تُطبَّق صفًّا صفًّا ──────────────────────────────────────
     // نوعُ الدفع يختلف من كشفٍ لآخر، فالتعديلُ الواحد لا ينتج تعديلًا واحدًا:
@@ -2062,7 +2097,10 @@ exports.bulkUpdate = async (req, res) => {
       if (['collectionDate', 'collectedAmount'].some((k) => Object.prototype.hasOwnProperty.call(own.patch, k))) {
         own.patch.collectedByWallet = false;
       }
-      perRow.push({ _id: r._id, patch: own.patch, reportNumber: r.reportNumber, typeBefore: r.paymentType || '' });
+      perRow.push({
+        _id: r._id, patch: own.patch, reportNumber: r.reportNumber,
+        typeBefore: r.paymentType || '', subBefore: r.paymentSubtype || '',
+      });
     }
 
     let updated = 0;
@@ -2114,7 +2152,16 @@ exports.bulkUpdate = async (req, res) => {
             .catch((e) => console.error('wallet cash-collection (workflow bulk):', e.message));
         }
       }
+      // ونوعُ الدفع (عائلةً أو نوعًا) تغيّر: لوحةُ التحصيل تُمسح ذاكرتُها قبل البثّ.
+      const kindMoved = perRow.some((t) => (Object.prototype.hasOwnProperty.call(t.patch, 'paymentType')
+          && String(t.patch.paymentType || '') !== t.typeBefore)
+        || (Object.prototype.hasOwnProperty.call(t.patch, 'paymentSubtype')
+          && String(t.patch.paymentSubtype || '') !== t.subBefore));
+      if (kindMoved) invalidateCollectionsReaders();
       try { emitToAll('workflow:bulkImported', { bulkUpdate: true, updated }); } catch (e) {}
+      if (kindMoved) {
+        try { emitToAll('collections:changed', { source: 'workflow', field: 'paymentType', bulk: true }); } catch (e) { /* */ }
+      }
       logAudit({
         user: req.user, action: 'bulk_update', entity: 'OperationsWorkflow',
         details: `${updated} كشفًا · ${keys.join('، ')}`, ip: req.ip,
@@ -2240,6 +2287,8 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
       ['مراجعة العمليات', (w) => yes(w.operationsReview)],
       ['تاريخ السداد', (w) => d(w.paymentDate)],
       ['فرع السداد', (w) => w.payingBranch || ''],
+      // الستُّ كما تُعرَض في الخانة — راجع paymentKindLabel.
+      ['نوع الدفع', (w) => paymentKindLabel(w)],
       ['وجهة الكشف النهائية', (w) => w.finalReportDestination || ''],
       ['رقم المستند', (w) => w.documentNumber || ''],
       ['تاريخ الإرسال', (w) => d(w.sendingDate)],
@@ -2268,7 +2317,7 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
       'carNumber', 'ownerType', 'executionStatus', 'applicationStatus', 'paymentMethod',
       'username', 'userPhone', 'purchaseValue', 'sellingValue', 'driverName', 'truckType',
       'truckSize', 'representativeName', 'operationsReview', 'paymentDate', 'payingBranch',
-      'finalReportDestination', 'documentNumber', 'sendingDate', 'branchDeliveryDate',
+      'paymentType', 'paymentSubtype', 'finalReportDestination', 'documentNumber', 'sendingDate', 'branchDeliveryDate',
       'deliveryDate', 'accountingReview', 'invoiceNumber', 'netInvoice', 'tax',
       'totalInvoice', 'invoiceDate', 'collectionDate', 'stage',
     ].join(' ');
@@ -2667,7 +2716,7 @@ exports.importInvoices = async (req, res) => {
 
     const allowed = await fieldsForRole(req.user.role);
     const reports = await OperationsWorkflow.find({ reportNumber: { $in: [...byReport.keys()] } })
-      .select('reportNumber applicationStatus paymentType paymentTypeSource paymentMethod reportDate tax netInvoice totalInvoice invoiceNumber invoiceDate documentNumber username lockedBy lockedByName lockedAt executionStatus').lean();
+      .select('reportNumber applicationStatus paymentType paymentSubtype paymentTypeSource paymentMethod reportDate tax netInvoice totalInvoice invoiceNumber invoiceDate documentNumber username lockedBy lockedByName lockedAt executionStatus').lean();
     const found = new Map(reports.map((r) => [String(r.reportNumber).trim(), r]));
 
     const notFound = []; const skipped = []; const unchanged = []; const plan = [];

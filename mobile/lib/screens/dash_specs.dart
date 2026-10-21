@@ -412,13 +412,24 @@ final customsDashSpec = DashSpec(
 // التحصيل لا يُكتب على الكشوف، فكان كلُّ ما سُلِّم يُعَدّ دَينًا.
 final collectionsDashSpec = DashSpec(
   arTitle: 'لوحة التحصيل', enTitle: 'Collections Dashboard',
-  endpoint: '/api/collections-dept/receivables/overview', liveEvent: 'collections:party',
+  // `collections:changed` لا `collections:party`: تغييرُ نوع الدفع على كشفٍ في سير
+  // العمل يُبثّ به (بعد مسح ذاكرة الشجرة) — فتتبعه البطاقاتُ الأربع في الحال.
+  endpoint: '/api/collections-dept/receivables/overview', liveEvent: 'collections:changed',
   stats: const [
     DashStat('إجمالي المديونية', 'Receivable', 'tree.all.value', Icons.call_received_rounded, T.danger, money: true),
     DashStat('ضريبي', 'Tax', 'tree.byKind.tax.value', Icons.receipt_long_outlined, T.navy, money: true),
     DashStat('نقدي', 'Cash', 'tree.byKind.cash.value', Icons.payments_outlined, T.info, money: true),
-    DashStat('في موعده', 'Within terms', 'tree.tax.within.value', Icons.task_alt_rounded, T.success, money: true),
-    DashStat('متأخّر', 'Late', 'tree.tax.late.value', Icons.schedule_outlined, T.orange, money: true),
+    // ── أنواعُ الدفع الأربعة: مستحقٌّ وغيرُ مستحقّ ─────────────────────────
+    // حلّت محلَّ «في موعده / متأخّر» كما في الموقع. والمستحقُّ ما تجاوز موعدَه
+    // ومعه ما لا مدّةَ سدادٍ له. راجع collectionsReceivablesController.
+    DashStat('آجل - فاتورة · مستحق', 'Deferred invoice · due', 'tree.subtypes.deferred_invoice.due.value', Icons.receipt_long_outlined, T.danger, money: true),
+    DashStat('آجل - فاتورة · غير مستحق', 'Deferred invoice · not due', 'tree.subtypes.deferred_invoice.notDue.value', Icons.receipt_long_outlined, T.success, money: true),
+    DashStat('آجل - كاش · مستحق', 'Deferred cash · due', 'tree.subtypes.deferred_cash.due.value', Icons.payments_outlined, T.danger, money: true),
+    DashStat('آجل - كاش · غير مستحق', 'Deferred cash · not due', 'tree.subtypes.deferred_cash.notDue.value', Icons.payments_outlined, T.success, money: true),
+    DashStat('نقدي - 3PL · مستحق', 'Cash 3PL · due', 'tree.subtypes.cash_3pl.due.value', Icons.local_shipping_outlined, T.danger, money: true),
+    DashStat('نقدي - 3PL · غير مستحق', 'Cash 3PL · not due', 'tree.subtypes.cash_3pl.notDue.value', Icons.local_shipping_outlined, T.success, money: true),
+    DashStat('نقدي - HT · مستحق', 'Cash HT · due', 'tree.subtypes.cash_ht.due.value', Icons.local_shipping_rounded, T.danger, money: true),
+    DashStat('نقدي - HT · غير مستحق', 'Cash HT · not due', 'tree.subtypes.cash_ht.notDue.value', Icons.local_shipping_rounded, T.success, money: true),
     DashStat('متأخّر فوق ٦٠ يومًا', 'Late 60+', 'tree.tax.bands.d60_plus.value', Icons.warning_amber_rounded, T.danger, money: true),
     DashStat('فواتير مفتوحة', 'Open invoices', 'tree.all.count', Icons.pending_actions_outlined, T.warn),
   ],

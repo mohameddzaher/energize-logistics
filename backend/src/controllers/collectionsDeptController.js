@@ -1346,6 +1346,31 @@ function invoiceFilters(query, { ageField }) {
  */
 const attachmentCounts = (kind, keys) => require('./collectionsAttachmentsController').countsFor(kind, keys);
 
+/**
+ * شرطُ صفحة فواتير الكاش — في دالّةٍ واحدةٍ تقرؤها الصفحةُ ولوحةُ التحصيل
+ * (بطاقاتُ «آجل - كاش» و«نقدي - 3PL» و«نقدي - HT» في
+ * collectionsReceivablesController)، فلا تَعُدّ اللوحةُ كشفًا لا تعرضه الصفحة.
+ */
+function cashScreenFilter(query) {
+  const { AUTO_RULE_FROM } = require('../utils/paymentType');
+  const filter = {
+    ...invoiceFilters(query, { ageField: 'paymentDate' }),
+    paymentType: 'cash',
+  };
+  filter.$and = [...(filter.$and || []), {
+    $or: [
+      { reportDate: { $lt: AUTO_RULE_FROM } },
+      { accountingReview: { $nin: ['', null] } },
+      // ── إلّا ما حصّله المندوبُ في المحفظة ─────────────────────────────
+      // المالُ وصل، فلا يُنتظَر به مراجعةُ التشغيل: يظهر هنا فورًا محصَّلًا
+      // (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). راجع utils/walletCollection.
+      { collectedByWallet: true },
+    ],
+  }, ...columnFilters(query, 'cash')];
+  return filter;
+}
+exports.cashScreenFilter = cashScreenFilter;
+
 exports.cashInvoices = async (req, res) => {
   try {
     // ── والكشفُ النقديُّ يُحصَّل سواءٌ عرفنا ما دفعناه فيه أم لا ────────────
@@ -1367,21 +1392,7 @@ exports.cashInvoices = async (req, res) => {
     // ويسري على الكشوف الجديدة وحدَها (راجع AUTO_RULE_FROM): عمودُ المراجعة
     // فارغٌ في تسعةٍ وعشرين ألفَ كشفٍ سابق، فاشتراطُه عليها يُفرغ الشاشةَ من
     // كلّ ما يعمل عليه القسمُ اليوم.
-    const { AUTO_RULE_FROM } = require('../utils/paymentType');
-    const filter = {
-      ...invoiceFilters(req.query, { ageField: 'paymentDate' }),
-      paymentType: 'cash',
-    };
-    filter.$and = [...(filter.$and || []), {
-      $or: [
-        { reportDate: { $lt: AUTO_RULE_FROM } },
-        { accountingReview: { $nin: ['', null] } },
-        // ── إلّا ما حصّله المندوبُ في المحفظة ─────────────────────────────
-        // المالُ وصل، فلا يُنتظَر به مراجعةُ التشغيل: يظهر هنا فورًا محصَّلًا
-        // (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). راجع utils/walletCollection.
-        { collectedByWallet: true },
-      ],
-    }, ...columnFilters(req.query, 'cash')];
+    const filter = cashScreenFilter(req.query);
 
     const page = Math.max(1, Number(req.query.page) || 1);
     // `req.allRows` يضعه كشفُ الحساب (services/invoiceStatement) وحدَه حين

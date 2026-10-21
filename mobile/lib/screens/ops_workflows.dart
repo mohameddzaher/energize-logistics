@@ -30,6 +30,33 @@ const _appStatuses = {
   'cancelled': ('ملغاة', 'Cancelled', T.danger),
 };
 
+/// ── نوعُ الدفع: ستُّ قيمٍ تُعرَض وأربعٌ تُختار ─────────────────────────────
+/// «آجل - فاتورة» محلَّ «ضريبي»، و«آجل - كاش» و«نقدي - 3PL» و«نقدي - HT» محلَّ
+/// «كاش» (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). والخادمُ يحفظ العائلةَ (`paymentType`) والنوعَ
+/// (`paymentSubtype`) — نفسُ lib/paymentKind في الويب.
+const _paymentChoices = [
+  ('deferred_invoice', 'آجل - فاتورة', 'Deferred – invoice'),
+  ('deferred_cash', 'آجل - كاش', 'Deferred – cash'),
+  ('cash_3pl', 'نقدي - 3PL', 'Cash – 3PL'),
+  ('cash_ht', 'نقدي - HT', 'Cash – HT'),
+];
+
+String _paymentKindLabel(String k) {
+  for (final c in _paymentChoices) {
+    if (c.$1 == k) return tr(c.$2, c.$3);
+  }
+  if (k == 'cash') return tr('كاش', 'Cash');
+  if (k == 'tax') return tr('ضريبي', 'Tax');
+  return k;
+}
+
+/// ما تعرضه الخانة: النوعُ إن وُجد، وإلّا العائلة.
+String _paymentKindOf(Map<String, dynamic> w) {
+  final sub = (w['paymentSubtype'] ?? '').toString();
+  if (_paymentChoices.any((c) => c.$1 == sub)) return sub;
+  return (w['paymentType'] ?? '').toString();
+}
+
 String _money(dynamic v) {
   final n = (v is num) ? v : num.tryParse(v?.toString() ?? '') ?? 0;
   return n.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
@@ -159,7 +186,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
       final st = _appStatuses[v];
       return st != null ? tr(st.$1, st.$2) : v;
     }
-    if (field == 'paymentType') return v == 'cash' ? tr('كاش', 'Cash') : v == 'tax' ? tr('ضريبي', 'Tax') : v;
+    if (field == 'paymentType') return _paymentKindLabel(v);
     if (field == 'invoiceState') {
       return {'has': tr('عليه رقم فاتورة', 'Has a number'), 'none': tr('فارغ', 'Blank'), 'placeholder': tr('بديل (no inv / بدون)', 'Placeholder')}[v] ?? v;
     }
@@ -336,6 +363,46 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     }
   }
 
+  /// نوعُ الدفع — الأربعةُ وحدَها تُختار، والخادمُ يكتب العائلةَ معها ويطبّق قواعدَها
+  /// (رقمُ الفاتورة، صفحتا التحصيل، تحصيلُ المحفظة). نفسُ PUT الويب.
+  Future<void> _editPaymentType(Map<String, dynamic> w) async {
+    final cur = _paymentKindOf(w);
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      builder: (c) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 4),
+            child: Text(tr('نوع الدفع', 'Payment type'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          ),
+          if (cur == 'cash' || cur == 'tax')
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Text('${tr('الحالي', 'Current')}: ${_paymentKindLabel(cur)}',
+                  style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+            ),
+          ..._paymentChoices.map((o) => ListTile(
+                title: Text(tr(o.$2, o.$3)),
+                trailing: o.$1 == cur ? const Icon(Icons.check_rounded, color: T.success) : null,
+                onTap: () => Navigator.pop(c, o.$1),
+              )),
+        ]),
+      ),
+    );
+    if (picked == null || picked == cur) return;
+    try {
+      final row = await Api.instance.put('/api/workflows/${w['_id']}', {'paymentType': picked});
+      if (!mounted) return;
+      setState(() {
+        final i = _rows.indexWhere((r) => r['_id'] == w['_id']);
+        if (i >= 0 && row is Map) _rows[i] = {..._rows[i], ...Map<String, dynamic>.from(row)};
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('حُفظ نوع الدفع', 'Payment type saved'))));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
+    }
+  }
+
   /// حالةُ الطلب تُغيَّر من هنا وتُكتب في منصّة التشغيل — نفسُ عقد الويب:
   /// PATCH /api/workflows/:id/application-status. والخادمُ يكتب هناك أوّلًا
   /// ثمّ يعيد صفَّنا بما استقرّ في المنصّة، فلا تتغيّر الحالةُ ثمّ تعود.
@@ -392,6 +459,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
       (tr('هاتف السائق', 'Driver phone'), w['driverPhone']),
       (tr('حالة التنفيذ', 'Execution status'), w['executionStatus']),
       (tr('طريقة الدفع', 'Payment method'), w['paymentMethod']),
+      (tr('نوع الدفع', 'Payment type'), _paymentKindLabel(_paymentKindOf(w))),
       (tr('قيمة الشراء', 'Purchase value'), w['purchaseValue'] != null ? '${_money(w['purchaseValue'])} ر.س' : null),
       // قيمةُ البيع لا تصل مَن ليس في قائمتها أصلًا — الخادمُ يحجبها.
       (tr('قيمة البيع', 'Selling value'), w['sellingValue'] != null ? '${_money(w['sellingValue'])} ر.س' : null),
@@ -415,6 +483,15 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                 Expanded(child: Text(f.$2.toString(), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))),
               ]),
             )),
+            if (_myFields.contains('paymentType'))
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: OutlinedButton.icon(
+                  onPressed: () { Navigator.pop(c); _editPaymentType(w); },
+                  icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+                  label: Text(tr('تغيير نوع الدفع', 'Change payment type')),
+                ),
+              ),
             if (_myFields.contains('sellingValue'))
               Align(
                 alignment: AlignmentDirectional.centerStart,

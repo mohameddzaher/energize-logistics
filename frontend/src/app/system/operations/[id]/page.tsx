@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { getOperationsTranslations, getOperationsIdExtraTranslations } from '@/lib/translations';
 import api from '@/lib/api';
+import { PAYMENT_CHOICES, paymentKindLabel, paymentKindOf } from '@/lib/paymentKind';
 import { useSocket } from '@/hooks/useSocket';
 import { motion } from 'framer-motion';
 import {
@@ -49,6 +50,8 @@ interface Workflow {
   operationsReview: string;
   paymentDate: string;
   payingBranch: string;
+  paymentType?: string;
+  paymentSubtype?: string;
   finalReportDestination: string;
   documentNumber: string;
   sendingDate: string;
@@ -125,6 +128,8 @@ const SECTIONS = [
     fields: [
       { key: 'paymentDate', label: 'تاريخ السداد', labelEn: 'Payment Date', type: 'date' },
       { key: 'payingBranch', label: 'الفرع المسدد', labelEn: 'Paying Branch' },
+      // الستُّ تُعرَض والأربعةُ تُختار — راجع lib/paymentKind.
+      { key: 'paymentType', label: 'نوع الدفع', labelEn: 'Payment Type', type: 'ptype' },
       { key: 'finalReportDestination', label: 'وجهه الكشف النهائي', labelEn: 'Final Report Dest.' },
       { key: 'documentNumber', label: 'رقم السند', labelEn: 'Document Number' },
       { key: 'sendingDate', label: 'تاريخ الارسال', labelEn: 'Sending Date', type: 'date' },
@@ -211,6 +216,7 @@ export default function WorkflowDetailPage() {
       // Populate form data
       const fd: Record<string, any> = {};
       SECTIONS.forEach((s) => s.fields.forEach((f) => { fd[f.key] = (data as any)[f.key] || ''; }));
+      fd.paymentType = paymentKindOf(data as any);
       setFormData(fd);
     } catch (err: any) {
       setError(err.message || T.workflowNotFound);
@@ -235,6 +241,7 @@ export default function WorkflowDetailPage() {
       if (!editing) {
         const fd: Record<string, any> = {};
         SECTIONS.forEach((s) => s.fields.forEach((f) => { fd[f.key] = (wf as any)[f.key] || ''; }));
+      fd.paymentType = paymentKindOf(wf as any);
         setFormData(fd);
       }
     }
@@ -296,6 +303,7 @@ export default function WorkflowDetailPage() {
     if (workflow) {
       const fd: Record<string, any> = {};
       SECTIONS.forEach((s) => s.fields.forEach((f) => { fd[f.key] = (workflow as any)[f.key] || ''; }));
+      fd.paymentType = paymentKindOf(workflow as any);
       setFormData(fd);
     }
   };
@@ -305,7 +313,11 @@ export default function WorkflowDetailPage() {
     try {
       setSaving(true);
       setError('');
-      await api.put(`/api/workflows/${workflow._id}`, formData);
+      // نوعُ الدفع يُرسَل إن تغيّر وحدَه: إرسالُه كما هو يختمه «اختيارَ يد»
+      // فيُخرجه من صفحة «أنواع الدفع» بلا أن يختاره أحد.
+      const payload: Record<string, any> = { ...formData };
+      if (payload.paymentType === paymentKindOf(workflow as any)) delete payload.paymentType;
+      await api.put(`/api/workflows/${workflow._id}`, payload);
       try { await api.post(`/api/workflows/${workflow._id}/unlock`); } catch {}
       setEditing(false);
       setSuccess(T.changesSavedSuccess);
@@ -395,7 +407,8 @@ export default function WorkflowDetailPage() {
   const exportColumns: ExportColumn[] = SECTIONS.flatMap((sec) => sec.fields).map((f: any) => ({
     header: f.labelEn || f.label,
     key: f.key,
-    transform: f.type === 'date' ? fmt.date : f.type === 'number' ? fmt.money : undefined,
+    transform: f.type === 'date' ? fmt.date : f.type === 'number' ? fmt.money
+      : f.type === 'ptype' ? (() => paymentKindLabel(paymentKindOf(workflow as any), lang === 'ar')) : undefined,
     width: 18,
   }));
   const scope = exportScopeLabels(lang === 'ar');
@@ -502,7 +515,16 @@ export default function WorkflowDetailPage() {
                       <label className="block text-slate-500 text-xs mb-1.5">
                         {field.label} <span className="text-slate-600">({field.labelEn})</span>
                       </label>
-                      {editable ? (
+                      {editable && field.type === 'ptype' ? (
+                        <select value={val || ''} title={field.label}
+                          onChange={(e) => setFormData({ ...formData, paymentType: e.target.value })}
+                          className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
+                          <option value="" disabled>{lang === 'ar' ? '— اختر —' : '— select —'}</option>
+                          {/* «ضريبي»/«كاش» القائمُ يُرى ولا يُختار — الأربعةُ وحدَها اختيار. */}
+                          {(val === 'cash' || val === 'tax') && <option value={val} disabled>{paymentKindLabel(val, lang === 'ar')}</option>}
+                          {PAYMENT_CHOICES.map((k) => <option key={k} value={k}>{paymentKindLabel(k, lang === 'ar')}</option>)}
+                        </select>
+                      ) : editable ? (
                         <input
                           type={field.type || 'text'}
                           value={field.type === 'date' && val ? String(val).split('T')[0] : val || ''}
@@ -512,7 +534,8 @@ export default function WorkflowDetailPage() {
                         />
                       ) : (
                         <p className="text-slate-900 text-sm py-2">
-                          {field.type === 'date' ? formatDate(val) : field.type === 'number' ? formatNumber(val) : val || <span className="text-slate-600">-</span>}
+                          {field.type === 'ptype' ? (paymentKindLabel(val, lang === 'ar') || <span className="text-slate-600">-</span>)
+                            : field.type === 'date' ? formatDate(val) : field.type === 'number' ? formatNumber(val) : val || <span className="text-slate-600">-</span>}
                         </p>
                       )}
                     </div>

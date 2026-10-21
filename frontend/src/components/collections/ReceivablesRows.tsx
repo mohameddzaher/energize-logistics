@@ -16,14 +16,19 @@ import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import ScrollX from '@/components/system/ScrollX';
 import { AttachmentsButton, useAttachmentCounts } from '@/components/collections/InvoiceAttachments';
+import { paymentFamily, paymentKindLabel } from '@/lib/paymentKind';
 
 export interface Row {
   _id: string; invoiceNumber: string; kind: string; total: number;
   partyName: string; partyCode: string; party: string | null;
   invoiceDate: string | null; deliveryDate: string | null; status: string;
   creditDays: number; officer: string; issueState: 'none' | 'negotiating' | 'legal';
-  basis: 'delivery' | 'invoice'; dueDate: string | null; daysLate: number | null;
+  basis: 'delivery' | 'invoice' | 'payment'; dueDate: string | null; daysLate: number | null;
   dueState: string; lateBand: string;
+  /** «workflow» = كشفُ تشغيلٍ نقديّ (بطاقاتُ الأنواع النقديّة): `invoiceNumber` رقمُ الكشف و`invoiceDate` تاريخُ سداده. */
+  source?: 'workflow';
+  /** نوعُ الدفع — في صفوف بطاقات الأنواع الأربعة. */
+  subtype?: string;
 }
 
 const money = (n?: number) => Math.round(n || 0).toLocaleString('en-US');
@@ -46,7 +51,11 @@ export default function ReceivablesRows({
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>([]);
   // مرفقاتُ الفواتير المعروضة — نداءٌ واحد (المفتاحُ رقمُ الفاتورة في الدفتر).
-  const att = useAttachmentCounts('tax', open ? rows.map((r) => String(r.invoiceNumber || '')) : []);
+  const att = useAttachmentCounts('tax', open ? rows.filter((r) => r.source !== 'workflow').map((r) => String(r.invoiceNumber || '')) : []);
+  // وكشوفُ الكاش مرفقاتُها على الكشف نفسِه (مفتاحُها معرّفُه) — كصفحة فواتير الكاش.
+  const attCash = useAttachmentCounts('cash', open ? rows.filter((r) => r.source === 'workflow').map((r) => String(r._id)) : []);
+  // بطاقةُ نوعٍ نقديّ: الصفُّ كشفُ تخريجٍ لا فاتورة.
+  const reportsMode = !!query.subtype && paymentFamily(query.subtype) === 'cash';
   const [total, setTotal] = useState(0);
   const [value, setValue] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -96,7 +105,7 @@ export default function ReceivablesRows({
           <div className="min-w-0">
             <h3 className="font-bold text-slate-900 truncate">{title}</h3>
             <p className="text-[12px] text-slate-500 tabular-nums">
-              {total.toLocaleString('en-US')} {t('فاتورة', 'invoices')} · {money(value)}
+              {total.toLocaleString('en-US')} {reportsMode ? t('كشف تخريج', 'reports') : t('فاتورة', 'invoices')} · {money(value)}
               {total > rows.length ? ` · ${t(`يُعرَض أوّلُ ${rows.length}`, `showing first ${rows.length}`)}` : ''}
             </p>
           </div>
@@ -113,10 +122,10 @@ export default function ReceivablesRows({
               <table className="w-full text-sm">
                 <thead className="sticky top-0">
                   <tr className="bg-slate-900 text-slate-300 text-xs">
-                    <th className="text-start font-semibold px-3 py-2.5">{t('الفاتورة', 'Invoice')}</th>
+                    <th className="text-start font-semibold px-3 py-2.5">{reportsMode ? t('الكشف', 'Report') : t('الفاتورة', 'Invoice')}</th>
                     <th className="text-start font-semibold px-3 py-2.5">{t('العميل', 'Customer')}</th>
                     <th className="text-end font-semibold px-3 py-2.5">{t('المبلغ', 'Amount')}</th>
-                    <th className="text-start font-semibold px-3 py-2.5">{t('تاريخ الفاتورة', 'Invoice date')}</th>
+                    <th className="text-start font-semibold px-3 py-2.5">{reportsMode ? t('تاريخ السداد', 'Payment date') : t('تاريخ الفاتورة', 'Invoice date')}</th>
                     <th className="text-start font-semibold px-3 py-2.5">{t('التسليم', 'Delivery')}</th>
                     <th className="text-end font-semibold px-3 py-2.5">{t('المدّة', 'Term')}</th>
                     <th className="text-start font-semibold px-3 py-2.5">{t('الاستحقاق', 'Due')}</th>
@@ -133,7 +142,9 @@ export default function ReceivablesRows({
                       <tr key={r._id} className="border-b border-slate-100 hover:bg-slate-50">
                         <td className="px-3 py-2 font-medium text-slate-800 whitespace-nowrap">
                           {r.invoiceNumber}
-                          <span className="text-[10px] text-slate-400 ms-1">{r.kind === 'tax' ? t('ضريبي', 'tax') : t('كاش', 'cash')}</span>
+                          <span className="text-[10px] text-slate-400 ms-1">
+                            {r.subtype ? paymentKindLabel(r.subtype, ar) : r.kind === 'tax' ? t('ضريبي', 'tax') : t('كاش', 'cash')}
+                          </span>
                         </td>
                         <td className="px-3 py-2 max-w-[220px]">
                           <span className="truncate block" title={r.partyName}>{r.partyName || '—'}</span>
@@ -145,6 +156,7 @@ export default function ReceivablesRows({
                           {d10(r.deliveryDate)}
                           {/* ويُقال من أيِّ تاريخٍ عُدَّ: فاتورةٌ لم تُسلَّم تُعَدّ من إصدارها. */}
                           {r.basis === 'invoice' ? <span className="text-[10px] text-amber-600 block">{t('عُدَّ من الإصدار', 'counted from issue')}</span> : null}
+                          {r.basis === 'payment' ? <span className="text-[10px] text-amber-600 block">{t('عُدَّ من السداد', 'counted from payment')}</span> : null}
                         </td>
                         <td className="px-3 py-2 text-end tabular-nums text-slate-600">{r.creditDays || '—'}</td>
                         <td className="px-3 py-2 tabular-nums text-slate-600">{d10(r.dueDate)}</td>
@@ -179,8 +191,13 @@ export default function ReceivablesRows({
                           )}
                         </td>
                         <td className="px-3 py-2 text-center whitespace-nowrap">
-                          <AttachmentsButton kind="tax" invKey={r.invoiceNumber} label={r.invoiceNumber}
-                            count={att.counts[r.invoiceNumber] || 0} onCount={(n) => att.setOne(r.invoiceNumber, n)} />
+                          {r.source === 'workflow' ? (
+                            <AttachmentsButton kind="cash" invKey={String(r._id)} label={r.invoiceNumber}
+                              count={attCash.counts[String(r._id)] || 0} onCount={(n) => attCash.setOne(String(r._id), n)} />
+                          ) : (
+                            <AttachmentsButton kind="tax" invKey={r.invoiceNumber} label={r.invoiceNumber}
+                              count={att.counts[r.invoiceNumber] || 0} onCount={(n) => att.setOne(r.invoiceNumber, n)} />
+                          )}
                         </td>
                       </tr>
                     );

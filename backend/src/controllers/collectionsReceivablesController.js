@@ -23,6 +23,18 @@
  * وفاتورةٌ لم تُسلَّم بعدُ: يُعَدّ من إصدارها ويُقال ذلك في الصفّ.
  * وعميلٌ بلا مدّةٍ محفوظة (١٢٦ حسابًا من ٣٨٦) لا يُخترَع له ثلاثون يومًا:
  * يُجمَع في «بلا مدّة سداد» — عقدةٌ ظاهرةٌ تُسدّ، لا رقمٌ مذوّبٌ في غيره.
+ *
+ * ── وأنواعُ الدفع الأربعة: مستحقٌّ وغيرُ مستحقّ ──────────────────────────────
+ * صاحبُ الشركة (٢٠٢٦/١٠/٢١): «الفواتير الضريبية — بالاستحقاق» تُستبدَل بأربع
+ * بطاقات، واحدةٍ لكلّ نوعٍ جديد («آجل - فاتورة»، «آجل - كاش»، «نقدي - 3PL»،
+ * «نقدي - HT»)، كلٌّ منها نصفان:
+ *
+ *   مستحقّ      = تجاوز موعدَه (`late`) **أو بلا مدّةِ سدادٍ محفوظة** (`noterm`):
+ *                 لا شيءَ يؤجّله، فهو مطلوبٌ الآن.
+ *   غيرُ مستحقّ = لم يحِن موعدُه (`within`).
+ *
+ * و«ضريبي»/«كاش» بلا نوعٍ جديد لا تدخل البطاقاتِ الأربع (قولُ صاحب الشركة).
+ * ومن أين يُقرأ كلُّ نوع — راجع `subtypeCards` أدناه.
  */
 const mongoose = require('mongoose');
 const CollectionInvoice = require('../models/CollectionInvoice');
@@ -31,6 +43,8 @@ const cache = require('../utils/ttlCache');
 const { flexSpaceRegex } = require('../utils/plateKey');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
+const OperationsWorkflow = require('../models/OperationsWorkflow');
+const { SUBTYPE_KEYS, subtypeFamily } = require('../utils/paymentType');
 
 const DAY = 86400000;
 const TTL = 30 * 1000;
@@ -145,6 +159,125 @@ const node = (rows, pick) => {
   return { count: hit.length, value: Math.round(sum(hit.map((r) => r.total || 0)) * 100) / 100 };
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  الأنواعُ الأربعة — مستحقٌّ وغيرُ مستحقّ
+// ═══════════════════════════════════════════════════════════════════════════
+
+const TAX_SUBS = SUBTYPE_KEYS.filter((k) => subtypeFamily(k) === 'tax');
+const CASH_SUBS = SUBTYPE_KEYS.filter((k) => subtypeFamily(k) === 'cash');
+const CANCELLED_EXEC = ['ملغي', 'ملغى', 'ملغاة', 'cancelled', 'canceled', 'Cancelled'];
+/** «مستحق» = تجاوز موعدَه أو لا موعدَ له؛ «غير مستحق» = في موعده. */
+const isDue = (dueState) => dueState !== 'within';
+
+/**
+ * نوعُ فاتورة الدفتر — يُشتقّ من كشوفها ساعةَ السؤال، ولا يُنسَخ إلى الدفتر.
+ *
+ * الفاتورةُ وحدةُ التحصيل وقد تضمّ كشوفًا عدّة، والنوعُ صفةُ الكشف. فإن اختلفت
+ * كشوفُ فاتورةٍ واحدة عُدّت تحت نوعِ **أكثرِها** — والتعادلُ يذهب إلى النوع
+ * الجديد على «ضريبي» بلا نوع (يدٌ اختارته على بعضها قصدًا، والفارغُ قديمٌ لم
+ * يُراجَع). والفاتورةُ التي لا كشوفَ لها عندنا (أكثرُ الدفتر) بلا نوع.
+ *
+ * @returns {Map<string, string>} رقمُ الفاتورة ← النوع ('' = ضريبي بلا نوع)
+ */
+async function subtypeOfInvoices(numbers) {
+  const list = [...new Set((numbers || []).map((n) => String(n || '').trim()).filter(Boolean))];
+  const out = new Map();
+  if (!list.length) return out;
+  const agg = await OperationsWorkflow.aggregate([
+    { $match: { invoiceNumber: { $in: list }, paymentType: { $ne: 'cash' }, executionStatus: { $nin: CANCELLED_EXEC } } },
+    { $group: { _id: { inv: '$invoiceNumber', sub: { $ifNull: ['$paymentSubtype', ''] } }, n: { $sum: 1 } } },
+  ]);
+  const best = new Map();
+  for (const r of agg) {
+    const inv = String(r._id.inv || '').trim();
+    const sub = String(r._id.sub || '');
+    const cur = best.get(inv);
+    if (!cur || r.n > cur.n || (r.n === cur.n && sub && (!cur.sub || sub < cur.sub))) best.set(inv, { sub, n: r.n });
+  }
+  for (const [inv, b] of best) out.set(inv, b.sub);
+  return out;
+}
+
+/**
+ * كشوفُ الكاش القائمة بأنواعها الثلاثة — من سير العمل لا من الدفتر.
+ *
+ * الكاشُ صفُّه كشفُ تشغيل، فيُقرأ من الكشوف: **شرطُ صفحة فواتير الكاش نفسُه**
+ * (`cashScreenFilter`) وما لم يُحصَّل منه. والقيمةُ قيمةُ البيع (ما تعرضه تلك
+ * الصفحة)، والمدّةُ تُعَدّ من **التسليم للعميل** إن كُتب، وإلّا من تاريخ السداد
+ * — والاشتقاقُ نفسُه الذي يكتبه `derive()` للدفتر (موعد، تأخير، حالة).
+ */
+async function cashSubtypeRows(q, officerParties, subs = CASH_SUBS) {
+  const { cashScreenFilter } = require('./collectionsDeptController');
+  const filter = cashScreenFilter({
+    collected: 'no',
+    ...(q.customer ? { customer: q.customer } : {}),
+    ...(q.from ? { from: q.from } : {}),
+    ...(q.to ? { to: q.to } : {}),
+  });
+  filter.paymentSubtype = { $in: subs };
+  const docs = await OperationsWorkflow.find(filter)
+    .select('reportNumber username paymentDate deliveryDate sellingValue paymentSubtype').lean();
+  const keys = [...new Set(docs.map((w) => CollectionsParty.fold(w.username || '')).filter(Boolean))];
+  const parties = keys.length
+    ? await CollectionsParty.find({ kind: 'customer', nameKey: { $in: keys } })
+      .select('_id name code nameKey creditDays collectionOfficer issue').lean()
+    : [];
+  const byKey = new Map(parties.map((p) => [p.nameKey, p]));
+  const today = Math.floor(Date.now() / DAY);
+  const out = [];
+  for (const w of docs) {
+    const p = byKey.get(CollectionsParty.fold(w.username || '')) || null;
+    if (officerParties) {
+      const id = p ? String(p._id) : '';
+      if (officerParties.exclude) { if (id && officerParties.exclude.some((x) => String(x) === id)) continue; }
+      else if (!id || !officerParties.some((x) => String(x) === id)) continue;
+    }
+    const creditDays = Number(p?.creditDays) || 0;
+    const basisDate = w.deliveryDate || w.paymentDate || null;
+    const dueDate = basisDate && creditDays > 0 ? new Date(new Date(basisDate).getTime() + creditDays * DAY) : null;
+    // `$dateDiff` بالأيّام يعدّ حدودَ الأيّام (UTC) — فيُحسب هنا كذلك.
+    const daysLate = dueDate ? today - Math.floor(dueDate.getTime() / DAY) : null;
+    const dueState = dueDate == null ? 'noterm' : (daysLate <= 0 ? 'within' : 'late');
+    out.push({
+      _id: w._id,
+      invoiceNumber: String(w.reportNumber || ''),
+      reportNumber: String(w.reportNumber || ''),
+      kind: 'cash',
+      source: 'workflow',
+      subtype: w.paymentSubtype,
+      total: Math.round((Number(w.sellingValue) || 0) * 100) / 100,
+      partyName: w.username || '',
+      partyCode: p?.code || '',
+      party: p?._id || null,
+      invoiceDate: w.paymentDate || null,
+      deliveryDate: w.deliveryDate || null,
+      status: '',
+      creditDays,
+      officer: p?.collectionOfficer || '',
+      issueState: p?.issue?.state || 'none',
+      basis: w.deliveryDate ? 'delivery' : 'payment',
+      dueDate,
+      daysLate,
+      dueState,
+      lateBand: 'none',
+    });
+  }
+  return out;
+}
+
+/**
+ * البطاقاتُ الأربع من صفوفها: «آجل - فاتورة» من فواتير الدفتر الضريبيّة
+ * (نوعُها من كشوفها — `subtypeOfInvoices`)، والثلاثةُ النقديّة من الكشوف.
+ */
+async function subtypeRowsFor(q, officerParties, ledgerTaxRows) {
+  const nos = ledgerTaxRows.map((r) => r.invoiceNumber);
+  const [subOf, cashRows] = await Promise.all([subtypeOfInvoices(nos), cashSubtypeRows(q, officerParties)]);
+  const taxRows = ledgerTaxRows
+    .map((r) => ({ ...r, subtype: subOf.get(String(r.invoiceNumber || '').trim()) || '' }))
+    .filter((r) => TAX_SUBS.includes(r.subtype));
+  return [...taxRows, ...cashRows];
+}
+
 /**
  * GET /api/collections-dept/receivables/overview
  * ?kind=&officer=&customer=&from=&to=
@@ -208,14 +341,38 @@ exports.overview = async (req, res) => {
       },
     };
 
+    // ── والأنواعُ الأربعة: مستحقٌّ وغيرُ مستحقّ ─────────────────────────────
+    // `baseMatch` قد يحصر الدفترَ في الكاش (`kind=cash`) فلا ضريبيَّ في الصفوف —
+    // وبطاقةُ «آجل - فاتورة» تتبعه، كما تتبعه الثلاثةُ النقديّة إن حُصر في الضريبيّ.
+    const subRows = await subtypeRowsFor(
+      req.query, officerParties, req.query.kind === 'cash' ? [] : rows.filter(tax),
+    ).then((list) => (req.query.kind === 'tax' ? list.filter((r) => r.kind === 'tax') : list));
+    tree.subtypes = Object.fromEntries(SUBTYPE_KEYS.map((k) => {
+      const mine = subRows.filter((r) => r.subtype === k);
+      return [k, {
+        total: node(mine, () => true),
+        due: node(mine, (r) => isDue(r.dueState)),
+        notDue: node(mine, (r) => !isDue(r.dueState)),
+      }];
+    }));
+
     // ── والتحقّقُ يُرسَل مع الأرقام ──────────────────────────────────────
     // «المفروض الأرقام كلها تكون صح ومتساويه» — فيُحسب الفرقُ هنا ويُعرَض في
     // الشاشة إن وُجد، بدل أن يُكتشَف بجمعٍ باليد.
     const checks = [
       { of: 'الإجمالي = ضريبي + نقدي', diff: tree.all.value - (tree.byKind.tax.value + tree.byKind.cash.value), n: tree.all.count - (tree.byKind.tax.count + tree.byKind.cash.count) },
-      { of: 'الضريبي = في موعده + متأخر + بلا مدّة', diff: tree.byKind.tax.value - (tree.tax.within.value + tree.tax.late.value + tree.tax.noterm.value), n: tree.byKind.tax.count - (tree.tax.within.count + tree.tax.late.count + tree.tax.noterm.count) },
+      // (كان هنا «الضريبي = في موعده + متأخر + بلا مدّة» — قسمُه استُبدل بالأنواع الأربعة.)
       { of: 'المتأخر = ١–٣٠ + ٣١–٦٠ + فوق ٦٠', diff: tree.tax.late.value - (tree.tax.bands.d1_30.value + tree.tax.bands.d31_60.value + tree.tax.bands.d60_plus.value), n: tree.tax.late.count - (tree.tax.bands.d1_30.count + tree.tax.bands.d31_60.count + tree.tax.bands.d60_plus.count) },
       { of: 'فوق ٦٠ = تفاوض + قضايا + غير مصنّف', diff: tree.tax.bands.d60_plus.value - (tree.tax.over60.negotiating.value + tree.tax.over60.legal.value + tree.tax.over60.unclassified.value), n: tree.tax.bands.d60_plus.count - (tree.tax.over60.negotiating.count + tree.tax.over60.legal.count + tree.tax.over60.unclassified.count) },
+      // وكلُّ بطاقةٍ من الأربع: نصفاها = جملتُها.
+      ...SUBTYPE_KEYS.map((k) => {
+        const c = tree.subtypes[k];
+        return {
+          of: `«${require('../utils/paymentType').PAYMENT_KIND_AR[k]}» = مستحق + غير مستحق`,
+          diff: c.total.value - (c.due.value + c.notDue.value),
+          n: c.total.count - (c.due.count + c.notDue.count),
+        };
+      }),
     ].map((c) => ({ ...c, diff: Math.round(c.diff * 100) / 100, ok: Math.abs(c.diff) < 0.5 && c.n === 0 }));
 
     // أثقلُ العملاء في كلّ شريحةٍ تهمّ — ومن يُفتَح يُفتَح بحسابه.
@@ -278,6 +435,26 @@ exports.rows = async (req, res) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
     const officerParties = await partiesOfOfficer(req.query.officer);
+    // ── بطاقةٌ من الأنواع الأربعة: `?subtype=<النوع>&due=due|notdue` ──────────
+    const subtype = SUBTYPE_KEYS.includes(String(req.query.subtype || '')) ? String(req.query.subtype) : '';
+    const dueFilter = ['due', 'notdue'].includes(req.query.due) ? req.query.due : '';
+    const keepDue = (r) => !dueFilter || (dueFilter === 'due' ? isDue(r.dueState) : !isDue(r.dueState));
+    if (subtype && subtypeFamily(subtype) === 'cash') {
+      // الكشوفُ النقديّة: الصفوفُ نفسُها التي عدّتها البطاقة (cashSubtypeRows).
+      let list = (await cashSubtypeRows(req.query, officerParties, [subtype])).filter(keepDue);
+      if (req.query.party && mongoose.isValidObjectId(String(req.query.party))) {
+        list = list.filter((r) => r.party && String(r.party) === String(req.query.party));
+      }
+      list.sort((a, b) => (b.daysLate ?? -Infinity) - (a.daysLate ?? -Infinity) || b.total - a.total);
+      const value = list.reduce((a, r) => a + (r.total || 0), 0);
+      return res.json({
+        rows: list.slice((page - 1) * limit, page * limit),
+        total: list.length,
+        value: Math.round(value * 100) / 100,
+        page,
+        limit,
+      });
+    }
     const match = baseMatch({ ...req.query, officerParties });
     if (req.query.party && mongoose.isValidObjectId(String(req.query.party))) {
       match.party = new mongoose.Types.ObjectId(String(req.query.party));
@@ -286,6 +463,15 @@ exports.rows = async (req, res) => {
     if (['within', 'late', 'noterm'].includes(req.query.dueState)) post.dueState = req.query.dueState;
     if (['d1_30', 'd31_60', 'd60_plus'].includes(req.query.lateBand)) post.lateBand = req.query.lateBand;
     if (['none', 'negotiating', 'legal'].includes(req.query.issue)) post.issueState = req.query.issue;
+    if (subtype) {
+      // «آجل - فاتورة»: فواتيرُ الدفتر الضريبيّة التي نوعُ كشوفها هو — يُشتقّ هنا
+      // كما اشتُقّ للبطاقة (subtypeOfInvoices)، قبل الترقيم.
+      match.kind = 'tax';
+      const nos = await CollectionInvoice.distinct('invoiceNumber', match);
+      const subOf = await subtypeOfInvoices(nos);
+      match.invoiceNumber = { $in: nos.filter((n) => subOf.get(String(n || '').trim()) === subtype) };
+      if (dueFilter) post.dueState = dueFilter === 'due' ? { $in: ['late', 'noterm'] } : 'within';
+    }
 
     const pipeline = [
       { $match: match },
@@ -365,3 +551,5 @@ exports.setIssue = async (req, res) => {
 };
 
 exports._derive = derive;
+exports._subtypeOfInvoices = subtypeOfInvoices;
+exports._cashSubtypeRows = cashSubtypeRows;

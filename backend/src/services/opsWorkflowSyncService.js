@@ -12,7 +12,7 @@ const upl = require('./uplClient');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
 const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
-const { derivePaymentTypeFor, ISSUED_INVOICE_EXPR } = require('../utils/paymentType');
+const { derivePaymentTypeFor, ISSUED_INVOICE_EXPR, subtypeAfterAutoExpr } = require('../utils/paymentType');
 
 
 const SOURCE = 'ops_upl';
@@ -263,8 +263,26 @@ async function upsertShipments(ships) {
                   'auto',
                 ],
               } : { $ifNull: ['$paymentTypeSource', ''] },
+              // العائلةُ قبل هذه الدورة — يقرؤها النوعُ في الخطوة التالية.
+              _prevPT: { $ifNull: ['$paymentType', ''] },
             },
           },
+          // ── والنوعُ يتبع العائلةَ إن نقلتها المزامنة ─────────────────────────
+          // انتقالٌ آليٌّ إلى الضريبيّ يأخذ «آجل - فاتورة»، وإلى الكاش يرفع نوعًا
+          // ضريبيًّا (ثلاثةُ أنواعٍ نقديّة — يختار إنسان). واختيارُ اليد لا يُمسّ.
+          // راجع subtypeAfterAuto في utils/paymentType.
+          {
+            $set: {
+              paymentSubtype: {
+                $cond: [
+                  { $eq: [{ $ifNull: ['$paymentTypeSource', ''] }, 'manual'] },
+                  { $ifNull: ['$paymentSubtype', ''] },
+                  subtypeAfterAutoExpr('$_prevPT', { $ifNull: ['$paymentType', ''] }, { $ifNull: ['$paymentSubtype', ''] }),
+                ],
+              },
+            },
+          },
+          { $unset: '_prevPT' },
           { $set: Object.fromEntries(Object.entries(setOnInsert).map(([k, v]) => [k, { $ifNull: [`$${k}`, v] }])) },
         ],
         upsert: true,

@@ -155,10 +155,159 @@ const reachesCollections = (workflow = {}) => {
   return { ok: true, screen: 'cash' };
 };
 
+
+/**
+ * ── أنواعُ الدفع الأربعة الجديدة — «آجل» و«نقدي» ───────────────────────────
+ *
+ * قرارُ صاحب الشركة (٢٠٢٦/١٠/٢١): عمودُ «نوع الدفع» يأخذ أربعةَ اختياراتٍ تحلّ
+ * محلَّ «ضريبي» و«كاش» في الاختيار: «آجل - فاتورة» مكانَ الضريبيّ، والثلاثةُ
+ * الأخرى مكانَ الكاش. «كأنّي استبدلتُهما».
+ *
+ * ── ولماذا حقلٌ ثانٍ لا قيمٌ جديدةٌ في `paymentType` ─────────────────────────
+ * كلُّ قاعدةٍ في النظام تسأل `paymentType === 'cash'` أو `'tax'`: قفلُ رقم
+ * الفاتورة، وصفحتا التحصيل، وتحصيلُ المحفظة، والاشتقاقُ، والتوحيد، وبطاقاتُ
+ * «سندات لم تصل»… فبقي `paymentType` **العائلةَ** ('cash' | 'tax')، وصار
+ * `paymentSubtype` النوعَ المختار. واختيارُ نوعٍ يكتب الاثنين معًا، فتبقى كلُّ
+ * قاعدةٍ قائمةٍ كما هي وتسري على النوع الجديد بعائلته.
+ *
+ * والكشوفُ القائمةُ لا يُعاد تصنيفُها: «ضريبي» و«كاش» يبقيان يُعرَضان ويُفلتَر
+ * بهما حتى يغيّرهما أحد — ولا يُعرَضان اختيارًا بعد اليوم.
+ */
+const PAYMENT_SUBTYPES = {
+  deferred_cash: { family: 'cash', ar: 'آجل - كاش', en: 'Deferred – cash' },
+  deferred_invoice: { family: 'tax', ar: 'آجل - فاتورة', en: 'Deferred – invoice' },
+  cash_3pl: { family: 'cash', ar: 'نقدي - 3PL', en: 'Cash – 3PL' },
+  cash_ht: { family: 'cash', ar: 'نقدي - HT', en: 'Cash – HT' },
+};
+const SUBTYPE_KEYS = Object.keys(PAYMENT_SUBTYPES);
+/** النوعُ الضريبيُّ الوحيد — إليه يذهب كلُّ انتقالٍ آليٍّ إلى الضريبيّ. */
+const TAX_SUBTYPE = 'deferred_invoice';
+const isSubtype = (k) => Object.prototype.hasOwnProperty.call(PAYMENT_SUBTYPES, String(k || ''));
+/** عائلةُ النوع: 'cash' | 'tax' | '' */
+const subtypeFamily = (k) => (isSubtype(k) ? PAYMENT_SUBTYPES[k].family : '');
+
+/** الأسماءُ الستّة كما تُقرأ في العمود. */
+const PAYMENT_KIND_AR = {
+  tax: 'ضريبي', cash: 'كاش',
+  ...Object.fromEntries(SUBTYPE_KEYS.map((k) => [k, PAYMENT_SUBTYPES[k].ar])),
+};
+
+/** ما يُعرَض في العمود: النوعُ إن وُجد، وإلّا العائلة. */
+const paymentKindOf = (w = {}) => (isSubtype(w.paymentSubtype) ? w.paymentSubtype : String(w.paymentType || ''));
+const paymentKindLabel = (w = {}) => PAYMENT_KIND_AR[paymentKindOf(w)] || '';
+
+/** الشيءُ نفسُه تعبيرًا (لـ`$group` في قائمة قيم العمود). */
+const PAYMENT_KIND_EXPR = {
+  $cond: [
+    { $in: [{ $ifNull: ['$paymentSubtype', ''] }, SUBTYPE_KEYS] },
+    '$paymentSubtype',
+    { $ifNull: ['$paymentType', ''] },
+  ],
+};
+
+/**
+ * شرطُ فلتر العمود على القيم الستّ (والفارغ).
+ * «ضريبي»/«كاش» تعني ما بقي عليهما بلا نوعٍ جديد — لا العائلةَ كلَّها: العمودُ
+ * يعرض ستَّ قيمٍ، والفلترُ يُرجع ما تعرضه الخانة.
+ */
+function paymentKindCondition(values = []) {
+  const BLANK_SUB = { paymentSubtype: { $in: ['', null] } };
+  const or = [];
+  for (const raw of values) {
+    const v = String(raw == null ? '' : raw).trim();
+    if (isSubtype(v)) or.push({ paymentSubtype: v });
+    else if (v === 'cash' || v === 'tax') or.push({ $and: [{ paymentType: v }, BLANK_SUB] });
+    else if (v === '') or.push({ paymentType: { $in: ['', null] } });
+  }
+  if (!or.length) return { _id: { $exists: false } };
+  return or.length === 1 ? or[0] : { $or: or };
+}
+
+/**
+ * النوعُ بعد انتقالٍ **آليّ** للعائلة (اشتقاق، رقمُ فاتورة، مزامنة، توحيد).
+ *
+ *  • انتقالٌ إلى الضريبيّ ← «آجل - فاتورة»: هو الضريبيُّ الوحيد اليوم
+ *    (توضيحُ صاحب الشركة). وكشفٌ كان ضريبيًّا قبلُ يبقى على ما هو عليه —
+ *    فلا تُعاد كتابةُ سبعةٍ وثلاثين ألفَ «ضريبي» قائم.
+ *  • انتقالٌ إلى الكاش ← «كاش» بلا نوع: ثلاثةُ أنواعٍ نقديّة، فيختار إنسان.
+ *    ويُرفع نوعٌ ضريبيٌّ لم يعد يوافق عائلته.
+ * واختيارُ اليد لا يمرّ من هنا أصلًا — المشتقُّ لا يمسّ كشفًا يدويًّا.
+ */
+function subtypeAfterAuto(prevType, nextType, subtype) {
+  const prev = String(prevType || ''); const next = String(nextType || '');
+  if (next === 'tax') {
+    if (prev !== 'tax') return TAX_SUBTYPE;
+    return subtypeFamily(subtype) === 'tax' ? subtype : '';
+  }
+  if (next === 'cash') return subtypeFamily(subtype) === 'cash' ? subtype : '';
+  return '';
+}
+
+/** الشيءُ نفسُه تعبيرًا لخطّ تحديث (المزامنة). */
+const subtypeAfterAutoExpr = (prevExpr, nextExpr, subExpr) => {
+  const famOf = (e) => ({
+    $switch: {
+      branches: SUBTYPE_KEYS.map((k) => ({ case: { $eq: [e, k] }, then: PAYMENT_SUBTYPES[k].family })),
+      default: '',
+    },
+  });
+  return {
+    $switch: {
+      branches: [
+        {
+          case: { $eq: [nextExpr, 'tax'] },
+          then: { $cond: [{ $ne: [prevExpr, 'tax'] }, TAX_SUBTYPE, { $cond: [{ $eq: [famOf(subExpr), 'tax'] }, subExpr, ''] }] },
+        },
+        { case: { $eq: [nextExpr, 'cash'] }, then: { $cond: [{ $eq: [famOf(subExpr), 'cash'] }, subExpr, ''] } },
+      ],
+      default: '',
+    },
+  };
+};
+
+/**
+ * يُطبِّع اختيارَ نوع الدفع في تعديلٍ قادم — قبل أيّ قاعدةٍ أخرى.
+ *
+ *  • `paymentType` أحدُ الأربعة → يُكتب النوعُ وعائلتُه معًا.
+ *  • `paymentSubtype` وحدَه → تتبعه عائلتُه.
+ *  • `paymentType` «ضريبي»/«كاش» بيد → يُرفع النوع (اختارت اليدُ العائلةَ وحدَها).
+ *  • `paymentType` مشتقٌّ (`__derivedPaymentType`) → `subtypeAfterAuto`.
+ * ويُعاد `true` إن مسّ التعديلُ النوعَ أو عائلتَه.
+ */
+function normalizePaymentChoice(patch, current = {}) {
+  const has = (k) => Object.prototype.hasOwnProperty.call(patch, k);
+  if (!has('paymentType') && !has('paymentSubtype')) return false;
+  const sub = has('paymentSubtype') ? String(patch.paymentSubtype || '').trim() : null;
+  if (has('paymentType')) {
+    const v = String(patch.paymentType || '').trim();
+    if (isSubtype(v)) {
+      patch.paymentSubtype = v;
+      patch.paymentType = subtypeFamily(v);
+    } else if (patch.__derivedPaymentType) {
+      patch.paymentSubtype = subtypeAfterAuto(current.paymentType, v, current.paymentSubtype);
+    } else if (sub && isSubtype(sub)) {
+      patch.paymentSubtype = sub;
+      patch.paymentType = subtypeFamily(sub);
+    } else {
+      patch.paymentSubtype = '';
+    }
+  } else if (isSubtype(sub)) {
+    patch.paymentSubtype = sub;
+    patch.paymentType = subtypeFamily(sub);
+  } else {
+    // نوعٌ فارغٌ أو غيرُ معروف: يُرفع النوعُ وتبقى العائلة.
+    patch.paymentSubtype = '';
+  }
+  return true;
+}
+
 module.exports = {
   NO_INVOICE_TOKENS, NO_INVOICE_RX, NOT_AN_INVOICE_RX,
   hasIssuedInvoice, ISSUED_INVOICE_QUERY, ISSUED_INVOICE_EXPR, isUnified,
   derivePaymentType, derivePaymentTypeFor, paymentTypeReason,
   hasTaxInvoice, methodIsCash, mayAutoSet,
   AUTO_RULE_FROM, underNewRule, reachesCollections,
+  PAYMENT_SUBTYPES, SUBTYPE_KEYS, TAX_SUBTYPE, isSubtype, subtypeFamily, PAYMENT_KIND_AR,
+  paymentKindOf, paymentKindLabel, PAYMENT_KIND_EXPR, paymentKindCondition,
+  subtypeAfterAuto, subtypeAfterAutoExpr, normalizePaymentChoice,
 };

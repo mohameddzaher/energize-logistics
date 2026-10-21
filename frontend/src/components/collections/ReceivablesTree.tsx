@@ -25,9 +25,24 @@ export interface Tree {
     over60: { negotiating: Node; legal: Node; unclassified: Node };
   };
   cash: { within: Node; late: Node; noterm: Node };
+  /** الأنواعُ الأربعة — مستحقٌّ وغيرُ مستحقّ. راجع collectionsReceivablesController. */
+  subtypes?: Partial<Record<SubtypeKey, { total: Node; due: Node; notDue: Node }>>;
 }
+type SubtypeKey = 'deferred_invoice' | 'deferred_cash' | 'cash_3pl' | 'cash_ht';
 export interface Check { of: string; diff: number; n: number; ok: boolean }
-export interface Query { kind?: string; dueState?: string; lateBand?: string; issue?: string }
+export interface Query { kind?: string; dueState?: string; lateBand?: string; issue?: string; subtype?: string; due?: 'due' | 'notdue' }
+
+/**
+ * البطاقاتُ الأربع بترتيبها: الضريبيُّ أوّلًا ثمّ الثلاثةُ النقديّة. ووحدةُ العدّ:
+ * «آجل - فاتورة» فواتيرُ الدفتر، والثلاثةُ كشوفُ تخريج.
+ */
+const SUBTYPE_CARDS: { key: SubtypeKey; ar: string; en: string; tone: string; invoice: boolean }[] = [
+  { key: 'deferred_invoice', ar: 'آجل - فاتورة', en: 'Deferred – invoice', tone: '#475569', invoice: true },
+  { key: 'deferred_cash', ar: 'آجل - كاش', en: 'Deferred – cash', tone: '#0d9488', invoice: false },
+  { key: 'cash_3pl', ar: 'نقدي - 3PL', en: 'Cash – 3PL', tone: '#14b8a6', invoice: false },
+  { key: 'cash_ht', ar: 'نقدي - HT', en: 'Cash – HT', tone: '#5eead4', invoice: false },
+];
+const EMPTY: Node = { count: 0, value: 0 };
 
 const money = (n: number) => Math.round(n || 0).toLocaleString('en-US');
 
@@ -129,26 +144,49 @@ export default function ReceivablesTree({
         </div>
       </section>
 
-      {/* ② الضريبيُّ: في موعده / متأخّر / بلا مدّة */}
+      {/* ② أنواعُ الدفع الأربعة: مستحقٌّ وغيرُ مستحقّ ─────────────────────────
+          حلّت محلَّ «الفواتير الضريبية — بالاستحقاق» (صاحبُ الشركة، ٢٠٢٦/١٠/٢١).
+          «ضريبي»/«كاش» بلا نوعٍ جديد لا تدخلها. وكلُّ نصفٍ يُفتَح فتُرى صفوفُه —
+          من الاشتقاق نفسِه الذي عدّه. */}
       <section className="space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <h2 className="text-[13px] font-semibold text-slate-700">{t('الفواتير الضريبية — بالاستحقاق', 'Tax invoices — by due state')}</h2>
+          <h2 className="text-[13px] font-semibold text-slate-700">{t('بأنواع الدفع — مستحق وغير مستحق', 'By payment type — due and not yet due')}</h2>
           <span className="text-[11px] text-slate-400">
-            {t('المدّةُ تُعَدّ من تاريخ التسليم + مدّةِ سداد العميل', 'The term runs from the delivery date + the customer’s credit days')}
+            {t('المستحقُّ ما تجاوز موعدَه، ومعه ما لا مدّةَ سدادٍ له — فلا شيءَ يؤجّله',
+              'Due = past its due date, plus anything with no credit term — nothing defers it')}
           </span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Card label={t('مستحق في مواعيده', 'Within term')} node={tree.tax.within} tone="#16a34a"
-            hint={t('لم يحِنْ موعدُه بعد', 'Not yet due')}
-            share={pct(tree.tax.within, tree.byKind.tax)}
-            onClick={() => onOpen({ kind: 'tax', dueState: 'within' }, t('مستحق في مواعيده', 'Within term'))} />
-          <Card label={t('متأخر عن موعده', 'Past due')} alarm node={tree.tax.late} tone="#dc2626"
-            share={pct(tree.tax.late, tree.byKind.tax)}
-            onClick={() => onOpen({ kind: 'tax', dueState: 'late' }, t('متأخر عن موعده', 'Past due'))} />
-          <Card label={t('بلا مدّة سداد محفوظة', 'No credit term on file')} node={tree.tax.noterm} tone="#64748b"
-            hint={t('لا موعدَ له حتى تُكتب مدّةُ العميل', 'No due date until the customer’s term is set')}
-            share={pct(tree.tax.noterm, tree.byKind.tax)}
-            onClick={() => onOpen({ kind: 'tax', dueState: 'noterm' }, t('بلا مدّة سداد', 'No term'))} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          {SUBTYPE_CARDS.map((c) => {
+            const n = tree.subtypes?.[c.key] || { total: EMPTY, due: EMPTY, notDue: EMPTY };
+            const unit = c.invoice ? t('فاتورة', 'invoices') : t('كشف تخريج', 'reports');
+            const label = t(c.ar, c.en);
+            const half = (k: 'due' | 'notdue', node: Node, title: string) => (
+              <button type="button" onClick={() => onOpen({ subtype: c.key, due: k }, `${label} — ${title}`)}
+                className="text-center px-2 py-3.5 hover:bg-slate-50/60 transition-colors">
+                <p className="text-[11.5px] font-medium text-slate-500">{title}</p>
+                <p className="mt-1 text-[19px] font-bold tabular-nums tracking-tight text-slate-900">{money(node.value)}</p>
+                <p className="mt-0.5 text-[11px] text-slate-400 tabular-nums">{(node.count || 0).toLocaleString('en-US')} {unit}</p>
+              </button>
+            );
+            return (
+              <div key={c.key} className="bg-white border border-slate-200 rounded-2xl shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden">
+                <div className="text-center px-4 pt-3.5 pb-2.5">
+                  <p className="text-[12px] font-semibold text-slate-700 inline-flex items-center justify-center gap-1.5">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: c.tone }} />
+                    {label}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-slate-400 tabular-nums">
+                    {money(n.total.value)} · {(n.total.count || 0).toLocaleString('en-US')} {unit}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 border-t border-slate-100 divide-x divide-slate-100 rtl:divide-x-reverse">
+                  {half('due', n.due, t('مستحق', 'Due'))}
+                  {half('notdue', n.notDue, t('غير مستحق', 'Not yet due'))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -226,7 +264,7 @@ export default function ReceivablesTree({
         {bad.length ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
         {bad.length
           ? bad.map((c) => <span key={c.of}>{c.of}: {t('فرق', 'diff')} {money(c.diff)} / {c.n}</span>)
-          : <span>{t('الأرقام تُطابق نفسَها: الإجمالي = ضريبي + نقدي، والضريبي = في موعده + متأخر + بلا مدّة، والمتأخر = شرائحه، وما كسر الـ٦٠ = تفاوض + قضايا + غير مصنّف.',
+          : <span>{t('الأرقام تُطابق نفسَها: الإجمالي = ضريبي + نقدي، والمتأخر = شرائحه، وما كسر الـ٦٠ = تفاوض + قضايا + غير مصنّف، وكلُّ نوعٍ من الأربعة = مستحق + غير مستحق.',
                      'The numbers reconcile at every level of the tree.')}</span>}
       </div>
     </div>

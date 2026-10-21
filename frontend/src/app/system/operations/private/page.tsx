@@ -26,6 +26,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { getOperationsTranslations } from '@/lib/translations';
 import OpsAnalytics from '@/components/ops/OpsAnalytics';
 import api from '@/lib/api';
+import { paymentKindLabel, paymentKindOf } from '@/lib/paymentKind';
 import { startBackgroundExport, type ExportJob } from '@/lib/backgroundExport';
 import {
   Lock, Search, Loader2, Check, X, ChevronLeft, ChevronRight, FilterX,
@@ -289,7 +290,8 @@ export default function OperationsPrivatePage() {
       : s === 'route' ? (ar ? 'ملفّ العميل' : 'customer profile')
       : s === 'tier' ? (ar ? 'أعلى شريحةٍ للمسار' : 'highest route tier')
         : s === 'manual' || s === 'private' ? (ar ? 'يدويّ' : 'manual') : '—');
-  const payType = (v?: string) => (v === 'cash' ? (ar ? 'كاش' : 'Cash') : v === 'tax' ? (ar ? 'ضريبي' : 'Tax') : '—');
+  // الستُّ كما في سير العمل — راجع lib/paymentKind.
+  const payType = (v?: string) => paymentKindLabel(v, ar) || '—';
   const done = (v?: string) => (v ? (ar ? 'تمّت' : 'Done') : '—');
 
   // العرضُ يُترجَم والفلترةُ على القيمة الخام — كصفحة سير العمل.
@@ -367,7 +369,7 @@ export default function OperationsPrivatePage() {
       case 'pay': return trPayment(v);
       case 'stage': return stageLabels[v] || v || '—';
       case 'done': return done(v);
-      case 'ptype': return payType(v);
+      case 'ptype': return payType(paymentKindOf(r as any));
       default: return v == null || v === '' ? '—' : String(v);
     }
   };

@@ -1406,6 +1406,12 @@
       "en": "HR Store"
     },
     {
+      "key": "/system/hr/finance-follow",
+      "section": "HR",
+      "ar": "متابعة المالية",
+      "en": "Finance Follow-up"
+    },
+    {
       "key": "/system/hr/licenses",
       "section": "HR",
       "ar": "التراخيص والاشتراكات",
@@ -1596,6 +1602,12 @@
       "section": "Accounting",
       "ar": "ماليات الموارد البشرية",
       "en": "HR Finance"
+    },
+    {
+      "key": "/system/finance/hr/residency",
+      "section": "Accounting",
+      "ar": "الإقامات ورخص العمل",
+      "en": "Iqamas & Work Permits"
     },
     {
       "key": "/system/finance/it",

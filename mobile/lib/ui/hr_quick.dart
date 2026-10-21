@@ -130,7 +130,10 @@ class HrQuickFilters extends StatelessWidget {
   final ValueChanged<Map<String, String>> onChanged;
   /// ثوابتُ النطاق — `scope=all` في قائمة الموظفين، كالموقع.
   final Map<String, String> params;
-  const HrQuickFilters({super.key, required this.value, required this.onChanged, this.params = const {}});
+  /// نقطةُ الخيارات — شاشاتٌ خارجَ ماستر الموارد البشريّة (رسومُ الإقامات في
+  /// الماليّة) تعدّ قيمَها على صفوفها هي، بالشكل نفسِه `{ filters: [...] }`.
+  final String optionsUrl;
+  const HrQuickFilters({super.key, required this.value, required this.onChanged, this.params = const {}, this.optionsUrl = '/api/hr/master/filters'});
 
   List<String> _sel(String k) => (value[k] ?? '').split(',').map((x) => x.trim()).where((x) => x.isNotEmpty).toList();
 
@@ -139,7 +142,7 @@ class HrQuickFilters extends StatelessWidget {
     ({...params, ...value}).forEach((k, v) { if (v.isNotEmpty) q.add('$k=${Uri.encodeComponent(v)}'); });
     List<MapEntry<String, int>> opts = [];
     try {
-      final d = await Api.instance.get('/api/hr/master/filters${q.isEmpty ? '' : '?${q.join('&')}'}');
+      final d = await Api.instance.get('$optionsUrl${q.isEmpty ? '' : '?${q.join('&')}'}');
       for (final f in List<Map<String, dynamic>>.from(d['filters'] ?? [])) {
         if (f['key'] == key) {
           opts = [for (final v in List<Map<String, dynamic>>.from(f['values'] ?? [])) MapEntry('${v['value']}', (v['count'] as num?)?.toInt() ?? 0)];

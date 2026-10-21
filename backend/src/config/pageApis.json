@@ -1864,6 +1864,15 @@
       ],
       "wildcard": false
     },
+    "/system/hr/finance-follow": {
+      "apis": [
+        "/api/hr/employees-search",
+        "/api/hr/finance-follow/docs",
+        "/api/hr/finance-follow/options",
+        "/api/hr/finance-requests"
+      ],
+      "wildcard": false
+    },
     "/system/hr/licenses": {
       "apis": [
         "/api/hr/licenses"
@@ -2093,7 +2102,19 @@
     },
     "/system/finance/hr": {
       "apis": [
-        "/api/finance/departments"
+        "/api/finance/departments",
+        "/api/finance/hr-docs/summary"
+      ],
+      "wildcard": false
+    },
+    "/system/finance/hr/residency": {
+      "apis": [
+        "/api/finance/hr-docs",
+        "/api/finance/hr-docs/options",
+        "/api/finance/hr-docs/pay",
+        "/api/finance/hr-docs/summary",
+        "/api/finance/hr-docs/unpay",
+        "/api/finance/hr-requests"
       ],
       "wildcard": false
     },

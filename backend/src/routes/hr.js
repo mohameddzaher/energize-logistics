@@ -34,6 +34,14 @@ router.get('/master/expiring', authorize(...STAFF), hrm.expiring);
 // تحليلُ الأقسام — صفٌّ لكلّ قسمٍ بأرقامه، يقرأ نفسَ فلتر اللوحة.
 router.get('/master/by-department', authorize(...STAFF), hrm.byDepartment);
 
+// ── متابعةُ الماليّة: رسومُ الإقامات ورخص العمل (قراءة)، وطلباتُ القسم إلى الماليّة ──
+// الصفوفُ نفسُها التي تراها الماليّة، بحالة دفعها — والدفعُ يُسجَّل هناك لا هنا.
+const hrf = require('../controllers/hrFinanceController');
+router.get('/finance-follow/docs', authorize(...STAFF), hrf.hrDocs);
+router.get('/finance-follow/options', authorize(...STAFF), hrf.options);
+router.get('/finance-requests', authorize(...STAFF), hrf.hrRequests);
+router.post('/finance-requests', authorize(...STAFF), hrf.createRequest);
+
 // ── النماذجُ والخطاباتُ الرسميّة ────────────────────────────────────────────
 // القراءةُ لمن مُنح قسمَ الموارد البشريّة (لا لأدوارٍ أربعةٍ مكتوبةٍ بيد):
 // حارسُ القسم قبلها يقرّر، فمن فُتح له القسمُ من المصفوفة يقرأ الأوراق.

@@ -49,6 +49,7 @@ import '../screens/ops_platform.dart';
 import '../screens/ls2_fleet_assets.dart';
 import '../screens/admin_suite.dart';
 import '../screens/finance.dart';
+import '../screens/hr_finance.dart';
 import '../screens/sales_suite.dart';
 import '../screens/it_recurring.dart';
 import '../screens/executive_overview.dart';
@@ -352,6 +353,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('طلبات الأقسام', 'Section Requests', Icons.move_to_inbox_outlined, (c) => const StaffRequestsScreen(side: 'hr'), path: '/system/hr/staff-requests'),
         // مكتبةُ النماذج والخطابات الرسميّة.
         AppPage('النماذج والخطابات', 'Forms & Letters', Icons.description_outlined, (c) => const HrFormsScreen(), path: '/system/hr/forms'),
+        AppPage('متابعة المالية', 'Finance Follow-up', Icons.account_balance_outlined, (c) => const HrFinanceFollowScreen(), path: '/system/hr/finance-follow'),
         AppPage('التراخيص والاشتراكات', 'Licenses', Icons.workspace_premium_outlined, (c) => ResourceScreen(config: hrLicensesCfg), path: '/system/hr/licenses'),
         AppPage('عقود الموظفين', 'Contracts', Icons.description_outlined, (c) => ResourceScreen(config: hrContractsCfg), path: '/system/hr/contracts'),
         AppPage('المخزون', 'Stock', Icons.inventory_2_outlined, (c) => ResourceScreen(config: hrStockCfg), path: '/system/hr/stock'),
@@ -417,6 +419,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('ماليات النقل الخفيف', 'Light Transport Finance', Icons.two_wheeler, (c) => const FinanceDeptScreen(dept: 'light', arTitle: 'ماليات النقل الخفيف', enTitle: 'Light Transport Finance'), path: '/system/finance/light-transport'),
         AppPage('ماليات التسويق والتطوير', 'Marketing & BD Finance', Icons.campaign_outlined, (c) => const FinanceDeptScreen(dept: 'marketing', arTitle: 'ماليات التسويق والتطوير', enTitle: 'Marketing & BD Finance'), path: '/system/finance/marketing'),
         AppPage('ماليات الموارد البشرية', 'HR Finance', Icons.badge_outlined, (c) => const FinanceDeptScreen(dept: 'hr', arTitle: 'ماليات الموارد البشرية', enTitle: 'HR Finance'), path: '/system/finance/hr'),
+        AppPage('الإقامات ورخص العمل', 'Iqamas & Work Permits', Icons.badge_outlined, (c) => const FinanceResidencyScreen(), path: '/system/finance/hr/residency'),
         AppPage('ماليات تقنية المعلومات', 'IT Finance', Icons.computer_outlined, (c) => const FinanceDeptScreen(dept: 'it', arTitle: 'ماليات تقنية المعلومات', enTitle: 'IT Finance'), path: '/system/finance/it'),
         AppPage('ماليات التحصيل', 'Collections Finance', Icons.request_quote_outlined, (c) => const FinanceDeptScreen(dept: 'collections', arTitle: 'ماليات التحصيل', enTitle: 'Collections Finance'), path: '/system/finance/collections'),
         AppPage('ماليات المركبات', 'Vehicles Finance', Icons.directions_car_outlined, (c) => const FinanceDeptScreen(dept: 'vehicles', arTitle: 'ماليات المركبات', enTitle: 'Vehicles Finance'), path: '/system/finance/vehicles'),

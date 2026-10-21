@@ -3,6 +3,7 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/customs_link.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -78,6 +79,8 @@ const _barFields = [
   ('truckType', 'نوع الشاحنة', 'Truck type', false),
   ('payingBranch', 'الفرع المسدِّد', 'Paying branch', false),
   ('invoiceState', 'رقم الفاتورة', 'Invoice number', true),
+  // معاملةُ التخليص: أرقامُ المعاملات، و«غير مرتبط» = بلا معاملة.
+  ('customsRef', 'التخليص', 'Customs', false),
 ];
 
 /// بطاقاتُ فحص الفواتير الأربع — نفسُ بطاقات الويب (InvoiceCheckCards).
@@ -104,6 +107,10 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   final Map<String, Set<String>> _cf = {};
   /// «سندات لم تصل» — الإجماليُّ وحدَه (أُزيلت بطاقتا الكاش والضريبيّ كالويب).
   bool _pendingOnly = false;
+  /// «التخليص»: '' الكلّ، `linked` المرتبطة، `unlinked` غيرُ المرتبطة — كالويب.
+  String _customs = '';
+  /// ربطُ الكشف بمعاملة تخليص — يقوله الخادم (canLinkCustoms).
+  bool _canLinkCustoms = false;
   /// حقولُ هذا الدور كما يحسبها الخادم — قيمةُ البيع تُكتب لمن هي فيها.
   Set<String> _myFields = {};
   /// فحوصُ الفواتير (لمن يملك أعمدةَ المال — وغيرُه يُردّ ٤٠٣ فتُخفى).
@@ -125,7 +132,10 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     Live.instance.on('workflow:deleted', _onLive);
     Api.instance.get('/api/workflows/permissions').then((d) {
       if (!mounted) return;
-      setState(() => _myFields = Set<String>.from((d is Map ? d['myFields'] : null) ?? const []));
+      setState(() {
+        _myFields = Set<String>.from((d is Map ? d['myFields'] : null) ?? const []);
+        _canLinkCustoms = d is Map && d['canLinkCustoms'] == true;
+      });
     }).catchError((_) {});
   }
 
@@ -146,6 +156,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
             for (final v in e.value) 'cf_${e.key}=${Uri.encodeQueryComponent(v)}',
         if (_q.trim().isNotEmpty) 'search=${Uri.encodeQueryComponent(_q.trim())}',
         if (_pendingOnly) 'pendingOnly=true',
+        if (_customs.isNotEmpty) 'customs=$_customs',
       ];
 
   int _seq = 0;
@@ -179,6 +190,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   void _reload() { setState(() { _page = 1; _loading = true; }); _load(); }
 
   String _valueLabel(String field, String v) {
+    if (field == 'customsRef' && v.isEmpty) return tr('غير مرتبط', 'Not linked');
     if (v.isEmpty) return tr('(فارغ)', '(blank)');
     if (field == 'applicationStatus' || field == 'executionStatus') {
       final st = _appStatuses[v];
@@ -464,6 +476,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
       (tr('رقم الفاتورة', 'Invoice #'), w['invoiceNumber']),
       (tr('تاريخ الدفع', 'Payment date'), w['paymentDate']),
       (tr('المرجع', 'Reference'), w['reference']),
+      (tr('رقم السند', 'Document #'), w['documentNumber']),
     ].where((x) => (x.$2 ?? '').toString().isNotEmpty).toList();
     showModalBottomSheet(
       context: context,
@@ -481,6 +494,17 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                 Expanded(child: Text(f.$2.toString(), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))),
               ]),
             )),
+            // معاملةُ التخليص التي يخدمها الكشف — وربطُها يدويًّا (كالويب).
+            WorkflowCustomsSection(
+              workflow: w,
+              canLink: _canLinkCustoms,
+              onChanged: (wf) {
+                Navigator.pop(c);
+                if (!mounted) return;
+                setState(() { final i = _rows.indexWhere((r) => r['_id'] == wf['_id']); if (i >= 0) _rows[i] = wf; });
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('حُفظ الربط', 'Link saved'))));
+              },
+            ),
             if (_myFields.contains('paymentType'))
               Align(
                 alignment: AlignmentDirectional.centerStart,
@@ -581,6 +605,22 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                                 ),
                               ),
+                          // التخليص بكلمة: المرتبطة / غيرُ المرتبطة.
+                          for (final m in [('linked', 'مرتبطة بالتخليص', 'Customs linked'), ('unlinked', 'غير مرتبطة', 'Not linked')])
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(end: 6),
+                              child: ChoiceChip(
+                                selected: _customs == m.$1,
+                                onSelected: (on) { _customs = on ? m.$1 : ''; _reload(); },
+                                avatar: m.$1 == 'linked' ? const Icon(Icons.directions_boat_outlined, size: 14) : null,
+                                label: Text(tr(m.$2, m.$3)),
+                                labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.ink),
+                                selectedColor: const Color(0xFFF1F5F9),
+                                backgroundColor: Colors.white,
+                                side: BorderSide(color: _customs == m.$1 ? T.ink : T.line),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              ),
+                            ),
                           if (_cf.isNotEmpty)
                             TextButton(onPressed: () { _cf.clear(); _reload(); }, child: Text(tr('مسح الكل', 'Clear all'))),
                         ],
@@ -633,7 +673,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                                         Text('${w['fromLocation'] ?? '—'} ← ${w['toLocation'] ?? '—'}${(w['carOwner'] ?? '').toString().isNotEmpty ? ' · ${w['carOwner']}' : ''}',
                                             style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
                                         const SizedBox(height: 6),
-                                        Row(children: [
+                                        Wrap(spacing: 0, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
                                           if ((w['plateNumber'] ?? '').toString().isNotEmpty) Chip2(w['plateNumber'], T.navy, icon: Icons.local_shipping_outlined),
                                           // حالةُ الطلب تُضغط فتُغيَّر — في المنصّة وعندنا معًا.
                                           if ((w['applicationStatus'] ?? '').toString().isNotEmpty) ...[
@@ -646,6 +686,11 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                                                 icon: Icons.unfold_more,
                                               ),
                                             ),
+                                          ],
+                                          // معاملةُ التخليص المرتبطة — تُضغط فتفتح نافذتَها.
+                                          if (customsIdOf(w['customsLink']).isNotEmpty) ...[
+                                            const SizedBox(width: 6),
+                                            CustomsLinkChip(w['customsLink'], compact: true),
                                           ],
                                         ]),
                                       ]),

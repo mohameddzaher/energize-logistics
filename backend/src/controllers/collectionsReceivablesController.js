@@ -373,6 +373,9 @@ async function loadBase(q = {}) {
         : [],
     ]);
     const wfIdOf = new Map(wfOfCash.map((w) => [String(w.reportNumber || '').trim(), String(w._id)]));
+    // معاملةُ التخليص لكلّ صفّ: الضريبيّةُ بكشوف فاتورتها، والنقديُّ بكشفه.
+    const customsLinks = require('../services/customsOpsLink');
+    const linked = await customsLinks.linkedIndex();
 
     for (const r of ledger) {
       const no = String(r.invoiceNumber || '').trim();
@@ -385,6 +388,9 @@ async function loadBase(q = {}) {
         r.attachments = null;
         r.workflowId = wfIdOf.get(no) || null;
       }
+      r.customs = r.kind === 'tax'
+        ? customsLinks.customsOfInvoice(linked, no)
+        : [customsLinks.customsOfReport(linked, no)].filter(Boolean);
       r.total = r.total || 0;
       // القائمةُ هنا لم تكتمل — وقد يكون فيها مقبوضٌ جزئيّ يُطرَح من قيمتها.
       r.collected = r2(r.collectedAmount || 0);
@@ -398,6 +404,7 @@ async function loadBase(q = {}) {
       r.ageBand = ageBandOf(r.age);
       r.risk = riskOf(r.age, r.creditDays);
       r.inLedger = ledgerCash.has(String(r.reportNumber || '').trim());
+      r.customs = [customsLinks.customsOfReport(linked, r.reportNumber)].filter(Boolean);
     }
     return { ledger, cashWf };
   });
@@ -861,6 +868,7 @@ exports.rows = async (req, res) => {
       age: r.age, ageBand: r.ageBand, risk: r.risk,
       attachments: r.attachments,
       ...(r.workflowId ? { workflowId: r.workflowId } : {}),
+      ...(r.customs && r.customs.length ? { customs: r.customs } : {}),
     }));
     // والعددُ بوحدتيه: فواتيرُ ضريبيّة وكشوفُ تخريجٍ نقديّة — قد تجتمعان في شريحة.
     const taxCount = list.filter((r) => r.kind === 'tax').length;

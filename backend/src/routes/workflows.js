@@ -53,6 +53,11 @@ router.get('/filters', authorize(...allWorkflowRoles), workflowController.filter
 // قبل `/:id` أيضًا. والمالُ يُفحص داخل المتحكّم (canSeeMoney).
 router.get('/invoice-checks', authorize(...allWorkflowRoles), workflowController.invoiceChecks);
 router.get('/invoice-checks/:kind', authorize(...allWorkflowRoles), workflowController.invoiceCheckList);
+// ── ربطُ الكشف بمعاملة تخليص ─────────────────────────────────────────────────
+// البحثُ قبل `/:id`. وصلاحيّةُ الربط تُفحص داخل المتحكّم (canLinkCustoms).
+router.get('/customs-search', authorize(...allWorkflowRoles), workflowController.customsSearch);
+router.put('/:id/customs-link', authorize(...allWorkflowRoles), workflowController.setCustomsLink);
+router.delete('/:id/customs-link', authorize(...allWorkflowRoles), workflowController.clearCustomsLink);
 
 // ── أنواعُ الدفع ────────────────────────────────────────────────────────────
 // صفةُ العميل تُقرأ لمن يفتح صفحةَ التشغيل، ولا تُكتب إلّا لمن يديرها: قلبُ

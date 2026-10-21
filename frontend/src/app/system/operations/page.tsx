@@ -23,6 +23,7 @@ import ScrollX from '@/components/system/ScrollX';
 import InvoiceImportButton from '@/components/operations/InvoiceImportButton';
 import WorkflowFilterBar, { type FilterBarField } from '@/components/operations/WorkflowFilterBar';
 import InvoiceCheckCards from '@/components/operations/InvoiceCheckCards';
+import CustomsLinkBadge, { type CustomsLinkView } from '@/components/customs/CustomsLinkBadge';
 
 interface Workflow {
   _id: string;
@@ -94,6 +95,10 @@ interface Workflow {
   lockedByName: string;
   lockedAt: string | null;
   createdAt: string;
+  /** معاملةُ التخليص المرتبطة — نسخةٌ يكتبها الخادم (services/customsOpsLink). */
+  customsLink?: (CustomsLinkView & { clearance?: string | null }) | null;
+  /** عمودُ «التخليص» في الفلاتر — يُحسب في الخادم من `customsLink.refNumber`. */
+  customsRef?: string;
 }
 
 const STAGE_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -155,6 +160,8 @@ const EXPORT_COLUMNS = [
   { header: 'نوع الدفع', key: 'paymentType', width: 14 },
   { header: 'وجهة الكشف النهائية', key: 'finalReportDestination', width: 18 },
   { header: 'رقم المستند', key: 'documentNumber', width: 14 },
+  { header: 'معاملة التخليص', key: 'customsRef', width: 14 },
+  { header: 'البوليصة', key: 'customsBl', width: 18 },
   { header: 'تاريخ الإرسال', key: 'sendingDate', width: 12 },
   { header: 'تاريخ التسليم للفرع', key: 'branchDeliveryDate', width: 14 },
   { header: 'تاريخ التسليم للعميل', key: 'deliveryDate', width: 14 },
@@ -185,6 +192,8 @@ const BAR_FIELDS: (FilterBarField & { money?: boolean })[] = [
   { key: 'truckType', ar: 'نوع الشاحنة', en: 'Truck type' },
   { key: 'payingBranch', ar: 'الفرع المسدِّد', en: 'Paying branch' },
   { key: 'invoiceState', ar: 'رقم الفاتورة', en: 'Invoice number', money: true },
+  // معاملةُ التخليص: أرقامُ المعاملات، و«(فارغ)» = غيرُ مرتبط.
+  { key: 'customsRef', ar: 'التخليص', en: 'Customs' },
 ];
 
 export default function OperationsWorkflowPage() {
@@ -258,6 +267,15 @@ export default function OperationsWorkflowPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [showPendingOnly, setShowPendingOnly] = useState(false);
+  // ── التخليص: الكلّ / المرتبطة / غيرُ المرتبطة / معاملةٌ بعينها ────────────
+  // `customs` في الرابط: صفحةُ المعاملة تفتح الجدولَ على كشوفها (`?customs=<معرّفها>`).
+  const [customsMode, setCustomsMode] = useState('');
+  useEffect(() => {
+    try {
+      const v = new URLSearchParams(window.location.search).get('customs');
+      if (v) setCustomsMode(v);
+    } catch { /* */ }
+  }, []);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Workflow>>({});
   // الصفُّ كما كان قبل التعديل — يُقارَن به عند الحفظ فلا يُرسَل إلّا ما تغيّر.
@@ -369,11 +387,12 @@ export default function OperationsWorkflowPage() {
     if (dateFrom) params.append('dateFrom', dateFrom);
     if (dateTo) params.append('dateTo', dateTo);
     if (showPendingOnly) params.append('pendingOnly', 'true');
+    if (customsMode) params.append('customs', customsMode);
     for (const [field, vals] of Object.entries(colFilters)) {
       vals.forEach((v) => params.append(`cf_${field}`, v));
     }
     return params;
-  }, [stageFilter, search, dateFrom, dateTo, showPendingOnly, colFilters]);
+  }, [stageFilter, search, dateFrom, dateTo, showPendingOnly, customsMode, colFilters]);
 
   // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ────────────────────────────────────
   //
@@ -488,7 +507,7 @@ export default function OperationsWorkflowPage() {
 
   // اختيارُ الصفوف يُلغى مع كل تغيّر في الفلاتر أو الصفحة: الصفوف المؤشَّرة لم تعد
   // معروضة، وحذفٌ جماعيّ يقع على صفوفٍ لا يراها المستخدم.
-  useEffect(() => { setSelectedIds(new Set()); setAllMatching(false); }, [stageFilter, search, page, dateFrom, dateTo, showPendingOnly, colFilters]);
+  useEffect(() => { setSelectedIds(new Set()); setAllMatching(false); }, [stageFilter, search, page, dateFrom, dateTo, showPendingOnly, customsMode, colFilters]);
 
   const setColFilter = (field: string, set: Set<string>) => {
     // الفلترة تُغيّر عدد الصفحات كلّه، والبقاءُ على الصفحة السابعة بعد فلترٍ نتيجته
@@ -508,11 +527,11 @@ export default function OperationsWorkflowPage() {
   // في نتيجةٍ مفلترةٍ أو في صفحةٍ غير الأولى يكون كذبًا: صفٌّ لا يطابق الشرطَ
   // يظهر بين ما يطابقه. فيُترك للتحديث أن يأتي به إن كان يخصّ العرض.
   const handleCreated = useCallback((wf: Workflow) => {
-    const filtered = !!search || !!dateFrom || !!dateTo || showPendingOnly || Object.keys(colFilters).length > 0;
+    const filtered = !!search || !!dateFrom || !!dateTo || showPendingOnly || !!customsMode || Object.keys(colFilters).length > 0;
     setTotal((t) => t + 1);
     if (filtered || page !== 1) return;
     setWorkflows((p) => [wf, ...p]);
-  }, [search, dateFrom, dateTo, showPendingOnly, colFilters, page]);
+  }, [search, dateFrom, dateTo, showPendingOnly, customsMode, colFilters, page]);
   // ── صفٌّ كاملٌ يُستبدَل، وإشعارٌ مختصرٌ يُعيد التحميل ─────────────────────
   // بعضُ البثّ يحمل الصفَّ كلَّه (تعديلٌ من الشاشة)، وبعضُه إشعارٌ قصير:
   // `{ _id, fromWallet }` من المحفظة أو `{ bulk: true }` من التحصيل. كان القصيرُ
@@ -845,6 +864,8 @@ export default function OperationsWorkflowPage() {
     deliveryDate: formatDate(w.deliveryDate),
     invoiceDate: formatDate(w.invoiceDate),
     collectionDate: formatDate(w.collectionDate),
+    customsRef: w.customsLink?.clearance ? w.customsLink.refNumber || '' : '',
+    customsBl: w.customsLink?.clearance ? w.customsLink.blNumber || '' : '',
     executionStatus: trStatus(w.executionStatus),
     applicationStatus: trStatus(w.applicationStatus),
     paymentMethod: trPayment(w.paymentMethod),
@@ -1256,6 +1277,24 @@ export default function OperationsWorkflowPage() {
             ? (v: any) => ({ has: lang === 'ar' ? 'عليه رقم فاتورة' : 'Has a number', none: lang === 'ar' ? 'فارغ' : 'Blank', placeholder: lang === 'ar' ? 'بديل (no inv / بدون)' : 'Placeholder (no inv)' } as Record<string, string>)[String(v)] || String(v)
             : colFormat(f))}
         />
+        {/* ── التخليص بكلمة: الكلّ · المرتبطة · غيرُ المرتبطة ─────────────────
+            وفلترُ العمود «التخليص» يختار معاملةً بعينها. */}
+        <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-0.5 text-xs">
+          <span className="px-2 text-slate-500">{lang === 'ar' ? 'التخليص' : 'Customs'}</span>
+          {([['', lang === 'ar' ? 'الكلّ' : 'All'], ['linked', lang === 'ar' ? 'مرتبطة' : 'Linked'], ['unlinked', lang === 'ar' ? 'غير مرتبطة' : 'Not linked']] as const).map(([k, label]) => (
+            <button key={k || 'all'} type="button" onClick={() => { setCustomsMode(k); setPage(1); }}
+              className={`rounded-md px-2.5 py-1 ${customsMode === k ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+              {label}
+            </button>
+          ))}
+          {customsMode && !['linked', 'unlinked'].includes(customsMode) && (
+            <button type="button" onClick={() => { setCustomsMode(''); setPage(1); }}
+              className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2.5 py-1 text-sky-800 hover:bg-sky-100"
+              title={lang === 'ar' ? 'إزالة' : 'Clear'}>
+              {lang === 'ar' ? 'كشوف معاملةٍ محدّدة' : 'One clearance'} <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
         {/* ── مِصفاةُ المراحل أُزيلت ────────────────────────────────────────
             «مسودة / مرسل للتشغيل / التشغيل مكتمل / للتحصيلات / مكتمل» مراحلُ
             صُمّمت حين كانت الكشوفُ تُنشأ عندنا وتتنقّل بين أقسامنا. وهي تصل
@@ -1479,6 +1518,8 @@ export default function OperationsWorkflowPage() {
                     آخره. سؤالٌ غيرُ «مَن سدّد»: قد يُسدَّد في فرعٍ ويستقرّ في غيره. */}
                 {ColHead('finalReportDestination', lang === 'ar' ? 'وجهة الكشف النهائية' : 'Final destination', 'text-purple-300')}
                 {ColHead('documentNumber', T.thDocNumber, 'text-purple-300')}
+                {/* معاملةُ التخليص التي يخدمها الكشف — رقمُها · البوليصة · الحاويات. */}
+                {ColHead('customsRef', lang === 'ar' ? 'التخليص' : 'Customs', 'text-sky-300')}
                 {ColHead('sendingDate', T.thSendingDate, 'text-purple-300')}
                 {/* ── تسليمان لا تسليمٌ واحد ────────────────────────────────
                     هذا تسليمُ الكشف إلى الفرع — عملُ التشغيل، ويأتي من شيت
@@ -1836,6 +1877,11 @@ export default function OperationsWorkflowPage() {
                             عند المرور عليه، فلا يُقرأ عطلًا. */}
                         {lookupCell('finalReportDestination', 'workflow_final_destination', 'text-purple-700')}
                         {textCell('documentNumber', 'text-purple-700')}
+                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          {wf.customsLink?.clearance
+                            ? <CustomsLinkBadge link={wf.customsLink} ar={lang === 'ar'} />
+                            : <span className="text-slate-300">-</span>}
+                        </td>
                         {dateCell('sendingDate', 'text-purple-700')}
                         {dateCell('branchDeliveryDate', 'text-purple-700')}
                         {canViewFinancials && accountingReviewCell()}

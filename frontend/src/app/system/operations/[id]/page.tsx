@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { fmt } from '@/utils/exportExcel';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import WorkflowCustomsPanel from '@/components/operations/WorkflowCustomsPanel';
 
 interface Workflow {
   _id: string;
@@ -196,12 +197,14 @@ export default function WorkflowDetailPage() {
 
   // `null` = لم تصل القائمةُ بعد؛ فلا يُقال «للقراءة» قبل أن يُعرف الجواب.
   const [myFields, setMyFields] = useState<Set<string> | null>(null);
+  // ربطُ الكشف بمعاملة تخليص — يقوله الخادم (canLinkCustoms) ويفحصه ثانيةً عند الحفظ.
+  const [canLinkCustoms, setCanLinkCustoms] = useState(false);
   useEffect(() => {
     if (!role) return;
-    if (role === 'super_admin') { setMyFields(null); return; }
+    if (role === 'super_admin') { setMyFields(null); setCanLinkCustoms(true); return; }
     let alive = true;
-    api.get<{ roleAccess?: Record<string, string[]>; myFields?: string[] }>('/api/workflows/permissions')
-      .then((d) => { if (alive) setMyFields(new Set(d?.myFields || d?.roleAccess?.[role] || [])); })
+    api.get<{ roleAccess?: Record<string, string[]>; myFields?: string[]; canLinkCustoms?: boolean }>('/api/workflows/permissions')
+      .then((d) => { if (alive) { setMyFields(new Set(d?.myFields || d?.roleAccess?.[role] || [])); setCanLinkCustoms(!!d?.canLinkCustoms); } })
       .catch(() => { if (alive) setMyFields(new Set()); });
     return () => { alive = false; };
   }, [role]);
@@ -263,6 +266,13 @@ export default function WorkflowDetailPage() {
   useSocket('workflow:stageChanged', handleRealTimeUpdate);
   useSocket('workflow:locked', handleRealTimeLock);
   useSocket('workflow:unlocked', handleRealTimeUnlock);
+  // ربطُ التخليص يتغيّر من صفحة المعاملة أيضًا (خانةُ نقلٍ كُتب فيها رقمُ هذا الكشف).
+  const handleCustomsLinked = useCallback((d: any) => {
+    if (!d?.customsLink || editing) return;
+    const nums: string[] = Array.isArray(d.reportNumbers) ? d.reportNumbers : [];
+    if (workflow && nums.includes(String(workflow.reportNumber))) fetchWorkflow();
+  }, [editing, workflow, fetchWorkflow]);
+  useSocket('workflow:bulkImported', handleCustomsLinked);
 
   // ── Edit / Lock ──
   const handleStartEdit = async () => {
@@ -488,6 +498,17 @@ export default function WorkflowDetailPage() {
             </button>
           ))}
         </div>
+      )}
+
+      {/* معاملةُ التخليص التي يخدمها الكشف — وربطُها يدويًّا. */}
+      {!editing && (
+        <WorkflowCustomsPanel
+          workflowId={workflow._id}
+          link={(workflow as any).customsLink}
+          ar={lang === 'ar'}
+          canLink={canLinkCustoms}
+          onSaved={(wf) => { if (wf && wf._id === workflow._id) setWorkflow(wf); }}
+        />
       )}
 
       {/* Field sections */}

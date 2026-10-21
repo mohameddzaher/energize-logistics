@@ -28,6 +28,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
+import { CustomsLinkBadges, type CustomsLinkView } from '@/components/customs/CustomsLinkBadge';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { canEditCollections, money, dt } from '@/lib/collections';
 import { paymentKindLabel, paymentFamily } from '@/lib/paymentKind';
@@ -56,6 +57,8 @@ export interface RecvRow {
   basis: 'delivery' | 'invoice' | 'payment'; dueDate: string | null; daysLate: number | null;
   dueState: string; age: number | null; ageBand: string; risk: string;
   attachments: number | null;
+  /** معاملاتُ التخليص التي تخدمها كشوفُ الصفّ — راجع services/customsOpsLink. */
+  customs?: CustomsLinkView[];
 }
 interface RowsResp {
   rows: RecvRow[]; total: number; taxCount: number; cashCount: number;
@@ -283,6 +286,8 @@ export default function ReceivablesPage() {
           <button type="button" onClick={(e) => { e.stopPropagation(); openRow(r); }}
             className="font-semibold text-[#f37121] hover:underline">{r.invoiceNumber || '—'}</button>
           <span className="block text-[10px] text-slate-400">{r.source === 'workflow' || r.kind === 'cash' ? t('كشف تخريج', 'exit report') : t('فاتورة', 'invoice')}</span>
+          {/* ومعاملةُ التخليص إن كانت كشوفُه نقلًا لحاوياتها. */}
+          {r.customs && r.customs.length ? <span className="mt-0.5 block"><CustomsLinkBadges links={r.customs} ar={ar} /></span> : null}
         </span>
       ),
       exp: { header: t('الرقم', 'Number'), key: 'invoiceNumber', width: 16 },

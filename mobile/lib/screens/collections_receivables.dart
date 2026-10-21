@@ -5,6 +5,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/customs_link.dart';
 import 'collection_attachments.dart';
 import '../resource/configs.dart' show collectionsCanEdit;
 
@@ -330,6 +331,8 @@ class _CollectionsReceivablesScreenState extends State<CollectionsReceivablesScr
               Chip2('${tr('الخطورة', 'Risk')}: ${_lbl(_riskLabels, '${r['risk'] ?? ''}')}', T.inkSoft),
               if (issue != 'none') Chip2(_lbl(_issueLabels, issue), T.navy, icon: Icons.gavel_rounded),
               if (att != null) Chip2(att > 0 ? '$att ${tr('مرفق', 'files')}' : tr('بلا مرفق', 'no file'), T.inkSoft, icon: Icons.attach_file_rounded),
+              // معاملةُ التخليص التي تخدمها كشوفُ الصفّ — كشارة الموقع.
+              if (r['customs'] is List && (r['customs'] as List).isNotEmpty) CustomsLinkChips(r['customs']),
             ]),
             const SizedBox(height: 4),
             kv(tr('مسؤول التحصيل', 'Collector'), '${r['officer'] ?? '—'}${r['officerIsDefault'] == true ? ' (${tr('غير مُسنَد', 'unassigned')})' : ''}'),
@@ -508,6 +511,13 @@ class _ReceivableDetailScreenState extends State<_ReceivableDetailScreen> {
             kv(tr('القيمة', 'Value'), _money(r['total'])),
             kv(tr('المحصَّل', 'Collected'), _money(r['collected'])),
             kv(tr('المتبقّي', 'Remaining'), _money(r['remaining'])),
+            // ومعاملاتُ التخليص التي تخدمها كشوفُه.
+            if (r['customs'] is List && (r['customs'] as List).isNotEmpty) ...[
+              const Divider(height: 18),
+              Text(tr('التخليص الجمركي', 'Customs clearance'), style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+              const SizedBox(height: 6),
+              Wrap(spacing: 6, runSpacing: 6, children: [for (final l in r['customs'] as List) CustomsLinkChip(l)]),
+            ],
           ]),
         ),
         const SizedBox(height: 10),
@@ -554,6 +564,8 @@ class _ReceivableDetailScreenState extends State<_ReceivableDetailScreen> {
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text('${x['reportNumber'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
                         Text('${x['fromLocation'] ?? ''} → ${x['toLocation'] ?? ''} · ${_date(x['reportDate'])}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                        if (customsIdOf(x['customs']).isNotEmpty)
+                          Padding(padding: const EdgeInsets.only(top: 3), child: CustomsLinkChip(x['customs'], compact: true)),
                       ]),
                     ),
                     Text(_money(x['totalInvoice'] ?? x['sellingValue']), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),

@@ -1361,7 +1361,8 @@ final collectionsLedgerCfg = ResourceConfig(
 final collectionsCashInvoicesCfg = ResourceConfig(
   arTitle: 'فواتير الكاش', enTitle: 'Cash Invoices', icon: Icons.payments_outlined,
   endpoint: '/api/collections-dept/invoices/cash', listKey: 'invoices',
-  liveEvent: 'workflow:updated', extraLiveEvents: const ['collections:attachments'], serverSearch: true,
+  // و`collections:changed` يحمل ربطَ الكشوف بالتخليص (services/customsOpsLink).
+  liveEvent: 'workflow:updated', extraLiveEvents: const ['collections:attachments', 'collections:changed'], serverSearch: true,
   canCreate: false, canDelete: false,
   // ثلاثُ حالاتٍ كالموقع — يحسبها الخادم مع الصفّ (collectionState).
   filterField: 'collectionState', filterOptions: _collectionStates,
@@ -1379,6 +1380,8 @@ final collectionsCashInvoicesCfg = ResourceConfig(
     if (_s(r, 'deliveryDate').isEmpty) ('لم تُسلَّم', T.warn) else ('سُلِّمت', T.info),
     if (_s(r, 'collectionDetail').isNotEmpty) (_s(r, 'collectionDetail'), T.navy),
     if (_attachCount(r) > 0) ('${_attachCount(r)} مرفقات', T.orange),
+    // معاملةُ التخليص التي يخدمها الكشف — كشارة الموقع.
+    if (_customsChip(r['customs'] is Map ? [r['customs']] : const []) != null) _customsChip([r['customs']])!,
   ],
   // ── والتحصيلُ من زرّ «تحصيل» لا من ورقة التحرير ─────────────────────────
   // كاملٌ أو جزئيّ، ولكلّ دفعةٍ مبلغٌ ويومٌ وكاتب (راجع collection_collect).
@@ -1401,6 +1404,16 @@ final collectionsCashInvoicesCfg = ResourceConfig(
       _uncollectAction((r) => {'ids': [_s(r, '_id')]}),
   ],
 );
+
+/// شارةُ «التخليص» في صفّ التحصيل: رقمُ المعاملة · عددُ الحاويات، و«+ن» لغيرها.
+(String, Color)? _customsChip(List links) {
+  final list = links.whereType<Map>().where((l) => '${l['refNumber'] ?? ''}'.isNotEmpty).toList();
+  if (list.isEmpty) return null;
+  final first = list.first;
+  final n = (first['containers'] is List) ? (first['containers'] as List).length : 0;
+  final more = list.length > 1 ? ' +${list.length - 1}' : '';
+  return ('تخليص ${first['refNumber']}${n > 0 ? ' · $n حاوية' : ''}$more', T.cyan);
+}
 
 /// حالاتُ التحصيل الثلاث — شرائحُ التصفية فوق القائمتين.
 const _collectionStates = [
@@ -1438,7 +1451,7 @@ ResourceAction _uncollectAction(Map<String, dynamic> Function(Map<String, dynami
 final collectionsTaxInvoicesCfg = ResourceConfig(
   arTitle: 'الفواتير الضريبية', enTitle: 'Tax Invoices', icon: Icons.receipt_long_outlined,
   endpoint: '/api/collections-dept/invoices/tax', listKey: 'invoices',
-  liveEvent: 'workflow:updated', extraLiveEvents: const ['collections:attachments'], serverSearch: true,
+  liveEvent: 'workflow:updated', extraLiveEvents: const ['collections:attachments', 'collections:changed'], serverSearch: true,
   canCreate: false, canEdit: false, canDelete: false,
   filterField: 'collectionState', filterOptions: _collectionStates,
   searchFields: const ['invoiceNumber', 'customer'],
@@ -1447,6 +1460,8 @@ final collectionsTaxInvoicesCfg = ResourceConfig(
   chipsOf: (r) => [
     // عددُ الكشوفات: الفاتورةُ الواحدة قد تضمّ أكثرَ من كشف.
     ('${r['reports'] ?? 0} كشف', T.navy),
+    // معاملاتُ التخليص التي تخدمها كشوفُ الفاتورة.
+    if (_customsChip(r['customs'] is List ? r['customs'] as List : const []) != null) _customsChip(r['customs'] as List)!,
     if (r['ageDays'] != null) ('${r['ageDays']} يوم', _ageColor(r['ageDays'])),
     if (r['fullyCollected'] == true) ('محصَّلة', T.success)
     else if (_s(r, 'collectionState') == 'partial') ('جزئية — باقٍ ${_n(r['remaining'])}', T.warn)

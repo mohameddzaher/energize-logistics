@@ -242,6 +242,25 @@ const operationsWorkflowSchema = new mongoose.Schema(
     // به فيكتب ما تبدّل وحدَه بدل تسعِمئةِ صفٍّ في كلّ دورة. يُحفَظ كما ورد
     // نصًّا — قيمةُ مقارنةٍ لا تاريخٌ يُحسب به. راجع jobs/opsPoll.
     externalUpdatedAt: { type: String, trim: true },
+
+    // ── ومعاملةُ التخليص التي يخدمها الكشف ──────────────────────────────────
+    // نسخةٌ مقروءةٌ لا مرجعٌ وحده: الجدولُ وشاشاتُ التحصيل تعرض رقمَ المعاملة
+    // وبوليصتَها وحاوياتِها بلا استعلامٍ ثانٍ. يكتبها services/customsOpsLink
+    // وحدَه — من خانات النقل في المعاملة، أو «رقم السند» = البوليصة/الحاوية،
+    // أو ربطٍ يدويّ. و`via: 'unlinked'` = فكّه موظّفٌ بيده فلا يعيده دليلٌ ضعيف.
+    customsLink: {
+      type: new mongoose.Schema({
+        clearance: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomsClearance', default: null },
+        refNumber: { type: String, default: '' },
+        blNumber: { type: String, default: '' },
+        customerName: { type: String, default: '' },
+        containers: { type: [String], default: [] },
+        via: { type: String, enum: ['move', 'bl', 'container', 'manual', 'unlinked'], default: 'move' },
+        at: { type: Date, default: null },
+        byName: { type: String, default: '' },
+      }, { _id: false }),
+      default: undefined,
+    },
   },
   { timestamps: true }
 );
@@ -262,6 +281,8 @@ operationsWorkflowSchema.index({ username: 1, paymentType: 1 });
 // ما كتبته المحفظةُ يُسأل عنه في كلّ مطابقة — وهو قليلٌ من ثلاثين ألفًا.
 operationsWorkflowSchema.index({ collectedByWallet: 1 }, { partialFilterExpression: { collectedByWallet: true } });
 operationsWorkflowSchema.index({ invoiceNumber: 1, invoiceDate: -1 });
+// كشوفُ معاملة التخليص — قليلةٌ من أربعين ألفًا، فالفهرسُ جزئيّ.
+operationsWorkflowSchema.index({ 'customsLink.clearance': 1 }, { partialFilterExpression: { 'customsLink.clearance': { $type: 'objectId' } } });
 
 operationsWorkflowSchema.index(
   { externalSource: 1, externalId: 1 },

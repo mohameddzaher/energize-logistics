@@ -20,6 +20,7 @@ import CloseWithInvoice from '@/components/customs/CloseWithInvoice';
 import TransportInvoiceBanner from '@/components/customs/TransportInvoice';
 import ContainerUnits from '@/components/customs/ContainerUnits';
 import ClearanceTasks from '@/components/customs/ClearanceTasks';
+import LinkedOpsReports from '@/components/customs/LinkedOpsReports';
 import { stageName, unitWord, type Pipeline } from '@/lib/customsPipeline';
 
 export default function CustomsDetailPage() {
@@ -763,6 +764,9 @@ export default function CustomsDetailPage() {
         title={`${unitWord(cargo, ar)} (${containers.length})`}>
         <ContainerUnits units={containers} pipeline={pipeline} stages={T.stages} canEdit={canEdit} ar={ar} onSave={setContainers} />
       </Card>
+
+      {/* ── وكشوفُ التشغيل التي نقلت حاوياتِها، بفوترتها وتحصيلها ────────── */}
+      <LinkedOpsReports clearanceId={String(c._id)} ar={ar} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* ── البيانُ والمواعيدُ أوّلًا ───────────────────────────────────────

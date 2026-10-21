@@ -17,6 +17,8 @@ import ExportMenu from '@/components/ls2/ExportMenu';
 import { Receipt, ArrowRight } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
 import { AttachmentsPanel } from '@/components/collections/InvoiceAttachments';
+import CustomsLinkBadge, { type CustomsLinkView } from '@/components/customs/CustomsLinkBadge';
+import { useSocket } from '@/hooks/useSocket';
 
 interface Row {
   _id: string; reportNumber?: string; reportDate?: string; username?: string;
@@ -25,12 +27,16 @@ interface Row {
   netInvoice?: number; tax?: number; totalInvoice?: number;
   invoiceDate?: string; deliveryDate?: string; sendingDate?: string; documentNumber?: string;
   collectedAmount?: number; collectionDate?: string; accountingReview?: string;
+  /** معاملةُ التخليص التي يخدمها الكشف — راجع services/customsOpsLink. */
+  customs?: CustomsLinkView | null;
 }
 interface Detail {
   invoiceNumber: string; customer: string; partyId?: string; partyCode?: string;
   kind?: 'tax' | 'cash'; inLedger?: boolean; status?: string; comments?: string;
   invoiceDate: string | null; deliveryDate: string | null; collectionDate?: string | null;
   reports: Row[];
+  /** معاملاتُ التخليص التي تخدمها كشوفُ الفاتورة، مجموعةً. */
+  customs?: CustomsLinkView[];
   totals: { reports: number; net: number; vat: number; value: number; collectedReports: number };
 }
 
@@ -61,6 +67,8 @@ export default function TaxInvoiceDetailPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceNumber]);
   useEffect(() => { load(); }, [load]);
+  // ربطُ كشوفها بالتخليص يتغيّر من التشغيل أو من صفحة المعاملة.
+  useSocket('collections:changed', useCallback((d: any) => { if (d?.source === 'customs-link') load(); }, [load]));
 
   const backToList = () => router.push('/system/collections-dept/invoices/tax');
 
@@ -74,6 +82,7 @@ export default function TaxInvoiceDetailPage() {
     route: (r) => [r.fromLocation, r.toLocation].filter(Boolean).join(' — '),
     branch: (r) => r.branch,
     carNumber: (r) => r.carNumber,
+    customs: (r) => r.customs?.refNumber || t('غير مرتبط', 'Not linked'),
     netInvoice: (r) => money(r.netInvoice),
     tax: (r) => money(r.tax),
     totalInvoice: (r) => money(r.totalInvoice),
@@ -120,6 +129,7 @@ export default function TaxInvoiceDetailPage() {
     { header: t('إلى', 'To'), key: 'toLocation', width: 16 },
     { header: t('الفرع', 'Branch'), key: 'branch', width: 14 },
     { header: t('رقم السيارة', 'Vehicle'), key: 'carNumber', width: 14 },
+    { header: t('معاملة التخليص', 'Clearance'), key: 'customs', width: 16, transform: (v: any) => v?.refNumber || '' },
     { header: t('صافي الفاتورة', 'Net'), key: 'netInvoice', width: 14 },
     { header: t('ضريبة', 'VAT'), key: 'tax', width: 12 },
     { header: t('إجمالي الفاتورة', 'Total'), key: 'totalInvoice', width: 16 },
@@ -171,6 +181,23 @@ export default function TaxInvoiceDetailPage() {
         />
       </div>
 
+      {/* ── ومعاملاتُ التخليص التي تخدمها كشوفُها ──────────────────────────
+          فاتورةُ نقلِ حاوياتٍ تُسأل عنها: لأيّ معاملةٍ وأيّ بوليصة؟ تُقال هنا. */}
+      {!!data.customs?.length && (
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm px-4 py-3">
+          <p className="text-[13px] font-bold text-slate-900 mb-2">{t('التخليص الجمركي', 'Customs clearance')}</p>
+          <div className="flex flex-wrap gap-3">
+            {data.customs.map((c) => (
+              <div key={c.clearanceId} className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                <CustomsLinkBadge link={c} ar={ar} />
+                {c.customerName && <span>{c.customerName}</span>}
+                <span className="text-slate-400">· {t(`${c.reports || 1} من الكشوف`, `${c.reports || 1} report(s)`)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
           <p className="text-[13px] font-bold text-slate-900">{t('كشوف هذه الفاتورة', 'Reports under this invoice')}</p>
@@ -182,7 +209,7 @@ export default function TaxInvoiceDetailPage() {
               <tr>
                 {[['reportNumber', t('رقم الكشف', 'Report')], ['reportDate', t('التاريخ', 'Date')],
                   ['route', t('المسار', 'Route')], ['branch', t('الفرع', 'Branch')],
-                  ['carNumber', t('السيارة', 'Vehicle')], ['netInvoice', t('الصافي', 'Net')],
+                  ['carNumber', t('السيارة', 'Vehicle')], ['customs', t('التخليص', 'Customs')], ['netInvoice', t('الصافي', 'Net')],
                   ['tax', t('الضريبة', 'VAT')], ['totalInvoice', t('الإجمالي', 'Total')],
                   ['deliveryDate', t('تاريخ التسليم', 'Delivered')], ['collectionDate', t('تاريخ التحصيل', 'Collected')]].map(([k, h]) => (
                   <th key={k} className="px-3 py-2 text-start font-semibold whitespace-nowrap">
@@ -197,7 +224,7 @@ export default function TaxInvoiceDetailPage() {
                   تُقال الحالُ ولا تُترك الصفحةُ فارغةً كأنّ شيئًا فُقد. */}
               {!shown.length && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-slate-500">
+                  <td colSpan={11} className="px-4 py-8 text-center text-sm text-slate-500">
                     {data.inLedger
                       ? t('فاتورةٌ من دفتر التحصيل، لا كشوفَ تشغيلٍ مرتبطةً بها.',
                           'A ledger invoice with no linked operations reports.')
@@ -216,6 +243,9 @@ export default function TaxInvoiceDetailPage() {
                   <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{[r.fromLocation, r.toLocation].filter(Boolean).join(' — ') || '—'}</td>
                   <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{r.branch || '—'}</td>
                   <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{r.carNumber || '—'}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {r.customs ? <CustomsLinkBadge link={r.customs} ar={ar} compact /> : <span className="text-slate-300">—</span>}
+                  </td>
                   <td className="px-3 py-2 tabular-nums text-slate-700">{money(r.netInvoice)}</td>
                   <td className="px-3 py-2 tabular-nums text-slate-500">{money(r.tax)}</td>
                   <td className="px-3 py-2 tabular-nums font-semibold text-slate-900">{money(r.totalInvoice)}</td>
@@ -228,7 +258,7 @@ export default function TaxInvoiceDetailPage() {
             </tbody>
             <tfoot>
               <tr className="bg-slate-50 font-bold text-slate-900">
-                <td className="px-3 py-2.5" colSpan={5}>{t('الإجمالي', 'Total')}</td>
+                <td className="px-3 py-2.5" colSpan={6}>{t('الإجمالي', 'Total')}</td>
                 {/* ويتبع المجموعُ ما بقي بعد القمع: مجموعٌ لصفوفٍ لا تُرى يُقرأ
                     على أنّه مجموعُ المعروض وليس هو. */}
                 <td className="px-3 py-2.5 tabular-nums">{money(totals.net)}</td>

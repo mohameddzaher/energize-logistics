@@ -879,6 +879,12 @@ customsClearanceSchema.statics.STAGES = STAGES;
 const bustCustomsList = () => { try { require('../utils/ttlCache').clear('customs:list'); } catch (e) { /* noop */ } };
 customsClearanceSchema.post('save', bustCustomsList);
 customsClearanceSchema.post(/^find.*[UD]/, bustCustomsList); // findOneAndUpdate / findOneAndDelete / findByIdAndUpdate|Delete
+// ── وكشوفُ التشغيل المرتبطة تتبع كلَّ حفظ ──────────────────────────────────
+// رقمُ كشفٍ في خانة نقلٍ، أو بوليصةٌ وحاويةٌ تغيّرت، أو معاملةٌ حُذفت: يُعاد
+// ربطُ ما يتأثّر في الخلف (طابورٌ لا ينتظره الحفظ). راجع services/customsOpsLink.
+const relinkOps = (doc) => { try { if (doc && doc._id) require('../services/customsOpsLink').queueClearance(doc._id); } catch (e) { /* noop */ } };
+customsClearanceSchema.post('save', relinkOps);
+customsClearanceSchema.post(/^find.*[UD]/, relinkOps);
 
 module.exports = mongoose.model('CustomsClearance', customsClearanceSchema);
 module.exports.STAGES = STAGES;

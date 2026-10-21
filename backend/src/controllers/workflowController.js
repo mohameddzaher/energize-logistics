@@ -658,6 +658,10 @@ const FILTERABLE_COLUMNS = new Set([
   // عمودٌ محسوبٌ لا حقل: شريطُ الفلترة يسأل «أيُّ الكشوف عليها فاتورة؟» ولا
   // يستطيع ذلك فلترُ رقم الفاتورة نفسِه — قيمُه خمسُمئةِ رقمٍ لا ثلاثُ حالات.
   'invoiceState',
+  // ── «التخليص»: رقمُ المعاملة المرتبطة، و(فارغ) = غيرُ مرتبط ────────────
+  // عمودٌ محسوبٌ من `customsLink.refNumber` — يجيب «أيُّ كشوفٍ لها معاملة؟»
+  // و«ما كشوفُ المعاملة كذا؟» بالفلتر نفسِه.
+  'customsRef',
 ]);
 
 // حالاتُ رقم الفاتورة الثلاث — شرطٌ واحدٌ تقرؤه القائمةُ والفلتر معًا.
@@ -745,6 +749,7 @@ function columnFilters(query, skipField, allowMoney = true, allowSelling = true)
       if (cs.length) conds.push(cs.length === 1 ? cs[0] : { $or: cs });
       continue;
     }
+    if (field === 'customsRef') { conds.push(customsRefCondition(vals)); continue; }
     const wantsBlank = vals.some((v) => v === '');
     const rest = vals.filter((v) => v !== '');
 
@@ -789,6 +794,19 @@ function columnFilters(query, skipField, allowMoney = true, allowSelling = true)
 }
 
 /**
+ * شرطُ عمود «التخليص»: أرقامُ معاملاتٍ بعينها، و'' = لا معاملةَ مرتبطة (ومنه ما
+ * فكّه موظّفٌ بيده — `customsLink` موجودٌ بلا معاملة).
+ */
+const LINKED = { 'customsLink.clearance': { $type: 'objectId' } };
+function customsRefCondition(vals) {
+  const refs = vals.filter((v) => v !== '');
+  const cs = [];
+  if (vals.includes('')) cs.push({ 'customsLink.clearance': { $not: { $type: 'objectId' } } });
+  if (refs.length) cs.push({ 'customsLink.refNumber': { $in: refs }, ...LINKED });
+  return cs.length === 1 ? cs[0] : { $or: cs };
+}
+
+/**
  * إبطال قوائم القيم المخزَّنة بعد كل كتابة.
  *
  * القائمة تُخزَّن عشرين ثانية لتوحيد الطلبات المتزامنة؛ لكن حالةً جديدة أو كشفًا
@@ -824,6 +842,8 @@ const LIST_FIELDS = [
   'accountingReview', 'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice',
   'invoiceDate', 'invoiceNotes', 'collectedAmount', 'collectionDate',
   'stage', 'lockedBy', 'lockedByName', 'lockedAt', 'externalSource', 'createdAt',
+  // معاملةُ التخليص المرتبطة — نسخةٌ صغيرة (رقمٌ وبوليصةٌ وحاويات). راجع services/customsOpsLink.
+  'customsLink',
 ].join(' ');
 
 // GET /api/workflows
@@ -915,6 +935,14 @@ function buildWorkflowFilter(query, skipField, allowMoney = true, allowSelling =
   } = query || {};
   const filter = {};
 
+  // ── «مرتبطٌ بالتخليص» / «غيرُ مرتبط» / معاملةٌ بعينها ───────────────────
+  // شريطُ الفلترة فوق الجدول وزرُّ «كشوف التشغيل» في صفحة المعاملة يقولانها
+  // بكلمة: `customs=linked|unlinked|<معرّف المعاملة>`.
+  const customs = String((query && query.customs) || '');
+  if (customs === 'linked') filter.$and = [...(filter.$and || []), LINKED];
+  else if (customs === 'unlinked') filter.$and = [...(filter.$and || []), { 'customsLink.clearance': { $not: { $type: 'objectId' } } }];
+  else if (mongoose.isValidObjectId(customs)) filter.$and = [...(filter.$and || []), { 'customsLink.clearance': new mongoose.Types.ObjectId(customs) }];
+
   // ── «كشفٌ فُوتِر ضريبيًّا ولا رقمَ لفاتورته» ────────────────────────────
   //
   // خانةُ رقم الفاتورة تُكتب بيدٍ عندنا ولا تأتي من منصّة التشغيل، وهي فارغةٌ
@@ -1002,7 +1030,8 @@ function buildWorkflowFilter(query, skipField, allowMoney = true, allowSelling =
     const { arabicSearchRegex, westernDigits } = require('../utils/arabicSearch');
     const term = westernDigits(String(search).trim());
     const ID_EXACT = ['reportNumber', 'documentNumber', ...(allowMoney ? ['invoiceNumber'] : [])];
-    const CODE_FIELDS = ['carNumber', 'plateNumber'];
+    // ورقمُ معاملة التخليص وبوليصتُها تُكتب كما هي فيُوجَد كشفُها.
+    const CODE_FIELDS = ['carNumber', 'plateNumber', 'customsLink.refNumber', 'customsLink.blNumber'];
     const PHONE_FIELDS = ['driverPhone', 'userPhone'];
     // والملاحظاتُ خارجَ البحث السريع عمدًا: نصٌّ حرٌّ يجعل كلمةً عابرةً فيه
     // تَجُرُّ كشوفًا لا علاقةَ لها بما يُسأل عنه. ولها فلترُ عمودها.
@@ -1205,6 +1234,25 @@ exports.filterOptions = async (req, res) => {
       return res.json(body);
     }
 
+    // «التخليص» يُجمَّع برقم المعاملة، والفارغُ = غيرُ مرتبط.
+    if (field === 'customsRef') {
+      const base = buildWorkflowFilter(req.query, field, money, selling);
+      const q = String(req.query.q || '').trim().toLowerCase();
+      const agg = await OperationsWorkflow.aggregate([
+        { $match: base },
+        { $group: { _id: { $cond: [{ $eq: [{ $type: '$customsLink.clearance' }, 'objectId'] }, '$customsLink.refNumber', ''] }, count: { $sum: 1 } } },
+      ]);
+      let values = agg.map((r) => ({ value: String(r._id || ''), count: r.count }))
+        .filter((o) => !q || o.value.toLowerCase().includes(q))
+        .sort((a, b) => (a.value === '' ? 1 : b.value === '' ? -1 : b.value.localeCompare(a.value, 'en', { numeric: true })));
+      const distinct = values.length;
+      const truncated = values.length > MAX_FILTER_VALUES;
+      if (truncated) values = values.slice(0, MAX_FILTER_VALUES);
+      const body = { filters: [{ key: field, values, truncated, distinct }] };
+      cache.set(key, body, 20000);
+      return res.json(body);
+    }
+
     // «مسؤول البيانات» يُعَدّ بالمصادر الثلاثة التي تملأ خانتَه — راجع utils/dataOwnerIndex.
     if (field === 'dataOwnerShown') {
       const owner = require('../utils/dataOwnerIndex');
@@ -1344,6 +1392,9 @@ exports.createWorkflow = async (req, res) => {
 
     const workflow = await OperationsWorkflow.create(filteredBody);
     if (filteredBody.invoiceNumber) await ensureLedgerInvoice(workflow);
+    // كشفٌ قد ذكره التخليصُ في خانة نقلٍ قبل أن يُنشأ، أو سندُه بوليصةُ معاملة.
+    await require('../services/customsOpsLink').resolveReports({ _id: workflow._id })
+      .catch((e) => console.error('customs link (workflow create):', e.message));
     // كشفٌ يُنشأ في النظام لعميلٍ جديد يُدخله قسمَ التحصيل بكوده بنوع حمولته —
     // كما تفعل مزامنةُ المنصّة. راجع ensureCollectionsParty.
     if (workflow.username) {
@@ -1725,6 +1776,14 @@ exports.updateWorkflow = async (req, res) => {
     // كان إثباتُ تاريخ التحصيل يقيّد `Payment` ويحدّث فاتورةً ورصيدَ عميل في
     // ورك فلو لم يعد يجري. والتاريخُ في الكشف هو الإثبات: قسمُ التحصيل يقرأ
     // «ما حُصِّل» من عمود التحصيل نفسِه، لا من نسخةٍ عنه.
+
+    // ── و«رقم السند» قد يكون بوليصةَ معاملة تخليص أو حاويتَها ───────────────
+    // يُعاد ربطُ الكشف قبل جلب نسخته، فيخرج الردُّ والبثُّ بالربط الجديد.
+    if (String(before.documentNumber || '') !== String(workflow.documentNumber || '')
+      || String(before.reportNumber || '') !== String(workflow.reportNumber || '')) {
+      await require('../services/customsOpsLink').resolveReports({ _id: workflow._id })
+        .catch((e) => console.error('customs link (workflow update):', e.message));
+    }
 
     const populated = await OperationsWorkflow.findById(workflow._id)
       .populate('createdBy', 'firstName lastName')
@@ -2262,6 +2321,11 @@ exports.bulkUpdate = async (req, res) => {
       const results = await OperationsWorkflow.bulkWrite(ops, { ordered: false });
       updated = results.modifiedCount || 0;
       cache.clear('wf:');
+      // «رقم السند» كُتب جماعيًّا — يُعاد ربطُ كشوفه بالتخليص (بوليصةٌ أو حاوية).
+      if (keys.includes('documentNumber')) {
+        await require('../services/customsOpsLink').resolveReports({ _id: { $in: perRow.map((t) => t._id) } })
+          .catch((e) => console.error('customs link (workflow bulk):', e.message));
+      }
       // رقمُ فاتورةٍ كُتب جماعيًّا يصنع قيدَه في الدفتر كما يصنعه التعديلُ
       // المفرد — وإلّا غابت هذه الفواتيرُ عن التحصيل كلِّه. راجع ensureLedgerInvoice.
       {
@@ -2459,6 +2523,9 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
       ['نوع الدفع', (w) => paymentKindLabel(w)],
       ['وجهة الكشف النهائية', (w) => w.finalReportDestination || ''],
       ['رقم المستند', (w) => w.documentNumber || ''],
+      // معاملةُ التخليص المرتبطة وبوليصتُها — راجع services/customsOpsLink.
+      ['معاملة التخليص', (w) => (w.customsLink && w.customsLink.clearance ? w.customsLink.refNumber || '' : '')],
+      ['البوليصة', (w) => (w.customsLink && w.customsLink.clearance ? w.customsLink.blNumber || '' : '')],
       ['تاريخ الإرسال', (w) => d(w.sendingDate)],
       ['تاريخ التسليم للفرع', (w) => d(w.branchDeliveryDate)],
       ['تاريخ التسليم للعميل', (w) => d(w.deliveryDate)],
@@ -2487,7 +2554,7 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
       'truckSize', 'representativeName', 'operationsReview', 'paymentDate', 'payingBranch',
       'paymentType', 'paymentSubtype', 'finalReportDestination', 'documentNumber', 'sendingDate', 'branchDeliveryDate',
       'deliveryDate', 'accountingReview', 'invoiceNumber', 'netInvoice', 'tax',
-      'totalInvoice', 'invoiceDate', 'collectionDate', 'stage',
+      'totalInvoice', 'invoiceDate', 'collectionDate', 'stage', 'customsLink',
     ].join(' ');
 
     // ── والصفوفُ تُقرأ تدفّقًا لا دفعةً واحدة ──────────────────────────────
@@ -2663,6 +2730,12 @@ exports.bulkImport = async (req, res) => {
     // «العملاء والمالية» ويزيد المستحقَّ عليه. زال القسمُ، وصار الكشفُ هو
     // المستندَ الوحيد: قسمُ التحصيل يقرأ منه مباشرةً.
 
+    // وما ذكره التخليصُ منها في خانات النقل، أو سندُه بوليصةُ معاملة، يُربط بها.
+    if (createdWorkflows.length) {
+      await require('../services/customsOpsLink').resolveReports({ _id: { $in: createdWorkflows.map((w) => w._id) } })
+        .catch((e) => console.error('customs link (bulk import):', e.message));
+    }
+
     const populated = await OperationsWorkflow.find({
       _id: { $in: createdWorkflows.map((w) => w._id) },
     })
@@ -2737,6 +2810,8 @@ exports.getFieldPermissions = async (req, res) => {
     groups: FIELD_GROUPS,
     roleAccess: ROLE_FIELD_ACCESS,
     myFields: await fieldsForRole(req.user.role),
+    // زرُّ «ربط بمعاملة تخليص» يُعرض لمن يملكه — والخادمُ يفحصه ثانيةً.
+    canLinkCustoms: await canLinkCustoms(req.user.role),
   });
 };
 
@@ -2941,6 +3016,14 @@ exports.importInvoices = async (req, res) => {
     cache.clear('wf:');
     const fresh = await OperationsWorkflow.find({ _id: { $in: plan.map((p) => p._id) } }).select('invoiceNumber').lean();
     await syncOpsInvoices([...fresh.map((w) => w.invoiceNumber), ...plan.map((p) => p.oldInvoice)]);
+    // والسندُ من الورقة قد يكون بوليصةَ معاملة تخليص — راجع services/customsOpsLink.
+    {
+      const withDoc = plan.filter((p) => Object.prototype.hasOwnProperty.call(p.patch, 'documentNumber')).map((p) => p._id);
+      if (withDoc.length) {
+        await require('../services/customsOpsLink').resolveReports({ _id: { $in: withDoc } })
+          .catch((e) => console.error('customs link (import invoices):', e.message));
+      }
+    }
     const checks = await invChecks.checkLines(lines);
     try { emitToAll('workflow:bulkImported', { importInvoices: true, updated }); } catch (_) { /* */ }
     logAudit({
@@ -2951,5 +3034,131 @@ exports.importInvoices = async (req, res) => {
   } catch (e) {
     console.error('importInvoices:', e);
     res.status(500).json({ message: e.message || 'تعذّر رفع بيانات الفواتير' });
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ربطُ الكشف بمعاملة تخليص — يدويًّا
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// الأدلّةُ الآليّة (خاناتُ النقل في المعاملة، و«رقم السند» = البوليصة أو الحاوية)
+// لا تغطّي كلَّ كشف: كثيرٌ من الكشوف لا سندَ عليه. فيربطه موظّفُ التشغيل بيده
+// بعد أن يبحث برقم المعاملة أو البوليصة أو الحاوية. راجع services/customsOpsLink.
+
+/** مَن يربط ويفكّ: مَن يكتب «رقم السند» أو «مراجعة التشغيل» في هذا الجدول. */
+async function canLinkCustoms(role) {
+  if (['super_admin', 'admin', 'operations_manager'].includes(role) || isFinanceFull(role)) return true;
+  const f = await fieldsForRole(role);
+  return f.includes('documentNumber') || f.includes('operationsReview');
+}
+
+/** GET /api/workflows/customs-search?q= — معاملاتٌ تطابق رقمَها أو بوليصتَها أو حاويتَها. */
+exports.customsSearch = async (req, res) => {
+  try {
+    const CustomsClearance = require('../models/CustomsClearance');
+    const link = require('../services/customsOpsLink');
+    const q = String(req.query.q || '').trim().slice(0, 60);
+    if (q.length < 2) return res.json({ clearances: [] });
+    const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const k = link.normKey(q);
+    // البوليصةُ والحاويةُ تُكتبان بمسافاتٍ وشرطاتٍ أو بدونها — فيُبحث بالحروف وحدها.
+    const loose = k ? k.split('').join('[\\s\\-/._]*') : '';
+    const or = [{ refNumber: { $regex: esc, $options: 'i' } }, { customerName: { $regex: esc, $options: 'i' } }];
+    if (loose) or.push({ blNumber: { $regex: loose, $options: 'i' } }, { 'containers.containerNumber': { $regex: loose, $options: 'i' } });
+    const rows = await CustomsClearance.find({ $or: or, cancelled: { $ne: true } })
+      .select('refNumber blNumber customerName containerCount cargoType stage containers.containerNumber isCompleted upcoming')
+      .sort({ createdAt: -1 }).limit(15).lean();
+    res.json({
+      clearances: rows.map((c) => ({
+        _id: String(c._id), refNumber: c.refNumber || '', blNumber: c.blNumber || '',
+        customerName: c.customerName || '', containerCount: c.containerCount || 0, cargoType: c.cargoType || 'containers',
+        stage: c.stage || '', isCompleted: !!c.isCompleted, upcoming: !!c.upcoming,
+        containers: (c.containers || []).map((u) => u.containerNumber).filter(Boolean),
+      })),
+    });
+  } catch (e) {
+    console.error('customs search', e);
+    res.status(500).json({ message: 'تعذّر البحث في معاملات التخليص' });
+  }
+};
+
+async function afterLinkWrite(req, wf, link, kind) {
+  const populated = await OperationsWorkflow.findById(wf._id)
+    .populate('createdBy', 'firstName lastName')
+    .populate('lastModifiedBy', 'firstName lastName')
+    .populate('lockedBy', 'firstName lastName');
+  // الذاكرةُ تُمسح ثمّ يُبَثّ — داخل announce.
+  link.announce({ reportNumbers: [wf.reportNumber], clearanceIds: kind.clearanceIds });
+  try { emitPerRole('workflow:updated', (r) => stripRowFor(r, populated)); } catch (_) { /* */ }
+  await logAudit({
+    user: req.user._id, action: kind.action, entity: 'OperationsWorkflow', entityId: wf._id,
+    changes: { before: { customsLink: wf.customsLink || null }, after: { customsLink: populated.customsLink || null } }, ipAddress: req.ip,
+  });
+  return stripRowFor(req.user.role, populated);
+}
+
+/** PUT /api/workflows/:id/customs-link {clearanceId, containers?} — ربطٌ يدويّ. */
+exports.setCustomsLink = async (req, res) => {
+  try {
+    if (!(await canLinkCustoms(req.user.role))) return res.status(403).json({ message: 'صلاحيّتك لا تسمح بربط الكشف بمعاملة تخليص' });
+    const id = String(req.body.clearanceId || '');
+    if (!mongoose.isValidObjectId(id)) return res.status(400).json({ message: 'اختر معاملةَ التخليص' });
+    const CustomsClearance = require('../models/CustomsClearance');
+    const c = await CustomsClearance.findById(id).select('refNumber blNumber customerName containers.containerNumber cancelled').lean();
+    if (!c || c.cancelled) return res.status(404).json({ message: 'معاملةُ التخليص غيرُ موجودة' });
+    const wf = await OperationsWorkflow.findById(req.params.id).select('reportNumber customsLink').lean();
+    if (!wf) return res.status(404).json({ message: 'الكشف غير موجود' });
+    const known = new Set((c.containers || []).map((u) => String(u.containerNumber || '').trim()).filter(Boolean));
+    const containers = (Array.isArray(req.body.containers) ? req.body.containers : [])
+      .map((x) => String(x || '').trim()).filter((x) => known.has(x));
+    const link = require('../services/customsOpsLink');
+    const next = {
+      clearance: c._id, refNumber: c.refNumber || '', blNumber: c.blNumber || '', customerName: c.customerName || '',
+      containers: [...new Set(containers)].sort(), via: 'manual', at: new Date(),
+      byName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
+    };
+    await OperationsWorkflow.updateOne({ _id: wf._id }, { $set: { customsLink: next, lastModifiedBy: req.user._id } });
+    const before = wf.customsLink && wf.customsLink.clearance ? [String(wf.customsLink.clearance)] : [];
+    const out = await afterLinkWrite(req, wf, link, { action: 'link_workflow_customs', clearanceIds: [...new Set([...before, id])] });
+    res.json(out);
+  } catch (e) {
+    console.error('set customs link', e);
+    res.status(500).json({ message: 'تعذّر ربط الكشف بمعاملة التخليص' });
+  }
+};
+
+/**
+ * DELETE /api/workflows/:id/customs-link — فكُّ الربط.
+ * ما كتبه قسمُ التخليص في خانة النقل لا يُفكّ من هنا: يُصحَّح في المعاملة نفسِها،
+ * وإلّا عاد الربطُ في أوّل حفظٍ لها ولا يُعرف لماذا.
+ */
+exports.clearCustomsLink = async (req, res) => {
+  try {
+    if (!(await canLinkCustoms(req.user.role))) return res.status(403).json({ message: 'صلاحيّتك لا تسمح بفكّ ربط الكشف' });
+    const wf = await OperationsWorkflow.findById(req.params.id).select('reportNumber customsLink').lean();
+    if (!wf) return res.status(404).json({ message: 'الكشف غير موجود' });
+    const cur = wf.customsLink || {};
+    if (!cur.clearance) return res.status(400).json({ message: 'الكشفُ غيرُ مرتبطٍ بمعاملة تخليص' });
+    if (cur.via === 'move') {
+      return res.status(409).json({
+        code: 'LINKED_FROM_CUSTOMS',
+        message: `رقمُ هذا الكشف مكتوبٌ في خانة نقلٍ في المعاملة ${cur.refNumber || ''} — يُصحَّح من صفحة المعاملة في قسم التخليص.`,
+      });
+    }
+    const link = require('../services/customsOpsLink');
+    await OperationsWorkflow.updateOne({ _id: wf._id }, {
+      $set: {
+        customsLink: {
+          clearance: null, refNumber: '', blNumber: '', customerName: '', containers: [], via: 'unlinked', at: new Date(),
+          byName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
+        },
+        lastModifiedBy: req.user._id,
+      },
+    });
+    const out = await afterLinkWrite(req, wf, link, { action: 'unlink_workflow_customs', clearanceIds: [String(cur.clearance)] });
+    res.json(out);
+  } catch (e) {
+    console.error('clear customs link', e);
+    res.status(500).json({ message: 'تعذّر فكّ الربط' });
   }
 };

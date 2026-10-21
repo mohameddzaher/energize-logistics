@@ -51,6 +51,7 @@
         "/api/workflows/bulk-delete",
         "/api/workflows/bulk-import",
         "/api/workflows/bulk-update",
+        "/api/workflows/customs-search",
         "/api/workflows/export",
         "/api/workflows/filters",
         "/api/workflows/import-invoices",

@@ -8,6 +8,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/file_upload.dart';
+import '../ui/customs_link.dart';
 import 'jp.dart' show jpDeadline;
 import 'customs_party.dart';
 
@@ -699,6 +700,12 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
+                    // ── كشوفُ التشغيل التي نقلت حاوياتِها، بفوترتها وتحصيلها ──
+                    FadeSlideIn(
+                      delayMs: 70,
+                      child: CustomsLinkedReports(clearanceId: widget.clearanceId),
+                    ),
+                    const SizedBox(height: 12),
                     // ── مهام الإنجاز ──
                     FadeSlideIn(
                       delayMs: 80,

@@ -18,6 +18,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useSocket } from '@/hooks/useSocket';
+import CustomsLinkBadge, { CustomsLinkBadges, type CustomsLinkView } from '@/components/customs/CustomsLinkBadge';
 import { canEditCollections, canEditInvoiceAmount, money, dt } from '@/lib/collections';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, Select, Loader2 } from '@/components/hr/HRKit';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
@@ -55,6 +56,8 @@ interface CashRow {
   /** عددُ مرفقات الكشف — راجع InvoiceAttachments. */
   attachments?: number;
   collectionState?: CollectionState; remaining?: number; payments?: Payment[];
+  /** معاملةُ التخليص التي يخدمها الكشف — راجع services/customsOpsLink. */
+  customs?: CustomsLinkView | null;
 }
 interface TaxRow {
   invoiceNumber: string; customer: string; partyId?: string; value: number; net: number; vat: number;
@@ -66,6 +69,8 @@ interface TaxRow {
   attachments?: number;
   /** المقبوضُ (قيمةُ المحصَّلة كلُّها، ومجموعُ دفعات الجزئيّة) والباقي. */
   collectionState?: CollectionState; collectedAmount?: number; remaining?: number; payments?: Payment[];
+  /** معاملاتُ التخليص التي تخدمها كشوفُ الفاتورة. */
+  customs?: CustomsLinkView[];
 }
 
 /**
@@ -225,6 +230,8 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
 
   // التحصيلُ يُكتب على الكشف، فأيُّ تعديلٍ هناك يُحدِّث هنا في لحظته.
   useSocket('workflow:updated', useCallback(() => { load(true); }, [load]));
+  // ربطُ الكشوف بمعاملات التخليص يُعلَن بهذا الخبر (والخادمُ مسح ذاكرته قبله).
+  useSocket('collections:changed', useCallback((d: any) => { if (d?.source === 'customs-link') load(true); }, [load]));
 
   // ── وعددُ المرفقات يتحدّث في مكانه ─────────────────────────────────────────
   // الخبرُ يحمل العددَ الجديد، فلا تُعاد قراءةُ الصفحة كلِّها لأجل مشبك.
@@ -464,6 +471,9 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
         ) },
       { header: t('العميل', 'Customer'), key: 'customer', width: 30, filter: 'username', cell: (r) => customerCell(r) },
       { header: t('المسار', 'Route'), key: 'route', width: 24 },
+      { header: t('التخليص', 'Customs'), key: 'customs', width: 16,
+        transform: (v: any) => (v && v.refNumber ? `${v.refNumber}${v.blNumber ? ` · ${v.blNumber}` : ''}` : ''),
+        cell: (r) => (r.customs ? <CustomsLinkBadge link={r.customs} ar={ar} compact /> : <span className="text-slate-300">—</span>) },
       { header: t('تاريخ السداد', 'Paid on'), key: 'paymentDate', width: 14, type: 'date', filter: 'paymentDate', transform: (v: any) => dt(v) },
       { header: t('الفرع المسدد', 'Paying branch'), key: 'payingBranch', width: 14, filter: 'payingBranch' },
       { header: t('العمر (يوم)', 'Age (days)'), key: 'ageDays', width: 12, align: 'end', cell: (r) => ageChip(r.ageDays) },
@@ -493,6 +503,9 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       { header: t('العميل', 'Customer'), key: 'customer', width: 30, filter: 'partyName', cell: (r) => customerCell(r) },
       { header: t('كود الحساب', 'Account code'), key: 'partyCode', width: 14, filter: 'partyCode' },
       { header: t('عدد الكشوفات', 'Reports'), key: 'reports', width: 12, align: 'end', cell: (r) => reportsCell(r) },
+      { header: t('التخليص', 'Customs'), key: 'customs', width: 16,
+        transform: (v: any) => (Array.isArray(v) ? v.map((x: any) => x.refNumber).filter(Boolean).join('، ') : ''),
+        cell: (r) => (r.customs && r.customs.length ? <CustomsLinkBadges links={r.customs} ar={ar} /> : <span className="text-slate-300">—</span>) },
       { header: t('القيمة', 'Value'), key: 'value', width: 16, type: 'number', align: 'end',
         cell: (r) => <span className="tabular-nums font-semibold text-slate-900">{money(r.value)}</span> },
       { header: t('المحصَّل', 'Collected'), key: 'collectedAmount', width: 14, type: 'number', align: 'end',

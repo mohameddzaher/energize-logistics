@@ -2125,6 +2125,101 @@ exports.releaseSheets = async (req, res) => {
   }
 };
 
+/**
+ * GET /:id/ops-reports — «كشوف التشغيل المرتبطة».
+ *
+ * كلُّ كشف تخريجٍ رُبط بهذه المعاملة (من خانات النقل، أو سندُه بوليصتُها أو
+ * حاويتُها، أو ربطه التشغيلُ بيده)، ومعه أين وصل في الفوترة والتحصيل. والأرقامُ
+ * التي كُتبت في خانات النقل ولم يصل كشفُها بعدُ من المنصّة تُذكر وحدَها
+ * (`pendingRefs`) — فلا يُظنّ أنّ النقلةَ ضاعت.
+ *
+ * والمبالغُ لأهل المال في القسم وحدهم (MONEY_ROLES) كبقيّة أرقام المعاملة.
+ */
+exports.getOpsReports = async (req, res) => {
+  try {
+    const OperationsWorkflow = require('../models/OperationsWorkflow');
+    const CollectionInvoice = require('../models/CollectionInvoice');
+    const clearance = await CustomsClearance.findById(req.params.id)
+      .select('refNumber blNumber containers.containerNumber containers.moves containers.returnRef containers.returnVehicleKind').lean();
+    if (!clearance) return res.status(404).json({ message: 'المعاملة غير موجودة' });
+    const rows = await OperationsWorkflow.find({ 'customsLink.clearance': clearance._id })
+      .select('reportNumber reportDate fromLocation toLocation carNumber driverName username applicationStatus executionStatus paymentType paymentSubtype invoiceNumber invoiceDate deliveryDate collectionDate cashCollectionStatus collectedAmount sellingValue totalInvoice documentNumber customsLink')
+      .sort({ reportDate: 1, reportNumber: 1 }).lean();
+
+    // حالُ الفاتورة الضريبيّة من دفتر التحصيل أوّلًا — هو ما يعمل عليه القسم.
+    const nos = [...new Set(rows.map((r) => String(r.invoiceNumber || '').trim()).filter(Boolean))];
+    const ledger = nos.length ? await CollectionInvoice.find({ invoiceNumber: { $in: nos } }).select('invoiceNumber status collectedAmount total').lean() : [];
+    const ledgerOf = new Map(ledger.map((i) => [String(i.invoiceNumber).trim(), i]));
+    const NO_INV = /^\s*(no\s*inv|بدون|لا\s*يوجد|-|—)\s*$/i;
+
+    const money = seesMoney(req);
+    const reports = rows.map((r) => {
+      const no = String(r.invoiceNumber || '').trim();
+      const cash = r.paymentType === 'cash';
+      const led = no ? ledgerOf.get(no) : null;
+      const collected = !!r.collectionDate || r.cashCollectionStatus === 'collected' || (led && /collected/i.test(led.status || ''));
+      // أربعُ حالاتٍ تُقرأ بكلمة: محصَّل · مفوتر لم يُحصَّل · نقديّ لم يُحصَّل · لم يُفوتَر.
+      const billing = collected ? 'collected' : cash ? 'cash_pending' : (no && !NO_INV.test(no)) ? 'invoiced' : 'not_invoiced';
+      return {
+        _id: String(r._id),
+        reportNumber: r.reportNumber || '',
+        reportDate: r.reportDate || null,
+        route: [r.fromLocation, r.toLocation].filter(Boolean).join(' — '),
+        carNumber: r.carNumber || '',
+        driverName: r.driverName || '',
+        customer: r.username || '',
+        applicationStatus: r.applicationStatus || '',
+        paymentType: r.paymentType || '',
+        invoiceNumber: cash ? '' : no,
+        invoiceDate: r.invoiceDate || null,
+        deliveryDate: r.deliveryDate || null,
+        collectionDate: r.collectionDate || null,
+        billing,
+        via: (r.customsLink && r.customsLink.via) || '',
+        containers: (r.customsLink && r.customsLink.containers) || [],
+        ...(money ? { sellingValue: Number(r.sellingValue) || 0, totalInvoice: Number(r.totalInvoice) || 0 } : {}),
+      };
+    });
+
+    // أرقامٌ كُتبت في خانات النقل بسيّارة الشركة ولم يصل كشفُها.
+    const written = new Set();
+    for (const u of clearance.containers || []) {
+      for (const m of u.moves || []) if (m && m.vehicleKind === 'energize' && String(m.ref || '').trim()) written.add(String(m.ref).trim());
+      if (u.returnVehicleKind === 'energize' && String(u.returnRef || '').trim()) written.add(String(u.returnRef).trim());
+    }
+    const have = new Set(rows.map((r) => String(r.reportNumber || '').trim()));
+    const missing = [...written].filter((n) => !have.has(n));
+    // وما وُجد منها ولم يُربط بهذه المعاملة (ربطه التشغيلُ بيده بغيرها) يُقال كذلك.
+    const elsewhere = missing.length
+      ? await OperationsWorkflow.find({ reportNumber: { $in: missing } }).select('reportNumber customsLink').lean()
+      : [];
+    const elsewhereOf = new Map(elsewhere.map((w) => [String(w.reportNumber).trim(), w]));
+    const pendingRefs = missing.map((n) => {
+      const w = elsewhereOf.get(n);
+      return w
+        ? { reportNumber: n, state: 'linked_elsewhere', workflowId: String(w._id), otherRef: (w.customsLink && w.customsLink.refNumber) || '' }
+        : { reportNumber: n, state: 'not_arrived' };
+    });
+
+    const count = (k) => reports.filter((r) => r.billing === k).length;
+    res.json({
+      reports,
+      pendingRefs,
+      summary: {
+        total: reports.length,
+        collected: count('collected'), invoiced: count('invoiced'),
+        cashPending: count('cash_pending'), notInvoiced: count('not_invoiced'),
+        ...(money ? {
+          selling: Math.round(reports.reduce((a, r) => a + (r.sellingValue || 0), 0) * 100) / 100,
+        } : {}),
+      },
+    });
+  } catch (e) {
+    console.error('customs ops reports', e);
+    res.status(500).json({ message: 'تعذّر تحميل كشوف التشغيل المرتبطة' });
+  }
+};
+
 module.exports.REQUIRED_STAGE_KEY = REQUIRED_STAGE_KEY;
 
 

@@ -1471,9 +1471,12 @@ exports.cashInvoices = async (req, res) => {
     const t = totals[0] || { collected: 0, collectedCount: 0, partialCount: 0, remaining: 0 };
     const sc = stateAgg[0] || { all: 0, yes: 0, partial: 0 };
     // عددُ مرفقات الصفحة كلِّها في تجميعٍ واحد — لا نداءٌ لكلّ صفّ.
-    const [partyIds, attCounts] = await Promise.all([
+    // ومعاملةُ التخليص التي يخدمها الكشف — راجع services/customsOpsLink.
+    const customsLinks = require('../services/customsOpsLink');
+    const [partyIds, attCounts, linked] = await Promise.all([
       partyIdsByName(rows.map((w) => w.username)),
       attachmentCounts('cash', rows.map((w) => String(w._id))),
+      customsLinks.linkedIndex(),
     ]);
     res.json({
       invoices: rows.map((w) => ({
@@ -1509,6 +1512,7 @@ exports.cashInvoices = async (req, res) => {
         collectionDetail: w.collectionDetail || '',
         ageDays: w.paymentDate ? Math.floor((now - new Date(w.paymentDate).getTime()) / 86400000) : null,
         attachments: attCounts.get(String(w._id)) || 0,
+        customs: customsLinks.customsOfReport(linked, w.reportNumber),
       })),
       total,
       page,
@@ -1621,9 +1625,11 @@ exports.taxInvoices = async (req, res) => {
     const t = totalsAgg[0] || { value: 0, invoices: 0, fullyCollected: 0, partial: 0, collected: 0 };
     const sc = stateAgg[0] || { all: 0, yes: 0, partial: 0 };
     const now = Date.now();
-    const [partyIds, attCounts] = await Promise.all([
+    const customsLinks = require('../services/customsOpsLink');
+    const [partyIds, attCounts, linked] = await Promise.all([
       partyIdsByName(rows.map((r) => r.partyName)),
       attachmentCounts('tax', nums),
+      customsLinks.linkedIndex(),
     ]);
 
     res.json({
@@ -1659,6 +1665,8 @@ exports.taxInvoices = async (req, res) => {
           status: i.status || '',
           ageDays: i.invoiceDate ? Math.floor((now - new Date(i.invoiceDate).getTime()) / 86400000) : null,
           attachments: attCounts.get(String(i.invoiceNumber || '').trim()) || 0,
+          // معاملاتُ التخليص التي تخدمها كشوفُ هذه الفاتورة.
+          customs: customsLinks.customsOfInvoice(linked, i.invoiceNumber),
         };
       }),
       total,
@@ -1703,7 +1711,7 @@ exports.taxInvoiceDetail = async (req, res) => {
     const [ledger, rows] = await Promise.all([
       CollectionInvoice.findOne({ invoiceNumber: number }).sort({ kind: -1 }).lean(),
       OperationsWorkflow.find({ invoiceNumber: number, ...NOT_CANCELLED })
-        .select('reportNumber reportDate username branch payingBranch fromLocation toLocation carNumber carOwner sellingValue netInvoice tax totalInvoice invoiceDate deliveryDate sendingDate documentNumber collectedAmount collectionDate accountingReview paymentType')
+        .select('reportNumber reportDate username branch payingBranch fromLocation toLocation carNumber carOwner sellingValue netInvoice tax totalInvoice invoiceDate deliveryDate sendingDate documentNumber collectedAmount collectionDate accountingReview paymentType customsLink')
         .sort({ reportDate: 1 }).lean(),
     ]);
 
@@ -1740,7 +1748,20 @@ exports.taxInvoiceDetail = async (req, res) => {
       comments: ledger?.comments || '',
       // من أين جاءت الفاتورة: من دفتر الشركة أم وُلدت من كشفٍ عندنا.
       inLedger: !!ledger,
-      reports: rows,
+      // كلُّ كشفٍ بمعاملته، والفاتورةُ بمعاملاتها مجموعةً — راجع services/customsOpsLink.
+      reports: rows.map((r) => ({ ...r, customsLink: undefined, customs: require('../services/customsOpsLink').linkView(r.customsLink) })),
+      customs: (() => {
+        const m = new Map();
+        for (const r of rows) {
+          const v = require('../services/customsOpsLink').linkView(r.customsLink);
+          if (!v) continue;
+          const prev = m.get(v.clearanceId);
+          m.set(v.clearanceId, prev
+            ? { ...prev, containers: [...new Set([...prev.containers, ...v.containers])].sort(), reports: prev.reports + 1 }
+            : { ...v, reports: 1 });
+        }
+        return [...m.values()];
+      })(),
       totals: {
         reports: rows.length,
         net,

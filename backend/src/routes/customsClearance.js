@@ -56,6 +56,8 @@ router.delete('/contracts/:id/files/:attId', authorize(...EDIT_ROLES), ctrl.dele
 router.get('/:id', ctrl.getClearance);
 // فاتورةُ معاملةٍ واحدةٍ محسوبةً من بنودها — راجع utils/customsInvoice.
 router.get('/:id/invoice', ctrl.getClearanceInvoice);
+// كشوفُ التشغيل المرتبطة بالمعاملة، بحال فوترتها وتحصيلها — راجع services/customsOpsLink.
+router.get('/:id/ops-reports', ctrl.getOpsReports);
 
 router.post('/', authorize(...EDIT_ROLES), ctrl.createClearance);
 router.put('/:id', authorize(...EDIT_ROLES), ctrl.updateClearance);

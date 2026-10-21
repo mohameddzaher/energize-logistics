@@ -223,22 +223,21 @@ async function syncLegacyFromMaster(vmOrId, opts = {}) {
   for (const v of legacy) { await syncPointers(v._id, vm._id); out.vehicles.push(String(v._id)); }
 
   // ── ولقطةُ اللوحة على ملفّ الموظّف (`vehiclePlate`) ─────────────────────
+  // قد يُفوَّض الواحدُ على مركبتين، والخانةُ واحدة: كانت تأخذ لوحةَ آخر مركبةٍ
+  // مُزامَنة، فتتقافز بين اللوحتين في كلّ مرور. فهي لوحاتُه كلُّها مرتّبةً.
   const key = orderlessPlateKey(vm.plateNumber);
   if (emp) {
     touched.add(String(emp._id));
-    if (orderlessPlateKey(emp.vehiclePlate) !== key) {
-      await Employee.updateOne({ _id: emp._id }, { $set: { vehiclePlate: vm.plateNumber } });
-      out.changed = true;
-    }
+    if (await refreshPlateSnapshot(emp)) out.changed = true;
   }
   const digits = (key || '').split('|')[0];
   if (digits) {
-    const others = await Employee.find({ vehiclePlate: new RegExp(digits.split('').join('\\D*')) }).select('_id vehiclePlate').lean();
+    const others = await Employee.find({ vehiclePlate: new RegExp(digits.split('').join('\\D*')) })
+      .select('_id vehiclePlate iqamaNumber nationalId').lean();
     for (const o of others) {
       if (emp && String(o._id) === String(emp._id)) continue;
-      if (orderlessPlateKey(o.vehiclePlate) !== key) continue;
-      await Employee.updateOne({ _id: o._id }, { $set: { vehiclePlate: '' } });
-      touched.add(String(o._id)); out.changed = true;
+      if (!plateKeysOf(o.vehiclePlate).includes(key)) continue;
+      if (await refreshPlateSnapshot(o)) { touched.add(String(o._id)); out.changed = true; }
     }
   }
   out.employees = [...touched];
@@ -250,6 +249,43 @@ async function syncLegacyFromMaster(vmOrId, opts = {}) {
  * المستمعُ حالًا قديمةً وتأخّرت الشاشةُ تغييرًا واحدًا (راجع ذاكرة
  * «announce before invalidate»).
  */
+/** لوحاتُ الخانة: قد تحمل أكثرَ من لوحةٍ مفصولةً بـ « · ». */
+const PLATE_SEP = ' · ';
+const plateKeysOf = (txt) => S(txt).split(/\s*[·،,]\s*/).map(orderlessPlateKey).filter(Boolean);
+
+/** اللوحاتُ التي يحملها الموظّفُ الآن في سجلّ المركبات — مرتّبة. */
+async function currentPlatesOf(emp) {
+  const ids = empIds(emp);
+  if (!ids.length) return [];
+  const { VehicleMaster } = M();
+  const rows = await VehicleMaster.find({ 'authorizedPerson.iqamaNumber': { $in: ids } }).select('plateNumber').lean();
+  return [...new Set(rows.map((r) => S(r.plateNumber)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'));
+}
+
+/** أتطابق الخانةُ ما يحمله؟ (مجموعةً لا ترتيبًا.) */
+async function plateSnapshotOk(emp) {
+  const want = (await currentPlatesOf(emp)).map(orderlessPlateKey).sort();
+  if (!want.length) return true; // لا تفويضَ له: الخانةُ لا تُمَسّ (قد تقول «غير مطلوب»)
+  const have = plateKeysOf(emp.vehiclePlate).sort();
+  return want.length === have.length && want.every((k, i) => k === have[i]);
+}
+
+/** يكتب لوحاتِه في الخانة إن اختلفت — ويفرّغها إن كانت لوحةً لم يعد يحملها. */
+async function refreshPlateSnapshot(emp) {
+  const { Employee } = M();
+  const plates = await currentPlatesOf(emp);
+  if (plates.length) {
+    if (await plateSnapshotOk(emp)) return false;
+    await Employee.updateOne({ _id: emp._id }, { $set: { vehiclePlate: plates.join(PLATE_SEP) } });
+    return true;
+  }
+  if (plateKeysOf(emp.vehiclePlate).length) {
+    await Employee.updateOne({ _id: emp._id }, { $set: { vehiclePlate: '' } });
+    return true;
+  }
+  return false;
+}
+
 function announce(result = {}) {
   try {
     const cache = require('./ttlCache');
@@ -389,4 +425,5 @@ async function registryPlateKeys() {
 module.exports = {
   holderOf, employeeByIdNumber, legacyVehiclesOf, masterOfLegacy, syncLegacyFromMaster,
   syncPointers, announce, afterMasterWrite, setHolder, currentFor, registryPlateKeys, fold, empName, ymd,
+  plateSnapshotOk, refreshPlateSnapshot, currentPlatesOf,
 };

@@ -132,7 +132,8 @@ async function main() {
       if (!ptrOk) { notes.push(`pointers:${v.plateNumber}`); }
     }
     if (notes.some((n) => n.startsWith('pointers'))) counts.pointerFix += 1;
-    if (emp && orderlessPlateKey(emp.vehiclePlate) !== key) { notes.push(`vehiclePlate:${S(emp.vehiclePlate) || '∅'}`); counts.plateFix += 1; }
+    // لوحاتُه كلُّها لا لوحةُ هذه المركبة وحدَها — من يحمل مركبتين تحمل خانتُه الاثنتين.
+    if (emp && !(await VA.plateSnapshotOk(emp))) { notes.push(`vehiclePlate:${S(emp.vehiclePlate) || '∅'}`); counts.plateFix += 1; }
 
     if (kind === 'agree') { counts.agree += 1; if (!notes.length) continue; }
     if (kind === 'holder_not_in_hr') counts.holderNotInHr += 1;

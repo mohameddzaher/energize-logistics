@@ -16,6 +16,8 @@ import api from '@/lib/api';
 import { canEditSection } from '@/lib/sections';
 import { Spinner, PageHeader, Modal, Field, TextInput, TextArea, PrimaryButton } from '@/components/hr/HRKit';
 import ManagedSelect from '@/components/system/ManagedSelect';
+import PersonSelect from '@/components/system/PersonSelect';
+import Link from 'next/link';
 import ScrollX from '@/components/system/ScrollX';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { KeySquare, Plus, Pencil, Trash2, Ban, Search, Building2, User, Loader2 } from 'lucide-react';
@@ -24,6 +26,9 @@ interface Rental {
   _id: string; projectAr: string; renterType: 'company' | 'person'; renterName: string; idNumber: string;
   phone?: string; userAccount?: string; notes?: string; startDate: string; status: 'active' | 'ended';
   endDate?: string; endedByName?: string; createdByName?: string;
+  /** صفُّ اليوزر في «موظفي النقل الخفيف» — الرابطُ بكروت اللوحة (backend utils/ltRental). */
+  ltEmployee?: string | null;
+  rep?: { _id: string; name: string; idNumber: string; projectAr: string; cityAr: string; vehiclePlate: string; status: string } | null;
 }
 interface Payload { items: Rental[]; counts: { active: number; byProject: Record<string, number> }; canDelete: boolean; today: string }
 
@@ -96,7 +101,7 @@ export default function UserRentalsPage() {
     if (!String(form.idNumber || '').trim()) { notify(t('اكتب رقم الإقامة', 'Enter the iqama number'), 'error'); return; }
     setSaving(true);
     try {
-      const body = { projectAr: form.projectAr, renterType: form.renterType, renterName: form.renterName, idNumber: form.idNumber, phone: form.phone || '', userAccount: form.userAccount || '', notes: form.notes || '' };
+      const body = { projectAr: form.projectAr, renterType: form.renterType, renterName: form.renterName, idNumber: form.idNumber, phone: form.phone || '', userAccount: form.userAccount || '', notes: form.notes || '', ltEmployee: form.ltEmployee || '' };
       if (form._id) await api.put(`/api/light-transport/user-rentals/${form._id}`, body);
       else await api.post('/api/light-transport/user-rentals', body);
       notify(form._id ? t('عُدِّل التأجير', 'Updated') : t('سُجِّل التأجير', 'Rental recorded'), 'success');
@@ -177,17 +182,27 @@ export default function UserRentalsPage() {
           <table className="w-full min-w-[900px] text-[13px]">
             <thead>
               <tr className="bg-slate-900 text-slate-300">
-                {[t('المشروع', 'Project'), t('لمن', 'To'), t('رقم الإقامة', 'Iqama no.'), t('اليوزر', 'Account'), t('تاريخ التأجير', 'Rented on'), t('الحالة', 'Status'), t('سجّله', 'By'), ''].map((h, i) => (
+                {[t('المشروع', 'Project'), t('اليوزر في سجلّ القسم', 'User in the section register'), t('لمن', 'To'), t('رقم الإقامة', 'Iqama no.'), t('اليوزر', 'Account'), t('تاريخ التأجير', 'Rented on'), t('الحالة', 'Status'), t('سجّله', 'By'), ''].map((h, i) => (
                   <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {d.items.length === 0 ? (
-                <tr><td colSpan={8} className="py-12 text-center text-slate-400">{t('لا تأجيرات في هذا العرض.', 'No rentals in this view.')}</td></tr>
+                <tr><td colSpan={9} className="py-12 text-center text-slate-400">{t('لا تأجيرات في هذا العرض.', 'No rentals in this view.')}</td></tr>
               ) : d.items.map((r) => (
                 <tr key={r._id} className={`hover:bg-slate-50 ${r.status === 'ended' ? 'opacity-60' : ''}`}>
                   <td className="px-3 py-2.5 font-semibold text-slate-800">{r.projectAr}</td>
+                  <td className="px-3 py-2.5">
+                    {r.rep ? (
+                      <Link href={`/system/b2c/light-transport/${r.rep._id}`} className="font-semibold text-[#f37121] hover:underline">{r.rep.name}</Link>
+                    ) : <span className="text-[12px] text-amber-700">{t('غير مربوط — عدِّله واختر اليوزر', 'Not linked — edit and pick the user')}</span>}
+                    {r.rep && (
+                      <span className="block text-[11.5px] text-slate-500">
+                        {[r.rep.projectAr, r.rep.vehiclePlate, r.rep.status].filter(Boolean).join(' · ')}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2.5">
                     <span className="inline-flex items-center gap-1.5 font-semibold text-slate-800">
                       {r.renterType === 'company' ? <Building2 className="h-3.5 w-3.5 text-slate-400" /> : <User className="h-3.5 w-3.5 text-slate-400" />}
@@ -227,8 +242,22 @@ export default function UserRentalsPage() {
             <PrimaryButton onClick={save} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{t('حفظ', 'Save')}</PrimaryButton>
           </>}>
           <div className="space-y-3">
+            {/* اليوزرُ صفٌّ في «موظفي النقل الخفيف»: يُختار فيُربط التأجيرُ بكروت اللوحة،
+                ويتبعه مشروعُه (نقلُ مشروعه ينقل التأجير) ونوعُ عقده («يوزرات» ما دام مؤجَّرًا). */}
+            <Field label={t('اليوزر (من موظفي النقل الخفيف)', 'User (from light-transport staff)')}>
+              <PersonSelect endpoint="/api/light-transport/people" ar={ar} onlyLt clearLabel={t('غير مربوط', 'Not linked')}
+                idNumber={form.ltEmployee ? (form.rep?.idNumber || form.idNumber || '') : ''}
+                name={form.ltEmployee ? (form.rep?.name || '') : ''}
+                onChange={(p) => setForm((prev) => ({
+                  ...prev!,
+                  ltEmployee: p ? p.ltId : null,
+                  rep: p ? { _id: p.ltId, name: p.name, idNumber: p.idNumber, projectAr: p.projectAr, cityAr: '', vehiclePlate: p.vehiclePlate, status: '' } : null,
+                  ...(p ? { projectAr: p.projectAr || prev?.projectAr, userAccount: prev?.userAccount || p.name, idNumber: prev?.idNumber || p.idNumber } : {}),
+                }))} />
+            </Field>
             <Field label={t('المشروع *', 'Project *')}>
-              <ManagedSelect storeLabel type="lt_project" value={form.projectAr || ''} onChange={(v) => setForm((p) => ({ ...p!, projectAr: v }))} />
+              <ManagedSelect storeLabel type="lt_project" value={form.projectAr || ''} disabled={!!form.ltEmployee} onChange={(v) => setForm((p) => ({ ...p!, projectAr: v }))} />
+              {form.ltEmployee && <span className="mt-1 block text-[11px] text-slate-400">{t('مشروعُ اليوزر في سجلّ القسم — يتغيّر بـ«نقل مشروع» من صفحته.', 'The user’s project in the section register — changed with «Transfer project» on his page.')}</span>}
             </Field>
             <Field label={t('مؤجَّر لـ *', 'Rented to *')}>
               <div className="flex gap-2">

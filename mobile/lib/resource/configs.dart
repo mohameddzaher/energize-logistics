@@ -1369,6 +1369,11 @@ final collectionsCashInvoicesCfg = ResourceConfig(
 /// يُعرَض «لم تُحصَّل» لمن سيرفضه الخادم.
 bool collectionsCanEdit = true;
 
+/// «تعديل القيمة» — بالدور وحدَه، كحارس الخادم (`authorize.strict` على
+/// collectionsDeptController.AMOUNT_EDIT_ROLES): منحُ القسم «تعديلًا» لا يفتحه.
+const collectionsAmountEditRoles = ['super_admin', 'admin', 'collections_manager', 'cfo', 'accounting_manager'];
+bool collectionsCanEditAmount = false;
+
 /// «لم تُحصَّل» — الرجوعُ عن تحصيلٍ سُجِّل: السببُ اختياريّ، ويُقيَّد باسم صاحبه.
 /// الفاتورةُ الضريبيّةُ تُعرَف برقمها، والكشفُ النقديُّ بمعرّفه في سير العمل.
 ResourceAction _uncollectAction(Map<String, dynamic> Function(Map<String, dynamic>) target) => ResourceAction(
@@ -1399,8 +1404,8 @@ final collectionsTaxInvoicesCfg = ResourceConfig(
     _attachmentsAction('tax', (r) => _s(r, 'invoiceNumber'), (r) => _s(r, 'invoiceNumber')),
     if (collectionsCanEdit && (r['fullyCollected'] == true || _s(r, 'collectionDate').isNotEmpty))
       _uncollectAction((r) => {'invoiceNumber': _s(r, 'invoiceNumber')}),
-    // تصحيحُ قيمة الفاتورة في الدفتر (ويجوز بالسالب) — كالموقع.
-    if (collectionsCanEdit)
+    // تصحيحُ قيمة الفاتورة في الدفتر (ويجوز بالسالب) — كالموقع، ولأدوارها وحدَها.
+    if (collectionsCanEditAmount)
       ResourceAction(
         icon: Icons.edit_note_rounded, ar: 'تعديل القيمة', en: 'Edit amount', color: T.navy,
         run: (ctx, r) async {

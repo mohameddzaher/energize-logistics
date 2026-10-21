@@ -24,7 +24,7 @@
  * مع كلّ تحديث، فتُفقَد حالتُه ويُعاد رسمُ الرسوم كلّها.
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -32,26 +32,25 @@ import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { money, canEditCollections } from '@/lib/collections';
-import { paymentKindLabel } from '@/lib/paymentKind';
-import MultiSearchSelect from '@/components/system/MultiSearchSelect';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import ReceivablesTree, { type Tree, type Check, type AttachKpi, type DefaultTerm } from '@/components/collections/ReceivablesTree';
-import ReceivablesRows from '@/components/collections/ReceivablesRows';
 import DefaultTermList, { type DefaultTermParty } from '@/components/collections/DefaultTermList';
 import {
-  Wallet, Users, ChevronLeft, X, UserCheck, Truck,
+  ReceivablesFilterBar, filtersFromParams, filtersToQuery, receivablesHref,
+  DASHBOARD_PATH, type DashFilters, type Facets,
+} from '@/components/collections/receivablesFilters';
+import {
+  Wallet, Users, ChevronLeft, UserCheck, Truck, Scale,
 } from 'lucide-react';
 
-type FacetOpt = { value: string; label?: string; count: number; amount: number; code?: string; isManager?: boolean };
 interface Recv {
   tree: Tree;
   checks: Check[];
   attachments?: AttachKpi;
   defaultTerm?: DefaultTerm & { parties: DefaultTermParty[] };
   manager?: { name: string; email: string } | null;
-  facets?: { officer: FacetOpt[]; parties: FacetOpt[]; pay: FacetOpt[]; dueState: FacetOpt[]; issue: FacetOpt[] };
+  facets?: Facets;
   officers: { officer: string; isManager?: boolean; defaulted?: number; count: number; value: number; late: number; lateValue: number; hard: number; hardValue: number }[];
   parties: { party: string | null; key: string; name: string; code: string; officer: string; officerIsDefault?: boolean; issueState: string; count: number; value: number; late: number; lateValue: number; hard: number; hardValue: number; oldest: number | null }[];
 }
@@ -60,23 +59,11 @@ interface Dash {
   counts: { customer: { active: number; inactive: number }; supplier: { active: number; inactive: number } };
 }
 
-/**
- * فلاترُ اللوحة — خمسُ قوائمَ متعدّدةِ الاختيار، وكلُّ رقمٍ في الصفحة تحتها.
- * تُرسَل مفصولةً بفواصل، وتُحمَل إلى كلِّ جدولٍ يُفتَح من بطاقة.
+/*
+ * فلاترُ اللوحة — خمسُ قوائمَ متعدّدةِ الاختيار ومدى تاريخ، وكلُّ رقمٍ في الصفحة
+ * تحتها. تعيش في الرابط (راجع components/collections/receivablesFilters): فتُحمَل
+ * إلى صفحة التفاصيل مع كلّ رقمٍ يُضغط، ويعود الرجوعُ إلى اللوحة بها.
  */
-type FilterKey = 'officer' | 'parties' | 'pay' | 'dueState' | 'issue';
-const NO_FILTERS: Record<FilterKey, string[]> = { officer: [], parties: [], pay: [], dueState: [], issue: [] };
-const PAY_ORDER = ['tax', 'cash', 'deferred_invoice', 'deferred_cash', 'cash_3pl', 'cash_ht'];
-const DUE_LABELS: Record<string, [string, string]> = {
-  late: ['مستحق — تجاوز موعده', 'Due — past its date'],
-  noterm: ['مستحق — بلا مدّة سداد', 'Due — no credit term'],
-  within: ['غير مستحق', 'Not yet due'],
-};
-const ISSUE_LABELS: Record<string, [string, string]> = {
-  none: ['بلا مشكلة', 'No issue'],
-  negotiating: ['تحت التفاوض', 'Negotiating'],
-  legal: ['قضايا', 'Legal'],
-};
 
 function Panel({ title, icon, right, children, className = '' }: {
   title: string; icon?: React.ReactNode; right?: React.ReactNode; children: React.ReactNode; className?: string;
@@ -107,24 +94,26 @@ export default function CollectionsDashboardPage() {
   const [data, setData] = useState<Dash | null>(null);
   // شجرةُ المديونيّة من دفتر الفواتير — راجع components/collections/ReceivablesTree.
   const [recv, setRecv] = useState<Recv | null>(null);
-  // العقدةُ المفتوحة: صفوفُها تأتي من الصفوف نفسِها التي عدّتها البطاقة في الخادم.
-  const [drill, setDrill] = useState<{ q: Record<string, string>; title: string } | null>(null);
   const [termOpen, setTermOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [filters, setFilters] = useState<Record<FilterKey, string[]>>(NO_FILTERS);
-  const setFilter = (k: FilterKey) => (v: string[]) => setFilters((f) => ({ ...f, [k]: v }));
-  const activeCount = Object.values(filters).filter((v) => v.length).length + (from || to ? 1 : 0);
 
-  // فلاترُ الصفحة كنصّ استعلام — تُرسَل إلى اللوحة وتُحمَل إلى كلِّ جدولٍ يُفتَح منها.
-  const ledgerFilters = useMemo(() => {
-    const q: Record<string, string> = {};
-    if (from) q.from = from;
-    if (to) q.to = to;
-    (Object.keys(filters) as FilterKey[]).forEach((k) => { if (filters[k].length) q[k] = filters[k].join(','); });
-    return q;
-  }, [from, to, filters]);
+  // ── الفلاترُ في الرابط ─────────────────────────────────────────────────
+  // تُقرأ منه وتُكتب فيه (`replace` لا `push`: تغييرُ فلترٍ ليس صفحةً يُرجَع
+  // إليها)، فيعود زرُّ الرجوع من صفحة التفاصيل إلى اللوحة بفلاترها.
+  const searchParams = useSearchParams();
+  const qs = searchParams?.toString() || '';
+  const filters = useMemo(() => filtersFromParams(new URLSearchParams(qs)), [qs]);
+  const setFilters = useCallback((f: DashFilters) => {
+    const s = new URLSearchParams(filtersToQuery(f)).toString();
+    router.replace(s ? `${DASHBOARD_PATH}?${s}` : DASHBOARD_PATH, { scroll: false });
+  }, [router]);
+
+  // فلاترُ الصفحة كنصّ استعلام — تُرسَل إلى اللوحة وتُحمَل إلى كلِّ رقمٍ يُفتَح منها.
+  const ledgerFilters = useMemo(() => filtersToQuery(filters), [filters]);
+  // كلُّ رقمٍ يفتح صفحةَ صفوفه — بفلاتر اللوحة والعقدةِ التي ضُغطت.
+  const openNode = useCallback((node: Record<string, string> = {}) => {
+    router.push(receivablesHref(filters, node));
+  }, [router, filters]);
 
   // ── لكلّ نداءٍ حارسُه ───────────────────────────────────────────────────
   // ردٌّ متأخّرٌ لفلترٍ سابق لا يكتب فوق الأحدث — وأبطأُ الردود هو غيرُ المفلتَر
@@ -172,26 +161,10 @@ export default function CollectionsDashboardPage() {
   useSocket('collections:changed', soon);
   useSocket('collections:attachments', soon);
 
-  // ── خياراتُ القوائم من جواب اللوحة نفسِه: عددُ كلِّ خيارٍ تحت الفلاتر الأخرى ──
-  const fx = recv?.facets;
-  const options = useMemo(() => ({
-    officer: (fx?.officer || []).map((o) => ({
-      value: o.value, count: o.count,
-      label: o.isManager ? `${o.value} — ${t('مدير القسم', 'Dept. manager')}` : o.value,
-      hint: o.isManager ? t('ومعه كلُّ عميلٍ غيرِ مُسنَد', 'incl. every unassigned customer') : undefined,
-    })),
-    parties: (fx?.parties || []).map((o) => ({ value: o.value, count: o.count, label: o.label || o.value, hint: o.code || undefined })),
-    pay: PAY_ORDER.map((k) => ({ value: k, label: paymentKindLabel(k, ar), count: fx?.pay.find((x) => x.value === k)?.count ?? 0 })),
-    dueState: ['late', 'noterm', 'within'].map((k) => ({ value: k, label: t(...DUE_LABELS[k]), count: fx?.dueState.find((x) => x.value === k)?.count ?? 0 })),
-    issue: ['none', 'negotiating', 'legal'].map((k) => ({ value: k, label: t(...ISSUE_LABELS[k]), count: fx?.issue.find((x) => x.value === k)?.count ?? 0 })),
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [fx, ar]);
-
   if (loading && !recv) return <Spinner />;
 
   const top = (recv?.parties || []).slice(0, 15);
   const topMax = Math.max(1, ...top.map((r) => r.value));
-  const clear = () => { setFilters(NO_FILTERS); setFrom(''); setTo(''); };
 
   const topCols = [
     { header: t('الكود', 'Code'), key: 'code', width: 12 },
@@ -230,29 +203,7 @@ export default function CollectionsDashboardPage() {
           خمسُ قوائمَ فيها بحثٌ واختيارٌ متعدّد، وبجانب كلِّ خيارٍ عددُه تحت
           الفلاتر الأخرى. وكلُّ رقمٍ في الصفحة تحتها — الإجماليُّ والأنواعُ الأربعة
           وعمرُ التأخير والمرفقاتُ والتحقّق — وكلُّ جدولٍ يُفتَح يحملها. */}
-      <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm space-y-2.5">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
-          <MultiSearchSelect ar={ar} label={t('مسؤول التحصيل', 'Collector')} value={filters.officer} onChange={setFilter('officer')} options={options.officer} />
-          <MultiSearchSelect ar={ar} label={t('العميل', 'Customer')} value={filters.parties} onChange={setFilter('parties')} options={options.parties} />
-          <MultiSearchSelect ar={ar} label={t('نوع الدفع', 'Payment type')} value={filters.pay} onChange={setFilter('pay')} options={options.pay} />
-          <MultiSearchSelect ar={ar} label={t('الاستحقاق', 'Due status')} value={filters.dueState} onChange={setFilter('dueState')} options={options.dueState} searchable={false} />
-          <MultiSearchSelect ar={ar} label={t('القضايا', 'Cases')} value={filters.issue} onChange={setFilter('issue')} options={options.issue} searchable={false} />
-        </div>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <DateRangeFilter from={from} to={to} onFrom={setFrom} onTo={setTo} ar={ar} />
-          {activeCount > 0 && (
-            <button type="button" onClick={clear}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-slate-400 hover:text-red-600 text-sm">
-              <X className="w-4 h-4" />{t(`إزالة الفلاتر (${activeCount})`, `Clear filters (${activeCount})`)}
-            </button>
-          )}
-          {recv?.manager && (
-            <span className="ms-auto text-[11px] text-slate-400">
-              {t(`كلُّ عميلٍ غيرِ مُسنَدٍ على مدير القسم: ${recv.manager.name}`, `Every unassigned customer falls to the dept. manager: ${recv.manager.name}`)}
-            </span>
-          )}
-        </div>
-      </div>
+      <ReceivablesFilterBar filters={filters} onChange={setFilters} facets={recv?.facets} ar={ar} manager={recv?.manager} />
 
       {/* ── ٠. المديونيّةُ كشجرة ───────────────────────────────────────────────
           أوّلُ سؤالٍ يُسأل في القسم: كم علينا، وكم عمرُه، وما منه في حدود مدّة
@@ -262,7 +213,7 @@ export default function CollectionsDashboardPage() {
         <ReceivablesTree tree={recv.tree} checks={recv.checks} ar={ar}
           attachments={recv.attachments} defaultTerm={recv.defaultTerm}
           onOpenDefaultTerm={() => setTermOpen(true)}
-          onOpen={(q, title) => setDrill({ q: { ...ledgerFilters, ...(q as Record<string, string>) }, title })} />
+          onOpen={(q) => openNode(q as Record<string, string>)} />
       )}
 
       {/* وبالمسؤول: العملُ موزَّعًا لا مجموعًا — ولا صفَّ «بلا مسؤول»: ما لم يُسنَد
@@ -272,7 +223,7 @@ export default function CollectionsDashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
             {recv.officers.map((o) => (
               <button key={o.officer} type="button"
-                onClick={() => setDrill({ q: { ...ledgerFilters, officer: o.officer }, title: `${t('مديونية', 'Receivables')} — ${o.officer}` })}
+                onClick={() => router.push(receivablesHref({ ...filters, officer: [o.officer] }))}
                 className="text-start bg-slate-50 border border-slate-200 rounded-xl p-3 hover:border-[#f37121]/50 transition-colors">
                 <p className="text-[12px] font-semibold text-slate-800">
                   {o.officer}
@@ -326,7 +277,7 @@ export default function CollectionsDashboardPage() {
               {top.map((r, i) => (
                 <li key={`${r.party || r.name}`}>
                   <button type="button"
-                    onClick={() => setDrill({ q: { ...ledgerFilters, parties: r.key }, title: `${t('مديونية', 'Receivables')} — ${r.name}` })}
+                    onClick={() => router.push(receivablesHref({ ...filters, parties: [r.key] }))}
                     className="w-full text-start flex items-center gap-3 py-2.5 group">
                     <span className={`w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-[12px] font-bold ${i < 3 ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-500'}`}>{i + 1}</span>
                     <span className="flex-1 min-w-0">
@@ -361,6 +312,18 @@ export default function CollectionsDashboardPage() {
             </span>
             <ChevronLeft className={`w-4 h-4 text-slate-300 group-hover:text-[#f37121] ${isRTL ? '' : 'rotate-180'}`} />
           </button>
+          {/* «القضايا»: العملاءُ تحت التفاوض أو في القضاء — صفحتُهم، والرقمُ ما عليهم تحت فلاتر اللوحة. */}
+          <button type="button" onClick={() => router.push('/system/collections-dept/cases')}
+            className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-2xl px-5 py-4 shadow-sm text-start hover:border-[#f37121]/50 hover:shadow-md transition-all group">
+            <span className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center"><Scale className="w-5 h-5" /></span>
+            <span className="flex-1">
+              <span className="block text-[12px] text-slate-500">{t('القضايا والتفاوض', 'Cases & negotiations')}</span>
+              <span className="block text-[18px] font-extrabold tabular-nums text-slate-900">
+                {money((recv?.facets?.issue || []).filter((x) => x.value !== 'none').reduce((a, x) => a + (x.amount || 0), 0))}
+              </span>
+            </span>
+            <ChevronLeft className={`w-4 h-4 text-slate-300 group-hover:text-[#f37121] ${isRTL ? '' : 'rotate-180'}`} />
+          </button>
           <button type="button" onClick={() => router.push('/system/collections-dept/suppliers')}
             className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-2xl px-5 py-4 shadow-sm text-start hover:border-[#f37121]/50 hover:shadow-md transition-all group">
             <span className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center"><Truck className="w-5 h-5" /></span>
@@ -373,20 +336,12 @@ export default function CollectionsDashboardPage() {
         </div>
       </div>
 
-      {/* صفوفُ العقدة المفتوحة — ومنها يُصنَّف خلافُ العميل. */}
-      <ReceivablesRows
-        open={!!drill} onClose={() => setDrill(null)}
-        title={drill?.title || ''} query={drill?.q || {}}
-        ar={ar} canEdit={canEdit}
-        onChanged={load}
-      />
-
       {/* عملاءُ المدّة الافتراضيّة — تُكتب مُددُهم من هنا. */}
       <DefaultTermList
         open={termOpen} onClose={() => setTermOpen(false)}
         parties={recv?.defaultTerm?.parties || []} days={recv?.defaultTerm?.days || 30}
         ar={ar} canEdit={canEdit} onSaved={load}
-        onOpenInvoices={(p) => setDrill({ q: { ...ledgerFilters, parties: p.key, term: 'default' }, title: `${t('مديونية', 'Receivables')} — ${p.name}` })}
+        onOpenInvoices={(p) => router.push(receivablesHref({ ...filters, parties: [p.key] }, { term: 'default' }))}
       />
     </div>
   );

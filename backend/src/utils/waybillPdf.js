@@ -362,9 +362,16 @@ function rowFromOrder(o, opts = {}) {
   // مفاتيحَ مختلفة (منصّةٌ بالإنجليزيّة وشاشتُنا بالعربيّة).
   const CASH = ['cash', 'نقدي', 'كاش'];
   const FRONT = ['front', 'ذهاب فقط', 'قدام'];
+  // ── و«نوع الدفع» أوّلًا متى كان على الطلب ──────────────────────────────────
+  // حلّ محلَّ نوع التأجير في نموذج الإنشاء (٢٠٢٦/١٠/٢١): «نقدي - …» يقبض فيه
+  // السائقُ عند التسليم، و«آجل - …» حسابٌ لاحق. والطلباتُ التي قبله بلا نوع،
+  // فتبقى على القاعدة القديمة وتُطبَع كما طُبعت.
+  const bySubtype = require('./shipmentOrderPayment').collectsOnDelivery(o.paymentSubtype);
   const cash = opts.cashRental !== undefined
     ? !!opts.cashRental
-    : CASH.includes(String(o.paymentMethod || '').trim()) || FRONT.includes(String(o.driverRentType || '').trim());
+    : bySubtype !== null
+      ? bySubtype
+      : CASH.includes(String(o.paymentMethod || '').trim()) || FRONT.includes(String(o.driverRentType || '').trim());
   return {
     notes: o.notes || '',
     sellPrice: cash && o.sellPrice != null && o.sellPrice !== '' ? String(o.sellPrice) : '',

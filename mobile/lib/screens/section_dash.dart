@@ -26,7 +26,10 @@ class DashStat {
   final IconData icon;
   final Color color;
   final bool money;
-  const DashStat(this.ar, this.en, this.path, this.icon, this.color, {this.money = false});
+  /// العقدةُ التي يفتحها الضغطُ — تُضمّ إلى الفلاتر المختارة وتُسلَّم إلى
+  /// `DashSpec.onDrill` (شاشةٌ كاملة). وبدونها تُفتَح ورقةُ المؤشّرات القديمة.
+  final Map<String, String>? drill;
+  const DashStat(this.ar, this.en, this.path, this.icon, this.color, {this.money = false, this.drill});
 }
 
 /// توزيع حسب الحالة: قائمة صفوف {_id|key, count} تتحول إلى شرائح ملونة.
@@ -45,7 +48,9 @@ class DashList {
   /// ما يفتحه الضغطُ على السطر — وبدونه تُعرَض تفاصيلُه كما هي.
   /// (لوحةُ الأفراد: المشروعُ يفتح مناديبَه في سجلّ الموظّفين — كالموقع.)
   final void Function(BuildContext context, Map<String, dynamic> row)? onTap;
-  const DashList(this.ar, this.en, this.path, this.title, {this.subtitle, this.onTap});
+  /// كـ`DashStat.drill` لسطرٍ: العقدةُ من الصفّ، تُفتَح عبر `DashSpec.onDrill`.
+  final Map<String, String> Function(Map<String, dynamic> row)? drill;
+  const DashList(this.ar, this.en, this.path, this.title, {this.subtitle, this.onTap, this.drill});
 }
 
 /// فلترٌ متعدّدُ الاختيار فوق اللوحة — خياراتُه وعدّاداتُها من جواب اللوحة نفسِه
@@ -73,6 +78,10 @@ class DashSpec {
   final Widget Function(Map<String, dynamic> data)? afterStats;
   /// فلاترُ فوق اللوحة — تُرسَل مع النداء، والأرقامُ كلُّها تحتها.
   final List<DashFilter> filters;
+  /// ما يفتحه رقمٌ له `drill`: يُعطى العنوانَ والفلاترَ المختارةَ مضمومةً إلى العقدة.
+  final void Function(BuildContext context, String title, Map<String, String> query)? onDrill;
+  /// كـ`afterStats`، ومعه فاتحُ العقدة — لجدولٍ خاناتُه أرقامٌ تُفتَح.
+  final Widget Function(Map<String, dynamic> data, void Function(String title, Map<String, String> node) open)? afterStatsDrill;
   const DashSpec({
     required this.arTitle,
     required this.enTitle,
@@ -84,6 +93,8 @@ class DashSpec {
     this.header,
     this.afterStats,
     this.filters = const [],
+    this.onDrill,
+    this.afterStatsDrill,
   });
 }
 
@@ -136,6 +147,16 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
     } catch (e) {
       if (mounted && mine == _seq) setState(() { _loading = false; _error = e.toString(); });
     }
+  }
+
+  /// الفلاترُ المختارةُ مفصولةً بفواصل — كما يقرؤها الخادم.
+  Map<String, String> get _selQuery => {
+        for (final e in _sel.entries)
+          if (e.value.isNotEmpty) e.key: e.value.join(','),
+      };
+
+  void _drill(String title, Map<String, String> node) {
+    widget.spec.onDrill?.call(context, title, {..._selQuery, ...node});
   }
 
   String _optLabel(DashFilter f, Map<String, dynamic> o) {
@@ -416,7 +437,9 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
                         return FadeSlideIn(
                           delayMs: e.key * 40,
                           child: Pressable(
-                            onTap: () => _openStatDetails(e.key),
+                            onTap: () => s.drill != null && spec.onDrill != null
+                                ? _drill(tr(s.ar, s.en), s.drill!)
+                                : _openStatDetails(e.key),
                             child: AppCard(
                             topAccent: s.color,
                             padding: const EdgeInsets.all(12),
@@ -435,6 +458,7 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
                       }).toList(),
                     ),
                     if (spec.afterStats != null) ...[const SizedBox(height: 10), spec.afterStats!(_data!)],
+                    if (spec.afterStatsDrill != null) ...[const SizedBox(height: 10), spec.afterStatsDrill!(_data!, _drill)],
                     ...spec.breakdowns.map((b) {
                       final rows = _rows(b.path);
                       if (rows.isEmpty) return const SizedBox.shrink();
@@ -471,7 +495,9 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
                               Text(tr(l.ar, l.en), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                               const SizedBox(height: 6),
                               ...rows.take(8).map((r) => Pressable(
-                                onTap: () => l.onTap != null ? l.onTap!(context, r) : _openDetails(l.title(r), r),
+                                onTap: () => l.drill != null && spec.onDrill != null
+                                    ? _drill(l.title(r), l.drill!(r))
+                                    : l.onTap != null ? l.onTap!(context, r) : _openDetails(l.title(r), r),
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(vertical: 6),
                                   child: Row(children: [

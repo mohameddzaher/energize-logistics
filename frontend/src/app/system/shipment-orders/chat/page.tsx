@@ -24,7 +24,7 @@ const fold = (x: string) => x.toLowerCase()
 const SYSTEM_KEYS = new Set([
   'fromCity', 'toCity', 'truckType', 'cargoType', 'truckLength', 'quantity',
   'pickupTime', 'startTime', 'arrivalTime', 'sellPrice', 'buyPrice',
-  'driverRentType', 'paymentMethod', 'branch', 'notes',
+  'paymentSubtype', 'driverRentType', 'paymentMethod', 'branch', 'notes',
 ]);
 
 interface Msg { who: 'bot' | 'user'; text: string }

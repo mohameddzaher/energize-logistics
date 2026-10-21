@@ -31,6 +31,16 @@ export const isCollectionsAdmin = (u: RoleOrUser): boolean =>
   COLLECTIONS_ADMIN_ROLES.includes(roleOf(u));
 
 /**
+ * «تعديل القيمة» على فاتورةٍ — قرارٌ ماليّ لا عملُ تحصيلٍ يوميّ (صاحبُ الشركة،
+ * ٢٠٢٦/١٠/٢١). بالدور وحدَه: منحُ القسم «تعديلًا» لا يفتحه، والخادمُ يحرسه
+ * بـ`authorize.strict` على القائمة نفسِها (collectionsDeptController.AMOUNT_EDIT_ROLES).
+ */
+export const AMOUNT_EDIT_ROLES = ['super_admin', 'admin', 'collections_manager', 'cfo', 'accounting_manager'];
+
+export const canEditInvoiceAmount = (u: RoleOrUser): boolean =>
+  AMOUNT_EDIT_ROLES.includes(roleOf(u));
+
+/**
  * ── مَن يرى «ما علينا» ─────────────────────────────────────────────────────
  *
  * قسمُ التحصيل يُحصِّل، ولا شأنَ له بما ندفعه للموردين ولا بالصافي ولا بالربح.

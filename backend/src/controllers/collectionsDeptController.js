@@ -2070,6 +2070,13 @@ exports.NO_INVOICE_TOKENS = NO_INVOICE_TOKENS;
  * القيمةُ هنا (مثلًا تسويةٌ بالسالب)، فتُقفَل على ما كُتب (`totalLocked`): لا
  * يعيد حسابَها مجموعُ الكشوف بعد ذلك. ويُقيَّد التعديلُ بالقيمتين وكاتبه.
  */
+/**
+ * مَن يصحّح قيمةَ فاتورة — قائمتُه وحدَها تقرّر (`authorize.strict` في المسار):
+ * لا منحُ قسمٍ ولا تأشيرةُ صفحة. ومرآتُها في الواجهة `AMOUNT_EDIT_ROLES` في
+ * frontend/src/lib/collections.ts وفي التطبيق `collectionsAmountEditRoles`.
+ */
+exports.AMOUNT_EDIT_ROLES = ['super_admin', 'admin', 'collections_manager', 'cfo', 'accounting_manager'];
+
 exports.updateTaxInvoiceAmount = async (req, res) => {
   try {
     const CollectionInvoice = require('../models/CollectionInvoice');

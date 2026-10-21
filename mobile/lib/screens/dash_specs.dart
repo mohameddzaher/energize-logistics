@@ -5,6 +5,7 @@ import '../ui/widgets.dart';
 import '../resource/configs.dart' show lightTransportCfg;
 import '../resource/resource.dart' show ResourceScreen;
 import 'section_dash.dart';
+import 'collections_receivables.dart';
 import 'b2c_orders_report.dart';
 
 /// مواصفات لوحات الأقسام — كل قسم يعرّف بطاقاته وتوزيعاته وقوائمه فوق
@@ -446,36 +447,43 @@ final collectionsDashSpec = DashSpec(
     DashFilter('issue', 'القضايا', 'Cases', 'facets.issue', labels: _issueLabels, searchable: false),
   ],
   stats: const [
-    DashStat('إجمالي المديونية', 'Receivable', 'tree.all.value', Icons.call_received_rounded, T.danger, money: true),
-    DashStat('ضريبي', 'Tax', 'tree.byKind.tax.value', Icons.receipt_long_outlined, T.navy, money: true),
-    DashStat('نقدي', 'Cash', 'tree.byKind.cash.value', Icons.payments_outlined, T.info, money: true),
+    DashStat('إجمالي المديونية', 'Receivable', 'tree.all.value', Icons.call_received_rounded, T.danger, money: true, drill: {}),
+    DashStat('ضريبي', 'Tax', 'tree.byKind.tax.value', Icons.receipt_long_outlined, T.navy, money: true, drill: {'kind': 'tax'}),
+    DashStat('نقدي', 'Cash', 'tree.byKind.cash.value', Icons.payments_outlined, T.info, money: true, drill: {'kind': 'cash'}),
     // ── أنواعُ الدفع الأربعة: مستحقٌّ وغيرُ مستحقّ ─────────────────────────
     // والمستحقُّ ما تجاوز موعدَه ومعه ما لا مدّةَ سدادٍ له. راجع collectionsReceivablesController.
-    DashStat('آجل - فاتورة · مستحق', 'Deferred invoice · due', 'tree.subtypes.deferred_invoice.due.value', Icons.receipt_long_outlined, T.danger, money: true),
-    DashStat('آجل - فاتورة · غير مستحق', 'Deferred invoice · not due', 'tree.subtypes.deferred_invoice.notDue.value', Icons.receipt_long_outlined, T.success, money: true),
-    DashStat('آجل - كاش · مستحق', 'Deferred cash · due', 'tree.subtypes.deferred_cash.due.value', Icons.payments_outlined, T.danger, money: true),
-    DashStat('آجل - كاش · غير مستحق', 'Deferred cash · not due', 'tree.subtypes.deferred_cash.notDue.value', Icons.payments_outlined, T.success, money: true),
-    DashStat('نقدي - 3PL · مستحق', 'Cash 3PL · due', 'tree.subtypes.cash_3pl.due.value', Icons.local_shipping_outlined, T.danger, money: true),
-    DashStat('نقدي - 3PL · غير مستحق', 'Cash 3PL · not due', 'tree.subtypes.cash_3pl.notDue.value', Icons.local_shipping_outlined, T.success, money: true),
-    DashStat('نقدي - HT · مستحق', 'Cash HT · due', 'tree.subtypes.cash_ht.due.value', Icons.local_shipping_rounded, T.danger, money: true),
-    DashStat('نقدي - HT · غير مستحق', 'Cash HT · not due', 'tree.subtypes.cash_ht.notDue.value', Icons.local_shipping_rounded, T.success, money: true),
+    DashStat('آجل - فاتورة · مستحق', 'Deferred invoice · due', 'tree.subtypes.deferred_invoice.due.value', Icons.receipt_long_outlined, T.danger, money: true, drill: {'subtype': 'deferred_invoice', 'due': 'due'}),
+    DashStat('آجل - فاتورة · غير مستحق', 'Deferred invoice · not due', 'tree.subtypes.deferred_invoice.notDue.value', Icons.receipt_long_outlined, T.success, money: true, drill: {'subtype': 'deferred_invoice', 'due': 'notdue'}),
+    DashStat('آجل - كاش · مستحق', 'Deferred cash · due', 'tree.subtypes.deferred_cash.due.value', Icons.payments_outlined, T.danger, money: true, drill: {'subtype': 'deferred_cash', 'due': 'due'}),
+    DashStat('آجل - كاش · غير مستحق', 'Deferred cash · not due', 'tree.subtypes.deferred_cash.notDue.value', Icons.payments_outlined, T.success, money: true, drill: {'subtype': 'deferred_cash', 'due': 'notdue'}),
+    DashStat('نقدي - 3PL · مستحق', 'Cash 3PL · due', 'tree.subtypes.cash_3pl.due.value', Icons.local_shipping_outlined, T.danger, money: true, drill: {'subtype': 'cash_3pl', 'due': 'due'}),
+    DashStat('نقدي - 3PL · غير مستحق', 'Cash 3PL · not due', 'tree.subtypes.cash_3pl.notDue.value', Icons.local_shipping_outlined, T.success, money: true, drill: {'subtype': 'cash_3pl', 'due': 'notdue'}),
+    DashStat('نقدي - HT · مستحق', 'Cash HT · due', 'tree.subtypes.cash_ht.due.value', Icons.local_shipping_rounded, T.danger, money: true, drill: {'subtype': 'cash_ht', 'due': 'due'}),
+    DashStat('نقدي - HT · غير مستحق', 'Cash HT · not due', 'tree.subtypes.cash_ht.notDue.value', Icons.local_shipping_rounded, T.success, money: true, drill: {'subtype': 'cash_ht', 'due': 'notdue'}),
     // ── الخطورةُ على مدّة كلّ عميل (والافتراضيّةُ ٣٠ يومًا) ─────────────────
-    DashStat('طبيعي', 'Normal', 'tree.risk.normal.value', Icons.task_alt_rounded, T.success, money: true),
-    DashStat('متوسط', 'Medium', 'tree.risk.medium.value', Icons.schedule_outlined, T.warn, money: true),
-    DashStat('مرتفع', 'Hard', 'tree.risk.hard.value', Icons.warning_amber_rounded, T.danger, money: true),
-    DashStat('آجل - فاتورة بلا مرفق', 'Deferred invoice, no file', 'attachments.missing.count', Icons.attach_file_rounded, T.orange),
-    DashStat('عملاء بمدّة افتراضية ٣٠ يومًا', 'Customers on default 30-day term', 'defaultTerm.customers', Icons.event_note_outlined, T.navy),
-    DashStat('فواتير مفتوحة', 'Open invoices', 'tree.all.count', Icons.pending_actions_outlined, T.warn),
+    DashStat('طبيعي', 'Normal', 'tree.risk.normal.value', Icons.task_alt_rounded, T.success, money: true, drill: {'risk': 'normal'}),
+    DashStat('متوسط', 'Medium', 'tree.risk.medium.value', Icons.schedule_outlined, T.warn, money: true, drill: {'risk': 'medium'}),
+    DashStat('مرتفع', 'Hard', 'tree.risk.hard.value', Icons.warning_amber_rounded, T.danger, money: true, drill: {'risk': 'hard'}),
+    DashStat('آجل - فاتورة بلا مرفق', 'Deferred invoice, no file', 'attachments.missing.count', Icons.attach_file_rounded, T.orange, drill: {'attach': 'missing'}),
+    DashStat('عملاء بمدّة افتراضية ٣٠ يومًا', 'Customers on default 30-day term', 'defaultTerm.customers', Icons.event_note_outlined, T.navy, drill: {'term': 'default'}),
+    DashStat('فواتير مفتوحة', 'Open invoices', 'tree.all.count', Icons.pending_actions_outlined, T.warn, drill: {}),
   ],
-  // «عمر التأخير»: الشرائحُ الخمس وفي كلٍّ طبيعي / متوسط / مرتفع — كما في الموقع.
-  afterStats: (d) => _CollectionsAgeTable(d),
+  // كلُّ رقمٍ يفتح شاشةَ صفوفه كاملةً (لا ورقةً سفليّة) — كصفحة الموقع
+  // `/dashboard/receivables`، بالفلاتر المختارة والعقدةِ التي ضُغطت.
+  onDrill: (ctx, title, q) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => CollectionsReceivablesScreen(title: title, query: q))),
+  // «عمر التأخير»: الشرائحُ الخمس وفي كلٍّ طبيعي / متوسط / مرتفع — كما في الموقع،
+  // وكلُّ خانةٍ تُفتَح.
+  afterStatsDrill: (d, open) => _CollectionsAgeTable(d, open),
   lists: [
     DashList('أكبر المديونيات', 'Largest receivables', 'parties', (r) => _s(r, 'name'),
+        drill: (r) => {'parties': _s(r, 'key')},
         subtitle: (r) => '${_n(r['value'])} ${tr('ر.س', 'SAR')} · ${_n(r['count'])} ${tr('فاتورة', 'invoices')} · ${_s(r, 'officer')}'),
     DashList('بمسؤول التحصيل', 'By collector', 'officers',
         (r) => r['isManager'] == true ? '${_s(r, 'officer')} — ${tr('مدير القسم', 'Dept. manager')}' : _s(r, 'officer'),
+        drill: (r) => {'officer': _s(r, 'officer')},
         subtitle: (r) => '${_n(r['value'])} ${tr('ر.س', 'SAR')} · ${tr('متأخّر', 'late')} ${_n(r['lateValue'])} · ${tr('مرتفع', 'hard')} ${_n(r['hardValue'])}'),
     DashList('بمدّة افتراضية — حدّد مدّة العميل', 'On the default term — set the term', 'defaultTerm.parties', (r) => _s(r, 'name'),
+        drill: (r) => {'parties': _s(r, 'key'), 'term': 'default'},
         subtitle: (r) => '${_n(r['value'])} ${tr('ر.س', 'SAR')} · ${_s(r, 'officer')}'),
   ],
 );
@@ -483,7 +491,9 @@ final collectionsDashSpec = DashSpec(
 /// جدولُ «عمر التأخير»: صفٌّ لكلّ شريحة، وأعمدتُه أجزاؤها الثلاثة.
 class _CollectionsAgeTable extends StatelessWidget {
   final Map<String, dynamic> data;
-  const _CollectionsAgeTable(this.data);
+  /// يفتح خانةً في شاشة تفاصيل المديونيّة.
+  final void Function(String title, Map<String, String> node) open;
+  const _CollectionsAgeTable(this.data, this.open);
 
   static const _bands = [
     ('d1_15', '١ – ١٥ يومًا', '1–15 days'),
@@ -524,9 +534,15 @@ class _CollectionsAgeTable extends StatelessWidget {
             ]),
             for (final b in _bands)
               TableRow(children: [
-                Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Text(tr(b.$2, b.$3), style: head)),
+                InkWell(
+                  onTap: () => open(tr(b.$2, b.$3), {'band': b.$1}),
+                  child: Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Text(tr(b.$2, b.$3), style: head)),
+                ),
                 for (final r in _risks)
-                  Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Text(_m(_v(b.$1, r.$1)), style: cell, textAlign: TextAlign.end)),
+                  InkWell(
+                    onTap: () => open('${tr(b.$2, b.$3)} — ${tr(r.$2, r.$3)}', {'band': b.$1, 'risk': r.$1}),
+                    child: Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Text(_m(_v(b.$1, r.$1)), style: cell, textAlign: TextAlign.end)),
+                  ),
               ]),
           ],
         ),

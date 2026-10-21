@@ -130,6 +130,9 @@ const derive = () => [
       creditDays: { $ifNull: ['$_party.creditDays', 0] },
       officer: { $ifNull: ['$_party.collectionOfficer', ''] },
       issueState: { $ifNull: ['$_party.issue.state', 'none'] },
+      // بيانُ الحالة ومنذ متى — تقرؤهما صفحةُ «القضايا» وجدولُ المديونيّة.
+      issueNote: { $ifNull: ['$_party.issue.note', ''] },
+      issueSince: { $ifNull: ['$_party.issue.since', null] },
       // أساسُ العدّ: التسليمُ إن وُجد، وإلّا الإصدار — ويُقال أيُّهما.
       basis: { $cond: [{ $ne: ['$deliveryDate', null] }, 'delivery', 'invoice'] },
       basisDate: { $ifNull: ['$deliveryDate', '$invoiceDate'] },
@@ -261,7 +264,7 @@ async function cashSubtypeRows(q = {}, subs = CASH_SUBS) {
   });
   filter.paymentSubtype = { $in: subs };
   const docs = await OperationsWorkflow.find(filter)
-    .select('reportNumber username paymentDate deliveryDate sellingValue paymentSubtype').lean();
+    .select('reportNumber username paymentDate deliveryDate sellingValue collectedAmount paymentSubtype').lean();
   const keys = [...new Set(docs.map((w) => CollectionsParty.fold(w.username || '')).filter(Boolean))];
   const parties = keys.length
     ? await CollectionsParty.find({ kind: 'customer', nameKey: { $in: keys } })
@@ -294,6 +297,10 @@ async function cashSubtypeRows(q = {}, subs = CASH_SUBS) {
       creditDays,
       officer: p?.collectionOfficer || '',
       issueState: p?.issue?.state || 'none',
+      issueNote: p?.issue?.note || '',
+      issueSince: p?.issue?.since || null,
+      // كشفٌ لم يُحصَّل قد يحمل دفعةً جزئيّة كتبها المحصِّل — تُقال ولا تُطرَح من القيمة.
+      collected: r2(w.collectedAmount),
       basis: w.deliveryDate ? 'delivery' : 'payment',
       dueDate,
       daysLate,
@@ -336,7 +343,7 @@ async function loadBase(q = {}) {
           $project: {
             invoiceNumber: 1, kind: 1, total: 1, partyName: 1, partyCode: 1, party: 1,
             invoiceDate: 1, deliveryDate: 1, status: 1,
-            creditDays: 1, officer: 1, issueState: 1, basis: 1, dueDate: 1, daysLate: 1,
+            creditDays: 1, officer: 1, issueState: 1, issueNote: 1, issueSince: 1, basis: 1, dueDate: 1, daysLate: 1,
             age: 1, dueState: 1, lateBand: 1,
           },
         },
@@ -347,12 +354,17 @@ async function loadBase(q = {}) {
     const taxNos = ledger.filter((r) => r.kind === 'tax').map((r) => String(r.invoiceNumber || '').trim());
     const cashNos = ledger.filter((r) => r.kind === 'cash').map((r) => String(r.invoiceNumber || '').trim());
     const { countsFor } = require('./collectionsAttachmentsController');
-    const [subOfTax, subOfCash, attTax, attCash] = await Promise.all([
+    const [subOfTax, subOfCash, attTax, attCash, wfOfCash] = await Promise.all([
       subtypeOfInvoices(taxNos),
       cashSubtypeOfReports(cashNos),
       countsFor('tax', taxNos),
       countsFor('cash', cashWf.map((r) => String(r._id))),
+      // شحنةُ الدفتر النقديّة رقمُها رقمُ كشفها — ومنه يُفتَح الكشفُ من الجدول.
+      cashNos.length
+        ? OperationsWorkflow.find({ reportNumber: { $in: [...new Set(cashNos.filter(Boolean))] } }).select('_id reportNumber').lean()
+        : [],
     ]);
+    const wfIdOf = new Map(wfOfCash.map((w) => [String(w.reportNumber || '').trim(), String(w._id)]));
 
     for (const r of ledger) {
       const no = String(r.invoiceNumber || '').trim();
@@ -363,8 +375,11 @@ async function loadBase(q = {}) {
       } else {
         r.payKind = subOfCash.get(no) || 'cash';
         r.attachments = null;
+        r.workflowId = wfIdOf.get(no) || null;
       }
       r.total = r.total || 0;
+      // فاتورةُ الدفتر تُحصَّل كاملةً أو لا تُحصَّل — والقائمةُ هنا لم تُحصَّل.
+      r.collected = 0;
       r.ageBand = ageBandOf(r.age);
       r.risk = riskOf(r.age, r.creditDays);
     }
@@ -656,48 +671,166 @@ exports.overview = async (req, res) => {
   }
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  صفوفُ البطاقة — صفحةُ «تفاصيل المديونيّة» وقضاياها
+// ═══════════════════════════════════════════════════════════════════════════
+
+const RIYADH = 'Asia/Riyadh';
+/** يومُ الرياض «YYYY-MM-DD» — به تُفلتَر أعمدةُ التاريخ كما تُقرأ في الشاشة. */
+const ymd = (d) => {
+  if (!d) return '';
+  const x = new Date(d);
+  return Number.isNaN(x.getTime()) ? '' : x.toLocaleDateString('en-CA', { timeZone: RIYADH });
+};
+const ROWS_CAP = 20000;
+
 /**
- * GET /api/collections-dept/receivables/rows
- * الصفوفُ نفسُها التي عُدّت، بالفلاتر نفسِها (parseFilters)، ثمّ بعقدةٍ:
+ * العقدةُ من الرابط — ما يضيّق الصفوفَ فوق فلاتر اللوحة:
  *   kind=tax|cash                      نصفا الإجمالي
  *   subtype=<نوع>&due=due|notdue       نصفُ بطاقةِ نوع
  *   band=<شريحة>&risk=normal|medium|hard   خانةٌ من «عمر التأخير»
  *   attach=missing|missing_tax         «آجل - فاتورة» (أو «ضريبي») بلا مرفق
  *   term=default                       ما يُقاس على المدّة الافتراضيّة
  *   lateBand=d1_30|d31_60|d60_plus     (الشرائحُ القديمة — للروابط المحفوظة)
- * &page=&limit=
+ */
+function nodeOf(q = {}) {
+  const subtype = SUBTYPE_KEYS.includes(String(q.subtype || '')) ? String(q.subtype) : '';
+  return {
+    subtype,
+    // بطاقةُ نوعٍ نقديّ: صفوفُها كشوفُ الكاش (cashSubtypeRows)؛ وما عداها الدفتر.
+    workflow: !!subtype && subtypeFamily(subtype) === 'cash',
+    due: ['due', 'notdue'].includes(q.due) ? q.due : '',
+    band: BAND_KEYS.includes(String(q.band || '')) ? String(q.band) : '',
+    risk: RISKS.includes(String(q.risk || '')) ? String(q.risk) : '',
+    kind: ['tax', 'cash'].includes(q.kind) ? q.kind : '',
+    lateBand: ['d1_30', 'd31_60', 'd60_plus'].includes(q.lateBand) ? q.lateBand : '',
+    attach: ['missing', 'missing_tax'].includes(q.attach) ? q.attach : '',
+    term: q.term === 'default' ? 'default' : '',
+  };
+}
+const inNode = (r, n) => (!n.kind || r.kind === n.kind)
+  && (!n.subtype || r.payKind === n.subtype)
+  && (!n.due || (n.due === 'due' ? isDue(r.dueState) : !isDue(r.dueState)))
+  && (!n.band || r.ageBand === n.band)
+  && (!n.risk || r.risk === n.risk)
+  && (!n.lateBand || r.lateBand === n.lateBand)
+  && (n.attach !== 'missing' || (r.payKind === 'deferred_invoice' && !r.attachments))
+  && (n.attach !== 'missing_tax' || (r.payKind === 'tax' && !r.attachments))
+  && (n.term !== 'default' || !(Number(r.creditDays) > 0));
+
+/**
+ * أعمدةُ الجدول نصًّا — بها يُفلتَر القمعُ (`cf_<عمود>=قيمة`، مكرَّرةً لا
+ * مفصولةً بفاصلة: قد تحمل القيمةُ فاصلة) ومنها تُبنى قوائمُه. والنصُّ هو ما
+ * يُقرأ في الخانة، فما يُختار هو ما يُرى.
+ */
+const COLS = {
+  number: (r) => String(r.invoiceNumber || ''),
+  customer: (r) => r.partyName || '',
+  code: (r) => r.partyCode || '',
+  officer: (r, mgr) => effectiveOfficer(r.officer, mgr) || '',
+  payKind: (r) => r.payKind || '',
+  invoiceDate: (r) => ymd(r.invoiceDate),
+  deliveryDate: (r) => ymd(r.deliveryDate),
+  term: (r) => String(termOf(r.creditDays)),
+  termSource: (r) => (Number(r.creditDays) > 0 ? 'customer' : 'default'),
+  dueDate: (r) => ymd(r.dueDate),
+  ageBand: (r) => r.ageBand || '',
+  risk: (r) => r.risk || '',
+  dueState: (r) => r.dueState || '',
+  issue: (r) => r.issueState || 'none',
+  attach: (r) => (r.attachments == null ? '' : (r.attachments > 0 ? 'yes' : 'no')),
+};
+const colFiltersOf = (q = {}) => {
+  const out = {};
+  for (const k of Object.keys(COLS)) {
+    const v = [].concat(q[`cf_${k}`] == null ? [] : q[`cf_${k}`]).map(String);
+    if (v.length) out[k] = new Set(v);
+  }
+  return out;
+};
+
+const RISK_ORDER = { normal: 1, medium: 2, hard: 3, nodate: 0 };
+const time = (d) => (d ? new Date(d).getTime() || 0 : null);
+/** الفرزُ — كلُّ عمودٍ بقيمته لا بنصّه: التاريخُ بزمنه والمبلغُ برقمه. */
+const SORTS = {
+  number: (r) => String(r.invoiceNumber || ''),
+  customer: (r) => r.partyName || '',
+  officer: (r) => r._officer || '',
+  payKind: (r) => r.payKind || '',
+  invoiceDate: (r) => time(r.invoiceDate),
+  deliveryDate: (r) => time(r.deliveryDate),
+  term: (r) => termOf(r.creditDays),
+  dueDate: (r) => time(r.dueDate),
+  age: (r) => r.age,
+  daysLate: (r) => r.daysLate,
+  total: (r) => r.total || 0,
+  collected: (r) => r.collected || 0,
+  remaining: (r) => (r.total || 0) - (r.collected || 0),
+  risk: (r) => RISK_ORDER[r.risk] ?? 0,
+  issue: (r) => r.issueState || 'none',
+};
+
+/**
+ * صفوفُ العقدة تحت كلِّ فلتر — اللوحةُ، والعقدةُ، والبحثُ، وقموعُ الأعمدة.
+ * `exceptCol`: عمودٌ تُبنى قائمتُه فلا يُفلتَر بنفسه (كما يفعل إكسل).
+ */
+function selectRows(base, q, mgr, exceptCol = '') {
+  const f = parseFilters(q, mgr);
+  const n = nodeOf(q);
+  const cf = colFiltersOf(q);
+  const needle = String(q.q || '').trim().toLowerCase();
+  const src = n.workflow ? base.cashWf : base.ledger;
+  return src.filter((r) => {
+    if (!passes(r, f, mgr) || !inNode(r, n)) return false;
+    if (needle && ![r.invoiceNumber, r.partyName, r.partyCode].some((v) => String(v || '').toLowerCase().includes(needle))) return false;
+    for (const [k, set] of Object.entries(cf)) {
+      if (k === exceptCol) continue;
+      if (!set.has(COLS[k](r, mgr))) return false;
+    }
+    return true;
+  });
+}
+
+const sumOf = (list, pick) => r2(list.reduce((a, r) => a + (pick(r) || 0), 0));
+
+/**
+ * GET /api/collections-dept/receivables/rows
+ * الصفوفُ نفسُها التي عُدّت، بالفلاتر نفسِها (parseFilters)، ثمّ بالعقدة
+ * (nodeOf)، ثمّ بحثٌ `q` وقموعُ الأعمدة `cf_<عمود>`؛
+ * &sort=<عمود>&dir=asc|desc&page=&limit=   (`limit=all` للتصدير — حتى ٢٠ ألفًا)
+ *
+ * والمجاميعُ على النتيجة كلِّها لا على الصفحة المعروضة.
  */
 exports.rows = async (req, res) => {
   try {
     const q = req.query || {};
     const page = Math.max(1, Number(q.page) || 1);
-    const limit = Math.min(500, Math.max(1, Number(q.limit) || 100));
+    const limit = q.limit === 'all' ? ROWS_CAP : Math.min(500, Math.max(1, Number(q.limit) || 100));
     const mgr = await collectionsManager();
     const base = await loadBase(q);
-    const f = parseFilters(q, mgr);
+    const list = selectRows(base, q, mgr);
 
-    const subtype = SUBTYPE_KEYS.includes(String(q.subtype || '')) ? String(q.subtype) : '';
-    // بطاقةُ نوعٍ نقديّ: صفوفُها كشوفُ الكاش (cashSubtypeRows)؛ وما عداها الدفتر.
-    const src = subtype && subtypeFamily(subtype) === 'cash' ? base.cashWf : base.ledger;
-    const due = ['due', 'notdue'].includes(q.due) ? q.due : '';
-    const band = BAND_KEYS.includes(String(q.band || '')) ? String(q.band) : '';
-    const risk = RISKS.includes(String(q.risk || '')) ? String(q.risk) : '';
-    const kind = ['tax', 'cash'].includes(q.kind) ? q.kind : '';
-    const lateBand = ['d1_30', 'd31_60', 'd60_plus'].includes(q.lateBand) ? q.lateBand : '';
+    // الفرزُ الافتراضيُّ: الأقدمُ أوّلًا ثمّ الأكبر — ما يُطالَب به اليوم.
+    const sortKey = SORTS[q.sort] ? q.sort : '';
+    if (sortKey) {
+      const dir = q.dir === 'asc' ? 1 : -1;
+      const get = SORTS[sortKey];
+      if (sortKey === 'officer') list.forEach((r) => { r._officer = effectiveOfficer(r.officer, mgr); });
+      list.sort((a, b) => {
+        const x = get(a); const y = get(b);
+        // الفارغُ آخرًا في الاتّجاهين — لا يتصدّر الجدولَ صفٌّ بلا تاريخ.
+        if (x == null && y == null) return 0;
+        if (x == null) return 1;
+        if (y == null) return -1;
+        if (typeof x === 'string') return x.localeCompare(y, 'ar') * dir;
+        return (x - y) * dir;
+      });
+    } else {
+      list.sort((a, b) => (b.age ?? -Infinity) - (a.age ?? -Infinity) || (b.total || 0) - (a.total || 0));
+    }
 
-    const list = src.filter((r) => passes(r, f, mgr)
-      && (!kind || r.kind === kind)
-      && (!subtype || r.payKind === subtype)
-      && (!due || (due === 'due' ? isDue(r.dueState) : !isDue(r.dueState)))
-      && (!band || r.ageBand === band)
-      && (!risk || r.risk === risk)
-      && (!lateBand || r.lateBand === lateBand)
-      && (q.attach !== 'missing' || (r.payKind === 'deferred_invoice' && !r.attachments))
-      && (q.attach !== 'missing_tax' || (r.payKind === 'tax' && !r.attachments))
-      && (q.term !== 'default' || !(Number(r.creditDays) > 0)));
-
-    list.sort((a, b) => (b.age ?? -Infinity) - (a.age ?? -Infinity) || (b.total || 0) - (a.total || 0));
-    const value = list.reduce((a, r) => a + (r.total || 0), 0);
+    const value = sumOf(list, (r) => r.total);
+    const collected = sumOf(list, (r) => r.collected);
     const rows = list.slice((page - 1) * limit, page * limit).map((r) => ({
       _id: r._id,
       invoiceNumber: r.invoiceNumber,
@@ -707,22 +840,137 @@ exports.rows = async (req, res) => {
       subtype: SUBTYPE_KEYS.includes(r.payKind) ? r.payKind : '',
       payKind: r.payKind,
       total: r.total,
-      partyName: r.partyName, partyCode: r.partyCode, party: r.party,
+      collected: r.collected || 0,
+      remaining: r2((r.total || 0) - (r.collected || 0)),
+      partyName: r.partyName, partyCode: r.partyCode, party: r.party, partyKey: partyKey(r),
       invoiceDate: r.invoiceDate, deliveryDate: r.deliveryDate, status: r.status,
       creditDays: r.creditDays,
       term: termOf(r.creditDays), termIsDefault: !(Number(r.creditDays) > 0),
       officer: effectiveOfficer(r.officer, mgr), officerIsDefault: isDefaultOfficer(r.officer),
-      issueState: r.issueState, basis: r.basis, dueDate: r.dueDate, daysLate: r.daysLate,
+      issueState: r.issueState, issueNote: r.issueNote || '', issueSince: r.issueSince || null,
+      basis: r.basis, dueDate: r.dueDate, daysLate: r.daysLate,
       dueState: r.dueState, lateBand: r.lateBand,
       age: r.age, ageBand: r.ageBand, risk: r.risk,
       attachments: r.attachments,
+      ...(r.workflowId ? { workflowId: r.workflowId } : {}),
     }));
     // والعددُ بوحدتيه: فواتيرُ ضريبيّة وكشوفُ تخريجٍ نقديّة — قد تجتمعان في شريحة.
     const taxCount = list.filter((r) => r.kind === 'tax').length;
-    res.json({ rows, total: list.length, taxCount, cashCount: list.length - taxCount, value: r2(value), page, limit });
+    res.json({
+      rows, total: list.length, taxCount, cashCount: list.length - taxCount,
+      value, collected, remaining: r2(value - collected),
+      customers: new Set(list.map(partyKey)).size,
+      page, limit, pages: Math.max(1, Math.ceil(list.length / limit)),
+    });
   } catch (e) {
     console.error('receivables rows', e);
     res.status(500).json({ message: 'تعذّر تحميل الصفوف' });
+  }
+};
+
+/**
+ * GET /api/collections-dept/receivables/column-options?col=<عمود>&cq=<بحث>&…
+ * قيمُ عمودٍ واحدٍ بأعدادها — تحت كلِّ فلترٍ آخر إلّا قمعَه هو.
+ */
+exports.columnOptions = async (req, res) => {
+  try {
+    const q = req.query || {};
+    const col = String(q.col || '');
+    if (!COLS[col]) return res.status(400).json({ message: 'عمودٌ غير معروف' });
+    const mgr = await collectionsManager();
+    const base = await loadBase(q);
+    const list = selectRows(base, q, mgr, col);
+    const m = new Map();
+    for (const r of list) { const v = COLS[col](r, mgr); m.set(v, (m.get(v) || 0) + 1); }
+    const needle = String(q.cq || '').trim().toLowerCase();
+    let values = [...m.entries()].map(([value, count]) => ({ value, count }))
+      .filter((o) => !needle || o.value.toLowerCase().includes(needle))
+      .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value, 'ar'));
+    const truncated = values.length > 500;
+    if (truncated) values = values.slice(0, 500);
+    res.json({ values, truncated });
+  } catch (e) {
+    console.error('receivables column options', e);
+    res.status(500).json({ message: 'تعذّر تحميل القيم' });
+  }
+};
+
+/**
+ * GET /api/collections-dept/receivables/cases?state=negotiating,legal&officer=&pay=&dueState=&q=&from=&to=
+ *
+ * ── «القضايا»: العملاءُ الذين عليهم حالةُ خلاف ─────────────────────────────
+ * حالةُ الخلاف صفةُ العميل (`CollectionsParty.issue`) لا الفاتورة، فالصفحةُ
+ * تُبنى على العملاء: كلُّ مَن حالتُه «تحت التفاوض» أو «قضايا» — **ولو لم تبقَ
+ * عليه فاتورةٌ مفتوحة**: قضيّةٌ قائمةٌ لا تختفي لأنّ الدفترَ سُوِّي.
+ *
+ * والمبالغُ من صفوف الدفتر نفسِها التي تعدّها اللوحة (`loadBase`) بفلاترها،
+ * فالضغطُ على عميلٍ يفتح صفحةَ المديونيّة بـ`parties=<مفتاحه>&issue=<حالته>`
+ * فيُرى العددُ والقيمةُ نفساهما.
+ */
+exports.cases = async (req, res) => {
+  try {
+    const q = req.query || {};
+    const states = listOf(q.state).filter((v) => v === 'negotiating' || v === 'legal');
+    const want = states.length ? states : ['negotiating', 'legal'];
+    const mgr = await collectionsManager();
+    const [base, partyDocs] = await Promise.all([
+      loadBase(q),
+      CollectionsParty.find({ 'issue.state': { $in: want } })
+        .select('name code kind collectionOfficer creditDays issue').lean(),
+    ]);
+    // الفلاترُ التي تخصّ الصفوف: المسؤولُ ونوعُ الدفع والاستحقاق. والحالةُ
+    // والعميلُ يُقرآن هنا لا من الرابط.
+    const f = parseFilters({ officer: q.officer, pay: q.pay, dueState: q.dueState }, mgr);
+    const rowsFiltered = !!(f.pay.size || f.dueState.size);
+    const needle = String(q.q || '').trim().toLowerCase();
+
+    const groups = new Map();
+    for (const p of partyDocs) {
+      const officer = effectiveOfficer(p.collectionOfficer, mgr);
+      if (f.officer.size && !f.officer.has(String(officer || '').toLowerCase())) continue;
+      if (needle && ![p.name, p.code].some((v) => String(v || '').toLowerCase().includes(needle))) continue;
+      groups.set(String(p._id), {
+        party: p._id, key: String(p._id), name: p.name || '—', code: p.code || '', kind: p.kind,
+        state: p.issue?.state, note: p.issue?.note || '', since: p.issue?.since || null,
+        updatedByName: p.issue?.updatedByName || '',
+        officer, officerIsDefault: isDefaultOfficer(p.collectionOfficer),
+        creditDays: Number(p.creditDays) || 0, term: termOf(p.creditDays),
+        count: 0, tax: 0, cash: 0, value: 0, lateValue: 0, hardValue: 0, oldest: null,
+        bands: Object.fromEntries(BAND_KEYS.map((b) => [b, 0])),
+      });
+    }
+    for (const r of base.ledger) {
+      const g = r.party && groups.get(String(r.party));
+      if (!g || !passes(r, f, mgr)) continue;
+      g.count += 1; g.value += r.total || 0;
+      if (r.kind === 'tax') g.tax += 1; else g.cash += 1;
+      if (r.dueState === 'late') g.lateValue += r.total || 0;
+      if (r.risk === 'hard') g.hardValue += r.total || 0;
+      g.bands[r.ageBand] = (g.bands[r.ageBand] || 0) + (r.total || 0);
+      if (r.age != null && (g.oldest == null || r.age > g.oldest)) g.oldest = r.age;
+    }
+    const parties = [...groups.values()]
+      // تحت فلترِ نوعٍ أو استحقاق: مَن لا صفَّ له فيه خارجُ السؤال.
+      .filter((g) => !rowsFiltered || g.count > 0)
+      .map((g) => ({
+        ...g, value: r2(g.value), lateValue: r2(g.lateValue), hardValue: r2(g.hardValue),
+        bands: Object.fromEntries(Object.entries(g.bands).map(([k, v]) => [k, r2(v)])),
+      }))
+      .sort((a, b) => b.value - a.value || String(a.name).localeCompare(String(b.name), 'ar'));
+
+    const summary = Object.fromEntries(['negotiating', 'legal'].map((s) => {
+      const mine = parties.filter((p) => p.state === s);
+      return [s, {
+        customers: mine.length,
+        count: mine.reduce((a, p) => a + p.count, 0),
+        value: r2(mine.reduce((a, p) => a + p.value, 0)),
+      }];
+    }));
+    const officers = [...new Set(partyDocs.map((p) => effectiveOfficer(p.collectionOfficer, mgr)).filter(Boolean))].sort();
+    res.json({ parties, summary, officers, manager: mgr ? { name: mgr.name } : null });
+  } catch (e) {
+    console.error('receivables cases', e);
+    res.status(500).json({ message: 'تعذّر تحميل القضايا' });
   }
 };
 

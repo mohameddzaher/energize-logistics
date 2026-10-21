@@ -162,6 +162,7 @@
         "/api/collections-dept/attachments",
         "/api/collections-dept/dashboard",
         "/api/collections-dept/parties",
+        "/api/collections-dept/receivables/column-options",
         "/api/collections-dept/receivables/overview",
         "/api/collections-dept/receivables/rows"
       ],
@@ -208,6 +209,17 @@
         "/api/collections-dept/ledger/invoices",
         "/api/collections-dept/ledger/invoices/filters",
         "/api/reports"
+      ],
+      "wildcard": false
+    },
+    "/system/collections-dept/cases": {
+      "apis": [
+        "/api/collections-dept/attachments",
+        "/api/collections-dept/parties",
+        "/api/collections-dept/receivables/cases",
+        "/api/collections-dept/receivables/column-options",
+        "/api/collections-dept/receivables/overview",
+        "/api/collections-dept/receivables/rows"
       ],
       "wildcard": false
     },

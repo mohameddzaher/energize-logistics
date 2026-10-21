@@ -234,7 +234,24 @@ export default function ShipmentFormFields({ embedded = false }: { embedded?: bo
           </label>
         </div>
 
-        {hasOptions && (
+        {/* ── «نوع الدفع» أربعةٌ ثابتة ──────────────────────────────────────
+            مفاتيحُ سير عمل التشغيل بأعيانها؛ فتُعرَض ولا تُعدَّل، والخادمُ
+            يتجاهل خياراتٍ تصله لهذا الحقل (updateField). */}
+        {hasOptions && form.key === 'paymentSubtype' && (
+          <div className="mt-4">
+            <p className="mb-2 text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              {ar ? 'أنواعُ الدفع الأربعة هي أنواعُ سير عمل التشغيل نفسُها — ثابتةٌ لا تُعدَّل من هنا، وطريقةُ الدفع (آجل/نقدي) تُكتب منها تلقائيًّا.'
+                  : 'The four payment types are the operations workflow’s own — fixed here; the payment method (deferred/cash) is set from them automatically.'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {form.options.map((o: any) => (
+                <span key={o.key} className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-semibold">{ar ? o.ar : (o.en || o.ar)}</span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {hasOptions && form.key !== 'paymentSubtype' && (
           <div className="mt-4">
             {form.key === 'driverRentType' && (
               <p className="mb-2 text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">

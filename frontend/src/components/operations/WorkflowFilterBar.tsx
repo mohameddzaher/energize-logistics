@@ -102,9 +102,9 @@ export default function WorkflowFilterBar({ fields, value, onChange, params, for
           <div key={f.key} className="relative">
             <button type="button"
               onClick={() => { if (open === f.key) { setOpen(''); return; } setOpts([]); setQ(''); setOpen(f.key); }}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-[13px] font-semibold shadow-sm transition
-                ${on ? 'border-[#f37121] bg-[#f37121] text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-[#f37121]/60'}`}>
-              <span className={on ? 'text-white/80' : 'text-slate-500'}>{t(f.ar, f.en)}</span>
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-[13px] font-semibold transition
+                ${on ? 'border-slate-900 bg-slate-50 text-slate-900' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'}`}>
+              <span className="text-slate-500">{t(f.ar, f.en)}</span>
               {on && <span className="max-w-[160px] truncate">{sel.size === 1 ? label(first) : t(`${sel.size} مختار`, `${sel.size} selected`)}</span>}
               {on
                 ? <X className="h-3.5 w-3.5" aria-label={t('مسح', 'Clear')} onClick={(e) => { e.stopPropagation(); onChange(f.key, new Set()); }} />
@@ -132,8 +132,8 @@ export default function WorkflowFilterBar({ fields, value, onChange, params, for
                           if (picked) next.delete(o.value); else next.add(o.value);
                           onChange(f.key, next);
                         }}
-                        className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-start text-[13px] ${picked ? 'bg-orange-50 text-[#c2410c]' : 'text-slate-700 hover:bg-slate-50'}`}>
-                        <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${picked ? 'border-[#f37121] bg-[#f37121] text-white' : 'border-slate-300'}`}>
+                        className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-start text-[13px] ${picked ? 'bg-slate-100 text-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}>
+                        <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${picked ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300'}`}>
                           {picked && <Check className="h-3 w-3" />}
                         </span>
                         <span className="flex-1 truncate font-medium">{label(o.value)}</span>

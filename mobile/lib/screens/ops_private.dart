@@ -6,11 +6,11 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// «التشغيل — خاصّ»: كشوفُ التشغيل نفسُها بسعر بيعنا الحقيقيّ.
+/// «التشغيل — خاصّ»: كشوفُ التشغيل نفسُها بقيمة البيع وربحها.
 ///
-/// سعرُ البيع في سير عمل التشغيل يأتي من منصّةٍ ليست لنا وهو مساوٍ لسعر
-/// الشراء — فريقُهم لا يعرف هامشَنا. فهذه الشاشةُ تقرأ الكشوفَ من موضعها
-/// وتملك منها عمودًا واحدًا: سعرَ البيع، محفوظًا عندنا ولا يُرسَل إلى أحد.
+/// قيمةُ البيع هنا هي عمودُ الكشف نفسُه في سير العمل — مرجعٌ واحد (٢٠٢٦/١٠/٢١).
+/// وتعديلُها هنا يمرّ بطريق سير العمل: الصلاحيّةُ نفسُها، ويُكتب في منصّة
+/// التشغيل. وسعرُ مسار العميل يُعرَض اقتراحًا يُعتمَد بضغطة.
 /// نفسُ نقطة الويب حرفًا بحرف (/api/operations-private) — فالرقمُ واحد.
 class OpsPrivateScreen extends StatefulWidget {
   const OpsPrivateScreen({super.key});
@@ -144,10 +144,10 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
     return from == to ? from : '$from → $to';
   }
 
-  /// سعرُ البيع وحدَه يُعدَّل — ويصير آخرَ سعرٍ في ملفّ العميل على هذا المسار.
-  Future<void> _editPrice(Map<String, dynamic> w) async {
+  /// قيمةُ البيع وحدَها تُعدَّل — في الكشف نفسِه، وتصير آخرَ سعرٍ في ملفّ العميل.
+  Future<void> _editPrice(Map<String, dynamic> w, {num? suggest}) async {
     final ctrl = TextEditingController(
-      text: (w['sellingValue'] ?? 0) == 0 ? '' : '${w['sellingValue']}',
+      text: suggest != null ? '$suggest' : ((w['sellingValue'] ?? 0) == 0 ? '' : '${w['sellingValue']}'),
     );
     final ok = await showModalBottomSheet<bool>(
       context: context,
@@ -156,7 +156,7 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
         child: Padding(
           padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(tr('سعر البيع الحقيقي', 'Real selling price'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            Text(tr('قيمة البيع', 'Selling value'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const SizedBox(height: 2),
             Text('${w['reportNumber'] ?? ''} · ${w['username'] ?? ''}\n${w['fromLocation'] ?? ''} ← ${w['toLocation'] ?? ''} · ${tr('شراء', 'purchase')} ${_money(w['purchaseValue'])}',
                 style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
@@ -164,8 +164,8 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
             TextField(controller: ctrl, keyboardType: TextInputType.number, autofocus: true,
                 decoration: InputDecoration(labelText: tr('سعر البيع', 'Selling price'))),
             const SizedBox(height: 6),
-            Text(tr('يُحفَظ عندنا فقط — لا يصل منصّة التشغيل. ويصير آخرَ سعرٍ لهذا المسار في ملفّ العميل.',
-                    'Kept here only — never sent to the platform. Becomes the latest price for this route on the customer profile.'),
+            Text(tr('يُكتب في سير عمل التشغيل وفي منصّة التشغيل، ويصير آخرَ سعرٍ لهذا المسار في ملفّ العميل.',
+                    'Written to the operations workflow and the platform, and becomes the latest price for this route on the customer profile.'),
                 style: const TextStyle(fontSize: 11, color: T.inkFaint)),
             const SizedBox(height: 12),
             SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save')))),
@@ -301,7 +301,12 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
         const SizedBox(height: 8),
         Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
           Chip2('${tr('شراء', 'buy')} ${_money(w['purchaseValue'])}', T.inkSoft),
-          Chip2('${tr('المنصّة', 'platform')} ${_money(w['platformSellingValue'])}', T.inkFaint),
+          // سعرُ مسار العميل اقتراحٌ يُعتمَد بضغطة — لا يُحسب قيمةً قبلها.
+          if (w['routePrice'] != null && (w['routePrice'] as num) != ((w['sellingValue'] ?? 0) as num))
+            Pressable(
+              onTap: () => _editPrice(w, suggest: w['routePrice'] as num),
+              child: Chip2('${tr('المسار', 'route')} ${_money(w['routePrice'])}', T.inkFaint),
+            ),
           Pressable(
             onTap: () => _editPrice(w),
             child: Chip2(

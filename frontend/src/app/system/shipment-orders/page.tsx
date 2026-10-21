@@ -23,6 +23,7 @@ import {
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import ScrollX from '@/components/system/ScrollX';
+import { paymentKindLabel } from '@/lib/paymentKind';
 
 
 // ── حالاتٌ لا تُقال بلا ورقة ────────────────────────────────────────────────
@@ -759,6 +760,7 @@ function ShipmentOrdersInner() {
                 <Group title={ar ? 'الأجرة والدفع' : 'Fare & payment'}>
                   <Row k={ar ? 'سعر البيع' : 'Selling price'} v={money(d.sellPrice)} />
                   <Row k={ar ? 'سعر الشراء' : 'Buying price'} v={money(d.buyPrice)} />
+                  <Row k={ar ? 'نوع الدفع' : 'Payment type'} v={paymentKindLabel(d.paymentSubtype, ar)} />
                   <Row k={ar ? 'نوع تأجير السائق' : 'Driver rent type'} v={d.driverRentType} />
                   <Row k={ar ? 'أجرة السائق' : 'Driver rent'} v={money(d.driverRentPrice)} />
                   <Row k={ar ? 'طريقة الدفع' : 'Payment method'} v={d.paymentMethod} />

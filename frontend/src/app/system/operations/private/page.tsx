@@ -1,20 +1,21 @@
 'use client';
 /**
- * «التشغيل — خاصّ»: كشوفُ التشغيل نفسُها، بسعر بيعنا الحقيقيّ.
+ * «التشغيل — خاصّ»: كشوفُ التشغيل نفسُها، بقيمة البيع وربحها وهامشها.
  *
- * سعرُ البيع في سير عمل التشغيل يأتي من منصّةٍ ليست لنا وهو مساوٍ لسعر الشراء
- * دائمًا — فريقُ العمليّات هناك لا يعرف هامشَنا. فهذه الصفحةُ تقرأ الكشوفَ من
- * موضعها حرفًا بحرف (فكلُّ ما يحدث هناك يظهر هنا في اللحظة) ولا تملك منها إلّا
- * عمودًا واحدًا: سعرَ البيع، محفوظًا عندنا ولا يُرسَل إلى أحد.
+ * ── قيمةُ البيع واحدة ──────────────────────────────────────────────────────
+ * كانت هذه الصفحةُ تحفظ «سعرًا حقيقيًّا» في جدولٍ لها وحدَها، فيُصحَّح السعرُ
+ * هنا ويبقى سيرُ العمل والتحصيلُ على غيره. وصار عمودُ «قيمة البيع» في الكشف هو
+ * المرجعَ الوحيد (صاحبُ الشركة، ٢٠٢٦/١٠/٢١): تقرؤه هذه الصفحةُ وتكتبه بالطريق
+ * الذي يكتبه به سيرُ العمل — الصلاحيّةُ نفسُها، ويُدفَع إلى منصّة التشغيل.
  *
- * والسعرُ يُملأ وحدَه من ملفّ العميل (آخرُ سعرٍ على هذا المسار)، ويُصحَّح هنا —
- * والتصحيحُ يصير هو الأحدثَ في الملفّ، فيرثه ما بعده وتقترحه شاشةُ الإنشاء.
+ * وسعرُ مسار العميل (آخرُ سعرٍ على المسار) يُعرَض اقتراحًا بجانب القيمة، ولا
+ * يُحسب قيمةً حتى يُعتمَد — والتصحيحُ هنا يصير الأحدثَ في ملفّ العميل.
  *
  * ── وهي تُقرأ كما يُقرأ سيرُ العمل ─────────────────────────────────────────
  * الأعمدةُ نفسُها، وفلاترُ الأعمدة نفسُها (`cf_<العمود>` تُطبَّق في الخادم،
  * وقيمُها من `/api/workflows/filters`)، والمدى نفسُه (يوم / شهر / مدى). فلا
  * يُرى في الشاشتين كشفٌ في واحدةٍ وليس في الأخرى، ولا مجموعٌ لا يساوي مجموعًا.
- * وفوقها ما لنا وحدَنا: البيعُ الحقيقيّ والربحُ والهامش.
+ * وفوقها ما لهذه الصفحة: الربحُ والهامشُ واقتراحُ سعر المسار.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import MonthPicker from '@/components/system/MonthPicker';
@@ -67,7 +68,7 @@ type Priced = '' | 'yes' | 'no';
 interface Row {
   _id: string;
   [k: string]: any;
-  platformSellingValue?: number; sellingValue?: number;
+  platformSellingValue?: number; sellingValue?: number; routePrice?: number | null; routePriceSource?: string;
   priceSource?: string; priceSaved?: boolean; profit?: number | null; margin?: number | null;
 }
 
@@ -270,10 +271,14 @@ export default function OperationsPrivatePage() {
       const d = await api.put<any>(`/api/operations-private/${r._id}`, { sellingValue: value });
       setRows((p) => p.map((x) => (x._id === r._id
         ? {
-          ...x, sellingValue: value, priceSource: 'manual', priceSaved: true, profit: d.profit,
-          margin: value > 0 ? Math.round((d.profit / value) * 10000) / 100 : null,
+          ...x, sellingValue: value, platformSellingValue: value, priceSource: 'manual', priceSaved: true, profit: d.profit,
+          margin: value > 0 && d.profit != null ? Math.round((d.profit / value) * 10000) / 100 : null,
         } : x)));
       setEditing(null);
+      // ويُقال أين كُتبت: في المنصّة وهنا، أم هنا وحدَه (كشفٌ ليس منها).
+      notify(d.sellingPlatform
+        ? (ar ? 'حُفظت قيمة البيع — وكُتبت في منصّة التشغيل' : 'Saved — and written to the operations platform')
+        : (ar ? 'حُفظت قيمة البيع' : 'Selling value saved'), 'success');
       loadStats();
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setSaving(false);
@@ -285,11 +290,11 @@ export default function OperationsPrivatePage() {
     draft: T.draft, submitted_to_ops: T.submittedToOps, ops_completed: T.opsCompleted,
     submitted_to_collections: T.toCollections, completed: T.completedStage,
   };
+  // مصدرُ قيمة الكشف — عمودُ `sellingValueSource` نفسُه.
   const sourceLabel = (s?: string) => (
-    s === 'sheet' ? (ar ? 'تقرير الفروع' : 'branches report')
-      : s === 'route' ? (ar ? 'ملفّ العميل' : 'customer profile')
-      : s === 'tier' ? (ar ? 'أعلى شريحةٍ للمسار' : 'highest route tier')
-        : s === 'manual' || s === 'private' ? (ar ? 'يدويّ' : 'manual') : '—');
+    s === 'manual' ? (ar ? 'يدويّ' : 'manual')
+      : s === 'collections_book' ? (ar ? 'دفتر التحصيل' : 'collections book')
+        : s === 'platform' ? (ar ? 'المنصّة' : 'platform') : '—');
   // الستُّ كما في سير العمل — راجع lib/paymentKind.
   const payType = (v?: string) => paymentKindLabel(v, ar) || '—';
   const done = (v?: string) => (v ? (ar ? 'تمّت' : 'Done') : '—');
@@ -309,7 +314,7 @@ export default function OperationsPrivatePage() {
     return undefined;
   };
 
-  // ── أعمدةُ سير العمل بترتيبها، وأعمدتُنا بعد سعر المنصّة ─────────────────
+  // ── أعمدةُ سير العمل بترتيبها، وبعد قيمة البيع ربحُها وهامشُها ومصدرُها ──
   // `kind` يقرّر رسمَ الخانة؛ و`money` = لا يُعرض إلّا لمن يملك أعمدةَ الفاتورة.
   type Col = { key: string; label: string; kind?: 'date' | 'num' | 'status' | 'pay' | 'stage' | 'done' | 'ptype'; money?: boolean; tone?: string };
   const COLS: Col[] = [
@@ -328,8 +333,8 @@ export default function OperationsPrivatePage() {
     { key: 'userPhone', label: T.thUserPhone },
     { key: 'taxIndicator', label: T.thTaxIndicator },
     { key: 'purchaseValue', label: T.thPurchaseValue, kind: 'num' },
-    // سعرُ المنصّة: عمودُ `sellingValue` في سير العمل — وفلترُه فلترُه.
-    { key: 'sellingValue', label: ar ? 'سعر البيع (المنصّة)' : 'Selling (platform)', kind: 'num' },
+    // قيمةُ البيع: عمودُ `sellingValue` في سير العمل نفسُه — وفلترُه فلترُه، وتُعدَّل هنا.
+    { key: 'sellingValue', label: ar ? 'قيمة البيع' : 'Selling value', kind: 'num' },
   ];
   const ALL_AFTER: Col[] = [
     { key: 'driverName', label: T.thDriverName },
@@ -361,7 +366,7 @@ export default function OperationsPrivatePage() {
 
   const cellText = (c: Col, r: Row): string => {
     const v = r[c.key];
-    if (c.key === 'sellingValue') return money(r.platformSellingValue);
+    if (c.key === 'sellingValue') return r.sellingValue ? money(r.sellingValue) : '';
     switch (c.kind) {
       case 'date': return fmtDate(v);
       case 'num': return v ? money(v) : '—';
@@ -413,8 +418,8 @@ export default function OperationsPrivatePage() {
     const base: ExportColumn = { header: c.label, key: c.key, width: 14, transform: (_v, r) => cellText(c, r) };
     if (c.key !== 'sellingValue') return [base];
     return [
-      { header: c.label, key: 'platformSellingValue', width: 14 },
-      { header: ar ? 'سعر البيع (الحقيقي)' : 'Selling (real)', key: 'sellingValue', width: 16, transform: (v) => (v > 0 ? v : '') },
+      { header: c.label, key: 'sellingValue', width: 16, transform: (v) => (v > 0 ? v : '') },
+      { header: ar ? 'سعر مسار العميل (اقتراح)' : 'Customer route price (suggested)', key: 'routePrice', width: 16, transform: (v) => (v == null ? '' : v) },
       { header: ar ? 'الربح' : 'Profit', key: 'profit', width: 14, transform: (v) => (v == null ? '' : v) },
       { header: ar ? 'الهامش %' : 'Margin %', key: 'margin', width: 10, transform: (v) => (v == null ? '' : v) },
       { header: ar ? 'مصدر السعر' : 'Price source', key: 'priceSource', width: 14, transform: (v) => sourceLabel(v) },
@@ -469,15 +474,15 @@ export default function OperationsPrivatePage() {
   if (loading && rows.length === 0) return <Spinner />;
 
   const pricedShare = stats && stats.total ? Math.round((stats.priced / stats.total) * 100) : 0;
-  const colCount = COLS.length + 4 + COLS_AFTER.length;
+  const colCount = COLS.length + 3 + COLS_AFTER.length;
 
   return (
     <div className="space-y-4" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Lock className="w-5 h-5 text-[#f37121]" />}
         title={ar ? 'التشغيل — خاصّ' : 'Operations — private'}
         subtitle={ar
-          ? 'نفس كشوف سير عمل التشغيل، بسعر بيعنا الحقيقيّ — لا يُرسَل إلى منصّة التشغيل ولا يراه أحدٌ خارجها'
-          : 'The same operations sheets with our real selling price — never sent to the platform'}>
+          ? 'نفس كشوف سير عمل التشغيل، بقيمة البيع وربحها — القيمةُ نفسُها التي في سير العمل، وتعديلُها هنا يُكتب هناك وفي منصّة التشغيل'
+          : 'The same operations sheets with selling value and profit — the very value in the workflow; editing it here writes there and to the platform'}>
         <ExportMenu lang={ar ? 'ar' : 'en'} fileName="operations-private" variant="subtle"
           options={[
             { key: 'page', label: ar ? `الصفحة المعروضة (${rows.length})` : `Current page (${rows.length})`, sheets: [{ name: 'Private', rows, columns: exportColumns }] },
@@ -527,7 +532,7 @@ export default function OperationsPrivatePage() {
 
       {/* ── ولوحةُ التحليل تُفتَح من هنا ──────────────────────────────────────
           هي اللوحةُ التي يعمل بها مديرُ التشغيل (ورقتُه في إكسل) — وموضعُها
-          هذه الصفحةُ لأنّها الصفحةُ التي فيها سعرُ البيع الحقيقيّ. وتُطوى
+          هذه الصفحةُ لأنّها الصفحةُ التي فيها ربحُ كلّ كشف. وتُطوى
           افتراضًا: من يفتح الصفحةَ يفتحها للجدول عادةً، فلا تُؤخَّر بحسابٍ
           لا يطلبه. راجع components/ops/OpsAnalytics. */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -552,7 +557,7 @@ export default function OperationsPrivatePage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-slate-500">{ar ? 'إجمالي البيع (الحقيقي)' : 'Selling total (real)'}</p>
+            <p className="text-xs font-semibold text-slate-500">{ar ? 'إجمالي البيع' : 'Selling total'}</p>
             <Wallet className="w-4 h-4 text-emerald-600" />
           </div>
           <p className="mt-2 text-2xl font-bold tabular-nums text-emerald-700">{stats ? money(stats.sumSelling) : '…'}</p>
@@ -677,7 +682,6 @@ export default function OperationsPrivatePage() {
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
                 {COLS.map(colHead)}
-                {plainHead(ar ? 'سعر البيع (الحقيقي)' : 'Selling (real)')}
                 {plainHead(ar ? 'الربح' : 'Profit')}
                 {plainHead(ar ? 'الهامش %' : 'Margin %')}
                 {plainHead(ar ? 'مصدر السعر' : 'Price source', 'text-slate-400')}
@@ -692,9 +696,9 @@ export default function OperationsPrivatePage() {
               )}
               {rows.map((r) => (
                 <tr key={r._id} className="hover:bg-slate-50">
-                  {COLS.map((c) => td(c, r))}
+                  {COLS.filter((c) => c.key !== 'sellingValue').map((c) => td(c, r))}
 
-                  {/* ── العمودُ الوحيدُ الذي نملكه ──────────────────────────── */}
+                  {/* ── قيمةُ البيع — عمودُ الكشف نفسُه، يُعدَّل هنا ──────────── */}
                   <td className="px-3 py-2.5 whitespace-nowrap bg-[#f37121]/[0.03]">
                     {editing === r._id ? (
                       <span className="inline-flex items-center gap-1">
@@ -710,13 +714,24 @@ export default function OperationsPrivatePage() {
                         </button>
                       </span>
                     ) : (
-                      <button type="button"
-                        onClick={() => { setEditing(r._id); setDraft(String(r.sellingValue || '')); }}
-                        className={`rounded px-2 py-1 font-bold tabular-nums transition-colors hover:bg-[#f37121]/10 ${
-                          r.sellingValue ? 'text-slate-900' : 'text-amber-600'}`}
-                        title={ar ? 'اضغط للتعديل — ويصير هذا آخرَ سعرٍ في ملفّ العميل' : 'Click to edit — becomes the latest price in the customer profile'}>
-                        {r.sellingValue ? money(r.sellingValue) : (ar ? 'بلا سعر' : 'not priced')}
-                      </button>
+                      <span className="inline-flex items-center gap-1.5">
+                        <button type="button"
+                          onClick={() => { setEditing(r._id); setDraft(String(r.sellingValue || '')); }}
+                          className={`rounded px-2 py-1 font-bold tabular-nums transition-colors hover:bg-[#f37121]/10 ${
+                            r.sellingValue ? 'text-slate-900' : 'text-amber-600'}`}
+                          title={ar ? 'اضغط للتعديل — يُكتب في سير العمل ومنصّة التشغيل، ويصير آخرَ سعرٍ في ملفّ العميل' : 'Click to edit — written to the workflow and the platform, and becomes the latest customer price'}>
+                          {r.sellingValue ? money(r.sellingValue) : (ar ? 'بلا سعر' : 'not priced')}
+                        </button>
+                        {/* سعرُ مسار العميل اقتراحٌ يُعتمَد بضغطة — لا يُحسب قيمةً قبلها. */}
+                        {r.routePrice != null && Number(r.routePrice) !== Number(r.sellingValue || 0) && (
+                          <button type="button"
+                            onClick={() => { setEditing(r._id); setDraft(String(r.routePrice)); }}
+                            className="rounded px-1.5 py-0.5 text-[10.5px] tabular-nums text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                            title={ar ? 'سعرُ مسار العميل — اضغط لاعتماده' : 'Customer route price — click to use it'}>
+                            {ar ? 'المسار: ' : 'route: '}{money(Number(r.routePrice))}
+                          </button>
+                        )}
+                      </span>
                     )}
                   </td>
                   <td className={`px-3 py-2.5 tabular-nums font-semibold whitespace-nowrap bg-[#f37121]/[0.03] ${

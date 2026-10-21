@@ -5,6 +5,8 @@
 // vocabulary, but this file owns its copy: the section must survive the ops
 // integration being turned off, which is its whole reason to exist.
 
+import type { PaymentSubtype } from '@/lib/paymentKind';
+
 export type Lang = 'en' | 'ar';
 
 export interface OrderRoute { fromCity: string; toCity: string; price: number | null }
@@ -54,6 +56,8 @@ export interface ShipmentOrder {
   agentName?: string;
   pickupTime?: string | null; startTime?: string | null; arrivalTime?: string | null;
   sellPrice?: number | null; buyPrice?: number | null;
+  /** «نوع الدفع» — مفاتيحُ سير عمل التشغيل (lib/paymentKind). حلّ محلَّ نوع التأجير في النموذج. */
+  paymentSubtype?: '' | PaymentSubtype;
   driverRentType?: string; paymentMethod?: string; driverRentPrice?: number | null;
   branch?: string; status: string; notes?: string;
   customFields?: Record<string, unknown>;

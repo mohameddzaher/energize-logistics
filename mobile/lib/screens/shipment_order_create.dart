@@ -16,7 +16,9 @@ const _systemKeys = {
   'fromCity', 'toCity', 'addressFrom', 'addressTo', 'truckType', 'cargoType',
   'truckLength', 'quantity', 'driverName', 'driverPhone', 'vehicleName',
   'pickupTime', 'startTime', 'arrivalTime', 'sellPrice', 'buyPrice',
-  'driverRentType', 'paymentMethod', 'branch', 'notes',
+  // «نوع الدفع» (paymentSubtype) حلّ محلَّ «نوع تأجير السائق» في النموذج —
+  // خياراتُه الأربعةُ تصل من الخادم (/fields) بمفاتيح سير عمل التشغيل.
+  'paymentSubtype', 'driverRentType', 'paymentMethod', 'branch', 'notes',
 };
 
 const _fixedKeys = {'customer', 'waybillNumber', 'status', 'agentName', 'vehicleName', 'driverName', 'driverPhone'};

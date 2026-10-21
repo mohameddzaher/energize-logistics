@@ -37,7 +37,7 @@ const SYSTEM_KEYS = new Set([
   'fromCity', 'toCity', 'addressFrom', 'addressTo', 'truckType', 'cargoType',
   'truckLength', 'quantity', 'driverName', 'driverPhone', 'vehicleName',
   'pickupTime', 'startTime', 'arrivalTime', 'sellPrice', 'buyPrice',
-  'driverRentType', 'paymentMethod', 'branch', 'notes',
+  'paymentSubtype', 'driverRentType', 'paymentMethod', 'branch', 'notes',
 ]);
 
 const GROUP_ICONS: Record<FormField['group'], any> = {

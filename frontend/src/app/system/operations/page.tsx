@@ -108,6 +108,12 @@ const STAGE_CONFIG: Record<string, { label: string; color: string; bg: string }>
 // فلا يُنشأ في كل رسمةٍ مرجعٌ جديد يُبطل حسابات القائمة بلا سبب.
 const EMPTY_SET = new Set<string>();
 const EMPTY_OPTIONS: ColumnFilterOption[] = [];
+// البطاقةُ الهادئة — نمطُ شجرة المديونيّة (components/collections/ReceivablesTree).
+const CARD = 'flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3.5 text-start shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-slate-50/60';
+const CARD_ON = '!border-slate-900 !bg-slate-50 ring-1 ring-slate-900/10';
+const CARD_NUM = 'text-2xl font-bold tabular-nums tracking-tight text-slate-900';
+const CARD_LABEL = 'inline-flex items-center gap-1.5 text-xs font-medium text-slate-500';
+const CARD_SUB = 'max-w-[260px] text-[10px] leading-tight text-slate-400';
 // Columns whose filter-dropdown labels should be formatted as dates / money.
 const DATE_FIELDS = new Set(['reportDate', 'paymentDate', 'sendingDate', 'branchDeliveryDate', 'deliveryDate', 'invoiceDate', 'collectionDate']);
 const NUM_FIELDS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice', 'paymentAmount', 'collectedAmount']);
@@ -252,8 +258,6 @@ export default function OperationsWorkflowPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [showPendingOnly, setShowPendingOnly] = useState(false);
-  // «سندات لم تصل» كلُّها، أو قسمُها الكاش، أو قسمُها الضريبيّ — راجع PENDING_SPLIT في الخادم.
-  const [pendingKind, setPendingKind] = useState<'' | 'cash' | 'tax'>('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Workflow>>({});
   // الصفُّ كما كان قبل التعديل — يُقارَن به عند الحفظ فلا يُرسَل إلّا ما تغيّر.
@@ -280,10 +284,10 @@ export default function OperationsWorkflowPage() {
   const [bulkPay, setBulkPay] = useState({ paymentDate: '', payingBranch: '', paymentType: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '', operationsReview: '' });
   // ── «كلُّ نتائج الفلتر» لا صفحةُ الخمسين وحدَها ─────────────────────────────
   // الجدولُ صفحاتٌ من خمسين؛ والتحديدُ يطال الصفحةَ المعروضة. فإن اختير هذا
-  // أُرسلت شروطُ الجدول نفسُها، ويستخرج الخادمُ منها كلَّ ما يطابق (حتى ١٠٠٠).
+  // أُرسلت شروطُ الجدول نفسُها، ويستخرج الخادمُ منها كلَّ ما يطابق — بعدده المؤكَّد.
   const [allMatching, setAllMatching] = useState(false);
   const [bulkPaying, setBulkPaying] = useState(false);
-  const [bulkResult, setBulkResult] = useState<{ message: string; skipped: { reportNumber: string; reason: string }[] } | null>(null);
+  const [bulkResult, setBulkResult] = useState<{ message: string; skipped: { reportNumber: string; reason: string }[]; more?: number } | null>(null);
   // فلاتر الأعمدة على طريقة إكسل: اسم العمود ← مجموعة القيم الخام المسموح بها.
   // تُرسَل إلى الخادم فيفلتر بها الجدولَ كلَّه، ولا تُطبَّق في المتصفح.
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
@@ -348,10 +352,10 @@ export default function OperationsWorkflowPage() {
 
   // Aggregates over the WHOLE matching dataset (all ~27k rows, not one page).
   const [stats, setStats] = useState<{
-    total: number; pendingInvoices: number; pendingCash: number; pendingTax: number; pendingUntyped: number;
+    total: number; pendingInvoices: number;
     pendingBondReceived: number; sumPurchaseValue: number;
     byStage: Record<string, number>; byStatus: Record<string, number>; statusTotal: number;
-  }>({ total: 0, pendingInvoices: 0, pendingCash: 0, pendingTax: 0, pendingUntyped: 0, pendingBondReceived: 0, sumPurchaseValue: 0, byStage: {}, byStatus: {}, statusTotal: 0 });
+  }>({ total: 0, pendingInvoices: 0, pendingBondReceived: 0, sumPurchaseValue: 0, byStage: {}, byStatus: {}, statusTotal: 0 });
 
   // كل ما يفهمه الخادم من فلترة في مكانٍ واحد: يقرؤه الجدولُ والإحصاءاتُ وقوائمُ
   // القيم والتصدير، فلا يفلتر أحدها على شرطٍ ويعرض الآخر نتيجة شرطٍ غيره.
@@ -365,12 +369,11 @@ export default function OperationsWorkflowPage() {
     if (dateFrom) params.append('dateFrom', dateFrom);
     if (dateTo) params.append('dateTo', dateTo);
     if (showPendingOnly) params.append('pendingOnly', 'true');
-    if (showPendingOnly && pendingKind) params.append('pendingKind', pendingKind);
     for (const [field, vals] of Object.entries(colFilters)) {
       vals.forEach((v) => params.append(`cf_${field}`, v));
     }
     return params;
-  }, [stageFilter, search, dateFrom, dateTo, showPendingOnly, pendingKind, colFilters]);
+  }, [stageFilter, search, dateFrom, dateTo, showPendingOnly, colFilters]);
 
   // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ────────────────────────────────────
   //
@@ -443,9 +446,6 @@ export default function OperationsWorkflowPage() {
       setStats({
         total: data.total || 0,
         pendingInvoices: data.pendingInvoices || 0,
-        pendingCash: data.pendingCash || 0,
-        pendingTax: data.pendingTax || 0,
-        pendingUntyped: data.pendingUntyped || 0,
         pendingBondReceived: data.pendingBondReceived || 0,
         sumPurchaseValue: data.sumPurchaseValue || 0,
         byStage: data.byStage || {},
@@ -488,7 +488,7 @@ export default function OperationsWorkflowPage() {
 
   // اختيارُ الصفوف يُلغى مع كل تغيّر في الفلاتر أو الصفحة: الصفوف المؤشَّرة لم تعد
   // معروضة، وحذفٌ جماعيّ يقع على صفوفٍ لا يراها المستخدم.
-  useEffect(() => { setSelectedIds(new Set()); setAllMatching(false); }, [stageFilter, search, page, dateFrom, dateTo, showPendingOnly, pendingKind, colFilters]);
+  useEffect(() => { setSelectedIds(new Set()); setAllMatching(false); }, [stageFilter, search, page, dateFrom, dateTo, showPendingOnly, colFilters]);
 
   const setColFilter = (field: string, set: Set<string>) => {
     // الفلترة تُغيّر عدد الصفحات كلّه، والبقاءُ على الصفحة السابعة بعد فلترٍ نتيجته
@@ -593,16 +593,44 @@ export default function OperationsWorkflowPage() {
     });
   };
 
+  /**
+   * ── شروطُ الجدول كما يقرؤها الخادم ──────────────────────────────────────
+   * البحثُ وفلاترُ الأعمدة وشريطُ الفلترة والمدى والبطاقات — كلُّها في
+   * `buildParams`، وهي نفسُها التي جلبت الجدولَ والعدد. والقيمُ المكرَّرة
+   * (`cf_x=a&cf_x=b`) مصفوفة.
+   */
+  const currentQuery = () => {
+    const query: Record<string, string | string[]> = {};
+    buildParams().forEach((v, k) => {
+      const cur = query[k];
+      query[k] = cur === undefined ? v : Array.isArray(cur) ? [...cur, v] : [cur, v];
+    });
+    return query;
+  };
+  // عددُ ما يقع عليه الإجراءُ الجماعيّ: المحدَّدُ في الصفحة، أو نتائجُ الفلتر كلُّها.
+  const selectedCount = allMatching ? total : selectedIds.size;
+  // ما يُرسَل مع كلّ إجراءٍ جماعيّ: المعرّفات، أو الشروطُ والعددُ الذي أكّده المستخدم
+  // (الخادمُ يرفض إن صار الفلترُ يطابق أكثرَ منه — راجع idsForAllMatching).
+  const selectionPayload = () => (allMatching
+    ? { allMatching: true, query: currentQuery(), expectedCount: total }
+    : { ids: Array.from(selectedIds) });
+
   const handleBulkDelete = () => {
-    if (selectedIds.size === 0) return;
+    if (selectedCount === 0) return;
+    const n = selectedCount;
     setConfirmModal({
-      message: T.deleteBulkConfirm.replace('{count}', String(selectedIds.size)),
+      message: allMatching
+        ? (lang === 'ar'
+          ? `سيُحذف ${n.toLocaleString('en-US')} كشفًا — كلُّ نتائج الفلتر الحاليّ في كلّ الصفحات، لا الصفحةُ المعروضة وحدَها. لا يمكن التراجع. متابعة؟`
+          : `This deletes ${n.toLocaleString('en-US')} reports — every result of the current filter across all pages. This cannot be undone. Continue?`)
+        : T.deleteBulkConfirm.replace('{count}', String(n)),
       onConfirm: async () => {
         setConfirmModal(null);
         try {
           setBulkDeleting(true);
-          await api.post('/api/workflows/bulk-delete', { ids: Array.from(selectedIds) });
-          setSelectedIds(new Set());
+          await api.post('/api/workflows/bulk-delete', selectionPayload());
+          setSelectedIds(new Set()); setAllMatching(false);
+          fetchWorkflows(true); fetchStats();
         } catch (err: any) {
           setError(err.message);
         } finally {
@@ -732,29 +760,44 @@ export default function OperationsWorkflowPage() {
     // بالخانة التي لم تُملأ.
     if (bulkPay.operationsReview === 'clear') fields.operationsReview = '';
     if (!Object.keys(fields).length) return;
-    setBulkPaying(true); setBulkResult(null);
-    try {
-      // شروطُ الجدول كما يقرؤها الخادم: القيمُ المكرَّرة (`cf_x=a&cf_x=b`) مصفوفة.
-      const query: Record<string, string | string[]> = {};
-      buildParams().forEach((v, k) => {
-        const cur = query[k];
-        query[k] = cur === undefined ? v : Array.isArray(cur) ? [...cur, v] : [cur, v];
-      });
-      const r = await api.post<{ message: string; skipped?: { reportNumber: string; reason: string }[] }>(
-        '/api/workflows/bulk-update', allMatching
-          ? { allMatching: true, query, fields }
-          : { ids: Array.from(selectedIds), fields });
-      setBulkResult({ message: r.message, skipped: r.skipped || [] });
-      if (!(r.skipped || []).length) {
-        setShowBulkPay(false); setSelectedIds(new Set()); setAllMatching(false);
-        setBulkPay({ paymentDate: '', payingBranch: '', paymentType: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '', operationsReview: '' });
+    const run = async () => {
+      setBulkPaying(true); setBulkResult(null);
+      try {
+        const r = await api.post<{ message: string; skipped?: { reportNumber: string; reason: string }[]; skippedCount?: number }>(
+          '/api/workflows/bulk-update', { ...selectionPayload(), fields });
+        const skipped = r.skipped || [];
+        setBulkResult({ message: r.message, skipped, more: Math.max(0, (r.skippedCount || skipped.length) - skipped.length) });
+        if (!skipped.length) {
+          setShowBulkPay(false); setSelectedIds(new Set()); setAllMatching(false);
+          setBulkPay({ paymentDate: '', payingBranch: '', paymentType: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '', operationsReview: '' });
+        }
+        fetchWorkflows(true); fetchStats();
+      } catch (err: any) {
+        // تغيّر العددُ بين التأكيد والتنفيذ (409): يُقال الجديدُ ويُحدَّث، ولا يُكتب شيء.
+        setBulkResult({ message: err.message, skipped: [] });
+        fetchWorkflows(true); fetchStats();
       }
-      fetchWorkflows(true);
-    } catch (err: any) { setBulkResult({ message: err.message, skipped: [] }); }
-    setBulkPaying(false);
+      setBulkPaying(false);
+    };
+    // ── «كلُّ نتائج الفلتر» تُؤكَّد بعددها ─────────────────────────────────
+    // آلافُ الكشوف بضغطة: يُقال العددُ بالضبط وما يُكتب، قبل أن يُكتب.
+    if (allMatching) {
+      const names = Object.keys(fields).length;
+      setConfirmModal({
+        message: lang === 'ar'
+          ? `سيُطبَّق التعديل (${names} ${names === 1 ? 'عمود' : 'أعمدة'}) على ${total.toLocaleString('en-US')} كشفًا — كلُّ نتائج الفلتر الحاليّ في كلّ الصفحات. متابعة؟`
+          : `Apply this change (${names} field${names === 1 ? '' : 's'}) to ${total.toLocaleString('en-US')} reports — every result of the current filter. Continue?`,
+        onConfirm: () => { setConfirmModal(null); run(); },
+      });
+      return;
+    }
+    run();
   };
 
   const toggleSelect = (id: string) => {
+    // إلغاءُ صفٍّ من «كلّ النتائج» يعيد التحديدَ إلى ما في الصفحة: لا تُستثنى
+    // صفوفٌ من شرطٍ لا يُرى إلّا خمسون منه.
+    setAllMatching(false);
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
@@ -765,6 +808,7 @@ export default function OperationsWorkflowPage() {
   const toggleSelectAll = () => {
     const visibleIds = workflows.map((w) => w._id);
     const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+    if (allSelected) setAllMatching(false);
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (allSelected) visibleIds.forEach((id) => next.delete(id));
@@ -810,9 +854,9 @@ export default function OperationsWorkflowPage() {
   });
 
   /** الصفحةُ المعروضةُ وحدَها — صفوفُها في اليد، فتُبنى هنا في لحظة. */
-  const exportSheets = async () => [{
+  const exportSheets = async (onlySelected = false) => [{
     name: lang === 'ar' ? 'الطلبات' : 'Workflows',
-    rows: workflows.map(exportRow) as unknown as Record<string, any>[],
+    rows: (onlySelected ? workflows.filter((w) => selectedIds.has(w._id)) : workflows).map(exportRow) as unknown as Record<string, any>[],
     columns: EXPORT_COLUMNS.filter((c) => (canViewFinancials || !MONEY_EXPORT_KEYS.has(c.key)) && (canSeeSelling || c.key !== 'sellingValue')),
   }];
 
@@ -942,6 +986,40 @@ export default function OperationsWorkflowPage() {
     </th>
   );
 
+  /**
+   * ── «تحديد كلّ النتائج» — النمطُ المعروف ─────────────────────────────────
+   * مربّعُ الرأس يحدّد الصفحةَ المعروضة (خمسين). فإن كانت نتائجُ الفلتر أكثرَ
+   * قيل ذلك تحت البحث وعُرض تحديدُها كلِّها؛ ومتى حُدِّدت صار كلُّ إجراءٍ
+   * جماعيٍّ (السدادُ والتعديلُ والحذفُ وتصديرُ المحدَّد) على الشرط في الخادم.
+   * (عنصرٌ لا مكوّنٌ معرَّفٌ داخل الرسم — راجع inline-components-remount.)
+   */
+  const pageAllSelected = workflows.length > 0 && workflows.every((w) => selectedIds.has(w._id));
+  const selectionBanner = (pageAllSelected || allMatching) && total > workflows.length ? (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-700">
+      {allMatching ? (
+        <span>
+          {lang === 'ar'
+            ? <>تم تحديد كلّ الـ <b className="tabular-nums text-slate-900">{total.toLocaleString('en-US')}</b> نتيجة للفلتر الحاليّ — في كلّ الصفحات.</>
+            : <>All <b className="tabular-nums text-slate-900">{total.toLocaleString('en-US')}</b> results of the current filter are selected — across all pages.</>}
+        </span>
+      ) : (
+        <>
+          <span>
+            {lang === 'ar'
+              ? <>تم تحديد <b className="tabular-nums text-slate-900">{selectedIds.size.toLocaleString('en-US')}</b> صفًّا في هذه الصفحة.</>
+              : <><b className="tabular-nums text-slate-900">{selectedIds.size.toLocaleString('en-US')}</b> rows on this page are selected.</>}
+          </span>
+          <button type="button" onClick={() => setAllMatching(true)} className="font-semibold text-slate-900 underline underline-offset-4 hover:text-[#f37121]">
+            {lang === 'ar' ? `تحديد كلّ الـ ${total.toLocaleString('en-US')} نتيجة؟` : `Select all ${total.toLocaleString('en-US')} results?`}
+          </button>
+        </>
+      )}
+      <button type="button" onClick={() => { setSelectedIds(new Set()); setAllMatching(false); }} className="ms-auto text-slate-500 hover:text-slate-900">
+        {lang === 'ar' ? 'إلغاء التحديد' : 'Clear selection'}
+      </button>
+    </div>
+  ) : null;
+
   if (loading && workflows.length === 0) {
     return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" /></div>;
   }
@@ -961,20 +1039,20 @@ export default function OperationsWorkflowPage() {
           {T.title}
         </h1>
         <div className="flex items-center gap-2 flex-wrap">
-          {canDelete && selectedIds.size > 0 && (
+          {canDelete && selectedCount > 0 && (
             <button type="button" onClick={handleBulkDelete} disabled={bulkDeleting} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors disabled:opacity-50">
-              {bulkDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} {T.deleteCount} ({selectedIds.size})
+              {bulkDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} {T.deleteCount} ({selectedCount.toLocaleString('en-US')})
             </button>
           )}
           {/* ── تسجيلُ سدادٍ لدفعةٍ واحدة ────────────────────────────────────
               يظهر حين يكون هناك ما هو محدَّد، ولا يُرسل إلّا ما مُلئ: الخانةُ
               الفارغة تعني «لا تلمس هذا العمود» لا «امسحه». والخادمُ يفحص كلَّ
               صفٍّ على حدة — ما لم يُستلم سندُه لا يُسجَّل سدادُه، ويُقال باسمه. */}
-          {selectedIds.size > 0 && (
+          {selectedCount > 0 && (
             <div className="relative">
               <button type="button" onClick={() => { setShowBulkPay((p) => !p); setBulkResult(null); }}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium transition-colors">
-                <CheckSquare className="w-4 h-4" /> {lang === 'ar' ? 'تسجيل سداد' : 'Record payment'} ({allMatching ? total : selectedIds.size})
+                <CheckSquare className="w-4 h-4" /> {lang === 'ar' ? 'تسجيل سداد' : 'Record payment'} ({selectedCount.toLocaleString('en-US')})
               </button>
               {showBulkPay && (
                 <div className="absolute top-full mt-2 end-0 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-4 w-[340px] max-w-[calc(100vw-2rem)] overflow-visible" onClick={(e) => e.stopPropagation()}>
@@ -1076,6 +1154,9 @@ export default function OperationsWorkflowPage() {
                   {bulkResult && (
                     <div className="mt-3 p-2 rounded-lg bg-slate-50 border border-slate-200 max-h-40 overflow-auto">
                       <p className="text-xs font-semibold text-slate-800">{bulkResult.message}</p>
+                      {!!bulkResult.more && (
+                        <p className="text-[11px] text-slate-500">{lang === 'ar' ? `و${bulkResult.more.toLocaleString('en-US')} أخرى لم تُحفظ` : `and ${bulkResult.more.toLocaleString('en-US')} more not saved`}</p>
+                      )}
                       {bulkResult.skipped.map((sk) => (
                         <p key={sk.reportNumber} className="text-[11px] text-amber-700 mt-0.5">{sk.reportNumber} — {sk.reason}</p>
                       ))}
@@ -1111,6 +1192,9 @@ export default function OperationsWorkflowPage() {
             variant="subtle"
             label={T.exportExcel}
             options={[
+              ...(selectedCount > 0 ? [allMatching
+                ? { key: 'selected', label: lang === 'ar' ? `المحدَّد — كلّ نتائج الفلتر (${total})` : `Selected — all filter results (${total})`, download: () => downloadServerFile('filtered') }
+                : { key: 'selected', label: lang === 'ar' ? `المحدَّد (${selectedIds.size})` : `Selected (${selectedIds.size})`, resolve: () => exportSheets(true) }] : []),
               { key: 'page', label: lang === 'ar' ? `الصفحة المعروضة (${workflows.length})` : `Current page (${workflows.length})`, resolve: () => exportSheets() },
               { key: 'filtered', label: lang === 'ar' ? `كلّ ما طابق الفلتر (${total})` : `Everything matching the filter (${total})`, download: () => downloadServerFile('filtered') },
               { key: 'all', label: lang === 'ar' ? 'الجدول كلّه (بلا فلتر)' : 'The whole table (no filter)', download: () => downloadServerFile('all') },
@@ -1135,32 +1219,6 @@ export default function OperationsWorkflowPage() {
       {/* Filters */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1 min-w-[260px]">
-            {/* ── والمكبّرُ لا يُبدَّل بدوّارة ──────────────────────────────
-                كانت الأيقونةُ تصير دوّارةً عند كلّ تحديث، فترفرف الخانةُ وتفقد
-                علامتَها. وهي تكذب فوق ذلك: `searching` ترتفع مع تغيير الصفحة
-                والفلتر والمدى، فيُقال «البحثُ يعمل» لمن يقلّب الصفحات.
-                التحديثُ يُقال فوق الجدول — حيث يتغيّر ما يتغيّر. */}
-            <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={searchInput}
-              onChange={(e) => {
-                const val = e.target.value;
-                setSearchInput(val);
-                if (debounceRef.current) clearTimeout(debounceRef.current);
-                debounceRef.current = setTimeout(() => { setSearch(val); setPage(1); }, 300);
-              }}
-              placeholder={T.searchPlaceholder}
-              className="w-full ps-10 pe-8 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
-            />
-            {searchInput && (
-              <button type="button" title={T.clearSearch} onClick={() => { setSearchInput(''); setSearch(''); setPage(1); searchInputRef.current?.focus(); }} className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
           {/* المدى الزمنيّ: يُفتح تقويمُه بالضغط، و«إلى» الفارغة تعني «حتى اليوم». */}
           {/* الوضعُ ثمّ منتقيه — والمُختارُ يُترجَم إلى مدًى يفهمه الخادم. */}
           <div className="flex items-center rounded-lg border border-slate-200 overflow-hidden shrink-0">
@@ -1206,155 +1264,91 @@ export default function OperationsWorkflowPage() {
             الجدول له مِصفاتُه. */}
       </div>
 
-      {/* Summary cards */}
+      {/* ── البطاقاتُ هادئة ─────────────────────────────────────────────────
+          كانت كلُّ بطاقةٍ بلونها (كهرمانيٌّ ووردٌ وأزرقُ وأخضر) فتتنافس على
+          العين ولا يُعرف أيُّها الإنذار — «لسنا في مدينة ملاهٍ» (صاحبُ الشركة).
+          فصارت كبطاقات شجرة المديونيّة: بيضاءُ وأرقامٌ بلون الحبر ونقطةٌ صغيرةٌ
+          للنوع، والأحمرُ للتناقض وحدَه. والمُفعَّلةُ يُحيطها إطارٌ داكن.
+          (وبطاقتا «سندات لم تصل — كاش/ضريبي» أُزيلتا: الإجماليُّ يكفي، والقسمةُ
+          على النوع في شريط الفلترة بعمود «نوع الدفع».) */}
       <div className="flex items-stretch gap-3 flex-wrap">
         {/* Pending Invoices — over ALL matching rows (click to filter) */}
         <button
           type="button"
-          onClick={() => { const on = showPendingOnly && !pendingKind; setShowPendingOnly(!on); setPendingKind(''); setPage(1); }}
-          className={`flex items-center gap-3 px-5 py-3.5 rounded-xl border transition-all duration-200 ${
-            showPendingOnly && !pendingKind
-              ? 'bg-amber-500/20 border-amber-500/60 ring-2 ring-amber-500/30'
-              : 'bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/15 hover:border-amber-500/50'
-          }`}
+          onClick={() => { setShowPendingOnly(!showPendingOnly); setPage(1); }}
+          className={`${CARD} ${showPendingOnly && !(statusSel.has('bond_received') && statusSel.size === 1) ? CARD_ON : ''}`}
         >
-          <div className={`p-2 rounded-lg ${showPendingOnly ? 'bg-amber-500/30' : 'bg-amber-500/20'}`}>
-            <AlertCircle className="w-5 h-5 text-amber-700" />
-          </div>
           {/* ── الرقمُ يقول قاعدتَه ──────────────────────────────────────────
               «سندات لم تصل» وحدَها لا تكفي لمطابقة الرقم بشيتٍ خارجيّ: هل
-              الملغاةُ داخلةٌ فيه؟ أربعةُ آلافٍ ومئةٌ وخمسةٌ وسبعون كشفًا ملغًى
-              بلا تاريخ سداد، ولو دخلت لصار الرقمُ خمسةَ آلافٍ وستَّمئة. تُكتب
-              القاعدةُ تحت الرقم فيُراجَع بلا سؤال. */}
+              الملغاةُ داخلةٌ فيه؟ تُكتب القاعدةُ تحت الرقم فيُراجَع بلا سؤال. */}
+          <AlertCircle className="h-4 w-4 shrink-0 text-slate-400" />
           <div className="flex flex-col items-start">
-            <span className="text-2xl font-bold text-amber-700">{pendingCount.toLocaleString()}</span>
-            <span className="text-xs text-amber-700/80">{lang === 'ar' ? 'سندات لم تصل' : 'Pending Bonds'}</span>
-            <span className="text-[10px] text-amber-700/60 leading-tight">
+            <span className={CARD_NUM}>{pendingCount.toLocaleString('en-US')}</span>
+            <span className={CARD_LABEL}><span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />{lang === 'ar' ? 'سندات لم تصل' : 'Pending Bonds'}</span>
+            <span className={CARD_SUB}>
               {lang === 'ar' ? 'بلا تاريخ سداد · عدا الملغاة' : 'no payment date · excludes cancelled'}
             </span>
           </div>
-          {showPendingOnly && !pendingKind && (
-            <span className="ms-2 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/30 text-amber-700">
-              {lang === 'ar' ? 'مُفعّل' : 'ACTIVE'}
-            </span>
-          )}
         </button>
 
-        {/* ── و«سندات لم تصل» كاشًا وضريبيًّا ─────────────────────────────────
-            القسمةُ على «نوع الدفع»: الكاشُ ما نوعُه كاش، والضريبيُّ كلُّ ما سواه —
-            ومنه ما لم يُحدَّد نوعُه بعد (ينتظر رقمَ فاتورةٍ ليصل التحصيل، فهو في
-            طريق الضريبيّ). فالبطاقتان تساويان الإجماليَّ دائمًا، وعددُ غير المحدَّد
-            مكتوبٌ تحت الضريبيّ فلا يختبئ. والضغطةُ تصفّي الجدولَ على قسمها. */}
-        {([
-          ['cash', stats.pendingCash, lang === 'ar' ? 'سندات لم تصل — كاش' : 'Pending bonds — cash',
-            lang === 'ar' ? 'نوع الدفع: كاش' : 'payment type: cash'],
-          ['tax', stats.pendingTax, lang === 'ar' ? 'سندات لم تصل — ضريبي' : 'Pending bonds — tax',
-            stats.pendingUntyped
-              ? (lang === 'ar' ? `ضريبي + ${stats.pendingUntyped.toLocaleString('en-US')} غير محدد النوع` : `tax + ${stats.pendingUntyped.toLocaleString('en-US')} untyped`)
-              : (lang === 'ar' ? 'نوع الدفع: ضريبي' : 'payment type: tax')],
-        ] as const).map(([k, n, title, sub]) => {
-          const on = showPendingOnly && pendingKind === k;
-          return (
-            <button key={k} type="button"
-              onClick={() => { setShowPendingOnly(!on); setPendingKind(on ? '' : k); setPage(1); }}
-              title={lang === 'ar' ? 'صفّي الجدول على هذه الكشوف' : 'Filter the table to these rows'}
-              className={`flex items-center gap-3 px-5 py-3.5 rounded-xl border transition-colors text-start ${on
-                ? 'bg-amber-500/20 border-amber-500/60 ring-2 ring-amber-500/30'
-                : 'bg-amber-50 border-amber-500/30 hover:border-amber-500/50'}`}>
-              <div className="flex flex-col items-start">
-                <span className="text-xl font-bold text-amber-700">{Number(n).toLocaleString('en-US')}</span>
-                <span className="text-xs text-amber-700/80">{title}</span>
-                <span className="text-[10px] text-amber-700/60 leading-tight">{sub}</span>
-              </div>
-            </button>
-          );
-        })}
-
         {/* ── والرابعةُ: السندُ «وصل» ولا تاريخَ لسداده ───────────────────────
-            البطاقتان منفصلتان لا تُجيبان: ٩٨٨ بلا تاريخ سداد، وأربعةُ آلافٍ
-            حالتُها «استُلم السند» — ولا يُعرَف أيُّهما يتقاطع. وتقاطعُهما هو
-            موضعُ العمل: الحالةُ تقول إنّ السند وصل والكشفُ بلا تاريخ سداد، فإمّا
-            تاريخٌ ناقصٌ يُكتب أو حالةٌ تُصحَّح. والضغطةُ تُصفّي الشرطين معًا. */}
+            تقاطعُ «بلا تاريخ سداد» و«استُلم السند» هو موضعُ العمل: إمّا تاريخٌ
+            ناقصٌ يُكتب أو حالةٌ تُصحَّح. وهي التناقضُ الوحيد هنا — فلها الأحمر. */}
         <button
           type="button"
           onClick={() => {
             const on = showPendingOnly && statusSel.has('bond_received') && statusSel.size === 1;
             setShowPendingOnly(!on);
-            setPendingKind('');
             toggleStatusCard(on ? '' : 'bond_received');
             if (!on) setTimeout(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
           }}
           title={lang === 'ar'
             ? 'صفّي على: سندات لم تصل + حالة الطلب «استُلم السند»'
             : 'Filter: pending bonds whose status says the bond was received'}
-          className={`flex items-center gap-3 px-5 py-3.5 rounded-xl border transition-colors text-start ${
-            showPendingOnly && statusSel.has('bond_received') && statusSel.size === 1
-              ? 'bg-rose-500/20 border-rose-500/60 ring-2 ring-rose-500/30'
-              : 'bg-rose-500/10 border-rose-500/30 hover:bg-rose-500/15 hover:border-rose-500/50'
-          }`}
+          className={`${CARD} ${showPendingOnly && statusSel.has('bond_received') && statusSel.size === 1 ? CARD_ON : ''}`}
         >
-          <div className="p-2 rounded-lg bg-rose-500/20">
-            <AlertTriangle className="w-5 h-5 text-rose-700" />
-          </div>
+          <AlertTriangle className={`h-4 w-4 shrink-0 ${stats.pendingBondReceived ? 'text-red-500' : 'text-slate-400'}`} />
           <div className="flex flex-col items-start">
-            <span className="text-2xl font-bold text-rose-700">{stats.pendingBondReceived.toLocaleString()}</span>
-            <span className="text-xs text-rose-700/80">
+            <span className={`${CARD_NUM} ${stats.pendingBondReceived ? '!text-red-600' : ''}`}>{stats.pendingBondReceived.toLocaleString('en-US')}</span>
+            <span className={CARD_LABEL}>
+              <span className={`inline-block h-1.5 w-1.5 rounded-full ${stats.pendingBondReceived ? 'bg-red-500' : 'bg-slate-300'}`} />
               {lang === 'ar' ? 'سند لم يصل وحالته «استُلم السند»' : 'Pending bond, status says received'}
             </span>
-            <span className="text-[10px] text-rose-700/60 leading-tight">
+            <span className={CARD_SUB}>
               {lang === 'ar' ? 'تناقض: تاريخُ السداد ناقص أو الحالة خطأ' : 'mismatch: missing payment date or wrong status'}
             </span>
           </div>
-          {showPendingOnly && statusSel.has('bond_received') && statusSel.size === 1 && (
-            <span className="ms-2 px-2 py-0.5 rounded text-[10px] font-medium bg-rose-500/30 text-rose-700">
-              {lang === 'ar' ? 'مُفعّل' : 'ACTIVE'}
-            </span>
-          )}
         </button>
 
-        {/* ── وعددُ الناتج بابٌ لا خبرٌ ──────────────────────────────────────
-            كان رقمًا يُقرأ ويُترَك. وهو جوابُ «ماذا يخرج لو صفّيتُ على هذه
-            الحالة ومعها السنداتُ التي لم تصل؟» — والسائلُ يريد أن يراها لا أن
-            يعرف عددَها. فالضغطةُ تنزل به إلى الجدول حيث هي، ويقول السطرُ تحته
-            ما الذي بُنيَ عليه الرقمُ بالاسم. */}
+        {/* ── وعددُ الناتج بابٌ لا خبرٌ ── الضغطةُ تنزل إلى الجدول حيث هي. */}
         <button
           type="button"
           onClick={() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
           title={lang === 'ar' ? 'اعرض هذه الصفوف في الجدول' : 'Show these rows in the table'}
-          className="flex items-center gap-3 px-5 py-3.5 rounded-xl border bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/15 hover:border-blue-500/50 transition-colors text-start"
+          className={CARD}
         >
-          <div className="p-2 rounded-lg bg-blue-500/20">
-            <ClipboardList className="w-5 h-5 text-blue-700" />
-          </div>
+          <ClipboardList className="h-4 w-4 shrink-0 text-slate-400" />
           <div className="flex flex-col items-start">
-            <span className="text-2xl font-bold text-blue-700">{filteredRowsCount.toLocaleString()}</span>
-            <span className="text-xs text-blue-700/80">{lang === 'ar' ? 'عدد الصفوف (حسب الفلتر)' : 'Rows (filtered)'}</span>
+            <span className={CARD_NUM}>{filteredRowsCount.toLocaleString('en-US')}</span>
+            <span className={CARD_LABEL}><span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400" />{lang === 'ar' ? 'عدد الصفوف (حسب الفلتر)' : 'Rows (filtered)'}</span>
             {(statusSel.size > 0 || showPendingOnly) && (
-              <span className="text-[10px] text-blue-700/60 leading-tight">
+              <span className={CARD_SUB}>
                 {[
                   statusSel.size ? trStatus([...statusSel][0]) : '',
                   showPendingOnly ? (lang === 'ar' ? 'سندات لم تصل' : 'pending bonds') : '',
-                ].filter(Boolean).join(lang === 'ar' ? ' · ' : ' · ')}
+                ].filter(Boolean).join(' · ')}
               </span>
             )}
           </div>
         </button>
 
-        {/* ── مجموعُ قيمة الشراء — لمن يملك الحقلَ نفسَه ────────────────────
-            كان الشرطُ `canViewFinancials`، وهو ملكيّةُ حقول **الفاتورة**. وقيمةُ
-            الشراء ليست منها: هي ما دفعناه للناقل، وحقلٌ من حقول التشغيل يملكه
-            مديرُ التشغيل وموظّفوه. فكان المديرُ يرى العمودَ في الجدول ولا يرى
-            مجموعَه فوقه.
-            فالشرطُ صار ملكيّةَ `purchaseValue` نفسِه — أدقُّ، ولا يفتح معه
-            عمودًا ماليًّا واحدًا. */}
+        {/* ── مجموعُ قيمة الشراء — لمن يملك الحقلَ نفسَه (`purchaseValue`). */}
         {(full || has('purchaseValue')) && (
-          <div className="flex items-center gap-3 px-5 py-3.5 rounded-xl border bg-emerald-500/10 border-emerald-500/30">
-            <div className="p-2 rounded-lg bg-emerald-500/20">
-              <FileSpreadsheet className="w-5 h-5 text-emerald-700" />
-            </div>
+          <div className={`${CARD} cursor-default hover:bg-white`}>
+            <FileSpreadsheet className="h-4 w-4 shrink-0 text-slate-400" />
             <div className="flex flex-col items-start">
-              <span className="text-2xl font-bold text-emerald-700">{filteredPurchaseSum.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-              <span className="text-xs text-emerald-700/80">{lang === 'ar' ? 'مجموع قيمة الشراء (حسب الفلتر)' : 'Total purchase value (filtered)'}</span>
+              <span className={CARD_NUM}>{filteredPurchaseSum.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+              <span className={CARD_LABEL}><span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400" />{lang === 'ar' ? 'مجموع قيمة الشراء (حسب الفلتر)' : 'Total purchase value (filtered)'}</span>
             </div>
           </div>
         )}
@@ -1368,12 +1362,47 @@ export default function OperationsWorkflowPage() {
             type="button"
             onClick={clearColFilters}
             title={lang === 'ar' ? 'مسح كل الفلاتر' : 'Clear all filters'}
-            className="flex items-center gap-2 px-4 py-3.5 rounded-xl border border-slate-300 bg-white text-slate-600 hover:text-red-600 hover:border-red-300 hover:bg-red-50 transition-colors"
+            className="flex items-center gap-2 px-4 py-3.5 rounded-2xl border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
           >
             <FilterX className="w-5 h-5" />
             <span className="text-sm font-medium">{lang === 'ar' ? 'مسح الفلاتر' : 'Clear filters'}</span>
           </button>
         )}
+      </div>
+
+      {/* ── البحثُ فوق الجدول مباشرةً ──────────────────────────────────────────
+          كان في أعلى الصفحة فوق البطاقات والشريط، فيكتب المستخدمُ ثمّ ينزل ليرى
+          أثرَه. وهو سؤالٌ عن صفوف الجدول — فمكانُه حيث تتغيّر. */}
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+          <div className="relative flex-1 min-w-[260px] max-w-xl">
+            {/* ── والمكبّرُ لا يُبدَّل بدوّارة ──────────────────────────────
+                كانت الأيقونةُ تصير دوّارةً عند كلّ تحديث، فترفرف الخانةُ وتفقد
+                علامتَها. وهي تكذب فوق ذلك: `searching` ترتفع مع تغيير الصفحة
+                والفلتر والمدى، فيُقال «البحثُ يعمل» لمن يقلّب الصفحات.
+                التحديثُ يُقال فوق الجدول — حيث يتغيّر ما يتغيّر. */}
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchInput}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSearchInput(val);
+                if (debounceRef.current) clearTimeout(debounceRef.current);
+                debounceRef.current = setTimeout(() => { setSearch(val); setPage(1); }, 300);
+              }}
+              placeholder={T.searchPlaceholder}
+              className="w-full ps-10 pe-8 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+            />
+            {searchInput && (
+              <button type="button" title={T.clearSearch} onClick={() => { setSearchInput(''); setSearch(''); setPage(1); searchInputRef.current?.focus(); }} className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+        {selectionBanner}
       </div>
 
       {/* Table */}
@@ -1399,7 +1428,7 @@ export default function OperationsWorkflowPage() {
                     <input
                       type="checkbox"
                       title={T.selectAll}
-                      checked={workflows.length > 0 && workflows.every((w) => selectedIds.has(w._id))}
+                      checked={pageAllSelected}
                       onChange={toggleSelectAll}
                       className="w-4 h-4 appearance-none rounded border border-slate-300 bg-transparent checked:bg-[#f37121] checked:border-[#f37121] cursor-pointer relative checked:after:content-['✓'] checked:after:text-white checked:after:text-[10px] checked:after:absolute checked:after:inset-0 checked:after:flex checked:after:items-center checked:after:justify-center"
                     />

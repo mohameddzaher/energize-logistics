@@ -13,6 +13,10 @@
  * يُنجَز، والثاني مالٌ يُحصَّل. فلا يُعرَض أحدُهما وحدَه. والعددُ وحدتان لا
  * تُجمعان في الكلام: فواتيرُ ضريبيّة وكشوفُ تخريجٍ نقديّة — تُقالان منفصلتين.
  *
+ * ── وكلُّ رقمٍ يفتح صفحةً لا نافذة ────────────────────────────────────────────
+ * `onOpen` يُعطى العقدةَ، واللوحةُ تنتقل بها إلى `/dashboard/receivables`
+ * (راجع receivablesFilters) — جدولٌ كاملٌ برابطٍ يُشارَك ويُرجَع إليه.
+ *
  * ── «عمر التأخير» (صاحبُ الشركة، ٢٠٢٦/١٠/٢١) ─────────────────────────────────
  * حلّ محلَّ «المتأخر — بعمر التأخير» و«ما كسر الـ٦٠» معًا: خمسُ شرائحَ للعمر،
  * وفي كلٍّ ثلاثةُ أجزاءٍ للخطورة (طبيعي / متوسط / مرتفع) على مدّة كلّ عميل.
@@ -285,7 +289,7 @@ export default function ReceivablesTree({
           )}
           {defaultTerm && (
             <div className="bg-white border border-slate-200 rounded-2xl shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden">
-              <button type="button" onClick={onOpenDefaultTerm}
+              <button type="button" onClick={() => onOpen({ term: 'default' }, t('فواتير على المدّة الافتراضية', 'Invoices on the default term'))}
                 className="w-full text-center px-4 pt-4 pb-3 hover:bg-slate-50/60 transition-colors">
                 <p className="text-[12px] font-medium text-slate-500 inline-flex items-center justify-center gap-1.5">
                   <CalendarClock className="w-3.5 h-3.5" />
@@ -295,12 +299,13 @@ export default function ReceivablesTree({
                 <p className="mt-0.5 text-[11.5px] text-slate-400 tabular-nums">
                   {money(defaultTerm.value)} · {unitsOf(defaultTerm, ar)}
                   <span className="text-slate-300"> · </span>
-                  <span className="inline-flex items-center gap-0.5">{t('قائمة العملاء', 'customer list')}<ChevronLeft className={`w-3 h-3 ${ar ? '' : 'rotate-180'}`} /></span>
+                  <span className="inline-flex items-center gap-0.5">{t('فواتيرهم', 'their invoices')}<ChevronLeft className={`w-3 h-3 ${ar ? '' : 'rotate-180'}`} /></span>
                 </p>
               </button>
-              <button type="button" onClick={() => onOpen({ term: 'default' }, t('فواتير على المدّة الافتراضية', 'Invoices on the default term'))}
+              {/* وكتابةُ مُددهم أداةُ تعديلٍ لا تفصيلُ رقم — تبقى نافذةً فوق اللوحة. */}
+              <button type="button" onClick={onOpenDefaultTerm}
                 className="w-full border-t border-slate-100 px-4 py-2 text-[11.5px] text-slate-500 hover:bg-slate-50/60">
-                {t('افتح فواتيرهم', 'Open their invoices')}
+                {t('حدّد مدد العملاء', 'Set the customers’ terms')}
               </button>
             </div>
           )}

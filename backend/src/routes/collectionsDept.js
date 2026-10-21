@@ -42,6 +42,9 @@ router.get('/dashboard/filters', authorize(...READ_ROLES), ctrl.dashboardFilterO
 const recv = require('../controllers/collectionsReceivablesController');
 router.get('/receivables/overview', authorize(...READ_ROLES), recv.overview);
 router.get('/receivables/rows', authorize(...READ_ROLES), recv.rows);
+// قيمُ عمودٍ لقمع جدول المديونيّة، وصفحةُ «القضايا» — من الصفوف نفسِها.
+router.get('/receivables/column-options', authorize(...READ_ROLES), recv.columnOptions);
+router.get('/receivables/cases', authorize(...READ_ROLES), recv.cases);
 router.put('/parties/:id/issue', authorize(...EDIT_ROLES), recv.setIssue);
 // قبل `/parties/:id` لا بعده: «filters» لو جاءت بعدَه قُرئت معرّفَ طرف.
 router.get('/parties/filters', authorize(...READ_ROLES), ctrl.filterOptions);
@@ -73,7 +76,13 @@ router.get('/invoices/tax', authorize(...READ_ROLES), ctrl.taxInvoices);
 router.get('/invoices/tax/:invoiceNumber', authorize(...READ_ROLES), ctrl.taxInvoiceDetail);
 router.post('/invoices/collect', authorize(...EDIT_ROLES), ctrl.recordCollection);
 // تصحيحُ قيمة فاتورةٍ ضريبيّة (ويجوز بالسالب) — وتُقفَل على ما كُتب.
-router.put('/invoices/tax/:invoiceNumber/amount', authorize(...EDIT_ROLES), ctrl.updateTaxInvoiceAmount);
+//
+// ── وبابُه أضيقُ من القسم، ولا يفتحه منح ─────────────────────────────────
+// تغييرُ مبلغِ دَينٍ قرارٌ ماليّ لا عملُ تحصيلٍ يوميّ (صاحبُ الشركة،
+// ٢٠٢٦/١٠/٢١): لمديري النظام ومدير القسم والمدير الماليّ ومدير الحسابات وحدَهم.
+// و`strict` لأنّ `authorize` العاديّة تمرّ لكلّ مَن مُنح القسمَ «تعديلًا» —
+// فقائمةٌ أضيقُ بغيرها لا تمنع أحدًا (راجع رأسَ EDIT_ROLES أعلاه).
+router.put('/invoices/tax/:invoiceNumber/amount', authorize.strict(...ctrl.AMOUNT_EDIT_ROLES), ctrl.updateTaxInvoiceAmount);
 // «لم تُحصَّل»: رجوعٌ عن تحصيلٍ سُجِّل خطأً — والسببُ اختياريّ.
 router.post('/invoices/uncollect', authorize(...EDIT_ROLES), ctrl.undoCollection);
 // التسليمُ خطوةٌ قبل التحصيل: منها تُعَدُّ المدّةُ المتّفق عليها.

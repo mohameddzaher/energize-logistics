@@ -18,7 +18,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useSocket } from '@/hooks/useSocket';
-import { canEditCollections, money, dt } from '@/lib/collections';
+import { canEditCollections, canEditInvoiceAmount, money, dt } from '@/lib/collections';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, Select, Loader2 } from '@/components/hr/HRKit';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -83,6 +83,8 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   const { notify, prompt } = useDialog();
   const router = useRouter();
   const canEdit = canEditCollections(user);
+  // «تعديل القيمة» أضيقُ من التعديل: بالدور وحدَه — راجع lib/collections.
+  const canEditAmount = canEditInvoiceAmount(user);
   const isCash = kind === 'cash';
 
   const [rows, setRows] = useState<(CashRow | TaxRow)[]>([]);
@@ -787,7 +789,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                             {(isCash ? r.collectionDate : r.fullyCollected) ? t('تعديل', 'Edit') : t('تحصيل', 'Collect')}
                           </button>
                         )}
-                        {canEdit && !isCash && (
+                        {canEditAmount && !isCash && (
                           <button type="button" onClick={() => editAmount(r)}
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold hover:bg-slate-200"
                             title={t('تصحيح قيمة الفاتورة في الدفتر', 'Correct the invoice amount')}>

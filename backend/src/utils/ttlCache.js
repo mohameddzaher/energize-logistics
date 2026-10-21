@@ -162,6 +162,23 @@ function clear(prefix) {
     .catch(() => { /* الإبطالُ المحلّيُّ تمّ، والعبورُ تحسين */ });
 }
 
+/**
+ * ── `clear` يُنتظَر — للسكربتات ──────────────────────────────────────────────
+ * سكربتٌ يكتب في القاعدة ثمّ يُغلق اتّصالَه لا ذاكرةَ له يمسحها؛ ما يلزمه أن
+ * يصل ختمُه إلى العاملَين. و`clear` يكتب الختمَ ولا ينتظره، فيُغلَق الاتّصالُ
+ * قبل وصوله ولا يدري به أحد. فهنا يُنتظَر حتى يُكتب.
+ */
+async function clearShared(prefix) {
+  clearLocal(prefix);
+  const d = db();
+  if (!d) return false;
+  const key = prefix || '*';
+  const at = Date.now();
+  seen.set(key, at);
+  await d.collection(STAMP_COLL).updateOne({ _id: key }, { $set: { at: new Date(at) } }, { upsert: true });
+  return true;
+}
+
 // ── الطلعة الواحدة (single-flight) ───────────────────────────────────────────
 //
 // كان `wrap` يقرأ الذاكرة ثم يحسب — وبينهما فجوة. فحين يفتح أربعون موظفًا
@@ -227,4 +244,4 @@ async function wrapStale(key, freshMs, maxMs, producer) {
   return run();
 }
 
-module.exports = { get, set, clear, wrap, wrapStale, syncStamps, syncIfDue };
+module.exports = { get, set, clear, clearShared, wrap, wrapStale, syncStamps, syncIfDue };

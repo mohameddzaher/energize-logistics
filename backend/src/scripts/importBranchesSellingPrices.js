@@ -24,6 +24,10 @@
  *   • مسارُ العميل في `ShipmentOrderCustomer.routes` — والأحدثُ يغلب، فيرثه
  *     كلُّ ما يُنشأ بعدُ (راجع utils/customerRoutes).
  *
+ * ⚠ منذ ٢٠٢٦/١٠/٢١ لا تقرأ صفحةُ «التشغيل — خاصّ» `PrivateSellingPrice`: قيمةُ
+ *   البيع عمودُ الكشف وحدَه. فما يكتبه هذا السكربتُ هناك لا يظهر حتى يُنسخ إلى
+ *   الكشوف بـ scripts/reconcilePrivateSellingPrices.js --apply.
+ *
  * تجربةٌ افتراضًا؛ `--apply` للكتابة.
  *   node src/scripts/importBranchesSellingPrices.js [path.xlsx] [--apply]
  */

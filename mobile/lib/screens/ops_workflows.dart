@@ -102,9 +102,8 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   /// فلاترُ الأعمدة — العمود ← القيم المختارة. شريطُ الفلترة يكتب فيها كما في
   /// الويب، وبطاقاتُ الحالات الإحدى عشرة أُزيلت (صارت قيمًا في «حالة الطلب»).
   final Map<String, Set<String>> _cf = {};
-  /// «سندات لم تصل» كلُّها، أو قسمُها الكاش أو الضريبيّ.
+  /// «سندات لم تصل» — الإجماليُّ وحدَه (أُزيلت بطاقتا الكاش والضريبيّ كالويب).
   bool _pendingOnly = false;
-  String _pendingKind = '';
   /// حقولُ هذا الدور كما يحسبها الخادم — قيمةُ البيع تُكتب لمن هي فيها.
   Set<String> _myFields = {};
   /// فحوصُ الفواتير (لمن يملك أعمدةَ المال — وغيرُه يُردّ ٤٠٣ فتُخفى).
@@ -147,7 +146,6 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
             for (final v in e.value) 'cf_${e.key}=${Uri.encodeQueryComponent(v)}',
         if (_q.trim().isNotEmpty) 'search=${Uri.encodeQueryComponent(_q.trim())}',
         if (_pendingOnly) 'pendingOnly=true',
-        if (_pendingOnly && _pendingKind.isNotEmpty) 'pendingKind=$_pendingKind',
       ];
 
   int _seq = 0;
@@ -517,9 +515,9 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : Column(children: [
                   // ── البطاقات: صفٌّ أفقيّ كما في الويب ─────────────────────────
-                  // «سندات لم تصل» ومعها قسماها الكاش والضريبيّ (مجموعُهما الإجماليّ
-                  // بالضبط — غيرُ محدَّد النوع داخلٌ في الضريبيّ ومكتوبٌ تحته)، وبطاقاتُ
-                  // فحص الفواتير الأربع لمن يملك أعمدةَ المال. والضغطةُ تصفّي أو تفتح القائمة.
+                  // «سندات لم تصل» (الإجماليُّ وحدَه — بطاقتا الكاش والضريبيّ أُزيلتا
+                  // كالويب)، وبطاقاتُ فحص الفواتير الأربع لمن يملك أعمدةَ المال.
+                  // والضغطةُ تصفّي أو تفتح القائمة.
                   if (_stats.isNotEmpty)
                     SizedBox(
                       height: 84,
@@ -527,21 +525,11 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
                         children: [
-                          _statCard(tr('الإجمالي', 'Total'), '${_stats['total'] ?? 0}', T.navy),
+                          _statCard(tr('الإجمالي', 'Total'), '${_stats['total'] ?? 0}', T.inkFaint),
                           _statCard(tr('سندات لم تصل', 'Pending bonds'), '${_stats['pendingInvoices'] ?? 0}', T.warn,
                               sub: tr('بلا تاريخ سداد · عدا الملغاة', 'no payment date'),
-                              active: _pendingOnly && _pendingKind.isEmpty,
-                              onTap: () { final on = _pendingOnly && _pendingKind.isEmpty; _pendingOnly = !on; _pendingKind = ''; _reload(); }),
-                          _statCard(tr('لم تصل — كاش', 'Pending — cash'), '${_stats['pendingCash'] ?? 0}', T.warn,
-                              sub: tr('نوع الدفع: كاش', 'type: cash'),
-                              active: _pendingOnly && _pendingKind == 'cash',
-                              onTap: () { final on = _pendingOnly && _pendingKind == 'cash'; _pendingOnly = !on; _pendingKind = on ? '' : 'cash'; _reload(); }),
-                          _statCard(tr('لم تصل — ضريبي', 'Pending — tax'), '${_stats['pendingTax'] ?? 0}', T.warn,
-                              sub: ((_stats['pendingUntyped'] ?? 0) as num) > 0
-                                  ? tr('منها ${_stats['pendingUntyped']} غير محدد', '${_stats['pendingUntyped']} untyped')
-                                  : tr('نوع الدفع: ضريبي', 'type: tax'),
-                              active: _pendingOnly && _pendingKind == 'tax',
-                              onTap: () { final on = _pendingOnly && _pendingKind == 'tax'; _pendingOnly = !on; _pendingKind = on ? '' : 'tax'; _reload(); }),
+                              active: _pendingOnly,
+                              onTap: () { _pendingOnly = !_pendingOnly; _reload(); }),
                           _statCard(tr('سند لم يصل وحالته «استُلم»', 'Pending, status received'), '${_stats['pendingBondReceived'] ?? 0}', T.danger),
                           if (_stats['sumPurchaseValue'] != null)
                             _statCard(tr('قيمة الشراء', 'Purchase'), _money(_stats['sumPurchaseValue']), T.violet),
@@ -585,11 +573,11 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                                       : (_cf[f.$1]!.length == 1
                                           ? '${tr(f.$2, f.$3)}: ${_valueLabel(f.$1, _cf[f.$1]!.first)}'
                                           : '${tr(f.$2, f.$3)} (${_cf[f.$1]!.length})')),
-                                  labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: (_cf[f.$1] ?? const {}).isNotEmpty ? Colors.white : T.navy),
-                                  selectedColor: T.orange,
-                                  backgroundColor: T.navy.withValues(alpha: 0.06),
-                                  checkmarkColor: Colors.white,
-                                  side: BorderSide.none,
+                                  labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.ink),
+                                  selectedColor: const Color(0xFFF1F5F9),
+                                  backgroundColor: Colors.white,
+                                  checkmarkColor: T.ink,
+                                  side: BorderSide(color: (_cf[f.$1] ?? const {}).isNotEmpty ? T.ink : T.line),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                                 ),
                               ),
@@ -686,19 +674,29 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
         'gaps': 'gaps', 'missing-reports': 'missingReports', 'value-diffs': 'valueDiffs', 'name-mismatches': 'nameMismatches',
       }[kind]!;
 
+  // ── بطاقةٌ هادئة: بيضاءُ بحدٍّ رماديّ، رقمٌ بالحبر، والنبرةُ نقطةٌ صغيرة ──
+  // (الأحمرُ للإنذار الحقيقيّ وحدَه، والمفعَّلةُ يحدُّها الحبرُ لا لونٌ صارخ.)
   Widget _statCard(String label, String value, Color color, {String? sub, bool active = false, VoidCallback? onTap}) => Padding(
         padding: const EdgeInsetsDirectional.only(end: 8),
         child: SizedBox(
           width: 150,
           child: Pressable(
             onTap: onTap ?? () {},
-            child: AppCard(
+            child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              topAccent: active ? T.orange : color,
+              decoration: BoxDecoration(
+                color: active ? const Color(0xFFF8FAFC) : T.card,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: active ? T.ink : T.line, width: active ? 1.2 : 1),
+              ),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(label, style: TextStyle(fontSize: 10.5, color: active ? T.orange : T.inkSoft, fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis),
+                Row(children: [
+                  Container(width: 6, height: 6, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                  const SizedBox(width: 5),
+                  Expanded(child: Text(label, style: const TextStyle(fontSize: 10.5, color: T.inkSoft, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                ]),
                 const SizedBox(height: 2),
-                Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: T.ink)),
                 if (sub != null) Text(sub, style: const TextStyle(fontSize: 9.5, color: T.inkFaint), maxLines: 1, overflow: TextOverflow.ellipsis),
               ]),
             ),

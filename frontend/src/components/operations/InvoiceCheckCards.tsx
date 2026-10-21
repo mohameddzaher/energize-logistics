@@ -110,11 +110,9 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
       sub: t('عميل الورقة ≠ عميل الكشف', 'sheet customer ≠ report customer'),
     },
   ];
+  // ── ألوانٌ هادئة: بطاقةٌ بيضاء ورقمٌ بالحبر، والنبرةُ نقطةٌ صغيرة لا خلفيّة ──
   const TONE: Record<string, string> = {
-    violet: 'bg-violet-500/10 border-violet-500/30 hover:border-violet-500/50 text-violet-700',
-    amber: 'bg-amber-500/10 border-amber-500/30 hover:border-amber-500/50 text-amber-700',
-    rose: 'bg-rose-500/10 border-rose-500/30 hover:border-rose-500/50 text-rose-700',
-    sky: 'bg-sky-500/10 border-sky-500/30 hover:border-sky-500/50 text-sky-700',
+    violet: '#8b5cf6', amber: '#f59e0b', rose: '#e11d48', sky: '#0ea5e9',
   };
 
   // ── أعمدةُ كلّ قائمة — للجدول وللإكسل معًا ──────────────────────────────
@@ -167,12 +165,15 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
         return (
           <button key={c.k} type="button" onClick={() => show(c.k)}
             title={t('اعرض القائمة', 'Show the list')}
-            className={`flex items-center gap-3 rounded-xl border px-5 py-3.5 text-start transition-colors ${TONE[c.tone]}`}>
-            <div className="rounded-lg bg-white/60 p-2"><Icon className="h-5 w-5" /></div>
+            className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3.5 text-start shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-slate-50/60">
+            <Icon className="h-4 w-4 shrink-0 text-slate-400" />
             <div className="flex flex-col items-start">
-              <span className="text-2xl font-bold">{c.n.toLocaleString('en-US')}</span>
-              <span className="text-xs opacity-80">{c.title}</span>
-              <span className="max-w-[260px] text-[10px] leading-tight opacity-60">{c.sub}</span>
+              <span className="text-2xl font-bold tabular-nums tracking-tight text-slate-900">{c.n.toLocaleString('en-US')}</span>
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: c.n ? TONE[c.tone] : '#cbd5e1' }} />
+                {c.title}
+              </span>
+              <span className="max-w-[260px] text-[10px] leading-tight text-slate-400">{c.sub}</span>
             </div>
           </button>
         );

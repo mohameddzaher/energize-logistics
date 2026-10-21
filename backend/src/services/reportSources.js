@@ -2415,6 +2415,8 @@ async function buildShipmentReport(id, query, lang) {
       [t('سعر البيع', 'Sell price'), o.sellPrice != null ? money(o.sellPrice) : null],
       [t('سعر الشراء', 'Buy price'), o.buyPrice != null ? money(o.buyPrice) : null],
       [t('الهامش', 'Margin'), (o.sellPrice != null && o.buyPrice != null) ? money(Number(o.sellPrice) - Number(o.buyPrice)) : null],
+      // «نوع الدفع» حلّ محلَّ نوع التأجير في نموذج الإنشاء؛ والقديمُ يُقرأ لما سُجِّل به.
+      [t('نوع الدفع', 'Payment type'), require('../utils/shipmentOrderPayment').subtypeLabel(o.paymentSubtype, lang) || null],
       [t('نوع تأجير السائق', 'Rental type'), o.driverRentType],
       [t('طريقة الدفع', 'Payment'), o.paymentMethod],
       [t('سلفة السائق', 'Driver advance'), o.driverRentPrice != null ? money(o.driverRentPrice) : null],

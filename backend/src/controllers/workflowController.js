@@ -353,7 +353,7 @@ function deriveInvoiceTotals(patch, current) {
  *
  * ولا يُبدَّل نوعٌ مكتوب: يُملأ الفارغُ وحدَه، ولا يُمسّ اختيارُ اليد أبدًا.
  */
-async function fillPaymentTypeFromCustomer(patch, current = {}) {
+async function fillPaymentTypeFromCustomer(patch, current = {}, partyTypes = null) {
   if (Object.prototype.hasOwnProperty.call(patch, 'paymentType')) return null;
   // واختيارُ أحد الأنواع الأربعة اختيارٌ للنوع — لا يُشتقّ فوقه.
   if (Object.prototype.hasOwnProperty.call(patch, 'paymentSubtype')) return null;
@@ -375,8 +375,12 @@ async function fillPaymentTypeFromCustomer(patch, current = {}) {
     const CollectionsParty = require('../models/CollectionsParty');
     const key = CollectionsParty.fold(name);
     if (!key) return null;
-    const party = await CollectionsParty.findOne({ kind: 'customer', nameKey: key })
-      .select('paymentType').lean();
+    // ── والدفعةُ الكبيرة تقرأ العملاءَ مرّةً لا لكلّ صفّ ─────────────────────
+    // `partyTypes` (مفتاحٌ مطويّ ← صفة) يُحمَّل مرّةً في التحديث الجماعيّ؛ وبدونه
+    // كانت سبعةٌ وثلاثون ألفَ كشفٍ = سبعةً وثلاثين ألفَ رحلةٍ إلى القاعدة.
+    const party = partyTypes
+      ? (partyTypes.has(key) ? { paymentType: partyTypes.get(key) } : null)
+      : await CollectionsParty.findOne({ kind: 'customer', nameKey: key }).select('paymentType').lean();
     const merged = { ...current, ...patch };
     const next = derivePaymentTypeFor(merged, party?.paymentType);
     if (!next || next === String(current.paymentType || '')) return null;
@@ -1443,6 +1447,106 @@ function invalidateSellingReaders() {
   }
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  قيمةُ البيع — طريقٌ واحدٌ لكلّ شاشة
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * كانت لقيمة البيع نسختان: عمودُ `sellingValue` في الكشف، و«السعرُ الحقيقيّ»
+ * في `PrivateSellingPrice` تكتبه صفحةُ «التشغيل — خاصّ» وحدَها. فيُصحَّح السعرُ
+ * في إحداهما وتبقى الأخرى على القديم، ولا يُعرف أيُّهما الصحيح.
+ *
+ * فصار الكشفُ هو المرجعَ الوحيد (صاحبُ الشركة، ٢٠٢٦/١٠/٢١)، والكتابةُ من أيّ
+ * شاشةٍ تمرّ من هنا: التحقّقُ، ثمّ المنصّة، ثمّ الحفظ، ثمّ الذاكرةُ والبثّ.
+ *
+ * `prepareSellingValue` — قبل الحفظ: يتحقّق ويدفع إلى المنصّة، ويُرجع خطأً
+ *   بحالته إن رُفض (فلا يُحفظ شيءٌ والمنصّةُ على القديم).
+ * `announceSellingValue` — بعد الحفظ: يمسح الذاكرة **قبل** البثّ ويبثّ.
+ */
+async function prepareSellingValue(workflow, raw) {
+  const v = raw === '' || raw === null || raw === undefined ? 0 : Number(raw);
+  if (!Number.isFinite(v) || v < 0) {
+    return { error: { status: 400, body: { code: 'BAD_SELLING_VALUE', fields: ['sellingValue'], message: 'قيمة البيع يجب أن تكون رقمًا لا يقلّ عن صفر.' } } };
+  }
+  const value = Math.round(v * 100) / 100;
+  if (value === Math.round((Number(workflow.sellingValue) || 0) * 100) / 100) return { unchanged: true, value };
+  let push;
+  try {
+    push = await pushSellingValue(workflow, value);
+  } catch (e) {
+    return {
+      error: {
+        status: 502,
+        body: {
+          code: 'PLATFORM_WRITE_FAILED',
+          fields: ['sellingValue'],
+          message: `تعذّرت كتابة قيمة البيع في منصّة التشغيل — لم يُحفظ شيء. (${e.message || 'خطأ في المنصّة'})`,
+        },
+      },
+    };
+  }
+  return { value, push };
+}
+
+function announceSellingValue(workflow, push) {
+  invalidateSellingReaders();
+  try { emitToAll('collections:changed', { source: 'workflow', field: 'sellingValue', reportNumber: workflow.reportNumber }); } catch (e) { /* */ }
+  // والصفحةُ الخاصّةُ تسمع خبرَها باسمه — تقرأ العمودَ نفسَه.
+  try { emitToAll('operationsPrivate:updated', { _id: String(workflow._id), sellingValue: workflow.sellingValue }); } catch (e) { /* */ }
+  if (push && push.platform) {
+    try { emitToAll('ops:shipments:changed', { resource: 'shipments', action: 'selling_price', ids: [push.shipmentId], at: Date.now() }); } catch (e) { /* */ }
+  }
+}
+
+/**
+ * يكتب قيمةَ البيع وحدَها على كشف — لشاشةٍ لا تعدّل غيرَها («التشغيل — خاصّ»).
+ * القواعدُ هي قواعدُ `updateWorkflow` حرفًا: صلاحيّةُ الحقل (SELLING_ROLES)،
+ * والقفل، والمنصّةُ أوّلًا، والمصدرُ `manual` فلا تكتب المزامنةُ فوقها.
+ * يُرجع `{ status, body }` ولا يكتب الردَّ بنفسه.
+ */
+async function setSellingValue(id, raw, user, { ip, note } = {}) {
+  if (!mongoose.isValidObjectId(id)) return { status: 400, body: { message: 'معرّف غير صالح' } };
+  const fields = await fieldsForRole(user.role);
+  if (!fields.includes('sellingValue')) {
+    return {
+      status: 403,
+      body: { code: 'FIELDS_NOT_ALLOWED', fields: ['sellingValue'], message: 'صلاحيّتك لا تسمح بتعديل: sellingValue — لم يُحفظ شيء.' },
+    };
+  }
+  const workflow = await OperationsWorkflow.findById(id);
+  if (!workflow) return { status: 404, body: { message: 'الكشف غير موجود' } };
+  if (isLocked(workflow, user._id)) {
+    return { status: 423, body: { message: `This record is currently being edited by ${workflow.lockedByName || 'another user'}` } };
+  }
+  const prep = await prepareSellingValue(workflow, raw);
+  if (prep.error) return prep.error;
+  if (prep.unchanged) return { status: 200, body: { workflow: stripRowFor(user.role, workflow), unchanged: true } };
+
+  const before = { sellingValue: workflow.sellingValue, sellingValueSource: workflow.sellingValueSource };
+  workflow.sellingValue = prep.value;
+  workflow.sellingValueSource = 'manual';
+  workflow.lastModifiedBy = user._id;
+  await workflow.save();
+
+  await logAudit({
+    user: user._id,
+    action: 'update_workflow',
+    entity: 'OperationsWorkflow',
+    entityId: workflow._id,
+    changes: { before, after: { sellingValue: prep.value, sellingValueSource: 'manual', ...(note ? { note } : {}) } },
+    ipAddress: ip,
+  });
+
+  bustFilterCache();
+  announceSellingValue(workflow, prep.push);
+  try { emitPerRole('workflow:updated', (r) => stripRowFor(r, workflow)); } catch (e) { console.error('WebSocket emit error:', e); }
+  return {
+    status: 200,
+    body: { workflow: stripRowFor(user.role, workflow), sellingPlatform: !!(prep.push && prep.push.platform) },
+  };
+}
+exports.setSellingValue = setSellingValue;
+
 exports.updateWorkflow = async (req, res) => {
   try {
     const workflow = await OperationsWorkflow.findById(req.params.id);
@@ -1553,25 +1657,15 @@ exports.updateWorkflow = async (req, res) => {
     // وقد بقيت المنصّةُ على القديم.
     let sellingChanged = false;
     let sellingPush = null;
+    // (الطريقُ نفسُه الذي تكتب به «التشغيل — خاصّ» — راجع prepareSellingValue.)
     if (Object.prototype.hasOwnProperty.call(filteredBody, 'sellingValue')) {
-      const raw = filteredBody.sellingValue;
-      const v = raw === '' || raw === null ? 0 : Number(raw);
-      if (!Number.isFinite(v) || v < 0) {
-        return res.status(400).json({ code: 'BAD_SELLING_VALUE', fields: ['sellingValue'], message: 'قيمة البيع يجب أن تكون رقمًا لا يقلّ عن صفر.' });
-      }
-      filteredBody.sellingValue = Math.round(v * 100) / 100;
-      if (filteredBody.sellingValue === Math.round((Number(workflow.sellingValue) || 0) * 100) / 100) {
+      const prep = await prepareSellingValue(workflow, filteredBody.sellingValue);
+      if (prep.error) return res.status(prep.error.status).json(prep.error.body);
+      if (prep.unchanged) {
         delete filteredBody.sellingValue;
       } else {
-        try {
-          sellingPush = await pushSellingValue(workflow, filteredBody.sellingValue);
-        } catch (e) {
-          return res.status(502).json({
-            code: 'PLATFORM_WRITE_FAILED',
-            fields: ['sellingValue'],
-            message: `تعذّرت كتابة قيمة البيع في منصّة التشغيل — لم يُحفظ شيء. (${e.message || 'خطأ في المنصّة'})`,
-          });
-        }
+        filteredBody.sellingValue = prep.value;
+        sellingPush = prep.push;
         filteredBody.sellingValueSource = 'manual';
         sellingChanged = true;
       }
@@ -1657,12 +1751,7 @@ exports.updateWorkflow = async (req, res) => {
     if (kindMoved) {
       try { emitToAll('collections:changed', { source: 'workflow', field: 'paymentType', reportNumber: workflow.reportNumber }); } catch (e) { /* */ }
     }
-    if (sellingChanged) {
-      try { emitToAll('collections:changed', { source: 'workflow', field: 'sellingValue', reportNumber: workflow.reportNumber }); } catch (e) { /* */ }
-      if (sellingPush && sellingPush.platform) {
-        try { emitToAll('ops:shipments:changed', { resource: 'shipments', action: 'selling_price', ids: [sellingPush.shipmentId], at: Date.now() }); } catch (e) { /* */ }
-      }
-    }
+    if (sellingChanged) announceSellingValue(workflow, sellingPush);
 
     // ما رُفض يُقال حتّى حين نجح غيرُه: الحفظُ الجزئيُّ الصامتُ يترك الموظّف
     // يظنّ أنّ الستّةَ حُفظت وقد حُفظ واحد.
@@ -2008,24 +2097,57 @@ exports.updateApplicationStatus = async (req, res) => {
  * الطلبُ واحدٌ هنا، والقواعدُ هي هي — صلاحيّةُ الحقل، وشرطُ «لا سدادَ قبل
  * السند» — ويعود لكلّ صفٍّ سببُه إن رُفض، فلا يُقال «تمّ» ونصفُها لم يتمّ.
  */
+/**
+ * ── «كلُّ نتائج الفلتر» — الشروطُ نفسُها، والعددُ الذي رآه المستخدم ──────────
+ *
+ * الجدولُ يعرض خمسين في الصفحة، والفلترُ قد يُخرج سبعةً وثلاثين ألفًا. فتُرسَل
+ * شروطُ الجدول نفسُها (`query`) ويُستخرج منها كلُّ ما يطابق — بالدالّة التي
+ * يقرأ بها الجدولُ صفوفَه، فلا يُكتب على ما لا يراه صاحبُ الفلتر.
+ *
+ * وكان السقفُ ألفًا، فتغييرُ نوع الدفع لعميلٍ واحدٍ كبير يستحيل إلّا بتقطيع
+ * الفلتر يدويًّا. فصار السقفُ سقفَ أمانٍ لا سقفَ عمل (`ALL_MATCHING_CAP`)،
+ * والشرطُ الحقيقيُّ هو **العددُ الذي أكّده المستخدم** (`expectedCount`): إن
+ * طابق الفلترُ الآن أكثرَ ممّا رآه في نافذة التأكيد (مزامنةٌ أضافت كشوفًا
+ * بينهما) رُفض الطلبُ بالعدد الجديد ليُؤكَّد ثانيةً — لا يُكتب على كشفٍ لم يُعرَض.
+ */
+const ALL_MATCHING_CAP = 60000;
+const IDS_CAP = 1000;
+
+async function idsForAllMatching(body, role) {
+  const q = Object.fromEntries(Object.entries(body.query || {}).filter(([k]) => !['page', 'limit', 'sort', 'order', 'scope'].includes(k)));
+  if (q.cf_dataOwnerShown !== undefined) await require('../utils/dataOwnerIndex').ensure().catch(() => {});
+  const filter = buildWorkflowFilter(q, undefined, canSeeMoney(role), canSeeSelling(role));
+  const found = await OperationsWorkflow.find(filter).select('_id').limit(ALL_MATCHING_CAP + 1).lean();
+  if (found.length > ALL_MATCHING_CAP) {
+    return { error: { status: 400, body: { message: `نتائجُ الفلتر أكثرُ من ${ALL_MATCHING_CAP.toLocaleString('en-US')} كشف — ضيِّق الفلتر ثمّ أعِد.` } } };
+  }
+  const expected = Number(body.expectedCount);
+  if (Number.isFinite(expected) && expected >= 0 && found.length > expected) {
+    return {
+      error: {
+        status: 409,
+        body: {
+          code: 'COUNT_CHANGED', count: found.length, expectedCount: expected,
+          message: `تغيّرت نتائجُ الفلتر: صارت ${found.length} بدل ${expected} — لم يُحفظ شيء. أكِّد العددَ الجديد ثمّ أعِد.`,
+        },
+      },
+    };
+  }
+  return { ids: found.map((x) => x._id) };
+}
+exports._idsForAllMatching = idsForAllMatching;
+
 exports.bulkUpdate = async (req, res) => {
   try {
-    const CAP = 1000;
     let ids = Array.isArray(req.body.ids) ? req.body.ids.filter((x) => mongoose.isValidObjectId(x)) : [];
-    // ── «كلُّ نتائج الفلتر» لا صفحةُ الخمسين وحدَها ─────────────────────────
-    // الجدولُ يعرض خمسين في الصفحة، والفلترُ قد يُخرج أربعَ صفحات. فتُرسَل شروطُ
-    // الجدول نفسُها (`query`) ويُستخرج منها كلُّ ما يطابق — بالدالّة التي يقرأ بها
-    // الجدولُ صفوفَه، فلا يُكتب على ما لا يراه صاحبُ الفلتر.
-    if (req.body.allMatching && req.body.query && typeof req.body.query === 'object') {
-      const q = Object.fromEntries(Object.entries(req.body.query).filter(([k]) => !['page', 'limit', 'sort', 'order'].includes(k)));
-      if (q.cf_dataOwnerShown !== undefined) await require('../utils/dataOwnerIndex').ensure().catch(() => {});
-      const filter = buildWorkflowFilter(q, undefined, canSeeMoney(req.user.role), canSeeSelling(req.user.role));
-      const found = await OperationsWorkflow.find(filter).select('_id').limit(CAP + 1).lean();
-      if (found.length > CAP) return res.status(400).json({ message: `نتائجُ الفلتر أكثرُ من ${CAP} كشف — ضيِّق الفلتر ثمّ أعِد.` });
-      ids = found.map((x) => x._id);
+    const allMatching = !!(req.body.allMatching && req.body.query && typeof req.body.query === 'object');
+    if (allMatching) {
+      const r = await idsForAllMatching(req.body, req.user.role);
+      if (r.error) return res.status(r.error.status).json(r.error.body);
+      ids = r.ids;
     }
     if (!ids.length) return res.status(400).json({ message: 'لم تُحدَّد أيُّ كشوف.' });
-    if (ids.length > CAP) return res.status(400).json({ message: `الحدُّ الأقصى ${CAP} كشفًا في المرّة.` });
+    if (!allMatching && ids.length > IDS_CAP) return res.status(400).json({ message: `الحدُّ الأقصى ${IDS_CAP} كشفًا في المرّة — أو اختر «كلّ نتائج الفلتر».` });
 
     const patch = filterFieldsByRole(req.body.fields || {}, req.user.role, await fieldsForRole(req.user.role));
     // والقواعدُ نفسُها في الجملة: لا يكسب أحدٌ بالتحديد ما لا يملكه بالمفرد.
@@ -2062,6 +2184,17 @@ exports.bulkUpdate = async (req, res) => {
     const walletPaid = Object.prototype.hasOwnProperty.call(patch, 'paymentAmount')
       ? await require('../utils/walletPayment').walletPaidMap(rows.map((r) => r.reportNumber))
       : new Map();
+    // صفاتُ العملاء مرّةً للدفعة كلِّها — راجع partyTypes في fillPaymentTypeFromCustomer.
+    let partyTypes = null;
+    if (!keys.includes('paymentType') && !keys.includes('paymentSubtype') && rows.length > 50) {
+      const CollectionsParty = require('../models/CollectionsParty');
+      const names = [...new Set(rows.map((r) => CollectionsParty.fold(patch.username !== undefined ? patch.username : r.username || '')).filter(Boolean))];
+      partyTypes = new Map();
+      // الأوّلُ لكلّ مفتاح — كما يأخذ `findOne` في المسار المفرد.
+      for (const p of await CollectionsParty.find({ kind: 'customer', nameKey: { $in: names } }).select('nameKey paymentType').lean()) {
+        if (!partyTypes.has(p.nameKey)) partyTypes.set(p.nameKey, p.paymentType);
+      }
+    }
     for (const r of rows) {
       // الصفُّ الذي يحرّره غيرُك لا يُكتب فوقه في دفعةٍ لا يراها.
       if (isLocked(r, req.user._id)) {
@@ -2082,7 +2215,7 @@ exports.bulkUpdate = async (req, res) => {
       if (walletPaid.has(String(r.reportNumber || '').trim())) rowPatch.paymentAmount = walletPaid.get(String(r.reportNumber || '').trim());
       // ونوعُ الدفع يُملأ لكلّ صفٍّ من ملفّ عميله — والدفعةُ الواحدة تضمّ
       // عملاءَ شتّى، فقاعدةٌ واحدةٌ للجميع تكتب فاتورةً على عميل كاش.
-      await fillPaymentTypeFromCustomer(rowPatch, r);
+      await fillPaymentTypeFromCustomer(rowPatch, r, partyTypes);
       stampInvoiceDate(rowPatch, r);
       const own = applyBillingRules(rowPatch, r);
       if (own.blocked.includes('invoiceNumber')) {
@@ -2113,12 +2246,21 @@ exports.bulkUpdate = async (req, res) => {
         if (!byPatch.has(k)) byPatch.set(k, { patch: t.patch, ids: [] });
         byPatch.get(k).ids.push(t._id);
       }
-      const results = await OperationsWorkflow.bulkWrite([...byPatch.values()].map((g) => ({
-        updateMany: {
-          filter: { _id: { $in: g.ids } },
-          update: { $set: { ...g.patch, lastModifiedBy: req.user._id } },
-        },
-      })), { ordered: false });
+      // والمعرّفاتُ تُقطَّع خمسةَ آلافٍ في الشرط الواحد — سبعةٌ وثلاثون ألفًا في
+      // `$in` واحدٍ طلبٌ ثقيلٌ على العنقود بلا داعٍ.
+      const CHUNK = 5000;
+      const ops = [];
+      for (const g of byPatch.values()) {
+        for (let i = 0; i < g.ids.length; i += CHUNK) {
+          ops.push({
+            updateMany: {
+              filter: { _id: { $in: g.ids.slice(i, i + CHUNK) } },
+              update: { $set: { ...g.patch, lastModifiedBy: req.user._id } },
+            },
+          });
+        }
+      }
+      const results = await OperationsWorkflow.bulkWrite(ops, { ordered: false });
       updated = results.modifiedCount || 0;
       cache.clear('wf:');
       // رقمُ فاتورةٍ كُتب جماعيًّا يصنع قيدَه في الدفتر كما يصنعه التعديلُ
@@ -2147,7 +2289,12 @@ exports.bulkUpdate = async (req, res) => {
       {
         const retyped = perRow.filter((t) => Object.prototype.hasOwnProperty.call(t.patch, 'paymentType')
           && String(t.patch.paymentType || '') !== t.typeBefore).map((t) => t.reportNumber);
-        if (retyped.length) {
+        // ومطابقةُ المحفظة كشفًا كشفًا رحلتان لكلّ كشف؛ فإن كثرت الكشوفُ طوبقت
+        // القيودُ كلُّها مرّةً (وهي أقلُّ بكثير) في الخلف — النتيجةُ نفسُها.
+        if (retyped.length > 300) {
+          require('../utils/walletCollection').resyncAllWalletCollections({ user: req.user, reason: 'تغيّر نوع الكشف' })
+            .catch((e) => console.error('wallet cash-collection (workflow bulk, all):', e.message));
+        } else if (retyped.length) {
           await require('../utils/walletCollection').syncWalletCollection(retyped, { user: req.user, reason: 'تغيّر نوع الكشف' })
             .catch((e) => console.error('wallet cash-collection (workflow bulk):', e.message));
         }
@@ -2168,10 +2315,13 @@ exports.bulkUpdate = async (req, res) => {
       });
     }
 
+    // قائمةُ المتروك تُقصّ في الردّ (العددُ كاملٌ في `skippedCount`): عشرةُ آلاف
+    // سببٍ لا تُقرأ في نافذة، وتُثقل الردَّ بلا فائدة.
     res.json({
       updated,
       requested: ids.length,
-      skipped,
+      skipped: skipped.slice(0, 300),
+      skippedCount: skipped.length,
       refusedFields: refused.length ? refused : undefined,
       message: skipped.length
         ? `حُفظ ${updated} من ${ids.length} — و${skipped.length} لم يُحفظ.`
@@ -2185,33 +2335,52 @@ exports.bulkUpdate = async (req, res) => {
 
 exports.bulkDelete = async (req, res) => {
   try {
-    const { ids } = req.body;
+    let { ids } = req.body;
+    // «كلُّ نتائج الفلتر» هنا كما في التحديث الجماعيّ — بالشروط نفسِها والعددِ
+    // الذي أكّده المستخدم (راجع idsForAllMatching).
+    const allMatching = !!(req.body.allMatching && req.body.query && typeof req.body.query === 'object');
+    if (allMatching) {
+      const r = await idsForAllMatching(req.body, req.user.role);
+      if (r.error) return res.status(r.error.status).json(r.error.body);
+      ids = r.ids;
+    }
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ message: 'ids must be a non-empty array' });
     }
+    if (!allMatching && ids.length > IDS_CAP) {
+      return res.status(400).json({ message: `الحدُّ الأقصى ${IDS_CAP} كشفًا في المرّة — أو اختر «كلّ نتائج الفلتر».` });
+    }
 
     // Check for locked workflows
-    const workflows = await OperationsWorkflow.find({ _id: { $in: ids } });
+    const workflows = await OperationsWorkflow.find({ _id: { $in: ids } }).select('lockedBy lockedAt lockedByName').lean();
     const lockedIds = workflows.filter((w) => isLocked(w, req.user._id)).map((w) => w._id.toString());
     if (lockedIds.length > 0) {
       return res.status(423).json({ message: `${lockedIds.length} workflow(s) are locked and cannot be deleted` });
     }
 
-    await OperationsWorkflow.deleteMany({ _id: { $in: ids } });
+    for (let i = 0; i < ids.length; i += 5000) {
+      await OperationsWorkflow.deleteMany({ _id: { $in: ids.slice(i, i + 5000) } });
+    }
 
     await logAudit({
       user: req.user._id,
       action: 'bulk_delete_workflows',
       entity: 'OperationsWorkflow',
       entityId: null,
-      changes: { before: { count: ids.length, ids } },
+      // المعرّفاتُ كلُّها حتى ألفٍ — وما فوقه عددُه وشرطُه، لا سجلٌّ بميغابايت.
+      changes: { before: { count: ids.length, ids: ids.slice(0, 1000), ...(allMatching ? { query: req.body.query } : {}) } },
       ipAddress: req.ip,
     });
 
     bustFilterCache();
-    ids.forEach((id) => {
-      try { emitToAll('workflow:deleted', { _id: id }); } catch (e) { console.error('WebSocket emit error:', e); }
-    });
+    // خبرٌ لكلّ صفٍّ معقولٌ لصفحة؛ ولآلافٍ خبرٌ واحدٌ تُعاد عليه القائمة.
+    if (ids.length > 200) {
+      try { emitToAll('workflow:bulkImported', { bulkDelete: true, deleted: ids.length }); } catch (e) { /* */ }
+    } else {
+      ids.forEach((id) => {
+        try { emitToAll('workflow:deleted', { _id: id }); } catch (e) { console.error('WebSocket emit error:', e); }
+      });
+    }
 
     res.json({ message: `${ids.length} workflow(s) deleted successfully`, deleted: ids.length });
   } catch (error) {

@@ -15,6 +15,8 @@ const { statusVocabulary, isValidStatus } = require('../utils/shipmentOrderStatu
 const { saveUploadFile } = require('../utils/fileStore');
 const cache = require('../utils/ttlCache');
 const { flexSpaceRegex } = require('../utils/plateKey');
+const { isSubtype } = require('../utils/paymentType');
+const { termsOfSubtype, paymentSubtypeOptions } = require('../utils/shipmentOrderPayment');
 
 // The trial section for creating shipments natively, instead of on the external
 // UPL platform. Fully self-contained: nothing here reads or writes anything the
@@ -55,9 +57,29 @@ const ORDER_EDITABLE = [
   'truckType', 'cargoType', 'truckLength', 'quantity',
   'customer', 'driverName', 'driverPhone', 'vehicleName', 'vehicle',
   'pickupTime', 'startTime', 'arrivalTime', 'sellPrice', 'buyPrice',
-  'driverRentType', 'paymentMethod', 'driverRentPrice', 'branch',
+  'paymentSubtype', 'driverRentType', 'paymentMethod', 'driverRentPrice', 'branch',
   'status', 'notes', 'customFields',
 ];
+
+/**
+ * «نوع الدفع» في طلبٍ قادم — يُتحقَّق منه، وتُكتب طريقةُ الدفع منه.
+ *
+ * أحدُ الأنواع الأربعة أو فارغ؛ وما سواهما يُرفَض بأربعمئة لا يُحفَظ صامتًا —
+ * نوعٌ مجهولٌ في طلبٍ لا يعرف أحدٌ بعده أيُحصَّل آجلًا أم نقدًا. ومتى كان
+ * نوعًا كُتبت `paymentMethod` منه ولو أرسل النموذجُ غيرَها: البوليصةُ تقرؤها
+ * لتطبع سعرَ النقل للنقديّ، فلا تُترك تناقضه. راجع utils/shipmentOrderPayment.
+ */
+function applyPaymentSubtype(data) {
+  if (data.paymentSubtype === undefined) return;
+  const v = String(data.paymentSubtype == null ? '' : data.paymentSubtype).trim();
+  if (v && !isSubtype(v)) {
+    const err = new Error(`نوعُ دفعٍ غير معروف: ${v}`);
+    err.status = 400;
+    throw err;
+  }
+  data.paymentSubtype = v;
+  if (v) data.paymentMethod = termsOfSubtype(v);
+}
 
 const CUSTOMER_EDITABLE = ['name', 'phone', 'email', 'notes', 'routes', 'defaults', 'isActive'];
 
@@ -496,6 +518,7 @@ exports.orderFilterOptions = async (req, res) => {
 async function createOneOrder(req, body) {
   const inner = { ...req, body };
   const data = pick(body, ORDER_EDITABLE);
+  applyPaymentSubtype(data);
 
   await resolveInlineCustomer(inner, data);
 
@@ -656,6 +679,7 @@ exports.updateOrder = async (req, res) => {
     if (!order) return res.status(404).json({ message: 'Shipment order not found' });
 
     const data = pick(req.body, ORDER_EDITABLE);
+    try { applyPaymentSubtype(data); } catch (e) { return res.status(400).json({ message: e.message }); }
 
     // An edit can introduce a first-time customer or a fresh truck exactly like
     // the create form — the same inline registration applies.
@@ -1654,6 +1678,12 @@ exports.updateField = async (req, res) => {
     const data = pick(req.body, FIELD_EDITABLE);
     // A system field's group is part of the wiring; its look and words are not.
     if (field.isSystem) delete data.group;
+    // «نوع الدفع» أربعةُ أنواعٍ بمفاتيح سير عمل التشغيل — خيارُه الخامسُ أو
+    // اسمٌ معدَّلٌ يفصل الطلبَ عن الكشف. فيُضبط شكلُه وتسميتُه وإلزامُه، لا خياراتُه.
+    if (field.key === 'paymentSubtype') {
+      delete data.options;
+      if (data.inputType && !['cards', 'select'].includes(data.inputType)) delete data.inputType;
+    }
     Object.assign(field, data);
     await field.save();
     emit('shipmentOrders:fields', {});
@@ -1722,10 +1752,52 @@ const SYSTEM_FIELDS = [
   { key: 'sellPrice', labelAr: 'سعر البيع', labelEn: 'Sell price', group: 'pricing_time', inputType: 'number', required: true, order: 4 },
   { key: 'buyPrice', labelAr: 'سعر الشراء', labelEn: 'Buy price', group: 'pricing_time', inputType: 'number', order: 5 },
   // المدفوعات
-  { key: 'driverRentType', labelAr: 'نوع تأجير السائق', labelEn: 'Driver rent type', group: 'payment', inputType: 'cards', options: opts(['راجعة', 'ذهاب فقط', 'ذهاب وعودة']), order: 1 },
-  { key: 'paymentMethod', labelAr: 'طريقة الدفع', labelEn: 'Payment method', group: 'payment', inputType: 'cards', options: opts(['آجل', 'نقدي', 'تحويل بنكي']), order: 2 },
+  // «نوع الدفع» حلّ محلَّ «نوع تأجير السائق» و«طريقة الدفع» — راجع
+  // migratePaymentSubtypeField. فلا يُبذَران في قاعدةٍ جديدة؛ والقائمان يبقيان
+  // مخفيَّين في الإعدادات لمن أراد إظهارهما.
+  { key: 'paymentSubtype', labelAr: 'نوع الدفع', labelEn: 'Payment type', group: 'payment', inputType: 'cards', options: paymentSubtypeOptions(), order: 1 },
   { key: 'branch', labelAr: 'الفرع', labelEn: 'Branch', group: 'payment', inputType: 'select', options: opts(['جدة', 'الرياض', 'الدمام', 'جازان']), order: 4 },
 ];
+
+/**
+ * ── «نوع تأجير السائق» يصير «نوع الدفع» ─────────────────────────────────────
+ *
+ * قرارُ صاحب الشركة (٢٠٢٦/١٠/٢١). والنموذجُ بيانات، فالتغييرُ ترحيلٌ لصفوفه
+ * يجري مرّةً واحدة — حين لا يكون صفُّ «نوع الدفع» موجودًا بعد:
+ *
+ *  • يُنشأ «نوع الدفع» في مكان «نوع تأجير السائق» (ترتيبُه) وبإلزامه: كان
+ *    مطلوبًا فيبقى مطلوبًا، وإلّا فاختياريّ.
+ *  • ويُخفى «نوع تأجير السائق» و«طريقة الدفع» (`active: false`) — لا يُحذفان:
+ *    إخفاءٌ يُرجَع من إعدادات القسم، والطلباتُ القديمةُ تحمل قيمَهما وتُطبَع بها.
+ *    و«طريقة الدفع» كانت تُعرَض مقروءةً تتبع نوعَ التأجير؛ وصارت تتبع نوعَ الدفع
+ *    في الخادم، فخانتُها في النموذج تكرارٌ لا سؤال.
+ *
+ * ولا يُعاد بعدها: من أظهر أحدَهما بيده لا يُخفيه الإقلاعُ التالي.
+ */
+async function migratePaymentSubtypeField() {
+  if (await ShipmentOrderField.exists({ key: 'paymentSubtype' })) {
+    // الخياراتُ الأربعةُ تُرسَّخ في كلّ إقلاع: هي مفاتيحُ سير العمل وأسماؤه،
+    // وتُقفَل في الإعدادات — راجع updateField.
+    await ShipmentOrderField.updateOne({ key: 'paymentSubtype' }, { $set: { options: paymentSubtypeOptions() } });
+    return;
+  }
+  const old = await ShipmentOrderField.findOne({ key: 'driverRentType' }).lean();
+  await ShipmentOrderField.create({
+    key: 'paymentSubtype',
+    labelAr: 'نوع الدفع',
+    labelEn: 'Payment type',
+    group: 'payment',
+    inputType: 'cards',
+    options: paymentSubtypeOptions(),
+    required: !!(old && old.required && !old.deleted),
+    order: old && Number.isFinite(old.order) ? old.order : 1,
+    isSystem: true,
+  });
+  await ShipmentOrderField.updateMany(
+    { key: { $in: ['driverRentType', 'paymentMethod'] } },
+    { $set: { active: false } },
+  );
+}
 
 exports.ensureShipmentOrderDefaults = async () => {
   // Dropped by request — the addresses added typing, not information. Removing
@@ -1744,6 +1816,8 @@ exports.ensureShipmentOrderDefaults = async () => {
     { key: { $in: ['pickupTime', 'startTime', 'arrivalTime'] }, inputType: 'datetime' },
     { $set: { inputType: 'date' } },
   );
+
+  await migratePaymentSubtypeField();
 
   for (const f of SYSTEM_FIELDS) {
     // eslint-disable-next-line no-await-in-loop
@@ -1817,6 +1891,9 @@ exports.addFieldOption = async (req, res) => {
     if (!field || field.deleted) return res.status(404).json({ message: 'الحقل غير موجود' });
     if (!['select', 'cards'].includes(field.inputType)) {
       return res.status(400).json({ message: 'هذا الحقل ليس قائمةَ اختيار' });
+    }
+    if (field.key === 'paymentSubtype') {
+      return res.status(400).json({ message: 'أنواعُ الدفع أربعةٌ ثابتة — لا يُضاف إليها من هنا' });
     }
     const ar = String(req.body.ar || req.body.label || '').trim();
     if (!ar) return res.status(400).json({ message: 'اكتب الاسم' });

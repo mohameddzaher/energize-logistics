@@ -36,6 +36,7 @@ import '../screens/it_custody.dart';
 import '../screens/it_emails.dart';
 import '../screens/procurement.dart';
 import '../screens/section_dash.dart';
+import '../screens/collections_receivables.dart' show CollectionsCasesScreen;
 import '../screens/dash_specs.dart';
 import '../screens/remote_suite.dart';
 import '../screens/ls2_dashboard.dart';
@@ -155,6 +156,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
   // الكتابةُ في فواتير التحصيل: أدوارُ الخادم نفسُها، أو منحُ القسم «تعديل».
   collectionsCanEdit = const [..._admins, 'collections_manager', 'collections_staff', 'cfo', 'accounting_manager'].contains(role)
       || auth.canEditSection('Collections');
+  // و«تعديل القيمة» أضيق: بالدور وحدَه، لا يفتحه منحُ القسم (راجع configs).
+  collectionsCanEditAmount = collectionsAmountEditRoles.contains(role);
   // ── سجلُّ العملاء: شاشةٌ واحدةٌ في التشغيل وطلبات الشحنات والمبيعات ────────
   // مَن يعدّل ومَن يزيل بقاعدة الويب نفسِها (canEditCustomers / canRemoveCustomers)
   // وحارسِ `/api/customer-registry`: المندوبُ يقرأ ولا يكتب.
@@ -210,6 +213,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         // سجلُّ الأعمار قبل السجلّات: هو ما يُفتح في الطريق قبل الزيارة.
         AppPage('أعمار الديون', 'Aging', Icons.layers_outlined, (c) => ResourceScreen(config: collectionsAgingCfg), path: '/system/collections-dept/aging'),
         AppPage('دفتر الفواتير', 'Invoice Ledger', Icons.menu_book_outlined, (c) => ResourceScreen(config: collectionsLedgerCfg), path: '/system/collections-dept/ledger'),
+        AppPage('القضايا', 'Cases', Icons.gavel_rounded, (c) => const CollectionsCasesScreen(), path: '/system/collections-dept/cases'),
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: collectionsCustomersCfg), path: '/system/collections-dept/customers'),
         AppPage('الموردون', 'Suppliers', Icons.local_shipping_outlined, (c) => ResourceScreen(config: collectionsSuppliersCfg), path: '/system/collections-dept/suppliers'),
         AppPage('ربط الحسابات', 'Account links', Icons.link, (c) => const PartyLinksScreen(), path: '/system/collections-dept/links'),

@@ -80,6 +80,16 @@ const shipmentOrderSchema = new mongoose.Schema(
     buyPrice: { type: Number, default: null },
 
     // ── المدفوعات ─────────────────────────────────────────────────────────
+    // «نوع الدفع» — أحدُ الأنواع الأربعة بمفاتيح سير عمل التشغيل
+    // (deferred_cash | deferred_invoice | cash_3pl | cash_ht). حلّ في نموذج
+    // الإنشاء محلَّ «نوع تأجير السائق» (٢٠٢٦/١٠/٢١)، و`paymentMethod` يُشتقّ
+    // منه في الخادم — راجع utils/shipmentOrderPayment.
+    paymentSubtype: {
+      type: String, trim: true, default: '',
+      enum: ['', ...require('../utils/paymentType').SUBTYPE_KEYS],
+    },
+    // نوعُ تأجير السائق: لم يعد يُسأل في النموذج. يبقى لما سُجِّل قبله، ولما
+    // تنقله المنصّة (`driver_rental_type`)، ويُطبَع في خانة «إيجار» بالبوليصة.
     driverRentType: { type: String, trim: true, default: '' },
     paymentMethod: { type: String, trim: true, default: '' },
     driverRentPrice: { type: Number, default: null },

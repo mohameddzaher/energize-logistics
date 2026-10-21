@@ -317,6 +317,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // ومنذ متى. ثمّ دفترُ الفواتير بتفصيله، ثمّ الخطّةُ والفريق.
     { href: '/system/collections-dept/aging', label: lang === 'ar' ? 'أعمار الديون' : 'Aging', icon: <Layers className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     { href: '/system/collections-dept/ledger', label: lang === 'ar' ? 'دفتر الفواتير' : 'Invoice Ledger', icon: <BookOpen className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
+    // «القضايا»: العملاءُ تحت التفاوض أو في القضاء — حالةُ العميل لا الفاتورة.
+    { href: '/system/collections-dept/cases', label: lang === 'ar' ? 'القضايا' : 'Cases', icon: <Scale className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     { href: '/system/collections-dept/plan', label: lang === 'ar' ? 'الخطة اليومية' : 'Daily Plan', icon: <CalendarCheck className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     { href: '/system/collections-dept/team', label: lang === 'ar' ? 'الفريق' : 'The Team', icon: <UserCog className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     // ومراجعةُ الربط قرارُ المدير وحدَه — الدمجُ ينقل مديونيّةً.

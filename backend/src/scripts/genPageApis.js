@@ -216,6 +216,9 @@ function build() {
   const OPENED_FROM = {
     '/system/collections-dept/customers': ['collections-dept/parties'],
     '/system/collections-dept/suppliers': ['collections-dept/parties'],
+    // «تفاصيلُ المديونيّة» شاشةٌ فرعيّةٌ للّوحة (`dashboard/receivables`)، وتُفتَح
+    // أيضًا من «القضايا» — فمَن يملك القضايا وحدَها يقرأ صفوفَها ولا يُردّ ٤٠٣.
+    '/system/collections-dept/cases': ['collections-dept/dashboard'],
   };
 
   for (const p of PAGES) {

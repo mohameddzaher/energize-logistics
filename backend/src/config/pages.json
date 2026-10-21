@@ -134,6 +134,12 @@
       "en": "Invoice Ledger"
     },
     {
+      "key": "/system/collections-dept/cases",
+      "section": "Collections",
+      "ar": "القضايا",
+      "en": "Cases"
+    },
+    {
       "key": "/system/collections-dept/plan",
       "section": "Collections",
       "ar": "الخطة اليومية",

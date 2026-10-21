@@ -157,10 +157,24 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
         (tr('هاتف السائق', 'Driver phone'), s('driverPhone')),
         (tr('سعر البيع', 'Sell price'), s('sellPrice')),
         (tr('سعر الشراء', 'Buy price'), s('buyPrice')),
+        (tr('نوع الدفع', 'Payment type'), _paymentSubtypeLabel(s('paymentSubtype'))),
         (tr('الفرع', 'Branch'), s('branch')),
         (tr('ملاحظات', 'Notes'), s('notes')),
       ],
     );
+  }
+
+  // «نوع الدفع» على الطلب — مفاتيحُ سير عمل التشغيل (utils/paymentType في
+  // الخادم). والطلبُ القديمُ بلا نوعٍ يُطبَع بخانةٍ فارغة.
+  static const _paymentSubtypes = {
+    'deferred_cash': ('آجل - كاش', 'Deferred – cash'),
+    'deferred_invoice': ('آجل - فاتورة', 'Deferred – invoice'),
+    'cash_3pl': ('نقدي - 3PL', 'Cash – 3PL'),
+    'cash_ht': ('نقدي - HT', 'Cash – HT'),
+  };
+  String _paymentSubtypeLabel(String k) {
+    final l = _paymentSubtypes[k];
+    return l == null ? '' : tr(l.$1, l.$2);
   }
 
   String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();

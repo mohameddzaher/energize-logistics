@@ -1406,6 +1406,14 @@ exports.updateFields = async (req, res) => {
     await emp.save();   // pre-save بيشيل «مطلوب» عن أي حقل اتملى
     // ومشروعُ موظّف B2C يُكتب في سجلّه هناك أيضًا — راجع utils/hrLists.
     if (applied.project !== undefined) await require('../utils/hrLists').projectToB2C(emp, emp.project).catch(() => {});
+    // ونقلُه إلى قسم B2C من الماستر يُدخله سجلَّ القسم — كما من ملفّه (hrController).
+    // كان الماستر وحدَه لا يفعل: يصير في B2C بالموارد البشريّة ولا صفَّ له في القسم.
+    if (applied.department !== undefined) {
+      const { syncEmployeeToLightTransport } = require('../utils/lightTransportSync');
+      if (await syncEmployeeToLightTransport(emp, req.user)) {
+        try { require('../utils/ttlCache').clear('lt:'); require('../websocket/socketManager').emitToAll('lt:updated', {}); } catch (_) { /* */ }
+      }
+    }
 
     // ── وبطاقةُ السائق تُكتب في سجلّ المركبات ─────────────────────────────
     // السجلُّ هناك هو المرجع؛ ما يُعدَّل هنا يُكتب فيه ثمّ تعود لقطتُه منه.

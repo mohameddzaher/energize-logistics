@@ -188,6 +188,9 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
                                       ]),
                                       const SizedBox(height: 4),
                                       Text('${v['brandAr'] ?? ''} ${v['modelAr'] ?? ''} · ${v['sectorAr'] ?? ''}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                                      // راكبُها من قسم الأفراد في إجازةٍ أو موقوفٌ أو في حادث.
+                                      if (b2cOpChip((v['b2cRider'] as Map?)?['opStatus']) != null)
+                                        Padding(padding: const EdgeInsets.only(top: 4), child: b2cOpChip((v['b2cRider'] as Map?)?['opStatus'], who: ((v['b2cRider'] as Map?)?['name'] ?? '').toString())!),
                                       if ((v['ownerNameAr'] ?? '').toString().isNotEmpty)
                                         Padding(padding: const EdgeInsets.only(top: 2), child: Text(v['ownerNameAr'].toString(), style: const TextStyle(fontSize: 11, color: T.inkFaint), maxLines: 1, overflow: TextOverflow.ellipsis)),
                                     ]),
@@ -269,6 +272,10 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
                       }).toList(),
                     ),
                     const SizedBox(height: 12),
+                    // راكبُها من قسم الأفراد وحالتُه اليوم — تُكتب في «موظفو النقل الخفيف».
+                    if (b2cOpChip((v['b2cRider'] as Map?)?['opStatus']) != null)
+                      Padding(padding: const EdgeInsets.only(bottom: 10), child: Align(alignment: AlignmentDirectional.centerStart,
+                          child: b2cOpChip((v['b2cRider'] as Map?)?['opStatus'], who: ((v['b2cRider'] as Map?)?['name'] ?? '').toString())!)),
                     _section(tr('الهوية والتصنيف', 'Identity'), [
                       _row(tr('رقم اللوحة', 'Plate'), v['plateNumber']),
                       _row(tr('رقم الهيكل', 'Chassis'), v['chassisNumber']),

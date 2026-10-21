@@ -160,7 +160,14 @@ async function projectToB2C(employee, value) {
   row.projectAr = v;
   row.$locals.fromHr = true; // لا يُعاد إلى الملفّ ما جاء منه
   await row.save();
-  try { require('../websocket/socketManager').emitToAll('lt:updated', {}); } catch (_) { /* */ }
+  // ذاكرتا القسم (لوحتُه ولوحةُ الطلبات — مشروعُ حسابِ طلباته تبعه) تُمحَيان قبل
+  // الإعلان، وإلّا فتحت شاشاتُ B2C المشروعَ القديم حتى تنقضي الذاكرة.
+  for (const p of ['lt:', 'b2c:']) { try { cache.clear(p); } catch (_) { /* */ } }
+  try {
+    const { emitToAll } = require('../websocket/socketManager');
+    emitToAll('lt:updated', { id: String(row._id) });
+    emitToAll('b2c:rep:updated', { lt: String(row._id) });
+  } catch (_) { /* */ }
   return true;
 }
 /** مشروعُ سجلّ B2C كما يُكتب في الملفّ. */

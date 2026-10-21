@@ -7,6 +7,7 @@ import '../resource/resource.dart' show ResourceScreen;
 import 'section_dash.dart';
 import 'collections_receivables.dart';
 import 'b2c_orders_report.dart';
+import 'b2c_vehicles.dart' show B2cVehiclesScreen;
 
 /// مواصفات لوحات الأقسام — كل قسم يعرّف بطاقاته وتوزيعاته وقوائمه فوق
 /// SectionDashScreen العامة. الأسماء تطابق استجابة كل /dashboard في الخادم.
@@ -259,40 +260,49 @@ void _openRepsOfProject(BuildContext context, Map<String, dynamic> r) {
   );
 }
 
+/// ── لوحةُ قسم الأفراد (صاحبُ الشركة، ٢٠٢٦/١٠/٢١) — كالموقع ─────────────────
+/// فلاترٌ فوقها (المشروع، المندوب، المركبة، التفويض، السجل، كفالة/فريلانسر، الفئة،
+/// المدينة، حالة العمل) — خياراتُها وعدّاداتُها من ردّ اللوحة (`filterOptions`).
+/// ثمّ `_B2cBoardCards`، وكلُّ رقمٍ فيها يفتح أصحابَه: الناسَ في سجلّ الموظّفين
+/// أو المركباتِ في «مركبات النقل الخفيف» (`_v=1`) — بالفلاتر نفسِها.
+void _openB2cDrill(BuildContext context, String title, Map<String, String> query) {
+  final q = Map<String, String>.from(query);
+  if (q.remove('_v') != null) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => B2cVehiclesScreen(query: q, title: title)));
+    return;
+  }
+  // في الخدمة وحدَهم — كما تعدّهم اللوحة.
+  if (!(q['status'] ?? '').split(',').contains('إنهاء خدمة')) q['inService'] = '1';
+  final listQuery = q.entries.where((e) => e.value.isNotEmpty)
+      .map((e) => '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}').join('&');
+  Navigator.push(context, MaterialPageRoute(builder: (_) => ResourceScreen(
+      config: lightTransportCfg(canAdd: false, listQuery: listQuery, arTitle: title, enTitle: title))));
+}
+
 final b2cDashSpec = DashSpec(
   arTitle: 'لوحة قسم الأفراد', enTitle: 'B2C Board',
   endpoint: '/api/light-transport/overview', liveEvent: 'lt:*',
-  // تقريرُ تحقيق المناديب — تحت أرقام الموظفين والمركبات (كالموقع، ٢٠٢٦/١٠/٢٠).
-  afterStats: (d) => const B2cOrdersReportCard(),
+  filters: const [
+    DashFilter('project', 'المشروع', 'Project', 'filterOptions.project'),
+    DashFilter('rep', 'المندوب', 'Rep', 'filterOptions.rep'),
+    DashFilter('vehicle', 'المركبة', 'Vehicle', 'filterOptions.vehicle'),
+    DashFilter('auth', 'التفويض', 'Authorisation', 'filterOptions.auth', searchable: false),
+    DashFilter('cr', 'السجل التجاري', 'Commercial register', 'filterOptions.cr'),
+    DashFilter('engagement', 'كفالة / فريلانسر', 'Engagement', 'filterOptions.engagement', searchable: false),
+    DashFilter('category', 'الفئة', 'Category', 'filterOptions.category', searchable: false),
+    DashFilter('city', 'المدينة', 'City', 'filterOptions.city'),
+    DashFilter('status', 'حالة العمل', 'Work status', 'filterOptions.status', searchable: false),
+  ],
+  onDrill: _openB2cDrill,
+  // الأرقامُ كلُّها في الكروت تحت (الإجمالي ← الفئات ← حالة العمل ← المركبات).
+  stats: const [],
+  afterStatsDrill: (d, open) => _B2cBoardCards(data: d, open: open),
   lists: [
     // لكلّ مشروع: كفالة · فري لانسر · يوزرات — كجدول الموقع.
     DashList('المناديب حسب المشروع', 'Reps by project', 'reps.projects', (r) => '${_s(r, 'project')} — ${_n(r['total'])}',
         subtitle: (r) => '${tr('كفالة', 'Sponsored')} ${_n(r['sponsored'])} · ${tr('فري لانسر', 'Freelance')} ${_n(r['freelance'])} · ${tr('يوزرات', 'Users')} ${_n(r['users'])}'
             '${((r['noContract'] as num?) ?? 0) > 0 ? ' · ${tr('بلا نوع عقد', 'no contract')} ${_n(r['noContract'])}' : ''}',
         onTap: _openRepsOfProject),
-  ],
-  stats: const [
-    DashStat('الموظفون', 'Employees', 'employees.total', Icons.groups_outlined, T.navy),
-    DashStat('مناديب', 'Reps', 'employees.reps', Icons.two_wheeler_outlined, T.info),
-    DashStat('إداريون', 'Admin', 'employees.admins', Icons.badge_outlined, T.violet),
-    DashStat('على رأس العمل', 'Working', 'employees.working', Icons.check_circle_outline, T.success),
-    // على رأس العمل + في إجازة + موقوف = الموظفون — كالموقع.
-    DashStat('في إجازة', 'On leave', 'employees.onLeave', Icons.beach_access_outlined, T.info),
-    DashStat('موقوف', 'Suspended', 'employees.suspended', Icons.pause_circle_outline, T.warn),
-    // إجماليُّ المناديب = كفالة + فري لانسر + يوزرات مؤجَّرة — كالموقع.
-    DashStat('إجمالي المناديب', 'Total reps', 'reps.total', Icons.groups_2_outlined, T.navy),
-    DashStat('على الكفالة', 'Sponsored', 'reps.sponsored', Icons.verified_user_outlined, T.info),
-    DashStat('فري لانسر', 'Freelance', 'reps.freelance', Icons.work_outline, T.violet),
-    DashStat('يوزرات', 'Rented users', 'reps.users', Icons.key_outlined, T.orange),
-    DashStat('مركبات', 'Vehicles', 'vehicles.total', Icons.directions_car_outlined, T.navy),
-    DashStat('عليها راكب', 'With a rider', 'vehicles.withRider', Icons.person_pin_circle_outlined, T.success),
-    // ما ينقص ويحتاج عملًا — لا ما هو قائم.
-    DashStat('مركبات واقفة', 'Idle vehicles', 'vehicles.idle', Icons.local_parking_outlined, T.warn),
-    DashStat('يعملون بلا مركبة', 'Working without a vehicle', 'gaps.workingWithoutVehicle', Icons.no_transfer_outlined, T.warn),
-    DashStat('تفويض باسم غير الراكب', 'Authorised to someone else', 'gaps.authorizationMismatch', Icons.assignment_late_outlined, T.danger),
-    DashStat('بلا سكن', 'Unhoused', 'gaps.unhoused', Icons.home_outlined, T.warn),
-    DashStat('أوامر تشغيل سارية', 'Active orders', 'orders.active', Icons.assignment_ind_outlined, T.navy),
-    DashStat('بلا ملفّ في الموارد البشرية', 'No HR file', 'gaps.noHrFile', Icons.person_off_outlined, T.violet),
   ],
 );
 
@@ -709,4 +719,191 @@ class _B2cProjectsTotalState extends State<B2cProjectsTotal> {
       ),
     ];
   }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// كروتُ لوحة قسم الأفراد — الأرقامُ كما في الموقع (صاحبُ الشركة، ٢٠٢٦/١٠/٢١).
+//
+// الإجماليُّ وحدَه فوق، وتحته ثلاثةُ كروت (مندوب · إداري · فني) لكلٍّ نصفاه (على
+// الكفالة · فريلانسر) وما سواهما رقمًا صغيرًا — فالنصفان وما تحتهما = الكارت.
+// ثمّ «حالة العمل» (يعمل · إجازة · موقوف · حادث) بقسمتها على الفئات، ثمّ
+// المركبات (عليها راكب / واقفة، والتفويض). وكلُّ رقمٍ يُضغَط فيفتح أصحابَه.
+// هادئة: أبيضُ ورقمٌ داكنٌ ونقطةُ لونٍ صغيرة، كالموقع.
+// ═══════════════════════════════════════════════════════════════════════════
+int _bi(dynamic v) => v is num ? v.toInt() : int.tryParse('${v ?? ''}') ?? 0;
+Map<String, dynamic> _bm(dynamic v) => v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
+
+const _bCats = [('rep', 'مندوب', 'Reps', Color(0xFF475569)), ('admin', 'إداري', 'Admin', Color(0xFF0D9488)), ('tech', 'فني', 'Technicians', Color(0xFFA16207))];
+const _bStates = [('يعمل', 'Working', Color(0xFF16A34A)), ('إجازة', 'On leave', Color(0xFF0284C7)), ('موقوف', 'Suspended', Color(0xFFD97706)), ('حادث', 'Accident', Color(0xFFDC2626))];
+const _bRest = [('trainee', 'متدرّب', 'Trainee'), ('users', 'يوزرات', 'Users'), ('none', 'غير محدد', 'Not set')];
+
+class _B2cBoardCards extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final void Function(String title, Map<String, String> node) open;
+  const _B2cBoardCards({required this.data, required this.open});
+
+  @override
+  Widget build(BuildContext context) {
+    final b = _bm(data['board']);
+    if (b.isEmpty) return const B2cOrdersReportCard();
+    final cats = _bm(b['categories']);
+    final st = _bm(b['status']);
+    final v = _bm(b['vehicles']);
+    final auth = _bm(v['auth']);
+    final none = _bi(_bm(cats['none'])['total']);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _title(tr('الموظفون', 'People')),
+      _BBox(children: [
+        _BBig(label: tr('الإجمالي', 'Total'), value: _bi(b['total']), size: 32,
+            sub: [for (final c in _bCats) '${tr(c.$2, c.$3)} ${_bi(_bm(cats[c.$1])['total'])}', if (none > 0) '${tr('غير مصنَّف', 'Uncategorised')} $none'].join(' · '),
+            onTap: () => open(tr('الموظفون', 'People'), const {})),
+      ]),
+      const SizedBox(height: 8),
+      for (final c in _bCats) ...[
+        Builder(builder: (_) {
+          final n = _bm(cats[c.$1]);
+          final rest = _bRest.where((r) => _bi(n[r.$1]) > 0).toList();
+          final name = tr(c.$2, c.$3);
+          return _BBox(children: [
+            _BBig(label: name, value: _bi(n['total']), dot: c.$4, onTap: () => open(name, {'category': c.$1})),
+            _BRow([
+              _BHalf(tr('على الكفالة', 'Sponsored'), _bi(n['sponsored']), () => open('$name — ${tr('على الكفالة', 'Sponsored')}', {'category': c.$1, 'engagement': 'sponsored'})),
+              _BHalf(tr('فريلانسر', 'Freelance'), _bi(n['freelance']), () => open('$name — ${tr('فريلانسر', 'Freelance')}', {'category': c.$1, 'engagement': 'freelance'})),
+            ]),
+            if (rest.isNotEmpty)
+              Container(
+                decoration: const BoxDecoration(border: Border(top: BorderSide(color: T.line))),
+                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+                child: Wrap(alignment: WrapAlignment.center, spacing: 12, children: [
+                  for (final r in rest)
+                    InkWell(
+                      onTap: () => open('$name — ${tr(r.$2, r.$3)}', {'category': c.$1, 'engagement': r.$1}),
+                      child: Text('${tr(r.$2, r.$3)} ${_bi(n[r.$1])}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                    ),
+                ]),
+              ),
+          ]);
+        }),
+        const SizedBox(height: 8),
+      ],
+      if (none > 0)
+        TextButton(onPressed: () => open(tr('غير مصنَّف', 'Uncategorised'), const {'category': 'none'}),
+            child: Text(tr('$none بلا فئة — اضغط لعرضهم', '$none uncategorised — tap to see them'), style: const TextStyle(fontSize: 12, color: T.inkSoft))),
+      _title(tr('حالة العمل', 'Work status')),
+      for (final s in _bStates) ...[
+        Builder(builder: (_) {
+          final n = _bm(st[s.$1]);
+          final name = tr(s.$1, s.$2);
+          return _BBox(children: [
+            _BBig(label: name, value: _bi(n['total']), dot: s.$3, onTap: () => open(name, {'status': s.$1})),
+            _BRow([
+              for (final c in _bCats)
+                _BHalf(tr(c.$2, c.$3), _bi(n[c.$1]), () => open('$name — ${tr(c.$2, c.$3)}', {'status': s.$1, 'category': c.$1})),
+            ]),
+          ]);
+        }),
+        const SizedBox(height: 8),
+      ],
+      _title(tr('المركبات', 'Vehicles')),
+      _BBox(children: [
+        _BBig(label: tr('مركبات القسم', 'Section vehicles'), value: _bi(v['total']),
+            sub: tr('مفوَّضة أو لا — من سجلّ المركبات', 'Authorised or not — from the vehicle register'),
+            onTap: () => open(tr('مركبات القسم', 'Section vehicles'), const {'_v': '1'})),
+        _BRow([
+          _BHalf(tr('عليها راكب', 'With a rider'), _bi(v['withRider']), () => open(tr('عليها راكب', 'With a rider'), const {'_v': '1', 'vstate': 'withRider'})),
+          _BHalf(tr('واقفة', 'Idle'), _bi(v['idle']), () => open(tr('واقفة بلا راكب', 'Idle'), const {'_v': '1', 'vstate': 'idle'})),
+        ]),
+        _BRow([
+          _BHalf(tr('مفوَّض', 'Authorised'), _bi(auth['authorized']), () => open(tr('مفوَّض', 'Authorised'), const {'_v': '1', 'auth': 'authorized'})),
+          _BHalf(tr('تفويض منتهٍ', 'Expired'), _bi(auth['expired']), () => open(tr('تفويض منتهٍ', 'Expired'), const {'_v': '1', 'auth': 'expired'})),
+          _BHalf(tr('بلا تفويض', 'Not authorised'), _bi(auth['none']), () => open(tr('بلا تفويض', 'Not authorised'), const {'_v': '1', 'auth': 'none'})),
+        ]),
+      ]),
+      const SizedBox(height: 10),
+      // تقريرُ تحقيق المناديب — تحت أرقام الموظفين والمركبات (كالموقع).
+      const B2cOrdersReportCard(),
+    ]);
+  }
+
+  Widget _title(String s) => Padding(
+        padding: const EdgeInsets.fromLTRB(2, 6, 2, 6),
+        child: Text(s, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: T.inkSoft)),
+      );
+}
+
+class _BBox extends StatelessWidget {
+  final List<Widget> children;
+  const _BBox({required this.children});
+  @override
+  Widget build(BuildContext context) => Container(
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: T.line)),
+        clipBehavior: Clip.antiAlias,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+      );
+}
+
+class _BBig extends StatelessWidget {
+  final String label;
+  final int value;
+  final double size;
+  final String? sub;
+  final Color? dot;
+  final VoidCallback onTap;
+  const _BBig({required this.label, required this.value, required this.onTap, this.size = 24, this.sub, this.dot});
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+          child: Column(children: [
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              if (dot != null) ...[Container(width: 6, height: 6, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)), const SizedBox(width: 6)],
+              Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: T.inkSoft)),
+            ]),
+            const SizedBox(height: 4),
+            Text('$value', style: TextStyle(fontSize: size, fontWeight: FontWeight.w800, color: T.ink)),
+            if (sub != null) ...[
+              const SizedBox(height: 3),
+              Text(sub!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+            ],
+          ]),
+        ),
+      );
+}
+
+class _BRow extends StatelessWidget {
+  final List<Widget> cells;
+  const _BRow(this.cells);
+  @override
+  Widget build(BuildContext context) => Container(
+        decoration: const BoxDecoration(border: Border(top: BorderSide(color: T.line))),
+        child: IntrinsicHeight(
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (var i = 0; i < cells.length; i++) ...[
+              if (i > 0) const VerticalDivider(width: 1, thickness: 1, color: T.line),
+              Expanded(child: cells[i]),
+            ],
+          ]),
+        ),
+      );
+}
+
+class _BHalf extends StatelessWidget {
+  final String label;
+  final int value;
+  final VoidCallback onTap;
+  const _BHalf(this.label, this.value, this.onTap);
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          child: Column(children: [
+            Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+            const SizedBox(height: 3),
+            Text('$value', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: T.ink)),
+          ]),
+        ),
+      );
 }

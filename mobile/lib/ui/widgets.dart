@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'theme.dart';
+import '../services/lang.dart';
 
 /// Staggered entrance: fades + slides a child up. Give each list item an
 /// increasing [delay] and the screen builds itself piece by piece.
@@ -235,4 +236,21 @@ class EmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// ── شارةُ حالة اليوم في قسم الأفراد (B2C) ──────────────────────────────────
+/// إجازة · موقوف · حادث تُكتب في «موظفو النقل الخفيف» وحدَه وتُنسَخ لقطةً إلى ملفّ
+/// الموارد البشريّة (`b2cOpStatus`) وإلى المركبة (`b2cRider.opStatus`) — فتُرى هنا
+/// حيث يُرى الإنسانُ أو مركبتُه (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). والفراغُ «يعمل» فلا شارة.
+Widget? b2cOpChip(dynamic status, {String who = ''}) {
+  final s = (status ?? '').toString();
+  final l = switch (s) {
+    'leave' => (tr('إجازة', 'On leave'), T.info),
+    'suspended' => (tr('موقوف', 'Suspended'), T.warn),
+    'accident' => (tr('حادث', 'Accident'), T.danger),
+    _ => null,
+  };
+  if (l == null) return null;
+  return Chip2('B2C: ${l.$1}${who.isEmpty ? '' : ' — $who'}', l.$2);
 }

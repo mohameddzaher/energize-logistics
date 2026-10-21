@@ -54,7 +54,17 @@ export interface LTEmployee {
   contractTypeShown?: string;
   /** نوعُ المركبة من سجلّها متى كانت مربوطةً — مفردةٌ واحدةٌ للاثنين. */
   vehicleTypeShown?: string;
-  statusSource?: 'hr' | 'section';
+  /** مَن قال الحالة: الموارد البشريّة (لا تُعدَّل هنا) · القسم (`opStatus`) · لا أحد (يعمل). */
+  statusSource?: 'hr' | 'section' | '';
+  /** حالةُ اليوم التي يكتبها القسم: فراغ (يعمل) · leave · suspended · accident. */
+  opStatus?: '' | 'leave' | 'suspended' | 'accident';
+  opStatusNote?: string;
+  opStatusAt?: string | null;
+  /** بمعاني لوحة القسم (backend utils/b2cBoard). */
+  categoryShown?: 'rep' | 'admin' | 'tech' | 'none';
+  engagementShown?: 'sponsored' | 'freelance' | 'trainee' | 'users' | 'none';
+  registerShown?: string;
+  authState?: '' | 'authorized' | 'expired' | 'none';
   hrLinked?: boolean;
   employeeNumber?: string;
   notesAr?: string;
@@ -143,7 +153,7 @@ export interface LTTotals {
   noDutySupervisor: number;
   cardGap: number; cardSoon: number;
   inspectionGap: number; inspectionSoon: number; reps: number; admins: number; drivers?: number; unknownKind?: number; working: number; notWorking: number;
-  onLeave: number; terminated: number; withVehicle: number; withoutVehicle: number;
+  onLeave: number; terminated: number; suspended?: number; accident?: number; withVehicle: number; withoutVehicle: number;
   hrLinked: number; ownedHere: number; housed: number; unhoused: number;
   byProject: Record<string, number>; byCity: Record<string, number>; byJob: Record<string, number>;
   byContract: Record<string, number>; byRegister: Record<string, number>;
@@ -274,6 +284,8 @@ export function ltTotalsOf(rows: LTEmployee[]): LTTotals {
     notWorking: count((r) => !working(r)),
     onLeave: count((r) => ['إجازة', 'اجازه'].includes(String(r.workStatusShown || ''))),
     terminated: count((r) => r.workStatusShown === 'إنهاء خدمة'),
+    suspended: count((r) => r.workStatusShown === 'موقوف'),
+    accident: count((r) => r.workStatusShown === 'حادث'),
     withVehicle: count((r) => !!r.vehicle),
     withoutVehicle: count((r) => !r.vehicle),
     hrLinked: count((r) => !!r.hrLinked),
@@ -292,6 +304,13 @@ export function ltTotalsOf(rows: LTEmployee[]): LTTotals {
 }
 
 const ENDED = 'إنهاء خدمة';
+/** صيغٌ قديمةٌ للحالة نفسِها — روابطُ محفوظة (backend utils/b2cBoard.normStatus). */
+export const normStatus = (v: string) => {
+  const x = String(v || '').trim();
+  if (x === 'متوقف') return 'موقوف';
+  if (x === 'اجازه' || x === 'في إجازة') return 'إجازة';
+  return x;
+};
 /** أهذا معرِّفُ حساب؟ — المشرفُ يُفلتَر بحسابه، أو باسمه المكتوب لمن لا حسابَ له. */
 const looksLikeId = (v: string) => /^[0-9a-f]{24}$/i.test(v);
 
@@ -308,7 +327,8 @@ export function ltPasses(r: LTEmployee, f: Record<string, string>, skip?: string
     const kind = r.staffKind || 'rep';
     if (f.staffKind === 'unknown' ? !(kind === 'unknown' || !String((r as any).jobTitleAr || '').trim()) : kind !== f.staffKind) return false;
   }
-  if (on('status') && r.workStatusShown !== f.status) return false;
+  // قيمٌ مفصولةٌ بفاصلة (فلاترُ اللوحة)، و«متوقف» القديمةُ هي «موقوف».
+  if (on('status') && !f.status.split(',').map(normStatus).includes(String(r.workStatusShown || ''))) return false;
   if (on('hasVehicle') && (f.hasVehicle === 'yes' ? !r.vehicle : f.hasVehicle === 'no' ? !!r.vehicle : false)) return false;
   if (on('housing')) {
     const h = r.housing ? String((r.housing as any)._id || r.housing) : '';
@@ -345,7 +365,7 @@ export function ltPasses(r: LTEmployee, f: Record<string, string>, skip?: string
  * صراحةً بحالة «إنهاء خدمة»؛ وصفُّه يبقى في الجدول ليُراجَع.
  */
 export function ltFacetedTotals(rows: LTEmployee[], f: Record<string, string>): LTTotals {
-  const base = f.status === ENDED ? rows : rows.filter((r) => r.workStatusShown !== ENDED);
+  const base = String(f.status || '').split(',').includes(ENDED) ? rows : rows.filter((r) => r.workStatusShown !== ENDED);
   const pass = (skip?: string) => base.filter((r) => ltPasses(r, f, skip));
   const t = ltTotalsOf(pass()) as any;
   const over = (k: string, keys: string[]) => {
@@ -354,7 +374,7 @@ export function ltFacetedTotals(rows: LTEmployee[], f: Record<string, string>): 
     for (const key of keys) t[key] = o[key];
   };
   over('staffKind', ['reps', 'admins', 'drivers', 'unknownKind']);
-  over('status', ['working', 'notWorking', 'onLeave', 'terminated', 'byStatus']);
+  over('status', ['working', 'notWorking', 'onLeave', 'suspended', 'accident', 'terminated', 'byStatus']);
   over('hasVehicle', ['withVehicle', 'withoutVehicle']);
   over('housing', ['housed', 'unhoused']);
   over('contractKind', ['sponsored', 'freelance']);
@@ -425,11 +445,24 @@ export const fmtDate = (d?: string | null) => (d ? new Date(d).toISOString().sli
 export const LT_STATUS: Record<string, { cls: string }> = {
   'يعمل': { cls: 'bg-emerald-100 text-emerald-700' },
   'إجازة': { cls: 'bg-sky-100 text-sky-700' },
+  'موقوف': { cls: 'bg-amber-100 text-amber-700' },
   'متوقف': { cls: 'bg-amber-100 text-amber-700' },
+  'حادث': { cls: 'bg-rose-100 text-rose-700' },
   'إنهاء خدمة': { cls: 'bg-red-100 text-red-700' },
 };
 export const statusCls = (s?: string) => LT_STATUS[String(s || '')]?.cls || 'bg-slate-100 text-slate-600';
 
+/**
+ * ── حالةُ اليوم التي يكتبها القسم ──────────────────────────────────────────
+ * يعمل · إجازة · موقوف · حادث (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). وإجازةُ الموارد البشريّة
+ * وإيقافُها وإنهاءُ الخدمة يغلبنها ولا يُعدَّلن من هنا (`statusSource === 'hr'`).
+ */
+export const OP_STATUS_OPTIONS: { value: '' | 'leave' | 'suspended' | 'accident'; ar: string; en: string }[] = [
+  { value: '', ar: 'يعمل', en: 'Working' },
+  { value: 'leave', ar: 'إجازة', en: 'On leave' },
+  { value: 'suspended', ar: 'موقوف', en: 'Suspended' },
+  { value: 'accident', ar: 'حادث', en: 'Accident' },
+];
 export const KIND_AR: Record<string, string> = { rep: 'مندوب', admin: 'إداري' };
 export const KIND_EN: Record<string, string> = { rep: 'Rep', admin: 'Admin' };
 

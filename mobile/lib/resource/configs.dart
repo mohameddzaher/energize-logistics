@@ -1864,7 +1864,7 @@ ResourceConfig lightTransportCfg({required bool canAdd, bool canTransfer = false
       if (_s(r, 'vehiclePlate').isNotEmpty) (_s(r, 'vehiclePlate'), T.navy),
       if (kind.isNotEmpty) (kind == 'rep' ? 'مندوب' : 'إداري', kind == 'rep' ? T.orange : T.navy),
       if (st.isNotEmpty)
-        (st, st == 'إنهاء خدمة' ? T.danger : st == 'متوقف' ? T.warn : st == 'إجازة' ? T.navy : T.success),
+        (st, st == 'إنهاء خدمة' || st == 'حادث' ? T.danger : st == 'موقوف' || st == 'متوقف' ? T.warn : st == 'إجازة' ? T.navy : T.success),
       // ولا ملفَّ له في الموارد البشريّة: القسمُ يملك سجلَّه — اثنا عشرَ فري لانسر.
       if (r['hrLinked'] == false) ('بلا ملفّ HR', T.warn),
       // ── بطاقةُ التشغيل والفحصُ: لا تُعرَض إلّا حين تكون خبرًا ──────────────
@@ -1903,9 +1903,17 @@ ResourceConfig lightTransportCfg({required bool canAdd, bool canTransfer = false
         lookupEndpoint: '/api/lookups?type=lt_vehicle_type&active=true',
         lookupListKey: 'items', lookupQuery: 'limit=200',
         lookupLabel: (r) => _s(r, 'nameAr'), lookupValue: (r) => _s(r, 'nameAr')),
-    // حالةُ العمل ليست هنا: تُكتب في الموارد البشريّة وحدَها (إنهاءُ الخدمة
-    // والإيقافُ والإجازة) ويقرؤها القسمُ من ملفّ الموظّف — تُعرَض في القائمة
-    // والملفّ من `workStatusShown`. راجع `shownStatus` في المتحكّم.
+    // ── حالةُ العمل اليوم: يعمل · إجازة · موقوف · حادث (صاحبُ الشركة، ٢٠٢٦/١٠/٢١) ──
+    // تُكتب من هنا (`opStatus`) وتُرى في ملفّه بالموارد البشريّة وعلى مركبته. «موقوف»
+    // توقّفٌ تشغيليٌّ من القسم وحدَه؛ وإجازةُ الموارد البشريّة تُقرأ ولا تُكتب هنا،
+    // وإنهاءُ الخدمة هناك وحدَها. المعروضُ مشتقٌّ في الخادم (`workStatusShown`).
+    const FieldSpec('opStatus', 'حالة العمل اليوم', 'Work status today', type: FieldType.select, options: [
+      ('', 'يعمل', 'Working'),
+      ('leave', 'إجازة', 'On leave'),
+      ('suspended', 'موقوف', 'Suspended'),
+      ('accident', 'حادث', 'Accident'),
+    ]),
+    const FieldSpec('opStatusNote', 'سبب الحالة', 'Status reason'),
     // ── المشرفُ حسابٌ على النظام لا اسمٌ يُكتب ────────────────────────────
     // كان خانةً حرّة، فيُكتب «خالد عباس» هنا و«خالد عبدالسلام» هناك، ولا يعرف
     // السجلُّ أنّ لصاحب الاسم حسابًا يدخل به ليتفقّد رجاله. فصار اختيارًا من

@@ -19,6 +19,7 @@
 // وكلُّ ما هنا حيٌّ: كلُّ تعديلٍ في أيّ صفحةٍ من صفحات القسم يبثّ `vreg:updated`
 // (إحدى عشرة عمليّةً كلُّها تبثّه)، ونداءُ المركبة الواحدة بلا ذاكرةٍ مؤقّتة —
 // فما يُكتب في صفحة التفاويض يظهر هنا في اللحظة نفسها بلا تحديث.
+import B2cOpBadge from '@/components/b2c/B2cOpBadge';
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -287,6 +288,10 @@ export default function VehicleRegistryDetail() {
             </span>
             <div className="min-w-0">
               <h1 className="text-2xl font-black tracking-tight font-mono leading-none">{v.plateNumber}</h1>
+              {/* راكبُها من قسم الأفراد وحالتُه اليوم — تُكتب في «موظفو النقل الخفيف». */}
+              {!!(v as any).b2cRider?.opStatus && (
+                <span className="mt-1.5 inline-block"><B2cOpBadge status={(v as any).b2cRider.opStatus} ar={ar} who={(v as any).b2cRider.name} /></span>
+              )}
               <p className="text-[12.5px] text-white/65 mt-1.5 truncate">
                 {[v.brandAr, v.modelAr, v.sectorAr, v.cityAr].filter(Boolean).join(' · ') || '—'}
               </p>

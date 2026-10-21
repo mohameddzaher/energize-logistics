@@ -1,5 +1,6 @@
 'use client';
 // قائمة سجل المركبات — فلاتر متعددة، بحث، حالة كل مركبة، وتعديل/إضافة/حذف.
+import B2cOpBadge from '@/components/b2c/B2cOpBadge';
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -347,6 +348,10 @@ function VehicleRegistryListInner() {
                       <td className={`${LEAD_2} px-3 py-2 whitespace-nowrap bg-white group-hover:bg-slate-50`}
                         style={{ insetInlineStart: hasLead ? lead.offset : 0 }}>
                         <Link href={`/system/vehicles/registry/${v._id}`} className="text-[#f37121] hover:underline font-mono font-semibold">{text}</Link>
+                        {/* راكبُها من قسم الأفراد في إجازةٍ أو موقوفٌ أو في حادث — يُكتب هناك. */}
+                        {!!(v as any).b2cRider?.opStatus && (
+                          <span className="ms-1.5 align-middle"><B2cOpBadge status={(v as any).b2cRider.opStatus} ar={ar} /></span>
+                        )}
                         {/* النقطةُ تقول «هنا عمل»، وتفصيلُه في صفحة المركبة
                             حيث يُقرأ شرطًا شرطًا. */}
                         {!!v.logistiGaps?.length && (

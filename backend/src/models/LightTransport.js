@@ -162,6 +162,17 @@ const employeeSchema = new mongoose.Schema({
    */
   workStatusAr: { type: String, trim: true, default: '', index: true },
 
+  /**
+   * ── حالةُ اليوم التشغيليّة — يكتبها القسم ─────────────────────────────────
+   * يعمل (فراغ) · إجازة · موقوف · حادث (صاحبُ الشركة، ٢٠٢٦/١٠/٢١): تُعدَّل من صفّ
+   * الموظّف في «موظفو النقل الخفيف». وهي غيرُ حالة التوظيف: تلك للموارد البشريّة
+   * وحدَها، وإجازتُها وإيقافُها يغلبان هذه في العرض — راجع utils/b2cBoard.shownStatus.
+   * ولا تُنسَخ إلى الملفّ هناك («موقوف» هناك = في مرحلة نقل الكفالة).
+   */
+  opStatus: { type: String, enum: ['', 'leave', 'suspended', 'accident'], default: '', index: true },
+  opStatusAt: { type: Date, default: null },
+  opStatusNote: { type: String, trim: true, default: '' },
+
   // المركبةُ التي يعمل عليها الآن — إشارةٌ إلى سجلّ المركبات لا نسخةٌ منه.
   vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null, index: true },
   vehiclePlate: { type: String, trim: true, default: '' },
@@ -244,6 +255,38 @@ employeeSchema.post('save', async function (doc) {
     if (doc.vehicle) {
       await VM.updateOne({ _id: doc.vehicle }, { $set: { 'actualDriver.idNumber': id, 'actualDriver.name': String(doc.name || '').trim() } });
     }
+  } catch (_) { /* المزامنةُ لا تُسقط حفظَ السجلّ */ }
+});
+/**
+ * ── وحالةُ اليوم تُسمَع في كلّ مكان (صاحبُ الشركة، ٢٠٢٦/١٠/٢١) ────────────────
+ * إجازة · موقوف · حادث تُكتب هنا وحدَه، وتُنسَخ لقطةً للقراءة إلى ملفّه في الموارد
+ * البشريّة (`Employee.b2cOpStatus`) وإلى المركبة التي يركبها (`VehicleMaster.b2cRider`)
+ * — فتراها الموارد البشريّة في الملفّ والقائمة، وقسمُ المركبات على المركبة. ويُرفَع
+ * اسمُه عن المركبة التي تركها. ثمّ تُمحى ذاكرةُ الأقسام الثلاثة قبل الإعلان.
+ */
+employeeSchema.pre('save', function (next) {
+  this.$locals.opSync = this.isModified('opStatus') || this.isModified('vehicle') || this.isModified('isActive')
+    || (this.isNew && !!this.opStatus);
+  next();
+});
+employeeSchema.post('save', async function (doc) {
+  if (!doc.$locals.opSync) return;
+  try {
+    const op = doc.isActive === false ? '' : String(doc.opStatus || '');
+    if (doc.employee) await mongoose.model('Employee').updateOne({ _id: doc.employee }, { $set: { b2cOpStatus: op } });
+    const VM = mongoose.model('VehicleMaster');
+    await VM.updateMany(
+      { 'b2cRider.lt': doc._id, ...(doc.vehicle && doc.isActive !== false ? { _id: { $ne: doc.vehicle } } : {}) },
+      { $set: { 'b2cRider.lt': null, 'b2cRider.name': '', 'b2cRider.opStatus': '' } }, { timestamps: false },
+    );
+    if (doc.vehicle && doc.isActive !== false) {
+      await VM.updateOne({ _id: doc.vehicle },
+        { $set: { 'b2cRider.lt': doc._id, 'b2cRider.name': String(doc.name || '').trim(), 'b2cRider.opStatus': op } }, { timestamps: false });
+    }
+    const cache = require('../utils/ttlCache');
+    for (const p of ['lt:', 'hr:', 'hrm:', 'dash:', 'vreg:', 'reports:doc:']) { try { cache.clear(p); } catch (_) { /* */ } }
+    const { emitToAll } = require('../websocket/socketManager');
+    for (const ev of ['lt:updated', 'hr:employee', 'hr:master', 'vreg:updated']) { try { emitToAll(ev, { lt: String(doc._id) }); } catch (_) { /* */ } }
   } catch (_) { /* المزامنةُ لا تُسقط حفظَ السجلّ */ }
 });
 employeeSchema.post('save', async function (doc) {

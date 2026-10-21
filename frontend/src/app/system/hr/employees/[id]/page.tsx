@@ -30,6 +30,7 @@ import ContractFormModal from '@/components/hr/ContractFormModal';
 import DatePair from '@/components/hr/DatePair';
 import { bothDates, bothDatesShort, gregCell, gregDay, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { getHrEmployeesIdTranslations } from '@/lib/translations';
+import B2cOpBadge from '@/components/b2c/B2cOpBadge';
 import {
   VehicleAuthorization, VehicleAccident, AUTH_STATUS, ACCIDENT_SEVERITY, ACCIDENT_STATUS,
   vehicleTypeLabel, plateOf, faultPartyLabel, getVehiclesText,
@@ -395,6 +396,8 @@ export default function EmployeeProfilePage() {
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-bold text-slate-900">{empName(e, lang)}</h1>
             <Badge style={EMPLOYMENT_STATUS[e.employmentStatus || 'active']} lang={lang} />
+            {/* حالتُه اليوم في قسم الأفراد — تُكتب هناك وتُرى هنا. */}
+            <B2cOpBadge status={(e as any).b2cOpStatus} ar={lang === 'ar'} />
           </div>
           <p className="text-slate-500 text-sm mt-1">{e.jobTitle || '—'} {e.department ? `· ${e.department}` : ''} {e.employeeNumber ? `· #${e.employeeNumber}` : ''}</p>
           <p className="text-slate-500 text-xs mt-1">{e.user ? `${tx.linkedLogin}: ${userName(e.user)}` : tx.noLoginLinked}</p>

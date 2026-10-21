@@ -265,7 +265,12 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
                                                 style: const TextStyle(fontSize: 11.5, color: T.inkSoft), maxLines: 1, overflow: TextOverflow.ellipsis),
                                           ]),
                                         ),
-                                        Chip2(tr(st.$1, st.$2), st.$3),
+                                        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                                          Chip2(tr(st.$1, st.$2), st.$3),
+                                          // حالتُه اليوم في قسم الأفراد (إجازة · موقوف · حادث).
+                                          if (b2cOpChip(e['b2cOpStatus']) != null)
+                                            Padding(padding: const EdgeInsets.only(top: 4), child: b2cOpChip(e['b2cOpStatus'])!),
+                                        ]),
                                       ]),
                                     ),
                                   ),

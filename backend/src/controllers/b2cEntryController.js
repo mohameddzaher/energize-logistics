@@ -17,8 +17,8 @@ const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
 
 const S = (v) => String(v ?? '').trim();
-const HR_STATUS_AR = { terminated: 'إنهاء خدمة', suspended: 'متوقف', active: 'يعمل', on_leave: 'إجازة' };
-const statusOf = (r) => (r.employee && HR_STATUS_AR[r.employee.employmentStatus]) || r.workStatusAr || '';
+// حالةُ العمل بالقاعدة الواحدة (الموارد البشريّة ثمّ حالةُ اليوم في القسم) — utils/b2cBoard.
+const statusOf = (r) => require('../utils/b2cBoard').shownStatus(r);
 /** كفالة · فري لانسر · يوزرات — مَن له ملفٌّ من ملفّه (رقم السجل التجاري). */
 const kindOf = (r) => {
   if (/يوزر/.test(S(r.contractTypeAr))) return 'يوزرات';
@@ -38,7 +38,7 @@ async function repRows(scope) {
   const sets = await endedStaff();
   const rows = await LightTransportEmployee.find({ $or: [{ staffKind: 'rep' }, { contractTypeAr: /يوزر/ }] })
     .populate('employee', 'employmentStatus registerNumber systemStatus')
-    .select('idNumber name projectAr cityAr supervisorName supervisorUser contractTypeAr workStatusAr isActive employee hireDate phone')
+    .select('idNumber name projectAr cityAr supervisorName supervisorUser contractTypeAr workStatusAr opStatus isActive employee hireDate phone')
     .lean();
   return rows.filter((r) => P.of(r.projectAr) && E.inScope(scope, r.projectAr) && !(r.employee && sets.archivedIds.has(String(r.employee._id))));
 }

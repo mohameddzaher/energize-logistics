@@ -38,6 +38,11 @@ const employeeSchema = new mongoose.Schema(
     // لموظّفي B2C والنقل الثقيل وحدَهم — قسمان فيهما الثلاثة معًا، ويُسأل «كم إداريًّا
     // في النقل الثقيل؟». من قائمةٍ مغلقة (utils/hrLists ← hr_staff_category).
     staffCategory: { type: String, trim: true, default: '', index: true },
+    // ── حالتُه اليومَ في قسم الأفراد (B2C) — لقطةٌ للقراءة لا تُكتب هنا ──────────
+    // إجازة · موقوف · حادث (فراغ = يعمل) تُكتب في «موظفو النقل الخفيف» وحدَه
+    // (`LightTransportEmployee.opStatus`) وتُنسَخ هنا كي تراها الموارد البشريّة في
+    // الملفّ والقائمة (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). لا تمسّ حالةَ التوظيف ولا تُنشئ إجازة.
+    b2cOpStatus: { type: String, enum: ['', 'leave', 'suspended', 'accident'], default: '' },
     hireDate: { type: String }, // YYYY-MM-DD
     // Actual first day on the job (تاريخ مباشرة العمل). Distinct from hireDate/
     // contract dates — survives contract renewals so we always know when the

@@ -49,8 +49,8 @@ const _kindAr = {
 };
 
 Color _statusColor(String s) {
-  if (s == 'إنهاء خدمة') return T.danger;
-  if (s == 'متوقف') return T.warn;
+  if (s == 'إنهاء خدمة' || s == 'حادث') return T.danger;
+  if (s == 'موقوف' || s == 'متوقف') return T.warn;
   if (s == 'إجازة') return T.navy;
   return T.success;
 }

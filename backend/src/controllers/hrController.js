@@ -226,7 +226,7 @@ exports.listEmployees = async (req, res) => {
       // يُضاف إلى الفلترة يبقى ساقطًا هنا حتى يتذكّره أحد — وأثرُه صامت.
       .select(['firstName lastName arabicName employeeNumber jobTitle department employmentStatus workStatusText terminationKind',
         'phone email iqamaNumber nationalId nationality photo workLocation branchName',
-        'project branch directManager user createdAt createdVia',
+        'project branch directManager user createdAt createdVia b2cOpStatus',
         ...master._DATE_FILTERABLE].join(' '))
       .populate('user', 'firstName lastName email role')
       .populate('directManager', 'firstName lastName email')

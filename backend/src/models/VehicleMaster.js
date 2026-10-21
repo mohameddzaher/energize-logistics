@@ -241,6 +241,15 @@ const vehicleMasterSchema = new mongoose.Schema({
   lastImportAt: { type: Date, default: null },
   sourceFile: { type: String, default: '' },
   isActive: { type: Boolean, default: true, index: true },
+  // ── راكبُها من قسم الأفراد وحالتُه اليوم — لقطةٌ للقراءة ──────────────────────
+  // يكتبها سجلُّ «موظفو النقل الخفيف» وحدَه (models/LightTransport ← post-save) كي
+  // يرى قسمُ المركبات أنّ راكبَ هذه المركبة في إجازةٍ أو موقوفٌ أو في حادث. لا تمسّ
+  // التفويضَ ولا القائدَ الفعليّ، وتُكتب بلا `timestamps` فلا تُحسَب تعديلًا يدويًّا.
+  b2cRider: {
+    lt: { type: mongoose.Schema.Types.ObjectId, default: null },
+    name: { type: String, default: '' },
+    opStatus: { type: String, default: '' },
+  },
 }, { timestamps: true });
 
 // (تواريخ انتهاء المستندات مفهرسة عبر index:true على حقولها أعلاه.)

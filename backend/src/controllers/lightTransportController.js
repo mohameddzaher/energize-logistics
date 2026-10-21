@@ -36,10 +36,10 @@ const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
 
 const emit = (event, payload = {}) => {
-  try { emitToAll(event, payload); } catch (e) { /* البثُّ لا يُوقف العمل */ }
   // تُمحى الذاكرةُ قبل البثّ لا بعده، وإلّا قرأ المستمعون القديمَ — راجع
-  // utils/ttlCache وقاعدةَ «أعلِن بعد الإبطال».
+  // utils/ttlCache وقاعدةَ «أعلِن بعد الإبطال». (كان البثُّ أوّلًا.)
   cache.clear('lt:');
+  try { emitToAll(event, payload); } catch (e) { /* البثُّ لا يُوقف العمل */ }
 };
 
 const S = (v) => String(v == null ? '' : v).trim();
@@ -95,25 +95,14 @@ const looksLikePlate = (t) => {
   return digits >= 3 && digits <= 4 && letters >= 2 && letters <= 6;
 };
 
-/** حالةُ التوظيف من الموارد البشريّة بلغة هذا القسم. */
-const HR_STATUS_AR = { terminated: 'إنهاء خدمة', suspended: 'متوقف', active: 'يعمل', on_leave: 'إجازة' };
-
 /**
- * ── حالةُ العمل من الموارد البشريّة وحدَها ──────────────────────────────────
- * قرارُ صاحب الشركة (٢٠٢٦/١٠/١٩): حالةُ العمل وإنهاءُ الخدمة يُكتبان في الموارد
- * البشريّة ولا يُعدَّلان من هذا القسم. كان القسمُ يكتب حالتَه والموارد البشريّة
- * تغلبها حين تنفي فقط — فقال القسمُ «إنهاء خدمة» لستّةٍ ما زالوا على رأس العمل
- * في الموارد البشريّة، والمراجعون يقارنون الاثنين.
- *
- * فمَن له ملفٌّ في الموارد البشريّة: حالتُه حالةُ ملفّه. ومَن لا ملفَّ له
- * (سُجّل قبل أن تُنشئ الإضافةُ من هنا ملفًّا) تُقرأ له آخرُ حالةٍ كُتبت — للقراءة،
- * ولا تُعدَّل حتّى يُفتح له ملف.
+ * ── حالةُ العمل: يعمل · إجازة · موقوف · حادث ────────────────────────────────
+ * التوظيفُ وإنهاءُ الخدمة من الموارد البشريّة وحدَها (قرارُ ٢٠٢٦/١٠/١٩)، وحالةُ
+ * اليوم التشغيليّةُ يكتبها القسمُ في `opStatus` (طلبُ ٢٠٢٦/١٠/٢١). والقاعدةُ
+ * كاملةً في utils/b2cBoard — تقرؤها اللوحةُ والقائمتان فلا يختلف رقمٌ عن قائمته.
  */
-const shownStatus = (row) => {
-  const hr = row.employee && typeof row.employee === 'object' ? row.employee.employmentStatus : null;
-  if (hr && HR_STATUS_AR[hr]) return HR_STATUS_AR[hr];
-  return row.workStatusAr || '';
-};
+const BOARD = require('../utils/b2cBoard');
+const { shownStatus } = BOARD;
 
 /**
  * ── وثيقتا المركبة كما تُقرآن في هذا القسم ──────────────────────────────────
@@ -144,10 +133,13 @@ const decorate = (row, alerts = {}) => ({
   // نوعُ المركبة من سجلّها متى كانت مربوطةً — وهو مكتوبٌ هناك رسميًّا.
   vehicleTypeShown: (row.vehicle && typeof row.vehicle === 'object' ? row.vehicle.registrationTypeAr : '') || row.vehicleTypeAr || '',
   // ومن أين جاء الخبر — فلا يُسأل «مين غيّر الحالة؟».
-  statusSource: (() => {
-    const hr = row.employee && typeof row.employee === 'object' ? row.employee.employmentStatus : null;
-    return (hr === 'terminated' || hr === 'suspended') ? 'hr' : 'section';
-  })(),
+  statusSource: BOARD.statusSource(row),
+  // الفئةُ ونوعُ الارتباط والسجلّ — بالمعاني التي تعدّ بها اللوحة (utils/b2cBoard).
+  categoryShown: BOARD.categoryOf(row),
+  engagementShown: BOARD.engagementOf(row),
+  registerShown: BOARD.registerOf(row),
+  // تفويضُ مركبته من سجلّ المركبات (المرجع) — `BOARD.authOf` وحدَها تقرؤه.
+  authState: row.vehicle && typeof row.vehicle === 'object' ? BOARD.authOf(row.vehicle) : '',
   hrLinked: !!row.employee,
   // نوعُ العقد كما يُعرَض ويُعَدّ: من الموارد البشريّة لمن له ملف — راجع contractKindOf.
   contractTypeShown: ({ sponsored: 'كفالة', freelance: 'فري لانسر', users: 'يوزرات' })[contractKindOf(row)] || '',
@@ -181,7 +173,7 @@ const supervisorFilter = (filter, value, field = 'supervisorUser') => {
 
 // ── قائمةُ الموظّفين ────────────────────────────────────────────────────────
 const LIST_POPULATE = [
-  { path: 'employee', select: 'employeeNumber arabicName firstName lastName employmentStatus phone registerNumber' },
+  { path: 'employee', select: 'employeeNumber arabicName firstName lastName employmentStatus phone registerNumber staffCategory jobTitle department project' },
   { path: 'supervisor', select: 'arabicName firstName lastName employeeNumber' },
   { path: 'supervisorUser', select: 'firstName lastName email role' },
   { path: 'dutySupervisorUser', select: 'firstName lastName email role' },
@@ -200,18 +192,24 @@ exports.listEmployees = async (req, res) => {
     const q = req.query || {};
     const filter = {};
     if (q.active !== 'all') filter.isActive = { $ne: false };
-    for (const [key, field] of [['city', 'cityAr'], ['jobTitle', 'jobTitleAr'],
+    // قيمٌ مفصولةٌ بفاصلة (فلاترُ اللوحة السريعة) أو قيمةٌ واحدة كما كانت.
+    for (const [key, field] of [['jobTitle', 'jobTitleAr'],
       ['contractType', 'contractTypeAr'], ['register', 'registerNumber'],
       ['staffKind', 'staffKind']]) {
-      if (S(q[key])) filter[field] = S(q[key]);
+      const v = BOARD.vals(q[key]);
+      if (v.length) filter[field] = v.length === 1 ? v[0] : { $in: v };
+    }
+    if (BOARD.vals(q.city).length) {
+      const v = BOARD.vals(q.city);
+      filter.cityAr = { $in: v.includes('—') ? [...v, '', null] : v };
     }
     // المشروعُ بالطيّ كما تعدّه اللوحة (`projectKey`): «هنقرستيشن» يفتح
     // «هنجرستيشن» أيضًا — وإلّا قال الكارتُ عددًا وفتح الرابطُ نصفَه.
     // و«(غير محدد)» اسمُ اللوحة لمن لا مشروعَ مكتوبًا له — فيفتح الفارغين.
-    if (S(q.project)) {
-      const want = S(q.project) === '(غير محدد)' ? '' : projectKey(q.project);
-      const names = (await LightTransportEmployee.distinct('projectAr')).filter((n) => projectKey(n) === want);
-      filter.projectAr = { $in: want ? names : [...names, null, ''] };
+    if (BOARD.vals(q.project).length) {
+      const wants = new Set(BOARD.vals(q.project).map(BOARD.projectKey));
+      const names = (await LightTransportEmployee.distinct('projectAr')).filter((n) => wants.has(BOARD.projectKey(n)));
+      filter.projectAr = { $in: wants.has('') ? [...names, null, ''] : names };
     }
     supervisorFilter(filter, q.supervisor);
     supervisorFilter(filter, q.dutySupervisor, 'dutySupervisorUser');
@@ -267,11 +265,20 @@ exports.listEmployees = async (req, res) => {
     const { endedStaff, notArchivedRow, andAll } = require('../utils/archivedHidden');
     let rows = await LightTransportEmployee.find(andAll(filter, notArchivedRow(await endedStaff())))
       .populate(LIST_POPULATE).sort({ name: 1 }).lean();
+    await BOARD.markHrLeave(rows);
     const alerts = await docAlerts();
     rows = rows.map((r) => decorate(r, alerts));
-    // الحالةُ ونوعُ المركبة يُفلتَران بعد الاشتقاق: كلٌّ منهما مركّبٌ من سجلَّين.
-    if (S(q.status)) rows = rows.filter((r) => r.workStatusShown === S(q.status));
-    if (S(q.vehicleType)) rows = rows.filter((r) => typeKey(r.vehicleTypeShown) === typeKey(q.vehicleType));
+    /**
+     * ── وفلاترُ اللوحة تُطبَّق بمعناها في اللوحة ──────────────────────────────
+     * الحالةُ والفئةُ ونوعُ الارتباط والسجلُّ والمندوبُ والمركبةُ والتفويض —
+     * مشتقّةٌ من سجلَّين أو ثلاثة، فتُطبَّق بعد الاشتقاق بـ`personTests` نفسِها التي
+     * تعدّ بها اللوحة: الرقمُ المضغوطُ يفتح أصحابَه بأعيانهم.
+     */
+    const tests = BOARD.personTests(
+      Object.fromEntries(['status', 'vehicleType', 'rep', 'vehicle', 'auth', 'cr', 'engagement', 'category'].map((k) => [k, q[k]])),
+      { typeKey },
+    );
+    rows = rows.filter((r) => tests(r));
     /**
      * ── وأرقامُ «إجمالي المناديب» تُفتَح بأصحابها ─────────────────────────────
      * نوعُ العقد بالطيّ نفسِه الذي يعدّ به `repsBreakdown` (`contractIs`)، و«none»
@@ -283,7 +290,7 @@ exports.listEmployees = async (req, res) => {
     if (ck === 'none') rows = rows.filter((r) => !contractKindOf(r));
     if (q.inService === '1') rows = rows.filter((r) => !isEnded(r));
 
-    res.json({ employees: rows, totals: totalsOf(rows, { includeEnded: S(q.status) === ENDED }), options: await optionsOf() });
+    res.json({ employees: rows, totals: totalsOf(rows, { includeEnded: BOARD.vals(q.status).includes(ENDED) }), options: await optionsOf() });
   } catch (e) {
     console.error('lt listEmployees:', e);
     res.status(500).json({ message: 'تعذّر تحميل موظّفي النقل الخفيف' });
@@ -441,7 +448,8 @@ const totalsOf = (allRows, { includeEnded = false } = {}) => {
     working: count(working),
     notWorking: count((r) => !working(r)),
     onLeave: count((r) => r.workStatusShown === 'إجازة' || r.workStatusShown === 'اجازه'),
-    suspended: count((r) => r.workStatusShown === 'متوقف'),
+    suspended: count((r) => r.workStatusShown === BOARD.SUSPENDED),
+    accident: count((r) => r.workStatusShown === BOARD.ACCIDENT),
     // صفرٌ ما لم يُسأل عنهم صراحةً بفلتر «إنهاء خدمة».
     terminated: count(isEnded),
     withVehicle: count((r) => !!r.vehicle),
@@ -553,40 +561,78 @@ exports.supervisors = async (req, res) => {
  * يطبّقها به `listEmployees` (الطيُّ في المشروع، الحسابُ أو الاسمُ في المشرف…).
  */
 const OVERVIEW_FACETS = ['city', 'jobTitle', 'contractType', 'register', 'staffKind', 'project',
-  'supervisor', 'housing', 'hasVehicle', 'status', 'vehicleType'];
-const facetTest = (q) => {
-  const tests = {};
-  const eq = (key, field) => { if (S(q[key])) tests[key] = (r) => S(r[field]) === S(q[key]); };
-  eq('city', 'cityAr'); eq('jobTitle', 'jobTitleAr'); eq('contractType', 'contractTypeAr');
-  eq('register', 'registerNumber'); eq('staffKind', 'staffKind');
-  if (S(q.project)) {
-    const want = S(q.project) === '(غير محدد)' ? '' : projectKey(q.project);
-    tests.project = (r) => projectKey(r.projectAr) === want;
+  'supervisor', 'housing', 'hasVehicle', 'status', 'vehicleType',
+  // فلاترُ اللوحة السريعة (٢٠٢٦/١٠/٢١) — راجع utils/b2cBoard.QUICK.
+  'rep', 'vehicle', 'auth', 'cr', 'engagement', 'category'];
+
+/** اسمُ قسم B2C في قائمة أقسام الموارد البشريّة (مفتاحُه light_transport). */
+const b2cDepartment = () => cache.wrap('lt:b2cdept', 60000, async () => {
+  const Lookup = require('../models/Lookup');
+  const row = await Lookup.findOne({ type: 'hr_department', key: 'light_transport', deleted: { $ne: true } }).select('nameAr').lean();
+  return S(row?.nameAr) || 'B2C';
+});
+
+/**
+ * ── مركباتُ القسم صفوفًا تُعَدّ وتُفلتَر ─────────────────────────────────────
+ * كلُّ مركبةٍ ينسبها قسمُ المركبات إلى النقل الخفيف (قطاعًا أو إدارةً) — مفوَّضةً
+ * أو لا — ومعها كلُّ مركبةٍ عليها راكبٌ من سجلّ القسم (`BOARD.vehicleScope`).
+ * ولكلٍّ: مشروعُها (مشروعُ راكبها، وإلّا إدارتُها في السجلّ)، ومدينتُها، ونوعُها
+ * مطويًّا، وحالةُ تفويضها (`BOARD.authOf`)، وراكبوها.
+ * تقرؤها اللوحةُ وصفحةُ «مركبات النقل الخفيف» معًا — فما يعدّه الكارتُ يفتحه الرابط.
+ */
+async function vehicleRows(riderRows, select = '') {
+  const byVehicle = new Map();
+  for (const r of riderRows) {
+    const id = String(r.vehicle && typeof r.vehicle === 'object' ? r.vehicle._id : r.vehicle);
+    if (!byVehicle.has(id)) byVehicle.set(id, []);
+    byVehicle.get(id).push(r);
   }
-  if (S(q.supervisor)) {
-    const v = S(q.supervisor);
-    const idOf = (x) => S(x && typeof x === 'object' ? x._id : x);
-    if (v === 'none') tests.supervisor = (r) => !r.supervisorUser;
-    else if (mongoose.isValidObjectId(v)) tests.supervisor = (r) => idOf(r.supervisorUser) === v;
-    else tests.supervisor = (r) => S(r.supervisorName) === v;
+  const vehicles = await VehicleMaster.find(BOARD.vehicleScope([...byVehicle.keys()]))
+    .select(`plateNumber serialNumber registrationTypeAr departmentAr cityAr sectorAr serviceStatusAr serviceStatusCode authorizedPerson actualDriver ${select}`)
+    .lean();
+  const today = require('../utils/companyDay').todayKey();
+  return vehicles.map((v) => {
+    const riders = byVehicle.get(String(v._id)) || [];
+    return {
+      _id: String(v._id), v, riders,
+      project: S(riders[0]?.projectAr) || S(v.departmentAr),
+      city: S(riders[0]?.cityAr) || S(v.cityAr),
+      typeKey: typeKey(v.registrationTypeAr),
+      auth: BOARD.authOf(v, today),
+    };
+  });
+}
+
+/** صفوفُ القسم مزخرفةً — كلُّها، ومعها مَن يُعَدّ راكبًا (في الخدمة وعلى مركبة). */
+async function boardRows(filter) {
+  const { endedStaff, notArchivedRow, andAll } = require('../utils/archivedHidden');
+  const archSets = await endedStaff();
+  const rows = await LightTransportEmployee.find(andAll(filter, notArchivedRow(archSets))).populate(LIST_POPULATE).lean();
+  await BOARD.markHrLeave(rows);
+  const alerts = await docAlerts();
+  return rows.map((r) => decorate(r, alerts));
+}
+
+/** خياراتُ فلترٍ: `{value, label, count}` بعددِ الصفوف، الأكثرُ أوّلًا. */
+const optionList = (list, valueOf, labelOf = (v) => v) => {
+  const m = new Map();
+  for (const r of list) {
+    const v = valueOf(r);
+    if (v == null || v === '') continue;
+    const o = m.get(v) || { value: v, label: labelOf(v, r), count: 0 };
+    o.count += 1;
+    m.set(v, o);
   }
-  if (S(q.housing)) {
-    const v = S(q.housing);
-    tests.housing = v === 'none' ? (r) => !r.housing : (r) => S(r.housing && (r.housing._id || r.housing)) === v;
-  }
-  if (q.hasVehicle === 'yes') tests.hasVehicle = (r) => !!r.vehicle;
-  if (q.hasVehicle === 'no') tests.hasVehicle = (r) => !r.vehicle;
-  if (S(q.status)) tests.status = (r) => r.workStatusShown === S(q.status);
-  if (S(q.vehicleType)) tests.vehicleType = (r) => typeKey(r.vehicleTypeShown) === typeKey(q.vehicleType);
-  /** يمرّ الصفُّ بكلّ الفلاتر — عدا `skip` إن سُمّي. */
-  return (r, skip) => Object.entries(tests).every(([k, fn]) => k === skip || fn(r));
+  return [...m.values()].sort((a, b) => b.count - a.count || String(a.label).localeCompare(String(b.label), 'ar'));
 };
-exports._facetTest = facetTest;
+
+exports._facetTest = (q) => BOARD.personTests(q, { typeKey, contractKindOf });
+exports._vehicleRows = vehicleRows;
 
 exports.overview = async (req, res) => {
   try {
     const q = req.query || {};
-    // في الاستعلام ما ليس كارتًا يُضغَط وحدَه؛ والأوجهُ تُطبَّق بعد الجلب (راجع أعلاه).
+    // في الاستعلام ما ليس فلترًا من فلاتر اللوحة؛ والفلاترُ تُطبَّق بعد الجلب.
     const filter = { isActive: { $ne: false } };
     supervisorFilter(filter, q.dutySupervisor, 'dutySupervisorUser');
     if (S(q.hiredFrom) || S(q.hiredTo)) {
@@ -594,62 +640,36 @@ exports.overview = async (req, res) => {
       if (S(q.hiredFrom)) filter.hireDate.$gte = new Date(S(q.hiredFrom));
       if (S(q.hiredTo)) filter.hireDate.$lte = new Date(`${S(q.hiredTo)}T23:59:59.999Z`);
     }
+    const narrowed = Object.keys(filter).length > 1;
 
-    // المؤرشَفُ لا يُعَدّ ولا يُدرَج — كأنّه حُذف.
-    const { endedStaff, notArchivedRow, andAll } = require('../utils/archivedHidden');
-    const archSets = await endedStaff();
-    const [rawRows, allRidden, housing, vehicles, orders] = await Promise.all([
-      LightTransportEmployee.find(andAll(filter, notArchivedRow(archSets))).populate(LIST_POPULATE).lean(),
-      // ── «واقفة» تُقاس على السجلّ كلِّه لا على المفلتَر ────────────────────
-      // لو حُسبت من الصفوف المفلترة لقال الفلترُ على مشروعٍ إنّ مئةً وأربعين
-      // مركبةً واقفة — وهي تعمل، لكن راكبَها ليس في هذا المشروع. والسؤالُ
-      // «كم مركبةً واقفة؟» جوابُه واحدٌ لا يتغيّر بما أُظهِر على الشاشة.
+    const [decorated, allRows, housing, orders, b2cDept] = await Promise.all([
+      boardRows(filter),
+      // ── «واقفة» تُقاس على السجلّ كلِّه لا على المفلتَر ──────────────────────
       // والمنتهي لا يُحسَب راكبًا: مركبتُه واقفةٌ وإن بقي اسمُه عليها في السجلّ.
-      LightTransportEmployee.find({ isActive: { $ne: false }, vehicle: { $ne: null } })
-        .select('vehicle projectAr cityAr workStatusAr employee').populate('employee', 'employmentStatus').lean()
-        .then((list) => list.filter((r) => shownStatus(r) !== ENDED)),
+      narrowed ? boardRows({ isActive: { $ne: false } }) : null,
       LightTransportHousing.find({ isActive: { $ne: false } }).lean(),
-      // قطاعُ النقل الخفيف في سجلّ المركبات — هو مصدرُ عددِ المركبات.
-      VehicleMaster.find({ sectorAr: LIGHT_SECTOR, isActive: { $ne: false } })
-        .select('plateNumber registrationTypeAr departmentAr serviceStatusAr serviceStatusCode authorizedPerson').lean(),
       LightTransportOrder.find({ status: 'active' }).select('vehicle ltEmployee').lean(),
+      b2cDepartment(),
     ]);
-    const alerts = await docAlerts();
-    const decorated = rawRows.map((r) => decorate(r, alerts));
-    const passes = facetTest(q);
-    const listedRows = decorated.filter((r) => passes(r));
+    const riderRows = (allRows || decorated).filter((r) => r.vehicle && !isEnded(r));
+    const vrows = await vehicleRows(riderRows);
+
+    const people = BOARD.personTests(q, { typeKey, contractKindOf });
+    const vpass = BOARD.vehicleTests(q, people, { typeKey });
+    const has = (k) => (k === 'hasVehicle' ? !!q.hasVehicle : BOARD.vals(q[k]).length > 0);
+    const listedRows = decorated.filter((r) => people(r));
     // أرقامُ اللوحة كلُّها على مَن هو في الخدمة — إلّا إن سأل الفلترُ عن المنتهين.
-    const includeEnded = S(q.status) === ENDED;
+    const includeEnded = BOARD.vals(q.status).includes(ENDED);
     const live = (list) => (includeEnded ? list : list.filter((r) => !isEnded(r)));
     const rows = live(listedRows);
-    /** صفوفُ مجموعةِ كروتٍ: كلُّ الفلاتر عدا فلترِها — راجع OVERVIEW_FACETS. */
-    const without = (k) => (S(q[k]) ? decorated.filter((r) => passes(r, k)) : listedRows);
+    /** صفوفُ مجموعةٍ تُعَدّ بلا فلترها — للتقسيمات وخيارات الفلاتر. */
+    const without = (k) => (has(k) ? decorated.filter((r) => people(r, k)) : listedRows);
 
     // ── المركبات ──────────────────────────────────────────────────────────
-    const ridden = new Set(allRidden.map((r) => String(r.vehicle)));
     const onOrder = new Set(orders.map((o) => String(o.vehicle || '')));
-    // المشروعُ والفرعُ من سجلّ القسم كلِّه — خانةُ المركبة فارغةٌ في ثمانٍ
-    // وثلاثين منها ومكتوبةٌ بصياغةٍ أخرى في غيرها، فلا تُقرأ إلّا بديلًا.
-    const ltProjectByVehicle = new Map(allRidden.map((r) => [String(r.vehicle), r.projectAr]).filter(([, p]) => !!p));
-    const ltCityByVehicle = new Map(allRidden.map((r) => [String(r.vehicle), r.cityAr]).filter(([, p]) => !!p));
-
-    /**
-     * والفلترُ يمسّ المركباتَ أيضًا، لا الموظّفين وحدَهم: «كم دراجةً في مشروع
-     * كيتا؟» سؤالٌ عن المركبات. فما يخصّ المركبةَ من الفلاتر يُطبَّق عليها —
-     * المشروعُ والفرعُ ونوعُ المركبة — وما يخصّ الإنسانَ وحدَه لا يُطبَّق.
-     */
-    const vMatch = (v, skip) => {
-      const id = String(v._id);
-      if (skip !== 'project' && S(q.project) && (ltProjectByVehicle.get(id) || v.departmentAr) !== S(q.project)) return false;
-      if (skip !== 'city' && S(q.city) && ltCityByVehicle.get(id) && ltCityByVehicle.get(id) !== S(q.city)) return false;
-      if (skip !== 'vehicleType' && S(q.vehicleType) && typeKey(v.registrationTypeAr) !== typeKey(q.vehicleType)) return false;
-      if (skip !== 'hasVehicle' && q.hasVehicle === 'no') return !ridden.has(id);
-      return true;
-    };
-    const vShown = vehicles.filter((v) => vMatch(v));
-    // «عليها راكب / واقفة» قسمةُ المركبات نفسِها: لا يصفّرها «بلا مركبة» (فلترُ
-    // الموظّفين) — كان ضغطُه يجعل «عليها راكب» صفرًا و«المعروضة» = «واقفة».
-    const vSplit = vehicles.filter((v) => vMatch(v, 'hasVehicle'));
+    const vShown = vrows.filter((v) => vpass(v));
+    // «عليها راكب / واقفة» قسمةُ المركبات نفسِها: لا يصفّرها «بلا مركبة».
+    const vSplit = vrows.filter((v) => vpass(v, 'hasVehicle'));
     const vGroup = (list, fn) => {
       const o = {};
       for (const v of list) { const k = fn(v) || '—'; o[k] = (o[k] || 0) + 1; }
@@ -665,39 +685,105 @@ exports.overview = async (req, res) => {
       if (r.housing && r.housingRoom) { const k = `${String(r.housing._id)}|${r.housingRoom}`; roomOcc[k] = (roomOcc[k] || 0) + 1; }
     }
 
-    // الإجمالُ وما لا يُضغَط بكلّ الفلاتر؛ وكلُّ مجموعةٍ تُضغَط بلا فلترها.
+    // الأرقامُ القديمة (التقسيماتُ والتطبيقُ القديم): كلُّ مجموعةٍ بلا فلترها.
     const employees = totalsOf(listedRows, { includeEnded });
     const facet = (k, keys) => {
-      if (!S(q[k])) return;
+      if (!has(k)) return;
       const t = totalsOf(without(k), { includeEnded });
       for (const key of keys) employees[key] = t[key];
     };
     facet('staffKind', ['reps', 'admins', 'drivers', 'unknownKind']);
-    facet('status', ['working', 'notWorking', 'onLeave', 'suspended', 'terminated', 'byStatus']);
+    facet('status', ['working', 'notWorking', 'onLeave', 'suspended', 'accident', 'terminated', 'byStatus']);
     facet('hasVehicle', ['withVehicle', 'withoutVehicle']);
     facet('housing', ['housed', 'unhoused']);
     facet('project', ['byProject']); facet('city', ['byCity']); facet('jobTitle', ['byJob']);
     facet('contractType', ['byContract']); facet('register', ['byRegister']);
     facet('supervisor', ['bySupervisor']); facet('vehicleType', ['byVehicleType']);
 
-    // «إجماليُّ المناديب» بالفلاتر كلِّها؛ وبطاقاتُ المشاريع تحته بلا فلتر المشروع —
-    // ضغطُ مشروعٍ كان يُخفي البقيّة. والمختارُ منها يساوي الإجماليَّ فوقه.
-    const reps = await repsBreakdown(rows, S(q.project));
-    if (S(q.project)) reps.projects = (await repsBreakdown(live(without('project')), '')).projects;
+    const reps = await repsBreakdown(rows, BOARD.vals(q.project).length === 1 ? BOARD.vals(q.project)[0] : '');
+    if (has('project')) reps.projects = (await repsBreakdown(live(without('project')), '')).projects;
+
+    /**
+     * ── اللوحةُ كما طلبها صاحبُ الشركة (٢٠٢٦/١٠/٢١) ──────────────────────────
+     * الإجماليُّ، وتحته ثلاثةُ كروت (مندوب · إداري · فني) لكلٍّ نصفاه (على الكفالة ·
+     * فريلانسر) وما سواهما رقمًا صغيرًا — فالنصفان وما سواهما = الكارت، والكروتُ
+     * (ومعها «غير مصنَّف» إن وُجد) = الإجمالي. ثمّ «حالة العمل»: يعمل · إجازة ·
+     * موقوف · حادث، وفي كلٍّ قسمتُه على الفئات — ومجموعُها الإجماليُّ نفسُه.
+     * وكلُّ رقمٍ تحت كلّ الفلاتر: من اختار مشروعًا قرأ أرقامَه وحدَه.
+     */
+    const ENG_KEYS = ['sponsored', 'freelance', 'trainee', 'users', 'none'];
+    const CATS = ['rep', 'admin', 'tech', 'none'];
+    const categories = {};
+    for (const c of CATS) categories[c] = { total: 0, ...Object.fromEntries(ENG_KEYS.map((k) => [k, 0])) };
+    const status = {};
+    for (const s of [...BOARD.WORK_STATES, ...(includeEnded ? [ENDED] : [])]) {
+      status[s] = { total: 0, ...Object.fromEntries(CATS.map((c) => [c, 0])) };
+    }
+    for (const r of rows) {
+      const c = BOARD.categoryOf(r);
+      categories[c].total += 1;
+      categories[c][BOARD.engagementOf(r)] += 1;
+      const st = status[r.workStatusShown] || (status[r.workStatusShown] = { total: 0, ...Object.fromEntries(CATS.map((x) => [x, 0])) });
+      st.total += 1; st[c] += 1;
+    }
+    const authCount = (list) => ({
+      authorized: list.filter((v) => v.auth === 'authorized').length,
+      expired: list.filter((v) => v.auth === 'expired').length,
+      none: list.filter((v) => v.auth === 'none').length,
+    });
+
+    // ── خياراتُ الفلاتر: لكلٍّ عددُه تحت الفلاتر الأخرى ─────────────────────
+    const projectNames = new Map();
+    for (const r of decorated) { const k = BOARD.projectKey(r.projectAr); if (!projectNames.has(k)) projectNames.set(k, S(r.projectAr) || BOARD.UNSET); }
+    const vehiclesWithout = (k) => vrows.filter((v) => vpass(v, k));
+    const filterOptions = {
+      project: optionList(live(without('project')), (r) => projectNames.get(BOARD.projectKey(r.projectAr)) || BOARD.UNSET),
+      rep: optionList(live(without('rep')), (r) => String(r._id), (v, r) => `${r.name}${r.idNumber ? ` — ${r.idNumber}` : ''}`),
+      vehicle: optionList(vehiclesWithout('vehicle'), (v) => v._id,
+        (id, v) => `${S(v.v.plateNumber) || S(v.v.serialNumber) || '—'}${v.riders[0] ? ` — ${v.riders[0].name}` : ''}`),
+      auth: optionList(vehiclesWithout('auth'), (v) => v.auth, (v) => BOARD.AUTH_AR[v] || v),
+      cr: optionList(live(without('cr')), (r) => BOARD.registerOf(r), (v) => (v === '—' ? 'غير محدد' : v)),
+      engagement: optionList(live(without('engagement')), (r) => BOARD.engagementOf(r), (v) => BOARD.ENGAGEMENT_AR[v] || v),
+      category: optionList(live(without('category')), (r) => BOARD.categoryOf(r), (v) => BOARD.CATEGORY_AR[v] || v),
+      city: optionList(live(without('city')), (r) => S(r.cityAr) || '—', (v) => (v === '—' ? 'غير محدد' : v)),
+      // المنتهون ليسوا خيارًا: مكانُهم الموارد البشريّة (قاعدةُ ended staff).
+      status: optionList(without('status').filter((r) => !isEnded(r)), (r) => r.workStatusShown),
+    };
 
     res.json({
+      board: {
+        total: rows.length,
+        categories,
+        status,
+        vehicles: {
+          total: vSplit.length,
+          withRider: vSplit.filter((v) => v.riders.length).length,
+          idle: vSplit.filter((v) => !v.riders.length).length,
+          onActiveOrder: vSplit.filter((v) => onOrder.has(v._id)).length,
+          auth: authCount(vSplit),
+        },
+        // ملفُّه في الموارد البشريّة بقسمٍ غيرِ B2C — نُقل هناك ولم يُخرَج من سجلّ
+        // القسم (الخروجُ لا يقع آليًّا). رقمٌ يُراجَع لا يُصحَّح بصمت.
+        otherDepartment: rows.filter((r) => r.employee && typeof r.employee === 'object'
+          && S(r.employee.department) && S(r.employee.department) !== b2cDept
+          && !require('../utils/lightTransportSync').isLightDepartment(r.employee.department)).length,
+        b2cDepartment: b2cDept,
+      },
+      filterOptions,
+      quickFilters: BOARD.QUICK,
       employees,
       reps,
       vehicles: {
         total: vSplit.length,
-        // وإجماليُّ القطاع يبقى معروضًا كي يُعرَف أنّ المعروضَ جزءٌ منه.
-        totalAll: vehicles.length,
-        withRider: vSplit.filter((v) => ridden.has(String(v._id))).length,
-        idle: vSplit.filter((v) => !ridden.has(String(v._id))).length,
-        onActiveOrder: vSplit.filter((v) => onOrder.has(String(v._id))).length,
-        byType: vGroup(vehicles.filter((v) => vMatch(v, 'vehicleType')), (v) => v.registrationTypeAr),
-        byProject: vGroup(vShown, (v) => ltProjectByVehicle.get(String(v._id)) || v.departmentAr),
-        byServiceStatus: vGroup(vShown, (v) => v.serviceStatusAr),
+        // وإجماليُّ مركبات القسم يبقى معروضًا كي يُعرَف أنّ المعروضَ جزءٌ منه.
+        totalAll: vrows.length,
+        withRider: vSplit.filter((v) => v.riders.length).length,
+        idle: vSplit.filter((v) => !v.riders.length).length,
+        onActiveOrder: vSplit.filter((v) => onOrder.has(v._id)).length,
+        byType: vGroup(vrows.filter((v) => vpass(v, 'vehicleType')), (v) => v.v.registrationTypeAr),
+        byProject: vGroup(vShown, (v) => v.project),
+        byServiceStatus: vGroup(vShown, (v) => v.v.serviceStatusAr),
+        byAuth: authCount(vShown),
       },
       housing: housing.map((h) => {
         const cap = (h.rooms || []).reduce((n, r) => n + (Number(r.capacity) || 0), 0) || Number(h.declaredCapacity) || 0;
@@ -712,33 +798,22 @@ exports.overview = async (req, res) => {
         };
       }),
       orders: { active: orders.length },
-      /**
-       * ── وما يحتاج عملًا اليوم ────────────────────────────────────────────
-       * اللوحةُ تقول ما هو قائم؛ وهذه تقول ما ينقص. وهي أسئلةٌ تُسأل كلَّ أسبوع
-       * ولا جوابَ لها إلّا بالفرز: مَن يعمل بلا مركبة، ومركبةٌ تقف بلا راكب،
-       * ومَن لا سجلَّ كفالةٍ له، ومَن ورقةُ مركبته باسم غيره.
-       */
+      /** ما ينقص ويحتاج عملًا — لا ما هو قائم. */
       gaps: {
         workingWithoutVehicle: rows.filter((r) => !r.vehicle
-          && !['إنهاء خدمة', 'متوقف'].includes(r.workStatusShown)).length,
-        idleVehicles: vSplit.filter((v) => !ridden.has(String(v._id))).length,
-        noRegister: rows.filter((r) => !S(r.registerNumber)
-          && !['إنهاء خدمة'].includes(r.workStatusShown)).length,
+          && ![ENDED, BOARD.SUSPENDED, BOARD.ACCIDENT].includes(r.workStatusShown)).length,
+        idleVehicles: vSplit.filter((v) => !v.riders.length).length,
+        noRegister: rows.filter((r) => !S(r.registerNumber) && r.workStatusShown !== ENDED).length,
         noContractType: rows.filter((r) => !S(r.contractTypeAr)).length,
         noSupervisor: rows.filter((r) => r.staffKind === 'rep' && !S(r.supervisorName)).length,
         unhoused: housingRows.filter((r) => !r.housing).length,
         noHrFile: rows.filter((r) => !r.hrLinked).length,
         // الورقةُ باسم غيرِ الراكب — تُقرأ من سجلّ المركبات لا من الصفّ.
-        authorizationMismatch: (() => {
-          let n = 0;
-          for (const r of rows) {
-            if (!r.vehicle) continue;
-            const v = vehicles.find((x) => String(x._id) === String(r.vehicle._id));
-            const holder = S(v?.authorizedPerson?.iqamaNumber);
-            if (holder && S(r.idNumber) && holder !== S(r.idNumber)) n += 1;
-          }
-          return n;
-        })(),
+        authorizationMismatch: rows.filter((r) => {
+          if (!r.vehicle || typeof r.vehicle !== 'object') return false;
+          const holder = S(r.vehicle.authorizedPerson?.iqamaNumber);
+          return holder && S(r.idNumber) && holder !== S(r.idNumber);
+        }).length,
       },
       options: await optionsOf(),
     });
@@ -753,6 +828,7 @@ exports.getEmployee = async (req, res) => {
   try {
     const row = await LightTransportEmployee.findById(req.params.id).populate(LIST_POPULATE).lean();
     if (!row) return res.status(404).json({ message: 'الموظّف غير موجود' });
+    await BOARD.markHrLeave([row]);
     const orders = await LightTransportOrder.find({ ltEmployee: row._id })
       .populate('vehicle', 'plateNumber registrationTypeAr')
       .populate('housing', 'name')
@@ -1013,6 +1089,30 @@ exports.updateEmployee = async (req, res) => {
       await applyHousing(doc, req.body.housing, req.body.housingRoom ?? doc.housingRoom, res);
       if (res.headersSent) return undefined;
     }
+    /**
+     * ── حالةُ اليوم: يعمل · إجازة · موقوف · حادث ──────────────────────────────
+     * يكتبها القسمُ من صفّ الموظّف (صاحبُ الشركة، ٢٠٢٦/١٠/٢١)، وتُقيَّد في سجلّه،
+     * وتُنسَخ إلى ملفّه في الموارد البشريّة وإلى مركبته (models/LightTransport).
+     * لا يمنعها إلّا إنهاءُ الخدمة في الموارد البشريّة: المنتهي لا حالةَ يومٍ له.
+     */
+    if (req.body.opStatus !== undefined) {
+      const want = S(req.body.opStatus);
+      if (!['', ...Object.keys(BOARD.OP_STATUS)].includes(want)) return res.status(400).json({ message: 'حالةُ عملٍ غير معروفة' });
+      if (want !== S(doc.opStatus)) {
+        const hr = doc.employee ? await Employee.findById(doc.employee).select('employmentStatus').lean() : null;
+        if (hr && hr.employmentStatus === 'terminated' && want) {
+          return res.status(409).json({ message: 'انتهت خدمتُه في الموارد البشرية — لا حالةَ عملٍ له في القسم' });
+        }
+        doc.history.push({
+          kind: 'status', by: req.user?._id, byName: byName(req.user),
+          fromValue: BOARD.OP_STATUS[doc.opStatus] || BOARD.WORKING, toValue: BOARD.OP_STATUS[want] || BOARD.WORKING,
+          note: S(req.body.opStatusNote),
+        });
+        doc.opStatus = want;
+        doc.opStatusAt = new Date();
+        doc.opStatusNote = S(req.body.opStatusNote).slice(0, 300);
+      }
+    }
     doc.lastModifiedBy = req.user?._id;
     await doc.save();
     if (String(doc.supervisorUser || '') !== beforeSupUser) await syncRepSupervisor(doc.name, doc.supervisorUser, { ltId: doc._id });
@@ -1263,21 +1363,54 @@ const LT_VEHICLE_EDIT = ['super_admin', 'b2c_manager', 'b2c_deputy', ...require(
 exports.LT_VEHICLE_EDIT = LT_VEHICLE_EDIT;
 
 // GET /vehicles
+/**
+ * ── كلُّ مركبات القسم، وبفلاتر اللوحة ───────────────────────────────────────
+ * المجموعةُ نفسُها التي تعدّها اللوحة (`vehicleRows` ← `BOARD.vehicleScope`):
+ * قطاعُ النقل الخفيف أو إدارةٌ من مشاريعه، ومعها ما عليه راكبٌ من سجلّ القسم —
+ * مفوَّضةً أو لا. وتقبل فلاترَ اللوحة في الرابط (المشروع، المندوب، المركبة،
+ * التفويض، السجل، كفالة/فريلانسر، الفئة، المدينة، الحالة) و`vstate`
+ * (withRider · idle · activeOrder) — فرقمُ الكارت يفتح مركباتِه بأعيانها.
+ */
 exports.listVehicles = async (req, res) => {
   try {
-    const { VehicleMaster } = require('../models/VehicleMaster');
-    const rows = await VehicleMaster.find(ltVehicleScope()).select(LT_VEHICLE_SELECT).sort({ departmentAr: 1, plateNumber: 1 }).lean();
-    const vehicles = rows.map(ltVehicleRow);
+    const q = req.query || {};
+    const decorated = await boardRows({ isActive: { $ne: false } });
+    const riderRows = decorated.filter((r) => r.vehicle && !isEnded(r));
+    let vrows = await vehicleRows(riderRows, 'updatedAt');
+    const people = BOARD.personTests(q, { typeKey, contractKindOf });
+    const vpass = BOARD.vehicleTests(q, people, { typeKey });
+    vrows = vrows.filter((v) => vpass(v));
+    const vstate = S(q.vstate);
+    if (vstate === 'withRider') vrows = vrows.filter((v) => v.riders.length);
+    if (vstate === 'idle') vrows = vrows.filter((v) => !v.riders.length);
+    if (vstate === 'activeOrder') {
+      const on = new Set((await LightTransportOrder.find({ status: 'active' }).select('vehicle').lean()).map((o) => String(o.vehicle || '')));
+      vrows = vrows.filter((v) => on.has(v._id));
+    }
+    const vehicles = vrows
+      .map((v) => ({
+        ...ltVehicleRow(v.v),
+        // المشروعُ كما تعدّه اللوحة (مشروعُ الراكب، وإلّا الإدارة) — وخانةُ السجلّ تبقى في `project`.
+        boardProject: v.project,
+        authState: v.auth,
+        riderName: v.riders.map((r) => r.name).join('، '),
+        riderId: S(v.riders[0]?._id),
+      }))
+      .sort((a, b) => String(a.project).localeCompare(String(b.project), 'ar') || String(a.plateNumber).localeCompare(String(b.plateNumber), 'ar'));
     const count = (f) => vehicles.filter(f).length;
+    const filtered = Object.keys(q).some((k) => BOARD.vals(q[k]).length);
     res.json({
       vehicles,
       summary: {
         total: vehicles.length,
-        noAuthorization: count((v) => !v.authorizedName && !v.authNumber),
-        expired: count((v) => v.daysLeft != null && v.daysLeft < 0),
+        noAuthorization: count((v) => v.authState === 'none'),
+        expired: count((v) => v.authState === 'expired'),
         expiringSoon: count((v) => v.daysLeft != null && v.daysLeft >= 0 && v.daysLeft <= 30),
         noDriver: count((v) => !v.driverName),
+        withRider: count((v) => !!v.riderName),
+        idle: count((v) => !v.riderName),
       },
+      filtered,
       canEdit: LT_VEHICLE_EDIT.includes(req.user?.role),
     });
   } catch (e) {

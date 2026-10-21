@@ -667,6 +667,8 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                               Chip2(_terminated && '${_emp['workStatusText'] ?? ''}'.contains('—') ? '${_emp['workStatusText']}'
                                   : (_emp['sisterCompany'] == true && !_terminated ? tr('شركة شقيقة', 'Sister company') : tr(st.$1, st.$2)), st.$3),
                               if (_archived) Chip2(tr('في الأرشيف', 'Archived'), T.inkFaint, icon: Icons.archive_outlined),
+                              // حالتُه اليوم في قسم الأفراد — تُكتب هناك وتُرى هنا.
+                              if (b2cOpChip(_emp['b2cOpStatus']) != null) b2cOpChip(_emp['b2cOpStatus'])!,
                             ]),
                           ),
                         ),

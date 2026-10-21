@@ -2,40 +2,65 @@
 /**
  * لوحةُ قسم الأفراد والنقل الخفيف — الصورةُ الكاملة.
  *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * كانت هذه اللوحةُ تقريرَ طلباتٍ ومناديب: أعدادُ الأوردرات وتحقيقُ الهدف
- * وحدَهما. وهي زاويةٌ من القسم لا القسمُ كلُّه — فلا يُقرأ فيها كم موظّفًا في
- * فرعٍ، ولا كم مركبةً واقفة، ولا مَن على كفالةِ أيّ سجلّ، ولا مَن بلا سكن. وذلك
- * التقريرُ انتقل إلى صفحته («تحليل الأوردرات») وبقي كما هو.
+ * ── الترتيبُ كما طلبه صاحبُ الشركة (٢٠٢٦/١٠/٢١) ───────────────────────────────
+ *   ١. «الإجمالي» وحدَه فوق، وتحته — لا بجانبه — ثلاثةُ كروت: مندوب · إداري · فني.
+ *      لكلٍّ رقمُه فوق، ونصفُه الأسفلُ «على الكفالة» / «فريلانسر»؛ وما ليس هذا ولا
+ *      ذاك (متدرّب · يوزرات · غير محدد) رقمٌ صغيرٌ تحتهما — فالنصفان وما تحتهما =
+ *      الكارت، والكروتُ (ومعها «غير مصنَّف» إن وُجد) = الإجمالي.
+ *   ٢. «حالة العمل» قسمٌ مستقلّ: يعمل · إجازة · موقوف · حادث — لكلٍّ قسمتُه على
+ *      الفئات الثلاث، ومجموعُها الإجماليُّ نفسُه. وحالةُ اليوم تُعدَّل من صفّ الموظّف
+ *      في «موظفو النقل الخفيف» (وإجازةُ الموارد البشريّة وإيقافُها يغلبانها).
+ *   ٣. كلُّ رقمٍ يُضغَط فيفتح أصحابَه: الناسَ في سجلّ الموظّفين، والمركباتِ في
+ *      «مركبات النقل الخفيف» — بالفلاتر نفسِها، والخادمُ يعدّ ويفتح بمعنىً واحد
+ *      (backend utils/b2cBoard).
+ *   ٤. المركباتُ كلُّ ما ينسبه قسمُ المركبات إلى النقل الخفيف — مفوَّضةً أو لا.
+ *   ٥. فلاترُ فوق اللوحة كفلاتر لوحة الموارد البشريّة: قوائمُ فيها بحث، وبجانب
+ *      كلّ قيمةٍ عددُها تحت الفلاتر الأخرى، وكلُّ رقمٍ في اللوحة يتبعها.
  *
- * ── وكلُّ رقمٍ هنا بابٌ ─────────────────────────────────────────────────────
- * «أريد أن أعرف كم على الكفالة، ثمّ أُضيف سجلًّا معيّنًا فيقول تسعة — فأريد
- * التسعةَ أنفسَهم.» فكلُّ كارتٍ يُضغَط فيصير فلترًا، والفلاترُ تتراكم، وكلُّ
- * الأعداد تُعاد محسوبةً على ما بقي — فلا يقول كارتٌ رقمًا ويقول الجدولُ غيرَه.
- * إلّا مجموعةَ الكارت المضغوط نفسِها: تُحسَب بلا فلترها (الخادم، راجع
- * `OVERVIEW_FACETS`)، فلا يصير «إداريون» صفرًا حين يُضغَط «مناديب».
- * وزرُّ «اعرض القائمة» ينقل الفلترَ نفسَه إلى سجلّ الموظّفين.
+ * والكروتُ هادئة (صاحبُ الشركة لا يحبّ الكروتَ الملوّنة): أبيضُ ورقمٌ داكنٌ ونقطةُ
+ * لونٍ صغيرة — على طراز components/collections/ReceivablesTree.
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
-import OrdersReport from '@/components/b2c/OrdersReport';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
+import OrdersReport from '@/components/b2c/OrdersReport';
+import HrQuickFilters from '@/components/hr/HrQuickFilters';
 import api from '@/lib/api';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import ScrollX from '@/components/system/ScrollX';
-import {
-  LayoutDashboard, Users, Car, Home, RotateCcw, ArrowRight, BarChart3, Truck, AlertTriangle,
-} from 'lucide-react';
-import Link from 'next/link';
-import { statusCls, type LTTotals, type LTOptions } from '@/lib/lightTransport';
+import { LayoutDashboard, Users, Car, Home, BarChart3, Truck, AlertTriangle, ChevronLeft } from 'lucide-react';
 
+type Opt = { value: string; label?: string; count: number };
+/**
+ * ما تقرؤه اللوحةُ من أرقام القسم القديمة — يُعرَّف هنا لا يُستورَد من lib/lightTransport:
+ * خريطةُ نقاط الصفحات تُولَّد من الملفّات المستورَدة، فاستيرادُ ذلك الملفّ كان يفتح
+ * لصاحب اللوحة وحدَها نقاطَ السجلّ كلَّها (الإسناد، أوامر التشغيل…). راجع genPageApis.
+ */
+interface LTTotals {
+  housed: number; unhoused: number;
+  byProject: Record<string, number>; byCity: Record<string, number>; byJob: Record<string, number>;
+  byRegister: Record<string, number>; bySupervisor: Record<string, number>;
+}
+type Cat = 'rep' | 'admin' | 'tech' | 'none';
+type Eng = 'sponsored' | 'freelance' | 'trainee' | 'users' | 'none';
+interface Board {
+  total: number;
+  categories: Record<Cat, { total: number } & Record<Eng, number>>;
+  status: Record<string, { total: number } & Record<Cat, number>>;
+  vehicles: { total: number; withRider: number; idle: number; onActiveOrder: number; auth: { authorized: number; expired: number; none: number } };
+  otherDepartment: number;
+  b2cDepartment: string;
+}
 interface RepsProject { project: string; sponsored: number; freelance: number; users: number; noContract: number; total: number }
 interface Overview {
+  board: Board;
+  filterOptions: Record<string, Opt[]>;
+  quickFilters: { key: string; ar: string; en: string }[];
   employees: LTTotals;
-  /** إجماليُّ المناديب: كفالة + فري لانسر + يوزرات مؤجَّرة — ولكلّ مشروع. */
   reps?: { total: number; sponsored: number; freelance: number; users: number; noContract: number; projects: RepsProject[] };
   vehicles: {
     total: number; totalAll: number; withRider: number; idle: number; onActiveOrder: number;
@@ -44,95 +69,131 @@ interface Overview {
   housing: { _id: string; name: string; cityAr?: string; capacity: number; occupied: number; free: number;
     rooms: { name: string; kind: string; capacity: number; occupied: number; free: number }[] }[];
   orders: { active: number };
-  /** ما ينقص ويحتاج عملًا — لا ما هو قائم. */
   gaps: {
     workingWithoutVehicle: number; idleVehicles: number; noRegister: number;
     noContractType: number; noSupervisor: number; unhoused: number;
     noHrFile: number; authorizationMismatch: number;
   };
-  options: LTOptions;
 }
 
 const qsOf = (o: Record<string, string>) =>
   Object.entries(o).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+const num = (n?: number) => (n || 0).toLocaleString('en-US');
+
+const CATS: { key: Cat; ar: string; en: string; tone: string }[] = [
+  { key: 'rep', ar: 'مندوب', en: 'Reps', tone: '#475569' },
+  { key: 'admin', ar: 'إداري', en: 'Admin', tone: '#0d9488' },
+  { key: 'tech', ar: 'فني', en: 'Technicians', tone: '#a16207' },
+];
+const STATES: { key: string; en: string; tone: string }[] = [
+  { key: 'يعمل', en: 'Working', tone: '#16a34a' },
+  { key: 'إجازة', en: 'On leave', tone: '#0284c7' },
+  { key: 'موقوف', en: 'Suspended', tone: '#d97706' },
+  { key: 'حادث', en: 'Accident', tone: '#dc2626' },
+];
+/** ما ليس كفالةً ولا فريلانسر — يُعرَض صغيرًا تحت النصفين، ولا يُقال الصفر. */
+const REST: { key: Eng; ar: string; en: string }[] = [
+  { key: 'trainee', ar: 'متدرّب', en: 'Trainee' },
+  { key: 'users', ar: 'يوزرات', en: 'Rented users' },
+  { key: 'none', ar: 'غير محدد', en: 'Not set' },
+];
 
 /**
- * ── الكارتُ والتقسيمةُ خارجَ جسم الصفحة ─────────────────────────────────────
- * كانا يُعرَّفان داخل الصفحة، فيصير كلٌّ منهما مكوِّنًا جديدًا في كلّ رسمة: يُهدَم
- * ما تحته ويُبنى من جديد مع كلّ ضغطةٍ وكلّ ردٍّ — وهو بعضُ «الاهتزاز» الذي يُرى.
- * راجع ذاكرة «inline components remount».
+ * ── المكوّناتُ خارجَ جسم الصفحة ─────────────────────────────────────────────
+ * مكوّنٌ يُعرَّف داخل الرسم يُهدَم ويُبنى مع كلّ ردٍّ وكلّ حدثٍ حيّ — راجع ذاكرة
+ * «inline components remount».
  */
-function Card({ label, value, of, accent, onClick, on, hint }: {
-    label: string; value: any; of?: number; accent?: string; onClick?: () => void; on?: boolean; hint?: string;
-  }) {
+const BOX = 'bg-white border border-slate-200 rounded-2xl shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden';
+
+function Dot({ tone }: { tone: string }) {
+  return <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: tone }} />;
+}
+
+/** نصفٌ (أو ثلثٌ) من كارت: عنوانٌ ورقمٌ ونسبةٌ — يُضغَط فيفتح أصحابَه. */
+function Half({ label, value, of, href, tone, unit }: { label: string; value: number; of?: number; href: string; tone?: string; unit?: string }) {
+  const pct = of ? Math.round((value / of) * 100) : 0;
   return (
-    <button type="button" onClick={onClick} disabled={!onClick}
-      className={`text-start bg-white border rounded-xl px-3.5 py-3 shadow-sm transition-all ${
-        on ? 'border-[#f37121] ring-2 ring-[#f37121]/20' : 'border-slate-200'} ${onClick ? 'hover:border-[#f37121]/50 cursor-pointer' : ''}`}>
-      <p className="text-[11px] text-slate-500 leading-tight">{label}</p>
-      <p className={`text-[21px] font-extrabold tabular-nums leading-tight ${accent || 'text-slate-900'}`}>
-        {value}{of != null && <span className="text-[12px] font-normal text-slate-400"> / {of}</span>}
+    <Link href={href} className="block text-center px-2 py-3 hover:bg-slate-50/70 transition-colors">
+      <p className="text-[11.5px] font-medium text-slate-500 inline-flex items-center justify-center gap-1.5">
+        {tone && <Dot tone={tone} />}{label}
       </p>
-      {hint && <p className="text-[10.5px] text-slate-400 mt-0.5">{hint}</p>}
-    </button>
+      <p className="mt-1 text-[19px] font-bold tabular-nums tracking-tight text-slate-900">{num(value)}</p>
+      <p className="mt-0.5 text-[10.5px] text-slate-400 tabular-nums">{unit ? `${unit}${pct ? ' · ' : ''}` : ''}{pct ? `${pct}%` : ''}</p>
+    </Link>
   );
 }
 
-/**
- * تقسيمةٌ تُقرأ وتُضغَط: كلُّ سطرٍ عددٌ وشريطٌ ونسبة، وضغطُه يفلتر عليه.
- * والصفرُ لا يُعرَض — سطرٌ بصفرٍ يزحم ولا يُخبر. وأعدادُها تأتي من الخادم بلا
- * فلترها هي، فلا تنكمش إلى السطر المضغوط ولا يُعاد ترتيبُها تحته؛ والتعادلُ
- * يُحسَم بالاسم كي لا يتبادل سطران مكانَيهما بين ردّين.
- */
-function Breakdown({ title, icon, data, filterKey, accent = '#f37121', hrefBase, f, toggle }: {
-    title: string; icon: React.ReactNode; data: Record<string, number>; filterKey?: string; accent?: string; hrefBase?: string;
-    f: Record<string, string>; toggle: (k: string, v: string) => void;
+/** تقسيمةٌ تُقرأ وتُضغَط — هادئة: شريطٌ رماديٌّ ورقمٌ داكن. والصفرُ لا يُعرَض. */
+function Breakdown({ title, icon, data, filterKey, f, toggle, hrefOf }: {
+    title: string; icon: React.ReactNode; data: Record<string, number>; filterKey?: string;
+    f: Record<string, string>; toggle: (k: string, v: string) => void; hrefOf?: (k: string) => string;
   }) {
-    const rows = Object.entries(data || {}).filter(([k, v]) => v > 0 && k !== '—')
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ar'));
-    const max = rows.length ? rows[0][1] : 1;
-    const totalOf = rows.reduce((n, [, v]) => n + v, 0);
-    if (!rows.length) return null;
-    return (
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="h-1" style={{ background: accent }} />
-        <div className="px-4 pt-3 pb-3">
-          <h3 className="font-extrabold text-slate-900 text-[13.5px] flex items-center gap-1.5 mb-2.5">
-            <span style={{ color: accent }}>{icon}</span>{title}
-            <span className="text-slate-400 font-normal text-[11.5px]">({totalOf})</span>
-          </h3>
-          <div className="space-y-1.5">
-            {rows.map(([k, v]) => {
-              const on = filterKey ? f[filterKey] === k : false;
-              const inner = (
-                <>
-                  <span className="flex items-center justify-between gap-2 text-[12.5px]">
-                    <span className={`truncate ${on ? 'font-bold text-[#f37121]' : 'text-slate-700'}`}>{k}</span>
-                    <span className="tabular-nums font-bold text-slate-900 shrink-0">
-                      {v}<span className="text-slate-400 font-normal text-[10.5px]"> · {Math.round((v / totalOf) * 100)}%</span>
-                    </span>
+  const rows = Object.entries(data || {}).filter(([k, v]) => v > 0 && k !== '—')
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ar'));
+  if (!rows.length) return null;
+  const max = rows[0][1];
+  const totalOf = rows.reduce((n, [, v]) => n + v, 0);
+  const picked = (k: string) => !!filterKey && String(f[filterKey] || '').split(',').includes(k);
+  return (
+    <section className={BOX}>
+      <div className="px-4 pt-3 pb-3">
+        <h3 className="font-semibold text-slate-800 text-[13px] flex items-center gap-1.5 mb-2.5">
+          <span className="text-slate-400">{icon}</span>{title}
+          <span className="text-slate-400 font-normal text-[11.5px]">({num(totalOf)})</span>
+        </h3>
+        <div className="space-y-1">
+          {rows.map(([k, v]) => {
+            const on = picked(k);
+            const inner = (
+              <>
+                <span className="flex items-center justify-between gap-2 text-[12.5px]">
+                  <span className={`truncate ${on ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>{k}</span>
+                  <span className="tabular-nums font-semibold text-slate-900 shrink-0">
+                    {num(v)}<span className="text-slate-400 font-normal text-[10.5px]"> · {Math.round((v / totalOf) * 100)}%</span>
                   </span>
-                  <span className="mt-1 block h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                    <span className="block h-full rounded-full" style={{ width: `${(v / max) * 100}%`, background: on ? '#f37121' : accent }} />
-                  </span>
-                </>
-              );
-              return filterKey ? (
+                </span>
+                <span className="mt-1 block h-1 rounded-full bg-slate-100 overflow-hidden">
+                  <span className="block h-full rounded-full" style={{ width: `${(v / max) * 100}%`, background: on ? '#f37121' : '#94a3b8' }} />
+                </span>
+              </>
+            );
+            if (filterKey) {
+              return (
                 <button key={k} type="button" onClick={() => toggle(filterKey, k)}
-                  className={`w-full text-start rounded-lg px-2 py-1.5 transition-colors ${on ? 'bg-[#f37121]/10' : 'hover:bg-slate-50'}`}>
-                  {inner}
-                </button>
-              ) : hrefBase ? (
-                <Link key={k} href={`${hrefBase}${encodeURIComponent(k)}`} className="block rounded-lg px-2 py-1.5 hover:bg-slate-50">{inner}</Link>
-              ) : (
-                <div key={k} className="px-2 py-1.5">{inner}</div>
+                  className={`w-full text-start rounded-lg px-2 py-1.5 transition-colors ${on ? 'bg-slate-100' : 'hover:bg-slate-50'}`}>{inner}</button>
               );
-            })}
-          </div>
+            }
+            if (hrefOf) return <Link key={k} href={hrefOf(k)} className="block rounded-lg px-2 py-1.5 hover:bg-slate-50">{inner}</Link>;
+            return <div key={k} className="px-2 py-1.5">{inner}</div>;
+          })}
         </div>
-      </section>
-    );
-  }
+      </div>
+    </section>
+  );
+}
+
+/** رقمٌ صغيرٌ في كارتٍ هادئ — لـ«ما يحتاج عملًا» والسكن. */
+function Small({ label, value, href, onClick, hint }: { label: string; value: number; href?: string; onClick?: () => void; hint?: string }) {
+  const body = (
+    <>
+      <p className="text-[11.5px] text-slate-500 leading-tight">{label}</p>
+      <p className="mt-1 text-[20px] font-bold tabular-nums text-slate-900 leading-tight">{num(value)}</p>
+      {hint && <p className="text-[10.5px] text-slate-400 mt-0.5">{hint}</p>}
+    </>
+  );
+  const cls = `block text-center ${BOX} px-3 py-3 ${href || onClick ? 'hover:bg-slate-50/70 transition-colors' : ''}`;
+  if (href) return <Link href={href} className={cls}>{body}</Link>;
+  if (onClick) return <button type="button" onClick={onClick} className={`w-full ${cls}`}>{body}</button>;
+  return <div className={cls}>{body}</div>;
+}
+
+const FALLBACK_KEYS = [
+  { key: 'project', ar: 'المشروع', en: 'Project' }, { key: 'rep', ar: 'المندوب', en: 'Rep' },
+  { key: 'vehicle', ar: 'المركبة', en: 'Vehicle' }, { key: 'auth', ar: 'التفويض', en: 'Authorisation' },
+  { key: 'cr', ar: 'السجل التجاري', en: 'Commercial register' }, { key: 'engagement', ar: 'كفالة / فريلانسر', en: 'Engagement' },
+  { key: 'category', ar: 'الفئة', en: 'Category' }, { key: 'city', ar: 'المدينة', en: 'City' },
+  { key: 'status', ar: 'حالة العمل', en: 'Work status' },
+];
 
 export default function B2CDashboardPage() {
   const { lang, isRTL } = useLanguage();
@@ -143,61 +204,69 @@ export default function B2CDashboardPage() {
   const [d, setD] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [f, setF] = useState<Record<string, string>>({});
-  const active = Object.entries(f).filter(([, v]) => v);
-  const toggle = (k: string, v: string) => setF((p) => ({ ...p, [k]: p[k] === v ? '' : v }));
+  /** التقسيماتُ تُضيف قيمتَها إلى الفلتر أو تُزيلها — كقوائم الفلاتر فوق. */
+  const toggle = (k: string, v: string) => setF((p) => {
+    const cur = String(p[k] || '').split(',').filter(Boolean);
+    const next = cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v];
+    const n = { ...p };
+    if (next.length) n[k] = next.join(','); else delete n[k];
+    return n;
+  });
 
   const guard = useLatestRequest();
+  const fKey = qsOf(f);
   const load = useCallback(async () => {
     const token = guard.begin();
     try {
-      const r = await api.get<Overview>(`/api/light-transport/overview${qsOf(f) ? `?${qsOf(f)}` : ''}`);
+      const r = await api.get<Overview>(`/api/light-transport/overview${fKey ? `?${fKey}` : ''}`);
       if (!guard.isCurrent(token)) return;
       setD(r);
     } catch { /* تبقى الشاشةُ على ما لديها */ }
     if (guard.isCurrent(token)) setLoading(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(f), guard]);
+  }, [fKey, guard]);
   useEffect(() => { load(); }, [load]);
+  // حيّة: القسمُ والموارد البشريّة (حالةٌ ومشروعٌ وسجلّ) وسجلُّ المركبات (تفويضٌ ومشروع).
   useSocket('lt:updated', useCallback(() => load(), [load]));
   useSocket('hr:employee', useCallback(() => load(), [load]));
+  useSocket('hr:master', useCallback(() => load(), [load]));
   useSocket('vreg:updated', useCallback(() => load(), [load]));
-
+  useSocket('b2c:rep:updated', useCallback(() => load(), [load]));
 
   if (loading) return <Spinner />;
-  if (!d) return <div className="p-8 text-slate-500">{t('تعذّر تحميل اللوحة', 'Could not load the board')}</div>;
+  if (!d || !d.board) return <div className="p-8 text-slate-500">{t('تعذّر تحميل اللوحة', 'Could not load the board')}</div>;
 
-  const E = d.employees; const V = d.vehicles;
+  const B = d.board; const E = d.employees; const V = d.vehicles;
+  const includeEnded = String(f.status || '').split(',').includes('إنهاء خدمة');
+  /** الناسُ خلف الرقم: فلاترُ اللوحة + ما يخصّ الرقم، وفي الخدمة وحدَهم. */
+  const people = (extra: Record<string, string> = {}) =>
+    `/system/b2c/light-transport?${qsOf({ ...f, inService: includeEnded ? '' : '1', ...extra })}`;
+  /** والمركباتُ خلف الرقم — في «مركبات النقل الخفيف» بالفلاتر نفسِها. */
+  const vehiclesOf = (extra: Record<string, string> = {}) => `/system/b2c/vehicles?${qsOf({ ...f, ...extra })}`;
+  const catTotal = (c: Cat) => B.categories[c]?.total || 0;
 
-  /**
-   * روابطُ «إجمالي المناديب»: فلاترُ اللوحة + المناديب + ما ضُغط عليه.
-   * و`inService=1` لأنّ اللوحة لا تعدّ المنتهين — إلّا إن فُلترت عليهم صراحةً.
-   * و«(غير محدد)» يُرسَل كما هو: الخادمُ يفهمه «بلا مشروع».
-   */
-  const repsHref = (extra: Record<string, string>) => `/system/b2c/light-transport?${qsOf({
-    ...f, staffKind: 'rep', inService: f.status === 'إنهاء خدمة' ? '' : '1', ...extra,
-  })}`;
-
-  // ما يُصدَّر: التقسيماتُ كلُّها في ورقةٍ واحدةٍ مسطَّحة — تُلصَق في بريدٍ أو تُطبع.
+  // ما يُصدَّر: الأرقامُ والتقسيماتُ في ورقةٍ واحدةٍ مسطَّحة.
   const flat = [
+    { group: t('الإجمالي', 'Total'), value: '', count: B.total },
+    ...CATS.flatMap((c) => (['sponsored', 'freelance', 'trainee', 'users', 'none'] as Eng[])
+      .map((k) => ({ group: t(c.ar, c.en), value: k, count: B.categories[c.key]?.[k] || 0 }))),
+    ...STATES.map((s) => ({ group: t('حالة العمل', 'Work status'), value: s.key, count: B.status[s.key]?.total || 0 })),
+    { group: t('المركبات', 'Vehicles'), value: t('الإجمالي', 'Total'), count: B.vehicles.total },
+    { group: t('المركبات', 'Vehicles'), value: t('مفوَّضة', 'Authorised'), count: B.vehicles.auth.authorized },
+    { group: t('المركبات', 'Vehicles'), value: t('تفويض منتهٍ', 'Expired'), count: B.vehicles.auth.expired },
+    { group: t('المركبات', 'Vehicles'), value: t('بلا تفويض', 'Not authorised'), count: B.vehicles.auth.none },
     ...Object.entries(E.byProject || {}).map(([k, v]) => ({ group: t('المشروع', 'Project'), value: k, count: v })),
     ...Object.entries(E.byCity || {}).map(([k, v]) => ({ group: t('الفرع', 'Branch'), value: k, count: v })),
-    ...Object.entries(E.byJob || {}).map(([k, v]) => ({ group: t('الوظيفة', 'Job'), value: k, count: v })),
-    ...Object.entries(E.byContract || {}).map(([k, v]) => ({ group: t('نوع التعاقد', 'Contract'), value: k, count: v })),
     ...Object.entries(E.byRegister || {}).map(([k, v]) => ({ group: t('السجل', 'Register'), value: k, count: v })),
-    ...Object.entries(E.byStatus || {}).map(([k, v]) => ({ group: t('حالة العمل', 'Status'), value: k, count: v })),
-    ...Object.entries(E.bySupervisor || {}).map(([k, v]) => ({ group: t('المشرف', 'Supervisor'), value: k, count: v })),
-    ...Object.entries(V.byType || {}).map(([k, v]) => ({ group: t('نوع المركبة', 'Vehicle type'), value: k, count: v })),
-    ...Object.entries(V.byServiceStatus || {}).map(([k, v]) => ({ group: t('حالة تشغيل المركبة', 'Vehicle service'), value: k, count: v })),
   ];
 
   return (
-    <div className="space-y-4 pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="space-y-5 pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<LayoutDashboard className="w-6 h-6 text-[#f37121]" />}
         title={t('لوحة قسم الأفراد', 'B2C board')}
-        subtitle={t('الموظفون والمركبات والسكن — وكل رقم يُضغط فيصير فلترًا', 'People, vehicles and housing — every number is a filter')}>
+        subtitle={t('الموظفون والمركبات والسكن — وكل رقم يفتح أصحابه', 'People, vehicles and housing — every number opens its list')}>
         <ExportMenu fileName="b2c-board" lang={ar ? 'ar' : 'en'} variant="subtle" label={t('تصدير Excel', 'Export')}
           options={[{
-            key: 'board', label: t('تقسيمات اللوحة', 'Board breakdowns'),
+            key: 'board', label: t('أرقام اللوحة', 'Board numbers'),
             sheets: [{
               name: 'Board', rows: flat as any[],
               columns: [
@@ -208,253 +277,270 @@ export default function B2CDashboardPage() {
             }],
           }]} />
         <Link href="/system/b2c/orders-analysis"
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:border-[#f37121]/50">
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:border-slate-300">
           <BarChart3 className="w-4 h-4" /> {t('تحليل الأوردرات', 'Orders analysis')}
         </Link>
       </PageHeader>
 
-      {/* ── الفلاترُ الشغّالةُ معروضةٌ ومُزالةٌ واحدًا واحدًا ────────────────────
-          الفلترُ الخفيُّ يجعل الرقمَ يُقرأ خطأً — فهي مكتوبةٌ، وكلُّ واحدٍ يُرفَع
-          بضغطة، ومعها زرٌّ ينقل الفلترَ نفسَه إلى القائمة. */}
-      {!!active.length && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#f37121]/30 bg-[#f37121]/5 px-3 py-2.5">
-          <span className="text-[12px] font-bold text-slate-700">{t('الفلاتر الشغّالة:', 'Active filters:')}</span>
-          {active.map(([k, v]) => (
-            <button key={k} type="button" onClick={() => setF((p) => ({ ...p, [k]: '' }))}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white border border-slate-200 text-[12px] font-semibold text-slate-700 hover:border-red-300 hover:text-red-600">
-              {v} <span className="text-slate-400">×</span>
-            </button>
-          ))}
-          <button type="button" onClick={() => setF({})}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#f37121]/10 text-[#f37121] text-[12px] font-bold">
-            <RotateCcw className="w-3.5 h-3.5" /> {t('مسح الكل', 'Clear all')}
-          </button>
-          <button type="button" onClick={() => router.push(`/system/b2c/light-transport?${qsOf(f)}`)}
-            className="ms-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#f37121] text-white text-[12.5px] font-bold">
-            {t('اعرض القائمة بهذه الفلاتر', 'Show the list with these filters')}
-            <ArrowRight className={`w-3.5 h-3.5 ${isRTL ? 'rotate-180' : ''}`} />
-          </button>
-        </div>
-      )}
+      {/* ── الفلاتر: كفلاتر لوحة الموارد البشريّة — وكلُّ رقمٍ تحتها يتبعها ──── */}
+      <HrQuickFilters ar={ar} value={f} onChange={setF}
+        keys={d.quickFilters?.length ? d.quickFilters : FALLBACK_KEYS} options={d.filterOptions || {}} />
 
-      {/* ── الناس ───────────────────────────────────────────────────────────── */}
-      <h2 className="text-[13px] font-extrabold text-slate-500 flex items-center gap-1.5 pt-1">
-        <Users className="w-4 h-4" />{t('الموظفون', 'People')}
-      </h2>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-        <Card label={t('الإجمالي', 'Total')} value={E.total} onClick={() => setF({})} on={!active.length} />
-        <Card label={t('مناديب', 'Reps')} value={E.reps} accent="text-indigo-600" onClick={() => toggle('staffKind', 'rep')} on={f.staffKind === 'rep'} />
-        <Card label={t('إداريون', 'Admin')} value={E.admins} accent="text-teal-600" onClick={() => toggle('staffKind', 'admin')} on={f.staffKind === 'admin'}
-          hint={t('مشرف · فني · نظافة', 'supervisor, technician, cleaning')} />
-        <Card label={t('على رأس العمل', 'Working')} value={E.working} accent="text-emerald-600" onClick={() => toggle('status', 'يعمل')} on={f.status === 'يعمل'} />
-        <Card label={t('في إجازة', 'On leave')} value={E.onLeave} accent="text-sky-600" onClick={() => toggle('status', 'إجازة')} on={f.status === 'إجازة'} />
-        {/* على رأس العمل + في إجازة + موقوف = الإجمالي — الحالاتُ من الموارد البشرية. */}
-        <Card label={t('موقوف', 'Suspended')} value={(E as any).suspended ?? 0} accent="text-amber-600" onClick={() => toggle('status', 'متوقف')} on={f.status === 'متوقف'}
-          hint={t('من الموارد البشرية', 'from HR')} />
-        {/* ومَن انتهت خدمتُه لا يظهر في اللوحة أصلًا — مكانُه لوحةُ الموارد البشريّة. */}
-      </div>
-
-      {/* ── إجماليُّ المناديب: على الكفالة + فري لانسر + يوزرات ────────────────
-          المناديبُ في الخدمة بنوع عقدهم، ومعهم اليوزراتُ المؤجَّرة (صفحة
-          «تأجير اليوزرات»). ثمّ الثلاثةُ لكلّ مشروع. وكلُّ رقمٍ هنا يفتح أصحابَه:
-          الناسُ في سجلّ الموظّفين واليوزراتُ في صفحتها — والرابطُ يحمل فلاترَ
-          اللوحة ومعها `inService=1`، فتعرض القائمةُ مَن عُدّوا بأعيانهم. */}
-      {d.reps && (
-        <>
-          <h2 className="text-[13px] font-extrabold text-slate-500 flex items-center gap-1.5 pt-1">
-            {t('إجمالي المناديب', 'Total reps')}
-          </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            <Card label={t('إجمالي المناديب', 'Total reps')} value={d.reps.total} onClick={() => router.push(repsHref({}))}
-              hint={d.reps.users ? t(`منهم ${d.reps.users} يوزر مؤجَّر`, `incl. ${d.reps.users} rented users`) : undefined} />
-            <Card label={t('على الكفالة', 'Sponsored')} value={d.reps.sponsored} accent="text-indigo-600"
-              onClick={() => router.push(repsHref({ contractKind: 'sponsored' }))} />
-            <Card label={t('فري لانسر', 'Freelance')} value={d.reps.freelance} accent="text-teal-600"
-              onClick={() => router.push(repsHref({ contractKind: 'freelance' }))} />
-            {/* اليوزراتُ صفوفٌ في سجلّ القسم بنوع عقد «يوزرات» (ومعها ما في صفحة التأجير). */}
-            <Card label={t('يوزرات', 'Rented users')} value={d.reps.users} accent="text-[#f37121]"
-              onClick={() => router.push(repsHref({ contractKind: 'users' }))} />
+      {/* ① الإجمالي — وحدَه، وتحته الفئاتُ الثلاث ───────────────────────────── */}
+      <section className="space-y-2">
+        <h2 className="text-[13px] font-semibold text-slate-700 flex items-center gap-1.5"><Users className="w-4 h-4 text-slate-400" />{t('الموظفون', 'People')}</h2>
+        <div className={BOX}>
+          <Link href={people()} className="block text-center px-4 pt-5 pb-4 hover:bg-slate-50/60 transition-colors">
+            <p className="text-[12px] font-medium text-slate-500">{t('الإجمالي', 'Total')}</p>
+            <p className="mt-1.5 text-[34px] leading-none font-bold tabular-nums tracking-tight text-slate-900">{num(B.total)}</p>
+            <p className="mt-1.5 text-[11.5px] text-slate-400 tabular-nums">
+              {CATS.map((c, i) => (
+                <span key={c.key}>{i > 0 && <span className="text-slate-300"> · </span>}{t(c.ar, c.en)} {num(catTotal(c.key))}</span>
+              ))}
+              {catTotal('none') > 0 && <><span className="text-slate-300"> · </span>{t('غير مصنَّف', 'Uncategorised')} {num(catTotal('none'))}</>}
+            </p>
+          </Link>
+          {/* شريطُ النسبة: كم من الكلّ مندوبٌ وكم إداريٌّ وكم فنّيّ. */}
+          <div className="mx-4 mb-4 h-1.5 rounded-full bg-slate-100 overflow-hidden flex" aria-hidden>
+            {CATS.map((c) => <span key={c.key} style={{ width: `${B.total ? (catTotal(c.key) / B.total) * 100 : 0}%`, background: c.tone }} />)}
           </div>
-          {/* مَن لا نوعَ عقدٍ له لا يدخل الكفالةَ ولا الفري لانسر — فيُفتَح ليُصحَّح. */}
-          {d.reps.noContract > 0 && (
-            <Link href={repsHref({ contractKind: 'none' })}
-              className="-mt-1 inline-flex items-center gap-1 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1 text-[12px] font-semibold text-amber-800 hover:bg-amber-100">
-              {t(`${d.reps.noContract} مندوب غير محدد (كفالة أم فري لانسر) — اضغط لعرضهم`, `${d.reps.noContract} reps not set as sponsored or freelance — click to see them`)}
-            </Link>
-          )}
-          {d.reps.projects.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
-              {d.reps.projects.map((p) => (
-                <div key={p.project} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <button type="button" onClick={() => toggle('project', p.project)}
-                    className={`flex w-full items-center justify-between px-3.5 py-2 text-[13px] font-bold ${f.project === p.project ? 'bg-[#f37121] text-white' : 'bg-slate-900 text-white hover:bg-slate-800'}`}>
-                    <span>{p.project}</span><span className="tabular-nums text-[12px] opacity-80">{p.total}</span>
-                  </button>
-                  <div className="grid grid-cols-3 divide-x divide-slate-100 rtl:divide-x-reverse text-center">
-                    {([['sponsored', t('كفالة', 'Sponsored')], ['freelance', t('فري لانسر', 'Freelance')], ['users', t('يوزرات', 'Users')]] as const).map(([k, label]) => (
-                      <Link key={k} href={repsHref({ project: p.project, contractKind: k })}
-                        className="block px-2 py-2 hover:bg-orange-50">
-                        <p className="text-[10.5px] text-slate-500">{label}</p>
-                        <p className="text-[17px] font-extrabold tabular-nums text-slate-900">{p[k]}</p>
-                      </Link>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {CATS.map((c) => {
+            const n = B.categories[c.key];
+            const rest = REST.filter((r) => (n?.[r.key] || 0) > 0);
+            return (
+              <div key={c.key} className={BOX}>
+                <Link href={people({ category: c.key })} className="block text-center px-4 pt-3.5 pb-3 hover:bg-slate-50/60 transition-colors">
+                  <p className="text-[12px] font-semibold text-slate-700 inline-flex items-center justify-center gap-1.5"><Dot tone={c.tone} />{t(c.ar, c.en)}</p>
+                  <p className="mt-1 text-[26px] leading-none font-bold tabular-nums tracking-tight text-slate-900">{num(n?.total)}</p>
+                </Link>
+                <div className="grid grid-cols-2 border-t border-slate-100 divide-x divide-slate-100 rtl:divide-x-reverse">
+                  <Half label={t('على الكفالة', 'Sponsored')} value={n?.sponsored || 0} of={n?.total} href={people({ category: c.key, engagement: 'sponsored' })} />
+                  <Half label={t('فريلانسر', 'Freelance')} value={n?.freelance || 0} of={n?.total} href={people({ category: c.key, engagement: 'freelance' })} />
+                </div>
+                {/* وما ليس هذا ولا ذاك — رقمٌ صغيرٌ يُفتَح، فيبقى مجموعُ الكارت صحيحًا. */}
+                {rest.length > 0 && (
+                  <div className="border-t border-slate-100 px-3 py-1.5 text-center text-[11px] text-slate-500">
+                    {rest.map((r, i) => (
+                      <span key={r.key}>
+                        {i > 0 && <span className="text-slate-300"> · </span>}
+                        <Link href={people({ category: c.key, engagement: r.key })} className="hover:text-slate-800 hover:underline">
+                          {t(r.ar, r.en)} <span className="tabular-nums font-semibold text-slate-700">{num(n?.[r.key])}</span>
+                        </Link>
+                      </span>
                     ))}
                   </div>
-                  {p.noContract > 0 && (
-                    <Link href={repsHref({ project: p.project, contractKind: 'none' })}
-                      className="block border-t border-slate-100 px-3 py-1 text-[10.5px] font-semibold text-amber-700 hover:bg-amber-50">
-                      {t(`${p.noContract} غير محدد (كفالة أم فري لانسر) — اضغط لعرضهم`, `${p.noContract} not set — click to see them`)}
-                    </Link>
-                  )}
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {catTotal('none') > 0 && (
+          <Link href={people({ category: 'none' })}
+            className="inline-flex items-center gap-1 text-[12px] text-slate-500 hover:text-slate-800">
+            {t(`${num(catTotal('none'))} بلا فئة (لا وظيفة ولا فئة وظيفية) — اضغط لعرضهم وتحديدها`, `${num(catTotal('none'))} uncategorised — click to see them`)}
+            <ChevronLeft className={`w-3.5 h-3.5 ${isRTL ? '' : 'rotate-180'}`} />
+          </Link>
+        )}
+      </section>
+
+      {/* ② حالة العمل — يعمل · إجازة · موقوف · حادث، ومجموعُها الإجمالي ──────── */}
+      <section className="space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h2 className="text-[13px] font-semibold text-slate-700">{t('حالة العمل', 'Work status')}</h2>
+          <span className="text-[11px] text-slate-400">
+            {t('تُعدَّل من صفّ الموظف في «موظفو النقل الخفيف» — والإجازة والإيقاف من الموارد البشرية يغلبان',
+              'Set from the employee row in Light-transport employees — HR leave and suspension take precedence')}
+          </span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          {STATES.map((s) => {
+            const n = B.status[s.key] || { total: 0, rep: 0, admin: 0, tech: 0, none: 0 };
+            return (
+              <div key={s.key} className={BOX}>
+                <Link href={people({ status: s.key })} className="block text-center px-4 pt-3.5 pb-3 hover:bg-slate-50/60 transition-colors">
+                  <p className="text-[12px] font-semibold text-slate-700 inline-flex items-center justify-center gap-1.5"><Dot tone={s.tone} />{ar ? s.key : s.en}</p>
+                  <p className="mt-1 text-[24px] leading-none font-bold tabular-nums tracking-tight text-slate-900">{num(n.total)}</p>
+                  <p className="mt-1 text-[10.5px] text-slate-400 tabular-nums">{B.total ? `${Math.round((n.total / B.total) * 100)}%` : ''}</p>
+                </Link>
+                <div className="grid grid-cols-3 border-t border-slate-100 divide-x divide-slate-100 rtl:divide-x-reverse">
+                  {CATS.map((c) => (
+                    <Half key={c.key} label={t(c.ar, c.en)} value={n[c.key] || 0} href={people({ status: s.key, category: c.key })} />
+                  ))}
                 </div>
-              ))}
+                {(n.none || 0) > 0 && (
+                  <Link href={people({ status: s.key, category: 'none' })} className="block border-t border-slate-100 px-3 py-1 text-center text-[10.5px] text-slate-500 hover:bg-slate-50">
+                    {t(`غير مصنَّف ${n.none}`, `Uncategorised ${n.none}`)}
+                  </Link>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ③ المركبات — كلُّ مركبات القسم من سجلّ المركبات، مفوَّضةً أو لا ──────── */}
+      <section className="space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h2 className="text-[13px] font-semibold text-slate-700 flex items-center gap-1.5"><Car className="w-4 h-4 text-slate-400" />{t('المركبات', 'Vehicles')}</h2>
+          <span className="text-[11px] text-slate-400">
+            {t('كل ما ينسبه قسم المركبات إلى النقل الخفيف (قطاعًا أو إدارة) وما عليه راكب من القسم — والتفويض من سجلّ المركبات',
+              'Everything the Vehicles section assigns to light transport (sector or department) plus anything ridden by the section — authorisation from the vehicle register')}
+          </span>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className={BOX}>
+            <Link href={vehiclesOf()} className="block text-center px-4 pt-4 pb-3 hover:bg-slate-50/60 transition-colors">
+              <p className="text-[12px] font-medium text-slate-500">{t('مركبات القسم', 'Section vehicles')}</p>
+              <p className="mt-1 text-[28px] leading-none font-bold tabular-nums tracking-tight text-slate-900">{num(B.vehicles.total)}</p>
+              <p className="mt-1 text-[11px] text-slate-400 tabular-nums">
+                {t(`عليها أمر تشغيل سارٍ ${num(B.vehicles.onActiveOrder)}`, `Under an active order ${num(B.vehicles.onActiveOrder)}`)}
+              </p>
+            </Link>
+            <div className="grid grid-cols-2 border-t border-slate-100 divide-x divide-slate-100 rtl:divide-x-reverse">
+              <Half label={t('عليها راكب', 'With a rider')} value={B.vehicles.withRider} of={B.vehicles.total} tone="#475569" href={vehiclesOf({ vstate: 'withRider' })} />
+              <Half label={t('واقفة بلا راكب', 'Idle')} value={B.vehicles.idle} of={B.vehicles.total} tone="#cbd5e1" href={vehiclesOf({ vstate: 'idle' })} />
             </div>
-          )}
-        </>
+          </div>
+          <div className={BOX}>
+            <div className="text-center px-4 pt-4 pb-3">
+              <p className="text-[12px] font-medium text-slate-500">{t('التفويض', 'Authorisation')}</p>
+              <p className="mt-1 text-[11px] text-slate-400">{t('من «المفوَّض بالقيادة» في سجلّ المركبات', 'From the authorised person in the vehicle register')}</p>
+            </div>
+            <div className="grid grid-cols-3 border-t border-slate-100 divide-x divide-slate-100 rtl:divide-x-reverse">
+              <Half label={t('مفوَّض', 'Authorised')} value={B.vehicles.auth.authorized} of={B.vehicles.total} tone="#16a34a" href={vehiclesOf({ auth: 'authorized' })} />
+              <Half label={t('تفويض منتهٍ', 'Expired')} value={B.vehicles.auth.expired} of={B.vehicles.total} tone="#d97706" href={vehiclesOf({ auth: 'expired' })} />
+              <Half label={t('بلا تفويض', 'Not authorised')} value={B.vehicles.auth.none} of={B.vehicles.total} tone="#94a3b8" href={vehiclesOf({ auth: 'none' })} />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── المناديب حسب المشروع: كفالة · فريلانسر · يوزرات — كلُّ رقمٍ يفتح أصحابه ── */}
+      {d.reps && d.reps.projects.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-[13px] font-semibold text-slate-700 flex items-center gap-1.5">
+            <Truck className="w-4 h-4 text-slate-400" />{t('المناديب حسب المشروع', 'Reps by project')}
+            <span className="text-slate-400 font-normal text-[11.5px]">{t(`(${num(d.reps.total)} — ومعهم اليوزرات المؤجَّرة)`, `(${num(d.reps.total)} incl. rented users)`)}</span>
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            {d.reps.projects.map((p) => (
+              <div key={p.project} className={BOX}>
+                <Link href={people({ staffKind: 'rep', project: p.project })} className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50/60">
+                  <span className="text-[13px] font-semibold text-slate-800">{p.project}</span>
+                  <span className="tabular-nums text-[15px] font-bold text-slate-900">{num(p.total)}</span>
+                </Link>
+                <div className="grid grid-cols-3 border-t border-slate-100 divide-x divide-slate-100 rtl:divide-x-reverse">
+                  {([['sponsored', t('كفالة', 'Sponsored')], ['freelance', t('فريلانسر', 'Freelance')], ['users', t('يوزرات', 'Users')]] as const).map(([k, label]) => (
+                    <Half key={k} label={label} value={p[k]} href={people({ staffKind: 'rep', project: p.project, contractKind: k })} />
+                  ))}
+                </div>
+                {p.noContract > 0 && (
+                  <Link href={people({ staffKind: 'rep', project: p.project, contractKind: 'none' })}
+                    className="block border-t border-slate-100 px-3 py-1 text-center text-[10.5px] text-slate-500 hover:bg-slate-50">
+                    {t(`${p.noContract} غير محدد — اضغط لعرضهم`, `${p.noContract} not set — click to see them`)}
+                  </Link>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
-      {/* ── المركبات ─────────────────────────────────────────────────────────
-          تُعَدّ من سجلّ المركبات لا من صفوف الموظّفين: مركبةٌ بلا راكبٍ لا تظهر
-          في صفوفهم، وهي أوّلُ ما يُسأل عنه. */}
-      <h2 className="text-[13px] font-extrabold text-slate-500 flex items-center gap-1.5 pt-1">
-        <Car className="w-4 h-4" />{t('المركبات', 'Vehicles')}
-        <span className="font-normal text-slate-400">{t('من سجلّ المركبات — قطاع النقل الخفيف', 'from the vehicle registry — light-transport sector')}</span>
-      </h2>
-      {/* كلُّ رقمٍ يفتح أصحابَه: أرقامُ المركبات تفتح صفحةَ المركبات مفلترةً عليها،
-          وأرقامُ الموظّفين تُفلتر اللوحةَ كبقيّة الكروت. */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-        <Card label={t('المعروضة', 'Shown')} value={V.total} of={V.totalAll !== V.total ? V.totalAll : undefined}
-          onClick={() => router.push('/system/b2c/vehicles')} />
-        <Card label={t('عليها راكب', 'With a rider')} value={V.withRider} accent="text-emerald-600"
-          onClick={() => router.push('/system/b2c/vehicles?state=withDriver')} />
-        <Card label={t('واقفة بلا راكب', 'Idle — no rider')} value={V.idle} accent="text-amber-600"
-          onClick={() => router.push('/system/b2c/vehicles?state=noDriver')} />
-        <Card label={t('عليها أمر تشغيل سارٍ', 'Under an active order')} value={V.onActiveOrder} accent="text-indigo-600"
-          onClick={() => router.push('/system/b2c/vehicles?state=activeOrder')} />
-        <Card label={t('لهم مركبة', 'Employees with a vehicle')} value={E.withVehicle} accent="text-slate-900"
-          onClick={() => toggle('hasVehicle', 'yes')} on={f.hasVehicle === 'yes'} />
-        <Card label={t('بلا مركبة', 'Employees without one')} value={E.withoutVehicle} accent="text-amber-600"
-          onClick={() => toggle('hasVehicle', 'no')} on={f.hasVehicle === 'no'} />
-      </div>
-
-      {/* ── تقريرُ تحقيق المناديب — تحت أرقام الموظّفين والمركبات (طلبُ صاحب الشركة،
-          ٢٠٢٦/١٠/٢٠)، حيًّا من مدخلات الأوردرات ── */}
+      {/* ── تقريرُ تحقيق المناديب — حيًّا من مدخلات الأوردرات ── */}
       <OrdersReport url="/api/b2c/entry" />
 
+      {/* ── التقسيمات: ضغطُ سطرٍ يضيفه إلى الفلاتر فوق (ويُزيله) ─────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-        <Breakdown f={f} toggle={toggle} title={t('بالمشروع', 'By project')} icon={<Truck className="w-4 h-4" />} data={E.byProject} filterKey="project" accent="#f37121" />
-        <Breakdown f={f} toggle={toggle} title={t('بالفرع', 'By branch')} icon={<Home className="w-4 h-4" />} data={E.byCity} filterKey="city" accent="#0891b2" />
-        <Breakdown f={f} toggle={toggle} title={t('بالوظيفة', 'By job')} icon={<Users className="w-4 h-4" />} data={E.byJob} filterKey="jobTitle" accent="#7c3aed" />
-        <Breakdown f={f} toggle={toggle} title={t('بنوع التعاقد', 'By contract')} icon={<Users className="w-4 h-4" />} data={E.byContract} filterKey="contractType" accent="#16a34a" />
-        {/* ── والسجلُّ التجاريُّ الذي يكفلهم ───────────────────────────────────
-            الشركةُ لها أكثرُ من سجلّ، ومن ليس على كفالتنا لا سجلَّ له. وهو
-            سؤالٌ يُسأل عند التفتيش وعند التأمين. */}
-        <Breakdown f={f} toggle={toggle} title={t('بالسجل التجاري (الكفالة)', 'By commercial register')} icon={<Users className="w-4 h-4" />} data={E.byRegister} filterKey="register" accent="#ca8a04" />
-        <Breakdown f={f} toggle={toggle} title={t('بحالة العمل', 'By work status')} icon={<Users className="w-4 h-4" />} data={E.byStatus} filterKey="status" accent="#dc2626" />
-        <Breakdown f={f} toggle={toggle} title={t('بالمشرف', 'By supervisor')} icon={<Users className="w-4 h-4" />} data={E.bySupervisor} filterKey="supervisor" accent="#0ea5e9" />
-        <Breakdown f={f} toggle={toggle} title={t('بنوع المركبة', 'By vehicle type')} icon={<Car className="w-4 h-4" />} data={V.byType} filterKey="vehicleType" accent="#4f46e5" />
-        <Breakdown f={f} toggle={toggle} title={t('مركبات بحالة التشغيل', 'Vehicles by service status')} icon={<Car className="w-4 h-4" />} data={V.byServiceStatus} accent="#64748b" />
+        <Breakdown f={f} toggle={toggle} title={t('بالمشروع', 'By project')} icon={<Truck className="w-4 h-4" />} data={E.byProject} filterKey="project" />
+        <Breakdown f={f} toggle={toggle} title={t('بالفرع', 'By branch')} icon={<Home className="w-4 h-4" />} data={E.byCity} filterKey="city" />
+        <Breakdown f={f} toggle={toggle} title={t('بالوظيفة', 'By job')} icon={<Users className="w-4 h-4" />} data={E.byJob} filterKey="jobTitle" />
+        <Breakdown f={f} toggle={toggle} title={t('بالمشرف', 'By supervisor')} icon={<Users className="w-4 h-4" />} data={E.bySupervisor} filterKey="supervisor" />
+        <Breakdown f={f} toggle={toggle} title={t('بنوع المركبة', 'By vehicle type')} icon={<Car className="w-4 h-4" />} data={V.byType} filterKey="vehicleType" />
+        <Breakdown f={f} toggle={toggle} title={t('مركبات بحالة التشغيل', 'Vehicles by service status')} icon={<Car className="w-4 h-4" />} data={V.byServiceStatus} />
       </div>
 
-      {/* ── ما يحتاج عملًا ────────────────────────────────────────────────────
-          اللوحةُ إلى هنا تقول ما هو قائم. وهذه تقول ما ينقص — وهي أسئلةٌ تُسأل
-          كلَّ أسبوع ولا جوابَ لها إلّا بالفرز اليدويّ. وكلُّ رقمٍ يفتح أصحابَه. */}
-      <h2 className="text-[13px] font-extrabold text-slate-500 flex items-center gap-1.5 pt-1">
-        <AlertTriangle className="w-4 h-4" />{t('ما يحتاج عملًا', 'Needs attention')}
-      </h2>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-        <Card label={t('يعملون بلا مركبة', 'Working without a vehicle')} value={d.gaps.workingWithoutVehicle}
-          accent={d.gaps.workingWithoutVehicle ? 'text-amber-600' : 'text-slate-900'}
-          onClick={() => router.push('/system/b2c/light-transport?hasVehicle=no&status=يعمل')} />
-        <Card label={t('مركبات واقفة', 'Idle vehicles')} value={d.gaps.idleVehicles}
-          accent={d.gaps.idleVehicles ? 'text-amber-600' : 'text-slate-900'}
-          onClick={() => toggle('hasVehicle', 'no')} on={f.hasVehicle === 'no'} />
-        {/* الورقةُ باسم غيرِ الراكب: لا تُكتشَف — إن لم تُعرَض — إلّا عند مخالفة. */}
-        <Card label={t('تفويض باسم غير الراكب', 'Authorised to someone else')} value={d.gaps.authorizationMismatch}
-          accent={d.gaps.authorizationMismatch ? 'text-red-600' : 'text-slate-900'}
-          onClick={() => router.push('/system/b2c/orders')} hint={t('يُصحَّح من أوامر التشغيل', 'fix from operating orders')} />
-        <Card label={t('بلا سجل كفالة', 'No register')} value={d.gaps.noRegister}
-          accent={d.gaps.noRegister ? 'text-amber-600' : 'text-slate-900'} />
-        <Card label={t('بلا نوع تعاقد', 'No contract type')} value={d.gaps.noContractType}
-          accent={d.gaps.noContractType ? 'text-amber-600' : 'text-slate-900'} />
-        <Card label={t('مناديب بلا مشرف', 'Reps with no supervisor')} value={d.gaps.noSupervisor}
-          accent={d.gaps.noSupervisor ? 'text-amber-600' : 'text-slate-900'}
-          onClick={() => toggle('staffKind', 'rep')} on={f.staffKind === 'rep'} />
-        <Card label={t('بلا سكن', 'Unhoused')} value={d.gaps.unhoused}
-          accent={d.gaps.unhoused ? 'text-amber-600' : 'text-slate-900'}
-          onClick={() => toggle('housing', 'none')} on={f.housing === 'none'} />
-        <Card label={t('بلا ملفّ في الموارد البشرية', 'No HR file')} value={d.gaps.noHrFile}
-          hint={t('القسم يملك سجلّهم', 'owned by the section')} accent="text-violet-600" />
-      </div>
+      {/* ── ما يحتاج عملًا — وكلُّ رقمٍ يفتح أصحابه ─────────────────────────── */}
+      <section className="space-y-2">
+        <h2 className="text-[13px] font-semibold text-slate-700 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4 text-slate-400" />{t('ما يحتاج عملًا', 'Needs attention')}</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Small label={t('يعملون بلا مركبة', 'Working without a vehicle')} value={d.gaps.workingWithoutVehicle} href={people({ hasVehicle: 'no', status: 'يعمل,إجازة' })} />
+          <Small label={t('مركبات واقفة', 'Idle vehicles')} value={d.gaps.idleVehicles} href={vehiclesOf({ vstate: 'idle' })} />
+          <Small label={t('تفويض باسم غير الراكب', 'Authorised to someone else')} value={d.gaps.authorizationMismatch}
+            onClick={() => router.push('/system/b2c/orders')} hint={t('يُصحَّح من أوامر التشغيل', 'fix from operating orders')} />
+          <Small label={t('مناديب بلا مشرف', 'Reps with no supervisor')} value={d.gaps.noSupervisor} href={people({ staffKind: 'rep', supervisor: 'none' })} />
+          <Small label={t('بلا سكن', 'Unhoused')} value={d.gaps.unhoused} href={people({ housing: 'none' })} />
+          <Small label={t('بلا ملفّ في الموارد البشرية', 'No HR file')} value={d.gaps.noHrFile} hint={t('القسم يملك سجلّهم', 'owned by the section')} />
+          {/* نُقل في الموارد البشريّة إلى قسمٍ آخر ولم يُخرَج من سجلّ القسم — يُراجَع. */}
+          <Small label={t(`قسمه في الموارد البشرية غير ${B.b2cDepartment}`, `HR department is not ${B.b2cDepartment}`)} value={B.otherDepartment}
+            hint={t('نُقل هناك — يُراجَع هنا', 'moved in HR — review here')} />
+          <Small label={t('أوامر تشغيل سارية', 'Active orders')} value={d.orders.active} href="/system/b2c/orders" />
+        </div>
+      </section>
 
       {/* ── السكن ───────────────────────────────────────────────────────────── */}
-      <h2 className="text-[13px] font-extrabold text-slate-500 flex items-center gap-1.5 pt-1">
-        <Home className="w-4 h-4" />{t('السكن', 'Housing')}
-        <Link href="/system/b2c/settings" className="font-normal text-[#f37121] hover:underline">{t('إدارة السكن', 'manage')}</Link>
-      </h2>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-        <Card label={t('لهم سكن', 'Housed')} value={E.housed} accent="text-slate-900" />
-        <Card label={t('بلا سكن', 'Unhoused')} value={E.unhoused} accent="text-amber-600"
-          onClick={() => toggle('housing', 'none')} on={f.housing === 'none'} />
-        <Card label={t('سعة السكن', 'Total capacity')} value={d.housing.reduce((n, h) => n + h.capacity, 0)} />
-        <Card label={t('الأماكن المتاحة', 'Places free')} value={d.housing.reduce((n, h) => n + h.free, 0)} accent="text-emerald-600" />
-      </div>
-
-      {!!d.housing.length && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-          <ScrollX>
-            <table className="w-full text-[13px]">
-              <thead className="bg-slate-100 text-slate-600 text-[11.5px] uppercase tracking-wide">
-                <tr>{[t('السكن', 'Housing'), t('المدينة', 'City'), t('السعة', 'Capacity'), t('مشغول', 'Occupied'),
-                  t('متاح', 'Free'), t('الغرف', 'Rooms')]
-                  .map((h) => <th key={h} className="px-3 py-2.5 text-start font-bold whitespace-nowrap">{h}</th>)}</tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {d.housing.map((h) => {
-                  const full = h.capacity > 0 && h.occupied >= h.capacity;
-                  return (
-                    <tr key={h._id} className="hover:bg-orange-50/40">
-                      <td className="px-3 py-2.5 font-semibold text-slate-900">
-                        <button type="button" onClick={() => toggle('housing', h._id)}
-                          className={`hover:text-[#f37121] ${f.housing === h._id ? 'text-[#f37121]' : ''}`}>{h.name}</button>
-                      </td>
-                      <td className="px-3 py-2.5 text-slate-600">{h.cityAr || '—'}</td>
-                      <td className="px-3 py-2.5 tabular-nums font-bold">{h.capacity}</td>
-                      <td className="px-3 py-2.5 tabular-nums">{h.occupied}</td>
-                      <td className="px-3 py-2.5">
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${full ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                          {full ? t('مكتمل', 'full') : h.free}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {!h.rooms.length ? <span className="text-slate-400 text-[11.5px]">{t('بلا غرف', 'no rooms')}</span> : (
-                          <span className="flex flex-wrap gap-1">
-                            {h.rooms.map((r) => (
-                              <span key={r.name}
-                                className={`px-1.5 py-0.5 rounded text-[10.5px] font-bold ${r.capacity > 0 && r.occupied >= r.capacity ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}
-                                title={r.kind === 'rep' ? t('للمناديب', 'reps') : r.kind === 'admin' ? t('للإداريين', 'admin') : t('للجميع', 'anyone')}>
-                                {r.name} {r.occupied}/{r.capacity}
-                              </span>
-                            ))}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </ScrollX>
+      <section className="space-y-2">
+        <h2 className="text-[13px] font-semibold text-slate-700 flex items-center gap-1.5">
+          <Home className="w-4 h-4 text-slate-400" />{t('السكن', 'Housing')}
+          <Link href="/system/b2c/settings" className="font-normal text-[#f37121] hover:underline">{t('إدارة السكن', 'manage')}</Link>
+        </h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Small label={t('لهم سكن', 'Housed')} value={E.housed} />
+          <Small label={t('بلا سكن', 'Unhoused')} value={E.unhoused} href={people({ housing: 'none' })} />
+          <Small label={t('سعة السكن', 'Total capacity')} value={d.housing.reduce((n, h) => n + h.capacity, 0)} />
+          <Small label={t('الأماكن المتاحة', 'Places free')} value={d.housing.reduce((n, h) => n + h.free, 0)} />
         </div>
-      )}
+        {!!d.housing.length && (
+          <div className={BOX}>
+            <ScrollX>
+              <table className="w-full text-[13px]">
+                <thead className="bg-slate-50 text-slate-500 text-[11.5px]">
+                  <tr>{[t('السكن', 'Housing'), t('المدينة', 'City'), t('السعة', 'Capacity'), t('مشغول', 'Occupied'),
+                    t('متاح', 'Free'), t('الغرف', 'Rooms')]
+                    .map((h) => <th key={h} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {d.housing.map((h) => {
+                    const full = h.capacity > 0 && h.occupied >= h.capacity;
+                    return (
+                      <tr key={h._id} className="hover:bg-slate-50/60">
+                        <td className="px-3 py-2.5 font-semibold text-slate-900">
+                          <Link href={people({ housing: h._id })} className="hover:underline">{h.name}</Link>
+                        </td>
+                        <td className="px-3 py-2.5 text-slate-600">{h.cityAr || '—'}</td>
+                        <td className="px-3 py-2.5 tabular-nums font-semibold">{h.capacity}</td>
+                        <td className="px-3 py-2.5 tabular-nums">{h.occupied}</td>
+                        <td className="px-3 py-2.5 tabular-nums">{full ? <span className="text-slate-500">{t('مكتمل', 'full')}</span> : h.free}</td>
+                        <td className="px-3 py-2.5">
+                          {!h.rooms.length ? <span className="text-slate-400 text-[11.5px]">{t('بلا غرف', 'no rooms')}</span> : (
+                            <span className="flex flex-wrap gap-1">
+                              {h.rooms.map((r) => (
+                                <span key={r.name} className="px-1.5 py-0.5 rounded bg-slate-100 text-[10.5px] font-semibold text-slate-600"
+                                  title={r.kind === 'rep' ? t('للمناديب', 'reps') : r.kind === 'admin' ? t('للإداريين', 'admin') : t('للجميع', 'anyone')}>
+                                  {r.name} {r.occupied}/{r.capacity}
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </ScrollX>
+          </div>
+        )}
+      </section>
 
       <div className="flex flex-wrap items-center gap-2 pt-1">
-        <Link href="/system/b2c/light-transport" className="text-[12.5px] font-bold text-[#f37121] hover:underline">{t('سجل الموظفين ←', 'Employee register →')}</Link>
+        <Link href="/system/b2c/light-transport" className="text-[12.5px] font-semibold text-[#f37121] hover:underline">{t('سجل الموظفين ←', 'Employee register →')}</Link>
         <span className="text-slate-300">·</span>
-        <Link href="/system/b2c/orders" className="text-[12.5px] font-bold text-[#f37121] hover:underline">{t('أوامر التشغيل ←', 'Operating orders →')}</Link>
+        <Link href="/system/b2c/vehicles" className="text-[12.5px] font-semibold text-[#f37121] hover:underline">{t('مركبات القسم ←', 'Section vehicles →')}</Link>
         <span className="text-slate-300">·</span>
-        <Link href="/system/finance/light-transport" className="text-[12.5px] font-bold text-[#f37121] hover:underline">{t('ماليات النقل الخفيف ←', 'Light-transport finance →')}</Link>
-        <span className="text-slate-300">·</span>
-        <span className="text-[12px] text-slate-500">{t(`أوامر تشغيل سارية: ${d.orders.active}`, `Active orders: ${d.orders.active}`)}</span>
+        <Link href="/system/finance/light-transport" className="text-[12.5px] font-semibold text-[#f37121] hover:underline">{t('ماليات النقل الخفيف ←', 'Light-transport finance →')}</Link>
       </div>
     </div>
   );

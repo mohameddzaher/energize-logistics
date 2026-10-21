@@ -46,13 +46,12 @@ exports.list = async (req, res) => {
     const { LightTransportEmployee } = require('../models/LightTransport');
     const { endedStaff } = require('../utils/endedStaff');
     const sets = await endedStaff();
-    const HR = { terminated: 'إنهاء خدمة', suspended: 'متوقف', active: 'يعمل', on_leave: 'إجازة' };
     const lts = (await LightTransportEmployee.find({ $or: [{ staffKind: 'rep' }, { contractTypeAr: /يوزر/ }] })
       .populate('employee', 'employmentStatus')
-      .select('idNumber name projectAr supervisorName workStatusAr isActive employee').lean())
+      .select('idNumber name projectAr supervisorName workStatusAr opStatus isActive employee').lean())
       .filter((r) => projects.some((n) => E.fold(n) === E.fold(r.projectAr)))
       .filter((r) => !(r.employee && sets.archivedIds.has(String(r.employee._id))))
-      .map((r) => ({ ...r, status: (r.employee && HR[r.employee.employmentStatus]) || r.workStatusAr || '' }))
+      .map((r) => ({ ...r, status: require('../utils/b2cBoard').shownStatus(r) }))
       .filter((r) => r.status !== 'إنهاء خدمة' && r.isActive !== false);
     const ids = lts.map((r) => r._id);
     const absent = await absentOn(ids, date);

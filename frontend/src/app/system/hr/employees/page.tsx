@@ -25,6 +25,7 @@ import { exportDatePair } from '@/lib/hrDates';
 import { EmployeeFormModal } from '@/components/hr/EmployeeFormModal';
 import { getHrEmployeesTranslations } from '@/lib/translations';
 import ScrollX from '@/components/system/ScrollX';
+import B2cOpBadge from '@/components/b2c/B2cOpBadge';
 
 export default function HREmployeesPage() {
   const { confirm, notify } = useDialog();
@@ -359,6 +360,8 @@ export default function HREmployeesPage() {
                     بالوقوف عليه، ويبقى كاملًا في التصدير. */}
                 <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-semibold', 'bg-white group-hover:bg-slate-100')}>
                   <span className="block max-w-[15rem] truncate" title={empName(e, lang)}>{empName(e, lang)}</span>
+                  {/* حالتُه اليوم في قسم الأفراد (إجازة · موقوف · حادث) — تُكتب هناك. */}
+                  <B2cOpBadge status={(e as any).b2cOpStatus} ar={lang === 'ar'} />
                 </td>
                 <td {...pin.td(3, 'px-4 py-3 text-slate-700 whitespace-nowrap', 'bg-white group-hover:bg-slate-100')}>{e.idType === 'national_id' ? (e.nationalId || '—') : (e.iqamaNumber || '—')}</td>
                 <td className="px-4 py-3 text-slate-700">{e.jobTitle || '—'}</td>

@@ -17,13 +17,33 @@ import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import ScrollX from '@/components/system/ScrollX';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
-import { Truck, Pencil, Search, Loader2 } from 'lucide-react';
+import { Truck, Pencil, Search, Loader2, X } from 'lucide-react';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 
 interface Row {
   _id: string; serialNumber: string; project: string; city: string; plateNumber: string;
   driverId: string; driverName: string; authorizedId: string; authorizedName: string; authorizedPhone: string;
   authStart: string; authEnd: string; authNumber: string; durationDays: number | null; daysLeft: number | null;
+  /** بمعاني لوحة القسم: مشروعُ الراكب (وإلّا الإدارة)، وحالةُ التفويض، والراكبُ من سجلّ القسم. */
+  boardProject?: string; authState?: 'authorized' | 'expired' | 'none'; riderName?: string; riderId?: string;
 }
+/**
+ * ── فلاترُ اللوحة في الرابط ─────────────────────────────────────────────────
+ * كلُّ رقمِ مركباتٍ في لوحة القسم يفتح هذه الصفحةَ بفلاتره (المشروع، المندوب،
+ * التفويض، السجل… و`vstate`: عليها راكب / واقفة / أمرُ تشغيل). تُرسَل إلى الخادم
+ * كما هي فيردّ المركباتِ التي عدّها الكارتُ بأعيانها، وتُعرَض هنا وتُرفَع بضغطة.
+ */
+const BOARD_KEYS: Record<string, [string, string]> = {
+  project: ['المشروع', 'Project'], rep: ['المندوب', 'Rep'], vehicle: ['المركبة', 'Vehicle'], auth: ['التفويض', 'Authorisation'],
+  cr: ['السجل التجاري', 'Register'], engagement: ['الارتباط', 'Engagement'], category: ['الفئة', 'Category'],
+  city: ['المدينة', 'City'], status: ['حالة العمل', 'Work status'], vehicleType: ['نوع المركبة', 'Vehicle type'], vstate: ['الحالة', 'State'],
+};
+const BOARD_VALUES: Record<string, [string, string]> = {
+  authorized: ['مفوَّض', 'Authorised'], expired: ['تفويض منتهٍ', 'Expired'], none: ['غير محدد', 'Not set'],
+  sponsored: ['على الكفالة', 'Sponsored'], freelance: ['فريلانسر', 'Freelance'], trainee: ['متدرّب', 'Trainee'], users: ['يوزرات', 'Users'],
+  rep: ['مندوب', 'Rep'], admin: ['إداري', 'Admin'], tech: ['فني', 'Technician'],
+  withRider: ['عليها راكب', 'With a rider'], idle: ['واقفة بلا راكب', 'Idle'], activeOrder: ['عليها أمر تشغيل سارٍ', 'Under an active order'],
+};
 interface Payload { vehicles: Row[]; summary: { total: number; noAuthorization: number; expired: number; expiringSoon: number; noDriver: number }; canEdit: boolean }
 
 const dmy = (d?: string) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '—');
@@ -45,12 +65,27 @@ export default function B2cVehiclesPage() {
   }, []);
   const [editing, setEditing] = useState<Row | null>(null);
   const cf = useColumnFilters<Row>();
-
-  const load = useCallback(() => {
-    api.get<Payload>('/api/light-transport/vehicles').then(setD)
-      .catch((e: any) => notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error'));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const [bf, setBf] = useState<Record<string, string>>({});
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const o: Record<string, string> = {};
+      for (const k of Object.keys(BOARD_KEYS)) { const v = sp.get(k); if (v) o[k] = v; }
+      setBf(o);
+    } catch { /* */ }
   }, []);
+  const bfKey = JSON.stringify(bf);
+
+  // نداءٌ مفلتَرٌ يحتاج حارسَه: ردٌّ أقدمُ (بلا فلتر) لا يكتب فوق أحدث.
+  const guard = useLatestRequest();
+  const load = useCallback(() => {
+    const token = guard.begin();
+    const qs = new URLSearchParams(bf).toString();
+    api.get<Payload>(`/api/light-transport/vehicles${qs ? `?${qs}` : ''}`)
+      .then((r) => { if (guard.isCurrent(token)) setD(r); })
+      .catch((e: any) => { if (guard.isCurrent(token)) notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error'); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bfKey, guard]);
   useEffect(() => { load(); }, [load]);
   // قسمُ المركبات يبثّ `vreg:updated` (ومعه `lt:updated`) عند كلّ تعديلٍ هناك.
   useSocket('vreg:updated', load);
@@ -127,6 +162,22 @@ export default function B2cVehiclesPage() {
           {state === 'withDriver' ? t('عليها راكب', 'With a rider') : t('عليها أمر تشغيل سارٍ', 'Under an active order')}
           <span className="text-slate-400">×</span>
         </button>
+      )}
+
+      {Object.keys(bf).length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+          <span className="text-[12px] font-semibold text-slate-600">{t('من لوحة القسم:', 'From the board:')}</span>
+          {Object.entries(bf).map(([k, v]) => (
+            <button key={k} type="button" onClick={() => setBf((p) => { const n = { ...p }; delete n[k]; return n; })}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 text-[12px] font-semibold text-slate-700 hover:border-red-300">
+              <span className="text-slate-400 font-normal">{ar ? BOARD_KEYS[k][0] : BOARD_KEYS[k][1]}:</span>
+              {['rep', 'vehicle'].includes(k) ? t(`${v.split(',').length} محدَّد`, `${v.split(',').length} selected`)
+                : v.split(',').map((x) => (BOARD_VALUES[x] ? (ar ? BOARD_VALUES[x][0] : BOARD_VALUES[x][1]) : x)).join('، ')}
+              <X className="w-3 h-3 text-slate-400" />
+            </button>
+          ))}
+          <button type="button" onClick={() => setBf({})} className="text-[12px] font-semibold text-slate-500 underline">{t('مسح الكل', 'Clear all')}</button>
+        </div>
       )}
 
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">

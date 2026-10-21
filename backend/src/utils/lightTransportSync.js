@@ -68,6 +68,9 @@ async function syncEmployeeToLightTransport(employee, user) {
       phone: S(employee.phone),
       hireDate: employee.hireDate || employee.joiningDate || null,
       jobTitleAr: S(employee.jobTitle),
+      // ومشروعُه إن كان في ملفّه مشروعٌ من مشاريع B2C — قرّرته الموارد البشريّة
+      // فلا يُترك فارغًا (نقلُ المشروع بين القسمين في الاتجاهين، ٢٠٢٦/١٠/٢١).
+      projectAr: (await require('./hrLists').namesOf('lt_project')).includes(S(employee.project)) ? S(employee.project) : '',
       // ما يخصّ القسمَ وحدَه يُترك فارغًا ليملأه القسم: مشروعٌ يُخترَع هنا
       // يُقرأ حقيقةً في اللوحة، ولا أحدَ يعلم أنّه لم يُقرَّر.
       isActive: true,

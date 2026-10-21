@@ -35,7 +35,7 @@ import { Truck, Plus, Pencil, RotateCcw, UserMinus, ExternalLink, X, ArrowLeftRi
 import {
   getLTEmployees, updateLTEmployee, createLTEmployee, deactivateLTEmployee, ltFacetedTotals, ltPasses,
   LT_COLUMNS, statusCls, KIND_AR, KIND_EN, canEditLT, canTransferLT, fmtDate,
-  supervisorIdOf, dutySupervisorIdOf, assignLTSupervisors, serverFilters,
+  supervisorIdOf, dutySupervisorIdOf, assignLTSupervisors, serverFilters, OP_STATUS_OPTIONS,
   DOC_CLS, DOC_AR, DOC_EN,
   type LTEmployee, type LTOptions, type LTDoc,
 } from '@/lib/lightTransport';
@@ -46,12 +46,26 @@ const CHIP_KEY_AR: Record<string, string> = {
   vehicleType: 'نوع المركبة', supervisor: 'المشرف', dutySupervisor: 'مشرف التفقد', staffKind: 'النوع',
   status: 'الحالة', housing: 'السكن', hasVehicle: 'المركبة', hiredFrom: 'التعيين من', hiredTo: 'التعيين إلى',
   contractKind: 'العقد', doc: 'الوثيقة', inService: 'الخدمة',
+  // من فلاتر لوحة القسم (٢٠٢٦/١٠/٢١).
+  rep: 'المندوب', vehicle: 'المركبة', auth: 'التفويض', cr: 'السجل التجاري', engagement: 'الارتباط', category: 'الفئة',
 };
 const CHIP_KEY_EN: Record<string, string> = {
   project: 'Project', city: 'Branch', jobTitle: 'Job', contractType: 'Contract', register: 'Register',
   vehicleType: 'Vehicle type', supervisor: 'Supervisor', dutySupervisor: 'Duty supervisor', staffKind: 'Kind',
   status: 'Status', housing: 'Housing', hasVehicle: 'Vehicle', hiredFrom: 'Hired from', hiredTo: 'Hired to',
   contractKind: 'Contract', doc: 'Document', inService: 'Service',
+  rep: 'Rep', vehicle: 'Vehicle', auth: 'Authorisation', cr: 'Register', engagement: 'Engagement', category: 'Category',
+};
+/** قيمُ فلاتر اللوحة بأسمائها — المفاتيحُ هي ما يرسله الخادم (utils/b2cBoard). */
+const BOARD_VALUE_AR: Record<string, Record<string, string>> = {
+  auth: { authorized: 'مفوَّض', expired: 'تفويض منتهٍ', none: 'بلا تفويض' },
+  engagement: { sponsored: 'على الكفالة', freelance: 'فريلانسر', trainee: 'متدرّب', users: 'يوزرات', none: 'غير محدد' },
+  category: { rep: 'مندوب', admin: 'إداري', tech: 'فني', none: 'غير مصنَّف' },
+};
+const BOARD_VALUE_EN: Record<string, Record<string, string>> = {
+  auth: { authorized: 'Authorised', expired: 'Expired', none: 'Not authorised' },
+  engagement: { sponsored: 'Sponsored', freelance: 'Freelance', trainee: 'Trainee', users: 'Rented users', none: 'Not set' },
+  category: { rep: 'Rep', admin: 'Admin', tech: 'Technician', none: 'Uncategorised' },
 };
 
 /**
@@ -127,7 +141,9 @@ function LightTransportEmployeesInner() {
       // مشتقّان يُحسَبان على الصفوف لا على القاعدة — راجع `LOCAL_KEYS`.
       'contractKind', 'doc',
       // من أرقام «إجمالي المناديب» في اللوحة: في الخدمة وحدَهم — راجع `listEmployees`.
-      'inService'];
+      'inService',
+      // ومن فلاتر اللوحة وكروتها (٢٠٢٦/١٠/٢١): تُطبَّق في الخادم بمعناها في اللوحة.
+      'rep', 'vehicle', 'auth', 'cr', 'engagement', 'category'];
     const init: Record<string, string> = {};
     for (const k of keys) { const v = sp?.get(k); if (v) init[k] = v; }
     return init;
@@ -296,6 +312,15 @@ function LightTransportEmployeesInner() {
       return m[v] || v;
     }
     if (k === 'inService') return t('بلا المنتهين', 'excluding ended');
+    if (BOARD_VALUE_AR[k]) return v.split(',').map((x) => (ar ? BOARD_VALUE_AR : BOARD_VALUE_EN)[k][x] || x).join('، ');
+    if (k === 'rep') {
+      const ids = v.split(',');
+      return ids.length === 1 ? rows.find((r) => r._id === ids[0])?.name || t('مندوب واحد', 'one rep') : t(`${ids.length} مناديب`, `${ids.length} reps`);
+    }
+    if (k === 'vehicle') {
+      const ids = v.split(',');
+      return ids.length === 1 ? rows.find((r) => String((r.vehicle as any)?._id || '') === ids[0])?.vehicle?.plateNumber || t('مركبة واحدة', 'one vehicle') : t(`${ids.length} مركبات`, `${ids.length} vehicles`);
+    }
     if (k === 'hasVehicle') return v === 'yes' ? t('له مركبة', 'has a vehicle') : t('بلا مركبة', 'no vehicle');
     if (k === 'housing') return v === 'none' ? t('بلا سكن', 'unhoused') : options.housing.find((h) => h._id === v)?.name || v;
     if (k === 'supervisor' || k === 'dutySupervisor') return v === 'none' ? t('بلا مشرف', 'none') : options.supervisor.find((x) => x._id === v)?.name || v;
@@ -709,19 +734,33 @@ function LightTransportEmployeesInner() {
               <ManagedSelect storeLabel type="lt_vehicle_type" value={editing.vehicleTypeAr || ''}
                 onChange={(v) => setEditing((p) => ({ ...p!, vehicleTypeAr: v }))} />
             </Field>
-            {/* ── حالةُ العمل للقراءة هنا ────────────────────────────────────
-                تُكتب في الموارد البشريّة وحدَها (إنهاءُ الخدمة والإيقافُ والإجازة)،
-                ويقرؤها القسمُ من ملفّ الموظّف. راجع `shownStatus` في الخادم. */}
-            <Field label={t('حالة العمل', 'Work status')}>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {(editing as any).workStatusShown || editing.workStatusAr || '—'}
-              </div>
-              <p className="mt-1 text-[11px] text-slate-500">
-                {(editing as any).hrLinked
-                  ? t('تُعدَّل من الموارد البشرية فقط (حالة الموظف وإنهاء الخدمة).', 'Changed in HR only (employment status and termination).')
-                  : t('لا ملف له في الموارد البشرية — تُضبط حالته بعد فتح ملفه هناك.', 'No HR file — the status is set once HR opens his file.')}
-              </p>
-            </Field>
+            {/* ── حالةُ العمل: يعمل · إجازة · موقوف · حادث ──────────────────────
+                تُكتب من هنا (صاحبُ الشركة، ٢٠٢٦/١٠/٢١) وتُقيَّد في سجلّ الموظّف،
+                وتظهر في ملفّه بالموارد البشريّة وعلى مركبته في قسم المركبات.
+                «موقوف» توقّفٌ تشغيليّ من القسم وحدَه. والإجازةُ من أيّ الجهتين:
+                إجازةُ الموارد البشريّة تُقرأ هنا ولا تُكتب. والمنتهي لا حالةَ له. */}
+            {editing._id && (
+              <Field label={t('حالة العمل', 'Work status')}>
+                {(editing as any).workStatusShown === 'إنهاء خدمة' ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">{t('إنهاء خدمة (الموارد البشرية)', 'Ended (HR)')}</div>
+                ) : (
+                  <>
+                    <Select value={editing.opStatus || ''}
+                      onChange={(ev: any) => setEditing((p) => ({ ...p!, opStatus: ev.target.value }))}>
+                      {OP_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{ar ? o.ar : o.en}</option>)}
+                    </Select>
+                    {!!editing.opStatus && (
+                      <TextInput className="mt-1.5" value={editing.opStatusNote || ''} placeholder={t('سبب الحالة (اختياري)', 'Reason (optional)')}
+                        onChange={(ev) => setEditing((p) => ({ ...p!, opStatusNote: ev.target.value }))} />
+                    )}
+                    {!editing.opStatus && (editing as any).statusSource === 'hr' && (
+                      <p className="mt-1 text-[11px] text-slate-600">{t('في إجازة من الموارد البشرية.', 'On leave in HR.')}</p>
+                    )}
+                    <p className="mt-1 text-[11px] text-slate-500">{t('تظهر في ملفه بالموارد البشرية وعلى مركبته — ولا تُنشئ طلب إجازة.', 'Shown on his HR file and on his vehicle — it does not create a leave request.')}</p>
+                  </>
+                )}
+              </Field>
+            )}
             {/* ── المشرفُ حسابٌ يُختار، لا اسمٌ يُكتب ──────────────────────
                 القائمةُ حساباتُ الإشراف في القسم (مشرف مناديب · مدير مشروع ·
                 مدير القطاع). ومن يُختار هنا يرى هذا الرجلَ في تفقّد بداية

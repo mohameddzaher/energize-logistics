@@ -20,8 +20,12 @@ String _dmy(dynamic v) { final s = _s(v); return s.length >= 10 ? s.substring(0,
 String _ymd(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 String _day(dynamic v) { final s = _s(v); return s.length >= 10 ? s.substring(0, 10) : ''; }
 
+/// `query` يفتحها مفلترةً — أرقامُ مركبات لوحة القسم تفتح مركباتِها بأعيانها
+/// (فلاترُ اللوحة + `vstate`/`auth`)، والخادمُ يعدّ ويفتح بمعنىً واحد (utils/b2cBoard).
 class B2cVehiclesScreen extends StatefulWidget {
-  const B2cVehiclesScreen({super.key});
+  final Map<String, String> query;
+  final String? title;
+  const B2cVehiclesScreen({super.key, this.query = const {}, this.title});
   @override
   State<B2cVehiclesScreen> createState() => _B2cVehiclesScreenState();
 }
@@ -51,13 +55,18 @@ class _B2cVehiclesScreenState extends State<B2cVehiclesScreen> {
     super.dispose();
   }
 
+  // الأحدثُ يُكتب وحدَه — ردٌّ أقدمُ (حدثٌ حيٌّ سبق) لا يكتب فوقه.
+  int _seq = 0;
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
-      final d = await Api.instance.get('/api/light-transport/vehicles');
-      if (!mounted) return;
+      final q = widget.query.entries.where((e) => e.value.isNotEmpty)
+          .map((e) => '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}').join('&');
+      final d = await Api.instance.get('/api/light-transport/vehicles${q.isEmpty ? '' : '?$q'}');
+      if (!mounted || mine != _seq) return;
       setState(() { _d = Map<String, dynamic>.from(d as Map); _error = null; });
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted && mine == _seq) setState(() => _error = e.toString());
     }
   }
 
@@ -93,7 +102,7 @@ class _B2cVehiclesScreenState extends State<B2cVehiclesScreen> {
   Widget build(BuildContext context) {
     final d = _d;
     return AppScaffold(
-      title: Text(tr('مركبات النقل الخفيف', 'Light Transport Vehicles')),
+      title: Text(widget.title ?? tr('مركبات النقل الخفيف', 'Light Transport Vehicles')),
       body: d == null
           ? (_error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _error = null); _load(); })

@@ -41,6 +41,10 @@ export default function WorkflowFilterBar({ fields, value, onChange, params, for
   const [truncated, setTruncated] = useState(false);
   const [busy, setBusy] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  // ── والقائمةُ تُفتح نحو المكان المتّسع ─────────────────────────────────────
+  // كانت تُفتح دائمًا من بداية الزرّ، فقائمةُ آخر فلترٍ في الصفّ تخرج عن حافّة
+  // الشاشة وتوسّع الصفحةَ فتُسحَب يمينًا ويسارًا. فتُقاس المسافةُ عند الفتح.
+  const [alignEnd, setAlignEnd] = useState(false);
   const guard = useLatestRequest();
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -101,7 +105,14 @@ export default function WorkflowFilterBar({ fields, value, onChange, params, for
         return (
           <div key={f.key} className="relative">
             <button type="button"
-              onClick={() => { if (open === f.key) { setOpen(''); return; } setOpts([]); setQ(''); setOpen(f.key); }}
+              onClick={(e) => {
+                if (open === f.key) { setOpen(''); return; }
+                const r = e.currentTarget.getBoundingClientRect();
+                const rtl = getComputedStyle(e.currentTarget).direction === 'rtl';
+                const W = Math.min(288, window.innerWidth - 32);
+                setAlignEnd(rtl ? r.right - W < 8 : r.left + W > window.innerWidth - 8);
+                setOpts([]); setQ(''); setOpen(f.key);
+              }}
               className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-[13px] font-semibold transition
                 ${on ? 'border-slate-900 bg-slate-50 text-slate-900' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'}`}>
               <span className="text-slate-500">{t(f.ar, f.en)}</span>
@@ -111,7 +122,7 @@ export default function WorkflowFilterBar({ fields, value, onChange, params, for
                 : <ChevronDown className="h-3.5 w-3.5 opacity-60" />}
             </button>
             {open === f.key && (
-              <div className="absolute start-0 z-40 mt-1.5 w-72 max-w-[calc(100vw-32px)] rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+              <div className={`absolute ${alignEnd ? 'end-0' : 'start-0'} z-40 mt-1.5 w-72 max-w-[calc(100vw-32px)] rounded-xl border border-slate-200 bg-white p-2 shadow-xl`}>
                 <div className="relative mb-1.5">
                   <Search className="pointer-events-none absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input autoFocus value={q} onChange={(e) => typeQuery(e.target.value)} placeholder={t('ابحث…', 'Search…')}

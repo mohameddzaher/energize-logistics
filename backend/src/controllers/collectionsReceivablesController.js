@@ -190,6 +190,13 @@ const derive = () => [
 ];
 
 const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+/**
+ * ما بقي على الصفّ — وهو ما تعدّه اللوحةُ مديونيّة.
+ *
+ * الفاتورةُ الجزئيّة قائمةٌ حتى تكتمل، لكنّ المطالَبَ به باقيها لا قيمتُها: عميلٌ
+ * سدّد ستّين من مئةٍ عليه أربعون. فكلُّ مجموعِ قيمةٍ هنا يجمع هذا لا `total`.
+ */
+const owed = (r) => (Number(r.total) || 0) - (Number(r.collected) || 0);
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  الأنواعُ الأربعة — من أين يُقرأ نوعُ كلّ صفّ
@@ -257,8 +264,9 @@ async function cashSubtypeOfReports(numbers) {
  */
 async function cashSubtypeRows(q = {}, subs = CASH_SUBS) {
   const { cashScreenFilter } = require('./collectionsDeptController');
+  // `open`: ما لم يكتمل — والجزئيُّ منه قائمٌ بباقيه (راجع owed).
   const filter = cashScreenFilter({
-    collected: 'no',
+    collected: 'open',
     ...(q.from ? { from: q.from } : {}),
     ...(q.to ? { to: q.to } : {}),
   });
@@ -299,7 +307,7 @@ async function cashSubtypeRows(q = {}, subs = CASH_SUBS) {
       issueState: p?.issue?.state || 'none',
       issueNote: p?.issue?.note || '',
       issueSince: p?.issue?.since || null,
-      // كشفٌ لم يُحصَّل قد يحمل دفعةً جزئيّة كتبها المحصِّل — تُقال ولا تُطرَح من القيمة.
+      // كشفٌ لم يكتمل قد يحمل دفعةً جزئيّة — تُطرَح من القيمة في كلّ مجموع (owed).
       collected: r2(w.collectedAmount),
       basis: w.deliveryDate ? 'delivery' : 'payment',
       dueDate,
@@ -341,7 +349,7 @@ async function loadBase(q = {}) {
         ...derive(),
         {
           $project: {
-            invoiceNumber: 1, kind: 1, total: 1, partyName: 1, partyCode: 1, party: 1,
+            invoiceNumber: 1, kind: 1, total: 1, collectedAmount: 1, partyName: 1, partyCode: 1, party: 1,
             invoiceDate: 1, deliveryDate: 1, status: 1,
             creditDays: 1, officer: 1, issueState: 1, issueNote: 1, issueSince: 1, basis: 1, dueDate: 1, daysLate: 1,
             age: 1, dueState: 1, lateBand: 1,
@@ -378,8 +386,8 @@ async function loadBase(q = {}) {
         r.workflowId = wfIdOf.get(no) || null;
       }
       r.total = r.total || 0;
-      // فاتورةُ الدفتر تُحصَّل كاملةً أو لا تُحصَّل — والقائمةُ هنا لم تُحصَّل.
-      r.collected = 0;
+      // القائمةُ هنا لم تكتمل — وقد يكون فيها مقبوضٌ جزئيّ يُطرَح من قيمتها.
+      r.collected = r2(r.collectedAmount || 0);
       r.ageBand = ageBandOf(r.age);
       r.risk = riskOf(r.age, r.creditDays);
     }
@@ -457,7 +465,7 @@ function node(rows, pick = () => true) {
   const customers = new Set();
   for (const r of rows) {
     if (!pick(r)) continue;
-    count += 1; value += r.total || 0;
+    count += 1; value += owed(r);
     if (r.kind === 'tax') tax += 1; else cash += 1;
     customers.add(partyKey(r));
   }
@@ -559,7 +567,7 @@ exports.overview = async (req, res) => {
         });
       }
       const g = dParties.get(k);
-      g.count += 1; g.value += r.total || 0; if (r.kind === 'tax') g.tax += 1; else g.cash += 1;
+      g.count += 1; g.value += owed(r); if (r.kind === 'tax') g.tax += 1; else g.cash += 1;
     }
     const defaultTerm = {
       days: DEFAULT_TERM_DAYS,
@@ -595,9 +603,9 @@ exports.overview = async (req, res) => {
         });
       }
       const g = byParty.get(k);
-      g.count += 1; g.value += r.total || 0;
-      if (r.dueState === 'late') { g.late += 1; g.lateValue += r.total || 0; }
-      if (r.risk === 'hard') { g.hard += 1; g.hardValue += r.total || 0; }
+      g.count += 1; g.value += owed(r);
+      if (r.dueState === 'late') { g.late += 1; g.lateValue += owed(r); }
+      if (r.risk === 'hard') { g.hard += 1; g.hardValue += owed(r); }
       if (r.age != null && (g.oldest == null || r.age > g.oldest)) g.oldest = r.age;
     }
     const parties = [...byParty.values()]
@@ -615,10 +623,10 @@ exports.overview = async (req, res) => {
         });
       }
       const g = byOfficer.get(k);
-      g.count += 1; g.value += r.total || 0;
+      g.count += 1; g.value += owed(r);
       if (isDefaultOfficer(r.officer)) g.defaulted += 1;
-      if (r.dueState === 'late') { g.late += 1; g.lateValue += r.total || 0; }
-      if (r.risk === 'hard') { g.hard += 1; g.hardValue += r.total || 0; }
+      if (r.dueState === 'late') { g.late += 1; g.lateValue += owed(r); }
+      if (r.risk === 'hard') { g.hard += 1; g.hardValue += owed(r); }
     }
 
     // ── عدّاداتُ الفلاتر: كلُّ قائمةٍ تحت الفلاتر الأخرى ───────────────────
@@ -630,7 +638,7 @@ exports.overview = async (req, res) => {
         if (!passes(r, f, mgr, dim)) continue;
         const k = keyOf(r);
         if (!m.has(k)) m.set(k, { value: k, label: labelOf(r, k), count: 0, amount: 0 });
-        const e = m.get(k); e.count += 1; e.amount += r.total || 0;
+        const e = m.get(k); e.count += 1; e.amount += owed(r);
       }
       return m;
     };
@@ -942,11 +950,11 @@ exports.cases = async (req, res) => {
     for (const r of base.ledger) {
       const g = r.party && groups.get(String(r.party));
       if (!g || !passes(r, f, mgr)) continue;
-      g.count += 1; g.value += r.total || 0;
+      g.count += 1; g.value += owed(r);
       if (r.kind === 'tax') g.tax += 1; else g.cash += 1;
-      if (r.dueState === 'late') g.lateValue += r.total || 0;
-      if (r.risk === 'hard') g.hardValue += r.total || 0;
-      g.bands[r.ageBand] = (g.bands[r.ageBand] || 0) + (r.total || 0);
+      if (r.dueState === 'late') g.lateValue += owed(r);
+      if (r.risk === 'hard') g.hardValue += owed(r);
+      g.bands[r.ageBand] = (g.bands[r.ageBand] || 0) + owed(r);
       if (r.age != null && (g.oldest == null || r.age > g.oldest)) g.oldest = r.age;
     }
     const parties = [...groups.values()]

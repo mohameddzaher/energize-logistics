@@ -37,6 +37,11 @@ const EMPTY_OPTIONS: ColumnFilterOption[] = [];
 
 export type InvoiceKind = 'cash' | 'tax';
 
+/** حالةُ التحصيل كما يشتقّها الخادم — راجع backend/src/utils/collectionState. */
+type CollectionState = 'none' | 'partial' | 'full';
+/** دفعةُ تحصيل: كاملةٌ أو جزئيّة، بكاتبها ويومها. */
+interface Payment { _id: string; amount: number; date: string | null; byName: string; note: string; mode: 'partial' | 'full'; at: string | null }
+
 interface CashRow {
   _id: string; reportNumber: string; customer: string; partyId?: string; branch: string; payingBranch: string;
   paymentDate: string | null; route: string; value: number; collectedAmount: number; collectionDate: string | null;
@@ -49,6 +54,7 @@ interface CashRow {
   ageDays: number | null;
   /** عددُ مرفقات الكشف — راجع InvoiceAttachments. */
   attachments?: number;
+  collectionState?: CollectionState; remaining?: number; payments?: Payment[];
 }
 interface TaxRow {
   invoiceNumber: string; customer: string; partyId?: string; value: number; net: number; vat: number;
@@ -58,6 +64,8 @@ interface TaxRow {
   /** كودُ الحساب في دفتر التحصيل، وحالتُه كما يقولها الدفتر. */
   partyCode?: string; status?: string;
   attachments?: number;
+  /** المقبوضُ (قيمةُ المحصَّلة كلُّها، ومجموعُ دفعات الجزئيّة) والباقي. */
+  collectionState?: CollectionState; collectedAmount?: number; remaining?: number; payments?: Payment[];
 }
 
 /**
@@ -98,7 +106,9 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   // ── حالةُ التحصيل فوق الجدول لا داخلَ الفلاتر ─────────────────────────────
   // السؤالُ يُطرح على الوجهين كلَّ يوم: «ما الذي بقي؟» و«كم حصّلنا؟». فالاختيارُ
   // ظاهرٌ لا مخبوءٌ خلف زرّ، والبطاقاتُ فوقه تتحرّك معه.
-  const [collected, setCollected] = useState<'' | 'no' | 'yes'>('');
+  // وثلاثُ حالاتٍ لا اثنتان: «جزئيّة» تبقى كذلك حتى يبلغ المقبوضُ القيمة.
+  const [collected, setCollected] = useState<'' | 'no' | 'partial' | 'yes'>('');
+  const [stateCounts, setStateCounts] = useState<{ all?: number; no?: number; partial?: number; yes?: number }>({});
   const [q, setQ] = useState('');
   const [age, setAge] = useState('');
   const [customer, setCustomer] = useState('');
@@ -126,7 +136,17 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   const activeCount = [age, customer, branch, from, to, detail].filter(Boolean).length + colCount;
 
   // ── تسجيلُ التحصيل ────────────────────────────────────────────────────────
-  const [collecting, setCollecting] = useState<{ label: string; invoiceNumber?: string; ids?: string[]; needAmount: boolean; collected?: boolean } | null>(null);
+  // ── كاملٌ أو جزئيّ ──────────────────────────────────────────────────────
+  // «تحصيل بالكامل» يقبض الباقي كلَّه، و«تحصيل جزئي» يكتب ما قُبض فينقص به
+  // الباقي. وقيمةُ الصفّ ومقبوضُه ودفعاتُه معه، فيُقال الباقي قبل الحفظ.
+  const [collecting, setCollecting] = useState<{
+    label: string; invoiceNumber?: string; ids?: string[]; needAmount: boolean; collected?: boolean;
+    value: number; paid: number; remaining: number; state: CollectionState; payments: Payment[]; full: boolean;
+  } | null>(null);
+  const [collectMode, setCollectMode] = useState<'full' | 'partial'>('full');
+  const [collectNote, setCollectNote] = useState('');
+  // تعديلُ دفعةٍ في مكانها: مبلغُها ويومُها.
+  const [editingPay, setEditingPay] = useState<{ id: string; amount: string; date: string } | null>(null);
   // «لم تُحصَّل»: الرجوعُ عن تحصيلٍ سُجِّل خطأً — بسببٍ يُكتب.
   const [undoReason, setUndoReason] = useState('');
   const [undoOpen, setUndoOpen] = useState(false);
@@ -177,6 +197,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       if (!guard.isCurrent(mine)) return;
       setRows(d.invoices || []);
       setTotals(d.totals || {});
+      setStateCounts(d.stateCounts || {});
       setTotal(d.total || 0);
       setPages(d.pages || 1);
     } catch (e: any) {
@@ -220,14 +241,23 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   }, [kind]);
 
   const openCollect = (r: any) => {
-    setUndoOpen(false); setUndoReason('');
+    setUndoOpen(false); setUndoReason(''); setCollectNote(''); setEditingPay(null);
     const today = new Date().toISOString().slice(0, 10);
+    const value = Number(r.value) || 0;
+    const paid = Number(r.collectedAmount) || 0;
+    const state: CollectionState = r.collectionState || (isCash ? (r.collectionDate || r.collectedNoDate ? 'full' : paid > 0 ? 'partial' : 'none') : (r.fullyCollected ? 'full' : 'none'));
+    const full = state === 'full';
+    const remaining = r.remaining != null ? Number(r.remaining) : Math.max(0, value - paid);
+    const base = { value, paid, remaining, state, full, payments: (r.payments || []) as Payment[] };
+    // الكاشُ الذي لا قيمةَ معروفةً له يكتب المحصِّلُ ما قبضه (كما كان) — ولا جزئيَّ فيه.
+    setCollectMode('full');
     if (isCash) {
-      setCollecting({ label: r.reportNumber, ids: [r._id], needAmount: true, collected: !!r.collectionDate || Number(r.collectedAmount) > 0 });
-      setCollectForm({ collectionDate: r.collectionDate?.slice(0, 10) || today, collectedAmount: r.collectedAmount ? String(r.collectedAmount) : '' });
+      setCollecting({ ...base, label: r.reportNumber, ids: [r._id], needAmount: !(value > 0), collected: full || paid > 0 });
+      setCollectForm({ collectionDate: (full && r.collectionDate?.slice(0, 10)) || today, collectedAmount: !(value > 0) && paid ? String(paid) : '' });
     } else {
-      setCollecting({ label: r.invoiceNumber, invoiceNumber: r.invoiceNumber, needAmount: false, collected: !!r.fullyCollected || !!r.collectionDate || /collected/i.test(String(r.status || '')) });
-      setCollectForm({ collectionDate: r.collectionDate?.slice(0, 10) || today, collectedAmount: '' });
+      setCollecting({ ...base, label: r.invoiceNumber, invoiceNumber: r.invoiceNumber, needAmount: false,
+        collected: full || paid > 0 || !!r.collectionDate || /collected/i.test(String(r.status || '')) });
+      setCollectForm({ collectionDate: (full && r.collectionDate?.slice(0, 10)) || today, collectedAmount: '' });
     }
   };
 
@@ -272,19 +302,69 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   };
 
   const saveCollect = async () => {
+    if (!collecting) return;
     if (!collectForm.collectionDate) { notify(t('تاريخ التحصيل مطلوب', 'Collection date required'), 'error'); return; }
-    if (collecting?.needAmount && !String(collectForm.collectedAmount).trim()) {
+    const partial = collectMode === 'partial';
+    const amount = Number(String(collectForm.collectedAmount).replace(/,/g, '').trim());
+    // التحقّقُ نفسُه الذي في الخادم، قبل الإرسال: الجزئيُّ أكبرُ من صفرٍ وأقلُّ من الباقي.
+    if (partial) {
+      if (!Number.isFinite(amount) || amount <= 0) { notify(t('اكتب المبلغ المحصَّل رقمًا أكبر من صفر', 'Enter an amount greater than zero'), 'error'); return; }
+      if (amount >= collecting.remaining - 0.005) {
+        notify(t(`المبلغ الجزئي يجب أن يكون أقل من الباقي (${money(collecting.remaining)}) — ولتحصيل الباقي كله اختر «تحصيل بالكامل»`,
+          `A partial amount must be below the balance (${money(collecting.remaining)}) — choose “Collect in full” for all of it`), 'error');
+        return;
+      }
+    } else if (collecting.needAmount && !(Number.isFinite(amount) && amount > 0)) {
       notify(t('مبلغ التحصيل مطلوب', 'Collected amount required'), 'error'); return;
     }
     setSaving(true);
     try {
       const r = await api.post<{ message: string }>('/api/collections-dept/invoices/collect', {
-        invoiceNumber: collecting?.invoiceNumber,
-        ids: collecting?.ids,
+        invoiceNumber: collecting.invoiceNumber,
+        ids: collecting.ids,
+        mode: collectMode,
         collectionDate: collectForm.collectionDate,
-        ...(collecting?.needAmount ? { collectedAmount: Number(collectForm.collectedAmount) || 0 } : {}),
+        note: collectNote.trim(),
+        ...(partial || collecting.needAmount ? { amount } : {}),
       });
       notify(r?.message || t('سُجِّل التحصيل', 'Collection recorded'));
+      setCollecting(null);
+      load();
+    } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
+    setSaving(false);
+  };
+
+  /** تعديلُ دفعةٍ أو رفعُها — ويُعاد حسابُ الحالة في الخادم. */
+  const target = () => (collecting?.invoiceNumber ? { invoiceNumber: collecting.invoiceNumber } : { id: collecting?.ids?.[0] });
+  const savePayment = async () => {
+    if (!editingPay) return;
+    const amount = Number(String(editingPay.amount).replace(/,/g, '').trim());
+    if (!Number.isFinite(amount) || amount <= 0) { notify(t('اكتب المبلغ رقمًا أكبر من صفر', 'Enter an amount greater than zero'), 'error'); return; }
+    setSaving(true);
+    try {
+      const r = await api.put<{ message: string }>('/api/collections-dept/invoices/payments', {
+        ...target(), paymentId: editingPay.id, amount, date: editingPay.date,
+      });
+      notify(r?.message || t('عُدِّلت الدفعة', 'Payment updated'));
+      setCollecting(null); setEditingPay(null);
+      load();
+    } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
+    setSaving(false);
+  };
+  const removePayment = async (p: Payment) => {
+    const reason = await prompt({
+      title: t('رفع الدفعة', 'Remove payment'),
+      message: t(`تُرفع دفعة ${money(p.amount)} ويُعاد حساب الباقي. السبب (اختياري):`, `Remove the ${money(p.amount)} payment and recompute the balance. Reason (optional):`),
+      defaultValue: '',
+      confirmLabel: t('رفع الدفعة', 'Remove'),
+    } as any);
+    if (reason === null || reason === undefined) return;
+    setSaving(true);
+    try {
+      const r = await api.post<{ message: string }>('/api/collections-dept/invoices/payments/remove', {
+        ...target(), paymentId: p._id, reason: String(reason).trim(),
+      });
+      notify(r?.message || t('رُفعت الدفعة', 'Payment removed'));
       setCollecting(null);
       load();
     } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
@@ -391,6 +471,10 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
         cell: (r) => <span className="tabular-nums font-semibold text-slate-900">{r.value ? money(r.value) : '—'}</span> },
       { header: t('مبلغ التحصيل', 'Collected'), key: 'collectedAmount', width: 14, type: 'number', align: 'end',
         cell: (r) => <span className="tabular-nums font-semibold text-emerald-700">{r.collectedAmount ? money(r.collectedAmount) : '—'}</span> },
+      { header: t('المتبقي', 'Balance'), key: 'remaining', width: 14, type: 'number', align: 'end',
+        cell: (r) => remainingCell(r) },
+      { header: t('حالة التحصيل', 'Collection status'), key: 'collectionState', width: 16, align: 'center',
+        transform: (v: any) => stateLabel(v), cell: (r) => stateChip(r.collectionState) },
       { header: t('التسليم للعميل', 'To customer'), key: 'deliveryDate', width: 16, type: 'date', filter: 'deliveryDate',
         transform: (v: any) => dt(v),
         cell: (r) => <span className={r.deliveryDate ? 'text-slate-600' : 'text-slate-300'}>{r.deliveryDate ? dt(r.deliveryDate) : '—'}</span> },
@@ -411,16 +495,22 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       { header: t('عدد الكشوفات', 'Reports'), key: 'reports', width: 12, align: 'end', cell: (r) => reportsCell(r) },
       { header: t('القيمة', 'Value'), key: 'value', width: 16, type: 'number', align: 'end',
         cell: (r) => <span className="tabular-nums font-semibold text-slate-900">{money(r.value)}</span> },
+      { header: t('المحصَّل', 'Collected'), key: 'collectedAmount', width: 14, type: 'number', align: 'end',
+        cell: (r) => <span className="tabular-nums font-semibold text-emerald-700">{r.collectedAmount ? money(r.collectedAmount) : '—'}</span> },
+      { header: t('المتبقي', 'Balance'), key: 'remaining', width: 14, type: 'number', align: 'end',
+        cell: (r) => remainingCell(r) },
       { header: t('تاريخ الفاتورة', 'Invoice date'), key: 'invoiceDate', width: 14, type: 'date', filter: 'invoiceDate', transform: (v: any) => dt(v) },
       { header: t('التسليم للعميل', 'To customer'), key: 'deliveryDate', width: 14, type: 'date', filter: 'deliveryDate', transform: (v: any) => dt(v) },
       { header: t('العمر (يوم)', 'Age (days)'), key: 'ageDays', width: 12, align: 'end', cell: (r) => ageChip(r.ageDays) },
       { header: t('تاريخ التحصيل', 'Collected on'), key: 'collectionDate', width: 14, type: 'date', filter: 'collectionDate',
         transform: (v: any) => dt(v),
         cell: (r) => (
-          <span className={r.fullyCollected ? 'text-emerald-700' : 'text-red-500'}>
-            {r.fullyCollected ? dt(r.collectionDate) : t('لم تُحصَّل', 'open')}
+          <span className={r.fullyCollected ? 'text-emerald-700' : r.collectionState === 'partial' ? 'text-amber-600' : 'text-red-500'}>
+            {r.fullyCollected ? dt(r.collectionDate) : r.collectionState === 'partial' ? t('جزئي', 'partial') : t('لم تُحصَّل', 'open')}
           </span>
         ) },
+      { header: t('حالة التحصيل', 'Collection status'), key: 'collectionState', width: 16, align: 'center',
+        transform: (v: any) => stateLabel(v), cell: (r) => stateChip(r.collectionState) },
       { header: t('الحالة', 'Status'), key: 'status', width: 14, filter: 'status' },
       attachCol,
     ];
@@ -461,15 +551,29 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   ) : <span className="text-[11px] text-slate-400">{t('لا كشوف', 'no reports')}</span>);
 
   const collectedCell = (r: any) => (
-    <span className={r.collectionDate || r.collectedNoDate ? 'text-emerald-700' : 'text-red-500'}>
+    <span className={r.collectionDate || r.collectedNoDate ? 'text-emerald-700' : r.collectionState === 'partial' ? 'text-amber-600' : 'text-red-500'}>
       {r.collectionDate ? dt(r.collectionDate)
         : r.collectedNoDate
           ? <span title={t('دفترُ التحصيل يقول إنّها حُصّلت ولا يذكر اليوم', 'The collections book says collected but not when')}>
               {t('محصَّل — بلا تاريخ', 'Collected — no date')}
             </span>
-          : t('لم يُحصَّل', 'open')}
+          : r.collectionState === 'partial' ? t('جزئي', 'partial') : t('لم يُحصَّل', 'open')}
     </span>
   );
+
+  // ── الحالةُ الثلاثيّة بكلمةٍ ولون ───────────────────────────────────────
+  const stateLabel = (s: CollectionState | undefined) => (s === 'full'
+    ? t('تم تحصيلها بالكامل', 'Fully collected')
+    : s === 'partial' ? t('تم تحصيلها جزئيًّا', 'Partially collected') : t('لم تُحصَّل بعد', 'Not collected'));
+  const stateChip = (s: CollectionState | undefined) => (
+    <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${
+      s === 'full' ? 'bg-emerald-50 text-emerald-700' : s === 'partial' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600'}`}>
+      {stateLabel(s)}
+    </span>
+  );
+  const remainingCell = (r: any) => (r.collectionState === 'full' || !Number(r.remaining)
+    ? <span className="text-slate-300">—</span>
+    : <span className={`tabular-nums font-semibold ${r.collectionState === 'partial' ? 'text-amber-700' : 'text-red-600'}`}>{money(r.remaining)}</span>);
 
   const detailCell = (r: any) => (canEdit ? (
     <div className={detailSaving === r._id ? 'opacity-60 pointer-events-none' : ''} onClick={(e) => e.stopPropagation()}>
@@ -584,28 +688,39 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
 
       {/* ── حالةُ التحصيل ────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 flex-wrap">
-        {([['', 'الكل', 'All'], ['no', 'لم يُحصَّل بعد', 'Not collected'], ['yes', 'تم تحصيله', 'Collected']] as const).map(([k, arL, enL]) => (
+        {([['', 'all', 'الكل', 'All'], ['no', 'no', 'لم تُحصَّل بعد', 'Not collected'],
+          ['partial', 'partial', 'تم تحصيلها جزئيًّا', 'Partially collected'], ['yes', 'yes', 'تم تحصيلها', 'Collected']] as const).map(([k, ck, arL, enL]) => (
           <button key={k} type="button" onClick={() => setCollected(k as any)}
             className={`px-3.5 py-2 rounded-lg text-sm font-semibold transition-colors ${
               collected === k ? 'bg-[#f37121] text-white' : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900'}`}>
             {t(arL, enL)}
+            {/* العددُ تحت الفلاتر الأخرى — لا تحت هذا الاختيار نفسِه. */}
+            {(stateCounts as any)[ck] != null && (
+              <span className={`ms-1.5 tabular-nums text-[12px] ${collected === k ? 'text-white/85' : 'text-slate-400'}`}>
+                {money((stateCounts as any)[ck])}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <Stat label={isCash ? t('كشوف', 'Reports') : t('فواتير', 'Invoices')} value={money(total)} />
         {isCash ? (
           <>
             <Stat label={t('المحصَّل', 'Collected')} value={money(totals.collected)} accent="text-emerald-600" />
-            <Stat label={t('عدد المحصَّل', 'Collected count')} value={money(totals.collectedCount)} accent="text-emerald-600" />
-            <Stat label={t('لم يُحصَّل بعد', 'Outstanding count')} value={money(totals.pendingCount)} accent={totals.pendingCount ? 'text-red-600' : 'text-slate-400'} />
+            <Stat label={t('محصَّلة بالكامل', 'Fully collected')} value={money(totals.collectedCount)} accent="text-emerald-600" />
+            <Stat label={t('محصَّلة جزئيًّا', 'Partially collected')} value={money(totals.partialCount)} accent={totals.partialCount ? 'text-amber-600' : 'text-slate-400'} />
+            <Stat label={t('لم يُحصَّل بعد', 'Not collected')} value={money(totals.noneCount ?? totals.pendingCount)} accent={(totals.noneCount ?? totals.pendingCount) ? 'text-red-600' : 'text-slate-400'} />
+            <Stat label={t('المتبقي', 'Balance due')} value={money(totals.remaining)} accent={totals.remaining ? 'text-red-600' : 'text-slate-400'} />
           </>
         ) : (
           <>
             <Stat label={t('قيمة الفواتير', 'Invoiced value')} value={money(totals.value)} />
             <Stat label={t('محصَّلة بالكامل', 'Fully collected')} value={money(totals.fullyCollected)} accent="text-emerald-600" />
-            <Stat label={t('لم تُحصَّل بعد', 'Still open')} value={money(totals.pending)} accent={totals.pending ? 'text-red-600' : 'text-slate-400'} />
+            <Stat label={t('محصَّلة جزئيًّا', 'Partially collected')} value={money(totals.partial)} accent={totals.partial ? 'text-amber-600' : 'text-slate-400'} />
+            <Stat label={t('لم تُحصَّل بعد', 'Not collected')} value={money(totals.none ?? totals.pending)} accent={(totals.none ?? totals.pending) ? 'text-red-600' : 'text-slate-400'} />
+            <Stat label={t('المتبقي', 'Balance due')} value={money(totals.remaining)} accent={totals.remaining ? 'text-red-600' : 'text-slate-400'} />
           </>
         )}
       </div>
@@ -786,7 +901,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                           <button type="button" onClick={() => openCollect(r)}
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#f37121]/10 text-[#f37121] text-xs font-semibold hover:bg-[#f37121]/20">
                             <CheckCircle2 className="w-3.5 h-3.5" />
-                            {(isCash ? r.collectionDate : r.fullyCollected) ? t('تعديل', 'Edit') : t('تحصيل', 'Collect')}
+                            {(isCash ? (r.collectionDate || r.collectedNoDate) : r.fullyCollected) ? t('تعديل', 'Edit') : t('تحصيل', 'Collect')}
                           </button>
                         )}
                         {canEditAmount && !isCash && (
@@ -852,11 +967,41 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
           </PrimaryButton>
         </>}
       >
+        {/* ── القيمةُ والمقبوضُ والباقي قبل أيّ اختيار ──────────────────── */}
+        {collecting && (
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            {[
+              [t('القيمة', 'Value'), collecting.value, 'text-slate-900'],
+              [t('المحصَّل', 'Collected'), collecting.full ? collecting.value || collecting.paid : collecting.paid, 'text-emerald-700'],
+              [t('المتبقي', 'Balance'), collecting.full ? 0 : collecting.remaining, collecting.full ? 'text-slate-400' : 'text-red-600'],
+            ].map(([l, v, c]) => (
+              <div key={String(l)} className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+                <p className="text-[11px] text-slate-500">{l}</p>
+                <p className={`text-sm font-bold tabular-nums ${c}`}>{money(Number(v) || 0)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── كاملٌ أو جزئيّ ─────────────────────────────────────────────────
+            الجزئيُّ لما لم يكتمل وله قيمةٌ معروفة — والمكتملُ يُعدَّل يومُه. */}
+        {collecting && !collecting.full && !collecting.needAmount && (
+          <div className="flex items-center gap-2 mb-3" role="radiogroup">
+            {([['full', t('تحصيل بالكامل', 'Collect in full')], ['partial', t('تحصيل جزئي', 'Partial collection')]] as const).map(([k, l]) => (
+              <button key={k} type="button" role="radio" aria-checked={collectMode === k} onClick={() => setCollectMode(k)}
+                className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                  collectMode === k ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900'}`}>
+                {l}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* النقديُّ يكتب المحصِّلُ ما قبضه بيده — والضريبيُّ قيمتُه في فاتورته. */}
-          {collecting?.needAmount && (
-            <Field label={t('مبلغ التحصيل *', 'Collected amount *')}>
-              <TextInput type="number" value={collectForm.collectedAmount}
+          {/* الجزئيُّ يكتب ما قُبض؛ والكاشُ الذي لا قيمةَ له يكتب ما قُبض كلَّه. */}
+          {collecting && !collecting.full && (collectMode === 'partial' || collecting.needAmount) && (
+            <Field label={collectMode === 'partial' ? t('المبلغ المحصَّل *', 'Amount collected *') : t('مبلغ التحصيل *', 'Collected amount *')}>
+              <TextInput type="number" value={collectForm.collectedAmount} min={0}
                 onChange={(e) => setCollectForm((p) => ({ ...p, collectedAmount: e.target.value }))} />
             </Field>
           )}
@@ -864,12 +1009,81 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
             <TextInput type="date" value={collectForm.collectionDate}
               onChange={(e) => setCollectForm((p) => ({ ...p, collectionDate: e.target.value }))} />
           </Field>
+          {collecting && !collecting.full && (
+            <Field label={t('ملاحظة', 'Note')}>
+              <TextInput value={collectNote} onChange={(e) => setCollectNote(e.target.value)}
+                placeholder={t('اختياري — مثال: شيك رقم…', 'Optional — e.g. cheque no.…')} />
+            </Field>
+          )}
         </div>
-        {!collecting?.needAmount && (
-          <p className="text-[12px] text-slate-500 mt-3">
-            {t('يُسجَّل التاريخ على كشوف هذه الفاتورة كلِّها — تحصيلُها تحصيلٌ لما فيها.',
-              'The date is written to every report under this invoice.')}
+        {collecting && !collecting.full && collectMode === 'partial' && (() => {
+          const a = Number(String(collectForm.collectedAmount).replace(/,/g, ''));
+          const after = Number.isFinite(a) && a > 0 ? collecting.remaining - a : null;
+          return (
+            <p className={`text-[12px] mt-2 ${after != null && after <= 0.005 ? 'text-red-600' : 'text-slate-500'}`}>
+              {after == null
+                ? t(`أقل من الباقي (${money(collecting.remaining)}). تبقى الفاتورة «جزئية» حتى يبلغ المحصَّل قيمتها كاملة.`,
+                  `Less than the balance (${money(collecting.remaining)}). It stays “partial” until the full value is collected.`)
+                : after <= 0.005
+                  ? t('المبلغ يبلغ الباقي أو يتجاوزه — اختر «تحصيل بالكامل».', 'This reaches the balance — choose “Collect in full”.')
+                  : t(`يبقى بعد هذه الدفعة: ${money(after)}`, `Balance after this payment: ${money(after)}`)}
+            </p>
+          );
+        })()}
+        {collecting && !collecting.full && collectMode === 'full' && !collecting.needAmount && (
+          <p className="text-[12px] text-slate-500 mt-2">
+            {t(`يُسجَّل الباقي (${money(collecting.remaining)}) دفعةً أخيرة وتصير محصَّلةً بالكامل.`,
+              `The balance (${money(collecting.remaining)}) is recorded as the final payment and it becomes fully collected.`)}
           </p>
+        )}
+        {!collecting?.ids && (
+          <p className="text-[12px] text-slate-500 mt-3">
+            {t('عند اكتمال التحصيل يُسجَّل التاريخ على كشوف هذه الفاتورة كلِّها — تحصيلُها تحصيلٌ لما فيها.',
+              'Once fully collected, the date is written to every report under this invoice.')}
+          </p>
+        )}
+
+        {/* ── الدفعات ────────────────────────────────────────────────────────
+            كلُّ دفعةٍ بمبلغها ويومها وكاتبها — تُعدَّل أو تُرفَع وحدَها. */}
+        {!!collecting?.payments.length && (
+          <div className="mt-4">
+            <p className="text-[12px] font-bold text-slate-600 mb-2">{t('الدفعات', 'Payments')}</p>
+            <div className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+              {collecting.payments.map((p) => (
+                <div key={p._id} className="px-3 py-2 text-[12.5px]">
+                  {editingPay?.id === p._id ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <TextInput type="number" value={editingPay.amount} className="w-28"
+                        onChange={(e) => setEditingPay((x) => (x ? { ...x, amount: e.target.value } : x))} />
+                      <TextInput type="date" value={editingPay.date} className="w-40"
+                        onChange={(e) => setEditingPay((x) => (x ? { ...x, date: e.target.value } : x))} />
+                      <button type="button" onClick={savePayment} disabled={saving}
+                        className="px-2.5 py-1 rounded-lg bg-[#f37121] text-white text-xs font-semibold disabled:opacity-50">{t('حفظ', 'Save')}</button>
+                      <button type="button" onClick={() => setEditingPay(null)} className="px-2 py-1 text-xs text-slate-500">{t('إلغاء', 'Cancel')}</button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="tabular-nums font-semibold text-slate-900">{money(p.amount)}</span>
+                      <span className="text-slate-500">{dt(p.date)}</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10.5px] ${p.mode === 'full' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                        {p.mode === 'full' ? t('إتمام', 'Final') : t('جزئية', 'Partial')}
+                      </span>
+                      {p.byName && <span className="text-slate-400">{p.byName}</span>}
+                      {p.note && <span className="text-slate-500 truncate max-w-[180px]" title={p.note}>{p.note}</span>}
+                      {canEdit && (
+                        <span className="ms-auto flex items-center gap-1">
+                          <button type="button" onClick={() => setEditingPay({ id: p._id, amount: String(p.amount), date: (p.date || '').slice(0, 10) })}
+                            className="px-2 py-0.5 rounded text-xs text-slate-600 hover:bg-slate-100">{t('تعديل', 'Edit')}</button>
+                          <button type="button" onClick={() => removePayment(p)} disabled={saving}
+                            className="px-2 py-0.5 rounded text-xs text-red-600 hover:bg-red-50">{t('رفع', 'Remove')}</button>
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         )}
         {/* ── لم تُحصَّل ────────────────────────────────────────────────────
             سُجِّلت محصَّلةً ولم يُقبَض مالُها (شيكٌ رُدّ، أو ضغطةٌ على الصفّ
@@ -880,7 +1094,9 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
             {!undoOpen ? (
               <div className="flex flex-wrap items-center gap-2">
                 <p className="flex-1 text-[12.5px] text-red-800">
-                  {t('مسجَّلةٌ محصَّلة. إن لم يُقبَض مالُها فعلًا فارفع عنها التحصيل.', 'Recorded as collected. If the money was not actually received, undo it.')}
+                  {collecting.state === 'partial'
+                    ? t('مسجَّلٌ عليها تحصيلٌ جزئيّ. «لم تُحصَّل» ترفع الدفعات كلَّها — ولرفع دفعةٍ واحدةٍ استعمل «رفع» بجانبها.', 'Partly collected. “Not collected” removes every payment — to remove one, use “Remove” beside it.')
+                    : t('مسجَّلةٌ محصَّلة. إن لم يُقبَض مالُها فعلًا فارفع عنها التحصيل.', 'Recorded as collected. If the money was not actually received, undo it.')}
                 </p>
                 <button type="button" onClick={() => setUndoOpen(true)}
                   className="rounded-lg bg-white px-3 py-1.5 text-[12.5px] font-bold text-red-700 ring-1 ring-red-200 hover:bg-red-100">

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { paymentSchema } = require('./collectionPaymentSchema');
 
 const operationsWorkflowSchema = new mongoose.Schema(
   {
@@ -180,6 +181,13 @@ const operationsWorkflowSchema = new mongoose.Schema(
     // و`false` (لا الغياب) يعني أنّ القسمَ كتب فيه بيده — سجّل أو عدّل أو رفع —
     // فلا تعود المحفظةُ إليه. راجع utils/walletCollection.
     collectedByWallet: { type: Boolean },
+
+    // ── ودفعاتُ التحصيل — لكلٍّ مبلغٌ وتاريخٌ وكاتب ──────────────────────────
+    // التحصيلُ الجزئيّ يُكتب دفعةً هنا ويُزاد بها `collectedAmount`؛ والكشفُ
+    // «محصَّل» (`collectionDate`) حين يبلغ المجموعُ قيمتَه. وما كان في
+    // `collectedAmount` قبل الدفعات (من الشيت أو المحفظة) أساسٌ يبقى كما هو.
+    // راجع collectionsDeptController.recordCollection.
+    collectionPayments: { type: [paymentSchema], default: undefined },
 
     // ── ومن أين وصل المال ────────────────────────────────────────────────────
     // الكشفُ النقديُّ يُحصَّل بأكثرَ من طريق: يقبضه الفرعُ من العميل، أو يُقبض

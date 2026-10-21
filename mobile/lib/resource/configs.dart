@@ -8,6 +8,7 @@ import '../screens/contracts_vendor_profile.dart';
 import '../screens/customs_detail.dart';
 import '../screens/customs_party.dart';
 import '../screens/collection_attachments.dart';
+import '../screens/collection_collect.dart';
 import '../ui/customs_contract_pricing.dart';
 import '../screens/fleet_customer_profile.dart';
 import '../screens/customer_registry_profile.dart';
@@ -1326,7 +1327,8 @@ final collectionsCashInvoicesCfg = ResourceConfig(
   endpoint: '/api/collections-dept/invoices/cash', listKey: 'invoices',
   liveEvent: 'workflow:updated', extraLiveEvents: const ['collections:attachments'], serverSearch: true,
   canCreate: false, canDelete: false,
-  filterField: 'collected',
+  // ثلاثُ حالاتٍ كالموقع — يحسبها الخادم مع الصفّ (collectionState).
+  filterField: 'collectionState', filterOptions: _collectionStates,
   searchFields: const ['reportNumber', 'customer', 'payingBranch'],
   titleOf: (r) => _s(r, 'reportNumber'),
   subtitleOf: (r) => [_s(r, 'customer'), _s(r, 'payingBranch')].where((x) => x.isNotEmpty).join(' · '),
@@ -1334,6 +1336,7 @@ final collectionsCashInvoicesCfg = ResourceConfig(
     if (r['ageDays'] != null) ('${r['ageDays']} يوم', _ageColor(r['ageDays'])),
     // «محصَّل» في الدفتر وإن لم يُكتب يومُه — كما تقولها شاشةُ الموقع.
     if (r['collectedNoDate'] == true) ('محصَّل — بلا تاريخ', T.success)
+    else if (_s(r, 'collectionState') == 'partial') ('جزئي — باقٍ ${_n(r['remaining'])}', T.warn)
     else if (_s(r, 'collectionDate').isEmpty) ('لم يُحصَّل', T.danger)
     else ('${_n(r['collectedAmount'])} محصَّل', T.success),
     // التسليمُ خطوةٌ قبل التحصيل — ومنه تُعَدُّ مهلةُ العميل.
@@ -1341,12 +1344,10 @@ final collectionsCashInvoicesCfg = ResourceConfig(
     if (_s(r, 'collectionDetail').isNotEmpty) (_s(r, 'collectionDetail'), T.navy),
     if (_attachCount(r) > 0) ('${_attachCount(r)} مرفقات', T.orange),
   ],
-  // ── والتحصيلُ حاجتان: مبلغٌ وتاريخ ─────────────────────────────────────
-  // النقديُّ يقبضه المحصِّلُ في يده فيكتب ما قبض — لا يُشتقّ من مبلغ السداد،
-  // فذاك ما دُفع للمورّد وهذا ما قُبض من العميل.
+  // ── والتحصيلُ من زرّ «تحصيل» لا من ورقة التحرير ─────────────────────────
+  // كاملٌ أو جزئيّ، ولكلّ دفعةٍ مبلغٌ ويومٌ وكاتب (راجع collection_collect).
+  // فكتابةُ المبلغ والتاريخ في الورقة كانت تتجاوز الدفعات وتمحو الباقي.
   fields: [
-    const FieldSpec('collectedAmount', 'مبلغ التحصيل', 'Collected amount', type: FieldType.number, required: true),
-    const FieldSpec('collectionDate', 'تاريخ التحصيل', 'Collection date', type: FieldType.date, required: true),
     // ── والتسليمُ للعميل هنا كما هو في الشاشة ──────────────────────────────
     // كان في صفحة الضريبيّ وحدَها، والنقديُّ يُحمَل إلى العميل مثلَه.
     const FieldSpec('deliveryDate', 'تاريخ التسليم للعميل', 'Delivered to customer', type: FieldType.date),
@@ -1358,11 +1359,25 @@ final collectionsCashInvoicesCfg = ResourceConfig(
   ],
   sortFields: const [('ageDays', 'العمر', 'Age')],
   rowActions: (r) => [
+    if (collectionsCanEdit) _collectAction(true),
     _attachmentsAction('cash', (r) => _s(r, '_id'), (r) => _s(r, 'reportNumber')),
     if (collectionsCanEdit && (_s(r, 'collectionDate').isNotEmpty || ((r['collectedAmount'] is num) && (r['collectedAmount'] as num) > 0)))
       _uncollectAction((r) => {'ids': [_s(r, '_id')]}),
   ],
 );
+
+/// حالاتُ التحصيل الثلاث — شرائحُ التصفية فوق القائمتين.
+const _collectionStates = [
+  ('none', 'لم تُحصَّل بعد', 'Not collected'),
+  ('partial', 'تم تحصيلها جزئيًّا', 'Partially collected'),
+  ('full', 'تم تحصيلها', 'Collected'),
+];
+
+/// «تحصيل» — كاملٌ أو جزئيّ، كنافذة الموقع.
+ResourceAction _collectAction(bool isCash) => ResourceAction(
+      icon: Icons.check_circle_outline_rounded, ar: 'تحصيل', en: 'Collect', color: T.orange,
+      run: (ctx, r) => openCollectSheet(ctx, isCash: isCash, row: r),
+    );
 
 /// مَن يكتب في فواتير التحصيل — يضبطه `sectionsFor` من دور المستخدم ومنحِ القسم
 /// (EDIT_ROLES في routes/collectionsDept). القراءةُ أوسعُ من الكتابة هنا، فلا
@@ -1389,6 +1404,7 @@ final collectionsTaxInvoicesCfg = ResourceConfig(
   endpoint: '/api/collections-dept/invoices/tax', listKey: 'invoices',
   liveEvent: 'workflow:updated', extraLiveEvents: const ['collections:attachments'], serverSearch: true,
   canCreate: false, canEdit: false, canDelete: false,
+  filterField: 'collectionState', filterOptions: _collectionStates,
   searchFields: const ['invoiceNumber', 'customer'],
   titleOf: (r) => _s(r, 'invoiceNumber'),
   subtitleOf: (r) => [_s(r, 'customer'), '${_n(r['value'])} ر.س'].where((x) => x.isNotEmpty).join(' · '),
@@ -1396,13 +1412,16 @@ final collectionsTaxInvoicesCfg = ResourceConfig(
     // عددُ الكشوفات: الفاتورةُ الواحدة قد تضمّ أكثرَ من كشف.
     ('${r['reports'] ?? 0} كشف', T.navy),
     if (r['ageDays'] != null) ('${r['ageDays']} يوم', _ageColor(r['ageDays'])),
-    if (r['fullyCollected'] == true) ('محصَّلة', T.success) else ('لم تُحصَّل', T.danger),
+    if (r['fullyCollected'] == true) ('محصَّلة', T.success)
+    else if (_s(r, 'collectionState') == 'partial') ('جزئية — باقٍ ${_n(r['remaining'])}', T.warn)
+    else ('لم تُحصَّل', T.danger),
     if (_attachCount(r) > 0) ('${_attachCount(r)} مرفقات', T.orange),
   ],
   fields: const [],
   rowActions: (r) => [
+    if (collectionsCanEdit) _collectAction(false),
     _attachmentsAction('tax', (r) => _s(r, 'invoiceNumber'), (r) => _s(r, 'invoiceNumber')),
-    if (collectionsCanEdit && (r['fullyCollected'] == true || _s(r, 'collectionDate').isNotEmpty))
+    if (collectionsCanEdit && (r['fullyCollected'] == true || _s(r, 'collectionDate').isNotEmpty || _s(r, 'collectionState') == 'partial'))
       _uncollectAction((r) => {'invoiceNumber': _s(r, 'invoiceNumber')}),
     // تصحيحُ قيمة الفاتورة في الدفتر (ويجوز بالسالب) — كالموقع، ولأدوارها وحدَها.
     if (collectionsCanEditAmount)

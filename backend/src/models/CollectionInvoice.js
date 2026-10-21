@@ -19,6 +19,7 @@
  * يبقى في القاعدة رقمٌ يصدق يومَ كُتب ويكذب في اليوم التالي.
  */
 const mongoose = require('mongoose');
+const { paymentSchema } = require('./collectionPaymentSchema');
 
 const collectionInvoiceSchema = new mongoose.Schema({
   // ── الهويّة ───────────────────────────────────────────────────────────────
@@ -41,6 +42,18 @@ const collectionInvoiceSchema = new mongoose.Schema({
   total: { type: Number, default: 0 },
   // قيمةٌ صُحِّحت بيدٍ من صفحة الفواتير — لا يعيد حسابَها مجموعُ الكشوف.
   totalLocked: { type: Boolean, default: false },
+
+  // ── والتحصيلُ قد يكون دفعاتٍ ─────────────────────────────────────────────
+  // العميلُ يسدّد جزءًا اليومَ وجزءًا بعد أسبوع (صاحبُ الشركة، ٢٠٢٦/١٠/٢١).
+  // فالمحصَّلُ مجموعُ دفعاتٍ لكلٍّ منها مبلغٌ وتاريخٌ وكاتب، والفاتورةُ «جزئيّة»
+  // ما دام المجموعُ دون قيمتها، و«محصَّلة» حين يبلغها — والحالةُ تتبعه وحدَها.
+  //
+  // و`collectedAmount` ليس بالضرورة مجموعَ `payments`: في الدفتر الكاش (صفُّ
+  // الشحنة) يتبع كشفَه، وما سبق الدفعاتِ يبقى أساسًا لا دفعةً بلا كاتب.
+  // والفاتورةُ «Collected» من الدفتر بلا دفعات محصَّلةٌ بقيمتها كاملة — راجع
+  // collectedOf أدناه.
+  collectedAmount: { type: Number, default: 0 },
+  payments: { type: [paymentSchema], default: undefined },
 
   // ── التواريخُ الثلاثة التي عليها يقوم كلُّ تحليل ──────────────────────────
   // متى فُوتِرت، ومتى وصلت العميلَ، ومتى حُصّلت. والمدّةُ المتّفق عليها تُعَدّ
@@ -139,6 +152,27 @@ CollectionInvoice.isOpenExpr = {
     { $ne: ['$unused', true] },
     { $not: [{ $regexMatch: { input: { $ifNull: ['$status', ''] }, regex: /collected/i } }] },
   ],
+};
+
+// ── والمحصَّلُ والباقي بتعريفٍ واحد ──────────────────────────────────────────
+// المحصَّلةُ بالحالة محصَّلةٌ بقيمتها كلِّها (فواتيرُ الدفتر لا دفعاتِ لها)، وما
+// سواها محصَّلُه ما قُبض منها. والباقي ما يُطالَب به: صفرٌ للمحصَّلة، والقيمةُ
+// ناقصَ المقبوض لغيرها.
+CollectionInvoice.collectedOf = (i) => (CollectionInvoice.isCollected(i)
+  ? Number(i.total) || 0 : Number(i && i.collectedAmount) || 0);
+CollectionInvoice.remainingOf = (i) => (CollectionInvoice.isCollected(i)
+  ? 0 : Math.round(((Number(i && i.total) || 0) - (Number(i && i.collectedAmount) || 0)) * 100) / 100);
+/** 'full' | 'partial' | 'none' — والجزئيّةُ مفتوحةٌ بعدُ في كلّ عدٍّ للمديونيّة. */
+CollectionInvoice.stateOf = (i) => {
+  if (CollectionInvoice.isCollected(i)) return 'full';
+  return (Number(i && i.collectedAmount) || 0) > 0 ? 'partial' : 'none';
+};
+/** شرطُ «جزئيّة»: مفتوحةٌ وفيها مقبوض. و«لم تُحصَّل» مفتوحةٌ ولا مقبوضَ فيها. */
+CollectionInvoice.PARTIAL = Object.freeze({ ...CollectionInvoice.OPEN, collectedAmount: { $gt: 0 } });
+CollectionInvoice.NOT_STARTED = Object.freeze({ ...CollectionInvoice.OPEN, collectedAmount: { $not: { $gt: 0 } } });
+/** الباقي داخل تجميعةٍ — لصفٍّ مفتوح (والمحصَّلُ لا يدخل مجاميعَ المفتوح). */
+CollectionInvoice.remainingExpr = {
+  $subtract: [{ $ifNull: ['$total', 0] }, { $ifNull: ['$collectedAmount', 0] }],
 };
 
 module.exports = CollectionInvoice;

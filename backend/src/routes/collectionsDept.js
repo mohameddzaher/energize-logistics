@@ -85,6 +85,9 @@ router.post('/invoices/collect', authorize(...EDIT_ROLES), ctrl.recordCollection
 router.put('/invoices/tax/:invoiceNumber/amount', authorize.strict(...ctrl.AMOUNT_EDIT_ROLES), ctrl.updateTaxInvoiceAmount);
 // «لم تُحصَّل»: رجوعٌ عن تحصيلٍ سُجِّل خطأً — والسببُ اختياريّ.
 router.post('/invoices/uncollect', authorize(...EDIT_ROLES), ctrl.undoCollection);
+// ودفعاتُ التحصيل الجزئيّ: تُعدَّل أو تُرفَع وحدَها — بابُها بابُ «لم تُحصَّل».
+router.put('/invoices/payments', authorize(...EDIT_ROLES), ctrl.updatePayment);
+router.post('/invoices/payments/remove', authorize(...EDIT_ROLES), ctrl.removePayment);
 // التسليمُ خطوةٌ قبل التحصيل: منها تُعَدُّ المدّةُ المتّفق عليها.
 router.post('/invoices/deliver', authorize(...EDIT_ROLES), ctrl.recordDelivery);
 // وتفصيلُ التحصيل: من أين وصل المال — قائمةٌ تُدار من إعدادات القسم.

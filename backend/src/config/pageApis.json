@@ -176,6 +176,8 @@
         "/api/collections-dept/invoices/deliver",
         "/api/collections-dept/invoices/detail",
         "/api/collections-dept/invoices/filters",
+        "/api/collections-dept/invoices/payments",
+        "/api/collections-dept/invoices/payments/remove",
         "/api/collections-dept/invoices/tax",
         "/api/collections-dept/invoices/uncollect",
         "/api/lookups/types"
@@ -190,6 +192,8 @@
         "/api/collections-dept/invoices/deliver",
         "/api/collections-dept/invoices/detail",
         "/api/collections-dept/invoices/filters",
+        "/api/collections-dept/invoices/payments",
+        "/api/collections-dept/invoices/payments/remove",
         "/api/collections-dept/invoices/tax",
         "/api/collections-dept/invoices/uncollect",
         "/api/lookups/types"

@@ -30,6 +30,10 @@ const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
+const {
+  EPS, cashStateMatch, cashCollectedExpr, cashPartialExpr, cashRemainingExpr,
+  cashIsCollected, cashState, cashRemaining, paymentView,
+} = require('../utils/collectionState');
 
 const CACHE_PREFIX = 'collections-dept:';
 const STATS_TTL = 60 * 1000;
@@ -197,7 +201,8 @@ async function ledgerMoneyByParty() {
         _id: '$party',
         invoices: { $sum: 1 },
         invoiced: { $sum: { $ifNull: ['$total', 0] } },
-        outstanding: { $sum: { $cond: [open, { $ifNull: ['$total', 0] }, 0] } },
+        // المفتوحُ بباقيه: الجزئيّةُ قائمةٌ بما لم يُقبَض منها لا بقيمتها كلِّها.
+        outstanding: { $sum: { $cond: [open, CollectionInvoice.remainingExpr, 0] } },
         openInvoices: { $sum: { $cond: [open, 1, 0] } },
         lastCollectedAt: { $max: '$collectionDate' },
       } },
@@ -437,13 +442,14 @@ exports.getPartyProfile = async (req, res) => {
     // الواحدةُ قد يكون لها حسابان بكودَين (نقديٌّ وضريبيّ) لكلٍّ رصيدُه: فكانت
     // ١٣٤ فاتورةً تظهر في ملفَّين، وملفُّ العميل يخالف سطرَه في أعمار الديون.
     const ledgerAll = await CollectionInvoice.find({ party: party._id, unused: { $ne: true } })
-      .select('invoiceNumber partyName partyCode total invoiceDate deliveryDate collectionDate status kind').lean();
+      .select('invoiceNumber partyName partyCode total collectedAmount invoiceDate deliveryDate collectionDate status kind').lean();
     const ledger = ledgerAll
       .sort((x, y) => new Date(y.invoiceDate || 0) - new Date(x.invoiceDate || 0));
 
     const { isCollected } = CollectionInvoice;
     const invoiced = ledger.reduce((a2, i) => a2 + (Number(i.total) || 0), 0);
-    const collectedSum = ledger.filter(isCollected).reduce((a2, i) => a2 + (Number(i.total) || 0), 0);
+    // والمحصَّلُ يشمل مقبوضَ الجزئيّة — راجع CollectionInvoice.collectedOf.
+    const collectedSum = ledger.reduce((a2, i) => a2 + CollectionInvoice.collectedOf(i), 0);
     const openInvoices = ledger.filter((i) => !isCollected(i));
     const now2 = Date.now();
     const byMonth = new Map();
@@ -452,7 +458,7 @@ exports.getPartyProfile = async (req, res) => {
       const m = new Date(i.invoiceDate).toISOString().slice(0, 7);
       const e = byMonth.get(m) || { month: m, reports: 0, total: 0, settled: 0 };
       e.reports += 1; e.total += Number(i.total) || 0;
-      if (isCollected(i)) e.settled += Number(i.total) || 0;
+      e.settled += CollectionInvoice.collectedOf(i);
       byMonth.set(m, e);
     }
     const ledgerMonthly = [...byMonth.values()].sort((x, y) => x.month.localeCompare(y.month)).slice(-36)
@@ -473,6 +479,9 @@ exports.getPartyProfile = async (req, res) => {
           deliveryDate: i.deliveryDate || null,
           collectionDate: i.collectionDate || null,
           collected: isCollected(i),
+          collectionState: CollectionInvoice.stateOf(i),
+          collectedAmount: r2(CollectionInvoice.collectedOf(i)),
+          remaining: r2(CollectionInvoice.remainingOf(i)),
           status: i.status || '',
           // عمرُ ما لم يُحصَّل — وهو ما يُسأل عنه في المطالبة.
           ageDays: !isCollected(i) && i.invoiceDate
@@ -1131,8 +1140,12 @@ function ledgerInvoiceMatch(query) {
     f.$or = [{ invoiceNumber: rx }, { partyName: exact ? rx : loose }, { partyCode: rx }];
   }
   // «محصَّلة» بتعريف الدفتر الواحد — راجع models/CollectionInvoice.OPEN.
+  // والحالاتُ ثلاث: «لم تُحصَّل» لا مقبوضَ فيها، و«جزئيّة» فيها مقبوضٌ دون
+  // قيمتها، و«محصَّلة» بالكامل. و`open` ما لم يكتمل (الأوليان) — للمديونيّة.
   if (query.collected === 'yes') f.status = /collected/i;
-  else if (query.collected === 'no') f.status = { $not: /collected/i };
+  else if (query.collected === 'no') { f.status = { $not: /collected/i }; f.collectedAmount = { $not: { $gt: 0 } }; }
+  else if (query.collected === 'partial') { f.status = { $not: /collected/i }; f.collectedAmount = { $gt: 0 }; }
+  else if (query.collected === 'open') f.status = { $not: /collected/i };
   if (query.from || query.to) {
     f.invoiceDate = {};
     if (query.from) f.invoiceDate.$gte = new Date(query.from);
@@ -1328,8 +1341,9 @@ function invoiceFilters(query, { ageField }) {
   // الصفحةُ تعرض المحصَّلَ وغيرَه معًا، والسؤالُ يُطرح على الوجهين: «ما الذي
   // بقي؟» و«كم حصّلنا؟». فالاختيارُ صريحٌ فوق الجدول لا مخبوءٌ في فلتر.
   // والدفترُ قد يقول «محصَّل» بلا تاريخ — فالفلترُ يسأل عن الاثنين معًا.
-  if (query.collected === 'yes') f.$and = [...(f.$and || []), { $or: [{ collectionDate: { $ne: null } }, { cashCollectionStatus: 'collected' }] }];
-  else if (query.collected === 'no') f.$and = [...(f.$and || []), { collectionDate: null, cashCollectionStatus: { $ne: 'collected' } }];
+  // وثلاثُ حالاتٍ لا اثنتان — راجع utils/collectionState.
+  const stateCond = cashStateMatch(String(query.collected || ''));
+  if (stateCond) f.$and = [...(f.$and || []), stateCond];
 
   // تفصيلُ التحصيل — «أرِني ما يحصّله الفرعُ وحدَه».
   if (query.detail) f.collectionDetail = String(query.detail);
@@ -1414,9 +1428,13 @@ exports.cashInvoices = async (req, res) => {
     // صفحتَها. ولا يُقرأ من الاستعلام، فلا يطلب أحدٌ الدفترَ كلَّه بسطرٍ في الرابط.
     const limit = req.allRows ? STATEMENT_ROW_CAP : Math.min(500, Math.max(1, Number(req.query.limit) || 100));
 
-    const [rows, total, totals] = await Promise.all([
+    // ── وعدّادُ كلّ حالةٍ فوق الجدول ────────────────────────────────────────
+    // الأزرارُ الثلاثة تقول كم في كلٍّ منها تحت الفلاتر الأخرى — لا تحت
+    // اختيارها هي، وإلّا قال «لم تُحصَّل» صفرًا لمن اختار «محصَّلة».
+    const stateFilter = req.allRows ? null : cashScreenFilter({ ...req.query, collected: '' });
+    const [rows, total, totals, stateAgg] = await Promise.all([
       OperationsWorkflow.find(filter)
-        .select('reportNumber reportDate username payingBranch paymentDate collectedAmount collectionDate cashCollectionStatus collectedByWallet collectionDetail deliveryDate branch fromLocation toLocation sellingValue')
+        .select('reportNumber reportDate username payingBranch paymentDate collectedAmount collectionDate cashCollectionStatus collectedByWallet collectionDetail deliveryDate branch fromLocation toLocation sellingValue collectionPayments')
         .sort({ paymentDate: -1, _id: -1 })
         .skip((page - 1) * limit).limit(limit).lean(),
       OperationsWorkflow.countDocuments(filter),
@@ -1427,25 +1445,31 @@ exports.cashInvoices = async (req, res) => {
             _id: null,
             collected: { $sum: { $ifNull: ['$collectedAmount', 0] } },
             value: { $sum: { $ifNull: ['$sellingValue', 0] } },
+            // ما بقي على غير المكتمل — الجزئيُّ بباقيه لا بقيمته كلِّها.
+            remaining: { $sum: cashRemainingExpr },
+            partialCount: { $sum: { $cond: [cashPartialExpr, 1, 0] } },
             // ── والمحصَّلُ بلا تاريخٍ محصَّل ────────────────────────────────
             // دفترُ الكاش يقول عن تسعةٍ وتسعين كشفًا «Collected» ولا تاريخَ
             // لها فيه. فعدُّها غيرَ محصَّلةٍ لأنّ خانةَ التاريخ فارغةٌ يجعل
             // الشاشةَ تطالب بمالٍ وصل.
-            collectedCount: {
-              $sum: {
-                $cond: [
-                  { $or: [{ $ifNull: ['$collectionDate', false] }, { $eq: ['$cashCollectionStatus', 'collected'] }] },
-                  1, 0,
-                ],
-              },
-            },
+            collectedCount: { $sum: { $cond: [cashCollectedExpr, 1, 0] } },
           },
         },
       ]),
+      stateFilter ? OperationsWorkflow.aggregate([
+        { $match: stateFilter },
+        { $group: {
+          _id: null,
+          all: { $sum: 1 },
+          yes: { $sum: { $cond: [cashCollectedExpr, 1, 0] } },
+          partial: { $sum: { $cond: [cashPartialExpr, 1, 0] } },
+        } },
+      ]) : [],
     ]);
 
     const now = Date.now();
-    const t = totals[0] || { collected: 0, collectedCount: 0 };
+    const t = totals[0] || { collected: 0, collectedCount: 0, partialCount: 0, remaining: 0 };
+    const sc = stateAgg[0] || { all: 0, yes: 0, partial: 0 };
     // عددُ مرفقات الصفحة كلِّها في تجميعٍ واحد — لا نداءٌ لكلّ صفّ.
     const [partyIds, attCounts] = await Promise.all([
       partyIdsByName(rows.map((w) => w.username)),
@@ -1467,6 +1491,10 @@ exports.cashInvoices = async (req, res) => {
         // فيرى أصفارًا ولا يعرف بكم يُطالِب.
         value: r2(w.sellingValue),
         collectedAmount: r2(w.collectedAmount),
+        // ── لم يُحصَّل / جزئيّ / محصَّلٌ بالكامل — وما بقي ودفعاتُه ──────────
+        collectionState: cashState(w),
+        remaining: cashRemaining(w),
+        payments: (w.collectionPayments || []).map(paymentView),
         collectionDate: w.collectionDate || null,
         // «محصَّل» في الدفتر وإن لم يُعرف يومُه — تقرؤها الشاشة فتقول ذلك
         // صراحةً بدل «لم يُحصَّل».
@@ -1486,7 +1514,14 @@ exports.cashInvoices = async (req, res) => {
       page,
       limit,
       pages: Math.max(1, Math.ceil(total / limit)),
-      totals: { value: r2(t.value), collected: r2(t.collected), collectedCount: t.collectedCount, pendingCount: total - t.collectedCount },
+      // `pendingCount` ما لم يكتمل (لم يُحصَّل + جزئيّ) — كما كان، فلا تنكسر
+      // شاشةٌ قديمة. و`noneCount` ما لم يُقبَض منه شيء.
+      totals: {
+        value: r2(t.value), collected: r2(t.collected), remaining: r2(t.remaining),
+        collectedCount: t.collectedCount, partialCount: t.partialCount || 0,
+        pendingCount: total - t.collectedCount, noneCount: total - t.collectedCount - (t.partialCount || 0),
+      },
+      ...(stateFilter ? { stateCounts: { all: sc.all, no: sc.all - sc.yes - sc.partial, partial: sc.partial, yes: sc.yes } } : {}),
     });
   } catch (e) {
     res.status(500).json({ message: 'تعذّر تحميل فواتير الكاش', error: e.message });
@@ -1534,7 +1569,15 @@ exports.taxInvoices = async (req, res) => {
     const cf = columnFilters(req.query, 'tax');
     if (cf.length) f.$and = [...(f.$and || []), ...cf];
 
-    const [rows, total, totalsAgg] = await Promise.all([
+    // عدّادُ كلّ حالةٍ تحت الفلاتر الأخرى — راجع الشرحَ نفسَه في cashInvoices.
+    let sf = null;
+    if (!req.allRows) {
+      sf = ledgerInvoiceMatch({ ...req.query, collected: '' });
+      if (cf.length) sf.$and = [...(sf.$and || []), ...cf];
+    }
+    const collectedExpr = { $regexMatch: { input: { $ifNull: ['$status', ''] }, regex: /collected/i } };
+    const partialExpr = { $and: [{ $not: [collectedExpr] }, { $gt: [{ $ifNull: ['$collectedAmount', 0] }, 0] }] };
+    const [rows, total, totalsAgg, stateAgg] = await Promise.all([
       CollectionInvoice.find(f).sort({ invoiceDate: -1, _id: -1 })
         .skip((page - 1) * limit).limit(limit).lean(),
       CollectionInvoice.countDocuments(f),
@@ -1544,9 +1587,21 @@ exports.taxInvoices = async (req, res) => {
           _id: null,
           value: { $sum: '$total' },
           invoices: { $sum: 1 },
-          fullyCollected: { $sum: { $cond: [{ $regexMatch: { input: { $ifNull: ['$status', ''] }, regex: /collected/i } }, 1, 0] } },
+          fullyCollected: { $sum: { $cond: [collectedExpr, 1, 0] } },
+          partial: { $sum: { $cond: [partialExpr, 1, 0] } },
+          // المحصَّلُ: قيمةُ المحصَّلة كلُّها، ومقبوضُ غيرها — والباقي ما سواه.
+          collected: { $sum: { $cond: [collectedExpr, { $ifNull: ['$total', 0] }, { $ifNull: ['$collectedAmount', 0] }] } },
         } },
       ]),
+      sf ? CollectionInvoice.aggregate([
+        { $match: sf },
+        { $group: {
+          _id: null,
+          all: { $sum: 1 },
+          yes: { $sum: { $cond: [collectedExpr, 1, 0] } },
+          partial: { $sum: { $cond: [partialExpr, 1, 0] } },
+        } },
+      ]) : [],
     ]);
 
     // كشوفُ هذه الصفحة وحدَها — لا الدفترِ كلِّه: استعلامٌ صغيرٌ على مئةِ رقم.
@@ -1563,7 +1618,8 @@ exports.taxInvoices = async (req, res) => {
     ]) : [];
     const byNo = new Map(repAgg.map((r) => [r._id, r]));
 
-    const t = totalsAgg[0] || { value: 0, invoices: 0, fullyCollected: 0 };
+    const t = totalsAgg[0] || { value: 0, invoices: 0, fullyCollected: 0, partial: 0, collected: 0 };
+    const sc = stateAgg[0] || { all: 0, yes: 0, partial: 0 };
     const now = Date.now();
     const [partyIds, attCounts] = await Promise.all([
       partyIdsByName(rows.map((r) => r.partyName)),
@@ -1593,6 +1649,12 @@ exports.taxInvoices = async (req, res) => {
           reports: rep?.reports || 0,
           collectedReports: rep?.collectedReports || 0,
           fullyCollected: collected,
+          // ── وما قُبض منها وما بقي ─────────────────────────────────────────
+          // «جزئيّة» حتى يبلغ المقبوضُ قيمتَها — راجع CollectionInvoice.stateOf.
+          collectionState: CollectionInvoice.stateOf(i),
+          collectedAmount: r2(CollectionInvoice.collectedOf(i)),
+          remaining: r2(CollectionInvoice.remainingOf(i)),
+          payments: (i.payments || []).map(paymentView),
           collectionDate: i.collectionDate || null,
           status: i.status || '',
           ageDays: i.invoiceDate ? Math.floor((now - new Date(i.invoiceDate).getTime()) / 86400000) : null,
@@ -1603,7 +1665,13 @@ exports.taxInvoices = async (req, res) => {
       page,
       limit,
       pages: Math.max(1, Math.ceil(total / limit)),
-      totals: { value: r2(t.value), invoices: t.invoices, fullyCollected: t.fullyCollected, pending: t.invoices - t.fullyCollected },
+      // `pending` ما لم يكتمل (لم تُحصَّل + جزئيّة) — كما كان. و`none` ما لم يُقبَض منه شيء.
+      totals: {
+        value: r2(t.value), invoices: t.invoices, fullyCollected: t.fullyCollected,
+        partial: t.partial || 0, pending: t.invoices - t.fullyCollected, none: t.invoices - t.fullyCollected - (t.partial || 0),
+        collected: r2(t.collected), remaining: r2(t.value - t.collected),
+      },
+      ...(sf ? { stateCounts: { all: sc.all, no: sc.all - sc.yes - sc.partial, partial: sc.partial, yes: sc.yes } } : {}),
     });
   } catch (e) {
     res.status(500).json({ message: 'تعذّر تحميل الفواتير الضريبية', error: e.message });
@@ -1784,9 +1852,21 @@ exports.syncLedgerFromWorkflows = syncLedgerFromWorkflows;
  */
 const syncCashLedger = async (filter, { deliveryDate, collectionDate }) => {
   const CollectionInvoice = require('../models/CollectionInvoice');
-  const sheets = await OperationsWorkflow.find(filter).select('reportNumber').lean();
+  const sheets = await OperationsWorkflow.find(filter).select('reportNumber collectedAmount').lean();
   const numbers = sheets.map((w) => String(w.reportNumber || '').trim()).filter(Boolean);
   if (!numbers.length) return 0;
+  // ── والمقبوضُ يتبع الكشفَ مع التاريخ ────────────────────────────────────
+  // الشحنةُ الجزئيّة في الدفتر تُعَدّ في المديونيّة بباقيها، فلا بدّ أن يعرف
+  // الدفترُ ما قُبض منها — وإلّا عدّتها اللوحةُ بقيمتها كاملة.
+  if (collectionDate !== undefined) {
+    const ops = sheets.filter((w) => String(w.reportNumber || '').trim()).map((w) => ({
+      updateMany: {
+        filter: { kind: 'cash', invoiceNumber: String(w.reportNumber).trim() },
+        update: { $set: { collectedAmount: r2(w.collectedAmount) } },
+      },
+    }));
+    if (ops.length) await CollectionInvoice.bulkWrite(ops, { ordered: false });
+  }
   const $set = {};
   if (deliveryDate !== undefined) $set.deliveryDate = deliveryDate;
   if (collectionDate !== undefined) {
@@ -1930,7 +2010,259 @@ exports.updateCashInvoice = async (req, res) => {
   } catch (e) { sendMongooseError(res, e, 'تعذّر الحفظ'); }
 };
 
+/** اسمُ الكاتب كما يُحفَظ مع الدفعة — يبقى ولو تغيّر حسابُه بعدها. */
+const userName = (u) => (u && (u.name || u.fullName || u.username || u.email)) || '';
+
+/** الإبطالُ ثمّ الإعلان — راجع announce-before-invalidate. */
+function afterCollectionWrite() {
+  cache.clear('wf:');
+  cache.clear(CACHE_PREFIX); cache.clear('cdr:');
+  try { require('./collectionsLedgerController').invalidate(); } catch (_) { /* */ }
+  try { emitToAll('workflow:updated', { bulk: true, collection: true }); } catch (_) { /* */ }
+  try { emitToAll('collections:changed', { source: 'collections', field: 'collectedAmount' }); } catch (_) { /* */ }
+}
+
+/** خطأٌ يُردّ للمستخدم برمزه ورسالته. */
+const userError = (status, message) => Object.assign(new Error(message), { status });
+
+/**
+ * يقرأ الهدف: فاتورةٌ ضريبيّةٌ برقمها (من الدفتر) أو كشفٌ نقديٌّ بمعرّفه.
+ * ويردّ ما يحتاجه الحساب بصيغةٍ واحدة: القيمة، والمقبوض، وهل اكتمل، والدفعات.
+ */
+async function loadTarget(body) {
+  const CollectionInvoice = require('../models/CollectionInvoice');
+  const invoiceNumber = String(body.invoiceNumber || '').trim();
+  const id = body.id || (Array.isArray(body.ids) && body.ids.length === 1 ? body.ids[0] : null);
+  if (invoiceNumber) {
+    const inv = await CollectionInvoice.findOne({ kind: 'tax', invoiceNumber });
+    if (!inv) throw userError(404, 'لا فاتورة بهذا الرقم في دفتر التحصيل');
+    return {
+      kind: 'tax', doc: inv, key: invoiceNumber, label: `الفاتورة ${invoiceNumber}`,
+      value: r2(inv.total), collected: r2(inv.collectedAmount), full: CollectionInvoice.isCollected(inv),
+      payments: inv.payments || [],
+    };
+  }
+  if (!id || !mongoose.isValidObjectId(id)) throw userError(400, 'حدِّد فاتورةً واحدةً أو كشفًا واحدًا');
+  const wf = await OperationsWorkflow.findById(id);
+  if (!wf) throw userError(404, 'الكشف غير موجود');
+  return {
+    kind: 'cash', doc: wf, key: String(wf._id), label: `الكشف ${wf.reportNumber || ''}`,
+    value: r2(wf.sellingValue), collected: r2(wf.collectedAmount), full: cashIsCollected(wf),
+    payments: wf.collectionPayments || [],
+  };
+}
+
+/**
+ * يكتب حالةَ الهدف بعد أن تغيّرت دفعاتُه: المقبوضُ، والدفعات، واكتمالُه.
+ *
+ * ── والاكتمالُ يُحسب لا يُختار ─────────────────────────────────────────────
+ * يبلغ المقبوضُ القيمةَ فتصير «محصَّلةً بالكامل» بتاريخ آخر دفعة — في الكشوف
+ * والدفتر معًا كما يكتبهما التحصيلُ الكامل دائمًا. وينزل عنها (دفعةٌ رُفعت أو
+ * صُغِّرت) فتعود جزئيّةً: يُرفع التاريخُ من الوجهين.
+ * `forceFull`: التحصيلُ الكامل لكاشٍ لا قيمةَ معروفةً له — يكتمل بما قُبض.
+ */
+async function settleTarget(tg, { collected, payments, user, forceFull = false, date = null }) {
+  const CollectionInvoice = require('../models/CollectionInvoice');
+  const reaches = tg.value > 0 ? collected >= tg.value - EPS : false;
+  const full = forceFull || reaches;
+  const lastDate = payments.length
+    ? new Date(Math.max(...payments.map((p) => new Date(p.date).getTime())))
+    : null;
+  const when = full ? (date ? new Date(date) : lastDate || new Date()) : null;
+
+  if (tg.kind === 'tax') {
+    await CollectionInvoice.updateOne({ _id: tg.doc._id }, { $set: { collectedAmount: r2(collected), payments } });
+    if (full || tg.full) {
+      // الكشوفُ تحت الفاتورة تتبعها — كما في التحصيل الكامل منذ البداية.
+      await OperationsWorkflow.updateMany({ invoiceNumber: tg.key, ...NOT_CANCELLED },
+        { $set: { collectionDate: when, collectedByWallet: false, lastModifiedBy: user._id } });
+      await syncInvoiceLedger(tg.key, { collectionDate: when });
+    }
+  } else {
+    const $set = {
+      collectedAmount: r2(collected), collectionPayments: payments,
+      collectedByWallet: false, lastModifiedBy: user._id,
+    };
+    if (full) $set.collectionDate = when;
+    else if (tg.full) { $set.collectionDate = null; $set.cashCollectionStatus = ''; }
+    await OperationsWorkflow.updateOne({ _id: tg.doc._id }, { $set });
+    await syncCashLedger({ _id: tg.doc._id }, { collectionDate: full ? when : null });
+  }
+  return {
+    full,
+    state: full ? 'full' : (collected > 0 ? 'partial' : 'none'),
+    collected: r2(collected),
+    remaining: full ? 0 : r2(Math.max(0, tg.value - collected)),
+  };
+}
+
+/**
+ * تحصيلٌ كاملٌ أو جزئيّ — `mode: 'full' | 'partial'`.
+ *
+ *   partial: مبلغٌ أكبرُ من صفرٍ وأصغرُ من الباقي؛ يُضاف دفعةً وتبقى «جزئيّة».
+ *   full:    الباقي كلُّه دفعةً أخيرة، فتكتمل. وإن كانت مكتملةً من قبل فهو
+ *            تعديلُ تاريخها لا دفعةٌ ثانية. والكاشُ الذي لا تُعرَف قيمتُه يكتمل
+ *            بما كتبه المحصِّل (كما كان).
+ * والطلبُ بلا `mode` هو الطلبُ القديم (تطبيقٌ لم يُحدَّث) — يمضي كما كان.
+ */
+async function recordPayment(req, res) {
+  const mode = req.body.mode === 'partial' ? 'partial' : 'full';
+  const { collectionDate } = req.body;
+  const note = String(req.body.note || '').trim();
+  if (!collectionDate) {
+    return res.status(400).json({ message: 'حقول مطلوبة ناقصة: تاريخ التحصيل', fields: { collectionDate: 'مطلوب' } });
+  }
+  const date = new Date(collectionDate);
+  if (Number.isNaN(date.getTime())) return res.status(400).json({ message: 'تاريخ التحصيل غير صالح', fields: { collectionDate: 'غير صالح' } });
+
+  const tg = await loadTarget(req.body);
+  const remaining = r2(tg.value - tg.collected);
+  const payments = tg.payments.map((p) => (p.toObject ? p.toObject() : p));
+  const entry = (amount, m) => ({
+    _id: new mongoose.Types.ObjectId(), amount: r2(amount), date, by: req.user._id, byName: userName(req.user), note, mode: m, at: new Date(),
+  });
+
+  let result;
+  let amount = 0;
+  if (mode === 'partial') {
+    if (tg.full) return res.status(400).json({ message: `${tg.label} محصَّلةٌ بالكامل — لا دفعةَ جزئيّةَ بعد الاكتمال` });
+    if (!(tg.value > 0)) {
+      return res.status(400).json({ message: 'لا قيمةَ مسجَّلةً لهذا الكشف — سجّل التحصيلَ كاملًا بالمبلغ المقبوض', fields: { amount: 'لا قيمة' } });
+    }
+    amount = Number(req.body.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ message: 'اكتب المبلغ المحصَّل رقمًا أكبرَ من صفر', fields: { amount: 'أكبر من صفر' } });
+    }
+    amount = r2(amount);
+    if (amount >= remaining - EPS) {
+      return res.status(400).json({
+        message: `المبلغ الجزئيّ يجب أن يكون أقلَّ من الباقي (${remaining.toLocaleString('en-US')}) — ولتحصيل الباقي كلِّه اختر «تحصيل بالكامل»`,
+        fields: { amount: 'أقل من الباقي' }, remaining,
+      });
+    }
+    payments.push(entry(amount, 'partial'));
+    result = await settleTarget(tg, { collected: r2(tg.collected + amount), payments, user: req.user });
+  } else if (tg.full) {
+    // مكتملةٌ من قبل: تعديلُ يوم التحصيل وحدَه — لا يُقبَض الباقي مرّتين.
+    result = await settleTarget(tg, { collected: tg.collected, payments, user: req.user, forceFull: true, date });
+  } else if (tg.value > 0) {
+    amount = Math.max(0, remaining);
+    if (amount > 0) payments.push(entry(amount, 'full'));
+    result = await settleTarget(tg, { collected: r2(tg.collected + amount), payments, user: req.user, forceFull: true, date });
+  } else {
+    // كاشٌ بلا قيمةٍ معروفة (أو فاتورةٌ بقيمةٍ صفرٍ أو سالبة): يكتمل بما كُتب.
+    amount = Number(req.body.amount ?? req.body.collectedAmount);
+    if (tg.kind === 'cash' && !(Number.isFinite(amount) && amount > 0)) {
+      return res.status(400).json({ message: 'مبلغ التحصيل مطلوب — لا قيمةَ مسجَّلةً لهذا الكشف', fields: { amount: 'مطلوب' } });
+    }
+    amount = Number.isFinite(amount) && amount > 0 ? r2(amount) : 0;
+    if (amount > 0) payments.push(entry(amount, 'full'));
+    result = await settleTarget(tg, { collected: r2(tg.collected + amount), payments, user: req.user, forceFull: true, date });
+  }
+
+  afterCollectionWrite();
+  const details = mode === 'partial'
+    ? `تحصيلٌ جزئيّ على ${tg.label}: ${amount} من ${tg.value} — الباقي ${result.remaining}`
+    : `تحصيلٌ كامل على ${tg.label}${amount ? `: ${amount}` : ''}`;
+  await logAudit({
+    user: req.user._id, action: mode === 'partial' ? 'record_partial_collection' : 'record_collection',
+    entity: tg.kind === 'tax' ? 'CollectionInvoice' : 'OperationsWorkflow', entityId: tg.doc._id,
+    entityKey: tg.kind === 'tax' ? tg.key : tg.doc.reportNumber,
+    changes: {
+      details,
+      before: { collected: tg.collected, full: tg.full },
+      after: { mode, amount, collectionDate, note, collected: result.collected, state: result.state },
+    },
+    ipAddress: req.ip,
+  });
+  return res.json({
+    ...result,
+    message: mode === 'partial'
+      ? `سُجِّلت دفعةٌ جزئيّة ${amount.toLocaleString('en-US')} على ${tg.label} — الباقي ${result.remaining.toLocaleString('en-US')}`
+      : `سُجِّل تحصيلُ ${tg.label} بالكامل`,
+  });
+}
+
+/**
+ * تعديلُ دفعةٍ أو رفعُها — PUT /invoices/payments   POST /invoices/payments/remove
+ * { invoiceNumber | id, paymentId, amount?, date?, note?, reason? }
+ *
+ * الدفعةُ تُسجَّل خطأً كما يُسجَّل التحصيلُ كلُّه: مبلغٌ زائد، أو يومٌ آخر، أو
+ * شيكٌ رُدّ. فتُصحَّح وحدَها بلا رفعِ ما سواها، ويُعاد حسابُ الحالة: ينزل
+ * المجموعُ عن القيمة فتعود جزئيّة، ويبلغها فتكتمل. وبابُها بابُ «لم تُحصَّل».
+ */
+async function changePayment(req, res, remove) {
+  const tg = await loadTarget(req.body);
+  const pid = String(req.body.paymentId || '');
+  const payments = tg.payments.map((p) => (p.toObject ? p.toObject() : p));
+  const idx = payments.findIndex((p) => String(p._id) === pid);
+  if (idx < 0) return res.status(404).json({ message: 'الدفعة غير موجودة — ربّما رُفعت من شاشةٍ أخرى' });
+  const before = { ...payments[idx] };
+  const reason = String(req.body.reason || '').trim();
+  let collected = tg.collected;
+
+  if (remove) {
+    payments.splice(idx, 1);
+    collected = r2(collected - (Number(before.amount) || 0));
+  } else {
+    const p = payments[idx];
+    if (req.body.amount !== undefined) {
+      const a = Number(req.body.amount);
+      if (!Number.isFinite(a) || a <= 0) return res.status(400).json({ message: 'اكتب المبلغ رقمًا أكبرَ من صفر', fields: { amount: 'أكبر من صفر' } });
+      collected = r2(collected - (Number(p.amount) || 0) + a);
+      // لا يُقبَض أكثرُ من القيمة: الزائدُ خطأٌ في الكتابة لا تحصيل.
+      if (tg.value > 0 && collected > tg.value + EPS) {
+        return res.status(400).json({ message: `المجموع بعد التعديل (${collected.toLocaleString('en-US')}) يتجاوز القيمة (${tg.value.toLocaleString('en-US')})`, fields: { amount: 'يتجاوز القيمة' } });
+      }
+      p.amount = r2(a);
+    }
+    if (req.body.date) {
+      const d = new Date(req.body.date);
+      if (Number.isNaN(d.getTime())) return res.status(400).json({ message: 'التاريخ غير صالح', fields: { date: 'غير صالح' } });
+      p.date = d;
+    }
+    if (req.body.note !== undefined) p.note = String(req.body.note || '').trim();
+  }
+  if (collected < 0) collected = 0;
+
+  // مكتملةٌ بلا قيمةٍ معروفة تبقى مكتملةً ما بقي فيها مقبوض.
+  const keepFull = tg.full && !(tg.value > 0) && collected > 0;
+  const result = await settleTarget(tg, { collected, payments, user: req.user, forceFull: keepFull });
+  afterCollectionWrite();
+  await logAudit({
+    user: req.user._id, action: remove ? 'remove_collection_payment' : 'update_collection_payment',
+    entity: tg.kind === 'tax' ? 'CollectionInvoice' : 'OperationsWorkflow', entityId: tg.doc._id,
+    entityKey: tg.kind === 'tax' ? tg.key : tg.doc.reportNumber,
+    changes: {
+      details: `${remove ? 'رفعُ' : 'تعديلُ'} دفعةٍ على ${tg.label}${reason ? ` — ${reason}` : ''}`,
+      before: { payment: before, collected: tg.collected, full: tg.full },
+      after: { payment: remove ? null : payments[idx], collected: result.collected, state: result.state, reason },
+    },
+    ipAddress: req.ip,
+  });
+  return res.json({ ...result, message: remove ? `رُفعت الدفعة عن ${tg.label}` : `عُدِّلت الدفعة على ${tg.label}` });
+}
+
+exports.updatePayment = async (req, res) => {
+  try { await changePayment(req, res, false); } catch (e) {
+    if (e.status) return res.status(e.status).json({ message: e.message });
+    sendMongooseError(res, e, 'تعذّر تعديل الدفعة');
+  }
+};
+exports.removePayment = async (req, res) => {
+  try { await changePayment(req, res, true); } catch (e) {
+    if (e.status) return res.status(e.status).json({ message: e.message });
+    sendMongooseError(res, e, 'تعذّر رفع الدفعة');
+  }
+};
+
 exports.recordCollection = async (req, res) => {
+  if (req.body && (req.body.mode === 'full' || req.body.mode === 'partial')) {
+    try { return await recordPayment(req, res); } catch (e) {
+      if (e.status) return res.status(e.status).json({ message: e.message });
+      return sendMongooseError(res, e, 'تعذّر تسجيل التحصيل');
+    }
+  }
   try {
     const { collectionDate, collectedAmount } = req.body;
     if (!collectionDate) {
@@ -1998,15 +2330,18 @@ exports.undoCollection = async (req, res) => {
     if (!invoiceNumber && !ids.length) return res.status(400).json({ message: 'حدِّد فاتورةً أو كشوفًا' });
     const filter = invoiceNumber ? { invoiceNumber, ...NOT_CANCELLED } : { _id: { $in: ids } };
 
-    const before = await OperationsWorkflow.find(filter).select('reportNumber collectionDate collectedAmount').lean();
+    const before = await OperationsWorkflow.find(filter).select('reportNumber collectionDate collectedAmount collectionPayments').lean();
     const CollectionInvoice = require('../models/CollectionInvoice');
     const ledgerBefore = invoiceNumber
-      ? await CollectionInvoice.findOne({ invoiceNumber, kind: 'tax' }).select('status collectionDate').lean() : null;
+      ? await CollectionInvoice.findOne({ invoiceNumber, kind: 'tax' }).select('status collectionDate collectedAmount payments').lean() : null;
     const wasCollected = before.some((w) => w.collectionDate || Number(w.collectedAmount) > 0)
-      || (ledgerBefore && (ledgerBefore.collectionDate || /collected/i.test(String(ledgerBefore.status || ''))));
+      || (ledgerBefore && (ledgerBefore.collectionDate || Number(ledgerBefore.collectedAmount) > 0
+        || /collected/i.test(String(ledgerBefore.status || ''))));
     if (!wasCollected) return res.status(400).json({ message: 'ليست مسجَّلةً محصَّلةً أصلًا — لا شيءَ يُرجَع عنه' });
 
-    const r = await OperationsWorkflow.updateMany(filter, { $set: { collectionDate: null, collectedAmount: 0, collectedByWallet: false, lastModifiedBy: req.user._id } });
+    // والدفعاتُ كلُّها معه: «لم تُحصَّل» تعني لا مقبوضَ فيها — لا جزئيّةً بقيت.
+    const r = await OperationsWorkflow.updateMany(filter, { $set: { collectionDate: null, collectedAmount: 0, collectionPayments: [], collectedByWallet: false, lastModifiedBy: req.user._id } });
+    if (invoiceNumber) await CollectionInvoice.updateOne({ invoiceNumber, kind: 'tax' }, { $set: { collectedAmount: 0, payments: [] } });
     await syncInvoiceLedger(invoiceNumber, { collectionDate: null });
     if (!invoiceNumber) await syncCashLedger(filter, { collectionDate: null });
     cache.clear('wf:');
@@ -2018,7 +2353,7 @@ exports.undoCollection = async (req, res) => {
       entityId: ids.length === 1 ? ids[0] : null, entityKey: invoiceNumber || undefined,
       changes: {
         details: `رجوعٌ عن تحصيل ${invoiceNumber ? `الفاتورة ${invoiceNumber}` : `${before.length} كشفًا`} — ${reason}`,
-        before: before.map((w) => ({ reportNumber: w.reportNumber, collectionDate: w.collectionDate, collectedAmount: w.collectedAmount })),
+        before: before.map((w) => ({ reportNumber: w.reportNumber, collectionDate: w.collectionDate, collectedAmount: w.collectedAmount, payments: w.collectionPayments || [] })),
         ledgerBefore, reason,
       },
       ipAddress: req.ip,

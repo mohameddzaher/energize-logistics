@@ -75,12 +75,15 @@ function columnsOf(kind, t) {
       C('ageDays', 'العمر (يوم)', 'Age (days)', { local: true, end: true, w: 6 }),
       C('value', 'القيمة', 'Amount', { local: true, end: true, money: true, w: 10 }),
       C('collectedAmount', 'المبلغ المسدَّد', 'Paid amount', { local: true, end: true, money: true, w: 10 }),
+      // والمتبقّي بجانب المسدَّد: الجزئيُّ يُطالَب بباقيه لا بقيمته.
+      C('remaining', 'المتبقّي', 'Balance', { local: true, end: true, money: true, w: 10 }),
       C('deliveryDate', 'تاريخ الاستلام', 'Received on', { cf: 'deliveryDate', fmt: dt, w: 9 }),
       C('collectionDetail', 'التفاصيل', 'Detail', { cf: 'collectionDetail', w: 8, internal: true }),
       C('collectionDate', 'تاريخ السداد', 'Paid on', {
         cf: 'collectionDate', w: 10,
-        fmt: (v, r) => (v ? dt(v) : r.collectedNoDate ? t('مسدَّد', 'Paid') : t('غير مسدَّد', 'Unpaid')),
-        color: (r) => (r.collectionDate || r.collectedNoDate ? '#047857' : '#dc2626'),
+        fmt: (v, r) => (v ? dt(v) : r.collectedNoDate ? t('مسدَّد', 'Paid')
+          : r.collectionState === 'partial' ? t('مسدَّد جزئيًّا', 'Part-paid') : t('غير مسدَّد', 'Unpaid')),
+        color: (r) => (r.collectionDate || r.collectedNoDate ? '#047857' : r.collectionState === 'partial' ? '#b45309' : '#dc2626'),
       }),
     ]
     : [
@@ -89,13 +92,17 @@ function columnsOf(kind, t) {
       C('partyCode', 'كود الحساب', 'Account code', { cf: 'partyCode', w: 9, party: true }),
       C('reports', 'عدد الكشوف', 'Waybills', { local: true, end: true, w: 7 }),
       C('value', 'قيمة الفاتورة', 'Invoice amount', { local: true, end: true, money: true, w: 12 }),
+      // المسدَّدُ والمتبقّي — الفاتورةُ الجزئيّة تُطالَب بباقيها.
+      C('collectedAmount', 'المسدَّد', 'Paid', { local: true, end: true, money: true, w: 10 }),
+      C('remaining', 'المتبقّي', 'Balance', { local: true, end: true, money: true, w: 10 }),
       C('invoiceDate', 'تاريخ الفاتورة', 'Invoice date', { cf: 'invoiceDate', fmt: dt, w: 10 }),
       C('deliveryDate', 'تاريخ الاستلام', 'Received on', { cf: 'deliveryDate', fmt: dt, w: 10 }),
       C('ageDays', 'العمر (يوم)', 'Age (days)', { local: true, end: true, w: 7 }),
       C('collectionDate', 'تاريخ السداد', 'Paid on', {
         cf: 'collectionDate', w: 10,
-        fmt: (v, r) => (r.fullyCollected ? (dt(v) || t('مسدَّدة', 'Paid')) : t('غير مسدَّدة', 'Unpaid')),
-        color: (r) => (r.fullyCollected ? '#047857' : '#dc2626'),
+        fmt: (v, r) => (r.fullyCollected ? (dt(v) || t('مسدَّدة', 'Paid'))
+          : r.collectionState === 'partial' ? t('مسدَّدة جزئيًّا', 'Part-paid') : t('غير مسدَّدة', 'Unpaid')),
+        color: (r) => (r.fullyCollected ? '#047857' : r.collectionState === 'partial' ? '#b45309' : '#dc2626'),
       }),
       C('status', 'الحالة', 'Status', { cf: 'status', w: 10, internal: true }),
     ];
@@ -166,12 +173,14 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
     const tt = data.totals || {};
     cards = isCash
       ? { count: data.total || 0, value: tt.value, collected: tt.collected, collectedCount: tt.collectedCount, pendingCount: tt.pendingCount }
-      : { count: data.total || 0, value: tt.value, fullyCollected: tt.fullyCollected, pending: tt.pending };
+      : { count: data.total || 0, value: tt.value, collected: tt.collected, fullyCollected: tt.fullyCollected, pending: tt.pending, partial: tt.partial || 0 };
+    if (isCash) cards.partial = tt.partialCount || 0;
   } else {
     const done = rows.filter(isCollected).length;
     cards = isCash
       ? { count: rows.length, value: sum(rows, 'value'), collected: sum(rows, 'collectedAmount'), collectedCount: done, pendingCount: rows.length - done }
-      : { count: rows.length, value: sum(rows, 'value'), fullyCollected: done, pending: rows.length - done };
+      : { count: rows.length, value: sum(rows, 'value'), collected: sum(rows, 'collectedAmount'), fullyCollected: done, pending: rows.length - done };
+    cards.partial = rows.filter((r) => r.collectionState === 'partial').length;
   }
 
   // ── الرصيد وأعمارُ المفتوح ───────────────────────────────────────────────
@@ -180,12 +189,13 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
   // فيلتقي المجموعان على قيمة البطاقة بالهللة.
   const fullSet = !truncatedAtCap || narrowed;
   const open = rows.filter((r) => !isCollected(r));
-  const openValue = sum(open, 'value');
+  // والمفتوحُ بباقيه: الجزئيّةُ تُطالَب بما لم يُسدَّد منها — لا بقيمتها كلِّها.
+  const openValue = sum(open, 'remaining');
   const bands = Object.keys(ctrl.AGE_BANDS).map((k) => ({ k, n: 0, v: 0 }));
   for (const r of open) {
     if (r.ageDays == null) continue;
     const b = bands.find((x) => x.k === bandOf(r.ageDays));
-    b.n += 1; b.v += Number(r.value) || 0;
+    b.n += 1; b.v += Number(r.remaining) || 0;
   }
 
   // ── الأعمدةُ المختارة على الشاشة — بلا ما يخصّنا ─────────────────────────
@@ -233,7 +243,10 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
     ...(fullSet ? [
       { label: t('المسدَّد', 'Paid'), value: money2(r2((cards.value || 0) - openValue)) },
       { label: t('الرصيد المستحقّ', 'Balance due'), value: money2(openValue), accent: true,
-        sub: pendingCount ? t(`${isCash ? 'كشوف' : 'فواتير'} غير مسدَّدة: ${count(pendingCount)}`, `${count(pendingCount)} unpaid`) : t('لا مستحقّات', 'Nothing due') },
+        sub: pendingCount
+          ? t(`${isCash ? 'كشوف' : 'فواتير'} غير مسدَّدة: ${count(pendingCount)}${cards.partial ? ` (منها ${count(cards.partial)} مسدَّدة جزئيًّا)` : ''}`,
+            `${count(pendingCount)} unpaid${cards.partial ? ` (${count(cards.partial)} part-paid)` : ''}`)
+          : t('لا مستحقّات', 'Nothing due') },
     ] : []),
   ];
 
@@ -253,7 +266,8 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
     // لا مجموعُ قيمٍ مقرَّبةٍ صفًّا صفًّا قد يفترق عنه بهللة.
     if (c.money) {
       if (fullSet && c.key === 'value') return money2(cards.value);
-      if (fullSet && c.key === 'collectedAmount') return money2(cards.collected);
+      if (fullSet && c.key === 'collectedAmount' && isCash) return money2(cards.collected);
+      if (fullSet && c.key === 'remaining') return money2(openValue);
       return money2(sum(rows, c.key));
     }
     if (i === 0) return t(`الإجمالي (${count(fullSet ? cards.count : rows.length)})`, `Total (${count(fullSet ? cards.count : rows.length)})`);

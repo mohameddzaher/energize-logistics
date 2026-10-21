@@ -81,6 +81,9 @@ class ResourceConfig {
   final Future<bool?> Function(BuildContext)? onCreate;
   /// اسم حقل (من نوع select) تُبنى منه شرائح التصفية أعلى القائمة (الكل + كل خيار بعدّاده).
   final String? filterField;
+  /// خياراتُ شرائح التصفية حين لا يكون `filterField` حقلًا في النموذج — حقلٌ
+  /// يحسبه الخادم (مثلُ حالة التحصيل) فلا يُعرَض في ورقة التحرير.
+  final List<(String, String, String)>? filterOptions;
   /// حقول يُتاح الفرز بها إضافةً للاسم (name, ar, en) — (fieldName, arLabel, enLabel).
   final List<(String, String, String)> sortFields;
   /// إجراءات سريعة لكل صف (قائمة ثلاث نقاط): تبديل/حذف/تغيير حالة دون فتح النموذج.
@@ -121,7 +124,7 @@ class ResourceConfig {
     required this.searchFields, required this.fields, required this.titleOf,
     this.subtitleOf, this.chipsOf,
     this.canCreate = true, this.canEdit = true, this.canDelete = true,
-    this.onOpen, this.onCreate, this.filterField, this.sortFields = const [], this.rowActions,
+    this.onOpen, this.onCreate, this.filterField, this.filterOptions, this.sortFields = const [], this.rowActions,
     this.serverSearch = false, this.editFullKey, this.hijriDates = false, this.searchHint,
   });
 
@@ -201,6 +204,9 @@ class _ResourceScreenState extends State<ResourceScreen> {
   // FieldSpec الخاص بحقل التصفية (إن وُجد وكان من نوع select).
   FieldSpec? get _filterSpec {
     if (cfg.filterField == null) return null;
+    if (cfg.filterOptions != null) {
+      return FieldSpec(cfg.filterField!, '', '', type: FieldType.select, options: cfg.filterOptions);
+    }
     for (final f in cfg.fields) {
       if (f.name == cfg.filterField && f.type == FieldType.select) return f;
     }

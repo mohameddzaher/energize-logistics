@@ -185,7 +185,8 @@ async function agingByParty(partyIds) {
         { case: { $gte: ['$_days', 15] }, then: '30-' },
       ], default: '15-' } },
     } },
-    { $group: { _id: { p: '$party', b: '$_band', k: '$kind' }, sum: { $sum: '$total' }, n: { $sum: 1 } } },
+    // المفتوحُ بباقيه — الجزئيّةُ لا تُعَدّ بقيمتها كلِّها (CollectionInvoice.remainingExpr).
+    { $group: { _id: { p: '$party', b: '$_band', k: '$kind' }, sum: { $sum: CollectionInvoice.remainingExpr }, n: { $sum: 1 } } },
   ]);
 
   const out = new Map();
@@ -761,10 +762,10 @@ exports.performance = async (req, res) => {
       ]),
       CollectionInvoice.aggregate([
         { $match: { ...OPEN, party: { $in: ids } } },
-        { $group: { _id: '$party', n: { $sum: 1 }, amount: { $sum: '$total' },
+        { $group: { _id: '$party', n: { $sum: 1 }, amount: { $sum: CollectionInvoice.remainingExpr },
           // ولا يُقاس الاستحقاقُ بتاريخ التسليم وحدَه: فاتورةٌ لم تُسلَّم بعدُ لها
           // تاريخُ إصدارٍ على أيّ حال، وإسقاطُها تُخفي دَينًا قائمًا.
-          overdue: { $push: { d: { $ifNull: ['$deliveryDate', '$invoiceDate'] }, t: '$total' } } } },
+          overdue: { $push: { d: { $ifNull: ['$deliveryDate', '$invoiceDate'] }, t: CollectionInvoice.remainingExpr } } } },
       ]),
     ]);
 

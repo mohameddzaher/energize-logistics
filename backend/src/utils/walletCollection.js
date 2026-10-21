@@ -50,7 +50,7 @@ const variantsOf = (rn) => {
   return [...new Set([t, bare, t.toUpperCase(), t.toLowerCase(), bare.toUpperCase(), bare.toLowerCase()].filter(Boolean))];
 };
 
-const WF_FIELDS = 'reportNumber paymentType collectionDate collectedAmount cashCollectionStatus collectedByWallet invoiceNumber';
+const WF_FIELDS = 'reportNumber paymentType collectionDate collectedAmount cashCollectionStatus collectedByWallet invoiceNumber sellingValue';
 
 /** الكشفُ بهذا الرقم — بالفهرس أوّلًا، ثمّ بالتعبير (رقمٌ كُتب بمسافة). */
 async function findWorkflow(rn) {
@@ -102,13 +102,22 @@ function plan(wf, wallet) {
   if (wallet && wallet.date && wf.paymentType === 'cash') {
     if (handCollected(wf)) return { action: 'hand' };
     const date = new Date(wallet.date); // كما يكتبه recordCollection — راجع الترويسة
-    const same = owned && wf.collectionDate
-      && new Date(wf.collectionDate).getTime() === date.getTime()
+    // ── والقيدُ الأصغرُ من قيمة الكشف تحصيلٌ جزئيّ ───────────────────────────
+    // المندوبُ قبض بعضَ المال: يُكتب المبلغُ ولا يُكتب تاريخُ التحصيل، فيظهر
+    // الكشفُ «جزئيًّا» بباقيه — والتاريخُ يُكتب حين يبلغ المجموعُ القيمة (قيدٌ
+    // ثانٍ). والكشفُ الذي لا قيمةَ معروفةً له يكتمل بما قُبض، كما كان.
+    const value = Number(wf.sellingValue) || 0;
+    const partial = value > 0 && wallet.amount < value - 0.005;
+    const wantDate = partial ? null : date;
+    const sameDate = wantDate
+      ? !!wf.collectionDate && new Date(wf.collectionDate).getTime() === wantDate.getTime()
+      : !wf.collectionDate;
+    const same = owned && sameDate
       && Math.abs((Number(wf.collectedAmount) || 0) - wallet.amount) < 0.01;
     if (same) return { action: 'none' };
     return {
-      action: owned ? 'update' : 'collect',
-      set: { collectionDate: date, collectedAmount: wallet.amount, collectedByWallet: true },
+      action: partial ? 'partial' : (owned ? 'update' : 'collect'),
+      set: { collectionDate: wantDate, collectedAmount: wallet.amount, collectedByWallet: true },
     };
   }
   // لا قيدَ بقي، أو لم يعد الكشفُ نقديًّا: يُرفع ما كتبته المحفظة وحدَه.
@@ -117,7 +126,7 @@ function plan(wf, wallet) {
   return { action: 'none' };
 }
 
-const AR = { collect: 'تحصيلٌ من المحفظة', update: 'تحديثُ تحصيل المحفظة', undo: 'رفعُ تحصيل المحفظة' };
+const AR = { collect: 'تحصيلٌ من المحفظة', update: 'تحديثُ تحصيل المحفظة', partial: 'تحصيلٌ جزئيّ من المحفظة', undo: 'رفعُ تحصيل المحفظة' };
 const ymd = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '—');
 
 /**

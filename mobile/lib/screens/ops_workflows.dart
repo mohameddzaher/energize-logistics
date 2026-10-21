@@ -283,7 +283,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
         String line(Map r) {
           switch (kind) {
             case 'gaps':
-              return '${r['invoiceNumber']}${(r['noteAr'] ?? '').toString().isNotEmpty ? ' — ${tr(r['noteAr'].toString(), r['note'].toString())}' : ''}${(r['ledgerParty'] ?? '').toString().isNotEmpty ? ' · ${r['ledgerParty']}' : ''}';
+              return '${r['invoiceNumber']}';
             case 'missing-reports':
               return '${tr('فاتورة', 'Invoice')} ${r['invoiceNumber']} — ${tr('كشف', 'report')} ${r['reportNumber']}${(r['customerName'] ?? '').toString().isNotEmpty ? ' · ${r['customerName']}' : ''}';
             case 'value-diffs':

@@ -80,18 +80,17 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
 
   if (!sum) return null;
   const g = sum.gaps;
-  const gapNote = [
-    g.reserved ? t(`${g.reserved} محجوز`, `${g.reserved} reserved`) : '',
-    g.cancelled ? t(`${g.cancelled} ملغاة`, `${g.cancelled} cancelled`) : '',
-    g.inLedger ? t(`${g.inLedger} في دفتر التحصيل`, `${g.inLedger} in ledger`) : '',
-  ].filter(Boolean).join(' · ');
+  // ── الأرقامُ الناقصةُ وحدَها ───────────────────────────────────────────────
+  // كانت القائمةُ تكتب بجانب الرقم عميلًا وقيمةً من دفتر التحصيل — فقرأها صاحبُ
+  // الشركة بياناتٍ مخترَعة (٢٠٢٦/١٠/٢١). والمطلوبُ هو الأرقامُ التي لا كشفَ عليها
+  // في سير عمل التشغيل بين أوّل فاتورةٍ وأحدثِها، يبحث هو عنها.
 
   const cards: { k: Kind; n: number; title: string; sub: string; icon: any; tone: string }[] = [
     {
       k: 'gaps', n: g.count, icon: Hash, tone: 'violet',
       title: t('فواتير لم تُفوتَر', 'Missing invoice numbers'),
       sub: g.start != null
-        ? `${t('من', 'from')} ${g.start} ${t('إلى', 'to')} ${g.end}${gapNote ? ` · ${t('منها', 'of which')} ${gapNote}` : ''}`
+        ? `${t('أرقامٌ بلا كشف بين', 'numbers with no report between')} ${g.start} ${t('و', 'and')} ${g.end}`
         : t('لا أرقام فواتير بعد', 'No invoice numbers yet'),
     },
     {
@@ -118,11 +117,7 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
   // ── أعمدةُ كلّ قائمة — للجدول وللإكسل معًا ──────────────────────────────
   const COLS: Record<Kind, { key: string; ar: string; en: string; kind?: 'money' | 'date' }[]> = {
     gaps: [
-      { key: 'invoiceNumber', ar: 'رقم الفاتورة', en: 'Invoice #' },
-      { key: 'noteAr', ar: 'ما يعرفه دفتر التحصيل', en: 'Ledger note' },
-      { key: 'ledgerParty', ar: 'العميل (في الدفتر/الورقة)', en: 'Customer (ledger/sheet)' },
-      { key: 'ledgerTotal', ar: 'القيمة (في الدفتر/الورقة)', en: 'Value (ledger/sheet)', kind: 'money' },
-      { key: 'ledgerDate', ar: 'تاريخ الفاتورة (الدفتر)', en: 'Invoice date (ledger)', kind: 'date' },
+      { key: 'invoiceNumber', ar: 'رقم الفاتورة الناقص', en: 'Missing invoice #' },
     ],
     'missing-reports': [
       { key: 'invoiceNumber', ar: 'رقم الفاتورة', en: 'Invoice #' },

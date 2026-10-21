@@ -50,6 +50,8 @@ export default function HrQuickFilters({ optionsUrl, optionsParams, value, onCha
   const t = (a: string, e: string) => (ar ? a : e);
   const [defs, setDefs] = useState<Record<string, Opt[]>>({});
   const [open, setOpen] = useState('');
+  // القائمةُ تُفتح نحو المكان المتّسع — وإلّا خرجت قائمةُ آخر فلترٍ عن الشاشة.
+  const [alignEnd, setAlignEnd] = useState(false);
   const [q, setQ] = useState('');
   const box = useRef<HTMLDivElement>(null);
 
@@ -95,7 +97,15 @@ export default function HrQuickFilters({ optionsUrl, optionsParams, value, onCha
         };
         return (
           <div key={k.key} className="relative">
-            <button type="button" onClick={() => { setOpen(open === k.key ? '' : k.key); setQ(''); }}
+            <button type="button" onClick={(e) => {
+              if (open !== k.key) {
+                const r = e.currentTarget.getBoundingClientRect();
+                const rtl = getComputedStyle(e.currentTarget).direction === 'rtl';
+                const W = Math.min(288, window.innerWidth - 32);
+                setAlignEnd(rtl ? r.right - W < 8 : r.left + W > window.innerWidth - 8);
+              }
+              setOpen(open === k.key ? '' : k.key); setQ('');
+            }}
               className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-[13px] font-semibold transition shadow-sm
                 ${on ? 'border-[#f37121] bg-[#f37121] text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-[#f37121]/60'}`}>
               <span className={on ? 'text-white/80' : 'text-slate-500'}>{t(k.ar, k.en)}</span>
@@ -105,7 +115,7 @@ export default function HrQuickFilters({ optionsUrl, optionsParams, value, onCha
                 : <ChevronDown className="h-3.5 w-3.5 opacity-60" />}
             </button>
             {open === k.key && (
-              <div className="absolute z-40 mt-1.5 w-72 max-w-[calc(100vw-32px)] rounded-xl border border-slate-200 bg-white p-2 shadow-xl start-0">
+              <div className={`absolute z-40 mt-1.5 w-72 max-w-[calc(100vw-32px)] rounded-xl border border-slate-200 bg-white p-2 shadow-xl ${alignEnd ? 'end-0' : 'start-0'}`}>
                 <div className="relative mb-1.5">
                   <Search className="pointer-events-none absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('ابحث…', 'Search…')}

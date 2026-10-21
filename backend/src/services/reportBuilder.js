@@ -28,19 +28,10 @@ const getLetterheadPdf = () => (letterheadBytes ||= fs.readFileSync(LETTERHEAD_P
 // A4 in PostScript points, which is what pdf-lib measures in.
 const A4_PT = { w: 595.276, h: 841.89 };
 
-// One shared headless browser for the whole process (same instance the waybill
-// generator uses — launching per request is what makes puppeteer feel heavy).
-let browserPromise = null;
-async function getBrowser() {
-  const puppeteer = require('puppeteer');
-  if (!browserPromise) {
-    browserPromise = puppeteer.launch({
-      headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=none'],
-    }).catch((e) => { browserPromise = null; throw e; });
-  }
-  return browserPromise;
-}
+// The shared headless browser (and the fonts embedded in every page) live in
+// utils/pdfBrowser — it relaunches Chromium if it died, instead of handing every
+// later request a dead browser ("Connection closed").
+const { withPage, getFontCss } = require('../utils/pdfBrowser');
 
 /**
  * Page geometry, measured off `assets/reports/letterhead.png` — its printed
@@ -243,8 +234,8 @@ function documentHtml({ blocks, rtl, title, footerNote }) {
 <head>
 <meta charset="UTF-8" />
 <title>${esc(title || '')}</title>
-<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet" />
 <style>
+${getFontCss()}
   /* Measured off letterhead.png: its printed header ends at 30.7mm and its
      printed footer starts at 268.2mm. Content lives strictly between, and the
      page-number strip sits in the 257–268mm gap ABOVE the printed footer. */
@@ -377,9 +368,7 @@ async function renderReportPdf(doc) {
   ];
   const html = documentHtml({ blocks, rtl, title: doc.title, footerNote: doc.footerNote });
 
-  const browser = await getBrowser();
-  const page = await browser.newPage();
-  try {
+  return withPage(async (page) => {
     // The webfont comes from a CDN. Waiting for network-idle would let a blocked
     // or slow CDN stall a report indefinitely, so the font wait is BOUNDED: four
     // seconds, then print with whatever is loaded. A report in a fallback font
@@ -412,9 +401,7 @@ async function renderReportPdf(doc) {
       omitBackground: true,
     }));
     return stampLetterhead(content);
-  } finally {
-    await page.close();
-  }
+  });
 }
 
 // ── Small helpers every report source shares ────────────────────────────────

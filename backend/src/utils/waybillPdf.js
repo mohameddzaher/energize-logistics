@@ -42,34 +42,7 @@ const getStampDataUri = () => (stampDataUri ||= `data:image/png;base64,${fs.read
  *
  * والمجموعتان المحمَّلتان هما العربيّةُ واللاتينيّة — لا الرياضيّاتُ ولا الرموز.
  */
-const FONTS_DIR = path.join(__dirname, '..', 'assets', 'fonts');
-const FONT_FACES = [
-  ['Tajawal', 400, ['tajawal-400-arabic.woff2', 'tajawal-400-latin.woff2']],
-  ['Tajawal', 700, ['tajawal-700-arabic.woff2', 'tajawal-700-latin.woff2']],
-  ['Tajawal', 800, ['tajawal-800-arabic.woff2', 'tajawal-800-latin.woff2']],
-  ['Noto Naskh Arabic', 400, ['noto-naskh-arabic-400-arabic.woff2', 'noto-naskh-arabic-400-latin.woff2']],
-  ['Noto Naskh Arabic', 600, ['noto-naskh-arabic-600-arabic.woff2', 'noto-naskh-arabic-600-latin.woff2']],
-];
-
-let fontCss = null;
-function getFontCss() {
-  if (fontCss !== null) return fontCss;
-  const out = [];
-  for (const [family, weight, files] of FONT_FACES) {
-    for (const file of files) {
-      try {
-        const b64 = fs.readFileSync(path.join(FONTS_DIR, file)).toString('base64');
-        out.push(`@font-face{font-family:'${family}';font-style:normal;font-weight:${weight};`
-          + `font-display:block;src:url(data:font/woff2;base64,${b64}) format('woff2');}`);
-      } catch (e) {
-        // ملفُّ خطٍّ مفقود لا يمنع البوليصة: تُرسَم بخطّ النظام وتُقرأ.
-        console.error('[waybill] font missing:', file);
-      }
-    }
-  }
-  fontCss = out.join('\n');
-  return fontCss;
-}
+const { withPage, getFontCss } = require('./pdfBrowser');
 
 /**
  * أرقامُ التواصل المطبوعةُ في البوليصة.
@@ -269,20 +242,6 @@ ${getFontCss()}
 </html>`;
 }
 
-// One shared headless browser for the whole process — launching per request is
-// what makes puppeteer feel heavy.
-let browserPromise = null;
-async function getBrowser() {
-  const puppeteer = require('puppeteer');
-  if (!browserPromise) {
-    browserPromise = puppeteer.launch({
-      headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=none'],
-    }).catch((e) => { browserPromise = null; throw e; });
-  }
-  return browserPromise;
-}
-
 // Map a FleetShipment doc → the DispatchSheetRow the template expects (same
 // mapping as the web's toSheetRow).
 function rowFromShipment(s) {
@@ -302,9 +261,7 @@ function rowFromShipment(s) {
 }
 
 async function renderWaybillPdf(row) {
-  const browser = await getBrowser();
-  const page = await browser.newPage();
-  try {
+  return withPage(async (page) => {
     // 210mm × 297mm at 96dpi = 794 × 1123, ×1.5 device scale — matches the web's html2canvas scale.
     await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1.5 });
     // لا مواردَ خارجيّةً في الصفحة (الخطوطُ والختمُ مضمَّنان)، فانتظارُ سكون
@@ -330,9 +287,7 @@ async function renderWaybillPdf(row) {
     // وهي مضغوطةٌ أصلًا)، ويكلّف مئةً وعشرين مِلّي ثانيةٍ من انتظار المستخدم
     // على معالج الخادم. فالكفّةُ واضحة.
     return Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
-  } finally {
-    await page.close();
-  }
+  });
 }
 
 /**

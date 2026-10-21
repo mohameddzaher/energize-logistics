@@ -479,7 +479,13 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     const fileName = `${isCash ? 'cash' : 'tax'}-invoices-statement.pdf`;
     try {
       // الطلبُ يبدأ والنافذةُ تُفتح في الضغطة نفسِها — راجع utils/pdfActions.
-      const load = api.getBlob(statementPath());
+      // ولا انتظارَ بلا نهاية: بعد مئة ثانيةٍ رسالةٌ واضحة بدلَ زرٍّ يدور أبدًا.
+      const load = Promise.race([
+        api.getBlob(statementPath()),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error(t(
+          'استغرق إعداد الكشف وقتًا أطول من المعتاد — ضيّق الفلتر (عميل أو فترة) وأعد المحاولة، أو استخدم تصدير Excel.',
+          'The statement took too long — narrow the filter (customer or period) and try again, or use the Excel export.'))), 100000)),
+      ]);
       await (mode === 'print' ? printPdf(load, fileName, ar) : openPdf(load, fileName, ar));
     } catch (e: any) {
       notify(e?.message || t('تعذّر إصدار كشف الحساب', 'Could not issue the statement'), 'error');
@@ -523,13 +529,13 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
             ? t('كشف حساب PDF للصفوف المحدَّدة — بالأعمدة المختارة', 'Statement PDF of the selected rows — chosen columns')
             : t('كشف حساب PDF لنتيجة الفلتر كاملةً (كل الصفحات) مع البطاقات — بالأعمدة المختارة', 'Statement PDF of the whole filtered result (every page) with the cards — chosen columns')}>
           {stBusy === 'open' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-          {t('كشف حساب PDF', 'Statement PDF')}
+          {stBusy === 'open' ? t('جارٍ إعداد الكشف…', 'Preparing…') : t('كشف حساب PDF', 'Statement PDF')}
         </button>
         <button type="button" onClick={() => statement('print')} disabled={!!stBusy}
           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 text-sm font-semibold disabled:opacity-60"
           title={t('طباعة كشف الحساب على الطابعة مباشرة', 'Print the statement straight to the printer')}>
           {stBusy === 'print' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
-          {t('طباعة', 'Print')}
+          {stBusy === 'print' ? t('جارٍ الإعداد للطباعة…', 'Preparing…') : t('طباعة', 'Print')}
         </button>
         <ExportMenu
           fileName={`collections-${kind}-invoices`}

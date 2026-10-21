@@ -21,7 +21,10 @@
 const ctrl = require('../controllers/collectionsDeptController');
 
 /** أقصى ما يُطبَع صفوفًا في الكشف — والإجماليّاتُ تبقى للنتيجة كلِّها. */
-const PRINT_ROW_CAP = 5000;
+// ألفا صفٍّ ≈ ستّون صفحة. كان الحدُّ خمسةَ آلاف: كشفٌ من مئةٍ وستٍّ وخمسين
+// صفحةً يستغرق نصفَ دقيقةٍ على الخادم، ويُجمّد المتصفّحَ عند الطباعة. والإجماليّاتُ
+// تشمل الكلَّ دائمًا، ومن أراد الصفوفَ كلَّها فعنده تصديرُ Excel.
+const PRINT_ROW_CAP = 2000;
 
 const TZ = 'Asia/Riyadh';
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -295,8 +298,8 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
   );
   if (rows.length > printed.length) {
     blocks.push({ kind: 'note', text: t(
-      `يعرض الجدول أوّل ${count(printed.length)} من ${count(rows.length)} — والإجماليّات تشمل الكلّ.`,
-      `The table lists the first ${count(printed.length)} of ${count(rows.length)} — totals include all.`) });
+      `يعرض الجدول أوّل ${count(printed.length)} من ${count(rows.length)} — والإجماليّات تشمل الكلّ. وللقائمة كاملةً استخدم تصدير Excel.`,
+      `The table lists the first ${count(printed.length)} of ${count(rows.length)} — totals include all. Use the Excel export for the full list.`) });
   }
 
   // ── خاتمةٌ للعميل لا توقيعاتُ مراجعةٍ داخليّة ───────────────────────────

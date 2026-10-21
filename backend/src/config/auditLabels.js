@@ -80,6 +80,7 @@ const ACTION_AR = {
   bulk_update: 'تعديل جماعي',
   bulk_import_workflows: 'استيراد عمليات تشغيل',
   record_collection: 'تسجيل تحصيل',
+  wallet_cash_collection: 'تحصيل من المحفظة',
   record_delivery: 'تسجيل تسليم',
   set_collection_detail: 'تعديل تفاصيل تحصيل',
   apply_collections_book: 'مطابقة دفتر التحصيل',

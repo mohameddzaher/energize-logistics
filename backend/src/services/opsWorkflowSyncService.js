@@ -338,6 +338,10 @@ async function upsertShipments(ships) {
   // المزامنة تُدخل حالاتٍ وفروعًا جديدة، وقوائم قيم الفلتر مخزَّنة مؤقّتًا؛ فبغير
   // إبطالها يفلتر المستخدم على قائمةٍ تسبق آخر مزامنة فلا يرى الكشوف الجديدة.
   if (created || updated || removed) { try { cache.clear('wf:'); } catch (e) {} }
+  // ── والمزامنةُ تعيد اشتقاقَ نوع الدفع ─────────────────────────────────────
+  // كشفٌ صار نقديًّا وعليه تحصيلٌ في المحفظة يُحصَّل، وكشفٌ كفّ عن النقد يُرفع
+  // عنه ما كتبته المحفظة. مرّةً بعد أن تهدأ الدورات — راجع utils/walletCollection.
+  if (updated || created) { try { require('../utils/walletCollection').scheduleResync(); } catch (e) {} }
   return { created, updated, removed };
 }
 

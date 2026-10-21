@@ -163,6 +163,14 @@ const operationsWorkflowSchema = new mongoose.Schema(
     // «محصَّل — بلا تاريخ»، وهو الصدق: حُصِّل، ومتى؟ لا يُعرف بعد.
     cashCollectionStatus: { type: String, enum: ['', 'collected'], default: '' },                          // تاريخ التحصيل
 
+    // ── وتحصيلٌ كتبته المحفظة ────────────────────────────────────────────────
+    // مندوبٌ سجّل «تحصيلًا» في المحفظة برقم هذا الكشف والكشفُ نقديّ: فالتاريخُ
+    // والمبلغُ أعلاه منه، ويتبعانه إن عُدِّل القيدُ أو حُذف. والعلمُ هو ما يفرّق
+    // ذلك عن تحصيلٍ سجّله القسمُ بيده — ذاك لا تكتب المحفظةُ فوقه ولا ترفعه.
+    // و`false` (لا الغياب) يعني أنّ القسمَ كتب فيه بيده — سجّل أو عدّل أو رفع —
+    // فلا تعود المحفظةُ إليه. راجع utils/walletCollection.
+    collectedByWallet: { type: Boolean },
+
     // ── ومن أين وصل المال ────────────────────────────────────────────────────
     // الكشفُ النقديُّ يُحصَّل بأكثرَ من طريق: يقبضه الفرعُ من العميل، أو يُقبض
     // نقدًا عند التسليم، أو يذهب المحصِّلُ إلى العميل فيأخذه. والفرقُ ليس وصفًا:
@@ -231,6 +239,8 @@ operationsWorkflowSchema.index({ paymentType: 1, paymentDate: -1 });
 operationsWorkflowSchema.index({ paymentType: 1, collectionDate: 1, cashCollectionStatus: 1 });
 // والبحثُ بالاسم يبدأ من الاسم: صفحاتُ التحصيل تُجمّع الكشوفَ بصاحبها.
 operationsWorkflowSchema.index({ username: 1, paymentType: 1 });
+// ما كتبته المحفظةُ يُسأل عنه في كلّ مطابقة — وهو قليلٌ من ثلاثين ألفًا.
+operationsWorkflowSchema.index({ collectedByWallet: 1 }, { partialFilterExpression: { collectedByWallet: true } });
 operationsWorkflowSchema.index({ invoiceNumber: 1, invoiceDate: -1 });
 
 operationsWorkflowSchema.index(

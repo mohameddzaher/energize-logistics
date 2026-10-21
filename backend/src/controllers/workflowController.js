@@ -1560,6 +1560,13 @@ exports.updateWorkflow = async (req, res) => {
     const before = workflow.toObject();
     const hadCollectionDate = !!workflow.collectionDate;
     Object.assign(workflow, filteredBody);
+    // ── تحصيلٌ كُتب بيدٍ هنا هو تحصيلُ يد ────────────────────────────────────
+    // مَن غيّر تاريخَ التحصيل أو مبلغَه من هذه الشاشة أخذ الكشفَ من المحفظة:
+    // لا تعود فتكتب فوقه ولا ترفعه. راجع utils/walletCollection.
+    if (['collectionDate', 'collectedAmount'].some((k) => filteredBody[k] !== undefined
+      && String(before[k] ?? '') !== String(workflow[k] ?? ''))) {
+      workflow.collectedByWallet = false;
+    }
     await workflow.save();
     // رقمُ فاتورةٍ كُتب الآن يصنع قيدَه، فتصل الشاشةَ الضريبيّة فورًا.
     if (LEDGER_FIELDS.some((k) => filteredBody[k] !== undefined)) await ensureLedgerInvoice(workflow, before.invoiceNumber);
@@ -1578,6 +1585,16 @@ exports.updateWorkflow = async (req, res) => {
         await require('./collectionsDeptController').syncLedgerFromWorkflows(workflow, changed)
           .catch((e) => console.error('ledger sync (workflow update):', e.message));
       }
+    }
+
+    // ── وتحصيلُ المحفظة يتبع نوعَ الكشف ─────────────────────────────────────
+    // صار نقديًّا وعليه قيدُ تحصيلٍ في المحفظة فيُحصَّل، وكفّ عن النقد فيُرفع ما
+    // كتبته المحفظة. وكذلك إن تغيّر رقمُه. راجع utils/walletCollection.
+    if (String(before.paymentType || '') !== String(workflow.paymentType || '')
+      || String(before.reportNumber || '') !== String(workflow.reportNumber || '')) {
+      await require('../utils/walletCollection')
+        .syncWalletCollection([workflow.reportNumber, before.reportNumber], { user: req.user, reason: 'تغيّر نوع الكشف' })
+        .catch((e) => console.error('wallet cash-collection (workflow update):', e.message));
     }
 
     // ── وتاريخُ التحصيل لا يُنشئ دفعةً في مكانٍ آخر ──────────────────────
@@ -2041,7 +2058,11 @@ exports.bulkUpdate = async (req, res) => {
         skipped.push({ reportNumber: r.reportNumber, reason: 'كشف نقديّ — لا فاتورة له' });
         continue;
       }
-      perRow.push({ _id: r._id, patch: own.patch });
+      // تاريخُ التحصيل أو مبلغُه كُتب بيدٍ في الدفعة — الكشفُ لم يعد للمحفظة.
+      if (['collectionDate', 'collectedAmount'].some((k) => Object.prototype.hasOwnProperty.call(own.patch, k))) {
+        own.patch.collectedByWallet = false;
+      }
+      perRow.push({ _id: r._id, patch: own.patch, reportNumber: r.reportNumber, typeBefore: r.paymentType || '' });
     }
 
     let updated = 0;
@@ -2082,6 +2103,15 @@ exports.bulkUpdate = async (req, res) => {
           const fresh = await OperationsWorkflow.find({ _id: { $in: touched } }).select('invoiceNumber collectionDate deliveryDate').lean();
           await require('./collectionsDeptController').syncLedgerFromWorkflows(fresh, changed)
             .catch((e) => console.error('ledger sync (workflow bulk):', e.message));
+        }
+      }
+      // ونوعُ الدفع تغيّر جماعةً: تحصيلُ المحفظة يُعاد النظرُ فيه لتلك الكشوف.
+      {
+        const retyped = perRow.filter((t) => Object.prototype.hasOwnProperty.call(t.patch, 'paymentType')
+          && String(t.patch.paymentType || '') !== t.typeBefore).map((t) => t.reportNumber);
+        if (retyped.length) {
+          await require('../utils/walletCollection').syncWalletCollection(retyped, { user: req.user, reason: 'تغيّر نوع الكشف' })
+            .catch((e) => console.error('wallet cash-collection (workflow bulk):', e.message));
         }
       }
       try { emitToAll('workflow:bulkImported', { bulkUpdate: true, updated }); } catch (e) {}

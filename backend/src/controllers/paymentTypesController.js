@@ -138,6 +138,9 @@ exports.update = async (req, res) => {
     }).catch(() => {});
     cache.clear('wf:'); cache.clear('wfparty:');
     cache.clear('colledger:');
+    // نوعُ الكشوف تغيّر: تحصيلُ المحفظة يتبعه (قبل البثّ — راجع utils/walletCollection).
+    await require('../utils/walletCollection').resyncAllWalletCollections({ user: req.user, reason: 'تغيّر نوع الدفع' })
+      .catch((e) => console.error('wallet cash-collection (payment types):', e.message));
     try { require('../websocket/socketManager').emitToAll('workflow:updated', { bulk: true, paymentType: true }); } catch (_) {}
 
     res.json({ party: { _id: party._id, name: party.name, paymentType: party.paymentType }, ...applied });
@@ -253,6 +256,9 @@ exports.unifyCustomer = async (req, res) => {
       entityKey: party.name, changes: { after: { paymentType: type, changed } }, ipAddress: req.ip,
     }).catch(() => {});
     cache.clear('wf:'); cache.clear('wfparty:'); cache.clear('colledger:');
+    // نوعُ الكشوف تغيّر: تحصيلُ المحفظة يتبعه (قبل البثّ — راجع utils/walletCollection).
+    await require('../utils/walletCollection').resyncAllWalletCollections({ user: req.user, reason: 'تغيّر نوع الدفع' })
+      .catch((e) => console.error('wallet cash-collection (payment types):', e.message));
     try { require('../websocket/socketManager').emitToAll('workflow:updated', { bulk: true, paymentType: true }); } catch (_) {}
 
     res.json({ changed, type, message: `وُحِّد ${changed} كشفًا على «${type === 'cash' ? 'كاش' : 'ضريبي'}»` });
@@ -310,6 +316,9 @@ exports.applyAll = async (req, res) => {
       changes: { after: { changed, onlyEmpty, moves } }, ipAddress: req.ip,
     }).catch(() => {});
     cache.clear('wf:'); cache.clear('wfparty:'); cache.clear('colledger:');
+    // نوعُ الكشوف تغيّر: تحصيلُ المحفظة يتبعه (قبل البثّ — راجع utils/walletCollection).
+    await require('../utils/walletCollection').resyncAllWalletCollections({ user: req.user, reason: 'تغيّر نوع الدفع' })
+      .catch((e) => console.error('wallet cash-collection (payment types):', e.message));
     try { require('../websocket/socketManager').emitToAll('workflow:updated', { bulk: true, paymentType: true }); } catch (_) {}
     res.json({ changed, skippedManual, skippedUnified, unknown, moves });
   } catch (e) {

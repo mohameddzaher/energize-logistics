@@ -643,6 +643,15 @@ exports.addTransaction = async (req, res) => {
       }
     }
 
+    // ── والتحصيلُ على كشفٍ نقديٍّ يُحصِّله ──────────────────────────────────
+    // مَن قبض المالَ وسجّله هنا قد حصّل الكشف: يظهر «محصَّلًا» في فواتير الكاش
+    // بتاريخ القيد ومبلغه. وغيرُ النقديّ لا يُمَسّ. راجع utils/walletCollection.
+    if (type === 'collection' && deliveryStatementNumber) {
+      try {
+        await require('../utils/walletCollection').syncWalletCollection(deliveryStatementNumber, { user: req.user, reason: 'قيد تحصيل في المحفظة' });
+      } catch (e) { console.error('wallet→cash collection (create):', e.message); }
+    }
+
     // Update vendor total if expense paid to vendor
     if (type === 'expense' && vendor) {
       const vendorDoc = await Vendor.findById(vendor);
@@ -786,6 +795,13 @@ exports.deleteTransaction = async (req, res) => {
 
     await WalletTransaction.findByIdAndDelete(req.params.id);
 
+    // حُذف التحصيلُ فيُرفع عن الكشف — إلّا أن يبقى له قيدٌ آخر فيُعاد مجموعُه.
+    if (transaction.type === 'collection' && transaction.deliveryStatementNumber) {
+      try {
+        await require('../utils/walletCollection').syncWalletCollection(transaction.deliveryStatementNumber, { user: req.user, reason: 'حذف قيد المحفظة' });
+      } catch (e) { console.error('wallet→cash collection (delete):', e.message); }
+    }
+
     // حُذف الشراءُ فلا سدادَ على الكشف — إلّا مبلغًا كُتب بيدٍ غيرَ مبلغه.
     if (transaction.type === 'purchase' && transaction.purchaseDeliveryStatementNumber) {
       try {
@@ -910,6 +926,13 @@ exports.moveTransaction = async (req, res) => {
       .filter(Boolean).join(' · ').slice(0, 1000);
     await transaction.save();
 
+    // والتاريخُ تاريخُ التحصيل على الكشف النقديّ — يتبع القيدَ إلى يومه الجديد.
+    if (transaction.type === 'collection' && transaction.deliveryStatementNumber && !sameDate) {
+      try {
+        await require('../utils/walletCollection').syncWalletCollection(transaction.deliveryStatementNumber, { user: req.user, reason: 'نقل قيد المحفظة' });
+      } catch (e) { console.error('wallet→cash collection (move):', e.message); }
+    }
+
     // ── واليوميّتان تُعاد حسابُهما، بالأقدم أوّلًا ──────────────────────────
     // الحسابُ لطرفٍ واحدٍ يترك الآخرَ بمجموعٍ لا يطابق حركاتِه — وهو عطبٌ
     // صامتٌ لا يُكتشَف إلّا عند جردِ النقد.
@@ -977,6 +1000,7 @@ exports.updateTransaction = async (req, res) => {
     // ما كان على القيد قبل التعديل — يُصحَّح به كشفُه القديم إن نُقل إلى غيره.
     const priorSheetNumber = transaction.purchaseDeliveryStatementNumber;
     const priorAmount = transaction.amount;
+    const priorCollectionSheet = transaction.type === 'collection' ? transaction.deliveryStatementNumber : null;
 
     const wallet = await DailyWallet.findById(transaction.wallet);
     if (!(await maySettle(req.user))) return denySettle(res, 'edit');
@@ -1082,6 +1106,18 @@ exports.updateTransaction = async (req, res) => {
     transaction.flagReason = transaction.isFlagged ? riskFlags.join('; ') : undefined;
 
     await transaction.save();
+
+    // ── وتحصيلُ الكشف النقديّ يتبع القيد ────────────────────────────────────
+    // عُدِّل المبلغ أو رقمُ الكشف: يتبعه الكشف، ويُرفع عن القديم إن نُقل عنه.
+    // راجع utils/walletCollection.
+    if (transaction.type === 'collection' || priorCollectionSheet) {
+      try {
+        await require('../utils/walletCollection').syncWalletCollection(
+          [transaction.type === 'collection' ? transaction.deliveryStatementNumber : null, priorCollectionSheet],
+          { user: req.user, reason: 'تعديل قيد المحفظة' },
+        );
+      } catch (e) { console.error('wallet→cash collection (update):', e.message); }
+    }
 
     // ── ومبلغُ السداد على الكشف يتبع المحفظة ──────────────────────────────
     // عُدِّل المبلغ فيتبعه الكشف، ونُقل القيدُ إلى كشفٍ آخر فيُمسح عن القديم
@@ -1781,6 +1817,10 @@ exports.resetAllWallets = async (req, res) => {
 
     // Wipe transactions and wallets
     const txResult = await WalletTransaction.deleteMany({});
+    // والتصفيرُ يرفع كلَّ تحصيلٍ كتبته المحفظةُ على الكشوف — لا قيدَ بقي يسنده.
+    try {
+      await require('../utils/walletCollection').resyncAllWalletCollections({ user: req.user, reason: 'تصفير المحافظ' });
+    } catch (e) { console.error('wallet→cash collection (reset):', e.message); }
     const walletResult = await DailyWallet.deleteMany({});
 
     await logAudit({

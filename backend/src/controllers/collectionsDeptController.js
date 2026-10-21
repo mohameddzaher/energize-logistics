@@ -1380,7 +1380,7 @@ exports.cashInvoices = async (req, res) => {
 
     const [rows, total, totals] = await Promise.all([
       OperationsWorkflow.find(filter)
-        .select('reportNumber reportDate username payingBranch paymentDate collectedAmount collectionDate cashCollectionStatus collectionDetail deliveryDate branch fromLocation toLocation sellingValue')
+        .select('reportNumber reportDate username payingBranch paymentDate collectedAmount collectionDate cashCollectionStatus collectedByWallet collectionDetail deliveryDate branch fromLocation toLocation sellingValue')
         .sort({ paymentDate: -1, _id: -1 })
         .skip((page - 1) * limit).limit(limit).lean(),
       OperationsWorkflow.countDocuments(filter),
@@ -1431,6 +1431,8 @@ exports.cashInvoices = async (req, res) => {
         // «محصَّل» في الدفتر وإن لم يُعرف يومُه — تقرؤها الشاشة فتقول ذلك
         // صراحةً بدل «لم يُحصَّل».
         collectedNoDate: !w.collectionDate && w.cashCollectionStatus === 'collected',
+        // حصّلته المحفظة (قيدُ تحصيلٍ برقم الكشف) لا يدُ القسم — راجع utils/walletCollection.
+        collectedByWallet: !!w.collectedByWallet,
         // ── والنقديُّ يُسلَّم للعميل كالضريبيّ ──────────────────────────────
         // الفاتورةُ النقديّة تُحمَل إلى العميل ويُوقَّع عليها كغيرها، ومن يومئذٍ
         // يُطالَب. فكان زرُّ التسليم في صفحة الضريبيّ وحدَها، فيبقى نصفُ العمل
@@ -1856,6 +1858,8 @@ exports.updateCashInvoice = async (req, res) => {
     if (has('collectionDate')) $set.collectionDate = req.body.collectionDate ? new Date(req.body.collectionDate) : null;
     if (has('deliveryDate')) $set.deliveryDate = req.body.deliveryDate ? new Date(req.body.deliveryDate) : null;
     if (has('collectionDetail')) $set.collectionDetail = String(req.body.collectionDetail || '').trim();
+    // ما كتبه المحصِّلُ بيده صار تحصيلَه، لا تحصيلَ المحفظة — فلا تعود فتكتب فوقه.
+    if (has('collectionDate') || has('collectedAmount')) $set.collectedByWallet = false;
 
     await OperationsWorkflow.updateOne({ _id: wf._id }, { $set });
     // والفاتورةُ في الدفتر تُحدَّث معه — الوجهان لا يتحرّك أحدُهما وحدَه.
@@ -1898,7 +1902,8 @@ exports.recordCollection = async (req, res) => {
       ? { invoiceNumber, ...NOT_CANCELLED }
       : { _id: { $in: ids } };
 
-    const $set = { collectionDate: new Date(collectionDate), lastModifiedBy: req.user._id };
+    // `collectedByWallet: false` — التحصيلُ الآن تحصيلُ القسم، والمحفظةُ لا تمسّه بعدها.
+    const $set = { collectionDate: new Date(collectionDate), collectedByWallet: false, lastModifiedBy: req.user._id };
     // المبلغُ للكاش: الفاتورةُ الضريبيّة قيمتُها مكتوبةٌ فيها، والنقديُّ يقبضه
     // المحصِّل فيكتب ما قبض.
     if (collectedAmount !== undefined && collectedAmount !== '') $set.collectedAmount = Number(collectedAmount) || 0;
@@ -1956,7 +1961,7 @@ exports.undoCollection = async (req, res) => {
       || (ledgerBefore && (ledgerBefore.collectionDate || /collected/i.test(String(ledgerBefore.status || ''))));
     if (!wasCollected) return res.status(400).json({ message: 'ليست مسجَّلةً محصَّلةً أصلًا — لا شيءَ يُرجَع عنه' });
 
-    const r = await OperationsWorkflow.updateMany(filter, { $set: { collectionDate: null, collectedAmount: 0, lastModifiedBy: req.user._id } });
+    const r = await OperationsWorkflow.updateMany(filter, { $set: { collectionDate: null, collectedAmount: 0, collectedByWallet: false, lastModifiedBy: req.user._id } });
     await syncInvoiceLedger(invoiceNumber, { collectionDate: null });
     if (!invoiceNumber) await syncCashLedger(filter, { collectionDate: null });
     cache.clear('wf:');

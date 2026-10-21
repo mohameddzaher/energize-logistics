@@ -1632,6 +1632,8 @@
     },
     "/system/b2c/settings": {
       "apis": [
+        "/api/b2c/reps",
+        "/api/light-transport/employees",
         "/api/light-transport/housing",
         "/api/lookups/types"
       ],

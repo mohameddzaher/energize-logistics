@@ -42,9 +42,16 @@ ok "بُنيت الواجهة"
 say "Upload"
 # ما يلزم للتشغيل فقط: الناتج، والعامّ، ووصفُ الحزم، والإعدادات.
 # و`node_modules` لا تُرفَع — تُثبَّت هناك (أسرعُ وأسلم من نسخ عشرات الآلاف من الملفّات).
+# ── وملفّاتُ `static` القديمةُ تبقى ─────────────────────────────────────────
+# كان `--delete` يمحوها فورَ الرفع، والخادمُ القديمُ ما زال يعمل ويوزّع صفحاتٍ
+# تطلبها — فمن فتح صفحةً في دقائق النشر رأى «Loading chunk … failed»
+# (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). وأسماؤها بصماتُ محتواها، فالقديمُ لا يصطدم
+# بالجديد: يُرفَع الجديدُ فوقها بلا حذف، ويُحذف بعد التشغيل ما مضى عليه أسبوع.
 rsync -az --delete -e "ssh -i $VPS_KEY -o ConnectTimeout=20" \
-  --exclude 'cache' \
+  --exclude 'cache' --exclude 'static' \
   "$HERE/frontend/.next/" "$VPS_HOST:$REMOTE/.next/"
+rsync -az -e "ssh -i $VPS_KEY -o ConnectTimeout=20" \
+  "$HERE/frontend/.next/static/" "$VPS_HOST:$REMOTE/.next/static/"
 rsync -az --delete -e "ssh -i $VPS_KEY -o ConnectTimeout=20" \
   "$HERE/frontend/public/" "$VPS_HOST:$REMOTE/public/"
 rsync -az -e "ssh -i $VPS_KEY -o ConnectTimeout=20" \
@@ -79,6 +86,9 @@ else
   pm2 start "npx next start -p $PORT" --name energize-web --cwd "$REMOTE" >/dev/null
 fi
 pm2 save >/dev/null 2>&1 || true
+# ما بقي من نشراتٍ سابقة أكثرَ من أسبوع — لا يطلبه أحدٌ بعد.
+find "$REMOTE/.next/static" -type f -mtime +7 -delete 2>/dev/null || true
+find "$REMOTE/.next/static" -type d -empty -delete 2>/dev/null || true
 sleep 3
 pm2 describe energize-web | grep -E "status|restarts" | head -2
 REMOTE_SCRIPT

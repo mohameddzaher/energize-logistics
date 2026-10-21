@@ -568,6 +568,7 @@
     "/system/fleet/drivers": {
       "apis": [
         "/api/fleet/drivers",
+        "/api/fleet/drivers/hr-candidates",
         "/api/fleet/vehicles"
       ],
       "wildcard": false

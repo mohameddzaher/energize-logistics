@@ -1466,18 +1466,21 @@ exports.expiring = async (req, res) => {
     // (فلترُ النظرة الشاملة المحمول في الرابط) يذهب إلى الاستعلام كما كان.
     const facetWant = Object.fromEntries(EXPIRY_FACETS.map((k) => [k, multi(req.query[k])]));
     const engWant = String(req.query.engagement || '');
+    // «يعمل / لا يعمل» — و«لا يعمل» هو إنهاءُ الخدمة كما في كلّ القسم (صاحبُ الشركة، ٢٠٢٦/١٠/٢١).
+    const workWant = ['working', 'notWorking'].includes(req.query.workState) ? req.query.workState : '';
     const needle = String(req.query.q || '').trim().toLowerCase();
     const baseQuery = { ...req.query };
-    for (const k of [...EXPIRY_FACETS, 'engagement', 'q']) delete baseQuery[k];
+    for (const k of [...EXPIRY_FACETS, 'engagement', 'workState', 'q']) delete baseQuery[k];
 
     // النطاقُ نفسُه الذي عُدَّ به رقمُ الشريط — راجع EXPIRY_SCOPE.
     const scope = expiryScopeOf(req.query);
     const employees = await findEmployees({ ...baseQuery, ...scope },
       [...new Set(['employeeNumber', 'arabicName', 'firstName', 'lastName', 'iqamaNumber', 'nationalId', 'idType',
         'department', 'branchName', 'project', 'nationality', 'registerNumber', 'fieldStatus', 'isFreelancer',
-        'employmentType', ...DATE_FILTERABLE,
+        'employmentType', 'employmentStatus', ...DATE_FILTERABLE,
         ...H.DOCUMENT_GROUPS.map((g) => g.expiryField)])].join(' '));
 
+    const workOf = (e) => (e.employmentStatus === 'terminated' ? 'notWorking' : 'working');
     const blankKey = (v) => (String(v ?? '').trim() || '—');
     const engOf = (e) => { try { return ENG.engagementOf(e) || 'none'; } catch (_) { return 'none'; } };
     const passes = (e, skip) => {
@@ -1486,6 +1489,7 @@ exports.expiring = async (req, res) => {
         if (!facetWant[k].includes(blankKey(e[k]))) return false;
       }
       if (skip !== 'engagement' && engWant && engOf(e) !== engWant) return false;
+      if (skip !== 'workState' && workWant && workOf(e) !== workWant) return false;
       if (needle) {
         const hay = `${e.arabicName || ''} ${e.firstName || ''} ${e.lastName || ''} ${e.employeeNumber || ''} ${H.valueOf(e, 'iqamaNumber') || ''}`.toLowerCase();
         if (!hay.includes(needle)) return false;
@@ -1526,11 +1530,11 @@ exports.expiring = async (req, res) => {
 
     // قوائمُ الفلاتر: لكلّ قيمةٍ عددُ مستنداتها (المستندُ والحالةُ المختاران محسوبان).
     const options = {};
-    for (const k of [...EXPIRY_FACETS, 'engagement']) {
+    for (const k of [...EXPIRY_FACETS, 'engagement', 'workState']) {
       const counts = new Map();
       for (const x of all) {
         if (!docOk(x.g) || !stateOk(x.st.state) || !passes(x.e, k)) continue;
-        const v = k === 'engagement' ? engOf(x.e) : blankKey(x.e[k]);
+        const v = k === 'engagement' ? engOf(x.e) : k === 'workState' ? workOf(x.e) : blankKey(x.e[k]);
         counts.set(v, (counts.get(v) || 0) + 1);
       }
       options[k] = [...counts.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'ar'))

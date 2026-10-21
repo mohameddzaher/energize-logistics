@@ -29,7 +29,10 @@ const FACETS: { key: string; ar: string; en: string }[] = [
   { key: 'project', ar: 'المشروع', en: 'Project' },
   { key: 'nationality', ar: 'الجنسية', en: 'Nationality' },
   { key: 'branchName', ar: 'الفرع', en: 'Branch' },
+  // «لا يعمل» = أُنهيت خدمتُه ولم يُؤرشَف بعد (المؤرشَفُ خارج الصفحة أصلًا).
+  { key: 'workState', ar: 'حالة العمل', en: 'Work status' },
 ];
+const WORK_LABEL: Record<string, [string, string]> = { working: ['يعمل', 'Working'], notWorking: ['لا يعمل', 'Not working'] };
 const ENGAGEMENT_LABEL: Record<string, [string, string]> = {
   sponsored: ['على الكفالة', 'Sponsored'], freelance: ['فري لانسر', 'Freelance'], trainee: ['متدرّب', 'Trainee'], none: ['غير محدّد', 'Not set'],
 };
@@ -164,11 +167,11 @@ function ExpiringInner() {
             return (
               <select key={fc.key} value={cur} onChange={(e) => setFacet(fc.key, e.target.value)}
                 className={`rounded-lg border px-2.5 py-2 text-sm bg-white max-w-[13rem] ${cur ? 'border-[#f37121] text-slate-900 font-semibold' : 'border-slate-200 text-slate-700'}`}>
-                <option value="">{t(`كل ${fc.ar === 'السجل' ? 'السجلات' : fc.ar}`, `All — ${fc.en}`)}</option>
+                <option value="">{fc.key === 'workState' ? t('يعمل ولا يعمل', 'All — work status') : t(`كل ${fc.ar === 'السجل' ? 'السجلات' : fc.ar}`, `All — ${fc.en}`)}</option>
                 {cur && !opts.some((o) => o.value === cur) && <option value={cur}>{cur}</option>}
                 {opts.map((o) => (
                   <option key={o.value} value={o.value}>
-                    {fc.key === 'engagement' ? (ENGAGEMENT_LABEL[o.value]?.[ar ? 0 : 1] || o.value) : (o.value === '—' ? t('(فارغ)', '(blank)') : o.value)} ({o.count})
+                    {fc.key === 'engagement' ? (ENGAGEMENT_LABEL[o.value]?.[ar ? 0 : 1] || o.value) : fc.key === 'workState' ? (WORK_LABEL[o.value]?.[ar ? 0 : 1] || o.value) : (o.value === '—' ? t('(فارغ)', '(blank)') : o.value)} ({o.count})
                   </option>
                 ))}
               </select>

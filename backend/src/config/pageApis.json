@@ -749,11 +749,13 @@
     },
     "/system/vehicles/registry": {
       "apis": [
+        "/api/light-transport/people",
         "/api/lookups/types",
         "/api/vehicle-registry",
         "/api/vehicle-registry/claims",
         "/api/vehicle-registry/documents",
         "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/people",
         "/api/vehicle-registry/person-lookup",
         "/api/vehicle-registry/renew-bulk",
         "/api/vehicle-registry/renew-shared"
@@ -792,9 +794,11 @@
     },
     "/system/vehicles/registry/insurance/vehicles": {
       "apis": [
+        "/api/light-transport/people",
         "/api/lookups/types",
         "/api/vehicle-registry",
         "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/people",
         "/api/vehicle-registry/person-lookup",
         "/api/vehicle-registry/renew-bulk",
         "/api/vehicle-registry/renew-shared"
@@ -803,9 +807,11 @@
     },
     "/system/vehicles/registry/operating-cards": {
       "apis": [
+        "/api/light-transport/people",
         "/api/lookups/types",
         "/api/vehicle-registry",
         "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/people",
         "/api/vehicle-registry/person-lookup",
         "/api/vehicle-registry/renew-bulk",
         "/api/vehicle-registry/renew-shared"
@@ -823,21 +829,24 @@
     },
     "/system/vehicles/registry/authorizations": {
       "apis": [
+        "/api/light-transport/people",
         "/api/lookups/types",
         "/api/vehicle-registry",
         "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/people",
         "/api/vehicle-registry/person-lookup",
         "/api/vehicle-registry/renew-bulk",
-        "/api/vehicle-registry/renew-shared",
-        "/api/vehicles/employees"
+        "/api/vehicle-registry/renew-shared"
       ],
       "wildcard": false
     },
     "/system/vehicles/registry/fuel-cards": {
       "apis": [
+        "/api/light-transport/people",
         "/api/lookups/types",
         "/api/vehicle-registry",
         "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/people",
         "/api/vehicle-registry/person-lookup",
         "/api/vehicle-registry/renew-bulk",
         "/api/vehicle-registry/renew-shared"
@@ -846,9 +855,11 @@
     },
     "/system/vehicles/registry/gps": {
       "apis": [
+        "/api/light-transport/people",
         "/api/lookups/types",
         "/api/vehicle-registry",
         "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/people",
         "/api/vehicle-registry/person-lookup",
         "/api/vehicle-registry/renew-bulk",
         "/api/vehicle-registry/renew-shared"
@@ -857,9 +868,11 @@
     },
     "/system/vehicles/registry/licenses": {
       "apis": [
+        "/api/light-transport/people",
         "/api/lookups/types",
         "/api/vehicle-registry",
         "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/people",
         "/api/vehicle-registry/person-lookup",
         "/api/vehicle-registry/renew-bulk",
         "/api/vehicle-registry/renew-shared"
@@ -868,9 +881,11 @@
     },
     "/system/vehicles/registry/inspection": {
       "apis": [
+        "/api/light-transport/people",
         "/api/lookups/types",
         "/api/vehicle-registry",
         "/api/vehicle-registry/filters",
+        "/api/vehicle-registry/people",
         "/api/vehicle-registry/person-lookup",
         "/api/vehicle-registry/renew-bulk",
         "/api/vehicle-registry/renew-shared"
@@ -1587,8 +1602,10 @@
     },
     "/system/b2c/user-rentals": {
       "apis": [
+        "/api/light-transport/people",
         "/api/light-transport/user-rentals",
-        "/api/lookups/types"
+        "/api/lookups/types",
+        "/api/vehicle-registry/people"
       ],
       "wildcard": false
     },
@@ -1624,8 +1641,10 @@
     },
     "/system/b2c/vehicles": {
       "apis": [
+        "/api/light-transport/people",
         "/api/light-transport/vehicles",
-        "/api/lookups/types"
+        "/api/lookups/types",
+        "/api/vehicle-registry/people"
       ],
       "wildcard": false
     },

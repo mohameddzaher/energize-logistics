@@ -496,6 +496,13 @@ exports.overview = async (req, res) => {
           d31_60: node(L, (r) => tax(r) && r.lateBand === 'd31_60'),
           d60_plus: node(L, (r) => tax(r) && r.lateBand === 'd60_plus'),
         },
+        // صفحةُ اللوحة القديمة تقرؤه بلا حارس — وتبقى مفتوحةً في ألسنةٍ لم
+        // تُحدَّث بعد النشر، فغيابُه يُسقطها («reading 'negotiating'»).
+        over60: {
+          negotiating: node(L, (r) => tax(r) && r.lateBand === 'd60_plus' && r.issueState === 'negotiating'),
+          legal: node(L, (r) => tax(r) && r.lateBand === 'd60_plus' && r.issueState === 'legal'),
+          unclassified: node(L, (r) => tax(r) && r.lateBand === 'd60_plus' && (r.issueState || 'none') === 'none'),
+        },
       },
       cash: {
         within: node(L, (r) => cash(r) && r.dueState === 'within'),

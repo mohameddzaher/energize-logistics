@@ -31,7 +31,7 @@ export interface AnalyticBlock {
 export interface HrOverview {
   // employees/active/notActive = ما يعرضه الفلتر الآن، وroster = إجمالي الملفّ
   // الوظيفيّ يُعرض بجانبه ليُعرف من أيٍّ اقتُطع.
-  totals: { employees: number; active: number; notActive: number; terminated?: number; roster: number; filtered: number; required: number; expiringSoon: number; outsideKingdom: number; freelancers: number; cashPayroll: number; gosiRegistered: number;
+  totals: { employees: number; active: number; notActive: number; terminated?: number; roster: number; filtered: number; required: number; expiringSoon: number; expiringStates?: Record<string, number>; outsideKingdom: number; freelancers: number; cashPayroll: number; gosiRegistered: number;
     /** في مرحلة نقل الكفالة (الموقوف) والأرشيف. */
     transfer?: number; archived?: number; finalExit?: number; noKind?: number; sister?: number;
     /** نصفا كلّ كارت: على الكفالة · فريلانسر — من «رقم السجل التجاري». */

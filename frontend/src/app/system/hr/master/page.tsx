@@ -130,10 +130,11 @@ function HrMasterInner() {
    * «ينتهي قريبًا» = المنتهي + ما ينتهي خلال `alert.warnDays` على ما يعرضه
    * الفلتر — فتُفتَح الصفحةُ على الشرطين نفسيهما، لا مجرَّدةً منهما.
    */
-  const openExpiring = () => {
+  const openExpiring = (state?: unknown) => {
     const p = new URLSearchParams({
       ...(filters as Record<string, string>),
       ...(d?.alert?.warnDays != null ? { withinDays: String(d.alert.warnDays) } : {}),
+      ...(typeof state === 'string' ? { state } : {}),
     }).toString();
     router.push(`/system/hr/master/expiring${p ? `?${p}` : ''}`);
   };
@@ -278,7 +279,18 @@ function HrMasterInner() {
           onClick={() => open('required', { status: 'required' })} />
         <Big label={t('مستندات منتهية أو قريبة الانتهاء', 'Expired or expiring documents')} value={d.totals.expiringSoon} c="#ea580c"
           halves={H('expiringSoon')} ar={ar}
-          onClick={openExpiring} />
+          onClick={openExpiring}
+          // مراحلُه الثلاث — مجموعُها هو رقمُ الكارت، وكلٌّ يفتح الانتهاءاتِ على حالته.
+          detail={d.totals.expiringStates ? (
+            <span className="mt-1.5 flex flex-wrap gap-1.5 text-[10.5px] tabular-nums">
+              {(['expired', 'critical', 'warning'] as const).map((k) => (
+                <button key={k} type="button" onClick={(e) => { e.stopPropagation(); openExpiring(k); }}
+                  className={`rounded px-1.5 py-0.5 font-semibold hover:opacity-80 ${stateMeta(k).bg}`}>
+                  {stateLabel(k, ar)} {d.totals.expiringStates?.[k] ?? 0}
+                </button>
+              ))}
+            </span>
+          ) : undefined} />
         <Big label={t('مسجّل بالتأمينات', 'GOSI registered')} value={d.totals.gosiRegistered} c="#0ea5e9"
           halves={H('gosiRegistered')} onHalf={(k) => open('socialInsurance', { field: 'gosiNumber', status: 'filled', engagement: k })} ar={ar}
           onClick={() => open('socialInsurance', { field: 'gosiNumber', status: 'filled' })} />

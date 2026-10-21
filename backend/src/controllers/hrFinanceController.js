@@ -116,7 +116,7 @@ const DOCS = [
 const HORIZON = 20;
 const WINDOWS = [20, 15, 10, 5];
 /** الفلاترُ السريعةُ نفسُها التي في رأس لوحة الموارد البشريّة (HrQuickFilters). */
-const QUICK_KEYS = ['department', 'staffCategory', 'registerNumber', 'branchName', 'workStatusText', 'project', 'nationality'];
+const QUICK_KEYS = ['department', 'staffCategory', 'registerNumber', 'branchName', 'workStatusText', 'project', 'nationality', 'iqamaProfession'];
 
 const YMD = /^(\d{4})-(\d{2})-(\d{2})/;
 const dayNum = (ymd) => {
@@ -183,7 +183,7 @@ async function universe() {
         expiryDate: exp, daysLeft, expired: daysLeft < 0,
         department: S(e.department), staffCategory: S(e.staffCategory), project: S(e.project),
         nationality: S(e.nationality), branchName: S(e.branchName), registerNumber: S(e.registerNumber),
-        workStatusText: S(e.workStatusText),
+        workStatusText: S(e.workStatusText), iqamaProfession: S(e.iqamaProfession),
         paid: false, payment: null,
         _emp: e,
       });

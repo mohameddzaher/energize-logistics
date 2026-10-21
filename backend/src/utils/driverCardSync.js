@@ -44,6 +44,12 @@ async function employeeOfCard(card) {
   return Employee.findOne({ isHrRecord: { $ne: false }, $or: [{ iqamaNumber: id }, { nationalId: id }] });
 }
 
+/** تاريخٌ بتوقيت الرياض «YYYY-MM-DD» — والنصُّ يُترك كما هو. */
+const ymdRiyadh = (v) => {
+  if (v instanceof Date) return isNaN(v) ? '' : v.toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+  return clean(v);
+};
+
 /** المركبات ← الموارد البشريّة. */
 async function pushCardToEmployee(card, { emit = true } = {}) {
   if (!card) return null;
@@ -57,9 +63,12 @@ async function pushCardToEmployee(card, { emit = true } = {}) {
   const set = {
     driverCardNumber: clean(card.cardNumber),
     driverCardType: clean(card.cardType),
-    driverCardExpiry: clean(card.expiryDate),
+    // التاريخُ في البطاقة كائنُ Date، والخانةُ في الملفّ نصٌّ «YYYY-MM-DD». كان
+    // يُكتب `String(date)` («Sat Oct 24 2026 03:00:00 GMT+0300…») فتقرؤه صفحةُ
+    // الانتهاءات وتعجز عنه عدّاداتُ اللوحة — فاختلف الرقمان بواحد.
+    driverCardExpiry: ymdRiyadh(card.expiryDate),
   };
-  const same = CARD_FIELDS_ON_EMPLOYEE.every((k) => clean(emp[k] instanceof Date ? emp[k].toISOString().slice(0, 10) : emp[k]) === set[k]);
+  const same = CARD_FIELDS_ON_EMPLOYEE.every((k) => ymdRiyadh(emp[k]) === set[k]);
   // بطاقةٌ موجودةٌ في السجلّ ليست «غير مطلوبة» ولا «مطلوبة» — هي متوفّرة.
   // والعلاماتُ تُحفظ لكلّ خانةٍ باسمها (`driverCardExpiryStatus`…) — راجع
   // hrFields.statusKeyOf. و«غير مطلوب» كانت تُكتب أحيانًا في خانة الرقم نفسِها.

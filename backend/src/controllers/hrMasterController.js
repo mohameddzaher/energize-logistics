@@ -799,6 +799,11 @@ exports.overview = async (req, res) => {
       // مرّة) وبلا التوائم الهجريّة — وهو بالضبط مجموعُ بطاقات صفحة «البيانات المطلوبة».
       required: (() => { const seen = new Set(); let n = 0; for (const g of groups) for (const f of g.fields) { if (seen.has(f.key)) continue; seen.add(f.key); n += f.required || 0; } return n; })(),
       expiringSoon: groups.reduce((n, g) => n + (g.needsAttention || 0), 0),
+      // وتفصيلُه بمراحله الثلاث — من المجموعات نفسِها، فمجموعُها هو الرقمُ بالبناء.
+      expiringStates: ['expired', 'critical', 'warning'].reduce((o, k) => {
+        o[k] = groups.reduce((n, g) => n + ((g.needsAttention && g.states?.[k]) || 0), 0);
+        return o;
+      }, {}),
       outsideKingdom: sums.outsideKingdom,
       // الفريلانسر من «رقم السجل التجاري» — لا من خانة «النوع» القديمة.
       freelancers: sums.all__f || 0,

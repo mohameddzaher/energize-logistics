@@ -122,6 +122,7 @@ const hrQuickKeys = [
   ('workStatusText', 'حالة العمل', 'Work status'),
   ('project', 'المشروع', 'Project'),
   ('nationality', 'الجنسية', 'Nationality'),
+  ('iqamaProfession', 'المهنة في الإقامة', 'Iqama occupation'),
 ];
 
 /// شرائحُ الفلترة السريعة — كلُّ شريحةٍ تفتح قيمَها بأعدادها، وفيها بحثٌ واختيارٌ متعدّد.

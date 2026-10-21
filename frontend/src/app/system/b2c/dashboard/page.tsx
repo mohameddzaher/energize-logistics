@@ -51,7 +51,7 @@ interface Board {
   total: number;
   categories: Record<Cat, { total: number } & Record<Eng, number>>;
   status: Record<string, { total: number } & Record<Cat, number>>;
-  vehicles: { total: number; withRider: number; idle: number; onActiveOrder: number; auth: { authorized: number; expired: number; none: number } };
+  vehicles: { total: number; withRider: number; hold?: number; idle: number; onActiveOrder: number; auth: { authorized: number; expired: number; none: number } };
   otherDepartment: number;
   b2cDepartment: string;
 }
@@ -399,8 +399,10 @@ export default function B2CDashboardPage() {
                 {t(`عليها أمر تشغيل سارٍ ${num(B.vehicles.onActiveOrder)}`, `Under an active order ${num(B.vehicles.onActiveOrder)}`)}
               </p>
             </Link>
-            <div className="grid grid-cols-2 border-t border-slate-100 divide-x divide-slate-100 rtl:divide-x-reverse">
+            {/* عليها راكب + بانتظار التسليم + واقفة = مركبات القسم — الراكبُ صفٌّ مربوطٌ بها أيًّا كانت حالةُ يومه. */}
+            <div className="grid grid-cols-3 border-t border-slate-100 divide-x divide-slate-100 rtl:divide-x-reverse">
               <Half label={t('عليها راكب', 'With a rider')} value={B.vehicles.withRider} of={B.vehicles.total} tone="#475569" href={vehiclesOf({ vstate: 'withRider' })} />
+              <Half label={t('بانتظار التسليم', 'Awaiting hand-over')} value={B.vehicles.hold || 0} of={B.vehicles.total} tone="#d97706" href={vehiclesOf({ vstate: 'hold' })} />
               <Half label={t('واقفة بلا راكب', 'Idle')} value={B.vehicles.idle} of={B.vehicles.total} tone="#cbd5e1" href={vehiclesOf({ vstate: 'idle' })} />
             </div>
           </div>

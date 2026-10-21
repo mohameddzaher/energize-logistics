@@ -1516,6 +1516,7 @@ exports.listVehicles = async (req, res) => {
       },
       filtered,
       canEdit: LT_VEHICLE_EDIT.includes(req.user?.role),
+      canEditPlate: LT_VEHICLE_EDIT.includes(req.user?.role) && REGISTRY_EDIT.includes(req.user?.role),
     });
   } catch (e) {
     console.error('lt vehicles:', e);

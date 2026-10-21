@@ -269,6 +269,7 @@ exports.listEmployees = async (req, res) => {
     let rows = await LightTransportEmployee.find(andAll(filter, notArchivedRow(await endedStaff())))
       .populate(LIST_POPULATE).sort({ name: 1 }).lean();
     await BOARD.markHrLeave(rows);
+    await require('../utils/ltRental').markRentals(rows);
     const alerts = await docAlerts();
     rows = rows.map((r) => decorate(r, alerts));
     /**
@@ -344,7 +345,8 @@ const contractKindOf = (r) => {
   // ── واليوزرُ المؤجَّرُ ليس كفالة ─────────────────────────────────────────────
   // كانت كلُّ خانةٍ مكتوبةٍ غيرِ «فريلانسر» تُقرأ «كفالة»، فعُدَّ يوزراتُ نينجا
   // الثلاثةَ عشرَ على الكفالة: ١١٤ في اللوحة و٩٨ في شيت التقرير (٢٠٢٦/١٠/٢٠).
-  if (/يوزر/.test(String(r.contractTypeAr || ''))) return 'users';
+  // واليوزرُ المؤجَّر تأجيرٌ ساري مربوطٌ بصفّه، والنصُّ احتياطٌ لمن لم يُربط — utils/ltRental.
+  if (require('../utils/ltRental').isRented(r)) return 'users';
   if (r.employee && typeof r.employee === 'object') {
     const e = ENG.engagementOf(r.employee);
     return e === 'sponsored' || e === 'freelance' ? e : '';
@@ -583,21 +585,30 @@ const b2cDepartment = () => cache.wrap('lt:b2cdept', 60000, async () => {
  * مطويًّا، وحالةُ تفويضها (`BOARD.authOf`)، وراكبوها.
  * تقرؤها اللوحةُ وصفحةُ «مركبات النقل الخفيف» معًا — فما يعدّه الكارتُ يفتحه الرابط.
  */
-async function vehicleRows(riderRows, select = '') {
-  const byVehicle = new Map();
-  for (const r of riderRows) {
-    const id = String(r.vehicle && typeof r.vehicle === 'object' ? r.vehicle._id : r.vehicle);
-    if (!byVehicle.has(id)) byVehicle.set(id, []);
-    byVehicle.get(id).push(r);
-  }
-  const vehicles = await VehicleMaster.find(BOARD.vehicleScope([...byVehicle.keys()]))
+async function vehicleRows(riderRows, select = '', holderRows = []) {
+  const group = (rows) => {
+    const m = new Map();
+    for (const r of rows) {
+      const id = String(r.vehicle && typeof r.vehicle === 'object' ? r.vehicle._id : r.vehicle);
+      if (!m.has(id)) m.set(id, []);
+      m.get(id).push(r);
+    }
+    return m;
+  };
+  const byVehicle = group(riderRows);
+  const heldBy = group(holderRows);
+  const vehicles = await VehicleMaster.find(BOARD.vehicleScope([...byVehicle.keys(), ...heldBy.keys()]))
     .select(`plateNumber serialNumber registrationTypeAr departmentAr cityAr sectorAr serviceStatusAr serviceStatusCode authorizedPerson actualDriver ${select}`)
     .lean();
   const today = require('../utils/companyDay').todayKey();
+  const { vehicleState } = require('../utils/ltRider');
   return vehicles.map((v) => {
     const riders = byVehicle.get(String(v._id)) || [];
+    const holders = heldBy.get(String(v._id)) || [];
     return {
-      _id: String(v._id), v, riders,
+      _id: String(v._id), v, riders, holders,
+      // عليها راكب · بانتظار التسليم (مع منتهي الخدمة) · واقفة — utils/ltRider.
+      state: vehicleState(riders, holders),
       project: S(riders[0]?.projectAr) || S(v.departmentAr),
       city: S(riders[0]?.cityAr) || S(v.cityAr),
       typeKey: typeKey(v.registrationTypeAr),
@@ -606,12 +617,35 @@ async function vehicleRows(riderRows, select = '') {
   });
 }
 
+/**
+ * ── مَن انتهت خدمتُه والمركبةُ ما زالت معه — «بانتظار التسليم» ─────────────
+ * صفوفُ القسم النشطةُ المربوطةُ بمركبةٍ وصاحبُها منتهي الخدمة في الموارد البشريّة
+ * (أو في السجلّ لمن لا ملفَّ له) — ومنهم المؤرشَف: اسمُه لا يُعرَض، والمركبةُ
+ * تُعرَض «بانتظار التسليم» لا «واقفة». سؤالٌ مستقلٌّ عن صفوف اللوحة، فلا تُخفيه
+ * فلاترُ الإنسان ولا قاعدةُ الأرشيف.
+ */
+async function heldRows() {
+  const { endedStaff } = require('../utils/endedStaff');
+  const sets = await endedStaff();
+  const rows = await LightTransportEmployee.find({
+    isActive: { $ne: false }, vehicle: { $ne: null },
+    $or: [{ employee: { $in: [...sets.ids].map((x) => new mongoose.Types.ObjectId(x)) } },
+      { employee: null, workStatusAr: /انهاء|إنهاء/ }],
+  }).select('_id name idNumber vehicle vehiclePlate employee vehicleHold').lean();
+  return rows.map((r) => ({
+    ...r,
+    archived: r.employee ? sets.archivedIds.has(String(r.employee)) : sets.archivedIdNumbers.has(S(r.idNumber).replace(/\s+/g, '')),
+  }));
+}
+exports._heldRows = heldRows;
+
 /** صفوفُ القسم مزخرفةً — كلُّها، ومعها مَن يُعَدّ راكبًا (في الخدمة وعلى مركبة). */
 async function boardRows(filter) {
   const { endedStaff, notArchivedRow, andAll } = require('../utils/archivedHidden');
   const archSets = await endedStaff();
   const rows = await LightTransportEmployee.find(andAll(filter, notArchivedRow(archSets))).populate(LIST_POPULATE).lean();
   await BOARD.markHrLeave(rows);
+  await require('../utils/ltRental').markRentals(rows);
   const alerts = await docAlerts();
   return rows.map((r) => decorate(r, alerts));
 }
@@ -654,8 +688,11 @@ exports.overview = async (req, res) => {
       LightTransportOrder.find({ status: 'active' }).select('vehicle ltEmployee').lean(),
       b2cDepartment(),
     ]);
+    // ── الراكبُ تعريفٌ واحد (utils/ltRider) ───────────────────────────────────
+    // صفٌّ نشطٌ مربوطٌ بالمركبة، أيًّا كانت حالةُ يومه — من السجلّ كلِّه لا من
+    // المفلتَر، فلا يجعل فلترُ الإنسان مركبةً «واقفة». والمنتهي «بانتظار التسليم».
     const riderRows = (allRows || decorated).filter((r) => r.vehicle && !isEnded(r));
-    const vrows = await vehicleRows(riderRows);
+    const vrows = await vehicleRows(riderRows, '', await heldRows());
 
     const people = BOARD.personTests(q, { typeKey, contractKindOf });
     const vpass = BOARD.vehicleTests(q, people, { typeKey });
@@ -760,8 +797,9 @@ exports.overview = async (req, res) => {
         status,
         vehicles: {
           total: vSplit.length,
-          withRider: vSplit.filter((v) => v.riders.length).length,
-          idle: vSplit.filter((v) => !v.riders.length).length,
+          withRider: vSplit.filter((v) => v.state === 'withRider').length,
+          hold: vSplit.filter((v) => v.state === 'hold').length,
+          idle: vSplit.filter((v) => v.state === 'idle').length,
           onActiveOrder: vSplit.filter((v) => onOrder.has(v._id)).length,
           auth: authCount(vSplit),
         },
@@ -780,8 +818,9 @@ exports.overview = async (req, res) => {
         total: vSplit.length,
         // وإجماليُّ مركبات القسم يبقى معروضًا كي يُعرَف أنّ المعروضَ جزءٌ منه.
         totalAll: vrows.length,
-        withRider: vSplit.filter((v) => v.riders.length).length,
-        idle: vSplit.filter((v) => !v.riders.length).length,
+        withRider: vSplit.filter((v) => v.state === 'withRider').length,
+        hold: vSplit.filter((v) => v.state === 'hold').length,
+        idle: vSplit.filter((v) => v.state === 'idle').length,
         onActiveOrder: vSplit.filter((v) => onOrder.has(v._id)).length,
         byType: vGroup(vrows.filter((v) => vpass(v, 'vehicleType')), (v) => v.v.registrationTypeAr),
         byProject: vGroup(vShown, (v) => v.project),
@@ -805,7 +844,8 @@ exports.overview = async (req, res) => {
       gaps: {
         workingWithoutVehicle: rows.filter((r) => !r.vehicle
           && ![ENDED, BOARD.SUSPENDED, BOARD.ACCIDENT].includes(r.workStatusShown)).length,
-        idleVehicles: vSplit.filter((v) => !v.riders.length).length,
+        idleVehicles: vSplit.filter((v) => v.state === 'idle').length,
+        heldVehicles: vSplit.filter((v) => v.state === 'hold').length,
         noRegister: rows.filter((r) => !S(r.registerNumber) && r.workStatusShown !== ENDED).length,
         noContractType: rows.filter((r) => !S(r.contractTypeAr)).length,
         noSupervisor: rows.filter((r) => r.staffKind === 'rep' && !S(r.supervisorName)).length,
@@ -832,6 +872,7 @@ exports.getEmployee = async (req, res) => {
     const row = await LightTransportEmployee.findById(req.params.id).populate(LIST_POPULATE).lean();
     if (!row) return res.status(404).json({ message: 'الموظّف غير موجود' });
     await BOARD.markHrLeave([row]);
+    await require('../utils/ltRental').markRentals([row]);
     const orders = await LightTransportOrder.find({ ltEmployee: row._id })
       .populate('vehicle', 'plateNumber registrationTypeAr')
       .populate('housing', 'name')
@@ -1059,6 +1100,23 @@ exports.updateEmployee = async (req, res) => {
     // (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) — POST /employees/:id/transfer-project.
     if (req.body.projectAr !== undefined && S(req.body.projectAr) !== S(doc.projectAr) && S(doc.projectAr)) {
       return res.status(403).json({ message: 'المشروع يتغيّر بـ«نقل مشروع» من صفحة المندوب — لنائب مدير قطاع الأفراد ومدير القسم والسوبر أدمن والأدمن' });
+    }
+    // ── و«يوزرات» يكتبها تأجيرُ اليوزر وحدَه (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────
+    // نوعُ العقد «يوزرات» مرآةٌ لتأجيرٍ ساري (utils/ltRental): يُسجَّل التأجيرُ أو
+    // يُنهى من «تأجير اليوزرات» فيتبعه الصفّ — لا يُكتب هنا فيفترقا.
+    if (req.body.contractTypeAr !== undefined) {
+      const RENT = require('../utils/ltRental');
+      const toUsers = RENT.isUsersText(req.body.contractTypeAr);
+      if (toUsers !== RENT.isUsersText(doc.contractTypeAr)) {
+        const active = await require('../models/LtUserRental').exists({ ltEmployee: doc._id, status: 'active' });
+        if (toUsers || active) {
+          return res.status(409).json({
+            message: toUsers
+              ? 'اليوزرُ المؤجَّر يُسجَّل من «تأجير اليوزرات» — فيصير نوعُ عقده «يوزرات» تلقائيًّا'
+              : 'هذا يوزرٌ مؤجَّر — أنهِ تأجيرَه من «تأجير اليوزرات» فيعود نوعُ عقده تلقائيًّا',
+          });
+        }
+      }
     }
     const TRACKED = { projectAr: 'project', cityAr: 'city' };
     for (const [field, kind] of Object.entries(TRACKED)) {
@@ -1384,26 +1442,44 @@ exports.listVehicles = async (req, res) => {
     const q = req.query || {};
     const decorated = await boardRows({ isActive: { $ne: false } });
     const riderRows = decorated.filter((r) => r.vehicle && !isEnded(r));
-    let vrows = await vehicleRows(riderRows, 'updatedAt');
+    let vrows = await vehicleRows(riderRows, 'updatedAt', await heldRows());
     const people = BOARD.personTests(q, { typeKey, contractKindOf });
     const vpass = BOARD.vehicleTests(q, people, { typeKey });
     vrows = vrows.filter((v) => vpass(v));
     const vstate = S(q.vstate);
-    if (vstate === 'withRider') vrows = vrows.filter((v) => v.riders.length);
-    if (vstate === 'idle') vrows = vrows.filter((v) => !v.riders.length);
+    if (['withRider', 'hold', 'idle'].includes(vstate)) vrows = vrows.filter((v) => v.state === vstate);
     if (vstate === 'activeOrder') {
       const on = new Set((await LightTransportOrder.find({ status: 'active' }).select('vehicle').lean()).map((o) => String(o.vehicle || '')));
       vrows = vrows.filter((v) => on.has(v._id));
     }
     const vehicles = vrows
-      .map((v) => ({
-        ...ltVehicleRow(v.v),
-        // المشروعُ كما تعدّه اللوحة (مشروعُ الراكب، وإلّا الإدارة) — وخانةُ السجلّ تبقى في `project`.
-        boardProject: v.project,
-        authState: v.auth,
-        riderName: v.riders.map((r) => r.name).join('، '),
-        riderId: S(v.riders[0]?._id),
-      }))
+      .map((v) => {
+        /**
+         * ── عمودُ «القائد الفعلي» = الراكبُ نفسُه (utils/ltRider) ─────────────
+         * من صفّه في سجلّ القسم، لا من نصٍّ على المركبة: فالمركبةُ «الواقفة» لا
+         * اسمَ عليها. وصاحبُ «بانتظار التسليم» يُعرَض بعلامته (والمؤرشَفُ بلا اسم).
+         * وما بقي نصًّا على المركبة بلا صفٍّ يطابقه يُعرَض «غيرَ مربوط» لا قائدًا.
+         */
+        const rider = v.riders[0] || null;
+        const holder = !rider ? (v.holders[0] || null) : null;
+        const mirror = v.v.actualDriver || {};
+        const base = ltVehicleRow(v.v);
+        return {
+          ...base,
+          driverName: rider ? S(rider.name) : holder ? (holder.archived ? 'منتهي الخدمة' : S(holder.name)) : '',
+          driverId: rider ? S(rider.idNumber) : holder && !holder.archived ? S(holder.idNumber) : '',
+          driverLt: rider ? String(rider._id) : '',
+          driverHold: !!holder,
+          // نصٌّ قديمٌ على المركبة لا يطابق راكبًا — يُصحَّح بالمطابقة (scripts/reconcileLtRiders).
+          driverUnlinked: !rider && !holder && S(mirror.name) ? S(mirror.name) : '',
+          vstate: v.state,
+          // المشروعُ كما تعدّه اللوحة (مشروعُ الراكب، وإلّا الإدارة) — وخانةُ السجلّ تبقى في `project`.
+          boardProject: v.project,
+          authState: v.auth,
+          riderName: v.riders.map((r) => r.name).join('، '),
+          riderId: S(rider?._id),
+        };
+      })
       .sort((a, b) => String(a.project).localeCompare(String(b.project), 'ar') || String(a.plateNumber).localeCompare(String(b.plateNumber), 'ar'));
     const count = (f) => vehicles.filter(f).length;
     const filtered = Object.keys(q).some((k) => BOARD.vals(q[k]).length);
@@ -1414,9 +1490,10 @@ exports.listVehicles = async (req, res) => {
         noAuthorization: count((v) => v.authState === 'none'),
         expired: count((v) => v.authState === 'expired'),
         expiringSoon: count((v) => v.daysLeft != null && v.daysLeft >= 0 && v.daysLeft <= 30),
-        noDriver: count((v) => !v.driverName),
-        withRider: count((v) => !!v.riderName),
-        idle: count((v) => !v.riderName),
+        noDriver: count((v) => v.vstate === 'idle'),
+        withRider: count((v) => v.vstate === 'withRider'),
+        hold: count((v) => v.vstate === 'hold'),
+        idle: count((v) => v.vstate === 'idle'),
       },
       filtered,
       canEdit: LT_VEHICLE_EDIT.includes(req.user?.role),

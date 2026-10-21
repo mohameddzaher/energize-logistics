@@ -132,7 +132,8 @@ const CATEGORY_AR = { rep: 'مندوب', admin: 'إداري', tech: 'فني', no
  * قائمٌ بذاته، و`none` لمن لم يُكتب له شيء.
  */
 function engagementOf(row) {
-  if (/يوزر/.test(S(row.contractTypeAr))) return 'users';
+  // تأجيرٌ ساري مربوطٌ بالصفّ أوّلًا، ونوعُ العقد احتياطًا — utils/ltRental.
+  if (require('./ltRental').isRented(row)) return 'users';
   const hr = hrOf(row);
   if (hr) return ENG.engagementOf(hr) || 'none';
   const v = foldAr(S(row.contractTypeAr)).replace(/\s+/g, '');

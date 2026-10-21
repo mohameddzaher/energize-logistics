@@ -24,8 +24,14 @@ const ltUserRentalSchema = new mongoose.Schema({
   status: { type: String, enum: ['active', 'ended'], default: 'active', index: true },
   endDate: { type: String, default: '' },
   endedByName: { type: String, default: '' },
+  // ── صفُّ اليوزر في «موظفي النقل الخفيف» — الرابطُ بالكروت (٢٠٢٦/١٠/٢٢) ──
+  // التأجيرُ الساري المربوطُ هو تعريفُ «اليوزر المؤجَّر» — راجع utils/ltRental.
+  ltEmployee: { type: mongoose.Schema.Types.ObjectId, ref: 'LightTransportEmployee', default: null, index: true },
+  // نوعُ عقده قبل التأجير — يُعاد إليه حين يُنهى التأجير.
+  prevContractTypeAr: { type: String, trim: true, default: '' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   createdByName: { type: String, default: '' },
 }, { timestamps: true });
+ltUserRentalSchema.index({ ltEmployee: 1, status: 1 });
 
 module.exports = mongoose.models.LtUserRental || mongoose.model('LtUserRental', ltUserRentalSchema);

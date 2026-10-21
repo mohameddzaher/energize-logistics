@@ -324,6 +324,9 @@ employeeSchema.statics.syncRider = syncRider;
 employeeSchema.post('save', async function (doc) {
   if (!doc.$locals.repSync) return;
   try { await require('../utils/b2cEntry').syncRepOf(doc); } catch (_) { /* */ }
+  // ── وتأجيرُ اليوزر الساري ينتقل مع مشروعه (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ──────
+  // «نقل مشروع» يُكتب هنا من أيّ باب، فيتبعه سجلُّ التأجير — راجع utils/ltRental.
+  try { await require('../utils/ltRental').followProject(doc); } catch (_) { /* */ }
 });
 employeeSchema.post('save', async function (doc) {
   if (!doc.$locals.projectToHr) return;

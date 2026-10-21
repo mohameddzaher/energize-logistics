@@ -658,6 +658,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/sales/dashboard', label: L.salesDashboard, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },
     // العملاء — سجلُّ «التشغيل» و«طلبات الشحنات» نفسُه (components/customers): بابٌ ثالثٌ لا نسخةٌ ثالثة.
     { href: '/system/sales/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },
+    // ── وسيرُ عمل التشغيل من داخل قسمهم — لقيمة البيع ─────────────────────
+    // المبيعاتُ تسعّر الكشف: ترى «قيمة البيع» وتكتبها وحدَها (الخادمُ يحجب عنها
+    // ما سواها من مال). كما وُضع الرابطُ في قسم التحصيل.
+    { href: '/system/operations', label: lang === 'ar' ? 'سير عمل التشغيل' : 'Operations Workflow', icon: <ClipboardList className="w-5 h-5" />, roles: ['sales_manager', 'sales_rep'], section: 'Sales', restrict: true },
     { href: '/system/sales/pipeline', label: L.salesPipeline, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },
     { href: '/system/sales/targets', label: L.salesTargets, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },
     { href: '/system/sales/performance', label: L.salesPerformance, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },

@@ -5,7 +5,7 @@ const { startOfDay, endOfDay, DAY_MS: COMPANY_DAY_MS } = require('../utils/compa
 const { flexSpaceRegex } = require('../utils/plateKey');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll, emitPerRole } = require('../websocket/socketManager');
-const { derivePaymentTypeFor, hasTaxInvoice, NO_INVOICE_RX, isUnified, hasIssuedInvoice } = require('../utils/paymentType');
+const { derivePaymentTypeFor, hasTaxInvoice, NO_INVOICE_RX, isUnified, hasIssuedInvoice, ISSUED_INVOICE_QUERY } = require('../utils/paymentType');
 const XLSX = require('xlsx');
 const fs = require('fs');
 const path = require('path');
@@ -17,7 +17,7 @@ const FIELD_GROUPS = {
     'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch',
     'carOwner', 'carNumber', 'ownerType', 'executionStatus',
     'applicationStatus', 'paymentMethod', 'username', 'taxIndicator',
-    'purchaseValue', 'sellingValue',
+    'purchaseValue',
     'loadingTime', 'driverRentalType', 'reference', 'userPhone',
     'driverName', 'driverPhone', 'carName', 'plateNumber',
     'truckType', 'truckSize', 'loadType', 'quantity',
@@ -43,6 +43,11 @@ const FIELD_GROUPS = {
     'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice',
     'invoiceDate', 'invoiceNotes', 'collectedAmount', 'collectionDate',
   ],
+  // ── وقيمةُ البيع مجموعةٌ بذاتها ─────────────────────────────────────────
+  // كانت بين أعمدة الأبلكيشن فيراها كلُّ مَن يفتح الصفحة. وهي سعرُنا للعميل:
+  // يراها ويكتبها مديرُ التشغيل والمبيعاتُ والإدارةُ وأهلُ المال والتحصيل
+  // (صاحبُ الشركة، ٢٠٢٦/١٠/٢١) — لا موظّفُ التشغيل. وتُكتب معها في المنصّة.
+  selling: ['sellingValue'],
 };
 
 // Which roles can edit which field groups
@@ -70,16 +75,33 @@ const OPS_FIELDS = [
 ];
 // أعمدةُ المال: الفاتورةُ والتحصيلُ ومراجعةُ الحسابات.
 const MONEY_FIELDS = [...FIELD_GROUPS.collections, ...FIELD_GROUPS.accounting];
-// الكشفُ كلُّه — لمن لا حاجزَ عليه.
+// الكشفُ كلُّه — لمن لا حاجزَ عليه (عدا قيمة البيع: لها قائمتُها أدناه).
 const ALL_FIELDS = [...OPS_FIELDS, ...MONEY_FIELDS];
+const SELLING_FIELDS = FIELD_GROUPS.selling;
+// الكشفُ كلُّه ومعه قيمةُ البيع.
+const FULL_FIELDS = [...ALL_FIELDS, ...SELLING_FIELDS];
+
+// ── مَن يرى قيمةَ البيع ويكتبها ─────────────────────────────────────────────
+// القائمةُ بأسمائها كما قالها صاحبُ الشركة (٢٠٢٦/١٠/٢١): مديرُ التشغيل،
+// والمبيعات، ومديرُ النظام، والإدارة، والمديرُ الماليّ، ومديرُ الحسابات،
+// والمحاسب، ومديرُ التحصيل وفريقُه. ومَن ليس فيها لا تصله القيمةُ من الخادم
+// أصلًا (`stripRowFor`) ولا يفلتر بها ولا تخرج في ملفّه — ولا يكتبها.
+const SELLING_ROLES = [
+  'super_admin', 'admin', 'operations_manager', 'sales_manager', 'sales_rep',
+  'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff',
+];
 
 const ROLE_FIELD_ACCESS = {
-  super_admin: ALL_FIELDS,
+  super_admin: FULL_FIELDS,
   moderator: [...FIELD_GROUPS.application, ...FIELD_GROUPS.manual_moderator],
-  operations_manager: OPS_FIELDS,
+  operations_manager: [...OPS_FIELDS, ...SELLING_FIELDS],
   operations_staff: OPS_FIELDS,
   // الإدارةُ العليا فوق المحاسبة لا دونَها.
-  admin: ALL_FIELDS,
+  admin: FULL_FIELDS,
+  // ── والمبيعاتُ تملك قيمةَ البيع وحدَها ─────────────────────────────────
+  // تفتح سير العمل لتسعّر الكشف، ولا تكتب في غيره ولا ترى أعمدةَ الفاتورة.
+  sales_manager: SELLING_FIELDS,
+  sales_rep: SELLING_FIELDS,
   employee: FIELD_GROUPS.collections,
   // ── والمحاسبةُ تسجّل السدادَ كما تسجّل الفاتورة ──────────────────────────
   // كانت تملك مجموعةَ الفاتورة وحدَها، فيكتب المحاسبُ تاريخَ السداد ويضغط
@@ -88,20 +110,27 @@ const ROLE_FIELD_ACCESS = {
   // وهي الغلطةُ نفسُها التي وقعت مع موظّف العمليات من قبل: قائمةٌ تُكتب دورًا
   // دورًا فيُنسى فيها ما يعمله صاحبُها كلَّ يوم. ولذلك لم يعد الأمرُ قائمةً
   // وحدَها — الشاشةُ صارت تقرأ الخريطةَ نفسَها فلا تعرض خانةً لن تُحفَظ.
-  cfo: ALL_FIELDS,
-  accounting_manager: ALL_FIELDS,
-  accountant: ALL_FIELDS,
+  cfo: FULL_FIELDS,
+  accounting_manager: FULL_FIELDS,
+  accountant: FULL_FIELDS,
   // ── وقسمُ التحصيل يكتب الكشفَ كلَّه ───────────────────────────────────────
   // أعمدةُ المال وحدَها لا تكفيه: مَن يلاحق فاتورةً يصحّح معها اسمَ العميل
   // ورقمَ السند والفرعَ المسدِّد ووجهةَ الكشف النهائيّة — وكلُّها خارجَ
   // `MONEY_FIELDS`. فيصير كلَّ يومٍ يطلب من قسم العمليات تصحيحَ خانةٍ يراها
   // أمامه، أو يُقال له «حُفِظ» ولم يُحفَظ شيء.
-  collections_manager: ALL_FIELDS,
-  collections_staff: ALL_FIELDS,
-  // تقنيةُ المعلومات في `FULL_ACCESS_ROLES` — بلا حاجزٍ في كلّ قسمٍ آخر.
+  collections_manager: FULL_FIELDS,
+  collections_staff: FULL_FIELDS,
+  // تقنيةُ المعلومات في `FULL_ACCESS_ROLES` — بلا حاجزٍ في كلّ قسمٍ آخر،
+  // إلّا قيمةَ البيع: ليست في القائمة التي سمّاها صاحبُ الشركة.
   it_manager: ALL_FIELDS,
   it_specialist: ALL_FIELDS,
 };
+// الخريطةُ والقائمةُ تقولان شيئًا واحدًا — يُفحص عند التحميل كي لا تفترقا.
+for (const [r, f] of Object.entries(ROLE_FIELD_ACCESS)) {
+  if (f.includes('sellingValue') !== SELLING_ROLES.includes(r)) {
+    throw new Error(`[workflow] قيمةُ البيع: ${r} في الخريطة غيرُه في SELLING_ROLES`);
+  }
+}
 
 /**
  * ── والحجبُ يكون على الطرفين ────────────────────────────────────────────────
@@ -146,6 +175,9 @@ const fieldsForRole = async (role) => {
       for (const [section, source] of Object.entries(SECTION_FIELD_SOURCE)) {
         if (sections[section] === 'edit') for (const f of ROLE_FIELD_ACCESS[source] || []) out.add(f);
       }
+      // وقيمةُ البيع لا تُورَّث: قائمتُها أدوارٌ بأسمائها (SELLING_ROLES)، والدورُ
+      // المصنوعُ لا يراها في القائمة فلا يكتبها.
+      for (const f of SELLING_FIELDS) out.delete(f);
       return [...out];
     } catch (e) {
       // تعذّرُ القراءة لا يفتح شيئًا: بلا حقولٍ حتى يُعرف الجواب.
@@ -170,6 +202,26 @@ const stripMoney = (doc) => {
 const stripMoneyFor = (role, docs) => {
   if (canSeeMoney(role)) return docs;
   return Array.isArray(docs) ? docs.map(stripMoney) : stripMoney(docs);
+};
+
+/** هل يرى هذا الدورُ قيمةَ البيع؟ — القائمةُ بأسمائها (SELLING_ROLES). */
+const canSeeSelling = (role) => SELLING_ROLES.includes(role);
+const stripSelling = (doc) => {
+  if (!doc) return doc;
+  const plain = typeof doc.toObject === 'function' ? doc.toObject() : { ...doc };
+  delete plain.sellingValue;
+  delete plain.sellingValueSource;
+  return plain;
+};
+/**
+ * الصفُّ كما يصل هذا الدور: بلا أعمدة المال لمن لا يملكها، وبلا قيمة البيع
+ * لمن ليس في قائمتها. (`stripMoneyFor` تبقى كما هي — تقرؤها الصفحةُ الخاصّة
+ * وقيمةُ البيع فيها سعرٌ آخر.)
+ */
+const stripRowFor = (role, docs) => {
+  const out = stripMoneyFor(role, docs);
+  if (canSeeSelling(role)) return out;
+  return Array.isArray(out) ? out.map(stripSelling) : stripSelling(out);
 };
 
 /**
@@ -588,7 +640,18 @@ const FILTERABLE_COLUMNS = new Set([
   // الحقلُ الخام (تعرضه الصفحةُ الخاصّة كما هو)، والعمودُ المعروضُ في سير العمل —
   // الاسمُ ثمّ مسجّلُ المحفظة ثمّ مصدرُ الاستيراد. راجع utils/dataOwnerIndex.
   'paymentDateByName', 'dataOwnerShown',
+  // ── «رقم الفاتورة: موجود / فارغ / بديلٌ مثل no inv» ─────────────────────
+  // عمودٌ محسوبٌ لا حقل: شريطُ الفلترة يسأل «أيُّ الكشوف عليها فاتورة؟» ولا
+  // يستطيع ذلك فلترُ رقم الفاتورة نفسِه — قيمُه خمسُمئةِ رقمٍ لا ثلاثُ حالات.
+  'invoiceState',
 ]);
+
+// حالاتُ رقم الفاتورة الثلاث — شرطٌ واحدٌ تقرؤه القائمةُ والفلتر معًا.
+const INVOICE_STATE_COND = {
+  has: ISSUED_INVOICE_QUERY,
+  none: { invoiceNumber: { $in: require('../utils/colFilter').BLANK_VALUES } },
+  placeholder: { invoiceNumber: { $regex: NO_INVOICE_RX } },
+};
 
 // القيمة تصل من المتصفح نصًّا دائمًا، والحقل في القاعدة رقمٌ أو تاريخ. المقارنة
 // بين نوعين مختلفين في BSON لا تُطابق شيئًا أبدًا، فالفلترة على «قيمة الشراء» أو
@@ -642,7 +705,7 @@ const decodeColumnValue = (field, v) => {
  * وإلا لما ظهرت في القائمة إلا القيم التي اختارها المستخدم بالفعل فتعذّر توسيع
  * الاختيار.
  */
-function columnFilters(query, skipField, allowMoney = true) {
+function columnFilters(query, skipField, allowMoney = true, allowSelling = true) {
   const conds = [];
   for (const key of Object.keys(query || {})) {
     if (!key.startsWith('cf_')) continue;
@@ -650,7 +713,9 @@ function columnFilters(query, skipField, allowMoney = true) {
     if (!FILTERABLE_COLUMNS.has(field) || field === skipField) continue;
     // والفلترةُ على عمودٍ محجوب تكشفه بالاستنتاج: «أرِني ما إجمالي فاتورته
     // كذا» جوابٌ عن قيمةٍ لا تُعرض. تُسقَط لمن لا يملكها.
-    if (MONEY_FIELDS.includes(field) && !allowMoney) continue;
+    if ((MONEY_FIELDS.includes(field) || field === 'invoiceState') && !allowMoney) continue;
+    // وقيمةُ البيع كذلك لمن ليس في قائمتها.
+    if (SELLING_FIELDS.includes(field) && !allowSelling) continue;
     const raw = Array.isArray(query[key]) ? query[key] : [query[key]];
     const vals = raw.map((v) => String(v == null ? '' : v));
     if (!vals.length) continue;
@@ -659,6 +724,11 @@ function columnFilters(query, skipField, allowMoney = true) {
     // اختيارٌ واحد، وإلا بدا للمستخدم أن صفوفًا اختفت.
     // «مسؤول البيانات» عمودٌ يُحسب من ثلاثة مصادر لا حقلٌ واحد — راجع utils/dataOwnerIndex.
     if (field === 'dataOwnerShown') { conds.push(require('../utils/dataOwnerIndex').ownerCondition(vals)); continue; }
+    if (field === 'invoiceState') {
+      const cs = vals.map((v) => INVOICE_STATE_COND[v]).filter(Boolean);
+      if (cs.length) conds.push(cs.length === 1 ? cs[0] : { $or: cs });
+      continue;
+    }
     const wantsBlank = vals.some((v) => v === '');
     const rest = vals.filter((v) => v !== '');
 
@@ -746,7 +816,7 @@ exports.getWorkflows = async (req, res) => {
     const { page = 1, limit = 50 } = req.query;
     // شرطُ البحث يُبنى في مكانٍ واحد يقرأه الجدول والإحصاءات والتصدير معًا، فلا
     // يعرض عدّاد الصفوف رقمًا ويعرض الجدول تحته صفوف شرطٍ آخر.
-    const filter = buildWorkflowFilter(req.query, undefined, canSeeMoney(req.user.role));
+    const filter = buildWorkflowFilter(req.query, undefined, canSeeMoney(req.user.role), canSeeSelling(req.user.role));
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     // ── ولا يُملأ في القائمة ما لا يُقرأ فيها ──────────────────────────────
@@ -790,7 +860,7 @@ exports.getWorkflows = async (req, res) => {
       w.dataOwnerFrom = '';
     }
     res.json({
-      workflows: stripMoneyFor(req.user.role, workflows),
+      workflows: stripRowFor(req.user.role, workflows),
       total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)),
     });
   } catch (error) {
@@ -823,9 +893,9 @@ const PENDING_PAYMENT = {
   ],
 };
 
-function buildWorkflowFilter(query, skipField, allowMoney = true) {
+function buildWorkflowFilter(query, skipField, allowMoney = true, allowSelling = true) {
   const {
-    stage, search, dateFrom, dateTo, pendingOnly, invoiceGap,
+    stage, search, dateFrom, dateTo, pendingOnly, invoiceGap, pendingKind,
   } = query || {};
   const filter = {};
 
@@ -860,6 +930,10 @@ function buildWorkflowFilter(query, skipField, allowMoney = true) {
   // فشرطُه واحد.
   if (pendingOnly === 'true') {
     filter.$and = [...(filter.$and || []), PENDING_PAYMENT];
+    // «سندات لم تصل — كاش / ضريبي»: القسمةُ نفسُها التي تعدّها البطاقتان
+    // (راجع PENDING_SPLIT في getWorkflowStats) — فما تقوله البطاقةُ يفتحه الجدول.
+    if (pendingKind === 'cash') filter.$and.push({ paymentType: 'cash' });
+    else if (pendingKind === 'tax') filter.$and.push({ paymentType: { $ne: 'cash' } });
   }
   if (stage) filter.stage = stage;
   // ── الفترة تُقاس بتاريخ الكشف لا بلحظة إدخاله ─────────────────────────────
@@ -964,7 +1038,7 @@ function buildWorkflowFilter(query, skipField, allowMoney = true) {
   //
   // وتُضاف داخل `$and` لا على الجذر، لأن فلتر اليوم يحتاج `$or` (مدى اليوم أو
   // خانة فارغة) وعلى الجذر `$or` واحدة يشغلها البحث فيمحو أحدهما الآخر بصمت.
-  const conds = columnFilters(query, skipField, allowMoney);
+  const conds = columnFilters(query, skipField, allowMoney, allowSelling);
   if (conds.length) filter.$and = [...(filter.$and || []), ...conds];
   return filter;
 }
@@ -974,7 +1048,7 @@ function buildWorkflowFilter(query, skipField, allowMoney = true) {
 // Powers the operations-page summary cards so they reflect all ~27k records.
 exports.getWorkflowStats = async (req, res) => {
   try {
-    const filter = buildWorkflowFilter(req.query, undefined, canSeeMoney(req.user.role));
+    const filter = buildWorkflowFilter(req.query, undefined, canSeeMoney(req.user.role), canSeeSelling(req.user.role));
     // نفس الشرط الذي يفلتر به الزرّ — من تعريفٍ واحد، فلا يقول العدّاد رقمًا
     // ويفتح الزرّ غيره.
     const pendingMatch = { ...filter, $and: [...(filter.$and || []), PENDING_PAYMENT] };
@@ -992,9 +1066,28 @@ exports.getWorkflowStats = async (req, res) => {
       ...filter,
       $and: [...(filter.$and || []), PENDING_PAYMENT, { applicationStatus: 'bond_received' }],
     };
-    const [total, pendingInvoices, pendingBondReceived, agg, stages] = await Promise.all([
+    /**
+     * ── «سندات لم تصل» كاشًا وضريبيًّا، ومجموعُهما الإجماليّ بالضبط ────────────
+     *
+     * قاعدةُ صاحب الشركة: البطاقتان تساويان معًا بطاقةَ الإجماليّ. والقسمةُ على
+     * `paymentType` — العمودِ نفسِه الذي تعرضه الصفحةُ «نوع الدفع» ويقرؤه التحصيل:
+     *
+     *   كاش    = نوعُ الدفع «كاش».
+     *   ضريبي  = كلُّ ما سواه: «ضريبي»، **والذي لم يُحدَّد نوعُه بعد**.
+     *
+     * والثالثُ داخلٌ في الضريبيّ لا خارجَه، لأنّ الكشفَ بلا نوعٍ ينتظر رقمَ
+     * فاتورةٍ ليصل التحصيل (`reachesCollections`: غيرُ النقديّ «بانتظار رقم
+     * الفاتورة») — فهو في طريق الضريبيّ لا الكاش. ويُقال عددُه تحت البطاقة
+     * (`pendingUntyped`) فلا يختبئ. والأرقامُ الثلاثةُ من تجميعٍ واحد، فلا
+     * يفترق المجموعُ عن الإجماليّ ولو تغيّر صفٌّ بين استعلامين.
+     */
+    const PENDING_SPLIT = OperationsWorkflow.aggregate([
+      { $match: pendingMatch },
+      { $group: { _id: { $ifNull: ['$paymentType', ''] }, n: { $sum: 1 } } },
+    ]);
+    const [total, pendingRows, pendingBondReceived, agg, stages] = await Promise.all([
       OperationsWorkflow.countDocuments(filter),
-      OperationsWorkflow.countDocuments(pendingMatch),
+      PENDING_SPLIT,
       OperationsWorkflow.countDocuments(bondReceivedPending),
       OperationsWorkflow.aggregate([
         { $match: filter },
@@ -1016,7 +1109,7 @@ exports.getWorkflowStats = async (req, res) => {
     // وتُحسَب تحت الفلاتر القائمة عدا فلترَ الحالة نفسِه — كما يفعل إكسل: من
     // صفّى «في الطريق» يريد أن يرى بقيّةَ الحالات لينتقل إليها، لا أصفارًا.
     // و`skipField` هي الآليّةُ المكتوبةُ لذلك أصلًا في `buildWorkflowFilter`.
-    const statusFree = buildWorkflowFilter(req.query, 'applicationStatus', canSeeMoney(req.user.role));
+    const statusFree = buildWorkflowFilter(req.query, 'applicationStatus', canSeeMoney(req.user.role), canSeeSelling(req.user.role));
     const byStatusRows = await OperationsWorkflow.aggregate([
       { $match: statusFree },
       { $group: { _id: { $ifNull: ['$applicationStatus', ''] }, count: { $sum: 1 } } },
@@ -1025,9 +1118,18 @@ exports.getWorkflowStats = async (req, res) => {
     let statusTotal = 0;
     byStatusRows.forEach((r) => { byStatus[r._id || '(بلا حالة)'] = r.count; statusTotal += r.count; });
 
+    let pendingCash = 0; let pendingTax = 0; let pendingUntyped = 0;
+    for (const r of pendingRows) {
+      if (r._id === 'cash') pendingCash += r.n;
+      else { pendingTax += r.n; if (r._id !== 'tax') pendingUntyped += r.n; }
+    }
+    const pendingInvoices = pendingCash + pendingTax;
     res.json({
       total,
       pendingInvoices,
+      pendingCash,
+      pendingTax,
+      pendingUntyped,
       pendingBondReceived,
       sumPurchaseValue: agg[0]?.sumPurchaseValue || 0,
       byStage: stages.reduce((acc, r) => { acc[r._id || 'draft'] = r.count; return acc; }, {}),
@@ -1059,7 +1161,10 @@ exports.filterOptions = async (req, res) => {
     }
     // وقائمةُ قيمِ عمودٍ محجوبٍ تعرضه قيمةً قيمة: «اجمالى الفاتوره» تُقرأ من
     // قائمتها كما تُقرأ من الجدول. فتُمنع لمن لا يملكه.
-    if (MONEY_FIELDS.includes(field) && !canSeeMoney(req.user.role)) {
+    if ((MONEY_FIELDS.includes(field) || field === 'invoiceState') && !canSeeMoney(req.user.role)) {
+      return res.status(403).json({ message: 'Insufficient permissions' });
+    }
+    if (SELLING_FIELDS.includes(field) && !canSeeSelling(req.user.role)) {
       return res.status(403).json({ message: 'Insufficient permissions' });
     }
     // ── والمفتاحُ يحمل الصلاحيّة ────────────────────────────────────────
@@ -1067,15 +1172,28 @@ exports.filterOptions = async (req, res) => {
     // فمفتاحٌ لا يحمله يخدم دورًا بنتيجةٍ حُسبت لدورٍ آخر — وهي أوّلُ ثانيةٍ
     // بعد أن يفتح محاسبٌ القائمةَ نفسَها.
     const money = canSeeMoney(req.user.role);
-    const key = `wf:filters:${money ? 'm' : 'x'}:${JSON.stringify(req.query || {})}`;
+    const selling = canSeeSelling(req.user.role);
+    const key = `wf:filters:${money ? 'm' : 'x'}${selling ? 's' : 'x'}:${JSON.stringify(req.query || {})}`;
     const hit = cache.get(key);
     if (hit !== undefined) return res.json(hit);
+
+    // حالاتُ رقم الفاتورة الثلاث تُعَدّ بشرطها لا بتجميع الحقل.
+    if (field === 'invoiceState') {
+      const base = buildWorkflowFilter(req.query, field, money, selling);
+      const states = Object.keys(INVOICE_STATE_COND);
+      const counts = await Promise.all(states.map((k) => OperationsWorkflow.countDocuments(
+        { $and: [base, INVOICE_STATE_COND[k]] })));
+      const values = states.map((value, i) => ({ value, count: counts[i] }));
+      const body = { filters: [{ key: field, values, truncated: false, distinct: values.length }] };
+      cache.set(key, body, 20000);
+      return res.json(body);
+    }
 
     // «مسؤول البيانات» يُعَدّ بالمصادر الثلاثة التي تملأ خانتَه — راجع utils/dataOwnerIndex.
     if (field === 'dataOwnerShown') {
       const owner = require('../utils/dataOwnerIndex');
       await owner.ensure();
-      const base = buildWorkflowFilter(req.query, field, money);
+      const base = buildWorkflowFilter(req.query, field, money, selling);
       const q = String(req.query.q || '').trim().toLowerCase();
       let values = (await owner.ownerOptions(OperationsWorkflow, base))
         .filter((o) => !q || o.value.toLowerCase().includes(q))
@@ -1088,7 +1206,7 @@ exports.filterOptions = async (req, res) => {
       return res.json(body);
     }
 
-    const match = buildWorkflowFilter(req.query, field, money);
+    const match = buildWorkflowFilter(req.query, field, money, selling);
     // البحث داخل القائمة يُنفَّذ هنا لا في المتصفح، لأن المتصفح لا يملك إلا القيم
     // التي بلغت السقف: البحث عن رقم كشفٍ ليس ضمن الخمسمئة الأكثر تكرارًا كان
     // يُرجع «لا توجد قيم» والقيمة موجودة في القاعدة.
@@ -1187,7 +1305,7 @@ exports.getWorkflow = async (req, res) => {
       return res.status(404).json({ message: 'Workflow not found' });
     }
 
-    res.json(stripMoneyFor(req.user.role, workflow));
+    res.json(stripRowFor(req.user.role, workflow));
   } catch (error) {
     console.error('Get workflow error:', error);
     res.status(500).json({ message: 'Failed to load workflow details' });
@@ -1237,7 +1355,7 @@ exports.createWorkflow = async (req, res) => {
     });
 
     bustFilterCache();
-    try { emitPerRole('workflow:created', (r) => stripMoneyFor(r, populated)); } catch (e) { console.error('WebSocket emit error:', e); }
+    try { emitPerRole('workflow:created', (r) => stripRowFor(r, populated)); } catch (e) { console.error('WebSocket emit error:', e); }
 
     res.status(201).json(populated);
   } catch (error) {
@@ -1267,6 +1385,41 @@ function stampInvoiceDate(patch, current) {
   patch.invoiceDate = new Date(`${require('../utils/companyDay').todayKey()}T00:00:00.000Z`);
 }
 exports._stampInvoiceDate = stampInvoiceDate;
+
+/**
+ * ── قيمةُ البيع إلى منصّة التشغيل ───────────────────────────────────────────
+ *
+ * المنصّةُ تحمل للشحنة سعرين: `purchase_price` («Cost to company») و`selling_price`
+ * («Price charged to client») — `PATCH /api/v1/admin/shipments/{id}` بـ
+ * multipart/form-data، وكلُّ حقولها اختياريّة (UpdateShipmentDto). فتُرسَل
+ * `selling_price` وحدَها، و**لا يُلمَس `purchase_price` أبدًا**: هو كلفتُنا،
+ * ومنه تُقرأ قيمةُ الشراء هنا.
+ *
+ * كشفٌ ليس من المنصّة (أُنشئ عندنا أو استُورد) لا شحنةَ له هناك: يُكتب هنا
+ * وحدَه، ويُقال ذلك في الردّ (`platform: false`).
+ */
+// ── ومعلَّقٌ حتّى يقرّر صاحبُ الشركة ────────────────────────────────────────
+// كتابةُ سعر البيع الحقيقيّ في المنصّة تُظهر هامشَنا لفريقها، وكانت قيمتُه
+// هناك تساوي الكلفة. فالكتابةُ مطفأةٌ حتّى يُؤذَن بها صراحةً: تُحفظ القيمةُ هنا
+// وفي التحصيل، ولا يخرج إلى المنصّة شيء. والتشغيلُ = `true` هنا ونشرٌ جديد.
+const PUSH_SELLING_TO_PLATFORM = false;
+
+async function pushSellingValue(workflow, value) {
+  if (!PUSH_SELLING_TO_PLATFORM) return { platform: false, held: true };
+  if (workflow.externalSource !== 'ops_upl' || !workflow.externalId) return { platform: false };
+  const upl = require('../services/uplClient');
+  const shipmentId = String(workflow.externalId);
+  await upl.patch(`/admin/shipments/${encodeURIComponent(shipmentId)}`, { form: { selling_price: value } });
+  return { platform: true, shipmentId };
+}
+exports._pushSellingValue = pushSellingValue;
+
+/** مَن يقرأ `sellingValue` ويحفظ ما قرأ — يُمسح قبل أيّ بثّ. */
+function invalidateSellingReaders() {
+  for (const p of ['wf:', 'collections-dept:', 'cdr:', 'colledger:', 'opsprivate:', 'ops:']) {
+    try { cache.clear(p); } catch (_) { /* */ }
+  }
+}
 
 exports.updateWorkflow = async (req, res) => {
   try {
@@ -1371,6 +1524,37 @@ exports.updateWorkflow = async (req, res) => {
       });
     }
 
+    // ── قيمةُ البيع تُكتب في منصّة التشغيل أوّلًا ثمّ هنا ──────────────────────
+    // المنصّةُ تملك `selling_price` للشحنة وتعيد كتابتَه في كلّ مزامنة. فإن كُتبت
+    // هنا وحدَها كذبت شاشتان: المنصّةُ تقول سعرًا وسيرُ العمل غيرَه. فتُدفع إليها
+    // أوّلًا (راجع pushSellingValue)، ولا يُحفظ شيءٌ إن رفضتها — فلا يُقال «حُفظ»
+    // وقد بقيت المنصّةُ على القديم.
+    let sellingChanged = false;
+    let sellingPush = null;
+    if (Object.prototype.hasOwnProperty.call(filteredBody, 'sellingValue')) {
+      const raw = filteredBody.sellingValue;
+      const v = raw === '' || raw === null ? 0 : Number(raw);
+      if (!Number.isFinite(v) || v < 0) {
+        return res.status(400).json({ code: 'BAD_SELLING_VALUE', fields: ['sellingValue'], message: 'قيمة البيع يجب أن تكون رقمًا لا يقلّ عن صفر.' });
+      }
+      filteredBody.sellingValue = Math.round(v * 100) / 100;
+      if (filteredBody.sellingValue === Math.round((Number(workflow.sellingValue) || 0) * 100) / 100) {
+        delete filteredBody.sellingValue;
+      } else {
+        try {
+          sellingPush = await pushSellingValue(workflow, filteredBody.sellingValue);
+        } catch (e) {
+          return res.status(502).json({
+            code: 'PLATFORM_WRITE_FAILED',
+            fields: ['sellingValue'],
+            message: `تعذّرت كتابة قيمة البيع في منصّة التشغيل — لم يُحفظ شيء. (${e.message || 'خطأ في المنصّة'})`,
+          });
+        }
+        filteredBody.sellingValueSource = 'manual';
+        sellingChanged = true;
+      }
+    }
+
     filteredBody.lastModifiedBy = req.user._id;
 
     const before = workflow.toObject();
@@ -1416,18 +1600,32 @@ exports.updateWorkflow = async (req, res) => {
     });
 
     bustFilterCache();
-    try { emitPerRole('workflow:updated', (r) => stripMoneyFor(r, populated)); } catch (e) { console.error('WebSocket emit error:', e); }
+    // قيمةُ البيع يقرؤها التحصيلُ (مستحقُّ الكاش وأعمارُه) والصفحةُ الخاصّة ولوحاتُ
+    // المنصّة — تُمسح ذاكرتُها **قبل** البثّ، وإلّا قرأ المستمعُ القديمَ وتأخّر
+    // خطوةً (راجع announce-before-invalidate).
+    if (sellingChanged) invalidateSellingReaders();
+    try { emitPerRole('workflow:updated', (r) => stripRowFor(r, populated)); } catch (e) { console.error('WebSocket emit error:', e); }
+    if (sellingChanged) {
+      try { emitToAll('collections:changed', { source: 'workflow', field: 'sellingValue', reportNumber: workflow.reportNumber }); } catch (e) { /* */ }
+      if (sellingPush && sellingPush.platform) {
+        try { emitToAll('ops:shipments:changed', { resource: 'shipments', action: 'selling_price', ids: [sellingPush.shipmentId], at: Date.now() }); } catch (e) { /* */ }
+      }
+    }
 
     // ما رُفض يُقال حتّى حين نجح غيرُه: الحفظُ الجزئيُّ الصامتُ يترك الموظّف
     // يظنّ أنّ الستّةَ حُفظت وقد حُفظ واحد.
     // وردُّ الحفظ يُحجب كما تُحجب القائمة: هو نسخةُ الصفّ التي تحلّ محلَّ
     // القديمة في الشاشة، فلو خرج كاملًا عاد المحجوبُ من باب الحفظ.
-    const out = stripMoneyFor(req.user.role, populated);
+    const out = stripRowFor(req.user.role, populated);
+    const extra = {};
     if (rejected.length) {
-      return res.json(Object.assign(out.toObject ? out.toObject() : { ...out }, {
-        refusedFields: rejected,
-        refusedMessage: `لم تُحفظ (خارج صلاحيّتك): ${rejected.join('، ')}`,
-      }));
+      extra.refusedFields = rejected;
+      extra.refusedMessage = `لم تُحفظ (خارج صلاحيّتك): ${rejected.join('، ')}`;
+    }
+    // ويُقال أين كُتبت قيمةُ البيع: في المنصّة وهنا، أم هنا وحدَه (كشفٌ ليس منها).
+    if (sellingPush) extra.sellingPlatform = !!sellingPush.platform;
+    if (Object.keys(extra).length) {
+      return res.json(Object.assign(out.toObject ? out.toObject() : { ...out }, extra));
     }
     res.json(out);
   } catch (error) {
@@ -1509,7 +1707,7 @@ exports.updateStage = async (req, res) => {
     });
 
     bustFilterCache();
-    try { emitPerRole('workflow:stageChanged', (r) => stripMoneyFor(r, populated)); } catch (e) { console.error('WebSocket emit error:', e); }
+    try { emitPerRole('workflow:stageChanged', (r) => stripRowFor(r, populated)); } catch (e) { console.error('WebSocket emit error:', e); }
 
     res.json(populated);
   } catch (error) {
@@ -1738,7 +1936,7 @@ exports.updateApplicationStatus = async (req, res) => {
     });
 
     // والردُّ يُحجَب كما تُحجَب القائمة: هو نسخةُ الصفّ التي تحلّ محلَّ القديمة.
-    res.json(row ? stripMoneyFor(req.user.role, row) : { _id: workflow._id, applicationStatus: status });
+    res.json(row ? stripRowFor(req.user.role, row) : { _id: workflow._id, applicationStatus: status });
   } catch (error) {
     const status = error.status && error.status >= 400 && error.status < 600 ? error.status : 500;
     if (status >= 500) console.error('updateApplicationStatus:', error.message);
@@ -1769,7 +1967,7 @@ exports.bulkUpdate = async (req, res) => {
     if (req.body.allMatching && req.body.query && typeof req.body.query === 'object') {
       const q = Object.fromEntries(Object.entries(req.body.query).filter(([k]) => !['page', 'limit', 'sort', 'order'].includes(k)));
       if (q.cf_dataOwnerShown !== undefined) await require('../utils/dataOwnerIndex').ensure().catch(() => {});
-      const filter = buildWorkflowFilter(q, undefined, canSeeMoney(req.user.role));
+      const filter = buildWorkflowFilter(q, undefined, canSeeMoney(req.user.role), canSeeSelling(req.user.role));
       const found = await OperationsWorkflow.find(filter).select('_id').limit(CAP + 1).lean();
       if (found.length > CAP) return res.status(400).json({ message: `نتائجُ الفلتر أكثرُ من ${CAP} كشف — ضيِّق الفلتر ثمّ أعِد.` });
       ids = found.map((x) => x._id);
@@ -1781,6 +1979,13 @@ exports.bulkUpdate = async (req, res) => {
     // والقواعدُ نفسُها في الجملة: لا يكسب أحدٌ بالتحديد ما لا يملكه بالمفرد.
     // (وتُعاد لكلّ صفٍّ على حدة أدناه، لأنّ نوعَ الدفع يختلف من كشفٍ لآخر.)
     const refused = patch.__rejected || [];
+    // ── وقيمةُ البيع لا تُكتب جماعةً ──────────────────────────────────────────
+    // كلُّ كشفٍ منها يُكتب في منصّة التشغيل نداءً بنداء (راجع pushSellingValue)،
+    // وسعرٌ واحدٌ لمئة كشفٍ لعملاءَ ومساراتٍ شتّى ليس تسعيرًا. تُعدَّل كشفًا كشفًا.
+    if (Object.prototype.hasOwnProperty.call(patch, 'sellingValue')) {
+      delete patch.sellingValue;
+      refused.push('sellingValue');
+    }
     const keys = Object.keys(patch);
     if (!keys.length) {
       return res.status(403).json({
@@ -1968,7 +2173,7 @@ exports.bulkDelete = async (req, res) => {
  * ثانيةٌ تفترق عنها. و`scope=all` وحدَها تتجاوز الفلترَ — وهي خيارٌ يسمّي نفسَه
  * في القائمة، فلا يخرج الملفُّ أوسعَ ممّا طُلب.
  */
-async function buildWorkflowWorkbook(filter, money) {
+async function buildWorkflowWorkbook(filter, money, selling = true) {
   {
     const { SHIPMENT_STATUS_AR } = require('../config/constants');
 
@@ -1997,7 +2202,7 @@ async function buildWorkflowWorkbook(filter, money) {
       ['العميل', (w) => w.username || ''],
       ['هاتف العميل', (w) => w.userPhone || ''],
       ['قيمة الشراء', (w) => w.purchaseValue || 0, 'money'],
-      ['قيمة البيع', (w) => w.sellingValue || 0, 'money'],
+      ['قيمة البيع', (w) => w.sellingValue || 0, 'selling'],
       ['السائق', (w) => w.driverName || ''],
       ['نوع الشاحنة', (w) => w.truckType || ''],
       ['حجم الشاحنة', (w) => w.truckSize || ''],
@@ -2022,7 +2227,8 @@ async function buildWorkflowWorkbook(filter, money) {
 
     // الملفُّ يُفتح خارج النظام حيث لا حارس، فما لا يُعرض على الشاشة لا يخرج
     // فيه — وإلّا كان الحجبُ زينةً يلتفّ عليها زرُّ تصدير.
-    const cols = money ? COLUMNS : COLUMNS.filter(([, , tag]) => tag !== 'money');
+    // وقيمةُ البيع لمن في قائمتها وحدَه — راجع SELLING_ROLES.
+    const cols = COLUMNS.filter(([, , tag]) => (tag !== 'money' || money) && (tag !== 'selling' || selling));
     const headers = cols.map(([h]) => h);
 
     // ولا تُقرأ حقولٌ لا عمودَ لها: كان الاستعلامُ يجلب المستندَ كاملًا بما فيه
@@ -2067,20 +2273,21 @@ async function buildWorkflowWorkbook(filter, money) {
 // بناءَين ونسختين. والقرصُ مشترَكٌ بينهما.
 const EXPORT_DIR = path.join(__dirname, '..', '..', 'uploads', 'exports');
 const ALL_TTL_MS = 60 * 60 * 1000;
-const allFile = (money) => path.join(EXPORT_DIR, `operations-all${money ? '' : '-nomoney'}.xlsx`);
+// وأربعُ نسخٍ لا اثنتان: بالمال وبدونه، وبقيمة البيع وبدونها.
+const allFile = (money, selling = true) => path.join(EXPORT_DIR, `operations-all${money ? '' : '-nomoney'}${selling ? '' : '-nosell'}.xlsx`);
 let buildingAll = false;
 
-async function refreshAllExport(money) {
+async function refreshAllExport(money, selling = true) {
   if (buildingAll) return;
   buildingAll = true;
   try {
-    const { buf, rows } = await buildWorkflowWorkbook({}, money);
+    const { buf, rows } = await buildWorkflowWorkbook({}, money, selling);
     fs.mkdirSync(EXPORT_DIR, { recursive: true });
     // يُكتب إلى اسمٍ مؤقّتٍ ثمّ يُنقَل: من يقرأ أثناء الكتابة يقرأ ملفًّا كاملًا
     // قديمًا لا ملفًّا نصفَه جديدٌ ونصفُه قديم.
-    const tmp = `${allFile(money)}.tmp`;
+    const tmp = `${allFile(money, selling)}.tmp`;
     fs.writeFileSync(tmp, buf);
-    fs.renameSync(tmp, allFile(money));
+    fs.renameSync(tmp, allFile(money, selling));
     console.log(`[workflowExport] بُني ملفُّ الجدول كلِّه: ${rows} صفًّا · ${(buf.length / 1048576).toFixed(1)}MB`);
   } catch (e) {
     console.error('[workflowExport] تعذّر البناء:', e.message);
@@ -2092,6 +2299,7 @@ async function refreshAllExport(money) {
 exports.exportWorkflows = async (req, res) => {
   try {
     const money = canSeeMoney(req.user.role);
+    const selling = canSeeSelling(req.user.role);
     const wantsAll = String(req.query.scope || '') === 'all';
     const name = `operations-${new Date().toISOString().split('T')[0]}.xlsx`;
     const head = (len, ageMs) => {
@@ -2103,29 +2311,29 @@ exports.exportWorkflows = async (req, res) => {
     };
 
     if (wantsAll) {
-      const f = allFile(money);
+      const f = allFile(money, selling);
       let stat = null;
       try { stat = fs.statSync(f); } catch (e) { /* لم يُبنَ بعد */ }
       if (stat) {
         const age = Date.now() - stat.mtimeMs;
         // القديمُ يُسلَّم الآن ويُجدَّد خلفَه: الانتظارُ أسوأُ من ساعةٍ من العمر.
-        if (age > ALL_TTL_MS) refreshAllExport(money).catch(() => {});
+        if (age > ALL_TTL_MS) refreshAllExport(money, selling).catch(() => {});
         head(stat.size, age);
         return fs.createReadStream(f).pipe(res);
       }
       // أوّلُ مرّة: يُبنى الآن ويُحفَظ، فلا ينتظره أحدٌ بعدها.
-      const { buf } = await buildWorkflowWorkbook({}, money);
+      const { buf } = await buildWorkflowWorkbook({}, money, selling);
       try {
         fs.mkdirSync(EXPORT_DIR, { recursive: true });
-        fs.writeFileSync(allFile(money), buf);
+        fs.writeFileSync(allFile(money, selling), buf);
       } catch (e) { /* تعذّر الحفظ لا يمنع التسليم */ }
       head(buf.length, 0);
       return res.send(buf);
     }
 
     // المفلتَرُ يُبنى لحظتَه — شرطُه يخصّ سائلَه.
-    const filter = buildWorkflowFilter(req.query, undefined, money);
-    const { buf } = await buildWorkflowWorkbook(filter, money);
+    const filter = buildWorkflowFilter(req.query, undefined, money, selling);
+    const { buf } = await buildWorkflowWorkbook(filter, money, selling);
     head(buf.length, 0);
     return res.send(buf);
   } catch (error) {
@@ -2140,9 +2348,10 @@ exports.exportWorkflows = async (req, res) => {
  */
 exports.buildExportFile = async (query = {}, user = {}) => {
   const money = canSeeMoney(user.role);
+  const selling = canSeeSelling(user.role);
   const all = String(query.scope || '') === 'all';
-  const filter = all ? {} : buildWorkflowFilter(query, undefined, money);
-  const { buf, rows } = await buildWorkflowWorkbook(filter, money);
+  const filter = all ? {} : buildWorkflowFilter(query, undefined, money, selling);
+  const { buf, rows } = await buildWorkflowWorkbook(filter, money, selling);
   return { buf, rows, name: `operations-${new Date().toISOString().slice(0, 10)}.xlsx` };
 };
 
@@ -2223,18 +2432,20 @@ exports.bulkImport = async (req, res) => {
     });
 
     bustFilterCache();
+    // والصفوفُ في البثّ تُحجَب لكلّ دورٍ كما تُحجَب في القائمة — كانت تخرج كاملةً
+    // لكلّ مقبس، بمالها وقيمة بيعها.
     try {
-      emitToAll('workflow:bulkImported', {
+      emitPerRole('workflow:bulkImported', (r) => ({
         count: createdWorkflows.length,
-        workflows: populated,
-      });
+        workflows: stripRowFor(r, populated),
+      }));
     } catch (e) { console.error('WebSocket emit error:', e); }
 
     res.status(201).json({
       imported: createdWorkflows.length,
       skipped: skipped.length,
       skippedReports: skipped,
-      workflows: populated,
+      workflows: stripRowFor(req.user.role, populated),
     });
   } catch (error) {
     console.error('Bulk import workflows error:', error);
@@ -2264,7 +2475,7 @@ exports.getPendingByCustomer = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    res.json({ workflows, total: workflows.length });
+    res.json({ workflows: stripRowFor(req.user.role, workflows), total: workflows.length });
   } catch (error) {
     console.error('Get pending invoices by customer error:', error);
     res.status(500).json({ message: 'Failed to load pending invoices' });
@@ -2292,7 +2503,34 @@ module.exports.buildWorkflowFilter = buildWorkflowFilter;
 module.exports.canSeeMoney = canSeeMoney;
 module.exports.fieldsForRole = fieldsForRole;
 module.exports.stripMoneyFor = stripMoneyFor;
+module.exports.canSeeSelling = canSeeSelling;
+module.exports.SELLING_ROLES = SELLING_ROLES;
 module.exports.syncOpsInvoices = syncOpsInvoices;
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  فحوصُ الفواتير — GET /api/workflows/invoice-checks[/:kind]
+// ═══════════════════════════════════════════════════════════════════════════
+// أرقامُ فواتيرَ وقيمُها وأسماءُ عملائها: لمن يملك أعمدةَ المال وحدَه.
+exports.invoiceChecks = async (req, res) => {
+  try {
+    if (!canSeeMoney(req.user.role)) return res.status(403).json({ message: 'Insufficient permissions' });
+    res.json(await require('../services/invoiceChecksService').summary());
+  } catch (e) {
+    console.error('invoiceChecks:', e);
+    res.status(500).json({ message: 'تعذّر حساب فحوص الفواتير' });
+  }
+};
+exports.invoiceCheckList = async (req, res) => {
+  try {
+    if (!canSeeMoney(req.user.role)) return res.status(403).json({ message: 'Insufficient permissions' });
+    const rows = await require('../services/invoiceChecksService').list(String(req.params.kind || ''));
+    if (!rows) return res.status(404).json({ message: 'فحصٌ غير معروف' });
+    res.json({ kind: req.params.kind, rows, total: rows.length });
+  } catch (e) {
+    console.error('invoiceCheckList:', e);
+    res.status(500).json({ message: 'تعذّر جلب القائمة' });
+  }
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  رفعُ بيانات الفواتير من إكسل — POST /api/workflows/import-invoices
@@ -2331,6 +2569,9 @@ exports.importInvoices = async (req, res) => {
       totalInvoice: ['المجموعالصافي', 'اجماليالفاتوره'],
       tax: ['ضريبهالبند', 'الضريبه'],
       invoiceDate: ['التاريخ', 'تاريخالفاتوره'],
+      // العميلُ لا يُكتب على الكشف (العميلُ من الكشف) — يُحفظ مع سطر الورقة
+      // ليُقارَن بعميل الكشف (بطاقة «عدم تطابق اسم العميل»).
+      customerName: ['العميل', 'اسمالعميل'],
     };
     const num = (v) => {
       if (v === null || v === undefined || v === '') return undefined;
@@ -2359,6 +2600,9 @@ exports.importInvoices = async (req, res) => {
 
     // ── قراءةُ الصفوف من كلّ ورقةٍ فيها عمودُ «امر الشحن» ──
     const byReport = new Map(); let fileRows = 0; const badRows = [];
+    // ── وأسطرُ الورقة كما جاءت، تُحفظ بعد التطبيق ───────────────────────────
+    // (فاتورة، كشف) — الأخيرُ يغلب كما في `byReport`. راجع services/invoiceChecksService.
+    const lineMap = new Map();
     for (const name of wb.SheetNames) {
       const aoa = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null, blankrows: false });
       const hi = aoa.findIndex((r) => (r || []).some((c) => COLS.reportNumber.includes(fold(c))));
@@ -2379,6 +2623,14 @@ exports.importInvoices = async (req, res) => {
         if (at.invoiceDate >= 0 && date(r[at.invoiceDate])) patch.invoiceDate = date(r[at.invoiceDate]);
         if (!Object.keys(patch).length) { badRows.push({ reportNumber: rep, reason: 'لا بيانات فاتورة في الصفّ' }); continue; }
         byReport.set(rep, { patch, sheetRow: i + 1, sheet: name }); // الأخيرُ يغلب
+        if (patch.invoiceNumber) {
+          lineMap.set(`${patch.invoiceNumber}|${rep}`, {
+            invoiceNumber: patch.invoiceNumber, reportNumber: rep,
+            net: patch.netInvoice ?? null, tax: patch.tax ?? null, total: patch.totalInvoice ?? null,
+            customerName: at.customerName >= 0 ? norm(r[at.customerName]) : '',
+            invoiceDate: patch.invoiceDate || null, sheet: name, sheetRow: i + 1,
+          });
+        }
       }
     }
     if (!byReport.size) return res.status(400).json({ message: 'لم يُعثر على عمود «امر الشحن» أو لا صفوف فيه' });
@@ -2415,7 +2667,16 @@ exports.importInvoices = async (req, res) => {
       notFound, skipped, badRows,
       sample: plan.slice(0, 15).map((p) => ({ reportNumber: p.reportNumber, before: p.before, after: Object.fromEntries(Object.keys(p.before).map((k) => [k, p.patch[k]])) })),
     };
-    if (!req.body.apply) return res.json({ preview: true, ...summary });
+    // ── تنبيهاتُ الرفع: الفحوصُ الثلاثةُ على أسطر هذه الورقة ────────────────
+    // في المعاينة تُقرأ الكشوفُ كما ستكون بعد التطبيق (ما سيُكتب عليها فوق ما
+    // فيها) — فلا يُنبَّه على فرقٍ يزيله التطبيقُ نفسُه.
+    const invChecks = require('../services/invoiceChecksService');
+    const lines = [...lineMap.values()];
+    if (!req.body.apply) {
+      const overlay = new Map(plan.map((p) => [p.reportNumber, p.patch]));
+      const checks = await invChecks.checkLines(lines, overlay);
+      return res.json({ preview: true, ...summary, checks });
+    }
 
     // ── الكتابة ──
     let updated = 0;
@@ -2423,15 +2684,23 @@ exports.importInvoices = async (req, res) => {
       const r = await OperationsWorkflow.updateOne({ _id: p._id }, { $set: { ...p.patch, lastModifiedBy: req.user._id } });
       updated += r.modifiedCount || 0;
     }
+    // أسطرُ الورقة تُحفظ كلُّها — ومنها ما لا كشفَ له (وهو ما تُبنى عليه بطاقتُه).
+    const uploadAt = new Date();
+    const savedLines = await invChecks.persistLines(lines, {
+      batchId: `${uploadAt.getTime().toString(36)}-${String(req.user._id).slice(-6)}`,
+      fileName: String(req.body.fileName || '').slice(0, 200), at: uploadAt,
+      userId: req.user._id, userName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
+    });
     cache.clear('wf:');
     const fresh = await OperationsWorkflow.find({ _id: { $in: plan.map((p) => p._id) } }).select('invoiceNumber').lean();
     await syncOpsInvoices([...fresh.map((w) => w.invoiceNumber), ...plan.map((p) => p.oldInvoice)]);
+    const checks = await invChecks.checkLines(lines);
     try { emitToAll('workflow:bulkImported', { importInvoices: true, updated }); } catch (_) { /* */ }
     logAudit({
       user: req.user, action: 'import_invoices', entity: 'OperationsWorkflow',
       details: `رفع بيانات فواتير: ${updated} كشفًا من ${byReport.size} في الملفّ (${notFound.length} غير موجود، ${skipped.length} لم يُكتب)`, ip: req.ip,
     });
-    return res.json({ preview: false, updated, ...summary });
+    return res.json({ preview: false, updated, savedLines, ...summary, checks });
   } catch (e) {
     console.error('importInvoices:', e);
     res.status(500).json({ message: e.message || 'تعذّر رفع بيانات الفواتير' });

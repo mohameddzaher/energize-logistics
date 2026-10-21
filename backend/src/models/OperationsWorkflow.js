@@ -36,7 +36,12 @@ const operationsWorkflowSchema = new mongoose.Schema(
     // هنا، وامتنعت المزامنةُ عن الكتابة فوقها وحدَها. وبقيّةُ الحقول تُنقَل كما
     // هي، والقرّاءُ كلُّهم يقرؤون `sellingValue` كما كانوا — لا شرطَ يتناثر في
     // الشاشات.
-    sellingValueSource: { type: String, enum: ['', 'platform', 'collections_book'], default: '' },              // قيمه البيع
+    //
+    // و`manual` = كتبها بيده مَن يملك العمود في سير العمل (مديرُ التشغيل والمبيعاتُ
+    // وأهلُ المال والتحصيل)، وكُتبت معها في منصّة التشغيل (`selling_price`). فلا
+    // تكتب المزامنةُ فوقها كذلك: قرارُ إنسانٍ صريحٌ على كشفٍ بعينه، والمنصّةُ تعيد
+    // `selling_price = purchase_price` من تلقاء نفسها في بعض تعديلاتها.
+    sellingValueSource: { type: String, enum: ['', 'platform', 'collections_book', 'manual'], default: '' },              // قيمه البيع
 
     // Additional Application fields (from Excel import)
     loadingTime: { type: String, trim: true },                // وقت التحميل

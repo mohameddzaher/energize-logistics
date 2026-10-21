@@ -54,6 +54,7 @@
         "/api/workflows/export",
         "/api/workflows/filters",
         "/api/workflows/import-invoices",
+        "/api/workflows/invoice-checks",
         "/api/workflows/permissions",
         "/api/workflows/stats"
       ],

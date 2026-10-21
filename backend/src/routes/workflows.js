@@ -32,11 +32,16 @@ router.use(require('../utils/dataOwnerIndex').preload);
 // نداءٍ فيها يردّ ٤٠٣ — رابطٌ ميّتٌ منذ كُتب. والدوران في `FULL_ACCESS_ROLES`
 // أي بلا حاجزٍ في كلّ قسمٍ آخر؛ وهذا المسارُ بلا `sectionGate` فلا يشملهما
 // المنحُ الديناميّ الذي يفتحه لهما في غيره.
+//
+// ── والمبيعاتُ معهم لقيمة البيع ──────────────────────────────────────────
+// قسمُ المبيعات يسعّر الكشف: يرى «قيمة البيع» ويكتبها (وحدَها — راجع
+// ROLE_FIELD_ACCESS في المتحكّم)، ولا تصله أعمدةُ الفاتورة.
 const allWorkflowRoles = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
   'employee', 'operations_manager', 'operations_staff',
   'moderator', 'cfo', 'accounting_manager', 'accountant',
   'collections_manager', 'collections_staff',
+  'sales_manager', 'sales_rep',
 ];
 
 // List & export
@@ -46,6 +51,10 @@ router.get('/stats', authorize(...allWorkflowRoles), workflowController.getWorkf
 // قيم فلتر عمودٍ واحد — تُحسب في القاعدة. لا بدّ أن تسبق `/:id` وإلا قُرئت
 // «filters» على أنها معرّف سجلّ فردّ الخادم 404 على كل فتحةٍ للقائمة.
 router.get('/filters', authorize(...allWorkflowRoles), workflowController.filterOptions);
+// فحوصُ الفواتير الأربع (ناقصٌ في التسلسل · كشفٌ غير موجود · فرقُ قيمة · اسمُ عميل) —
+// قبل `/:id` أيضًا. والمالُ يُفحص داخل المتحكّم (canSeeMoney).
+router.get('/invoice-checks', authorize(...allWorkflowRoles), workflowController.invoiceChecks);
+router.get('/invoice-checks/:kind', authorize(...allWorkflowRoles), workflowController.invoiceCheckList);
 
 // ── أنواعُ الدفع ────────────────────────────────────────────────────────────
 // صفةُ العميل تُقرأ لمن يفتح صفحةَ التشغيل، ولا تُكتب إلّا لمن يديرها: قلبُ

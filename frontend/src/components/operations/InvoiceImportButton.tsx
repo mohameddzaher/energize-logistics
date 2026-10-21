@@ -17,6 +17,12 @@ type Result = {
   preview: boolean; updated?: number; fileRows: number; reports: number; toUpdate: number; unchanged: number;
   notFound: string[]; skipped: { reportNumber: string; reason: string }[]; badRows: { reportNumber: string; reason: string }[];
   sample: { reportNumber: string; before: Record<string, any>; after: Record<string, any> }[];
+  /** تنبيهاتُ الرفع — الفحوصُ الثلاثةُ على أسطر هذه الورقة (راجع invoiceChecksService). */
+  checks?: {
+    missingReports: { invoiceNumber: string; reportNumber: string; customerName: string; total: number | null }[];
+    valueDiffs: { invoiceNumber: string; customerName: string; uploadedValue: number; reportsValue: number; difference: number }[];
+    nameMismatches: { invoiceNumber: string; reportNumber: string; uploadedCustomer: string; workflowCustomer: string }[];
+  };
 };
 const LABEL: Record<string, string> = {
   documentNumber: 'رقم السند', invoiceNumber: 'رقم الفاتورة', netInvoice: 'صافي الفاتورة', tax: 'الضريبة',
@@ -41,7 +47,7 @@ export default function InvoiceImportButton({ ar, onDone }: { ar: boolean; onDon
     if (!f) return;
     setBusy(true);
     try {
-      const r = await api.post<Result>('/api/workflows/import-invoices', { dataUrl: f.dataUrl, apply });
+      const r = await api.post<Result>('/api/workflows/import-invoices', { dataUrl: f.dataUrl, apply, fileName: f.name });
       setRes(r);
       if (apply) { notify(t(`كُتبت بياناتُ ${r.updated} كشفًا`, `${r.updated} reports updated`), 'success'); onDone(); }
     } catch (e: any) { notify(e?.message || t('تعذّر الرفع', 'Upload failed'), 'error'); }
@@ -65,8 +71,8 @@ export default function InvoiceImportButton({ ar, onDone }: { ar: boolean; onDon
       <Modal open={open} onClose={() => setOpen(false)} wide title={t('رفع بيانات فواتير من إكسل', 'Upload invoice data (Excel)')}>
         <div className="space-y-3 text-sm" dir={ar ? 'rtl' : 'ltr'}>
           <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[12.5px] leading-6 text-blue-900">
-            {t('الأعمدة: «امر الشحن» (رقم الكشف) · «السند» · «رقم الفاتورة» · «اجمالي السعر» (صافي الفاتورة) · «ضريبة البند» · «المجموع الصافي» (إجمالي الفاتورة) · «التاريخ». ويُتجاهل «العميل». الأحدثُ يكتب فوق القديم، والضريبةُ تُحسب من الصافي، والفاتورةُ الضريبيّة تصل التحصيل فورًا.',
-              'Columns: shipment order (report no.), voucher, invoice no., net, VAT, total, date. Customer is ignored. Newer data overwrites; VAT is computed from the net; tax invoices reach Collections at once.')}
+            {t('الأعمدة: «امر الشحن» (رقم الكشف) · «السند» · «رقم الفاتورة» · «اجمالي السعر» (صافي الفاتورة) · «ضريبة البند» · «المجموع الصافي» (إجمالي الفاتورة) · «التاريخ» · «العميل». العميلُ لا يُكتب على الكشف — يُقارَن بعميله. الأحدثُ يكتب فوق القديم، والضريبةُ تُحسب من الصافي، والفاتورةُ الضريبيّة تصل التحصيل فورًا. وتُحفظ أسطرُ الورقة لبطاقات الفحص في سير العمل.',
+              'Columns: shipment order (report no.), voucher, invoice no., net, VAT, total, date, customer. The customer is not written — it is compared with the report’s. Newer data overwrites; VAT is computed from the net; tax invoices reach Collections at once. Sheet lines are kept for the workflow check cards.')}
           </p>
           <input ref={input} type="file" accept=".xlsx,.xls" hidden onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ''; }} />
           <button type="button" onClick={() => input.current?.click()} disabled={busy}
@@ -101,6 +107,40 @@ export default function InvoiceImportButton({ ar, onDone }: { ar: boolean; onDon
                   {t('أرقامُ كشوفٍ غير موجودة في سير العمل: ', 'Not found: ')}{res.notFound.slice(0, 60).join('، ')}{res.notFound.length > 60 ? ' …' : ''}
                 </p>
               )}
+              {/* ── تنبيهاتُ الرفع ─────────────────────────────────────────────
+                  كشفٌ غيرُ موجود، وفاتورةٌ قيمتُها غيرُ مجموع كشوفها، وعميلٌ غيرُ
+                  عميل الكشف. وتبقى بعد التطبيق بطاقاتٍ في سير العمل — تسقط منها
+                  حين يُصحَّح الكشف. */}
+              {res.checks && (() => {
+                const c = res.checks;
+                const fmt = (v: any) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }));
+                const blocks: { n: number; title: string; tone: string; lines: string[] }[] = [
+                  {
+                    n: c.missingReports.length, tone: 'border-amber-200 bg-amber-50 text-amber-900',
+                    title: t('فواتير بكشوفات غير موجودة', 'Invoices citing missing reports'),
+                    lines: c.missingReports.map((m) => `${t('فاتورة', 'Invoice')} ${m.invoiceNumber} — ${t('كشف', 'report')} ${m.reportNumber}${m.customerName ? ` · ${m.customerName}` : ''}`),
+                  },
+                  {
+                    n: c.valueDiffs.length, tone: 'border-rose-200 bg-rose-50 text-rose-900',
+                    title: t('فرق قيمة الفاتورة', 'Invoice value differences'),
+                    lines: c.valueDiffs.map((v) => `${t('فاتورة', 'Invoice')} ${v.invoiceNumber}: ${t('الورقة', 'sheet')} ${fmt(v.uploadedValue)} · ${t('الكشوف', 'reports')} ${fmt(v.reportsValue)} · ${t('الفرق', 'diff')} ${fmt(v.difference)}`),
+                  },
+                  {
+                    n: c.nameMismatches.length, tone: 'border-sky-200 bg-sky-50 text-sky-900',
+                    title: t('عدم تطابق اسم العميل', 'Customer name mismatch'),
+                    lines: c.nameMismatches.map((m) => `${t('كشف', 'Report')} ${m.reportNumber} (${m.invoiceNumber}): ${t('الورقة', 'sheet')} «${m.uploadedCustomer}» ≠ ${t('الكشف', 'report')} «${m.workflowCustomer}»`),
+                  },
+                ];
+                if (!blocks.some((b) => b.n)) {
+                  return <p className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />{t('لا تنبيهات: كلُّ الكشوف موجودة، والقيمُ والعملاءُ مطابقة.', 'No alerts: all reports exist, values and customers match.')}</p>;
+                }
+                return blocks.filter((b) => b.n).map((b) => (
+                  <div key={b.title} className={`rounded-lg border p-2.5 text-[12px] ${b.tone}`}>
+                    <p className="mb-1 flex items-center gap-1 font-bold"><AlertTriangle className="h-3.5 w-3.5" />{b.title} ({b.n})</p>
+                    <div className="max-h-32 overflow-auto">{b.lines.slice(0, 200).map((l, i) => <p key={i}>{l}</p>)}</div>
+                  </div>
+                ));
+              })()}
               {res.preview && !!res.sample.length && (
                 <div className="max-h-64 overflow-auto rounded-lg border border-slate-200">
                   <table className="w-full text-[12px]">

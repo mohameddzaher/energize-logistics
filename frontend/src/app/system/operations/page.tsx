@@ -20,6 +20,8 @@ import {
   ClipboardList, Plus, Search, Filter, FilterX, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, AlertCircle, CheckSquare, Check, Receipt, AlertTriangle } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
 import InvoiceImportButton from '@/components/operations/InvoiceImportButton';
+import WorkflowFilterBar, { type FilterBarField } from '@/components/operations/WorkflowFilterBar';
+import InvoiceCheckCards from '@/components/operations/InvoiceCheckCards';
 
 interface Workflow {
   _id: string;
@@ -154,6 +156,26 @@ const EXPORT_COLUMNS = [
   { header: 'تاريخ التحصيل', key: 'collectionDate', width: 12 },
 ];
 
+// ── أعمدةُ شريط الفلترة ──────────────────────────────────────────────────────
+// ما يُسأل عنه كلَّ يوم: العميل، والفرع، والمسار، ونوعُ الدفع، والحالة، والسائق
+// والسيارة، وهل على الكشف فاتورة. وبقيّةُ الأعمدة لها فلترُها على رأسها في الجدول.
+// (`invoiceState` عمودٌ محسوبٌ في الخادم: موجود / فارغ / بديلٌ مثل «no inv».)
+const BAR_FIELDS: (FilterBarField & { money?: boolean })[] = [
+  { key: 'username', ar: 'العميل', en: 'Customer' },
+  { key: 'branch', ar: 'الفرع', en: 'Branch' },
+  { key: 'fromLocation', ar: 'من', en: 'From' },
+  { key: 'toLocation', ar: 'إلى', en: 'To' },
+  { key: 'paymentType', ar: 'نوع الدفع', en: 'Payment type' },
+  { key: 'applicationStatus', ar: 'حالة الطلب', en: 'Status' },
+  { key: 'executionStatus', ar: 'حالة التنفيذ', en: 'Execution' },
+  { key: 'driverName', ar: 'السائق', en: 'Driver' },
+  { key: 'carNumber', ar: 'رقم السيارة', en: 'Vehicle' },
+  { key: 'carOwner', ar: 'مالك السيارة', en: 'Car owner' },
+  { key: 'truckType', ar: 'نوع الشاحنة', en: 'Truck type' },
+  { key: 'payingBranch', ar: 'الفرع المسدِّد', en: 'Paying branch' },
+  { key: 'invoiceState', ar: 'رقم الفاتورة', en: 'Invoice number', money: true },
+];
+
 export default function OperationsWorkflowPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -225,6 +247,8 @@ export default function OperationsWorkflowPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [showPendingOnly, setShowPendingOnly] = useState(false);
+  // «سندات لم تصل» كلُّها، أو قسمُها الكاش، أو قسمُها الضريبيّ — راجع PENDING_SPLIT في الخادم.
+  const [pendingKind, setPendingKind] = useState<'' | 'cash' | 'tax'>('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Workflow>>({});
   // الصفُّ كما كان قبل التعديل — يُقارَن به عند الحفظ فلا يُرسَل إلّا ما تغيّر.
@@ -238,7 +262,8 @@ export default function OperationsWorkflowPage() {
   const SYSTEM_FIELDS = new Set<string>([
     'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch', 'carOwner',
     'carNumber', 'ownerType', 'executionStatus', 'applicationStatus', 'paymentMethod',
-    'username', 'userPhone', 'taxIndicator', 'purchaseValue', 'sellingValue', 'loadingTime',
+    // (قيمةُ البيع ليست منها: يكتبها مَن يملكها هنا، وتُكتب في المنصّة معها.)
+    'username', 'userPhone', 'taxIndicator', 'purchaseValue', 'loadingTime',
     'driverName', 'driverPhone', 'truckType', 'truckSize', 'loadType', 'quantity',
     'reference', 'representativeName', 'stage',
   ]);
@@ -311,12 +336,17 @@ export default function OperationsWorkflowPage() {
   const canViewFinancials = full || has('invoiceNumber') || has('totalInvoice');
   const canEditAccountingReview = full || has('accountingReview');
   const canEditOperationsReview = full || has('operationsReview');
+  // ── قيمةُ البيع: لمن في قائمتها وحدَه ─────────────────────────────────────
+  // الخادمُ لا يرسلها لغيرهم أصلًا ولا يقبل كتابتَها منهم؛ والعمودُ يُخفى معها
+  // كي لا يُقرأ فراغُه «لا سعرَ لهذا الكشف».
+  const canSeeSelling = has('sellingValue');
 
   // Aggregates over the WHOLE matching dataset (all ~27k rows, not one page).
   const [stats, setStats] = useState<{
-    total: number; pendingInvoices: number; pendingBondReceived: number; sumPurchaseValue: number;
+    total: number; pendingInvoices: number; pendingCash: number; pendingTax: number; pendingUntyped: number;
+    pendingBondReceived: number; sumPurchaseValue: number;
     byStage: Record<string, number>; byStatus: Record<string, number>; statusTotal: number;
-  }>({ total: 0, pendingInvoices: 0, pendingBondReceived: 0, sumPurchaseValue: 0, byStage: {}, byStatus: {}, statusTotal: 0 });
+  }>({ total: 0, pendingInvoices: 0, pendingCash: 0, pendingTax: 0, pendingUntyped: 0, pendingBondReceived: 0, sumPurchaseValue: 0, byStage: {}, byStatus: {}, statusTotal: 0 });
 
   // كل ما يفهمه الخادم من فلترة في مكانٍ واحد: يقرؤه الجدولُ والإحصاءاتُ وقوائمُ
   // القيم والتصدير، فلا يفلتر أحدها على شرطٍ ويعرض الآخر نتيجة شرطٍ غيره.
@@ -330,11 +360,12 @@ export default function OperationsWorkflowPage() {
     if (dateFrom) params.append('dateFrom', dateFrom);
     if (dateTo) params.append('dateTo', dateTo);
     if (showPendingOnly) params.append('pendingOnly', 'true');
+    if (showPendingOnly && pendingKind) params.append('pendingKind', pendingKind);
     for (const [field, vals] of Object.entries(colFilters)) {
       vals.forEach((v) => params.append(`cf_${field}`, v));
     }
     return params;
-  }, [stageFilter, search, dateFrom, dateTo, showPendingOnly, colFilters]);
+  }, [stageFilter, search, dateFrom, dateTo, showPendingOnly, pendingKind, colFilters]);
 
   // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ────────────────────────────────────
   //
@@ -407,6 +438,9 @@ export default function OperationsWorkflowPage() {
       setStats({
         total: data.total || 0,
         pendingInvoices: data.pendingInvoices || 0,
+        pendingCash: data.pendingCash || 0,
+        pendingTax: data.pendingTax || 0,
+        pendingUntyped: data.pendingUntyped || 0,
         pendingBondReceived: data.pendingBondReceived || 0,
         sumPurchaseValue: data.sumPurchaseValue || 0,
         byStage: data.byStage || {},
@@ -449,7 +483,7 @@ export default function OperationsWorkflowPage() {
 
   // اختيارُ الصفوف يُلغى مع كل تغيّر في الفلاتر أو الصفحة: الصفوف المؤشَّرة لم تعد
   // معروضة، وحذفٌ جماعيّ يقع على صفوفٍ لا يراها المستخدم.
-  useEffect(() => { setSelectedIds(new Set()); setAllMatching(false); }, [stageFilter, search, page, dateFrom, dateTo, showPendingOnly, colFilters]);
+  useEffect(() => { setSelectedIds(new Set()); setAllMatching(false); }, [stageFilter, search, page, dateFrom, dateTo, showPendingOnly, pendingKind, colFilters]);
 
   const setColFilter = (field: string, set: Set<string>) => {
     // الفلترة تُغيّر عدد الصفحات كلّه، والبقاءُ على الصفحة السابعة بعد فلترٍ نتيجته
@@ -578,6 +612,12 @@ export default function OperationsWorkflowPage() {
       const r = await api.put<Workflow & { refusedMessage?: string }>(`/api/workflows/${savedId}`, patch);
       // ما رفضه الخادمُ يُقال، ولا يُترك المستخدم يظنّ أنّه حُفظ.
       if (r && r.refusedMessage) setError(r.refusedMessage);
+      // قيمةُ البيع: يُقال أين كُتبت — في المنصّة وهنا، أم هنا وحدَه (كشفٌ ليس منها).
+      if (r && typeof (r as any).sellingPlatform === 'boolean') {
+        notify((r as any).sellingPlatform
+          ? (lang === 'ar' ? 'حُفظت قيمة البيع هنا وفي منصّة التشغيل' : 'Selling value saved here and on the platform')
+          : (lang === 'ar' ? 'حُفظت قيمة البيع — الكشف ليس من منصّة التشغيل' : 'Selling value saved — not a platform shipment'), 'success');
+      }
       setEditingId(null);
       setEditData({});
       setEditBase({});
@@ -754,7 +794,7 @@ export default function OperationsWorkflowPage() {
   const exportSheets = async () => [{
     name: lang === 'ar' ? 'الطلبات' : 'Workflows',
     rows: workflows.map(exportRow) as unknown as Record<string, any>[],
-    columns: canViewFinancials ? EXPORT_COLUMNS : EXPORT_COLUMNS.filter((c) => !MONEY_EXPORT_KEYS.has(c.key)),
+    columns: EXPORT_COLUMNS.filter((c) => (canViewFinancials || !MONEY_EXPORT_KEYS.has(c.key)) && (canSeeSelling || c.key !== 'sellingValue')),
   }];
 
   /**
@@ -890,45 +930,10 @@ export default function OperationsWorkflowPage() {
   return (
     <div className="space-y-4">
 
-      {/* ── بطاقاتُ حالة الأبلكيشن ──────────────────────────────────────────
-          مكانَ اختصارٍ كان ينقل إلى صفحةٍ أخرى بدل أن يُجيب. والأعدادُ من
-          الخادم على الصفوف كلِّها لا على الخمسين المعروضة، وتُحسَب تحت بقيّة
-          الفلاتر عدا فلترِ الحالة نفسِه. وضغطةٌ على البطاقة تصفّي الجدولَ
-          عليها، وضغطةٌ ثانيةٌ تلغيها. */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-        <button type="button" onClick={() => toggleStatusCard('')}
-          className={`text-start rounded-xl p-3 border transition-all ${statusSel.size === 0
-            ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'}`}>
-          <p className="text-xl font-bold">{(stats.statusTotal || stats.total || 0).toLocaleString()}</p>
-          <p className="text-[11px] mt-0.5">{lang === 'ar' ? 'الكل' : 'All'}</p>
-        </button>
-        {SHIPMENT_STATUSES.map((st) => {
-          const on = statusSel.has(st.key);
-          const n = stats.byStatus?.[st.key] ?? 0;
-          // ── واثنتان تُميَّزان دائمًا ──────────────────────────────────────
-          // «متأخرة» و«وصلت» هما ما يُبحَث عنه كلَّ صباح: الأولى عملٌ متعثّرٌ
-          // يُسأل عنه، والثانية حمولةٌ تنتظر سندَها. وبقيّةُ الحالات تُقرأ حين
-          // تُطلب، وهاتان تُقرآن قبل أن تُطلبا — فتُلوَّنان ولو لم تُنتقيا.
-          const alwaysOn = st.key === 'late' || st.key === 'arrived';
-          const base = on
-            ? `${st.bg} ${st.text} border-current ring-2 ring-offset-1 ring-current`
-            : st.key === 'late'
-              ? 'bg-red-50 text-red-700 border-red-200 hover:border-red-400'
-              : st.key === 'arrived'
-                ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:border-indigo-400'
-                : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300';
-          return (
-            <button key={st.key} type="button" onClick={() => toggleStatusCard(st.key)}
-              className={`text-start rounded-xl p-3 border transition-all ${base}`}>
-              <p className={`text-xl font-bold ${alwaysOn && !on ? '' : ''}`}>{n.toLocaleString()}</p>
-              <p className="text-[11px] mt-0.5 flex items-center gap-1">
-                <span className={`w-1.5 h-1.5 rounded-full ${st.key === 'late' ? 'bg-red-500' : st.dot}`} />
-                {lang === 'ar' ? st.ar : st.en}
-              </p>
-            </button>
-          );
-        })}
-      </div>
+      {/* ── بطاقاتُ الحالات الإحدى عشرة أُزيلت (صاحبُ الشركة، ٢٠٢٦/١٠/٢١) ──────
+          «الكل · قيد الطلب · … · ملغاة» صارت قيمًا في شريط الفلترة تحت البحث
+          («حالة الطلب»)، بعددها بجانب كلٍّ منها — والسطرُ الواحد يتّسع للعميل
+          والفرع والمسار ونوع الدفع معها بدل أحد عشر مربّعًا لعمودٍ واحد. */}
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -1164,6 +1169,16 @@ export default function OperationsWorkflowPage() {
               onTo={(v) => { setDateTo(v); setPage(1); }} />
           )}
         </div>
+        <WorkflowFilterBar
+          ar={lang === 'ar'}
+          fields={BAR_FIELDS.filter((f) => !f.money || canViewFinancials)}
+          value={colFilters}
+          onChange={setColFilter}
+          params={buildParams}
+          format={(f) => (f === 'invoiceState'
+            ? (v: any) => ({ has: lang === 'ar' ? 'عليه رقم فاتورة' : 'Has a number', none: lang === 'ar' ? 'فارغ' : 'Blank', placeholder: lang === 'ar' ? 'بديل (no inv / بدون)' : 'Placeholder (no inv)' } as Record<string, string>)[String(v)] || String(v)
+            : colFormat(f))}
+        />
         {/* ── مِصفاةُ المراحل أُزيلت ────────────────────────────────────────
             «مسودة / مرسل للتشغيل / التشغيل مكتمل / للتحصيلات / مكتمل» مراحلُ
             صُمّمت حين كانت الكشوفُ تُنشأ عندنا وتتنقّل بين أقسامنا. وهي تصل
@@ -1177,9 +1192,9 @@ export default function OperationsWorkflowPage() {
         {/* Pending Invoices — over ALL matching rows (click to filter) */}
         <button
           type="button"
-          onClick={() => { setShowPendingOnly(prev => !prev); setPage(1); }}
+          onClick={() => { const on = showPendingOnly && !pendingKind; setShowPendingOnly(!on); setPendingKind(''); setPage(1); }}
           className={`flex items-center gap-3 px-5 py-3.5 rounded-xl border transition-all duration-200 ${
-            showPendingOnly
+            showPendingOnly && !pendingKind
               ? 'bg-amber-500/20 border-amber-500/60 ring-2 ring-amber-500/30'
               : 'bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/15 hover:border-amber-500/50'
           }`}
@@ -1199,12 +1214,42 @@ export default function OperationsWorkflowPage() {
               {lang === 'ar' ? 'بلا تاريخ سداد · عدا الملغاة' : 'no payment date · excludes cancelled'}
             </span>
           </div>
-          {showPendingOnly && (
+          {showPendingOnly && !pendingKind && (
             <span className="ms-2 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/30 text-amber-700">
               {lang === 'ar' ? 'مُفعّل' : 'ACTIVE'}
             </span>
           )}
         </button>
+
+        {/* ── و«سندات لم تصل» كاشًا وضريبيًّا ─────────────────────────────────
+            القسمةُ على «نوع الدفع»: الكاشُ ما نوعُه كاش، والضريبيُّ كلُّ ما سواه —
+            ومنه ما لم يُحدَّد نوعُه بعد (ينتظر رقمَ فاتورةٍ ليصل التحصيل، فهو في
+            طريق الضريبيّ). فالبطاقتان تساويان الإجماليَّ دائمًا، وعددُ غير المحدَّد
+            مكتوبٌ تحت الضريبيّ فلا يختبئ. والضغطةُ تصفّي الجدولَ على قسمها. */}
+        {([
+          ['cash', stats.pendingCash, lang === 'ar' ? 'سندات لم تصل — كاش' : 'Pending bonds — cash',
+            lang === 'ar' ? 'نوع الدفع: كاش' : 'payment type: cash'],
+          ['tax', stats.pendingTax, lang === 'ar' ? 'سندات لم تصل — ضريبي' : 'Pending bonds — tax',
+            stats.pendingUntyped
+              ? (lang === 'ar' ? `ضريبي + ${stats.pendingUntyped.toLocaleString('en-US')} غير محدد النوع` : `tax + ${stats.pendingUntyped.toLocaleString('en-US')} untyped`)
+              : (lang === 'ar' ? 'نوع الدفع: ضريبي' : 'payment type: tax')],
+        ] as const).map(([k, n, title, sub]) => {
+          const on = showPendingOnly && pendingKind === k;
+          return (
+            <button key={k} type="button"
+              onClick={() => { setShowPendingOnly(!on); setPendingKind(on ? '' : k); setPage(1); }}
+              title={lang === 'ar' ? 'صفّي الجدول على هذه الكشوف' : 'Filter the table to these rows'}
+              className={`flex items-center gap-3 px-5 py-3.5 rounded-xl border transition-colors text-start ${on
+                ? 'bg-amber-500/20 border-amber-500/60 ring-2 ring-amber-500/30'
+                : 'bg-amber-50 border-amber-500/30 hover:border-amber-500/50'}`}>
+              <div className="flex flex-col items-start">
+                <span className="text-xl font-bold text-amber-700">{Number(n).toLocaleString('en-US')}</span>
+                <span className="text-xs text-amber-700/80">{title}</span>
+                <span className="text-[10px] text-amber-700/60 leading-tight">{sub}</span>
+              </div>
+            </button>
+          );
+        })}
 
         {/* ── والرابعةُ: السندُ «وصل» ولا تاريخَ لسداده ───────────────────────
             البطاقتان منفصلتان لا تُجيبان: ٩٨٨ بلا تاريخ سداد، وأربعةُ آلافٍ
@@ -1216,6 +1261,7 @@ export default function OperationsWorkflowPage() {
           onClick={() => {
             const on = showPendingOnly && statusSel.has('bond_received') && statusSel.size === 1;
             setShowPendingOnly(!on);
+            setPendingKind('');
             toggleStatusCard(on ? '' : 'bond_received');
             if (!on) setTimeout(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
           }}
@@ -1294,6 +1340,9 @@ export default function OperationsWorkflowPage() {
           </div>
         )}
 
+        {/* بطاقاتُ فحص الفواتير الأربع — لمن يملك أعمدةَ الفاتورة. راجع InvoiceCheckCards. */}
+        {canViewFinancials && <InvoiceCheckCards ar={lang === 'ar'} />}
+
         {/* Clear all column filters */}
         {hasColFilters && (
           <button
@@ -1354,7 +1403,7 @@ export default function OperationsWorkflowPage() {
                 {ColHead('userPhone', T.thUserPhone)}
                 {ColHead('taxIndicator', T.thTaxIndicator)}
                 {ColHead('purchaseValue', T.thPurchaseValue)}
-                {ColHead('sellingValue', T.thSellingValue)}
+                {canSeeSelling && ColHead('sellingValue', T.thSellingValue)}
                 {ColHead('driverName', T.thDriverName)}
                 {ColHead('truckType', T.thTruckType)}
                 {ColHead('truckSize', T.thTruckSize)}
@@ -1494,7 +1543,7 @@ export default function OperationsWorkflowPage() {
                       const spanCls = (field: keyof Workflow, color: string) =>
                         `${color} ${!isEditing && !SYSTEM_FIELDS.has(field as string) && !locked && owns(field) ? editableClass : ''}`;
                       // حقول كشف التخريج المسحوبة من النظام الخارجي غير قابلة للتعديل
-                      const systemPulledFields = new Set(['fromLocation', 'toLocation', 'purchaseValue', 'sellingValue', 'branch', 'carOwner', 'carNumber', 'ownerType']);
+                      const systemPulledFields = new Set(['fromLocation', 'toLocation', 'purchaseValue', 'branch', 'carOwner', 'carNumber', 'ownerType']);
                       const textCell = (field: keyof Workflow, color = 'text-slate-700') => {
                         const isSystemPulled = (systemPulledFields.has(field as string) && wf.reportNumber) || !owns(field);
                         return (
@@ -1589,7 +1638,7 @@ export default function OperationsWorkflowPage() {
                         }
                         return (
                           <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isSystemPulled ? (e) => e.stopPropagation() : cellClick(field)}
-                            title={!owns(field) ? noPermMsg : fromWallet ? 'من المحفظة — يُعدَّل من قيد المشتريات في المحفظة' : derivedTax ? (lang === 'ar' ? 'تُحسب من صافي الفاتورة — لا تُكتب' : 'Computed from the net — not typed') : isSystemPulled ? 'البيانات المسحوبة من النظام لا تُعدّل' : undefined}>
+                            title={!owns(field) ? noPermMsg : fromWallet ? 'من المحفظة — يُعدَّل من قيد المشتريات في المحفظة' : derivedTax ? (lang === 'ar' ? 'تُحسب من صافي الفاتورة — لا تُكتب' : 'Computed from the net — not typed') : isSystemPulled ? 'البيانات المسحوبة من النظام لا تُعدّل' : field === 'sellingValue' ? (lang === 'ar' ? 'تُكتب هنا وفي منصّة التشغيل معًا' : 'Saved here and on the operations platform') : undefined}>
                             {isEditing && !isSystemPulled ? <input type="number" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value ? Number(e.target.value) : ''}))} /> : <span className={`${spanCls(field, color)}${isSystemPulled && wf.reportNumber && !fromWallet && !derivedTax ? ' opacity-60' : ''}`}>{formatMoney((wf as any)[field])}{fromWallet && <span className="ms-1 text-[10px] font-semibold text-emerald-600">{lang === 'ar' ? 'محفظة' : 'wallet'}</span>}</span>}
                           </td>
                         );
@@ -1696,7 +1745,8 @@ export default function OperationsWorkflowPage() {
                         {textCell('userPhone')}
                         {textCell('taxIndicator')}
                         {numCell('purchaseValue')}
-                        {numCell('sellingValue')}
+                        {/* تُكتب في منصّة التشغيل أوّلًا ثمّ هنا — راجع pushSellingValue. */}
+                        {canSeeSelling && numCell('sellingValue', 'text-emerald-700')}
                         {textCell('driverName')}
                         {textCell('truckType')}
                         {textCell('truckSize')}

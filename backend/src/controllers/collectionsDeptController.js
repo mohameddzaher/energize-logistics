@@ -1012,7 +1012,9 @@ exports.filterOptions = async (req, res) => {
 };
 
 // تُنادى من السكربتات بعد الاستيراد فلا تبقى الشاشة على أرقامٍ قديمة دقيقةً.
-exports.invalidate = () => cache.clear(CACHE_PREFIX); cache.clear('cdr:');
+// (كان السطرُ بلا قوسين: `cache.clear('cdr:')` يجري مرّةً عند التحميل لا عند كلّ
+//  نداء، فتبقى أرقامُ الأعمار على القديم بعد كلّ «invalidate».)
+exports.invalidate = () => { cache.clear(CACHE_PREFIX); cache.clear('cdr:'); };
 exports._internals = { statsByKind, FIELD_OF, VALUE_OF, CLOSED_BY, NOT_CANCELLED };
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -162,6 +162,27 @@ exports.getDashboard = async (req, res) => {
 
 // ---- Generic resource CRUD ------------------------------------------------
 
+/**
+ * ── سعرُ البيع في شحنات المنصّة لمن يملكه وحدَه ───────────────────────────────
+ * صار `selling_price` في المنصّة سعرَنا الحقيقيّ للعميل: يُكتب إليها من عمود «قيمة
+ * البيع» في سير العمل (راجع pushSellingValue). وذاك العمودُ محجوبٌ عن موظّف
+ * التشغيل — فلا يصله من هذا الباب أيضًا. القائمةُ نفسُها (SELLING_ROLES).
+ * المخزَّنُ يبقى كاملًا، والحجبُ عند الردّ.
+ */
+function stripShipmentSelling(req, data) {
+  if (req.params.resource !== 'shipments') return data;
+  const { canSeeSelling } = require('./workflowController');
+  if (canSeeSelling(req.user && req.user.role)) return data;
+  const strip = (x) => {
+    if (!x || typeof x !== 'object') return x;
+    const { selling_price: _drop, ...rest } = x;
+    return rest;
+  };
+  if (Array.isArray(data)) return data.map(strip);
+  if (data && Array.isArray(data.items)) return { ...data, items: data.items.map(strip) };
+  return strip(data);
+}
+
 exports.list = async (req, res) => {
   const cfg = resolve(req, res);
   if (!cfg) return;
@@ -169,11 +190,11 @@ exports.list = async (req, res) => {
     const q = upstreamQuery(req);
     const key = `ops:list:${req.params.resource}:${langOf(req) || ''}:${JSON.stringify(q)}`;
     const hit = cache.get(key);
-    if (hit) return res.json(hit);
+    if (hit) return res.json(stripShipmentSelling(req, hit));
     const out = await upl.get(cfg.path, { query: q, lang: langOf(req) });
     const data = out.data ?? out;
     cache.set(key, data, CACHE_TTL);
-    res.json(data);
+    res.json(stripShipmentSelling(req, data));
   } catch (error) {
     fail(res, error, `Failed to list ${req.params.resource}`);
   }
@@ -184,7 +205,7 @@ exports.getOne = async (req, res) => {
   if (!cfg) return;
   try {
     const out = await upl.get(`${cfg.path}/${encodeURIComponent(req.params.id)}`, { lang: langOf(req) });
-    res.json(out.data ?? out);
+    res.json(stripShipmentSelling(req, out.data ?? out));
   } catch (error) {
     fail(res, error, `Failed to fetch ${req.params.resource}`);
   }

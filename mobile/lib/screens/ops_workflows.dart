@@ -35,6 +35,32 @@ String _money(dynamic v) {
   return n.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
 }
 
+/// أعمدةُ شريط الفلترة — نفسُ أعمدة الويب (WorkflowFilterBar)، وتكتب في فلاتر
+/// الأعمدة نفسِها (`cf_<العمود>`). و`invoiceState` عمودٌ محسوبٌ في الخادم.
+const _barFields = [
+  ('username', 'العميل', 'Customer', false),
+  ('branch', 'الفرع', 'Branch', false),
+  ('fromLocation', 'من', 'From', false),
+  ('toLocation', 'إلى', 'To', false),
+  ('paymentType', 'نوع الدفع', 'Payment type', false),
+  ('applicationStatus', 'حالة الطلب', 'Status', false),
+  ('executionStatus', 'حالة التنفيذ', 'Execution', false),
+  ('driverName', 'السائق', 'Driver', false),
+  ('carNumber', 'رقم السيارة', 'Vehicle', false),
+  ('carOwner', 'مالك السيارة', 'Car owner', false),
+  ('truckType', 'نوع الشاحنة', 'Truck type', false),
+  ('payingBranch', 'الفرع المسدِّد', 'Paying branch', false),
+  ('invoiceState', 'رقم الفاتورة', 'Invoice number', true),
+];
+
+/// بطاقاتُ فحص الفواتير الأربع — نفسُ بطاقات الويب (InvoiceCheckCards).
+const _checkKinds = [
+  ('gaps', 'فواتير لم تُفوتَر', 'Missing invoice numbers', T.violet),
+  ('missing-reports', 'فواتير بكشوفات غير موجودة', 'Invoices citing missing reports', T.warn),
+  ('value-diffs', 'فرق قيمة الفاتورة', 'Invoice value differences', T.danger),
+  ('name-mismatches', 'عدم تطابق اسم العميل', 'Customer name mismatch', T.info),
+];
+
 String _d(dynamic v) {
   final d = v != null ? DateTime.tryParse(v.toString())?.toLocal() : null;
   return d == null ? (v ?? '—').toString() : '${d.day}/${d.month}/${d.year}';
@@ -46,9 +72,16 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  /// حالةُ الطلب المختارة — تُرسَل فلترَ عمودٍ كما ترسله الشاشةُ في الويب.
-  String _status = '';
-  Map<String, dynamic> _byStatus = const {};
+  /// فلاترُ الأعمدة — العمود ← القيم المختارة. شريطُ الفلترة يكتب فيها كما في
+  /// الويب، وبطاقاتُ الحالات الإحدى عشرة أُزيلت (صارت قيمًا في «حالة الطلب»).
+  final Map<String, Set<String>> _cf = {};
+  /// «سندات لم تصل» كلُّها، أو قسمُها الكاش أو الضريبيّ.
+  bool _pendingOnly = false;
+  String _pendingKind = '';
+  /// حقولُ هذا الدور كما يحسبها الخادم — قيمةُ البيع تُكتب لمن هي فيها.
+  Set<String> _myFields = {};
+  /// فحوصُ الفواتير (لمن يملك أعمدةَ المال — وغيرُه يُردّ ٤٠٣ فتُخفى).
+  Map<String, dynamic>? _checks;
   int _page = 1;
   int _pages = 1;
   late final void Function() _onLive;
@@ -63,6 +96,11 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     Live.instance.on('workflow:updated', _onLive);
     // المزامنةُ الحيّة مع منصّة التشغيل تبثّ هذا عند كلّ تغيُّرِ حالة.
     Live.instance.on('workflow:bulkImported', _onLive);
+    Live.instance.on('workflow:deleted', _onLive);
+    Api.instance.get('/api/workflows/permissions').then((d) {
+      if (!mounted) return;
+      setState(() => _myFields = Set<String>.from((d is Map ? d['myFields'] : null) ?? const []));
+    }).catchError((_) {});
   }
 
   @override
@@ -71,33 +109,230 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     Live.instance.off('workflow:created', _onLive);
     Live.instance.off('workflow:updated', _onLive);
     Live.instance.off('workflow:bulkImported', _onLive);
+    Live.instance.off('workflow:deleted', _onLive);
     super.dispose();
   }
 
-  Future<void> _load() async {
-    try {
-      final params = [
-        'page=$_page', 'limit=40',
-        if (_status.isNotEmpty) 'cf_applicationStatus=${Uri.encodeQueryComponent(_status)}',
+  /// شروطُ القائمة كلُّها كما يرسلها الويب — تقرؤها القائمةُ والبطاقاتُ وأعدادُ الفلاتر.
+  List<String> _filterParams({String? skip}) => [
+        for (final e in _cf.entries)
+          if (e.key != skip)
+            for (final v in e.value) 'cf_${e.key}=${Uri.encodeQueryComponent(v)}',
         if (_q.trim().isNotEmpty) 'search=${Uri.encodeQueryComponent(_q.trim())}',
+        if (_pendingOnly) 'pendingOnly=true',
+        if (_pendingOnly && _pendingKind.isNotEmpty) 'pendingKind=$_pendingKind',
       ];
+
+  int _seq = 0;
+  Future<void> _load() async {
+    // الأحدثُ يفوز: ردٌّ قديمٌ لا يكتب فوق ردٍّ أحدث (البحثُ والبثُّ الحيّ يتسابقان).
+    final mine = ++_seq;
+    try {
+      final f = _filterParams();
+      final params = ['page=$_page', 'limit=40', ...f];
       final results = await Future.wait([
         Api.instance.get('/api/workflows?${params.join('&')}'),
-        Api.instance.get('/api/workflows/stats').catchError((_) => <String, dynamic>{}),
+        // البطاقاتُ تُحسب تحت الفلاتر نفسِها — كما في الويب.
+        Api.instance.get('/api/workflows/stats?${f.join('&')}').catchError((_) => <String, dynamic>{}),
+        Api.instance.get('/api/workflows/invoice-checks').catchError((_) => <String, dynamic>{}),
       ]);
-      if (!mounted) return;
+      if (!mounted || mine != _seq) return;
       setState(() {
         _rows = List<Map<String, dynamic>>.from(results[0]['workflows'] ?? []);
         _pages = ((results[0]['pages'] ?? 1) as num).toInt();
         _stats = Map<String, dynamic>.from(results[1]);
-        // أعدادُ الحالات تُحسَب في الخادم على كلّ الصفوف — لا على الأربعين
-        // المعروضة، كما في الويب.
-        _byStatus = Map<String, dynamic>.from(_stats['byStatus'] ?? {});
+        final c = Map<String, dynamic>.from(results[2] is Map ? results[2] : const {});
+        _checks = c.containsKey('gaps') ? c : null;
         _loading = false;
         _error = null;
       });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted && mine == _seq) setState(() { _loading = false; _error = e.toString(); });
+    }
+  }
+
+  void _reload() { setState(() { _page = 1; _loading = true; }); _load(); }
+
+  String _valueLabel(String field, String v) {
+    if (v.isEmpty) return tr('(فارغ)', '(blank)');
+    if (field == 'applicationStatus' || field == 'executionStatus') {
+      final st = _appStatuses[v];
+      return st != null ? tr(st.$1, st.$2) : v;
+    }
+    if (field == 'paymentType') return v == 'cash' ? tr('كاش', 'Cash') : v == 'tax' ? tr('ضريبي', 'Tax') : v;
+    if (field == 'invoiceState') {
+      return {'has': tr('عليه رقم فاتورة', 'Has a number'), 'none': tr('فارغ', 'Blank'), 'placeholder': tr('بديل (no inv / بدون)', 'Placeholder')}[v] ?? v;
+    }
+    return v;
+  }
+
+  /// قائمةُ قيم عمودٍ بأعدادها — من `/api/workflows/filters` التي تعدّ بكلّ
+  /// الفلاتر عدا فلتر العمود نفسِه، كما في شريط الويب.
+  Future<void> _pickFilter(String field, String label) async {
+    final picked = Set<String>.from(_cf[field] ?? const {});
+    List<Map<String, dynamic>> opts = [];
+    String q = '';
+    bool busy = true;
+    Future<void> fetch(StateSetter set) async {
+      try {
+        final d = await Api.instance.get('/api/workflows/filters?${[..._filterParams(skip: field), 'field=$field', if (q.isNotEmpty) 'q=${Uri.encodeQueryComponent(q)}'].join('&')}');
+        final f = (d['filters'] as List?)?.cast<Map>().firstOrNull;
+        opts = List<Map<String, dynamic>>.from((f?['values'] as List?) ?? const []);
+      } catch (_) { opts = []; }
+      busy = false;
+      set(() {});
+    }
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => StatefulBuilder(builder: (c, set) {
+        if (busy && opts.isEmpty) fetch(set);
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(c).size.height * 0.7,
+            child: Column(children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+                child: Row(children: [
+                  Expanded(child: Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800))),
+                  if (picked.isNotEmpty) TextButton(onPressed: () => set(picked.clear), child: Text(tr('مسح', 'Clear'))),
+                ]),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: TextField(
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(hintText: tr('ابحث…', 'Search…'), prefixIcon: const Icon(Icons.search), isDense: true),
+                  onSubmitted: (v) { q = v.trim(); busy = true; set(() {}); fetch(set); },
+                ),
+              ),
+              Expanded(
+                child: busy
+                    ? const Center(child: CircularProgressIndicator())
+                    : opts.isEmpty
+                        ? Center(child: Text(tr('لا نتائج', 'No matches'), style: const TextStyle(color: T.inkFaint)))
+                        : ListView(children: [
+                            for (final o in opts)
+                              CheckboxListTile(
+                                dense: true,
+                                value: picked.contains((o['value'] ?? '').toString()),
+                                onChanged: (on) => set(() {
+                                  final v = (o['value'] ?? '').toString();
+                                  if (on == true) { picked.add(v); } else { picked.remove(v); }
+                                }),
+                                title: Text(_valueLabel(field, (o['value'] ?? '').toString()), style: const TextStyle(fontSize: 13.5)),
+                                secondary: Text('${o['count'] ?? 0}', style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+                              ),
+                          ]),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                child: SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('تطبيق', 'Apply')))),
+              ),
+            ]),
+          ),
+        );
+      }),
+    );
+    if (ok != true) return;
+    setState(() { if (picked.isEmpty) { _cf.remove(field); } else { _cf[field] = picked; } });
+    _reload();
+  }
+
+  /// قائمةُ فحصٍ من فحوص الفواتير — نفسُ قائمة الويب.
+  Future<void> _openCheck(String kind, String title) async {
+    List<dynamic> rows = [];
+    bool busy = true;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => StatefulBuilder(builder: (c, set) {
+        if (busy && rows.isEmpty) {
+          Api.instance.get('/api/workflows/invoice-checks/$kind').then((d) { rows = (d['rows'] as List?) ?? []; busy = false; set(() {}); })
+              .catchError((_) { busy = false; set(() {}); });
+        }
+        String line(Map r) {
+          switch (kind) {
+            case 'gaps':
+              return '${r['invoiceNumber']}${(r['noteAr'] ?? '').toString().isNotEmpty ? ' — ${tr(r['noteAr'].toString(), r['note'].toString())}' : ''}${(r['ledgerParty'] ?? '').toString().isNotEmpty ? ' · ${r['ledgerParty']}' : ''}';
+            case 'missing-reports':
+              return '${tr('فاتورة', 'Invoice')} ${r['invoiceNumber']} — ${tr('كشف', 'report')} ${r['reportNumber']}${(r['customerName'] ?? '').toString().isNotEmpty ? ' · ${r['customerName']}' : ''}';
+            case 'value-diffs':
+              return '${tr('فاتورة', 'Invoice')} ${r['invoiceNumber']}: ${tr('الورقة', 'sheet')} ${_money(r['uploadedValue'])} · ${tr('الكشوف', 'reports')} ${_money(r['reportsValue'])} · ${tr('الفرق', 'diff')} ${_money(r['difference'])}';
+            default:
+              return '${tr('كشف', 'Report')} ${r['reportNumber']} (${r['invoiceNumber']}): «${r['uploadedCustomer']}» ≠ «${r['workflowCustomer']}»';
+          }
+        }
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(c).size.height * 0.75,
+            child: Column(children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                child: Align(alignment: AlignmentDirectional.centerStart, child: Text('$title (${rows.length})', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800))),
+              ),
+              Expanded(
+                child: busy
+                    ? const Center(child: CircularProgressIndicator())
+                    : rows.isEmpty
+                        ? Center(child: Text(tr('لا شيء هنا', 'Nothing here'), style: const TextStyle(color: T.inkFaint)))
+                        : ListView.separated(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            itemCount: rows.length.clamp(0, 1000),
+                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            itemBuilder: (_, i) => Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Text(line(Map<String, dynamic>.from(rows[i] as Map)), style: const TextStyle(fontSize: 12.5)),
+                            ),
+                          ),
+              ),
+            ]),
+          ),
+        );
+      }),
+    );
+  }
+
+  /// قيمةُ البيع تُكتب لمن يملكها — في منصّة التشغيل وهنا معًا (الخادمُ يكتب
+  /// هناك أوّلًا، ولا يحفظ شيئًا إن رفضت المنصّة). نفسُ عقد الويب: PUT /api/workflows/:id.
+  Future<void> _editSelling(Map<String, dynamic> w) async {
+    final ctrl = TextEditingController(text: (w['sellingValue'] ?? '').toString());
+    final v = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('قيمة البيع', 'Selling value')),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(helperText: tr('تُحفظ هنا وفي منصّة التشغيل معًا', 'Saved here and on the operations platform')),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(c, ctrl.text.trim()), child: Text(tr('حفظ', 'Save'))),
+        ],
+      ),
+    );
+    if (v == null || v.isEmpty) return;
+    final n = num.tryParse(v);
+    if (n == null || n < 0) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('أدخل رقمًا صحيحًا', 'Enter a valid number'))));
+      return;
+    }
+    try {
+      final row = await Api.instance.put('/api/workflows/${w['_id']}', {'sellingValue': n});
+      if (!mounted) return;
+      final onPlatform = row is Map && row['sellingPlatform'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(onPlatform
+          ? tr('حُفظت قيمة البيع هنا وفي منصّة التشغيل', 'Saved here and on the platform')
+          : tr('حُفظت قيمة البيع', 'Selling value saved'))));
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
     }
   }
 
@@ -158,6 +393,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
       (tr('حالة التنفيذ', 'Execution status'), w['executionStatus']),
       (tr('طريقة الدفع', 'Payment method'), w['paymentMethod']),
       (tr('قيمة الشراء', 'Purchase value'), w['purchaseValue'] != null ? '${_money(w['purchaseValue'])} ر.س' : null),
+      // قيمةُ البيع لا تصل مَن ليس في قائمتها أصلًا — الخادمُ يحجبها.
       (tr('قيمة البيع', 'Selling value'), w['sellingValue'] != null ? '${_money(w['sellingValue'])} ر.س' : null),
       (tr('رقم الفاتورة', 'Invoice #'), w['invoiceNumber']),
       (tr('تاريخ الدفع', 'Payment date'), w['paymentDate']),
@@ -179,6 +415,15 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                 Expanded(child: Text(f.$2.toString(), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))),
               ]),
             )),
+            if (_myFields.contains('sellingValue'))
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: OutlinedButton.icon(
+                  onPressed: () { Navigator.pop(c); _editSelling(w); },
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: Text(tr('تعديل قيمة البيع', 'Edit selling value')),
+                ),
+              ),
           ]),
         ),
       ),
@@ -194,32 +439,49 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : Column(children: [
+                  // ── البطاقات: صفٌّ أفقيّ كما في الويب ─────────────────────────
+                  // «سندات لم تصل» ومعها قسماها الكاش والضريبيّ (مجموعُهما الإجماليّ
+                  // بالضبط — غيرُ محدَّد النوع داخلٌ في الضريبيّ ومكتوبٌ تحته)، وبطاقاتُ
+                  // فحص الفواتير الأربع لمن يملك أعمدةَ المال. والضغطةُ تصفّي أو تفتح القائمة.
                   if (_stats.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-                      // ── أربعُ بطاقاتٍ كما في الويب ────────────────────────
-                      // والرابعةُ تناقضٌ يُقرأ: السندُ «وصل» في حالة الطلب ولا
-                      // تاريخَ لسداده في الكشف — فإمّا تاريخٌ ناقصٌ يُكتب أو
-                      // حالةٌ تُصحَّح. وهي رقمٌ لا يُستخرَج من البطاقتين
-                      // منفصلتين.
-                      child: Column(children: [
-                        Row(children: [
-                          Expanded(child: _statCard(tr('الإجمالي', 'Total'), '${_stats['total'] ?? 0}', T.navy)),
-                          const SizedBox(width: 8),
-                          Expanded(child: _statCard(tr('سندات لم تصل', 'Pending bonds'), '${_stats['pendingInvoices'] ?? 0}', T.warn)),
-                        ]),
-                        const SizedBox(height: 8),
-                        Row(children: [
-                          Expanded(child: _statCard(tr('سند لم يصل وحالته «استُلم»', 'Pending, status received'), '${_stats['pendingBondReceived'] ?? 0}', T.danger)),
-                          const SizedBox(width: 8),
-                          Expanded(child: _statCard(tr('قيمة الشراء', 'Purchase'), _money(_stats['sumPurchaseValue']), T.violet)),
-                        ]),
-                      ]),
+                    SizedBox(
+                      height: 84,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+                        children: [
+                          _statCard(tr('الإجمالي', 'Total'), '${_stats['total'] ?? 0}', T.navy),
+                          _statCard(tr('سندات لم تصل', 'Pending bonds'), '${_stats['pendingInvoices'] ?? 0}', T.warn,
+                              sub: tr('بلا تاريخ سداد · عدا الملغاة', 'no payment date'),
+                              active: _pendingOnly && _pendingKind.isEmpty,
+                              onTap: () { final on = _pendingOnly && _pendingKind.isEmpty; _pendingOnly = !on; _pendingKind = ''; _reload(); }),
+                          _statCard(tr('لم تصل — كاش', 'Pending — cash'), '${_stats['pendingCash'] ?? 0}', T.warn,
+                              sub: tr('نوع الدفع: كاش', 'type: cash'),
+                              active: _pendingOnly && _pendingKind == 'cash',
+                              onTap: () { final on = _pendingOnly && _pendingKind == 'cash'; _pendingOnly = !on; _pendingKind = on ? '' : 'cash'; _reload(); }),
+                          _statCard(tr('لم تصل — ضريبي', 'Pending — tax'), '${_stats['pendingTax'] ?? 0}', T.warn,
+                              sub: ((_stats['pendingUntyped'] ?? 0) as num) > 0
+                                  ? tr('منها ${_stats['pendingUntyped']} غير محدد', '${_stats['pendingUntyped']} untyped')
+                                  : tr('نوع الدفع: ضريبي', 'type: tax'),
+                              active: _pendingOnly && _pendingKind == 'tax',
+                              onTap: () { final on = _pendingOnly && _pendingKind == 'tax'; _pendingOnly = !on; _pendingKind = on ? '' : 'tax'; _reload(); }),
+                          _statCard(tr('سند لم يصل وحالته «استُلم»', 'Pending, status received'), '${_stats['pendingBondReceived'] ?? 0}', T.danger),
+                          if (_stats['sumPurchaseValue'] != null)
+                            _statCard(tr('قيمة الشراء', 'Purchase'), _money(_stats['sumPurchaseValue']), T.violet),
+                          if (_checks != null)
+                            for (final k in _checkKinds)
+                              _statCard(tr(k.$2, k.$3), '${(_checks![_checkKey(k.$1)] as Map?)?['count'] ?? 0}', k.$4,
+                                  sub: k.$1 == 'gaps' && (_checks!['gaps'] as Map?)?['start'] != null
+                                      ? '${(_checks!['gaps'] as Map)['start']} → ${(_checks!['gaps'] as Map)['end']}'
+                                      : null,
+                                  onTap: () => _openCheck(k.$1, tr(k.$2, k.$3))),
+                        ],
+                      ),
                     ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
                     child: TextField(
-                      onSubmitted: (v) { setState(() { _q = v; _page = 1; _loading = true; }); _load(); },
+                      onSubmitted: (v) { _q = v; _reload(); },
                       onChanged: (v) => _q = v,
                       textInputAction: TextInputAction.search,
                       decoration: InputDecoration(hintText: tr('ابحث بالكشف أو المالك ثم إدخال…', 'Search then enter…'), prefixIcon: const Icon(Icons.search)),
@@ -229,30 +491,34 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                     padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
-                      // ── والشرائحُ حالةُ الطلب لا المرحلة ────────────────────
-                      // كانت خمسَ شرائحِ مراحلَ أربعٌ منها فارغةٌ دائمًا (كلُّ
-                      // الكشوف «مسودة»). والسؤالُ الذي يُسأل كلَّ صباح هو حالةُ
-                      // الطلب: كم في الطريق، وكم وصلت ولم يصل سندُها — ومعها
-                      // عددُها من الخادم كما في بطاقات الويب.
+                      // ── شريطُ الفلترة مكانَ شرائح الحالات ───────────────────
+                      // نفسُ أعمدة الويب: العميل، الفرع، من/إلى، نوع الدفع، الحالة…
+                      // وكلُّ قيمةٍ بعددها (بكلّ الفلاتر عدا فلترها).
                       child: Row(
-                        children: _appStatuses.entries.map((e) {
-                          final selected = _status == e.key;
-                          final n = (_byStatus[e.key] ?? 0) as num;
-                          return Padding(
-                            padding: const EdgeInsets.only(left: 6),
-                            child: FilterChip(
-                              selected: selected,
-                              onSelected: (_) { setState(() { _status = selected ? '' : e.key; _page = 1; _loading = true; }); _load(); },
-                              label: Text('${tr(e.value.$1, e.value.$2)}${n > 0 ? ' ($n)' : ''}'),
-                              labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: selected ? Colors.white : e.value.$3),
-                              selectedColor: e.value.$3,
-                              backgroundColor: e.value.$3.withValues(alpha: 0.1),
-                              checkmarkColor: Colors.white,
-                              side: BorderSide.none,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                            ),
-                          );
-                        }).toList(),
+                        children: [
+                          for (final f in _barFields)
+                            if (!f.$4 || _checks != null)
+                              Padding(
+                                padding: const EdgeInsetsDirectional.only(end: 6),
+                                child: FilterChip(
+                                  selected: (_cf[f.$1] ?? const {}).isNotEmpty,
+                                  onSelected: (_) => _pickFilter(f.$1, tr(f.$2, f.$3)),
+                                  label: Text((_cf[f.$1] ?? const {}).isEmpty
+                                      ? tr(f.$2, f.$3)
+                                      : (_cf[f.$1]!.length == 1
+                                          ? '${tr(f.$2, f.$3)}: ${_valueLabel(f.$1, _cf[f.$1]!.first)}'
+                                          : '${tr(f.$2, f.$3)} (${_cf[f.$1]!.length})')),
+                                  labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: (_cf[f.$1] ?? const {}).isNotEmpty ? Colors.white : T.navy),
+                                  selectedColor: T.orange,
+                                  backgroundColor: T.navy.withValues(alpha: 0.06),
+                                  checkmarkColor: Colors.white,
+                                  side: BorderSide.none,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                ),
+                              ),
+                          if (_cf.isNotEmpty)
+                            TextButton(onPressed: () { _cf.clear(); _reload(); }, child: Text(tr('مسح الكل', 'Clear all'))),
+                        ],
                       ),
                     ),
                   ),
@@ -338,13 +604,28 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     );
   }
 
-  Widget _statCard(String label, String value, Color color) => AppCard(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        topAccent: color,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: const TextStyle(fontSize: 10.5, color: T.inkSoft, fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 3),
-          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
-        ]),
+  /// مفتاحُ الفحص في ملخّص الخادم (`missing-reports` ← `missingReports`).
+  String _checkKey(String kind) => {
+        'gaps': 'gaps', 'missing-reports': 'missingReports', 'value-diffs': 'valueDiffs', 'name-mismatches': 'nameMismatches',
+      }[kind]!;
+
+  Widget _statCard(String label, String value, Color color, {String? sub, bool active = false, VoidCallback? onTap}) => Padding(
+        padding: const EdgeInsetsDirectional.only(end: 8),
+        child: SizedBox(
+          width: 150,
+          child: Pressable(
+            onTap: onTap ?? () {},
+            child: AppCard(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              topAccent: active ? T.orange : color,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(label, style: TextStyle(fontSize: 10.5, color: active ? T.orange : T.inkSoft, fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
+                Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                if (sub != null) Text(sub, style: const TextStyle(fontSize: 9.5, color: T.inkFaint), maxLines: 1, overflow: TextOverflow.ellipsis),
+              ]),
+            ),
+          ),
+        ),
       );
 }

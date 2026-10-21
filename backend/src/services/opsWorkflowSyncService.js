@@ -220,7 +220,8 @@ async function upsertShipments(ships) {
               ...set,
               sellingValue: {
                 $cond: [
-                  { $eq: [{ $ifNull: ['$sellingValueSource', ''] }, 'collections_book'] },
+                  // والمكتوبةُ باليد في سير العمل كذلك (`manual`) — راجع النموذج.
+                  { $in: [{ $ifNull: ['$sellingValueSource', ''] }, ['collections_book', 'manual']] },
                   { $ifNull: ['$sellingValue', 0] },
                   set.sellingValue,
                 ],

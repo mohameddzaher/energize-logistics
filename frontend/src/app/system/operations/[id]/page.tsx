@@ -491,7 +491,9 @@ export default function WorkflowDetailPage() {
             </div>
             <div className="p-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {section.fields.map((field) => {
+                {/* قيمةُ البيع لمن في قائمتها وحدَه — الخادمُ لا يرسلها لغيره، فخانتُها
+                    الفارغةُ كانت تُقرأ «لا سعر». راجع SELLING_ROLES في workflowController. */}
+                {section.fields.filter((f) => f.key !== 'sellingValue' || role === 'super_admin' || !!myFields?.has('sellingValue')).map((field) => {
                   const val = formData[field.key];
                   // حقلًا حقلًا: قد يُعدِّل المستخدمُ بعضَ مجموعةٍ لا كلَّها.
                   const editable = editing && canEditField(field.key);

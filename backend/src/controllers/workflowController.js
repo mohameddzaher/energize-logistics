@@ -90,9 +90,11 @@ const FULL_FIELDS = [...ALL_FIELDS, ...SELLING_FIELDS];
 // والمبيعات، ومديرُ النظام، والإدارة، والمديرُ الماليّ، ومديرُ الحسابات،
 // والمحاسب، ومديرُ التحصيل وفريقُه. ومَن ليس فيها لا تصله القيمةُ من الخادم
 // أصلًا (`stripRowFor`) ولا يفلتر بها ولا تخرج في ملفّه — ولا يكتبها.
+// وفريقُ تقنية المعلومات معهم — رؤيةً وكتابةً (صاحبُ الشركة، ٢٠٢٦/١٠/٢١).
 const SELLING_ROLES = [
   'super_admin', 'admin', 'operations_manager', 'sales_manager', 'sales_rep',
   'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff',
+  'it_manager', 'it_specialist',
 ];
 
 const ROLE_FIELD_ACCESS = {
@@ -126,8 +128,8 @@ const ROLE_FIELD_ACCESS = {
   collections_staff: FULL_FIELDS,
   // تقنيةُ المعلومات في `FULL_ACCESS_ROLES` — بلا حاجزٍ في كلّ قسمٍ آخر،
   // إلّا قيمةَ البيع: ليست في القائمة التي سمّاها صاحبُ الشركة.
-  it_manager: ALL_FIELDS,
-  it_specialist: ALL_FIELDS,
+  it_manager: FULL_FIELDS,
+  it_specialist: FULL_FIELDS,
 };
 // الخريطةُ والقائمةُ تقولان شيئًا واحدًا — يُفحص عند التحميل كي لا تفترقا.
 for (const [r, f] of Object.entries(ROLE_FIELD_ACCESS)) {

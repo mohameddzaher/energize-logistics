@@ -23,34 +23,60 @@
  * والمكوّناتُ الصغيرة خارج الصفحة عمدًا: مكوّنٌ يُعرَّف داخل الرسم يُعاد إنشاؤه
  * مع كلّ تحديث، فتُفقَد حالتُه ويُعاد رسمُ الرسوم كلّها.
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
-import { money } from '@/lib/collections';
-import SearchSelect from '@/components/system/SearchSelect';
-import { Spinner, PageHeader, Field } from '@/components/hr/HRKit';
+import { money, canEditCollections } from '@/lib/collections';
+import { paymentKindLabel } from '@/lib/paymentKind';
+import MultiSearchSelect from '@/components/system/MultiSearchSelect';
+import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ExportMenu from '@/components/ls2/ExportMenu';
-import ReceivablesTree, { type Tree, type Check } from '@/components/collections/ReceivablesTree';
+import ReceivablesTree, { type Tree, type Check, type AttachKpi, type DefaultTerm } from '@/components/collections/ReceivablesTree';
 import ReceivablesRows from '@/components/collections/ReceivablesRows';
+import DefaultTermList, { type DefaultTermParty } from '@/components/collections/DefaultTermList';
 import {
-  Wallet, Users, ChevronLeft, SlidersHorizontal, X,
-  UserCheck, Truck,
+  Wallet, Users, ChevronLeft, X, UserCheck, Truck,
 } from 'lucide-react';
 
+type FacetOpt = { value: string; label?: string; count: number; amount: number; code?: string; isManager?: boolean };
 interface Recv {
   tree: Tree;
   checks: Check[];
-  officers: { officer: string; count: number; value: number; late: number; lateValue: number; over60: number; over60Value: number }[];
-  parties: { party: string | null; name: string; code: string; officer: string; issueState: string; count: number; value: number; late: number; lateValue: number; over60: number; over60Value: number; oldest: number | null }[];
+  attachments?: AttachKpi;
+  defaultTerm?: DefaultTerm & { parties: DefaultTermParty[] };
+  manager?: { name: string; email: string } | null;
+  facets?: { officer: FacetOpt[]; parties: FacetOpt[]; pay: FacetOpt[]; dueState: FacetOpt[]; issue: FacetOpt[] };
+  officers: { officer: string; isManager?: boolean; defaulted?: number; count: number; value: number; late: number; lateValue: number; hard: number; hardValue: number }[];
+  parties: { party: string | null; key: string; name: string; code: string; officer: string; officerIsDefault?: boolean; issueState: string; count: number; value: number; late: number; lateValue: number; hard: number; hardValue: number; oldest: number | null }[];
 }
 // من لوحة كشوف التشغيل يبقى عددُ الموردين وحدَه — المالُ كلُّه من الدفتر.
 interface Dash {
   counts: { customer: { active: number; inactive: number }; supplier: { active: number; inactive: number } };
 }
+
+/**
+ * فلاترُ اللوحة — خمسُ قوائمَ متعدّدةِ الاختيار، وكلُّ رقمٍ في الصفحة تحتها.
+ * تُرسَل مفصولةً بفواصل، وتُحمَل إلى كلِّ جدولٍ يُفتَح من بطاقة.
+ */
+type FilterKey = 'officer' | 'parties' | 'pay' | 'dueState' | 'issue';
+const NO_FILTERS: Record<FilterKey, string[]> = { officer: [], parties: [], pay: [], dueState: [], issue: [] };
+const PAY_ORDER = ['tax', 'cash', 'deferred_invoice', 'deferred_cash', 'cash_3pl', 'cash_ht'];
+const DUE_LABELS: Record<string, [string, string]> = {
+  late: ['مستحق — تجاوز موعده', 'Due — past its date'],
+  noterm: ['مستحق — بلا مدّة سداد', 'Due — no credit term'],
+  within: ['غير مستحق', 'Not yet due'],
+};
+const ISSUE_LABELS: Record<string, [string, string]> = {
+  none: ['بلا مشكلة', 'No issue'],
+  negotiating: ['تحت التفاوض', 'Negotiating'],
+  legal: ['قضايا', 'Legal'],
+};
 
 function Panel({ title, icon, right, children, className = '' }: {
   title: string; icon?: React.ReactNode; right?: React.ReactNode; children: React.ReactNode; className?: string;
@@ -69,56 +95,70 @@ function Panel({ title, icon, right, children, className = '' }: {
   );
 }
 
-// (مكوّنُ Kpi رُفع مع البطاقات التي كانت تستعمله — راجع القسم ١ أدناه.)
-
 export default function CollectionsDashboardPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
   const { notify } = useDialog();
+  const { user } = useAuth();
+  const canEdit = canEditCollections(user);
   const router = useRouter();
 
   const [data, setData] = useState<Dash | null>(null);
   // شجرةُ المديونيّة من دفتر الفواتير — راجع components/collections/ReceivablesTree.
   const [recv, setRecv] = useState<Recv | null>(null);
-  // العقدةُ المفتوحة: صفوفُها تأتي من نفس اشتقاق الخادم الذي حسب البطاقة.
+  // العقدةُ المفتوحة: صفوفُها تأتي من الصفوف نفسِها التي عدّتها البطاقة في الخادم.
   const [drill, setDrill] = useState<{ q: Record<string, string>; title: string } | null>(null);
+  const [termOpen, setTermOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  // اللوحةُ تُفلتر كما تُفلتر الصفحات: عميلٌ بعينه، وفرع، وشريحةُ عمر، ومدى.
-  const [customer, setCustomer] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
-  const [opts, setOpts] = useState<{ customers: string[]; suppliers: string[]; branches: string[] }>(
-    { customers: [], suppliers: [], branches: [] },
-  );
-  const activeCount = [customer, from, to].filter(Boolean).length;
-  const seq = useRef(0);
+  const [filters, setFilters] = useState<Record<FilterKey, string[]>>(NO_FILTERS);
+  const setFilter = (k: FilterKey) => (v: string[]) => setFilters((f) => ({ ...f, [k]: v }));
+  const activeCount = Object.values(filters).filter((v) => v.length).length + (from || to ? 1 : 0);
 
-  const load = useCallback(async () => {
-    const mine = ++seq.current;
+  // فلاترُ الصفحة كنصّ استعلام — تُرسَل إلى اللوحة وتُحمَل إلى كلِّ جدولٍ يُفتَح منها.
+  const ledgerFilters = useMemo(() => {
+    const q: Record<string, string> = {};
+    if (from) q.from = from;
+    if (to) q.to = to;
+    (Object.keys(filters) as FilterKey[]).forEach((k) => { if (filters[k].length) q[k] = filters[k].join(','); });
+    return q;
+  }, [from, to, filters]);
 
+  // ── لكلّ نداءٍ حارسُه ───────────────────────────────────────────────────
+  // ردٌّ متأخّرٌ لفلترٍ سابق لا يكتب فوق الأحدث — وأبطأُ الردود هو غيرُ المفلتَر
+  // الذي أُطلق أوّلَ الفتح (راجع stale-response-races). وحارسٌ لكلّ نداء: حارسٌ
+  // مشتركٌ يجعل كلَّ نداءٍ يُبطل ردَّ الآخر.
+  const recvGuard = useLatestRequest();
+  const dashGuard = useLatestRequest();
+
+  const loadRecv = useCallback(async () => {
+    const mine = recvGuard.begin();
     try {
-      const p = new URLSearchParams();
-      if (from) p.set('from', from);
-      if (to) p.set('to', to);
-      if (customer) p.set('customer', customer);
-      // المالُ كلُّه من دفتر الفواتير؛ ومن لوحة الكشوف عددُ الموردين وحدَه.
-      const [d, rv] = await Promise.all([
-        api.get<Dash>('/api/collections-dept/dashboard'),
-        api.get<Recv>(`/api/collections-dept/receivables/overview?${p.toString()}`).catch(() => null),
-      ]);
-      // ردٌّ متأخّرٌ لفلترٍ سابق لا يكتب فوق الأحدث.
-      if (mine === seq.current) { setData(d); if (rv) setRecv(rv); }
+      const p = new URLSearchParams(ledgerFilters);
+      const rv = await api.get<Recv>(`/api/collections-dept/receivables/overview?${p.toString()}`);
+      if (recvGuard.isCurrent(mine)) setRecv(rv);
     } catch (e: any) {
-      if (mine === seq.current) notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error');
+      if (recvGuard.isCurrent(mine)) notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error');
     }
-    if (mine === seq.current) setLoading(false);
+    if (recvGuard.isCurrent(mine)) setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from, to, customer]);
-  useEffect(() => { load(); }, [load]);
+  }, [ledgerFilters, recvGuard]);
 
-  // ── حيّة: تعديلٌ على كشفٍ أو فاتورةٍ أو طرف ⇒ قراءةٌ واحدةٌ بعد هدوء الدفعة ──
+  const loadDash = useCallback(async () => {
+    const mine = dashGuard.begin();
+    try {
+      const d = await api.get<Dash>('/api/collections-dept/dashboard');
+      if (dashGuard.isCurrent(mine)) setData(d);
+    } catch { /* عددُ الموردين وحدَه — لا يُوقف اللوحة */ }
+  }, [dashGuard]);
+
+  const load = useCallback(() => { loadRecv(); loadDash(); }, [loadRecv, loadDash]);
+  useEffect(() => { loadRecv(); }, [loadRecv]);
+  useEffect(() => { loadDash(); }, [loadDash]);
+
+  // ── حيّة: تعديلٌ على كشفٍ أو فاتورةٍ أو طرفٍ أو مرفق ⇒ قراءةٌ بعد هدوء الدفعة ──
   const tick = useRef<ReturnType<typeof setTimeout> | null>(null);
   const soon = useCallback(() => {
     if (tick.current) clearTimeout(tick.current);
@@ -130,23 +170,28 @@ export default function CollectionsDashboardPage() {
   useSocket('collections:party', soon);
   useSocket('finance:changed', soon);
   useSocket('collections:changed', soon);
+  useSocket('collections:attachments', soon);
 
-  useEffect(() => {
-    // أسماءُ الدفتر لا أسماءُ الكشوف: الفلترُ يُطبَّق على فواتير الدفتر.
-    api.get<{ customers: string[] }>('/api/collections-dept/invoices/filters?kind=tax')
-      .then((r) => setOpts({ customers: r.customers || [], suppliers: [], branches: [] })).catch(() => {});
-  }, []);
+  // ── خياراتُ القوائم من جواب اللوحة نفسِه: عددُ كلِّ خيارٍ تحت الفلاتر الأخرى ──
+  const fx = recv?.facets;
+  const options = useMemo(() => ({
+    officer: (fx?.officer || []).map((o) => ({
+      value: o.value, count: o.count,
+      label: o.isManager ? `${o.value} — ${t('مدير القسم', 'Dept. manager')}` : o.value,
+      hint: o.isManager ? t('ومعه كلُّ عميلٍ غيرِ مُسنَد', 'incl. every unassigned customer') : undefined,
+    })),
+    parties: (fx?.parties || []).map((o) => ({ value: o.value, count: o.count, label: o.label || o.value, hint: o.code || undefined })),
+    pay: PAY_ORDER.map((k) => ({ value: k, label: paymentKindLabel(k, ar), count: fx?.pay.find((x) => x.value === k)?.count ?? 0 })),
+    dueState: ['late', 'noterm', 'within'].map((k) => ({ value: k, label: t(...DUE_LABELS[k]), count: fx?.dueState.find((x) => x.value === k)?.count ?? 0 })),
+    issue: ['none', 'negotiating', 'legal'].map((k) => ({ value: k, label: t(...ISSUE_LABELS[k]), count: fx?.issue.find((x) => x.value === k)?.count ?? 0 })),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [fx, ar]);
 
-  if (loading && !data) return <Spinner />;
-  if (!data) return null;
+  if (loading && !recv) return <Spinner />;
 
   const top = (recv?.parties || []).slice(0, 15);
   const topMax = Math.max(1, ...top.map((r) => r.value));
-  const clear = () => { setCustomer(''); setFrom(''); setTo(''); };
-  // فلاترُ الصفحة تُحمَل إلى كلِّ جدولٍ يُفتَح منها: بطاقةٌ مفلترةٌ تفتح صفوفَها هي.
-  const ledgerFilters: Record<string, string> = {
-    ...(from ? { from } : {}), ...(to ? { to } : {}), ...(customer ? { customer } : {}),
-  };
+  const clear = () => { setFilters(NO_FILTERS); setFrom(''); setTo(''); };
 
   const topCols = [
     { header: t('الكود', 'Code'), key: 'code', width: 12 },
@@ -155,7 +200,7 @@ export default function CollectionsDashboardPage() {
     { header: t('فواتير', 'Invoices'), key: 'count', width: 10 },
     { header: t('المديونية', 'Outstanding'), key: 'value', width: 16 },
     { header: t('منها متأخر', 'Of which late'), key: 'lateValue', width: 16 },
-    { header: t('منها فوق ٦٠', 'Of which 60+'), key: 'over60Value', width: 16 },
+    { header: t('منها مرتفع الخطورة', 'Of which hard risk'), key: 'hardValue', width: 16 },
   ];
 
   return (
@@ -181,58 +226,65 @@ export default function CollectionsDashboardPage() {
         />
       </PageHeader>
 
-      {/* ── الفلاتر: شريطٌ واحدٌ هادئ، والتفصيلُ عند الطلب ─────────────────── */}
-      <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
+      {/* ── الفلاتر: شريطٌ واحدٌ فوق اللوحة ───────────────────────────────────
+          خمسُ قوائمَ فيها بحثٌ واختيارٌ متعدّد، وبجانب كلِّ خيارٍ عددُه تحت
+          الفلاتر الأخرى. وكلُّ رقمٍ في الصفحة تحتها — الإجماليُّ والأنواعُ الأربعة
+          وعمرُ التأخير والمرفقاتُ والتحقّق — وكلُّ جدولٍ يُفتَح يحملها. */}
+      <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm space-y-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+          <MultiSearchSelect ar={ar} label={t('مسؤول التحصيل', 'Collector')} value={filters.officer} onChange={setFilter('officer')} options={options.officer} />
+          <MultiSearchSelect ar={ar} label={t('العميل', 'Customer')} value={filters.parties} onChange={setFilter('parties')} options={options.parties} />
+          <MultiSearchSelect ar={ar} label={t('نوع الدفع', 'Payment type')} value={filters.pay} onChange={setFilter('pay')} options={options.pay} />
+          <MultiSearchSelect ar={ar} label={t('الاستحقاق', 'Due status')} value={filters.dueState} onChange={setFilter('dueState')} options={options.dueState} searchable={false} />
+          <MultiSearchSelect ar={ar} label={t('القضايا', 'Cases')} value={filters.issue} onChange={setFilter('issue')} options={options.issue} searchable={false} />
+        </div>
         <div className="flex flex-wrap items-center gap-2.5">
           <DateRangeFilter from={from} to={to} onFrom={setFrom} onTo={setTo} ar={ar} />
-          <button type="button" onClick={() => setShowFilters((p) => !p)}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold border transition-colors ${
-              activeCount ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900'}`}>
-            <SlidersHorizontal className="w-4 h-4" />{t('فلاتر', 'Filters')}{activeCount ? ` (${activeCount})` : ''}
-          </button>
           {activeCount > 0 && (
             <button type="button" onClick={clear}
               className="inline-flex items-center gap-1.5 px-3 py-2 text-slate-400 hover:text-red-600 text-sm">
-              <X className="w-4 h-4" />{t('إزالة الفلاتر', 'Clear')}
+              <X className="w-4 h-4" />{t(`إزالة الفلاتر (${activeCount})`, `Clear filters (${activeCount})`)}
             </button>
           )}
+          {recv?.manager && (
+            <span className="ms-auto text-[11px] text-slate-400">
+              {t(`كلُّ عميلٍ غيرِ مُسنَدٍ على مدير القسم: ${recv.manager.name}`, `Every unassigned customer falls to the dept. manager: ${recv.manager.name}`)}
+            </span>
+          )}
         </div>
-        {showFilters && (
-          <div className="mt-3 pt-3 border-t border-slate-100 space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label={t('العميل', 'Customer')}>
-                <SearchSelect ar={ar} value={customer} onChange={setCustomer}
-                  allLabel={t('جميع العملاء', 'All customers')}
-                  options={opts.customers.map((c) => ({ value: c, label: c }))} />
-              </Field>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* ── ٠. المديونيّةُ كشجرة ───────────────────────────────────────────────
-          أوّلُ سؤالٍ يُسأل في القسم: كم علينا، وما منه في موعده وما خرج عنه،
-          وما كسر الستّين أمشكلةٌ في اليد أم قضيّة. ومصدرُه **دفترُ الفواتير**
-          لا كشوفُ التشغيل (٩٤٪ من فواتير الدفتر لا كشوفَ لها عندنا) — ولذلك
-          هو نداءٌ آخر، والشجرةُ تُطابق نفسَها بشريط تحقّقٍ أسفلها. */}
+          أوّلُ سؤالٍ يُسأل في القسم: كم علينا، وكم عمرُه، وما منه في حدود مدّة
+          عميله وما خرج عنها. ومصدرُه **دفترُ الفواتير** لا كشوفُ التشغيل (٩٤٪ من
+          فواتير الدفتر لا كشوفَ لها عندنا)، والشجرةُ تُطابق نفسَها بشريط تحقّقٍ أسفلها. */}
       {recv && (
         <ReceivablesTree tree={recv.tree} checks={recv.checks} ar={ar}
+          attachments={recv.attachments} defaultTerm={recv.defaultTerm}
+          onOpenDefaultTerm={() => setTermOpen(true)}
           onOpen={(q, title) => setDrill({ q: { ...ledgerFilters, ...(q as Record<string, string>) }, title })} />
       )}
 
-      {/* وبالموظّف: العملُ موزَّعًا لا مجموعًا — لكلٍّ ما عليه وما تأخّر منه. */}
+      {/* وبالمسؤول: العملُ موزَّعًا لا مجموعًا — ولا صفَّ «بلا مسؤول»: ما لم يُسنَد
+          فعلى مدير القسم، ويُقال كم منه كذلك. */}
       {!!recv?.officers?.length && (
-        <Panel title={t('المديونية بموظف التحصيل', 'Receivables by officer')} icon={<UserCheck className="w-4 h-4" />}>
+        <Panel title={t('المديونية بمسؤول التحصيل', 'Receivables by collector')} icon={<UserCheck className="w-4 h-4" />}>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
             {recv.officers.map((o) => (
               <button key={o.officer} type="button"
-                onClick={() => setDrill({ q: { ...ledgerFilters, officer: o.officer === '—' ? 'none' : o.officer }, title: `${t('مديونية', 'Receivables')} — ${o.officer}` })}
+                onClick={() => setDrill({ q: { ...ledgerFilters, officer: o.officer }, title: `${t('مديونية', 'Receivables')} — ${o.officer}` })}
                 className="text-start bg-slate-50 border border-slate-200 rounded-xl p-3 hover:border-[#f37121]/50 transition-colors">
-                <p className="text-[12px] font-semibold text-slate-800">{o.officer}</p>
+                <p className="text-[12px] font-semibold text-slate-800">
+                  {o.officer}
+                  {o.isManager && <span className="ms-1.5 text-[10.5px] font-medium text-slate-400">{t('مدير القسم', 'Dept. manager')}</span>}
+                </p>
                 <p className="text-lg font-extrabold tabular-nums text-slate-900">{money(o.value)}</p>
                 <p className="text-[11px] text-slate-500 tabular-nums">
-                  {o.count} {t('فاتورة', 'inv')} · {t('متأخر', 'late')} {money(o.lateValue)} · {t('فوق ٦٠', '60+')} {o.over60}
+                  {o.count} {t('صف', 'rows')} · {t('متأخر', 'late')} {money(o.lateValue)} · {t('مرتفع', 'hard')} {money(o.hardValue)}
                 </p>
+                {!!o.defaulted && (
+                  <p className="text-[10.5px] text-slate-400 tabular-nums">{t(`منها ${o.defaulted} غير مُسنَد`, `${o.defaulted} of them unassigned`)}</p>
+                )}
               </button>
             ))}
           </div>
@@ -274,9 +326,7 @@ export default function CollectionsDashboardPage() {
               {top.map((r, i) => (
                 <li key={`${r.party || r.name}`}>
                   <button type="button"
-                    onClick={() => (r.party
-                      ? setDrill({ q: { ...ledgerFilters, party: String(r.party) }, title: `${t('مديونية', 'Receivables')} — ${r.name}` })
-                      : setDrill({ q: { ...ledgerFilters, customer: r.name }, title: `${t('مديونية', 'Receivables')} — ${r.name}` }))}
+                    onClick={() => setDrill({ q: { ...ledgerFilters, parties: r.key }, title: `${t('مديونية', 'Receivables')} — ${r.name}` })}
                     className="w-full text-start flex items-center gap-3 py-2.5 group">
                     <span className={`w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-[12px] font-bold ${i < 3 ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-500'}`}>{i + 1}</span>
                     <span className="flex-1 min-w-0">
@@ -316,7 +366,7 @@ export default function CollectionsDashboardPage() {
             <span className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center"><Truck className="w-5 h-5" /></span>
             <span className="flex-1">
               <span className="block text-[12px] text-slate-500">{t('موردون مسجَّلون', 'Registered suppliers')}</span>
-              <span className="block text-[18px] font-extrabold tabular-nums text-slate-900">{money(data.counts.supplier.active)}</span>
+              <span className="block text-[18px] font-extrabold tabular-nums text-slate-900">{data ? money(data.counts.supplier.active) : '—'}</span>
             </span>
             <ChevronLeft className={`w-4 h-4 text-slate-300 group-hover:text-[#f37121] ${isRTL ? '' : 'rotate-180'}`} />
           </button>
@@ -327,8 +377,16 @@ export default function CollectionsDashboardPage() {
       <ReceivablesRows
         open={!!drill} onClose={() => setDrill(null)}
         title={drill?.title || ''} query={drill?.q || {}}
-        ar={ar} canEdit
+        ar={ar} canEdit={canEdit}
         onChanged={load}
+      />
+
+      {/* عملاءُ المدّة الافتراضيّة — تُكتب مُددُهم من هنا. */}
+      <DefaultTermList
+        open={termOpen} onClose={() => setTermOpen(false)}
+        parties={recv?.defaultTerm?.parties || []} days={recv?.defaultTerm?.days || 30}
+        ar={ar} canEdit={canEdit} onSaved={load}
+        onOpenInvoices={(p) => setDrill({ q: { ...ledgerFilters, parties: p.key, term: 'default' }, title: `${t('مديونية', 'Receivables')} — ${p.name}` })}
       />
     </div>
   );

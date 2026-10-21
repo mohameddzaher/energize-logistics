@@ -48,6 +48,18 @@ class DashList {
   const DashList(this.ar, this.en, this.path, this.title, {this.subtitle, this.onTap});
 }
 
+/// فلترٌ متعدّدُ الاختيار فوق اللوحة — خياراتُه وعدّاداتُها من جواب اللوحة نفسِه
+/// (`optionsPath` قائمةُ `{value, label?, count}`)، والمختارُ يُرسَل `key=a,b`.
+/// كلُّ رقمٍ في اللوحة يأتي من الخادم تحت الفلاتر، فلا يُحسب شيءٌ هنا.
+class DashFilter {
+  final String key, ar, en, optionsPath;
+  /// تسمياتٌ ثابتةٌ لقيمٍ معروفة (نوعُ الدفع، الاستحقاق…) — وإلّا `label` الخيار.
+  final Map<String, (String, String)>? labels;
+  /// قائمةٌ من ثلاثة خيارات لا تحتاج بحثًا.
+  final bool searchable;
+  const DashFilter(this.key, this.ar, this.en, this.optionsPath, {this.labels, this.searchable = true});
+}
+
 class DashSpec {
   final String arTitle, enTitle, endpoint;
   final String liveEvent;
@@ -59,6 +71,8 @@ class DashSpec {
   /// بطاقةٌ تحت الأرقام — لما يُقرأ بعدها (مثلًا: تقريرُ تحقيق المناديب تحت أرقام
   /// الموظفين والمركبات في لوحة B2C).
   final Widget Function(Map<String, dynamic> data)? afterStats;
+  /// فلاترُ فوق اللوحة — تُرسَل مع النداء، والأرقامُ كلُّها تحتها.
+  final List<DashFilter> filters;
   const DashSpec({
     required this.arTitle,
     required this.enTitle,
@@ -69,6 +83,7 @@ class DashSpec {
     this.lists = const [],
     this.header,
     this.afterStats,
+    this.filters = const [],
   });
 }
 
@@ -84,6 +99,10 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
   bool _loading = true;
   String? _error;
   void Function()? _onLive;
+  // الفلاترُ المختارة — والعدّادُ يمنع ردًّا قديمًا من الكتابة فوق أحدث
+  // (أبطأُ الردود غيرُ المفلتَر الذي أُطلق أوّلَ الفتح).
+  final Map<String, Set<String>> _sel = {};
+  int _seq = 0;
 
   @override
   void initState() {
@@ -101,14 +120,128 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
     super.dispose();
   }
 
+  String get _url {
+    final q = _sel.entries.where((e) => e.value.isNotEmpty)
+        .map((e) => '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value.join(','))}').join('&');
+    if (q.isEmpty) return widget.spec.endpoint;
+    return '${widget.spec.endpoint}${widget.spec.endpoint.contains('?') ? '&' : '?'}$q';
+  }
+
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
-      final d = await Api.instance.get(widget.spec.endpoint);
-      if (!mounted) return;
+      final d = await Api.instance.get(_url);
+      if (!mounted || mine != _seq) return;
       setState(() { _data = Map<String, dynamic>.from(d); _loading = false; _error = null; });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted && mine == _seq) setState(() { _loading = false; _error = e.toString(); });
     }
+  }
+
+  String _optLabel(DashFilter f, Map<String, dynamic> o) {
+    final v = (o['value'] ?? '').toString();
+    final l = f.labels?[v];
+    if (l != null) return tr(l.$1, l.$2);
+    final s = (o['label'] ?? '').toString();
+    return s.isEmpty ? v : s;
+  }
+
+  // قائمةُ الفلتر: بحثٌ واختيارٌ متعدّد، وبجانب كلّ خيارٍ عددُه تحت الفلاتر الأخرى.
+  void _openFilter(DashFilter f) {
+    final opts = _rows(f.optionsPath);
+    final picked = {...(_sel[f.key] ?? <String>{})};
+    var q = '';
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => StatefulBuilder(builder: (c, setSheet) {
+        final shown = opts.where((o) {
+          final v = (o['value'] ?? '').toString();
+          final n = (o['count'] as num?) ?? 0;
+          if (n <= 0 && !picked.contains(v)) return false;
+          if (q.isEmpty) return true;
+          return _optLabel(f, o).toLowerCase().contains(q.toLowerCase()) || v.toLowerCase().contains(q.toLowerCase());
+        }).toList();
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(c).size.height * 0.8),
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(c).viewInsets.bottom),
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Row(children: [
+                  Expanded(child: Text(tr(f.ar, f.en), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+                  if (picked.isNotEmpty)
+                    TextButton(onPressed: () => setSheet(picked.clear), child: Text(tr('مسح', 'Clear'))),
+                ]),
+                if (f.searchable)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: TextField(
+                      decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18), hintText: tr('ابحث…', 'Search…')),
+                      onChanged: (v) => setSheet(() => q = v.trim()),
+                    ),
+                  ),
+                Flexible(
+                  child: ListView(shrinkWrap: true, children: [
+                    for (final o in shown)
+                      CheckboxListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        value: picked.contains((o['value'] ?? '').toString()),
+                        onChanged: (on) => setSheet(() {
+                          final v = (o['value'] ?? '').toString();
+                          on == true ? picked.add(v) : picked.remove(v);
+                        }),
+                        title: Text(_optLabel(f, o), style: const TextStyle(fontSize: 13.5)),
+                        secondary: Text('${o['count'] ?? 0}', style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+                      ),
+                    if (shown.isEmpty)
+                      Padding(padding: const EdgeInsets.all(18), child: Text(tr('لا نتائج', 'No matches'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint))),
+                  ]),
+                ),
+                const SizedBox(height: 8),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.pop(c);
+                    setState(() => _sel[f.key] = picked);
+                    _load();
+                  },
+                  child: Text(tr('تطبيق', 'Apply')),
+                ),
+              ]),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _filterBar(DashSpec spec) {
+    final active = _sel.values.where((v) => v.isNotEmpty).length;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Wrap(spacing: 8, runSpacing: 8, children: [
+        for (final f in spec.filters)
+          Builder(builder: (_) {
+            final n = _sel[f.key]?.length ?? 0;
+            return ActionChip(
+              avatar: Icon(Icons.filter_list_rounded, size: 16, color: n > 0 ? T.orange : T.inkSoft),
+              label: Text(n > 0 ? '${tr(f.ar, f.en)} ($n)' : tr(f.ar, f.en),
+                  style: TextStyle(fontSize: 12.5, fontWeight: n > 0 ? FontWeight.w800 : FontWeight.w600)),
+              onPressed: () => _openFilter(f),
+            );
+          }),
+        if (active > 0)
+          ActionChip(
+            avatar: const Icon(Icons.close_rounded, size: 16, color: T.danger),
+            label: Text(tr('مسح الفلاتر', 'Clear filters'), style: const TextStyle(fontSize: 12.5)),
+            onPressed: () { setState(_sel.clear); _load(); },
+          ),
+      ]),
+    );
   }
 
   List<Map<String, dynamic>> _rows(String path) {
@@ -268,6 +401,7 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(padding: const EdgeInsets.all(14), children: [
+                    if (spec.filters.isNotEmpty) _filterBar(spec),
                     if (spec.header != null) ...[spec.header!(_data!), const SizedBox(height: 10)],
                     GridView.count(
                       crossAxisCount: 2,

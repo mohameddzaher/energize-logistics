@@ -16,7 +16,7 @@ import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
-import { canEditCollections, money, gradeTone, type OfficerStat, type AgingRow } from '@/lib/collections';
+import { canEditCollections, money, gradeTone, officerLabel, type OfficerStat, type AgingRow } from '@/lib/collections';
 import SearchSelect from '@/components/system/SearchSelect';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
@@ -50,6 +50,8 @@ export default function CollectionsTeamPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
   const [search, setSearch] = useState('');
+  // مديرُ القسم — عليه كلُّ حسابٍ لم يُسنَد (راجع utils/collectionsOfficer في الخادم).
+  const [managerName, setManagerName] = useState('');
 
   const loadPerf = useCallback(async () => {
     const p = new URLSearchParams();
@@ -60,7 +62,7 @@ export default function CollectionsTeamPage() {
       api.get<any>(`/api/collections-dept/ledger/performance?${p.toString()}`),
       api.get<any>('/api/collections-dept/ledger/team'),
     ]);
-    setPerf(a.rows || []); setTeam(b.officers || []);
+    setPerf(a.rows || []); setTeam(b.officers || []); setManagerName(b.manager?.name || '');
   }, [from, to, officerFilter]);
 
   const loadRows = useCallback(async () => {
@@ -81,7 +83,7 @@ export default function CollectionsTeamPage() {
   const cf = useColumnFilters<OfficerStat>();
   const pct = (v: number | null) => (v == null ? '' : `${Math.round(v)}%`);
   const PG: Record<string, (r: OfficerStat) => any> = {
-    officer: (r) => r.officer || (ar ? '(بلا مسؤول)' : '(unassigned)'),
+    officer: (r) => officerLabel(r, ar),
     accounts: (r) => r.accounts,
     collectedAmount: (r) => money(r.collectedAmount),
     collectedCount: (r) => r.collectedCount,
@@ -99,7 +101,7 @@ export default function CollectionsTeamPage() {
   // وهما اللذان يقولان حالَ المحفظة — لا يخرجان منها. والأعمدةُ هنا هي أعمدةُ
   // الجدول بالترتيب نفسِه وبالقيم نفسِها التي تُقرأ في خلاياه.
   const perfCols: ExportColumn[] = [
-    { header: ar ? 'الموظف' : 'Officer', key: 'officer', transform: (v: any) => v || (ar ? '(بلا مسؤول)' : '(unassigned)'), width: 18 },
+    { header: ar ? 'الموظف' : 'Officer', key: 'officer', transform: (v: any) => officerLabel({ officer: v }, ar), width: 18 },
     { header: ar ? 'حسابات' : 'Accounts', key: 'accounts', width: 10 },
     { header: ar ? 'محصَّل' : 'Collected', key: 'collectedAmount', width: 16 },
     { header: ar ? 'عدد المحصَّل' : 'Invoices', key: 'collectedCount', width: 12 },
@@ -127,7 +129,9 @@ export default function CollectionsTeamPage() {
     setSaving(true); setMsg('');
     try {
       const r = await api.put<any>('/api/collections-dept/ledger/team/assign', { parties: [...sel], officer: assignTo });
-      setMsg(ar ? `نُقل ${r.updated} حسابًا إلى ${assignTo || '(بلا مسؤول)'}` : `${r.updated} accounts moved to ${assignTo || '(unassigned)'}`);
+      // تركُ الاسم فارغًا يرفع الإسناد — فيعود الحسابُ إلى مدير القسم.
+      const to = assignTo || (managerName ? `${managerName} (${ar ? 'مدير القسم' : 'dept. manager'})` : (ar ? 'مدير القسم' : 'the dept. manager'));
+      setMsg(ar ? `نُقل ${r.updated} حسابًا إلى ${to}` : `${r.updated} accounts moved to ${to}`);
       setSel(new Set());
       await Promise.all([loadPerf(), loadRows()]);
     } catch (e: any) { setMsg(e.message); }
@@ -205,8 +209,11 @@ export default function CollectionsTeamPage() {
                     <button type="button" onClick={() => openAccounts(r.officer)}
                       className="text-[#f37121] hover:underline font-medium text-start"
                       title={ar ? 'افتح حسابات هذا الموظّف' : 'Open these accounts'}>
-                      {r.officer || (ar ? '(بلا مسؤول)' : '(unassigned)')}
+                      {officerLabel(r, ar)}
                     </button>
+                    {managerName && r.officer === managerName && (
+                      <span className="ms-1.5 text-[10.5px] text-slate-400">{ar ? 'مدير القسم — ومعه ما لم يُسنَد' : 'manager — incl. unassigned'}</span>
+                    )}
                   </td>
                   <td className="px-3 py-2.5 text-sm text-end tabular-nums">
                     <button type="button" onClick={() => openAccounts(r.officer)}
@@ -263,7 +270,7 @@ export default function CollectionsTeamPage() {
               <>
                 <span className="text-xs text-slate-500">{ar ? `${sel.size} محدَّد` : `${sel.size} selected`}</span>
                 <input list="collections-officers" value={assignTo} onChange={(e) => setAssignTo(e.target.value)}
-                  placeholder={ar ? 'اسم الموظف' : 'Officer name'}
+                  placeholder={ar ? 'اسم الموظف (فارغ = مدير القسم)' : 'Officer (blank = dept. manager)'}
                   className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm" />
                 <datalist id="collections-officers">{officers.map((o) => <option key={o} value={o} />)}</datalist>
                 <button type="button" onClick={assign} disabled={saving}
@@ -300,7 +307,10 @@ export default function CollectionsTeamPage() {
                     </td>
                     <td className="px-3 py-2 text-sm font-mono text-slate-600">{r.code}</td>
                     <td className="px-3 py-2 text-sm text-slate-900 max-w-[300px] truncate" title={r.name}>{r.name}</td>
-                    <td className="px-3 py-2 text-sm text-slate-700">{r.collectionOfficer || <span className="text-slate-400">—</span>}</td>
+                    <td className="px-3 py-2 text-sm text-slate-700">
+                      {officerLabel(r, ar)}
+                      {r.officerIsDefault && <span className="ms-1 text-[10.5px] text-slate-400">{ar ? '(مدير القسم — غير مُسنَد)' : '(manager — unassigned)'}</span>}
+                    </td>
                     <td className="px-3 py-2">{r.grade ? <span className={`px-1.5 py-0.5 rounded border text-[11px] font-semibold ${gradeTone(r.grade)}`}>{r.grade}</span> : '—'}</td>
                     <td className="px-3 py-2 text-sm text-end tabular-nums text-slate-900">{money(r.outstanding)}</td>
                   </tr>

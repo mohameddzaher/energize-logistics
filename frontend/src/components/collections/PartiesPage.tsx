@@ -77,8 +77,9 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
       const r = await api.put<{ updated: number }>('/api/collections-dept/ledger/team/assign', {
         parties: [...selected], officer: assignTo,
       });
-      notify(t(`أُسند ${r.updated} حسابًا إلى ${assignTo || '(بلا مسؤول)'}`,
-        `${r.updated} accounts assigned to ${assignTo || '(unassigned)'}`));
+      // الفارغُ يرفع الإسناد — فيعود الحسابُ إلى مدير القسم، لا إلى «لا أحد».
+      notify(t(`أُسند ${r.updated} حسابًا إلى ${assignTo || 'مدير القسم'}`,
+        `${r.updated} accounts assigned to ${assignTo || 'the dept. manager'}`));
       setSelected(new Set());
       setAssignTo('');
       load();
@@ -231,7 +232,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
     { header: t('التواصل', 'Contact'), key: 'phone', width: 22, cell: contactCell },
     { header: t('مسؤول التواصل', 'Contact person'), key: 'contactPerson', width: 20 },
     { header: t('الكود', 'Code'), key: 'code', width: 14 },
-    { header: t('موظف التحصيل', 'Officer'), key: 'collectionOfficer', width: 16 },
+    { header: t('موظف التحصيل', 'Officer'), key: 'effectiveOfficer', width: 16 },
     { header: t('المدينة', 'City'), key: 'city', width: 14 },
     { header: t('الحالة', 'Status'), key: 'status', width: 14 },
     ...(kind === 'customer' ? [{
@@ -411,7 +412,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#f37121]/10 text-[#f37121] text-sm font-semibold">
             {assignedTo === 'none'
-              ? t('حسابات بلا مسؤول', 'Unassigned accounts')
+              ? t('حسابات مدير القسم (غير مُسنَدة)', 'Dept. manager (unassigned accounts)')
               : t(`حسابات ${assignedLabel || 'موظّف'}`, `${assignedLabel || 'officer'}'s accounts`)}
             <button type="button" onClick={() => { setAssignedTo(''); setAssignedLabel(''); setHasCode(false); setPage(1); }}
               title={t('عرض كل الحسابات', 'Show all accounts')}>
@@ -476,7 +477,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
               <span className="text-sm text-slate-500">{t('إسناد إلى', 'Assign to')}</span>
               <div className="w-56">
                 <SearchSelect ar={ar} value={assignTo} onChange={setAssignTo}
-                  allLabel={t('(بلا مسؤول)', '(unassigned)')}
+                  allLabel={t('مدير القسم (غير مُسنَد)', 'Dept. manager (unassigned)')}
                   options={officers.map((o) => ({ value: o, label: o }))} />
               </div>
               <PrimaryButton onClick={assignSelected} disabled={assigning}>
@@ -635,7 +636,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
               <Field label={t('موظف التحصيل', 'Collection officer')}>
                 <SearchSelect ar={ar} value={editing?.collectionOfficer || ''}
                   onChange={(v) => setEditing((p) => ({ ...p, collectionOfficer: v }))}
-                  allLabel={t('(بلا مسؤول)', '(unassigned)')}
+                  allLabel={t('مدير القسم (غير مُسنَد)', 'Dept. manager (unassigned)')}
                   options={officers.map((o) => ({ value: o, label: o }))} />
               </Field>
               <Field label={t('التقييم', 'Grade')}>

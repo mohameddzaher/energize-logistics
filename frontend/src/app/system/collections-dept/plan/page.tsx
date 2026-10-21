@@ -230,7 +230,7 @@ export default function CollectionsPlanPage() {
                 <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
                   {hits.map((h) => (
                     <button key={h._id} type="button"
-                      onClick={() => { setForm((f) => ({ ...f, party: h._id, partyName: h.name, officerName: f.officerName || h.collectionOfficer || '' })); setHits([]); }}
+                      onClick={() => { setForm((f) => ({ ...f, party: h._id, partyName: h.name, officerName: f.officerName || h.effectiveOfficer || h.collectionOfficer || '' })); setHits([]); }}
                       className="w-full text-start px-3 py-2 text-sm hover:bg-slate-50">
                       <span className="font-mono text-[11px] text-slate-400 me-1">{h.code}</span>{h.name}
                     </button>
@@ -304,7 +304,7 @@ export default function CollectionsPlanPage() {
                         className="text-[#f37121] hover:underline">{t.partyName}</button>
                     ) : <span className="text-slate-900">{t.partyName}</span>}
                   </span>
-                  <span className="text-xs text-slate-500 min-w-[70px]">{t.officerName || '—'}</span>
+                  <span className="text-xs text-slate-500 min-w-[70px]">{t.officerName || (ar ? 'مدير القسم' : 'Dept. manager')}</span>
                   {!!t.collected && <span className="text-xs text-emerald-700 font-semibold">{money(t.collected)}</span>}
                   {canEdit && (
                     <div className="flex items-center gap-1">

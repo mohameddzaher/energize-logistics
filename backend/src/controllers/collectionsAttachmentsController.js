@@ -24,9 +24,9 @@
  *
  * ── والعددُ حيّ ──────────────────────────────────────────────────────────────
  * بعد كلّ رفعٍ أو حذفٍ يُبثّ `collections:attachments`، فيتحدّث العدّادُ عند
- * كلّ من فتح الصفحة. ولا ذاكرةَ مؤقّتةً تحمل العدد (قائمتا الفواتير تُقرآن
- * حيّتين)، فلا شيءَ يُمسَح قبل البثّ — ومن أضاف ذاكرةً لقائمةٍ تحمل العدد
- * فليمسحها في `announce` قبل `emitToAll`.
+ * كلّ من فتح الصفحة. وقائمتا الفواتير تُقرآن حيّتين؛ ولوحةُ التحصيل تحمل العددَ
+ * في ذاكرتها (`cdr:` — بطاقةُ «بلا مرفق»)، فتُمسح في `announce` قبل `emitToAll`.
+ * ومن أضاف ذاكرةً أخرى تحمل العدد فليمسحها هناك أيضًا.
  */
 const mongoose = require('mongoose');
 const CollectionAttachment = require('../models/CollectionAttachment');
@@ -108,6 +108,9 @@ const shape = (req, f) => ({
 
 const announce = async (kind, key) => {
   const count = await CollectionAttachment.countDocuments({ kind, key });
+  // لوحةُ التحصيل تعدّ «آجل - فاتورة بلا مرفق» من ذاكرةٍ مؤقّتة (`cdr:`) —
+  // تُمسح قبل البثّ، وإلّا قرأت اللوحةُ القديمَ حين تستجيب له.
+  try { require('../utils/ttlCache').clear('cdr:'); } catch (_) { /* */ }
   try {
     const { emitToAll } = require('../websocket/socketManager');
     emitToAll('collections:attachments', { kind, key, count, at: Date.now() });

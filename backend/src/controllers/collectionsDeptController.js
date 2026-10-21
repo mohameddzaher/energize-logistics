@@ -72,6 +72,13 @@ const pick = (body) => {
 
 const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
+// مسؤولُ التحصيل الفعليّ — الموظّفُ المكتوب، وإلّا مديرُ القسم. راجع utils/collectionsOfficer.
+const { collectionsManager, officerCondition, effectiveOfficer, isDefaultOfficer } = require('../utils/collectionsOfficer');
+const officerView = (p, mgr) => (p.kind === 'supplier' ? {} : {
+  effectiveOfficer: effectiveOfficer(p.collectionOfficer, mgr),
+  officerIsDefault: isDefaultOfficer(p.collectionOfficer),
+});
+
 /**
  * ── مَن يقتصر على «ما لنا» ──────────────────────────────────────────────────
  *
@@ -250,14 +257,14 @@ exports.listParties = async (req, res) => {
     // مستخدم، و`collectionOfficer` اسمٌ مكتوب — وعليه تقوم لوحةُ التقييم
     // كلُّها. فالفلترُ بالمعرّف وحدَه لا يستطيع فتح صفٍّ من تلك اللوحة أبدًا،
     // مهما كان الصفّ. فيُقبَل الاسمُ أيضًا، وهو ما تُبنى عليه الأرقام.
-    const officer = req.query.officer;
-    if (officer === 'none') {
-      filter.$and = [...(filter.$and || []), { $or: [
-        { collectionOfficer: null }, { collectionOfficer: '' }, { collectionOfficer: { $exists: false } },
-      ] }];
-    } else if (officer) {
-      filter.collectionOfficer = String(officer);
-    }
+    //
+    // ── ولا «بلا مسؤول» بعد اليوم ─────────────────────────────────────────
+    // ما لم يُسنَد إلى موظّفٍ فهو على مدير القسم (صاحبُ الشركة، ٢٠٢٦/١٠/٢١ —
+    // راجع utils/collectionsOfficer). فاسمُ المدير يفتح حساباتِه المكتوبةَ باسمه
+    // ومعها كلَّ حسابٍ بلا اسم، و`none` في رابطٍ محفوظٍ يُقرأ مديرًا كذلك.
+    const mgr = await collectionsManager();
+    const officerCond = officerCondition(req.query.officer, mgr);
+    if (officerCond) filter.$and = [...(filter.$and || []), officerCond];
 
     // ── والرقمُ الذي ضُغط هو الرقمُ الذي يُفتَح ──────────────────────────
     // لوحةُ التقييم تحسب على أصحاب أكواد الحسابات وحدَهم (`code`)، وهي
@@ -328,7 +335,9 @@ exports.listParties = async (req, res) => {
     }
 
     res.json({
-      parties: parties.map((p) => withStats(p, stats, money)),
+      // `collectionOfficer` كما هو مكتوب (يُحرَّر في النموذج)، و`effectiveOfficer`
+      // ما يُعرَض: الموظّفُ أو المديرُ إن لم يُسنَد.
+      parties: parties.map((p) => ({ ...withStats(p, stats, money), ...officerView(p, mgr) })),
       totals,
       total,
       page,
@@ -450,7 +459,10 @@ exports.getPartyProfile = async (req, res) => {
       .map((e) => ({ ...e, total: r2(e.total), settled: r2(e.settled), outstanding: r2(e.total - e.settled) }));
 
     res.json({
-      party: withStats(party, stats, kind === 'customer' ? await ledgerMoneyByParty() : null),
+      party: {
+        ...withStats(party, stats, kind === 'customer' ? await ledgerMoneyByParty() : null),
+        ...officerView(party, await collectionsManager()),
+      },
       // ── المالُ كما يقوله الدفتر ────────────────────────────────────────
       money: {
         invoices: ledger.slice(0, 500).map((i) => ({
@@ -569,12 +581,14 @@ exports.updateParty = async (req, res) => {
       user: req.user._id, action: 'update_collections_party', entity: 'CollectionsParty',
       entityId: party._id, changes: { before, after: body }, ipAddress: req.ip,
     });
-    try { emitToAll('collections:party', { id: party._id, kind: party.kind }); } catch (_) {}
-    // ── ودفترُ التحصيل يُبطَل معه ──────────────────────────────────────────
+    // ── ودفترُ التحصيل يُبطَل معه — قبل البثّ ─────────────────────────────
     // سجلُّ الأعمار والتنبيهاتُ تُخزَّن دقيقةً. ورفعُ الحدّ الائتمانيّ من ملفّ
     // العميل هو الفعلُ الذي يُطفئ تنبيهَه — فلو بقيت الذاكرةُ لظلّ التنبيهُ
-    // معلَّقًا بعد أن عولج، وهو أسوأُ من ألّا يظهر أصلًا.
+    // معلَّقًا بعد أن عولج، وهو أسوأُ من ألّا يظهر أصلًا. ومدّةُ السداد والمسؤولُ
+    // يُقرآن في لوحة التحصيل (`cdr:`)، فالمسحُ قبل البثّ لا بعده
+    // (راجع announce-before-invalidate).
     try { require('./collectionsLedgerController').invalidate(); } catch (_) {}
+    try { emitToAll('collections:party', { id: party._id, kind: party.kind }); } catch (_) {}
     res.json({ party: withStats(party, await statsByKind(party.kind)) });
   } catch (e) { sendMongooseError(res, e, 'تعذّر حفظ الطرف'); }
 };

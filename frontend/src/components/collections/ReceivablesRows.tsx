@@ -17,6 +17,8 @@ import { useDialog } from '@/components/system/DialogProvider';
 import ScrollX from '@/components/system/ScrollX';
 import { AttachmentsButton, useAttachmentCounts } from '@/components/collections/InvoiceAttachments';
 import { paymentFamily, paymentKindLabel } from '@/lib/paymentKind';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
+import { unitsOf } from '@/components/collections/ReceivablesTree';
 
 export interface Row {
   _id: string; invoiceNumber: string; kind: string; total: number;
@@ -29,10 +31,22 @@ export interface Row {
   source?: 'workflow';
   /** نوعُ الدفع — في صفوف بطاقات الأنواع الأربعة. */
   subtype?: string;
+  /** العمرُ بالأيّام منذ التسليم (وإلّا الإصدار/السداد) وشريحتُه وخطورتُه. */
+  age?: number | null; ageBand?: string; risk?: 'normal' | 'medium' | 'hard' | 'nodate';
+  /** المدّةُ التي قيست عليها الخطورة — وهل هي الافتراضيّة. */
+  term?: number; termIsDefault?: boolean;
+  /** المسؤولُ آتٍ من مدير القسم: الحسابُ لم يُسنَد. */
+  officerIsDefault?: boolean;
 }
 
 const money = (n?: number) => Math.round(n || 0).toLocaleString('en-US');
 const d10 = (v?: string | null) => (v ? String(v).slice(0, 10) : '—');
+
+const RISK: Record<string, { ar: string; en: string; cls: string }> = {
+  normal: { ar: 'طبيعي', en: 'Normal', cls: 'bg-emerald-50 text-emerald-700' },
+  medium: { ar: 'متوسط', en: 'Medium', cls: 'bg-amber-50 text-amber-700' },
+  hard: { ar: 'مرتفع', en: 'Hard', cls: 'bg-red-50 text-red-700' },
+};
 
 const ISSUE: Record<string, { ar: string; en: string; cls: string }> = {
   none: { ar: 'لا خلاف', en: 'No issue', cls: 'bg-slate-100 text-slate-600' },
@@ -57,21 +71,29 @@ export default function ReceivablesRows({
   // بطاقةُ نوعٍ نقديّ: الصفُّ كشفُ تخريجٍ لا فاتورة.
   const reportsMode = !!query.subtype && paymentFamily(query.subtype) === 'cash';
   const [total, setTotal] = useState(0);
+  const [split, setSplit] = useState({ tax: 0, cash: 0 });
   const [value, setValue] = useState(0);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState('');
+  // ردٌّ متأخّرٌ لعقدةٍ أو فلترٍ سابق لا يكتب فوق الأحدث — راجع stale-response-races.
+  const guard = useLatestRequest();
 
   const load = useCallback(async () => {
     if (!open) return;
+    const mine = guard.begin();
     setLoading(true);
     try {
       const p = new URLSearchParams({ ...query, limit: '300' });
-      const d = await api.get<{ rows: Row[]; total: number; value: number }>(`/api/collections-dept/receivables/rows?${p}`);
+      const d = await api.get<{ rows: Row[]; total: number; value: number; taxCount?: number; cashCount?: number }>(`/api/collections-dept/receivables/rows?${p}`);
+      if (!guard.isCurrent(mine)) return;
       setRows(d.rows || []); setTotal(d.total || 0); setValue(d.value || 0);
-    } catch (e: any) { notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error'); }
-    setLoading(false);
+      setSplit({ tax: d.taxCount ?? (d.total || 0), cash: d.cashCount || 0 });
+    } catch (e: any) {
+      if (guard.isCurrent(mine)) notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error');
+    }
+    if (guard.isCurrent(mine)) setLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, JSON.stringify(query)]);
+  }, [open, JSON.stringify(query), guard]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -105,7 +127,7 @@ export default function ReceivablesRows({
           <div className="min-w-0">
             <h3 className="font-bold text-slate-900 truncate">{title}</h3>
             <p className="text-[12px] text-slate-500 tabular-nums">
-              {total.toLocaleString('en-US')} {reportsMode ? t('كشف تخريج', 'reports') : t('فاتورة', 'invoices')} · {money(value)}
+              {reportsMode ? `${total.toLocaleString('en-US')} ${t('كشف تخريج', 'reports')}` : unitsOf({ count: total, value, tax: split.tax, cash: split.cash }, ar)} · {money(value)}
               {total > rows.length ? ` · ${t(`يُعرَض أوّلُ ${rows.length}`, `showing first ${rows.length}`)}` : ''}
             </p>
           </div>
@@ -128,6 +150,8 @@ export default function ReceivablesRows({
                     <th className="text-start font-semibold px-3 py-2.5">{reportsMode ? t('تاريخ السداد', 'Payment date') : t('تاريخ الفاتورة', 'Invoice date')}</th>
                     <th className="text-start font-semibold px-3 py-2.5">{t('التسليم', 'Delivery')}</th>
                     <th className="text-end font-semibold px-3 py-2.5">{t('المدّة', 'Term')}</th>
+                    <th className="text-end font-semibold px-3 py-2.5">{t('العمر', 'Age')}</th>
+                    <th className="text-start font-semibold px-3 py-2.5">{t('الخطورة', 'Risk')}</th>
                     <th className="text-start font-semibold px-3 py-2.5">{t('الاستحقاق', 'Due')}</th>
                     <th className="text-end font-semibold px-3 py-2.5">{t('التأخير', 'Late by')}</th>
                     <th className="text-start font-semibold px-3 py-2.5">{t('موظف التحصيل', 'Officer')}</th>
@@ -158,7 +182,17 @@ export default function ReceivablesRows({
                           {r.basis === 'invoice' ? <span className="text-[10px] text-amber-600 block">{t('عُدَّ من الإصدار', 'counted from issue')}</span> : null}
                           {r.basis === 'payment' ? <span className="text-[10px] text-amber-600 block">{t('عُدَّ من السداد', 'counted from payment')}</span> : null}
                         </td>
-                        <td className="px-3 py-2 text-end tabular-nums text-slate-600">{r.creditDays || '—'}</td>
+                        <td className="px-3 py-2 text-end tabular-nums text-slate-600 whitespace-nowrap">
+                          {r.creditDays || (r.term ? r.term : '—')}
+                          {/* مدّةٌ لم تُكتب للعميل: الخطورةُ مقيسةٌ على الافتراضيّة — ويُقال. */}
+                          {!r.creditDays && r.termIsDefault ? <span className="text-[10px] text-amber-600 block">{t('افتراضية', 'default')}</span> : null}
+                        </td>
+                        <td className="px-3 py-2 text-end tabular-nums text-slate-700">{r.age == null ? '—' : r.age}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {r.risk && RISK[r.risk]
+                            ? <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${RISK[r.risk].cls}`}>{ar ? RISK[r.risk].ar : RISK[r.risk].en}</span>
+                            : <span className="text-slate-300">—</span>}
+                        </td>
                         <td className="px-3 py-2 tabular-nums text-slate-600">{d10(r.dueDate)}</td>
                         <td className="px-3 py-2 text-end tabular-nums font-semibold">
                           {r.daysLate == null ? <span className="text-slate-300">—</span>
@@ -166,7 +200,11 @@ export default function ReceivablesRows({
                               : r.daysLate > 0 ? <span className="text-amber-600">{r.daysLate}</span>
                                 : <span className="text-emerald-600">{r.daysLate}</span>}
                         </td>
-                        <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{r.officer || '—'}</td>
+                        <td className="px-3 py-2 text-slate-600 whitespace-nowrap"
+                          title={r.officerIsDefault ? t('غير مُسنَد — على مدير القسم', 'Unassigned — falls to the dept. manager') : undefined}>
+                          {r.officer || t('مدير القسم', 'Dept. manager')}
+                          {r.officerIsDefault ? <span className="text-[10px] text-slate-400 block">{t('مدير القسم', 'manager')}</span> : null}
+                        </td>
                         <td className="px-3 py-2 whitespace-nowrap">
                           <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${iss.cls}`}>{ar ? iss.ar : iss.en}</span>
                           {canEdit && (

@@ -71,6 +71,10 @@ export interface CollectionsParty {
   code?: string;
   aliases?: string[];
   collectionOfficer?: string;
+  /** المسؤولُ الفعليّ: الموظّفُ المكتوب، وإلّا مديرُ القسم (لا «بلا مسؤول»). */
+  effectiveOfficer?: string;
+  /** المسؤولُ الفعليّ آتٍ من المدير — الحسابُ لم يُسنَد إلى موظّف. */
+  officerIsDefault?: boolean;
   hoLocation?: string;
   grade?: string;
   salesManagers?: string[];
@@ -274,3 +278,15 @@ export const bandLabel = (key: string | null | undefined, ar: boolean) => {
   const l = BAND_LABELS[key];
   return l ? (ar ? l[0] : l[1]) : key;
 };
+
+/**
+ * اسمُ مسؤول التحصيل كما يُعرَض — ولا «بلا مسؤول» بعد اليوم.
+ *
+ * ما لم يُسنَد إلى موظّفٍ فهو على مدير القسم (صاحبُ الشركة، ٢٠٢٦/١٠/٢١)، والخادمُ
+ * يرسل المسؤولَ الفعليّ (`effectiveOfficer`). وما يأتي فارغًا بعدها (لا مديرَ في
+ * النظام أصلًا) يُقال «مدير القسم» لا «بلا مسؤول».
+ */
+export const officerLabel = (
+  r: { effectiveOfficer?: string; collectionOfficer?: string; officer?: string } | null | undefined,
+  ar: boolean,
+) => (r?.effectiveOfficer || r?.collectionOfficer || r?.officer || (ar ? 'مدير القسم' : 'Dept. manager'));

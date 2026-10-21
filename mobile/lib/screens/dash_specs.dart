@@ -410,18 +410,47 @@ final customsDashSpec = DashSpec(
 // المديونيّةُ من دفتر الفواتير — النداءُ نفسُه الذي تُبنى منه شجرةُ الموقع.
 // كانت تُقرأ من كشوف التشغيل فتقول ٤٧ مليونًا والموقعُ يقول ١٩٫٩٦: تاريخُ
 // التحصيل لا يُكتب على الكشوف، فكان كلُّ ما سُلِّم يُعَدّ دَينًا.
+//
+// والفلاترُ الخمسة كما في الموقع (مسؤولُ التحصيل، العميل، نوعُ الدفع،
+// الاستحقاق، القضايا): خياراتُها وعدّاداتُها من `facets` في الجواب، وكلُّ رقمٍ
+// هنا تحتها. ولا «بلا مسؤول»: ما لم يُسنَد فعلى مدير القسم.
+const _payLabels = {
+  'tax': ('ضريبي', 'Tax'),
+  'cash': ('كاش', 'Cash'),
+  'deferred_invoice': ('آجل - فاتورة', 'Deferred – invoice'),
+  'deferred_cash': ('آجل - كاش', 'Deferred – cash'),
+  'cash_3pl': ('نقدي - 3PL', 'Cash – 3PL'),
+  'cash_ht': ('نقدي - HT', 'Cash – HT'),
+};
+const _dueLabels = {
+  'late': ('مستحق — تجاوز موعده', 'Due — past its date'),
+  'noterm': ('مستحق — بلا مدّة سداد', 'Due — no credit term'),
+  'within': ('غير مستحق', 'Not yet due'),
+};
+const _issueLabels = {
+  'none': ('بلا مشكلة', 'No issue'),
+  'negotiating': ('تحت التفاوض', 'Negotiating'),
+  'legal': ('قضايا', 'Legal'),
+};
+
 final collectionsDashSpec = DashSpec(
   arTitle: 'لوحة التحصيل', enTitle: 'Collections Dashboard',
   // `collections:changed` لا `collections:party`: تغييرُ نوع الدفع على كشفٍ في سير
   // العمل يُبثّ به (بعد مسح ذاكرة الشجرة) — فتتبعه البطاقاتُ الأربع في الحال.
   endpoint: '/api/collections-dept/receivables/overview', liveEvent: 'collections:changed',
+  filters: const [
+    DashFilter('officer', 'مسؤول التحصيل', 'Collector', 'facets.officer'),
+    DashFilter('parties', 'العميل', 'Customer', 'facets.parties'),
+    DashFilter('pay', 'نوع الدفع', 'Payment type', 'facets.pay', labels: _payLabels, searchable: false),
+    DashFilter('dueState', 'الاستحقاق', 'Due status', 'facets.dueState', labels: _dueLabels, searchable: false),
+    DashFilter('issue', 'القضايا', 'Cases', 'facets.issue', labels: _issueLabels, searchable: false),
+  ],
   stats: const [
     DashStat('إجمالي المديونية', 'Receivable', 'tree.all.value', Icons.call_received_rounded, T.danger, money: true),
     DashStat('ضريبي', 'Tax', 'tree.byKind.tax.value', Icons.receipt_long_outlined, T.navy, money: true),
     DashStat('نقدي', 'Cash', 'tree.byKind.cash.value', Icons.payments_outlined, T.info, money: true),
     // ── أنواعُ الدفع الأربعة: مستحقٌّ وغيرُ مستحقّ ─────────────────────────
-    // حلّت محلَّ «في موعده / متأخّر» كما في الموقع. والمستحقُّ ما تجاوز موعدَه
-    // ومعه ما لا مدّةَ سدادٍ له. راجع collectionsReceivablesController.
+    // والمستحقُّ ما تجاوز موعدَه ومعه ما لا مدّةَ سدادٍ له. راجع collectionsReceivablesController.
     DashStat('آجل - فاتورة · مستحق', 'Deferred invoice · due', 'tree.subtypes.deferred_invoice.due.value', Icons.receipt_long_outlined, T.danger, money: true),
     DashStat('آجل - فاتورة · غير مستحق', 'Deferred invoice · not due', 'tree.subtypes.deferred_invoice.notDue.value', Icons.receipt_long_outlined, T.success, money: true),
     DashStat('آجل - كاش · مستحق', 'Deferred cash · due', 'tree.subtypes.deferred_cash.due.value', Icons.payments_outlined, T.danger, money: true),
@@ -430,16 +459,81 @@ final collectionsDashSpec = DashSpec(
     DashStat('نقدي - 3PL · غير مستحق', 'Cash 3PL · not due', 'tree.subtypes.cash_3pl.notDue.value', Icons.local_shipping_outlined, T.success, money: true),
     DashStat('نقدي - HT · مستحق', 'Cash HT · due', 'tree.subtypes.cash_ht.due.value', Icons.local_shipping_rounded, T.danger, money: true),
     DashStat('نقدي - HT · غير مستحق', 'Cash HT · not due', 'tree.subtypes.cash_ht.notDue.value', Icons.local_shipping_rounded, T.success, money: true),
-    DashStat('متأخّر فوق ٦٠ يومًا', 'Late 60+', 'tree.tax.bands.d60_plus.value', Icons.warning_amber_rounded, T.danger, money: true),
+    // ── الخطورةُ على مدّة كلّ عميل (والافتراضيّةُ ٣٠ يومًا) ─────────────────
+    DashStat('طبيعي', 'Normal', 'tree.risk.normal.value', Icons.task_alt_rounded, T.success, money: true),
+    DashStat('متوسط', 'Medium', 'tree.risk.medium.value', Icons.schedule_outlined, T.warn, money: true),
+    DashStat('مرتفع', 'Hard', 'tree.risk.hard.value', Icons.warning_amber_rounded, T.danger, money: true),
+    DashStat('آجل - فاتورة بلا مرفق', 'Deferred invoice, no file', 'attachments.missing.count', Icons.attach_file_rounded, T.orange),
+    DashStat('عملاء بمدّة افتراضية ٣٠ يومًا', 'Customers on default 30-day term', 'defaultTerm.customers', Icons.event_note_outlined, T.navy),
     DashStat('فواتير مفتوحة', 'Open invoices', 'tree.all.count', Icons.pending_actions_outlined, T.warn),
   ],
+  // «عمر التأخير»: الشرائحُ الخمس وفي كلٍّ طبيعي / متوسط / مرتفع — كما في الموقع.
+  afterStats: (d) => _CollectionsAgeTable(d),
   lists: [
     DashList('أكبر المديونيات', 'Largest receivables', 'parties', (r) => _s(r, 'name'),
-        subtitle: (r) => '${_n(r['value'])} ${tr('ر.س', 'SAR')} · ${_n(r['count'])} ${tr('فاتورة', 'invoices')} · ${tr('متأخّر', 'late')} ${_n(r['lateValue'])}'),
-    DashList('بموظف التحصيل', 'By officer', 'officers', (r) => _s(r, 'officer'),
-        subtitle: (r) => '${_n(r['value'])} ${tr('ر.س', 'SAR')} · ${tr('متأخّر', 'late')} ${_n(r['lateValue'])}'),
+        subtitle: (r) => '${_n(r['value'])} ${tr('ر.س', 'SAR')} · ${_n(r['count'])} ${tr('فاتورة', 'invoices')} · ${_s(r, 'officer')}'),
+    DashList('بمسؤول التحصيل', 'By collector', 'officers',
+        (r) => r['isManager'] == true ? '${_s(r, 'officer')} — ${tr('مدير القسم', 'Dept. manager')}' : _s(r, 'officer'),
+        subtitle: (r) => '${_n(r['value'])} ${tr('ر.س', 'SAR')} · ${tr('متأخّر', 'late')} ${_n(r['lateValue'])} · ${tr('مرتفع', 'hard')} ${_n(r['hardValue'])}'),
+    DashList('بمدّة افتراضية — حدّد مدّة العميل', 'On the default term — set the term', 'defaultTerm.parties', (r) => _s(r, 'name'),
+        subtitle: (r) => '${_n(r['value'])} ${tr('ر.س', 'SAR')} · ${_s(r, 'officer')}'),
   ],
 );
+
+/// جدولُ «عمر التأخير»: صفٌّ لكلّ شريحة، وأعمدتُه أجزاؤها الثلاثة.
+class _CollectionsAgeTable extends StatelessWidget {
+  final Map<String, dynamic> data;
+  const _CollectionsAgeTable(this.data);
+
+  static const _bands = [
+    ('d1_15', '١ – ١٥ يومًا', '1–15 days'),
+    ('d16_30', '١٦ – ٣٠ يومًا', '16–30 days'),
+    ('d31_60', '٣١ – ٦٠ يومًا', '31–60 days'),
+    ('d61_90', '٦١ – ٩٠ يومًا', '61–90 days'),
+    ('d91_plus', 'أكثر من ٩٠', 'Over 90'),
+  ];
+  static const _risks = [('normal', 'طبيعي', 'Normal', T.success), ('medium', 'متوسط', 'Medium', T.warn), ('hard', 'مرتفع', 'Hard', T.danger)];
+
+  num _v(String band, String part) {
+    final ages = (data['tree'] as Map?)?['ages'] as Map?;
+    final n = ((ages?[band] as Map?)?[part] as Map?)?['value'];
+    return n is num ? n : 0;
+  }
+
+  String _m(num n) => n.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
+
+  @override
+  Widget build(BuildContext context) {
+    if ((data['tree'] as Map?)?['ages'] == null) return const SizedBox.shrink();
+    const head = TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: T.inkSoft);
+    const cell = TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.ink);
+    return AppCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(tr('عمر التأخير', 'Age of receivables'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+        const SizedBox(height: 2),
+        Text(tr('الخطورةُ على مدّة كلّ عميل N: طبيعي حتى N، متوسط حتى N+30، مرتفع بعدها',
+            'Risk on each customer’s term N: normal ≤ N, medium ≤ N+30, hard beyond'),
+            style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+        const SizedBox(height: 8),
+        Table(
+          columnWidths: const {0: FlexColumnWidth(1.3)},
+          children: [
+            TableRow(children: [
+              Text(tr('الشريحة', 'Band'), style: head),
+              for (final r in _risks) Text(tr(r.$2, r.$3), style: head.copyWith(color: r.$4), textAlign: TextAlign.end),
+            ]),
+            for (final b in _bands)
+              TableRow(children: [
+                Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Text(tr(b.$2, b.$3), style: head)),
+                for (final r in _risks)
+                  Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Text(_m(_v(b.$1, r.$1)), style: cell, textAlign: TextAlign.end)),
+              ]),
+          ],
+        ),
+      ]),
+    );
+  }
+}
 
 const vehiclesDashSpec = DashSpec(
   arTitle: 'لوحة المركبات', enTitle: 'Vehicles Dashboard',

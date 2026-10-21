@@ -26,6 +26,10 @@ const PartyLinkSuggestion = require('../models/PartyLinkSuggestion');
 const cache = require('../utils/ttlCache');
 // يطوي فروقَ الرسم العربيّ والفراغات — هو نفسُه المستعمَل في صفحات الفواتير.
 const { flexSpaceRegex } = require('../utils/plateKey');
+// مسؤولُ التحصيل الفعليّ: الموظّفُ المكتوب، وإلّا مديرُ القسم — لا «بلا مسؤول».
+const {
+  collectionsManager, officerCondition, effectiveOfficer, isDefaultOfficer, withManager,
+} = require('../utils/collectionsOfficer');
 
 const CACHE_PREFIX = 'colledger:';
 const DAY = 86400000;
@@ -105,13 +109,15 @@ async function ledgerPartyBase() {
   });
 }
 
-function partyFilter(q = {}, base = { kind: 'customer', code: { $gt: '' } }) {
+function partyFilter(q = {}, base = { kind: 'customer', code: { $gt: '' } }, mgr = null) {
   const f = { $and: [base] };
   const { officer, grade, department, hoLocation, kind, creditDays, status, region } = q;
   // التطبيقُ يرسل البحثَ باسم `q` والموقعُ باسم `search` — يُقبَلان معًا.
   const search = q.search || q.q;
   const list = (v) => (Array.isArray(v) ? v : [v]).filter(Boolean);
-  if (officer) f.collectionOfficer = { $in: list(officer) };
+  // اسمُ المدير يفتح حساباتِه ومعها كلَّ حسابٍ لم يُسنَد — راجع utils/collectionsOfficer.
+  const oc = officerCondition(officer, mgr);
+  if (oc) f.$and.push(oc);
   if (grade) f.grade = { $in: list(grade) };
   if (department) f.department = { $in: list(department) };
   if (hoLocation) f.hoLocation = { $in: list(hoLocation) };
@@ -206,7 +212,8 @@ exports.aging = async (req, res) => {
     const cacheKey = keyOf('aging', req);
     const cached = cache.get(cacheKey);
     if (cached) return res.json(cached);
-    const filter = partyFilter(req.query, await ledgerPartyBase());
+    const mgr = await collectionsManager();
+    const filter = partyFilter(req.query, await ledgerPartyBase(), mgr);
     const parties = await CollectionsParty.find(filter)
       .select('code name paymentType collectionOfficer hoLocation grade salesManagers department region creditLimit creditDays status')
       .lean();
@@ -217,7 +224,10 @@ exports.aging = async (req, res) => {
       const a = ageMap.get(String(p._id))
         || { outstanding: 0, count: 0, tax: 0, cash: 0, bands: Object.fromEntries(BANDS.map((b) => [b.key, 0])), counts: Object.fromEntries(BANDS.map((b) => [b.key, 0])) };
       const pct = p.creditLimit > 0 ? (a.outstanding / p.creditLimit) * 100 : null;
-      return { ...p, outstanding: a.outstanding, taxOutstanding: a.tax, cashOutstanding: a.cash, invoiceCount: a.count, bands: a.bands, bandCounts: a.counts, limitUsedPct: pct };
+      return {
+        ...p, outstanding: a.outstanding, taxOutstanding: a.tax, cashOutstanding: a.cash, invoiceCount: a.count, bands: a.bands, bandCounts: a.counts, limitUsedPct: pct,
+        effectiveOfficer: effectiveOfficer(p.collectionOfficer, mgr), officerIsDefault: isDefaultOfficer(p.collectionOfficer),
+      };
     });
     // شريحةٌ بعينها: تُطبَّق بعد الجمع لا قبله، وإلّا لم تجمع الشرائحُ الإجماليَّ.
     if (band && BANDS.some((b) => b.key === band)) rows = rows.filter((r) => r.bands[band] !== 0);
@@ -250,7 +260,8 @@ exports.aging = async (req, res) => {
 // GET /api/collections-dept/ledger/aging/filters
 exports.agingFilters = async (req, res) => {
   try {
-    const key = `${CACHE_PREFIX}agingfilters`;
+    const mgr = await collectionsManager();
+    const key = `${CACHE_PREFIX}agingfilters:${mgr?.name || ''}`;
     const hit = cache.get(key);
     if (hit) return res.json(hit);
     const base = { kind: 'customer', code: { $gt: '' } };
@@ -265,7 +276,7 @@ exports.agingFilters = async (req, res) => {
     ]);
     const clean = (a) => a.filter((x) => x !== null && x !== undefined && x !== '').sort();
     const out = {
-      officers: clean(officers), grades: clean(grades), departments: clean(departments),
+      officers: withManager(clean(officers), mgr), grades: clean(grades), departments: clean(departments),
       locations: clean(locations), creditDays: creditDays.filter((n) => n > 0).sort((a, b) => a - b),
       statuses: clean(statuses), regions: clean(regions), bands: BANDS,
     };
@@ -373,9 +384,10 @@ exports.invoices = async (req, res) => {
     // فلترُ الموظّف المسؤول يمرّ عبر الحساب — الفاتورةُ لا تحمل اسمَه.
     if (req.query.officer) {
       // بالرابط لا بالكود: ٣٥٧ شحنةً نقديّةً في الدفتر بلا كود، وحسابُها معروف.
+      // واسمُ المدير يشمل الحساباتِ التي لم تُسنَد (راجع utils/collectionsOfficer).
       filter.party = { $in: await CollectionsParty.distinct('_id', {
         kind: 'customer',
-        collectionOfficer: { $in: (Array.isArray(req.query.officer) ? req.query.officer : [req.query.officer]) },
+        ...officerCondition(req.query.officer, await collectionsManager()),
       }) };
     }
 
@@ -415,7 +427,8 @@ exports.invoices = async (req, res) => {
 // GET /api/collections-dept/ledger/invoices/filters
 exports.invoiceFilters = async (req, res) => {
   try {
-    const key = `${CACHE_PREFIX}invfilters`;
+    const mgr = await collectionsManager();
+    const key = `${CACHE_PREFIX}invfilters:${mgr?.name || ''}`;
     const hit = cache.get(key);
     if (hit) return res.json(hit);
     const [statuses, kinds] = await Promise.all([
@@ -426,7 +439,7 @@ exports.invoiceFilters = async (req, res) => {
     const out = {
       statuses: statuses.filter(Boolean).sort(),
       kinds: kinds.filter(Boolean).sort(),
-      officers: officers.filter(Boolean).sort(),
+      officers: withManager(officers.filter(Boolean), mgr),
       bands: BANDS,
     };
     cache.set(key, out, 300);
@@ -483,7 +496,8 @@ exports.alerts = async (req, res) => {
     const warnDays = Number(req.query.warnDays) || DUE_WARN_DAYS;
     const today = startOfToday();
 
-    const parties = await CollectionsParty.find({ ...partyFilter(req.query, await ledgerPartyBase()), isActive: { $ne: false } })
+    const mgr = await collectionsManager();
+    const parties = await CollectionsParty.find({ ...partyFilter(req.query, await ledgerPartyBase(), mgr), isActive: { $ne: false } })
       .select('code name creditLimit creditDays collectionOfficer hoLocation grade paymentType').lean();
     const ids = parties.map((p) => p._id);
     // ── والثلاثةُ معًا لا واحدًا بعد واحد ────────────────────────────────────
@@ -512,7 +526,7 @@ exports.alerts = async (req, res) => {
       if (ack && out <= (ack.atOutstanding || 0)) continue;
       limitAlerts.push({
         kind: 'limit', party: p._id, code: p.code, name: p.name,
-        officer: p.collectionOfficer, outstanding: out, creditLimit: p.creditLimit,
+        officer: effectiveOfficer(p.collectionOfficer, mgr), outstanding: out, creditLimit: p.creditLimit,
         pct, over: out > p.creditLimit,
       });
     }
@@ -531,7 +545,7 @@ exports.alerts = async (req, res) => {
       // من `deliveryDate + creditDays`، وتلوّن من إشارة `daysToDue`.
       dueAlerts.push({
         kind: 'due', party: v.party, name: v.partyName,
-        officer: p.collectionOfficer, invoiceNumber: v.invoiceNumber, total: v.total,
+        officer: effectiveOfficer(p.collectionOfficer, mgr), invoiceNumber: v.invoiceNumber, total: v.total,
         deliveryDate: v.deliveryDate, creditDays: p.creditDays, daysToDue: inDays,
       });
     }
@@ -613,8 +627,9 @@ exports.createTask = async (req, res) => {
       { party: p._id, date, requestType },
       { $set: {
         party: p._id, partyCode: p.code, partyName: p.name, date, requestType,
-        // مَن لم يُسمَّ له موظّفٌ يأخذ مسؤولَ الحساب — وهو الجوابُ الصحيح غالبًا.
-        officerName: officerName || p.collectionOfficer || '',
+        // مَن لم يُسمَّ له موظّفٌ يأخذ مسؤولَ الحساب — وهو الجوابُ الصحيح غالبًا؛
+        // وحسابٌ لم يُسنَد فمسؤولُه مديرُ القسم.
+        officerName: officerName || effectiveOfficer(p.collectionOfficer, await collectionsManager()),
         planned: true, action, status, collected: Number(collected) || 0, notes,
         createdBy: req.user._id,
       } },
@@ -654,21 +669,27 @@ exports.team = async (req, res) => {
     const cacheKey = keyOf('team', req);
     const cached = cache.get(cacheKey);
     if (cached) return res.json(cached);
+    const mgr = await collectionsManager();
     const parties = await CollectionsParty.find(await ledgerPartyBase())
       .select('code name collectionOfficer creditLimit paymentType').lean();
     const ageMap = await agingByParty(parties.map((p) => p._id));
     const byOfficer = new Map();
     for (const p of parties) {
-      const k = p.collectionOfficer || '';
-      if (!byOfficer.has(k)) byOfficer.set(k, { officer: k, accounts: 0, outstanding: 0, overLimit: 0, tax: 0, cash: 0 });
+      // لا صفَّ «بلا مسؤول»: ما لم يُسنَد يُعَدّ على مدير القسم، ويُقال كم منه كذلك.
+      const k = effectiveOfficer(p.collectionOfficer, mgr);
+      if (!byOfficer.has(k)) byOfficer.set(k, { officer: k, isManager: !!mgr && k === mgr.name, defaulted: 0, accounts: 0, outstanding: 0, overLimit: 0, tax: 0, cash: 0 });
       const e = byOfficer.get(k);
+      if (isDefaultOfficer(p.collectionOfficer)) e.defaulted += 1;
       // الحدُّ يُقاس على ما على العميل كلِّه — ضريبيًّا كان أم نقديًّا.
       const out = ageMap.get(String(p._id))?.outstanding || 0;
       e.accounts += 1; e.outstanding += out;
       if (p.creditLimit > 0 && out > p.creditLimit) e.overLimit += 1;
       if (p.paymentType === 'cash') e.cash += 1; else e.tax += 1;
     }
-    const out = { officers: [...byOfficer.values()].sort((a, b) => b.outstanding - a.outstanding) };
+    const out = {
+      officers: [...byOfficer.values()].sort((a, b) => b.outstanding - a.outstanding),
+      manager: mgr ? { name: mgr.name, email: mgr.email } : null,
+    };
     cache.set(cacheKey, out, TTL);
     res.json(out);
   } catch (e) { res.status(500).json({ message: 'تعذّر جلبُ الفريق' }); }
@@ -709,10 +730,11 @@ exports.performance = async (req, res) => {
     //
     // فكان الجمعُ بالكود يُسقط ٤٣٣ فاتورةً فيها ٢٫٣٩ مليونًا محصَّلةً و٦١٠ آلافٍ
     // مفتوحة — تخرج من حساب كلِّ موظّفٍ وكأنّها لم تكن. والرابطُ يَعرف صاحبَها.
-    const partyQ = { kind: 'customer' };
-    if (officer) partyQ.collectionOfficer = { $in: Array.isArray(officer) ? officer : [officer] };
+    const mgr = await collectionsManager();
+    const partyQ = { kind: 'customer', ...(officerCondition(officer, mgr) || {}) };
     const parties = await CollectionsParty.find(partyQ).select('code collectionOfficer creditDays').lean();
-    const officerOf = new Map(parties.map((p) => [String(p._id), p.collectionOfficer || '']));
+    // المسؤولُ الفعليّ: ما لم يُسنَد يُقيَّم على مدير القسم.
+    const officerOf = new Map(parties.map((p) => [String(p._id), effectiveOfficer(p.collectionOfficer, mgr)]));
     const cdOf = new Map(parties.map((p) => [String(p._id), p.creditDays || 0]));
     const ids = parties.map((p) => p._id);
     const today = startOfToday();
@@ -814,7 +836,13 @@ exports.performance = async (req, res) => {
       { $match: taskQ },
       { $group: { _id: '$officerName', total: { $sum: 1 }, done: { $sum: { $cond: [{ $eq: ['$status', 'Done'] }, 1, 0] } }, collected: { $sum: '$collected' } } },
     ]);
-    const taskBy = new Map(tasks.map((t) => [t._id || '', t]));
+    // ومهمّةٌ بلا اسم موظّفٍ على المدير كذلك — تُضَمّ إلى ما كُتب باسمه.
+    const taskBy = new Map();
+    for (const t of tasks) {
+      const k = effectiveOfficer(t._id, mgr);
+      const cur = taskBy.get(k) || { total: 0, done: 0, collected: 0 };
+      taskBy.set(k, { total: cur.total + t.total, done: cur.done + t.done, collected: cur.collected + t.collected });
+    }
     for (const r of rows) {
       const t = taskBy.get(r.officer);
       r.tasks = t?.total || 0; r.tasksDone = t?.done || 0; r.tasksCollected = t?.collected || 0;

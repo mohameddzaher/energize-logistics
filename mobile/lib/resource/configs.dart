@@ -1196,7 +1196,8 @@ ResourceConfig _collectionsPartyCfg({required bool customer}) => ResourceConfig(
       titleOf: (r) => _s(r, 'name'),
       // الكودُ أوّلَ السطر: هو هويّةُ الحساب في المحاسبة وفي كلّ مراسلة، ومَن
       // يتولّاه أوّلُ ما يُسأل عنه حين يتأخّر.
-      subtitleOf: (r) => [_s(r, 'code'), _s(r, 'collectionOfficer'), _s(r, 'city'), _s(r, 'phone')]
+      // المسؤولُ الفعليّ: ما لم يُسنَد فعلى مدير القسم — لا خانةَ فارغة.
+      subtitleOf: (r) => [_s(r, 'code'), _s(r, 'effectiveOfficer').isNotEmpty ? _s(r, 'effectiveOfficer') : _s(r, 'collectionOfficer'), _s(r, 'city'), _s(r, 'phone')]
           .where((x) => x.isNotEmpty)
           .join(' · '),
       chipsOf: (r) {
@@ -1266,7 +1267,7 @@ final collectionsAgingCfg = ResourceConfig(
   serverSearch: true,
   searchFields: const ['name', 'code', 'collectionOfficer'],
   titleOf: (r) => _s(r, 'name'),
-  subtitleOf: (r) => [_s(r, 'code'), _s(r, 'collectionOfficer'), _s(r, 'hoLocation')]
+  subtitleOf: (r) => [_s(r, 'code'), _s(r, 'effectiveOfficer').isNotEmpty ? _s(r, 'effectiveOfficer') : _s(r, 'collectionOfficer'), _s(r, 'hoLocation')]
       .where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) {
     final out = (r['outstanding'] as num?)?.toDouble() ?? 0;

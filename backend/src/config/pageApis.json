@@ -161,7 +161,6 @@
       "apis": [
         "/api/collections-dept/attachments",
         "/api/collections-dept/dashboard",
-        "/api/collections-dept/invoices/filters",
         "/api/collections-dept/parties",
         "/api/collections-dept/receivables/overview",
         "/api/collections-dept/receivables/rows"

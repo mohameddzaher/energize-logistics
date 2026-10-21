@@ -122,7 +122,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
   const exportCols = [
     { header: ar ? 'الكود' : 'Code', key: 'code', width: 14 },
     { header: ar ? 'الحساب' : 'Account', key: 'name', width: 40 },
-    { header: ar ? 'موظف التحصيل' : 'Officer', key: 'collectionOfficer', width: 16 },
+    { header: ar ? 'موظف التحصيل' : 'Officer', key: 'effectiveOfficer', width: 16 },
     { header: ar ? 'الفرع' : 'Location', key: 'hoLocation', width: 14 },
     { header: ar ? 'التقييم' : 'Grade', key: 'grade', width: 10 },
     { header: ar ? 'القسم' : 'Department', key: 'department', width: 18 },
@@ -149,7 +149,8 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
   const G: Record<string, (r: any) => any> = {
     code: (r) => r.code,
     name: (r) => r.name,
-    collectionOfficer: (r) => r.collectionOfficer,
+    // المسؤولُ الفعليّ: ما لم يُسنَد فعلى مدير القسم — لا «—».
+    collectionOfficer: (r) => r.effectiveOfficer || r.collectionOfficer,
     hoLocation: (r) => r.hoLocation,
     grade: (r) => r.grade,
     department: (r) => r.department,
@@ -323,7 +324,11 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
                   onClick={() => router.push(`/system/collections-dept/parties/${r._id}`)}>
                   <td className="px-3 py-2.5 text-sm font-mono text-slate-600 whitespace-nowrap">{r.code || '—'}</td>
                   <td className="px-3 py-2.5 text-sm text-slate-900 font-medium max-w-[280px] truncate" title={r.name}>{r.name}</td>
-                  <td className="px-3 py-2.5 text-sm text-slate-700 whitespace-nowrap">{r.collectionOfficer || '—'}</td>
+                  <td className="px-3 py-2.5 text-sm text-slate-700 whitespace-nowrap"
+                    title={r.officerIsDefault ? (ar ? 'غير مُسنَد — على مدير القسم' : 'Unassigned — falls to the dept. manager') : undefined}>
+                    {r.effectiveOfficer || r.collectionOfficer || (ar ? 'مدير القسم' : 'Dept. manager')}
+                    {r.officerIsDefault && <span className="ms-1 text-[10px] text-slate-400">{ar ? '(مدير القسم)' : '(manager)'}</span>}
+                  </td>
                   <td className="px-3 py-2.5 text-sm text-slate-700 whitespace-nowrap">{r.hoLocation || '—'}</td>
                   <td className="px-3 py-2.5 whitespace-nowrap">
                     {r.grade ? <span className={`px-1.5 py-0.5 rounded border text-[11px] font-semibold ${gradeTone(r.grade)}`}>{r.grade}</span> : <span className="text-slate-400">—</span>}

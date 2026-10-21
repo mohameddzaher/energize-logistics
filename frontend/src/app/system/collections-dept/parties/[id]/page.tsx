@@ -326,12 +326,16 @@ export default function PartyProfilePage() {
           {/* ── الحسابُ في دفتر التحصيل ──────────────────────────────────────
               الكودُ هويّتُه في المحاسبة وفي كلّ مراسلة، ومَن يتولّاه هو أوّلُ
               ما يُسأل عنه حين يتأخّر. وكانت تُقرأ من الإكسل في كلّ مرّة. */}
-          {(p.code || p.collectionOfficer || p.grade || p.department) && (
+          {(p.code || p.effectiveOfficer || p.collectionOfficer || p.grade || p.department) && (
             <div>
               <p className="text-[13px] font-bold text-slate-900 mb-2">{t('الحساب', 'The account')}</p>
               <div className="space-y-1.5">
                 <Row label={t('الكود', 'Code')} value={p.code} />
-                <Row label={t('موظف التحصيل', 'Collection officer')} value={p.collectionOfficer} />
+                {/* المسؤولُ الفعليّ: حسابٌ لم يُسنَد فعلى مدير القسم — ويُقال ذلك. */}
+                <Row label={t('موظف التحصيل', 'Collection officer')}
+                  value={p.officerIsDefault && p.effectiveOfficer
+                    ? `${p.effectiveOfficer} — ${t('مدير القسم (غير مُسنَد)', 'dept. manager (unassigned)')}`
+                    : (p.effectiveOfficer || p.collectionOfficer)} />
                 <Row label={t('التقييم', 'Grade')} value={p.grade} />
                 <Row label={t('القسم', 'Department')} value={p.department} />
                 <Row label={t('فرع العميل', 'Location')} value={p.hoLocation} />

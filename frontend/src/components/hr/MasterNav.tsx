@@ -39,7 +39,7 @@ export default function MasterNav() {
   const [groups, setGroups] = useState<{ key: string; ar: string; en: string; count?: number }[]>([]);
   const [expiring, setExpiring] = useState(0);
   // ── والرابطُ يحمل الشرطَ الذي عُدَّ به الرقم ────────────────────────────────
-  // الانتهاءاتُ تُعَدّ لمن لم تنتهِ خدمتُه (`expiryScope`)، وحدُّ «القريب» هو
+  // الانتهاءاتُ تُعَدّ لكلّ مَن ليس في الأرشيف (`expiryScope`)، وحدُّ «القريب» هو
   // `alert.warnDays`. وكلاهما يأتي من الخادم مع الرقم ويُكتب في الرابط كما هو،
   // فلا يفتح «٤٥٩» صفحةً تعدّ قومًا آخرين أو مدّةً أخرى.
   const [scope, setScope] = useState<Record<string, string>>({});

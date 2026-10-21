@@ -133,9 +133,7 @@ function ExpiringInner() {
 
       <PageHeader icon={<CalendarClock className="w-5 h-5" />}
         title={t('انتهاءات مستندات الموظفين', 'Employee document expiries')}
-        subtitle={(d?.expiryScope?.employment === 'current')
-          ? t('كل مستند له تاريخ، لمن لم تنتهِ خدمته — اختر المدة التي تهمّك', 'Every dated document, for staff whose service has not ended — pick the window that matters')
-          : t('كل مستند له تاريخ — اختر المدة التي تهمّك', 'Every dated document — pick the window that matters')}>
+        subtitle={t('كل مستند له تاريخ، لكل موظف ليس في الأرشيف — اختر المدة التي تهمّك', 'Every dated document, for every employee not in the archive — pick the window that matters')}>
         <ExportMenu fileName="hr-expiries" lang={lang as 'ar' | 'en'} options={exportOptions} />
       </PageHeader>
 

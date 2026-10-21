@@ -2549,8 +2549,9 @@ exports.getDashboard = async (req, res) => {
       Employee.aggregate([{ $match: { ...HRQ, project: { $nin: [null, ''] } } }, { $group: { _id: '$project', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 }]),
       Employee.aggregate([{ $match: { ...HRQ, nationality: { $nin: [null, ''] } } }, { $group: { _id: '$nationality', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 10 }]),
       Employee.find({ ...HRQ, hireDate: { $nin: [null, ''] } }).select('firstName lastName arabicName jobTitle hireDate').sort({ hireDate: -1 }).limit(8).lean(),
-      // Pull only the fields we scan for expiry, for the whole active-ish workforce.
-      Employee.find({ ...HRQ, employmentStatus: { $ne: 'terminated' } })
+      // Pull only the fields we scan for expiry — everyone not in the archive
+      // (HR_ONLY already drops the archive; see hrMasterController EXPIRY_SCOPE).
+      Employee.find(HRQ)
         .select('firstName lastName arabicName iqamaNumber ' + EXPIRY_DOCS.map((d) => d.field).join(' '))
         .limit(5000).lean(),
       // Company licenses & subscriptions — few rows, pull all and compute in JS.

@@ -1400,9 +1400,9 @@ exports._stampInvoiceDate = stampInvoiceDate;
  */
 // ── ومعلَّقٌ حتّى يقرّر صاحبُ الشركة ────────────────────────────────────────
 // كتابةُ سعر البيع الحقيقيّ في المنصّة تُظهر هامشَنا لفريقها، وكانت قيمتُه
-// هناك تساوي الكلفة. فالكتابةُ مطفأةٌ حتّى يُؤذَن بها صراحةً: تُحفظ القيمةُ هنا
-// وفي التحصيل، ولا يخرج إلى المنصّة شيء. والتشغيلُ = `true` هنا ونشرٌ جديد.
-const PUSH_SELLING_TO_PLATFORM = false;
+// هناك تساوي الكلفة. فبقيت مطفأةً حتّى أذن بها صاحبُ الشركة صراحةً
+// (٢٠٢٦/١٠/٢١: «افتح الكتابة على المنصة»). والإطفاءُ = `false` هنا ونشرٌ جديد.
+const PUSH_SELLING_TO_PLATFORM = true;
 
 async function pushSellingValue(workflow, value) {
   if (!PUSH_SELLING_TO_PLATFORM) return { platform: false, held: true };

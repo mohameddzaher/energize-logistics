@@ -1232,7 +1232,8 @@ exports.invoiceColumnOptions = async (req, res) => {
       match = { ...invoiceFilters(others, { ageField: 'paymentDate' }), paymentType: 'cash' };
       match.$and = [
         ...(match.$and || []),
-        { $or: [{ reportDate: { $lt: AUTO_RULE_FROM } }, { accountingReview: { $nin: ['', null] } }] },
+        // الشرطُ نفسُه الذي في cashInvoices — ومعه ما حصّلته المحفظة.
+        { $or: [{ reportDate: { $lt: AUTO_RULE_FROM } }, { accountingReview: { $nin: ['', null] } }, { collectedByWallet: true }] },
         ...columnFilters(others, kind),
       ];
       Model = OperationsWorkflow;
@@ -1369,6 +1370,10 @@ exports.cashInvoices = async (req, res) => {
       $or: [
         { reportDate: { $lt: AUTO_RULE_FROM } },
         { accountingReview: { $nin: ['', null] } },
+        // ── إلّا ما حصّله المندوبُ في المحفظة ─────────────────────────────
+        // المالُ وصل، فلا يُنتظَر به مراجعةُ التشغيل: يظهر هنا فورًا محصَّلًا
+        // (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). راجع utils/walletCollection.
+        { collectedByWallet: true },
       ],
     }, ...columnFilters(req.query, 'cash')];
 

@@ -10,6 +10,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'vehicle_registry.dart' show docLabel, fmtDate, daysText, money, statusColor, statusLabel;
 import '../services/flex_match.dart';
+import '../ui/api_picker.dart';
 
 /// ── شاشةُ عائلةِ مستندٍ واحدة، نظيرُ صفحات المستندات في الموقع ─────────────
 ///
@@ -592,10 +593,42 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                     ),
                   );
                 }
+                // ── المفوَّضُ يُختار من الموظّفين لا يُكتب ──────────────────────
+                // كالموقع (PersonSelect): الاسمُ ورقمُ الإقامة يُملآن معًا من ملفّ
+                // الموظّف، والخادمُ يرفض اسمًا لا يطابق موظّفًا. فالخانتان تُقرآن
+                // ولا تُكتبان، ويُختار من القائمة أو يُفرَّغ.
+                if (f.path == 'authorizedPerson.name' && ctrls[f.path] != null) {
+                  final nameCtl = ctrls[f.path]!;
+                  final idCtl = ctrls['authorizedPerson.iqamaNumber'];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(children: [
+                      Expanded(child: OutlinedButton.icon(
+                        icon: const Icon(Icons.person_search_outlined, size: 18),
+                        style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), alignment: AlignmentDirectional.centerStart),
+                        label: Text('${tr(f.ar, f.en)}: ${nameCtl.text.isEmpty ? tr('اختر من الموظّفين', 'Pick an employee') : nameCtl.text}',
+                            overflow: TextOverflow.ellipsis),
+                        onPressed: () async {
+                          final p = await pickFromApi(c,
+                              endpoint: '/api/vehicle-registry/people', listKey: 'people',
+                              label: (r) => ['${r['name'] ?? ''}', '${r['idNumber'] ?? ''}', '${r['jobTitleAr'] ?? ''}'].where((x) => x.isNotEmpty).join(' · '),
+                              title: tr('المفوَّض', 'Authorised person'));
+                          if (p == null) return;
+                          setSheet(() { nameCtl.text = '${p['name'] ?? ''}'; idCtl?.text = '${p['idNumber'] ?? ''}'; });
+                        },
+                      )),
+                      if (nameCtl.text.isNotEmpty)
+                        IconButton(tooltip: tr('بلا تفويض', 'No authorisation'), icon: const Icon(Icons.close),
+                            onPressed: () => setSheet(() { nameCtl.clear(); idCtl?.clear(); })),
+                    ]),
+                  );
+                }
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     TextField(
+                      // رقمُ إقامة المفوَّض يتبع اختيارَه — لا يُكتب بيد.
+                      readOnly: f.path == 'authorizedPerson.iqamaNumber',
                       controller: ctrls[f.path],
                       keyboardType: f.kind == 'number' ? TextInputType.number : TextInputType.text,
                       textDirection: f.mono ? TextDirection.ltr : null,

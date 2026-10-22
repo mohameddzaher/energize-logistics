@@ -74,6 +74,44 @@ const jpTaskSchema = new mongoose.Schema({
 
   attachments: [attachmentSchema],
 
+  /**
+   * ── يومُ العمل والوقتُ المتوقّع ─────────────────────────────────────────
+   * «اجتماعٌ يومَ الأحد، ساعةٌ ونصف». اليومُ هو اليومُ الذي تُعَدّ فيه المهمّةُ
+   * في يوميّة الفريق (منتصفُ ليله بتوقيت الرياض)، والوقتُ بالدقائق. وكلاهما
+   * اختياريّ: مهمّةٌ بلا يومٍ تُعَدّ في يوم إنشائها.
+   */
+  workDate: { type: Date, default: null },
+  expectedMinutes: { type: Number, default: null, min: 0 },
+
+  /**
+   * ── أين وصل العمل ───────────────────────────────────────────────────────
+   * `status` يبقى كما كان: مفتوحةٌ أو تمّت. وما دامت مفتوحةً فهي واحدةٌ من
+   * ثلاث: لم تبدأ، جاريةٌ (المؤقّتُ يعمل)، متوقّفة. وجاريةٌ تعني مؤقّتًا يعمل
+   * دائمًا — فلا تُقال «جارية» بلا وقتٍ يُحسَب.
+   */
+  progress: { type: String, enum: ['todo', 'doing', 'paused'], default: 'todo' },
+  timerStartedAt: { type: Date, default: null },
+
+  /**
+   * ── الوقتُ الفعليّ ──────────────────────────────────────────────────────
+   * كلُّ فترةِ عملٍ سطر: من بدأ إلى أن أوقف (`timer`)، أو تصحيحٌ يكتبه المديرُ
+   * بدقائقَ تُزاد أو تُنقَص في يومٍ بعينه (`adjust`). واليوميّةُ تقسم الفترةَ
+   * على أيّامها، فعملٌ عبر منتصف الليل يُعَدّ في يوميه.
+   * `spentMinutes` مجموعُ السطور كلِّها — يُعاد حسابُه مع كلّ حفظ.
+   */
+  timeLog: [{
+    kind: { type: String, enum: ['timer', 'adjust'], required: true },
+    start: { type: Date, default: null },
+    end: { type: Date, default: null },
+    day: { type: String, default: '' },          // YYYY-MM-DD — للتصحيح وحدَه
+    minutes: { type: Number, required: true },
+    note: { type: String, trim: true, default: '', maxlength: 500 },
+    by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    byName: { type: String, default: '' },
+    at: { type: Date, default: Date.now },
+  }],
+  spentMinutes: { type: Number, default: 0 },
+
   // ── تعليقات ──────────────────────────────────────────────────────────────
   // سؤالٌ عن المهمّة أو خبرٌ عنها يُكتب عليها، لا في محادثةٍ خارج النظام.
   // يكتبه من أُسنِدت إليه ومن أسندها ومديرُ القسم.
@@ -110,6 +148,16 @@ jpTaskSchema.index({ assignedTo: 1, status: 1 });
 jpTaskSchema.index({ createdBy: 1 });
 jpTaskSchema.index({ project: 1 });
 jpTaskSchema.index({ 'links.ref': 1 });
+jpTaskSchema.index({ scope: 1, section: 1, workDate: 1 });
+jpTaskSchema.index({ assignedTo: 1, timerStartedAt: 1 });
+
+// المجموعُ يتبع السطور — لا يُكتب باليد فيختلف عنها.
+jpTaskSchema.pre('save', function sumTime(next) {
+  if (this.isModified('timeLog')) {
+    this.spentMinutes = Math.max(0, Math.round((this.timeLog || []).reduce((s, x) => s + (Number(x.minutes) || 0), 0) * 10) / 10);
+  }
+  next();
+});
 
 const JpProject = mongoose.models.JpProject || mongoose.model('JpProject', jpProjectSchema);
 const JpTask = mongoose.models.JpTask || mongoose.model('JpTask', jpTaskSchema);

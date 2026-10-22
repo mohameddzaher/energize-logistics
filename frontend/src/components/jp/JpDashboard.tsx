@@ -21,6 +21,7 @@ import api from '@/lib/api';
 import { type JpScope, ACTION_WORDS, deadlineLine, TONE_CLASS, qs, spanWords } from '@/lib/jp';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
+import JpDaily from '@/components/jp/JpDaily';
 import {
   BarChart3, AlertTriangle, Clock, FolderKanban, Users, CheckCircle2, UserX, ListChecks, X, Timer, Paperclip, MessageSquare,
 } from 'lucide-react';
@@ -175,6 +176,9 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />{t('مباشر', 'Live')}
         </span>
       </PageHeader>
+
+      {/* ── اليوميّة أوّلًا: مَن عمل على ماذا اليوم وكم أخذ (٢٠٢٦/١٠/٢٢) ─────── */}
+      <JpDaily scope={scope} section={section} ar={ar} />
 
       {/* ── ١. الفلاتر ─────────────────────────────────────────────────────── */}
       <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex flex-wrap items-center gap-2.5">

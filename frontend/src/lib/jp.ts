@@ -37,7 +37,11 @@ export interface JpTask {
   doneAt?: string | null; doneNote?: string; createdAt: string;
   attachments: JpAttachment[];
   comments?: JpComment[];
-  can: { complete: boolean; edit: boolean; remove: boolean; attach: boolean; comment?: boolean };
+  can: { complete: boolean; edit: boolean; remove: boolean; attach: boolean; comment?: boolean; track?: boolean; adjust?: boolean };
+  /** يومُ العمل والوقتُ المتوقّع والفعليّ (٢٠٢٦/١٠/٢٢). */
+  workDate?: string | null; expectedMinutes?: number | null;
+  progress?: 'todo' | 'doing' | 'paused'; timerStartedAt?: string | null;
+  spentMinutes?: number; spentNow?: number;
   fromManagement?: boolean;
   handedTo?: { _id: string; name: string; state: string }[];
   canHandDown?: boolean;
@@ -49,6 +53,14 @@ export interface JpMe {
   /** أنواعُ ما تُربَط به المهمّةُ في هذا القسم — فارغةٌ لقسمٍ بلا روابط. */
   linkKinds?: string[];
 }
+
+/** «ساعة و٢٠ د» — دقائقُ مقروءة. */
+export const fmtMinutes = (m: number | null | undefined, ar: boolean) => {
+  const v = Math.max(0, Math.round(Number(m) || 0));
+  const h = Math.floor(v / 60); const r = v % 60;
+  if (!h) return ar ? `${r} د` : `${r}m`;
+  return ar ? `${h} س${r ? ` ${r} د` : ''}` : `${h}h${r ? ` ${r}m` : ''}`;
+};
 
 export const ACTION_WORDS: Record<Exclude<JpAction, ''>, { ar: string; en: string }> = {
   call: { ar: 'اتصال هاتفي', en: 'Phone call' },

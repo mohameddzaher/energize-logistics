@@ -23,9 +23,10 @@ import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import {
   type JpScope, type JpMe, type JpTask, type JpProject, type JpAction, type JpLink,
-  ACTION_WORDS, deadlineLine, TONE_CLASS, fileToDataUrl, contactHref, qs, jpId,
+  ACTION_WORDS, deadlineLine, TONE_CLASS, fileToDataUrl, contactHref, qs, jpId, fmtMinutes,
 } from '@/lib/jp';
 import { LinkChips, LinkPicker } from '@/components/jp/JpLinks';
+import ManagedSelect from '@/components/system/ManagedSelect';
 import { Spinner, PageHeader, Modal, Field, TextInput, TextArea, Select, PrimaryButton } from '@/components/hr/HRKit';
 import {
   CalendarCheck, Plus, Check, Paperclip, Trash2, Pencil, FolderKanban, Clock, ChevronDown,
@@ -86,12 +87,19 @@ function DuePicker({ value, onChange, ar }: { value: Due; onChange: (d: Due) => 
 
 interface Draft {
   title: string; assignedTo: string; due: Due; details: string; action: JpAction; contact: string; project: string;
+  /** يومُ العمل (YYYY-MM-DD) والوقتُ المتوقّع بالساعات والدقائق — اختياريّان. */
+  workDate: string; expH: string; expM: string;
   files: { dataUrl: string; fileName: string }[];
   links: JpLink[];
 }
 const blankDraft = (assignedTo = '', project = '', links: JpLink[] = []): Draft => ({
-  title: '', assignedTo, due: NO_DUE, details: '', action: '', contact: '', project, files: [], links,
+  title: '', assignedTo, due: NO_DUE, details: '', action: '', contact: '', project, files: [], links, workDate: '', expH: '', expM: '',
 });
+/** الوقتُ المتوقّع من خانتيه بالدقائق — '' إن لم يُكتب شيء. */
+const expectedOf = (d: Draft): number | '' => {
+  const h = Number(d.expH) || 0; const m = Number(d.expM) || 0;
+  return d.expH === '' && d.expM === '' ? '' : Math.round(h * 60 + m);
+};
 
 /** حقولُ «تفاصيل أكثر» — يقرؤها سطرُ الإضافة ونافذةُ التعديل. */
 function MoreFields({ d, set, projects, ar, allowFiles, linkKinds = [] }: {
@@ -110,6 +118,15 @@ function MoreFields({ d, set, projects, ar, allowFiles, linkKinds = [] }: {
           <LinkPicker kinds={linkKinds} value={d.links} onChange={(links) => set({ links })} ar={ar} />
         </Field>
       )}
+      <Field label={t('يوم العمل (اختياري)', 'Work day (optional)')}>
+        <TextInput type="date" value={d.workDate} onChange={(e) => set({ workDate: e.target.value })} />
+      </Field>
+      <Field label={t('الوقت المتوقّع (اختياري)', 'Expected time (optional)')}>
+        <div className="flex items-center gap-2">
+          <TextInput type="number" min={0} value={d.expH} onChange={(e) => set({ expH: e.target.value })} placeholder={t('ساعات', 'hours')} />
+          <TextInput type="number" min={0} max={59} value={d.expM} onChange={(e) => set({ expM: e.target.value })} placeholder={t('دقائق', 'minutes')} />
+        </div>
+      </Field>
       <Field label={t('تفاصيل (اختياري)', 'Details (optional)')} span2>
         <TextArea rows={2} value={d.details} onChange={(e) => set({ details: e.target.value })} placeholder={t('ما المطلوب بالتحديد؟', 'What exactly is needed?')} />
       </Field>
@@ -155,8 +172,9 @@ function MoreFields({ d, set, projects, ar, allowFiles, linkKinds = [] }: {
   );
 }
 
-function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onAttach, onRemoveFile, onHandDown, onComment, meId }: {
+function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onAttach, onRemoveFile, onHandDown, onComment, meId, onTrack, onAdjust }: {
   task: JpTask; now: number; ar: boolean; busy: boolean; meId: string;
+  onTrack: (t: JpTask, action: 'start' | 'pause') => void; onAdjust: (t: JpTask) => void;
   onComment: (t: JpTask, text: string) => Promise<boolean>;
   onDone: (t: JpTask) => void; onReopen: (t: JpTask) => void; onEdit: (t: JpTask) => void; onDelete: (t: JpTask) => void;
   onAttach: (t: JpTask, f: File) => void; onRemoveFile: (t: JpTask, id: string) => void; onHandDown: (t: JpTask) => void;
@@ -221,6 +239,29 @@ function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onA
             {task.project && <span className="inline-flex items-center gap-1 text-slate-500"><FolderKanban className="w-3.5 h-3.5" />{task.project.name}</span>}
             {task.fromManagement && <span className="px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 font-medium">{t('من خطّة الإدارة', 'From management plan')}</span>}
           </div>
+
+          {/* ── الوقت: المتوقّعُ والفعليّ، والمؤقّتُ لمن يعمل عليها (٢٠٢٦/١٠/٢٢) ── */}
+          {(task.can.track || task.expectedMinutes != null || (task.spentNow || 0) > 0 || task.workDate) && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px]">
+              {task.workDate && <span className="text-slate-500">{t('يوم العمل', 'Work day')}: <bdi>{new Date(task.workDate).toLocaleDateString('en-GB')}</bdi></span>}
+              {(() => {
+                const spent = task.timerStartedAt ? (task.spentMinutes || 0) + (now - new Date(task.timerStartedAt).getTime()) / 60000 : (task.spentNow ?? task.spentMinutes ?? 0);
+                const over = task.expectedMinutes != null && spent > task.expectedMinutes;
+                return (
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ${task.timerStartedAt ? 'bg-emerald-50 text-emerald-700' : over ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-700'}`}>
+                    <Clock className="w-3.5 h-3.5" />{fmtMinutes(spent, ar)}{task.expectedMinutes != null ? ` / ${fmtMinutes(task.expectedMinutes, ar)}` : ''}
+                    {task.timerStartedAt && <span className="ms-1 h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />}
+                  </span>
+                );
+              })()}
+              {task.can.track && !done && (task.timerStartedAt
+                ? <button type="button" disabled={busy} onClick={() => onTrack(task, 'pause')} className="rounded-lg border border-slate-200 px-2.5 py-1 font-semibold text-slate-700 hover:bg-slate-50">{t('إيقاف مؤقّت', 'Pause')}</button>
+                : <button type="button" disabled={busy} onClick={() => onTrack(task, 'start')} className="rounded-lg bg-emerald-600 px-2.5 py-1 font-semibold text-white hover:bg-emerald-700">{task.progress === 'paused' ? t('استئناف', 'Resume') : t('بدأتُ العمل', 'Start')}</button>)}
+              {task.can.adjust && (
+                <button type="button" onClick={() => onAdjust(task)} className="text-[11.5px] text-slate-400 underline-offset-2 hover:text-slate-700 hover:underline">{t('تصحيح الوقت', 'Adjust time')}</button>
+              )}
+            </div>
+          )}
 
           {!!task.links?.length && <div className="mt-2"><LinkChips links={task.links} ar={ar} /></div>}
 
@@ -344,6 +385,9 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
   const [editing, setEditing] = useState<JpTask | null>(null);
   const [editDraft, setEditDraft] = useState<Draft>(blankDraft());
   const [doneFor, setDoneFor] = useState<JpTask | null>(null);
+  // تصحيحُ الوقت من المدير: دقائقُ تُزاد أو تُنقَص في يومٍ بعينه.
+  const [adjusting, setAdjusting] = useState<JpTask | null>(null);
+  const [adj, setAdj] = useState({ minutes: '', day: '', note: '' });
   const [doneNote, setDoneNote] = useState('');
   const [doneFile, setDoneFile] = useState<{ dataUrl: string; fileName: string } | null>(null);
   const [projForm, setProjForm] = useState<{ _id?: string; name: string; description: string; endDate: string } | null>(null);
@@ -432,6 +476,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         scope, section, title: draft.title, assignedTo: draft.assignedTo, details: draft.details,
         action: draft.action, contact: draft.contact, project: draft.project || project || undefined,
         files: draft.files, links: draft.links.map((l) => ({ kind: l.kind, ref: l.ref })), ...dueBody(draft.due),
+        workDate: draft.workDate || undefined, expectedMinutes: expectedOf(draft) === '' ? undefined : expectedOf(draft),
       });
       // يبقى المُسنَد إليه والمشروع: من يكتب خمسَ مهامَّ لشخصٍ واحد لا يختاره خمسَ مرّات.
       // وما جاء مربوطًا من صفحة معاملةٍ يبقى مربوطًا بها.
@@ -441,11 +486,26 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
     } catch (e) { say(e); } finally { setSaving(false); }
   };
 
+  const track = async (task: JpTask, action: 'start' | 'pause') => {
+    setBusyId(task._id);
+    try { await api.post(`/api/jp/tasks/${task._id}/progress`, { action }); load(); } catch (e) { say(e); } finally { setBusyId(''); }
+  };
+  const saveAdjust = async () => {
+    if (!adjusting) return;
+    try {
+      await api.post(`/api/jp/tasks/${adjusting._id}/time`, { minutes: Number(adj.minutes), day: adj.day, note: adj.note });
+      setAdjusting(null); load();
+    } catch (e) { say(e); }
+  };
+
   const startEdit = (task: JpTask) => {
     setEditing(task);
     setEditDraft({
       title: task.title, assignedTo: jpId(task.assignedTo), details: task.details || '', action: task.action,
       contact: task.contact || '', project: task.project?._id || '', files: [], links: task.links || [],
+      workDate: task.workDate ? ymd(new Date(task.workDate)) : '',
+      expH: task.expectedMinutes != null ? String(Math.floor(task.expectedMinutes / 60)) : '',
+      expM: task.expectedMinutes != null ? String(task.expectedMinutes % 60) : '',
       due: task.deadlineKind === 'date' && task.deadlineAt ? { kind: 'date', date: ymd(new Date(task.deadlineAt)), hours: '' }
         // موعدٌ بالساعات لا يُعاد عدُّه عند فتح التعديل: يبقى كما هو ما لم يُغيَّر.
         : NO_DUE,
@@ -460,6 +520,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         title: editDraft.title, assignedTo: editDraft.assignedTo, details: editDraft.details, action: editDraft.action,
         contact: editDraft.contact, project: editDraft.project || null, ...(keepHours ? {} : dueBody(editDraft.due)),
         links: editDraft.links.map((l) => ({ kind: l.kind, ref: l.ref })),
+        workDate: editDraft.workDate || '', expectedMinutes: expectedOf(editDraft) === '' ? null : expectedOf(editDraft),
       });
       setEditing(null); load();
     } catch (e) { say(e); } finally { setSaving(false); }
@@ -582,10 +643,21 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
       {/* ── سطرُ الإضافة ──────────────────────────────────────────────────── */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
         <div className="flex flex-col lg:flex-row gap-2.5">
-          <input ref={titleRef} value={draft.title} onChange={(e) => patchDraft({ title: e.target.value })}
-            onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
-            placeholder={me.canManage ? t('ما المهمّة؟ اكتبها واضغط Enter', 'What is the task? Type and press Enter') : t('ما الطلب؟ اكتبه واضغط Enter', 'What is the request? Type and press Enter')}
-            className="flex-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-[15px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+          {/* ── المهمّةُ من قائمة القسم (٢٠٢٦/١٠/٢٢) ─────────────────────────────
+              فتُجمَع في اليوميّة باسمٍ واحد؛ وما ليس فيها يُضاف من الخانة نفسِها
+              فيظهر في القائمة وفي إعدادات القسم. وخطّةُ الإدارة نصٌّ حرّ. */}
+          {scope === 'section' && section ? (
+            <div className="flex-1 min-w-0">
+              <ManagedSelect type={`jp_task_${section}`} storeLabel value={draft.title} onChange={(v) => patchDraft({ title: v })}
+                placeholder={me.canManage ? t('اختر المهمّة', 'Choose the task') : t('اختر ما تعمل عليه أو تطلبه', 'Choose what you work on or request')}
+                className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-[15px] text-slate-900" />
+            </div>
+          ) : (
+            <input ref={titleRef} value={draft.title} onChange={(e) => patchDraft({ title: e.target.value })}
+              onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
+              placeholder={me.canManage ? t('ما المهمّة؟ اكتبها واضغط Enter', 'What is the task? Type and press Enter') : t('ما الطلب؟ اكتبه واضغط Enter', 'What is the request? Type and press Enter')}
+              className="flex-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-[15px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+          )}
           <select value={draft.assignedTo} onChange={(e) => patchDraft({ assignedTo: e.target.value })} aria-label={whoLabel}
             className="lg:w-60 px-3 py-3 rounded-xl bg-white border border-slate-200 text-sm text-slate-800">
             <option value="">{whoLabel}</option>
@@ -730,6 +802,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
           {tasks.map((task) => (
             <TaskCard key={task._id} task={task} now={now} ar={ar} busy={busyId === task._id} meId={me.me}
               onDone={(x) => { setDoneFor(x); setDoneNote(''); setDoneFile(null); }} onReopen={reopen}
+              onTrack={track} onAdjust={(x) => { setAdjusting(x); setAdj({ minutes: '', day: ymd(new Date()), note: '' }); }}
               onEdit={startEdit} onDelete={remove} onAttach={attach} onRemoveFile={removeFile}
               onHandDown={(x) => openHand({ task: x })} onComment={comment} />
           ))}
@@ -757,6 +830,19 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
       </Modal>
 
       {/* ── التعديل ───────────────────────────────────────────────────────── */}
+      <Modal open={!!adjusting} onClose={() => setAdjusting(null)} title={t('تصحيح الوقت', 'Adjust time')}
+        footer={<>
+          <button type="button" onClick={() => setAdjusting(null)} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:text-slate-900">{t('إلغاء', 'Cancel')}</button>
+          <PrimaryButton onClick={saveAdjust}>{t('حفظ', 'Save')}</PrimaryButton>
+        </>}>
+        <p className="text-[14px] font-semibold text-slate-900">{adjusting?.title} · {adjusting?.assignedToName}</p>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <Field label={t('الدقائق (موجبة تُزاد، سالبة تُنقَص)', 'Minutes (+ adds, − removes)')}><TextInput type="number" value={adj.minutes} onChange={(e) => setAdj((a) => ({ ...a, minutes: e.target.value }))} /></Field>
+          <Field label={t('اليوم', 'Day')}><TextInput type="date" value={adj.day} onChange={(e) => setAdj((a) => ({ ...a, day: e.target.value }))} /></Field>
+          <Field label={t('السبب (اختياري)', 'Reason (optional)')} span2><TextInput value={adj.note} onChange={(e) => setAdj((a) => ({ ...a, note: e.target.value }))} /></Field>
+        </div>
+      </Modal>
+
       <Modal open={!!editing} onClose={() => setEditing(null)} title={t('تعديل', 'Edit')} wide
         footer={(
           <>
@@ -765,7 +851,11 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
           </>
         )}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label={t('المطلوب', 'What is needed')} span2><TextInput value={editDraft.title} onChange={(e) => patchEdit({ title: e.target.value })} /></Field>
+          <Field label={t('المطلوب', 'What is needed')} span2>
+            {scope === 'section' && section
+              ? <ManagedSelect type={`jp_task_${section}`} storeLabel value={editDraft.title} onChange={(v) => patchEdit({ title: v })} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+              : <TextInput value={editDraft.title} onChange={(e) => patchEdit({ title: e.target.value })} />}
+          </Field>
           <Field label={t('إلى مَن', 'For whom')}>
             <Select value={editDraft.assignedTo} onChange={(e) => patchEdit({ assignedTo: e.target.value })}>
               {teamOptions.map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}

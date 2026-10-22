@@ -1,3 +1,4 @@
+import '../ui/lookup_field.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -129,6 +130,24 @@ class JpScreen extends StatefulWidget {
 }
 
 class _JpScreenState extends State<JpScreen> {
+  /// تصحيحُ المدير: دقائقُ تُزاد أو تُنقَص في يومٍ بعينه.
+  Future<void> _adjust(Map<String, dynamic> t) async {
+    final mins = TextEditingController(), note = TextEditingController();
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: Text(tr('تصحيح الوقت', 'Adjust time')),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: mins, keyboardType: const TextInputType.numberWithOptions(signed: true), decoration: InputDecoration(labelText: tr('الدقائق (+ تُزاد، − تُنقَص) — اليوم', 'Minutes (+/−) — today'))),
+        TextField(controller: note, decoration: InputDecoration(labelText: tr('السبب (اختياري)', 'Reason (optional)'))),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+        FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save'))),
+      ],
+    ));
+    if (ok != true) return;
+    await _run(() => Api.instance.post('/api/jp/tasks/${t['_id']}/time', {'minutes': num.tryParse(mins.text.trim()) ?? 0, 'note': note.text.trim()}));
+  }
+
   Map<String, dynamic>? _me;
   List<Map<String, dynamic>> _tasks = [];
   List<Map<String, dynamic>> _projects = [];
@@ -444,6 +463,19 @@ class _JpScreenState extends State<JpScreen> {
             if (t['fromManagement'] == true) Chip2(tr('من خطّة الإدارة', 'From management'), T.violet),
             if (act != null) Chip2(tr(act.$1, act.$2), T.info, icon: act.$3),
           ]),
+          // ── الوقت: المتوقّعُ والفعليّ، والمؤقّتُ لمن يعمل عليها ──
+          if (can['track'] == true || t['expectedMinutes'] != null || ((t['spentNow'] ?? 0) as num) > 0)
+            Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Chip2('${_fmtMin(t['spentNow'])}${t['expectedMinutes'] != null ? ' / ${_fmtMin(t['expectedMinutes'])}' : ''}',
+                  t['timerStartedAt'] != null ? T.success : (t['expectedMinutes'] != null && ((t['spentNow'] ?? 0) as num) > (t['expectedMinutes'] as num)) ? T.danger : T.inkSoft,
+                  icon: t['timerStartedAt'] != null ? Icons.timer : Icons.timer_outlined),
+              if (can['track'] == true && !done)
+                t['timerStartedAt'] != null
+                    ? OutlinedButton(onPressed: () => _run(() => Api.instance.post('/api/jp/tasks/${t['_id']}/progress', {'action': 'pause'})), child: Text(tr('إيقاف مؤقّت', 'Pause'), style: const TextStyle(fontSize: 12)))
+                    : FilledButton(onPressed: () => _run(() => Api.instance.post('/api/jp/tasks/${t['_id']}/progress', {'action': 'start'})), child: Text(t['progress'] == 'paused' ? tr('استئناف', 'Resume') : tr('بدأتُ العمل', 'Start'), style: const TextStyle(fontSize: 12))),
+              if (can['adjust'] == true)
+                TextButton(onPressed: () => _adjust(t), child: Text(tr('تصحيح الوقت', 'Adjust time'), style: const TextStyle(fontSize: 11.5))),
+            ])),
           if (links.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 6, runSpacing: 6, children: [
             for (final l in links) () {
               final k = _linkKinds[l['kind']];
@@ -497,6 +529,12 @@ class _JpScreenState extends State<JpScreen> {
 }
 
 /// نموذجُ المهمّة: ما المطلوب، ولمن، ومتى — والباقي اختياريٌّ مطويّ.
+String _fmtMin(dynamic v) {
+  final m = ((v ?? 0) as num).round();
+  final h = m ~/ 60, r = m % 60;
+  return h == 0 ? tr('$r د', '${r}m') : tr('$h س${r > 0 ? ' $r د' : ''}', '${h}h${r > 0 ? ' ${r}m' : ''}');
+}
+
 class _JpForm extends StatefulWidget {
   final String scope; final String? section; final Map<String, dynamic> me;
   final List<Map<String, dynamic>> projects; final Map<String, dynamic>? task;
@@ -508,6 +546,9 @@ class _JpForm extends StatefulWidget {
 
 class _JpFormState extends State<_JpForm> {
   final _title = TextEditingController(), _details = TextEditingController(), _contact = TextEditingController(), _hours = TextEditingController();
+  // يومُ العمل والوقتُ المتوقّع (٢٠٢٦/١٠/٢٢).
+  final _expH = TextEditingController(), _expM = TextEditingController();
+  String _workDate = '';
   String _assignee = '', _action = '', _project = '', _dueKind = '', _dueDate = '';
   bool _more = false, _saving = false, _dueTouched = false;
   PickedFile? _file;
@@ -528,6 +569,8 @@ class _JpFormState extends State<_JpForm> {
       _title.text = (t['title'] ?? '').toString(); _details.text = (t['details'] ?? '').toString();
       _contact.text = (t['contact'] ?? '').toString(); _action = (t['action'] ?? '').toString();
       _assignee = _id(t['assignedTo']); _project = t['project'] is Map ? t['project']['_id'].toString() : '';
+      if (t['workDate'] != null) _workDate = _ymd(DateTime.parse(t['workDate'].toString()).toLocal());
+      if (t['expectedMinutes'] is num) { final m = (t['expectedMinutes'] as num).round(); _expH.text = '${m ~/ 60}'; _expM.text = '${m % 60}'; }
       if (t['deadlineKind'] == 'date' && t['deadlineAt'] != null) { _dueKind = 'date'; _dueDate = _ymd(DateTime.parse(t['deadlineAt'].toString()).toLocal()); }
       _more = _details.text.isNotEmpty || _action.isNotEmpty || _contact.text.isNotEmpty;
       for (final l in List.from(t['links'] ?? const [])) {
@@ -567,6 +610,9 @@ class _JpFormState extends State<_JpForm> {
         // موعدٌ بالساعات لا يُعاد عدُّه عند التعديل ما لم يُغيَّر.
         if (!_editing || _dueTouched) ..._dueBody(),
         if (_kinds.isNotEmpty) 'links': [for (final l in _links) {'kind': l['kind'], 'ref': l['ref']}],
+        'workDate': _workDate,
+        'expectedMinutes': _expH.text.trim().isEmpty && _expM.text.trim().isEmpty ? null
+            : (int.tryParse(_expH.text.trim()) ?? 0) * 60 + (int.tryParse(_expM.text.trim()) ?? 0),
       };
       if (_editing) {
         await Api.instance.patch('/api/jp/tasks/${widget.task!['_id']}', body);
@@ -598,7 +644,27 @@ class _JpFormState extends State<_JpForm> {
       child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text(_editing ? tr('تعديل', 'Edit') : _canManage ? tr('مهمّة جديدة', 'New task') : tr('طلب جديد', 'New request'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
         const SizedBox(height: 12),
-        TextField(controller: _title, autofocus: !_editing, decoration: InputDecoration(labelText: tr('ما المطلوب؟', 'What is needed?'), border: const OutlineInputBorder())),
+        // المهمّةُ من قائمة القسم (وما ليس فيها يُضاف منها) — وخطّةُ الإدارة نصٌّ حرّ.
+        if (widget.scope == 'section' && widget.section != null)
+          LookupField(type: 'jp_task_${widget.section}', controller: _title, label: tr('المهمّة', 'Task'))
+        else
+          TextField(controller: _title, autofocus: !_editing, decoration: InputDecoration(labelText: tr('ما المطلوب؟', 'What is needed?'), border: const OutlineInputBorder())),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(child: OutlinedButton.icon(
+            icon: const Icon(Icons.event, size: 16),
+            label: Text(_workDate.isEmpty ? tr('يوم العمل (اختياري)', 'Work day (optional)') : _workDate, style: const TextStyle(fontSize: 12.5)),
+            onPressed: () async {
+              final d = await showDatePicker(context: context, firstDate: DateTime.now().subtract(const Duration(days: 365)), lastDate: DateTime.now().add(const Duration(days: 365)), initialDate: DateTime.now());
+              if (d != null) setState(() => _workDate = _ymd(d));
+            },
+          )),
+          const SizedBox(width: 8),
+          SizedBox(width: 70, child: TextField(controller: _expH, keyboardType: TextInputType.number, decoration: InputDecoration(isDense: true, labelText: tr('ساعات', 'Hours'), border: const OutlineInputBorder()))),
+          const SizedBox(width: 6),
+          SizedBox(width: 70, child: TextField(controller: _expM, keyboardType: TextInputType.number, decoration: InputDecoration(isDense: true, labelText: tr('دقائق', 'Min'), border: const OutlineInputBorder()))),
+        ]),
+        Padding(padding: const EdgeInsets.only(top: 3), child: Text(tr('الوقت المتوقّع (اختياري)', 'Expected time (optional)'), style: const TextStyle(fontSize: 11, color: T.inkFaint))),
         const SizedBox(height: 10),
         DropdownButtonFormField<String>(
           initialValue: _assignee.isEmpty ? null : _assignee, isExpanded: true,
@@ -707,6 +773,9 @@ class _JpDashScreenState extends State<JpDashScreen> {
   Map<String, dynamic>? _d;
   String? _error;
   String _assignee = '';
+  // اليوميّة (٢٠٢٦/١٠/٢٢): مَن عمل على ماذا في يومٍ بعينه وكم أخذ.
+  Map<String, dynamic>? _daily;
+  String _day = '';
   late final void Function() _onLive;
 
   @override
@@ -719,6 +788,46 @@ class _JpDashScreenState extends State<JpDashScreen> {
       final d = Map<String, dynamic>.from(await Api.instance.get('/api/jp/dashboard?${_qs(widget.scope, widget.section)}${_assignee.isEmpty ? '' : '&assignee=$_assignee'}'));
       if (mounted) setState(() { _d = d; _error = null; });
     } catch (e) { if (mounted) setState(() => _error = e.toString()); }
+    _loadDaily();
+  }
+
+  Future<void> _loadDaily() async {
+    try {
+      final day = _day.isEmpty ? _ymd(DateTime.now()) : _day;
+      final d = Map<String, dynamic>.from(await Api.instance.get('/api/jp/daily?${_qs(widget.scope, widget.section)}&from=$day&to=$day${_assignee.isEmpty ? '' : '&assignee=$_assignee'}'));
+      if (mounted) setState(() => _daily = d);
+    } catch (_) {}
+  }
+
+  Widget _dailyCard() {
+    final d = _daily;
+    final rows = List<Map<String, dynamic>>.from(d?['rows'] ?? const []);
+    final people = List<Map<String, dynamic>>.from(d?['people'] ?? const []);
+    const st = {'todo': ('لم تبدأ', 'Not started'), 'doing': ('جارية', 'In progress'), 'paused': ('متوقّفة', 'Paused'), 'done': ('تمّت', 'Done')};
+    return AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(child: Text(tr('اليوميّة — مَن عمل على ماذا', 'Daily log'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+        TextButton.icon(
+          icon: const Icon(Icons.event, size: 16),
+          label: Text(_day.isEmpty ? tr('اليوم', 'Today') : _day),
+          onPressed: () async {
+            final x = await showDatePicker(context: context, firstDate: DateTime.now().subtract(const Duration(days: 365)), lastDate: DateTime.now(), initialDate: DateTime.now());
+            if (x != null) { setState(() => _day = _ymd(x)); _loadDaily(); }
+          },
+        ),
+      ]),
+      if (people.isNotEmpty) Wrap(spacing: 6, runSpacing: 6, children: [
+        for (final p in people) Chip2('${p['name']}: ${_fmtMin(p['minutes'])} · ${p['tasks']} ${tr('مهمّة', 'tasks')}', T.navy, icon: Icons.person_outline),
+      ]),
+      const SizedBox(height: 6),
+      if (rows.isEmpty) Padding(padding: const EdgeInsets.all(8), child: Text(tr('لا شيء مسجّل في هذا اليوم', 'Nothing logged for this day'), style: const TextStyle(fontSize: 12, color: T.inkFaint)))
+      else for (final r in rows) ListTile(
+        dense: true, contentPadding: EdgeInsets.zero,
+        title: Text('${r['title']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+        subtitle: Text('${r['assignedToName']} · ${tr(st[r['status']]?.$1 ?? '', st[r['status']]?.$2 ?? '')}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+        trailing: Text('${_fmtMin(r['minutes'])}${r['expectedMinutes'] != null ? ' / ${_fmtMin(r['expectedMinutes'])}' : ''}', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: r['running'] == true ? T.success : T.ink)),
+      ),
+    ]));
   }
 
   Widget _stat(String label, String value, Color c) => Container(
@@ -761,6 +870,8 @@ class _JpDashScreenState extends State<JpDashScreen> {
                   }
                   final team = List<Map<String, dynamic>>.from(d['team'] ?? []);
                   return ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 30), children: [
+                    _dailyCard(),
+                    const SizedBox(height: 12),
                     // اللوحةُ كلُّها لموظّفٍ بعينه — كما في الموقع.
                     DropdownButtonFormField<String>(
                       initialValue: team.any((m) => m['_id'] == _assignee) ? _assignee : '', isExpanded: true,

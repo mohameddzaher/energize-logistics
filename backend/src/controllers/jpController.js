@@ -110,11 +110,16 @@ const shape = (t, req, w) => {
     onTime: t.status === 'done' && t.deadlineAt ? new Date(t.doneAt) <= new Date(t.deadlineAt) : null,
     assignedToName: nameOf(t.assignedTo),
     createdByName: nameOf(t.createdBy),
+    // الوقتُ حتى الآن مع ما يجري في المؤقّت.
+    spentNow: Math.round(((Number(t.spentMinutes) || 0) + (t.timerStartedAt ? (Date.now() - new Date(t.timerStartedAt).getTime()) / 60000 : 0)) * 10) / 10,
     // ما يجوز لهذا السائل على هذه المهمّة — تقرؤه الشاشةُ ولا تخمّنه.
     can: {
       complete: mine || w.canManage,
-      edit: w.canManage || (author && t.kind === 'request'),
-      remove: w.canManage || (author && t.kind === 'request'),
+      // المؤقّتُ لمن يعمل على المهمّة؛ وتصحيحُ الوقت للمدير.
+      track: mine,
+      adjust: w.canManage,
+      edit: w.canManage || (author && (t.kind === 'request' || mine)),
+      remove: w.canManage || (author && (t.kind === 'request' || mine)),
       attach: mine || author || w.canManage,
       comment: mine || author || w.canManage,
     },
@@ -159,6 +164,40 @@ function readDeadline(body) {
     return { deadlineKind: 'hours', deadlineHours: h, deadlineAt: new Date(Date.now() + h * HOUR) };
   }
   return { deadlineKind: '', deadlineHours: null, deadlineAt: null };
+}
+
+// ── يومُ العمل والوقتُ المتوقّع (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ────────────────────
+const DAY_RX = /^\d{4}-\d{2}-\d{2}$/;
+const riyadhDay = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date(d));
+const dayStart = (ymd) => new Date(`${ymd}T00:00:00.000+03:00`);
+/** { workDate?, expectedMinutes? } من جسم الطلب — `undefined` للحقل غير المُرسَل. */
+function readPlan(body) {
+  const out = {};
+  if (body.workDate !== undefined) {
+    const v = String(body.workDate || '');
+    if (v && !DAY_RX.test(v)) throw bad('يومُ العمل غير صالح');
+    out.workDate = v ? dayStart(v) : null;
+  }
+  if (body.expectedMinutes !== undefined) {
+    const raw = body.expectedMinutes;
+    if (raw === '' || raw === null) out.expectedMinutes = null;
+    else {
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 0 || n > 24 * 60 * 30) throw bad('الوقتُ المتوقّع غير صالح');
+      out.expectedMinutes = Math.round(n);
+    }
+  }
+  return out;
+}
+
+/** يُغلق مؤقّتًا يعمل: يكتب الفترةَ سطرًا في سجلّ الوقت. */
+function closeTimer(t, user, at = new Date()) {
+  if (!t.timerStartedAt) return 0;
+  const start = new Date(t.timerStartedAt);
+  const minutes = Math.max(0, Math.round(((at - start) / 60000) * 10) / 10);
+  t.timeLog.push({ kind: 'timer', start, end: at, minutes, by: user._id, byName: nameOf(user) });
+  t.timerStartedAt = null;
+  return minutes;
 }
 
 /**
@@ -336,12 +375,14 @@ exports.createTask = async (req, res) => {
     const action = ACTIONS.includes(String(req.body.action || '')) ? String(req.body.action || '') : '';
     const deadline = readDeadline(req.body) || {};
     const links = (await readLinks(req.body, w)) || [];
+    const plan = readPlan(req.body);
 
     const doc = await JpTask.create({
-      links,
+      links, ...plan,
       scope: w.scope, section: w.section,
-      // المديرُ يكلِّف، وغيرُه يطلب — يحدّده من كتب لا ما أُرسِل.
-      kind: w.canManage ? 'task' : 'request',
+      // المديرُ يكلِّف، وغيرُه يطلب — يحدّده من كتب لا ما أُرسِل. والموظّفُ الذي
+      // يُسند إلى نفسه يقول «أعمل على هذه» (٢٠٢٦/١٠/٢٢): مهمّتُه لا طلبٌ لأحد.
+      kind: w.canManage || sameId(assignedTo, req.user._id) ? 'task' : 'request',
       project, title, details: String(req.body.details || '').trim(), action,
       contact: String(req.body.contact || '').trim(),
       assignedTo, createdBy: req.user._id, ...deadline,
@@ -377,7 +418,7 @@ exports.updateTask = async (req, res) => {
   try {
     const got = await loadTask(req, res); if (!got) return;
     const { t, w, author } = got;
-    if (!(w.canManage || (author && t.kind === 'request'))) return res.status(403).json({ message: 'التعديلُ لمن أسند المهمّة' });
+    if (!(w.canManage || (author && (t.kind === 'request' || sameId(t.assignedTo, req.user._id))))) return res.status(403).json({ message: 'التعديلُ لمن أسند المهمّة' });
 
     const b = req.body || {};
     if (b.title !== undefined) { const v = String(b.title).trim(); if (!v) throw bad('اكتب ما المطلوب'); t.title = v; }
@@ -400,6 +441,7 @@ exports.updateTask = async (req, res) => {
     }
     const deadline = readDeadline(b);
     if (deadline) Object.assign(t, deadline);
+    Object.assign(t, readPlan(b));
     const links = await readLinks(b, w);
     if (links) t.links = links;
     await t.save();
@@ -417,6 +459,9 @@ exports.setDone = async (req, res) => {
     if (!(mine || w.canManage)) return res.status(403).json({ message: 'الإتمامُ لمن أُسنِدت إليه المهمّة' });
     const done = req.body.done !== false;
     if (done) {
+      // «تمّ» يُوقف المؤقّتَ إن كان يعمل — الوقتُ حتى هذه اللحظة محسوب.
+      closeTimer(t, req.user);
+      t.progress = 'todo';
       t.status = 'done'; t.doneAt = new Date(); t.doneBy = req.user._id;
       t.doneNote = String(req.body.note || '').trim();
       const f = req.body.file;
@@ -434,6 +479,139 @@ exports.setDone = async (req, res) => {
     broadcast(w);
     res.json({ task: shape(await POP(JpTask.findById(t._id)).lean(), req, w) });
   } catch (e) { fail(res, e, 'تعذّر الحفظ'); }
+};
+
+/**
+ * POST /api/jp/tasks/:id/progress — { action: 'start' | 'pause' }
+ * «بدأتُ» يشغّل المؤقّت (ومؤقّتٌ واحدٌ للموظّف: ما كان يعمل على غيرها يُوقَف)،
+ * و«أوقفتُ» يكتب الفترةَ في سجلّ الوقت. و«تمّ» من /done يُوقفه كذلك.
+ */
+exports.progress = async (req, res) => {
+  try {
+    const got = await loadTask(req, res); if (!got) return;
+    const { t, w, mine } = got;
+    if (!mine) return res.status(403).json({ message: 'المؤقّتُ لمن يعمل على المهمّة' });
+    if (t.status === 'done') throw bad('المهمّةُ تمّت — أعد فتحها أوّلًا');
+    const action = String(req.body.action || '');
+    if (action === 'start') {
+      if (!t.timerStartedAt) {
+        const others = await JpTask.find({ assignedTo: req.user._id, timerStartedAt: { $ne: null }, _id: { $ne: t._id } });
+        for (const o of others) { closeTimer(o, req.user); o.progress = 'paused'; await o.save(); }
+        t.timerStartedAt = new Date();
+      }
+      t.progress = 'doing';
+    } else if (action === 'pause') {
+      closeTimer(t, req.user);
+      t.progress = 'paused';
+    } else throw bad('فعلٌ غير معروف');
+    await t.save();
+    broadcast(w);
+    res.json({ task: shape(await POP(JpTask.findById(t._id)).lean(), req, w) });
+  } catch (e) { fail(res, e, 'تعذّر الحفظ'); }
+};
+
+/** POST /api/jp/tasks/:id/time — { minutes (±), day: 'YYYY-MM-DD', note } — تصحيحُ المدير. */
+exports.adjustTime = async (req, res) => {
+  try {
+    const got = await loadTask(req, res); if (!got) return;
+    const { t, w } = got;
+    if (!w.canManage) return res.status(403).json({ message: 'تصحيحُ الوقت لمدير القسم' });
+    const minutes = Number(req.body.minutes);
+    if (!Number.isFinite(minutes) || minutes === 0 || Math.abs(minutes) > 24 * 60) throw bad('اكتب الدقائق (موجبةً تُزاد وسالبةً تُنقَص)');
+    const day = String(req.body.day || '') || riyadhDay(new Date());
+    if (!DAY_RX.test(day)) throw bad('اليومُ غير صالح');
+    t.timeLog.push({ kind: 'adjust', day, minutes: Math.round(minutes * 10) / 10, note: String(req.body.note || '').trim().slice(0, 500), by: req.user._id, byName: nameOf(req.user) });
+    await t.save();
+    await logAudit({ user: req.user._id, action: 'update', entity: 'JpTask', entityId: t._id, changes: { details: `تصحيح وقت ${minutes} دقيقة يوم ${day} · ${t.title}` }, ipAddress: req.ip }).catch(() => {});
+    broadcast(w);
+    res.json({ task: shape(await POP(JpTask.findById(t._id)).lean(), req, w) });
+  } catch (e) { fail(res, e, 'تعذّر الحفظ'); }
+};
+
+/**
+ * GET /api/jp/daily?scope=&section=&from=YYYY-MM-DD&to=&assignee=&title=&status=
+ * «كلُّ واحدٍ في اليوم يعمل على ماذا، وكم أخذ» (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
+ * صفٌّ لكلّ مهمّةٍ في كلّ يوم: ما خُطِّط له ذلك اليوم (`workDate`)، وما عُمل فيه
+ * (فترةُ مؤقّتٍ تُقسَم على أيّامها، وتصحيحُ المدير على يومه)، وما تمّ فيه.
+ * المديرُ يرى فريقَه، والموظّفُ نفسَه.
+ */
+exports.daily = async (req, res) => {
+  try {
+    const w = who(req, req.query);
+    if (!w) return res.status(404).json({ message: 'قسمٌ غير معروف' });
+    if (!w.isMember) return res.status(403).json({ message: 'خطّةُ العمل لفريق القسم ومديره' });
+    const today = riyadhDay(new Date());
+    const from = DAY_RX.test(String(req.query.from || '')) ? String(req.query.from) : today;
+    const to = DAY_RX.test(String(req.query.to || '')) ? String(req.query.to) : from;
+    if (to < from) throw bad('المدى مقلوب');
+    const lo = dayStart(from); const hi = new Date(dayStart(to).getTime() + 86400000);
+    const base = visible(req, w);
+    if (w.canManage && req.query.assignee && mongoose.isValidObjectId(req.query.assignee)) base.assignedTo = req.query.assignee;
+    if (req.query.title) base.title = String(req.query.title);
+    const tasks = await POP(JpTask.find({
+      ...base,
+      $and: [{ $or: [
+        { workDate: { $gte: lo, $lt: hi } },
+        { createdAt: { $gte: lo, $lt: hi } },
+        { doneAt: { $gte: lo, $lt: hi } },
+        { timerStartedAt: { $ne: null } },
+        { timeLog: { $elemMatch: { $or: [{ start: { $lt: hi }, end: { $gte: lo } }, { day: { $gte: from, $lte: to } }] } } },
+      ] }],
+    })).lean();
+
+    const now = new Date();
+    const rows = [];
+    for (const t of tasks) {
+      const per = new Map(); // day → minutes
+      const addSpan = (s, e) => {
+        let a = new Date(Math.max(s.getTime(), lo.getTime())); const b = new Date(Math.min(e.getTime(), hi.getTime()));
+        while (a < b) {
+          const d = riyadhDay(a); const next = new Date(dayStart(d).getTime() + 86400000);
+          const end = next < b ? next : b;
+          per.set(d, (per.get(d) || 0) + (end - a) / 60000);
+          a = end;
+        }
+      };
+      for (const l of t.timeLog || []) {
+        if (l.kind === 'timer' && l.start && l.end) addSpan(new Date(l.start), new Date(l.end));
+        else if (l.kind === 'adjust' && l.day >= from && l.day <= to) per.set(l.day, (per.get(l.day) || 0) + (Number(l.minutes) || 0));
+      }
+      if (t.timerStartedAt) addSpan(new Date(t.timerStartedAt), now);
+      const days = new Set(per.keys());
+      const plan = t.workDate ? riyadhDay(t.workDate) : riyadhDay(t.createdAt);
+      if (plan >= from && plan <= to) days.add(plan);
+      if (t.doneAt) { const d = riyadhDay(t.doneAt); if (d >= from && d <= to) days.add(d); }
+      for (const d of days) {
+        const status = t.status === 'done' && t.doneAt && riyadhDay(t.doneAt) <= d ? 'done' : (t.timerStartedAt ? 'doing' : (t.progress || 'todo'));
+        if (req.query.status && req.query.status !== status) continue;
+        rows.push({
+          day: d, taskId: String(t._id), title: t.title, kind: t.kind,
+          assignedTo: t.assignedTo?._id ? String(t.assignedTo._id) : null, assignedToName: nameOf(t.assignedTo),
+          createdByName: nameOf(t.createdBy), status, running: !!t.timerStartedAt,
+          expectedMinutes: t.expectedMinutes ?? null, minutes: Math.round((per.get(d) || 0) * 10) / 10,
+          totalMinutes: Math.round(((Number(t.spentMinutes) || 0) + (t.timerStartedAt ? (now - new Date(t.timerStartedAt)) / 60000 : 0)) * 10) / 10,
+          planned: d === plan, doneAt: t.doneAt || null,
+        });
+      }
+    }
+    rows.sort((a, b) => b.day.localeCompare(a.day) || a.assignedToName.localeCompare(b.assignedToName, 'ar') || b.minutes - a.minutes);
+    // لكلّ موظّفٍ في المدى: مهامُّه، وما تمّ، ودقائقُه، وما خُطِّط له من وقت.
+    const people = new Map();
+    for (const r of rows) {
+      const k = r.assignedTo || '—';
+      const p = people.get(k) || { assignedTo: r.assignedTo, name: r.assignedToName || '—', tasks: 0, done: 0, minutes: 0, expected: 0, running: 0 };
+      p.tasks += 1; if (r.status === 'done') p.done += 1; p.minutes += r.minutes; if (r.planned && r.expectedMinutes) p.expected += r.expectedMinutes; if (r.running) p.running += 1;
+      people.set(k, p);
+    }
+    const titles = new Map();
+    for (const r of rows) titles.set(r.title, (titles.get(r.title) || 0) + r.minutes);
+    res.json({
+      from, to, rows,
+      people: [...people.values()].map((p) => ({ ...p, minutes: Math.round(p.minutes * 10) / 10 })).sort((a, b) => b.minutes - a.minutes),
+      titles: [...titles.entries()].map(([title, minutes]) => ({ title, minutes: Math.round(minutes * 10) / 10 })).sort((a, b) => b.minutes - a.minutes),
+      team: w.canManage ? await teamOf(w) : [],
+    });
+  } catch (e) { fail(res, e, 'تعذّر تحميل اليوميّة'); }
 };
 
 // POST /api/jp/tasks/:id/attachments — { dataUrl, fileName }

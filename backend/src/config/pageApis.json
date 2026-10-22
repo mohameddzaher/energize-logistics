@@ -26,12 +26,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/management-jp/dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -126,12 +128,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/operations/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -142,7 +146,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -283,12 +288,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/collections-dept/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -299,7 +306,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -497,12 +505,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/shipment-orders/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -513,7 +523,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -634,12 +645,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/fleet/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -650,7 +663,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -905,12 +919,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/vehicles/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -921,7 +937,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -1134,12 +1151,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/marketing/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -1150,7 +1169,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -1202,12 +1222,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/bd/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -1218,7 +1240,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -1248,12 +1271,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/administration/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -1264,7 +1289,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -1360,12 +1386,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/contracts/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -1376,7 +1404,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -1453,12 +1482,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/it/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -1469,7 +1500,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -1506,12 +1538,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/ls2/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -1522,7 +1556,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -1676,12 +1711,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/b2c/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -1692,7 +1729,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -1766,12 +1804,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/remote/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -1782,7 +1822,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -2226,12 +2267,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/crm/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -2242,7 +2285,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -2265,12 +2309,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/sales/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -2281,7 +2327,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -2304,12 +2351,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/accounting/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -2320,7 +2369,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -2343,12 +2393,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/procurement/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -2359,7 +2411,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -2382,12 +2435,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/hr/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -2398,7 +2453,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -2421,12 +2477,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/ops/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -2437,7 +2495,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -2460,12 +2519,14 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/customs/jp-dashboard": {
       "apis": [
+        "/api/jp/daily",
         "/api/jp/dashboard"
       ],
       "wildcard": false
@@ -2476,7 +2537,8 @@
         "/api/customs-clearance/parties",
         "/api/jp/me",
         "/api/jp/projects",
-        "/api/jp/tasks"
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },

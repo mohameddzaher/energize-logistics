@@ -19,12 +19,16 @@ router.use((req, res, next) => (req.user.role === 'client' ? res.status(403).jso
 router.get('/me', c.me);
 router.get('/home', c.home);
 router.get('/dashboard', c.dashboard);
+router.get('/daily', c.daily);
 
 router.get('/tasks', c.listTasks);
 router.post('/tasks', c.createTask);
 router.patch('/tasks/:id', c.updateTask);
 router.delete('/tasks/:id', c.deleteTask);
 router.post('/tasks/:id/done', c.setDone);
+// المؤقّتُ وتصحيحُ الوقت واليوميّة (٢٠٢٦/١٠/٢٢).
+router.post('/tasks/:id/progress', c.progress);
+router.post('/tasks/:id/time', c.adjustTime);
 router.post('/tasks/:id/hand-down', c.handDown);
 router.post('/tasks/:id/attachments', c.addAttachment);
 router.post('/tasks/:id/comments', c.addComment);

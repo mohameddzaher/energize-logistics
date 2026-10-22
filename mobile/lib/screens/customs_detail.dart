@@ -1935,7 +1935,11 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
     for (final d in widget.defs) {
       final key = '${d['key']}';
       final text = _amount[key]!.text.trim();
-      if (text.isEmpty) continue;
+      // البنودُ الثلاثةُ كلُّها مطلوبة (٢٠٢٦/١٠/٢٢) — ولا تُؤخذ من مراحل السداد.
+      if (text.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('اكتب سعرَ «${d['nameAr']}» — البنودُ الثلاثةُ مطلوبة', 'Enter "${d['nameEn'] ?? d['nameAr']}" — all three items are required'))));
+        return;
+      }
       final amount = num.tryParse(text);
       if (amount == null || amount < 0) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('اكتب سعرَ «${d['nameAr']}» رقمًا صحيحًا', 'Enter a valid amount for "${d['nameEn'] ?? d['nameAr']}"'))));

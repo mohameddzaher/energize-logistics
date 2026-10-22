@@ -34,6 +34,14 @@ export default function CustomsDetailPage() {
   const txx = getCustomsIdExtraTranslations(lang);
 
   const [c, setC] = useState<any>(null);
+  // «مراحل السداد» من إعدادات القسم — وهي قائمةُ المرفقات كذلك (٢٠٢٦/١٠/٢٢).
+  const [payDefs, setPayDefs] = useState<{ key: string; nameAr: string; nameEn?: string }[]>([]);
+  const loadPayDefs = useCallback(() => {
+    api.get<{ items: { key: string; nameAr: string; nameEn?: string }[] }>('/api/lookups?type=customs_payment_stage&active=true')
+      .then((d) => setPayDefs(d.items || [])).catch(() => {});
+  }, []);
+  useEffect(() => { loadPayDefs(); }, [loadPayDefs]);
+  useSocket('lookup:changed', useCallback((x: any) => { if (x?.type === 'customs_payment_stage') loadPayDefs(); }, [loadPayDefs]));
   const [closing, setClosing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1021,8 +1029,10 @@ export default function CustomsDetailPage() {
         clearanceId={c._id}
         refNumber={c.blNumber || c.refNumber}
         items={c.attachments || []}
-        stages={pipeline.steps.filter((st) => !st.locked).map((st) => st.key)}
-        stageLabel={sName}
+        // قائمةُ المرفقات هي «مراحل السداد» نفسُها من إعدادات القسم (٢٠٢٦/١٠/٢٢) — وما
+        // رُفع قبلها تحت مرحلةٍ قديمةٍ يبقى في مجموعته.
+        stages={[...payDefs.map((x) => x.key), ...[...new Set(((c.attachments || []) as any[]).map((a) => a.stage).filter(Boolean))].filter((k) => !payDefs.some((x) => x.key === k))]}
+        stageLabel={(k: string) => { const x = payDefs.find((d) => d.key === k); return x ? (ar ? x.nameAr : (x.nameEn || x.nameAr)) : sName(k); }}
         paymentFiles={((c as any).paymentStages || []).map((p: any) => p.fileUrl).filter(Boolean)}
         canEdit={canEdit}
         onChange={setC}

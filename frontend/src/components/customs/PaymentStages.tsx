@@ -94,6 +94,18 @@ export default function PaymentStages({
     return [...known, ...orphans];
   }, [entries, defs]);
 
+  // ── فواتيرُ النقل الثلاث طريقان لا يجتمعان (٢٠٢٦/١٠/٢٢) — والخادمُ هو الحارس ──
+  const transportBlock = (key: string) => {
+    const has = (k: string) => (entries || []).some((e) => e.key === k);
+    if (key === 'transportPortToCustomer' && (has('transportPortToYard') || has('transportYardToCustomer'))) return t('سُجّل النقلُ عبر الساحة', 'Transport via the yard is recorded');
+    if (key === 'transportPortToYard' && has('transportPortToCustomer')) return t('سُجّل النقلُ من الميناء إلى العميل', 'Port-to-customer transport is recorded');
+    if (key === 'transportYardToCustomer') {
+      if (has('transportPortToCustomer')) return t('سُجّل النقلُ من الميناء إلى العميل', 'Port-to-customer transport is recorded');
+      if (!has('transportPortToYard')) return t('سجّل النقلَ من الميناء إلى الساحة أوّلًا', 'Record port-to-yard first');
+    }
+    return '';
+  };
+
   const remove = async (entryId: string) => {
     const e = (entries || []).find((x) => x._id === entryId);
     if (!(await confirm({
@@ -149,21 +161,24 @@ export default function PaymentStages({
                 </span>
                 <span className="flex-1 truncate text-sm font-semibold text-slate-800">
                   {label}
-                  {isRequired && (
-                    <span className="ms-1.5 text-[10.5px] font-normal text-[#f37121]">
-                      {t('بها تُنهى المعاملة', 'closes the transaction')}
-                    </span>
-                  )}
+                  {/* (مراحلُ السداد لا شأنَ لها بإقفال المعاملة — راجع settleClosure.) */}
                   {list.length > 1 && (
                     <span className="ms-1.5 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
                       {list.length}
                     </span>
                   )}
+                  {/* البندُ المكرَّرُ يُقرأ مجموعًا — وهو ما يُكتب في تكاليفه عند الدفع. */}
+                  {list.length > 1 && list.some((e) => Number(e.amount) > 0) && (
+                    <span className="ms-1.5 text-[11px] font-bold tabular-nums text-slate-600">
+                      {t('المجموع', 'Total')}: {list.reduce((a, e) => a + (Number(e.amount) || 0), 0).toLocaleString('en-US')}
+                    </span>
+                  )}
                 </span>
                 {canEdit && (
                   <button type="button" onClick={() => setOpenKey(openKey === def.key ? null : def.key)}
-                    title={t('إضافة إدخال', 'Add an entry')}
-                    className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 text-[11px] font-bold text-[#f37121] ring-1 ring-slate-200 hover:ring-[#f37121]/50">
+                    disabled={!!transportBlock(def.key)}
+                    title={transportBlock(def.key) || t('إضافة إدخال', 'Add an entry')}
+                    className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 text-[11px] font-bold text-[#f37121] ring-1 ring-slate-200 hover:ring-[#f37121]/50 disabled:cursor-not-allowed disabled:opacity-40">
                     <Plus className="h-3.5 w-3.5" />{t('إضافة', 'Add')}
                   </button>
                 )}

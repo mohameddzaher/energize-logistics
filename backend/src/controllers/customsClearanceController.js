@@ -304,8 +304,9 @@ const txDateOf = (c) => {
 };
 
 /** فُوترت ولم تُنهَ: تنتظر فاتورةَ النقل. */
-const awaitsTransportInvoice = (c) => (!!c.saleInvoiceNumber || c.invoiceRequest?.status === 'pending') && !c.isCompleted && !c.cancelled
-  && !(c.transportInvoiceReceived || hasTransportInvoice(c));
+// لم يعد الإقفالُ ينتظر فاتورةَ نقلٍ في مراحل السداد (٢٠٢٦/١٠/٢٢): أُرسل الطلبُ ببنوده
+// فأُقفلت. فلا معاملةَ «بانتظار فاتورة النقل» بعد اليوم إلّا ما قد يبقى من قبل.
+const awaitsTransportInvoice = (c) => (!!c.saleInvoiceNumber || c.invoiceRequest?.status === 'pending') && !c.isCompleted && !c.cancelled;
 
 /**
  * صفُّ القائمة كما يعبر الشبكة.
@@ -1041,6 +1042,20 @@ exports.listParties = async (req, res) => {
   }
 };
 
+/**
+ * جهاتُ التواصل من جسم الطلب: تُنظَّف وتُسقط الفارغة، والأولى تُنسَخ في الحقول
+ * القديمة (email/phone/contactPerson) التي تقرؤها قوالبُ البريد وما سبق.
+ */
+function mirrorContacts(body) {
+  if (!Array.isArray(body.contacts)) return body;
+  const S = (v) => String(v ?? '').trim();
+  const contacts = body.contacts.slice(0, 20)
+    .map((c) => ({ name: S(c?.name).slice(0, 120), email: S(c?.email).slice(0, 160), phone: S(c?.phone).slice(0, 40), description: S(c?.description).slice(0, 200) }))
+    .filter((c) => c.name || c.email || c.phone);
+  const first = contacts[0] || { name: '', email: '', phone: '' };
+  return { ...body, contacts, contactPerson: first.name, email: first.email, phone: first.phone };
+}
+
 exports.createParty = async (req, res) => {
   try {
     const kind = PARTY_KINDS.includes(req.body.kind) ? req.body.kind : 'customer';
@@ -1048,7 +1063,7 @@ exports.createParty = async (req, res) => {
     if (!name) return res.status(400).json({ message: 'الاسم مطلوب' });
     const exists = await CustomsParty.findOne({ kind, nameKey: foldName(name) }).lean();
     if (exists) return res.status(409).json({ message: 'موجودٌ بالاسم نفسِه', party: exists });
-    const party = await CustomsParty.create({ ...req.body, kind, name, createdBy: req.user._id });
+    const party = await CustomsParty.create({ ...mirrorContacts(req.body), kind, name, createdBy: req.user._id });
     cache.clear('customs:');
     res.status(201).json({ party });
   } catch (e) {
@@ -1059,7 +1074,8 @@ exports.createParty = async (req, res) => {
 exports.updateParty = async (req, res) => {
   try {
     // المرفقاتُ لها نقاطُها — لا تُكتب من هنا فوق ما رُفع.
-    const { kind, _id, __v, attachments, ...body } = req.body;
+    const { kind, _id, __v, attachments, ...raw } = req.body;
+    const body = mirrorContacts(raw);
     const party = await CustomsParty.findByIdAndUpdate(req.params.id, { $set: body }, { new: true });
     if (!party) return res.status(404).json({ message: 'غير موجود' });
     // الاسمُ مخزَّنٌ نصًّا في المعاملات أيضًا (تقرؤه التصديرات) — يُحدَّث معه
@@ -1518,6 +1534,28 @@ const allowedStages = async () => {
  * `attachments` ليُوجَد مع بقيّة ورق المعاملة حيث يبحث عنه من لا يعرف من أيّ
  * مرحلةٍ جاء. وهو ملفٌّ واحدٌ على القرص، مذكورٌ مرّتين — لا نسختان.
  */
+/**
+ * ── فواتيرُ النقل الثلاث في مراحل السداد طريقان لا يجتمعان (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ──
+ *   من الميناء إلى العميل  ⟂  من الميناء إلى الساحة (ثمّ من الساحة إلى العميل).
+ * فإن سُجّلت الأولى لم تُسجَّل الأخريان، وإن سُجّلت «إلى الساحة» لم تُسجَّل الأولى
+ * وصار «من الساحة إلى العميل» ممكنًا — ولا يكون قبلها.
+ */
+const TRANSPORT_KEYS = { direct: 'transportPortToCustomer', toYard: 'transportPortToYard', fromYard: 'transportYardToCustomer' };
+function transportBlock(clearance, key) {
+  const has = (k) => (clearance.paymentStages || []).some((p) => p && p.key === k);
+  if (key === TRANSPORT_KEYS.direct && (has(TRANSPORT_KEYS.toYard) || has(TRANSPORT_KEYS.fromYard))) {
+    return 'سُجّل النقلُ عبر الساحة — لا تُسجَّل فاتورةُ النقل من الميناء إلى العميل معه';
+  }
+  if (key === TRANSPORT_KEYS.toYard && has(TRANSPORT_KEYS.direct)) {
+    return 'سُجّلت فاتورةُ النقل من الميناء إلى العميل — لا يُسجَّل النقلُ إلى الساحة معها';
+  }
+  if (key === TRANSPORT_KEYS.fromYard) {
+    if (has(TRANSPORT_KEYS.direct)) return 'سُجّلت فاتورةُ النقل من الميناء إلى العميل — لا يُسجَّل النقلُ من الساحة معها';
+    if (!has(TRANSPORT_KEYS.toYard)) return 'سجّل فاتورةَ النقل من الميناء إلى الساحة أوّلًا';
+  }
+  return '';
+}
+
 exports.addPaymentStage = async (req, res) => {
   try {
     const clearance = await CustomsClearance.findById(req.params.id);
@@ -1527,6 +1565,8 @@ exports.addPaymentStage = async (req, res) => {
     const key = String(req.body.key || '').trim();
     const def = stages.find((s) => s.key === key);
     if (!def) return res.status(400).json({ message: 'مرحلة غير معروفة — أضِفها من إعدادات القسم' });
+    const blocked = transportBlock(clearance, key);
+    if (blocked) return res.status(400).json({ message: blocked, code: 'TRANSPORT_ROUTE' });
     if ((clearance.paymentStages || []).length >= 60) {
       return res.status(400).json({ message: 'بلغت المعاملةُ حدَّ إدخالات المراحل' });
     }
@@ -1809,7 +1849,8 @@ function settleClosure(clearance, req) {
   // تُقفَل حين يُرسَل طلبُ الفوترة وتصل فاتورةُ النقل — ولا تنتظر جوابَ الماليّة:
   // فإن أُقفلت قبل أن تُفوتَر فهي «مغلقة لم تُفوتَر» حتى تقول الماليّةُ كلمتَها.
   if (clearance.isCompleted || clearance.cancelled || !invoiceSent(clearance)) return false;
-  if (!hasTransportInvoice(clearance)) return false;
+  // ولا شأنَ لمراحل السداد بالإقفال (٢٠٢٦/١٠/٢٢): يُقفَل بطلب الفوترة ببنوده الثلاثة —
+  // وفاتورةُ النقل منها — لا بمرحلة «فاتورة النقل» في السداد.
   clearance.isCompleted = true;
   clearance.completedAt = new Date();
   clearance.completedBy = req.user._id;
@@ -1886,6 +1927,12 @@ exports.issueInvoice = async (req, res) => {
     const sent = Array.isArray(req.body.saleItems) ? req.body.saleItems : [];
     const err = await writeSaleItems(clearance, sent, req);
     if (err) return res.status(400).json({ message: err });
+    // ── البنودُ الثلاثةُ كلُّها (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ──────────────────
+    // فاتورةُ النقل والرسومُ الجمركيّةُ وحجزُ الموعد تُكتب كلُّها بسعر البيع؛ ولا
+    // علاقةَ لها بما في مراحل السداد — تلك ما ندفعه، وهذه ما نفوتره.
+    const defs = await saleItemDefs();
+    const missing = defs.filter((d) => !clearance.saleItems.some((x) => x.key === d.key));
+    if (missing.length) return res.status(400).json({ message: `اكتب سعرَ: ${missing.map((d) => d.nameAr).join('، ')}`, code: 'SALE_ITEMS_REQUIRED' });
     const hasPassThrough = (clearance.paymentStages || []).some((p) => Number(p.amount) > 0);
     if (!clearance.saleItems.length && !hasPassThrough) {
       return res.status(400).json({ message: 'طلبُ فوترةٍ بلا بنود — اكتب سعرَ بندٍ واحدٍ على الأقلّ' });
@@ -1915,7 +1962,7 @@ exports.issueInvoice = async (req, res) => {
     });
     cache.clear('customs:'); try { cache.clear('finance:'); } catch (_) { /* */ }
     try { emitToAll('customs:updated', { clearance }); } catch (e) {}
-    res.json({ clearance, closed, requested: true, awaitingTransportInvoice: !hasTransportInvoice(clearance) });
+    res.json({ clearance, closed, requested: true, awaitingTransportInvoice: false });
 
     // والإدارةُ الماليّةُ تُخبَر بالطلب — لا تنتظر أن تفتح الشاشة.
     try {
@@ -2132,10 +2179,7 @@ exports.completeClearance = async (req, res) => {
       clearance.completedByName = '';
     } else {
       if (!invoiceSent(clearance)) {
-        return res.status(400).json({ message: 'أرسِل طلبَ الفوترة أوّلًا — ثمّ تُنهى المعاملةُ حين تُرفَق فاتورةُ النقل.', code: 'NOT_INVOICED' });
-      }
-      if (!hasTransportInvoice(clearance)) {
-        return res.status(400).json({ message: 'تُنهى المعاملةُ حين تُرفَق «فاتورة النقل» — أرفِقها أو قل إنّها لا تُنتظَر.', missingStage: REQUIRED_STAGE_KEY });
+        return res.status(400).json({ message: 'أرسِل طلبَ الفوترة ببنوده الثلاثة أوّلًا — به تُغلَق المعاملة.', code: 'NOT_INVOICED' });
       }
       clearance.isCompleted = true;
       clearance.completedAt = new Date();
@@ -2826,6 +2870,8 @@ exports.createContract = async (req, res) => {
   try {
     const party = await CustomsParty.findById(req.body.party).lean();
     if (!party) return res.status(400).json({ message: 'اختر الطرف' });
+    // لا عقودَ بيننا وبين وكلاء الشحن (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
+    if (party.kind === 'agent') return res.status(400).json({ message: 'لا عقود مع وكلاء الشحن — العقود للعملاء والناقلين' });
     if (!String(req.body.title || '').trim()) return res.status(400).json({ message: 'اسم العقد مطلوب' });
     const body = stripEmpty(req.body, CustomsContract.schema);
     const doc = await CustomsContract.create({
@@ -2850,6 +2896,7 @@ exports.updateContract = async (req, res) => {
     if (req.body.party && String(req.body.party) !== String(doc.party)) {
       const party = await CustomsParty.findById(req.body.party).lean();
       if (!party) return res.status(400).json({ message: 'الطرف غير موجود' });
+      if (party.kind === 'agent') return res.status(400).json({ message: 'لا عقود مع وكلاء الشحن' });
       doc.party = party._id; doc.partyKind = party.kind; doc.partyName = party.name;
     }
     for (const f of CONTRACT_FIELDS) if (req.body[f] !== undefined) doc[f] = req.body[f] === '' ? (doc.schema.path(f)?.instance === 'Number' ? null : '') : req.body[f];

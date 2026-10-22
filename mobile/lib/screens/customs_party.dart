@@ -224,13 +224,21 @@ List<Widget> _partyDetails(Map<String, dynamic> p) {
       );
   final place = [s('city'), s('address')].where((x) => x.isNotEmpty).join(' — ');
   return [
-    if (s('phone').isNotEmpty)
-      line(s('phone'), icon: Icons.phone_outlined, ltr: true,
-          onTap: () => launchUrl(Uri.parse('tel:${s('phone').replaceAll(RegExp(r'[^0-9+]'), '')}'), mode: LaunchMode.externalApplication)),
-    if (s('email').isNotEmpty)
-      line(s('email'), icon: Icons.mail_outline, ltr: true,
-          onTap: () => launchUrl(Uri.parse('mailto:${s('email')}'), mode: LaunchMode.externalApplication)),
-    if (s('contactPerson').isNotEmpty) line('${tr('المسؤول', 'Contact')}: ${s('contactPerson')}'),
+    // جهاتُ التواصل كلُّها — كلُّ مسؤولٍ ببريده وجوّاله ووصفه (٢٠٢٦/١٠/٢٢).
+    for (final c in (p['contacts'] is List && (p['contacts'] as List).isNotEmpty
+        ? List<Map>.from(p['contacts'] as List)
+        : [{'name': s('contactPerson'), 'email': s('email'), 'phone': s('phone')}])) ...[
+      if ('${c['name'] ?? ''}'.isNotEmpty) line('${tr('المسؤول', 'Contact')}: ${c['name']}${'${c['description'] ?? ''}'.isNotEmpty ? ' (${c['description']})' : ''}'),
+      if ('${c['phone'] ?? ''}'.isNotEmpty)
+        line('${c['phone']}', icon: Icons.phone_outlined, ltr: true,
+            onTap: () => launchUrl(Uri.parse('tel:${'${c['phone']}'.replaceAll(RegExp(r'[^0-9+]'), '')}'), mode: LaunchMode.externalApplication)),
+      if ('${c['email'] ?? ''}'.isNotEmpty)
+        line('${c['email']}', icon: Icons.mail_outline, ltr: true,
+            onTap: () => launchUrl(Uri.parse('mailto:${c['email']}'), mode: LaunchMode.externalApplication)),
+    ],
+    if (s('yardLocationUrl').isNotEmpty)
+      line(tr('موقع الساحة', 'Yard location'), icon: Icons.map_outlined,
+          onTap: () => launchUrl(Uri.parse(s('yardLocationUrl')), mode: LaunchMode.externalApplication)),
     if (s('commercialRegister').isNotEmpty) line('${tr('السجل التجاري', 'CR')}: ${s('commercialRegister')}'),
     if (s('taxNumber').isNotEmpty) line('${tr('الرقم الضريبي', 'Tax no.')}: ${s('taxNumber')}'),
     if (place.isNotEmpty) line(place, icon: Icons.place_outlined),

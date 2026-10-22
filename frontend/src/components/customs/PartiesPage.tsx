@@ -18,7 +18,15 @@ import { Users, Ship, Truck, Plus, Pencil, Trash2, Mail, Phone, ChevronLeft } fr
 import ScrollX from '@/components/system/ScrollX';
 
 // ثلاثةُ أدوارٍ بالبنية نفسِها: صاحبُ البضاعة، ومخلِّصُها، وناقلُها.
-export type PartyKind = 'customer' | 'agent' | 'carrier';
+export type Contact = { name: string; email: string; phone: string; description?: string };
+/** جهاتُ الطرف — وما سبق الجهاتِ يُقرأ من حقوله القديمة جهةً واحدة. */
+const contactsOf = (p: Partial<{ contacts?: Contact[]; contactPerson?: string; email?: string; phone?: string }> | null): Contact[] => {
+  if (p?.contacts?.length) return p.contacts;
+  if (p && (p.contactPerson || p.email || p.phone)) return [{ name: p.contactPerson || '', email: p.email || '', phone: p.phone || '', description: '' }];
+  return [];
+};
+
+type PartyKind = 'customer' | 'agent' | 'carrier';
 
 const KIND_META: Record<PartyKind, { ar: string; en: string; oneAr: string; oneEn: string; newAr: string; newEn: string }> = {
   customer: { ar: 'عملاء التخليص', en: 'Customs customers', oneAr: 'عملاء', oneEn: 'Customers', newAr: 'عميل جديد', newEn: 'New customer' },
@@ -30,6 +38,10 @@ export interface Party {
   _id: string; kind: PartyKind; name: string; email?: string; phone?: string;
   contactPerson?: string; commercialRegister?: string; taxNumber?: string;
   address?: string; city?: string; notes?: string; isActive?: boolean;
+  /** جهاتُ التواصل — مسؤولٌ ببريده وجوّاله، ووصفٌ اختياريّ (٢٠٢٦/١٠/٢٢). */
+  contacts?: Contact[];
+  /** للناقل: رابطُ موقع الساحة. */
+  yardLocationUrl?: string;
   deals: number; revenue: number; profit: number; containers: number; lastDealAt?: string | null;
 }
 
@@ -94,8 +106,8 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
     if (!editing?.name?.trim()) { notify(t('الاسم مطلوب', 'Name required'), 'error'); return; }
     setSaving(true);
     try {
-      if (editing._id) await api.put(`/api/customs-clearance/parties/${editing._id}`, editing);
-      else await api.post('/api/customs-clearance/parties', { ...editing, kind });
+      if (editing._id) await api.put(`/api/customs-clearance/parties/${editing._id}`, { ...editing, contacts: contactsOf(editing) });
+      else await api.post('/api/customs-clearance/parties', { ...editing, contacts: contactsOf(editing), kind });
       setEditing(null); load();
     } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
     setSaving(false);
@@ -188,6 +200,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
                       <td className="px-3 py-2.5 text-slate-600">
                         {p.email ? <a href={`mailto:${p.email}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 hover:text-[#f37121]"><Mail className="w-3.5 h-3.5" />{p.email}</a>
                           : <span className="text-red-400 text-xs">{t('بلا بريد', 'no email')}</span>}
+                        {contactsOf(p).length > 1 && <span className="ms-1 rounded-full bg-slate-100 px-1.5 text-[10.5px] text-slate-500">+{contactsOf(p).length - 1}</span>}
                       </td>
                     )}
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
@@ -224,14 +237,48 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2"><Field label={t('الاسم *', 'Name *')}>
             <TextInput value={editing?.name || ''} onChange={(e) => setEditing((p) => ({ ...p, name: e.target.value }))} /></Field></div>
-          {/* بريدُ الوكيل هنا لا في كلّ معاملة: يُملأ وحدَه حين يُختار الوكيل،
-              فلا يُكتب من الذاكرة ولا يُرسَل طلبٌ إلى بريدٍ خاطئ. */}
-          <Field label={t('البريد الإلكتروني', 'Email')}>
-            <TextInput type="email" value={editing?.email || ''} onChange={(e) => setEditing((p) => ({ ...p, email: e.target.value }))} /></Field>
-          <Field label={t('الجوال', 'Phone')}>
-            <TextInput value={editing?.phone || ''} onChange={(e) => setEditing((p) => ({ ...p, phone: e.target.value }))} /></Field>
-          <Field label={t('مسؤول التواصل', 'Contact person')}>
-            <TextInput value={editing?.contactPerson || ''} onChange={(e) => setEditing((p) => ({ ...p, contactPerson: e.target.value }))} /></Field>
+          {/* ── جهاتُ التواصل: أكثرُ من واحدة، كلُّ مسؤولٍ ببريده وجوّاله (٢٠٢٦/١٠/٢٢).
+              الأولى هي الأساسيّة — بريدُها يُملأ وحدَه في معاملات الوكيل. */}
+          <div className="sm:col-span-2 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-[13px] font-semibold text-slate-700">{t('جهات التواصل', 'Contacts')}</p>
+              <button type="button" onClick={() => setEditing((p) => ({ ...p, contacts: [...contactsOf(p), { name: '', email: '', phone: '', description: '' }] }))}
+                className="inline-flex items-center gap-1 rounded-lg bg-[#f37121]/10 px-2.5 py-1 text-[12px] font-semibold text-[#f37121] hover:bg-[#f37121]/20">
+                <Plus className="h-3.5 w-3.5" />{t('إضافة جهة', 'Add contact')}
+              </button>
+            </div>
+            {(contactsOf(editing).length ? contactsOf(editing) : [{ name: '', email: '', phone: '', description: '' }]).map((c, i, arr) => {
+              const setC = (patch: Partial<Contact>) => setEditing((p) => {
+                const list = contactsOf(p).length ? [...contactsOf(p)] : [{ name: '', email: '', phone: '', description: '' }];
+                list[i] = { ...list[i], ...patch };
+                return { ...p, contacts: list };
+              });
+              return (
+                <div key={i} className="grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-2.5 sm:grid-cols-3">
+                  <TextInput placeholder={t('مسؤول التواصل', 'Contact person')} value={c.name} onChange={(e) => setC({ name: e.target.value })} />
+                  <TextInput type="email" placeholder={t('البريد الإلكتروني', 'Email')} value={c.email} onChange={(e) => setC({ email: e.target.value })} />
+                  <div className="flex items-center gap-2">
+                    <TextInput placeholder={t('الجوال', 'Phone')} value={c.phone} onChange={(e) => setC({ phone: e.target.value })} />
+                    {arr.length > 1 && (
+                      <button type="button" title={t('حذف الجهة', 'Remove')} onClick={() => setEditing((p) => ({ ...p, contacts: contactsOf(p).filter((_, j) => j !== i) }))}
+                        className="shrink-0 p-1.5 text-slate-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                    )}
+                  </div>
+                  {/* وصفُ البريد اختياريّ لوكلاء الشحن: «للفواتير»، «لإذن التسليم»… */}
+                  {kind === 'agent' && (
+                    <div className="sm:col-span-3">
+                      <TextInput placeholder={t('وصف البريد (اختياري) — مثلًا: للفواتير، لإذن التسليم', 'Email description (optional) — e.g. invoices, delivery orders')}
+                        value={c.description || ''} onChange={(e) => setC({ description: e.target.value })} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {kind === 'carrier' && (
+            <div className="sm:col-span-2"><Field label={t('موقع الساحة (رابط خرائط)', 'Yard location (map link)')}>
+              <TextInput type="url" dir="ltr" placeholder="https://maps.google.com/…" value={editing?.yardLocationUrl || ''} onChange={(e) => setEditing((p) => ({ ...p, yardLocationUrl: e.target.value }))} /></Field></div>
+          )}
           <Field label={t('المدينة', 'City')}>
             <TextInput value={editing?.city || ''} onChange={(e) => setEditing((p) => ({ ...p, city: e.target.value }))} /></Field>
           <Field label={t('السجل التجاري', 'Commercial register')}>
@@ -241,7 +288,8 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
           <div className="sm:col-span-2"><Field label={t('العنوان', 'Address')}>
             <TextInput value={editing?.address || ''} onChange={(e) => setEditing((p) => ({ ...p, address: e.target.value }))} /></Field></div>
           <div className="sm:col-span-2"><Field label={t('ملاحظات', 'Notes')}>
-            <TextInput value={editing?.notes || ''} onChange={(e) => setEditing((p) => ({ ...p, notes: e.target.value }))} /></Field></div>
+            <textarea rows={3} value={editing?.notes || ''} onChange={(e) => setEditing((p) => ({ ...p, notes: e.target.value }))}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" /></Field></div>
         </div>
       </Modal>
     </div>

@@ -27,6 +27,21 @@ const customsPartySchema = new mongoose.Schema({
   email: { type: String, trim: true, default: '' },
   phone: { type: String, trim: true, default: '' },
   contactPerson: { type: String, trim: true, default: '' },
+  // ── جهاتُ التواصل — أكثرُ من واحد (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────────────
+  // كلُّ جهةٍ مسؤولٌ ببريده وجوّاله معًا، ووصفٌ اختياريٌّ للبريد («للفواتير»،
+  // «لإذن التسليم»). والأولى تُنسَخ في `email`/`phone`/`contactPerson` أعلاه لأنّ
+  // قوالبَ البريد وما قبلها تقرؤها — راجع mirrorContacts في المتحكّم.
+  contacts: {
+    type: [{
+      name: { type: String, trim: true, default: '' },
+      email: { type: String, trim: true, default: '' },
+      phone: { type: String, trim: true, default: '' },
+      description: { type: String, trim: true, default: '' },
+    }],
+    default: [],
+  },
+  // للناقل: موقعُ ساحته — رابطُ خرائط يُفتح منه المكان (٢٠٢٦/١٠/٢٢).
+  yardLocationUrl: { type: String, trim: true, default: '' },
   // للعميل: السجلُّ التجاريّ والرقمُ الضريبيّ يُطلبان في كلّ بيانٍ جمركيّ.
   commercialRegister: { type: String, trim: true, default: '' },
   taxNumber: { type: String, trim: true, default: '' },

@@ -22,7 +22,7 @@
  * التي سيقرؤها المحاسبُ، لا رقمًا يكتشفه بعدها.
  */
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { X, Loader2, Paperclip, Receipt, AlertTriangle, Check, Clock3 } from 'lucide-react';
+import { X, Loader2, Paperclip, Receipt, AlertTriangle } from 'lucide-react';
 import api from '@/lib/api';
 import { TRANSPORT_STAGE_KEYS } from '@/lib/customsPipeline';
 
@@ -86,9 +86,11 @@ export default function CloseWithInvoice({
     const priced = Object.entries(rows)
       .filter(([, v]) => v && String(v.amount).trim() !== '' && Number.isFinite(Number(v.amount)))
       .map(([key, v]) => ({ key, amount: Number(v.amount) }));
+    // البنودُ الثلاثةُ لا علاقةَ لها بمراحل السداد (٢٠٢٦/١٠/٢٢): مراحلُ السداد كلُّها
+    // تمرّ كما هي، والبنودُ فوقها — لا يحلّ أحدُهما محلَّ الآخر (utils/customsInvoice).
     const overridden = new Set(priced.map((x) => x.key));
     const passLines = (stages || [])
-      .filter((p) => Number.isFinite(Number(p.amount)) && Number(p.amount) !== 0 && !overridden.has(p.key));
+      .filter((p) => Number.isFinite(Number(p.amount)) && Number(p.amount) !== 0);
     const passSum = passLines.reduce((a, p) => a + Number(p.amount), 0);
     const saleNet = priced.reduce((a, p) => a + p.amount, 0);
     const vat = saleNet * VAT;
@@ -102,15 +104,12 @@ export default function CloseWithInvoice({
     };
   }, [rows, stages, defs, ar]);
   // فاتورةُ النقل حاضرةٌ الآن؟ وصلت من قبل، أو أُرفقت في هذه النافذة.
-  const transportHere = !!transportReceived
-    || Object.entries(rows).some(([k, v]) => isTransportKey(k) && !!v?.file)
-    || Object.keys(kept).some((k) => isTransportKey(k) && !!kept[k]);
 
   const save = async () => {
     const saleItems = Object.entries(rows)
       .filter(([, v]) => String(v.amount).trim() !== '')
       .map(([key, v]) => ({ key, amount: Number(v.amount), note: v.note, file: v.file?.dataUrl, fileName: v.file?.fileName }));
-    if (!preview.hasLines) { notify(t('اكتب سعرَ بندٍ واحدٍ على الأقلّ', 'Enter at least one selling price'), 'error'); return; }
+    if (preview.missing.length) { notify(t(`اكتب سعرَ: ${preview.missing.join('، ')}`, `Enter the price of: ${preview.missing.join(', ')}`), 'error'); return; }
     setBusy(true);
     try {
       const d = await api.patch<any>(`/api/customs-clearance/${clearanceId}/invoice`, { saleItems });
@@ -182,18 +181,7 @@ export default function CloseWithInvoice({
                       تُصدَر الفاتورةُ بدونها، ويُقال ذلك هنا قبل الضغط: ما
                       الذي سيقع للمعاملة إن أُرفقت الآن، وما الذي يقع إن لم
                       تُرفَق. */}
-                  {isTransportKey(d.key) && (transportHere ? (
-                    <p className="mt-2 flex items-center gap-1.5 text-[11.5px] font-semibold text-emerald-700">
-                      <Check className="h-3.5 w-3.5" />
-                      {t('فاتورةُ النقل مُرفقة — تُغلَق المعاملةُ مع إرسال طلب الفوترة.', 'Transport invoice on file — the transaction closes when the request is sent.')}
-                    </p>
-                  ) : (
-                    <p className="mt-2 flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-[11.5px] font-semibold text-red-700">
-                      <Clock3 className="h-3.5 w-3.5 shrink-0" />
-                      {t('فاتورةُ النقل لم تُستلَم بعد — يُرسَل الطلبُ الآن، وتبقى المعاملةُ معلَّمةً بالأحمر حتى تُرفَق فتُغلَق.',
-                         'Transport invoice not received yet — the request is sent now; the transaction stays flagged red until it is attached, then closes.')}
-                    </p>
-                  ))}
+
                 </div>
               );
             })}
@@ -224,10 +212,10 @@ export default function CloseWithInvoice({
               <span className="tabular-nums">{money(preview.grand)}</span>
             </div>
             {!!preview.missing.length && (
-              <p className="text-[11px] text-amber-700 flex items-center gap-1.5 pt-1">
+              <p className="text-[11px] text-red-700 flex items-center gap-1.5 pt-1">
                 <AlertTriangle className="w-3.5 h-3.5" />
-                {t(`بلا سعرِ بيع: ${preview.missing.join('، ')} — ستُحسَب من مراحل السداد كما هي إن كان لها مبلغ.`,
-                   `No selling price: ${preview.missing.join(', ')} — they will pass through at cost if they carry an amount.`)}
+                {t(`مطلوبٌ قبل الإرسال: ${preview.missing.join('، ')} — البنودُ الثلاثةُ لا تُؤخذ من مراحل السداد.`,
+                   `Required before sending: ${preview.missing.join(', ')} — these are not taken from the payment stages.`)}
               </p>
             )}
           </div>
@@ -239,10 +227,11 @@ export default function CloseWithInvoice({
                'The request goes to Customs Finance; the transaction counts as invoiced only when Finance marks it invoiced.')}
           </p>
           <button type="button" onClick={onClose} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{t('إلغاء', 'Cancel')}</button>
-          <button type="button" onClick={save} disabled={busy || !preview.hasLines}
+          <button type="button" onClick={save} disabled={busy || !!preview.missing.length}
+            title={preview.missing.length ? t(`اكتب سعرَ: ${preview.missing.join('، ')}`, `Enter: ${preview.missing.join(', ')}`) : undefined}
             className="inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-4 py-2 text-xs font-bold text-white disabled:opacity-40">
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Receipt className="h-3.5 w-3.5" />}
-            {transportHere ? t('طلب الفوترة وإغلاق المعاملة', 'Request invoicing & close') : t('إرسال طلب الفوترة', 'Send invoice request')}
+            {t('طلب الفوترة وإغلاق المعاملة', 'Request invoicing & close')}
           </button>
         </div>
       </div>

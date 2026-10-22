@@ -33,13 +33,10 @@ const buildClearanceInvoice = (clearance) => {
   const sale = (clearance?.saleItems || []).filter((x) => x && (x.key || x.label));
   const stages = (clearance?.paymentStages || []).filter((x) => x && (x.key || x.label));
 
-  // مفاتيحُ البنود التي لها سعرُ بيع — تُستثنى من جانب التكلفة كي لا تُحسب مرّتين.
-  const overridden = new Set(sale.map((x) => String(x.key || '')).filter(Boolean));
-  // بندُ البيع «فاتورة النقل» يغطّي أجزاءَ النقل الثلاثة في مراحل السداد —
-  // سعرُ النقل للعميل واحدٌ، فلا تُضاف تكاليفُ أجزائه فوقه.
-  if (overridden.has('transportInvoice')) {
-    for (const k of ['transportPortToCustomer', 'transportPortToYard', 'transportYardToCustomer']) overridden.add(k);
-  }
+  // ── البنودُ الثلاثةُ لا علاقةَ لها بمراحل السداد (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ──
+  // «حجزُ الموعد» في مراحل السداد ما ندفعه للمورّد، و«حجزُ الموعد» في الفاتورة ما
+  // نفوتره للعميل — بندان لا يحلّ أحدُهما محلَّ الآخر. فلا يُستثنى من السداد شيء.
+  const overridden = new Set();
 
   const lines = [];
   const warnings = [];

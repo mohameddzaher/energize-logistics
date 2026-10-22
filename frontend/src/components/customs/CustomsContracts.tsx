@@ -15,6 +15,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
+import { useSocket } from '@/hooks/useSocket';
 import { Modal, Field, TextInput, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
 import ScrollX from '@/components/system/ScrollX';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
@@ -94,6 +95,8 @@ export default function CustomsContracts({ ar, canEdit, party, parties, notify, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [party?._id, kindFilter]);
   useEffect(() => { load(); }, [load]);
+  // عقدٌ كُتب من ملفّ الطرف يظهر هنا في اللحظة، والعكسُ كذلك — مصدرٌ واحد.
+  useSocket('customs:contract', load);
 
   // أسعارُ التعاقد للعميل وحدَه: الوكيلُ والناقلُ لا تُملأ منهما إيراداتُ المعاملة.
   const partyKindOf = (ed: any) => party?.kind
@@ -279,7 +282,7 @@ export default function CustomsContracts({ ar, canEdit, party, parties, notify, 
               <select value={editing.party} onChange={(e) => setEditing({ ...editing, party: e.target.value })}
                 className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
                 <option value="">{t('— اختر —', '— choose —')}</option>
-                {(parties || []).map((p) => (
+                {(parties || []).filter((p) => p.kind !== 'agent').map((p) => (
                   <option key={p._id} value={p._id}>{p.name} — {KIND_LABEL[p.kind]?.[ar ? 0 : 1]}</option>
                 ))}
               </select>
@@ -412,7 +415,8 @@ export default function CustomsContracts({ ar, canEdit, party, parties, notify, 
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1.5">
-          {[['', 'الكل', 'All'], ['customer', 'عملاء', 'Customers'], ['agent', 'وكلاء', 'Agents'], ['carrier', 'ناقلون', 'Carriers']].map(([k, a, e]) => (
+          {/* لا عقودَ مع وكلاء الشحن (٢٠٢٦/١٠/٢٢) — العقودُ للعملاء والناقلين. */}
+          {[['', 'الكل', 'All'], ['customer', 'عملاء', 'Customers'], ['carrier', 'ناقلون', 'Carriers']].map(([k, a, e]) => (
             <button key={k} type="button" onClick={() => setKindFilter(k)}
               className={`px-3 py-1.5 rounded-lg text-[13px] font-medium border transition-colors ${
                 kindFilter === k ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900'}`}>

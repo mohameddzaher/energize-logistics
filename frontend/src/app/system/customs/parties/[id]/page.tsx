@@ -120,9 +120,20 @@ export default function CustomsPartyProfile() {
 
       {/* بياناتُ التواصل — تُقرأ وتُضغط، لا تُنسَخ باليد. */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-        {p.email && <a href={`mailto:${p.email}`} className="inline-flex items-center gap-1.5 text-slate-700 hover:text-[#f37121]"><Mail className="w-4 h-4" />{p.email}</a>}
-        {p.phone && <a href={`tel:${p.phone}`} className="inline-flex items-center gap-1.5 text-slate-700 hover:text-[#f37121]"><Phone className="w-4 h-4" />{p.phone}</a>}
-        {p.contactPerson && <span className="text-slate-600">{t('المسؤول', 'Contact')}: <b>{p.contactPerson}</b></span>}
+        {/* جهاتُ التواصل كلُّها — كلُّ مسؤولٍ ببريده وجوّاله ووصفه (٢٠٢٦/١٠/٢٢). */}
+        {((p.contacts && p.contacts.length) ? p.contacts : [{ name: p.contactPerson, email: p.email, phone: p.phone, description: '' }])
+          .filter((c: any) => c.name || c.email || c.phone)
+          .map((c: any, i: number) => (
+            <span key={i} className="inline-flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-2.5 py-1.5">
+              {c.name && <b className="text-slate-800">{c.name}</b>}
+              {c.email && <a href={`mailto:${c.email}`} className="inline-flex items-center gap-1 text-slate-700 hover:text-[#f37121]"><Mail className="w-4 h-4" />{c.email}</a>}
+              {c.phone && <a href={`tel:${c.phone}`} className="inline-flex items-center gap-1 text-slate-700 hover:text-[#f37121]"><Phone className="w-4 h-4" />{c.phone}</a>}
+              {c.description && <span className="text-[12px] text-slate-500">({c.description})</span>}
+            </span>
+          ))}
+        {p.yardLocationUrl && (
+          <a href={p.yardLocationUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sky-700 hover:underline"><MapPin className="w-4 h-4" />{t('موقع الساحة', 'Yard location')}</a>
+        )}
         {p.city && <span className="inline-flex items-center gap-1.5 text-slate-600"><MapPin className="w-4 h-4" />{p.city}</span>}
         {p.commercialRegister && <span className="text-slate-600">{t('السجل التجاري', 'CR')}: <b className="font-mono">{p.commercialRegister}</b></span>}
         {p.taxNumber && <span className="text-slate-600">{t('الرقم الضريبي', 'Tax')}: <b className="font-mono">{p.taxNumber}</b></span>}
@@ -223,7 +234,8 @@ export default function CustomsPartyProfile() {
       </div>
 
       {/* عقودُنا معه — تُقرأ في ملفّه، والمصدرُ صفحةُ العقود نفسُها. */}
-      <CustomsContracts ar={ar} canEdit={canEdit} party={{ _id: p._id, name: p.name, kind: p.kind }} notify={notify} embedded />
+      {/* لا عقودَ بيننا وبين وكلاء الشحن (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢). */}
+      {!isAgent && <CustomsContracts ar={ar} canEdit={canEdit} party={{ _id: p._id, name: p.name, kind: p.kind }} notify={notify} embedded />}
 
       {/* مهامُّ خطّة العمل (JP) المربوطةُ بهذا الطرف. */}
       <ClearanceTasks kind={p.kind} refId={String(p._id)} ar={ar} />

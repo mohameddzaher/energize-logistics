@@ -875,8 +875,11 @@ customsClearanceSchema.pre('save', async function (next) {
 
 customsClearanceSchema.statics.STAGES = STAGES;
 
-// Any write clears the cached clearance list so edits/stage-moves show at once.
-const bustCustomsList = () => { try { require('../utils/ttlCache').clear('customs:list'); } catch (e) { /* noop */ } };
+// ── كلُّ كتابةٍ تمسح ذاكرةَ القسم كلَّها، لا القائمةَ وحدَها ─────────────────
+// كانت تمسح `customs:list` فقط، فتبقى لوحةُ القسم (`customs:dash:`) والتحليلاتُ
+// (`customs:analytics:`) على أرقام ما قبل الكتابة نصفَ دقيقةٍ أو دقيقة — والشاشةُ
+// تُحدَّث بالحدث فتقرأ الذاكرةَ القديمة. والخطّافُ يعمل قبل أن يُبثّ الحدث.
+const bustCustomsList = () => { try { require('../utils/ttlCache').clear('customs:'); } catch (e) { /* noop */ } };
 customsClearanceSchema.post('save', bustCustomsList);
 customsClearanceSchema.post(/^find.*[UD]/, bustCustomsList); // findOneAndUpdate / findOneAndDelete / findByIdAndUpdate|Delete
 // ── وكشوفُ التشغيل المرتبطة تتبع كلَّ حفظ ──────────────────────────────────

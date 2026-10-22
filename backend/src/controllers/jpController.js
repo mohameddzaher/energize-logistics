@@ -121,7 +121,12 @@ const shape = (t, req, w) => {
   };
 };
 
-const broadcast = (w) => { try { emitToAll('jp:changed', { scope: w.scope, section: w.section }); } catch (_) { /* زيادة */ } };
+// لوحةُ قسم التخليص تعدّ مهامَّ الخطّة على معاملاتها وتحفظ أرقامَها نصفَ دقيقة —
+// فتُمسَح قبل البثّ، وإلّا قرأت الشاشةُ التي سمعت الحدثَ ما قبل التعديل.
+const broadcast = (w) => {
+  if (w.section === 'customs') { try { require('../utils/ttlCache').clear('customs:dash'); } catch (_) { /* زيادة */ } }
+  try { emitToAll('jp:changed', { scope: w.scope, section: w.section }); } catch (_) { /* زيادة */ }
+};
 
 const notify = async (recipient, actor, title, message, id) => {
   if (!recipient || sameId(recipient, actor)) return;

@@ -500,6 +500,8 @@ exports.createClearance = async (req, res) => {
     const clearance = await CustomsClearance.create(data);
 
     await logAudit({ user: req.user._id, action: 'create_customs_clearance', entity: 'CustomsClearance', entityId: clearance._id, changes: { after: { refNumber: clearance.refNumber } }, ipAddress: req.ip });
+    // تُمسَح الذاكرةُ قبل البثّ: مَن يسمع الحدثَ يقرأ فورًا (راجع announce-before-invalidate).
+    cache.clear('customs:');
     try { emitToAll('customs:created', { clearance }); } catch (e) {}
 
     res.status(201).json({ clearance });
@@ -563,6 +565,7 @@ exports.updateClearance = async (req, res) => {
     if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
 
     await logAudit({ user: req.user._id, action: 'update_customs_clearance', entity: 'CustomsClearance', entityId: clearance._id, changes: { after: { refNumber: clearance.refNumber, stage: clearance.stage } }, ipAddress: req.ip });
+    cache.clear('customs:');
     try { emitToAll('customs:updated', { clearance }); } catch (e) {}
 
     res.json({ clearance });
@@ -786,6 +789,7 @@ exports.deleteClearance = async (req, res) => {
     if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
 
     await logAudit({ user: req.user._id, action: 'delete_customs_clearance', entity: 'CustomsClearance', entityId: clearance._id, changes: { before: { refNumber: clearance.refNumber } }, ipAddress: req.ip });
+    cache.clear('customs:');
     try { emitToAll('customs:deleted', { clearanceId: clearance._id }); } catch (e) {}
 
     res.json({ message: 'Clearance deleted' });
@@ -838,6 +842,7 @@ exports.addAttachments = async (req, res) => {
     await clearance.save();
 
     await logAudit({ user: req.user._id, action: 'add_customs_attachment', entity: 'CustomsClearance', entityId: clearance._id, changes: { after: { refNumber: clearance.refNumber, files: added.map((a) => a.fileName) } }, ipAddress: req.ip });
+    cache.clear('customs:');
     try { emitToAll('customs:updated', { clearance }); } catch (e) {}
 
     res.status(201).json({ clearance });
@@ -857,6 +862,7 @@ exports.updateAttachment = async (req, res) => {
     if (req.body.stage !== undefined) att.stage = STAGES.includes(String(req.body.stage)) ? String(req.body.stage) : '';
     clearance.lastModifiedBy = req.user._id;
     await clearance.save();
+    cache.clear('customs:');
     try { emitToAll('customs:updated', { clearance }); } catch (e) {}
     res.json({ clearance });
   } catch (error) {
@@ -1547,8 +1553,8 @@ exports.addPaymentStage = async (req, res) => {
       changes: { after: { refNumber: clearance.refNumber, stage: entry.label, date, file: entry.fileName || '' } },
       ipAddress: req.ip,
     });
-    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
     cache.clear('customs:');
+    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
     res.status(201).json({ clearance });
   } catch (error) {
     return sendMongooseError(res, error, 'تعذّر إضافة المرحلة');
@@ -1606,8 +1612,8 @@ exports.updatePaymentStage = async (req, res) => {
     if (TRANSPORT_STAGE_KEYS.includes(entry.key) && req.body.dataUrl) settleClosure(clearance, req);
     clearance.lastModifiedBy = req.user._id;
     await clearance.save();
-    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
     cache.clear('customs:');
+    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
     res.json({ clearance });
   } catch (error) {
     return sendMongooseError(res, error, 'تعذّر تعديل المرحلة');
@@ -1635,8 +1641,8 @@ exports.deletePaymentStage = async (req, res) => {
       user: req.user._id, action: 'delete_customs_payment_stage', entity: 'CustomsClearance',
       entityId: clearance._id, changes: { before: { stage: label, files: urls.length } }, ipAddress: req.ip,
     });
-    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
     cache.clear('customs:');
+    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
     res.json({ clearance });
   } catch (error) {
     return sendMongooseError(res, error, 'تعذّر حذف المرحلة');
@@ -1872,8 +1878,8 @@ exports.issueInvoice = async (req, res) => {
       entity: 'CustomsClearance', entityId: clearance._id,
       changes: { after: { refNumber: clearance.refNumber, invoice: clearance.saleInvoiceNumber, awaitingTransportInvoice: !closed } }, ipAddress: req.ip,
     });
-    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
     cache.clear('customs:'); try { cache.clear('finance:'); } catch (_) { /* */ }
+    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
     res.json({ clearance, closed, awaitingTransportInvoice: !closed });
   } catch (error) {
     return sendMongooseError(res, error, 'تعذّر إصدار الفاتورة');
@@ -1920,8 +1926,8 @@ exports.receiveTransportInvoice = async (req, res) => {
       entity: 'CustomsClearance', entityId: clearance._id,
       changes: { after: { refNumber: clearance.refNumber, transportInvoice: t.notRequired ? 'not required' : t.fileName } }, ipAddress: req.ip,
     });
-    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
     cache.clear('customs:'); try { cache.clear('finance:'); } catch (_) { /* */ }
+    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
     res.json({ clearance, closed });
   } catch (error) {
     return sendMongooseError(res, error, 'تعذّر حفظ فاتورة النقل');
@@ -1967,8 +1973,8 @@ exports.completeClearance = async (req, res) => {
       entity: 'CustomsClearance', entityId: clearance._id,
       changes: { after: { refNumber: clearance.refNumber } }, ipAddress: req.ip,
     });
-    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
     cache.clear('customs:');
+    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
     res.json({ clearance });
   } catch (error) {
     return sendMongooseError(res, error, 'تعذّر إنهاء المعاملة');
@@ -2751,6 +2757,7 @@ exports.updatePartyAttachment = async (req, res) => {
     if (!a) return res.status(404).json({ message: 'غير موجود' });
     a.title = String(req.body.title || '').trim().slice(0, 200);
     await party.save();
+    cache.clear('customs:');
     try { emitToAll('customs:updated', { party: String(party._id) }); } catch (e) { /* */ }
     res.json({ party: partyCardOf(party.toObject()) });
   } catch (e) { return sendMongooseError(res, e, 'تعذّر الحفظ'); }
@@ -2765,6 +2772,7 @@ exports.deletePartyAttachment = async (req, res) => {
     await party.save();
     try { require('../utils/fileStore').deleteStoredFile(gone.fileUrl); } catch (e) { /* الملفُّ يبقى إن تعذّر حذفُه */ }
     logAudit({ user: req.user, action: 'customs_party_detach', entity: 'CustomsParty', entityId: party._id, changes: { details: `${party.name}: ${gone.title}` }, ipAddress: req.ip }).catch(() => {});
+    cache.clear('customs:');
     try { emitToAll('customs:updated', { party: String(party._id) }); } catch (e) { /* */ }
     res.json({ party: partyCardOf(party.toObject()) });
   } catch (e) { return sendMongooseError(res, e, 'تعذّر الحذف'); }
@@ -2810,8 +2818,8 @@ exports.applyContractPricing = async (req, res) => {
       changes: { after: { refNumber: clearance.refNumber, contractPricing: contract.title, route: `${target.contractPricing.routeFrom} → ${target.contractPricing.routeTo}` } },
       ipAddress: req.ip,
     }).catch(() => {});
-    try { emitToAll('customs:updated', { clearance }); } catch (_) { /* */ }
     cache.clear('customs:');
+    try { emitToAll('customs:updated', { clearance }); } catch (_) { /* */ }
     res.json({ clearance, contract: contractPricing.contractSummary(contract, clearance.toObject()) });
   } catch (e) {
     return sendMongooseError(res, e, 'تعذّر التعبئة من العقد');

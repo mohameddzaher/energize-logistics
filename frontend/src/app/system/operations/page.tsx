@@ -673,8 +673,11 @@ export default function OperationsWorkflowPage() {
     });
   };
 
-  const handleInlineSave = async () => {
+  // `over`: قيمٌ تُحفَظ فورًا مع ما في التعديل — اختيارُ نوع الدفع يُحفظ لحظةَ اختياره.
+  const editDataState = editData;
+  const handleInlineSave = async (over?: Record<string, any>) => {
     if (!editingId) return;
+    const editData = { ...editDataState, ...(over || {}) };
     // ── يُرسَل ما تغيّر لا الصفُّ كلُّه ──────────────────────────────────────
     // كانت الشاشة تبعث المستندَ بأكمله — بمعرّفه ومُنشئه وأقفاله وتواريخ
     // نظامه — فيُعاد كتابةُ ثلاثين حقلًا بقيمها نفسِها لتغيير حقلٍ واحد، ويُقرأ
@@ -729,8 +732,15 @@ export default function OperationsWorkflowPage() {
   // ويظهر «رُفض» على تعديلٍ صحيح.
   //
   // فلا يُفتح الوضعُ إلّا من هنا: الثلاثةُ تُضبط معًا أو لا تُضبط.
-  const beginEditField = (wf: Workflow, field: string | null) => {
+  const beginEditField = async (wf: Workflow, field: string | null) => {
     if (isLockedByOther(wf)) return;
+    // ── ما عُدِّل في صفٍّ آخر يُحفظ قبل الانتقال (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ──
+    // كان الضغطُ على خانةٍ في صفٍّ آخر يرمي التعديلَ بلا حفظ: يظهر الاختيارُ
+    // في لحظته ثمّ يعود قديمًا عند الرجوع — فيبدو أنّ «نوع الدفع لا يتغيّر».
+    if (editingId && editingId !== wf._id) {
+      const dirty = Object.keys(editData).some((k) => (editData as any)[k] !== (editBase as any)[k] && typeof (editData as any)[k] !== 'object');
+      if (dirty) await handleInlineSave();
+    }
     setEditingId(wf._id);
     setEditData({ ...wf });
     setEditBase({ ...wf });
@@ -1613,7 +1623,7 @@ export default function OperationsWorkflowPage() {
                         />
                         {editingId === wf._id ? (
                           <>
-                            <button type="button" onClick={handleInlineSave} className="p-1 text-green-600 hover:text-green-700 rounded" title={lang === 'ar' ? 'حفظ' : 'Save'}>
+                            <button type="button" onClick={() => handleInlineSave()} className="p-1 text-green-600 hover:text-green-700 rounded" title={lang === 'ar' ? 'حفظ' : 'Save'}>
                               <Check className="w-3.5 h-3.5" />
                             </button>
                             <button type="button" onClick={handleInlineCancel} className="p-1 text-red-600 hover:text-red-700 rounded" title={lang === 'ar' ? 'إلغاء' : 'Cancel'}>
@@ -1814,7 +1824,7 @@ export default function OperationsWorkflowPage() {
                             return (
                               <select title={T.thPaymentType} className={ic}
                                 value={cur}
-                                onChange={(e) => setEditData((prev) => ({ ...prev, paymentType: e.target.value }))}>
+                                onChange={(e) => { const v = e.target.value; setEditData((prev) => ({ ...prev, paymentType: v })); handleInlineSave({ paymentType: v }); }}>
                                 <option value="" disabled>{lang === 'ar' ? '— اختر —' : '— select —'}</option>
                                 {(cur === 'cash' || cur === 'tax') && (
                                   <option value={cur} disabled>{paymentKindLabel(cur, lang === 'ar')}</option>

@@ -59,7 +59,7 @@ function mapShipment(x) {
     vehiclePlate: n(car.plate_number) || n(car.car_number),
     // المورّدُ في هذا النموذج ليس حقلًا: هو مالكُ الشاحنة — الشركةُ التي
     // نشتري منها النقلة، بسجلّها التجاريّ وشروط سدادها.
-    supplierName: n(owner.owner_name),
+    supplierName: require('../utils/arLetters').arLetters(n(owner.owner_name)),
     // المندوبُ هو `delegate`، لا `reference_num`. الأخيرُ رقمُ مرجعٍ عندهم،
     // وكان يُكتب في خانة الاسم فيُقرأ «١٢٣٤» مندوبًا.
     agentName: n(x.delegate && x.delegate.name),

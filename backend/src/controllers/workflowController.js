@@ -1158,6 +1158,25 @@ exports.getWorkflowStats = async (req, res) => {
     // وتُحسَب تحت الفلاتر القائمة عدا فلترَ الحالة نفسِه — كما يفعل إكسل: من
     // صفّى «في الطريق» يريد أن يرى بقيّةَ الحالات لينتقل إليها، لا أصفارًا.
     // و`skipField` هي الآليّةُ المكتوبةُ لذلك أصلًا في `buildWorkflowFilter`.
+    // ── مجموعُ الشراء: سيّاراتُ تنشيط · سيّاراتٌ خارجيّة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ──
+    // «كم اشتريتُ من سيّارات الشركة وكم من الخارج». سيّارةُ الشركة: مالكُها «تنشيط»
+    // أو لوحتُها من شاحنات لوكيشن سوليوشن (بالمفتاح الموحَّد للّوحة). والباقي خارجيّ.
+    // يُجمَع بالسيّارة والمالك في القاعدة، ويُقسَم هنا — آلافُ السيّارات لا عشراتُ الآلاف.
+    const purchaseSplit = { own: 0, external: 0, ownRows: 0, externalRows: 0 };
+    if (canSeeMoney(req.user.role) || (ROLE_FIELD_ACCESS[req.user.role] || []).includes('purchaseValue')) {
+      const { canonicalPlateKey } = require('../utils/plateKey');
+      const ls2 = await require('../models/Ls2Vehicle').find({}).select('plate').lean().catch(() => []);
+      const ours = new Set(ls2.map((v) => canonicalPlateKey(v.plate)).filter(Boolean));
+      const byCar = await OperationsWorkflow.aggregate([
+        { $match: filter },
+        { $group: { _id: { car: '$carNumber', owner: '$carOwner' }, v: { $sum: '$purchaseValue' }, n: { $sum: 1 } } },
+      ]);
+      for (const g of byCar) {
+        const own = /تنشيط/.test(String(g._id.owner || '')) || ours.has(canonicalPlateKey(g._id.car || ''));
+        purchaseSplit[own ? 'own' : 'external'] += g.v || 0;
+        purchaseSplit[own ? 'ownRows' : 'externalRows'] += g.n;
+      }
+    }
     const statusFree = buildWorkflowFilter(req.query, 'applicationStatus', canSeeMoney(req.user.role), canSeeSelling(req.user.role));
     const byStatusRows = await OperationsWorkflow.aggregate([
       { $match: statusFree },
@@ -1181,6 +1200,7 @@ exports.getWorkflowStats = async (req, res) => {
       pendingUntyped,
       pendingBondReceived,
       sumPurchaseValue: agg[0]?.sumPurchaseValue || 0,
+      purchaseSplit,
       byStage: stages.reduce((acc, r) => { acc[r._id || 'draft'] = r.count; return acc; }, {}),
       byStatus,
       statusTotal,

@@ -174,7 +174,7 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
         );
       })}
 
-      <Modal open={!!open} onClose={() => setOpen(null)} wide title={cur ? `${cur.title} (${cur.n.toLocaleString('en-US')})` : ''}>
+      <Modal open={!!open} onClose={() => setOpen(null)} wide={open !== 'gaps'} title={cur ? `${cur.title} (${cur.n.toLocaleString('en-US')})` : ''}>
         <div className="space-y-3 text-sm" dir={ar ? 'rtl' : 'ltr'}>
           {open === 'gaps' && (
             <p className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[12.5px] leading-6 text-violet-900">
@@ -206,6 +206,20 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
           ) : !shown.length ? (
             <p className="py-8 text-center text-slate-400">{t('لا شيء هنا', 'Nothing here')}</p>
           ) : (
+            open === 'gaps' ? (
+              /* رقمٌ واحدٌ في كلّ صفّ كان يُمدّ بعرض النافذة كلِّها — فصارت الأرقامُ
+                 شبكةً متراصّة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢). */
+              <div className="max-h-[55vh] overflow-auto rounded-lg border border-slate-200 bg-white p-2">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-1.5">
+                  {shown.slice(0, 3000).map((r, i) => (
+                    <span key={`${r.invoiceNumber}-${i}`} className="rounded-md border border-violet-100 bg-violet-50/60 px-2 py-1 text-center text-[12.5px] font-semibold tabular-nums text-violet-900">
+                      {r.invoiceNumber}
+                    </span>
+                  ))}
+                </div>
+                {shown.length > 3000 && <p className="px-1 pt-2 text-[11px] text-slate-400">{t(`أوّل ٣٠٠٠ من ${shown.length} — الإكسل فيه الكلّ`, `First 3000 of ${shown.length} — the Excel file has all`)}</p>}
+              </div>
+            ) : (
             <div className="max-h-[55vh] overflow-auto rounded-lg border border-slate-200 bg-white">
               <table className="w-full text-[12.5px]">
                 <thead className="sticky top-0 bg-slate-900 text-slate-200">
@@ -225,6 +239,7 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
               </table>
               {shown.length > 1000 && <p className="px-2 py-1 text-[11px] text-slate-400">{t(`أوّل ١٠٠٠ من ${shown.length} — الإكسل فيه الكلّ`, `First 1000 of ${shown.length} — the Excel file has all`)}</p>}
             </div>
+            )
           )}
           {sum.lastUpload && (
             <p className="text-[11px] text-slate-400">

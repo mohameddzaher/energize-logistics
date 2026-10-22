@@ -12,6 +12,7 @@ const upl = require('./uplClient');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
 const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
+const { arLetters } = require('../utils/arLetters');
 const { derivePaymentTypeFor, ISSUED_INVOICE_EXPR, subtypeAfterAutoExpr } = require('../utils/paymentType');
 
 
@@ -58,7 +59,7 @@ function mapShipment(s) {
     fromLocation: s.address_from || '',
     toLocation: s.address_to || '',
     branch: loc(s.branch),
-    carOwner: s.car?.owner?.owner_name || '',
+    carOwner: arLetters(s.car?.owner?.owner_name || ''),
     carNumber: s.car?.car_number || '',
     ownerType: s.creator_type || '',
     // Store the RAW values from UPL — translation happens in the UI (so new
@@ -85,7 +86,7 @@ function mapShipment(s) {
     country: loc(s.country),
     driverRentalType: s.driver_rental_type || '',
     driverCost: Number(s.driver_rental_price) || 0,
-    ownerName: s.car?.owner?.owner_name || '',
+    ownerName: arLetters(s.car?.owner?.owner_name || ''),
     ownerPhone: s.car?.owner?.owner_phone || '',
     externalSource: SOURCE,
     externalId: String(s.id),

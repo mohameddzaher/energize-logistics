@@ -73,7 +73,6 @@ const _barFields = [
   ('toLocation', 'إلى', 'To', false),
   ('paymentType', 'نوع الدفع', 'Payment type', false),
   ('applicationStatus', 'حالة الطلب', 'Status', false),
-  ('executionStatus', 'حالة التنفيذ', 'Execution', false),
   ('driverName', 'السائق', 'Driver', false),
   ('carNumber', 'رقم السيارة', 'Vehicle', false),
   ('carOwner', 'مالك السيارة', 'Car owner', false),
@@ -468,8 +467,6 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
       (tr('اللوحة', 'Plate'), w['plateNumber']),
       (tr('السائق', 'Driver'), w['driverName']),
       (tr('هاتف السائق', 'Driver phone'), w['driverPhone']),
-      (tr('حالة التنفيذ', 'Execution status'), w['executionStatus']),
-      (tr('طريقة الدفع', 'Payment method'), w['paymentMethod']),
       (tr('نوع الدفع', 'Payment type'), _paymentKindLabel(_paymentKindOf(w))),
       (tr('قيمة الشراء', 'Purchase value'), w['purchaseValue'] != null ? '${_money(w['purchaseValue'])} ر.س' : null),
       // قيمةُ البيع لا تصل مَن ليس في قائمتها أصلًا — الخادمُ يحجبها.
@@ -566,7 +563,11 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                               onTap: () { _pendingOnly = !_pendingOnly; _reload(); }),
                           _statCard(tr('سند لم يصل وحالته «استُلم»', 'Pending, status received'), '${_stats['pendingBondReceived'] ?? 0}', T.danger),
                           if (_stats['sumPurchaseValue'] != null)
-                            _statCard(tr('قيمة الشراء', 'Purchase'), _money(_stats['sumPurchaseValue']), T.violet),
+                            // المجموعُ، وتحته: سيّاراتُ تنشيط · سيّاراتٌ خارجيّة (٢٠٢٦/١٠/٢٢).
+                            _statCard(tr('قيمة الشراء', 'Purchase'), _money(_stats['sumPurchaseValue']), T.violet,
+                                sub: _stats['purchaseSplit'] is Map
+                                    ? '${tr('تنشيط', 'Tanshit')} ${_money((_stats['purchaseSplit'] as Map)['own'])} · ${tr('خارجية', 'External')} ${_money((_stats['purchaseSplit'] as Map)['external'])}'
+                                    : null),
                           if (_checks != null)
                             for (final k in _checkKinds)
                               _statCard(tr(k.$2, k.$3), '${(_checks![_checkKey(k.$1)] as Map?)?['count'] ?? 0}', k.$4,

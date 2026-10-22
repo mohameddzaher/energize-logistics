@@ -853,7 +853,9 @@ const LIST_FIELDS = [
 // GET /api/workflows
 exports.getWorkflows = async (req, res) => {
   try {
-    const { page = 1, limit = 50 } = req.query;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    // صفوفُ الصفحة يختارها المستخدم (٢٠٢٦/١٠/٢٢) — وحدٌّ أعلى ٥٠٠.
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 50));
     // شرطُ البحث يُبنى في مكانٍ واحد يقرأه الجدول والإحصاءات والتصدير معًا، فلا
     // يعرض عدّاد الصفوف رقمًا ويعرض الجدول تحته صفوف شرطٍ آخر.
     const filter = buildWorkflowFilter(req.query, undefined, canSeeMoney(req.user.role), canSeeSelling(req.user.role));
@@ -942,6 +944,11 @@ function buildWorkflowFilter(query, skipField, allowMoney = true, allowSelling =
   // ── «مرتبطٌ بالتخليص» / «غيرُ مرتبط» / معاملةٌ بعينها ───────────────────
   // شريطُ الفلترة فوق الجدول وزرُّ «كشوف التشغيل» في صفحة المعاملة يقولانها
   // بكلمة: `customs=linked|unlinked|<معرّف المعاملة>`.
+  // ── «باستثناء الملغاة» (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ───────────────────────
+  // زرٌّ يثبت حتى يُلغى: الأرقامُ والجدولُ والتصديرُ كلُّها بلا الكشوف الملغاة.
+  if (String((query && query.excludeCancelled) || '') === '1') {
+    filter.$and = [...(filter.$and || []), { applicationStatus: { $nin: CANCELLED } }];
+  }
   const customs = String((query && query.customs) || '');
   if (customs === 'linked') filter.$and = [...(filter.$and || []), LINKED];
   else if (customs === 'unlinked') filter.$and = [...(filter.$and || []), { 'customsLink.clearance': { $not: { $type: 'objectId' } } }];

@@ -70,9 +70,15 @@ export default function HrQuickFilters({ optionsUrl, optionsParams, value, onCha
 
   useEffect(() => {
     if (!open) return undefined;
-    const close = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(''); };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
+    // تُغلَق بأيّ ضغطةٍ خارجَ الفلتر المفتوح نفسِه (٢٠٢٦/١٠/٢٢) — وبزرّ Esc.
+    const close = (e: Event) => {
+      const el = (e.target as HTMLElement | null)?.closest?.('[data-qf-field]');
+      if (!el || el.getAttribute('data-qf-field') !== open) setOpen('');
+    };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(''); };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', esc); };
   }, [open]);
 
   const set = (key: string, vals: string[]) => {
@@ -96,7 +102,7 @@ export default function HrQuickFilters({ optionsUrl, optionsParams, value, onCha
           return l || (v === '—' ? t('غير محدد', 'Not set') : v);
         };
         return (
-          <div key={k.key} className="relative">
+          <div key={k.key} data-qf-field={k.key} className="relative">
             <button type="button" onClick={(e) => {
               if (open !== k.key) {
                 const r = e.currentTarget.getBoundingClientRect();

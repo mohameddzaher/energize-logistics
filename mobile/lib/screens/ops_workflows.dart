@@ -107,6 +107,8 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   final Map<String, Set<String>> _cf = {};
   /// «سندات لم تصل» — الإجماليُّ وحدَه (أُزيلت بطاقتا الكاش والضريبيّ كالويب).
   bool _pendingOnly = false;
+  // «باستثناء الملغاة» — كالموقع (٢٠٢٦/١٠/٢٢).
+  bool _excludeCancelled = false;
   /// «التخليص»: '' الكلّ، `linked` المرتبطة، `unlinked` غيرُ المرتبطة — كالويب.
   String _customs = '';
   /// ربطُ الكشف بمعاملة تخليص — يقوله الخادم (canLinkCustoms).
@@ -156,6 +158,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
             for (final v in e.value) 'cf_${e.key}=${Uri.encodeQueryComponent(v)}',
         if (_q.trim().isNotEmpty) 'search=${Uri.encodeQueryComponent(_q.trim())}',
         if (_pendingOnly) 'pendingOnly=true',
+        if (_excludeCancelled) 'excludeCancelled=1',
         if (_customs.isNotEmpty) 'customs=$_customs',
       ];
 
@@ -561,6 +564,9 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                               sub: tr('بلا تاريخ سداد · عدا الملغاة', 'no payment date'),
                               active: _pendingOnly,
                               onTap: () { _pendingOnly = !_pendingOnly; _reload(); }),
+                          _statCard(tr('باستثناء الملغاة', 'Excluding cancelled'), _excludeCancelled ? tr('مفعّل', 'On') : tr('متوقّف', 'Off'), T.inkSoft,
+                              active: _excludeCancelled,
+                              onTap: () { _excludeCancelled = !_excludeCancelled; _reload(); }),
                           _statCard(tr('سند لم يصل وحالته «استُلم»', 'Pending, status received'), '${_stats['pendingBondReceived'] ?? 0}', T.danger),
                           if (_stats['sumPurchaseValue'] != null)
                             // المجموعُ، وتحته: سيّاراتُ تنشيط · سيّاراتٌ خارجيّة (٢٠٢٦/١٠/٢٢).

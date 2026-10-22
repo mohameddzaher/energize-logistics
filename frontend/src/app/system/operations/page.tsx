@@ -18,7 +18,7 @@ import ManagedSelect from '@/components/system/ManagedSelect';
 import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import {
-  ClipboardList, Plus, Search, Filter, FilterX, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, AlertCircle, CheckSquare, Check, Receipt, AlertTriangle } from 'lucide-react';
+  ClipboardList, Plus, Search, Filter, FilterX, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, AlertCircle, CheckSquare, Check, Receipt, AlertTriangle, Ban } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
 import InvoiceImportButton from '@/components/operations/InvoiceImportButton';
 import WorkflowFilterBar, { type FilterBarField } from '@/components/operations/WorkflowFilterBar';
@@ -221,6 +221,21 @@ export default function OperationsWorkflowPage() {
   const [searching, setSearching] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  // «باستثناء الملغاة» يثبت حتى يُلغى، ويُحفَظ للمستخدم (٢٠٢٦/١٠/٢٢).
+  const [excludeCancelled, setExcludeCancelled] = useState<boolean>(() => {
+    try { return localStorage.getItem('ops:excludeCancelled') === '1'; } catch { return false; }
+  });
+  const toggleExcludeCancelled = () => setExcludeCancelled((v) => {
+    try { localStorage.setItem('ops:excludeCancelled', v ? '0' : '1'); } catch { /* */ }
+    setPage(1);
+    return !v;
+  });
+  // عددُ الصفوف في الصفحة يختاره المستخدم ويُحفَظ له (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
+  // والخادمُ لا يقبل أكثرَ من ٥٠٠ — صفحةٌ أكبرُ تثقل الجدولَ ولا يقرؤها أحد.
+  const [pageSize, setPageSize] = useState<number>(() => {
+    try { const v = Number(localStorage.getItem('ops:pageSize')); return [25, 50, 100, 200, 500].includes(v) ? v : 50; } catch { return 50; }
+  });
+  const changePageSize = (n: number) => { setPageSize(n); setPage(1); try { localStorage.setItem('ops:pageSize', String(n)); } catch { /* */ } };
   const [stageFilter, setStageFilter] = useState('');
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -385,11 +400,12 @@ export default function OperationsWorkflowPage() {
     if (dateTo) params.append('dateTo', dateTo);
     if (showPendingOnly) params.append('pendingOnly', 'true');
     if (customsMode) params.append('customs', customsMode);
+    if (excludeCancelled) params.append('excludeCancelled', '1');
     for (const [field, vals] of Object.entries(colFilters)) {
       vals.forEach((v) => params.append(`cf_${field}`, v));
     }
     return params;
-  }, [stageFilter, search, dateFrom, dateTo, showPendingOnly, customsMode, colFilters]);
+  }, [stageFilter, search, dateFrom, dateTo, showPendingOnly, customsMode, colFilters, excludeCancelled]);
 
   // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ────────────────────────────────────
   //
@@ -414,7 +430,7 @@ export default function OperationsWorkflowPage() {
       }
       const params = buildParams();
       params.append('page', String(page));
-      params.append('limit', '50');
+      params.append('limit', String(pageSize));
       const data = await api.get<any>(`/api/workflows?${params.toString()}`);
       if (!guard.isCurrent(mySeq)) return;   // سبقَه أحدثُ منه — يُهمَل
       setWorkflows(data.workflows || []);
@@ -433,7 +449,7 @@ export default function OperationsWorkflowPage() {
       if (guard.isCurrent(mySeq)) setLoading(false);
       initialLoadDone.current = true;
     }
-  }, [buildParams, page, guard]);
+  }, [buildParams, page, guard, pageSize]);
 
   // Initial load
   useEffect(() => { fetchWorkflows(); }, [fetchWorkflows]);
@@ -1413,7 +1429,13 @@ export default function OperationsWorkflowPage() {
               </button>
             )}
           </div>
-          {/* ── التخليص بكلمة: الكلّ · المرتبطة · غيرُ المرتبطة ─────────────────
+          <button type="button" onClick={toggleExcludeCancelled}
+          title={lang === 'ar' ? 'يبقى مفعّلًا حتى تلغيه — الأرقامُ والجدولُ والتصديرُ بلا الملغاة' : 'Stays on until you turn it off'}
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold ${excludeCancelled ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+          {excludeCancelled ? <Check className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+          {lang === 'ar' ? 'باستثناء الملغاة' : 'Excluding cancelled'}
+        </button>
+        {/* ── التخليص بكلمة: الكلّ · المرتبطة · غيرُ المرتبطة ─────────────────
               وفلترُ العمود «التخليص» يختار معاملةً بعينها. */}
           <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-0.5 text-xs">
             <span className="px-2 text-slate-500">{lang === 'ar' ? 'التخليص' : 'Customs'}</span>
@@ -1920,12 +1942,18 @@ export default function OperationsWorkflowPage() {
         {/* التصفّح كلّه في الخادم — بما في ذلك حالة الفلترة. الصفحة الواحدة خمسون
             صفًّا مهما بلغ عدد المطابق، فلا يُرسم في التبويب جدولٌ بعشرات الآلاف من
             الصفوف يجمّده. */}
-        {total > 50 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
-            <span className="text-slate-500 text-sm">{T.showing} {(page - 1) * 50 + 1}-{Math.min(page * 50, total)} {T.of} {total}{hasColFilters ? ` (${lang === 'ar' ? 'مُفلتر' : 'filtered'})` : ''}</span>
-            <div className="flex gap-2">
+        {total > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-slate-200">
+            <span className="text-slate-500 text-sm">{T.showing} {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, total)} {T.of} {total}{hasColFilters ? ` (${lang === 'ar' ? 'مُفلتر' : 'filtered'})` : ''}</span>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5 text-sm text-slate-500">
+                {lang === 'ar' ? 'صفوف في الصفحة' : 'Rows per page'}
+                <select value={pageSize} onChange={(e) => changePageSize(Number(e.target.value))} className="rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700">
+                  {[25, 50, 100, 200, 500].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
               <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 rounded bg-slate-100 text-slate-700 text-sm disabled:opacity-50">{T.previous}</button>
-              <button type="button" onClick={() => setPage((p) => p + 1)} disabled={page * 50 >= total} className="px-3 py-1 rounded bg-slate-100 text-slate-700 text-sm disabled:opacity-50">{T.next}</button>
+              <button type="button" onClick={() => setPage((p) => p + 1)} disabled={page * pageSize >= total} className="px-3 py-1 rounded bg-slate-100 text-slate-700 text-sm disabled:opacity-50">{T.next}</button>
             </div>
           </div>
         )}

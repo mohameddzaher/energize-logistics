@@ -78,9 +78,16 @@ export default function WorkflowFilterBar({ fields, value, onChange, params, for
 
   useEffect(() => {
     if (!open) return undefined;
-    const close = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(''); };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
+    // تُغلَق بأيّ ضغطةٍ خارجَ الفلتر المفتوح نفسِه — لا خارجَ الشريط كلِّه: كان الضغطُ
+    // في فراغ الشريط أو على فلترٍ آخر يُبقيها مفتوحة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
+    const close = (e: Event) => {
+      const el = (e.target as HTMLElement | null)?.closest?.('[data-wf-field]');
+      if (!el || el.getAttribute('data-wf-field') !== open) setOpen('');
+    };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(''); };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', esc); };
   }, [open]);
 
   const typeQuery = (v: string) => {
@@ -103,7 +110,7 @@ export default function WorkflowFilterBar({ fields, value, onChange, params, for
         const label = (v: string) => (v === '' ? t('(فارغ)', '(blank)') : (fmt ? fmt(v) : v));
         const first = on ? [...sel][0] : '';
         return (
-          <div key={f.key} className="relative">
+          <div key={f.key} data-wf-field={f.key} className="relative">
             <button type="button"
               onClick={(e) => {
                 if (open === f.key) { setOpen(''); return; }

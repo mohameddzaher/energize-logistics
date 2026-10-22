@@ -569,11 +569,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                               onTap: () { _excludeCancelled = !_excludeCancelled; _reload(); }),
                           _statCard(tr('سند لم يصل وحالته «استُلم»', 'Pending, status received'), '${_stats['pendingBondReceived'] ?? 0}', T.danger),
                           if (_stats['sumPurchaseValue'] != null)
-                            // المجموعُ، وتحته: سيّاراتُ تنشيط · سيّاراتٌ خارجيّة (٢٠٢٦/١٠/٢٢).
-                            _statCard(tr('قيمة الشراء', 'Purchase'), _money(_stats['sumPurchaseValue']), T.violet,
-                                sub: _stats['purchaseSplit'] is Map
-                                    ? '${tr('تنشيط', 'Tanshit')} ${_money((_stats['purchaseSplit'] as Map)['own'])} · ${tr('خارجية', 'External')} ${_money((_stats['purchaseSplit'] as Map)['external'])}'
-                                    : null),
+                            _statCard(tr('قيمة الشراء', 'Purchase'), _money(_stats['sumPurchaseValue']), T.violet),
                           if (_checks != null)
                             for (final k in _checkKinds)
                               _statCard(tr(k.$2, k.$3), '${(_checks![_checkKey(k.$1)] as Map?)?['count'] ?? 0}', k.$4,

@@ -383,7 +383,6 @@ export default function OperationsWorkflowPage() {
   const [stats, setStats] = useState<{
     total: number; pendingInvoices: number;
     pendingBondReceived: number; sumPurchaseValue: number;
-    purchaseSplit?: { own: number; external: number; ownRows: number; externalRows: number };
     byStage: Record<string, number>; byStatus: Record<string, number>; statusTotal: number;
   }>({ total: 0, pendingInvoices: 0, pendingBondReceived: 0, sumPurchaseValue: 0, byStage: {}, byStatus: {}, statusTotal: 0 });
 
@@ -480,7 +479,6 @@ export default function OperationsWorkflowPage() {
         pendingInvoices: data.pendingInvoices || 0,
         pendingBondReceived: data.pendingBondReceived || 0,
         sumPurchaseValue: data.sumPurchaseValue || 0,
-        purchaseSplit: data.purchaseSplit,
         byStage: data.byStage || {},
         byStatus: data.byStatus || {},
         statusTotal: data.statusTotal || 0,
@@ -1345,25 +1343,11 @@ export default function OperationsWorkflowPage() {
 
         {/* ── مجموعُ قيمة الشراء — لمن يملك الحقلَ نفسَه (`purchaseValue`). */}
         {(full || has('purchaseValue')) && (
-          /* ── المجموعُ فوق، وتحته نصفان: سيّاراتُ تنشيط · سيّاراتٌ خارجيّة (٢٠٢٦/١٠/٢٢).
-              سيّارةُ الشركة: مالكُها «تنشيط» أو لوحتُها من شاحنات لوكيشن سوليوشن — راجع
-              purchaseSplit في getWorkflowStats. */
-          <div className={`${CARD} cursor-default hover:bg-white !items-stretch flex-col !gap-2`}>
-            <div className="flex items-center gap-3">
-              <FileSpreadsheet className="h-4 w-4 shrink-0 text-slate-400" />
-              <div className="flex flex-col items-start">
-                <span className={CARD_NUM}>{filteredPurchaseSum.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
-                <span className={CARD_LABEL}><span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400" />{lang === 'ar' ? 'مجموع قيمة الشراء (حسب الفلتر)' : 'Total purchase value (filtered)'}</span>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 divide-x divide-slate-100 rtl:divide-x-reverse border-t border-slate-100 pt-2 text-start">
-              {([['own', 'سيّارات تنشيط', 'Tanshit cars', 'bg-[#f37121]'], ['external', 'سيّارات خارجية', 'External cars', 'bg-slate-500']] as const).map(([k, ar, en, dot]) => (
-                <div key={k} className="min-w-0 px-2 first:ps-0 last:pe-0">
-                  <p className="truncate text-[14px] font-bold tabular-nums text-slate-900">{(stats.purchaseSplit?.[k] || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}</p>
-                  <p className="flex items-center gap-1 truncate text-[11px] text-slate-500"><span className={`inline-block h-1.5 w-1.5 rounded-full ${dot}`} />{lang === 'ar' ? ar : en}</p>
-                  <p className="text-[10.5px] tabular-nums text-slate-400">{(stats.purchaseSplit?.[k === 'own' ? 'ownRows' : 'externalRows'] || 0).toLocaleString('en-US')} {lang === 'ar' ? 'رحلة' : 'trips'}</p>
-                </div>
-              ))}
+          <div className={`${CARD} cursor-default hover:bg-white`}>
+            <FileSpreadsheet className="h-4 w-4 shrink-0 text-slate-400" />
+            <div className="flex flex-col items-start">
+              <span className={CARD_NUM}>{filteredPurchaseSum.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+              <span className={CARD_LABEL}><span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400" />{lang === 'ar' ? 'مجموع قيمة الشراء (حسب الفلتر)' : 'Total purchase value (filtered)'}</span>
             </div>
           </div>
         )}

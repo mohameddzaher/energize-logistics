@@ -178,3 +178,21 @@ input[type="week"] {
   line-height: 1rem;
 }
 .table-head th { color: inherit; }
+
+/* ── اللوحات: نصٌّ واضحٌ على الشاشات (صاحبُ الشركة، ٢٠٢٦/١٠/٢٣) ──────────────
+   «العناوين في الكروت باهتة، والخطُّ الفاصل لا يُرى» — في كلّ لوحات الأقسام.
+   فداخلَ [data-dash] (يضعه app/system/layout على مسارات اللوحات): الرماديُّ
+   الفاتح يغمق درجتين (إلّا فوق خلفيّةٍ داكنة)، والعناوينُ الصغيرة عريضة، والفواصلُ أوضح. قاعدةٌ واحدة
+   بدل تعديل أربعين صفحة، وكلُّ لوحةٍ جديدةٍ تأخذها وحدَها. */
+[data-dash] .text-slate-400:not(:is(.bg-slate-900, .bg-slate-800, .bg-black, .table-head) *) { color: #475569; }   /* → slate-600 */
+[data-dash] .text-slate-500:not(:is(.bg-slate-900, .bg-slate-800, .bg-black, .table-head) *) { color: #334155; }   /* → slate-700 */
+[data-dash] .text-slate-600:not(:is(.bg-slate-900, .bg-slate-800, .bg-black, .table-head) *) { color: #1e293b; }   /* → slate-800 */
+[data-dash] .text-slate-700:not(:is(.bg-slate-900, .bg-slate-800, .bg-black, .table-head) *) { color: #0f172a; }   /* → slate-900 */
+[data-dash] .font-normal.text-slate-400,
+[data-dash] .font-medium { font-weight: 700; }
+[data-dash] .font-semibold { font-weight: 700; }
+[data-dash] .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+[data-dash] .divide-slate-50 > :not([hidden]) ~ :not([hidden]) { border-color: #cbd5e1; }  /* → slate-300 */
+[data-dash] .divide-slate-200 > :not([hidden]) ~ :not([hidden]) { border-color: #94a3b8; } /* → slate-400 */
+[data-dash] .border-slate-100 { border-color: #cbd5e1; }
+[data-dash] .border-slate-200 { border-color: #cbd5e1; }

@@ -88,6 +88,9 @@ const CONTRACTS_ROLES = ['super_admin', 'admin', 'contracts_manager', 'it_manage
 // قائمةَ الأدوار بجانبه كانت تحجبه. القاعدةُ التي تحرس وحدَها لا يجوز أن تكون
 // خاطئة.
 // وحسابُ Media Go شريكٌ خارجيٌّ أيضًا — يرى شاشةً واحدة (MEDIAGO_ROLE أدناه).
+// ── اللوحات (صاحبُ الشركة، ٢٠٢٦/١٠/٢٣: «الكلام على الشاشة باهت») ──
+// كلُّ لوحة قسمٍ ولوحةِ JP والملخّصُ التنفيذيّ ولوحةُ المحافظ — وما يُضاف بعدها باسمها.
+const isDashboardPath = (p: string) => /\/(dashboard|jp-dashboard|wallet-dashboard|executive)(\/|$)/.test(p);
 const EXTERNAL_ROLES = ['client', 'partner', 'customer_portal', 'vendor_portal', 'mediago_account'];
 
 // ── الحسابُ المحصور ─────────────────────────────────────────────────────────
@@ -1199,7 +1202,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-4 md:p-6 overflow-x-auto min-w-0">
+        {/* لوحاتُ الأقسام تُعرَض على شاشة اجتماع — نصُّها أوضح (globals.css: [data-dash]). */}
+        <main className="flex-1 p-4 md:p-6 overflow-x-auto min-w-0" data-dash={isDashboardPath(pathname) ? '' : undefined}>
           {pageBlocked ? (
             <div className="max-w-lg mx-auto mt-16 text-center">
               <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-4">

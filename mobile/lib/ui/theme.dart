@@ -9,10 +9,11 @@ class T {
   static const orange = Color(0xFFF37121);
   static const canvas = Color(0xFFF4F6FA);
   static const card = Colors.white;
-  static const line = Color(0xFFE2E8F0);
+  // أغمقُ درجةً (٢٠٢٦/١٠/٢٣) — «الكلام باهت والفاصل لا يُرى»، كلوحات الموقع ([data-dash]).
+  static const line = Color(0xFFCBD5E1);
   static const ink = Color(0xFF0F172A);
-  static const inkSoft = Color(0xFF64748B);
-  static const inkFaint = Color(0xFF94A3B8);
+  static const inkSoft = Color(0xFF475569);
+  static const inkFaint = Color(0xFF64748B);
 
   static const success = Color(0xFF059669);
   static const warn = Color(0xFFD97706);

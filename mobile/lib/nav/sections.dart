@@ -1,3 +1,4 @@
+import '../screens/mediago_ads.dart';
 import '../screens/light_transport_profile.dart' show ltTransferRoles;
 import '../screens/jp.dart';
 import 'package:flutter/material.dart';
@@ -574,6 +575,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('متابعة مناديب أمازون', 'Amazon Reps Attendance', Icons.how_to_reg_outlined, (c) => const B2cAmazonAttendanceScreen(), path: '/system/b2c/amazon-attendance'),
         // شكاوى Media Go — بلاغاتُ أعطال الشاشات على الدبّابات، يراها حسابُ Media Go ويردّ.
         AppPage('شكاوى Media Go', 'Media Go Complaints', Icons.connected_tv_outlined, (c) => const MediaGoComplaintsScreen(), path: '/system/b2c/mediago-complaints'),
+        AppPage('المحتوى الإعلاني', 'Ad Content', Icons.movie_outlined, (c) => const MediaGoAdsScreen(), path: '/system/b2c/mediago-ads'),
         AppPage('تفقّد بداية الدوام', 'Duty Start Check', Icons.photo_camera_outlined, (c) => const B2cDutyScreen(), path: '/system/b2c/duty/start'),
         AppPage('سجل التفقّد', 'Duty Register', Icons.fact_check_outlined, (c) => const B2cDutyRegisterScreen(), path: '/system/b2c/duty'),
       ] : [
@@ -583,6 +585,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('متابعة مناديب أمازون', 'Amazon Reps Attendance', Icons.how_to_reg_outlined, (c) => const B2cAmazonAttendanceScreen(), path: '/system/b2c/amazon-attendance'),
         // شكاوى Media Go — بلاغاتُ أعطال الشاشات على الدبّابات، يراها حسابُ Media Go ويردّ.
         AppPage('شكاوى Media Go', 'Media Go Complaints', Icons.connected_tv_outlined, (c) => const MediaGoComplaintsScreen(), path: '/system/b2c/mediago-complaints'),
+        AppPage('المحتوى الإعلاني', 'Ad Content', Icons.movie_outlined, (c) => const MediaGoAdsScreen(), path: '/system/b2c/mediago-ads'),
         // تفقُّد بداية الدوام — أوّلُ ما يُفتَح صباحًا، فيُوضَع قبل ما دونه.
         // والمشرفُ يفتحه واقفًا في المحطّة لا خلف مكتب، فالهاتفُ موضعُه الأصليّ.
         AppPage('تفقّد بداية الدوام', 'Duty Start Check', Icons.photo_camera_outlined, (c) => const B2cDutyScreen(), path: '/system/b2c/duty/start'),

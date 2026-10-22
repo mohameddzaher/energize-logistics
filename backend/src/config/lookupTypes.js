@@ -260,6 +260,17 @@ const REGISTRY = [
    * مشروعُ موظّف B2C يُختار من `lt_project` ويملكه قسمُ B2C. وهذه لبقيّة الموظّفين.
    * وخيارُ «المشروع» في ملفّ الموظّف القائمتان معًا (utils/hrLists).
    */
+  // شركاتُ المحتوى الإعلانيّ — لمن تطلب Media Go التصوير (٢٠٢٦/١٠/٢٢). و`energize`
+  // شركتُنا: الطلبُ لها يُختار فيه مركباتُ النقل الخفيف (mediagoAdController).
+  {
+    type: 'mediago_ad_company',
+    module: 'b2c', nameEn: 'Ad content companies', nameAr: 'شركات المحتوى الإعلاني',
+    roles: ['b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager'],
+    seed: [
+      { key: 'energize', nameAr: 'إنرجايز', nameEn: 'Energize' },
+      { key: 'hero_mile', nameAr: 'هيرو مايل', nameEn: 'Hero Mile' },
+    ],
+  },
   {
     type: 'hr_project',
     module: 'hr', nameEn: 'Projects', nameAr: 'المشاريع',

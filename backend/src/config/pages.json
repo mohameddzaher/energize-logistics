@@ -1130,6 +1130,12 @@
       "en": "Media Go Complaints"
     },
     {
+      "key": "/system/b2c/mediago-ads",
+      "section": "B2C",
+      "ar": "المحتوى الإعلاني",
+      "en": "Ad Content"
+    },
+    {
       "key": "/system/b2c/amazon-attendance",
       "section": "B2C",
       "ar": "متابعة مناديب أمازون",

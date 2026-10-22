@@ -1,3 +1,4 @@
+import 'screens/mediago_ads.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'services/auth.dart';
@@ -60,7 +61,7 @@ class _Gate extends StatelessWidget {
       child: auth.user == null
           ? const LoginScreen()
           : auth.role == mediagoRole
-              ? const MediaGoComplaintsScreen(key: ValueKey('mediago-home'), partnerHome: true)
+              ? const MediaGoPartnerHome(key: ValueKey('mediago-home'), complaints: MediaGoComplaintsScreen(partnerHome: true))
               : const HomeScreen(),
     );
   }

@@ -27,15 +27,18 @@
 const MEDIAGO_ROLE = 'mediago_account';
 const MEDIAGO_PAGE = '/system/b2c/mediago-complaints';
 const MEDIAGO_API = '/api/b2c/mediago-complaints';
+// والمحتوى الإعلانيّ: تطلب فيه Media Go تصويرَ إعلاناتها على مركباتنا (٢٠٢٦/١٠/٢٢).
+const MEDIAGO_ADS_PAGE = '/system/b2c/mediago-ads';
+const MEDIAGO_ADS_API = '/api/b2c/mediago-ads';
 
 const SCOPED_ROLES = {
   [MEDIAGO_ROLE]: {
     home: MEDIAGO_PAGE,
-    pages: [MEDIAGO_PAGE],
+    pages: [MEDIAGO_PAGE, MEDIAGO_ADS_PAGE],
     // البادئاتُ المسموحة. الدخولُ والخروجُ وملفُّه وكلمةُ مروره (`/api/auth`)،
     // وجرسُ الإشعارات (لا يرى فيه إلّا ما أُرسل إليه باسمه — notificationController)،
     // وشاشتُه. والمرفقاتُ تُخدَم قبل هذا الحارس (`/api/uploads`، أسماءٌ عشوائيّة).
-    api: ['/api/auth', '/api/notifications', MEDIAGO_API, '/api/health'],
+    api: ['/api/auth', '/api/notifications', MEDIAGO_API, MEDIAGO_ADS_API, '/api/health'],
   },
 };
 
@@ -47,6 +50,6 @@ const EXTERNAL_ROLES = ['client', ...Object.keys(SCOPED_ROLES)];
 const isExternalRole = (role) => EXTERNAL_ROLES.includes(String(role || ''));
 
 module.exports = {
-  MEDIAGO_ROLE, MEDIAGO_PAGE, MEDIAGO_API,
+  MEDIAGO_ROLE, MEDIAGO_PAGE, MEDIAGO_API, MEDIAGO_ADS_PAGE, MEDIAGO_ADS_API,
   SCOPED_ROLES, isScopedRole, scopeOf, EXTERNAL_ROLES, isExternalRole,
 };

@@ -1606,6 +1606,12 @@
       ],
       "wildcard": false
     },
+    "/system/b2c/mediago-ads": {
+      "apis": [
+        "/api/b2c/mediago-ads"
+      ],
+      "wildcard": false
+    },
     "/system/b2c/amazon-attendance": {
       "apis": [
         "/api/b2c/attendance"

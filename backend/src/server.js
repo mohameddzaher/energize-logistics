@@ -294,6 +294,10 @@ app.use('/api/complaints', complaintRoutes);
   app.use('/api/b2c/mediago-complaints', authenticate,
     (req, res, next) => (isScopedRole(req.user.role) ? next() : b2cGate(req, res, next)),
     require('./routes/mediagoComplaints'));
+  // المحتوى الإعلانيّ — صفحةٌ ثانيةٌ مشتركةٌ مع Media Go بالحارس نفسِه (٢٠٢٦/١٠/٢٢).
+  app.use('/api/b2c/mediago-ads', authenticate,
+    (req, res, next) => (isScopedRole(req.user.role) ? next() : b2cGate(req, res, next)),
+    require('./routes/mediagoAds'));
 }
 app.use('/api/b2c', authenticate, sectionGate('B2C'), b2cRoutes);
 // النقلُ الخفيف: موظّفوه وسكنُهم وأوامرُ تشغيلهم — قسمُ B2C نفسُه يحرسه.

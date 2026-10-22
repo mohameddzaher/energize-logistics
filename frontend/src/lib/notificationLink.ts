@@ -20,6 +20,7 @@ const BY_ID: Record<string, (id: string) => string> = {
   CustomsClearance: (id) => `/system/customs/${id}`,
   // بلاغُ Media Go يُفتَح في قائمته، والمعرّفُ يفتح تفصيلَه — الشاشةُ واحدةٌ للطرفين.
   MediaGoComplaint: (id) => `/system/b2c/mediago-complaints?id=${id}`,
+  MediaGoAdRequest: (id) => `/system/b2c/mediago-ads?id=${id}`,
   // طلبُ الموارد البشريّة إلى الماليّة: يصل الماليّةَ في صندوقها، وردُّها يصل
   // صاحبَ الطلب في «متابعة المالية» — كيانان لوجهتين، والمعرّفُ يفتح الطلبَ نفسَه.
   HrFinanceRequest: (id) => `/system/finance/hr/residency?tab=requests&id=${id}`,

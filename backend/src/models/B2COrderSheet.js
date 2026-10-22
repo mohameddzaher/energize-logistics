@@ -80,3 +80,17 @@ const orderSchema = new mongoose.Schema({
 }, { timestamps: true });
 module.exports.B2CSheetOrder = mongoose.models.B2CSheetOrder || mongoose.model('B2CSheetOrder', orderSchema);
 module.exports.sheetsToken = sheetsToken;
+
+/**
+ * موضعُ كلّ حسابٍ في الشيت القديم لكلّ شهرٍ قبل أكتوبر ٢٠٢٦ — فتُرسم الشهورُ القديمةُ
+ * في الشيت الجديد بترتيبها هناك (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢). يملؤه مرّةً
+ * scripts/b2cLegacyRowOrder.js من الشيتات القديمة نفسِها؛ والشهورُ بعدها بالمشرف فالاسم.
+ */
+const legacyRowSchema = new mongoose.Schema({
+  project: { type: mongoose.Schema.Types.ObjectId, ref: 'B2CProject', required: true },
+  month: { type: String, required: true },             // YYYY-MM
+  rep: { type: mongoose.Schema.Types.ObjectId, ref: 'B2CRep', required: true },
+  pos: { type: Number, required: true },
+}, { timestamps: true });
+legacyRowSchema.index({ project: 1, month: 1, rep: 1 }, { unique: true });
+module.exports.B2CLegacyRow = mongoose.models.B2CLegacyRow || mongoose.model('B2CLegacyRow', legacyRowSchema);

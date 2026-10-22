@@ -137,8 +137,8 @@ async function monthStamps(project) {
   const by = new Map(agg.map((a) => [a._id, a]));
   const ord = await orderOf(project._id);
   const em = await headEmails();
-  // `L2`: عرضُ الشهور القديمة صار بالحساب كما في الشيت القديم — فتُعاد رسمُها كلُّها مرّة.
-  const tail = `L2.${ord?.updatedAt ? new Date(ord.updatedAt).getTime() : 0}.${em.at ? new Date(em.at).getTime() : 0}`;
+  // `L3`: الشهورُ القديمةُ بالحساب وبترتيب الشيت القديم — فتُعاد رسمُها كلُّها مرّة.
+  const tail = `L3.${ord?.updatedAt ? new Date(ord.updatedAt).getTime() : 0}.${em.at ? new Date(em.at).getTime() : 0}`;
   const out = {};
   for (const mk of monthsOf('all')) {
     const a = by.get(mk);
@@ -176,6 +176,11 @@ async function buildLayout(project, months) {
     name: S(r.englishName || r.arabicName), repId: S(r.repId), lt: r.ltEmployee ? String(r.ltEmployee) : null,
   }]));
   const first = months[0]; const last = months[months.length - 1];
+  const { B2CLegacyRow } = require('../models/B2COrderSheet');
+  const oldMonths = months.filter((mk) => mk < SYNC_FROM);
+  const legacyPos = new Map(oldMonths.length
+    ? (await B2CLegacyRow.find({ project: project._id, month: { $in: oldMonths } }).select('month rep pos').lean()).map((x) => [`${x.month}|${x.rep}`, x.pos])
+    : []);
   const orders = first ? await B2CDailyOrder.find({ dateKey: { $gte: `${first}-01`, $lte: `${last}-31` }, orders: { $ne: null } })
     .select('rep dateKey orders project').lean() : [];
 
@@ -202,6 +207,7 @@ async function buildLayout(project, months) {
         const a = acc.get(String(o.rep)); if (!a) continue;
         const row = rowFor(`acc:${o.rep}`, {
           id: a.repId || '—', name: UNKNOWN_NAME.test(a.name) ? 'غير معروف — كان مكتوبًا «ترك العمل»' : a.name, sup: '',
+          pos: legacyPos.get(`${mk}|${o.rep}`) ?? Infinity,
         });
         row.editable = false;
         const d = Number(o.dateKey.slice(8, 10));
@@ -248,8 +254,12 @@ async function buildLayout(project, months) {
     }
     // بالمشرف فالاسم، والحساباتُ القديمةُ بلا صاحبٍ في الآخر. ومَن نُقل يبقى بخانات «في X».
     // (ترتيبُ المناديب المحفوظ أُلغي — صاحبُ الشركة، ٢٠٢٦/١٠/٢٢.)
-    const list = [...rows.values()].sort((a, b) => (a.id === '—') - (b.id === '—')
-      || a.sup.localeCompare(b.sup, 'ar') || a.name.localeCompare(b.name, 'ar'));
+    // والشهرُ القديمُ بترتيب الشيت القديم نفسِه (B2CLegacyRow)، وما لم يُعرف موضعُه بعده.
+    const list = mk < SYNC_FROM
+      ? [...rows.values()].sort((a, b) => (a.pos === b.pos ? 0 : a.pos < b.pos ? -1 : 1) || a.name.localeCompare(b.name, 'ar'))
+      : [...rows.values()].sort((a, b) => (a.id === '—') - (b.id === '—')
+        || a.sup.localeCompare(b.sup, 'ar') || a.name.localeCompare(b.name, 'ar'));
+    for (const r of list) delete r.pos;
     out[mk] = { days, editable: mk >= SYNC_FROM, stamp: stamps[mk] || '', rows: list };
   }
   const daily = Number(project.dailyTarget) || Math.round((Number(project.monthlyTarget) || 0) / 30);

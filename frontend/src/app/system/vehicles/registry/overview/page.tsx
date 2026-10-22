@@ -19,6 +19,7 @@ import {
   ChevronLeft, Settings, CalendarClock, TriangleAlert, IdCard,
 } from 'lucide-react';
 import FilterPanel, { countActive, type FilterValues } from '@/components/system/FilterPanel';
+import HrQuickFilters from '@/components/hr/HrQuickFilters';
 import { stateMeta,
   getOverview, STATE_META, stateLabel, money, fmtDate, daysText,
   type VehicleOverview, type DocCard, type Breakdown,
@@ -75,7 +76,11 @@ function VehiclesOverviewInner() {
       Object.entries(filters).filter(([, v]) => v !== '' && v != null) as [string, string][]).toString();
     router.replace(`/system/vehicles/registry/overview${q ? `?${q}` : ''}`, { scroll: false });
   }, [JSON.stringify(filters), router]);
-  useSocket('vreg:updated', useCallback(() => { load(); }, [load]));
+  // والراكبُ والتفويضُ وحالةُ الموظّف تُكتب من B2C والموارد البشريّة أيضًا.
+  const reload = useCallback(() => { load(); }, [load]);
+  useSocket('vreg:updated', reload);
+  useSocket('lt:updated', reload);
+  useSocket('hr:employee', reload);
 
   /**
    * يفتح القائمة بنفس الفلتر الذي عدّ به الخادم — **مضافًا إليه الفلتر النشط**.
@@ -120,6 +125,32 @@ function VehiclesOverviewInner() {
           </button>
         </div>
       </PageHeader>
+
+      {/* ── الفلاترُ السريعة: الأعمدةُ المهمّة وحدَها ─────────────────────────
+          كشريط لوحة الموارد البشريّة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢): قوائمُ فيها بحثٌ
+          وعددُ كلّ قيمةٍ تحت بقيّة الفلاتر، تكتب في الفلتر نفسِه الذي تقرؤه
+          اللوحةُ كلُّها — والفلترةُ الكاملةُ بكلّ الأعمدة تبقى تحته لمن يريدها. */}
+      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
+        <p className="mb-2 text-[12px] font-bold text-slate-500">{t('فلترة اللوحة — كل الأرقام تتعدّل حسب اختيارك', 'Filter the dashboard — every number follows your choice')}</p>
+        <HrQuickFilters
+          optionsUrl="/api/vehicle-registry/filters"
+          value={filters}
+          onChange={setFilters}
+          ar={ar}
+          keys={[
+            { key: 'sector', ar: 'القطاع', en: 'Sector' },
+            { key: 'department', ar: 'الإدارة / المشروع', en: 'Department' },
+            { key: 'registrationType', ar: 'نوع التسجيل', en: 'Registration type' },
+            { key: 'brand', ar: 'الماركة', en: 'Brand' },
+            { key: 'city', ar: 'المدينة', en: 'City' },
+            { key: 'ownerCompany', ar: 'الشركة المالكة', en: 'Owner company' },
+            { key: 'serviceStatus', ar: 'حالة التشغيل', en: 'Service status' },
+            { key: 'authState', ar: 'التفويض', en: 'Authorisation' },
+            { key: 'documentHealth', ar: 'صحّة المستندات', en: 'Document health' },
+            { key: 'accidentBand', ar: 'الحوادث', en: 'Accidents' },
+          ]}
+        />
+      </div>
 
       {/* شريط الفلترة — كل رقم تحته محسوب عليه */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">

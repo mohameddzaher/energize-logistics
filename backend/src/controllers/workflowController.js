@@ -94,10 +94,14 @@ const FULL_FIELDS = [...ALL_FIELDS, ...SELLING_FIELDS];
 const SELLING_ROLES = [
   'super_admin', 'admin', 'cfo', 'accounting_manager', 'accountant',
   'collections_manager', 'collections_staff', 'operations_manager', 'general_manager',
+  // فريقُ البيانات (٢٠٢٦/١٠/٢٢) — ومديرُ النظام يضيّق قسمَ التشغيل من المصفوفة.
+  ...require('../config/roles').DATA_ROLES,
 ];
 
 const ROLE_FIELD_ACCESS = {
   super_admin: FULL_FIELDS,
+  // فريقُ البيانات: كلُّ الحقول، و«عرض» القسم في المصفوفة يمنع الكتابةَ قبلها.
+  ...Object.fromEntries(require('../config/roles').DATA_ROLES.map((r) => [r, FULL_FIELDS])),
   moderator: [...FIELD_GROUPS.application, ...FIELD_GROUPS.manual_moderator],
   operations_manager: [...OPS_FIELDS, ...SELLING_FIELDS],
   operations_staff: OPS_FIELDS,

@@ -118,6 +118,10 @@ module.exports = {
     h.b2c_inspection_supervisor = 'b2c_project_lead';
     // ومديرو المشاريع يتبعون نائبَ مدير القطاع إن وُجد (orgChart يصعد إلى المدير إن لم يوجد).
     h.b2c_project_lead = 'b2c_deputy';
+    // فريقُ البيانات: المحلّلُ ومدخلُ البيانات يتبعان مديرَ إدارة البيانات، وهو الإدارةَ العليا.
+    h.data_manager = 'admin';
+    h.data_analyst = 'data_manager';
+    h.data_entry = 'data_manager';
     return h;
   })(),
 

@@ -29,6 +29,15 @@ const GLOBAL_ROLES = [
   // اللاحقةُ لمديري الأقسام، وهو ليس مديرَ قسمٍ واحد. يُعدّ مديرًا في مراجعة
   // الأعمال من `EXTRA_MANAGER_ROLES`، وقسمُه الماليّ من `sections.defaultRoles`.
   { key: 'cfo', ar: 'المدير المالي', en: 'Chief Financial Officer' },
+  // ── إدارةُ البيانات ودعم القرار (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────────────
+  // فريقٌ يعمل على بيانات الأقسام كلِّها، فلا قسمَ له وحده. افتراضُه «تعديل» على
+  // كلّ قسم (`DATA_ROLES` في sections.defaultAccess) — ومديرُ النظام يضيّقه من
+  // صفحة الصلاحيّات قسمًا قسمًا، فما يُطلب فتحُه بعدها يُفتح بضغطة. وليسوا في
+  // `FULL_ACCESS_ROLES`: تلك تتجاوز المصفوفةَ فلا تُضيَّق أبدًا.
+  // ومديرُهم ينتهي بـ`_manager` عن قصد: مديرُ إدارةٍ يجلس في مراجعة الأعمال.
+  { key: 'data_manager', ar: 'مدير إدارة البيانات ودعم القرار', en: 'Data & Decision Support Manager' },
+  { key: 'data_analyst', ar: 'محلل بيانات', en: 'Data Analyst' },
+  { key: 'data_entry', ar: 'مدخل بيانات', en: 'Data Entry Specialist' },
   { key: 'employee', ar: 'موظف', en: 'Employee' },
   // شريك خارجي (عميل أو مورد) — له البوابة، مش أقسام الشركة.
   { key: 'client', ar: 'شريك خارجي', en: 'External Partner' },
@@ -291,7 +300,11 @@ const assertRolesCoverSections = (sectionKeys, exempt = []) => {
   if (problems.length) throw new Error('config/roles.js — ' + problems.join(' · '));
 };
 
+/** فريقُ البيانات — «تعديل» افتراضًا على كلّ قسم، ويضيّقه مديرُ النظام. */
+const DATA_ROLES = ['data_manager', 'data_analyst', 'data_entry'];
+
 module.exports = {
+  DATA_ROLES,
   GLOBAL_ROLES, SECTION_ROLES, assertRolesCoverSections,
   ALL_ROLES, ALL_ROLE_DEFS, MANAGER_ROLES, STAFF_ROLES, TRAINEE_ROLES, isTrainee,
   LABELS_AR, LABELS_EN,

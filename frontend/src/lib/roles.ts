@@ -29,6 +29,21 @@ export const GLOBAL_ROLES: RoleDef[] = [
     "en": "Chief Financial Officer"
   },
   {
+    "key": "data_manager",
+    "ar": "مدير إدارة البيانات ودعم القرار",
+    "en": "Data & Decision Support Manager"
+  },
+  {
+    "key": "data_analyst",
+    "ar": "محلل بيانات",
+    "en": "Data Analyst"
+  },
+  {
+    "key": "data_entry",
+    "ar": "مدخل بيانات",
+    "en": "Data Entry Specialist"
+  },
+  {
     "key": "employee",
     "ar": "موظف",
     "en": "Employee"

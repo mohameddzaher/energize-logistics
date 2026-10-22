@@ -284,7 +284,6 @@ export default function WalletPage() {
   // Expected dispatch-sheet values for the amount-match alert: purchaseValue
   // (سعر الشراء) for purchases, sellingValue (سعر البيع) for collections.
   const [expectedPurchaseValue, setExpectedPurchaseValue] = useState<number | null>(null);
-  const [expectedSellingValue, setExpectedSellingValue] = useState<number | null>(null);
   // Collection report lookup (search كشف التخريج to fetch the selling price)
   const [collectionReportMsg, setCollectionReportMsg] = useState('');
   const [collectionReportFound, setCollectionReportFound] = useState(false);
@@ -510,7 +509,9 @@ export default function WalletPage() {
         setSubmitting(false);
         return;
       }
-      const expected = txType === 'purchase' ? expectedPurchaseValue : txType === 'collection' ? expectedSellingValue : null;
+      // التحصيلُ لا يُقارَن بقيمة الكشف (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢): المحصَّلُ يختلف عنها
+      // بطبيعته، فيُكتب كما هو بلا تنبيهٍ ولا سبب.
+      const expected = txType === 'purchase' ? expectedPurchaseValue : null;
       const isMismatch = expected != null && Math.abs(Number(txForm.amount) - expected) > 0.009;
       if (isMismatch) {
         if (!txForm.mismatchReason) {
@@ -726,20 +727,18 @@ export default function WalletPage() {
     }
   };
 
-  // Search كشف التخريج for COLLECTIONS — fetch the expected selling price so we
-  // can flag a mismatch. Customer/invoice resolution still happens server-side.
+  // Search كشف التخريج for COLLECTIONS — confirms the report exists; the amount
+  // collected is typed freely (no expected value, no mismatch reason).
   const handleCollectionReportSearch = async () => {
     const q = txForm.deliveryStatementNumber.trim();
     if (!q) return;
     setCollectionReportMsg('');
     setCollectionReportFound(false);
-    setExpectedSellingValue(null);
     try {
       const data = await api.get<any>(`/api/wallet/lookup-report?reportNumber=${encodeURIComponent(q)}`);
       setTxForm((f) => ({ ...f, deliveryStatementNumber: data.reportNumber }));
-      setExpectedSellingValue(data.sellingValue != null ? Number(data.sellingValue) : null);
       setCollectionReportFound(true);
-      setCollectionReportMsg(`${txx.foundSellingPrice}: ${(data.sellingValue || 0).toLocaleString()}`);
+      setCollectionReportMsg(ar ? 'الكشف موجود ✓' : 'Report found ✓');
     } catch (err: any) {
       setCollectionReportFound(false);
       setCollectionReportMsg(err.message || txx.reportNotFound);
@@ -1011,7 +1010,6 @@ export default function WalletPage() {
     setPurchaseBond(null);
     setPurchaseInvoiceAmount(null);
     setExpectedPurchaseValue(null);
-    setExpectedSellingValue(null);
     setCollectionReportMsg('');
     setCollectionReportFound(false);
     setShowTxModal(true);
@@ -1570,7 +1568,7 @@ export default function WalletPage() {
                   {/* Amount-vs-dispatch-sheet alert. Green when it matches, amber
                       with a required reason dropdown when it differs. */}
                   {(() => {
-                    const expected = txType === 'purchase' ? expectedPurchaseValue : txType === 'collection' ? expectedSellingValue : null;
+                    const expected = txType === 'purchase' ? expectedPurchaseValue : null;
                     if (expected == null || !txForm.amount) return null;
                     const isPurchase = txType === 'purchase';
                     const differs = Math.abs(Number(txForm.amount) - expected) > 0.009;
@@ -1622,7 +1620,7 @@ export default function WalletPage() {
                         <label className="text-slate-500 text-xs mb-1 block">{L.deliveryStatementNumber} *</label>
                         <div className="flex gap-2">
                           <input type="text" value={txForm.deliveryStatementNumber}
-                            onChange={(e) => { setTxForm((f) => ({ ...f, deliveryStatementNumber: e.target.value })); setCollectionReportFound(false); setCollectionReportMsg(''); setExpectedSellingValue(null); }}
+                            onChange={(e) => { setTxForm((f) => ({ ...f, deliveryStatementNumber: e.target.value })); setCollectionReportFound(false); setCollectionReportMsg(''); }}
                             onKeyDown={(e) => e.key === 'Enter' && handleCollectionReportSearch()}
                             className="flex-1 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterDeliveryStatement} />
                           <button type="button" onClick={handleCollectionReportSearch} aria-label={txx.searchReport}

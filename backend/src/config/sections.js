@@ -220,6 +220,8 @@ const getSection = (key) => SECTIONS.find((s) => s.key === key);
 const { FULL_ACCESS_ROLES } = require('./constants');
 const defaultAccess = (role, sectionKey) => {
   if (FULL_ACCESS_ROLES.includes(role)) return 'edit';
+  // فريقُ البيانات: كلُّ قسمٍ افتراضًا، والمصفوفةُ المحفوظةُ تضيّق (راجع config/roles).
+  if (require('./roles').DATA_ROLES.includes(role)) return 'edit';
   // الدورُ المحصورُ لا قسمَ له: شاشتُه الواحدة في config/scopedRoles.js.
   if (require('./scopedRoles').isScopedRole(role)) return 'none';
   const s = getSection(sectionKey);

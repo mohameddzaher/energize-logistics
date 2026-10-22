@@ -119,6 +119,17 @@ const stampSection = (...sectionKeys) => async (req, res, next) => {
       if (saved === 'edit') { best = 'edit'; break; }
       if (saved === 'view' && best !== 'edit') best = 'view';
     }
+    // وبلا مصفوفةٍ محفوظة: الافتراضُ، كما في `sectionGate` — يمنح ولا يمنع. وإلّا
+    // فدورٌ افتراضُه «تعديل» (فريقُ البيانات) يُردّ عن سجلٍّ مشترك لم يُحفظ له فيه شيء.
+    if (!best) {
+      for (const key of sectionKeys) {
+        const k = getSection(key)?.key || key;
+        if ((await getOverride(req.user.role, k)) != null) continue;
+        const d = liftFinance(req.user.role, defaultAccess(req.user.role, k));
+        if (d === 'edit') { best = 'edit'; break; }
+        if (d === 'view') best = 'view';
+      }
+    }
     if (best) req.sectionAccess = best;
     return next();
   } catch (e) {

@@ -431,7 +431,7 @@ async function customs(p, user) {
       cancelled: { $ne: true },
       $expr: { $and: [{ $gte: [pk, ymNum(p.from)] }, { $lte: [pk, ymNum(p.to)] }] },
     })
-      .select('refNumber blNumber customerName agentParty shippingAgent branch port periodYear periodMonth costs revenue containerCount billing stage').lean(),
+      .select(`refNumber blNumber customerName agentParty shippingAgent branch port periodYear periodMonth costs revenue containerCount billing stage isCompleted ${require('../utils/customsInvoice').MONEY_SELECT}`).lean(),
   ]);
   const inRange = (f) => {
     if (!f.periodYear || !f.periodMonth) return false;
@@ -439,6 +439,11 @@ async function customs(p, user) {
     return k >= ym(p.from) && k <= ym(p.to);
   };
   const mine = files.filter(inRange);
+  // الإيرادُ إجماليُّ فاتورة العميل، والتكلفةُ مراحلُ السداد (utils/customsInvoice.moneyOf) —
+  // القاعدةُ نفسُها التي تحسب بها تحليلاتُ القسم.
+  const { moneyOf } = require('../utils/customsInvoice');
+  for (const f of mine) f._m = moneyOf(f);
+  const invoicedOf = (f) => !!f.saleInvoiceNumber || !!String(f.billing?.invoiceStatus || '').trim();
   const COST_AR = {
     deliveryOrder: 'إذن التسليم', customsDuty: 'الرسوم الجمركية', portFees: 'رسوم الميناء', unloadingFees: 'التفريغ',
     transport: 'النقل من الميناء إلى العميل', transportToYard: 'النقل من الميناء إلى الساحة',
@@ -446,7 +451,17 @@ async function customs(p, user) {
     demurrage: 'الأرضيات/التأخير', inspection: 'الكشف', extension: 'التمديد', consolidator: 'المجمِّع',
     commissions: 'العمولات', extraFees: 'أجور إضافية', storage: 'التخزين', exitPermit: 'إذن الخروج',
   };
-  const costRows = Object.entries(COST_AR).map(([k, ar]) => ({ item: ar, amount: round(sum(mine, (f) => f.costs?.[k])) })).filter((r) => r.amount);
+  // البنودُ من مراحل السداد نفسِها (بأسمائها)، والمعاملاتُ المستوردةُ بلا مبالغَ في مراحلها من بنود تكاليفها.
+  const itemSum = new Map();
+  const addItem = (name, v) => { if (v) itemSum.set(name, (itemSum.get(name) || 0) + v); };
+  for (const f of mine) {
+    if (f._m.legacy || !(f.paymentStages || []).some((x) => Number(x?.amount))) {
+      for (const [k, ar] of Object.entries(COST_AR)) addItem(ar, Number(f.costs?.[k]) || 0);
+    } else {
+      for (const x of f.paymentStages || []) if (x && x.payStatus !== 'rejected') addItem(x.label || x.key, Number(x.amount) || 0);
+    }
+  }
+  const costRows = [...itemSum.entries()].map(([item, amount]) => ({ item, amount: round(amount) })).filter((r) => r.amount);
   const T = a?.totals || {};
   const groupCols = [col('name', 'الاسم', 'Name'), col('count', 'المعاملات', 'Files', 'number'), col('containers', 'الحاويات', 'Containers', 'number'), col('revenue', 'الإيراد', 'Revenue', 'money'), col('costs', 'التكاليف', 'Costs', 'money'), col('profit', 'الربح', 'Profit', 'money'), col('clearanceFee', 'أتعاب التخليص', 'Clearance fees', 'money')];
   const g = (rows) => (rows || []).map((r) => ({ name: r.key, count: r.count, containers: r.containers, revenue: round(r.revenue), costs: round(r.costs), profit: round(r.profit), clearanceFee: round(r.clearanceFee) }));
@@ -457,8 +472,11 @@ async function customs(p, user) {
       card('profit', 'صافي الربح', 'Net profit', T.netProfit, { tone: (T.netProfit || 0) >= 0 ? 'good' : 'bad' }),
       card('margin', 'هامش الربح', 'Margin', (T.margin || 0) * 100, { format: 'pct' }),
       card('fees', 'أتعاب التخليص', 'Clearance fees', T.clearanceFees),
-      card('avgInvoice', 'متوسط الفاتورة', 'Average invoice', T.avgInvoice),
+      card('avgInvoice', 'متوسط الفاتورة', 'Average invoice', T.invoiced ? round((T.totalRevenue || 0) / T.invoiced) : 0),
       card('files', 'المعاملات', 'Files', T.clearances, { format: 'number' }),
+      card('closedInvoiced', 'مغلقة مفوترة', 'Closed · invoiced', mine.filter((f) => f.isCompleted && invoicedOf(f)).length, { format: 'number', tone: 'good' }),
+      card('closedNotInvoiced', 'مغلقة لم تُفوتر', 'Closed · not invoiced', mine.filter((f) => f.isCompleted && !invoicedOf(f)).length, { format: 'number', tone: mine.some((f) => f.isCompleted && !invoicedOf(f)) ? 'warn' : 'neutral' }),
+      card('openNotInvoiced', 'مفتوحة لم تُفوتر', 'Open · not invoiced', mine.filter((f) => !f.isCompleted && !invoicedOf(f)).length, { format: 'number' }),
       card('notInvoiced', 'معاملات لم تُفوتر', 'Not invoiced', T.notInvoiced, { format: 'number', tone: T.notInvoiced ? 'warn' : 'neutral' }),
     ],
     tables: [
@@ -469,11 +487,11 @@ async function customs(p, user) {
       { key: 'costItems', ar: 'التكاليف حسب البند', en: 'Costs by item', columns: [col('item', 'البند', 'Item'), col('amount', 'المبلغ', 'Amount', 'money')], rows: costRows.sort((x, y) => y.amount - x.amount) },
       {
         key: 'files', ar: 'المعاملات', en: 'Files',
-        columns: [col('ref', 'رقم المعاملة', 'Transaction'), col('customer', 'العميل', 'Customer'), col('bl', 'رقم البوليصة', 'BL'), col('branch', 'الفرع', 'Branch'), col('period', 'الشهر', 'Month'), col('containers', 'الحاويات', 'Containers', 'number'), col('revenue', 'الإيراد', 'Revenue', 'money'), col('costs', 'التكاليف', 'Costs', 'money'), col('profit', 'الربح', 'Profit', 'money'), col('invoice', 'حالة الفوترة', 'Invoicing')],
-        rows: mine.map((f) => ({ _open: true, _customsId: String(f._id), ref: f.refNumber, bl: f.blNumber, customer: f.customerName, branch: f.branch === 'dammam' ? 'الدمام' : f.branch === 'jeddah' ? 'جدة' : f.branch, period: `${f.periodYear}-${String(f.periodMonth).padStart(2, '0')}`, containers: f.containerCount, revenue: round(f.revenue?.totalInvoiced), costs: round(f.costs?.total), profit: round(f.revenue?.profit), invoice: f.billing?.invoiceStatus || '' })),
+        columns: [col('ref', 'رقم المعاملة', 'Transaction'), col('customer', 'العميل', 'Customer'), col('bl', 'رقم البوليصة', 'BL'), col('branch', 'الفرع', 'Branch'), col('period', 'الشهر', 'Month'), col('containers', 'الحاويات', 'Containers', 'number'), col('revenue', 'الإيراد', 'Revenue', 'money'), col('costs', 'التكاليف', 'Costs', 'money'), col('profit', 'الربح', 'Profit', 'money'), col('state', 'الحالة', 'State'), col('invoice', 'الفاتورة', 'Invoice')],
+        rows: mine.map((f) => ({ _open: true, _customsId: String(f._id), ref: f.refNumber, bl: f.blNumber, customer: f.customerName, branch: f.branch === 'dammam' ? 'الدمام' : f.branch === 'jeddah' ? 'جدة' : f.branch, period: `${f.periodYear}-${String(f.periodMonth).padStart(2, '0')}`, containers: f.containerCount, revenue: round(f._m.revenue), costs: round(f._m.cost), profit: round(f._m.profit), state: f.isCompleted ? (invoicedOf(f) ? 'مغلقة مفوترة' : 'مغلقة لم تُفوتر') : (invoicedOf(f) ? 'مفتوحة مفوترة' : 'مفتوحة'), invoice: f.saleInvoiceNumber || f.billing?.invoiceStatus || '' })),
       },
     ],
-    notes: [{ ar: 'نقلُ الساحة وبيعُ النقل مستثنيان من الربح عمدًا في حساب القسم كي لا يُعدّا مرّتين.', en: 'Yard transport and transport selling are excluded from profit by design.' }],
+    notes: [{ ar: 'الإيرادُ إجماليُّ فاتورة العميل (شاملًا الضريبة)، والتكاليفُ مجموعُ مراحل السداد، والربحُ = الإيراد − الضريبة − التكاليف. والمعاملةُ التي لم تُفوتَر بعدُ لا إيرادَ لها.', en: 'Revenue = customer invoice total (incl. VAT); costs = payment stages; profit = revenue − VAT − costs. Uninvoiced files carry no revenue yet.' }],
   };
 }
 

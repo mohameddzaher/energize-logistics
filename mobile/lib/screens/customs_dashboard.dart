@@ -271,7 +271,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
     final awaiting = r['awaitingTransportInvoice'] == true;
     final state = switch (bucket) {
       'upcoming' => [tr('قادمة', 'Upcoming'), if ('${r['expectedDate'] ?? ''}'.isNotEmpty) '${r['expectedDate']}'].join(' · '),
-      'closed' => tr('مغلقة', 'Closed'),
+      'closed' => r['invoiced'] == true ? tr('مغلقة مفوترة', 'Closed · invoiced') : tr('مغلقة لم تُفوتَر', 'Closed · not invoiced'),
       'cancelled' => tr('ملغاة', 'Cancelled'),
       _ => '${r['next'] ?? ''}'.isEmpty
           ? tr('اكتملت مراحلُها — تنتظر الإنهاء', 'All stages done — awaiting closure')
@@ -384,7 +384,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
           _card(tr('مفتوحة', 'Open'), _i(n['open']), T.navy, Icons.directions_boat_outlined, (r) => r['bucket'] == 'open',
               sub: tr('${_i(n['openContainers'])} حاوية · ${_i(n['openVehicles'])} سيّارة', '${_i(n['openContainers'])} containers · ${_i(n['openVehicles'])} vehicles')),
           _card(tr('مغلقة', 'Closed'), _i(n['closed']), T.success, Icons.task_alt_outlined, (r) => r['bucket'] == 'closed',
-              sub: tr('${_i(n['closedThisMonth'])} هذا الشهر', '${_i(n['closedThisMonth'])} this month')),
+              sub: tr('${_i(n['closedInvoiced'])} مفوترة · ${_i(n['closedNotInvoiced'])} لم تُفوتَر', '${_i(n['closedInvoiced'])} invoiced · ${_i(n['closedNotInvoiced'])} not invoiced')),
           _card(tr('عملاء نعمل معهم الآن', 'Active customers'), _i(n['activeCustomers']), T.violet, Icons.people_outline, (r) => r['bucket'] == 'open',
               sub: tr('من ${_i(n['customers'])} عميلًا', 'of ${_i(n['customers'])} customers')),
         ],
@@ -400,6 +400,9 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
           // أُغلقت ولم تصدر فاتورتُها: مالٌ خرج من قوائم المتابعة ولم يُطالَب به.
           _card(tr('مغلقة لم تُفوتَر', 'Closed, not invoiced'), _i(n['closedNotInvoiced']), T.danger, Icons.receipt_long_outlined,
               (r) => r['bucket'] == 'closed' && r['invoiced'] != true),
+          // والمغلقةُ المفوترة — وإليها تنتقل الأولى حين تصدر فاتورتُها.
+          _card(tr('مغلقة مفوترة', 'Closed, invoiced'), _i(n['closedInvoiced']), T.success, Icons.verified_outlined,
+              (r) => r['bucket'] == 'closed' && r['invoiced'] == true),
           _card(tr('مفتوحة لم تُفوتَر', 'Open, not invoiced'), _i(n['notInvoiced']), T.warn, Icons.pending_actions_outlined,
               (r) => r['bucket'] == 'open' && r['invoiced'] != true),
           _card(tr('طلبات صرف معلّقة', 'Pending payment requests'), _i(n['pendingPayments']), T.warn, Icons.payments_outlined, (r) => _i(r['pendingPayments']) > 0,

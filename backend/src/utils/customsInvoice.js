@@ -110,4 +110,37 @@ const buildClearanceInvoice = (clearance) => {
   };
 };
 
-module.exports = { buildClearanceInvoice, round2 };
+/**
+ * ── مالُ المعاملة في التحليلات وماليّات القسم (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────
+ *   التكلفةُ = مجموعُ مبالغ «مراحل السداد» (ما ندفعه) — والمرفوضُ منها ليس تكلفة.
+ *   الإيرادُ = إجماليُّ فاتورة العميل (`buildClearanceInvoice`) — ولا إيرادَ لمعاملةٍ
+ *             لم تُفوتَر بعد.
+ *   الربحُ  = الإيرادُ − ضريبتُه − التكلفة (الضريبةُ للدولة لا لنا)، للمفوتَرة وحدَها.
+ * كان الإيرادُ «التكاليف + بنود الهامش القديمة»، وتلك البنودُ لا تُملأ في المعاملات
+ * الجديدة، فخرج الإيرادُ مساويًا للتكاليف والربحُ صفرًا دائمًا.
+ * والمعاملاتُ المستوردةُ من الماستر (بلا مبالغَ في مراحلها ولا فاتورة) تُقرأ كما
+ * كُتبت: `costs.total` و`revenue.totalInvoiced` و`revenue.profit`.
+ * يحتاج من المعاملة: paymentStages.key/amount/payStatus، saleItems، saleInvoiceNumber،
+ * saleVatRate، costs.total، revenue.totalInvoiced/profit.
+ */
+const moneyOf = (c) => {
+  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const stages = (c?.paymentStages || []).filter((p) => p && p.payStatus !== 'rejected'
+    && p.amount !== null && p.amount !== undefined && p.amount !== '' && Number(p.amount) !== 0 && Number.isFinite(Number(p.amount)));
+  const billed = !!c?.saleInvoiceNumber || (c?.saleItems || []).some((x) => x && Number.isFinite(Number(x.amount)));
+  if (!stages.length && !billed) {
+    const revenue = num(c?.revenue?.totalInvoiced);
+    const cost = num(c?.costs?.total);
+    return { legacy: true, cost: round2(cost), revenue: round2(revenue), vat: 0, profit: round2(revenue - cost) };
+  }
+  const cost = stages.length ? round2(stages.reduce((a, p) => a + Number(p.amount), 0)) : round2(num(c?.costs?.total));
+  // لم تُفوتَر: تكلفتُها قائمةٌ وإيرادُها لم يأتِ — فلا ربحَ يُحسب لها ولا خسارة بعد.
+  if (!billed) return { legacy: false, cost, revenue: 0, vat: 0, profit: 0, pending: true };
+  const inv = buildClearanceInvoice(c);
+  return { legacy: false, cost, revenue: inv.totals.grand, vat: inv.totals.vat, profit: round2(inv.totals.grand - inv.totals.vat - cost) };
+};
+/** حقولُ `moneyOf` سوى `costs` و`revenue` — يختارهما المستدعي كاملتين (ومعهما تتصادم أجزاؤهما في `select`). */
+const MONEY_SELECT = 'paymentStages.key paymentStages.label paymentStages.amount paymentStages.payStatus '
+  + 'saleItems.key saleItems.label saleItems.amount saleInvoiceNumber saleVatRate';
+
+module.exports = { buildClearanceInvoice, round2, moneyOf, MONEY_SELECT };

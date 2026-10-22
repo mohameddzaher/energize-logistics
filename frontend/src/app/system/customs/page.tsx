@@ -138,6 +138,8 @@ export default function CustomsPage() {
   const [fYear, setFYear] = useState('');
   const [fMonth, setFMonth] = useState('');
   const [fInvoice, setFInvoice] = useState('');
+  // حالةُ المعاملة مع فوترتها: المغلقةُ قسمان لا يُخلَطان (مفوترة · لم تُفوتَر).
+  const [fState, setFState] = useState('');
   const [fReturn, setFReturn] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const cf = useColumnFilters<Clearance>();
@@ -152,10 +154,10 @@ export default function CustomsPage() {
   const [fFrom, setFFrom] = useState('');
   const [fTo, setFTo] = useState('');
   const resetFilters = () => {
-    setFYear(''); setFMonth(''); setFInvoice(''); setFReturn('');
+    setFState(''); setFYear(''); setFMonth(''); setFInvoice(''); setFReturn('');
     setFCustomer(''); setFAgent(''); setFPort(''); setFBranch(''); setFStage(''); setFFrom(''); setFTo('');
   };
-  const activeFilters = [fYear, fMonth, fInvoice, fReturn, fCustomer, fAgent, fPort, fBranch, fStage, fFrom, fTo].filter(Boolean).length;
+  const activeFilters = [fState, fYear, fMonth, fInvoice, fReturn, fCustomer, fAgent, fPort, fBranch, fStage, fFrom, fTo].filter(Boolean).length;
   const ar = lang === 'ar';
 
   const fetchList = useCallback(async () => {
@@ -237,8 +239,11 @@ export default function CustomsPage() {
   };
   const invoiceStatuses = Array.from(new Set(list.map((c) => invoiceState(c).text).filter(Boolean))).sort();
   const awaitingCount = list.filter((c) => c.awaitingTransportInvoice).length;
+  const isInvoiced = (c: Clearance) => !!c.invoiced || !!c.saleInvoiceNumber;
+  const stateOf = (c: Clearance) => (c.cancelled ? 'cancelled' : (c as any).upcoming ? 'upcoming'
+    : c.isCompleted ? (isInvoiced(c) ? 'closedInvoiced' : 'closedNotInvoiced') : (isInvoiced(c) ? 'openInvoiced' : 'openNotInvoiced'));
   const stageText = (c: Clearance) => (c.cancelled ? T.cancelled
-    : c.isCompleted ? (ar ? 'مغلقة' : 'Closed')
+    : c.isCompleted ? (isInvoiced(c) ? (ar ? 'مغلقة مفوترة' : 'Closed · invoiced') : (ar ? 'مغلقة لم تُفوتَر' : 'Closed · not invoiced'))
       : c.pipeline?.next ? `${ar ? 'تنتظر' : 'Next'}: ${stageName(T.stages, c.pipeline.next, c.cargoType)}`
         : stageName(T.stages, c.stage, c.cargoType));
 
@@ -271,6 +276,7 @@ export default function CustomsPage() {
       c.declarationNumber, c.billing?.ourInvoiceNumber, (c as any).saleInvoiceNumber, (c as any).exporterCompany, (c as any).city,
       (c as any).containerNumbers, c.lastNote?.text])
       && !searchHits?.ids.has(String(c._id))) return false;
+    if (fState && (fState === 'closed' ? !c.isCompleted || c.cancelled : fState === 'open' ? c.isCompleted || c.cancelled || (c as any).upcoming : stateOf(c) !== fState)) return false;
     if (fYear && String(c.periodYear || '') !== fYear) return false;
     if (fMonth && String(c.periodMonth || '') !== fMonth) return false;
     if (fInvoice === '__none') { if (invoiceState(c).text) return false; }
@@ -451,6 +457,17 @@ export default function CustomsPage() {
         <select value={fMonth} onChange={(e) => setFMonth(e.target.value)} className="cc-filter" aria-label={ar ? 'الشهر' : 'Month'}>
           <option value="">{ar ? 'جميع الأشهر' : 'All months'}</option>
           {MONTH_LABELS.map((m, i) => <option key={i} value={String(i + 1)}>{m[ar ? 0 : 1]}</option>)}
+        </select>
+        <select value={fState} onChange={(e) => setFState(e.target.value)} className="cc-filter" aria-label={ar ? 'حالة المعاملة' : 'Transaction state'}>
+          <option value="">{ar ? 'كلّ الحالات' : 'All states'}</option>
+          <option value="open">{ar ? 'مفتوحة' : 'Open'}</option>
+          <option value="openNotInvoiced">{ar ? 'مفتوحة لم تُفوتَر' : 'Open · not invoiced'}</option>
+          <option value="openInvoiced">{ar ? 'مفتوحة مفوترة' : 'Open · invoiced'}</option>
+          <option value="closed">{ar ? 'مغلقة (الكلّ)' : 'Closed (all)'}</option>
+          <option value="closedInvoiced">{ar ? 'مغلقة مفوترة' : 'Closed · invoiced'}</option>
+          <option value="closedNotInvoiced">{ar ? 'مغلقة لم تُفوتَر' : 'Closed · not invoiced'}</option>
+          <option value="upcoming">{ar ? 'قادمة' : 'Upcoming'}</option>
+          <option value="cancelled">{ar ? 'ملغاة' : 'Cancelled'}</option>
         </select>
         <select value={fInvoice} onChange={(e) => setFInvoice(e.target.value)} className="cc-filter" aria-label={ar ? 'حالة الفاتورة' : 'Invoice status'}>
           <option value="">{ar ? 'جميع حالات الفاتورة' : 'All invoice statuses'}</option>

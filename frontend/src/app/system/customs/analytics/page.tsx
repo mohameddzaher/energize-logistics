@@ -173,7 +173,8 @@ export default function CustomsAnalyticsPage() {
         <Sel k="cargoType" label={t('حاويات وسيّارات', 'Containers & vehicles')}
           list={[{ value: 'containers', label: t('حاويات', 'Containers') }, { value: 'vehicles', label: t('سيّارات', 'Vehicles') }]} />
         <Sel k="state" label={t('مفتوحة ومغلقة', 'Open & closed')}
-          list={[{ value: 'open', label: t('مفتوحة', 'Open') }, { value: 'closed', label: t('مغلقة', 'Closed') }]} />
+          list={[{ value: 'open', label: t('مفتوحة', 'Open') }, { value: 'closed', label: t('مغلقة (الكلّ)', 'Closed (all)') },
+            { value: 'closedInvoiced', label: t('مغلقة مفوترة', 'Closed · invoiced') }, { value: 'closedNotInvoiced', label: t('مغلقة لم تُفوتَر', 'Closed · not invoiced') }]} />
         {/* المدّة بشهر المعاملة: التحليلُ يُجمَع بالشهر، فيُختار شهرٌ أو فترةُ أشهر. */}
         <PeriodFilter ar={ar} modes={['month', 'range']} from={f.from || ''} to={f.to || ''}
           onChange={(a, b) => setF((p) => ({ ...p, from: a, to: b, year: '', month: '' }))} />

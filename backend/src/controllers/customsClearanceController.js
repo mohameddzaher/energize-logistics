@@ -603,7 +603,7 @@ exports.getAnalytics = async (req, res) => {
     for (const [k, path] of Object.entries(eq)) if (q[k]) filter[path] = q[k];
     // نوعُ المعاملة وحالتُها — يُسأل بهما كما يُسأل بالعميل والميناء.
     if (CARGO_TYPES.includes(q.cargoType)) filter.cargoType = q.cargoType === 'vehicles' ? 'vehicles' : { $ne: 'vehicles' };
-    if (q.state === 'closed') filter.isCompleted = true;
+    if (q.state === 'closed' || q.state === 'closedInvoiced' || q.state === 'closedNotInvoiced') filter.isCompleted = true;
     if (q.state === 'open') filter.isCompleted = { $ne: true };
     const mq2 = parseMonth(q.month);
     if (mq2.month) filter.periodMonth = mq2.month;
@@ -633,8 +633,17 @@ exports.getAnalytics = async (req, res) => {
     }
     let list = await CustomsClearance.find(filter)
       .select('blNumber refNumber customerName shippingAgent carrierName port stage city branch containerCount periodMonth periodYear costs revenue billing.invoiceStatus '
-        + 'cargoType isCompleted saleInvoiceNumber stagesDone transportRoute pipelineVersion stageDone.doInvoicePaid containers.route containers.stagesDone')
+        + 'cargoType isCompleted saleInvoiceNumber stagesDone transportRoute pipelineVersion stageDone.doInvoicePaid containers.route containers.stagesDone '
+        + require('../utils/customsInvoice').MONEY_SELECT)
       .lean();
+    // الإيرادُ والتكلفةُ والربحُ لكلّ معاملة — بقاعدةٍ واحدة مع «ماليات التخليص» (utils/customsInvoice.moneyOf).
+    for (const r of list) r._m = require('../utils/customsInvoice').moneyOf(r);
+    // المغلقةُ قسمان: مفوترة · لم تُفوتَر — بتعريف «مفوترة» نفسِه في اللوحة.
+    if (q.state === 'closedInvoiced' || q.state === 'closedNotInvoiced') {
+      const inv = (r) => !!r.saleInvoiceNumber || !!String((r.billing && r.billing.invoiceStatus) || '').trim()
+        || pipelineOf(r).steps.some((x) => x.key === 'invoiced' && x.done);
+      list = list.filter((r) => (q.state === 'closedInvoiced') === inv(r));
+    }
 
     // from/to are month keys (YYYY-MM); filter in JS so rows with no period survive
     // an unbounded request but are excluded from an explicitly bounded one.
@@ -649,13 +658,15 @@ exports.getAnalytics = async (req, res) => {
     const add = (bucket, r) => {
       bucket.count += 1;
       bucket.containers += num(r.containerCount);
-      bucket.revenue += num(r.revenue && r.revenue.totalInvoiced);
-      bucket.costs += num(r.costs && r.costs.total);
+      bucket.revenue += r._m.revenue;
+      bucket.costs += r._m.cost;
+      bucket.vat += r._m.vat;
+      bucket.profit += r._m.profit;
       bucket.clearanceFee += num(r.revenue && r.revenue.clearanceFee);
       if (r.branch === 'dammam') bucket.dammam += 1; else bucket.jeddah += 1;
       return bucket;
     };
-    const blank = () => ({ count: 0, containers: 0, revenue: 0, costs: 0, clearanceFee: 0, jeddah: 0, dammam: 0 });
+    const blank = () => ({ count: 0, containers: 0, revenue: 0, costs: 0, vat: 0, profit: 0, clearanceFee: 0, jeddah: 0, dammam: 0 });
     const group = (rows, keyFn) => {
       const m = new Map();
       for (const r of rows) {
@@ -672,7 +683,7 @@ exports.getAnalytics = async (req, res) => {
         revenue: round(b.revenue),
         costs: round(b.costs),
         clearanceFee: round(b.clearanceFee),
-        profit: round(b.revenue - b.costs),
+        profit: round(b.profit),
         avgContainers: b.count ? round(b.containers / b.count) : 0,
         containerShare: totalContainers ? b.containers / totalContainers : 0,
       }))
@@ -680,10 +691,10 @@ exports.getAnalytics = async (req, res) => {
       .map((b, i) => ({ ...b, rank: i + 1 }));
 
     const totalContainers = list.reduce((a, r) => a + num(r.containerCount), 0);
-    const totalRevenue = round(list.reduce((a, r) => a + num(r.revenue && r.revenue.totalInvoiced), 0));
-    const totalCosts = round(list.reduce((a, r) => a + num(r.costs && r.costs.total), 0));
+    const totalRevenue = round(list.reduce((a, r) => a + r._m.revenue, 0));
+    const totalCosts = round(list.reduce((a, r) => a + r._m.cost, 0));
+    const totalVat = round(list.reduce((a, r) => a + r._m.vat, 0));
     const clearanceFees = round(list.reduce((a, r) => a + num(r.revenue && r.revenue.clearanceFee), 0));
-    const invoiced = list.filter((r) => (r.billing && String(r.billing.invoiceStatus || '').trim()) || num(r.revenue && r.revenue.totalInvoiced) > 0).length;
     const months = new Set(list.filter((r) => key(r) !== null).map((r) => key(r)));
 
     const byMonth = group(list.filter((r) => key(r) !== null), (r) => `${r.periodYear}-${String(r.periodMonth).padStart(2, '0')}`)
@@ -691,7 +702,7 @@ exports.getAnalytics = async (req, res) => {
         ...b,
         revenue: round(b.revenue),
         costs: round(b.costs),
-        profit: round(b.revenue - b.costs),
+        profit: round(b.profit),
         year: Number(b.key.slice(0, 4)),
         month: Number(b.key.slice(5, 7)),
       }))
@@ -707,11 +718,13 @@ exports.getAnalytics = async (req, res) => {
     const marginBreakdown = breakdown(MARGIN_KEYS, (r) => r.revenue || {});
     const isInvoiced = (r) => !!r.saleInvoiceNumber || !!String((r.billing && r.billing.invoiceStatus) || '').trim()
       || pipelineOf(r).steps.some((x) => x.key === 'invoiced' && x.done);
-    const sumRev = (rows) => round(rows.reduce((a, r) => a + num(r.revenue && r.revenue.totalInvoiced), 0));
+    const sumRev = (rows) => round(rows.reduce((a, r) => a + r._m.revenue, 0));
     const openRows = list.filter((r) => !r.isCompleted);
     const notInvoicedRows = list.filter((r) => !isInvoiced(r));
     const byCust = finish(group(list, (r) => r.customerName), totalContainers).sort((a, b) => b.profit - a.profit);
-    const profitAll = totalRevenue - totalCosts;
+    // الربحُ من المفوتَرة وحدَها (moneyOf): التي لم تُفوتَر تكلفتُها قائمةٌ وإيرادُها لم يأتِ.
+    const profitAll = list.reduce((a, r) => a + r._m.profit, 0);
+    const billedNet = list.filter((r) => !r._m.pending).reduce((a, r) => a + r._m.revenue - r._m.vat, 0);
     const share = (n) => (profitAll > 0 ? byCust.slice(0, n).reduce((a, b) => a + Math.max(0, b.profit), 0) / profitAll : 0);
 
     const payload = {
@@ -724,12 +737,12 @@ exports.getAnalytics = async (req, res) => {
         open: openRows.length, closed: list.length - openRows.length,
         openValue: sumRev(openRows),
         notInvoiced: notInvoicedRows.length, notInvoicedValue: sumRev(notInvoicedRows),
-        notInvoicedCosts: round(notInvoicedRows.reduce((a, r) => a + num(r.costs && r.costs.total), 0)),
+        notInvoicedCosts: round(notInvoicedRows.reduce((a, r) => a + r._m.cost, 0)),
         profitPerContainer: totalContainers ? round(profitAll / totalContainers) : 0,
         revenuePerContainer: totalContainers ? round(totalRevenue / totalContainers) : 0,
         costPerContainer: totalContainers ? round(totalCosts / totalContainers) : 0,
         avgProfit: list.length ? round(profitAll / list.length) : 0,
-        losing: list.filter((r) => num(r.revenue && r.revenue.totalInvoiced) - num(r.costs && r.costs.total) < 0).length,
+        losing: list.filter((r) => isInvoiced(r) && r._m.profit < 0).length,
         // كم من الربح يصنعه أكبرُ عميلٍ وأكبرُ خمسة — تركّزٌ يُعرَف قبل أن يُفاجِئ.
         top1Share: share(1), top5Share: share(5),
       },
@@ -744,8 +757,9 @@ exports.getAnalytics = async (req, res) => {
         totalRevenue,
         clearanceFees,
         totalCosts,
-        netProfit: round(totalRevenue - totalCosts),
-        margin: totalRevenue ? (totalRevenue - totalCosts) / totalRevenue : 0,
+        totalVat,
+        netProfit: round(profitAll),
+        margin: billedNet ? profitAll / billedNet : 0,
         jeddah: list.filter((r) => r.branch !== 'dammam').length,
         dammam: list.filter((r) => r.branch === 'dammam').length,
         avgInvoice: list.length ? round(totalRevenue / list.length) : 0,
@@ -765,15 +779,15 @@ exports.getAnalytics = async (req, res) => {
       topDeals: list.map((r) => ({
         refNumber: r.refNumber, blNumber: r.blNumber, customerName: r.customerName,
         shippingAgent: r.shippingAgent, port: r.port, containers: num(r.containerCount),
-        revenue: round(num(r.revenue && r.revenue.totalInvoiced)),
-        costs: round(num(r.costs && r.costs.total)),
-        profit: round(num(r.revenue && r.revenue.totalInvoiced) - num(r.costs && r.costs.total)),
+        revenue: round(r._m.revenue),
+        costs: round(r._m.cost),
+        profit: round(r._m.profit),
       })).sort((a, b) => b.profit - a.profit).slice(0, 20),
       losingDeals: list.map((r) => ({
         refNumber: r.refNumber, blNumber: r.blNumber, customerName: r.customerName,
-        revenue: round(num(r.revenue && r.revenue.totalInvoiced)),
-        costs: round(num(r.costs && r.costs.total)),
-        profit: round(num(r.revenue && r.revenue.totalInvoiced) - num(r.costs && r.costs.total)),
+        revenue: round(r._m.revenue),
+        costs: round(r._m.cost),
+        profit: round(r._m.profit),
       })).filter((d) => d.profit < 0).sort((a, b) => a.profit - b.profit).slice(0, 20),
     };
     cache.set(ak, payload, 60000);
@@ -1074,14 +1088,16 @@ exports.getPartyProfile = async (req, res) => {
     const field = partyField(party.kind);
 
     const deals = await CustomsClearance.find({ [field]: party._id })
-      .select('-documents -attachments -containers -paymentStages -stageLog -saleItems').sort({ createdAt: -1 }).lean();
+      .select('-documents -attachments -containers -stageLog').sort({ createdAt: -1 }).lean();
+    const { moneyOf } = require('../utils/customsInvoice');
+    for (const d of deals) d._m = moneyOf(d);
     const money = seesMoney(req);
 
     const live = deals.filter((d) => !d.cancelled);
     const sum = (f) => Math.round(live.reduce((t, d) => t + (Number(f(d)) || 0), 0));
-    const revenue = sum((d) => d.revenue?.totalInvoiced);
-    const profit = sum((d) => d.revenue?.profit);
-    const cost = sum((d) => d.costs?.total);
+    const revenue = sum((d) => d._m.revenue);
+    const profit = sum((d) => d._m.profit);
+    const cost = sum((d) => d._m.cost);
 
     // بالشهر — ليُقرأ النموّ لا المجموعُ وحدَه.
     const byMonth = {};
@@ -1091,8 +1107,8 @@ exports.getPartyProfile = async (req, res) => {
         : (d.createdAt ? new Date(d.createdAt).toISOString().slice(0, 7) : '—');
       if (!byMonth[k]) byMonth[k] = { key: k, deals: 0, revenue: 0, profit: 0, containers: 0 };
       byMonth[k].deals += 1;
-      byMonth[k].revenue += Number(d.revenue?.totalInvoiced) || 0;
-      byMonth[k].profit += Number(d.revenue?.profit) || 0;
+      byMonth[k].revenue += d._m.revenue;
+      byMonth[k].profit += d._m.profit;
       byMonth[k].containers += Number(d.containerCount) || 0;
     });
 
@@ -1130,7 +1146,9 @@ exports.getPartyProfile = async (req, res) => {
       contracts: await CustomsContract.find({ party: party._id }).sort({ createdAt: -1 }).lean(),
       deals: deals.map((d) => {
         const p = pipelineOf(d);
-        const out = { ...d, pipeline: { percent: p.percent, next: p.next } };
+        // مالُ المعاملة (`_m`) للإدارة وحدَها، ومراحلُ السداد وبنودُ البيع قُرئت للحساب فلا تُرسَل.
+        const { _m, paymentStages, saleItems, ...rest } = d;
+        const out = { ...rest, pipeline: { percent: p.percent, next: p.next }, ...(money ? { money: _m } : {}) };
         if (!money && out.revenue) out.revenue = { ...out.revenue, profit: undefined, transportNet: undefined };
         return out;
       }),
@@ -2472,6 +2490,8 @@ exports.getDashboard = async (req, res) => {
           closed: count((r) => r.bucket === 'closed'),
           // أُغلقت ولم تُفوتَر — من السجلّ القديم؛ تبقى ظاهرةً حتى تُصدَر فواتيرُها.
           closedNotInvoiced: count((r) => r.bucket === 'closed' && !r.invoiced),
+          // والمغلقةُ المفوترة — وحين تُصدَر فاتورةُ مغلقةٍ لم تُفوتَر تنتقل إلى هنا من نفسها.
+          closedInvoiced: count((r) => r.bucket === 'closed' && r.invoiced),
           cancelled: count((r) => r.bucket === 'cancelled'),
           awaitingTransportInvoice: count((r) => r.awaitingTransportInvoice),
           notInvoiced: open.filter((r) => !r.invoiced).length,

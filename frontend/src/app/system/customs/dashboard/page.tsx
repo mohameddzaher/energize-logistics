@@ -60,6 +60,7 @@ const VIEWS: Record<string, (r: Row) => boolean> = {
   open: (r) => r.bucket === 'open',
   closed: (r) => r.bucket === 'closed',
   closedNotInvoiced: (r) => r.bucket === 'closed' && !r.invoiced,
+  closedInvoiced: (r) => r.bucket === 'closed' && r.invoiced,
   awaiting: (r) => r.awaitingTransportInvoice,
   notInvoiced: (r) => r.bucket === 'open' && !r.invoiced,
   returnOverdue: (r) => r.returnState === 'overdue',
@@ -133,7 +134,7 @@ export default function CustomsDashboardPage() {
 
   if (!d) return <Spinner />;
   const C = d.counts;
-  const bucketWord = (r: Row) => (r.bucket === 'cancelled' ? t('ملغاة', 'Cancelled') : r.bucket === 'upcoming' ? t('قادمة', 'Upcoming') : r.bucket === 'closed' ? t('مغلقة', 'Closed') : t('مفتوحة', 'Open'));
+  const bucketWord = (r: Row) => (r.bucket === 'cancelled' ? t('ملغاة', 'Cancelled') : r.bucket === 'upcoming' ? t('قادمة', 'Upcoming') : r.bucket === 'closed' ? (r.invoiced ? t('مغلقة مفوترة', 'Closed · invoiced') : t('مغلقة لم تُفوتَر', 'Closed · not invoiced')) : t('مفتوحة', 'Open'));
   const getters: Record<string, (r: Row) => any> = {
     bl: (r) => r.blNumber, ref: (r) => r.refNumber, customer: (r) => r.customerName, agent: (r) => r.shippingAgent,
     branch: (r) => (r.branch === 'dammam' ? t('الدمام', 'Dammam') : t('جدة', 'Jeddah')),
@@ -150,7 +151,7 @@ export default function CustomsDashboardPage() {
 
   const VIEW_TITLE: Record<string, [string, string]> = {
     all: ['كلّ المعاملات', 'All transactions'], upcoming: ['المعاملات القادمة', 'Upcoming'], open: ['المعاملات المفتوحة', 'Open'],
-    closed: ['المعاملات المغلقة', 'Closed'], closedNotInvoiced: ['مغلقة لم تُفوتَر', 'Closed, not invoiced'], awaiting: ['مفوترة بانتظار فاتورة النقل', 'Invoiced — awaiting transport invoice'],
+    closed: ['المعاملات المغلقة', 'Closed'], closedNotInvoiced: ['مغلقة لم تُفوتَر', 'Closed, not invoiced'], closedInvoiced: ['مغلقة مفوترة', 'Closed, invoiced'], awaiting: ['مفوترة بانتظار فاتورة النقل', 'Invoiced — awaiting transport invoice'],
     notInvoiced: ['مفتوحة لم تُفوتَر', 'Open, not invoiced'], returnOverdue: ['متأخّرة الإرجاع', 'Return overdue'],
     returnDue: ['يقترب موعد إرجاعها', 'Return due soon'], pendingPayments: ['لها طلبات صرف معلّقة', 'With pending payment requests'],
     withTasks: ['عليها مهامّ مفتوحة', 'With open tasks'], cancelled: ['الملغاة', 'Cancelled'],
@@ -161,7 +162,7 @@ export default function CustomsDashboardPage() {
   const bucketBadge = (r: Row) => {
     if (r.bucket === 'cancelled') return ['bg-slate-200 text-slate-600', t('ملغاة', 'Cancelled')];
     if (r.bucket === 'upcoming') return ['bg-amber-100 text-amber-800', t('قادمة', 'Upcoming')];
-    if (r.bucket === 'closed') return ['bg-green-100 text-green-700', t('مغلقة', 'Closed')];
+    if (r.bucket === 'closed') return r.invoiced ? ['bg-green-100 text-green-700', t('مغلقة مفوترة', 'Closed · invoiced')] : ['bg-red-100 text-red-700', t('مغلقة لم تُفوتَر', 'Closed · not invoiced')];
     return ['bg-blue-100 text-blue-700', t('مفتوحة', 'Open')];
   };
 
@@ -252,10 +253,17 @@ export default function CustomsDashboardPage() {
             hint={t(`${C.notInvoiced} لم تُفوتَر بعد`, `${C.notInvoiced} not invoiced yet`)} />
           <Tile on={view === 'closed'} onClick={() => pick('closed')} icon={<Lock className="h-5 w-5" />} tone="green"
             label={t('معاملات مغلقة', 'Closed')} value={C.closed}
-            hint={t(`${C.closedThisMonth} أُغلقت هذا الشهر`, `${C.closedThisMonth} closed this month`)} />
+            hint={t(`${C.closedInvoiced || 0} مفوترة · ${C.closedNotInvoiced || 0} لم تُفوتَر · ${C.closedThisMonth} هذا الشهر`, `${C.closedInvoiced || 0} invoiced · ${C.closedNotInvoiced || 0} not · ${C.closedThisMonth} this month`)} />
           <Tile on={view === 'all'} onClick={() => pick('all')} icon={<Users className="h-5 w-5" />} tone="slate"
             label={t('عملاء نعمل معهم الآن', 'Active customers')} value={C.activeCustomers}
             hint={t(`من ${C.customers} عميلًا — اضغط لكلّ المعاملات`, `of ${C.customers} — click for all transactions`)} />
+        </div>
+        {/* المغلقةُ قسمان لا يُخلَطان: فُوترت فانتهت، أو أُغلقت وفاتورتُها لم تصدر بعد. */}
+        <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Mini on={view === 'closedInvoiced'} onClick={() => pick('closedInvoiced')} icon={<Lock className="h-4 w-4" />}
+            label={t('مغلقة مفوترة', 'Closed, invoiced')} value={C.closedInvoiced || 0} hint={t('انتهت وصدرت فاتورتُها', 'Done and invoiced')} />
+          <Mini on={view === 'closedNotInvoiced'} onClick={() => pick('closedNotInvoiced')} icon={<Receipt className="h-4 w-4" />} tone={C.closedNotInvoiced ? 'red' : undefined}
+            label={t('مغلقة لم تُفوتَر', 'Closed, not invoiced')} value={C.closedNotInvoiced || 0} hint={t('تنتظر إصدارَ فاتورتها — وتنتقل إلى «مفوترة» حين تصدر', 'Moves to invoiced once its invoice is issued')} />
         </div>
       </Group>
 
@@ -264,8 +272,6 @@ export default function CustomsDashboardPage() {
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           <Mini on={view === 'awaiting'} onClick={() => pick('awaiting')} icon={<AlertTriangle className="h-4 w-4" />} tone={C.awaitingTransportInvoice ? 'red' : undefined}
             label={t('مفوترة بانتظار فاتورة النقل', 'Awaiting transport invoice')} value={C.awaitingTransportInvoice} hint={t('تُنهى حين تُرفَق', 'Closes once attached')} />
-          <Mini on={view === 'closedNotInvoiced'} onClick={() => pick('closedNotInvoiced')} icon={<Receipt className="h-4 w-4" />} tone={C.closedNotInvoiced ? 'red' : undefined}
-            label={t('مغلقة لم تُفوتَر', 'Closed, not invoiced')} value={C.closedNotInvoiced || 0} hint={t('تنتظر إصدارَ فاتورتها', 'Invoice still to be issued')} />
           <Mini on={view === 'notInvoiced'} onClick={() => pick('notInvoiced')} icon={<Receipt className="h-4 w-4" />}
             label={t('مفتوحة لم تُفوتَر', 'Open, not invoiced')} value={C.notInvoiced} />
           <Mini on={view === 'pendingPayments'} onClick={() => pick('pendingPayments')} icon={<Wallet className="h-4 w-4" />}
@@ -311,10 +317,10 @@ export default function CustomsDashboardPage() {
           <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
           <div className="ms-auto flex flex-wrap items-center gap-2">
             <div className="flex overflow-hidden rounded-lg border border-slate-200 text-[12px] font-semibold">
-              {(['all', 'upcoming', 'open', 'closed'] as const).map((k) => (
+              {(['all', 'upcoming', 'open', 'closedInvoiced', 'closedNotInvoiced'] as const).map((k) => (
                 <button key={k} type="button" onClick={() => { setView(k); setStage(''); }}
                   className={`px-2.5 py-1.5 ${view === k ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
-                  {ar ? { all: 'الكلّ', upcoming: 'قادمة', open: 'مفتوحة', closed: 'مغلقة' }[k] : { all: 'All', upcoming: 'Upcoming', open: 'Open', closed: 'Closed' }[k]}
+                  {ar ? { all: 'الكلّ', upcoming: 'قادمة', open: 'مفتوحة', closedInvoiced: 'مغلقة مفوترة', closedNotInvoiced: 'مغلقة لم تُفوتَر' }[k] : { all: 'All', upcoming: 'Upcoming', open: 'Open', closedInvoiced: 'Closed · invoiced', closedNotInvoiced: 'Closed · not invoiced' }[k]}
                 </button>
               ))}
             </div>

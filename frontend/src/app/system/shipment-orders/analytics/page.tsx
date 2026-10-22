@@ -37,6 +37,8 @@ interface Data {
   byMonth: { key: string; orders: number; sell: number; buy: number; margin: number }[];
   byStatus: Record<string, number>;
   losing: any[];
+  cancelReasons?: { reason: string; count: number; pct: number }[];
+  salesRanking?: { rank: number; name: string; shipments: number; live: number; cancelled: number; cancelRate: number; sell: number; margin: number }[];
 }
 
 function Inner() {
@@ -270,6 +272,59 @@ function Inner() {
             </tbody>
           </table>
         </ScrollX>
+      </div>
+
+      {/* ── ترتيبُ السيلز التشغيليّ وأسبابُ الإلغاء (٢٠٢٦/١٠/٢٢) ──────────────
+          في المدّة المختارة نفسِها: مَن جاء بأكثر الشحنات المنفَّذة، وكم أُلغي له؛
+          ولماذا تُلغى الشحنات. */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden xl:col-span-2">
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+            <p className="font-bold text-slate-900">{t('ترتيب السيلز التشغيلي', 'Operational sales ranking')}</p>
+            <span className="ms-auto text-xs text-slate-500">{t('بالشحنات المنفَّذة في المدّة', 'by executed shipments in the period')}</span>
+          </div>
+          <ScrollX>
+            <table className="w-full text-sm min-w-[640px]">
+              <thead className="table-head">
+                <tr>{['#', t('السيلز التشغيلي', 'Operational sales'), t('الشحنات', 'Shipments'), t('المنفَّذة', 'Executed'), t('الملغاة', 'Cancelled'), t('نسبة الإلغاء', 'Cancel rate'), t('البيع', 'Sell'), t('الفرق', 'Spread')]
+                  .map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {(d.salesRanking || []).map((r) => (
+                  <tr key={r.name} className="hover:bg-slate-50">
+                    <td className="px-3 py-2 tabular-nums text-slate-500">{r.rank}</td>
+                    <td className="px-3 py-2 font-semibold text-slate-900">{r.name}</td>
+                    <td className="px-3 py-2 tabular-nums">{r.shipments}</td>
+                    <td className="px-3 py-2 tabular-nums font-bold text-slate-900">{r.live}</td>
+                    <td className="px-3 py-2 tabular-nums text-red-600">{r.cancelled}</td>
+                    <td className="px-3 py-2 tabular-nums">{r.cancelRate}%</td>
+                    <td className="px-3 py-2 tabular-nums">{money(r.sell)}</td>
+                    <td className={`px-3 py-2 tabular-nums ${r.margin < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{money(r.margin)}</td>
+                  </tr>
+                ))}
+                {!(d.salesRanking || []).length && <tr><td colSpan={8} className="py-6 text-center text-slate-400">{t('لا شحنات عليها سيلز تشغيلي في هذه المدّة بعد', 'No shipments with an operational sales person yet')}</td></tr>}
+              </tbody>
+            </table>
+          </ScrollX>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+            <p className="font-bold text-slate-900">{t('أسباب الإلغاء', 'Cancellation reasons')}</p>
+            <span className="ms-auto text-xs text-slate-500">{(d.cancelReasons || []).reduce((a, x) => a + x.count, 0)}</span>
+          </div>
+          <ul className="divide-y divide-slate-100">
+            {(d.cancelReasons || []).map((x) => (
+              <li key={x.reason} className="px-4 py-2.5">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-semibold text-slate-800">{x.reason}</span>
+                  <span className="tabular-nums text-slate-600">{x.count} · {x.pct}%</span>
+                </div>
+                <div className="mt-1.5 h-1.5 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-red-400" style={{ width: `${Math.min(100, x.pct)}%` }} /></div>
+              </li>
+            ))}
+            {!(d.cancelReasons || []).length && <li className="px-4 py-6 text-center text-sm text-slate-400">{t('لا شحنات ملغاة في هذه المدّة', 'No cancellations in this period')}</li>}
+          </ul>
+        </div>
       </div>
 
       {/* ── الشحنات الخاسرة ─────────────────────────────────────────────────

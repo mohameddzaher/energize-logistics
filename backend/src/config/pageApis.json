@@ -441,6 +441,7 @@
       "apis": [
         "/api/customer-registry",
         "/api/customer-registry/options",
+        "/api/lookups/types",
         "/api/partners/account",
         "/api/shipment-orders/customers",
         "/api/shipment-orders/drivers",
@@ -449,6 +450,7 @@
         "/api/shipment-orders/orders/batch",
         "/api/shipment-orders/orders/filter-options",
         "/api/shipment-orders/orders/waybills.pdf",
+        "/api/shipment-orders/sales-reps",
         "/api/shipment-orders/statuses",
         "/api/shipment-orders/suppliers",
         "/api/shipment-orders/vehicles"

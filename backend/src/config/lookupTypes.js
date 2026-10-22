@@ -390,6 +390,21 @@ const REGISTRY = [
       { key: 'cancelled', nameEn: 'Cancelled', nameAr: 'ملغاة', color: '#dc2626', order: 10 },
     ],
   },
+  // أسبابُ إلغاء الشحنة — لا تُلغى شحنةٌ بلا سبب، والقائمةُ تُدار من إعدادات القسم
+  // ويُضاف إليها من خانة الإلغاء نفسِها (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
+  {
+    type: 'so_cancel_reason',
+    module: 'shipment_orders',
+    nameEn: 'Cancellation reasons',
+    nameAr: 'أسباب إلغاء الشحنة',
+    roles: SO_ROLES,
+    storeLabel: true,
+    seed: [
+      { key: 'by_driver', nameEn: 'Cancelled by the driver', nameAr: 'إلغاء من السائق' },
+      { key: 'by_customer', nameEn: 'Cancelled by the customer', nameAr: 'إلغاء من العميل' },
+      { key: 'by_rep', nameEn: 'Cancelled by the representative', nameAr: 'إلغاء من المندوب' },
+    ],
+  },
   {
     type: 'so_branch',
     module: 'shipment_orders',

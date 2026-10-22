@@ -98,6 +98,10 @@ function CreateShipmentInner() {
   // الشحنةُ تُسجَّل ساعةَ تُحجَز، فيومُها هو اليوم في كلّ مرّةٍ تقريبًا. وخانةٌ
   // فارغةٌ مطلوبةٌ تُوقف الحفظ لتُملأ بما كان يمكن أن يُملأ من نفسه.
   const [form, setForm] = useState<Record<string, any>>({ status: 'requesting', pickupTime: today(), startTime: today() });
+  // «السيلز التشغيلي»: مَن جاء بالحمولة — من فريق المبيعات أو العمليّات، بالبحث.
+  const [salesRep, setSalesRep] = useState('');
+  const [salesReps, setSalesReps] = useState<{ value: string; label: string; roleAr?: string }[]>([]);
+  useEffect(() => { api.get<{ options: { value: string; label: string; roleAr?: string }[] }>('/api/shipment-orders/sales-reps').then((d) => setSalesReps(d.options || [])).catch(() => {}); }, []);
   const [customerId, setCustomerId] = useState('');
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ name: '', phone: '' });
@@ -142,6 +146,7 @@ function CreateShipmentInner() {
               ...(o.customFields || {}),
             });
             setCustomerId(typeof o.customer === 'object' ? o.customer?._id : (o.customer || ''));
+            setSalesRep(o.salesRep ? String(typeof o.salesRep === 'object' ? o.salesRep._id : o.salesRep) : '');
             setVehicleId(typeof o.vehicle === 'object' ? o.vehicle?._id : (o.vehicle || ''));
             setSupplierId(typeof o.supplier === 'object' ? (o.supplier?._id || '') : (o.supplier || ''));
             // بذرُ المختارِ في قائمته: القائمةُ صفحةٌ من سجلٍّ كبير، فما لم
@@ -464,6 +469,8 @@ function CreateShipmentInner() {
       // الحمولةَ يعرف مالكَها. فيُرسَل اختيارُه، ويكتبه الخادمُ في السجلّ حين
       // لا يكون مكتوبًا — ولا يُسأل عنه في الشحنة التالية.
       if (supplierId) payload.supplierChoice = supplierId;
+      // السيلز التشغيليّ — مَن جاء بالحمولة (٢٠٢٦/١٠/٢٢).
+      payload.salesRep = salesRep || null;
       if (vehicleId) payload.vehicle = vehicleId;
       else if (newPlate.trim()) {
         // اللوحةُ الجديدة تُسجَّل على المورّد المختار — والمورّدُ سُجِّل قبلها.
@@ -768,6 +775,14 @@ function CreateShipmentInner() {
           يسجّله في اللحظة — وبطاقةُ الشاحنة تسأل عن الشاحنة ومالكِها وحدَهما. */}
       {sectionCard(UserIcon, 1, ar ? 'العميل والمورّد' : 'Customer & supplier', (
         <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-[12.5px] font-semibold text-slate-600">{ar ? 'السيلز التشغيلي — مَن جاء بهذه الحمولة' : 'Operational sales — who brought this load'}</label>
+            <SearchableSelect value={salesRep} onChange={setSalesRep} searchAfter={0}
+              placeholder={ar ? 'اختر من فريق المبيعات أو العمليات…' : 'Pick from sales or operations…'}
+              searchPlaceholder={ar ? 'اكتب الاسم للبحث…' : 'Type a name…'}
+              emptyLabel={ar ? 'لا نتائج' : 'No matches'}
+              options={salesReps.map((u) => ({ value: u.value, label: u.label, hint: u.roleAr || '' }))} />
+          </div>
           {!newCustomerOpen ? (
             <div className="flex flex-col sm:flex-row gap-3">
               <div className={`flex-1 ${miss('customer') ? 'rounded-lg ring-2 ring-red-400/60' : ''}`}>

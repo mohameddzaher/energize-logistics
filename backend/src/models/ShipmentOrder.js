@@ -72,6 +72,16 @@ const shipmentOrderSchema = new mongoose.Schema(
     // typed by hand.
     agentName: { type: String, trim: true, default: '' },
 
+    // ── السيلز التشغيليّ (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────────────────────
+    // مَن جاء بهذه الحمولة إلى الشركة — من فريق المبيعات أو العمليّات. واسمُه
+    // لقطةٌ كي يبقى في التحليلات ولو غادر.
+    salesRep: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+    salesRepName: { type: String, trim: true, default: '', index: true },
+
+    // ── سببُ الإلغاء — لا تُلغى شحنةٌ بلا سبب (٢٠٢٦/١٠/٢٢) ───────────────────
+    // من قائمة «أسباب الإلغاء» في إعدادات القسم (so_cancel_reason)، بنصّها.
+    cancelReason: { type: String, trim: true, default: '', index: true },
+
     // ── الأسعار والتوقيت ──────────────────────────────────────────────────
     pickupTime: { type: Date, default: null },
     startTime: { type: Date, default: null },

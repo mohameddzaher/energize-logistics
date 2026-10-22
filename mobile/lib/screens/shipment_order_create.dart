@@ -47,6 +47,9 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   bool _saving = false;
 
   Map<String, dynamic>? _customer;
+  // السيلز التشغيليّ — مَن جاء بالحمولة، من فريق المبيعات أو العمليّات (٢٠٢٦/١٠/٢٢).
+  Map<String, dynamic>? _salesRep;
+  List<Map<String, dynamic>> _salesReps = const [];
   // ── المورّدُ أوّلًا، ثمّ شاحنتُه ────────────────────────────────────────────
   // كما في الويب: يُعرَف المورّدُ أوّلًا ثمّ أيُّ شاحنةٍ من شاحناته — فتُقصَر
   // القائمةُ على ما يخصّه بدل مئات اللوحات معًا.
@@ -462,6 +465,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       }
     }
     if (_customer != null) payload['customer'] = _customer!['_id'];
+    if (_salesRep != null) payload['salesRep'] = _salesRep!['value'];
     if (_newCustomer && _ncName.text.trim().isNotEmpty) {
       payload['newCustomer'] = {'name': _ncName.text.trim(), 'phone': saPhone(_ncPhone.text)};
     }
@@ -680,6 +684,21 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                             child: Text(_newCustomer ? tr('اختيار من القائمة', 'Pick existing') : tr('+ عميل جديد', '+ New'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
                           ),
                         ]),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 44)),
+                          onPressed: () async {
+                            if (_salesReps.isEmpty) {
+                              try { final d = await Api.instance.get('/api/shipment-orders/sales-reps'); _salesReps = List<Map<String, dynamic>>.from(d['options'] ?? []); } catch (_) {}
+                            }
+                            if (!mounted) return;
+                            final u = await _pickSheet<Map<String, dynamic>>(tr('السيلز التشغيلي', 'operational sales'), _salesReps, (u) => (u['label'] ?? '').toString(), sub: (u) => (u['roleAr'] ?? '').toString());
+                            if (u != null) setState(() => _salesRep = u);
+                          },
+                          icon: const Icon(Icons.badge_outlined, size: 17),
+                          label: Text(_salesRep == null ? tr('السيلز التشغيلي — مَن جاء بالحمولة…', 'Operational sales — who brought the load…') : (_salesRep!['label'] ?? '').toString(),
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                        ),
+                        const SizedBox(height: 8),
                         if (!_newCustomer)
                           OutlinedButton.icon(
                             style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),

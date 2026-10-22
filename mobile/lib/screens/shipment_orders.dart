@@ -1,3 +1,4 @@
+import '../ui/lookup_field.dart';
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../ui/file_upload.dart';
@@ -129,6 +130,29 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
         return;
       }
       extra = {'dataUrl': f.dataUrl, 'fileName': f.fileName};
+    }
+    // ── ولا تُلغى شحنةٌ بلا سبب (٢٠٢٦/١٠/٢٢) — من «أسباب الإلغاء» في إعدادات القسم،
+    // وما ليس فيها يُكتب فيُضاف إليها.
+    if (v == 'cancelled' && (o['status'] ?? '') != 'cancelled') {
+      final reasons = await loadLookupNames('so_cancel_reason', fallback: const ['إلغاء من السائق', 'إلغاء من العميل', 'إلغاء من المندوب']);
+      if (!mounted) return;
+      final ctrl = TextEditingController();
+      final reason = await showModalBottomSheet<String>(context: context, isScrollControlled: true, builder: (c) => SafeArea(child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('سبب الإلغاء', 'Cancellation reason'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          const SizedBox(height: 8),
+          for (final r in reasons) ListTile(dense: true, contentPadding: EdgeInsets.zero, title: Text(r), leading: const Icon(Icons.radio_button_unchecked, size: 18), onTap: () => Navigator.pop(c, r)),
+          TextField(controller: ctrl, decoration: InputDecoration(labelText: tr('سببٌ آخر — يُضاف إلى القائمة', 'Another reason — added to the list'))),
+          const SizedBox(height: 8),
+          SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, ctrl.text.trim()), child: Text(tr('تأكيد', 'Confirm')))),
+        ]),
+      )));
+      if (reason == null || reason.isEmpty) return;
+      if (!reasons.contains(reason)) {
+        try { await Api.instance.post('/api/lookups', {'type': 'so_cancel_reason', 'nameAr': reason, 'nameEn': reason}); } catch (_) {}
+      }
+      extra = {...extra, 'cancelReason': reason};
     }
     try {
       await Api.instance.patch('/api/shipment-orders/orders/${o['_id']}/status', {'status': v, ...extra});

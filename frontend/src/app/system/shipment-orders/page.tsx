@@ -23,6 +23,7 @@ import {
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import ScrollX from '@/components/system/ScrollX';
+import ManagedSelect from '@/components/system/ManagedSelect';
 import { paymentKindLabel } from '@/lib/paymentKind';
 
 
@@ -125,7 +126,7 @@ function ShipmentOrdersInner() {
 
   // نافذةُ المتابعة: الحالةُ الجديدة وملاحظةٌ اختياريّة.
 
-  const [fu, setFu] = useState<{ order: any; status: string; note: string } | null>(null);
+  const [fu, setFu] = useState<{ order: any; status: string; note: string; reason?: string } | null>(null);
   const [detail, setDetail] = useState<ShipmentOrder | null>(null);
   const [fuFile, setFuFile] = useState<PickedFile | null>(null);
 
@@ -141,7 +142,12 @@ function ShipmentOrdersInner() {
       notify(ar ? 'أرفق صورة السند أو ملفه أولًا.' : 'Attach the bond file first.', 'error');
       return;
     }
-    await changeStatus(fu.order, fu.status, fu.note.trim(), fuFile);
+    // ولا تُلغى شحنةٌ بلا سبب (٢٠٢٦/١٠/٢٢) — والخادمُ هو الحارس.
+    if (fu.status === 'cancelled' && fu.order.status !== 'cancelled' && !String(fu.reason || '').trim()) {
+      notify(ar ? 'اختر سببَ الإلغاء.' : 'Choose the cancellation reason.', 'error');
+      return;
+    }
+    await changeStatus(fu.order, fu.status, fu.note.trim(), fuFile, String(fu.reason || '').trim());
     setFuFile(null);
     setFu(null);
   };
@@ -244,11 +250,11 @@ function ShipmentOrdersInner() {
   }, []);
 
   // The inline change — the reason nobody has to open an order to say "وصلت".
-  const changeStatus = async (o: ShipmentOrder, status: string, note = '', file?: PickedFile | null) => {
+  const changeStatus = async (o: ShipmentOrder, status: string, note = '', file?: PickedFile | null, cancelReason = '') => {
     setBusyId(o._id);
     try {
       await api.patch(`/api/shipment-orders/orders/${o._id}/status`, {
-        status, note, ...(file ? { dataUrl: file.dataUrl, fileName: file.fileName } : {}),
+        status, note, cancelReason, ...(file ? { dataUrl: file.dataUrl, fileName: file.fileName } : {}),
       });
       load();
     } catch (e: any) { notify(e.message, 'error'); }
@@ -844,6 +850,18 @@ function ShipmentOrdersInner() {
                   })}
                 </div>
               </div>
+
+              {fu.status === 'cancelled' && fu.order.status !== 'cancelled' && (
+                <div>
+                  <label className="block text-sm font-semibold text-slate-800 mb-1.5">
+                    {ar ? 'سبب الإلغاء' : 'Cancellation reason'}<span className="text-red-500 ms-1">*</span>
+                  </label>
+                  {/* من «أسباب الإلغاء» في إعدادات القسم — وما ليس فيها يُضاف من هنا فيظهر هناك. */}
+                  <ManagedSelect type="so_cancel_reason" storeLabel value={fu.reason || ''} onChange={(v) => setFu({ ...fu, reason: v })}
+                    placeholder={ar ? 'اختر السبب' : 'Choose the reason'}
+                    className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm" />
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-semibold text-slate-800 mb-1.5">

@@ -564,6 +564,7 @@ async function createOneOrder(req, body) {
     throw err;
   }
 
+  await applySalesRep(data, body);
   data.agentName = fullName(req.user); // المندوب — stamped, never typed
   data.createdBy = req.user._id;
 
@@ -578,6 +579,41 @@ async function createOneOrder(req, body) {
 
   return order;
 }
+
+/**
+ * ── السيلز التشغيليّ ────────────────────────────────────────────────────────
+ * مَن يصحّ أن يكون: فريقُ المبيعات وفريقُ العمليّات (مديراهما وموظّفوهما). ومَن
+ * أنهت الموارد البشريّة خدمتَه لا يُختار. والاسمُ يُلتقَط من الحساب لا ممّا أُرسل.
+ */
+const SALES_REP_ROLES = () => {
+  const { rolesOfSection } = require('../config/roles');
+  return [...rolesOfSection('Sales'), ...rolesOfSection('Operations')];
+};
+async function salesRepOptions() {
+  const User = require('../models/User');
+  const { endedStaff, userEnded } = require('../utils/endedStaff');
+  const [users, ended] = await Promise.all([
+    User.find({ role: { $in: SALES_REP_ROLES() }, isActive: { $ne: false } }).select('firstName lastName role').lean(),
+    endedStaff(),
+  ]);
+  const { LABELS_AR } = require('../config/roles');
+  return users.filter((u) => !userEnded(ended, u))
+    .map((u) => ({ value: String(u._id), label: fullName(u), role: u.role, roleAr: LABELS_AR[u.role] || u.role }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'ar'));
+}
+async function applySalesRep(data, body) {
+  if (body.salesRep === undefined) return;
+  if (!body.salesRep) { data.salesRep = null; data.salesRepName = ''; return; }
+  const User = require('../models/User');
+  const u = mongoose.isValidObjectId(body.salesRep)
+    ? await User.findOne({ _id: body.salesRep, role: { $in: SALES_REP_ROLES() } }).select('firstName lastName').lean() : null;
+  if (!u) { const e = new Error('السيلز التشغيلي يُختار من فريق المبيعات أو العمليات'); e.status = 400; throw e; }
+  data.salesRep = u._id; data.salesRepName = fullName(u);
+}
+exports.salesReps = async (req, res) => {
+  try { res.json({ options: await salesRepOptions() }); }
+  catch (e) { res.status(500).json({ message: 'تعذّر تحميل القائمة' }); }
+};
 
 exports.createOrder = async (req, res) => {
   try {
@@ -689,6 +725,7 @@ exports.updateOrder = async (req, res) => {
 
     // An edit can introduce a first-time customer or a fresh truck exactly like
     // the create form — the same inline registration applies.
+    try { await applySalesRep(data, req.body); } catch (e) { return res.status(400).json({ message: e.message }); }
     await resolveInlineCustomer(req, data);
     if (data.customer && String(data.customer) !== String(order.customer)) {
       const c = await ShipmentOrderCustomer.findById(data.customer).select('name').lean();
@@ -843,6 +880,26 @@ async function analyticsOf(query = {}) {
       avgMargin: b.orders ? r2(b.margin / b.orders) : 0,
     }));
 
+    // ── أسبابُ الإلغاء، وترتيبُ السيلز التشغيليّ (٢٠٢٦/١٠/٢٢) ───────────────
+    const [cancelAgg, salesAgg] = await Promise.all([
+      ShipmentOrder.aggregate([
+        { $match: { ...match, status: CANCELLED } },
+        { $group: { _id: { $ifNull: ['$cancelReason', ''] }, n: { $sum: 1 } } },
+        { $sort: { n: -1 } },
+      ]),
+      ShipmentOrder.aggregate([
+        { $match: { ...match, salesRepName: { $nin: ['', null] } } },
+        { $group: {
+          _id: '$salesRepName',
+          shipments: { $sum: 1 },
+          live: { $sum: liveOf },
+          sell: { $sum: sellOf },
+          buy: { $sum: buyOf },
+        } },
+        { $sort: { live: -1, shipments: -1 } },
+      ]),
+    ]);
+
     const [totalsAgg, byCustomer, bySupplier, byRoute, byTruckType, byBranch, byMonthAgg, statusAgg, losingRows] =
       await Promise.all([
         ShipmentOrder.aggregate([
@@ -933,6 +990,14 @@ async function analyticsOf(query = {}) {
         key: b._id, orders: b.orders, sell: r2(b.sell), buy: r2(b.buy), margin: r2(b.sell - b.buy),
       })),
       byStatus,
+      // الملغاةُ بأسبابها — و«بلا سبب» ما أُلغي قبل أن يُشترَط السبب.
+      cancelReasons: cancelAgg.map((x) => ({ reason: x._id || 'بلا سبب مسجّل', count: x.n, pct: (T.orders - T.live) ? r2((x.n / (T.orders - T.live)) * 100) : 0 })),
+      // ترتيبُ السيلز التشغيليّ بالشحنات المنفَّذة، ومعها الملغاةُ ونسبتُها.
+      salesRanking: salesAgg.map((x, i) => ({
+        rank: i + 1, name: x._id, shipments: x.shipments, live: x.live, cancelled: x.shipments - x.live,
+        cancelRate: x.shipments ? r2(((x.shipments - x.live) / x.shipments) * 100) : 0,
+        sell: r2(x.sell), margin: r2(x.sell - x.buy),
+      })),
       losing: losingRows.map((o) => ({ ...o, margin: r2(o.margin) })),
     };
   }
@@ -1100,6 +1165,12 @@ exports.patchStatus = async (req, res) => {
       });
     }
 
+    // ── ولا تُلغى شحنةٌ بلا سبب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────────────
+    const cancelReason = String(req.body.cancelReason || '').trim().slice(0, 200);
+    if (status === 'cancelled' && from !== 'cancelled' && !cancelReason) {
+      return res.status(400).json({ code: 'CANCEL_REASON_REQUIRED', message: 'اختر سببَ الإلغاء' });
+    }
+
     // نقلةٌ بلا تغييرٍ ولا ملاحظةٍ لا تُقيَّد: السجلُّ يمتلئ بأسطرٍ لا تقول شيئًا.
     if (from === status && !note && !file) return res.json({ order });
 
@@ -1133,8 +1204,10 @@ exports.patchStatus = async (req, res) => {
     }
 
     order.status = status;
+    if (status === 'cancelled' && cancelReason) order.cancelReason = cancelReason;
+    else if (status !== 'cancelled') order.cancelReason = '';
     order.statusLog.push({
-      from, to: status, note, at: new Date(),
+      from, to: status, note: status === 'cancelled' && cancelReason ? [cancelReason, note].filter(Boolean).join(' — ') : note, at: new Date(),
       by: req.user._id,
       byName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
       ...(file || {}),

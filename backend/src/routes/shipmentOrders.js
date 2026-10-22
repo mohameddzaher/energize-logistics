@@ -36,6 +36,8 @@ router.delete('/orders/:id', authorize(...ADMIN_ROLES), so.deleteOrder);
 // لوحةُ القسم: نداءٌ واحدٌ للمتصفّح والهاتف — نفسُ حساب التحليلات.
 router.get('/dashboard', so.getDashboard);
 router.get('/analytics', so.getAnalytics);
+// فريقُ المبيعات والعمليّات — لخانة «السيلز التشغيلي» (٢٠٢٦/١٠/٢٢).
+router.get('/sales-reps', so.salesReps);
 // ── ولوحةُ مدير التشغيل تُقرأ هنا أيضًا ────────────────────────────────────
 // هي نفسُها التي تُقرأ في «التشغيل — خاصّ»: حسابٌ واحدٌ ونقطةٌ واحدة
 // (controllers/opsAnalyticsController)، فلا يختلف رقمٌ بين الشاشتين.

@@ -50,6 +50,22 @@ const EDIT_ROLES = DELETE_ROLES;
 /** ما تقوله Media Go عن البلاغ — لا تفتحه من جديد ولا تغلقه. */
 const PARTNER_STATUSES = ['in_progress', 'fixed'];
 
+/**
+ * ── الحالةُ تمضي إلى الأمام (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────────────────
+ * كانت Media Go تُرجع بلاغًا «تمّ إصلاحه» إلى «قيد المعالجة» ويبقى تاريخُ
+ * الإصلاح عليه — بلاغٌ قيدَ المعالجة وله تاريخُ إصلاح. فصار لكلّ حالةٍ ما بعدها:
+ *   Media Go:  جديدة → قيد المعالجة / تمّ الإصلاح · قيد المعالجة → تمّ الإصلاح. ولا رجوع.
+ *   إنرجايز:  تراجع الإصلاحَ فتغلقه، أو تعيد فتحه بسببٍ مكتوب (فيُمحى تاريخُ الإصلاح
+ *             ويبقى في السجلّ)، وتغلق ما شاءت.
+ */
+const NEXT = {
+  mediago: { new: ['in_progress', 'fixed'], in_progress: ['fixed'], fixed: [], closed: [] },
+  energize: { new: ['in_progress', 'fixed', 'closed'], in_progress: ['fixed', 'closed'], fixed: ['closed', 'in_progress'], closed: ['in_progress'] },
+};
+/** رجوعٌ إلى الخلف — لا يكون إلّا بسبب. */
+const isReopen = (from, to) => (from === 'fixed' || from === 'closed') && (to === 'in_progress' || to === 'new');
+const nextStatuses = (status, partner) => NEXT[partner ? 'mediago' : 'energize'][status] || [];
+
 const isPartner = (user) => user?.role === MEDIAGO_ROLE || isScopedRole(user?.role);
 const sideOf = (user) => (isPartner(user) ? 'mediago' : 'energize');
 const canCreate = (req) => !isPartner(req.user)
@@ -173,8 +189,10 @@ const listRow = (d) => ({
   createdByName: d.createdByName || '', createdAt: d.createdAt, updatedAt: d.updatedAt,
 });
 
-const fullRow = (d) => ({
+const fullRow = (d, partner = false) => ({
   ...listRow(d),
+  // ما يجوز أن تصير إليه الآن — تقرؤه الشاشتان فلا تعرضان حالةً يردّها الخادم.
+  nextStatuses: nextStatuses(d.status, partner),
   files: d.files || [],
   statusHistory: d.statusHistory || [],
   replies: d.replies || [],
@@ -269,7 +287,7 @@ exports.getOne = async (req, res) => {
   try {
     const d = await MediaGoComplaint.findById(req.params.id).lean();
     if (!d) return res.status(404).json({ message: 'البلاغ غير موجود / Complaint not found' });
-    res.json({ item: fullRow(d), meta: MEDIAGO_VOCAB, can: abilities(req) });
+    res.json({ item: fullRow(d, isPartner(req.user)), meta: MEDIAGO_VOCAB, can: abilities(req) });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
@@ -319,7 +337,7 @@ exports.update = async (req, res) => {
     for (const k of EDIT_FIELDS) {
       if (val(doc[k]) !== val(fields[k])) { before[k] = doc[k] ?? null; after[k] = fields[k]; doc[k] = fields[k]; }
     }
-    if (!Object.keys(after).length) return res.json({ item: fullRow(doc.toObject()), unchanged: true });
+    if (!Object.keys(after).length) return res.json({ item: fullRow(doc.toObject(), isPartner(req.user)), unchanged: true });
     await doc.save();
     await logAudit({
       user: req.user, action: 'update', entity: 'MediaGoComplaint', entityId: doc._id,
@@ -331,7 +349,7 @@ exports.update = async (req, res) => {
       title: `عُدِّل البلاغ ${doc.ref} / Complaint ${doc.ref} updated`,
       message: `${doc.motorcycleNumber} — ${label('issue', doc.issue)} / ${label('issue', doc.issue, 'en')}`,
     });
-    res.json({ item: fullRow(doc.toObject()) });
+    res.json({ item: fullRow(doc.toObject(), isPartner(req.user)) });
   } catch (e) {
     res.status(400).json({ message: e.message });
   }
@@ -389,7 +407,7 @@ exports.create = async (req, res) => {
       title: `بلاغ جديد ${doc.ref} / New complaint ${doc.ref}`,
       message: `${label('issue', issue)} — ${doc.motorcycleNumber} / ${label('issue', issue, 'en')}`,
     });
-    res.status(201).json({ item: fullRow(doc.toObject()) });
+    res.status(201).json({ item: fullRow(doc.toObject(), isPartner(req.user)) });
   } catch (e) {
     files.forEach((f) => deleteStoredFile(f.fileUrl));
     res.status(400).json({ message: e.message });
@@ -409,7 +427,7 @@ exports.addFiles = async (req, res) => {
     await doc.save();
     await logAudit({ user: req.user, action: 'update', entity: 'MediaGoComplaint', entityId: doc._id, details: `${doc.ref} — +${files.length} مرفق` });
     announce(doc._id, 'files');
-    res.json({ item: fullRow(doc.toObject()) });
+    res.json({ item: fullRow(doc.toObject(), isPartner(req.user)) });
   } catch (e) {
     res.status(400).json({ message: e.message });
   }
@@ -429,14 +447,22 @@ exports.setStatus = async (req, res) => {
     if (can.partner && doc.status === 'closed') {
       return res.status(403).json({ message: 'البلاغ مغلق / This complaint is closed' });
     }
-    if (doc.status === status && !note) return res.json({ item: fullRow(doc.toObject()) });
+    if (doc.status === status && !note) return res.json({ item: fullRow(doc.toObject(), isPartner(req.user)) });
+    if (doc.status !== status && !nextStatuses(doc.status, can.partner).includes(status)) {
+      return res.status(400).json({ message: `لا يُنقَل البلاغ من «${label('status', doc.status)}» إلى «${label('status', status)}» / Not allowed from “${label('status', doc.status, 'en')}” to “${label('status', status, 'en')}”` });
+    }
+    if (isReopen(doc.status, status) && !note) {
+      return res.status(400).json({ message: 'اكتب سبب إعادة الفتح / Write why it is reopened' });
+    }
     const side = sideOf(req.user);
     const by = nameOf(req.user);
     const prev = doc.status;
     doc.status = status;
-    if (status === 'fixed' && !doc.fixedAt) doc.fixedAt = new Date();
+    // تاريخُ الإصلاح لحالةِ «تمّ الإصلاح» وما بعدها وحدَها: إعادةُ الفتح تمحوه
+    // (ويبقى في السجلّ)، والإصلاحُ الثاني يكتب تاريخَه هو.
+    if (status === 'fixed') doc.fixedAt = new Date();
     if (status === 'closed') doc.closedAt = new Date();
-    if (status === 'new' || status === 'in_progress') { doc.closedAt = null; if (status === 'new') doc.fixedAt = null; }
+    if (status === 'new' || status === 'in_progress') { doc.closedAt = null; doc.fixedAt = null; }
     doc.statusHistory.push({ status, note, by: req.user._id, byName: by, side, at: new Date() });
     // الملاحظةُ مع الحالة تُقرأ في المحادثة أيضًا — هناك يبحث عنها الطرفُ الآخر.
     if (note) doc.replies.push({ text: note, by: req.user._id, byName: by, side, at: new Date() });
@@ -450,7 +476,7 @@ exports.setStatus = async (req, res) => {
     };
     if (side === 'mediago') await notifyOurSide(doc, msg);
     else await notifyPartner({ ...msg, id: doc._id });
-    res.json({ item: fullRow(doc.toObject()) });
+    res.json({ item: fullRow(doc.toObject(), isPartner(req.user)) });
   } catch (e) {
     res.status(400).json({ message: e.message });
   }
@@ -475,7 +501,7 @@ exports.reply = async (req, res) => {
     };
     if (side === 'mediago') await notifyOurSide(doc, msg);
     else await notifyPartner({ ...msg, id: doc._id });
-    res.json({ item: fullRow(doc.toObject()) });
+    res.json({ item: fullRow(doc.toObject(), isPartner(req.user)) });
   } catch (e) {
     res.status(400).json({ message: e.message });
   }

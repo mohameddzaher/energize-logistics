@@ -486,6 +486,8 @@ export function ComplaintDetail({ id, mode, variant, onClose, onChanged }: {
   const [busy, setBusy] = useState('');
   const [more, setMore] = useState<LocalFile[]>([]);
   const [view, setView] = useState<number | null>(null);
+  // الصورةُ المعروضةُ في عارض الصفحة.
+  const [cur, setCur] = useState(0);
   const [editing, setEditing] = useState(false);
   const [gone, setGone] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
@@ -518,12 +520,15 @@ export function ComplaintDetail({ id, mode, variant, onClose, onChanged }: {
 
   const setStatus = async (status: string) => {
     if (!d) return;
+    // إعادةُ فتحِ ما أُصلح أو أُغلق لا تكون إلّا بسبب (والخادمُ هو الحارس).
+    const reopen = (d.status === 'fixed' || d.status === 'closed') && (status === 'in_progress' || status === 'new');
     const note = await prompt({
       title: vocabLabel(meta, 'status', status, vLang(mode)),
-      message: tx('ملاحظة مع الحالة (اختياري)', 'A note with the status (optional)'),
+      message: reopen ? tx('سبب إعادة الفتح (مطلوب)', 'Why is it reopened? (required)') : tx('ملاحظة مع الحالة (اختياري)', 'A note with the status (optional)'),
       confirmLabel: tx('تأكيد', 'Confirm'),
     });
     if (note === null) return;
+    if (reopen && !String(note).trim()) { notify(tx('اكتب سبب إعادة الفتح', 'Write why it is reopened'), 'error'); return; }
     setBusy(`s:${status}`);
     try { after((await api.patch<{ item: MgFull }>(`${MEDIAGO_API}/${d._id}/status`, { status, note })).item); }
     catch (e: any) { notify(e?.message || tx('تعذّر الحفظ', 'Save failed'), 'error'); }
@@ -553,7 +558,9 @@ export function ComplaintDetail({ id, mode, variant, onClose, onChanged }: {
 
   const partner = mode === 'partner';
   const page = variant === 'page';
-  const statusButtons = (can?.statuses || []).filter((s) => s !== d?.status && !(partner && d?.status === 'closed'));
+  // ما يجوز الآن من الخادم (nextStatuses): الحالةُ تمضي إلى الأمام، وMedia Go لا ترجع
+  // بلاغًا أُصلح — راجع NEXT في mediagoComplaintController.
+  const statusButtons = (d?.nextStatuses ?? (can?.statuses || []).filter((s) => s !== d?.status && !(partner && d?.status === 'closed')));
 
   // ── الأقسام ───────────────────────────────────────────────────────────────
   const header = (
@@ -594,20 +601,21 @@ export function ComplaintDetail({ id, mode, variant, onClose, onChanged }: {
   );
 
   const info = d && (
-    <div className={`grid grid-cols-2 gap-2.5 ${page ? 'lg:grid-cols-3' : 'sm:grid-cols-4'}`}>
+    <div className={`grid grid-cols-2 gap-2.5 ${page ? 'md:grid-cols-3 xl:grid-cols-6' : 'sm:grid-cols-4'}`}>
       <InfoCell icon={<Bike className="h-3.5 w-3.5" />} ar="رقم الدبّاب" en="Motorcycle" mode={mode}>
         <span dir="auto">{d.motorcycleNumber}</span>
         {(d.serialNumber || d.project) && <span className="block text-[11px] font-medium text-slate-500">{[d.serialNumber && `#${d.serialNumber}`, d.project].filter(Boolean).join(' · ')}</span>}
       </InfoCell>
       <InfoCell icon={<MonitorPlay className="h-3.5 w-3.5" />} ar="رقم الشاشة" en="Screen" mode={mode}>{d.screenNumber || '—'}</InfoCell>
-      <div className={page ? 'col-span-2 lg:col-span-1' : 'col-span-2'}>
+      <div className={page ? 'col-span-2 md:col-span-1' : 'col-span-2'}>
         <InfoCell icon={<AlertTriangle className="h-3.5 w-3.5" />} ar="المشكلة" en="Issue" mode={mode}>
           {d.issue === 'other' ? <>{vocabLabel(meta, 'issue', 'other', vLang(mode))}: <span className="font-semibold">{d.issueOther}</span></> : issueText(meta, d, vLang(mode))}
         </InfoCell>
       </div>
       <InfoCell icon={<MapPin className="h-3.5 w-3.5" />} ar="موقع الصيانة" en="Location" mode={mode}>{vocabLabel(meta, 'location', d.location, vLang(mode))}</InfoCell>
       <InfoCell icon={<Clock className="h-3.5 w-3.5" />} ar="وقت التوفّر" en="Available" mode={mode}>{availabilityText(meta, d, vLang(mode))}</InfoCell>
-      {page && <InfoCell icon={<CheckCircle2 className="h-3.5 w-3.5" />} ar="تاريخ الإصلاح" en="Fixed at" mode={mode}>{d.fixedAt ? fmtDateTime(d.fixedAt, ar) : '—'}</InfoCell>}
+      {/* تاريخُ الإصلاح لِما أُصلح وحدَه — إعادةُ الفتح تمحوه (ويبقى في المسار). */}
+      {(d.status === 'fixed' || d.status === 'closed') && d.fixedAt && <InfoCell icon={<CheckCircle2 className="h-3.5 w-3.5" />} ar="تاريخ الإصلاح" en="Fixed at" mode={mode}>{fmtDateTime(d.fixedAt, ar)}</InfoCell>}
     </div>
   );
 
@@ -617,20 +625,37 @@ export function ComplaintDetail({ id, mode, variant, onClose, onChanged }: {
       <h3 className="mb-2 flex items-center gap-1.5 text-[13px] font-bold text-slate-800"><ImageIcon className="h-4 w-4 text-[#f37121]" /><Bi ar={`صور العطل (${d.files.length})`} en={`Fault media (${d.files.length})`} mode={mode} /></h3>
       {!d.files.length ? <p className="text-[12.5px] text-slate-500">{tx('لا مرفقات', 'No attachments')}</p> : page && first ? (
         // في الصفحة: الأولى كبيرةً وما بعدها شريطٌ تحتها.
+        // ── عارضٌ في الصفحة نفسِها (٢٠٢٦/١٠/٢٢): الصورةُ الحاليّةُ كبيرةً، وسهمان
+        //    للتنقّل، وشريطُ مصغّراتٍ تحتها يُختار منه — والضغطُ عليها يفتحها كاملة.
         <div className="space-y-2">
-          <button type="button" onClick={() => setView(0)} className="group relative block w-full overflow-hidden rounded-xl bg-slate-900">
-            {first.kind === 'video'
-              ? <><video src={`${first.fileUrl}#t=0.5`} muted preload="metadata" className="aspect-video w-full object-contain" /><span className="absolute inset-0 flex items-center justify-center"><span className="rounded-full bg-black/60 p-4 text-white"><Play className="h-7 w-7" /></span></span></>
-              // eslint-disable-next-line @next/next/no-img-element
-              : <img src={first.fileUrl} alt={first.fileName || ''} className="aspect-video w-full object-contain transition group-hover:scale-[1.01]" />}
-            <span className="absolute bottom-2 end-2 inline-flex items-center gap-1 rounded-md bg-black/55 px-2 py-0.5 text-[11px] text-white"><Maximize2 className="h-3 w-3" />{tx('عرض', 'View')}</span>
-          </button>
-          {d.files.length > 1 && (
-            <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
-              {d.files.slice(1).map((f, i) => (
-                <button key={f._id || i} type="button" onClick={() => setView(i + 1)} className="relative aspect-square overflow-hidden rounded-lg bg-slate-900">
+          {(() => {
+            const n = d.files.length; const i = Math.min(cur, n - 1); const f = d.files[i];
+            return (
+              <div className="relative overflow-hidden rounded-xl bg-slate-900">
+                <button type="button" onClick={() => setView(i)} className="group block w-full">
                   {f.kind === 'video'
-                    ? <><video src={`${f.fileUrl}#t=0.5`} muted preload="metadata" className="h-full w-full object-cover opacity-80" /><span className="absolute inset-0 flex items-center justify-center"><Play className="h-5 w-5 text-white" /></span></>
+                    ? <video key={f.fileUrl} src={f.fileUrl} controls playsInline preload="metadata" className="aspect-video w-full object-contain" />
+                    // eslint-disable-next-line @next/next/no-img-element
+                    : <img src={f.fileUrl} alt={f.fileName || ''} className="aspect-video w-full object-contain" />}
+                </button>
+                {n > 1 && (
+                  <>
+                    <button type="button" onClick={() => setCur((i - 1 + n) % n)} className="absolute start-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70" aria-label="Previous"><ChevronLeft className="h-5 w-5 rtl:rotate-180" /></button>
+                    <button type="button" onClick={() => setCur((i + 1) % n)} className="absolute end-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70" aria-label="Next"><ChevronRight className="h-5 w-5 rtl:rotate-180" /></button>
+                  </>
+                )}
+                <span className="absolute bottom-2 start-2 rounded-md bg-black/55 px-2 py-0.5 text-[11px] tabular-nums text-white">{i + 1} / {n}</span>
+                <button type="button" onClick={() => setView(i)} className="absolute bottom-2 end-2 inline-flex items-center gap-1 rounded-md bg-black/55 px-2 py-0.5 text-[11px] text-white hover:bg-black/75"><Maximize2 className="h-3 w-3" />{tx('ملء الشاشة', 'Full screen')}</button>
+              </div>
+            );
+          })()}
+          {d.files.length > 1 && (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {d.files.map((f, i) => (
+                <button key={f._id || i} type="button" onClick={() => setCur(i)}
+                  className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-900 ring-2 ${i === Math.min(cur, d.files.length - 1) ? 'ring-[#f37121]' : 'ring-transparent opacity-70 hover:opacity-100'}`}>
+                  {f.kind === 'video'
+                    ? <><video src={`${f.fileUrl}#t=0.5`} muted preload="metadata" className="h-full w-full object-cover" /><span className="absolute inset-0 flex items-center justify-center"><Play className="h-4 w-4 text-white" /></span></>
                     // eslint-disable-next-line @next/next/no-img-element
                     : <img src={f.fileUrl} alt={f.fileName || ''} className="h-full w-full object-cover" />}
                 </button>
@@ -747,10 +772,15 @@ export function ComplaintDetail({ id, mode, variant, onClose, onChanged }: {
       <div className="w-full space-y-4 pb-10" dir={ar ? 'rtl' : 'ltr'}>
         {header}
         {!d ? <div className="rounded-2xl border border-slate-200 bg-white">{missingView}</div> : (
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-            <div className="space-y-4 lg:col-span-3">{media}{info}</div>
-            <div className="space-y-4 lg:col-span-2">{status}{thread}{timeline}</div>
-          </div>
+          // ── الترتيب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢): البطاقاتُ أوّلًا، ثمّ الصور، ثمّ التفاصيل.
+          <>
+            {info}
+            {media}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+              <div className="space-y-4 lg:col-span-3">{thread}</div>
+              <div className="space-y-4 lg:col-span-2">{status}{timeline}</div>
+            </div>
+          </>
         )}
         {editor}{lightbox}
       </div>

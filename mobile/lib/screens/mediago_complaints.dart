@@ -488,6 +488,8 @@ class MediaGoDetailScreen extends StatefulWidget {
 
 class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
   Map<String, dynamic>? _item;
+  // الصورةُ المعروضةُ في عارض الصفحة.
+  int _cur = 0;
   Map? _meta;
   Map? _can;
   String? _error;
@@ -537,12 +539,14 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
   }
 
   Future<void> _setStatus(String s) async {
+    final cur = '${_item?['status'] ?? ''}';
+    final reopen = (cur == 'fixed' || cur == 'closed') && (s == 'in_progress' || s == 'new');
     final note = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
         title: Text(_vocab(_meta, 'status', s, _partner)),
-        content: TextField(controller: note, maxLines: 3, decoration: InputDecoration(hintText: _bx(_partner, 'ملاحظة (اختياري)', 'Note (optional)'))),
+        content: TextField(controller: note, maxLines: 3, decoration: InputDecoration(hintText: reopen ? _bx(_partner, 'سبب إعادة الفتح (مطلوب)', 'Why is it reopened? (required)') : _bx(_partner, 'ملاحظة (اختياري)', 'Note (optional)'))),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: Text(_bx(_partner, 'إلغاء', 'Cancel'))),
           FilledButton(style: FilledButton.styleFrom(minimumSize: const Size(90, 44)), onPressed: () => Navigator.pop(c, true), child: Text(_bx(_partner, 'تأكيد', 'Confirm'))),
@@ -550,6 +554,10 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
       ),
     );
     if (ok != true) return;
+    if (reopen && note.text.trim().isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_bx(_partner, 'اكتب سبب إعادة الفتح', 'Write why it is reopened'))));
+      return;
+    }
     await _run('s:$s', () => Api.instance.patch('$_api/${widget.id}/status', {'status': s, 'note': note.text.trim()}));
   }
 
@@ -636,8 +644,11 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
       final files = List.from(it['files'] ?? const []);
       final history = List<Map>.from(it['statusHistory'] ?? const []);
       final replies = List<Map>.from(it['replies'] ?? const []);
-      final statuses = List<String>.from((_can?['statuses'] as List?) ?? const [])
-          .where((s) => s != it['status'] && !(partner && it['status'] == 'closed')).toList();
+      // ما يجوز الآن من الخادم — الحالةُ تمضي إلى الأمام، وMedia Go لا ترجع بلاغًا أُصلح.
+      final statuses = it['nextStatuses'] is List
+          ? List<String>.from(it['nextStatuses'] as List)
+          : List<String>.from((_can?['statuses'] as List?) ?? const [])
+              .where((s) => s != it['status'] && !(partner && it['status'] == 'closed')).toList();
       body = Column(children: [
         Expanded(
           child: ListView(padding: const EdgeInsets.all(14), children: [
@@ -661,27 +672,44 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
               const SizedBox(width: 8),
               Expanded(child: _info(Icons.schedule_outlined, 'وقت التوفّر', 'Available', _availOf(_meta, it, partner))),
             ]),
+            // تاريخُ الإصلاح لِما أُصلح وحدَه — إعادةُ الفتح تمحوه ويبقى في المسار.
+            if ((it['status'] == 'fixed' || it['status'] == 'closed') && it['fixedAt'] != null) ...[
+              const SizedBox(height: 8),
+              _info(Icons.check_circle_outline, 'تاريخ الإصلاح', 'Fixed at', _when(it['fixedAt'])),
+            ],
             const SizedBox(height: 14),
             Text(_bx(partner, 'صور العطل (${files.length})', 'Fault media (${files.length})'), style: const TextStyle(fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
             if (files.isEmpty) Text(_bx(partner, 'لا مرفقات', 'No attachments'), style: const TextStyle(color: T.inkSoft)),
             // في الصفحة: الأولى كبيرةً بعرض الشاشة، وما بعدها شبكةٌ تحتها.
+            // في الصفحة: عارضٌ يُسحَب بين الصور (٢٠٢٦/١٠/٢٢)، ورقمُ الصورة عليه، والضغطُ يفتحها كاملة.
             if (files.isNotEmpty && widget.fullPage) ...[
-              GestureDetector(
-                onTap: () => _viewFile(files, 0),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: AspectRatio(
-                    aspectRatio: 16 / 10,
-                    child: (files[0] as Map)['kind'] == 'video'
-                        ? Container(color: _slate, child: const Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 56)))
-                        : Container(color: _slate, child: Image.network(_url('${(files[0] as Map)['fileUrl']}'), fit: BoxFit.contain, errorBuilder: (_, __, ___) => Container(color: T.line))),
-                  ),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: AspectRatio(
+                  aspectRatio: 16 / 10,
+                  child: Stack(children: [
+                    PageView.builder(
+                      itemCount: files.length,
+                      onPageChanged: (i) => setState(() => _cur = i),
+                      itemBuilder: (_, i) => GestureDetector(
+                        onTap: () => _viewFile(files, i),
+                        child: (files[i] as Map)['kind'] == 'video'
+                            ? Container(color: _slate, child: const Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 56)))
+                            : Container(color: _slate, child: Image.network(_url('${(files[i] as Map)['fileUrl']}'), fit: BoxFit.contain, errorBuilder: (_, __, ___) => Container(color: T.line))),
+                      ),
+                    ),
+                    if (files.length > 1) PositionedDirectional(bottom: 8, start: 10, child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(8)),
+                      child: Text('${_cur + 1} / ${files.length}', style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700)),
+                    )),
+                  ]),
                 ),
               ),
               if (files.length > 1) const SizedBox(height: 6),
             ],
-            if (files.isNotEmpty && (!widget.fullPage || files.length > 1))
+            if (files.isNotEmpty && !widget.fullPage)
               GridView.count(
                 crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 6, crossAxisSpacing: 6,
                 children: [

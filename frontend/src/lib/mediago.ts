@@ -24,7 +24,7 @@ export type MgRow = {
   replyCount: number; lastReply?: MgReply | null;
   createdByName: string; createdAt: string; updatedAt: string;
 };
-export type MgFull = MgRow & { files: MgFile[]; statusHistory: MgHistory[]; replies: MgReply[] };
+export type MgFull = MgRow & { files: MgFile[]; statusHistory: MgHistory[]; replies: MgReply[]; /** ما يجوز أن تصير إليه الآن — من الخادم. */ nextStatuses?: string[] };
 
 export type MgList = {
   items: MgRow[]; total: number; grandTotal: number;

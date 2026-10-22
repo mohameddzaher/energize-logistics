@@ -134,7 +134,19 @@ class HrQuickFilters extends StatelessWidget {
   /// نقطةُ الخيارات — شاشاتٌ خارجَ ماستر الموارد البشريّة (رسومُ الإقامات في
   /// الماليّة) تعدّ قيمَها على صفوفها هي، بالشكل نفسِه `{ filters: [...] }`.
   final String optionsUrl;
-  const HrQuickFilters({super.key, required this.value, required this.onChanged, this.params = const {}, this.optionsUrl = '/api/hr/master/filters'});
+  /// فلاترُ شاشةٍ أخرى بالشكل نفسِه (لوحةُ التخليص) — والافتراضُ فلاترُ الموارد البشريّة.
+  final List<(String, String, String)> keys;
+  /// خياراتٌ جاءت مع ردّ الشاشة نفسِه (`filters: [{key, values: [{value,count,label}]}]`) — فلا نداءَ ثانٍ.
+  final List<Map<String, dynamic>>? facets;
+  const HrQuickFilters({super.key, required this.value, required this.onChanged, this.params = const {}, this.optionsUrl = '/api/hr/master/filters', this.keys = hrQuickKeys, this.facets});
+
+  String _labelOf(String key, String v) {
+    for (final f in facets ?? const <Map<String, dynamic>>[]) {
+      if (f['key'] != key) continue;
+      for (final x in List<Map<String, dynamic>>.from(f['values'] ?? [])) { if ('${x['value']}' == v && x['label'] != null) return '${x['label']}'; }
+    }
+    return v;
+  }
 
   List<String> _sel(String k) => (value[k] ?? '').split(',').map((x) => x.trim()).where((x) => x.isNotEmpty).toList();
 
@@ -142,11 +154,15 @@ class HrQuickFilters extends StatelessWidget {
     final q = <String>[];
     ({...params, ...value}).forEach((k, v) { if (v.isNotEmpty) q.add('$k=${Uri.encodeComponent(v)}'); });
     List<MapEntry<String, int>> opts = [];
+    final labels = <String, String>{};
     try {
-      final d = await Api.instance.get('$optionsUrl${q.isEmpty ? '' : '?${q.join('&')}'}');
-      for (final f in List<Map<String, dynamic>>.from(d['filters'] ?? [])) {
+      final fs = facets ?? List<Map<String, dynamic>>.from((await Api.instance.get('$optionsUrl${q.isEmpty ? '' : '?${q.join('&')}'}'))['filters'] ?? []);
+      for (final f in fs) {
         if (f['key'] == key) {
-          opts = [for (final v in List<Map<String, dynamic>>.from(f['values'] ?? [])) MapEntry('${v['value']}', (v['count'] as num?)?.toInt() ?? 0)];
+          for (final v in List<Map<String, dynamic>>.from(f['values'] ?? [])) {
+            opts.add(MapEntry('${v['value']}', (v['count'] as num?)?.toInt() ?? 0));
+            if (v['label'] != null) labels['${v['value']}'] = '${v['label']}';
+          }
         }
       }
     } catch (_) {}
@@ -154,7 +170,7 @@ class HrQuickFilters extends StatelessWidget {
     final picked = await showModalBottomSheet<List<String>>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _MultiSheet(title: title, options: opts, initial: _sel(key)),
+      builder: (_) => _MultiSheet(title: title, options: opts, initial: _sel(key), labels: labels),
     );
     if (picked == null) return;
     final n = Map<String, String>.from(value);
@@ -164,9 +180,9 @@ class HrQuickFilters extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final any = hrQuickKeys.any((k) => _sel(k.$1).isNotEmpty);
+    final any = keys.any((k) => _sel(k.$1).isNotEmpty);
     return Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-      for (final k in hrQuickKeys)
+      for (final k in keys)
         Builder(builder: (_) {
           final sel = _sel(k.$1);
           final on = sel.isNotEmpty;
@@ -175,14 +191,14 @@ class HrQuickFilters extends StatelessWidget {
             onPressed: () => _open(context, k.$1, label),
             backgroundColor: on ? T.orange : Colors.white,
             side: BorderSide(color: on ? T.orange : T.line),
-            label: Text(on ? '$label: ${sel.length == 1 ? (sel.first == '—' ? tr('غير محدد', 'Not set') : sel.first) : tr('${sel.length} مختار', '${sel.length} selected')}' : label,
+            label: Text(on ? '$label: ${sel.length == 1 ? (sel.first == '—' ? tr('غير محدد', 'Not set') : _labelOf(k.$1, sel.first)) : tr('${sel.length} مختار', '${sel.length} selected')}' : label,
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: on ? Colors.white : T.inkSoft)),
             avatar: Icon(on ? Icons.filter_alt : Icons.arrow_drop_down, size: 16, color: on ? Colors.white : T.inkFaint),
           );
         }),
       if (any)
         TextButton(
-          onPressed: () { final n = Map<String, String>.from(value); for (final k in hrQuickKeys) { n.remove(k.$1); } onChanged(n); },
+          onPressed: () { final n = Map<String, String>.from(value); for (final k in keys) { n.remove(k.$1); } onChanged(n); },
           child: Text(tr('مسح الكل', 'Clear all')),
         ),
     ]);
@@ -193,7 +209,8 @@ class _MultiSheet extends StatefulWidget {
   final String title;
   final List<MapEntry<String, int>> options;
   final List<String> initial;
-  const _MultiSheet({required this.title, required this.options, required this.initial});
+  final Map<String, String> labels;
+  const _MultiSheet({required this.title, required this.options, required this.initial, this.labels = const {}});
   @override
   State<_MultiSheet> createState() => _MultiSheetState();
 }
@@ -203,7 +220,8 @@ class _MultiSheetState extends State<_MultiSheet> {
   String _q = '';
   @override
   Widget build(BuildContext context) {
-    final list = widget.options.where((o) => _q.isEmpty || o.key.toLowerCase().contains(_q.toLowerCase())).toList();
+    String name(String v) => widget.labels[v] ?? v;
+    final list = widget.options.where((o) => _q.isEmpty || name(o.key).toLowerCase().contains(_q.toLowerCase())).toList();
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: SizedBox(
@@ -231,7 +249,7 @@ class _MultiSheetState extends State<_MultiSheet> {
                   value: _sel.contains(o.key),
                   activeColor: T.orange,
                   onChanged: (v) => setState(() => v == true ? _sel.add(o.key) : _sel.remove(o.key)),
-                  title: Text(o.key == '—' ? tr('غير محدد', 'Not set') : o.key, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  title: Text(o.key == '—' ? tr('غير محدد', 'Not set') : name(o.key), style: const TextStyle(fontWeight: FontWeight.w600)),
                   secondary: Text('${o.value}', style: const TextStyle(color: T.inkFaint, fontSize: 12)),
                 ),
               if (list.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Center(child: Text(tr('لا نتائج', 'No matches')))),

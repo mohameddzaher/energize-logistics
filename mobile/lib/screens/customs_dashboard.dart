@@ -1,3 +1,4 @@
+import '../ui/hr_quick.dart';
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
@@ -25,6 +26,13 @@ List<Map<String, dynamic>> _maps(dynamic v) =>
     v is List ? [for (final e in v) if (e is Map) Map<String, dynamic>.from(e)] : [];
 int _i(dynamic v) => v is num ? v.round() : int.tryParse('${v ?? ''}') ?? 0;
 
+const _customsQuick = [
+  ('qState', 'حالة المعاملة', 'State'), ('qInvoice', 'الفوترة', 'Invoicing'), ('qCustomer', 'العميل', 'Customer'),
+  ('qAgent', 'الوكيل الملاحي', 'Shipping agent'), ('qCarrier', 'الناقل', 'Carrier'), ('qPort', 'الميناء', 'Port'),
+  ('qBranch', 'الفرع', 'Branch'), ('qCargo', 'النوع', 'Type'), ('qStage', 'تنتظر مرحلة', 'Waiting on'),
+  ('qBy', 'أنشأها', 'Created by'), ('qMonth', 'الشهر', 'Month'),
+];
+
 class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
   Map<String, dynamic>? _d;
   bool _loading = true;
@@ -37,8 +45,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
   // المدّة: '' كلُّها · day · month · range — تُترجَم إلى from/to على تاريخ المعاملة.
   String _period = '';
   int _pm = DateTime.now().month, _py = DateTime.now().year;
-  // العملاءُ والوكلاءُ من `/filters` ({value,label})؛ والفريقُ من ردّ اللوحة.
-  List<Map<String, dynamic>> _customerOpts = const [], _agentOpts = const [];
+  // الفلاترُ السريعة وخياراتُها في ردّ اللوحة نفسِه (`filters`)، والفريقُ كذلك.
   bool _allCustomers = false;
   int _seq = 0;
   late final void Function() _onLive;
@@ -47,7 +54,6 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
   void initState() {
     super.initState();
     _load();
-    _loadOptions();
     _onLive = () => _load();
     Live.instance.on('customs:updated', _onLive);
   }
@@ -76,36 +82,12 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
     }
   }
 
-  Future<void> _loadOptions() async {
-    try {
-      final d = await Api.instance.get('/api/customs-clearance/filters');
-      final o = d['options'] is Map ? d['options'] as Map : const {};
-      if (mounted) setState(() { _customerOpts = _maps(o['customers']); _agentOpts = _maps(o['agents']); });
-    } catch (_) {
-      // بلا القائمتين تبقى بقيّةُ الفلاتر تعمل.
-    }
-  }
+
 
   void _setF(String key, String value) {
     setState(() { value.isEmpty ? _f.remove(key) : _f[key] = value; _loading = true; });
     _load();
   }
-
-  Widget _pick(String key, String label, String all, List<(String, String)> opts) => Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: DropdownButtonFormField<String>(
-          // المفتاحُ يتبع القيمة: «مسح الفلاتر» ولمسةُ فردٍ من الفريق يغيّرانها من خارج القائمة.
-          key: ValueKey('$key:${_f[key] ?? ''}'),
-          initialValue: opts.any((o) => o.$1 == _f[key]) ? _f[key] : '',
-          isExpanded: true,
-          decoration: InputDecoration(isDense: true, labelText: label, border: const OutlineInputBorder()),
-          items: [
-            DropdownMenuItem(value: '', child: Text(all)),
-            for (final o in opts) DropdownMenuItem(value: o.$1, child: Text(o.$2, overflow: TextOverflow.ellipsis)),
-          ],
-          onChanged: (v) => _setF(key, v ?? ''),
-        ),
-      );
 
   String _ymd(DateTime d) => d.toIso8601String().split('T').first;
 
@@ -204,19 +186,15 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
             ]),
           ),
           if (_showFilters) ...[
-            _pick('customerParty', tr('العميل', 'Customer'), tr('كلُّ العملاء', 'All customers'),
-                [for (final c in _customerOpts) ('${c['value']}', '${c['label'] ?? ''}')]),
-            _pick('agentParty', tr('وكيل الشحن', 'Shipping agent'), tr('كلُّ الوكلاء', 'All agents'),
-                [for (final c in _agentOpts) ('${c['value']}', '${c['label'] ?? ''}')]),
-            Row(children: [
-              Expanded(child: _pick('branch', tr('الفرع', 'Branch'), tr('كلُّ الفروع', 'All branches'),
-                  [('jeddah', tr('جدة', 'Jeddah')), ('dammam', tr('الدمام', 'Dammam'))])),
-              const SizedBox(width: 8),
-              Expanded(child: _pick('cargoType', tr('نوع المعاملة', 'Type'), tr('الكلّ', 'All'),
-                  [('containers', tr('حاويات', 'Containers')), ('vehicles', tr('سيّارات', 'Vehicles'))])),
-            ]),
-            _pick('member', tr('مَن أنشأ', 'Created by'), tr('كلُّ الفريق', 'Whole team'),
-                [for (final m in team) ('${m['_id']}', '${m['name'] ?? ''}')]),
+            // الفلاترُ السريعة كالموقع (٢٠٢٦/١٠/٢٢): متعدّدةُ القيم وبأعدادها، وتُطبَّق في الخادم
+            // على كلّ رقمٍ في اللوحة (dashQuickFilters).
+            const SizedBox(height: 6),
+            HrQuickFilters(
+              keys: _customsQuick,
+              facets: _maps(_d?['filters']),
+              value: _f,
+              onChanged: (v) { setState(() { _f..clear()..addAll(v); _loading = true; }); _load(); },
+            ),
             const SizedBox(height: 8),
             _periodControl(),
             const SizedBox(height: 6),

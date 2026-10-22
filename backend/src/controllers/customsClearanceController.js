@@ -638,6 +638,21 @@ exports.getAnalytics = async (req, res) => {
       .lean();
     // الإيرادُ والتكلفةُ والربحُ لكلّ معاملة — بقاعدةٍ واحدة مع «ماليات التخليص» (utils/customsInvoice.moneyOf).
     for (const r of list) r._m = require('../utils/customsInvoice').moneyOf(r);
+    // ── الفلاترُ السريعة — كلوحة القسم (٢٠٢٦/١٠/٢٢) ─────────────────────────
+    const invOf = (r) => !!r.saleInvoiceNumber || !!String((r.billing && r.billing.invoiceStatus) || '').trim()
+      || pipelineOf(r).steps.some((x) => x.key === 'invoiced' && x.done);
+    const STATE_AR = { open: 'مفتوحة', closedInvoiced: 'مغلقة مفوترة', closedNotInvoiced: 'مغلقة لم تُفوتَر' };
+    const quick = applyQuick(list, [
+      { key: 'qState', get: (r) => (r.isCompleted ? (invOf(r) ? 'closedInvoiced' : 'closedNotInvoiced') : 'open'), label: (v) => STATE_AR[v] || v },
+      { key: 'qCustomer', get: (r) => r.customerName || '' },
+      { key: 'qAgent', get: (r) => r.shippingAgent || '' },
+      { key: 'qCarrier', get: (r) => r.carrierName || '' },
+      { key: 'qPort', get: (r) => r.port || '' },
+      { key: 'qBranch', get: (r) => r.branch || '', label: (v) => (v === 'dammam' ? 'الدمام' : v === 'jeddah' ? 'جدة' : v) },
+      { key: 'qCargo', get: (r) => (r.cargoType === 'vehicles' ? 'vehicles' : 'containers'), label: (v) => (v === 'vehicles' ? 'سيّارات' : 'حاويات') },
+      { key: 'qMonth', get: (r) => (r.periodYear && r.periodMonth ? `${r.periodYear}-${String(r.periodMonth).padStart(2, '0')}` : '') },
+    ], q);
+    list = quick.list;
     // المغلقةُ قسمان: مفوترة · لم تُفوتَر — بتعريف «مفوترة» نفسِه في اللوحة.
     if (q.state === 'closedInvoiced' || q.state === 'closedNotInvoiced') {
       const inv = (r) => !!r.saleInvoiceNumber || !!String((r.billing && r.billing.invoiceStatus) || '').trim()
@@ -728,6 +743,7 @@ exports.getAnalytics = async (req, res) => {
     const share = (n) => (profitAll > 0 ? byCust.slice(0, n).reduce((a, b) => a + Math.max(0, b.profit), 0) / profitAll : 0);
 
     const payload = {
+      filters: quick.filters,
       costBreakdown,
       marginBreakdown,
       byCargo: finish(group(list, (r) => (r.cargoType === 'vehicles' ? 'vehicles' : 'containers')), totalContainers),
@@ -2445,6 +2461,40 @@ module.exports.REQUIRED_STAGE_KEY = REQUIRED_STAGE_KEY;
  * والصفوفُ تُرسَل مع الأرقام: كلُّ بطاقةٍ تُضغَط فتُصفّي الجدولَ تحتها، بلا
  * نداءٍ ثانٍ ولا رقمٍ لا يُعرَف ممّ تكوّن.
  */
+/**
+ * يطبّق فلاترَ سريعةً متعدّدةَ القيم على قائمةٍ في الذاكرة، ويحسب لكلّ فلترٍ قيمَه
+ * وأعدادَها بكلّ الفلاتر **عدا** فلترها — كفلاتر الموارد البشريّة.
+ */
+function applyQuick(list, defs, q) {
+  const picked = Object.fromEntries(defs.map((f) => [f.key, String(q[f.key] || '').split(',').map((x) => x.trim()).filter(Boolean)]));
+  const passes = (r, skip) => defs.every((f) => f.key === skip || !picked[f.key].length || picked[f.key].includes(f.get(r)));
+  const filters = defs.map((f) => {
+    const m = new Map();
+    for (const r of list) { if (!passes(r, f.key)) continue; const v = f.get(r); if (!v) continue; m.set(v, (m.get(v) || 0) + 1); }
+    return { key: f.key, values: [...m.entries()].map(([value, count]) => ({ value, count, label: f.label ? f.label(value) : value })).sort((a, b) => b.count - a.count) };
+  });
+  return { list: list.filter((r) => passes(r, null)), filters };
+}
+
+/** فلاترُ لوحة القسم السريعة — المفتاحُ والقيمةُ من صفّ اللوحة، والاسمُ المعروض. */
+function dashQuickFilters() {
+  const STATE = { upcoming: 'قادمة', open: 'مفتوحة', closedInvoiced: 'مغلقة مفوترة', closedNotInvoiced: 'مغلقة لم تُفوتَر', cancelled: 'ملغاة' };
+  const INV = { invoiced: 'مفوترة', requested: 'طلب فوترة عند المالية', returned: 'أُعيد طلب الفوترة', rejected: 'رُفض طلب الفوترة', none: 'لم تُفوتَر' };
+  return [
+    { key: 'qState', get: (r) => (r.bucket === 'closed' ? (r.invoiced ? 'closedInvoiced' : 'closedNotInvoiced') : r.bucket), label: (v) => STATE[v] || v },
+    { key: 'qInvoice', get: (r) => (r.bucket === 'cancelled' ? '' : r.invoiced ? 'invoiced' : r.invoiceRequest === 'pending' ? 'requested' : ['returned', 'rejected'].includes(r.invoiceRequest) ? r.invoiceRequest : 'none'), label: (v) => INV[v] || v },
+    { key: 'qCustomer', get: (r) => r.customerName || '' },
+    { key: 'qAgent', get: (r) => r.shippingAgent || '' },
+    { key: 'qCarrier', get: (r) => r.carrierName || '' },
+    { key: 'qPort', get: (r) => r.port || '' },
+    { key: 'qBranch', get: (r) => r.branch || '', label: (v) => (v === 'dammam' ? 'الدمام' : v === 'jeddah' ? 'جدة' : v) },
+    { key: 'qCargo', get: (r) => r.cargoType, label: (v) => (v === 'vehicles' ? 'سيّارات' : 'حاويات') },
+    { key: 'qStage', get: (r) => (r.bucket === 'open' ? (r.nextLabel || 'اكتملت مراحلُها — تنتظر الإنهاء') : '') },
+    { key: 'qBy', get: (r) => r.createdByName || '' },
+    { key: 'qMonth', get: (r) => String(r.date || '').slice(0, 7) },
+  ];
+}
+
 exports.getDashboard = async (req, res) => {
   try {
     const q = req.query || {};
@@ -2527,7 +2577,7 @@ exports.getDashboard = async (req, res) => {
       const nameOf = (u) => (u ? [u.firstName, u.lastName].filter(Boolean).join(' ').trim() : '');
       const userName = new Map(users.map((u) => [String(u._id), nameOf(u)]));
 
-      const out = rows.map((c) => {
+      const allOut = rows.map((c) => {
         const p = pipelineOf(c);
         const bucket = c.cancelled ? 'cancelled' : c.upcoming ? 'upcoming' : c.isCompleted ? 'closed' : 'open';
         const returned = p.steps.some((s) => s.key === 'containers_returned' && s.done) || !!(c.stageDone && c.stageDone.containersReturned);
@@ -2576,6 +2626,11 @@ exports.getDashboard = async (req, res) => {
         return row;
       });
 
+      // ── الفلاترُ السريعة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) — على طريقة الموارد البشريّة ──
+      // متعدّدةُ القيم (مفصولةٌ بفاصلة)، تُطبَّق على كلّ رقمٍ في اللوحة. والعددُ بجانب
+      // كلّ قيمةٍ يُحسَب بكلّ الفلاتر **عدا** فلترها، فيُرى ما ينتقل إليه قبل اختياره.
+      const { list: out, filters } = applyQuick(allOut, dashQuickFilters(), q);
+
       const open = out.filter((r) => r.bucket === 'open');
       const count = (f) => out.filter(f).length;
       const customersOf = (list) => new Set(list.map((r) => String(r.customerParty || r.customerName || '')).filter(Boolean));
@@ -2607,7 +2662,7 @@ exports.getDashboard = async (req, res) => {
       const scope = filter.createdBy
         ? await CustomsClearance.find((({ createdBy, ...rest }) => rest)(filter)).select('createdBy completedBy completedAt isCompleted cancelled upcoming').lean()
           .then((all) => all.map((c) => ({ ...c, bucket: c.cancelled ? 'cancelled' : c.upcoming ? 'upcoming' : c.isCompleted ? 'closed' : 'open' })))
-        : rows.map((c, i) => ({ createdBy: c.createdBy, completedBy: c.completedBy, completedAt: c.completedAt, bucket: out[i].bucket }));
+        : rows.map((c, i) => ({ createdBy: c.createdBy, completedBy: c.completedBy, completedAt: c.completedAt, bucket: allOut[i].bucket }));
       // من أنهت الموارد البشريّة خدمتَه لا يُعدّ في الفريق — واسمُه يبقى على ما أنشأه.
       const team = users.filter((u) => !userEnded(ended, u)).map((u) => {
         const id = String(u._id);
@@ -2627,6 +2682,7 @@ exports.getDashboard = async (req, res) => {
 
       return {
         today,
+        filters,
         counts: {
           total: count((r) => r.bucket !== 'cancelled'),
           upcoming: count((r) => r.bucket === 'upcoming'),

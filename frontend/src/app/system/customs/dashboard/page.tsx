@@ -8,6 +8,7 @@
 //
 // وكلُّ رقمٍ يُضغَط: البطاقةُ تُصفّي جدولَ المعاملات تحتها بما عدّته، والصفُّ
 // يفتح معاملتَه. فلا رقمَ هنا لا يُعرَف ممّ تكوّن.
+import HrQuickFilters from '@/components/hr/HrQuickFilters';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -47,11 +48,27 @@ interface Member {
 }
 interface Dash {
   today: string; counts: Record<string, number>;
+  filters?: { key: string; values: { value: string; count: number; label?: string }[] }[];
   byStage: { key: string; label: string; count: number; units: number }[];
   byCustomer: { key: string; party: string | null; name: string; upcoming: number; open: number; closed: number; awaiting: number; units: number }[];
   byBranch: { key: string; upcoming: number; open: number; closed: number }[];
   team: Member[]; rows: Row[]; canManage: boolean; canSeeAnalytics: boolean;
 }
+
+/** فلاترُ اللوحة السريعة — مفاتيحُها في الخادم (dashQuickFilters). */
+const CUSTOMS_QUICK = [
+  { key: 'qState', ar: 'حالة المعاملة', en: 'State' },
+  { key: 'qInvoice', ar: 'الفوترة', en: 'Invoicing' },
+  { key: 'qCustomer', ar: 'العميل', en: 'Customer' },
+  { key: 'qAgent', ar: 'الوكيل الملاحي', en: 'Shipping agent' },
+  { key: 'qCarrier', ar: 'الناقل', en: 'Carrier' },
+  { key: 'qPort', ar: 'الميناء', en: 'Port' },
+  { key: 'qBranch', ar: 'الفرع', en: 'Branch' },
+  { key: 'qCargo', ar: 'النوع', en: 'Type' },
+  { key: 'qStage', ar: 'تنتظر مرحلة', en: 'Waiting on' },
+  { key: 'qBy', ar: 'أنشأها', en: 'Created by' },
+  { key: 'qMonth', ar: 'الشهر', en: 'Month' },
+];
 
 /** ما تعدّه كلُّ بطاقة — والجدولُ يُصفّى بالدالّة نفسِها، فلا يختلف العدُّ عن المعروض. */
 const VIEWS: Record<string, (r: Row) => boolean> = {
@@ -216,14 +233,11 @@ export default function CustomsDashboardPage() {
       {/* ── الفلاتر: تُطبَّق على كلّ ما في الصفحة ───────────────────────────── */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
         <div className="flex flex-wrap items-center gap-3">
-          <Sel value={f.customerParty} onChange={(v) => set('customerParty', v)} label={t('كلّ العملاء', 'All customers')} list={opts.customers} />
-          <Sel value={f.agentParty} onChange={(v) => set('agentParty', v)} label={t('كلّ وكلاء الشحن', 'All agents')} list={opts.agents} />
-          <Sel value={f.branch} onChange={(v) => set('branch', v)} label={t('كلّ الفروع', 'All branches')}
-            list={[{ value: 'jeddah', label: t('جدة', 'Jeddah') }, { value: 'dammam', label: t('الدمام', 'Dammam') }]} />
-          <Sel value={f.cargoType} onChange={(v) => set('cargoType', v)} label={t('حاويات وسيّارات', 'Containers & vehicles')}
-            list={[{ value: 'containers', label: t('حاويات', 'Containers') }, { value: 'vehicles', label: t('سيّارات', 'Vehicles') }]} />
-          <Sel value={f.member} onChange={(v) => set('member', v)} label={t('كلّ الفريق (مَن أنشأ)', 'Whole team (created by)')}
-            list={d.team.map((m) => ({ value: m._id, label: m.name }))} />
+          {/* ── الفلاترُ السريعة على طريقة الموارد البشريّة (٢٠٢٦/١٠/٢٢) ─────────
+              متعدّدةُ القيم وبجانب كلّ قيمةٍ عددُها بالفلاتر الأخرى، وتُطبَّق في
+              الخادم على كلّ رقمٍ في اللوحة — راجع dashQuickFilters. */}
+          <HrQuickFilters ar={ar} keys={CUSTOMS_QUICK} value={f} onChange={(v) => setF(v as Record<string, string>)}
+            options={Object.fromEntries((d.filters || []).map((x) => [x.key, x.values]))} />
           {active > 0 && (
             <button type="button" onClick={() => setF({})} className="inline-flex items-center gap-1 rounded-lg bg-[#f37121]/10 px-3 py-2 text-sm font-semibold text-[#f37121] hover:bg-[#f37121]/20">
               <RotateCcw className="h-4 w-4" />{t(`مسح الفلاتر (${active})`, `Clear filters (${active})`)}

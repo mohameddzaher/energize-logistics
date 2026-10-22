@@ -13,6 +13,9 @@ import Link from 'next/link';
 import api from '@/lib/api';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import PeriodFilter from '@/components/system/PeriodFilter';
+import HrQuickFilters from '@/components/hr/HrQuickFilters';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
+import { useSocket } from '@/hooks/useSocket';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { getCustomsTranslations } from '@/lib/translations';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -49,16 +52,24 @@ export default function CustomsAnalyticsPage() {
     return p.toString();
   }, [f]);
 
+  // كلُّ فلترٍ طلبٌ — والأقدمُ لا يكتب فوق الأحدث (راجع useLatestRequest).
+  const latest = useLatestRequest();
   const load = useCallback(async () => {
-    try { setD(await api.get<any>(`/api/customs-clearance/analytics?${qs}`)); }
+    const mine = latest.begin();
+    try { const r = await api.get<any>(`/api/customs-clearance/analytics?${qs}`); if (latest.isCurrent(mine)) setD(r); }
     catch (e: any) {
+      if (!latest.isCurrent(mine)) return;
       if (e?.status === 403 || e?.code === 'CUSTOMS_ANALYTICS_MANAGERS') setDenied(true);
       else notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error');
     }
-    setLoading(false);
+    if (latest.isCurrent(mine)) setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qs]);
   useEffect(() => { load(); }, [load]);
+  // حيّة: كلُّ تعديلٍ في التخليص أو قرارٍ ماليٍّ يُعيد الأرقام.
+  useSocket('customs:updated', load);
+  useSocket('customs:created', load);
+  useSocket('customs:deleted', load);
   useEffect(() => { api.get<any>('/api/customs-clearance/filters').then((r) => setOpts(r.options || {})).catch(() => {}); }, []);
 
   if (loading && !d) return <Spinner />;
@@ -159,22 +170,22 @@ export default function CustomsAnalyticsPage() {
 
       {/* ── الفلاتر ────────────────────────────────────────────────────────── */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-wrap items-center gap-3">
-        <Sel k="customerParty" label={t('كل العملاء', 'All customers')} list={opts.customers} />
-        <Sel k="agentParty" label={t('كل الوكلاء', 'All agents')} list={opts.agents} />
-        <Sel k="port" label={t('كل الموانئ', 'All ports')} list={opts.port} />
+        {/* الفلاترُ السريعة كلوحة القسم: متعدّدةُ القيم وبأعدادها (٢٠٢٦/١٠/٢٢). */}
+        <HrQuickFilters ar={ar} value={f} onChange={(v) => setF(v as Record<string, string>)}
+          keys={[
+            { key: 'qState', ar: 'حالة المعاملة', en: 'State' }, { key: 'qCustomer', ar: 'العميل', en: 'Customer' },
+            { key: 'qAgent', ar: 'الوكيل الملاحي', en: 'Shipping agent' }, { key: 'qCarrier', ar: 'الناقل', en: 'Carrier' },
+            { key: 'qPort', ar: 'الميناء', en: 'Port' }, { key: 'qBranch', ar: 'الفرع', en: 'Branch' },
+            { key: 'qCargo', ar: 'النوع', en: 'Type' }, { key: 'qMonth', ar: 'الشهر', en: 'Month' },
+          ]}
+          options={Object.fromEntries(((d?.filters || []) as { key: string; values: any[] }[]).map((x) => [x.key, x.values]))} />
         <Sel k="stage" label={t('كل المراحل', 'All stages')} list={opts.stage} />
-        <Sel k="branch" label={t('كل الفروع', 'All branches')} list={opts.branch} />
         <Sel k="city" label={t('كل المدن', 'All cities')} list={opts.city} />
         <Sel k="currency" label={t('كل العملات', 'All currencies')} list={opts.currency} />
         <Sel k="invoiceType" label={t('كل أنواع الفواتير', 'All invoice types')} list={opts.invoiceType} />
         <Sel k="countryOfOrigin" label={t('كل بلدان المنشأ', 'All origins')} list={opts.countryOfOrigin} />
         <Sel k="invoiceStatus" label={t('كل حالات الفوترة', 'All invoice statuses')} list={opts.invoiceStatus} />
         <Sel k="year" label={t('كل السنوات', 'All years')} list={opts.years} />
-        <Sel k="cargoType" label={t('حاويات وسيّارات', 'Containers & vehicles')}
-          list={[{ value: 'containers', label: t('حاويات', 'Containers') }, { value: 'vehicles', label: t('سيّارات', 'Vehicles') }]} />
-        <Sel k="state" label={t('مفتوحة ومغلقة', 'Open & closed')}
-          list={[{ value: 'open', label: t('مفتوحة', 'Open') }, { value: 'closed', label: t('مغلقة (الكلّ)', 'Closed (all)') },
-            { value: 'closedInvoiced', label: t('مغلقة مفوترة', 'Closed · invoiced') }, { value: 'closedNotInvoiced', label: t('مغلقة لم تُفوتَر', 'Closed · not invoiced') }]} />
         {/* المدّة بشهر المعاملة: التحليلُ يُجمَع بالشهر، فيُختار شهرٌ أو فترةُ أشهر. */}
         <PeriodFilter ar={ar} modes={['month', 'range']} from={f.from || ''} to={f.to || ''}
           onChange={(a, b) => setF((p) => ({ ...p, from: a, to: b, year: '', month: '' }))} />

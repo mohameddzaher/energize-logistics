@@ -128,7 +128,7 @@ function onSheetEdit(e) {
   const res = post_('/edit', { project: p.key, edits });
   const bad = (res.results || []).filter((x) => !x.ok);
   if (bad.length || !res.results) {
-    const why = { future: 'يومٌ لم يأتِ بعد', 'other-project': 'كان المندوبُ في مشروعٍ آخر في هذا اليوم', value: 'اكتب رقمًا صحيحًا', rep: 'رقم الإقامة غير موجود في النظام', month: 'شهرٌ لا يُكتب فيه' };
+    const why = { future: 'يومٌ لم يأتِ بعد', 'other-project': 'كان المندوبُ في مشروعٍ آخر في هذا اليوم', value: 'اكتب رقمًا صحيحًا', rep: 'رقم الإقامة غير موجود في النظام', ambiguous: 'رقمُ الحساب لأكثر من مندوب — عدّله من النظام', month: 'شهرٌ لا يُكتب فيه' };
     const msg = bad.length ? bad.map((b) => `يوم ${b.day}: ${why[b.reason] || b.reason}`).slice(0, 3).join(' · ') : 'تعذّر الوصول إلى النظام';
     ss.toast(msg, 'لم يُحفَظ', 8);
     if (edits.length === 1 && e.oldValue !== undefined) e.range.setValue(e.oldValue);
@@ -156,6 +156,10 @@ function onSheetChange(e) {
  * أو أُضيف — يُعاد رسمُه من النظام.) يُرجع true إن حُفظ ترتيبٌ جديد.
  */
 function readOrder_(ss, p) {
+  // أُلغي ترتيبُ المناديب (٢٠٢٦/١٠/٢٢): الصفوفُ بترتيب النظام (المشرف ثمّ الاسم)،
+  // وأيُّ سحبٍ يُعاد رسمُه في الدورة التالية.
+  return false;
+  // eslint-disable-next-line no-unreachable
   let changed = false;
   for (const sh of ss.getSheets()) {
     const mk = monthOfName_(sh.getName());

@@ -138,7 +138,10 @@ const NOTE = 'مطابقة شيت التحقيق 17/10/2026';
       const doc = APPLY ? await LightTransportEmployee.findById(lt._id) : null;
       const change = (field, val, kindName) => {
         if (S(lt[field]) === S(val) || !S(val)) return false;
-        if (doc) { doc.history.push({ at: new Date(), byName: 'النظام', kind: kindName, fromValue: S(lt[field]), toValue: S(val), note: NOTE }); doc[field] = val; }
+        // تصحيحُ المشروع من الشيت تصحيحٌ لا نقل: يُكتب `project_fix` فلا يقرؤه خطُّ
+        // المشروع (b2cEntry.projectTimeline) نقلًا في يوم التصحيح — وإلّا عُدّ المندوبُ
+        // في المشروع القديم كلَّ ما قبله، فرُفضت أرقامُه في مشروعه الحقيقيّ.
+        if (doc) { doc.history.push({ at: new Date(), byName: 'النظام', kind: kindName === 'project' ? 'project_fix' : kindName, fromValue: S(lt[field]), toValue: S(val), note: NOTE }); doc[field] = val; }
         return true;
       };
       if (change('projectAr', r.project, 'project')) tally.project += 1;

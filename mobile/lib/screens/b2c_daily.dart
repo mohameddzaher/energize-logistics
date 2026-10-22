@@ -6,7 +6,6 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
-import 'b2c_sheet_order.dart';
 
 /// مدخلات الأوردرات — للإدخال وحدَه، نظيرُ /system/b2c/daily-entry (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
 ///
@@ -36,12 +35,12 @@ class _B2cDailyEntryScreenState extends State<B2cDailyEntryScreen> {
     super.initState();
     _load();
     _onLive = () { _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 700), _load); };
-    for (final e in ['b2c:order:upserted', 'lt:updated', 'b2c:entry:scope', 'b2c:sheet-order']) { Live.instance.on(e, _onLive); }
+    for (final e in ['b2c:order:upserted', 'lt:updated', 'b2c:entry:scope']) { Live.instance.on(e, _onLive); }
   }
 
   @override
   void dispose() {
-    for (final e in ['b2c:order:upserted', 'lt:updated', 'b2c:entry:scope', 'b2c:sheet-order']) { Live.instance.off(e, _onLive); }
+    for (final e in ['b2c:order:upserted', 'lt:updated', 'b2c:entry:scope']) { Live.instance.off(e, _onLive); }
     _debounce?.cancel();
     for (final c in _ctrls.values) { c.dispose(); }
     super.dispose();
@@ -120,18 +119,11 @@ class _B2cDailyEntryScreenState extends State<B2cDailyEntryScreen> {
     final today = '${d['today']}';
 
     // مسؤولو القسم (نطاقُهم كلُّ المشاريع): يصحّحون أيَّ سجلٍّ مضى حتّى لمن انتهت
-    // خدمتُه، ويرتّبون المناديب في الشيت (٢٠٢٦/١٠/٢١).
+    // خدمتُه (٢٠٢٦/١٠/٢١).
     final head = scope == null;
 
     return AppScaffold(
       title: Text(tr('مدخلات الأوردرات', 'Orders entry')),
-      actions: [
-        if (head) IconButton(
-          tooltip: tr('ترتيب المناديب', 'Reps order'),
-          icon: const Icon(Icons.swap_vert),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const B2cSheetOrderScreen())),
-        ),
-      ],
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(padding: const EdgeInsets.all(12), children: [

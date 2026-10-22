@@ -132,6 +132,8 @@ const riyadhDay = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riya
 /**
  * مشروعُ المندوب في كلّ يوم — من سجلّ نقله (`history` بـ kind: project).
  * يُرجع دالّةً: dateKey → اسمُ المشروع في ذلك اليوم.
+ * و`project_fix` (تصحيحُ مشروعٍ كُتب خطأً من البداية) لا يُقرأ نقلًا: المندوبُ كان
+ * في مشروعه المصحَّح من أوّل يوم.
  */
 function projectTimeline(lt) {
   const moves = (lt.history || []).filter((h) => h.kind === 'project' && h.at)

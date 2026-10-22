@@ -137,7 +137,8 @@ async function monthStamps(project) {
   const by = new Map(agg.map((a) => [a._id, a]));
   const ord = await orderOf(project._id);
   const em = await headEmails();
-  const tail = `${ord?.updatedAt ? new Date(ord.updatedAt).getTime() : 0}.${em.at ? new Date(em.at).getTime() : 0}`;
+  // `L2`: عرضُ الشهور القديمة صار بالحساب كما في الشيت القديم — فتُعاد رسمُها كلُّها مرّة.
+  const tail = `L2.${ord?.updatedAt ? new Date(ord.updatedAt).getTime() : 0}.${em.at ? new Date(em.at).getTime() : 0}`;
   const out = {};
   for (const mk of monthsOf('all')) {
     const a = by.get(mk);
@@ -156,8 +157,6 @@ async function buildLayout(project, months) {
   const P = await E.projects();
   const pid = String(project._id);
   const now = today();
-  const ord = await orderOf(project._id);
-  const pos = new Map((ord?.order || []).map((id, i) => [String(id), i]));
   const { stamps, headEmails } = await monthStamps(project);
 
   const lts = (await LightTransportEmployee.find({ $or: [{ staffKind: 'rep' }, { contractTypeAr: /يوزر/ }] })
@@ -169,8 +168,13 @@ async function buildLayout(project, months) {
   const ltByName = new Map();
   for (const l of lts) { const k = nameKey(l.name); ltByName.set(k, ltByName.has(k) ? null : l); }
 
-  const reps = await B2CRep.find({}).select('arabicName englishName ltEmployee').lean();
-  const acc = new Map(reps.map((r) => [String(r._id), { name: S(r.arabicName || r.englishName), lt: r.ltEmployee ? String(r.ltEmployee) : null }]));
+  const reps = await B2CRep.find({}).select('arabicName englishName repId ltEmployee').lean();
+  // الاسمُ الأوّلُ في الشيت القديم هو `englishName` (عمود الاسم — راجع b2cExcelParser)،
+  // و`arabicName` اسمٌ ثانٍ كُتب أحيانًا في عمود الحساب. كان يُقرأ الثاني أوّلًا،
+  // فخرجت الأسماءُ في الشيت الجديد غيرَ أسمائها في القديم.
+  const acc = new Map(reps.map((r) => [String(r._id), {
+    name: S(r.englishName || r.arabicName), repId: S(r.repId), lt: r.ltEmployee ? String(r.ltEmployee) : null,
+  }]));
   const first = months[0]; const last = months[months.length - 1];
   const orders = first ? await B2CDailyOrder.find({ dateKey: { $gte: `${first}-01`, $lte: `${last}-31` }, orders: { $ne: null } })
     .select('rep dateKey orders project').lean() : [];
@@ -188,13 +192,16 @@ async function buildLayout(project, months) {
     const inMonth = orders.filter((o) => o.dateKey.startsWith(mk));
 
     if (mk < SYNC_FROM) {
-      // شهرٌ للرجوع إليه: كلُّ حسابٍ إلى صاحبه إن عُرف، والأرقامُ تُجمَع. مقفولٌ كلُّه.
+      // ── شهرٌ للرجوع إليه: كما كان في الشيت القديم تمامًا ──────────────────
+      // صفٌّ لكلّ حسابٍ باسمه هناك، لا لكلّ رجل. كان كلُّ حسابٍ يُضمّ إلى صاحبه
+      // ويُجمع — والحسابُ الواحدُ في الشيتات القديمة كان يعمل عليه أكثرُ من سائق،
+      // فخرجت أرقامٌ لا تطابق القديمَ (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢). وبياناتُ النظام
+      // تطابق الشيتاتِ القديمةَ حسابًا حسابًا — فالعرضُ بالحساب يطابقها. مقفول.
       for (const o of inMonth) {
         if (String(o.project) !== pid) continue;
         const a = acc.get(String(o.rep)); if (!a) continue;
-        const l = (a.lt && ltById.get(a.lt)) || (UNKNOWN_NAME.test(a.name) ? null : ltByName.get(nameKey(a.name))) || null;
-        const row = l ? person(l) : rowFor(`acc:${o.rep}`, {
-          id: '—', name: UNKNOWN_NAME.test(a.name) ? 'غير معروف — كان مكتوبًا «ترك العمل»' : a.name, sup: '',
+        const row = rowFor(`acc:${o.rep}`, {
+          id: a.repId || '—', name: UNKNOWN_NAME.test(a.name) ? 'غير معروف — كان مكتوبًا «ترك العمل»' : a.name, sup: '',
         });
         row.editable = false;
         const d = Number(o.dateKey.slice(8, 10));
@@ -223,6 +230,9 @@ async function buildLayout(project, months) {
         const a = acc.get(String(o.rep)); if (!a) continue;
         const d = Number(o.dateKey.slice(8, 10));
         const l = a.lt && ltById.get(a.lt);
+        // أوردرُ مشروعٍ آخر لا يُكتب في شيت هذا المشروع — كان يُضاف بحسب خطّ نقل
+        // الرجل وحده، فتظهر أوردراتُه في كيتا داخل شيت نينجا.
+        if (l && o.project && String(o.project) !== pid) continue;
         if (l) {
           const row = rows.get(`lt:${l._id}`);
           // يومٌ في مشروعٍ آخر لا يُكتب فيه — أمّا «قبل التعيين» فرقمُ أوردراتٍ أصدقُ منه.
@@ -236,11 +246,9 @@ async function buildLayout(project, months) {
         }
       }
     }
-    // الترتيبُ المحفوظ أوّلًا (يرتّبه مسؤولو القسم)، ثمّ مَن ليس فيه بالمشرف فالاسم،
-    // والحساباتُ القديمةُ بلا صاحبٍ في الآخر. ومَن نُقل يبقى في مكانه بخانات «في X».
-    const at = (r) => (r.lt && pos.has(r.lt) ? pos.get(r.lt) : Infinity);
+    // بالمشرف فالاسم، والحساباتُ القديمةُ بلا صاحبٍ في الآخر. ومَن نُقل يبقى بخانات «في X».
+    // (ترتيبُ المناديب المحفوظ أُلغي — صاحبُ الشركة، ٢٠٢٦/١٠/٢٢.)
     const list = [...rows.values()].sort((a, b) => (a.id === '—') - (b.id === '—')
-      || (at(a) === at(b) ? 0 : at(a) < at(b) ? -1 : 1)
       || a.sup.localeCompare(b.sup, 'ar') || a.name.localeCompare(b.name, 'ar'));
     out[mk] = { days, editable: mk >= SYNC_FROM, stamp: stamps[mk] || '', rows: list };
   }
@@ -268,12 +276,15 @@ exports.edit = async (req, res) => {
     if (!project) return res.status(404).json({ message: 'project' });
     const { LightTransportEmployee } = require('../models/LightTransport');
     const B2CDailyOrder = require('../models/B2CDailyOrder');
+    const B2CRep = require('../models/B2CRep');
     const now = today();
     const results = [];
     let written = 0;
     const allLts = await LightTransportEmployee.find({ idNumber: { $nin: ['', null] } })
       .select('idNumber name projectAr cityAr phone supervisorUser history').lean();
     const ltByKey = new Map(allLts.map((l) => [idKey(l.idNumber), l]));
+    const { B2COrderSheet, B2COrderSheetCell } = require('../models/B2COrderSheet');
+    const sheetDoc = await B2COrderSheet.findOne({ projectAr: project.nameAr, enabled: true }).select('_id').lean();
     for (const e of (Array.isArray(req.body.edits) ? req.body.edits : []).slice(0, 500)) {
       const month = S(e.month); const day = Number(e.day);
       const dk = `${month}-${pad(day)}`;
@@ -287,13 +298,33 @@ exports.edit = async (req, res) => {
       const raw = e.value;
       const value = raw === '' || raw === null || raw === undefined ? null : Number(String(raw).replace(AR_DIGITS, (c) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(c))));
       if (value !== null && (!Number.isInteger(value) || value < 0 || value > 2000)) { r.reason = 'value'; continue; }
+      if (old) {
+        // الشهورُ القديمة تُعرض حسابًا حسابًا كما في الشيت القديم، وعمودُ الرقم فيها رقمُ
+        // الحساب على التطبيق (`repId`) لا الإقامة — فيُكتب في ذلك الحساب نفسِه.
+        const accs = await B2CRep.find({ repId: S(e.id) }).select('_id branch').lean();
+        const inProj = accs.length > 1
+          ? await B2CDailyOrder.distinct('rep', { rep: { $in: accs.map((a) => a._id) }, project: project._id, dateKey: { $regex: `^${month}` } })
+          : accs.map((a) => a._id);
+        if (inProj.length !== 1) { r.reason = accs.length ? 'ambiguous' : 'rep'; continue; }
+        const acc = accs.find((a) => String(a._id) === String(inProj[0]));
+        const [y, m, d] = dk.split('-').map(Number);
+        await B2CDailyOrder.findOneAndUpdate(
+          { rep: acc._id, dateKey: dk },
+          {
+            $set: { orders: value, worked: value !== null && value > 0, source: 'sheet', enteredBy: null, project: project._id, branch: acc.branch, sourceSheet: project.nameAr },
+            $setOnInsert: { date: new Date(`${dk}T00:00:00.000Z`), year: y, month: m, day: d },
+          },
+          { upsert: true },
+        );
+        r.ok = true; written += 1;
+        continue;
+      }
       const lt = ltByKey.get(idKey(e.id));
       if (!lt) { r.reason = 'rep'; continue; }
-      // لا يُكتب يومٌ كان فيه المندوبُ في مشروعٍ آخر. (والشهورُ القديمةُ تُعرض بمشروع
-      // الأوردر نفسِه لا بسجلّ النقل — سجلُّ النقل لا يبلغها.)
-      if (!old && E.fold(projectTimeline(lt)(dk)) !== E.fold(project.nameAr)) { r.reason = 'other-project'; continue; }
+      // لا يُكتب يومٌ كان فيه المندوبُ في مشروعٍ آخر.
+      if (E.fold(projectTimeline(lt)(dk)) !== E.fold(project.nameAr)) { r.reason = 'other-project'; continue; }
       const rep = await E.ensureRep(lt, null);
-      await E.clearOtherAccounts(lt, rep._id, dk, old ? { projectId: project._id, byName: true } : {});
+      await E.clearOtherAccounts(lt, rep._id, dk);
       const [y, m, d] = dk.split('-').map(Number);
       await B2CDailyOrder.findOneAndUpdate(
         { rep: rep._id, dateKey: dk },
@@ -303,8 +334,16 @@ exports.edit = async (req, res) => {
         },
         { upsert: true },
       );
+      // ولقطةُ القارئ الدوريّ (b2cOrderSheetSync) تُحدَّث معه: وإلّا رأى القارئُ الخانةَ
+      // «تغيّرت» بعد دقيقة فكتبها ثانيةً — فوق ما عُدّل على النظام في تلك الدقيقة.
+      if (sheetDoc) {
+        if (value === null) await B2COrderSheetCell.deleteOne({ sheet: sheetDoc._id, lt: lt._id, dateKey: dk });
+        else await B2COrderSheetCell.updateOne({ sheet: sheetDoc._id, lt: lt._id, dateKey: dk }, { $set: { value } }, { upsert: true });
+      }
       r.ok = true; written += 1;
     }
+    const bad = results.filter((x) => !x.ok);
+    if (bad.length) console.warn(`[b2c-sheets] ${project.nameAr}: لم يُحفظ ${bad.length} — ${bad.slice(0, 5).map((x) => `${x.id} ${x.month}-${x.day} ${x.reason}`).join(' · ')}`);
     if (written) {
       cache.clear('b2c:');
       try { require('../websocket/socketManager').emitToAll('b2c:order:upserted', { bulk: true, source: 'sheet', count: written }); } catch (_) { /* */ }
@@ -349,8 +388,12 @@ exports.stamps = async (req, res) => {
  *   POST /api/public/b2c-sheets/order  { token, project, month, ids: [iqama] }
  */
 exports.order = async (req, res) => {
+  // أُلغي ترتيبُ المناديب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢). السكربتاتُ المثبَّتة قبلُ ما زالت
+  // ترسل السحبَ هنا: لا يُحفظ، والشيتُ يُعاد رسمُه من النظام في الدورة التالية.
+  if (await guard(req, res)) return;
+  return res.json({ ok: false, disabled: true });
+  // eslint-disable-next-line no-unreachable
   try {
-    if (await guard(req, res)) return;
     const project = await projectOf(req.body.project);
     if (!project) return res.status(404).json({ message: 'project' });
     const ids = (Array.isArray(req.body.ids) ? req.body.ids : []).map(idKey).filter((x) => x && x !== '—');

@@ -154,7 +154,7 @@ async function syncSheet(sheet) {
 
   // المندوبُ برقم إقامته — مَن في سجلّ النقل الخفيف أيًّا كان مشروعُه اليوم.
   const lts = await LightTransportEmployee.find({ idNumber: { $nin: [null, ''] } })
-    .select('idNumber name projectAr cityAr phone supervisorUser').lean();
+    .select('idNumber name projectAr cityAr phone supervisorUser history').lean();
   const byId = new Map(lts.map((l) => [idKey(l.idNumber), l]));
   const unknown = new Set();
 
@@ -186,17 +186,26 @@ async function syncSheet(sheet) {
     changes.push({ lt, dateKey: s.dateKey, value: null });
   }
 
+  // يُكتب كما يكتب السكربتُ لحظةَ التعديل (b2cSheetAppController.edit) تمامًا:
+  // على مشروع الشيت، ويومُ الرجل في مشروعٍ آخر لا يُكتب، ورقمُ اليوم واحدٌ للرجل
+  // (حساباتُه الأخرى تُمحى ذلك اليوم). كان هنا مشروعُ الرجل اليوم بلا فحصٍ ولا محو،
+  // فاختلف ما يكتبه الطريقان لليوم نفسِه.
+  const P = await E.projects();
+  const proj = P.of(sheet.projectAr);
   let written = 0;
   for (const ch of changes) {
+    if (proj && E.fold(E.projectTimeline(ch.lt)(ch.dateKey)) !== E.fold(proj.nameAr)) continue;
     const rep = await E.ensureRep(ch.lt, null);
     const [y, m, d] = ch.dateKey.split('-').map(Number);
+    const others = ch.value === null ? 0 : await E.clearOtherAccounts(ch.lt, rep._id, ch.dateKey);
     const cur = await B2CDailyOrder.findOne({ rep: rep._id, dateKey: ch.dateKey }).select('orders').lean();
     const curVal = cur ? (cur.orders ?? null) : null;
+    if (others) written += others;
     if (curVal !== ch.value) {
       await B2CDailyOrder.findOneAndUpdate(
         { rep: rep._id, dateKey: ch.dateKey },
         {
-          $set: { orders: ch.value, worked: ch.value !== null && ch.value > 0, source: 'sheet', enteredBy: null, project: rep.project, branch: rep.branch, sourceSheet: sheet.projectAr },
+          $set: { orders: ch.value, worked: ch.value !== null && ch.value > 0, source: 'sheet', enteredBy: null, project: proj?._id || rep.project, branch: rep.branch, sourceSheet: sheet.projectAr },
           $setOnInsert: { date: new Date(`${ch.dateKey}T00:00:00.000Z`), year: y, month: m, day: d },
         },
         { upsert: true },

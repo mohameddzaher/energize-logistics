@@ -1558,7 +1558,6 @@
         "/api/b2c/entry",
         "/api/b2c/order-sheets",
         "/api/b2c/order-sheets/heads",
-        "/api/b2c/order-sheets/order",
         "/api/b2c/order-sheets/script"
       ],
       "wildcard": false

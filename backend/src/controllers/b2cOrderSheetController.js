@@ -27,60 +27,11 @@ exports.list = async (req, res) => {
   res.json({
     sheets,
     projects: P.rows.map((p) => p.nameAr),
-    // مشاريعُ الشيتات (لها هدفُ أوردرات) — لـ«ترتيب المناديب».
-    sheetProjects: P.rows.filter((p) => p.monthlyTarget).map((p) => p.nameAr),
     headEmails: (await sheetsApp().headEmails()).emails,
   });
 };
 
 const sheetsApp = () => require('./b2cSheetAppController');
-
-/**
- * ترتيبُ المناديب في شيت المشروع (صاحبُ الشركة، ٢٠٢٦/١٠/٢١) — يسري على كلّ شهور
- * الشيت وعلى «مدخلات الأوردرات». ويُغيَّر أيضًا بسحب الصفوف في الشيت نفسه.
- *   GET /api/b2c/order-sheets/order?project=&month=YYYY-MM   مناديبُ الشهر بالترتيب الحاليّ
- *   PUT /api/b2c/order-sheets/order   { project, lts: [ltId] }
- */
-exports.getOrder = async (req, res) => {
-  try {
-    if (guard(req, res)) return;
-    const A = sheetsApp();
-    const project = await A.projectOf(req.query.project);
-    if (!project || !project.monthlyTarget) return res.status(404).json({ message: 'المشروع غير موجود' });
-    const month = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? String(req.query.month) : A.today().slice(0, 7);
-    const lay = await A._buildLayout(project, [month]);
-    const rows = (lay.months[month]?.rows || []).filter((r) => r.lt)
-      .map((r) => ({ lt: r.lt, id: r.id, name: r.name, sup: r.sup }));
-    const ord = await A.orderOf(project._id);
-    let by = '';
-    if (ord?.updatedBy) {
-      const u = await require('../models/User').findById(ord.updatedBy).select('name firstName lastName').lean();
-      by = String(u?.name || `${u?.firstName || ''} ${u?.lastName || ''}`).trim();
-    }
-    res.json({ project: project.nameAr, month, rows, saved: !!ord?.order?.length, updatedAt: ord?.updatedAt || null, updatedBy: by, source: ord?.source || '' });
-  } catch (e) {
-    console.error('b2c order-sheets getOrder', e);
-    res.status(500).json({ message: 'تعذّر تحميل الترتيب' });
-  }
-};
-
-exports.saveOrder = async (req, res) => {
-  try {
-    if (guard(req, res)) return;
-    const A = sheetsApp();
-    const project = await A.projectOf(req.body.project);
-    if (!project) return res.status(404).json({ message: 'المشروع غير موجود' });
-    const lts = (Array.isArray(req.body.lts) ? req.body.lts : []).map(String).filter((x) => mongoose.isValidObjectId(x));
-    if (!lts.length) return res.status(400).json({ message: 'لا مناديب في الترتيب' });
-    const order = await A.saveOrder(project, lts, { user: req.user._id, source: 'system' });
-    await logAudit({ user: req.user._id, action: 'b2c_sheet_order', entity: 'B2CProject', entityId: project._id,
-      changes: { details: `ترتيب المناديب في شيت «${project.nameAr}» (${lts.length} مندوبًا)` }, ipAddress: req.ip }).catch(() => {});
-    res.json({ ok: true, size: order.length });
-  } catch (e) {
-    console.error('b2c order-sheets saveOrder', e);
-    res.status(500).json({ message: 'تعذّر حفظ الترتيب' });
-  }
-};
 
 /** بريدُ جوجل لمسؤولي القسم — محرّرو الحماية في الشيتات الثلاثة. */
 exports.setHeads = async (req, res) => {

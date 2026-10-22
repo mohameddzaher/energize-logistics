@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import JpTaskPanel from '@/components/jp/JpTaskPanel';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -295,6 +296,9 @@ function FleetShipmentDetailsInner() {
           </div>
         )}
       </div>
+
+      {/* مهامّ JP المربوطة بهذه الحمولة — تُضاف من هنا. */}
+      <JpTaskPanel section="fleet" kind="fleetShipment" refId={String(shipment._id)} ar={ar} />
     </div>
   );
 }

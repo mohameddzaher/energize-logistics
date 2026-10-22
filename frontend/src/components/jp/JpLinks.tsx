@@ -50,41 +50,29 @@ export function LinkChips({ links, ar, onRemove }: { links?: JpLink[]; ar: boole
 }
 
 type Opt = { value: string; label: string };
-const cacheOpts: Record<string, Opt[]> = {};
-async function optionsFor(kind: string): Promise<Opt[]> {
-  if (cacheOpts[kind]) return cacheOpts[kind];
-  let out: Opt[] = [];
-  if (kind === 'clearance') {
-    // الجاريةُ والقادمةُ معًا: المهمّةُ قد تخصّ معاملةً لم تبدأ بعد.
-    const [cur, up] = await Promise.all([
-      api.get<{ clearances: any[] }>('/api/customs-clearance'),
-      api.get<{ clearances: any[] }>('/api/customs-clearance?upcoming=true').catch(() => ({ clearances: [] })),
-    ]);
-    out = [...(cur.clearances || []), ...(up.clearances || [])]
-      .map((c) => ({ value: String(c._id), label: [c.blNumber || c.refNumber, c.customerName].filter(Boolean).join(' · ') }));
-  } else {
-    const d = await api.get<{ parties: any[] }>(`/api/customs-clearance/parties?kind=${kind}`);
-    out = (d.parties || []).map((p) => ({ value: String(p._id), label: p.name }));
-  }
-  cacheOpts[kind] = out;
-  setTimeout(() => { delete cacheOpts[kind]; }, 60000);
-  return out;
+/** ما يُختار للربط — بحثٌ في الخادم لكلّ نوع (/api/jp/link-options؛ config/jpLinks). */
+async function optionsFor(section: string, kind: string, q = ''): Promise<Opt[]> {
+  const d = await api.get<{ options: Opt[] }>(`/api/jp/link-options?scope=section&section=${encodeURIComponent(section)}&kind=${kind}&q=${encodeURIComponent(q)}`);
+  return d.options || [];
 }
 
-export function LinkPicker({ kinds, value, onChange, ar }: {
-  kinds: string[]; value: JpLink[]; onChange: (links: JpLink[]) => void; ar: boolean;
+export function LinkPicker({ section, kinds, value, onChange, ar }: {
+  section: string; kinds: string[]; value: JpLink[]; onChange: (links: JpLink[]) => void; ar: boolean;
 }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const [kind, setKind] = useState(kinds[0] || '');
   const [opts, setOpts] = useState<Opt[]>([]);
   const [loading, setLoading] = useState(false);
+  const [q, setQ] = useState('');
   useEffect(() => {
     if (!kind) return undefined;
     let live = true;
     setLoading(true);
-    optionsFor(kind).then((o) => { if (live) setOpts(o); }).catch(() => { if (live) setOpts([]); }).finally(() => { if (live) setLoading(false); });
-    return () => { live = false; };
-  }, [kind]);
+    const h = setTimeout(() => {
+      optionsFor(section, kind, q).then((o) => { if (live) setOpts(o); }).catch(() => { if (live) setOpts([]); }).finally(() => { if (live) setLoading(false); });
+    }, q ? 250 : 0);
+    return () => { live = false; clearTimeout(h); };
+  }, [section, kind, q]);
   if (!kinds.length) return null;
   const word = (k: string) => (LINK_WORDS[k] ? (ar ? LINK_WORDS[k].ar : LINK_WORDS[k].en) : k);
   return (
@@ -99,7 +87,7 @@ export function LinkPicker({ kinds, value, onChange, ar }: {
           ))}
         </div>
         <div className="min-w-[14rem] flex-1">
-          <SearchableSelect value="" searchAfter={0} loading={loading}
+          <SearchableSelect value="" searchAfter={0} loading={loading} onSearch={setQ}
             onChange={(v) => {
               const o = opts.find((x) => x.value === v);
               if (!o || value.some((l) => l.kind === kind && l.ref === v)) return;

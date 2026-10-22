@@ -9,6 +9,7 @@ import '../ui/tire_sensor_badge.dart';
 import '../ui/widgets.dart';
 import 'reports.dart';
 import 'ls2_vehicle_assets.dart';
+import 'jp.dart' show JpTaskPanel;
 
 /// تفاصيل المركبة (لوكيشن سوليوشن) — خمس تبويبات كما في الويب:
 /// نظرة عامة (حساسات حية + إطارات)، الصيانة (فواصل + تسجيل خدمة + مؤجلات)،
@@ -391,6 +392,10 @@ class _OverviewTab extends StatelessWidget {
             ]),
           ),
         ),
+        if ('${v['_id'] ?? ''}'.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          JpTaskPanel(section: 'ls2', kind: 'truck', refId: '${v['_id']}'),
+        ],
         const SizedBox(height: 20),
       ]),
     );

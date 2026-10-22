@@ -5,6 +5,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'jp.dart' show JpTaskPanel;
 
 /// ملف الشركة (CRM) — نفس صفحة الويب: بيانات الشركة، جهات الاتصال،
 /// الصفقات بمراحلها، المهام، وسجل الأنشطة.
@@ -191,6 +192,8 @@ class _CrmCompanyProfileScreenState extends State<CrmCompanyProfileScreen> {
                         ]),
                       )),
                     ],
+                    const SizedBox(height: 12),
+                    JpTaskPanel(section: 'crm', kind: 'company', refId: '${company['_id'] ?? widget.companyId}'),
                     const SizedBox(height: 20),
                   ]),
                 ),

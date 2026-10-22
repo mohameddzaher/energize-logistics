@@ -6,6 +6,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import JpTaskPanel from '@/components/jp/JpTaskPanel';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Compass, ArrowLeft, ArrowRight, Plus, Check, Trash2, Loader2 } from 'lucide-react';
@@ -295,6 +296,9 @@ export default function BdOpportunityDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* مهامّ JP المربوطة بهذه الفرصة — تُضاف من هنا. */}
+      <JpTaskPanel section="bd" kind="opportunity" refId={String(opp._id)} ar={ar} />
 
       <Modal open={showActivity} onClose={() => setShowActivity(false)} title={ar ? 'إضافة نشاط' : 'Add activity'}
         footer={<>

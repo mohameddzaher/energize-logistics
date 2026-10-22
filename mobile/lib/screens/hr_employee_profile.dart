@@ -11,6 +11,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/hr_quick.dart';
 import 'hr_all_fields.dart';
+import 'jp.dart' show JpTaskPanel;
 
 /// ملف الموظف الكامل — the same profile the web opens: identity + job data,
 /// contracts, leaves, custody assets, documents & renewals — in tabs, with
@@ -721,6 +722,8 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                             ]),
                           ),
                         ),
+                        const SizedBox(height: 10),
+                        JpTaskPanel(section: 'hr', kind: 'employee', refId: '${_emp['_id'] ?? widget.employeeId}'),
                       ]),
                     ),
                     // ── العقود ──

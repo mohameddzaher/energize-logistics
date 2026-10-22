@@ -67,7 +67,7 @@ export default function CustomsSettingsPage() {
         ))}
       </div>
 
-      {tab === 'lists' && <ReferenceDataManager module="customs" embedded />}
+      {tab === 'lists' && <ReferenceDataManager module="customs" alsoType="jp_task_customs" embedded />}
 
       {tab === 'alerts' && (
         <div className="max-w-xl rounded-xl border border-slate-200 bg-white p-5">

@@ -7,6 +7,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../services/flex_match.dart';
+import 'jp.dart' show JpTaskPanel;
 
 /// سجل المركبات (Vehicle Registry) — قائمة/تفاصيل/تحليلات/تنبيهات/إعدادات،
 /// مبنيّة على ماستر Vehicles_2026 (326 مركبة) عبر /api/vehicle-registry.
@@ -336,6 +337,8 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
                       const SizedBox(height: 10),
                       _section(tr('ملاحظات', 'Notes'), [Text(v['notesAr'].toString(), style: const TextStyle(fontSize: 13))]),
                     ],
+                    const SizedBox(height: 10),
+                    JpTaskPanel(section: 'vehicles', kind: 'vehicle', refId: '${v['_id'] ?? widget.id}'),
                     const SizedBox(height: 24),
                   ]),
                 ),

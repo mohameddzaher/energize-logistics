@@ -24,6 +24,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
+import JpTaskPanel from '@/components/jp/JpTaskPanel';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Spinner } from '@/components/hr/HRKit';
@@ -601,6 +602,9 @@ export default function VehicleRegistryDetail() {
           </ScrollX>
         </div>
       )}
+
+      {/* مهامّ JP المربوطة بهذه المركبة — تُضاف من هنا. */}
+      <JpTaskPanel section="vehicles" kind="vehicle" refId={String(v._id)} ar={ar} />
 
       {renewing && (
         <RenewModal row={renewing} ar={ar}

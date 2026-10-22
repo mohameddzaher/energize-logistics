@@ -209,7 +209,7 @@ export default function Ls2SettingsPage() {
           </div>
         )}
 
-        {tab === 'lists' && <ReferenceDataManager module="ls2" embedded />}
+        {tab === 'lists' && <ReferenceDataManager module="ls2" alsoType="jp_task_ls2" embedded />}
 
         {/* ---- Our own per-service checklists ---- */}
         {tab === 'checklists' && (

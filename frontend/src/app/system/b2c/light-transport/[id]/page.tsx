@@ -15,6 +15,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
+import JpTaskPanel from '@/components/jp/JpTaskPanel';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import { Spinner } from '@/components/hr/HRKit';
@@ -411,6 +412,9 @@ export default function LightTransportProfile() {
           )}
         </div>
       </section>
+
+      {/* مهامّ JP المربوطة بهذا المندوب — تُضاف من هنا. */}
+      <JpTaskPanel section="b2c" kind="rep" refId={String(e._id)} ar={ar} />
     </div>
   );
 }

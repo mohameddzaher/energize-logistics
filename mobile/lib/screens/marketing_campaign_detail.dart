@@ -5,6 +5,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'jp.dart' show JpTaskPanel;
 
 /// تفاصيل الحملة (التسويق) — الميزانية والإنفاق والعائد ومقاييسها المشتقة
 /// (CTR/CPL/ROAS)، مع أنشطة الحملة.
@@ -180,6 +181,8 @@ class _MarketingCampaignDetailScreenState extends State<MarketingCampaignDetailS
                         ),
                       );
                     }),
+                    const SizedBox(height: 12),
+                    JpTaskPanel(section: 'marketing', kind: 'campaign', refId: '${c['_id'] ?? widget.campaignId}'),
                     const SizedBox(height: 20),
                   ]),
                 ),

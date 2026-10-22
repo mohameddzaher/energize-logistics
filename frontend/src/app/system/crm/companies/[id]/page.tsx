@@ -4,6 +4,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import JpTaskPanel from '@/components/jp/JpTaskPanel';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { getCRMTranslations } from '@/lib/translations';
@@ -291,6 +292,9 @@ export default function CrmCompanyDetailPage() {
           ))}
         </Section>
       )}
+
+      {/* مهامّ JP المربوطة بهذه الشركة — تُضاف من هنا. */}
+      <JpTaskPanel section="crm" kind="company" refId={String(company._id)} ar={ar} />
 
       {/* Add modal */}
       <Modal open={!!modal} onClose={() => setModal(null)} title={modal === 'contact' ? T.addContact : modal === 'activity' ? T.logActivity : modal === 'task' ? T.addTask : T.addDeal}

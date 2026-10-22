@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { ContactButtons } from '@/components/crm/CrmKit';
 import { useLanguage } from '@/context/LanguageContext';
+import JpTaskPanel from '@/components/jp/JpTaskPanel';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -128,6 +129,17 @@ function ShipmentOrdersInner() {
 
   const [fu, setFu] = useState<{ order: any; status: string; note: string; reason?: string } | null>(null);
   const [detail, setDetail] = useState<ShipmentOrder | null>(null);
+  // ?open=<id> — رابطُ مهمّة JP يفتح الشحنةَ نفسَها ثم يُمحى من العنوان.
+  const openId = sp?.get('open') || '';
+  useEffect(() => {
+    if (!openId) return;
+    api.get<{ order: ShipmentOrder }>(`/api/shipment-orders/orders/${openId}`)
+      .then((r) => { if (r?.order) setDetail(r.order); })
+      .catch(() => { /* محذوفةٌ أو بلا صلاحية — تبقى القائمة */ });
+    const q = new URLSearchParams(window.location.search);
+    q.delete('open');
+    router.replace(`${window.location.pathname}${q.toString() ? `?${q}` : ''}`, { scroll: false });
+  }, [openId, router]);
   const [fuFile, setFuFile] = useState<PickedFile | null>(null);
 
   const openFollowUp = (o: any) => { setFuFile(null); setFu({ order: o, status: o.status, note: '' }); };
@@ -805,6 +817,8 @@ function ShipmentOrdersInner() {
                     </Group>
                   </div>
                 )}
+                {/* مهامّ JP المربوطة بهذه الشحنة — تُضاف من هنا. */}
+                <JpTaskPanel section="shipment-orders" kind="shipment" refId={String(d._id)} ar={ar} />
               </div>
             </div>
           </div>

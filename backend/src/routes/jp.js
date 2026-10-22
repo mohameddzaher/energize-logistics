@@ -17,6 +17,7 @@ router.use(authenticate);
 router.use((req, res, next) => (req.user.role === 'client' ? res.status(403).json({ message: 'Not allowed' }) : next()));
 
 router.get('/me', c.me);
+router.get('/link-options', c.linkOptions);
 router.get('/home', c.home);
 router.get('/dashboard', c.dashboard);
 router.get('/daily', c.daily);

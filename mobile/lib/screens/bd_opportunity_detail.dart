@@ -5,6 +5,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'jp.dart' show JpTaskPanel;
 
 /// تفاصيل الفرصة (تطوير الأعمال) — بيانات الفرصة ومرحلتها في القمع،
 /// وسجل الأنشطة (اجتماعات/مكالمات/زيارات) مع إمكانية تسجيل نشاط جديد.
@@ -303,7 +304,9 @@ class _BdOpportunityDetailScreenState extends State<BdOpportunityDetailScreen> {
                         ),
                       );
                     }),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 12),
+                    JpTaskPanel(section: 'bd', kind: 'opportunity', refId: '${o['_id'] ?? widget.opportunityId}'),
+                    const SizedBox(height: 80),
                   ]),
                 ),
     );

@@ -102,7 +102,7 @@ export default function ShipmentOrdersSettingsPage() {
             {t('القوائم المشتركة التي تُغذّي خانات النموذج والجداول.', 'The shared lists that feed the form inputs and the tables.')}
           </p>
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-            <ReferenceDataManager module="shipment_orders" embedded />
+            <ReferenceDataManager module="shipment_orders" alsoType="jp_task_shipment-orders" embedded />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Link href="/system/shipment-orders/customers"

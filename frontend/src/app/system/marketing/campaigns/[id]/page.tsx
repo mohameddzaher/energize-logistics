@@ -7,6 +7,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import JpTaskPanel from '@/components/jp/JpTaskPanel';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Megaphone, ArrowRight, Pencil, X, Loader2, Link as LinkIcon, Trash2 } from 'lucide-react';
@@ -350,6 +351,9 @@ export default function MarketingCampaignPage() {
           </table>
         </ScrollX>
       </div>
+
+      {/* مهامّ JP المربوطة بهذه الحملة — تُضاف من هنا. */}
+      <JpTaskPanel section="marketing" kind="campaign" refId={String(campaign._id)} ar={ar} />
     </div>
   );
 }

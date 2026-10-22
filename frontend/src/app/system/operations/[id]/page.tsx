@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import JpTaskPanel from '@/components/jp/JpTaskPanel';
 import { getOperationsTranslations, getOperationsIdExtraTranslations } from '@/lib/translations';
 import api from '@/lib/api';
 import { PAYMENT_CHOICES, paymentKindLabel, paymentKindOf } from '@/lib/paymentKind';
@@ -508,6 +509,9 @@ export default function WorkflowDetailPage() {
           </div>
         );
       })}
+
+      {/* مهامّ JP المربوطة بهذا الكشف — تُضاف من هنا. */}
+      {!editing && <JpTaskPanel section="operations" kind="workflow" refId={String(workflow._id)} ar={lang === 'ar'} />}
 
       {/* Meta info */}
       <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">

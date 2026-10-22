@@ -202,35 +202,20 @@ function closeTimer(t, user, at = new Date()) {
 
 /**
  * ── بماذا تُربَط المهمّة ────────────────────────────────────────────────────
- * لكلّ قسمٍ أنواعُ ما يُربَط به، ومن أين يُقرأ اسمُه. والتخليصُ أوّلُها:
- * معاملةٌ، أو أحدُ أطرافها الثلاثة. قسمٌ ليس هنا لا روابطَ لمهامّه.
+ * لكلّ قسمٍ أنواعُه — معاملةٌ، شحنةٌ، موظّفٌ، مركبةٌ… — في config/jpLinks.js.
  */
-const partyLink = (kind) => async (id) => {
-  const p = await require('../models/CustomsParty').findOne({ _id: id, kind }).select('name').lean();
-  return p ? p.name : null;
-};
-const LINK_KINDS = {
-  customs: {
-    clearance: async (id) => {
-      const c = await require('../models/CustomsClearance').findById(id).select('refNumber blNumber customerName').lean();
-      return c ? [c.blNumber || c.refNumber, c.customerName].filter(Boolean).join(' · ') : null;
-    },
-    customer: partyLink('customer'),
-    agent: partyLink('agent'),
-    carrier: partyLink('carrier'),
-  },
-};
+const jpLinks = require('../config/jpLinks');
 
 /** روابطُ المهمّة من جسم الطلب — `undefined` إن لم تُرسَل (فلا تُمسّ عند التعديل). */
 async function readLinks(body, w) {
   if (body.links === undefined) return undefined;
-  const kinds = (w.scope === 'section' && LINK_KINDS[w.section]) || {};
+  const kinds = w.scope === 'section' ? jpLinks.kindsFor(w.section) : [];
   const out = [];
   for (const l of (Array.isArray(body.links) ? body.links : []).slice(0, 8)) {
     const kind = String(l?.kind || '');
-    if (!Object.hasOwn(kinds, kind) || !mongoose.isValidObjectId(l?.ref)) continue;
+    if (!kinds.includes(kind) || !mongoose.isValidObjectId(l?.ref)) continue;
     if (out.some((x) => x.kind === kind && String(x.ref) === String(l.ref))) continue;
-    const label = await kinds[kind](l.ref);
+    const label = await jpLinks.labelOf(kind, l.ref);
     if (label === null) throw bad('ما رُبطت به المهمّةُ غير موجود');
     out.push({ kind, ref: l.ref, label });
   }
@@ -263,9 +248,23 @@ exports.me = async (req, res) => {
       projects,
       actions: ACTIONS.filter(Boolean),
       // ما يصحّ ربطُ المهمّة به في هذا القسم — فارغةٌ لقسمٍ بلا روابط.
-      linkKinds: Object.keys((w.scope === 'section' && LINK_KINDS[w.section]) || {}),
+      linkKinds: w.scope === 'section' ? jpLinks.kindsFor(w.section) : [],
+      // كلمةُ كلّ نوعٍ وقالبُ رابطه — تقرؤها الواجهتان بدل قائمةٍ عندهما.
+      linkMeta: w.scope === 'section' ? jpLinks.metaFor(w.section) : {},
     });
   } catch (e) { fail(res, e, 'تعذّر تحميل الخطّة'); }
+};
+
+// GET /api/jp/link-options?scope=section&section=&kind=&q= — ما يُختار للربط، بالبحث.
+exports.linkOptions = async (req, res) => {
+  try {
+    const w = who(req, req.query);
+    if (!w) return res.status(404).json({ message: 'قسمٌ غير معروف' });
+    if (!w.isMember) return res.status(403).json({ message: 'خطّةُ العمل لفريق القسم ومديره' });
+    const kind = String(req.query.kind || '');
+    if (w.scope !== 'section' || !jpLinks.kindsFor(w.section).includes(kind)) return res.json({ options: [] });
+    res.json({ options: await jpLinks.searchKind(kind, req.query.q, req.query.limit) });
+  } catch (e) { fail(res, e, 'تعذّر البحث'); }
 };
 
 // GET /api/jp/home — أين خطّةُ هذا المستخدم (يفتحها الإشعار).

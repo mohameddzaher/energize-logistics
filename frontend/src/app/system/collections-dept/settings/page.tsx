@@ -48,7 +48,7 @@ export default function CollectionsSettingsPage() {
 
       {/* قوائمُ هذا القسم وحدَه — لا قوائمُ النظام كلِّه في صفحةٍ عامّةٍ يبحث
           فيها المستخدم عن قائمته بين قوائم غيره. */}
-      {tab === 'lists' && <ReferenceDataManager module="collections" embedded />}
+      {tab === 'lists' && <ReferenceDataManager module="collections" alsoType="jp_task_collections" embedded />}
 
       {tab === 'registers' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

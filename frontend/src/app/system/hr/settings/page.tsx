@@ -158,7 +158,7 @@ export default function HrSettingsPage() {
         <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4 flex items-center gap-2">
           <Tags className="w-4 h-4 text-[#f37121]" /> {t('قوائم القسم', 'Section lists')}
         </h3>
-        <ReferenceDataManager module="hr" embedded />
+        <ReferenceDataManager module="hr" alsoType="jp_task_hr" embedded />
       </div>
     </div>
   );

@@ -36,8 +36,10 @@ const EMPTY = { nameEn: '', nameAr: '', color: '#f37121', isActive: true };
  * قسمٍ بعينه حين يُمرَّر `module`. ونسخُها مرّتين يعني أن يُصلَح عيبٌ في إحداهما
  * ويبقى في الأخرى — وقوائمُ المرجع بالذات لا تحتمل شاشتين تختلفان.
  */
-export default function ReferenceDataManager({ module: onlyModule, type: onlyType, embedded }: {
+export default function ReferenceDataManager({ module: onlyModule, type: onlyType, alsoType, embedded }: {
   module?: string;
+  /** قائمةٌ من وحدةٍ أخرى تُعرَض مع قوائم القسم — مهامُّ خطّة العمل (jp_task_<القسم>). */
+  alsoType?: string;
   /**
    * قائمةٌ واحدةٌ بعينها.
    *
@@ -71,13 +73,13 @@ export default function ReferenceDataManager({ module: onlyModule, type: onlyTyp
     try {
       const d = await api.get<{ types: LookupType[] }>('/api/lookups/types');
       const all = (d.types || [])
-        .filter((t) => !onlyModule || t.module === onlyModule)
+        .filter((t) => !onlyModule || t.module === onlyModule || (!!alsoType && t.type === alsoType))
         .filter((t) => !onlyType || t.type === onlyType);
       setTypes(all);
       if (all.length && !activeType) setActiveType(all[0].type);
     } catch {}
     setLoading(false);
-  }, [activeType, onlyModule, onlyType]);
+  }, [activeType, onlyModule, onlyType, alsoType]);
 
   const loadItems = useCallback(async (type: string) => {
     if (!type) return;

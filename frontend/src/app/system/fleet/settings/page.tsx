@@ -192,7 +192,7 @@ export default function FleetSettingsPage() {
       {/* ── قوائم القسم المنسدلة ────────────────────────────────────────────
           نوعُ الإيجار والدفع والحمولة، وملاحظاتُ المتابعة الجاهزة. كانت
           الأخيرةُ ثمانيةَ سطورٍ في الشيفرة، فمن أراد سطرًا تاسعًا انتظر نشرة. */}
-      <ReferenceDataManager module="fleet" embedded />
+      <ReferenceDataManager module="fleet" alsoType="jp_task_fleet" embedded />
 
       {/* أهداف السيارات */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">

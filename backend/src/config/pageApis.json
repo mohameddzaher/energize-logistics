@@ -24,6 +24,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -48,6 +49,12 @@
       "apis": [
         "/api/customer-registry",
         "/api/customer-registry/options",
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
         "/api/lookups/types",
         "/api/partners/account",
         "/api/workflows",
@@ -126,6 +133,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -144,6 +152,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -265,6 +274,12 @@
         "/api/collections-dept/ledger/invoices/filters",
         "/api/collections-dept/ledger/team/assign",
         "/api/collections-dept/parties",
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
         "/api/lookups/types",
         "/api/reports"
       ],
@@ -277,6 +292,12 @@
         "/api/collections-dept/ledger/invoices/filters",
         "/api/collections-dept/ledger/team/assign",
         "/api/collections-dept/parties",
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
         "/api/lookups/types",
         "/api/reports"
       ],
@@ -286,6 +307,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -304,6 +326,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -441,6 +464,12 @@
       "apis": [
         "/api/customer-registry",
         "/api/customer-registry/options",
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
         "/api/lookups/types",
         "/api/partners/account",
         "/api/shipment-orders/customers",
@@ -505,6 +534,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -523,6 +553,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -553,6 +584,8 @@
     "/system/fleet": {
       "apis": [
         "/api/branches",
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/fleet/arrivals",
         "/api/fleet/customers",
         "/api/fleet/drivers",
@@ -560,6 +593,10 @@
         "/api/fleet/shipments/waybills.pdf",
         "/api/fleet/vehicle-logs",
         "/api/fleet/vehicles",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
         "/api/lookups/types",
         "/api/partners/account"
       ],
@@ -645,6 +682,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -663,6 +701,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -716,6 +755,9 @@
         "/api/customs-clearance/parties",
         "/api/customs-clearance/release-sheets",
         "/api/customs-clearance/upcoming-alerts",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
         "/api/jp/tasks",
         "/api/lookups/types",
         "/api/workflows"
@@ -766,6 +808,12 @@
     },
     "/system/vehicles/registry": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
         "/api/light-transport/people",
         "/api/lookups/types",
         "/api/vehicle-registry",
@@ -919,6 +967,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -937,6 +986,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -966,6 +1016,13 @@
     },
     "/system/ls2": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
+        "/api/lookups/types",
         "/api/ls2/assets/tires",
         "/api/ls2/assets/vehicle",
         "/api/ls2/dashboard",
@@ -1123,6 +1180,13 @@
     },
     "/system/marketing": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
+        "/api/lookups/types",
         "/api/marketing/campaigns",
         "/api/marketing/dashboard"
       ],
@@ -1130,6 +1194,13 @@
     },
     "/system/marketing/campaigns": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
+        "/api/lookups/types",
         "/api/marketing/campaigns"
       ],
       "wildcard": false
@@ -1151,6 +1222,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -1169,6 +1241,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -1193,7 +1266,14 @@
       "apis": [
         "/api/business-development/activities",
         "/api/business-development/dashboard",
-        "/api/business-development/opportunities"
+        "/api/business-development/opportunities",
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -1201,7 +1281,14 @@
       "apis": [
         "/api/business-development/activities",
         "/api/business-development/opportunities",
-        "/api/crm/companies"
+        "/api/crm/companies",
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -1222,6 +1309,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -1240,6 +1328,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -1271,6 +1360,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -1289,6 +1379,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -1344,13 +1435,27 @@
     "/system/contracts": {
       "apis": [
         "/api/contracts/dashboard",
-        "/api/contracts/vendors"
+        "/api/contracts/vendors",
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/contracts/vendors": {
       "apis": [
-        "/api/contracts/vendors"
+        "/api/contracts/vendors",
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -1386,6 +1491,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -1404,6 +1510,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -1426,17 +1533,31 @@
     },
     "/system/it": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/it/dashboard",
-        "/api/it/tickets"
+        "/api/it/tickets",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
     "/system/it/tickets": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/it/assignees",
         "/api/it/departments",
         "/api/it/employees",
-        "/api/it/tickets"
+        "/api/it/tickets",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
+        "/api/lookups/types"
       ],
       "wildcard": false
     },
@@ -1482,6 +1603,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -1500,6 +1622,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -1538,6 +1661,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -1556,6 +1680,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -1637,6 +1762,12 @@
     "/system/b2c/light-transport": {
       "apis": [
         "/api/b2c/entry/managers",
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
         "/api/light-transport/employees",
         "/api/light-transport/employees/assign-supervisors",
         "/api/lookups/types"
@@ -1717,6 +1848,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -1735,6 +1867,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -1810,6 +1943,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -1828,6 +1962,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -1912,6 +2047,8 @@
     },
     "/system/hr/employees": {
       "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
         "/api/hr/contracts",
         "/api/hr/documents",
         "/api/hr/employees",
@@ -1919,6 +2056,10 @@
         "/api/hr/master/employees",
         "/api/hr/master/filters",
         "/api/hr/options",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
         "/api/lookups/types",
         "/api/uploads/...",
         "/api/vehicles/by-employee"
@@ -2066,6 +2207,12 @@
         "/api/crm/deals",
         "/api/crm/options",
         "/api/crm/tasks",
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
         "/api/lookups/types",
         "/api/partners/account"
       ],
@@ -2273,6 +2420,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -2291,6 +2439,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -2315,6 +2464,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -2333,6 +2483,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -2357,6 +2508,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -2375,6 +2527,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -2399,6 +2552,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -2417,6 +2571,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -2441,6 +2596,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -2459,6 +2615,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -2483,6 +2640,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -2501,6 +2659,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -2525,6 +2684,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",
@@ -2543,6 +2703,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
+        "/api/jp/link-options",
         "/api/jp/me",
         "/api/jp/projects",
         "/api/jp/tasks",

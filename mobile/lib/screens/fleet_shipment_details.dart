@@ -8,6 +8,7 @@ import '../ui/contact.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/vehicle_month_log.dart';
+import 'jp.dart' show JpTaskPanel;
 
 /// تفاصيل الشحنة — the SAME detail view the web opens: full info, the status
 /// control, the follow-up form, and the complete event history (إنشاء /
@@ -419,6 +420,8 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                           ]),
                         ),
                       ),
+                      const SizedBox(height: 12),
+                      JpTaskPanel(section: 'fleet', kind: 'fleetShipment', refId: '${s['_id'] ?? widget.shipmentId}'),
                     ],
                   ),
                 ),

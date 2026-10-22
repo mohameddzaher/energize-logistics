@@ -10,6 +10,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/file_upload.dart';
+import 'jp.dart' show JpTaskPanel;
 
 /// أطرافُ التخليص — العميلُ ووكيلُ الشحن والناقل: ملفُّ الطرف (بياناتُه
 /// ومرفقاتُه)، وبطاقةُ أطراف المعاملة في تفاصيلها. نظيرُ `PartyAttachments`
@@ -449,6 +450,8 @@ class _CustomsPartyScreenState extends State<CustomsPartyScreen> {
                         ),
                       ]),
                     ),
+                    const SizedBox(height: 12),
+                    JpTaskPanel(section: 'customs', kind: kind, refId: '${p['_id'] ?? widget.partyId}'),
                     const SizedBox(height: 20),
                   ]),
                 ),

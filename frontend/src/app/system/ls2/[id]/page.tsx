@@ -9,6 +9,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import JpTaskPanel from '@/components/jp/JpTaskPanel';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import {
@@ -79,7 +80,13 @@ export default function Ls2VehicleDetailPage() {
   };
 
   const load = useCallback(async () => {
-    try { setD(await api.get<Detail>(`/api/ls2/vehicles/${id}`)); } catch { /* keep */ }
+    try {
+      const got = await api.get<Detail>(`/api/ls2/vehicles/${id}`);
+      // جاء من رابط مهمّة JP (معرّفُ السجلّ): الصفحةُ وما تستدعيه تعمل برقم الوحدة.
+      const unit = (got as any)?.vehicle?.unitId;
+      if (/^[a-f0-9]{24}$/i.test(String(id)) && unit) { router.replace(`/system/ls2/${unit}`); return; }
+      setD(got);
+    } catch { /* keep */ }
     setLoading(false);
   }, [id]);
 
@@ -582,6 +589,9 @@ export default function Ls2VehicleDetailPage() {
           {openAlerts.length === 0 && <p className="text-slate-400 text-sm py-3">{lang === 'ar' ? 'لا توجد تنبيهات' : 'No open alerts'}</p>}
         </div>
       </div>
+
+      {/* مهامّ JP المربوطة بهذه الشاحنة — تُضاف من هنا. */}
+      {!!(v as any)._id && <JpTaskPanel section="ls2" kind="truck" refId={String((v as any)._id)} ar={ar} />}
 
       {svcModal && (
         <RegisterServiceModal

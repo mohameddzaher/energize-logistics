@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
+import JpTaskPanel from '@/components/jp/JpTaskPanel';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import { kindWords, money, dt, paymentTypeLabel, type CollectionsParty } from '@/lib/collections';
@@ -646,6 +647,9 @@ export default function PartyProfilePage() {
           </div>
         )}
       </div>
+
+      {/* مهامّ JP المربوطة بهذا الطرف — تُضاف من هنا. */}
+      <JpTaskPanel section="collections" kind="collParty" refId={String(p._id)} ar={ar} />
 
       <Modal
         open={!!fuForm}

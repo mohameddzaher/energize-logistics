@@ -375,7 +375,9 @@ exports.listVehicles = async (req, res) => {
 // ---- Single vehicle (+ its alerts + service history) ----------------------
 exports.getVehicle = async (req, res) => {
   try {
-    const v = await Ls2Vehicle.findOne({ unitId: Number(req.params.id) }).lean();
+    // ورابطُ مهمّة JP يحمل معرّفَ السجلّ لا رقمَ الوحدة — فيُقبَل الاثنان، والصفحةُ تنتقل إلى رقم الوحدة.
+    const pid = String(req.params.id);
+    const v = await Ls2Vehicle.findOne(/^[a-f0-9]{24}$/i.test(pid) ? { _id: pid } : { unitId: Number(pid) }).lean();
     if (!v) return res.status(404).json({ message: 'Vehicle not found' });
     const [alerts, serviceLog, driverHistory] = await Promise.all([
       Ls2Alert.find({ unitId: v.unitId }).sort({ status: 1, firstSeenAt: -1 }).limit(50).lean(),

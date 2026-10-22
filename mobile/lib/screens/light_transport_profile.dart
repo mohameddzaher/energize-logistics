@@ -8,6 +8,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'jp.dart' show JpTaskPanel;
 
 /// ملفُّ موظّف النقل الخفيف — مطابقٌ لصفحة الويب
 /// `/system/b2c/light-transport/[id]`.
@@ -329,6 +330,8 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
                         }),
                       ]),
                     ),
+                    const SizedBox(height: 10),
+                    JpTaskPanel(section: 'b2c', kind: 'rep', refId: '${e['_id'] ?? widget.id}'),
                   ]),
                 ),
     );

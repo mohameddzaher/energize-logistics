@@ -126,7 +126,7 @@ export default function VehiclesSettingsPage() {
       </div>
 
       {/* القوائمُ المرجعيّةُ الخاصّةُ بهذا القسم وحدَه — لا قوائمُ النظام كلِّه. */}
-      {tab === 'lists' && <ReferenceDataManager module="vehicles" embedded />}
+      {tab === 'lists' && <ReferenceDataManager module="vehicles" alsoType="jp_task_vehicles" embedded />}
 
       {tab === 'alerts' && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">

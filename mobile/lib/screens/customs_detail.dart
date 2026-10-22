@@ -9,7 +9,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/file_upload.dart';
 import '../ui/customs_link.dart';
-import 'jp.dart' show jpDeadline;
+import 'jp.dart' show JpTaskPanel;
 import 'customs_party.dart';
 
 /// تفاصيل التخليص الجمركي — دورةُ المراحل كما يحسبها الخادم (`pipeline`)،
@@ -176,8 +176,6 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
   // أرقامُ كشوف التخريج الموجودةُ في سير عمل التشغيل — null ما لم يُسأل الخادم.
   Map<String, dynamic>? _sheets;
   String _sheetsKey = '';
-  // مهامُّ خطّة العمل المرتبطةُ بالمعاملة — null: القسمُ لا يُعرَض (٤٠٣ أو تعذّر).
-  List<Map<String, dynamic>>? _tasks;
   // أيُّ وحدةٍ تُعرَض مراحلُها في «النقل وما بعده» — ‎-1: الكلُّ معًا.
   int _unitSel = -1;
   // تعريفاتُ مراحل السداد من إعدادات القسم (`customs_payment_stage`) — أسماؤها
@@ -190,27 +188,22 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
   bool _contractLoaded = false;
   String _contractKey = '';
   late final void Function() _onLive;
-  late final void Function() _onJp;
   late final void Function(dynamic) _onLookup;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _loadTasks();
     _onLive = () => _load();
-    _onJp = () => _loadTasks();
     _onLookup = (p) { if (p is Map && p['type'] == 'customs_payment_stage') _loadPayDefs(); };
     _loadPayDefs();
     Live.instance.on('customs:updated', _onLive);
-    Live.instance.on('jp:changed', _onJp);
     Live.instance.onData('lookup:changed', _onLookup);
   }
 
   @override
   void dispose() {
     Live.instance.off('customs:updated', _onLive);
-    Live.instance.off('jp:changed', _onJp);
     Live.instance.offData('lookup:changed', _onLookup);
     _note.dispose();
     super.dispose();
@@ -238,17 +231,6 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
       if (mounted) setState(() => _payDefs = _maps(d['items']));
     } catch (_) {
       // تبقى الإدخالاتُ مقروءةً بأسمائها المحفوظة؛ والإضافةُ تنتظر التعريفات.
-    }
-  }
-
-  Future<void> _loadTasks() async {
-    try {
-      final d = await Api.instance.get(
-          '/api/jp/tasks?scope=section&section=customs&linkKind=clearance&linkRef=${widget.clearanceId}');
-      if (mounted) setState(() => _tasks = _maps(d['tasks']));
-    } catch (_) {
-      // الخطّةُ لفريق القسم ومديره — ومَن ليس منهم لا يرى قسمَها هنا أصلًا.
-      if (mounted) setState(() => _tasks = null);
     }
   }
 
@@ -549,7 +531,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
-                  onRefresh: () { _sheetsKey = ''; _loadTasks(); return _load(); },
+                  onRefresh: () { _sheetsKey = ''; return _load(); },
                   child: ListView(padding: const EdgeInsets.all(14), children: [
                     // ── معلومات أساسية ──
                     FadeSlideIn(
@@ -843,23 +825,8 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                     ),
                     const SizedBox(height: 12),
                     // ── مهامّ خطّة العمل المرتبطة بالمعاملة ──
-                    if (_tasks != null) ...[
-                      AppCard(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Row(children: [
-                            Text(tr('مهامّ خطّة العمل', 'Work-plan tasks'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                            const Spacer(),
-                            if (_tasks!.isNotEmpty) Text('${_tasks!.length}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
-                          ]),
-                          const SizedBox(height: 6),
-                          if (_tasks!.isEmpty)
-                            Text(tr('لا مهامّ مرتبطة بهذه المعاملة', 'No tasks linked to this transaction'),
-                                style: const TextStyle(fontSize: 12, color: T.inkFaint)),
-                          for (final t in _tasks!) _taskRow(t),
-                        ]),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
+                    JpTaskPanel(section: 'customs', kind: 'clearance', refId: widget.clearanceId),
+                    const SizedBox(height: 12),
                     // ── التكاليف ──
                     FadeSlideIn(
                       delayMs: 120,
@@ -1184,25 +1151,6 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
             linked ? tr('مرتبط بسير عمل التشغيل', 'Linked to the operations workflow') : tr('غير موجود في سير عمل التشغيل', 'Not found in the operations workflow'),
             style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: linked ? T.success : T.danger),
           ),
-      ]),
-    );
-  }
-
-  Widget _taskRow(Map<String, dynamic> t) {
-    final dl = jpDeadline(t);
-    final done = t['status'] == 'done';
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(done ? Icons.check_circle : Icons.radio_button_unchecked, size: 17, color: done ? T.success : T.inkFaint),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${t['title'] ?? ''}',
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, decoration: done ? TextDecoration.lineThrough : null)),
-            Text('${t['assignedToName'] ?? ''} · ${dl.$1}', style: TextStyle(fontSize: 11, color: dl.$2)),
-          ]),
-        ),
       ]),
     );
   }

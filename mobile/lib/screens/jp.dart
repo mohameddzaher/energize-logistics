@@ -78,13 +78,26 @@ const _actions = {
   'other': ('أخرى', 'Other', Icons.more_horiz),
 };
 
-/// ما تُربَط به المهمّة — في قسمٍ يُعلن `linkKinds` (التخليصُ وحدَه الآن):
-/// معاملةٌ بعينها أو طرفٌ من أطرافها. والخادمُ يتحقّق ويلتقط الاسم.
+/// ما تُربَط به المهمّة — لكلّ قسمٍ أنواعُه (`linkKinds`، backend/config/jpLinks.js):
+/// معاملةٌ، شحنةٌ، موظّفٌ، مركبةٌ… والخادمُ يتحقّق ويلتقط الاسم.
 const _linkKinds = {
   'clearance': ('معاملة', 'Transaction', Icons.directions_boat_outlined),
   'customer': ('عميل', 'Customer', Icons.people_outline),
   'agent': ('وكيل شحن', 'Shipping agent', Icons.anchor_outlined),
   'carrier': ('ناقل', 'Carrier', Icons.local_shipping_outlined),
+  'workflow': ('تقرير تشغيل', 'Ops report', Icons.description_outlined),
+  'shipment': ('شحنة', 'Shipment', Icons.inventory_2_outlined),
+  'fleetShipment': ('رحلة أسطول', 'Fleet trip', Icons.route_outlined),
+  'employee': ('موظّف', 'Employee', Icons.badge_outlined),
+  'vehicle': ('مركبة', 'Vehicle', Icons.directions_car_outlined),
+  'truck': ('شاحنة', 'Truck', Icons.local_shipping_outlined),
+  'rep': ('مندوب', 'Rider', Icons.delivery_dining_outlined),
+  'company': ('شركة', 'Company', Icons.business_outlined),
+  'collParty': ('عميل تحصيل', 'Collections party', Icons.account_balance_wallet_outlined),
+  'vendor': ('مورّد', 'Vendor', Icons.storefront_outlined),
+  'ticket': ('تذكرة', 'Ticket', Icons.confirmation_number_outlined),
+  'opportunity': ('فرصة', 'Opportunity', Icons.lightbulb_outline),
+  'campaign': ('حملة', 'Campaign', Icons.campaign_outlined),
 };
 
 String _span(Duration d) {
@@ -539,7 +552,9 @@ class _JpForm extends StatefulWidget {
   final String scope; final String? section; final Map<String, dynamic> me;
   final List<Map<String, dynamic>> projects; final Map<String, dynamic>? task;
   final String presetProject; final Future<void> Function() onDone;
-  const _JpForm({required this.scope, required this.section, required this.me, required this.projects, required this.task, required this.presetProject, required this.onDone});
+  /// ما فُتحت منه النافذة (معاملة، شحنة…) — مربوطٌ سلفًا.
+  final List<Map<String, dynamic>> presetLinks;
+  const _JpForm({required this.scope, required this.section, required this.me, required this.projects, required this.task, required this.presetProject, required this.onDone, this.presetLinks = const []});
   @override
   State<_JpForm> createState() => _JpFormState();
 }
@@ -565,6 +580,9 @@ class _JpFormState extends State<_JpForm> {
     final t = widget.task;
     _project = widget.presetProject;
     if (!_canManage) _assignee = (widget.me['me'] ?? '').toString();
+    _links.addAll(widget.presetLinks.map((l) => Map<String, dynamic>.from(l)));
+    // ومن صفحة الشيء نفسِه: لنفسه ابتداءً، والمديرُ يغيّره من القائمة.
+    if (widget.presetLinks.isNotEmpty && _assignee.isEmpty) _assignee = (widget.me['me'] ?? '').toString();
     if (t != null) {
       _title.text = (t['title'] ?? '').toString(); _details.text = (t['details'] ?? '').toString();
       _contact.text = (t['contact'] ?? '').toString(); _action = (t['action'] ?? '').toString();
@@ -580,18 +598,14 @@ class _JpFormState extends State<_JpForm> {
   }
 
   Future<void> _addLink(String kind) async {
-    final clearance = kind == 'clearance';
-    String label(Map<String, dynamic> r) => clearance
-        ? [r['blNumber'] ?? r['refNumber'], r['customerName']].where((x) => (x ?? '').toString().isNotEmpty).join(' · ')
-        : (r['name'] ?? '').toString();
     final k = _linkKinds[kind]!;
     final picked = await pickFromApi(context,
-        endpoint: clearance ? '/api/customs-clearance' : '/api/customs-clearance/parties?kind=$kind',
-        listKey: clearance ? 'clearances' : 'parties', label: label, title: tr(k.$1, k.$2));
+        endpoint: '/api/jp/link-options?scope=section&section=${Uri.encodeQueryComponent(widget.section ?? '')}&kind=$kind',
+        listKey: 'options', label: (r) => (r['label'] ?? '').toString(), title: tr(k.$1, k.$2));
     if (picked == null || !mounted) return;
-    final ref = (picked['_id'] ?? '').toString();
+    final ref = (picked['value'] ?? '').toString();
     if (ref.isEmpty || _links.any((l) => l['kind'] == kind && l['ref'] == ref)) return;
-    setState(() => _links.add({'kind': kind, 'ref': ref, 'label': label(picked)}));
+    setState(() => _links.add({'kind': kind, 'ref': ref, 'label': (picked['label'] ?? '').toString()}));
   }
 
   Map<String, dynamic> _dueBody() => _dueKind == 'date' ? {'deadlineKind': 'date', 'deadlineDate': _dueDate}
@@ -930,6 +944,109 @@ class _JpDashScreenState extends State<JpDashScreen> {
                     for (final r in soon) line(r),
                   ].expand((w) => [w, if (w is AppCard) const SizedBox(height: 8)]).toList());
                 })),
+    );
+  }
+}
+
+/// مهامُّ JP لشيءٍ بعينه — تُقرأ وتُضاف من شاشته (صاحبُ الشركة، ٢٠٢٦/١٠/٢٣).
+///
+/// كالموقع (components/jp/JpTaskPanel): يوضع في شاشة المعاملة والشحنة والموظّف
+/// والمركبة… ويكتب المهمّةَ في نافذةٍ فوقها مربوطةً بما فُتحت منه، فتظهر في
+/// خطّة القسم ولوحته في اللحظة. ويختفي لمن ليس من فريق القسم.
+class JpTaskPanel extends StatefulWidget {
+  const JpTaskPanel({super.key, required this.section, required this.kind, required this.refId});
+  final String section, kind, refId;
+  @override
+  State<JpTaskPanel> createState() => _JpTaskPanelState();
+}
+
+class _JpTaskPanelState extends State<JpTaskPanel> {
+  Map<String, dynamic>? _me;
+  List<Map<String, dynamic>> _tasks = const [];
+  bool _hidden = false, _loaded = false;
+  late final void Function() _onLive;
+
+  @override
+  void initState() {
+    super.initState();
+    _onLive = () { if (_me != null) _load(); };
+    Live.instance.on('jp:changed', _onLive);
+    _init();
+  }
+
+  @override
+  void dispose() { Live.instance.off('jp:changed', _onLive); super.dispose(); }
+
+  Future<void> _init() async {
+    try {
+      final me = Map<String, dynamic>.from(await Api.instance.get('/api/jp/me?scope=section&section=${widget.section}'));
+      if (!List.from(me['linkKinds'] ?? const []).contains(widget.kind)) { if (mounted) setState(() => _hidden = true); return; }
+      _me = me;
+      await _load();
+    } catch (_) { if (mounted) setState(() => _hidden = true); }
+  }
+
+  Future<void> _load() async {
+    try {
+      final d = await Api.instance.get('/api/jp/tasks?scope=section&section=${widget.section}&box=all&linkKind=${widget.kind}&linkRef=${widget.refId}');
+      if (mounted) setState(() { _tasks = List<Map<String, dynamic>>.from((d['tasks'] ?? const []).map((e) => Map<String, dynamic>.from(e))); _loaded = true; });
+    } catch (_) { if (mounted) setState(() => _hidden = true); }
+  }
+
+  void _add() {
+    final me = Map<String, dynamic>.from(_me!);
+    showModalBottomSheet(
+      context: context, isScrollControlled: true, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (c) => _JpForm(
+        scope: 'section', section: widget.section, me: me, projects: const [], task: null, presetProject: '',
+        presetLinks: [{'kind': widget.kind, 'ref': widget.refId, 'label': tr('هذا', 'this')}], onDone: _load,
+      ),
+    );
+  }
+
+  Future<void> _toggle(Map<String, dynamic> t) async {
+    try {
+      await Api.instance.post('/api/jp/tasks/${t['_id']}/done', {'done': t['status'] != 'done'});
+      await _load();
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hidden || !_loaded) return const SizedBox.shrink();
+    final open = _tasks.where((t) => t['status'] != 'done').length;
+    return AppCard(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          const Icon(Icons.event_available_outlined, color: T.orange, size: 20),
+          const SizedBox(width: 6),
+          Expanded(child: Text('${tr('مهامّ خطّة العمل (JP)', 'Work-plan tasks (JP)')}${open > 0 ? ' · ${tr('$open مفتوحة', '$open open')}' : ''}',
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: T.orange, visualDensity: VisualDensity.compact),
+            onPressed: _add, icon: const Icon(Icons.add, size: 16), label: Text(tr('إضافة JP', 'Add JP')),
+          ),
+        ]),
+        if (_tasks.isEmpty)
+          Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(tr('لا مهامّ مربوطة بعد — أضِف من هنا.', 'No linked tasks yet — add one here.'), style: const TextStyle(color: T.inkFaint, fontSize: 12.5)))
+        else
+          for (final t in _tasks) () {
+            final dl = jpDeadline(t);
+            final done = t['status'] == 'done';
+            final can = (t['can'] as Map?)?['complete'] == true;
+            return ListTile(
+              dense: true, contentPadding: EdgeInsets.zero,
+              leading: IconButton(
+                onPressed: can ? () => _toggle(t) : null,
+                icon: Icon(done ? Icons.check_circle : Icons.radio_button_unchecked, color: done ? T.success : (t['state'] == 'overdue' ? T.danger : T.inkFaint)),
+              ),
+              title: Text('${t['title']}', style: TextStyle(fontWeight: FontWeight.w700, decoration: done ? TextDecoration.lineThrough : null)),
+              subtitle: Text('${t['assignedToName'] ?? ''} · ${dl.$1}', style: TextStyle(fontSize: 11.5, color: dl.$2)),
+            );
+          }(),
+      ]),
     );
   }
 }

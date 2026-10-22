@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import JpTaskPanel from '@/components/jp/JpTaskPanel';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { ArrowLeft, LifeBuoy, History, Check, AlertTriangle, Trash2 } from 'lucide-react';
@@ -227,6 +228,9 @@ export default function TicketDetailPage() {
           </ol>
         )}
       </div>
+
+      {/* مهامّ JP المربوطة بهذا البلاغ — تُضاف من هنا. */}
+      <JpTaskPanel section="it" kind="ticket" refId={String(ticket._id)} ar={ar} />
     </div>
   );
 }

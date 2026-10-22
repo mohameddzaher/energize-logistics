@@ -27,9 +27,10 @@ import {
 } from '@/lib/jp';
 import { LinkChips, LinkPicker } from '@/components/jp/JpLinks';
 import ManagedSelect from '@/components/system/ManagedSelect';
+import ReferenceDataManager from '@/components/system/ReferenceDataManager';
 import { Spinner, PageHeader, Modal, Field, TextInput, TextArea, Select, PrimaryButton } from '@/components/hr/HRKit';
 import {
-  CalendarCheck, Plus, Check, Paperclip, Trash2, Pencil, FolderKanban, Clock, ChevronDown,
+  CalendarCheck, ListChecks, Plus, Check, Paperclip, Trash2, Pencil, FolderKanban, Clock, ChevronDown,
   Phone, MessageCircle, MapPin, Mail, Users, MoreHorizontal, X, Send, CornerDownLeft, Loader2, MessageSquare, ArrowRight, ArrowLeft,
 } from 'lucide-react';
 
@@ -40,10 +41,10 @@ const ACTION_ICON: Record<string, React.ReactNode> = {
 };
 
 /** الموعدُ كما يختاره من يكتب: بلا موعد، أو بيوم، أو بساعات. */
-interface Due { kind: '' | 'date' | 'hours'; date: string; hours: string }
-const NO_DUE: Due = { kind: '', date: '', hours: '' };
+export interface Due { kind: '' | 'date' | 'hours'; date: string; hours: string }
+export const NO_DUE: Due = { kind: '', date: '', hours: '' };
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const dueBody = (d: Due) => (d.kind === 'date' ? { deadlineKind: 'date', deadlineDate: d.date }
+export const dueBody = (d: Due) => (d.kind === 'date' ? { deadlineKind: 'date', deadlineDate: d.date }
   : d.kind === 'hours' ? { deadlineKind: 'hours', deadlineHours: Number(d.hours) } : { deadlineKind: '' });
 
 function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
@@ -57,7 +58,7 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
 }
 
 /** اختيارُ الموعد بضغطة: اليوم، غدًا، بعد ساعة… أو تاريخٌ وعددُ ساعاتٍ بعينهما. */
-function DuePicker({ value, onChange, ar }: { value: Due; onChange: (d: Due) => void; ar: boolean }) {
+export function DuePicker({ value, onChange, ar }: { value: Due; onChange: (d: Due) => void; ar: boolean }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const today = ymd(new Date());
   const tomorrow = ymd(new Date(Date.now() + 86400000));
@@ -102,8 +103,8 @@ const expectedOf = (d: Draft): number | '' => {
 };
 
 /** حقولُ «تفاصيل أكثر» — يقرؤها سطرُ الإضافة ونافذةُ التعديل. */
-function MoreFields({ d, set, projects, ar, allowFiles, linkKinds = [] }: {
-  d: Draft; set: (p: Partial<Draft>) => void; projects: JpProject[]; ar: boolean; allowFiles: boolean; linkKinds?: string[];
+function MoreFields({ d, set, projects, ar, allowFiles, linkKinds = [], section = '' }: {
+  section?: string; d: Draft; set: (p: Partial<Draft>) => void; projects: JpProject[]; ar: boolean; allowFiles: boolean; linkKinds?: string[];
 }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const pick = async (list: FileList | null) => {
@@ -114,8 +115,8 @@ function MoreFields({ d, set, projects, ar, allowFiles, linkKinds = [] }: {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       {linkKinds.length > 0 && (
-        <Field label={t('تتعلّق بـ (اختياري): معاملة، عميل، وكيل شحن، ناقل', 'Related to (optional): transaction, customer, agent, carrier')} span2>
-          <LinkPicker kinds={linkKinds} value={d.links} onChange={(links) => set({ links })} ar={ar} />
+        <Field label={t('تتعلّق بـ (اختياري)', 'Related to (optional)')} span2>
+          <LinkPicker section={section} kinds={linkKinds} value={d.links} onChange={(links) => set({ links })} ar={ar} />
         </Field>
       )}
       <Field label={t('يوم العمل (اختياري)', 'Work day (optional)')}>
@@ -380,6 +381,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
   const [now, setNow] = useState(() => Date.now());
 
   const [draft, setDraft] = useState<Draft>(blankDraft());
+  const [titlesOpen, setTitlesOpen] = useState(false);
   const [more, setMore] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<JpTask | null>(null);
@@ -621,6 +623,13 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
           : me.canManage ? t('أسنِد المهامَّ إلى فريقك وتابِعها من مكانٍ واحد', 'Assign work to your team and follow it in one place')
             : t('ما أُسنِد إليك، وما تطلبه من نفسك أو من زملائك', 'What is assigned to you, and what you ask of yourself or colleagues')}
       >
+        {/* قائمةُ مهامّ القسم تُدار من هنا أيضًا — أقسامٌ كثيرة بلا صفحة إعدادات. */}
+        {me.canManage && !management && (
+          <button type="button" onClick={() => setTitlesOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-sm font-semibold text-slate-700 hover:border-[#f37121]/60">
+            <ListChecks className="w-4 h-4" />{t('قائمة المهام', 'Task list')}
+          </button>
+        )}
         {me.canManage && (
           <button type="button" onClick={() => setProjForm({ name: '', description: '', endDate: '' })}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-sm font-semibold text-slate-700 hover:border-[#f37121]/60">
@@ -628,6 +637,9 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
           </button>
         )}
       </PageHeader>
+      <Modal open={titlesOpen} onClose={() => setTitlesOpen(false)} title={t(`قائمة مهام ${me.sectionAr}`, `${me.sectionEn} task list`)} wide>
+        {titlesOpen && <ReferenceDataManager type={`jp_task_${section}`} embedded />}
+      </Modal>
 
       {/* جاء من صفحة معاملةٍ أو طرف: تُعرَض مهامُّه وحدَها حتى يُرفَع القيد. */}
       {!!linkRef && !!linkKind && (
@@ -676,7 +688,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
           <ChevronDown className={`w-4 h-4 transition-transform ${more ? 'rotate-180' : ''}`} />
           {more ? t('إخفاء التفاصيل', 'Hide details') : t('تفاصيل أكثر: طريقة التواصل، مشروع، مرفق', 'More: contact method, project, attachment')}
         </button>
-        {more && <MoreFields d={draft} set={patchDraft} projects={current ? [] : projects} ar={ar} allowFiles linkKinds={me.linkKinds} />}
+        {more && <MoreFields d={draft} set={patchDraft} projects={current ? [] : projects} ar={ar} allowFiles linkKinds={me.linkKinds} section={me.section} />}
         {current && <p className="text-[12px] text-slate-500">{t(`تُضاف إلى مشروع «${current.name}».`, `Added to project “${current.name}”.`)}</p>}
       </div>
 
@@ -866,7 +878,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         <Field label={editing?.deadlineKind === 'hours' ? t('الموعد — اتركه كما هو أو اختر جديدًا', 'Deadline — leave as is or pick a new one') : t('الموعد', 'Deadline')}>
           <DuePicker value={editDraft.due} onChange={(due) => patchEdit({ due })} ar={ar} />
         </Field>
-        <MoreFields d={editDraft} set={patchEdit} projects={projects} ar={ar} allowFiles={false} linkKinds={me?.linkKinds} />
+        <MoreFields d={editDraft} set={patchEdit} projects={projects} ar={ar} allowFiles={false} linkKinds={me?.linkKinds} section={me?.section} />
       </Modal>
 
       {/* ── المشروع ───────────────────────────────────────────────────────── */}

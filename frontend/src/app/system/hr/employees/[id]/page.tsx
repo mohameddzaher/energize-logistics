@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import JpTaskPanel from '@/components/jp/JpTaskPanel';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import {
@@ -530,6 +531,9 @@ export default function EmployeeProfilePage() {
       {tab === 'overview' && (staff
         ? <EmployeeMasterFields id={String(e._id)} fieldsUrl={`/api/hr/master/employees/${e._id}/fields`} choicesUrl="/api/hr/master/choices" canEdit={staff} ar={ar} />
         : <Overview e={e} lang={lang} tx={tx} vtx={vtx} />)}
+
+      {/* مهامّ JP المربوطة بهذا الموظّف — تُضاف من هنا. */}
+      {tab === 'overview' && <JpTaskPanel section="hr" kind="employee" refId={String(e._id)} ar={ar} />}
 
       <Modal open={sponsorOpen} onClose={() => setSponsorOpen(false)} title={ar ? 'تحويل على كفالتنا' : 'Move to our sponsorship'}
         footer={<PrimaryButton onClick={sponsor} disabled={!register || sponsoring}>{sponsoring ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{ar ? 'تحويل' : 'Move'}</PrimaryButton>}>

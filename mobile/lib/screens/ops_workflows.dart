@@ -7,6 +7,7 @@ import '../ui/customs_link.dart';
 import '../ui/report_follow_ups.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'jp.dart' show JpTaskPanel;
 
 /// التشغيل — كشوف التخريج (Operations Workflows): قائمة بمراحلها الخمس،
 /// إحصائيات علوية، تقدّم المرحلة، وشاشة تفاصيل بكل الحقول.
@@ -515,6 +516,8 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                 ReportFollowUpsView(workflowId: '${w['_id']}', basePath: '/api/workflows/${w['_id']}/follow-ups'),
               ]),
             ),
+            JpTaskPanel(section: 'operations', kind: 'workflow', refId: '${w['_id']}'),
+            const SizedBox(height: 10),
             if (_myFields.contains('paymentType'))
               Align(
                 alignment: AlignmentDirectional.centerStart,

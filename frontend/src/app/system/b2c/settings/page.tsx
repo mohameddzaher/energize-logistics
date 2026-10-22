@@ -109,7 +109,7 @@ export default function B2CSettingsPage() {
       </div>
 
       {/* القوائمُ المرجعيّةُ الخاصّةُ بهذا القسم وحدَه — لا قوائمُ النظام كلِّه. */}
-      {tab === 'lists' && <ReferenceDataManager module="b2c" embedded />}
+      {tab === 'lists' && <ReferenceDataManager module="b2c" alsoType="jp_task_b2c" embedded />}
 
       {/* حساباتُ تطبيق التوصيل: «غير مرتبط» يُراجَع ويُربط بصاحبه أو يُوقَف. */}
       {tab === 'accounts' && <B2CAccountsReview ar={ar} canEdit={canEdit} />}

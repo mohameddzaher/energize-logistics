@@ -22,10 +22,30 @@ export const LINK_WORDS: Record<string, { ar: string; en: string }> = {
   customer: { ar: 'عميل', en: 'Customer' },
   agent: { ar: 'وكيل شحن', en: 'Shipping agent' },
   carrier: { ar: 'ناقل', en: 'Carrier' },
+  workflow: { ar: 'تقرير تشغيل', en: 'Ops report' },
+  shipment: { ar: 'شحنة', en: 'Shipment' },
+  fleetShipment: { ar: 'رحلة أسطول', en: 'Fleet trip' },
+  employee: { ar: 'موظّف', en: 'Employee' },
+  vehicle: { ar: 'مركبة', en: 'Vehicle' },
+  truck: { ar: 'شاحنة', en: 'Truck' },
+  rep: { ar: 'مندوب', en: 'Rider' },
+  company: { ar: 'شركة', en: 'Company' },
+  collParty: { ar: 'عميل تحصيل', en: 'Collections party' },
+  vendor: { ar: 'مورّد', en: 'Vendor' },
+  ticket: { ar: 'تذكرة', en: 'Ticket' },
+  opportunity: { ar: 'فرصة', en: 'Opportunity' },
+  campaign: { ar: 'حملة', en: 'Campaign' },
 };
-/** أين يُفتَح ما رُبطت به المهمّة. */
-export const linkHref = (l: JpLink) => (l.kind === 'clearance' ? `/system/customs/${l.ref}`
-  : ['customer', 'agent', 'carrier'].includes(l.kind) ? `/system/customs/parties/${l.ref}` : '');
+/** أين يُفتَح ما رُبطت به المهمّة — كما في backend/config/jpLinks.js. */
+const LINK_PATH: Record<string, string> = {
+  clearance: '/system/customs/:id', customer: '/system/customs/parties/:id', agent: '/system/customs/parties/:id',
+  carrier: '/system/customs/parties/:id', workflow: '/system/operations/:id', shipment: '/system/shipment-orders?open=:id',
+  fleetShipment: '/system/fleet/:id', employee: '/system/hr/employees/:id', vehicle: '/system/vehicles/registry/:id',
+  truck: '/system/ls2/:id', rep: '/system/b2c/light-transport/:id', company: '/system/crm/companies/:id',
+  collParty: '/system/collections-dept/parties/:id', vendor: '/system/contracts/vendors/:id', ticket: '/system/it/tickets/:id',
+  opportunity: '/system/bd/opportunities/:id', campaign: '/system/marketing/campaigns/:id',
+};
+export const linkHref = (l: JpLink) => (LINK_PATH[l.kind] ? LINK_PATH[l.kind].replace(':id', l.ref) : '');
 
 export interface JpTask {
   _id: string; kind: 'task' | 'request'; title: string; details?: string; action: JpAction; contact?: string;
@@ -134,3 +154,7 @@ export function contactHref(action: JpAction, contact?: string): string | null {
 }
 
 export const qs = (scope: JpScope, section?: string) => `scope=${scope}${scope === 'section' ? `&section=${encodeURIComponent(section || '')}` : ''}`;
+
+/** صفحةُ خطّة القسم — كما في backend/config/jpSections.js (path + '/jp'). */
+const JP_SECTION_BASE: Record<string, string> = { collections: '/system/collections-dept' };
+export const jpPagePath = (section: string) => `${JP_SECTION_BASE[section] || `/system/${section}`}/jp`;

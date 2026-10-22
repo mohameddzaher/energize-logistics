@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import JpTaskPanel from '@/components/jp/JpTaskPanel';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import {
@@ -395,6 +396,9 @@ export default function VendorProfilePage() {
           </div>
         </div>
       )}
+
+      {/* مهامّ JP المربوطة بهذا المورّد — تُضاف من هنا. */}
+      <JpTaskPanel section="contracts" kind="vendor" refId={String(vendor._id)} ar={ar} />
 
       {/* Rating modal */}
       <Modal open={showRating} onClose={() => setShowRating(false)} title={ar ? `تقييم المورد — ${vendor.name}` : 'Rate vendor'}

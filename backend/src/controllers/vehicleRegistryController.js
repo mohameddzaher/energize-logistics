@@ -75,8 +75,15 @@ const getConfig = async () => {
     { new: true, upsert: true, setDefaultsOnInsert: true },
   ).lean();
   cache.set('vreg:config', cfg, 60000);
+  ALERTS = (cfg && cfg.alerts) || {};
   return cfg;
 };
+// ── عتباتُ التنبيه كما تقرؤها الفلاتر ─────────────────────────────────────────
+// «قارب على الانتهاء» في الفلتر هو «قارب على الانتهاء» في كروت اللوحة: حرجٌ أو
+// تحذيرٌ بعتبة كلّ مستندٍ من إعدادات القسم (`VDOC.stateOf`) — لا «خلال ثلاثين
+// يومًا» مكتوبةً هنا. و`buildFilter` متزامنة، فتقرأ آخرَ إعداداتٍ قُرئت؛ وكلُّ
+// نقطةٍ تبني بها تنادي `getConfig` أوّلًا.
+let ALERTS = {};
 
 // حالة مستند مقابل عتبته: expired / critical(≤30) / warning(≤warnDays) / valid / none
 // غلاف رفيع حوالين VDOC.stateOf عشان الكود القديم يفضل شغّال بنفس شكل الرد.
@@ -175,10 +182,25 @@ const HAS_AUTH = () => ({ $or: [
   { 'authorizedPerson.name': { $nin: [null, ''] } },
   { 'authorizedPerson.authorizationNumber': { $nin: [null, ''] } },
 ] });
-const ANY_EXPIRED = () => ({ $or: DOC_TYPES.map((dt) => ({ [dt.path]: { $ne: null, $lt: dayStart(0) } })) });
-const ANY_SOON = () => ({ $or: DOC_TYPES.map((dt) => ({ [dt.path]: { $ne: null, $gte: dayStart(0), $lt: dayStart(31) } })) });
-const anyExpiredT = (v) => DOC_TYPES.some((dt) => { const d = VDOC.daysLeft(getPath(v, dt.path)); return d != null && d < 0; });
-const anySoonT = (v) => DOC_TYPES.some((dt) => { const d = VDOC.daysLeft(getPath(v, dt.path)); return d != null && d >= 0 && d <= 30; });
+
+// ── حالةُ المستند بقاعدة الكروت نفسِها ───────────────────────────────────────
+// صاحبُ الشركة (٢٠٢٦/١٠/٢٢): الفلترُ والرقمُ في اللوحة جوابٌ واحد. فالمنتهي
+// والقارب يُحسبان هنا كما تحسبهما `VDOC.stateOf` في كروت المستندات: «غير مطلوب»
+// لا ينتهي مهما كان تاريخه، و«قارب» حرجٌ أو تحذيرٌ بعتبة المستند من الإعدادات.
+const NOT_REQ_CODE = (dt) => ({ [dt.statusPath]: { $ne: 'not_required' } });
+const dueDays = (key) => {
+  const a = ALERTS[key] || {};
+  return Math.max(Number(a.warnDays ?? 30), Number(a.criticalDays ?? 7));
+};
+const docExpiredC = (dt) => ({ $and: [{ [dt.path]: { $ne: null, $lt: dayStart(0) } }, NOT_REQ_CODE(dt)] });
+const docDueC = (dt) => ({ $and: [{ [dt.path]: { $ne: null, $gte: dayStart(0), $lt: dayStart(dueDays(dt.key) + 1) } }, NOT_REQ_CODE(dt)] });
+const docStateT = (v, dt) => VDOC.stateOf(getPath(v, dt.path), getPath(v, dt.statusPath) || '', ALERTS[dt.key] || {}).state;
+const EXPIRED_ANY = () => ({ $or: DOC_TYPES.map(docExpiredC) });
+const DUE_ANY = () => ({ $or: DOC_TYPES.map(docDueC) });
+const expiredAnyT = (v) => DOC_TYPES.some((dt) => docStateT(v, dt) === 'expired');
+const dueAnyT = (v) => DOC_TYPES.some((dt) => ['critical', 'warning'].includes(docStateT(v, dt)));
+const AUTH_DOC = DOC_TYPES.find((d) => d.key === 'authorization');
+const hasAuthT = (v) => !!(v.authorizedPerson?.name || v.authorizedPerson?.authorizationNumber);
 
 const _year = () => new Date().getFullYear();
 
@@ -241,18 +263,44 @@ const DERIVED_DEFS = [
   {
     key: 'documentHealth', ar: 'صحّة المستندات', en: 'Document health',
     groupAr: 'المستندات', groupEn: 'Documents',
-    select: DOC_TYPES.map((dt) => dt.path),
+    // بقاعدة كروت المستندات — راجع `docStateT` أعلاه. وكانت «خلال ٣٠ يومًا»
+    // ثابتةً وتعدّ «غير مطلوب» منتهيًا، فيختلف الفلترُ عن الكارت فوقه.
+    select: DOC_TYPES.flatMap((dt) => [dt.path, dt.statusPath]),
     options: [
-      { value: 'فيها مستند منتهٍ', en: 'Has an expired document', cond: ANY_EXPIRED, test: anyExpiredT },
+      { value: 'فيها مستند منتهٍ', en: 'Has an expired document', cond: EXPIRED_ANY, test: expiredAnyT },
       {
-        value: 'ينتهي فيها مستند خلال ٣٠ يومًا', en: 'Something expires within 30 days',
-        cond: () => ({ $and: [ANY_SOON(), { $nor: [ANY_EXPIRED()] }] }),
-        test: (v) => anySoonT(v) && !anyExpiredT(v),
+        value: 'فيها مستند قارب على الانتهاء', en: 'A document is due soon',
+        cond: () => ({ $and: [DUE_ANY(), { $nor: [EXPIRED_ANY()] }] }),
+        test: (v) => dueAnyT(v) && !expiredAnyT(v),
       },
       {
-        value: 'كل مستنداتها سارية', en: 'All documents valid',
-        cond: () => ({ $nor: [ANY_EXPIRED(), ANY_SOON()] }),
-        test: (v) => !anyExpiredT(v) && !anySoonT(v),
+        value: 'لا منتهٍ ولا قارب', en: 'Nothing expired or due',
+        cond: () => ({ $nor: [EXPIRED_ANY(), DUE_ANY()] }),
+        test: (v) => !expiredAnyT(v) && !dueAnyT(v),
+      },
+    ],
+  },
+  {
+    // ── التفويض: ساري · منتهٍ · بلا تفويض ─────────────────────────────────
+    // «عليها مفوَّض» وحدَها لا تقول إن كانت الورقةُ تصلح للقيادة اليوم.
+    key: 'authState', ar: 'التفويض', en: 'Authorisation',
+    groupAr: 'الملكية والتفويض', groupEn: 'Ownership',
+    select: ['authorizedPerson.name', 'authorizedPerson.authorizationNumber', AUTH_DOC.path, AUTH_DOC.statusPath],
+    options: [
+      {
+        value: 'تفويض ساري', en: 'Valid authorisation',
+        cond: () => ({ $and: [HAS_AUTH(), { $nor: [docExpiredC(AUTH_DOC)] }] }),
+        test: (v) => hasAuthT(v) && docStateT(v, AUTH_DOC) !== 'expired',
+      },
+      {
+        value: 'تفويض منتهٍ', en: 'Expired authorisation',
+        cond: () => ({ $and: [HAS_AUTH(), docExpiredC(AUTH_DOC)] }),
+        test: (v) => hasAuthT(v) && docStateT(v, AUTH_DOC) === 'expired',
+      },
+      {
+        value: 'بلا تفويض', en: 'No authorisation',
+        cond: () => ({ $nor: [HAS_AUTH()] }),
+        test: (v) => !hasAuthT(v),
       },
     ],
   },
@@ -452,8 +500,22 @@ const AGG_FIELDS = [...new Set([
 function buildFilter(q) {
   const f = { isActive: { $ne: false } };
   const and = [];
-  // كل الفلاتر بالاسم العربي (نفس ما تعرضه التوزيعات) — أبسط وأوضح.
-  const map = {
+  const map = FIELD_MAP;
+  for (const [qk, field] of Object.entries(map)) {
+    const vals = _multi(q[qk]);
+    if (!vals.length) continue;
+    // «—» تعني الخانة الفارغة، وهي فئةٌ حقيقية يُسأل عنها: «أي المركبات بلا
+    // مالك مسجَّل؟» سؤالُ عملٍ لا نتيجةَ خطأ، فلا يجوز أن يسقط من الفلتر.
+    // والقيمةُ تُطابَق كما تُقرأ في القائمة — بأيّ فراغٍ حولها — و«—» تشمل الفراغَ
+    // وحدَه. كان `$in` على النصّ و Mongoose يقصّه. راجع utils/colFilter.
+    const c = textIn(field, vals.map((x) => (x === '—' ? '' : x)));
+    if (c) and.push(c);
+  }
+  return buildFilterRest(q, f, and);
+}
+
+// كل الفلاتر بالاسم العربي (نفس ما تعرضه التوزيعات) — أبسط وأوضح.
+const FIELD_MAP = {
     sector: 'sectorAr', registrationType: 'registrationTypeAr', ownerCompany: 'ownerCompanyAr', brand: 'brandAr',
     department: 'departmentAr', city: 'cityAr', possession: 'possessionStatusAr',
     gpsDeviceStatus: 'gps.deviceStatusAr',
@@ -479,17 +541,33 @@ function buildFilter(q) {
     // توافق خلفي مع الأكواد:
     sectorCode: 'sectorCode', registrationTypeCode: 'registrationTypeCode',
     serviceStatusCode: 'serviceStatusCode',
-  };
-  for (const [qk, field] of Object.entries(map)) {
-    const vals = _multi(q[qk]);
-    if (!vals.length) continue;
-    // «—» تعني الخانة الفارغة، وهي فئةٌ حقيقية يُسأل عنها: «أي المركبات بلا
-    // مالك مسجَّل؟» سؤالُ عملٍ لا نتيجةَ خطأ، فلا يجوز أن يسقط من الفلتر.
-    // والقيمةُ تُطابَق كما تُقرأ في القائمة — بأيّ فراغٍ حولها — و«—» تشمل الفراغَ
-    // وحدَه. كان `$in` على النصّ و Mongoose يقصّه. راجع utils/colFilter.
-    const c = textIn(field, vals.map((x) => (x === '—' ? '' : x)));
-    if (c) and.push(c);
-  }
+    // «شرائح وقود نشطة» في اللوحة تُعَدّ بالرمز (`statusCode === 'active'`) —
+    // فتُفتَح بالرمز نفسِه لا بنصٍّ قد يُكتب بأكثر من صيغة.
+    fuelCardStatusCode: 'fuelCard.statusCode',
+};
+
+/**
+ * ── ما يُعدّ «فلترًا على المركبات» ───────────────────────────────────────────
+ * كانت ثلاثُ نقاطٍ تسأل السؤالَ نفسَه بثلاث قوائم: اللوحةُ تعدّ أيَّ مفتاح،
+ * والانتهاءاتُ خمسةَ مفاتيحَ فقط، والحوادثُ لا شيء. فيُخفي فلترُ «نوع التسجيل»
+ * بطاقاتِ السائقين من اللوحة ويُبقيها في الانتهاءات، وتعدّ اللوحةُ حوادثَ
+ * المركبات المطابقة ويفتح الرقمُ حوادثَ الأسطول كلِّه.
+ *
+ * فالقائمةُ هنا واحدةٌ مشتقّةٌ مِمّا يفهمه `buildFilter` نفسُه.
+ */
+const VEHICLE_FILTER_KEYS = new Set([
+  ...Object.keys(FIELD_MAP),
+  'logistiGaps', 'logistiGap', 'missing', 'missingItem', 'missingReason', 'insurancePolicy', 'missingDocDate',
+  'modelYear', 'yearFrom', 'yearTo', 'q', 'expiringDoc', 'expiringWithin', 'expiredDoc', 'missingDoc', 'hasGps',
+  'expiryDoc', 'expiryFrom', 'expiryTo',
+  ...DERIVED_DEFS.map((d) => d.key),
+]);
+const hasVehicleFilter = (q = {}, except = []) => Object.entries(q)
+  .some(([k, v]) => VEHICLE_FILTER_KEYS.has(k) && !except.includes(k) && String(v ?? '').trim() !== '');
+/** مفاتيحُ فلتر المركبات وحدَها من استعلامٍ فيه غيرُها. */
+const vehicleQueryOf = (q = {}) => Object.fromEntries(Object.entries(q).filter(([k]) => VEHICLE_FILTER_KEYS.has(k)));
+
+function buildFilterRest(q, f, and) {
   // نواقص منصّة لوجستي: «أرِني المركبات التي ينقصها شرط» و«أرِني من ينقصه هذا
   // الشرط بعينه» — سؤالان مختلفان، وكلاهما قائمة عمل.
   if (q.logistiGaps === '1') and.push({ 'logistiGaps.0': { $exists: true } });
@@ -592,6 +670,7 @@ exports.list = async (req, res) => {
     const hit = cache.get(cacheKey);
     if (hit !== undefined) return res.json(hit);
 
+    await getConfig(); // عتباتُ التنبيه لفلاتر حالة المستند (راجع ALERTS)
     const filter = buildFilter(req.query);
     const limit = Math.min(Number(req.query.limit) || 500, 2000);
     const page = Math.max(Number(req.query.page) || 1, 1);
@@ -1092,6 +1171,7 @@ exports.dashboard = async (req, res) => {
     const hit = cache.get(cacheKey);
     if (hit !== undefined) return res.json(hit);
 
+    await getConfig();
     const filter = buildFilter(req.query);
     const DASH_FIELDS = [
       'plateNumber sectorAr registrationTypeAr ownerCompanyAr brandAr modelAr ownerNameAr colorAr tamStatusAr modelYear accidentCount',
@@ -1425,6 +1505,7 @@ exports.filterOptions = async (req, res) => {
     const key = `vreg:filters:${JSON.stringify(req.query || {})}`;
     const hit = cache.get(key);
     if (hit !== undefined) return res.json(hit);
+    await getConfig(); // عتباتُ التنبيه لفلاتر حالة المستند (راجع ALERTS)
 
     const tally = (rows, field) => {
       const counts = new Map();
@@ -1619,6 +1700,7 @@ exports.overview = async (req, res) => {
     const hit = cache.get(key);
     if (hit !== undefined) return res.json(hit);
 
+    await getConfig(); // قبل buildFilter — راجع ALERTS
     const filter = buildFilter(req.query);
     const [vehicles, cfg, allClaims, policies] = await Promise.all([
       VehicleMaster.find(filter).select(AGG_FIELDS).lean(),
@@ -1982,6 +2064,7 @@ exports.expiring = async (req, res) => {
     const includeExpired = req.query.includeExpired !== '0';
     const states = _multi(req.query.state);
 
+    await getConfig(); // قبل buildFilter — راجع ALERTS
     const all = await buildExpiryRows(req.query);
     const rows = [];
     for (const r of all) {

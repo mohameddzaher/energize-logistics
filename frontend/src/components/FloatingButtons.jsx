@@ -1,9 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { usePathname } from 'next/navigation'
 import { FaWhatsapp, FaArrowUp } from 'react-icons/fa'
 
+// واتساب للزوّار فقط — يختفي في صفحة الدخول وداخل السيستم (صاحبُ الشركة، ٢٠٢٦/١٠/٢٣).
+const APP_PATHS = ['/system', '/login']
+
 export default function FloatingButtons() {
+  const pathname = usePathname() || ''
   const [showScroll, setShowScroll] = useState(false)
 
   // لما المستخدم ينزل تحت، نعرض زر ↑
@@ -20,6 +25,8 @@ export default function FloatingButtons() {
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
+
+  if (APP_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return null
 
   return (
     <div className="fixed bottom-5 right-5 flex flex-col gap-2.5 z-50">

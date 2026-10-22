@@ -772,9 +772,12 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   // (٢٠٢٦/١٠/٢٢) «ماليات التخليص الجمركي»: طلباتُ صرفٍ + طلباتُ فوترةٍ معلّقة.
   // يُعاد مع كلّ تغييرٍ في التخليص، وكلَّ دقيقةٍ احتياطًا.
   const [navBadges, setNavBadges] = useState<Record<string, number>>({});
+  // والحساباتُ الخارجيّة والمحصورة (Media Go…) لا شارات لها — ولا يُسأل الخادمُ عنها فيردّ 403.
+  const wantsBadges = !!user && isInternal(user.role) && !SCOPED_HOME[user.role];
   const fetchNavBadges = useCallback(() => {
+    if (!wantsBadges) return;
     api.get<Record<string, number>>('/api/nav-badges').then((d) => setNavBadges(d || {})).catch(() => {});
-  }, []);
+  }, [wantsBadges]);
   useEffect(() => {
     if (!user) return undefined;
     fetchNavBadges();

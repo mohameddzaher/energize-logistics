@@ -118,14 +118,15 @@ export default function AdRequestPage() {
           <button type="button" onClick={onClose} className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-[12.5px] font-semibold hover:bg-white/20">
             <ArrowRight className="h-4 w-4 ltr:rotate-180" />{t('كل الطلبات', 'All requests')}
           </button>
-          <div className="min-w-0 flex-1">
+          {/* على الهاتف: العنوانُ سطرٌ كاملٌ تحت الأزرار — لا عمودٌ ضيّقٌ بينها. */}
+          <div className="order-last min-w-0 basis-full sm:order-none sm:basis-0 sm:flex-1">
             <p className="text-[12px] text-slate-400">{d ? `${fmtDT(d.createdAt)} · ${d.createdByName}` : ''}</p>
             <h2 className="mt-0.5 flex flex-wrap items-center gap-2 text-[19px] font-extrabold">
               <span>{d?.adName || '…'}</span><span dir="ltr" className="text-[13px] font-semibold text-slate-400">{d?.ref}</span>
               {d && <span className={`rounded-full px-2.5 py-0.5 text-[11.5px] font-bold ring-1 ${STATUS_TONE[d.status] || ''}`}>{V('status', d.status)}</span>}
             </h2>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="ms-auto flex flex-wrap items-center gap-1.5">
             {d && can?.deliver && editable && (
               <button type="button" onClick={deliver} disabled={!allReady || busy === 'deliver'} title={!allReady ? t('راجع كل المركبات وعلّمها «جاهزة» أوّلًا', 'Mark every vehicle ready first') : ''}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-[12.5px] font-bold hover:bg-emerald-700 disabled:opacity-40">

@@ -106,11 +106,14 @@ export function LiveCamera({ mode, ar, onDone, onClose }: { mode: 'photo' | 'vid
   const [recording, setRecording] = useState(false);
   const [secs, setSecs] = useState(0);
   const [facing, setFacing] = useState<'environment' | 'user'>('environment');
+  // الأزرارُ مغلقةٌ حتى تعمل الكاميرا — ضغطةٌ قبلها كانت تضيع بلا أثر.
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let dead = false;
+    setReady(false);
     navigator.mediaDevices?.getUserMedia({ video: { facingMode: facing, width: { ideal: 1920 } }, audio: mode === 'video' })
-      .then((s) => { if (dead) { s.getTracks().forEach((x) => x.stop()); return; } stream.current = s; if (vid.current) { vid.current.srcObject = s; vid.current.play().catch(() => {}); } })
+      .then((s) => { if (dead) { s.getTracks().forEach((x) => x.stop()); return; } stream.current = s; setReady(true); if (vid.current) { vid.current.srcObject = s; vid.current.play().catch(() => {}); } })
       .catch((e) => setErr(e?.message || t('تعذّر فتح الكاميرا — اسمح للمتصفّح بالكاميرا', 'Could not open the camera — allow camera access')));
     return () => { dead = true; stream.current?.getTracks().forEach((x) => x.stop()); stream.current = null; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -163,6 +166,7 @@ export function LiveCamera({ mode, ar, onDone, onClose }: { mode: 'photo' | 'vid
       <div className="relative flex flex-1 items-center justify-center overflow-hidden">
         {err ? <p className="max-w-sm p-6 text-center text-sm text-red-300">{err}</p>
           : <video ref={vid} muted playsInline className="max-h-full max-w-full" />}
+        {!ready && !err && <span className="absolute inset-0 flex items-center justify-center text-sm text-white/70">{t('جارٍ فتح الكاميرا…', 'Opening the camera…')}</span>}
         {recording && <span className="absolute top-3 rounded-full bg-red-600 px-3 py-1 text-sm font-bold text-white tabular-nums">● {Math.floor(secs)} / {MAX_VIDEO_SEC}s</span>}
       </div>
       {!!shots.length && (
@@ -180,11 +184,11 @@ export function LiveCamera({ mode, ar, onDone, onClose }: { mode: 'photo' | 'vid
       )}
       <div className="flex items-center justify-center gap-6 p-5">
         {mode === 'photo' ? (
-          <button type="button" onClick={snap} disabled={!!err} className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-white/20 text-white hover:bg-white/30 disabled:opacity-40" aria-label="Shoot"><Camera className="h-6 w-6" /></button>
+          <button type="button" onClick={snap} disabled={!!err || !ready} className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-white/20 text-white hover:bg-white/30 disabled:opacity-40" aria-label="Shoot"><Camera className="h-6 w-6" /></button>
         ) : recording ? (
           <button type="button" onClick={stop} className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-red-600 text-white" aria-label="Stop"><Square className="h-6 w-6" /></button>
         ) : (
-          <button type="button" onClick={start} disabled={!!err} className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-red-500 text-white disabled:opacity-40" aria-label="Record"><Circle className="h-6 w-6 fill-white" /></button>
+          <button type="button" onClick={start} disabled={!!err || !ready} className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-red-500 text-white disabled:opacity-40" aria-label="Record"><Circle className="h-6 w-6 fill-white" /></button>
         )}
         <button type="button" onClick={() => onDone(shots)} disabled={!shots.length || recording}
           className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white disabled:opacity-40">

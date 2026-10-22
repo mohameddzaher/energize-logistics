@@ -132,6 +132,9 @@ export default function FleetPage() {
     return () => clearTimeout(t);
   }, [load, search]);
   useSocket('shipmentOrders:fleet', useCallback(() => load(), [load]));
+  // هويّةُ شاحناتنا (اللوحةُ والماركةُ واللون) تُقرأ من سجلّ المركبات عند العرض
+  // (vehicleView) — فتعديلُها هناك يظهر هنا في اللحظة نفسِها.
+  useSocket('vreg:updated', useCallback(() => load(), [load]));
   // أنواعُ الشاحنات تُقرأ من حقول النموذج، فنوعٌ يُضاف هناك يُنتقى هنا فورًا.
   useSocket('shipmentOrders:fields', useCallback(() => {
     api.get<{ fields: FormField[] }>('/api/shipment-orders/fields')

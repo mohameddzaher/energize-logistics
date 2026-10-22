@@ -106,16 +106,10 @@ async function pushVehicleChange(id, before = {}, { emit = true } = {}) {
   }
 
   if (emit) {
-    try {
-      const cache = require('./ttlCache');
-      for (const k of ['vreg:', 'lt:', 'veh:', 'vehicles:list', 'hrm:', 'hr:employees:', 'b2c:', 'dash:vehicles:', 'reports:doc:vehicle:', 'reports:opts:vehicle:', 'fleet:']) cache.clear(k);
-    } catch (_) { /* */ }
-    try {
-      const { emitToAll } = require('../websocket/socketManager');
-      emitToAll('vreg:updated', { vehicle: String(vm._id) });
-      emitToAll('lt:updated', { from: 'vehicles' });
-      for (const e of out.employees) emitToAll('hr:employee', { id: e });
-    } catch (_) { /* */ }
+    // الباب المشترك: يمسح كلَّ ما يحمل المركبةَ ثمّ يُعلن (utils/vehicleAnnounce).
+    require('./vehicleAnnounce').announceVehicles({ vehicle: String(vm._id) }, {
+      events: out.employees.map((e) => ['hr:employee', { id: e }]),
+    });
   }
   return out;
 }

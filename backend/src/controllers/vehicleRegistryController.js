@@ -42,16 +42,15 @@ const holderArchived = (sets, v) => idNumberArchived(sets, v?.authorizedPerson?.
  * والإبطالُ قبل الإعلان، وإلّا جاء الجلبُ على مخزونٍ لم يُمسَح فقرأ حالةً قبل
  * التعديل. ونقلُ التفويض من هناك يفعل المِثل (راجع `emitBoth`).
  */
+// ── والقائمةُ في بابٍ واحدٍ مشترك ────────────────────────────────────────────
+// كانت هنا خمسُ بادئاتٍ، وفي أبواب الكتابة الأخرى قوائمُ غيرُها: الأسطولُ يُمسَح
+// من هنا ولا تُمسَح المركباتُ القديمة، وهناك العكس. فصارت القائمةُ والإعلانُ في
+// utils/vehicleAnnounce — يمرّ منه كلُّ بابٍ يكتب في المركبة، من أيّ قسمٍ كان.
+const { announceVehicles } = require('../utils/vehicleAnnounce');
 const emit = (event, payload = {}) => {
-  cache.clear('vreg:');
-  cache.clear('lt:');
-  cache.clear('reports:doc:vehicle:');
-  cache.clear('reports:opts:vehicle:');
-  // الأسطولُ يقرأ هويّةَ شاحناته ومستنداتِها من هنا (utils/fleetIdentity).
-  cache.clear('fleet:');
+  if (event === 'vreg:updated') return announceVehicles(payload);
+  announceVehicles({});
   try { emitToAll(event, payload); } catch (e) {}
-  // قسمُ النقل الخفيف يقرأ مركباتِ قطاعه من هنا — فيُوقَظ مع كلّ تغيير.
-  try { emitToAll('lt:updated', { from: 'vehicles' }); } catch (e) {}
 };
 
 // المستندات ذات تاريخ الانتهاء — المفتاح ← مسار التاريخ + الاسم.

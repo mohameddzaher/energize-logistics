@@ -281,10 +281,10 @@ async function syncRider(doc, { emit = true } = {}) {
       { $set: { 'b2cRider.lt': doc._id, 'b2cRider.name': String(doc.name || '').trim(), 'b2cRider.opStatus': op } }, { timestamps: false });
   }
   if (!emit) return;
-  const cache = require('../utils/ttlCache');
-  for (const p of ['lt:', 'hr:', 'hrm:', 'dash:', 'vreg:', 'reports:doc:']) { try { cache.clear(p); } catch (_) { /* */ } }
-  const { emitToAll } = require('../websocket/socketManager');
-  for (const ev of ['lt:updated', 'hr:employee', 'hr:master', 'vreg:updated']) { try { emitToAll(ev, { lt: String(doc._id) }); } catch (_) { /* */ } }
+  require('../utils/vehicleAnnounce').announceVehicles({ lt: String(doc._id) }, {
+    extraCaches: ['hr:', 'dash:'],
+    events: [['hr:employee', { lt: String(doc._id) }], ['hr:master', { lt: String(doc._id) }]],
+  });
 }
 const RIDER_FIELDS = ['opStatus', 'vehicle', 'isActive', 'name', 'employee'];
 employeeSchema.pre('save', function (next) {

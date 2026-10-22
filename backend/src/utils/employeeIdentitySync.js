@@ -41,12 +41,7 @@ async function pushIdChange(emp, beforeIds, nowIds) {
   } catch (_) { /* */ }
 
   if (changed) {
-    try {
-      const cache = require('./ttlCache');
-      for (const k of ['vreg:', 'lt:', 'hrm:', 'hr:employees:', 'fleet:']) cache.clear(k);
-      const { emitToAll } = require('../websocket/socketManager');
-      emitToAll('vreg:updated', {}); emitToAll('lt:updated', {}); emitToAll('hr:employee', { id: String(emp._id) });
-    } catch (_) { /* */ }
+    require('./vehicleAnnounce').announceVehicles({}, { events: [['hr:employee', { id: String(emp._id) }]] });
   }
   return { changed };
 }
@@ -78,14 +73,7 @@ const PERSON_FIELDS = ['firstName', 'lastName', 'arabicName', 'phone', 'national
 const COPIED_FIELDS = ['firstName', 'lastName', 'arabicName', 'phone', 'nationality'];
 
 function announcePerson(emp) {
-  try {
-    const cache = require('./ttlCache');
-    for (const k of ['vreg:', 'lt:', 'hrm:', 'hr:employees:', 'dash:hr:', 'dash:vehicles:', 'b2c:', 'reports:doc:', 'fleet:']) cache.clear(k);
-  } catch (_) { /* */ }
-  try {
-    const { emitToAll } = require('../websocket/socketManager');
-    emitToAll('hr:employee', { id: String(emp._id) }); emitToAll('lt:updated', { from: 'hr' }); emitToAll('vreg:updated', {});
-  } catch (_) { /* */ }
+  require('./vehicleAnnounce').announceVehicles({}, { events: [['hr:employee', { id: String(emp._id) }]] });
 }
 
 /**

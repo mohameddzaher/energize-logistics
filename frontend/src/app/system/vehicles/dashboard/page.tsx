@@ -54,6 +54,8 @@ export default function VehiclesDashboardPage() {
   useSocket('vehicle:updated', useCallback(() => load(), [load]));
   useSocket('vehicle:authorization', useCallback(() => load(), [load]));
   useSocket('vehicle:accident', useCallback(() => load(), [load]));
+  // المفوَّضُ يُقرأ من سجلّ المركبات — فتعديلُ السجلّ يصل هنا.
+  useSocket('vreg:updated', useCallback(() => load(), [load]));
 
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading || !data) return <Spinner />;

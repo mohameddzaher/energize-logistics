@@ -58,12 +58,7 @@ async function run({ dry = false } = {}) {
   }
 
   if (!dry && (out.held.length || out.released.length)) {
-    const cache = require('./ttlCache');
-    cache.clear('lt:'); cache.clear('vreg:');
-    try {
-      const { emitToAll } = require('../websocket/socketManager');
-      emitToAll('lt:updated', {}); emitToAll('vreg:updated', {});
-    } catch (_) { /* */ }
+    require('./vehicleAnnounce').announceVehicles({});
   }
   return out;
 }

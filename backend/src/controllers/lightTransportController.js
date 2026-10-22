@@ -1629,10 +1629,8 @@ exports.updateVehicle = async (req, res) => {
       ipAddress: req.ip,
     }).catch(() => {});
     // قسمُ المركبات يسمع في الحال (ذاكرتُه تُمسَح قبل الإعلان)، والقسمُ نفسُه كذلك.
-    try { const cache = require('../utils/ttlCache'); for (const k of ['vreg:', 'lt:', 'veh:', 'vehicles:list', 'hr:', 'hrm:', 'dash:', 'reports:doc:', 'reports:opts:vehicle:']) cache.clear(k); } catch (e) { /* */ }
-    emit('vreg:updated', {});
-    emit('lt:updated', {});
-    emit('hr:employee', {});
+    // الباب المشترك (utils/vehicleAnnounce) — الأسطولُ والنقلُ الثقيل يسمعان أيضًا.
+    require('../utils/vehicleAnnounce').announceVehicles({}, { extraCaches: ['hr:', 'dash:'], events: ['hr:employee'] });
     res.json({ vehicle: after });
   } catch (e) {
     if (e.bad) return res.status(400).json({ message: e.message });

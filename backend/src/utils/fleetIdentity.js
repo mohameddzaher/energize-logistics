@@ -207,12 +207,7 @@ async function employeeByIdNumber(idNumber) {
  * مخازنُه ثمّ يُرسَل حدثُه (الإبطالُ قبل الإعلان — راجع announce-before-invalidate).
  */
 function announceRegistry() {
-  for (const k of ['vreg:', 'lt:', 'reports:doc:vehicle:', 'reports:opts:vehicle:', 'fleet:']) cache.clear(k);
-  try {
-    const { emitToAll } = require('../websocket/socketManager');
-    emitToAll('vreg:updated', { from: 'fleet' });
-    emitToAll('lt:updated', { from: 'fleet' });
-  } catch (_) { /* */ }
+  require('./vehicleAnnounce').announceVehicles({ from: 'fleet' });
 }
 
 module.exports = {

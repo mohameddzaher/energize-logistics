@@ -70,6 +70,8 @@ export default function VehicleAccidentsPage() {
 
   useEffect(() => { load(); }, [load]);
   useSocket('vehicle:accident', useCallback(() => load(), [load]));
+  // تصحيحُ اللوحة في السجلّ يُكتب في نسخ الحوادث (utils/vehicleRef) — فتُعاد القراءة.
+  useSocket('vreg:updated', useCallback(() => load(), [load]));
 
   // قائمة المركبات تُجلب مرّةً واحدة عند أوّل فتحٍ للاستمارة، لا مع كل تحميل.
   const loadVehicles = useCallback(async () => {

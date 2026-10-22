@@ -66,6 +66,8 @@ export default function VehiclesPage() {
   useEffect(() => { load(); }, [load]);
   useSocket('vehicle:updated', useCallback(() => load(), [load]));
   useSocket('vehicle:authorization', useCallback(() => load(), [load]));
+  // المفوَّضُ واللوحةُ يُقرآن من سجلّ المركبات (registryIndex) — فتعديلُ السجلّ يصل هنا.
+  useSocket('vreg:updated', useCallback(() => load(), [load]));
 
   useEffect(() => {
     api.get<{ branches: any[] }>('/api/branches').then((d) => setBranches(d.branches || [])).catch(() => {});

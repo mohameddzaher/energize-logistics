@@ -286,20 +286,16 @@ async function refreshPlateSnapshot(emp) {
   return false;
 }
 
+// المسحُ والإعلانُ من الباب المشترك (utils/vehicleAnnounce)، وحدثا التفويض
+// وملفِّ الموظّف بعدهما.
 function announce(result = {}) {
-  try {
-    const cache = require('./ttlCache');
-    for (const k of ['vreg:', 'lt:', 'veh:', 'vehicles:list', 'hrm:', 'hr:employees:', 'dash:hr:', 'dash:vehicles:',
-      'reports:doc:vehicle:', 'reports:opts:vehicle:', 'reports:doc:employee:', 'fleet:']) cache.clear(k);
-  } catch (_) { /* */ }
-  try {
-    const { emitToAll } = require('../websocket/socketManager');
-    for (const v of result.vehicles || []) emitToAll('vehicle:authorization', { vehicle: v });
-    if (!(result.vehicles || []).length) emitToAll('vehicle:authorization', {});
-    for (const e of result.employees || []) emitToAll('hr:employee', { id: e });
-    emitToAll('vreg:updated', {});
-    emitToAll('lt:updated', { from: 'vehicles' });
-  } catch (_) { /* */ }
+  const vs = result.vehicles || [];
+  require('./vehicleAnnounce').announceVehicles({}, {
+    events: [
+      ...(vs.length ? vs.map((v) => ['vehicle:authorization', { vehicle: v }]) : [['vehicle:authorization', {}]]),
+      ...(result.employees || []).map((e) => ['hr:employee', { id: e }]),
+    ],
+  });
 }
 
 /** بعد كلّ كتابةٍ في الورقة (من خطّافات النموذج). لا يُسقط الكتابةَ إن فشل. */

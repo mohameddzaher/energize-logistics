@@ -32,14 +32,9 @@ async function nextOrderNumber() {
 
 /** يُبطل ما يُقرأ منه الراكبُ ثمّ يُعلن — الإبطالُ قبل الإعلان. */
 function announce() {
-  try {
-    const cache = require('./ttlCache');
-    for (const k of ['lt:', 'vreg:', 'hr:', 'hrm:', 'dash:', 'reports:doc:']) cache.clear(k);
-  } catch (_) { /* */ }
-  try {
-    const { emitToAll } = require('../websocket/socketManager');
-    for (const ev of ['lt:updated', 'vreg:updated', 'hr:employee']) emitToAll(ev, { from: 'rider' });
-  } catch (_) { /* */ }
+  require('./vehicleAnnounce').announceVehicles({ from: 'rider' }, {
+    extraCaches: ['hr:', 'dash:'], events: [['hr:employee', { from: 'rider' }]],
+  });
 }
 
 /**

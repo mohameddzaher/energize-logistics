@@ -1105,6 +1105,8 @@ final shipmentOrdersSuppliersCfg = ResourceConfig(
 final shipmentOrdersVehiclesCfg = ResourceConfig(
   arTitle: 'شاحنات طلبات الشحن', enTitle: 'SO Vehicles', icon: Icons.local_shipping_outlined,
   endpoint: '/api/shipment-orders/vehicles', listKey: 'vehicles', liveEvent: 'shipmentOrders:fleet',
+  // هويّةُ شاحناتنا تُقرأ من سجلّ المركبات — تعديلُها هناك يظهر هنا فورًا، كالموقع.
+  extraLiveEvents: const ['vreg:updated'],
   searchFields: const ['plate', 'name', 'defaultDriverName'],
   serverSearch: true,
   titleOf: (r) => _s(r, 'plate'),

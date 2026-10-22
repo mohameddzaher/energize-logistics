@@ -93,10 +93,13 @@ class _VehiclesListScreenState extends State<VehiclesListScreen> {
     _onLive = () => _load();
     Live.instance.on('vehicle:updated', _onLive);
     Live.instance.on('vehicle:authorization', _onLive);
+    // المفوَّضُ واللوحةُ من سجلّ المركبات — تعديلُه يصل هنا، كالموقع.
+    Live.instance.on('vreg:updated', _onLive);
   }
 
   @override
   void dispose() {
+    Live.instance.off('vreg:updated', _onLive);
     Live.instance.off('vehicle:updated', _onLive);
     Live.instance.off('vehicle:authorization', _onLive);
     super.dispose();
@@ -372,6 +375,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     Live.instance.on('vehicle:updated', _onLive);
     Live.instance.on('vehicle:authorization', _onLive);
     Live.instance.on('vehicle:accident', _onLive);
+    Live.instance.on('vreg:updated', _onLive);
   }
 
   @override
@@ -379,6 +383,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     Live.instance.off('vehicle:updated', _onLive);
     Live.instance.off('vehicle:authorization', _onLive);
     Live.instance.off('vehicle:accident', _onLive);
+    Live.instance.off('vreg:updated', _onLive);
     super.dispose();
   }
 
@@ -736,11 +741,14 @@ class _AccidentsListScreenState extends State<AccidentsListScreen> {
     _load();
     _onLive = () => _load();
     Live.instance.on('vehicle:accident', _onLive);
+    // تصحيحُ اللوحة في السجلّ يُكتب في نسخ الحوادث — فتُعاد القراءة.
+    Live.instance.on('vreg:updated', _onLive);
   }
 
   @override
   void dispose() {
     Live.instance.off('vehicle:accident', _onLive);
+    Live.instance.off('vreg:updated', _onLive);
     super.dispose();
   }
 

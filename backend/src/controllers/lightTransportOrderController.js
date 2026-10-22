@@ -20,8 +20,6 @@ const mongoose = require('mongoose');
 const { LightTransportEmployee, LightTransportHousing, LightTransportOrder } = require('../models/LightTransport');
 const { VehicleMaster } = require('../models/VehicleMaster');
 const logAudit = require('../utils/auditLogger');
-const { emitToAll } = require('../websocket/socketManager');
-const cache = require('../utils/ttlCache');
 const { listSupervisors, resolveSupervisor, syncRepSupervisor } = require('../utils/b2cSupervisors');
 const { applyHousing } = require('./lightTransportController');
 
@@ -33,12 +31,7 @@ const D = (v) => { const d = v ? new Date(v) : null; return d && !Number.isNaN(d
  * البثُّ يمسّ القسمين: هذا القسمُ وقسمُ المركبات. والذاكرةُ تُمحى قبل البثّ —
  * وإلّا قرأ المستمعون ما قبل التغيير فبقيت الشاشةُ متأخّرةً تغييرًا واحدًا.
  */
-const emitBoth = () => {
-  cache.clear('lt:');
-  cache.clear('vreg:');
-  try { emitToAll('lt:updated', {}); } catch (e) { /* */ }
-  try { emitToAll('vreg:updated', {}); } catch (e) { /* */ }
-};
+const emitBoth = () => require('../utils/vehicleAnnounce').announceVehicles({});
 
 exports.listOrders = async (req, res) => {
   try {

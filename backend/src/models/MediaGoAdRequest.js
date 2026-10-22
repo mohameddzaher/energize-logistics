@@ -52,7 +52,7 @@ const itemSchema = new mongoose.Schema({
   plateNumber: { type: String, default: '' },
   serialNumber: { type: String, default: '' },
   project: { type: String, default: '' },
-  // ما نصوّره لهذه المركبة — يبدأ بنوع الطلب ويجوز أن يُغيَّر عندنا.
+  // ما نصوّره لهذه المركبة — نوعُ الطلب نفسُه، لا يُغيَّر (٢٠٢٦/١٠/٢٢).
   mediaType: { type: String, enum: keysOf(AD_VOCAB.mediaType), default: 'photo' },
   files: { type: [fileSchema], default: [] },
   ready: { type: Boolean, default: false },   // راجعناه وصار جاهزًا للتسليم

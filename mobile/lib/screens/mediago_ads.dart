@@ -120,28 +120,40 @@ class _MediaGoAdsScreenState extends State<MediaGoAdsScreen> {
                   ])),
                   const SizedBox(height: 8),
                   if (items.isEmpty) Padding(padding: const EdgeInsets.all(30), child: EmptyState(icon: Icons.movie_outlined, title: tr('لا طلبات هنا', 'No requests here'))),
-                  for (final r in items)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: InkWell(
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MediaGoAdDetailScreen(id: '${r['_id']}'))).then((_) => _load()),
-                        child: AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          if ('${r['cover'] ?? ''}'.isNotEmpty)
-                            ClipRRect(borderRadius: BorderRadius.circular(10), child: AspectRatio(aspectRatio: 16 / 7, child: Image.network(_url('${r['cover']}'), fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: T.line)))),
-                          const SizedBox(height: 6),
-                          Row(children: [
-                            Expanded(child: Text('${r['adName']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5))),
-                            Chip2(_v(meta, 'status', '${r['status']}'), _tone('${r['status']}')),
-                          ]),
-                          Text('${r['ref']} · ${r['company']}', style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
-                          const SizedBox(height: 6),
-                          Wrap(spacing: 6, runSpacing: 6, children: [
-                            Chip2(_v(meta, 'mediaType', '${r['mediaType']}'), T.violet),
-                            Chip2(_v(meta, 'location', '${r['location']}'), T.info),
-                            if ((r['vehicleCount'] ?? 0) > 0) Chip2('${r['readyCount']}/${r['vehicleCount']} ${tr('جاهزة', 'ready')}', T.success, icon: Icons.directions_car_outlined),
-                            if ('${r['neededBy'] ?? ''}'.isNotEmpty) Chip2('${r['neededBy']}', T.warn, icon: Icons.event),
-                          ]),
-                        ])),
+                  // جدولٌ لا بطاقات (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) — والضغطُ على الصفّ يفتح صفحتَه.
+                  if (items.isNotEmpty)
+                    AppCard(
+                      padding: EdgeInsets.zero,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: DataTable(
+                          showCheckboxColumn: false, headingRowHeight: 38, dataRowMinHeight: 46, dataRowMaxHeight: 58, columnSpacing: 16, horizontalMargin: 12,
+                          headingTextStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.inkSoft),
+                          columns: [
+                            DataColumn(label: Text(tr('الطلب', 'Request'))),
+                            DataColumn(label: Text(tr('الإعلان', 'Ad'))),
+                            DataColumn(label: Text(tr('الحالة', 'Status'))),
+                            DataColumn(label: Text(tr('المطلوب', 'Needed'))),
+                            DataColumn(label: Text(tr('المركبات', 'Vehicles'))),
+                            DataColumn(label: Text(tr('الشركة', 'Company'))),
+                            DataColumn(label: Text(tr('التاريخ', 'Date'))),
+                          ],
+                          rows: [
+                            for (final r in items)
+                              DataRow(
+                                onSelectChanged: (_) => Navigator.push(context, MaterialPageRoute(builder: (_) => MediaGoAdDetailScreen(id: '${r['_id']}'))).then((_) => _load()),
+                                cells: [
+                                  DataCell(Text('${r['ref']}', style: const TextStyle(fontSize: 12, color: T.inkFaint))),
+                                  DataCell(ConstrainedBox(constraints: const BoxConstraints(maxWidth: 170), child: Text('${r['adName']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)))),
+                                  DataCell(Chip2(_v(meta, 'status', '${r['status']}'), _tone('${r['status']}'))),
+                                  DataCell(Text('${_v(meta, 'mediaType', '${r['mediaType']}')} · ${_v(meta, 'location', '${r['location']}')}', style: const TextStyle(fontSize: 12))),
+                                  DataCell(Text((r['vehicleCount'] ?? 0) > 0 ? '${r['readyCount']}/${r['vehicleCount']}' : '—', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700))),
+                                  DataCell(Text('${r['company']}', style: const TextStyle(fontSize: 12))),
+                                  DataCell(Text('${r['neededBy'] ?? ''}'.isNotEmpty ? '${r['neededBy']}' : '${r['createdAt'] ?? ''}'.split('T').first, style: const TextStyle(fontSize: 12))),
+                                ],
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                 ]),
@@ -226,13 +238,14 @@ class _MediaGoAdCreateScreenState extends State<MediaGoAdCreateScreen> {
         if (_company == 'energize') ...[
           Text('${tr('المركبات *', 'Vehicles *')} (${_picked.length})', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           if (_picked.isNotEmpty) Wrap(spacing: 6, children: [for (final v in _picked) InputChip(label: Text('${v['plateNumber']}'), onDeleted: () => setState(() => _picked.remove(v)))]),
-          TextField(controller: _vq, onChanged: (_) => _search(), decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('ابحث باللوحة أو التسلسلي…', 'Search plate or serial…'))),
+          TextField(controller: _vq, onChanged: (_) => _search(), decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('ابحث برقم المركبة…', 'Search vehicle number…'))),
           SizedBox(height: 220, child: ListView(children: [
             for (final v in _opts) CheckboxListTile(
               dense: true, value: _picked.any((x) => x['_id'] == v['_id']),
               onChanged: (on) => setState(() => on == true ? _picked.add(v) : _picked.removeWhere((x) => x['_id'] == v['_id'])),
               title: Text('${v['plateNumber']}', style: const TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text([if ('${v['serialNumber']}'.isNotEmpty) '#${v['serialNumber']}', '${v['project'] ?? ''}'].where((x) => x.isNotEmpty).join(' · ')),
+              // Media Go يصلها رقمُ المركبة وحده — فلا سطرَ ثانٍ عندها.
+              subtitle: () { final sub = [if ('${v['serialNumber'] ?? ''}'.isNotEmpty) '#${v['serialNumber']}', '${v['project'] ?? ''}'].where((x) => x.isNotEmpty).join(' · '); return sub.isEmpty ? null : Text(sub); }(),
             ),
           ])),
           const SizedBox(height: 12),
@@ -301,28 +314,37 @@ class _MediaGoAdDetailScreenState extends State<MediaGoAdDetailScreen> {
     if (mounted) setState(() => _busy = '');
   }
 
-  /// تصويرٌ أو اختيار: صورٌ عدّة، أو فيديو تقطعه الكاميرا عند ١٥ ثانية.
-  Future<void> _shoot(String url, String want) async {
+  /// تصويرٌ حيّ أو رفعٌ من الجهاز — والنوعُ نوعُ الطلب وحده (صورٌ فقط أو فيديو فقط).
+  /// الكاميرا في الصور تعود صورةً بعد صورة حتى يُلغى، والفيديو تقطعه عند ١٥ ثانية.
+  Future<void> _shoot(String url, String want, String src) async {
     final files = <Map<String, dynamic>>[];
-    final src = await showModalBottomSheet<String>(context: context, builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      ListTile(leading: Icon(want == 'video' ? Icons.videocam : Icons.photo_camera), title: Text(want == 'video' ? tr('تصوير فيديو (١٥ ثانية على الأكثر)', 'Record video (max 15s)') : tr('تصوير بالكاميرا', 'Take photos')), onTap: () => Navigator.pop(c, 'camera')),
-      ListTile(leading: const Icon(Icons.photo_library_outlined), title: Text(tr('من المعرض', 'From gallery')), onTap: () => Navigator.pop(c, 'gallery')),
-    ])));
-    if (src == null) return;
+    String vmime(String name) {
+      final n = name.toLowerCase();
+      return n.endsWith('.mov') ? 'video/quicktime' : n.endsWith('.webm') ? 'video/webm' : n.endsWith('.3gp') ? 'video/3gpp' : 'video/mp4';
+    }
     try {
       if (want == 'video') {
         if (src == 'camera') {
           final x = await ImagePicker().pickVideo(source: ImageSource.camera, maxDuration: const Duration(seconds: 15));
-          if (x != null) files.add({'dataUrl': 'data:video/mp4;base64,${base64Encode(await x.readAsBytes())}', 'fileName': x.name, 'durationSec': 15});
+          if (x != null) files.add({'dataUrl': 'data:${vmime(x.name)};base64,${base64Encode(await x.readAsBytes())}', 'fileName': x.name, 'durationSec': 15});
         } else {
           final res = await FilePicker.platform.pickFiles(withData: true, type: FileType.video);
           final f = res?.files.firstOrNull;
-          if (f?.bytes != null) files.add({'dataUrl': 'data:video/mp4;base64,${base64Encode(f!.bytes!)}', 'fileName': f.name});
+          if (f?.bytes != null) files.add({'dataUrl': 'data:${vmime(f!.name)};base64,${base64Encode(f.bytes!)}', 'fileName': f.name});
         }
       } else {
         if (src == 'camera') {
-          final x = await ImagePicker().pickImage(source: ImageSource.camera, maxWidth: 1800, maxHeight: 1800, imageQuality: 85);
-          if (x != null) files.add({'dataUrl': 'data:image/jpeg;base64,${base64Encode(await x.readAsBytes())}', 'fileName': x.name});
+          while (mounted) {
+            final x = await ImagePicker().pickImage(source: ImageSource.camera, maxWidth: 1800, maxHeight: 1800, imageQuality: 85);
+            if (x == null) break;
+            files.add({'dataUrl': 'data:image/jpeg;base64,${base64Encode(await x.readAsBytes())}', 'fileName': x.name});
+            if (!mounted) break;
+            final more = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+              content: Text(tr('صُوِّرت ${files.length} — صورة أخرى؟', '${files.length} taken — another?')),
+              actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('حفظ', 'Save'))), FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('صورة أخرى', 'Another')))],
+            ));
+            if (more != true) break;
+          }
         } else {
           final xs = await ImagePicker().pickMultiImage(maxWidth: 1800, maxHeight: 1800, imageQuality: 85);
           for (final x in xs) { files.add({'dataUrl': 'data:image/jpeg;base64,${base64Encode(await x.readAsBytes())}', 'fileName': x.name}); }
@@ -331,7 +353,22 @@ class _MediaGoAdDetailScreenState extends State<MediaGoAdDetailScreen> {
     } catch (e) { _say(e.toString()); return; }
     if (files.isEmpty) return;
     await _run('up', () => Api.instance.post(url, {'files': files}));
+    if (mounted) _say(tr('حُفِظ ${files.length}', 'Saved ${files.length}'));
   }
+
+  Widget _shootRow(String url, String want) => Wrap(spacing: 8, runSpacing: 6, children: [
+        FilledButton.icon(
+          style: FilledButton.styleFrom(backgroundColor: T.orange),
+          onPressed: _busy.isNotEmpty ? null : () => _shoot(url, want, 'camera'),
+          icon: _busy == 'up' ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Icon(want == 'video' ? Icons.videocam : Icons.photo_camera),
+          label: Text(want == 'video' ? tr('تصوير فيديو (≤١٥ ث)', 'Record video (≤15s)') : tr('تصوير صور', 'Take photos')),
+        ),
+        OutlinedButton.icon(
+          onPressed: _busy.isNotEmpty ? null : () => _shoot(url, want, 'gallery'),
+          icon: const Icon(Icons.upload_outlined),
+          label: Text(want == 'video' ? tr('رفع فيديو', 'Upload video') : tr('رفع صور', 'Upload photos')),
+        ),
+      ]);
 
   Future<String?> _ask(String title, {bool required = false}) async {
     final c = TextEditingController();
@@ -347,7 +384,7 @@ class _MediaGoAdDetailScreenState extends State<MediaGoAdDetailScreen> {
   Widget _thumbs(List<Map<String, dynamic>> files, {String? delBase}) => Wrap(spacing: 6, runSpacing: 6, children: [
         for (final f in files)
           GestureDetector(
-            onTap: () => launchUrl(Uri.parse(_url('${f['fileUrl']}')), mode: LaunchMode.externalApplication),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => _AdGallery(files: files, start: files.indexOf(f)))),
             onLongPress: delBase == null ? null : () async {
               final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(content: Text(tr('حذف هذا الملف؟', 'Delete this file?')), actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('لا', 'No'))), TextButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete')))]));
               if (ok == true) await _run('del', () => Api.instance.delete('$delBase/${f['_id']}'));
@@ -406,23 +443,18 @@ class _MediaGoAdDetailScreenState extends State<MediaGoAdDetailScreen> {
                   Expanded(child: Text('${it['plateNumber']}', style: const TextStyle(fontWeight: FontWeight.w800))),
                   Chip2(it['ready'] == true ? tr('جاهزة', 'Ready') : (_maps(it['files']).isEmpty ? tr('لم تُصوَّر', 'Not shot') : tr('بانتظار المراجعة', 'To review')), it['ready'] == true ? T.success : T.inkSoft),
                 ]),
-                Text([if ('${it['serialNumber']}'.isNotEmpty) '#${it['serialNumber']}', '${it['project'] ?? ''}'].where((x) => x.isNotEmpty).join(' · '), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                if ([it['serialNumber'], it['project']].any((x) => '${x ?? ''}'.isNotEmpty))
+                  Text([if ('${it['serialNumber'] ?? ''}'.isNotEmpty) '#${it['serialNumber']}', '${it['project'] ?? ''}'].where((x) => x.isNotEmpty).join(' · '), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
                 const SizedBox(height: 8),
-                if (can['shoot'] == true && editable && _maps(it['files']).isEmpty)
-                  Wrap(spacing: 6, children: [
-                    for (final m in const ['photo', 'video'])
-                      ChoiceChip(label: Text(_v(_meta, 'mediaType', m)), selected: it['mediaType'] == m,
-                          onSelected: (_) => _run('i', () => Api.instance.patch('$base/items/${it['_id']}', {'mediaType': m}))),
-                  ]),
                 if (_maps(it['files']).isNotEmpty) _thumbs(_maps(it['files']), delBase: can['shoot'] == true && editable ? '$base/items/${it['_id']}/files' : null)
                 else Text(tr('لا ملفات بعد', 'No files yet'), style: const TextStyle(fontSize: 12, color: T.inkFaint)),
-                if (can['shoot'] == true && editable) Row(children: [
-                  TextButton.icon(onPressed: _busy.isNotEmpty ? null : () => _shoot('$base/items/${it['_id']}/files', '${it['mediaType']}'),
-                      icon: Icon(it['mediaType'] == 'video' ? Icons.videocam : Icons.photo_camera), label: Text(tr('تصوير / رفع', 'Shoot / upload'))),
+                if (can['shoot'] == true && editable) ...[
+                  const SizedBox(height: 8),
+                  _shootRow('$base/items/${it['_id']}/files', '${d['mediaType']}'),
                   if (_maps(it['files']).isNotEmpty) TextButton.icon(
                       onPressed: () => _run('i', () => Api.instance.patch('$base/items/${it['_id']}', {'ready': it['ready'] != true})),
                       icon: const Icon(Icons.check), label: Text(it['ready'] == true ? tr('إلغاء «جاهزة»', 'Unmark') : tr('راجعتُها — جاهزة', 'Reviewed — ready'))),
-                ]),
+                ],
               ]),
             ),
           ),
@@ -430,7 +462,7 @@ class _MediaGoAdDetailScreenState extends State<MediaGoAdDetailScreen> {
           Text(tr('المحتوى', 'Content'), style: const TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 6),
           _maps(d['files']).isEmpty ? Text(tr('لا ملفات بعد', 'No files yet'), style: const TextStyle(color: T.inkFaint)) : _thumbs(_maps(d['files']), delBase: can['shoot'] == true && editable ? '$base/files' : null),
-          if (can['shoot'] == true && editable) TextButton.icon(onPressed: () => _shoot('$base/files', '${d['mediaType']}'), icon: const Icon(Icons.photo_camera), label: Text(tr('تصوير / رفع', 'Shoot / upload'))),
+          if (can['shoot'] == true && editable) ...[const SizedBox(height: 8), _shootRow('$base/files', '${d['mediaType']}')],
         ])),
         const SizedBox(height: 12),
         Text(tr('الملاحظات', 'Notes'), style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -450,6 +482,32 @@ class _MediaGoAdDetailScreenState extends State<MediaGoAdDetailScreen> {
       ])),
     );
   }
+}
+
+/// العارضُ داخل التطبيق: الصورُ تُكبَّر وتُقلَّب، والفيديو يُشغَّل بمشغّل الجهاز.
+class _AdGallery extends StatelessWidget {
+  const _AdGallery({required this.files, required this.start});
+  final List<Map<String, dynamic>> files;
+  final int start;
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white),
+        body: PageView.builder(
+          controller: PageController(initialPage: start < 0 ? 0 : start),
+          itemCount: files.length,
+          itemBuilder: (_, i) {
+            final f = files[i];
+            final u = _url('${f['fileUrl']}');
+            if (f['kind'] == 'video') {
+              return Center(child: IconButton(iconSize: 84, color: Colors.white,
+                  onPressed: () => launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication),
+                  icon: const Icon(Icons.play_circle_fill)));
+            }
+            return InteractiveViewer(child: Center(child: Image.network(u, fit: BoxFit.contain)));
+          },
+        ),
+      );
 }
 
 /// بيتُ حساب Media Go — شاشتاه: الشكاوى والمحتوى الإعلانيّ (كالموقع، scopedRoles).

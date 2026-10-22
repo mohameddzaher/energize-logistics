@@ -42,6 +42,7 @@ const COMPANY_TYPE = 'mediago_ad_company';
 /** شركتُنا — الطلبُ لها يُختار فيه مركباتُنا. */
 const OUR_COMPANY_KEY = 'energize';
 
+const AMAZON = /ا?م[اآ]زون|أمازون|amazon/i;
 const isPartner = (u) => u?.role === MEDIAGO_ROLE || isScopedRole(u?.role);
 const sideOf = (u) => (isPartner(u) ? 'mediago' : 'energize');
 const ours = (req) => !isPartner(req.user) && (OUR_ROLES.includes(req.user?.role) || req.sectionAccess === 'edit');
@@ -146,7 +147,12 @@ const listRow = (d) => {
     deliveredAt: d.deliveredAt, createdByName: d.createdByName, createdAt: d.createdAt, updatedAt: d.updatedAt,
   };
 };
-const fullRow = (d) => ({ ...listRow(d), items: d.items || [], files: d.files || [], statusHistory: d.statusHistory || [], replies: d.replies || [] });
+const fullRow = (d, partner = false) => ({
+  ...listRow(d),
+  // Media Go ترى رقمَ المركبة وحدَه — لا مشروعَها ولا تسلسليَّها (٢٠٢٦/١٠/٢٢).
+  items: (d.items || []).map((i) => (partner ? { ...i, serialNumber: '', project: '' } : i)),
+  files: d.files || [], statusHistory: d.statusHistory || [], replies: d.replies || [],
+});
 
 const dayStart = (iso) => (/^\d{4}-\d{2}-\d{2}$/.test(S(iso)) ? new Date(`${iso}T00:00:00+03:00`) : null);
 
@@ -186,16 +192,24 @@ exports.meta = async (req, res) => {
 exports.vehicles = async (req, res) => {
   try {
     const q = S(req.query.q).slice(0, 40);
-    const and = [{ isActive: { $ne: false } }, { sectorAr: /خفيف/ }];
+    // مركباتُ أمازون لا تُعرَض لطلبات الإعلان — قاعدةٌ (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
+    // والباقي كلُّه، مفوَّضًا أو غيرَ مفوَّض.
+    const and = [{ isActive: { $ne: false } }, { sectorAr: /خفيف/ }, { departmentAr: { $not: AMAZON } }];
+    const partner = isPartner(req.user);
     if (q) {
       const rx = new RegExp(esc(q).replace(/\s+/g, '\\s*'), 'i');
       const digits = q.replace(/\D/g, '');
-      and.push({ $or: [{ plateNumber: rx }, { serialNumber: rx }, { departmentAr: rx }, ...(digits ? [{ plateDigits: new RegExp(esc(digits)) }] : [])] });
+      // وبحثُ Media Go برقم المركبة وحدَه — فلا يكشف البحثُ بالمشروع ما أخفيناه.
+      const by = partner ? [{ plateNumber: rx }] : [{ plateNumber: rx }, { serialNumber: rx }, { departmentAr: rx }];
+      and.push({ $or: [...by, ...(digits ? [{ plateDigits: new RegExp(esc(digits)) }] : [])] });
     }
     const rows = await VehicleMaster.find({ $and: and })
       .select('plateNumber serialNumber departmentAr cityAr registrationTypeAr')
       .sort({ plateNumber: 1 }).limit(q ? 60 : 600).lean();
-    res.json({ items: rows.map((v) => ({ _id: v._id, plateNumber: v.plateNumber || '', serialNumber: v.serialNumber || '', project: v.departmentAr || '', city: v.cityAr || '', type: v.registrationTypeAr || '' })) });
+    // وMedia Go ترى رقمَ المركبة وحدَه — لا مشروعَها ولا تسلسليَّها ولا نوعَها.
+    res.json({ items: rows.map((v) => (partner
+      ? { _id: v._id, plateNumber: v.plateNumber || v.serialNumber || '' }
+      : { _id: v._id, plateNumber: v.plateNumber || '', serialNumber: v.serialNumber || '', project: v.departmentAr || '', city: v.cityAr || '', type: v.registrationTypeAr || '' })) });
   } catch (e) { res.status(500).json({ message: e.message }); }
 };
 
@@ -218,7 +232,8 @@ exports.create = async (req, res) => {
     const ids = [...new Set((Array.isArray(b.vehicleIds) ? b.vehicleIds : []).map(String))].filter((x) => mongoose.isValidObjectId(x)).slice(0, 200);
     if (comp && comp.key === OUR_COMPANY_KEY && !ids.length) problems.push('المركبات / Vehicles');
     if (problems.length) return res.status(400).json({ message: `حقول مطلوبة / Required: ${problems.join('، ')}`, fields: problems });
-    const vs = ids.length ? await VehicleMaster.find({ _id: { $in: ids } }).select('plateNumber serialNumber departmentAr').lean() : [];
+    const vs = ids.length ? await VehicleMaster.find({ _id: { $in: ids }, departmentAr: { $not: AMAZON } }).select('plateNumber serialNumber departmentAr').lean() : [];
+    if (ids.length && !vs.length) return res.status(400).json({ message: 'المركبات المختارة غير متاحة / Vehicles not available' });
     const doc = await MediaGoAdRequest.create({
       adName, company: comp.nameAr, companyKey: comp.key, mediaType, location,
       note: S(b.note).slice(0, 2000), neededBy,
@@ -231,7 +246,7 @@ exports.create = async (req, res) => {
     announce(doc._id, 'created');
     const msg = { title: `طلب محتوى إعلاني ${doc.ref}`, message: `${adName} · ${comp.nameAr}${vs.length ? ` · ${vs.length} مركبة` : ''}`, id: doc._id };
     if (sideOf(req.user) === 'mediago') await notifyOurSide(msg); else await notifyPartner(msg);
-    res.status(201).json({ item: fullRow(doc.toObject()) });
+    res.status(201).json({ item: fullRow(doc.toObject(), isPartner(req.user)) });
   } catch (e) { res.status(e.status || 400).json({ message: e.message }); }
 };
 
@@ -239,7 +254,7 @@ exports.getOne = async (req, res) => {
   try {
     const d = await MediaGoAdRequest.findById(req.params.id).lean();
     if (!d) return res.status(404).json({ message: 'الطلب غير موجود / Request not found' });
-    res.json({ item: fullRow(d), meta: { ...AD_VOCAB, companies: await companies() }, can: abilities(req) });
+    res.json({ item: fullRow(d, isPartner(req.user)), meta: { ...AD_VOCAB, companies: await companies() }, can: abilities(req) });
   } catch (e) { res.status(500).json({ message: e.message }); }
 };
 
@@ -262,15 +277,15 @@ exports.addItemFiles = async (req, res) => {
     const doc = await loadOpen(req);
     const item = doc.items.id(req.params.itemId);
     if (!item) throw bad('المركبة غير موجودة في الطلب', 404);
-    if (req.body.mediaType && AD_VOCAB.mediaType.some((x) => x.key === req.body.mediaType)) item.mediaType = req.body.mediaType;
-    const saved = saveFiles(req.body.files, req.user, item.mediaType);
+    // النوعُ نوعُ الطلب — طُلبت صورٌ فصورٌ، أو فيديو ففيديو (٢٠٢٦/١٠/٢٢).
+    const saved = saveFiles(req.body.files, req.user, doc.mediaType);
     if (item.files.length + saved.length > MAX_FILES_PER_ITEM) { saved.forEach((x) => deleteStoredFile(x.fileUrl)); throw bad(`الحدّ ${MAX_FILES_PER_ITEM} ملفّات للمركبة`); }
     item.files.push(...saved);
     item.ready = false; item.readyAt = null; item.readyByName = '';
     startIfNew(doc, req);
     await doc.save();
     announce(doc._id, 'files');
-    res.json({ item: fullRow(doc.toObject()) });
+    res.json({ item: fullRow(doc.toObject(), isPartner(req.user)) });
   } catch (e) { res.status(e.status || 400).json({ message: e.message }); }
 };
 
@@ -285,7 +300,7 @@ exports.removeItemFile = async (req, res) => {
     if (!item.files.length) { item.ready = false; item.readyAt = null; item.readyByName = ''; }
     await doc.save(); deleteStoredFile(url);
     announce(doc._id, 'files');
-    res.json({ item: fullRow(doc.toObject()) });
+    res.json({ item: fullRow(doc.toObject(), isPartner(req.user)) });
   } catch (e) { res.status(e.status || 400).json({ message: e.message }); }
 };
 
@@ -297,11 +312,7 @@ exports.updateItem = async (req, res) => {
     const item = doc.items.id(req.params.itemId);
     if (!item) throw bad('المركبة غير موجودة في الطلب', 404);
     const b = req.body || {};
-    if (b.mediaType !== undefined) {
-      if (!AD_VOCAB.mediaType.some((x) => x.key === b.mediaType)) throw bad('نوعٌ غير معروف');
-      if (item.files.length && item.mediaType !== b.mediaType) throw bad('احذف الملفّات أوّلًا ثمّ غيّر النوع');
-      item.mediaType = b.mediaType;
-    }
+    if (b.mediaType !== undefined && b.mediaType !== doc.mediaType) throw bad('نوعُ التصوير نوعُ الطلب — لا يُغيَّر / The request decides photo or video');
     if (b.note !== undefined) item.note = S(b.note).slice(0, 500);
     if (b.ready !== undefined) {
       if (b.ready && !item.files.length) throw bad('ارفع صور المركبة أو الفيديو أوّلًا / Upload first');
@@ -309,7 +320,7 @@ exports.updateItem = async (req, res) => {
     }
     await doc.save();
     announce(doc._id, 'item');
-    res.json({ item: fullRow(doc.toObject()) });
+    res.json({ item: fullRow(doc.toObject(), isPartner(req.user)) });
   } catch (e) { res.status(e.status || 400).json({ message: e.message }); }
 };
 
@@ -323,7 +334,7 @@ exports.addFiles = async (req, res) => {
     startIfNew(doc, req);
     await doc.save();
     announce(doc._id, 'files');
-    res.json({ item: fullRow(doc.toObject()) });
+    res.json({ item: fullRow(doc.toObject(), isPartner(req.user)) });
   } catch (e) { res.status(e.status || 400).json({ message: e.message }); }
 };
 
@@ -336,7 +347,7 @@ exports.removeFile = async (req, res) => {
     const url = f.fileUrl; f.deleteOne();
     await doc.save(); deleteStoredFile(url);
     announce(doc._id, 'files');
-    res.json({ item: fullRow(doc.toObject()) });
+    res.json({ item: fullRow(doc.toObject(), isPartner(req.user)) });
   } catch (e) { res.status(e.status || 400).json({ message: e.message }); }
 };
 
@@ -357,7 +368,7 @@ exports.deliver = async (req, res) => {
     await logAudit({ user: req.user, action: 'status_change', entity: 'MediaGoAdRequest', entityId: doc._id, details: `${doc.ref}: delivered` }).catch(() => {});
     announce(doc._id, 'delivered');
     await notifyPartner({ title: `${doc.ref}: المحتوى جاهز / Content delivered`, message: `${doc.adName}${doc.items.length ? ` · ${doc.items.length} مركبة` : ''}`, id: doc._id });
-    res.json({ item: fullRow(doc.toObject()) });
+    res.json({ item: fullRow(doc.toObject(), isPartner(req.user)) });
   } catch (e) { res.status(e.status || 400).json({ message: e.message }); }
 };
 
@@ -387,7 +398,7 @@ exports.setStatus = async (req, res) => {
     announce(doc._id, 'status');
     const msg = { title: `${doc.ref}: ${label('status', status)} / ${label('status', status, 'en')}`, message: `${doc.adName}${note ? ` — ${note}` : ''}`, id: doc._id };
     if (partner) await notifyOurSide(msg); else await notifyPartner(msg);
-    res.json({ item: fullRow(doc.toObject()) });
+    res.json({ item: fullRow(doc.toObject(), isPartner(req.user)) });
   } catch (e) { res.status(e.status || 400).json({ message: e.message }); }
 };
 
@@ -403,7 +414,7 @@ exports.reply = async (req, res) => {
     announce(doc._id, 'reply');
     const msg = { title: `${doc.ref}: ملاحظة جديدة / New note`, message: `${doc.adName} — ${text.slice(0, 140)}`, id: doc._id };
     if (side === 'mediago') await notifyOurSide(msg); else await notifyPartner(msg);
-    res.json({ item: fullRow(doc.toObject()) });
+    res.json({ item: fullRow(doc.toObject(), isPartner(req.user)) });
   } catch (e) { res.status(400).json({ message: e.message }); }
 };
 

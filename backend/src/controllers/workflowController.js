@@ -2968,6 +2968,27 @@ exports.importInvoices = async (req, res) => {
       // ليُقارَن بعميل الكشف (بطاقة «عدم تطابق اسم العميل»).
       customerName: ['العميل', 'اسمالعميل'],
     };
+    // ── وأيُّ عمودٍ باسم عمودٍ في الجدول يُكتب كذلك (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ──
+    // «تاريخ التسليم للعميل» في الملفّ يُكتب في «تاريخ التسليم للعميل» على كشفه،
+    // وكذلك بقيّةُ الأعمدة التي تُكتب بيدٍ في الجدول — بأسمائها في الصفحة وفي السجلّ.
+    // (وما يأتي من المنصّة لا يُكتب من ملفّ؛ وقيمةُ البيع تُكتب في المنصّة معها فمن الجدول.)
+    const EXTRA = [
+      { field: 'paymentDate', type: 'date', names: ['تاريخ السداد', 'Payment date'] },
+      { field: 'payingBranch', type: 'text', names: ['الفرع المسدد', 'الفرع المسدِّد', 'فرع السداد', 'Paying branch'] },
+      { field: 'paymentAmount', type: 'num', names: ['مبلغ السداد', 'Payment amount'] },
+      { field: 'paymentType', type: 'payment', names: ['نوع الدفع', 'نوع السداد', 'Payment type'] },
+      { field: 'finalReportDestination', type: 'text', names: ['وجهة الكشف النهائية', 'Final report destination', 'Final destination'] },
+      { field: 'sendingDate', type: 'date', names: ['تاريخ الارسال', 'تاريخ الإرسال', 'Sending date'] },
+      { field: 'branchDeliveryDate', type: 'date', names: ['تاريخ التسليم للفرع', 'Branch delivery date'] },
+      { field: 'deliveryDate', type: 'date', names: ['تاريخ التسليم للعميل', 'Customer delivery date', 'Delivery date'] },
+      { field: 'invoiceNotes', type: 'text', names: ['ملاحظات الفاتورة', 'Invoice notes'] },
+      { field: 'collectedAmount', type: 'num', names: ['مبلغ التحصيل', 'المبلغ المحصل', 'المبلغ المحصَّل', 'Collected amount'] },
+      { field: 'collectionDate', type: 'date', names: ['تاريخ التحصيل', 'Collection date'] },
+    ].map((x) => ({ ...x, keys: x.names.map((n) => fold(n).toLowerCase()) }));
+    // نوعُ الدفع بأسمائه الستّة كما تُعرض — والأربعةُ هي ما يُختار.
+    const PAY = { 'اجل-فاتوره': 'deferred_invoice', 'اجل-كاش': 'deferred_cash', 'نقدي-3pl': 'cash_3pl', 'نقدي-ht': 'cash_ht', 'ضريبي': 'tax', 'كاش': 'cash',
+      'deferred–invoice': 'deferred_invoice', 'deferred–cash': 'deferred_cash', 'cash–3pl': 'cash_3pl', 'cash–ht': 'cash_ht', 'tax': 'tax', 'cash': 'cash' };
+    const payOf = (v) => { const k = fold(v).toLowerCase().replace(/[-–]/g, (c) => (c === '–' ? '–' : '-')); return PAY[k] || PAY[k.replace(/-/g, '–')] || ''; };
     const num = (v) => {
       if (v === null || v === undefined || v === '') return undefined;
       const n = Number(String(v).replace(/[٠-٩]/g, (c) => '٠١٢٣٤٥٦٧٨٩'.indexOf(c)).replace(/,/g, ''));
@@ -3004,6 +3025,8 @@ exports.importInvoices = async (req, res) => {
       if (hi < 0) continue;
       const head = aoa[hi].map(fold);
       const at = Object.fromEntries(Object.entries(COLS).map(([k, names]) => [k, head.findIndex((h) => names.includes(h))]));
+      const headLower = head.map((h) => String(h).toLowerCase());
+      const extraAt = EXTRA.map((x) => ({ ...x, i: headLower.findIndex((h) => x.keys.includes(h)) })).filter((x) => x.i >= 0);
       for (let i = hi + 1; i < aoa.length; i++) {
         const r = aoa[i] || [];
         const rep = text(r[at.reportNumber]);
@@ -3016,7 +3039,15 @@ exports.importInvoices = async (req, res) => {
         if (at.tax >= 0 && num(r[at.tax]) !== undefined) patch.tax = num(r[at.tax]);
         if (at.totalInvoice >= 0 && num(r[at.totalInvoice]) !== undefined) patch.totalInvoice = num(r[at.totalInvoice]);
         if (at.invoiceDate >= 0 && date(r[at.invoiceDate])) patch.invoiceDate = date(r[at.invoiceDate]);
-        if (!Object.keys(patch).length) { badRows.push({ reportNumber: rep, reason: 'لا بيانات فاتورة في الصفّ' }); continue; }
+        for (const x of extraAt) {
+          const v = r[x.i];
+          if (v === null || v === undefined || String(v).trim() === '') continue; // الخانةُ الفارغةُ لا تمحو
+          if (x.type === 'date') { const d = date(v); if (d) patch[x.field] = d; }
+          else if (x.type === 'num') { const n = num(v); if (n !== undefined) patch[x.field] = n; }
+          else if (x.type === 'payment') { const p = payOf(v); if (p) patch.paymentType = p; }
+          else { const tv = norm(v); if (tv) patch[x.field] = tv; }
+        }
+        if (!Object.keys(patch).length) { badRows.push({ reportNumber: rep, reason: 'لا بيانات في الصفّ تُكتب' }); continue; }
         byReport.set(rep, { patch, sheetRow: i + 1, sheet: name }); // الأخيرُ يغلب
         if (patch.invoiceNumber) {
           lineMap.set(`${patch.invoiceNumber}|${rep}`, {
@@ -3032,7 +3063,8 @@ exports.importInvoices = async (req, res) => {
 
     const allowed = await fieldsForRole(req.user.role);
     const reports = await OperationsWorkflow.find({ reportNumber: { $in: [...byReport.keys()] } })
-      .select('reportNumber applicationStatus paymentType paymentSubtype paymentTypeSource paymentMethod reportDate tax netInvoice totalInvoice invoiceNumber invoiceDate documentNumber username lockedBy lockedByName lockedAt executionStatus').lean();
+      .select('reportNumber applicationStatus paymentType paymentSubtype paymentTypeSource paymentMethod reportDate tax netInvoice totalInvoice invoiceNumber invoiceDate documentNumber username lockedBy lockedByName lockedAt executionStatus '
+        + 'paymentDate payingBranch paymentAmount finalReportDestination sendingDate branchDeliveryDate deliveryDate invoiceNotes collectedAmount collectionDate').lean();
     const found = new Map(reports.map((r) => [String(r.reportNumber).trim(), r]));
 
     const notFound = []; const skipped = []; const unchanged = []; const plan = [];
@@ -3040,7 +3072,13 @@ exports.importInvoices = async (req, res) => {
       const r = found.get(rep);
       if (!r) { notFound.push(rep); continue; }
       if (isLocked(r, req.user._id)) { skipped.push({ reportNumber: rep, reason: `قيد التعديل لدى ${r.lockedByName || 'مستخدم آخر'}` }); continue; }
-      const own = filterFieldsByRole({ ...item.patch }, req.user.role, allowed);
+      const rowPatch = { ...item.patch };
+      // تاريخُ السداد لا يُكتب قبل استلام السند — القاعدةُ نفسُها في التعديل الجماعيّ.
+      if (rowPatch.paymentDate && String(r.applicationStatus || '').trim() !== 'bond_received') {
+        delete rowPatch.paymentDate;
+        if (!Object.keys(rowPatch).length) { skipped.push({ reportNumber: rep, reason: 'لم يُستلم السند بعد (تاريخ السداد)' }); continue; }
+      }
+      const own = filterFieldsByRole(rowPatch, req.user.role, allowed);
       const refused = own.__rejected || [];
       if (!Object.keys(own).length) { skipped.push({ reportNumber: rep, reason: `صلاحيّتك لا تسمح بـ: ${refused.join('، ')}` }); continue; }
       await fillPaymentTypeFromCustomer(own, r);
@@ -3095,6 +3133,22 @@ exports.importInvoices = async (req, res) => {
       if (withDoc.length) {
         await require('../services/customsOpsLink').resolveReports({ _id: { $in: withDoc } })
           .catch((e) => console.error('customs link (import invoices):', e.message));
+      }
+    }
+    // ── وما كُتب من الأعمدة الأخرى يسري أثرُه كما في التعديل الجماعيّ ────────
+    {
+      const touched = (k) => plan.filter((p) => Object.prototype.hasOwnProperty.call(p.patch, k));
+      const changed = { collectionDate: touched('collectionDate').length > 0, deliveryDate: touched('deliveryDate').length > 0 };
+      if (changed.collectionDate || changed.deliveryDate) {
+        const ids2 = [...new Set([...touched('collectionDate'), ...touched('deliveryDate')].map((p) => p._id))];
+        const fr = await OperationsWorkflow.find({ _id: { $in: ids2 } }).select('invoiceNumber collectionDate deliveryDate').lean();
+        await require('./collectionsDeptController').syncLedgerFromWorkflows(fr, changed).catch((e) => console.error('ledger sync (import):', e.message));
+      }
+      const retyped = touched('paymentType').map((p) => p.reportNumber);
+      if (retyped.length) {
+        await require('../utils/walletCollection').syncWalletCollection(retyped, { user: req.user, reason: 'تغيّر نوع الكشف' }).catch(() => {});
+        invalidateCollectionsReaders();
+        try { emitToAll('collections:changed', { source: 'workflow', field: 'paymentType', bulk: true }); } catch (_) { /* */ }
       }
     }
     const checks = await invChecks.checkLines(lines);

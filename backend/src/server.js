@@ -255,6 +255,7 @@ app.use('/api/customers', customerRoutes);
 app.use('/api/fleet-api', require('./routes/publicFleetApi'));
 
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/nav-badges', require('./routes/navBadges'));
 // طلباتُ الأقسام إلى الموارد البشريّة — حراستُها في المتحكّم، راجع رأسَ الملفّ.
 app.use('/api/staff-requests', require('./routes/staffRequests'));
 app.use('/api/audit', auditRoutes);

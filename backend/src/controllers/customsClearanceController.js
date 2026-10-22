@@ -177,7 +177,7 @@ const DISPLAY_FIELDS = [
   'invoiceNumber',
 ];
 // تُرسَل بعد انتقاءٍ داخليّ — لا الوثيقةُ الفرعيّة كلُّها (راجع toWire).
-const DISPLAY_NESTED = ['billing.invoiceStatus', 'billing.ourInvoiceNumber', 'stageDone.containersReturned',
+const DISPLAY_NESTED = ['invoiceRequest.status', 'billing.invoiceStatus', 'billing.ourInvoiceNumber', 'stageDone.containersReturned',
   'costs.total', 'revenue.clearanceFee', 'revenue.totalInvoiced', 'revenue.profit'];
 // (كانت هنا قائمةُ «تُقرأ للبحث وحدَه». البحثُ صار له فهرسُه — راجع
 //  SEARCH_INDEX_FIELDS أسفل — فلا يُقرأ في القائمة إلّا ما يُعرَض أو يُحسَب منه.)
@@ -304,7 +304,7 @@ const txDateOf = (c) => {
 };
 
 /** فُوترت ولم تُنهَ: تنتظر فاتورةَ النقل. */
-const awaitsTransportInvoice = (c) => !!c.saleInvoiceNumber && !c.isCompleted && !c.cancelled
+const awaitsTransportInvoice = (c) => (!!c.saleInvoiceNumber || c.invoiceRequest?.status === 'pending') && !c.isCompleted && !c.cancelled
   && !(c.transportInvoiceReceived || hasTransportInvoice(c));
 
 /**
@@ -1786,8 +1786,13 @@ const whoIs = (req) => [req.user.firstName, req.user.lastName].filter(Boolean).j
  * — لا بضغطةٍ ثالثةٍ تُنسى فتبقى المعاملةُ مفتوحةً وهي منتهية.
  * تُنادى قبل الحفظ؛ وتردّ هل أنهتها.
  */
+/** هل أُرسل طلبُ فوترةٍ (أو فُوترت فعلًا)؟ — شرطُ الإقفال من جهة الفاتورة. */
+const invoiceSent = (c) => !!c.saleInvoiceNumber || ['pending', 'invoiced'].includes(c.invoiceRequest?.status);
+
 function settleClosure(clearance, req) {
-  if (clearance.isCompleted || clearance.cancelled || !clearance.saleInvoiceNumber) return false;
+  // تُقفَل حين يُرسَل طلبُ الفوترة وتصل فاتورةُ النقل — ولا تنتظر جوابَ الماليّة:
+  // فإن أُقفلت قبل أن تُفوتَر فهي «مغلقة لم تُفوتَر» حتى تقول الماليّةُ كلمتَها.
+  if (clearance.isCompleted || clearance.cancelled || !invoiceSent(clearance)) return false;
   if (!hasTransportInvoice(clearance)) return false;
   clearance.isCompleted = true;
   clearance.completedAt = new Date();
@@ -1857,36 +1862,32 @@ exports.issueInvoice = async (req, res) => {
     if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
     if (clearance.cancelled) return res.status(400).json({ message: 'المعاملةُ ملغاة — لا تُفوتَر' });
     if (clearance.upcoming) return res.status(400).json({ message: 'معاملةٌ قادمةٌ لم تبدأ — حوِّلها إلى جاريةٍ أوّلًا' });
+    // ما فوترته الماليّةُ لا يُعاد طلبُه من هنا — تصحيحُه عندها.
+    if (clearance.saleInvoiceNumber) {
+      return res.status(400).json({ message: `فوترتها الإدارةُ الماليّة (${clearance.saleInvoiceNumber}) — أيُّ تصحيحٍ يُطلَب منها`, code: 'ALREADY_INVOICED' });
+    }
 
     const sent = Array.isArray(req.body.saleItems) ? req.body.saleItems : [];
     const err = await writeSaleItems(clearance, sent, req);
     if (err) return res.status(400).json({ message: err });
     const hasPassThrough = (clearance.paymentStages || []).some((p) => Number(p.amount) > 0);
     if (!clearance.saleItems.length && !hasPassThrough) {
-      return res.status(400).json({ message: 'فاتورةٌ بلا بنود — اكتب سعرَ بندٍ واحدٍ على الأقلّ' });
+      return res.status(400).json({ message: 'طلبُ فوترةٍ بلا بنود — اكتب سعرَ بندٍ واحدٍ على الأقلّ' });
     }
-
     clearance.saleVatRate = 0.15;
-    const first = !clearance.saleInvoiceNumber;
-    if (first) {
-      clearance.saleInvoiceNumber = await nextSaleInvoiceNumber();
-      clearance.saleInvoiceAt = new Date();
-    }
-    // ── و«حالة الفاتورة» تتبع الإصدار ──────────────────────────────────────
-    // كانت خانةً تُكتب بيدٍ فتقول «غير مفوتر» لمعاملةٍ صدرت فاتورتُها.
-    const { todayKey } = require('../utils/companyDay');
-    if (!clearance.billing) clearance.billing = {};
-    clearance.billing.invoiceStatus = 'مفوترة';
-    if (!clearance.billing.ourInvoiceNumber) clearance.billing.ourInvoiceNumber = clearance.saleInvoiceNumber;
-    if (!clearance.billing.invoicedAt) clearance.billing.invoicedAt = todayKey();
-    // والمرحلةُ الأخيرةُ في الدورة هي الفاتورةُ نفسُها.
-    const { done, route } = readStages(clearance);
-    done.add('invoiced');
-    clearance.stagesDone = CustomsClearance.STAGES.filter((k) => done.has(k));
-    clearance.transportRoute = route;
-    if (!(clearance.pipelineVersion >= 2)) clearance.pipelineVersion = 2;
-    clearance.stage = 'invoiced';
-    if (first) clearance.stageLog.push({ key: 'invoiced', done: true, by: req.user._id, byName: whoIs(req), at: new Date() });
+
+    // ── طلبُ فوترةٍ إلى الإدارة الماليّة، لا فاتورة ─────────────────────────
+    // (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) الماليّةُ تفوترها في نظامها وتقول هنا «تمّت
+    // الفوترة» — وعندها فقط تُعَدّ مفوترة. راجع decideInvoiceRequest.
+    const ir = clearance.invoiceRequest || {};
+    const again = ['pending', 'returned', 'rejected'].includes(ir.status);
+    clearance.invoiceRequest = {
+      status: 'pending',
+      requestedAt: new Date(), requestedBy: req.user._id, requestedByName: whoIs(req),
+      note: String(req.body.note || '').trim().slice(0, 500),
+      decidedAt: null, decidedBy: null, decidedByName: '', decisionNote: '',
+      fileUrl: '', fileName: '', mimeType: '', size: 0,
+    };
 
     const closed = settleClosure(clearance, req);
     clearance.lastModifiedBy = req.user._id;
@@ -1894,14 +1895,156 @@ exports.issueInvoice = async (req, res) => {
     await logAudit({
       user: req.user._id, action: closed ? 'complete_customs_clearance' : 'invoice_customs_clearance',
       entity: 'CustomsClearance', entityId: clearance._id,
-      changes: { after: { refNumber: clearance.refNumber, invoice: clearance.saleInvoiceNumber, awaitingTransportInvoice: !closed } }, ipAddress: req.ip,
+      changes: { details: `${again ? 'إعادة طلب' : 'طلب'} فوترة · ${clearance.refNumber || ''}`, after: { refNumber: clearance.refNumber, invoiceRequest: 'pending', closed } }, ipAddress: req.ip,
     });
     cache.clear('customs:'); try { cache.clear('finance:'); } catch (_) { /* */ }
     try { emitToAll('customs:updated', { clearance }); } catch (e) {}
-    res.json({ clearance, closed, awaitingTransportInvoice: !closed });
+    res.json({ clearance, closed, requested: true, awaitingTransportInvoice: !hasTransportInvoice(clearance) });
+
+    // والإدارةُ الماليّةُ تُخبَر بالطلب — لا تنتظر أن تفتح الشاشة.
+    try {
+      const User = require('../models/User');
+      const { createNotification } = require('../services/notificationService');
+      const fin = await User.find({ role: { $in: ['cfo', 'accounting_manager', 'accountant'] }, isActive: { $ne: false } }).select('_id').lean();
+      await Promise.all(fin.map((u) => createNotification({
+        recipient: u._id, type: 'status_changed',
+        title: 'طلب فوترة — تخليص جمركي',
+        message: `${clearance.refNumber || ''} · ${clearance.customerName || ''}`,
+        relatedEntity: 'CustomsClearance', relatedEntityId: clearance._id,
+      }).catch(() => {})));
+    } catch (_) { /* */ }
   } catch (error) {
-    return sendMongooseError(res, error, 'تعذّر إصدار الفاتورة');
+    if (res.headersSent) return;
+    return sendMongooseError(res, error, 'تعذّر إرسال طلب الفوترة');
   }
+};
+
+/**
+ * PATCH /:id/invoice-request/decision — جوابُ الإدارة الماليّة على طلب الفوترة.
+ *   { decision: 'invoiced', invoiceNumber?, file?: {dataUrl, fileName}, note? }
+ *   { decision: 'returned' | 'rejected', note }
+ * «تمّت الفوترة» وحدَها تجعل المعاملةَ مفوترة: رقمُ الفاتورة (من الماليّة، وإلّا
+ * رقمٌ متسلسلٌ منّا)، والفاتورةُ النهائيّةُ في مرفقات المعاملة، ومرحلةُ «الفاتورة».
+ */
+exports.decideInvoiceRequest = async (req, res) => {
+  try {
+    const decision = String(req.body.decision || '').trim();
+    if (!['invoiced', 'returned', 'rejected'].includes(decision)) return res.status(400).json({ message: 'قرارٌ غير معروف' });
+    const clearance = await CustomsClearance.findById(req.params.id);
+    if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
+    const ir = clearance.invoiceRequest || {};
+    if (ir.status !== 'pending') return res.status(400).json({ message: 'لا طلبَ فوترةٍ معلّقًا على هذه المعاملة' });
+    const note = String(req.body.note || '').trim().slice(0, 500);
+    if (decision !== 'invoiced' && !note) return res.status(400).json({ message: 'اكتب السبب ليعرف التخليصُ ما يصحّح' });
+    const who = whoIs(req);
+
+    let stored = null;
+    if (decision === 'invoiced' && req.body.file?.dataUrl) {
+      try { stored = saveUploadFile(req.body.file.dataUrl, 'customs', req.body.file.fileName || 'الفاتورة النهائية'); }
+      catch (e) { return res.status(400).json({ message: e.message }); }
+    }
+    Object.assign(clearance.invoiceRequest, {
+      status: decision, decidedAt: new Date(), decidedBy: req.user._id, decidedByName: who, decisionNote: note,
+      ...(stored || {}),
+    });
+
+    let closed = false;
+    if (decision === 'invoiced') {
+      const given = String(req.body.invoiceNumber || '').trim().slice(0, 60);
+      clearance.saleInvoiceNumber = given || await nextSaleInvoiceNumber();
+      clearance.saleInvoiceAt = new Date();
+      const { todayKey } = require('../utils/companyDay');
+      if (!clearance.billing) clearance.billing = {};
+      clearance.billing.invoiceStatus = 'مفوترة';
+      clearance.billing.ourInvoiceNumber = clearance.saleInvoiceNumber;
+      clearance.billing.invoicedAt = todayKey();
+      if (stored) {
+        clearance.attachments.push({
+          ...stored, title: `الفاتورة النهائية · ${clearance.saleInvoiceNumber}`, stage: '',
+          uploadedBy: req.user._id, uploadedByName: who, uploadedAt: new Date(),
+        });
+      }
+      const { done, route } = readStages(clearance);
+      done.add('invoiced');
+      clearance.stagesDone = CustomsClearance.STAGES.filter((k) => done.has(k));
+      clearance.transportRoute = route;
+      if (!(clearance.pipelineVersion >= 2)) clearance.pipelineVersion = 2;
+      clearance.stage = 'invoiced';
+      clearance.stageLog.push({ key: 'invoiced', done: true, by: req.user._id, byName: who, at: new Date() });
+      closed = settleClosure(clearance, req);
+    }
+    clearance.lastModifiedBy = req.user._id;
+    await clearance.save();
+    cache.clear('customs:'); try { cache.clear('finance:'); } catch (_) { /* */ }
+    try { emitToAll('customs:updated', { clearance }); } catch (_) { /* */ }
+    res.json({ ok: true, clearance, closed });
+
+    try {
+      const { createNotification } = require('../services/notificationService');
+      const label = { invoiced: 'تمّت الفوترة', returned: 'أُعيد للتصحيح', rejected: 'رُفض' }[decision];
+      if (ir.requestedBy && String(ir.requestedBy) !== String(req.user._id)) {
+        await createNotification({
+          recipient: ir.requestedBy, type: 'status_changed',
+          title: `طلب الفوترة: ${label}`,
+          message: `${clearance.refNumber || ''}${decision === 'invoiced' ? ` · ${clearance.saleInvoiceNumber}` : ''}${note ? ` — ${note}` : ''}`,
+          relatedEntity: 'CustomsClearance', relatedEntityId: clearance._id,
+        });
+      }
+    } catch (_) { /* */ }
+    await logAudit({
+      user: req.user._id, action: 'update_customs_clearance', entity: 'CustomsClearance', entityId: clearance._id,
+      changes: { details: `طلب الفوترة: ${decision}${clearance.saleInvoiceNumber ? ` · ${clearance.saleInvoiceNumber}` : ''}`, after: { invoiceRequest: decision } }, ipAddress: req.ip,
+    }).catch(() => {});
+  } catch (e) {
+    console.error('customs decideInvoiceRequest:', e);
+    if (res.headersSent) return;
+    res.status(500).json({ message: 'تعذّر تسجيل القرار' });
+  }
+};
+
+/** GET /invoice-requests?status=pending|invoiced|returned|rejected|all — طلباتُ الفوترة. */
+exports.listInvoiceRequests = async (req, res) => {
+  try {
+    const status = ['pending', 'invoiced', 'returned', 'rejected', 'all'].includes(String(req.query.status)) ? String(req.query.status) : 'pending';
+    const match = { cancelled: { $ne: true }, 'invoiceRequest.status': status === 'all' ? { $in: ['pending', 'invoiced', 'returned', 'rejected'] } : status };
+    const rows = await CustomsClearance.find(match)
+      .select(`refNumber blNumber customerName branch port isCompleted invoiceRequest saleInvoiceNumber saleInvoiceAt containerCount ${require('../utils/customsInvoice').MONEY_SELECT} costs revenue`)
+      .sort({ 'invoiceRequest.requestedAt': -1 }).limit(300).lean();
+    const { buildClearanceInvoice } = require('../utils/customsInvoice');
+    const agg = await CustomsClearance.aggregate([
+      { $match: { cancelled: { $ne: true }, 'invoiceRequest.status': { $in: ['pending', 'invoiced', 'returned', 'rejected'] } } },
+      { $group: { _id: '$invoiceRequest.status', n: { $sum: 1 } } },
+    ]);
+    const counts = { pending: 0, invoiced: 0, returned: 0, rejected: 0 };
+    for (const a of agg) counts[a._id] = a.n;
+    res.json({
+      counts,
+      requests: rows.map((c) => {
+        const inv = buildClearanceInvoice(c);
+        return {
+          clearanceId: String(c._id), refNumber: c.refNumber, blNumber: c.blNumber, customerName: c.customerName,
+          branch: c.branch, port: c.port, isCompleted: !!c.isCompleted, containerCount: c.containerCount,
+          ...c.invoiceRequest, invoiceNumber: c.saleInvoiceNumber || '',
+          total: inv.totals.grand, vat: inv.totals.vat, lines: inv.lines.map((l) => ({ label: l.label, amount: l.amount, vat: l.vat, total: l.total, from: l.from, fileUrl: l.fileUrl })),
+        };
+      }),
+    });
+  } catch (e) {
+    console.error('customs listInvoiceRequests:', e);
+    res.status(500).json({ message: 'تعذّر تحميل طلبات الفوترة' });
+  }
+};
+
+/** عددُ ما ينتظر الإدارةَ الماليّة في التخليص: طلباتُ صرفٍ معلّقة + طلباتُ فوترةٍ معلّقة. */
+exports.financePendingCount = async () => {
+  const [pay] = await CustomsClearance.aggregate([
+    { $match: { cancelled: { $ne: true }, 'paymentStages.payStatus': 'pending' } },
+    { $unwind: '$paymentStages' },
+    { $match: { 'paymentStages.payStatus': 'pending' } },
+    { $count: 'n' },
+  ]);
+  const inv = await CustomsClearance.countDocuments({ cancelled: { $ne: true }, 'invoiceRequest.status': 'pending' });
+  return { payments: pay?.n || 0, invoices: inv, total: (pay?.n || 0) + inv };
 };
 
 /**
@@ -1972,8 +2115,8 @@ exports.completeClearance = async (req, res) => {
       clearance.completedBy = null;
       clearance.completedByName = '';
     } else {
-      if (!clearance.saleInvoiceNumber) {
-        return res.status(400).json({ message: 'أصدِر فاتورةَ العميل أوّلًا — ثمّ تُنهى المعاملةُ حين تُرفَق فاتورةُ النقل.', code: 'NOT_INVOICED' });
+      if (!invoiceSent(clearance)) {
+        return res.status(400).json({ message: 'أرسِل طلبَ الفوترة أوّلًا — ثمّ تُنهى المعاملةُ حين تُرفَق فاتورةُ النقل.', code: 'NOT_INVOICED' });
       }
       if (!hasTransportInvoice(clearance)) {
         return res.status(400).json({ message: 'تُنهى المعاملةُ حين تُرفَق «فاتورة النقل» — أرفِقها أو قل إنّها لا تُنتظَر.', missingStage: REQUIRED_STAGE_KEY });
@@ -2347,7 +2490,7 @@ exports.getDashboard = async (req, res) => {
           .select('refNumber blNumber customerName customerParty shippingAgent agentParty carrierName carrierParty branch cargoType containerCount '
             + 'containers.route containers.stagesDone stage stagesDone transportRoute pipelineVersion stageDone.doInvoicePaid stageDone.containersReturned saleInvoiceNumber saleInvoiceAt '
             + 'transportInvoiceReceived isCompleted completedAt completedBy cancelled upcoming expectedDate returnDeadline createdAt createdBy updatedAt declarationNumber port '
-            + 'papersReceivedDate declarationDate periodYear periodMonth')
+            + 'papersReceivedDate declarationDate periodYear periodMonth invoiceRequest.status')
           .sort({ createdAt: -1 }).lean()
           // القادمةُ تُقاس بتاريخها المرتقَب: هو تاريخُها الوحيد.
           .then((list) => (dFrom || dTo ? list.filter((c) => {
@@ -2422,6 +2565,8 @@ exports.getDashboard = async (req, res) => {
           // «فُوترت» تشمل ما فُوتر قبل النظام (مرحلتُه معلَّمةٌ بلا رقمِ فاتورةٍ هنا).
           invoiced: !!c.saleInvoiceNumber || p.steps.some((s) => s.key === 'invoiced' && s.done),
           awaitingTransportInvoice: awaitsTransportInvoice(c),
+          // طلبُ الفوترة عند الماليّة: '' · pending · invoiced · returned · rejected.
+          invoiceRequest: c.invoiceRequest?.status || '',
           returnDeadline: d, unitsState: U,
           returnState: !needsReturn || !d ? '' : (d < today ? 'overdue' : d <= soon ? 'due' : ''),
           pendingPayments: pendingBy.get(String(c._id)) || 0,

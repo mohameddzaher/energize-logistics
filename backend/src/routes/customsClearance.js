@@ -41,6 +41,8 @@ router.put('/settings', authorize('super_admin', 'admin', 'it_manager', 'customs
 router.get('/upcoming-alerts', ctrl.upcomingAlerts);
 // طلباتُ الصرف: يقرؤها التخليصُ ليتابع طلبَه، وتقرّر فيها الماليّةُ وحدَها.
 router.get('/payment-requests', ctrl.listPaymentRequests);
+// طلباتُ الفوترة — يرسلها التخليص وتجيبها الماليّة (٢٠٢٦/١٠/٢٢).
+router.get('/invoice-requests', ctrl.listInvoiceRequests);
 // ── فواتيرُ العميل ──────────────────────────────────────────────────────────
 // مراحلُ السداد ما ندفعه؛ وهذه ما نفوتره — تُكتب عند الإقفال وتُقرأ هنا.
 // القائمةُ للإدارة الماليّة ولقسم التخليص معًا، فالقراءةُ بحارس القسم وحدَه.
@@ -94,6 +96,8 @@ router.patch('/:id/stage', authorize(...EDIT_ROLES), ctrl.setStage);
 router.patch('/:id/activate', authorize(...EDIT_ROLES), ctrl.activateClearance);
 // قرارُ الإدارة الماليّة على طلبِ صرف — لها وحدَها.
 router.patch('/:id/payment-stages/:entryId/decision', authorize(...FINANCE_ROLES), ctrl.decidePaymentStage);
+// وجوابُها على طلب الفوترة: «تمّت الفوترة» (ومعها الفاتورة) أو إعادةٌ أو رفض.
+router.patch('/:id/invoice-request/decision', authorize(...FINANCE_ROLES), ctrl.decideInvoiceRequest);
 
 // ملاحظاتُ المعاملة — تُضاف من الجدول ومن داخل المعاملة، وآخرُها يُعرض.
 router.post('/:id/notes', authorize(...EDIT_ROLES), ctrl.addNote);

@@ -7,6 +7,7 @@
     "/api/auth/me",
     "/api/exports/jobs",
     "/api/lookups",
+    "/api/nav-badges",
     "/api/notifications",
     "/api/notifications/read-all",
     "/api/portal/me",
@@ -2137,6 +2138,7 @@
     "/system/finance/customs": {
       "apis": [
         "/api/customs-clearance",
+        "/api/customs-clearance/invoice-requests",
         "/api/customs-clearance/invoices",
         "/api/customs-clearance/payment-requests",
         "/api/finance/departments"

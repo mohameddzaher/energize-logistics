@@ -298,7 +298,32 @@ const customsClearanceSchema = new mongoose.Schema(
       addedByName: { type: String, default: '' },
       addedAt: { type: Date, default: Date.now },
     }],
-    // رقمُ الفاتورة يُمنَح عند الإقفال ولا يتغيّر — به تُعرَف عند الماليّة.
+    /**
+     * ── طلبُ الفوترة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────────────────────────
+     * التخليصُ لا يُصدر الفاتورة: يطلبها. يكتب بنودَ البيع أعلاه ويرسلها، فيصير
+     * الطلبُ «معلّقًا» عند الإدارة الماليّة (ماليات التخليص — قسمٌ خاصٌّ غيرُ
+     * مراحل السداد). والماليّةُ تفوترها في نظامها ثمّ تقول هنا «تمّت الفوترة»
+     * ومعها الفاتورةُ النهائيّة (اختياريّة) — وعندها فقط تُعَدّ المعاملةُ مفوترة
+     * (`saleInvoiceNumber`). أو تعيدها للتصحيح، أو ترفضها.
+     * ومعاملةٌ أُغلقت وطلبُها لم يُفوتَر بعد = «مغلقة لم تُفوتَر».
+     */
+    invoiceRequest: {
+      status: { type: String, enum: ['', 'pending', 'invoiced', 'returned', 'rejected'], default: '', index: true },
+      requestedAt: { type: Date, default: null },
+      requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      requestedByName: { type: String, trim: true, default: '' },
+      note: { type: String, trim: true, default: '' },
+      decidedAt: { type: Date, default: null },
+      decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      decidedByName: { type: String, trim: true, default: '' },
+      decisionNote: { type: String, trim: true, default: '' },
+      // الفاتورةُ النهائيّةُ كما أصدرتها الماليّة.
+      fileUrl: { type: String, default: '' },
+      fileName: { type: String, trim: true, default: '' },
+      mimeType: { type: String, trim: true, default: '' },
+      size: { type: Number, default: 0 },
+    },
+    // رقمُ الفاتورة يُكتب حين تقول الماليّةُ «تمّت الفوترة» — به تُعرَف عندها.
     saleInvoiceNumber: { type: String, trim: true, default: '', index: true },
     saleInvoiceAt: { type: Date, default: null },
     // نسبةُ الضريبة وقتَ الإقفال — تُلقَط كي لا تتغيّر فاتورةٌ قديمةٌ بتغيّرها.

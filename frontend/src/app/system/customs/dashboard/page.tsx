@@ -35,7 +35,7 @@ interface Row {
   bucket: 'upcoming' | 'open' | 'closed' | 'cancelled'; percent: number; next: string; nextLabel: string;
   date: string; port?: string; declarationNumber?: string;
   createdAt: string; createdBy: string | null; createdByName: string; expectedDate: string; expectedState?: string;
-  completedAt: string | null; invoiceNumber: string; invoiced: boolean; awaitingTransportInvoice: boolean;
+  completedAt: string | null; invoiceNumber: string; invoiced: boolean; awaitingTransportInvoice: boolean; invoiceRequest?: string;
   returnDeadline: string; returnState: '' | 'overdue' | 'due'; pendingPayments: number; openTasks: number;
   /** أين وحداتُ المعاملة (حاوياتُها أو سيّاراتُها) — لكلّ وحدةٍ مراحلُها من أوّل النقل. */
   unitsState: { total: number; atPort: number; inYard: number; delivered: number; returned: number; notReturned: number; late: number };
@@ -141,7 +141,8 @@ export default function CustomsDashboardPage() {
     type: (r) => (r.cargoType === 'vehicles' ? t('سيّارات', 'Vehicles') : t('حاويات', 'Containers')),
     units: (r) => r.units, state: bucketWord,
     next: (r) => (r.bucket === 'open' ? stageOf(r.next || 'done', r.cargoType) : ''),
-    invoice: (r) => (r.awaitingTransportInvoice ? t('بانتظار فاتورة النقل', 'Awaiting transport invoice') : r.invoiced ? t('مفوترة', 'Invoiced') : t('غير مفوترة', 'Not invoiced')),
+    invoice: (r) => (r.awaitingTransportInvoice ? t('بانتظار فاتورة النقل', 'Awaiting transport invoice') : r.invoiced ? t('مفوترة', 'Invoiced')
+      : r.invoiceRequest === 'pending' ? t('طلب فوترة عند المالية', 'Requested from Finance') : t('غير مفوترة', 'Not invoiced')),
     date: (r) => r.date, month: (r) => (r.date || '').slice(0, 7), by: (r) => r.createdByName,
   };
   const rows = cf.apply(base, getters);
@@ -384,6 +385,8 @@ export default function CustomsDashboardPage() {
                         ? <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white">{t('بانتظار فاتورة النقل', 'Awaiting transport invoice')}</span>
                         : r.invoiceNumber ? <bdi className="text-slate-700">{r.invoiceNumber}</bdi>
                           : r.invoiced ? <span className="text-slate-500">{t('مفوترة', 'Invoiced')}</span>
+                            : r.invoiceRequest === 'pending' ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">{t('طلب فوترة عند المالية', 'Requested from Finance')}</span>
+                            : (r.invoiceRequest === 'returned' || r.invoiceRequest === 'rejected') ? <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-700">{r.invoiceRequest === 'returned' ? t('أُعيد طلبُ الفوترة', 'Request returned') : t('رُفض طلبُ الفوترة', 'Request rejected')}</span>
                             : r.bucket === 'closed' ? <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-700">{t('لم تُفوتَر', 'Not invoiced')}</span>
                               : <span className="text-slate-300">—</span>}
                     </td>

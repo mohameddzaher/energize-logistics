@@ -58,10 +58,10 @@ export default function TransportInvoiceBanner({
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-600 text-white"><AlertTriangle className="h-4 w-4" /></span>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-bold text-red-800">
-          {t('صدرت الفاتورة', 'Invoice issued')} <bdi>{invoiceNumber}</bdi> — {t('بانتظار فاتورة النقل', 'awaiting the transport invoice')}
+          {invoiceNumber ? <>{t('فُوترت', 'Invoiced')} <bdi>{invoiceNumber}</bdi></> : t('أُرسل طلبُ الفوترة', 'Invoice request sent')} — {t('بانتظار فاتورة النقل', 'awaiting the transport invoice')}
         </p>
         <p className="text-[12px] text-red-700/80">
-          {t('الفاتورةُ عند الإدارة الماليّة، والمعاملةُ تبقى مفتوحةً حتى تُرفَق فاتورةُ النقل — فتُنهى عندها.',
+          {t('الطلبُ عند الإدارة الماليّة، والمعاملةُ تبقى مفتوحةً حتى تُرفَق فاتورةُ النقل — فتُغلَق عندها.',
              'Finance has the invoice. The transaction stays open until the transport invoice is attached — then it closes.')}
         </p>
       </div>

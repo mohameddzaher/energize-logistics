@@ -42,7 +42,7 @@ const customsStages = [
   ('unloaded_stored', 'التفريغ والتخزين', 'Unloading & storage'),
   ('yard_to_customer', 'نقل الحاويات من الساحة إلى العميل', 'Containers: yard to customer'),
   ('containers_returned', 'إرجاع الحاويات', 'Containers returned'),
-  ('invoiced', 'إصدار الفاتورة', 'Invoice issued'),
+  ('invoiced', 'الفوترة', 'Invoiced'),
 ];
 
 // مفتاحُ ما قبل تفريع النقل — باقٍ في `stage` على معاملاتٍ قديمة.
@@ -389,10 +389,9 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     final r = await _send(() =>
         Api.instance.patch('/api/customs-clearance/${widget.clearanceId}/invoice', {'saleItems': items}));
     if (r == null) return;
-    final no = '${_m(_m(r)['clearance'])['saleInvoiceNumber'] ?? ''}';
     _say(_m(r)['closed'] == true
-        ? tr('صدرت الفاتورة $no وأُنهيت المعاملة', 'Invoice $no issued — transaction closed')
-        : tr('صدرت الفاتورة $no — بانتظار فاتورة النقل', 'Invoice $no issued — awaiting the transport invoice'));
+        ? tr('أُرسل طلبُ الفوترة إلى الإدارة الماليّة وأُغلقت المعاملة', 'Invoice request sent — transaction closed')
+        : tr('أُرسل طلبُ الفوترة إلى الإدارة الماليّة', 'Invoice request sent to Finance'));
   }
 
   Future<void> _attachTransportInvoice() async {
@@ -501,7 +500,10 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     final cancelled = c['cancelled'] == true;
     final completed = c['isCompleted'] == true;
     // فُوترت ولم تُنهَ: تنتظر فاتورةَ النقل (awaitsTransportInvoice في الخادم).
-    final awaiting = invoiceNo.isNotEmpty && !completed && !cancelled && c['transportInvoiceReceived'] != true;
+    // طلبُ الفوترة عند الإدارة الماليّة (٢٠٢٦/١٠/٢٢): مفوترةٌ حين تقول الماليّةُ ذلك.
+    final ireq = _m(c['invoiceRequest']);
+    final ireqStatus = '${ireq['status'] ?? ''}';
+    final awaiting = (invoiceNo.isNotEmpty || ireqStatus == 'pending') && !completed && !cancelled && c['transportInvoiceReceived'] != true;
     // من النقل فما بعده تُتابَع المراحلُ لكلّ وحدة: `units[i].steps` مراحلُها هي،
     // و`steps` في مستوى المعاملة مجموعُها (unitsDone/unitsOf).
     final perUnit = pipeline['perUnit'] == true;
@@ -610,6 +612,29 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
+                    // ── حالُ طلب الفوترة ──
+                    if (!cancelled && ireqStatus.isNotEmpty) ...[
+                      AppCard(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(
+                            ireqStatus == 'invoiced' ? '${tr('تمّت الفوترة من الإدارة الماليّة', 'Invoiced by Finance')} · $invoiceNo'
+                                : ireqStatus == 'pending' ? tr('طلبُ الفوترة عند الإدارة الماليّة — لم تُفوتَر بعد', 'Invoice request with Finance — not invoiced yet')
+                                    : ireqStatus == 'returned' ? tr('أعادت الإدارةُ الماليّة طلبَ الفوترة للتصحيح', 'Finance returned the request')
+                                        : tr('رفضت الإدارةُ الماليّة طلبَ الفوترة', 'Finance rejected the request'),
+                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13,
+                                color: ireqStatus == 'invoiced' ? T.success : ireqStatus == 'pending' ? T.warn : T.danger)),
+                          if ('${ireq['decisionNote'] ?? ''}'.isNotEmpty)
+                            Text('«${ireq['decisionNote']}»', style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+                          if ('${ireq['fileUrl'] ?? ''}'.isNotEmpty)
+                            TextButton.icon(
+                              onPressed: () => _openFile('${ireq['fileUrl']}'),
+                              icon: const Icon(Icons.receipt_long_outlined, size: 16),
+                              label: Text(tr('الفاتورة النهائية', 'Final invoice')),
+                            ),
+                        ]),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     // ── الفوترة والإنهاء فعلان ──
                     if (completed)
                       Align(
@@ -620,15 +645,15 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                           label: Text(tr('إعادة الفتح', 'Reopen')),
                         ),
                       ),
-                    if (closedNotInvoiced || (!completed && !cancelled && c['upcoming'] != true))
+                    if (invoiceNo.isEmpty && (closedNotInvoiced || (!completed && !cancelled && c['upcoming'] != true)))
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
                           onPressed: _saving ? null : _issueInvoice,
                           icon: const Icon(Icons.receipt_long_outlined, size: 18),
-                          label: Text(invoiceNo.isEmpty
-                              ? tr('إصدار الفاتورة', 'Issue invoice')
-                              : tr('تعديل بنود الفاتورة $invoiceNo', 'Edit invoice $invoiceNo')),
+                          label: Text(ireqStatus == 'pending'
+                              ? tr('تعديل طلب الفوترة', 'Edit invoice request')
+                              : tr('طلب فوترة', 'Request invoicing')),
                         ),
                       ),
                     if (completed || (!cancelled && c['upcoming'] != true)) const SizedBox(height: 12),
@@ -1931,7 +1956,7 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
         padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).viewInsets.bottom + 16),
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(tr('إصدار الفاتورة', 'Issue invoice'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            Text(tr('طلب فوترة من الإدارة الماليّة', 'Request invoicing from Finance'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const SizedBox(height: 4),
             Text(tr('اكتب سعرَ كلّ بندٍ يدخل الفاتورة، وأرفِق ورقتَه إن وُجدت. ما تُرك سعرُه فارغًا لا يدخلها.',
                     'Enter the price of each line on the invoice and attach its paper if any. Lines left empty are left out.'),
@@ -1970,7 +1995,7 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
-              child: FilledButton(onPressed: _done, child: Text(tr('إصدار الفاتورة', 'Issue invoice'))),
+              child: FilledButton(onPressed: _done, child: Text(tr('إرسال طلب الفوترة', 'Send invoice request'))),
             ),
           ]),
         ),

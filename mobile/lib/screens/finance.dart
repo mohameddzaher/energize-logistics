@@ -414,17 +414,71 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
     final mine = ++_seq;
     try {
       final invoices = _tab == 'invoices';
+      // طلباتُ الفوترة (٢٠٢٦/١٠/٢٢): التخليصُ يطلب والماليّةُ تقول «تمّت الفوترة».
+      final invreq = _tab == 'invreq';
       final d = await Api.instance.get(invoices
           ? '/api/customs-clearance/invoices?limit=50'
-          : '/api/customs-clearance/payment-requests?status=$_tab&limit=50');
+          : invreq
+              ? '/api/customs-clearance/invoice-requests?status=pending'
+              : '/api/customs-clearance/payment-requests?status=$_tab&limit=50');
       if (!mounted || mine != _seq) return;
       setState(() {
         _rows = List<Map<String, dynamic>>.from((invoices ? d['invoices'] : d['requests']) ?? const []);
-        _counts = invoices ? Map<String, dynamic>.from(d['summary'] ?? const {}) : Map<String, dynamic>.from(d['counts'] ?? const {});
+        _counts = invoices ? Map<String, dynamic>.from(d['summary'] ?? const {})
+            : invreq ? {..._counts, 'invreq': (d['counts'] as Map?)?['pending'] ?? 0}
+            : {...Map<String, dynamic>.from(d['counts'] ?? const {}), 'invreq': _counts['invreq'] ?? 0};
         _loading = false;
       });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// جوابُ طلب الفوترة: «تمّت الفوترة» (رقمٌ وفاتورةٌ نهائيّةٌ اختياريّان) أو إعادةٌ أو رفضٌ بسبب.
+  Future<void> _decideInvoice(Map<String, dynamic> r, String decision) async {
+    final noteCtrl = TextEditingController();
+    final noCtrl = TextEditingController();
+    PickedFile? inv;
+    final go = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => StatefulBuilder(builder: (c, setSheet) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(decision == 'invoiced' ? tr('تمّت الفوترة', 'Mark invoiced')
+                : decision == 'returned' ? tr('إعادة للتصحيح', 'Return') : tr('رفض طلب الفوترة', 'Reject'),
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            Text('${r['refNumber'] ?? ''} · ${r['customerName'] ?? ''}', style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+            const SizedBox(height: 10),
+            if (decision == 'invoiced') ...[
+              TextField(controller: noCtrl, decoration: InputDecoration(labelText: tr('رقم الفاتورة (اختياري)', 'Invoice number (optional)'))),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () async { final f = await pickFileAsDataUrl(); if (f != null) setSheet(() => inv = f); },
+                icon: const Icon(Icons.attach_file, size: 18),
+                label: Text(inv == null ? tr('إرفاق الفاتورة النهائية (اختياري)', 'Attach final invoice (optional)') : inv!.fileName),
+              ),
+            ],
+            TextField(controller: noteCtrl, maxLines: 2,
+                decoration: InputDecoration(labelText: decision == 'invoiced' ? tr('ملاحظة (اختياري)', 'Note (optional)') : tr('السبب', 'Reason'))),
+            const SizedBox(height: 12),
+            SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('تأكيد', 'Confirm')))),
+          ]),
+        ),
+      )),
+    );
+    if (go != true) return;
+    try {
+      await Api.instance.patch('/api/customs-clearance/${r['clearanceId']}/invoice-request/decision', {
+        'decision': decision,
+        'note': noteCtrl.text.trim(),
+        if (decision == 'invoiced') 'invoiceNumber': noCtrl.text.trim(),
+        if (inv != null) 'file': {'dataUrl': inv!.dataUrl, 'fileName': inv!.fileName},
+      });
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -532,7 +586,7 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
             // الأربعةُ الأولى **ما ندفعه** (طلباتُ صرفٍ من التخليص)، وهذه **ما
             // نقبضه**: فاتورةٌ تُصدَر للعميل ببنودها ومجاميعها — قبل إنهاء المعاملة
             // (راجع backend/utils/customsInvoice). ولا تُقرآن في شاشتين.
-            for (final t in const [('pending', 'بانتظار الدفع', 'Awaiting'), ('paid', 'مدفوعة', 'Paid'), ('returned', 'مُعادة', 'Returned'), ('rejected', 'مرفوضة', 'Rejected'), ('invoices', 'فواتير العملاء', 'Customer invoices')])
+            for (final t in const [('pending', 'بانتظار الدفع', 'Awaiting'), ('invreq', 'طلبات الفوترة', 'Invoice requests'), ('paid', 'مدفوعة', 'Paid'), ('returned', 'مُعادة', 'Returned'), ('rejected', 'مرفوضة', 'Rejected'), ('invoices', 'فواتير العملاء', 'Customer invoices')])
               Padding(
                 padding: const EdgeInsets.only(left: 6),
                 child: FilterChip(
@@ -558,8 +612,38 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
         else if (_rows.isEmpty)
           Padding(padding: const EdgeInsets.all(14), child: Center(child: Text(tr('لا طلبات', 'Nothing here'), style: const TextStyle(fontSize: 12, color: T.inkFaint))))
         else
+          if (_tab == 'invreq')
+            ..._rows.take(60).map((r) => Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: T.inkFaint.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(12)),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800))),
+                    InkWell(
+                      onTap: () => showClearanceQuickView(context, '${r['clearanceId']}'),
+                      child: Text('${r['refNumber'] ?? ''}', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: T.orange)),
+                    ),
+                  ]),
+                  const SizedBox(height: 2),
+                  Text('${tr('الإجمالي', 'Total')} ${_fmtAmt(r['total'])} · ${tr('ض', 'VAT')} ${_fmtAmt(r['vat'])} · ${(r['lines'] as List?)?.length ?? 0} ${tr('بند', 'lines')}',
+                      style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+                  Text('${tr('طلبها', 'By')} ${r['requestedByName'] ?? '—'}${r['isCompleted'] == true ? ' · ${tr('مغلقة', 'closed')}' : ''}',
+                      style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    Expanded(child: FilledButton(onPressed: () => _decideInvoice(r, 'invoiced'), child: Text(tr('تمّت الفوترة', 'Invoiced'), style: const TextStyle(fontSize: 12)))),
+                    const SizedBox(width: 6),
+                    OutlinedButton(onPressed: () => _decideInvoice(r, 'returned'), child: Text(tr('إعادة', 'Return'), style: const TextStyle(fontSize: 12))),
+                    const SizedBox(width: 6),
+                    OutlinedButton(onPressed: () => _decideInvoice(r, 'rejected'), child: Text(tr('رفض', 'Reject'), style: const TextStyle(fontSize: 12, color: T.danger))),
+                  ]),
+                ]),
+              ),
+            ))
           // فواتيرُ العملاء صفٌّ آخر: رقمُ الفاتورة ومجاميعُها، لا قرارَ دفعٍ.
-          if (_tab == 'invoices')
+          else if (_tab == 'invoices')
             ..._rows.take(40).map((r) {
               final tot = Map<String, dynamic>.from(r['totals'] ?? const {});
               final billed = Map<String, dynamic>.from(r['billed'] ?? const {});

@@ -763,6 +763,25 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
       .catch(() => setPortalServices([]));
   }, [user?.role, user?._id]);
 
+  // ── أرقامٌ بجانب أسماء الصفحات (/api/nav-badges) — ما ينتظر صاحبَ الصفحة ──
+  // (٢٠٢٦/١٠/٢٢) «ماليات التخليص الجمركي»: طلباتُ صرفٍ + طلباتُ فوترةٍ معلّقة.
+  // يُعاد مع كلّ تغييرٍ في التخليص، وكلَّ دقيقةٍ احتياطًا.
+  const [navBadges, setNavBadges] = useState<Record<string, number>>({});
+  const fetchNavBadges = useCallback(() => {
+    api.get<Record<string, number>>('/api/nav-badges').then((d) => setNavBadges(d || {})).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (!user) return undefined;
+    fetchNavBadges();
+    const t = setInterval(fetchNavBadges, 60000);
+    return () => clearInterval(t);
+  }, [user?._id, fetchNavBadges]); // eslint-disable-line react-hooks/exhaustive-deps
+  const badgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useSocket('customs:updated', useCallback(() => {
+    if (badgeTimer.current) clearTimeout(badgeTimer.current);
+    badgeTimer.current = setTimeout(fetchNavBadges, 1200);
+  }, [fetchNavBadges]));
+
   // Real-time notification updates
   useSocket('notification:new', useCallback(() => {
     fetchNotifications();
@@ -924,7 +943,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
         onMouseEnter={() => prefetch(item.href, true)}
         onTouchStart={() => prefetch(item.href, true)}
         onClick={() => { setPendingHref(item.href); onClick?.(); }}
-        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+        className={`relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
           isActive
             ? 'bg-[#f37121] text-white shadow-sm shadow-[#f37121]/30'
             : pendingHref === item.href
@@ -935,7 +954,13 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
         {pendingHref === item.href && !isActive
           ? <Loader2 className="w-5 h-5 animate-spin text-[#f37121] shrink-0" />
           : item.icon}
-        {(onClick || sidebarOpen) && <span>{item.label}</span>}
+        {(onClick || sidebarOpen) && <span className="min-w-0 flex-1">{item.label}</span>}
+        {navBadges[item.href] ? (
+          <span className={`${(onClick || sidebarOpen) ? '' : 'absolute -top-1 -end-1'} inline-flex min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-5 text-white tabular-nums`}
+            title={lang === 'ar' ? 'طلبات تنتظر الإدارة المالية' : 'Requests awaiting Finance'}>
+            {navBadges[item.href] > 99 ? '99+' : navBadges[item.href]}
+          </span>
+        ) : null}
       </Link>
     );
   };
@@ -954,7 +979,12 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
           onMouseEnter={() => prefetchSection(items)}
           className="w-full flex items-center justify-between gap-2 px-3 py-2.5 mt-2 rounded-lg text-xs font-bold text-slate-400 uppercase tracking-wide bg-slate-800/40 hover:bg-slate-800 hover:text-slate-200 transition-colors"
         >
-          <span>{getSectionLabel(section, lang)}</span>
+          <span className="flex-1 text-start">{getSectionLabel(section, lang)}</span>
+          {!isExpanded && items.reduce((n, it) => n + (navBadges[it.href] || 0), 0) > 0 && (
+            <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10.5px] font-bold leading-[18px] text-white tabular-nums normal-case">
+              {items.reduce((n, it) => n + (navBadges[it.href] || 0), 0)}
+            </span>
+          )}
           {isExpanded
             ? <ChevronDown className="w-4 h-4 text-[#f37121]" />
             : (isRTL ? <ChevronLeft className="w-4 h-4 text-slate-500" /> : <ChevronRight className="w-4 h-4 text-slate-500" />)}

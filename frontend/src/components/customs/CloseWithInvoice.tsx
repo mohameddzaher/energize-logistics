@@ -114,13 +114,13 @@ export default function CloseWithInvoice({
     setBusy(true);
     try {
       const d = await api.patch<any>(`/api/customs-clearance/${clearanceId}/invoice`, { saleItems });
-      const no = d.clearance?.saleInvoiceNumber || '';
+      // طلبٌ إلى الإدارة الماليّة لا فاتورة (٢٠٢٦/١٠/٢٢): المعاملةُ تُفوتَر حين تقول الماليّةُ ذلك.
       notify(d.closed
-        ? t(`صدرت الفاتورة ${no} وأُنهيت المعاملة`, `Invoice ${no} issued — transaction closed`)
-        : t(`صدرت الفاتورة ${no} — المعاملةُ بانتظار فاتورة النقل`, `Invoice ${no} issued — awaiting the transport invoice`), 'success');
+        ? t('أُرسل طلبُ الفوترة إلى الإدارة الماليّة وأُغلقت المعاملة', 'Invoice request sent to Finance — transaction closed')
+        : t('أُرسل طلبُ الفوترة إلى الإدارة الماليّة', 'Invoice request sent to Finance'), 'success');
       onDone(d.clearance);
       onClose();
-    } catch (e: any) { notify(e?.message || t('تعذّر إصدار الفاتورة', 'Failed'), 'error'); }
+    } catch (e: any) { notify(e?.message || t('تعذّر إرسال طلب الفوترة', 'Failed'), 'error'); }
     setBusy(false);
   };
 
@@ -131,7 +131,7 @@ export default function CloseWithInvoice({
       <div className="bg-white w-full max-w-3xl max-h-[92vh] rounded-2xl shadow-xl flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-3.5 border-b border-slate-200 flex items-center gap-2">
           <Receipt className="w-4 h-4 text-[#f37121]" />
-          <h3 className="font-bold text-slate-900">{t('إصدار فاتورة العميل', 'Issue the customer invoice')}</h3>
+          <h3 className="font-bold text-slate-900">{t('طلب فوترة من الإدارة الماليّة', 'Request invoicing from Finance')}</h3>
           <button type="button" onClick={onClose} className="ms-auto text-slate-400 hover:text-slate-900"><X className="w-5 h-5" /></button>
         </div>
 
@@ -185,13 +185,13 @@ export default function CloseWithInvoice({
                   {isTransportKey(d.key) && (transportHere ? (
                     <p className="mt-2 flex items-center gap-1.5 text-[11.5px] font-semibold text-emerald-700">
                       <Check className="h-3.5 w-3.5" />
-                      {t('فاتورةُ النقل مُرفقة — ستُنهى المعاملةُ مع إصدار الفاتورة.', 'Transport invoice on file — the transaction closes with the invoice.')}
+                      {t('فاتورةُ النقل مُرفقة — تُغلَق المعاملةُ مع إرسال طلب الفوترة.', 'Transport invoice on file — the transaction closes when the request is sent.')}
                     </p>
                   ) : (
                     <p className="mt-2 flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-[11.5px] font-semibold text-red-700">
                       <Clock3 className="h-3.5 w-3.5 shrink-0" />
-                      {t('فاتورةُ النقل لم تُستلَم بعد — تصدر الفاتورةُ الآن، وتبقى المعاملةُ معلَّمةً بالأحمر حتى تُرفَق فتُنهى.',
-                         'Transport invoice not received yet — the invoice is issued now; the transaction stays flagged red until it is attached, then closes.')}
+                      {t('فاتورةُ النقل لم تُستلَم بعد — يُرسَل الطلبُ الآن، وتبقى المعاملةُ معلَّمةً بالأحمر حتى تُرفَق فتُغلَق.',
+                         'Transport invoice not received yet — the request is sent now; the transaction stays flagged red until it is attached, then closes.')}
                     </p>
                   ))}
                 </div>
@@ -235,14 +235,14 @@ export default function CloseWithInvoice({
 
         <div className="px-5 py-3.5 border-t border-slate-200 flex items-center gap-2">
           <p className="text-[11px] text-slate-400 flex-1">
-            {t('يُمنَح رقمُ الفاتورة عند أوّل إصدارٍ ولا يتغيّر، وتظهر الفاتورةُ للإدارة الماليّة.',
-               'The invoice number is issued once and never changes; Finance sees the invoice.')}
+            {t('يذهب الطلبُ إلى «ماليات التخليص الجمركي»، ولا تُعَدّ المعاملةُ مفوترةً حتى تقول الإدارةُ الماليّة «تمّت الفوترة» وترفق الفاتورة النهائيّة.',
+               'The request goes to Customs Finance; the transaction counts as invoiced only when Finance marks it invoiced.')}
           </p>
           <button type="button" onClick={onClose} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{t('إلغاء', 'Cancel')}</button>
           <button type="button" onClick={save} disabled={busy || !preview.hasLines}
             className="inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-4 py-2 text-xs font-bold text-white disabled:opacity-40">
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Receipt className="h-3.5 w-3.5" />}
-            {transportHere ? t('إصدار الفاتورة وإنهاء المعاملة', 'Issue invoice & close') : t('إصدار الفاتورة', 'Issue invoice')}
+            {transportHere ? t('طلب الفوترة وإغلاق المعاملة', 'Request invoicing & close') : t('إرسال طلب الفوترة', 'Send invoice request')}
           </button>
         </div>
       </div>

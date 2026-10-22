@@ -127,7 +127,8 @@ const moneyOf = (c) => {
   const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
   const stages = (c?.paymentStages || []).filter((p) => p && p.payStatus !== 'rejected'
     && p.amount !== null && p.amount !== undefined && p.amount !== '' && Number(p.amount) !== 0 && Number.isFinite(Number(p.amount)));
-  const billed = !!c?.saleInvoiceNumber || (c?.saleItems || []).some((x) => x && Number.isFinite(Number(x.amount)));
+  // مفوترةٌ حين تقول الماليّةُ «تمّت الفوترة» (رقمُ الفاتورة) — طلبُ الفوترة وحدَه ليس إيرادًا.
+  const billed = !!c?.saleInvoiceNumber;
   if (!stages.length && !billed) {
     const revenue = num(c?.revenue?.totalInvoiced);
     const cost = num(c?.costs?.total);

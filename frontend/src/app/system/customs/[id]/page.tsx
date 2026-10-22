@@ -153,7 +153,9 @@ export default function CustomsDetailPage() {
   const cargo = pipeline.cargoType;
   const sName = (k: string) => stageName(T.stages, k, cargo);
   const invoiceNumber: string = (c as any).saleInvoiceNumber || '';
-  const awaitingTransport = !!invoiceNumber && !c.isCompleted && !c.cancelled && !(c as any).transportInvoiceReceived;
+  // طلبُ الفوترة إلى الإدارة الماليّة (٢٠٢٦/١٠/٢٢) — المعاملةُ مفوترةٌ حين تقول الماليّةُ ذلك.
+  const ireq: { status?: string; decisionNote?: string; decidedByName?: string; decidedAt?: string; requestedAt?: string; fileUrl?: string } | undefined = (c as any).invoiceRequest;
+  const awaitingTransport = (!!invoiceNumber || ireq?.status === 'pending') && !c.isCompleted && !c.cancelled && !(c as any).transportInvoiceReceived;
 
   const setStage = async (key: string, done: boolean, unit?: 'all' | number) => {
     if (!canEdit || stageBusy) return;
@@ -590,7 +592,7 @@ export default function CustomsDetailPage() {
                   {!invoiceNumber && !pipeline.steps.some((st) => st.key === 'invoiced' && st.done) && (
                     <button type="button" onClick={() => setInvoiceOpen(true)}
                       className="flex items-center gap-1.5 rounded-lg bg-[#f37121] px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-[#e06010]">
-                      <Receipt className="w-4 h-4" /> {ar ? 'إصدار الفاتورة' : 'Issue invoice'}
+                      <Receipt className="w-4 h-4" /> {ireq?.status === 'pending' ? (ar ? 'تعديل طلب الفوترة' : 'Edit invoice request') : (ar ? 'طلب فوترة' : 'Request invoicing')}
                     </button>
                   )}
                   <button type="button" onClick={reopen} disabled={closing}
@@ -599,12 +601,12 @@ export default function CustomsDetailPage() {
                   </button>
                 </>
               )
-              : (
+              : !invoiceNumber && (
                 <button type="button" onClick={() => setInvoiceOpen(true)}
                   className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold transition-colors ${invoiceNumber
                     ? 'bg-slate-100 text-slate-700 hover:text-[#f37121]' : 'bg-[#f37121] text-white hover:bg-[#e06010]'}`}>
                   <Receipt className="w-4 h-4" />
-                  {invoiceNumber ? (ar ? 'تعديل الفاتورة' : 'Edit invoice') : (ar ? 'إصدار الفاتورة' : 'Issue invoice')}
+                  {ireq?.status === 'pending' ? (ar ? 'تعديل طلب الفوترة' : 'Edit invoice request') : (ar ? 'طلب فوترة' : 'Request invoicing')}
                 </button>
               )
           )}
@@ -626,6 +628,32 @@ export default function CustomsDetailPage() {
       </div>
 
       {/* فُوترت ولم تصل فاتورةُ نقلها — أحمرُ في رأس الصفحة حتى تُرفَق. */}
+      {/* ── حالُ طلب الفوترة ─────────────────────────────────────────────── */}
+      {!c.cancelled && ireq?.status && (
+        <div className={`flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 ${ireq.status === 'invoiced' ? 'border-emerald-200 bg-emerald-50' : ireq.status === 'pending' ? 'border-amber-200 bg-amber-50' : 'border-red-200 bg-red-50'}`}>
+          <Receipt className={`h-5 w-5 shrink-0 ${ireq.status === 'invoiced' ? 'text-emerald-600' : ireq.status === 'pending' ? 'text-amber-600' : 'text-red-600'}`} />
+          <div className="min-w-0 flex-1 text-sm">
+            <p className="font-bold text-slate-900">
+              {ireq.status === 'invoiced' ? `${ar ? 'تمّت الفوترة من الإدارة الماليّة' : 'Invoiced by Finance'} · ${invoiceNumber}`
+                : ireq.status === 'pending' ? (ar ? 'طلبُ الفوترة عند الإدارة الماليّة — لم تُفوتَر بعد' : 'Invoice request with Finance — not invoiced yet')
+                  : ireq.status === 'returned' ? (ar ? 'أعادت الإدارةُ الماليّة طلبَ الفوترة للتصحيح' : 'Finance returned the invoice request')
+                    : (ar ? 'رفضت الإدارةُ الماليّة طلبَ الفوترة' : 'Finance rejected the invoice request')}
+            </p>
+            {ireq.decisionNote && <p className="text-[12.5px] text-slate-600">«{ireq.decisionNote}»</p>}
+            {ireq.decidedByName && <p className="text-[11.5px] text-slate-400">{ireq.decidedByName}{ireq.decidedAt ? ` · ${new Date(ireq.decidedAt).toLocaleDateString('en-GB')}` : ''}</p>}
+          </div>
+          {ireq.fileUrl && (
+            <a href={ireq.fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-[12.5px] font-bold text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-50">
+              <Receipt className="h-4 w-4" />{ar ? 'الفاتورة النهائية' : 'Final invoice'}
+            </a>
+          )}
+          {canEdit && ['returned', 'rejected'].includes(ireq.status) && !invoiceNumber && (
+            <button type="button" onClick={() => setInvoiceOpen(true)} className="rounded-lg bg-[#f37121] px-3 py-1.5 text-[12.5px] font-bold text-white hover:bg-[#e06010]">
+              {ar ? 'تصحيح وإعادة الإرسال' : 'Fix & resend'}
+            </button>
+          )}
+        </div>
+      )}
       {awaitingTransport && (
         <TransportInvoiceBanner clearanceId={String(c._id)} invoiceNumber={invoiceNumber} canEdit={canEdit} ar={ar} onChanged={setC} />
       )}

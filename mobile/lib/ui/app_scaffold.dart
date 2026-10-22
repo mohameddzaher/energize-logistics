@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../nav/sections.dart';
+import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
@@ -221,6 +222,23 @@ class AppDrawer extends StatefulWidget {
 
 class _AppDrawerState extends State<AppDrawer> {
   String _q = '';
+  // أرقامٌ بجانب الصفحات (/api/nav-badges) — كالموقع: ما ينتظر صاحبَ الصفحة (٢٠٢٦/١٠/٢٢).
+  Map<String, int> _badges = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    Api.instance.get('/api/nav-badges').then((d) {
+      if (!mounted || d is! Map) return;
+      setState(() => _badges = {for (final e in d.entries) '${e.key}': (e.value as num).toInt()});
+    }).catchError((_) {});
+  }
+
+  Widget? _badge(int n) => n <= 0 ? null : Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(color: T.danger, borderRadius: BorderRadius.circular(20)),
+        child: Text(n > 99 ? '99+' : '$n', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
+      );
 
   String _fold(String s) => s
       .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه')
@@ -320,7 +338,10 @@ class _AppDrawerState extends State<AppDrawer> {
               _label(tr('الأقسام', 'Sections')),
               ...sections.map((s) => ExpansionTile(
                     leading: Icon(s.icon, size: 21, color: T.navy),
-                    title: Text(s.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                    title: Row(children: [
+                      Expanded(child: Text(s.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14))),
+                      _badge(s.pages.fold<int>(0, (n, p) => n + (_badges[p.path] ?? 0))) ?? const SizedBox.shrink(),
+                    ]),
                     shape: const Border(),
                     childrenPadding: EdgeInsetsDirectional.only(start: Lang.instance.ar ? 16 : 16),
                     children: s.pages
@@ -328,6 +349,7 @@ class _AppDrawerState extends State<AppDrawer> {
                               dense: true,
                               leading: Icon(p.icon, size: 19, color: T.inkFaint),
                               title: Text(p.title, style: const TextStyle(fontSize: 13.5)),
+                              trailing: _badge(_badges[p.path] ?? 0),
                               onTap: () => go(p.builder),
                             ))
                         .toList(),

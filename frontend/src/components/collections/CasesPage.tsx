@@ -83,11 +83,13 @@ export default function CasesPage() {
     router.replace(s ? `${PATH}?${s}` : PATH, { scroll: false });
   }, [qs, router]);
 
+  // الخانةُ لا تقرأ صدى ما كتبته من الرابط — راجع ReceivablesPage («يتمسح حرف»).
   const [q, setQ] = useState(qParam);
-  useEffect(() => { setQ(qParam); }, [qParam]);
+  const pushedQ = useRef(qParam);
+  useEffect(() => { if (qParam !== pushedQ.current) { pushedQ.current = qParam; setQ(qParam); } }, [qParam]);
   useEffect(() => {
     if (q.trim() === qParam) return undefined;
-    const id = setTimeout(() => update('q', q.trim()), 350);
+    const id = setTimeout(() => { pushedQ.current = q.trim(); update('q', q.trim()); }, 350);
     return () => clearTimeout(id);
   }, [q, qParam, update]);
 

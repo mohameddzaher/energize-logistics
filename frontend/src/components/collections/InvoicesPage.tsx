@@ -231,7 +231,17 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   // التحصيلُ يُكتب على الكشف، فأيُّ تعديلٍ هناك يُحدِّث هنا في لحظته.
   useSocket('workflow:updated', useCallback(() => { load(true); }, [load]));
   // ربطُ الكشوف بمعاملات التخليص يُعلَن بهذا الخبر (والخادمُ مسح ذاكرته قبله).
-  useSocket('collections:changed', useCallback((d: any) => { if (d?.source === 'customs-link') load(true); }, [load]));
+  // وأيُّ خانةٍ في الكشف تُدخله الشاشةَ أو تُخرجه (مراجعةُ التشغيل، تاريخُ السداد،
+  // النوع، الفاتورة…) يُعلَن بهذا الخبر للعاملَين كليهما، والخادمُ مسح ذاكرته قبله.
+  // («عملتُ مراجعة التشغيل وما لقيتُ الكشف» — ٢٠٢٦/١٠/٢٤.) يُجمَع ما تتابع في ثانية.
+  const liveTick = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const soon = useCallback(() => {
+    if (liveTick.current) clearTimeout(liveTick.current);
+    liveTick.current = setTimeout(() => load(true), 800);
+  }, [load]);
+  useEffect(() => () => { if (liveTick.current) clearTimeout(liveTick.current); }, []);
+  useSocket('collections:changed', soon);
+  useSocket('workflow:bulkImported', soon);
 
   // ── وعددُ المرفقات يتحدّث في مكانه ─────────────────────────────────────────
   // الخبرُ يحمل العددَ الجديد، فلا تُعاد قراءةُ الصفحة كلِّها لأجل مشبك.

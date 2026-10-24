@@ -1781,7 +1781,12 @@ exports.updateWorkflow = async (req, res) => {
     // خطوةً (announce-before-invalidate).
     const kindMoved = String(before.paymentType || '') !== String(workflow.paymentType || '')
       || String(before.paymentSubtype || '') !== String(workflow.paymentSubtype || '');
-    if (kindMoved) invalidateCollectionsReaders();
+    // ── وكلُّ خانةٍ تُدخل الكشفَ شاشةَ التحصيل أو تُخرجه منها (٢٠٢٦/١٠/٢٤) ──
+    // «عملتُ مراجعة التشغيل وما لقيتُ الكشف في فواتير الكاش» — لم يكن يُبَثّ لها
+    // شيء. فتغيُّرُ أيٍّ منها يمسح ذاكرةَ التحصيل ثمّ يُعلن للجميع (أدناه).
+    const GATE_FIELDS = ['operationsReview', 'accountingReview', 'paymentDate', 'invoiceNumber', 'collectedAmount', 'collectionDate', 'cashCollectionStatus'];
+    const gateMoved = kindMoved || GATE_FIELDS.some((f) => String(before[f] ?? '') !== String(workflow[f] ?? ''));
+    if (gateMoved) invalidateCollectionsReaders();
 
     // ── وتاريخُ التحصيل لا يُنشئ دفعةً في مكانٍ آخر ──────────────────────
     // كان إثباتُ تاريخ التحصيل يقيّد `Payment` ويحدّث فاتورةً ورصيدَ عميل في
@@ -1817,8 +1822,8 @@ exports.updateWorkflow = async (req, res) => {
     if (sellingChanged) invalidateSellingReaders();
     try { emitPerRole('workflow:updated', (r) => stripRowFor(r, populated)); } catch (e) { console.error('WebSocket emit error:', e); }
     // `emitPerRole` لا يعبر إلى العامل الآخر — فخبرُ التحصيل يُبثّ للجميع.
-    if (kindMoved) {
-      try { emitToAll('collections:changed', { source: 'workflow', field: 'paymentType', reportNumber: workflow.reportNumber }); } catch (e) { /* */ }
+    if (gateMoved) {
+      try { emitToAll('collections:changed', { source: 'workflow', field: kindMoved ? 'paymentType' : 'gate', reportNumber: workflow.reportNumber }); } catch (e) { /* */ }
     }
     // ── وصفحةُ معاملة التخليص تعرض الكشفَ كاملًا ──────────────────────────────
     // وتُعدِّله من مكانها. و`workflow:updated` يُبثّ لكلّ دورٍ على هذا العامل
@@ -2389,10 +2394,13 @@ exports.bulkUpdate = async (req, res) => {
           && String(t.patch.paymentType || '') !== t.typeBefore)
         || (Object.prototype.hasOwnProperty.call(t.patch, 'paymentSubtype')
           && String(t.patch.paymentSubtype || '') !== t.subBefore));
-      if (kindMoved) invalidateCollectionsReaders();
+      // وخاناتُ باب التحصيل كذلك (مراجعةُ التشغيل، تاريخُ السداد…) — راجع التعديلَ المفرد.
+      const BULK_GATE = ['operationsReview', 'accountingReview', 'paymentDate', 'invoiceNumber', 'collectedAmount', 'collectionDate', 'cashCollectionStatus'];
+      const gateMoved = kindMoved || perRow.some((t) => BULK_GATE.some((f) => Object.prototype.hasOwnProperty.call(t.patch, f)));
+      if (gateMoved) invalidateCollectionsReaders();
       try { emitToAll('workflow:bulkImported', { bulkUpdate: true, updated }); } catch (e) {}
-      if (kindMoved) {
-        try { emitToAll('collections:changed', { source: 'workflow', field: 'paymentType', bulk: true }); } catch (e) { /* */ }
+      if (gateMoved) {
+        try { emitToAll('collections:changed', { source: 'workflow', field: kindMoved ? 'paymentType' : 'gate', bulk: true }); } catch (e) { /* */ }
       }
       logAudit({
         user: req.user, action: 'bulk_update', entity: 'OperationsWorkflow',

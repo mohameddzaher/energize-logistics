@@ -1255,12 +1255,12 @@ exports.invoiceColumnOptions = async (req, res) => {
     let match;
     let Model;
     if (kind === 'cash') {
-      const { AUTO_RULE_FROM } = require('../utils/paymentType');
+      const { AUTO_RULE_FROM, REVIEWED_MATCH } = require('../utils/paymentType');
       match = { ...invoiceFilters(others, { ageField: 'paymentDate' }), paymentType: 'cash' };
       match.$and = [
         ...(match.$and || []),
         // الشرطُ نفسُه الذي في cashInvoices — ومعه ما حصّلته المحفظة.
-        { $or: [{ reportDate: { $lt: AUTO_RULE_FROM } }, { accountingReview: { $nin: ['', null] } }, { collectedByWallet: true }] },
+        { $or: [{ reportDate: { $lt: AUTO_RULE_FROM } }, ...REVIEWED_MATCH.$or, { collectedByWallet: true }] },
         ...columnFilters(others, kind),
       ];
       Model = OperationsWorkflow;
@@ -1380,7 +1380,7 @@ const attachmentCounts = (kind, keys) => require('./collectionsAttachmentsContro
  * collectionsReceivablesController)، فلا تَعُدّ اللوحةُ كشفًا لا تعرضه الصفحة.
  */
 function cashScreenFilter(query) {
-  const { AUTO_RULE_FROM } = require('../utils/paymentType');
+  const { AUTO_RULE_FROM, REVIEWED_MATCH } = require('../utils/paymentType');
   const filter = {
     ...invoiceFilters(query, { ageField: 'paymentDate' }),
     paymentType: 'cash',
@@ -1388,7 +1388,8 @@ function cashScreenFilter(query) {
   filter.$and = [...(filter.$and || []), {
     $or: [
       { reportDate: { $lt: AUTO_RULE_FROM } },
-      { accountingReview: { $nin: ['', null] } },
+      // مراجعةُ التشغيل (أو الحسابات) — راجع REVIEWED_MATCH في utils/paymentType.
+      ...REVIEWED_MATCH.$or,
       // ── إلّا ما حصّله المندوبُ في المحفظة ─────────────────────────────
       // المالُ وصل، فلا يُنتظَر به مراجعةُ التشغيل: يظهر هنا فورًا محصَّلًا
       // (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). راجع utils/walletCollection.

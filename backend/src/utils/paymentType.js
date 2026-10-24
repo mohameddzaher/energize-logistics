@@ -142,6 +142,16 @@ const mayAutoSet = (workflow) => String(workflow?.paymentTypeSource || '') !== '
  * ألفًا وسبعِمئةٍ وخمسةَ عشرَ كشفًا سابقًا، فاشتراطُه عليها يُفرغ شاشةَ التحصيل
  * من كلّ ما تعمل عليه اليوم.
  */
+/**
+ * ── «مراجعةُ التشغيل» هي الباب — لا مراجعةُ الحسابات ───────────────────────
+ * القاعدةُ (٢٠٢٦/٠٩/٠٦): كاشٌ + تاريخُ سداد + **مراجعةُ التشغيل** ← فواتيرُ الكاش
+ * فورًا. وكُتب الشرطُ يومَها على `accountingReview` (مراجعة الحسابات) خطأً، وهي
+ * فارغةٌ في كلّ كشفٍ من سبتمبر — فلم يصل الشاشةَ كاشٌ جديدٌ قطّ إلّا ما حصّلته
+ * المحفظة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٤). فالبابُ `operationsReview`، وتبقى مراجعةُ
+ * الحسابات بابًا ثانيًا لا يضرّ. وهو شرطٌ واحدٌ هنا تقرؤه الشاشةُ ولوحتُها وفلاترُها.
+ */
+const isReviewed = (w = {}) => !!String(w.operationsReview || '').trim() || !!String(w.accountingReview || '').trim();
+const REVIEWED_MATCH = { $or: [{ operationsReview: { $nin: ['', null] } }, { accountingReview: { $nin: ['', null] } }] };
 const reachesCollections = (workflow = {}) => {
   if (hasTaxInvoice(workflow)) return { ok: true, screen: 'tax' };
   const type = String(workflow.paymentType || '');
@@ -149,7 +159,7 @@ const reachesCollections = (workflow = {}) => {
     return { ok: false, reason: 'awaiting_invoice', ar: 'بانتظار رقم الفاتورة' };
   }
   if (!workflow.paymentDate) return { ok: false, reason: 'no_payment_date', ar: 'بلا تاريخ سداد' };
-  if (underNewRule(workflow) && !String(workflow.accountingReview || '').trim()) {
+  if (underNewRule(workflow) && !isReviewed(workflow)) {
     return { ok: false, reason: 'awaiting_review', ar: 'بانتظار مراجعة التشغيل' };
   }
   return { ok: true, screen: 'cash' };
@@ -302,6 +312,7 @@ function normalizePaymentChoice(patch, current = {}) {
 }
 
 module.exports = {
+  isReviewed, REVIEWED_MATCH,
   NO_INVOICE_TOKENS, NO_INVOICE_RX, NOT_AN_INVOICE_RX,
   hasIssuedInvoice, ISSUED_INVOICE_QUERY, ISSUED_INVOICE_EXPR, isUnified,
   derivePaymentType, derivePaymentTypeFor, paymentTypeReason,

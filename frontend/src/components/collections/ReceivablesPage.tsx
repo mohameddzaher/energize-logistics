@@ -136,11 +136,20 @@ export default function ReceivablesPage() {
   }), [update]);
 
   // ── البحثُ يُمهَل ثمّ يُكتب في الرابط ──────────────────────────────────
+  // ── ولا يُقرأ الرابطُ فوق ما يُكتب (٢٠٢٦/١٠/٢٤) ─────────────────────────
+  // كان الرابطُ يُكتب بعد ٣٥٠ م.ث ثمّ يُقرأ فيُكتب فوق الخانة — فمَن كتب «١٢»
+  // والرابطُ لم يحمل بعدُ إلّا «١» وجد «٢» قد مُحي («أكتب رقمين يتمسح واحد»).
+  // فالخانةُ تأخذ من الرابط ما جاء من خارجها وحدَه (مسحُ الفلاتر، الرجوع، رابطٌ
+  // مُرسَل)، لا صدى ما كتبته هي.
   const [q, setQ] = useState(qParam);
-  useEffect(() => { setQ(qParam); }, [qParam]);
+  const pushedQ = useRef(qParam);
+  useEffect(() => { if (qParam !== pushedQ.current) { pushedQ.current = qParam; setQ(qParam); } }, [qParam]);
   useEffect(() => {
     if (q.trim() === qParam) return undefined;
-    const id = setTimeout(() => update((p) => { if (q.trim()) p.set('q', q.trim()); else p.delete('q'); }), 350);
+    const id = setTimeout(() => {
+      pushedQ.current = q.trim();
+      update((p) => { if (q.trim()) p.set('q', q.trim()); else p.delete('q'); });
+    }, 350);
     return () => clearTimeout(id);
   }, [q, qParam, update]);
 

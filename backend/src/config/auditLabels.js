@@ -172,6 +172,7 @@ const ACTION_AR = {
   update_company_email: 'تعديل بريد شركة',
   delete_company_email: 'حذف بريد شركة',
   reveal_company_email_password: 'كشف كلمة مرور بريد',
+  send_statement_email: 'إرسال كشف حساب بالبريد',
   export_company_email_passwords: 'تصدير كلمات مرور البريد',
   repair_integrity: 'إصلاح تكامل البيانات',
 };
@@ -219,7 +220,7 @@ const ENTITY_LABELS = {
   OperationsWorkflow: ['كشف تشغيل', 'Operations report'], PrivateSellingPrice: ['سعر البيع الخاص', 'Private selling price'],
   CollectionsParty: ['طرف تحصيل', 'Collections party'], CollectionsFollowUp: ['متابعة تحصيل', 'Collections follow-up'],
   CollectionAttachment: ['مرفق فاتورة تحصيل', 'Collections invoice attachment'],
-  CompanyEmail: ['بريد شركة', 'Company email'], RolePermission: ['صلاحيات دور', 'Role permissions'],
+  CompanyEmail: ['بريد شركة', 'Company email'], CollectionsEmailTemplate: ['قالب بريد التحصيل', 'Collections email template'], RolePermission: ['صلاحيات دور', 'Role permissions'],
   CustomRole: ['دور مخصص', 'Custom role'], Lookup: ['قيمة قائمة', 'Lookup value'], System: ['النظام', 'System'],
   PartnerAccount: ['حساب شريك', 'Partner account'], CrmVendor: ['مورد نقل', 'Carrier'],
   JournalEntry: ['قيد محاسبي', 'Journal entry'], Complaint: ['شكوى', 'Complaint'],

@@ -29,7 +29,8 @@ import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/componen
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import SearchSelect from '@/components/system/SearchSelect';
 import { openPdf, printPdf } from '@/utils/pdfActions';
-import { Banknote, Receipt, SlidersHorizontal, X, CheckCircle2, ChevronLeft, Truck, Printer, FileText } from 'lucide-react';
+import { Banknote, Receipt, SlidersHorizontal, X, CheckCircle2, ChevronLeft, Truck, Printer, FileText, Mail } from 'lucide-react';
+import SendStatementModal from '@/components/collections/SendStatementModal';
 import ScrollX from '@/components/system/ScrollX';
 import { AttachmentsButton } from '@/components/collections/InvoiceAttachments';
 
@@ -619,6 +620,18 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   // النتيجةُ كلُّها بكلّ صفحاتها. وما يُفلتَر هنا في المتصفّح (فلاترُ الأعمدة
   // المحسوبة) والتحديدُ والأعمدةُ الظاهرة تُرسَل معه.
   const [stBusy, setStBusy] = useState<'' | 'open' | 'print'>('');
+  // «إرسال للعميل» — بالفلتر نفسِه الذي يطبع الكشف (SendStatementModal).
+  const [sendParams, setSendParams] = useState<URLSearchParams | null>(null);
+  const statementParams = () => {
+    const p = queryParams();
+    for (const [key, set] of Object.entries(cf.filters)) {
+      for (const v of set) p.append(`lf_${key}`, v);
+    }
+    if (selected.size) for (const k of selected) p.append('sel', k);
+    p.set('cols', cols.map((c) => c.key).join(','));
+    p.set('lang', ar ? 'ar' : 'en');
+    return p;
+  };
   const statementPath = () => {
     const p = queryParams();
     for (const [key, set] of Object.entries(cf.filters)) {
@@ -687,6 +700,13 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
           {stBusy === 'open' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
           {stBusy === 'open' ? t('جارٍ إعداد الكشف…', 'Preparing…') : t('كشف حساب PDF', 'Statement PDF')}
         </button>
+        {canEdit && (
+          <button type="button" onClick={() => setSendParams(statementParams())}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] text-white hover:bg-[#e06010] text-sm font-bold"
+            title={t('إرسال كشف الحساب لنتيجة الفلتر إلى بريد العميل من بريد التحصيل', 'Email the filtered statement to the customer from the collections mailbox')}>
+            <Mail className="w-4 h-4" />{t('إرسال للعميل', 'Email customer')}
+          </button>
+        )}
         <button type="button" onClick={() => statement('print')} disabled={!!stBusy}
           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 text-sm font-semibold disabled:opacity-60"
           title={t('طباعة كشف الحساب على الطابعة مباشرة', 'Print the statement straight to the printer')}>
@@ -1147,6 +1167,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
           </div>
         )}
       </Modal>
+      {sendParams && <SendStatementModal kind={kind} params={sendParams} ar={ar} onClose={() => setSendParams(null)} />}
     </div>
   );
 }

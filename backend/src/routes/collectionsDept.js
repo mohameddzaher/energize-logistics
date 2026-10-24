@@ -80,6 +80,12 @@ router.get('/invoices/:kind/column-options', authorize(...READ_ROLES), ctrl.invo
 // كشفُ حسابٍ PDF لما على الشاشة — قبل `/invoices/tax/:invoiceNumber`، وإلّا
 // قُرئت «statement» رقمَ فاتورة.
 router.get('/invoices/:kind/statement', authorize(...READ_ROLES), ctrl.invoiceStatement);
+// ── إرسالُ الكشف إلى العميل بالبريد من صندوق التحصيل — controllers/collectionsMailController ──
+const mail = require('../controllers/collectionsMailController');
+router.get('/invoices/:kind/send-draft', authorize(...READ_ROLES), mail.draft);
+router.post('/invoices/:kind/send', authorize(...EDIT_ROLES), mail.send);
+router.get('/email-template', authorize(...READ_ROLES), mail.getTemplate);
+router.put('/email-template', authorize(...EDIT_ROLES), mail.saveTemplate);
 router.get('/invoices/cash', authorize(...READ_ROLES), ctrl.cashInvoices);
 router.get('/invoices/tax', authorize(...READ_ROLES), ctrl.taxInvoices);
 // الرقمُ قد يحمل شرطاتٍ ومسافات — يُلتقط كما هو.

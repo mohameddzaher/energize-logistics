@@ -64,6 +64,8 @@ export interface CollectionsParty {
   nameKey?: string;
   phone?: string;
   email?: string;
+  /** أكثرُ من بريد (٢٠٢٦/١٠/٢٤) — `email` أوّلُها. راجع backend utils/partyEmails. */
+  emails?: string[];
   contactPerson?: string;
   contactPhone?: string;
   accountantName?: string;

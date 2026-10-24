@@ -43,6 +43,9 @@ const collectionsPartySchema = new mongoose.Schema({
   // مفصولةٌ لأنّ الاتّصال بالمالك في شأن سندٍ يضيّع يومًا.
   phone: { type: String, trim: true, default: '' },
   email: { type: String, trim: true, default: '' },
+  // أكثرُ من بريدٍ للعميل الواحد (٢٠٢٦/١٠/٢٤) — يُرسَل إليها كشفُ الحساب كلِّها.
+  // و`email` يبقى أوّلَها لكلّ من يقرأه (utils/partyEmails يجمعهما).
+  emails: { type: [String], default: [] },
   contactPerson: { type: String, trim: true, default: '' },
   contactPhone: { type: String, trim: true, default: '' },
   accountantName: { type: String, trim: true, default: '' },

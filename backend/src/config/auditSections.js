@@ -122,7 +122,7 @@ const ENTITY_SECTION = {
   // مراجعة الأعمال
   BrMeeting: 'business-review', BrAction: 'business-review', BrAssignment: 'business-review',
   // تقنية المعلومات
-  CompanyEmail: 'it', Asset: 'it',
+  CompanyEmail: 'it', Asset: 'it', CollectionsEmailTemplate: 'collections',
   // المستخدمون والنظام
   User: 'system', RolePermission: 'system', CustomRole: 'system',
   Branch: 'system', Lookup: 'system', System: 'system', PartnerAccount: 'system',

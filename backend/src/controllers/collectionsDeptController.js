@@ -67,11 +67,13 @@ const EDITABLE = [
   // ولا يُصحَّح يبقى خطأً إلى الأبد.
   'code', 'collectionOfficer', 'officer', 'hoLocation', 'grade', 'salesManagers',
   'department', 'region', 'creditDays', 'aliases',
+  // أكثرُ من بريد — راجع utils/partyEmails.
+  'emails',
 ];
 const pick = (body) => {
   const out = {};
   for (const k of EDITABLE) if (body[k] !== undefined) out[k] = body[k];
-  return out;
+  return require('../utils/partyEmails').applyEmails(out);
 };
 
 const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;

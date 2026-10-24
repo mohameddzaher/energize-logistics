@@ -12,6 +12,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import JpTaskPanel from '@/components/jp/JpTaskPanel';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
+import { useSocket } from '@/hooks/useSocket';
 import { kindWords, money, dt, paymentTypeLabel, type CollectionsParty } from '@/lib/collections';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, Select, Loader2 } from '@/components/hr/HRKit';
@@ -140,6 +141,9 @@ export default function PartyProfilePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, page]);
   useEffect(() => { load(); }, [load]);
+  // تعديلُ الطرف (بريدُه، بياناتُه) من أيّ شاشةٍ، وبريدُ كشفٍ أُرسل إليه — يظهر هنا في لحظته.
+  useSocket('collections:party', useCallback((d: any) => { if (!d?.id || String(d.id) === String(id)) load(); }, [id, load]));
+  useSocket('collections:changed', useCallback((d: any) => { if (d?.source === 'email' && (!d.party || String(d.party) === String(id))) load(); }, [id, load]));
 
   // ── قمعُ إكسل على جدولَي الملفّ ────────────────────────────────────────
   // لكلِّ جدولٍ قمعُه: فلترُ الفواتير لا يفلتر الكشوفَ ولا العكس.
@@ -302,7 +306,7 @@ export default function PartyProfilePage() {
             </p>
             <div className="space-y-1.5">
               <Row label={t('الجوال', 'Phone')} value={p.phone} href={p.phone ? `tel:${p.phone}` : undefined} />
-              <Row label={t('البريد', 'Email')} value={p.email} href={p.email ? `mailto:${p.email}` : undefined} />
+              <Row label={t('البريد', 'Email')} value={((p as any).emails && (p as any).emails.length ? (p as any).emails : (p.email ? [p.email] : [])).join(' · ')} href={p.email ? `mailto:${((p as any).emails && (p as any).emails.length ? (p as any).emails : [p.email]).join(',')}` : undefined} />
               <Row label={t('مسؤول التواصل', 'Contact')} value={p.contactPerson} />
               <Row label={t('جوال المسؤول', 'Contact phone')} value={p.contactPhone} href={p.contactPhone ? `tel:${p.contactPhone}` : undefined} />
               {/* محاسبُ الطرف: مناقشةُ سندٍ مع المالك تضيّع يومًا. */}

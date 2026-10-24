@@ -271,6 +271,7 @@
       "apis": [
         "/api/collections-dept/attachments",
         "/api/collections-dept/follow-ups",
+        "/api/collections-dept/invoices",
         "/api/collections-dept/ledger/invoices/filters",
         "/api/collections-dept/ledger/team/assign",
         "/api/collections-dept/parties",
@@ -289,6 +290,7 @@
       "apis": [
         "/api/collections-dept/attachments",
         "/api/collections-dept/follow-ups",
+        "/api/collections-dept/invoices",
         "/api/collections-dept/ledger/invoices/filters",
         "/api/collections-dept/ledger/team/assign",
         "/api/collections-dept/parties",
@@ -349,6 +351,7 @@
     },
     "/system/collections-dept/settings": {
       "apis": [
+        "/api/collections-dept/email-template",
         "/api/lookups/types"
       ],
       "wildcard": false

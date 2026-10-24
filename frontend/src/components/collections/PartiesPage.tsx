@@ -1,4 +1,5 @@
 'use client';
+import { EmailList } from '@/components/collections/SendStatementModal';
 // أطرافُ التحصيل — الصفحةُ نفسُها تخدم العملاءَ والموردين.
 //
 // البنيةُ واحدة (اسمٌ، تواصلٌ، مستحقٌّ، ملفٌّ يُفتح) والفرقُ اتّجاهُ المال.
@@ -219,7 +220,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
         </a>
       ) : '—'}
       {p.email ? (
-        <a href={`mailto:${p.email}`} className="ms-2 inline-flex items-center gap-1 hover:text-[#f37121]" title={p.email}>
+        <a href={`mailto:${(p.emails && p.emails.length ? p.emails : [p.email]).join(',')}`} className="ms-2 inline-flex items-center gap-1 hover:text-[#f37121]" title={p.email}>
           <Mail className="w-3.5 h-3.5" />
         </a>
       ) : null}
@@ -673,9 +674,12 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
             <Field label={t('الجوال', 'Phone')}>
               <TextInput value={editing?.phone || ''} onChange={(e) => setEditing((p) => ({ ...p, phone: e.target.value }))} />
             </Field>
-            <Field label={t('البريد الإلكتروني', 'Email')}>
-              <TextInput type="email" value={editing?.email || ''} onChange={(e) => setEditing((p) => ({ ...p, email: e.target.value }))} />
-            </Field>
+            {/* أكثرُ من بريد — إليها كلِّها يُرسَل كشفُ الحساب (٢٠٢٦/١٠/٢٤). */}
+            <div className="sm:col-span-2">
+              <EmailList ar={ar} label={t('البريد الإلكتروني (يمكن أكثر من بريد)', 'Emails (more than one allowed)')}
+                value={editing?.emails && editing.emails.length ? editing.emails : (editing?.email ? [editing.email] : [])}
+                onChange={(v) => setEditing((p) => ({ ...p, emails: v, email: v[0] || '' }))} />
+            </div>
             <Field label={t('مسؤول التواصل', 'Contact person')}>
               <TextInput value={editing?.contactPerson || ''} onChange={(e) => setEditing((p) => ({ ...p, contactPerson: e.target.value }))} />
             </Field>

@@ -336,7 +336,14 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
     lang: ar ? 'ar' : 'en',
     footerNote: `${t('إنرجايز للخدمات اللوجستية', 'Energize Logistics')} · ${t('كشف حساب بتاريخ', 'Statement dated')} ${today}`,
   };
-  return { doc, check: { cards, narrowed, rows: rows.length, printed: printed.length, openValue, screenTotals: data.totals, screenTotal: data.total } };
+  // وما يحتاجه إرسالُ الكشف بالبريد (collectionsMailController): لمن، وكم بقي،
+  // ومنذ متى، وجدولُ الفواتير كلُّه بأعمدة الورقة نفسِها لملفّ Excel المرفق.
+  const oldestDays = open.reduce((mx, r) => (r.ageDays != null && r.ageDays > mx ? r.ageDays : mx), 0);
+  const mail = {
+    partyName, codes, kindLabel, openCount: open.length, openValue, oldestDays, today,
+    sheet: { head: cols.map((c) => c.header), rows: rows.map((r) => cols.map((c) => cellOf(c, r))) },
+  };
+  return { doc, check: { cards, narrowed, rows: rows.length, printed: printed.length, openValue, screenTotals: data.totals, screenTotal: data.total }, mail };
 }
 
 module.exports = { buildInvoiceStatement, PRINT_ROW_CAP };

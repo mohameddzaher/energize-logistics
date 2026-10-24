@@ -11,17 +11,22 @@ import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { PageHeader } from '@/components/hr/HRKit';
 import ReferenceDataManager from '@/components/system/ReferenceDataManager';
-import { Settings, Tags, Users, Truck, ClipboardList } from 'lucide-react';
+import { Settings, Tags, Users, Truck, ClipboardList, Mail } from 'lucide-react';
+import EmailTemplateEditor from '@/components/collections/EmailTemplateEditor';
+import { useAuth } from '@/context/AuthContext';
+import { canEditCollections } from '@/lib/collections';
 
 export default function CollectionsSettingsPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
-  const [tab, setTab] = useState<'lists' | 'registers'>('lists');
+  const { user } = useAuth();
+  const [tab, setTab] = useState<'lists' | 'registers' | 'email'>('lists');
 
   const TABS: [typeof tab, string, string, any][] = [
     ['lists', 'القوائم المنسدلة', 'Dropdown lists', Tags],
     ['registers', 'السجلّات', 'Registers', Users],
+    ['email', 'قالب البريد', 'Email template', Mail],
   ];
 
   return (
@@ -49,6 +54,8 @@ export default function CollectionsSettingsPage() {
       {/* قوائمُ هذا القسم وحدَه — لا قوائمُ النظام كلِّه في صفحةٍ عامّةٍ يبحث
           فيها المستخدم عن قائمته بين قوائم غيره. */}
       {tab === 'lists' && <ReferenceDataManager module="collections" alsoType="jp_task_collections" embedded />}
+
+      {tab === 'email' && <EmailTemplateEditor ar={ar} canEdit={canEditCollections(user)} />}
 
       {tab === 'registers' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

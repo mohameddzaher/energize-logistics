@@ -11,7 +11,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import { Loader2, Save, RotateCcw, Mail } from 'lucide-react';
 
-interface Tpl { subject: string; body: string; updatedAt?: string; updatedByName?: string; placeholders: [string, string][]; mailbox: string; defaults: { subject: string; body: string } }
+interface Tpl { subject: string; body: string; signature?: string; signatureImage?: string; signatureImageName?: string; updatedAt?: string; updatedByName?: string; placeholders: [string, string][]; mailbox: string; defaults: { subject: string; body: string } }
 
 export default function EmailTemplateEditor({ ar, canEdit }: { ar: boolean; canEdit: boolean }) {
   const t = (a: string, e: string) => (ar ? a : e);
@@ -19,22 +19,25 @@ export default function EmailTemplateEditor({ ar, canEdit }: { ar: boolean; canE
   const [tpl, setTpl] = useState<Tpl | null>(null);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  const [sig, setSig] = useState('');
+  const [sigImg, setSigImg] = useState('');
+  const [sigImgName, setSigImgName] = useState('');
   const [saving, setSaving] = useState(false);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const load = useCallback(() => {
-    api.get<Tpl>('/api/collections-dept/email-template').then((x) => { setTpl(x); setSubject(x.subject); setBody(x.body); }).catch(() => {});
+    api.get<Tpl>('/api/collections-dept/email-template').then((x) => { setTpl(x); setSubject(x.subject); setBody(x.body); setSig(x.signature || ''); setSigImg(x.signatureImage || ''); setSigImgName(x.signatureImageName || ''); }).catch(() => {});
   }, []);
   useEffect(() => { load(); }, [load]);
   // زميلٌ حفظ القالبَ من شاشةٍ أخرى — يُقرأ الجديد ما لم يكن هنا تعديلٌ لم يُحفظ.
   useSocket('collections:changed', useCallback((d: any) => {
-    if (d?.source === 'email-template' && tpl && subject === tpl.subject && body === tpl.body) load();
-  }, [load, tpl, subject, body]));
+    if (d?.source === 'email-template' && tpl && subject === tpl.subject && body === tpl.body && sig === (tpl.signature || '') && sigImg === (tpl.signatureImage || '')) load();
+  }, [load, tpl, subject, body, sig, sigImg]));
 
-  const dirty = !!tpl && (subject !== tpl.subject || body !== tpl.body);
+  const dirty = !!tpl && (subject !== tpl.subject || body !== tpl.body || sig !== (tpl.signature || '') || sigImg !== (tpl.signatureImage || ''));
   const save = async () => {
     setSaving(true);
     try {
-      const r = await api.put<Tpl>('/api/collections-dept/email-template', { subject, body });
+      const r = await api.put<Tpl>('/api/collections-dept/email-template', { subject, body, signature: sig, signatureImage: sigImg, signatureImageName: sigImgName });
       setTpl((p) => (p ? { ...p, ...r } : p));
       notify(t('حُفظ القالب — يصل أوّلَ رسالةٍ تُرسَل الآن', 'Template saved — used by the next email'), 'success');
     } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Save failed'), 'error'); }
@@ -74,6 +77,31 @@ export default function EmailTemplateEditor({ ar, canEdit }: { ar: boolean; canE
               {k} <span className="font-normal text-slate-500">— {d}</span>
             </button>
           ))}
+        </div>
+      </div>
+      {/* ── التوقيع: يُلحَق بآخر كلّ رسالة ──────────────────────────────── */}
+      <div className="rounded-xl border border-slate-200 p-3 space-y-2">
+        <p className="text-[12.5px] font-semibold text-slate-700">{t('التوقيع — يُضاف في آخر كلّ رسالة', 'Signature — added to the end of every email')}</p>
+        <textarea rows={4} value={sig} onChange={(e) => setSig(e.target.value)} disabled={!canEdit} dir="auto"
+          placeholder={t('مثال: إدارة التحصيل — إنرجايز للخدمات اللوجستية\nهاتف: 920031911', 'e.g. Collections — Energize Logistics')}
+          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm leading-7" />
+        <div className="flex flex-wrap items-center gap-3">
+          {sigImg ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={sigImg} alt="" className="max-h-20 max-w-[240px] rounded border border-slate-200 bg-white p-1" />
+          ) : <span className="text-[12px] text-slate-500">{t('لا صورة توقيع', 'No signature image')}</span>}
+          {canEdit && (
+            <label className="cursor-pointer rounded-lg bg-slate-100 px-3 py-1.5 text-[12.5px] font-semibold text-slate-700 hover:text-[#f37121]">
+              {sigImg ? t('تغيير الصورة', 'Change image') : t('إضافة صورة (شعار/توقيع)', 'Add an image (logo/signature)')}
+              <input type="file" accept="image/png,image/jpeg" hidden onChange={(e) => {
+                const f = e.target.files?.[0]; e.target.value = '';
+                if (!f) return;
+                if (f.size > 300 * 1024) { notify(t('الصورة أكبر من ٣٠٠ ك.ب — صغّرها', 'Image over 300 KB'), 'error'); return; }
+                const r = new FileReader(); r.onload = () => { setSigImg(String(r.result)); setSigImgName(f.name); }; r.readAsDataURL(f);
+              }} />
+            </label>
+          )}
+          {canEdit && sigImg && <button type="button" onClick={() => { setSigImg(''); setSigImgName(''); }} className="text-[12.5px] text-red-600">{t('إزالة الصورة', 'Remove image')}</button>}
         </div>
       </div>
       {canEdit && (

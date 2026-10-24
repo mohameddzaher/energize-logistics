@@ -15,7 +15,7 @@ import { Loader2, Send, X, Plus, FileText, Mail, AlertTriangle } from 'lucide-re
 
 interface Draft {
   mailbox: string; partyName: string; partyId: string | null; partyCode: string;
-  to: string[]; subject: string; body: string; rows: number; openCount: number; openValue: number; multipleCustomers: boolean;
+  to: string[]; subject: string; body: string; signature?: string; signatureImage?: string; rows: number; openCount: number; openValue: number; multipleCustomers: boolean;
 }
 const RX = /^[^\s@<>()[\],;:"]+@[^\s@<>()[\],;:"]+\.[^\s@<>()[\],;:"]{2,}$/;
 
@@ -134,8 +134,8 @@ export default function SendStatementModal({ kind, params, ar, onClose }: {
               <AlertTriangle className="h-4 w-4" />{t('لا بريد لهذا العميل في ملفّه — أضفه هنا، ويُفضَّل في ملفّ العميل ليُستخدَم دائمًا.', 'No email on file — add it here, and ideally in the customer profile.')}
             </p>
           )}
-          <EmailList label={t('إلى', 'To')} value={to} onChange={setTo} ar={ar} />
-          <EmailList label={t('نسخة (اختياري)', 'Cc (optional)')} value={cc} onChange={setCc} ar={ar} />
+          <EmailList label={t('إلى — يمكن أكثر من بريد', 'To — more than one allowed')} value={to} onChange={setTo} ar={ar} />
+          <EmailList label={t('نسخة CC — يمكن أكثر من بريد (اختياري)', 'Cc — more than one allowed (optional)')} value={cc} onChange={setCc} ar={ar} />
           <label className="block">
             <span className="mb-1 block text-[12.5px] font-semibold text-slate-700">{t('الموضوع', 'Subject')}</span>
             <input value={subject} onChange={(e) => setSubject(e.target.value)} dir="auto" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
@@ -144,6 +144,14 @@ export default function SendStatementModal({ kind, params, ar, onClose }: {
             <span className="mb-1 block text-[12.5px] font-semibold text-slate-700">{t('نصّ الرسالة', 'Message')}</span>
             <textarea rows={9} value={body} onChange={(e) => setBody(e.target.value)} dir="auto" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm leading-7" />
           </label>
+          {(d.signature || d.signatureImage) && (
+            <div className="rounded-xl border border-dashed border-slate-200 px-3 py-2">
+              <p className="mb-1 text-[11.5px] font-semibold text-slate-500">{t('التوقيع (من إعدادات القسم) — يُضاف في آخر الرسالة', 'Signature (from settings) — appended')}</p>
+              {d.signature && <p className="whitespace-pre-wrap text-[13px] text-slate-700" dir="auto">{d.signature}</p>}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {d.signatureImage && <img src={d.signatureImage} alt="" className="mt-1 max-h-16 max-w-[220px]" />}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 px-3 py-2">
             <span className="text-[12.5px] font-semibold text-slate-700">{t('المرفقات', 'Attachments')}:</span>
             <button type="button" onClick={preview} className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-[12.5px] font-semibold text-slate-700 hover:text-[#f37121]">

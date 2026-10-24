@@ -9,12 +9,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
-import { Truck, Package, Search, MapPin } from 'lucide-react';
+import { Truck, Package, Search, MapPin, ClipboardList } from 'lucide-react';
 import { statusText, statusColor, money, fmtDate, type Lang, type PortalService } from '@/lib/portal';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import ScrollX from '@/components/system/ScrollX';
 
-type TripType = 'heavy' | 'orders' | 'vendor';
+type TripType = 'heavy' | 'orders' | 'vendor' | 'platform';
 
 interface Trip {
   _id: string;
@@ -24,8 +24,8 @@ interface Trip {
   vehiclePlate?: string; vehicleName?: string; trailerType?: string;
   driverName?: string; driverPhone?: string;
   status: string;
-  price?: number; sellPrice?: number; buyPrice?: number;
-  loadType?: string; cargoType?: string; truckType?: string;
+  buyPrice?: number;
+  loadType?: string; cargoType?: string; truckType?: string; truckSize?: string;
   branch?: string;
   loadDate?: string; createdAt?: string; expectedArrival?: string;
 }
@@ -77,24 +77,41 @@ function ShipmentsInner() {
     return list;
   }, [items, status, q]);
 
-  const priceOf = (s: Trip) => (type === 'vendor' ? s.buyPrice : (s.price ?? s.sellPrice));
+  // المبلغ للمورد وحده؛ العميل يرى رحلاته بلا أسعار (٢٠٢٦/١٠/٢٤).
+  const showAmount = type === 'vendor';
+  const isPlatform = type === 'platform';
+  const colCount = showAmount || isPlatform ? 7 : 6;
 
   const tabs: { key: TripType; label: string; icon: any }[] = kind === 'vendor'
     ? [{ key: 'vendor', label: tx('Loads I carried', 'الحمولات التي نفّذتها'), icon: Truck }]
     : [
+      ...(services.some((s) => s.key === 'operations') ? [{ key: 'platform' as TripType, label: tx('Transport trips', 'رحلات النقل'), icon: ClipboardList }] : []),
       ...(services.some((s) => s.key === 'heavy_transport') ? [{ key: 'heavy' as TripType, label: tx('Heavy transport', 'النقل الثقيل'), icon: Truck }] : []),
       ...(services.some((s) => s.key === 'shipment_orders') ? [{ key: 'orders' as TripType, label: tx('Shipment orders', 'طلبات الشحن'), icon: Package }] : []),
     ];
 
+  // A customer whose only service is the platform should not land on an empty
+  // heavy-transport tab: once the services are known, snap to one that exists.
+  useEffect(() => {
+    if (kind === 'vendor' || !services.length) return;
+    const keys = tabs.map((t) => t.key);
+    if (keys.length && !keys.includes(type)) {
+      setType(keys[0]);
+      router.replace(`/system/portal/shipments?type=${keys[0]}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [services, kind]);
+
   const exportColumns: ExportColumn[] = [
-    { header: tx('Waybill #', 'رقم البوليصة'), key: 'waybillNumber', width: 14 },
+    { header: isPlatform ? tx('Report #', 'رقم الكشف') : tx('Waybill #', 'رقم البوليصة'), key: 'waybillNumber', width: 14 },
     { header: tx('Date', 'التاريخ'), key: 'loadDate', transform: (v: any, r: any) => fmtDate(v || r.createdAt), width: 14 },
     { header: tx('From', 'من'), key: 'fromCity', width: 16 },
     { header: tx('To', 'إلى'), key: 'toCity', width: 16 },
     { header: tx('Truck', 'المركبة'), key: 'vehiclePlate', transform: (v: any, r: any) => v || r.vehicleName || '—', width: 16 },
     { header: tx('Driver', 'السائق'), key: 'driverName', width: 20 },
+    ...(isPlatform ? [{ header: tx('Truck type', 'نوع المركبة'), key: 'truckType', transform: (v: any, r: any) => [v, r.truckSize].filter(Boolean).join(' · ') || '—', width: 18 }] : []),
     { header: tx('Status', 'الحالة'), key: 'status', transform: (v: string) => statusText(v, lang as Lang), width: 16 },
-    { header: tx('Amount', 'المبلغ'), key: 'price', transform: (_v: any, r: any) => money(priceOf(r)), width: 14 },
+    ...(showAmount ? [{ header: tx('Amount', 'المبلغ'), key: 'buyPrice', transform: (v: any) => money(v), width: 14 }] : []),
   ];
   // رحلات التبويب كلُّها محمّلة، وفلترا الحالة والبحث يقصّان في المتصفّح وحده؛
   // «الكلّ» هنا يعني كلّ رحلات الخدمة المعروضة لا كلّ ما نجح فيه البحث.
@@ -176,17 +193,18 @@ function ShipmentsInner() {
           <table className="w-full min-w-[820px]">
             <thead>
               <tr className="bg-slate-900">
-                <th className="px-4 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('Waybill', 'البوليصة')}</th>
+                <th className="px-4 py-2 text-start text-[11px] text-slate-300 uppercase">{isPlatform ? tx('Report #', 'رقم الكشف') : tx('Waybill', 'البوليصة')}</th>
                 <th className="px-4 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('Date', 'التاريخ')}</th>
                 <th className="px-4 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('Route', 'المسار')}</th>
                 <th className="px-4 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('Truck', 'المركبة')}</th>
                 <th className="px-4 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('Driver', 'السائق')}</th>
-                <th className="px-4 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('Amount', 'المبلغ')}</th>
+                {isPlatform && <th className="px-4 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('Truck type', 'نوع المركبة')}</th>}
+                {showAmount && <th className="px-4 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('Amount', 'المبلغ')}</th>}
                 <th className="px-4 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('Status', 'الحالة')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {loading && <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400 text-sm">{tx('Loading…', 'جارٍ التحميل…')}</td></tr>}
+              {loading && <tr><td colSpan={colCount} className="px-4 py-10 text-center text-slate-400 text-sm">{tx('Loading…', 'جارٍ التحميل…')}</td></tr>}
               {!loading && filtered.map((s) => (
                 <tr key={s._id} className="hover:bg-slate-50 cursor-pointer" onClick={() => router.push(`/system/portal/shipments/${type}/${s._id}`)}>
                   <td className="px-4 py-3 text-sm text-slate-900 font-semibold">#{s.waybillNumber}</td>
@@ -199,7 +217,8 @@ function ShipmentsInner() {
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-600">{s.vehiclePlate || s.vehicleName || '—'}</td>
                   <td className="px-4 py-3 text-sm text-slate-600">{s.driverName || '—'}</td>
-                  <td className="px-4 py-3 text-sm text-slate-700 tabular-nums">{money(priceOf(s))}</td>
+                  {isPlatform && <td className="px-4 py-3 text-sm text-slate-600">{[s.truckType, s.truckSize].filter(Boolean).join(' · ') || '—'}</td>}
+                  {showAmount && <td className="px-4 py-3 text-sm text-slate-700 tabular-nums">{money(s.buyPrice)}</td>}
                   <td className="px-4 py-3">
                     <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: `${statusColor(s.status)}1f`, color: statusColor(s.status) }}>
                       {statusText(s.status, lang as Lang)}
@@ -208,7 +227,7 @@ function ShipmentsInner() {
                 </tr>
               ))}
               {!loading && !filtered.length && (
-                <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400 text-sm">{tx('No shipments', 'لا توجد شحنات')}</td></tr>
+                <tr><td colSpan={colCount} className="px-4 py-10 text-center text-slate-400 text-sm">{tx('No shipments', 'لا توجد شحنات')}</td></tr>
               )}
             </tbody>
           </table>

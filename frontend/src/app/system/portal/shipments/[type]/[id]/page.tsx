@@ -2,11 +2,12 @@
 // بوابة العميل — تفاصيل الشحنة كاملة.
 //
 // «يشوف تفاصيله كلها كاملة» — everything about one load: the route, the truck,
-// the driver, the price agreed with them, and the follow-up story (where the
-// truck was and when), plus the بوليصة PDF for heavy-transport loads.
+// the driver, and the follow-up story (where the truck was and when), plus the
+// بوليصة PDF for heavy-transport loads.
 //
-// What is NOT here is deliberate: our cost, the supplier's rate, internal notes.
-// The customer sees their side of the transaction, not our margin.
+// What is NOT here is deliberate: no money at all for a customer (2026-10-24 —
+// «يشوف رحلاته من غير أسعار»), no internal notes. A supplier still sees what
+// we owe them for the load they carried.
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import api from '@/lib/api';
@@ -69,24 +70,31 @@ export default function PortalShipmentDetailPage() {
   if (error || !data) return <p className="text-slate-500">{error}</p>;
 
   const s = data.shipment;
-  const price = type === 'vendor' ? s.buyPrice : (s.price ?? s.sellPrice);
+  // المبلغ للمورد وحده (مستحقُّه عن الحمولة) — العميل لا يرى أي مبلغ.
+  const isVendor = type === 'vendor';
+  const isPlatform = type === 'platform';
 
   const rows: [string, any][] = [
-    [tx('Waybill number', 'رقم البوليصة'), `#${s.waybillNumber}`],
+    [isPlatform ? tx('Report number', 'رقم الكشف') : tx('Waybill number', 'رقم البوليصة'), `#${s.waybillNumber}`],
     [tx('Status', 'الحالة'), statusText(s.status, lang as Lang)],
-    [tx('Load date', 'تاريخ التحميل'), fmtDate(s.loadDate || s.pickupTime || s.createdAt)],
+    [isPlatform ? tx('Report date', 'تاريخ الكشف') : tx('Load date', 'تاريخ التحميل'), fmtDate(s.loadDate || s.pickupTime || s.createdAt)],
     [tx('From', 'من'), s.fromCity || '—'],
     [tx('To', 'إلى'), s.toCity || '—'],
     [tx('Pickup address', 'عنوان الاستلام'), s.addressFrom || '—'],
     [tx('Delivery address', 'عنوان التسليم'), s.addressTo || '—'],
     [tx('Cargo type', 'نوع الحمولة'), s.loadType || s.cargoType || '—'],
     [tx('Truck type', 'نوع المركبة'), s.trailerType || s.truckType || '—'],
+    ...(isPlatform ? [
+      [tx('Truck size', 'حجم المركبة'), s.truckSize || '—'] as [string, any],
+      [tx('Document number', 'رقم المستند'), s.documentNumber || '—'] as [string, any],
+      [tx('Delivered at', 'تاريخ التسليم'), s.deliveredAt ? fmtDate(s.deliveredAt) : '—'] as [string, any],
+    ] : []),
     [tx('Truck', 'المركبة'), s.vehiclePlate || s.vehicleName || '—'],
     [tx('Driver', 'السائق'), s.driverName || '—'],
     [tx('Driver phone', 'جوال السائق'), s.driverPhone || '—'],
     [tx('Quantity', 'الكمية'), s.quantity ?? '—'],
     [tx('Branch', 'الفرع'), s.branch || '—'],
-    [tx('Amount', 'المبلغ'), money(price)],
+    ...(isVendor ? [[tx('Amount', 'المبلغ'), money(s.buyPrice)] as [string, any]] : []),
     [tx('Expected arrival', 'الوصول المتوقع'), s.expectedArrival ? fmtDateTime(s.expectedArrival) : (s.arrivalTime ? fmtDateTime(s.arrivalTime) : '—')],
   ];
 
@@ -128,7 +136,9 @@ export default function PortalShipmentDetailPage() {
           <Fact icon={<Truck className="w-4 h-4" />} label={tx('Truck', 'المركبة')} value={s.vehiclePlate || s.vehicleName || '—'} />
           <Fact icon={<User className="w-4 h-4" />} label={tx('Driver', 'السائق')} value={s.driverName || '—'} />
           <Fact icon={<Calendar className="w-4 h-4" />} label={tx('Load date', 'تاريخ التحميل')} value={fmtDate(s.loadDate || s.pickupTime || s.createdAt)} />
-          <Fact icon={<Package className="w-4 h-4" />} label={tx('Amount', 'المبلغ')} value={money(price)} />
+          {isVendor
+            ? <Fact icon={<Package className="w-4 h-4" />} label={tx('Amount', 'المبلغ')} value={money(s.buyPrice)} />
+            : <Fact icon={<Package className="w-4 h-4" />} label={tx('Truck type', 'نوع المركبة')} value={s.trailerType || s.truckType || '—'} />}
         </div>
       </div>
 

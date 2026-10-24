@@ -11,7 +11,9 @@ import 'package:printing/printing.dart';
 ///
 /// Same contract as the web (`/api/portal/*`): the partner logs in with the
 /// email and password we created for them and sees only what they actually have
-/// with us — heavy-transport loads, shipment orders, customs files, invoices.
+/// with us — transport trips, heavy-transport loads, shipment orders, customs
+/// files. A customer sees no money at all (2026-10-24: «يشوف رحلاته من غير
+/// أسعار»); a supplier still sees what is owed to them per load.
 /// Which tabs appear is decided by the backend's service detection, so a customs
 /// customer never gets an empty shipments tab.
 
@@ -62,7 +64,8 @@ String _dateTime(dynamic v) {
 }
 
 Widget _statusChip(dynamic status) {
-  final s = _statusLabels[status?.toString()] ?? ('—', '—', T.inkFaint);
+  final k = (status ?? '').toString();
+  final s = _statusLabels[k] ?? (k.isEmpty ? '—' : k, k.isEmpty ? '—' : k, T.inkFaint);
   return Chip2(tr(s.$1, s.$2), s.$3);
 }
 
@@ -126,6 +129,8 @@ class _PortalScreenState extends State<PortalScreen> {
       if (_isVendor)
         (tr('حمولاتي', 'My loads'), const _ShipmentsTab(type: 'vendor'))
       else ...[
+        // «منصة الأوبريشن» اسمٌ داخلي — العميل يراها «رحلات النقل».
+        if (_services.contains('operations')) (tr('رحلات النقل', 'Transport trips'), const _ShipmentsTab(type: 'platform')),
         if (_services.contains('heavy_transport')) (tr('النقل الثقيل', 'Heavy transport'), const _ShipmentsTab(type: 'heavy')),
         if (_services.contains('shipment_orders')) (tr('طلبات الشحن', 'Shipment orders'), const _ShipmentsTab(type: 'orders')),
         if (_services.contains('customs')) (tr('التخليص', 'Customs'), const _CustomsTab()),
@@ -160,6 +165,8 @@ class _OverviewTab extends StatelessWidget {
     final t = Map<String, dynamic>.from(overview['totals'] ?? {});
     final inTransit = List<Map<String, dynamic>>.from(overview['inTransit'] ?? []);
     final monthly = List<Map<String, dynamic>>.from(overview['monthly'] ?? []);
+    final recent = Map<String, dynamic>.from(overview['recent'] ?? {});
+    final platformTrips = List<Map<String, dynamic>>.from(recent['platformTrips'] ?? []);
     final maxMonth = monthly.fold<num>(1, (m, x) => _n(x['count']) > m ? _n(x['count']) : m);
 
     return RefreshIndicator(
@@ -190,27 +197,13 @@ class _OverviewTab extends StatelessWidget {
           ]),
           const SizedBox(height: 8),
           Row(children: [
+            // بلا أيّ مبلغ للعميل — أعدادٌ فقط.
+            Expanded(child: StatCard(label: tr('رحلات النقل', 'Transport trips'), value: _n(t['platformTrips']), color: T.violet, icon: Icons.assignment_outlined)),
+            const SizedBox(width: 8),
             Expanded(child: StatCard(label: tr('معاملات تخليص', 'Customs files'), value: _n(t['customsFiles']), color: T.cyan, icon: Icons.directions_boat_outlined)),
             const SizedBox(width: 8),
-            Expanded(child: StatCard(label: tr('حاويات', 'Containers'), value: _n(t['containers']), color: T.violet, icon: Icons.inventory_2_outlined)),
-            const SizedBox(width: 8),
-            Expanded(child: StatCard(label: tr('فواتير متأخرة', 'Overdue'), value: _n(t['overdueCount']), color: T.danger, icon: Icons.warning_amber_outlined)),
+            Expanded(child: StatCard(label: tr('حاويات', 'Containers'), value: _n(t['containers']), color: T.orange, icon: Icons.inventory_2_outlined)),
           ]),
-          const SizedBox(height: 10),
-          AppCard(
-            child: Column(children: [
-              Row(children: [
-                Expanded(child: Text(tr('المستحق عليك', 'Outstanding'), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700))),
-                Text(_money(t['outstanding']),
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: _n(t['overdueAmount']) > 0 ? T.danger : T.orange)),
-              ]),
-              const Divider(height: 18),
-              Row(children: [
-                Expanded(child: Text(tr('إجمالي المدفوع', 'Paid to date'), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700))),
-                Text(_money(t['paid']), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: T.success)),
-              ]),
-            ]),
-          ),
         ],
 
         if (inTransit.isNotEmpty) ...[
@@ -226,6 +219,28 @@ class _OverviewTab extends StatelessWidget {
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text('#${s['waybillNumber']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
                         Text('${s['fromCity'] ?? '—'} ← ${s['toCity'] ?? '—'}', style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+                      ]),
+                    ),
+                    _statusChip(s['status']),
+                  ]),
+                ),
+              )),
+        ],
+
+        if (!isVendor && platformTrips.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(tr('أحدث رحلات النقل', 'Latest transport trips'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+          const SizedBox(height: 8),
+          ...platformTrips.take(8).map((s) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: AppCard(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(children: [
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('#${s['waybillNumber'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                        Text('${s['fromCity'] ?? '—'} ← ${s['toCity'] ?? '—'}', style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+                        Text(_date(s['loadDate'] ?? s['createdAt']), style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
                       ]),
                     ),
                     _statusChip(s['status']),
@@ -267,7 +282,7 @@ class _OverviewTab extends StatelessWidget {
 
 // ── الشحنات ──────────────────────────────────────────────────────────────────
 class _ShipmentsTab extends StatefulWidget {
-  final String type; // heavy | orders | vendor
+  final String type; // platform | heavy | orders | vendor
   const _ShipmentsTab({required this.type});
   @override
   State<_ShipmentsTab> createState() => _ShipmentsTabState();
@@ -302,8 +317,6 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
     final s = Map<String, dynamic>.from((d?['shipment'] ?? row) as Map);
     final timeline = List<Map<String, dynamic>>.from((d?['timeline'] ?? []) as List);
     final waybillUrl = d?['waybillUrl']?.toString();
-    final price = widget.type == 'vendor' ? s['buyPrice'] : (s['price'] ?? s['sellPrice']);
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -339,7 +352,7 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
               ),
             ],
             const SizedBox(height: 16),
-            ..._rowsFor(s, price).map((e) => Padding(
+            ..._rowsFor(s).map((e) => Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     SizedBox(width: 140, child: Text(e.$1, style: const TextStyle(fontSize: 11.5, color: T.inkFaint))),
@@ -379,17 +392,26 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
     );
   }
 
-  List<(String, String)> _rowsFor(Map<String, dynamic> s, dynamic price) => [
-        (tr('تاريخ التحميل', 'Load date'), _date(s['loadDate'] ?? s['pickupTime'] ?? s['createdAt'])),
+  bool get _isPlatform => widget.type == 'platform';
+
+  // المبلغ للمورد وحده (مستحقُّه عن الحمولة) — العميل لا يرى أيّ مبلغ.
+  List<(String, String)> _rowsFor(Map<String, dynamic> s) => [
+        if (_isPlatform) (tr('رقم الكشف', 'Report number'), '#${s['waybillNumber'] ?? '—'}'),
+        (_isPlatform ? tr('تاريخ الكشف', 'Report date') : tr('تاريخ التحميل', 'Load date'), _date(s['loadDate'] ?? s['pickupTime'] ?? s['createdAt'])),
         (tr('نوع الحمولة', 'Cargo type'), (s['loadType'] ?? s['cargoType'] ?? '—').toString()),
         (tr('نوع المركبة', 'Truck type'), (s['trailerType'] ?? s['truckType'] ?? '—').toString()),
+        if (_isPlatform) ...[
+          (tr('حجم المركبة', 'Truck size'), (s['truckSize'] ?? '—').toString()),
+          (tr('رقم المستند', 'Document number'), (s['documentNumber'] ?? '—').toString()),
+          (tr('تاريخ التسليم', 'Delivered at'), _date(s['deliveredAt'])),
+        ],
         (tr('المركبة', 'Truck'), (s['vehiclePlate'] ?? s['vehicleName'] ?? '—').toString()),
         (tr('السائق', 'Driver'), (s['driverName'] ?? '—').toString()),
         (tr('جوال السائق', 'Driver phone'), (s['driverPhone'] ?? '—').toString()),
         (tr('عنوان الاستلام', 'Pickup address'), (s['addressFrom'] ?? '—').toString()),
         (tr('عنوان التسليم', 'Delivery address'), (s['addressTo'] ?? '—').toString()),
         (tr('الفرع', 'Branch'), (s['branch'] ?? '—').toString()),
-        (tr('المبلغ', 'Amount'), _money(price)),
+        if (widget.type == 'vendor') (tr('المبلغ', 'Amount'), _money(s['buyPrice'])),
         (tr('الوصول المتوقع', 'Expected arrival'), _dateTime(s['expectedArrival'] ?? s['arrivalTime'])),
         if ((s['notes'] ?? '').toString().isNotEmpty) (tr('ملاحظات', 'Notes'), s['notes'].toString()),
       ];
@@ -438,7 +460,7 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
               ),
             ),
             ...statuses.entries.map((e) {
-              final lbl = _statusLabels[e.key] ?? ('—', '—', T.inkFaint);
+              final lbl = _statusLabels[e.key] ?? (e.key.isEmpty ? '—' : e.key, e.key.isEmpty ? '—' : e.key, T.inkFaint);
               return Padding(
                 padding: const EdgeInsetsDirectional.only(end: 6),
                 child: ChoiceChip(
@@ -466,7 +488,6 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
                   itemCount: rows.length,
                   itemBuilder: (c, i) {
                     final r = rows[i];
-                    final price = widget.type == 'vendor' ? r['buyPrice'] : (r['price'] ?? r['sellPrice']);
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: Pressable(
@@ -486,7 +507,9 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
                                 Chip2((r['vehiclePlate'] ?? r['vehicleName']).toString(), T.violet, icon: Icons.local_shipping_outlined),
                               if ((r['driverName'] ?? '').toString().isNotEmpty)
                                 Chip2(r['driverName'].toString(), T.cyan, icon: Icons.person_outline),
-                              Chip2(_money(price), T.success),
+                              if (_isPlatform && (r['truckType'] ?? '').toString().isNotEmpty)
+                                Chip2(r['truckType'].toString(), T.navy, icon: Icons.category_outlined),
+                              if (widget.type == 'vendor') Chip2(_money(r['buyPrice']), T.success),
                             ]),
                           ]),
                         ),

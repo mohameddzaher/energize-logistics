@@ -8,7 +8,7 @@
 //
 // وأرقامُ الصفوف تأتي محسوبةً من الخادم مع القائمة نفسها، لا باستعلامٍ لكلّ
 // صفّ: مئتا استعلامٍ عند كلّ فتحةٍ للصفحة ثمنٌ لا يشتري شيئًا.
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -119,6 +119,13 @@ export default function FleetCustomersPage() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setPage(1); }, [qs, sort, dir, work]);
   useSocket('fleet:customers', useCallback(() => load(), [load]));
+  // بطاقةُ عميلٍ عُدِّلت في أيّ قسمٍ — تُعاد القائمة (مُمهَلةً).
+  const custTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useSocket('customers:changed', useCallback(() => {
+    if (custTimer.current) clearTimeout(custTimer.current);
+    custTimer.current = setTimeout(() => { load(); }, 800);
+  }, [load]));
+  useEffect(() => () => { if (custTimer.current) clearTimeout(custTimer.current); }, []);
 
   const sorted = useMemo(() => {
     // شرطُ البطاقة يُطبَّق قبل الترتيب: ما يُعَدُّ فوق هو ما يُعرَض تحت.

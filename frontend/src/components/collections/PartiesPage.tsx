@@ -10,6 +10,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
+import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import {
   canEditCollections, receivablesOnly, kindWords, money, dt, paymentTypeLabel,
@@ -161,6 +162,13 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
     const id = setTimeout(load, 300);
     return () => clearTimeout(id);
   }, [load]);
+  // بطاقةُ عميلٍ عُدِّلت في أيّ قسمٍ — تُعاد القائمة (مُمهَلةً).
+  const custTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useSocket('customers:changed', useCallback(() => {
+    if (custTimer.current) clearTimeout(custTimer.current);
+    custTimer.current = setTimeout(() => { load(); }, 800);
+  }, [load]));
+  useEffect(() => () => { if (custTimer.current) clearTimeout(custTimer.current); }, []);
 
   // تغييرُ الفلتر يعيد إلى الصفحة الأولى: البقاءُ على الصفحة السابعة بعد فلترٍ
   // يعيد صفّين هو ما يجعل الشاشة تظهر فارغةً بلا سبب.

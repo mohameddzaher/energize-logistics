@@ -13,7 +13,7 @@ import { useSearchParams } from 'next/navigation';
  * معنا وبكم (من كشوف التشغيل)، ومهلتُه ومحصِّلُه (من التحصيل)، وكم عقدًا مرفوعًا
  * له (من عقود الأقسام). ورقمٌ منسوخٌ يشيخ في يومه.
  */
-import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -83,6 +83,13 @@ function ContractCustomersInner() {
   }, []);
   useEffect(() => { load(); }, [load]);
   useSocket('contracts:updated', useCallback(() => load(), [load]));
+  // بطاقةُ عميلٍ عُدِّلت في أيّ قسمٍ — تُعاد القائمة (مُمهَلةً).
+  const custTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useSocket('customers:changed', useCallback(() => {
+    if (custTimer.current) clearTimeout(custTimer.current);
+    custTimer.current = setTimeout(() => { load(); }, 800);
+  }, [load]));
+  useEffect(() => () => { if (custTimer.current) clearTimeout(custTimer.current); }, []);
 
   const openSuggest = async () => {
     setSuggestOpen(true);

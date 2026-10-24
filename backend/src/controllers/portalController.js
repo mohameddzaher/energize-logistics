@@ -70,6 +70,32 @@ async function resolveIdentity(partner) {
   }
   const key = partner.nameKey || nameKey(name);
 
+  // ── العميلُ كما هو في كلّ الأقسام (services/customerHub، ٢٠٢٦/١٠/٢٤) ─────────
+  // كان العميلُ يُعرَف باسمٍ واحد؛ فإن كُتب اسمُه في قسمٍ بصيغةٍ أخرى لم تظهر
+  // رحلاتُه هناك. فتُجمع أسماؤه من الأمّ وكلِّ سجلٍّ مرتبطٍ بها وصيغِ اسمه في
+  // التحصيل — مطابقةً تامّةً بعد الطيّ، لا تقريبًا (تقريبُ الأسماء يُري عميلًا
+  // رحلاتِ غيره).
+  let masterId = null;
+  try {
+    if (partner.source === 'crm_company') masterId = partner.refId;
+    else if (partner.source === 'fleet_customer') masterId = (await FleetCustomer.findById(partner.refId).select('crmCompany').lean() || {}).crmCompany || null;
+    else if (partner.source === 'shipment_order_customer') masterId = (await require('../models/ShipmentOrderCustomer').findById(partner.refId).select('crmCompany').lean() || {}).crmCompany || null;
+  } catch (_) { /* */ }
+  const names = new Set([name].filter(Boolean));
+  const linkedFleet = [];
+  if (masterId) {
+    const hub = require('../services/customerHub');
+    const m = await CrmCompany.findById(masterId).select('name').lean();
+    if (m && m.name) names.add(m.name);
+    for (const { reg, doc } of await hub.linkedRows(masterId)) {
+      if (doc.name) names.add(doc.name);
+      for (const a of doc.aliases || []) if (a) names.add(a);
+      if (reg === 'fleet') linkedFleet.push(String(doc._id));
+    }
+  }
+  const allNames = [...names];
+  const keys = [...new Set([key, ...allNames.map((n) => nameKey(n))].filter(Boolean))];
+
   // Now find the SAME party in every other register, by folded name.
   const [financeCustomers, fleetCustomers, crmCompanies] = await Promise.all([
     Customer.find({}).select('companyName customerNumber creditTerm creditLimit currentOutstanding grade clientStatus office email phone address').lean(),
@@ -82,8 +108,8 @@ async function resolveIdentity(partner) {
     ? financeCustomers.filter((c) => String(c._id) === String(partner.refId))
     : matchAll(financeCustomers, 'companyName');
   const fleet = partner.source === 'fleet_customer'
-    ? fleetCustomers.filter((c) => String(c._id) === String(partner.refId))
-    : matchAll(fleetCustomers, 'name');
+    ? fleetCustomers.filter((c) => String(c._id) === String(partner.refId) || linkedFleet.includes(String(c._id)))
+    : fleetCustomers.filter((c) => keys.includes(nameKey(c.name)) || linkedFleet.includes(String(c._id)));
   const crm = partner.source === 'crm_company'
     ? crmCompanies.filter((c) => String(c._id) === String(partner.refId))
     : matchAll(crmCompanies, 'name');
@@ -96,6 +122,9 @@ async function resolveIdentity(partner) {
     refId: partner.refId,
     name: name || partner.name || '',
     key,
+    keys,
+    names: allNames,
+    masterId: masterId ? String(masterId) : null,
     financeIds: finance.map((c) => String(c._id)),
     fleetIds: fleet.map((c) => String(c._id)),
     crmIds: crm.map((c) => String(c._id)),
@@ -117,7 +146,8 @@ async function resolveIdentity(partner) {
 // so those queries pull the candidate rows and narrow them in memory, bounded by
 // a generous limit. That is one customer's lifetime of work, not a table scan of
 // anything unbounded.
-const byName = (rows, field, key) => rows.filter((r) => nameKey(r[field]) === key);
+const owns = (identity, nm) => (identity.keys || [identity.key]).includes(nameKey(nm));
+const byName = (rows, field, identity) => rows.filter((r) => owns(identity, r[field]));
 
 const FLEET_LIMIT = 2000;
 
@@ -128,21 +158,40 @@ async function fleetShipmentsFor(identity) {
       { customerName: { $nin: [null, ''] } },
     ],
   })
-    .select('waybillNumber customerName customer vehiclePlate trailerType gpsType driverName driverPhone fromCity toCity status price fullRent loadType rentType paymentType branch loadDate expectedArrival lastContactAt createdAt supervisorName notes customerType')
+    // بلا سعرٍ ولا أجرة (٢٠٢٦/١٠/٢٤): «يشوف رحلاته من غير أسعار».
+    .select('waybillNumber customerName customer vehiclePlate trailerType gpsType driverName driverPhone fromCity toCity status loadType rentType branch loadDate expectedArrival lastContactAt createdAt supervisorName notes customerType')
     .sort({ loadDate: -1, createdAt: -1 })
     .limit(FLEET_LIMIT)
     .lean();
   const ids = new Set(identity.fleetIds);
-  return rows.filter((r) => (r.customer && ids.has(String(r.customer))) || nameKey(r.customerName) === identity.key);
+  return rows.filter((r) => (r.customer && ids.has(String(r.customer))) || owns(identity, r.customerName));
 }
 
 async function shipmentOrdersFor(identity) {
   const rows = await ShipmentOrder.find({ customerName: { $nin: [null, ''] } })
-    .select('waybillNumber customerName fromCity toCity addressFrom addressTo truckType cargoType truckLength quantity driverName driverPhone vehicleName agentName pickupTime startTime arrivalTime sellPrice status branch notes createdAt')
+    .select('waybillNumber customerName fromCity toCity addressFrom addressTo truckType cargoType truckLength quantity driverName driverPhone vehicleName agentName pickupTime startTime arrivalTime status branch notes createdAt')
     .sort({ createdAt: -1 })
     .limit(FLEET_LIMIT)
     .lean();
-  return byName(rows, 'customerName', identity.key);
+  return byName(rows, 'customerName', identity);
+}
+
+/**
+ * رحلاتُ المنصّة — كشوفُ التشغيل باسم العميل (أيٍّ من أسمائه)، بلا أيّ مبلغ.
+ */
+async function platformTripsFor(identity) {
+  const names = identity.names && identity.names.length ? identity.names : [identity.name].filter(Boolean);
+  if (!names.length) return [];
+  const OperationsWorkflow = require('../models/OperationsWorkflow');
+  const rows = await OperationsWorkflow.find({ username: { $in: names } })
+    .select('reportNumber reportDate username fromLocation toLocation applicationStatus plateNumber carNumber driverName truckType truckSize branch deliveryDate branchDeliveryDate documentNumber createdAt')
+    .sort({ reportDate: -1, createdAt: -1 }).limit(FLEET_LIMIT).lean();
+  return rows.map((r) => ({
+    _id: r._id, waybillNumber: r.reportNumber, customerName: r.username, fromCity: r.fromLocation, toCity: r.toLocation,
+    status: r.applicationStatus, vehiclePlate: r.plateNumber || r.carNumber, driverName: r.driverName, truckType: r.truckType,
+    truckSize: r.truckSize, branch: r.branch, loadDate: r.reportDate, deliveredAt: r.deliveryDate || r.branchDeliveryDate,
+    documentNumber: r.documentNumber, createdAt: r.createdAt,
+  }));
 }
 
 async function customsFor(identity) {
@@ -152,7 +201,7 @@ async function customsFor(identity) {
       { customerName: { $nin: [null, ''] } },
     ],
   })
-    .select('refNumber branch stage cancelled customerName customer shippingAgent blNumber invoiceNumber invoiceDate port containerCount totalWeight invoiceValue currency exporterCompany countryOfOrigin hsCode declarationNumber declarationDate doNumber exitPermitNumber unloadingAppointment unloadingLocation stageDates stageDone documents agentPapers costs createdAt updatedAt cargoType isCompleted stagesDone transportRoute pipelineVersion saleInvoiceNumber containers.route containers.stagesDone')
+    .select('refNumber branch stage cancelled customerName customer shippingAgent blNumber invoiceNumber invoiceDate port containerCount totalWeight invoiceValue currency exporterCompany countryOfOrigin hsCode declarationNumber declarationDate doNumber exitPermitNumber unloadingAppointment unloadingLocation stageDates stageDone documents agentPapers createdAt updatedAt cargoType isCompleted stagesDone transportRoute pipelineVersion saleInvoiceNumber containers.route containers.stagesDone')
     .sort({ createdAt: -1 })
     .limit(FLEET_LIMIT)
     .lean();
@@ -162,7 +211,7 @@ async function customsFor(identity) {
   // الحاليّةُ وحدَها لا تقول ما مضى وما بقي. فتُرسَل المراحلُ محسوبةً بقاعدة
   // القسم نفسِها (pipelineOf) — بلا سببِ الإغلاق الداخليّ ولا الحقولِ الخام.
   return rows
-    .filter((r) => (r.customer && ids.has(String(r.customer))) || nameKey(r.customerName) === identity.key)
+    .filter((r) => (r.customer && ids.has(String(r.customer))) || owns(identity, r.customerName))
     .map(({ stagesDone, transportRoute, pipelineVersion, saleInvoiceNumber, containers, ...r }) => {
       const p = CustomsClearance.pipelineOf({ ...r, containers, stagesDone, transportRoute, pipelineVersion, saleInvoiceNumber });
       return {
@@ -207,13 +256,14 @@ async function loadAll(identity) {
     const loads = await vendorLoadsFor(identity);
     return { fleet: [], orders: [], customs: [], invoices: [], payments: [], vendorLoads: loads };
   }
-  const [fleet, orders, customs, finance] = await Promise.all([
+  // والفواتيرُ والمدفوعاتُ لا تُعرض للعميل — البوابةُ بلا أسعار (٢٠٢٦/١٠/٢٤).
+  const [fleet, orders, customs, platform] = await Promise.all([
     fleetShipmentsFor(identity).catch(() => []),
     shipmentOrdersFor(identity).catch(() => []),
     customsFor(identity).catch(() => []),
-    financeFor(identity).catch(() => ({ invoices: [], payments: [] })),
+    platformTripsFor(identity).catch(() => []),
   ]);
-  return { fleet, orders, customs, ...finance, vendorLoads: [] };
+  return { fleet, orders, customs, platform, invoices: [], payments: [], vendorLoads: [] };
 }
 
 /** Which portal tabs this partner gets — driven by what they actually have. */
@@ -224,10 +274,10 @@ function servicesFor(identity, data) {
     add('shipment_orders', data.vendorLoads.length);
     return out;
   }
+  add('operations', (data.platform || []).length);
   add('heavy_transport', data.fleet.length);
   add('shipment_orders', data.orders.length);
   add('customs', data.customs.length);
-  add('finance', data.invoices.length + data.payments.length);
   return out;
 }
 
@@ -293,12 +343,7 @@ exports.overview = async (req, res) => {
     const activeCustoms = data.customs.filter((c) => !c.cancelled);
     const inTransit = [...activeFleet, ...activeOrders].filter((s) => ['loading', 'uploaded', 'on_way'].includes(s.status));
     const delivered = [...activeFleet, ...activeOrders].filter((s) => ['arrived', 'bond_sent', 'bond_received', 'invoiced'].includes(s.status));
-    const spend = activeFleet.reduce((s, x) => s + (Number(x.price) || 0), 0)
-      + activeOrders.reduce((s, x) => s + (Number(x.sellPrice) || 0), 0);
-
-    const outstanding = data.invoices.reduce((s, i) => s + (Number(i.balance) || 0), 0);
-    const paid = data.payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-    const overdue = data.invoices.filter((i) => i.status !== 'paid' && new Date(i.dueDate) < new Date());
+    const activePlatform = (data.platform || []);
 
     res.json({
       kind: 'customer',
@@ -306,31 +351,27 @@ exports.overview = async (req, res) => {
       profile: identity.profile,
       services,
       totals: {
-        shipments: activeFleet.length + activeOrders.length,
+        shipments: activeFleet.length + activeOrders.length + activePlatform.length,
+        platformTrips: activePlatform.length,
         heavyTransport: activeFleet.length,
         shipmentOrders: activeOrders.length,
         customsFiles: activeCustoms.length,
         containers: activeCustoms.reduce((s, c) => s + (Number(c.containerCount) || 0), 0),
         inTransit: inTransit.length,
         delivered: delivered.length,
-        totalSpend: r0(spend),
-        invoices: data.invoices.length,
-        outstanding: r0(outstanding),
-        paid: r0(paid),
-        overdueCount: overdue.length,
-        overdueAmount: r0(overdue.reduce((s, i) => s + (Number(i.balance) || 0), 0)),
       },
       recent: {
+        platformTrips: activePlatform.slice(0, 8),
         heavyTransport: activeFleet.slice(0, 8),
         shipmentOrders: activeOrders.slice(0, 8),
         customs: activeCustoms.slice(0, 8),
-        invoices: data.invoices.slice(0, 8),
       },
       inTransit: inTransit.slice(0, 20),
+      // عددُ الرحلات شهرًا بشهر — بلا قيمة.
       monthly: monthlySeries(
-        [...activeFleet.map((s) => ({ at: s.loadDate || s.createdAt, v: Number(s.price) || 0 })),
-          ...activeOrders.map((s) => ({ at: s.createdAt, v: Number(s.sellPrice) || 0 }))],
-        (x) => x.at, (x) => x.v
+        [...activeFleet.map((s) => ({ at: s.loadDate || s.createdAt })), ...activeOrders.map((s) => ({ at: s.createdAt })),
+          ...activePlatform.map((s) => ({ at: s.loadDate || s.createdAt }))],
+        (x) => x.at, () => 0
       ),
     });
   } catch (error) {
@@ -377,6 +418,7 @@ exports.shipments = async (req, res) => {
     let items = [];
     if (type === 'vendor') items = await vendorLoadsFor(identity);
     else if (type === 'orders') items = await shipmentOrdersFor(identity);
+    else if (type === 'platform') items = await platformTripsFor(identity);
     else items = await fleetShipmentsFor(identity);
 
     if (req.query.status) items = items.filter((s) => s.status === req.query.status);
@@ -424,6 +466,12 @@ exports.shipmentDetail = async (req, res) => {
         })),
         waybillUrl: `/api/portal/waybill/heavy/${found._id}`,
       });
+    }
+    if (type === 'platform') {
+      const all = await platformTripsFor(identity);
+      const found = all.find((s) => String(s._id) === String(id));
+      if (!found) return res.status(404).json({ message: 'الرحلة غير موجودة' });
+      return res.json({ type, shipment: found, timeline: [], waybillUrl: null });
     }
     if (type === 'orders' || type === 'vendor') {
       const all = type === 'vendor' ? await vendorLoadsFor(identity) : await shipmentOrdersFor(identity);
@@ -477,7 +525,8 @@ exports.waybill = async (req, res) => {
     shipment.rentType = nameOf('fleet_rent_type', shipment.rentType);
     shipment.paymentType = nameOf('fleet_payment_type', shipment.paymentType);
     shipment.loadType = nameOf('fleet_load_type', shipment.loadType);
-    const pdf = await renderWaybillPdf(rowFromShipment(shipment));
+    // البوليصةُ للعميل بلا قيمة النقل ولا عهدة السائق.
+    const pdf = await renderWaybillPdf({ ...rowFromShipment(shipment), sellPrice: '', driverAdvance: '' });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="waybill-${shipment.waybillNumber || shipment._id}.pdf"`);
     res.send(pdf);
@@ -515,6 +564,8 @@ exports.finance = async (req, res) => {
     const partner = partnerOf(req);
     if (!partner) return res.status(403).json({ message: 'هذا الحساب غير مرتبط بعميل أو مورد' });
     const identity = await resolveIdentity(partner);
+    // البوابةُ بلا أسعار ولا مبالغ للعميل (صاحبُ الشركة، ٢٠٢٦/١٠/٢٤).
+    if (identity.kind !== 'vendor') return res.json({ invoices: [], payments: [], totals: {}, hidden: true });
     const { invoices, payments } = await financeFor(identity);
     const now = new Date();
     const enriched = invoices.map((inv) => {

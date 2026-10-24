@@ -40,36 +40,46 @@ async function syncOnce() {
     const users = await fetchAllUsers();
     if (!users.length) return { total: 0 };
 
-    const ops = users.filter((u) => u && u.id).map((u) => ({
-      updateOne: {
-        filter: { externalSource: SOURCE, externalId: String(u.id) },
-        update: {
-          $set: {
-            name: (u.name && String(u.name).trim()) || u.phone || 'Customer',
-            phone: u.phone || '',
-            whatsapp: u.phone || '',
-            email: u.email || '',
-            externalSource: SOURCE,
-            externalId: String(u.id),
-            lastSyncedAt: new Date(),
-          },
-          $setOnInsert: {
-            status: 'active',
-            type: 'customer',
-            tags: ['operations_staff', u.user_type].filter(Boolean),
-          },
-        },
-        upsert: true,
-      },
-    }));
-
+    // ── لا يُكتب فوق ما عُدِّل عندنا، ولا يُعاد كتابةُ ما لم يتغيّر (٢٠٢٦/١٠/٢٤) ──
+    // كانت كلُّ دورةٍ تكتب الشركاتِ كلَّها: اسمًا وهاتفًا وبريدًا — فبريدٌ صُحِّح في
+    // العلاقات أو التحصيل يعود قديمًا بعد نصف ساعة. فصار يُقارن بما رآه آخرَ مرّة
+    // (`uplSeen`): ما غيّرته المنصّةُ فعلًا يُكتب ويُوزَّع على كلّ أقسام العميل
+    // (services/customerHub)، وما لم يتغيّر هناك لا يُمسّ.
+    const hub = require('./customerHub');
+    const fold = require('../models/CollectionsParty').fold;
+    const existing = new Map((await CrmCompany.find({ externalSource: SOURCE }).select('externalId name email phone emails uplSeen').lean())
+      .map((c) => [String(c.externalId), c]));
     let created = 0;
     let updated = 0;
-    const CHUNK = 500;
-    for (let i = 0; i < ops.length; i += CHUNK) {
-      const res = await CrmCompany.bulkWrite(ops.slice(i, i + CHUNK), { ordered: false });
-      created += res.upsertedCount || 0;
-      updated += res.modifiedCount || 0;
+    for (const u of users.filter((x) => x && x.id)) {
+      const id = String(u.id);
+      const now = { name: (u.name && String(u.name).trim()) || u.phone || 'Customer', email: String(u.email || '').trim().toLowerCase(), phone: String(u.phone || '').trim() };
+      const cur = existing.get(id);
+      if (!cur) {
+        const doc = await CrmCompany.create({
+          name: now.name, nameKey: fold(now.name), phone: now.phone, whatsapp: now.phone, email: now.email, emails: now.email ? [now.email] : [],
+          externalSource: SOURCE, externalId: id, lastSyncedAt: new Date(), uplSeen: now,
+          status: 'active', type: 'customer', tags: ['operations_staff', u.user_type].filter(Boolean),
+        });
+        created += 1;
+        void doc;
+        continue;
+      }
+      const seen = cur.uplSeen || {};
+      const set = {};
+      if (now.name !== (seen.name ?? cur.name)) { set.name = now.name; set.nameKey = fold(now.name); }
+      if (now.phone !== (seen.phone ?? cur.phone)) { set.phone = now.phone; set.whatsapp = now.phone; }
+      if (now.email !== (seen.email ?? cur.email)) {
+        const others = (cur.emails || []).filter((e) => e !== (seen.email ?? cur.email) && e !== now.email);
+        set.emails = [now.email, ...others].filter(Boolean);
+        set.email = set.emails[0] || '';
+      }
+      if (!Object.keys(set).length) continue;
+      await CrmCompany.updateOne({ _id: cur._id }, { $set: { ...set, uplSeen: now, lastSyncedAt: new Date() } });
+      updated += 1;
+      // ما غيّرته المنصّةُ يصل كلَّ أقسام هذا العميل — ولا يُردّ إليها.
+      const after = await CrmCompany.findById(cur._id).lean();
+      await hub.onChange('crm', cur, after, 'platform');
     }
     try { emitToAll('crm:company', { synced: true, source: SOURCE }); } catch (e) {}
     console.log(`[opsCustomerSync] ${users.length} customers -> created ${created}, updated ${updated}`);

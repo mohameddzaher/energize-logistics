@@ -14,6 +14,8 @@ import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 import { Users, Ship, Mail, Phone, MapPin, FileText, ArrowRight } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
+import CustomerPresence from '@/components/system/CustomerPresence';
+import PortalAccountCard from '@/components/system/PortalAccountCard';
 import PartyAttachments from '@/components/customs/PartyAttachments';
 import CustomsContracts from '@/components/customs/CustomsContracts';
 import { useAuth } from '@/context/AuthContext';
@@ -117,6 +119,12 @@ export default function CustomsPartyProfile() {
           <ArrowRight className="w-4 h-4" /> {t('رجوع', 'Back')}
         </button>
       </PageHeader>
+      {/* العميلُ نفسُه في الأقسام الأخرى */}
+      {p.kind === 'customer' && <CustomerPresence reg="customs" id={String(p._id)} ar={ar} onChanged={load} />}
+      {/* حساب البوابة يُفعَّل من هنا أيضًا — مربوطًا بسجلّ العميل الرئيسي في CRM. */}
+      {p.kind === 'customer' && (p as any).crmCompany && (
+        <PortalAccountCard source="crm_company" refId={String((p as any).crmCompany?._id || (p as any).crmCompany)} name={p.name} />
+      )}
 
       {/* بياناتُ التواصل — تُقرأ وتُضغط، لا تُنسَخ باليد. */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">

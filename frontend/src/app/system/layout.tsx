@@ -753,7 +753,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // having work of that kind — a customs-only customer never sees a shipments
     // tab, and a supplier never sees invoices. Links without it always show.
     { href: '/system/portal', label: L.overview, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['client'], section: 'Portal' },
-    { href: '/system/portal/shipments', label: lang === 'ar' ? 'شحناتي' : 'My Shipments', icon: <Truck className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['heavy_transport', 'shipment_orders'] },
+    { href: '/system/portal/shipments', label: lang === 'ar' ? 'شحناتي' : 'My Shipments', icon: <Truck className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['operations', 'heavy_transport', 'shipment_orders'] },
     { href: '/system/portal/customs', label: lang === 'ar' ? 'معاملات التخليص' : 'Customs Files', icon: <Ship className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['customs'] },
     { href: '/system/portal/invoices', label: L.myInvoices, icon: <FileText className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['finance'] },
     { href: '/system/portal/payments', label: L.myPayments, icon: <CreditCard className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['finance'] },
@@ -857,7 +857,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // flashing tabs that then disappear.
     if (item.portalService) {
       if (portalServices === null) return false;
-      if (!portalServices.length) return true; // unknown → don't hide anything
+      // unknown → don't hide anything — except money: invoices/payments show
+      // only when the server explicitly offers `finance` (never to customers).
+      if (!portalServices.length) return !item.portalService.includes('finance');
       return item.portalService.some((k: string) => portalServices.includes(k));
     }
     if (item.remoteKey && user.role === 'remote_employee') {

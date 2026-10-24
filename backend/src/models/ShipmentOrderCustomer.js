@@ -92,5 +92,8 @@ for (const op of ['save', 'findOneAndUpdate', 'updateOne', 'updateMany', 'insert
   shipmentOrderCustomerSchema.post(op, clearRouteIndex);
 }
 
+// ── العميلُ واحدٌ في كلّ الأقسام — رابطُه إلى شركة العلاقات الأمّ (services/customerHub) ──
+shipmentOrderCustomerSchema.add({ crmCompany: { type: mongoose.Schema.Types.ObjectId, ref: 'CrmCompany', default: null, index: true } });
+require('../services/customerHub').attach(shipmentOrderCustomerSchema, 'shipment');
 module.exports = mongoose.models.ShipmentOrderCustomer
   || mongoose.model('ShipmentOrderCustomer', shipmentOrderCustomerSchema);

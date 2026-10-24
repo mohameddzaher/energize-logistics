@@ -213,6 +213,9 @@ collectionsPartySchema.index({ kind: 1, isActive: 1, name: 1 });
 collectionsPartySchema.index({ code: 1 }, { unique: true, partialFilterExpression: { code: { $type: 'string', $gt: '' } } });
 collectionsPartySchema.index({ collectionOfficer: 1, kind: 1 });
 
+// ── العميلُ واحدٌ في كلّ الأقسام — رابطُه إلى شركة العلاقات الأمّ (services/customerHub) ──
+collectionsPartySchema.add({ crmCompany: { type: mongoose.Schema.Types.ObjectId, ref: 'CrmCompany', default: null, index: true } });
+require('../services/customerHub').attach(collectionsPartySchema, 'collections');
 module.exports = mongoose.models.CollectionsParty
   || mongoose.model('CollectionsParty', collectionsPartySchema);
 module.exports.fold = fold;

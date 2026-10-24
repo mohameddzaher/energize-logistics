@@ -15,7 +15,7 @@
  * الخادمُ يحذف `purchaseTotal` عمّن لا يرى المال. فالعمودُ والبطاقةُ يُخفيان
  * كلّيًّا — عمودٌ مرسومٌ بشرطاتٍ يُقرأ «لا شراءَ له» لا «ليس لك أن تراه».
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -113,6 +113,13 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
 
   useEffect(() => { load(); }, [load]);
   useSocket('shipmentOrders:customers', useCallback(() => { setFullById(null); load(); }, [load]));
+  // بطاقةُ عميلٍ عُدِّلت في أيّ قسمٍ — تُعاد القائمة (مُمهَلةً).
+  const custTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useSocket('customers:changed', useCallback(() => {
+    if (custTimer.current) clearTimeout(custTimer.current);
+    custTimer.current = setTimeout(() => { setFullById(null); load(); }, 800);
+  }, [load]));
+  useEffect(() => () => { if (custTimer.current) clearTimeout(custTimer.current); }, []);
 
   const money = !!summary && summary.purchaseTotal !== undefined;
   const cols = useMemo(() => REGISTRY_COLS.filter((c) => !c.money || money), [money]);

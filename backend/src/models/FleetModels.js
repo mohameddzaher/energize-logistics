@@ -231,6 +231,8 @@ fleetShipmentSchema.index({ status: 1, lastContactAt: 1 });
 fleetShipmentSchema.index({ loadDate: -1 });
 
 const counterSchema = new mongoose.Schema({ _id: String, seq: Number });
+// ── العميلُ واحدٌ في كلّ الأقسام — رابطُه إلى شركة العلاقات الأمّ (services/customerHub) ──
+require('../services/customerHub').attach(fleetCustomerSchema, 'fleet');
 const FleetCounter = mongoose.models.FleetCounter || mongoose.model('FleetCounter', counterSchema);
 
 fleetShipmentSchema.pre('save', async function (next) {

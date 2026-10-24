@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -71,6 +71,13 @@ export default function CrmCompaniesPage() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.get<CrmOptions>('/api/crm/options').then(setOpts).catch(() => {}); }, []);
   useSocket('crm:company', useCallback(() => load(), [load]));
+  // بطاقةُ عميلٍ عُدِّلت في أيّ قسمٍ — تُعاد القائمة (مُمهَلةً).
+  const custTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useSocket('customers:changed', useCallback(() => {
+    if (custTimer.current) clearTimeout(custTimer.current);
+    custTimer.current = setTimeout(() => { load(); }, 800);
+  }, [load]));
+  useEffect(() => () => { if (custTimer.current) clearTimeout(custTimer.current); }, []);
 
   // Debounced customer search.
   useEffect(() => {

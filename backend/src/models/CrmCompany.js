@@ -75,4 +75,26 @@ const bustCompaniesList = () => { try { require('../utils/ttlCache').clear('crm:
 crmCompanySchema.post('save', bustCompaniesList);
 crmCompanySchema.post(/^find.*[UD]/, bustCompaniesList);
 
+// ── شركةُ العلاقات هي العميلُ الأمّ لكلّ الأقسام (services/customerHub) ─────────
+// تحمل «بطاقةَ التواصل» كاملةً — أكثرُ من بريد، والمسؤول، والضريبيّ، والسجلّ —
+// ومفتاحَ الاسم المطويّ نفسَه الذي يطوي به التحصيل (CollectionsParty.fold).
+// و`uplSeen` آخرُ ما قرأناه من المنصّة: به يُعرف أنّ المنصّة غيّرت شيئًا فعلًا
+// فلا تكتب مزامنتُها فوق ما عُدِّل عندنا.
+crmCompanySchema.add({
+  nameKey: { type: String, index: true, default: '' },
+  emails: { type: [String], default: [] },
+  contactPerson: { type: String, trim: true, default: '' },
+  taxNumber: { type: String, trim: true, default: '' },
+  commercialRegister: { type: String, trim: true, default: '' },
+  uplSeen: { name: String, email: String, phone: String },
+});
+const crmFold = (s) => require('./CollectionsParty').fold(String(s || ''));
+crmCompanySchema.pre('save', function keyName(next) { if (this.isModified('name') || !this.nameKey) this.nameKey = crmFold(this.name); next(); });
+crmCompanySchema.pre('findOneAndUpdate', function keyNameUpd(next) {
+  const u = this.getUpdate() || {}; const name = (u.$set && u.$set.name) || u.name;
+  if (name) { this.set({ nameKey: crmFold(name) }); }
+  next();
+});
+require('../services/customerHub').attach(crmCompanySchema, 'crm');
+
 module.exports = mongoose.model('CrmCompany', crmCompanySchema);

@@ -12,8 +12,8 @@ import api from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import {
-  Truck, Package, Ship, FileText, Wallet, AlertTriangle, MapPin, Container,
-  CheckCircle2, Clock, ArrowRight,
+  Truck, Package, Ship, FileText, Wallet, MapPin, Container,
+  CheckCircle2, Clock, ArrowRight, ClipboardList,
 } from 'lucide-react';
 import { KpiTile } from '@/components/system/Scorecard';
 import {
@@ -26,13 +26,14 @@ interface Overview {
   services: PortalService[];
   totals: Record<string, number>;
   recent: {
-    heavyTransport?: any[]; shipmentOrders?: any[]; customs?: any[]; invoices?: any[]; loads?: any[];
+    platformTrips?: any[]; heavyTransport?: any[]; shipmentOrders?: any[]; customs?: any[]; loads?: any[];
   };
   inTransit?: any[];
   monthly: { month: string; count: number; value: number }[];
 }
 
 const SERVICE_ICON: Record<string, any> = {
+  operations: ClipboardList,
   heavy_transport: Truck,
   shipment_orders: Package,
   customs: Ship,
@@ -62,8 +63,6 @@ export default function PortalHomePage() {
   }, [lang]);
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:updated', load);
-  useSocket('invoice:created', load);
-  useSocket('payment:received', load);
 
   if (loading) {
     return (
@@ -96,7 +95,10 @@ export default function PortalHomePage() {
             const Icon = SERVICE_ICON[s.key] || Package;
             const href = s.key === 'customs' ? '/system/portal/customs'
               : s.key === 'finance' ? '/system/portal/invoices'
-                : `/system/portal/shipments?type=${s.key === 'heavy_transport' ? 'heavy' : (isVendor ? 'vendor' : 'orders')}`;
+                : s.key === 'operations' ? '/system/portal/shipments?type=platform'
+                  : `/system/portal/shipments?type=${s.key === 'heavy_transport' ? 'heavy' : (isVendor ? 'vendor' : 'orders')}`;
+            // «منصة الأوبريشن» اسمٌ داخلي — العميل يراها «رحلات النقل».
+            const label = s.key === 'operations' ? tx('Transport trips', 'رحلات النقل') : (ar ? s.ar : s.en);
             return (
               <button
                 key={s.key}
@@ -108,7 +110,7 @@ export default function PortalHomePage() {
                   <Icon className="w-4 h-4" />
                 </span>
                 <span className="text-start">
-                  <span className="block text-slate-900 text-sm font-medium">{ar ? s.ar : s.en}</span>
+                  <span className="block text-slate-900 text-sm font-medium">{label}</span>
                   <span className="block text-slate-400 text-[11px]">{s.count.toLocaleString()} {tx('records', 'سجل')}</span>
                 </span>
                 <ArrowRight className="w-4 h-4 text-slate-300 rtl:rotate-180" />
@@ -134,31 +136,20 @@ export default function PortalHomePage() {
             <KpiTile label={tx('Shipments', 'إجمالي الشحنات')} value={(t.shipments || 0).toLocaleString()} icon={<Truck className="w-4 h-4" />} />
             <KpiTile label={tx('In transit', 'في الطريق')} value={(t.inTransit || 0).toLocaleString()} accent="#f59e0b" icon={<MapPin className="w-4 h-4" />} />
             <KpiTile label={tx('Delivered', 'تم التسليم')} value={(t.delivered || 0).toLocaleString()} accent="#16a34a" icon={<CheckCircle2 className="w-4 h-4" />} />
+            {/* بلا أيّ مبلغ للعميل — أعدادٌ فقط (٢٠٢٦/١٠/٢٤). */}
+            {!!t.platformTrips && (
+              <KpiTile label={tx('Transport trips', 'رحلات النقل')} value={(t.platformTrips || 0).toLocaleString()} accent="#6366f1" icon={<ClipboardList className="w-4 h-4" />} />
+            )}
+            {!!t.heavyTransport && (
+              <KpiTile label={tx('Heavy transport', 'النقل الثقيل')} value={(t.heavyTransport || 0).toLocaleString()} icon={<Truck className="w-4 h-4" />} />
+            )}
+            {!!t.shipmentOrders && (
+              <KpiTile label={tx('Shipment orders', 'طلبات الشحن')} value={(t.shipmentOrders || 0).toLocaleString()} icon={<Package className="w-4 h-4" />} />
+            )}
             <KpiTile label={tx('Customs files', 'معاملات التخليص')} value={(t.customsFiles || 0).toLocaleString()} accent="#0ea5e9" sub={`${(t.containers || 0).toLocaleString()} ${tx('containers', 'حاوية')}`} icon={<Container className="w-4 h-4" />} />
-            <KpiTile label={tx('Outstanding', 'المستحق عليك')} value={money(t.outstanding)} accent={t.overdueAmount ? '#ef4444' : '#f37121'} sub={t.overdueCount ? `${t.overdueCount} ${tx('overdue', 'متأخرة')}` : undefined} icon={<Wallet className="w-4 h-4" />} />
-            <KpiTile label={tx('Paid to date', 'إجمالي المدفوع')} value={money(t.paid)} accent="#16a34a" icon={<CheckCircle2 className="w-4 h-4" />} />
           </>
         )}
       </div>
-
-      {/* تنبيه المتأخرات */}
-      {!isVendor && !!t.overdueCount && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-red-700 font-semibold text-sm">
-              {tx(`${t.overdueCount} invoice(s) past due`, `${t.overdueCount} فاتورة تجاوزت موعد السداد`)}
-            </p>
-            <p className="text-red-600 text-xs mt-0.5">
-              {tx('Total overdue', 'إجمالي المتأخر')}: {money(t.overdueAmount)}
-              {' · '}
-              <button type="button" onClick={() => router.push('/system/portal/invoices')} className="underline">
-                {tx('View invoices', 'عرض الفواتير')}
-              </button>
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* الشحنات الجارية */}
       {!!data.inTransit?.length && (
@@ -205,7 +196,7 @@ export default function PortalHomePage() {
                 <div
                   className="w-full rounded-t bg-[#f37121]/80 hover:bg-[#f37121] transition-colors"
                   style={{ height: `${Math.max(2, (m.count / maxMonth) * 100)}%` }}
-                  title={`${m.month}: ${m.count} · ${money(m.value)}`}
+                  title={isVendor ? `${m.month}: ${m.count} · ${money(m.value)}` : `${m.month}: ${m.count}`}
                 />
                 <span className="text-[9px] text-slate-400">{m.month.slice(5)}</span>
               </div>
@@ -216,6 +207,24 @@ export default function PortalHomePage() {
 
       {/* أحدث السجلات لكل خدمة */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+        {!!data.recent.platformTrips?.length && (
+          <RecentList
+            title={tx('Latest transport trips', 'أحدث رحلات النقل')}
+            icon={<ClipboardList className="w-4 h-4 text-[#f37121]" />}
+            onAll={() => router.push('/system/portal/shipments?type=platform')}
+            allLabel={tx('View all', 'عرض الكل')}
+            rows={data.recent.platformTrips.map((s: any) => ({
+              id: s._id,
+              href: `/system/portal/shipments/platform/${s._id}`,
+              title: `#${s.waybillNumber || '—'}`,
+              sub: `${s.fromCity || '—'} ← ${s.toCity || '—'}`,
+              meta: fmtDate(s.loadDate || s.createdAt),
+              status: s.status,
+            }))}
+            router={router}
+            lang={lang as Lang}
+          />
+        )}
         {!!data.recent.heavyTransport?.length && (
           <RecentList
             title={tx('Latest heavy-transport loads', 'أحدث حمولات النقل الثقيل')}
@@ -282,24 +291,6 @@ export default function PortalHomePage() {
               title: c.refNumber || c.blNumber || '—',
               sub: customsStageText(c.stage, lang as Lang),
               meta: `${c.containerCount || 0} ${tx('containers', 'حاوية')}`,
-              status: '',
-            }))}
-            router={router}
-            lang={lang as Lang}
-          />
-        )}
-        {!!data.recent.invoices?.length && (
-          <RecentList
-            title={tx('Latest invoices', 'أحدث الفواتير')}
-            icon={<FileText className="w-4 h-4 text-[#f37121]" />}
-            onAll={() => router.push('/system/portal/invoices')}
-            allLabel={tx('View all', 'عرض الكل')}
-            rows={data.recent.invoices.map((i: any) => ({
-              id: i._id,
-              href: `/system/portal/invoices/${i._id}`,
-              title: `#${i.invoiceNumber}`,
-              sub: `${tx('Balance', 'المتبقي')}: ${money(i.balance)}`,
-              meta: fmtDate(i.dueDate),
               status: '',
             }))}
             router={router}

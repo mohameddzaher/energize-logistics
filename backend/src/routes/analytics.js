@@ -307,7 +307,10 @@ router.get('/super-overview', authorize('super_admin', 'admin'), async (req, res
 });
 
 // Client Portal Dashboard
-router.get('/portal/dashboard', authorize('client'), async (req, res) => {
+// لوحةُ البوابة القديمة (فيها مبالغ) — العميلُ اليومَ على /api/portal بلا أسعار.
+router.get('/portal/dashboard', authorize('client'), (req, res, next) => (
+  ['customer', 'vendor'].includes(req.user && req.user.accountType) || (req.user && req.user.role === 'client')
+    ? res.status(403).json({ message: 'غير متاح' }) : next()), async (req, res) => {
   try {
     const customerId = req.user.linkedCustomer;
     if (!customerId) return res.status(400).json({ message: 'No linked customer' });

@@ -22,6 +22,7 @@ import {
   Spinner, PageHeader, StatCard, ErrorNotice, PrimaryButton, Modal, Tabs,
 } from '@/components/hr/HRKit';
 import ScrollX from '@/components/system/ScrollX';
+import CustomerPresence from '@/components/system/CustomerPresence';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import PortalAccountCard from '@/components/system/PortalAccountCard';
@@ -264,6 +265,8 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
         </button>
         {editor && <PrimaryButton onClick={() => setEditOpen(true)}><Pencil className="w-4 h-4" /> {ar ? 'تعديل' : 'Edit'}</PrimaryButton>}
       </PageHeader>
+      {/* العميلُ نفسُه في الأقسام الأخرى */}
+      <CustomerPresence reg="shipment" id={String(c._id)} ar={ar} onChanged={load} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
         <StatCard label={ar ? 'الرحلات (كشوف)' : 'Trips (sheets)'} value={a.sheets.toLocaleString('en-US')} accent="text-[#f37121]" />

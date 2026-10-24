@@ -81,5 +81,8 @@ customsPartySchema.pre('findOneAndUpdate', function preUpd(next) {
 // طرفٌ واحدٌ بالاسم الواحد لكلّ دور — لا عميلان بالاسم نفسِه.
 customsPartySchema.index({ kind: 1, nameKey: 1 }, { unique: true });
 
+// ── العميلُ واحدٌ في كلّ الأقسام — رابطُه إلى شركة العلاقات الأمّ (services/customerHub) ──
+customsPartySchema.add({ crmCompany: { type: mongoose.Schema.Types.ObjectId, ref: 'CrmCompany', default: null, index: true } });
+require('../services/customerHub').attach(customsPartySchema, 'customs');
 module.exports = mongoose.models.CustomsParty || mongoose.model('CustomsParty', customsPartySchema);
 module.exports.fold = fold;

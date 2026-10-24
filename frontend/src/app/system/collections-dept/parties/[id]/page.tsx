@@ -18,6 +18,8 @@ import { kindWords, money, dt, paymentTypeLabel, type CollectionsParty } from '@
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, Select, Loader2 } from '@/components/hr/HRKit';
 import ReportButton from '@/components/system/ReportButton';
+import CustomerPresence from '@/components/system/CustomerPresence';
+import PortalAccountCard from '@/components/system/PortalAccountCard';
 import { printTable } from '@/utils/printTable';
 import { useAuth } from '@/context/AuthContext';
 import { canEditCollections } from '@/lib/collections';
@@ -298,6 +300,12 @@ export default function PartyProfilePage() {
           }]}
         />
       </PageHeader>
+      {/* العميلُ نفسُه في الأقسام الأخرى */}
+      {kind === 'customer' && <CustomerPresence reg="collections" id={String((p as any)._id || id)} ar={ar} onChanged={load} />}
+      {/* حساب البوابة يُفعَّل من هنا أيضًا — مربوطًا بسجلّ العميل الرئيسي في CRM. */}
+      {kind === 'customer' && (p as any).crmCompany && (
+        <PortalAccountCard source="crm_company" refId={String((p as any).crmCompany?._id || (p as any).crmCompany)} name={p.name} />
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <Stat label={t('كشوف', 'Reports')} value={money(p.reports)} />

@@ -11,6 +11,7 @@ import { getCRMTranslations } from '@/lib/translations';
 import { ArrowLeft, Building2, Plus, Trash2, Star, Phone, MapPin, Pencil } from 'lucide-react';
 import PortalAccountCard from '@/components/system/PortalAccountCard';
 import ReportButton from '@/components/system/ReportButton';
+import CustomerPresence from '@/components/system/CustomerPresence';
 import {
   isCrmStaff, isCrmAdmin, CrmCompany, CrmContact, CrmActivity, CrmTask, CrmDeal, CrmOptions,
   COMPANY_STATUS_STYLE, DEAL_STATUS_STYLE, TASK_STATUS_STYLE, PRIORITY_STYLE, optLabel,
@@ -179,6 +180,9 @@ export default function CrmCompanyDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* العميلُ نفسُه في الأقسام الأخرى */}
+      <CustomerPresence reg="crm" id={String(company._id)} ar={ar} onChanged={reload} />
 
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
 

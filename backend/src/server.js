@@ -246,8 +246,8 @@ app.use('/api/users', userRoutes);
 //   · ومتابعاتُ التحصيل انتقلت كلُّها إلى قسم التحصيل — لا تُقيَّد على عميلٍ
 //     من ورك فلو زال بل على طرفٍ يعرفه القسم.
 // وحارسُ القسم نُزع عنها: قسمٌ لا وجود له لا يحرس شيئًا.
-app.use('/api/invoices', authenticate, invoiceRoutes);
-app.use('/api/payments', authenticate, paymentRoutes);
+app.use('/api/invoices', authenticate, require('./middleware/denyExternal'), invoiceRoutes);
+app.use('/api/payments', authenticate, require('./middleware/denyExternal'), paymentRoutes);
 app.use('/api/customers', customerRoutes);
 // ── واجهة الأسطول للأتمتة ────────────────────────────────────────────────────
 // خارج `authenticate` لأنها تُصادَق بمفتاح لا بجلسة، وخارج `csrfGuard` لأن
@@ -348,6 +348,8 @@ app.use('/api/contracts', authenticate, sectionGate('Contracts'), contractsRoute
 // Not section-gated: /api/partners is used from every section's customer profile
 // page, and /api/portal belongs to outside partners who have no section at all.
 app.use('/api/partners', partnerRoutes);
+// العميلُ واحدٌ في كلّ الأقسام — أين يوجد (services/customerHub).
+app.use('/api/customer-hub', require('./routes/customerHub'));
 app.use('/api/portal', portalRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/business-review', authenticate, sectionGate('Business Review'), businessReviewRoutes);
@@ -525,6 +527,8 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     try { require('./controllers/exportJobsController').startExportCleanup(); } catch (e) { /* */ }
     // وسجلُّ التفقّد (B2C) وصورُه تُمسح بعد أربعة عشر يومًا — راجع jobs/b2cDutyPurge.
     try { require('./jobs/b2cDutyPurge').startB2cDutyPurge(); } catch (e) { console.error('[duty-purge] start:', e.message); }
+    // والعميلُ الذي أُنشئ بكتابةٍ مباشرة يُربط بعميله الأمّ كلَّ ساعة (services/customerHub).
+    try { require('./services/customerHub').startSweep(); } catch (e) { console.error('[customerHub] start:', e.message); }
     // وما قطعه النشرُ من تصديرٍ يُستأنف، فلا يبقى طلبٌ «جاريًا» بلا نهاية.
     try { require('./controllers/exportJobsController').resumeInterrupted(); } catch (e) { /* */ }
     startKeepAlive();

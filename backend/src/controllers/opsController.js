@@ -252,6 +252,25 @@ exports.update = async (req, res) => {
         if (r) console.log(`[ops] عميلٌ أُعيدت تسميتُه: «${r.from}» ← «${r.to}» · كشوف: ${r.sheets}${r.merged ? ' · دُمج مع طرفٍ قائم' : ''}`);
       } catch (e) { console.error('[ops] rename → collections:', e.message); }
     }
+    // ── وما عُدِّل في عميل المنصّة يصل كلَّ أقسامه في اللحظة (services/customerHub) ──
+    if (req.params.resource === 'users' && ['email', 'phone'].some((k) => req.body && req.body[k] !== undefined)) {
+      try {
+        const CrmCompany = require('../models/CrmCompany');
+        const cur = await CrmCompany.findOne({ externalSource: 'ops_upl', externalId: String(req.params.id) }).lean();
+        if (cur) {
+          const set = {}; const seen = { ...(cur.uplSeen || {}) };
+          if (req.body.phone !== undefined) { set.phone = String(req.body.phone || '').trim(); set.whatsapp = set.phone; seen.phone = set.phone; }
+          if (req.body.email !== undefined) {
+            const e = String(req.body.email || '').trim().toLowerCase();
+            set.emails = [e, ...(cur.emails || []).filter((x) => x !== cur.email && x !== e)].filter(Boolean);
+            set.email = set.emails[0] || ''; seen.email = e;
+          }
+          await CrmCompany.updateOne({ _id: cur._id }, { $set: { ...set, uplSeen: seen } });
+          const after = await CrmCompany.findById(cur._id).lean();
+          require('../services/customerHub').onChange('crm', cur, after, 'platform');
+        }
+      } catch (e) { console.error('[ops] user → customer hub:', e.message); }
+    }
     broadcast(req.params.resource, 'updated', { id: req.params.id });
     res.json(out.data ?? out);
     // وتعديلُ شحنةٍ مفردةٍ يتبعه صفُّها عندنا كما يتبع تغييرَ الحالة.

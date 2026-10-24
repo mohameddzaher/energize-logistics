@@ -3,12 +3,13 @@
 //
 // البنيةُ واحدة (اسمٌ، تواصلٌ، أرقامٌ، ملفٌّ يُفتح) والفرقُ دورُ الطرف لا شكلُه.
 // وصفحتان متطابقتان بملفّين تعنيان إصلاحَ كلّ عطلٍ مرّتين ثمّ نسيانَ إحداهما.
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
+import { useSocket } from '@/hooks/useSocket';
 import { useCustomsSearch, matchesSearch, searchKey } from '@/components/customs/useCustomsSearch';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { canEditSection } from '@/lib/sections';
@@ -78,6 +79,13 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind]);
   useEffect(() => { load(); }, [load]);
+  // بطاقةُ عميلٍ عُدِّلت في أيّ قسمٍ — تُعاد القائمة (مُمهَلةً).
+  const custTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useSocket('customers:changed', useCallback(() => {
+    if (custTimer.current) clearTimeout(custTimer.current);
+    custTimer.current = setTimeout(() => { load(); }, 800);
+  }, [load]));
+  useEffect(() => () => { if (custTimer.current) clearTimeout(custTimer.current); }, []);
 
   // البحثُ في المتصفّح: القائمةُ عشراتٌ لا آلاف. والطيُّ هو الطيُّ نفسُه
   // المستعمَل في الخادم (searchKey): المسافاتُ والشرطاتُ وصورُ الحروف سواء.

@@ -18,6 +18,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGri
 import SearchableManagedSelect from '@/components/system/SearchableManagedSelect';
 import PortalAccountCard from '@/components/system/PortalAccountCard';
 import ReportButton from '@/components/system/ReportButton';
+import CustomerPresence from '@/components/system/CustomerPresence';
 import ScrollX from '@/components/system/ScrollX';
 
 type Agg = { key: string; trips: number; income: number };
@@ -105,6 +106,8 @@ export default function FleetCustomerProfilePage() {
           <button type="button" onClick={() => router.push('/system/fleet/customers')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><ArrowRight className="w-4 h-4" /> {ar ? 'رجوع' : 'Back'}</button>
         </div>
       </PageHeader>
+      {/* العميلُ نفسُه في الأقسام الأخرى */}
+      <CustomerPresence reg="fleet" id={String(c._id)} ar={ar} onChanged={load} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
         <StatCard label={ar ? 'إجمالي الرحلات' : 'Total trips'} value={data.stats.trips} accent="text-[#f37121]" />

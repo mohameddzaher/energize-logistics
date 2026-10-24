@@ -523,6 +523,8 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     try { require('./controllers/crmKpiController').startKpiWarm(); } catch (e) { /* */ }
     // ملفّاتُ التصدير تُحذف بعد يوم — لقطةٌ للحظتها لا أرشيف.
     try { require('./controllers/exportJobsController').startExportCleanup(); } catch (e) { /* */ }
+    // وسجلُّ التفقّد (B2C) وصورُه تُمسح بعد أربعة عشر يومًا — راجع jobs/b2cDutyPurge.
+    try { require('./jobs/b2cDutyPurge').startB2cDutyPurge(); } catch (e) { console.error('[duty-purge] start:', e.message); }
     // وما قطعه النشرُ من تصديرٍ يُستأنف، فلا يبقى طلبٌ «جاريًا» بلا نهاية.
     try { require('./controllers/exportJobsController').resumeInterrupted(); } catch (e) { /* */ }
     startKeepAlive();

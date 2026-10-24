@@ -288,6 +288,9 @@ export default function OperationsWorkflowPage() {
     } catch { /* */ }
   }, []);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // أيُّ صفٍّ يُحرَّر **الآن** — يقرؤه ردُّ حفظٍ وصل متأخّرًا (handleInlineSave).
+  const editingRef = useRef<string | null>(null);
+  useEffect(() => { editingRef.current = editingId; }, [editingId]);
   const [editData, setEditData] = useState<Partial<Workflow>>({});
   // الصفُّ كما كان قبل التعديل — يُقارَن به عند الحفظ فلا يُرسَل إلّا ما تغيّر.
   const [editBase, setEditBase] = useState<Partial<Workflow>>({});
@@ -687,6 +690,11 @@ export default function OperationsWorkflowPage() {
       if (a !== b && typeof a !== 'object') patch[k] = a;
     }
     if (!Object.keys(patch).length) { handleInlineCancel(); return; }
+    // ── وما أُرسل لا يُرسَل ثانيةً، ولا يُنتظَر لفتح صفٍّ آخر (٢٠٢٦/١٠/٢٤) ──
+    // كان الانتقالُ إلى صفٍّ آخر قبل وصول الردّ يرى الصفَّ «غيرَ محفوظ» فيعيد
+    // حفظَه وينتظره — فيتأخّر فتحُ الصفّ التالي ثانيتين أو أكثر، ويضغط المستخدمُ
+    // مرّةً أخرى أو ينتقل، فيضيع اختيارُه. فالمُرسَلُ يُعدّ أساسًا جديدًا فورًا.
+    setEditBase((prev) => ({ ...prev, ...patch }));
     try {
       const savedId = editingId;
       const r = await api.put<Workflow & { refusedMessage?: string }>(`/api/workflows/${savedId}`, patch);
@@ -698,10 +706,16 @@ export default function OperationsWorkflowPage() {
           ? (lang === 'ar' ? 'حُفظت قيمة البيع هنا وفي منصّة التشغيل' : 'Selling value saved here and on the platform')
           : (lang === 'ar' ? 'حُفظت قيمة البيع — الكشف ليس من منصّة التشغيل' : 'Selling value saved — not a platform shipment'), 'success');
       }
-      setEditingId(null);
-      setEditData({});
-      setEditBase({});
-      setFocusField(null);
+      // ── ولا يُغلق الردُّ صفًّا فُتح بعده (٢٠٢٦/١٠/٢٤) ──────────────────────
+      // كان ردُّ حفظ الصفّ (أ) يُغلق وضعَ التعديل كلَّه ولو وصل والموظّفةُ قد
+      // انتقلت إلى (ب) وفتحت قائمتَه: تُنزَع القائمةُ من تحت يدها فيضيع اختيارُها
+      // ولا يُرسَل — «نصّه بيتعمل ونصّه لا». فلا يُغلَق إلّا إن بقي التعديلُ على صفّه.
+      if (editingRef.current === savedId) {
+        setEditingId(null);
+        setEditData({});
+        setEditBase({});
+        setFocusField(null);
+      }
       // ── والصفُّ يُكتب من ردِّ الحفظ، لا من طلبٍ جديد ────────────────────
       // كان الحفظُ يُتبَع بجلب الصفحة كلِّها. وردُّ الحفظ **هو** الصفُّ بعد
       // الحفظ — فيه ما كتبه المستخدمُ وما اشتقّه الخادمُ معه (تصفيرُ أعمدة
@@ -739,6 +753,7 @@ export default function OperationsWorkflowPage() {
       const dirty = Object.keys(editData).some((k) => (editData as any)[k] !== (editBase as any)[k] && typeof (editData as any)[k] !== 'object');
       if (dirty) await handleInlineSave();
     }
+    editingRef.current = wf._id;
     setEditingId(wf._id);
     setEditData({ ...wf });
     setEditBase({ ...wf });

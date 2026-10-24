@@ -13,6 +13,7 @@ import JpTaskPanel from '@/components/jp/JpTaskPanel';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
+import PartyStatementPicker from '@/components/collections/PartyStatementPicker';
 import { kindWords, money, dt, paymentTypeLabel, type CollectionsParty } from '@/lib/collections';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, Select, Loader2 } from '@/components/hr/HRKit';
@@ -24,7 +25,7 @@ import ExportMenu from '@/components/ls2/ExportMenu';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
-import { Users, Truck, ArrowRight, Phone, Building2, Plus, Trash2, CheckCircle2, MessageSquare, Receipt, Printer } from 'lucide-react';
+import { Users, Truck, ArrowRight, Phone, Building2, Plus, Trash2, CheckCircle2, MessageSquare, Receipt, Printer, Mail } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
 import { AttachmentsButton, useAttachmentCounts } from '@/components/collections/InvoiceAttachments';
 
@@ -76,6 +77,9 @@ export default function PartyProfilePage() {
 
   const { user } = useAuth();
   const canEdit = canEditCollections(user);
+  // «إرسال كشف حساب» من ملفّ العميل نفسِه — يصل إليه ولو لم تكن له فواتير بعد
+  // (لا يظهر في فلتر صفحتي الفواتير إلّا مَن له فواتير). راجع SendStatementModal.
+  const [sendKind, setSendKind] = useState<'cash' | 'tax' | null>(null);
   const [data, setData] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -259,6 +263,12 @@ export default function PartyProfilePage() {
         >
           <ArrowRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} /> {t('رجوع', 'Back')}
         </button>
+        {kind === 'customer' && canEdit && (
+          <button type="button" onClick={() => setSendKind(p.paymentType === 'tax' ? 'tax' : 'cash')}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] text-white hover:bg-[#e06010] text-sm font-bold">
+            <Mail className="w-4 h-4" />{t('إرسال كشف حساب', 'Email a statement')}
+          </button>
+        )}
 
         {/* ── كشفُ حسابٍ يُطبَع ويُرسَل ────────────────────────────────────
             المطالبةُ تُرسَل ورقةً: ما فُوتِر في الفترة، وما حُصّل منه، وما بقي،
@@ -703,6 +713,7 @@ export default function PartyProfilePage() {
           </Field>
         </div>
       </Modal>
+      {sendKind && <PartyStatementPicker partyName={p.name} defaultKind={sendKind} ar={ar} onClose={() => setSendKind(null)} />}
     </div>
   );
 }

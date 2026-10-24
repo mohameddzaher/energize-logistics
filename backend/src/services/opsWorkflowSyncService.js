@@ -17,6 +17,24 @@ const { derivePaymentTypeFor, ISSUED_INVOICE_EXPR, subtypeAfterAutoExpr } = requ
 
 
 const SOURCE = 'ops_upl';
+const crypto = require('crypto');
+
+/**
+ * ── ولا يُعاد كتابةُ ما لم يتغيّر (٢٠٢٦/١٠/٢٤) ──────────────────────────────
+ * المزامنةُ الكاملة كانت تكتب الأربعين ألفَ كشفٍ كلَّها كلَّ ساعة — لأنّ كلَّ صفٍّ
+ * يحمل `lastSyncedAt` جديدًا فيُعدّ «معدَّلًا» ولو لم يتغيّر فيه حرف. نحوُ ستَّ
+ * عشرةَ كتابةً في الثانية بلا انقطاع: تُنسَخ إلى ثلاثة خوادم، وتتضخّم بها نسخُ
+ * الاحتياط، ويقرؤها كلُّ مستمعٍ للتغييرات — وهي معظمُ فاتورة القاعدة.
+ *
+ * فلكلّ صفٍّ بصمةٌ لكلّ ما يدخل في كتابته: ما جاء من المنصّة، والاسمُ المعتمَد،
+ * وصفةُ العميل، والنوعُ المشتقّ، وخاناتُ الصفّ نفسِه التي يقرؤها خطُّ التحديث
+ * (مصدرُ قيمة البيع ونوعِ الدفع، والفاتورة…). فإن طابقت بصمةَ آخر كتابةٍ فالنتيجةُ
+ * هي هي حرفًا بحرف، فيُتخطّى الصفّ. وإن تغيّر شيءٌ منها كُتب كما كان يُكتب.
+ * واحتياطًا: مرّةٌ في اليوم (الرابعة فجرًا بتوقيت الرياض) تُكتب الصفوفُ كلُّها كالسابق.
+ */
+const DOC_INPUTS = ['sellingValue', 'sellingValueSource', 'paymentType', 'paymentTypeSource', 'paymentSubtype', 'invoiceNumber', 'reportNumber', 'stage'];
+const sigOf = (parts) => crypto.createHash('sha1').update(JSON.stringify(parts)).digest('hex');
+const riyadhHour = () => Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Riyadh', hour: '2-digit', hour12: false }).format(new Date()));
 let running = false;
 let timer = null;
 
@@ -173,7 +191,7 @@ async function customerTypeMap() {
   });
 }
 
-async function upsertShipments(ships) {
+async function upsertShipments(ships, { force = false } = {}) {
   if (!ships || !ships.length) return { created: 0, updated: 0, removed: 0 };
   const live = ships.filter((s) => s && s.id && !s.deleted_at);
   const deletedIds = ships.filter((s) => s && s.id && s.deleted_at).map((s) => String(s.id));
@@ -192,6 +210,16 @@ async function upsertShipments(ships) {
   const canonicalName = await canonicalNameMap();
   const { fold } = require('../models/CollectionsParty');
 
+  // ما هو مكتوبٌ الآن من كلّ صفّ — بصمتُه، والخاناتُ التي تدخل في كتابته.
+  const existing = new Map();
+  const liveIds = live.map((s) => String(s.id));
+  for (let i = 0; i < liveIds.length; i += 5000) {
+    const rows = await OperationsWorkflow.find({ externalSource: SOURCE, externalId: { $in: liveIds.slice(i, i + 5000) } })
+      .select(['externalId', 'syncSig', ...DOC_INPUTS].join(' ')).lean();
+    for (const r of rows) existing.set(String(r.externalId), r);
+  }
+  let skipped = 0;
+
   const ops = live.map((s) => {
     const { set, setOnInsert } = mapShipment(s);
     // الاسمُ المعتمَد لا الوارد — راجع canonicalNameMap.
@@ -207,6 +235,11 @@ async function upsertShipments(ships) {
       { reportDate: shipDate, paymentMethod: s.payment_method },
       custType,
     );
+    const ex = existing.get(String(s.id));
+    const { lastSyncedAt: _at, ...stable } = set;
+    const sig = sigOf([stable, setOnInsert, derived || '', ex ? DOC_INPUTS.map((f) => ex[f] ?? null) : null]);
+    if (!force && ex && ex.syncSig === sig) { skipped += 1; return null; }
+    set.syncSig = sig;
     return {
       updateOne: {
         filter: { externalSource: SOURCE, externalId: String(s.id) },
@@ -345,8 +378,9 @@ async function upsertShipments(ships) {
 
   let created = 0; let updated = 0; let removed = 0;
   const CHUNK = 500;
-  for (let i = 0; i < ops.length; i += CHUNK) {
-    const res = await OperationsWorkflow.bulkWrite(ops.slice(i, i + CHUNK), { ordered: false });
+  const writes = ops.filter(Boolean);
+  for (let i = 0; i < writes.length; i += CHUNK) {
+    const res = await OperationsWorkflow.bulkWrite(writes.slice(i, i + CHUNK), { ordered: false });
     created += res.upsertedCount || 0;
     updated += res.modifiedCount || 0;
   }
@@ -368,7 +402,7 @@ async function upsertShipments(ships) {
   // كشفٌ صار نقديًّا وعليه تحصيلٌ في المحفظة يُحصَّل، وكشفٌ كفّ عن النقد يُرفع
   // عنه ما كتبته المحفظة. مرّةً بعد أن تهدأ الدورات — راجع utils/walletCollection.
   if (updated || created) { try { require('../utils/walletCollection').scheduleResync(); } catch (e) {} }
-  return { created, updated, removed };
+  return { created, updated, removed, skipped };
 }
 
 /**
@@ -434,9 +468,10 @@ async function syncOnce() {
   try {
     const ships = await fetchAllShipments();
     if (!ships.length) return { total: 0 };
-    const res = await upsertShipments(ships);
+    const force = riyadhHour() === 4;
+    const res = await upsertShipments(ships, { force });
     try { emitToAll('workflow:bulkImported', { source: SOURCE, count: ships.length }); } catch (e) {}
-    console.log(`[opsWorkflowSync] full sync: ${ships.length} shipments -> created ${res.created}, updated ${res.updated}, removed ${res.removed}`);
+    console.log(`[opsWorkflowSync] full sync${force ? ' (daily full write)' : ''}: ${ships.length} shipments -> created ${res.created}, updated ${res.updated}, unchanged ${res.skipped || 0}, removed ${res.removed}`);
     return { total: ships.length, ...res };
   } catch (e) {
     console.error('[opsWorkflowSync] error:', e.message);

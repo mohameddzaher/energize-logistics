@@ -167,7 +167,8 @@ async function pollMovingShipments() {
     const OperationsWorkflow = require('../models/OperationsWorkflow');
     const ourMoving = await OperationsWorkflow
       .find({ externalSource: 'ops_upl', applicationStatus: { $in: MOVING } })
-      .select('externalId externalUpdatedAt applicationStatus').lean();
+      // بلا `_id` (لا يُقرأ هنا) فيُجاب من الفهرس وحدَه — راجع فهرسَ النموذج.
+      .select('-_id externalId externalUpdatedAt applicationStatus').lean();
 
     // ── ولا يُكتب إلّا ما تبدّل ───────────────────────────────────────────
     // التسعُمئةُ تُقرأ كلَّ دورة ولا يتغيّر منها في الدقيقة إلّا أفراد. وكتابتُها

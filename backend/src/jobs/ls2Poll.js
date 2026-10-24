@@ -29,6 +29,15 @@ const cairoDate = (d = new Date()) =>
 let timer = null;
 let running = false;
 let tickCount = 0;
+
+// ── لا يُكتب ما لم يتغيّر (٢٠٢٦/١٠/٢٤) ─────────────────────────────────────
+// كلُّ دورةٍ (١٥ ث) كانت تعيد كتابةَ الشاحنات السبعَ والخمسين وتنبيهاتِها
+// وعدّاداتِها ولو كانت واقفةً لم يتغيّر فيها شيء — قرابةَ اثنتي عشرةَ كتابةً في
+// الثانية تتضخّم بها نسخُ القاعدة واحتياطيُّها. فما تغيّر يُكتب فورًا كما كان،
+// وما لم يتغيّر يُجدَّد وقتُ «آخر رصد» فيه مرّةً في الدقيقة لا أربعًا.
+const REFRESH_MS = 60 * 1000;
+const lastVehicleWrite = new Map(); // unitId → { sig, at }
+const lastOdoWrite = new Map();     // unitId|day → 'odo|hours|plate'
 // Re-sync vehicle identity (VIN/brand/plate/SIM…) every ~30 min (identity is
 // near-static). At a 20s poll that's every 90 ticks.
 const IDENTITY_EVERY_TICKS = 90;
@@ -316,7 +325,10 @@ async function tick() {
       }
 
       // --- Daily odometer snapshot (keep the day's highest reading) ---
-      if (tel.odometerKm != null) {
+      const odoKey = `${tel.unitId}|${today}`;
+      const odoSig = `${tel.odometerKm}|${tel.engineHours}|${tel.plate}`;
+      if (tel.odometerKm != null && lastOdoWrite.get(odoKey) !== odoSig) {
+        lastOdoWrite.set(odoKey, odoSig);
         odoOps.push({
           updateOne: {
             filter: { unitId: tel.unitId, date: today },
@@ -329,13 +341,19 @@ async function tick() {
           },
         });
       }
-      vehicleOps.push({
-        updateOne: {
-          filter: { unitId: tel.unitId },
-          update: { $set: set, $setOnInsert: { unitId: tel.unitId } },
-          upsert: true,
-        },
-      });
+      const { lastSyncedAt: _ls, ...vehSigOf } = set;
+      const vehSig = JSON.stringify(vehSigOf);
+      const prevVeh = lastVehicleWrite.get(tel.unitId);
+      if (!prevVeh || prevVeh.sig !== vehSig || now - prevVeh.at >= REFRESH_MS) {
+        lastVehicleWrite.set(tel.unitId, { sig: vehSig, at: now.getTime() });
+        vehicleOps.push({
+          updateOne: {
+            filter: { unitId: tel.unitId },
+            update: { $set: set, $setOnInsert: { unitId: tel.unitId } },
+            upsert: true,
+          },
+        });
+      }
 
       // --- Driver history: Wialon only gives the CURRENT driver, so record a
       // change the moment we see one (close the old assignment, open a new one).
@@ -363,10 +381,14 @@ async function tick() {
         seen.add(k);
         const ex = priorByKey.get(k);
         if (ex) {
-          alertOps.push({ updateOne: { filter: { _id: ex._id }, update: { $set: {
+          const next = {
             severity: c.severity, message: c.message, value: c.value, threshold: c.threshold, unit: c.unit,
-            plate: tel.plate, driver: tel.driver, lastSeenAt: now, context: { ...ctx, ...(c.context || {}) },
-          } } } });
+            plate: tel.plate, driver: tel.driver, context: { ...ctx, ...(c.context || {}) },
+          };
+          const same = Object.keys(next).every((f) => JSON.stringify(next[f] ?? null) === JSON.stringify(ex[f] ?? null));
+          if (!same || !ex.lastSeenAt || now - new Date(ex.lastSeenAt) >= REFRESH_MS) {
+            alertOps.push({ updateOne: { filter: { _id: ex._id }, update: { $set: { ...next, lastSeenAt: now } } } });
+          }
         } else {
           if (c.severity === 'critical') newCritical += 1;
           const doc = {

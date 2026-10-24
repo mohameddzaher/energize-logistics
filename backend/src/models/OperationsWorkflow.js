@@ -242,6 +242,8 @@ const operationsWorkflowSchema = new mongoose.Schema(
     // به فيكتب ما تبدّل وحدَه بدل تسعِمئةِ صفٍّ في كلّ دورة. يُحفَظ كما ورد
     // نصًّا — قيمةُ مقارنةٍ لا تاريخٌ يُحسب به. راجع jobs/opsPoll.
     externalUpdatedAt: { type: String, trim: true },
+    // بصمةُ آخر ما كتبته المزامنةُ الكاملة — يُتخطّى الصفُّ إن لم يتغيّر شيءٌ يمسّه (services/opsWorkflowSyncService).
+    syncSig: { type: String },
 
     // ── ومعاملةُ التخليص التي يخدمها الكشف ──────────────────────────────────
     // نسخةٌ مقروءةٌ لا مرجعٌ وحده: الجدولُ وشاشاتُ التحصيل تعرض رقمَ المعاملة
@@ -304,6 +306,11 @@ operationsWorkflowSchema.pre('save', async function (next) {
 });
 
 // Indexes
+// ── استطلاعُ الشحنات المتحرّكة (jobs/opsPoll) يسأل كلَّ بضع ثوانٍ ─────────────
+// «كشوفُ المنصّة التي حالتُها في الطريق» — وكان يمسح الأربعين ألفَ كشفٍ ليعيد
+// ألفًا: أثقلُ استعلامٍ في القاعدة كلِّها (قيس بـ$queryStats، ٢٠٢٦/١٠/٢٤). وهذا
+// الفهرسُ يجيبه كاملًا من نفسه بلا فتح صفّ: الحالةُ والمصدرُ وما يُقرأ منهما.
+operationsWorkflowSchema.index({ applicationStatus: 1, externalSource: 1, externalId: 1, externalUpdatedAt: 1 });
 operationsWorkflowSchema.index({ stage: 1 });
 operationsWorkflowSchema.index({ branch: 1 });
 operationsWorkflowSchema.index({ carOwner: 1 });

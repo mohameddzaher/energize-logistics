@@ -2402,9 +2402,18 @@ exports.bulkUpdate = async (req, res) => {
       if (gateMoved) {
         try { emitToAll('collections:changed', { source: 'workflow', field: kindMoved ? 'paymentType' : 'gate', bulk: true }); } catch (e) { /* */ }
       }
+      // ── والدفعةُ تُسجَّل بكشوفها وقيمها (٢٠٢٦/١٠/٢٤) ─────────────────────
+      // كان السجلُّ يقول «خمسةَ عشرَ كشفًا · paymentType» فقط — فلا يُعرف أيُّها
+      // ولا إلى ماذا حين يُسأل «غيّرتُه فلم يتغيّر». فتُكتب الأرقامُ والقيمُ معه.
       logAudit({
         user: req.user, action: 'bulk_update', entity: 'OperationsWorkflow',
         details: `${updated} كشفًا · ${keys.join('، ')}`, ip: req.ip,
+        changes: {
+          details: `${updated} كشفًا · ${keys.join('، ')}`,
+          fields: Object.fromEntries(keys.map((k) => [k, patch[k]])),
+          reports: perRow.slice(0, 2000).map((t) => t.reportNumber),
+          skipped: skipped.slice(0, 500),
+        },
       });
     }
 

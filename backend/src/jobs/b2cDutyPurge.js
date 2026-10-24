@@ -44,7 +44,12 @@ async function purge(now = new Date()) {
   for (;;) {
     const batch = await B2CDutyCheck.find({ dateKey: { $lt: cutoff } }).limit(300).lean();
     if (!batch.length) break;
-    for (const d of batch) for (const u of fileUrlsOf(d)) { deleteStoredFile(u); files += 1; }
+    // قفل: لا يُمسح إلّا ملفٌّ في مجلّد التفقّد — ملفّاتُ الموارد البشريّة وغيرُها
+    // لا تُمسّ ولو حمل صفُّ تفقّدٍ رابطًا إليها خطأً (صاحبُ الشركة، ٢٠٢٦/١٠/٢٤).
+    for (const d of batch) for (const u of fileUrlsOf(d)) {
+      if (!u.startsWith('/api/uploads/b2c-duty/')) continue;
+      deleteStoredFile(u); files += 1;
+    }
     const ids = batch.map((d) => d._id);
     await AuditLog.deleteMany({ entity: 'B2CDutyCheck', entityId: { $in: ids } }).catch(() => {});
     rows += (await B2CDutyCheck.deleteMany({ _id: { $in: ids } })).deletedCount || 0;

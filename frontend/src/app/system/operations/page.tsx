@@ -291,6 +291,29 @@ export default function OperationsWorkflowPage() {
   // أيُّ صفٍّ يُحرَّر **الآن** — يقرؤه ردُّ حفظٍ وصل متأخّرًا (handleInlineSave).
   const editingRef = useRef<string | null>(null);
   useEffect(() => { editingRef.current = editingId; }, [editingId]);
+
+  // ── حالةُ حفظ كلّ صفّ — لا يضيع تعديلٌ بصمت (صاحبُ الشركة، ٢٠٢٦/١٠/٢٤) ──
+  // «اخترتُ النوع فلم يثبت» تكرّرت. فكلُّ حفظٍ له علامةٌ على صفّه: يُحفظ…،
+  // ثمّ ✓ حين يردّ الخادم، أو ✗ أحمرُ بزرّ «أعِد» إن تعذّر. وما انقطع بسبب الشبكة
+  // يُعاد وحدَه مرّتين قبل أن يُعلَن فشلُه. ولا تُغلَق الصفحةُ وفيها حفظٌ جارٍ أو
+  // فاشلٌ بلا تحذير. فلا يبقى تعديلٌ «ظنَّ صاحبُه أنّه حُفظ».
+  const [saveState, setSaveState] = useState<Record<string, 'saving' | 'saved' | 'failed'>>({});
+  const failedPatches = useRef<Record<string, Record<string, any>>>({});
+  const markSave = useCallback((id: string, st: 'saving' | 'saved' | 'failed' | null) => {
+    setSaveState((prev) => {
+      const next = { ...prev };
+      if (st) next[id] = st; else delete next[id];
+      return next;
+    });
+    if (st === 'saved') setTimeout(() => setSaveState((prev) => (prev[id] === 'saved' ? (({ [id]: _x, ...rest }) => rest)(prev) : prev)), 2500);
+  }, []);
+  const pendingSaves = Object.values(saveState).filter((v) => v !== 'saved').length;
+  useEffect(() => {
+    if (!pendingSaves) return undefined;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [pendingSaves]);
   const [editData, setEditData] = useState<Partial<Workflow>>({});
   // الصفُّ كما كان قبل التعديل — يُقارَن به عند الحفظ فلا يُرسَل إلّا ما تغيّر.
   const [editBase, setEditBase] = useState<Partial<Workflow>>({});
@@ -697,7 +720,7 @@ export default function OperationsWorkflowPage() {
     setEditBase((prev) => ({ ...prev, ...patch }));
     try {
       const savedId = editingId;
-      const r = await api.put<Workflow & { refusedMessage?: string }>(`/api/workflows/${savedId}`, patch);
+      const r = await putWithRetry(savedId, patch);
       // ما رفضه الخادمُ يُقال، ولا يُترك المستخدم يظنّ أنّه حُفظ.
       if (r && r.refusedMessage) setError(r.refusedMessage);
       // قيمةُ البيع: يُقال أين كُتبت — في المنصّة وهنا، أم هنا وحدَه (كشفٌ ليس منها).
@@ -723,6 +746,40 @@ export default function OperationsWorkflowPage() {
       // اليد، ويفتح معه سباقًا: ردٌّ أُطلق قبل الحفظ قد يصل بعده فيمسح
       // التعديلَ من الشاشة — فيبدو أنّه لم يُحفظ وقد حُفظ.
       if (r && r._id) setWorkflows((prev) => prev.map((w) => (w._id === savedId ? { ...w, ...r } : w)));
+      fetchStats();
+    } catch (err: any) { setError(err.message); }
+  };
+
+  /**
+   * الحفظُ نفسُه — بعلامته على الصفّ، ومحاولتين أُخريين إن انقطعت الشبكة.
+   * خطأٌ من الخادم (صلاحيّة، قاعدة) لا يُعاد: يُقال كما هو ويبقى الصفُّ أحمرَ
+   * بزرّ «أعِد» حتى يُصحَّح. والنجاحُ يمسح ما فشل قبله على الصفّ نفسِه.
+   */
+  const putWithRetry = async (id: string, patch: Record<string, any>) => {
+    markSave(id, 'saving');
+    let lastErr: any = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const r = await api.put<Workflow & { refusedMessage?: string }>(`/api/workflows/${id}`, patch);
+        delete failedPatches.current[id];
+        markSave(id, 'saved');
+        return r;
+      } catch (err: any) {
+        lastErr = err;
+        if (err && typeof err.status === 'number') break;     // ردَّ الخادمُ برفض — لا يُعاد
+        if (attempt < 2) await new Promise((res) => setTimeout(res, 1200 * (attempt + 1)));
+      }
+    }
+    failedPatches.current[id] = { ...(failedPatches.current[id] || {}), ...patch };
+    markSave(id, 'failed');
+    throw lastErr;
+  };
+  const retrySave = async (id: string) => {
+    const patch = failedPatches.current[id];
+    if (!patch) { markSave(id, null); return; }
+    try {
+      const r = await putWithRetry(id, patch);
+      if (r && r._id) setWorkflows((prev) => prev.map((w) => (w._id === id ? { ...w, ...r } : w)));
       fetchStats();
     } catch (err: any) { setError(err.message); }
   };
@@ -1613,6 +1670,15 @@ export default function OperationsWorkflowPage() {
                     {/* Checkbox + Actions */}
                     <td className="px-3 py-2.5 sticky start-0 bg-white z-10" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1.5">
+                        {saveState[wf._id] === 'saving' && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" aria-label={lang === 'ar' ? 'يُحفظ' : 'Saving'} />}
+                        {saveState[wf._id] === 'saved' && <Check className="w-3.5 h-3.5 text-emerald-600" aria-label={lang === 'ar' ? 'حُفظ' : 'Saved'} />}
+                        {saveState[wf._id] === 'failed' && (
+                          <button type="button" onClick={() => retrySave(wf._id)}
+                            className="inline-flex items-center gap-0.5 rounded bg-red-600 px-1.5 py-0.5 text-[10.5px] font-bold text-white"
+                            title={lang === 'ar' ? 'لم يُحفظ التعديل — اضغط لإعادة الحفظ' : 'Not saved — click to retry'}>
+                            <AlertTriangle className="w-3 h-3" />{lang === 'ar' ? 'لم يُحفظ — أعِد' : 'Retry'}
+                          </button>
+                        )}
                         <input
                           type="checkbox"
                           title={T.selectRow}

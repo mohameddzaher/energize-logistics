@@ -54,6 +54,10 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
   String _type = '';
   String _payType = '';
   int _rating = 0;
+  // آخرُ ما جاء من الخادم: التحديثُ الحيّ لا يمسح اختيارًا لم يُحفَظ بعد.
+  String _baseType = '';
+  String _basePay = '';
+  int _baseRating = 0;
   late final void Function() _onLive;
 
   @override
@@ -62,11 +66,13 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
     _load();
     _onLive = () => _load();
     Live.instance.on('fleet:updated', _onLive);
+    Live.instance.on('fleet:customers', _onLive);
   }
 
   @override
   void dispose() {
     Live.instance.off('fleet:updated', _onLive);
+    Live.instance.off('fleet:customers', _onLive);
     super.dispose();
   }
 
@@ -90,9 +96,13 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
       setState(() {
         _data = d;
         if (results.length > 1) _loadTypes = List<Map<String, dynamic>>.from(results[1]['items'] ?? []);
-        _type = (c['customerType'] ?? '').toString();
-        _payType = (c['paymentType'] ?? '').toString();
-        _rating = (c['rating'] is num) ? (c['rating'] as num).toInt() : 0;
+        final t = (c['customerType'] ?? '').toString();
+        final p = (c['paymentType'] ?? '').toString();
+        final r = (c['rating'] is num) ? (c['rating'] as num).toInt() : 0;
+        if (_type == _baseType) _type = t;
+        if (_payType == _basePay) _payType = p;
+        if (_rating == _baseRating) _rating = r;
+        _baseType = t; _basePay = p; _baseRating = r;
         _loading = false;
         _error = null;
       });

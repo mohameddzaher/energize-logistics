@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import {
@@ -106,19 +107,24 @@ export default function FleetCustomersPage() {
     return p.toString();
   }, [filters, search]);
 
+  const guard = useLatestRequest(); // ردٌّ قديمٌ (فلترٌ سابق) لا يكتب فوق الأحدث
   const load = useCallback(async () => {
+    const mine = guard.begin();
     try {
       const d = await api.get<{ customers: FleetCustomer[]; total: number }>(`/api/fleet/customers${qs ? `?${qs}` : ''}`);
+      if (!guard.isCurrent(mine)) return;
       setCustomers(d.customers || []);
       setTotal(d.total || 0);
       setError('');
-    } catch (e: any) { setError(e?.message || 'Request failed'); }
+    } catch (e: any) { if (!guard.isCurrent(mine)) return; setError(e?.message || 'Request failed'); }
     setLoading(false);
-  }, [qs]);
+  }, [qs, guard]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setPage(1); }, [qs, sort, dir, work]);
   useSocket('fleet:customers', useCallback(() => load(), [load]));
+  // رحلاتُ العميل ودخلُه وحمولاتُه المفتوحة تتغيّر مع كلّ حمولة.
+  useSocket('fleet:updated', useCallback(() => load(), [load]));
   // بطاقةُ عميلٍ عُدِّلت في أيّ قسمٍ — تُعاد القائمة (مُمهَلةً).
   const custTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useSocket('customers:changed', useCallback(() => {

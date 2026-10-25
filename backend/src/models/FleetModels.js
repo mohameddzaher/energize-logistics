@@ -18,8 +18,10 @@ const fleetVehicleSchema = new mongoose.Schema({
   brand: { type: String, trim: true, default: '' },           // ماركة السيارة — للبوليصة
   color: { type: String, trim: true, default: '' },           // لون السيارة — للبوليصة
   // الهدف الشهري للدخل لهذه السيارة (ر.س) — يُقارَن بالمحقَّق في التحليلات.
-  // الافتراضي من إعدادات القسم (FleetConfig.defaultMonthlyTarget) عند الإنشاء.
-  monthlyTarget: { type: Number, default: 27000 },
+  // فارغٌ = يتبع الافتراضيَّ في إعدادات القسم (FleetConfig.defaultMonthlyTarget)
+  // ويتغيّر بتغيّره؛ ورقمٌ هنا هدفٌ خاصٌّ بهذه السيارة. (كان الافتراضيُّ 27000
+  // مكتوبًا على كلّ سيارةٍ جديدة، فلم يكن لتغيير الإعدادات أثرٌ عليها.)
+  monthlyTarget: { type: Number, default: null },
   // المشرف المسؤول عن هذه السيارة: يعيّنه مدير القسم، وكل ما يراه المشرف في
   // القسم (حمولات، سائقون، لوحة، تحليلات) محصور في سياراته هذه.
   supervisor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },

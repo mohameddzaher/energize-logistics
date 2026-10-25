@@ -34,11 +34,14 @@ class _FleetSettingsScreenState extends State<FleetSettingsScreen> {
     // إعادة تحميل بثّية لا تُعيد ملء الحقول — كي لا نمسح تعديلًا جاريًا للمستخدم.
     _onLive = () => _load(hydrate: false);
     Live.instance.on('fleet:updated', _onLive);
+    // هدفُ الشاحنة يُحفَظ بـPUT على الشاحنة فيُعلَن `fleet:vehicles`.
+    Live.instance.on('fleet:vehicles', _onLive);
   }
 
   @override
   void dispose() {
     Live.instance.off('fleet:updated', _onLive);
+    Live.instance.off('fleet:vehicles', _onLive);
     _fridayBonus.dispose();
     _defaultTarget.dispose();
     for (final c in _targets.values) { c.dispose(); }

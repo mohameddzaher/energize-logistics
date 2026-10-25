@@ -90,6 +90,9 @@ export default function FleetBoardPage() {
   useSocket('ls2:updated', useCallback(() => load(), [load]));
   // الشاحنةُ من سجلّ المركبات والسائقُ من الموارد البشريّة: يُعاد الجلبُ متى تغيّر أحدُهما.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
+  // مقعدٌ يتبدّل أو شاحنةٌ تُعدَّل يُعلَن بهذين وحدَهما — والبطاقةُ تعرض سائقيها.
+  useSocket('fleet:drivers', useCallback(() => load(), [load]));
+  useSocket('fleet:vehicles', useCallback(() => load(), [load]));
   useSocket('hr:employee', useCallback(() => load(), [load]));
   // Belt-and-braces: the board is the operations command view — even if the
   // socket drops, it must never sit stale for long.

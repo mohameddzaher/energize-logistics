@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../services/live.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -75,11 +76,24 @@ class _VehicleMonthLogState extends State<VehicleMonthLog> {
     return q.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
   }
 
+  late final void Function() _onLive;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _onLive = () => _load();
+    Live.instance.on('fleet:updated', _onLive);
   }
+
+  @override
+  void dispose() {
+    Live.instance.off('fleet:updated', _onLive);
+    super.dispose();
+  }
+
+  // الخادمُ يقول إن كان يكتب هنا: المشرفُ يكتب في سيّاراته وحدَها.
+  bool get _mayWrite => widget.canEdit && _d?['canWrite'] != false;
 
   @override
   void didUpdateWidget(covariant VehicleMonthLog old) {
@@ -280,7 +294,7 @@ class _VehicleMonthLogState extends State<VehicleMonthLog> {
           _stat(tr('تكلفة السجلّ', 'Log cost'), _money(s['logCost'])),
           _stat(tr('الصافي', 'Net'), _money(s['net'])),
         ]),
-        if (widget.canEdit) ...[
+        if (_mayWrite) ...[
           const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
@@ -339,7 +353,7 @@ class _VehicleMonthLogState extends State<VehicleMonthLog> {
                     ]),
                   ]),
                 ),
-                if (widget.canEdit && r['source'] == 'entry' && !closed)
+                if (_mayWrite && r['source'] == 'entry' && !closed)
                   IconButton(
                     visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.delete_outline, size: 18, color: T.danger),

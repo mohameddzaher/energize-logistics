@@ -10,6 +10,7 @@
 // «قيد متأخّر»، فلا يُدَسّ بين ما كُتب في حينه.
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -34,6 +35,8 @@ export interface VehicleLogResponse {
   vehicle: { _id: string; plate: string; name?: string; trailerType?: string; supervisorName?: string; monthlyTarget?: number };
   period: LogPeriod;
   closed: boolean;
+  /** الخادم: هل يكتب هذا المستخدمُ في سجلّ هذه السيّارة (المشرفُ في سيّاراته وحدَها). */
+  canWrite?: boolean;
   kinds: { key: string; ar: string; en: string }[];
   timeline: LogRow[];
   summary: LogSummary;
@@ -91,10 +94,12 @@ export default function VehicleMonthLog({
   else qs.set('month', month || thisMonth());
   const query = qs.toString();
 
+  const guard = useLatestRequest(); // ردٌّ قديمٌ (فلترٌ سابق) لا يكتب فوق الأحدث
   const load = useCallback(async () => {
     if (!vehicle) { setLoading(false); return; }
-    try { setData(await api.get<VehicleLogResponse>(`/api/fleet/vehicle-logs?${query}`)); }
-    catch (e: any) { notify(e?.message || t('تعذّر تحميل السجلّ', 'Could not load the log'), 'error'); }
+    const mine = guard.begin();
+    try { const r = await api.get<VehicleLogResponse>(`/api/fleet/vehicle-logs?${query}`); if (!guard.isCurrent(mine)) return; setData(r); }
+    catch (e: any) { if (!guard.isCurrent(mine)) return; notify(e?.message || t('تعذّر تحميل السجلّ', 'Could not load the log'), 'error'); }
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vehicle, query]);
@@ -137,6 +142,7 @@ export default function VehicleMonthLog({
     );
   }
   if (!data) return null;
+  const mayWrite = canEdit && data.canWrite !== false;
 
   const kindLabel = (k: string) => {
     if (k === 'load') return t('حمولة', 'Load');
@@ -177,7 +183,7 @@ export default function VehicleMonthLog({
               {t('فتح سجلّات السيارات', 'Open vehicle logs')}
             </Link>
           )}
-          {canEdit && (
+          {mayWrite && (
             <button type="button" onClick={() => setAdding((v) => !v)}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium hover:bg-[#e06010] transition-colors">
               <Plus className="w-4 h-4" /> {t('إضافة قيد', 'Add entry')}
@@ -207,7 +213,7 @@ export default function VehicleMonthLog({
         ))}
       </div>
 
-      {adding && canEdit && (
+      {adding && mayWrite && (
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 mb-4 space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
@@ -300,7 +306,7 @@ export default function VehicleMonthLog({
                     {r.byName ? <span>{r.byName}</span> : null}
                   </div>
                 </div>
-                {canEdit && r.source === 'entry' && !data.closed && (
+                {mayWrite && r.source === 'entry' && !data.closed && (
                   <button type="button" onClick={() => remove(r.id)}
                     className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-slate-50 shrink-0" title={t('حذف', 'Delete')}>
                     <Trash2 className="w-4 h-4" />

@@ -1,6 +1,6 @@
 'use client';
 // ملف العميل — عميل واحد بكامل سجل رحلاته معنا وإحصائياته، وتعديل نوعه وتقييمنا له.
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
@@ -62,19 +62,26 @@ export default function FleetCustomerProfilePage() {
   const [rating, setRating] = useState(0);
   const [payType, setPayType] = useState('');
 
+  // آخرُ ما جاء من الخادم: تحديثٌ حيّ (حمولةٌ حُفظت في أيّ مكان) لا يمسح اختيارًا
+  // لم يُحفَظ بعد — يُحدَّث الحقلُ الذي لم يلمسه المستخدمُ وحدَه.
+  const base = useRef({ type: '', rating: 0, payType: '' });
   const load = useCallback(async () => {
     try {
       const d = await api.get<Profile>(`/api/fleet/customers/${id}/profile`);
       setData(d);
-      setType(d.customer.customerType || '');
-      setRating(d.customer.rating || 0);
-      setPayType(d.customer.paymentType || '');
+      const next = { type: d.customer.customerType || '', rating: d.customer.rating || 0, payType: d.customer.paymentType || '' };
+      const was = base.current;
+      setType((cur) => (cur === was.type ? next.type : cur));
+      setRating((cur) => (cur === was.rating ? next.rating : cur));
+      setPayType((cur) => (cur === was.payType ? next.payType : cur));
+      base.current = next;
     } catch (e: any) { notify(e?.message || 'Failed to load', 'error'); }
     setLoading(false);
   }, [id, notify]);
 
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:updated', useCallback(() => load(), [load]));
+  useSocket('fleet:customers', useCallback(() => load(), [load]));
 
   const saveMeta = async () => {
     setSaving(true);

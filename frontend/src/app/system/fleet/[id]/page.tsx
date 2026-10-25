@@ -19,7 +19,6 @@ import {
   FleetShipment, FleetEvent, fleetStatus, fleetStatusLabel, FOLLOWUP_NOTES_AR,
   fmtDT, fmtD, hoursSince, canEditFleet, Lang,
 } from '@/lib/fleet';
-import type { DispatchSheetRow } from '@/lib/dispatchSheetExcelParser';
 import { useFleetLookups } from '@/hooks/useFleetLookups';
 import VehicleMonthLog from '@/components/fleet/VehicleMonthLog';
 
@@ -106,18 +105,11 @@ function FleetShipmentDetailsInner() {
     if (!shipment) return;
     setDownloading(true);
     try {
+      // البوليصةُ نفسُها التي تطبعها القائمةُ والجوّال: الخادمُ يملؤها من سجلّ
+      // المركبات والموارد البشريّة (الماركة واللون والإقامة والجنسية…) — كانت
+      // تُبنى هنا بخاناتٍ فارغة.
+      const blob = await api.getBlob(`/api/fleet/shipments/${shipment._id}/waybill.pdf?lang=${ar ? 'ar' : 'en'}`);
       const gen = await import('@/lib/dispatchSheetGenerator');
-      const row: DispatchSheetRow = {
-        rowIndex: 1, rentalType: '', carBrand: '', carColor: '',
-        carType: shipment.trailerType || '', plateNumber: shipment.vehiclePlate || '',
-        driverAdvance: '', driverPhone: shipment.driverPhone || '', driverIqama: '', driverNationality: '',
-        driverName: [shipment.driverName, shipment.secondDriverName].filter(Boolean).join(' + '),
-        customerName: shipment.customerName || '', branch: '',
-        toLocation: shipment.toCity || '', fromLocation: shipment.fromCity || '',
-        date: fmtD(shipment.loadDate || shipment.createdAt), dispatchNumber: String(shipment.waybillNumber),
-        missingRequired: [],
-      };
-      const { blob } = await gen.generateSingleDispatchPdf(row);
       const d = new Date(shipment.loadDate || shipment.createdAt || Date.now());
       gen.triggerDownload(blob, `بوليصة-${shipment.waybillNumber}-${shipment.customerName || 'عميل'}-${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()}.pdf`);
     } catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }

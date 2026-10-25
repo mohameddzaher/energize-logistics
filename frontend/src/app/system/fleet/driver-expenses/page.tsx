@@ -15,6 +15,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import {
   Wallet, CheckCircle2, Clock, Users, Loader2, Search, CalendarDays, BadgeCheck, Coins,
@@ -84,19 +85,30 @@ export default function DriverExpensesPage() {
     return p.toString();
   }, [mode, day, from, to, month, paid, search]);
 
+  // الأحدثُ وحدَه يُعرض (كلُّ حرفٍ في البحث طلب)، والفشلُ يُقال لا يُعرض جدولًا فارغًا.
+  const guard = useLatestRequest();
+  const [loadError, setLoadError] = useState('');
   const load = useCallback(async () => {
+    const mine = guard.begin();
     setLoading(true);
     try {
       const d = await api.get<{ rows: Row[]; summary: Summary }>(`/api/fleet/driver-expenses?${qs}`);
+      if (!guard.isCurrent(mine)) return;
       setRows(d.rows || []);
       setSummary(d.summary || null);
       setPicked(new Set());
-    } catch { setRows([]); setSummary(null); }
+      setLoadError('');
+    } catch (e: any) {
+      if (!guard.isCurrent(mine)) return;
+      setRows([]); setSummary(null);
+      setLoadError(e?.message || (ar ? 'تعذّر تحميل المصروفات' : 'Failed to load the expenses'));
+    }
     setLoading(false);
-  }, [qs]);
+  }, [qs, guard, ar]);
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:driverExpense', useCallback(() => load(), [load]));
-  useSocket('fleet:shipments', useCallback(() => load(), [load]));
+  // حفظُ الحمولة وحذفُها يُعلَنان بـ`fleet:updated` (لا `fleet:shipments` — لا يُرسَل).
+  useSocket('fleet:updated', useCallback(() => load(), [load]));
 
   const shownLabel = mode === 'all' ? t('كل الفترات', 'All time')
     : mode === 'day' ? day : mode === 'month' ? month : `${from} → ${to}`;
@@ -247,6 +259,9 @@ export default function DriverExpensesPage() {
         )}
       </div>
 
+      {loadError && !loading && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{loadError}</div>
+      )}
       {loading ? (
         <div className="py-10 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-slate-400" /></div>
       ) : (

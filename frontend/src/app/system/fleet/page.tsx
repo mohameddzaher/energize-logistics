@@ -10,6 +10,7 @@ import { useAuth } from '@/context/AuthContext';
 import { ContactButtons } from '@/components/crm/CrmKit';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Truck, Plus, Pencil, Trash2, FileDown, Loader2, PhoneCall, Printer, X, CheckSquare } from 'lucide-react';
@@ -141,18 +142,21 @@ function FleetShipmentsInner() {
     return p;
   }, [debounced, statusFilter, cityFilter, customerFilter, supervisorFilter, period]);
 
+  const guard = useLatestRequest(); // ردٌّ قديمٌ (فلترٌ سابق) لا يكتب فوق الأحدث
   const load = useCallback(async () => {
+    const mine = guard.begin();
     try {
       const qs = new URLSearchParams({ ...filterParams, page: String(page), limit: '25' });
       const d = await api.get<{ shipments: FleetShipment[]; total: number; stats: any; period: any }>(`/api/fleet/shipments?${qs}`);
+      if (!guard.isCurrent(mine)) return;
       setShipments(d.shipments || []);
       setTotal(d.total || 0);
       setStats(d.stats || null);
       setPeriodResolved(d.period || null);
       setError('');
-    } catch (e: any) { setError(e?.message || 'Request failed'); }
+    } catch (e: any) { if (!guard.isCurrent(mine)) return; setError(e?.message || 'Request failed'); }
     setLoading(false);
-  }, [filterParams, page]);
+  }, [filterParams, page, guard]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {

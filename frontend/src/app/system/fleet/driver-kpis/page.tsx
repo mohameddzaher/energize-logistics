@@ -99,6 +99,8 @@ export default function FleetDriverKpisPage() {
   useSocket('fleet:updated', load);
   // الشاحنةُ من سجلّ المركبات والسائقُ من الموارد البشريّة: يُعاد الجلبُ متى تغيّر أحدُهما.
   useSocket('vreg:updated', load);
+  useSocket('fleet:drivers', load);
+  useSocket('fleet:vehicles', load);
   useSocket('hr:employee', load);
 
   const items = useMemo(() => {

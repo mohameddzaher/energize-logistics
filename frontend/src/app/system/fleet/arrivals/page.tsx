@@ -14,6 +14,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { Spinner, PageHeader, StatCard, ErrorNotice, SearchInput } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportSheet } from '@/components/ls2/ExportMenu';
@@ -59,17 +60,22 @@ function ArrivalsInner() {
   // الفلترُ المعروضُ لا يُرسَل إلى الخادم: الجداولُ كلُّها وصلت، والإفرادُ عرضٌ.
   const urlParams = useMemo(() => (focus ? { ...params, focus } : params), [params, focus]);
 
+  const guard = useLatestRequest(); // ردٌّ قديمٌ (فلترٌ سابق) لا يكتب فوق الأحدث
   const load = useCallback(async () => {
+    const mine = guard.begin();
     try {
-      setD(await api.get<FleetArrivals>(`/api/fleet/arrivals?${new URLSearchParams(params)}`));
+      const r = await api.get<FleetArrivals>(`/api/fleet/arrivals?${new URLSearchParams(params)}`);
+      if (!guard.isCurrent(mine)) return;
+      setD(r);
       setError('');
-    } catch (e: any) { setError(e?.message || 'Request failed'); }
+    } catch (e: any) { if (!guard.isCurrent(mine)) return; setError(e?.message || 'Request failed'); }
     setLoading(false);
-  }, [params]);
+  }, [params, guard]);
 
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:updated', useCallback(() => load(), [load]));
   useSocket('fleet:vehicles', useCallback(() => load(), [load]));
+  useSocket('fleet:drivers', useCallback(() => load(), [load]));
   // الشاحنةُ من سجلّ المركبات والسائقُ من الموارد البشريّة: يُعاد الجلبُ متى تغيّر أحدُهما.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
   useSocket('hr:employee', useCallback(() => load(), [load]));

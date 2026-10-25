@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
+import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
@@ -32,10 +33,21 @@ class _FleetVehicleLogsScreenState extends State<FleetVehicleLogsScreen> {
   String _plate = '';
   String _search = '';
 
+  late final void Function() _onLive;
+
   @override
   void initState() {
     super.initState();
     _load();
+    // قيدٌ يُضاف أو حمولةٌ تُحفَظ في أيّ مكان — كما في الويب.
+    _onLive = () => _load();
+    Live.instance.on('fleet:updated', _onLive);
+  }
+
+  @override
+  void dispose() {
+    Live.instance.off('fleet:updated', _onLive);
+    super.dispose();
   }
 
   String _shift(String mk, int by) {

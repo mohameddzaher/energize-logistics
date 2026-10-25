@@ -13,6 +13,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { canEditFleet } from '@/lib/fleet';
@@ -73,9 +74,11 @@ function VehicleLogsInner() {
   };
   const query = params().toString();
 
+  const guard = useLatestRequest(); // ردٌّ قديمٌ (فلترٌ سابق) لا يكتب فوق الأحدث
   const load = useCallback(async () => {
-    try { setData(await api.get<Resp>(`/api/fleet/vehicle-logs/summary?${query}`)); }
-    catch (e: any) { notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error'); }
+    const mine = guard.begin();
+    try { const r = await api.get<Resp>(`/api/fleet/vehicle-logs/summary?${query}`); if (!guard.isCurrent(mine)) return; setData(r); }
+    catch (e: any) { if (!guard.isCurrent(mine)) return; notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error'); }
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);

@@ -35,11 +35,15 @@ class _FleetArrivalsScreenState extends State<FleetArrivalsScreen> {
     _load();
     _onLive = () => _load();
     Live.instance.on('fleet:updated', _onLive);
+    Live.instance.on('fleet:drivers', _onLive);
+    Live.instance.on('fleet:vehicles', _onLive);
   }
 
   @override
   void dispose() {
     Live.instance.off('fleet:updated', _onLive);
+    Live.instance.off('fleet:drivers', _onLive);
+    Live.instance.off('fleet:vehicles', _onLive);
     super.dispose();
   }
 

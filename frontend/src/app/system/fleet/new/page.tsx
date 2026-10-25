@@ -3,7 +3,7 @@
 // the form on the spot: its seated drivers (with their status), trailer type,
 // GPS type, plate. Picking a driver seated on another truck moves him here —
 // the swap the operations team asked to do WITHOUT visiting the drivers page.
-import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -52,6 +52,7 @@ function CreateFleetShipmentInner() {
   const isFriday = new Date().getDay() === 5;
 
   const [customerId, setCustomerId] = useState('');
+  const loadedCustomer = useRef('');
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ name: '', phone: '' });
   const [vehicleId, setVehicleId] = useState('');
@@ -90,7 +91,9 @@ function CreateFleetShipmentInner() {
               price: o.price ?? '', fullRent: o.fullRent ?? '', customerType: o.customerType || '',
               driverExpense: o.driverExpense ?? '', fridayBonus: !!o.fridayBonus, branch: o.branch || '',
             });
-            setCustomerId(typeof o.customer === 'object' ? o.customer?._id || '' : (o.customer || ''));
+            const cid = typeof o.customer === 'object' ? o.customer?._id || '' : (o.customer || '');
+            loadedCustomer.current = cid;
+            setCustomerId(cid);
             setVehicleId(typeof o.vehicle === 'object' ? o.vehicle?._id || '' : (o.vehicle || ''));
             setDriverId(typeof o.driver === 'object' ? o.driver?._id || '' : (o.driver || ''));
             setSecondDriverId(typeof o.secondDriver === 'object' ? o.secondDriver?._id || '' : (o.secondDriver || ''));
@@ -133,8 +136,12 @@ function CreateFleetShipmentInner() {
   // اختيار عميلٍ يملأ ما اتُّفق عليه معه: فئتَه ونوعَ الدفع. وكلاهما يبقى
   // قابلًا للتعديل هنا — الاتفاق افتراضٌ لحمولةٍ جديدة لا قيدٌ عليها، فالعميل
   // الضريبيّ قد يدفع حمولةً واحدة كاشًا.
+  // وفي التعديل: عميلُ الحمولة المحمَّل ليس «اختيارًا» — نوعُ دفعها وفئتُها كما
+  // حُفظا (كان يُعاد إلى افتراض العميل فيُحفظ كاشٌ ضريبيًّا بلا أن يلمسه أحد).
   useEffect(() => {
     if (!customer) return;
+    if (loadedCustomer.current && loadedCustomer.current === customerId) return;
+    loadedCustomer.current = '';
     setForm((f) => ({
       ...f,
       ...(customer.customerType ? { customerType: customer.customerType } : {}),

@@ -252,7 +252,9 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
         if (_driverId.isNotEmpty) 'driver': _driverId,
         'fromCity': _fromCity.text.trim(),
         'toCity': _toCity.text.trim(),
-        'loadDate': _loadDate.toIso8601String(),
+        // اليومُ وحدَه كما في الويب — وقتٌ محلّيٌّ بلا إزاحة يُقرأ في الخادم بتوقيت
+        // غرينتش، فحمولةُ ١٠:٣٠ مساءً كانت تُسجَّل في اليوم التالي.
+        'loadDate': '${_loadDate.year.toString().padLeft(4, '0')}-${_loadDate.month.toString().padLeft(2, '0')}-${_loadDate.day.toString().padLeft(2, '0')}',
         if (_expectedArrival != null) 'expectedArrival': _expectedArrival!.toUtc().toIso8601String(),
         if (_rentTypeItem != null) 'rentType': _rentTypeItem!['key'],
         if (_paymentTypeItem != null) 'paymentType': _paymentTypeItem!['key'],

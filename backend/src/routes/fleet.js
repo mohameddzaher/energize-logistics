@@ -69,7 +69,8 @@ router.get('/health', fleet.getFleetHealth);
 // والإدارة — مشرفُ الأسطول يرى المستحقَّ ولا يقرّر أنّه صُرِف.
 const EXPENSE_PAY_ROLES = ['super_admin', 'admin', 'it_manager', 'cfo', 'accounting_manager', 'accountant', 'fleet_manager', 'operations_manager'];
 router.get('/driver-expenses', fleet.getDriverExpenses);
-router.patch('/driver-expenses/paid', authorize(...EXPENSE_PAY_ROLES), fleet.setDriverExpensePaid);
+// strict: the section 'edit' a supervisor holds is not the right to mark money paid.
+router.patch('/driver-expenses/paid', authorize.strict(...EXPENSE_PAY_ROLES), fleet.setDriverExpensePaid);
 
 router.get('/vehicles', fleet.listVehicles);
 // تحليل سيارةٍ بعينها عبر فترة — محصورٌ بمشرفها (يُتحقَّق داخل المتحكّم).

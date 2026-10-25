@@ -14,6 +14,7 @@ import { useRouter, useSearchParams, useParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 import { Spinner, PageHeader, StatCard, ErrorNotice } from '@/components/hr/HRKit';
@@ -46,14 +47,18 @@ function VehicleAnalyticsInner() {
 
   const params = useMemo(() => periodParams(period), [period]);
 
+  const guard = useLatestRequest(); // ردٌّ قديمٌ (فلترٌ سابق) لا يكتب فوق الأحدث
   const load = useCallback(async () => {
     if (!id) return;
+    const mine = guard.begin();
     try {
-      setD(await api.get<FleetVehicleAnalytics>(`/api/fleet/vehicles/${id}/analytics?${new URLSearchParams(params)}`));
+      const r = await api.get<FleetVehicleAnalytics>(`/api/fleet/vehicles/${id}/analytics?${new URLSearchParams(params)}`);
+      if (!guard.isCurrent(mine)) return;
+      setD(r);
       setError('');
-    } catch (e: any) { setError(e?.message || 'Request failed'); }
+    } catch (e: any) { if (!guard.isCurrent(mine)) return; setError(e?.message || 'Request failed'); }
     setLoading(false);
-  }, [id, params]);
+  }, [id, params, guard]);
 
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:updated', useCallback(() => load(), [load]));

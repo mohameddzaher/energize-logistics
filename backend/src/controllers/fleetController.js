@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const { sendMongooseError } = require('../utils/mongooseError');
 const { FleetVehicle, FleetDriver, FleetCustomer, FleetShipment, FleetEvent, FleetConfig } = require('../models/FleetModels');
-const { startOfDay, endOfDay } = require('../utils/companyDay');
+const { startOfDay, endOfDay, todayKey, dayKeyOf } = require('../utils/companyDay');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 const User = require('../models/User');
@@ -274,9 +274,16 @@ const resolveAssignments = async (req, data, existing = null) => {
 // اليوم ثلاث ساعات: تُسقِط أوّل حمولات اليوم وتُدخِل حمولات اليوم التالي.
 // وبلا منطقةٍ تُقرأ بتوقيت **الخادم** — وهو غرينتش عندنا، فيعود العطلُ الذي
 // يشرحه التعليقُ أعلاه من الباب الآخر. يُبنى الحدُّ من تقويم الشركة صراحةً.
-const _dayStart = (s) => startOfDay(s);
-const _addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
-const _monthStart = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+// ── حدودُ الفترات بتوقيت الرياض ────────────────────────────────────────────
+// الخادمُ يعمل بتوقيت غرينتش: `new Date(y, m, d)` عليه منتصفُ ليل غرينتش، أي
+// الثالثةُ فجرًا عندنا — فكانت حمولاتُ ما بين ١٢ و٣ فجرًا تُحسب في اليوم (أو
+// الشهر) السابق، و`?month=` (من الجوّال) يعطي نافذةَ ثلاث ساعاتٍ لا شهرًا. فكلُّ
+// حدٍّ يُبنى من مفتاح يومٍ «YYYY-MM-DD» في الرياض ثمّ startOfDay.
+const _keyShift = (ymd, n) => { const d = new Date(`${ymd}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const _monthKeyShift = (ym, n) => { const [y, m] = ym.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 7); };
+const _day = (ymd) => startOfDay(ymd);
+const _month = (ym) => startOfDay(`${ym}-01`);
+const _dayStart = (s) => startOfDay(String(s).slice(0, 10));
 
 const PERIOD_PRESETS = [
   'today', 'yesterday', 'last_7', 'this_month', 'last_month',
@@ -287,39 +294,40 @@ const PERIOD_PRESETS = [
 // `end` حصريّ دائمًا (‏`$lt`)، فلا يحتاج المستدعي إلى تذكّر إضافة يوم.
 const resolvePeriod = (query = {}) => {
   const { preset, from, to, day, month } = query;
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tk = todayKey();
+  const tm = tk.slice(0, 7);
+  const today = _day(tk);
+  const at = (n) => _day(_keyShift(tk, n));
   const out = (start, end, key) => ({ start, end, preset: key });
 
   switch (preset) {
-    case 'today': return out(today, _addDays(today, 1), 'today');
-    case 'yesterday': return out(_addDays(today, -1), today, 'yesterday');
-    case 'last_7': return out(_addDays(today, -6), _addDays(today, 1), 'last_7');
-    case 'this_month': return out(_monthStart(now), new Date(now.getFullYear(), now.getMonth() + 1, 1), 'this_month');
-    case 'last_month': return out(new Date(now.getFullYear(), now.getMonth() - 1, 1), _monthStart(now), 'last_month');
+    case 'today': return out(today, at(1), 'today');
+    case 'yesterday': return out(at(-1), today, 'yesterday');
+    case 'last_7': return out(at(-6), at(1), 'last_7');
+    case 'this_month': return out(_month(tm), _month(_monthKeyShift(tm, 1)), 'this_month');
+    case 'last_month': return out(_month(_monthKeyShift(tm, -1)), _month(tm), 'last_month');
     // فتراتٌ مستقبلية — تخدم شاشة «المتوقع للوصول» وحدها: ما الذي سيصل غدًا؟
-    case 'tomorrow': return out(_addDays(today, 1), _addDays(today, 2), 'tomorrow');
-    case 'next_7': return out(today, _addDays(today, 7), 'next_7');
-    case 'next_30': return out(today, _addDays(today, 30), 'next_30');
+    case 'tomorrow': return out(at(1), at(2), 'tomorrow');
+    case 'next_7': return out(today, at(7), 'next_7');
+    case 'next_30': return out(today, at(30), 'next_30');
     // «الكل»: مخرجٌ صريح من كل مدى. وجوده وحده يمنع سؤال «لماذا كل شيء صفر؟»
     case 'all': return out(new Date(0), new Date(8640000000000000), 'all');
     default: break;
   }
-  if (day && /^\d{4}-\d{2}-\d{2}/.test(day)) return out(_dayStart(day), _addDays(_dayStart(day), 1), 'day');
+  if (day && /^\d{4}-\d{2}-\d{2}/.test(day)) return out(_dayStart(day), _day(_keyShift(String(day).slice(0, 10), 1)), 'day');
   if (month && /^\d{4}-\d{2}$/.test(month)) {
-    const s = _dayStart(`${month}-01`);
-    return out(s, new Date(s.getFullYear(), s.getMonth() + 1, 1), 'month');
+    return out(_month(month), _month(_monthKeyShift(month, 1)), 'month');
   }
   if (from || to) {
     return out(
       from ? _dayStart(from) : new Date(0),
-      to ? _addDays(_dayStart(to), 1) : _addDays(today, 1),
+      to ? _day(_keyShift(String(to).slice(0, 10), 1)) : at(1),
       'range',
     );
   }
   // الافتراضي: الشهر الحالي. تُعاد قيمته في الرد (`period.preset`) كي تعرضه
   // الواجهة صراحةً — فلا يبقى المستخدم يبحث عن حمولةٍ خارج الشهر ولا يدري.
-  return out(_monthStart(now), new Date(now.getFullYear(), now.getMonth() + 1, 1), 'this_month');
+  return out(_month(tm), _month(_monthKeyShift(tm, 1)), 'this_month');
 };
 
 // تاريخ الحمولة الفعلي = تاريخ التحميل، وإن لم يُسجَّل فتاريخ الإنشاء. كل
@@ -567,11 +575,26 @@ exports.updateShipment = async (req, res) => {
     }
     moveNotes.push(...await resolveAssignments(req, data, shipment));
 
+    // ── بونصُ الجمعة في التعديل يحرّك المبلغ كما في الإنشاء ─────────────────
+    // كان العلَمُ وحدَه يُحفظ: يُكتب «(مُضاف)» ومصروفُ السائق كما هو، ورفعُه
+    // يُبقي البونص المدفوعَ فيه. المصروفُ المعروضُ في النموذج يشمله أصلًا.
+    if (data.fridayBonus !== undefined && !!data.fridayBonus !== !!shipment.fridayBonus) {
+      const cfg = await getFleetConfig();
+      const amount = Number(cfg.fridayBonusAmount) || 0;
+      const base = Number(data.driverExpense !== undefined ? data.driverExpense : shipment.driverExpense) || 0;
+      data.driverExpense = Math.max(0, base + (data.fridayBonus ? amount : -amount));
+    }
+
+    const fromStatus = shipment.status;
     const changed = Object.keys(data).filter((k) => String(shipment[k] ?? '') !== String(data[k] ?? ''));
     Object.assign(shipment, data);
     await shipment.save();
 
     if (changed.length) await logEvent(req, shipment._id, 'updated', { fields: changed });
+    if (data.status !== undefined && data.status !== fromStatus) {
+      await logEvent(req, shipment._id, 'status', { from: fromStatus, to: shipment.status });
+      await notifyStatus(req, shipment, fromStatus);
+    }
     for (const line of moveNotes) await logEvent(req, shipment._id, 'driver_change', { text: line });
     emit('fleet:updated', { id: String(shipment._id) });
     res.json({ shipment });
@@ -580,6 +603,22 @@ exports.updateShipment = async (req, res) => {
     res.status(500).json({ message: 'Failed to update the shipment' });
   }
 };
+
+// Status change → tell the load's supervisor (unless they made the change).
+// From the status button and from the edit form alike.
+async function notifyStatus(req, shipment, from) {
+  if (!shipment.supervisor || String(shipment.supervisor) === String(req.user._id)) return;
+  try {
+    await createNotification({
+      recipient: shipment.supervisor,
+      type: 'status_changed',
+      title: 'تغيّرت حالة الشحنة',
+      message: `بوليصة ${shipment.waybillNumber} — ${from} → ${shipment.status}`,
+      relatedEntity: 'FleetShipment',
+      relatedEntityId: shipment._id,
+    });
+  } catch (e) { /* the notification is extra; the save already happened */ }
+}
 
 exports.patchStatus = async (req, res) => {
   try {
@@ -590,19 +629,7 @@ exports.patchStatus = async (req, res) => {
     await shipment.save();
     await logEvent(req, shipment._id, 'status', { from, to: shipment.status });
     emit('fleet:updated', { id: String(shipment._id) });
-    // Status change → tell the load's supervisor (unless they made the change).
-    if (shipment.supervisor && String(shipment.supervisor) !== String(req.user._id)) {
-      try {
-        await createNotification({
-          recipient: shipment.supervisor,
-          type: 'status_changed',
-          title: 'تغيّرت حالة الشحنة',
-          message: `بوليصة ${shipment.waybillNumber} — ${from} → ${shipment.status}`,
-          relatedEntity: 'FleetShipment',
-          relatedEntityId: shipment._id,
-        });
-      } catch (e) {}
-    }
+    await notifyStatus(req, shipment, from);
     res.json({ shipment });
   } catch (error) {
     res.status(400).json({ message: 'Invalid status' });
@@ -1238,16 +1265,20 @@ exports.updateVehicle = async (req, res) => {
       }
       delete data.plate;
       await writeRegistryIdentity(current.vehicleMaster, data);
-      delete data.brand; delete data.color;
+      // والنسخةُ على صفّ الأسطول تتبع السجلّ — وإلّا عاد القديمُ حين يُفرَّغ
+      // الحقلُ في السجلّ (العرضُ يقرأ «السجلّ أو نسخةَ الأسطول»).
     } else if (data.plate !== undefined) {
       // غيرُ المربوط يُربط متى صارت لوحتُه في السجلّ.
       const hit = await vehicleRef.resolve(data.plate);
       if (hit && !(await FleetVehicle.exists({ vehicleMaster: hit._id, _id: { $ne: current._id } }))) data.vehicleMaster = hit._id;
     }
+    if (data.vehicleMaster) await writeRegistryIdentity(data.vehicleMaster, data);
     const vehicle = await FleetVehicle.findByIdAndUpdate(req.params.id, data, { new: true });
     emit('fleet:vehicles', {});
     res.json({ vehicle });
   } catch (error) {
+    if (error.code === 11000) return res.status(409).json({ message: 'هذه اللوحة مسجّلة لشاحنةٍ أخرى في الأسطول' });
+    console.error('fleet updateVehicle:', error.message);
     res.status(500).json({ message: 'Failed to update the vehicle' });
   }
 };
@@ -1566,7 +1597,7 @@ exports.restoreCustomer = async (req, res) => {
 exports.getDashboard = async (req, res) => {
   try {
     const now = new Date();
-    const dayStart = new Date(now); dayStart.setHours(0, 0, 0, 0);
+    const dayStart = _day(todayKey()); // منتصفُ ليل الرياض، لا غرينتش
     const weekStart = new Date(now); weekStart.setDate(now.getDate() - 7);
     // The 3-hour cadence: an in-flight load nobody has called in 3+ hours is
     // exactly what the operations lead wants shoved in their face.
@@ -1861,6 +1892,15 @@ exports.listSupervisors = async (req, res) => {
   }
 };
 
+// ── والمشرفُ الجديدُ يتسلّم حمولاتِ الشاحنة المفتوحة ──────────────────────
+// المشرفُ يُنسخ على الحمولة عند إنشائها؛ فنقلُ الشاحنة كان يُبقي حمولاتِها
+// الجاريةَ تحت المشرف القديم — في فلاتره وفي إشعارات حالتها. المغلقةُ
+// (مفوترة/ملغاة) تبقى باسم من أدارها.
+const moveOpenLoads = (vehicleIds, supervisor, supervisorName) => FleetShipment.updateMany(
+  { vehicle: { $in: vehicleIds }, status: { $nin: ['invoiced', 'cancelled'] } },
+  { $set: { supervisor, supervisorName } },
+);
+
 // PATCH /vehicles/:id/supervisor { supervisor: userId|null } — manager only
 // (route-gated). Moving a truck between supervisors is exactly this.
 exports.assignVehicleSupervisor = async (req, res) => {
@@ -1878,6 +1918,7 @@ exports.assignVehicleSupervisor = async (req, res) => {
       v.supervisorName = '';
     }
     await v.save();
+    await moveOpenLoads([v._id], v.supervisor, v.supervisorName);
     emit('fleet:vehicles', {});
     emit('fleet:updated', {});
     await logAudit({
@@ -1912,6 +1953,7 @@ exports.assignVehicleSupervisorBulk = async (req, res) => {
       { _id: { $in: vehicleIds } },
       { $set: { supervisor: supId, supervisorName: supName } }
     );
+    await moveOpenLoads(vehicleIds, supId, supName);
     emit('fleet:vehicles', {});
     emit('fleet:updated', {});
     await logAudit({
@@ -1969,7 +2011,8 @@ const _multi = (v) => (v ? String(v).split(',').map((s) => s.trim()).filter(Bool
  * صحيحٌ — أمّا تحويلُها قسرًا فيُسقِط الطلبَ بخطأ.
  */
 const _oids = (arr) => arr.map((x) => (mongoose.Types.ObjectId.isValid(x) ? new mongoose.Types.ObjectId(x) : x));
-const _monthIndex = (d) => d.getFullYear() * 12 + d.getMonth();
+// شهرُ اللحظة في الرياض — حدودُ الفترات منتصفُ ليل الرياض (٢١:٠٠ غرينتش من اليوم السابق).
+const _monthIndex = (d) => { const [y, m] = dayKeyOf(d).split('-').map(Number); return y * 12 + (m - 1); };
 
 exports.getAnalytics = async (req, res) => {
   try {
@@ -2030,7 +2073,7 @@ exports.getAnalytics = async (req, res) => {
     // سيارةٍ فيردّ عليك سبعٌ وخمسون صفًّا أصفارًا وسيارتُك بينها — وهذه بعينها
     // شكوى «عملت سيرش بعربية فطلع كل حاجة صفر». والعدّادات (عدد السيارات،
     // ودون الهدف) كانت تعدّ الأسطول كلّه لا ما رشّحه المستخدم.
-    const vFilter = {};
+    const vFilter = { isActive: { $ne: false } }; // المحذوفةُ لا تُعدّ «دون الهدف»
     if (scope) vFilter._id = { $in: scope };
     if (vehicleF.length) vFilter._id = { $in: vehicleF.filter((v) => !scope || scope.some((s) => String(s) === v)) };
     if (supervisors.length) vFilter.supervisor = { $in: supervisors };
@@ -2156,15 +2199,16 @@ exports.getAnalytics = async (req, res) => {
     const topBranchCustomers = customersOut.filter((c) => c.customerType === 'branch').slice(0, 15);
 
     // 12-month trend (income + trips) — respects scope + customerType, ignores the date window.
-    const trendStart = new Date(); trendStart.setMonth(trendStart.getMonth() - 11); trendStart.setDate(1); trendStart.setHours(0, 0, 0, 0);
+    const trendStart = _month(_monthKeyShift(todayKey().slice(0, 7), -11)); // أوّلُ شهرٍ في الرياض
     const trendFilter = { $and: [{ $or: [{ loadDate: { $gte: trendStart } }, { $and: [{ loadDate: null }, { createdAt: { $gte: trendStart } }] }] }, { status: { $ne: 'cancelled' } }] };
     if (scope) trendFilter.$and.push({ vehicle: { $in: scope } });
     if (customerTypes.length) trendFilter.$and.push({ customerType: { $in: customerTypes } });
     const trendDocs = await FleetShipment.find(trendFilter).select('price loadDate createdAt').lean();
     const trendMap = new Map();
-    for (let i = 0; i < 12; i++) { const d = new Date(trendStart); d.setMonth(d.getMonth() + i); trendMap.set(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, { month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, income: 0, trips: 0 }); }
+    const firstMonth = _monthKeyShift(todayKey().slice(0, 7), -11);
+    for (let i = 0; i < 12; i++) { const k = _monthKeyShift(firstMonth, i); trendMap.set(k, { month: k, income: 0, trips: 0 }); }
     for (const s of trendDocs) {
-      const d = new Date(s.loadDate || s.createdAt); const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const k = dayKeyOf(new Date(s.loadDate || s.createdAt)).slice(0, 7);
       if (trendMap.has(k)) { const m = trendMap.get(k); m.income += Number(s.price) || 0; m.trips += 1; }
     }
     const monthlyTrend = [...trendMap.values()];
@@ -2224,7 +2268,7 @@ exports.getCustomerProfile = async (req, res) => {
     const months = new Map(); const routes = new Map(); const vehicles = new Map(); const pay = new Map();
     for (const s of shipments) {
       const d = s.loadDate || s.createdAt;
-      if (d) bump(months, new Date(d).toISOString().slice(0, 7), s);
+      if (d) bump(months, dayKeyOf(new Date(d)).slice(0, 7), s); // شهرُ الرياض
       bump(routes, [s.fromCity, s.toCity].filter(Boolean).join(' ← '), s);
       bump(vehicles, s.vehiclePlate, s);
       bump(pay, s.paymentType || '—', s);
@@ -2893,7 +2937,7 @@ exports.getVehicleAnalytics = async (req, res) => {
 
     // ترند اثني عشر شهرًا: يتجاهل الفترة عمدًا — السؤال «هل السيارة تتحسّن؟»
     // لا يُجاب من داخل الشهر المختار.
-    const trendStart = new Date(); trendStart.setMonth(trendStart.getMonth() - 11); trendStart.setDate(1); trendStart.setHours(0, 0, 0, 0);
+    const trendStart = _month(_monthKeyShift(todayKey().slice(0, 7), -11)); // أوّلُ شهرٍ في الرياض
 
     const [totalsAgg, byRoute, byCustomer, byStatus, byMonth, trips, cfg, seatDrivers, currentTrip] = await Promise.all([
       FleetShipment.aggregate([{ $match: match }, { $group: { _id: null, ...sums } }]),
@@ -2910,7 +2954,7 @@ exports.getVehicleAnalytics = async (req, res) => {
       FleetShipment.aggregate([{ $match: match }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
       FleetShipment.aggregate([
         { $match: { vehicle: vehicle._id, status: { $ne: 'cancelled' }, $expr: { $gte: [EFFECTIVE_DATE_EXPR, trendStart] } } },
-        { $group: { _id: { $dateToString: { format: '%Y-%m', date: EFFECTIVE_DATE_EXPR } }, ...sums } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m', date: EFFECTIVE_DATE_EXPR, timezone: 'Asia/Riyadh' } }, ...sums } },
         { $sort: { _id: 1 } },
       ]),
       FleetShipment.find(match)
@@ -3282,7 +3326,8 @@ exports.getVehicleLog = async (req, res) => {
           if (n) acc[k] = n;
           return acc;
         }, {}),
-        target: vehicle.monthlyTarget || 0,
+        // بلا هدفٍ خاصٍّ بها → الافتراضيُّ من الإعدادات، كما في التحليلات.
+        target: (Number(vehicle.monthlyTarget) || 0) || (Number((await getFleetConfig()).defaultMonthlyTarget) || 0),
       };
       summary.net = money(summary.income - summary.driverExpense - summary.logCost);
 
@@ -3295,6 +3340,9 @@ exports.getVehicleLog = async (req, res) => {
       closed: FleetVehicleLog.isClosed(range.monthKey),
       kinds: FleetVehicleLog.LOG_KINDS.map((k) => ({ key: k, ...FleetVehicleLog.KIND_LABELS[k] })),
       ...payload,
+      // القاعدةُ نفسُها التي يحرس بها الحفظ: المشرفُ يقرأ كلَّ السيّارات ويكتب
+      // في سيّاراته وحدَها — فلا يُعرض زرٌّ يُرفض.
+      canWrite: await (async () => { const w = await supervisorVehicleIds(req, { forWrite: true }); return !w || w.some((id) => String(id) === String(vehicle._id)); })(),
     });
   } catch (error) {
     res.status(500).json({ message: error.message || 'Failed to load the vehicle log' });
@@ -3316,6 +3364,7 @@ exports.getVehicleLogsSummary = async (req, res) => {
     const ck = `fleet:vlogsum:${range.from.toISOString()}:${range.to.toISOString()}:${scope ? String(req.user._id) : 'all'}`;
     const rows = await cache.wrap(ck, 20000, async () => {
       const vehicles = await FleetVehicle.find(vFilter).select('plate name trailerType supervisorName monthlyTarget').sort({ plate: 1 }).lean();
+      const defaultTarget = Number((await getFleetConfig()).defaultMonthlyTarget) || 0;
       const ids = vehicles.map((v) => v._id);
       const [loadAgg, entryAgg] = await Promise.all([
         FleetShipment.aggregate([
@@ -3346,7 +3395,7 @@ exports.getVehicleLogsSummary = async (req, res) => {
         const logCost = money(e.cost);
         return {
           _id: v._id, plate: v.plate, name: v.name, trailerType: v.trailerType,
-          supervisorName: v.supervisorName, target: v.monthlyTarget || 0,
+          supervisorName: v.supervisorName, target: (Number(v.monthlyTarget) || 0) || defaultTarget,
           loads: l.loads || 0, income, driverExpense, logCost,
           net: money(income - driverExpense - logCost),
           entries: e.entries, byKind: e.byKind,
@@ -3472,6 +3521,10 @@ exports.deleteVehicleLog = async (req, res) => {
   try {
     const doc = await FleetVehicleLog.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: 'Entry not found' });
+    const scope = await supervisorVehicleIds(req, { forWrite: true });
+    if (scope && !scope.some((id) => String(id) === String(doc.vehicle))) {
+      return res.status(403).json({ message: 'Not your vehicle' });
+    }
     if (FleetVehicleLog.isClosed(doc.monthKey) && !CLOSED_OVERRIDE.includes(req.user.role)) {
       return res.status(400).json({ message: `سجلّ ${doc.monthKey} مقفل — لا يُحذف منه` });
     }
@@ -3657,13 +3710,14 @@ exports.getDriverExpenses = async (req, res) => {
     const monthRange = (mk) => {
       const [y, m] = String(mk).split('-').map(Number);
       if (!y || !m) return null;
-      return [new Date(Date.UTC(y, m - 1, 1)), new Date(Date.UTC(y, m, 1))];
+      const ym = `${y}-${String(m).padStart(2, '0')}`;
+      return [_month(ym), _month(_monthKeyShift(ym, 1))]; // شهرُ الرياض
     };
     let from = null; let to = null;
     if (q.month && monthRange(q.month)) [from, to] = monthRange(q.month);
     else {
-      if (q.from) from = new Date(`${q.from}T00:00:00.000Z`);
-      if (q.to) { to = new Date(`${q.to}T00:00:00.000Z`); to.setUTCDate(to.getUTCDate() + 1); }
+      if (q.from) from = _dayStart(q.from);
+      if (q.to) to = _day(_keyShift(String(q.to).slice(0, 10), 1));
     }
     if (from || to) {
       match.loadDate = {};

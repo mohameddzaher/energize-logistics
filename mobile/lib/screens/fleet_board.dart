@@ -45,12 +45,17 @@ class _FleetBoardScreenState extends State<FleetBoardScreen> {
     Live.instance.on('fleet:updated', _onLive);
     // هويّةُ الشاحنة ومستنداتُها من سجلّ المركبات — كالموقع.
     Live.instance.on('vreg:updated', _onLive);
+    // مقعدٌ يتبدّل أو شاحنةٌ تُعدَّل يُعلَن بهذين وحدَهما — والبطاقةُ تعرض سائقيها.
+    Live.instance.on('fleet:drivers', _onLive);
+    Live.instance.on('fleet:vehicles', _onLive);
   }
 
   @override
   void dispose() {
     Live.instance.off('fleet:updated', _onLive);
     Live.instance.off('vreg:updated', _onLive);
+    Live.instance.off('fleet:drivers', _onLive);
+    Live.instance.off('fleet:vehicles', _onLive);
     super.dispose();
   }
 
